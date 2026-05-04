@@ -1134,11 +1134,18 @@ function createJob(mode, type, options) {
       const { namedCurve } = options;
       validateString(namedCurve, "options.namedCurve");
       const { paramEncoding } = options;
-      if (
-        paramEncoding == null || paramEncoding === "named" ||
-        paramEncoding === "explicit"
-      ) {
+      if (paramEncoding == null || paramEncoding === "named") {
         // pass.
+      } else if (paramEncoding === "explicit") {
+        // The underlying crypto library only supports named-curve encoding,
+        // so the generated key uses named-curve ASN.1 even when "explicit"
+        // is requested. Warn callers that depend on byte-for-byte explicit
+        // ASN.1 output.
+        process.emitWarning(
+          'The "paramEncoding: explicit" option is not supported; the ' +
+            "generated key uses named-curve encoding instead.",
+          "Warning",
+        );
       } else {
         throw new ERR_INVALID_ARG_VALUE("options.paramEncoding", paramEncoding);
       }

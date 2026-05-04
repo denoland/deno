@@ -156,15 +156,16 @@ for (
   });
 
   Deno.test({
-    name: `generate ec key ${namedCurve} paramEncoding=explicit fails`,
+    name: `generate ec key ${namedCurve} paramEncoding=explicit`,
     fn() {
-      assertThrows(() => {
-        // @ts-ignore: @types/node is broken?
-        generateKeyPairSync("ec", {
-          namedCurve,
-          paramEncoding: "explicit",
-        });
+      // @ts-ignore: @types/node is broken?
+      const { publicKey, privateKey } = generateKeyPairSync("ec", {
+        namedCurve,
+        paramEncoding: "explicit",
       });
+
+      assertEquals(publicKey.type, "public");
+      assertEquals(privateKey.type, "private");
     },
   });
 }
