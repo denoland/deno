@@ -304,6 +304,10 @@ pub enum PrivateEncryptDecryptError {
   #[class(generic)]
   #[error("Invalid digest used")]
   InvalidDigest,
+  #[class(generic)]
+  #[property("code" = "ERR_OSSL_CRYPTO_INTERRUPTED_OR_CANCELLED")]
+  #[error("error:07880109:common libcrypto routines::interrupted or cancelled")]
+  EncryptedKeyRequiresPassphrase,
 }
 
 /// PKCS#1 v1.5 type 1 padding for private key encryption (signing).
@@ -421,9 +425,18 @@ pub fn op_node_private_decrypt(
   #[serde] oaep_label: Option<JsBuffer>,
 ) -> Result<Uint8Array, PrivateEncryptDecryptError> {
   let key = match std::str::from_utf8(&key) {
-    Ok(pem) => RsaPrivateKey::from_pkcs8_pem(pem)
-      .or_else(|_| rsa::pkcs1::DecodeRsaPrivateKey::from_pkcs1_pem(pem))
-      .map_err(|e| PrivateEncryptDecryptError::Pkcs8(e.into()))?,
+    Ok(pem) => {
+      if pem.contains("Proc-Type: 4,ENCRYPTED")
+        || pem
+          .trim_start()
+          .starts_with("-----BEGIN ENCRYPTED PRIVATE KEY-----")
+      {
+        return Err(PrivateEncryptDecryptError::EncryptedKeyRequiresPassphrase);
+      }
+      RsaPrivateKey::from_pkcs8_pem(pem)
+        .or_else(|_| rsa::pkcs1::DecodeRsaPrivateKey::from_pkcs1_pem(pem))
+        .map_err(|e| PrivateEncryptDecryptError::Pkcs8(e.into()))?
+    }
     Err(_) => RsaPrivateKey::from_pkcs8_der(&key).or_else(|_| {
       RsaPrivateKey::from_pkcs1_der(&key).map_err(pkcs8::Error::from)
     })?,
