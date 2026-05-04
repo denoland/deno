@@ -3322,6 +3322,7 @@
     "parallel/test-tls-socket-close.js": {},
     "parallel/test-tls-socket-constructor-alpn-options-parsing.js": {},
     "parallel/test-tls-socket-destroy.js": {},
+    "parallel/test-tls-ticket-cluster.js": {},
     "parallel/test-tls-writewrap-leak.js": {},
     "parallel/test-tls-timeout-server-2.js": {},
     "parallel/test-tls-tlswrap-segfault-2.js": {},
