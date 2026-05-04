@@ -2431,10 +2431,10 @@ class Http2Stream extends Duplex {
     // RST code 8 is not emitted as an error (abort / http1 compat). For other
     // abnormal RST codes, match Node: synthesize ERR_HTTP2_STREAM_ERROR when
     // destroying without a prior err, unless skipEmitStreamError was set for an
-    // internal teardown path (respondWithFile/respondWithFD after headers were
-    // already sent). User code that tears down a server stream without caring
-    // about the reset should attach `stream.on("error", () => {})` (as Node's
-    // own tests do).
+    // internal teardown path (async respondWithFile/respondWithFD failures
+    // after headers were already committed by another respond() path). User
+    // code that tears down a server stream without caring about the reset
+    // should attach `stream.on("error", () => {})` (as Node's own tests do).
     // RST code 8 not emitted as an error as its used by clients to signify
     // abort and is already covered by aborted event, also allows more
     // seamless compatibility with http1.
@@ -2703,12 +2703,10 @@ function processRespondWithFD(
         if (self.ownsFd) tryClose(fd);
         // Match Node: a read failure (e.g. EBADF from a bad fd) resets the
         // stream with NGHTTP2_INTERNAL_ERROR rather than leaking the
-        // underlying fs error to user code.
+        // underlying fs error to user code. Still surface ERR_HTTP2_STREAM_ERROR
+        // on the server stream (and on the client request) like Node's
+        // test-http2-respond-file-fd-invalid.js expects.
         if (!self.destroyed && !self.closed) {
-          // Same internal-reset path as handleAsyncFileResponseError: headers
-          // were already sent via respond(); avoid synthesizing a stream error
-          // in _destroy for this control-flow teardown.
-          self[kState].skipEmitStreamError = true;
           closeStream(self, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
         }
         self.destroy();
@@ -3153,18 +3151,24 @@ class ServerHttp2Stream extends Http2Stream {
     }
 
     if (options.statCheck !== undefined) {
-      fs.fstat(
+      const onFStat = FunctionPrototypeBind(
+        doSendFD,
+        this,
+        session,
+        options,
         fd,
-        FunctionPrototypeBind(
-          doSendFD,
-          this,
-          session,
-          options,
-          fd,
-          headers,
-          streamOptions,
-        ),
+        headers,
+        streamOptions,
       );
+      try {
+        fs.fstat(fd, onFStat);
+      } catch (err) {
+        // `fs.fstat` validates `fd` synchronously (e.g. RangeError for -1).
+        // Route that through the same async error path as a failed fstat so
+        // `handleAsyncFileResponseError` runs instead of throwing from the
+        // stream handler (matches downstream behavior for bad fds).
+        process.nextTick(onFStat, err, undefined);
+      }
       return;
     }
 

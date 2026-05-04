@@ -10,7 +10,7 @@ import * as fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as net from "node:net";
-import process from "node:process";
+import { nextTick } from "node:process";
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { curlRequest } from "../unit/test_util.ts";
 import { createRequire } from "node:module";
@@ -828,7 +828,7 @@ Deno.test(
       stream.on("error", () => {});
       stream.respondWithFile(missingPath);
       // Force a committed response before fs.open() fails asynchronously.
-      process.nextTick(() => {
+      nextTick(() => {
         if (!stream.destroyed && !stream.closed && !stream.headersSent) {
           stream.respond({ ":status": 200 });
           stream.write("partial");
@@ -895,7 +895,7 @@ Deno.test(
       stream.on("error", () => {});
       stream.respondWithFD(closedFd, {}, { statCheck: () => true });
       // Force a committed response before fs.fstat() fails asynchronously.
-      process.nextTick(() => {
+      nextTick(() => {
         if (!stream.destroyed && !stream.closed && !stream.headersSent) {
           stream.respond({ ":status": 200 });
           stream.write("partial");
