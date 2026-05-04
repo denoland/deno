@@ -47,6 +47,35 @@ where
   }
 }
 
+/// Encode a DSA signature to IEEE P1363 format: r || s, each zero-padded to
+/// q_len bytes. Spec: https://www.w3.org/TR/WebCryptoAPI/#convert-an-ecdsa-signature
+fn dsa_sig_to_p1363(sig: &dsa::Signature, q_len: usize) -> Box<[u8]> {
+  let mut result = vec![0u8; q_len * 2];
+  let r_bytes = sig.r().to_bytes_be();
+  let s_bytes = sig.s().to_bytes_be();
+  if r_bytes.len() <= q_len {
+    result[q_len - r_bytes.len()..q_len].copy_from_slice(&r_bytes);
+  }
+  if s_bytes.len() <= q_len {
+    result[2 * q_len - s_bytes.len()..2 * q_len].copy_from_slice(&s_bytes);
+  }
+  result.into_boxed_slice()
+}
+
+/// Decode a DSA signature from IEEE P1363 format: r || s, each of q_len bytes.
+/// Spec: https://www.w3.org/TR/WebCryptoAPI/#convert-an-ecdsa-signature
+fn dsa_sig_from_p1363(
+  bytes: &[u8],
+  q_len: usize,
+) -> Option<dsa::Signature> {
+  if bytes.len() != 2 * q_len {
+    return None;
+  }
+  let r = dsa::BigUint::from_bytes_be(&bytes[..q_len]);
+  let s = dsa::BigUint::from_bytes_be(&bytes[q_len..]);
+  dsa::Signature::from_components(r, s).ok()
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(type)]
 pub enum KeyObjectHandlePrehashedSignAndVerifyError {
@@ -407,26 +436,11 @@ impl KeyObjectHandle {
           res.map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithDsa)?;
 
         if dsa_signature_encoding == 0 {
-          // DER encoding
           Ok(signature.into())
         } else {
-          // IEEE P1363: r || s, each padded to q_len bytes
-          let q = key.verifying_key().components().q();
-          let q_len = q.bits().div_ceil(8);
-          let mut result = vec![0u8; q_len * 2];
-          let r_bytes = signature.r().to_bytes_be();
-          let s_bytes = signature.s().to_bytes_be();
-          // Right-align r in first q_len bytes
-          if r_bytes.len() <= q_len {
-            let r_start = q_len - r_bytes.len();
-            result[r_start..q_len].copy_from_slice(&r_bytes);
-          }
-          // Right-align s in second q_len bytes
-          if s_bytes.len() <= q_len {
-            let s_start = 2 * q_len - s_bytes.len();
-            result[s_start..2 * q_len].copy_from_slice(&s_bytes);
-          }
-          Ok(result.into_boxed_slice())
+          let q_len =
+            key.verifying_key().components().q().bits().div_ceil(8);
+          Ok(dsa_sig_to_p1363(&signature, q_len))
         }
       }
       AsymmetricPrivateKey::Ec(key) => match key {
@@ -589,15 +603,8 @@ impl KeyObjectHandle {
           };
           sig
         } else {
-          // IEEE P1363: r || s, each of q_len bytes
-          let q = key.components().q();
-          let q_len = q.bits().div_ceil(8);
-          if signature.len() != 2 * q_len {
-            return Ok(false);
-          }
-          let r = dsa::BigUint::from_bytes_be(&signature[..q_len]);
-          let s = dsa::BigUint::from_bytes_be(&signature[q_len..]);
-          let Ok(sig) = dsa::Signature::from_components(r, s) else {
+          let q_len = key.components().q().bits().div_ceil(8);
+          let Some(sig) = dsa_sig_from_p1363(signature, q_len) else {
             return Ok(false);
           };
           sig
