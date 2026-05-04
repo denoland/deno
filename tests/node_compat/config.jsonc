@@ -1549,6 +1549,7 @@
     "parallel/test-http-parser-free.js": {},
     "parallel/test-http-parser-freed-before-upgrade.js": {},
     "parallel/test-http-parser-freed-during-execute.js": {},
+    "parallel/test-http-parser-multiple-execute.js": {},
     "parallel/test-http-pause-no-dump.js": {},
     "parallel/test-http-pause-resume-one-end.js": {},
     "parallel/test-http-pause.js": {},
