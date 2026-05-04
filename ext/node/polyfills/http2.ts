@@ -1591,8 +1591,19 @@ function onSessionHeaders(
     }
   }
   if (endOfStream) {
-    // deno-lint-ignore prefer-primordials
-    stream.push(null);
+    // Match the async context used for client 'response' / 'data' delivery
+    // (kRequestAsyncResource + runInAsyncScope) so readable 'end' and
+    // AsyncLocalStorage behave consistently (see unit_node http2 ALS test).
+    const reqAsync = stream[kRequestAsyncResource];
+    if (reqAsync) {
+      reqAsync.runInAsyncScope(() => {
+        // deno-lint-ignore prefer-primordials
+        stream.push(null);
+      });
+    } else {
+      // deno-lint-ignore prefer-primordials
+      stream.push(null);
+    }
   }
 }
 

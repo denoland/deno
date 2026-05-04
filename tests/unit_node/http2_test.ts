@@ -6,9 +6,11 @@ import * as http2 from "node:http2";
 import * as https from "node:https";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Buffer } from "node:buffer";
+import * as fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as net from "node:net";
+import process from "node:process";
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { curlRequest } from "../unit/test_util.ts";
 import { createRequire } from "node:module";
@@ -882,9 +884,16 @@ Deno.test(
 
     let nextTickCommittedFollowUpResponse = false;
 
+    const tmpPath = join(Deno.makeTempDirSync(), "respond-with-fd.txt");
+    Deno.writeTextFileSync(tmpPath, "x");
+    const closedFd = fs.openSync(tmpPath, "r");
+    fs.closeSync(closedFd);
+    // Closed FD is still in int32 range (unlike -1) so fstat runs async and
+    // fails with EBADF, matching the invalid-fd regression on POSIX.
+
     server.on("stream", (stream) => {
       stream.on("error", () => {});
-      stream.respondWithFD(-1, {}, { statCheck: () => true });
+      stream.respondWithFD(closedFd, {}, { statCheck: () => true });
       // Force a committed response before fs.fstat() fails asynchronously.
       process.nextTick(() => {
         if (!stream.destroyed && !stream.closed && !stream.headersSent) {
