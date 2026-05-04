@@ -60,6 +60,12 @@ use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageSubpathResolveError;
 pub use provider::CliBundleProvider;
 
+use deno_core::anyhow::Context as _;
+use deno_graph::GraphKind;
+use deno_graph::ModuleGraph;
+use sys_traits::FsCreateDirAll;
+use sys_traits::PathsInErrorsExt;
+
 use crate::args::BundleFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
@@ -347,6 +353,15 @@ pub async fn bundle(
       bundle_flags.output_dir.as_ref().map(Path::new),
     )?;
 
+    if bundle_flags.declaration {
+      emit_bundle_declarations(
+        flags.clone(),
+        &bundle_flags,
+        &init_cwd,
+      )
+      .await?;
+    }
+
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
       print_finished_message(&metafile, &output_infos, duration)?;
     }
@@ -354,6 +369,126 @@ pub async fn bundle(
 
   if !response.errors.is_empty() {
     deno_core::anyhow::bail!("bundling failed");
+  }
+
+  Ok(())
+}
+
+async fn emit_bundle_declarations(
+  flags: Arc<Flags>,
+  bundle_flags: &BundleFlags,
+  init_cwd: &Path,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
+  let real_sys = factory.sys();
+  let sys = real_sys.with_paths_in_errors();
+
+  // Resolve entrypoints to specifiers
+  let resolver = factory.resolver().await?;
+  let entrypoint_specifiers =
+    resolve_entrypoints(resolver, init_cwd, &bundle_flags.entrypoints)?;
+
+  // Determine root names with media types
+  let root_names: Vec<(ModuleSpecifier, MediaType)> = entrypoint_specifiers
+    .iter()
+    .map(|s| (s.clone(), MediaType::from_specifier(s)))
+    .collect();
+
+  let specifiers: Vec<ModuleSpecifier> =
+    root_names.iter().map(|(s, _)| s.clone()).collect();
+
+  // Build the module graph for type checking
+  let mut graph = ModuleGraph::new(GraphKind::All);
+  let module_graph_builder = factory.module_graph_builder().await?;
+  module_graph_builder
+    .build_graph_roots_with_npm_resolution(
+      &mut graph,
+      specifiers,
+      crate::graph_util::BuildGraphWithNpmOptions {
+        is_dynamic: false,
+        loader: None,
+        npm_caching: cli_options.default_npm_caching_strategy(),
+      },
+    )
+    .await?;
+
+  // Run type checker to emit declaration files
+  let type_checker = factory.type_checker().await?;
+  let result = type_checker.emit_declarations(
+    Arc::new(graph),
+    root_names,
+    cli_options.ts_type_lib_window(),
+  )?;
+
+  if result.diagnostics.has_diagnostic() {
+    deno_core::anyhow::bail!(
+      "Type checking failed when generating declarations:\n{}",
+      result.diagnostics
+    );
+  }
+
+  // Determine output directory for .d.ts files
+  let out_dir = if let Some(ref outdir) = bundle_flags.output_dir {
+    PathBuf::from(outdir)
+  } else if let Some(ref output) = bundle_flags.output_path {
+    let output_path = init_cwd.join(output);
+    output_path
+      .parent()
+      .map(|p| p.to_path_buf())
+      .unwrap_or_else(|| init_cwd.to_path_buf())
+  } else {
+    init_cwd.to_path_buf()
+  };
+
+  // Write emitted .d.ts files
+  let mut emitted_count = 0;
+  for (file_name, content) in &result.emitted_files {
+    // TSC emits specifier-based paths like "file:///path/to/file.d.ts"
+    let specifier = if file_name.starts_with("file://") {
+      Url::parse(file_name)?
+    } else {
+      continue;
+    };
+    let file_path = specifier.to_file_path().map_err(|_| {
+      deno_core::anyhow::anyhow!(
+        "Failed to convert specifier to path: {}",
+        file_name
+      )
+    })?;
+
+    // Get just the filename and place it in the output directory
+    let dts_filename = file_path
+      .file_name()
+      .ok_or_else(|| {
+        deno_core::anyhow::anyhow!("No filename in path: {}", file_name)
+      })?;
+    let output_path = out_dir.join(dts_filename);
+
+    if let Some(parent) = output_path.parent() {
+      sys.fs_create_dir_all(parent).with_context(|| {
+        format!("Failed to create directory {}", parent.display())
+      })?;
+    }
+
+    sys
+      .fs_write(&output_path, content.as_bytes())
+      .with_context(|| {
+        format!("Failed to write {}", output_path.display())
+      })?;
+    log::info!(
+      "{} {}",
+      deno_terminal::colors::green("Emit"),
+      output_path.display()
+    );
+    emitted_count += 1;
+  }
+
+  if emitted_count == 0 {
+    log::warn!(
+      "{} No declaration files were emitted",
+      deno_terminal::colors::yellow("Warning")
+    );
   }
 
   Ok(())
