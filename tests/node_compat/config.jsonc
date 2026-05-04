@@ -463,6 +463,7 @@
     "parallel/test-console-tty-colors.js": {},
     "parallel/test-console-with-frozen-intrinsics.js": {},
     "parallel/test-coverage-with-inspector-disabled.js": {},
+    "parallel/test-crypto.js": {},
     "parallel/test-crypto-aes-wrap.js": {},
     "parallel/test-crypto-argon2.js": {},
     "parallel/test-crypto-async-sign-verify.js": {},

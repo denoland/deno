@@ -12,6 +12,7 @@ import {
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { createPrivateKey } from "ext:deno_node/internal/crypto/keys.ts";
+import { op_node_validate_crl, op_node_validate_pfx } from "ext:core/ops";
 
 // OpenSSL cipher names are uppercase alphanumeric with hyphens/underscores
 // and "=" (for @SECLEVEL=N). Examples: "ECDHE-RSA-AES128-GCM-SHA256",
@@ -287,6 +288,19 @@ function validateKeyCertOption(
   );
 }
 
+function toUint8Array(val: any): Uint8Array {
+  if (typeof val === "string") {
+    return new TextEncoder().encode(val);
+  }
+  if (val instanceof globalThis.ArrayBuffer) {
+    return new Uint8Array(val);
+  }
+  if (isArrayBufferView(val)) {
+    return new Uint8Array(val.buffer, val.byteOffset, val.byteLength);
+  }
+  return new TextEncoder().encode(String(val));
+}
+
 const secureContextBrand = new WeakSet<object>();
 
 export class SecureContext {
@@ -330,6 +344,25 @@ export class SecureContext {
     validateKeyCertOption(options.key, "options.key", true);
     validateKeyCertOption(options.ca, "options.ca", false);
 
+    // Validate PFX / PKCS#12 data.
+    if (options.pfx != null) {
+      const pfxData = toUint8Array(options.pfx);
+      const pfxPassphrase = options.passphrase != null
+        ? String(options.passphrase)
+        : null;
+      op_node_validate_pfx(pfxData, pfxPassphrase);
+    }
+
+    // Validate CRL data.
+    if (options.crl != null) {
+      const crls = globalThis.Array.isArray(options.crl)
+        ? options.crl
+        : [options.crl];
+      for (const crl of crls) {
+        op_node_validate_crl(toUint8Array(crl));
+      }
+    }
+
     // Mirror OpenSSL's SECLEVEL key-size enforcement. The cipher list is
     // applied before the key is loaded (matching Node.js' order in
     // `SecureContext::Init`), so `DEFAULT:@SECLEVEL=0` retains compatibility
@@ -355,16 +388,20 @@ export class SecureContext {
       configurable: true,
       enumerable: false,
       get(this: object) {
-        // In Node, `_external` is the C++ external pointer; reading it on a
-        // non-context receiver hits an internal slot check and throws. Match
-        // that behaviour so prototype-tampering tests don't get a silent
-        // undefined.
         if (!secureContextBrand.has(this)) {
           throw new TypeError("Illegal invocation");
         }
         return this;
       },
     });
+    (this.context as any).setOptions = function setOptions(
+      this: object,
+      _options?: number,
+    ) {
+      if (!secureContextBrand.has(this)) {
+        throw new TypeError("Illegal invocation");
+      }
+    };
   }
 
   // Backward compat: current _tls_wrap.js accesses .ca, .cert, .key directly
