@@ -938,7 +938,8 @@ pub fn op_deserialize<'s, 'i>(
 }
 
 // Specialized op for `structuredClone` API called with no `options` argument.
-#[op2]
+// May be reentrant when host object brand functions call ops (e.g. Blob clone).
+#[op2(reentrant)]
 pub fn op_structured_clone<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   value: v8::Local<'s, v8::Value>,
