@@ -36,11 +36,16 @@ import {
   ERR_INVALID_URL_SCHEME,
   ERR_OUT_OF_RANGE,
   ERR_WORKER_INVALID_EXEC_ARGV,
+  ERR_WORKER_MESSAGING_ERRORED,
+  ERR_WORKER_MESSAGING_FAILED,
+  ERR_WORKER_MESSAGING_SAME_THREAD,
+  ERR_WORKER_MESSAGING_TIMEOUT,
   ERR_WORKER_NOT_RUNNING,
   ERR_WORKER_PATH,
 } from "ext:deno_node/internal/errors.ts";
 import {
   validateArray,
+  validateNumber,
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { EventEmitter } from "node:events";
@@ -59,6 +64,7 @@ const {
   Error,
   EvalError,
   FunctionPrototypeCall,
+  Int32Array,
   NumberIsFinite,
   NumberIsNaN,
   ObjectCreate,
@@ -398,6 +404,16 @@ class NodeWorker extends EventEmitter {
 
     const resourceLimits_ = options?.resourceLimits ?? undefined;
 
+    // Create a MessageChannel for cross-thread messaging routing.
+    // One end goes to the worker (via metadata), the other stays here
+    // and is registered with the main thread after we know the worker ID.
+    const { port1: mainThreadPortToMain, port2: mainThreadPortToWorker } =
+      new MessageChannel();
+
+    const userTransferList = options?.transferList ?? [];
+    // deno-lint-ignore prefer-primordials
+    const transferList = [mainThreadPortToWorker, ...userTransferList];
+
     const serializedWorkerMetadata = serializeJsMessageData({
       workerData: options?.workerData,
       environmentData: environmentData,
@@ -409,7 +425,8 @@ class NodeWorker extends EventEmitter {
       isWorkerThread: true,
       hasStdin: !!options?.stdin,
       resourceLimits: resourceLimits_,
-    }, options?.transferList ?? []);
+      mainThreadPort: mainThreadPortToWorker,
+    }, transferList);
 
     let sourceCode = "";
     let hasSourceCode = false;
@@ -468,6 +485,19 @@ class NodeWorker extends EventEmitter {
     );
     this.#id = id;
     this.threadId = id;
+
+    // Register the main-side port in the thread registry now that we
+    // know the worker's threadId.
+    const registrationMessage = {
+      type: MSG_REGISTER,
+      threadId: id,
+      port: mainThreadPortToMain,
+    };
+    if (isMainThread) {
+      handleMessageFromThread(registrationMessage);
+    } else {
+      mainThreadPort!.postMessage(registrationMessage, [mainThreadPortToMain]);
+    }
 
     if (resourceLimits_) {
       this.resourceLimits = { ...resourceLimits_ };
@@ -559,6 +589,7 @@ class NodeWorker extends EventEmitter {
         case 1: { // TerminalError
           this.#status = "CLOSED";
           this.#closeStdio();
+          await destroyMainThreadPort(this.#id);
           if (this.listenerCount("error") > 0) {
             const errMsg = data.errorMessage ?? data.message;
             const errName = data.name;
@@ -596,6 +627,7 @@ class NodeWorker extends EventEmitter {
           debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
           this.#closeStdio();
+          await destroyMainThreadPort(this.#id);
           // Drain pending messages before emitting exit so that
           // all 'message' events fire before 'exit' (Node.js behavior).
           await this.#messageLoopPromise;
@@ -714,24 +746,25 @@ class NodeWorker extends EventEmitter {
   }
 
   // https://nodejs.org/api/worker_threads.html#workerterminate
-  terminate() {
+  async terminate() {
     if (this.#status === "TERMINATED") {
-      return PromiseResolve(undefined);
+      return undefined;
     }
 
     this.#status = "TERMINATED";
     op_host_terminate_worker(this.#id);
     this.#closeStdio();
+    await destroyMainThreadPort(this.#id);
 
     if (!this.#exited) {
       this.#exited = true;
       this.emit("exit", 1);
-      return PromiseResolve(1);
+      return 1;
     }
 
     // Worker already exited - Node.js returns undefined in this case
     // (the internal handle is already null).
-    return PromiseResolve(undefined);
+    return undefined;
   }
 
   async [SymbolAsyncDispose]() {
@@ -817,6 +850,252 @@ let threadId = 0;
 let workerData: unknown = null;
 let environmentData = new SafeMap();
 
+// --- Cross-thread messaging (postMessageToThread) ---
+// Message types for the main-thread routing protocol
+const MSG_REGISTER = "registerMainThreadPort";
+const MSG_UNREGISTER = "unregisterMainThreadPort";
+const MSG_SEND = "sendMessageToWorker";
+const MSG_RECEIVE = "receiveMessageFromWorker";
+
+// SAB layout: 2 Int32 slots (8 bytes)
+const WORKER_MESSAGING_SHARED_DATA = 2 * 4;
+const WORKER_MESSAGING_STATUS_INDEX = 0;
+const WORKER_MESSAGING_RESULT_INDEX = 1;
+const WORKER_MESSAGING_RESULT_DELIVERED = 0;
+const WORKER_MESSAGING_RESULT_NO_LISTENERS = 1;
+const WORKER_MESSAGING_RESULT_LISTENER_ERROR = 2;
+
+// Main thread only: threadId -> MessagePort (for routing messages to workers)
+const threadsPorts = new SafeMap<number, MessagePort>();
+
+// Worker threads only: port connected to the main thread for routing
+let mainThreadPort: MessagePort | undefined;
+
+// deno-lint-ignore no-explicit-any
+function handleMessageFromThread(message: any) {
+  switch (message.type) {
+    case MSG_REGISTER: {
+      const { threadId: tid, port } = message;
+      threadsPorts.set(tid, port);
+      // Transferred MessagePorts lose nodeWorkerThreadCloseCb which
+      // the recv loop needs to properly unref promises.
+      if (!port[nodeWorkerThreadCloseCb]) {
+        port[nodeWorkerThreadCloseCb] = () => {};
+      }
+      port.addEventListener("message", (ev: MessageEvent) => {
+        handleMessageFromThread(ev.data);
+      });
+      if (port.start) port.start();
+      // Don't keep the event loop alive just for this routing port
+      if (port[refMessagePort]) port[refMessagePort](false);
+      break;
+    }
+    case MSG_UNREGISTER:
+      threadsPorts.get(message.threadId)?.close();
+      threadsPorts.delete(message.threadId);
+      break;
+    case MSG_SEND: {
+      const { source, destination, value, transferList, memory } = message;
+      sendMessageToWorker(source, destination, value, transferList, memory);
+      break;
+    }
+  }
+}
+
+// deno-lint-ignore no-explicit-any
+function handleMessageFromMainThread(message: any) {
+  if (message.type === MSG_RECEIVE) {
+    receiveMessageFromWorker(message.source, message.value, message.memory);
+  }
+}
+
+function sendMessageToWorker(
+  source: number,
+  destination: number,
+  // deno-lint-ignore no-explicit-any
+  value: any,
+  // deno-lint-ignore no-explicit-any
+  transferList: any[],
+  memory: SharedArrayBuffer,
+) {
+  // Destination 0 = main thread, handle directly
+  if (destination === 0) {
+    receiveMessageFromWorker(source, value, memory);
+    return;
+  }
+
+  const port = threadsPorts.get(destination);
+  if (!port) {
+    const status = new Int32Array(memory);
+    Atomics.store(
+      status,
+      WORKER_MESSAGING_RESULT_INDEX,
+      WORKER_MESSAGING_RESULT_NO_LISTENERS,
+    );
+    Atomics.store(status, WORKER_MESSAGING_STATUS_INDEX, 1);
+    Atomics.notify(status, WORKER_MESSAGING_STATUS_INDEX, 1);
+    return;
+  }
+
+  port.postMessage(
+    {
+      type: MSG_RECEIVE,
+      source,
+      destination,
+      value,
+      memory,
+    },
+    transferList,
+  );
+}
+
+function receiveMessageFromWorker(
+  source: number,
+  // deno-lint-ignore no-explicit-any
+  value: any,
+  memory: SharedArrayBuffer,
+) {
+  let response = WORKER_MESSAGING_RESULT_NO_LISTENERS;
+
+  try {
+    // Patch any transferred MessagePorts so they have Node.js-style .on()/.off()
+    patchMessagePortIfFound(value);
+    if (process.emit("workerMessage", value, source)) {
+      response = WORKER_MESSAGING_RESULT_DELIVERED;
+    }
+  } catch {
+    response = WORKER_MESSAGING_RESULT_LISTENER_ERROR;
+  }
+
+  // deno-lint-ignore prefer-primordials
+  const status = new Int32Array(memory);
+  // deno-lint-ignore prefer-primordials
+  Atomics.store(status, WORKER_MESSAGING_RESULT_INDEX, response);
+  // deno-lint-ignore prefer-primordials
+  Atomics.store(status, WORKER_MESSAGING_STATUS_INDEX, 1);
+  // deno-lint-ignore prefer-primordials
+  Atomics.notify(status, WORKER_MESSAGING_STATUS_INDEX, 1);
+}
+
+function createMainThreadPort(workerThreadId: number): MessagePort {
+  const { port1, port2 } = new MessageChannel();
+
+  const registrationMessage = {
+    type: MSG_REGISTER,
+    threadId: workerThreadId,
+    port: port1,
+  };
+
+  if (isMainThread) {
+    handleMessageFromThread(registrationMessage);
+  } else {
+    mainThreadPort!.postMessage(registrationMessage, [port1]);
+  }
+
+  return port2;
+}
+
+async function destroyMainThreadPort(workerThreadId: number) {
+  if (isMainThread) {
+    const port = threadsPorts.get(workerThreadId);
+    if (port) {
+      threadsPorts.delete(workerThreadId);
+      port.close();
+      // Wait for the port's recv loop to fully terminate after
+      // close() interrupts the pending op. Without this, the test
+      // sanitizer may see the pending op before it resolves.
+      await PromiseResolve();
+    }
+  } else {
+    mainThreadPort!.postMessage({
+      type: MSG_UNREGISTER,
+      threadId: workerThreadId,
+    });
+  }
+}
+
+function setupMainThreadPort(port: MessagePort) {
+  mainThreadPort = port;
+  // Transferred MessagePorts lose custom properties like
+  // nodeWorkerThreadCloseCb. The recv loop in MessagePort.start()
+  // only unrefs promises when this callback is set, so we need to
+  // restore it to ensure the port doesn't keep the event loop alive.
+  if (!mainThreadPort[nodeWorkerThreadCloseCb]) {
+    mainThreadPort[nodeWorkerThreadCloseCb] = () => {};
+  }
+  mainThreadPort.addEventListener("message", (ev: MessageEvent) => {
+    handleMessageFromMainThread(ev.data);
+  });
+  if (mainThreadPort.start) mainThreadPort.start();
+  // Don't keep the event loop alive just for this routing port.
+  // Workers stay alive via other handles (BroadcastChannel, user
+  // ports, etc.) - matching Node.js where the internal port is
+  // always unrefed.
+  if (mainThreadPort[refMessagePort]) mainThreadPort[refMessagePort](false);
+}
+
+// deno-lint-ignore no-explicit-any
+async function postMessageToThread(
+  destThreadId: number,
+  value?: any, // deno-lint-ignore-line no-explicit-any
+  transferListOrTimeout?: any[] | number, // deno-lint-ignore-line no-explicit-any
+  timeout?: number,
+) {
+  // Handle overloaded signature: (threadId, value, timeout)
+  let transferList: any[] = []; // deno-lint-ignore-line no-explicit-any
+  if (
+    typeof transferListOrTimeout === "number" && typeof timeout === "undefined"
+  ) {
+    timeout = transferListOrTimeout;
+  } else if (transferListOrTimeout !== undefined) {
+    transferList = transferListOrTimeout as any[]; // deno-lint-ignore-line no-explicit-any
+  }
+
+  if (typeof timeout !== "undefined") {
+    validateNumber(timeout, "timeout", 0);
+  }
+
+  if (destThreadId === threadId) {
+    throw new ERR_WORKER_MESSAGING_SAME_THREAD();
+  }
+
+  const memory = new SharedArrayBuffer(WORKER_MESSAGING_SHARED_DATA);
+  const status = new Int32Array(memory);
+  const promise =
+    Atomics.waitAsync(status, WORKER_MESSAGING_STATUS_INDEX, 0, timeout).value;
+
+  const message = {
+    type: MSG_SEND,
+    source: threadId,
+    destination: destThreadId,
+    value,
+    memory,
+    transferList,
+  };
+
+  if (isMainThread) {
+    handleMessageFromThread(message);
+  } else {
+    mainThreadPort!.postMessage(message, transferList);
+  }
+
+  const response = await promise;
+
+  if (response === "timed-out") {
+    throw new ERR_WORKER_MESSAGING_TIMEOUT();
+  } else if (
+    status[WORKER_MESSAGING_RESULT_INDEX] ===
+      WORKER_MESSAGING_RESULT_NO_LISTENERS
+  ) {
+    throw new ERR_WORKER_MESSAGING_FAILED();
+  } else if (
+    status[WORKER_MESSAGING_RESULT_INDEX] ===
+      WORKER_MESSAGING_RESULT_LISTENER_ERROR
+  ) {
+    throw new ERR_WORKER_MESSAGING_ERRORED();
+  }
+}
+
 // Like https://github.com/nodejs/node/blob/48655e17e1d84ba5021d7a94b4b88823f7c9c6cf/lib/internal/event_target.js#L611
 interface NodeEventTarget extends
   Pick<
@@ -872,6 +1151,10 @@ internals.__initWorkerThreads = (
   internals.__isWorkerThread = !runningOnMainThread;
 
   defaultExport.isMainThread = isMainThread;
+
+  // Override globalThis.MessageChannel so ports produced by `new MessageChannel()`
+  // have Node.js-style EventEmitter methods (.on, .off, etc.).
+  globalThis.MessageChannel = NodeMessageChannel;
 
   if (isMainThread) {
     resourceLimits = {};
@@ -1001,6 +1284,12 @@ internals.__initWorkerThreads = (
       environmentData = metadata.environmentData;
       isWorkerThread = metadata.isWorkerThread;
       threadName = metadata.name ?? "";
+
+      // Set up the cross-thread messaging port
+      if (metadata.mainThreadPort) {
+        setupMainThreadPort(metadata.mainThreadPort);
+      }
+
       const env = metadata.env;
       if (env) {
         process.env = env;
@@ -1395,6 +1684,7 @@ export {
   NodeMessageChannel as MessageChannel,
   NodeWorker as Worker,
   parentPort,
+  postMessageToThread,
   threadId,
   workerData,
 };
@@ -1402,6 +1692,7 @@ export {
 const defaultExport = {
   markAsUntransferable,
   moveMessagePortToContext,
+  postMessageToThread,
   receiveMessageOnPort,
   MessagePort,
   MessageChannel: NodeMessageChannel,

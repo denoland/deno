@@ -2495,6 +2495,38 @@ export class ERR_WORKER_PATH extends NodeTypeError {
     super("ERR_WORKER_PATH", base + detail);
   }
 }
+export class ERR_WORKER_MESSAGING_ERRORED extends NodeError {
+  constructor() {
+    super(
+      "ERR_WORKER_MESSAGING_ERRORED",
+      `The destination thread threw an error while processing the message`,
+    );
+  }
+}
+export class ERR_WORKER_MESSAGING_FAILED extends NodeError {
+  constructor() {
+    super(
+      "ERR_WORKER_MESSAGING_FAILED",
+      `Cannot find the destination thread or listener`,
+    );
+  }
+}
+export class ERR_WORKER_MESSAGING_SAME_THREAD extends NodeError {
+  constructor() {
+    super(
+      "ERR_WORKER_MESSAGING_SAME_THREAD",
+      `Cannot sent a message to the same thread`,
+    );
+  }
+}
+export class ERR_WORKER_MESSAGING_TIMEOUT extends NodeError {
+  constructor() {
+    super(
+      "ERR_WORKER_MESSAGING_TIMEOUT",
+      `Sending a message to another thread timed out`,
+    );
+  }
+}
 export class ERR_WORKER_NOT_RUNNING extends NodeError {
   constructor() {
     super("ERR_WORKER_NOT_RUNNING", `Worker instance not running`);
@@ -3410,6 +3442,10 @@ export default {
   ERR_WASI_ALREADY_STARTED,
   ERR_WORKER_INIT_FAILED,
   ERR_WORKER_INVALID_EXEC_ARGV,
+  ERR_WORKER_MESSAGING_ERRORED,
+  ERR_WORKER_MESSAGING_FAILED,
+  ERR_WORKER_MESSAGING_SAME_THREAD,
+  ERR_WORKER_MESSAGING_TIMEOUT,
   ERR_WORKER_NOT_RUNNING,
   ERR_WORKER_OUT_OF_MEMORY,
   ERR_WORKER_PATH,
