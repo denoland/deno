@@ -146,7 +146,11 @@ RoundRobinHandle.prototype.distribute = function (
     return;
   }
   append(this.handles, handle);
-  const [workerEntry] = this.free; // this.free is a SafeMap
+  // Destructures the first `[key, value]` entry from the SafeMap iterator;
+  // `workerEntry` is `undefined` if `this.free` is empty. The `ArrayIsArray`
+  // guard (inherited from Node's port) is just a non-empty check -- map
+  // entries are always 2-tuples.
+  const [workerEntry] = this.free;
 
   if (ArrayIsArray(workerEntry)) {
     const { 0: workerId, 1: worker } = workerEntry;

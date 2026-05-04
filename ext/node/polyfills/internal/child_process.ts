@@ -1902,7 +1902,8 @@ const IPC_HANDLE_NET_SERVER = "net.Server";
 // (SharedHandle). Mirrors Node's `handleConversion["net.Native"]`.
 const IPC_HANDLE_NET_NATIVE = "net.Native";
 
-function rawFdFromTcpHandle(tcpHandle) {
+// deno-lint-ignore no-explicit-any
+function rawFdFromTcpHandle(tcpHandle: any): number {
   if (typeof tcpHandle.fdForIpc !== "function") {
     notImplemented("ChildProcess.send with handle on this platform");
   }
@@ -1913,7 +1914,16 @@ function rawFdFromTcpHandle(tcpHandle) {
   return rawFd;
 }
 
-function getIpcHandleInfo(handle, options) {
+interface IpcHandleInfo {
+  rawFd: number;
+  // deno-lint-ignore no-explicit-any
+  message: Record<string, any>;
+  closeAfterSend: boolean;
+  close(): void;
+}
+
+// deno-lint-ignore no-explicit-any
+function getIpcHandleInfo(handle: any, options: any): IpcHandleInfo {
   if (handle instanceof Socket) {
     if (!(handle._handle instanceof TCP)) {
       notImplemented("ChildProcess.send with non-TCP net.Socket handle");
@@ -1984,7 +1994,8 @@ function getIpcHandleInfo(handle, options) {
   throw new ERR_INVALID_HANDLE_TYPE();
 }
 
-function createIpcHandle(message, rawFd) {
+// deno-lint-ignore no-explicit-any
+function createIpcHandle(message: any, rawFd: number): any {
   if (message.type === IPC_HANDLE_NET_SOCKET) {
     const tcp = new TCP(tcpSocketType.SOCKET);
     const err = tcp.open(rawFd);
@@ -2048,7 +2059,6 @@ function createIpcHandle(message, rawFd) {
   }
   return undefined;
 }
-
 
 export function setupChannel(
   // deno-lint-ignore no-explicit-any

@@ -19,6 +19,23 @@ import { init as initChild } from "ext:deno_node/internal/cluster/child.ts";
 const cluster: any = new EventEmitter();
 initPrimary(cluster);
 
+// ESM exports are live bindings: importers see the current value of the
+// local `let`. We sync from `cluster.*` after `initPrimary` (now), and
+// re-sync after `initChild` runs in `__initCluster` so workers don't see
+// stale primary-side values like `isWorker = false` or a primary-side
+// `fork` that was overwritten by the child-side init.
+let isPrimary = cluster.isPrimary;
+let isMaster = cluster.isMaster;
+let isWorker = cluster.isWorker;
+let workers = cluster.workers;
+let settings = cluster.settings;
+let schedulingPolicy = cluster.schedulingPolicy;
+let fork = cluster.fork;
+let disconnect = cluster.disconnect;
+let setupPrimary = cluster.setupPrimary;
+let setupMaster = cluster.setupMaster;
+let worker = cluster.worker;
+
 internals.__initCluster = (
   uniqueId: string,
   schedPolicyEnv: string | undefined,
@@ -43,21 +60,40 @@ internals.__initCluster = (
   }
 
   cluster._setupWorker();
+
+  // Resync the live bindings now that the child side has populated `cluster`
+  // (including `cluster.worker` set by `_setupWorker`).
+  isPrimary = cluster.isPrimary;
+  isMaster = cluster.isMaster;
+  isWorker = cluster.isWorker;
+  workers = cluster.workers;
+  settings = cluster.settings;
+  schedulingPolicy = cluster.schedulingPolicy;
+  fork = cluster.fork;
+  disconnect = cluster.disconnect;
+  setupPrimary = cluster.setupPrimary;
+  setupMaster = cluster.setupMaster;
+  worker = cluster.worker;
 };
 
-export const isPrimary = cluster.isPrimary;
-export const isMaster = cluster.isMaster;
-export const isWorker = cluster.isWorker;
+// Stable across primary/child: `Worker`, `SCHED_NONE`, `SCHED_RR` are set by
+// both init paths to the same values.
 export const Worker = cluster.Worker;
-export const workers = cluster.workers;
-export const settings = cluster.settings;
 export const SCHED_NONE = cluster.SCHED_NONE;
 export const SCHED_RR = cluster.SCHED_RR;
-export const schedulingPolicy = cluster.schedulingPolicy;
-export const fork = cluster.fork;
-export const disconnect = cluster.disconnect;
-export const setupPrimary = cluster.setupPrimary;
-export const setupMaster = cluster.setupMaster;
-export const worker = cluster.worker;
+
+export {
+  disconnect,
+  fork,
+  isMaster,
+  isPrimary,
+  isWorker,
+  schedulingPolicy,
+  settings,
+  setupMaster,
+  setupPrimary,
+  worker,
+  workers,
+};
 
 export default cluster;
