@@ -1,5 +1,5 @@
 Task d deno run d.js
-[d] Running d
+Running d
 [UNORDERED_START]
 Task b deno run b.js
 [b] Running b
@@ -7,4 +7,4 @@ Task c deno run c.js
 [c] Running c
 [UNORDERED_END]
 Task a deno run a.js
-[a] Running a
+Running a
