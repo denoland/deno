@@ -703,14 +703,15 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     denoNs.build.standalone = standalone;
 
+    const autoServeOnMatch = autoServe || standalone;
     let serveIsMain_ = serveIsMain;
     let serveWorkerCountOrIndex_ = serveWorkerCountOrIndex;
-    if (autoServe) {
+    if (autoServeOnMatch) {
       serveIsMain_ = true;
       serveWorkerCountOrIndex_ = 0;
     }
 
-    if (mode === executionModes.serve || autoServe) {
+    if (mode === executionModes.serve || autoServeOnMatch) {
       const hasMultipleThreads = serveIsMain_
         ? serveWorkerCountOrIndex_ > 0 // count > 0
         : true;
@@ -756,7 +757,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         }
 
         if (serve) {
-          if (mode === executionModes.run && !autoServe) {
+          if (mode === executionModes.run && !autoServeOnMatch) {
             import.meta.log(
               "error",
               `%cwarning: %cDetected %cexport default { fetch }%c, did you mean to run \"deno serve\"?`,
@@ -766,7 +767,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
               "font-weight: normal;",
             );
           }
-          if (mode === executionModes.serve || autoServe) {
+          if (mode === executionModes.serve || autoServeOnMatch) {
             serve({
               servePort,
               serveHost,
