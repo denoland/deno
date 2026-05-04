@@ -260,6 +260,17 @@ fn compress_sources(out_dir: &Path) {
   }
 }
 
+fn emit_dts_rerun_if_changed() {
+  let dts_dir = Path::new("tsc/dts");
+  for entry in std::fs::read_dir(dts_dir).unwrap() {
+    let entry = entry.unwrap();
+    let path = entry.path();
+    if path.extension().and_then(|s| s.to_str()) == Some("ts") {
+      println!("cargo:rerun-if-changed={}", path.display());
+    }
+  }
+}
+
 fn main() {
   // Skip building from docs.rs.
   if env::var_os("DOCS_RS").is_some() {
@@ -284,6 +295,11 @@ fn main() {
   let out_dir = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
 
   process_node_types(&out_dir);
+
+  // Always emit rerun-if-changed for dts files (they are included via
+  // include_str! in debug mode). Without this, cargo may use stale
+  // cached artifacts when dts files change.
+  emit_dts_rerun_if_changed();
 
   if !cfg!(debug_assertions) && std::env::var("CARGO_FEATURE_HMR").is_err() {
     compress_sources(&out_dir);
