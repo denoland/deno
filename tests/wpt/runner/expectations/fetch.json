@@ -1473,11 +1473,7 @@
       "request.any.html": true,
       "request.any.worker.html": true,
       "general.any.html": true,
-      "general.any.worker.html": {
-        "expectedFailures": [
-          "Underlying connection is closed when aborting after receiving response - no-cors"
-        ]
-      },
+      "general.any.worker.html": true,
       "cache.https.any.html": false,
       "cache.https.any.worker.html": false,
       "destroyed-context.html": false,
@@ -2594,10 +2590,10 @@
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&lt;&#10;b\">",
           "\\n      <img id=\"dangling\" src=\"/images/green-1x1.png?img=\\n        &lt;\\n        &#10;b\\n      \">\\n    ",
           "Fetch: /images/gre\\nen-1x1.png?img=<",
-          "Fetch: /images/gre\\ren-1x1.png?img=<",
-          "Fetch: /images/green-1x1.png?<\\n=block",
-          "Fetch: /images/green-1x1.png?<\\r=block",
           "Fetch: /images/green-1x1.png?<\\t=block",
+          "Fetch: /images/green-1x1.png?<\\r=block",
+          "Fetch: /images/green-1x1.png?<\\n=block",
+          "Fetch: /images/gre\\ren-1x1.png?img=<",
           "Fetch: /images/gre\\ten-1x1.png?img=<"
         ],
         "flaky": true
