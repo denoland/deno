@@ -1143,7 +1143,7 @@ function createJob(mode, type, options) {
         // on byte-for-byte explicit encoding can detect the mismatch.
         process.emitWarning(
           'paramEncoding: "explicit" is not supported; ' +
-            'the generated key will use named-curve encoding instead.',
+            "the generated key will use named-curve encoding instead.",
           "Warning",
         );
       } else {
