@@ -6,7 +6,6 @@ use std::future::Future;
 use std::future::poll_fn;
 use std::io;
 use std::pin::Pin;
-use std::ptr::null;
 use std::rc::Rc;
 
 use bytes::Bytes;
@@ -28,7 +27,6 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::convert::ByteString;
 use deno_core::external;
-use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::unsync::JoinHandle;
 use deno_core::unsync::spawn;
@@ -79,6 +77,7 @@ use crate::service::HttpRecord;
 use crate::service::HttpRecordResponse;
 use crate::service::HttpRequestBodyAutocloser;
 use crate::service::HttpServerState;
+use crate::service::ServerCallback;
 use crate::service::SignallingRc;
 use crate::service::handle_request;
 use crate::service::http_general_trace;
@@ -988,11 +987,26 @@ async fn serve_http2_autodetect(
   }
 }
 
+/// Dispatch a record to the JS callback registered for the server.
+/// Wraps the record as an `ExternalPointer<RcHttpRecord>` and hands
+/// the raw pointer to the JS callback. The JS side eventually calls
+/// `take_external!` (via `op_http_set_response_*`) which consumes the
+/// refcount.
+fn dispatch_to_js(callback: &ServerCallback, record: Rc<HttpRecord>) {
+  let ptr = ExternalPointer::new(RcHttpRecord(record)).into_raw();
+  // SAFETY: callback's isolate ptr remains valid while the
+  // HttpJoinHandle is alive (the HttpJoinHandle owns the
+  // ServerCallback and is stored in the resource table; on close
+  // the resource is dropped synchronously while the isolate is still
+  // live).
+  unsafe { callback.dispatch(ptr as *mut std::ffi::c_void) };
+}
+
 fn serve_https(
   mut io: TlsStream<TcpStream>,
   request_info: HttpConnectionProperties,
   lifetime: HttpLifetime,
-  tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
+  callback: Rc<ServerCallback>,
   options: Options,
 ) -> JoinHandle<Result<(), HttpNextError>> {
   let HttpLifetime {
@@ -1003,11 +1017,12 @@ fn serve_https(
 
   let legacy_abort = !options.no_legacy_abort;
   let svc = service_fn(move |req: Request| {
+    let callback = callback.clone();
     handle_request(
       req,
       request_info.clone(),
       server_state.clone(),
-      tx.clone(),
+      move |record| dispatch_to_js(&callback, record),
       legacy_abort,
     )
   });
@@ -1047,7 +1062,7 @@ fn serve_http(
   io: impl HttpServeStream,
   request_info: HttpConnectionProperties,
   lifetime: HttpLifetime,
-  tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
+  callback: Rc<ServerCallback>,
   options: Options,
 ) -> JoinHandle<Result<(), HttpNextError>> {
   let HttpLifetime {
@@ -1058,11 +1073,12 @@ fn serve_http(
 
   let legacy_abort = !options.no_legacy_abort;
   let svc = service_fn(move |req: Request| {
+    let callback = callback.clone();
     handle_request(
       req,
       request_info.clone(),
       server_state.clone(),
-      tx.clone(),
+      move |record| dispatch_to_js(&callback, record),
       legacy_abort,
     )
   });
@@ -1076,7 +1092,7 @@ fn serve_http_on<HTTP>(
   connection: HTTP::Connection,
   listen_properties: &HttpListenProperties,
   lifetime: HttpLifetime,
-  tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
+  callback: Rc<ServerCallback>,
   options: Options,
 ) -> JoinHandle<Result<(), HttpNextError>>
 where
@@ -1089,14 +1105,14 @@ where
 
   match network_stream {
     NetworkStream::Tcp(conn) => {
-      serve_http(conn, connection_properties, lifetime, tx, options)
+      serve_http(conn, connection_properties, lifetime, callback, options)
     }
     NetworkStream::Tls(conn) => {
-      serve_https(conn, connection_properties, lifetime, tx, options)
+      serve_https(conn, connection_properties, lifetime, callback, options)
     }
     #[cfg(unix)]
     NetworkStream::Unix(conn) => {
-      serve_http(conn, connection_properties, lifetime, tx, options)
+      serve_http(conn, connection_properties, lifetime, callback, options)
     }
     #[cfg(any(
       target_os = "android",
@@ -1104,14 +1120,14 @@ where
       target_os = "macos"
     ))]
     NetworkStream::Vsock(conn) => {
-      serve_http(conn, connection_properties, lifetime, tx, options)
+      serve_http(conn, connection_properties, lifetime, callback, options)
     }
     NetworkStream::Tunnel(conn) => {
-      serve_http(conn, connection_properties, lifetime, tx, options)
+      serve_http(conn, connection_properties, lifetime, callback, options)
     }
     #[cfg(windows)]
     NetworkStream::WindowsPipe(conn) => {
-      serve_http(conn, connection_properties, lifetime, tx, options)
+      serve_http(conn, connection_properties, lifetime, callback, options)
     }
   }
 }
@@ -1127,17 +1143,15 @@ struct HttpJoinHandle {
   join_handle: AsyncRefCell<Option<JoinHandle<Result<(), HttpNextError>>>>,
   connection_cancel_handle: Rc<CancelHandle>,
   listen_cancel_handle: Rc<CancelHandle>,
-  rx: AsyncRefCell<tokio::sync::mpsc::Receiver<Rc<HttpRecord>>>,
   server_state: SignallingRc<HttpServerState>,
 }
 
 impl HttpJoinHandle {
-  fn new(rx: tokio::sync::mpsc::Receiver<Rc<HttpRecord>>) -> Self {
+  fn new() -> Self {
     Self {
       join_handle: AsyncRefCell::new(None),
       connection_cancel_handle: CancelHandle::new_rc(),
       listen_cancel_handle: CancelHandle::new_rc(),
-      rx: AsyncRefCell::new(rx),
       server_state: HttpServerState::new(),
     }
   }
@@ -1180,9 +1194,12 @@ impl Drop for HttpJoinHandle {
 }
 
 #[op2]
-pub fn op_http_serve<HTTP>(
+pub fn op_http_serve<'scope, HTTP>(
+  scope: &mut v8::PinScope<'scope, '_>,
+  isolate: &mut v8::Isolate,
   state: Rc<RefCell<OpState>>,
   #[smi] listener_rid: ResourceId,
+  callback: v8::Local<'scope, v8::Function>,
 ) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
   HTTP: HttpPropertyExtractor,
@@ -1192,11 +1209,12 @@ where
 
   let listen_properties = HTTP::listen_properties_from_listener(&listener)?;
 
-  let (tx, rx) = tokio::sync::mpsc::channel(10);
-  let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new(rx));
+  let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new());
   let listen_cancel_clone = resource.listen_cancel_handle();
 
   let lifetime = resource.lifetime();
+  let callback_global = v8::Global::new(scope, callback);
+  let callback = Rc::new(ServerCallback::new(scope, isolate, callback_global));
 
   let options = {
     let state = state.borrow();
@@ -1213,7 +1231,7 @@ where
         conn,
         &listen_properties_clone,
         lifetime.clone(),
-        tx.clone(),
+        callback.clone(),
         options,
       );
     }
@@ -1235,9 +1253,12 @@ where
 }
 
 #[op2]
-pub fn op_http_serve_on<HTTP>(
+pub fn op_http_serve_on<'scope, HTTP>(
+  scope: &mut v8::PinScope<'scope, '_>,
+  isolate: &mut v8::Isolate,
   state: Rc<RefCell<OpState>>,
   #[smi] connection_rid: ResourceId,
+  callback: v8::Local<'scope, v8::Function>,
 ) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
   HTTP: HttpPropertyExtractor,
@@ -1247,8 +1268,9 @@ where
 
   let listen_properties = HTTP::listen_properties_from_connection(&connection)?;
 
-  let (tx, rx) = tokio::sync::mpsc::channel(10);
-  let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new(rx));
+  let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new());
+  let callback_global = v8::Global::new(scope, callback);
+  let callback = Rc::new(ServerCallback::new(scope, isolate, callback_global));
 
   let options = {
     let state = state.borrow();
@@ -1259,7 +1281,7 @@ where
     connection,
     &listen_properties,
     resource.lifetime(),
-    tx,
+    callback,
     options,
   );
 
@@ -1276,61 +1298,19 @@ where
   ))
 }
 
-/// Synchronous, non-blocking call to see if there are any further HTTP requests. If anything
-/// goes wrong in this method we return null and let the async handler pick up the real error.
-#[op2(fast)]
-pub fn op_http_try_wait(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> *const c_void {
-  // The resource needs to exist.
-  let Ok(join_handle) = state.resource_table.get::<HttpJoinHandle>(rid) else {
-    return null();
-  };
-
-  // If join handle is somehow locked, just abort.
-  let Some(mut handle) =
-    RcRef::map(&join_handle, |this| &this.rx).try_borrow_mut()
-  else {
-    return null();
-  };
-
-  // See if there are any requests waiting on this channel. If not, return.
-  let Ok(record) = handle.try_recv() else {
-    return null();
-  };
-
-  let ptr = ExternalPointer::new(RcHttpRecord(record));
-  ptr.into_raw()
-}
-
+/// Wait for the server to finish accepting connections. Resolves
+/// when the accept-loop spawned by `op_http_serve` has exited (either
+/// from listener error or because the resource was closed).
 #[op2]
 pub async fn op_http_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<*const c_void, HttpNextError> {
-  // We will get the join handle initially, as we might be consuming requests still
+) -> Result<(), HttpNextError> {
   let join_handle = state
     .borrow_mut()
     .resource_table
     .get::<HttpJoinHandle>(rid)?;
 
-  let cancel = join_handle.listen_cancel_handle();
-  let next = async {
-    let mut recv = RcRef::map(&join_handle, |this| &this.rx).borrow_mut().await;
-    recv.recv().await
-  }
-  .or_cancel(cancel)
-  .unwrap_or_else(|_| None)
-  .await;
-
-  // Do we have a request?
-  if let Some(record) = next {
-    let ptr = ExternalPointer::new(RcHttpRecord(record));
-    return Ok(ptr.into_raw());
-  }
-
-  // No - we're shutting down
   let res = RcRef::map(join_handle, |this| &this.join_handle)
     .borrow_mut()
     .await
@@ -1339,15 +1319,13 @@ pub async fn op_http_wait(
     .await?;
 
   // Filter out shutdown (ENOTCONN) errors
-  if let Err(err) = res {
-    if is_normal_close(&err) {
-      return Ok(null());
-    }
-
+  if let Err(err) = res
+    && !is_normal_close(&err)
+  {
     return Err(err);
   }
 
-  Ok(null())
+  Ok(())
 }
 
 fn is_normal_close(err: &(dyn std::error::Error + 'static)) -> bool {
