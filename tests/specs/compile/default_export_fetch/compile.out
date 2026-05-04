@@ -3,7 +3,7 @@ Compile [WILDCARD]main.ts to server[WILDCARD]
 
 Embedded Files
 
-server
+server[WILDLINE]
 └── main.ts ([WILDLINE])
 
 [WILDCARD]
