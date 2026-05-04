@@ -54,17 +54,19 @@ pub fn op_url_parse(
 /// `file:///C:/path/file.txt` per the WHATWG URL spec change (url#874).
 ///
 /// A Windows drive letter pattern is: a single ASCII alpha followed by `:`
-/// followed by `\`. This is detected in the "scheme start state" of the URL
-/// parser: the single letter would be parsed as a scheme, but the `:\`
-/// combination signals a Windows path instead.
+/// followed by `\` or `/`. This is detected in the "scheme start state" of the
+/// URL parser: the single letter would be parsed as a scheme, but the `:\` or
+/// `:/` combination signals a Windows path instead. Both separators are
+/// recognized so that JS callers writing `"C:/path"` get the same conversion
+/// as `"C:\\path"`.
 #[inline]
 fn maybe_convert_windows_path_to_file_url(href: &str) -> Option<String> {
   let bytes = href.as_bytes();
-  // Must be at least 3 chars: letter, colon, backslash
+  // Must be at least 3 chars: letter, colon, separator
   if bytes.len() >= 3
     && bytes[0].is_ascii_alphabetic()
     && bytes[1] == b':'
-    && bytes[2] == b'\\'
+    && (bytes[2] == b'\\' || bytes[2] == b'/')
   {
     let drive_letter = bytes[0] as char;
     let rest = &href[3..];

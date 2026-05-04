@@ -572,3 +572,22 @@ Deno.test(function urlWindowsFilePathUrlParse() {
   assertEquals(url.protocol, "file:");
   assertEquals(url.pathname, "/C:/folder/file.txt");
 });
+
+Deno.test(function urlWindowsFilePathForwardSlash() {
+  const url = new URL("C:/path/file.txt");
+  assertEquals(url.href, "file:///C:/path/file.txt");
+  assertEquals(url.protocol, "file:");
+  assertEquals(url.pathname, "/C:/path/file.txt");
+  assertEquals(url.host, "");
+});
+
+Deno.test(function urlWindowsFilePathPercentEncodesSpaces() {
+  assertEquals(
+    new URL("C:\\path with space\\file.txt").href,
+    "file:///C:/path%20with%20space/file.txt",
+  );
+  assertEquals(
+    new URL("C:/path with space/file.txt").href,
+    "file:///C:/path%20with%20space/file.txt",
+  );
+});
