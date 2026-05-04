@@ -1601,6 +1601,7 @@
     "parallel/test-http-server-method.query.js": {},
     "parallel/test-http-server-multiheaders.js": {},
     "parallel/test-http-server-multiheaders2.js": {},
+    "parallel/test-http-server-options-highwatermark.js": {},
     "parallel/test-http-server-options-incoming-message.js": {},
     "parallel/test-http-server-options-server-response.js": {},
     "parallel/test-http-server-reject-cr-no-lf.js": {},
