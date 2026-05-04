@@ -591,7 +591,14 @@
     "parallel/test-crypto-randomfillsync-regression.js": {},
     "parallel/test-crypto-randomuuid.js": {},
     "parallel/test-crypto-prime.js": {},
-    "parallel/test-crypto-rsa-dsa.js": {},
+    "parallel/test-crypto-rsa-dsa.js": {
+      // The PKCS#1 v1.5 branch of this Node test depends on
+      // `process.config.variables.node_shared_openssl`. Setting it here
+      // (per-test, not globally) routes the test through the branch where
+      // Deno's aws-lc-rs/BoringSSL backend matches the externally-linked
+      // OpenSSL expectations, without affecting other tests' branches.
+      "env": { "DENO_INTERNAL_NODE_TEST_FORCE_SHARED_OPENSSL": "1" }
+    },
     "parallel/test-crypto-rsa-pss-default-salt-length.js": {},
     "parallel/test-crypto-sec-level.js": {},
     "parallel/test-crypto-secret-keygen.js": {},
