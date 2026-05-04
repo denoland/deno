@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::mem::MaybeUninit;
 use std::rc::Rc;
 
 use aes::cipher::BlockDecryptMut;
@@ -17,6 +18,232 @@ use digest::generic_array::GenericArray;
 use subtle::ConstantTimeEq;
 
 type Tag = Option<Vec<u8>>;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum AesWrapError {
+  #[class(range)]
+  #[error("Invalid key length")]
+  InvalidKeyLength,
+  #[class(type)]
+  #[error("Invalid initialization vector")]
+  InvalidIv,
+  #[class(range)]
+  #[error("Invalid input length")]
+  InvalidInputLength,
+  #[class(type)]
+  #[error("AES wrap failed")]
+  WrapFailed,
+  #[class(type)]
+  #[error("AES unwrap failed")]
+  UnwrapFailed,
+}
+
+/// AES Key Wrap (RFC 3394) with optional custom IV.
+///
+/// For standard wrap (`aes128-wrap`, `aes192-wrap`, `aes256-wrap`):
+///   - iv: 8-byte IV (NULL → default 0xA6A6A6A6A6A6A6A6)
+///   - input must be a multiple of 8 and at least 16 bytes
+///   - output = input_len + 8
+///
+/// For padded wrap (`id-aes128-wrap-pad`, `id-aes192-wrap-pad`, `id-aes256-wrap-pad`):
+///   - iv: 4-byte constant (prepended; padded AIV = iv || MLI)
+///   - input can be any length >= 1
+///   - output = ceil(input_len / 8) * 8 + 8
+pub fn aes_wrap_key(
+  algorithm: &str,
+  key: &[u8],
+  iv: &[u8],
+  data: &[u8],
+) -> Result<Vec<u8>, AesWrapError> {
+  let bits = match key.len() {
+    16 => 128,
+    24 => 192,
+    32 => 256,
+    _ => return Err(AesWrapError::InvalidKeyLength),
+  };
+
+  // SAFETY: AES_KEY is an opaque type; MaybeUninit lets us avoid zeroing.
+  let mut aes_key = MaybeUninit::<aws_lc_sys::AES_KEY>::uninit();
+  // SAFETY: key slice is valid and bits matches key.len().
+  let ret = unsafe {
+    aws_lc_sys::AES_set_encrypt_key(key.as_ptr(), bits, aes_key.as_mut_ptr())
+  };
+  if ret != 0 {
+    return Err(AesWrapError::InvalidKeyLength);
+  }
+  // SAFETY: AES_set_encrypt_key succeeded so aes_key is fully initialised.
+  let aes_key = unsafe { aes_key.assume_init() };
+
+  let is_pad = algorithm.ends_with("-pad");
+
+  if is_pad {
+    // Padded wrap (RFC 5649). iv must be 4 bytes (the constant part of AIV).
+    if iv.len() != 4 {
+      return Err(AesWrapError::InvalidIv);
+    }
+    if data.is_empty() {
+      return Err(AesWrapError::InvalidInputLength);
+    }
+    let mli = data.len() as u32;
+    let padded_len = data.len().next_multiple_of(8);
+    let mut padded = vec![0u8; padded_len];
+    padded[..data.len()].copy_from_slice(data);
+
+    // AIV = iv_constant || MLI (big-endian)
+    let mut aiv = [0u8; 8];
+    aiv[..4].copy_from_slice(iv);
+    aiv[4..].copy_from_slice(&mli.to_be_bytes());
+
+    let out_len = padded_len + 8;
+    let mut out = vec![0u8; out_len];
+    // SAFETY: aes_key is initialised; aiv, out, padded are valid slices.
+    let ret = unsafe {
+      aws_lc_sys::AES_wrap_key(
+        &aes_key,
+        aiv.as_ptr(),
+        out.as_mut_ptr(),
+        padded.as_ptr(),
+        padded_len,
+      )
+    };
+    if ret < 0 {
+      return Err(AesWrapError::WrapFailed);
+    }
+    Ok(out)
+  } else {
+    // Standard wrap (RFC 3394). iv must be 8 bytes or empty (→ default IV).
+    if !iv.is_empty() && iv.len() != 8 {
+      return Err(AesWrapError::InvalidIv);
+    }
+    if data.len() < 16 || !data.len().is_multiple_of(8) {
+      return Err(AesWrapError::InvalidInputLength);
+    }
+    let iv_ptr = if iv.is_empty() {
+      std::ptr::null()
+    } else {
+      iv.as_ptr()
+    };
+    let out_len = data.len() + 8;
+    let mut out = vec![0u8; out_len];
+    // SAFETY: aes_key is initialised; pointers and lengths are valid.
+    let ret = unsafe {
+      aws_lc_sys::AES_wrap_key(
+        &aes_key,
+        iv_ptr,
+        out.as_mut_ptr(),
+        data.as_ptr(),
+        data.len(),
+      )
+    };
+    if ret < 0 {
+      return Err(AesWrapError::WrapFailed);
+    }
+    Ok(out)
+  }
+}
+
+/// AES Key Unwrap (RFC 3394 / RFC 5649) with optional custom IV.
+pub fn aes_unwrap_key(
+  algorithm: &str,
+  key: &[u8],
+  iv: &[u8],
+  data: &[u8],
+) -> Result<Vec<u8>, AesWrapError> {
+  let bits = match key.len() {
+    16 => 128,
+    24 => 192,
+    32 => 256,
+    _ => return Err(AesWrapError::InvalidKeyLength),
+  };
+
+  // AES_unwrap_key internally calls AES_decrypt, which requires a key
+  // initialised with AES_set_decrypt_key.
+  // SAFETY: AES_KEY is an opaque type; MaybeUninit avoids zeroing.
+  let mut aes_key = MaybeUninit::<aws_lc_sys::AES_KEY>::uninit();
+  // SAFETY: key slice and bits are valid.
+  let ret = unsafe {
+    aws_lc_sys::AES_set_decrypt_key(key.as_ptr(), bits, aes_key.as_mut_ptr())
+  };
+  if ret != 0 {
+    return Err(AesWrapError::InvalidKeyLength);
+  }
+  // SAFETY: AES_set_decrypt_key succeeded so aes_key is initialised.
+  let aes_key = unsafe { aes_key.assume_init() };
+
+  let is_pad = algorithm.ends_with("-pad");
+
+  if is_pad {
+    // Padded unwrap (RFC 5649). iv must be 4 bytes (the constant part of AIV).
+    // The wrapped data contains AIV = iv_constant || MLI. We recover MLI by
+    // trying each possible value; valid MLI range: (n-1)*8+1 .. n*8 where
+    // n = (data.len()/8) - 1.
+    if iv.len() != 4 {
+      return Err(AesWrapError::InvalidIv);
+    }
+    if data.len() < 16 || !data.len().is_multiple_of(8) {
+      return Err(AesWrapError::InvalidInputLength);
+    }
+    let padded_len = data.len() - 8;
+    let n = padded_len / 8;
+    // MLI is in range [(n-1)*8+1, n*8], i.e. at least 1 byte up to padded_len.
+    let mli_max = padded_len;
+    let mli_min = if n > 1 { (n - 1) * 8 + 1 } else { 1 };
+
+    let mut out = vec![0u8; padded_len];
+
+    // Try each possible MLI from max to min (usually only 1-7 tries).
+    for mli in (mli_min..=mli_max).rev() {
+      let mut aiv = [0u8; 8];
+      aiv[..4].copy_from_slice(iv);
+      aiv[4..].copy_from_slice(&(mli as u32).to_be_bytes());
+
+      // SAFETY: aes_key is initialised; aiv, out, data are valid slices.
+      let ret = unsafe {
+        aws_lc_sys::AES_unwrap_key(
+          &aes_key,
+          aiv.as_ptr(),
+          out.as_mut_ptr(),
+          data.as_ptr(),
+          data.len(),
+        )
+      };
+      if ret >= 0 {
+        out.truncate(mli);
+        return Ok(out);
+      }
+    }
+    Err(AesWrapError::UnwrapFailed)
+  } else {
+    // Standard unwrap (RFC 3394). iv must be 8 bytes or empty (→ default IV).
+    if !iv.is_empty() && iv.len() != 8 {
+      return Err(AesWrapError::InvalidIv);
+    }
+    if data.len() < 16 || !data.len().is_multiple_of(8) {
+      return Err(AesWrapError::InvalidInputLength);
+    }
+    let iv_ptr = if iv.is_empty() {
+      std::ptr::null()
+    } else {
+      iv.as_ptr()
+    };
+    let out_len = data.len() - 8;
+    let mut out = vec![0u8; out_len];
+    // SAFETY: aes_key is initialised; pointers and lengths are valid.
+    let ret = unsafe {
+      aws_lc_sys::AES_unwrap_key(
+        &aes_key,
+        iv_ptr,
+        out.as_mut_ptr(),
+        data.as_ptr(),
+        data.len(),
+      )
+    };
+    if ret < 0 {
+      return Err(AesWrapError::UnwrapFailed);
+    }
+    Ok(out)
+  }
+}
 
 type Aes128Gcm = aead_gcm_stream::AesGcm<aes::Aes128>;
 type Aes256Gcm = aead_gcm_stream::AesGcm<aes::Aes256>;

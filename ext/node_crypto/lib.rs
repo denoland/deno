@@ -61,6 +61,8 @@ deno_core::extension!(
     op_node_check_prime_bytes_async,
     op_node_check_prime_bytes,
     op_node_check_prime,
+    op_node_aes_wrap_key,
+    op_node_aes_unwrap_key,
     op_node_cipheriv_encrypt,
     op_node_cipheriv_final,
     op_node_cipheriv_set_aad,
@@ -548,6 +550,26 @@ pub fn op_node_public_decrypt(
     }
     _ => Err(PrivateEncryptDecryptError::UnknownPadding),
   }
+}
+
+#[op2]
+pub fn op_node_aes_wrap_key(
+  #[string] algorithm: &str,
+  #[buffer] key: &[u8],
+  #[buffer] iv: &[u8],
+  #[buffer] data: &[u8],
+) -> Result<Uint8Array, cipher::AesWrapError> {
+  cipher::aes_wrap_key(algorithm, key, iv, data).map(Into::into)
+}
+
+#[op2]
+pub fn op_node_aes_unwrap_key(
+  #[string] algorithm: &str,
+  #[buffer] key: &[u8],
+  #[buffer] iv: &[u8],
+  #[buffer] data: &[u8],
+) -> Result<Uint8Array, cipher::AesWrapError> {
+  cipher::aes_unwrap_key(algorithm, key, iv, data).map(Into::into)
 }
 
 #[op2(fast)]
