@@ -144,11 +144,11 @@
     return res;
   }
 
-  const __default_export__ = { TLSWrap, wrap };
+  const _defaultExport = { TLSWrap, wrap };
 
   return {
     TLSWrap,
     wrap,
-    default: __default_export__,
+    default: _defaultExport,
   };
 })()

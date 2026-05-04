@@ -30,7 +30,7 @@
   const kOutHeaders = Symbol("kOutHeaders");
   const kNeedDrain = Symbol("kNeedDrain");
 
-  const __default_export__ = {
+  const _defaultExport = {
     utcDate,
     kOutHeaders,
     kNeedDrain,
@@ -40,6 +40,6 @@
     utcDate,
     kOutHeaders,
     kNeedDrain,
-    default: __default_export__,
+    default: _defaultExport,
   };
 })()

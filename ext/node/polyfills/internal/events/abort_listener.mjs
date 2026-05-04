@@ -42,10 +42,10 @@
     };
   }
 
-  const __default_export__ = { addAbortListener };
+  const _defaultExport = { addAbortListener };
 
   return {
     addAbortListener,
-    default: __default_export__,
+    default: _defaultExport,
   };
 })()

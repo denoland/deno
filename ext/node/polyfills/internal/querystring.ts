@@ -101,7 +101,7 @@
     return out;
   }
 
-  const __default_export__ = {
+  const _defaultExport = {
     hexTable,
     encodeStr,
     isHexTable,
@@ -111,6 +111,6 @@
     encodeStr,
     hexTable,
     isHexTable,
-    default: __default_export__,
+    default: _defaultExport,
   };
 })()

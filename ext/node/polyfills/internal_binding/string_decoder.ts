@@ -14,10 +14,10 @@
   encodings[Encodings.UCS2] = "utf16le";
   encodings[Encodings.UTF8] = "utf8";
 
-  const __default_export__ = { encodings };
+  const _defaultExport = { encodings };
 
   return {
     encodings,
-    default: __default_export__,
+    default: _defaultExport,
   };
 })()

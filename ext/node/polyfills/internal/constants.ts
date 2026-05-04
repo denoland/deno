@@ -56,7 +56,7 @@
 
   const EOL = isWindows ? "\r\n" : "\n";
 
-  const __default_export__ = {
+  const _defaultExport = {
     CHAR_UPPERCASE_A,
     CHAR_LOWERCASE_A,
     CHAR_UPPERCASE_Z,
@@ -150,6 +150,6 @@
     CHAR_0,
     CHAR_9,
     EOL,
-    default: __default_export__,
+    default: _defaultExport,
   };
 })()

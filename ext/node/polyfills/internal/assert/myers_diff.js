@@ -204,12 +204,12 @@
   }
 
 
-  const __default_export__ = { myersDiff, printMyersDiff, printSimpleMyersDiff };
+  const _defaultExport = { myersDiff, printMyersDiff, printSimpleMyersDiff };
 
   return {
     myersDiff,
     printMyersDiff,
     printSimpleMyersDiff,
-    default: __default_export__,
+    default: _defaultExport,
   };
 })()

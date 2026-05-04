@@ -63,7 +63,7 @@
   }
 
 
-  const __default_export__ = {
+  const _defaultExport = {
     constants,
     Http2Session,
     Http2Stream,
@@ -75,6 +75,6 @@
     Http2Session,
     Http2Stream,
     nghttp2ErrorString,
-    default: __default_export__,
+    default: _defaultExport,
   };
 })()

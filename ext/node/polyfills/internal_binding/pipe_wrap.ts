@@ -145,7 +145,7 @@
     return op_node_create_pipe();
   }
 
-  const __default_export__ = {
+  const _defaultExport = {
     Pipe: PipeWrap,
     PipeConnectWrap,
     constants,
@@ -160,6 +160,6 @@
     PipeConnectWrap,
     socketType,
     constants,
-    default: __default_export__,
+    default: _defaultExport,
   };
 })()

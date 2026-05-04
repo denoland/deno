@@ -71,7 +71,7 @@
   const EnvHttpProxyAgent = Agent;
 
 
-  const __default_export__ = {
+  const _defaultExport = {
     Agent,
     EnvHttpProxyAgent,
     getGlobalDispatcher,
@@ -85,6 +85,6 @@
     kDispatcherOptions,
     kGlobalDispatcher,
     setGlobalDispatcher,
-    default: __default_export__,
+    default: _defaultExport,
   };
 })()

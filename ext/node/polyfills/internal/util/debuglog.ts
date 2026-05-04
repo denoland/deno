@@ -155,12 +155,12 @@
     return `${Number(ms.toFixed(3))}ms`;
   }
 
-  const __default_export__ = { debuglog, formatTime };
+  const _defaultExport = { debuglog, formatTime };
 
   return {
     initializeDebugEnv,
     debuglog,
     formatTime,
-    default: __default_export__,
+    default: _defaultExport,
   };
 })()

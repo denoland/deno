@@ -24,6 +24,7 @@ import { core, primordials } from "ext:core/mod.js";
 const { ownerSymbol } = core.loadExtScript(
   "ext:deno_node/internal/async_hooks.ts",
 );
+// deno-lint-ignore no-unused-vars
 const { HandleWrap } = core.loadExtScript(
   "ext:deno_node/internal_binding/handle_wrap.ts",
 );

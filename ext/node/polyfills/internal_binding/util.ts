@@ -109,7 +109,7 @@
     "nodejs.worker_threads.untransferable",
   );
 
-  const __default_export__ = {
+  const _defaultExport = {
     guessHandleType,
     isArrayIndex,
     getOwnNonIndexProperties,
@@ -132,6 +132,6 @@
     SKIP_SYMBOLS,
     parseEnv,
     untransferableSymbol,
-    default: __default_export__,
+    default: _defaultExport,
   };
 })()

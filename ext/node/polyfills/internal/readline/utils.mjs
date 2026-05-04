@@ -574,7 +574,7 @@
     return min;
   }
 
-  const __default_export__ = {
+  const _defaultExport = {
     CSI,
     charLengthAt,
     charLengthLeft,
@@ -590,6 +590,6 @@
     emitKeys,
     commonPrefix,
     kSubstringSearch,
-    default: __default_export__,
+    default: _defaultExport,
   };
 })()

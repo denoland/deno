@@ -111,7 +111,7 @@
 
   // Re-export the Rust TCPWrap as TCP.
 
-  const __default_export__ = {
+  const _defaultExport = {
     TCPConnectWrap,
     constants,
     TCP: TCPWrap,
@@ -124,6 +124,6 @@
     TCPConnectWrap,
     socketType,
     constants,
-    default: __default_export__,
+    default: _defaultExport,
   };
 })()

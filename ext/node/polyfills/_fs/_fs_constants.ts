@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // deno-fmt-ignore-file
 (function () {
-  const { core } = globalThis.__bootstrap;
+  const { core, primordials } = globalThis.__bootstrap;
+  const { ObjectAssign, ObjectCreate } = primordials;
   const { fs } = core.loadExtScript(
     "ext:deno_node/internal_binding/constants.ts",
   );
@@ -66,7 +67,7 @@
     O_NOATIME,
    } = fs;
 
-  return {
+  return ObjectAssign(ObjectCreate(null), {
     F_OK,
     R_OK,
     W_OK,
@@ -124,5 +125,5 @@
     O_EXCL,
     O_DIRECT,
     O_NOATIME,
-  };
+  });
 })()

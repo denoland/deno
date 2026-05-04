@@ -181,13 +181,13 @@
     );
   }
 
-  const __default_export__ = { indexOfBuffer, indexOfNumber };
+  const _defaultExport = { indexOfBuffer, indexOfNumber };
 
   return {
     indexOfBuffer,
     indexOfNumber,
     fill,
     indexOfNeedle,
-    default: __default_export__,
+    default: _defaultExport,
   };
 })()

@@ -1,17 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// deno-lint-ignore camelcase
 // deno-fmt-ignore-file
 (function () {
   const { core, primordials } = globalThis.__bootstrap;
+  // deno-lint-ignore camelcase
   const async_wrap = core.loadExtScript("ext:deno_node/internal_binding/async_wrap.ts");
   const { ERR_ASYNC_CALLBACK } = core.loadExtScript(
     "ext:deno_node/internal/errors.ts",
   );
-  const __reexport_named_symbols__ = core.loadExtScript("ext:deno_node/internal_binding/symbols.ts");
-  const asyncIdSymbol = __reexport_named_symbols__.asyncIdSymbol;
-  const ownerSymbol = __reexport_named_symbols__.ownerSymbol;
+  const { asyncIdSymbol, ownerSymbol } = core.loadExtScript("ext:deno_node/internal_binding/symbols.ts");
   const {
     ArrayPrototypeIncludes,
     ArrayPrototypeIndexOf,
