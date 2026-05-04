@@ -1,4 +1,4 @@
-let intervalHandle: ReturnType<typeof setInterval>;
+let intervalHandle: NodeJS.Timeout;
 let firstIntervalPromise: Promise<void>;
 
 addEventListener("load", () => {
