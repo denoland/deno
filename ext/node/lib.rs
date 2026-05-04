@@ -268,6 +268,15 @@ deno_core::extension!(deno_node,
     ops::vm::op_vm_compile_function,
     ops::vm::op_vm_script_get_source_map_url,
     ops::vm::op_vm_script_create_cached_data,
+    ops::vm::op_vm_module_create_source_text_module,
+    ops::vm::op_vm_module_link,
+    ops::vm::op_vm_module_instantiate,
+    ops::vm::op_vm_module_evaluate,
+    ops::vm::op_vm_module_get_status,
+    ops::vm::op_vm_module_get_namespace,
+    ops::vm::op_vm_module_get_exception,
+    ops::vm::op_vm_module_get_module_requests,
+    ops::vm::op_vm_module_get_identifier,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
     ops::idna::op_node_idna_punycode_to_ascii,
@@ -642,6 +651,19 @@ deno_core::extension!(deno_node,
       state.put(init.pkg_json_resolver.clone());
     }
 
+    // Always seed `NodeTlsState` so the shared client session cache is
+    // available for TLS resumption from the very first `tls.connect()`.
+    // Without this, every connection built its ClientConfig with an empty
+    // per-config session cache and `isSessionReused()` always returned false.
+    state.put(crate::ops::tls::NodeTlsState {
+      custom_ca_certs: None,
+      client_session_store: std::sync::Arc::new(
+        deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
+      ),
+      server_ticketer: None,
+      cached_default_verifier: None,
+      cached_no_client_auth: None,
+    });
   },
   customizer = |ext: &mut deno_core::Extension| {
     let external_references = [

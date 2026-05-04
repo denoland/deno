@@ -1,7 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-fmt-ignore-file
 
-import { core, internals, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
+const {
   op_otel_collect_isolate_metrics,
   op_otel_enable_isolate_metrics,
   op_otel_log,
@@ -23,9 +25,8 @@ import {
   op_otel_span_attribute3,
   op_otel_span_update_name,
   OtelMeter,
-  OtelSpan,
   OtelTracer,
-} from "ext:core/ops";
+} = core.ops;
 const { Console } = core.loadExtScript("ext:deno_web/01_console.js");
 
 const {
@@ -75,9 +76,9 @@ const {
 } = primordials;
 const { AsyncVariable, getAsyncContext, setAsyncContext } = core;
 
-export let TRACING_ENABLED = false;
-export let METRICS_ENABLED = false;
-export let PROPAGATORS: TextMapPropagator[] = [];
+let TRACING_ENABLED = false;
+let METRICS_ENABLED = false;
+let PROPAGATORS: TextMapPropagator[] = [];
 let ISOLATE_METRICS = false;
 
 // Note: These start at 0 in the JS library,
@@ -203,7 +204,7 @@ interface AsyncContextSnapshot {
   __brand: "AsyncContextSnapshot";
 }
 
-export function enterSpan(
+function enterSpan(
   span: Span,
   context?: Context,
 ): AsyncContextSnapshot | undefined {
@@ -213,8 +214,8 @@ export function enterSpan(
   return CURRENT.enter(context);
 }
 
-export const currentSnapshot = getAsyncContext;
-export const restoreSnapshot = setAsyncContext;
+const currentSnapshot = getAsyncContext;
+const restoreSnapshot = setAsyncContext;
 
 function isDate(value: unknown): value is Date {
   return ObjectPrototypeIsPrototypeOf(DatePrototype, value);
@@ -426,11 +427,11 @@ class Tracer {
   }
 }
 
-export const SPAN_KEY = SymbolFor("OpenTelemetry Context Key SPAN");
+const SPAN_KEY = SymbolFor("OpenTelemetry Context Key SPAN");
 
-export let getOtelSpan: (span: object) => OtelSpan | null | undefined;
+let getOtelSpan: (span: object) => OtelSpan | null | undefined;
 
-export class Span {
+class Span {
   #otelSpan: OtelSpan | null;
   #spanContext: SpanContext | undefined;
 
@@ -612,7 +613,7 @@ class Context {
 const ROOT_CONTEXT = new Context();
 
 // Context manager for opentelemetry js library
-export class ContextManager {
+class ContextManager {
   constructor() {
     throw new TypeError("ContextManager can not be constructed");
   }
@@ -1585,7 +1586,7 @@ interface Baggage {
   clear(): Baggage;
 }
 
-export function baggageEntryMetadataFromString(
+function baggageEntryMetadataFromString(
   str: string,
 ): BaggageEntryMetadata {
   if (typeof str !== "string") {
@@ -1714,7 +1715,7 @@ class BaggageImpl implements Baggage {
 
 const BAGGAGE_KEY = SymbolFor("OpenTelemetry Baggage Key");
 
-export class W3CBaggagePropagator implements TextMapPropagator {
+class W3CBaggagePropagator implements TextMapPropagator {
   inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
     const baggage = context.getValue(BAGGAGE_KEY) as
       | Baggage
@@ -1766,7 +1767,7 @@ export class W3CBaggagePropagator implements TextMapPropagator {
   }
 }
 
-export class CompositePropagator implements TextMapPropagator {
+class CompositePropagator implements TextMapPropagator {
   #propagators: TextMapPropagator[];
   #fields: string[];
 
@@ -1822,7 +1823,7 @@ export class CompositePropagator implements TextMapPropagator {
 
 let builtinTracerCache: Tracer;
 
-export function builtinTracer(): Tracer {
+function builtinTracer(): Tracer {
   if (!builtinTracerCache) {
     builtinTracerCache = new Tracer(OtelTracer.builtin());
   }
@@ -1840,7 +1841,7 @@ function enableIsolateMetrics() {
 // able to register anything itself with the global registration methods.
 const OTEL_API_COMPAT_VERSION = "1.999.999";
 
-export function bootstrap(
+function bootstrap(
   config: [
     0 | 1,
     0 | 1,
@@ -1925,8 +1926,46 @@ internals.__telemetry = {
   },
 };
 
-export const telemetry = {
+const telemetry = {
   tracerProvider: TracerProvider,
   contextManager: ContextManager,
   meterProvider: MeterProvider,
 };
+
+// Mutable state container: consumers destructure a reference to this
+// object, so property access at call-time always reflects the latest
+// values set by bootstrap().
+const otelState = {
+  TRACING_ENABLED: false,
+  METRICS_ENABLED: false,
+  PROPAGATORS: [] as TextMapPropagator[],
+  getOtelSpan: undefined as ((span: object) => OtelSpan | null | undefined) | undefined,
+};
+
+// Keep module-level variables in sync with otelState for internal use
+// (existing code references the bare names).
+const _origBootstrap = bootstrap;
+function wrappedBootstrap(config: Parameters<typeof bootstrap>[0]) {
+  _origBootstrap(config);
+  otelState.TRACING_ENABLED = TRACING_ENABLED;
+  otelState.METRICS_ENABLED = METRICS_ENABLED;
+  otelState.PROPAGATORS = PROPAGATORS;
+  otelState.getOtelSpan = getOtelSpan;
+}
+
+return {
+  otelState,
+  enterSpan,
+  currentSnapshot,
+  restoreSnapshot,
+  SPAN_KEY,
+  Span,
+  ContextManager,
+  baggageEntryMetadataFromString,
+  W3CBaggagePropagator,
+  CompositePropagator,
+  builtinTracer,
+  bootstrap: wrappedBootstrap,
+  telemetry,
+};
+})()

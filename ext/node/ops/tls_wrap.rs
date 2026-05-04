@@ -968,6 +968,11 @@ impl TLSWrapInner {
         return;
       }
       (*ptr).cycling = true;
+      // Route the (possibly cached process-wide) `NodeServerCertVerifier`'s
+      // writes to *this* connection's `verify_error` slot.  Without this
+      // scope, a cached verifier shared with a previous TLSWrap would
+      // either alias its store or carry stale errors across connections.
+      let _verify_scope = VerifyErrorScope::enter((*ptr).verify_error.clone());
       (*ptr).clear_in();
       let result = (*ptr).clear_out_process();
       let enc_action = (*ptr).enc_out_collect();
@@ -1731,12 +1736,14 @@ impl TLSWrap {
     };
 
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
-    let verify_error = inner.verify_error.clone();
-    let client_config =
-      match build_client_config(scope, context, op_state, verify_error) {
-        Some(c) => c,
-        None => return -1,
-      };
+    let client_config = match build_client_config(scope, context, op_state) {
+      Some((c, _)) => c,
+      None => return -1,
+    };
+    // The verifier in `client_config` writes errors via the per-connection
+    // `CURRENT_VERIFY_ERROR` thread-local set by `cycle`, so `inner`'s own
+    // pre-allocated `verify_error` slot stays correctly scoped per
+    // connection even when the verifier `Arc` is cached process-wide.
     inner.pending_client_config = Some(Arc::new(client_config));
     inner.pending_server_name = server_name;
     0
@@ -1750,10 +1757,10 @@ impl TLSWrap {
     &self,
     context: v8::Local<v8::Object>,
     scope: &mut v8::PinScope,
-    _op_state: &mut OpState,
+    op_state: &mut OpState,
   ) -> i32 {
     let (server_config, client_cert_verify_error) =
-      match build_server_config(scope, context) {
+      match build_server_config(scope, context, op_state) {
         Some(c) => c,
         None => {
           return -1;
@@ -2791,6 +2798,45 @@ fn get_protocol_versions(
 /// and `verifyError()` reads them later — matching Node/OpenSSL behavior.
 type VerifyErrorStore = Arc<std::sync::Mutex<Option<String>>>;
 
+thread_local! {
+  /// Per-connection cert-verification error sink, set just before each
+  /// synchronous rustls handshake step (see `TLSWrapInner::cycle`) and
+  /// cleared on the way out.  The cert verifier writes here instead of to
+  /// its own field so that one process-wide cached `NodeServerCertVerifier`
+  /// instance can serve many `TLSSocket` connections without their
+  /// `verifyError()` results aliasing each other through the verifier's
+  /// `Arc<Mutex<...>>` field.
+  static CURRENT_VERIFY_ERROR: std::cell::RefCell<Option<VerifyErrorStore>> =
+    const { std::cell::RefCell::new(None) };
+}
+
+/// RAII guard that sets `CURRENT_VERIFY_ERROR` for the lifetime of a sync
+/// rustls call (e.g. `process_new_packets`) and clears it on drop, so the
+/// verifier callback writes to *this* connection's error slot.
+struct VerifyErrorScope {
+  prev: Option<VerifyErrorStore>,
+}
+
+impl VerifyErrorScope {
+  fn enter(store: VerifyErrorStore) -> Self {
+    let prev = CURRENT_VERIFY_ERROR.with(|c| c.borrow_mut().replace(store));
+    VerifyErrorScope { prev }
+  }
+}
+
+impl Drop for VerifyErrorScope {
+  fn drop(&mut self) {
+    let prev = self.prev.take();
+    CURRENT_VERIFY_ERROR.with(|c| *c.borrow_mut() = prev);
+  }
+}
+
+fn store_verify_error(fallback: &VerifyErrorStore, code: String) {
+  let stored = CURRENT_VERIFY_ERROR.with(|c| c.borrow().clone());
+  let target = stored.as_ref().unwrap_or(fallback);
+  *target.lock().unwrap_or_else(|e| e.into_inner()) = Some(code);
+}
+
 /// A certificate verifier for Node.js compatibility.
 ///
 /// Unlike rustls's default WebPKI verifier, this does NOT abort the
@@ -3107,8 +3153,7 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
             Err(code) => {
               // Chain is broken -- store the error and let the
               // handshake proceed so JS can decide.
-              *self.verify_error.lock().unwrap_or_else(|e| e.into_inner()) =
-                Some(code.to_string());
+              store_verify_error(&self.verify_error, code.to_string());
               return Ok(
                 rustls::client::danger::ServerCertVerified::assertion(),
               );
@@ -3136,8 +3181,7 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
         // proceed.  The JS layer will decide whether to tear down
         // the connection based on `rejectUnauthorized`.
         let code = cert_error_to_node_code(cert_error);
-        *self.verify_error.lock().unwrap_or_else(|e| e.into_inner()) =
-          Some(code.to_string());
+        store_verify_error(&self.verify_error, code.to_string());
         Ok(rustls::client::danger::ServerCertVerified::assertion())
       }
       Err(e) => Err(e),
@@ -3224,8 +3268,7 @@ fn build_client_config(
   scope: &mut v8::PinScope,
   context: v8::Local<v8::Object>,
   op_state: &mut OpState,
-  verify_error: VerifyErrorStore,
-) -> Option<rustls::ClientConfig> {
+) -> Option<(rustls::ClientConfig, VerifyErrorStore)> {
   use deno_net::DefaultTlsOptions;
   use deno_tls::TlsKeys;
   use deno_tls::TlsKeysHolder;
@@ -3336,6 +3379,20 @@ fn build_client_config(
 
   let maybe_cert_chain_and_key = tls_keys.take();
 
+  // The default-config fast path applies when the caller has not supplied
+  // any of the per-connection knobs that would change cert validation or
+  // client auth: no extra `ca` certs, no explicit client cert/key, and no
+  // process-level custom CA set by `setDefaultCACertificates`.  In that
+  // case we cache the verifier and the "no client cert" resolver in
+  // `NodeTlsState` so successive `tls.connect()` calls hand rustls the
+  // same `Arc`s and session resumption is allowed to proceed (rustls keys
+  // its `compatible_config` check on `Arc::downgrade(&verifier)` identity).
+  let is_default_path = ca_certs.is_empty()
+    && op_state
+      .try_borrow::<NodeTlsState>()
+      .is_none_or(|s| s.custom_ca_certs.is_none())
+    && matches!(maybe_cert_chain_and_key, TlsKeys::Null);
+
   // Always build with root certs so NodeServerCertVerifier can check them.
   // NodeServerCertVerifier never aborts the handshake — it stores errors
   // for verifyError().  The JS layer decides whether to destroy the
@@ -3364,20 +3421,68 @@ fn build_client_config(
   // Install NodeServerCertVerifier to store verification errors for
   // verifyError().  This verifier never aborts the handshake — it
   // matches Node/OpenSSL behaviour where cert errors are deferred.
-  let verifier_result =
-    rustls::client::WebPkiServerVerifier::builder(Arc::new(root_cert_store))
+  let (final_verify_error, verifier_arc): (
+    VerifyErrorStore,
+    Option<Arc<dyn rustls::client::danger::ServerCertVerifier>>,
+  ) = if is_default_path {
+    let state = op_state.borrow_mut::<NodeTlsState>();
+    if let Some((v, e)) = state.cached_default_verifier.clone() {
+      (e, Some(v))
+    } else {
+      let verifier_result = rustls::client::WebPkiServerVerifier::builder(
+        Arc::new(root_cert_store),
+      )
       .build();
-  if let Ok(inner) = verifier_result {
-    config.dangerous().set_certificate_verifier(Arc::new(
-      NodeServerCertVerifier {
-        inner,
-        verify_error,
-        root_cert_ders,
-      },
-    ));
+      match verifier_result {
+        Ok(inner) => {
+          let store: VerifyErrorStore = Default::default();
+          let v: Arc<dyn rustls::client::danger::ServerCertVerifier> =
+            Arc::new(NodeServerCertVerifier {
+              inner,
+              verify_error: store.clone(),
+              root_cert_ders,
+            });
+          state.cached_default_verifier = Some((v.clone(), store.clone()));
+          (store, Some(v))
+        }
+        Err(_) => (Default::default(), None),
+      }
+    }
+  } else {
+    let store: VerifyErrorStore = Default::default();
+    let verifier_result =
+      rustls::client::WebPkiServerVerifier::builder(Arc::new(root_cert_store))
+        .build();
+    let v: Option<Arc<dyn rustls::client::danger::ServerCertVerifier>> =
+      verifier_result.ok().map(|inner| {
+        Arc::new(NodeServerCertVerifier {
+          inner,
+          verify_error: store.clone(),
+          root_cert_ders,
+        }) as Arc<dyn rustls::client::danger::ServerCertVerifier>
+      });
+    (store, v)
+  };
+  if let Some(v) = verifier_arc {
+    config.dangerous().set_certificate_verifier(v);
   }
 
-  Some(config)
+  // Install a stable "no client cert" resolver Arc on the default path so
+  // rustls's `Arc::downgrade(&client_creds)` identity check keeps the
+  // resumed session compatible across `tls.connect()` calls.  Seed the
+  // cache from the freshly built config on first call, then unconditionally
+  // overwrite `config.client_auth_cert_resolver` from the cache so every
+  // connection (including the first) hands rustls the same Arc identity.
+  if is_default_path {
+    let state = op_state.borrow_mut::<NodeTlsState>();
+    let resolver = state
+      .cached_no_client_auth
+      .get_or_insert_with(|| config.client_auth_cert_resolver.clone())
+      .clone();
+    config.client_auth_cert_resolver = resolver;
+  }
+
+  Some((config, final_verify_error))
 }
 
 /// A `ClientCertVerifier` for `node:tls` servers that wraps
@@ -3484,6 +3589,7 @@ impl rustls::server::danger::ClientCertVerifier for NodeClientCertVerifier {
 fn build_server_config(
   scope: &mut v8::PinScope,
   context: v8::Local<v8::Object>,
+  op_state: &mut OpState,
 ) -> Option<(rustls::ServerConfig, VerifyErrorStore)> {
   let protocol_versions = match get_protocol_versions(scope, context) {
     ProtocolVersionSelection::Default => {
@@ -3670,10 +3776,42 @@ fn build_server_config(
     }
   }
   let resolver = rustls::sign::SingleCertAndKey::from(certified_key);
-  Some((
-    builder.with_cert_resolver(Arc::new(resolver)),
-    client_cert_verify_error,
-  ))
+  let mut server_config = builder.with_cert_resolver(Arc::new(resolver));
+  // Enable session ticket issuance (RFC 5077) so TLS 1.2 / 1.3 clients can
+  // resume sessions.  Without this, rustls installs `NeverProducesTickets`
+  // and Node's `tls.TLSSocket#isSessionReused()` always returns false even
+  // when the client has a session cache configured.
+  //
+  // The ticketer is shared at the process level via `NodeTlsState` so that
+  // every TLS connection accepted by the same `tls.createServer()` (which
+  // builds a fresh ServerConfig per accepted socket) decrypts tickets with
+  // the same keys.  Without this sharing each connection rotates keys and
+  // resumption never succeeds.
+  let ticketer = {
+    let state = op_state.borrow_mut::<NodeTlsState>();
+    if let Some(t) = &state.server_ticketer {
+      Some(t.clone())
+    } else {
+      match rustls::crypto::aws_lc_rs::Ticketer::new() {
+        Ok(t) => {
+          state.server_ticketer = Some(t.clone());
+          Some(t)
+        }
+        Err(e) => {
+          log::debug!("TLSWrap: failed to build session ticketer: {e}");
+          None
+        }
+      }
+    }
+  };
+  if let Some(t) = ticketer {
+    server_config.ticketer = t;
+  }
+  // Stateful TLS 1.2 session-ID resumption fallback.  TLS 1.3 uses the
+  // ticketer above, so this only matters for TLS 1.2 peers.
+  server_config.session_storage =
+    rustls::server::ServerSessionMemoryCache::new(256);
+  Some((server_config, client_cert_verify_error))
 }
 
 /// `ResolvesServerCert` impl that always returns `None`, used when a
