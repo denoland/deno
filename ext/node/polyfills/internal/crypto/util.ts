@@ -188,6 +188,14 @@ const cipherInfoTable: CipherInfoResult[] = [
     keyLength: 32,
     mode: "ctr",
   },
+  {
+    name: "chacha20-poly1305",
+    nid: 1018,
+    blockSize: 1,
+    ivLength: 12,
+    keyLength: 32,
+    mode: "",
+  },
 ];
 
 const cipherInfoByName = new Map<string, CipherInfoResult>();
@@ -218,6 +226,7 @@ const supportedCiphers = [
   "des-ede3-cbc",
   "aes128",
   "aes256",
+  "chacha20-poly1305",
 ];
 
 export function getCiphers(): string[] {
@@ -341,7 +350,17 @@ export const validateByteSource = hideStackFrames((val, name) => {
   );
 });
 
-const curveNames = ellipticCurves.map((x) => x.name);
+// Mirrors the (canonical) curve names exposed by Node.js's `getCurves()`.
+// Notably this drops `secp256r1` because it is just another name for
+// `prime256v1` and exposing both confuses callers that probe for an
+// unsupported curve by exclusion (e.g. crypto tests).
+const curveNames: readonly string[] = [
+  "secp521r1",
+  "secp384r1",
+  "prime256v1",
+  "secp256k1",
+  "secp224r1",
+];
 export function getCurves(): readonly string[] {
   return curveNames;
 }

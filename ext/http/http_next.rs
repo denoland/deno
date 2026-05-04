@@ -151,6 +151,24 @@ macro_rules! clone_external {
   }};
 }
 
+/// Try to clone Rc<HttpRecord> from raw external pointer.
+/// Returns None if the pointer has already been consumed by take_external.
+macro_rules! try_clone_external {
+  ($external:expr) => {{
+    let ptr = $external;
+    if ptr.is_null()
+      || ptr.align_offset(std::mem::align_of::<usize>()) != 0
+      || std::ptr::read::<usize>(ptr as _)
+        != <RcHttpRecord as deno_core::Externalizable>::external_marker()
+    {
+      None
+    } else {
+      let ptr = ExternalPointer::<RcHttpRecord>::from_raw(ptr);
+      Some(ptr.unsafely_deref().0.clone())
+    }
+  }};
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum HttpNextError {
   #[class(inherit)]
@@ -192,6 +210,13 @@ pub enum HttpNextError {
   #[class("Http")]
   #[error("raw upgrade failed")]
   RawUpgradeFailed,
+  #[class(inherit)]
+  #[error(transparent)]
+  TakeNetworkStream(
+    #[from]
+    #[inherit]
+    deno_net::raw::TakeNetworkStreamError,
+  ),
 }
 
 #[op2(fast)]
@@ -281,6 +306,24 @@ pub async fn op_http_upgrade_websocket_next(
     stream,
     bytes,
   ))
+}
+
+/// Create a server WebSocket from a TCP stream resource (e.g. taken from a
+/// node:http TCPWrap handle). This lets ext/node hand off the raw stream
+/// without depending on deno_websocket directly.
+#[op2(fast)]
+#[smi]
+pub fn op_http_ws_create_from_stream_resource(
+  state: &mut OpState,
+  #[smi] stream_rid: ResourceId,
+  #[buffer] extra_bytes: &[u8],
+) -> Result<ResourceId, HttpNextError> {
+  let stream = deno_net::raw::take_network_stream_resource(
+    &mut state.resource_table,
+    stream_rid,
+  )?;
+  let read_buf = Bytes::copy_from_slice(extra_bytes);
+  Ok(ws_create_server_stream(state, stream, read_buf))
 }
 
 #[op2(fast)]
@@ -1712,9 +1755,11 @@ pub async fn op_raw_write_vectored(
 
 #[op2(fast)]
 pub fn op_http_metric_handle_otel_error(external: *const c_void) {
-  let http =
-    // SAFETY: external is deleted before calling this op.
-    unsafe { take_external!(external, "op_http_metric_handle_otel_error") };
+  // SAFETY: The external may have already been consumed by a take_external!
+  // call. Gracefully skip if the pointer is no longer valid.
+  let Some(http) = (unsafe { try_clone_external!(external) }) else {
+    return;
+  };
 
   http.otel_info_set_error("user");
 }
@@ -1724,9 +1769,13 @@ pub fn op_http_copy_span_to_otel_info(
   external: *const c_void,
   #[cppgc] span: &deno_telemetry::OtelSpan,
 ) {
-  let http =
-    // SAFETY: op is called with external.
-    unsafe { clone_external!(external, "op_http_copy_span_to_otel_info") };
+  // SAFETY: The external may have already been consumed by a take_external!
+  // call (e.g. op_http_set_promise_complete). On some platforms (Windows),
+  // the freed memory may be reused, causing the marker check to fail.
+  // We gracefully skip the copy in that case rather than panicking.
+  let Some(http) = (unsafe { try_clone_external!(external) }) else {
+    return;
+  };
 
   http.copy_span_to_otel_info(span);
 }

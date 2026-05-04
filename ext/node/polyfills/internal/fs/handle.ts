@@ -22,6 +22,7 @@ import {
 import { createInterface } from "node:readline";
 import type { Interface as ReadlineInterface } from "node:readline";
 import { core, primordials } from "ext:core/mod.js";
+import { op_node_fs_close } from "ext:core/ops";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
@@ -64,7 +65,9 @@ import {
   denoErrorToNodeError,
   ERR_INVALID_STATE,
 } from "ext:deno_node/internal/errors.ts";
-import { readableStreamCancel } from "ext:deno_web/06_streams.js";
+const { readableStreamCancel } = core.loadExtScript(
+  "ext:deno_web/06_streams.js",
+);
 import {
   validateBoolean,
   validateObject,
@@ -234,7 +237,7 @@ export class FileHandle extends EventEmitter {
   #close(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        core.close(this.fd);
+        op_node_fs_close(this.fd);
         this.#rid = -1;
         resolve();
       } catch (err) {
@@ -318,7 +321,7 @@ export class FileHandle extends EventEmitter {
 
   readLines(options?: CreateReadStreamOptions): ReadlineInterface {
     return createInterface({
-      input: this.createReadStream({ ...options, autoClose: false }),
+      input: this.createReadStream(options),
       crlfDelay: Infinity,
     });
   }

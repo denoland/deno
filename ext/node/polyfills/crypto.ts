@@ -167,7 +167,10 @@ import type {
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
-import { crypto as webcrypto } from "ext:deno_crypto/00_crypto.js";
+import { core } from "ext:core/mod.js";
+const { crypto: webcrypto } = core.loadExtScript(
+  "ext:deno_crypto/00_crypto.js",
+);
 import { deprecate } from "node:util";
 
 const subtle = webcrypto.subtle;
@@ -440,7 +443,7 @@ const verify = verifyOneShot;
 /* Deprecated in Node.js, alias of randomBytes */
 const pseudoRandomBytes = randomBytes;
 
-export default {
+const defaultExport = {
   Certificate,
   checkPrime,
   checkPrimeSync,
@@ -489,7 +492,6 @@ export default {
   publicDecrypt,
   publicEncrypt,
   randomBytes,
-  pseudoRandomBytes,
   randomFill,
   randomFillSync,
   randomInt,
@@ -508,6 +510,41 @@ export default {
   subtle,
   X509Certificate,
 };
+
+// Aliases for randomBytes are deprecated; defined as non-enumerable lazy
+// getters to mirror Node's lib/crypto.js getRandomBytesAlias(). With
+// --pending-deprecation, accessing them prints DEP0115.
+function defineRandomBytesAlias(target: object, key: string) {
+  Object.defineProperty(target, key, {
+    enumerable: false,
+    configurable: true,
+    get() {
+      const value = getOptionValue("--pending-deprecation")
+        ? deprecate(randomBytes, `crypto.${key} is deprecated.`, "DEP0115")
+        : randomBytes;
+      Object.defineProperty(this, key, {
+        enumerable: false,
+        configurable: true,
+        writable: true,
+        value,
+      });
+      return value;
+    },
+    set(value) {
+      Object.defineProperty(this, key, {
+        enumerable: false,
+        configurable: true,
+        writable: true,
+        value,
+      });
+    },
+  });
+}
+for (const key of ["pseudoRandomBytes", "prng", "rng"]) {
+  defineRandomBytesAlias(defaultExport, key);
+}
+
+export default defaultExport;
 
 export type {
   Algorithms,

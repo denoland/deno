@@ -35,7 +35,10 @@ import {
   validateInteger,
   validateUint32,
 } from "ext:deno_node/internal/validators.mjs";
-import { ERR_INCOMPATIBLE_OPTION_PAIR } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_CRYPTO_INVALID_SCRYPT_PARAMS,
+  ERR_INCOMPATIBLE_OPTION_PAIR,
+} from "ext:deno_node/internal/errors.ts";
 import { getArrayBufferOrView } from "ext:deno_node/internal/crypto/keys.ts";
 
 type Opts = Partial<{
@@ -56,10 +59,10 @@ export function scryptSync(
 ): Buffer {
   const options = check(password, salt, keylen, _opts);
   const { N, r, p, maxmem } = options;
-  const blen = p * 128 * r;
+  validateScryptParams(N, r, p, maxmem);
 
-  if (32 * r * (N + 2) * 4 + blen > maxmem) {
-    throw new Error("exceeds max memory");
+  if (keylen === 0) {
+    return Buffer.alloc(0);
   }
 
   const buf = Buffer.alloc(keylen);
@@ -94,10 +97,11 @@ export function scrypt(
   const { N, r, p, maxmem } = options;
 
   validateFunction(cb, "callback");
+  validateScryptParams(N, r, p, maxmem);
 
-  const blen = p * 128 * r;
-  if (32 * r * (N + 2) * 4 + blen > maxmem) {
-    throw new Error("exceeds max memory");
+  if (keylen === 0) {
+    cb(null, Buffer.alloc(0));
+    return;
   }
 
   op_node_scrypt_async(
@@ -169,13 +173,28 @@ function check(password, salt, keylen, options) {
     if (maxmem === 0) maxmem = defaults.maxmem;
   }
 
+  return { password, salt, keylen, N, r, p, maxmem };
+}
+
+function validateScryptParams(N: number, r: number, p: number, maxmem: number) {
   if (N < 2 || (N & (N - 1)) !== 0) {
-    throw new Error(
-      "Invalid scrypt param: N must be a power of 2 and greater than 0",
-    );
+    throw new ERR_CRYPTO_INVALID_SCRYPT_PARAMS();
   }
 
-  return { password, salt, keylen, N, r, p, maxmem };
+  const NBig = BigInt(N);
+  const rBig = BigInt(r);
+  const pBig = BigInt(p);
+  const maxmemBig = BigInt(maxmem);
+  const rTimes16 = rBig * 16n;
+  if (
+    (rTimes16 <= 32n && NBig >= (1n << rTimes16)) ||
+    pBig * rBig > ((1n << 30n) - 1n) ||
+    128n * NBig * rBig >= maxmemBig
+  ) {
+    throw new ERR_CRYPTO_INVALID_SCRYPT_PARAMS(
+      "error:030000AC:digital envelope routines::memory limit exceeded",
+    );
+  }
 }
 
 export default {
