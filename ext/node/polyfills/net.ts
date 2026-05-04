@@ -2187,6 +2187,13 @@ function _listenInCluster(
       if (handle) handle.close();
       return;
     }
+    // Mirrors Node: a SharedHandle bind failure is deferred by libuv (it
+    // returns 0 from bind() and stashes EADDRINUSE for the listen syscall).
+    // Once the worker dups the fd, that delayed_error is gone -- the new
+    // wrap is a fresh tcp_t. Detect the bind failure here by comparing the
+    // expected port against what `getsockname()` actually reports (a failed
+    // bind followed by listen would have the kernel auto-bind to port 0).
+    err = _checkBindError(err, port as number, handle as TCP);
     if (err) {
       const ex = uvExceptionWithHostPort(err, "bind", address, port);
       server.emit("error", ex);

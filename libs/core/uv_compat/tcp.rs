@@ -29,6 +29,7 @@ pub(crate) use win_sock::sockaddr_in;
 #[cfg(windows)]
 use win_sock::sockaddr_in6;
 
+use crate::uv_compat::UV_EADDRINUSE;
 use crate::uv_compat::UV_EAGAIN;
 use crate::uv_compat::UV_EALREADY;
 use crate::uv_compat::UV_ECANCELED;
@@ -466,19 +467,21 @@ pub unsafe fn uv_tcp_open(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
 ///
 /// ### Safety
 /// `tcp` must be initialized by `uv_tcp_init`. `fd` must be a valid
-/// socket fd that the caller intends to transfer ownership of. The fd
-/// may be in either BIND or LISTEN state — this function transitions
-/// it to LISTEN if needed (e.g. for cluster SharedHandle workers that
-/// receive a freshly-bound fd from the primary via SCM_RIGHTS).
+/// socket fd whose ownership the caller is transferring. The fd may be in
+/// either BIND or LISTEN state; if not already LISTEN, this function calls
+/// `listen(2)` to transition it. This handles cluster's SharedHandle case
+/// where the primary binds without listening (matching libuv) and each
+/// worker dups the fd via SCM_RIGHTS, then opens it as a listener.
 #[cfg(unix)]
 pub unsafe fn uv_tcp_open_listener(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
   use std::os::unix::io::FromRawFd;
   // SAFETY: Caller guarantees tcp is initialized and fd is valid.
   unsafe {
-    // Check whether the fd is already in LISTEN state. If not, transition it
-    // here. `tokio::net::TcpListener::from_std` doesn't call listen(2), so
-    // wrapping a BIND-state fd would yield a "listener" whose accept queue
-    // is never armed (causes connect() timeouts on cluster workers).
+    // `tokio::net::TcpListener::from_std` doesn't call listen(2). If the
+    // kernel fd is in BIND state (e.g. a freshly-bound primary handle that
+    // SharedHandle just dup'd to us), we need to transition it before the
+    // listener's accept queue is armed -- otherwise connect() against this
+    // worker times out.
     let mut accepting: c_int = 0;
     let mut len = std::mem::size_of::<c_int>() as libc::socklen_t;
     let already_listening = libc::getsockopt(
@@ -489,11 +492,15 @@ pub unsafe fn uv_tcp_open_listener(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
       &mut len,
     ) == 0
       && accepting != 0;
-    if !already_listening && libc::listen(fd, 511) != 0 {
-      let err = std::io::Error::last_os_error();
-      // EOPNOTSUPP / EINVAL on a non-bound fd means the caller passed
-      // something that isn't a server-shaped socket; surface that.
-      return io_error_to_uv(&err);
+    if !already_listening {
+      // Note: if the bind that produced this fd silently failed (libuv defers
+      // EADDRINUSE), the fd is unbound and the kernel will auto-bind to
+      // 0.0.0.0:0 here. Callers should detect that via getsockname() / port
+      // mismatch (matches Node's `checkBindError`).
+      if libc::listen(fd, 511) != 0 {
+        let err = std::io::Error::last_os_error();
+        return io_error_to_uv(&err);
+      }
     }
     let std_listener = std::net::TcpListener::from_raw_fd(fd);
     std_listener.set_nonblocking(true).ok();
@@ -646,18 +653,15 @@ pub unsafe fn uv_tcp_bind(
         (*tcp).internal_delayed_error = 0;
       }
       Err(ref e) => {
-        // Drop the socket (closes the fd) on error.
-        //
-        // Note: libuv on Windows defers EADDRINUSE to listen/connect time
-        // because Winsock's bind() can succeed and the conflict only shows
-        // up later. tokio's TcpSocket::bind goes through std::net::TcpSocket
-        // which reports the error synchronously on every supported platform,
-        // so we surface it here. This lets cluster's SharedHandle observe
-        // the bind error in the primary without having to force a listen()
-        // (which would otherwise keep the primary's kernel socket in LISTEN
-        // state for the lifetime of the shared handle).
-        (*tcp).internal_fd = None;
-        return io_error_to_uv(e);
+        // Match libuv: EADDRINUSE is deferred (reported from listen/connect).
+        // Other bind errors are returned immediately.
+        if e.kind() == std::io::ErrorKind::AddrInUse {
+          (*tcp).internal_delayed_error = UV_EADDRINUSE;
+        } else {
+          // Drop the socket (closes the fd) on real error.
+          (*tcp).internal_fd = None;
+          return io_error_to_uv(e);
+        }
       }
     }
 
