@@ -521,6 +521,7 @@
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js": {},
     "parallel/test-crypto-keygen-async-encrypted-private-key.js": {},
+    "parallel/test-crypto-keygen-async-explicit-elliptic-curve.js": {},
     "parallel/test-crypto-keygen-async-explicit-elliptic-curve-encrypted-p256.js": {},
     "parallel/test-crypto-keygen-async-named-elliptic-curve.js": {},
     "parallel/test-crypto-keygen-async-named-elliptic-curve-encrypted.js": {},
