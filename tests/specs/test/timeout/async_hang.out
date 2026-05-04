@@ -2,12 +2,12 @@ running 2 tests from ./async_hang.ts
 hangs forever ... FAILED ([WILDCARD])
 runs after the hang ... ok ([WILDCARD])
 
- ERRORS [WILDCARD]
+ ERRORS
 
 hangs forever => ./async_hang.ts:[WILDCARD]
-Test timed out after 100ms.
+error: Test timed out after 100ms.
 
- FAILURES [WILDCARD]
+ FAILURES
 
 hangs forever => ./async_hang.ts:[WILDCARD]
 
