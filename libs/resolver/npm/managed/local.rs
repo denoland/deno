@@ -38,7 +38,6 @@ pub struct LocalNpmPackageResolver<TSys: FsCanonicalize + FsMetadata> {
 }
 
 impl<TSys: FsCanonicalize + FsMetadata> LocalNpmPackageResolver<TSys> {
-  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   pub fn new(
     resolution: NpmResolutionCellRc,
     sys: NodeResolutionSys<TSys>,

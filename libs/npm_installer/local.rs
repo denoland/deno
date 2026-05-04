@@ -135,9 +135,9 @@ impl<
   }
 }
 
-struct InitializingGuard {
-  nv: PackageNv,
-  install_reporter: Arc<dyn crate::InstallReporter>,
+pub(crate) struct InitializingGuard {
+  pub(crate) nv: PackageNv,
+  pub(crate) install_reporter: Arc<dyn crate::InstallReporter>,
 }
 
 impl Drop for InitializingGuard {
@@ -914,6 +914,7 @@ impl<
       let process_state = NpmProcessState::new_local(
         snapshot.as_valid_serialized(),
         &self.root_node_modules_path,
+        crate::process_state::NpmProcessStateLinkerMode::Isolated,
       )
       .as_serialized();
 
@@ -983,7 +984,7 @@ pub enum SyncResolutionWithFsError {
   Other(#[from] JsErrorBox),
 }
 
-fn clone_dir_recursive_except_node_modules_child(
+pub(crate) fn clone_dir_recursive_except_node_modules_child(
   sys: &impl CloneDirRecursiveSys,
   from: &Path,
   to: &Path,
@@ -1301,7 +1302,7 @@ impl<TSys: NpmCacheSys> LocalSetupCache<TSys> {
   }
 }
 
-fn symlink_package_dir(
+pub(crate) fn symlink_package_dir(
   sys: &(
      impl sys_traits::FsSymlinkDir
      + sys_traits::FsRemoveDirAll
@@ -1402,7 +1403,10 @@ fn create_initialized_file<F: sys_traits::boxed::FsOpenBoxed + ?Sized>(
     .map(|_| ())
 }
 
-fn join_package_name(mut path: Cow<'_, Path>, package_name: &str) -> PathBuf {
+pub(crate) fn join_package_name(
+  mut path: Cow<'_, Path>,
+  package_name: &str,
+) -> PathBuf {
   // ensure backslashes are used on windows
   for part in package_name.split('/') {
     match path {

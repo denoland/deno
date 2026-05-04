@@ -1446,6 +1446,7 @@ impl ConfigData {
           &member_dir.workspace,
           byonm,
         )),
+        node_modules_linker: None,
         no_lock: false,
         no_npm: false,
         npm_process_state: None,

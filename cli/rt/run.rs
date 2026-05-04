@@ -867,6 +867,7 @@ pub async fn run(
           maybe_node_modules_path,
           npm_system_info: Default::default(),
           npmrc,
+          linker_mode: deno_config::deno_json::NodeModulesLinkerMode::default(),
         }),
       );
       (in_npm_pkg_checker, npm_resolver)
@@ -913,6 +914,7 @@ pub async fn run(
           maybe_node_modules_path: None,
           npm_system_info: Default::default(),
           npmrc: create_default_npmrc(),
+          linker_mode: deno_config::deno_json::NodeModulesLinkerMode::default(),
         }),
       );
       (in_npm_pkg_checker, npm_resolver)
