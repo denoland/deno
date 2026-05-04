@@ -2108,6 +2108,12 @@ interface ServerOptions {
    * Default: false
    */
   pauseOnConnect?: boolean | undefined;
+  /**
+   * If set to true, it disables the use of Nagle's algorithm immediately
+   * after a new incoming connection is received.
+   * Default: false
+   */
+  noDelay?: boolean | undefined;
 }
 
 function _isServerSocketOptions(
@@ -2510,6 +2516,7 @@ export function Server(
   this[asyncIdSymbol] = -1;
   this.allowHalfOpen = false;
   this.pauseOnConnect = false;
+  this.noDelay = false;
   this._handle = null;
   this._connections = 0;
   this._usingWorkers = false;
@@ -2524,6 +2531,7 @@ export function Server(
   } else if (_isServerSocketOptions(options)) {
     this.allowHalfOpen = options?.allowHalfOpen || false;
     this.pauseOnConnect = !!options?.pauseOnConnect;
+    this.noDelay = Boolean(options?.noDelay);
 
     if (options?.blockList) {
       this.blockList = options.blockList;
@@ -2906,7 +2914,10 @@ Server.prototype._createSocket = function (clientHandle) {
     writable: true,
   });
 
-  // TODO(@bartlomieju): implement noDelay and setKeepAlive
+  if (this.noDelay && clientHandle.setNoDelay) {
+    socket[kSetNoDelay] = true;
+    clientHandle.setNoDelay(true);
+  }
 
   socket.server = this;
   socket._server = this;

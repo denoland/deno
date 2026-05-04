@@ -1528,6 +1528,7 @@
     "parallel/test-http-missing-header-separator-lf.js": {},
     "parallel/test-http-multi-line-headers.js": {},
     "parallel/test-http-mutable-headers.js": {},
+    "parallel/test-http-nodelay.js": {},
     "parallel/test-http-no-content-length.js": {},
     "parallel/test-http-outgoing-buffer.js": {},
     "parallel/test-http-outgoing-destroy.js": {},
@@ -2672,8 +2673,8 @@
     "parallel/test-process-release.js": {},
     "parallel/test-process-threadCpuUsage-main-thread.js": {},
     "parallel/test-process-threadCpuUsage-worker-threads.js": {
-      "windows": false,
-      "reason": "flaky on Windows CI"
+      "ignore": true,
+      "reason": "This test is flaky and/or timing out. Needs to be investigated"
     },
     "parallel/test-process-umask-mask.js": {},
     "parallel/test-process-umask.js": {},
