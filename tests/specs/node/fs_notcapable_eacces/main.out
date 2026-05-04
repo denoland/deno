@@ -1,0 +1,3 @@
+writeFileSync: EACCES
+openSync: EACCES
+mkdirSync: EACCES

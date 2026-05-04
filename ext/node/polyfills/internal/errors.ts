@@ -68,6 +68,7 @@ import {
   codeMap,
   errorMap,
   mapSysErrnoToUvErrno,
+  UV_EACCES,
   UV_EBADF,
 } from "ext:deno_node/internal_binding/uv.ts";
 import type * as nodeAssert from "node:assert";
@@ -2907,6 +2908,14 @@ export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
     });
   }
 
+  // NotCapable is Deno's permission error - map to EACCES
+  if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, e)) {
+    return uvException({
+      errno: UV_EACCES,
+      ...ctx,
+    });
+  }
+
   const errno = extractOsErrorNumberFromErrorMessage(e);
   if (typeof errno === "undefined") {
     return e;
@@ -2926,6 +2935,14 @@ export function denoWriteFileErrorToNodeError(
   if (ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)) {
     return uvException({
       errno: UV_EBADF,
+      ...ctx,
+    });
+  }
+
+  // NotCapable is Deno's permission error - map to EACCES
+  if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, e)) {
+    return uvException({
+      errno: UV_EACCES,
       ...ctx,
     });
   }
@@ -2957,6 +2974,22 @@ export const denoErrorToNodeSystemError = hideStackFrames((
   e: Error,
   syscall: string,
 ): Error => {
+  // NotCapable is Deno's permission error - map to EACCES
+  if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, e)) {
+    const { 0: code, 1: message } = uvErrmapGet(UV_EACCES) || uvUnmappedError;
+    const ctx: NodeSystemErrorCtx = {
+      errno: UV_EACCES,
+      code,
+      message,
+      syscall,
+    };
+    return new NodeSystemError(
+      "ERR_SYSTEM_ERROR",
+      ctx,
+      "A system error occurred",
+    );
+  }
+
   const osErrno = extractOsErrorNumberFromErrorMessage(e);
   if (typeof osErrno === "undefined") {
     return e;

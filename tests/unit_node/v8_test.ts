@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import * as v8 from "node:v8";
-import { assertEquals, assertThrows } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 
 // https://github.com/nodejs/node/blob/a2bbe5ff216bc28f8dac1c36a8750025a93c3827/test/parallel/test-v8-version-tag.js#L6
 Deno.test({
@@ -64,8 +64,13 @@ Deno.test({
   name: "writeHeapSnapshot requires write permission",
   permissions: { write: false },
   fn() {
-    assertThrows(() => {
+    try {
       v8.writeHeapSnapshot("test.heapsnapshot");
-    }, Deno.errors.NotCapable);
+      throw new Error("Expected to throw");
+    } catch (e: unknown) {
+      // node:fs operations convert NotCapable to EACCES
+      const err = e as NodeJS.ErrnoException;
+      assert(err.code === "EACCES", `Expected EACCES, got ${err.code}`);
+    }
   },
 });
