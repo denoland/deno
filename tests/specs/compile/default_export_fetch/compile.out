@@ -1,0 +1,9 @@
+Check [WILDCARD]main.ts
+Compile [WILDCARD]main.ts to server[WILDCARD]
+
+Embedded Files
+
+server[WILDLINE]
+└── main.ts ([WILDLINE])
+
+[WILDCARD]
