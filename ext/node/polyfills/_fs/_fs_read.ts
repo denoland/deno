@@ -4,10 +4,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { Buffer } from "node:buffer";
-import {
+const {
   denoErrorToNodeError,
   ERR_INVALID_ARG_VALUE,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import {
   arrayBufferViewToUint8Array,
   getValidatedFd,
@@ -25,10 +25,10 @@ const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
 import { op_node_fs_read_deferred, op_node_fs_read_sync } from "ext:core/ops";
-import {
+const {
   customPromisifyArgs,
   kEmptyObject,
-} from "ext:deno_node/internal/util.mjs";
+} = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import * as process from "node:process";
 import type { ReadAsyncOptions, ReadSyncOptions } from "node:fs";
 

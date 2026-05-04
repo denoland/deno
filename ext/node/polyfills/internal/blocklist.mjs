@@ -19,12 +19,16 @@ const {
   validateString,
   validateUint32,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
-} from "ext:deno_node/internal/errors.ts";
-import { customInspectSymbol } from "ext:deno_node/internal/util.mjs";
-import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { customInspectSymbol } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+const { inspect } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
 
 const {
   ArrayIsArray,

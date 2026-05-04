@@ -4,10 +4,10 @@
 import process from "node:process";
 import { core, primordials } from "ext:core/mod.js";
 import eos from "ext:deno_node/internal/streams/end-of-stream.js";
-import { once } from "ext:deno_node/internal/util.mjs";
+const { once } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import destroyImpl from "ext:deno_node/internal/streams/destroy.js";
 import Duplex from "node:_stream_duplex";
-import imported1 from "ext:deno_node/internal/errors.ts";
+const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   validateAbortSignal,
   validateFunction,

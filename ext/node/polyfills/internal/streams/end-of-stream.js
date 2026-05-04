@@ -3,8 +3,10 @@
 
 import process from "node:process";
 import { core, primordials } from "ext:core/mod.js";
-import imported1 from "ext:deno_node/internal/errors.ts";
-import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
+const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { kEmptyObject, once } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 const {
   validateAbortSignal,
   validateBoolean,

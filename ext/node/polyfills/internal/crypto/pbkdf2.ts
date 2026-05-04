@@ -18,10 +18,10 @@ const {
   validateUint32,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { getArrayBufferOrView } from "ext:deno_node/internal/crypto/keys.ts";
-import {
+const {
   ERR_CRYPTO_INVALID_DIGEST,
   ERR_OUT_OF_RANGE,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import {
   emitAfter,
   emitBefore,

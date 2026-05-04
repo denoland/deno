@@ -19,7 +19,7 @@ import {
   op_node_parse_shell_args,
   op_node_translate_cli_args,
 } from "ext:core/ops";
-import {
+const {
   ArrayIsArray,
   ArrayPrototypeFilter,
   ArrayPrototypeJoin,
@@ -31,15 +31,17 @@ import {
   StringPrototypeIncludes,
   StringPrototypeStartsWith,
   StringPrototypeToUpperCase,
-} from "ext:deno_node/internal/primordials.mjs";
+} = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
 import assert from "node:assert";
 import { EventEmitter } from "node:events";
-import { os } from "ext:deno_node/internal_binding/constants.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
+const { os } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import { Readable, Stream, Writable } from "node:stream";
-import { isWindows } from "ext:deno_node/_util/os.ts";
+const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 import { nextTick } from "ext:deno_node/_next_tick.ts";
-import {
+const {
   AbortError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
@@ -50,15 +52,15 @@ import {
   ERR_IPC_SYNC_FORK,
   ERR_MISSING_ARGS,
   ERR_UNKNOWN_SIGNAL,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { Buffer } from "node:buffer";
 import { FastBuffer } from "ext:deno_node/internal/buffer.mjs";
-import {
+const {
   ERR_IPC_DISCONNECTED,
   errnoException,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { ErrnoException } from "ext:deno_node/_global.d.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 const {
   validateBoolean,
   validateInt32,
@@ -66,10 +68,12 @@ const {
   validateOneOf,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
-import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
+const { StringPrototypeSlice } = core.loadExtScript(
+  "ext:deno_node/internal/primordials.mjs",
+);
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import {
   socketType as tcpSocketType,

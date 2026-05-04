@@ -12,7 +12,10 @@ import {
   CHAR_DOT,
   CHAR_QUESTION_MARK,
 } from "ext:deno_node/path/_constants.ts";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import { core, primordials } from "ext:core/mod.js";
+const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
 import {
   _format,
@@ -23,7 +26,6 @@ import {
   normalizeString,
 } from "ext:deno_node/path/_util.ts";
 import assert from "node:assert";
-import { core, primordials } from "ext:core/mod.js";
 import process from "node:process";
 import type * as fsGlob from "ext:deno_node/_fs/_fs_glob.ts";
 

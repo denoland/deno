@@ -26,10 +26,10 @@
 "use strict";
 
 import { core } from "ext:core/mod.js";
-import {
+const {
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CURSOR_POS,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const { validateFunction } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",

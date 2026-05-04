@@ -48,13 +48,17 @@ import {
 import { GetAddrInfoReqWrap } from "ext:deno_node/internal_binding/cares_wrap.ts";
 import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
 import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
-import { codeMap, errorMap } from "ext:deno_node/internal_binding/uv.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
+const { codeMap, errorMap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/uv.ts",
+);
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import { Buffer } from "node:buffer";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
 import { isIP } from "ext:deno_node/internal/net.ts";
-import { isLinux, isWindows } from "ext:deno_node/_util/os.ts";
-import { os } from "ext:deno_node/internal_binding/constants.ts";
+const { isLinux, isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { os } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 
 type MessageType = string | Uint8Array | Buffer | DataView;
 

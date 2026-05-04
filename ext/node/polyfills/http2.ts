@@ -112,9 +112,11 @@ const {
   validateString,
   validateUint32,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { promisify } from "ext:deno_node/internal/util.mjs";
-import { customInspectSymbol as kInspect } from "ext:deno_node/internal/util.mjs";
-import {
+const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { customInspectSymbol: kInspect } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+const {
   AbortError,
   aggregateTwoErrors,
   ERR_HTTP2_ALTSVC_INVALID_ORIGIN,
@@ -160,7 +162,7 @@ import {
   ERR_SOCKET_CLOSED,
   ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
   hideStackFrames,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import {
   kAfterAsyncWrite,
   kBoundSession,

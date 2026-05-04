@@ -1,5 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { ERR_INTERNAL_ASSERTION } from "ext:deno_node/internal/errors.ts";
+import { core } from "ext:core/mod.js";
+const { ERR_INTERNAL_ASSERTION } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
 function assert(value, message) {
   if (!value) {

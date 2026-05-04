@@ -27,12 +27,12 @@ const {
   isAnyArrayBuffer,
   isArrayBufferView,
 } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
   NodeError,
   NodeRangeError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { Buffer } from "node:buffer";
 
 export { default as randomBytes } from "ext:deno_node/internal/crypto/_randomBytes.ts";

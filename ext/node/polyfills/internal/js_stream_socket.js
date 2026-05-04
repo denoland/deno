@@ -8,7 +8,10 @@
 
 import { Socket } from "node:net";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { codeMap, UV_ECANCELED } from "ext:deno_node/internal_binding/uv.ts";
+import { core } from "ext:core/mod.js";
+const { codeMap, UV_ECANCELED } = core.loadExtScript(
+  "ext:deno_node/internal_binding/uv.ts",
+);
 import { setImmediate } from "node:timers";
 import {
   kBytesWritten,

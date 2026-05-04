@@ -12,8 +12,10 @@ import {
   CHAR_UPPERCASE_A,
   CHAR_UPPERCASE_Z,
 } from "ext:deno_node/path/_constants.ts";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 const {
   StringPrototypeCharCodeAt,
   StringPrototypeLastIndexOf,

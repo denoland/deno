@@ -1,16 +1,16 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   FunctionPrototypeCall,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
 } = primordials;
 
-import {
+const {
   ERR_INVALID_FD,
   ERR_TTY_INIT_FAILED,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { op_tty_check_fd_permission, TTY } from "ext:core/ops";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";

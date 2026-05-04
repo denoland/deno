@@ -10,9 +10,12 @@ import {
   getValidatedPath,
   getValidMode,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import { fs } from "ext:deno_node/internal_binding/constants.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { promisify } from "ext:deno_node/internal/util.mjs";
+import { core } from "ext:core/mod.js";
+const { fs } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
 export function copyFile(
   src: string | Buffer | URL,

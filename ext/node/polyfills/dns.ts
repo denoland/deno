@@ -25,7 +25,9 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { customPromisifyArgs } from "ext:deno_node/internal/util.mjs";
+const { customPromisifyArgs } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 const {
   validateBoolean,
   validateFunction,
@@ -80,13 +82,13 @@ import type {
 } from "ext:deno_node/internal/dns/utils.ts";
 import promisesBase from "ext:deno_node/internal/dns/promises.ts";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import {
+const {
   dnsException,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_MISSING_ARGS,
   handleDnsError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import {
   AI_ADDRCONFIG as ADDRCONFIG,
   AI_ALL as ALL,

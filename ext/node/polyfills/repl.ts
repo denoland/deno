@@ -9,11 +9,13 @@ const { Symbol } = primordials;
 
 import { Interface } from "ext:deno_node/_readline.mjs";
 import { commonPrefix } from "ext:deno_node/internal/readline/utils.mjs";
-import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
-import {
+const { inspect } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
+const {
   ERR_INVALID_REPL_EVAL_CONFIG,
   ERR_MISSING_ARGS,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { validateFunction } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );

@@ -14,7 +14,7 @@ let debug = debuglog("http", (fn) => {
 import { AsyncResource } from "node:async_hooks";
 import { symbols } from "ext:deno_node/internal/async_hooks.ts";
 const { async_id_symbol } = symbols;
-import { once } from "ext:deno_node/internal/util.mjs";
+const { once } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const {
   validateNumber,
   validateOneOf,
