@@ -3,7 +3,6 @@
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 
-// deno-fmt-ignore-file
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
 const {
@@ -24,7 +23,9 @@ const {
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { assert } = core.loadExtScript("ext:deno_web/00_infra.js");
-const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
 const {
   defineEventHandler,
   Event,
@@ -427,4 +428,4 @@ return {
   signalAbort,
   timerId,
 };
-})()
+})();

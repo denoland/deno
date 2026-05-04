@@ -19,7 +19,6 @@
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
-// deno-fmt-ignore-file
 
 // This module ports:
 // - https://github.com/nodejs/node/blob/master/src/uv.cc
@@ -33,7 +32,9 @@
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
 const { osType } = core.loadExtScript("ext:deno_node/_util/os.ts");
-const { uvTranslateSysError } = core.loadExtScript("ext:deno_node/internal_binding/_libuv_winerror.ts");
+const { uvTranslateSysError } = core.loadExtScript(
+  "ext:deno_node/internal_binding/_libuv_winerror.ts",
+);
 const { Error } = primordials;
 
 // In Node these values are coming from libuv:
@@ -590,4 +591,4 @@ return {
   getErrorMap,
   getCodeMap,
 };
-})()
+})();

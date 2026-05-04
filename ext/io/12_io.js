@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 // Interfaces 100% copied from Go.
 // Documentation liberally lifted from them too.
@@ -268,4 +267,4 @@ return {
   write,
   writeSync,
 };
-})()
+})();
