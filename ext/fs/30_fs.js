@@ -1,12 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-fmt-ignore-file
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   isDate,
   internalRidSymbol,
   createCancelHandle,
 } = core;
-import {
+const {
   op_fs_chdir,
   op_fs_chmod_async,
   op_fs_chmod_sync,
@@ -71,7 +73,7 @@ import {
   op_fs_write_file_async,
   op_fs_write_file_sync,
   op_set_raw,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypeFilter,
   Date,
@@ -94,14 +96,16 @@ const {
   Uint32Array,
 } = primordials;
 
-import { read, readSync, write, writeSync } from "ext:deno_io/12_io.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import {
+const { read, readSync, write, writeSync } = core.loadExtScript(
+  "ext:deno_io/12_io.js",
+);
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+const {
   readableStreamForRid,
   ReadableStreamPrototype,
   writableStreamForRid,
-} from "ext:deno_web/06_streams.js";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 
 function chmodSync(path, mode) {
   op_fs_chmod_sync(pathFromURL(path), mode);
@@ -915,7 +919,7 @@ function writeTextFile(
   }
 }
 
-export {
+return {
   chdir,
   chmod,
   chmodSync,
@@ -967,3 +971,4 @@ export {
   writeTextFile,
   writeTextFileSync,
 };
+})()

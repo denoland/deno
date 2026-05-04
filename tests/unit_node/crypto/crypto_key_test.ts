@@ -156,15 +156,16 @@ for (
   });
 
   Deno.test({
-    name: `generate ec key ${namedCurve} paramEncoding=explicit fails`,
+    name: `generate ec key ${namedCurve} paramEncoding=explicit`,
     fn() {
-      assertThrows(() => {
-        // @ts-ignore: @types/node is broken?
-        generateKeyPairSync("ec", {
-          namedCurve,
-          paramEncoding: "explicit",
-        });
+      // @ts-ignore: @types/node is broken?
+      const { publicKey, privateKey } = generateKeyPairSync("ec", {
+        namedCurve,
+        paramEncoding: "explicit",
       });
+
+      assertEquals(publicKey.type, "public");
+      assertEquals(privateKey.type, "private");
     },
   });
 }
@@ -714,7 +715,7 @@ Deno.test("generateKeyPair promisify", async () => {
   });
 
   assert(publicKey.startsWith("-----BEGIN PUBLIC KEY-----"));
-  assert(privateKey.startsWith("-----BEGIN PRIVATE KEY-----"));
+  assert(privateKey.startsWith("-----BEGIN ENCRYPTED PRIVATE KEY-----"));
 });
 
 Deno.test("RSA export private JWK", function () {

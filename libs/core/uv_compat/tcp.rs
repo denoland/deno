@@ -128,6 +128,15 @@ pub struct uv_tcp_t {
     Option<std::sync::Arc<crate::uv_compat::waker::TcpHandleWaker>>,
 }
 
+impl uv_tcp_t {
+  /// Detach and return the underlying TCP stream, e.g. for handing it
+  /// off to a WebSocket. The caller takes ownership of the stream;
+  /// subsequent reads/writes through libuv will see `None`.
+  pub fn take_stream(&mut self) -> Option<tokio::net::TcpStream> {
+    self.internal_stream.take()
+  }
+}
+
 /// In-flight TCP connect operation.
 ///
 /// # Safety

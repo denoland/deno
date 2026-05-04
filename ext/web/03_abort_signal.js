@@ -3,7 +3,9 @@
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
+// deno-fmt-ignore-file
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   ArrayPrototypePush,
   FunctionPrototypeApply,
@@ -21,15 +23,15 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { assert } from "./00_infra.js";
-import { createFilteredInspectProxy } from "./01_console.js";
-import {
+const { assert } = core.loadExtScript("ext:deno_web/00_infra.js");
+const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
+const {
   defineEventHandler,
   Event,
   EventTarget,
   listenerCount,
   setIsTrusted,
-} from "./02_event.js";
+} = core.loadExtScript("ext:deno_web/02_event.js");
 
 const add = Symbol("[[add]]");
 const signalAbort = Symbol("[[signalAbort]]");
@@ -414,7 +416,7 @@ function createDependentAbortSignal(signals, prefix) {
   return resultSignal;
 }
 
-export {
+return {
   AbortController,
   AbortSignal,
   AbortSignalPrototype,
@@ -425,3 +427,4 @@ export {
   signalAbort,
   timerId,
 };
+})()

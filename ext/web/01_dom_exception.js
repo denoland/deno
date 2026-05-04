@@ -29,14 +29,14 @@ const {
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 
-// Lazy-load createFilteredInspectProxy from console (still ESM) to avoid
+// Lazy-load createFilteredInspectProxy from console to avoid
 // circular dependency at load time. Only needed for custom inspect.
 let _createFilteredInspectProxy;
 function getCreateFilteredInspectProxy() {
   if (!_createFilteredInspectProxy) {
-    _createFilteredInspectProxy = core.createLazyLoader(
+    _createFilteredInspectProxy = core.loadExtScript(
       "ext:deno_web/01_console.js",
-    )().createFilteredInspectProxy;
+    ).createFilteredInspectProxy;
   }
   return _createFilteredInspectProxy;
 }

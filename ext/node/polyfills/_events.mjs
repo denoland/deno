@@ -25,7 +25,7 @@
 
 "use strict";
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeMap,
   ArrayPrototypeFilter,
@@ -74,10 +74,10 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { spliceOne } from "ext:deno_node/_utils.ts";
 import { nextTick } from "ext:deno_node/_process/process.ts";
-import {
+const {
   eventTargetData,
   kResistStopImmediatePropagation,
-} from "ext:deno_web/02_event.js";
+} = core.loadExtScript("ext:deno_web/02_event.js");
 
 export { addAbortListener } from "./internal/events/abort_listener.mjs";
 

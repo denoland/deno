@@ -33,12 +33,12 @@ const {
   SymbolFor,
 } = primordials;
 
-import { FsFile } from "ext:deno_fs/30_fs.js";
-import { readAll } from "ext:deno_io/12_io.js";
-import { assert, pathFromURL } from "ext:deno_web/00_infra.js";
-import { packageData } from "ext:deno_fetch/22_body.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import {
+const { FsFile } = core.loadExtScript("ext:deno_fs/30_fs.js");
+const { readAll } = core.loadExtScript("ext:deno_io/12_io.js");
+const { assert, pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
+const { packageData } = core.loadExtScript("ext:deno_fetch/22_body.js");
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+const {
   ReadableStream,
   readableStreamCollectIntoUint8Array,
   readableStreamForRidUnrefable,
@@ -46,7 +46,7 @@ import {
   readableStreamForRidUnrefableUnref,
   ReadableStreamPrototype,
   writableStreamForRid,
-} from "ext:deno_web/06_streams.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
 
 // The key for private `input` option for `Deno.Command`
 const kInputOption = Symbol("kInputOption");

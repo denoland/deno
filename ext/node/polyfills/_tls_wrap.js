@@ -124,6 +124,13 @@ function buildPeerLegacyCertificate(handle) {
       current.issuerCertificate = issuer;
       current = issuer;
     }
+    // Self-signed root: issuerCertificate points to itself (matches Node.js)
+    if (
+      current.subject && current.issuer &&
+      JSON.stringify(current.subject) === JSON.stringify(current.issuer)
+    ) {
+      current.issuerCertificate = current;
+    }
   }
 
   return translatePeerCertificate(cert) || {};

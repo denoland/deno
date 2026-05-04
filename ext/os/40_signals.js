@@ -1,7 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-fmt-ignore-file
 
-import { core, primordials } from "ext:core/mod.js";
-import { op_signal_bind, op_signal_poll, op_signal_unbind } from "ext:core/ops";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { op_signal_bind, op_signal_poll, op_signal_unbind } = core.ops;
 const {
   SafeSet,
   SafeSetIterator,
@@ -79,4 +81,5 @@ async function loop(sigData) {
   }
 }
 
-export { addSignalListener, removeSignalListener };
+return { addSignalListener, removeSignalListener };
+})()

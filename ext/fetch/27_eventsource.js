@@ -1,9 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-fmt-ignore-file
 
-/// <reference path="../../core/internal.d.ts" />
-
-import { core, primordials } from "ext:core/mod.js";
-import { op_utf8_to_byte_string } from "ext:core/ops";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { op_utf8_to_byte_string } = core.ops;
 const {
   ArrayPrototypeFind,
   Number,
@@ -21,27 +21,31 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import { URL } from "ext:deno_web/00_url.js";
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
-import {
+const {
   defineEventHandler,
   EventTarget,
   setIsTrusted,
-} from "ext:deno_web/02_event.js";
-import { TransformStream } from "ext:deno_web/06_streams.js";
-import { TextDecoderStream } from "ext:deno_web/08_text_encoding.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
-import { newInnerRequest } from "ext:deno_fetch/23_request.js";
-import { mainFetch } from "ext:deno_fetch/26_fetch.js";
-import {
+} = core.loadExtScript("ext:deno_web/02_event.js");
+const { TransformStream } = core.loadExtScript("ext:deno_web/06_streams.js");
+const { TextDecoderStream } = core.loadExtScript(
+  "ext:deno_web/08_text_encoding.js",
+);
+const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
+const { newInnerRequest } = core.loadExtScript("ext:deno_fetch/23_request.js");
+const { mainFetch } = core.loadExtScript("ext:deno_fetch/26_fetch.js");
+const {
   fillHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "ext:deno_fetch/20_headers.js";
+} = core.loadExtScript("ext:deno_fetch/20_headers.js");
 
 // Copied from https://github.com/denoland/deno_std/blob/e0753abe0c8602552862a568348c046996709521/streams/text_line_stream.ts#L20-L74
-export class TextLineStream extends TransformStream {
+class TextLineStream extends TransformStream {
   #allowCR;
   #buf = "";
 
@@ -404,4 +408,5 @@ webidl.converters.EventSourceInit = webidl.createDictionaryConverter(
   ],
 );
 
-export { EventSource };
+return { EventSource, TextLineStream };
+})()
