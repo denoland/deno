@@ -2693,7 +2693,6 @@
     "parallel/test-quic-internal-endpoint-listen-defaults.mjs": {},
     "parallel/test-quic-internal-endpoint-options.mjs": {},
     "parallel/test-quic-internal-endpoint-stats-state.mjs": {},
-    "parallel/test-quic-internal-setcallbacks.mjs": {},
     "parallel/test-quic-test-client.mjs": {},
     "parallel/test-quic-test-server.mjs": {},
     "parallel/test-readable-from-iterator-closing.js": {},
