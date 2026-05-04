@@ -63,6 +63,7 @@ import {
   ERR_HTTP_HEADERS_SENT,
   ERR_HTTP_SOCKET_ASSIGNED,
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CHAR,
   ERR_OUT_OF_RANGE,
 } from "ext:deno_node/internal/errors.ts";
@@ -413,11 +414,7 @@ ServerResponse.prototype.writeHead = function writeHead(
     // Slow-case: progressive API and header fields are passed.
     if (ArrayIsArray(obj)) {
       if (obj.length % 2 !== 0) {
-        throw new ERR_INVALID_ARG_TYPE(
-          "headers",
-          "Array with even length",
-          obj,
-        );
+        throw new ERR_INVALID_ARG_VALUE("headers", obj);
       }
       for (let n = 0; n < obj.length; n += 2) {
         const k = obj[n + 0];
