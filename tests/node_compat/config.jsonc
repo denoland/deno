@@ -480,7 +480,9 @@
     "parallel/test-cluster-setup-primary-emit.js": { "windows": false },
     "parallel/test-cluster-setup-primary-multiple.js": { "windows": false },
     "parallel/test-cluster-setup-primary.js": { "windows": false },
-    "parallel/test-cluster-shared-handle-bind-error.js": {},
+    "parallel/test-cluster-shared-handle-bind-error.js": {
+      "windows": false
+    },
     "parallel/test-cluster-shared-handle-bind-privileged-port.js": {
       "windows": false
     },
