@@ -92,7 +92,9 @@ import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
 const { SymbolMetadata } = core.loadExtScript("ext:deno_web/00_infra.js");
-import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
+const { bootstrap: bootstrapOtel } = core.loadExtScript(
+  "ext:deno_telemetry/telemetry.ts",
+);
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
@@ -134,6 +136,17 @@ op_get_ext_import_meta_proto().log = function internalLog(levelStr, ...args) {
     getConsoleInspectOptions(getStderrNoColor()),
   );
   op_internal_log(this.url, level, message);
+};
+
+// Equivalent of import.meta.log for use in lazy-loaded (IIFE) scripts that
+// lack access to import.meta.
+internals.log = function internalLog(levelStr, ...args) {
+  const level = LOG_LEVELS[levelStr];
+  const message = inspectArgs(
+    args,
+    getConsoleInspectOptions(getStderrNoColor()),
+  );
+  op_internal_log("ext:runtime", level, message);
 };
 
 let windowIsClosing = false;

@@ -36,6 +36,8 @@ import process from "node:process";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
 import { Transform } from "node:stream";
 import {
+  createPrivateKey,
+  createPublicKey,
   getArrayBufferOrView,
   KeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
@@ -760,6 +762,16 @@ export function prepareKey(key) {
     const { key: data, encoding, passphrase, format, type } = key;
     if (isKeyObject(data)) {
       return prepareKey(data);
+    }
+    if (format === "jwk") {
+      // Build a KeyObject from the JWK and export it as PEM so the
+      // downstream op can consume it via the existing PEM parsing path.
+      const isPrivate = typeof data === "object" && data !== null &&
+        typeof (data as { d?: unknown }).d === "string";
+      const keyObject = isPrivate
+        ? createPrivateKey({ key: data, format: "jwk" })
+        : createPublicKey({ key: data, format: "jwk" });
+      return prepareKey(keyObject);
     }
     if (!isStringOrBuffer(data)) {
       throw new TypeError("Invalid key type");
