@@ -29,6 +29,7 @@ import {
   op_node_private_encrypt,
   op_node_public_decrypt,
   op_node_public_encrypt,
+  op_node_validate_oaep_hash,
 } from "ext:core/ops";
 
 import { Buffer } from "node:buffer";
@@ -691,12 +692,38 @@ function checkUnsupportedKeyType(key) {
   }
 }
 
-function normalizeOaepHash(hash: string | undefined): string | undefined {
+function normalizeOaepHash(hash: unknown): string | undefined {
+  if (hash === undefined) return undefined;
+  if (typeof hash !== "string") {
+    throw new ERR_INVALID_ARG_TYPE("oaepHash", "string", hash);
+  }
   if (!hash) return undefined;
   // Normalize to lowercase and strip WebCrypto-style hyphens
   // (e.g. "SHA-256" -> "sha256") but keep sha3/sha512 sub-variants
   // (e.g. "sha3-256", "sha512-224") intact.
-  return hash.toLowerCase().replace(/^(sha)-(?!3-)/, "$1");
+  const normalized = hash.toLowerCase().replace(/^(sha)-(?!3-)/, "$1");
+  // Validate before key parsing so unknown hash throws ERR_OSSL_EVP_INVALID_DIGEST
+  // even when the key itself cannot be parsed as a private key.
+  op_node_validate_oaep_hash(normalized);
+  return normalized;
+}
+
+function bufferEncodingFrom(keyOptions: unknown): string | undefined {
+  return (keyOptions as { encoding?: string } | null)?.encoding;
+}
+
+function validateOaepLabel(
+  label: unknown,
+): ArrayBufferView | ArrayBuffer | undefined {
+  if (label === undefined) return undefined;
+  if (!isArrayBufferView(label) && !isAnyArrayBuffer(label)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "oaepLabel",
+      ["Buffer", "TypedArray", "DataView"],
+      label,
+    );
+  }
+  return label as ArrayBufferView | ArrayBuffer;
 }
 
 export function privateEncrypt(
@@ -707,9 +734,13 @@ export function privateEncrypt(
   const { data } = prepareKey(privateKey);
   const padding = privateKey.padding || 1;
   const oaepHash = normalizeOaepHash(privateKey.oaepHash);
-  const oaepLabel = privateKey.oaepLabel || undefined;
+  const oaepLabel = validateOaepLabel(privateKey.oaepLabel);
 
-  buffer = getArrayBufferOrView(buffer, "buffer");
+  buffer = getArrayBufferOrView(
+    buffer,
+    "buffer",
+    bufferEncodingFrom(privateKey),
+  );
   return Buffer.from(
     op_node_private_encrypt(data, buffer, padding, oaepHash, oaepLabel),
   );
@@ -721,11 +752,16 @@ export function privateDecrypt(
 ): Buffer {
   checkUnsupportedKeyType(privateKey);
   const { data } = prepareKey(privateKey);
-  const padding = privateKey.padding || 1;
+  // Node.js defaults privateDecrypt to RSA_PKCS1_OAEP_PADDING (4)
+  const padding = privateKey.padding || 4;
   const oaepHash = normalizeOaepHash(privateKey.oaepHash);
-  const oaepLabel = privateKey.oaepLabel || undefined;
+  const oaepLabel = validateOaepLabel(privateKey.oaepLabel);
 
-  buffer = getArrayBufferOrView(buffer, "buffer");
+  buffer = getArrayBufferOrView(
+    buffer,
+    "buffer",
+    bufferEncodingFrom(privateKey),
+  );
   return Buffer.from(
     op_node_private_decrypt(data, buffer, padding, oaepHash, oaepLabel),
   );
@@ -737,11 +773,16 @@ export function publicEncrypt(
 ): Buffer {
   checkUnsupportedKeyType(publicKey);
   const { data } = prepareKey(publicKey);
-  const padding = publicKey.padding || 1;
+  // Node.js defaults publicEncrypt to RSA_PKCS1_OAEP_PADDING (4)
+  const padding = publicKey.padding || 4;
   const oaepHash = normalizeOaepHash(publicKey.oaepHash);
-  const oaepLabel = publicKey.oaepLabel || undefined;
+  const oaepLabel = validateOaepLabel(publicKey.oaepLabel);
 
-  buffer = getArrayBufferOrView(buffer, "buffer");
+  buffer = getArrayBufferOrView(
+    buffer,
+    "buffer",
+    bufferEncodingFrom(publicKey),
+  );
   return Buffer.from(
     op_node_public_encrypt(data, buffer, padding, oaepHash, oaepLabel),
   );
@@ -813,7 +854,11 @@ export function publicDecrypt(
   const { data } = prepareKey(publicKey);
   const padding = publicKey.padding || 1;
 
-  buffer = getArrayBufferOrView(buffer, "buffer");
+  buffer = getArrayBufferOrView(
+    buffer,
+    "buffer",
+    bufferEncodingFrom(publicKey),
+  );
   return Buffer.from(op_node_public_decrypt(data, buffer, padding));
 }
 

@@ -101,6 +101,7 @@ deno_core::extension!(
     op_node_private_encrypt,
     op_node_public_decrypt,
     op_node_public_encrypt,
+    op_node_validate_oaep_hash,
     op_node_random_int,
     op_node_scrypt_async,
     op_node_scrypt_sync,
@@ -302,8 +303,17 @@ pub enum PrivateEncryptDecryptError {
   #[error("Unknown padding")]
   UnknownPadding,
   #[class(generic)]
-  #[error("Invalid digest used")]
+  #[property("code" = "ERR_OSSL_EVP_INVALID_DIGEST")]
+  #[error(
+    "error:060800A3:digital envelope routines::unknown message digest algorithm"
+  )]
   InvalidDigest,
+  #[class(generic)]
+  #[property("code" = "ERR_OSSL_RSA_OAEP_DECODING_ERROR")]
+  #[error(
+    "error:04099079:rsa routines:RSA_padding_check_PKCS1_OAEP_mgf1:oaep decoding error"
+  )]
+  OaepDecodingError,
   #[class(generic)]
   #[property("code" = "ERR_OSSL_CRYPTO_INTERRUPTED_OR_CANCELLED")]
   #[error("error:07880109:common libcrypto routines::interrupted or cancelled")]
@@ -442,14 +452,50 @@ pub fn op_node_private_decrypt(
     })?,
   };
 
+  let k = key.size();
+  let mut rng = rand::thread_rng();
   match padding {
     1 => Ok(key.decrypt(Pkcs1v15Encrypt, &msg)?.into()),
+    3 => {
+      // RSA_NO_PADDING: raw private-key exponentiation
+      let int = BigUint::from_bytes_be(&msg);
+      let result = rsa_decrypt_and_check(&key, Some(&mut rng), &int)?;
+      let mut result_bytes = result.to_bytes_be();
+      while result_bytes.len() < k {
+        result_bytes.insert(0, 0);
+      }
+      Ok(result_bytes.into())
+    }
     4 => {
       let oaep = create_oaep(oaep_hash.as_deref(), oaep_label.as_deref())?;
-      Ok(key.decrypt(oaep, &msg)?.into())
+      key
+        .decrypt(oaep, &msg)
+        .map(|v| v.into())
+        .map_err(|_| PrivateEncryptDecryptError::OaepDecodingError)
     }
     _ => Err(PrivateEncryptDecryptError::UnknownPadding),
   }
+}
+
+fn rsa_pub_key_from_cert_pem(pem: &str) -> Result<RsaPublicKey, pkcs8::Error> {
+  use x509_parser::prelude::FromDer;
+  let (_, pem_obj) = x509_parser::pem::parse_x509_pem(pem.as_bytes())
+    .map_err(|_| pkcs8::Error::KeyMalformed)?;
+  let spki_der = {
+    let (_, cert) =
+      x509_parser::prelude::X509Certificate::from_der(&pem_obj.contents)
+        .map_err(|_| pkcs8::Error::KeyMalformed)?;
+    cert.tbs_certificate.subject_pki.raw.to_vec()
+  };
+  RsaPublicKey::from_public_key_der(&spki_der)
+    .map_err(|_| pkcs8::Error::KeyMalformed)
+}
+
+#[op2(fast)]
+pub fn op_node_validate_oaep_hash(
+  #[string] hash: &str,
+) -> Result<(), PrivateEncryptDecryptError> {
+  create_oaep(Some(hash), None).map(|_| ())
 }
 
 #[op2]
@@ -471,6 +517,7 @@ pub fn op_node_public_encrypt(
           })
           .map(|k| k.to_public_key())
       })
+      .or_else(|_| rsa_pub_key_from_cert_pem(pem))
       .map_err(|e| PrivateEncryptDecryptError::Spki(e.into()))?,
     Err(_) => RsaPublicKey::from_public_key_der(&key)
       .or_else(|_| {
@@ -486,9 +533,23 @@ pub fn op_node_public_encrypt(
       })?,
   };
 
+  let k = key.size();
   let mut rng = rand::thread_rng();
   match padding {
     1 => Ok(key.encrypt(&mut rng, Pkcs1v15Encrypt, &msg)?.into()),
+    3 => {
+      // RSA_NO_PADDING: raw public-key exponentiation, zero-pad input to key size
+      let mut padded = vec![0u8; k];
+      let copy_len = msg.len().min(k);
+      padded[k - copy_len..].copy_from_slice(&msg[msg.len() - copy_len..]);
+      let int = BigUint::from_bytes_be(&padded);
+      let result = rsa_encrypt(&key, &int)?;
+      let mut result_bytes = result.to_bytes_be();
+      while result_bytes.len() < k {
+        result_bytes.insert(0, 0);
+      }
+      Ok(result_bytes.into())
+    }
     4 => {
       let oaep = create_oaep(oaep_hash.as_deref(), oaep_label.as_deref())?;
       Ok(key.encrypt(&mut rng, oaep, &msg)?.into())
@@ -514,6 +575,7 @@ pub fn op_node_public_decrypt(
           })
           .map(|k| k.to_public_key())
       })
+      .or_else(|_| rsa_pub_key_from_cert_pem(pem))
       .map_err(|e| PrivateEncryptDecryptError::Spki(e.into()))?,
     Err(_) => RsaPublicKey::from_public_key_der(&key)
       .or_else(|_| {
