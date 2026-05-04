@@ -27,7 +27,7 @@ import {
   symbols,
 } from "ext:deno_node/internal/async_hooks.ts";
 const { async_id_symbol } = symbols;
-import {
+const {
   ERR_HTTP_BODY_NOT_ALLOWED,
   ERR_HTTP_CONTENT_LENGTH_MISMATCH,
   ERR_HTTP_HEADERS_SENT,
@@ -42,7 +42,7 @@ import {
   ERR_STREAM_NULL_VALUES,
   ERR_STREAM_WRITE_AFTER_END,
   hideStackFrames,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { validateString } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );

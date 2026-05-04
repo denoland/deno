@@ -8,10 +8,10 @@ import { op_node_fill_random, op_node_fill_random_async } from "ext:core/ops";
 
 import { Buffer, kMaxLength } from "node:buffer";
 import { isAnyArrayBuffer, isArrayBufferView } from "node:util/types";
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   validateFunction,
   validateNumber,

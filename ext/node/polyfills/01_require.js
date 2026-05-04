@@ -128,7 +128,7 @@ import internalDgram from "ext:deno_node/internal/dgram.ts";
 import internalUndici from "ext:deno_node/internal/deps/undici/undici.js";
 import internalDnsPromises from "ext:deno_node/internal/dns/promises.ts";
 import internalBuffer from "ext:deno_node/internal/buffer.mjs";
-import internalErrors from "ext:deno_node/internal/errors.ts";
+const internalErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
 import internalHttp from "ext:deno_node/internal/http.ts";
@@ -141,9 +141,11 @@ import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_tr
 import internalStreamsState from "ext:deno_node/internal/streams/state.js";
 import internalTestBinding from "ext:deno_node/internal/test/binding.ts";
 import internalTimers from "ext:deno_node/internal/timers.mjs";
-import internalUtil from "ext:deno_node/internal/util.mjs";
+const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import internalUtilDebuglog from "ext:deno_node/internal/util/debuglog.ts";
-import internalUtilInspect from "ext:deno_node/internal/util/inspect.mjs";
+const internalUtilInspect = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
 const internalValidators = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );

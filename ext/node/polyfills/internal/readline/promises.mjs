@@ -5,10 +5,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-import {
+const {
   ArrayPrototypeJoin,
   ArrayPrototypePush,
-} from "ext:deno_node/internal/primordials.mjs";
+} = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
 
 import { CSI } from "ext:deno_node/internal/readline/utils.mjs";
 const {
@@ -16,7 +16,9 @@ const {
   validateInteger,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { isWritable } from "ext:deno_node/internal/streams/utils.js";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
 const {
   kClearToLineBeginning,

@@ -12,12 +12,12 @@ import {
   kQuestion,
   kQuestionCancel,
 } from "ext:deno_node/internal/readline/interface.mjs";
-import { AbortError } from "ext:deno_node/internal/errors.ts";
+const { AbortError } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { validateAbortSignal } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
 
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import type { Abortable } from "ext:deno_node/_events.d.ts";
 import type {
   AsyncCompleter,

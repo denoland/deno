@@ -40,10 +40,10 @@ const {
   Uint32Array,
 } = primordials;
 
-import {
-  codes as errorCodes,
+const {
+  codes: errorCodes,
   genericNodeError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const {
   ERR_BROTLI_INVALID_PARAM,
@@ -56,7 +56,9 @@ const {
 } = errorCodes;
 
 import { finished, Transform } from "node:stream";
-import { deprecateInstantiation } from "ext:deno_node/internal/util.mjs";
+const { deprecateInstantiation } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 const {
   isAnyArrayBuffer,
   isArrayBufferView,
@@ -74,7 +76,9 @@ const {
   validateFunction,
   validateUint32,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { zlib as zlibConstants } from "ext:deno_node/internal_binding/constants.ts";
+const { zlib: zlibConstants } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 
 const kFlushFlag = Symbol("kFlushFlag");
 const kError = Symbol("kError");

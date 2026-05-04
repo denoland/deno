@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { isWindows } from "ext:deno_node/_util/os.ts";
+import { core } from "ext:core/mod.js";
+const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 
 // Alphabet chars.
 export const CHAR_UPPERCASE_A = 65; /* A */

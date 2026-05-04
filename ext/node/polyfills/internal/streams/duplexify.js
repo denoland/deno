@@ -16,7 +16,7 @@ import {
 } from "ext:deno_node/internal/streams/utils.js";
 
 import eos from "ext:deno_node/internal/streams/end-of-stream.js";
-import imported1 from "ext:deno_node/internal/errors.ts";
+const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { destroyer } from "ext:deno_node/internal/streams/destroy.js";
 import Duplex from "node:_stream_duplex";
 import Readable from "node:_stream_readable";

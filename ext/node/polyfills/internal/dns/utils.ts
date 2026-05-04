@@ -38,11 +38,11 @@ import {
   DNS_ORDER_VERBATIM,
   strerror,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
-import {
+const {
   ERR_DNS_SET_SERVERS_FAILED,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_IP_ADDRESS,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
 const {
   validateArray,

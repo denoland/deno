@@ -39,7 +39,9 @@ import {
 } from "ext:deno_node/internal/http2/constants.ts";
 import assert from "node:assert";
 import Stream, { Readable } from "node:stream";
-import { codes, hideStackFrames } from "ext:deno_node/internal/errors.ts";
+const { codes, hideStackFrames } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 const {
   ERR_HTTP2_HEADERS_SENT,
   ERR_HTTP2_INFO_STATUS_NOT_ALLOWED,

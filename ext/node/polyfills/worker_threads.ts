@@ -30,15 +30,15 @@ const {
   unrefParentPort,
 } = core.loadExtScript("ext:deno_web/13_message_port.js");
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { notImplemented } from "ext:deno_node/_utils.ts";
-import {
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_URL_SCHEME,
   ERR_OUT_OF_RANGE,
   ERR_WORKER_INVALID_EXEC_ARGV,
   ERR_WORKER_NOT_RUNNING,
   ERR_WORKER_PATH,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   validateArray,
   validateObject,

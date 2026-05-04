@@ -1,12 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { internals, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 import { EventEmitter } from "node:events";
 import { fork as childProcessFork } from "node:child_process";
 import process from "node:process";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { isWindows } from "ext:deno_node/_util/os.ts";
+const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 
 const {
   Error,

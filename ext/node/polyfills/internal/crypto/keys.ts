@@ -44,14 +44,14 @@ const { kHandle } = core.loadExtScript(
   "ext:deno_node/internal/crypto/constants.ts",
 );
 import { isStringOrBuffer } from "ext:deno_node/internal/crypto/cipher.ts";
-import {
+const {
   ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS,
   ERR_CRYPTO_INVALID_JWK,
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
-} from "ext:deno_node/internal/errors.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import type {
   KeyFormat,
   PrivateKeyInput,
@@ -62,7 +62,9 @@ const {
   isAnyArrayBuffer,
   isArrayBufferView,
 } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
-import { hideStackFrames } from "ext:deno_node/internal/errors.ts";
+const { hideStackFrames } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 const {
   isCryptoKey,
   isKeyObject,

@@ -41,10 +41,10 @@ const { kHandle } = core.loadExtScript(
   "ext:deno_node/internal/crypto/constants.ts",
 );
 import { Buffer } from "node:buffer";
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
@@ -55,7 +55,9 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import type { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
 import { inspect } from "node:util";
-import { customInspectSymbol as kInspect } from "ext:deno_node/internal/util.mjs";
+const { customInspectSymbol: kInspect } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 import type { InspectOptions } from "node:util";
 
 // deno-lint-ignore no-explicit-any
