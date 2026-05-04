@@ -894,9 +894,19 @@ impl KeyObjectHandle {
           match SecretDocument::from_pkcs8_encrypted_pem(pem, passphrase) {
             Ok(doc) => doc,
             Err(pkcs8::Error::EncryptedPrivateKey(_)) => {
-              return Err(
-                AsymmetricPrivateKeyError::EncryptedPrivateKeyBadDecrypt,
-              );
+              // Try AES-128-ECB which pkcs5 does not support
+              if let Some(plaintext) =
+                pem_to_der_if_label(pem, EncryptedPrivateKeyInfo::PEM_LABEL)
+                  .and_then(|der| try_decrypt_pbes2_aes128ecb(&der, passphrase))
+              {
+                SecretDocument::from_pkcs8_der(&plaintext).map_err(|_| {
+                  AsymmetricPrivateKeyError::InvalidEncryptedPemPrivateKey
+                })?
+              } else {
+                return Err(
+                  AsymmetricPrivateKeyError::EncryptedPrivateKeyBadDecrypt,
+                );
+              }
             }
             Err(_) => {
               let (label, doc) = SecretDocument::from_pem(pem)
@@ -969,10 +979,19 @@ impl KeyObjectHandle {
         "pkcs8" => {
           if let Some(passphrase) = passphrase {
             if EncryptedPrivateKeyInfo::try_from(key).is_ok() {
-              SecretDocument::from_pkcs8_encrypted_der(key, passphrase)
-                .map_err(|_| {
-                  AsymmetricPrivateKeyError::InvalidEncryptedPkcs8PrivateKey
-                })?
+              match SecretDocument::from_pkcs8_encrypted_der(key, passphrase) {
+                Ok(doc) => doc,
+                Err(_) => {
+                  // Fall back to AES-128-ECB which pkcs5 does not support
+                  let plaintext = try_decrypt_pbes2_aes128ecb(key, passphrase)
+                    .ok_or(
+                      AsymmetricPrivateKeyError::InvalidEncryptedPkcs8PrivateKey,
+                    )?;
+                  SecretDocument::from_pkcs8_der(&plaintext).map_err(|_| {
+                    AsymmetricPrivateKeyError::InvalidPkcs8PrivateKey
+                  })?
+                }
+              }
             } else {
               // Node ignores the passphrase when the key isn't actually
               // encrypted.
@@ -3421,6 +3440,192 @@ pub enum ExportPrivateKeyPemError {
   MissingCipherOrPassphrase,
 }
 
+// OIDs for PBES2+PBKDF2+AES-128-ECB (ECB is not supported by the pkcs5 crate)
+const OID_PBES2: spki::der::asn1::ObjectIdentifier =
+  spki::der::asn1::ObjectIdentifier::new_unwrap("1.2.840.113549.1.5.13");
+const OID_AES128_ECB: spki::der::asn1::ObjectIdentifier =
+  spki::der::asn1::ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.1.1");
+
+// SECURITY: AES-128-ECB is supported here solely for compatibility with
+// Node.js-generated encrypted keys.  ECB mode is not recommended for new
+// keys — use AES-128-CBC or stronger instead.  For private-key material
+// that is itself random, ECB's lack of IV does not weaken confidentiality
+// in practice, but the format-level concerns still apply.
+fn encrypt_pkcs8_aes128ecb(data: &[u8], passphrase: &[u8]) -> Vec<u8> {
+  use aes::cipher::BlockEncryptMut;
+  use aes::cipher::KeyInit;
+  use aes::cipher::block_padding::Pkcs7;
+  use pkcs8::pkcs5::pbes2::Kdf;
+  use spki::der::Encode;
+  use spki::der::Tag;
+  use spki::der::asn1::AnyRef;
+  use spki::der::asn1::OctetStringRef;
+
+  let mut salt = [0u8; 16];
+  thread_rng().fill_bytes(&mut salt);
+  const ITERATIONS: u32 = 2048;
+
+  let mut key = [0u8; 16];
+  pbkdf2::pbkdf2_hmac::<sha2::Sha256>(passphrase, &salt, ITERATIONS, &mut key);
+
+  let ciphertext = ecb::Encryptor::<aes::Aes128>::new_from_slice(&key)
+    .expect("key is 16 bytes")
+    .encrypt_padded_vec_mut::<Pkcs7>(data);
+
+  let kdf = Kdf::Pbkdf2(
+    pkcs8::pkcs5::pbes2::Pbkdf2Params::hmac_with_sha256(ITERATIONS, &salt)
+      .expect("valid PBKDF2 params"),
+  );
+
+  // AES-128-ECB alg id: SEQUENCE { OID } — ECB has no parameters field
+  let aes_oid_der = OID_AES128_ECB.to_der().expect("valid OID");
+  let aes_alg_der = AnyRef::new(Tag::Sequence, &aes_oid_der)
+    .and_then(|a| a.to_der())
+    .expect("valid AES-128-ECB alg id");
+
+  // PBES2-params: SEQUENCE { pbkdf2_kdf_alg_id aes_alg_id }
+  let mut pbes2_inner = kdf.to_der().expect("valid PBKDF2 kdf encoding");
+  pbes2_inner.extend_from_slice(&aes_alg_der);
+  let pbes2_params_der = AnyRef::new(Tag::Sequence, &pbes2_inner)
+    .and_then(|a| a.to_der())
+    .expect("valid PBES2 params");
+
+  // PBES2 AlgId: SEQUENCE { OID(PBES2) PBES2-params }
+  let mut pbes2_alg_inner = OID_PBES2.to_der().expect("valid OID");
+  pbes2_alg_inner.extend_from_slice(&pbes2_params_der);
+  let pbes2_alg_der = AnyRef::new(Tag::Sequence, &pbes2_alg_inner)
+    .and_then(|a| a.to_der())
+    .expect("valid PBES2 alg id");
+
+  // EncryptedPrivateKeyInfo: SEQUENCE { pbes2_alg_id encrypted_data }
+  let enc_data_der = OctetStringRef::new(&ciphertext)
+    .and_then(|o| o.to_der())
+    .expect("valid ciphertext encoding");
+  let mut epki_inner = pbes2_alg_der;
+  epki_inner.extend_from_slice(&enc_data_der);
+  AnyRef::new(Tag::Sequence, &epki_inner)
+    .and_then(|a| a.to_der())
+    .expect("valid EncryptedPrivateKeyInfo")
+}
+
+/// Attempt to decrypt an EncryptedPrivateKeyInfo DER blob that uses
+/// PBES2+PBKDF2-HMAC-SHA256+AES-128-ECB.  Returns the decrypted PKCS#8 DER
+/// on success, or `None` if the blob does not use that scheme (so the caller
+/// can fall through to other decoders).
+fn try_decrypt_pbes2_aes128ecb(
+  data: &[u8],
+  passphrase: &[u8],
+) -> Option<Vec<u8>> {
+  use aes::cipher::BlockDecryptMut;
+  use aes::cipher::KeyInit;
+  use aes::cipher::block_padding::Pkcs7;
+  use pkcs8::pkcs5::pbes2::PBKDF2_OID;
+  use pkcs8::pkcs5::pbes2::Pbkdf2Params;
+  use spki::AlgorithmIdentifierRef;
+  use spki::der::asn1::AnyRef;
+  use spki::der::asn1::OctetStringRef;
+
+  let result: spki::der::Result<Vec<u8>> = (|| {
+    let outer = AnyRef::try_from(data)?;
+    outer.sequence(|seq| {
+      // PBES2 AlgorithmIdentifier: SEQUENCE { OID(PBES2) PBES2-params }
+      let pbes2_alg: AlgorithmIdentifierRef = seq.decode()?;
+      if pbes2_alg.oid != OID_PBES2 {
+        return Err(
+          spki::der::ErrorKind::OidUnknown { oid: pbes2_alg.oid }.into(),
+        );
+      }
+      let pbes2_params_any =
+        pbes2_alg.parameters.ok_or(spki::der::ErrorKind::Failed)?;
+
+      let (kdf_params, enc_oid) = pbes2_params_any.sequence(|pbes2| {
+        // PBKDF2 AlgorithmIdentifier
+        let pbkdf2_alg: AlgorithmIdentifierRef = pbes2.decode()?;
+        if pbkdf2_alg.oid != PBKDF2_OID {
+          return Err(
+            spki::der::ErrorKind::OidUnknown {
+              oid: pbkdf2_alg.oid,
+            }
+            .into(),
+          );
+        }
+        let kdf_params: Pbkdf2Params = pbkdf2_alg
+          .parameters
+          .ok_or(spki::der::ErrorKind::Failed)?
+          .try_into()?;
+
+        // Encryption AlgorithmIdentifier (must be AES-128-ECB)
+        let enc_alg: AlgorithmIdentifierRef = pbes2.decode()?;
+        Ok((kdf_params, enc_alg.oid))
+      })?;
+
+      if enc_oid != OID_AES128_ECB {
+        return Err(spki::der::ErrorKind::OidUnknown { oid: enc_oid }.into());
+      }
+
+      // encryptedData OCTET STRING
+      let ciphertext: OctetStringRef = seq.decode()?;
+
+      // Derive 16-byte key with PBKDF2-HMAC-SHA256
+      let mut key = [0u8; 16];
+      pbkdf2::pbkdf2_hmac::<sha2::Sha256>(
+        passphrase,
+        kdf_params.salt,
+        kdf_params.iteration_count,
+        &mut key,
+      );
+
+      // Decrypt AES-128-ECB + PKCS#7
+      ecb::Decryptor::<aes::Aes128>::new_from_slice(&key)
+        .expect("key is 16 bytes")
+        .decrypt_padded_vec_mut::<Pkcs7>(ciphertext.as_bytes())
+        .map_err(|_| spki::der::ErrorKind::Failed.into())
+    })
+  })();
+
+  result.ok()
+}
+
+/// Decode PEM, returning DER bytes only when the label matches.
+fn pem_to_der_if_label(pem: &str, expected_label: &str) -> Option<Vec<u8>> {
+  let begin = format!("-----BEGIN {expected_label}-----");
+  let end = format!("-----END {expected_label}-----");
+  let start = pem.find(&begin)? + begin.len();
+  let end_pos = pem.find(&end)?;
+  let b64: String = pem[start..end_pos]
+    .chars()
+    .filter(|c| !c.is_whitespace())
+    .collect();
+  base64::engine::general_purpose::STANDARD.decode(b64).ok()
+}
+
+#[cfg(test)]
+mod tests_pbes2_aes128ecb {
+  use super::*;
+
+  #[test]
+  fn roundtrip() {
+    let plaintext = b"fake pkcs8 der bytes for testing";
+    let passphrase = b"test-passphrase";
+    let encrypted = encrypt_pkcs8_aes128ecb(plaintext, passphrase);
+    let decrypted =
+      try_decrypt_pbes2_aes128ecb(&encrypted, passphrase).unwrap();
+    assert_eq!(plaintext.as_slice(), decrypted.as_slice());
+  }
+
+  #[test]
+  fn wrong_passphrase_returns_none() {
+    let plaintext = b"fake pkcs8 der bytes for testing";
+    let encrypted = encrypt_pkcs8_aes128ecb(plaintext, b"correct");
+    assert!(try_decrypt_pbes2_aes128ecb(&encrypted, b"wrong").is_none());
+  }
+
+  #[test]
+  fn garbage_input_returns_none() {
+    assert!(try_decrypt_pbes2_aes128ecb(b"not der", b"pass").is_none());
+  }
+}
+
 /// Parse a legacy encrypted PEM (Proc-Type/DEK-Info headers) and return the
 /// label and decrypted DER data, or None if not a legacy encrypted PEM.
 ///
@@ -3834,6 +4039,24 @@ pub fn op_node_export_private_key_pem(
       // a cipher (label "ENCRYPTED PRIVATE KEY"); for `pkcs1`/`sec1` it uses
       // the legacy OpenSSL PEM encryption format with Proc-Type/DEK-Info.
       if typ == "pkcs8" {
+        if cipher == "aes-128-ecb" {
+          let der_bytes = encrypt_pkcs8_aes128ecb(&data, passphrase.as_bytes());
+          let enc_label = EncryptedPrivateKeyInfo::PEM_LABEL;
+          let pem_len = der::pem::encapsulated_len(
+            enc_label,
+            LineEnding::LF,
+            der_bytes.len(),
+          )
+          .map_err(|_| ExportPrivateKeyPemError::VeryLargeData)?;
+          let mut out = vec![0; pem_len];
+          let mut writer = PemWriter::new(enc_label, LineEnding::LF, &mut out)?;
+          writer.write(&der_bytes)?;
+          let len = writer.finish()?;
+          out.truncate(len);
+          return Ok(
+            String::from_utf8(out).expect("invalid pem is not possible"),
+          );
+        }
         return encrypt_pkcs8_private_key_pem(
           &data,
           cipher,
