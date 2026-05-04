@@ -4,6 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
+import { core } from "ext:core/mod.js";
 import tls from "node:tls";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import {
@@ -19,7 +20,9 @@ import {
   storeHTTPOptions,
 } from "node:_http_server";
 import { Agent as HttpAgent } from "node:_http_agent";
-import { validateObject } from "ext:deno_node/internal/validators.mjs";
+const { validateObject } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 
 // https.Server extends tls.Server (which extends net.Server).

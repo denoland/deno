@@ -98,7 +98,7 @@ import fs from "node:fs";
 import { FileHandle as FsFileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
 import { format, inspect } from "node:util";
-import {
+const {
   isUint32,
   validateAbortSignal,
   validateArray,
@@ -111,7 +111,7 @@ import {
   validateObject,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { customInspectSymbol as kInspect } from "ext:deno_node/internal/util.mjs";
 import {
@@ -2957,10 +2957,10 @@ class ServerHttp2Stream extends Http2Stream {
 
     const streamOptions = options.endStream ? STREAM_OPTION_EMPTY_PAYLOAD : 0;
 
-    const ret = this[kHandle].pushPromise(
-      headersList[0],
-      headersList[1],
-      streamOptions,
+    const ret = ReflectApply(
+      BindingHttp2Stream.prototype.pushPromise,
+      this[kHandle],
+      [headersList[0], headersList[1], streamOptions],
     );
     let err;
     if (typeof ret === "number") {

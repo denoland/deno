@@ -63,7 +63,7 @@ const {
   URIErrorPrototype,
 } = primordials;
 import { format, inspect } from "ext:deno_node/internal/util/inspect.mjs";
-import { codes } from "ext:deno_node/internal/error_codes.ts";
+const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
 import {
   codeMap,
   errorMap,
@@ -73,7 +73,9 @@ import {
 import type * as nodeAssert from "node:assert";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { os as osConstants } from "ext:deno_node/internal_binding/constants.ts";
-import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
+const { hideStackFrames } = core.loadExtScript(
+  "ext:deno_node/internal/hide_stack_frames.ts",
+);
 import { getSystemErrorName } from "ext:deno_node/_utils.ts";
 
 let assert: typeof nodeAssert.default;

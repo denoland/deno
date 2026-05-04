@@ -39,10 +39,10 @@ import {
   ERR_INVALID_THIS,
   ERR_MISSING_ARGS,
 } from "ext:deno_node/internal/errors.ts";
-import {
+const {
   validateObject,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { emitWarning } from "node:process";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 const {

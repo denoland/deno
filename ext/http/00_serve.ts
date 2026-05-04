@@ -1,13 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-fmt-ignore-file
 
-import { core, internals, primordials } from "ext:core/mod.js";
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
 const {
   BadResourcePrototype,
   InterruptedPrototype,
   Interrupted,
   internalRidSymbol,
 } = core;
-import {
+const {
   op_http_cancel,
   op_http_close,
   op_http_close_after_finish,
@@ -34,7 +36,7 @@ import {
   op_http_upgrade_raw_get_head,
   op_http_upgrade_websocket_next,
   op_http_wait,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypeFind,
   ArrayPrototypeMap,
@@ -585,7 +587,7 @@ function mapToCallback(context, callback, onError) {
         if (otelState.METRICS_ENABLED) {
           op_http_metric_handle_otel_error(req);
         }
-        import.meta.log(
+        internals.log(
           "error",
           "Exception in onError while handling exception",
           error,
@@ -607,7 +609,7 @@ function mapToCallback(context, callback, onError) {
     const inner = toInnerResponse(response);
     if (innerRequest?.[_upgraded]) {
       if (response.status !== 101) {
-        import.meta.log(
+        internals.log(
           "error",
           "Upgrade response was not returned from callback",
         );
@@ -874,7 +876,7 @@ function serveInner(options, handler) {
   const signal = options.signal;
   const onError = options.onError ??
     function (error) {
-      import.meta.log("error", error);
+      internals.log("error", error);
       return internalServerError();
     };
 
@@ -889,7 +891,7 @@ function serveInner(options, handler) {
       if (options.onListen) {
         options.onListen(listener.addr);
       } else {
-        import.meta.log("info", `Listening on ${path}`);
+        internals.log("info", `Listening on ${path}`);
       }
     });
   }
@@ -906,7 +908,7 @@ function serveInner(options, handler) {
       if (options.onListen) {
         options.onListen(listener.addr);
       } else {
-        import.meta.log("info", `Listening on vsock:${cid}:${port}`);
+        internals.log("info", `Listening on vsock:${cid}:${port}`);
       }
     });
   }
@@ -923,7 +925,7 @@ function serveInner(options, handler) {
         const additional = listener.addr.port === 443
           ? ""
           : `:${listener.addr.port}`;
-        import.meta.log(
+        internals.log(
           "info",
           `Listening on https://${
             formatHostName(listener.addr.hostname)
@@ -983,7 +985,7 @@ function serveInner(options, handler) {
         ? ` (${scheme}localhost:${addr.port}/)`
         : "";
 
-      import.meta.log("info", `Listening on ${url}${helper}`);
+      internals.log("info", `Listening on ${url}${helper}`);
     }
   };
 
@@ -1028,7 +1030,7 @@ function serveHttpOn(context, addr, callback) {
 
   const promiseErrorHandler = (error) => {
     // Abnormal exit
-    import.meta.log(
+    internals.log(
       "error",
       "Terminating Deno.serve loop due to unexpected error",
       error,
@@ -1191,7 +1193,7 @@ function registerDeclarativeServer(exports) {
             ? ` with ${workerCountWhenMain + 1} threads`
             : "";
 
-          import.meta.log(
+          internals.log(
             "info",
             `%cdeno serve%c: Listening on %c${target}%c${nThreads}`,
             "color: green",
@@ -1208,7 +1210,7 @@ function registerDeclarativeServer(exports) {
   };
 }
 
-export {
+return {
   addTrailers,
   registerDeclarativeServer,
   serve,
@@ -1217,3 +1219,4 @@ export {
   upgradeHttpRaw,
   upgradeHttpRawConnect,
 };
+})()

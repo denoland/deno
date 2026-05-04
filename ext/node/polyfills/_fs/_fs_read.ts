@@ -14,15 +14,17 @@ import {
   validateOffsetLengthRead,
   validatePosition,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import {
+import { core, primordials } from "ext:core/mod.js";
+const {
   validateBuffer,
   validateFunction,
   validateInteger,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 import { op_node_fs_read_deferred, op_node_fs_read_sync } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
 import {
   customPromisifyArgs,
   kEmptyObject,

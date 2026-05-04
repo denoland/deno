@@ -2,8 +2,10 @@
 
 import { fileURLToPath } from "node:url";
 import { Buffer } from "node:buffer";
-import { primordials } from "ext:core/mod.js";
-import { validateObject } from "ext:deno_node/internal/validators.mjs";
+import { core, primordials } from "ext:core/mod.js";
+const { validateObject } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 const {
   Boolean,
   Number,

@@ -1,9 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const { queueMicrotask, SymbolDispose } = primordials;
-import { validateAbortSignal, validateFunction } from "../validators.mjs";
+const { validateAbortSignal, validateFunction } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import { codes } from "../errors.ts";
 const { ERR_INVALID_ARG_TYPE } = codes;
 

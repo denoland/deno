@@ -13,7 +13,9 @@ import {
   printMyersDiff,
   printSimpleMyersDiff,
 } from "ext:deno_node/internal/assert/myers_diff.js";
-import { validateObject } from "ext:deno_node/internal/validators.mjs";
+const { validateObject } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 const io = core.loadExtScript("ext:deno_io/12_io.js");
 
 function getConsoleWidth() {

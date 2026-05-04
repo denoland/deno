@@ -1,18 +1,17 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-fmt-ignore-file
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { primordials } = globalThis.__bootstrap;
 const { StringPrototypeToLowerCase } = primordials;
-import type { TextEncodings } from "ext:deno_node/_utils.ts";
 
 // https://github.com/nodejs/node/blob/a73b575304722a3682fbec3a5fb13b39c5791342/lib/internal/util.js#L252
-export function normalizeEncoding(
-  enc: string | null,
-): TextEncodings | undefined {
+function normalizeEncoding(enc) {
   if (enc == null || enc === "utf8" || enc === "utf-8") return "utf8";
   return slowCases(enc);
 }
 
-function slowCases(enc: string): TextEncodings | undefined {
+function slowCases(enc) {
   switch (enc.length) {
     case 4:
       if (enc === "UTF8") return "utf8";
@@ -77,3 +76,6 @@ function slowCases(enc: string): TextEncodings | undefined {
       if (enc === "") return "utf8";
   }
 }
+
+return { normalizeEncoding };
+})()

@@ -1,4 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-fmt-ignore-file
 //
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 //
@@ -21,9 +22,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { core } from "ext:core/mod.js";
+(function () {
+const { core } = globalThis.__bootstrap;
 
-export const {
+const {
   // isExternal,
   isAnyArrayBuffer,
   isArgumentsObject,
@@ -53,3 +55,34 @@ export const {
   isWeakMap,
   isWeakSet,
 } = core;
+
+return {
+  isAnyArrayBuffer,
+  isArgumentsObject,
+  isArrayBuffer,
+  isAsyncFunction,
+  isBigIntObject,
+  isBooleanObject,
+  isBoxedPrimitive,
+  isDataView,
+  isDate,
+  isGeneratorFunction,
+  isGeneratorObject,
+  isMap,
+  isMapIterator,
+  isModuleNamespaceObject,
+  isNativeError,
+  isNumberObject,
+  isPromise,
+  isProxy,
+  isRegExp,
+  isSet,
+  isSetIterator,
+  isSharedArrayBuffer,
+  isStringObject,
+  isSymbolObject,
+  isTypedArray,
+  isWeakMap,
+  isWeakSet,
+};
+})()

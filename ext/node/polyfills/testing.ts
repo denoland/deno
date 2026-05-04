@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeForEach,
   ArrayPrototypeIndexOf,
@@ -95,10 +95,10 @@ function installErrorHandlers() {
   });
 }
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import {
+const {
   validateFunction,
   validateInteger,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import assert from "node:assert";
 
 const methodsToCopy = [

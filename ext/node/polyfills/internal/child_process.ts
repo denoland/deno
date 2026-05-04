@@ -59,13 +59,13 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { ErrnoException } from "ext:deno_node/_global.d.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import {
+const {
   validateBoolean,
   validateInt32,
   validateObject,
   validateOneOf,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
@@ -77,11 +77,11 @@ import {
 } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import { Server as NetServer, Socket } from "node:net";
 import { Socket as DgramSocket } from "node:dgram";
-import {
+const {
   kNeedsNpmProcessState,
   nodeSpawnChild,
   nodeSpawnSyncChild,
-} from "ext:deno_process/40_process.js";
+} = core.loadExtScript("ext:deno_process/40_process.js");
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,

@@ -1,8 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const { ReflectApply } = primordials;
-import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+const { validateFunction } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
 import {
   BinaryEncodings,
@@ -91,7 +93,8 @@ export function getSignal(optOrCallback?: FileOptions): AbortSignal | null {
   return signal;
 }
 
-export { isUint32 as isFd } from "ext:deno_node/internal/validators.mjs";
+const __reexport = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+export const isFd = __reexport.isUint32;
 
 export function maybeCallback(cb: unknown) {
   validateFunction(cb, "cb");
