@@ -3466,6 +3466,7 @@
     "parallel/test-vm-util-lazy-properties.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-warn-sigprof.js": {},
+    "parallel/test-warn-tls-common-deprecation.js": {},
     "parallel/test-wasm.mjs": {},
     "parallel/test-weakref.js": {},
     "parallel/test-webcrypto-cryptokey-workers.js": {},
