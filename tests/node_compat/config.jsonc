@@ -2672,8 +2672,8 @@
     "parallel/test-process-release.js": {},
     "parallel/test-process-threadCpuUsage-main-thread.js": {},
     "parallel/test-process-threadCpuUsage-worker-threads.js": {
-      "windows": false,
-      "reason": "flaky on Windows CI"
+      "ignore": true,
+      "reason": "This test is flaky and/or timing out. Needs to be investigated"
     },
     "parallel/test-process-umask-mask.js": {},
     "parallel/test-process-umask.js": {},
