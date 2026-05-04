@@ -71,6 +71,10 @@ import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
 import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
+import {
+  socketType as tcpSocketType,
+  TCP,
+} from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import { Server as NetServer, Socket } from "node:net";
 import { Socket as DgramSocket } from "node:dgram";
 import {
@@ -1510,6 +1514,14 @@ function buildCommand(
     const result = op_node_translate_cli_args(args, scriptInNpmPackage, true);
     args = result.deno_args;
     includeNpmProcessState = result.needs_npm_process_state;
+    if (result.ca_stores?.length) {
+      env.DENO_TLS_CA_STORE = result.ca_stores.join(",");
+    }
+    if (result.use_openssl_ca) {
+      env.DENO_NODE_USE_OPENSSL_CA = "1";
+    } else {
+      delete env.DENO_NODE_USE_OPENSSL_CA;
+    }
 
     // Update NODE_OPTIONS if needed
     if (result.node_options.length > 0) {
@@ -1879,6 +1891,107 @@ function internalCmdName(msg: InternalMessage): string {
 
 let hasSetBufferConstructor = false;
 
+const IPC_HANDLE_NET_SOCKET = "net.Socket";
+const IPC_HANDLE_NET_SERVER = "net.Server";
+
+function rawFdFromTcpHandle(tcpHandle) {
+  if (typeof tcpHandle.fdForIpc !== "function") {
+    notImplemented("ChildProcess.send with handle on this platform");
+  }
+  const rawFd = tcpHandle.fdForIpc();
+  if (rawFd < 0) {
+    throw new ERR_INVALID_HANDLE_TYPE();
+  }
+  return rawFd;
+}
+
+function getIpcHandleInfo(handle, options) {
+  if (handle instanceof Socket) {
+    if (!(handle._handle instanceof TCP)) {
+      notImplemented("ChildProcess.send with non-TCP net.Socket handle");
+    }
+    return {
+      rawFd: rawFdFromTcpHandle(handle._handle),
+      message: {
+        cmd: "NODE_HANDLE",
+        type: IPC_HANDLE_NET_SOCKET,
+        msg: undefined,
+      },
+      closeAfterSend: options.keepOpen !== true,
+      close() {
+        handle.parser = null;
+        handle._httpMessage = null;
+        handle.destroy();
+      },
+    };
+  }
+
+  if (handle instanceof NetServer) {
+    if (!(handle._handle instanceof TCP)) {
+      notImplemented("ChildProcess.send with non-TCP net.Server handle");
+    }
+    return {
+      rawFd: rawFdFromTcpHandle(handle._handle),
+      message: {
+        cmd: "NODE_HANDLE",
+        type: IPC_HANDLE_NET_SERVER,
+        msg: undefined,
+      },
+      // Match Node's handleConversion["net.Server"].postSend, which calls
+      // server.close() once the receiver acknowledges the transfer.
+      closeAfterSend: options.keepOpen !== true,
+      close() {
+        handle.close();
+      },
+    };
+  }
+  if (handle instanceof DgramSocket) {
+    notImplemented("ChildProcess.send with dgram.Socket handle");
+  }
+
+  throw new ERR_INVALID_HANDLE_TYPE();
+}
+
+function createIpcHandle(message, rawFd) {
+  if (message.type === IPC_HANDLE_NET_SOCKET) {
+    const tcp = new TCP(tcpSocketType.SOCKET);
+    const err = tcp.open(rawFd);
+    if (err !== 0) {
+      throw errnoException(codeMap.get(err), "open");
+    }
+    try {
+      return new Socket({
+        handle: tcp,
+        readable: true,
+        writable: true,
+      });
+    } catch (err) {
+      tcp.close();
+      throw err;
+    }
+  }
+  if (message.type === IPC_HANDLE_NET_SERVER) {
+    const tcp = new TCP(tcpSocketType.SERVER);
+    const err = tcp.open(rawFd);
+    if (err !== 0) {
+      throw errnoException(codeMap.get(err), "open");
+    }
+    // Match Node's handleConversion["net.Server"].got: hand the wrapped
+    // handle to a fresh net.Server via listen(handle), which registers the
+    // connection callback and emits 'listening' on next tick. Our uv_listen
+    // detects an already-listening fd and skips the bind/listen syscalls.
+    const server = new NetServer();
+    try {
+      server.listen(tcp);
+      return server;
+    } catch (err) {
+      tcp.close();
+      throw err;
+    }
+  }
+  return undefined;
+}
+
 export function setupChannel(
   // deno-lint-ignore no-explicit-any
   target: any,
@@ -1899,6 +2012,47 @@ export function setupChannel(
   const readFn = serialization === "json"
     ? op_node_ipc_read_json
     : op_node_ipc_read_advanced;
+  // Sentinel passed to the unified write op when no handle accompanies the
+  // message. Mirrors the Rust-side `NO_RAW_FD` constant.
+  const NO_RAW_FD = -1;
+
+  // Handle-passing ACK state. Matches Node's
+  // NODE_HANDLE / NODE_HANDLE_ACK protocol in lib/internal/child_process.js:
+  // while a handle send is in flight, the sender keeps its copy of the fd
+  // open. Closing it earlier would drop the OFD refcount to 0 before the
+  // receiver has materialized its dup, and the kernel would send FIN/RST
+  // to the peer.
+  //
+  // `pendingHandleInfo` is the handle waiting for an ACK to close.
+  // `handleQueue` is non-null while we're waiting on an ACK; further
+  // sends (handle or plain message) are queued on it to preserve ordering.
+  let pendingHandleInfo = null;
+  let handleQueue = null;
+
+  function sendHandleAck() {
+    const queueOk = [true];
+    control.refCounted();
+    writeFn(ipc, { cmd: "NODE_HANDLE_ACK" }, NO_RAW_FD, queueOk).then(
+      () => control.unrefCounted(),
+      () => control.unrefCounted(),
+    );
+  }
+
+  function onHandleAck() {
+    const info = pendingHandleInfo;
+    pendingHandleInfo = null;
+    if (info && info.closeAfterSend) {
+      info.close();
+    }
+
+    const queue = handleQueue;
+    handleQueue = null;
+    if (queue) {
+      for (const item of queue) {
+        target.send(item.message, item.handle, item.options, item.callback);
+      }
+    }
+  }
 
   async function readLoop() {
     try {
@@ -1911,17 +2065,28 @@ export function setupChannel(
         // there will always be a pending read promise,
         // but it shouldn't keep the event loop from exiting
         core.unrefOpPromise(prom);
-        const msg = await prom;
+        const [msg, rawFd] = await prom;
         if (isInternal(msg)) {
           const cmd = internalCmdName(msg);
           if (cmd === "CLOSE") {
             // Channel closed.
             target.disconnect();
             return;
+          } else if (cmd === "HANDLE" && typeof rawFd === "number") {
+            if (serialization === "json") {
+              restorePrototype(msg);
+            }
+            // Acknowledge receipt so the sender can close its local copy.
+            sendHandleAck();
+            const handle = createIpcHandle(msg, rawFd);
+            nextTick(handleMessage, msg.msg, handle);
+            continue;
+          } else if (cmd === "HANDLE_ACK") {
+            onHandleAck();
+            continue;
           } else {
-            // TODO(nathanwhit): once we add support for sending
-            // handles, if we want to support deno-node IPC interop,
-            // we'll need to handle the NODE_HANDLE_* messages here.
+            // TODO(nathanwhit): if we want to support deno-node IPC interop,
+            // handle any future NODE_HANDLE_* control messages here.
             // Emit as internalMessage for internal consumers.
             if (serialization === "json") {
               restorePrototype(msg);
@@ -1931,7 +2096,7 @@ export function setupChannel(
           }
         }
 
-        nextTick(handleMessage, msg);
+        nextTick(handleMessage, msg, undefined);
       }
     } catch (err) {
       if (
@@ -1940,10 +2105,11 @@ export function setupChannel(
       ) {
         return;
       }
+      nextTick(() => target.emit("error", err));
     }
   }
 
-  function handleMessage(msg) {
+  function handleMessage(msg, handle) {
     if (!target.channel) {
       return;
     }
@@ -1953,11 +2119,11 @@ export function setupChannel(
       restorePrototype(msg);
     }
     if (target.listenerCount("message") !== 0) {
-      target.emit("message", msg);
+      target.emit("message", msg, handle);
       return;
     }
 
-    ArrayPrototypePush(target.channel[kPendingMessages], msg);
+    ArrayPrototypePush(target.channel[kPendingMessages], [msg, handle]);
   }
 
   target.on("newListener", () => {
@@ -1965,8 +2131,8 @@ export function setupChannel(
       if (!target.channel || !target.listenerCount("message")) {
         return;
       }
-      for (const msg of target.channel[kPendingMessages]) {
-        target.emit("message", msg);
+      for (const pending of target.channel[kPendingMessages]) {
+        target.emit("message", pending[0], pending[1]);
       }
       target.channel[kPendingMessages] = [];
     });
@@ -2004,6 +2170,7 @@ export function setupChannel(
       );
     }
 
+    let handleInfo;
     if (handle !== undefined) {
       // Validate handle type before rejecting as not implemented.
       // Node.js only accepts net.Server, net.Socket, or dgram.Socket.
@@ -2014,7 +2181,6 @@ export function setupChannel(
       ) {
         throw new ERR_INVALID_HANDLE_TYPE();
       }
-      notImplemented("ChildProcess.send with handle");
     }
 
     if (!target.connected) {
@@ -2027,19 +2193,67 @@ export function setupChannel(
       return false;
     }
 
+    // If a previous handle send is still waiting for its ACK, queue this
+    // one to preserve ordering. Plain messages are queued too so they don't
+    // overtake the pending handle.
+    if (handleQueue !== null) {
+      ArrayPrototypePush(handleQueue, {
+        message,
+        handle,
+        options,
+        callback,
+      });
+      return handleQueue.length < 16;
+    }
+
+    if (handle !== undefined) {
+      handleInfo = getIpcHandleInfo(handle, options);
+      handleInfo.message.msg = message;
+      // Start queueing subsequent sends until the ACK arrives.
+      handleQueue = [];
+    }
+
     // signals whether the queue is within the limit.
     // if false, the sender should slow down.
     // this acts as a backpressure mechanism.
     const queueOk = [true];
     control.refCounted();
-    writeFn(ipc, message, queueOk)
+    const writePromise = handleInfo
+      ? writeFn(ipc, handleInfo.message, handleInfo.rawFd, queueOk)
+      : writeFn(ipc, message, NO_RAW_FD, queueOk);
+    writePromise
       .then(() => {
         control.unrefCounted();
+        if (handleInfo) {
+          // Hold the handle until NODE_HANDLE_ACK arrives; closing now
+          // would drop the OFD refcount to 0 before the receiver has
+          // materialized its dup.
+          pendingHandleInfo = handleInfo;
+        }
         if (callback) {
           nextTick(callback, null);
         }
       }, (err: Error) => {
         control.unrefCounted();
+        if (handleInfo) {
+          // Write failed: the receiver won't ACK, so close the handle now
+          // and drain the queue to unblock any follow-up sends.
+          if (handleInfo.closeAfterSend) {
+            handleInfo.close();
+          }
+          const queue = handleQueue;
+          handleQueue = null;
+          if (queue) {
+            for (const item of queue) {
+              target.send(
+                item.message,
+                item.handle,
+                item.options,
+                item.callback,
+              );
+            }
+          }
+        }
         if (err instanceof Deno.errors.Interrupted) {
           // Channel closed on us mid-write.
         } else {

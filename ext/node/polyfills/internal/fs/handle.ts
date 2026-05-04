@@ -21,7 +21,7 @@ import {
 } from "node:fs";
 import { createInterface } from "node:readline";
 import type { Interface as ReadlineInterface } from "node:readline";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { op_node_fs_close } from "ext:core/ops";
 import {
   BinaryOptionsArgument,
@@ -65,7 +65,9 @@ import {
   denoErrorToNodeError,
   ERR_INVALID_STATE,
 } from "ext:deno_node/internal/errors.ts";
-import { readableStreamCancel } from "ext:deno_web/06_streams.js";
+const { readableStreamCancel } = core.loadExtScript(
+  "ext:deno_web/06_streams.js",
+);
 import {
   validateBoolean,
   validateObject,

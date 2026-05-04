@@ -1,0 +1,20 @@
+{
+  "tests": {
+    "basic": {
+      "args": "run -A main.ts",
+      "output": "main.out"
+    },
+    "head_buffer": {
+      "args": "run -A head_buffer.ts",
+      "output": "head_buffer.out"
+    },
+    "double_upgrade": {
+      "args": "run -A double_upgrade.ts",
+      "output": "double_upgrade.out"
+    },
+    "error_closed_socket": {
+      "args": "run -A error_closed_socket.ts",
+      "output": "error_closed_socket.out"
+    }
+  }
+}

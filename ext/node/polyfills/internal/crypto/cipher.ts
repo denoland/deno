@@ -18,10 +18,12 @@ import {
   op_node_cipheriv_take,
   op_node_create_cipheriv,
   op_node_create_decipheriv,
+  op_node_create_private_key,
   op_node_decipheriv_auth_tag,
   op_node_decipheriv_decrypt,
   op_node_decipheriv_final,
   op_node_decipheriv_set_aad,
+  op_node_export_private_key_pem,
   op_node_export_secret_key,
   op_node_private_decrypt,
   op_node_private_encrypt,
@@ -34,6 +36,8 @@ import process from "node:process";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
 import { Transform } from "node:stream";
 import {
+  createPrivateKey,
+  createPublicKey,
   getArrayBufferOrView,
   KeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
@@ -755,12 +759,44 @@ export function prepareKey(key) {
     const data = key.export({ type: "pkcs8", format: "pem" });
     return { data: getArrayBufferOrView(data, "key") };
   } else if (typeof key == "object") {
-    const { key: data, encoding } = key;
+    const { key: data, encoding, passphrase, format, type } = key;
     if (isKeyObject(data)) {
       return prepareKey(data);
     }
+    if (format === "jwk") {
+      // Build a KeyObject from the JWK and export it as PEM so the
+      // downstream op can consume it via the existing PEM parsing path.
+      const isPrivate = typeof data === "object" && data !== null &&
+        typeof (data as { d?: unknown }).d === "string";
+      const keyObject = isPrivate
+        ? createPrivateKey({ key: data, format: "jwk" })
+        : createPublicKey({ key: data, format: "jwk" });
+      return prepareKey(keyObject);
+    }
     if (!isStringOrBuffer(data)) {
       throw new TypeError("Invalid key type");
+    }
+
+    // If a passphrase is supplied with raw key material, decrypt the key via
+    // the native key handle and re-export as unencrypted PKCS#8 PEM so the
+    // downstream RSA ops can parse it.
+    if (passphrase != null) {
+      const keyFormat = format ?? (typeof data === "string" ? "pem" : "der");
+      const keyData = getArrayBufferOrView(data, "key", encoding);
+      const passphraseData = getArrayBufferOrView(passphrase, "passphrase");
+      const handle = op_node_create_private_key(
+        keyData,
+        keyFormat,
+        type ?? "",
+        passphraseData,
+      );
+      const pem = op_node_export_private_key_pem(
+        handle,
+        "pkcs8",
+        null,
+        null,
+      );
+      return { data: getArrayBufferOrView(pem, "key") };
     }
 
     return { data: getArrayBufferOrView(data, "key", encoding) };

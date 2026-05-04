@@ -1,8 +1,10 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
-import { AbortController, AbortSignal } from "ext:deno_web/03_abort_signal.js";
+import { core, primordials } from "ext:core/mod.js";
+const { AbortController, AbortSignal } = core.loadExtScript(
+  "ext:deno_web/03_abort_signal.js",
+);
 import imported1 from "ext:deno_node/internal/errors.ts";
 import {
   validateAbortSignal,

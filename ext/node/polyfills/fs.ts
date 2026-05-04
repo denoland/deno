@@ -92,10 +92,6 @@ import {
 import { Buffer } from "node:buffer";
 import process from "node:process";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
-import { URLPrototype } from "ext:deno_web/00_url.js";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { isIterable } from "ext:deno_node/internal/streams/utils.js";
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
@@ -191,6 +187,11 @@ const {
   Uint8Array,
   queueMicrotask,
 } = primordials;
+
+const { TextEncoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
+const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 
 const {
   kIoMaxLength,
@@ -3243,7 +3244,28 @@ type watchOptions = {
   ignore?: IgnoreOption;
 };
 
-type watchListener = (eventType: string, filename: string) => void;
+type watchListener = (
+  eventType: string,
+  filename: string | Buffer,
+) => void;
+
+// Match Node: `encoding: 'buffer'` returns a Buffer, any other named encoding
+// returns the filename re-encoded from utf8. Default ('utf8' or absent) leaves
+// the string unchanged. https://github.com/nodejs/node/blob/main/lib/internal/fs/watchers.js
+function encodeWatchFilename(
+  filename: string,
+  encoding: string | undefined,
+): string | Buffer {
+  if (!encoding || encoding === "utf8" || encoding === "utf-8") {
+    return filename;
+  }
+  const asBuffer = Buffer.from(filename);
+  if (encoding === "buffer") {
+    return asBuffer;
+  }
+  // deno-lint-ignore prefer-primordials
+  return asBuffer.toString(encoding as BufferEncoding);
+}
 
 function watch(
   filename: string | URL,
@@ -3275,6 +3297,8 @@ function watch(
     ? optionsOrListener2
     : undefined;
 
+  validateIgnoreOption(options?.ignore, "options.ignore");
+
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
 
@@ -3287,6 +3311,7 @@ function watch(
     validateBoolean(options.persistent, "options.persistent");
   }
   const recursive = options?.recursive || false;
+  const encoding = options?.encoding;
   validateIgnoreOption(options?.ignore, "options.ignore");
   const ignoreMatcher = createIgnoreMatcher(options?.ignore);
   const iterator: Deno.FsWatcher = Deno.watchFs(watchPath, {
@@ -3311,7 +3336,7 @@ function watch(
     fsWatcher.emit(
       "change",
       convertDenoFsEventToNodeFsEvent(val.kind),
-      filename,
+      encodeWatchFilename(filename, encoding),
     );
   }, (e) => {
     fsWatcher.emit("error", e);

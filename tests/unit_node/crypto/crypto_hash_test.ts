@@ -267,8 +267,4 @@ Deno.test("[node/crypto.Hash] digest after stream.pipeline", async () => {
     h.digest("hex"),
     "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
   );
-  assertEquals(
-    h.digest("base64"),
-    "LPJNul+wow4m6DsqxbninhsWHlwfp0JecwQzYpOLmCQ=",
-  );
 });

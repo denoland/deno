@@ -4,8 +4,9 @@ Error linting: [WILDLINE]main.ts
     Range: [14, 18]
     Text: "garbage test test"
 
-    : Expected a semicolon at file:///[WILDLINE]/main.ts:1:23
-
-      const value = garbage test test;
-                            ~~~~
+    : SyntaxError: Expected a semicolon
+      |
+    1 | const value = garbage test test;
+      |                       ~~~~
+        at file:///[WILDLINE]/main.ts:1:23
 Checked 2 files

@@ -704,6 +704,16 @@ enum ParseError {
   #[property("reason" = "Header overflow")]
   #[property("bytesParsed" = self.bytes_parsed())]
   HeaderOverflow { bytes_parsed: i32 },
+  // Surface the HTTP/2 client preface detection (24 bytes of
+  // `PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n`) as the same `HPE_PAUSED_H2_UPGRADE`
+  // error Node.js raises so the consume-path server's clientError listener
+  // sees the upstream-shape error instead of a generic parse error.
+  #[class(generic)]
+  #[error("Parse Error: Pause on PRI/Upgrade")]
+  #[property("code" = "HPE_PAUSED_H2_UPGRADE")]
+  #[property("reason" = "Pause on PRI/Upgrade")]
+  #[property("bytesParsed" = self.bytes_parsed())]
+  PausedH2Upgrade { bytes_parsed: i32 },
   #[class(generic)]
   #[error("Parse Error")]
   #[property("code" = "HPE_ERROR")]
@@ -716,6 +726,7 @@ impl ParseError {
   fn bytes_parsed(&self) -> i32 {
     match self {
       ParseError::HeaderOverflow { bytes_parsed } => *bytes_parsed,
+      ParseError::PausedH2Upgrade { bytes_parsed } => *bytes_parsed,
       ParseError::Generic { bytes_parsed } => *bytes_parsed,
     }
   }
@@ -861,6 +872,8 @@ unsafe fn consume_read_callback(
       let bytes_parsed = nread_result.max(0);
       let parse_err = if inner.header_overflow {
         ParseError::HeaderOverflow { bytes_parsed }
+      } else if err == sys::HPE_PAUSED_H2_UPGRADE {
+        ParseError::PausedH2Upgrade { bytes_parsed }
       } else {
         ParseError::Generic { bytes_parsed }
       };

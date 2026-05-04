@@ -303,6 +303,25 @@ Deno.test("TLSSocket can construct without options", () => {
   new tls.TLSSocket(new stream.PassThrough() as any);
 });
 
+// Regression test for https://github.com/denoland/deno/issues/33743
+// `setServername` must throw with Node's `code` property set, not a plain
+// `TypeError`/`Error`.
+Deno.test("TLSSocket.setServername - throws ERR_INVALID_ARG_TYPE for non-string", () => {
+  // deno-lint-ignore no-explicit-any
+  const sock: any = new tls.TLSSocket(new stream.PassThrough() as any);
+  const err = assertThrows(() => sock.setServername(123), TypeError);
+  assertEquals((err as { code?: string }).code, "ERR_INVALID_ARG_TYPE");
+});
+
+Deno.test("TLSSocket.setServername - throws ERR_TLS_SNI_FROM_SERVER on server-side socket", () => {
+  // deno-lint-ignore no-explicit-any
+  const sock: any = new tls.TLSSocket(new stream.PassThrough() as any, {
+    isServer: true,
+  });
+  const err = assertThrows(() => sock.setServername("example.com"));
+  assertEquals((err as { code?: string }).code, "ERR_TLS_SNI_FROM_SERVER");
+});
+
 Deno.test("tls.connect() throws InvalidData when there's error in certificate", async () => {
   // Uses execCode to avoid `--unsafely-ignore-certificate-errors` option applied
   const [status, output] = await execCode(`
@@ -605,18 +624,18 @@ Deno.test("tls.setDefaultCACertificates validates input - must be array", () => 
       (tls as any).setDefaultCACertificates("not an array");
     },
     TypeError,
-    "must be an array",
+    "must be an instance of Array",
   );
 });
 
-Deno.test("tls.setDefaultCACertificates validates input - array elements must be strings", () => {
+Deno.test("tls.setDefaultCACertificates validates input - array elements must be strings or ArrayBufferView", () => {
   assertThrows(
     () => {
       // deno-lint-ignore no-explicit-any
       (tls as any).setDefaultCACertificates([123, 456]);
     },
     TypeError,
-    "must be a string",
+    "must be of type string or an instance of ArrayBufferView",
   );
 });
 
@@ -889,4 +908,32 @@ Deno.test("tls.connect strips trailing dot from servername", async () => {
   serverConn.close();
   listener.close();
   await new Promise((resolve) => conn.on("close", resolve));
+});
+
+// https://github.com/denoland/deno/issues/33743
+Deno.test("TLSSocket.setServername throws Node-compatible coded errors", () => {
+  const clientSocket = new tls.TLSSocket(new net.Socket());
+  const typeErr = assertThrows(
+    // @ts-expect-error testing invalid input
+    () => clientSocket.setServername(123),
+    TypeError,
+  );
+  assertEquals(
+    (typeErr as TypeError & { code?: string }).code,
+    "ERR_INVALID_ARG_TYPE",
+  );
+  clientSocket.destroy();
+
+  const serverSocket = new tls.TLSSocket(new net.Socket(), { isServer: true });
+  const sniErr = assertThrows(
+    // @ts-ignore setServername is missing from the bundled @types/node
+    () => serverSocket.setServername("example.com"),
+    Error,
+    "Cannot issue SNI from a TLS server-side socket",
+  );
+  assertEquals(
+    (sniErr as Error & { code?: string }).code,
+    "ERR_TLS_SNI_FROM_SERVER",
+  );
+  serverSocket.destroy();
 });
