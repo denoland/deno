@@ -1216,11 +1216,8 @@ async fn run_tests_for_worker_inner(
 
       let raced = match effective_timeout_ms {
         Some(ms) => {
-          match tokio::time::timeout(
-            Duration::from_millis(ms as u64),
-            test_fut,
-          )
-          .await
+          match tokio::time::timeout(Duration::from_millis(ms as u64), test_fut)
+            .await
           {
             Ok(r) => Ok(r),
             Err(_elapsed) => Err(()),
@@ -1236,8 +1233,7 @@ async fn run_tests_for_worker_inner(
       // set even when we didn't time out — there's a small window
       // where the OS thread can fire concurrently with the test
       // completing.
-      let os_timer_fired =
-        os_timer.map(|t| t.stop()).unwrap_or(false);
+      let os_timer_fired = os_timer.map(|t| t.stop()).unwrap_or(false);
       worker.js_runtime.v8_isolate().cancel_terminate_execution();
 
       let timed_out = raced.is_err() || os_timer_fired;
