@@ -3397,6 +3397,7 @@
     "parallel/test-util-parse-env.js": {},
     "parallel/test-util-primordial-monkeypatching.js": {},
     "parallel/test-util-promisify-custom-names.mjs": {},
+    "parallel/test-util-promisify.js": {},
     "parallel/test-util-stripvtcontrolcharacters.js": {},
     "parallel/test-util-styletext.js": {},
     "parallel/test-util-text-decoder.js": {},
