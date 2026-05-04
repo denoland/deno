@@ -247,22 +247,10 @@ function wrapInner(fn) {
 const registerTestIdRetBuf = new Uint32Array(1);
 const registerTestIdRetBufU8 = new Uint8Array(registerTestIdRetBuf.buffer);
 
-// Wire encoding for the per-test `timeout` option. Values are constrained
-// to V8's SMI range (signed i32) so the op call doesn't promote to a
-// HeapNumber:
-//   0   => inherit specifier default (option not set)
-//  -1   => explicit disable (user passed `timeout: 0`)
-//   n in [1, 2_147_483_647] => timeout in milliseconds (max ~24 days)
-//
-// `0` cannot mean "disabled" on the wire because we need to distinguish
-// "not provided" from "explicitly disabled" - only the latter should
-// override a `--timeout` flag.
-const TIMEOUT_INHERIT = 0;
-const TIMEOUT_DISABLED = -1;
 const TIMEOUT_MAX = 0x7FFFFFFF;
 
 function encodeTimeout(value) {
-  if (value === undefined || value === null) return TIMEOUT_INHERIT;
+  if (value === undefined || value === null) return 0;
   if (
     typeof value !== "number" || NumberIsNaN(value) || !NumberIsFinite(value) ||
     value < 0
@@ -271,7 +259,7 @@ function encodeTimeout(value) {
       "Test timeout must be a non-negative finite number of milliseconds",
     );
   }
-  if (value === 0) return TIMEOUT_DISABLED;
+  if (value === 0) return 0;
   const ms = MathFloor(value);
   if (ms < 1 || ms > TIMEOUT_MAX) {
     throw new TypeError(

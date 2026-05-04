@@ -106,10 +106,7 @@ fn op_register_test(
   #[smi] column_number: u32,
   #[buffer] ret_buf: &mut [u8],
   sanitize_only: bool,
-  // Wire encoding (kept inside SMI range so V8 doesn't promote to a
-  // HeapNumber): 0 = inherit specifier default, -1 = explicitly disabled,
-  // any positive value = per-test timeout in ms.
-  #[smi] timeout_ms: i32,
+  #[smi] timeout_ms: u32,
 ) -> Result<(), JsErrorBox> {
   if ret_buf.len() != 4 {
     return Err(JsErrorBox::type_error(format!(
@@ -119,10 +116,10 @@ fn op_register_test(
   }
   let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
   let origin = state.borrow::<ModuleSpecifier>().to_string();
-  let timeout_ms = match timeout_ms {
-    0 => None,
-    n if n < 0 => Some(0),
-    n => Some(n as u32),
+  let timeout_ms = if timeout_ms == 0 {
+    None
+  } else {
+    Some(timeout_ms)
   };
   let description = TestDescription {
     id,

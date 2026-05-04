@@ -16,32 +16,6 @@
       "exitCode": 1,
       "output": "sync_hot_loop.out"
     },
-    "explicit_disable": {
-      "args": "test --quiet --timeout=50 explicit_disable.ts",
-      "exitCode": 0,
-      "output": "explicit_disable.out"
-    },
-    "no_timeout_flag": {
-      "args": "test --quiet --no-timeout no_timeout_flag.ts",
-      "exitCode": 0,
-      "output": "no_timeout_flag.out"
-    },
-    "cli_default": {
-      "args": "test --quiet --timeout=100 cli_default.ts",
-      "exitCode": 1,
-      "output": "cli_default.out"
-    },
-    "per_test_overrides_cli": {
-      "args": "test --quiet --timeout=10000 per_test_overrides_cli.ts",
-      "exitCode": 1,
-      "output": "per_test_overrides_cli.out"
-    },
-    "env_var": {
-      "args": "test --quiet env_var.ts",
-      "envs": { "DENO_TEST_TIMEOUT": "100" },
-      "exitCode": 1,
-      "output": "env_var.out"
-    },
     "validation_negative": {
       "args": "test --quiet validation_negative.ts",
       "exitCode": 1,

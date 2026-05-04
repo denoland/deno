@@ -299,8 +299,6 @@ pub struct TestDescription {
   pub location: TestLocation,
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
-  /// Per-test timeout in milliseconds. `None` means inherit the specifier
-  /// default. `Some(0)` means timeout disabled for this test.
   pub timeout_ms: Option<u32>,
 }
 
@@ -340,7 +338,6 @@ pub enum TestFailure {
   FailedSteps(usize),
   IncompleteSteps,
   Leaked(Vec<String>, Vec<String>), // Details, trailer notes
-  /// Test exceeded the configured timeout (milliseconds).
   TimedOut(u32),
   // The rest are for steps only.
   Incomplete,
@@ -599,9 +596,6 @@ pub struct TestSpecifierOptions {
   pub shuffle: Option<u64>,
   pub filter: TestFilter,
   pub trace_leaks: bool,
-  /// Default timeout in milliseconds applied to tests that don't specify
-  /// their own. `None` (or `Some(0)`) means no default timeout.
-  pub default_timeout_ms: Option<u32>,
 }
 
 impl TestSummary {
@@ -902,74 +896,107 @@ pub enum RunTestsForWorkerErr {
   SerdeV8(#[from] serde_v8::Error),
 }
 
-/// Race-free per-test deadline. The timer thread sleeps on a cancellation
-/// channel; if the cancel arrives first, the test finished in time. If the
-/// sleep elapses first, the timer atomically transitions the shared state
-/// to `Fired` and calls `terminate_execution` on a thread-safe V8 handle.
-/// `stop()` performs the symmetrical transition from the main task and
-/// returns whether the timer fired.
-///
-/// We cannot use `tokio::time::timeout` for this — a synchronous JS hot
-/// loop blocks the entire current_thread runtime, and a same-thread timer
-/// would never get a chance to run. A real OS thread is required so the
-/// terminate handle can fire even while the runtime thread is monopolized
-/// by V8.
-struct TestTimer {
-  state: std::sync::Arc<std::sync::Mutex<TimerState>>,
-  cancel_tx: std::sync::mpsc::Sender<()>,
+/// Single watchdog thread for an entire test specifier. Reused across all
+/// tests in the file: each test calls `arm()` before running and `disarm()`
+/// after, replacing the per-test thread spawn.
+struct TestWatchdog {
+  shared: std::sync::Arc<WatchdogShared>,
+  thread: Option<std::thread::JoinHandle<()>>,
+}
+
+struct WatchdogShared {
+  mutex: std::sync::Mutex<WatchdogState>,
+  cvar: std::sync::Condvar,
 }
 
 #[derive(PartialEq, Eq)]
-enum TimerState {
-  NotFired,
-  Cancelled,
-  Fired,
+enum WatchdogState {
+  Idle,
+  Armed { deadline: Instant, fired: bool },
+  Shutdown,
 }
 
-impl TestTimer {
-  fn start(js_runtime: &mut deno_core::JsRuntime, timeout_ms: u32) -> Self {
-    let state =
-      std::sync::Arc::new(std::sync::Mutex::new(TimerState::NotFired));
-    let (cancel_tx, cancel_rx) = std::sync::mpsc::channel::<()>();
+impl TestWatchdog {
+  fn new(js_runtime: &mut deno_core::JsRuntime) -> Self {
     let isolate_handle = js_runtime.v8_isolate().thread_safe_handle();
-    let state_thread = state.clone();
-    std::thread::Builder::new()
-      .name("deno-test-timer".to_string())
-      .spawn(move || {
-        if let Err(std::sync::mpsc::RecvTimeoutError::Timeout) =
-          cancel_rx.recv_timeout(Duration::from_millis(timeout_ms as u64))
-        {
-          let mut guard = state_thread.lock().unwrap();
-          if *guard == TimerState::NotFired {
-            *guard = TimerState::Fired;
-            // Drop the lock before crossing the V8 boundary so a slow
-            // termination can't block `stop()` on the main thread.
-            drop(guard);
-            isolate_handle.terminate_execution();
-          }
-        }
-      })
-      .expect("failed to spawn test timer thread");
-    Self { state, cancel_tx }
+    let shared = std::sync::Arc::new(WatchdogShared {
+      mutex: std::sync::Mutex::new(WatchdogState::Idle),
+      cvar: std::sync::Condvar::new(),
+    });
+    let shared_thread = shared.clone();
+    let thread = std::thread::Builder::new()
+      .name("deno-test-watchdog".to_string())
+      .spawn(move || Self::run(shared_thread, isolate_handle))
+      .expect("failed to spawn test watchdog thread");
+    Self {
+      shared,
+      thread: Some(thread),
+    }
   }
 
-  /// Cancel the timer (no-op if already fired) and report whether it had
-  /// already fired. The caller is responsible for clearing V8's terminate
-  /// flag via `cancel_terminate_execution` regardless of the return value
-  /// — there is a small window where the timer thread can call
-  /// `terminate_execution` between losing the state-transition race and
-  /// observing the cancel, and we want a clean isolate either way.
-  fn stop(self) -> bool {
-    // The send may fail (thread already exited); that's fine.
-    let _ = self.cancel_tx.send(());
-    let mut guard = self.state.lock().unwrap();
-    match *guard {
-      TimerState::NotFired => {
-        *guard = TimerState::Cancelled;
-        false
+  fn run(shared: std::sync::Arc<WatchdogShared>, isolate: v8::IsolateHandle) {
+    let mut state = shared.mutex.lock().unwrap();
+    loop {
+      match *state {
+        WatchdogState::Shutdown => return,
+        WatchdogState::Idle => {
+          state = shared.cvar.wait(state).unwrap();
+        }
+        WatchdogState::Armed { fired: true, .. } => {
+          state = shared.cvar.wait(state).unwrap();
+        }
+        WatchdogState::Armed {
+          deadline,
+          fired: false,
+        } => {
+          let now = Instant::now();
+          if now >= deadline {
+            // Hold the lock across `terminate_execution` so disarm()
+            // can't call `cancel_terminate_execution` before the V8
+            // flag is actually set.
+            if let WatchdogState::Armed { ref mut fired, .. } = *state {
+              *fired = true;
+            }
+            isolate.terminate_execution();
+          } else {
+            let (s, _) = shared.cvar.wait_timeout(state, deadline - now).unwrap();
+            state = s;
+          }
+        }
       }
-      TimerState::Fired => true,
-      TimerState::Cancelled => false,
+    }
+  }
+
+  fn arm(&self, timeout_ms: u32) {
+    let mut state = self.shared.mutex.lock().unwrap();
+    *state = WatchdogState::Armed {
+      deadline: Instant::now() + Duration::from_millis(timeout_ms as u64),
+      fired: false,
+    };
+    self.shared.cvar.notify_all();
+  }
+
+  /// Returns true if the watchdog fired — i.e. `terminate_execution` was
+  /// called for this arming. The caller must then `cancel_terminate_execution`
+  /// before running JS again on the isolate.
+  fn disarm(&self) -> bool {
+    let mut state = self.shared.mutex.lock().unwrap();
+    let fired = matches!(*state, WatchdogState::Armed { fired: true, .. });
+    *state = WatchdogState::Idle;
+    self.shared.cvar.notify_all();
+    fired
+  }
+}
+
+impl Drop for TestWatchdog {
+  fn drop(&mut self) {
+    {
+      let mut state = self.shared.mutex.lock().unwrap();
+      *state = WatchdogState::Shutdown;
+      self.shared.cvar.notify_all();
+    }
+    if let Some(t) = self.thread.take() {
+      let _ = t.join();
     }
   }
 }
@@ -1121,6 +1148,7 @@ async fn run_tests_for_worker_inner(
 
   let mut had_uncaught_error = false;
   let sanitizer_helper = sanitizers::create_test_sanitizer_helper(worker);
+  let watchdog = TestWatchdog::new(&mut worker.js_runtime);
 
   // Execute beforeAll hooks (FIFO order)
   call_hooks(worker, test_hooks.before_all.iter(), |core_error| {
@@ -1181,29 +1209,11 @@ async fn run_tests_for_worker_inner(
     .await?;
 
     let result = if !before_each_hook_errored {
-      // Per-test `timeout` overrides the specifier default; both `None` and
-      // `Some(0)` mean "no timeout" at this point.
-      let effective_timeout_ms = desc
-        .timeout_ms
-        .or(options.default_timeout_ms)
-        .filter(|&t| t > 0);
+      let timeout_ms = desc.timeout_ms.filter(|&t| t > 0);
 
-      // Two complementary timers are required:
-      //
-      // (1) An OS thread that calls `terminate_execution` via the
-      //     thread-safe handle. Needed for synchronous hot-loops
-      //     (`while(true){}`): a same-thread tokio timer can't fire
-      //     when V8 monopolizes the runtime thread.
-      //
-      // (2) `tokio::time::timeout` wrapping the test future. Needed
-      //     for asynchronous hangs where the test is just awaiting a
-      //     long-pending op (no microtasks): in that case V8 isn't
-      //     running JS, so the OS thread's terminate flag is set but
-      //     never fires, and the tokio task stays parked on the op.
-      //     The tokio timer wakes the task and lets us drop the
-      //     future cleanly.
-      let os_timer = effective_timeout_ms
-        .map(|ms| TestTimer::start(&mut worker.js_runtime, ms));
+      if let Some(ms) = timeout_ms {
+        watchdog.arm(ms);
+      }
 
       let call = worker.js_runtime.call(&function);
 
@@ -1214,7 +1224,7 @@ async fn run_tests_for_worker_inner(
         .js_runtime
         .with_event_loop_promise(call, PollEventLoopOptions::default());
 
-      let raced = match effective_timeout_ms {
+      let raced = match timeout_ms {
         Some(ms) => {
           match tokio::time::timeout(Duration::from_millis(ms as u64), test_fut)
             .await
@@ -1227,31 +1237,18 @@ async fn run_tests_for_worker_inner(
       };
       slow_test_warning.abort();
 
-      // Cancel the OS timer (returns whether it had already fired) and
-      // always clear V8's terminate flag so the next test (and any
-      // afterEach hook) can run JS on this isolate. The flag may be
-      // set even when we didn't time out — there's a small window
-      // where the OS thread can fire concurrently with the test
-      // completing.
-      let os_timer_fired = os_timer.map(|t| t.stop()).unwrap_or(false);
-      worker.js_runtime.v8_isolate().cancel_terminate_execution();
+      let watchdog_fired = timeout_ms.is_some() && watchdog.disarm();
+      if watchdog_fired {
+        worker.js_runtime.v8_isolate().cancel_terminate_execution();
+      }
 
-      let timed_out = raced.is_err() || os_timer_fired;
+      let timed_out = raced.is_err() || watchdog_fired;
 
       if timed_out {
-        // The configured deadline takes precedence over whatever the
-        // test happened to throw on its way out of the V8 termination
-        // unwind — those errors aren't user-meaningful. Sanitizer/leak
-        // checks are bypassed via the `Failed` branch below; a
-        // terminated test is expected to leak.
-        TestResult::Failed(TestFailure::TimedOut(
-          effective_timeout_ms.unwrap_or(0),
-        ))
+        TestResult::Failed(TestFailure::TimedOut(timeout_ms.unwrap_or(0)))
       } else {
-        // SAFETY: `raced.is_err()` is false in this branch.
         match raced.unwrap() {
           Ok(r) => {
-            // Check the result before we check for leaks
             deno_core::scope!(scope, &mut worker.js_runtime);
             let result = v8::Local::new(scope, r);
             serde_v8::from_v8::<TestResult>(scope, result)?
@@ -1825,7 +1822,6 @@ pub async fn run_tests(
         filter: TestFilter::from_flag(&workspace_test_options.filter),
         shuffle: workspace_test_options.shuffle,
         trace_leaks: workspace_test_options.trace_leaks,
-        default_timeout_ms: workspace_test_options.default_timeout_ms,
       },
     },
   )
@@ -2051,7 +2047,6 @@ pub async fn run_tests_with_watch(
               filter: TestFilter::from_flag(&workspace_test_options.filter),
               shuffle: workspace_test_options.shuffle,
               trace_leaks: workspace_test_options.trace_leaks,
-              default_timeout_ms: workspace_test_options.default_timeout_ms,
             },
           },
         )

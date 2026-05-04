@@ -1,5 +1,0 @@
-running 1 test from ./no_timeout_flag.ts
-runs longer than the built-in default ... ok ([WILDCARD])
-
-ok | 1 passed | 0 failed ([WILDCARD])
-

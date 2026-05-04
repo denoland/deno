@@ -207,15 +207,7 @@ pub struct WorkspaceTestOptions {
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
   pub hide_stacktraces: bool,
-  /// Resolved per-test default timeout in milliseconds. `None` means
-  /// no default timeout (e.g. `--no-timeout` or `DENO_TEST_TIMEOUT=0`).
-  pub default_timeout_ms: Option<u32>,
 }
-
-/// Built-in default per-test timeout when no flag, env var, or per-test
-/// option is set. Matches bartlomieju's stated value in the #11133 thread
-/// (Discord, 2022-01-09).
-const DEFAULT_TEST_TIMEOUT_MS: u32 = 60_000;
 
 impl WorkspaceTestOptions {
   pub fn resolve(test_flags: &TestFlags) -> Self {
@@ -231,27 +223,7 @@ impl WorkspaceTestOptions {
       reporter: test_flags.reporter,
       junit_path: test_flags.junit_path.clone(),
       hide_stacktraces: test_flags.hide_stacktraces,
-      default_timeout_ms: resolve_default_timeout_ms(test_flags),
     }
-  }
-}
-
-fn resolve_default_timeout_ms(test_flags: &TestFlags) -> Option<u32> {
-  if test_flags.no_timeout {
-    return None;
-  }
-  if let Some(ms) = test_flags.default_timeout_ms {
-    return if ms == 0 { None } else { Some(ms) };
-  }
-  match std::env::var("DENO_TEST_TIMEOUT").ok() {
-    Some(s) => match s.parse::<u32>() {
-      Ok(0) => None,
-      Ok(n) => Some(n),
-      // Malformed env var falls back to the built-in default rather than
-      // erroring out, matching how other DENO_* env vars behave.
-      Err(_) => Some(DEFAULT_TEST_TIMEOUT_MS),
-    },
-    None => Some(DEFAULT_TEST_TIMEOUT_MS),
   }
 }
 
