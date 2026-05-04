@@ -1527,6 +1527,7 @@
     "parallel/test-http-missing-header-separator-lf.js": {},
     "parallel/test-http-multi-line-headers.js": {},
     "parallel/test-http-mutable-headers.js": {},
+    "parallel/test-http-nodelay.js": {},
     "parallel/test-http-no-content-length.js": {},
     "parallel/test-http-outgoing-buffer.js": {},
     "parallel/test-http-outgoing-destroy.js": {},
