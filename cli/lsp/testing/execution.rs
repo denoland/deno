@@ -331,6 +331,7 @@ impl TestRun {
               filter,
               shuffle: None,
               trace_leaks: false,
+              default_timeout_ms: None,
             },
           ))
         }

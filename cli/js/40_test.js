@@ -255,7 +255,7 @@ const registerTestIdRetBufU8 = new Uint8Array(registerTestIdRetBuf.buffer);
 //   n in [1, 2_147_483_647] => timeout in milliseconds (max ~24 days)
 //
 // `0` cannot mean "disabled" on the wire because we need to distinguish
-// "not provided" from "explicitly disabled" — only the latter should
+// "not provided" from "explicitly disabled" - only the latter should
 // override a `--timeout` flag.
 const TIMEOUT_INHERIT = 0;
 const TIMEOUT_DISABLED = -1;

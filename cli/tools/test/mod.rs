@@ -928,7 +928,8 @@ enum TimerState {
 
 impl TestTimer {
   fn start(js_runtime: &mut deno_core::JsRuntime, timeout_ms: u32) -> Self {
-    let state = std::sync::Arc::new(std::sync::Mutex::new(TimerState::NotFired));
+    let state =
+      std::sync::Arc::new(std::sync::Mutex::new(TimerState::NotFired));
     let (cancel_tx, cancel_rx) = std::sync::mpsc::channel::<()>();
     let isolate_handle = js_runtime.v8_isolate().thread_safe_handle();
     let state_thread = state.clone();
