@@ -4554,7 +4554,7 @@ declare namespace Deno {
      * @category GPU
      * @experimental
      */
-    export function deviceStartCapture(device: any): void;
+    export function deviceStartCapture(device: GPUDevice): void;
     /**
      * Stops a frame capture.
      *
@@ -4565,7 +4565,7 @@ declare namespace Deno {
      * @category GPU
      * @experimental
      */
-    export function deviceStopCapture(device: any): void;
+    export function deviceStopCapture(device: GPUDevice): void;
 
     export {}; // only export exports
   }

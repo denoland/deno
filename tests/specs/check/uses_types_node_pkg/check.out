@@ -4,10 +4,10 @@ TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
         ~~~~~
     at file:///[WILDCARD]/main.ts:5:9
 
-TS2339 [ERROR]: Property 'getValue' does not exist on type 'Process'.
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
   const value: number = process.getValue();
-                                ~~~~~~~~
-    at file:///[WILDCARD]/main.ts:9:33
+        ~~~~~
+    at file:///[WILDCARD]/main.ts:9:9
 
 Found 2 errors.
 
