@@ -12,6 +12,8 @@ const {
   SymbolSpecies,
 } = primordials;
 import {
+  op_node_aes_unwrap_key,
+  op_node_aes_wrap_key,
   op_node_cipheriv_encrypt,
   op_node_cipheriv_final,
   op_node_cipheriv_set_aad,
@@ -72,6 +74,12 @@ function opensslError(code: string, reason: string): NodeError {
   const err = new NodeError(code, reason);
   (err as any).reason = reason;
   return err;
+}
+
+function isAesWrap(cipher: string): boolean {
+  return cipher === "aes128-wrap" || cipher === "aes192-wrap" ||
+    cipher === "aes256-wrap" || cipher === "id-aes128-wrap-pad" ||
+    cipher === "id-aes192-wrap-pad" || cipher === "id-aes256-wrap-pad";
 }
 
 export function isStringOrBuffer(
@@ -232,13 +240,26 @@ export function Cipheriv(
 
   this._blockSize = getBlockSize(cipher);
   this._cache = new BlockModeCache(false, this._blockSize);
-  this._context = op_node_create_cipheriv(
-    cipher,
-    toU8(key),
-    toU8(iv),
-    authTagLength,
-  );
-  this._needsBlockCache =
+  this._isAesWrap = isAesWrap(cipher);
+
+  if (this._isAesWrap) {
+    this._aesWrapAlgorithm = cipher;
+    this._aesWrapKey = toU8(key);
+    this._aesWrapIv = toU8(iv);
+    this._context = 1; // non-zero sentinel; not used for wrap ops
+  } else {
+    this._context = op_node_create_cipheriv(
+      cipher,
+      toU8(key),
+      toU8(iv),
+      authTagLength,
+    );
+    if (this._context == 0) {
+      throw new TypeError("Unknown cipher");
+    }
+  }
+
+  this._needsBlockCache = !this._isAesWrap &&
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
       cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
@@ -246,10 +267,6 @@ export function Cipheriv(
   this._autoPadding = true;
   this._finalized = false;
   this._decoder = undefined;
-
-  if (this._context == 0) {
-    throw new TypeError("Unknown cipher");
-  }
 }
 
 Object.setPrototypeOf(Cipheriv.prototype, Transform.prototype);
@@ -260,6 +277,11 @@ Cipheriv.prototype.final = function (
 ): Buffer | string {
   if (this._finalized) {
     throw new ERR_CRYPTO_INVALID_STATE("final");
+  }
+
+  if (this._isAesWrap) {
+    this._finalized = true;
+    return encoding === "buffer" ? Buffer.from([]) : "";
   }
 
   _lazyInitCipherDecoder(this, encoding);
@@ -349,6 +371,21 @@ Cipheriv.prototype.update = function (
   }
 
   _lazyInitCipherDecoder(this, outputEncoding);
+
+  if (this._isAesWrap) {
+    const output = Buffer.from(
+      op_node_aes_wrap_key(
+        this._aesWrapAlgorithm,
+        this._aesWrapKey,
+        this._aesWrapIv,
+        buf,
+      ),
+    );
+    if (outputEncoding !== "buffer") {
+      return this._decoder!.write(output);
+    }
+    return output;
+  }
 
   let output: Buffer;
   if (!this._needsBlockCache) {
@@ -485,13 +522,26 @@ export function Decipheriv(
   this._autoPadding = true;
   this._blockSize = getBlockSize(cipher);
   this._cache = new BlockModeCache(this._autoPadding, this._blockSize);
-  this._context = op_node_create_decipheriv(
-    cipher,
-    toU8(key),
-    toU8(iv),
-    authTagLength,
-  );
-  this._needsBlockCache =
+  this._isAesWrap = isAesWrap(cipher);
+
+  if (this._isAesWrap) {
+    this._aesWrapAlgorithm = cipher;
+    this._aesWrapKey = toU8(key);
+    this._aesWrapIv = toU8(iv);
+    this._context = 1; // non-zero sentinel; not used for wrap ops
+  } else {
+    this._context = op_node_create_decipheriv(
+      cipher,
+      toU8(key),
+      toU8(iv),
+      authTagLength,
+    );
+    if (this._context == 0) {
+      throw new TypeError("Unknown cipher");
+    }
+  }
+
+  this._needsBlockCache = !this._isAesWrap &&
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
       cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
@@ -501,10 +551,6 @@ export function Decipheriv(
   this._authTag = undefined;
   this._finalized = false;
   this._decoder = undefined;
-
-  if (this._context == 0) {
-    throw new TypeError("Unknown cipher");
-  }
 }
 
 Object.setPrototypeOf(Decipheriv.prototype, Transform.prototype);
@@ -515,6 +561,11 @@ Decipheriv.prototype.final = function (
 ): Buffer | string {
   if (this._finalized) {
     throw new ERR_CRYPTO_INVALID_STATE("final");
+  }
+
+  if (this._isAesWrap) {
+    this._finalized = true;
+    return encoding === "buffer" ? Buffer.from([]) : "";
   }
 
   _lazyInitDecipherDecoder(this, encoding);
@@ -628,6 +679,21 @@ Decipheriv.prototype.update = function (
   }
 
   _lazyInitDecipherDecoder(this, outputEncoding);
+
+  if (this._isAesWrap) {
+    const output = Buffer.from(
+      op_node_aes_unwrap_key(
+        this._aesWrapAlgorithm,
+        this._aesWrapKey,
+        this._aesWrapIv,
+        buf,
+      ),
+    );
+    if (outputEncoding !== "buffer") {
+      return this._decoder!.write(output);
+    }
+    return output;
+  }
 
   let output;
   if (!this._needsBlockCache) {
