@@ -3440,7 +3440,8 @@ fn encrypt_pkcs8_aes128ecb(data: &[u8], passphrase: &[u8]) -> Vec<u8> {
   use pkcs8::pkcs5::pbes2::Kdf;
   use spki::der::Encode;
   use spki::der::Tag;
-  use spki::der::asn1::{AnyRef, OctetStringRef};
+  use spki::der::asn1::AnyRef;
+  use spki::der::asn1::OctetStringRef;
 
   let mut salt = [0u8; 16];
   thread_rng().fill_bytes(&mut salt);
@@ -3500,9 +3501,11 @@ fn try_decrypt_pbes2_aes128ecb(
   use aes::cipher::BlockDecryptMut;
   use aes::cipher::KeyInit;
   use aes::cipher::block_padding::Pkcs7;
-  use pkcs8::pkcs5::pbes2::{Pbkdf2Params, PBKDF2_OID};
+  use pkcs8::pkcs5::pbes2::PBKDF2_OID;
+  use pkcs8::pkcs5::pbes2::Pbkdf2Params;
   use spki::AlgorithmIdentifierRef;
-  use spki::der::asn1::{AnyRef, OctetStringRef};
+  use spki::der::asn1::AnyRef;
+  use spki::der::asn1::OctetStringRef;
 
   let result: spki::der::Result<Vec<u8>> = (|| {
     let outer = AnyRef::try_from(data)?;
@@ -3522,7 +3525,10 @@ fn try_decrypt_pbes2_aes128ecb(
         let pbkdf2_alg: AlgorithmIdentifierRef = pbes2.decode()?;
         if pbkdf2_alg.oid != PBKDF2_OID {
           return Err(
-            spki::der::ErrorKind::OidUnknown { oid: pbkdf2_alg.oid }.into(),
+            spki::der::ErrorKind::OidUnknown {
+              oid: pbkdf2_alg.oid,
+            }
+            .into(),
           );
         }
         let kdf_params: Pbkdf2Params = pbkdf2_alg
@@ -3536,9 +3542,7 @@ fn try_decrypt_pbes2_aes128ecb(
       })?;
 
       if enc_oid != OID_AES128_ECB {
-        return Err(
-          spki::der::ErrorKind::OidUnknown { oid: enc_oid }.into(),
-        );
+        return Err(spki::der::ErrorKind::OidUnknown { oid: enc_oid }.into());
       }
 
       // encryptedData OCTET STRING
