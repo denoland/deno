@@ -1,12 +1,12 @@
 running 1 test from ./env_var.ts
 honors env var ... FAILED ([WILDCARD])
 
- ERRORS
+ ERRORS 
 
 honors env var => ./env_var.ts:[WILDCARD]
 error: Test timed out after 100ms.
 
- FAILURES
+ FAILURES 
 
 honors env var => ./env_var.ts:[WILDCARD]
 

@@ -1,12 +1,12 @@
 running 1 test from ./cli_default.ts
 inherits the cli default ... FAILED ([WILDCARD])
 
- ERRORS
+ ERRORS 
 
 inherits the cli default => ./cli_default.ts:[WILDCARD]
 error: Test timed out after 100ms.
 
- FAILURES
+ FAILURES 
 
 inherits the cli default => ./cli_default.ts:[WILDCARD]
 

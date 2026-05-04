@@ -2,12 +2,12 @@ running 2 tests from ./sync_hot_loop.ts
 spins forever ... FAILED ([WILDCARD])
 runs after the spin ... ok ([WILDCARD])
 
- ERRORS
+ ERRORS 
 
 spins forever => ./sync_hot_loop.ts:[WILDCARD]
 error: Test timed out after 100ms.
 
- FAILURES
+ FAILURES 
 
 spins forever => ./sync_hot_loop.ts:[WILDCARD]
 
