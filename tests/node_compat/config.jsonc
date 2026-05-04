@@ -3438,6 +3438,7 @@
     "parallel/test-vm-inherited_properties.js": {},
     "parallel/test-vm-is-context.js": {},
     "parallel/test-vm-low-stack-space.js": {},
+    "parallel/test-vm-module-after-evaluate.js": {},
     "parallel/test-vm-new-script-new-context.js": {},
     "parallel/test-vm-new-script-this-context.js": {},
     "parallel/test-vm-not-strict.js": {},
