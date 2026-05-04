@@ -15,6 +15,7 @@ path = "lib.rs"
 [dependencies]
 aead-gcm-stream.workspace = true
 aes.workspace = true
+argon2.workspace = true
 aws-lc-rs.workspace = true
 aws-lc-sys.workspace = true
 base64.workspace = true

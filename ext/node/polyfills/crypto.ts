@@ -95,6 +95,7 @@ import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
 } from "ext:deno_node/internal/errors.ts";
+import { argon2, argon2Sync } from "ext:deno_node/internal/crypto/argon2.ts";
 import type {
   Cipher,
   CipherCCM,
@@ -444,6 +445,8 @@ const verify = verifyOneShot;
 const pseudoRandomBytes = randomBytes;
 
 const defaultExport = {
+  argon2,
+  argon2Sync,
   Certificate,
   checkPrime,
   checkPrimeSync,
@@ -617,6 +620,8 @@ export type {
 };
 
 export {
+  argon2,
+  argon2Sync,
   Certificate,
   checkPrime,
   checkPrimeSync,

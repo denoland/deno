@@ -223,7 +223,7 @@ export const versions = {
   nghttp2: "1.47.0",
   napi: "9",
   llhttp: "6.0.10",
-  openssl: "3.0.7+quic",
+  openssl: "3.5.0+quic",
   cldr: "41.0",
   icu: "71.1",
   tz: "2022b",

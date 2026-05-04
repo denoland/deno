@@ -465,6 +465,7 @@
     "parallel/test-coverage-with-inspector-disabled.js": {},
     "parallel/test-crypto-aes-wrap.js": {},
     "parallel/test-crypto-argon2.js": {},
+    "parallel/test-crypto-argon2-unsupported.js": {},
     "parallel/test-crypto-async-sign-verify.js": {},
     "parallel/test-crypto-authenticated-stream.js": {},
     "parallel/test-crypto-classes.js": {},
