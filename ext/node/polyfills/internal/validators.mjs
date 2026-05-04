@@ -232,9 +232,8 @@ const validateOneOf = hideStackFrames((value, name, oneOf) => {
   }
 });
 
-// Deferred load to break circular dependency with util.mjs
 function validateEncoding(data, encoding) {
-  const { normalizeEncoding } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+  const { normalizeEncoding } = core.loadExtScript("ext:deno_node/internal/normalize_encoding.ts");
   const normalizedEncoding = normalizeEncoding(encoding);
   const length = data.length;
 
