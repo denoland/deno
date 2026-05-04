@@ -25,7 +25,7 @@
 
 "use strict";
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeMap,
   ArrayPrototypeFilter,
@@ -53,17 +53,19 @@ const kRejection = SymbolFor("nodejs.rejection");
 const kWatermarkData = SymbolFor("nodejs.watermarkData");
 export const kEvents = Symbol("kEvents");
 
-import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
-import {
+const { inspect } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const {
   AbortError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_THIS,
   ERR_UNHANDLED_ERROR,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 import { AsyncResource } from "node:async_hooks";
-import {
+const {
   validateAbortSignal,
   validateBoolean,
   validateFunction,
@@ -71,13 +73,13 @@ import {
   validateNumber,
   validateObject,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import { spliceOne } from "ext:deno_node/_utils.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { spliceOne } = core.loadExtScript("ext:deno_node/_utils.ts");
 import { nextTick } from "ext:deno_node/_process/process.ts";
-import {
+const {
   eventTargetData,
   kResistStopImmediatePropagation,
-} from "ext:deno_web/02_event.js";
+} = core.loadExtScript("ext:deno_web/02_event.js");
 
 export { addAbortListener } from "./internal/events/abort_listener.mjs";
 

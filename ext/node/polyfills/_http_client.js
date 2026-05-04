@@ -24,7 +24,7 @@
 
 // deno-lint-ignore-file prefer-primordials no-this-alias no-inner-declarations
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   Boolean,
@@ -41,7 +41,9 @@ const {
 
 import net from "node:net";
 import { ok as assert } from "node:assert";
-import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
+const { kEmptyObject, once } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 import {
   _checkIsHttpToken as checkIsHttpToken,
   freeParser,
@@ -60,7 +62,7 @@ import httpAgent from "node:_http_agent";
 import { Buffer } from "node:buffer";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { kOutHeaders } from "ext:deno_node/internal/http.ts";
-import {
+const {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
   ERR_INVALID_ARG_TYPE,
@@ -68,11 +70,11 @@ import {
   ERR_INVALID_PROTOCOL,
   ERR_INVALID_URL,
   ERR_UNESCAPED_CHARACTERS,
-} from "ext:deno_node/internal/errors.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   validateBoolean,
   validateInteger,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { addAbortSignal, finished } from "node:stream";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
@@ -84,14 +86,15 @@ const onClientRequestCreatedChannel = channel("http.client.request.created");
 const onClientRequestStartChannel = channel("http.client.request.start");
 const onClientRequestErrorChannel = channel("http.client.request.error");
 const onClientResponseFinishChannel = channel("http.client.response.finish");
-import { updateSpanFromError } from "ext:deno_telemetry/util.ts";
-import {
+const { updateSpanFromError } = core.loadExtScript(
+  "ext:deno_telemetry/util.ts",
+);
+const {
+  otelState,
   builtinTracer,
   ContextManager,
-  PROPAGATORS,
   SPAN_KEY,
-  TRACING_ENABLED,
-} from "ext:deno_telemetry/telemetry.ts";
+} = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 
 const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
 const kError = Symbol("kError");
@@ -437,14 +440,14 @@ ClientRequest.prototype._implicitHeader = function _implicitHeader() {
   }
 
   // Start OTel client span and inject propagation headers before serialization
-  if (TRACING_ENABLED && !this[kOtelSpan]) {
+  if (otelState.TRACING_ENABLED && !this[kOtelSpan]) {
     const span = builtinTracer().startSpan(this.method, { kind: 2 }); // Kind 2 = Client
     this[kOtelSpan] = span;
 
     // Build a context with this span for propagation injection,
     // without entering it into the async context
     const spanContext = ContextManager.active().setValue(SPAN_KEY, span);
-    for (const propagator of PROPAGATORS) {
+    for (const propagator of otelState.PROPAGATORS) {
       propagator.inject(spanContext, this, {
         set(carrier, key, value) {
           carrier.setHeader(key, value);

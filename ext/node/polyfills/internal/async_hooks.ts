@@ -3,7 +3,10 @@
 
 // deno-lint-ignore camelcase
 import * as async_wrap from "ext:deno_node/internal_binding/async_wrap.ts";
-import { ERR_ASYNC_CALLBACK } from "ext:deno_node/internal/errors.ts";
+import { core } from "ext:core/mod.js";
+const { ERR_ASYNC_CALLBACK } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 export {
   asyncIdSymbol,
   ownerSymbol,

@@ -4,8 +4,13 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { ERR_CRYPTO_FIPS_FORCED } from "ext:deno_node/internal/errors.ts";
-import { crypto as constants } from "ext:deno_node/internal_binding/constants.ts";
+import { core } from "ext:core/mod.js";
+const { ERR_CRYPTO_FIPS_FORCED } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const { crypto: constants } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import {
   getFipsCrypto,
@@ -91,10 +96,10 @@ import {
   publicDecrypt,
   publicEncrypt,
 } from "ext:deno_node/internal/crypto/cipher.ts";
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import type {
   Cipher,
   CipherCCM,
@@ -164,10 +169,18 @@ import type {
   TransformOptions,
   WritableOptions,
 } from "ext:deno_node/_stream.d.ts";
-import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
-import { crypto as webcrypto } from "ext:deno_crypto/00_crypto.js";
+const { normalizeEncoding } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const { validateString } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const { crypto: webcrypto } = core.loadExtScript(
+  "ext:deno_crypto/00_crypto.js",
+);
 import { deprecate } from "node:util";
 
 const subtle = webcrypto.subtle;

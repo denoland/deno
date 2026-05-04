@@ -5,7 +5,7 @@ import {
   op_get_env_no_permission_check,
   op_preview_entries,
 } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { emitWarning } from "node:process";
 const {
   ArrayIsArray,
@@ -55,30 +55,30 @@ const {
 
 // Mock trace for now
 const trace = () => {};
-import {
+const {
   ERR_CONSOLE_WRITABLE_STREAM,
   ERR_INCOMPATIBLE_OPTION_PAIR,
   ERR_INVALID_ARG_VALUE,
   isStackOverflowError,
-} from "ext:deno_node/internal/errors.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   validateArray,
   validateInteger,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { Buffer } from "node:buffer";
 const { isBuffer } = Buffer;
-import {
+const {
   formatWithOptions,
   inspect,
-} from "ext:deno_node/internal/util/inspect.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/util/inspect.mjs");
+const {
   isMap,
   isMapIterator,
   isSet,
   isSetIterator,
   isTypedArray,
-} from "ext:deno_node/internal/util/types.ts";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 import {
   CHAR_LOWERCASE_B as kTraceBegin,
   CHAR_LOWERCASE_E as kTraceEnd,

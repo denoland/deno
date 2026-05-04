@@ -103,6 +103,7 @@ use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 
 mod console_exporter;
+mod grpc_exporter;
 
 deno_core::extension!(
   deno_telemetry,
@@ -129,7 +130,7 @@ deno_core::extension!(
     op_otel_metric_observation_done,
   ],
   objects = [OtelTracer, OtelMeter, OtelSpan],
-  esm = ["telemetry.ts", "util.ts"],
+  lazy_loaded_js = ["telemetry.ts", "util.ts"],
 );
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -759,8 +760,8 @@ mod hyper_client {
   fn parse_otlp_timeout() -> Duration {
     match std::env::var("OTEL_EXPORTER_OTLP_TIMEOUT") {
       Ok(val) => match val.parse::<u64>() {
-        Ok(millis) => Duration::from_millis(millis),
-        Err(_) => DEFAULT_OTEL_EXPORTER_OTLP_TIMEOUT,
+        Ok(millis) if millis > 0 => Duration::from_millis(millis),
+        _ => DEFAULT_OTEL_EXPORTER_OTLP_TIMEOUT,
       },
       Err(_) => DEFAULT_OTEL_EXPORTER_OTLP_TIMEOUT,
     }
@@ -773,7 +774,9 @@ mod hyper_client {
   }
 
   impl HyperClient {
-    pub fn new(sys: &impl FsRead) -> deno_core::anyhow::Result<Self> {
+    fn build_connector(
+      sys: &impl FsRead,
+    ) -> deno_core::anyhow::Result<Connector> {
       let connector = if let Some(tunnel) = get_tunnel() {
         Connector::Tunnel(tunnel.clone())
       } else if let Ok(addr) = std::env::var("OTEL_DENO_VSOCK") {
@@ -816,7 +819,12 @@ mod hyper_client {
             let cert = sys.fs_read(cert_path)?;
 
             let certs = load_certs(&mut std::io::Cursor::new(cert))?;
-            let key = load_private_keys(&key)?.into_iter().next().unwrap();
+            let key =
+              load_private_keys(&key)?.into_iter().next().ok_or_else(|| {
+                deno_core::anyhow::anyhow!(
+                  "no private key found in OTEL_EXPORTER_OTLP_CLIENT_KEY file"
+                )
+              })?;
 
             TlsKeys::Static(TlsKey(certs, key))
           }
@@ -838,10 +846,65 @@ mod hyper_client {
         Connector::Http(connector)
       };
 
-      Ok(Self {
-        inner: Client::builder(OtelSharedRuntime).build(connector),
+      Ok(connector)
+    }
+
+    pub fn new(sys: &impl FsRead) -> deno_core::anyhow::Result<Self> {
+      let connector = Self::build_connector(sys)?;
+      Ok(Self::from_connector(connector, false))
+    }
+
+    /// Create a client configured for gRPC (HTTP/2 enforced).
+    pub fn new_h2(sys: &impl FsRead) -> deno_core::anyhow::Result<Self> {
+      let connector = Self::build_connector(sys)?;
+      Ok(Self::from_connector(connector, true))
+    }
+
+    fn from_connector(connector: Connector, http2_only: bool) -> Self {
+      let mut builder = Client::builder(OtelSharedRuntime);
+      if http2_only {
+        builder.http2_only(true);
+      }
+      Self {
+        inner: builder.build(connector),
         timeout: parse_otlp_timeout(),
+      }
+    }
+  }
+
+  impl HyperClient {
+    pub fn timeout(&self) -> Duration {
+      self.timeout
+    }
+
+    /// Send a gRPC request, preserving HTTP/2 trailers for grpc-status.
+    /// Returns (response_headers, trailers).
+    pub async fn grpc_request(
+      &self,
+      request: Request<Vec<u8>>,
+    ) -> Result<
+      (hyper::http::response::Parts, Option<hyper::HeaderMap>),
+      Box<dyn std::error::Error + Send + Sync>,
+    > {
+      let (parts, body) = request.into_parts();
+      let request = Request::from_parts(parts, Full::from(body));
+      let result = tokio::time::timeout(self.timeout, async {
+        let response = self.inner.request(request).await?;
+        let (parts, body) = response.into_parts();
+        let collected = http_body_util::Limited::new(body, 1024 * 1024)
+          .collect()
+          .await?;
+        let trailers = collected.trailers().cloned();
+        Ok::<_, Box<dyn std::error::Error + Send + Sync>>((parts, trailers))
       })
+      .await
+      .map_err(|_| -> Box<dyn std::error::Error + Send + Sync> {
+        Box::new(std::io::Error::new(
+          std::io::ErrorKind::TimedOut,
+          format!("OTEL export timed out after {}ms", self.timeout.as_millis()),
+        ))
+      })??;
+      Ok(result)
     }
   }
 
@@ -856,7 +919,10 @@ mod hyper_client {
       let response = tokio::time::timeout(self.timeout, async {
         let response = self.inner.request(request).await?;
         let (parts, body) = response.into_parts();
-        let body = body.collect().await?.to_bytes();
+        let body = http_body_util::Limited::new(body, 1024 * 1024)
+          .collect()
+          .await?
+          .to_bytes();
         Ok::<_, HttpError>(Response::from_parts(parts, body))
       })
       .await
@@ -910,7 +976,6 @@ pub fn init(
 
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
-  // TODO(piscisaureus): enable GRPC support.
   let protocol_var = sys.env_var("OTEL_EXPORTER_OTLP_PROTOCOL");
   let (use_console_exporter, protocol) = match protocol_var.as_deref() {
     Ok("console") => (true, Protocol::HttpBinary),
@@ -918,6 +983,7 @@ pub fn init(
       (false, Protocol::HttpBinary)
     }
     Ok("http/json") => (false, Protocol::HttpJson),
+    Ok("grpc") => (false, Protocol::Grpc),
     Ok(protocol) => {
       return Err(deno_core::anyhow::anyhow!(
         "Env var OTEL_EXPORTER_OTLP_PROTOCOL specifies an unsupported protocol: {}",
@@ -1005,6 +1071,28 @@ pub fn init(
       .build();
 
     let log_exporter = console_exporter::ConsoleLogExporter::new();
+    let log_processor =
+      BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
+    log_processor.set_resource(&resource);
+
+    (span_processor, meter_provider, log_processor)
+  } else if protocol == Protocol::Grpc {
+    let client = hyper_client::HyperClient::new_h2(sys)?;
+
+    let span_exporter = grpc_exporter::GrpcSpanExporter::new(client.clone());
+    let mut span_processor =
+      BatchSpanProcessor::builder(span_exporter, OtelSharedRuntime).build();
+    span_processor.set_resource(&resource);
+
+    let metric_exporter =
+      grpc_exporter::GrpcMetricExporter::new(client.clone(), temporality);
+    let metric_reader = DenoPeriodicReader::new(sys, metric_exporter);
+    let meter_provider = SdkMeterProvider::builder()
+      .with_reader(metric_reader)
+      .with_resource(resource.clone())
+      .build();
+
+    let log_exporter = grpc_exporter::GrpcLogExporter::new(client);
     let log_processor =
       BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
     log_processor.set_resource(&resource);

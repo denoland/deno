@@ -3,8 +3,10 @@
 // This code has been inspired by https://github.com/bevry/domain-browser/commit/8bce7f4a093966ca850da75b024239ad5d0b33c6
 // deno-lint-ignore-file no-process-global
 
-import { primordials } from "ext:core/mod.js";
-import { ERR_UNHANDLED_ERROR } from "ext:deno_node/internal/errors.ts";
+import { core, primordials } from "ext:core/mod.js";
+const { ERR_UNHANDLED_ERROR } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 import { AsyncHook } from "ext:deno_node/internal/async_hooks.ts";
 const {
   ArrayPrototypeIndexOf,

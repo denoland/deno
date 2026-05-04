@@ -1,4 +1,4 @@
-let interval: number | null = null;
+let interval: NodeJS.Timeout | null = null;
 addEventListener("load", () => {
   if (interval) {
     throw new Error("Interval is already set");

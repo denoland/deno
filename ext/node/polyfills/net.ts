@@ -23,6 +23,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core, primordials } from "ext:core/mod.js";
+
 import { BlockList, SocketAddress } from "ext:deno_node/internal/blocklist.mjs";
 
 import { EventEmitter } from "node:events";
@@ -40,7 +42,7 @@ import {
   newAsyncId,
   ownerSymbol,
 } from "ext:deno_node/internal/async_hooks.ts";
-import {
+const {
   AbortError,
   ERR_INVALID_ADDRESS_FAMILY,
   ERR_INVALID_ARG_TYPE,
@@ -59,9 +61,8 @@ import {
   genericNodeError,
   NodeAggregateError,
   uvExceptionWithHostPort,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
 import {
   kAfterAsyncWrite,
   kBuffer,
@@ -83,15 +84,6 @@ import {
 import { Buffer } from "node:buffer";
 import type { LookupOneOptions } from "ext:deno_node/internal/dns/utils.ts";
 import {
-  validateAbortSignal,
-  validateBoolean,
-  validateFunction,
-  validateInt32,
-  validateNumber,
-  validatePort,
-  validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import {
   constants as TCPConstants,
   setupListenWrap,
   TCP,
@@ -105,13 +97,13 @@ import {
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import assert from "node:assert";
-import { isWindows } from "ext:deno_node/_util/os.ts";
+const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
-import {
+const {
   codeMap,
   UV_ECANCELED,
   UV_ETIMEDOUT,
-} from "ext:deno_node/internal_binding/uv.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
@@ -122,7 +114,18 @@ import { channel } from "node:diagnostics_channel";
 // inside `_listenInCluster()`, which is invoked after cluster.ts has
 // finished evaluating, so the live bindings are fully populated by then.
 import cluster from "node:cluster";
-import { core, primordials } from "ext:core/mod.js";
+const { isUint8Array } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const {
+  validateAbortSignal,
+  validateBoolean,
+  validateFunction,
+  validateInt32,
+  validateNumber,
+  validatePort,
+  validateString,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 const {
   ArrayPrototypeIncludes,
@@ -1863,10 +1866,25 @@ Socket.prototype._destroy = function (exception, cb) {
 
   if (this._server) {
     debug("has server");
-    this._server._connections--;
+    const server = this._server;
+    server._connections--;
 
-    if (this._server._emitCloseIfDrained) {
-      this._server._emitCloseIfDrained();
+    if (server._emitCloseIfDrained) {
+      if (
+        !server._handle &&
+        server._connections === 0 &&
+        this._httpMessageDetached === true &&
+        !this._httpMessage
+      ) {
+        defaultTriggerAsyncIdScope(
+          server[asyncIdSymbol],
+          nextTick,
+          _emitCloseNT,
+          server,
+        );
+      } else {
+        server._emitCloseIfDrained();
+      }
     }
   }
 };
@@ -2094,6 +2112,12 @@ interface ServerOptions {
    * Default: false
    */
   pauseOnConnect?: boolean | undefined;
+  /**
+   * If set to true, it disables the use of Nagle's algorithm immediately
+   * after a new incoming connection is received.
+   * Default: false
+   */
+  noDelay?: boolean | undefined;
 }
 
 function _isServerSocketOptions(
@@ -2280,23 +2304,25 @@ export function _createServerHandle(
     debug("bind to", address || "any");
 
     if (!address) {
-      // TODO(@bartlomieju): differs from Node which tries to bind to IPv6 first when no
-      // address is provided.
+      // Match Node's behavior: when no address is provided, prefer the
+      // IPv6 wildcard (which accepts IPv4 connections via dual-stack) and
+      // fall back to IPv4 if the IPv6 bind fails.
       //
-      // Forcing IPv4 as a workaround for Deno not aligning with Node on
-      // implicit binding on Windows.
+      // Windows is kept on the IPv4-only path because the dual-stack
+      // socket option doesn't reliably accept IPv4 connections there in
+      // our environment (verified via CI: server listening on `::` rejects
+      // `127.0.0.1` clients with ECONNREFUSED).
       //
       // REF: https://github.com/denoland/deno/issues/10762
+      if (isWindows) {
+        return _createServerHandle(DEFAULT_IPV4_ADDR, port, 4, null, flags);
+      }
 
-      // Try binding to ipv6 first
-      // err = (handle as TCP).bind6(DEFAULT_IPV6_ADDR, port ?? 0, flags ?? 0);
-
-      // if (err) {
-      //   handle.close();
-
-      // Fallback to ipv4
-      return _createServerHandle(DEFAULT_IPV4_ADDR, port, 4, null, flags);
-      // }
+      err = (handle as TCP).bind6(DEFAULT_IPV6_ADDR, port ?? 0, flags ?? 0);
+      if (err) {
+        handle.close();
+        return _createServerHandle(DEFAULT_IPV4_ADDR, port, 4, null, flags);
+      }
     } else if (addressType === 6) {
       err = (handle as TCP).bind6(address, port ?? 0, flags ?? 0);
     } else if (isTCP) {
@@ -2393,25 +2419,29 @@ function _setupListenHandle(
 
     let rval = null;
 
-    // Try to bind to the unspecified IPv6 address, see if IPv6 is available
+    // Try to bind to the unspecified IPv6 address, see if IPv6 is available.
+    // A wildcard IPv6 socket also accepts IPv4 traffic via dual-stack,
+    // matching Node's default. Windows is kept on the IPv4-only path because
+    // the dual-stack socket option doesn't reliably accept IPv4 connections
+    // there in our environment.
+    //
+    // REF: https://github.com/denoland/deno/issues/10762
     if (!address && typeof fd !== "number") {
-      // TODO(@bartlomieju): differs from Node which tries to bind to IPv6 first
-      // when no address is provided.
-      //
-      // Forcing IPv4 as a workaround for Deno not aligning with Node on
-      // implicit binding on Windows.
-      //
-      // REF: https://github.com/denoland/deno/issues/10762
-      // rval = _createServerHandle(DEFAULT_IPV6_ADDR, port, 6, fd, flags);
+      if (isWindows) {
+        address = DEFAULT_IPV4_ADDR;
+        addressType = 4;
+      } else {
+        rval = _createServerHandle(DEFAULT_IPV6_ADDR, port, 6, fd, flags);
 
-      // if (typeof rval === "number") {
-      //   rval = null;
-      address = DEFAULT_IPV4_ADDR;
-      addressType = 4;
-      // } else {
-      //   address = DEFAULT_IPV6_ADDR;
-      //   addressType = 6;
-      // }
+        if (typeof rval === "number") {
+          rval = null;
+          address = DEFAULT_IPV4_ADDR;
+          addressType = 4;
+        } else {
+          address = DEFAULT_IPV6_ADDR;
+          addressType = 6;
+        }
+      }
     }
 
     if (rval === null) {
@@ -2512,6 +2542,7 @@ export function Server(
   this[asyncIdSymbol] = -1;
   this.allowHalfOpen = false;
   this.pauseOnConnect = false;
+  this.noDelay = false;
   this._handle = null;
   this._connections = 0;
   this._usingWorkers = false;
@@ -2526,6 +2557,7 @@ export function Server(
   } else if (_isServerSocketOptions(options)) {
     this.allowHalfOpen = options?.allowHalfOpen || false;
     this.pauseOnConnect = !!options?.pauseOnConnect;
+    this.noDelay = Boolean(options?.noDelay);
 
     if (options?.blockList) {
       this.blockList = options.blockList;
@@ -2908,7 +2940,10 @@ Server.prototype._createSocket = function (clientHandle) {
     writable: true,
   });
 
-  // TODO(@bartlomieju): implement noDelay and setKeepAlive
+  if (this.noDelay && clientHandle.setNoDelay) {
+    socket[kSetNoDelay] = true;
+    clientHandle.setNoDelay(true);
+  }
 
   socket.server = this;
   socket._server = this;

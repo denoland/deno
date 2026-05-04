@@ -29,7 +29,6 @@ use node_resolver::errors::PackageJsonLoadError;
 
 extern crate libz_sys as zlib;
 
-mod global;
 pub mod ops;
 
 use deno_dotenv::parse_env_content_hook;
@@ -43,10 +42,6 @@ pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
-
-pub use crate::global::GlobalsStorage;
-use crate::global::global_object_middleware;
-use crate::global::global_template_middleware;
 
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
@@ -273,6 +268,15 @@ deno_core::extension!(deno_node,
     ops::vm::op_vm_compile_function,
     ops::vm::op_vm_script_get_source_map_url,
     ops::vm::op_vm_script_create_cached_data,
+    ops::vm::op_vm_module_create_source_text_module,
+    ops::vm::op_vm_module_link,
+    ops::vm::op_vm_module_instantiate,
+    ops::vm::op_vm_module_evaluate,
+    ops::vm::op_vm_module_get_status,
+    ops::vm::op_vm_module_get_namespace,
+    ops::vm::op_vm_module_get_exception,
+    ops::vm::op_vm_module_get_module_requests,
+    ops::vm::op_vm_module_get_identifier,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
     ops::idna::op_node_idna_punycode_to_ascii,
@@ -283,6 +287,12 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_crc32_string,
     ops::handle_wrap::op_node_new_async_id,
     ops::http2::op_http2_callbacks,
+    // Keep the HTTP/2 error-string op wired so `internal/test/binding`
+    // can mirror Node's `internalBinding('http2').nghttp2ErrorString()`
+    // in node_compat tests; the JS side also exposes `respond` /
+    // `pushPromise` shims on `Http2Stream` so tests can monkey-patch the
+    // prototype to inject NGHTTP2 error codes.
+    ops::http2::op_http2_error_string,
     ops::http2::op_http2_http_state,
     ops::os::op_node_os_get_priority,
     ops::os::op_node_os_set_priority,
@@ -343,6 +353,7 @@ deno_core::extension!(deno_node,
     ops::node_cli_parser::op_node_translate_cli_args,
     ops::shell::op_node_parse_shell_args,
     ops::tls::op_get_root_certificates,
+    ops::tls::op_node_get_ca_certificates<TSys>,
     ops::tls::op_set_default_ca_certificates,
     ops::tls::op_tls_peer_certificate,
     ops::tls::op_tls_canonicalize_ipv4_address,
@@ -395,7 +406,6 @@ deno_core::extension!(deno_node,
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
     dir "polyfills",
-    "00_globals.js",
     "02_init.js",
     "_events.mjs",
     "internal/fs/promises.ts",
@@ -419,10 +429,7 @@ deno_core::extension!(deno_node,
     "_process/streams.mjs",
     "_readline.mjs",
     "_util/_util_callbackify.js",
-    "_util/os.ts",
-    "_utils.ts",
     "_zlib_binding.mjs",
-    "internal_binding/_libuv_winerror.ts",
     "internal_binding/_listen.ts",
     "internal_binding/_node.ts",
     "internal_binding/_timingSafeEqual.ts",
@@ -431,9 +438,9 @@ deno_core::extension!(deno_node,
     "internal_binding/async_wrap.ts",
     "internal_binding/buffer.ts",
     "internal_binding/cares_wrap.ts",
-    "internal_binding/constants.ts",
     "internal_binding/crypto.ts",
     "internal_binding/handle_wrap.ts",
+    "internal_binding/http2.ts",
     "internal_binding/http_parser.ts",
     "internal_binding/mod.ts",
     "internal_binding/node_file.ts",
@@ -445,10 +452,8 @@ deno_core::extension!(deno_node,
     "internal_binding/tcp_wrap.ts",
     "internal_binding/tls_wrap.ts",
     "internal_binding/tty_wrap.ts",
-    "internal_binding/types.ts",
     "internal_binding/udp_wrap.ts",
     "internal_binding/util.ts",
-    "internal_binding/uv.ts",
     "internal/assert/assertion_error.js",
     "internal/assert/calltracker.js",
     "internal/assert/myers_diff.js",
@@ -468,13 +473,11 @@ deno_core::extension!(deno_node,
     "internal/cluster/worker.ts",
     "internal/console/constructor.mjs",
     "internal/constants.ts",
-    "internal/crypto/_keys.ts",
     "internal/crypto/_randomBytes.ts",
     "internal/crypto/_randomFill.mjs",
     "internal/crypto/_randomInt.ts",
     "internal/crypto/certificate.ts",
     "internal/crypto/cipher.ts",
-    "internal/crypto/constants.ts",
     "internal/crypto/diffiehellman.ts",
     "internal/crypto/hash.ts",
     "internal/crypto/hkdf.ts",
@@ -486,13 +489,11 @@ deno_core::extension!(deno_node,
     "internal/crypto/sig.ts",
     "internal/crypto/util.ts",
     "internal/crypto/x509.ts",
+    "internal/deps/undici/undici.js",
     "internal/dgram.ts",
     "internal/dns/promises.ts",
     "internal/dns/utils.ts",
     "internal/dtrace.ts",
-    "internal/error_codes.ts",
-    "internal/errors.ts",
-    "internal/errors/error_source.ts",
     "internal/event_target.mjs",
     "internal/events/abort_listener.mjs",
     "internal/fs/stat_utils.ts",
@@ -500,7 +501,6 @@ deno_core::extension!(deno_node,
     "internal/fs/sync_write_stream.js",
     "internal/fs/utils.mjs",
     "internal/fs/handle.ts",
-    "internal/hide_stack_frames.ts",
     "internal/http.ts",
     "internal/http2/constants.ts",
     "internal/http2/core.ts",
@@ -510,9 +510,8 @@ deno_core::extension!(deno_node,
     "internal/js_stream_socket.js",
     "internal/mime.ts",
     "internal/net.ts",
-    "internal/normalize_encoding.ts",
     "internal/options.ts",
-    "internal/primordials.mjs",
+    "internal/priority_queue.ts",
     "internal/process/per_thread.mjs",
     "internal/process/report.ts",
     "internal/process/warning.ts",
@@ -543,15 +542,11 @@ deno_core::extension!(deno_node,
     "internal/timers.mjs",
     "internal/tty.js",
     "internal/url.ts",
-    "internal/util.mjs",
     "internal/util/colors.ts",
     "internal/util/comparisons.ts",
     "internal/util/debuglog.ts",
-    "internal/util/inspect.mjs",
     "internal/util/parse_args/parse_args.js",
     "internal/util/parse_args/utils.js",
-    "internal/util/types.ts",
-    "internal/validators.mjs",
     "internal/webstreams/adapters.js",
     "path/_constants.ts",
     "path/_interface.ts",
@@ -636,6 +631,27 @@ deno_core::extension!(deno_node,
     dir "polyfills",
     "deps/minimatch.js",
   ],
+  lazy_loaded_js = [
+    dir "polyfills",
+    "internal/validators.mjs",
+    "internal/normalize_encoding.ts",
+    "internal/error_codes.ts",
+    "internal/hide_stack_frames.ts",
+    "internal/util/types.ts",
+    "internal/crypto/_keys.ts",
+    "internal/crypto/constants.ts",
+    "internal_binding/types.ts",
+    "_util/os.ts",
+    "_utils.ts",
+    "internal/primordials.mjs",
+    "internal_binding/constants.ts",
+    "internal_binding/_libuv_winerror.ts",
+    "internal_binding/uv.ts",
+    "internal/util/inspect.mjs",
+    "internal/errors.ts",
+    "internal/errors/error_source.ts",
+    "internal/util.mjs",
+  ],
   options = {
     maybe_init: Option<NodeExtInitServices<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>>,
     fs: deno_fs::FileSystemRc,
@@ -650,9 +666,20 @@ deno_core::extension!(deno_node,
       state.put(init.pkg_json_resolver.clone());
     }
 
+    // Always seed `NodeTlsState` so the shared client session cache is
+    // available for TLS resumption from the very first `tls.connect()`.
+    // Without this, every connection built its ClientConfig with an empty
+    // per-config session cache and `isSessionReused()` always returned false.
+    state.put(crate::ops::tls::NodeTlsState {
+      custom_ca_certs: None,
+      client_session_store: std::sync::Arc::new(
+        deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
+      ),
+      server_ticketer: None,
+      cached_default_verifier: None,
+      cached_no_client_auth: None,
+    });
   },
-  global_template_middleware = global_template_middleware,
-  global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
     let external_references = [
       vm::QUERY_MAP_FN.with(|query| {
@@ -727,41 +754,6 @@ deno_core::extension!(deno_node,
         }
       }),
 
-      global::GETTER_MAP_FN.with(|getter| {
-        ExternalReference {
-          named_getter: *getter,
-        }
-      }),
-      global::SETTER_MAP_FN.with(|setter| {
-        ExternalReference {
-          named_setter: *setter,
-        }
-      }),
-      global::QUERY_MAP_FN.with(|query| {
-        ExternalReference {
-          named_query: *query,
-        }
-      }),
-      global::DELETER_MAP_FN.with(|deleter| {
-        ExternalReference {
-          named_deleter: *deleter,
-        }
-      }),
-      global::ENUMERATOR_MAP_FN.with(|enumerator| {
-        ExternalReference {
-          enumerator: *enumerator,
-        }
-      }),
-      global::DEFINER_MAP_FN.with(|definer| {
-        ExternalReference {
-          named_definer: *definer,
-        }
-      }),
-      global::DESCRIPTOR_MAP_FN.with(|descriptor| {
-        ExternalReference {
-          named_getter: *descriptor,
-        }
-      }),
     ];
 
     ext.external_references.to_mut().extend(external_references);
@@ -770,7 +762,10 @@ deno_core::extension!(deno_node,
 
 #[sys_traits::auto_impl]
 pub trait ExtNodeSys:
-  node_resolver::NodeResolverSys + sys_traits::EnvCurrentDir + Clone
+  node_resolver::NodeResolverSys
+  + sys_traits::EnvCurrentDir
+  + sys_traits::EnvVar
+  + Clone
 {
 }
 

@@ -1,8 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-fmt-ignore-file
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { primordials } = globalThis.__bootstrap;
 const { ObjectFreeze } = primordials;
-import { op_node_build_os, op_node_fs_constants } from "ext:core/ops";
+const { core } = globalThis.__bootstrap;
+const { op_node_build_os, op_node_fs_constants } = core.ops;
 
 let os: {
   dlopen: {
@@ -638,11 +641,9 @@ if (buildOs === "darwin") {
 
 ObjectFreeze(os.signals);
 
-export { os };
+const fs = op_node_fs_constants();
 
-export const fs = op_node_fs_constants();
-
-export const crypto = {
+const crypto = {
   OPENSSL_VERSION_NUMBER: 269488319,
   SSL_OP_ALL: 2147485780,
   SSL_OP_ALLOW_NO_DHE_KEX: 1024,
@@ -718,7 +719,7 @@ export const crypto = {
   POINT_CONVERSION_UNCOMPRESSED: 4,
   POINT_CONVERSION_HYBRID: 6,
 } as const;
-export const zlib = {
+const zlib = {
   Z_NO_FLUSH: 0,
   Z_PARTIAL_FLUSH: 1,
   Z_SYNC_FLUSH: 2,
@@ -865,7 +866,7 @@ export const zlib = {
   ZSTD_btultra: 8,
   ZSTD_btultra2: 9,
 } as const;
-export const trace = {
+const trace = {
   TRACE_EVENT_PHASE_BEGIN: 66,
   TRACE_EVENT_PHASE_END: 69,
   TRACE_EVENT_PHASE_COMPLETE: 88,
@@ -893,3 +894,6 @@ export const trace = {
   TRACE_EVENT_PHASE_LEAVE_CONTEXT: 41,
   TRACE_EVENT_PHASE_LINK_IDS: 61,
 } as const;
+
+return { os, fs, crypto, zlib, trace };
+})()

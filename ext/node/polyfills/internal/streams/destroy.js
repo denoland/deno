@@ -2,8 +2,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import process from "node:process";
-import { primordials } from "ext:core/mod.js";
-import imported1 from "ext:deno_node/internal/errors.ts";
+import { core, primordials } from "ext:core/mod.js";
+const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 import {
   isDestroyed,

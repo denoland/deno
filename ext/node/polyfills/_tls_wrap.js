@@ -7,11 +7,11 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-import {
+const {
   ArrayIsArray,
   ObjectAssign,
   StringPrototypeReplace,
-} from "ext:deno_node/internal/primordials.mjs";
+} = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
 import assert from "ext:deno_node/internal/assert.mjs";
 import * as net from "node:net";
 import {
@@ -21,32 +21,36 @@ import {
 import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
 import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
 import { Buffer } from "node:buffer";
-import {
+const {
   connResetException,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_TLS_CERT_ALTNAME_INVALID,
   ERR_TLS_REQUIRED_SERVER_NAME,
-} from "ext:deno_node/internal/errors.ts";
+  ERR_TLS_SNI_FROM_SERVER,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import {
   constants as TCPConstants,
   TCP,
 } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import { kMaybeDestroy } from "ext:deno_node/internal/stream_base_commons.ts";
+import { kReinitializeHandle } from "ext:deno_node/internal/net.ts";
 import {
   constants as PipeConstants,
   Pipe,
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import { nextTick } from "ext:deno_node/_next_tick.ts";
-import {
+const {
   validateFunction,
   validateInt32,
   validateNumber,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 import { op_tls_canonicalize_ipv4_address } from "ext:core/ops";
 import tlsWrap from "ext:deno_node/internal_binding/tls_wrap.ts";
 import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
@@ -121,6 +125,13 @@ function buildPeerLegacyCertificate(handle) {
       const issuer = new X509Certificate(chain[i]).toLegacyObject();
       current.issuerCertificate = issuer;
       current = issuer;
+    }
+    // Self-signed root: issuerCertificate points to itself (matches Node.js)
+    if (
+      current.subject && current.issuer &&
+      JSON.stringify(current.subject) === JSON.stringify(current.issuer)
+    ) {
+      current.issuerCertificate = current;
     }
   }
 
@@ -277,6 +288,56 @@ function TLSSocket(socket, opts) {
 Object.setPrototypeOf(TLSSocket.prototype, net.Socket.prototype);
 Object.setPrototypeOf(TLSSocket, net.Socket);
 
+// Override kReinitializeHandle so that Happy Eyeballs (autoSelectFamily)
+// re-creates the TLSWrap when falling back to a different address.
+// The base Socket version replaces _handle with a raw TCP handle, which
+// doesn't have TLS methods like start(). We need to re-wrap it.
+TLSSocket.prototype[kReinitializeHandle] = function (handle) {
+  const oldHandle = this._handle;
+  // Save callbacks from the old TLSWrap that were set up by _init() and
+  // _initSocketHandle(). These need to be restored on the new TLSWrap.
+  const savedOnread = oldHandle?.onread;
+  const savedOnhandshakedone = oldHandle?.onhandshakedone;
+  const savedOnhandshakestart = oldHandle?.onhandshakestart;
+  const savedOnerror = oldHandle?.onerror;
+
+  if (oldHandle) {
+    oldHandle.close();
+  }
+
+  // Re-wrap the new TCP handle with a TLSWrap. This creates the
+  // rustls config, attaches to the TCP handle, and sets up read
+  // interception + proxy methods (connect, bind, etc.).
+  const tlsHandle = this._wrapHandle(null, handle);
+
+  this._handle = tlsHandle;
+  this._handle[ownerSymbol] = this;
+  this.ssl = this._handle;
+  this[kRes] = tlsHandle;
+
+  // Restore callbacks on the new TLSWrap.
+  if (savedOnread) this._handle.onread = savedOnread;
+  if (savedOnhandshakedone) this._handle.onhandshakedone = savedOnhandshakedone;
+  if (savedOnhandshakestart) {
+    this._handle.onhandshakestart = savedOnhandshakestart;
+  }
+  if (savedOnerror) this._handle.onerror = savedOnerror;
+
+  // Re-apply verify mode and ALPN from TLS options.
+  const options = this._tlsOptions;
+  const requestCert = !!options.requestCert || !options.isServer;
+  const rejectUnauthorized = !!options.rejectUnauthorized;
+  if (requestCert || rejectUnauthorized) {
+    this._handle.setVerifyMode(requestCert, rejectUnauthorized);
+  }
+  if (options.ALPNProtocols) {
+    this._handle.setAlpnProtocols(options.ALPNProtocols);
+  }
+
+  this._undestroy();
+  this._sockname = undefined;
+};
+
 tlsWrap.TLSWrap.prototype.close = function close(cb) {
   // Signal to Rust that this TLSWrap is being closed, so it won't
   // send buffered application data after a failed identity check.
@@ -291,6 +352,7 @@ tlsWrap.TLSWrap.prototype.close = function close(cb) {
   // deno-lint-ignore no-this-alias
   const self = this;
   const done = () => {
+    self.cancelWrite();
     if (ssl) {
       ssl.destroySsl();
     }
@@ -599,7 +661,10 @@ TLSSocket.prototype._finishInit = function () {
     this._handle.getAlpnNegotiatedProtocol(alpnOut);
     this.alpnProtocol = alpnOut.alpnProtocol || false;
     if (this.servername === null) {
-      this.servername = this._handle.getServername?.() ?? null;
+      const sni = this._handle.getServername?.();
+      this.servername = (sni !== undefined && sni !== "")
+        ? sni
+        : (this._tlsOptions?.servername ?? null);
     }
   } catch (_e) {
     // getAlpnNegotiatedProtocol/getServername may not be available
@@ -682,10 +747,10 @@ TLSSocket.prototype._start = function () {
 
 TLSSocket.prototype.setServername = function (name) {
   if (typeof name !== "string") {
-    throw new TypeError("Server name must be a string");
+    throw new ERR_INVALID_ARG_TYPE("name", "string", name);
   }
   if (this._tlsOptions?.isServer) {
-    throw new Error("Cannot set servername on a server socket");
+    throw new ERR_TLS_SNI_FROM_SERVER();
   }
   this._handle?.setServername(name);
 };

@@ -15,6 +15,7 @@
 /// <reference lib="deno.crypto" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.broadcast_channel" />
+/// <reference lib="node" />
 
 /** @category Wasm */
 declare namespace WebAssembly {
@@ -353,7 +354,7 @@ declare namespace WebAssembly {
 }
 
 /** Sets a timer which executes a function once after the delay (in milliseconds) elapses. Returns
- * an id which may be used to cancel the timeout.
+ * a timeout object which may be used to cancel the timeout.
  *
  * ```ts
  * setTimeout(() => { console.log('hello'); }, 500);
@@ -361,11 +362,17 @@ declare namespace WebAssembly {
  *
  * @category Platform
  */
+declare function setTimeout<TArgs extends any[]>(
+  cb: (...args: TArgs) => void,
+  delay?: number,
+  ...args: TArgs
+): NodeJS.Timeout;
+/** @category Platform */
 declare function setTimeout(
   cb: string | ((...args: any[]) => void),
   delay?: number,
   ...args: any[]
-): number;
+): NodeJS.Timeout;
 
 /** Repeatedly calls a function , with a fixed time delay between each call.
  *
@@ -376,11 +383,17 @@ declare function setTimeout(
  *
  * @category Platform
  */
+declare function setInterval<TArgs extends any[]>(
+  cb: (...args: TArgs) => void,
+  delay?: number,
+  ...args: TArgs
+): NodeJS.Timeout;
+/** @category Platform */
 declare function setInterval(
   cb: string | ((...args: any[]) => void),
   delay?: number,
   ...args: any[]
-): number;
+): NodeJS.Timeout;
 
 /** Cancels a timed, repeating action which was previously started by a call
  * to `setInterval()`
@@ -393,7 +406,9 @@ declare function setInterval(
  *
  * @category Platform
  */
-declare function clearInterval(id?: number): void;
+declare function clearInterval(
+  id?: NodeJS.Timeout | number | undefined,
+): void;
 
 /** Cancels a scheduled action initiated by `setTimeout()`
  *
@@ -405,7 +420,7 @@ declare function clearInterval(id?: number): void;
  *
  * @category Platform
  */
-declare function clearTimeout(id?: number): void;
+declare function clearTimeout(id?: NodeJS.Timeout | number | undefined): void;
 
 /** @category Platform */
 interface VoidFunction {

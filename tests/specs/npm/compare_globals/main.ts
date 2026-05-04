@@ -2,7 +2,6 @@
 
 import * as globals from "npm:@denotest/globals";
 console.log(globals.global === globals.globalThis);
-// @ts-expect-error even though these are the same object, they have different types
 console.log(globals.globalThis === globalThis);
 console.log(globals.process.execArgv);
 console.log("process equals process", process === globals.process);
@@ -23,7 +22,6 @@ const controller = new AbortController();
 controller.abort("reason"); // in the NodeJS declaration it doesn't have a reason
 
 // Some globals are not the same between Node and Deno.
-// @ts-expect-error incompatible types between Node and Deno
 console.log("setTimeout 1", globalThis.setTimeout === globals.getSetTimeout());
 
 // Super edge case where some Node code deletes a global where the

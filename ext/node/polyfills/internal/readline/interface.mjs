@@ -26,23 +26,17 @@
 
 import { op_get_env_no_permission_check } from "ext:core/ops";
 
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_OUT_OF_RANGE,
   ERR_USE_AFTER_CLOSE,
-} from "ext:deno_node/internal/errors.ts";
-import {
-  validateAbortSignal,
-  validateArray,
-  validateString,
-  validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   //   inspect,
   getStringWidth,
   stripVTControlCharacters,
-} from "ext:deno_node/internal/util/inspect.mjs";
+} = core.loadExtScript("ext:deno_node/internal/util/inspect.mjs");
 import EventEmitter from "node:events";
 import { kFirstEventParam } from "ext:deno_node/_events.mjs";
 import { emitKeypressEvents } from "ext:deno_node/internal/readline/emitKeypressEvents.mjs";
@@ -93,7 +87,13 @@ import {
   kWordRight,
   kWriteToOutput,
 } from "ext:deno_node/internal/readline/symbols.mjs";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+const {
+  validateAbortSignal,
+  validateArray,
+  validateString,
+  validateUint32,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 const {
   ArrayPrototypePush,

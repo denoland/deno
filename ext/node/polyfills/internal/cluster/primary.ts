@@ -9,12 +9,12 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { EventEmitter } from "node:events";
 import { fork as childProcessFork } from "node:child_process";
 import * as path from "node:path";
 import process from "node:process";
-import { isWindows } from "ext:deno_node/_util/os.ts";
+const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 
 import { Worker } from "ext:deno_node/internal/cluster/worker.ts";
 import { internal, sendHelper } from "ext:deno_node/internal/cluster/utils.ts";

@@ -6,9 +6,11 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { EventEmitter } from "node:events";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+const { kEmptyObject } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 
 const { FunctionPrototypeCall, ObjectSetPrototypeOf, ReflectApply } =
   primordials;

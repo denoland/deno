@@ -4,7 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
 const {
   ArrayPrototypeIncludes,
@@ -35,42 +35,46 @@ import {
   op_node_key_type,
 } from "ext:core/ops";
 
-import {
+const {
   cryptoKeyExportNodeKeyMaterial,
   importCryptoKeySync,
-} from "ext:deno_crypto/00_crypto.js";
+} = core.loadExtScript("ext:deno_crypto/00_crypto.js");
 
-import { kHandle } from "ext:deno_node/internal/crypto/constants.ts";
+const { kHandle } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/constants.ts",
+);
 import { isStringOrBuffer } from "ext:deno_node/internal/crypto/cipher.ts";
-import {
+const {
   ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS,
   ERR_CRYPTO_INVALID_JWK,
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
-} from "ext:deno_node/internal/errors.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import type {
   KeyFormat,
   PrivateKeyInput,
   PublicKeyInput,
 } from "ext:deno_node/internal/crypto/types.ts";
 import { Buffer } from "node:buffer";
-import {
+const {
   isAnyArrayBuffer,
   isArrayBufferView,
-} from "ext:deno_node/internal/util/types.ts";
-import { hideStackFrames } from "ext:deno_node/internal/errors.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
+const { hideStackFrames } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const {
   isCryptoKey,
   isKeyObject,
   kKeyType,
-} from "ext:deno_node/internal/crypto/_keys.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/crypto/_keys.ts");
+const {
   validateObject,
   validateOneOf,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { BufferEncoding } from "ext:deno_node/_global.d.ts";
 
 export const getArrayBufferOrView = hideStackFrames(
@@ -182,11 +186,6 @@ export const kConsumePublic = KeyHandleContext.kConsumePublic;
 export const kConsumePrivate = KeyHandleContext.kConsumePrivate;
 export const kCreatePublic = KeyHandleContext.kCreatePublic;
 export const kCreatePrivate = KeyHandleContext.kCreatePrivate;
-
-function isJwk(obj: unknown): obj is { kty: unknown } {
-  // @ts-ignore this is fine
-  return typeof obj === "object" && obj != null && obj.kty !== undefined;
-}
 
 export type KeyObjectHandle = { ___keyObjectHandle: true };
 
@@ -410,7 +409,11 @@ export function prepareAsymmetricKey(
       handle: getKeyObjectHandle(key, ctx),
     };
   } else if (isCryptoKey(key)) {
-    notImplemented("using CryptoKey as input");
+    return {
+      // @ts-ignore __proto__ is magic
+      __proto__: null,
+      handle: KeyObject.from(key)[kHandle],
+    };
   } else if (isStringOrBuffer(key)) {
     // Expect PEM by default, mostly for backward compatibility.
     return {
@@ -430,8 +433,18 @@ export function prepareAsymmetricKey(
         handle: getKeyObjectHandle(data, ctx),
       };
     } else if (isCryptoKey(data)) {
-      notImplemented("using CryptoKey as input");
-    } else if (isJwk(data) && format === "jwk") {
+      return {
+        // @ts-ignore __proto__ is magic
+        __proto__: null,
+        handle: KeyObject.from(data)[kHandle],
+      };
+    } else if (format === "jwk") {
+      // For format: 'jwk' the `key.key` property must be an object;
+      // strings, primitives and functions are rejected outright (matches
+      // Node.js's ERR_INVALID_ARG_TYPE behaviour).
+      if (typeof data !== "object" || data === null) {
+        throw new ERR_INVALID_ARG_TYPE("key.key", "object", data);
+      }
       return {
         // @ts-ignore __proto__ is magic
         __proto__: null,
@@ -666,6 +679,22 @@ function parsePrivateKeyEncoding(
   return parseKeyEncoding(enc, keyType, false, objName);
 }
 
+// Node.js / OpenSSL 3 surfaces decoding failures as errors with a `library`
+// field of "DECODER routines" and a message starting with the OSSL error
+// code "error:1E08010C:DECODER routines::unsupported". Decorate ops errors
+// thrown by the underlying parsers so user-visible behaviour matches Node.
+function decorateOsslDecoderError(err: unknown): unknown {
+  // deno-lint-ignore no-explicit-any
+  const e = err as any;
+  if (
+    e && typeof e.message === "string" &&
+    e.message.startsWith("error:1E08010C:DECODER routines::unsupported")
+  ) {
+    if (e.library === undefined) e.library = "DECODER routines";
+  }
+  return err;
+}
+
 export function createPrivateKey(
   key: PrivateKeyInput | string | Buffer | JsonWebKeyInput,
 ): PrivateKeyObject {
@@ -678,12 +707,17 @@ export function createPrivateKey(
       throw new TypeError(`Can not create private key from ${type} key`);
     }
   } else {
-    const handle = op_node_create_private_key(
-      res.data,
-      res.format,
-      res.type ?? "",
-      res.passphrase,
-    );
+    let handle;
+    try {
+      handle = op_node_create_private_key(
+        res.data,
+        res.format,
+        res.type ?? "",
+        res.passphrase,
+      );
+    } catch (err) {
+      throw decorateOsslDecoderError(err);
+    }
     return new PrivateKeyObject(handle);
   }
 }
@@ -706,11 +740,17 @@ export function createPublicKey(
       throw new TypeError(`Can not create private key from ${type} key`);
     }
   } else {
-    const handle = op_node_create_public_key(
-      res.data,
-      res.format,
-      res.type ?? "",
-    );
+    let handle;
+    try {
+      handle = op_node_create_public_key(
+        res.data,
+        res.format,
+        res.type ?? "",
+        res.passphrase,
+      );
+    } catch (err) {
+      throw decorateOsslDecoderError(err);
+    }
     return new PublicKeyObject(handle);
   }
 }
@@ -745,7 +785,10 @@ export function prepareSecretKey(
       }
       return key[kHandle];
     } else if (isCryptoKey(key)) {
-      notImplemented("using CryptoKey as input");
+      if (key.type !== "secret") {
+        throw new ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE(key.type, "secret");
+      }
+      return KeyObject.from(key)[kHandle];
     }
   }
   if (
@@ -936,7 +979,7 @@ export class PrivateKeyObject extends AsymmetricKeyObject {
     }
 
     const pkcs8Data = Buffer.from(
-      op_node_export_private_key_der(this[kHandle], "pkcs8"),
+      op_node_export_private_key_der(this[kHandle], "pkcs8", null, null),
     );
     return importCryptoKeySync(
       "pkcs8",
@@ -949,7 +992,16 @@ export class PrivateKeyObject extends AsymmetricKeyObject {
 
   export(options: JwkKeyExportOptions | KeyExportOptions<KeyFormat>) {
     if (options && options.format === "jwk") {
-      return op_node_export_private_key_jwk(this[kHandle]);
+      if (
+        (options as { cipher?: unknown }).cipher !== undefined ||
+        (options as { passphrase?: unknown }).passphrase !== undefined
+      ) {
+        throw new ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS(
+          "jwk",
+          "does not support encryption",
+        );
+      }
+      return { ...op_node_export_private_key_jwk(this[kHandle]) };
     }
     const {
       format,
@@ -966,7 +1018,14 @@ export class PrivateKeyObject extends AsymmetricKeyObject {
         passphrase != null ? passphrase.toString() : null,
       );
     } else {
-      return Buffer.from(op_node_export_private_key_der(this[kHandle], type));
+      return Buffer.from(
+        op_node_export_private_key_der(
+          this[kHandle],
+          type,
+          cipher ?? null,
+          passphrase != null ? passphrase.toString() : null,
+        ),
+      );
     }
   }
 }
@@ -1004,7 +1063,7 @@ export class PublicKeyObject extends AsymmetricKeyObject {
 
   export(options: JwkKeyExportOptions | KeyExportOptions<KeyFormat>) {
     if (options && options.format === "jwk") {
-      return op_node_export_public_key_jwk(this[kHandle]);
+      return { ...op_node_export_public_key_jwk(this[kHandle]) };
     }
 
     const {
@@ -1067,6 +1126,12 @@ export function createSecretKey(
   key: string | ArrayBufferView | ArrayBuffer | KeyObject | CryptoKey,
   encoding?: string,
 ): KeyObject {
+  if (isCryptoKey(key)) {
+    if (key.type !== "secret") {
+      throw new ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE(key.type, "secret");
+    }
+    return KeyObject.from(key);
+  }
   const preparedKey = prepareSecretKey(key, encoding, true);
   if (isArrayBufferView(preparedKey) || isAnyArrayBuffer(preparedKey)) {
     const handle = op_node_create_secret_key(preparedKey);

@@ -133,7 +133,9 @@ function parserOnHeadersComplete(
   const ParserIncomingMessage = (socket?.server?.[kIncomingMessage]) ||
     IncomingMessage;
 
-  const incoming = parser.incoming = new ParserIncomingMessage(socket);
+  const incoming = parser.incoming = new ParserIncomingMessage(socket, {
+    highWaterMark: socket?.server?.highWaterMark,
+  });
   incoming.httpVersionMajor = versionMajor;
   incoming.httpVersionMinor = versionMinor;
   incoming.httpVersion = versionMajor === 1 && versionMinor === 1

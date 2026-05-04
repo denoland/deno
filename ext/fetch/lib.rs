@@ -153,7 +153,7 @@ deno_core::extension!(deno_fetch,
     op_fetch_custom_client,
     op_fetch_promise_is_settled,
   ],
-  esm = [
+  lazy_loaded_js = [
     "20_headers.js",
     "21_formdata.js",
     "22_body.js",

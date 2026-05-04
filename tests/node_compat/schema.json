@@ -78,6 +78,11 @@
         "output": {
           "type": "string",
           "description": "Expected output pattern for all platforms. Supports [WILDCARD] matching."
+        },
+        "env": {
+          "type": "object",
+          "description": "Per-test environment variables, layered on top of the runner's defaults. Use sparingly — only for tests where one Node fixture needs a config the rest of the suite must not have.",
+          "additionalProperties": { "type": "string" }
         }
       },
       "additionalProperties": false

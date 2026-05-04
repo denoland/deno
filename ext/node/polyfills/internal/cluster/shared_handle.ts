@@ -6,9 +6,11 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import * as net from "node:net";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+const { codeMap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/uv.ts",
+);
 
 const { SafeMap } = primordials;
 

@@ -62,6 +62,7 @@ const {
   StringPrototypeEndsWith,
   StringPrototypeIncludes,
   StringPrototypeIndexOf,
+  StringPrototypeLastIndexOf,
   StringPrototypeMatch,
   StringPrototypeSlice,
   StringPrototypeSplit,
@@ -124,22 +125,30 @@ import internalCryptoSig from "ext:deno_node/internal/crypto/sig.ts";
 import internalCryptoUtil from "ext:deno_node/internal/crypto/util.ts";
 import internalCryptoX509 from "ext:deno_node/internal/crypto/x509.ts";
 import internalDgram from "ext:deno_node/internal/dgram.ts";
+import internalUndici from "ext:deno_node/internal/deps/undici/undici.js";
 import internalDnsPromises from "ext:deno_node/internal/dns/promises.ts";
 import internalBuffer from "ext:deno_node/internal/buffer.mjs";
-import internalErrors from "ext:deno_node/internal/errors.ts";
+const internalErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
 import internalHttp from "ext:deno_node/internal/http.ts";
 import internalHttp2Core from "ext:deno_node/internal/http2/core.ts";
 import internalHttp2Util from "ext:deno_node/internal/http2/util.ts";
+import internalPriorityQueue from "ext:deno_node/internal/priority_queue.ts";
 import internalReadlineUtils from "ext:deno_node/internal/readline/utils.mjs";
 import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
 import internalStreamsState from "ext:deno_node/internal/streams/state.js";
 import internalTestBinding from "ext:deno_node/internal/test/binding.ts";
 import internalTimers from "ext:deno_node/internal/timers.mjs";
-import internalUtil from "ext:deno_node/internal/util.mjs";
-import internalUtilInspect from "ext:deno_node/internal/util/inspect.mjs";
+const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
+import internalUtilDebuglog from "ext:deno_node/internal/util/debuglog.ts";
+const internalUtilInspect = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
+const internalValidators = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import internalConsole from "ext:deno_node/internal/console/constructor.mjs";
 import net from "node:net";
 import os from "node:os";
@@ -231,6 +240,7 @@ function setupBuiltinModules() {
     "internal/crypto/util": internalCryptoUtil,
     "internal/crypto/x509": internalCryptoX509,
     "internal/dgram": internalDgram,
+    "internal/deps/undici/undici": internalUndici,
     "internal/dns/promises": internalDnsPromises,
     "internal/buffer": internalBuffer,
     "internal/errors": internalErrors,
@@ -239,14 +249,17 @@ function setupBuiltinModules() {
     "internal/http": internalHttp,
     "internal/http2/core": internalHttp2Core,
     "internal/http2/util": internalHttp2Util,
+    "internal/priority_queue": internalPriorityQueue,
     "internal/readline/utils": internalReadlineUtils,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
     "internal/streams/state": internalStreamsState,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
+    "internal/util/debuglog": internalUtilDebuglog,
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
+    "internal/validators": internalValidators,
     net,
     module: Module,
     os,
@@ -340,6 +353,131 @@ let hasInspectBrk = false;
 let usesLocalNodeModulesDir = false;
 let patched = false;
 
+// module.registerHooks() infrastructure
+const hookEntries = [];
+let insideResolveHook = false;
+let insideLoadHook = false;
+let utf8Decoder;
+
+function executeResolveHookChain(specifier, context, parent, isMain) {
+  // Collect resolve hooks from hookEntries in LIFO order
+  const resolveHooks = [];
+  for (let i = hookEntries.length - 1; i >= 0; i--) {
+    if (hookEntries[i].resolve !== null) {
+      ArrayPrototypePush(resolveHooks, hookEntries[i].resolve);
+    }
+  }
+  if (resolveHooks.length === 0) return null;
+
+  let index = 0;
+  // Running context accumulates changes across the chain
+  let currentContext = context;
+
+  function nextResolve(spec, ctx) {
+    // If ctx provided, merge into running context
+    if (ctx !== undefined && ctx !== null) {
+      currentContext = { ...currentContext, ...ctx };
+    }
+
+    if (index >= resolveHooks.length) {
+      // Default resolve: use Module._resolveFilename
+      insideResolveHook = true;
+      try {
+        // Handle node: builtins
+        if (StringPrototypeStartsWith(spec, "node:")) {
+          return { url: spec, shortCircuit: true };
+        }
+        if (nativeModuleCanBeRequiredByUsers(spec)) {
+          return { url: "node:" + spec, shortCircuit: true };
+        }
+        const resolved = Module._resolveFilename(spec, parent, isMain);
+        let resolvedUrl;
+        if (StringPrototypeStartsWith(resolved, "node:")) {
+          resolvedUrl = resolved;
+        } else {
+          resolvedUrl = url.pathToFileURL(resolved).href;
+        }
+        return { url: resolvedUrl, shortCircuit: true };
+      } finally {
+        insideResolveHook = false;
+      }
+    }
+    const hook = resolveHooks[index++];
+    let nextCalled = false;
+    const wrappedNext = (s, c) => {
+      nextCalled = true;
+      return nextResolve(s, c);
+    };
+    const result = hook(spec, currentContext, wrappedNext);
+    if (!nextCalled && !result?.shortCircuit) {
+      throw new internalErrors.ERR_INVALID_RETURN_PROPERTY_VALUE(
+        "true",
+        "resolve",
+        "shortCircuit",
+        result?.shortCircuit,
+      );
+    }
+    return result;
+  }
+
+  return nextResolve(specifier, context);
+}
+
+function executeLoadHookChain(fileUrl, context) {
+  // Collect load hooks from hookEntries in LIFO order
+  const loadHooks = [];
+  for (let i = hookEntries.length - 1; i >= 0; i--) {
+    if (hookEntries[i].load !== null) {
+      ArrayPrototypePush(loadHooks, hookEntries[i].load);
+    }
+  }
+  if (loadHooks.length === 0) return null;
+
+  let index = 0;
+  let currentContext = context;
+
+  function nextLoad(loadUrl, ctx) {
+    if (ctx !== undefined && ctx !== null) {
+      currentContext = { ...currentContext, ...ctx };
+    }
+
+    if (index >= loadHooks.length) {
+      // Default load: read file from disk
+      // For builtins, return null source
+      if (StringPrototypeStartsWith(loadUrl, "node:")) {
+        return { source: null, format: "builtin", shortCircuit: true };
+      }
+      const filePath = StringPrototypeStartsWith(loadUrl, "file://")
+        ? url.fileURLToPath(loadUrl)
+        : loadUrl;
+      const source = op_require_read_file(filePath);
+      return {
+        source,
+        format: currentContext?.format ?? undefined,
+        shortCircuit: true,
+      };
+    }
+    const hook = loadHooks[index++];
+    let nextCalled = false;
+    const wrappedNext = (u, c) => {
+      nextCalled = true;
+      return nextLoad(u, c);
+    };
+    const result = hook(loadUrl, currentContext, wrappedNext);
+    if (!nextCalled && !result?.shortCircuit) {
+      throw new internalErrors.ERR_INVALID_RETURN_PROPERTY_VALUE(
+        "true",
+        "load",
+        "shortCircuit",
+        result?.shortCircuit,
+      );
+    }
+    return result;
+  }
+
+  return nextLoad(fileUrl, context);
+}
+
 function stat(filename) {
   if (statCache !== null) {
     const result = statCache.get(filename);
@@ -366,6 +504,38 @@ function updateChildren(parent, child, scan) {
   }
 }
 
+// Given a path inside a node_modules tree, find the package root by
+// locating the last "node_modules" path component and taking the next
+// segment (or two for scoped packages). Returns null if no node_modules
+// component is found.
+function findPackageRootFromNodeModules(filepath) {
+  // Find the last occurrence of /node_modules/ or \node_modules\ in the path
+  let nmIdx = -1;
+  let sep = "/";
+  const fwdIdx = StringPrototypeLastIndexOf(filepath, "/node_modules/");
+  const bwdIdx = StringPrototypeLastIndexOf(filepath, "\\node_modules\\");
+  if (fwdIdx !== -1 && fwdIdx > bwdIdx) {
+    nmIdx = fwdIdx;
+    sep = "/";
+  } else if (bwdIdx !== -1) {
+    nmIdx = bwdIdx;
+    sep = "\\";
+  }
+  if (nmIdx === -1) return null;
+
+  const afterNm = nmIdx + sep.length + "node_modules".length + sep.length;
+  const rest = StringPrototypeSlice(filepath, afterNm);
+  const parts = StringPrototypeSplit(rest, sep);
+  if (parts.length === 0 || parts[0] === "") return null;
+
+  if (StringPrototypeStartsWith(parts[0], "@") && parts.length > 1) {
+    // Scoped package: @scope/name
+    return StringPrototypeSlice(filepath, 0, afterNm) + parts[0] + sep +
+      parts[1];
+  }
+  return StringPrototypeSlice(filepath, 0, afterNm) + parts[0];
+}
+
 function tryFile(requestPath, _isMain) {
   const rc = stat(requestPath);
   if (rc !== 0) return;
@@ -387,12 +557,20 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
   }
 
   const filename = pathResolve(requestPath, pkg);
+
+  // Find the package root for the path traversal check. For nested
+  // package.json files inside node_modules (e.g. pkg/sub/package.json with
+  // "main": "../cjs/sub.js"), we allow resolving up to the package root
+  // (node_modules/pkg/) rather than restricting to the nested directory.
+  const packageRoot = findPackageRootFromNodeModules(requestPath) ??
+    requestPath;
+
   // Ensure the resolved main path doesn't escape the package directory
   // via path traversal (e.g. "main": "../../secret.json")
   if (
-    !StringPrototypeStartsWith(filename, requestPath + "/") &&
-    !StringPrototypeStartsWith(filename, requestPath + "\\") &&
-    filename !== requestPath
+    !StringPrototypeStartsWith(filename, packageRoot + "/") &&
+    !StringPrototypeStartsWith(filename, packageRoot + "\\") &&
+    filename !== packageRoot
   ) {
     const err = new Error(
       `Cannot find module '${filename}'. ` +
@@ -772,6 +950,54 @@ Module._load = function (request, parent, isMain) {
     // Slice 'node:' prefix
     const id = StringPrototypeSlice(filename, 5);
 
+    // Run load hooks for builtins if registered
+    if (hookEntries.length > 0 && !insideLoadHook) {
+      let hasLoadHook = false;
+      for (let i = 0; i < hookEntries.length; i++) {
+        if (hookEntries[i].load !== null) {
+          hasLoadHook = true;
+          break;
+        }
+      }
+      if (hasLoadHook) {
+        const context = {
+          format: "builtin",
+          conditions: ["node", "require"],
+          importAttributes: { __proto__: null },
+        };
+        insideLoadHook = true;
+        let result;
+        try {
+          result = executeLoadHookChain(filename, context);
+        } finally {
+          insideLoadHook = false;
+        }
+        // If the hook changed the format away from "builtin", use the
+        // hook-provided source instead of loading the native module.
+        // This matches Node.js behavior where hooks can replace builtins
+        // by returning a different format (e.g. "commonjs").
+        if (
+          result != null && result.format &&
+          result.format !== "builtin" && result.source != null
+        ) {
+          const mod = new Module(filename, parent);
+          Module._cache[filename] = mod;
+          const source = typeof result.source === "string"
+            ? result.source
+            : (utf8Decoder ??= new TextDecoder()).decode(result.source);
+          if (result.format === "commonjs") {
+            mod._compile(source, filename, "commonjs");
+          } else if (result.format === "json") {
+            mod.exports = JSONParse(stripBOM(source));
+          } else {
+            mod._compile(source, filename);
+          }
+          mod.loaded = true;
+          return mod.exports;
+        }
+      }
+    }
+
     const module = loadNativeModule(id, id);
     if (!module) {
       // TODO:
@@ -856,6 +1082,33 @@ Module._resolveFilename = function (
       "string",
       request,
     );
+  }
+
+  // Run resolve hooks if registered (and not already inside a hook)
+  if (hookEntries.length > 0 && !insideResolveHook) {
+    const parentURL = parent?.filename
+      ? url.pathToFileURL(parent.filename).href
+      : undefined;
+    const context = {
+      conditions: ["node", "require"],
+      importAttributes: { __proto__: null },
+      parentURL,
+    };
+    const result = executeResolveHookChain(request, context, parent, isMain);
+    if (result != null && result.url != null) {
+      if (StringPrototypeStartsWith(result.url, "file://")) {
+        try {
+          return url.fileURLToPath(result.url);
+        } catch {
+          // Virtual file:// URLs may not have valid OS paths (e.g.
+          // file:///virtual.js on Windows). Return the URL as-is and
+          // let the load hook handle it.
+          return result.url;
+        }
+      }
+      // node: and other schemes returned as-is
+      return result.url;
+    }
   }
 
   if (nativeModuleCanBeRequiredByUsers(request)) {
@@ -1047,8 +1300,93 @@ Module.prototype.load = function (filename) {
 
   // Canonicalize the path so it's not pointing to the symlinked directory
   // in `node_modules` directory of the referrer.
-  this.filename = op_require_real_path(filename);
+  // When load hooks are active, the file may not exist on disk (virtual
+  // modules), so we fall back to the original filename.
+  let hasLoadHooks = false;
+  if (hookEntries.length > 0 && !insideLoadHook) {
+    for (let i = 0; i < hookEntries.length; i++) {
+      if (hookEntries[i].load !== null) {
+        hasLoadHooks = true;
+        break;
+      }
+    }
+  }
+  if (hasLoadHooks) {
+    try {
+      this.filename = op_require_real_path(filename);
+    } catch {
+      this.filename = filename;
+    }
+  } else {
+    this.filename = op_require_real_path(filename);
+  }
   this.paths = Module._nodeModulePaths(pathDirname(this.filename));
+
+  // Run load hooks if registered
+  if (hasLoadHooks) {
+    {
+      let fileUrl;
+      if (StringPrototypeStartsWith(this.filename, "node:")) {
+        fileUrl = this.filename;
+      } else if (
+        StringPrototypeStartsWith(this.filename, "file://") ||
+        StringPrototypeIncludes(this.filename, "://")
+      ) {
+        // Already a URL (e.g. from a resolve hook returning a virtual URL)
+        fileUrl = this.filename;
+      } else {
+        fileUrl = url.pathToFileURL(this.filename).href;
+      }
+      const context = {
+        format: undefined,
+        conditions: ["node", "require"],
+        importAttributes: { __proto__: null },
+      };
+      insideLoadHook = true;
+      let result;
+      try {
+        result = executeLoadHookChain(fileUrl, context);
+      } finally {
+        insideLoadHook = false;
+      }
+      if (result != null && result.source != null) {
+        const format = result.format;
+        if (format === "module") {
+          loadESMFromCJS(this, this.filename, result.source);
+        } else if (format === "commonjs") {
+          this._compile(
+            typeof result.source === "string"
+              ? result.source
+              : (utf8Decoder ??= new TextDecoder()).decode(result.source),
+            this.filename,
+            "commonjs",
+          );
+        } else if (format === "json") {
+          try {
+            this.exports = JSONParse(
+              stripBOM(
+                typeof result.source === "string"
+                  ? result.source
+                  : (utf8Decoder ??= new TextDecoder()).decode(result.source),
+              ),
+            );
+          } catch (err) {
+            err.message = this.filename + ": " + err.message;
+            throw err;
+          }
+        } else {
+          // Default to CJS when format is unspecified
+          const source = typeof result.source === "string"
+            ? result.source
+            : (utf8Decoder ??= new TextDecoder()).decode(result.source);
+          this._compile(source, this.filename);
+        }
+        this.loaded = true;
+        return;
+      }
+    }
+  }
+
   const extension = findLongestRegisteredExtension(filename);
   Module._extensions[extension](this, this.filename);
   this.loaded = true;
@@ -1060,15 +1398,15 @@ Module.prototype.load = function (filename) {
 // `exports` property.
 Module.prototype.require = function (id) {
   if (typeof id !== "string") {
-    // TODO(bartlomieju): it should use different error type
-    // ("ERR_INVALID_ARG_VALUE")
-    throw new TypeError("Invalid argument type");
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("id", "string", id);
   }
 
   if (id === "") {
-    // TODO(bartlomieju): it should use different error type
-    // ("ERR_INVALID_ARG_VALUE")
-    throw new TypeError("id must be non empty");
+    throw new internalErrors.ERR_INVALID_ARG_VALUE(
+      "id",
+      id,
+      "must be a non-empty string",
+    );
   }
   requireDepth++;
   try {
@@ -1078,14 +1416,9 @@ Module.prototype.require = function (id) {
   }
 };
 
-// The module wrapper looks slightly different to Node. Instead of using one
-// wrapper function, we use two. The first one exists to performance optimize
-// access to magic node globals, like `Buffer`. The second one is the actual
-// wrapper function we run the users code in. The only observable difference is
-// that in Deno `arguments.callee` is not null.
 const wrapper = [
-  `(function (exports, require, module, __filename, __dirname) { var { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout } = Deno[Deno.internal].nodeGlobals; (() => {`,
-  "\n})(); })",
+  "(function (exports, require, module, __filename, __dirname) { ",
+  "\n});",
 ];
 
 export let wrap = function (script) {
@@ -1479,6 +1812,13 @@ function loadNativeModule(_id, request) {
   }
   const modExports = nativeModuleExports[request];
   if (modExports) {
+    if (request === "_tls_common") {
+      process.emitWarning(
+        "The _tls_common module is deprecated. Use `node:tls` instead.",
+        "DeprecationWarning",
+        "DEP0192",
+      );
+    }
     const nodeMod = new Module(request);
     nodeMod.exports = modExports;
     nodeMod.loaded = true;
@@ -1530,6 +1870,38 @@ export function findSourceMap(_path) {
 }
 
 Module.findSourceMap = findSourceMap;
+
+/**
+ * Register synchronous module loader hooks.
+ * @param {{ resolve?: Function, load?: Function }} hooks
+ * @returns {{ deregister: () => void }}
+ */
+export function registerHooks(hooks) {
+  if (typeof hooks !== "object" || hooks === null) {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("hooks", "object", hooks);
+  }
+  const resolve = typeof hooks.resolve === "function" ? hooks.resolve : null;
+  const load = typeof hooks.load === "function" ? hooks.load : null;
+  if (resolve === null && load === null) {
+    throw new internalErrors.ERR_INVALID_ARG_VALUE(
+      "hooks",
+      hooks,
+      "must contain at least one of 'resolve' or 'load'",
+    );
+  }
+  const entry = { resolve, load };
+  ArrayPrototypePush(hookEntries, entry);
+  return {
+    deregister() {
+      const idx = ArrayPrototypeIndexOf(hookEntries, entry);
+      if (idx !== -1) {
+        ArrayPrototypeSplice(hookEntries, idx, 1);
+      }
+    },
+  };
+}
+
+Module.registerHooks = registerHooks;
 
 /**
  * @param {string | URL} _specifier

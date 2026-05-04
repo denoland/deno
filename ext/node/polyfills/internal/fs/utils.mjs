@@ -2,7 +2,7 @@
 
 "use strict";
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   BigInt,
@@ -40,7 +40,7 @@ const {
   Uint8ArrayPrototype,
 } = primordials;
 import { Buffer } from "node:buffer";
-import {
+const {
   ERR_FS_EISDIR,
   ERR_FS_INVALID_SYMLINK_TYPE,
   ERR_INVALID_ARG_TYPE,
@@ -48,17 +48,19 @@ import {
   ERR_OUT_OF_RANGE,
   hideStackFrames,
   uvException,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
-import {
+const {
   isArrayBufferView,
   isBigUint64Array,
   isDate,
   isUint8Array,
-} from "ext:deno_node/internal/util/types.ts";
-import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
+const { kEmptyObject, once } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
-import {
+const {
   validateAbortSignal,
   validateBoolean,
   validateFunction,
@@ -66,19 +68,21 @@ import {
   validateInteger,
   validateObject,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import pathModule from "node:path";
 const kType = Symbol("type");
 const kStats = Symbol("stats");
 import assert from "ext:deno_node/internal/assert.mjs";
 import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
-import { isWindows } from "ext:deno_node/_util/os.ts";
+const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 import process from "node:process";
-import { ERR_INCOMPATIBLE_OPTION_PAIR } from "ext:deno_node/internal/errors.ts";
-import {
-  fs as fsConstants,
-  os as osConstants,
-} from "ext:deno_node/internal_binding/constants.ts";
+const { ERR_INCOMPATIBLE_OPTION_PAIR } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const {
+  fs: fsConstants,
+  os: osConstants,
+} = core.loadExtScript("ext:deno_node/internal_binding/constants.ts");
 const {
   F_OK = 0,
   W_OK = 0,

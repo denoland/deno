@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_blocklist_add_address,
   op_blocklist_add_range,
@@ -12,19 +12,23 @@ import {
   op_socket_address_parse,
 } from "ext:core/ops";
 
-import {
+const {
   validateInt32,
   validateObject,
   validatePort,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
-} from "ext:deno_node/internal/errors.ts";
-import { customInspectSymbol } from "ext:deno_node/internal/util.mjs";
-import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { customInspectSymbol } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+const { inspect } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
 
 const {
   ArrayIsArray,

@@ -6,7 +6,9 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
-import { format } from "ext:deno_node/internal/util/inspect.mjs";
+const { format } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
 import {
   op_current_thread_cpu_usage,
   op_fs_umask,
@@ -28,15 +30,15 @@ import { EventEmitter } from "node:events";
 import Module, { getBuiltinModule } from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
 import { onWarning } from "ext:deno_node/internal/process/warning.ts";
-import {
+const {
   parseFileMode,
   validateBoolean,
   validateNumber,
   validateObject,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   denoErrorToNodeError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE_RANGE,
@@ -46,11 +48,11 @@ import {
   ERR_WORKER_UNSUPPORTED_OPERATION,
   errnoException,
   NodeTypeError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import assert from "node:assert";
 import { join } from "node:path";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 import {
   arch as arch_,
   chdir,
@@ -76,9 +78,11 @@ import {
 } from "ext:deno_node/_process/streams.mjs";
 import { WriteStream as TTYWriteStream } from "ext:deno_node/internal/tty.js";
 import { enableNextTick } from "ext:deno_node/_next_tick.ts";
-import { isAndroid, isWindows } from "ext:deno_node/_util/os.ts";
-import * as io from "ext:deno_io/12_io.js";
-import * as denoOs from "ext:deno_os/30_os.js";
+const { isAndroid, isWindows } = core.loadExtScript(
+  "ext:deno_node/_util/os.ts",
+);
+const io = core.loadExtScript("ext:deno_io/12_io.js");
+const denoOs = core.loadExtScript("ext:deno_os/30_os.js");
 
 export let argv0 = "";
 
@@ -94,15 +98,24 @@ let stdin, stdout, stderr;
 export { stderr, stdin, stdout };
 
 import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
-import * as constants from "ext:deno_node/internal_binding/constants.ts";
-import * as uv from "ext:deno_node/internal_binding/uv.ts";
+const constants = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
+const uv = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
 import type fsUtils from "ext:deno_node/internal/fs/utils.mjs";
+import type * as utilModule from "ext:deno_node/util.ts";
 
 let fsUtilsModule: typeof fsUtils;
 const lazyLoadFsUtils = core.createLazyLoader<typeof fsUtils>(
   "ext:deno_node/internal/fs/utils.mjs",
+);
+// Lazy-loaded to avoid a static circular import:
+//   process.ts -> util.ts -> internal/util/parse_args/parse_args.js
+//     -> "node:process" -> process.ts
+const lazyLoadUtil = core.createLazyLoader<typeof utilModule>(
+  "node:util",
 );
 
 const {
@@ -876,6 +889,18 @@ let _configCache: Record<string, unknown> | undefined;
 Object.defineProperty(process, "config", {
   get() {
     if (_configCache === undefined) {
+      // Internal escape hatch for the node_compat test runner: allows a
+      // single test to opt into the "externally-linked OpenSSL" branch of
+      // upstream Node test fixtures, where Deno's aws-lc-rs/BoringSSL
+      // backend matches that branch's expectations. Not for user code; the
+      // env var is reserved (DENO_INTERNAL_*) and undocumented.
+      let forceSharedOpenssl = false;
+      try {
+        forceSharedOpenssl =
+          Deno.env.get("DENO_INTERNAL_NODE_TEST_FORCE_SHARED_OPENSSL") === "1";
+      } catch {
+        // Permission denied or no env access; leave forceSharedOpenssl false.
+      }
       _configCache = Object.freeze({
         target_defaults: Object.freeze({
           default_configuration: "Release",
@@ -885,10 +910,11 @@ Object.defineProperty(process, "config", {
           // `node_module_version` is an integer ABI version exposed for native
           // addons. Mirror process.versions.modules so a single source of truth
           // wins.
-          node_module_version: Number(versions.modules),
-          llvm_version: "0.0",
-          enable_lto: "false",
-          host_arch: arch,
+          "node_module_version": Number(versions.modules),
+          "llvm_version": "0.0",
+          "enable_lto": "false",
+          "host_arch": arch,
+          ...(forceSharedOpenssl ? { "node_shared_openssl": 1 } : {}),
         }),
       });
     }
@@ -1506,6 +1532,27 @@ internals.__bootstrapNodeProcess = function (
 
     if (getOptionValue("--warnings")) {
       process.on("warning", onWarning);
+    }
+
+    // Match Node's pre_execution.js: when --pending-deprecation is set, wrap
+    // `process.binding` with a DEP0111 warning, and wrap the `uv` binding's
+    // `errname` with DEP0119. See lib/internal/process/pre_execution.js and
+    // src/uv.cc (`ErrName`) in the upstream Node.js source.
+    if (getOptionValue("--pending-deprecation")) {
+      const { deprecate } = lazyLoadUtil();
+      const uvBinding = getBinding("uv");
+      uvBinding.errname = deprecate(
+        uvBinding.errname,
+        "Directly calling process.binding('uv').errname(<val>) is being " +
+          "deprecated. Please make sure to use util.getSystemErrorName() " +
+          "instead.",
+        "DEP0119",
+      );
+      process.binding = deprecate(
+        process.binding,
+        "process.binding() is deprecated. Please use public APIs instead.",
+        "DEP0111",
+      );
     }
 
     // Replace stdin if it is not a terminal

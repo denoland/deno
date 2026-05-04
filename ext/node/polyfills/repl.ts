@@ -4,17 +4,21 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials no-this-alias no-unused-vars no-explicit-any
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const { Symbol } = primordials;
 
 import { Interface } from "ext:deno_node/_readline.mjs";
 import { commonPrefix } from "ext:deno_node/internal/readline/utils.mjs";
-import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
-import {
+const { inspect } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
+const {
   ERR_INVALID_REPL_EVAL_CONFIG,
   ERR_MISSING_ARGS,
-} from "ext:deno_node/internal/errors.ts";
-import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { validateFunction } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import vm from "node:vm";
 import process from "node:process";
 import path from "node:path";

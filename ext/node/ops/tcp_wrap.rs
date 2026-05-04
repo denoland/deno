@@ -521,6 +521,29 @@ impl TCPWrap {
     }
   }
 
+  /// Take the underlying TCP stream from this handle and place it in the
+  /// resource table as a `TcpStreamResource`. This detaches the stream
+  /// from libuv. Returns the resource ID of the stream, which can then
+  /// be passed to ext/http ops (e.g. for WebSocket upgrade).
+  fn take_stream(
+    &self,
+    state: &mut OpState,
+  ) -> Result<ResourceId, deno_error::JsErrorBox> {
+    let tcp = self.tcp_ptr();
+    if tcp.is_null() {
+      return Err(deno_error::JsErrorBox::generic("TCP handle is closed"));
+    }
+    // SAFETY: tcp is valid (null-checked above)
+    let tcp_stream = unsafe { (*tcp).take_stream() }.ok_or_else(|| {
+      deno_error::JsErrorBox::generic(
+        "TCP handle has no active stream - already taken or not connected",
+      )
+    })?;
+    let (read_half, write_half) = tcp_stream.into_split();
+    let resource = TcpStreamResource::new((read_half, write_half));
+    Ok(state.resource_table.add(resource))
+  }
+
   #[fast]
   fn set_no_delay(&self, enable: bool) -> i32 {
     let tcp = self.tcp_ptr();

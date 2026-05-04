@@ -1,6 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-fmt-ignore-file
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   Error,
   PromisePrototypeThen,
@@ -13,15 +15,19 @@ const {
   FunctionPrototypeApply,
   SafeArrayIterator,
 } = primordials;
-import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import { errorMap } from "ext:deno_node/internal_binding/uv.ts";
-import { codes } from "ext:deno_node/internal/error_codes.ts";
-import { ERR_NOT_IMPLEMENTED } from "ext:deno_node/internal/errors.ts";
-import { validateNumber } from "./internal/validators.mjs";
+const { TextDecoder, TextEncoder } = core.loadExtScript(
+  "ext:deno_web/08_text_encoding.js",
+);
+const { errorMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
+const { ERR_NOT_IMPLEMENTED } = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { validateNumber } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
-export type BinaryEncodings = "binary";
+type BinaryEncodings = "binary";
 
-export type TextEncodings =
+type TextEncodings =
   | "ascii"
   | "utf8"
   | "utf-8"
@@ -33,13 +39,13 @@ export type TextEncodings =
   | "latin1"
   | "hex";
 
-export type Encodings = BinaryEncodings | TextEncodings;
+type Encodings = BinaryEncodings | TextEncodings;
 
-export function notImplemented(msg: string): never {
+function notImplemented(msg: string): never {
   throw new ERR_NOT_IMPLEMENTED(msg);
 }
 
-export function warnNotImplemented(msg?: string) {
+function warnNotImplemented(msg?: string) {
   const message = msg
     ? `Warning: Not implemented: ${msg}`
     : "Warning: Not implemented";
@@ -47,19 +53,19 @@ export function warnNotImplemented(msg?: string) {
   console.warn(message);
 }
 
-export type _TextDecoder = typeof TextDecoder.prototype;
-export const _TextDecoder = TextDecoder;
+type _TextDecoder = typeof TextDecoder.prototype;
+const _TextDecoder = TextDecoder;
 
-export type _TextEncoder = typeof TextEncoder.prototype;
-export const _TextEncoder = TextEncoder;
+type _TextEncoder = typeof TextEncoder.prototype;
+const _TextEncoder = TextEncoder;
 
 // API helpers
 
-export type MaybeNull<T> = T | null;
-export type MaybeDefined<T> = T | undefined;
-export type MaybeEmpty<T> = T | null | undefined;
+type MaybeNull<T> = T | null;
+type MaybeDefined<T> = T | undefined;
+type MaybeEmpty<T> = T | null | undefined;
 
-export function intoCallbackAPI<T>(
+function intoCallbackAPI<T>(
   // deno-lint-ignore no-explicit-any
   func: (...args: any[]) => Promise<T>,
   cb: MaybeEmpty<(err: MaybeNull<Error>, value?: MaybeEmpty<T>) => void>,
@@ -73,7 +79,7 @@ export function intoCallbackAPI<T>(
   );
 }
 
-export function intoCallbackAPIWithIntercept<T1, T2>(
+function intoCallbackAPIWithIntercept<T1, T2>(
   // deno-lint-ignore no-explicit-any
   func: (...args: any[]) => Promise<T1>,
   interceptor: (v: T1) => T2,
@@ -88,14 +94,14 @@ export function intoCallbackAPIWithIntercept<T1, T2>(
   );
 }
 
-export function spliceOne(list: string[], index: number) {
+function spliceOne(list: string[], index: number) {
   for (; index + 1 < list.length; index++) {
     list[index] = list[index + 1];
   }
   ArrayPrototypePop(list);
 }
 
-export function validateIntegerRange(
+function validateIntegerRange(
   value: number,
   name: string,
   min = -2147483648,
@@ -116,7 +122,7 @@ export function validateIntegerRange(
 type OptionalSpread<T> = T extends undefined ? []
   : [T];
 
-export function once<T = undefined>(
+function once<T = undefined>(
   callback: (...args: OptionalSpread<T>) => void,
 ) {
   let called = false;
@@ -127,7 +133,7 @@ export function once<T = undefined>(
   };
 }
 
-export function makeMethodsEnumerable(klass: { new (): unknown }) {
+function makeMethodsEnumerable(klass: { new (): unknown }) {
   const proto = klass.prototype;
   const names = ObjectGetOwnPropertyNames(proto);
   for (let i = 0; i < names.length; i++) {
@@ -147,7 +153,7 @@ export function makeMethodsEnumerable(klass: { new (): unknown }) {
  * Returns a system error name from an error code number.
  * @param code error code number
  */
-export function getSystemErrorName(code: number): string | undefined {
+function getSystemErrorName(code: number): string | undefined {
   validateNumber(code, "err");
   if (code >= 0 || !NumberIsSafeInteger(code)) {
     throw new codes.ERR_OUT_OF_RANGE("err", "a negative integer", code);
@@ -159,10 +165,26 @@ export function getSystemErrorName(code: number): string | undefined {
  * Returns a system error message from an error code number.
  * @param code error code number
  */
-export function getSystemErrorMessage(code: number): string | undefined {
+function getSystemErrorMessage(code: number): string | undefined {
   validateNumber(code, "err");
   if (code >= 0 || !NumberIsSafeInteger(code)) {
     throw new codes.ERR_OUT_OF_RANGE("err", "a negative integer", code);
   }
   return errorMap.get(code)?.[1];
 }
+
+return {
+  notImplemented,
+  warnNotImplemented,
+  _TextDecoder,
+  _TextEncoder,
+  intoCallbackAPI,
+  intoCallbackAPIWithIntercept,
+  spliceOne,
+  validateIntegerRange,
+  once,
+  makeMethodsEnumerable,
+  getSystemErrorName,
+  getSystemErrorMessage,
+};
+})()

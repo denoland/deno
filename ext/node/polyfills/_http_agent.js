@@ -4,6 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import * as net from "node:net";
 import EventEmitter from "node:events";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
@@ -13,12 +14,12 @@ let debug = debuglog("http", (fn) => {
 import { AsyncResource } from "node:async_hooks";
 import { symbols } from "ext:deno_node/internal/async_hooks.ts";
 const { async_id_symbol } = symbols;
-import { once } from "ext:deno_node/internal/util.mjs";
-import {
+const { once } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const {
   validateNumber,
   validateOneOf,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 const kOnKeylog = Symbol("onkeylog");
 const kRequestOptions = Symbol("requestOptions");

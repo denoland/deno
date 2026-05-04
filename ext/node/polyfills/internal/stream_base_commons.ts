@@ -30,15 +30,21 @@ import {
   streamBaseState,
   WriteWrap,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
-import { errnoException } from "ext:deno_node/internal/errors.ts";
+import { core, primordials } from "ext:core/mod.js";
+const { errnoException } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 import { getTimerDuration, kTimeout } from "ext:deno_node/internal/timers.mjs";
 import { clearTimeout } from "node:timers";
 import { setUnrefTimeout } from "ext:deno_node/internal/timers.mjs";
-import { validateFunction } from "ext:deno_node/internal/validators.mjs";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { primordials } from "ext:core/mod.js";
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 import { Buffer } from "node:buffer";
+const { isUint8Array } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const { validateFunction } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
 const {
   Array,
@@ -108,14 +114,6 @@ function onWriteComplete(this: any, status: number) {
     stream = stream.handle;
   }
 
-  if (stream.destroyed) {
-    if (typeof this.callback === "function") {
-      this.callback(null);
-    }
-
-    return;
-  }
-
   if (status < 0) {
     const ex = errnoException(status, "write", this.error);
 
@@ -123,6 +121,14 @@ function onWriteComplete(this: any, status: number) {
       this.callback(ex);
     } else {
       stream.destroy(ex);
+    }
+
+    return;
+  }
+
+  if (stream.destroyed) {
+    if (typeof this.callback === "function") {
+      this.callback(null);
     }
 
     return;

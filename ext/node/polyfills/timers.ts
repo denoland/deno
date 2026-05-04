@@ -17,18 +17,20 @@ import {
   kDestroy,
   Timeout,
 } from "ext:deno_node/internal/timers.mjs";
-import {
+const {
   validateAbortSignal,
   validateBoolean,
   validateFunction,
   validateNumber,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { kEmptyObject, promisify } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+const {
   AbortError,
   ERR_ILLEGAL_CONSTRUCTOR,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { kResistStopPropagation } from "ext:deno_node/internal/event_target.mjs";
 import type { Abortable } from "node:events";
 
