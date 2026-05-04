@@ -23,12 +23,7 @@ const {
   RangeError,
   ArrayPrototypeJoin,
 } = primordials;
-const {
-  _data,
-  _height,
-  _width,
-  ImageDataPrototype,
-} = core.loadExtScript("ext:deno_web/16_image_data.js");
+const loadImageData = core.createLazyLoader("ext:deno_web/image_data.js");
 
 webidl.converters["ImageOrientation"] = webidl.createEnumConverter(
   "ImageOrientation",
@@ -200,6 +195,7 @@ function createImageBitmap(
 
   // 3.
   const isBlob = ObjectPrototypeIsPrototypeOf(BlobPrototype, image);
+  const { ImageDataPrototype } = loadImageData();
   const isImageData = ObjectPrototypeIsPrototypeOf(ImageDataPrototype, image);
   const isImageBitmap = ObjectPrototypeIsPrototypeOf(
     ImageBitmapPrototype,
@@ -257,10 +253,10 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
         );
       }
     } else if (isImageData) {
-      width = image[_width];
-      height = image[_height];
+      width = image.width;
+      height = image.height;
       imageBitmapSource = 1;
-      let data = image[_data];
+      let data = image.data;
       switch (TypedArrayPrototypeGetSymbolToStringTag(data)) {
         case "Float16Array":
           data = float16ToUnorm8(data);
