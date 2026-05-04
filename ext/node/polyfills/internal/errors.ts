@@ -122,7 +122,7 @@ const kTypes = [
 // to make usage of the error in userland and readable-stream easier.
 // It is a regular error with `.code` and `.name`.
 class AbortError extends Error {
-  code: string;
+  declare code: string;
 
   constructor(message = "The operation was aborted", options?: ErrorOptions) {
     if (options !== undefined && typeof options !== "object") {
@@ -423,7 +423,7 @@ const dnsException = hideStackFrames(function (code, syscall, hostname) {
  * This class is meant to be extended by these instances abstracting native JS error instances
  */
 class NodeErrorAbstraction extends Error {
-  code: string;
+  declare code: string;
 
   constructor(name: string, code: string, message: string) {
     super(message);
@@ -504,7 +504,7 @@ interface NodeSystemErrorCtx {
 // The context passed into this error must have .code, .syscall and .message,
 // and may have .path and .dest.
 class NodeSystemError extends Error {
-  code: string;
+  declare code: string;
   constructor(key: string, context: NodeSystemErrorCtx, msgPrefix: string) {
     super();
     this.code = key;
@@ -1191,7 +1191,7 @@ class ERR_DOMAIN_CANNOT_SET_UNCAUGHT_EXCEPTION_CAPTURE
 
 class ERR_ENCODING_INVALID_ENCODED_DATA extends NodeErrorAbstraction
   implements TypeError {
-  errno: number;
+  declare errno: number;
   constructor(encoding: string, ret: number) {
     super(
       TypeError.prototype.name,
@@ -2211,9 +2211,9 @@ class ERR_SYNTHETIC extends NodeError {
   }
 }
 class ERR_TLS_CERT_ALTNAME_INVALID extends NodeError {
-  reason: string;
-  host: string;
-  cert: string;
+  declare reason: string;
+  declare host: string;
+  declare cert: string;
 
   constructor(reason: string, host: string, cert: string) {
     super(

@@ -623,7 +623,7 @@ function stripVTControlCharacters(str) {
 // `text` are rewritten so subsequent text keeps the outer style ("dim" and
 // "bold" share close 22, so those close sequences are kept and the outer
 // style is re-opened immediately afterward).
-const kStyleTextEscape = "[";
+const kStyleTextEscape = "\x1b[";
 const kStyleTextEscapeEnd = "m";
 const kStyleTextDimCode = 2;
 const kStyleTextBoldCode = 1;
