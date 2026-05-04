@@ -474,7 +474,7 @@ async fn update(
               .current_version
               .as_ref()
               .map(|nv| nv.version.to_string())
-              .unwrap_or_default(),
+              .unwrap_or_else(|| "(unresolved)".to_string()),
             new_resolved.version.to_string(),
           ));
         } else {
@@ -531,6 +531,12 @@ async fn update(
         colors::gray(&current_version),
         " ".repeat(max_new - new_version.len()),
         colors::green(&new_version),
+      );
+    }
+    if lockfile_only && update_to_latest {
+      let note = deno_terminal::colors::intense_blue("note");
+      log::info!(
+        "{note}: --lockfile-only updates only within existing version requirements.\n      Drop --lockfile-only to update deno.json/package.json requirements.",
       );
     }
   } else {
