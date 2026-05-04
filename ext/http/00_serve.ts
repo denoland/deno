@@ -31,7 +31,6 @@ const {
   op_http_set_response_headers,
   op_http_set_response_trailers,
   op_http_try_take_full_request_body,
-  op_http_try_wait,
   op_http_upgrade_raw,
   op_http_upgrade_raw_connect,
   op_http_upgrade_raw_get_head,
@@ -1008,78 +1007,83 @@ function serveInner(options, handler) {
  * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary listener.
  */
 function serveHttpOnListener(listener, signal, handler, onError, onListen) {
-  const context = new CallbackContext(
+  let serverContext;
+  let callback;
+  const promiseErrorHandler = (error) => {
+    import.meta.log(
+      "error",
+      "Terminating Deno.serve loop due to unexpected error",
+      error,
+    );
+    serverContext?.close();
+  };
+  const dispatch = (req) => {
+    PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
+  };
+
+  serverContext = new CallbackContext(
     signal,
-    op_http_serve(listener[internalRidSymbol]),
+    op_http_serve(listener[internalRidSymbol], dispatch),
     listener,
   );
-  const callback = mapToCallback(context, handler, onError);
+  callback = mapToCallback(serverContext, handler, onError);
 
-  onListen(context.scheme);
+  onListen(serverContext.scheme);
 
-  return serveHttpOn(context, listener.addr, callback);
+  return serveHttpOn(serverContext, listener.addr);
 }
 
 /**
  * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary connection.
  */
 function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
-  const context = new CallbackContext(
-    signal,
-    op_http_serve_on(connection[internalRidSymbol]),
-    null,
-  );
-  const callback = mapToCallback(context, handler, onError);
-
-  onListen(context.scheme);
-
-  return serveHttpOn(context, connection.localAddr, callback);
-}
-
-function serveHttpOn(context, addr, callback) {
-  let ref = true;
-  let currentPromise = null;
-
+  let serverContext;
+  let callback;
   const promiseErrorHandler = (error) => {
-    // Abnormal exit
-    internals.log(
+    import.meta.log(
       "error",
       "Terminating Deno.serve loop due to unexpected error",
       error,
     );
-    context.close();
+    serverContext?.close();
   };
+  const dispatch = (req) => {
+    PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
+  };
+
+  serverContext = new CallbackContext(
+    signal,
+    op_http_serve_on(connection[internalRidSymbol], dispatch),
+    null,
+  );
+  callback = mapToCallback(serverContext, handler, onError);
+
+  onListen(serverContext.scheme);
+
+  return serveHttpOn(serverContext, connection.localAddr);
+}
+
+function serveHttpOn(context, addr) {
+  let ref = true;
+  let currentPromise = null;
 
   // Run the server
   const finished = (async () => {
     const rid = context.serverRid;
-    while (true) {
-      let req;
-      try {
-        // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
-        // a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
-        while ((req = op_http_try_wait(rid)) !== null) {
-          PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
-        }
-        currentPromise = op_http_wait(rid);
-        if (!ref) {
-          core.unrefOpPromise(currentPromise);
-        }
-        req = await currentPromise;
-        currentPromise = null;
-      } catch (error) {
-        if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
-          break;
-        }
-        if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)) {
-          break;
-        }
+    try {
+      currentPromise = op_http_wait(rid);
+      if (!ref) {
+        core.unrefOpPromise(currentPromise);
+      }
+      await currentPromise;
+      currentPromise = null;
+    } catch (error) {
+      if (
+        !ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
+        !ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)
+      ) {
         throw new Deno.errors.Http(error);
       }
-      if (req === null) {
-        break;
-      }
-      PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
     }
 
     try {
