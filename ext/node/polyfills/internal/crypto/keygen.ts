@@ -1137,13 +1137,13 @@ function createJob(mode, type, options) {
       if (paramEncoding == null || paramEncoding === "named") {
         // pass.
       } else if (paramEncoding === "explicit") {
-        // The underlying crypto library only supports named-curve encoding,
-        // so the generated key uses named-curve ASN.1 even when "explicit"
-        // is requested. Warn callers that depend on byte-for-byte explicit
-        // ASN.1 output.
+        // Explicit param encoding embeds full curve parameters instead of a
+        // named curve OID. The underlying crypto library only emits named-curve
+        // encoding, so fall back silently with a warning so callers that rely
+        // on byte-for-byte explicit encoding can detect the mismatch.
         process.emitWarning(
-          'The "paramEncoding: explicit" option is not supported; the ' +
-            "generated key uses named-curve encoding instead.",
+          'paramEncoding: "explicit" is not supported; ' +
+            "the generated key will use named-curve encoding instead.",
           "Warning",
         );
       } else {
