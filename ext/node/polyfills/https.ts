@@ -18,6 +18,7 @@ import {
   setupConnectionsTracking,
   storeHTTPOptions,
 } from "node:_http_server";
+import { createProxyConnection } from "ext:deno_node/internal/http_proxy.ts";
 import { Agent as HttpAgent } from "node:_http_agent";
 import { validateObject } from "ext:deno_node/internal/validators.mjs";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
@@ -271,6 +272,42 @@ Agent.prototype.createConnection = function createConnection(
     if (session) {
       options = { session, ...options };
     }
+  }
+
+  // If a proxy was resolved by addRequest, establish a CONNECT tunnel
+  // through the proxy before upgrading to TLS.
+  if (options._proxy) {
+    const proxy = options._proxy;
+    const targetHost = options.servername || options.hostname || options.host ||
+      "localhost";
+    const targetPort = options.port || 443;
+
+    const tunnelCb = (err: any, tlsSocket: any) => {
+      if (err) {
+        if (cb) cb(err);
+        return;
+      }
+      // Wire up session caching
+      if (options._agentKey) {
+        tlsSocket.on("session", (session: any) => {
+          this._cacheSession(options._agentKey, session);
+        });
+        tlsSocket.once("close", (closeErr: any) => {
+          if (closeErr) this._evictSession(options._agentKey);
+        });
+      }
+      if (cb) cb(null, tlsSocket);
+    };
+
+    createProxyConnection(
+      proxy,
+      { host: targetHost, port: targetPort, servername: targetHost },
+      options,
+      tunnelCb,
+    );
+
+    // Return a placeholder -- the real socket arrives via cb
+    return undefined;
   }
 
   const socket = tls.connect(options as any);

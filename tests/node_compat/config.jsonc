@@ -7,6 +7,10 @@
       "ignore": true,
       "reason": "Tests Node.js internal C++ binding (internalBinding('zlib').Zlib) which is not implemented in Deno"
     },
+    "client-proxy/test-https-proxy-request-connection-refused.mjs": {},
+    "client-proxy/test-https-proxy-request-invalid-char-in-options.mjs": {},
+    "client-proxy/test-https-proxy-request-invalid-url.mjs": {},
+    "client-proxy/test-https-proxy-request-socket-keep-alive.mjs": {},
     "client-proxy/test-use-env-proxy-cli-http.mjs": {
       "ignore": true,
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
