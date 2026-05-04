@@ -197,7 +197,10 @@ impl<
   TSys: LocalNpmInstallSys,
 > HoistedNpmPackageInstaller<THttpClient, TReporter, TSys>
 {
-  #[allow(clippy::too_many_arguments, reason = "many dependencies needed for installer construction")]
+  #[allow(
+    clippy::too_many_arguments,
+    reason = "many dependencies needed for installer construction"
+  )]
   pub fn new(
     lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
     npm_cache: Arc<NpmCache<TSys>>,
@@ -534,7 +537,10 @@ impl<
     Ok(())
   }
 
-  #[allow(clippy::too_many_arguments, reason = "many parameters needed for package cloning")]
+  #[allow(
+    clippy::too_many_arguments,
+    reason = "many parameters needed for package cloning"
+  )]
   async fn clone_package<'a>(
     &'a self,
     package: &'a NpmResolutionPackage,
