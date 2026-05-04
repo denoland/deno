@@ -133,10 +133,10 @@ impl SqliteBackedCache {
     let cache_storage_dir = self.cache_storage_dir.clone();
     spawn_blocking(move || {
       let db = db.lock();
-      let inserted = db.execute(
+      db.execute(
         "INSERT OR IGNORE INTO cache_storage (cache_name) VALUES (?1)",
         params![cache_name],
-      )? > 0;
+      )?;
       let cache_id = db.query_row(
         "SELECT id FROM cache_storage WHERE cache_name = ?1",
         params![cache_name],
@@ -145,12 +145,6 @@ impl SqliteBackedCache {
           Ok(id)
         },
       )?;
-      if inserted {
-        db.execute(
-          "DELETE FROM request_response_list WHERE cache_id = ?1",
-          params![cache_id],
-        )?;
-      }
       let responses_dir = get_responses_dir(cache_storage_dir, cache_id);
       #[allow(
         clippy::disallowed_methods,
