@@ -21,10 +21,13 @@ use tokio::io::AsyncWriteExt;
 
 use crate::CacheDeleteRequest;
 use crate::CacheError;
+use crate::CacheKey;
+use crate::CacheKeysRequest;
 use crate::CacheMatchRequest;
 use crate::CacheMatchResponseMeta;
 use crate::CachePutRequest;
 use crate::CacheResponseResource;
+use crate::cache_key_matches_request;
 use crate::deserialize_headers;
 use crate::get_header;
 use crate::serialize_headers;
@@ -130,10 +133,10 @@ impl SqliteBackedCache {
     let cache_storage_dir = self.cache_storage_dir.clone();
     spawn_blocking(move || {
       let db = db.lock();
-      db.execute(
+      let inserted = db.execute(
         "INSERT OR IGNORE INTO cache_storage (cache_name) VALUES (?1)",
         params![cache_name],
-      )?;
+      )? > 0;
       let cache_id = db.query_row(
         "SELECT id FROM cache_storage WHERE cache_name = ?1",
         params![cache_name],
@@ -142,6 +145,12 @@ impl SqliteBackedCache {
           Ok(id)
         },
       )?;
+      if inserted {
+        db.execute(
+          "DELETE FROM request_response_list WHERE cache_id = ?1",
+          params![cache_id],
+        )?;
+      }
       let responses_dir = get_responses_dir(cache_storage_dir, cache_id);
       #[allow(
         clippy::disallowed_methods,
@@ -195,6 +204,10 @@ impl SqliteBackedCache {
         )
         .optional()?;
       if let Some(cache_id) = maybe_cache_id {
+        db.execute(
+          "DELETE FROM request_response_list WHERE cache_id = ?1",
+          params![cache_id],
+        )?;
         let cache_dir = cache_storage_dir.join(cache_id.to_string());
         #[allow(
           clippy::disallowed_methods,
@@ -363,6 +376,51 @@ impl SqliteBackedCache {
       Some((cache_meta, None)) => Ok(Some((cache_meta, None))),
       None => Ok(None),
     }
+  }
+
+  pub async fn keys(
+    &self,
+    request: CacheKeysRequest,
+  ) -> Result<Vec<CacheKey>, CacheError> {
+    let db = self.connection.clone();
+    spawn_blocking(move || {
+      let db = db.lock();
+      let mut stmt = db.prepare(
+        "SELECT request_url, request_headers, response_headers
+             FROM request_response_list
+             WHERE cache_id = ?1
+             ORDER BY id",
+      )?;
+      let rows = stmt.query_map(params![request.cache_id], |row| {
+        let request_url: String = row.get(0)?;
+        let request_headers: Vec<u8> = row.get(1)?;
+        let response_headers: Vec<u8> = row.get(2)?;
+        let request_headers: Vec<(ByteString, ByteString)> =
+          deserialize_headers(&request_headers);
+        let response_headers: Vec<(ByteString, ByteString)> =
+          deserialize_headers(&response_headers);
+        Ok((request_url, request_headers, response_headers))
+      })?;
+      let mut keys = Vec::new();
+      for row in rows {
+        let (request_url, request_headers, response_headers) = row?;
+        if cache_key_matches_request(
+          request.request_url.as_deref(),
+          &request.request_headers,
+          &request_url,
+          &request_headers,
+          &response_headers,
+          &request.options,
+        ) {
+          keys.push(CacheKey {
+            request_url,
+            request_headers,
+          });
+        }
+      }
+      Ok::<Vec<CacheKey>, CacheError>(keys)
+    })
+    .await?
   }
 
   pub async fn delete(

@@ -5,6 +5,7 @@
 const { core, primordials } = globalThis.__bootstrap;
 const {
   op_cache_delete,
+  op_cache_keys,
   op_cache_match,
   op_cache_put,
   op_cache_storage_delete,
@@ -224,6 +225,65 @@ class Cache {
     }
   }
 
+  /** See https://w3c.github.io/ServiceWorker/#cache-keys */
+  async keys(request = undefined, options = undefined) {
+    webidl.assertBranded(this, CachePrototype);
+    const prefix = "Failed to execute 'keys' on 'Cache'";
+    let convertedRequest = request;
+    if (request !== undefined) {
+      convertedRequest = webidl.converters["RequestInfo_DOMString"](
+        request,
+        prefix,
+        "Argument 1",
+      );
+    }
+    options = webidl.converters["CacheQueryOptions"](
+      options,
+      prefix,
+      "Argument 2",
+    );
+
+    let requestUrl = null;
+    let requestHeaders = [];
+    if (request !== undefined) {
+      let r = null;
+      if (ObjectPrototypeIsPrototypeOf(RequestPrototype, convertedRequest)) {
+        r = convertedRequest;
+        if (convertedRequest.method !== "GET" && !options.ignoreMethod) {
+          return [];
+        }
+      } else if (
+        typeof convertedRequest === "string" ||
+        ObjectPrototypeIsPrototypeOf(URLPrototype, convertedRequest)
+      ) {
+        r = new Request(convertedRequest);
+      }
+
+      const url = new URL(r.url);
+      url.hash = "";
+      const innerRequest = toInnerRequest(r);
+      // deno-lint-ignore prefer-primordials
+      requestUrl = url.toString();
+      requestHeaders = innerRequest.headerList;
+    }
+
+    const keys = await op_cache_keys({
+      cacheId: this[_id],
+      requestUrl,
+      requestHeaders,
+      options,
+    });
+    const requests = [];
+    for (let i = 0; i < keys.length; ++i) {
+      const key = keys[i];
+      ArrayPrototypePush(
+        requests,
+        new Request(key.requestUrl, { headers: key.requestHeaders }),
+      );
+    }
+    return requests;
+  }
+
   /** See https://w3c.github.io/ServiceWorker/#cache-delete */
   async delete(request, _options) {
     webidl.assertBranded(this, CachePrototype);
@@ -331,6 +391,27 @@ webidl.configureInterface(CacheStorage);
 webidl.configureInterface(Cache);
 const CacheStoragePrototype = CacheStorage.prototype;
 const CachePrototype = Cache.prototype;
+
+webidl.converters["CacheQueryOptions"] = webidl.createDictionaryConverter(
+  "CacheQueryOptions",
+  [
+    {
+      key: "ignoreMethod",
+      converter: webidl.converters.boolean,
+      defaultValue: false,
+    },
+    {
+      key: "ignoreSearch",
+      converter: webidl.converters.boolean,
+      defaultValue: false,
+    },
+    {
+      key: "ignoreVary",
+      converter: webidl.converters.boolean,
+      defaultValue: false,
+    },
+  ],
+);
 
 let cacheStorageStorage;
 function cacheStorage() {

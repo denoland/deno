@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use async_stream::try_stream;
@@ -21,10 +22,13 @@ use slab::Slab;
 
 use crate::CacheDeleteRequest;
 use crate::CacheError;
+use crate::CacheKey;
+use crate::CacheKeysRequest;
 use crate::CacheMatchRequest;
 use crate::CacheMatchResponseMeta;
 use crate::CachePutRequest;
 use crate::CacheResponseResource;
+use crate::cache_key_matches_request;
 use crate::get_header;
 use crate::get_headers_from_vary_header;
 use crate::lsc_shard::CacheShard;
@@ -35,6 +39,14 @@ const REQHDR_PREFIX: &str = "x-lsc-meta-reqhdr-";
 pub struct LscBackend {
   shard: Rc<RefCell<Option<Rc<CacheShard>>>>,
   id2name: Rc<RefCell<Slab<String>>>,
+  keys: Rc<RefCell<HashMap<String, Vec<LscCacheKey>>>>,
+}
+
+#[derive(Clone)]
+struct LscCacheKey {
+  request_url: String,
+  request_headers: Vec<(ByteString, ByteString)>,
+  response_headers: Vec<(ByteString, ByteString)>,
 }
 
 impl LscBackend {
@@ -157,6 +169,23 @@ impl LscBackend {
     );
     let body = UnsyncBoxBody::new(body);
     shard.put_object(&object_key, headers, body).await?;
+
+    let key = LscCacheKey {
+      request_url: request_response.request_url,
+      request_headers: request_response.request_headers,
+      response_headers: request_response.response_headers,
+    };
+    let mut keys = self.keys.borrow_mut();
+    let cache_keys = keys.entry(cache_name).or_default();
+    if let Some(existing) = cache_keys
+      .iter_mut()
+      .find(|existing| existing.request_url == key.request_url)
+    {
+      *existing = key;
+    } else {
+      cache_keys.push(key);
+    }
+
     Ok(())
   }
 
@@ -264,6 +293,48 @@ impl LscBackend {
     Ok(Some((meta, Some(body))))
   }
 
+  pub async fn keys(
+    &self,
+    request: CacheKeysRequest,
+  ) -> Result<Vec<CacheKey>, CacheError> {
+    let Some(_shard) = self.shard.borrow().as_ref().cloned() else {
+      return Err(CacheError::NotAvailable);
+    };
+
+    let Some(cache_name) = self
+      .id2name
+      .borrow()
+      .get(request.cache_id as usize)
+      .cloned()
+    else {
+      return Err(CacheError::NotFound);
+    };
+
+    let keys = self.keys.borrow();
+    let Some(cache_keys) = keys.get(&cache_name) else {
+      return Ok(Vec::new());
+    };
+
+    let mut result = Vec::new();
+    for key in cache_keys {
+      if cache_key_matches_request(
+        request.request_url.as_deref(),
+        &request.request_headers,
+        &key.request_url,
+        &key.request_headers,
+        &key.response_headers,
+        &request.options,
+      ) {
+        result.push(CacheKey {
+          request_url: key.request_url.clone(),
+          request_headers: key.request_headers.clone(),
+        });
+      }
+    }
+
+    Ok(result)
+  }
+
   pub async fn delete(
     &self,
     request: CacheDeleteRequest,
@@ -280,6 +351,7 @@ impl LscBackend {
     else {
       return Err(CacheError::NotFound);
     };
+    let request_url = request.request_url.clone();
     let object_key = build_cache_object_key(
       cache_name.as_bytes(),
       request.request_url.as_bytes(),
@@ -298,6 +370,9 @@ impl LscBackend {
       )?,
     );
     shard.put_object_empty(&object_key, headers).await?;
+    if let Some(cache_keys) = self.keys.borrow_mut().get_mut(&cache_name) {
+      cache_keys.retain(|key| key.request_url != request_url);
+    }
     Ok(true)
   }
 }

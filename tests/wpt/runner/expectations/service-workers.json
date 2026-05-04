@@ -90,15 +90,12 @@
       "Cache interface: operation add(RequestInfo)",
       "Cache interface: operation addAll(sequence<RequestInfo>)",
       "Cache interface: operation delete(RequestInfo, optional CacheQueryOptions)",
-      "Cache interface: operation keys(optional RequestInfo, optional CacheQueryOptions)",
       "Cache interface: self.cacheInstance must inherit property \"matchAll(optional RequestInfo, optional CacheQueryOptions)\" with the proper type",
       "Cache interface: calling matchAll(optional RequestInfo, optional CacheQueryOptions) on self.cacheInstance with too few arguments must throw TypeError",
       "Cache interface: self.cacheInstance must inherit property \"add(RequestInfo)\" with the proper type",
       "Cache interface: calling add(RequestInfo) on self.cacheInstance with too few arguments must throw TypeError",
       "Cache interface: self.cacheInstance must inherit property \"addAll(sequence<RequestInfo>)\" with the proper type",
       "Cache interface: calling addAll(sequence<RequestInfo>) on self.cacheInstance with too few arguments must throw TypeError",
-      "Cache interface: self.cacheInstance must inherit property \"keys(optional RequestInfo, optional CacheQueryOptions)\" with the proper type",
-      "Cache interface: calling keys(optional RequestInfo, optional CacheQueryOptions) on self.cacheInstance with too few arguments must throw TypeError",
       "CacheStorage interface: operation match(RequestInfo, optional MultiCacheQueryOptions)",
       "Window interface: attribute caches",
       "Navigator interface: attribute serviceWorker",
@@ -176,15 +173,12 @@
       "Cache interface: operation add(RequestInfo)",
       "Cache interface: operation addAll(sequence<RequestInfo>)",
       "Cache interface: operation delete(RequestInfo, optional CacheQueryOptions)",
-      "Cache interface: operation keys(optional RequestInfo, optional CacheQueryOptions)",
       "Cache interface: self.cacheInstance must inherit property \"matchAll(optional RequestInfo, optional CacheQueryOptions)\" with the proper type",
       "Cache interface: calling matchAll(optional RequestInfo, optional CacheQueryOptions) on self.cacheInstance with too few arguments must throw TypeError",
       "Cache interface: self.cacheInstance must inherit property \"add(RequestInfo)\" with the proper type",
       "Cache interface: calling add(RequestInfo) on self.cacheInstance with too few arguments must throw TypeError",
       "Cache interface: self.cacheInstance must inherit property \"addAll(sequence<RequestInfo>)\" with the proper type",
       "Cache interface: calling addAll(sequence<RequestInfo>) on self.cacheInstance with too few arguments must throw TypeError",
-      "Cache interface: self.cacheInstance must inherit property \"keys(optional RequestInfo, optional CacheQueryOptions)\" with the proper type",
-      "Cache interface: calling keys(optional RequestInfo, optional CacheQueryOptions) on self.cacheInstance with too few arguments must throw TypeError",
       "CacheStorage interface: operation match(RequestInfo, optional MultiCacheQueryOptions)",
       "WorkerGlobalScope interface: attribute caches",
       "WorkerNavigator interface: attribute serviceWorker"
@@ -222,8 +216,16 @@
         "Cache.delete with ignoreSearch option (when it is specified as false)"
       ]
     },
-    "cache-keys.https.any.html": false,
-    "cache-keys.https.any.worker.html": false,
+    "cache-keys.https.any.html": {
+      "expectedFailures": [
+        "Cache.keys without parameters and VARY entries"
+      ]
+    },
+    "cache-keys.https.any.worker.html": {
+      "expectedFailures": [
+        "Cache.keys without parameters and VARY entries"
+      ]
+    },
     "cache-match.https.any.worker.html": {
       "expectedFailures": [
         "Cache.match supports ignoreMethod",
