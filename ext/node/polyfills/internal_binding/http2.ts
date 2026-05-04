@@ -16,6 +16,19 @@ class Http2Stream {
     // handle, so dispatch falls through to the handle's own `respond` op.
     return this.respond(headers, count, options);
   }
+
+  pushPromise(
+    this: {
+      pushPromise(headers: string, count: number, options: number): number;
+    },
+    headers: string,
+    count: number,
+    options: number,
+  ): number {
+    // Tests replace this prototype method; otherwise `this` is the native
+    // handle, so dispatch falls through to the handle's own `pushPromise` op.
+    return this.pushPromise(headers, count, options);
+  }
 }
 
 class Http2Session {
