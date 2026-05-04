@@ -1,8 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
+import { core } from "ext:core/mod.js";
 import inspector from "node:inspector";
-import { promisify } from "ext:deno_node/internal/util.mjs";
+const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
 class Session extends inspector.Session {
   constructor() {

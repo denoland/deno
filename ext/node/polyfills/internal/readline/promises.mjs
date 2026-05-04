@@ -4,18 +4,21 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import {
+import { core } from "ext:core/mod.js";
+const {
   ArrayPrototypeJoin,
   ArrayPrototypePush,
-} from "ext:deno_node/internal/primordials.mjs";
+} = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
 
 import { CSI } from "ext:deno_node/internal/readline/utils.mjs";
-import {
+const {
   validateBoolean,
   validateInteger,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { isWritable } from "ext:deno_node/internal/streams/utils.js";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
 const {
   kClearToLineBeginning,

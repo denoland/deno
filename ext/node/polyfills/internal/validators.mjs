@@ -1,7 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
+// deno-fmt-ignore-file
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,
@@ -20,10 +22,9 @@ const {
   RegExpPrototypeTest,
 } = primordials;
 
-import { codes } from "ext:deno_node/internal/error_codes.ts";
-import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
+const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
+const { hideStackFrames } = core.loadExtScript("ext:deno_node/internal/hide_stack_frames.ts");
+const { isArrayBufferView } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 
 /**
  * @param {number} value
@@ -231,7 +232,8 @@ const validateOneOf = hideStackFrames((value, name, oneOf) => {
   }
 });
 
-export function validateEncoding(data, encoding) {
+function validateEncoding(data, encoding) {
+  const { normalizeEncoding } = core.loadExtScript("ext:deno_node/internal/normalize_encoding.ts");
   const normalizedEncoding = normalizeEncoding(encoding);
   const length = data.length;
 
@@ -442,7 +444,32 @@ const validateLinkHeaderValue = hideStackFrames((hints) => {
   );
 });
 
-export default {
+return {
+  default: {
+    isInt32,
+    isUint32,
+    parseFileMode,
+    validateAbortSignal,
+    validateArray,
+    validateBoolean,
+    validateBooleanArray,
+    validateBuffer,
+    validateFunction,
+    validateInt32,
+    validateInteger,
+    validateNumber,
+    validateObject,
+    validateOneOf,
+    validatePort,
+    validateString,
+    validateStringArray,
+    validateUint32,
+    validateUnion,
+    validateFiniteNumber,
+    validateLinkHeaderValue,
+    checkRangesOrGetDefault,
+  },
+  checkRangesOrGetDefault,
   isInt32,
   isUint32,
   parseFileMode,
@@ -451,31 +478,7 @@ export default {
   validateBoolean,
   validateBooleanArray,
   validateBuffer,
-  validateFunction,
-  validateInt32,
-  validateInteger,
-  validateNumber,
-  validateObject,
-  validateOneOf,
-  validatePort,
-  validateString,
-  validateStringArray,
-  validateUint32,
-  validateUnion,
-  validateFiniteNumber,
-  validateLinkHeaderValue,
-  checkRangesOrGetDefault,
-};
-export {
-  checkRangesOrGetDefault,
-  isInt32,
-  isUint32,
-  parseFileMode,
-  validateAbortSignal,
-  validateArray,
-  validateBoolean,
-  validateBooleanArray,
-  validateBuffer,
+  validateEncoding,
   validateFiniteNumber,
   validateFunction,
   validateInt32,
@@ -490,3 +493,4 @@ export {
   validateUint32,
   validateUnion,
 };
+})()

@@ -1,8 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-fmt-ignore-file
 
-import { op_node_build_os } from "ext:core/ops";
+(function () {
+const { core } = globalThis.__bootstrap;
+const { op_node_build_os } = core.ops;
 
-export type OSType =
+type OSType =
   | "windows"
   | "linux"
   | "android"
@@ -10,9 +13,12 @@ export type OSType =
   | "freebsd"
   | "openbsd";
 
-export const osType: OSType = op_node_build_os();
+const osType: OSType = op_node_build_os();
 
-export const isAndroid = osType === "android";
-export const isWindows = osType === "windows";
-export const isLinux = osType === "linux" || osType === "android";
-export const isMacOS = osType === "darwin";
+const isAndroid = osType === "android";
+const isWindows = osType === "windows";
+const isLinux = osType === "linux" || osType === "android";
+const isMacOS = osType === "darwin";
+
+return { osType, isAndroid, isWindows, isLinux, isMacOS };
+})()

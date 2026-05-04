@@ -21,16 +21,18 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import dns from "node:dns";
-import {
-  isInt32,
-  validateFunction,
-} from "ext:deno_node/internal/validators.mjs";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import { ERR_SOCKET_BAD_TYPE } from "ext:deno_node/internal/errors.ts";
+const { ERR_SOCKET_BAD_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 import { UDP } from "ext:deno_node/internal_binding/udp_wrap.ts";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const {
+  isInt32,
+  validateFunction,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { FunctionPrototypeBind, MapPrototypeGet, Symbol } = primordials;
 
 export type SocketType = "udp4" | "udp6";

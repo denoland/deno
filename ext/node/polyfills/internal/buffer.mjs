@@ -80,7 +80,7 @@ import {
 const { TextDecoder, TextEncoder } = core.loadExtScript(
   "ext:deno_web/08_text_encoding.js",
 );
-import { codes } from "ext:deno_node/internal/error_codes.ts";
+const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
 import { encodings } from "ext:deno_node/internal_binding/string_decoder.ts";
 import {
   indexOfBuffer,
@@ -95,27 +95,31 @@ import {
   hexToBytes,
   utf16leToBytes,
 } from "ext:deno_node/internal_binding/_utils.ts";
-import { inspect as utilInspect } from "ext:deno_node/internal/util/inspect.mjs";
-import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
+const { inspect: utilInspect } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
+const { normalizeEncoding } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 import {
   ALL_PROPERTIES,
   getOwnNonIndexProperties,
   ONLY_ENUMERABLE,
 } from "ext:deno_node/internal_binding/util.ts";
-import {
+const {
   validateBuffer,
   validateInteger,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   isArrayBufferView,
   isUint8Array,
-} from "ext:deno_node/internal/util/types.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_STATE,
   genericNodeError,
   NodeError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 const { forgivingBase64UrlEncode } = core.loadExtScript(
   "ext:deno_web/00_infra.js",

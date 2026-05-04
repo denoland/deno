@@ -4,6 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import {
   op_node_x509_ca,
   op_node_x509_check_email,
@@ -36,24 +37,28 @@ import {
   KeyObject,
   PublicKeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
-import { kHandle } from "ext:deno_node/internal/crypto/constants.ts";
+const { kHandle } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/constants.ts",
+);
 import { Buffer } from "node:buffer";
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
-} from "ext:deno_node/internal/errors.ts";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const {
   validateBoolean,
   validateObject,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import type { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
 import { inspect } from "node:util";
-import { customInspectSymbol as kInspect } from "ext:deno_node/internal/util.mjs";
+const { customInspectSymbol: kInspect } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 import type { InspectOptions } from "node:util";
-
-const core = globalThis.Deno.core;
 
 // deno-lint-ignore no-explicit-any
 export type PeerCertificate = any;

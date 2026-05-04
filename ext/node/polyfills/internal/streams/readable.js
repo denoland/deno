@@ -2,7 +2,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import process from "node:process";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import EE from "node:events";
 import {
   prependListener,
@@ -31,8 +31,10 @@ import {
   kState,
 } from "ext:deno_node/internal/streams/utils.js";
 
-import imported1 from "ext:deno_node/internal/errors.ts";
-import { validateObject } from "ext:deno_node/internal/validators.mjs";
+const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { validateObject } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import { StringDecoder } from "node:string_decoder";
 import from from "ext:deno_node/internal/streams/from.js";
 import * as _mod2 from "ext:deno_node/internal/util/debuglog.ts";

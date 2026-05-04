@@ -2,7 +2,8 @@
 
 import { type WriteFileOptions } from "ext:deno_node/_fs/_fs_common.ts";
 import type { Encodings } from "ext:deno_node/_utils.ts";
-import { promisify } from "ext:deno_node/internal/util.mjs";
+import { core } from "ext:core/mod.js";
+const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cpPromise } from "ext:deno_node/_fs/_fs_cp.ts";
@@ -37,14 +38,18 @@ import {
 } from "node:fs";
 import { globPromise } from "ext:deno_node/_fs/_fs_glob.ts";
 import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
-import { parseFileMode } from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "node:buffer";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { primordials } from "ext:core/mod.js";
+const { parseFileMode } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import { op_node_lchmod } from "ext:core/ops";
-import { isMacOS } from "ext:deno_node/_util/os.ts";
-import { ERR_METHOD_NOT_IMPLEMENTED } from "ext:deno_node/internal/errors.ts";
+const { isMacOS } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { ERR_METHOD_NOT_IMPLEMENTED } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 import { resolve as pathResolve } from "node:path";
 import process from "node:process";
 

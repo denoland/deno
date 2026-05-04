@@ -4,6 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
 import { kAesKeyLengths } from "ext:deno_node/internal/crypto/util.ts";
 import {
@@ -11,7 +12,7 @@ import {
   PublicKeyObject,
   SecretKeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
-import {
+const {
   ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS,
   ERR_CRYPTO_INVALID_DIGEST,
   ERR_CRYPTO_UNKNOWN_CIPHER,
@@ -19,10 +20,10 @@ import {
   ERR_INCOMPATIBLE_OPTION_PAIR,
   ERR_INVALID_ARG_VALUE,
   ERR_MISSING_OPTION,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { getCiphers } from "ext:deno_node/internal/crypto/util.ts";
 import { getHashes } from "ext:deno_node/internal/crypto/hash.ts";
-import {
+const {
   validateBuffer,
   validateFunction,
   validateInt32,
@@ -31,7 +32,7 @@ import {
   validateOneOf,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { Buffer } from "node:buffer";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 import process from "node:process";

@@ -98,7 +98,7 @@ import fs from "node:fs";
 import { FileHandle as FsFileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
 import { format, inspect } from "node:util";
-import {
+const {
   isUint32,
   validateAbortSignal,
   validateArray,
@@ -111,10 +111,12 @@ import {
   validateObject,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import { promisify } from "ext:deno_node/internal/util.mjs";
-import { customInspectSymbol as kInspect } from "ext:deno_node/internal/util.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { customInspectSymbol: kInspect } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+const {
   AbortError,
   aggregateTwoErrors,
   ERR_HTTP2_ALTSVC_INVALID_ORIGIN,
@@ -160,7 +162,7 @@ import {
   ERR_SOCKET_CLOSED,
   ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
   hideStackFrames,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import {
   kAfterAsyncWrite,
   kBoundSession,
@@ -2908,10 +2910,10 @@ class ServerHttp2Stream extends Http2Stream {
 
     const streamOptions = options.endStream ? STREAM_OPTION_EMPTY_PAYLOAD : 0;
 
-    const ret = this[kHandle].pushPromise(
-      headersList[0],
-      headersList[1],
-      streamOptions,
+    const ret = ReflectApply(
+      BindingHttp2Stream.prototype.pushPromise,
+      this[kHandle],
+      [headersList[0], headersList[1], streamOptions],
     );
     let err;
     if (typeof ret === "number") {

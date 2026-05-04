@@ -23,13 +23,14 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import {
+import { core } from "ext:core/mod.js";
+const {
   validateBoolean,
   validateNumber,
   validateOneOf,
   validatePort,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { isIP } from "ext:deno_node/internal/net.ts";
 import {
   dnsOrderToNumber,
@@ -53,13 +54,13 @@ import type {
   ResolveOptions,
   ResolveWithTtlOptions,
 } from "ext:deno_node/internal/dns/utils.ts";
-import {
+const {
   dnsException,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_MISSING_ARGS,
   handleDnsError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import cares, {
   type ChannelWrapQuery,
   GetAddrInfoReqWrap,

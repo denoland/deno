@@ -4,9 +4,9 @@
 
 import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { type Buffer } from "node:buffer";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { op_node_lutimes, op_node_lutimes_sync } from "ext:core/ops";
-import { promisify } from "ext:deno_node/internal/util.mjs";
+const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import {
   getValidatedPath,
   toUnixTimestamp,

@@ -4,6 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import {
   op_node_check_prime_bytes,
   op_node_check_prime_bytes_async,
@@ -16,22 +17,22 @@ import randomFill, {
   randomFillSync,
 } from "ext:deno_node/internal/crypto/_randomFill.mjs";
 import randomInt from "ext:deno_node/internal/crypto/_randomInt.ts";
-import {
+const {
   validateBoolean,
   validateFunction,
   validateInt32,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   isAnyArrayBuffer,
   isArrayBufferView,
-} from "ext:deno_node/internal/util/types.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
   NodeError,
   NodeRangeError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { Buffer } from "node:buffer";
 
 export { default as randomBytes } from "ext:deno_node/internal/crypto/_randomBytes.ts";

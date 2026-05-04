@@ -2004,10 +2004,21 @@ impl<
 
     if let Some(main) = maybe_main.as_deref() {
       let package_path = package_json.path.parent().unwrap();
+
+      // Find the package root: if the package.json is inside a
+      // node_modules directory, the root is the package folder directly
+      // under node_modules (e.g. node_modules/pkg/ or
+      // node_modules/@scope/pkg/). This allows nested package.json files
+      // (subpath exports) to have "main" fields that reference sibling
+      // directories within the same package.
+      let package_root = find_package_root_from_node_modules(package_path)
+        .unwrap_or_else(|| package_path.to_path_buf());
+
       let guess = package_path.join(main).clean();
+
       // Ensure the resolved main path doesn't escape the package
       // directory via path traversal (e.g. "main": "../../../secret.json")
-      if !guess.starts_with(package_path) {
+      if !guess.starts_with(&package_root) {
         return Err(
           ModuleNotFoundError {
             specifier: UrlOrPath::Path(guess),
@@ -2017,6 +2028,7 @@ impl<
           .into(),
         );
       }
+
       if self.sys.is_file(Cow::Borrowed(&guess)) {
         return Ok(self.maybe_resolve_types(
           LocalUrlOrPath::Path(LocalPath {
@@ -2050,7 +2062,7 @@ impl<
       };
       for ending in endings {
         let guess = package_path.join(format!("{main}{ending}")).clean();
-        if guess.starts_with(package_path)
+        if guess.starts_with(&package_root)
           && self.sys.is_file(Cow::Borrowed(&guess))
         {
           // TODO(bartlomieju): emitLegacyIndexDeprecation()
@@ -2739,6 +2751,41 @@ fn is_pe(data: &[u8]) -> bool {
   }
   let magic = u16::from_le_bytes([data[0], data[1]]);
   magic == 0x5a4d
+}
+
+/// Given a path inside a `node_modules` tree, find the package root by
+/// locating the last `node_modules` path component and taking the next
+/// segment (or two for scoped packages like `@scope/pkg`). Uses the last
+/// occurrence to handle nested node_modules trees correctly. Returns
+/// `None` if no `node_modules` component is found, in which case the
+/// caller should fall back to the package.json's own directory.
+fn find_package_root_from_node_modules(path: &Path) -> Option<PathBuf> {
+  let components: Vec<_> = path.components().collect();
+  // Find the last node_modules component
+  let nm_idx = components
+    .iter()
+    .rposition(|c| c.as_os_str() == "node_modules")?;
+  // Need at least one component after node_modules for the package name
+  if nm_idx + 1 >= components.len() {
+    return None;
+  }
+  let mut prefix = PathBuf::new();
+  for c in &components[..=nm_idx] {
+    prefix.push(c);
+  }
+  let first = &components[nm_idx + 1];
+  let first_str = first.as_os_str().to_string_lossy();
+  if first_str.starts_with('@') {
+    // Scoped package: @scope/name - need two components
+    if nm_idx + 2 >= components.len() {
+      return None;
+    }
+    prefix.push(first);
+    prefix.push(components[nm_idx + 2]);
+  } else {
+    prefix.push(first);
+  }
+  Some(prefix)
 }
 
 #[cfg(test)]
