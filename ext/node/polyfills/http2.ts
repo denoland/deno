@@ -98,7 +98,7 @@ import fs from "node:fs";
 import { FileHandle as FsFileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
 import { format, inspect } from "node:util";
-import {
+const {
   isUint32,
   validateAbortSignal,
   validateArray,
@@ -111,7 +111,7 @@ import {
   validateObject,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { customInspectSymbol as kInspect } from "ext:deno_node/internal/util.mjs";
 import {

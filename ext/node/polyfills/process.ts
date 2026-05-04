@@ -28,14 +28,14 @@ import { EventEmitter } from "node:events";
 import Module, { getBuiltinModule } from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
 import { onWarning } from "ext:deno_node/internal/process/warning.ts";
-import {
+const {
   parseFileMode,
   validateBoolean,
   validateNumber,
   validateObject,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import {
   denoErrorToNodeError,
   ERR_INVALID_ARG_TYPE,

@@ -4,13 +4,18 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
+import { core } from "ext:core/mod.js";
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_TLS_INVALID_PROTOCOL_VERSION,
   ERR_TLS_PROTOCOL_VERSION_CONFLICT,
 } from "ext:deno_node/internal/errors.ts";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const { validateString } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import { createPrivateKey } from "ext:deno_node/internal/crypto/keys.ts";
 
 // OpenSSL cipher names are uppercase alphanumeric with hyphens/underscores

@@ -4,7 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
 const {
   SymbolSpecies,
@@ -24,10 +24,10 @@ import {
   op_node_verify_ed448,
 } from "ext:core/ops";
 
-import {
+const {
   validateFunction,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { Buffer } from "node:buffer";
 import type { WritableOptions } from "ext:deno_node/_stream.d.ts";
 import Writable from "node:_stream_writable";

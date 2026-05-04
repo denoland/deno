@@ -2,10 +2,6 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import {
-  validateOneOf,
-  validateString,
-} from "ext:deno_node/internal/validators.mjs";
 import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
 import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
@@ -16,7 +12,13 @@ import {
   op_set_default_ca_certificates,
 } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+const {
+  validateOneOf,
+  validateString,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 
 const { isTypedArray } = core;

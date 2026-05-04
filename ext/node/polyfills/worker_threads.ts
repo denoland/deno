@@ -39,10 +39,10 @@ import {
   ERR_WORKER_NOT_RUNNING,
   ERR_WORKER_PATH,
 } from "ext:deno_node/internal/errors.ts";
-import {
+const {
   validateArray,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { EventEmitter } from "node:events";
 import { Readable, Writable } from "node:stream";
 const {

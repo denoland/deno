@@ -8,10 +8,10 @@ import { once } from "ext:deno_node/internal/util.mjs";
 import destroyImpl from "ext:deno_node/internal/streams/destroy.js";
 import Duplex from "node:_stream_duplex";
 import imported1 from "ext:deno_node/internal/errors.ts";
-import {
+const {
   validateAbortSignal,
   validateFunction,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 import {
   isIterable,

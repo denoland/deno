@@ -25,14 +25,14 @@ import {
   validateNullByteNotInArg,
 } from "ext:deno_node/internal/child_process.ts";
 import internalChildProcess from "ext:deno_node/internal/child_process.ts";
-import {
+const {
   validateAbortSignal,
   validateFunction,
   validateInteger,
   validateNumber,
   validateObject,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import {
   ERR_CHILD_PROCESS_IPC_REQUIRED,
   ERR_CHILD_PROCESS_STDIO_MAXBUFFER,

@@ -17,9 +17,11 @@ const { TextDecoder, TextEncoder } = core.loadExtScript(
   "ext:deno_web/08_text_encoding.js",
 );
 import { errorMap } from "ext:deno_node/internal_binding/uv.ts";
-import { codes } from "ext:deno_node/internal/error_codes.ts";
+const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
 import { ERR_NOT_IMPLEMENTED } from "ext:deno_node/internal/errors.ts";
-import { validateNumber } from "./internal/validators.mjs";
+const { validateNumber } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
 export type BinaryEncodings = "binary";
 

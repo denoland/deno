@@ -4,6 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { Buffer } from "node:buffer";
 import {
@@ -11,19 +12,19 @@ import {
   ERR_INVALID_ARG_TYPE,
   hideStackFrames,
 } from "ext:deno_node/internal/errors.ts";
-import {
+const {
   isAnyArrayBuffer,
   isArrayBufferView,
-} from "ext:deno_node/internal/util/types.ts";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 import { crypto as constants } from "ext:deno_node/internal_binding/constants.ts";
-import {
+const {
   validateInt32,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   kHandle,
   kKeyObject,
-} from "ext:deno_node/internal/crypto/constants.ts";
+} = core.loadExtScript("ext:deno_node/internal/crypto/constants.ts");
 
 export type EllipticCurve = {
   name: string;

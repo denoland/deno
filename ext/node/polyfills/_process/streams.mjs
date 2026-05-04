@@ -26,7 +26,9 @@ const io = core.loadExtScript("ext:deno_io/12_io.js");
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { op_bootstrap_color_depth } from "ext:core/ops";
-import { validateInteger } from "ext:deno_node/internal/validators.mjs";
+const { validateInteger } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
 export function createWritableStdioStream(writer, name, warmup = false) {

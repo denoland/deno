@@ -3,6 +3,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import {
   op_node_pbkdf2,
   op_node_pbkdf2_async,
@@ -11,11 +12,11 @@ import {
 
 import { Buffer } from "node:buffer";
 import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
-import {
+const {
   validateFunction,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { getArrayBufferOrView } from "ext:deno_node/internal/crypto/keys.ts";
 import {
   ERR_CRYPTO_INVALID_DIGEST,

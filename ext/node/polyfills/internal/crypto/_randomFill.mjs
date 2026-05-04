@@ -3,6 +3,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import { op_node_fill_random, op_node_fill_random_async } from "ext:core/ops";
 
 import { Buffer, kMaxLength } from "node:buffer";
@@ -11,10 +12,10 @@ import {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
 } from "ext:deno_node/internal/errors.ts";
-import {
+const {
   validateFunction,
   validateNumber,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 const kMaxInt32 = 2 ** 31 - 1;
 const kMaxPossibleLength = Math.min(kMaxLength, kMaxInt32);

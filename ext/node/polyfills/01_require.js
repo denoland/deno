@@ -143,7 +143,9 @@ import internalTimers from "ext:deno_node/internal/timers.mjs";
 import internalUtil from "ext:deno_node/internal/util.mjs";
 import internalUtilDebuglog from "ext:deno_node/internal/util/debuglog.ts";
 import internalUtilInspect from "ext:deno_node/internal/util/inspect.mjs";
-import internalValidators from "ext:deno_node/internal/validators.mjs";
+const internalValidators = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import internalConsole from "ext:deno_node/internal/console/constructor.mjs";
 import net from "node:net";
 import os from "node:os";

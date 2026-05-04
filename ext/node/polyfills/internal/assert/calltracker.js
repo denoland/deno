@@ -3,7 +3,7 @@
 
 // deno-lint-ignore-file prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypePush,
   ArrayPrototypeSlice,
@@ -22,7 +22,9 @@ const {
   ERR_UNAVAILABLE_DURING_EXIT,
 } = codes;
 import { AssertionError } from "ext:deno_node/internal/assert/assertion_error.js";
-import { validateUint32 } from "ext:deno_node/internal/validators.mjs";
+const { validateUint32 } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
 const noop = FunctionPrototype;
 

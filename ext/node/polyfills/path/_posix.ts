@@ -16,7 +16,9 @@ import {
   normalizeString,
 } from "ext:deno_node/path/_util.ts";
 import { core, primordials } from "ext:core/mod.js";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
+const { validateString } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import process from "node:process";
 import type * as fsGlob from "ext:deno_node/_fs/_fs_glob.ts";
