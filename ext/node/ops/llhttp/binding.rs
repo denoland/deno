@@ -462,16 +462,13 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
     return 0;
   };
 
-  // Fast path: when no prior kOnHeaders flush occurred (all headers
-  // fit in the current parser.execute batch and total stayed under
-  // MAX_HEADER_PAIRS), pass the accumulated headers directly to
-  // parserOnHeadersComplete as the 3rd/5th args, skipping the
-  // kOnHeaders flush JS call. Slow path (below) handles the
-  // chunked-across-packets or >MAX_HEADER_PAIRS case by flushing
-  // leftover headers via kOnHeaders so JS reads the full list
-  // from parser._headers / parser._url.
-  let skip_flush = !inner.headers_flushed && !inner.header_fields.is_empty();
-  if !skip_flush && !inner.header_fields.is_empty() {
+  // Fast path: when no prior kOnHeaders flush occurred, pass accumulated
+  // headers (possibly empty) + url directly to parserOnHeadersComplete.
+  // Slow path: a prior kOnHeaders flush happened; flush any remaining
+  // headers via kOnHeaders so JS reads the full list from
+  // parser._headers / parser._url, then pass undefined to the callback.
+  let on_fast_path = !inner.headers_flushed;
+  if !on_fast_path && !inner.header_fields.is_empty() {
     let flush_headers = Inner::create_headers_array(
       scope,
       &inner.header_fields,
@@ -510,7 +507,7 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
   // Slow path: pass undefined, JS reads from parser._headers/_url
   // which were populated by the flush above.
   let (headers, url): (v8::Local<v8::Value>, v8::Local<v8::Value>) =
-    if skip_flush {
+    if on_fast_path {
       let headers_arr = Inner::create_headers_array(
         scope,
         &inner.header_fields,
