@@ -1767,6 +1767,13 @@ function loadNativeModule(_id, request) {
   }
   const modExports = nativeModuleExports[request];
   if (modExports) {
+    if (request === "_tls_common") {
+      process.emitWarning(
+        "The _tls_common module is deprecated. Use `node:tls` instead.",
+        "DeprecationWarning",
+        "DEP0192",
+      );
+    }
     const nodeMod = new Module(request);
     nodeMod.exports = modExports;
     nodeMod.loaded = true;
