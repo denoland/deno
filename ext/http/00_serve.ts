@@ -1007,8 +1007,8 @@ function serveInner(options, handler) {
  * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary listener.
  */
 function serveHttpOnListener(listener, signal, handler, onError, onListen) {
-  let serverContext;
-  let callback;
+  let serverContext = undefined;
+  let callback = undefined;
   const promiseErrorHandler = (error) => {
     internals.log(
       "error",
@@ -1037,8 +1037,8 @@ function serveHttpOnListener(listener, signal, handler, onError, onListen) {
  * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary connection.
  */
 function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
-  let serverContext;
-  let callback;
+  let serverContext = undefined;
+  let callback = undefined;
   const promiseErrorHandler = (error) => {
     internals.log(
       "error",
