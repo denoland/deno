@@ -30,6 +30,7 @@ const {
   op_http_set_response_header,
   op_http_set_response_headers,
   op_http_set_response_trailers,
+  op_http_try_take_full_request_body,
   op_http_try_wait,
   op_http_upgrade_raw,
   op_http_upgrade_raw_connect,
@@ -368,6 +369,17 @@ class InnerRequest {
     if (this.method == "GET" || this.method == "HEAD") {
       this.#body = null;
       return null;
+    }
+    // Fast path: if the entire body is already buffered in hyper
+    // (typical small POST keep-alive case), skip the ReadableStream
+    // wrapper, op_http_read_request_body resource allocation, and
+    // the disturb/close plumbing -- hand the bytes straight to
+    // InnerBody's static path. On `null` the body is left intact
+    // and we fall through to the streaming path.
+    const buffered = op_http_try_take_full_request_body(this.#external);
+    if (buffered !== null) {
+      this.#body = new InnerBody({ body: buffered, consumed: false });
+      return this.#body;
     }
     this.#streamRid = op_http_read_request_body(this.#external);
     this.#body = new InnerBody(
