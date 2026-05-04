@@ -3192,7 +3192,7 @@ pub fn wrap_eval_code(source_code: &str) -> String {
     r#"(
     globalThis.require = process.getBuiltinModule("module").createRequire(import.meta.url),
     process.getBuiltinModule("module").builtinModules
-      .filter((m) => !/\/|crypto|process/.test(m))
+      .filter((m) => !/\/|crypto|process|_tls_common/.test(m))
       .forEach((m) => {{ globalThis[m] = process.getBuiltinModule(m); }}),
     process.getBuiltinModule("vm").runInThisContext({})
   )"#,
