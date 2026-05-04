@@ -19,14 +19,16 @@ import {
   isDeepStrictEqual,
   isPartialStrictEqual,
 } from "ext:deno_node/internal/util/comparisons.ts";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { CallTracker } from "ext:deno_node/internal/assert/calltracker.js";
 import { deprecate } from "node:util";
-import { isPromise, isRegExp } from "ext:deno_node/internal_binding/types.ts";
-import {
+const { isPromise, isRegExp } = core.loadExtScript(
+  "ext:deno_node/internal_binding/types.ts",
+);
+const {
   validateFunction,
   validateOneOf,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { isError } from "ext:deno_node/internal/util.mjs";
 
 const {

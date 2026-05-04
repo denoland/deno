@@ -5,9 +5,11 @@
 // deno-lint-ignore-file prefer-primordials ban-untagged-todo
 
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
-import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { nextTick } from "node:process";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+const { validateFunction } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
 const {
   ArrayPrototypeAt,

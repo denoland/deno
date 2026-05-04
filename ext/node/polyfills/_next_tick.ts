@@ -6,7 +6,9 @@
 
 import { core } from "ext:core/mod.js";
 
-import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+const { validateFunction } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import {
   emitAfter,

@@ -26,15 +26,16 @@ SOFTWARE.
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import { Buffer } from "node:buffer";
 import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
 import { op_node_scrypt_async, op_node_scrypt_sync } from "ext:core/ops";
-import {
+const {
   validateFunction,
   validateInt32,
   validateInteger,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import {
   ERR_CRYPTO_INVALID_SCRYPT_PARAMS,
   ERR_INCOMPATIBLE_OPTION_PAIR,

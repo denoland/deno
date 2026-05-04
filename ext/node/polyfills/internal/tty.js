@@ -4,7 +4,7 @@
 
 // deno-lint-ignore-file no-process-global
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeSome,
   FunctionPrototypeCall,
@@ -30,7 +30,9 @@ import {
   ERR_TTY_INIT_FAILED,
   errnoException,
 } from "ext:deno_node/internal/errors.ts";
-import { validateInteger } from "ext:deno_node/internal/validators.mjs";
+const { validateInteger } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import { op_tty_check_fd_permission, TTY } from "ext:core/ops";
 import { Socket } from "node:net";
 import {

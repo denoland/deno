@@ -68,10 +68,10 @@ import {
 const { readableStreamCancel } = core.loadExtScript(
   "ext:deno_web/06_streams.js",
 );
-import {
+const {
   validateBoolean,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import process from "node:process";
 
 const fchmodPromise = promisify(fchmod) as (

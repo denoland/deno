@@ -2,7 +2,7 @@
 
 "use strict";
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   BigInt,
@@ -50,15 +50,15 @@ import {
   uvException,
 } from "ext:deno_node/internal/errors.ts";
 
-import {
+const {
   isArrayBufferView,
   isBigUint64Array,
   isDate,
   isUint8Array,
-} from "ext:deno_node/internal/util/types.ts";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
-import {
+const {
   validateAbortSignal,
   validateBoolean,
   validateFunction,
@@ -66,7 +66,7 @@ import {
   validateInteger,
   validateObject,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import pathModule from "node:path";
 const kType = Symbol("type");
 const kStats = Symbol("stats");

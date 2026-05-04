@@ -53,13 +53,13 @@ const {
   StringPrototypeSplit,
   SymbolFor,
 } = primordials;
-import {
+const {
   validateBoolean,
   validateObject,
   validateOneOf,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import { codes } from "ext:deno_node/internal/error_codes.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
 const {
   colors,
   createStylizeWithColor,

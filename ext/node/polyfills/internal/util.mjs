@@ -1,7 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { validateFunction } from "ext:deno_node/internal/validators.mjs";
-import { normalizeEncoding } from "ext:deno_node/internal/normalize_encoding.ts";
+import { core, primordials } from "ext:core/mod.js";
+const { normalizeEncoding } = core.loadExtScript(
+  "ext:deno_node/internal/normalize_encoding.ts",
+);
 export { normalizeEncoding };
 import {
   ObjectCreate,
@@ -9,8 +11,12 @@ import {
 } from "ext:deno_node/internal/primordials.mjs";
 import { ERR_UNKNOWN_SIGNAL } from "ext:deno_node/internal/errors.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
-import { primordials } from "ext:core/mod.js";
-import { isNativeError } from "ext:deno_node/internal/util/types.ts";
+const { validateFunction } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const { isNativeError } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 
 // deno-lint-ignore prefer-primordials
 const AtomicsWait = Atomics.wait;

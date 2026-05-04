@@ -23,7 +23,7 @@
 
 // These are simplified versions of the "real" errors in Node.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypePop,
   Error,
@@ -37,7 +37,9 @@ const {
 } = primordials;
 
 import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+const { validateFunction } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
 class NodeFalsyValueRejectionError extends Error {
   code = "ERR_FALSY_VALUE_REJECTION";

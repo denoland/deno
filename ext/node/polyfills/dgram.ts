@@ -23,6 +23,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import { Buffer } from "node:buffer";
 import { EventEmitter } from "node:events";
 import { lookup as defaultLookup } from "node:dns";
@@ -53,20 +54,22 @@ import {
   ownerSymbol,
 } from "ext:deno_node/internal/async_hooks.ts";
 import { SendWrap, UDP } from "ext:deno_node/internal_binding/udp_wrap.ts";
-import {
+const {
   isInt32,
   validateAbortSignal,
   validateNumber,
   validatePort,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { nextTick } from "node:process";
 import { deprecate } from "node:util";
 import { channel } from "node:diagnostics_channel";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 
 const { UV_UDP_REUSEADDR, UV_UDP_IPV6ONLY } = os;
 

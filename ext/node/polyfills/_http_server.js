@@ -68,12 +68,12 @@ import {
   ERR_OUT_OF_RANGE,
 } from "ext:deno_node/internal/errors.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
-import {
+const {
   validateBoolean,
   validateInteger,
   validateLinkHeaderValue,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 const {
   otelState,
@@ -753,6 +753,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
 
   const res = new server[kServerResponse](req, {
     rejectNonStandardBodyWrites: server.rejectNonStandardBodyWrites,
+    highWaterMark: server.highWaterMark,
   });
   res._keepAliveTimeout = server.keepAliveTimeout;
   res._maxRequestsPerSocket = server.maxRequestsPerSocket;
@@ -1052,6 +1053,12 @@ function httpServerPreClose(server) {
 function storeHTTPOptions(options) {
   this[kIncomingMessage] = options.IncomingMessage || IncomingMessage;
   this[kServerResponse] = options.ServerResponse || ServerResponse;
+
+  const highWaterMark = options.highWaterMark;
+  if (highWaterMark !== undefined) {
+    validateInteger(highWaterMark, "options.highWaterMark", 1);
+  }
+  this.highWaterMark = highWaterMark;
 
   const maxHeaderSize = options.maxHeaderSize;
   if (maxHeaderSize !== undefined) {

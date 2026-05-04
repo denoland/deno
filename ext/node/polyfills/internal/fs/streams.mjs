@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Array,
   FunctionPrototypeBind,
@@ -23,10 +23,10 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { deprecate } from "node:util";
-import {
+const {
   validateFunction,
   validateInteger,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { errorOrDestroy } from "ext:deno_node/internal/streams/destroy.js";
 import * as fs from "node:fs";
 import { Buffer } from "node:buffer";
