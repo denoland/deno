@@ -41,7 +41,9 @@ const {
 
 import net from "node:net";
 import { ok as assert } from "node:assert";
-import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
+const { kEmptyObject, once } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 import {
   _checkIsHttpToken as checkIsHttpToken,
   freeParser,
@@ -60,7 +62,7 @@ import httpAgent from "node:_http_agent";
 import { Buffer } from "node:buffer";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { kOutHeaders } from "ext:deno_node/internal/http.ts";
-import {
+const {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
   ERR_INVALID_ARG_TYPE,
@@ -68,7 +70,7 @@ import {
   ERR_INVALID_PROTOCOL,
   ERR_INVALID_URL,
   ERR_UNESCAPED_CHARACTERS,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   validateBoolean,
   validateInteger,

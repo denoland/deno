@@ -2,10 +2,10 @@
 
 import { op_node_random_int } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { validateFunction } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );

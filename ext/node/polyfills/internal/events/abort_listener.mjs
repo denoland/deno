@@ -6,7 +6,7 @@ const { queueMicrotask, SymbolDispose } = primordials;
 const { validateAbortSignal, validateFunction } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-import { codes } from "../errors.ts";
+const { codes } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { ERR_INVALID_ARG_TYPE } = codes;
 
 /**

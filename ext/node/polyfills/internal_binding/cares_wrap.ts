@@ -27,16 +27,16 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
 import { isIPv4, isIPv6 } from "ext:deno_node/internal/net.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 import {
   AsyncWrap,
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
-import { core } from "ext:core/mod.js";
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import {
   op_dns_resolve,
   op_net_get_ips_from_perm_token,

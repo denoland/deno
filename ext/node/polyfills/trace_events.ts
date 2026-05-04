@@ -1,6 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import { core } from "ext:core/mod.js";
+const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
 class Tracing {
   enabled = false;

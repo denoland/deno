@@ -25,11 +25,11 @@ const { build, createLazyLoader } = core;
 import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 const fs = core.loadExtScript("ext:deno_fs/30_fs.js");
-import {
+const {
   denoErrorToNodeError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_OBJECT_DEFINE_PROPERTY,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const loadProcess = createLazyLoader<NodeJS.Process>("node:process");
 let nodeProcess: NodeJS.Process | undefined;

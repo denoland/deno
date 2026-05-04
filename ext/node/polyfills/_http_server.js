@@ -58,7 +58,7 @@ import {
 } from "node:_http_outgoing";
 import { kNeedDrain, kOutHeaders } from "ext:deno_node/internal/http.ts";
 import { IncomingMessage } from "node:_http_incoming";
-import {
+const {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
   ERR_HTTP_SOCKET_ASSIGNED,
@@ -66,8 +66,8 @@ import {
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CHAR,
   ERR_OUT_OF_RANGE,
-} from "ext:deno_node/internal/errors.ts";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const {
   validateBoolean,
   validateInteger,

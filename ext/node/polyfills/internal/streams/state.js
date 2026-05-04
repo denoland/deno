@@ -6,7 +6,7 @@ import { core, primordials } from "ext:core/mod.js";
 const { validateInteger } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-import _mod1 from "ext:deno_node/internal/errors.ts";
+const _mod1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { ERR_INVALID_ARG_VALUE } = _mod1.codes;
 "use strict";
 

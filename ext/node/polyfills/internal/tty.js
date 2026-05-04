@@ -25,11 +25,11 @@ const {
   StringPrototypeToLowerCase,
 } = primordials;
 
-import {
+const {
   ERR_INVALID_FD,
   ERR_TTY_INIT_FAILED,
   errnoException,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { validateInteger } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );

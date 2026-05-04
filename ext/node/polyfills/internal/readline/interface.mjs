@@ -26,17 +26,17 @@
 
 import { op_get_env_no_permission_check } from "ext:core/ops";
 
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_OUT_OF_RANGE,
   ERR_USE_AFTER_CLOSE,
-} from "ext:deno_node/internal/errors.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   //   inspect,
   getStringWidth,
   stripVTControlCharacters,
-} from "ext:deno_node/internal/util/inspect.mjs";
+} = core.loadExtScript("ext:deno_node/internal/util/inspect.mjs");
 import EventEmitter from "node:events";
 import { kFirstEventParam } from "ext:deno_node/_events.mjs";
 import { emitKeypressEvents } from "ext:deno_node/internal/readline/emitKeypressEvents.mjs";

@@ -35,7 +35,7 @@ const {
 const { kKeyObject } = core.loadExtScript(
   "ext:deno_node/internal/crypto/constants.ts",
 );
-import { isError } from "ext:deno_node/internal/util.mjs";
+const { isError } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import { isURL } from "ext:deno_node/internal/url.ts";
 
 const {

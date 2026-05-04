@@ -16,14 +16,14 @@ const {
   validateObject,
   validateOneOf,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import {
+const {
   kEmptyObject,
   normalizeEncoding,
-} from "ext:deno_node/internal/util.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const {
   AbortError,
   ERR_INVALID_ARG_TYPE,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import process from "node:process";
 import { Buffer } from "node:buffer";
 import { Duplex, Readable, Writable } from "node:stream";

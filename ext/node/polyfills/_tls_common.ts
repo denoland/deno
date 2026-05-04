@@ -5,11 +5,11 @@
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
 import { core } from "ext:core/mod.js";
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_TLS_INVALID_PROTOCOL_VERSION,
   ERR_TLS_PROTOCOL_VERSION_CONFLICT,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );

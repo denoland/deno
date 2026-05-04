@@ -31,7 +31,7 @@ import type {
   ErrnoException,
   NodeSystemErrorCtx,
 } from "ext:deno_node/internal/errors.ts";
-import {
+const {
   ERR_BUFFER_OUT_OF_BOUNDS,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_FD_TYPE,
@@ -44,7 +44,7 @@ import {
   ERR_SOCKET_DGRAM_NOT_RUNNING,
   errnoException,
   exceptionWithHostPort,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import type { Abortable } from "ext:deno_node/_events.d.ts";
 import { kStateSymbol, newHandle } from "ext:deno_node/internal/dgram.ts";
 import type { SocketType } from "ext:deno_node/internal/dgram.ts";
@@ -63,7 +63,9 @@ const {
   validateUint32,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
-import { os } from "ext:deno_node/internal_binding/constants.ts";
+const { os } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 import { nextTick } from "node:process";
 import { deprecate } from "node:util";
 import { channel } from "node:diagnostics_channel";

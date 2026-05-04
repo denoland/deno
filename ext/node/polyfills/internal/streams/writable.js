@@ -2,7 +2,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import process from "node:process";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import EE from "node:events";
 import _mod1 from "ext:deno_node/internal/streams/legacy.js";
 import { Buffer } from "node:buffer";
@@ -13,7 +13,7 @@ import {
   getDefaultHighWaterMark,
   getHighWaterMark,
 } from "ext:deno_node/internal/streams/state.js";
-import imported2 from "ext:deno_node/internal/errors.ts";
+const imported2 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 import {
   kAutoDestroy,

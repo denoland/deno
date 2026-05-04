@@ -1,8 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+import { core, primordials } from "ext:core/mod.js";
 import { Buffer } from "node:buffer";
-import { notImplemented } from "ext:deno_node/_utils.ts";
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import {
   op_vm_compile_function,
   op_vm_create_context,
@@ -22,7 +23,6 @@ import {
   op_vm_script_get_source_map_url,
   op_vm_script_run_in_context,
 } from "ext:core/ops";
-import { core, primordials } from "ext:core/mod.js";
 const {
   validateArray,
   validateBoolean,
@@ -34,13 +34,13 @@ const {
   validateStringArray,
   validateUint32,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_VM_MODULE_ALREADY_LINKED,
   ERR_VM_MODULE_DIFFERENT_CONTEXT,
   ERR_VM_MODULE_NOT_MODULE,
   ERR_VM_MODULE_STATUS,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const {
   ArrayPrototypeForEach,

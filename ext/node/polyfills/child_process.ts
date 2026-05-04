@@ -33,20 +33,20 @@ const {
   validateObject,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import {
+const {
   ERR_CHILD_PROCESS_IPC_REQUIRED,
   ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
   genericNodeError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { getSystemErrorName, promisify } from "node:util";
 import process from "node:process";
 import { Buffer } from "node:buffer";
-import {
+const {
   convertToValidSignal,
   kEmptyObject,
-} from "ext:deno_node/internal/util.mjs";
+} = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 const { kNeedsNpmProcessState } = core.loadExtScript(
   "ext:deno_process/40_process.js",

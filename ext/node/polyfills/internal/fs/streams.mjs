@@ -16,12 +16,12 @@ const {
   StringPrototypeToString,
   Symbol,
 } = primordials;
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_METHOD_NOT_IMPLEMENTED,
   ERR_OUT_OF_RANGE,
-} from "ext:deno_node/internal/errors.ts";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import { deprecate } from "node:util";
 const {
   validateFunction,

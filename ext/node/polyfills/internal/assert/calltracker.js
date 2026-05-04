@@ -16,7 +16,7 @@ const {
   SafeWeakMap,
 } = primordials;
 
-import { codes } from "ext:deno_node/internal/errors.ts";
+const { codes } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   ERR_INVALID_ARG_VALUE,
   ERR_UNAVAILABLE_DURING_EXIT,

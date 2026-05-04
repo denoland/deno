@@ -23,6 +23,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core, primordials } from "ext:core/mod.js";
+
 import { BlockList, SocketAddress } from "ext:deno_node/internal/blocklist.mjs";
 
 import { EventEmitter } from "node:events";
@@ -40,7 +42,7 @@ import {
   newAsyncId,
   ownerSymbol,
 } from "ext:deno_node/internal/async_hooks.ts";
-import {
+const {
   AbortError,
   ERR_INVALID_ADDRESS_FAMILY,
   ERR_INVALID_ARG_TYPE,
@@ -59,7 +61,7 @@ import {
   genericNodeError,
   NodeAggregateError,
   uvExceptionWithHostPort,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
 import {
   kAfterAsyncWrite,
@@ -95,20 +97,19 @@ import {
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import assert from "node:assert";
-import { isWindows } from "ext:deno_node/_util/os.ts";
+const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
-import {
+const {
   codeMap,
   UV_ECANCELED,
   UV_ETIMEDOUT,
-} from "ext:deno_node/internal_binding/uv.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
 import { channel } from "node:diagnostics_channel";
-import { core, primordials } from "ext:core/mod.js";
 const { isUint8Array } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );

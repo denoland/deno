@@ -6,7 +6,9 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
-import { format } from "ext:deno_node/internal/util/inspect.mjs";
+const { format } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
 import {
   op_current_thread_cpu_usage,
   op_fs_umask,
@@ -36,7 +38,7 @@ const {
   validateString,
   validateUint32,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import {
+const {
   denoErrorToNodeError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE_RANGE,
@@ -46,7 +48,7 @@ import {
   ERR_WORKER_UNSUPPORTED_OPERATION,
   errnoException,
   NodeTypeError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import assert from "node:assert";
 import { join } from "node:path";
@@ -76,7 +78,9 @@ import {
 } from "ext:deno_node/_process/streams.mjs";
 import { WriteStream as TTYWriteStream } from "ext:deno_node/internal/tty.js";
 import { enableNextTick } from "ext:deno_node/_next_tick.ts";
-import { isAndroid, isWindows } from "ext:deno_node/_util/os.ts";
+const { isAndroid, isWindows } = core.loadExtScript(
+  "ext:deno_node/_util/os.ts",
+);
 const io = core.loadExtScript("ext:deno_io/12_io.js");
 const denoOs = core.loadExtScript("ext:deno_os/30_os.js");
 
@@ -94,8 +98,10 @@ let stdin, stdout, stderr;
 export { stderr, stdin, stdout };
 
 import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
-import * as constants from "ext:deno_node/internal_binding/constants.ts";
-import * as uv from "ext:deno_node/internal_binding/uv.ts";
+const constants = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
+const uv = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
 import type fsUtils from "ext:deno_node/internal/fs/utils.mjs";

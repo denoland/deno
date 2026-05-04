@@ -7,7 +7,9 @@ import { core } from "ext:core/mod.js";
 import * as asyncWrap from "ext:deno_node/internal_binding/async_wrap.ts";
 import * as buffer from "ext:deno_node/internal_binding/buffer.ts";
 import caresWrap from "ext:deno_node/internal_binding/cares_wrap.ts";
-import * as constants from "ext:deno_node/internal_binding/constants.ts";
+const constants = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 import * as crypto from "ext:deno_node/internal_binding/crypto.ts";
 import * as pipeWrap from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import * as streamWrap from "ext:deno_node/internal_binding/stream_wrap.ts";
@@ -18,7 +20,7 @@ import * as ttyWrap from "ext:deno_node/internal_binding/tty_wrap.ts";
 const types = core.loadExtScript("ext:deno_node/internal_binding/types.ts");
 import * as udpWrap from "ext:deno_node/internal_binding/udp_wrap.ts";
 import * as util from "ext:deno_node/internal_binding/util.ts";
-import * as uvNamespace from "ext:deno_node/internal_binding/uv.ts";
+const uvNamespace = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 import * as httpParser from "ext:deno_node/internal_binding/http_parser.ts";
 import * as http2Binding from "ext:deno_node/internal_binding/http2.ts";
 

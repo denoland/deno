@@ -11,7 +11,9 @@ const {
   PerformanceObserverEntryList,
 } = core.loadExtScript("ext:deno_web/15_performance.js");
 import { EldHistogram } from "ext:core/ops";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
 const constants = {
   NODE_PERFORMANCE_ENTRY_TYPE_NODE: 0,

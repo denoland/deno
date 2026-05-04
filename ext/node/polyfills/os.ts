@@ -32,15 +32,19 @@ import {
 } from "ext:core/ops";
 
 import process from "node:process";
-import { isWindows } from "ext:deno_node/_util/os.ts";
-import { os } from "ext:deno_node/internal_binding/constants.ts";
-import { Buffer } from "ext:deno_node/internal/buffer.mjs";
 import { core, primordials } from "ext:core/mod.js";
+const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { os } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
+import { Buffer } from "ext:deno_node/internal/buffer.mjs";
 const { osUptime } = core.loadExtScript("ext:deno_os/30_os.js");
 const { validateInt32 } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-import { denoErrorToNodeSystemError } from "ext:deno_node/internal/errors.ts";
+const { denoErrorToNodeSystemError } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
 const {
   ObjectDefineProperties,

@@ -95,8 +95,12 @@ import {
   hexToBytes,
   utf16leToBytes,
 } from "ext:deno_node/internal_binding/_utils.ts";
-import { inspect as utilInspect } from "ext:deno_node/internal/util/inspect.mjs";
-import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
+const { inspect: utilInspect } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
+const { normalizeEncoding } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 import {
   ALL_PROPERTIES,
   getOwnNonIndexProperties,
@@ -110,12 +114,12 @@ const {
   isArrayBufferView,
   isUint8Array,
 } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_STATE,
   genericNodeError,
   NodeError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 const { forgivingBase64UrlEncode } = core.loadExtScript(
   "ext:deno_web/00_infra.js",

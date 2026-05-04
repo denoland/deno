@@ -33,12 +33,12 @@ const {
   WeakMapPrototypeSet,
   WeakRefPrototypeDeref,
 } = primordials;
-import {
+const {
   ERR_EVENT_RECURSION,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_THIS,
   ERR_MISSING_ARGS,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   validateObject,
   validateString,
@@ -50,11 +50,11 @@ const {
   EventTarget: WebEventTarget,
 } = core.loadExtScript("ext:deno_web/02_event.js");
 
-import {
+const {
   customInspectSymbol,
   kEmptyObject,
   kEnumerableProperty,
-} from "ext:deno_node/internal/util.mjs";
+} = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import { inspect } from "node:util";
 
 const kIsEventTarget = SymbolFor("nodejs.event_target");

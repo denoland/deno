@@ -1,8 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { getStringWidth } from "ext:deno_node/internal/util/inspect.mjs";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+const { getStringWidth } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,

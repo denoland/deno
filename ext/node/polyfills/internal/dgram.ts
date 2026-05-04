@@ -22,11 +22,13 @@
 
 import dns from "node:dns";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import { ERR_SOCKET_BAD_TYPE } from "ext:deno_node/internal/errors.ts";
+const { ERR_SOCKET_BAD_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 import { UDP } from "ext:deno_node/internal_binding/udp_wrap.ts";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { core, primordials } from "ext:core/mod.js";
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 const {
   isInt32,
   validateFunction,

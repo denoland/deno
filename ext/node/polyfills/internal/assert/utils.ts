@@ -3,11 +3,15 @@
 
 // deno-lint-ignore-file prefer-primordials ban-types
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { AssertionError } from "ext:deno_node/internal/assert/assertion_error.js";
-import { isError } from "ext:deno_node/internal/util.mjs";
-import { isErrorStackTraceLimitWritable } from "ext:deno_node/internal/errors.ts";
-import { getErrorSourceExpression } from "ext:deno_node/internal/errors/error_source.ts";
+const { isError } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { isErrorStackTraceLimitWritable } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const { getErrorSourceExpression } = core.loadExtScript(
+  "ext:deno_node/internal/errors/error_source.ts",
+);
 
 const {
   Error,

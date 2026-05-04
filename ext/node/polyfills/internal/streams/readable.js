@@ -31,7 +31,7 @@ import {
   kState,
 } from "ext:deno_node/internal/streams/utils.js";
 
-import imported1 from "ext:deno_node/internal/errors.ts";
+const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { validateObject } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );

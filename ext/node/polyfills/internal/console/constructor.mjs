@@ -55,12 +55,12 @@ const {
 
 // Mock trace for now
 const trace = () => {};
-import {
+const {
   ERR_CONSOLE_WRITABLE_STREAM,
   ERR_INCOMPATIBLE_OPTION_PAIR,
   ERR_INVALID_ARG_VALUE,
   isStackOverflowError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   validateArray,
   validateInteger,
@@ -68,10 +68,10 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { Buffer } from "node:buffer";
 const { isBuffer } = Buffer;
-import {
+const {
   formatWithOptions,
   inspect,
-} from "ext:deno_node/internal/util/inspect.mjs";
+} = core.loadExtScript("ext:deno_node/internal/util/inspect.mjs");
 const {
   isMap,
   isMapIterator,

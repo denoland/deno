@@ -2,10 +2,10 @@
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 
 import { type CopySyncOptions } from "node:fs";
-import {
+const {
   denoErrorToNodeError,
   ERR_INVALID_RETURN_VALUE,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { core } from "ext:core/mod.js";
 import { op_node_cp_sync } from "ext:core/ops";
 import { throwCpError } from "ext:deno_node/_fs/cp/cp.ts";
