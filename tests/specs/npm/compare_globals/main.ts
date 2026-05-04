@@ -2,7 +2,6 @@
 
 import * as globals from "npm:@denotest/globals";
 console.log(globals.global === globals.globalThis);
-// @ts-expect-error even though these are the same object, they have different types
 console.log(globals.globalThis === globalThis);
 console.log(globals.process.execArgv);
 console.log("process equals process", process === globals.process);
