@@ -29,7 +29,6 @@ pub(crate) use win_sock::sockaddr_in;
 #[cfg(windows)]
 use win_sock::sockaddr_in6;
 
-use crate::uv_compat::UV_EADDRINUSE;
 use crate::uv_compat::UV_EAGAIN;
 use crate::uv_compat::UV_EALREADY;
 use crate::uv_compat::UV_ECANCELED;
@@ -467,12 +466,35 @@ pub unsafe fn uv_tcp_open(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
 ///
 /// ### Safety
 /// `tcp` must be initialized by `uv_tcp_init`. `fd` must be a valid
-/// listening socket fd that the caller intends to transfer ownership of.
+/// socket fd that the caller intends to transfer ownership of. The fd
+/// may be in either BIND or LISTEN state — this function transitions
+/// it to LISTEN if needed (e.g. for cluster SharedHandle workers that
+/// receive a freshly-bound fd from the primary via SCM_RIGHTS).
 #[cfg(unix)]
 pub unsafe fn uv_tcp_open_listener(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
   use std::os::unix::io::FromRawFd;
   // SAFETY: Caller guarantees tcp is initialized and fd is valid.
   unsafe {
+    // Check whether the fd is already in LISTEN state. If not, transition it
+    // here. `tokio::net::TcpListener::from_std` doesn't call listen(2), so
+    // wrapping a BIND-state fd would yield a "listener" whose accept queue
+    // is never armed (causes connect() timeouts on cluster workers).
+    let mut accepting: c_int = 0;
+    let mut len = std::mem::size_of::<c_int>() as libc::socklen_t;
+    let already_listening = libc::getsockopt(
+      fd,
+      libc::SOL_SOCKET,
+      libc::SO_ACCEPTCONN,
+      &mut accepting as *mut _ as *mut libc::c_void,
+      &mut len,
+    ) == 0
+      && accepting != 0;
+    if !already_listening && libc::listen(fd, 511) != 0 {
+      let err = std::io::Error::last_os_error();
+      // EOPNOTSUPP / EINVAL on a non-bound fd means the caller passed
+      // something that isn't a server-shaped socket; surface that.
+      return io_error_to_uv(&err);
+    }
     let std_listener = std::net::TcpListener::from_raw_fd(fd);
     std_listener.set_nonblocking(true).ok();
     match tokio::net::TcpListener::from_std(std_listener) {
@@ -624,15 +646,18 @@ pub unsafe fn uv_tcp_bind(
         (*tcp).internal_delayed_error = 0;
       }
       Err(ref e) => {
-        // Match libuv: EADDRINUSE is deferred (reported from listen/connect).
-        // Other bind errors are returned immediately.
-        if e.kind() == std::io::ErrorKind::AddrInUse {
-          (*tcp).internal_delayed_error = UV_EADDRINUSE;
-        } else {
-          // Drop the socket (closes the fd) on real error.
-          (*tcp).internal_fd = None;
-          return io_error_to_uv(e);
-        }
+        // Drop the socket (closes the fd) on error.
+        //
+        // Note: libuv on Windows defers EADDRINUSE to listen/connect time
+        // because Winsock's bind() can succeed and the conflict only shows
+        // up later. tokio's TcpSocket::bind goes through std::net::TcpSocket
+        // which reports the error synchronously on every supported platform,
+        // so we surface it here. This lets cluster's SharedHandle observe
+        // the bind error in the primary without having to force a listen()
+        // (which would otherwise keep the primary's kernel socket in LISTEN
+        // state for the lifetime of the shared handle).
+        (*tcp).internal_fd = None;
+        return io_error_to_uv(e);
       }
     }
 

@@ -43,24 +43,13 @@ export function SharedHandle(
     this.errno = rval;
   } else {
     this.handle = rval;
-    // Node's SharedHandle leaves the listen() to the worker -- libuv on
-    // Node surfaces a deferred bind error from the worker's listen syscall
-    // because the dup'd fd is the same kernel socket. In Deno, the worker
-    // re-wraps the dup'd fd as a fresh tokio listener so the deferred error
-    // and the LISTEN-state are not visible. Force-listen here so that the
-    // primary's bind error is surfaced now, and the underlying fd is in
-    // LISTEN state when the worker dups it.
-    if (this.handle && typeof this.handle.listen === "function") {
-      const backlog = port < 0 ? -1 : 511;
-      const err = this.handle.listen(backlog);
-      if (err) {
-        this.errno = err;
-        try {
-          this.handle.close();
-        } catch { /* ignore */ }
-        this.handle = null;
-      }
-    }
+    // Match Node: leave listen() to the worker. We rely on `_createServerHandle`
+    // (and below it `uv_tcp_bind`) reporting EADDRINUSE synchronously, so the
+    // primary doesn't need to enter LISTEN state to discover bind errors.
+    // Keeping the primary out of LISTEN avoids it sitting on the kernel
+    // accept queue for the shared port (it never calls accept()) and avoids
+    // surprising interactions with later bind() calls in the primary process
+    // -- e.g. an ipv6Only listener on `::` blocking a sibling 0.0.0.0 bind.
   }
 }
 

@@ -2337,6 +2337,14 @@ export function setupChannel(
         if (err instanceof Deno.errors.Interrupted) {
           // Channel closed on us mid-write.
         } else {
+          // Match Node: errors raised from a failed IPC send carry
+          // `syscall: "write"`. Tests like `test-cluster-concurrent-disconnect`
+          // assert on this when racing send() against worker disconnect.
+          // deno-lint-ignore no-explicit-any
+          const errAny = err as any;
+          if (errAny && typeof errAny === "object" && !errAny.syscall) {
+            errAny.syscall = "write";
+          }
           if (typeof callback === "function") {
             nextTick(callback, err);
           } else {
