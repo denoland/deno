@@ -4,6 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import {
   op_node_dh_check,
   op_node_dh_compute_secret,
@@ -18,10 +19,10 @@ import {
   op_node_gen_prime,
 } from "ext:core/ops";
 
-import {
+const {
   isAnyArrayBuffer,
   isArrayBufferView,
-} from "ext:deno_node/internal/util/types.ts";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 import {
   ERR_CRYPTO_ECDH_INVALID_FORMAT,
   ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY,
@@ -31,10 +32,10 @@ import {
   ERR_INVALID_ARG_VALUE,
   NodeError,
 } from "ext:deno_node/internal/errors.ts";
-import {
+const {
   validateInt32,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { Buffer } from "node:buffer";
 import { deprecate } from "node:util";
 import {

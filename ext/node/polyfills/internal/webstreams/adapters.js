@@ -1,5 +1,6 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
+import { core } from "ext:core/mod.js";
 import { destroy, destroyer } from "ext:deno_node/internal/streams/destroy.js";
 import finished from "ext:deno_node/internal/streams/end-of-stream.js";
 import {
@@ -10,11 +11,11 @@ import {
   isWritableEnded,
 } from "ext:deno_node/internal/streams/utils.js";
 import { ReadableStream, WritableStream } from "node:stream/web";
-import {
+const {
   validateBoolean,
   validateObject,
   validateOneOf,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import {
   kEmptyObject,
   normalizeEncoding,

@@ -52,12 +52,12 @@ const {
   ERR_INVALID_HTTP_TOKEN,
   ERR_STREAM_WRITE_AFTER_END,
 } = codes;
-import {
+const {
   validateFunction,
   validateLinkHeaderValue,
   validateObject,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import {
   assertValidPseudoHeader,
   getAuthority,

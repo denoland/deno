@@ -4,6 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { Buffer } from "node:buffer";
 import {
@@ -11,19 +12,19 @@ import {
   ERR_INVALID_ARG_TYPE,
   hideStackFrames,
 } from "ext:deno_node/internal/errors.ts";
-import {
+const {
   isAnyArrayBuffer,
   isArrayBufferView,
-} from "ext:deno_node/internal/util/types.ts";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 import { crypto as constants } from "ext:deno_node/internal_binding/constants.ts";
-import {
+const {
   validateInt32,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   kHandle,
   kKeyObject,
-} from "ext:deno_node/internal/crypto/constants.ts";
+} = core.loadExtScript("ext:deno_node/internal/crypto/constants.ts");
 
 export type EllipticCurve = {
   name: string;
@@ -196,6 +197,56 @@ const cipherInfoTable: CipherInfoResult[] = [
     keyLength: 32,
     mode: "",
   },
+  // AES Key Wrap (RFC 3394): NID_id_aes{128,192,256}_wrap = 788,789,790
+  {
+    name: "aes128-wrap",
+    nid: 788,
+    blockSize: 8,
+    ivLength: 8,
+    keyLength: 16,
+    mode: "wrap",
+  },
+  {
+    name: "aes192-wrap",
+    nid: 789,
+    blockSize: 8,
+    ivLength: 8,
+    keyLength: 24,
+    mode: "wrap",
+  },
+  {
+    name: "aes256-wrap",
+    nid: 790,
+    blockSize: 8,
+    ivLength: 8,
+    keyLength: 32,
+    mode: "wrap",
+  },
+  // AES Key Wrap with Padding (RFC 5649): NID 897,900,903 (interleaved with GCM/CCM)
+  {
+    name: "id-aes128-wrap-pad",
+    nid: 897,
+    blockSize: 8,
+    ivLength: 4,
+    keyLength: 16,
+    mode: "wrap",
+  },
+  {
+    name: "id-aes192-wrap-pad",
+    nid: 900,
+    blockSize: 8,
+    ivLength: 4,
+    keyLength: 24,
+    mode: "wrap",
+  },
+  {
+    name: "id-aes256-wrap-pad",
+    nid: 903,
+    blockSize: 8,
+    ivLength: 4,
+    keyLength: 32,
+    mode: "wrap",
+  },
 ];
 
 const cipherInfoByName = new Map<string, CipherInfoResult>();
@@ -227,6 +278,12 @@ const supportedCiphers = [
   "aes128",
   "aes256",
   "chacha20-poly1305",
+  "aes128-wrap",
+  "aes192-wrap",
+  "aes256-wrap",
+  "id-aes128-wrap-pad",
+  "id-aes192-wrap-pad",
+  "id-aes256-wrap-pad",
 ];
 
 export function getCiphers(): string[] {

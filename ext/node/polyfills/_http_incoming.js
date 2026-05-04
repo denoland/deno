@@ -54,12 +54,12 @@ function readStop(socket) {
 }
 
 /* Abstract base class for ServerRequest and ClientResponse. */
-function IncomingMessage(socket) {
+function IncomingMessage(socket, options) {
   let streamOptions;
 
   if (socket) {
     streamOptions = {
-      highWaterMark: socket.readableHighWaterMark,
+      highWaterMark: options?.highWaterMark ?? socket.readableHighWaterMark,
     };
   }
 

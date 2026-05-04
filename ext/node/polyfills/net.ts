@@ -61,7 +61,6 @@ import {
   uvExceptionWithHostPort,
 } from "ext:deno_node/internal/errors.ts";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
 import {
   kAfterAsyncWrite,
   kBuffer,
@@ -82,15 +81,6 @@ import {
 } from "ext:deno_node/internal/dtrace.ts";
 import { Buffer } from "node:buffer";
 import type { LookupOneOptions } from "ext:deno_node/internal/dns/utils.ts";
-import {
-  validateAbortSignal,
-  validateBoolean,
-  validateFunction,
-  validateInt32,
-  validateNumber,
-  validatePort,
-  validateString,
-} from "ext:deno_node/internal/validators.mjs";
 import {
   constants as TCPConstants,
   setupListenWrap,
@@ -119,6 +109,18 @@ import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
 import { channel } from "node:diagnostics_channel";
 import { core, primordials } from "ext:core/mod.js";
+const { isUint8Array } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const {
+  validateAbortSignal,
+  validateBoolean,
+  validateFunction,
+  validateInt32,
+  validateNumber,
+  validatePort,
+  validateString,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 const {
   ArrayPrototypeIncludes,
@@ -2105,6 +2107,12 @@ interface ServerOptions {
    * Default: false
    */
   pauseOnConnect?: boolean | undefined;
+  /**
+   * If set to true, it disables the use of Nagle's algorithm immediately
+   * after a new incoming connection is received.
+   * Default: false
+   */
+  noDelay?: boolean | undefined;
 }
 
 function _isServerSocketOptions(
@@ -2507,6 +2515,7 @@ export function Server(
   this[asyncIdSymbol] = -1;
   this.allowHalfOpen = false;
   this.pauseOnConnect = false;
+  this.noDelay = false;
   this._handle = null;
   this._connections = 0;
   this._usingWorkers = false;
@@ -2521,6 +2530,7 @@ export function Server(
   } else if (_isServerSocketOptions(options)) {
     this.allowHalfOpen = options?.allowHalfOpen || false;
     this.pauseOnConnect = !!options?.pauseOnConnect;
+    this.noDelay = Boolean(options?.noDelay);
 
     if (options?.blockList) {
       this.blockList = options.blockList;
@@ -2903,7 +2913,10 @@ Server.prototype._createSocket = function (clientHandle) {
     writable: true,
   });
 
-  // TODO(@bartlomieju): implement noDelay and setKeepAlive
+  if (this.noDelay && clientHandle.setNoDelay) {
+    socket[kSetNoDelay] = true;
+    clientHandle.setNoDelay(true);
+  }
 
   socket.server = this;
   socket._server = this;

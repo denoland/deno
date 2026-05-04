@@ -77,21 +77,8 @@ import {
   warnOnNonPortableTemplate,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { glob, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
-import {
-  parseFileMode,
-  validateAbortSignal,
-  validateBoolean,
-  validateEncoding,
-  validateFunction,
-  validateInt32,
-  validateInteger,
-  validateObject,
-  validateOneOf,
-  validateString,
-} from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "node:buffer";
 import process from "node:process";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { isIterable } from "ext:deno_node/internal/streams/utils.js";
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
@@ -149,6 +136,21 @@ import { basename, relative, resolve, toNamespacedPath } from "node:path";
 import * as pathModule from "node:path";
 import type { Encoding } from "node:crypto";
 import { core, primordials } from "ext:core/mod.js";
+const {
+  parseFileMode,
+  validateAbortSignal,
+  validateBoolean,
+  validateEncoding,
+  validateFunction,
+  validateInt32,
+  validateInteger,
+  validateObject,
+  validateOneOf,
+  validateString,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 
 const {
   ArrayBufferIsView,

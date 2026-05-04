@@ -37,11 +37,13 @@ import {
 } from "node:fs";
 import { globPromise } from "ext:deno_node/_fs/_fs_glob.ts";
 import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
-import { parseFileMode } from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "node:buffer";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+const { parseFileMode } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import { op_node_lchmod } from "ext:core/ops";
 import { isMacOS } from "ext:deno_node/_util/os.ts";
 import { ERR_METHOD_NOT_IMPLEMENTED } from "ext:deno_node/internal/errors.ts";

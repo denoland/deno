@@ -38,10 +38,10 @@ import {
   newAsyncId as nextAsyncId,
 } from "ext:deno_node/internal/async_hooks.ts";
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
-import {
+const {
   validateFunction,
   validateNumber,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
 import { emitWarning } from "node:process";
 

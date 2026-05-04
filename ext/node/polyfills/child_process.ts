@@ -6,7 +6,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { internals, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_bootstrap_unstable_args,
   op_node_child_ipc_pipe,
@@ -25,14 +25,14 @@ import {
   validateNullByteNotInArg,
 } from "ext:deno_node/internal/child_process.ts";
 import internalChildProcess from "ext:deno_node/internal/child_process.ts";
-import {
+const {
   validateAbortSignal,
   validateFunction,
   validateInteger,
   validateNumber,
   validateObject,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import {
   ERR_CHILD_PROCESS_IPC_REQUIRED,
   ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
@@ -48,7 +48,9 @@ import {
   kEmptyObject,
 } from "ext:deno_node/internal/util.mjs";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
-import { kNeedsNpmProcessState } from "ext:deno_process/40_process.js";
+const { kNeedsNpmProcessState } = core.loadExtScript(
+  "ext:deno_process/40_process.js",
+);
 
 const {
   ArrayIsArray,

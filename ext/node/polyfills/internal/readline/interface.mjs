@@ -33,12 +33,6 @@ import {
   ERR_USE_AFTER_CLOSE,
 } from "ext:deno_node/internal/errors.ts";
 import {
-  validateAbortSignal,
-  validateArray,
-  validateString,
-  validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import {
   //   inspect,
   getStringWidth,
   stripVTControlCharacters,
@@ -93,7 +87,13 @@ import {
   kWordRight,
   kWriteToOutput,
 } from "ext:deno_node/internal/readline/symbols.mjs";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+const {
+  validateAbortSignal,
+  validateArray,
+  validateString,
+  validateUint32,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 const {
   ArrayPrototypePush,
