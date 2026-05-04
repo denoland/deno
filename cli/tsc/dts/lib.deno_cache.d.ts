@@ -53,6 +53,14 @@ interface Cache {
     options?: CacheQueryOptions,
   ): Promise<Response | undefined>;
   /**
+   * Return the requests that match the provided request, or all requests in
+   * the cache if no request is provided.
+   */
+  keys(
+    request?: RequestInfo | URL,
+    options?: CacheQueryOptions,
+  ): Promise<Request[]>;
+  /**
    * Delete cache object matching the provided request.
    *
    * How is the API different from browsers?
