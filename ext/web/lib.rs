@@ -132,7 +132,7 @@ deno_core::extension!(deno_web,
   ],
   lazy_loaded_esm = [
     "geometry.js",
-    "image_data.js",
+    "16_image_data.js",
     "webtransport.js",
   ],
   lazy_loaded_js = [

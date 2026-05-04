@@ -1,7 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
-use std::cell::Cell;
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
