@@ -1,4 +1,4 @@
 Task build echo root
-[build              ] root
+root
 Task root-depending-root echo test
-[root-depending-root] test
+test

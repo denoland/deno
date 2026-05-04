@@ -62,16 +62,24 @@ impl<W: std::io::Write> PrefixedWriter<W> {
 
 impl<W: std::io::Write> std::io::Write for PrefixedWriter<W> {
   fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-    for &byte in buf {
+    let mut rest = buf;
+    while !rest.is_empty() {
       if self.at_line_start {
         self.line_buf.extend_from_slice(&self.prefix);
         self.at_line_start = false;
       }
-      self.line_buf.push(byte);
-      if byte == b'\n' {
-        self.inner.write_all(&self.line_buf)?;
-        self.line_buf.clear();
-        self.at_line_start = true;
+      match rest.iter().position(|&b| b == b'\n') {
+        Some(pos) => {
+          self.line_buf.extend_from_slice(&rest[..pos + 1]);
+          self.inner.write_all(&self.line_buf)?;
+          self.line_buf.clear();
+          self.at_line_start = true;
+          rest = &rest[pos + 1..];
+        }
+        None => {
+          self.line_buf.extend_from_slice(rest);
+          break;
+        }
       }
     }
     Ok(buf.len())

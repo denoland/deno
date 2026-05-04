@@ -246,9 +246,47 @@ pub async fn execute_script(
   .await
 }
 
+#[derive(Clone, Copy)]
 struct ParallelInfo {
   color_index: usize,
   name_pad_width: usize,
+}
+
+fn compute_concurrent_task_ids(tasks: &[ResolvedTask]) -> HashSet<usize> {
+  if tasks.len() <= 1 {
+    return HashSet::new();
+  }
+
+  // Build transitive dependency sets. Tasks are in topological order so each
+  // task's direct dependencies have already had their own trans_deps computed.
+  let mut trans_deps: HashMap<usize, HashSet<usize>> = HashMap::new();
+  for task in tasks {
+    let mut all_deps = HashSet::new();
+    for &dep_id in &task.dependencies {
+      all_deps.insert(dep_id);
+      if let Some(d) = trans_deps.get(&dep_id) {
+        all_deps.extend(d);
+      }
+    }
+    trans_deps.insert(task.id, all_deps);
+  }
+
+  // Task X is potentially concurrent with task Y when neither is a transitive
+  // dependency of the other — they could be in-flight simultaneously.
+  let mut concurrent = HashSet::new();
+  for i in 0..tasks.len() {
+    for j in (i + 1)..tasks.len() {
+      let id_i = tasks[i].id;
+      let id_j = tasks[j].id;
+      if !trans_deps[&id_i].contains(&id_j)
+        && !trans_deps[&id_j].contains(&id_i)
+      {
+        concurrent.insert(id_i);
+        concurrent.insert(id_j);
+      }
+    }
+  }
+  concurrent
 }
 
 fn colorize_task_prefix(label: &str, color_index: usize) -> String {
@@ -333,18 +371,19 @@ impl<'a> TaskRunner<'a> {
     kill_signal: &KillSignal,
     args: &[String],
   ) -> Result<i32, deno_core::anyhow::Error> {
-    let is_parallel = tasks.len() > 1;
-    let max_task_name_len = if is_parallel {
-      tasks.iter().map(|t| t.name.len()).max().unwrap_or(0)
-    } else {
-      0
-    };
+    let concurrent_task_ids = compute_concurrent_task_ids(&tasks);
+    let max_task_name_len = tasks
+      .iter()
+      .filter(|t| concurrent_task_ids.contains(&t.id))
+      .map(|t| t.name.len())
+      .max()
+      .unwrap_or(0);
 
     struct PendingTasksContext<'a> {
       completed: HashSet<usize>,
       running: HashSet<usize>,
       tasks: &'a [ResolvedTask<'a>],
-      is_parallel: bool,
+      concurrent_task_ids: HashSet<usize>,
       max_task_name_len: usize,
     }
 
@@ -393,7 +432,7 @@ impl<'a> TaskRunner<'a> {
 
           self.running.insert(task.id);
           let kill_signal = kill_signal.clone();
-          let parallel_info = if self.is_parallel {
+          let parallel_info = if self.concurrent_task_ids.contains(&task.id) {
             Some(ParallelInfo {
               color_index: task.id,
               name_pad_width: self.max_task_name_len,
@@ -444,7 +483,7 @@ impl<'a> TaskRunner<'a> {
       completed: HashSet::with_capacity(tasks.len()),
       running: HashSet::with_capacity(self.concurrency),
       tasks: &tasks,
-      is_parallel,
+      concurrent_task_ids,
       max_task_name_len,
     };
 
@@ -577,10 +616,7 @@ impl<'a> TaskRunner<'a> {
             custom_commands: custom_commands.clone(),
             kill_signal: kill_signal.clone(),
             argv,
-            parallel_info: parallel_info.as_ref().map(|i| ParallelInfo {
-              color_index: i.color_index,
-              name_pad_width: i.name_pad_width,
-            }),
+            parallel_info,
           })
           .await?;
         if exit_code > 0 {

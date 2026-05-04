@@ -9,4 +9,4 @@ Task build2 deno run ../build2.js
 [build2] build2 finished
 [UNORDERED_END]
 Task run deno run ../run.js
-[run   ] run finished
+run finished

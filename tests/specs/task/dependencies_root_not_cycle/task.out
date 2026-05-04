@@ -1,6 +1,6 @@
 Task a echo root-a
-[a] root-a
+root-a
 Task b echo b
-[b] b
+b
 Task a echo a
-[a] a
+a
