@@ -224,11 +224,17 @@ pub const DESKTOP_JS: &str = r#"
     // replaces it with a logging shim.
     if (bindingTrace) {
       const escapedName = JSON.stringify(name);
+      // Cap retries at ~2s (200 × 10ms). CEF registers bindings via async
+      // IPC; missing them after that long means navigation tore down the
+      // page or the binding will never appear, and an unbounded
+      // setTimeout loop would otherwise leak forever per such call.
       this.executeJs(`(function() {
         var n = ${escapedName};
         var seq = 0;
+        var attempts = 0;
         function tryWrap() {
           if (typeof window.bindings === "undefined" || typeof window.bindings[n] !== "function") {
+            if (++attempts >= 200) return;
             setTimeout(tryWrap, 10);
             return;
           }
@@ -811,3 +817,5 @@ pub fn init_desktop_state(
     state.put::<AutoUpdateState>(au);
   }
 }
+
+pub use deno_lib::util::net::allocate_random_port;

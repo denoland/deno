@@ -117,13 +117,7 @@ pub struct MuxHandle {
   _shutdown_tx: oneshot::Sender<()>,
 }
 
-/// Bind to an ephemeral TCP port and return its number. The listener is
-/// dropped before the port is reused by the caller; on the loopback
-/// interface the small race window is acceptable for a debugger-only port.
-pub fn allocate_random_port() -> std::io::Result<u16> {
-  let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
-  Ok(listener.local_addr()?.port())
-}
+pub use deno_lib::util::net::allocate_random_port;
 
 /// Spawn the mux on a background task. Returns once the listener is
 /// bound — connection handling continues in the spawned task. The

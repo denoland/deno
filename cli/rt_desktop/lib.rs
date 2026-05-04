@@ -27,6 +27,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::v8;
+use deno_lib::util::net::allocate_random_port;
 use deno_lib::util::result::js_error_downcast_ref;
 use deno_lib::version::otel_runtime_config;
 use deno_runtime::fmt_errors::format_js_error;
@@ -34,17 +35,14 @@ use deno_terminal::colors;
 use denort::desktop::DesktopApi;
 use denort::run::RunOptions;
 
-/// Allocate a random available port by binding to port 0.
-fn allocate_random_port() -> std::io::Result<u16> {
-  let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
-  Ok(listener.local_addr()?.port())
-}
-
 /// WEF-backed implementation of [`denort::desktop::DesktopApi`].
 struct WefDesktopApi {
   event_tx: deno_runtime::ops::desktop::DesktopEventTx,
   pending_responses: deno_runtime::ops::desktop::PendingBindResponses,
   closed_windows: Arc<Mutex<HashSet<u32>>>,
+  /// IDs of every window currently displayed. Shared with the HMR reload
+  /// callback so it can refresh all windows, not just the initial one.
+  open_windows: Arc<Mutex<HashSet<u32>>>,
   trays: Arc<Mutex<HashMap<u32, just_wef::TrayIcon>>>,
 }
 
@@ -62,6 +60,7 @@ impl WefDesktopApi {
     let move_tx = self.event_tx.clone();
     let close_tx = self.event_tx.clone();
     let closed_windows = self.closed_windows.clone();
+    let open_windows_on_close = self.open_windows.clone();
 
     window
       .on_keyboard_event(move |ev| {
@@ -182,6 +181,7 @@ impl WefDesktopApi {
       })
       .on_close_requested(move |ev| {
         closed_windows.lock().unwrap().insert(ev.window_id);
+        open_windows_on_close.lock().unwrap().remove(&ev.window_id);
         let _ = close_tx.try_send(
           deno_runtime::ops::desktop::DesktopEvent::CloseRequested {
             window_id: ev.window_id,
@@ -195,11 +195,14 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
   fn create_window(&self, width: i32, height: i32) -> u32 {
     let window = just_wef::Window::new(width, height);
     let window = self.setup_window_events(window);
-    window.id()
+    let id = window.id();
+    self.open_windows.lock().unwrap().insert(id);
+    id
   }
 
   fn close_window(&self, window_id: u32) {
     self.closed_windows.lock().unwrap().insert(window_id);
+    self.open_windows.lock().unwrap().remove(&window_id);
     just_wef::Window::from_id(window_id).close();
   }
 
@@ -893,13 +896,30 @@ just_wef::main!(|| {
 
   // Guard against re-entry: when a framework dev server (e.g. Next.js)
   // forks child/worker processes, they re-execute this dylib. Detect
-  // forked workers and run them headless (no WEF window) by checking
-  // for NODE_CHANNEL_FD (set by Node's child_process.fork()) or
-  // NEXT_PRIVATE_WORKER (set by Next.js specifically).
+  // forked workers and run them headless (no WEF window).
+  //
+  // A forked worker is recognized by the *combination* of:
+  //   1. argv shaped like `<exe> run [flags…] script.js …` (i.e.
+  //      `extract_fork_script_path` returns `Some`), OR
+  //   2. argv shaped like `<exe> run …` *and* one of the worker env
+  //      vars set by the parent dev server (NODE_CHANNEL_FD,
+  //      NEXT_PRIVATE_WORKER).
+  //
+  // The bare env-var check used to be enough, but a user shell that
+  // already had NODE_CHANNEL_FD set (e.g. running inside another forked
+  // process, Jest, pnpm) would silently take the headless path and
+  // never show a window. Requiring the `run` argv shape rules that out:
+  // the WEF backend never invokes us with `run` as argv[1].
   let args: Vec<_> = env::args_os().collect();
-  let is_worker = env::var("NODE_CHANNEL_FD").is_ok()
-    || env::var("NEXT_PRIVATE_WORKER").is_ok()
-    || extract_fork_script_path(&args).is_some();
+  let argv_run = args
+    .get(1)
+    .and_then(|a| a.to_str())
+    .map(|s| s == "run")
+    .unwrap_or(false);
+  let is_worker = extract_fork_script_path(&args).is_some()
+    || (argv_run
+      && (env::var("NODE_CHANNEL_FD").is_ok()
+        || env::var("NEXT_PRIVATE_WORKER").is_ok()));
   if is_worker {
     run_headless_worker();
     return;
@@ -1314,14 +1334,26 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
 
   // Shared initial window ID for navigate_fut and HMR reload.
   let initial_window_id = Arc::new(AtomicU32::new(0));
-  let initial_window_id_for_hmr = initial_window_id.clone();
   let initial_window_id_for_navigate = initial_window_id.clone();
+
+  // Track every live window so HMR can refresh secondary windows too,
+  // not just the initial one. The same Arc is handed to WefDesktopApi
+  // below; create_window / close_window keep it in sync.
+  let open_windows: Arc<Mutex<HashSet<u32>>> =
+    Arc::new(Mutex::new(HashSet::new()));
+  let open_windows_for_api = open_windows.clone();
+  let open_windows_for_hmr = open_windows.clone();
 
   let hmr_on_reload: Option<denort::hmr::HmrReloadCallback> =
     if hmr_watch_dir.is_some() && !is_framework_dev {
       Some(Box::new(move || {
-        let id = initial_window_id_for_hmr.load(Ordering::Acquire);
-        if id != 0 {
+        let ids: Vec<u32> = open_windows_for_hmr
+          .lock()
+          .unwrap()
+          .iter()
+          .copied()
+          .collect();
+        for id in ids {
           just_wef::Window::from_id(id).execute_js::<fn(
             Result<just_wef::Value, just_wef::Value>,
           )>("location.reload()", None);
@@ -1367,6 +1399,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
         event_tx: event_tx.0.clone(),
         pending_responses: pending_responses.clone(),
         closed_windows: Arc::new(Mutex::new(HashSet::new())),
+        open_windows: open_windows_for_api.clone(),
         trays: Arc::new(Mutex::new(HashMap::new())),
       };
 

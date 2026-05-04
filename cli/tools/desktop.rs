@@ -181,14 +181,19 @@ async fn compile_desktop(
 
   // Desktop framework detection: when --desktop is used and the source is
   // "." (a directory), detect the framework and generate the entrypoint.
+  // The cwd resolved from CliOptions is reused for the HMR launch below so
+  // framework detection is single-sourced and can't drift between the two.
+  let detection_cwd = cli_options.initial_cwd().to_path_buf();
+  let detected_framework = if desktop_flags.source_file == "." {
+    super::framework::detect_framework(&detection_cwd)?
+  } else {
+    None
+  };
   let _desktop_entrypoint_file = if desktop_flags.source_file == "." {
-    let cwd = flags
-      .initial_cwd
-      .clone()
-      .unwrap_or_else(|| std::env::current_dir().unwrap());
-    if let Some(detection) = super::framework::detect_framework(&cwd)? {
-      let entrypoint_code = detection.entrypoint_code;
-      let includes = detection.include_paths;
+    let cwd = &detection_cwd;
+    if let Some(detection) = detected_framework.as_ref() {
+      let entrypoint_code = detection.entrypoint_code.clone();
+      let includes = detection.include_paths.clone();
       log::info!("Detected {} framework", detection.name);
       // Enable CJS detection for Node-based frameworks.
       flags.unstable_config.detect_cjs = true;
@@ -268,13 +273,11 @@ async fn compile_desktop(
     || flags.inspect_wait.is_some();
 
   if desktop_flags.hmr || inspector_requested {
-    let cwd = cli_options.initial_cwd();
-    let framework = super::framework::detect_framework(cwd)?;
     let backend = desktop_flags.backend.as_deref().unwrap_or("webview");
     run_desktop_hmr(
       &output_path,
-      cwd,
-      framework.as_ref(),
+      &detection_cwd,
+      detected_framework.as_ref(),
       backend,
       wef_resolver,
       &flags,
@@ -353,7 +356,9 @@ async fn run_desktop_hmr(
     .canonicalize()
     .unwrap_or(source_dir.to_path_buf());
 
-  if let Some(fw) = framework {
+  if let Some(fw) = framework
+    && desktop_flags.hmr
+  {
     log::info!(
       "{} {} dev server with HMR in desktop mode",
       colors::green("Running"),
@@ -361,19 +366,29 @@ async fn run_desktop_hmr(
     );
   }
 
-  log::info!(
-    "{} desktop app with HMR (watching {})",
-    colors::green("Running"),
-    source_abs.display(),
-  );
+  if desktop_flags.hmr {
+    log::info!(
+      "{} desktop app with HMR (watching {})",
+      colors::green("Running"),
+      source_abs.display(),
+    );
+  } else {
+    log::info!("{} desktop app under inspector", colors::green("Running"),);
+  }
 
   let mut cmd = std::process::Command::new(&wef_backend);
   cmd
     .arg("--runtime")
     .arg(&dylib_abs)
     .env("WEF_RUNTIME_PATH", &dylib_abs)
-    .env("DENO_DESKTOP_HMR", &source_abs)
     .current_dir(&source_abs);
+  // Only enable the file watcher + setScriptSource pipeline when the user
+  // actually asked for HMR. `deno desktop --inspect` alone used to spin up
+  // both, surprising users (and burning the inspector channel on hot
+  // reloads they didn't request).
+  if desktop_flags.hmr {
+    cmd.env("DENO_DESKTOP_HMR", &source_abs);
+  }
 
   // Wire up the unified DevTools multiplexer when --inspect is set.
   // The mux runs in this (parent) process and fronts both the Deno runtime
