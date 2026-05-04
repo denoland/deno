@@ -922,6 +922,8 @@ impl KeyObjectHandle {
             }
           }
         } else {
+          // Skip EC PARAMETERS block if present (legacy EC key format includes both)
+          let pem = skip_ec_parameters_block(pem);
           let (label, doc) = SecretDocument::from_pem(pem)
             .map_err(|_| AsymmetricPrivateKeyError::InvalidPemPrivateKey)?;
 
@@ -1645,6 +1647,22 @@ pub enum RsaPssParamsParseError {
 ///   priv_key INTEGER
 /// }
 /// ```
+/// Skips the EC PARAMETERS PEM block if present at the start.
+/// Legacy EC key files sometimes include an EC PARAMETERS block before the
+/// actual EC PRIVATE KEY block; `SecretDocument::from_pem` reads only the
+/// first block, so we need to skip it.
+fn skip_ec_parameters_block(pem: &str) -> &str {
+  const BEGIN_EC_PARAMS: &str = "-----BEGIN EC PARAMETERS-----";
+  const END_EC_PARAMS: &str = "-----END EC PARAMETERS-----";
+  let trimmed = pem.trim_start();
+  if trimmed.starts_with(BEGIN_EC_PARAMS)
+    && let Some(pos) = trimmed.find(END_EC_PARAMS)
+  {
+    return trimmed[pos + END_EC_PARAMS.len()..].trim_start();
+  }
+  trimmed
+}
+
 fn parse_traditional_dsa_private_key(
   der: &[u8],
 ) -> Result<dsa::SigningKey, AsymmetricPrivateKeyError> {

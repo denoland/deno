@@ -174,7 +174,15 @@ Hash.prototype.update = function update(
   ) {
     unwrapErr(op_node_hash_update_str(this[kHandle], data));
   } else {
-    unwrapErr(op_node_hash_update(this[kHandle], toBuf(data, encoding)));
+    const buf = toBuf(data as string | Buffer, encoding);
+    // Ensure we pass a Uint8Array to the op (non-Uint8Array typed arrays
+    // need to be viewed as raw bytes over their underlying ArrayBuffer)
+    const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(
+      (buf as ArrayBufferView).buffer,
+      (buf as ArrayBufferView).byteOffset,
+      (buf as ArrayBufferView).byteLength,
+    );
+    unwrapErr(op_node_hash_update(this[kHandle], u8));
   }
 
   return this;
