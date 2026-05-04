@@ -959,7 +959,8 @@ impl TestWatchdog {
             }
             isolate.terminate_execution();
           } else {
-            let (s, _) = shared.cvar.wait_timeout(state, deadline - now).unwrap();
+            let (s, _) =
+              shared.cvar.wait_timeout(state, deadline - now).unwrap();
             state = s;
           }
         }
