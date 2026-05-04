@@ -521,6 +521,7 @@
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js": {},
     "parallel/test-crypto-keygen-async-encrypted-private-key.js": {},
+    "parallel/test-crypto-keygen-async-explicit-elliptic-curve-encrypted-p256.js": {},
     "parallel/test-crypto-keygen-async-named-elliptic-curve.js": {},
     "parallel/test-crypto-keygen-async-named-elliptic-curve-encrypted.js": {},
     "parallel/test-crypto-keygen-async-named-elliptic-curve-encrypted-p256.js": {},
@@ -582,6 +583,7 @@
     "parallel/test-crypto-pqc-key-objects-ml-dsa.js": {},
     "parallel/test-crypto-pqc-key-objects-ml-kem.js": {},
     "parallel/test-crypto-pqc-key-objects-slh-dsa.js": {},
+    "parallel/test-crypto-private-decrypt-gh32240.js": {},
     "parallel/test-crypto-psychic-signatures.js": {},
     // TODO(bartlomieju): requires encrypted PEM export (cipher+passphrase in privateKeyEncoding)
     // "parallel/test-crypto-publicDecrypt-fails-first-time.js": {},
@@ -3322,6 +3324,7 @@
     "parallel/test-tls-socket-close.js": {},
     "parallel/test-tls-socket-constructor-alpn-options-parsing.js": {},
     "parallel/test-tls-socket-destroy.js": {},
+    "parallel/test-tls-ticket-cluster.js": {},
     "parallel/test-tls-writewrap-leak.js": {},
     "parallel/test-tls-timeout-server-2.js": {},
     "parallel/test-tls-tlswrap-segfault-2.js": {},
