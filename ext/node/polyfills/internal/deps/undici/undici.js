@@ -1,7 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 const { TextDecoder } = core.loadExtScript(
   "ext:deno_web/08_text_encoding.js",
 );

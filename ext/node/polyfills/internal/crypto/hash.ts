@@ -24,11 +24,11 @@ const {
   forgivingBase64UrlEncode: encodeToBase64Url,
 } = core.loadExtScript("ext:deno_web/00_infra.js");
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
-import {
+const {
   validateEncoding,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import type {
   BinaryToTextEncoding,
   Encoding,
@@ -49,10 +49,10 @@ import {
   getHashBlockSize,
   toBuf,
 } from "ext:deno_node/internal/crypto/util.ts";
-import {
+const {
   isAnyArrayBuffer,
   isArrayBufferView,
-} from "ext:deno_node/internal/util/types.ts";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 
 const { ReflectApply, ObjectSetPrototypeOf } = primordials;
 

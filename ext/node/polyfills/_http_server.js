@@ -68,12 +68,12 @@ import {
   ERR_OUT_OF_RANGE,
 } from "ext:deno_node/internal/errors.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
-import {
+const {
   validateBoolean,
   validateInteger,
   validateLinkHeaderValue,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 const {
   otelState,

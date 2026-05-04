@@ -4,6 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
+import { core } from "ext:core/mod.js";
 import { getDefaultHighWaterMark } from "ext:deno_node/internal/streams/state.js";
 import assert from "ext:deno_node/internal/assert.mjs";
 import EE from "node:events";
@@ -42,8 +43,12 @@ import {
   ERR_STREAM_WRITE_AFTER_END,
   hideStackFrames,
 } from "ext:deno_node/internal/errors.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
-import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
+const { validateString } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const { isUint8Array } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 let debug = debuglog("http", (fn) => {

@@ -6,7 +6,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const { ObjectPrototypeToString, SymbolSpecies } = primordials;
 import {
   op_v8_cached_data_version_tag,
@@ -41,9 +41,13 @@ import { writeFileSync } from "node:fs";
 import { Readable } from "node:stream";
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
-import { validateObject } from "ext:deno_node/internal/validators.mjs";
+const { validateObject } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
 export function cachedDataVersionTag() {
   return op_v8_cached_data_version_tag();

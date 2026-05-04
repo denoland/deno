@@ -44,8 +44,12 @@ import {
   getArrayBufferOrView,
   KeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
-import { isKeyObject } from "ext:deno_node/internal/crypto/_keys.ts";
-import { kHandle } from "ext:deno_node/internal/crypto/constants.ts";
+const { isKeyObject } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/_keys.ts",
+);
+const { kHandle } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/constants.ts",
+);
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type {
   BinaryLike,
@@ -59,10 +63,10 @@ import {
   NodeError,
 } from "ext:deno_node/internal/errors.ts";
 
-import {
+const {
   isAnyArrayBuffer,
   isArrayBufferView,
-} from "ext:deno_node/internal/util/types.ts";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 import { ERR_CRYPTO_INVALID_STATE } from "ext:deno_node/internal/errors.ts";
 import { StringDecoder } from "node:string_decoder";
 import assert from "node:assert";

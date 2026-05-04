@@ -22,7 +22,8 @@ import {
   op_vm_script_get_source_map_url,
   op_vm_script_run_in_context,
 } from "ext:core/ops";
-import {
+import { core, primordials } from "ext:core/mod.js";
+const {
   validateArray,
   validateBoolean,
   validateBuffer,
@@ -32,7 +33,7 @@ import {
   validateString,
   validateStringArray,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_VM_MODULE_ALREADY_LINKED,
@@ -40,8 +41,6 @@ import {
   ERR_VM_MODULE_NOT_MODULE,
   ERR_VM_MODULE_STATUS,
 } from "ext:deno_node/internal/errors.ts";
-
-import { primordials } from "ext:core/mod.js";
 
 const {
   ArrayPrototypeForEach,

@@ -42,13 +42,15 @@ import {
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
-import {
+const {
   validateFunction,
   validateInt32,
   validateNumber,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 import { op_tls_canonicalize_ipv4_address } from "ext:core/ops";
 import tlsWrap from "ext:deno_node/internal_binding/tls_wrap.ts";
 import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";

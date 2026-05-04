@@ -1,12 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { op_node_random_int } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
 } from "ext:deno_node/internal/errors.ts";
-import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+const { validateFunction } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 const {
   MathCeil,
   MathFloor,

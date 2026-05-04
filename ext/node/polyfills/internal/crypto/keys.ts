@@ -40,7 +40,9 @@ const {
   importCryptoKeySync,
 } = core.loadExtScript("ext:deno_crypto/00_crypto.js");
 
-import { kHandle } from "ext:deno_node/internal/crypto/constants.ts";
+const { kHandle } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/constants.ts",
+);
 import { isStringOrBuffer } from "ext:deno_node/internal/crypto/cipher.ts";
 import {
   ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS,
@@ -56,21 +58,21 @@ import type {
   PublicKeyInput,
 } from "ext:deno_node/internal/crypto/types.ts";
 import { Buffer } from "node:buffer";
-import {
+const {
   isAnyArrayBuffer,
   isArrayBufferView,
-} from "ext:deno_node/internal/util/types.ts";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 import { hideStackFrames } from "ext:deno_node/internal/errors.ts";
-import {
+const {
   isCryptoKey,
   isKeyObject,
   kKeyType,
-} from "ext:deno_node/internal/crypto/_keys.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/crypto/_keys.ts");
+const {
   validateObject,
   validateOneOf,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { BufferEncoding } from "ext:deno_node/_global.d.ts";
 
 export const getArrayBufferOrView = hideStackFrames(

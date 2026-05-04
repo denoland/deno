@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeFind,
   ObjectEntries,
@@ -11,7 +11,9 @@ const {
   StringPrototypeStartsWith,
 } = primordials;
 
-import { validateObject } from "ext:deno_node/internal/validators.mjs";
+const { validateObject } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
 // These are internal utilities to make the parsing logic easier to read, and
 // add lots of detail for the curious. They are in a separate file to allow

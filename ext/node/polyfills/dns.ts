@@ -23,16 +23,17 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core, primordials } from "ext:core/mod.js";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { customPromisifyArgs } from "ext:deno_node/internal/util.mjs";
-import {
+const {
   validateBoolean,
   validateFunction,
   validateNumber,
   validateOneOf,
   validatePort,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { isIP } from "ext:deno_node/internal/net.ts";
 import {
   dnsOrderToNumber,
@@ -98,7 +99,6 @@ import cares, {
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
 import { domainToASCII } from "ext:deno_node/internal/idna.ts";
-import { primordials } from "ext:core/mod.js";
 
 const { ObjectDefineProperty } = primordials;
 

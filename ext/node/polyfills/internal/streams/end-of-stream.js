@@ -2,16 +2,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import process from "node:process";
-import { primordials } from "ext:core/mod.js";
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import imported1 from "ext:deno_node/internal/errors.ts";
 import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
-import {
+const {
   validateAbortSignal,
   validateBoolean,
   validateFunction,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 import {
   isClosed,

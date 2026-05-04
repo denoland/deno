@@ -80,7 +80,7 @@ import {
 const { TextDecoder, TextEncoder } = core.loadExtScript(
   "ext:deno_web/08_text_encoding.js",
 );
-import { codes } from "ext:deno_node/internal/error_codes.ts";
+const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
 import { encodings } from "ext:deno_node/internal_binding/string_decoder.ts";
 import {
   indexOfBuffer,
@@ -102,14 +102,14 @@ import {
   getOwnNonIndexProperties,
   ONLY_ENUMERABLE,
 } from "ext:deno_node/internal_binding/util.ts";
-import {
+const {
   validateBuffer,
   validateInteger,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   isArrayBufferView,
   isUint8Array,
-} from "ext:deno_node/internal/util/types.ts";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_STATE,

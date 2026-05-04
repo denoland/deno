@@ -17,13 +17,13 @@ import {
   kDestroy,
   Timeout,
 } from "ext:deno_node/internal/timers.mjs";
-import {
+const {
   validateAbortSignal,
   validateBoolean,
   validateFunction,
   validateNumber,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
 import {
   AbortError,

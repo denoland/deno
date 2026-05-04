@@ -32,7 +32,9 @@ import {
   ERR_INVALID_URL,
   ERR_INVALID_URL_SCHEME,
 } from "ext:deno_node/internal/errors.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
+const { validateString } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import {
   CHAR_0,
   CHAR_9,
