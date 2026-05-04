@@ -92,6 +92,10 @@ import {
   publicEncrypt,
 } from "ext:deno_node/internal/crypto/cipher.ts";
 import {
+  decapsulate,
+  encapsulate,
+} from "ext:deno_node/internal/crypto/encap.ts";
+import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
 } from "ext:deno_node/internal/errors.ts";
@@ -462,10 +466,12 @@ const defaultExport = {
   createSign,
   createVerify,
   Decipheriv,
+  decapsulate,
   DiffieHellman,
   diffieHellman,
   DiffieHellmanGroup,
   ECDH,
+  encapsulate,
   getRandomValues,
   generateKey,
   generateKeyPair,
@@ -634,11 +640,13 @@ export {
   createSecretKey,
   createSign,
   createVerify,
+  decapsulate,
   Decipheriv,
   DiffieHellman,
   diffieHellman,
   DiffieHellmanGroup,
   ECDH,
+  encapsulate,
   generateKey,
   generateKeyPair,
   generateKeyPairSync,
