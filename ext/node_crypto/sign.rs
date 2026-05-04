@@ -64,10 +64,7 @@ fn dsa_sig_to_p1363(sig: &dsa::Signature, q_len: usize) -> Box<[u8]> {
 
 /// Decode a DSA signature from IEEE P1363 format: r || s, each of q_len bytes.
 /// Spec: https://www.w3.org/TR/WebCryptoAPI/#convert-an-ecdsa-signature
-fn dsa_sig_from_p1363(
-  bytes: &[u8],
-  q_len: usize,
-) -> Option<dsa::Signature> {
+fn dsa_sig_from_p1363(bytes: &[u8], q_len: usize) -> Option<dsa::Signature> {
   if bytes.len() != 2 * q_len {
     return None;
   }
