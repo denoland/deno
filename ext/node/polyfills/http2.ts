@@ -2908,10 +2908,10 @@ class ServerHttp2Stream extends Http2Stream {
 
     const streamOptions = options.endStream ? STREAM_OPTION_EMPTY_PAYLOAD : 0;
 
-    const ret = this[kHandle].pushPromise(
-      headersList[0],
-      headersList[1],
-      streamOptions,
+    const ret = ReflectApply(
+      BindingHttp2Stream.prototype.pushPromise,
+      this[kHandle],
+      [headersList[0], headersList[1], streamOptions],
     );
     let err;
     if (typeof ret === "number") {

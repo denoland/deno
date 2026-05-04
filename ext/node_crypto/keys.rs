@@ -635,6 +635,10 @@ pub enum AsymmetricPrivateKeyError {
   #[error("error:1E08010C:DECODER routines::unsupported")]
   InvalidPemPrivateKey,
   #[class(generic)]
+  #[property("code" = "ERR_OSSL_EVP_BAD_DECRYPT")]
+  #[error("error:1C800064:Provider routines::bad decrypt")]
+  BadDecrypt,
+  #[class(generic)]
   #[property("code" = "ERR_OSSL_CRYPTO_INTERRUPTED_OR_CANCELLED")]
   #[error("error:07880109:common libcrypto routines::interrupted or cancelled")]
   EncryptedPrivateKeyRequiresPassphraseToDecrypt,
@@ -911,6 +915,12 @@ impl KeyObjectHandle {
               .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?,
             "PRIVATE KEY" => SecretDocument::from_pkcs8_der(&decrypted)
               .map_err(|_| AsymmetricPrivateKeyError::InvalidPkcs8PrivateKey)?,
+            "DSA PRIVATE KEY" => {
+              let private_key = parse_traditional_dsa_private_key(&decrypted)?;
+              return Ok(KeyObjectHandle::AsymmetricPrivate(
+                AsymmetricPrivateKey::Dsa(private_key),
+              ));
+            }
             _ => {
               return Err(AsymmetricPrivateKeyError::UnsupportedPemLabel(
                 label.to_string(),
@@ -3530,9 +3540,12 @@ fn parse_legacy_encrypted_pem<'a>(
   salt.copy_from_slice(&iv[..8]);
   let key = evp_bytes_to_key(passphrase, &salt, key_len);
 
+  // Decryption failure here most commonly means wrong passphrase; map to
+  // the OpenSSL-compatible "bad decrypt" error so Node.js tests that check
+  // the error message work correctly.
   let decrypted =
     decrypt_legacy_pem_data(cipher_name, &key, &iv, &encrypted_data)
-      .map_err(|_| AsymmetricPrivateKeyError::InvalidEncryptedPemPrivateKey)?;
+      .map_err(|_| AsymmetricPrivateKeyError::BadDecrypt)?;
 
   Ok(Some((label, decrypted)))
 }
