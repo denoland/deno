@@ -584,9 +584,33 @@ fn setup_panic_hook() {
   }));
 
   fn error_handler(file: &str, line: i32, message: &str) {
+    // Some V8 CHECKs are reachable from user JS (e.g. requesting an
+    // ArrayBuffer/TypedArray larger than the per-isolate sanity limit on
+    // chunk allocation, or external memory accounting overflow). V8 aborts
+    // before it has a chance to throw RangeError, so the process dies with
+    // a CHECK fail. These are not Deno bugs; surface them as a clean OOM
+    // exit instead of asking the user to file a bug report.
+    if message.contains("change_in_bytes < kMaxReasonableBytes")
+      || message.contains("kMaxReasonableBytes")
+    {
+      exit_with_oom("requested allocation exceeds maximum supported size");
+    }
     // Override C++ abort with a rust panic, so we
     // get our message above and a nice backtrace.
     panic!("Fatal error in {file}:{line}: {message}");
+  }
+
+  #[allow(clippy::print_stderr, reason = "fatal exit")]
+  fn exit_with_oom(detail: &str) -> ! {
+    eprintln!("\n============================================================");
+    eprintln!("error: V8 out of memory: {detail}.");
+    eprintln!();
+    eprintln!("Hint: this is usually caused by allocating an ArrayBuffer or");
+    eprintln!("TypedArray that is too large (e.g. `new Float64Array(10e9)`).");
+    eprintln!();
+    eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
+    eprintln!("Version: {}", deno_lib::version::DENO_VERSION_INFO.deno);
+    deno_runtime::exit(1);
   }
 
   deno_core::v8::V8::set_fatal_error_handler(error_handler);
