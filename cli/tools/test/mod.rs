@@ -1188,13 +1188,21 @@ async fn run_tests_for_worker_inner(
         .or(options.default_timeout_ms)
         .filter(|&t| t > 0);
 
-      // If a deadline is configured, spawn a real OS thread that calls
-      // `terminate_execution` via the thread-safe handle. We can't use
-      // `tokio::time::timeout` here because a synchronous `while(true){}`
-      // monopolizes the current_thread runtime — the timer would never
-      // fire. The OS thread is independent of the runtime and can
-      // interrupt V8 mid-sync-loop.
-      let timer = effective_timeout_ms
+      // Two complementary timers are required:
+      //
+      // (1) An OS thread that calls `terminate_execution` via the
+      //     thread-safe handle. Needed for synchronous hot-loops
+      //     (`while(true){}`): a same-thread tokio timer can't fire
+      //     when V8 monopolizes the runtime thread.
+      //
+      // (2) `tokio::time::timeout` wrapping the test future. Needed
+      //     for asynchronous hangs where the test is just awaiting a
+      //     long-pending op (no microtasks): in that case V8 isn't
+      //     running JS, so the OS thread's terminate flag is set but
+      //     never fires, and the tokio task stays parked on the op.
+      //     The tokio timer wakes the task and lets us drop the
+      //     future cleanly.
+      let os_timer = effective_timeout_ms
         .map(|ms| TestTimer::start(&mut worker.js_runtime, ms));
 
       let call = worker.js_runtime.call(&function);
@@ -1202,18 +1210,37 @@ async fn run_tests_for_worker_inner(
       let slow_test_warning =
         spawn(slow_test_watchdog(event_tracker.clone(), desc.id));
 
-      let result = worker
+      let test_fut = worker
         .js_runtime
-        .with_event_loop_promise(call, PollEventLoopOptions::default())
-        .await;
+        .with_event_loop_promise(call, PollEventLoopOptions::default());
+
+      let raced = match effective_timeout_ms {
+        Some(ms) => {
+          match tokio::time::timeout(
+            Duration::from_millis(ms as u64),
+            test_fut,
+          )
+          .await
+          {
+            Ok(r) => Ok(r),
+            Err(_elapsed) => Err(()),
+          }
+        }
+        None => Ok(test_fut.await),
+      };
       slow_test_warning.abort();
 
-      // `stop()` is race-free: whichever side flips the state machine
-      // first wins. If the timer fired, V8's terminate flag is set; we
-      // always clear it before returning so the next test (and any
-      // afterEach hook) can run JS again.
-      let timed_out = timer.map(|t| t.stop()).unwrap_or(false);
+      // Cancel the OS timer (returns whether it had already fired) and
+      // always clear V8's terminate flag so the next test (and any
+      // afterEach hook) can run JS on this isolate. The flag may be
+      // set even when we didn't time out — there's a small window
+      // where the OS thread can fire concurrently with the test
+      // completing.
+      let os_timer_fired =
+        os_timer.map(|t| t.stop()).unwrap_or(false);
       worker.js_runtime.v8_isolate().cancel_terminate_execution();
+
+      let timed_out = raced.is_err() || os_timer_fired;
 
       if timed_out {
         // The configured deadline takes precedence over whatever the
@@ -1225,7 +1252,8 @@ async fn run_tests_for_worker_inner(
           effective_timeout_ms.unwrap_or(0),
         ))
       } else {
-        match result {
+        // SAFETY: `raced.is_err()` is false in this branch.
+        match raced.unwrap() {
           Ok(r) => {
             // Check the result before we check for leaks
             deno_core::scope!(scope, &mut worker.js_runtime);
