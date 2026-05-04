@@ -3160,15 +3160,16 @@ class ServerHttp2Stream extends Http2Stream {
         headers,
         streamOptions,
       );
-      try {
-        fs.fstat(fd, onFStat);
-      } catch (err) {
-        // `fs.fstat` validates `fd` synchronously (e.g. RangeError for -1).
-        // Route that through the same async error path as a failed fstat so
-        // `handleAsyncFileResponseError` runs instead of throwing from the
-        // stream handler (matches downstream behavior for bad fds).
-        process.nextTick(onFStat, err, undefined);
-      }
+      // Defer fstat so synchronous fd validation (e.g. ERR_OUT_OF_RANGE for -1)
+      // never throws from the synchronous "stream" listener. Route validation
+      // failures through the same async path as a failed fstat callback.
+      process.nextTick(() => {
+        try {
+          fs.fstat(fd, onFStat);
+        } catch (err) {
+          onFStat(err, undefined);
+        }
+      });
       return;
     }
 

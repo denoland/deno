@@ -937,3 +937,47 @@ Deno.test(
     });
   },
 );
+
+Deno.test(
+  "[node/http2] respondWithFD invalid fd with statCheck does not throw synchronously",
+  {
+    sanitizeResources: false,
+    sanitizeOps: false,
+  },
+  async () => {
+    const server = http2.createServer();
+
+    await new Promise<void>((resolve, reject) => {
+      server.on("stream", (stream) => {
+        stream.on("error", () => {});
+        try {
+          stream.respondWithFD(-1, { ":status": 200 }, {
+            statCheck: () => true,
+          });
+        } catch (e) {
+          reject(
+            new Error(
+              `respondWithFD(-1, …, statCheck) must not throw synchronously: ${e}`,
+            ),
+          );
+          return;
+        }
+      });
+
+      server.listen(0, () => {
+        const { port } = server.address() as net.AddressInfo;
+        const client = http2.connect(`http://127.0.0.1:${port}`);
+        client.on("error", reject);
+
+        const req = client.request({ ":path": "/" });
+        req.on("response", () => {});
+        req.resume();
+        req.on("error", () => {
+          client.close();
+          server.close(() => resolve());
+        });
+        req.end();
+      });
+    });
+  },
+);
