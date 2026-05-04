@@ -3479,7 +3479,7 @@ Deno.test(
     const { resolve } = Promise.withResolvers<void>();
 
     let reqCount = -1;
-    let timerId: ReturnType<typeof setInterval> | undefined;
+    let timerId: NodeJS.Timeout | undefined;
     await using server = Deno.serve({
       handler: (_req) => {
         reqCount++;
@@ -4211,7 +4211,7 @@ Deno.test(
     const ac = new AbortController();
 
     console.log("Starting server", servePort);
-    let timer: number | undefined = undefined;
+    let timer: NodeJS.Timeout | undefined = undefined;
     let _controller;
 
     await using server = Deno.serve(
