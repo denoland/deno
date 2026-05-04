@@ -3309,6 +3309,16 @@ pub fn translate_to_deno_args(
     return result;
   }
 
+  // Handle --enable-fips / --force-fips: these are unsupported in Deno (non-FIPS build).
+  // Produce a command that writes the expected Node.js error message and exits with code 1.
+  if opts.enable_fips_crypto || opts.force_fips_crypto {
+    deno_args.push("eval".to_string());
+    deno_args.push(
+      r#"process.stderr.write("OpenSSL error when trying to enable FIPS: FIPS mode is not available\n"); process.exit(1);"#.to_string(),
+    );
+    return result;
+  }
+
   // Handle -e/--eval or -p/--print
   // Note: -p/--print alone (without -e) uses the first remaining arg as eval code
   let eval_string_for_print = if !env_opts.has_eval_string

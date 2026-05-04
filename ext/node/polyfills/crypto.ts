@@ -4,7 +4,10 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { ERR_CRYPTO_FIPS_FORCED } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_CRYPTO_FIPS_FORCED,
+  ERR_WORKER_UNSUPPORTED_OPERATION,
+} from "ext:deno_node/internal/errors.ts";
 import { crypto as constants } from "ext:deno_node/internal_binding/constants.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import {
@@ -167,7 +170,7 @@ import type {
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
-import { core } from "ext:core/mod.js";
+import { core, internals } from "ext:core/mod.js";
 const { crypto: webcrypto } = core.loadExtScript(
   "ext:deno_crypto/00_crypto.js",
 );
@@ -435,7 +438,15 @@ Object.defineProperty(constants, "defaultCipherList", {
 const getDiffieHellman = createDiffieHellmanGroup;
 
 const getFips = fipsForced ? getFipsForced : getFipsCrypto;
-const setFips = fipsForced ? setFipsForced : setFipsCrypto;
+
+function setFipsNonForced(val: boolean) {
+  if (internals.__isWorkerThread) {
+    throw new ERR_WORKER_UNSUPPORTED_OPERATION("Calling crypto.setFips()");
+  }
+  setFipsCrypto(val);
+}
+
+const setFips = fipsForced ? setFipsForced : setFipsNonForced;
 
 const sign = signOneShot;
 const verify = verifyOneShot;

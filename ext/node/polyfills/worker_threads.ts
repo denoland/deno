@@ -559,7 +559,7 @@ class NodeWorker extends EventEmitter {
         case 1: { // TerminalError
           this.#status = "CLOSED";
           this.#closeStdio();
-          if (this.listenerCount("error") > 0) {
+          {
             const errMsg = data.errorMessage ?? data.message;
             const errName = data.name;
             let err;
@@ -576,7 +576,16 @@ class NodeWorker extends EventEmitter {
             // Stack is unavailable from the worker context (e.g. prepareStackTrace
             // may have thrown). Match Node.js behavior of setting stack to undefined.
             err.stack = undefined;
-            this.emit("error", err);
+            if (this.listenerCount("error") > 0) {
+              this.emit("error", err);
+            } else {
+              // No error listener: propagate as uncaught exception in the parent
+              // thread, matching Node.js behavior where unhandled worker errors
+              // terminate the parent process.
+              process.nextTick(() => {
+                throw err;
+              });
+            }
           }
           // Drain pending messages before emitting exit so that
           // all 'message' events fire before 'exit' (Node.js behavior).

@@ -1767,6 +1767,19 @@ pub fn flags_from_vec_with_initial_cwd(
   args: Vec<OsString>,
   initial_cwd: Option<PathBuf>,
 ) -> clap::error::Result<Flags> {
+  // Handle node-compat flags: --enable-fips and --force-fips trigger an early
+  // startup error matching Node.js behavior for non-FIPS builds.
+  if args
+    .iter()
+    .skip(1)
+    .any(|a| a == "--enable-fips" || a == "--force-fips")
+  {
+    eprintln!(
+      "OpenSSL error when trying to enable FIPS: FIPS mode is not available"
+    );
+    std::process::exit(1);
+  }
+
   let args = if !args.is_empty()
     && (args[0].as_encoded_bytes().ends_with(b"dx")
       || args[0].as_encoded_bytes().ends_with(b"denox")
@@ -1778,6 +1791,13 @@ pub fn flags_from_vec_with_initial_cwd(
     if args.len() >= 2 {
       new_args.extend(args.into_iter().skip(1));
     }
+    new_args
+  // Handle node-compat -e flag: transform `deno -e code` to `deno eval code`.
+  } else if args.len() >= 3 && args[1].as_encoded_bytes() == b"-e" {
+    let mut new_args = Vec::with_capacity(args.len() + 1);
+    new_args.push(args[0].clone());
+    new_args.push(OsString::from("eval"));
+    new_args.extend(args.into_iter().skip(2));
     new_args
   } else {
     args
