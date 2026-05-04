@@ -1010,7 +1010,7 @@ function serveHttpOnListener(listener, signal, handler, onError, onListen) {
   let serverContext;
   let callback;
   const promiseErrorHandler = (error) => {
-    import.meta.log(
+    internals.log(
       "error",
       "Terminating Deno.serve loop due to unexpected error",
       error,
@@ -1040,7 +1040,7 @@ function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
   let serverContext;
   let callback;
   const promiseErrorHandler = (error) => {
-    import.meta.log(
+    internals.log(
       "error",
       "Terminating Deno.serve loop due to unexpected error",
       error,
