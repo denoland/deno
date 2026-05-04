@@ -253,11 +253,41 @@ const Network = {
     broadcastToFrontend("Network.loadingFinished", params),
   loadingFailed: (params) =>
     broadcastToFrontend("Network.loadingFailed", params),
+  dataReceived: (params) => broadcastToFrontend("Network.dataReceived", params),
+  dataSent: (params) => broadcastToFrontend("Network.dataSent", params),
+  webSocketCreated: (params) =>
+    broadcastToFrontend("Network.webSocketCreated", params),
+  webSocketHandshakeResponseReceived: (params) =>
+    broadcastToFrontend("Network.webSocketHandshakeResponseReceived", params),
+  webSocketClosed: (params) =>
+    broadcastToFrontend("Network.webSocketClosed", params),
+};
+
+const DOMStorage = {
+  domStorageItemAdded: (params) =>
+    broadcastToFrontend("DOMStorage.domStorageItemAdded", params),
+  domStorageItemRemoved: (params) =>
+    broadcastToFrontend("DOMStorage.domStorageItemRemoved", params),
+  domStorageItemUpdated: (params) =>
+    broadcastToFrontend("DOMStorage.domStorageItemUpdated", params),
+  domStorageItemsCleared: (params) =>
+    broadcastToFrontend("DOMStorage.domStorageItemsCleared", params),
+  registerStorage: (params) =>
+    broadcastToFrontend("DOMStorage.registerStorage", params),
 };
 
 const console = op_get_extras_binding_object().console;
 
-export { close, console, Network, open, Session, url, waitForDebugger };
+export {
+  close,
+  console,
+  DOMStorage,
+  Network,
+  open,
+  Session,
+  url,
+  waitForDebugger,
+};
 
 export default {
   open,
@@ -267,4 +297,5 @@ export default {
   console,
   Session,
   Network,
+  DOMStorage,
 };
