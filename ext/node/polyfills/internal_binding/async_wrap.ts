@@ -27,104 +27,114 @@
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
+// deno-fmt-ignore-file
+(function () {
+  const { core } = globalThis.__bootstrap;
+  const { AsyncWrap, op_node_new_async_id } = core.ops;
 
-import { AsyncWrap, op_node_new_async_id } from "ext:core/ops";
+  function registerDestroyHook(
+    // deno-lint-ignore no-explicit-any
+    _target: any,
+    _asyncId: number,
+    _prop: { destroyed: boolean },
+  ) {
+    // TODO(kt3k): implement actual procedures
+  }
 
-export function registerDestroyHook(
-  // deno-lint-ignore no-explicit-any
-  _target: any,
-  _asyncId: number,
-  _prop: { destroyed: boolean },
-) {
-  // TODO(kt3k): implement actual procedures
-}
+  enum constants {
+    kInit,
+    kBefore,
+    kAfter,
+    kDestroy,
+    kPromiseResolve,
+    kTotals,
+    kCheck,
+    kExecutionAsyncId,
+    kTriggerAsyncId,
+    kAsyncIdCounter,
+    kDefaultTriggerAsyncId,
+    kUsesExecutionAsyncResource,
+    kStackLength,
+  }
 
-export enum constants {
-  kInit,
-  kBefore,
-  kAfter,
-  kDestroy,
-  kPromiseResolve,
-  kTotals,
-  kCheck,
-  kExecutionAsyncId,
-  kTriggerAsyncId,
-  kAsyncIdCounter,
-  kDefaultTriggerAsyncId,
-  kUsesExecutionAsyncResource,
-  kStackLength,
-}
+  const asyncHookFields = new Uint32Array(Object.keys(constants).length);
 
-const asyncHookFields = new Uint32Array(Object.keys(constants).length);
 
-export { asyncHookFields as async_hook_fields };
+  // Increment the internal id counter and return the value.
+  function newAsyncId() {
+    return op_node_new_async_id();
+  }
 
-// Increment the internal id counter and return the value.
-export function newAsyncId() {
-  return op_node_new_async_id();
-}
+  enum UidFields {
+    kExecutionAsyncId,
+    kTriggerAsyncId,
+    kDefaultTriggerAsyncId,
+    kUidFieldsCount,
+  }
 
-export enum UidFields {
-  kExecutionAsyncId,
-  kTriggerAsyncId,
-  kDefaultTriggerAsyncId,
-  kUidFieldsCount,
-}
+  const asyncIdFields = new Float64Array(Object.keys(UidFields).length);
 
-const asyncIdFields = new Float64Array(Object.keys(UidFields).length);
+  // `kDefaultTriggerAsyncId` should be `-1`, this indicates that there is no
+  // specified default value and it should fallback to the executionAsyncId.
+  // 0 is not used as the magic value, because that indicates a missing
+  // context which is different from a default context.
+  asyncIdFields[UidFields.kDefaultTriggerAsyncId] = -1;
 
-// `kDefaultTriggerAsyncId` should be `-1`, this indicates that there is no
-// specified default value and it should fallback to the executionAsyncId.
-// 0 is not used as the magic value, because that indicates a missing
-// context which is different from a default context.
-asyncIdFields[UidFields.kDefaultTriggerAsyncId] = -1;
 
-export { asyncIdFields };
+  enum providerType {
+    NONE,
+    DIRHANDLE,
+    DNSCHANNEL,
+    ELDHISTOGRAM,
+    FILEHANDLE,
+    FILEHANDLECLOSEREQ,
+    FIXEDSIZEBLOBCOPY,
+    FSEVENTWRAP,
+    FSREQCALLBACK,
+    FSREQPROMISE,
+    GETADDRINFOREQWRAP,
+    GETNAMEINFOREQWRAP,
+    HEAPSNAPSHOT,
+    HTTP2SESSION,
+    HTTP2STREAM,
+    HTTP2PING,
+    HTTP2SETTINGS,
+    HTTPINCOMINGMESSAGE,
+    HTTPCLIENTREQUEST,
+    JSSTREAM,
+    JSUDPWRAP,
+    MESSAGEPORT,
+    PIPECONNECTWRAP,
+    PIPESERVERWRAP,
+    PIPEWRAP,
+    PROCESSWRAP,
+    PROMISE,
+    QUERYWRAP,
+    SHUTDOWNWRAP,
+    SIGNALWRAP,
+    STATWATCHER,
+    STREAMPIPE,
+    TCPCONNECTWRAP,
+    TCPSERVERWRAP,
+    TCPWRAP,
+    TTYWRAP,
+    UDPSENDWRAP,
+    UDPWRAP,
+    SIGINTWATCHDOG,
+    WORKER,
+    WORKERHEAPSNAPSHOT,
+    WRITEWRAP,
+    ZLIB,
+  }
 
-export enum providerType {
-  NONE,
-  DIRHANDLE,
-  DNSCHANNEL,
-  ELDHISTOGRAM,
-  FILEHANDLE,
-  FILEHANDLECLOSEREQ,
-  FIXEDSIZEBLOBCOPY,
-  FSEVENTWRAP,
-  FSREQCALLBACK,
-  FSREQPROMISE,
-  GETADDRINFOREQWRAP,
-  GETNAMEINFOREQWRAP,
-  HEAPSNAPSHOT,
-  HTTP2SESSION,
-  HTTP2STREAM,
-  HTTP2PING,
-  HTTP2SETTINGS,
-  HTTPINCOMINGMESSAGE,
-  HTTPCLIENTREQUEST,
-  JSSTREAM,
-  JSUDPWRAP,
-  MESSAGEPORT,
-  PIPECONNECTWRAP,
-  PIPESERVERWRAP,
-  PIPEWRAP,
-  PROCESSWRAP,
-  PROMISE,
-  QUERYWRAP,
-  SHUTDOWNWRAP,
-  SIGNALWRAP,
-  STATWATCHER,
-  STREAMPIPE,
-  TCPCONNECTWRAP,
-  TCPSERVERWRAP,
-  TCPWRAP,
-  TTYWRAP,
-  UDPSENDWRAP,
-  UDPWRAP,
-  SIGINTWATCHDOG,
-  WORKER,
-  WORKERHEAPSNAPSHOT,
-  WRITEWRAP,
-  ZLIB,
-}
-
-export { AsyncWrap };
+  return {
+    async_hook_fields: asyncHookFields,
+    asyncIdFields,
+    AsyncWrap,
+    registerDestroyHook,
+    newAsyncId,
+    constants,
+    UidFields,
+    providerType,
+  };
+})()

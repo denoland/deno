@@ -25,7 +25,9 @@
 
 import { core, primordials } from "ext:core/mod.js";
 
-import { BlockList, SocketAddress } from "ext:deno_node/internal/blocklist.mjs";
+const { BlockList, SocketAddress } = core.loadExtScript(
+  "ext:deno_node/internal/blocklist.mjs",
+);
 
 import { EventEmitter } from "node:events";
 import {
@@ -36,12 +38,12 @@ import {
   normalizedArgsSymbol,
 } from "ext:deno_node/internal/net.ts";
 import { Duplex } from "node:stream";
-import {
+const {
   asyncIdSymbol,
   defaultTriggerAsyncIdScope,
   newAsyncId,
   ownerSymbol,
-} from "ext:deno_node/internal/async_hooks.ts";
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const {
   AbortError,
   ERR_INVALID_ADDRESS_FAMILY,
@@ -76,26 +78,28 @@ import {
   writevGeneric,
 } from "ext:deno_node/internal/stream_base_commons.ts";
 import { kDestroy, kTimeout } from "ext:deno_node/internal/timers.mjs";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
-import {
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const {
   DTRACE_NET_SERVER_CONNECTION,
   DTRACE_NET_STREAM_END,
-} from "ext:deno_node/internal/dtrace.ts";
+} = core.loadExtScript("ext:deno_node/internal/dtrace.ts");
 import { Buffer } from "node:buffer";
 import type { LookupOneOptions } from "ext:deno_node/internal/dns/utils.ts";
-import {
-  constants as TCPConstants,
+const {
+  constants: TCPConstants,
   setupListenWrap,
   TCP,
   TCPConnectWrap,
-} from "ext:deno_node/internal_binding/tcp_wrap.ts";
-import {
-  constants as PipeConstants,
+} = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
+const {
+  constants: PipeConstants,
   Pipe,
   PipeConnectWrap,
-  setupListenWrap as setupPipeListenWrap,
-} from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
+  setupListenWrap: setupPipeListenWrap,
+} = core.loadExtScript("ext:deno_node/internal_binding/pipe_wrap.ts");
+const { ShutdownWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/stream_wrap.ts",
+);
 import assert from "node:assert";
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
@@ -104,8 +108,12 @@ const {
   UV_ECANCELED,
   UV_ETIMEDOUT,
 } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
-import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
-import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
+const { guessHandleType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
+const { debuglog } = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
 import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";

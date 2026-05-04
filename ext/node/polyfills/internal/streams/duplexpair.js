@@ -2,9 +2,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import process from "node:process";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { Duplex } from "node:stream";
-import assert from "ext:deno_node/internal/assert.mjs";
+const { default: assert } = core.loadExtScript(
+  "ext:deno_node/internal/assert.mjs",
+);
 "use strict";
 const {
   Symbol,

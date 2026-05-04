@@ -24,81 +24,86 @@
 // - https://github.com/nodejs/node/blob/master/src/node_file-inl.h
 // - https://github.com/nodejs/node/blob/master/src/node_file.cc
 // - https://github.com/nodejs/node/blob/master/src/node_file.h
+// deno-fmt-ignore-file
+(function () {
+  const { core, primordials } = globalThis.__bootstrap;
+  const { op_node_fs_seek_sync, op_node_fs_write_sync } = core.ops;
 
-import type * as nodeAssert from "node:assert";
-import { op_node_fs_seek_sync, op_node_fs_write_sync } from "ext:core/ops";
-import { core, primordials } from "ext:core/mod.js";
+  let assert: typeof nodeAssert.default;
+  const lazyLoadAssert = () => {
+    return core.createLazyLoader<typeof nodeAssert>(
+      "node:assert",
+    )().default;
+  };
 
-let assert: typeof nodeAssert.default;
-const lazyLoadAssert = () => {
-  return core.createLazyLoader<typeof nodeAssert>(
-    "node:assert",
-  )().default;
-};
+  const {
+    ErrorPrototype,
+    ObjectPrototypeIsPrototypeOf,
+    SafeRegExp,
+    StringPrototypeMatch,
+    TypedArrayPrototypeGetByteLength,
+    TypedArrayPrototypeSubarray,
+  } = primordials;
+  /**
+   * Write to the given file from the given buffer synchronously.
+   *
+   * Implements sync part of WriteBuffer in src/node_file.cc
+   * See: https://github.com/nodejs/node/blob/e9ed113/src/node_file.cc#L1818
+   *
+   * @param fs file descriptor
+   * @param buffer the data to write
+   * @param offset where in the buffer to start from
+   * @param length how much to write
+   * @param position if integer, position to write at in the file. if null, write from the current position
+   * @param context context object for passing error number
+   */
+  function writeBuffer(
+    fd: number,
+    buffer: Uint8Array,
+    offset: number,
+    length: number,
+    position: number | null,
+    ctx: { errno?: number },
+  ) {
+    assert ??= lazyLoadAssert();
+    assert(offset >= 0, "offset should be greater or equal to 0");
+    assert(
+      offset + length <= TypedArrayPrototypeGetByteLength(buffer),
+      `buffer doesn't have enough data: byteLength = ${
+        TypedArrayPrototypeGetByteLength(buffer)
+      }, offset + length = ${
+        offset +
+        length
+      }`,
+    );
 
-const {
-  ErrorPrototype,
-  ObjectPrototypeIsPrototypeOf,
-  SafeRegExp,
-  StringPrototypeMatch,
-  TypedArrayPrototypeGetByteLength,
-  TypedArrayPrototypeSubarray,
-} = primordials;
-/**
- * Write to the given file from the given buffer synchronously.
- *
- * Implements sync part of WriteBuffer in src/node_file.cc
- * See: https://github.com/nodejs/node/blob/e9ed113/src/node_file.cc#L1818
- *
- * @param fs file descriptor
- * @param buffer the data to write
- * @param offset where in the buffer to start from
- * @param length how much to write
- * @param position if integer, position to write at in the file. if null, write from the current position
- * @param context context object for passing error number
- */
-export function writeBuffer(
-  fd: number,
-  buffer: Uint8Array,
-  offset: number,
-  length: number,
-  position: number | null,
-  ctx: { errno?: number },
-) {
-  assert ??= lazyLoadAssert();
-  assert(offset >= 0, "offset should be greater or equal to 0");
-  assert(
-    offset + length <= TypedArrayPrototypeGetByteLength(buffer),
-    `buffer doesn't have enough data: byteLength = ${
-      TypedArrayPrototypeGetByteLength(buffer)
-    }, offset + length = ${
-      offset +
-      length
-    }`,
-  );
+    if (position) {
+      op_node_fs_seek_sync(fd, position, 1); // SeekMode.Current = 1
+    }
 
-  if (position) {
-    op_node_fs_seek_sync(fd, position, 1); // SeekMode.Current = 1
+    const subarray = TypedArrayPrototypeSubarray(buffer, offset, offset + length);
+
+    try {
+      return op_node_fs_write_sync(fd, subarray, -1);
+    } catch (e) {
+      ctx.errno = extractOsErrorNumberFromErrorMessage(e);
+      return 0;
+    }
   }
 
-  const subarray = TypedArrayPrototypeSubarray(buffer, offset, offset + length);
+  function extractOsErrorNumberFromErrorMessage(e: unknown): number {
+    const match = ObjectPrototypeIsPrototypeOf(ErrorPrototype, e)
+      ? StringPrototypeMatch(e.message, new SafeRegExp(/\(os error (\d+)\)/))
+      : false;
 
-  try {
-    return op_node_fs_write_sync(fd, subarray, -1);
-  } catch (e) {
-    ctx.errno = extractOsErrorNumberFromErrorMessage(e);
-    return 0;
-  }
-}
+    if (match) {
+      return +match[1];
+    }
 
-function extractOsErrorNumberFromErrorMessage(e: unknown): number {
-  const match = ObjectPrototypeIsPrototypeOf(ErrorPrototype, e)
-    ? StringPrototypeMatch(e.message, new SafeRegExp(/\(os error (\d+)\)/))
-    : false;
-
-  if (match) {
-    return +match[1];
+    return 255; // Unknown error
   }
 
-  return 255; // Unknown error
-}
+  return {
+    writeBuffer,
+  };
+})()

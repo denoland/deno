@@ -24,7 +24,7 @@ const {
   Symbol,
 } = primordials;
 
-import {
+const {
   HTTP2_HEADER_AUTHORITY,
   HTTP2_HEADER_CONNECTION,
   HTTP2_HEADER_METHOD,
@@ -36,7 +36,7 @@ import {
   HTTP_STATUS_EXPECTATION_FAILED,
   HTTP_STATUS_METHOD_NOT_ALLOWED,
   HTTP_STATUS_OK,
-} from "ext:deno_node/internal/http2/constants.ts";
+} = core.loadExtScript("ext:deno_node/internal/http2/constants.ts");
 import assert from "node:assert";
 import Stream, { Readable } from "node:stream";
 const { codes, hideStackFrames } = core.loadExtScript(

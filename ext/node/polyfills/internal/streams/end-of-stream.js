@@ -14,7 +14,7 @@ const {
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
-import {
+const {
   isClosed,
   isNodeStream,
   isReadable,
@@ -28,10 +28,12 @@ import {
   isWritableNodeStream,
   isWritableStream,
   kIsClosedPromise,
-  willEmitClose as _willEmitClose,
-} from "ext:deno_node/internal/streams/utils.js";
+  willEmitClose: _willEmitClose,
+} = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 
-import * as _mod2 from "ext:deno_node/internal/events/abort_listener.mjs";
+const _mod2 = core.loadExtScript(
+  "ext:deno_node/internal/events/abort_listener.mjs",
+);
 
 const {
   AbortError,

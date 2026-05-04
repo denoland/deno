@@ -1,63 +1,65 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
+// deno-fmt-ignore-file
+(function () {
+  const { core } = globalThis.__bootstrap;
+  const io = core.loadExtScript("ext:deno_io/12_io.js");
 
-import { core } from "ext:core/mod.js";
-const io = core.loadExtScript("ext:deno_io/12_io.js");
+  let blue = "";
+  let green = "";
+  let white = "";
+  let yellow = "";
+  let red = "";
+  let gray = "";
+  let clear = "";
+  let reset = "";
+  let hasColors = false;
 
-let blue = "";
-let green = "";
-let white = "";
-let yellow = "";
-let red = "";
-let gray = "";
-let clear = "";
-let reset = "";
-let hasColors = false;
+  function shouldColorize() {
+    if (!io.stderr.isTerminal()) {
+      return false;
+    }
 
-function shouldColorize() {
-  if (!io.stderr.isTerminal()) {
-    return false;
+    return !Deno.noColor;
   }
 
-  return !Deno.noColor;
-}
-
-function refresh() {
-  if (shouldColorize()) {
-    blue = "\u001b[34m";
-    green = "\u001b[32m";
-    white = "\u001b[39m";
-    yellow = "\u001b[33m";
-    red = "\u001b[31m";
-    gray = "\u001b[90m";
-    clear = "\u001bc";
-    reset = "\u001b[0m";
-    hasColors = true;
-  } else {
-    blue = "";
-    green = "";
-    white = "";
-    yellow = "";
-    red = "";
-    gray = "";
-    clear = "";
-    reset = "";
-    hasColors = false;
+  function refresh() {
+    if (shouldColorize()) {
+      blue = "\u001b[34m";
+      green = "\u001b[32m";
+      white = "\u001b[39m";
+      yellow = "\u001b[33m";
+      red = "\u001b[31m";
+      gray = "\u001b[90m";
+      clear = "\u001bc";
+      reset = "\u001b[0m";
+      hasColors = true;
+    } else {
+      blue = "";
+      green = "";
+      white = "";
+      yellow = "";
+      red = "";
+      gray = "";
+      clear = "";
+      reset = "";
+      hasColors = false;
+    }
   }
-}
 
-refresh();
+  refresh();
 
-export {
-  blue,
-  clear,
-  gray,
-  green,
-  hasColors,
-  red,
-  refresh,
-  reset,
-  shouldColorize,
-  white,
-  yellow,
-};
+  return {
+    blue,
+    clear,
+    gray,
+    green,
+    hasColors,
+    red,
+    refresh,
+    reset,
+    shouldColorize,
+    white,
+    yellow,
+  };
+})()

@@ -56,7 +56,9 @@ import {
   validateHeaderName,
   validateHeaderValue,
 } from "node:_http_outgoing";
-import { kNeedDrain, kOutHeaders } from "ext:deno_node/internal/http.ts";
+const { kNeedDrain, kOutHeaders } = core.loadExtScript(
+  "ext:deno_node/internal/http.ts",
+);
 import { IncomingMessage } from "node:_http_incoming";
 const {
   connResetException,
@@ -74,7 +76,7 @@ const {
   validateLinkHeaderValue,
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const {
   otelState,
   builtinTracer,

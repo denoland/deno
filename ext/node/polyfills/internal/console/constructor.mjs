@@ -79,17 +79,19 @@ const {
   isSetIterator,
   isTypedArray,
 } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
-import {
-  CHAR_LOWERCASE_B as kTraceBegin,
-  CHAR_LOWERCASE_E as kTraceEnd,
-  CHAR_LOWERCASE_N as kTraceInstant,
-  CHAR_UPPERCASE_C as kTraceCount,
-} from "ext:deno_node/internal/constants.ts";
-import {
+const {
+  CHAR_LOWERCASE_B: kTraceBegin,
+  CHAR_LOWERCASE_E: kTraceEnd,
+  CHAR_LOWERCASE_N: kTraceInstant,
+  CHAR_UPPERCASE_C: kTraceCount,
+} = core.loadExtScript("ext:deno_node/internal/constants.ts");
+const {
   clearScreenDown,
   cursorTo,
-} from "ext:deno_node/internal/readline/callbacks.mjs";
-import cliTable from "ext:deno_node/internal/cli_table.ts";
+} = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
+const { default: cliTable } = core.loadExtScript(
+  "ext:deno_node/internal/cli_table.ts",
+);
 const kCounts = Symbol("counts");
 
 const kTraceConsoleCategory = "node,node.console";

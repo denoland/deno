@@ -3,7 +3,7 @@
 import process from "node:process";
 import { core, primordials } from "ext:core/mod.js";
 
-import {
+const {
   isDuplexNodeStream,
   isIterable,
   isNodeStream,
@@ -13,7 +13,7 @@ import {
   isWritable,
   isWritableNodeStream,
   isWritableStream,
-} from "ext:deno_node/internal/streams/utils.js";
+} = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 
 import eos from "ext:deno_node/internal/streams/end-of-stream.js";
 const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");

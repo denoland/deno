@@ -13,7 +13,7 @@ const {
   validateFunction,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
-import {
+const {
   isIterable,
   isNodeStream,
   isReadable,
@@ -22,13 +22,15 @@ import {
   isReadableStream,
   isTransformStream,
   isWebStream,
-} from "ext:deno_node/internal/streams/utils.js";
+} = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 
 const { AbortController } = core.loadExtScript(
   "ext:deno_web/03_abort_signal.js",
 );
 import _mod3 from "node:_stream_readable";
-import * as _mod4 from "ext:deno_node/internal/events/abort_listener.mjs";
+const _mod4 = core.loadExtScript(
+  "ext:deno_node/internal/events/abort_listener.mjs",
+);
 import _mod5 from "node:_stream_passthrough";
 
 const {

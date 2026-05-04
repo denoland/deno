@@ -21,21 +21,23 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 // deno-lint-ignore-file
+// deno-fmt-ignore-file
+(function () {
+  const {
+    DTRACE_HTTP_CLIENT_REQUEST = (..._args: any[]) => {},
+    DTRACE_HTTP_CLIENT_RESPONSE = (..._args: any[]) => {},
+    DTRACE_HTTP_SERVER_REQUEST = (..._args: any[]) => {},
+    DTRACE_HTTP_SERVER_RESPONSE = (..._args: any[]) => {},
+    DTRACE_NET_SERVER_CONNECTION = (..._args: any[]) => {},
+    DTRACE_NET_STREAM_END = (..._args: any[]) => {},
+  } = {};
 
-const {
-  DTRACE_HTTP_CLIENT_REQUEST = (..._args: any[]) => {},
-  DTRACE_HTTP_CLIENT_RESPONSE = (..._args: any[]) => {},
-  DTRACE_HTTP_SERVER_REQUEST = (..._args: any[]) => {},
-  DTRACE_HTTP_SERVER_RESPONSE = (..._args: any[]) => {},
-  DTRACE_NET_SERVER_CONNECTION = (..._args: any[]) => {},
-  DTRACE_NET_STREAM_END = (..._args: any[]) => {},
-} = {};
-
-export {
-  DTRACE_HTTP_CLIENT_REQUEST,
-  DTRACE_HTTP_CLIENT_RESPONSE,
-  DTRACE_HTTP_SERVER_REQUEST,
-  DTRACE_HTTP_SERVER_RESPONSE,
-  DTRACE_NET_SERVER_CONNECTION,
-  DTRACE_NET_STREAM_END,
-};
+  return {
+    DTRACE_HTTP_CLIENT_REQUEST,
+    DTRACE_HTTP_CLIENT_RESPONSE,
+    DTRACE_HTTP_SERVER_REQUEST,
+    DTRACE_HTTP_SERVER_RESPONSE,
+    DTRACE_NET_SERVER_CONNECTION,
+    DTRACE_NET_STREAM_END,
+  };
+})()

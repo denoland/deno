@@ -3,14 +3,16 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
-import { makeCallback } from "ext:deno_node/_fs/_fs_common.ts";
+import { core } from "ext:core/mod.js";
+import {
+  type CallbackWithError,
+  makeCallback,
+} from "ext:deno_node/_fs/_fs_common.ts";
 import { Buffer } from "node:buffer";
 import {
   getValidatedPath,
   getValidMode,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import { core } from "ext:core/mod.js";
 const { fs } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );

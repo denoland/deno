@@ -38,7 +38,7 @@ import {
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { finished, Readable, Writable } from "node:stream";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 import { FileHandle, kRef, kUnref } from "ext:deno_node/internal/fs/handle.ts";
 
 const kIoDone = Symbol("kIoDone");

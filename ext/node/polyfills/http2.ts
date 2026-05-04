@@ -72,28 +72,30 @@ import { Duplex } from "node:stream";
 import tls from "node:tls";
 import { deprecate } from "node:util";
 import dc from "node:diagnostics_channel";
-import { utcDate } from "ext:deno_node/internal/http.ts";
-import {
+const { utcDate } = core.loadExtScript("ext:deno_node/internal/http.ts");
+const {
   kLastWriteWasAsync,
   ShutdownWrap,
   streamBaseState,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
-import {
-  Http2Session as BindingHttp2Session,
-  Http2Stream as BindingHttp2Stream,
-} from "ext:deno_node/internal_binding/http2.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/stream_wrap.ts");
+const {
+  Http2Session: BindingHttp2Session,
+  Http2Stream: BindingHttp2Stream,
+} = core.loadExtScript("ext:deno_node/internal_binding/http2.ts");
 import { EventEmitter } from "node:events";
-import {
+const {
   defaultTriggerAsyncIdScope,
   symbols,
-} from "ext:deno_node/internal/async_hooks.ts";
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { async_id_symbol } = symbols;
 import { kTimeout } from "ext:deno_node/internal/timers.mjs";
 // Use node:timers' setTimeout/clearTimeout so the returned Timeout object
 // supports unref() -- globalThis.setTimeout returns a plain number.
 import { clearTimeout, setTimeout } from "node:timers";
-import { addAbortListener } from "ext:deno_node/internal/events/abort_listener.mjs";
-export { addAbortListener } from "ext:deno_node/internal/events/abort_listener.mjs";
+const { addAbortListener } = core.loadExtScript(
+  "ext:deno_node/internal/events/abort_listener.mjs",
+);
+export { addAbortListener };
 import fs from "node:fs";
 import { FileHandle as FsFileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
@@ -206,7 +208,9 @@ import {
   updateOptionsBuffer,
   updateSettingsBuffer,
 } from "ext:deno_node/internal/http2/util.ts";
-import { ownerSymbol as owner_symbol } from "ext:deno_node/internal_binding/symbols.ts";
+const { ownerSymbol: owner_symbol } = core.loadExtScript(
+  "ext:deno_node/internal_binding/symbols.ts",
+);
 import {
   Http2ServerRequest,
   Http2ServerResponse,
@@ -223,7 +227,9 @@ const onServerStreamErrorChannel = dc.channel("http2.server.stream.error");
 const onServerStreamFinishChannel = dc.channel("http2.server.stream.finish");
 const onServerStreamCloseChannel = dc.channel("http2.server.stream.close");
 
-import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
+const { debuglog } = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
 import console from "node:console";
 let debug = debuglog("http2", (fn) => {
   debug = fn;
@@ -373,7 +379,9 @@ function flushDeferredHttp2Writes(session) {
 // HTTP2 Constants
 const MAX_ADDITIONAL_SETTINGS = 10;
 
-import * as constants from "ext:deno_node/internal/http2/constants.ts";
+const constants = core.loadExtScript(
+  "ext:deno_node/internal/http2/constants.ts",
+);
 const {
   NGHTTP2_CANCEL,
   NGHTTP2_FLOW_CONTROL_ERROR,

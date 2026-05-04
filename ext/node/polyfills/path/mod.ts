@@ -41,5 +41,6 @@ export const {
   matchesGlob,
 } = path;
 export default path;
-export * from "ext:deno_node/path/common.ts";
-export * from "ext:deno_node/path/_interface.ts";
+const { common } = core.loadExtScript("ext:deno_node/path/common.ts");
+export { common };
+// _interface.ts only exports TypeScript types, no runtime re-export needed
