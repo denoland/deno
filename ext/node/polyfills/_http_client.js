@@ -69,10 +69,10 @@ import {
   ERR_INVALID_URL,
   ERR_UNESCAPED_CHARACTERS,
 } from "ext:deno_node/internal/errors.ts";
-import {
+const {
   validateBoolean,
   validateInteger,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { addAbortSignal, finished } from "node:stream";
 import { nextTick } from "ext:deno_node/_next_tick.ts";

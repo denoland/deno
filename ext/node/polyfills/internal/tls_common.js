@@ -8,11 +8,11 @@
 
 import { Buffer } from "node:buffer";
 import { codes } from "ext:deno_node/internal/errors.ts";
-import {
+import { core, primordials } from "ext:core/mod.js";
+const {
   isArrayBufferView,
   isUint8Array,
-} from "ext:deno_node/internal/util/types.ts";
-import { primordials } from "ext:core/mod.js";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 
 const { ArrayIsArray } = primordials;
 

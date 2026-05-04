@@ -38,6 +38,12 @@ Each test entry can include the following optional configuration properties:
 - **`reason`** (string): Optional explanation for why a test is marked as
   skipped.
 
+- **`env`** (object): Per-test environment variables, layered on top of the
+  runner's defaults. Use sparingly — only for tests where one Node fixture needs
+  a config the rest of the suite must not have (e.g. a single test that needs
+  `process.config.variables.node_shared_openssl=1` while other tests expect it
+  absent).
+
 ### Examples
 
 ```jsonc

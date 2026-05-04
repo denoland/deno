@@ -20,7 +20,7 @@ const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const globalInterfaces = core.loadExtScript(
   "ext:deno_web/04_global_interfaces.js",
 );
-import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
+const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
 
 /**
  * @param {string} arch

@@ -24,7 +24,7 @@
 
 "use strict";
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayBuffer,
   MathMax,
@@ -57,23 +57,23 @@ const {
 
 import { finished, Transform } from "node:stream";
 import { deprecateInstantiation } from "ext:deno_node/internal/util.mjs";
-import {
+const {
   isAnyArrayBuffer,
   isArrayBufferView,
   isUint8Array,
-} from "ext:deno_node/internal/util/types.ts";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 import * as binding from "ext:deno_node/_zlib_binding.mjs";
 const { crc32: crc32Native } = binding;
 
 import assert from "ext:deno_node/internal/assert.mjs";
 import { Buffer, kMaxLength } from "node:buffer";
 import { ownerSymbol as owner_symbol } from "ext:deno_node/internal_binding/symbols.ts";
-import {
+const {
   checkRangesOrGetDefault,
   validateFiniteNumber,
   validateFunction,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { zlib as zlibConstants } from "ext:deno_node/internal_binding/constants.ts";
 
 const kFlushFlag = Symbol("kFlushFlag");

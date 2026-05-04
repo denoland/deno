@@ -165,9 +165,13 @@ import type {
   WritableOptions,
 } from "ext:deno_node/_stream.d.ts";
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { core } from "ext:core/mod.js";
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const { validateString } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 const { crypto: webcrypto } = core.loadExtScript(
   "ext:deno_crypto/00_crypto.js",
 );

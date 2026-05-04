@@ -61,7 +61,6 @@ import {
   uvExceptionWithHostPort,
 } from "ext:deno_node/internal/errors.ts";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
 import {
   kAfterAsyncWrite,
   kBuffer,
@@ -82,15 +81,6 @@ import {
 } from "ext:deno_node/internal/dtrace.ts";
 import { Buffer } from "node:buffer";
 import type { LookupOneOptions } from "ext:deno_node/internal/dns/utils.ts";
-import {
-  validateAbortSignal,
-  validateBoolean,
-  validateFunction,
-  validateInt32,
-  validateNumber,
-  validatePort,
-  validateString,
-} from "ext:deno_node/internal/validators.mjs";
 import {
   constants as TCPConstants,
   setupListenWrap,
@@ -119,6 +109,18 @@ import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
 import { channel } from "node:diagnostics_channel";
 import { core, primordials } from "ext:core/mod.js";
+const { isUint8Array } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const {
+  validateAbortSignal,
+  validateBoolean,
+  validateFunction,
+  validateInt32,
+  validateNumber,
+  validatePort,
+  validateString,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 const {
   ArrayPrototypeIncludes,

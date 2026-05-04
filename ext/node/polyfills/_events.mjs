@@ -63,7 +63,7 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 
 import { AsyncResource } from "node:async_hooks";
-import {
+const {
   validateAbortSignal,
   validateBoolean,
   validateFunction,
@@ -71,7 +71,7 @@ import {
   validateNumber,
   validateObject,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { spliceOne } from "ext:deno_node/_utils.ts";
 import { nextTick } from "ext:deno_node/_process/process.ts";
 const {
