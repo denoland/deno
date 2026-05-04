@@ -1,10 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-fmt-ignore-file
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
 const {
   isPromise,
 } = core;
-import {
+const {
   op_kv_atomic_write,
   op_kv_database_open,
   op_kv_dequeue_next_message,
@@ -13,7 +15,7 @@ import {
   op_kv_snapshot_read,
   op_kv_watch,
   op_kv_watch_next,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayFrom,
   ArrayPrototypeJoin,
@@ -325,7 +327,7 @@ class Kv {
           const _res = isPromise(result) ? (await result) : result;
           success = true;
         } catch (error) {
-          import.meta.log("error", "Exception in queue handler", error);
+          internals.log("error", "Exception in queue handler", error);
         } finally {
           const promise: Promise<void> = op_kv_finish_dequeued_message(
             handleId,
@@ -950,4 +952,5 @@ async function doAtomicWriteInPlace(
   );
 }
 
-export { AtomicOperation, Kv, KvListIterator, KvU64, openKv };
+return { AtomicOperation, Kv, KvListIterator, KvU64, openKv };
+})()
