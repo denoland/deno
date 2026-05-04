@@ -159,14 +159,28 @@ export class SignImpl extends Writable {
         res.passphrase,
       );
     }
-    const ret = Buffer.from(op_node_sign(
-      handle,
-      this.hash.digest(),
-      this.#digestType,
-      pssSaltLength,
-      rsaPadding,
-      dsaSigEnc,
-    ));
+    let ret;
+    try {
+      ret = Buffer.from(op_node_sign(
+        handle,
+        this.hash.digest(),
+        this.#digestType,
+        pssSaltLength,
+        rsaPadding,
+        dsaSigEnc,
+      ));
+    } catch (err) {
+      // Decorate RSA sign errors with OpenSSL-compatible properties.
+      if (
+        err && typeof err === "object" &&
+        "message" in err && typeof err.message === "string" &&
+        err.message.includes("rsa routines") &&
+        !("library" in err)
+      ) {
+        (err as Record<string, unknown>).library = "rsa routines";
+      }
+      throw err;
+    }
     return encoding ? ret.toString(encoding) : ret;
   }
 

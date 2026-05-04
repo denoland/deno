@@ -212,25 +212,26 @@ cipherInfoByName.set("aes192", cipherInfoByName.get("aes-192-cbc")!);
 cipherInfoByName.set("aes256", cipherInfoByName.get("aes-256-cbc")!);
 
 // Ciphers actually supported by the runtime (subset of cipherInfoTable).
+// Must be kept in sorted (lexicographic) order - Node.js validates this.
 const supportedCiphers = [
-  "aes-128-ecb",
   "aes-128-cbc",
-  "aes-192-ecb",
-  "aes-256-ecb",
-  "aes-256-cbc",
-  "aes-128-gcm",
-  "aes-256-gcm",
   "aes-128-ctr",
+  "aes-128-ecb",
+  "aes-128-gcm",
   "aes-192-ctr",
+  "aes-192-ecb",
+  "aes-256-cbc",
   "aes-256-ctr",
-  "des-ede3-cbc",
+  "aes-256-ecb",
+  "aes-256-gcm",
   "aes128",
   "aes256",
   "chacha20-poly1305",
+  "des-ede3-cbc",
 ];
 
 export function getCiphers(): string[] {
-  return supportedCiphers;
+  return supportedCiphers.slice();
 }
 
 const hashBlockSizes: Record<string, number> = {
@@ -354,15 +355,16 @@ export const validateByteSource = hideStackFrames((val, name) => {
 // Notably this drops `secp256r1` because it is just another name for
 // `prime256v1` and exposing both confuses callers that probe for an
 // unsupported curve by exclusion (e.g. crypto tests).
+// Must be kept in sorted (lexicographic) order - Node.js validates this.
 const curveNames: readonly string[] = [
-  "secp521r1",
-  "secp384r1",
   "prime256v1",
-  "secp256k1",
   "secp224r1",
+  "secp256k1",
+  "secp384r1",
+  "secp521r1",
 ];
-export function getCurves(): readonly string[] {
-  return curveNames;
+export function getCurves(): string[] {
+  return curveNames.slice();
 }
 
 export interface SecureHeapUsage {

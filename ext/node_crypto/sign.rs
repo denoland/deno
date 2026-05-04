@@ -58,7 +58,7 @@ pub enum KeyObjectHandlePrehashedSignAndVerifyError {
   #[error("failed to sign digest with RSA")]
   FailedToSignDigestWithRsa,
   #[class(generic)]
-  #[error("digest too big for rsa key")]
+  #[error("error:02000070:rsa routines::digest too big for rsa key")]
   DigestTooBigForRsaKey,
   #[error("digest not allowed for RSA-PSS signature: {0}")]
   DigestNotAllowedForRsaPssSignature(String),
