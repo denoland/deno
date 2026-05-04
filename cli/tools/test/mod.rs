@@ -299,6 +299,9 @@ pub struct TestDescription {
   pub location: TestLocation,
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
+  /// Per-test timeout in milliseconds. `None` means inherit the specifier
+  /// default. `Some(0)` means timeout disabled for this test.
+  pub timeout_ms: Option<u32>,
 }
 
 /// May represent a failure of a test or test step.
@@ -337,6 +340,8 @@ pub enum TestFailure {
   FailedSteps(usize),
   IncompleteSteps,
   Leaked(Vec<String>, Vec<String>), // Details, trailer notes
+  /// Test exceeded the configured timeout (milliseconds).
+  TimedOut(u32),
   // The rest are for steps only.
   Incomplete,
   OverlapsWithSanitizers(IndexSet<String>), // Long names of overlapped tests
@@ -373,6 +378,9 @@ impl TestFailure {
         }
         Cow::Owned(f)
       }
+      TestFailure::TimedOut(ms) => {
+        Cow::Owned(format!("Test timed out after {}ms.", ms))
+      }
       TestFailure::OverlapsWithSanitizers(long_names) => {
         let mut f = String::new();
         write!(f, "Started test step while another test step with sanitizers was running:").ok();
@@ -402,6 +410,7 @@ impl TestFailure {
       }
       TestFailure::Incomplete => "Didn't complete before parent".to_string(),
       TestFailure::Leaked(_, _) => "Leaks detected".to_string(),
+      TestFailure::TimedOut(ms) => format!("Timed out after {}ms", ms),
       TestFailure::OverlapsWithSanitizers(_) => {
         "Started test step while another test step with sanitizers was running"
           .to_string()
@@ -590,6 +599,9 @@ pub struct TestSpecifierOptions {
   pub shuffle: Option<u64>,
   pub filter: TestFilter,
   pub trace_leaks: bool,
+  /// Default timeout in milliseconds applied to tests that don't specify
+  /// their own. `None` (or `Some(0)`) means no default timeout.
+  pub default_timeout_ms: Option<u32>,
 }
 
 impl TestSummary {
@@ -890,6 +902,77 @@ pub enum RunTestsForWorkerErr {
   SerdeV8(#[from] serde_v8::Error),
 }
 
+/// Race-free per-test deadline. The timer thread sleeps on a cancellation
+/// channel; if the cancel arrives first, the test finished in time. If the
+/// sleep elapses first, the timer atomically transitions the shared state
+/// to `Fired` and calls `terminate_execution` on a thread-safe V8 handle.
+/// `stop()` performs the symmetrical transition from the main task and
+/// returns whether the timer fired.
+///
+/// We cannot use `tokio::time::timeout` for this — a synchronous JS hot
+/// loop blocks the entire current_thread runtime, and a same-thread timer
+/// would never get a chance to run. A real OS thread is required so the
+/// terminate handle can fire even while the runtime thread is monopolized
+/// by V8.
+struct TestTimer {
+  state: std::sync::Arc<std::sync::Mutex<TimerState>>,
+  cancel_tx: std::sync::mpsc::Sender<()>,
+}
+
+#[derive(PartialEq, Eq)]
+enum TimerState {
+  NotFired,
+  Cancelled,
+  Fired,
+}
+
+impl TestTimer {
+  fn start(js_runtime: &mut deno_core::JsRuntime, timeout_ms: u32) -> Self {
+    let state = std::sync::Arc::new(std::sync::Mutex::new(TimerState::NotFired));
+    let (cancel_tx, cancel_rx) = std::sync::mpsc::channel::<()>();
+    let isolate_handle = js_runtime.v8_isolate().thread_safe_handle();
+    let state_thread = state.clone();
+    std::thread::Builder::new()
+      .name("deno-test-timer".to_string())
+      .spawn(move || {
+        if let Err(std::sync::mpsc::RecvTimeoutError::Timeout) =
+          cancel_rx.recv_timeout(Duration::from_millis(timeout_ms as u64))
+        {
+          let mut guard = state_thread.lock().unwrap();
+          if *guard == TimerState::NotFired {
+            *guard = TimerState::Fired;
+            // Drop the lock before crossing the V8 boundary so a slow
+            // termination can't block `stop()` on the main thread.
+            drop(guard);
+            isolate_handle.terminate_execution();
+          }
+        }
+      })
+      .expect("failed to spawn test timer thread");
+    Self { state, cancel_tx }
+  }
+
+  /// Cancel the timer (no-op if already fired) and report whether it had
+  /// already fired. The caller is responsible for clearing V8's terminate
+  /// flag via `cancel_terminate_execution` regardless of the return value
+  /// — there is a small window where the timer thread can call
+  /// `terminate_execution` between losing the state-transition race and
+  /// observing the cancel, and we want a clean isolate either way.
+  fn stop(self) -> bool {
+    // The send may fail (thread already exited); that's fine.
+    let _ = self.cancel_tx.send(());
+    let mut guard = self.state.lock().unwrap();
+    match *guard {
+      TimerState::NotFired => {
+        *guard = TimerState::Cancelled;
+        false
+      }
+      TimerState::Fired => true,
+      TimerState::Cancelled => false,
+    }
+  }
+}
+
 async fn slow_test_watchdog(event_tracker: TestEventTracker, test_id: usize) {
   // The slow test warning should pop up every DENO_SLOW_TEST_TIMEOUT*(2**n) seconds,
   // with a duration that is doubling each time. So for a warning time of 60s,
@@ -1096,8 +1179,23 @@ async fn run_tests_for_worker_inner(
     })
     .await?;
 
-    // TODO(bartlomieju): this whole block/binding could be reworked into something better
     let result = if !before_each_hook_errored {
+      // Per-test `timeout` overrides the specifier default; both `None` and
+      // `Some(0)` mean "no timeout" at this point.
+      let effective_timeout_ms = desc
+        .timeout_ms
+        .or(options.default_timeout_ms)
+        .filter(|&t| t > 0);
+
+      // If a deadline is configured, spawn a real OS thread that calls
+      // `terminate_execution` via the thread-safe handle. We can't use
+      // `tokio::time::timeout` here because a synchronous `while(true){}`
+      // monopolizes the current_thread runtime — the timer would never
+      // fire. The OS thread is independent of the runtime and can
+      // interrupt V8 mid-sync-loop.
+      let timer = effective_timeout_ms
+        .map(|ms| TestTimer::start(&mut worker.js_runtime, ms));
+
       let call = worker.js_runtime.call(&function);
 
       let slow_test_warning =
@@ -1108,24 +1206,43 @@ async fn run_tests_for_worker_inner(
         .with_event_loop_promise(call, PollEventLoopOptions::default())
         .await;
       slow_test_warning.abort();
-      let result = match result {
-        Ok(r) => r,
-        Err(error) => match error.into_kind() {
-          CoreErrorKind::Js(js_error) => {
-            event_tracker.uncaught_error(specifier.to_string(), js_error)?;
-            fail_fast_tracker.add_failure();
-            event_tracker.cancelled(desc)?;
-            had_uncaught_error = true;
-            continue;
-          }
-          err => return Err(err.into_box().into()),
-        },
-      };
 
-      // Check the result before we check for leaks
-      deno_core::scope!(scope, &mut worker.js_runtime);
-      let result = v8::Local::new(scope, result);
-      serde_v8::from_v8::<TestResult>(scope, result)?
+      // `stop()` is race-free: whichever side flips the state machine
+      // first wins. If the timer fired, V8's terminate flag is set; we
+      // always clear it before returning so the next test (and any
+      // afterEach hook) can run JS again.
+      let timed_out = timer.map(|t| t.stop()).unwrap_or(false);
+      worker.js_runtime.v8_isolate().cancel_terminate_execution();
+
+      if timed_out {
+        // The configured deadline takes precedence over whatever the
+        // test happened to throw on its way out of the V8 termination
+        // unwind — those errors aren't user-meaningful. Sanitizer/leak
+        // checks are bypassed via the `Failed` branch below; a
+        // terminated test is expected to leak.
+        TestResult::Failed(TestFailure::TimedOut(
+          effective_timeout_ms.unwrap_or(0),
+        ))
+      } else {
+        match result {
+          Ok(r) => {
+            // Check the result before we check for leaks
+            deno_core::scope!(scope, &mut worker.js_runtime);
+            let result = v8::Local::new(scope, r);
+            serde_v8::from_v8::<TestResult>(scope, result)?
+          }
+          Err(error) => match error.into_kind() {
+            CoreErrorKind::Js(js_error) => {
+              event_tracker.uncaught_error(specifier.to_string(), js_error)?;
+              fail_fast_tracker.add_failure();
+              event_tracker.cancelled(desc)?;
+              had_uncaught_error = true;
+              continue;
+            }
+            err => return Err(err.into_box().into()),
+          },
+        }
+      }
     } else {
       TestResult::Ignored
     };
@@ -1683,6 +1800,7 @@ pub async fn run_tests(
         filter: TestFilter::from_flag(&workspace_test_options.filter),
         shuffle: workspace_test_options.shuffle,
         trace_leaks: workspace_test_options.trace_leaks,
+        default_timeout_ms: workspace_test_options.default_timeout_ms,
       },
     },
   )
@@ -1908,6 +2026,7 @@ pub async fn run_tests_with_watch(
               filter: TestFilter::from_flag(&workspace_test_options.filter),
               shuffle: workspace_test_options.shuffle,
               trace_leaks: workspace_test_options.trace_leaks,
+              default_timeout_ms: workspace_test_options.default_timeout_ms,
             },
           },
         )

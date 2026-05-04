@@ -852,6 +852,17 @@ declare namespace Deno {
      *
      * @default {"inherit"} */
     permissions?: PermissionOptions;
+    /** Maximum duration in milliseconds that the test is allowed to run before
+     * being marked as a failed test. The test is interrupted via
+     * `v8::Isolate::TerminateExecution`, so synchronous hot loops are also
+     * caught.
+     *
+     * Pass `0` to disable the timeout for this test. The default may be
+     * configured via `--timeout`, the `DENO_TEST_TIMEOUT` environment variable,
+     * or the `test.timeout` field in `deno.json`.
+     *
+     * @default {60000} */
+    timeout?: number;
   }
 
   /** Register a test which will be run when `deno test` is used on the command

@@ -592,6 +592,12 @@ pub struct TestFlags {
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
   pub hide_stacktraces: bool,
+  /// Value of `--timeout=MS`. Mutually exclusive with `no_timeout` at the
+  /// clap level. `None` means the flag was not provided.
+  pub default_timeout_ms: Option<u32>,
+  /// Set when `--no-timeout` is passed. Disables the per-test default
+  /// timeout regardless of env or config.
+  pub no_timeout: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4579,6 +4585,26 @@ or <c>**/__tests__/**</>:
           .help("Hide stack traces for errors in failure test results.")
           .action(ArgAction::SetTrue)
       )
+      .arg(
+        Arg::new("timeout")
+          .long("timeout")
+          .value_name("MS")
+          .num_args(1)
+          .require_equals(true)
+          .value_parser(value_parser!(u32))
+          .conflicts_with("no-timeout")
+          .help(cstr!("Default per-test timeout in milliseconds. Tests that don't set their own `timeout` option fail if they run longer than this value.
+  <p(245)>This option can also be set via the DENO_TEST_TIMEOUT environment variable. Defaults to 60000 (60s).</>"))
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
+        Arg::new("no-timeout")
+          .long("no-timeout")
+          .help("Disable the default per-test timeout. Tests can still set their own `timeout` option.")
+          .action(ArgAction::SetTrue)
+          .conflicts_with("timeout")
+          .help_heading(TEST_HEADING),
+      )
       .arg(env_file_arg())
       .arg(executable_ext_arg())
     )
@@ -7559,6 +7585,9 @@ fn test_parse(
 
   let hide_stacktraces = matches.get_flag("hide-stacktraces");
 
+  let default_timeout_ms = matches.remove_one::<u32>("timeout");
+  let no_timeout = matches.get_flag("no-timeout");
+
   flags.subcommand = DenoSubcommand::Test(TestFlags {
     no_run,
     doc,
@@ -7576,6 +7605,8 @@ fn test_parse(
     reporter,
     junit_path,
     hide_stacktraces,
+    default_timeout_ms,
+    no_timeout,
   });
   Ok(())
 }
@@ -11797,6 +11828,8 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          default_timeout_ms: None,
+          no_timeout: false,
         }),
         no_npm: true,
         no_remote: true,
@@ -11904,6 +11937,8 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          default_timeout_ms: None,
+          no_timeout: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         permissions: PermissionFlags {
@@ -11948,6 +11983,8 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          default_timeout_ms: None,
+          no_timeout: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -12086,6 +12123,8 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          default_timeout_ms: None,
+          no_timeout: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -12123,6 +12162,8 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          default_timeout_ms: None,
+          no_timeout: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -12159,6 +12200,8 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          default_timeout_ms: None,
+          no_timeout: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -12202,6 +12245,8 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          default_timeout_ms: None,
+          no_timeout: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         permissions: PermissionFlags {

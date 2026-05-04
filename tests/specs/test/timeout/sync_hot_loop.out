@@ -1,0 +1,16 @@
+running 2 tests from ./sync_hot_loop.ts
+spins forever ... FAILED ([WILDCARD])
+runs after the spin ... ok ([WILDCARD])
+
+ ERRORS [WILDCARD]
+
+spins forever => ./sync_hot_loop.ts:[WILDCARD]
+Test timed out after 100ms.
+
+ FAILURES [WILDCARD]
+
+spins forever => ./sync_hot_loop.ts:[WILDCARD]
+
+FAILED | 1 passed | 1 failed ([WILDCARD])
+
+error: Test failed
