@@ -89,12 +89,17 @@ const state = {
   plugins: [],
   installedPlugins: new Set(),
   ignoredRules: new Set(),
+  // When non-empty, only rule IDs in this set are activated; mirrors how
+  // the `include` field of the deno.json `rules` block already works for
+  // built-in rules. See denoland/deno#31017.
+  includedRules: new Set(),
 };
 
 function resetState() {
   state.plugins = [];
   state.installedPlugins.clear();
   state.ignoredRules.clear();
+  state.includedRules.clear();
 }
 
 /**
@@ -455,11 +460,17 @@ function materializeComments(ctx) {
 /**
  * @param {Deno.lint.Plugin[]} plugins
  * @param {string[]} exclude
+ * @param {string[]} include
  */
-export function installPlugins(plugins, exclude) {
+export function installPlugins(plugins, exclude, include) {
   if (Array.isArray(exclude)) {
     for (let i = 0; i < exclude.length; i++) {
       state.ignoredRules.add(exclude[i]);
+    }
+  }
+  if (Array.isArray(include)) {
+    for (let i = 0; i < include.length; i++) {
+      state.includedRules.add(include[i]);
     }
   }
 
@@ -1231,6 +1242,11 @@ export function runPluginsForFile(fileName, serializedAst) {
       const rule = plugin.rules[name];
       const id = `${plugin.name}/${name}`;
 
+      // When `include` is configured, drop everything that isn't on
+      // the allow-list. `exclude` always takes precedence.
+      if (state.includedRules.size > 0 && !state.includedRules.has(id)) {
+        continue;
+      }
       // Check if this rule is excluded
       if (state.ignoredRules.has(id)) {
         continue;
