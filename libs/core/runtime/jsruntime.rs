@@ -2916,8 +2916,8 @@ impl JsRuntime {
     let isolate_raw: *mut v8::OwnedIsolate = &mut *self.inner.v8_isolate;
     let realm_ptr: *const JsRealm = &*self.inner.main_realm;
     let realm_context = self.inner.main_realm.context().clone();
-    let mut load_fut = std::pin::pin!(unsafe { &*realm_ptr }
-      .load_main_es_module_from_code(
+    let mut load_fut =
+      std::pin::pin!(unsafe { &*realm_ptr }.load_main_es_module_from_code(
         unsafe { &mut *isolate_raw },
         specifier,
         None,
@@ -2988,8 +2988,8 @@ impl JsRuntime {
     let isolate_raw: *mut v8::OwnedIsolate = &mut *self.inner.v8_isolate;
     let realm_ptr: *const JsRealm = &*self.inner.main_realm;
     let realm_context = self.inner.main_realm.context().clone();
-    let mut load_fut = std::pin::pin!(unsafe { &*realm_ptr }
-      .load_side_es_module_from_code(
+    let mut load_fut =
+      std::pin::pin!(unsafe { &*realm_ptr }.load_side_es_module_from_code(
         unsafe { &mut *isolate_raw },
         specifier.to_string(),
         None,
