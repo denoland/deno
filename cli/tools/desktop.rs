@@ -1015,24 +1015,39 @@ fn extract_wef_archive(
     archive.set_preserve_permissions(false);
     for entry in archive.entries()? {
       let mut entry = entry?;
-      let path = entry.path()?.into_owned();
-      // Refuse path traversal — `tar` already does this in `unpack_in`, but
-      // we're iterating manually so we re-check.
-      if path.components().any(|c| {
+      let entry_path = entry.path()?.into_owned();
+      // Defence in depth — pre-check `..` / root before handing to
+      // `unpack_in`, since we want a hard error rather than the silent
+      // skip that `unpack_in` does for a rejected entry.
+      if entry_path.components().any(|c| {
         matches!(
           c,
           std::path::Component::ParentDir | std::path::Component::RootDir
         )
       }) {
-        bail!("refusing tar entry with traversal path: {}", path.display());
+        bail!(
+          "refusing tar entry with traversal path: {}",
+          entry_path.display()
+        );
       }
-      let dest_path = dest.join(&path);
-      entry.unpack(&dest_path)?;
+      // `unpack_in` (vs. `unpack(absolute_path)`) makes tar enforce its
+      // symlink + hardlink target containment too: a tar with entry A as
+      // symlink `foo -> ../../etc` followed by entry B writing
+      // `foo/passwd` would otherwise escape `dest`.
+      if !entry.unpack_in(dest)? {
+        bail!(
+          "refusing tar entry that would unpack outside dest: {}",
+          entry_path.display()
+        );
+      }
+      let dest_path = dest.join(&entry_path);
       #[cfg(unix)]
       {
         use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = std::fs::metadata(&dest_path) {
-          if meta.is_file() {
+        // `symlink_metadata` so we don't follow a just-extracted symlink
+        // and chmod its target.
+        if let Ok(meta) = std::fs::symlink_metadata(&dest_path) {
+          if meta.file_type().is_file() {
             // Was the entry executable? If so, mask to 0o755; otherwise 0o644.
             let mode = entry.header().mode().unwrap_or(0o644);
             let safe = if mode & 0o111 != 0 { 0o755 } else { 0o644 };

@@ -27,18 +27,6 @@ load), **LOW** (polish / belt-and-braces).
 
 ## Security
 
-### 2. Tar traversal check misses symlink-based escape — HIGH
-
-`cli/tools/desktop.rs:1015-1022`
-
-The traversal guard inspects each entry's path components but
-`tar::Entry::unpack` will still follow a previously-extracted symlink to write
-outside `dest`. Classic two-entry attack: entry A is symlink `foo -> ../../etc`,
-entry B writes `foo/passwd`.
-
-**Fix**: refuse `Symlink`/`Hardlink` whose link target contains `..` or absolute
-components, or call `unpack_in(dest)` so tar's own check applies.
-
 ### 4. Launcher shell scripts inject names unsanitized — MEDIUM
 
 `cli/tools/desktop.rs:1257-1267, 700-711`
@@ -286,7 +274,7 @@ These pre-date this branch and currently block `tools/lint.js`.
 
 | Severity | Count | Items                                                         |
 | -------- | ----- | ------------------------------------------------------------- |
-| HIGH     | 2     | #2, #28                                                       |
+| HIGH     | 1     | #28                                                           |
 | MEDIUM   | 5     | #7, #13, #17, #23, #29                                        |
 | LOW      | 14    | #6, #9, #12, #14, #15, #18, #19, #20, #21, #22, #27, #30, #31 |
 
@@ -295,8 +283,7 @@ These pre-date this branch and currently block `tools/lint.js`.
 **First batch — exploitable / process-stability bugs**, all local edits without
 architectural changes:
 
-1. **#2** tar symlink escape (`unpack_in`)
-2. **#28** move `set_var(DENO_SERVE_ADDRESS)` before runtime init
+1. **#28** move `set_var(DENO_SERVE_ADDRESS)` before runtime init
 
 **Second batch — robustness wins**:
 
