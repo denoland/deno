@@ -104,6 +104,7 @@
     "module-hooks/test-module-hooks-load-context-merged.js": {},
     "module-hooks/test-module-hooks-load-context-optional-esm.mjs": {},
     "module-hooks/test-module-hooks-load-context-optional.js": {},
+    "module-hooks/test-module-hooks-load-import-cjs.js": {},
     "module-hooks/test-module-hooks-load-mock.js": {},
     "module-hooks/test-module-hooks-load-short-circuit-required-middle.js": {},
     "module-hooks/test-module-hooks-load-short-circuit-required-start.js": {},
