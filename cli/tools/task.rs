@@ -650,10 +650,13 @@ impl<'a> TaskRunner<'a> {
     );
 
     let (stdio, prefix_handles) = if let Some(info) = parallel_info {
-      let label =
-        format!("[{:<width$}]", task_name, width = info.name_pad_width);
+      // Right-align the entire `[name]` block so brackets line up across rows,
+      // putting the leading padding spaces *outside* the brackets.
+      let label = format!("[{}]", task_name);
+      let padded_label =
+        format!("{:>width$}", label, width = info.name_pad_width + 2);
       let prefix =
-        format!("{} ", colorize_task_prefix(&label, info.color_index));
+        format!("{} ", colorize_task_prefix(&padded_label, info.color_index));
       let (io, handles) = task_runner::make_prefixed_task_io(prefix);
       (Some(io), handles)
     } else {
