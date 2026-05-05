@@ -16,7 +16,7 @@
         "eval",
         "console.log(Deno.readTextFileSync('package.json').trim())"
       ],
-      "output": "{}\n"
+      "output": "{\n}\n"
     }
   ]
 }
