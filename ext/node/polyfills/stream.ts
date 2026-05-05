@@ -169,7 +169,7 @@ Stream._uint8ArrayToBuffer = function _uint8ArrayToBuffer(chunk) {
 export {
   addAbortSignal,
   compose,
-  destroyer,
+  destroyer as destroy,
   Duplex,
   duplexPair,
   getDefaultHighWaterMark,
