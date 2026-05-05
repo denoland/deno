@@ -2,6 +2,8 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+#[cfg(unix)]
+use std::os::fd::FromRawFd;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -133,6 +135,85 @@ fn file_for_fd(
     .get(fd)
     .cloned()
     .ok_or_else(ebadf)
+}
+
+/// Like `file_for_fd`, but if the fd is not in this worker's FdTable
+/// and is a valid OS fd (e.g. opened in another worker and passed via
+/// workerData), `dup()` it and auto-register. This matches Node.js
+/// where fds are process-wide.
+fn file_for_fd_or_import(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<Rc<dyn deno_io::fs::File>, FsError> {
+  if let Some(file) = state.borrow::<deno_io::FdTable>().get(fd).cloned() {
+    return Ok(file);
+  }
+  import_fd(state, fd)
+}
+
+/// Try to import a process-wide OS fd into this worker's FdTable.
+/// Uses dup() to create an independent copy so each worker can close
+/// its own copy without affecting others.
+fn import_fd(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<Rc<dyn deno_io::fs::File>, FsError> {
+  #[cfg(unix)]
+  {
+    // SAFETY: dup() is safe to call with any fd; returns -1 if invalid.
+    let dup_fd = unsafe { libc::dup(fd) };
+    if dup_fd < 0 {
+      return Err(ebadf());
+    }
+    // SAFETY: dup_fd is a valid new fd returned by dup().
+    let std_file = unsafe { std::fs::File::from_raw_fd(dup_fd) };
+    let file: Rc<dyn deno_io::fs::File> =
+      Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+    state
+      .borrow_mut::<deno_io::FdTable>()
+      .register(fd, file.clone());
+    Ok(file)
+  }
+
+  #[cfg(windows)]
+  {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
+    use windows_sys::Win32::Foundation::DuplicateHandle;
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    let handle = unsafe { libc::get_osfhandle(fd) };
+    if handle == -1 {
+      return Err(ebadf());
+    }
+    let mut dup_handle = std::ptr::null_mut();
+    let ok = unsafe {
+      DuplicateHandle(
+        GetCurrentProcess(),
+        handle as _,
+        GetCurrentProcess(),
+        &mut dup_handle,
+        0,
+        0,
+        DUPLICATE_SAME_ACCESS,
+      )
+    };
+    if ok == 0 {
+      return Err(ebadf());
+    }
+    let crt_fd = unsafe { libc::open_osfhandle(dup_handle as isize, 0) };
+    if crt_fd == -1 {
+      unsafe { CloseHandle(dup_handle) };
+      return Err(ebadf());
+    }
+    let std_file = unsafe { std::fs::File::from_raw_fd(crt_fd) };
+    let file: Rc<dyn deno_io::fs::File> =
+      Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+    state
+      .borrow_mut::<deno_io::FdTable>()
+      .register(fd, file.clone());
+    Ok(file)
+  }
 }
 
 /// When `sync_fs` is enabled, `FileSystemRc` is `Arc` (Send) and we can
@@ -1031,7 +1112,7 @@ pub fn op_node_fs_read_sync(
   #[buffer] buf: &mut [u8],
   #[number] position: i64,
 ) -> Result<u32, FsError> {
-  let file = file_for_fd(state, fd)?;
+  let file = file_for_fd_or_import(state, fd)?;
   read_with_position(file, buf, position)
 }
 
@@ -1094,7 +1175,7 @@ pub fn op_node_fs_write_sync(
   #[buffer] buf: &[u8],
   #[number] position: i64,
 ) -> Result<u32, FsError> {
-  let file = file_for_fd(state, fd)?;
+  let file = file_for_fd_or_import(state, fd)?;
   write_with_position(file, buf, position)
 }
 
@@ -1124,7 +1205,7 @@ pub fn op_node_fs_seek_sync(
   #[number] offset: i64,
   #[smi] whence: i32,
 ) -> Result<u64, FsError> {
-  let file = file_for_fd(state, fd)?;
+  let file = file_for_fd_or_import(state, fd)?;
   let seek_from = match whence {
     0 => std::io::SeekFrom::Start(offset as u64),
     1 => std::io::SeekFrom::Current(offset),
@@ -1227,7 +1308,7 @@ pub fn op_node_fs_fstat_sync(
   state: &mut OpState,
   fd: i32,
 ) -> Result<NodeFsStat, FsError> {
-  let file = file_for_fd(state, fd)?;
+  let file = file_for_fd_or_import(state, fd)?;
   let stat = file.stat_sync()?;
   Ok(NodeFsStat::from(stat))
 }
@@ -1249,7 +1330,7 @@ pub fn op_node_fs_ftruncate_sync(
   fd: i32,
   #[number] len: u64,
 ) -> Result<(), FsError> {
-  let file = file_for_fd(state, fd)?;
+  let file = file_for_fd_or_import(state, fd)?;
   file.truncate_sync(len)?;
   Ok(())
 }
@@ -1270,7 +1351,7 @@ pub fn op_node_fs_fsync_sync(
   state: &mut OpState,
   fd: i32,
 ) -> Result<(), FsError> {
-  let file = file_for_fd(state, fd)?;
+  let file = file_for_fd_or_import(state, fd)?;
   file.sync_sync()?;
   Ok(())
 }
@@ -1290,7 +1371,7 @@ pub fn op_node_fs_fdatasync_sync(
   state: &mut OpState,
   fd: i32,
 ) -> Result<(), FsError> {
-  let file = file_for_fd(state, fd)?;
+  let file = file_for_fd_or_import(state, fd)?;
   file.datasync_sync()?;
   Ok(())
 }
@@ -1314,7 +1395,7 @@ pub fn op_node_fs_futimes_sync(
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
 ) -> Result<(), FsError> {
-  let file = file_for_fd(state, fd)?;
+  let file = file_for_fd_or_import(state, fd)?;
   file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
   Ok(())
 }
@@ -1341,7 +1422,7 @@ pub fn op_node_fs_fchmod_sync(
   fd: i32,
   #[smi] mode: u32,
 ) -> Result<(), FsError> {
-  let file = file_for_fd(state, fd)?;
+  let file = file_for_fd_or_import(state, fd)?;
   file.chmod_sync(mode)?;
   Ok(())
 }
@@ -1364,7 +1445,7 @@ pub fn op_node_fs_fchown_sync(
   #[smi] uid: u32,
   #[smi] gid: u32,
 ) -> Result<(), FsError> {
-  let file = file_for_fd(state, fd)?;
+  let file = file_for_fd_or_import(state, fd)?;
   file.chown_sync(Some(uid), Some(gid))?;
   Ok(())
 }
@@ -1387,7 +1468,7 @@ pub fn op_node_fs_read_file_sync(
   state: &mut OpState,
   fd: i32,
 ) -> Result<Vec<u8>, FsError> {
-  let file = file_for_fd(state, fd)?;
+  let file = file_for_fd_or_import(state, fd)?;
   let buf = file.read_all_sync()?;
   Ok(buf.to_vec())
 }
