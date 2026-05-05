@@ -1026,21 +1026,33 @@ fn post_error_report(client: deno_fetch::Client, url: String, body: String) {
 }
 
 /// Send a JSON error report to the given URL. Best-effort — never panics.
-/// Accepts `file://` (or a bare path) and `https://`. Plain `http://` is
-/// rejected: error reports usually carry stack traces and runtime context,
-/// so anyone on-path could read them.
+/// Accepts only `file://` and `https://`. Plain `http://` is rejected:
+/// error reports usually carry stack traces and runtime context, so
+/// anyone on-path could read them. A bare path (or any unparseable
+/// string) is also rejected — previously such inputs were silently
+/// treated as a local file path, which let a malformed metadata field
+/// land error reports at an attacker-chosen location on disk.
 pub fn send_error_report(url: &str, body: &str) {
-  let parsed = deno_core::url::Url::parse(url);
-  let Ok(parsed) = parsed else {
-    append_to_file(Path::new(url), body);
+  let Ok(parsed) = deno_core::url::Url::parse(url) else {
+    log::warn!(
+      "desktop: error_reporting_url is not a valid URL ({:?}); dropping report",
+      url,
+    );
     return;
   };
 
   match parsed.scheme() {
     "file" => {
-      if let Ok(path) = parsed.to_file_path() {
-        append_to_file(&path, body);
-      }
+      // `to_file_path` rejects `file://host/...` URLs (non-local), so a
+      // local path is the only way to reach `append_to_file`.
+      let Ok(path) = parsed.to_file_path() else {
+        log::warn!(
+          "desktop: error_reporting_url file:// URL is not a local path ({:?}); dropping report",
+          url,
+        );
+        return;
+      };
+      append_to_file(&path, body);
     }
     "https" => {
       let Some(client) = ERROR_REPORT_CLIENT.get().cloned() else {
@@ -1053,7 +1065,7 @@ pub fn send_error_report(url: &str, body: &str) {
     }
     other => {
       log::warn!(
-        "desktop: refusing to send error report over '{other}' (https only); dropping report",
+        "desktop: refusing to send error report over '{other}' (file:// or https:// only); dropping report",
       );
     }
   }

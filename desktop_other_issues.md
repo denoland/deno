@@ -107,19 +107,6 @@ write access to the cwd can pre-create it as a symlink.
 **Fix**:
 `tempfile::Builder::new().prefix(".deno_desktop_entry").tempfile_in(cwd)`.
 
-### 10. `send_error_report` interprets unparseable URL as a local file path — MEDIUM
-
-`runtime/ops/desktop.rs:1032-1059`
-
-`Url::parse(url).is_err()` → `append_to_file(Path::new(url), body)`. If the
-configured `error_reporting_url` is empty or malformed (e.g. coming from a
-compiled-in metadata field that didn't get validated), the runtime silently
-writes JSON error reports to whatever path string the developer supplied —
-including absolute paths.
-
-**Fix**: require the URL to parse; allow only `file://` and `https://` schemes;
-bail otherwise.
-
 ---
 
 ## Soundness / UB
@@ -354,7 +341,7 @@ These pre-date this branch and currently block `tools/lint.js`.
 | Severity | Count | Items                                                         |
 | -------- | ----- | ------------------------------------------------------------- |
 | HIGH     | 4     | #2, #11, #16, #28                                             |
-| MEDIUM   | 8     | #3, #7, #10, #13, #17, #23, #24, #29                          |
+| MEDIUM   | 7     | #3, #7, #13, #17, #23, #24, #29                               |
 | LOW      | 14    | #6, #9, #12, #14, #15, #18, #19, #20, #21, #22, #27, #30, #31 |
 
 ## Suggested fix order
@@ -363,11 +350,10 @@ These pre-date this branch and currently block `tools/lint.js`.
 architectural changes:
 
 1. **#2** tar symlink escape (`unpack_in`)
-2. **#10** validate `error_reporting_url` scheme
-3. **#11** stop `expect`/`panic!` across FFI in `get_raw_window_handle`
-4. **#16** correctly preserve `.update` on rename failure
-5. **#24** `kill_on_drop(true)` for the WEF subprocess
-6. **#28** move `set_var(DENO_SERVE_ADDRESS)` before runtime init
+2. **#11** stop `expect`/`panic!` across FFI in `get_raw_window_handle`
+3. **#16** correctly preserve `.update` on rename failure
+4. **#24** `kill_on_drop(true)` for the WEF subprocess
+5. **#28** move `set_var(DENO_SERVE_ADDRESS)` before runtime init
 
 **Second batch — robustness wins**:
 
