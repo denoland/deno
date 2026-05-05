@@ -546,6 +546,34 @@ fn setup_panic_hook() {
   //   should be reported to us.
   let orig_hook = std::panic::take_hook();
   std::panic::set_hook(Box::new(move |panic_info| {
+    // Check if this is a resource limit issue (e.g. Docker --pids-limit)
+    // and show a targeted message instead of "This is a bug in Deno".
+    let panic_str = panic_info
+      .payload()
+      .downcast_ref::<String>()
+      .map(|s| s.as_str())
+      .or_else(|| panic_info.payload().downcast_ref::<&str>().copied())
+      .unwrap_or("");
+    let is_resource_limit = panic_str.contains("worker thread")
+      || panic_str.contains("Resource temporarily unavailable")
+      || panic_str.contains("could not start worker threads");
+    if is_resource_limit {
+      eprintln!(
+        "\n============================================================"
+      );
+      eprintln!("Deno could not start: unable to create worker threads.");
+      eprintln!();
+      eprintln!("This usually happens when running in a container with a low");
+      eprintln!("PID limit. Try increasing the limit (e.g. --pids-limit=40).");
+      eprintln!();
+      eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
+      eprintln!("Version: {}", deno_lib::version::DENO_VERSION_INFO.deno);
+      eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
+      eprintln!();
+      orig_hook(panic_info);
+      deno_runtime::exit(1);
+    }
+
     eprintln!("\n============================================================");
     eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
     eprintln!("at https://github.com/denoland/deno/issues/new.");
@@ -584,6 +612,17 @@ fn setup_panic_hook() {
   }));
 
   fn error_handler(file: &str, line: i32, message: &str) {
+    // Provide a clearer message for thread creation failures, which
+    // typically happen when running in containers with low PID limits
+    // (e.g. Docker --pids-limit). V8's default error is just
+    // "Check failed: Start()" which is unhelpful.
+    if message.contains("Check failed: Start()") {
+      panic!(
+        "Failed to initialize V8 platform (could not start worker threads). \
+        If running in a container, ensure the PID limit is high enough \
+        (try --pids-limit=40 or higher)."
+      );
+    }
     // Override C++ abort with a rust panic, so we
     // get our message above and a nice backtrace.
     panic!("Fatal error in {file}:{line}: {message}");
