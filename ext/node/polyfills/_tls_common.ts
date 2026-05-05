@@ -317,6 +317,22 @@ export class SecureContext {
     }
     if (options.clientCertEngine != null) {
       validateString(options.clientCertEngine, "options.clientCertEngine");
+      // OpenSSL engines are not supported in Deno (which uses rustls).
+      // Match Node's behaviour when OpenSSL fails to load the engine: throw
+      // an Error whose message contains "could not load the shared library"
+      // and carries an `opensslErrorStack` array.
+      const err = new Error(
+        `error:25066067:DSO support routines:dlfcn_load:could not load the shared library`,
+      ) as any;
+      err.opensslErrorStack = [
+        `error:25070067:DSO support routines:DSO_load:could not load the shared library`,
+        `error:260B6084:engine routines:dynamic_load:dso not found`,
+      ];
+      err.library = "DSO support routines";
+      err.function = "dlfcn_load";
+      err.reason = "could not load the shared library";
+      err.code = "ERR_OSSL_DSO_COULD_NOT_LOAD_THE_SHARED_LIBRARY";
+      throw err;
     }
     if (options.privateKeyEngine != null) {
       validateString(options.privateKeyEngine, "options.privateKeyEngine");
