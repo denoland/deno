@@ -240,18 +240,18 @@ function fromAsyncGen(fn) {
   const signal = ac.signal;
   const value = fn(
     async function* () {
-      while (true) {
-        const _promise = promise;
-        promise = null;
-        const { chunk, done, cb } = await _promise;
-        process.nextTick(cb);
-        if (done) return;
-        if (signal.aborted) {
-          throw new AbortError(undefined, { cause: signal.reason });
-        }
-        ({ promise, resolve } = PromiseWithResolvers());
-        yield chunk;
+    while (true) {
+      const _promise = promise;
+      promise = null;
+      const { chunk, done, cb } = await _promise;
+      process.nextTick(cb);
+      if (done) return;
+      if (signal.aborted) {
+        throw new AbortError(undefined, { cause: signal.reason });
       }
+      ({ promise, resolve } = PromiseWithResolvers());
+      yield chunk;
+    }
     }(),
     { signal },
   );

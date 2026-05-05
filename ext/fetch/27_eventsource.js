@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
@@ -409,4 +408,4 @@ webidl.converters.EventSourceInit = webidl.createDictionaryConverter(
 );
 
 return { EventSource, TextLineStream };
-})()
+})();

@@ -2,7 +2,6 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-// deno-fmt-ignore-file
 (function () {
 const { core, internals, primordials } = globalThis.__bootstrap;
 const {
@@ -2096,15 +2095,15 @@ function formatError(err, constructor, tag, ctx, keys) {
 }
 
 const hexSliceLookupTable = function () {
-  const alphabet = "0123456789abcdef";
-  const table = [];
-  for (let i = 0; i < 16; ++i) {
-    const i16 = i * 16;
-    for (let j = 0; j < 16; ++j) {
-      table[i16 + j] = alphabet[i] + alphabet[j];
-    }
+const alphabet = "0123456789abcdef";
+const table = [];
+for (let i = 0; i < 16; ++i) {
+  const i16 = i * 16;
+  for (let j = 0; j < 16; ++j) {
+    table[i16 + j] = alphabet[i] + alphabet[j];
   }
-  return table;
+}
+return table;
 }();
 
 function hexSlice(buf, start, end) {
@@ -4149,4 +4148,4 @@ return {
   stripVTControlCharacters,
   styles,
 };
-})()
+})();

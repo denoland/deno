@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
-// deno-fmt-ignore-file
 
 /** NOT IMPLEMENTED
  * ERR_MANIFEST_ASSERT_INTEGRITY
@@ -64,7 +63,9 @@ const {
   URIError,
   URIErrorPrototype,
 } = primordials;
-const { format, inspect } = core.loadExtScript("ext:deno_node/internal/util/inspect.mjs");
+const { format, inspect } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
 const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
 const {
   codeMap,
@@ -73,7 +74,9 @@ const {
   UV_EBADF,
 } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
-const { os: osConstants } = core.loadExtScript("ext:deno_node/internal_binding/constants.ts");
+const { os: osConstants } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 const { hideStackFrames } = core.loadExtScript(
   "ext:deno_node/internal/hide_stack_frames.ts",
 );
@@ -82,7 +85,8 @@ const { hideStackFrames } = core.loadExtScript(
 let _getSystemErrorName;
 function getSystemErrorName(code) {
   if (!_getSystemErrorName) {
-    _getSystemErrorName = core.loadExtScript("ext:deno_node/_utils.ts").getSystemErrorName;
+    _getSystemErrorName =
+      core.loadExtScript("ext:deno_node/_utils.ts").getSystemErrorName;
   }
   return _getSystemErrorName(code);
 }
@@ -442,8 +446,7 @@ class NodeError extends NodeErrorAbstraction {
   }
 }
 
-class NodeSyntaxError extends NodeErrorAbstraction
-  implements SyntaxError {
+class NodeSyntaxError extends NodeErrorAbstraction implements SyntaxError {
   constructor(code: string, message: string) {
     super(SyntaxError.prototype.name, code, message);
     ObjectSetPrototypeOf(this, SyntaxErrorPrototype);
@@ -1173,8 +1176,7 @@ class ERR_DOMAIN_CALLBACK_NOT_AVAILABLE extends NodeError {
   }
 }
 
-class ERR_DOMAIN_CANNOT_SET_UNCAUGHT_EXCEPTION_CAPTURE
-  extends NodeError {
+class ERR_DOMAIN_CANNOT_SET_UNCAUGHT_EXCEPTION_CAPTURE extends NodeError {
   constructor() {
     super(
       "ERR_DOMAIN_CANNOT_SET_UNCAUGHT_EXCEPTION_CAPTURE",
@@ -1977,8 +1979,7 @@ class ERR_QUICSOCKET_DESTROYED extends NodeError {
     );
   }
 }
-class ERR_QUICSOCKET_INVALID_STATELESS_RESET_SECRET_LENGTH
-  extends NodeError {
+class ERR_QUICSOCKET_INVALID_STATELESS_RESET_SECRET_LENGTH extends NodeError {
   constructor() {
     super(
       "ERR_QUICSOCKET_INVALID_STATELESS_RESET_SECRET_LENGTH",
@@ -3744,4 +3745,4 @@ return {
     uvExceptionWithHostPort,
   },
 };
-})()
+})();

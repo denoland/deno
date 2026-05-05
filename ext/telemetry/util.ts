@@ -1,12 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
 const { internals, primordials } = globalThis.__bootstrap;
 
 const { String, StringPrototypeSlice } = primordials;
 
-type Span = { updateName(name: string): void; setAttribute(key: string, value: string): void; setStatus(status: { code: number; message: string }): void };
+type Span = {
+  updateName(name: string): void;
+  setAttribute(key: string, value: string): void;
+  setStatus(status: { code: number; message: string }): void;
+};
 
 function updateSpanFromRequest(span: Span, request: Request) {
   span.updateName(request.method);
@@ -82,4 +85,4 @@ return {
   updateSpanFromServerResponse,
   updateSpanFromError,
 };
-})()
+})();

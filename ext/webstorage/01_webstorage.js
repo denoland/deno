@@ -2,8 +2,6 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-// deno-fmt-ignore-file
-
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
 const { op_webstorage_iterate_keys, Storage } = core.ops;
@@ -128,4 +126,4 @@ function sessionStorage() {
 }
 
 return { localStorage, sessionStorage, Storage };
-})()
+})();
