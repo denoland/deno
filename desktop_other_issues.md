@@ -95,20 +95,6 @@ mid-extract leaves a half-populated dir without a marker — the next run will
 **Fix**: extract into a tempdir then atomic-rename, or take a file lock on
 `dir/.lock`.
 
-### 8. Worker writes logs to a fixed path in `/tmp` — HIGH
-
-`cli/rt_desktop/lib.rs:1080-1083, 1099-1102`
-
-`std::env::temp_dir().join("deno_desktop_worker.log")` is the same path for
-every user/app instance. On Linux another local user can pre-create it as a
-symlink to e.g. `~victim/.bashrc` and the
-`OpenOptions::new().append(true).open(...)` will follow the symlink and append
-to that file. macOS `/var/folders/..` is per-user, so that's safer — but `/tmp`
-on Linux is shared.
-
-**Fix**: add `O_NOFOLLOW`, or use `tempfile::NamedTempFile`, or drop the file
-logging entirely (it's debug-only scaffolding).
-
 ### 9. Temp entrypoint written to user's source dir without unique name — LOW
 
 `cli/tools/desktop.rs:209-211`
@@ -367,7 +353,7 @@ These pre-date this branch and currently block `tools/lint.js`.
 
 | Severity | Count | Items                                                         |
 | -------- | ----- | ------------------------------------------------------------- |
-| HIGH     | 5     | #2, #8, #11, #16, #28                                         |
+| HIGH     | 4     | #2, #11, #16, #28                                             |
 | MEDIUM   | 8     | #3, #7, #10, #13, #17, #23, #24, #29                          |
 | LOW      | 14    | #6, #9, #12, #14, #15, #18, #19, #20, #21, #22, #27, #30, #31 |
 
@@ -377,12 +363,11 @@ These pre-date this branch and currently block `tools/lint.js`.
 architectural changes:
 
 1. **#2** tar symlink escape (`unpack_in`)
-2. **#8** drop / harden `/tmp/deno_desktop_worker.log`
-3. **#10** validate `error_reporting_url` scheme
-4. **#11** stop `expect`/`panic!` across FFI in `get_raw_window_handle`
-5. **#16** correctly preserve `.update` on rename failure
-6. **#24** `kill_on_drop(true)` for the WEF subprocess
-7. **#28** move `set_var(DENO_SERVE_ADDRESS)` before runtime init
+2. **#10** validate `error_reporting_url` scheme
+3. **#11** stop `expect`/`panic!` across FFI in `get_raw_window_handle`
+4. **#16** correctly preserve `.update` on rename failure
+5. **#24** `kill_on_drop(true)` for the WEF subprocess
+6. **#28** move `set_var(DENO_SERVE_ADDRESS)` before runtime init
 
 **Second batch — robustness wins**:
 

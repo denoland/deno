@@ -1069,13 +1069,6 @@ fn run_headless_worker() {
 
     eprintln!("[worker] starting run_with_options");
 
-    // Log worker output to a file for debugging since the parent may
-    // call process.exit() and kill our stderr.
-    let log_path = std::env::temp_dir().join("deno_desktop_worker.log");
-    let log_msg = format!("[worker] log file: {:?}\n", log_path);
-    eprint!("{}", log_msg);
-    let _ = std::fs::write(&log_path, &log_msg);
-
     match denort::run::run_with_options(
       Arc::new(sys.clone()),
       sys,
@@ -1085,28 +1078,17 @@ fn run_headless_worker() {
     .await
     {
       Ok(exit_code) => {
-        let msg = format!(
-          "[worker] run_with_options completed with exit code: {}\n",
+        eprintln!(
+          "[worker] run_with_options completed with exit code: {}",
           exit_code
         );
-        eprint!("{}", msg);
-        let _ = std::fs::OpenOptions::new()
-          .append(true)
-          .open(&log_path)
-          .and_then(|mut f| std::io::Write::write_all(&mut f, msg.as_bytes()));
       }
       Err(error) => {
         let error_string = match js_error_downcast_ref(&error) {
           Some(js_error) => format_js_error(js_error, None),
           None => format!("{:?}", error),
         };
-        let msg =
-          format!("[worker] run_with_options error: {}\n", error_string);
-        eprint!("{}", msg);
-        let _ = std::fs::OpenOptions::new()
-          .append(true)
-          .open(&log_path)
-          .and_then(|mut f| std::io::Write::write_all(&mut f, msg.as_bytes()));
+        eprintln!("[worker] run_with_options error: {}", error_string);
         log::error!(
           "{}: {}",
           colors::red_bold("error"),
