@@ -44,6 +44,9 @@ struct WefDesktopApi {
   /// callback so it can refresh all windows, not just the initial one.
   open_windows: Arc<Mutex<HashSet<u32>>>,
   trays: Arc<Mutex<HashMap<u32, just_wef::TrayIcon>>>,
+  /// Singleton for the unified-mux DevTools window. Without this, every
+  /// `openDevtools()` call would spawn another DevTools window.
+  devtools_window: Mutex<Option<u32>>,
 }
 
 impl WefDesktopApi {
@@ -264,6 +267,15 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
 
   fn open_devtools(&self, window_id: u32, renderer: bool, deno: bool) {
     if let Ok(mux) = env::var("DENO_DESKTOP_MUX_WS") {
+      // Reuse an existing DevTools window when one is already open, so
+      // repeated `openDevtools()` calls don't pile up windows.
+      if let Some(id) = *self.devtools_window.lock().unwrap() {
+        if !self.closed_windows.lock().unwrap().contains(&id) {
+          just_wef::Window::from_id(id).focus();
+          return;
+        }
+      }
+
       let (endpoint, frontend) = match (renderer, deno) {
         (true, true) => ("/unified", "inspector.html"),
         (true, false) => ("/cef", "inspector.html"),
@@ -277,7 +289,11 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       let window = just_wef::Window::new(1200, 800);
       window.set_title("Deno Desktop DevTools");
       window.navigate(&url);
-      let _ = self.setup_window_events(window);
+      let window = self.setup_window_events(window);
+      let id = window.id();
+      // Track for HMR reload + the singleton check above.
+      self.open_windows.lock().unwrap().insert(id);
+      *self.devtools_window.lock().unwrap() = Some(id);
       return;
     }
     just_wef::Window::from_id(window_id).open_devtools();
@@ -773,13 +789,29 @@ fn promote_dylib_symbols_to_global() {
   const RTLD_NOLOAD: std::ffi::c_int = 0x10;
   const RTLD_GLOBAL: std::ffi::c_int = 0x8;
 
+  // SAFETY:
+  // - `dladdr` reads the metadata of the function passed in; a known
+  //   function pointer in this dylib is always a valid argument.
+  // - `dlopen` with RTLD_NOLOAD doesn't load anything new — it only
+  //   bumps the refcount of an already-loaded image, then sets
+  //   RTLD_GLOBAL on its symbols. We pass the path returned by
+  //   `dladdr` (our own dylib) which is guaranteed loaded since
+  //   we're executing in it. On NULL return there's nothing for us
+  //   to clean up — the global-symbol-promotion just didn't happen
+  //   and any NAPI addon needing those symbols will fail with a
+  //   clear "symbol not found" later.
   unsafe {
     let mut info: DlInfo = std::mem::zeroed();
-    // Use a function in our dylib as a reference address
     let addr = promote_dylib_symbols_to_global as *const std::ffi::c_void;
     if dladdr(addr, &mut info) != 0 && !info.dli_fname.is_null() {
-      // Re-open our own dylib with RTLD_GLOBAL to promote symbols
-      dlopen(info.dli_fname, RTLD_LAZY | RTLD_NOLOAD | RTLD_GLOBAL);
+      let handle =
+        dlopen(info.dli_fname, RTLD_LAZY | RTLD_NOLOAD | RTLD_GLOBAL);
+      if handle.is_null() {
+        log::debug!(
+          "[desktop] dlopen(self, RTLD_NOLOAD|RTLD_GLOBAL) returned NULL; \
+           NAPI symbols will not be globally visible"
+        );
+      }
     }
   }
 }
@@ -1029,6 +1061,41 @@ just_wef::main!(|| {
     );
   }
 
+  // Read the embedded standalone section, extract the VFS, and chdir
+  // into the extraction dir — all BEFORE the tokio runtime starts.
+  // chdir is process-wide; doing it after the runtime build (and any
+  // worker / async tasks it spawns) would race with code that resolves
+  // relative paths.
+  let args: Vec<_> = env::args_os().collect();
+  let data = match denort::binary::extract_standalone_with_finder(
+    Cow::Owned(args),
+    find_section_in_dylib,
+  ) {
+    Ok(data) => data,
+    Err(e) => {
+      eprintln!("[desktop] failed to read standalone section: {:?}", e);
+      return;
+    }
+  };
+  if data.metadata.self_extracting.is_some() {
+    if let Err(e) =
+      denort::binary::extract_vfs_to_disk(&data.vfs, &data.root_path)
+    {
+      eprintln!("[desktop] failed to extract VFS: {:?}", e);
+      return;
+    }
+    // Frameworks like Next.js look for build output (e.g. .next/)
+    // relative to CWD.
+    if let Err(e) = std::env::set_current_dir(&data.root_path) {
+      eprintln!(
+        "[desktop] failed to chdir to {}: {}",
+        data.root_path.display(),
+        e
+      );
+      return;
+    }
+  }
+
   let rt = tokio::runtime::Builder::new_current_thread()
     .enable_all()
     .build()
@@ -1036,7 +1103,7 @@ just_wef::main!(|| {
 
   rt.block_on(async {
     eprintln!("[desktop] run_desktop starting");
-    match run_desktop(update_rolled_back, desktop_serve_port).await {
+    match run_desktop(update_rolled_back, desktop_serve_port, data).await {
       Ok(()) => eprintln!("[desktop] run_desktop completed OK"),
       Err(error) => {
         let is_js_error = js_error_downcast_ref(&error).is_some();
@@ -1274,13 +1341,8 @@ fn find_section_in_dylib() -> Result<&'static [u8], AnyError> {
 async fn run_desktop(
   update_rolled_back: bool,
   desktop_serve_port: u16,
+  data: denort::binary::StandaloneData,
 ) -> Result<(), AnyError> {
-  let args: Vec<_> = env::args_os().collect();
-  let data = denort::binary::extract_standalone_with_finder(
-    Cow::Owned(args),
-    find_section_in_dylib,
-  )?;
-
   // Make the error reporting URL available to the panic hook.
   if let Some(ref url) = data.metadata.error_reporting_url {
     deno_runtime::ops::desktop::set_error_report_config(
@@ -1289,11 +1351,10 @@ async fn run_desktop(
     );
   }
 
+  // The VFS extract + chdir for self-extracting bundles happens in
+  // `just_wef::main!` before the tokio runtime is built — chdir is
+  // process-wide and isn't safe to do once async tasks are running.
   let sys = if data.metadata.self_extracting.is_some() {
-    denort::binary::extract_vfs_to_disk(&data.vfs, &data.root_path)?;
-    // Set CWD to extraction directory so frameworks like Next.js
-    // can find their build output (e.g. .next/) relative to CWD.
-    std::env::set_current_dir(&data.root_path)?;
     denort::file_system::DenoRtSys::new_self_extracting(data.vfs.clone())
   } else {
     denort::file_system::DenoRtSys::new(data.vfs.clone())
@@ -1315,9 +1376,22 @@ async fn run_desktop(
   // user-visible port and runs a multiplexer that fronts both this
   // inspector and the CEF renderer's debug port; we just listen on the
   // internal port that the parent allocated for us.
-  let inspect_internal_port = env::var("DENO_DESKTOP_INSPECT_INTERNAL_PORT")
-    .ok()
-    .and_then(|s| s.parse::<std::net::SocketAddr>().ok());
+  // Surface a malformed value loudly: previously a typoed port silently
+  // disabled the inspector and the user wondered why DevTools showed
+  // nothing. Bail rather than no-op so the failure is visible.
+  let inspect_internal_port = match env::var(
+    "DENO_DESKTOP_INSPECT_INTERNAL_PORT",
+  ) {
+    Ok(s) => match s.parse::<std::net::SocketAddr>() {
+      Ok(addr) => Some(addr),
+      Err(e) => {
+        bail!(
+          "DENO_DESKTOP_INSPECT_INTERNAL_PORT={s:?} is not a valid SocketAddr: {e}"
+        );
+      }
+    },
+    Err(_) => None,
+  };
   let inspect_brk = env::var("DENO_DESKTOP_INSPECT_BRK").is_ok();
   let inspect_wait = env::var("DENO_DESKTOP_INSPECT_WAIT").is_ok();
   if let Some(addr) = inspect_internal_port {
@@ -1423,6 +1497,7 @@ async fn run_desktop(
         closed_windows: Arc::new(Mutex::new(HashSet::new())),
         open_windows: open_windows_for_api.clone(),
         trays: Arc::new(Mutex::new(HashMap::new())),
+        devtools_window: Mutex::new(None),
       };
 
       // Forward macOS dock-reopen callbacks (clicking the dock icon while
@@ -1549,7 +1624,11 @@ async fn run_desktop(
     just_wef::Window::from_id(id).navigate(&url);
   };
 
-  tokio::spawn(navigate_fut);
+  // Hold the JoinHandle so we can abort it when the runtime / WEF
+  // event loop ends — otherwise the navigate poll keeps trying for up
+  // to 15s after window close, writing warnings to a stderr that may
+  // already be torn down.
+  let navigate_handle = tokio::spawn(navigate_fut);
 
   tokio::select! {
     result = run_fut => {
@@ -1559,6 +1638,7 @@ async fn run_desktop(
         }
         Err(err) => {
           eprintln!("[desktop] Deno runtime error: {:?}", err);
+          navigate_handle.abort();
           return Err(err);
         }
       }
@@ -1567,6 +1647,7 @@ async fn run_desktop(
       eprintln!("[desktop] WEF event loop ended (window closed)");
     }
   }
+  navigate_handle.abort();
 
   Ok(())
 }

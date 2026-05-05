@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
@@ -346,10 +347,10 @@ impl DesktopHmrRunner {
           _ => return,
         };
         for path in event.paths {
-          if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            if matches!(ext, "js" | "ts" | "jsx" | "tsx" | "mjs" | "cjs") {
-              let _ = changed_tx.send((path, change));
-            }
+          if let Some(ext) = path.extension().and_then(|e| e.to_str())
+            && matches!(ext, "js" | "ts" | "jsx" | "tsx" | "mjs" | "cjs")
+          {
+            let _ = changed_tx.send((path, change));
           }
         }
       })
@@ -451,10 +452,10 @@ impl DesktopHmrRunner {
             eprintln!("HMR: replaced {}", url);
           }
 
-          if needs_reload || !handled.is_empty() {
-            if let Some(on_reload) = &self.on_reload {
-              on_reload();
-            }
+          if (needs_reload || !handled.is_empty())
+            && let Some(on_reload) = &self.on_reload
+          {
+            on_reload();
           }
         }
       }
@@ -465,14 +466,14 @@ impl DesktopHmrRunner {
   /// hot-replaced, requires a page reload, or was a no-op.
   async fn handle_change(
     &mut self,
-    path: &PathBuf,
+    path: &Path,
     change: FileChange,
   ) -> ChangeOutcome {
     let canonical = match (change, path.canonicalize()) {
       (FileChange::Updated, Ok(p)) => p,
       (FileChange::Updated, Err(_)) => return ChangeOutcome::Skipped,
       // Removed paths can't be canonicalized; reconstruct best-effort.
-      (FileChange::Removed, _) => path.clone(),
+      (FileChange::Removed, _) => path.to_path_buf(),
     };
 
     let Ok(relative) = canonical.strip_prefix(&self.watch_dir) else {

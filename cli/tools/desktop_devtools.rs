@@ -134,6 +134,7 @@ pub async fn spawn_mux(config: MuxConfig) -> Result<MuxHandle, AnyError> {
 
   tokio::spawn(async move {
     let mut shutdown_rx = shutdown_rx;
+    let mut consecutive_accept_errors: u32 = 0;
     loop {
       tokio::select! {
         _ = &mut shutdown_rx => {
@@ -143,6 +144,7 @@ pub async fn spawn_mux(config: MuxConfig) -> Result<MuxHandle, AnyError> {
         accept = listener.accept() => {
           match accept {
             Ok((stream, _)) => {
+              consecutive_accept_errors = 0;
               let state = state.clone();
               tokio::spawn(async move {
                 if let Err(err) = serve_connection(stream, state).await {
@@ -151,7 +153,19 @@ pub async fn spawn_mux(config: MuxConfig) -> Result<MuxHandle, AnyError> {
               });
             }
             Err(err) => {
-              log::error!("[devtools-mux] accept failed: {err:?}");
+              // A persistent failure (EMFILE, etc.) used to spin forever
+              // logging at 5Hz. Throttle the log to every Nth attempt
+              // and back off harder.
+              consecutive_accept_errors =
+                consecutive_accept_errors.saturating_add(1);
+              if consecutive_accept_errors == 1
+                || consecutive_accept_errors.is_power_of_two()
+              {
+                log::error!(
+                  "[devtools-mux] accept failed (attempt {}): {err:?}",
+                  consecutive_accept_errors,
+                );
+              }
               tokio::time::sleep(Duration::from_millis(200)).await;
             }
           }
@@ -672,7 +686,12 @@ async fn connect_ws(
   let host = url
     .host()
     .ok_or_else(|| anyhow!("ws url missing host: {ws_url}"))?;
-  let port = url.port_u16().unwrap_or(80);
+  // Don't fall back to port 80: a malformed `/json/list` response
+  // missing the port would otherwise route the WS connect to whatever
+  // is listening on port 80 of the upstream host.
+  let port = url
+    .port_u16()
+    .ok_or_else(|| anyhow!("ws url missing port: {ws_url}"))?;
   let authority = format!("{host}:{port}");
 
   let stream = TcpStream::connect(&authority).await?;

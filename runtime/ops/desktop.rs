@@ -272,6 +272,12 @@ pub struct PendingBindResponses(
 
 impl PendingBindResponses {
   pub fn new() -> Self {
+    Self::default()
+  }
+}
+
+impl Default for PendingBindResponses {
+  fn default() -> Self {
     Self(Arc::new(std::sync::Mutex::new(HashMap::new())))
   }
 }
@@ -777,6 +783,10 @@ fn dylib_magic_ok(bytes: &[u8]) -> bool {
   ) || m.starts_with(b"MZ")
 }
 
+#[allow(
+  clippy::disallowed_methods,
+  reason = "privileged auto-update op writes the live dylib outside any user's sandbox by design"
+)]
 #[op2(fast)]
 pub fn op_desktop_apply_patch(
   state: &mut OpState,
@@ -910,6 +920,10 @@ async fn op_desktop_recv_event(
   }
 }
 
+#[allow(
+  clippy::disallowed_methods,
+  reason = "privileged auto-update sentinel write next to the dylib, outside any user sandbox"
+)]
 #[op2(fast)]
 pub fn op_desktop_confirm_update(state: &mut OpState) {
   if let Some(s) = state.try_borrow::<AutoUpdateState>() {
@@ -929,10 +943,10 @@ fn op_desktop_resolve_bind_call(
   #[smi] call_id: u32,
   #[serde] result: serde_json::Value,
 ) {
-  if let Some(responses) = state.try_borrow::<PendingBindResponses>() {
-    if let Some(tx) = responses.0.lock().unwrap().remove(&call_id) {
-      let _ = tx.send(Ok(result));
-    }
+  if let Some(responses) = state.try_borrow::<PendingBindResponses>()
+    && let Some(tx) = responses.0.lock().unwrap().remove(&call_id)
+  {
+    let _ = tx.send(Ok(result));
   }
 }
 
@@ -942,10 +956,10 @@ fn op_desktop_reject_bind_call(
   #[smi] call_id: u32,
   #[string] error: String,
 ) {
-  if let Some(responses) = state.try_borrow::<PendingBindResponses>() {
-    if let Some(tx) = responses.0.lock().unwrap().remove(&call_id) {
-      let _ = tx.send(Err(error));
-    }
+  if let Some(responses) = state.try_borrow::<PendingBindResponses>()
+    && let Some(tx) = responses.0.lock().unwrap().remove(&call_id)
+  {
+    let _ = tx.send(Err(error));
   }
 }
 
@@ -1005,6 +1019,10 @@ pub fn set_error_report_client(client: deno_fetch::Client) {
   let _ = ERROR_REPORT_CLIENT.set(client);
 }
 
+#[allow(
+  clippy::disallowed_methods,
+  reason = "best-effort panic-hook error-report append; path is operator-configured via `error_reporting_url` and FileSystem trait isn't reachable from a panic hook"
+)]
 fn append_to_file(path: &Path, body: &str) {
   let mut line = body.to_string();
   line.push('\n');
@@ -1059,9 +1077,9 @@ pub fn send_error_report(url: &str, body: &str) {
 
   match parsed.scheme() {
     "file" => {
-      // `to_file_path` rejects `file://host/...` URLs (non-local), so a
-      // local path is the only way to reach `append_to_file`.
-      let Ok(path) = parsed.to_file_path() else {
+      // `url_to_file_path` rejects `file://host/...` URLs (non-local),
+      // so a local path is the only way to reach `append_to_file`.
+      let Ok(path) = deno_path_util::url_to_file_path(&parsed) else {
         log::warn!(
           "desktop: error_reporting_url file:// URL is not a local path ({:?}); dropping report",
           url,

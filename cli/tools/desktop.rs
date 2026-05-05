@@ -205,11 +205,25 @@ async fn compile_desktop(
         );
         flags.type_check_mode = TypeCheckMode::None;
       }
-      // Write a temporary entrypoint file.
-      let entrypoint_path = cwd.join(".deno_desktop_entry.ts");
-      std::fs::write(&entrypoint_path, entrypoint_code)?;
-      let entrypoint_str = entrypoint_path.display().to_string();
-      desktop_flags.source_file = entrypoint_str.clone();
+      // Write a temporary entrypoint file. tempfile gives us a unique
+      // name (no collision between concurrent `deno desktop` runs in
+      // the same project) and 0600 mode (no symlink-pre-creation
+      // attack); cleanup-on-drop replaces the explicit guard.
+      let entrypoint_temp = tempfile::Builder::new()
+        .prefix(".deno_desktop_entry-")
+        .suffix(".ts")
+        .tempfile_in(cwd)
+        .with_context(|| {
+          format!("failed to create temp entrypoint file in {}", cwd.display())
+        })?;
+      {
+        use std::io::Write;
+        entrypoint_temp
+          .as_file()
+          .write_all(entrypoint_code.as_bytes())?;
+      }
+      let entrypoint_path = entrypoint_temp.path().to_path_buf();
+      desktop_flags.source_file = entrypoint_path.display().to_string();
       if desktop_flags.output.is_none() {
         if let Some(dir_name) = cwd.file_name() {
           desktop_flags.output = Some(dir_name.to_string_lossy().into_owned());
@@ -221,7 +235,7 @@ async fn compile_desktop(
           desktop_flags.include.push(inc.clone());
         }
       }
-      Some(entrypoint_path)
+      Some(entrypoint_temp)
     } else {
       bail!(
         "Could not detect a supported framework in the current directory.\nSupported frameworks: Next.js, Astro\nProvide an explicit entrypoint instead of \".\"."
@@ -232,17 +246,9 @@ async fn compile_desktop(
   };
 
   let self_extracting = _desktop_entrypoint_file.is_some();
-
-  // Clean up temp entrypoint on exit.
-  struct CleanupGuard(Option<PathBuf>);
-  impl Drop for CleanupGuard {
-    fn drop(&mut self) {
-      if let Some(ref path) = self.0 {
-        let _ = std::fs::remove_file(path);
-      }
-    }
-  }
-  let _cleanup = CleanupGuard(_desktop_entrypoint_file);
+  // `_desktop_entrypoint_file` (a NamedTempFile) keeps the file alive
+  // until end-of-scope and removes it on drop. Hold it past
+  // compile_binary by keeping it bound here.
 
   let compile_flags = CompileFlags {
     source_file: desktop_flags.source_file.clone(),
@@ -541,12 +547,9 @@ async fn package_windows_app_dir(
   cli_options: &CliOptions,
   wef_resolver: &WefBackendResolver,
 ) -> Result<PathBuf, AnyError> {
-  let app_name = dylib_path
-    .file_stem()
-    .unwrap()
-    .to_string_lossy()
-    .to_string();
-  let app_dir = dylib_path.parent().unwrap().join(&app_name);
+  let parts = dylib_parts(dylib_path)?;
+  let app_name = parts.app_name;
+  let app_dir = parts.parent.join(&app_name);
 
   let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
   let target = wef_target_for(desktop_flags);
@@ -580,7 +583,7 @@ async fn package_windows_app_dir(
   }
 
   // Copy the compiled dylib (denort.dll) alongside the backend binary.
-  let dylib_filename = dylib_path.file_name().unwrap();
+  let dylib_filename = parts.file_name;
   let dest_dylib = app_dir.join(dylib_filename);
   std::fs::copy(dylib_path, &dest_dylib)?;
 
@@ -655,18 +658,15 @@ async fn package_linux_app_dir(
   cli_options: &CliOptions,
   wef_resolver: &WefBackendResolver,
 ) -> Result<PathBuf, AnyError> {
-  let app_name = dylib_path
-    .file_stem()
-    .unwrap()
-    .to_string_lossy()
-    .to_string();
+  let parts = dylib_parts(dylib_path)?;
   // `file_stem` on "libdenort.so" returns "libdenort" — strip the "lib" prefix
   // so the app directory is named after the app, not the runtime library.
-  let app_name = app_name
+  let app_name = parts
+    .app_name
     .strip_prefix("lib")
     .map(|s| s.to_string())
-    .unwrap_or(app_name);
-  let app_dir = dylib_path.parent().unwrap().join(&app_name);
+    .unwrap_or(parts.app_name);
+  let app_dir = parts.parent.join(&app_name);
 
   let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
   let target = wef_target_for(desktop_flags);
@@ -700,7 +700,7 @@ async fn package_linux_app_dir(
   }
 
   // Copy the compiled dylib alongside the backend binary.
-  let dylib_filename = dylib_path.file_name().unwrap();
+  let dylib_filename = parts.file_name;
   let dest_dylib = app_dir.join(dylib_filename);
   std::fs::copy(dylib_path, &dest_dylib)?;
 
@@ -720,7 +720,7 @@ async fn package_linux_app_dir(
   std::fs::write(
     &launcher_path,
     format!(
-      "#!/bin/bash\n\
+      "#!/bin/sh\n\
        DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
        export GDK_BACKEND=x11\n\
        exec \"$DIR/{wef_binary}\" --ozone-platform=x11 --runtime \"$DIR/{dylib}\" \"$@\"\n",
@@ -847,12 +847,17 @@ impl WefBackendResolver {
     let url = Url::parse(&wef_release_url(&archive))?;
     let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
     let progress = progress_bar.update(&archive);
+    // Send a real User-Agent — some CDNs (incl. parts of GitHub
+    // releases) start rate-limiting empty UAs aggressively.
+    let mut headers = http::HeaderMap::new();
+    if let Ok(ua) = http::HeaderValue::from_str(&format!(
+      "deno-desktop/{} (+https://deno.com)",
+      env!("CARGO_PKG_VERSION")
+    )) {
+      headers.insert(http::header::USER_AGENT, ua);
+    }
     let response = client
-      .download_with_progress_and_retries(
-        url.clone(),
-        &Default::default(),
-        &progress,
-      )
+      .download_with_progress_and_retries(url.clone(), &headers, &progress)
       .await
       .with_context(|| format!("failed to download {url}"))?;
     let data = response
@@ -863,8 +868,10 @@ impl WefBackendResolver {
       faster_hex::hex_string(&sha2::Sha256::digest(&data)).to_lowercase();
     let expected_lc = expected.to_lowercase();
     if actual != expected_lc {
+      // Include the URL in the bail: an attacker who poisoned a redirect
+      // would otherwise be invisible in the failure log.
       bail!(
-        "checksum mismatch for {archive}\n  expected: {expected_lc}\n  actual:   {actual}"
+        "checksum mismatch for {archive} (downloaded from {url})\n  expected: {expected_lc}\n  actual:   {actual}"
       );
     }
 
@@ -1329,6 +1336,45 @@ fn validate_launcher_name(name: &str, kind: &str) -> Result<(), AnyError> {
   Ok(())
 }
 
+/// The pieces of `dylib_path` we feed into the bundlers, with proper
+/// error messages instead of `unwrap` panics on degenerate inputs like
+/// `--output /` or `--output .`.
+struct DylibParts<'a> {
+  parent: &'a Path,
+  file_name: &'a std::ffi::OsStr,
+  app_name: String,
+}
+
+fn dylib_parts(dylib_path: &Path) -> Result<DylibParts<'_>, AnyError> {
+  let parent = dylib_path.parent().ok_or_else(|| {
+    deno_core::anyhow::anyhow!(
+      "invalid --output: dylib path has no parent dir: {}",
+      dylib_path.display()
+    )
+  })?;
+  let file_name = dylib_path.file_name().ok_or_else(|| {
+    deno_core::anyhow::anyhow!(
+      "invalid --output: dylib path has no file name: {}",
+      dylib_path.display()
+    )
+  })?;
+  let app_name = dylib_path
+    .file_stem()
+    .ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "invalid --output: dylib path has no file stem: {}",
+        dylib_path.display()
+      )
+    })?
+    .to_string_lossy()
+    .into_owned();
+  Ok(DylibParts {
+    parent,
+    file_name,
+    app_name,
+  })
+}
+
 /// Create a macOS .app bundle from the compiled desktop dylib.
 ///
 /// Bundle structure:
@@ -1349,15 +1395,9 @@ async fn package_macos_app_bundle(
   cli_options: &CliOptions,
   wef_resolver: &WefBackendResolver,
 ) -> Result<PathBuf, AnyError> {
-  let app_name = dylib_path
-    .file_stem()
-    .unwrap()
-    .to_string_lossy()
-    .to_string();
-  let app_bundle = dylib_path
-    .parent()
-    .unwrap()
-    .join(format!("{}.app", app_name));
+  let parts = dylib_parts(dylib_path)?;
+  let app_name = parts.app_name.clone();
+  let app_bundle = parts.parent.join(format!("{}.app", app_name));
 
   // Find the WEF backend .app and its main executable.
   let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
@@ -1409,7 +1449,7 @@ async fn package_macos_app_bundle(
   strip_cef_bloat(&contents_dir);
 
   // Copy the compiled dylib.
-  let dylib_filename = dylib_path.file_name().unwrap();
+  let dylib_filename = parts.file_name;
   let dest_dylib = macos_dir.join(dylib_filename);
   std::fs::copy(dylib_path, &dest_dylib)?;
 
@@ -1424,7 +1464,7 @@ async fn package_macos_app_bundle(
   std::fs::write(
     &launcher_path,
     format!(
-      "#!/bin/bash\n\
+      "#!/bin/sh\n\
        DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
        exec \"$DIR/{wef_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
       wef_binary = wef_executable_name,
@@ -1537,20 +1577,25 @@ fn create_macos_dmg(
     .map(|s| s.to_string_lossy().into_owned())
     .unwrap_or_else(|| "App".to_string());
 
-  // Stage in a sibling temp directory so hdiutil doesn't traverse unrelated
-  // files. Use a unique suffix to avoid collisions with concurrent builds.
-  let staging = dmg_path.with_file_name(format!(
-    ".{}.dmg-staging",
-    dmg_path.file_name().unwrap_or_default().to_string_lossy()
-  ));
-  if staging.exists() {
-    std::fs::remove_dir_all(&staging)?;
-  }
-  std::fs::create_dir_all(&staging)?;
+  // Stage in a sibling temp directory so hdiutil doesn't traverse
+  // unrelated files. tempfile gives us a unique name (no collision
+  // with concurrent builds) and 0700 mode (no other-user racing or
+  // pre-creating it as a symlink), and cleans up on drop.
+  let parent = dmg_path
+    .parent()
+    .filter(|p| !p.as_os_str().is_empty())
+    .unwrap_or_else(|| Path::new("."));
+  std::fs::create_dir_all(parent)?;
+  let staging = tempfile::Builder::new()
+    .prefix(".dmg-staging-")
+    .tempdir_in(parent)
+    .with_context(|| {
+      format!("failed to stage DMG tempdir in {}", parent.display())
+    })?;
 
   // Copy the .app into the staging dir and add an /Applications symlink so
   // users can drag the app across in the mounted DMG window.
-  let staged_app = staging.join(
+  let staged_app = staging.path().join(
     app_bundle
       .file_name()
       .ok_or_else(|| deno_core::anyhow::anyhow!("app bundle has no name"))?,
@@ -1558,17 +1603,14 @@ fn create_macos_dmg(
   crate::tools::compile::copy_dir_all(app_bundle, &staged_app)?;
   #[cfg(unix)]
   {
-    let _ =
-      std::os::unix::fs::symlink("/Applications", staging.join("Applications"));
+    let _ = std::os::unix::fs::symlink(
+      "/Applications",
+      staging.path().join("Applications"),
+    );
   }
 
   if dmg_path.exists() {
     std::fs::remove_file(dmg_path)?;
-  }
-  if let Some(parent) = dmg_path.parent()
-    && !parent.as_os_str().is_empty()
-  {
-    std::fs::create_dir_all(parent)?;
   }
 
   let status = std::process::Command::new("hdiutil")
@@ -1577,7 +1619,7 @@ fn create_macos_dmg(
       "-volname",
       &app_name,
       "-srcfolder",
-      &staging.display().to_string(),
+      &staging.path().display().to_string(),
       "-ov",
       "-format",
       "UDZO",
@@ -1588,7 +1630,7 @@ fn create_macos_dmg(
     .status()
     .context("Failed to run hdiutil")?;
 
-  let _ = std::fs::remove_dir_all(&staging);
+  // staging tempdir is removed by its Drop impl when this fn returns.
 
   if !status.success() {
     bail!("hdiutil failed to create DMG at {}", dmg_path.display());
@@ -1720,7 +1762,7 @@ fn create_linux_appimage(
   // delegates to the existing launcher (which already sets $DIR and execs
   // the backend with the right args).
   let apprun = format!(
-    "#!/bin/bash\n\
+    "#!/bin/sh\n\
      DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
      exec \"$DIR/{app_name}\" \"$@\"\n",
   );
