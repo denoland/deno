@@ -1,6 +1,7 @@
 accessSync F_OK: ok
 accessSync R_OK: ok
 access R_OK: ok
+accessSync W_OK: correctly denied
 openSync+readSync: Hello from VFS
 readFile: Hello from VFS
 createReadStream: Hello from VFS
