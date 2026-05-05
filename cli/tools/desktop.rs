@@ -585,6 +585,12 @@ async fn package_windows_app_dir(
   std::fs::copy(dylib_path, &dest_dylib)?;
 
   // Create a .bat launcher that invokes the backend with --runtime.
+  // Validate every name we interpolate: cmd.exe expands `%VAR%` and
+  // treats `^` `&` etc. as command separators even inside `"..."`.
+  let dylib_filename_str = dylib_filename.to_string_lossy();
+  validate_launcher_name(&app_name, "app name")?;
+  validate_launcher_name(&wef_binary_name, "WEF backend binary name")?;
+  validate_launcher_name(&dylib_filename_str, "dylib filename")?;
   let launcher_path = app_dir.join(format!("{}.bat", app_name));
   std::fs::write(
     &launcher_path,
@@ -593,7 +599,7 @@ async fn package_windows_app_dir(
        set DIR=%~dp0\r\n\
        \"%DIR%{wef_binary}\" --runtime \"%DIR%{dylib}\" %*\r\n",
       wef_binary = wef_binary_name,
-      dylib = dylib_filename.to_string_lossy(),
+      dylib = dylib_filename_str,
     ),
   )?;
 
@@ -703,6 +709,13 @@ async fn package_linux_app_dir(
   // Wayland sessions). The Linux WEF mouse/focus/resize event monitor uses
   // XI2 on X11 and does not support Wayland.
   // GDK_BACKEND=x11 aligns GDK with Ozone so GDK_IS_X11_DISPLAY is true.
+  //
+  // Validate every name we interpolate: bash expands `$VAR`, backticks,
+  // and `$(...)` even inside `"..."`.
+  let dylib_filename_str = dylib_filename.to_string_lossy();
+  validate_launcher_name(&app_name, "app name")?;
+  validate_launcher_name(&wef_binary_name, "WEF backend binary name")?;
+  validate_launcher_name(&dylib_filename_str, "dylib filename")?;
   let launcher_path = app_dir.join(&app_name);
   std::fs::write(
     &launcher_path,
@@ -712,7 +725,7 @@ async fn package_linux_app_dir(
        export GDK_BACKEND=x11\n\
        exec \"$DIR/{wef_binary}\" --ozone-platform=x11 --runtime \"$DIR/{dylib}\" \"$@\"\n",
       wef_binary = wef_binary_name,
-      dylib = dylib_filename.to_string_lossy(),
+      dylib = dylib_filename_str,
     ),
   )?;
   #[cfg(unix)]
@@ -1244,6 +1257,29 @@ fn read_plist_string(path: &Path, key: &str) -> Option<String> {
   dict.get(key)?.as_string().map(|s| s.to_string())
 }
 
+/// Reject any name we'd interpolate into a generated launcher script
+/// (POSIX shell on macOS/Linux, `.bat` on Windows). Even the
+/// double-quoted positions take expansions: `$`, backticks, `\` in
+/// bash; `%` and `^` in cmd.exe. The launcher kind context (`kind`)
+/// is included in the error to make the failure easy to act on.
+fn validate_launcher_name(name: &str, kind: &str) -> Result<(), AnyError> {
+  if name.is_empty() {
+    bail!("invalid {kind}: name is empty");
+  }
+  // ASCII-only, alphanumerics + a small whitelist of harmless
+  // punctuation. Spaces are allowed because real macOS .app bundles
+  // commonly have spaces in their executable names.
+  let bad = name.chars().find(|c| {
+    !(c.is_ascii_alphanumeric() || matches!(c, ' ' | '.' | '_' | '-'))
+  });
+  if let Some(c) = bad {
+    bail!(
+      "invalid {kind} {name:?}: must match [A-Za-z0-9 ._-]+, but contains {c:?}",
+    );
+  }
+  Ok(())
+}
+
 /// Create a macOS .app bundle from the compiled desktop dylib.
 ///
 /// Bundle structure:
@@ -1328,7 +1364,13 @@ async fn package_macos_app_bundle(
   let dest_dylib = macos_dir.join(dylib_filename);
   std::fs::copy(dylib_path, &dest_dylib)?;
 
-  // Create launcher script as the main executable.
+  // Create launcher script as the main executable. Validate every name
+  // we interpolate: bash expands `$VAR`, backticks, and `$(...)` even
+  // inside `"..."`.
+  let dylib_filename_str = dylib_filename.to_string_lossy();
+  validate_launcher_name(&app_name, "app name")?;
+  validate_launcher_name(&wef_executable_name, "WEF backend executable name")?;
+  validate_launcher_name(&dylib_filename_str, "dylib filename")?;
   let launcher_path = macos_dir.join(&app_name);
   std::fs::write(
     &launcher_path,
@@ -1337,7 +1379,7 @@ async fn package_macos_app_bundle(
        DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
        exec \"$DIR/{wef_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
       wef_binary = wef_executable_name,
-      dylib = dylib_filename.to_string_lossy(),
+      dylib = dylib_filename_str,
     ),
   )?;
   #[cfg(unix)]

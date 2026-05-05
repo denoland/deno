@@ -27,27 +27,6 @@ load), **LOW** (polish / belt-and-braces).
 
 ## Security
 
-### 4. Launcher shell scripts inject names unsanitized — MEDIUM
-
-`cli/tools/desktop.rs:1257-1267, 700-711`
-
-`wef_executable_name` is read from the WEF Info.plist (item #3) and
-`dylib_filename` ultimately derives from `desktop_flags.output` / app config
-name. Either could contain `"`, `$`, backticks, or newlines and break out of the
-quoted argument in the bash heredoc.
-
-**Fix**: validate names against `[A-Za-z0-9._-]+`, or shell-escape before
-interpolation.
-
-### 5. Same problem in the Windows `.bat` launcher — MEDIUM
-
-`cli/tools/desktop.rs:582-592`
-
-`.bat` quoting is even worse than POSIX shell — `&`, `^`, `%` in
-`app_name`/`wef_binary_name`/`dylib_filename` will run as commands.
-
-**Fix**: validate names before writing.
-
 ### 6. DMG staging dir is created in shared parent with predictable name — LOW
 
 `cli/tools/desktop.rs:1376-1383`
@@ -263,7 +242,7 @@ These pre-date this branch and currently block `tools/lint.js`.
 
 | Severity | Count | Items                                                         |
 | -------- | ----- | ------------------------------------------------------------- |
-| MEDIUM   | 7     | #4, #5, #7, #13, #17, #23, #29                                |
+| MEDIUM   | 5     | #7, #13, #17, #23, #29                                        |
 | LOW      | 13    | #6, #9, #12, #14, #15, #18, #19, #20, #21, #22, #27, #30, #31 |
 
 ## Suggested fix order
@@ -272,11 +251,10 @@ The CRITICAL/HIGH batch is done. What's left:
 
 **Robustness wins**:
 
-1. **#4 / #5** validate launcher names
-2. **#7** atomic-rename WEF cache extraction
-3. **#13** wgpu surface error → JsErrorBox
-4. **#17** `spawn_blocking` for auto-update I/O
-5. **#23** bound the panic-hook reporter
+1. **#7** atomic-rename WEF cache extraction
+2. **#13** wgpu surface error → JsErrorBox
+3. **#17** `spawn_blocking` for auto-update I/O
+4. **#23** bound the panic-hook reporter
 
 **Cleanup** — everything else (#6, #9, #12, #14, #15, #18, #19, #20, #21, #22,
 #27, #29, #30) plus **#31** to unblock `tools/lint.js`.
