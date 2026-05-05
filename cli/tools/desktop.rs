@@ -1039,7 +1039,63 @@ fn extract_wef_archive(
     }
   } else if name.ends_with(".zip") {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(data))?;
-    archive.extract(dest)?;
+    // Iterate entries manually rather than `archive.extract(dest)`: that
+    // helper has the same shape as the tar `unpack` we deliberately
+    // avoided (no perm masking; no defence-in-depth against zip-slip
+    // beyond the crate's own checks). Treat the archive as untrusted.
+    for i in 0..archive.len() {
+      let mut entry = archive.by_index(i)?;
+      // `enclosed_name` rejects drive labels, absolute paths and `..`
+      // components. Anything that fails this check is a zip-slip attempt
+      // (or a legitimately weird archive we don't want to handle).
+      let Some(rel_path) = entry.enclosed_name() else {
+        bail!("refusing zip entry with unsafe path: {}", entry.name());
+      };
+      // Defence in depth — re-check the components ourselves.
+      if rel_path.components().any(|c| {
+        matches!(
+          c,
+          std::path::Component::ParentDir | std::path::Component::RootDir
+        )
+      }) {
+        bail!(
+          "refusing zip entry with traversal path: {}",
+          rel_path.display()
+        );
+      }
+      // Refuse symlinks: with prior entries already extracted, a
+      // symlink-then-write pair is the standard zip-slip-via-symlink
+      // escape, and WEF Windows archives have no legitimate need for
+      // them.
+      if entry.is_symlink() {
+        bail!(
+          "refusing symlink entry in wef archive: {}",
+          rel_path.display()
+        );
+      }
+      let dest_path = dest.join(&rel_path);
+      if entry.is_dir() {
+        std::fs::create_dir_all(&dest_path)?;
+        continue;
+      }
+      if let Some(parent) = dest_path.parent() {
+        std::fs::create_dir_all(parent)?;
+      }
+      let mut out = std::fs::File::create(&dest_path)?;
+      std::io::copy(&mut entry, &mut out)?;
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::PermissionsExt;
+        // Mask to 0o755 / 0o644 — same policy as the tar branch.
+        // setuid/setgid/sticky bits are dropped; world-writable bits too.
+        let mode = entry.unix_mode().unwrap_or(0o644);
+        let safe = if mode & 0o111 != 0 { 0o755 } else { 0o644 };
+        let _ = std::fs::set_permissions(
+          &dest_path,
+          std::fs::Permissions::from_mode(safe),
+        );
+      }
+    }
   } else {
     bail!("unsupported archive format: {name}");
   }
