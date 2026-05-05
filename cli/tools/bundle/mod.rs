@@ -25,6 +25,7 @@ use deno_bundle_runtime::BundlePlatform;
 use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
 use deno_config::workspace::TsTypeLib;
+use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
 use deno_core::parking_lot::Mutex;
@@ -33,7 +34,9 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsError;
 use deno_error::JsErrorClass;
+use deno_graph::GraphKind;
 use deno_graph::ModuleErrorKind;
+use deno_graph::ModuleGraph;
 use deno_graph::Position;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::cache::ParsedSourceCache;
@@ -59,10 +62,6 @@ use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageSubpathResolveError;
 pub use provider::CliBundleProvider;
-
-use deno_core::anyhow::Context as _;
-use deno_graph::GraphKind;
-use deno_graph::ModuleGraph;
 use sys_traits::PathsInErrorsExt;
 
 use crate::args::BundleFlags;
