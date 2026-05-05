@@ -8,7 +8,6 @@ use deno_runtime::*;
 
 fn compress_decls(out_dir: &Path) {
   let decls = [
-    "lib.deno_webgpu.d.ts",
     "lib.deno.ns.d.ts",
     "lib.deno.unstable.d.ts",
     "lib.deno.window.d.ts",
@@ -21,6 +20,7 @@ fn compress_decls(out_dir: &Path) {
     "lib.deno_fetch.d.ts",
     "lib.deno_websocket.d.ts",
     "lib.deno_webstorage.d.ts",
+    "lib.deno_webgpu.d.ts",
     "lib.deno_canvas.d.ts",
     "lib.deno_crypto.d.ts",
     "lib.deno_cache.d.ts",
@@ -92,6 +92,7 @@ fn compress_decls(out_dir: &Path) {
     "lib.es2022.intl.d.ts",
     "lib.es2022.object.d.ts",
     "lib.es2022.regexp.d.ts",
+    "lib.es2022.sharedmemory.d.ts",
     "lib.es2022.string.d.ts",
     "lib.es2023.array.d.ts",
     "lib.es2023.collection.d.ts",
@@ -124,12 +125,13 @@ fn compress_decls(out_dir: &Path) {
     "lib.esnext.decorators.d.ts",
     "lib.esnext.disposable.d.ts",
     "lib.esnext.error.d.ts",
-    "lib.esnext.float16.d.ts",
     "lib.esnext.full.d.ts",
     "lib.esnext.intl.d.ts",
-    "lib.esnext.iterator.d.ts",
+    "lib.esnext.object.d.ts",
     "lib.esnext.promise.d.ts",
+    "lib.esnext.regexp.d.ts",
     "lib.esnext.sharedmemory.d.ts",
+    "lib.esnext.string.d.ts",
     "lib.esnext.temporal.d.ts",
     "lib.esnext.typedarrays.d.ts",
     "lib.node.d.ts",
@@ -258,6 +260,17 @@ fn compress_sources(out_dir: &Path) {
   }
 }
 
+fn emit_dts_rerun_if_changed() {
+  let dts_dir = Path::new("tsc/dts");
+  for entry in std::fs::read_dir(dts_dir).unwrap() {
+    let entry = entry.unwrap();
+    let path = entry.path();
+    if path.extension().and_then(|s| s.to_str()) == Some("ts") {
+      println!("cargo:rerun-if-changed={}", path.display());
+    }
+  }
+}
+
 fn main() {
   // Skip building from docs.rs.
   if env::var_os("DOCS_RS").is_some() {
@@ -282,6 +295,11 @@ fn main() {
   let out_dir = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
 
   process_node_types(&out_dir);
+
+  // Always emit rerun-if-changed for dts files (they are included via
+  // include_str! in debug mode). Without this, cargo may use stale
+  // cached artifacts when dts files change.
+  emit_dts_rerun_if_changed();
 
   if !cfg!(debug_assertions) && std::env::var("CARGO_FEATURE_HMR").is_err() {
     compress_sources(&out_dir);

@@ -880,7 +880,11 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
-    assert!(!actual.diagnostics.has_diagnostic());
+    assert!(
+      !actual.diagnostics.has_diagnostic(),
+      "unexpected diagnostics: {actual_diagnostics}",
+      actual_diagnostics = actual.diagnostics
+    );
     assert!(actual.maybe_tsbuildinfo.is_some());
     assert_eq!(actual.stats.0.len(), 12);
   }
@@ -891,7 +895,11 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
-    assert!(!actual.diagnostics.has_diagnostic());
+    assert!(
+      !actual.diagnostics.has_diagnostic(),
+      "unexpected diagnostics: {actual_diagnostics}",
+      actual_diagnostics = actual.diagnostics
+    );
     assert!(actual.maybe_tsbuildinfo.is_some());
     assert_eq!(actual.stats.0.len(), 12);
   }
@@ -967,7 +975,11 @@ mod tests {
     let actual = test_exec_with_cache(&specifier, Some(code_cache.clone()))
       .await
       .expect("exec should not have errored");
-    assert!(!actual.diagnostics.has_diagnostic());
+    assert!(
+      !actual.diagnostics.has_diagnostic(),
+      "unexpected diagnostics: {actual_diagnostics}",
+      actual_diagnostics = actual.diagnostics
+    );
 
     let expect = [
       (

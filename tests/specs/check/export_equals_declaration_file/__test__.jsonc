@@ -2,11 +2,13 @@
   "steps": [
     {
       "args": "check main.ts",
-      "output": "main.out"
+      "output": "main.out",
+      "exitCode": 1
     },
     {
       "args": "check main.ts",
-      "output": "main.out"
+      "output": "main.out",
+      "exitCode": 1
     }
   ]
 }
