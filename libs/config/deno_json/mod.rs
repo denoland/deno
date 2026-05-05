@@ -339,6 +339,15 @@ pub enum TrailingCommas {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash, PartialEq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub enum JsonTrailingCommaKind {
+  Always,
+  Jsonc,
+  Maintain,
+  Never,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub enum OperatorPosition {
   Maintain,
   SameLine,
@@ -394,6 +403,8 @@ pub struct FmtOptionsConfig {
   pub single_body_position: Option<SingleBodyPosition>,
   pub next_control_flow_position: Option<NextControlFlowPosition>,
   pub trailing_commas: Option<TrailingCommas>,
+  #[serde(rename = "json.trailingCommas")]
+  pub json_trailing_commas: Option<JsonTrailingCommaKind>,
   pub operator_position: Option<OperatorPosition>,
   pub jsx_bracket_position: Option<BracketPosition>,
   pub jsx_force_new_lines_surrounding_content: Option<bool>,
@@ -420,6 +431,7 @@ impl FmtOptionsConfig {
       && self.single_body_position.is_none()
       && self.next_control_flow_position.is_none()
       && self.trailing_commas.is_none()
+      && self.json_trailing_commas.is_none()
       && self.operator_position.is_none()
       && self.jsx_bracket_position.is_none()
       && self.jsx_force_new_lines_surrounding_content.is_none()
@@ -491,6 +503,8 @@ struct SerializedFmtConfig {
   pub single_body_position: Option<SingleBodyPosition>,
   pub next_control_flow_position: Option<NextControlFlowPosition>,
   pub trailing_commas: Option<TrailingCommas>,
+  #[serde(rename = "json.trailingCommas")]
+  pub json_trailing_commas: Option<JsonTrailingCommaKind>,
   pub operator_position: Option<OperatorPosition>,
   #[serde(rename = "jsx.bracketPosition")]
   pub jsx_bracket_position: Option<BracketPosition>,
@@ -533,6 +547,7 @@ impl SerializedFmtConfig {
       single_body_position: self.single_body_position,
       next_control_flow_position: self.next_control_flow_position,
       trailing_commas: self.trailing_commas,
+      json_trailing_commas: self.json_trailing_commas,
       operator_position: self.operator_position,
       jsx_bracket_position: self.jsx_bracket_position,
       jsx_force_new_lines_surrounding_content: self
@@ -2448,6 +2463,7 @@ mod tests {
         "singleBodyPosition": "nextLine",
         "nextControlFlowPosition": "sameLine",
         "trailingCommas": "never",
+        "json.trailingCommas": "maintain",
         "operatorPosition": "maintain",
         "jsx.bracketPosition": "maintain",
         "jsx.forceNewLinesSurroundingContent": true,
@@ -2523,6 +2539,7 @@ mod tests {
           single_body_position: Some(SingleBodyPosition::NextLine),
           next_control_flow_position: Some(NextControlFlowPosition::SameLine),
           trailing_commas: Some(TrailingCommas::Never),
+          json_trailing_commas: Some(JsonTrailingCommaKind::Maintain),
           operator_position: Some(OperatorPosition::Maintain),
           jsx_bracket_position: Some(BracketPosition::Maintain),
           jsx_force_new_lines_surrounding_content: Some(true),
