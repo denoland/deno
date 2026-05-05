@@ -358,7 +358,7 @@ function pathResolve(...args) {
 
 const nativeModulePolyfill = new SafeMap();
 
-let relativeResolveCache = ObjectCreate(null);
+const relativeResolveCache = ObjectCreate(null);
 let requireDepth = 0;
 let statCache = null;
 let mainModule = null;
@@ -2165,9 +2165,6 @@ export function registerHooks(hooks) {
   const entry = { resolve, load };
   ArrayPrototypePush(hookEntries, entry);
 
-  // Invalidate the resolve cache so hooks see fresh resolutions
-  relativeResolveCache = ObjectCreate(null);
-
   // Activate ESM hooks in Rust module loader
   _activateEsmHooks();
 
@@ -2177,8 +2174,6 @@ export function registerHooks(hooks) {
       if (idx !== -1) {
         ArrayPrototypeSplice(hookEntries, idx, 1);
       }
-      // Invalidate cache on deregister too
-      relativeResolveCache = ObjectCreate(null);
       // Update Rust-side active flags
       _activateEsmHooks();
     },
