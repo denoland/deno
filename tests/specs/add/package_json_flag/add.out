@@ -1,0 +1,6 @@
+[UNORDERED_START]
+Add npm:@denotest/esm-basic@1.0.0
+Add jsr:@denotest/add@1.0.0
+[WILDCARD]
+[UNORDERED_END]
+[WILDCARD]

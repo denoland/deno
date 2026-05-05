@@ -120,6 +120,7 @@ pub struct AddFlags {
   pub default_registry: Option<DefaultRegistry>,
   pub lockfile_only: bool,
   pub save_exact: bool,
+  pub package_json: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -144,6 +145,7 @@ pub struct AuditFlags {
 pub struct RemoveFlags {
   pub packages: Vec<String>,
   pub lockfile_only: bool,
+  pub package_json: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2331,6 +2333,7 @@ Or multiple dependencies at once:
           .help("Save exact version without the caret (^)")
           .action(ArgAction::SetTrue),
       )
+      .arg(package_json_arg())
   })
 }
 
@@ -2501,6 +2504,7 @@ You can remove multiple dependencies at once:
       )
       .args(lock_args())
       .arg(lockfile_only_arg())
+      .arg(package_json_arg())
   })
 }
 
@@ -3696,6 +3700,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .conflicts_with("global"),
         )
         .arg(lockfile_only_arg().conflicts_with("global"))
+        .arg(package_json_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .arg(
           Arg::new("os")
             .long("os")
@@ -3735,6 +3740,15 @@ fn lockfile_only_arg() -> Arg {
     .long("lockfile-only")
     .action(ArgAction::SetTrue)
     .help("Install only updating the lockfile")
+}
+
+fn package_json_arg() -> Arg {
+  Arg::new("package-json")
+    .long("package-json")
+    .action(ArgAction::SetTrue)
+    .help(
+      "Force using package.json for dependency management instead of deno.json",
+    )
 }
 
 fn json_reference_subcommand() -> Command {
@@ -3954,6 +3968,7 @@ The installation root is determined, in order of precedence:
       )
       .args(lock_args())
       .arg(lockfile_only_arg())
+      .arg(package_json_arg().conflicts_with("global"))
   })
 }
 
@@ -6298,6 +6313,7 @@ fn add_parse_inner(
     default_registry,
     lockfile_only: matches.get_flag("lockfile-only"),
     save_exact: matches.get_flag("save-exact"),
+    package_json: matches.get_flag("package-json"),
   }
 }
 
@@ -6306,6 +6322,7 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Remove(RemoveFlags {
     packages: matches.remove_many::<String>("packages").unwrap().collect(),
     lockfile_only: matches.get_flag("lockfile-only"),
+    package_json: matches.get_flag("package-json"),
   });
 }
 
@@ -7216,6 +7233,7 @@ fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     UninstallKind::Local(RemoveFlags {
       packages,
       lockfile_only: matches.get_flag("lockfile-only"),
+      package_json: matches.get_flag("package-json"),
     })
   };
 
@@ -11309,6 +11327,7 @@ mod tests {
           kind: UninstallKind::Local(RemoveFlags {
             packages: vec!["@std/load".to_string()],
             lockfile_only: true,
+            package_json: false,
           }),
         }),
         frozen_lockfile: Some(true),
@@ -11325,6 +11344,7 @@ mod tests {
           kind: UninstallKind::Local(RemoveFlags {
             packages: vec!["file_server".to_string(), "@std/load".to_string()],
             lockfile_only: false,
+            package_json: false,
           }),
         }),
         ..Flags::default()
@@ -14432,6 +14452,7 @@ mod tests {
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
+            package_json: false,
           })
         );
       }
@@ -14450,6 +14471,7 @@ mod tests {
           default_registry: Some(DefaultRegistry::Npm),
           lockfile_only: true,
           save_exact: false,
+          package_json: false,
         });
         expected_flags.frozen_lockfile = Some(true);
         assert_eq!(r.unwrap(), expected_flags);
@@ -14464,6 +14486,7 @@ mod tests {
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
+            package_json: false,
           }),
         );
       }
@@ -14477,6 +14500,7 @@ mod tests {
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
+            package_json: false,
           }),
         );
       }
@@ -14490,6 +14514,7 @@ mod tests {
             default_registry: Some(DefaultRegistry::Jsr),
             lockfile_only: false,
             save_exact: false,
+            package_json: false,
           }),
         );
       }
@@ -14508,6 +14533,7 @@ mod tests {
         subcommand: DenoSubcommand::Remove(RemoveFlags {
           packages: svec!["@david/which"],
           lockfile_only: false,
+          package_json: false,
         }),
         ..Flags::default()
       }
@@ -14527,6 +14553,7 @@ mod tests {
         subcommand: DenoSubcommand::Remove(RemoveFlags {
           packages: svec!["@david/which", "@luca/hello"],
           lockfile_only: true,
+          package_json: false,
         }),
         frozen_lockfile: Some(true),
         ..Flags::default()

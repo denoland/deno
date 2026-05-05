@@ -1,0 +1,22 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      // First add a package to package.json using --package-json
+      "args": "add --package-json npm:@denotest/esm-basic",
+      "output": "[WILDCARD]"
+    },
+    {
+      // Then remove it using --package-json
+      "args": "remove --package-json @denotest/esm-basic",
+      "output": "remove.out"
+    },
+    {
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('package.json').trim())"
+      ],
+      "output": "{}\n"
+    }
+  ]
+}
