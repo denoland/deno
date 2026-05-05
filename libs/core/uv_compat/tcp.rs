@@ -1312,6 +1312,76 @@ pub(crate) unsafe fn poll_tcp_handle(
     {
       if let Some(ref stream) = (*tcp_ptr).internal_stream {
         let _ = stream.poll_write_ready(cx);
+
+        // Also poll read readiness when writes are pending. This ensures
+        // we detect a broken connection (peer close / RST) promptly via
+        // the readable side, rather than waiting for a TCP retransmit
+        // timeout on the write side.
+        //
+        // Gate on `!internal_received_data`: if the peer has ever sent
+        // us a byte, treat a subsequent FIN as a legitimate half-close
+        // (write side stays valid — the peer just stopped sending).
+        // Without this gate the perf-fix's single-poll EOF observation
+        // turns test-net-allow-half-open's queued 'asd' write into a
+        // spurious EPIPE: the read loop now consumes the server's
+        // 1024 bytes and the peer FIN in the same poll, so by the time
+        // this probe runs `internal_reading` is already false and the
+        // FIN looks indistinguishable from a peer that aborted before
+        // ever writing. `internal_received_data` resolves the ambiguity.
+        if !(*tcp_ptr).internal_reading
+          && !(*tcp_ptr).internal_received_data
+          && let Poll::Ready(Ok(())) = stream.poll_read_ready(cx)
+        {
+          // Read side is ready -- peek (without consuming) to check
+          // for EOF or errors. Using MSG_PEEK avoids consuming data
+          // that might belong to a higher-level protocol (e.g. TLS).
+          #[cfg(unix)]
+          let n = {
+            use std::os::unix::io::AsRawFd;
+            let fd = stream.as_raw_fd();
+            let mut probe = [0u8; 1];
+            libc::recv(fd, probe.as_mut_ptr() as *mut c_void, 1, libc::MSG_PEEK)
+              as i32
+          };
+          #[cfg(windows)]
+          let n = {
+            use std::os::windows::io::AsRawSocket;
+            unsafe extern "system" {
+              fn recv(
+                s: usize,
+                buf: *mut c_void,
+                len: c_int,
+                flags: c_int,
+              ) -> c_int;
+            }
+            const MSG_PEEK: c_int = 0x2;
+            let socket = stream.as_raw_socket() as usize;
+            let mut probe = [0u8; 1];
+            recv(socket, probe.as_mut_ptr() as *mut c_void, 1, MSG_PEEK)
+          };
+          if n == 0 {
+            // EOF — the connection is broken.
+            // Drain the entire write queue with EPIPE.
+            while let Some(pw) = (*tcp_ptr).internal_write_queue.pop_front() {
+              completed_writes.push((pw.req, pw.cb, UV_EPIPE));
+            }
+          } else if n < 0 {
+            let err =
+              std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+            #[cfg(unix)]
+            let would_block = err == libc::EAGAIN || err == libc::EWOULDBLOCK;
+            #[cfg(windows)]
+            let would_block = err == 10035; // WSAEWOULDBLOCK
+            if !would_block {
+              // Real error — connection is broken.
+              while let Some(pw) = (*tcp_ptr).internal_write_queue.pop_front() {
+                completed_writes.push((pw.req, pw.cb, UV_EPIPE));
+              }
+            }
+            // EAGAIN/EWOULDBLOCK means no data yet, connection alive
+          }
+          // n > 0 means data available, connection alive (data not consumed)
+        }
       }
 
       // Match libuv's count=32 limit to prevent starvation.
@@ -1413,109 +1483,6 @@ pub(crate) unsafe fn poll_tcp_handle(
         } else {
           break; // WouldBlock -- retry next tick
         }
-      }
-
-      // Broken-connection probe.
-      //
-      // Without overlapped IOCP writes (which libuv uses on Windows
-      // and which deliver per-request kernel errors directly), tokio's
-      // synchronous try_write can't always tell us a peer is gone:
-      //
-      // - On unix, try_write against a torn-down peer surfaces
-      //   ECONNRESET/EPIPE directly, so the write-loop error branch
-      //   above usually drains the queue on its own. The probe is a
-      //   safety net for the case where readiness is armed but the
-      //   write returned WouldBlock instead of the error — `n < 0`
-      //   (real recv error) drains the queue; `n == 0` is benign
-      //   half-close and the write side stays valid.
-      //
-      // - On Windows, send() may succeed silently into the local
-      //   kernel send buffer even when the peer `closesocket()`'d.
-      //   Auto-tuning lets that buffer absorb large writes (10 MB+),
-      //   so the queue can drain to "successful" before the peer's
-      //   RST ever surfaces. By the time it does, the read-EOF
-      //   auto-shutdown has closed the socket and the process exited
-      //   without ever raising the 'error' event the user expects
-      //   (test-net-error-twice.js). To match libuv's IOCP-driven
-      //   behavior we treat `n == 0` (peer FIN) as a broken-pipe
-      //   signal AND retroactively flip the most recent successful
-      //   drain to EPIPE so the failure is reported even when the
-      //   queue emptied this tick.
-      //
-      // Gating on `!internal_received_data` distinguishes the two
-      // test scenarios cleanly: test-net-allow-half-open's peer
-      // sends 1024 bytes before FIN (received_data=true → probe
-      // skipped, the queued 'asd' write completes normally), while
-      // test-net-error-twice's peer destroys without writing
-      // (received_data stays false → probe fires).
-      if !(*tcp_ptr).internal_received_data
-        && let Some(ref stream) = (*tcp_ptr).internal_stream
-        && let Poll::Ready(Ok(())) = stream.poll_read_ready(cx)
-      {
-        // Peek (without consuming) to check for errors. MSG_PEEK
-        // avoids consuming data that might belong to a higher-level
-        // protocol (e.g. TLS).
-        #[cfg(unix)]
-        let n = {
-          use std::os::unix::io::AsRawFd;
-          let fd = stream.as_raw_fd();
-          let mut probe = [0u8; 1];
-          libc::recv(fd, probe.as_mut_ptr() as *mut c_void, 1, libc::MSG_PEEK)
-            as i32
-        };
-        #[cfg(windows)]
-        let n = {
-          use std::os::windows::io::AsRawSocket;
-          unsafe extern "system" {
-            fn recv(
-              s: usize,
-              buf: *mut c_void,
-              len: c_int,
-              flags: c_int,
-            ) -> c_int;
-          }
-          const MSG_PEEK: c_int = 0x2;
-          let socket = stream.as_raw_socket() as usize;
-          let mut probe = [0u8; 1];
-          recv(socket, probe.as_mut_ptr() as *mut c_void, 1, MSG_PEEK)
-        };
-        #[cfg(windows)]
-        if n == 0 {
-          // Windows: peer FIN observed and we never received any
-          // data on this connection. Either writes are stuck (queue
-          // non-empty) or the kernel send buffer absorbed the
-          // entire payload silently (queue empty after this tick's
-          // drain). In both cases the writes won't be delivered to
-          // the peer's process — drain the residual queue, and
-          // retroactively flip the most recent successful drain so
-          // the JS layer sees the error libuv would have reported
-          // via IOCP.
-          while let Some(pw) = (*tcp_ptr).internal_write_queue.pop_front() {
-            completed_writes.push((pw.req, pw.cb, UV_EPIPE));
-          }
-          if let Some(last) = completed_writes.last_mut()
-            && last.2 == 0
-          {
-            last.2 = UV_EPIPE;
-          }
-        }
-        if n < 0 {
-          let err = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
-          #[cfg(unix)]
-          let would_block = err == libc::EAGAIN || err == libc::EWOULDBLOCK;
-          #[cfg(windows)]
-          let would_block = err == 10035; // WSAEWOULDBLOCK
-          if !would_block {
-            // Real recv error (e.g. ECONNRESET) — connection is broken.
-            while let Some(pw) = (*tcp_ptr).internal_write_queue.pop_front() {
-              completed_writes.push((pw.req, pw.cb, UV_EPIPE));
-            }
-          }
-          // EAGAIN/EWOULDBLOCK means no data yet, connection alive
-        }
-        // unix `n == 0`: peer FIN, half-close — write side still
-        //   valid; let try_write report any actual breakage.
-        // `n  >  0`: data available, connection alive (not consumed).
       }
     }
   }
