@@ -3,6 +3,7 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::rc::Rc;
 use std::task::Waker;
@@ -40,6 +41,11 @@ pub struct LoaderHookRegistry {
   pub resolve_active: Rc<Cell<bool>>,
   pub load_active: Rc<Cell<bool>>,
   next_id: Rc<Cell<u32>>,
+
+  /// Specifiers that were intercepted by a resolve hook (not fallthrough).
+  /// These are virtual modules that should skip prepare_load since they
+  /// don't exist on disk.
+  pub hook_intercepted_specifiers: Rc<RefCell<HashSet<String>>>,
 
   pending_resolves: Rc<RefCell<VecDeque<PendingResolve>>>,
   resolve_waker: Rc<RefCell<Option<Waker>>>,

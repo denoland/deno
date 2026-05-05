@@ -1022,7 +1022,16 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           };
           match hook_result {
             Ok(Some(url)) => {
-              ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err)
+              let parsed =
+                ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err)?;
+              // Track that this specifier was hook-intercepted (virtual module)
+              // so prepare_load knows to skip graph building for it.
+              inner
+                .hook_registry
+                .hook_intercepted_specifiers
+                .borrow_mut()
+                .insert(parsed.to_string());
+              Ok(parsed)
             }
             Ok(None) => {
               // Fallthrough: hooks didn't intercept, use default
@@ -1174,10 +1183,16 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
-    // When ESM hooks are active, skip graph preparation — hooked modules
-    // may be virtual and can't be fetched by the module graph builder.
-    if self.0.hook_registry.resolve_active.get()
-      || self.0.hook_registry.load_active.get()
+    // Skip graph preparation only for specifiers that were intercepted by a
+    // resolve hook (virtual modules that don't exist on disk). Fallthrough
+    // specifiers still need normal prepare_load for graph building and
+    // permission checks.
+    if self
+      .0
+      .hook_registry
+      .hook_intercepted_specifiers
+      .borrow()
+      .contains(specifier.as_str())
     {
       self.0.shared.has_js_execution_started_flag.raise();
       return Box::pin(deno_core::futures::future::ready(Ok(())));
