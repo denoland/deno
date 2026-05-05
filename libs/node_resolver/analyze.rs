@@ -425,7 +425,9 @@ impl<
       } else if let Some(main) =
         self.node_resolver.legacy_fallback_resolve(&package_json)
       {
-        return Ok(Some(UrlOrPath::Path(module_dir.join(main).clean())));
+        return self
+          .file_extension_probe(module_dir.join(main), referrer_path)
+          .map(|p| Some(UrlOrPath::Path(p)));
       } else {
         return Ok(Some(UrlOrPath::Path(module_dir.join("index.js").clean())));
       }
