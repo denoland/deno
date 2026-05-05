@@ -1305,15 +1305,21 @@ pub(crate) unsafe fn poll_tcp_handle(
         let _ = stream.poll_write_ready(cx);
 
         // Also poll read readiness when writes are pending. This ensures
-        // we detect a broken connection (peer close / RST) promptly via
+        // we detect a hard error on the connection (RST) promptly via
         // the readable side, rather than waiting for a TCP retransmit
         // timeout on the write side.
+        //
+        // Note: an EOF/FIN on the read side does NOT imply the write
+        // side is broken — TCP half-close is valid (peer stopped
+        // sending but is still reading). Only treat MSG_PEEK errors
+        // as a broken connection here; EOF is observed and handled
+        // through the normal read path.
         if !(*tcp_ptr).internal_reading
           && let Poll::Ready(Ok(())) = stream.poll_read_ready(cx)
         {
           // Read side is ready -- peek (without consuming) to check
-          // for EOF or errors. Using MSG_PEEK avoids consuming data
-          // that might belong to a higher-level protocol (e.g. TLS).
+          // for errors. Using MSG_PEEK avoids consuming data that
+          // might belong to a higher-level protocol (e.g. TLS).
           #[cfg(unix)]
           let n = {
             use std::os::unix::io::AsRawFd;
@@ -1338,13 +1344,7 @@ pub(crate) unsafe fn poll_tcp_handle(
             let mut probe = [0u8; 1];
             recv(socket, probe.as_mut_ptr() as *mut c_void, 1, MSG_PEEK)
           };
-          if n == 0 {
-            // EOF — the connection is broken.
-            // Drain the entire write queue with EPIPE.
-            while let Some(pw) = (*tcp_ptr).internal_write_queue.pop_front() {
-              completed_writes.push((pw.req, pw.cb, UV_EPIPE));
-            }
-          } else if n < 0 {
+          if n < 0 {
             let err =
               std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
             #[cfg(unix)]
@@ -1359,7 +1359,8 @@ pub(crate) unsafe fn poll_tcp_handle(
             }
             // EAGAIN/EWOULDBLOCK means no data yet, connection alive
           }
-          // n > 0 means data available, connection alive (data not consumed)
+          // n == 0: peer FIN, half-close — write side still valid.
+          // n >  0: data available, connection alive (not consumed).
         }
       }
 
