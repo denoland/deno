@@ -50,6 +50,13 @@ impl<TSys: EmitCacheSys> EmitCache<TSys> {
       }
     };
 
+    log::debug!("Emit cache version: {:?}", cache_version);
+    log::debug!(
+      "Emit cache xxhash64 check: {}",
+      twox_hash::XxHash64::oneshot(0, b"test")
+    );
+    log::debug!("Emit cache mode: {:?}", mode);
+
     Self {
       disk_cache,
       emit_failed_flag: Default::default(),
@@ -69,13 +76,15 @@ impl<TSys: EmitCacheSys> EmitCache<TSys> {
   pub fn get_emit_code(
     &self,
     specifier: &Url,
+    transpile_and_emit_options_hash: u64,
     expected_source_hash: u64,
   ) -> Option<String> {
     if matches!(self.mode, Mode::Disable) {
       return None;
     }
 
-    let emit_filename = self.get_emit_filename(specifier)?;
+    let emit_filename =
+      self.get_emit_filename(specifier, transpile_and_emit_options_hash)?;
     let bytes = self.disk_cache.get(&emit_filename).ok()?;
     self
       .file_serializer
@@ -83,8 +92,19 @@ impl<TSys: EmitCacheSys> EmitCache<TSys> {
   }
 
   /// Sets the emit code in the cache.
-  pub fn set_emit_code(&self, specifier: &Url, source_hash: u64, code: &[u8]) {
-    if let Err(err) = self.set_emit_code_result(specifier, source_hash, code) {
+  pub fn set_emit_code(
+    &self,
+    specifier: &Url,
+    transpile_and_emit_options_hash: u64,
+    source_hash: u64,
+    code: &[u8],
+  ) {
+    if let Err(err) = self.set_emit_code_result(
+      specifier,
+      transpile_and_emit_options_hash,
+      source_hash,
+      code,
+    ) {
       // might error in cases such as a readonly file system
       log::debug!("Error saving emit data ({}): {}", specifier, err);
       // assume the cache can't be written to and disable caching to it
@@ -95,6 +115,7 @@ impl<TSys: EmitCacheSys> EmitCache<TSys> {
   fn set_emit_code_result(
     &self,
     specifier: &Url,
+    transpile_and_emit_options_hash: u64,
     source_hash: u64,
     code: &[u8],
   ) -> Result<(), AnyError> {
@@ -104,7 +125,7 @@ impl<TSys: EmitCacheSys> EmitCache<TSys> {
     }
 
     let emit_filename = self
-      .get_emit_filename(specifier)
+      .get_emit_filename(specifier, transpile_and_emit_options_hash)
       .ok_or_else(|| anyhow!("Could not get emit filename."))?;
     let cache_data = self.file_serializer.serialize(code, source_hash);
     self.disk_cache.set(&emit_filename, &cache_data)?;
@@ -112,10 +133,18 @@ impl<TSys: EmitCacheSys> EmitCache<TSys> {
     Ok(())
   }
 
-  fn get_emit_filename(&self, specifier: &Url) -> Option<PathBuf> {
-    self
+  fn get_emit_filename(
+    &self,
+    specifier: &Url,
+    transpile_and_emit_options_hash: u64,
+  ) -> Option<PathBuf> {
+    let suffix = self
       .disk_cache
-      .get_cache_filename_with_extension(specifier, "js")
+      .get_cache_filename_with_extension(specifier, "js")?;
+    let mut path =
+      PathBuf::from(format!("{:016x}", transpile_and_emit_options_hash));
+    path.push(suffix);
+    Some(path)
   }
 }
 
@@ -141,11 +170,22 @@ impl EmitFileSerializer {
     // verify the meta data file is for this source and CLI version
     let source_hash = source_hash.parse::<u64>().ok()?;
     if source_hash != expected_source_hash {
+      log::debug!(
+        "Emit cache source hash mismatch (expected: {}, actual: {})",
+        expected_source_hash,
+        source_hash
+      );
       return None;
     }
     let emit_hash = emit_hash.parse::<u64>().ok()?;
     // prevent using an emit from a different cli version or emits that were tampered with
-    if emit_hash != self.compute_emit_hash(content) {
+    let expected_emit_hash = self.compute_emit_hash(content);
+    if emit_hash != expected_emit_hash {
+      log::debug!(
+        "Emit cache emit hash mismatch (expected: {}, actual: {})",
+        expected_emit_hash,
+        emit_hash
+      );
       return None;
     }
 
@@ -212,19 +252,19 @@ mod test {
       temp_dir.path().join("file2.ts").as_path(),
     )
     .unwrap();
-    assert_eq!(cache.get_emit_code(&specifier1, 1), None);
+    assert_eq!(cache.get_emit_code(&specifier1, 1, 1), None);
     let emit_code1 = "text1".to_string();
     let emit_code2 = "text2".to_string();
-    cache.set_emit_code(&specifier1, 10, emit_code1.as_bytes());
-    cache.set_emit_code(&specifier2, 2, emit_code2.as_bytes());
+    cache.set_emit_code(&specifier1, 1, 10, emit_code1.as_bytes());
+    cache.set_emit_code(&specifier2, 1, 2, emit_code2.as_bytes());
     // providing the incorrect source hash
-    assert_eq!(cache.get_emit_code(&specifier1, 5), None);
+    assert_eq!(cache.get_emit_code(&specifier1, 1, 5), None);
     // providing the correct source hash
     assert_eq!(
-      cache.get_emit_code(&specifier1, 10),
+      cache.get_emit_code(&specifier1, 1, 10),
       Some(emit_code1.clone()),
     );
-    assert_eq!(cache.get_emit_code(&specifier2, 2), Some(emit_code2));
+    assert_eq!(cache.get_emit_code(&specifier2, 1, 2), Some(emit_code2));
 
     // try changing the cli version (should not load previous ones)
     let cache = EmitCache {
@@ -235,8 +275,8 @@ mod test {
       emit_failed_flag: Default::default(),
       mode: Mode::Normal,
     };
-    assert_eq!(cache.get_emit_code(&specifier1, 10), None);
-    cache.set_emit_code(&specifier1, 5, emit_code1.as_bytes());
+    assert_eq!(cache.get_emit_code(&specifier1, 1, 10), None);
+    cache.set_emit_code(&specifier1, 1, 5, emit_code1.as_bytes());
 
     // recreating the cache should still load the data because the CLI version is the same
     let cache = EmitCache {
@@ -247,12 +287,21 @@ mod test {
       emit_failed_flag: Default::default(),
       mode: Mode::Normal,
     };
-    assert_eq!(cache.get_emit_code(&specifier1, 5), Some(emit_code1));
+    assert_eq!(cache.get_emit_code(&specifier1, 1, 5), Some(emit_code1));
 
     // adding when already exists should not cause issue
     let emit_code3 = "asdf".to_string();
-    cache.set_emit_code(&specifier1, 20, emit_code3.as_bytes());
-    assert_eq!(cache.get_emit_code(&specifier1, 5), None);
-    assert_eq!(cache.get_emit_code(&specifier1, 20), Some(emit_code3));
+    cache.set_emit_code(&specifier1, 1, 20, emit_code3.as_bytes());
+    assert_eq!(cache.get_emit_code(&specifier1, 1, 5), None);
+    assert_eq!(
+      cache.get_emit_code(&specifier1, 1, 20).as_deref(),
+      Some(&*emit_code3)
+    );
+
+    // different transpile options should not conflict
+    let emit_code4 = "qwerty".to_string();
+    cache.set_emit_code(&specifier1, 2, 20, emit_code4.as_bytes());
+    assert_eq!(cache.get_emit_code(&specifier1, 1, 20), Some(emit_code3));
+    assert_eq!(cache.get_emit_code(&specifier1, 2, 20), Some(emit_code4));
   }
 }
