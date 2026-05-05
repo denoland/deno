@@ -4169,6 +4169,7 @@ impl Inner {
   async fn post_did_change_workspace_folders(&mut self) {
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
+    self.update_cache();
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
     self.refresh_linter_resolver();
