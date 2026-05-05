@@ -1,0 +1,4 @@
+[WILDCARD]deno bump-version is experimental and subject to change[WILDCARD]
+[WILDCARD]@y/a[WILDLINE]
+[WILDCARD]@y/b[WILDLINE]
+[dry-run] Skipping file writes.

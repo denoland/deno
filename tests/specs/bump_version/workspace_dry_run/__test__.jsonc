@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "bump-version major --dry-run",
+    "output": "dry.out"
+  }, {
+    "args": "run --allow-read --quiet --no-config check.ts",
+    "output": "check.out"
+  }]
+}

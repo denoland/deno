@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "bump-version patch",
+    "output": "patch.out"
+  }, {
+    "args": "bump-version",
+    "output": "after.out"
+  }]
+}

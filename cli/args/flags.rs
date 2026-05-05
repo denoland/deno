@@ -146,9 +146,25 @@ pub struct RemoveFlags {
   pub lockfile_only: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct VersionFlags {
   pub increment: Option<VersionIncrement>,
+  /// Bump every package in the workspace. Defaults to true when invoked at the
+  /// workspace root and the workspace has more than one member with a version.
+  pub workspace: Option<bool>,
+  /// When in workspace mode without an explicit increment, derive bumps from
+  /// commit messages between `start` and `base`. The default for both is to
+  /// fall back to git (latest tag and current branch respectively).
+  pub start: Option<String>,
+  pub base: Option<String>,
+  /// Path to the import map to rewrite jsr: version constraints in. Defaults
+  /// to the root deno.json (or whatever its `importMap` field points to).
+  pub import_map: Option<String>,
+  /// Path to the release notes markdown file to prepend in conventional-commits
+  /// mode. Defaults to `Releases.md`.
+  pub release_notes: Option<String>,
+  /// Don't write any files; just print what would happen.
+  pub dry_run: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4830,25 +4846,88 @@ fn bump_version_subcommand() -> Command {
   <p(245)>deno bump-version prepatch</>    <p(245)># 1.4.6 -> 1.4.7-0</>
   <p(245)>deno bump-version preminor</>    <p(245)># 1.4.6 -> 1.5.0-0</>
   <p(245)>deno bump-version premajor</>    <p(245)># 1.4.6 -> 2.0.0-0</>
-  <p(245)>deno bump-version prerelease</>  <p(245)># 1.4.7-0 -> 1.4.7-1</>"
+  <p(245)>deno bump-version prerelease</>  <p(245)># 1.4.7-0 -> 1.4.7-1</>
+
+When invoked at a workspace root, the same increment is applied to every
+member package and jsr: references in the root import map are updated.
+Without an increment, per-package bumps are derived from conventional
+commit messages between the latest tag and the current branch and a
+release note is prepended to <p(245)>Releases.md</>."
     ),
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
-    cmd.arg(
-      Arg::new("increment")
-        .help("Version increment type")
-        .value_parser([
-          "major",
-          "minor",
-          "patch",
-          "premajor",
-          "preminor",
-          "prepatch",
-          "prerelease",
-        ])
-        .index(1),
-    )
+    cmd
+      .arg(
+        Arg::new("increment")
+          .help("Version increment type")
+          .value_parser([
+            "major",
+            "minor",
+            "patch",
+            "premajor",
+            "preminor",
+            "prepatch",
+            "prerelease",
+          ])
+          .index(1),
+      )
+      .arg(
+        Arg::new("workspace")
+          .long("workspace")
+          .short('w')
+          .help(
+            "Bump every package in the workspace (auto-detected at the workspace root)",
+          )
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("no-workspace")
+          .long("no-workspace")
+          .help(
+            "Disable workspace mode and only bump the deno.json/package.json in the current directory",
+          )
+          .conflicts_with("workspace")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("dry-run")
+          .long("dry-run")
+          .help("Print the planned changes without writing any files")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("start")
+          .long("start")
+          .value_name("REF")
+          .help(
+            "[conventional-commits mode] Git ref to start from. Default: latest tag (git describe --tags --abbrev=0)",
+          ),
+      )
+      .arg(
+        Arg::new("base")
+          .long("base")
+          .value_name("REF")
+          .help(
+            "[conventional-commits mode] Git ref to compare against. Default: current branch",
+          ),
+      )
+      .arg(
+        Arg::new("import-map")
+          .long("import-map")
+          .value_name("PATH")
+          .help(
+            "Path to the import map to rewrite jsr: version constraints in. Defaults to the root deno.json (or its importMap target)",
+          ),
+      )
+      .arg(
+        Arg::new("release-notes")
+          .long("release-notes")
+          .value_name("PATH")
+          .help(
+            "[conventional-commits mode] Path to the release notes file to prepend. Default: Releases.md",
+          ),
+      )
   })
 }
 
@@ -6324,7 +6403,23 @@ fn bump_version_parse(flags: &mut Flags, matches: &mut ArgMatches) {
         _ => None,
       });
 
-  flags.subcommand = DenoSubcommand::BumpVersion(VersionFlags { increment });
+  let workspace = if matches.get_flag("workspace") {
+    Some(true)
+  } else if matches.get_flag("no-workspace") {
+    Some(false)
+  } else {
+    None
+  };
+
+  flags.subcommand = DenoSubcommand::BumpVersion(VersionFlags {
+    increment,
+    workspace,
+    start: matches.remove_one::<String>("start"),
+    base: matches.remove_one::<String>("base"),
+    import_map: matches.remove_one::<String>("import-map"),
+    release_notes: matches.remove_one::<String>("release-notes"),
+    dry_run: matches.get_flag("dry-run"),
+  });
 }
 
 fn outdated_parse(
@@ -15943,6 +16038,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       Flags {
         subcommand: DenoSubcommand::BumpVersion(VersionFlags {
           increment: Some(VersionIncrement::Patch),
+          ..Default::default()
         }),
         ..Flags::default()
       }
@@ -15957,6 +16053,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       Flags {
         subcommand: DenoSubcommand::BumpVersion(VersionFlags {
           increment: Some(VersionIncrement::Minor),
+          ..Default::default()
         }),
         ..Flags::default()
       }
@@ -15971,6 +16068,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       Flags {
         subcommand: DenoSubcommand::BumpVersion(VersionFlags {
           increment: Some(VersionIncrement::Major),
+          ..Default::default()
         }),
         ..Flags::default()
       }
@@ -15985,6 +16083,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       Flags {
         subcommand: DenoSubcommand::BumpVersion(VersionFlags {
           increment: Some(VersionIncrement::Prerelease),
+          ..Default::default()
         }),
         ..Flags::default()
       }
@@ -15999,6 +16098,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       Flags {
         subcommand: DenoSubcommand::BumpVersion(VersionFlags {
           increment: Some(VersionIncrement::Premajor),
+          ..Default::default()
         }),
         ..Flags::default()
       }
@@ -16013,6 +16113,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       Flags {
         subcommand: DenoSubcommand::BumpVersion(VersionFlags {
           increment: Some(VersionIncrement::Preminor),
+          ..Default::default()
         }),
         ..Flags::default()
       }
@@ -16027,6 +16128,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       Flags {
         subcommand: DenoSubcommand::BumpVersion(VersionFlags {
           increment: Some(VersionIncrement::Prepatch),
+          ..Default::default()
         }),
         ..Flags::default()
       }
@@ -16039,9 +16141,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
-          increment: None,
-        }),
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags::default()),
         ..Flags::default()
       }
     );
@@ -16051,6 +16151,56 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
   fn bump_version_invalid_increment() {
     let r = flags_from_vec(svec!["deno", "bump-version", "invalid"]);
     assert!(r.is_err());
+  }
+
+  #[test]
+  fn bump_version_workspace_flags() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "bump-version",
+      "--workspace",
+      "--dry-run",
+      "--start",
+      "v1.0.0",
+      "--base",
+      "main",
+      "--import-map",
+      "import_map.json",
+      "--release-notes",
+      "Releases.md",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: None,
+          workspace: Some(true),
+          dry_run: true,
+          start: Some("v1.0.0".to_string()),
+          base: Some("main".to_string()),
+          import_map: Some("import_map.json".to_string()),
+          release_notes: Some("Releases.md".to_string()),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_no_workspace() {
+    let r =
+      flags_from_vec(svec!["deno", "bump-version", "patch", "--no-workspace"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Patch),
+          workspace: Some(false),
+          ..Default::default()
+        }),
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
