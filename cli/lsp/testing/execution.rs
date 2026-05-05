@@ -331,6 +331,8 @@ impl TestRun {
               filter,
               shuffle: None,
               trace_leaks: false,
+              sanitize_ops: false,
+              sanitize_resources: false,
             },
           ))
         }
