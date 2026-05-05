@@ -665,6 +665,7 @@ pub struct BundleFlags {
   pub sourcemap: Option<SourceMapType>,
   pub platform: BundlePlatform,
   pub watch: bool,
+  pub declaration: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2708,6 +2709,12 @@ If no output file is given, the output is written to standard output:
           .num_args(1)
           .value_parser(clap::builder::ValueParser::new(platform_parser))
           .default_value("deno"),
+      )
+      .arg(
+        Arg::new("declaration")
+          .long("declaration")
+          .help("Generate .d.ts declaration files alongside the bundle")
+          .action(ArgAction::SetTrue),
       )
       .arg(allow_scripts_arg())
       .arg(allow_import_arg())
@@ -6435,6 +6442,7 @@ fn bundle_parse(
     inline_imports: matches.get_flag("inline-imports"),
     platform: matches.remove_one::<BundlePlatform>("platform").unwrap(),
     sourcemap: matches.remove_one::<SourceMapType>("sourcemap"),
+    declaration: matches.get_flag("declaration"),
   });
   Ok(())
 }
