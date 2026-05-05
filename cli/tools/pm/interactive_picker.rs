@@ -113,7 +113,7 @@ where
     static_text.eprint_items(rendered_items.iter());
 
     let event = crossterm::event::read()?;
-    #[allow(clippy::single_match)]
+    #[allow(clippy::single_match, reason = "more clear")]
     match event {
       crossterm::event::Event::Key(KeyEvent {
         kind: KeyEventKind::Press,

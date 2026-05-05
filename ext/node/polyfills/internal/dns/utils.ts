@@ -23,13 +23,16 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { getOptionValue } from "ext:deno_node/internal/options.ts";
+import { core } from "ext:core/mod.js";
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
 import { emitWarning } from "node:process";
-import {
+const {
   AI_ADDRCONFIG,
   AI_ALL,
   AI_V4MAPPED,
-} from "ext:deno_node/internal_binding/ares.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/ares.ts");
 import {
   ChannelWrap,
   DNS_ORDER_IPV4_FIRST,
@@ -37,18 +40,18 @@ import {
   DNS_ORDER_VERBATIM,
   strerror,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
-import {
+const {
   ERR_DNS_SET_SERVERS_FAILED,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_IP_ADDRESS,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import {
+const {
   validateArray,
   validateInt32,
   validateOneOf,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { isIP } from "ext:deno_node/internal/net.ts";
 
 export interface LookupOptions {
@@ -237,12 +240,21 @@ export function validateTries(options?: { tries?: number }) {
   return tries;
 }
 
+export function validateMaxTimeout(
+  options?: { maxTimeout?: number },
+): number {
+  if (options?.maxTimeout === undefined) return -1; // no cap
+  validateInt32(options.maxTimeout, "options.maxTimeout", 0, 2 ** 31 - 1);
+  return options.maxTimeout;
+}
+
 export interface ResolverOptions {
   timeout?: number | undefined;
   /**
    * @default 4
    */
   tries?: number;
+  maxTimeout?: number | undefined;
 }
 
 /**
@@ -288,7 +300,8 @@ export class Resolver {
   constructor(options?: ResolverOptions) {
     const timeout = validateTimeout(options);
     const tries = validateTries(options);
-    this._handle = new ChannelWrap(timeout, tries);
+    const maxTimeout = validateMaxTimeout(options);
+    this._handle = new ChannelWrap(timeout, tries, maxTimeout);
   }
 
   cancel() {
@@ -425,10 +438,17 @@ export function emitInvalidHostnameWarning(hostname: string) {
   );
 }
 
-let dnsOrder = getOptionValue("--dns-result-order") || "ipv4first";
+let dnsOrder: string | undefined;
+
+function ensureDnsOrder(): string {
+  if (dnsOrder === undefined) {
+    dnsOrder = getOptionValue("--dns-result-order") || "ipv4first";
+  }
+  return dnsOrder;
+}
 
 export function getDefaultDnsOrder(): string {
-  return dnsOrder;
+  return ensureDnsOrder();
 }
 
 const validDnsOrders = ["verbatim", "ipv4first", "ipv6first"];

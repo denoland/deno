@@ -3,9 +3,14 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import { Buffer } from "node:buffer";
-import { encodeStr, hexTable } from "ext:deno_node/internal/querystring.ts";
-import { unhexTable } from "ext:deno_node/internal_binding/_utils.ts";
+const { encodeStr, hexTable } = core.loadExtScript(
+  "ext:deno_node/internal/querystring.ts",
+);
+const { unhexTable } = core.loadExtScript(
+  "ext:deno_node/internal_binding/_utils.ts",
+);
 
 /**
  * Alias of querystring.parse()

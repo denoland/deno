@@ -96,7 +96,7 @@ impl FileOrRedirect {
         url: url.clone(),
         mtime: None,
         maybe_headers: Some(cache_entry.metadata.headers),
-        #[allow(clippy::disallowed_types)] // ok for source
+        #[allow(clippy::disallowed_types, reason = "ok for source")]
         source: std::sync::Arc::from(cache_entry.content),
         loaded_from: LoadedFrom::Cache,
       }))
@@ -119,7 +119,7 @@ impl From<FileOrRedirect> for CachedOrRedirect {
   }
 }
 
-#[allow(clippy::disallowed_types)] // ok for source
+#[allow(clippy::disallowed_types, reason = "ok for source")]
 type FileSource = std::sync::Arc<[u8]>;
 
 /// A structure representing a source file.
@@ -162,7 +162,7 @@ impl File {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "arc wrapper type")]
 pub type MemoryFilesRc = deno_maybe_sync::MaybeArc<dyn MemoryFiles>;
 
 pub trait MemoryFiles: std::fmt::Debug + MaybeSend + MaybeSync {
@@ -709,7 +709,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
       mtime: None,
       maybe_headers: Some(headers),
       loaded_from: LoadedFrom::Local,
-      #[allow(clippy::disallowed_types)] // ok for source
+      #[allow(clippy::disallowed_types, reason = "ok for source")]
       source: std::sync::Arc::from(bytes),
     })
   }
@@ -738,7 +738,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
       mtime: None,
       maybe_headers: Some(headers),
       loaded_from: LoadedFrom::Local,
-      #[allow(clippy::disallowed_types)] // ok for source
+      #[allow(clippy::disallowed_types, reason = "ok for source")]
       source: std::sync::Arc::from(blob.bytes),
     })
   }
@@ -841,7 +841,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
           url: url.clone(),
           mtime: None,
           maybe_headers: Some(headers),
-          #[allow(clippy::disallowed_types)] // ok for source
+          #[allow(clippy::disallowed_types, reason = "ok for source")]
           source: std::sync::Arc::from(bytes),
           loaded_from: LoadedFrom::Remote,
         }))

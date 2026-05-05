@@ -2,18 +2,19 @@
 
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
-#![allow(clippy::too_many_arguments)]
+#![allow(
+  clippy::too_many_arguments,
+  reason = "op macro expansion causes issues"
+)]
 
 use std::borrow::Cow;
 use std::env;
-use std::fs;
 use std::path::Path;
 
 use deno_core::FastString;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_core::url::Url;
-#[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_error::JsErrorBox;
@@ -28,7 +29,6 @@ use node_resolver::errors::PackageJsonLoadError;
 
 extern crate libz_sys as zlib;
 
-mod global;
 pub mod ops;
 
 use deno_dotenv::parse_env_content_hook;
@@ -36,7 +36,6 @@ pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
 pub use node_resolver::PathClean;
-use ops::handle_wrap::AsyncId;
 pub use ops::ipc::ChildPipeFd;
 use ops::vm;
 pub use ops::vm::ContextInitMode;
@@ -44,16 +43,11 @@ pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 
-use self::ops::util::NullEnvVarsSys;
-pub use crate::global::GlobalsStorage;
-use crate::global::global_object_middleware;
-use crate::global::global_template_middleware;
-
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NodeRequireLoaderRc = std::rc::Rc<dyn NodeRequireLoader>;
 
 pub trait NodeRequireLoader {
@@ -102,7 +96,7 @@ fn op_node_build_os() -> String {
 enum DotEnvLoadErr {
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] std::io::Error),
+  Fs(#[from] deno_io::fs::FsError),
   #[class(inherit)]
   #[error(transparent)]
   Permission(
@@ -118,6 +112,7 @@ fn op_node_load_env_file(
   state: &mut OpState,
   #[string] path: &str,
 ) -> Result<(), DotEnvLoadErr> {
+  let fs = state.borrow::<deno_fs::FileSystemRc>().clone();
   let path = state
     .borrow::<PermissionsContainer>()
     .check_open(
@@ -127,10 +122,8 @@ fn op_node_load_env_file(
     )
     .map_err(DotEnvLoadErr::Permission)?;
 
-  #[allow(clippy::disallowed_methods)]
-  let contents = fs::read_to_string(path)?;
-
-  parse_env_content_hook(&NullEnvVarsSys, &contents, |key, value| {
+  let contents = fs.read_text_file_lossy_sync(&path)?;
+  parse_env_content_hook(&contents, &mut |key, value| {
     // Follows Node.js behavior where null bytes are stripped from env keys and values
     let key = if let Some(null_pos) = key.find('\0') {
       &key[..null_pos]
@@ -149,7 +142,6 @@ fn op_node_load_env_file(
     };
 
     // SAFETY: called during single-threaded initialization
-    #[allow(clippy::undocumented_unsafe_blocks)]
     unsafe {
       env::set_var(key, value);
     }
@@ -177,6 +169,12 @@ deno_core::extension!(deno_node,
   ops = [
     ops::assert::op_node_get_first_expression,
 
+    ops::module_hooks::op_module_hooks_register,
+    ops::module_hooks::op_module_hooks_poll_resolve,
+    ops::module_hooks::op_module_hooks_respond_resolve,
+    ops::module_hooks::op_module_hooks_poll_load,
+    ops::module_hooks::op_module_hooks_respond_load,
+
     ops::blocklist::op_socket_address_parse,
     ops::blocklist::op_socket_address_get_serialization,
 
@@ -186,6 +184,7 @@ deno_core::extension!(deno_node,
     ops::blocklist::op_blocklist_add_subnet,
     ops::blocklist::op_blocklist_check,
 
+    ops::buffer::op_mark_as_untransferable,
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
     ops::buffer::op_transcode,
@@ -211,10 +210,35 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_rmdir,
     ops::fs::op_node_statfs_sync,
     ops::fs::op_node_statfs,
-    ops::fs::op_node_file_from_fd,
+    ops::fs::op_node_create_pipe,
+    ops::fs::op_node_fd_set_blocking,
+    ops::fs::op_node_fs_close,
+    ops::fs::op_node_fs_read_sync,
+    ops::fs::op_node_fs_read_deferred,
+    ops::fs::op_node_fs_write_sync,
+    ops::fs::op_node_fs_write_deferred,
+    ops::fs::op_node_fs_seek_sync,
+    ops::fs::op_node_fs_seek,
+    ops::fs::op_node_fs_fstat_sync,
+    ops::fs::op_node_fs_fstat,
+    ops::fs::op_node_fs_ftruncate_sync,
+    ops::fs::op_node_fs_ftruncate,
+    ops::fs::op_node_fs_fsync_sync,
+    ops::fs::op_node_fs_fsync,
+    ops::fs::op_node_fs_fdatasync_sync,
+    ops::fs::op_node_fs_fdatasync,
+    ops::fs::op_node_fs_futimes_sync,
+    ops::fs::op_node_fs_futimes,
+    ops::fs::op_node_fs_fchmod_sync,
+    ops::fs::op_node_fs_fchmod,
+    ops::fs::op_node_fs_fchown_sync,
+    ops::fs::op_node_fs_fchown,
+    ops::fs::op_node_fs_read_file_sync,
+    ops::fs::op_node_fs_read_file,
     ops::fs::op_node_cp_check_paths_recursive,
     ops::fs::op_node_cp_on_file,
     ops::fs::op_node_cp_on_link,
+    ops::fs::op_node_cp_sync,
     ops::fs::op_node_cp_validate_and_prepare,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
@@ -250,6 +274,15 @@ deno_core::extension!(deno_node,
     ops::vm::op_vm_compile_function,
     ops::vm::op_vm_script_get_source_map_url,
     ops::vm::op_vm_script_create_cached_data,
+    ops::vm::op_vm_module_create_source_text_module,
+    ops::vm::op_vm_module_link,
+    ops::vm::op_vm_module_instantiate,
+    ops::vm::op_vm_module_evaluate,
+    ops::vm::op_vm_module_get_status,
+    ops::vm::op_vm_module_get_namespace,
+    ops::vm::op_vm_module_get_exception,
+    ops::vm::op_vm_module_get_module_requests,
+    ops::vm::op_vm_module_get_identifier,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
     ops::idna::op_node_idna_punycode_to_ascii,
@@ -259,19 +292,20 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_crc32,
     ops::zlib::op_zlib_crc32_string,
     ops::handle_wrap::op_node_new_async_id,
-    ops::http::op_node_http_fetch_response_upgrade,
-    ops::http::op_node_http_request_with_conn,
-    ops::http::op_node_http_response_reclaim_conn,
-    ops::http::op_node_http_await_information,
-    ops::http::op_node_http_await_response,
-    ops::http2::op_http2_constants,
     ops::http2::op_http2_callbacks,
+    // Keep the HTTP/2 error-string op wired so `internal/test/binding`
+    // can mirror Node's `internalBinding('http2').nghttp2ErrorString()`
+    // in node_compat tests; the JS side also exposes `respond` /
+    // `pushPromise` shims on `Http2Stream` so tests can monkey-patch the
+    // prototype to inject NGHTTP2 error codes.
+    ops::http2::op_http2_error_string,
     ops::http2::op_http2_http_state,
     ops::os::op_node_os_get_priority,
     ops::os::op_node_os_set_priority,
     ops::os::op_node_os_user_info,
     ops::os::op_geteuid,
     ops::os::op_getegid,
+    ops::os::op_getgroups,
     ops::os::op_cpus,
     ops::os::op_homedir,
     op_node_build_os,
@@ -299,7 +333,6 @@ deno_core::extension!(deno_node,
     ops::require::op_require_package_imports_resolve<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
-    ops::util::op_node_is_tty,
     ops::util::op_node_view_has_buffer,
     ops::util::op_node_get_own_non_index_properties,
     ops::util::op_node_call_is_from_dependency<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
@@ -315,6 +348,7 @@ deno_core::extension!(deno_node,
     ops::ipc::op_node_ipc_buffer_constructor,
     ops::ipc::op_node_ipc_ref,
     ops::ipc::op_node_ipc_unref,
+    ops::process::op_node_process_set_title,
     ops::process::op_node_process_kill,
     ops::process::op_node_process_setegid,
     ops::process::op_node_process_seteuid,
@@ -325,6 +359,7 @@ deno_core::extension!(deno_node,
     ops::node_cli_parser::op_node_translate_cli_args,
     ops::shell::op_node_parse_shell_args,
     ops::tls::op_get_root_certificates,
+    ops::tls::op_node_get_ca_certificates<TSys>,
     ops::tls::op_set_default_ca_certificates,
     ops::tls::op_tls_peer_certificate,
     ops::tls::op_tls_canonicalize_ipv4_address,
@@ -353,99 +388,59 @@ deno_core::extension!(deno_node,
     ops::udp::op_node_udp_leave_source_specific,
     ops::udp::op_node_udp_send,
     ops::udp::op_node_udp_recv,
+    ops::stream_wrap::op_stream_base_register_state,
+    ops::tty_wrap::op_tty_check_fd_permission,
   ],
   objects = [
     ops::perf_hooks::EldHistogram,
     ops::handle_wrap::AsyncWrap,
     ops::handle_wrap::HandleWrap,
+    ops::stream_wrap::LibUvStreamWrap,
+    ops::tty_wrap::TTY,
     ops::zlib::BrotliDecoder,
     ops::zlib::BrotliEncoder,
     ops::zlib::Zlib,
     ops::zlib::ZstdCompress,
     ops::zlib::ZstdDecompress,
-    ops::libuv_stream::TCP,
+    ops::tcp_wrap::TCPWrap,
+    ops::pipe_wrap::PipeWrap,
+    ops::tls_wrap::TLSWrap,
+    ops::llhttp::binding::HTTPParser,
     ops::http2::Http2Session,
     ops::http2::Http2Stream,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
     dir "polyfills",
-    "00_globals.js",
     "02_init.js",
     "_events.mjs",
     "internal/fs/promises.ts",
-    "_fs/_fs_common.ts",
-    "_fs/_fs_constants.ts",
     "_fs/_fs_copy.ts",
-    "_fs/_fs_cp.ts",
     "_fs/cp/cp.ts",
     "_fs/cp/cp_sync.ts",
     "_fs/_fs_dir.ts",
     "_fs/_fs_exists.ts",
-    "_fs/_fs_fstat.ts",
     "_fs/_fs_glob.ts",
-    "_fs/_fs_lstat.ts",
     "_fs/_fs_lutimes.ts",
     "_fs/_fs_read.ts",
     "_fs/_fs_readdir.ts",
-    "_fs/_fs_readFile.ts",
-    "_fs/_fs_readlink.ts",
-    "_next_tick.ts",
-    "_process/exiting.ts",
-    "_process/process.ts",
     "_process/streams.mjs",
-    "_readline.mjs",
-    "_util/_util_callbackify.js",
-    "_util/async.ts",
-    "_util/os.ts",
-    "_utils.ts",
-    "_zlib_binding.mjs",
-    "internal_binding/_libuv_winerror.ts",
-    "internal_binding/_listen.ts",
-    "internal_binding/_node.ts",
     "internal_binding/_timingSafeEqual.ts",
-    "internal_binding/_utils.ts",
-    "internal_binding/ares.ts",
-    "internal_binding/async_wrap.ts",
-    "internal_binding/buffer.ts",
-    "internal_binding/cares_wrap.ts",
-    "internal_binding/connection_wrap.ts",
-    "internal_binding/constants.ts",
-    "internal_binding/crypto.ts",
-    "internal_binding/handle_wrap.ts",
     "internal_binding/http_parser.ts",
-    "internal_binding/mod.ts",
-    "internal_binding/node_file.ts",
-    "internal_binding/node_options.ts",
-    "internal_binding/pipe_wrap.ts",
-    "internal_binding/stream_wrap.ts",
-    "internal_binding/string_decoder.ts",
-    "internal_binding/symbols.ts",
-    "internal_binding/tcp_wrap.ts",
-    "internal_binding/tty_wrap.ts",
-    "internal_binding/types.ts",
     "internal_binding/udp_wrap.ts",
-    "internal_binding/util.ts",
-    "internal_binding/uv.ts",
-    "internal/assert/assertion_error.js",
-    "internal/assert/calltracker.js",
-    "internal/assert/myers_diff.js",
-    "internal/assert/utils.ts",
-    "internal/assert.mjs",
-    "internal/async_hooks.ts",
-    "internal/blocklist.mjs",
-    "internal/buffer.mjs",
     "internal/child_process.ts",
-    "internal/cli_table.ts",
+    "internal/cluster/child.ts",
+    "internal/cluster/linkedlist.ts",
+    "internal/cluster/primary.ts",
+    "internal/cluster/round_robin_handle.ts",
+    "internal/cluster/shared_handle.ts",
+    "internal/cluster/utils.ts",
+    "internal/cluster/worker.ts",
     "internal/console/constructor.mjs",
-    "internal/constants.ts",
-    "internal/crypto/_keys.ts",
     "internal/crypto/_randomBytes.ts",
     "internal/crypto/_randomFill.mjs",
-    "internal/crypto/_randomInt.ts",
     "internal/crypto/certificate.ts",
     "internal/crypto/cipher.ts",
-    "internal/crypto/constants.ts",
     "internal/crypto/diffiehellman.ts",
     "internal/crypto/hash.ts",
     "internal/crypto/hkdf.ts",
@@ -458,78 +453,61 @@ deno_core::extension!(deno_node,
     "internal/crypto/util.ts",
     "internal/crypto/x509.ts",
     "internal/dgram.ts",
-    "internal/dns/promises.ts",
     "internal/dns/utils.ts",
-    "internal/dtrace.ts",
-    "internal/error_codes.ts",
-    "internal/errors.ts",
-    "internal/errors/error_source.ts",
     "internal/event_target.mjs",
-    "internal/events/abort_listener.mjs",
-    "internal/fs/stat_utils.ts",
     "internal/fs/streams.mjs",
     "internal/fs/utils.mjs",
     "internal/fs/handle.ts",
-    "internal/hide_stack_frames.ts",
-    "internal/http.ts",
+    "internal/http2/core.ts",
     "internal/http2/util.ts",
     "internal/http2/compat.js",
-    "internal/idna.ts",
+    "internal/js_stream_socket.js",
     "internal/net.ts",
-    "internal/normalize_encoding.ts",
-    "internal/options.ts",
-    "internal/primordials.mjs",
-    "internal/process/per_thread.mjs",
     "internal/process/report.ts",
-    "internal/process/warning.ts",
-    "internal/querystring.ts",
-    "internal/readline/callbacks.mjs",
     "internal/readline/emitKeypressEvents.mjs",
     "internal/readline/interface.mjs",
-    "internal/readline/promises.mjs",
-    "internal/readline/symbols.mjs",
-    "internal/readline/utils.mjs",
     "internal/stream_base_commons.ts",
-    "internal/streams/add-abort-signal.js",
     "internal/streams/compose.js",
     "internal/streams/destroy.js",
     "internal/streams/duplexify.js",
     "internal/streams/duplexpair.js",
     "internal/streams/end-of-stream.js",
+    "internal/streams/fast-utf8-stream.js",
     "internal/streams/from.js",
     "internal/streams/lazy_transform.js",
     "internal/streams/legacy.js",
-    "internal/streams/operators.js",
     "internal/streams/pipeline.js",
     "internal/streams/state.js",
-    "internal/streams/utils.js",
-    "internal/test/binding.ts",
+    "internal/tls_common.js",
     "internal/timers.mjs",
     "internal/tty.js",
     "internal/url.ts",
-    "internal/util.mjs",
-    "internal/util/colors.ts",
     "internal/util/comparisons.ts",
-    "internal/util/debuglog.ts",
-    "internal/util/inspect.mjs",
     "internal/util/parse_args/parse_args.js",
-    "internal/util/parse_args/utils.js",
-    "internal/util/types.ts",
-    "internal/validators.mjs",
     "internal/webstreams/adapters.js",
-    "path/_constants.ts",
-    "path/_interface.ts",
-    "path/_util.ts",
     "path/_posix.ts",
     "path/_win32.ts",
-    "path/common.ts",
     "path/mod.ts",
-    "path/separator.ts",
     "readline/promises.ts",
-    "node:_http_agent" = "_http_agent.mjs",
-    "node:_http_common" = "_http_common.ts",
+    "_fs/_fs_common.ts",
+    "_fs/_fs_cp.ts",
+    "_fs/_fs_fstat.ts",
+    "_fs/_fs_lstat.ts",
+    "_readline.mjs",
+    "internal_binding/cares_wrap.ts",
+    "internal_binding/crypto.ts",
+    "internal_binding/mod.ts",
+    "internal/dns/promises.ts",
+    "internal/fs/stat_utils.ts",
+    "internal/streams/add-abort-signal.js",
+    "internal/streams/operators.js",
+    "internal/test/binding.ts",
+    "node:_http_agent" = "_http_agent.js",
+    "node:_http_client" = "_http_client.js",
+    "node:_http_common" = "_http_common.js",
+    "node:_http_incoming" = "_http_incoming.js",
     "node:_http_outgoing" = "_http_outgoing.ts",
-    "node:_http_server" = "_http_server.ts",
+    "node:_http_server" = "_http_server.js",
     "node:_stream_duplex" = "internal/streams/duplex.js",
     "node:_stream_passthrough" = "internal/streams/passthrough.js",
     "node:_stream_readable" = "internal/streams/readable.js",
@@ -598,12 +576,95 @@ deno_core::extension!(deno_node,
     dir "polyfills",
     "deps/minimatch.js",
   ],
+  lazy_loaded_js = [
+    dir "polyfills",
+    "internal/validators.mjs",
+    "internal/normalize_encoding.ts",
+    "internal/error_codes.ts",
+    "internal/hide_stack_frames.ts",
+    "internal/util/types.ts",
+    "internal/crypto/_keys.ts",
+    "internal/crypto/constants.ts",
+    "internal_binding/types.ts",
+    "_util/os.ts",
+    "_utils.ts",
+    "internal/primordials.mjs",
+    "internal_binding/constants.ts",
+    "internal_binding/_libuv_winerror.ts",
+    "internal_binding/uv.ts",
+    "internal/util/inspect.mjs",
+    "internal/errors.ts",
+    "internal/errors/error_source.ts",
+    "internal/util.mjs",
+    "_fs/_fs_constants.ts",
+    "_next_tick.ts",
+    "_process/exiting.ts",
+    "_process/process.ts",
+    "_util/_util_callbackify.js",
+    "_zlib_binding.mjs",
+    "internal_binding/_listen.ts",
+    "internal_binding/_node.ts",
+    "internal_binding/_utils.ts",
+    "internal_binding/ares.ts",
+    "internal_binding/async_wrap.ts",
+    "internal_binding/buffer.ts",
+    "internal_binding/handle_wrap.ts",
+    "internal_binding/http2.ts",
+    "internal_binding/node_file.ts",
+    "internal_binding/node_options.ts",
+    "internal_binding/pipe_wrap.ts",
+    "internal_binding/stream_wrap.ts",
+    "internal_binding/string_decoder.ts",
+    "internal_binding/symbols.ts",
+    "internal_binding/tcp_wrap.ts",
+    "internal_binding/tls_wrap.ts",
+    "internal_binding/tty_wrap.ts",
+    "internal_binding/util.ts",
+    "internal/assert/assertion_error.js",
+    "internal/assert/calltracker.js",
+    "internal/assert/myers_diff.js",
+    "internal/assert/utils.ts",
+    "internal/assert.mjs",
+    "internal/async_hooks.ts",
+    "internal/blocklist.mjs",
+    "internal/buffer.mjs",
+    "internal/cli_table.ts",
+    "internal/constants.ts",
+    "internal/crypto/_randomInt.ts",
+    "internal/deps/undici/undici.js",
+    "internal/dtrace.ts",
+    "internal/events/abort_listener.mjs",
+    "internal/fs/sync_write_stream.js",
+    "internal/http.ts",
+    "internal/http2/constants.ts",
+    "internal/idna.ts",
+    "internal/mime.ts",
+    "internal/options.ts",
+    "internal/priority_queue.ts",
+    "internal/process/per_thread.mjs",
+    "internal/process/warning.ts",
+    "internal/querystring.ts",
+    "internal/readline/callbacks.mjs",
+    "internal/readline/promises.mjs",
+    "internal/readline/symbols.mjs",
+    "internal/readline/utils.mjs",
+    "internal/streams/utils.js",
+    "internal/util/colors.ts",
+    "internal/util/debuglog.ts",
+    "internal/util/parse_args/utils.js",
+    "path/_constants.ts",
+    "path/_interface.ts",
+    "path/_util.ts",
+    "path/common.ts",
+    "path/separator.ts",
+  ],
   options = {
     maybe_init: Option<NodeExtInitServices<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>>,
     fs: deno_fs::FileSystemRc,
   },
   state = |state, options| {
     state.put(options.fs.clone());
+    state.put(ops::module_hooks::LoaderHookRegistry::default());
 
     if let Some(init) = &options.maybe_init {
       state.put(init.sys.clone());
@@ -612,18 +673,20 @@ deno_core::extension!(deno_node,
       state.put(init.pkg_json_resolver.clone());
     }
 
-    state.put(AsyncId::default());
-
-    // Initialize a uv_loop_t for libuv compat layer (used by TCP/HTTP2)
-    // SAFETY: zeroed memory is valid for UvLoop before uv_loop_init
-    let mut uv_loop = Box::new(unsafe { std::mem::zeroed::<deno_core::uv_compat::UvLoop>() });
-    // SAFETY: uv_loop points to valid zeroed memory ready for initialization
-    unsafe { deno_core::uv_compat::uv_loop_init(&mut *uv_loop) };
-    state.put(uv_loop);
-
+    // Always seed `NodeTlsState` so the shared client session cache is
+    // available for TLS resumption from the very first `tls.connect()`.
+    // Without this, every connection built its ClientConfig with an empty
+    // per-config session cache and `isSessionReused()` always returned false.
+    state.put(crate::ops::tls::NodeTlsState {
+      custom_ca_certs: None,
+      client_session_store: std::sync::Arc::new(
+        deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
+      ),
+      server_ticketer: None,
+      cached_default_verifier: None,
+      cached_no_client_auth: None,
+    });
   },
-  global_template_middleware = global_template_middleware,
-  global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
     let external_references = [
       vm::QUERY_MAP_FN.with(|query| {
@@ -698,41 +761,6 @@ deno_core::extension!(deno_node,
         }
       }),
 
-      global::GETTER_MAP_FN.with(|getter| {
-        ExternalReference {
-          named_getter: *getter,
-        }
-      }),
-      global::SETTER_MAP_FN.with(|setter| {
-        ExternalReference {
-          named_setter: *setter,
-        }
-      }),
-      global::QUERY_MAP_FN.with(|query| {
-        ExternalReference {
-          named_query: *query,
-        }
-      }),
-      global::DELETER_MAP_FN.with(|deleter| {
-        ExternalReference {
-          named_deleter: *deleter,
-        }
-      }),
-      global::ENUMERATOR_MAP_FN.with(|enumerator| {
-        ExternalReference {
-          enumerator: *enumerator,
-        }
-      }),
-      global::DEFINER_MAP_FN.with(|definer| {
-        ExternalReference {
-          named_definer: *definer,
-        }
-      }),
-      global::DESCRIPTOR_MAP_FN.with(|descriptor| {
-        ExternalReference {
-          named_getter: *descriptor,
-        }
-      }),
     ];
 
     ext.external_references.to_mut().extend(external_references);
@@ -741,7 +769,10 @@ deno_core::extension!(deno_node,
 
 #[sys_traits::auto_impl]
 pub trait ExtNodeSys:
-  node_resolver::NodeResolverSys + sys_traits::EnvCurrentDir + Clone
+  node_resolver::NodeResolverSys
+  + sys_traits::EnvCurrentDir
+  + sys_traits::EnvVar
+  + Clone
 {
 }
 
@@ -752,13 +783,12 @@ pub type NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
     TNpmPackageFolderResolver,
     TSys,
   >;
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
   deno_fs::sync::MaybeArc<
     NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
   >;
 
-#[allow(clippy::disallowed_types)]
 pub fn create_host_defined_options<'s>(
   scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Data> {

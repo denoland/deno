@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::print_stderr)]
+#![allow(clippy::print_stderr, reason = "test code")]
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -279,7 +279,7 @@ impl ModuleLoader for MockLoader {
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+  ) -> ModuleResolveResponse {
     let referrer = if referrer == "." {
       "file:///"
     } else {
@@ -289,14 +289,18 @@ impl ModuleLoader for MockLoader {
     let output_specifier = match resolve_import(specifier, referrer) {
       Ok(specifier) => specifier,
       Err(..) => {
-        return Err(JsErrorBox::from_err(MockError::ResolveErr));
+        return ModuleResolveResponse::Sync(Err(JsErrorBox::from_err(
+          MockError::ResolveErr,
+        )));
       }
     };
 
     if mock_source_code(output_specifier.as_ref()).is_some() {
-      Ok(output_specifier)
+      ModuleResolveResponse::Sync(Ok(output_specifier))
     } else {
-      Err(JsErrorBox::from_err(MockError::ResolveErr))
+      ModuleResolveResponse::Sync(Err(JsErrorBox::from_err(
+        MockError::ResolveErr,
+      )))
     }
   }
 
@@ -345,7 +349,7 @@ fn test_recursive_load() {
   let a_id_fut = runtime.load_main_es_module(&spec);
   let a_id = futures::executor::block_on(a_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(a_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -387,6 +391,7 @@ fn test_recursive_load() {
         specifier_key: Some("/b.js".to_string()),
         referrer_source_offset: Some(19),
         phase: crate::modules::ModuleImportPhase::Evaluation,
+        needs_resolve: false,
       },
       ModuleRequest {
         reference: crate::modules::ModuleReference {
@@ -396,6 +401,7 @@ fn test_recursive_load() {
         specifier_key: Some("/c.js".to_string()),
         referrer_source_offset: Some(46),
         phase: crate::modules::ModuleImportPhase::Evaluation,
+        needs_resolve: false,
       },
     ])
   );
@@ -409,6 +415,7 @@ fn test_recursive_load() {
       specifier_key: Some("/c.js".to_string()),
       referrer_source_offset: Some(19),
       phase: crate::modules::ModuleImportPhase::Evaluation,
+      needs_resolve: false,
     },])
   );
   assert_eq!(
@@ -421,6 +428,7 @@ fn test_recursive_load() {
       specifier_key: Some("/d.js".to_string()),
       referrer_source_offset: Some(19),
       phase: crate::modules::ModuleImportPhase::Evaluation,
+      needs_resolve: false,
     },])
   );
   assert_eq!(modules.get_requested_modules(d_id), Some(vec![]));
@@ -496,6 +504,7 @@ fn test_mods() {
         specifier_key: Some("./b.js".to_string()),
         referrer_source_offset: Some(29),
         phase: crate::modules::ModuleImportPhase::Evaluation,
+        needs_resolve: false,
       },])
     );
 
@@ -521,7 +530,7 @@ fn test_mods() {
   runtime.instantiate_module(mod_a).unwrap();
   assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(mod_a);
   assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 1);
 }
@@ -555,6 +564,64 @@ fn test_lazy_loaded_esm() {
       "#,
     )
     .unwrap();
+}
+
+#[test]
+fn test_lazy_loaded_script() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_js = [dir "modules/testdata", "lazy_script.js", "lazy_script_dep.js"]
+  );
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "test_load_ext_script.js",
+      r#"
+      // Load a lazy script
+      const module = Deno.core.loadExtScript("ext:test_ext/lazy_script.js");
+      if (module.foo !== "foo") throw new Error("expected foo");
+      if (module.bar !== 123) throw new Error("expected 123");
+
+      // Should be cached - same object returned
+      const module2 = Deno.core.loadExtScript("ext:test_ext/lazy_script.js");
+      if (module !== module2) throw new Error("should return the same cached object");
+
+      // Load a script that depends on another lazy script
+      const dep = Deno.core.loadExtScript("ext:test_ext/lazy_script_dep.js");
+      if (dep.fromDep !== true) throw new Error("expected fromDep");
+      if (dep.utils.foo !== "foo") throw new Error("expected nested foo");
+
+      Deno.core.print("lazy script test passed\n");
+      "#,
+    )
+    .unwrap();
+}
+
+#[test]
+fn test_lazy_loaded_script_not_found() {
+  deno_core::extension!(test_ext);
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  let result = runtime.execute_script(
+    "test_not_found.js",
+    r#"Deno.core.loadExtScript("ext:test_ext/nonexistent.js")"#,
+  );
+  assert!(result.is_err());
+  let err = result.unwrap_err();
+  assert!(
+    err.to_string().contains("cannot be lazy-loaded"),
+    "unexpected error: {}",
+    err
+  );
 }
 
 #[test]
@@ -621,6 +688,7 @@ fn test_json_text_bytes_modules() {
           specifier_key: Some("./c.json".to_string()),
           referrer_source_offset: Some(32),
           phase: crate::modules::ModuleImportPhase::Evaluation,
+          needs_resolve: false,
         },
         ModuleRequest {
           reference: crate::modules::ModuleReference {
@@ -630,6 +698,7 @@ fn test_json_text_bytes_modules() {
           specifier_key: Some("./d.txt".to_string()),
           referrer_source_offset: Some(165),
           phase: crate::modules::ModuleImportPhase::Evaluation,
+          needs_resolve: false,
         },
         ModuleRequest {
           reference: crate::modules::ModuleReference {
@@ -639,6 +708,7 @@ fn test_json_text_bytes_modules() {
           specifier_key: Some("./e.bin".to_string()),
           referrer_source_offset: Some(264),
           phase: crate::modules::ModuleImportPhase::Evaluation,
+          needs_resolve: false,
         },
       ])
     );
@@ -1070,6 +1140,7 @@ export const foo = bytes;
         specifier_key: Some("file:///b.png".to_string()),
         referrer_source_offset: Some(19),
         phase: crate::modules::ModuleImportPhase::Evaluation,
+        needs_resolve: false,
       }],
       module_type: ModuleType::Other("foobar".into()),
     }
@@ -1239,7 +1310,7 @@ fn test_circular_load() {
     let result = runtime.load_main_es_module(&spec).await;
     assert!(result.is_ok());
     let circular1_id = result.unwrap();
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(circular1_id);
     runtime.run_event_loop(Default::default()).await.unwrap();
 
@@ -1274,6 +1345,7 @@ fn test_circular_load() {
         specifier_key: Some("/circular2.js".to_string()),
         referrer_source_offset: Some(8),
         phase: crate::modules::ModuleImportPhase::Evaluation,
+        needs_resolve: false,
       }])
     );
 
@@ -1287,6 +1359,7 @@ fn test_circular_load() {
         specifier_key: Some("/circular3.js".to_string()),
         referrer_source_offset: Some(8),
         phase: crate::modules::ModuleImportPhase::Evaluation,
+        needs_resolve: false,
       }])
     );
 
@@ -1309,6 +1382,7 @@ fn test_circular_load() {
           specifier_key: Some("/circular1.js".to_string()),
           referrer_source_offset: Some(8),
           phase: crate::modules::ModuleImportPhase::Evaluation,
+          needs_resolve: false,
         },
         ModuleRequest {
           reference: crate::modules::ModuleReference {
@@ -1318,6 +1392,7 @@ fn test_circular_load() {
           specifier_key: Some("/circular2.js".to_string()),
           referrer_source_offset: Some(32),
           phase: crate::modules::ModuleImportPhase::Evaluation,
+          needs_resolve: false,
         }
       ])
     );
@@ -1341,7 +1416,7 @@ fn test_redirect_load() {
     let result = runtime.load_main_es_module(&spec).await;
     assert!(result.is_ok());
     let redirect1_id = result.unwrap();
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(redirect1_id);
     runtime.run_event_loop(Default::default()).await.unwrap();
     let l = loads.lock();
@@ -1409,7 +1484,7 @@ fn test_concurrent_redirect_load() {
     let result = runtime.load_main_es_module(&spec).await;
     assert!(result.is_ok());
     let concurrent_redirect = result.unwrap();
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(concurrent_redirect);
     runtime.run_event_loop(Default::default()).await.unwrap();
     let l = loads.lock();
@@ -1533,7 +1608,7 @@ fn recursive_load_main_with_code() {
     .boxed_local();
   let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(main_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -1572,6 +1647,7 @@ fn recursive_load_main_with_code() {
         specifier_key: Some("/b.js".to_string()),
         referrer_source_offset: Some(23),
         phase: crate::modules::ModuleImportPhase::Evaluation,
+        needs_resolve: false,
       },
       ModuleRequest {
         reference: crate::modules::ModuleReference {
@@ -1581,6 +1657,7 @@ fn recursive_load_main_with_code() {
         specifier_key: Some("/c.js".to_string()),
         referrer_source_offset: Some(54),
         phase: crate::modules::ModuleImportPhase::Evaluation,
+        needs_resolve: false,
       }
     ])
   );
@@ -1594,6 +1671,7 @@ fn recursive_load_main_with_code() {
       specifier_key: Some("/c.js".to_string()),
       referrer_source_offset: Some(19),
       phase: crate::modules::ModuleImportPhase::Evaluation,
+      needs_resolve: false,
     }])
   );
   assert_eq!(
@@ -1606,6 +1684,7 @@ fn recursive_load_main_with_code() {
       specifier_key: Some("/d.js".to_string()),
       referrer_source_offset: Some(19),
       phase: crate::modules::ModuleImportPhase::Evaluation,
+      needs_resolve: false,
     }])
   );
   assert_eq!(modules.get_requested_modules(d_id), Some(vec![]));
@@ -1635,7 +1714,7 @@ fn main_and_side_module() {
   let main_id_fut = runtime.load_main_es_module(&main_specifier).boxed_local();
   let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(main_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -1648,7 +1727,7 @@ fn main_and_side_module() {
   let side_id_fut = runtime.load_side_es_module(&side_specifier).boxed_local();
   let side_id = futures::executor::block_on(side_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(side_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -1677,7 +1756,7 @@ fn dynamic_imports_snapshot() {
       .boxed_local();
     let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(main_id);
     futures::executor::block_on(runtime.run_event_loop(Default::default()))
       .unwrap();
@@ -1717,7 +1796,7 @@ fn import_meta_snapshot() {
       .boxed_local();
     let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let eval_fut = runtime.mod_evaluate(main_id);
     futures::executor::block_on(runtime.run_event_loop(Default::default()))
       .unwrap();
@@ -1782,14 +1861,16 @@ async fn no_duplicate_loads() {
       specifier: &str,
       referrer: &str,
       _kind: ResolutionKind,
-    ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+    ) -> ModuleResolveResponse {
       let referrer = if referrer == "." {
         "file:///"
       } else {
         referrer
       };
 
-      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+      ModuleResolveResponse::Sync(
+        resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
+      )
     }
 
     fn load(
@@ -1841,7 +1922,7 @@ async fn no_duplicate_loads() {
 
   let spec = resolve_url("file:///main.js").unwrap();
   let a_id = runtime.load_main_es_module(&spec).await.unwrap();
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(a_id);
   runtime.run_event_loop(Default::default()).await.unwrap();
 }
@@ -1856,13 +1937,15 @@ async fn import_meta_resolve() {
       specifier: &str,
       referrer: &str,
       _kind: ResolutionKind,
-    ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+    ) -> ModuleResolveResponse {
       let referrer = if referrer == "." {
         "file:///"
       } else {
         referrer
       };
-      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+      ModuleResolveResponse::Sync(
+        resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
+      )
     }
 
     fn import_meta_resolve(
@@ -1946,7 +2029,7 @@ fn builtin_core_module() {
   let main_id_fut = runtime.load_main_es_module(&main_specifier).boxed_local();
   let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(main_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -1978,7 +2061,7 @@ fn import_meta_filename_dirname() {
   let main_id_fut = runtime.load_main_es_module(&main_specifier).boxed_local();
   let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(main_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -1998,7 +2081,7 @@ fn test_load_with_code_cache() {
     let a_id_fut = runtime.load_main_es_module(&spec);
     let a_id = futures::executor::block_on(a_id_fut).unwrap();
 
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(a_id);
     futures::executor::block_on(runtime.run_event_loop(Default::default()))
       .unwrap();
@@ -2041,7 +2124,7 @@ fn test_load_with_code_cache() {
     let a_id_fut = runtime.load_main_es_module(&spec);
     let a_id = futures::executor::block_on(a_id_fut).unwrap();
 
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(a_id);
     futures::executor::block_on(runtime.run_event_loop(Default::default()))
       .unwrap();
@@ -2077,7 +2160,7 @@ fn test_load_with_code_cache() {
     let a_id_fut = runtime.load_main_es_module(&spec);
     let a_id = futures::executor::block_on(a_id_fut).unwrap();
 
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(a_id);
     futures::executor::block_on(runtime.run_event_loop(Default::default()))
       .unwrap();
@@ -2113,9 +2196,13 @@ fn ext_module_loader_relative() {
     (("./foo.js", "ext:bar.js"), "ext:foo.js"),
   ];
   for ((specifier, referrer), expected) in cases {
-    let result = loader
-      .resolve(specifier, referrer, ResolutionKind::Import)
-      .unwrap();
+    let response = loader.resolve(specifier, referrer, ResolutionKind::Import);
+    let result = match response {
+      ModuleResolveResponse::Sync(r) => r.unwrap(),
+      ModuleResolveResponse::Async(_) => {
+        unreachable!("ExtModuleLoader should resolve synchronously")
+      }
+    };
     assert_eq!(result.as_str(), expected);
   }
 }
@@ -2298,8 +2385,10 @@ impl ModuleLoader for ExternalSourceMapLoader {
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
-    resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+  ) -> ModuleResolveResponse {
+    ModuleResolveResponse::Sync(
+      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
+    )
   }
 
   fn load(
@@ -2504,4 +2593,123 @@ throwError();
     "Error should not contain excessive ../ sequences: {}",
     err_str
   );
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/32758
+///
+/// When two lazy-loaded ESM modules are triggered during the same
+/// module evaluation, and one of the importing modules has a top-level
+/// await on an eagerly-resolved async op, the `perform_microtask_checkpoint()`
+/// inside `lazy_load_es_module_with_code()` can prematurely resolve the main
+/// module's evaluation promise while `mod_evaluate()` has not yet set up
+/// its `.then()` handlers. This leaves `pending_mod_evaluation = true`
+/// permanently, causing the event loop to panic with
+/// "Expected at least one stalled top-level await".
+#[tokio::test]
+async fn test_lazy_loaded_esm_with_tla_no_panic() {
+  // An async op with no .await points
+  #[op2]
+  #[allow(clippy::unused_async, reason = "eagerly resolves on first poll")]
+  async fn op_eager_resolve() -> u32 {
+    42
+  }
+
+  deno_core::extension!(
+    test_ext,
+    ops = [op_eager_resolve],
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "lazy_loaded.js",
+      "lazy_loaded_2.js",
+    ]
+  );
+
+  let loader = Rc::new(TestingModuleLoader::new(NoopModuleLoader));
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let module_map = runtime.module_map().clone();
+
+  // Build the module graph manually:
+  //
+  //   main.js  (main module)
+  //     ├── tla_mod.js   -- triggers lazy_loaded.js, awaits op_eager_resolve
+  //     └── lazy_mod.js  -- triggers lazy_loaded_2.js
+  //
+  // The key is that tla_mod.js's `await` resolves eagerly, and the
+  // microtask checkpoint inside lazy_loaded_2.js's lazy load can
+  // prematurely resolve the main module evaluation promise.
+
+  let (mod_main, mod_tla, mod_lazy) = {
+    deno_core::scope!(scope, runtime);
+
+    let mod_tla = module_map
+      .new_es_module(
+        scope,
+        false,
+        ascii_str!("file:///tla_mod.js").into(),
+        ascii_str!(
+          r#"
+          const lazy1 = Deno.core.createLazyLoader("ext:test_ext/lazy_loaded.js")();
+          if (lazy1.foo !== "foo") throw new Error("lazy1.foo: " + lazy1.foo);
+          if (lazy1.bar !== 123) throw new Error("lazy1.bar: " + lazy1.bar);
+          const result = await Deno.core.ops.op_eager_resolve();
+          if (result !== 42) throw new Error("unexpected: " + result);
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    let mod_lazy = module_map
+      .new_es_module(
+        scope,
+        false,
+        ascii_str!("file:///lazy_mod.js").into(),
+        ascii_str!(
+          r#"
+          const lazy2 = Deno.core.createLazyLoader("ext:test_ext/lazy_loaded_2.js")();
+          if (lazy2.baz !== "baz") throw new Error("lazy2.baz: " + lazy2.baz);
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    let mod_main = module_map
+      .new_es_module(
+        scope,
+        true,
+        ascii_str!("file:///main.js").into(),
+        ascii_str!(
+          r#"
+          import "./tla_mod.js";
+          import "./lazy_mod.js";
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    (mod_main, mod_tla, mod_lazy)
+  };
+
+  runtime.instantiate_module(mod_tla).unwrap();
+  runtime.instantiate_module(mod_lazy).unwrap();
+  runtime.instantiate_module(mod_main).unwrap();
+
+  // This should not panic with "Expected at least one stalled top-level await"
+  let receiver = runtime.mod_evaluate(mod_main);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  receiver.await.unwrap();
 }

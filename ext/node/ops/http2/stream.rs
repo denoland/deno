@@ -15,11 +15,14 @@ use super::types::STREAM_OPTION_EMPTY_PAYLOAD;
 use super::types::STREAM_OPTION_GET_TRAILERS;
 use crate::ops::handle_wrap::AsyncWrap;
 
+/// (name bytes, value bytes, NGHTTP2 NV flags).
+pub type HeaderEntry = (Vec<u8>, Vec<u8>, u8);
+
 // Http2Headers
 
 pub struct Http2Headers {
-  #[allow(dead_code)]
-  backing_store: String,
+  #[allow(dead_code, reason = "owns the backing memory for nva pointers")]
+  backing_store: Vec<u8>,
   nva: Vec<ffi::nghttp2_nv>,
 }
 
@@ -32,8 +35,7 @@ impl Http2Headers {
     self.nva.len()
   }
 
-  pub fn parse(content: String, count: usize) -> Self {
-    let bytes = content.as_bytes();
+  pub fn parse(bytes: Vec<u8>, count: usize) -> Self {
     let mut nva = Vec::with_capacity(count);
     let mut offset = 0;
 
@@ -87,15 +89,32 @@ impl Http2Headers {
     }
 
     Self {
-      backing_store: content,
+      backing_store: bytes,
       nva,
     }
   }
-}
 
-impl From<(String, usize)> for Http2Headers {
-  fn from((content, count): (String, usize)) -> Self {
-    Self::parse(content, count)
+  /// Decode the V8 string as Latin-1 (one byte per UTF-16 unit, truncated to
+  /// the low byte) — matches Node's `StringBytes::Write(LATIN1)` so that JS
+  /// chars like `Ċ` (U+010A) become the byte 0x0a (LF), letting nghttp2's
+  /// receiver-side validation reject crafted header values for response
+  /// splitting. UTF-8 encoding would hide the LF in a multibyte sequence.
+  pub fn from_v8_string(
+    scope: &mut v8::PinScope,
+    string: v8::Local<v8::String>,
+    count: usize,
+  ) -> Self {
+    let len = string.length();
+    let mut buf: Vec<u8> = Vec::with_capacity(len);
+    string.write_one_byte_uninit_v2(
+      scope,
+      0,
+      buf.spare_capacity_mut(),
+      v8::WriteFlags::empty(),
+    );
+    // SAFETY: write_one_byte_uninit_v2 initialized exactly `len` bytes.
+    unsafe { buf.set_len(len) };
+    Self::parse(buf, count)
   }
 }
 
@@ -146,12 +165,18 @@ pub struct Http2StreamState {
 pub struct Http2Stream {
   pub(crate) session: *mut Session,
   pub(crate) id: i32,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "stored for future use")]
   pub(crate) current_headers_category: ffi::nghttp2_headers_category,
   pub(crate) available_outbound_length: RefCell<usize>,
   pub(crate) pending_data: RefCell<bytes::BytesMut>,
-  pub(crate) current_headers: RefCell<Vec<(String, String, u8)>>,
+  pub(crate) current_headers: RefCell<Vec<HeaderEntry>>,
   pub(crate) current_headers_length: RefCell<usize>,
+  /// `SETTINGS_MAX_HEADER_LIST_SIZE` snapshotted from the session at stream
+  /// construction. Mirrors Node's `Http2Stream::max_header_length_`
+  /// (`src/node_http2.cc`): a stream's enforcement value is fixed at
+  /// construction, so post-init `session.settings({ maxHeaderListSize })`
+  /// only affects streams created after the SETTINGS ACK round-trip.
+  pub(crate) max_header_length: u64,
   pub(crate) has_trailers: RefCell<bool>,
   /// Set to true when shutdown is called (writable side ended).
   /// Used by the data source read callback to decide whether to
@@ -165,6 +190,26 @@ pub struct Http2Stream {
   /// would re-activate the data provider for a stream that nghttp2 is
   /// about to destroy (causing double-free with no_closed_streams=1).
   pub(crate) closed_by_nghttp2: RefCell<bool>,
+  /// Set true once the data provider returned a chunk with
+  /// NGHTTP2_DATA_FLAG_EOF. shutdown() then suppresses its
+  /// resume_data so nghttp2 doesn't generate a second empty trailing
+  /// DATA frame just to carry END_STREAM. Writable.end(data) hooks
+  /// `mark_ending` to set `writable_ended` *before* the data write
+  /// reaches read_callback, which lets that frame carry END_STREAM
+  /// directly.
+  pub(crate) eof_sent: RefCell<bool>,
+  /// Mirrors Node's `Http2Stream::reading_` (`src/node_http2.cc`). When
+  /// `false`, `on_data_chunk_recv_callback` defers calling
+  /// `nghttp2_session_consume_stream` so the local stream-level flow
+  /// control window doesn't auto-replenish; instead the consumed byte
+  /// count is accumulated in `inbound_consumed_data_while_paused` and
+  /// flushed by `read_start`. This lets a misbehaving peer that ignores
+  /// flow control trip nghttp2's FLOW_CONTROL_ERROR.
+  pub(crate) reading: RefCell<bool>,
+  /// Bytes received while `reading` was false; flushed via
+  /// `nghttp2_session_consume_stream` when reading resumes. Mirrors
+  /// Node's `Http2Stream::inbound_consumed_data_while_paused_`.
+  pub(crate) inbound_consumed_data_while_paused: RefCell<usize>,
 }
 
 // SAFETY: Http2Stream is GC-traced by cppgc
@@ -195,6 +240,20 @@ impl Http2Stream {
       AsyncWrap::create(&mut state, 0)
     };
 
+    // Snapshot SETTINGS_MAX_HEADER_LIST_SIZE at stream construction. nghttp2
+    // returns the *current* local value (which has already absorbed any
+    // SETTINGS frames the peer ACKed), so streams created after a successful
+    // post-init `session.settings({ maxHeaderListSize: N })` see N, while
+    // streams created before keep the prior value. Mirrors Node's
+    // `Http2Stream::Http2Stream` in `src/node_http2.cc`.
+    // SAFETY: session.session is a valid nghttp2 session for the stream's lifetime
+    let max_header_length = unsafe {
+      ffi::nghttp2_session_get_local_settings(
+        session.session,
+        ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE,
+      ) as u64
+    };
+
     cppgc::wrap_object(
       scope,
       obj,
@@ -206,10 +265,14 @@ impl Http2Stream {
         pending_data: RefCell::new(bytes::BytesMut::new()),
         current_headers: RefCell::new(Vec::new()),
         current_headers_length: RefCell::new(0),
+        max_header_length,
         has_trailers: RefCell::new(false),
         writable_ended: RefCell::new(false),
         shutdown_req: RefCell::new(None),
         closed_by_nghttp2: RefCell::new(false),
+        eof_sent: RefCell::new(false),
+        reading: RefCell::new(false),
+        inbound_consumed_data_while_paused: RefCell::new(0),
       },
     );
 
@@ -223,17 +286,39 @@ impl Http2Stream {
   }
 
   pub fn add_header(&self, name: &[u8], value: &[u8], flags: u8) -> bool {
-    let Ok(name_str) = std::str::from_utf8(name) else {
-      return false;
-    };
-    let Ok(value_str) = std::str::from_utf8(value) else {
-      return false;
-    };
+    // Empty header names are ignored (matches Node's Http2Stream::AddHeader).
+    if name.is_empty() {
+      return true;
+    }
 
     let header_length = name.len() + value.len() + 32;
+
+    // SAFETY: session pointer is valid for the stream's lifetime
+    let session = unsafe { &*self.session };
+    let max_header_length = self.max_header_length;
+
+    let max_header_pairs = session.max_header_pairs as usize;
+    let current_pairs = self.current_headers.borrow().len();
+    let current_length = *self.current_headers_length.borrow() as u64;
+
+    // Reject the header (and the whole stream) if adding it would exceed
+    // either the configured max header pair count or the local
+    // SETTINGS_MAX_HEADER_LIST_SIZE limit. Returning false here causes
+    // nghttp2 to RST_STREAM with NGHTTP2_ENHANCE_YOUR_CALM.
+    //
+    // Node's `Http2Stream::AddHeader` additionally rejects when the session
+    // would exceed its `maxSessionMemory` budget (see `src/node_http2.cc`).
+    // Deno does not yet track per-session memory, so that arm is omitted; if
+    // session memory accounting is added later, gate it here as well.
+    if current_pairs >= max_header_pairs
+      || current_length.saturating_add(header_length as u64) > max_header_length
+    {
+      return false;
+    }
+
     self.current_headers.borrow_mut().push((
-      name_str.to_string(),
-      value_str.to_string(),
+      name.to_vec(),
+      value.to_vec(),
       flags,
     ));
     *self.current_headers_length.borrow_mut() += header_length;
@@ -323,8 +408,15 @@ impl Http2Stream {
     self.id
   }
 
-  fn respond(&self, #[serde] headers: (String, usize), options: i32) {
-    let headers = Http2Headers::from(headers);
+  #[nofast]
+  fn respond(
+    &self,
+    scope: &mut v8::PinScope,
+    headers: v8::Local<v8::String>,
+    count: u32,
+    options: i32,
+  ) {
+    let headers = Http2Headers::from_v8_string(scope, headers, count as usize);
     let session_ptr = self.nghttp2_session();
 
     if (options & STREAM_OPTION_GET_TRAILERS) != 0 {
@@ -332,7 +424,7 @@ impl Http2Stream {
     }
 
     let has_data = (options & STREAM_OPTION_EMPTY_PAYLOAD) == 0;
-    let mut data_provider = ffi::nghttp2_data_provider {
+    let mut data_provider = ffi::nghttp2_data_provider2 {
       source: ffi::nghttp2_data_source {
         ptr: std::ptr::null_mut(),
       },
@@ -347,7 +439,7 @@ impl Http2Stream {
 
     // SAFETY: session pointer is valid during stream lifetime
     unsafe {
-      ffi::nghttp2_submit_response(
+      ffi::nghttp2_submit_response2(
         session_ptr,
         self.id,
         headers.data(),
@@ -400,6 +492,17 @@ impl Http2Stream {
     0
   }
 
+  /// Pre-flag the stream as ended so the very next data frame the
+  /// data provider builds carries NGHTTP2_DATA_FLAG_EOF. The polyfill
+  /// calls this from `Http2Stream.end(chunk)` *before* the chunk's
+  /// write reaches `write_buffer`, which lets `stream.end(data)`
+  /// produce one DATA frame with END_STREAM instead of a data frame
+  /// followed by an empty trailing DATA frame.
+  #[fast]
+  fn mark_ending(&self) {
+    *self.writable_ended.borrow_mut() = true;
+  }
+
   #[fast]
   fn shutdown(&self, req: v8::Local<v8::Object>) -> i32 {
     *self.writable_ended.borrow_mut() = true;
@@ -408,7 +511,13 @@ impl Http2Stream {
     // data provider, but close_stream then destroys the stream with
     // no_closed_streams=1. The re-activated item survives destruction
     // and mem_send later double-frees the stream.
-    if !*self.closed_by_nghttp2.borrow() {
+    //
+    // Also skip when EOF has already been emitted on a previous data
+    // frame (Http2Stream.end(chunk) hooks `mark_ending` so the chunk's
+    // frame carries END_STREAM). Without this guard nghttp2 would call
+    // read_callback again, get 0 + EOF, and pack a redundant empty
+    // trailing DATA frame.
+    if !*self.closed_by_nghttp2.borrow() && !*self.eof_sent.borrow() {
       let session_ptr = self.nghttp2_session();
       // SAFETY: session pointer is valid
       unsafe {
@@ -434,11 +543,17 @@ impl Http2Stream {
     }
   }
 
-  fn trailers(&self, #[serde] headers: (String, usize)) -> i32 {
+  #[nofast]
+  fn trailers(
+    &self,
+    scope: &mut v8::PinScope,
+    headers: v8::Local<v8::String>,
+    count: u32,
+  ) -> i32 {
     let session_ptr = self.nghttp2_session();
 
-    if headers.1 == 0 {
-      let mut data_provider = ffi::nghttp2_data_provider {
+    if count == 0 {
+      let mut data_provider = ffi::nghttp2_data_provider2 {
         source: ffi::nghttp2_data_source {
           ptr: std::ptr::null_mut(),
         },
@@ -447,7 +562,7 @@ impl Http2Stream {
 
       // SAFETY: session pointer is valid during stream lifetime
       unsafe {
-        ffi::nghttp2_submit_data(
+        ffi::nghttp2_submit_data2(
           session_ptr,
           ffi::NGHTTP2_FLAG_END_STREAM as u8,
           self.id,
@@ -455,7 +570,8 @@ impl Http2Stream {
         )
       }
     } else {
-      let http2_headers = Http2Headers::from(headers);
+      let http2_headers =
+        Http2Headers::from_v8_string(scope, headers, count as usize);
       // SAFETY: session pointer and headers are valid
       unsafe {
         ffi::nghttp2_submit_trailer(
@@ -521,16 +637,19 @@ impl Http2Stream {
     }
   }
 
-  fn push_promise(
+  fn push_promise<'s>(
     &self,
-    #[serde] headers: (String, usize),
-    _options: i32,
-  ) -> i32 {
+    scope: &mut v8::PinScope<'s, '_>,
+    headers: v8::Local<v8::String>,
+    count: u32,
+    options: i32,
+  ) -> v8::Local<'s, v8::Value> {
     let session_ptr = self.nghttp2_session();
-    let http2_headers = Http2Headers::from(headers);
+    let http2_headers =
+      Http2Headers::from_v8_string(scope, headers, count as usize);
 
     // SAFETY: session pointer is valid during stream lifetime
-    unsafe {
+    let ret = unsafe {
       ffi::nghttp2_submit_push_promise(
         session_ptr,
         ffi::NGHTTP2_FLAG_NONE as u8,
@@ -539,12 +658,36 @@ impl Http2Stream {
         http2_headers.len(),
         std::ptr::null_mut(),
       )
+    };
+
+    if ret <= 0 {
+      return v8::Integer::new(scope, ret).into();
     }
+
+    // SAFETY: self.session is valid for the lifetime of the stream
+    let session = unsafe { &mut *self.session };
+    let (obj, stream) =
+      Http2Stream::new(session, ret, ffi::NGHTTP2_HCAT_HEADERS);
+    stream.start_headers(ffi::NGHTTP2_HCAT_HEADERS);
+    if (options & STREAM_OPTION_GET_TRAILERS) != 0 {
+      stream.set_has_trailers(true);
+    }
+    let local = v8::Local::new(scope, &obj);
+    session.streams.insert(ret, (obj, stream));
+    session.send_pending_data();
+    local.into()
   }
 
-  fn info(&self, #[serde] headers: (String, usize)) -> i32 {
+  #[nofast]
+  fn info(
+    &self,
+    scope: &mut v8::PinScope,
+    headers: v8::Local<v8::String>,
+    count: u32,
+  ) -> i32 {
     let session_ptr = self.nghttp2_session();
-    let http2_headers = Http2Headers::from(headers);
+    let http2_headers =
+      Http2Headers::from_v8_string(scope, headers, count as usize);
 
     // SAFETY: session pointer is valid during stream lifetime
     unsafe {
@@ -563,15 +706,22 @@ impl Http2Stream {
   #[fast]
   fn read_start(&self) -> i32 {
     let session_ptr = self.nghttp2_session();
+    *self.reading.borrow_mut() = true;
+    // Flush any flow-control consumption that was deferred while paused.
+    // Mirrors Node's `Http2Stream::ReadStart` (`src/node_http2.cc`).
+    let pending = std::mem::take(
+      &mut *self.inbound_consumed_data_while_paused.borrow_mut(),
+    );
     // SAFETY: session pointer is valid during stream lifetime
     unsafe {
-      ffi::nghttp2_session_consume_stream(session_ptr, self.id, 0);
+      ffi::nghttp2_session_consume_stream(session_ptr, self.id, pending);
     }
     0
   }
 
   #[fast]
   fn read_stop(&self) -> i32 {
+    *self.reading.borrow_mut() = false;
     0
   }
 

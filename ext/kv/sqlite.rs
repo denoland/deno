@@ -151,6 +151,10 @@ impl DatabaseHandler for SqliteDbHandler {
             )
           }
           (None, Some(path)) => {
+            #[allow(
+              clippy::disallowed_methods,
+              reason = "the storage directory is always on the real fs"
+            )]
             std::fs::create_dir_all(path).map_err(JsErrorBox::from_err)?;
             let path = path.join("kv.sqlite3");
             let path2 = path.clone();

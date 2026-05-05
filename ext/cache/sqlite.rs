@@ -60,6 +60,10 @@ impl SqliteBackedCache {
       rusqlite::Connection::open_in_memory()
         .unwrap_or_else(|_| panic!("failed to open in-memory cache db"))
     } else {
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "cache storage manages its own directory"
+      )]
       std::fs::create_dir_all(&cache_storage_dir).map_err(|source| {
         CacheError::CacheStorageDirectory {
           dir: cache_storage_dir.clone(),
@@ -139,6 +143,10 @@ impl SqliteBackedCache {
         },
       )?;
       let responses_dir = get_responses_dir(cache_storage_dir, cache_id);
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "cache storage manages its own directory"
+      )]
       std::fs::create_dir_all(responses_dir)?;
       Ok::<i64, CacheError>(cache_id)
     })
@@ -188,11 +196,36 @@ impl SqliteBackedCache {
         .optional()?;
       if let Some(cache_id) = maybe_cache_id {
         let cache_dir = cache_storage_dir.join(cache_id.to_string());
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "cache storage manages its own directory"
+        )]
         if cache_dir.exists() {
+          #[allow(
+            clippy::disallowed_methods,
+            reason = "cache storage manages its own directory"
+          )]
           std::fs::remove_dir_all(cache_dir)?;
         }
       }
       Ok::<bool, CacheError>(maybe_cache_id.is_some())
+    })
+    .await?
+  }
+
+  /// List all cache names.
+  pub async fn storage_keys(&self) -> Result<Vec<String>, CacheError> {
+    let db = self.connection.clone();
+    spawn_blocking(move || {
+      let db = db.lock();
+      let mut stmt =
+        db.prepare("SELECT cache_name FROM cache_storage ORDER BY id")?;
+      let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+      let mut names = Vec::new();
+      for row in rows {
+        names.push(row?);
+      }
+      Ok::<Vec<String>, CacheError>(names)
     })
     .await?
   }

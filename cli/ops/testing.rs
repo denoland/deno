@@ -91,7 +91,7 @@ pub fn op_restore_test_permissions(
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "op")]
 #[op2]
 fn op_register_test(
   state: &mut OpState,
@@ -156,7 +156,7 @@ fn op_test_get_origin(state: &mut OpState) -> String {
 
 #[op2(fast)]
 #[smi]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "op")]
 fn op_register_test_step(
   state: &mut OpState,
   #[string] name: String,

@@ -420,7 +420,7 @@ struct ParsedArgs {
   mime_type: MimeType,
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 fn parse_args(
   sx: i32,
   sy: i32,
@@ -525,7 +525,7 @@ fn parse_args(
 // does not immediately execute image conversion processing is necessary.
 #[op2]
 #[cppgc]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 pub(super) fn op_create_image_bitmap(
   #[buffer] buf: JsBuffer,
   width: u32,

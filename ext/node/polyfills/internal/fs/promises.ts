@@ -1,15 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { type WriteFileOptions } from "ext:deno_node/_fs/_fs_common.ts";
+import { core } from "ext:core/mod.js";
+import type { WriteFileOptions } from "ext:deno_node/_fs/_fs_common.ts";
 import type { Encodings } from "ext:deno_node/_utils.ts";
-import { promisify } from "ext:deno_node/internal/util.mjs";
-import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
+const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const constants = core.loadExtScript("ext:deno_node/_fs/_fs_constants.ts");
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cpPromise } from "ext:deno_node/_fs/_fs_cp.ts";
 import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { readdirPromise } from "ext:deno_node/_fs/_fs_readdir.ts";
-import { readFilePromise } from "ext:deno_node/_fs/_fs_readFile.ts";
-import { readlinkPromise } from "ext:deno_node/_fs/_fs_readlink.ts";
 import { lstatPromise } from "ext:deno_node/_fs/_fs_lstat.ts";
 import {
   access,
@@ -22,6 +21,8 @@ import {
   mkdtemp,
   open,
   opendir,
+  readFile,
+  readlink,
   realpath,
   rename,
   rm,
@@ -37,16 +38,22 @@ import {
 } from "node:fs";
 import { globPromise } from "ext:deno_node/_fs/_fs_glob.ts";
 import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
-import { parseFileMode } from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "node:buffer";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { primordials } from "ext:core/mod.js";
+const { parseFileMode } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import { op_node_lchmod } from "ext:core/ops";
-import { isMacOS } from "ext:deno_node/_util/os.ts";
-import { ERR_METHOD_NOT_IMPLEMENTED } from "ext:deno_node/internal/errors.ts";
+const { isMacOS } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { ERR_METHOD_NOT_IMPLEMENTED } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+import { resolve as pathResolve } from "node:path";
+import process from "node:process";
 
-const { Promise, PromiseReject } = primordials;
+const { Promise, PromiseReject, SymbolAsyncDispose } = primordials;
 
 // -- access --
 
@@ -83,10 +90,10 @@ const lchmodPromise: (
   mode: number,
 ) => Promise<void> = !isMacOS
   ? () => PromiseReject(new ERR_METHOD_NOT_IMPLEMENTED("lchmod()"))
-  : (path: string | Buffer | URL, mode: number) => {
+  : async (path: string | Buffer | URL, mode: number) => {
     path = getValidatedPathToString(path);
     mode = parseFileMode(mode, "mode");
-    return op_node_lchmod(path, mode);
+    return await op_node_lchmod(path, mode);
   };
 
 const lchownPromise = promisify(lchown) as (
@@ -150,6 +157,38 @@ const mkdtempPromise = promisify(mkdtemp) as (
   prefix: string | Buffer | Uint8Array | URL,
   options?: { encoding: string } | string,
 ) => Promise<string>;
+
+// Mirrors Node's lib/internal/fs/promises.js mkdtempDisposable(): create the
+// temp dir, then return an object with .path, .remove(), and Symbol.asyncDispose
+// that recursively removes the directory. Capture cwd at creation time so a
+// later process.chdir() doesn't break removal.
+async function mkdtempDisposablePromise(
+  prefix: string | Buffer | Uint8Array | URL,
+  options?: { encoding: string } | string,
+) {
+  const cwd = process.cwd();
+  const path = await mkdtempPromise(prefix, options);
+  const fullPath = pathResolve(cwd, path);
+  // `force: true` makes the second remove() a no-op when the dir is already
+  // gone (Node's rimraf-based implementation treats ENOENT as success); other
+  // errors (EACCES, EPERM, ...) still propagate.
+  const remove = async () => {
+    await rmPromise(fullPath, {
+      force: true,
+      maxRetries: 0,
+      recursive: true,
+      retryDelay: 0,
+    });
+  };
+  return {
+    __proto__: null,
+    path,
+    remove,
+    async [SymbolAsyncDispose]() {
+      await remove();
+    },
+  };
+}
 
 type OpenFlags =
   | "a"
@@ -248,6 +287,15 @@ const statfsPromise = promisify(statfs) as (
   options?: { bigint?: boolean },
 ) => Promise<unknown>;
 
+// -- readFile / readlink --
+
+const readFilePromise = promisify(readFile);
+
+const readlinkPromise = promisify(readlink) as (
+  path: string | Buffer | URL,
+  opt?: { encoding?: string | null },
+) => Promise<string | Uint8Array>;
+
 // -- promises object --
 
 const promises = {
@@ -279,6 +327,7 @@ const promises = {
   lutimes: lutimesPromise,
   realpath: realpathPromise,
   mkdtemp: mkdtempPromise,
+  mkdtempDisposable: mkdtempDisposablePromise,
   writeFile: writeFilePromise,
   appendFile: appendFilePromise,
   readFile: readFilePromise,

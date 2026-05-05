@@ -1,0 +1,2 @@
+Warning: env option(s) are not supported for web Workers and will be ignored. Use the node:worker_threads module instead.
+hello from worker

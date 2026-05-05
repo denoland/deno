@@ -226,7 +226,10 @@ pub fn op_require_proxy_path(#[string] filename: &str) -> Option<String> {
 
 #[op2(fast)]
 pub fn op_require_is_request_relative(#[string] request: &str) -> bool {
-  if request.starts_with("./") || request.starts_with("../") || request == ".."
+  if request.starts_with("./")
+    || request.starts_with("../")
+    || request == "."
+    || request == ".."
   {
     return true;
   }
@@ -320,15 +323,17 @@ pub fn op_require_resolve_lookup_paths(
     }
   }
 
-  // In REPL, parent.filename is null.
-  // if (!parent || !parent.id || !parent.filename) {
-  //   // Make require('./path/to/foo') work - normally the path is taken
-  //   // from realpath(__filename) but in REPL there is no filename
-  //   const mainPaths = ['.'];
-
-  //   debug('looking for %j in %j', request, mainPaths);
-  //   return mainPaths;
-  // }
+  // In REPL, parent.filename is null/empty.
+  if parent_filename.is_empty() {
+    // If parent has paths (e.g. fakeParent from require.resolve with
+    // options.paths), use those. Otherwise fall back to cwd.
+    if let Some(parent_paths) = maybe_parent_paths
+      && !parent_paths.is_empty()
+    {
+      return Some(parent_paths);
+    }
+    return Some(vec![".".to_string()]);
+  }
 
   let p = Path::new(parent_filename);
   Some(vec![p.parent().unwrap().to_string_lossy().into_owned()])
@@ -514,6 +519,10 @@ pub fn op_require_read_file(
 #[op2]
 #[string]
 pub fn op_require_as_file_path(#[string] file_or_url: &str) -> Option<String> {
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "don't need error and this doesn't need to work in Wasm"
+  )]
   if let Ok(url) = Url::parse(file_or_url)
     && let Ok(p) = url.to_file_path()
   {

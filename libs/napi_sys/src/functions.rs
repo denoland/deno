@@ -4,7 +4,7 @@
 // all napi versions flattened into a single block.
 // New symbols can be added here directly without upgrading an external crate.
 
-#![allow(clippy::too_many_arguments)]
+#![allow(clippy::too_many_arguments, reason = "not code we control")]
 
 use std::os::raw::c_char;
 use std::os::raw::c_int;
@@ -834,6 +834,31 @@ generate!(
       property_values: *const napi_value,
       property_count: usize,
       result: *mut napi_value,
+    ) -> napi_status;
+    fn node_api_create_object_with_named_properties(
+      env: napi_env,
+      result: *mut napi_value,
+      property_count: usize,
+      property_names: *const *const c_char,
+      property_values: *const napi_value,
+    ) -> napi_status;
+    fn node_api_create_external_string_latin1(
+      env: napi_env,
+      str: *const c_char,
+      length: usize,
+      finalize_callback: napi_finalize,
+      finalize_hint: *mut c_void,
+      result: *mut napi_value,
+      copied: *mut bool,
+    ) -> napi_status;
+    fn node_api_create_external_string_utf16(
+      env: napi_env,
+      str: *const u16,
+      length: usize,
+      finalize_callback: napi_finalize,
+      finalize_hint: *mut c_void,
+      result: *mut napi_value,
+      copied: *mut bool,
     ) -> napi_status;
   }
 );

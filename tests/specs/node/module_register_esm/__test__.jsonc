@@ -1,0 +1,20 @@
+{
+  "tests": {
+    "basic_hooks": {
+      "args": "run -A main.mjs",
+      "output": "main.out"
+    },
+    "initialize_with_port": {
+      "args": "run -A test_initialize.mjs",
+      "output": "test_initialize.out"
+    },
+    "chaining": {
+      "args": "run -A test_chaining.mjs",
+      "output": "test_chaining.out"
+    },
+    "ordering_sync_before_async": {
+      "args": "run -A test_ordering.mjs",
+      "output": "test_ordering.out"
+    }
+  }
+}

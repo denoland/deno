@@ -242,7 +242,7 @@ pub async fn install_command(
     InstallFlags::Global(global_flags) => {
       Box::pin(global::install_global(flags, global_flags)).await
     }
-    InstallFlags::Local(local_flags) => {
+    InstallFlags::Local(local_flags, _) => {
       if let InstallFlagsLocal::Add(add_flags) = &local_flags {
         local::check_if_installs_a_single_package_globally(Some(add_flags))?;
       }

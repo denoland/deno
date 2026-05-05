@@ -6,8 +6,28 @@ const data = {
   metrics: [],
 };
 
-async function handler(req) {
-  const body = await req.json();
+const isGrpc = Deno.env.get("OTEL_EXPORTER_OTLP_PROTOCOL") === "grpc";
+
+let decodeGrpcBody;
+
+if (isGrpc) {
+  const {
+    decodeExportTraceRequest,
+    decodeExportMetricsRequest,
+    decodeExportLogsRequest,
+  } = await import("./proto_decode.ts");
+
+  decodeGrpcBody = (path, bytes) => {
+    if (path.includes("TraceService")) return decodeExportTraceRequest(bytes);
+    if (path.includes("MetricsService")) {
+      return decodeExportMetricsRequest(bytes);
+    }
+    if (path.includes("LogsService")) return decodeExportLogsRequest(bytes);
+    return null;
+  };
+}
+
+function collectData(body) {
   body.resourceLogs?.forEach((rLogs) => {
     rLogs.scopeLogs.forEach((sLogs) => {
       data.logs.push(...sLogs.logRecords);
@@ -23,12 +43,39 @@ async function handler(req) {
       data.metrics.push(...sMetrics.metrics);
     });
   });
+}
+
+async function handler(req) {
+  if (isGrpc) {
+    const url = new URL(req.url);
+    const rawBody = new Uint8Array(await req.arrayBuffer());
+    // Strip the 5-byte gRPC frame prefix (compression flag + length)
+    const msgBytes = rawBody.slice(5);
+    const body = decodeGrpcBody(url.pathname, msgBytes);
+    if (!body) return new Response(null, { status: 404 });
+
+    collectData(body);
+
+    // Respond with gRPC OK (Trailers-Only form)
+    return new Response(null, {
+      status: 200,
+      headers: {
+        "content-type": "application/grpc",
+        "grpc-status": "0",
+      },
+    });
+  }
+
+  const body = await req.json();
+  collectData(body);
   return Response.json({ partialSuccess: {} }, { status: 200 });
 }
 
 let server;
 
 function onListen({ port }) {
+  const protocol = Deno.env.get("OTEL_EXPORTER_OTLP_PROTOCOL") || "http/json";
+  const endpoint = `https://localhost:${port}`;
   const command = new Deno.Command(Deno.execPath(), {
     args: [
       "run",
@@ -39,8 +86,8 @@ function onListen({ port }) {
       Deno.args[0],
     ],
     env: {
-      // rest of env is in env_file
-      OTEL_EXPORTER_OTLP_ENDPOINT: `https://localhost:${port}`,
+      OTEL_EXPORTER_OTLP_ENDPOINT: endpoint,
+      OTEL_EXPORTER_OTLP_PROTOCOL: protocol,
     },
     stdout: "null",
   });

@@ -6,24 +6,26 @@ import type {
   FormatInputPathObject,
   ParsedPath,
 } from "ext:deno_node/path/_interface.ts";
-import {
+import { core, primordials } from "ext:core/mod.js";
+const {
   CHAR_BACKWARD_SLASH,
   CHAR_COLON,
   CHAR_DOT,
   CHAR_QUESTION_MARK,
-} from "ext:deno_node/path/_constants.ts";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/path/_constants.ts");
+const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
-import {
+const {
   _format,
   assertPath,
   isPathSeparator,
   isPosixPathSeparator,
   isWindowsDeviceRoot,
   normalizeString,
-} from "ext:deno_node/path/_util.ts";
+} = core.loadExtScript("ext:deno_node/path/_util.ts");
 import assert from "node:assert";
-import { core, primordials } from "ext:core/mod.js";
 import process from "node:process";
 import type * as fsGlob from "ext:deno_node/_fs/_fs_glob.ts";
 
@@ -523,6 +525,36 @@ export function join(...paths: string[]): string {
     if (slashCount >= 2) {
       joined = `\\${StringPrototypeSlice(joined, slashCount)}`;
     }
+  }
+
+  // If any path component is a Windows reserved device name (e.g. CON:,
+  // PRN:, NUL:), skip normalization to avoid resolving `..` through it.
+  // This matches Node.js behavior -- only replace `/` with `\`.
+  let hasReservedComponent = false;
+  {
+    let segStart = 0;
+    for (let i = 0; i <= joined.length; i++) {
+      if (
+        i === joined.length ||
+        isPathSeparator(StringPrototypeCharCodeAt(joined, i))
+      ) {
+        if (i > segStart) {
+          const seg = StringPrototypeSlice(joined, segStart, i);
+          const colonIdx = StringPrototypeIndexOf(seg, ":");
+          if (colonIdx !== -1 && isWindowsReservedName(seg, colonIdx)) {
+            hasReservedComponent = true;
+            break;
+          }
+        }
+        segStart = i + 1;
+      }
+    }
+  }
+
+  if (hasReservedComponent) {
+    // Only convert forward slashes to backslashes, skip normalize.
+    const parts = StringPrototypeSplit(joined, "/");
+    return ArrayPrototypeJoin(parts, "\\");
   }
 
   return normalize(joined);

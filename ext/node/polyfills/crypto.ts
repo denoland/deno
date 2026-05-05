@@ -4,9 +4,16 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { ERR_CRYPTO_FIPS_FORCED } from "ext:deno_node/internal/errors.ts";
-import { crypto as constants } from "ext:deno_node/internal_binding/constants.ts";
-import { getOptionValue } from "ext:deno_node/internal/options.ts";
+import { core } from "ext:core/mod.js";
+const { ERR_CRYPTO_FIPS_FORCED } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const { crypto: constants } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
 import {
   getFipsCrypto,
   setFipsCrypto,
@@ -91,10 +98,10 @@ import {
   publicDecrypt,
   publicEncrypt,
 } from "ext:deno_node/internal/crypto/cipher.ts";
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import type {
   Cipher,
   CipherCCM,
@@ -164,10 +171,18 @@ import type {
   TransformOptions,
   WritableOptions,
 } from "ext:deno_node/_stream.d.ts";
-import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
-import { crypto as webcrypto } from "ext:deno_crypto/00_crypto.js";
+const { normalizeEncoding } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const { validateString } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const { crypto: webcrypto } = core.loadExtScript(
+  "ext:deno_crypto/00_crypto.js",
+);
 import { deprecate } from "node:util";
 
 const subtle = webcrypto.subtle;
@@ -191,7 +206,10 @@ function getRandomValues(typedArray) {
 function hash(
   algorithm: string,
   data: BinaryLike,
-  outputEncoding: BinaryToTextEncoding = "hex",
+  outputEncodingOrOptions: BinaryToTextEncoding | {
+    outputEncoding?: BinaryToTextEncoding;
+    outputLength?: number;
+  } = "hex",
 ) {
   validateString(algorithm, "algorithm");
   if (typeof data !== "string" && !isArrayBufferView(data)) {
@@ -202,6 +220,17 @@ function hash(
       "string",
     ], data);
   }
+
+  let outputEncoding: string;
+  let outputLength: number | undefined;
+
+  if (typeof outputEncodingOrOptions === "object") {
+    outputEncoding = outputEncodingOrOptions.outputEncoding ?? "hex";
+    outputLength = outputEncodingOrOptions.outputLength;
+  } else {
+    outputEncoding = outputEncodingOrOptions;
+  }
+
   let normalized = outputEncoding;
   // Fast case: if it's 'hex', we don't need to validate it further.
   if (outputEncoding !== "hex") {
@@ -217,9 +246,33 @@ function hash(
       }
     }
   }
-  const hash = createHash(algorithm);
-  hash.update(data);
-  return hash.digest(outputEncoding);
+
+  const algoLower = algorithm.toLowerCase();
+  const isXof = algoLower === "shake128" || algoLower === "shake256";
+
+  if (outputLength != null && !isXof) {
+    // For non-XOF hashes, outputLength must match the algorithm's digest size.
+    const testHash = createHash(algorithm);
+    testHash.update("");
+    const expectedLen = testHash.digest().length;
+    if (outputLength !== expectedLen) {
+      throw new Error(
+        `Output length ${outputLength} is invalid for ${algoLower}, which does not support XOF`,
+      );
+    }
+  }
+
+  const h = createHash(
+    algorithm,
+    outputLength != null ? { outputLength } : undefined,
+  );
+  h.update(data);
+
+  if (outputLength === 0) {
+    return normalized === "buffer" ? globalThis.Buffer.alloc(0) : "";
+  }
+
+  return h.digest(outputEncoding);
 }
 
 function validateCipherivArgs(
@@ -402,7 +455,7 @@ const verify = verifyOneShot;
 /* Deprecated in Node.js, alias of randomBytes */
 const pseudoRandomBytes = randomBytes;
 
-export default {
+const defaultExport = {
   Certificate,
   checkPrime,
   checkPrimeSync,
@@ -451,7 +504,6 @@ export default {
   publicDecrypt,
   publicEncrypt,
   randomBytes,
-  pseudoRandomBytes,
   randomFill,
   randomFillSync,
   randomInt,
@@ -470,6 +522,41 @@ export default {
   subtle,
   X509Certificate,
 };
+
+// Aliases for randomBytes are deprecated; defined as non-enumerable lazy
+// getters to mirror Node's lib/crypto.js getRandomBytesAlias(). With
+// --pending-deprecation, accessing them prints DEP0115.
+function defineRandomBytesAlias(target: object, key: string) {
+  Object.defineProperty(target, key, {
+    enumerable: false,
+    configurable: true,
+    get() {
+      const value = getOptionValue("--pending-deprecation")
+        ? deprecate(randomBytes, `crypto.${key} is deprecated.`, "DEP0115")
+        : randomBytes;
+      Object.defineProperty(this, key, {
+        enumerable: false,
+        configurable: true,
+        writable: true,
+        value,
+      });
+      return value;
+    },
+    set(value) {
+      Object.defineProperty(this, key, {
+        enumerable: false,
+        configurable: true,
+        writable: true,
+        value,
+      });
+    },
+  });
+}
+for (const key of ["pseudoRandomBytes", "prng", "rng"]) {
+  defineRandomBytesAlias(defaultExport, key);
+}
+
+export default defaultExport;
 
 export type {
   Algorithms,

@@ -12,6 +12,23 @@
           "output": "Valid profile with [WILDCARD] nodes\n"
         }
       ]
+    },
+    "eval_md": {
+      "steps": [
+        {
+          "args": [
+            "eval",
+            "--cpu-prof-dir=.",
+            "--cpu-prof-md",
+            "function fib(n){if(n<=1)return n;return fib(n-1)+fib(n-2)}; fib(30)"
+          ],
+          "output": ""
+        },
+        {
+          "args": "run --allow-read verify_md.js",
+          "output": "Valid markdown report\n"
+        }
+      ]
     }
   }
 }

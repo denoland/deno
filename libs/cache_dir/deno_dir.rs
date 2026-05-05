@@ -69,7 +69,10 @@ pub fn resolve_deno_dir<'a, Sys: ResolveDenoDirSys>(
       None => Cow::Owned(
         // ok because we allow people providing the initial cwd
         // as an optimization here
-        #[allow(clippy::disallowed_methods)]
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "fallback when cwd not provided"
+        )]
         sys
           .env_current_dir()
           .map_err(|source| DenoDirResolutionError::FailedCwd { source })?,
