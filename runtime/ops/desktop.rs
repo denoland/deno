@@ -334,13 +334,21 @@ pub trait DesktopApi: Send + Sync + 'static {
     menu: Vec<MenuItem>,
   );
 
+  /// Best-effort fetch of the OS-level window/display handles for the
+  /// given window. Returning `Err` instead of panicking matters because
+  /// this trait method is reachable from a v8 op handler but its
+  /// implementation is invoked across the WEF C ABI; an unwind through
+  /// that boundary would be UB.
   fn get_raw_window_handle(
     &self,
     window_id: u32,
-  ) -> (
-    raw_window_handle::RawWindowHandle,
-    raw_window_handle::RawDisplayHandle,
-  );
+  ) -> Result<
+    (
+      raw_window_handle::RawWindowHandle,
+      raw_window_handle::RawDisplayHandle,
+    ),
+    deno_error::JsErrorBox,
+  >;
 
   fn open_devtools(&self, window_id: u32, renderer: bool, deno: bool);
 
@@ -671,11 +679,17 @@ impl BrowserWindow {
 
     let api = self.api.clone();
     let window_id = self.window_id;
+
+    // Hoisted out of the `surface.get` closure so failures can bubble to
+    // JS as a thrown error rather than being swallowed (the closure
+    // itself returns `T`, not `Result<T>`). `get_raw_window_handle` can
+    // legitimately fail on platforms WEF doesn't fully support, and we
+    // don't want a `panic!` unwinding across the WEF C ABI.
+    let (win_handle, display_handle) = api.get_raw_window_handle(window_id)?;
+
     self.surface_taken.set(true);
 
     Ok(self.surface.get(scope, move |_| {
-      let (win_handle, display_handle) = api.get_raw_window_handle(window_id);
-
       // SAFETY: The raw handles are valid for the lifetime of the OS window.
       // `BrowserWindow.close()` is suppressed (downgraded to hide) once a
       // surface has been taken (`surface_taken`), and the OS window outlives

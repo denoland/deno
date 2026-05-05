@@ -111,19 +111,6 @@ write access to the cwd can pre-create it as a symlink.
 
 ## Soundness / UB
 
-### 11. `expect("null window handle")` in `extern "C"`-reachable code — HIGH
-
-`cli/rt_desktop/lib.rs:436-474`
-
-`get_raw_window_handle` runs
-`NonNull::new(raw_win).expect("null window handle")` synchronously on the thread
-that called the op, plus
-`_ => panic!("unknown window handle type: {handle_type}")` if WEF ever adds a
-new platform. Either path can unwind across the WEF FFI boundary (UB).
-
-**Fix**: return `Result` from the trait method (or a sentinel surface), and stop
-using `expect` / `panic!` here.
-
 ### 12. `dlopen(self, RTLD_NOLOAD|RTLD_GLOBAL)` not checked, no SAFETY comment — LOW
 
 `cli/rt_desktop/lib.rs:758-781`
@@ -340,7 +327,7 @@ These pre-date this branch and currently block `tools/lint.js`.
 
 | Severity | Count | Items                                                         |
 | -------- | ----- | ------------------------------------------------------------- |
-| HIGH     | 4     | #2, #11, #16, #28                                             |
+| HIGH     | 3     | #2, #16, #28                                                  |
 | MEDIUM   | 7     | #3, #7, #13, #17, #23, #24, #29                               |
 | LOW      | 14    | #6, #9, #12, #14, #15, #18, #19, #20, #21, #22, #27, #30, #31 |
 
@@ -350,10 +337,9 @@ These pre-date this branch and currently block `tools/lint.js`.
 architectural changes:
 
 1. **#2** tar symlink escape (`unpack_in`)
-2. **#11** stop `expect`/`panic!` across FFI in `get_raw_window_handle`
-3. **#16** correctly preserve `.update` on rename failure
-4. **#24** `kill_on_drop(true)` for the WEF subprocess
-5. **#28** move `set_var(DENO_SERVE_ADDRESS)` before runtime init
+2. **#16** correctly preserve `.update` on rename failure
+3. **#24** `kill_on_drop(true)` for the WEF subprocess
+4. **#28** move `set_var(DENO_SERVE_ADDRESS)` before runtime init
 
 **Second batch — robustness wins**:
 

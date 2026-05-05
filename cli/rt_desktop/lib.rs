@@ -421,35 +421,43 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
   fn get_raw_window_handle(
     &self,
     window_id: u32,
-  ) -> (
-    raw_window_handle::RawWindowHandle,
-    raw_window_handle::RawDisplayHandle,
-  ) {
+  ) -> Result<
+    (
+      raw_window_handle::RawWindowHandle,
+      raw_window_handle::RawDisplayHandle,
+    ),
+    deno_error::JsErrorBox,
+  > {
     let window = just_wef::Window::from_id(window_id);
     let handle_type = window.get_window_handle_type();
     let raw_win = window.get_window_handle();
     let raw_display = window.get_display_handle();
 
+    let null_window =
+      || deno_error::JsErrorBox::generic("WEF returned a null window handle");
+    let null_display =
+      || deno_error::JsErrorBox::generic("WEF returned a null display handle");
+
     match handle_type {
       just_wef::WEF_WINDOW_HANDLE_APPKIT => {
         use raw_window_handle::*;
         let win = RawWindowHandle::AppKit(AppKitWindowHandle::new(
-          std::ptr::NonNull::new(raw_win).expect("null window handle"),
+          std::ptr::NonNull::new(raw_win).ok_or_else(null_window)?,
         ));
         let display = RawDisplayHandle::AppKit(AppKitDisplayHandle::new());
-        (win, display)
+        Ok((win, display))
       }
       just_wef::WEF_WINDOW_HANDLE_WIN32 => {
         use raw_window_handle::*;
         let mut handle = Win32WindowHandle::new(
           std::num::NonZeroIsize::new(raw_win as isize)
-            .expect("null window handle"),
+            .ok_or_else(null_window)?,
         );
         handle.hinstance =
           std::num::NonZeroIsize::new(raw_display as isize).map(|v| v.into());
         let win = RawWindowHandle::Win32(handle);
         let display = RawDisplayHandle::Windows(WindowsDisplayHandle::new());
-        (win, display)
+        Ok((win, display))
       }
       just_wef::WEF_WINDOW_HANDLE_X11 => {
         use raw_window_handle::*;
@@ -458,19 +466,21 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
           std::ptr::NonNull::new(raw_display),
           0,
         ));
-        (win, display)
+        Ok((win, display))
       }
       just_wef::WEF_WINDOW_HANDLE_WAYLAND => {
         use raw_window_handle::*;
         let win = RawWindowHandle::Wayland(WaylandWindowHandle::new(
-          std::ptr::NonNull::new(raw_win).expect("null window handle"),
+          std::ptr::NonNull::new(raw_win).ok_or_else(null_window)?,
         ));
         let display = RawDisplayHandle::Wayland(WaylandDisplayHandle::new(
-          std::ptr::NonNull::new(raw_display).expect("null display handle"),
+          std::ptr::NonNull::new(raw_display).ok_or_else(null_display)?,
         ));
-        (win, display)
+        Ok((win, display))
       }
-      _ => panic!("unknown window handle type: {handle_type}"),
+      other => Err(deno_error::JsErrorBox::generic(format!(
+        "unknown WEF window handle type: {other}",
+      ))),
     }
   }
 
