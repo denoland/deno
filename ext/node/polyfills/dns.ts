@@ -24,8 +24,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, primordials } from "ext:core/mod.js";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { customPromisifyArgs } from "ext:deno_node/internal/util.mjs";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { customPromisifyArgs } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 const {
   validateBoolean,
   validateFunction,
@@ -80,25 +82,25 @@ import type {
 } from "ext:deno_node/internal/dns/utils.ts";
 import promisesBase from "ext:deno_node/internal/dns/promises.ts";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import {
+const {
   dnsException,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_MISSING_ARGS,
   handleDnsError,
-} from "ext:deno_node/internal/errors.ts";
-import {
-  AI_ADDRCONFIG as ADDRCONFIG,
-  AI_ALL as ALL,
-  AI_V4MAPPED as V4MAPPED,
-} from "ext:deno_node/internal_binding/ares.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
+  AI_ADDRCONFIG: ADDRCONFIG,
+  AI_ALL: ALL,
+  AI_V4MAPPED: V4MAPPED,
+} = core.loadExtScript("ext:deno_node/internal_binding/ares.ts");
 import cares, {
   type ChannelWrapQuery,
   GetAddrInfoReqWrap,
   GetNameInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { domainToASCII } from "ext:deno_node/internal/idna.ts";
+const { domainToASCII } = core.loadExtScript("ext:deno_node/internal/idna.ts");
 
 const { ObjectDefineProperty } = primordials;
 

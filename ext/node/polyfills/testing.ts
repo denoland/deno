@@ -94,7 +94,7 @@ function installErrorHandlers() {
     }
   });
 }
-import { notImplemented } from "ext:deno_node/_utils.ts";
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const {
   validateFunction,
   validateInteger,

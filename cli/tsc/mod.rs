@@ -282,6 +282,7 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.es2022.intl.d.ts"),
     maybe_compressed_lib!("lib.es2022.object.d.ts"),
     maybe_compressed_lib!("lib.es2022.regexp.d.ts"),
+    maybe_compressed_lib!("lib.es2022.sharedmemory.d.ts"),
     maybe_compressed_lib!("lib.es2022.string.d.ts"),
     maybe_compressed_lib!("lib.es2023.array.d.ts"),
     maybe_compressed_lib!("lib.es2023.collection.d.ts"),
@@ -314,12 +315,13 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.esnext.decorators.d.ts"),
     maybe_compressed_lib!("lib.esnext.disposable.d.ts"),
     maybe_compressed_lib!("lib.esnext.error.d.ts"),
-    maybe_compressed_lib!("lib.esnext.float16.d.ts"),
     maybe_compressed_lib!("lib.esnext.full.d.ts"),
     maybe_compressed_lib!("lib.esnext.intl.d.ts"),
-    maybe_compressed_lib!("lib.esnext.iterator.d.ts"),
+    maybe_compressed_lib!("lib.esnext.object.d.ts"),
     maybe_compressed_lib!("lib.esnext.promise.d.ts"),
+    maybe_compressed_lib!("lib.esnext.regexp.d.ts"),
     maybe_compressed_lib!("lib.esnext.sharedmemory.d.ts"),
+    maybe_compressed_lib!("lib.esnext.string.d.ts"),
     maybe_compressed_lib!("lib.esnext.temporal.d.ts"),
     maybe_compressed_lib!("lib.esnext.typedarrays.d.ts"),
     maybe_compressed_lib!("lib.node.d.ts"),
@@ -1281,6 +1283,10 @@ pub static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
       // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
       // so we will ignore complaints about this compiler setting.
       5070,
+      // TS6200: Definitions of the following identifiers conflict with those in another file.
+      // Deno provides its own web API types (WebAssembly, BufferSource, etc.) that intentionally
+      // overlap with lib.dom.d.ts or @types/node. This is expected when both are loaded together.
+      6200,
       // TS7016: Could not find a declaration file for module '...'. '...'
       // implicitly has an 'any' type.  This is due to `allowJs` being off by
       // default but importing of a JavaScript module.

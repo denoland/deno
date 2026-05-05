@@ -7,8 +7,8 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { Buffer } from "node:buffer";
-import { codes } from "ext:deno_node/internal/errors.ts";
 import { core, primordials } from "ext:core/mod.js";
+const { codes } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   isArrayBufferView,
   isUint8Array,

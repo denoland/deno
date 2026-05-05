@@ -16,13 +16,13 @@ const {
   validateInteger,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import {
+const {
   ERR_CRYPTO_INVALID_DIGEST,
   ERR_CRYPTO_INVALID_KEYLEN,
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
   hideStackFrames,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import {
   kHandle,
   toBuf,
@@ -33,7 +33,7 @@ import {
   KeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
 import type { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
-import { kMaxLength } from "ext:deno_node/internal/buffer.mjs";
+const { kMaxLength } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   isAnyArrayBuffer,
   isArrayBufferView,

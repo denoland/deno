@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
 const { core, internals, primordials } = globalThis.__bootstrap;
@@ -25,7 +24,9 @@ const { HTTP_TOKEN_CODE_POINT_RE } = core.loadExtScript(
   "ext:deno_web/00_infra.js",
 );
 const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
-const { extractBody, mixinBody } = core.loadExtScript("ext:deno_fetch/22_body.js");
+const { extractBody, mixinBody } = core.loadExtScript(
+  "ext:deno_fetch/22_body.js",
+);
 const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
 const { extractMimeType } = core.loadExtScript("ext:deno_web/01_mimesniff.js");
 const { blobFromObjectUrl } = core.loadExtScript("ext:deno_web/09_file.js");
@@ -36,7 +37,9 @@ const {
   headerListFromHeaders,
   headersFromHeaderList,
 } = core.loadExtScript("ext:deno_fetch/20_headers.js");
-const { HttpClientPrototype } = core.loadExtScript("ext:deno_fetch/22_http_client.js");
+const { HttpClientPrototype } = core.loadExtScript(
+  "ext:deno_fetch/22_http_client.js",
+);
 const {
   createDependentAbortSignal,
   newSignal,
@@ -640,4 +643,4 @@ return {
   RequestPrototype,
   toInnerRequest,
 };
-})()
+})();

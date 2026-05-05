@@ -54,20 +54,22 @@ import type {
   ResolveOptions,
   ResolveWithTtlOptions,
 } from "ext:deno_node/internal/dns/utils.ts";
-import {
+const {
   dnsException,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_MISSING_ARGS,
   handleDnsError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import cares, {
   type ChannelWrapQuery,
   GetAddrInfoReqWrap,
   GetNameInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { domainToASCII } from "ext:deno_node/internal/idna.ts";
+const { domainToASCII } = core.loadExtScript(
+  "ext:deno_node/internal/idna.ts",
+);
 
 function onlookup(
   this: GetAddrInfoReqWrap,

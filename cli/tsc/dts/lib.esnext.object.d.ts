@@ -16,21 +16,14 @@ and limitations under the License.
 
 /// <reference no-default-lib="true"/>
 
-/// <reference lib="es2015.symbol" />
-/// <reference lib="es2015.iterable" />
-
-// TODO(nayeemrmn): The content of lib.es2025.d.ts was originally copied here,
-// but tsc (not tsgo) gave this buggy error:
-//
-// TS2374 [ERROR]: Duplicate index signature for type 'number'.
-//     [index: number]: number;
-//     ~~~~~~~~~~~~~~~~~~~~~~~~
-//     at asset:///lib.es2025.float16.d.ts:348:5
-//
-// TS2374 [ERROR]: Duplicate index signature for type 'number'.
-//     [index: number]: number;
-//     ~~~~~~~~~~~~~~~~~~~~~~~~
-//     at asset:///lib.esnext.float16.d.ts:350:5
-//
-// Reference the lib instead.
-/// <reference lib="es2025.float16" />
+interface ObjectConstructor {
+    /**
+     * Groups members of an iterable according to the return value of the passed callback.
+     * @param items An iterable.
+     * @param keySelector A callback which will be invoked for each item in items.
+     */
+    groupBy<K extends PropertyKey, T>(
+        items: Iterable<T>,
+        keySelector: (item: T, index: number) => K,
+    ): Partial<Record<K, T[]>>;
+}

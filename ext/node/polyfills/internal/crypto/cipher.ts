@@ -56,21 +56,25 @@ import type {
   Encoding,
 } from "ext:deno_node/internal/crypto/types.ts";
 import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_UNKNOWN_ENCODING,
   NodeError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const {
   isAnyArrayBuffer,
   isArrayBufferView,
 } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
-import { ERR_CRYPTO_INVALID_STATE } from "ext:deno_node/internal/errors.ts";
+const { ERR_CRYPTO_INVALID_STATE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 import { StringDecoder } from "node:string_decoder";
 import assert from "node:assert";
-import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
+const { normalizeEncoding } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 
 const FastBuffer = Buffer[SymbolSpecies];
 

@@ -44,14 +44,14 @@ const { kHandle } = core.loadExtScript(
   "ext:deno_node/internal/crypto/constants.ts",
 );
 import { isStringOrBuffer } from "ext:deno_node/internal/crypto/cipher.ts";
-import {
+const {
   ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS,
   ERR_CRYPTO_INVALID_JWK,
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
-} from "ext:deno_node/internal/errors.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import type {
   KeyFormat,
   PrivateKeyInput,
@@ -62,7 +62,9 @@ const {
   isAnyArrayBuffer,
   isArrayBufferView,
 } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
-import { hideStackFrames } from "ext:deno_node/internal/errors.ts";
+const { hideStackFrames } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 const {
   isCryptoKey,
   isKeyObject,
@@ -407,7 +409,11 @@ export function prepareAsymmetricKey(
       handle: getKeyObjectHandle(key, ctx),
     };
   } else if (isCryptoKey(key)) {
-    notImplemented("using CryptoKey as input");
+    return {
+      // @ts-ignore __proto__ is magic
+      __proto__: null,
+      handle: KeyObject.from(key)[kHandle],
+    };
   } else if (isStringOrBuffer(key)) {
     // Expect PEM by default, mostly for backward compatibility.
     return {
@@ -427,7 +433,11 @@ export function prepareAsymmetricKey(
         handle: getKeyObjectHandle(data, ctx),
       };
     } else if (isCryptoKey(data)) {
-      notImplemented("using CryptoKey as input");
+      return {
+        // @ts-ignore __proto__ is magic
+        __proto__: null,
+        handle: KeyObject.from(data)[kHandle],
+      };
     } else if (format === "jwk") {
       // For format: 'jwk' the `key.key` property must be an object;
       // strings, primitives and functions are rejected outright (matches
@@ -775,7 +785,10 @@ export function prepareSecretKey(
       }
       return key[kHandle];
     } else if (isCryptoKey(key)) {
-      notImplemented("using CryptoKey as input");
+      if (key.type !== "secret") {
+        throw new ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE(key.type, "secret");
+      }
+      return KeyObject.from(key)[kHandle];
     }
   }
   if (
@@ -1113,6 +1126,12 @@ export function createSecretKey(
   key: string | ArrayBufferView | ArrayBuffer | KeyObject | CryptoKey,
   encoding?: string,
 ): KeyObject {
+  if (isCryptoKey(key)) {
+    if (key.type !== "secret") {
+      throw new ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE(key.type, "secret");
+    }
+    return KeyObject.from(key);
+  }
   const preparedKey = prepareSecretKey(key, encoding, true);
   if (isArrayBufferView(preparedKey) || isAnyArrayBuffer(preparedKey)) {
     const handle = op_node_create_secret_key(preparedKey);

@@ -27,19 +27,19 @@
 import { core } from "ext:core/mod.js";
 import { op_get_env_no_permission_check } from "ext:core/ops";
 
-import {
+const {
   clearLine,
   clearScreenDown,
   cursorTo,
   moveCursor,
-} from "ext:deno_node/internal/readline/callbacks.mjs";
+} = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
 import { emitKeypressEvents } from "ext:deno_node/internal/readline/emitKeypressEvents.mjs";
 import promises from "ext:deno_node/readline/promises.ts";
 const { validateAbortSignal } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-import { promisify } from "ext:deno_node/internal/util.mjs";
-import { AbortError } from "ext:deno_node/internal/errors.ts";
+const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { AbortError } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 import {
   Interface as _Interface,

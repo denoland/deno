@@ -6,7 +6,6 @@
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-// deno-fmt-ignore-file
 (function () {
 const { core, internals, primordials } = globalThis.__bootstrap;
 const {
@@ -93,7 +92,9 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-const { structuredClone } = core.loadExtScript("ext:deno_web/02_structured_clone.js");
+const { structuredClone } = core.loadExtScript(
+  "ext:deno_web/02_structured_clone.js",
+);
 const {
   AbortSignalPrototype,
   add,
@@ -102,8 +103,12 @@ const {
   signalAbort,
 } = core.loadExtScript("ext:deno_web/03_abort_signal.js");
 
-const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
-const { assert, AssertionError } = core.loadExtScript("ext:deno_web/00_infra.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { assert, AssertionError } = core.loadExtScript(
+  "ext:deno_web/00_infra.js",
+);
 
 /** @template T */
 class Deferred {
@@ -7320,4 +7325,4 @@ return {
   WritableStreamDefaultWriter,
   writableStreamForRid,
 };
-})()
+})();

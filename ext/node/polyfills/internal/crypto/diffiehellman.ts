@@ -23,7 +23,7 @@ const {
   isAnyArrayBuffer,
   isArrayBufferView,
 } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
-import {
+const {
   ERR_CRYPTO_ECDH_INVALID_FORMAT,
   ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY,
   ERR_CRYPTO_INCOMPATIBLE_KEY,
@@ -31,7 +31,7 @@ import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   NodeError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   validateInt32,
   validateString,

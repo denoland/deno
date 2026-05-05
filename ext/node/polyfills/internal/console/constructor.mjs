@@ -55,12 +55,12 @@ const {
 
 // Mock trace for now
 const trace = () => {};
-import {
+const {
   ERR_CONSOLE_WRITABLE_STREAM,
   ERR_INCOMPATIBLE_OPTION_PAIR,
   ERR_INVALID_ARG_VALUE,
   isStackOverflowError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   validateArray,
   validateInteger,
@@ -68,10 +68,10 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { Buffer } from "node:buffer";
 const { isBuffer } = Buffer;
-import {
+const {
   formatWithOptions,
   inspect,
-} from "ext:deno_node/internal/util/inspect.mjs";
+} = core.loadExtScript("ext:deno_node/internal/util/inspect.mjs");
 const {
   isMap,
   isMapIterator,
@@ -79,17 +79,19 @@ const {
   isSetIterator,
   isTypedArray,
 } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
-import {
-  CHAR_LOWERCASE_B as kTraceBegin,
-  CHAR_LOWERCASE_E as kTraceEnd,
-  CHAR_LOWERCASE_N as kTraceInstant,
-  CHAR_UPPERCASE_C as kTraceCount,
-} from "ext:deno_node/internal/constants.ts";
-import {
+const {
+  CHAR_LOWERCASE_B: kTraceBegin,
+  CHAR_LOWERCASE_E: kTraceEnd,
+  CHAR_LOWERCASE_N: kTraceInstant,
+  CHAR_UPPERCASE_C: kTraceCount,
+} = core.loadExtScript("ext:deno_node/internal/constants.ts");
+const {
   clearScreenDown,
   cursorTo,
-} from "ext:deno_node/internal/readline/callbacks.mjs";
-import cliTable from "ext:deno_node/internal/cli_table.ts";
+} = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
+const { default: cliTable } = core.loadExtScript(
+  "ext:deno_node/internal/cli_table.ts",
+);
 const kCounts = Symbol("counts");
 
 const kTraceConsoleCategory = "node,node.console";

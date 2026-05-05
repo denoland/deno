@@ -22,8 +22,8 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 // These are simplified versions of the "real" errors in Node.
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   ArrayPrototypePop,
   Error,
@@ -36,7 +36,7 @@ const {
   PromisePrototypeThen,
 } = primordials;
 
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { validateFunction } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
@@ -90,4 +90,7 @@ function callbackify(original) {
   return callbackified;
 }
 
-export { callbackify };
+return {
+  callbackify,
+};
+})();

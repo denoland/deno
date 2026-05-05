@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 // This file is here because to break a circular dependency between streams and
 // crypto.
@@ -9,7 +8,9 @@
 
 (function () {
 const { core } = globalThis.__bootstrap;
-const { kKeyObject } = core.loadExtScript("ext:deno_node/internal/crypto/constants.ts");
+const { kKeyObject } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/constants.ts",
+);
 
 const kKeyType = Symbol("kKeyType");
 
@@ -26,4 +27,4 @@ function isCryptoKey(obj) {
 }
 
 return { kKeyType, isKeyObject, isCryptoKey };
-})()
+})();

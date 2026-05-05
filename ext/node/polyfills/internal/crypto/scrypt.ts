@@ -36,10 +36,10 @@ const {
   validateInteger,
   validateUint32,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import {
+const {
   ERR_CRYPTO_INVALID_SCRYPT_PARAMS,
   ERR_INCOMPATIBLE_OPTION_PAIR,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { getArrayBufferOrView } from "ext:deno_node/internal/crypto/keys.ts";
 
 type Opts = Partial<{

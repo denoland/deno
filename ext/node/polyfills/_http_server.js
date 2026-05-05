@@ -56,9 +56,11 @@ import {
   validateHeaderName,
   validateHeaderValue,
 } from "node:_http_outgoing";
-import { kNeedDrain, kOutHeaders } from "ext:deno_node/internal/http.ts";
+const { kNeedDrain, kOutHeaders } = core.loadExtScript(
+  "ext:deno_node/internal/http.ts",
+);
 import { IncomingMessage } from "node:_http_incoming";
-import {
+const {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
   ERR_HTTP_SOCKET_ASSIGNED,
@@ -66,15 +68,15 @@ import {
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CHAR,
   ERR_OUT_OF_RANGE,
-} from "ext:deno_node/internal/errors.ts";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const {
   validateBoolean,
   validateInteger,
   validateLinkHeaderValue,
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const {
   otelState,
   builtinTracer,

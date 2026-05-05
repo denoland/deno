@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
@@ -13,7 +12,9 @@ const {
   regexMatcher,
   serializeJSValueToJSONString,
 } = core.loadExtScript("ext:deno_web/00_infra.js");
-const { extractBody, mixinBody } = core.loadExtScript("ext:deno_fetch/22_body.js");
+const { extractBody, mixinBody } = core.loadExtScript(
+  "ext:deno_fetch/22_body.js",
+);
 const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
 const { extractMimeType } = core.loadExtScript("ext:deno_web/01_mimesniff.js");
 const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
@@ -525,4 +526,4 @@ return {
   ResponsePrototype,
   toInnerResponse,
 };
-})()
+})();

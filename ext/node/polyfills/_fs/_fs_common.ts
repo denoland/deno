@@ -6,7 +6,7 @@ const { validateFunction } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
-import {
+import type {
   BinaryEncodings,
   Encodings,
   TextEncodings,

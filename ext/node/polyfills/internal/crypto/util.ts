@@ -5,18 +5,20 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-import { notImplemented } from "ext:deno_node/_utils.ts";
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import { Buffer } from "node:buffer";
-import {
+const {
   ERR_CRYPTO_INVALID_DIGEST,
   ERR_INVALID_ARG_TYPE,
   hideStackFrames,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   isAnyArrayBuffer,
   isArrayBufferView,
 } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
-import { crypto as constants } from "ext:deno_node/internal_binding/constants.ts";
+const { crypto: constants } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 const {
   validateInt32,
   validateObject,

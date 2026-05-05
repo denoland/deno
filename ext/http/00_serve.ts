@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
 const { core, internals, primordials } = globalThis.__bootstrap;
@@ -30,7 +29,7 @@ const {
   op_http_set_response_header,
   op_http_set_response_headers,
   op_http_set_response_trailers,
-  op_http_try_wait,
+  op_http_try_take_full_request_body,
   op_http_upgrade_raw,
   op_http_upgrade_raw_connect,
   op_http_upgrade_raw_get_head,
@@ -368,6 +367,17 @@ class InnerRequest {
     if (this.method == "GET" || this.method == "HEAD") {
       this.#body = null;
       return null;
+    }
+    // Fast path: if the entire body is already buffered in hyper
+    // (typical small POST keep-alive case), skip the ReadableStream
+    // wrapper, op_http_read_request_body resource allocation, and
+    // the disturb/close plumbing -- hand the bytes straight to
+    // InnerBody's static path. On `null` the body is left intact
+    // and we fall through to the streaming path.
+    const buffered = op_http_try_take_full_request_body(this.#external);
+    if (buffered !== null) {
+      this.#body = new InnerBody({ body: buffered, consumed: false });
+      return this.#body;
     }
     this.#streamRid = op_http_read_request_body(this.#external);
     this.#body = new InnerBody(
@@ -996,78 +1006,83 @@ function serveInner(options, handler) {
  * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary listener.
  */
 function serveHttpOnListener(listener, signal, handler, onError, onListen) {
-  const context = new CallbackContext(
+  let serverContext = undefined;
+  let callback = undefined;
+  const promiseErrorHandler = (error) => {
+    internals.log(
+      "error",
+      "Terminating Deno.serve loop due to unexpected error",
+      error,
+    );
+    serverContext?.close();
+  };
+  const dispatch = (req) => {
+    PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
+  };
+
+  serverContext = new CallbackContext(
     signal,
-    op_http_serve(listener[internalRidSymbol]),
+    op_http_serve(listener[internalRidSymbol], dispatch),
     listener,
   );
-  const callback = mapToCallback(context, handler, onError);
+  callback = mapToCallback(serverContext, handler, onError);
 
-  onListen(context.scheme);
+  onListen(serverContext.scheme);
 
-  return serveHttpOn(context, listener.addr, callback);
+  return serveHttpOn(serverContext, listener.addr);
 }
 
 /**
  * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary connection.
  */
 function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
-  const context = new CallbackContext(
-    signal,
-    op_http_serve_on(connection[internalRidSymbol]),
-    null,
-  );
-  const callback = mapToCallback(context, handler, onError);
-
-  onListen(context.scheme);
-
-  return serveHttpOn(context, connection.localAddr, callback);
-}
-
-function serveHttpOn(context, addr, callback) {
-  let ref = true;
-  let currentPromise = null;
-
+  let serverContext = undefined;
+  let callback = undefined;
   const promiseErrorHandler = (error) => {
-    // Abnormal exit
     internals.log(
       "error",
       "Terminating Deno.serve loop due to unexpected error",
       error,
     );
-    context.close();
+    serverContext?.close();
   };
+  const dispatch = (req) => {
+    PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
+  };
+
+  serverContext = new CallbackContext(
+    signal,
+    op_http_serve_on(connection[internalRidSymbol], dispatch),
+    null,
+  );
+  callback = mapToCallback(serverContext, handler, onError);
+
+  onListen(serverContext.scheme);
+
+  return serveHttpOn(serverContext, connection.localAddr);
+}
+
+function serveHttpOn(context, addr) {
+  let ref = true;
+  let currentPromise = null;
 
   // Run the server
   const finished = (async () => {
     const rid = context.serverRid;
-    while (true) {
-      let req;
-      try {
-        // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
-        // a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
-        while ((req = op_http_try_wait(rid)) !== null) {
-          PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
-        }
-        currentPromise = op_http_wait(rid);
-        if (!ref) {
-          core.unrefOpPromise(currentPromise);
-        }
-        req = await currentPromise;
-        currentPromise = null;
-      } catch (error) {
-        if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
-          break;
-        }
-        if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)) {
-          break;
-        }
+    try {
+      currentPromise = op_http_wait(rid);
+      if (!ref) {
+        core.unrefOpPromise(currentPromise);
+      }
+      await currentPromise;
+      currentPromise = null;
+    } catch (error) {
+      if (
+        !ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
+        !ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)
+      ) {
         throw new Deno.errors.Http(error);
       }
-      if (req === null) {
-        break;
-      }
-      PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
     }
 
     try {
@@ -1219,4 +1234,4 @@ return {
   upgradeHttpRaw,
   upgradeHttpRawConnect,
 };
-})()
+})();

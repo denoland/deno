@@ -11,11 +11,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import process from "node:process";
 import { setInterval, setTimeout } from "node:timers";
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_STATE,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   validateBoolean,
   validateFunction,

@@ -16,7 +16,9 @@ import randomBytes from "ext:deno_node/internal/crypto/_randomBytes.ts";
 import randomFill, {
   randomFillSync,
 } from "ext:deno_node/internal/crypto/_randomFill.mjs";
-import randomInt from "ext:deno_node/internal/crypto/_randomInt.ts";
+const { default: randomInt } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/_randomInt.ts",
+);
 const {
   validateBoolean,
   validateFunction,
@@ -27,12 +29,12 @@ const {
   isAnyArrayBuffer,
   isArrayBufferView,
 } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
   NodeError,
   NodeRangeError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { Buffer } from "node:buffer";
 
 export { default as randomBytes } from "ext:deno_node/internal/crypto/_randomBytes.ts";
@@ -40,7 +42,7 @@ export {
   default as randomFill,
   randomFillSync,
 } from "ext:deno_node/internal/crypto/_randomFill.mjs";
-export { default as randomInt } from "ext:deno_node/internal/crypto/_randomInt.ts";
+export { randomInt };
 
 // OpenSSL BIGNUM max size: INT_MAX / (4 * BN_BITS2) words * 8 bytes/word
 // On 64-bit: (2^31 - 1) / 256 * 8 = 67108856 bytes

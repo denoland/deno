@@ -37,11 +37,11 @@ import {
   KeyObject,
   prepareSecretKey,
 } from "ext:deno_node/internal/crypto/keys.ts";
-import {
+const {
   ERR_CRYPTO_HASH_FINALIZED,
   ERR_INVALID_ARG_TYPE,
   NodeError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import LazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
 import process from "node:process";
 import {

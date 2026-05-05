@@ -1,0 +1,22 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@denotest/add@0.2": "0.2.1",
+    "jsr:@denotest/multiple-exports@0.2.0": "0.2.0",
+    "jsr:@denotest/subtract@0.2": "0.2.0",
+    "npm:@denotest/bin@0.6.0": "0.6.0",
+    "npm:@denotest/breaking-change-between-versions@1.0.0": "1.0.0",
+    "npm:@denotest/has-patch-versions@0.1": "0.1.1"
+  },
+[WILDCARD]
+  "workspace": {
+    "dependencies": [
+      "jsr:@denotest/add@0.2",
+      "jsr:@denotest/multiple-exports@0.2.0",
+      "jsr:@denotest/subtract@0.2",
+      "npm:@denotest/bin@0.6.0",
+      "npm:@denotest/breaking-change-between-versions@1.0.0",
+      "npm:@denotest/has-patch-versions@0.1"
+    ]
+  }
+}

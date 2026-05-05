@@ -3,24 +3,30 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file ban-types prefer-primordials
 
-import { AssertionError } from "ext:deno_node/internal/assert/assertion_error.js";
-import { innerOk } from "ext:deno_node/internal/assert/utils.ts";
+import { core, primordials } from "ext:core/mod.js";
+const { AssertionError } = core.loadExtScript(
+  "ext:deno_node/internal/assert/assertion_error.js",
+);
+const { innerOk } = core.loadExtScript(
+  "ext:deno_node/internal/assert/utils.ts",
+);
 import { inspect } from "node:util";
-import {
+const {
   ERR_AMBIGUOUS_ARGUMENT,
   ERR_CONSTRUCT_CALL_REQUIRED,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_RETURN_VALUE,
   ERR_MISSING_ARGS,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import {
   isDeepEqual,
   isDeepStrictEqual,
   isPartialStrictEqual,
 } from "ext:deno_node/internal/util/comparisons.ts";
-import { core, primordials } from "ext:core/mod.js";
-import { CallTracker } from "ext:deno_node/internal/assert/calltracker.js";
+const { CallTracker } = core.loadExtScript(
+  "ext:deno_node/internal/assert/calltracker.js",
+);
 import { deprecate } from "node:util";
 const { isPromise, isRegExp } = core.loadExtScript(
   "ext:deno_node/internal_binding/types.ts",
@@ -29,7 +35,7 @@ const {
   validateFunction,
   validateOneOf,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { isError } from "ext:deno_node/internal/util.mjs";
+const { isError } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
 const {
   ArrayPrototypeForEach,

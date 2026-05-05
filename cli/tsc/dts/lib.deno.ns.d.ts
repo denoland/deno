@@ -5349,14 +5349,14 @@ declare namespace Deno {
    *
    * @category Runtime
    */
-  export function refTimer(id: number): void;
+  export function refTimer(id: number | NodeJS.Timeout): void;
 
   /**
    * Make the timer of the given `id` not block the event loop from finishing.
    *
    * @category Runtime
    */
-  export function unrefTimer(id: number): void;
+  export function unrefTimer(id: number | NodeJS.Timeout): void;
 
   /**
    * Returns the user id of the process on POSIX platforms. Returns null on Windows.

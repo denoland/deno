@@ -40,7 +40,7 @@ import { Buffer } from "node:buffer";
 import { writeFileSync } from "node:fs";
 import { Readable } from "node:stream";
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );

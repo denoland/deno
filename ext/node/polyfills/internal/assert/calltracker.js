@@ -2,8 +2,8 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
 // deno-lint-ignore-file prefer-primordials
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   ArrayPrototypePush,
   ArrayPrototypeSlice,
@@ -16,12 +16,14 @@ const {
   SafeWeakMap,
 } = primordials;
 
-import { codes } from "ext:deno_node/internal/errors.ts";
+const { codes } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   ERR_INVALID_ARG_VALUE,
   ERR_UNAVAILABLE_DURING_EXIT,
 } = codes;
-import { AssertionError } from "ext:deno_node/internal/assert/assertion_error.js";
+const { AssertionError } = core.loadExtScript(
+  "ext:deno_node/internal/assert/assertion_error.js",
+);
 const { validateUint32 } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
@@ -161,4 +163,7 @@ class CallTracker {
   }
 }
 
-export { CallTracker };
+return {
+  CallTracker,
+};
+})();

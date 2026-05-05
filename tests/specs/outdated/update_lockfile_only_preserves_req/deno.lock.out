@@ -1,0 +1,14 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:@denotest/has-patch-versions@<0.1.2": "0.1.1"
+  },
+[WILDCARD]
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@denotest/has-patch-versions@<0.1.2"
+      ]
+    }
+  }
+}

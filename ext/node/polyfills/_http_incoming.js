@@ -24,7 +24,7 @@
 
 // deno-lint-ignore-file prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ObjectDefineProperty,
   ObjectSetPrototypeOf,
@@ -32,7 +32,7 @@ const {
 } = primordials;
 
 import { finished, Readable } from "node:stream";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 
 const kHeaders = Symbol("kHeaders");
 const kHeadersDistinct = Symbol("kHeadersDistinct");

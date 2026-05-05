@@ -16,12 +16,12 @@ const {
   StringPrototypeToString,
   Symbol,
 } = primordials;
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_METHOD_NOT_IMPLEMENTED,
   ERR_OUT_OF_RANGE,
-} from "ext:deno_node/internal/errors.ts";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import { deprecate } from "node:util";
 const {
   validateFunction,
@@ -38,7 +38,7 @@ import {
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { finished, Readable, Writable } from "node:stream";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 import { FileHandle, kRef, kUnref } from "ext:deno_node/internal/fs/handle.ts";
 
 const kIoDone = Symbol("kIoDone");

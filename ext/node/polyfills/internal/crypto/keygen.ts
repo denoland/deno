@@ -12,7 +12,7 @@ import {
   PublicKeyObject,
   SecretKeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
-import {
+const {
   ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS,
   ERR_CRYPTO_INVALID_DIGEST,
   ERR_CRYPTO_UNKNOWN_CIPHER,
@@ -20,7 +20,7 @@ import {
   ERR_INCOMPATIBLE_OPTION_PAIR,
   ERR_INVALID_ARG_VALUE,
   ERR_MISSING_OPTION,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { getCiphers } from "ext:deno_node/internal/crypto/util.ts";
 import { getHashes } from "ext:deno_node/internal/crypto/hash.ts";
 const {

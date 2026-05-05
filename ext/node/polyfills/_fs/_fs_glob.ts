@@ -9,8 +9,8 @@ const {
   validateString,
   validateStringArray,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { isMacOS, isWindows } from "ext:deno_node/_util/os.ts";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+const { isMacOS, isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import process from "node:process";
 
 import {
@@ -34,10 +34,10 @@ import {
   DirentFromStats,
 } from "ext:deno_node/internal/fs/utils.mjs";
 
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   hideStackFrames,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 import assert from "node:assert";
 

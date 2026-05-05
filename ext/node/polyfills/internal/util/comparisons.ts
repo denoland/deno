@@ -2,13 +2,13 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file
+import { core, primordials } from "ext:core/mod.js";
 import { Buffer } from "node:buffer";
-import {
+const {
   getOwnNonIndexProperties,
   ONLY_ENUMERABLE,
   SKIP_SYMBOLS,
-} from "ext:deno_node/internal_binding/util.ts";
-import { core, primordials } from "ext:core/mod.js";
+} = core.loadExtScript("ext:deno_node/internal_binding/util.ts");
 import assert from "node:assert";
 const {
   isAnyArrayBuffer,
@@ -35,7 +35,7 @@ const {
 const { kKeyObject } = core.loadExtScript(
   "ext:deno_node/internal/crypto/constants.ts",
 );
-import { isError } from "ext:deno_node/internal/util.mjs";
+const { isError } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import { isURL } from "ext:deno_node/internal/url.ts";
 
 const {

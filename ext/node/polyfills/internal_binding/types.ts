@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 //
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 //
@@ -85,4 +84,4 @@ return {
   isWeakMap,
   isWeakSet,
 };
-})()
+})();

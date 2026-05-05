@@ -6,20 +6,24 @@ import type {
   FormatInputPathObject,
   ParsedPath,
 } from "ext:deno_node/path/_interface.ts";
-import { CHAR_DOT, CHAR_FORWARD_SLASH } from "ext:deno_node/path/_constants.ts";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import { core, primordials } from "ext:core/mod.js";
+const { CHAR_DOT, CHAR_FORWARD_SLASH } = core.loadExtScript(
+  "ext:deno_node/path/_constants.ts",
+);
+const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
-import {
+const {
   _format,
   assertPath,
   isPosixPathSeparator,
   normalizeString,
-} from "ext:deno_node/path/_util.ts";
-import { core, primordials } from "ext:core/mod.js";
+} = core.loadExtScript("ext:deno_node/path/_util.ts");
 const { validateString } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-import { isWindows } from "ext:deno_node/_util/os.ts";
+const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 import process from "node:process";
 import type * as fsGlob from "ext:deno_node/_fs/_fs_glob.ts";
 

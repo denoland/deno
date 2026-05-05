@@ -20,22 +20,29 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { ownerSymbol } from "ext:deno_node/internal/async_hooks.ts";
-import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
-import {
+import { core, primordials } from "ext:core/mod.js";
+const { ownerSymbol } = core.loadExtScript(
+  "ext:deno_node/internal/async_hooks.ts",
+);
+// deno-lint-ignore no-unused-vars
+const { HandleWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/handle_wrap.ts",
+);
+const {
   kArrayBufferOffset,
   kBytesWritten,
   kLastWriteWasAsync,
   kReadBytesOrError,
   streamBaseState,
   WriteWrap,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { errnoException } from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/stream_wrap.ts");
+const { errnoException } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 import { getTimerDuration, kTimeout } from "ext:deno_node/internal/timers.mjs";
 import { clearTimeout } from "node:timers";
 import { setUnrefTimeout } from "ext:deno_node/internal/timers.mjs";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { core, primordials } from "ext:core/mod.js";
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 import { Buffer } from "node:buffer";
 const { isUint8Array } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",

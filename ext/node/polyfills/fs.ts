@@ -1,6 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { fs as fsConstants } from "ext:deno_node/internal_binding/constants.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+import { core } from "ext:core/mod.js";
+const { fs: fsConstants } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 import {
   type BinaryOptionsArgument,
   type CallbackWithError,
@@ -15,13 +18,13 @@ import {
   type WriteFileOptions,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import type { Encodings } from "ext:deno_node/_utils.ts";
-import {
+const {
   AbortError,
   denoErrorToNodeError,
   denoWriteFileErrorToNodeError,
   ERR_FS_FILE_TOO_LARGE,
-} from "ext:deno_node/internal/errors.ts";
-import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const constants = core.loadExtScript("ext:deno_node/_fs/_fs_constants.ts");
 import {
   CFISBIS,
   convertFileInfoToBigIntStats,
@@ -41,7 +44,8 @@ import { read, readSync } from "ext:deno_node/_fs/_fs_read.ts";
 import { readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
 import { EventEmitter } from "node:events";
 import { clearTimeout, setTimeout } from "node:timers";
-import { type MaybeEmpty, notImplemented } from "ext:deno_node/_utils.ts";
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
+import type { MaybeEmpty } from "ext:deno_node/_utils.ts";
 import { deprecate, promisify } from "node:util";
 import promises from "ext:deno_node/internal/fs/promises.ts";
 // @deno-types="./internal/fs/streams.d.ts"
@@ -51,7 +55,9 @@ import {
   ReadStream,
   WriteStream,
 } from "ext:deno_node/internal/fs/streams.mjs";
-import SyncWriteStream from "ext:deno_node/internal/fs/sync_write_stream.js";
+const { default: SyncWriteStream } = core.loadExtScript(
+  "ext:deno_node/internal/fs/sync_write_stream.js",
+);
 import Utf8Stream from "ext:deno_node/internal/streams/fast-utf8-stream.js";
 import {
   arrayBufferViewToUint8Array,
@@ -80,7 +86,9 @@ import { glob, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
 import { Buffer } from "node:buffer";
 import process from "node:process";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
-import { isIterable } from "ext:deno_node/internal/streams/utils.js";
+const { isIterable } = core.loadExtScript(
+  "ext:deno_node/internal/streams/utils.js",
+);
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import {
@@ -120,22 +128,22 @@ import {
   op_node_statfs,
   op_node_statfs_sync,
 } from "ext:core/ops";
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   uvException,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { toUnixTimestamp } from "ext:deno_node/internal/fs/utils.mjs";
-import { isMacOS, isWindows } from "ext:deno_node/_util/os.ts";
-import {
+const { isMacOS, isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const {
   customPromisifyArgs,
   kEmptyObject,
   normalizeEncoding,
-} from "ext:deno_node/internal/util.mjs";
+} = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import { basename, relative, resolve, toNamespacedPath } from "node:path";
 import * as pathModule from "node:path";
 import type { Encoding } from "node:crypto";
-import { core, primordials } from "ext:core/mod.js";
+import { primordials } from "ext:core/mod.js";
 const {
   parseFileMode,
   validateAbortSignal,

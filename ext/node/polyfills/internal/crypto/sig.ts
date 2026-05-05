@@ -47,11 +47,11 @@ import {
   PublicKeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
 import { createHash } from "ext:deno_node/internal/crypto/hash.ts";
-import {
+const {
   ERR_CRYPTO_SIGN_KEY_REQUIRED,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const FastBuffer = Buffer[SymbolSpecies];
 
