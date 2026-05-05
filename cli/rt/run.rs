@@ -434,8 +434,7 @@ impl EmbeddedModuleLoader {
       Ok(Some(module)) => {
         match requested_module_type {
           RequestedModuleType::Text | RequestedModuleType::Bytes => {
-            let module_source =
-              DenoCompileModuleSource::Bytes(module.data);
+            let module_source = DenoCompileModuleSource::Bytes(module.data);
             return Ok(deno_core::ModuleSource::new_with_redirect(
               match requested_module_type {
                 RequestedModuleType::Text => ModuleType::Text,
@@ -445,9 +444,7 @@ impl EmbeddedModuleLoader {
               match requested_module_type {
                 RequestedModuleType::Text => module_source.into_for_v8(),
                 RequestedModuleType::Bytes => {
-                  ModuleSourceCode::Bytes(
-                    module_source.into_bytes_for_v8(),
-                  )
+                  ModuleSourceCode::Bytes(module_source.into_bytes_for_v8())
                 }
                 _ => unreachable!(),
               },
@@ -504,9 +501,7 @@ impl EmbeddedModuleLoader {
         "Module not found: {}",
         original_specifier
       ))),
-      Err(err) => {
-        Err(JsErrorBox::type_error(format!("{:?}", err)))
-      }
+      Err(err) => Err(JsErrorBox::type_error(format!("{:?}", err))),
     }
   }
 }
@@ -538,15 +533,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
           let hook_result = match receiver.await {
             Ok(r) => r,
             Err(_) => {
-              return Err(JsErrorBox::generic(
-                "module resolve hook cancelled",
-              ));
+              return Err(JsErrorBox::generic("module resolve hook cancelled"));
             }
           };
           match hook_result {
             Ok(Some(url)) => {
-              let parsed =
-                Url::parse(&url).map_err(JsErrorBox::from_err)?;
+              let parsed = Url::parse(&url).map_err(JsErrorBox::from_err)?;
               this
                 .hook_registry
                 .hook_intercepted_specifiers
@@ -554,9 +546,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 .insert(parsed.to_string());
               Ok(parsed)
             }
-            Ok(None) => {
-              this.resolve_inner(&raw_specifier, &referrer, kind)
-            }
+            Ok(None) => this.resolve_inner(&raw_specifier, &referrer, kind),
             Err(err) => Err(JsErrorBox::generic(err)),
           }
         }
@@ -644,9 +634,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           let hook_result = match receiver.await {
             Ok(r) => r,
             Err(_) => {
-              return Err(JsErrorBox::generic(
-                "module load hook cancelled",
-              ));
+              return Err(JsErrorBox::generic("module load hook cancelled"));
             }
           };
           match hook_result {
