@@ -227,6 +227,7 @@ pub async fn execute_script(
           },
           kill_signal,
           cli_options.argv(),
+          None,
         )
         .await;
     }
@@ -245,6 +246,60 @@ pub async fn execute_script(
   .await
 }
 
+#[derive(Clone, Copy)]
+struct ParallelInfo {
+  color_index: usize,
+  name_pad_width: usize,
+}
+
+fn compute_concurrent_task_ids(tasks: &[ResolvedTask]) -> HashSet<usize> {
+  if tasks.len() <= 1 {
+    return HashSet::new();
+  }
+
+  // Build transitive dependency sets. Tasks are in topological order so each
+  // task's direct dependencies have already had their own trans_deps computed.
+  let mut trans_deps: HashMap<usize, HashSet<usize>> = HashMap::new();
+  for task in tasks {
+    let mut all_deps = HashSet::new();
+    for &dep_id in &task.dependencies {
+      all_deps.insert(dep_id);
+      if let Some(d) = trans_deps.get(&dep_id) {
+        all_deps.extend(d);
+      }
+    }
+    trans_deps.insert(task.id, all_deps);
+  }
+
+  // Task X is potentially concurrent with task Y when neither is a transitive
+  // dependency of the other — they could be in-flight simultaneously.
+  let mut concurrent = HashSet::new();
+  for i in 0..tasks.len() {
+    for j in (i + 1)..tasks.len() {
+      let id_i = tasks[i].id;
+      let id_j = tasks[j].id;
+      if !trans_deps[&id_i].contains(&id_j)
+        && !trans_deps[&id_j].contains(&id_i)
+      {
+        concurrent.insert(id_i);
+        concurrent.insert(id_j);
+      }
+    }
+  }
+  concurrent
+}
+
+fn colorize_task_prefix(label: &str, color_index: usize) -> String {
+  match color_index % 6 {
+    0 => colors::cyan(label).to_string(),
+    1 => colors::magenta(label).to_string(),
+    2 => colors::yellow(label).to_string(),
+    3 => colors::green(label).to_string(),
+    4 => colors::intense_blue(label).to_string(),
+    _ => colors::red(label).to_string(),
+  }
+}
+
 struct RunSingleOptions<'a> {
   task_name: &'a str,
   package_name: Option<&'a str>,
@@ -253,6 +308,7 @@ struct RunSingleOptions<'a> {
   custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
   kill_signal: KillSignal,
   argv: &'a [String],
+  parallel_info: Option<ParallelInfo>,
 }
 
 struct TaskRunner<'a> {
@@ -315,10 +371,20 @@ impl<'a> TaskRunner<'a> {
     kill_signal: &KillSignal,
     args: &[String],
   ) -> Result<i32, deno_core::anyhow::Error> {
+    let concurrent_task_ids = compute_concurrent_task_ids(&tasks);
+    let max_task_name_len = tasks
+      .iter()
+      .filter(|t| concurrent_task_ids.contains(&t.id))
+      .map(|t| t.name.len())
+      .max()
+      .unwrap_or(0);
+
     struct PendingTasksContext<'a> {
       completed: HashSet<usize>,
       running: HashSet<usize>,
       tasks: &'a [ResolvedTask<'a>],
+      concurrent_task_ids: HashSet<usize>,
+      max_task_name_len: usize,
     }
 
     impl<'a> PendingTasksContext<'a> {
@@ -366,6 +432,14 @@ impl<'a> TaskRunner<'a> {
 
           self.running.insert(task.id);
           let kill_signal = kill_signal.clone();
+          let parallel_info = if self.concurrent_task_ids.contains(&task.id) {
+            Some(ParallelInfo {
+              color_index: task.id,
+              name_pad_width: self.max_task_name_len,
+            })
+          } else {
+            None
+          };
           return Some(
             async move {
               match task.task_or_script {
@@ -378,6 +452,7 @@ impl<'a> TaskRunner<'a> {
                       def,
                       kill_signal,
                       args,
+                      parallel_info,
                     )
                     .await
                 }
@@ -390,6 +465,7 @@ impl<'a> TaskRunner<'a> {
                       &details.tasks,
                       kill_signal,
                       args,
+                      parallel_info,
                     )
                     .await
                 }
@@ -407,6 +483,8 @@ impl<'a> TaskRunner<'a> {
       completed: HashSet::with_capacity(tasks.len()),
       running: HashSet::with_capacity(self.concurrency),
       tasks: &tasks,
+      concurrent_task_ids,
+      max_task_name_len,
     };
 
     let mut queue = futures_unordered::FuturesUnordered::new();
@@ -440,6 +518,10 @@ impl<'a> TaskRunner<'a> {
     Ok(0)
   }
 
+  #[allow(
+    clippy::too_many_arguments,
+    reason = "parallel_info was added to an already-large signature; refactoring into a struct is deferred"
+  )]
   pub async fn run_deno_task(
     &self,
     dir_url: &Url,
@@ -448,6 +530,7 @@ impl<'a> TaskRunner<'a> {
     definition: &TaskDefinition,
     kill_signal: KillSignal,
     argv: &'a [String],
+    parallel_info: Option<ParallelInfo>,
   ) -> Result<i32, deno_core::anyhow::Error> {
     let Some(command) = &definition.command else {
       self.output_task(
@@ -482,10 +565,15 @@ impl<'a> TaskRunner<'a> {
         custom_commands,
         kill_signal,
         argv,
+        parallel_info,
       })
       .await
   }
 
+  #[allow(
+    clippy::too_many_arguments,
+    reason = "parallel_info was added to an already-large signature; refactoring into a struct is deferred"
+  )]
   pub async fn run_npm_script(
     &self,
     dir_url: &Url,
@@ -494,6 +582,7 @@ impl<'a> TaskRunner<'a> {
     scripts: &IndexMap<String, String>,
     kill_signal: KillSignal,
     argv: &[String],
+    parallel_info: Option<ParallelInfo>,
   ) -> Result<i32, deno_core::anyhow::Error> {
     // ensure the npm packages are installed if using a managed resolver
     self.maybe_npm_install().await?;
@@ -527,6 +616,7 @@ impl<'a> TaskRunner<'a> {
             custom_commands: custom_commands.clone(),
             kill_signal: kill_signal.clone(),
             argv,
+            parallel_info,
           })
           .await?;
         if exit_code > 0 {
@@ -550,6 +640,7 @@ impl<'a> TaskRunner<'a> {
       custom_commands,
       kill_signal,
       argv,
+      parallel_info,
     } = opts;
 
     self.output_task(
@@ -558,22 +649,37 @@ impl<'a> TaskRunner<'a> {
       &task_runner::get_script_with_args(script, argv),
     );
 
-    Ok(
-      task_runner::run_task(task_runner::RunTaskOptions {
-        task_name,
-        script,
-        cwd,
-        env_vars: self.env_vars.clone(),
-        custom_commands,
-        init_cwd: self.cli_options.initial_cwd(),
-        argv,
-        root_node_modules_dir: self.npm_resolver.root_node_modules_path(),
-        stdio: None,
-        kill_signal,
-      })
-      .await?
-      .exit_code,
-    )
+    let (stdio, prefix_handles) = if let Some(info) = parallel_info {
+      let label =
+        format!("[{:<width$}]", task_name, width = info.name_pad_width);
+      let prefix =
+        format!("{} ", colorize_task_prefix(&label, info.color_index));
+      let (io, handles) = task_runner::make_prefixed_task_io(prefix);
+      (Some(io), handles)
+    } else {
+      (None, vec![])
+    };
+
+    let exit_code = task_runner::run_task(task_runner::RunTaskOptions {
+      task_name,
+      script,
+      cwd,
+      env_vars: self.env_vars.clone(),
+      custom_commands,
+      init_cwd: self.cli_options.initial_cwd(),
+      argv,
+      root_node_modules_dir: self.npm_resolver.root_node_modules_path(),
+      stdio,
+      kill_signal,
+    })
+    .await?
+    .exit_code;
+
+    for handle in prefix_handles {
+      let _ = handle.await;
+    }
+
+    Ok(exit_code)
   }
 
   async fn maybe_npm_install(&self) -> Result<(), AnyError> {
