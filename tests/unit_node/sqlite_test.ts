@@ -1236,3 +1236,74 @@ Deno.test("sql.db returns the associated DatabaseSync instance", () => {
   sql.clear();
   assertStrictEquals(sql.db, db);
 });
+
+Deno.test("[node/sqlite] enableLoadExtension throws when allowExtension is not set", () => {
+  using db = new DatabaseSync(":memory:");
+
+  assertThrows(
+    () => db.enableLoadExtension(true),
+    Error,
+    "Cannot enable extension loading because it was disabled at database creation.",
+  );
+});
+
+Deno.test("[node/sqlite] enableLoadExtension(false) succeeds without allowExtension", () => {
+  using db = new DatabaseSync(":memory:");
+
+  db.enableLoadExtension(false);
+});
+
+Deno.test({
+  name:
+    "[node/sqlite] enableLoadExtension(false) prevents loadExtension even with allowExtension",
+  permissions: { read: true, write: true, ffi: true },
+  fn() {
+    const db = new DatabaseSync(":memory:", {
+      allowExtension: true,
+    });
+
+    db.enableLoadExtension(false);
+
+    assertThrows(
+      () => db.loadExtension("/path/to/nonexistent/extension"),
+      Error,
+      "Cannot load SQLite extensions when allowExtension is not enabled",
+    );
+
+    db.close();
+  },
+});
+
+Deno.test({
+  name: "[node/sqlite] enableLoadExtension can re-enable after disabling",
+  permissions: { read: true, write: true, ffi: true },
+  fn() {
+    const db = new DatabaseSync(":memory:", {
+      allowExtension: true,
+    });
+
+    db.enableLoadExtension(false);
+    db.enableLoadExtension(true);
+
+    // loadExtension should be re-enabled; verify it fails with a file loading
+    // error, not the permission error
+    assertThrows(
+      () => db.loadExtension("/path/to/nonexistent/extension"),
+      Error,
+      "Failed to load SQLite extension",
+    );
+
+    db.close();
+  },
+});
+
+Deno.test("[node/sqlite] enableLoadExtension throws on closed database", () => {
+  const db = new DatabaseSync(":memory:");
+  db.close();
+
+  assertThrows(
+    () => db.enableLoadExtension(true),
+    Error,
+    "database is not open",
+  );
+});
