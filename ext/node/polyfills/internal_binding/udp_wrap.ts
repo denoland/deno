@@ -26,12 +26,14 @@
 import { core } from "ext:core/mod.js";
 import {
   op_node_udp_bind,
+  op_node_udp_fd_for_ipc,
   op_node_udp_join_multi_v4,
   op_node_udp_join_multi_v6,
   op_node_udp_join_source_specific,
   op_node_udp_leave_multi_v4,
   op_node_udp_leave_multi_v6,
   op_node_udp_leave_source_specific,
+  op_node_udp_open,
   op_node_udp_recv,
   op_node_udp_send,
   op_node_udp_set_broadcast,
@@ -55,7 +57,6 @@ const { ownerSymbol } = core.loadExtScript(
 const { codeMap, errorMap } = core.loadExtScript(
   "ext:deno_node/internal_binding/uv.ts",
 );
-const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import { Buffer } from "node:buffer";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
 import { isIP } from "ext:deno_node/internal/net.ts";
@@ -377,13 +378,35 @@ export class UDP extends HandleWrap {
   }
 
   /**
-   * Opens a file descriptor.
+   * Opens an existing file descriptor as this UDP socket.
    * @param fd The file descriptor to open.
    * @return An error status code.
    */
-  open(_fd: number): number {
-    // REF: https://github.com/denoland/deno/issues/6529
-    notImplemented("udp.UDP.prototype.open");
+  open(fd: number): number {
+    try {
+      const [rid, hostname, boundPort] = op_node_udp_open(fd);
+      this.#rid = rid;
+      this.#address = hostname;
+      this.#port = boundPort;
+      // Determine family from the address string returned by the op.
+      this.#family = hostname.includes(":")
+        ? ("IPv6" as const)
+        : ("IPv4" as const);
+      return 0;
+    } catch (e) {
+      return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
+    }
+  }
+
+  /**
+   * Return the raw fd so it can be sent over IPC via SCM_RIGHTS.
+   * Returns -1 on platforms that don't support fd-passing.
+   */
+  fdForIpc(): number {
+    if (this.#rid === undefined) {
+      return -1;
+    }
+    return op_node_udp_fd_for_ipc(this.#rid);
   }
 
   /**
