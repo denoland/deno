@@ -83,6 +83,43 @@ enum StreamBaseStateFields {
   // NumStreamBaseStateFields = 4,
 }
 
+fn move_string_iovecs_to_owned_storage(
+  iovecs: &mut [uv_buf_t],
+  string_storage: &[std::mem::MaybeUninit<u8>],
+) -> Option<Box<[std::mem::MaybeUninit<u8>]>> {
+  if string_storage.is_empty() {
+    return None;
+  }
+
+  let mut async_storage = Box::new_uninit_slice(string_storage.len());
+  let async_storage_ptr = async_storage.as_mut_ptr();
+  let string_storage_start = string_storage.as_ptr() as usize;
+  let string_storage_end = string_storage_start + string_storage.len();
+  // SAFETY: copying MaybeUninit bytes does not read them; iovecs only point at
+  // ranges filled by the string encoders.
+  unsafe {
+    std::ptr::copy_nonoverlapping(
+      string_storage.as_ptr(),
+      async_storage_ptr,
+      string_storage.len(),
+    );
+  }
+
+  for buf in iovecs {
+    let base = buf.base as usize;
+    if base < string_storage_start || base >= string_storage_end {
+      continue;
+    }
+    let offset = base - string_storage_start;
+    debug_assert!(offset + buf.len <= string_storage.len());
+    // SAFETY: the range check above guarantees this offset points inside
+    // `async_storage`, which mirrors `string_storage` byte-for-byte.
+    buf.base = unsafe { async_storage_ptr.add(offset) as *mut c_char };
+  }
+
+  Some(async_storage)
+}
+
 // ---------------------------------------------------------------------------
 // WriteWrap — cppgc object that wraps a uv_write_t request.
 // ---------------------------------------------------------------------------
@@ -114,6 +151,81 @@ impl WriteWrap {
 
   pub fn req_ptr(&mut self) -> *mut uv_write_t {
     self.req.as_mut_ptr()
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::mem::MaybeUninit;
+
+  use super::*;
+
+  #[test]
+  fn move_string_iovecs_to_owned_storage_remaps_string_ranges() {
+    let mut string_storage = [MaybeUninit::<u8>::uninit(); 8];
+    for (slot, byte) in string_storage.iter_mut().zip(*b"abcdefgh") {
+      slot.write(byte);
+    }
+    let mut buffer_storage = [1_u8, 2, 3, 4];
+
+    let string_storage_ptr = string_storage.as_mut_ptr();
+    let mut iovecs = vec![
+      uv_buf_t {
+        // Simulate a partially consumed string iovec.
+        // SAFETY: offset 2 is within `string_storage`.
+        base: unsafe { string_storage_ptr.add(2) as *mut c_char },
+        len: 3,
+      },
+      uv_buf_t {
+        base: buffer_storage.as_mut_ptr() as *mut c_char,
+        len: buffer_storage.len(),
+      },
+      uv_buf_t {
+        // SAFETY: offset 6 is within `string_storage`.
+        base: unsafe { string_storage_ptr.add(6) as *mut c_char },
+        len: 2,
+      },
+    ];
+    let original_buffer_base = iovecs[1].base;
+
+    let owned =
+      move_string_iovecs_to_owned_storage(&mut iovecs, &string_storage)
+        .unwrap();
+    let owned_start = owned.as_ptr() as usize;
+
+    assert_eq!(iovecs[0].base as usize, owned_start + 2);
+    assert_eq!(iovecs[0].len, 3);
+    assert_eq!(iovecs[1].base, original_buffer_base);
+    assert_eq!(iovecs[1].len, buffer_storage.len());
+    assert_eq!(iovecs[2].base as usize, owned_start + 6);
+    assert_eq!(iovecs[2].len, 2);
+
+    // SAFETY: the test initialized every byte in `string_storage` above, and
+    // the helper copies the same byte range into `owned`.
+    let owned_bytes = unsafe {
+      std::slice::from_raw_parts(owned.as_ptr() as *const u8, owned.len())
+    };
+    assert_eq!(owned_bytes, b"abcdefgh");
+  }
+
+  #[test]
+  fn move_string_iovecs_to_owned_storage_ignores_empty_storage() {
+    let mut buffer_storage = [1_u8, 2, 3, 4];
+    let mut iovec = uv_buf_t {
+      base: buffer_storage.as_mut_ptr() as *mut c_char,
+      len: buffer_storage.len(),
+    };
+    let original_base = iovec.base;
+
+    assert!(
+      move_string_iovecs_to_owned_storage(
+        std::slice::from_mut(&mut iovec),
+        &[],
+      )
+      .is_none()
+    );
+    assert_eq!(iovec.base, original_base);
+    assert_eq!(iovec.len, buffer_storage.len());
   }
 }
 
@@ -1324,14 +1436,13 @@ impl LibUvStreamWrap {
     //
     // Retention strategy (matches Node):
     //   - Buffer chunks: iovec points directly at the ArrayBuffer
-    //     backing store; NO per-chunk retention. JS side keeps chunks
-    //     alive via `req.buffer = data` on the WriteWrap (see
-    //     stream_base_commons.js `writevGeneric`).
+    //     backing store; NO per-chunk retention here. JS side keeps
+    //     chunks alive while the native write is pending on the WriteWrap
+    //     (see stream_base_commons.ts `writevGeneric`).
     //   - String chunks: encode into stack storage first. Only
-    //     allocate a V8 BackingStore if we have to go async, and
-    //     only size it to the unwritten tail. Matches Node's stack
-    //     storage optimization in WriteString and its single-alloc
-    //     `ArrayBuffer::NewBackingStore` for the string storage.
+    //     allocate owned storage if we have to go async. Matches Node's
+    //     stack storage optimization in WriteString and its single-alloc
+    //     `ArrayBuffer::NewBackingStore` for string storage.
     let array_len = chunks.length();
     let (count, stride): (u32, u32) = if all_buffers {
       (array_len, 1)
@@ -1361,23 +1472,13 @@ impl LibUvStreamWrap {
       }
     }
 
-    // Single owned `Box<[MaybeUninit<u8>]>` for the concat of all
-    // encoded strings. Functional shape mirrors Node's
-    // `NewBackingStore(storage_size)` at stream_base.cc:247 but stays
-    // outside V8 entirely — no persistent handles, no GC-visible
-    // ArrayBuffer objects, just a heap allocation.
-    //
-    // Typed as `MaybeUninit<u8>` so the "bytes may be uninit until an
-    // encoder fills them" contract is enforced by the type system.
-    // Encoders take `&mut [MaybeUninit<u8>]` windows; iovec base
-    // pointers cast through `*mut u8` and only reference written
-    // sub-ranges.
-    let mut string_storage: Box<[std::mem::MaybeUninit<u8>]> =
-      if string_size > 0 {
-        Box::new_uninit_slice(string_size)
-      } else {
-        Box::new_uninit_slice(0)
-      };
+    // Inline storage for encoded strings. Most node:http chunked responses are
+    // tiny and fully drain in uv_try_writev(), so keeping this on the stack
+    // avoids one native heap allocation per synchronous writev.
+    let mut string_storage: smallvec::SmallVec<
+      [std::mem::MaybeUninit<u8>; 16 * 1024],
+    > = smallvec::SmallVec::new();
+    string_storage.resize_with(string_size, std::mem::MaybeUninit::uninit);
     let string_storage_ptr: *mut std::mem::MaybeUninit<u8> =
       string_storage.as_mut_ptr();
 
@@ -1401,9 +1502,8 @@ impl LibUvStreamWrap {
         };
         // SAFETY: data_ptr is the ArrayBuffer backing store start;
         // the Uint8Array view guarantees byte_off + byte_len is
-        // within the allocation. JS retains the chunk via
-        // `req.buffer = data` on the write request — we don't need
-        // our own retention.
+        // within the allocation. JS retains the chunk while the native write
+        // is pending, so we don't need our own retention.
         let base = unsafe {
           (data_ptr.as_ptr() as *mut u8).add(byte_off) as *mut c_char
         };
@@ -1463,7 +1563,8 @@ impl LibUvStreamWrap {
     // Sync scatter-gather try-write. Mirrors Node's
     // StreamBase::Write → DoTryWrite pre-async path. When this fully
     // drains (common for small HTTP responses) we skip the async
-    // request entirely — zero heap allocations.
+    // request entirely and avoid native heap allocations on the common small
+    // string path.
     let (sync_written, fully_drained) = {
       let slices: smallvec::SmallVec<[std::io::IoSlice; 16]> = iovecs
         .iter()
@@ -1529,14 +1630,15 @@ impl LibUvStreamWrap {
       }
     }
 
-    // Own the string concat buffer on the async request's callback
-    // state. Buffer chunks are retained JS-side via `req.buffer =
-    // data`, so `owned_buffers` only holds the string storage (or
-    // nothing at all if this writev was Buffers-only).
+    // Own encoded string bytes on the async request's callback state. Buffer
+    // chunks are retained JS-side, and fully synchronous writes return above
+    // without allocating owned storage.
     let mut owned: smallvec::SmallVec<[Box<[std::mem::MaybeUninit<u8>]>; 1]> =
       smallvec::SmallVec::new();
-    if !string_storage.is_empty() {
-      owned.push(string_storage);
+    if let Some(async_storage) =
+      move_string_iovecs_to_owned_storage(&mut iovecs, &string_storage)
+    {
+      owned.push(async_storage);
     }
 
     self.do_writev_async(
