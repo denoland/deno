@@ -5,6 +5,8 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering;
 
 use deno_core::JsBuffer;
 use deno_core::OpState;
@@ -26,6 +28,21 @@ use serde::Serialize;
 use tokio::task::JoinError;
 
 use crate::ops::constant::UV_FS_COPYFILE_EXCL;
+
+/// Virtual file descriptors for files without a real OS fd (e.g. VFS files
+/// in `deno compile` binaries). These start at a high value to avoid
+/// collisions with real OS fds.
+const VIRTUAL_FD_START: i32 = 1_000_000_000;
+static NEXT_VIRTUAL_FD: AtomicI32 = AtomicI32::new(VIRTUAL_FD_START);
+
+fn next_virtual_fd() -> i32 {
+  NEXT_VIRTUAL_FD.fetch_add(1, Ordering::Relaxed)
+}
+
+#[cfg(windows)]
+fn is_virtual_fd(fd: i32) -> bool {
+  fd >= VIRTUAL_FD_START
+}
 
 /// Extract the real OS file descriptor from a File trait object.
 /// On Unix, this is the raw fd (already an i32).
@@ -377,10 +394,19 @@ pub fn op_node_open_sync(
   let open_options = options;
 
   let file = fs.open_sync(&path, open_options)?;
-  let fd = raw_fd_for_file(file.clone())?;
+  // For VFS files (e.g. in deno compile), backing_fd() returns None.
+  // Assign a virtual fd so the file can still be used through FdTable.
+  let fd = if file.clone().backing_fd().is_some() {
+    raw_fd_for_file(file.clone())?
+  } else {
+    next_virtual_fd()
+  };
 
   #[cfg(windows)]
-  if deferred_truncate && let Err(e) = file.clone().truncate_sync(0) {
+  if deferred_truncate
+    && !is_virtual_fd(fd)
+    && let Err(e) = file.clone().truncate_sync(0)
+  {
     // SAFETY: fd is a valid CRT fd just created by raw_fd_for_file.
     unsafe { libc::close(fd) };
     return Err(e.into());
@@ -430,10 +456,19 @@ pub async fn op_node_open(
   let open_options = options;
 
   let file = fs.open_async(path.as_owned(), open_options).await?;
-  let fd = raw_fd_for_file(file.clone())?;
+  // For VFS files (e.g. in deno compile), backing_fd() returns None.
+  // Assign a virtual fd so the file can still be used through FdTable.
+  let fd = if file.clone().backing_fd().is_some() {
+    raw_fd_for_file(file.clone())?
+  } else {
+    next_virtual_fd()
+  };
 
   #[cfg(windows)]
-  if deferred_truncate && let Err(e) = file.clone().truncate_sync(0) {
+  if deferred_truncate
+    && !is_virtual_fd(fd)
+    && let Err(e) = file.clone().truncate_sync(0)
+  {
     // SAFETY: fd is a valid CRT fd just created by raw_fd_for_file.
     unsafe { libc::close(fd) };
     return Err(e.into());
@@ -992,9 +1027,9 @@ pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
   // On Windows, `raw_fd_for_file` creates a CRT file descriptor via
   // `open_osfhandle` on a duplicated OS handle. The File Drop above closes
   // the original handle; `libc::close` closes the duplicate and frees the
-  // CRT fd slot.
+  // CRT fd slot. Skip this for virtual fds (VFS files) which have no CRT fd.
   #[cfg(windows)]
-  {
+  if !is_virtual_fd(fd) {
     // SAFETY: `fd` is a valid CRT file descriptor created by
     // `open_osfhandle` in `raw_fd_for_file`.
     unsafe {
