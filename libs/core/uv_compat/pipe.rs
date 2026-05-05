@@ -134,6 +134,46 @@ impl uv_pipe_t {
   }
 }
 
+/// ### Safety
+/// `pipe` must be a valid pointer to an initialized `uv_pipe_t`.
+///
+/// Returns a dup of the underlying socket file descriptor, suitable for use
+/// as the payload of an SCM_RIGHTS cmsg on an IPC channel. Mirrors the TCP
+/// equivalent: caller owns the returned fd and must close it after the
+/// kernel attaches it to the outgoing message.
+#[cfg(unix)]
+pub unsafe fn uv_pipe_fd_for_ipc(pipe: *mut uv_pipe_t) -> c_int {
+  use std::os::fd::AsRawFd;
+
+  if pipe.is_null() {
+    return -1;
+  }
+
+  // SAFETY: Caller guarantees pipe is initialized and valid.
+  unsafe {
+    let p = &*pipe;
+    let fd = if let Some(stream) = p.internal_stream.as_ref() {
+      stream.as_raw_fd()
+    } else if let Some(listener) = p.internal_listener.as_ref() {
+      listener.as_raw_fd()
+    } else {
+      p.internal_fd.unwrap_or(-1)
+    };
+    if fd < 0 {
+      return -1;
+    }
+
+    let dup = libc::dup(fd);
+    if dup != -1 {
+      let flags = libc::fcntl(dup, libc::F_GETFD);
+      if flags != -1 {
+        libc::fcntl(dup, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+      }
+    }
+    dup
+  }
+}
+
 /// Set the number of pending pipe instances for Windows named pipes.
 /// On Unix this is a no-op.
 ///
