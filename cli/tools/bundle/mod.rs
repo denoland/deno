@@ -353,12 +353,7 @@ pub async fn bundle(
     )?;
 
     if bundle_flags.declaration {
-      emit_bundle_declarations(
-        flags.clone(),
-        &bundle_flags,
-        &init_cwd,
-      )
-      .await?;
+      emit_bundle_declarations(flags.clone(), &bundle_flags, &init_cwd).await?;
     }
 
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
@@ -443,14 +438,12 @@ async fn emit_bundle_declarations(
 
   // For each entry point, produce a single rolled-up .d.ts
   for entry_specifier in &entrypoint_specifiers {
-    let entry_path = entry_specifier
-      .to_file_path()
-      .map_err(|_| {
-        deno_core::anyhow::anyhow!(
-          "Entry point must be a file: {}",
-          entry_specifier
-        )
-      })?;
+    let entry_path = entry_specifier.to_file_path().map_err(|_| {
+      deno_core::anyhow::anyhow!(
+        "Entry point must be a file: {}",
+        entry_specifier
+      )
+    })?;
 
     // Find the .d.ts for this entry point
     let dts_path = to_dts_path(&entry_path);
@@ -527,8 +520,8 @@ fn join_multiline_statements(content: &str) -> String {
     } else {
       let trimmed = line.trim();
       // Detect start of a multi-line export/import that has `{` but no closing `}`
-      let is_export_or_import = trimmed.starts_with("export ")
-        || trimmed.starts_with("import ");
+      let is_export_or_import =
+        trimmed.starts_with("export ") || trimmed.starts_with("import ");
       if is_export_or_import && trimmed.contains('{') && !trimmed.contains('}')
       {
         accumulator = Some(line.trim().to_string());
@@ -555,9 +548,7 @@ fn flatten_declarations(
   entry_source_path: &Path,
   dts_by_source: &std::collections::HashMap<String, String>,
 ) -> String {
-  let entry_dir = entry_source_path
-    .parent()
-    .unwrap_or(Path::new(""));
+  let entry_dir = entry_source_path.parent().unwrap_or(Path::new(""));
   let mut output_lines: Vec<String> = Vec::new();
   // Track which declarations have already been inlined to avoid duplicates
   let mut inlined_files: std::collections::HashSet<String> =
