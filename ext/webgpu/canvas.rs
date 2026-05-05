@@ -11,6 +11,7 @@ use deno_core::webidl::WebIdlConverter;
 use deno_error::JsErrorBox;
 use deno_image::image::DynamicImage;
 use deno_image::image::GenericImageView;
+use deno_image::webidl::PredefinedColorSpace;
 use wgpu_core::resource::TextureDescriptor;
 use wgpu_types::CompositeAlphaMode;
 use wgpu_types::Extent3d;
@@ -455,15 +456,6 @@ pub struct GPUCanvasToneMapping {
 pub enum GPUCanvasToneMappingMode {
   Standard,
   Extended,
-}
-
-#[derive(WebIDL, Clone)]
-#[webidl(enum)]
-pub enum PredefinedColorSpace {
-  Srgb,
-  SrgbLinear,
-  DisplayP3,
-  DisplayP3Linear,
 }
 
 #[derive(WebIDL, Clone)]
