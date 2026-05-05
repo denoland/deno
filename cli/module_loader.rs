@@ -988,6 +988,19 @@ impl<TGraphContainer: ModuleGraphContainer>
   }
 }
 
+/// Returns true if the specifier is already a fully-resolved URL with a
+/// standard scheme (file, http, https, data, blob, node). Such specifiers
+/// don't need hook interception for resolution, and skipping hooks avoids
+/// deadlocks when called from synchronous contexts (op_import_sync).
+fn is_already_resolved_specifier(specifier: &str) -> bool {
+  specifier.starts_with("file://")
+    || specifier.starts_with("http://")
+    || specifier.starts_with("https://")
+    || specifier.starts_with("data:")
+    || specifier.starts_with("blob:")
+    || specifier.starts_with("node:")
+}
+
 #[derive(Clone)]
 // todo(dsherret): this double Rc boxing is not ideal
 pub struct CliModuleLoader<TGraphContainer: ModuleGraphContainer>(
@@ -1003,7 +1016,9 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     referrer: &str,
     kind: deno_core::ResolutionKind,
   ) -> deno_core::ModuleResolveResponse {
-    if self.0.hook_registry.resolve_active.get() {
+    if self.0.hook_registry.resolve_active.get()
+      && !is_already_resolved_specifier(specifier)
+    {
       let receiver = self
         .0
         .hook_registry
@@ -1022,7 +1037,16 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           };
           match hook_result {
             Ok(Some(url)) => {
-              ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err)
+              let parsed =
+                ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err)?;
+              // Track that this specifier was hook-intercepted (virtual module)
+              // so prepare_load knows to skip graph building for it.
+              inner
+                .hook_registry
+                .hook_intercepted_specifiers
+                .borrow_mut()
+                .insert(parsed.to_string());
+              Ok(parsed)
             }
             Ok(None) => {
               // Fallthrough: hooks didn't intercept, use default
@@ -1084,7 +1108,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     let maybe_referrer = maybe_referrer.cloned();
 
     // When load hooks are active, delegate to JS hooks first
-    if self.0.hook_registry.load_active.get() {
+    if self.0.hook_registry.load_active.get() && !options.is_synchronous {
       let receiver = self.0.hook_registry.push_load(specifier.to_string());
       return deno_core::ModuleLoadResponse::Async(
         async move {
@@ -1174,10 +1198,16 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
-    // When ESM hooks are active, skip graph preparation — hooked modules
-    // may be virtual and can't be fetched by the module graph builder.
-    if self.0.hook_registry.resolve_active.get()
-      || self.0.hook_registry.load_active.get()
+    // Skip graph preparation only for specifiers that were intercepted by a
+    // resolve hook (virtual modules that don't exist on disk). Fallthrough
+    // specifiers still need normal prepare_load for graph building and
+    // permission checks.
+    if self
+      .0
+      .hook_registry
+      .hook_intercepted_specifiers
+      .borrow()
+      .contains(specifier.as_str())
     {
       self.0.shared.has_js_execution_started_flag.raise();
       return Box::pin(deno_core::futures::future::ready(Ok(())));
