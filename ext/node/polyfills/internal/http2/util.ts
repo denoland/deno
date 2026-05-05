@@ -4,7 +4,7 @@
 
 "use strict";
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   ArrayPrototypeConcat,
@@ -27,8 +27,10 @@ const {
 
 import { op_http2_error_string, op_http2_http_state } from "ext:core/ops";
 import { _checkIsHttpToken as checkIsHttpToken } from "node:_http_common";
-import { codes, hideStackFrames } from "ext:deno_node/internal/errors.ts";
-import {
+const { codes, hideStackFrames } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const {
   HTTP2_HEADER_ACCESS_CONTROL_ALLOW_CREDENTIALS,
   HTTP2_HEADER_ACCESS_CONTROL_MAX_AGE,
   HTTP2_HEADER_ACCESS_CONTROL_REQUEST_METHOD,
@@ -86,7 +88,7 @@ import {
   NGHTTP2_NV_FLAG_NONE,
   NGHTTP2_SESSION_CLIENT,
   NGHTTP2_SESSION_SERVER,
-} from "ext:deno_node/internal/http2/constants.ts";
+} = core.loadExtScript("ext:deno_node/internal/http2/constants.ts");
 
 const {
   ERR_HTTP2_CONNECT_AUTHORITY,

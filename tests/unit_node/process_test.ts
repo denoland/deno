@@ -76,16 +76,19 @@ Deno.test({
 Deno.test({
   name: "process.chdir failure",
   fn() {
-    assertThrows(
+    // process.chdir now wraps Deno errors into Node-shaped uv errors with
+    // syscall/path/dest, so a missing directory throws a plain Error with
+    // code "ENOENT" rather than Deno.errors.NotFound.
+    const err = assertThrows(
       () => {
         process.chdir("non-existent-directory-name");
       },
-      Deno.errors.NotFound,
-      "file",
-      // On every OS Deno returns: "No such file" except for Windows, where it's:
-      // "The system cannot find the file specified. (os error 2)" so "file" is
-      // the only common string here.
-    );
+      Error,
+      "ENOENT",
+    ) as Error & { code?: string; syscall?: string; dest?: string };
+    assertEquals(err.code, "ENOENT");
+    assertEquals(err.syscall, "chdir");
+    assertEquals(err.dest, "non-existent-directory-name");
   },
 });
 

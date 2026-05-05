@@ -1268,9 +1268,11 @@ pub fn npm_overrides_from_workspace(
     return NpmOverrides::default();
   };
   let root_deps = workspace.root_deps_for_npm_overrides();
+  let catalogs = workspace.catalogs();
   match NpmOverrides::from_value(
     serde_json::Value::Object(overrides_json.clone()),
     &root_deps,
+    catalogs,
   ) {
     Ok(overrides) => overrides,
     Err(e) => {

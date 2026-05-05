@@ -3,20 +3,23 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import { Buffer, kMaxLength } from "node:buffer";
-import {
+const {
   emitAfter,
   emitBefore,
   emitDestroy,
   emitInit,
   executionAsyncId,
   newAsyncId,
-} from "ext:deno_node/internal/async_hooks.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+const {
   validateFunction,
   validateNumber,
-} from "ext:deno_node/internal/validators.mjs";
-import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { ERR_OUT_OF_RANGE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 import process from "node:process";
 
 export const MAX_RANDOM_VALUES = 65536;

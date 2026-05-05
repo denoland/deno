@@ -88,17 +88,17 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.53.1", features = ["transpiling"] }
+deno_ast = { version = "=0.53.2", features = ["transpiling"] }
 deno_core_icudata = "0.77.0"
-deno_doc = "=0.198.0"
+deno_doc = "=0.199.0"
 deno_error = "=0.7.1"
-deno_graph = { version = "=0.107.2", default-features = false }
-deno_lint = "=0.84.0"
+deno_graph = { version = "=0.108.1", default-features = false }
+deno_lint = "=0.84.1"
 deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
 deno_path_util = "=0.6.4"
-deno_semver = "=0.9.1"
-deno_task_shell = "=0.29.0"
+deno_semver = "=0.10.0"
+deno_task_shell = "=0.30.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
@@ -254,7 +254,7 @@ log = { version = "0.4.28", features = ["kv"] }
 lsp-types = { package = "ls-types", version = "=0.0.3" }
 memchr = "2.7.4"
 mime = "0.3.16"
-monch = "=0.5.0"
+monch = "=0.6.0"
 netif = "0.1.6"
 notify = "=6.1.1"
 num-bigint = { version = "0.4", features = ["rand"] }

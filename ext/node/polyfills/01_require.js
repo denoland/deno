@@ -67,6 +67,7 @@ const {
   StringPrototypeEndsWith,
   StringPrototypeIncludes,
   StringPrototypeIndexOf,
+  StringPrototypeLastIndexOf,
   StringPrototypeMatch,
   StringPrototypeSlice,
   StringPrototypeSplit,
@@ -88,12 +89,12 @@ import _tlsWrap from "node:_tls_wrap";
 import assert from "node:assert";
 import assertStrict from "node:assert/strict";
 import asyncHooks from "node:async_hooks";
-import {
-  emitAfter as internalAsyncHooksEmitAfter,
-  emitBefore as internalAsyncHooksEmitBefore,
-  emitDestroy as internalAsyncHooksEmitDestroy,
-  emitInit as internalAsyncHooksEmitInit,
-} from "ext:deno_node/internal/async_hooks.ts";
+const {
+  emitAfter: internalAsyncHooksEmitAfter,
+  emitBefore: internalAsyncHooksEmitBefore,
+  emitDestroy: internalAsyncHooksEmitDestroy,
+  emitInit: internalAsyncHooksEmitInit,
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 import buffer from "node:buffer";
 import childProcess from "node:child_process";
 import cluster from "node:cluster";
@@ -113,7 +114,9 @@ import http2 from "node:http2";
 import https from "node:https";
 import inspector from "node:inspector";
 import inspectorPromises from "node:inspector/promises";
-import internalAssertMyersDiff from "ext:deno_node/internal/assert/myers_diff.js";
+const internalAssertMyersDiff = core.loadExtScript(
+  "ext:deno_node/internal/assert/myers_diff.js",
+);
 import internalCp from "ext:deno_node/internal/child_process.ts";
 import internalCryptoCertificate from "ext:deno_node/internal/crypto/certificate.ts";
 import internalCryptoCipher from "ext:deno_node/internal/crypto/cipher.ts";
@@ -129,25 +132,38 @@ import internalCryptoSig from "ext:deno_node/internal/crypto/sig.ts";
 import internalCryptoUtil from "ext:deno_node/internal/crypto/util.ts";
 import internalCryptoX509 from "ext:deno_node/internal/crypto/x509.ts";
 import internalDgram from "ext:deno_node/internal/dgram.ts";
+const internalUndici = core.loadExtScript(
+  "ext:deno_node/internal/deps/undici/undici.js",
+);
 import internalDnsPromises from "ext:deno_node/internal/dns/promises.ts";
-import internalBuffer from "ext:deno_node/internal/buffer.mjs";
-import internalErrors from "ext:deno_node/internal/errors.ts";
+const internalBuffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const internalErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
-import internalHttp from "ext:deno_node/internal/http.ts";
+const internalHttp = core.loadExtScript("ext:deno_node/internal/http.ts");
 import internalHttp2Core from "ext:deno_node/internal/http2/core.ts";
 import internalHttp2Util from "ext:deno_node/internal/http2/util.ts";
-import internalPriorityQueue from "ext:deno_node/internal/priority_queue.ts";
-import internalReadlineUtils from "ext:deno_node/internal/readline/utils.mjs";
+const internalPriorityQueue = core.loadExtScript(
+  "ext:deno_node/internal/priority_queue.ts",
+);
+const internalReadlineUtils = core.loadExtScript(
+  "ext:deno_node/internal/readline/utils.mjs",
+);
 import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
 import internalStreamsState from "ext:deno_node/internal/streams/state.js";
 import internalTestBinding from "ext:deno_node/internal/test/binding.ts";
 import internalTimers from "ext:deno_node/internal/timers.mjs";
-import internalUtil from "ext:deno_node/internal/util.mjs";
-import internalUtilDebuglog from "ext:deno_node/internal/util/debuglog.ts";
-import internalUtilInspect from "ext:deno_node/internal/util/inspect.mjs";
-import internalValidators from "ext:deno_node/internal/validators.mjs";
+const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const internalUtilDebuglog = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
+const internalUtilInspect = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
+const internalValidators = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import internalConsole from "ext:deno_node/internal/console/constructor.mjs";
 import net from "node:net";
 import os from "node:os";
@@ -222,7 +238,7 @@ function setupBuiltinModules() {
     https,
     inspector,
     "inspector/promises": inspectorPromises,
-    "internal/assert/myers_diff": internalAssertMyersDiff,
+    "internal/assert/myers_diff": internalAssertMyersDiff.default,
     "internal/console/constructor": internalConsole,
     "internal/child_process": internalCp,
     "internal/crypto/certificate": internalCryptoCertificate,
@@ -239,22 +255,23 @@ function setupBuiltinModules() {
     "internal/crypto/util": internalCryptoUtil,
     "internal/crypto/x509": internalCryptoX509,
     "internal/dgram": internalDgram,
+    "internal/deps/undici/undici": internalUndici.default,
     "internal/dns/promises": internalDnsPromises,
-    "internal/buffer": internalBuffer,
+    "internal/buffer": internalBuffer.default,
     "internal/errors": internalErrors,
     "internal/event_target": internalEventTarget,
     "internal/fs/utils": internalFsUtils,
-    "internal/http": internalHttp,
+    "internal/http": internalHttp.default,
     "internal/http2/core": internalHttp2Core,
     "internal/http2/util": internalHttp2Util,
-    "internal/priority_queue": internalPriorityQueue,
-    "internal/readline/utils": internalReadlineUtils,
+    "internal/priority_queue": internalPriorityQueue.default,
+    "internal/readline/utils": internalReadlineUtils.default,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
     "internal/streams/state": internalStreamsState,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
-    "internal/util/debuglog": internalUtilDebuglog,
+    "internal/util/debuglog": internalUtilDebuglog.default,
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
     "internal/validators": internalValidators,
@@ -683,6 +700,38 @@ function updateChildren(parent, child, scan) {
   }
 }
 
+// Given a path inside a node_modules tree, find the package root by
+// locating the last "node_modules" path component and taking the next
+// segment (or two for scoped packages). Returns null if no node_modules
+// component is found.
+function findPackageRootFromNodeModules(filepath) {
+  // Find the last occurrence of /node_modules/ or \node_modules\ in the path
+  let nmIdx = -1;
+  let sep = "/";
+  const fwdIdx = StringPrototypeLastIndexOf(filepath, "/node_modules/");
+  const bwdIdx = StringPrototypeLastIndexOf(filepath, "\\node_modules\\");
+  if (fwdIdx !== -1 && fwdIdx > bwdIdx) {
+    nmIdx = fwdIdx;
+    sep = "/";
+  } else if (bwdIdx !== -1) {
+    nmIdx = bwdIdx;
+    sep = "\\";
+  }
+  if (nmIdx === -1) return null;
+
+  const afterNm = nmIdx + sep.length + "node_modules".length + sep.length;
+  const rest = StringPrototypeSlice(filepath, afterNm);
+  const parts = StringPrototypeSplit(rest, sep);
+  if (parts.length === 0 || parts[0] === "") return null;
+
+  if (StringPrototypeStartsWith(parts[0], "@") && parts.length > 1) {
+    // Scoped package: @scope/name
+    return StringPrototypeSlice(filepath, 0, afterNm) + parts[0] + sep +
+      parts[1];
+  }
+  return StringPrototypeSlice(filepath, 0, afterNm) + parts[0];
+}
+
 function tryFile(requestPath, _isMain) {
   const rc = stat(requestPath);
   if (rc !== 0) return;
@@ -704,12 +753,20 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
   }
 
   const filename = pathResolve(requestPath, pkg);
+
+  // Find the package root for the path traversal check. For nested
+  // package.json files inside node_modules (e.g. pkg/sub/package.json with
+  // "main": "../cjs/sub.js"), we allow resolving up to the package root
+  // (node_modules/pkg/) rather than restricting to the nested directory.
+  const packageRoot = findPackageRootFromNodeModules(requestPath) ??
+    requestPath;
+
   // Ensure the resolved main path doesn't escape the package directory
   // via path traversal (e.g. "main": "../../secret.json")
   if (
-    !StringPrototypeStartsWith(filename, requestPath + "/") &&
-    !StringPrototypeStartsWith(filename, requestPath + "\\") &&
-    filename !== requestPath
+    !StringPrototypeStartsWith(filename, packageRoot + "/") &&
+    !StringPrototypeStartsWith(filename, packageRoot + "\\") &&
+    filename !== packageRoot
   ) {
     const err = new Error(
       `Cannot find module '${filename}'. ` +
@@ -1954,6 +2011,13 @@ function loadNativeModule(_id, request) {
   }
   const modExports = nativeModuleExports[request];
   if (modExports) {
+    if (request === "_tls_common") {
+      process.emitWarning(
+        "The _tls_common module is deprecated. Use `node:tls` instead.",
+        "DeprecationWarning",
+        "DEP0192",
+      );
+    }
     const nodeMod = new Module(request);
     nodeMod.exports = modExports;
     nodeMod.loaded = true;
@@ -2043,7 +2107,6 @@ export function registerHooks(hooks) {
 }
 
 Module.registerHooks = registerHooks;
-Module.register = register;
 
 /**
  * @param {string | URL} specifier
@@ -2113,9 +2176,6 @@ async function _loadAndRegisterHookModule(resolvedUrl, data, transferList) {
 
     // Call initialize hook if exported
     if (typeof hookModule.initialize === "function") {
-      // If transferList contains items, we transfer them (in our same-thread
-      // model, we just pass the references directly - ownership semantics
-      // are the same since the caller shouldn't use transferred objects after)
       await hookModule.initialize(data);
     }
 
@@ -2136,6 +2196,8 @@ async function _loadAndRegisterHookModule(resolvedUrl, data, transferList) {
     console.error("Error loading module hooks from", resolvedUrl, e);
   }
 }
+
+Module.register = register;
 
 export { builtinModules, createRequire, getBuiltinModule, isBuiltin, Module };
 export const _cache = Module._cache;

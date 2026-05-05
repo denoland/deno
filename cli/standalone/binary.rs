@@ -828,6 +828,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           })
           .collect(),
         pkg_json_resolution: self.workspace_resolver.pkg_json_dep_resolution(),
+        catalogs: self.workspace_resolver.catalogs().clone(),
       },
       node_modules,
       unstable_config: UnstableConfig {
