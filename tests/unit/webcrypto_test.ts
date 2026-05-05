@@ -2194,6 +2194,68 @@ Deno.test(async function x25519ExportJwk() {
   assert(jwk.x);
 });
 
+// Regression test for https://github.com/denoland/deno/issues/33032
+Deno.test("crypto.subtle.importKey raw X25519 rejects malformed public keys", async () => {
+  await assertRejects(
+    () =>
+      crypto.subtle.importKey(
+        "raw",
+        new Uint8Array(0),
+        "X25519",
+        false,
+        [],
+      ),
+    DOMException,
+    "Invalid key data",
+  );
+});
+
+Deno.test("crypto.subtle.importKey jwk X25519 rejects missing or mismatched public keys", async () => {
+  const keyPair = await crypto.subtle.generateKey(
+    {
+      name: "X25519",
+    },
+    true,
+    ["deriveKey"],
+  ) as CryptoKeyPair;
+
+  const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+  assert(privateJwk.x);
+
+  const privateJwkWithoutX = { ...privateJwk };
+  delete privateJwkWithoutX.x;
+
+  await assertRejects(
+    () =>
+      crypto.subtle.importKey(
+        "jwk",
+        privateJwkWithoutX,
+        { name: "X25519" },
+        false,
+        ["deriveKey"],
+      ),
+    DOMException,
+    "Invalid public key data",
+  );
+
+  const mismatchedX = `${privateJwk.x.slice(0, -1)}${
+    privateJwk.x.endsWith("A") ? "B" : "A"
+  }`;
+
+  await assertRejects(
+    () =>
+      crypto.subtle.importKey(
+        "jwk",
+        { ...privateJwk, x: mismatchedX },
+        { name: "X25519" },
+        false,
+        ["deriveKey"],
+      ),
+    DOMException,
+    "Invalid key data",
+  );
+});
+
 // Regression test for https://github.com/denoland/deno/issues/30243
 // Importing a PKCS#8 RSA key with the wrong algorithm (ECDSA) should throw, not panic.
 Deno.test("crypto.subtle.importKey PKCS#8 with wrong algorithm does not panic", async () => {

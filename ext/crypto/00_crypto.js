@@ -2631,6 +2631,31 @@ function importKeyEd25519(
   }
 }
 
+function invalidOkpKeyDataError(kind = "key") {
+  if (kind === "key") {
+    return new DOMException("Invalid key data", "DataError");
+  }
+  return new DOMException(`Invalid ${kind} key data`, "DataError");
+}
+
+function validateOkpKeyDataLength(keyData, expectedLength, kind = "key") {
+  if (TypedArrayPrototypeGetByteLength(keyData) !== expectedLength) {
+    throw invalidOkpKeyDataError(kind);
+  }
+  return keyData;
+}
+
+function decodeOkpKeyData(encodedKeyData, expectedLength, kind = "key") {
+  let keyData;
+  try {
+    keyData = op_crypto_base64url_decode(encodedKeyData);
+  } catch (_) {
+    throw invalidOkpKeyDataError(kind);
+  }
+
+  return validateOkpKeyDataLength(keyData, expectedLength, kind);
+}
+
 function importKeyX25519(
   format,
   keyData,
@@ -2643,6 +2668,8 @@ function importKeyX25519(
       if (keyUsages.length > 0) {
         throw new DOMException("Invalid key usage", "SyntaxError");
       }
+
+      validateOkpKeyDataLength(keyData, 32);
 
       const handle = {};
       WeakMapPrototypeSet(KEY_STORE, handle, keyData);
@@ -2795,7 +2822,11 @@ function importKeyX25519(
       // 9.
       if (jwk.d !== undefined) {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const privateKeyData = op_crypto_base64url_decode(jwk.d);
+        const privateKeyData = decodeOkpKeyData(jwk.d, 32, "private");
+        decodeOkpKeyData(jwk.x, 32, "public");
+        if (op_crypto_x25519_public_key(privateKeyData) !== jwk.x) {
+          throw new DOMException("Invalid key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2813,7 +2844,7 @@ function importKeyX25519(
         );
       } else {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const publicKeyData = op_crypto_base64url_decode(jwk.x);
+        const publicKeyData = decodeOkpKeyData(jwk.x, 32, "public");
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
