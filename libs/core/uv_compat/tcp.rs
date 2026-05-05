@@ -1311,9 +1311,23 @@ pub(crate) unsafe fn poll_tcp_handle(
         //
         // Note: an EOF/FIN on the read side does NOT imply the write
         // side is broken — TCP half-close is valid (peer stopped
-        // sending but is still reading). Only treat MSG_PEEK errors
-        // as a broken connection here; EOF is observed and handled
-        // through the normal read path.
+        // sending but is still reading) — so on unix we only fail
+        // pending writes when the probe returns a real error
+        // (`n < 0`, ECONNRESET / EPIPE / etc.). The actual EOF is
+        // delivered through the normal read path.
+        //
+        // Windows is different: tokio's `try_write_vectored` against
+        // a peer whose `closesocket()` triggered a graceful FIN does
+        // not return an error promptly — bytes are accepted into the
+        // local kernel queue and the broken-pipe error only surfaces
+        // much later, by which time the test has emitted `'close'`
+        // (via the auto-shutdown that fires after read EOF) and exited
+        // without ever raising the expected `'error'` event.
+        // (test-net-error-twice.js relies on this signal.) Treat
+        // `n == 0` as a broken connection on Windows so the write
+        // queue fails fast, matching libuv's IOCP-driven error
+        // delivery — and keep treating it as half-close on unix where
+        // tokio surfaces the write error directly.
         if !(*tcp_ptr).internal_reading
           && let Poll::Ready(Ok(())) = stream.poll_read_ready(cx)
         {
@@ -1344,6 +1358,15 @@ pub(crate) unsafe fn poll_tcp_handle(
             let mut probe = [0u8; 1];
             recv(socket, probe.as_mut_ptr() as *mut c_void, 1, MSG_PEEK)
           };
+          #[cfg(windows)]
+          if n == 0 {
+            // Peer FIN observed and tokio's write path won't surface
+            // a broken-pipe error in time — drain the queue with
+            // EPIPE so the JS layer can emit the error.
+            while let Some(pw) = (*tcp_ptr).internal_write_queue.pop_front() {
+              completed_writes.push((pw.req, pw.cb, UV_EPIPE));
+            }
+          }
           if n < 0 {
             let err =
               std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
@@ -1359,8 +1382,9 @@ pub(crate) unsafe fn poll_tcp_handle(
             }
             // EAGAIN/EWOULDBLOCK means no data yet, connection alive
           }
-          // n == 0: peer FIN, half-close — write side still valid.
-          // n >  0: data available, connection alive (not consumed).
+          // unix `n == 0`: peer FIN, half-close — write side still
+          //   valid; let try_write report any actual breakage.
+          // `n  >  0`: data available, connection alive (not consumed).
         }
       }
 
