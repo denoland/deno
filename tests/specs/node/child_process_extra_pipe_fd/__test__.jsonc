@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "extra_pipe_fd": {
+      "args": "run -A parent.ts",
+      "output": "parent.out"
+    }
+  }
+}
