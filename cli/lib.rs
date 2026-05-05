@@ -537,7 +537,23 @@ fn should_fallback_on_run_error(script_err: &str) -> bool {
   re.is_match(script_err)
 }
 
-#[allow(clippy::print_stderr, reason = "panic hook")]
+thread_local! {
+  /// When set to true, the panic hook will not exit the process,
+  /// allowing `catch_unwind` to handle the panic instead.
+  static CATCHING_UNWIND: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Run a closure while suppressing the custom panic hook's process exit,
+/// so that `catch_unwind` can actually catch panics.
+pub fn catch_unwind_with_hook<R>(
+  f: impl FnOnce() -> R + std::panic::UnwindSafe,
+) -> std::thread::Result<R> {
+  CATCHING_UNWIND.with(|c| c.set(true));
+  let result = std::panic::catch_unwind(f);
+  CATCHING_UNWIND.with(|c| c.set(false));
+  result
+}
+
 fn setup_panic_hook() {
   // This function does two things inside of the panic hook:
   // - Tokio does not exit the process when a task panics, so we define a custom
@@ -546,6 +562,12 @@ fn setup_panic_hook() {
   //   should be reported to us.
   let orig_hook = std::panic::take_hook();
   std::panic::set_hook(Box::new(move |panic_info| {
+    // If we're inside a catch_unwind_with_hook call, let catch_unwind
+    // handle the panic instead of exiting the process.
+    if CATCHING_UNWIND.with(|c| c.get()) {
+      return;
+    }
+
     eprintln!("\n============================================================");
     eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
     eprintln!("at https://github.com/denoland/deno/issues/new.");

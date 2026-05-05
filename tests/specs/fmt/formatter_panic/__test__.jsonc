@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "tests": {
+    "html_comment_panic": {
+      "args": "fmt main.ts",
+      "output": "main.out",
+      "exitCode": 0
+    },
+    "html_comment_check": {
+      "args": "fmt --check main.ts",
+      "output": "check.out",
+      "exitCode": 0
+    }
+  }
+}
