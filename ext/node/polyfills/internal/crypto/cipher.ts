@@ -800,6 +800,16 @@ function validateOaepLabel(
   return label as ArrayBufferView | ArrayBuffer;
 }
 
+// Read the optional `encoding` field from the key-options object. When the
+// caller passes `{ key: "<hex/base64>", encoding: "hex" | ... }`, Node applies
+// that encoding to *both* the key string and the buffer argument; we need to
+// thread it through to `getArrayBufferOrView` for the buffer too. For the
+// other shapes (string/Buffer/TypedArray/KeyObject) `.encoding` is undefined,
+// matching the existing pattern used for `.padding` / `.oaepHash`.
+function bufferEncodingFrom(keyOptions: unknown): string | undefined {
+  return (keyOptions as { encoding?: string } | null)?.encoding;
+}
+
 export function privateEncrypt(
   privateKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView,
