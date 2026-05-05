@@ -590,6 +590,7 @@ function _startEsmResolveLoop() {
         conditions: ["node", "import"],
         importAttributes: { __proto__: null },
         parentURL: referrer || undefined,
+        importAssertions: { __proto__: null },
       };
       try {
         const result = await executeEsmResolveHookChain(specifier, context);
@@ -620,6 +621,7 @@ function _startEsmLoadLoop() {
         format: undefined,
         conditions: ["node", "import"],
         importAttributes: { __proto__: null },
+        importAssertions: { __proto__: null },
       };
       try {
         const result = await executeEsmLoadHookChain(fileUrl, context);
@@ -1101,6 +1103,7 @@ Module._load = function (request, parent, isMain) {
           format: "builtin",
           conditions: ["node", "require"],
           importAttributes: { __proto__: null },
+          importAssertions: { __proto__: null },
         };
         insideLoadHook = true;
         let result;
@@ -1230,6 +1233,7 @@ Module._resolveFilename = function (
       conditions: ["node", "require"],
       importAttributes: { __proto__: null },
       parentURL,
+      importAssertions: { __proto__: null },
     };
     const result = executeResolveHookChain(request, context, parent, isMain);
     if (result != null && result.url != null) {
@@ -1478,6 +1482,7 @@ Module.prototype.load = function (filename) {
         format: undefined,
         conditions: ["node", "require"],
         importAttributes: { __proto__: null },
+        importAssertions: { __proto__: null },
       };
       insideLoadHook = true;
       let result;
