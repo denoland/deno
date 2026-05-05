@@ -7,7 +7,8 @@ import {
   opendirPromise,
 } from "ext:deno_node/internal/fs/promises.ts";
 import { EEXIST, EINVAL, EISDIR, ENOTDIR } from "node:constants";
-import {
+import { core, primordials } from "ext:core/mod.js";
+const {
   denoErrorToNodeError,
   ERR_FS_CP_DIR_TO_NON_DIR,
   ERR_FS_CP_EEXIST,
@@ -18,8 +19,7 @@ import {
   ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY,
   ERR_FS_CP_UNKNOWN,
   ERR_FS_EISDIR,
-} from "ext:deno_node/internal/errors.ts";
-import { primordials } from "ext:core/mod.js";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import {
   op_node_cp_check_paths_recursive,
   op_node_cp_on_file,

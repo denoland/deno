@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
-import * as io from "ext:deno_io/12_io.js";
+import { core } from "ext:core/mod.js";
+const io = core.loadExtScript("ext:deno_io/12_io.js");
 
 let blue = "";
 let green = "";

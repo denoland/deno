@@ -218,6 +218,14 @@ impl BiPipeRead {
               let data_len = (*cmsg).cmsg_len as usize;
               let data_len = data_len.saturating_sub(header_len);
               let fd_count = data_len / size_of::<std::os::fd::RawFd>();
+              // The IPC protocol attaches at most one fd per message; a
+              // higher count signals a sender-side bug. We still defensively
+              // close extras in release builds to avoid leaking fds.
+              debug_assert!(
+                fd_count <= 1,
+                "received {} fds in one SCM_RIGHTS message; expected at most 1",
+                fd_count
+              );
               let data = libc::CMSG_DATA(cmsg).cast::<std::os::fd::RawFd>();
               for i in 0..fd_count {
                 let received_fd = *data.add(i);

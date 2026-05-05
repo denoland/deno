@@ -5,7 +5,7 @@
 
 import process from "node:process";
 import { EventEmitter } from "node:events";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_get_extras_binding_object,
   op_inspector_close,
@@ -18,14 +18,14 @@ import {
   op_inspector_url,
   op_inspector_wait,
 } from "ext:core/ops";
-import {
+const {
   isUint32,
   validateFunction,
   validateInt32,
   validateObject,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   ERR_INSPECTOR_ALREADY_ACTIVATED,
   ERR_INSPECTOR_ALREADY_CONNECTED,
   ERR_INSPECTOR_CLOSED,
@@ -33,7 +33,7 @@ import {
   ERR_INSPECTOR_NOT_ACTIVE,
   ERR_INSPECTOR_NOT_CONNECTED,
   ERR_INSPECTOR_NOT_WORKER,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { isMainThread } from "node:worker_threads";
 
 function isLoopback(host) {

@@ -6,22 +6,25 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { kKeyObject } from "ext:deno_node/internal/crypto/constants.ts";
-import type { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
-import type { CryptoKey } from "ext:deno_crypto/00_crypto.js";
+(function () {
+const { core } = globalThis.__bootstrap;
+const { kKeyObject } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/constants.ts",
+);
 
-export const kKeyType = Symbol("kKeyType");
+const kKeyType = Symbol("kKeyType");
 
-export function isKeyObject(obj: unknown): obj is KeyObject {
+function isKeyObject(obj) {
   return (
-    obj != null && (obj as Record<symbol, unknown>)[kKeyType] !== undefined
+    obj != null && obj[kKeyType] !== undefined
   );
 }
 
-export function isCryptoKey(
-  obj: unknown,
-): obj is CryptoKey {
+function isCryptoKey(obj) {
   return (
-    obj != null && (obj as Record<symbol, unknown>)[kKeyObject] !== undefined
+    obj != null && obj[kKeyObject] !== undefined
   );
 }
+
+return { kKeyType, isKeyObject, isCryptoKey };
+})();

@@ -1,6 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { fs as fsConstants } from "ext:deno_node/internal_binding/constants.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+import { core } from "ext:core/mod.js";
+const { fs: fsConstants } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 import {
   type BinaryOptionsArgument,
   type CallbackWithError,
@@ -15,12 +18,12 @@ import {
   type WriteFileOptions,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import type { Encodings } from "ext:deno_node/_utils.ts";
-import {
+const {
   AbortError,
   denoErrorToNodeError,
   denoWriteFileErrorToNodeError,
   ERR_FS_FILE_TOO_LARGE,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 import {
   CFISBIS,
@@ -41,7 +44,8 @@ import { read, readSync } from "ext:deno_node/_fs/_fs_read.ts";
 import { readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
 import { EventEmitter } from "node:events";
 import { clearTimeout, setTimeout } from "node:timers";
-import { type MaybeEmpty, notImplemented } from "ext:deno_node/_utils.ts";
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
+import type { MaybeEmpty } from "ext:deno_node/_utils.ts";
 import { deprecate, promisify } from "node:util";
 import promises from "ext:deno_node/internal/fs/promises.ts";
 // @deno-types="./internal/fs/streams.d.ts"
@@ -77,21 +81,8 @@ import {
   warnOnNonPortableTemplate,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { glob, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
-import {
-  parseFileMode,
-  validateAbortSignal,
-  validateBoolean,
-  validateEncoding,
-  validateFunction,
-  validateInt32,
-  validateInteger,
-  validateObject,
-  validateOneOf,
-  validateString,
-} from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "node:buffer";
 import process from "node:process";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { isIterable } from "ext:deno_node/internal/streams/utils.js";
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
@@ -133,22 +124,37 @@ import {
   op_node_statfs,
   op_node_statfs_sync,
 } from "ext:core/ops";
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   uvException,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { toUnixTimestamp } from "ext:deno_node/internal/fs/utils.mjs";
-import { isMacOS, isWindows } from "ext:deno_node/_util/os.ts";
-import {
+const { isMacOS, isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const {
   customPromisifyArgs,
   kEmptyObject,
   normalizeEncoding,
-} from "ext:deno_node/internal/util.mjs";
+} = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import { basename, relative, resolve, toNamespacedPath } from "node:path";
 import * as pathModule from "node:path";
 import type { Encoding } from "node:crypto";
-import { core, primordials } from "ext:core/mod.js";
+import { primordials } from "ext:core/mod.js";
+const {
+  parseFileMode,
+  validateAbortSignal,
+  validateBoolean,
+  validateEncoding,
+  validateFunction,
+  validateInt32,
+  validateInteger,
+  validateObject,
+  validateOneOf,
+  validateString,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 
 const {
   ArrayBufferIsView,
@@ -3244,7 +3250,28 @@ type watchOptions = {
   ignore?: IgnoreOption;
 };
 
-type watchListener = (eventType: string, filename: string) => void;
+type watchListener = (
+  eventType: string,
+  filename: string | Buffer,
+) => void;
+
+// Match Node: `encoding: 'buffer'` returns a Buffer, any other named encoding
+// returns the filename re-encoded from utf8. Default ('utf8' or absent) leaves
+// the string unchanged. https://github.com/nodejs/node/blob/main/lib/internal/fs/watchers.js
+function encodeWatchFilename(
+  filename: string,
+  encoding: string | undefined,
+): string | Buffer {
+  if (!encoding || encoding === "utf8" || encoding === "utf-8") {
+    return filename;
+  }
+  const asBuffer = Buffer.from(filename);
+  if (encoding === "buffer") {
+    return asBuffer;
+  }
+  // deno-lint-ignore prefer-primordials
+  return asBuffer.toString(encoding as BufferEncoding);
+}
 
 function watch(
   filename: string | URL,
@@ -3290,6 +3317,7 @@ function watch(
     validateBoolean(options.persistent, "options.persistent");
   }
   const recursive = options?.recursive || false;
+  const encoding = options?.encoding;
   validateIgnoreOption(options?.ignore, "options.ignore");
   const ignoreMatcher = createIgnoreMatcher(options?.ignore);
   const iterator: Deno.FsWatcher = Deno.watchFs(watchPath, {
@@ -3314,7 +3342,7 @@ function watch(
     fsWatcher.emit(
       "change",
       convertDenoFsEventToNodeFsEvent(val.kind),
-      filename,
+      encodeWatchFilename(filename, encoding),
     );
   }, (e) => {
     fsWatcher.emit("error", e);

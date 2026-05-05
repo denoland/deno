@@ -115,6 +115,7 @@ impl DenoResolveError {
       | DenoResolveErrorKind::InvalidVendorFolderImport
       | DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
       | DenoResolveErrorKind::NodeModulesOutOfDate(_)
+      | DenoResolveErrorKind::CatalogPackageNotFound(_)
       | DenoResolveErrorKind::PackageJsonDepValueParse(_)
       | DenoResolveErrorKind::PackageJsonDepValueUrlParse(_) => None,
     }
@@ -133,6 +134,9 @@ pub enum DenoResolveErrorKind {
     "Importing npm packages via a file: specifier is only supported with --node-modules-dir=manual"
   )]
   UnsupportedPackageJsonFileSpecifier,
+  #[class(type)]
+  #[error("Package '{0}' not found in catalog")]
+  CatalogPackageNotFound(String),
   #[class(inherit)]
   #[error(transparent)]
   MappedResolution(#[from] MappedResolutionError),
@@ -167,6 +171,7 @@ impl DenoResolveErrorKind {
     match self {
       DenoResolveErrorKind::InvalidVendorFolderImport
       | DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+      | DenoResolveErrorKind::CatalogPackageNotFound { .. }
       | DenoResolveErrorKind::MappedResolution { .. }
       | DenoResolveErrorKind::NodeModulesOutOfDate { .. }
       | DenoResolveErrorKind::PackageJsonDepValueParse { .. }
@@ -455,6 +460,26 @@ impl<
                     })
                 })
                 .and_then(|r| Ok(r.into_url()?)),
+              PackageJsonDepValue::Catalog(catalog_name) => self
+                .workspace_resolver
+                .resolve_catalog_dep(alias, catalog_name)
+                .ok_or_else(|| {
+                  DenoResolveErrorKind::CatalogPackageNotFound(
+                    alias.to_string(),
+                  )
+                  .into_box()
+                })
+                .and_then(|req| {
+                  Url::parse(&format!(
+                    "npm:{}{}",
+                    req,
+                    sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+                  ))
+                  .map_err(|e| {
+                    DenoResolveErrorKind::PackageJsonDepValueUrlParse(e)
+                      .into_box()
+                  })
+                }),
             })
         }
         MappedResolution::PackageJsonImport { pkg_json } => self

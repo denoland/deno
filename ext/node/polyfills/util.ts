@@ -31,32 +31,38 @@ const {
   PromiseWithResolvers,
 } = primordials;
 
-import { promisify } from "ext:deno_node/internal/util.mjs";
+const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import { callbackify } from "ext:deno_node/_util/_util_callbackify.js";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
-import {
+const {
   format,
   formatWithOptions,
   inspect,
   stripVTControlCharacters,
   styleText,
-} from "ext:deno_node/internal/util/inspect.mjs";
-import { codes } from "ext:deno_node/internal/error_codes.ts";
+} = core.loadExtScript("ext:deno_node/internal/util/inspect.mjs");
+const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
 import types from "node:util/types";
 import { isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
-import {
+const {
   validateAbortSignal,
   validateNumber,
   validateObject,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
 import { MIMEParams, MIMEType } from "ext:deno_node/internal/mime.ts";
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 import binding from "ext:deno_node/internal_binding/util.ts";
-import { validateOneOf } from "ext:deno_node/internal/validators.mjs";
-import { os as osConstants } from "ext:deno_node/internal_binding/constants.ts";
+const { validateOneOf } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const { os: osConstants } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 
 let process: NodeJS.Process;
 const lazyLoadProcess = core.createLazyLoader<NodeJS.Process>(
@@ -131,12 +137,12 @@ export function inherits<T, U>(
   ObjectSetPrototypeOf(ctor.prototype, superCtor.prototype);
 }
 
-import {
+const {
   _TextDecoder,
   _TextEncoder,
   getSystemErrorMessage,
   getSystemErrorName,
-} from "ext:deno_node/_utils.ts";
+} = core.loadExtScript("ext:deno_node/_utils.ts");
 
 /** The global TextDecoder */
 export type TextDecoder = import("./_utils.ts")._TextDecoder;

@@ -1,24 +1,26 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
-import { op_cron_create, op_cron_next } from "ext:core/ops";
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
+const { op_cron_create, op_cron_next } = core.ops;
 const {
   ArrayPrototypeJoin,
   NumberPrototypeToString,
   SafeArrayIterator,
   TypeError,
 } = primordials;
-import {
+const {
+  otelState,
   builtinTracer,
   ContextManager,
   enterSpan,
-  PROPAGATORS,
   restoreSnapshot,
-  TRACING_ENABLED,
-} from "ext:deno_telemetry/telemetry.ts";
-import { updateSpanFromError } from "ext:deno_telemetry/util.ts";
+} = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
+const { updateSpanFromError } = core.loadExtScript(
+  "ext:deno_telemetry/util.ts",
+);
 
-export function formatToCronSchedule(
+function formatToCronSchedule(
   value?: number | { exact: number | number[] } | {
     start?: number;
     end?: number;
@@ -62,7 +64,7 @@ export function formatToCronSchedule(
   }
 }
 
-export function parseScheduleToString(
+function parseScheduleToString(
   schedule: string | Deno.CronSchedule,
 ): string {
   if (typeof schedule === "string") {
@@ -168,10 +170,12 @@ function cron(
         break;
       }
       let span;
-      if (TRACING_ENABLED) {
+      if (otelState.TRACING_ENABLED) {
         let activeContext = ContextManager.active();
         if (r.traceparent) {
-          for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+          for (
+            const propagator of new SafeArrayIterator(otelState.PROPAGATORS)
+          ) {
             activeContext = propagator.extract(activeContext, {}, {
               get(_carrier, key) {
                 if (key === "traceparent") return r.traceparent;
@@ -212,7 +216,7 @@ function cron(
           updateSpanFromError(span, error);
           span.end();
         }
-        import.meta.log("error", `Exception in cron handler ${name}`, error);
+        internals.log("error", `Exception in cron handler ${name}`, error);
         success = false;
       }
     }
@@ -223,4 +227,5 @@ function cron(
 internals.formatToCronSchedule = formatToCronSchedule;
 internals.parseScheduleToString = parseScheduleToString;
 
-export { cron };
+return { cron, formatToCronSchedule, parseScheduleToString };
+})();

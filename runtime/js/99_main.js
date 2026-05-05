@@ -52,11 +52,13 @@ const {
 const {
   isNativeError,
 } = core;
-import { registerDeclarativeServer } from "ext:deno_http/00_serve.ts";
+const { registerDeclarativeServer } = core.loadExtScript(
+  "ext:deno_http/00_serve.ts",
+);
 const event = core.loadExtScript("ext:deno_web/02_event.js");
 const location = core.loadExtScript("ext:deno_web/12_location.js");
 import * as version from "ext:runtime/01_version.ts";
-import * as os from "ext:deno_os/30_os.js";
+const os = core.loadExtScript("ext:deno_os/30_os.js");
 const {
   getConsoleInspectOptions,
   getDefaultInspectOptions,
@@ -67,7 +69,7 @@ const {
 } = core.loadExtScript("ext:deno_web/01_console.js");
 const performance = core.loadExtScript("ext:deno_web/15_performance.js");
 const url = core.loadExtScript("ext:deno_web/00_url.js");
-import * as fetch from "ext:deno_fetch/26_fetch.js";
+const fetch = core.loadExtScript("ext:deno_fetch/26_fetch.js");
 const messagePort = core.loadExtScript("ext:deno_web/13_message_port.js");
 import {
   denoNs,
@@ -92,7 +94,9 @@ import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
 const { SymbolMetadata } = core.loadExtScript("ext:deno_web/00_infra.js");
-import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
+const { bootstrap: bootstrapOtel } = core.loadExtScript(
+  "ext:deno_telemetry/telemetry.ts",
+);
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
@@ -134,6 +138,17 @@ op_get_ext_import_meta_proto().log = function internalLog(levelStr, ...args) {
     getConsoleInspectOptions(getStderrNoColor()),
   );
   op_internal_log(this.url, level, message);
+};
+
+// Equivalent of import.meta.log for use in lazy-loaded (IIFE) scripts that
+// lack access to import.meta.
+internals.log = function internalLog(levelStr, ...args) {
+  const level = LOG_LEVELS[levelStr];
+  const message = inspectArgs(
+    args,
+    getConsoleInspectOptions(getStderrNoColor()),
+  );
+  op_internal_log("ext:runtime", level, message);
 };
 
 let windowIsClosing = false;

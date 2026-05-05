@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   BadResourcePrototype,
   InterruptedPrototype,
@@ -8,7 +9,7 @@ const {
   internalFdSymbol,
   createCancelHandle,
 } = core;
-import {
+const {
   op_dns_resolve,
   op_net_accept_tcp,
   op_net_accept_tunnel,
@@ -34,7 +35,7 @@ import {
   op_net_set_multi_ttl_udp,
   op_set_keepalive,
   op_set_nodelay,
-} from "ext:core/ops";
+} = core.ops;
 const UDP_DGRAM_MAXSIZE = 65507;
 
 const {
@@ -741,7 +742,7 @@ async function connect(args) {
   }
 }
 
-export {
+return {
   Conn,
   connect,
   createListenDatagram,
@@ -759,3 +760,4 @@ export {
   validatePort,
   VsockConn,
 };
+})();

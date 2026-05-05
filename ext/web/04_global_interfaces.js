@@ -3,7 +3,6 @@
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 
-// deno-fmt-ignore-file
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
 const {
@@ -83,4 +82,4 @@ return {
   WorkerGlobalScope,
   workerGlobalScopeConstructorDescriptor,
 };
-})()
+})();

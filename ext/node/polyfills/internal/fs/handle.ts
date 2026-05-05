@@ -54,24 +54,26 @@ import {
   ftruncate as ftruncateCb,
   futimes as futimesCb,
 } from "node:fs";
-import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
+const { kEmptyObject, promisify } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 
 import {
   CreateReadStreamOptions,
   CreateWriteStreamOptions,
 } from "node:fs/promises";
 import assert from "node:assert";
-import {
+const {
   denoErrorToNodeError,
   ERR_INVALID_STATE,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { readableStreamCancel } = core.loadExtScript(
   "ext:deno_web/06_streams.js",
 );
-import {
+const {
   validateBoolean,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import process from "node:process";
 
 const fchmodPromise = promisify(fchmod) as (

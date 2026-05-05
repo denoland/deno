@@ -1,13 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
 const {
   BadResourcePrototype,
   InterruptedPrototype,
   Interrupted,
   internalRidSymbol,
 } = core;
-import {
+const {
   op_http_cancel,
   op_http_close,
   op_http_close_after_finish,
@@ -28,13 +29,14 @@ import {
   op_http_set_response_header,
   op_http_set_response_headers,
   op_http_set_response_trailers,
+  op_http_try_take_full_request_body,
   op_http_try_wait,
   op_http_upgrade_raw,
   op_http_upgrade_raw_connect,
   op_http_upgrade_raw_get_head,
   op_http_upgrade_websocket_next,
   op_http_wait,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypeFind,
   ArrayPrototypeMap,
@@ -58,18 +60,18 @@ const {
   Number,
 } = primordials;
 
-import { InnerBody } from "ext:deno_fetch/22_body.js";
-import {
+const { InnerBody } = core.loadExtScript("ext:deno_fetch/22_body.js");
+const {
   fromInnerResponse,
   newInnerResponse,
   ResponsePrototype,
   toInnerResponse,
-} from "ext:deno_fetch/23_response.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/23_response.js");
+const {
   abortRequest,
   fromInnerRequest,
   toInnerRequest,
-} from "ext:deno_fetch/23_request.js";
+} = core.loadExtScript("ext:deno_fetch/23_request.js");
 const { AbortController } = core.loadExtScript(
   "ext:deno_web/03_abort_signal.js",
 );
@@ -79,27 +81,26 @@ const {
   ReadableStreamPrototype,
   resourceForReadableStream,
 } = core.loadExtScript("ext:deno_web/06_streams.js");
-import {
+const {
   listen,
   listenOptionApiName,
   UpgradedConn,
-} from "ext:deno_net/01_net.js";
-import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
-import {
+} = core.loadExtScript("ext:deno_net/01_net.js");
+const { hasTlsKeyPairOptions, listenTls } = core.loadExtScript(
+  "ext:deno_net/02_tls.js",
+);
+const {
+  otelState,
   builtinTracer,
   ContextManager,
   currentSnapshot,
   enterSpan,
-  getOtelSpan,
-  METRICS_ENABLED,
-  PROPAGATORS,
   restoreSnapshot,
-  TRACING_ENABLED,
-} from "ext:deno_telemetry/telemetry.ts";
-import {
+} = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
+const {
   updateSpanFromRequest,
   updateSpanFromServerResponse,
-} from "ext:deno_telemetry/util.ts";
+} = core.loadExtScript("ext:deno_telemetry/util.ts");
 
 const _upgraded = Symbol("_upgraded");
 
@@ -368,6 +369,17 @@ class InnerRequest {
       this.#body = null;
       return null;
     }
+    // Fast path: if the entire body is already buffered in hyper
+    // (typical small POST keep-alive case), skip the ReadableStream
+    // wrapper, op_http_read_request_body resource allocation, and
+    // the disturb/close plumbing -- hand the bytes straight to
+    // InnerBody's static path. On `null` the body is left intact
+    // and we fall through to the streaming path.
+    const buffered = op_http_try_take_full_request_body(this.#external);
+    if (buffered !== null) {
+      this.#body = new InnerBody({ body: buffered, consumed: false });
+      return this.#body;
+    }
     this.#streamRid = op_http_read_request_body(this.#external);
     this.#body = new InnerBody(
       readableStreamForRid(
@@ -583,10 +595,10 @@ function mapToCallback(context, callback, onError) {
           );
         }
       } catch (error) {
-        if (METRICS_ENABLED) {
+        if (otelState.METRICS_ENABLED) {
           op_http_metric_handle_otel_error(req);
         }
-        import.meta.log(
+        internals.log(
           "error",
           "Exception in onError while handling exception",
           error,
@@ -599,7 +611,7 @@ function mapToCallback(context, callback, onError) {
       updateSpanFromServerResponse(span, response);
       // Copy span attributes (like http.route) to OtelInfo for HTTP metrics.
       // Must be done here, before the request external is invalidated.
-      const otelSpan = getOtelSpan(span);
+      const otelSpan = otelState.getOtelSpan?.(span);
       if (otelSpan) {
         op_http_copy_span_to_otel_info(req, otelSpan);
       }
@@ -608,7 +620,7 @@ function mapToCallback(context, callback, onError) {
     const inner = toInnerResponse(response);
     if (innerRequest?.[_upgraded]) {
       if (response.status !== 101) {
-        import.meta.log(
+        internals.log(
           "error",
           "Upgrade response was not returned from callback",
         );
@@ -641,7 +653,7 @@ function mapToCallback(context, callback, onError) {
     fastSyncResponseOrStream(req, inner.body, status, innerRequest);
   };
 
-  if (TRACING_ENABLED) {
+  if (otelState.TRACING_ENABLED) {
     const origMapped = mapped;
     mapped = function (req, _span) {
       const snapshot = currentSnapshot();
@@ -653,7 +665,7 @@ function mapToCallback(context, callback, onError) {
         ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
       }
       let activeContext = ContextManager.active();
-      for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+      for (const propagator of new SafeArrayIterator(otelState.PROPAGATORS)) {
         activeContext = propagator.extract(activeContext, headers, {
           get(carrier: [key: string, value: string][], key: string) {
             return ArrayPrototypeFind(
@@ -875,7 +887,7 @@ function serveInner(options, handler) {
   const signal = options.signal;
   const onError = options.onError ??
     function (error) {
-      import.meta.log("error", error);
+      internals.log("error", error);
       return internalServerError();
     };
 
@@ -890,7 +902,7 @@ function serveInner(options, handler) {
       if (options.onListen) {
         options.onListen(listener.addr);
       } else {
-        import.meta.log("info", `Listening on ${path}`);
+        internals.log("info", `Listening on ${path}`);
       }
     });
   }
@@ -907,7 +919,7 @@ function serveInner(options, handler) {
       if (options.onListen) {
         options.onListen(listener.addr);
       } else {
-        import.meta.log("info", `Listening on vsock:${cid}:${port}`);
+        internals.log("info", `Listening on vsock:${cid}:${port}`);
       }
     });
   }
@@ -924,7 +936,7 @@ function serveInner(options, handler) {
         const additional = listener.addr.port === 443
           ? ""
           : `:${listener.addr.port}`;
-        import.meta.log(
+        internals.log(
           "info",
           `Listening on https://${
             formatHostName(listener.addr.hostname)
@@ -984,7 +996,7 @@ function serveInner(options, handler) {
         ? ` (${scheme}localhost:${addr.port}/)`
         : "";
 
-      import.meta.log("info", `Listening on ${url}${helper}`);
+      internals.log("info", `Listening on ${url}${helper}`);
     }
   };
 
@@ -1029,7 +1041,7 @@ function serveHttpOn(context, addr, callback) {
 
   const promiseErrorHandler = (error) => {
     // Abnormal exit
-    import.meta.log(
+    internals.log(
       "error",
       "Terminating Deno.serve loop due to unexpected error",
       error,
@@ -1192,7 +1204,7 @@ function registerDeclarativeServer(exports) {
             ? ` with ${workerCountWhenMain + 1} threads`
             : "";
 
-          import.meta.log(
+          internals.log(
             "info",
             `%cdeno serve%c: Listening on %c${target}%c${nThreads}`,
             "color: green",
@@ -1209,7 +1221,7 @@ function registerDeclarativeServer(exports) {
   };
 }
 
-export {
+return {
   addTrailers,
   registerDeclarativeServer,
   serve,
@@ -1218,3 +1230,4 @@ export {
   upgradeHttpRaw,
   upgradeHttpRawConnect,
 };
+})();

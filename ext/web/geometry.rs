@@ -17,9 +17,12 @@ use deno_core::cppgc;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::webidl::ContextFn;
+use deno_core::webidl::SequenceLengthOneOf;
 use deno_core::webidl::UnrestrictedDouble;
 use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
+use deno_core::webidl::WebIdlErrorKind;
+use deno_core::webidl::try_convert_sequence_with_policy;
 use nalgebra::Matrix3;
 use nalgebra::Matrix4;
 use nalgebra::Matrix4x2;
@@ -926,6 +929,28 @@ const INDEX_M42: usize = 13;
 const INDEX_M43: usize = 14;
 const INDEX_M44: usize = 15;
 
+trait ToF64 {
+  fn to_f64(&self) -> f64;
+}
+
+impl ToF64 for UnrestrictedDouble {
+  fn to_f64(&self) -> f64 {
+    **self
+  }
+}
+
+impl ToF64 for f32 {
+  fn to_f64(&self) -> f64 {
+    *self as f64
+  }
+}
+
+impl ToF64 for f64 {
+  fn to_f64(&self) -> f64 {
+    *self
+  }
+}
+
 impl DOMMatrixReadOnly {
   fn new<'a>(
     state: Rc<RefCell<OpState>>,
@@ -941,15 +966,21 @@ impl DOMMatrixReadOnly {
 
     // sequence
     if value.is_object()
-      && let Ok(seq) = Vec::<UnrestrictedDouble>::convert(
-        scope,
-        value,
-        prefix,
-        context,
-        &Default::default(),
+      && let Some(seq) = try_convert_sequence_with_policy::<
+        UnrestrictedDouble,
+        SequenceLengthOneOf<6, 16>,
+        16,
+      >(
+        scope, value, prefix, context, &Default::default()
       )
+      .map_err(|err| {
+        if matches!(&err.kind, WebIdlErrorKind::InvalidSequenceLength { .. }) {
+          GeometryError::InvalidSequenceSize
+        } else {
+          GeometryError::from(err)
+        }
+      })?
     {
-      let seq = seq.into_iter().map(|f| *f).collect::<Vec<f64>>();
       return DOMMatrixReadOnly::from_sequence_inner(&seq);
     }
 
@@ -1060,23 +1091,24 @@ impl DOMMatrixReadOnly {
     }
   }
 
-  fn from_sequence_inner(
-    seq: &[f64],
+  fn from_sequence_inner<T: ToF64>(
+    seq: &[T],
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
     if let [a, b, c, d, e, f] = seq {
       Ok(DOMMatrixReadOnly {
         #[rustfmt::skip]
         inner: RefCell::new(Matrix4::new(
-           *a,  *c, 0.0,  *e,
-           *b,  *d, 0.0,  *f,
-          0.0, 0.0, 1.0, 0.0,
-          0.0, 0.0, 0.0, 1.0,
+          a.to_f64(), c.to_f64(), 0.0, e.to_f64(),
+          b.to_f64(), d.to_f64(), 0.0, f.to_f64(),
+                 0.0,        0.0, 1.0,        0.0,
+                 0.0,        0.0, 0.0,        1.0,
         )),
         is_2d: Cell::new(true),
       })
     } else if seq.len() == 16 {
+      let seq: [f64; 16] = std::array::from_fn(|i| seq[i].to_f64());
       Ok(DOMMatrixReadOnly {
-        inner: RefCell::new(Matrix4::from_column_slice(seq)),
+        inner: RefCell::new(Matrix4::from_column_slice(&seq)),
         is_2d: Cell::new(false),
       })
     } else {
@@ -1567,8 +1599,7 @@ impl DOMMatrixReadOnly {
   fn from_float32_array(
     #[buffer] seq: &[f32],
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
-    let seq = seq.iter().map(|&f| f as f64).collect::<Vec<f64>>();
-    DOMMatrixReadOnly::from_sequence_inner(&seq)
+    DOMMatrixReadOnly::from_sequence_inner(seq)
   }
 
   #[rename("fromFloat64Array")]
@@ -2093,8 +2124,7 @@ impl DOMMatrix {
     scope: &mut v8::PinScope<'a, '_>,
     #[buffer] seq: &[f32],
   ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
-    let seq = seq.iter().map(|&f| f as f64).collect::<Vec<f64>>();
-    let ro = DOMMatrixReadOnly::from_sequence_inner(&seq)?;
+    let ro = DOMMatrixReadOnly::from_sequence_inner(seq)?;
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
     Ok(cppgc::wrap_object(scope, obj, DOMMatrix { base: ro }))
   }

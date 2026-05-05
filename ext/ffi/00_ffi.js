@@ -1,12 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
 const {
   isArrayBuffer,
   isDataView,
   isTypedArray,
 } = core;
-import {
+const {
   op_ffi_buf_copy_into,
   op_ffi_call_nonblocking,
   op_ffi_call_ptr,
@@ -37,7 +38,7 @@ import {
   op_ffi_unsafe_callback_close,
   op_ffi_unsafe_callback_create,
   op_ffi_unsafe_callback_ref,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
@@ -569,7 +570,7 @@ function getTurbocallTarget() {
 
 internals.getTurbocallTarget = getTurbocallTarget;
 
-export {
+return {
   dlopen,
   getTurbocallTarget,
   UnsafeCallback,
@@ -577,3 +578,4 @@ export {
   UnsafePointer,
   UnsafePointerView,
 };
+})();

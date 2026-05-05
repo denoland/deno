@@ -32,15 +32,17 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { op_node_create_pipe, PipeWrap } from "ext:core/ops";
 import {
   AsyncWrap,
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { ceilPowOf2 } from "ext:deno_node/internal_binding/_listen.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { fs } from "ext:deno_node/internal_binding/constants.ts";
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const { fs } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 
 const { MapPrototypeGet } = primordials;
 

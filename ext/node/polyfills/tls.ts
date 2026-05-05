@@ -1,26 +1,38 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
-import {
-  validateOneOf,
-  validateString,
-} from "ext:deno_node/internal/validators.mjs";
+import { core, primordials } from "ext:core/mod.js";
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
 import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
 import {
-  op_get_ca_certificates,
+  op_get_env_no_permission_check,
   op_get_root_certificates,
+  op_node_get_ca_certificates,
   op_set_default_ca_certificates,
 } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
+const {
+  validateOneOf,
+  validateString,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
+const { isTypedArray } = core;
 const {
   ArrayIsArray,
+  ArrayPrototypeIncludes,
   ArrayPrototypeForEach,
   ArrayPrototypeMap,
   ArrayPrototypePush,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
   ObjectDefineProperty,
   ObjectKeys,
   ObjectFreeze,
@@ -34,9 +46,39 @@ const {
   ReflectOwnKeys,
   ReflectPreventExtensions,
   ReflectSet,
+  StringPrototypeIncludes,
+  StringPrototypeSplit,
+  StringPrototypeTrim,
   StringPrototypeToLowerCase,
-  TypeError,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  Uint8Array,
 } = primordials;
+
+// Lazy-init: tls.ts is loaded into the startup snapshot before TextDecoder
+// is registered as a global, so a top-level `new TextDecoder()` would throw.
+let utf8Decoder: TextDecoder | null = null;
+
+// deno-lint-ignore no-explicit-any
+function arrayBufferViewToString(view: any): string {
+  // Use the matching prototype getter so a forged accessor on the view
+  // can't redirect us to a different ArrayBuffer / out-of-bounds region.
+  const isTA = isTypedArray(view);
+  const buffer = isTA
+    ? TypedArrayPrototypeGetBuffer(view)
+    : DataViewPrototypeGetBuffer(view);
+  const byteOffset = isTA
+    ? TypedArrayPrototypeGetByteOffset(view)
+    : DataViewPrototypeGetByteOffset(view);
+  const byteLength = isTA
+    ? TypedArrayPrototypeGetByteLength(view)
+    : DataViewPrototypeGetByteLength(view);
+  if (utf8Decoder === null) {
+    utf8Decoder = new TextDecoder("utf-8");
+  }
+  return utf8Decoder.decode(new Uint8Array(buffer, byteOffset, byteLength));
+}
 
 // openssl -> rustls
 const cipherMap = {
@@ -64,6 +106,58 @@ export function getCiphers() {
 }
 
 let lazyRootCertificates: string[] | null = null;
+const cachedCACertificates: Record<string, string[]> = {
+  __proto__: null as unknown as string[],
+};
+
+function writeNativeCryptoDebug(message: string) {
+  const nodeDebugNative = op_get_env_no_permission_check("NODE_DEBUG_NATIVE") ??
+    "";
+  if (
+    !StringPrototypeIncludes(nodeDebugNative, "crypto")
+  ) {
+    return;
+  }
+  core.print(`${message}\n`, true);
+}
+
+function emitDefaultCertificatesDebug() {
+  const useOpenSslCa =
+    op_get_env_no_permission_check("DENO_NODE_USE_OPENSSL_CA") === "1";
+  if (useOpenSslCa) {
+    return;
+  }
+
+  const stores: string[] = [];
+  ArrayPrototypeForEach(
+    StringPrototypeSplit(
+      op_get_env_no_permission_check("DENO_TLS_CA_STORE") ?? "mozilla",
+      ",",
+    ),
+    (store) => {
+      const trimmedStore = StringPrototypeTrim(store);
+      if (trimmedStore.length > 0) {
+        ArrayPrototypePush(stores, trimmedStore);
+      }
+    },
+  );
+  if (ArrayPrototypeIncludes(stores, "mozilla")) {
+    writeNativeCryptoDebug(
+      "Started loading bundled root certificates off-thread",
+    );
+  }
+  if (ArrayPrototypeIncludes(stores, "system")) {
+    writeNativeCryptoDebug(
+      "Started loading system root certificates off-thread",
+    );
+  }
+  if (op_get_env_no_permission_check("NODE_EXTRA_CA_CERTS")) {
+    writeNativeCryptoDebug(
+      "Started loading extra root certificates off-thread",
+    );
+  }
+}
+
 function ensureLazyRootCertificates(target: string[]) {
   if (lazyRootCertificates === null) {
     lazyRootCertificates = op_get_root_certificates() as string[];
@@ -130,30 +224,45 @@ export class CryptoStream {}
 export class SecurePair {}
 export const Server = tlsWrap.Server;
 
-export function setDefaultCACertificates(certs: string[]) {
+export function setDefaultCACertificates(
+  certs: (string | ArrayBufferView)[],
+) {
   if (!ArrayIsArray(certs)) {
-    throw new TypeError(
-      "The argument 'certs' must be an array of strings",
-    );
+    throw new ERR_INVALID_ARG_TYPE("certs", "Array", certs);
   }
 
+  const normalized: string[] = [];
   for (let i = 0; i < certs.length; ++i) {
     const cert = certs[i];
-    if (typeof cert !== "string") {
-      throw new TypeError(
-        "Each certificate in 'certs' must be a string",
+    if (typeof cert === "string") {
+      ArrayPrototypePush(normalized, cert);
+    } else if (isArrayBufferView(cert)) {
+      ArrayPrototypePush(normalized, arrayBufferViewToString(cert));
+    } else {
+      throw new ERR_INVALID_ARG_TYPE(
+        `certs[${i}]`,
+        ["string", "ArrayBufferView"],
+        cert,
       );
     }
   }
 
-  op_set_default_ca_certificates(certs);
+  op_set_default_ca_certificates(normalized);
 
-  lazyRootCertificates = null;
+  // The bundled root certificates (`rootCertificates` proxy /
+  // `lazyRootCertificates`) come from the webpki Mozilla bundle and don't
+  // change here, so don't invalidate them: doing so would re-enter
+  // `ensureLazyRootCertificates` and try to mutate a frozen target.
+  // Only the 'default' cache reflects what we just wrote.
+  ArrayPrototypeForEach(
+    ObjectKeys(cachedCACertificates),
+    (key) => {
+      if (key !== "bundled") {
+        delete cachedCACertificates[key];
+      }
+    },
+  );
 }
-
-const cachedCACertificates: Record<string, string[]> = {
-  __proto__: null as unknown as string[],
-};
 
 export function getCACertificates(type: string = "default"): string[] {
   validateString(type, "type");
@@ -167,7 +276,10 @@ export function getCACertificates(type: string = "default"): string[] {
   if (type === "bundled") {
     certs = rootCertificates;
   } else {
-    certs = ObjectFreeze(op_get_ca_certificates(type)) as string[];
+    certs = ObjectFreeze(op_node_get_ca_certificates(type)) as string[];
+    if (type === "default") {
+      emitDefaultCertificatesDebug();
+    }
   }
   cachedCACertificates[type] = certs;
   return certs;
@@ -187,9 +299,9 @@ const defaultExport = {
   createSecureContext: tlsCommon.createSecureContext,
   createSecurePair,
   createServer: tlsWrap.createServer,
-  getCACertificates,
   convertALPNProtocols,
   getCiphers,
+  getCACertificates,
   setDefaultCACertificates,
   DEFAULT_CIPHERS: tlsWrap.DEFAULT_CIPHERS,
   DEFAULT_ECDH_CURVE,

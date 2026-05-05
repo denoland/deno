@@ -24,15 +24,17 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_FILE_URL_HOST,
   ERR_INVALID_FILE_URL_PATH,
   ERR_INVALID_URL,
   ERR_INVALID_URL_SCHEME,
-} from "ext:deno_node/internal/errors.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { validateString } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import {
   CHAR_0,
   CHAR_9,
@@ -75,7 +77,7 @@ import {
   domainToASCII as idnaToASCII,
   domainToUnicode as idnaToUnicode,
 } from "ext:deno_node/internal/idna.ts";
-import { isWindows, osType } from "ext:deno_node/_util/os.ts";
+const { isWindows, osType } = core.loadExtScript("ext:deno_node/_util/os.ts");
 import { encodeStr, hexTable } from "ext:deno_node/internal/querystring.ts";
 import querystring from "node:querystring";
 import type { ParsedUrlQuery, ParsedUrlQueryInput } from "node:querystring";

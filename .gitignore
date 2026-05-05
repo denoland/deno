@@ -47,6 +47,7 @@ Untitled*.ipynb
 /.ms-playwright
 
 **/.claude/settings.local.json
+**/.claude/scheduled_tasks.lock
 
 # pyenv
 /.python-version

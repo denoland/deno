@@ -25,12 +25,15 @@
 
 "use strict";
 
-import {
+import { core } from "ext:core/mod.js";
+const {
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CURSOR_POS,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
-import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+const { validateFunction } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
 import { CSI } from "ext:deno_node/internal/readline/utils.mjs";
 

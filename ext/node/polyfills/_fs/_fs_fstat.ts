@@ -10,7 +10,10 @@ import {
   type statOptions,
 } from "ext:deno_node/internal/fs/stat_utils.ts";
 import { BigIntStats, Stats } from "ext:deno_node/internal/fs/utils.mjs";
-import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import { core } from "ext:core/mod.js";
+const { denoErrorToNodeError } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 import { getValidatedFd } from "ext:deno_node/internal/fs/utils.mjs";
 import { op_node_fs_fstat, op_node_fs_fstat_sync } from "ext:core/ops";
 

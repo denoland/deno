@@ -1,8 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
-import { primordials } from "ext:core/mod.js";
-import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
+import { core, primordials } from "ext:core/mod.js";
+const { ERR_OUT_OF_RANGE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 import * as colors from "ext:deno_node/internal/util/colors.ts";
 
 const {

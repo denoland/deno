@@ -10,7 +10,6 @@
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
-// deno-fmt-ignore-file
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
 const {
@@ -61,7 +60,9 @@ const {
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { ReadableStream } = core.loadExtScript("ext:deno_web/06_streams.js");
 const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
-const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
 
 // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
 // host os.
@@ -739,4 +740,4 @@ return {
   getParts,
   isBlob,
 };
-})()
+})();

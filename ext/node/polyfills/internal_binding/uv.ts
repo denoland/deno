@@ -29,9 +29,12 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { osType } from "ext:deno_node/_util/os.ts";
-import { uvTranslateSysError } from "ext:deno_node/internal_binding/_libuv_winerror.ts";
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { osType } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { uvTranslateSysError } = core.loadExtScript(
+  "ext:deno_node/internal_binding/_libuv_winerror.ts",
+);
 const { Error } = primordials;
 
 // In Node these values are coming from libuv:
@@ -492,7 +495,7 @@ const unreachable = () => {
   throw new Error("Unreachable code");
 };
 
-export const errorMap = new Map<number, [string, string]>(
+const errorMap = new Map<number, [string, string]>(
   osType === "windows"
     ? codeToErrorWindows
     : osType === "darwin"
@@ -508,7 +511,7 @@ export const errorMap = new Map<number, [string, string]>(
     : unreachable(),
 );
 
-export const codeMap = new Map<string, number>(
+const codeMap = new Map<string, number>(
   osType === "windows"
     ? errorToCodeWindows
     : osType === "darwin"
@@ -524,7 +527,7 @@ export const codeMap = new Map<string, number>(
     : unreachable(),
 );
 
-export function mapSysErrnoToUvErrno(sysErrno: number): number {
+function mapSysErrnoToUvErrno(sysErrno: number): number {
   if (osType === "windows") {
     const code = uvTranslateSysError(sysErrno);
     return codeMap.get(code) ?? -sysErrno;
@@ -533,18 +536,18 @@ export function mapSysErrnoToUvErrno(sysErrno: number): number {
   }
 }
 
-export const UV_EAI_MEMORY = codeMap.get("EAI_MEMORY")!;
-export const UV_EBADF = codeMap.get("EBADF")!;
-export const UV_ECANCELED = codeMap.get("ECANCELED")!;
-export const UV_EEXIST = codeMap.get("EEXIST");
-export const UV_EINVAL = codeMap.get("EINVAL")!;
-export const UV_ENOENT = codeMap.get("ENOENT");
-export const UV_ENOMEM = codeMap.get("ENOMEM")!;
-export const UV_ENOTSOCK = codeMap.get("ENOTSOCK")!;
-export const UV_ETIMEDOUT = codeMap.get("ETIMEDOUT")!;
-export const UV_UNKNOWN = codeMap.get("UNKNOWN")!;
+const UV_EAI_MEMORY = codeMap.get("EAI_MEMORY")!;
+const UV_EBADF = codeMap.get("EBADF")!;
+const UV_ECANCELED = codeMap.get("ECANCELED")!;
+const UV_EEXIST = codeMap.get("EEXIST");
+const UV_EINVAL = codeMap.get("EINVAL")!;
+const UV_ENOENT = codeMap.get("ENOENT");
+const UV_ENOMEM = codeMap.get("ENOMEM")!;
+const UV_ENOTSOCK = codeMap.get("ENOTSOCK")!;
+const UV_ETIMEDOUT = codeMap.get("ETIMEDOUT")!;
+const UV_UNKNOWN = codeMap.get("UNKNOWN")!;
 
-export function errname(errno: number): string {
+function errname(errno: number): string {
   const err = errorMap.get(errno);
   if (err) {
     return err[0];
@@ -552,7 +555,7 @@ export function errname(errno: number): string {
   return `UNKNOWN (${errno})`;
 }
 
-export function getErrorMessage(errno: number): string {
+function getErrorMessage(errno: number): string {
   const err = errorMap.get(errno);
 
   if (err) {
@@ -561,10 +564,31 @@ export function getErrorMessage(errno: number): string {
   return `UNKNOWN (${errno})`;
 }
 
-export function getErrorMap(): Map<number, [string, string]> {
+function getErrorMap(): Map<number, [string, string]> {
   return errorMap;
 }
 
-export function getCodeMap(): Map<string, number> {
+function getCodeMap(): Map<string, number> {
   return codeMap;
 }
+
+return {
+  errorMap,
+  codeMap,
+  mapSysErrnoToUvErrno,
+  UV_EAI_MEMORY,
+  UV_EBADF,
+  UV_ECANCELED,
+  UV_EEXIST,
+  UV_EINVAL,
+  UV_ENOENT,
+  UV_ENOMEM,
+  UV_ENOTSOCK,
+  UV_ETIMEDOUT,
+  UV_UNKNOWN,
+  errname,
+  getErrorMessage,
+  getErrorMap,
+  getCodeMap,
+};
+})();

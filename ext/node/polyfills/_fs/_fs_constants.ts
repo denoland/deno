@@ -1,6 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { fs } from "ext:deno_node/internal_binding/constants.ts";
+import { core } from "ext:core/mod.js";
+const { fs } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 
 export const {
   F_OK,

@@ -1,18 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// @ts-check
-/// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../web/internal.d.ts" />
-/// <reference path="../url/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
-/// <reference path="./internal.d.ts" />
-/// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
-/// <reference lib="esnext" />
-
-import { core, primordials } from "ext:core/mod.js";
-import { op_fetch_custom_client } from "ext:core/ops";
-import { loadTlsKeyPair } from "ext:deno_net/02_tls.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { op_fetch_custom_client } = core.ops;
+const { loadTlsKeyPair } = core.loadExtScript("ext:deno_net/02_tls.js");
 
 const { internalRidSymbol } = core;
 const {
@@ -133,4 +124,5 @@ class HttpClient {
 }
 const HttpClientPrototype = HttpClient.prototype;
 
-export { createHttpClient, HttpClient, HttpClientPrototype };
+return { createHttpClient, HttpClient, HttpClientPrototype };
+})();

@@ -4,24 +4,25 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import {
   op_node_get_hash_size,
   op_node_hkdf,
   op_node_hkdf_async,
 } from "ext:core/ops";
 
-import {
+const {
   validateFunction,
   validateInteger,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   ERR_CRYPTO_INVALID_DIGEST,
   ERR_CRYPTO_INVALID_KEYLEN,
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
   hideStackFrames,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import {
   kHandle,
   toBuf,
@@ -33,11 +34,13 @@ import {
 } from "ext:deno_node/internal/crypto/keys.ts";
 import type { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
 import { kMaxLength } from "ext:deno_node/internal/buffer.mjs";
-import {
+const {
   isAnyArrayBuffer,
   isArrayBufferView,
-} from "ext:deno_node/internal/util/types.ts";
-import { isKeyObject } from "ext:deno_node/internal/crypto/_keys.ts";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
+const { isKeyObject } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/_keys.ts",
+);
 import { getHashes } from "ext:deno_node/internal/crypto/hash.ts";
 import { Buffer } from "node:buffer";
 

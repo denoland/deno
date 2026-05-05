@@ -1,17 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// @ts-check
-/// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../url/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_url.d.ts" />
-/// <reference path="../web/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
-/// <reference path="./internal.d.ts" />
-/// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
-/// <reference lib="esnext" />
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   BadResourcePrototype,
   isAnyArrayBuffer,
@@ -42,12 +32,12 @@ const {
   parseUrlEncoded,
   URLSearchParamsPrototype,
 } = core.loadExtScript("ext:deno_web/00_url.js");
-import {
+const {
   formDataFromEntries,
   FormDataPrototype,
   formDataToBlob,
   parseFormData,
-} from "ext:deno_fetch/21_formdata.js";
+} = core.loadExtScript("ext:deno_fetch/21_formdata.js");
 const mimesniff = core.loadExtScript("ext:deno_web/01_mimesniff.js");
 const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
 const {
@@ -541,6 +531,11 @@ webidl.converters["async iterable<Uint8Array>"] = webidl
   .createAsyncIterableConverter(webidl.converters.Uint8Array);
 
 webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
+  // Fast path: a plain string is by far the most common shape for Response
+  // body and `fetch(url, { body: "..." })`. Skip the union-of-types prototype
+  // chain checks and the trailing DOMString conversion (which itself just
+  // returns strings as-is).
+  if (typeof V === "string") return V;
   // Union for (ReadableStream or Blob or ArrayBufferView or ArrayBuffer or FormData or URLSearchParams or USVString)
   if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, V)) {
     return webidl.converters["ReadableStream"](V, prefix, context, opts);
@@ -576,4 +571,5 @@ webidl.converters["BodyInit_DOMString?"] = webidl.createNullableConverter(
   webidl.converters["BodyInit_DOMString"],
 );
 
-export { extractBody, InnerBody, mixinBody, packageData };
+return { extractBody, InnerBody, mixinBody, packageData };
+})();

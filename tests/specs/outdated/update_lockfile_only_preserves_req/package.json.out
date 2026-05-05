@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@denotest/has-patch-versions": "<0.1.2"
+  }
+}

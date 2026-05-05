@@ -4,26 +4,26 @@
 // MIT License
 // Copyright (c) 2017 Matteo Collina
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { Buffer } from "node:buffer";
 import EventEmitter from "node:events";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import process from "node:process";
 import { setInterval, setTimeout } from "node:timers";
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_STATE,
-} from "ext:deno_node/internal/errors.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   validateBoolean,
   validateFunction,
   validateObject,
   validateOneOf,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 const {
   ArrayPrototypePush,

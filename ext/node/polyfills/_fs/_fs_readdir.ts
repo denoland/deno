@@ -3,14 +3,17 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import { core } from "ext:core/mod.js";
+const { denoErrorToNodeError } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 import {
   type Dirent,
   direntFromDeno,
   getValidatedPath,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { Buffer } from "node:buffer";
-import { promisify } from "ext:deno_node/internal/util.mjs";
+const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import { op_fs_read_dir_async, op_fs_read_dir_sync } from "ext:core/ops";
 import { join, relative } from "node:path";
 

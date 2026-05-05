@@ -9,7 +9,6 @@
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-// deno-fmt-ignore-file
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
 const {
@@ -47,7 +46,9 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
 
 class TextDecoder {
   /** @type {string} */
@@ -114,6 +115,19 @@ class TextDecoder {
    */
   decode(input = new Uint8Array(), options = undefined) {
     webidl.assertBranded(this, TextDecoderPrototype);
+    // Hyper-fast path: handles the dominant case of
+    // `new TextDecoder().decode(bytes)` on a regular (non-SAB) Uint8Array.
+    // Skips the second buffer/SAB lookup, the options/stream branches and the
+    // try/finally that the slow path needs.
+    if (
+      options === undefined &&
+      this.#utf8SinglePass &&
+      this.#handle === null &&
+      TypedArrayPrototypeGetSymbolToStringTag(input) === "Uint8Array" &&
+      !isSharedArrayBuffer(TypedArrayPrototypeGetBuffer(input))
+    ) {
+      return op_encoding_decode_utf8(input, this.#ignoreBOM);
+    }
     if (input !== undefined) {
       // Fast path: skip full BufferSource validation for Uint8Array
       if (
@@ -571,4 +585,4 @@ return {
   TextEncoder,
   TextEncoderStream,
 };
-})()
+})();

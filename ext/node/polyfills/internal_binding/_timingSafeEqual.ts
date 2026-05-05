@@ -4,11 +4,11 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { Buffer } from "node:buffer";
-import {
+import { core } from "ext:core/mod.js";
+const {
   ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH,
   ERR_INVALID_ARG_TYPE,
-} from "ext:deno_node/internal/errors.ts";
-import { core } from "ext:core/mod.js";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const {
   isAnyArrayBuffer,

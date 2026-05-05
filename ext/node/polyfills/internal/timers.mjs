@@ -37,12 +37,16 @@ import {
   executionAsyncId,
   newAsyncId as nextAsyncId,
 } from "ext:deno_node/internal/async_hooks.ts";
-import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
-import {
+const { inspect } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
+const {
   validateFunction,
   validateNumber,
-} from "ext:deno_node/internal/validators.mjs";
-import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { ERR_OUT_OF_RANGE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 import { emitWarning } from "node:process";
 
 // Timeout values > TIMEOUT_MAX are set to 1.

@@ -19,7 +19,7 @@ import {
   op_node_parse_shell_args,
   op_node_translate_cli_args,
 } from "ext:core/ops";
-import {
+const {
   ArrayIsArray,
   ArrayPrototypeFilter,
   ArrayPrototypeJoin,
@@ -31,15 +31,17 @@ import {
   StringPrototypeIncludes,
   StringPrototypeStartsWith,
   StringPrototypeToUpperCase,
-} from "ext:deno_node/internal/primordials.mjs";
+} = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
 import assert from "node:assert";
 import { EventEmitter } from "node:events";
-import { os } from "ext:deno_node/internal_binding/constants.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
+const { os } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import { Readable, Stream, Writable } from "node:stream";
-import { isWindows } from "ext:deno_node/_util/os.ts";
+const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 import { nextTick } from "ext:deno_node/_next_tick.ts";
-import {
+const {
   AbortError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
@@ -50,26 +52,28 @@ import {
   ERR_IPC_SYNC_FORK,
   ERR_MISSING_ARGS,
   ERR_UNKNOWN_SIGNAL,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { Buffer } from "node:buffer";
 import { FastBuffer } from "ext:deno_node/internal/buffer.mjs";
-import {
+const {
   ERR_IPC_DISCONNECTED,
   errnoException,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { ErrnoException } from "ext:deno_node/_global.d.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import {
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const {
   validateBoolean,
   validateInt32,
   validateObject,
   validateOneOf,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
-import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
+const { StringPrototypeSlice } = core.loadExtScript(
+  "ext:deno_node/internal/primordials.mjs",
+);
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import {
   socketType as tcpSocketType,
@@ -77,11 +81,11 @@ import {
 } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import { Server as NetServer, Socket } from "node:net";
 import { Socket as DgramSocket } from "node:dgram";
-import {
+const {
   kNeedsNpmProcessState,
   nodeSpawnChild,
   nodeSpawnSyncChild,
-} from "ext:deno_process/40_process.js";
+} = core.loadExtScript("ext:deno_process/40_process.js");
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -1514,6 +1518,14 @@ function buildCommand(
     const result = op_node_translate_cli_args(args, scriptInNpmPackage, true);
     args = result.deno_args;
     includeNpmProcessState = result.needs_npm_process_state;
+    if (result.ca_stores?.length) {
+      env.DENO_TLS_CA_STORE = result.ca_stores.join(",");
+    }
+    if (result.use_openssl_ca) {
+      env.DENO_NODE_USE_OPENSSL_CA = "1";
+    } else {
+      delete env.DENO_NODE_USE_OPENSSL_CA;
+    }
 
     // Update NODE_OPTIONS if needed
     if (result.node_options.length > 0) {
@@ -1885,8 +1897,13 @@ let hasSetBufferConstructor = false;
 
 const IPC_HANDLE_NET_SOCKET = "net.Socket";
 const IPC_HANDLE_NET_SERVER = "net.Server";
+// node:cluster sends raw TCP/Pipe wraps (without a Socket/Server wrapper) for
+// connection handoffs (RoundRobinHandle) and shared listening sockets
+// (SharedHandle). Mirrors Node's `handleConversion["net.Native"]`.
+const IPC_HANDLE_NET_NATIVE = "net.Native";
 
-function rawFdFromTcpHandle(tcpHandle) {
+// deno-lint-ignore no-explicit-any
+function rawFdFromTcpHandle(tcpHandle: any): number {
   if (typeof tcpHandle.fdForIpc !== "function") {
     notImplemented("ChildProcess.send with handle on this platform");
   }
@@ -1897,7 +1914,16 @@ function rawFdFromTcpHandle(tcpHandle) {
   return rawFd;
 }
 
-function getIpcHandleInfo(handle, options) {
+interface IpcHandleInfo {
+  rawFd: number;
+  // deno-lint-ignore no-explicit-any
+  message: Record<string, any>;
+  closeAfterSend: boolean;
+  close(): void;
+}
+
+// deno-lint-ignore no-explicit-any
+function getIpcHandleInfo(handle: any, options: any): IpcHandleInfo {
   if (handle instanceof Socket) {
     if (!(handle._handle instanceof TCP)) {
       notImplemented("ChildProcess.send with non-TCP net.Socket handle");
@@ -1937,6 +1963,30 @@ function getIpcHandleInfo(handle, options) {
       },
     };
   }
+  if (handle instanceof TCP || handle instanceof Pipe) {
+    return {
+      rawFd: rawFdFromTcpHandle(handle),
+      message: {
+        cmd: "NODE_HANDLE",
+        type: IPC_HANDLE_NET_NATIVE,
+        // 0 = SOCKET, 1 = SERVER. Same encoding for TCP and Pipe.
+        socketType: handle.socketTypeForIpc(),
+        // Distinguishes the wrap type the receiver should reconstruct.
+        nativeKind: handle instanceof TCP ? "tcp" : "pipe",
+        msg: undefined,
+      },
+      // Match Node's handleConversion["net.Native"]: it has no postSend hook,
+      // so the IPC layer doesn't auto-close. Cluster's RoundRobinHandle and
+      // SharedHandle each manage their own lifecycle (the former closes the
+      // client wrap after the worker ACKs; the latter shares the listening
+      // wrap across workers).
+      closeAfterSend: false,
+      close() {
+        handle.close();
+      },
+    };
+  }
+
   if (handle instanceof DgramSocket) {
     notImplemented("ChildProcess.send with dgram.Socket handle");
   }
@@ -1944,7 +1994,8 @@ function getIpcHandleInfo(handle, options) {
   throw new ERR_INVALID_HANDLE_TYPE();
 }
 
-function createIpcHandle(message, rawFd) {
+// deno-lint-ignore no-explicit-any
+function createIpcHandle(message: any, rawFd: number): any {
   if (message.type === IPC_HANDLE_NET_SOCKET) {
     const tcp = new TCP(tcpSocketType.SOCKET);
     const err = tcp.open(rawFd);
@@ -1980,6 +2031,31 @@ function createIpcHandle(message, rawFd) {
       tcp.close();
       throw err;
     }
+  }
+  if (message.type === IPC_HANDLE_NET_NATIVE) {
+    if (message.nativeKind === "pipe") {
+      const st = message.socketType === 1
+        ? socketType.SERVER
+        : socketType.SOCKET;
+      const pipe = new Pipe(st);
+      const err = pipe.open(rawFd);
+      if (err !== 0) {
+        throw errnoException(codeMap.get(err), "open");
+      }
+      return pipe;
+    }
+    const st = message.socketType === 1
+      ? tcpSocketType.SERVER
+      : tcpSocketType.SOCKET;
+    const tcp = new TCP(st);
+    const err = tcp.open(rawFd);
+    if (err !== 0) {
+      throw errnoException(codeMap.get(err), "open");
+    }
+    // Match Node's handleConversion["net.Native"].got: just hand the raw
+    // wrap to the listener. Cluster's worker-side onconnection() / shared()
+    // takes ownership.
+    return tcp;
   }
   return undefined;
 }
@@ -2110,6 +2186,14 @@ export function setupChannel(
     if (serialization === "json") {
       restorePrototype(msg);
     }
+    // Match Node: when a handle was attached to an internal command (e.g.
+    // NODE_CLUSTER newconn from the round-robin handle), the unwrapped
+    // payload is itself a NODE_* internal message. Route it as
+    // internalMessage so cluster's listener receives it.
+    if (isInternal(msg)) {
+      target.emit("internalMessage", msg, handle);
+      return;
+    }
     if (target.listenerCount("message") !== 0) {
       target.emit("message", msg, handle);
       return;
@@ -2163,16 +2247,20 @@ export function setupChannel(
     }
 
     let handleInfo;
-    if (handle !== undefined) {
-      // Validate handle type before rejecting as not implemented.
-      // Node.js only accepts net.Server, net.Socket, or dgram.Socket.
+    // Match Node: a falsy `handle` (undefined, null) means "no handle".
+    // Reject only non-falsy values that aren't a recognized handle type.
+    if (handle) {
       if (
         !(handle instanceof Socket) &&
         !(handle instanceof NetServer) &&
-        !(handle instanceof DgramSocket)
+        !(handle instanceof DgramSocket) &&
+        !(handle instanceof TCP) &&
+        !(handle instanceof Pipe)
       ) {
         throw new ERR_INVALID_HANDLE_TYPE();
       }
+    } else {
+      handle = undefined;
     }
 
     if (!target.connected) {
@@ -2249,6 +2337,14 @@ export function setupChannel(
         if (err instanceof Deno.errors.Interrupted) {
           // Channel closed on us mid-write.
         } else {
+          // Match Node: errors raised from a failed IPC send carry
+          // `syscall: "write"`. Tests like `test-cluster-concurrent-disconnect`
+          // assert on this when racing send() against worker disconnect.
+          // deno-lint-ignore no-explicit-any
+          const errAny = err as any;
+          if (errAny && typeof errAny === "object" && !errAny.syscall) {
+            errAny.syscall = "write";
+          }
           if (typeof callback === "function") {
             nextTick(callback, err);
           } else {

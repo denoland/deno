@@ -15,10 +15,12 @@ import {
   ServerResponse,
   STATUS_CODES,
 } from "node:_http_server";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const { ArrayPrototypeSlice, ArrayPrototypeSort } = primordials;
 import { methods, parsers } from "node:_http_common";
-import { validateInteger } from "ext:deno_node/internal/validators.mjs";
+const { validateInteger } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 const METHODS = ArrayPrototypeSort(ArrayPrototypeSlice(methods));
 
 export interface RequestOptions {

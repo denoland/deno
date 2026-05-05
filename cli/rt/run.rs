@@ -291,6 +291,34 @@ impl EmbeddedModuleLoader {
               })?,
           )
         }
+        PackageJsonDepValue::Catalog(catalog_name) => {
+          match self
+            .shared
+            .workspace_resolver
+            .resolve_catalog_dep(alias, catalog_name)
+          {
+            Some(req) => Ok(
+              self
+                .shared
+                .npm_req_resolver
+                .resolve_req_with_sub_path(
+                  &req,
+                  sub_path.as_deref(),
+                  &referrer,
+                  resolution_mode,
+                  NodeResolutionKind::Execution,
+                )
+                .map_err(JsErrorBox::from_err)
+                .and_then(|url_or_path| {
+                  url_or_path.into_url().map_err(JsErrorBox::from_err)
+                })?,
+            ),
+            None => Err(JsErrorBox::generic(format!(
+              "Package '{}' not found in catalog",
+              alias
+            ))),
+          }
+        }
       },
       Ok(MappedResolution::PackageJsonImport { pkg_json }) => self
         .shared
@@ -991,6 +1019,7 @@ pub async fn run(
       },
       Default::default(),
       sys.clone(),
+      metadata.workspace_resolver.catalogs,
     )
   };
   let code_cache = match metadata.code_cache_key {

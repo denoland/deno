@@ -23,14 +23,14 @@
 
 "use strict";
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ObjectDefineProperty,
   ObjectKeys,
   ReflectApply,
 } = primordials;
 
-import * as internalUtil from "ext:deno_node/internal/util.mjs";
+const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const {
   promisify: { custom: customPromisify },
 } = internalUtil;
@@ -52,10 +52,10 @@ import { Buffer } from "ext:deno_node/internal/buffer.mjs";
 
 import * as promises from "node:stream/promises";
 import * as utils from "ext:deno_node/internal/streams/utils.js";
-import {
+const {
   isArrayBufferView,
   isUint8Array,
-} from "ext:deno_node/internal/util/types.ts";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 
 import { Stream } from "ext:deno_node/internal/streams/legacy.js";
 import Readable from "node:_stream_readable";
@@ -65,7 +65,9 @@ import Transform from "node:_stream_transform";
 import PassThrough from "node:_stream_passthrough";
 import duplexPair from "ext:deno_node/internal/streams/duplexpair.js";
 import { addAbortSignal } from "ext:deno_node/internal/streams/add-abort-signal.js";
-import { ERR_ILLEGAL_CONSTRUCTOR } from "ext:deno_node/internal/errors.ts";
+const { ERR_ILLEGAL_CONSTRUCTOR } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
 Stream.isDestroyed = utils.isDestroyed;
 Stream.isDisturbed = utils.isDisturbed;

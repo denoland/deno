@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { primordials } = globalThis.__bootstrap;
 const { ErrorCaptureStackTrace, ObjectDefineProperty, ReflectApply } =
   primordials;
 
@@ -8,7 +9,7 @@ const { ErrorCaptureStackTrace, ObjectDefineProperty, ReflectApply } =
 type GenericFunction = (...args: any[]) => any;
 
 /** This function removes unnecessary frames from Node.js core errors. */
-export function hideStackFrames<T extends GenericFunction = GenericFunction>(
+function hideStackFrames<T extends GenericFunction = GenericFunction>(
   fn: T,
 ): T {
   // Match Node's `lib/internal/errors.js`: wrap so a thrown error has its stack
@@ -36,3 +37,6 @@ export function hideStackFrames<T extends GenericFunction = GenericFunction>(
   (wrappedFn as any).withoutStackTrace = fn;
   return wrappedFn as unknown as T;
 }
+
+return { hideStackFrames };
+})();

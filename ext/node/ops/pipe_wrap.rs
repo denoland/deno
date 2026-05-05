@@ -284,6 +284,33 @@ impl PipeWrap {
   }
 
   #[fast]
+  fn fd_for_ipc(&self) -> i32 {
+    #[cfg(unix)]
+    {
+      let pipe = self.pipe_ptr();
+      if pipe.is_null() {
+        return -1;
+      }
+      // SAFETY: pipe is valid (null-checked above).
+      unsafe { uv_compat::uv_pipe_fd_for_ipc(pipe) }
+    }
+    // Windows IPC handle passing doesn't use SCM_RIGHTS-style fd transfer.
+    #[cfg(not(unix))]
+    -1
+  }
+
+  #[fast]
+  fn socket_type_for_ipc(&self) -> i32 {
+    // Match the PipeType constructor enum: 0 = Socket (client), 1 = Server.
+    // Receivers use this to decide whether to call uv_pipe_open as a client
+    // stream or a listening socket.
+    match self.pipe_type.get() {
+      PipeType::Server => 1,
+      _ => 0,
+    }
+  }
+
+  #[fast]
   fn open(&self, state: &mut OpState, #[smi] fd: i32) -> i32 {
     // Check FdTable for duplicate fds. Stdio fds (0-2) are pre-registered
     // as TableOwned; for those, open is allowed (no-op check). Non-stdio

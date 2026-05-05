@@ -4,6 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
+import { core } from "ext:core/mod.js";
 import tls from "node:tls";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import {
@@ -12,15 +13,19 @@ import {
   type ServerHandler,
   ServerImpl as HttpServer,
 } from "node:http";
-import { ERR_INVALID_URL } from "ext:deno_node/internal/errors.ts";
+const { ERR_INVALID_URL } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 import {
   httpServerPreClose,
   setupConnectionsTracking,
   storeHTTPOptions,
 } from "node:_http_server";
 import { Agent as HttpAgent } from "node:_http_agent";
-import { validateObject } from "ext:deno_node/internal/validators.mjs";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+const { validateObject } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
 // https.Server extends tls.Server (which extends net.Server).
 // Each accepted TCP connection is wrapped with TLS by tls.Server's

@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Uint8ArrayPrototype,
   Error,
@@ -22,11 +22,13 @@ import {
 } from "ext:deno_node/internal/readline/callbacks.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { Duplex, Readable, Writable } from "node:stream";
-import * as io from "ext:deno_io/12_io.js";
+const io = core.loadExtScript("ext:deno_io/12_io.js");
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 import { op_bootstrap_color_depth } from "ext:core/ops";
-import { validateInteger } from "ext:deno_node/internal/validators.mjs";
+const { validateInteger } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
 export function createWritableStdioStream(writer, name, warmup = false) {

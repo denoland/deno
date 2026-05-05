@@ -210,6 +210,13 @@ pub enum HttpNextError {
   #[class("Http")]
   #[error("raw upgrade failed")]
   RawUpgradeFailed,
+  #[class(inherit)]
+  #[error(transparent)]
+  TakeNetworkStream(
+    #[from]
+    #[inherit]
+    deno_net::raw::TakeNetworkStreamError,
+  ),
 }
 
 #[op2(fast)]
@@ -299,6 +306,24 @@ pub async fn op_http_upgrade_websocket_next(
     stream,
     bytes,
   ))
+}
+
+/// Create a server WebSocket from a TCP stream resource (e.g. taken from a
+/// node:http TCPWrap handle). This lets ext/node hand off the raw stream
+/// without depending on deno_websocket directly.
+#[op2(fast)]
+#[smi]
+pub fn op_http_ws_create_from_stream_resource(
+  state: &mut OpState,
+  #[smi] stream_rid: ResourceId,
+  #[buffer] extra_bytes: &[u8],
+) -> Result<ResourceId, HttpNextError> {
+  let stream = deno_net::raw::take_network_stream_resource(
+    &mut state.resource_table,
+    stream_rid,
+  )?;
+  let read_buf = Bytes::copy_from_slice(extra_bytes);
+  Ok(ws_create_server_stream(state, stream, read_buf))
 }
 
 #[op2(fast)]
@@ -506,6 +531,23 @@ pub fn op_http_get_request_headers<'scope>(
   }
 
   v8::Array::new_with_elements(scope, vec.as_slice())
+}
+
+/// Try to drain the entire request body without blocking.
+/// Returns the bytes as a Uint8Array iff the whole body is
+/// already buffered in hyper; returns `null` otherwise, in
+/// which case the JS caller falls through to the streaming
+/// `op_http_read_request_body` path. The body is left intact
+/// on the `null` branch.
+#[op2]
+#[buffer]
+pub fn op_http_try_take_full_request_body(
+  external: *const c_void,
+) -> Option<Vec<u8>> {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_try_take_full_request_body") };
+  http.try_take_full_request_body()
 }
 
 #[op2(fast)]
