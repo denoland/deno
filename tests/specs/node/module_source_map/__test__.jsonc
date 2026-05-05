@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "tests": {
+    "source_map_class": {
+      "args": "run --allow-read main.mjs",
+      "output": "main.out"
+    },
+    "find_source_map": {
+      "args": "run --allow-read --allow-write find_source_map.mjs",
+      "output": "find_source_map.out"
+    }
+  }
+}

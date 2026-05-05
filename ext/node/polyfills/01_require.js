@@ -1870,13 +1870,479 @@ internals.requireImpl = {
   nativeModuleExports,
 };
 
+// VLQ Base64 decoding for source maps
+const BASE64_CHARS =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const BASE64_LOOKUP = new Int32Array(128).fill(-1);
+for (let i = 0; i < BASE64_CHARS.length; i++) {
+  BASE64_LOOKUP[BASE64_CHARS.charCodeAt(i)] = i;
+}
+
+const VLQ_BASE_SHIFT = 5;
+const VLQ_BASE = 1 << VLQ_BASE_SHIFT; // 32
+const VLQ_BASE_MASK = VLQ_BASE - 1; // 31
+const VLQ_CONTINUATION_BIT = VLQ_BASE; // 32
+
+/**
+ * Decode a single VLQ value from a string iterator.
+ * @param {string} str
+ * @param {{ pos: number }} iter
+ * @returns {number}
+ */
+function decodeVLQ(str, iter) {
+  let result = 0;
+  let shift = 0;
+  let digit;
+  do {
+    if (iter.pos >= str.length) {
+      return 0;
+    }
+    const charCode = str.charCodeAt(iter.pos++);
+    digit = BASE64_LOOKUP[charCode];
+    if (digit === -1) {
+      return 0;
+    }
+    result += (digit & VLQ_BASE_MASK) << shift;
+    shift += VLQ_BASE_SHIFT;
+  } while (digit & VLQ_CONTINUATION_BIT);
+
+  // The sign is encoded in the least significant bit
+  const negative = result & 1;
+  // Use unsigned right shift, so that the 32nd bit is properly shifted
+  // to the 31st, and the 32nd becomes unset.
+  result >>>= 1;
+  if (!negative) {
+    return result;
+  }
+  // We need to OR here to ensure the 32nd bit (the sign bit in an Int32) is
+  // always set for negative numbers. If `result` were 1, (meaning `negative`
+  // is true and all other bits were zeros), `result` would now be 0. But -0
+  // doesn't flip the 32nd bit as intended.
+  return -result | (1 << 31);
+}
+
+/**
+ * Parse VLQ-encoded source map mappings string into an array of mapping entries.
+ * @param {string} mappings
+ * @param {string[]} sources
+ * @param {string} sourceRoot
+ * @returns {Array<{generatedLine: number, generatedColumn: number, originalSource: string, originalLine: number, originalColumn: number, name?: string}>}
+ */
+function parseMappings(mappings, sources, names, sourceRoot) {
+  const entries = [];
+  if (!mappings) return entries;
+
+  let generatedLine = 0;
+  let previousGeneratedColumn = 0;
+  let previousOriginalLine = 0;
+  let previousOriginalColumn = 0;
+  let previousSource = 0;
+  let previousName = 0;
+  const iter = { pos: 0 };
+
+  while (iter.pos < mappings.length) {
+    const ch = mappings.charAt(iter.pos);
+    if (ch === ";") {
+      generatedLine++;
+      previousGeneratedColumn = 0;
+      iter.pos++;
+      continue;
+    }
+    if (ch === ",") {
+      iter.pos++;
+      continue;
+    }
+
+    // Decode segment: generatedColumn, [sourceIndex, originalLine, originalColumn, [nameIndex]]
+    const generatedColumn = previousGeneratedColumn + decodeVLQ(mappings, iter);
+    previousGeneratedColumn = generatedColumn;
+
+    // Check if there are more fields (source mapping)
+    if (iter.pos < mappings.length) {
+      const next = mappings.charAt(iter.pos);
+      if (next !== "," && next !== ";") {
+        const sourceIndex = previousSource + decodeVLQ(mappings, iter);
+        previousSource = sourceIndex;
+
+        const originalLine = previousOriginalLine +
+          decodeVLQ(mappings, iter);
+        previousOriginalLine = originalLine;
+
+        const originalColumn = previousOriginalColumn +
+          decodeVLQ(mappings, iter);
+        previousOriginalColumn = originalColumn;
+
+        let source = sources[sourceIndex] || "";
+        if (
+          sourceRoot && !source.startsWith("/") && !source.match(/^\w+:\/\//)
+        ) {
+          source = sourceRoot + source;
+        }
+
+        let name;
+        // Check for optional name index
+        if (
+          iter.pos < mappings.length &&
+          mappings.charAt(iter.pos) !== "," &&
+          mappings.charAt(iter.pos) !== ";"
+        ) {
+          const nameIndex = previousName + decodeVLQ(mappings, iter);
+          previousName = nameIndex;
+          name = names ? names[nameIndex] : undefined;
+        }
+
+        entries.push({
+          generatedLine,
+          generatedColumn,
+          originalSource: source,
+          originalLine,
+          originalColumn,
+          name,
+        });
+        continue;
+      }
+    }
+
+    // Segment with only generated column (no source mapping)
+    entries.push({
+      generatedLine,
+      generatedColumn,
+      originalSource: "",
+      originalLine: 0,
+      originalColumn: 0,
+    });
+  }
+
+  return entries;
+}
+
+/**
+ * Compare two source map entries for sorting/binary search.
+ */
+function compareEntries(a, b) {
+  if (a.generatedLine !== b.generatedLine) {
+    return a.generatedLine - b.generatedLine;
+  }
+  return a.generatedColumn - b.generatedColumn;
+}
+
+/**
+ * Binary search for the entry that contains the given generated position.
+ */
+function findEntryInMappings(entries, line, column) {
+  let low = 0;
+  let high = entries.length - 1;
+  let best = -1;
+
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const entry = entries[mid];
+    const cmp = entry.generatedLine - line ||
+      entry.generatedColumn - column;
+
+    if (cmp === 0) {
+      return entry;
+    } else if (cmp < 0) {
+      best = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  if (best >= 0) {
+    const entry = entries[best];
+    if (entry.generatedLine === line) {
+      return entry;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Deep clone an object (simple JSON-safe objects).
+ */
+function deepClone(obj) {
+  if (obj === null || typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) return obj.map(deepClone);
+  const clone = {};
+  for (const key of Object.keys(obj)) {
+    clone[key] = deepClone(obj[key]);
+  }
+  return clone;
+}
+
+/**
+ * SourceMap class implementing Node.js's module.SourceMap API.
+ * @see https://nodejs.org/api/module.html#class-modulesourcemap
+ */
+class SourceMap {
+  #payload;
+  #lineLengths;
+  #mappings;
+
+  /**
+   * @param {object} payload - Source Map V3 payload object
+   * @param {{ lineLengths?: number[] }} [options]
+   */
+  constructor(payload, options) {
+    if (
+      typeof payload !== "object" || payload === null ||
+      Array.isArray(payload)
+    ) {
+      let received;
+      if (payload === null) {
+        received = " Received null";
+      } else if (typeof payload === "object") {
+        const name = payload.constructor?.name;
+        received = name
+          ? ` Received an instance of ${name}`
+          : ` Received ${typeof payload}`;
+      } else {
+        let inspected = String(payload);
+        if (inspected.length > 28) inspected = inspected.slice(0, 25) + "...";
+        received = ` Received type ${typeof payload} (${inspected})`;
+      }
+      const err = new TypeError(
+        `The "payload" argument must be of type object.${received}`,
+      );
+      err.code = "ERR_INVALID_ARG_TYPE";
+      throw err;
+    }
+
+    this.#payload = deepClone(payload);
+    this.#lineLengths = options?.lineLengths
+      ? [...options.lineLengths]
+      : undefined;
+
+    // Parse mappings - handle both regular and index source maps
+    this.#mappings = this.#parseMap(payload);
+    // Sort entries by generated position
+    this.#mappings.sort(compareEntries);
+  }
+
+  /**
+   * Parse source map payload into mapping entries.
+   * Handles both regular source maps and index source maps (with sections).
+   */
+  #parseMap(payload) {
+    if (payload.sections) {
+      // Index Source Map V3
+      const entries = [];
+      for (const section of payload.sections) {
+        const offset = section.offset || { line: 0, column: 0 };
+        const map = section.map;
+        const sectionEntries = parseMappings(
+          map.mappings,
+          map.sources || [],
+          map.names || [],
+          map.sourceRoot || "",
+        );
+        // Apply section offset
+        for (const entry of sectionEntries) {
+          entry.generatedLine += offset.line;
+          if (entry.generatedLine === offset.line) {
+            entry.generatedColumn += offset.column;
+          }
+          entries.push(entry);
+        }
+      }
+      // For index maps, flatten the sources and mappings into the payload clone
+      if (!this.#payload.sources) {
+        this.#payload.sources = [];
+      }
+      if (!this.#payload.mappings) {
+        this.#payload.mappings = payload.mappings || undefined;
+      }
+      return entries;
+    }
+
+    return parseMappings(
+      payload.mappings,
+      payload.sources || [],
+      payload.names || [],
+      payload.sourceRoot || "",
+    );
+  }
+
+  /**
+   * Getter for the payload used to construct the SourceMap instance.
+   * Returns a clone of the original payload.
+   */
+  get payload() {
+    return this.#payload;
+  }
+
+  /**
+   * Getter for line lengths, if provided in the constructor options.
+   */
+  get lineLengths() {
+    return this.#lineLengths;
+  }
+
+  /**
+   * Given a 0-indexed line offset and column offset in the generated source,
+   * returns an object representing the SourceMap range in the original file
+   * if found, or an empty object if not.
+   *
+   * @param {number} lineOffset - Zero-indexed line number in generated source
+   * @param {number} columnOffset - Zero-indexed column number in generated source
+   * @returns {{ generatedLine: number, generatedColumn: number, originalSource: string, originalLine: number, originalColumn: number } | {}}
+   */
+  findEntry(lineOffset, columnOffset) {
+    if (this.#mappings.length === 0) return {};
+    const entry = findEntryInMappings(this.#mappings, lineOffset, columnOffset);
+    if (!entry) return {};
+    return {
+      generatedLine: entry.generatedLine,
+      generatedColumn: entry.generatedColumn,
+      originalSource: entry.originalSource,
+      originalLine: entry.originalLine,
+      originalColumn: entry.originalColumn,
+    };
+  }
+
+  /**
+   * Given 1-indexed lineNumber and columnNumber from a call site in the generated
+   * source, find the corresponding call site location in the original source.
+   *
+   * @param {number} lineNumber - 1-indexed line number
+   * @param {number} columnNumber - 1-indexed column number
+   * @returns {{ name?: string, fileName: string, lineNumber: number, columnNumber: number } | {}}
+   */
+  findOrigin(lineNumber, columnNumber) {
+    const entry = this.findEntry(lineNumber - 1, columnNumber - 1);
+    if (
+      entry.originalSource === undefined ||
+      entry.originalLine === undefined ||
+      entry.originalColumn === undefined ||
+      entry.generatedLine === undefined ||
+      entry.generatedColumn === undefined
+    ) {
+      return {};
+    }
+    const lineOffset = lineNumber - entry.generatedLine;
+    const columnOffset = columnNumber - entry.generatedColumn;
+    const result = {
+      fileName: entry.originalSource,
+      lineNumber: entry.originalLine + lineOffset,
+      columnNumber: entry.originalColumn + columnOffset,
+    };
+    if (entry.name !== undefined) {
+      result.name = entry.name;
+    }
+    return result;
+  }
+}
+
+// Cache for findSourceMap: path -> SourceMap | null (null means checked but not found)
+const sourceMapCache = new SafeMap();
+
+// Regex to match //# sourceMappingURL=<url> or //@ sourceMappingURL=<url>
+const SOURCE_MAP_URL_RE =
+  /\/\/[#@]\s*sourceMappingURL\s*=\s*(\S+)\s*(?:\n|\r\n?)?$/;
+
+/**
+ * Extract the sourceMappingURL from the last non-empty line of content.
+ * @param {string} content
+ * @returns {string | null}
+ */
+function extractSourceMapUrl(content) {
+  // Search backwards from the end for the sourceMappingURL comment.
+  // The comment must appear in the last non-empty line.
+  const match = SOURCE_MAP_URL_RE.exec(content);
+  return match ? match[1] : null;
+}
+
+/**
+ * Resolve a source map from a sourceMappingURL.
+ * Handles both inline data URIs and external file references.
+ * @param {string} url - The sourceMappingURL value
+ * @param {string} filePath - The path of the file containing the reference
+ * @returns {object | null} - Parsed source map payload or null
+ */
+function resolveSourceMapPayload(url, filePath) {
+  // Handle inline base64 data URIs
+  if (url.startsWith("data:")) {
+    const dataUrlMatch = url.match(
+      /^data:application\/json;(?:charset=utf-?8;)?base64,(.+)$/,
+    );
+    if (dataUrlMatch) {
+      try {
+        const decoded = atob(dataUrlMatch[1]);
+        return JSONParse(decoded);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  // Handle external source map files
+  try {
+    let mapPath;
+    if (url.startsWith("/") || url.match(/^[a-zA-Z]:\\/)) {
+      // Absolute path
+      mapPath = url;
+    } else {
+      // Relative path - resolve against the source file's directory
+      const dir = op_require_path_dirname(filePath);
+      mapPath = op_require_path_resolve([dir, url]);
+    }
+    const mapContent = op_require_read_file(mapPath);
+    if (mapContent) {
+      return JSONParse(mapContent);
+    }
+  } catch {
+    // File not found or invalid JSON - return null
+  }
+  return null;
+}
+
 /**
  * @param {string} path
  * @returns {SourceMap | undefined}
  */
-export function findSourceMap(_path) {
-  // TODO(@marvinhagemeister): Stub implementation for now to unblock ava
-  return undefined;
+export function findSourceMap(path) {
+  if (sourceMapCache.has(path)) {
+    const cached = sourceMapCache.get(path);
+    return cached === null ? undefined : cached;
+  }
+
+  try {
+    const content = op_require_read_file(path);
+    if (!content) {
+      sourceMapCache.set(path, null);
+      return undefined;
+    }
+
+    const url = extractSourceMapUrl(content);
+    if (!url) {
+      sourceMapCache.set(path, null);
+      return undefined;
+    }
+
+    const payload = resolveSourceMapPayload(url, path);
+    if (!payload) {
+      sourceMapCache.set(path, null);
+      return undefined;
+    }
+
+    // Compute lineLengths from the source file content
+    const lines = content.replace(/\n$/, "").split("\n");
+    const lineLengths = [];
+    for (let i = 0; i < lines.length; i++) {
+      lineLengths.push(lines[i].length);
+    }
+
+    const sourceMap = new SourceMap(payload, { lineLengths });
+    sourceMapCache.set(path, sourceMap);
+    return sourceMap;
+  } catch {
+    sourceMapCache.set(path, null);
+    return undefined;
+  }
 }
 
 Module.findSourceMap = findSourceMap;
@@ -1926,7 +2392,16 @@ export function register(_specifier, _parentUrl, _options) {
   return undefined;
 }
 
-export { builtinModules, createRequire, getBuiltinModule, isBuiltin, Module };
+Module.SourceMap = SourceMap;
+
+export {
+  builtinModules,
+  createRequire,
+  getBuiltinModule,
+  isBuiltin,
+  Module,
+  SourceMap,
+};
 export const _cache = Module._cache;
 export const _extensions = Module._extensions;
 export const _findPath = Module._findPath;
