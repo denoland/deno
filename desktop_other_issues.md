@@ -37,19 +37,6 @@ race-create or symlink the staging path before `create_dir_all`.
 
 **Fix**: stage in `tempfile::tempdir_in` under the cache dir.
 
-### 7. TOCTOU between `marker.exists()` and extraction — MEDIUM
-
-`cli/tools/desktop.rs:792-859`
-
-Two concurrent `deno desktop` builds (or one + a rerun after Ctrl-C mid-extract)
-can both pass the `marker.exists()` check or both blow away the dir while one is
-mid-read. The marker is also written _after_ extraction completes, so a SIGKILL
-mid-extract leaves a half-populated dir without a marker — the next run will
-`remove_dir_all` it (good), but a _parallel_ run will read partial files.
-
-**Fix**: extract into a tempdir then atomic-rename, or take a file lock on
-`dir/.lock`.
-
 ### 9. Temp entrypoint written to user's source dir without unique name — LOW
 
 `cli/tools/desktop.rs:209-211`
@@ -231,7 +218,7 @@ These pre-date this branch and currently block `tools/lint.js`.
 
 | Severity | Count | Items                                                         |
 | -------- | ----- | ------------------------------------------------------------- |
-| MEDIUM   | 4     | #7, #17, #23, #29                                             |
+| MEDIUM   | 3     | #17, #23, #29                                                 |
 | LOW      | 13    | #6, #9, #12, #14, #15, #18, #19, #20, #21, #22, #27, #30, #31 |
 
 ## Suggested fix order
@@ -240,9 +227,8 @@ The CRITICAL/HIGH batch is done. What's left:
 
 **Robustness wins**:
 
-1. **#7** atomic-rename WEF cache extraction
-2. **#17** `spawn_blocking` for auto-update I/O
-3. **#23** bound the panic-hook reporter
+1. **#17** `spawn_blocking` for auto-update I/O
+2. **#23** bound the panic-hook reporter
 
 **Cleanup** — everything else (#6, #9, #12, #14, #15, #18, #19, #20, #21, #22,
 #27, #29, #30) plus **#31** to unblock `tools/lint.js`.

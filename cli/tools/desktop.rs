@@ -868,13 +868,62 @@ impl WefBackendResolver {
       );
     }
 
+    let parent = dir.parent().ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "WEF cache dir has no parent: {}",
+        dir.display()
+      )
+    })?;
+    std::fs::create_dir_all(parent)?;
+
+    // Stage extraction in a sibling tempdir so concurrent `deno desktop`
+    // builds don't see (or stomp on) a half-populated `dir` while one
+    // is mid-extract. tempfile's cleanup-on-drop covers panic /
+    // early-return paths; on the happy path we consume the TempDir via
+    // `into_path` so the rename below sees a real directory.
+    let staging = tempfile::Builder::new()
+      .prefix(".staging-")
+      .tempdir_in(parent)
+      .with_context(|| {
+        format!("failed to stage tempdir in {}", parent.display())
+      })?;
+
+    extract_wef_archive(&archive, &data, staging.path())
+      .with_context(|| format!("failed to extract {archive}"))?;
+    // Marker is written into the staging dir so it lands atomically with
+    // the rest of the contents — a SIGKILL during extraction can never
+    // leave a marker-without-payload state.
+    std::fs::write(
+      staging.path().join(".downloaded"),
+      format!("v{WEF_VERSION}\n"),
+    )?;
+
+    // Another process may have raced us and finished its extract while
+    // we were downloading. Use theirs and let staging clean up on drop.
+    if marker.exists() {
+      return Ok(dir);
+    }
+
+    // Discard any prior failed-extract debris (no marker ⇒ partial).
+    // `rename` refuses a non-empty target.
     if dir.exists() {
       std::fs::remove_dir_all(&dir)?;
     }
-    std::fs::create_dir_all(&dir)?;
-    extract_wef_archive(&archive, &data, &dir)
-      .with_context(|| format!("failed to extract {archive}"))?;
-    std::fs::write(&marker, format!("v{WEF_VERSION}\n"))?;
+
+    let staging_path = staging.into_path();
+    if let Err(e) = std::fs::rename(&staging_path, &dir) {
+      // Lost a rename race with a concurrent process — its dir is at
+      // our target path now. Drop our staged copy and use theirs.
+      let _ = std::fs::remove_dir_all(&staging_path);
+      if marker.exists() {
+        return Ok(dir);
+      }
+      return Err(deno_core::anyhow::anyhow!(
+        "failed to atomic-rename WEF cache to {}: {e}",
+        dir.display(),
+      ));
+    }
+
     Ok(dir)
   }
 
