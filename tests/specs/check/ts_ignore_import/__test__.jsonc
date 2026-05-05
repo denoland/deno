@@ -1,0 +1,49 @@
+{
+  "tests": {
+    "line_comment_suppressed": {
+      "args": "check main.ts",
+      "output": "suppressed.out",
+      "exitCode": 0
+    },
+    "block_comment_suppressed": {
+      "args": "check block_comment.ts",
+      "output": "suppressed.out",
+      "exitCode": 0
+    },
+    "reexport_suppressed": {
+      "args": "check reexport.ts",
+      "output": "suppressed.out",
+      "exitCode": 0
+    },
+    "ts_expect_error_suppressed": {
+      "args": "check ts_expect_error.ts",
+      "output": "suppressed.out",
+      "exitCode": 0
+    },
+    "multi_line_suppressed": {
+      "args": "check multi_line.ts",
+      "output": "suppressed.out",
+      "exitCode": 0
+    },
+    "multi_line_block_comment_suppressed": {
+      "args": "check multi_line_block_comment.ts",
+      "output": "suppressed.out",
+      "exitCode": 0
+    },
+    "inline_comment_unsuppressed": {
+      "args": "check inline_comment.ts",
+      "output": "inline_comment_unsuppressed.out",
+      "exitCode": 1
+    },
+    "unsuppressed_errors": {
+      "args": "check unsuppressed.ts",
+      "output": "unsuppressed.out",
+      "exitCode": 1
+    },
+    "blank_line_gap_unsuppressed": {
+      "args": "check blank_line_gap.ts",
+      "output": "blank_line_gap_unsuppressed.out",
+      "exitCode": 1
+    }
+  }
+}

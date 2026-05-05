@@ -849,6 +849,7 @@ impl CliFactory {
             self.node_resolver().await?.clone(),
             self.npm_resolver().await?.clone(),
             self.resolver_factory()?.pkg_json_resolver().clone(),
+            self.parsed_source_cache()?.clone(),
             self.sys(),
             self.compiler_options_resolver()?.clone(),
             if cli_options.code_cache_enabled() {

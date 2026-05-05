@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_ast::SourceRangedForSpanned;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
@@ -21,6 +22,7 @@ use deno_resolver::deno_json::CompilerOptionsParseError;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
+use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::graph::maybe_additional_sloppy_imports_message;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_terminal::colors;
@@ -117,6 +119,7 @@ pub struct TypeChecker {
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: CliNpmResolver,
   package_json_resolver: Arc<CliPackageJsonResolver>,
+  parsed_source_cache: Arc<ParsedSourceCache>,
   sys: CliSys,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
@@ -132,6 +135,7 @@ impl TypeChecker {
     node_resolver: Arc<CliNodeResolver>,
     npm_resolver: CliNpmResolver,
     package_json_resolver: Arc<CliPackageJsonResolver>,
+    parsed_source_cache: Arc<ParsedSourceCache>,
     sys: CliSys,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
     code_cache: Option<Arc<crate::cache::CodeCache>>,
@@ -144,6 +148,7 @@ impl TypeChecker {
       node_resolver,
       npm_resolver,
       package_json_resolver,
+      parsed_source_cache,
       sys,
       compiler_options_resolver,
       code_cache,
@@ -332,6 +337,7 @@ impl TypeChecker {
         node_resolver: &self.node_resolver,
         npm_resolver: &self.npm_resolver,
         _package_json_resolver: &self.package_json_resolver,
+        parsed_source_cache: &self.parsed_source_cache,
         compiler_options_resolver: &self.compiler_options_resolver,
         log_level: self.cli_options.log_level(),
         npm_check_state_hash: check_state_hash(&self.npm_resolver),
@@ -467,6 +473,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   node_resolver: &'a Arc<CliNodeResolver>,
   npm_resolver: &'a CliNpmResolver,
   _package_json_resolver: &'a Arc<CliPackageJsonResolver>,
+  parsed_source_cache: &'a Arc<ParsedSourceCache>,
   compiler_options_resolver: &'a CompilerOptionsResolver,
   type_check_cache: TypeCheckCache,
   groups: Vec<CheckGroup<'a>>,
@@ -552,6 +559,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
       self.node_resolver,
       self.npm_resolver,
       self.compiler_options_resolver,
+      self.parsed_source_cache,
       self.npm_check_state_hash,
       check_group.compiler_options,
       self.options.type_check_mode,
@@ -731,6 +739,7 @@ struct GraphWalker<'a> {
   node_resolver: &'a CliNodeResolver,
   npm_resolver: &'a CliNpmResolver,
   compiler_options_resolver: &'a CompilerOptionsResolver,
+  parsed_source_cache: &'a ParsedSourceCache,
   maybe_hasher: Option<FastInsecureHasher>,
   seen: HashSet<&'a Url>,
   pending: VecDeque<(&'a Url, bool)>,
@@ -747,6 +756,7 @@ impl<'a> GraphWalker<'a> {
     node_resolver: &'a CliNodeResolver,
     npm_resolver: &'a CliNpmResolver,
     compiler_options_resolver: &'a CompilerOptionsResolver,
+    parsed_source_cache: &'a ParsedSourceCache,
     npm_cache_state_hash: Option<u64>,
     compiler_options: &CompilerOptions,
     type_check_mode: TypeCheckMode,
@@ -769,6 +779,7 @@ impl<'a> GraphWalker<'a> {
       node_resolver,
       npm_resolver,
       compiler_options_resolver,
+      parsed_source_cache,
       maybe_hasher,
       seen: HashSet::with_capacity(
         graph.imports.len() + graph.specifiers_count(),
@@ -846,16 +857,26 @@ impl<'a> GraphWalker<'a> {
           if !is_dynamic
             && let Some(err) = module_error_for_tsc_diagnostic(self.sys, err)
           {
-            self
-              .missing_diagnostics
-              .push(tsc::Diagnostic::from_missing_error(
-                err.specifier.as_str(),
-                err.maybe_range,
-                maybe_additional_sloppy_imports_message(
-                  self.sys,
-                  err.specifier,
+            let suppressed = err.maybe_range.is_some_and(|range| {
+              check_suppressed_at(
+                self.graph,
+                self.parsed_source_cache,
+                &range.specifier,
+                range.range.start.line as u32,
+              )
+            });
+            if !suppressed {
+              self.missing_diagnostics.push(
+                tsc::Diagnostic::from_missing_error(
+                  err.specifier.as_str(),
+                  err.maybe_range,
+                  maybe_additional_sloppy_imports_message(
+                    self.sys,
+                    err.specifier,
+                  ),
                 ),
-              ));
+              );
+            }
           }
           continue;
         }
@@ -931,7 +952,18 @@ impl<'a> GraphWalker<'a> {
             && let Some(diagnostic) =
               tsc::Diagnostic::maybe_from_resolution_error(resolution_error)
           {
-            self.missing_diagnostics.push(diagnostic);
+            // pos.line is 0-indexed, matching Position::line
+            let suppressed = diagnostic.start.as_ref().is_some_and(|pos| {
+              check_suppressed_at(
+                self.graph,
+                self.parsed_source_cache,
+                module.specifier(),
+                pos.line as u32,
+              )
+            });
+            if !suppressed {
+              self.missing_diagnostics.push(diagnostic);
+            }
           }
         }
       }
@@ -1163,6 +1195,72 @@ fn get_leading_comments(file_text: &str) -> Vec<String> {
   results
 }
 
+/// Checks whether the import at `import_line` inside `specifier` is suppressed
+/// by a `@ts-ignore` / `@ts-expect-error` directive. Delegates parsing and
+/// caching to the shared `ParsedSourceCache` so no source is parsed twice
+/// across the whole type-check run.
+fn check_suppressed_at(
+  graph: &ModuleGraph,
+  cache: &ParsedSourceCache,
+  specifier: &ModuleSpecifier,
+  import_line: u32,
+) -> bool {
+  let Ok(Some(Module::Js(js_module))) = graph.try_get(specifier) else {
+    return false;
+  };
+  let Ok(ps) = cache.get_parsed_source_from_js_module(js_module) else {
+    return false;
+  };
+  is_resolution_suppressed(&ps, import_line)
+}
+
+/// Uses the AST declaration that spans `import_line` so multi-line imports
+/// are handled correctly — the diagnostic position points to the `from "…"`
+/// clause, not the `import` keyword. Uses `get_leading()` so trailing inline
+/// comments (`stmt; // @ts-ignore`) are not mistaken for suppressors.
+fn is_resolution_suppressed(
+  parsed_source: &deno_ast::ParsedSource,
+  import_line: u32, // 0-indexed
+) -> bool {
+  let text_info = parsed_source.text_info_lazy();
+  let comments = parsed_source.comments();
+
+  for item in parsed_source.program_ref().body() {
+    let item_start_line = text_info.line_index(item.start()) as u32;
+    let item_end_line = text_info.line_index(item.end()) as u32;
+
+    if item_start_line <= import_line && import_line <= item_end_line {
+      if item_start_line == 0 {
+        // Nothing can precede line 0; also guards against u32 underflow below.
+        return false;
+      }
+      let preceding_line = item_start_line - 1;
+      if let Some(leading) = comments.get_leading(item.start()) {
+        for comment in leading {
+          let comment_line =
+            text_info.line_index(comment.start()) as u32;
+          if comment_line == preceding_line {
+            let text = comment.text.trim();
+            // NOTE: @ts-expect-error is treated the same as @ts-ignore here.
+            // Ideally, unconsumed @ts-expect-error directives would emit
+            // TS2578 ("Unused '@ts-expect-error' directive"), but these
+            // missing-module diagnostics bypass tsc, so that tracking is not
+            // implemented. Anyone who removes the broken import will simply
+            // have a stale directive that is silently ignored.
+            if text.starts_with("@ts-ignore")
+              || text.starts_with("@ts-expect-error")
+            {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    }
+  }
+  false
+}
+
 #[cfg(test)]
 mod test {
   use deno_ast::MediaType;
@@ -1170,6 +1268,19 @@ mod test {
   use super::ambient_modules_to_regex_string;
   use super::get_leading_comments;
   use super::has_ts_check;
+  use super::is_resolution_suppressed;
+
+  fn parse_test_source(source: &str) -> deno_ast::ParsedSource {
+    deno_ast::parse_module(deno_ast::ParseParams {
+      specifier: deno_ast::ModuleSpecifier::parse("file:///test.ts").unwrap(),
+      text: source.into(),
+      media_type: deno_ast::MediaType::TypeScript,
+      capture_tokens: false,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })
+    .unwrap()
+  }
 
   #[test]
   fn get_leading_comments_test() {
@@ -1222,5 +1333,117 @@ mod test {
       "$virtual/module".to_string(),
     ]);
     assert_eq!(result, r"^(foo|.*\.css|\$virtual/module)$");
+  }
+
+  #[test]
+  fn is_resolution_suppressed_test() {
+    // Line comment immediately above.
+    assert!(is_resolution_suppressed(
+      &parse_test_source("// @ts-ignore\nimport { foo } from 'pkg'"),
+      1,
+    ));
+
+    // @ts-expect-error variant.
+    assert!(is_resolution_suppressed(
+      &parse_test_source("// @ts-expect-error\nimport { foo } from 'pkg'"),
+      1,
+    ));
+
+    // Extra whitespace inside line comment.
+    assert!(is_resolution_suppressed(
+      &parse_test_source("//   @ts-ignore\nimport { foo } from 'pkg'"),
+      1,
+    ));
+
+    // Annotation message after directive still suppresses.
+    assert!(is_resolution_suppressed(
+      &parse_test_source(
+        "// @ts-expect-error ts(2307)\nimport { foo } from 'pkg'"
+      ),
+      1,
+    ));
+
+    // Block comment suppresses.
+    assert!(is_resolution_suppressed(
+      &parse_test_source("/* @ts-ignore */\nimport { foo } from 'pkg'"),
+      1,
+    ));
+
+    // Block comment with @ts-expect-error.
+    assert!(is_resolution_suppressed(
+      &parse_test_source("/* @ts-expect-error */\nimport { foo } from 'pkg'"),
+      1,
+    ));
+
+    // Re-export also suppressed.
+    assert!(is_resolution_suppressed(
+      &parse_test_source("// @ts-ignore\nexport { foo } from 'pkg'"),
+      1,
+    ));
+
+    // No suppression comment above — not suppressed.
+    assert!(!is_resolution_suppressed(
+      &parse_test_source("const x = 1;\nimport { foo } from 'pkg'"),
+      1,
+    ));
+
+    // Import on line 0 — nothing above.
+    assert!(!is_resolution_suppressed(
+      &parse_test_source("import { foo } from 'pkg'"),
+      0,
+    ));
+
+    // Comment exists but is 2 lines above (not immediately preceding).
+    assert!(!is_resolution_suppressed(
+      &parse_test_source("// @ts-ignore\n\nimport { foo } from 'pkg'"),
+      2,
+    ));
+
+    // Wrong directive — not suppressed.
+    assert!(!is_resolution_suppressed(
+      &parse_test_source("// @ts-check\nimport { foo } from 'pkg'"),
+      1,
+    ));
+
+    // Inline comment on preceding statement — not suppressed.
+    assert!(!is_resolution_suppressed(
+      &parse_test_source(
+        "const x = 1; // @ts-ignore\nimport { foo } from 'pkg'"
+      ),
+      1,
+    ));
+
+    // Multi-line import — error position is on the `from` clause (line 3),
+    // but @ts-ignore is on the line above the `import` keyword (line 0).
+    assert!(is_resolution_suppressed(
+      &parse_test_source(
+        "// @ts-ignore\nimport {\n  foo,\n} from 'pkg'"
+      ),
+      3, // 0-indexed line of `} from 'pkg'`
+    ));
+
+    // Multi-line import with block comment.
+    assert!(is_resolution_suppressed(
+      &parse_test_source(
+        "/* @ts-ignore */\nimport {\n  foo,\n} from 'pkg'"
+      ),
+      3,
+    ));
+
+    // Multi-line import — @ts-expect-error above import keyword.
+    assert!(is_resolution_suppressed(
+      &parse_test_source(
+        "// @ts-expect-error\nimport {\n  foo,\n} from 'pkg'"
+      ),
+      3,
+    ));
+
+    // Multi-line import — comment is 2 lines above import keyword, not immediately preceding.
+    assert!(!is_resolution_suppressed(
+      &parse_test_source(
+        "// @ts-ignore\n\nimport {\n  foo,\n} from 'pkg'"
+      ),
+      4, // 0-indexed line of `} from 'pkg'` (blank line shifts everything by 1)
+    ));
   }
 }
