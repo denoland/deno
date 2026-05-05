@@ -106,8 +106,12 @@ Deno.test("[node/module findSourceMap] is a function", () => {
 });
 
 // https://github.com/denoland/deno/issues/24902
-Deno.test("[node/module register] is a function", () => {
-  assertEquals(register("foo"), undefined);
+Deno.test({
+  name: "[node/module register] is a function",
+  sanitizeOps: false,
+  fn() {
+    assertEquals(register("foo"), undefined);
+  },
 });
 
 Deno.test("[node/module] overriding Module._compile is possible and Node globals work", () => {

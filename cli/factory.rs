@@ -721,6 +721,20 @@ impl CliFactory {
     self.services.workspace_factory.get_or_try_init(|| {
       let initial_cwd = match self.overrides.initial_cwd.clone() {
         Some(v) => v,
+        // For modes that don't depend on a real cwd (REPL, eval), fall back
+        // to a sentinel path when current_dir() fails — matches Node.js
+        // semantics where `node --interactive` works even after the cwd has
+        // been unlinked.
+        None
+          if matches!(
+            self.flags.subcommand,
+            DenoSubcommand::Repl(_) | DenoSubcommand::Eval(_)
+          ) =>
+        {
+          crate::util::env::resolve_cwd_or_fallback(
+            self.flags.initial_cwd.as_deref(),
+          )
+        }
         None => {
           crate::util::env::resolve_cwd(self.flags.initial_cwd.as_deref())?
             .into_owned()
@@ -1425,13 +1439,25 @@ fn new_workspace_factory_options(
     lockfile_skip_write: flags.internal.lockfile_skip_write,
     no_npm: flags.no_npm,
     node_modules_dir: flags.node_modules_dir,
+    node_modules_linker: flags.node_modules_linker,
     npm_process_state: npm_process_state(&CliSys::default()).as_ref().map(
-      |s| NpmProcessStateOptions {
-        node_modules_dir: s
-          .local_node_modules_path
-          .as_ref()
-          .map(|s| Cow::Borrowed(s.as_str())),
-        is_byonm: matches!(s.kind, NpmProcessStateKind::Byonm),
+      |s| {
+        use deno_npm_installer::process_state::NpmProcessStateLinkerMode;
+        NpmProcessStateOptions {
+          node_modules_dir: s
+            .local_node_modules_path
+            .as_ref()
+            .map(|s| Cow::Borrowed(s.as_str())),
+          is_byonm: matches!(s.kind, NpmProcessStateKind::Byonm),
+          linker_mode: Some(match s.linker_mode {
+            NpmProcessStateLinkerMode::Isolated => {
+              deno_config::deno_json::NodeModulesLinkerMode::Isolated
+            }
+            NpmProcessStateLinkerMode::Hoisted => {
+              deno_config::deno_json::NodeModulesLinkerMode::Hoisted
+            }
+          }),
+        }
       },
     ),
     root_node_modules_dir_override: flags
