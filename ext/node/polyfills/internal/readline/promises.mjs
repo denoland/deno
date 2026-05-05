@@ -3,154 +3,155 @@
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
-// deno-fmt-ignore-file
 (function () {
-  const { core } = globalThis.__bootstrap;
-  const {
-    ArrayPrototypeJoin,
-    ArrayPrototypePush,
-  } = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
+const { core } = globalThis.__bootstrap;
+const {
+  ArrayPrototypeJoin,
+  ArrayPrototypePush,
+} = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
 
-  const { CSI } = core.loadExtScript("ext:deno_node/internal/readline/utils.mjs");
-  const {
-    validateBoolean,
-    validateInteger,
-  } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-  const { isWritable } = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
-  const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
-    "ext:deno_node/internal/errors.ts",
-  );
+const { CSI } = core.loadExtScript("ext:deno_node/internal/readline/utils.mjs");
+const {
+  validateBoolean,
+  validateInteger,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isWritable } = core.loadExtScript(
+  "ext:deno_node/internal/streams/utils.js",
+);
+const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
-  const {
-    kClearToLineBeginning,
-    kClearToLineEnd,
-    kClearLine,
-    kClearScreenDown,
-  } = CSI;
+const {
+  kClearToLineBeginning,
+  kClearToLineEnd,
+  kClearLine,
+  kClearScreenDown,
+} = CSI;
 
-  class Readline {
-    #autoCommit = false;
-    #stream;
-    #todo = [];
+class Readline {
+  #autoCommit = false;
+  #stream;
+  #todo = [];
 
-    constructor(stream, options = undefined) {
-      if (!isWritable(stream)) {
-        throw new ERR_INVALID_ARG_TYPE("stream", "Writable", stream);
-      }
-      this.#stream = stream;
-      if (options?.autoCommit != null) {
-        validateBoolean(options.autoCommit, "options.autoCommit");
-        this.#autoCommit = options.autoCommit;
-      }
+  constructor(stream, options = undefined) {
+    if (!isWritable(stream)) {
+      throw new ERR_INVALID_ARG_TYPE("stream", "Writable", stream);
     }
-
-    /**
-     * Moves the cursor to the x and y coordinate on the given stream.
-     * @param {integer} x
-     * @param {integer} [y]
-     * @returns {Readline} this
-     */
-    cursorTo(x, y = undefined) {
-      validateInteger(x, "x");
-      if (y != null) validateInteger(y, "y");
-
-      const data = y == null ? CSI`${x + 1}G` : CSI`${y + 1};${x + 1}H`;
-      if (this.#autoCommit) process.nextTick(() => this.#stream.write(data));
-      else ArrayPrototypePush(this.#todo, data);
-
-      return this;
-    }
-
-    /**
-     * Moves the cursor relative to its current location.
-     * @param {integer} dx
-     * @param {integer} dy
-     * @returns {Readline} this
-     */
-    moveCursor(dx, dy) {
-      if (dx || dy) {
-        validateInteger(dx, "dx");
-        validateInteger(dy, "dy");
-
-        let data = "";
-
-        if (dx < 0) {
-          data += CSI`${-dx}D`;
-        } else if (dx > 0) {
-          data += CSI`${dx}C`;
-        }
-
-        if (dy < 0) {
-          data += CSI`${-dy}A`;
-        } else if (dy > 0) {
-          data += CSI`${dy}B`;
-        }
-        if (this.#autoCommit) process.nextTick(() => this.#stream.write(data));
-        else ArrayPrototypePush(this.#todo, data);
-      }
-      return this;
-    }
-
-    /**
-     * Clears the current line the cursor is on.
-     * @param {-1|0|1} dir Direction to clear:
-     *   -1 for left of the cursor
-     *   +1 for right of the cursor
-     *    0 for the entire line
-     * @returns {Readline} this
-     */
-    clearLine(dir) {
-      validateInteger(dir, "dir", -1, 1);
-
-      const data = dir < 0
-        ? kClearToLineBeginning
-        : dir > 0
-        ? kClearToLineEnd
-        : kClearLine;
-      if (this.#autoCommit) process.nextTick(() => this.#stream.write(data));
-      else ArrayPrototypePush(this.#todo, data);
-      return this;
-    }
-
-    /**
-     * Clears the screen from the current position of the cursor down.
-     * @returns {Readline} this
-     */
-    clearScreenDown() {
-      if (this.#autoCommit) {
-        process.nextTick(() => this.#stream.write(kClearScreenDown));
-      } else {
-        ArrayPrototypePush(this.#todo, kClearScreenDown);
-      }
-      return this;
-    }
-
-    /**
-     * Sends all the pending actions to the associated `stream` and clears the
-     * internal list of pending actions.
-     * @returns {Promise<void>} Resolves when all pending actions have been
-     * flushed to the associated `stream`.
-     */
-    commit() {
-      return new Promise((resolve) => {
-        this.#stream.write(ArrayPrototypeJoin(this.#todo, ""), resolve);
-        this.#todo = [];
-      });
-    }
-
-    /**
-     * Clears the internal list of pending actions without sending it to the
-     * associated `stream`.
-     * @returns {Readline} this
-     */
-    rollback() {
-      this.#todo = [];
-      return this;
+    this.#stream = stream;
+    if (options?.autoCommit != null) {
+      validateBoolean(options.autoCommit, "options.autoCommit");
+      this.#autoCommit = options.autoCommit;
     }
   }
 
-  return {
-    Readline,
-    default: Readline,
-  };
-})()
+  /**
+   * Moves the cursor to the x and y coordinate on the given stream.
+   * @param {integer} x
+   * @param {integer} [y]
+   * @returns {Readline} this
+   */
+  cursorTo(x, y = undefined) {
+    validateInteger(x, "x");
+    if (y != null) validateInteger(y, "y");
+
+    const data = y == null ? CSI`${x + 1}G` : CSI`${y + 1};${x + 1}H`;
+    if (this.#autoCommit) process.nextTick(() => this.#stream.write(data));
+    else ArrayPrototypePush(this.#todo, data);
+
+    return this;
+  }
+
+  /**
+   * Moves the cursor relative to its current location.
+   * @param {integer} dx
+   * @param {integer} dy
+   * @returns {Readline} this
+   */
+  moveCursor(dx, dy) {
+    if (dx || dy) {
+      validateInteger(dx, "dx");
+      validateInteger(dy, "dy");
+
+      let data = "";
+
+      if (dx < 0) {
+        data += CSI`${-dx}D`;
+      } else if (dx > 0) {
+        data += CSI`${dx}C`;
+      }
+
+      if (dy < 0) {
+        data += CSI`${-dy}A`;
+      } else if (dy > 0) {
+        data += CSI`${dy}B`;
+      }
+      if (this.#autoCommit) process.nextTick(() => this.#stream.write(data));
+      else ArrayPrototypePush(this.#todo, data);
+    }
+    return this;
+  }
+
+  /**
+   * Clears the current line the cursor is on.
+   * @param {-1|0|1} dir Direction to clear:
+   *   -1 for left of the cursor
+   *   +1 for right of the cursor
+   *    0 for the entire line
+   * @returns {Readline} this
+   */
+  clearLine(dir) {
+    validateInteger(dir, "dir", -1, 1);
+
+    const data = dir < 0
+      ? kClearToLineBeginning
+      : dir > 0
+      ? kClearToLineEnd
+      : kClearLine;
+    if (this.#autoCommit) process.nextTick(() => this.#stream.write(data));
+    else ArrayPrototypePush(this.#todo, data);
+    return this;
+  }
+
+  /**
+   * Clears the screen from the current position of the cursor down.
+   * @returns {Readline} this
+   */
+  clearScreenDown() {
+    if (this.#autoCommit) {
+      process.nextTick(() => this.#stream.write(kClearScreenDown));
+    } else {
+      ArrayPrototypePush(this.#todo, kClearScreenDown);
+    }
+    return this;
+  }
+
+  /**
+   * Sends all the pending actions to the associated `stream` and clears the
+   * internal list of pending actions.
+   * @returns {Promise<void>} Resolves when all pending actions have been
+   * flushed to the associated `stream`.
+   */
+  commit() {
+    return new Promise((resolve) => {
+      this.#stream.write(ArrayPrototypeJoin(this.#todo, ""), resolve);
+      this.#todo = [];
+    });
+  }
+
+  /**
+   * Clears the internal list of pending actions without sending it to the
+   * associated `stream`.
+   * @returns {Readline} this
+   */
+  rollback() {
+    this.#todo = [];
+    return this;
+  }
+}
+
+return {
+  Readline,
+  default: Readline,
+};
+})();

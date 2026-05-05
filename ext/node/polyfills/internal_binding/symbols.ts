@@ -25,13 +25,12 @@
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
-// deno-fmt-ignore-file
 (function () {
-  const asyncIdSymbol: unique symbol = Symbol("asyncIdSymbol");
-  const ownerSymbol: unique symbol = Symbol("ownerSymbol");
+const asyncIdSymbol: unique symbol = Symbol("asyncIdSymbol");
+const ownerSymbol: unique symbol = Symbol("ownerSymbol");
 
-  return {
-    asyncIdSymbol,
-    ownerSymbol,
-  };
-})()
+return {
+  asyncIdSymbol,
+  ownerSymbol,
+};
+})();

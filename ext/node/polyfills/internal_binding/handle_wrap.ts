@@ -23,12 +23,11 @@
 // This module ports:
 // - https://github.com/nodejs/node/blob/master/src/handle_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/handle_wrap.h
-// deno-fmt-ignore-file
 (function () {
-  const { core } = globalThis.__bootstrap;
-  const { HandleWrap } = core.ops;
+const { core } = globalThis.__bootstrap;
+const { HandleWrap } = core.ops;
 
-  return {
-    HandleWrap,
-  };
-})()
+return {
+  HandleWrap,
+};
+})();

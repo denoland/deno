@@ -26,66 +26,69 @@
 // - https://github.com/nodejs/node/blob/master/src/stream_base.cc
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.h
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.cc
-// deno-fmt-ignore-file
 (function () {
-  const { core, primordials } = globalThis.__bootstrap;
-  const {
-    Int32Array,
-  } = primordials;
+const { core, primordials } = globalThis.__bootstrap;
+const {
+  Int32Array,
+} = primordials;
 
-  // deno-lint-ignore no-unused-vars
-  const { HandleWrap } = core.loadExtScript("ext:deno_node/internal_binding/handle_wrap.ts");
-  const { AsyncWrap, providerType } = core.loadExtScript("ext:deno_node/internal_binding/async_wrap.ts");
+// deno-lint-ignore no-unused-vars
+const { HandleWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/handle_wrap.ts",
+);
+const { AsyncWrap, providerType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/async_wrap.ts",
+);
 
-  const enum StreamBaseStateFields {
-    kReadBytesOrError,
-    kArrayBufferOffset,
-    kBytesWritten,
-    kLastWriteWasAsync,
-    kNumStreamBaseStateFields,
+const enum StreamBaseStateFields {
+  kReadBytesOrError,
+  kArrayBufferOffset,
+  kBytesWritten,
+  kLastWriteWasAsync,
+  kNumStreamBaseStateFields,
+}
+
+const kReadBytesOrError = StreamBaseStateFields.kReadBytesOrError;
+const kArrayBufferOffset = StreamBaseStateFields.kArrayBufferOffset;
+const kBytesWritten = StreamBaseStateFields.kBytesWritten;
+const kLastWriteWasAsync = StreamBaseStateFields.kLastWriteWasAsync;
+const kNumStreamBaseStateFields =
+  StreamBaseStateFields.kNumStreamBaseStateFields;
+
+const streamBaseState = new Int32Array(5);
+
+class WriteWrap<H extends HandleWrap> extends AsyncWrap {
+  handle!: H;
+  oncomplete!: (status: number) => void;
+  async!: boolean;
+  bytes!: number;
+  buffer!: unknown;
+  callback!: unknown;
+  _chunks!: unknown[];
+
+  constructor() {
+    super(providerType.WRITEWRAP);
   }
+}
 
-  const kReadBytesOrError = StreamBaseStateFields.kReadBytesOrError;
-  const kArrayBufferOffset = StreamBaseStateFields.kArrayBufferOffset;
-  const kBytesWritten = StreamBaseStateFields.kBytesWritten;
-  const kLastWriteWasAsync = StreamBaseStateFields.kLastWriteWasAsync;
-  const kNumStreamBaseStateFields =
-    StreamBaseStateFields.kNumStreamBaseStateFields;
+class ShutdownWrap<H extends HandleWrap> extends AsyncWrap {
+  handle!: H;
+  oncomplete!: (status: number) => void;
+  callback!: () => void;
 
-  const streamBaseState = new Int32Array(5);
-
-  class WriteWrap<H extends HandleWrap> extends AsyncWrap {
-    handle!: H;
-    oncomplete!: (status: number) => void;
-    async!: boolean;
-    bytes!: number;
-    buffer!: unknown;
-    callback!: unknown;
-    _chunks!: unknown[];
-
-    constructor() {
-      super(providerType.WRITEWRAP);
-    }
+  constructor() {
+    super(providerType.SHUTDOWNWRAP);
   }
+}
 
-  class ShutdownWrap<H extends HandleWrap> extends AsyncWrap {
-    handle!: H;
-    oncomplete!: (status: number) => void;
-    callback!: () => void;
-
-    constructor() {
-      super(providerType.SHUTDOWNWRAP);
-    }
-  }
-
-  return {
-    WriteWrap,
-    ShutdownWrap,
-    kReadBytesOrError,
-    kArrayBufferOffset,
-    kBytesWritten,
-    kLastWriteWasAsync,
-    kNumStreamBaseStateFields,
-    streamBaseState,
-  };
-})()
+return {
+  WriteWrap,
+  ShutdownWrap,
+  kReadBytesOrError,
+  kArrayBufferOffset,
+  kBytesWritten,
+  kLastWriteWasAsync,
+  kNumStreamBaseStateFields,
+  streamBaseState,
+};
+})();

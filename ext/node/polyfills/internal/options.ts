@@ -19,49 +19,50 @@
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
-// deno-fmt-ignore-file
 (function () {
-  const { core, primordials } = globalThis.__bootstrap;
-  const { getOptions } = core.loadExtScript("ext:deno_node/internal_binding/node_options.ts");
-  const {
-    MapPrototypeGet,
-    SafeMap,
-    StringPrototypeSlice,
-    StringPrototypeStartsWith,
-  } = primordials;
+const { core, primordials } = globalThis.__bootstrap;
+const { getOptions } = core.loadExtScript(
+  "ext:deno_node/internal_binding/node_options.ts",
+);
+const {
+  MapPrototypeGet,
+  SafeMap,
+  StringPrototypeSlice,
+  StringPrototypeStartsWith,
+} = primordials;
 
-  let optionsMap: Map<string, { value: string }>;
-  const dummyOptions = new SafeMap<string, { value: string }>();
+let optionsMap: Map<string, { value: string }>;
+const dummyOptions = new SafeMap<string, { value: string }>();
 
-  function getOptionsFromBinding() {
-    // If Deno.build is not defined, this is in warmup phase.
-    if (!Deno.build) {
-      return dummyOptions;
-    }
-
-    if (!optionsMap) {
-      ({ options: optionsMap } = getOptions());
-    }
-
-    return optionsMap;
+function getOptionsFromBinding() {
+  // If Deno.build is not defined, this is in warmup phase.
+  if (!Deno.build) {
+    return dummyOptions;
   }
 
-  function getOptionValue(optionName: string) {
-    const options = getOptionsFromBinding();
-
-    if (StringPrototypeStartsWith(optionName, "--no-")) {
-      const option = MapPrototypeGet(
-        options,
-        "--" + StringPrototypeSlice(optionName, 5),
-      );
-
-      return option && !option.value;
-    }
-
-    return MapPrototypeGet(options, optionName)?.value;
+  if (!optionsMap) {
+    ({ options: optionsMap } = getOptions());
   }
 
-  return {
-    getOptionValue,
-  };
-})()
+  return optionsMap;
+}
+
+function getOptionValue(optionName: string) {
+  const options = getOptionsFromBinding();
+
+  if (StringPrototypeStartsWith(optionName, "--no-")) {
+    const option = MapPrototypeGet(
+      options,
+      "--" + StringPrototypeSlice(optionName, 5),
+    );
+
+    return option && !option.value;
+  }
+
+  return MapPrototypeGet(options, optionName)?.value;
+}
+
+return {
+  getOptionValue,
+};
+})();

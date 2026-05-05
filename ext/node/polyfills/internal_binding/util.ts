@@ -27,111 +27,115 @@
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
-// deno-fmt-ignore-file
 (function () {
-  const { core } = globalThis.__bootstrap;
-  const { op_node_get_own_non_index_properties, op_node_guess_handle_type, op_node_parse_env, op_node_view_has_buffer } = core.ops;
+const { core } = globalThis.__bootstrap;
+const {
+  op_node_get_own_non_index_properties,
+  op_node_guess_handle_type,
+  op_node_parse_env,
+  op_node_view_has_buffer,
+} = core.ops;
 
-  const handleTypes = ["TCP", "TTY", "UDP", "FILE", "PIPE", "UNKNOWN"];
-  function guessHandleType(fd: number): string {
-    const type = op_node_guess_handle_type(fd);
-    return handleTypes[type];
-  }
+const handleTypes = ["TCP", "TTY", "UDP", "FILE", "PIPE", "UNKNOWN"];
+function guessHandleType(fd: number): string {
+  const type = op_node_guess_handle_type(fd);
+  return handleTypes[type];
+}
 
-  const ALL_PROPERTIES = 0;
-  const ONLY_WRITABLE = 1;
-  const ONLY_ENUMERABLE = 2;
-  const ONLY_CONFIGURABLE = 4;
-  const ONLY_ENUM_WRITABLE = 6;
-  const SKIP_STRINGS = 8;
-  const SKIP_SYMBOLS = 16;
+const ALL_PROPERTIES = 0;
+const ONLY_WRITABLE = 1;
+const ONLY_ENUMERABLE = 2;
+const ONLY_CONFIGURABLE = 4;
+const ONLY_ENUM_WRITABLE = 6;
+const SKIP_STRINGS = 8;
+const SKIP_SYMBOLS = 16;
 
-  /**
-   * Efficiently determine whether the provided property key is numeric
-   * (and thus could be an array indexer) or not.
-   *
-   * Always returns true for values of type `'number'`.
-   *
-   * Otherwise, only returns true for strings that consist only of positive integers.
-   *
-   * Results are cached.
-   */
-  const isNumericLookup: Record<string, boolean> = {};
-  function isArrayIndex(value: unknown): value is number | string {
-    switch (typeof value) {
-      case "number":
-        return value >= 0 && (value | 0) === value;
-      case "string": {
-        const result = isNumericLookup[value];
-        if (result !== void 0) {
-          return result;
-        }
-        const length = value.length;
-        if (length === 0) {
+/**
+ * Efficiently determine whether the provided property key is numeric
+ * (and thus could be an array indexer) or not.
+ *
+ * Always returns true for values of type `'number'`.
+ *
+ * Otherwise, only returns true for strings that consist only of positive integers.
+ *
+ * Results are cached.
+ */
+const isNumericLookup: Record<string, boolean> = {};
+function isArrayIndex(value: unknown): value is number | string {
+  switch (typeof value) {
+    case "number":
+      return value >= 0 && (value | 0) === value;
+    case "string": {
+      const result = isNumericLookup[value];
+      if (result !== void 0) {
+        return result;
+      }
+      const length = value.length;
+      if (length === 0) {
+        return isNumericLookup[value] = false;
+      }
+      let ch = 0;
+      let i = 0;
+      for (; i < length; ++i) {
+        ch = value.charCodeAt(i);
+        if (
+          i === 0 && ch === 0x30 && length > 1 /* must not start with 0 */ ||
+          ch < 0x30 /* 0 */ || ch > 0x39 /* 9 */
+        ) {
           return isNumericLookup[value] = false;
         }
-        let ch = 0;
-        let i = 0;
-        for (; i < length; ++i) {
-          ch = value.charCodeAt(i);
-          if (
-            i === 0 && ch === 0x30 && length > 1 /* must not start with 0 */ ||
-            ch < 0x30 /* 0 */ || ch > 0x39 /* 9 */
-          ) {
-            return isNumericLookup[value] = false;
-          }
-        }
-        return isNumericLookup[value] = true;
       }
-      default:
-        return false;
+      return isNumericLookup[value] = true;
     }
+    default:
+      return false;
   }
+}
 
-  function getOwnNonIndexProperties(
-    obj: object,
-    filter: number,
-  ): (string | symbol)[] {
-    return op_node_get_own_non_index_properties(obj, filter);
-  }
+function getOwnNonIndexProperties(
+  obj: object,
+  filter: number,
+): (string | symbol)[] {
+  return op_node_get_own_non_index_properties(obj, filter);
+}
 
-  function arrayBufferViewHasBuffer(
-    view: ArrayBufferView,
-  ): boolean {
-    return op_node_view_has_buffer(view);
-  }
+function arrayBufferViewHasBuffer(
+  view: ArrayBufferView,
+): boolean {
+  return op_node_view_has_buffer(view);
+}
 
-  const parseEnv = op_node_parse_env as (
-    env: string,
-  ) => Record<string, string>;
+const parseEnv = op_node_parse_env as (
+  env: string,
+) => Record<string, string>;
 
-  const untransferableSymbol = Symbol.for(
-    "nodejs.worker_threads.untransferable",
-  );
+const untransferableSymbol = Symbol.for(
+  "nodejs.worker_threads.untransferable",
+);
 
-  const _defaultExport = {
-    guessHandleType,
-    isArrayIndex,
-    getOwnNonIndexProperties,
-    arrayBufferViewHasBuffer,
-    parseEnv,
-    untransferableSymbol,
-  };
+const _defaultExport = {
+  guessHandleType,
+  isArrayIndex,
+  getOwnNonIndexProperties,
+  arrayBufferViewHasBuffer,
+  parseEnv,
+  untransferableSymbol,
+};
 
-  return {
-    guessHandleType,
-    isArrayIndex,
-    getOwnNonIndexProperties,
-    arrayBufferViewHasBuffer,
-    ALL_PROPERTIES,
-    ONLY_WRITABLE,
-    ONLY_ENUMERABLE,
-    ONLY_CONFIGURABLE,
-    ONLY_ENUM_WRITABLE,
-    SKIP_STRINGS,
-    SKIP_SYMBOLS,
-    parseEnv,
-    untransferableSymbol,
-    default: _defaultExport,
-  };
-})()
+return {
+  guessHandleType,
+  isArrayIndex,
+  getOwnNonIndexProperties,
+  arrayBufferViewHasBuffer,
+  ALL_PROPERTIES,
+  ONLY_WRITABLE,
+  ONLY_ENUMERABLE,
+  ONLY_CONFIGURABLE,
+  ONLY_ENUM_WRITABLE,
+  SKIP_STRINGS,
+  SKIP_SYMBOLS,
+  parseEnv,
+  untransferableSymbol,
+  default: _defaultExport,
+};
+})();

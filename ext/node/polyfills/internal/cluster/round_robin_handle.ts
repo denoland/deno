@@ -6,7 +6,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import * as net from "node:net";
 import { sendHelper } from "ext:deno_node/internal/cluster/utils.ts";
 import {
@@ -16,15 +16,15 @@ import {
   peek,
   remove,
 } from "ext:deno_node/internal/cluster/linkedlist.ts";
-import {
-  constants as TCPConstants,
-  setupListenWrap as setupTCPListenWrap,
+const {
+  constants: TCPConstants,
+  setupListenWrap: setupTCPListenWrap,
   TCP,
-} from "ext:deno_node/internal_binding/tcp_wrap.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
+const {
   Pipe,
-  setupListenWrap as setupPipeListenWrap,
-} from "ext:deno_node/internal_binding/pipe_wrap.ts";
+  setupListenWrap: setupPipeListenWrap,
+} = core.loadExtScript("ext:deno_node/internal_binding/pipe_wrap.ts");
 
 const { ArrayIsArray, Boolean, SafeMap } = primordials;
 
