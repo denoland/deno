@@ -8377,8 +8377,6 @@ fn unstable_args_parse(
   }
 
   // TODO(bartlomieju): this should be factored out since these are configured via UNSTABLE_FEATURES
-  flags.unstable_config.bare_node_builtins =
-    matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
   flags.unstable_config.lazy_dynamic_imports =
     matches.get_flag("unstable-lazy-dynamic-imports");
@@ -14920,7 +14918,6 @@ mod tests {
           force: false,
         }),
         unstable_config: UnstableConfig {
-          bare_node_builtins: true,
           sloppy_imports: false,
           features: svec!["bare-node-builtins", "ffi", "worker-options"],
           ..Default::default()

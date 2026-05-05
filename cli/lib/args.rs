@@ -204,7 +204,6 @@ pub fn resolve_npm_resolution_snapshot(
 pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
-  pub bare_node_builtins: bool,
   pub detect_cjs: bool,
   pub lazy_dynamic_imports: bool,
   pub raw_imports: bool,
@@ -222,11 +221,6 @@ impl UnstableConfig {
       }
     }
 
-    maybe_set(
-      sys,
-      &mut self.bare_node_builtins,
-      UNSTABLE_ENV_VAR_NAMES.bare_node_builtins,
-    );
     maybe_set(
       sys,
       &mut self.lazy_dynamic_imports,
@@ -251,7 +245,6 @@ impl UnstableConfig {
   }
 
   pub fn enable_node_compat(&mut self) {
-    self.bare_node_builtins = true;
     self.sloppy_imports = true;
     self.detect_cjs = true;
     if !self.features.iter().any(|f| f == "node-globals") {

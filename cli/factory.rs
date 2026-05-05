@@ -1342,7 +1342,6 @@ impl CliFactory {
               .workspace_external_import_map_loader()?
               .clone(),
           })),
-          bare_node_builtins: options.unstable_bare_node_builtins(),
           unstable_sloppy_imports: options.unstable_sloppy_imports(),
           on_mapped_resolution_diagnostic: Some(Arc::new(
             on_resolve_diagnostic,

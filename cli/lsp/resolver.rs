@@ -1038,9 +1038,6 @@ impl<'a> ResolverFactory<'a> {
             _ => None,
           },
           workspace_resolver: self.workspace_resolver().clone(),
-          bare_node_builtins: self
-            .config_data
-            .is_some_and(|d| d.unstable.contains("bare-node-builtins")),
           is_byonm: self.config_data.map(|d| d.byonm).unwrap_or(false),
           maybe_vendor_dir: self
             .config_data
