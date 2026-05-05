@@ -478,13 +478,8 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     just_wef::alert(title, message);
   }
 
-  fn confirm(
-    &self,
-    title: &str,
-    message: &str,
-    callback: Box<dyn FnOnce(bool) + Send + 'static>,
-  ) {
-    just_wef::confirm(title, message, callback);
+  fn confirm(&self, title: &str, message: &str) -> bool {
+    just_wef::confirm(title, message)
   }
 
   fn prompt(
@@ -492,9 +487,8 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     title: &str,
     message: &str,
     default_value: &str,
-    callback: Box<dyn FnOnce(Option<String>) + Send + 'static>,
-  ) {
-    just_wef::prompt(title, message, default_value, callback);
+  ) -> Option<String> {
+    just_wef::prompt(title, message, default_value)
   }
 
   fn set_dock_badge(&self, text: &str) {

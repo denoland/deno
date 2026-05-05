@@ -354,19 +354,19 @@ pub trait DesktopApi: Send + Sync + 'static {
   );
 
   fn alert(&self, title: &str, message: &str);
-  fn confirm(
-    &self,
-    title: &str,
-    message: &str,
-    callback: Box<dyn FnOnce(bool) + Send + 'static>,
-  );
+  /// Show a modal confirm dialog. Blocks the calling thread until the
+  /// user dismisses it; the platform's modal run loop pumps OS events
+  /// while the dialog is up so other windows continue to render and
+  /// respond.
+  fn confirm(&self, title: &str, message: &str) -> bool;
+  /// Show a modal prompt dialog. Returns the entered text on confirm,
+  /// `None` on cancel. Blocking semantics as `confirm`.
   fn prompt(
     &self,
     title: &str,
     message: &str,
     default_value: &str,
-    callback: Box<dyn FnOnce(Option<String>) + Send + 'static>,
-  );
+  ) -> Option<String>;
 
   /// Set a short text badge on the app's dock / taskbar icon. An empty
   /// string clears the badge.
@@ -1078,18 +1078,14 @@ fn op_desktop_send_error_report(
 
 #[op2(fast)]
 fn op_desktop_confirm(state: &mut OpState, #[string] message: &str) -> bool {
-  if let Some(api) = state.try_borrow::<Arc<dyn DesktopApi>>() {
-    let (tx, rx) = std::sync::mpsc::channel();
-    api.confirm(
-      "",
-      message,
-      Box::new(move |result| {
-        let _ = tx.send(result);
-      }),
-    );
-    rx.recv().unwrap_or(false)
-  } else {
-    false
+  // Sync op: web `confirm()` returns a boolean, not a Promise. The
+  // backend's `confirm` blocks the calling thread inside the platform's
+  // modal run loop (NSAlert runModal / MessageBoxW / gtk_dialog_run /
+  // rfd) which itself pumps OS events, so other windows stay responsive
+  // while the dialog is up.
+  match state.try_borrow::<Arc<dyn DesktopApi>>() {
+    Some(api) => api.confirm("", message),
+    None => false,
   }
 }
 
@@ -1100,19 +1096,12 @@ fn op_desktop_prompt(
   #[string] message: &str,
   #[string] default_value: Option<String>,
 ) -> Option<String> {
-  if let Some(api) = state.try_borrow::<Arc<dyn DesktopApi>>() {
-    let (tx, rx) = std::sync::mpsc::channel();
-    api.prompt(
-      "",
-      message,
-      default_value.as_deref().unwrap_or(""),
-      Box::new(move |result| {
-        let _ = tx.send(result);
-      }),
-    );
-    rx.recv().unwrap_or(None)
-  } else {
-    None
+  // See `op_desktop_confirm` for the sync-blocking rationale.
+  match state.try_borrow::<Arc<dyn DesktopApi>>() {
+    Some(api) => {
+      api.prompt("", message, default_value.as_deref().unwrap_or(""))
+    }
+    None => None,
   }
 }
 

@@ -6564,8 +6564,6 @@ dependencies = [
 [[package]]
 name = "just-wef"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "292e3bba5522d06dd78cf2899ba72a5215268ba1294b5dc5bf210f21065021ca"
 dependencies = [
  "bindgen 0.72.1",
  "tokio",
