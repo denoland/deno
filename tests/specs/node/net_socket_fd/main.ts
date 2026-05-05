@@ -1,6 +1,6 @@
 // Test net.Socket({ fd }) with a pipe created via child_process.
 // This verifies that creating a Socket from a raw fd works through
-// the full stack: _createHandle -> Pipe.open(fd) -> NativePipe.
+// the full stack: _createHandle -> Pipe.open(fd) -> PipeWrap.
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { execSync } = require("child_process");

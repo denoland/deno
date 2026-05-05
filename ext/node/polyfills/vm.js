@@ -1,19 +1,29 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+import { core, primordials } from "ext:core/mod.js";
 import { Buffer } from "node:buffer";
-import { notImplemented } from "ext:deno_node/_utils.ts";
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import {
   op_vm_compile_function,
   op_vm_create_context,
   op_vm_create_context_without_contextify,
   op_vm_create_script,
   op_vm_is_context,
+  op_vm_module_create_source_text_module,
+  op_vm_module_evaluate,
+  op_vm_module_get_exception,
+  op_vm_module_get_identifier,
+  op_vm_module_get_module_requests,
+  op_vm_module_get_namespace,
+  op_vm_module_get_status,
+  op_vm_module_instantiate,
+  op_vm_module_link,
   op_vm_script_create_cached_data,
   op_vm_script_get_source_map_url,
   op_vm_script_run_in_context,
 } from "ext:core/ops";
-import {
+const {
   validateArray,
   validateBoolean,
   validateBuffer,
@@ -23,12 +33,25 @@ import {
   validateString,
   validateStringArray,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
+  ERR_INVALID_ARG_TYPE,
+  ERR_VM_MODULE_ALREADY_LINKED,
+  ERR_VM_MODULE_DIFFERENT_CONTEXT,
+  ERR_VM_MODULE_NOT_MODULE,
+  ERR_VM_MODULE_STATUS,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
-import { primordials } from "ext:core/mod.js";
-
-const { Symbol, ArrayPrototypeForEach, ObjectFreeze } = primordials;
+const {
+  ArrayPrototypeForEach,
+  ArrayPrototypePush,
+  ObjectFreeze,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeThen,
+  PromiseResolve,
+  SafePromiseAll,
+  Symbol,
+} = primordials;
 
 const kParsingContext = Symbol("script parsing context");
 
@@ -403,8 +426,173 @@ export const constants = {
 
 ObjectFreeze(constants);
 
+// vm.Module / vm.SourceTextModule (experimental in Node).
+//
+// Status integers map to the V8 ModuleStatus enum:
+//   0=Uninstantiated, 1=Instantiating, 2=Instantiated,
+//   3=Evaluating, 4=Evaluated, 5=Errored
+const STATUS_NAMES = [
+  "unlinked",
+  "linking",
+  "linked",
+  "evaluating",
+  "evaluated",
+  "errored",
+];
+
+const kWrap = Symbol("kWrap");
+const kContext = Symbol("kContext");
+const kLink = Symbol("kLink");
+const kLinkingStatus = Symbol("kLinkingStatus");
+let defaultModuleIdIndex = 0;
+
+export class Module {
+  constructor() {
+    if (new.target === Module) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "this",
+        "vm.SourceTextModule | vm.SyntheticModule",
+        this,
+      );
+    }
+    this[kLinkingStatus] = null;
+  }
+
+  get identifier() {
+    return op_vm_module_get_identifier(this[kWrap]);
+  }
+
+  get context() {
+    return this[kContext];
+  }
+
+  get namespace() {
+    const status = op_vm_module_get_status(this[kWrap]);
+    if (status < 2) {
+      throw new ERR_VM_MODULE_STATUS("must not be unlinked or linking");
+    }
+    return op_vm_module_get_namespace(this[kWrap]);
+  }
+
+  get status() {
+    if (this[kLinkingStatus] !== null) {
+      return this[kLinkingStatus];
+    }
+    return STATUS_NAMES[op_vm_module_get_status(this[kWrap])];
+  }
+
+  get error() {
+    if (this.status !== "errored") {
+      throw new ERR_VM_MODULE_STATUS("must be errored");
+    }
+    return op_vm_module_get_exception(this[kWrap]);
+  }
+
+  link(linker) {
+    if (typeof linker !== "function") {
+      throw new ERR_INVALID_ARG_TYPE("linker", "function", linker);
+    }
+    if (this.status !== "unlinked") {
+      throw new ERR_VM_MODULE_ALREADY_LINKED();
+    }
+    this[kLinkingStatus] = "linking";
+    return PromisePrototypeThen(this[kLink](linker), (v) => {
+      this[kLinkingStatus] = null;
+      return v;
+    }, (e) => {
+      this[kLinkingStatus] = null;
+      throw e;
+    });
+  }
+
+  // TODO(divybot): cyclic imports not yet supported. Single-pass linking
+  // also makes instantiation order depend on linker resolution order: in a
+  // diamond (A imports B and C; B also imports C) C is instantiated when
+  // B's kLink finishes, so by the time A's instantiate runs, B and C are
+  // already instantiated. V8 tolerates re-instantiating an instantiated
+  // module as a no-op, but a Node-style two-phase resolve+instantiate
+  // would be needed for true cyclic-import support.
+  async [kLink](linker) {
+    const requests = op_vm_module_get_module_requests(this[kWrap]);
+    const specifiers = [];
+    const modules = [];
+    const linkerPromises = [];
+    for (let i = 0; i < requests.length; i++) {
+      const specifier = requests[i];
+      ArrayPrototypePush(specifiers, specifier);
+      const p = PromiseResolve(
+        linker(specifier, this, { attributes: {} }),
+      );
+      ArrayPrototypePush(linkerPromises, p);
+    }
+    const resolvedModules = await SafePromiseAll(linkerPromises);
+    for (let i = 0; i < resolvedModules.length; i++) {
+      const m = resolvedModules[i];
+      if (!ObjectPrototypeIsPrototypeOf(Module.prototype, m)) {
+        throw new ERR_VM_MODULE_NOT_MODULE();
+      }
+      if (m.context !== this[kContext]) {
+        throw new ERR_VM_MODULE_DIFFERENT_CONTEXT();
+      }
+      if (m.status === "unlinked") {
+        await m[kLink](linker);
+      }
+      ArrayPrototypePush(modules, m[kWrap]);
+    }
+
+    op_vm_module_link(this[kWrap], specifiers, modules);
+    op_vm_module_instantiate(this[kWrap]);
+  }
+
+  async evaluate(options = { __proto__: null }) {
+    validateObject(options, "options");
+    const status = op_vm_module_get_status(this[kWrap]);
+    // Allow evaluate from linked (2), evaluating (3), evaluated (4), errored (5).
+    if (status < 2) {
+      throw new ERR_VM_MODULE_STATUS(
+        "must be one of linked, evaluated, or errored",
+      );
+    }
+    const result = op_vm_module_evaluate(this[kWrap]);
+    return await result;
+  }
+}
+
+export class SourceTextModule extends Module {
+  constructor(sourceText, options = { __proto__: null }) {
+    super();
+    if (typeof sourceText !== "string") {
+      throw new ERR_INVALID_ARG_TYPE("sourceText", "string", sourceText);
+    }
+    validateObject(options, "options");
+    const {
+      identifier = `vm:module(${defaultModuleIdIndex++})`,
+      context,
+      lineOffset = 0,
+      columnOffset = 0,
+    } = options;
+    if (context !== undefined) {
+      validateContext(context);
+    }
+    validateString(identifier, "options.identifier");
+    validateInt32(lineOffset, "options.lineOffset");
+    validateInt32(columnOffset, "options.columnOffset");
+
+    this[kContext] = context;
+    this[kWrap] = op_vm_module_create_source_text_module(
+      sourceText,
+      identifier,
+      lineOffset,
+      columnOffset,
+      context,
+    );
+  }
+}
+
 export default {
+  Module,
   Script,
+  SourceTextModule,
   constants,
   createContext,
   createScript,

@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 pub use deno_cache;
+pub use deno_canvas;
 pub use deno_core;
 pub use deno_cron;
 pub use deno_crypto;

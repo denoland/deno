@@ -85,7 +85,8 @@ impl From<i32> for OpenOptions {
     }
     if (flags & libc::O_EXCL) == libc::O_EXCL {
       options.create_new = true;
-      options.write = true;
+      // Note: O_EXCL only controls create_new semantics. The write access
+      // mode is determined separately by O_WRONLY or O_RDWR flags.
       flags &= !libc::O_EXCL;
     }
     if (flags & libc::O_RDWR) == libc::O_RDWR {

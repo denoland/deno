@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_query_permission,
   op_request_permission,
@@ -25,8 +25,8 @@ const {
   TypeError,
 } = primordials;
 
-import { pathFromURL } from "ext:deno_web/00_infra.js";
-import { Event, EventTarget } from "ext:deno_web/02_event.js";
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
+const { Event, EventTarget } = core.loadExtScript("ext:deno_web/02_event.js");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 

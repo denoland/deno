@@ -2,8 +2,10 @@
 
 import { fileURLToPath } from "node:url";
 import { Buffer } from "node:buffer";
-import { primordials } from "ext:core/mod.js";
-import { validateObject } from "ext:deno_node/internal/validators.mjs";
+import { core, primordials } from "ext:core/mod.js";
+const { validateObject } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 const {
   Boolean,
   Number,
@@ -50,6 +52,7 @@ export function toPathIfFileURL(
 export function urlToHttpOptions(url: URL): HttpOptions {
   validateObject(url, "url", { allowArray: true, allowFunction: true });
   const options: HttpOptions = {
+    ...url, // In case the url object was extended by the user.
     protocol: url.protocol,
     hostname: typeof url.hostname === "string" &&
         StringPrototypeStartsWith(url.hostname, "[")

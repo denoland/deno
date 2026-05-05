@@ -301,7 +301,7 @@ fn expand_vars(input: &str, sys: &impl EnvVar) -> String {
 
   fn env_var(input: &str) -> ParseResult<'_, &str> {
     let (input, _) = tag("${")(input)?;
-    let (input, var_name) = take_while(|c| c != '}')(input)?;
+    let (input, var_name) = take_while_byte(|b| b != b'}')(input)?;
     if var_name.chars().any(|c| matches!(c, '$' | '{' | '\\')) {
       return ParseError::backtrace();
     }
