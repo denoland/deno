@@ -1,30 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core } from "ext:core/mod.js";
-const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
-  "ext:deno_node/internal/errors.ts",
-);
-
-class Tracing {
-  enabled = false;
-  categories = "";
-}
-
-function createTracing(opts) {
-  if (typeof opts !== "object" || opts == null) {
-    throw new ERR_INVALID_ARG_TYPE("options", "Object", opts);
-  }
-
-  return new Tracing(opts);
-}
-
-function getEnabledCategories() {
-  return "";
-}
-
-export { createTracing, getEnabledCategories };
-
-export default {
-  createTracing,
-  getEnabledCategories,
-};
+const _mod = core.loadExtScript("ext:deno_node/_trace_events.ts");
+export const { createTracing, getEnabledCategories } = _mod;
+export default _mod.default;

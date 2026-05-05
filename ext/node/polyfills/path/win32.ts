@@ -2,7 +2,8 @@
 // Ported from https://github.com/browserify/path-browserify/
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import path from "ext:deno_node/path/mod.ts";
+import { core } from "ext:core/mod.js";
+const _mod = core.loadExtScript("ext:deno_node/path/mod.ts");
 
 export const {
   basename,
@@ -19,8 +20,9 @@ export const {
   sep,
   toNamespacedPath,
   _makeLong,
-} = path.win32;
+  matchesGlob,
+} = _mod.win32;
 
-export const posix = path.posix;
-export const win32 = path.win32;
-export default path.win32;
+export const posix = _mod.posix;
+export const win32 = _mod.win32;
+export default _mod.win32;

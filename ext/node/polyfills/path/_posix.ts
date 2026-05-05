@@ -2,11 +2,8 @@
 // Ported from https://github.com/browserify/path-browserify/
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import type {
-  FormatInputPathObject,
-  ParsedPath,
-} from "ext:deno_node/path/_interface.ts";
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const { CHAR_DOT, CHAR_FORWARD_SLASH } = core.loadExtScript(
   "ext:deno_node/path/_constants.ts",
 );
@@ -24,10 +21,34 @@ const { validateString } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
-import process from "node:process";
-import type * as fsGlob from "ext:deno_node/_fs/_fs_glob.ts";
+const _proc = core.loadExtScript("ext:deno_node/_process/process.ts");
+const process = { cwd: _proc.cwd };
 
-const lazyLoadGlob = core.createLazyLoader<typeof fsGlob>(
+type FormatInputPathObject = {
+  root?: string;
+  dir?: string;
+  base?: string;
+  ext?: string;
+  name?: string;
+};
+
+type ParsedPath = {
+  root: string;
+  dir: string;
+  base: string;
+  ext: string;
+  name: string;
+};
+
+type FsGlob = {
+  matchGlobPattern: (
+    path: string,
+    pattern: string,
+    isWindows: boolean,
+  ) => boolean;
+};
+
+const lazyLoadGlob = core.createLazyLoader<FsGlob>(
   "ext:deno_node/_fs/_fs_glob.ts",
 );
 
@@ -39,8 +60,8 @@ const {
   SafeRegExp,
 } = primordials;
 
-export const sep = "/";
-export const delimiter = ":";
+const sep = "/";
+const delimiter = ":";
 
 const posixCwd = (() => {
   if (isWindows) {
@@ -62,7 +83,7 @@ const posixCwd = (() => {
  * Resolves `pathSegments` into an absolute path.
  * @param pathSegments an array of path segments
  */
-export function resolve(...pathSegments: string[]): string {
+function resolve(...pathSegments: string[]): string {
   if (
     pathSegments.length === 0 ||
     (pathSegments.length === 1 &&
@@ -117,7 +138,7 @@ export function resolve(...pathSegments: string[]): string {
  * Normalize the `path`, resolving `'..'` and `'.'` segments.
  * @param path to be normalized
  */
-export function normalize(path: string): string {
+function normalize(path: string): string {
   assertPath(path);
 
   if (path.length === 0) return ".";
@@ -140,7 +161,7 @@ export function normalize(path: string): string {
  * Verifies whether provided path is absolute
  * @param path to be verified as absolute
  */
-export function isAbsolute(path: string): boolean {
+function isAbsolute(path: string): boolean {
   assertPath(path);
   return path.length > 0 &&
     StringPrototypeCharCodeAt(path, 0) === CHAR_FORWARD_SLASH;
@@ -150,7 +171,7 @@ export function isAbsolute(path: string): boolean {
  * Join all given a sequence of `paths`,then normalizes the resulting path.
  * @param paths to be joined and normalized
  */
-export function join(...paths: string[]): string {
+function join(...paths: string[]): string {
   if (paths.length === 0) return ".";
   let joined: string | undefined;
   for (let i = 0, len = paths.length; i < len; ++i) {
@@ -170,7 +191,7 @@ export function join(...paths: string[]): string {
  * @param from path in current working directory
  * @param to path in current working directory
  */
-export function relative(from: string, to: string): string {
+function relative(from: string, to: string): string {
   assertPath(from);
   assertPath(to);
 
@@ -247,7 +268,7 @@ export function relative(from: string, to: string): string {
  * Resolves path to a namespace path
  * @param path to resolve to namespace
  */
-export function toNamespacedPath(path: string): string {
+function toNamespacedPath(path: string): string {
   // Non-op on posix systems
   return path;
 }
@@ -256,7 +277,7 @@ export function toNamespacedPath(path: string): string {
  * Return the directory name of a `path`.
  * @param path to determine name for
  */
-export function dirname(path: string): string {
+function dirname(path: string): string {
   assertPath(path);
   if (path.length === 0) return ".";
   const hasRoot = StringPrototypeCharCodeAt(path, 0) === CHAR_FORWARD_SLASH;
@@ -284,7 +305,7 @@ export function dirname(path: string): string {
  * @param path to process
  * @param ext of path directory
  */
-export function basename(path: string, ext = ""): string {
+function basename(path: string, ext = ""): string {
   if (ext !== undefined && typeof ext !== "string") {
     throw new ERR_INVALID_ARG_TYPE("ext", ["string"], ext);
   }
@@ -362,7 +383,7 @@ export function basename(path: string, ext = ""): string {
  * Return the extension of the `path`.
  * @param path with extension
  */
-export function extname(path: string): string {
+function extname(path: string): string {
   assertPath(path);
   let startDot = -1;
   let startPart = 0;
@@ -416,7 +437,7 @@ export function extname(path: string): string {
  * Generate a path from `FormatInputPathObject` object.
  * @param pathObject with path
  */
-export function format(pathObject: FormatInputPathObject): string {
+function format(pathObject: FormatInputPathObject): string {
   if (pathObject === null || typeof pathObject !== "object") {
     throw new ERR_INVALID_ARG_TYPE("pathObject", ["Object"], pathObject);
   }
@@ -427,7 +448,7 @@ export function format(pathObject: FormatInputPathObject): string {
  * Return a `ParsedPath` object of the `path`.
  * @param path to process
  */
-export function parse(path: string): ParsedPath {
+function parse(path: string): ParsedPath {
   assertPath(path);
 
   const ret: ParsedPath = { root: "", dir: "", base: "", ext: "", name: "" };
@@ -511,15 +532,17 @@ export function parse(path: string): ParsedPath {
   return ret;
 }
 
-export const _makeLong = toNamespacedPath;
+const _makeLong = toNamespacedPath;
 
-let lazyMatchGlobPattern: typeof fsGlob.matchGlobPattern;
-export const matchesGlob = (path: string, pattern: string): boolean => {
+let lazyMatchGlobPattern:
+  | ((path: string, pattern: string, isWindows: boolean) => boolean)
+  | undefined;
+const matchesGlob = (path: string, pattern: string): boolean => {
   lazyMatchGlobPattern ??= lazyLoadGlob().matchGlobPattern;
   return lazyMatchGlobPattern(path, pattern, false);
 };
 
-export default {
+const defaultExport = {
   basename,
   delimiter,
   dirname,
@@ -536,3 +559,24 @@ export default {
   _makeLong,
   matchesGlob,
 };
+
+return {
+  basename,
+  delimiter,
+  dirname,
+  extname,
+  format,
+  isAbsolute,
+  join,
+  normalize,
+  parse,
+  relative,
+  resolve,
+  sep,
+  toNamespacedPath,
+  _makeLong,
+  matchesGlob,
+  default: defaultExport,
+  "module.exports": defaultExport,
+};
+})();
