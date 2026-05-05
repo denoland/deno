@@ -1631,6 +1631,7 @@
     "parallel/test-http-pause-no-dump.js": {},
     "parallel/test-http-pause-resume-one-end.js": {},
     "parallel/test-http-pause.js": {},
+    "parallel/test-http-perf_hooks.js": {},
     "parallel/test-http-pipe-fs.js": {},
     "parallel/test-http-pipeline-assertionerror-finish.js": {},
     "parallel/test-http-pipeline-flood.js": {},
