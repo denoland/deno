@@ -15,6 +15,24 @@ use flate2::write::GzEncoder;
 use flate2::write::ZlibDecoder;
 use flate2::write::ZlibEncoder;
 
+/// Like `write_all`, but stops gracefully when `write` returns `Ok(0)`.
+/// This is needed for decoders: when the compressed stream ends (e.g.
+/// zlib footer reached), `write()` returns `Ok(0)` for any remaining
+/// input bytes. `write_all()` would treat this as a `WriteZero` error.
+fn write_all_allowing_partial(
+  w: &mut impl Write,
+  mut buf: &[u8],
+) -> std::io::Result<()> {
+  while !buf.is_empty() {
+    match w.write(buf) {
+      Ok(0) => break,
+      Ok(n) => buf = &buf[n..],
+      Err(e) => return Err(e),
+    }
+  }
+  Ok(())
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CompressionError {
   #[class(type)]
@@ -113,8 +131,13 @@ pub fn op_compression_write(
   let mut inner = resource.0.borrow_mut();
   let inner = inner.as_mut().ok_or(CompressionError::ResourceClosed)?;
   let out: Vec<u8> = match &mut *inner {
+    // Decoders: use write_all_allowing_partial instead of write_all.
+    // When the compressed stream ends (e.g. zlib footer reached) before
+    // all input is consumed (trailing bytes), write() returns Ok(0).
+    // write_all treats this as an error, but for decoders it's valid.
     Inner::DeflateDecoder(d) => {
-      d.write_all(input).map_err(CompressionError::IoTypeError)?;
+      write_all_allowing_partial(d, input)
+        .map_err(CompressionError::IoTypeError)?;
       d.flush().map_err(CompressionError::Io)?;
       d.get_mut().drain(..)
     }
@@ -124,7 +147,8 @@ pub fn op_compression_write(
       d.get_mut().drain(..)
     }
     Inner::DeflateRawDecoder(d) => {
-      d.write_all(input).map_err(CompressionError::IoTypeError)?;
+      write_all_allowing_partial(d, input)
+        .map_err(CompressionError::IoTypeError)?;
       d.flush().map_err(CompressionError::Io)?;
       d.get_mut().drain(..)
     }
@@ -134,7 +158,8 @@ pub fn op_compression_write(
       d.get_mut().drain(..)
     }
     Inner::GzDecoder(d) => {
-      d.write_all(input).map_err(CompressionError::IoTypeError)?;
+      write_all_allowing_partial(d, input)
+        .map_err(CompressionError::IoTypeError)?;
       d.flush().map_err(CompressionError::Io)?;
       d.get_mut().drain(..)
     }
@@ -144,7 +169,8 @@ pub fn op_compression_write(
       d.get_mut().drain(..)
     }
     Inner::BrotliDecoder(d) => {
-      d.write_all(input).map_err(CompressionError::IoTypeError)?;
+      write_all_allowing_partial(d, input)
+        .map_err(CompressionError::IoTypeError)?;
       d.flush().map_err(CompressionError::Io)?;
       d.get_mut().drain(..)
     }
