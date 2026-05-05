@@ -2202,15 +2202,15 @@ function blitBuffer(src, dst, offset, byteLength = Infinity) {
 }
 
 const hexSliceLookupTable = function () {
-  const alphabet = "0123456789abcdef";
-  const table = [];
-  for (let i = 0; i < 16; ++i) {
-    const i16 = i * 16;
-    for (let j = 0; j < 16; ++j) {
-      table[i16 + j] = alphabet[i] + alphabet[j];
-    }
+const alphabet = "0123456789abcdef";
+const table = [];
+for (let i = 0; i < 16; ++i) {
+  const i16 = i * 16;
+  for (let j = 0; j < 16; ++j) {
+    table[i16 + j] = alphabet[i] + alphabet[j];
   }
-  return table;
+}
+return table;
 }();
 
 export function readUInt48LE(buf, offset = 0) {

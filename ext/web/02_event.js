@@ -5,8 +5,6 @@
 // parts still exists.  This means you will observe a lot of strange structures
 // and impossible logic branches based on what Deno currently supports.
 
-// deno-fmt-ignore-file
-
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
 const {
@@ -1603,4 +1601,4 @@ return {
   setIsTrusted,
   setTarget,
 };
-})()
+})();

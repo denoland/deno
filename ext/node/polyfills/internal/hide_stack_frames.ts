@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
 const { primordials } = globalThis.__bootstrap;
@@ -40,4 +39,4 @@ function hideStackFrames<T extends GenericFunction = GenericFunction>(
 }
 
 return { hideStackFrames };
-})()
+})();

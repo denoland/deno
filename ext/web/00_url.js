@@ -5,7 +5,6 @@
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 
-// deno-fmt-ignore-file
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
 const {
@@ -36,7 +35,9 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
 
 const _list = Symbol("list");
 const _urlObject = Symbol("url object");
@@ -907,4 +908,4 @@ return {
   URLSearchParams,
   URLSearchParamsPrototype,
 };
-})()
+})();
