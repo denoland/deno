@@ -1,0 +1,3 @@
+error: Import "@lib/nonexistent" not a dependency
+  hint: If you want to use a JSR or npm package, try running `deno add jsr:@lib/nonexistent` or `deno add npm:@lib/nonexistent`
+    at file:///[WILDCARD]/error.ts:1:27

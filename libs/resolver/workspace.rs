@@ -1239,8 +1239,8 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
                   ),
                 );
               }
-              // For execution resolution, fall through to standard error handling
-              // by not updating resolved_specifier, allowing subsequent resolution steps to handle it
+              // For execution resolution, keep the originally-resolved specifier
+              // unchanged and continue with it
             }
           }
         } else {
