@@ -12,7 +12,7 @@ use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::ReadBuf;
 
-const MAX_PREFIX_SIZE: usize = 256;
+const MAX_PREFIX_SIZE: usize = 32;
 
 /// [`NetworkStreamPrefixCheck`] is used to differentiate a stream between two different modes, depending
 /// on whether the first bytes match a given prefix (or not).
