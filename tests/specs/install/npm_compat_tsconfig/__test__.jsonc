@@ -1,0 +1,53 @@
+{
+  "tests": {
+    "basic_npm": {
+      "tempDir": true,
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --allow-read verify.ts",
+          "output": "verify.out"
+        }
+      ]
+    },
+    "existing_tsconfig": {
+      "tempDir": true,
+      "steps": [
+        {
+          "commandName": "cp",
+          "args": "existing_tsconfig.json tsconfig.json",
+          "output": ""
+        },
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --allow-read verify_existing_tsconfig.ts",
+          "output": "verify_existing_tsconfig.out"
+        }
+      ]
+    },
+    "no_specifiers_no_tsconfig": {
+      "tempDir": true,
+      "steps": [
+        {
+          "commandName": "cp",
+          "args": "deno_no_specifiers.json deno.json",
+          "output": ""
+        },
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --allow-read verify_no_tsconfig.ts",
+          "output": "verify_no_tsconfig.out"
+        }
+      ]
+    }
+  }
+}

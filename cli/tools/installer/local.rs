@@ -177,6 +177,17 @@ async fn install_top_level(
     lockfile.write_if_changed()?;
   }
 
+  // Post-install: set up jsr packages in node_modules and generate tsconfig
+  // mappings for stock TypeScript compatibility. Run before the report so
+  // installed jsr packages appear in the Dependencies section.
+  let cli_options = factory.cli_options()?;
+  let installed_jsr =
+    super::npm_compat::setup_npm_compat(cli_options.initial_cwd())
+      .unwrap_or_else(|e| {
+        log::warn!("Failed to set up TypeScript compatibility: {e}");
+        vec![]
+      });
+
   let install_reporter = factory.install_reporter()?.unwrap().clone();
   let workspace = factory.workspace_resolver().await?;
   let npm_resolver = factory.npm_resolver().await?;
@@ -186,6 +197,7 @@ async fn install_top_level(
     &install_reporter,
     workspace,
     npm_resolver,
+    &installed_jsr,
   );
 
   Ok(())

@@ -24,6 +24,7 @@ use crate::util::display;
 mod bin_name_resolver;
 mod global;
 mod local;
+mod npm_compat;
 
 pub use global::uninstall;
 use local::CategorizedInstalledDeps;
@@ -230,6 +231,7 @@ pub async fn install_from_entrypoints(
     &factory.install_reporter()?.unwrap().clone(),
     factory.workspace_resolver().await?,
     factory.npm_resolver().await?,
+    &[],
   );
   Ok(())
 }
@@ -257,6 +259,7 @@ pub fn print_install_report(
   install_reporter: &InstallReporter,
   workspace: &WorkspaceResolver<CliSys>,
   npm_resolver: &CliNpmResolver,
+  installed_jsr_compat: &[npm_compat::InstalledJsrPackage],
 ) {
   fn human_elapsed(elapsed: u128) -> String {
     display::human_elapsed_with_ms_limit(elapsed, 3_000)
@@ -335,7 +338,11 @@ pub fn print_install_report(
     dev_deps: installed_dev_deps,
   } = categorize_installed_npm_deps(npm_resolver, workspace, install_reporter);
 
-  if !installed_normal_deps.is_empty() || !rep.stats.downloaded_jsr.is_empty() {
+  let has_deps = !installed_normal_deps.is_empty()
+    || !rep.stats.downloaded_jsr.is_empty()
+    || !installed_jsr_compat.is_empty();
+
+  if has_deps {
     log::info!("");
     log::info!("{}", deno_terminal::colors::cyan("Dependencies:"));
     let mut jsr_packages = rep
@@ -353,6 +360,28 @@ pub fn print_install_report(
         deno_terminal::colors::gray("jsr:"),
         name,
         deno_terminal::colors::gray(version)
+      );
+    }
+    // JSR packages installed via npm.jsr.io for stock TS compatibility
+    for pkg in installed_jsr_compat {
+      // Convert @jsr/std__assert back to @std/assert for display
+      let display_name = pkg
+        .name
+        .strip_prefix("@jsr/")
+        .map(|n| {
+          if let Some((scope, name)) = n.split_once("__") {
+            format!("@{scope}/{name}")
+          } else {
+            n.to_string()
+          }
+        })
+        .unwrap_or_else(|| pkg.name.clone());
+      log::info!(
+        "{} {}{} {}",
+        deno_terminal::colors::green("+"),
+        deno_terminal::colors::gray("jsr:"),
+        display_name,
+        deno_terminal::colors::gray(&pkg.version)
       );
     }
     for pkg in &installed_normal_deps {
