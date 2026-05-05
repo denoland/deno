@@ -1172,9 +1172,23 @@ function registerDeclarativeServer(exports) {
     serveHost,
     workerCountWhenMain,
   }) => {
+    // Wire SIGTERM/SIGINT to graceful server shutdown so that
+    // `deno serve` exits cleanly instead of crashing mid-operation.
+    const ac = new AbortController();
+    const shutdownHandler = () => {
+      ac.abort();
+    };
+    try {
+      Deno.addSignalListener("SIGTERM", shutdownHandler);
+      Deno.addSignalListener("SIGINT", shutdownHandler);
+    } catch {
+      // Signal listeners may not be available (e.g. Windows workers)
+    }
+
     Deno.serve({
       port: servePort,
       hostname: serveHost,
+      signal: ac.signal,
       [kLoadBalanced]: workerCountWhenMain == null
         ? true
         : workerCountWhenMain > 0,
