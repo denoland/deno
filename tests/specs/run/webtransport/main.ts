@@ -46,6 +46,30 @@ Deno.test("WebTransport", async () => {
     }
   })();
 
+  const ipv4Client = new WebTransport(
+    `https://127.0.0.1:${server.addr.port}/path`,
+    {
+      serverCertificateHashes: [{
+        algorithm: "sha-256",
+        value: certHash,
+      }],
+    },
+  );
+  await ipv4Client.ready;
+  ipv4Client.close();
+
+  const ipv6Client = new WebTransport(
+    `https://[::1]:${server.addr.port}/path`,
+    {
+      serverCertificateHashes: [{
+        algorithm: "sha-256",
+        value: certHash,
+      }],
+    },
+  );
+  await ipv6Client.ready;
+  ipv6Client.close();
+
   const client = new WebTransport(
     `https://localhost:${server.addr.port}/path`,
     {
