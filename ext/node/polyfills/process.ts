@@ -508,10 +508,30 @@ function wrapIdSetter(
       throw new ERR_INVALID_ARG_TYPE("id", ["number", "string"], id);
     }
 
+    // The Rust op can throw:
+    // ProcessError::UnknownCredential - already has code ERR_UNKNOWN_CREDENTIAL, pass through
+    // ProcessError::Io (from nix EPERM) - format to match Node's credential error format
     try {
       fn(id);
     } catch (err) {
-      throw denoErrorToNodeError(err as Error, { syscall });
+      if (err.code === "ERR_UNKNOWN_CREDENTIAL") {
+        throw err;
+      }
+      // For OS errors (EPERM etc.), Node produces: "EPERM, Operation not permitted"
+      const osErrno = err.os_errno ??
+        err.message?.match?.(/\(os error (\d+)\)/)?.[1];
+      if (osErrno !== undefined) {
+        const uvErrno = uv.mapSysErrnoToUvErrno(Number(osErrno));
+        const code = uv.errname(uvErrno);
+        const msg = uv.getErrorMessage(uvErrno);
+        // Node formats credential errors as "CODE, Message"
+        const e = new Error(`${code}, ${msg}`);
+        e.code = code;
+        e.errno = Number(osErrno);
+        e.syscall = syscall;
+        throw e;
+      }
+      throw err;
     }
   };
 }
