@@ -115,6 +115,12 @@ pub struct uv_tcp_t {
   pub(crate) internal_alloc_cb: Option<uv_alloc_cb>,
   pub(crate) internal_read_cb: Option<uv_read_cb>,
   pub(crate) internal_reading: bool,
+  /// Set true once a non-zero read has occurred on this connection.
+  /// Used by the broken-connection probe to distinguish a peer that
+  /// FIN'd after sending data (legitimate half-close — write side
+  /// stays valid) from a peer that aborted before sending anything
+  /// (writes can't be delivered). Persists across polls.
+  pub(crate) internal_received_data: bool,
   pub(crate) internal_connect: Option<ConnectPending>,
   pub(crate) internal_write_queue: VecDeque<WritePending>,
   pub(crate) internal_connection_cb: Option<uv_connection_cb>,
@@ -396,6 +402,7 @@ pub unsafe fn uv_tcp_init(loop_: *mut uv_loop_t, tcp: *mut uv_tcp_t) -> c_int {
     write(addr_of_mut!((*tcp).internal_alloc_cb), None);
     write(addr_of_mut!((*tcp).internal_read_cb), None);
     write(addr_of_mut!((*tcp).internal_reading), false);
+    write(addr_of_mut!((*tcp).internal_received_data), false);
     write(addr_of_mut!((*tcp).internal_connect), None);
     write(addr_of_mut!((*tcp).internal_write_queue), VecDeque::new());
     write(addr_of_mut!((*tcp).internal_connection_cb), None);
@@ -1052,6 +1059,7 @@ pub fn new_tcp() -> uv_tcp_t {
     internal_alloc_cb: None,
     internal_read_cb: None,
     internal_reading: false,
+    internal_received_data: false,
     internal_connect: None,
     internal_write_queue: VecDeque::new(),
     internal_connection_cb: None,
@@ -1213,6 +1221,7 @@ pub(crate) unsafe fn poll_tcp_handle(
             }
             Ok(n) => {
               any_work = true;
+              (*tcp_ptr).internal_received_data = true;
               read_cb(tcp_ptr as *mut uv_stream_t, n as isize, &buf);
               count -= 1;
               if count == 0 {
@@ -1305,17 +1314,8 @@ pub(crate) unsafe fn poll_tcp_handle(
         let _ = stream.poll_write_ready(cx);
       }
 
-      // Run the write loop FIRST. If a write succeeds, the queue
-      // entry is removed and the success callback is captured. If
-      // try_write reports a real error (Linux: ECONNRESET when peer
-      // is gone), the head is failed with EPIPE and the loop breaks.
-      // Run BEFORE the broken-connection probe below so legitimate
-      // writes get a chance to drain even after the read side has
-      // observed the peer's FIN — half-close is valid TCP.
-      //
       // Match libuv's count=32 limit to prevent starvation.
       let mut count = 32;
-      let mut hit_wouldblock = false;
       loop {
         if (*tcp_ptr).internal_write_queue.is_empty()
           || (*tcp_ptr).internal_stream.is_none()
@@ -1411,48 +1411,44 @@ pub(crate) unsafe fn poll_tcp_handle(
           // Match libuv: stop writing after an error.
           break;
         } else {
-          // WouldBlock — write side is currently full. Record so the
-          // broken-connection probe below can decide whether to fail
-          // the residual queue.
-          hit_wouldblock = true;
-          break;
+          break; // WouldBlock -- retry next tick
         }
       }
 
-      // Broken-connection probe — runs ONLY on residual queue after
-      // the write loop has had a chance to drain. We need this when
-      // tokio's write path can't tell us about a broken connection
-      // promptly:
+      // Broken-connection probe.
       //
-      // - On unix, `try_write` against a peer whose machine is RST'ing
-      //   surfaces ECONNRESET / EPIPE directly, and the write-loop
-      //   error branch above already drained the queue. So we only
-      //   need the probe to catch the rare case where readiness is
-      //   armed but try_write returned WouldBlock instead of the
-      //   error — `n < 0` (real recv error) drains; `n == 0` is just
-      //   a benign FIN and stays alone, since half-close is valid.
+      // Without overlapped IOCP writes (which libuv uses on Windows
+      // and which deliver per-request kernel errors directly), tokio's
+      // synchronous try_write can't always tell us a peer is gone:
       //
-      // - On Windows, tokio's synchronous send() can succeed silently
-      //   into the local kernel send buffer even when the peer
-      //   `closesocket()`'d, because the broken state only surfaces on
-      //   a later send/recv. By the time it does, the auto-shutdown
-      //   triggered by read EOF has already closed the socket and the
-      //   process exited without raising the 'error' event the user
-      //   expects (test-net-error-twice.js). libuv on Windows avoids
-      //   this by routing every write through WSASend with overlapped
-      //   IOCP completions, which deliver the error immediately —
-      //   we don't have that path here. Treat `n == 0` (peer FIN) as
-      //   a broken-pipe signal on Windows so the write queue fails
-      //   fast, matching the user-visible behavior of libuv.
+      // - On unix, try_write against a torn-down peer surfaces
+      //   ECONNRESET/EPIPE directly, so the write-loop error branch
+      //   above usually drains the queue on its own. The probe is a
+      //   safety net for the case where readiness is armed but the
+      //   write returned WouldBlock instead of the error — `n < 0`
+      //   (real recv error) drains the queue; `n == 0` is benign
+      //   half-close and the write side stays valid.
       //
-      // Gating on `hit_wouldblock` keeps this from over-firing for
-      // small writes that drain in one shot (test-net-allow-half-open
-      // queues a 3-byte 'asd' before the peer's FIN — the write loop
-      // empties the queue first, the probe is skipped entirely, and
-      // the write completes normally).
-      if hit_wouldblock
-        && !(*tcp_ptr).internal_write_queue.is_empty()
-        && !(*tcp_ptr).internal_reading
+      // - On Windows, send() may succeed silently into the local
+      //   kernel send buffer even when the peer `closesocket()`'d.
+      //   Auto-tuning lets that buffer absorb large writes (10 MB+),
+      //   so the queue can drain to "successful" before the peer's
+      //   RST ever surfaces. By the time it does, the read-EOF
+      //   auto-shutdown has closed the socket and the process exited
+      //   without ever raising the 'error' event the user expects
+      //   (test-net-error-twice.js). To match libuv's IOCP-driven
+      //   behavior we treat `n == 0` (peer FIN) as a broken-pipe
+      //   signal AND retroactively flip the most recent successful
+      //   drain to EPIPE so the failure is reported even when the
+      //   queue emptied this tick.
+      //
+      // Gating on `!internal_received_data` distinguishes the two
+      // test scenarios cleanly: test-net-allow-half-open's peer
+      // sends 1024 bytes before FIN (received_data=true → probe
+      // skipped, the queued 'asd' write completes normally), while
+      // test-net-error-twice's peer destroys without writing
+      // (received_data stays false → probe fires).
+      if !(*tcp_ptr).internal_received_data
         && let Some(ref stream) = (*tcp_ptr).internal_stream
         && let Poll::Ready(Ok(())) = stream.poll_read_ready(cx)
       {
@@ -1485,11 +1481,22 @@ pub(crate) unsafe fn poll_tcp_handle(
         };
         #[cfg(windows)]
         if n == 0 {
-          // Windows: peer FIN observed and writes are stuck —
-          // tokio's sync write path won't surface the broken-pipe
-          // error in time. Fail the residual queue.
+          // Windows: peer FIN observed and we never received any
+          // data on this connection. Either writes are stuck (queue
+          // non-empty) or the kernel send buffer absorbed the
+          // entire payload silently (queue empty after this tick's
+          // drain). In both cases the writes won't be delivered to
+          // the peer's process — drain the residual queue, and
+          // retroactively flip the most recent successful drain so
+          // the JS layer sees the error libuv would have reported
+          // via IOCP.
           while let Some(pw) = (*tcp_ptr).internal_write_queue.pop_front() {
             completed_writes.push((pw.req, pw.cb, UV_EPIPE));
+          }
+          if let Some(last) = completed_writes.last_mut()
+            && last.2 == 0
+          {
+            last.2 = UV_EPIPE;
           }
         }
         if n < 0 {
