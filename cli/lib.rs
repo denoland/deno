@@ -120,6 +120,20 @@ async fn run_subcommand(
   unconfigured_runtime: Option<UnconfiguredRuntime>,
   roots: LibWorkerFactoryRoots,
 ) -> Result<i32, AnyError> {
+  let should_trim_cache = matches!(
+    flags.subcommand,
+    DenoSubcommand::Run(_)
+      | DenoSubcommand::Cache(_)
+      | DenoSubcommand::Check(_)
+      | DenoSubcommand::Test(_)
+      | DenoSubcommand::Bench(_)
+      | DenoSubcommand::Compile(_)
+      | DenoSubcommand::Install(_)
+      | DenoSubcommand::Serve(_)
+      | DenoSubcommand::Eval(_)
+  );
+  let cache_path = flags.internal.cache_path.clone();
+
   let handle = match flags.subcommand.clone() {
     DenoSubcommand::Add(add_flags) => spawn_subcommand(async {
       tools::pm::add(Arc::new(flags), add_flags, tools::pm::AddCommandName::Add)
@@ -511,7 +525,22 @@ async fn run_subcommand(
     }),
   };
 
-  handle.await?
+  let result = handle.await?;
+
+  // After cache-writing operations, trim the cache if DENO_CACHE_MAX_SIZE is set.
+  if should_trim_cache
+    && let Ok(dir) = deno_cache_dir::resolve_deno_dir(
+      &sys_traits::impls::RealSys,
+      deno_cache_dir::ResolveDenoDirOptions {
+        maybe_custom_root: cache_path.as_deref(),
+        maybe_initial_cwd: None,
+      },
+    )
+  {
+    util::cache_size::maybe_trim_cache(dir.as_ref());
+  }
+
+  result
 }
 
 /// Determines whether a error encountered during `deno run`

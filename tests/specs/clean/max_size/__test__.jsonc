@@ -1,0 +1,46 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "steps": [{
+    // Populate the cache by fetching a remote module.
+    "args": "run http://localhost:4545/echo.ts hi",
+    "output": "[WILDCARD]"
+  }, {
+    // Verify that the cache directory exists and has files.
+    "args": [
+      "eval",
+      "console.log(Deno.statSync('./deno_dir') != null)"
+    ],
+    "output": "true\n"
+  }, {
+    // Run with DENO_CACHE_MAX_SIZE=1B (absurdly small limit).
+    // This should trigger cache trimming after the eval completes.
+    "envs": {
+      "DENO_CACHE_MAX_SIZE": "1B"
+    },
+    "args": [
+      "eval",
+      "console.log('hello')"
+    ],
+    "output": "hello\nCache trimmed [WILDCARD]\n"
+  }, {
+    // Run with DENO_CACHE_MAX_SIZE unset - no trimming message.
+    "args": [
+      "eval",
+      "console.log('no trim')"
+    ],
+    "output": "no trim\n"
+  }, {
+    // Run with a very large limit - no trimming needed.
+    "envs": {
+      "DENO_CACHE_MAX_SIZE": "10G"
+    },
+    "args": [
+      "eval",
+      "console.log('large limit')"
+    ],
+    "output": "large limit\n"
+  }]
+}
