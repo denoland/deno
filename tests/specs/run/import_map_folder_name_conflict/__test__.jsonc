@@ -1,0 +1,12 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/31837
+  // When a folder name matches an import-mapped npm package name,
+  // running a file in that folder without ./ prefix should resolve
+  // to the local file, not the npm package.
+  "tests": {
+    "folder_name_same_as_package": {
+      "args": "run chalk/main.ts",
+      "output": "[WILDCARD]Hello\n"
+    }
+  }
+}

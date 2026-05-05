@@ -485,10 +485,36 @@ impl CliMainWorkerFactory {
             &referrer,
           )?;
         let main_module =
-          self.lib_main_worker_factory.resolve_npm_binary_entrypoint(
+          match self.lib_main_worker_factory.resolve_npm_binary_entrypoint(
             &package_folder,
             package_ref.sub_path(),
-          )?;
+          ) {
+            Ok(m) => m,
+            Err(err) => {
+              // If npm binary resolution fails and the specifier looks like a
+              // relative file path (e.g. "stripe/sync_prod_to_test.ts" was
+              // mapped to npm:stripe/sync_prod_to_test.ts via import map), try
+              // resolving as a file path relative to cwd. Only stat the file
+              // on the failure path to avoid unnecessary I/O.
+              let fallback = package_ref.sub_path().and_then(|sub_path| {
+                let relative_path =
+                  format!("{}/{}", package_ref.req().name, sub_path);
+                let cwd_path =
+                  deno_path_util::url_to_file_path(&self.shared.initial_cwd)
+                    .ok()?;
+                let file_path = cwd_path.join(&relative_path);
+                if file_path.is_file() {
+                  deno_path_util::url_from_file_path(&file_path).ok()
+                } else {
+                  None
+                }
+              });
+              match fallback {
+                Some(url) => url,
+                None => return Err(err.into()),
+              }
+            }
+          };
 
         if let Some(lockfile) = &self.maybe_lockfile {
           // For npm binary commands, ensure that the lockfile gets updated
