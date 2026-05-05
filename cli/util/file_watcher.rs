@@ -39,7 +39,7 @@ use crate::util::fs::canonicalize_path;
 
 const CLEAR_SCREEN: &str = "\x1B[H\x1B[2J\x1B[3J";
 const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);
-const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(500);
 
 struct DebouncedReceiver {
   // The `recv()` call could be used in a tokio `select!` macro,

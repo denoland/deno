@@ -8,14 +8,17 @@
 // - src/stream_wrap.cc
 
 use std::cell::Cell;
+use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::ffi::c_char;
 use std::ptr::NonNull;
+use std::rc::Rc;
 
 use deno_core::CppgcBase;
 use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UV_EBADF;
@@ -28,8 +31,16 @@ use deno_core::v8;
 use crate::ops::handle_wrap::AsyncWrap;
 use crate::ops::handle_wrap::GlobalHandle;
 use crate::ops::handle_wrap::HandleWrap;
+use crate::ops::handle_wrap::OwnedPtr;
 use crate::ops::handle_wrap::ProviderType;
-use crate::ops::tty_wrap::OwnedPtr;
+use crate::ops::stream_wrap_state::ReadCallbackKey;
+use crate::ops::stream_wrap_state::ReadCallbackRegistry;
+use crate::ops::stream_wrap_state::ReadCallbackState;
+use crate::ops::stream_wrap_state::ReadInterceptor;
+use crate::ops::stream_wrap_state::RequestCallbackRegistry;
+use crate::ops::stream_wrap_state::RequestCallbackState;
+use crate::ops::stream_wrap_state::ShutdownRequestCallbackState;
+use crate::ops::stream_wrap_state::WriteRequestCallbackState;
 
 // ---------------------------------------------------------------------------
 // StreamBase state fields — mirrors Node's StreamBaseStateFields enum.
@@ -40,6 +51,16 @@ use crate::ops::tty_wrap::OwnedPtr;
 /// This is an Int32Array shared between JS and Rust (mirrors Node's AliasedInt32Array).
 pub struct StreamBaseState {
   pub array: v8::Global<v8::Int32Array>,
+}
+
+pub(crate) struct StreamHandleData {
+  pub js_handle: UnsafeCell<GlobalHandle<v8::Object>>,
+  pub isolate: UnsafeCell<v8::UnsafeRawIsolatePtr>,
+  pub bytes_read: Rc<Cell<u64>>,
+  pub desired_read_interceptor: Cell<Option<ReadInterceptor>>,
+  pub read_callbacks: RefCell<ReadCallbackRegistry>,
+  pub active_read: Cell<Option<ReadCallbackKey>>,
+  pub request_callbacks: RefCell<RequestCallbackRegistry>,
 }
 
 #[op2(fast)]
@@ -141,36 +162,36 @@ impl ShutdownWrap {
 #[cppgc_inherits_from(HandleWrap)]
 pub struct LibUvStreamWrap {
   base: HandleWrap,
-  fd: i32,
+  fd: Cell<i32>,
   stream: *const uv_stream_t,
-  bytes_read: Cell<u64>,
-  bytes_written: Cell<u64>,
-  /// The JS object wrapping this cppgc object. Set by JS via set_handle()
-  /// after construction. Needed so completion callbacks can pass the handle
-  /// to oncomplete(status, handle, error).
-  ///
-  /// Uses GlobalHandle so we can switch between strong (keeps JS object alive)
-  /// and weak (allows GC to collect) references. Starts as None, set to
-  /// Weak by set_handle(). This mirrors Node's BaseObject::persistent_handle_
-  /// which is made weak to avoid preventing GC of the JS wrapper when nothing
-  /// else references it. Since cppgc already manages the C++ object's lifetime,
-  /// a strong Global here would create a reference cycle (JS -> cppgc -> Global -> JS).
-  js_handle: UnsafeCell<GlobalHandle<v8::Object>>,
-  /// Whether readStart has been called (and stream.data points to CallbackData
-  /// rather than other data). Guards readStop from misinterpreting the data
-  /// pointer.
+  bytes_read: Rc<Cell<u64>>,
+  bytes_written: Rc<Cell<u64>>,
+  /// Stable per-handle data referenced from `uv_stream_t.data` for the
+  /// lifetime of the native stream.
+  handle_data: Box<StreamHandleData>,
+  /// Whether readStart has been called and the handle currently has an active
+  /// callback state entry.
   reading_started: Cell<bool>,
 }
 
 impl LibUvStreamWrap {
   pub fn new(base: HandleWrap, fd: i32, stream: *const uv_stream_t) -> Self {
+    let bytes_read = Rc::new(Cell::new(0));
     Self {
       base,
-      fd,
+      fd: Cell::new(fd),
       stream,
-      bytes_read: Cell::new(0),
-      bytes_written: Cell::new(0),
-      js_handle: UnsafeCell::new(GlobalHandle::default()),
+      bytes_read: bytes_read.clone(),
+      bytes_written: Rc::new(Cell::new(0)),
+      handle_data: Box::new(StreamHandleData {
+        js_handle: UnsafeCell::new(GlobalHandle::default()),
+        isolate: UnsafeCell::new(v8::UnsafeRawIsolatePtr::null()),
+        bytes_read,
+        desired_read_interceptor: Cell::new(None),
+        read_callbacks: RefCell::new(ReadCallbackRegistry::default()),
+        active_read: Cell::new(None),
+        request_callbacks: RefCell::new(RequestCallbackRegistry::default()),
+      }),
       reading_started: Cell::new(false),
     }
   }
@@ -180,12 +201,51 @@ impl LibUvStreamWrap {
     self.stream as *mut uv_stream_t
   }
 
-  fn js_handle_global(
+  #[allow(dead_code, reason = "used by upcoming TCPWrap/TLSWrap")]
+  pub(crate) fn set_fd(&self, fd: i32) {
+    self.fd.set(fd);
+  }
+
+  #[allow(dead_code, reason = "used by upcoming TCPWrap/TLSWrap")]
+  pub(crate) fn handle_wrap(&self) -> &HandleWrap {
+    &self.base
+  }
+
+  pub(crate) fn handle_data_ptr(&self) -> *mut std::ffi::c_void {
+    (&*self.handle_data as *const StreamHandleData)
+      .cast_mut()
+      .cast()
+  }
+
+  pub(crate) fn js_handle_global(
     &self,
     scope: &mut v8::PinScope,
   ) -> Option<v8::Global<v8::Object>> {
     // SAFETY: js_handle is only written via set_handle which runs on the same thread before any read.
-    unsafe { (*self.js_handle.get()).to_global(scope) }
+    unsafe { (*self.handle_data.js_handle.get()).to_global(scope) }
+  }
+
+  #[allow(dead_code, reason = "used by upcoming TCPWrap/TLSWrap")]
+  pub(crate) fn set_js_handle(
+    &self,
+    handle: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope,
+  ) {
+    // SAFETY: single-threaded access.
+    unsafe {
+      *self.handle_data.js_handle.get() =
+        GlobalHandle::new_strong(scope, v8::Local::new(scope, &handle));
+      *self.handle_data.isolate.get() = scope.as_raw_isolate_ptr();
+    }
+  }
+
+  /// Clear the JS handle reference when the native handle is closing so the
+  /// wrapper no longer keeps the JS object alive.
+  pub(crate) fn clear_js_handle(&self) {
+    // SAFETY: single-threaded access.
+    unsafe {
+      *self.handle_data.js_handle.get() = GlobalHandle::None;
+    }
   }
 
   /// Make the js_handle reference strong, preventing GC of the JS object.
@@ -193,7 +253,7 @@ impl LibUvStreamWrap {
   pub fn make_handle_strong(&self, scope: &mut v8::PinScope) {
     // SAFETY: single-threaded access, same as js_handle_global.
     unsafe {
-      (*self.js_handle.get()).make_strong(scope);
+      (*self.handle_data.js_handle.get()).make_strong(scope);
     }
   }
 
@@ -202,8 +262,155 @@ impl LibUvStreamWrap {
   pub fn make_handle_weak(&self, scope: &mut v8::PinScope) {
     // SAFETY: single-threaded access, same as js_handle_global.
     unsafe {
-      (*self.js_handle.get()).make_weak(scope);
+      (*self.handle_data.js_handle.get()).make_weak(scope);
     }
+  }
+
+  fn install_read_state(&self, state: ReadCallbackState) {
+    let key = self.handle_data.read_callbacks.borrow_mut().insert(state);
+    self.handle_data.active_read.set(Some(key));
+  }
+
+  pub(crate) fn stable_handle_data(
+    stream: *mut uv_stream_t,
+  ) -> Option<NonNull<StreamHandleData>> {
+    if stream.is_null() {
+      return None;
+    }
+    // SAFETY: `stream` is non-null above and callers only pass valid uv stream pointers.
+    NonNull::new(unsafe { (*stream).data as *mut StreamHandleData })
+  }
+
+  #[allow(dead_code, reason = "used by upcoming TLSWrap")]
+  pub(crate) fn set_read_interceptor_for_stream(
+    stream: *mut uv_stream_t,
+    interceptor: Option<ReadInterceptor>,
+  ) {
+    let Some(handle_data_ptr) = Self::stable_handle_data(stream) else {
+      return;
+    };
+    // SAFETY: `uv_stream_t.data` points at the owning handle's stable
+    // `StreamHandleData` allocation while the native stream is alive.
+    let handle_data = unsafe { handle_data_ptr.as_ref() };
+    handle_data.desired_read_interceptor.set(interceptor);
+    if let Some(key) = handle_data.active_read.get()
+      && let Ok(mut callbacks) = handle_data.read_callbacks.try_borrow_mut()
+    {
+      let _ = callbacks.update_interceptor(key, interceptor);
+    }
+  }
+
+  #[allow(dead_code, reason = "used by upcoming TLSWrap")]
+  pub(crate) fn read_start_intercepted_for_stream(
+    stream: *mut uv_stream_t,
+  ) -> i32 {
+    let Some(handle_data_ptr) = Self::stable_handle_data(stream) else {
+      return UV_EBADF;
+    };
+    // SAFETY: `uv_stream_t.data` points at the owning handle's stable
+    // `StreamHandleData` allocation while the native stream is alive.
+    let handle_data = unsafe { handle_data_ptr.as_ref() };
+    if handle_data.active_read.get().is_some() {
+      return 0;
+    }
+
+    // Use try_borrow_mut to handle re-entrant calls gracefully.
+    // This can happen when uv_read_start fires on_uv_read synchronously
+    // (data already buffered), whose interceptor calls cycle() which
+    // may call back into read_start.
+    let Ok(mut callbacks) = handle_data.read_callbacks.try_borrow_mut() else {
+      return 0;
+    };
+    let key = callbacks.insert(ReadCallbackState {
+      isolate: v8::UnsafeRawIsolatePtr::null(),
+      onread: None,
+      stream_base_state: None,
+      handle: None,
+      bytes_read: handle_data.bytes_read.clone(),
+      read_interceptor: handle_data.desired_read_interceptor.get(),
+    });
+    drop(callbacks);
+    handle_data.active_read.set(Some(key));
+
+    // SAFETY: `stream` is a valid libuv stream owned by this wrapper.
+    unsafe {
+      uv_compat::uv_read_start(stream, Some(on_uv_alloc), Some(on_uv_read))
+    }
+  }
+
+  pub(crate) fn read_stop_for_stream(stream: *mut uv_stream_t) -> i32 {
+    let Some(handle_data_ptr) = Self::stable_handle_data(stream) else {
+      return UV_EBADF;
+    };
+    // SAFETY: `uv_stream_t.data` points at the owning handle's stable
+    // `StreamHandleData` allocation while the native stream is alive.
+    let handle_data = unsafe { handle_data_ptr.as_ref() };
+    if let Some(key) = handle_data.active_read.take() {
+      // Use try_borrow_mut to handle re-entrant calls from interceptor
+      // callbacks that may fire during on_uv_read processing.
+      if let Ok(mut callbacks) = handle_data.read_callbacks.try_borrow_mut() {
+        let _ = callbacks.remove(key);
+      }
+    }
+    // SAFETY: `stream` is a valid libuv stream owned by this wrapper.
+    unsafe { uv_compat::uv_read_stop(stream) }
+  }
+
+  fn read_start_with_handle(
+    &self,
+    this: v8::Local<v8::Object>,
+    scope: &mut v8::PinScope,
+    op_state: &mut OpState,
+  ) -> i32 {
+    let stream = self.stream_ptr();
+    if stream.is_null() {
+      return UV_EBADF;
+    }
+
+    if self.reading_started.get() {
+      return 0;
+    }
+
+    let onread_key =
+      v8::String::new_external_onebyte_static(scope, b"onread").unwrap();
+    let Some(onread_val) = this.get(scope, onread_key.into()) else {
+      return UV_EBADF;
+    };
+    let Ok(onread) = v8::Local::<v8::Function>::try_from(onread_val) else {
+      return UV_EBADF;
+    };
+
+    let state_global = &op_state.borrow::<StreamBaseState>().array;
+    let state_array = v8::Local::new(scope, state_global);
+
+    self.install_read_state(ReadCallbackState {
+      // SAFETY: `scope` is the currently active isolate scope for this op call.
+      isolate: unsafe { scope.as_raw_isolate_ptr() },
+      onread: Some(v8::Global::new(scope, onread)),
+      stream_base_state: Some(v8::Global::new(scope, state_array)),
+      handle: Some(v8::Global::new(scope, this)),
+      bytes_read: self.handle_data.bytes_read.clone(),
+      read_interceptor: self.handle_data.desired_read_interceptor.get(),
+    });
+    self.reading_started.set(true);
+    self.make_handle_strong(scope);
+
+    // SAFETY: `stream` is a valid libuv stream owned by this wrapper.
+    unsafe {
+      uv_compat::uv_read_start(stream, Some(on_uv_alloc), Some(on_uv_read))
+    }
+  }
+
+  pub(crate) fn read_stop_internal(&self) -> i32 {
+    let stream = self.stream_ptr();
+    if stream.is_null() {
+      return UV_EBADF;
+    }
+    if LibUvStreamWrap::stable_handle_data(stream).is_none() {
+      return UV_EBADF;
+    }
+    self.reading_started.set(false);
+    Self::read_stop_for_stream(stream)
   }
 }
 
@@ -218,6 +425,23 @@ unsafe impl GarbageCollected for LibUvStreamWrap {
   }
 }
 
+impl LibUvStreamWrap {
+  /// Detach the stream handle data so it won't be accessed after GC.
+  /// Must be called before the uv handle memory is freed.
+  /// Only call this on handles that OWN the uv stream (e.g. TCPWrap),
+  /// not on wrappers that borrow it (e.g. TLSWrap).
+  pub(crate) fn detach_stream(&mut self) {
+    if !self.stream.is_null() {
+      // SAFETY: stream pointer is non-null (checked above) and valid for the
+      // lifetime of the owning handle; we null it to prevent dangling access.
+      unsafe {
+        (*(self.stream as *mut uv_stream_t)).data = std::ptr::null_mut();
+      }
+      self.stream = std::ptr::null();
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Static alloc/read callbacks for uv_read_start.
 //
@@ -228,21 +452,64 @@ unsafe impl GarbageCollected for LibUvStreamWrap {
 // In Node, these live as LibuvStreamWrap::OnUvAlloc / LibuvStreamWrap::OnUvRead.
 // ---------------------------------------------------------------------------
 
-/// Alloc callback for uv_read_start. Allocates a buffer via
-/// `ArrayBuffer::new_backing_store_uninit`.
+/// Thread-local free list of 64KB read buffers. libuv calls the alloc
+/// callback with a 65536-byte suggested size on every read.
+///
+/// We allocate read buffers with `std::alloc::alloc` which goes through
+/// the system allocator (xzone on macOS). At ~70k reads/sec of a fixed
+/// 64KB size, every free triggers a `mach_vm_reclaim_*` kernel trap
+/// (~6% of CPU in the pre-pool profile). Pooling keeps the 64KB slab
+/// owned by the runtime and reused across reads instead of handed back
+/// to the kernel.
+///
+/// The pool is capped so long-lived idle processes don't retain excess
+/// memory. Non-65536 sizes skip the pool entirely.
+const POOLED_BUF_SIZE: usize = 65536;
+const POOLED_BUF_MAX: usize = 128;
+
+thread_local! {
+  static READ_BUF_POOL: std::cell::RefCell<Vec<*mut u8>> =
+    const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[inline]
+fn pool_acquire_buf() -> Option<*mut u8> {
+  READ_BUF_POOL.with(|p| p.borrow_mut().pop())
+}
+
+#[inline]
+fn pool_release_buf(ptr: *mut u8) -> bool {
+  READ_BUF_POOL.with(|p| {
+    let mut pool = p.borrow_mut();
+    if pool.len() < POOLED_BUF_MAX {
+      pool.push(ptr);
+      true
+    } else {
+      false
+    }
+  })
+}
+
+/// Alloc callback for uv_read_start. Returns a pooled 64KB slab when
+/// `suggested_size` matches, otherwise falls back to `std::alloc::alloc`.
 ///
 /// # Safety
-/// `handle` must be a valid uv_handle_t whose `data` field points to
-/// CallbackData that was set up by readStart.
+/// `buf` must be the out-param provided by libuv per the `uv_alloc_cb` contract.
 unsafe extern "C" fn on_uv_alloc(
   _handle: *mut uv_compat::uv_handle_t,
   suggested_size: usize,
   buf: *mut uv_buf_t,
 ) {
-  // Allocate raw memory for the read buffer.
-  let layout = std::alloc::Layout::from_size_align(suggested_size, 1).unwrap();
-  // SAFETY: layout has non-zero size (libuv provides a positive suggested_size).
-  let ptr = unsafe { std::alloc::alloc(layout) };
+  let ptr = if suggested_size == POOLED_BUF_SIZE
+    && let Some(ptr) = pool_acquire_buf()
+  {
+    ptr
+  } else {
+    let layout =
+      std::alloc::Layout::from_size_align(suggested_size, 1).unwrap();
+    // SAFETY: layout has non-zero size (libuv provides a positive suggested_size).
+    unsafe { std::alloc::alloc(layout) }
+  };
   if ptr.is_null() {
     // SAFETY: buf is a valid pointer provided by libuv per the uv_alloc_cb contract.
     unsafe {
@@ -268,39 +535,81 @@ unsafe extern "C" fn on_uv_alloc(
 ///
 /// # Safety
 /// `stream` must be a valid uv_stream_t whose `data` field points to
-/// a CallbackData set up by readStart. `buf` must be the buffer from
-/// on_uv_alloc. `stream.loop_.data` must be a raw `Global<Context>`
-/// pointer set by `register_uv_loop`.
+/// the owning `StreamHandleData`, whose active read key resolves to a
+/// registered callback state. `buf` must be the buffer from on_uv_alloc.
+/// `stream.loop_.data` must be a raw `Global<Context>` pointer set by
+/// `register_uv_loop`.
 unsafe extern "C" fn on_uv_read(
   stream: *mut uv_stream_t,
   nread: isize,
   buf: *const uv_buf_t,
 ) {
-  // SAFETY: stream is a valid uv_stream_t per the uv_read_cb contract.
-  let cb_data_ptr = unsafe { (*stream).data as *mut CallbackData };
-  if cb_data_ptr.is_null() {
+  let Some(handle_data_ptr) = LibUvStreamWrap::stable_handle_data(stream)
+  else {
     free_uv_buf(buf);
     return;
+  };
+  // SAFETY: `uv_stream_t.data` points at the owning handle's stable
+  // `StreamHandleData` allocation while the native stream is alive.
+  let handle_data = unsafe { handle_data_ptr.as_ref() };
+  let Some(snapshot) = handle_data
+    .active_read
+    .get()
+    .and_then(|key| handle_data.read_callbacks.borrow().snapshot(key))
+  else {
+    free_uv_buf(buf);
+    return;
+  };
+
+  if let Some(interceptor) = snapshot.read_interceptor {
+    if nread < 0 {
+      // Socket-level error or EOF: don't hand it to the interceptor.
+      // Match Node's PassReadErrorToPreviousListener — the consume
+      // interceptor only handles data; terminal reads go back to the
+      // normal JS read path so `socket.on('error')` / `'end'`
+      // listeners (which the HTTP server relies on to detect aborts
+      // and close connections) fire.
+      let _ = LibUvStreamWrap::read_stop_for_stream(stream);
+      // Fall through to the normal read_cb path below.
+    } else {
+      if nread > 0 {
+        snapshot
+          .bytes_read
+          .set(snapshot.bytes_read.get() + nread as u64);
+      }
+      // SAFETY: interceptor registration guarantees the callback and payload are valid for this read dispatch.
+      unsafe { (interceptor.callback)(interceptor.ptr, stream, nread, buf) };
+      // The interceptor borrows `buf.base` during its callback but does
+      // not take ownership — free the buffer here once it returns.
+      // Skipping this previously leaked 64KB per read on the consume
+      // path (RSS climbed into GBs under sustained HTTP traffic).
+      free_uv_buf(buf);
+      return;
+    }
   }
-  // SAFETY: cb_data_ptr is non-null and was set by read_start via Box::into_raw.
-  let cb_data = unsafe { &mut *cb_data_ptr };
+
+  let Some(stream_base_state) = snapshot.stream_base_state else {
+    free_uv_buf(buf);
+    return;
+  };
+  let Some(onread_global) = snapshot.onread else {
+    free_uv_buf(buf);
+    return;
+  };
+  let Some(handle_global) = snapshot.handle else {
+    free_uv_buf(buf);
+    return;
+  };
 
   // Recover isolate + context from the uv_loop
-  // SAFETY: cb_data.isolate is the raw isolate pointer captured in read_start and is still valid.
+  // SAFETY: isolate is the raw isolate pointer captured in read_start and is still valid.
   let mut isolate =
-    unsafe { v8::Isolate::from_raw_isolate_ptr(cb_data.isolate) };
-  v8::scope!(let handle_scope, &mut isolate);
+    unsafe { v8::Isolate::from_raw_isolate_ptr(snapshot.isolate) };
   // SAFETY: stream is a valid uv_stream_t per the uv_read_cb contract.
   let loop_ptr = unsafe { (*stream).loop_ };
-  // SAFETY: loop_.data holds a raw Global<Context> set by register_uv_loop; we borrow and re-leak it.
-  let context = unsafe {
-    let raw = NonNull::new_unchecked((*loop_ptr).data as *mut v8::Context);
-    let global = v8::Global::from_raw(handle_scope, raw);
-    let cloned = global.clone();
-    // Leak the original back — it's owned by the runtime
-    global.into_raw();
-    cloned
-  };
+  // SAFETY: loop_ptr comes from a valid uv stream whose loop has been registered.
+  let context = unsafe { clone_context_from_uv_loop(&mut isolate, loop_ptr) };
+  v8::scope!(let handle_scope, &mut isolate);
   let context = v8::Local::new(handle_scope, context);
   let scope = &mut v8::ContextScope::new(handle_scope, context);
 
@@ -308,7 +617,7 @@ unsafe extern "C" fn on_uv_read(
     free_uv_buf(buf);
     if nread < 0 {
       // Error/EOF path
-      let state_array = v8::Local::new(scope, &cb_data.stream_base_state);
+      let state_array = v8::Local::new(scope, &stream_base_state);
       state_array.set_index(
         scope,
         StreamBaseStateFields::ReadBytesOrError as u32,
@@ -320,20 +629,21 @@ unsafe extern "C" fn on_uv_read(
         v8::Integer::new(scope, 0).into(),
       );
 
-      let onread = v8::Local::new(scope, &cb_data.onread);
-      let recv = v8::Local::new(scope, &cb_data.handle);
+      let onread = v8::Local::new(scope, &onread_global);
+      let recv = v8::Local::new(scope, &handle_global);
       let undef = v8::undefined(scope);
+      // EOF/error path: don't report exceptions as fatal.
+      // Socket errors (hang up, reset, etc.) are expected lifecycle
+      // events that should be handled by the socket's error handler.
       onread.call(scope, recv.into(), &[undef.into()]);
     }
     return;
   }
 
   // Update bytes_read counter (mirrors Node's EmitRead in stream_base-inl.h)
-  // SAFETY: bytes_read is a pointer to a Cell<u64> in the LibUvStreamWrap which outlives the callback.
-  unsafe {
-    let counter = &*cb_data.bytes_read;
-    counter.set(counter.get() + nread as u64);
-  }
+  snapshot
+    .bytes_read
+    .set(snapshot.bytes_read.get() + nread as u64);
 
   // Successful read: wrap data in ArrayBuffer
   let nread_usize = nread as usize;
@@ -355,7 +665,7 @@ unsafe extern "C" fn on_uv_read(
   let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store.into());
 
   // Update stream_base_state
-  let state_array = v8::Local::new(scope, &cb_data.stream_base_state);
+  let state_array = v8::Local::new(scope, &stream_base_state);
   state_array.set_index(
     scope,
     StreamBaseStateFields::ReadBytesOrError as u32,
@@ -368,20 +678,78 @@ unsafe extern "C" fn on_uv_read(
   );
 
   // Call onread(arrayBuffer) with handle as `this`
-  let onread = v8::Local::new(scope, &cb_data.onread);
-  let recv = v8::Local::new(scope, &cb_data.handle);
-  onread.call(scope, recv.into(), &[ab.into()]);
+  // Matches Node's convention: nread is in streamBaseState[kReadBytesOrError].
+  let onread = v8::Local::new(scope, &onread_global);
+  let recv = v8::Local::new(scope, &handle_global);
+  let caught_exception = {
+    v8::tc_scope!(tc, scope);
+    let result = onread.call(tc, recv.into(), &[ab.into()]);
+    if result.is_none() && tc.has_caught() {
+      let exc = tc.exception();
+      tc.reset();
+      exc
+    } else {
+      None
+    }
+  };
+  if let Some(exception) = caught_exception {
+    call_fatal_exception(scope, exception);
+  }
+}
+
+/// Handle uncaught exceptions from stream onread callbacks.
+/// Uses globalThis.reportError() to report the exception as uncaught,
+/// matching Node's MakeCallback behavior where unhandled exceptions
+/// from native callbacks terminate the process.
+fn call_fatal_exception(
+  scope: &mut v8::ContextScope<v8::HandleScope>,
+  exception: v8::Local<v8::Value>,
+) {
+  let global = scope.get_current_context().global(scope);
+  let key = v8::String::new(scope, "reportError").unwrap();
+  if let Some(report_fn_val) = global.get(scope, key.into())
+    && let Ok(report_fn) = v8::Local::<v8::Function>::try_from(report_fn_val)
+  {
+    let undef = v8::undefined(scope);
+    report_fn.call(scope, undef.into(), &[exception]);
+  }
 }
 
 /// Free a buffer allocated by on_uv_alloc.
-fn free_uv_buf(buf: *const uv_buf_t) {
+pub(crate) fn free_uv_buf(buf: *const uv_buf_t) {
   // SAFETY: buf is a valid uv_buf_t from on_uv_alloc; base was allocated with alloc(len, 1).
   unsafe {
     if !(*buf).base.is_null() && (*buf).len > 0 {
-      let layout = std::alloc::Layout::from_size_align((*buf).len, 1).unwrap();
-      std::alloc::dealloc((*buf).base as *mut u8, layout);
+      let len = (*buf).len;
+      let ptr = (*buf).base as *mut u8;
+      if len == POOLED_BUF_SIZE && pool_release_buf(ptr) {
+        return;
+      }
+      let layout = std::alloc::Layout::from_size_align(len, 1).unwrap();
+      std::alloc::dealloc(ptr, layout);
     }
   }
+}
+
+/// Clone the V8 context registered on a uv loop without taking ownership of
+/// the runtime's raw persistent handle stored in `loop_.data`.
+///
+/// # Safety
+/// `loop_ptr` must be a valid, initialized `uv_loop_t` whose `data` field
+/// contains the raw `Global<Context>` installed by `register_uv_loop`.
+pub(crate) unsafe fn clone_context_from_uv_loop(
+  isolate: &mut v8::Isolate,
+  loop_ptr: *mut uv_compat::uv_loop_t,
+) -> v8::Global<v8::Context> {
+  // SAFETY: `loop_ptr` is valid per the function contract above.
+  let raw = NonNull::new(unsafe { (*loop_ptr).data as *mut v8::Context })
+    .expect("uv loop missing registered V8 context");
+  // SAFETY: `raw` came from `Global::into_raw()` and is still owned by the runtime.
+  let global = unsafe { v8::Global::from_raw(isolate, raw) };
+  let cloned = global.clone();
+  // Leak the original back because the runtime still owns that persistent.
+  global.into_raw();
+  cloned
 }
 
 /// Backing store deleter that frees memory allocated by on_uv_alloc.
@@ -398,21 +766,14 @@ unsafe extern "C" fn backing_store_deleter(
   // which may be smaller (nread < allocated size is common for partial reads).
   let alloc_size = deleter_data as usize;
   if !data.is_null() && alloc_size > 0 {
+    let ptr = data as *mut u8;
+    if alloc_size == POOLED_BUF_SIZE && pool_release_buf(ptr) {
+      return;
+    }
     let layout = std::alloc::Layout::from_size_align(alloc_size, 1).unwrap();
     // SAFETY: data was allocated via alloc(Layout::from_size_align(alloc_size, 1)) in on_uv_alloc.
-    unsafe { std::alloc::dealloc(data as *mut u8, layout) };
+    unsafe { std::alloc::dealloc(ptr, layout) };
   }
-}
-
-/// Data stored on uv_stream_t.data to bridge between C callbacks and JS.
-struct CallbackData {
-  isolate: v8::UnsafeRawIsolatePtr,
-  onread: v8::Global<v8::Function>,
-  stream_base_state: v8::Global<v8::Int32Array>,
-  /// The JS handle object — used as `this` when calling onread
-  handle: v8::Global<v8::Object>,
-  /// Pointer to LibUvStreamWrap.bytes_read for updating from C callback
-  bytes_read: *const Cell<u64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -423,35 +784,40 @@ struct CallbackData {
 // ---------------------------------------------------------------------------
 
 /// # Safety
-/// `req` must be a valid uv_write_t whose `data` field points to a
-/// WriteCallbackData. `req.handle.loop_.data` must be a raw
+/// `req` must be a valid uv_write_t whose `handle.data` points to the
+/// owning `StreamHandleData`. `req.handle.loop_.data` must be a raw
 /// `Global<Context>` pointer.
 unsafe extern "C" fn after_uv_write(req: *mut uv_write_t, status: i32) {
-  // SAFETY: req is a valid uv_write_t per the uv_write_cb contract.
-  let cb_data_ptr = unsafe { (*req).data as *mut WriteCallbackData };
-  if cb_data_ptr.is_null() {
+  // Reclaim ownership of the request allocated in `do_write` /
+  // `write_buffer`. Dropping at end-of-scope ensures every exit path
+  // frees it, avoiding the leak that existed when only the detached
+  // path called `Box::from_raw`.
+  // SAFETY: `req` was allocated with `Box::new` and is valid per the
+  // uv_write_cb contract.
+  let req = unsafe { Box::from_raw(req) };
+  let req_data = req.data;
+  let handle_data = LibUvStreamWrap::stable_handle_data(req.handle);
+  let Some(handle_data_ptr) = handle_data else {
+    // Handle was detached (e.g. GC).
     return;
-  }
-  // Take ownership back so it gets dropped after this callback
-  // SAFETY: cb_data_ptr was set from Box::into_raw in write_buffer/do_write; we take ownership here exactly once.
-  let cb_data = unsafe { Box::from_raw(cb_data_ptr) };
-  // SAFETY: req is a valid uv_write_t per the uv_write_cb contract.
-  unsafe { (*req).data = std::ptr::null_mut() };
+  };
+  // SAFETY: `uv_stream_t.data` points at the owning handle's stable
+  // `StreamHandleData` allocation while the native stream is alive.
+  let handle_data = unsafe { handle_data_ptr.as_ref() };
+  let Some(RequestCallbackState::Write(cb_data)) =
+    handle_data.request_callbacks.borrow_mut().take(req_data)
+  else {
+    return;
+  };
 
   // SAFETY: cb_data.isolate is the raw isolate pointer captured during the write call and is still valid.
   let mut isolate =
     unsafe { v8::Isolate::from_raw_isolate_ptr(cb_data.isolate) };
+  // SAFETY: req.handle and its loop_ field are valid per libuv guarantees.
+  let loop_ptr = unsafe { (*req.handle).loop_ };
+  // SAFETY: loop_ptr comes from a valid uv request whose loop has been registered.
+  let context = unsafe { clone_context_from_uv_loop(&mut isolate, loop_ptr) };
   v8::scope!(let handle_scope, &mut isolate);
-  // SAFETY: req is a valid uv_write_t; its handle and loop_ fields are valid per libuv guarantees.
-  let loop_ptr = unsafe { (*(*req).handle).loop_ };
-  // SAFETY: loop_.data is a raw Global<Context> set by register_uv_loop; we borrow and re-leak it.
-  let context = unsafe {
-    let raw = NonNull::new_unchecked((*loop_ptr).data as *mut v8::Context);
-    let global = v8::Global::from_raw(handle_scope, raw);
-    let cloned = global.clone();
-    global.into_raw();
-    cloned
-  };
   let context = v8::Local::new(handle_scope, context);
   let scope = &mut v8::ContextScope::new(handle_scope, context);
 
@@ -483,47 +849,43 @@ unsafe extern "C" fn after_uv_write(req: *mut uv_write_t, status: i32) {
   }
 }
 
-struct WriteCallbackData {
-  isolate: v8::UnsafeRawIsolatePtr,
-  req_wrap_obj: v8::Global<v8::Object>,
-  stream_handle: v8::Global<v8::Object>,
-  stream_base_state: v8::Global<v8::Int32Array>,
-  bytes: usize,
-}
-
 // ---------------------------------------------------------------------------
 // Shutdown completion callback for uv_shutdown.
 // ---------------------------------------------------------------------------
 
 /// # Safety
-/// `req` must be a valid uv_shutdown_t whose `data` field points to a
-/// ShutdownCallbackData. `req.handle.loop_.data` must be a raw
+/// `req` must be a valid uv_shutdown_t whose `handle.data` points to the
+/// owning `StreamHandleData`. `req.handle.loop_.data` must be a raw
 /// `Global<Context>` pointer.
 unsafe extern "C" fn after_uv_shutdown(req: *mut uv_shutdown_t, status: i32) {
-  // SAFETY: req is a valid uv_shutdown_t per the uv_shutdown_cb contract.
-  let cb_data_ptr = unsafe { (*req).data as *mut ShutdownCallbackData };
-  if cb_data_ptr.is_null() {
+  // Reclaim ownership so every exit path frees the request allocated
+  // in `do_shutdown`.
+  // SAFETY: `req` was allocated with `Box::new` and is valid per the
+  // uv_shutdown_cb contract.
+  let req = unsafe { Box::from_raw(req) };
+  let req_data = req.data;
+  let handle_data = LibUvStreamWrap::stable_handle_data(req.handle);
+  let Some(handle_data_ptr) = handle_data else {
+    // Handle was detached (e.g. GC).
     return;
-  }
-  // SAFETY: cb_data_ptr was set from Box::into_raw in shutdown; we take ownership here exactly once.
-  let cb_data = unsafe { Box::from_raw(cb_data_ptr) };
-  // SAFETY: req is a valid uv_shutdown_t per the uv_shutdown_cb contract.
-  unsafe { (*req).data = std::ptr::null_mut() };
+  };
+  // SAFETY: `uv_stream_t.data` points at the owning handle's stable
+  // `StreamHandleData` allocation while the native stream is alive.
+  let handle_data = unsafe { handle_data_ptr.as_ref() };
+  let Some(RequestCallbackState::Shutdown(cb_data)) =
+    handle_data.request_callbacks.borrow_mut().take(req_data)
+  else {
+    return;
+  };
 
   // SAFETY: cb_data.isolate is the raw isolate pointer captured during the shutdown call and is still valid.
   let mut isolate =
     unsafe { v8::Isolate::from_raw_isolate_ptr(cb_data.isolate) };
+  // SAFETY: req.handle and its loop_ field are valid per libuv guarantees.
+  let loop_ptr = unsafe { (*req.handle).loop_ };
+  // SAFETY: loop_ptr comes from a valid uv request whose loop has been registered.
+  let context = unsafe { clone_context_from_uv_loop(&mut isolate, loop_ptr) };
   v8::scope!(let handle_scope, &mut isolate);
-  // SAFETY: req is a valid uv_shutdown_t; its handle and loop_ fields are valid per libuv guarantees.
-  let loop_ptr = unsafe { (*(*req).handle).loop_ };
-  // SAFETY: loop_.data is a raw Global<Context> set by register_uv_loop; we borrow and re-leak it.
-  let context = unsafe {
-    let raw = NonNull::new_unchecked((*loop_ptr).data as *mut v8::Context);
-    let global = v8::Global::from_raw(handle_scope, raw);
-    let cloned = global.clone();
-    global.into_raw();
-    cloned
-  };
   let context = v8::Local::new(handle_scope, context);
   let scope = &mut v8::ContextScope::new(handle_scope, context);
 
@@ -546,12 +908,6 @@ unsafe extern "C" fn after_uv_shutdown(req: *mut uv_shutdown_t, status: i32) {
   }
 }
 
-struct ShutdownCallbackData {
-  isolate: v8::UnsafeRawIsolatePtr,
-  req_wrap_obj: v8::Global<v8::Object>,
-  stream_handle: v8::Global<v8::Object>,
-}
-
 // ---------------------------------------------------------------------------
 // Op methods on LibUvStreamWrap — exposed to JS as prototype methods.
 //
@@ -565,6 +921,35 @@ enum StringEncoding {
   Ascii,
   Latin1,
   Ucs2,
+}
+
+/// Resolve a writev encoding-name v8 String into a `StringEncoding`
+/// variant without allocating. Encoding names are short ASCII tokens
+/// (max 8 chars: "utf-16le"); read the bytes into a stack buffer and
+/// match against literals. Replaces a `to_rust_string_lossy` +
+/// `match as_deref` pair that allocated a fresh Rust String per chunk
+/// per writev — ~5 allocs/request on the HTTP chunked-encoding path.
+fn parse_encoding_no_alloc(
+  scope: &mut v8::PinScope,
+  encoding: v8::Local<v8::String>,
+) -> StringEncoding {
+  let len = encoding.length();
+  if len == 0 || len > 8 {
+    return StringEncoding::Utf8;
+  }
+  let mut buf = [0u8; 8];
+  encoding.write_one_byte_v2(
+    scope,
+    0,
+    &mut buf[..len],
+    v8::WriteFlags::empty(),
+  );
+  match &buf[..len] {
+    b"latin1" | b"binary" => StringEncoding::Latin1,
+    b"ucs2" | b"ucs-2" | b"utf16le" | b"utf-16le" => StringEncoding::Ucs2,
+    b"ascii" => StringEncoding::Ascii,
+    _ => StringEncoding::Utf8,
+  }
 }
 
 fn encode_string_to_vec(
@@ -612,7 +997,91 @@ fn encode_string_to_vec(
   }
 }
 
-#[op2(inherit = HandleWrap, base)]
+/// Upper bound on the encoded byte length of `string` under `encoding`.
+/// Mirrors Node's `StringBytes::StorageSize`. For UTF-8 this is the
+/// exact length; for UCS-2 it's length() * 2; for Latin1/ASCII it's
+/// length(). Used as the pre-allocation size for the shared backing
+/// store that holds all encoded strings in a writev call.
+fn encoded_storage_size(
+  scope: &mut v8::PinScope,
+  string: v8::Local<v8::String>,
+  encoding: &StringEncoding,
+) -> usize {
+  match encoding {
+    StringEncoding::Utf8 => string.utf8_length(scope),
+    StringEncoding::Latin1 | StringEncoding::Ascii => string.length(),
+    StringEncoding::Ucs2 => string.length() * 2,
+  }
+}
+
+/// Encode `string` directly into pre-allocated uninit storage. Returns
+/// the number of bytes written. The storage is typically a window
+/// inside a V8 `BackingStore` that will be held alive by the write
+/// request's retention list.
+fn encode_string_into_uninit(
+  scope: &mut v8::PinScope,
+  string: v8::Local<v8::String>,
+  encoding: StringEncoding,
+  out: &mut [std::mem::MaybeUninit<u8>],
+) -> usize {
+  match encoding {
+    StringEncoding::Utf8 => {
+      let len = string.utf8_length(scope);
+      string.write_utf8_uninit_v2(
+        scope,
+        &mut out[..len],
+        v8::WriteFlags::kReplaceInvalidUtf8,
+        None,
+      )
+    }
+    StringEncoding::Latin1 | StringEncoding::Ascii => {
+      let len = string.length();
+      string.write_one_byte_uninit_v2(
+        scope,
+        0,
+        &mut out[..len],
+        v8::WriteFlags::empty(),
+      );
+      len
+    }
+    StringEncoding::Ucs2 => {
+      let len_chars = string.length();
+      // V8's `write_v2` writes native-endian u16, which on
+      // little-endian targets is identical to UTF-16LE bytes — Node's
+      // 'ucs2' encoding. On the BE path (no current Deno target) we
+      // fall through to the temp-buffer + byte-swap path. Direct
+      // write requires the destination be u16-aligned and have room
+      // for `len_chars` u16 elements.
+      #[cfg(target_endian = "little")]
+      {
+        let dst_ptr = out.as_mut_ptr();
+        if dst_ptr.align_offset(std::mem::align_of::<u16>()) == 0
+          && out.len() >= len_chars * 2
+        {
+          // SAFETY: `dst_ptr` is u16-aligned and points at
+          // `len_chars * 2` writable bytes = `len_chars` writable
+          // u16 slots. `MaybeUninit<u8>` and `u16` have compatible
+          // representations modulo alignment, which we've verified.
+          let dst: &mut [u16] = unsafe {
+            std::slice::from_raw_parts_mut(dst_ptr as *mut u16, len_chars)
+          };
+          string.write_v2(scope, 0, dst, v8::WriteFlags::empty());
+          return len_chars * 2;
+        }
+      }
+      let mut tmp = vec![0u16; len_chars];
+      string.write_v2(scope, 0, &mut tmp, v8::WriteFlags::empty());
+      for (i, &ch) in tmp.iter().enumerate() {
+        let bytes = ch.to_le_bytes();
+        out[i * 2] = std::mem::MaybeUninit::new(bytes[0]);
+        out[i * 2 + 1] = std::mem::MaybeUninit::new(bytes[1]);
+      }
+      len_chars * 2
+    }
+  }
+}
+
+#[op2(base, inherit = HandleWrap)]
 impl LibUvStreamWrap {
   /// Called by JS immediately after construction to store the JS object
   /// reference: `stream.setHandle(stream)`
@@ -622,14 +1091,27 @@ impl LibUvStreamWrap {
     handle: v8::Local<v8::Object>,
     scope: &mut v8::PinScope,
   ) {
-    // Default to weak — with cppgc, a strong Global back to the JS object
-    // would create a reference cycle. Callers that need the object to stay
-    // alive (e.g. during active reads) should call make_handle_strong().
+    // Active libuv handles keep their JS wrappers alive in Node until close.
+    // We mirror that here and explicitly clear the back-reference on close.
     //
     // SAFETY: set_handle is called once at construction on the same thread; no concurrent access occurs.
     unsafe {
-      *self.js_handle.get() = GlobalHandle::new_weak(scope, handle);
+      *self.handle_data.js_handle.get() =
+        GlobalHandle::new_strong(scope, handle);
+      *self.handle_data.isolate.get() = scope.as_raw_isolate_ptr();
     }
+  }
+
+  #[reentrant]
+  fn close(
+    &self,
+    op_state: Rc<RefCell<OpState>>,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[scoped] cb: Option<v8::Global<v8::Function>>,
+  ) -> Result<(), ResourceError> {
+    self.clear_js_handle();
+    self.base.close_handle(op_state, this, scope, cb)
   }
 
   #[fast]
@@ -639,82 +1121,18 @@ impl LibUvStreamWrap {
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
   ) -> i32 {
-    let stream = self.stream_ptr();
-    if stream.is_null() {
-      return UV_EBADF;
-    }
-
-    let this = v8::Local::new(scope, &this);
-
-    // Get onread callback from JS object property (set by JS layer)
-    let onread_key =
-      v8::String::new_external_onebyte_static(scope, b"onread").unwrap();
-    let Some(onread_val) = this.get(scope, onread_key.into()) else {
-      return UV_EBADF;
+    let this = if let Some(handle) = self.js_handle_global(scope) {
+      v8::Local::new(scope, handle)
+    } else {
+      v8::Local::new(scope, &this)
     };
-    let Ok(onread) = v8::Local::<v8::Function>::try_from(onread_val) else {
-      return UV_EBADF;
-    };
-
-    // Get stream_base_state from OpState (registered by JS via
-    // op_stream_base_register_state)
-    let state_global = &op_state.borrow::<StreamBaseState>().array;
-    let state_array = v8::Local::new(scope, state_global);
-
-    let cb_data = Box::new(CallbackData {
-      // SAFETY: scope is a valid PinScope for the current isolate.
-      isolate: unsafe { scope.as_raw_isolate_ptr() },
-      onread: v8::Global::new(scope, onread),
-      stream_base_state: v8::Global::new(scope, state_array),
-      handle: v8::Global::new(scope, this),
-      bytes_read: &self.bytes_read as *const Cell<u64>,
-    });
-    // SAFETY: stream is a valid non-null uv_stream_t (checked above); we store the callback data pointer in it.
-    unsafe {
-      (*stream).data = Box::into_raw(cb_data) as *mut std::ffi::c_void;
-    }
-
-    self.reading_started.set(true);
-
-    // Active reads keep the JS object alive — upgrade to strong reference.
-    self.make_handle_strong(scope);
-
-    // SAFETY: stream is a valid non-null uv_stream_t with properly set up callback data.
-    unsafe {
-      uv_compat::uv_read_start(stream, Some(on_uv_alloc), Some(on_uv_read))
-    }
+    self.read_start_with_handle(this, scope, op_state)
   }
 
   #[fast]
-  pub fn read_stop(&self, scope: &mut v8::PinScope) -> i32 {
-    let stream = self.stream_ptr();
-    if stream.is_null() {
-      return UV_EBADF;
-    }
-
-    // Only drop CallbackData if readStart was called. The stream's data
-    // pointer may point to other data (e.g. StreamHandleData set by the
-    // constructor). Without this guard, readStop would misinterpret that
-    // data as CallbackData and corrupt memory.
-    if self.reading_started.get() {
-      // SAFETY: stream is a valid non-null uv_stream_t; data was set by
-      // read_start via Box::into_raw and reading_started confirms it is
-      // CallbackData.
-      unsafe {
-        let data = (*stream).data as *mut CallbackData;
-        if !data.is_null() {
-          drop(Box::from_raw(data));
-          (*stream).data = std::ptr::null_mut();
-        }
-      }
-      self.reading_started.set(false);
-    }
-
-    // No longer actively reading — allow GC to collect the JS object.
-    self.make_handle_weak(scope);
-
-    // SAFETY: stream is a valid non-null uv_stream_t (checked above).
-    unsafe { uv_compat::uv_read_stop(stream) }
+  #[reentrant]
+  pub fn read_stop(&self, _scope: &mut v8::PinScope) -> i32 {
+    self.read_stop_internal()
   }
 
   #[fast]
@@ -743,13 +1161,14 @@ impl LibUvStreamWrap {
       .js_handle_global(scope)
       .unwrap_or_else(|| v8::Global::new(scope, v8::Object::new(scope)));
     let mut req = Box::new(uv_compat::new_shutdown());
-    let cb_data = Box::new(ShutdownCallbackData {
-      // SAFETY: scope is a valid PinScope for the current isolate.
-      isolate: unsafe { scope.as_raw_isolate_ptr() },
-      req_wrap_obj: v8::Global::new(scope, req_wrap_obj),
-      stream_handle,
-    });
-    req.data = Box::into_raw(cb_data) as *mut std::ffi::c_void;
+    req.data = self.handle_data.request_callbacks.borrow_mut().insert(
+      RequestCallbackState::Shutdown(ShutdownRequestCallbackState {
+        // SAFETY: scope is a valid PinScope for the current isolate.
+        isolate: unsafe { scope.as_raw_isolate_ptr() },
+        req_wrap_obj: v8::Global::new(scope, req_wrap_obj),
+        stream_handle,
+      }),
+    );
     let req_ptr = Box::into_raw(req);
 
     // SAFETY: req_ptr is a valid uv_shutdown_t and stream is a valid non-null uv_stream_t.
@@ -758,12 +1177,19 @@ impl LibUvStreamWrap {
     };
 
     if err != 0 {
-      // SAFETY: uv_shutdown failed so the callback will never fire; we reclaim the boxed data and request.
+      // SAFETY: `req_ptr` is still owned locally because `uv_shutdown` failed synchronously.
+      let req_data = unsafe { (*req_ptr).data };
+      // SAFETY: `req_ptr` is valid and the callback will never observe this request after the synchronous failure.
       unsafe {
-        let data = (*req_ptr).data as *mut ShutdownCallbackData;
-        if !data.is_null() {
-          drop(Box::from_raw(data));
-        }
+        (*req_ptr).data = std::ptr::null_mut();
+      }
+      let _ = self
+        .handle_data
+        .request_callbacks
+        .borrow_mut()
+        .take(req_data);
+      // SAFETY: uv_shutdown failed so the callback will never fire; reclaim the request.
+      unsafe {
         drop(Box::from_raw(req_ptr));
       }
     }
@@ -798,7 +1224,6 @@ impl LibUvStreamWrap {
 
     // SAFETY: stream is a valid non-null uv_stream_t (checked above).
     let try_result = unsafe { uv_compat::uv_try_write(stream, data) };
-
     if try_result >= 0 && try_result as usize == byte_length {
       state_array.set_index(
         scope,
@@ -819,7 +1244,6 @@ impl LibUvStreamWrap {
     } else {
       (data, byte_length)
     };
-
     let buf = uv_buf_t {
       base: write_data.as_ptr() as *mut c_char,
       len: write_len,
@@ -829,29 +1253,37 @@ impl LibUvStreamWrap {
       .js_handle_global(scope)
       .unwrap_or_else(|| v8::Global::new(scope, v8::Object::new(scope)));
     let mut req = Box::new(uv_compat::new_write());
-    let cb_data = Box::new(WriteCallbackData {
-      // SAFETY: scope is a valid PinScope for the current isolate.
-      isolate: unsafe { scope.as_raw_isolate_ptr() },
-      req_wrap_obj: v8::Global::new(scope, req_wrap_obj),
-      stream_handle,
-      stream_base_state: v8::Global::new(scope, state_array),
-      bytes: byte_length,
-    });
-    req.data = Box::into_raw(cb_data) as *mut std::ffi::c_void;
+    req.data = self.handle_data.request_callbacks.borrow_mut().insert(
+      RequestCallbackState::Write(WriteRequestCallbackState {
+        // SAFETY: scope is a valid PinScope for the current isolate.
+        isolate: unsafe { scope.as_raw_isolate_ptr() },
+        req_wrap_obj: v8::Global::new(scope, req_wrap_obj),
+        stream_handle,
+        stream_base_state: v8::Global::new(scope, state_array),
+        bytes: byte_length,
+        owned_buffers: smallvec::SmallVec::new(),
+      }),
+    );
     let req_ptr = Box::into_raw(req);
 
     // SAFETY: req_ptr is a valid uv_write_t and stream is a valid non-null uv_stream_t.
     let err = unsafe {
       uv_compat::uv_write(req_ptr, stream, &buf, 1, Some(after_uv_write))
     };
-
     if err != 0 {
-      // SAFETY: uv_write failed so the callback will never fire; we reclaim the boxed data and request.
+      // SAFETY: `req_ptr` is still owned locally because `uv_write` failed synchronously.
+      let req_data = unsafe { (*req_ptr).data };
+      // SAFETY: `req_ptr` is valid and the callback will never observe this request after the synchronous failure.
       unsafe {
-        let data = (*req_ptr).data as *mut WriteCallbackData;
-        if !data.is_null() {
-          drop(Box::from_raw(data));
-        }
+        (*req_ptr).data = std::ptr::null_mut();
+      }
+      let _ = self
+        .handle_data
+        .request_callbacks
+        .borrow_mut()
+        .take(req_data);
+      // SAFETY: uv_write failed so the callback will never fire; reclaim the request.
+      unsafe {
         drop(Box::from_raw(req_ptr));
       }
       return err;
@@ -887,63 +1319,129 @@ impl LibUvStreamWrap {
     let state_global = &op_state.borrow::<StreamBaseState>().array;
     let state_array = v8::Local::new(scope, state_global);
 
-    let mut data = Vec::new();
-
-    if all_buffers {
-      let len = chunks.length();
-      for i in 0..len {
-        let Some(chunk) = chunks.get_index(scope, i) else {
-          continue;
-        };
-        if let Ok(buf) = TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk) {
-          let byte_len = buf.byte_length();
-          let byte_off = buf.byte_offset();
-          let ab = buf.buffer(scope).unwrap();
-          let ptr = ab.data().unwrap().as_ptr() as *const u8;
-          // SAFETY: ptr points to the backing store of the ArrayBuffer; byte_off + byte_len is within bounds as guaranteed by the Uint8Array view.
-          let slice =
-            unsafe { std::slice::from_raw_parts(ptr.add(byte_off), byte_len) };
-          data.extend_from_slice(slice);
-        }
-      }
+    // Scatter-gather writev matching Node's StreamBase::Writev
+    // (src/stream_base.cc:180).
+    //
+    // Retention strategy (matches Node):
+    //   - Buffer chunks: iovec points directly at the ArrayBuffer
+    //     backing store; NO per-chunk retention. JS side keeps chunks
+    //     alive via `req.buffer = data` on the WriteWrap (see
+    //     stream_base_commons.js `writevGeneric`).
+    //   - String chunks: encode into stack storage first. Only
+    //     allocate a V8 BackingStore if we have to go async, and
+    //     only size it to the unwritten tail. Matches Node's stack
+    //     storage optimization in WriteString and its single-alloc
+    //     `ArrayBuffer::NewBackingStore` for the string storage.
+    let array_len = chunks.length();
+    let (count, stride): (u32, u32) = if all_buffers {
+      (array_len, 1)
     } else {
-      let len = chunks.length();
-      let count = len / 2;
+      (array_len / 2, 2)
+    };
+
+    // Pre-pass: compute string storage size. Buffer chunks contribute
+    // zero since they're zero-copied.
+    let mut string_size: usize = 0;
+    if !all_buffers {
       for i in 0..count {
         let Some(chunk) = chunks.get_index(scope, i * 2) else {
           continue;
         };
-        if let Ok(buf) = TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk) {
-          let byte_len = buf.byte_length();
-          let byte_off = buf.byte_offset();
-          let ab = buf.buffer(scope).unwrap();
-          let ptr = ab.data().unwrap().as_ptr() as *const u8;
-          // SAFETY: ptr points to the backing store of the ArrayBuffer; byte_off + byte_len is within bounds as guaranteed by the Uint8Array view.
-          let slice =
-            unsafe { std::slice::from_raw_parts(ptr.add(byte_off), byte_len) };
-          data.extend_from_slice(slice);
-        } else if let Ok(s) = TryInto::<v8::Local<v8::String>>::try_into(chunk)
-        {
-          let encoding = chunks
+        if TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk).is_ok() {
+          continue;
+        }
+        if let Ok(s) = TryInto::<v8::Local<v8::String>>::try_into(chunk) {
+          let enc = chunks
             .get_index(scope, i * 2 + 1)
             .and_then(|v| TryInto::<v8::Local<v8::String>>::try_into(v).ok())
-            .map(|v| v.to_rust_string_lossy(scope));
-          let enc = match encoding.as_deref() {
-            Some("latin1" | "binary") => StringEncoding::Latin1,
-            Some("ucs2" | "ucs-2" | "utf16le" | "utf-16le") => {
-              StringEncoding::Ucs2
-            }
-            Some("ascii") => StringEncoding::Ascii,
-            _ => StringEncoding::Utf8,
-          };
-          encode_string_to_vec(scope, s, enc, &mut data);
+            .map(|e| parse_encoding_no_alloc(scope, e))
+            .unwrap_or(StringEncoding::Utf8);
+          string_size += encoded_storage_size(scope, s, &enc);
         }
       }
     }
 
-    let total_bytes = data.len();
+    // Single owned `Box<[MaybeUninit<u8>]>` for the concat of all
+    // encoded strings. Functional shape mirrors Node's
+    // `NewBackingStore(storage_size)` at stream_base.cc:247 but stays
+    // outside V8 entirely — no persistent handles, no GC-visible
+    // ArrayBuffer objects, just a heap allocation.
+    //
+    // Typed as `MaybeUninit<u8>` so the "bytes may be uninit until an
+    // encoder fills them" contract is enforced by the type system.
+    // Encoders take `&mut [MaybeUninit<u8>]` windows; iovec base
+    // pointers cast through `*mut u8` and only reference written
+    // sub-ranges.
+    let mut string_storage: Box<[std::mem::MaybeUninit<u8>]> =
+      if string_size > 0 {
+        Box::new_uninit_slice(string_size)
+      } else {
+        Box::new_uninit_slice(0)
+      };
+    let string_storage_ptr: *mut std::mem::MaybeUninit<u8> =
+      string_storage.as_mut_ptr();
 
-    // Track bytes_written
+    let mut iovecs: smallvec::SmallVec<[uv_buf_t; 16]> =
+      smallvec::SmallVec::new();
+    let mut str_offset: usize = 0;
+
+    for i in 0..count {
+      let Some(chunk) = chunks.get_index(scope, i * stride) else {
+        continue;
+      };
+      if let Ok(buf) = TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk) {
+        let byte_len = buf.byte_length();
+        if byte_len == 0 {
+          continue;
+        }
+        let byte_off = buf.byte_offset();
+        let ab = buf.buffer(scope).unwrap();
+        let Some(data_ptr) = ab.data() else {
+          continue;
+        };
+        // SAFETY: data_ptr is the ArrayBuffer backing store start;
+        // the Uint8Array view guarantees byte_off + byte_len is
+        // within the allocation. JS retains the chunk via
+        // `req.buffer = data` on the write request — we don't need
+        // our own retention.
+        let base = unsafe {
+          (data_ptr.as_ptr() as *mut u8).add(byte_off) as *mut c_char
+        };
+        iovecs.push(uv_buf_t {
+          base,
+          len: byte_len,
+        });
+      } else if let Ok(s) = TryInto::<v8::Local<v8::String>>::try_into(chunk) {
+        // Only reached in !all_buffers path.
+        let enc = chunks
+          .get_index(scope, i * 2 + 1)
+          .and_then(|v| TryInto::<v8::Local<v8::String>>::try_into(v).ok())
+          .map(|e| parse_encoding_no_alloc(scope, e))
+          .unwrap_or(StringEncoding::Utf8);
+        let remaining = string_size.saturating_sub(str_offset);
+        if remaining == 0 {
+          continue;
+        }
+        // SAFETY: string_storage_ptr is non-null (string_size > 0) and
+        // points at a `string_size`-byte buffer.
+        let dst_slice = unsafe {
+          std::slice::from_raw_parts_mut(
+            string_storage_ptr.add(str_offset),
+            remaining,
+          )
+        };
+        let written = encode_string_into_uninit(scope, s, enc, dst_slice);
+        if written > 0 {
+          // SAFETY: we wrote `written` bytes starting at str_offset.
+          let base =
+            unsafe { string_storage_ptr.add(str_offset) as *mut c_char };
+          iovecs.push(uv_buf_t { base, len: written });
+        }
+        str_offset += written;
+      }
+    }
+
+    let total_bytes: usize = iovecs.iter().map(|b| b.len).sum();
     self
       .bytes_written
       .set(self.bytes_written.get() + total_bytes as u64);
@@ -962,10 +1460,98 @@ impl LibUvStreamWrap {
       return 0;
     }
 
-    self.do_write(scope, stream, &data, total_bytes, req_wrap_obj, state_array)
+    // Sync scatter-gather try-write. Mirrors Node's
+    // StreamBase::Write → DoTryWrite pre-async path. When this fully
+    // drains (common for small HTTP responses) we skip the async
+    // request entirely — zero heap allocations.
+    let (sync_written, fully_drained) = {
+      let slices: smallvec::SmallVec<[std::io::IoSlice; 16]> = iovecs
+        .iter()
+        .map(|b| {
+          // SAFETY: iovec bases point at live memory for `len` bytes.
+          unsafe {
+            std::io::IoSlice::new(std::slice::from_raw_parts(
+              b.base as *const u8,
+              b.len,
+            ))
+          }
+        })
+        .collect();
+      // SAFETY: stream is a valid non-null uv_stream_t.
+      let rc = unsafe { uv_compat::uv_try_writev(stream, &slices) };
+      if rc >= 0 {
+        let n = rc as usize;
+        (n, n == total_bytes)
+      } else {
+        (0, false)
+      }
+    };
+
+    if fully_drained {
+      state_array.set_index(
+        scope,
+        StreamBaseStateFields::BytesWritten as u32,
+        v8::Number::new(scope, total_bytes as f64).into(),
+      );
+      state_array.set_index(
+        scope,
+        StreamBaseStateFields::LastWriteWasAsync as u32,
+        v8::Integer::new(scope, 0).into(),
+      );
+      return 0;
+    }
+
+    // Partial drain: slice iovecs in place, matching libuv's
+    // DoTryWrite pointer advance (stream_wrap.cc:370-382). Pre-count
+    // fully-consumed iovecs and the partial head offset, then `drain`
+    // the consumed prefix in a single shift — avoids the O(n²) cost of
+    // `remove(0)` in a loop, which matters at large iovec counts (e.g.
+    // chunked-encoding responses approaching `IOV_MAX`).
+    if sync_written > 0 {
+      let mut remaining = sync_written;
+      let mut consumed = 0;
+      while remaining > 0 && consumed < iovecs.len() {
+        let head_len = iovecs[consumed].len;
+        if remaining >= head_len {
+          remaining -= head_len;
+          consumed += 1;
+        } else {
+          // SAFETY: sliced within bounds.
+          iovecs[consumed].base = unsafe {
+            (iovecs[consumed].base as *mut u8).add(remaining) as *mut c_char
+          };
+          iovecs[consumed].len = head_len - remaining;
+          remaining = 0;
+        }
+      }
+      if consumed > 0 {
+        iovecs.drain(0..consumed);
+      }
+    }
+
+    // Own the string concat buffer on the async request's callback
+    // state. Buffer chunks are retained JS-side via `req.buffer =
+    // data`, so `owned_buffers` only holds the string storage (or
+    // nothing at all if this writev was Buffers-only).
+    let mut owned: smallvec::SmallVec<[Box<[std::mem::MaybeUninit<u8>]>; 1]> =
+      smallvec::SmallVec::new();
+    if !string_storage.is_empty() {
+      owned.push(string_storage);
+    }
+
+    self.do_writev_async(
+      scope,
+      stream,
+      iovecs,
+      owned,
+      total_bytes,
+      req_wrap_obj,
+      state_array,
+    )
   }
 
   #[fast]
+  #[reentrant]
   pub fn write_utf8_string(
     &self,
     req_wrap_obj: v8::Local<v8::Object>,
@@ -1099,13 +1685,16 @@ impl LibUvStreamWrap {
         return 0;
       }
 
-      // Partial try_write — async write only the remaining bytes
+      // Partial try_write — async write only the remaining bytes.
+      // split_off gives us an owned Vec of the tail without extra
+      // allocation beyond the single tail-copy.
       if try_result > 0 {
         let written = try_result as usize;
+        let tail = data.split_off(written);
         return self.do_write(
           scope,
           stream,
-          &data[written..],
+          tail,
           total_bytes,
           req_wrap_obj,
           state_array,
@@ -1114,50 +1703,154 @@ impl LibUvStreamWrap {
     }
 
     // Full async write (no try_write or try_write returned error/0)
-    self.do_write(scope, stream, &data, total_bytes, req_wrap_obj, state_array)
+    self.do_write(scope, stream, data, total_bytes, req_wrap_obj, state_array)
   }
 
+  /// Queue an owned `Vec<u8>` as a pending write. Takes `data` by move
+  /// so the Vec can be threaded all the way down into the uv_compat
+  /// write queue without a re-allocation + memcpy (the old path went
+  /// through `uv_write(bufs, nbufs)` which re-collected the bufs into
+  /// a new Vec via `collect_bufs`).
   fn do_write(
     &self,
     scope: &mut v8::PinScope,
     stream: *mut uv_stream_t,
-    data: &[u8],
+    data: Vec<u8>,
     total_bytes: usize,
     req_wrap_obj: v8::Local<v8::Object>,
     state_array: v8::Local<v8::Int32Array>,
   ) -> i32 {
-    let buf = uv_buf_t {
-      base: data.as_ptr() as *mut c_char,
-      len: data.len(),
-    };
-
     let stream_handle = self
       .js_handle_global(scope)
       .unwrap_or_else(|| v8::Global::new(scope, v8::Object::new(scope)));
     let mut req = Box::new(uv_compat::new_write());
-    let cb_data = Box::new(WriteCallbackData {
-      // SAFETY: scope is a valid PinScope for the current isolate.
-      isolate: unsafe { scope.as_raw_isolate_ptr() },
-      req_wrap_obj: v8::Global::new(scope, req_wrap_obj),
-      stream_handle,
-      stream_base_state: v8::Global::new(scope, state_array),
-      bytes: total_bytes,
-    });
-    req.data = Box::into_raw(cb_data) as *mut std::ffi::c_void;
+    req.data = self.handle_data.request_callbacks.borrow_mut().insert(
+      RequestCallbackState::Write(WriteRequestCallbackState {
+        // SAFETY: scope is a valid PinScope for the current isolate.
+        isolate: unsafe { scope.as_raw_isolate_ptr() },
+        req_wrap_obj: v8::Global::new(scope, req_wrap_obj),
+        stream_handle,
+        stream_base_state: v8::Global::new(scope, state_array),
+        bytes: total_bytes,
+        owned_buffers: smallvec::SmallVec::new(),
+      }),
+    );
     let req_ptr = Box::into_raw(req);
 
-    // SAFETY: req_ptr is a valid uv_write_t and stream is a valid non-null uv_stream_t.
+    // SAFETY: req_ptr is a valid uv_write_t and stream is a valid
+    // initialized stream handle (TCP/pipe/TTY). Use the polymorphic
+    // `uv_write_owned` so pipe stdio (e.g. child.stdin) isn't
+    // mis-cast to TCP and corrupted on push_back into the wrong
+    // struct layout.
     let err = unsafe {
-      uv_compat::uv_write(req_ptr, stream, &buf, 1, Some(after_uv_write))
+      uv_compat::uv_write_owned(
+        req_ptr,
+        stream as *mut _,
+        data,
+        Some(after_uv_write),
+      )
     };
 
     if err != 0 {
-      // SAFETY: uv_write failed so the callback will never fire; we reclaim the boxed data and request.
+      // SAFETY: `req_ptr` is still owned locally because `uv_write` failed synchronously.
+      let req_data = unsafe { (*req_ptr).data };
+      // SAFETY: `req_ptr` is valid and the callback will never observe this request after the synchronous failure.
       unsafe {
-        let d = (*req_ptr).data as *mut WriteCallbackData;
-        if !d.is_null() {
-          drop(Box::from_raw(d));
-        }
+        (*req_ptr).data = std::ptr::null_mut();
+      }
+      let _ = self
+        .handle_data
+        .request_callbacks
+        .borrow_mut()
+        .take(req_data);
+      // SAFETY: uv_write failed so the callback will never fire; reclaim the request.
+      unsafe {
+        drop(Box::from_raw(req_ptr));
+      }
+      return err;
+    }
+
+    state_array.set_index(
+      scope,
+      StreamBaseStateFields::BytesWritten as u32,
+      v8::Number::new(scope, total_bytes as f64).into(),
+    );
+    state_array.set_index(
+      scope,
+      StreamBaseStateFields::LastWriteWasAsync as u32,
+      v8::Integer::new(scope, 1).into(),
+    );
+
+    0
+  }
+
+  /// Queue an iovec-based async write. The `iovecs` point at memory
+  /// kept alive either JS-side (for Buffer chunks attached to
+  /// `req.buffer`) or by `owned_buffers` on the request's callback
+  /// state (for the encoded-strings concat buffer). Mirrors Node's
+  /// `LibuvStreamWrap::DoWrite(req_wrap, bufs, count, ...)`
+  /// (stream_wrap.cc:391) — no intermediate concat.
+  fn do_writev_async(
+    &self,
+    scope: &mut v8::PinScope,
+    stream: *mut uv_stream_t,
+    iovecs: smallvec::SmallVec<[uv_buf_t; 16]>,
+    owned_buffers: smallvec::SmallVec<[Box<[std::mem::MaybeUninit<u8>]>; 1]>,
+    total_bytes: usize,
+    req_wrap_obj: v8::Local<v8::Object>,
+    state_array: v8::Local<v8::Int32Array>,
+  ) -> i32 {
+    let stream_handle = self
+      .js_handle_global(scope)
+      .unwrap_or_else(|| v8::Global::new(scope, v8::Object::new(scope)));
+    let mut req = Box::new(uv_compat::new_write());
+    req.data = self.handle_data.request_callbacks.borrow_mut().insert(
+      RequestCallbackState::Write(WriteRequestCallbackState {
+        // SAFETY: scope is a valid PinScope for the current isolate.
+        isolate: unsafe { scope.as_raw_isolate_ptr() },
+        req_wrap_obj: v8::Global::new(scope, req_wrap_obj),
+        stream_handle,
+        stream_base_state: v8::Global::new(scope, state_array),
+        bytes: total_bytes,
+        owned_buffers,
+      }),
+    );
+    let req_ptr = Box::into_raw(req);
+
+    // Narrow iovec SmallVec to the queue's inline capacity (4). Node
+    // uses `MaybeStackBuffer<uv_buf_t, 16>` for the caller stack and
+    // libuv's queue stores the array pointer directly; we use a 4-
+    // element inline here because most calls have few chunks.
+    let queue_bufs: smallvec::SmallVec<[uv_buf_t; 4]> =
+      iovecs.into_iter().collect();
+
+    // SAFETY: req_ptr is a valid uv_write_t; stream is a valid
+    // initialized stream handle; each iovec points at memory retained
+    // via `retention` on the callback state, which stays alive until
+    // `after_uv_write` runs.
+    let err = unsafe {
+      uv_compat::uv_writev_owned(
+        req_ptr,
+        stream,
+        queue_bufs,
+        Some(after_uv_write),
+      )
+    };
+
+    if err != 0 {
+      // SAFETY: `req_ptr` is still owned locally because `uv_writev_owned` failed synchronously.
+      let req_data = unsafe { (*req_ptr).data };
+      // SAFETY: `req_ptr` is valid and the callback will never observe this request after the synchronous failure.
+      unsafe {
+        (*req_ptr).data = std::ptr::null_mut();
+      }
+      let _ = self
+        .handle_data
+        .request_callbacks
+        .borrow_mut()
+        .take(req_data);
+      // SAFETY: uv_writev_owned failed so the callback will never fire; reclaim.
+      unsafe {
         drop(Box::from_raw(req_ptr));
       }
       return err;

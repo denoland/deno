@@ -4,10 +4,14 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials ban-untagged-todo
 
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
-import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+import { core, primordials } from "ext:core/mod.js";
+const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 import { nextTick } from "node:process";
-import { primordials } from "ext:core/mod.js";
+const { validateFunction } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
 const {
   ArrayPrototypeAt,
@@ -26,7 +30,7 @@ const {
   SafeMap,
   SymbolHasInstance,
 } = primordials;
-import { WeakReference } from "ext:deno_node/internal/util.mjs";
+const { WeakReference } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
 // Can't delete when weakref count reaches 0 as it could increment again.
 // Only GC can be used as a valid time to clean up the channels map.

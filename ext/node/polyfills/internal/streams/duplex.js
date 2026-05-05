@@ -1,13 +1,15 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import _mod1 from "ext:deno_node/internal/streams/legacy.js";
 import Readable from "node:_stream_readable";
 import Writable from "node:_stream_writable";
 import { addAbortSignal } from "ext:deno_node/internal/streams/add-abort-signal.js";
 import destroyImpl from "ext:deno_node/internal/streams/destroy.js";
-import { kOnConstructed } from "ext:deno_node/internal/streams/utils.js";
+const { kOnConstructed } = core.loadExtScript(
+  "ext:deno_node/internal/streams/utils.js",
+);
 import * as _mod2 from "ext:deno_node/internal/webstreams/adapters.js";
 import _mod3 from "ext:deno_node/internal/streams/duplexify.js";
 const Stream = _mod1.Stream;

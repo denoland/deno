@@ -1464,6 +1464,34 @@ impl deno_io::fs::File for FileBackedVfsFile {
   fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio> {
     Err(FsError::NotSupported)
   }
+  fn read_at_sync(
+    self: Rc<Self>,
+    buf: &mut [u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    self
+      .vfs
+      .read_file(&self.file, position, buf)
+      .map_err(FsError::Io)
+  }
+  async fn read_at_async(
+    self: Rc<Self>,
+    mut buf: BufMutView,
+    position: u64,
+  ) -> FsResult<(usize, BufMutView)> {
+    let nread = self
+      .vfs
+      .read_file(&self.file, position, &mut buf)
+      .map_err(FsError::Io)?;
+    Ok((nread, buf))
+  }
+  fn write_at_sync(
+    self: Rc<Self>,
+    _buf: &[u8],
+    _position: u64,
+  ) -> FsResult<usize> {
+    Err(FsError::NotSupported)
+  }
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     None
   }

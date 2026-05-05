@@ -22,7 +22,8 @@ import {
 import { createInterface } from "node:readline";
 import type { Interface as ReadlineInterface } from "node:readline";
 import { core, primordials } from "ext:core/mod.js";
-import {
+import { op_node_fs_close } from "ext:core/ops";
+import type {
   BinaryOptionsArgument,
   FileOptionsArgument,
   TextOptionsArgument,
@@ -53,22 +54,26 @@ import {
   ftruncate as ftruncateCb,
   futimes as futimesCb,
 } from "node:fs";
-import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
+const { kEmptyObject, promisify } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 
 import {
   CreateReadStreamOptions,
   CreateWriteStreamOptions,
 } from "node:fs/promises";
 import assert from "node:assert";
-import {
+const {
   denoErrorToNodeError,
   ERR_INVALID_STATE,
-} from "ext:deno_node/internal/errors.ts";
-import { readableStreamCancel } from "ext:deno_web/06_streams.js";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { readableStreamCancel } = core.loadExtScript(
+  "ext:deno_web/06_streams.js",
+);
+const {
   validateBoolean,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import process from "node:process";
 
 const fchmodPromise = promisify(fchmod) as (
@@ -234,7 +239,7 @@ export class FileHandle extends EventEmitter {
   #close(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        core.close(this.fd);
+        op_node_fs_close(this.fd);
         this.#rid = -1;
         resolve();
       } catch (err) {
@@ -318,7 +323,7 @@ export class FileHandle extends EventEmitter {
 
   readLines(options?: CreateReadStreamOptions): ReadlineInterface {
     return createInterface({
-      input: this.createReadStream({ ...options, autoClose: false }),
+      input: this.createReadStream(options),
       crlfDelay: Infinity,
     });
   }

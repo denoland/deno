@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::collections::HashMap;
 use std::convert::Infallible;
 use std::future::Future;
 use std::net::Ipv6Addr;
@@ -223,14 +222,14 @@ async fn handle_req_for_registry(
   // serve the registry package files
   let uri_path = req.uri().path();
 
-  if uri_path == "/sub/path/-/npm/v1/security/audits" {
+  if uri_path == "/sub/path/-/npm/v1/security/advisories/bulk" {
     // This is for the test in `tests/specs/audit/subpath_registry/__test__.jsonc` that tests that audit works when the registry URL has a subpath.
     // This endpoint must return something different than the api endpoint at the root to verify the request is going to the correct URL with the subpath.
-    return npm_security_audits_always_succeed_no_vulns();
+    return npm_security_advisories_bulk_no_vulns();
   }
 
-  if uri_path == "/-/npm/v1/security/audits" {
-    return npm_security_audits(req).await;
+  if uri_path == "/-/npm/v1/security/advisories/bulk" {
+    return npm_security_advisories_bulk(req).await;
   }
 
   let mut file_path = root_dir.to_path_buf();
@@ -564,39 +563,23 @@ async fn download_url(url: &str) -> Result<bytes::Bytes, anyhow::Error> {
   Ok(response.bytes().await?)
 }
 
-fn npm_security_audits_always_succeed_no_vulns()
+fn npm_security_advisories_bulk_no_vulns()
 -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
-  let resp_body = json!({
-    "actions": [],
-    "advisories": {},
-    "muted": [],
-    "metadata": {
-      "vulnerabilities": {
-        "info": 0,
-        "low": 0,
-        "moderate": 0,
-        "high": 0,
-        "critical": 0,
-      },
-      "dependencies": 0,
-      "devDependencies": 0,
-      "optionalDependencies": 0,
-      "totalDependencies": 0
-    }
-  });
+  let resp_body = json!({});
 
   Response::builder()
     .body(string_body(&serde_json::to_string(&resp_body).unwrap()))
     .map_err(|e| e.into())
 }
 
-async fn npm_security_audits(
+async fn npm_security_advisories_bulk(
   req: Request<Incoming>,
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   let body = req.into_body().collect().await?.to_bytes();
   let json_obj: serde_json::Value = serde_json::from_slice(&body)?;
 
-  let Some(resp_body) = process_npm_security_audits_body(json_obj) else {
+  let Some(resp_body) = process_npm_security_advisories_bulk_body(json_obj)
+  else {
     return Response::builder()
       .status(StatusCode::BAD_REQUEST)
       .body(empty_body())
@@ -608,169 +591,69 @@ async fn npm_security_audits(
     .map_err(|e| e.into())
 }
 
-fn process_npm_security_audits_body(
+fn process_npm_security_advisories_bulk_body(
   value: serde_json::Value,
 ) -> Option<serde_json::Value> {
-  let dependency_count = 0;
-  let dev_dependency_count = 0;
-  let optional_dependency_count = 0;
-  let mut actions = vec![];
-  let mut advisories = HashMap::new();
-  let vuln_info = 0;
-  let vuln_low = 0;
-  let vuln_moderate = 0;
-  let mut vuln_high = 0;
-  let mut vuln_critical = 0;
+  // The bulk endpoint request body is: { "pkg-name": ["ver1", "ver2"], ... }
+  let packages = value.as_object()?;
+  let package_names = packages.keys().cloned().collect::<Vec<_>>();
 
-  let requires_map = value.get("requires")?.as_object()?;
-  let requires_map_keys = requires_map.keys().cloned().collect::<Vec<_>>();
-  if requires_map_keys.contains(&"@denotest/with-vuln1".to_string()) {
-    actions.push(get_action_for_with_vuln1());
-    advisories.insert(101010, get_advisory_for_with_vuln1());
-    vuln_high += 1;
+  let mut response = serde_json::Map::new();
+
+  if package_names.contains(&"@denotest/with-vuln1".to_string()) {
+    response.insert(
+      "@denotest/with-vuln1".to_string(),
+      json!([get_advisory_for_with_vuln1()]),
+    );
   }
-  if requires_map_keys.contains(&"@denotest/using-vuln".to_string()) {
-    actions.extend_from_slice(&get_actions_for_with_vuln2());
-    advisories.insert(202020, get_advisory_for_with_vuln2());
-    vuln_critical += 1;
+  if package_names.contains(&"@denotest/with-vuln2".to_string()) {
+    response.insert(
+      "@denotest/with-vuln2".to_string(),
+      json!([get_advisory_for_with_vuln2()]),
+    );
   }
-  if requires_map_keys.contains(&"@denotest/with-vuln3".to_string()) {
-    actions.push(get_action_for_with_vuln3());
-    advisories.insert(303030, get_advisory_for_with_vuln3());
-    vuln_high += 1;
+  if package_names.contains(&"@denotest/with-vuln3".to_string()) {
+    response.insert(
+      "@denotest/with-vuln3".to_string(),
+      json!([get_advisory_for_with_vuln3()]),
+    );
   }
 
-  Some(json!({
-    "actions": actions,
-    "advisories": advisories,
-    "muted": [],
-    "metadata": {
-      "vulnerabilities": {
-        "info": vuln_info,
-        "low": vuln_low,
-        "moderate": vuln_moderate,
-        "high": vuln_high,
-        "critical":vuln_critical,
-      },
-      "dependencies": dependency_count,
-      "devDependencies": dev_dependency_count,
-      "optionalDependencies": optional_dependency_count,
-      "totalDependencies": dependency_count + dev_dependency_count + optional_dependency_count
-    }
-  }))
-}
-
-fn get_action_for_with_vuln1() -> serde_json::Value {
-  json!({
-    "isMajor": false,
-    "action": "install",
-    "resolves": [{
-      "id": 101010,
-      "path": "@denotest/with-vuln1",
-      "dev": false,
-      "optional": false,
-      "bundled": false,
-    }],
-    "module": "@denotest/with-vuln1",
-    "target": "1.1.0"
-  })
+  Some(serde_json::Value::Object(response))
 }
 
 fn get_advisory_for_with_vuln1() -> serde_json::Value {
   json!({
-    "findings": [
-      {"version": "1.0.0", "paths": ["@denotest/with-vuln1"]}
-    ],
-    "id": 101010,
-    "cves": ["CVE-2025-0001"],
-    "overview": "Lorem ipsum dolor sit amet",
+    "url": "https://example.com/vuln/101010",
     "title": "@denotest/with-vuln1 is susceptible to prototype pollution",
     "severity": "high",
-    "module_name": "@edenotest/with-vuln1",
     "vulnerable_versions": "<1.1.0",
-    "recommendations": "Upgrade to version 1.1.0 or later",
     "patched_versions": ">=1.1.0",
-    "url": "https://example.com/vuln/101010"
+    "cves": ["CVE-2025-0001"],
+    "cwe": ["CWE-1321"]
   })
-}
-
-fn get_actions_for_with_vuln2() -> Vec<serde_json::Value> {
-  vec![
-    json!({
-      "isMajor": true,
-      "action": "install",
-      "resolves": [{
-        "id": 202020,
-        "path": "@denotest/using-vuln>@denotest/with-vuln2",
-        "dev": false,
-        "optional": false,
-        "bundled": false,
-      }],
-      "module": "@denotest/with-vuln2",
-      "target": "2.0.0"
-    }),
-    json!({
-      "action": "review",
-      "resolves": [{
-        "id": 202020,
-        "path": "@denotest/using-vuln>@denotest/with-vuln2",
-        "dev": false,
-        "optional": false,
-        "bundled": false,
-      }],
-      "module": "@denotest/with-vuln2"
-    }),
-  ]
 }
 
 fn get_advisory_for_with_vuln2() -> serde_json::Value {
   json!({
-    "findings": [
-      {"version": "1.5.0", "paths": ["@denotest/using-vuln>@denotest/with-vuln2"]}
-    ],
-    "id": 202020,
-    "cves": ["CVE-2025-0002"],
-    "overview": "Lorem ipsum dolor sit amet",
+    "url": "https://example.com/vuln/202020",
     "title": "@denotest/with-vuln2 can steal crypto keys",
     "severity": "critical",
-    "module_name": "@edenotest/with-vuln2",
     "vulnerable_versions": "<2.0.0",
-    "recommendations": "Upgrade to version 2.0.0 or later",
     "patched_versions": ">=2.0.0",
-    "url": "https://example.com/vuln/202020"
-  })
-}
-
-fn get_action_for_with_vuln3() -> serde_json::Value {
-  json!({
-    "isMajor": false,
-    "action": "install",
-    "resolves": [{
-      "id": 303030,
-      "path": "@denotest/with-vuln3",
-      "dev": false,
-      "optional": false,
-      "bundled": false,
-    }],
-    // Note: "module" field is intentionally omitted to test fallback logic
-    "target": "1.1.0"
+    "cves": ["CVE-2025-0002"],
+    "cwe": ["CWE-326"]
   })
 }
 
 fn get_advisory_for_with_vuln3() -> serde_json::Value {
   json!({
-    "findings": [
-      {"version": "1.0.0", "paths": ["@denotest/with-vuln3"]}
-    ],
-    "id": 303030,
-    "cves": ["CVE-2025-0003"],
-    "overview": "Lorem ipsum dolor sit amet",
+    "url": "https://example.com/vuln/303030",
     "title": "@denotest/with-vuln3 has security vulnerability",
     "severity": "high",
-    "module_name": "@edenotest/with-vuln3",
     "vulnerable_versions": "<1.1.0",
-    "recommendations": "Upgrade to version 1.1.0 or later",
     "patched_versions": ">=1.1.0",
-    "url": "https://example.com/vuln/303030"
+    "cves": ["CVE-2025-0003"],
+    "cwe": ["CWE-79"]
   })
 }

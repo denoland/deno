@@ -506,6 +506,30 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                   .ok()
                 }
               }
+              PackageJsonDepValue::Catalog(catalog_name) => {
+                let catalogs = self.workspace_resolver.catalogs();
+                match catalogs
+                  .get(catalog_name.as_str())
+                  .and_then(|c| c.get(alias))
+                {
+                  Some(version_req_str) => {
+                    match VersionReq::parse_from_npm(version_req_str) {
+                      Ok(version_req) => ModuleSpecifier::parse(&format!(
+                        "npm:{}@{}{}",
+                        alias,
+                        version_req,
+                        sub_path
+                          .as_ref()
+                          .map(|s| format!("/{}", s))
+                          .unwrap_or_default()
+                      ))
+                      .ok(),
+                      Err(_) => None,
+                    }
+                  }
+                  None => None,
+                }
+              }
               PackageJsonDepValue::Workspace(workspace_version_req) => {
                 let version_req = match workspace_version_req {
                   PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
@@ -918,6 +942,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
             match dep.kind {
               StaticDependencyKind::Export
               | StaticDependencyKind::Import
+              | StaticDependencyKind::ImportDefer
               | StaticDependencyKind::ImportSource
               | StaticDependencyKind::ExportEquals
               | StaticDependencyKind::ImportEquals => {
