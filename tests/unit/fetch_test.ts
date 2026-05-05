@@ -1332,6 +1332,45 @@ Deno.test(
   },
 );
 
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchPostReadableStreamWithContentLength() {
+    const addr = `127.0.0.1:${listenPort}`;
+    const bufPromise = bufferServer(addr);
+    const payload = "hello world";
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(payload));
+        controller.close();
+      },
+    });
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: {
+        "Content-Length": String(payload.length),
+      },
+      body: stream,
+    });
+    await response.body?.cancel();
+    assertEquals(response.status, 404);
+
+    const actual = new TextDecoder().decode((await bufPromise).bytes());
+    const expected = [
+      "POST /blah HTTP/1.1\r\n",
+      `content-length: ${payload.length}\r\n`,
+      "accept: */*\r\n",
+      "accept-language: *\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip,br\r\n",
+      `host: ${addr}\r\n\r\n`,
+      payload,
+    ].join("");
+    assertEquals(actual, expected);
+  },
+);
+
 Deno.test({}, function fetchWritableRespProps() {
   const original = new Response("https://deno.land", {
     status: 404,
