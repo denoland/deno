@@ -6,9 +6,11 @@ import * as http2 from "node:http2";
 import * as https from "node:https";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Buffer } from "node:buffer";
+import * as fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as net from "node:net";
+import { nextTick } from "node:process";
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { curlRequest } from "../unit/test_util.ts";
 import { createRequire } from "node:module";
@@ -622,6 +624,9 @@ Deno.test("[node/http2] AsyncLocalStorage propagates per request", {
   const storage = new AsyncLocalStorage<{ id: number }>();
   const server = http2.createServer();
   server.on("stream", (stream) => {
+    // Raw Http2Stream (no Http2ServerRequest): match Node by handling teardown
+    // RST errors so destroy() does not emit an unhandled "error" event.
+    stream.on("error", () => {});
     stream.respond({
       [http2.constants.HTTP2_HEADER_CONTENT_TYPE]: "text/plain; charset=utf-8",
       [http2.constants.HTTP2_HEADER_STATUS]: 200,
@@ -706,6 +711,7 @@ Deno.test("[node/http2 client] connect with pre-created socket", {
 }, async () => {
   const server = http2.createServer();
   server.on("stream", (stream) => {
+    stream.on("error", () => {});
     stream.respond({ ":status": 200, "content-type": "text/plain" });
     stream.end("ok");
   });
@@ -800,3 +806,178 @@ Deno.test("[node/http2] allowHTTP1 fallback handles HTTP/1.1 clients", async () 
 
   await promise;
 });
+
+Deno.test(
+  "[node/http2] respondWithFile async error after response start maps to stream reset",
+  {
+    // Windows fs/open failure timing differs, making this assertion flaky.
+    ignore: Deno.build.os === "windows",
+    sanitizeResources: false,
+    sanitizeOps: false,
+  },
+  async () => {
+    const server = http2.createServer();
+    const missingPath = join(
+      Deno.makeTempDirSync(),
+      "does-not-exist.txt",
+    );
+
+    let nextTickCommittedFollowUpResponse = false;
+
+    server.on("stream", (stream) => {
+      stream.on("error", () => {});
+      stream.respondWithFile(missingPath);
+      // Force a committed response before fs.open() fails asynchronously.
+      nextTick(() => {
+        if (!stream.destroyed && !stream.closed && !stream.headersSent) {
+          stream.respond({ ":status": 200 });
+          stream.write("partial");
+          assert(
+            stream.headersSent,
+            "expected respond() to commit headers before open() failure",
+          );
+          nextTickCommittedFollowUpResponse = true;
+        }
+      });
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      server.listen(0, () => {
+        const { port } = server.address() as net.AddressInfo;
+        const client = http2.connect(`http://127.0.0.1:${port}`);
+        client.on("error", reject);
+
+        const req = client.request({ ":path": "/" });
+        req.on("response", () => {});
+        req.resume();
+        req.on("error", (err: NodeJS.ErrnoException) => {
+          try {
+            assertEquals(err.code, "ERR_HTTP2_STREAM_ERROR");
+            assert(String(err.message).includes("NGHTTP2_INTERNAL_ERROR"));
+            assert(
+              nextTickCommittedFollowUpResponse,
+              "expected fs.open failure after follow-up respond() (lost nextTick vs I/O race)",
+            );
+            client.close();
+            server.close(() => resolve());
+          } catch (e) {
+            client.close();
+            server.close(() => reject(e));
+          }
+        });
+        req.end();
+      });
+    });
+  },
+);
+
+Deno.test(
+  "[node/http2] respondWithFD async error after response start maps to stream reset",
+  {
+    // Windows invalid-fd handling differs from POSIX for this async fstat path.
+    ignore: Deno.build.os === "windows",
+    sanitizeResources: false,
+    sanitizeOps: false,
+  },
+  async () => {
+    const server = http2.createServer();
+
+    let nextTickCommittedFollowUpResponse = false;
+
+    const tmpPath = join(Deno.makeTempDirSync(), "respond-with-fd.txt");
+    Deno.writeTextFileSync(tmpPath, "x");
+    const closedFd = fs.openSync(tmpPath, "r");
+    fs.closeSync(closedFd);
+    // Closed FD is still in int32 range (unlike -1) so fstat runs async and
+    // fails with EBADF, matching the invalid-fd regression on POSIX.
+
+    server.on("stream", (stream) => {
+      stream.on("error", () => {});
+      stream.respondWithFD(closedFd, {}, { statCheck: () => true });
+      // Force a committed response before fs.fstat() fails asynchronously.
+      nextTick(() => {
+        if (!stream.destroyed && !stream.closed && !stream.headersSent) {
+          stream.respond({ ":status": 200 });
+          stream.write("partial");
+          assert(
+            stream.headersSent,
+            "expected respond() to commit headers before fstat() failure",
+          );
+          nextTickCommittedFollowUpResponse = true;
+        }
+      });
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      server.listen(0, () => {
+        const { port } = server.address() as net.AddressInfo;
+        const client = http2.connect(`http://127.0.0.1:${port}`);
+        client.on("error", reject);
+
+        const req = client.request({ ":path": "/" });
+        req.on("response", () => {});
+        req.resume();
+        req.on("error", (err: NodeJS.ErrnoException) => {
+          try {
+            assertEquals(err.code, "ERR_HTTP2_STREAM_ERROR");
+            assert(String(err.message).includes("NGHTTP2_INTERNAL_ERROR"));
+            assert(
+              nextTickCommittedFollowUpResponse,
+              "expected fstat failure after follow-up respond() (lost nextTick vs I/O race)",
+            );
+            client.close();
+            server.close(() => resolve());
+          } catch (e) {
+            client.close();
+            server.close(() => reject(e));
+          }
+        });
+        req.end();
+      });
+    });
+  },
+);
+
+Deno.test(
+  "[node/http2] respondWithFD invalid fd with statCheck does not throw synchronously",
+  {
+    sanitizeResources: false,
+    sanitizeOps: false,
+  },
+  async () => {
+    const server = http2.createServer();
+
+    await new Promise<void>((resolve, reject) => {
+      server.on("stream", (stream) => {
+        stream.on("error", () => {});
+        try {
+          stream.respondWithFD(-1, { ":status": 200 }, {
+            statCheck: () => true,
+          });
+        } catch (e) {
+          reject(
+            new Error(
+              `respondWithFD(-1, …, statCheck) must not throw synchronously: ${e}`,
+            ),
+          );
+          return;
+        }
+      });
+
+      server.listen(0, () => {
+        const { port } = server.address() as net.AddressInfo;
+        const client = http2.connect(`http://127.0.0.1:${port}`);
+        client.on("error", reject);
+
+        const req = client.request({ ":path": "/" });
+        req.on("response", () => {});
+        req.resume();
+        req.on("error", () => {
+          client.close();
+          server.close(() => resolve());
+        });
+        req.end();
+      });
+    });
+  },
+);

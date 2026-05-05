@@ -635,6 +635,12 @@ function submitGoaway(code, lastStreamID, opaqueData) {
 // Also keep track of listeners for the Http2Stream instances, as some events
 // are emitted on those objects.
 function streamListenerAdded(name) {
+  if (name === "error") {
+    // Tracked per-stream so _destroy can branch without listenerCount(),
+    // which is easy to misuse around newListener/removeListener ordering.
+    this[kState].errorListenerCount++;
+    return;
+  }
   const session = this[kSession];
   if (!session) return;
   switch (name) {
@@ -648,6 +654,10 @@ function streamListenerAdded(name) {
 }
 
 function streamListenerRemoved(name) {
+  if (name === "error") {
+    this[kState].errorListenerCount--;
+    return;
+  }
   const session = this[kSession];
   if (!session) return;
   switch (name) {
@@ -1591,8 +1601,19 @@ function onSessionHeaders(
     }
   }
   if (endOfStream) {
-    // deno-lint-ignore prefer-primordials
-    stream.push(null);
+    // Match the async context used for client 'response' / 'data' delivery
+    // (kRequestAsyncResource + runInAsyncScope) so readable 'end' and
+    // AsyncLocalStorage behave consistently (see unit_node http2 ALS test).
+    const reqAsync = stream[kRequestAsyncResource];
+    if (reqAsync) {
+      reqAsync.runInAsyncScope(() => {
+        // deno-lint-ignore prefer-primordials
+        stream.push(null);
+      });
+    } else {
+      // deno-lint-ignore prefer-primordials
+      stream.push(null);
+    }
   }
 }
 
@@ -1845,6 +1866,8 @@ class Http2Stream extends Duplex {
       writeQueueSize: 0,
       trailersReady: false,
       endAfterHeaders: false,
+      errorListenerCount: 0,
+      skipEmitStreamError: false,
     };
 
     // Fields used by the compat API to avoid megamorphisms.
@@ -2415,6 +2438,13 @@ class Http2Stream extends Duplex {
     sessionState.writeQueueSize -= state.writeQueueSize;
     state.writeQueueSize = 0;
 
+    // RST code 8 is not emitted as an error (abort / http1 compat). For other
+    // abnormal RST codes, match Node: synthesize ERR_HTTP2_STREAM_ERROR when
+    // destroying without a prior err, unless skipEmitStreamError was set for an
+    // internal teardown path (async respondWithFile/respondWithFD failures
+    // after headers were already committed by another respond() path). User
+    // code that tears down a server stream without caring about the reset
+    // should attach `stream.on("error", () => {})` (as Node's own tests do).
     // RST code 8 not emitted as an error as its used by clients to signify
     // abort and is already covered by aborted event, also allows more
     // seamless compatibility with http1.
@@ -2428,7 +2458,8 @@ class Http2Stream extends Duplex {
       err == null &&
       code !== NGHTTP2_NO_ERROR &&
       code !== NGHTTP2_CANCEL &&
-      sessionState.sentGoawayCode == null
+      sessionState.sentGoawayCode == null &&
+      !state.skipEmitStreamError
     ) {
       err = new ERR_HTTP2_STREAM_ERROR(nameForErrorCode[code] || code);
     }
@@ -2616,6 +2647,28 @@ function tryClose(fd) {
   });
 }
 
+function handleAsyncFileResponseError(stream, err, onError) {
+  if (
+    !stream.destroyed &&
+    (stream[kState].flags & STREAM_FLAGS_HEADERS_SENT) !== 0
+  ) {
+    // Async respondWithFile/respondWithFD failures after headers are sent
+    // intentionally map to a forced stream reset. Avoid synthesizing an extra
+    // server-side stream error for this internal control-flow path.
+    stream[kState].skipEmitStreamError = true;
+    if (!stream.closed) {
+      closeStream(stream, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
+    }
+    stream.destroy();
+    return;
+  }
+  if (onError) {
+    onError(err);
+    return;
+  }
+  stream.destroy(err);
+}
+
 function processRespondWithFD(
   self,
   fd,
@@ -2660,7 +2713,9 @@ function processRespondWithFD(
         if (self.ownsFd) tryClose(fd);
         // Match Node: a read failure (e.g. EBADF from a bad fd) resets the
         // stream with NGHTTP2_INTERNAL_ERROR rather than leaking the
-        // underlying fs error to user code.
+        // underlying fs error to user code. Still surface ERR_HTTP2_STREAM_ERROR
+        // on the server stream (and on the client request) like Node's
+        // test-http2-respond-file-fd-invalid.js expects.
         if (!self.destroyed && !self.closed) {
           closeStream(self, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
         }
@@ -2701,7 +2756,7 @@ function processRespondWithFD(
 
 function doSendFD(session, options, fd, headers, streamOptions, err, stat) {
   if (err) {
-    this.destroy(err);
+    handleAsyncFileResponseError(this, err);
     return;
   }
   if (this.destroyed || this.closed) {
@@ -2723,7 +2778,7 @@ function doSendFD(session, options, fd, headers, streamOptions, err, stat) {
           headers,
           statOptions,
         ) === false) ||
-    (this[kState].flags & STREAM_FLAGS_HEADERS_SENT)
+    (this[kState].flags & STREAM_FLAGS_HEADERS_SENT) !== 0
   ) {
     return;
   }
@@ -2743,11 +2798,7 @@ function doSendFileFD(session, options, fd, headers, streamOptions, err, stat) {
 
   if (err) {
     tryClose(fd);
-    if (onError) {
-      onError(err);
-    } else {
-      this.destroy(err);
-    }
+    handleAsyncFileResponseError(this, err, onError);
     return;
   }
 
@@ -2762,11 +2813,7 @@ function doSendFileFD(session, options, fd, headers, streamOptions, err, stat) {
         ? new ERR_HTTP2_SEND_FILE()
         : new ERR_HTTP2_SEND_FILE_NOSEEK();
       tryClose(fd);
-      if (onError) {
-        onError(err);
-      } else {
-        this.destroy(err);
-      }
+      handleAsyncFileResponseError(this, err, onError);
       return;
     }
 
@@ -2789,7 +2836,7 @@ function doSendFileFD(session, options, fd, headers, streamOptions, err, stat) {
     (typeof options.statCheck === "function" &&
       FunctionPrototypeCall(options.statCheck, this, stat, headers) ===
         false) ||
-    (this[kState].flags & STREAM_FLAGS_HEADERS_SENT)
+    (this[kState].flags & STREAM_FLAGS_HEADERS_SENT) !== 0
   ) {
     tryClose(fd);
     return;
@@ -2817,11 +2864,13 @@ function afterOpen(session, options, headers, streamOptions, err, fd) {
   const state = this[kState];
   const onError = options.onError;
   if (err) {
-    if (onError) {
-      onError(err);
-    } else {
-      this.destroy(err);
+    // If another response path (e.g. respond() in a nextTick) committed
+    // headers before this open() failed, ensure _destroy skips synthesizing
+    // ERR_HTTP2_STREAM_ERROR so teardown cannot race listener removal.
+    if ((state.flags & STREAM_FLAGS_HEADERS_SENT) !== 0) {
+      state.skipEmitStreamError = true;
     }
+    handleAsyncFileResponseError(this, err, onError);
     return;
   }
   if (this.destroyed || this.closed) {
@@ -3112,18 +3161,25 @@ class ServerHttp2Stream extends Http2Stream {
     }
 
     if (options.statCheck !== undefined) {
-      fs.fstat(
+      const onFStat = FunctionPrototypeBind(
+        doSendFD,
+        this,
+        session,
+        options,
         fd,
-        FunctionPrototypeBind(
-          doSendFD,
-          this,
-          session,
-          options,
-          fd,
-          headers,
-          streamOptions,
-        ),
+        headers,
+        streamOptions,
       );
+      // Defer fstat so synchronous fd validation (e.g. ERR_OUT_OF_RANGE for -1)
+      // never throws from the synchronous "stream" listener. Route validation
+      // failures through the same async path as a failed fstat callback.
+      process.nextTick(() => {
+        try {
+          fs.fstat(fd, onFStat);
+        } catch (err) {
+          onFStat(err, undefined);
+        }
+      });
       return;
     }
 
@@ -4229,7 +4285,7 @@ class Http2Session extends EventEmitter {
         // otherwise route the error onto the session so it isn't lost (also
         // avoids emit('error') throwing as an uncaughtException).
         if (stream.destroyed) {
-          if (stream.listenerCount("error") > 0) {
+          if (stream[kState].errorListenerCount > 0) {
             process.nextTick(() => stream.emit("error", err));
           } else {
             this.destroy(err);
