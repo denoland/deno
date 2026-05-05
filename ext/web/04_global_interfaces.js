@@ -23,6 +23,9 @@ class Window extends EventTarget {
   }
 
   get [SymbolToStringTag]() {
+    if (this === globalThis) {
+      return "global";
+    }
     return "Window";
   }
 }
