@@ -2259,6 +2259,7 @@
     "parallel/test-memory-usage-emfile.js": {},
     "parallel/test-memory-usage.js": {},
     "parallel/test-messagechannel.js": {},
+    "parallel/test-messageevent-brandcheck.js": {},
     "parallel/test-microtask-queue-integration.js": {},
     "parallel/test-microtask-queue-run-immediate.js": {},
     "parallel/test-microtask-queue-run.js": {},
