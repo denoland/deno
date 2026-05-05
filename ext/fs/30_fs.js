@@ -550,7 +550,11 @@ function openSync(
     options,
   );
 
-  return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
+  return new FsFile(
+    rid,
+    SymbolFor("Deno.internal.FsFile"),
+    openOptionsToAccess(options),
+  );
 }
 
 async function open(
@@ -563,7 +567,25 @@ async function open(
     options,
   );
 
-  return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
+  return new FsFile(
+    rid,
+    SymbolFor("Deno.internal.FsFile"),
+    openOptionsToAccess(options),
+  );
+}
+
+// Mirror the Rust-side behaviour of `op_fs_open_*`: when no options are
+// provided the file is opened read-only; when options *are* provided the
+// `read` / `write` / `append` flags default to `false` and are only set
+// by explicit user opt-in.
+function openOptionsToAccess(options) {
+  if (options === undefined) {
+    return { read: true, write: false };
+  }
+  return {
+    read: options.read === true,
+    write: options.write === true || options.append === true,
+  };
 }
 
 function createSync(path) {
@@ -589,8 +611,16 @@ class FsFile {
 
   #readable;
   #writable;
+  // Access-tracking is opt-in: only `Deno.open` / `Deno.openSync` propagate
+  // the open options, so we know which side of the FD the caller asked for.
+  // Other call sites (child stdio, stdin/stdout/stderr) construct an
+  // `FsFile` without options and keep the historical "anything goes"
+  // behaviour.
+  #accessChecked = false;
+  #canRead = true;
+  #canWrite = true;
 
-  constructor(rid, symbol) {
+  constructor(rid, symbol, access) {
     ObjectDefineProperty(this, internalRidSymbol, {
       __proto__: null,
       enumerable: false,
@@ -600,6 +630,19 @@ class FsFile {
     if (!symbol || symbol !== SymbolFor("Deno.internal.FsFile")) {
       throw new TypeError(
         "'Deno.FsFile' cannot be constructed, use 'Deno.open()' or 'Deno.openSync()' instead",
+      );
+    }
+    if (access !== undefined) {
+      this.#accessChecked = true;
+      this.#canRead = access.read;
+      this.#canWrite = access.write;
+    }
+  }
+
+  #assertReadable(api) {
+    if (this.#accessChecked && !this.#canRead) {
+      throw new TypeError(
+        `${api}: file was opened without read access. Pass \`{ read: true }\` to 'Deno.open()' / 'Deno.openSync()'.`,
       );
     }
   }
@@ -621,10 +664,12 @@ class FsFile {
   }
 
   read(p) {
+    this.#assertReadable("FsFile.read");
     return read(this.#rid, p);
   }
 
   readSync(p) {
+    this.#assertReadable("FsFile.readSync");
     return readSync(this.#rid, p);
   }
 
@@ -658,6 +703,7 @@ class FsFile {
   }
 
   get readable() {
+    this.#assertReadable("FsFile.readable");
     if (this.#readable === undefined) {
       this.#readable = readableStreamForRid(this.#rid);
     }
