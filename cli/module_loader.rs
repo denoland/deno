@@ -1112,49 +1112,21 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       let receiver = self.0.hook_registry.push_load(specifier.to_string());
       return deno_core::ModuleLoadResponse::Async(
         async move {
-          let hook_result = match receiver.await {
+          let hook_result: Result<Option<String>, String> = match receiver.await
+          {
             Ok(r) => r,
             Err(_) => {
               return Err(JsErrorBox::generic("module load hook cancelled"));
             }
           };
           match hook_result {
-            Ok((Some(source), format)) => {
-              // If the hook returned format "commonjs", fall through to
-              // the default loader which handles CJS-to-ESM translation.
-              // The hook may not have modified the source, and even if it
-              // did, CJS modules need the require/exports/module globals
-              // which only the default loader provides.
-              let is_cjs = format.as_deref() == Some("commonjs")
-                || (format.is_none()
-                  && (specifier.path().ends_with(".cjs") || {
-                    let media_type =
-                      deno_media_type::MediaType::from_specifier(&specifier);
-                    inner
-                      .shared
-                      .cjs_tracker
-                      .is_maybe_cjs(&specifier, media_type)
-                      .unwrap_or(false)
-                  }));
-              if is_cjs {
-                // Fallthrough to default loading for CJS
-                inner
-                  .load_inner(
-                    &specifier,
-                    maybe_referrer.as_ref().map(|r| &r.specifier),
-                    &options.requested_module_type,
-                  )
-                  .await
-              } else {
-                Ok(deno_core::ModuleSource::new(
-                  deno_core::ModuleType::JavaScript,
-                  deno_core::ModuleSourceCode::String(source.into()),
-                  &specifier,
-                  None,
-                ))
-              }
-            }
-            Ok((None, _)) => {
+            Ok(Some(source)) => Ok(deno_core::ModuleSource::new(
+              deno_core::ModuleType::JavaScript,
+              deno_core::ModuleSourceCode::String(source.into()),
+              &specifier,
+              None,
+            )),
+            Ok(None) => {
               // Fallthrough: hooks didn't intercept, use default
               inner
                 .load_inner(

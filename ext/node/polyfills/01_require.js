@@ -702,14 +702,13 @@ function _startEsmLoadLoop() {
           const source = typeof result.source === "string"
             ? result.source
             : new TextDecoder().decode(result.source);
-          const format = result.format || null;
-          op_module_hooks_respond_load(id, source, format, null);
+          op_module_hooks_respond_load(id, source, null);
         } else {
           // Fallthrough: tell Rust to use default loading
-          op_module_hooks_respond_load(id, null, null, null);
+          op_module_hooks_respond_load(id, null, null);
         }
       } catch (e) {
-        op_module_hooks_respond_load(id, null, null, String(e));
+        op_module_hooks_respond_load(id, null, String(e));
       }
     }
   })();

@@ -27,10 +27,8 @@ struct PendingLoad {
 
 type ResolveSender =
   deno_core::futures::channel::oneshot::Sender<Result<Option<String>, String>>;
-/// Load hook result: (source, format). Format is e.g. "commonjs", "module".
-type LoadResult = (Option<String>, Option<String>);
 type LoadSender =
-  deno_core::futures::channel::oneshot::Sender<Result<LoadResult, String>>;
+  deno_core::futures::channel::oneshot::Sender<Result<Option<String>, String>>;
 
 /// Shared hook registry between ops and the module loader.
 ///
@@ -123,12 +121,13 @@ impl LoaderHookRegistry {
   }
 
   /// Push a load request and return a receiver for the response.
-  /// `Ok((Some(source), format))` = hook provided source, `Ok((None, _))` = fallthrough.
+  /// `Ok(Some(source))` = hook provided source, `Ok(None)` = fallthrough.
   pub fn push_load(
     &self,
     url: String,
-  ) -> deno_core::futures::channel::oneshot::Receiver<Result<LoadResult, String>>
-  {
+  ) -> deno_core::futures::channel::oneshot::Receiver<
+    Result<Option<String>, String>,
+  > {
     let id = self.next_id();
     let (sender, receiver) = deno_core::futures::channel::oneshot::channel();
     self.load_senders.borrow_mut().insert(id, sender);
@@ -230,15 +229,14 @@ pub fn op_module_hooks_respond_load(
   state: &mut OpState,
   id: u32,
   #[string] source: Option<String>,
-  #[string] format: Option<String>,
   #[string] error: Option<String>,
 ) {
   let registry = state.borrow::<LoaderHookRegistry>().clone();
   if let Some(sender) = registry.load_senders.borrow_mut().remove(&id) {
-    let result: Result<LoadResult, String> = if let Some(err) = error {
+    let result: Result<Option<String>, String> = if let Some(err) = error {
       Err(err)
     } else {
-      Ok((source, format)) // (None, _) = fallthrough
+      Ok(source) // None = fallthrough
     };
     let _ = sender.send(result);
   }
