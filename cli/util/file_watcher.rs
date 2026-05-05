@@ -507,14 +507,21 @@ fn new_watcher(
         return;
       }
 
-      let paths: Vec<PathBuf> = event
+      let canonicalized: Vec<PathBuf> = event
         .paths
         .iter()
         .filter_map(|path| canonicalize_path(path).ok())
+        .collect();
+      let paths: Vec<PathBuf> = canonicalized
+        .iter()
         .filter(|path| !exclude_set.matches_path(path))
+        .cloned()
         .collect();
 
-      if paths.is_empty() {
+      // Only bail when the empty result was caused by exclusion, not
+      // by canonicalize failures — preserves pre-PR behavior for
+      // file-removal events.
+      if paths.is_empty() && !canonicalized.is_empty() {
         return;
       }
 
