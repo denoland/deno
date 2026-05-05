@@ -1992,6 +1992,7 @@
     "parallel/test-https-agent-constructor.js": {},
     "parallel/test-https-agent-getname.js": {},
     "parallel/test-https-agent-servername.js": {},
+    "parallel/test-https-agent-session-reuse.js": {},
     "parallel/test-https-agent-sockets-leak.js": {},
     "parallel/test-https-agent-unref-socket.js": {},
     "parallel/test-https-agent.js": {},
