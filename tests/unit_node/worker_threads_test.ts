@@ -969,3 +969,32 @@ Deno.test({
     await worker.terminate();
   },
 });
+
+Deno.test({
+  name:
+    "[node/worker_threads] unref with message listener keeps event loop alive",
+  async fn() {
+    // Regression test: worker.unref() should not prevent the process from
+    // receiving messages when there are active "message" listeners.
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require('worker_threads');
+      parentPort.on('message', () => {
+        const sharedArrayBuffer = new SharedArrayBuffer(12);
+        parentPort.postMessage(sharedArrayBuffer);
+      });
+      `,
+      { eval: true },
+    );
+
+    worker.unref();
+
+    const messagePromise = once(worker, "message");
+    worker.postMessage("go");
+    const [msg] = await messagePromise as [SharedArrayBuffer];
+    assert(msg instanceof SharedArrayBuffer);
+    assertEquals(msg.byteLength, 12);
+
+    await worker.terminate();
+  },
+});
