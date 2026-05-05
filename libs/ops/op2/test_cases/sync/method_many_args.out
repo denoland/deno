@@ -1,0 +1,321 @@
+impl Big {
+    pub const DECL: deno_core::_ops::OpMethodDecl = deno_core::_ops::OpMethodDecl {
+        methods: &[Big::many()],
+        static_methods: &[],
+        constructor: None,
+        name: ::deno_core::__op_name_fast!(Big),
+        type_name: || std::any::type_name::<Big>(),
+        inherits_type_name: || None,
+    };
+    #[allow(non_camel_case_types)]
+    pub const fn many() -> ::deno_core::_ops::OpDecl {
+        #[allow(non_camel_case_types)]
+        pub struct many {
+            _unconstructable: ::std::marker::PhantomData<()>,
+        }
+        impl ::deno_core::_ops::Op for many {
+            const NAME: &'static str = stringify!(many);
+            const DECL: ::deno_core::_ops::OpDecl = ::deno_core::_ops::OpDecl::new_internal_op2(
+                ::deno_core::__op_name_fast!(many),
+                false,
+                false,
+                false,
+                8usize as u8,
+                false,
+                Self::v8_fn_ptr as _,
+                Self::slow_function_impl,
+                ::deno_core::AccessorType::None,
+                Some({
+                    use deno_core::v8::fast_api::Type as CType;
+                    use deno_core::v8;
+                    deno_core::v8::fast_api::CFunction::new(
+                        Self::v8_fn_ptr_fast as _,
+                        &deno_core::v8::fast_api::CFunctionInfo::new(
+                            CType::Void.as_info(),
+                            &[
+                                CType::V8Value.as_info(),
+                                CType::Float64.as_info(),
+                                CType::Float64.as_info(),
+                                CType::Float64.as_info(),
+                                CType::Float64.as_info(),
+                                CType::Float64.as_info(),
+                                CType::Float64.as_info(),
+                                CType::Float64.as_info(),
+                                CType::Float64.as_info(),
+                                CType::CallbackOptions.as_info(),
+                            ],
+                            deno_core::v8::fast_api::Int64Representation::BigInt,
+                        ),
+                    )
+                }),
+                Some({
+                    use deno_core::v8::fast_api::Type as CType;
+                    use deno_core::v8;
+                    deno_core::v8::fast_api::CFunction::new(
+                        Self::v8_fn_ptr_fast_metrics as _,
+                        &deno_core::v8::fast_api::CFunctionInfo::new(
+                            CType::Void.as_info(),
+                            &[
+                                CType::V8Value.as_info(),
+                                CType::Float64.as_info(),
+                                CType::Float64.as_info(),
+                                CType::Float64.as_info(),
+                                CType::Float64.as_info(),
+                                CType::Float64.as_info(),
+                                CType::Float64.as_info(),
+                                CType::Float64.as_info(),
+                                CType::Float64.as_info(),
+                                CType::CallbackOptions.as_info(),
+                            ],
+                            deno_core::v8::fast_api::Int64Representation::BigInt,
+                        ),
+                    )
+                }),
+                ::deno_core::OpMetadata {
+                    ..::deno_core::OpMetadata::default()
+                },
+            );
+        }
+        impl many {
+            pub const fn name() -> &'static str {
+                <Self as deno_core::_ops::Op>::NAME
+            }
+            #[allow(clippy::too_many_arguments)]
+            extern "C" fn v8_fn_ptr_fast_metrics<'s>(
+                this: deno_core::v8::Local<deno_core::v8::Object>,
+                arg0: f64,
+                arg1: f64,
+                arg2: f64,
+                arg3: f64,
+                arg4: f64,
+                arg5: f64,
+                arg6: f64,
+                arg7: f64,
+                fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions<
+                    's,
+                >,
+            ) -> () {
+                let fast_api_callback_options: &'s mut _ = unsafe {
+                    &mut *fast_api_callback_options
+                };
+                let opctx: &'s _ = unsafe {
+                    &*(deno_core::v8::Local::<
+                        deno_core::v8::External,
+                    >::cast_unchecked(unsafe { fast_api_callback_options.data })
+                        .value() as *const deno_core::_ops::OpCtx)
+                };
+                deno_core::_ops::dispatch_metrics_fast(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Dispatched,
+                );
+                let res = Self::v8_fn_ptr_fast(
+                    this,
+                    arg0,
+                    arg1,
+                    arg2,
+                    arg3,
+                    arg4,
+                    arg5,
+                    arg6,
+                    arg7,
+                    fast_api_callback_options,
+                );
+                deno_core::_ops::dispatch_metrics_fast(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Completed,
+                );
+                res
+            }
+            #[allow(clippy::too_many_arguments)]
+            extern "C" fn v8_fn_ptr_fast<'s>(
+                this: deno_core::v8::Local<deno_core::v8::Object>,
+                arg0: f64,
+                arg1: f64,
+                arg2: f64,
+                arg3: f64,
+                arg4: f64,
+                arg5: f64,
+                arg6: f64,
+                arg7: f64,
+                fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions<
+                    's,
+                >,
+            ) -> () {
+                #[cfg(debug_assertions)]
+                let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
+                    &<Self as deno_core::_ops::Op>::DECL,
+                );
+                let fast_api_callback_options: &'s mut _ = unsafe {
+                    &mut *fast_api_callback_options
+                };
+                let mut scope = unsafe {
+                    fast_api_callback_options.isolate_unchecked_mut()
+                };
+                let Some(self_) = deno_core::_ops::try_unwrap_cppgc_object::<
+                    Big,
+                >(&mut scope, this.into()) else {
+                    {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(& *
+                            fast_api_callback_options) }
+                        );
+                        let mut scope = scope.init();
+                        deno_core::_ops::throw_error_one_byte(
+                            &mut scope,
+                            "expected Big",
+                        );
+                        return unsafe { std::mem::zeroed() };
+                    }
+                };
+                let self_ = unsafe { self_.as_ref() };
+                let result = {
+                    let arg0 = arg0 as _;
+                    let arg1 = arg1 as _;
+                    let arg2 = arg2 as _;
+                    let arg3 = arg3 as _;
+                    let arg4 = arg4 as _;
+                    let arg5 = arg5 as _;
+                    let arg6 = arg6 as _;
+                    let arg7 = arg7 as _;
+                    self_.call(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7)
+                };
+                result as _
+            }
+            fn slow_function_impl<'s>(
+                info: *const deno_core::v8::FunctionCallbackInfo,
+            ) -> usize {
+                let info: &'s _ = unsafe { &*info };
+                #[cfg(debug_assertions)]
+                let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
+                    &<Self as deno_core::_ops::Op>::DECL,
+                );
+                let scope = ::std::pin::pin!(
+                    unsafe { deno_core::v8::CallbackScope::new(info) }
+                );
+                let mut scope = scope.init();
+                let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(
+                    info,
+                );
+                let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+                    info,
+                );
+                let Some(self_) = deno_core::_ops::try_unwrap_cppgc_object::<
+                    Big,
+                >(&mut scope, args.this().into()) else {
+                    deno_core::_ops::throw_error_one_byte_info(&info, "expected Big");
+                    return 1;
+                };
+                let self_ = unsafe { self_.as_ref() };
+                let result = {
+                    let arg0 = args.get(0usize as i32);
+                    let Some(arg0) = deno_core::_ops::to_f64_option(&arg0) else {
+                        deno_core::_ops::throw_error_one_byte_info(
+                            &info,
+                            "expected f64",
+                        );
+                        return 1;
+                    };
+                    let arg0 = arg0 as _;
+                    let arg1 = args.get(1usize as i32);
+                    let Some(arg1) = deno_core::_ops::to_f64_option(&arg1) else {
+                        deno_core::_ops::throw_error_one_byte_info(
+                            &info,
+                            "expected f64",
+                        );
+                        return 1;
+                    };
+                    let arg1 = arg1 as _;
+                    let arg2 = args.get(2usize as i32);
+                    let Some(arg2) = deno_core::_ops::to_f64_option(&arg2) else {
+                        deno_core::_ops::throw_error_one_byte_info(
+                            &info,
+                            "expected f64",
+                        );
+                        return 1;
+                    };
+                    let arg2 = arg2 as _;
+                    let arg3 = args.get(3usize as i32);
+                    let Some(arg3) = deno_core::_ops::to_f64_option(&arg3) else {
+                        deno_core::_ops::throw_error_one_byte_info(
+                            &info,
+                            "expected f64",
+                        );
+                        return 1;
+                    };
+                    let arg3 = arg3 as _;
+                    let arg4 = args.get(4usize as i32);
+                    let Some(arg4) = deno_core::_ops::to_f64_option(&arg4) else {
+                        deno_core::_ops::throw_error_one_byte_info(
+                            &info,
+                            "expected f64",
+                        );
+                        return 1;
+                    };
+                    let arg4 = arg4 as _;
+                    let arg5 = args.get(5usize as i32);
+                    let Some(arg5) = deno_core::_ops::to_f64_option(&arg5) else {
+                        deno_core::_ops::throw_error_one_byte_info(
+                            &info,
+                            "expected f64",
+                        );
+                        return 1;
+                    };
+                    let arg5 = arg5 as _;
+                    let arg6 = args.get(6usize as i32);
+                    let Some(arg6) = deno_core::_ops::to_f64_option(&arg6) else {
+                        deno_core::_ops::throw_error_one_byte_info(
+                            &info,
+                            "expected f64",
+                        );
+                        return 1;
+                    };
+                    let arg6 = arg6 as _;
+                    let arg7 = args.get(7usize as i32);
+                    let Some(arg7) = deno_core::_ops::to_f64_option(&arg7) else {
+                        deno_core::_ops::throw_error_one_byte_info(
+                            &info,
+                            "expected f64",
+                        );
+                        return 1;
+                    };
+                    let arg7 = arg7 as _;
+                    Big::call(self_, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7)
+                };
+                deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
+                return 0;
+            }
+            extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
+                Self::slow_function_impl(info);
+            }
+        }
+        trait Callable {
+            #[allow(clippy::too_many_arguments)]
+            fn call(
+                &self,
+                _a: f64,
+                _b: f64,
+                _c: f64,
+                _d: f64,
+                _e: f64,
+                _f: f64,
+                _g: f64,
+                _h: f64,
+            );
+        }
+        impl Callable for Big {
+            #[allow(clippy::too_many_arguments)]
+            fn call(
+                &self,
+                _a: f64,
+                _b: f64,
+                _c: f64,
+                _d: f64,
+                _e: f64,
+                _f: f64,
+                _g: f64,
+                _h: f64,
+            ) {}
+        }
+        <many as ::deno_core::_ops::Op>::DECL
+    }
+}

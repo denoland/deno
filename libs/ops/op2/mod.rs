@@ -405,8 +405,13 @@ pub(crate) fn generate_op2(
   let callable = if let Some(ty) = config.method {
     op_fn.vis = syn::Visibility::Inherited;
     let ident = format_ident!("{ty}");
+    // The `Callable` trait method also needs the lint allow: clippy fires
+    // on the trait declaration too, not just the impl, so without this
+    // attribute users hit `clippy::too_many_arguments` for any op method
+    // that legitimately takes more than 7 args.
     quote! {
       trait Callable {
+        #[allow(clippy::too_many_arguments)]
         #op_fn_sig;
       }
       impl Callable for #ident {
