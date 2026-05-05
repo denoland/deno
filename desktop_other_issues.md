@@ -225,17 +225,6 @@ is sh-compatible.
 
 **Fix**: switch to `#!/bin/sh`.
 
-### 28. `unsafe { std::env::set_var(...) }` after threads have started — HIGH
-
-`cli/rt_desktop/lib.rs:1311-1317`
-
-Reached after `tokio::runtime::Builder::new_current_thread().build()` and after
-potentially `tokio::spawn`-ed work in panic-hook init. Linux glibc setenv is not
-thread-safe; Rust 1.81+ flagged this for a reason.
-
-**Fix**: set `DENO_SERVE_ADDRESS` _before_ the runtime is built, or pass it
-through `RunOptions` (which already carries `serve_port`/`serve_host`).
-
 ### 29. `set_current_dir` while other tasks may be doing relative-path I/O — MEDIUM
 
 `cli/rt_desktop/lib.rs:1064`
@@ -274,24 +263,20 @@ These pre-date this branch and currently block `tools/lint.js`.
 
 | Severity | Count | Items                                                         |
 | -------- | ----- | ------------------------------------------------------------- |
-| HIGH     | 1     | #28                                                           |
-| MEDIUM   | 5     | #7, #13, #17, #23, #29                                        |
-| LOW      | 14    | #6, #9, #12, #14, #15, #18, #19, #20, #21, #22, #27, #30, #31 |
+| MEDIUM   | 7     | #4, #5, #7, #13, #17, #23, #29                                |
+| LOW      | 13    | #6, #9, #12, #14, #15, #18, #19, #20, #21, #22, #27, #30, #31 |
 
 ## Suggested fix order
 
-**First batch — exploitable / process-stability bugs**, all local edits without
-architectural changes:
+The CRITICAL/HIGH batch is done. What's left:
 
-1. **#28** move `set_var(DENO_SERVE_ADDRESS)` before runtime init
+**Robustness wins**:
 
-**Second batch — robustness wins**:
+1. **#4 / #5** validate launcher names
+2. **#7** atomic-rename WEF cache extraction
+3. **#13** wgpu surface error → JsErrorBox
+4. **#17** `spawn_blocking` for auto-update I/O
+5. **#23** bound the panic-hook reporter
 
-10. **#4 / #5** validate launcher names
-11. **#7** atomic-rename WEF cache extraction
-12. **#13** wgpu surface error → JsErrorBox
-13. **#17** `spawn_blocking` for auto-update I/O
-14. **#23** bound the panic-hook reporter
-
-**Cleanup batch** — everything else (#6, #9, #12, #14, #15, #18, #19, #20, #21,
-#22, #27, #30) plus **#31** to unblock `tools/lint.js`.
+**Cleanup** — everything else (#6, #9, #12, #14, #15, #18, #19, #20, #21, #22,
+#27, #29, #30) plus **#31** to unblock `tools/lint.js`.

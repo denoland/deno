@@ -1006,6 +1006,29 @@ just_wef::main!(|| {
 
   just_wef::set_js_namespace("bindings");
 
+  // Allocate the desktop serve port and publish it via DENO_SERVE_ADDRESS
+  // BEFORE the tokio runtime is built. Once the runtime spins up its
+  // mio IO thread (and, optionally, the inspector server thread),
+  // `setenv` is no longer thread-safe on glibc — Rust 1.81+ marks it
+  // unsafe for that reason. We're still single-threaded up to here:
+  // the worker-fork path has already returned, and the init calls
+  // above (init_logging, mark_standalone, rustls install_default,
+  // set_js_namespace) don't spawn threads.
+  let desktop_serve_port = match allocate_random_port() {
+    Ok(p) => p,
+    Err(e) => {
+      eprintln!("[desktop] failed to allocate serve port: {}", e);
+      return;
+    }
+  };
+  // SAFETY: see the block comment above — single-threaded at this point.
+  unsafe {
+    std::env::set_var(
+      "DENO_SERVE_ADDRESS",
+      format!("tcp:127.0.0.1:{}", desktop_serve_port),
+    );
+  }
+
   let rt = tokio::runtime::Builder::new_current_thread()
     .enable_all()
     .build()
@@ -1013,7 +1036,7 @@ just_wef::main!(|| {
 
   rt.block_on(async {
     eprintln!("[desktop] run_desktop starting");
-    match run_desktop(update_rolled_back).await {
+    match run_desktop(update_rolled_back, desktop_serve_port).await {
       Ok(()) => eprintln!("[desktop] run_desktop completed OK"),
       Err(error) => {
         let is_js_error = js_error_downcast_ref(&error).is_some();
@@ -1248,7 +1271,10 @@ fn find_section_in_dylib() -> Result<&'static [u8], AnyError> {
   }
 }
 
-async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
+async fn run_desktop(
+  update_rolled_back: bool,
+  desktop_serve_port: u16,
+) -> Result<(), AnyError> {
   let args: Vec<_> = env::args_os().collect();
   let data = denort::binary::extract_standalone_with_finder(
     Cow::Owned(args),
@@ -1284,8 +1310,6 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
   );
   denort::load_env_vars(&data.metadata.env_vars_from_env_file);
 
-  let desktop_serve_port = allocate_random_port()?;
-
   // Wire up the Deno-side inspector when launched under
   // `deno desktop --inspect[-brk|-wait]`. The parent process binds the
   // user-visible port and runs a multiplexer that fronts both this
@@ -1310,15 +1334,9 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
     log::debug!("[desktop] inspector server bound on {addr}");
   }
 
-  // Set DENO_SERVE_ADDRESS so Deno.serve() and Node http servers
-  // automatically bind to the desktop port.
-  #[allow(clippy::undocumented_unsafe_blocks)]
-  unsafe {
-    std::env::set_var(
-      "DENO_SERVE_ADDRESS",
-      format!("tcp:127.0.0.1:{}", desktop_serve_port),
-    );
-  }
+  // DENO_SERVE_ADDRESS is published by `just_wef::main!` before the
+  // tokio runtime is built — see the comment there for why we can't
+  // do it from here. `desktop_serve_port` is the port we put into it.
 
   // Enable HMR if DENO_DESKTOP_HMR is set to a directory path
   // (set by `deno compile --desktop --hmr`).
