@@ -20,6 +20,8 @@ const {
   DateNow,
   Error,
   Map,
+  MathFloor,
+  NumberIsFinite,
   NumberIsNaN,
   MapPrototypeGet,
   MapPrototypeSet,
@@ -245,6 +247,28 @@ function wrapInner(fn) {
 const registerTestIdRetBuf = new Uint32Array(1);
 const registerTestIdRetBufU8 = new Uint8Array(registerTestIdRetBuf.buffer);
 
+const TIMEOUT_MAX = 0x7FFFFFFF;
+
+function encodeTimeout(value) {
+  if (value === undefined || value === null) return 0;
+  if (
+    typeof value !== "number" || NumberIsNaN(value) || !NumberIsFinite(value) ||
+    value < 0
+  ) {
+    throw new TypeError(
+      "Test timeout must be a non-negative finite number of milliseconds",
+    );
+  }
+  if (value === 0) return 0;
+  const ms = MathFloor(value);
+  if (ms < 1 || ms > TIMEOUT_MAX) {
+    throw new TypeError(
+      "Test timeout out of range (must be between 1 and 2147483647 ms)",
+    );
+  }
+  return ms;
+}
+
 // As long as we're using one isolate per test, we can cache the origin since it won't change
 let cachedOrigin = undefined;
 
@@ -267,6 +291,7 @@ function testInner(
     sanitizeResources: true,
     sanitizeExit: true,
     permissions: null,
+    timeout: undefined,
   };
 
   if (typeof nameOrFnOrOptions === "string") {
@@ -367,6 +392,7 @@ function testInner(
     testDesc.location.columnNumber,
     registerTestIdRetBufU8,
     testDesc.sanitizeOnly ?? true,
+    encodeTimeout(testDesc.timeout),
   );
   testDesc.id = registerTestIdRetBuf[0];
   testDesc.origin = cachedOrigin;

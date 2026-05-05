@@ -299,6 +299,7 @@ pub struct TestDescription {
   pub location: TestLocation,
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
+  pub timeout_ms: Option<u32>,
 }
 
 /// May represent a failure of a test or test step.
@@ -337,6 +338,7 @@ pub enum TestFailure {
   FailedSteps(usize),
   IncompleteSteps,
   Leaked(Vec<String>, Vec<String>), // Details, trailer notes
+  TimedOut(u32),
   // The rest are for steps only.
   Incomplete,
   OverlapsWithSanitizers(IndexSet<String>), // Long names of overlapped tests
@@ -373,6 +375,9 @@ impl TestFailure {
         }
         Cow::Owned(f)
       }
+      TestFailure::TimedOut(ms) => {
+        Cow::Owned(format!("Test timed out after {}ms.", ms))
+      }
       TestFailure::OverlapsWithSanitizers(long_names) => {
         let mut f = String::new();
         write!(f, "Started test step while another test step with sanitizers was running:").ok();
@@ -402,6 +407,7 @@ impl TestFailure {
       }
       TestFailure::Incomplete => "Didn't complete before parent".to_string(),
       TestFailure::Leaked(_, _) => "Leaks detected".to_string(),
+      TestFailure::TimedOut(ms) => format!("Timed out after {}ms", ms),
       TestFailure::OverlapsWithSanitizers(_) => {
         "Started test step while another test step with sanitizers was running"
           .to_string()
@@ -890,6 +896,112 @@ pub enum RunTestsForWorkerErr {
   SerdeV8(#[from] serde_v8::Error),
 }
 
+/// Single watchdog thread for an entire test specifier. Reused across all
+/// tests in the file: each test calls `arm()` before running and `disarm()`
+/// after, replacing the per-test thread spawn.
+struct TestWatchdog {
+  shared: std::sync::Arc<WatchdogShared>,
+  thread: Option<std::thread::JoinHandle<()>>,
+}
+
+struct WatchdogShared {
+  mutex: std::sync::Mutex<WatchdogState>,
+  cvar: std::sync::Condvar,
+}
+
+#[derive(PartialEq, Eq)]
+enum WatchdogState {
+  Idle,
+  Armed { deadline: Instant, fired: bool },
+  Shutdown,
+}
+
+impl TestWatchdog {
+  fn new(js_runtime: &mut deno_core::JsRuntime) -> Self {
+    let isolate_handle = js_runtime.v8_isolate().thread_safe_handle();
+    let shared = std::sync::Arc::new(WatchdogShared {
+      mutex: std::sync::Mutex::new(WatchdogState::Idle),
+      cvar: std::sync::Condvar::new(),
+    });
+    let shared_thread = shared.clone();
+    let thread = std::thread::Builder::new()
+      .name("deno-test-watchdog".to_string())
+      .spawn(move || Self::run(shared_thread, isolate_handle))
+      .expect("failed to spawn test watchdog thread");
+    Self {
+      shared,
+      thread: Some(thread),
+    }
+  }
+
+  fn run(shared: std::sync::Arc<WatchdogShared>, isolate: v8::IsolateHandle) {
+    let mut state = shared.mutex.lock().unwrap();
+    loop {
+      match *state {
+        WatchdogState::Shutdown => return,
+        WatchdogState::Idle => {
+          state = shared.cvar.wait(state).unwrap();
+        }
+        WatchdogState::Armed { fired: true, .. } => {
+          state = shared.cvar.wait(state).unwrap();
+        }
+        WatchdogState::Armed {
+          deadline,
+          fired: false,
+        } => {
+          let now = Instant::now();
+          if now >= deadline {
+            // Hold the lock across `terminate_execution` so disarm()
+            // can't call `cancel_terminate_execution` before the V8
+            // flag is actually set.
+            if let WatchdogState::Armed { ref mut fired, .. } = *state {
+              *fired = true;
+            }
+            isolate.terminate_execution();
+          } else {
+            let (s, _) =
+              shared.cvar.wait_timeout(state, deadline - now).unwrap();
+            state = s;
+          }
+        }
+      }
+    }
+  }
+
+  fn arm(&self, timeout_ms: u32) {
+    let mut state = self.shared.mutex.lock().unwrap();
+    *state = WatchdogState::Armed {
+      deadline: Instant::now() + Duration::from_millis(timeout_ms as u64),
+      fired: false,
+    };
+    self.shared.cvar.notify_all();
+  }
+
+  /// Returns true if the watchdog fired — i.e. `terminate_execution` was
+  /// called for this arming. The caller must then `cancel_terminate_execution`
+  /// before running JS again on the isolate.
+  fn disarm(&self) -> bool {
+    let mut state = self.shared.mutex.lock().unwrap();
+    let fired = matches!(*state, WatchdogState::Armed { fired: true, .. });
+    *state = WatchdogState::Idle;
+    self.shared.cvar.notify_all();
+    fired
+  }
+}
+
+impl Drop for TestWatchdog {
+  fn drop(&mut self) {
+    {
+      let mut state = self.shared.mutex.lock().unwrap();
+      *state = WatchdogState::Shutdown;
+      self.shared.cvar.notify_all();
+    }
+    if let Some(t) = self.thread.take() {
+      let _ = t.join();
+    }
+  }
+}
+
 async fn slow_test_watchdog(event_tracker: TestEventTracker, test_id: usize) {
   // The slow test warning should pop up every DENO_SLOW_TEST_TIMEOUT*(2**n) seconds,
   // with a duration that is doubling each time. So for a warning time of 60s,
@@ -1037,6 +1149,7 @@ async fn run_tests_for_worker_inner(
 
   let mut had_uncaught_error = false;
   let sanitizer_helper = sanitizers::create_test_sanitizer_helper(worker);
+  let watchdog = TestWatchdog::new(&mut worker.js_runtime);
 
   // Execute beforeAll hooks (FIFO order)
   call_hooks(worker, test_hooks.before_all.iter(), |core_error| {
@@ -1096,36 +1209,63 @@ async fn run_tests_for_worker_inner(
     })
     .await?;
 
-    // TODO(bartlomieju): this whole block/binding could be reworked into something better
     let result = if !before_each_hook_errored {
+      let timeout_ms = desc.timeout_ms.filter(|&t| t > 0);
+
+      if let Some(ms) = timeout_ms {
+        watchdog.arm(ms);
+      }
+
       let call = worker.js_runtime.call(&function);
 
       let slow_test_warning =
         spawn(slow_test_watchdog(event_tracker.clone(), desc.id));
 
-      let result = worker
+      let test_fut = worker
         .js_runtime
-        .with_event_loop_promise(call, PollEventLoopOptions::default())
-        .await;
-      slow_test_warning.abort();
-      let result = match result {
-        Ok(r) => r,
-        Err(error) => match error.into_kind() {
-          CoreErrorKind::Js(js_error) => {
-            event_tracker.uncaught_error(specifier.to_string(), js_error)?;
-            fail_fast_tracker.add_failure();
-            event_tracker.cancelled(desc)?;
-            had_uncaught_error = true;
-            continue;
-          }
-          err => return Err(err.into_box().into()),
-        },
-      };
+        .with_event_loop_promise(call, PollEventLoopOptions::default());
 
-      // Check the result before we check for leaks
-      deno_core::scope!(scope, &mut worker.js_runtime);
-      let result = v8::Local::new(scope, result);
-      serde_v8::from_v8::<TestResult>(scope, result)?
+      let raced = match timeout_ms {
+        Some(ms) => {
+          match tokio::time::timeout(Duration::from_millis(ms as u64), test_fut)
+            .await
+          {
+            Ok(r) => Ok(r),
+            Err(_elapsed) => Err(()),
+          }
+        }
+        None => Ok(test_fut.await),
+      };
+      slow_test_warning.abort();
+
+      let watchdog_fired = timeout_ms.is_some() && watchdog.disarm();
+      if watchdog_fired {
+        worker.js_runtime.v8_isolate().cancel_terminate_execution();
+      }
+
+      let timed_out = raced.is_err() || watchdog_fired;
+
+      if timed_out {
+        TestResult::Failed(TestFailure::TimedOut(timeout_ms.unwrap_or(0)))
+      } else {
+        match raced.unwrap() {
+          Ok(r) => {
+            deno_core::scope!(scope, &mut worker.js_runtime);
+            let result = v8::Local::new(scope, r);
+            serde_v8::from_v8::<TestResult>(scope, result)?
+          }
+          Err(error) => match error.into_kind() {
+            CoreErrorKind::Js(js_error) => {
+              event_tracker.uncaught_error(specifier.to_string(), js_error)?;
+              fail_fast_tracker.add_failure();
+              event_tracker.cancelled(desc)?;
+              had_uncaught_error = true;
+              continue;
+            }
+            err => return Err(err.into_box().into()),
+          },
+        }
+      }
     } else {
       TestResult::Ignored
     };

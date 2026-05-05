@@ -1,0 +1,25 @@
+{
+  "tempDir": true,
+  "tests": {
+    "pass_within_deadline": {
+      "args": "test --quiet pass_within_deadline.ts",
+      "exitCode": 0,
+      "output": "pass_within_deadline.out"
+    },
+    "async_hang": {
+      "args": "test --quiet async_hang.ts",
+      "exitCode": 1,
+      "output": "async_hang.out"
+    },
+    "sync_hot_loop": {
+      "args": "test --quiet sync_hot_loop.ts",
+      "exitCode": 1,
+      "output": "sync_hot_loop.out"
+    },
+    "validation_negative": {
+      "args": "test --quiet validation_negative.ts",
+      "exitCode": 1,
+      "output": "validation_negative.out"
+    }
+  }
+}
