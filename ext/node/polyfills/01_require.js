@@ -6,6 +6,11 @@ import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_fs_cwd,
   op_import_sync,
+  op_module_hooks_poll_load,
+  op_module_hooks_poll_resolve,
+  op_module_hooks_register,
+  op_module_hooks_respond_load,
+  op_module_hooks_respond_resolve,
   op_napi_open,
   op_require_as_file_path,
   op_require_break_on_next_statement,
@@ -365,9 +370,13 @@ let patched = false;
 
 // module.registerHooks() infrastructure
 const hookEntries = [];
+// module.register() infrastructure - async hooks from loaded loader modules
+const asyncHookEntries = [];
 let insideResolveHook = false;
 let insideLoadHook = false;
 let utf8Decoder;
+let esmResolveLoopRunning = false;
+let esmLoadLoopRunning = false;
 
 function executeResolveHookChain(specifier, context, parent, isMain) {
   // Collect resolve hooks from hookEntries in LIFO order
@@ -486,6 +495,183 @@ function executeLoadHookChain(fileUrl, context) {
   }
 
   return nextLoad(fileUrl, context);
+}
+
+// ESM resolve hook chain: runs sync hooks (registerHooks) in LIFO order,
+// then async hooks (register) in LIFO order.
+// Returns { url } if hooks resolved, or null for fallthrough to default.
+async function executeEsmResolveHookChain(specifier, context) {
+  // Collect sync hooks first (run before async per Node.js spec)
+  const resolveHooks = [];
+  for (let i = hookEntries.length - 1; i >= 0; i--) {
+    if (hookEntries[i].resolve !== null) {
+      ArrayPrototypePush(resolveHooks, hookEntries[i].resolve);
+    }
+  }
+  // Then async hooks from register()
+  for (let i = asyncHookEntries.length - 1; i >= 0; i--) {
+    if (asyncHookEntries[i].resolve !== null) {
+      ArrayPrototypePush(resolveHooks, asyncHookEntries[i].resolve);
+    }
+  }
+  if (resolveHooks.length === 0) return null;
+
+  let index = 0;
+  let currentContext = context;
+
+  async function nextResolve(spec, ctx) {
+    if (ctx !== undefined && ctx !== null) {
+      currentContext = { ...currentContext, ...ctx };
+    }
+    if (index >= resolveHooks.length) {
+      // End of chain - signal fallthrough to Rust default resolution
+      return { url: null, shortCircuit: true };
+    }
+    const hook = resolveHooks[index++];
+    let nextCalled = false;
+    const wrappedNext = (s, c) => {
+      nextCalled = true;
+      return nextResolve(s, c);
+    };
+    const result = await hook(spec, currentContext, wrappedNext);
+    if (!nextCalled && !result?.shortCircuit) {
+      throw new TypeError(
+        "resolve hook must return { shortCircuit: true } or call nextResolve",
+      );
+    }
+    return result;
+  }
+
+  return nextResolve(specifier, context);
+}
+
+// ESM load hook chain: runs sync hooks (registerHooks) in LIFO order,
+// then async hooks (register) in LIFO order.
+// Returns { source } if hooks provided source, or null for fallthrough.
+async function executeEsmLoadHookChain(fileUrl, context) {
+  // Collect sync hooks first (run before async per Node.js spec)
+  const loadHooks = [];
+  for (let i = hookEntries.length - 1; i >= 0; i--) {
+    if (hookEntries[i].load !== null) {
+      ArrayPrototypePush(loadHooks, hookEntries[i].load);
+    }
+  }
+  // Then async hooks from register()
+  for (let i = asyncHookEntries.length - 1; i >= 0; i--) {
+    if (asyncHookEntries[i].load !== null) {
+      ArrayPrototypePush(loadHooks, asyncHookEntries[i].load);
+    }
+  }
+  if (loadHooks.length === 0) return null;
+
+  let index = 0;
+  let currentContext = context;
+
+  async function nextLoad(loadUrl, ctx) {
+    if (ctx !== undefined && ctx !== null) {
+      currentContext = { ...currentContext, ...ctx };
+    }
+    if (index >= loadHooks.length) {
+      // End of chain - signal fallthrough to Rust default loading
+      return { source: null, shortCircuit: true };
+    }
+    const hook = loadHooks[index++];
+    let nextCalled = false;
+    const wrappedNext = (u, c) => {
+      nextCalled = true;
+      return nextLoad(u, c);
+    };
+    const result = await hook(loadUrl, currentContext, wrappedNext);
+    if (!nextCalled && !result?.shortCircuit) {
+      throw new TypeError(
+        "load hook must return { shortCircuit: true } or call nextLoad",
+      );
+    }
+    return result;
+  }
+
+  return nextLoad(fileUrl, context);
+}
+
+function _startEsmResolveLoop() {
+  if (esmResolveLoopRunning) return;
+  esmResolveLoopRunning = true;
+  (async () => {
+    while (true) {
+      const pollPromise = op_module_hooks_poll_resolve();
+      core.unrefOpPromise(pollPromise);
+      const req = await pollPromise;
+      if (req === null) break;
+      const [id, specifier, referrer] = req;
+      const context = {
+        conditions: ["node", "import"],
+        importAttributes: { __proto__: null },
+        parentURL: referrer || undefined,
+        importAssertions: { __proto__: null },
+      };
+      try {
+        const result = await executeEsmResolveHookChain(specifier, context);
+        if (result !== null && result.url != null) {
+          op_module_hooks_respond_resolve(id, result.url, null);
+        } else {
+          // Fallthrough: tell Rust to use default resolution
+          op_module_hooks_respond_resolve(id, null, null);
+        }
+      } catch (e) {
+        op_module_hooks_respond_resolve(id, null, String(e));
+      }
+    }
+  })();
+}
+
+function _startEsmLoadLoop() {
+  if (esmLoadLoopRunning) return;
+  esmLoadLoopRunning = true;
+  (async () => {
+    while (true) {
+      const pollPromise = op_module_hooks_poll_load();
+      core.unrefOpPromise(pollPromise);
+      const req = await pollPromise;
+      if (req === null) break;
+      const [id, fileUrl] = req;
+      const context = {
+        format: undefined,
+        conditions: ["node", "import"],
+        importAttributes: { __proto__: null },
+        importAssertions: { __proto__: null },
+      };
+      try {
+        const result = await executeEsmLoadHookChain(fileUrl, context);
+        if (result !== null && result.source != null) {
+          const source = typeof result.source === "string"
+            ? result.source
+            : new TextDecoder().decode(result.source);
+          op_module_hooks_respond_load(id, source, null);
+        } else {
+          // Fallthrough: tell Rust to use default loading
+          op_module_hooks_respond_load(id, null, null);
+        }
+      } catch (e) {
+        op_module_hooks_respond_load(id, null, String(e));
+      }
+    }
+  })();
+}
+
+function _activateEsmHooks() {
+  let hasResolve = false;
+  let hasLoad = false;
+  for (let i = 0; i < hookEntries.length; i++) {
+    if (hookEntries[i].resolve !== null) hasResolve = true;
+    if (hookEntries[i].load !== null) hasLoad = true;
+  }
+  for (let i = 0; i < asyncHookEntries.length; i++) {
+    if (asyncHookEntries[i].resolve !== null) hasResolve = true;
+    if (asyncHookEntries[i].load !== null) hasLoad = true;
+  }
+  op_module_hooks_register(hasResolve, hasLoad);
+  if (hasResolve) _startEsmResolveLoop();
+  if (hasLoad) _startEsmLoadLoop();
 }
 
 function stat(filename) {
@@ -974,6 +1160,7 @@ Module._load = function (request, parent, isMain) {
           format: "builtin",
           conditions: ["node", "require"],
           importAttributes: { __proto__: null },
+          importAssertions: { __proto__: null },
         };
         insideLoadHook = true;
         let result;
@@ -1103,6 +1290,7 @@ Module._resolveFilename = function (
       conditions: ["node", "require"],
       importAttributes: { __proto__: null },
       parentURL,
+      importAssertions: { __proto__: null },
     };
     const result = executeResolveHookChain(request, context, parent, isMain);
     if (result != null && result.url != null) {
@@ -1351,6 +1539,7 @@ Module.prototype.load = function (filename) {
         format: undefined,
         conditions: ["node", "require"],
         importAttributes: { __proto__: null },
+        importAssertions: { __proto__: null },
       };
       insideLoadHook = true;
       let result;
@@ -1901,29 +2090,115 @@ export function registerHooks(hooks) {
   }
   const entry = { resolve, load };
   ArrayPrototypePush(hookEntries, entry);
+
+  // Activate ESM hooks in Rust module loader
+  _activateEsmHooks();
+
   return {
     deregister() {
       const idx = ArrayPrototypeIndexOf(hookEntries, entry);
       if (idx !== -1) {
         ArrayPrototypeSplice(hookEntries, idx, 1);
       }
+      // Update Rust-side active flags
+      _activateEsmHooks();
     },
   };
 }
 
 Module.registerHooks = registerHooks;
+Module.register = register;
 
 /**
- * @param {string | URL} _specifier
- * @param {string | URL} _parentUrl
- * @param {{ parentURL: string | URL, data: any, transferList: any[] }} [_options]
+ * @param {string | URL} specifier
+ * @param {string | URL | { parentURL?: string | URL, data?: any, transferList?: any[] }} [parentUrlOrOptions]
+ * @param {{ parentURL?: string | URL, data?: any, transferList?: any[] }} [maybeOptions]
  */
-export function register(_specifier, _parentUrl, _options) {
-  // TODO(@marvinhagemeister): Stub implementation for programs registering
-  // TypeScript loaders. We don't support registering loaders for file
-  // types that Deno itself doesn't support at the moment.
+export function register(specifier, parentUrlOrOptions, maybeOptions) {
+  if (typeof specifier !== "string" && !(specifier instanceof URL)) {
+    throw new TypeError("specifier must be a string or URL");
+  }
+
+  // Parse overloaded arguments:
+  // register(specifier)
+  // register(specifier, parentURL)
+  // register(specifier, options)
+  // register(specifier, parentURL, options)
+  let parentURL;
+  let options;
+  if (
+    typeof parentUrlOrOptions === "string" ||
+    parentUrlOrOptions instanceof URL
+  ) {
+    parentURL = String(parentUrlOrOptions);
+    options = maybeOptions || {};
+  } else if (
+    typeof parentUrlOrOptions === "object" && parentUrlOrOptions !== null
+  ) {
+    options = parentUrlOrOptions;
+    parentURL = options.parentURL != null
+      ? String(options.parentURL)
+      : undefined;
+  } else {
+    options = {};
+  }
+
+  const data = options.data;
+  const transferList = options.transferList;
+
+  // Resolve the specifier to a URL
+  let resolvedUrl;
+  if (
+    typeof specifier === "string" && !specifier.startsWith("file://") &&
+    !specifier.startsWith("data:") && !specifier.startsWith("node:")
+  ) {
+    // Relative or bare specifier - resolve against parentURL
+    const base = parentURL || "data:";
+    try {
+      resolvedUrl = new URL(specifier, base).href;
+    } catch {
+      resolvedUrl = specifier;
+    }
+  } else {
+    resolvedUrl = String(specifier);
+  }
+
+  // Load the hook module asynchronously and register its hooks.
+  // This matches Node.js behavior: register() returns immediately,
+  // hooks become active before the next import.
+  _loadAndRegisterHookModule(resolvedUrl, data, transferList);
 
   return undefined;
+}
+
+async function _loadAndRegisterHookModule(resolvedUrl, data, transferList) {
+  try {
+    const hookModule = await import(resolvedUrl);
+
+    // Call initialize hook if exported
+    if (typeof hookModule.initialize === "function") {
+      // If transferList contains items, we transfer them (in our same-thread
+      // model, we just pass the references directly - ownership semantics
+      // are the same since the caller shouldn't use transferred objects after)
+      await hookModule.initialize(data);
+    }
+
+    const resolve = typeof hookModule.resolve === "function"
+      ? hookModule.resolve
+      : null;
+    const load = typeof hookModule.load === "function" ? hookModule.load : null;
+
+    if (resolve === null && load === null) {
+      return;
+    }
+
+    ArrayPrototypePush(asyncHookEntries, { resolve, load });
+    _activateEsmHooks();
+  } catch (e) {
+    // Match Node.js behavior: errors in hook loading are reported but
+    // do not crash the process
+    console.error("Error loading module hooks from", resolvedUrl, e);
+  }
 }
 
 export { builtinModules, createRequire, getBuiltinModule, isBuiltin, Module };

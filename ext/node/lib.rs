@@ -169,6 +169,12 @@ deno_core::extension!(deno_node,
   ops = [
     ops::assert::op_node_get_first_expression,
 
+    ops::module_hooks::op_module_hooks_register,
+    ops::module_hooks::op_module_hooks_poll_resolve,
+    ops::module_hooks::op_module_hooks_respond_resolve,
+    ops::module_hooks::op_module_hooks_poll_load,
+    ops::module_hooks::op_module_hooks_respond_load,
+
     ops::blocklist::op_socket_address_parse,
     ops::blocklist::op_socket_address_get_serialization,
 
@@ -658,6 +664,7 @@ deno_core::extension!(deno_node,
   },
   state = |state, options| {
     state.put(options.fs.clone());
+    state.put(ops::module_hooks::LoaderHookRegistry::default());
 
     if let Some(init) = &options.maybe_init {
       state.put(init.sys.clone());
