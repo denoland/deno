@@ -4,13 +4,13 @@
 // with glob() and globSync() from: https://github.com/nodejs/node/blob/2acc8bc6a9a830b38d101ac70390b8c5c9a14bf3/lib/fs.js#L3167
 import { core, primordials } from "ext:core/mod.js";
 
-import {
+const {
   validateObject,
   validateString,
   validateStringArray,
-} from "ext:deno_node/internal/validators.mjs";
-import { isMacOS, isWindows } from "ext:deno_node/_util/os.ts";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isMacOS, isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import process from "node:process";
 
 import {
@@ -34,10 +34,10 @@ import {
   DirentFromStats,
 } from "ext:deno_node/internal/fs/utils.mjs";
 
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   hideStackFrames,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 import assert from "node:assert";
 

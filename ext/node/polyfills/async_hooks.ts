@@ -5,19 +5,19 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, primordials } from "ext:core/mod.js";
-import {
+const {
   validateFunction,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   AsyncHook,
   emitAfter,
   emitBefore,
-  emitDestroy as emitDestroyHook,
+  emitDestroy: emitDestroyHook,
   emitInit,
-  executionAsyncId as internalExecutionAsyncId,
+  executionAsyncId: internalExecutionAsyncId,
   newAsyncId,
-} from "ext:deno_node/internal/async_hooks.ts";
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 
 const {
   ObjectDefineProperties,

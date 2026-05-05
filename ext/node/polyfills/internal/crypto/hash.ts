@@ -24,11 +24,11 @@ const {
   forgivingBase64UrlEncode: encodeToBase64Url,
 } = core.loadExtScript("ext:deno_web/00_infra.js");
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
-import {
+const {
   validateEncoding,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import type {
   BinaryToTextEncoding,
   Encoding,
@@ -37,11 +37,11 @@ import {
   KeyObject,
   prepareSecretKey,
 } from "ext:deno_node/internal/crypto/keys.ts";
-import {
+const {
   ERR_CRYPTO_HASH_FINALIZED,
   ERR_INVALID_ARG_TYPE,
   NodeError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import LazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
 import process from "node:process";
 import {
@@ -49,10 +49,10 @@ import {
   getHashBlockSize,
   toBuf,
 } from "ext:deno_node/internal/crypto/util.ts";
-import {
+const {
   isAnyArrayBuffer,
   isArrayBufferView,
-} from "ext:deno_node/internal/util/types.ts";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 
 const { ReflectApply, ObjectSetPrototypeOf } = primordials;
 
@@ -174,7 +174,15 @@ Hash.prototype.update = function update(
   ) {
     unwrapErr(op_node_hash_update_str(this[kHandle], data));
   } else {
-    unwrapErr(op_node_hash_update(this[kHandle], toBuf(data, encoding)));
+    const buf = toBuf(data as string | Buffer, encoding);
+    // Ensure we pass a Uint8Array to the op (non-Uint8Array typed arrays
+    // need to be viewed as raw bytes over their underlying ArrayBuffer)
+    const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(
+      (buf as ArrayBufferView).buffer,
+      (buf as ArrayBufferView).byteOffset,
+      (buf as ArrayBufferView).byteLength,
+    );
+    unwrapErr(op_node_hash_update(this[kHandle], u8));
   }
 
   return this;

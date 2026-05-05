@@ -9,7 +9,6 @@
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-// deno-fmt-ignore-file
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
 const {
@@ -47,7 +46,9 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
 
 class TextDecoder {
   /** @type {string} */
@@ -584,4 +585,4 @@ return {
   TextEncoder,
   TextEncoderStream,
 };
-})()
+})();

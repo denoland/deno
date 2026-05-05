@@ -6,7 +6,9 @@ import {
   direntFromDeno,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import assert from "node:assert";
-import { ERR_MISSING_ARGS } from "ext:deno_node/internal/errors.ts";
+const { ERR_MISSING_ARGS } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 const { TextDecoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
 
 const {

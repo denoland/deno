@@ -1425,13 +1425,25 @@ fn new_workspace_factory_options(
     lockfile_skip_write: flags.internal.lockfile_skip_write,
     no_npm: flags.no_npm,
     node_modules_dir: flags.node_modules_dir,
+    node_modules_linker: flags.node_modules_linker,
     npm_process_state: npm_process_state(&CliSys::default()).as_ref().map(
-      |s| NpmProcessStateOptions {
-        node_modules_dir: s
-          .local_node_modules_path
-          .as_ref()
-          .map(|s| Cow::Borrowed(s.as_str())),
-        is_byonm: matches!(s.kind, NpmProcessStateKind::Byonm),
+      |s| {
+        use deno_npm_installer::process_state::NpmProcessStateLinkerMode;
+        NpmProcessStateOptions {
+          node_modules_dir: s
+            .local_node_modules_path
+            .as_ref()
+            .map(|s| Cow::Borrowed(s.as_str())),
+          is_byonm: matches!(s.kind, NpmProcessStateKind::Byonm),
+          linker_mode: Some(match s.linker_mode {
+            NpmProcessStateLinkerMode::Isolated => {
+              deno_config::deno_json::NodeModulesLinkerMode::Isolated
+            }
+            NpmProcessStateLinkerMode::Hoisted => {
+              deno_config::deno_json::NodeModulesLinkerMode::Hoisted
+            }
+          }),
+        }
       },
     ),
     root_node_modules_dir_override: flags

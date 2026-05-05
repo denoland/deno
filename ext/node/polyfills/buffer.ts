@@ -1,12 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // @deno-types="./internal/buffer.d.ts"
-export {
+import { core } from "ext:core/mod.js";
+const __buffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+export const {
   atob,
   Blob,
   btoa,
   Buffer,
   constants,
-  default,
   File,
   INSPECT_MAX_BYTES,
   isAscii,
@@ -16,4 +17,6 @@ export {
   resolveObjectURL,
   SlowBuffer,
   transcode,
-} from "ext:deno_node/internal/buffer.mjs";
+} = __buffer;
+const _default = __buffer.default;
+export { _default as default };

@@ -4,29 +4,32 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
+import { core } from "ext:core/mod.js";
 import { getDefaultHighWaterMark } from "ext:deno_node/internal/streams/state.js";
-import assert from "ext:deno_node/internal/assert.mjs";
+const { default: assert } = core.loadExtScript(
+  "ext:deno_node/internal/assert.mjs",
+);
 import EE from "node:events";
 import { Stream } from "node:stream";
 import { deprecate } from "node:util";
 import type { Socket } from "node:net";
-import {
+const {
   kNeedDrain,
   kOutHeaders,
   utcDate,
-} from "ext:deno_node/internal/http.ts";
+} = core.loadExtScript("ext:deno_node/internal/http.ts");
 import { Buffer } from "node:buffer";
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
   _checkIsHttpToken as checkIsHttpToken,
   chunkExpression as RE_TE_CHUNKED,
 } from "node:_http_common";
-import {
+const {
   defaultTriggerAsyncIdScope,
   symbols,
-} from "ext:deno_node/internal/async_hooks.ts";
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { async_id_symbol } = symbols;
-import {
+const {
   ERR_HTTP_BODY_NOT_ALLOWED,
   ERR_HTTP_CONTENT_LENGTH_MISMATCH,
   ERR_HTTP_HEADERS_SENT,
@@ -41,11 +44,17 @@ import {
   ERR_STREAM_NULL_VALUES,
   ERR_STREAM_WRITE_AFTER_END,
   hideStackFrames,
-} from "ext:deno_node/internal/errors.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
-import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { validateString } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const { isUint8Array } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 
-import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
+const { debuglog } = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
 let debug = debuglog("http", (fn) => {
   debug = fn;
 });

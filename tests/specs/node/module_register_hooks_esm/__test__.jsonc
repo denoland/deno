@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "virtual_module_import": {
+      "args": "run -A main.mjs",
+      "output": "main.out"
+    },
+    "fallthrough": {
+      "args": "run -A test_fallthrough.mjs",
+      "output": "test_fallthrough.out"
+    }
+  }
+}

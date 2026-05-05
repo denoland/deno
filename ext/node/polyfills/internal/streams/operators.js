@@ -5,12 +5,12 @@ import { core, primordials } from "ext:core/mod.js";
 const { AbortController, AbortSignal } = core.loadExtScript(
   "ext:deno_web/03_abort_signal.js",
 );
-import imported1 from "ext:deno_node/internal/errors.ts";
-import {
+const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   validateAbortSignal,
   validateInteger,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import {
   kResistStopPropagation,
   kWeakHandler,
@@ -18,10 +18,10 @@ import {
 import { finished } from "ext:deno_node/internal/streams/end-of-stream.js";
 import staticCompose from "ext:deno_node/internal/streams/compose.js";
 import { addAbortSignalNoValidate } from "ext:deno_node/internal/streams/add-abort-signal.js";
-import {
+const {
   isNodeStream,
   isWritable,
-} from "ext:deno_node/internal/streams/utils.js";
+} = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 
 const {
   AbortError,

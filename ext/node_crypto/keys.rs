@@ -634,6 +634,10 @@ pub enum AsymmetricPrivateKeyError {
   #[error("error:1E08010C:DECODER routines::unsupported")]
   InvalidPemPrivateKey,
   #[class(generic)]
+  #[property("code" = "ERR_OSSL_EVP_BAD_DECRYPT")]
+  #[error("error:1C800064:Provider routines::bad decrypt")]
+  BadDecrypt,
+  #[class(generic)]
   #[property("code" = "ERR_OSSL_CRYPTO_INTERRUPTED_OR_CANCELLED")]
   #[error("error:07880109:common libcrypto routines::interrupted or cancelled")]
   EncryptedPrivateKeyRequiresPassphraseToDecrypt,
@@ -871,6 +875,12 @@ impl KeyObjectHandle {
               .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?,
             "PRIVATE KEY" => SecretDocument::from_pkcs8_der(&decrypted)
               .map_err(|_| AsymmetricPrivateKeyError::InvalidPkcs8PrivateKey)?,
+            "DSA PRIVATE KEY" => {
+              let private_key = parse_traditional_dsa_private_key(&decrypted)?;
+              return Ok(KeyObjectHandle::AsymmetricPrivate(
+                AsymmetricPrivateKey::Dsa(private_key),
+              ));
+            }
             _ => {
               return Err(AsymmetricPrivateKeyError::UnsupportedPemLabel(
                 label.to_string(),
@@ -912,6 +922,8 @@ impl KeyObjectHandle {
             }
           }
         } else {
+          // Skip EC PARAMETERS block if present (legacy EC key format includes both)
+          let pem = skip_ec_parameters_block(pem);
           let (label, doc) = SecretDocument::from_pem(pem)
             .map_err(|_| AsymmetricPrivateKeyError::InvalidPemPrivateKey)?;
 
@@ -1635,6 +1647,22 @@ pub enum RsaPssParamsParseError {
 ///   priv_key INTEGER
 /// }
 /// ```
+/// Skips the EC PARAMETERS PEM block if present at the start.
+/// Legacy EC key files sometimes include an EC PARAMETERS block before the
+/// actual EC PRIVATE KEY block; `SecretDocument::from_pem` reads only the
+/// first block, so we need to skip it.
+fn skip_ec_parameters_block(pem: &str) -> &str {
+  const BEGIN_EC_PARAMS: &str = "-----BEGIN EC PARAMETERS-----";
+  const END_EC_PARAMS: &str = "-----END EC PARAMETERS-----";
+  let trimmed = pem.trim_start();
+  if trimmed.starts_with(BEGIN_EC_PARAMS)
+    && let Some(pos) = trimmed.find(END_EC_PARAMS)
+  {
+    return trimmed[pos + END_EC_PARAMS.len()..].trim_start();
+  }
+  trimmed
+}
+
 fn parse_traditional_dsa_private_key(
   der: &[u8],
 ) -> Result<dsa::SigningKey, AsymmetricPrivateKeyError> {
@@ -3490,9 +3518,12 @@ fn parse_legacy_encrypted_pem<'a>(
   salt.copy_from_slice(&iv[..8]);
   let key = evp_bytes_to_key(passphrase, &salt, key_len);
 
+  // Decryption failure here most commonly means wrong passphrase; map to
+  // the OpenSSL-compatible "bad decrypt" error so Node.js tests that check
+  // the error message work correctly.
   let decrypted =
     decrypt_legacy_pem_data(cipher_name, &key, &iv, &encrypted_data)
-      .map_err(|_| AsymmetricPrivateKeyError::InvalidEncryptedPemPrivateKey)?;
+      .map_err(|_| AsymmetricPrivateKeyError::BadDecrypt)?;
 
   Ok(Some((label, decrypted)))
 }
