@@ -407,10 +407,16 @@ pub struct UninstallFlagsGlobal {
   pub root: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SelfUninstallFlags {
+  pub yes: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UninstallKind {
   Local(RemoveFlags),
   Global(UninstallFlagsGlobal),
+  Self_(SelfUninstallFlags),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3925,12 +3931,18 @@ To change the installation root, use <c>--root</> flag:
 The installation root is determined, in order of precedence:
   - <p(245)>--root</> option
   - <p(245)>DENO_INSTALL_ROOT</> environment variable
-  - <p(245)>$HOME/.deno</>"),
+  - <p(245)>$HOME/.deno</>
+
+To uninstall the Deno runtime itself and its cache:
+  <p(245)>deno uninstall --self</>"),
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
     cmd
-      .arg(Arg::new("name-or-package").required_unless_present("help"))
+      .arg(
+        Arg::new("name-or-package")
+          .required_unless_present_any(["help", "self"]),
+      )
       .arg(
         Arg::new("root")
           .long("root")
@@ -3944,6 +3956,26 @@ The installation root is determined, in order of precedence:
           .short('g')
           .help("Remove globally installed package or module")
           .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("self")
+          .long("self")
+          .help("Uninstall the Deno runtime and remove the cache directory")
+          .action(ArgAction::SetTrue)
+          .conflicts_with_all([
+            "global",
+            "name-or-package",
+            "additional-packages",
+            "root",
+          ]),
+      )
+      .arg(
+        Arg::new("yes")
+          .long("yes")
+          .short('y')
+          .help("Skip confirmation prompt")
+          .action(ArgAction::SetTrue)
+          .requires("self"),
       )
       .arg(
         Arg::new("additional-packages")
@@ -7198,25 +7230,30 @@ fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  lock_args_parse(flags, matches);
-  let name = matches.remove_one::<String>("name-or-package").unwrap();
-
-  let kind = if matches.get_flag("global") {
-    let root = matches.remove_one::<String>("root");
-    UninstallKind::Global(UninstallFlagsGlobal { name, root })
+  let kind = if matches.get_flag("self") {
+    let yes = matches.get_flag("yes");
+    UninstallKind::Self_(SelfUninstallFlags { yes })
   } else {
-    let packages: Vec<_> = vec![name]
-      .into_iter()
-      .chain(
-        matches
-          .remove_many::<String>("additional-packages")
-          .unwrap_or_default(),
-      )
-      .collect();
-    UninstallKind::Local(RemoveFlags {
-      packages,
-      lockfile_only: matches.get_flag("lockfile-only"),
-    })
+    lock_args_parse(flags, matches);
+    let name = matches.remove_one::<String>("name-or-package").unwrap();
+
+    if matches.get_flag("global") {
+      let root = matches.remove_one::<String>("root");
+      UninstallKind::Global(UninstallFlagsGlobal { name, root })
+    } else {
+      let packages: Vec<_> = vec![name]
+        .into_iter()
+        .chain(
+          matches
+            .remove_many::<String>("additional-packages")
+            .unwrap_or_default(),
+        )
+        .collect();
+      UninstallKind::Local(RemoveFlags {
+        packages,
+        lockfile_only: matches.get_flag("lockfile-only"),
+      })
+    }
   };
 
   flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags { kind });

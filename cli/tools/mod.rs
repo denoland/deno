@@ -20,6 +20,7 @@ pub mod pm;
 pub mod publish;
 pub mod repl;
 pub mod run;
+pub mod self_uninstall;
 pub mod serve;
 pub mod task;
 pub mod test;

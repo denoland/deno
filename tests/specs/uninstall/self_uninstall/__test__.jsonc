@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "help": {
+      "args": "uninstall --self --help",
+      "output": "self_uninstall_help.out"
+    },
+    "no_confirm_non_interactive": {
+      "args": "uninstall --self",
+      "output": "self_uninstall_no_confirm.out",
+      "exitCode": 1
+    }
+  }
+}
