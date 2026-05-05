@@ -1418,6 +1418,10 @@ impl CliOptions {
     | DenoSubcommand::Serve(ServeFlags {
       watch: Some(WatchFlagsWithPaths { paths, .. }),
       ..
+    })
+    | DenoSubcommand::Test(TestFlags {
+      watch: Some(WatchFlagsWithPaths { paths, .. }),
+      ..
     }) = &self.flags.subcommand
     {
       full_paths.extend(paths.iter().map(|path| self.initial_cwd.join(path)));
