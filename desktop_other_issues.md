@@ -87,16 +87,6 @@ poisoned an HTTP redirect would benefit from us logging the _final_ URL too.
 
 **Fix**: include `url` (post-redirect, if obtainable) in the bail message.
 
-### 17. Single-threaded tokio runtime stalls WEF event pump on big I/O — MEDIUM
-
-`cli/rt_desktop/lib.rs:992-1017`
-
-`new_current_thread` + `block_on` means any blocking call (e.g. `std::fs::read`
-of dylib for `op_desktop_apply_patch` on a 100MB binary) stalls the whole event
-loop including the WEF event pump.
-
-**Fix**: spawn `op_desktop_apply_patch` body via `spawn_blocking`.
-
 ### 18. `inspect_internal_port` parsed silently to `None` on bad input — LOW
 
 `cli/rt_desktop/lib.rs:1290-1306`
@@ -149,17 +139,6 @@ trying for up to 15s post-shutdown. Harmless on exit, but writes warnings to
 stderr after the user closes the window.
 
 **Fix**: hold the JoinHandle and abort when select wins.
-
-### 23. Panic hook joins a thread that builds its own runtime per call — MEDIUM
-
-`cli/rt_desktop/lib.rs:1003-1025`
-
-Every panic-path error report spawns a thread + tokio runtime + does `.join()`
-synchronously inside the panic hook. A network hang ⇒ panic hook hangs ⇒ process
-won't exit.
-
-**Fix**: bound it with a deadline (`thread::spawn` then a short `recv_timeout`
-on a channel; abandon thread on timeout).
 
 ---
 
@@ -218,17 +197,12 @@ These pre-date this branch and currently block `tools/lint.js`.
 
 | Severity | Count | Items                                                         |
 | -------- | ----- | ------------------------------------------------------------- |
-| MEDIUM   | 3     | #17, #23, #29                                                 |
+| MEDIUM   | 1     | #29                                                           |
 | LOW      | 13    | #6, #9, #12, #14, #15, #18, #19, #20, #21, #22, #27, #30, #31 |
 
 ## Suggested fix order
 
-The CRITICAL/HIGH batch is done. What's left:
+The CRITICAL/HIGH/most-MEDIUM batch is done. What's left is polish.
 
-**Robustness wins**:
-
-1. **#17** `spawn_blocking` for auto-update I/O
-2. **#23** bound the panic-hook reporter
-
-**Cleanup** — everything else (#6, #9, #12, #14, #15, #18, #19, #20, #21, #22,
-#27, #29, #30) plus **#31** to unblock `tools/lint.js`.
+**Cleanup** — everything (#6, #9, #12, #14, #15, #18, #19, #20, #21, #22, #27,
+#29, #30) plus **#31** to unblock `tools/lint.js`.
