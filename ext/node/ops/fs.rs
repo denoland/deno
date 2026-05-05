@@ -82,7 +82,9 @@ fn crt_error() -> std::io::Error {
 /// Convert a backing OS fd/handle into a usable file descriptor.
 /// On Unix this is a no-op. On Windows it duplicates the OS HANDLE and
 /// converts it to a CRT file descriptor.
-fn raw_fd_from_backing_fd(handle_fd: i32) -> Result<i32, FsError> {
+fn raw_fd_from_backing_fd(
+  handle_fd: deno_core::ResourceHandleFd,
+) -> Result<i32, FsError> {
   #[cfg(unix)]
   {
     Ok(handle_fd)

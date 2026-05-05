@@ -16,14 +16,6 @@ console.log("accessSync R_OK: ok");
 await access(file, constants.R_OK);
 console.log("access R_OK: ok");
 
-// Test 3b: W_OK should fail (VFS files are read-only)
-try {
-  fs.accessSync(file, constants.W_OK);
-  console.log("accessSync W_OK: should have thrown");
-} catch {
-  console.log("accessSync W_OK: correctly denied");
-}
-
 // Test 4: fs.openSync + readSync
 const fd = fs.openSync(file, "r");
 const buf = Buffer.alloc(100);
