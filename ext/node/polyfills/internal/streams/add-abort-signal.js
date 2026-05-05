@@ -3,13 +3,15 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import {
+const {
   isNodeStream,
   isWebStream,
   kControllerErrorFunction,
-} from "ext:deno_node/internal/streams/utils.js";
+} = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 import eos from "ext:deno_node/internal/streams/end-of-stream.js";
-import * as _mod2 from "ext:deno_node/internal/events/abort_listener.mjs";
+const _mod2 = core.loadExtScript(
+  "ext:deno_node/internal/events/abort_listener.mjs",
+);
 
 const {
   AbortError,

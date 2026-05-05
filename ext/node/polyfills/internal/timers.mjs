@@ -28,15 +28,15 @@ const {
   SymbolDispose,
   SymbolToPrimitive,
 } = primordials;
-import {
+const {
   emitAfter,
   emitBefore,
   emitDestroy,
   emitInit,
   enabledHooksExist,
   executionAsyncId,
-  newAsyncId as nextAsyncId,
-} from "ext:deno_node/internal/async_hooks.ts";
+  newAsyncId: nextAsyncId,
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { inspect } = core.loadExtScript(
   "ext:deno_node/internal/util/inspect.mjs",
 );

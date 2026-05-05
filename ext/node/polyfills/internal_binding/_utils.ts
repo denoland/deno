@@ -2,14 +2,14 @@
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
-
-import { core } from "ext:core/mod.js";
+(function () {
+const { core } = globalThis.__bootstrap;
 const {
   forgivingBase64Decode,
   forgivingBase64UrlDecode,
 } = core.loadExtScript("ext:deno_web/00_infra.js");
 
-export function asciiToBytes(str: string) {
+function asciiToBytes(str: string) {
   const length = str.length;
   const byteArray = new Uint8Array(length);
   for (let i = 0; i < length; ++i) {
@@ -18,7 +18,7 @@ export function asciiToBytes(str: string) {
   return byteArray;
 }
 
-export function base64ToBytes(str: string) {
+function base64ToBytes(str: string) {
   try {
     return forgivingBase64Decode(str);
   } catch {
@@ -56,7 +56,7 @@ function base64clean(str: string) {
   }
 }
 
-export function base64UrlToBytes(str: string) {
+function base64UrlToBytes(str: string) {
   str = base64clean(str);
   str = str.replaceAll("+", "-").replaceAll("/", "_");
   return forgivingBase64UrlDecode(str);
@@ -64,26 +64,26 @@ export function base64UrlToBytes(str: string) {
 
 // https://github.com/nodejs/node/blob/591ba692bfe30408e6a67397e7d18bfa1b9c3561/deps/nbytes/src/nbytes.cpp#L144-L158
 // deno-fmt-ignore
-export const unhexTable = new Int8Array([
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 0 - 15
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 16 - 31
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 32 - 47
-   0,  1,  2,  3,  4,  5,  6,  7,  8,  9, -1, -1, -1, -1, -1, -1, // 48 - 63
-  -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 64 - 79
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 80 - 95
-  -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 96 - 111
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 112 - 127
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 128 ...
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 255
-]);
+const unhexTable = new Int8Array([
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 0 - 15
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 16 - 31
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 32 - 47
+     0,  1,  2,  3,  4,  5,  6,  7,  8,  9, -1, -1, -1, -1, -1, -1, // 48 - 63
+    -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 64 - 79
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 80 - 95
+    -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 96 - 111
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 112 - 127
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 128 ...
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 255
+  ]);
 
-export function hexToBytes(str: string) {
+function hexToBytes(str: string) {
   const length = str.length >>> 1;
   const byteArray = new Uint8Array(length);
   let i: number;
@@ -101,7 +101,7 @@ export function hexToBytes(str: string) {
   return i === length ? byteArray : byteArray.subarray(0, i);
 }
 
-export function utf16leToBytes(str: string, units?: number) {
+function utf16leToBytes(str: string, units?: number) {
   // If units is defined, round it to even values for 16 byte "steps"
   // and use it as an upper bound value for our string byte array's length.
   const length = Math.min(str.length * 2, units ? (units >>> 1) * 2 : Infinity);
@@ -117,7 +117,7 @@ export function utf16leToBytes(str: string, units?: number) {
   return i * 2 === length ? byteArray : byteArray.subarray(0, i * 2);
 }
 
-export function bytesToAscii(bytes: Uint8Array) {
+function bytesToAscii(bytes: Uint8Array) {
   let res = "";
   const length = bytes.byteLength;
   for (let i = 0; i < length; ++i) {
@@ -126,7 +126,7 @@ export function bytesToAscii(bytes: Uint8Array) {
   return res;
 }
 
-export function bytesToUtf16le(bytes: Uint8Array) {
+function bytesToUtf16le(bytes: Uint8Array) {
   let res = "";
   const length = bytes.byteLength;
   const view = new DataView(bytes.buffer, bytes.byteOffset, length);
@@ -135,3 +135,15 @@ export function bytesToUtf16le(bytes: Uint8Array) {
   }
   return res;
 }
+
+return {
+  asciiToBytes,
+  base64ToBytes,
+  base64UrlToBytes,
+  hexToBytes,
+  utf16leToBytes,
+  bytesToAscii,
+  bytesToUtf16le,
+  unhexTable,
+};
+})();

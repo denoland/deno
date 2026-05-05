@@ -3,8 +3,8 @@
 
 // The following are all the process APIs that don't depend on the stream module
 // They have to be split this way to prevent a circular dependency
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   Error,
   ObjectGetOwnPropertyNames,
@@ -22,8 +22,10 @@ const {
 } = primordials;
 const { build, createLazyLoader } = core;
 
-import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
-import { _exiting } from "ext:deno_node/_process/exiting.ts";
+const { nextTick: _nextTick } = core.loadExtScript(
+  "ext:deno_node/_next_tick.ts",
+);
+const { _exiting } = core.loadExtScript("ext:deno_node/_process/exiting.ts");
 const fs = core.loadExtScript("ext:deno_fs/30_fs.js");
 const {
   denoErrorToNodeError,
@@ -35,7 +37,7 @@ const loadProcess = createLazyLoader<NodeJS.Process>("node:process");
 let nodeProcess: NodeJS.Process | undefined;
 
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
-export function arch(): string {
+function arch(): string {
   if (build.arch == "x86_64") {
     return "x64";
   } else if (build.arch == "aarch64") {
@@ -48,7 +50,7 @@ export function arch(): string {
 }
 
 /** https://nodejs.org/api/process.html#process_process_chdir_directory */
-export function chdir(directory: string): void {
+function chdir(directory: string): void {
   if (typeof directory !== "string") {
     throw new ERR_INVALID_ARG_TYPE("directory", "string", directory);
   }
@@ -76,10 +78,10 @@ export function chdir(directory: string): void {
 }
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
-export const cwd = fs.cwd;
+const cwd = fs.cwd;
 
 /** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
-export const nextTick = _nextTick;
+const nextTick = _nextTick;
 
 /** Wrapper of Deno.env.get, which doesn't throw type error when
  * the env name has "=" or "\0" in it. */
@@ -99,7 +101,7 @@ const OBJECT_PROTO_PROP_NAMES = ObjectGetOwnPropertyNames(ObjectPrototype);
  * https://nodejs.org/api/process.html#process_process_env
  * Requires env permissions
  */
-export const env:
+const env:
   & InstanceType<ObjectConstructor>
   & Record<string | symbol, string> = new Proxy(Object(), {
     get: (target, prop) => {
@@ -203,7 +205,7 @@ export const env:
  * it pointed to Deno version, but that led to incompability
  * with some packages.
  */
-export const version = "v24.2.0";
+const version = "v24.2.0";
 
 /**
  * https://nodejs.org/api/process.html#process_process_versions
@@ -213,7 +215,7 @@ export const version = "v24.2.0";
  * it contained only output of `Deno.version`, but that led to incompability
  * with some packages. Value of `v8` field is still taken from `Deno.version`.
  */
-export const versions = {
+const versions = {
   node: "24.2.0",
   uv: "1.43.0",
   zlib: "1.2.11",
@@ -236,3 +238,14 @@ export const versions = {
   v8: "",
   typescript: "",
 };
+
+return {
+  arch,
+  chdir,
+  cwd,
+  nextTick,
+  env,
+  version,
+  versions,
+};
+})();

@@ -35,12 +35,12 @@ const { validateInteger } = core.loadExtScript(
 );
 import { op_tty_check_fd_permission, TTY } from "ext:core/ops";
 import { Socket } from "node:net";
-import {
+const {
   clearLine,
   clearScreenDown,
   cursorTo,
   moveCursor,
-} from "ext:deno_node/internal/readline/callbacks.mjs";
+} = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
 import { release } from "node:os";
 
 // Color depth constants

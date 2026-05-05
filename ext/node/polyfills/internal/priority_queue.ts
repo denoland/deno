@@ -8,11 +8,11 @@
 // just a single criteria.
 
 // deno-lint-ignore-file no-explicit-any
-
+(function () {
 type Comparator<T> = (a: T, b: T) => number;
 type SetPosition<T> = (node: T, pos: number) => void;
 
-export class PriorityQueue<T = any> {
+class PriorityQueue<T = any> {
   #compare: Comparator<T> = (a: any, b: any) => a - b;
   #heap: (T | undefined)[] = [undefined, undefined];
   #setPosition?: SetPosition<T>;
@@ -133,4 +133,8 @@ export class PriorityQueue<T = any> {
   }
 }
 
-export default PriorityQueue;
+return {
+  PriorityQueue,
+  default: PriorityQueue,
+};
+})();

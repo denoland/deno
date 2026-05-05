@@ -64,12 +64,16 @@ const {
   isArrayBufferView,
   isUint8Array,
 } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
-import * as binding from "ext:deno_node/_zlib_binding.mjs";
+const binding = core.loadExtScript("ext:deno_node/_zlib_binding.mjs");
 const { crc32: crc32Native } = binding;
 
-import assert from "ext:deno_node/internal/assert.mjs";
+const { default: assert } = core.loadExtScript(
+  "ext:deno_node/internal/assert.mjs",
+);
 import { Buffer, kMaxLength } from "node:buffer";
-import { ownerSymbol as owner_symbol } from "ext:deno_node/internal_binding/symbols.ts";
+const { ownerSymbol: owner_symbol } = core.loadExtScript(
+  "ext:deno_node/internal_binding/symbols.ts",
+);
 const {
   checkRangesOrGetDefault,
   validateFiniteNumber,

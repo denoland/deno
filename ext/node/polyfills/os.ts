@@ -37,7 +37,7 @@ const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 const { os } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
-import { Buffer } from "ext:deno_node/internal/buffer.mjs";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { osUptime } = core.loadExtScript("ext:deno_os/30_os.js");
 const { validateInt32 } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",

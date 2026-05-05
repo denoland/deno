@@ -1,7 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // deno-lint-ignore-file no-process-global
-import { primordials } from "ext:core/mod.js";
-import { getOptionValue } from "ext:deno_node/internal/options.ts";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
 
 const {
   ErrorPrototype,
@@ -12,7 +15,7 @@ const {
 
 let disableWarningSet;
 
-export function onWarning(
+function onWarning(
   warning: Error & { code?: string; name?: string; detail?: string },
 ) {
   if (!disableWarningSet) {
@@ -50,3 +53,8 @@ export function onWarning(
   }
   process.stderr.write(msg + "\n");
 }
+
+return {
+  onWarning,
+};
+})();

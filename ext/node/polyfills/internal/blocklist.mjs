@@ -1,8 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
-
-import { core, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const {
   op_blocklist_add_address,
   op_blocklist_add_range,
   op_blocklist_add_subnet,
@@ -10,7 +10,7 @@ import {
   op_blocklist_new,
   op_socket_address_get_serialization,
   op_socket_address_parse,
-} from "ext:core/ops";
+} = core.ops;
 
 const {
   validateInt32,
@@ -360,4 +360,8 @@ class SocketAddress {
   }
 }
 
-export { BlockList, SocketAddress };
+return {
+  BlockList,
+  SocketAddress,
+};
+})();

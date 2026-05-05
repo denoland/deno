@@ -40,7 +40,7 @@ const { os } = core.loadExtScript(
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import { Readable, Stream, Writable } from "node:stream";
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const {
   AbortError,
   ERR_INVALID_ARG_TYPE,
@@ -54,7 +54,7 @@ const {
   ERR_UNKNOWN_SIGNAL,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { Buffer } from "node:buffer";
-import { FastBuffer } from "ext:deno_node/internal/buffer.mjs";
+const { FastBuffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   ERR_IPC_DISCONNECTED,
   errnoException,
@@ -74,11 +74,13 @@ import process from "node:process";
 const { StringPrototypeSlice } = core.loadExtScript(
   "ext:deno_node/internal/primordials.mjs",
 );
-import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import {
-  socketType as tcpSocketType,
+const { Pipe, socketType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/pipe_wrap.ts",
+);
+const {
+  socketType: tcpSocketType,
   TCP,
-} from "ext:deno_node/internal_binding/tcp_wrap.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
 import { Server as NetServer, Socket } from "node:net";
 import { Socket as DgramSocket } from "node:dgram";
 const {

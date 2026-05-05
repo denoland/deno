@@ -4,25 +4,45 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-import * as asyncWrap from "ext:deno_node/internal_binding/async_wrap.ts";
-import * as buffer from "ext:deno_node/internal_binding/buffer.ts";
+const asyncWrap = core.loadExtScript(
+  "ext:deno_node/internal_binding/async_wrap.ts",
+);
+const buffer = core.loadExtScript(
+  "ext:deno_node/internal_binding/buffer.ts",
+);
 import caresWrap from "ext:deno_node/internal_binding/cares_wrap.ts";
 const constants = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
 import * as crypto from "ext:deno_node/internal_binding/crypto.ts";
-import * as pipeWrap from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import * as streamWrap from "ext:deno_node/internal_binding/stream_wrap.ts";
-import * as stringDecoder from "ext:deno_node/internal_binding/string_decoder.ts";
-import * as symbols from "ext:deno_node/internal_binding/symbols.ts";
-import * as tcpWrap from "ext:deno_node/internal_binding/tcp_wrap.ts";
-import * as ttyWrap from "ext:deno_node/internal_binding/tty_wrap.ts";
+const pipeWrap = core.loadExtScript(
+  "ext:deno_node/internal_binding/pipe_wrap.ts",
+);
+const streamWrap = core.loadExtScript(
+  "ext:deno_node/internal_binding/stream_wrap.ts",
+);
+const stringDecoder = core.loadExtScript(
+  "ext:deno_node/internal_binding/string_decoder.ts",
+);
+const symbols = core.loadExtScript(
+  "ext:deno_node/internal_binding/symbols.ts",
+);
+const tcpWrap = core.loadExtScript(
+  "ext:deno_node/internal_binding/tcp_wrap.ts",
+);
+const ttyWrap = core.loadExtScript(
+  "ext:deno_node/internal_binding/tty_wrap.ts",
+);
 const types = core.loadExtScript("ext:deno_node/internal_binding/types.ts");
 import * as udpWrap from "ext:deno_node/internal_binding/udp_wrap.ts";
-import * as util from "ext:deno_node/internal_binding/util.ts";
+const util = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
 const uvNamespace = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 import * as httpParser from "ext:deno_node/internal_binding/http_parser.ts";
-import * as http2Binding from "ext:deno_node/internal_binding/http2.ts";
+const http2Binding = core.loadExtScript(
+  "ext:deno_node/internal_binding/http2.ts",
+);
 
 // Mutable shallow copy so callers can replace properties (e.g. wrap
 // `errname` with a deprecation warning when --pending-deprecation is set).

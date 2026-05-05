@@ -30,7 +30,7 @@ import { _checkIsHttpToken as checkIsHttpToken } from "node:_http_common";
 const { codes, hideStackFrames } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
-import {
+const {
   HTTP2_HEADER_ACCESS_CONTROL_ALLOW_CREDENTIALS,
   HTTP2_HEADER_ACCESS_CONTROL_MAX_AGE,
   HTTP2_HEADER_ACCESS_CONTROL_REQUEST_METHOD,
@@ -88,7 +88,7 @@ import {
   NGHTTP2_NV_FLAG_NONE,
   NGHTTP2_SESSION_CLIENT,
   NGHTTP2_SESSION_SERVER,
-} from "ext:deno_node/internal/http2/constants.ts";
+} = core.loadExtScript("ext:deno_node/internal/http2/constants.ts");
 
 const {
   ERR_HTTP2_CONNECT_AUTHORITY,

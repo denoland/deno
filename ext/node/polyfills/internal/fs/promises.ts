@@ -1,10 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { type WriteFileOptions } from "ext:deno_node/_fs/_fs_common.ts";
-import type { Encodings } from "ext:deno_node/_utils.ts";
 import { core } from "ext:core/mod.js";
+import type { WriteFileOptions } from "ext:deno_node/_fs/_fs_common.ts";
+import type { Encodings } from "ext:deno_node/_utils.ts";
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
+const constants = core.loadExtScript("ext:deno_node/_fs/_fs_constants.ts");
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cpPromise } from "ext:deno_node/_fs/_fs_cp.ts";
 import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";

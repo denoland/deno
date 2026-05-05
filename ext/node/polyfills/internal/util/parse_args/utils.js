@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   ArrayPrototypeFind,
   ObjectEntries,
@@ -187,7 +187,7 @@ function useDefaultValueOption(longOption, optionConfig, values) {
     values[longOption] === undefined;
 }
 
-export {
+return {
   findLongOptionForShort,
   isLoneLongOption,
   isLoneShortOption,
@@ -200,3 +200,4 @@ export {
   optionsGetOwn,
   useDefaultValueOption,
 };
+})();

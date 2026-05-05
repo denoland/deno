@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-
-import { op_node_random_int } from "ext:core/ops";
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { op_node_random_int } = core.ops;
 const {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
@@ -19,13 +19,13 @@ const {
 // in lib/internal/crypto/random.js.
 const RAND_MAX = 0xFFFF_FFFF_FFFF;
 
-export default function randomInt(max: number): number;
-export default function randomInt(min: number, max: number): number;
-export default function randomInt(
+function randomInt(max: number): number;
+function randomInt(min: number, max: number): number;
+function randomInt(
   max: number,
   cb: (err: Error | null, n?: number) => void,
 ): void;
-export default function randomInt(
+function randomInt(
   min: number,
   max: number,
   cb: (err: Error | null, n?: number) => void,
@@ -33,7 +33,7 @@ export default function randomInt(
 
 // Generates an integer in [min, max) range where min is inclusive and max is
 // exclusive. Matches Node's lib/internal/crypto/random.js randomInt().
-export default function randomInt(
+function randomInt(
   min: number,
   max?: ((err: Error | null, n?: number) => void) | number,
   callback?: (err: Error | null, n?: number) => void,
@@ -87,3 +87,8 @@ export default function randomInt(
 
   return result;
 }
+
+return {
+  default: randomInt,
+};
+})();

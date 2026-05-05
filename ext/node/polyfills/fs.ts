@@ -24,7 +24,7 @@ const {
   denoWriteFileErrorToNodeError,
   ERR_FS_FILE_TOO_LARGE,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
+const constants = core.loadExtScript("ext:deno_node/_fs/_fs_constants.ts");
 import {
   CFISBIS,
   convertFileInfoToBigIntStats,
@@ -55,7 +55,9 @@ import {
   ReadStream,
   WriteStream,
 } from "ext:deno_node/internal/fs/streams.mjs";
-import SyncWriteStream from "ext:deno_node/internal/fs/sync_write_stream.js";
+const { default: SyncWriteStream } = core.loadExtScript(
+  "ext:deno_node/internal/fs/sync_write_stream.js",
+);
 import Utf8Stream from "ext:deno_node/internal/streams/fast-utf8-stream.js";
 import {
   arrayBufferViewToUint8Array,
@@ -84,7 +86,9 @@ import { glob, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
 import { Buffer } from "node:buffer";
 import process from "node:process";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
-import { isIterable } from "ext:deno_node/internal/streams/utils.js";
+const { isIterable } = core.loadExtScript(
+  "ext:deno_node/internal/streams/utils.js",
+);
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import {

@@ -5,7 +5,9 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals, primordials } from "ext:core/mod.js";
-import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
+const { initializeDebugEnv } = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
 const { format } = core.loadExtScript(
   "ext:deno_node/internal/util/inspect.mjs",
 );
@@ -29,7 +31,9 @@ import {
 import { EventEmitter } from "node:events";
 import Module, { getBuiltinModule } from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
-import { onWarning } from "ext:deno_node/internal/process/warning.ts";
+const { onWarning } = core.loadExtScript(
+  "ext:deno_node/internal/process/warning.ts",
+);
 const {
   parseFileMode,
   validateBoolean,
@@ -49,20 +53,22 @@ const {
   errnoException,
   NodeTypeError,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import { getOptionValue } from "ext:deno_node/internal/options.ts";
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
 import assert from "node:assert";
 import { join } from "node:path";
 const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
-import {
-  arch as arch_,
+const {
+  arch: arch_,
   chdir,
   cwd,
   env,
-  nextTick as _nextTick,
+  nextTick: _nextTick,
   version,
   versions,
-} from "ext:deno_node/_process/process.ts";
-import { _exiting } from "ext:deno_node/_process/exiting.ts";
+} = core.loadExtScript("ext:deno_node/_process/process.ts");
+const { _exiting } = core.loadExtScript("ext:deno_node/_process/exiting.ts");
 export {
   _nextTick as nextTick,
   chdir,
@@ -77,7 +83,7 @@ import {
   initStdin,
 } from "ext:deno_node/_process/streams.mjs";
 import { WriteStream as TTYWriteStream } from "ext:deno_node/internal/tty.js";
-import { enableNextTick } from "ext:deno_node/_next_tick.ts";
+const { enableNextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { isAndroid, isWindows } = core.loadExtScript(
   "ext:deno_node/_util/os.ts",
 );
@@ -103,7 +109,9 @@ const constants = core.loadExtScript(
 );
 const uv = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
-import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
+const { buildAllowedFlags } = core.loadExtScript(
+  "ext:deno_node/internal/process/per_thread.mjs",
+);
 import type fsUtils from "ext:deno_node/internal/fs/utils.mjs";
 import type * as utilModule from "ext:deno_node/util.ts";
 

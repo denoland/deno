@@ -1,7 +1,7 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
-
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 "use strict";
 
 const {
@@ -375,8 +375,7 @@ const _defaultExport1 = {
   kEnded,
 };
 
-export default _defaultExport1;
-export {
+return {
   isClosed,
   isDestroyed,
   isDisturbed,
@@ -422,4 +421,6 @@ export {
   kOnConstructed,
   kState,
   willEmitClose,
+  default: _defaultExport1,
 };
+})();

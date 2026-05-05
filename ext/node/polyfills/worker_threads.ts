@@ -49,7 +49,9 @@ const {
   BroadcastChannel: WebBroadcastChannel,
   refBroadcastChannel,
 } = core.loadExtScript("ext:deno_web/01_broadcast_channel.js");
-import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
+const { untransferableSymbol } = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";

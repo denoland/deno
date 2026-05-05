@@ -20,17 +20,22 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { ownerSymbol } from "ext:deno_node/internal/async_hooks.ts";
-import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
-import {
+import { core, primordials } from "ext:core/mod.js";
+const { ownerSymbol } = core.loadExtScript(
+  "ext:deno_node/internal/async_hooks.ts",
+);
+// deno-lint-ignore no-unused-vars
+const { HandleWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/handle_wrap.ts",
+);
+const {
   kArrayBufferOffset,
   kBytesWritten,
   kLastWriteWasAsync,
   kReadBytesOrError,
   streamBaseState,
   WriteWrap,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { core, primordials } from "ext:core/mod.js";
+} = core.loadExtScript("ext:deno_node/internal_binding/stream_wrap.ts");
 const { errnoException } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );

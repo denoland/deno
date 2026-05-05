@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // This module is browser compatible.
-
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   StringPrototypeSubstring,
   StringPrototypeLastIndexOf,
@@ -11,7 +11,7 @@ const {
   ArrayPrototypeJoin,
   SafeArrayIterator,
 } = primordials;
-import { SEP } from "ext:deno_node/path/separator.ts";
+const { SEP } = core.loadExtScript("ext:deno_node/path/separator.ts");
 
 /** Determines the common path from a set of paths, using an optional separator,
  * which defaults to the OS default separator.
@@ -24,7 +24,7 @@ import { SEP } from "ext:deno_node/path/separator.ts";
  *       console.log(p); // "./deno/std/"
  * ```
  */
-export function common(paths: string[], sep = SEP): string {
+function common(paths: string[], sep = SEP): string {
   const [first = "", ...remaining] = new SafeArrayIterator(paths);
   if (first === "" || remaining.length === 0) {
     return StringPrototypeSubstring(
@@ -54,3 +54,8 @@ export function common(paths: string[], sep = SEP): string {
   );
   return StringPrototypeEndsWith(prefix, sep) ? prefix : `${prefix}${sep}`;
 }
+
+return {
+  common,
+};
+})();

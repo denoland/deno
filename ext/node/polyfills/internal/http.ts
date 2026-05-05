@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   Date,
   DatePrototypeToUTCString,
@@ -11,7 +11,7 @@ const {
 
 let utcCache: string | undefined;
 
-export function utcDate() {
+function utcDate() {
   if (!utcCache) cache();
   return utcCache;
 }
@@ -26,11 +26,19 @@ function resetCache() {
   utcCache = undefined;
 }
 
-export const kOutHeaders = Symbol("kOutHeaders");
-export const kNeedDrain = Symbol("kNeedDrain");
+const kOutHeaders = Symbol("kOutHeaders");
+const kNeedDrain = Symbol("kNeedDrain");
 
-export default {
+const _defaultExport = {
   utcDate,
   kOutHeaders,
   kNeedDrain,
 };
+
+return {
+  utcDate,
+  kOutHeaders,
+  kNeedDrain,
+  default: _defaultExport,
+};
+})();

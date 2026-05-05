@@ -26,17 +26,19 @@
 // - https://github.com/nodejs/node/blob/master/src/stream_base.cc
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.h
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.cc
-
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   Int32Array,
 } = primordials;
 
-import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
-import {
-  AsyncWrap,
-  providerType,
-} from "ext:deno_node/internal_binding/async_wrap.ts";
+// deno-lint-ignore no-unused-vars
+const { HandleWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/handle_wrap.ts",
+);
+const { AsyncWrap, providerType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/async_wrap.ts",
+);
 
 const enum StreamBaseStateFields {
   kReadBytesOrError,
@@ -46,16 +48,16 @@ const enum StreamBaseStateFields {
   kNumStreamBaseStateFields,
 }
 
-export const kReadBytesOrError = StreamBaseStateFields.kReadBytesOrError;
-export const kArrayBufferOffset = StreamBaseStateFields.kArrayBufferOffset;
-export const kBytesWritten = StreamBaseStateFields.kBytesWritten;
-export const kLastWriteWasAsync = StreamBaseStateFields.kLastWriteWasAsync;
-export const kNumStreamBaseStateFields =
+const kReadBytesOrError = StreamBaseStateFields.kReadBytesOrError;
+const kArrayBufferOffset = StreamBaseStateFields.kArrayBufferOffset;
+const kBytesWritten = StreamBaseStateFields.kBytesWritten;
+const kLastWriteWasAsync = StreamBaseStateFields.kLastWriteWasAsync;
+const kNumStreamBaseStateFields =
   StreamBaseStateFields.kNumStreamBaseStateFields;
 
-export const streamBaseState = new Int32Array(5);
+const streamBaseState = new Int32Array(5);
 
-export class WriteWrap<H extends HandleWrap> extends AsyncWrap {
+class WriteWrap<H extends HandleWrap> extends AsyncWrap {
   handle!: H;
   oncomplete!: (status: number) => void;
   async!: boolean;
@@ -69,7 +71,7 @@ export class WriteWrap<H extends HandleWrap> extends AsyncWrap {
   }
 }
 
-export class ShutdownWrap<H extends HandleWrap> extends AsyncWrap {
+class ShutdownWrap<H extends HandleWrap> extends AsyncWrap {
   handle!: H;
   oncomplete!: (status: number) => void;
   callback!: () => void;
@@ -78,3 +80,15 @@ export class ShutdownWrap<H extends HandleWrap> extends AsyncWrap {
     super(providerType.SHUTDOWNWRAP);
   }
 }
+
+return {
+  WriteWrap,
+  ShutdownWrap,
+  kReadBytesOrError,
+  kArrayBufferOffset,
+  kBytesWritten,
+  kLastWriteWasAsync,
+  kNumStreamBaseStateFields,
+  streamBaseState,
+};
+})();

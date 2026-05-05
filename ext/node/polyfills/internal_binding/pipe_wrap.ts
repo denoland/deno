@@ -31,14 +31,15 @@
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
-
-import { core, primordials } from "ext:core/mod.js";
-import { op_node_create_pipe, PipeWrap } from "ext:core/ops";
-import {
-  AsyncWrap,
-  providerType,
-} from "ext:deno_node/internal_binding/async_wrap.ts";
-import { ceilPowOf2 } from "ext:deno_node/internal_binding/_listen.ts";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { op_node_create_pipe, PipeWrap } = core.ops;
+const { AsyncWrap, providerType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/async_wrap.ts",
+);
+const { ceilPowOf2 } = core.loadExtScript(
+  "ext:deno_node/internal_binding/_listen.ts",
+);
 const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 const { fs } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
@@ -50,13 +51,13 @@ const { MapPrototypeGet } = primordials;
 PipeWrap.prototype.isStreamBase = true;
 
 /** The type of pipe socket. */
-export enum socketType {
+enum socketType {
   SOCKET,
   SERVER,
   IPC,
 }
 
-export enum constants {
+enum constants {
   SOCKET = socketType.SOCKET,
   SERVER = socketType.SERVER,
   IPC = socketType.IPC,
@@ -64,7 +65,7 @@ export enum constants {
   UV_WRITABLE = 2,
 }
 
-export class PipeConnectWrap extends AsyncWrap {
+class PipeConnectWrap extends AsyncWrap {
   oncomplete!: (
     status: number,
     handle: unknown,
@@ -115,7 +116,7 @@ PipeWrap.prototype.listen = function (backlog: number): number {
  * wrapper creates client handles and calls uv_accept before forwarding
  * to the user's onconnection(status, clientHandle).
  */
-export function setupListenWrap(serverHandle: InstanceType<typeof PipeWrap>) {
+function setupListenWrap(serverHandle: InstanceType<typeof PipeWrap>) {
   const userOnConnection = serverHandle.onconnection;
   serverHandle.onconnection = function (status: number) {
     if (status !== 0) {
@@ -141,17 +142,27 @@ export function setupListenWrap(serverHandle: InstanceType<typeof PipeWrap>) {
 }
 
 // Re-export the Rust PipeWrap as Pipe.
-export { PipeWrap as Pipe };
 
 /** Create an anonymous pipe pair. Returns [readFd, writeFd]. */
-export function createPipe(): [number, number] {
+function createPipe(): [number, number] {
   return op_node_create_pipe();
 }
 
-export default {
+const _defaultExport = {
   Pipe: PipeWrap,
   PipeConnectWrap,
   constants,
   setupListenWrap,
   createPipe,
 };
+
+return {
+  Pipe: PipeWrap,
+  setupListenWrap,
+  createPipe,
+  PipeConnectWrap,
+  socketType,
+  constants,
+  default: _defaultExport,
+};
+})();

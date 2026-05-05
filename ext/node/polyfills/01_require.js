@@ -84,12 +84,12 @@ import _tlsWrap from "node:_tls_wrap";
 import assert from "node:assert";
 import assertStrict from "node:assert/strict";
 import asyncHooks from "node:async_hooks";
-import {
-  emitAfter as internalAsyncHooksEmitAfter,
-  emitBefore as internalAsyncHooksEmitBefore,
-  emitDestroy as internalAsyncHooksEmitDestroy,
-  emitInit as internalAsyncHooksEmitInit,
-} from "ext:deno_node/internal/async_hooks.ts";
+const {
+  emitAfter: internalAsyncHooksEmitAfter,
+  emitBefore: internalAsyncHooksEmitBefore,
+  emitDestroy: internalAsyncHooksEmitDestroy,
+  emitInit: internalAsyncHooksEmitInit,
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 import buffer from "node:buffer";
 import childProcess from "node:child_process";
 import cluster from "node:cluster";
@@ -109,7 +109,9 @@ import http2 from "node:http2";
 import https from "node:https";
 import inspector from "node:inspector";
 import inspectorPromises from "node:inspector/promises";
-import internalAssertMyersDiff from "ext:deno_node/internal/assert/myers_diff.js";
+const internalAssertMyersDiff = core.loadExtScript(
+  "ext:deno_node/internal/assert/myers_diff.js",
+);
 import internalCp from "ext:deno_node/internal/child_process.ts";
 import internalCryptoCertificate from "ext:deno_node/internal/crypto/certificate.ts";
 import internalCryptoCipher from "ext:deno_node/internal/crypto/cipher.ts";
@@ -125,24 +127,32 @@ import internalCryptoSig from "ext:deno_node/internal/crypto/sig.ts";
 import internalCryptoUtil from "ext:deno_node/internal/crypto/util.ts";
 import internalCryptoX509 from "ext:deno_node/internal/crypto/x509.ts";
 import internalDgram from "ext:deno_node/internal/dgram.ts";
-import internalUndici from "ext:deno_node/internal/deps/undici/undici.js";
+const internalUndici = core.loadExtScript(
+  "ext:deno_node/internal/deps/undici/undici.js",
+);
 import internalDnsPromises from "ext:deno_node/internal/dns/promises.ts";
-import internalBuffer from "ext:deno_node/internal/buffer.mjs";
+const internalBuffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const internalErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
-import internalHttp from "ext:deno_node/internal/http.ts";
+const internalHttp = core.loadExtScript("ext:deno_node/internal/http.ts");
 import internalHttp2Core from "ext:deno_node/internal/http2/core.ts";
 import internalHttp2Util from "ext:deno_node/internal/http2/util.ts";
-import internalPriorityQueue from "ext:deno_node/internal/priority_queue.ts";
-import internalReadlineUtils from "ext:deno_node/internal/readline/utils.mjs";
+const internalPriorityQueue = core.loadExtScript(
+  "ext:deno_node/internal/priority_queue.ts",
+);
+const internalReadlineUtils = core.loadExtScript(
+  "ext:deno_node/internal/readline/utils.mjs",
+);
 import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
 import internalStreamsState from "ext:deno_node/internal/streams/state.js";
 import internalTestBinding from "ext:deno_node/internal/test/binding.ts";
 import internalTimers from "ext:deno_node/internal/timers.mjs";
 const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import internalUtilDebuglog from "ext:deno_node/internal/util/debuglog.ts";
+const internalUtilDebuglog = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
 const internalUtilInspect = core.loadExtScript(
   "ext:deno_node/internal/util/inspect.mjs",
 );
@@ -223,7 +233,7 @@ function setupBuiltinModules() {
     https,
     inspector,
     "inspector/promises": inspectorPromises,
-    "internal/assert/myers_diff": internalAssertMyersDiff,
+    "internal/assert/myers_diff": internalAssertMyersDiff.default,
     "internal/console/constructor": internalConsole,
     "internal/child_process": internalCp,
     "internal/crypto/certificate": internalCryptoCertificate,
@@ -240,23 +250,23 @@ function setupBuiltinModules() {
     "internal/crypto/util": internalCryptoUtil,
     "internal/crypto/x509": internalCryptoX509,
     "internal/dgram": internalDgram,
-    "internal/deps/undici/undici": internalUndici,
+    "internal/deps/undici/undici": internalUndici.default,
     "internal/dns/promises": internalDnsPromises,
-    "internal/buffer": internalBuffer,
+    "internal/buffer": internalBuffer.default,
     "internal/errors": internalErrors,
     "internal/event_target": internalEventTarget,
     "internal/fs/utils": internalFsUtils,
-    "internal/http": internalHttp,
+    "internal/http": internalHttp.default,
     "internal/http2/core": internalHttp2Core,
     "internal/http2/util": internalHttp2Util,
-    "internal/priority_queue": internalPriorityQueue,
-    "internal/readline/utils": internalReadlineUtils,
+    "internal/priority_queue": internalPriorityQueue.default,
+    "internal/readline/utils": internalReadlineUtils.default,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
     "internal/streams/state": internalStreamsState,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
-    "internal/util/debuglog": internalUtilDebuglog,
+    "internal/util/debuglog": internalUtilDebuglog.default,
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
     "internal/validators": internalValidators,

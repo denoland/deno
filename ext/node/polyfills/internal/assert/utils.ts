@@ -2,9 +2,11 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
 // deno-lint-ignore-file prefer-primordials ban-types
-
-import { core, primordials } from "ext:core/mod.js";
-import { AssertionError } from "ext:deno_node/internal/assert/assertion_error.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { AssertionError } = core.loadExtScript(
+  "ext:deno_node/internal/assert/assertion_error.js",
+);
 const { isError } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const { isErrorStackTraceLimitWritable } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
@@ -112,4 +114,7 @@ function innerOk(
   }
 }
 
-export { innerOk };
+return {
+  innerOk,
+};
+})();

@@ -7,8 +7,8 @@
 // backed by regular files (e.g. output redirected to a file). It
 // performs synchronous writes via fs.writeSync, matching Node.js
 // behavior for FILE-type stdio descriptors.
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   FunctionPrototypeCall,
   ObjectSetPrototypeOf,
@@ -65,4 +65,7 @@ SyncWriteStream.prototype._destroy = function (err, cb) {
 
 SyncWriteStream.prototype.destroySoon = SyncWriteStream.prototype.destroy;
 
-export default SyncWriteStream;
+return {
+  default: SyncWriteStream,
+};
+})();

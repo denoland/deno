@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Error,
   StringPrototypeToUpperCase,
@@ -10,7 +10,9 @@ const {
   DatePrototypeGetTime,
 } = primordials;
 
-import { arch, versions } from "ext:deno_node/_process/process.ts";
+const { arch, versions } = core.loadExtScript(
+  "ext:deno_node/_process/process.ts",
+);
 import { cpus, hostname, networkInterfaces } from "node:os";
 
 function writeReport(_filename: string, _err: typeof Error) {

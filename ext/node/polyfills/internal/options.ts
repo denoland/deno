@@ -19,9 +19,11 @@
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-import { getOptions } from "ext:deno_node/internal_binding/node_options.ts";
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { getOptions } = core.loadExtScript(
+  "ext:deno_node/internal_binding/node_options.ts",
+);
 const {
   MapPrototypeGet,
   SafeMap,
@@ -45,7 +47,7 @@ function getOptionsFromBinding() {
   return optionsMap;
 }
 
-export function getOptionValue(optionName: string) {
+function getOptionValue(optionName: string) {
   const options = getOptionsFromBinding();
 
   if (StringPrototypeStartsWith(optionName, "--no-")) {
@@ -59,3 +61,8 @@ export function getOptionValue(optionName: string) {
 
   return MapPrototypeGet(options, optionName)?.value;
 }
+
+return {
+  getOptionValue,
+};
+})();
