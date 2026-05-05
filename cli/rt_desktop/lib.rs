@@ -847,10 +847,28 @@ fn apply_pending_update(dylib_path: &Path) -> bool {
     }
 
     if std::fs::rename(&update_path, dylib_path).is_err() {
-      // Couldn't swap in — drop the staged update and try a copy fallback
-      // before giving up. The original dylib is still present.
-      let _ = std::fs::remove_file(&update_path);
-      eprintln!("[desktop] failed to apply staged update");
+      // Rename failed (cross-filesystem / perms / etc.). Fall back to a
+      // temp-then-rename copy so the dylib is never observed half-written:
+      // copy the update to `<dylib>.update.tmp` on the same filesystem as
+      // the dylib, then atomic-rename into place. Only on full success do
+      // we consume the staged `.update`.
+      let tmp_path = dylib_path.with_extension(format!("{}.update.tmp", ext));
+      let copy_ok = std::fs::copy(&update_path, &tmp_path).is_ok()
+        && std::fs::rename(&tmp_path, dylib_path).is_ok();
+      if copy_ok {
+        let _ = std::fs::remove_file(&update_path);
+      } else {
+        // Couldn't apply the update by rename or copy. Leave `.update` in
+        // place so the next launch retries, drop the stale `.tmp`, and
+        // delete the unused `.backup` — otherwise the next launch would
+        // see backup-without-sentinel and trigger a spurious "rollback"
+        // even though we never swapped anything in.
+        let _ = std::fs::remove_file(&tmp_path);
+        let _ = std::fs::remove_file(&backup_path);
+        eprintln!(
+          "[desktop] failed to apply staged update; will retry on next launch"
+        );
+      }
     }
     return false;
   }

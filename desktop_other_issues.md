@@ -156,24 +156,6 @@ poisoned an HTTP redirect would benefit from us logging the _final_ URL too.
 
 **Fix**: include `url` (post-redirect, if obtainable) in the bail message.
 
-### 16. `apply_pending_update` silently loses the staged update on rename failure — HIGH
-
-`cli/rt_desktop/lib.rs:823-851`
-
-Three branches:
-
-- backup-failure logs and returns false (good);
-- `rename(update -> dylib)` failure logs and falls through to `return false` at
-  line 851 — but the `.update` file was **already removed**, so the staged
-  update is lost;
-- if the rename is partial (EXDEV across mount points), we drop it and the next
-  launch sees no update pending and no rollback needed.
-
-The comment claims a `std::fs::copy` fallback that the code doesn't actually do.
-
-**Fix**: try the copy fallback explicitly; restore the `.update` file on copy
-failure too.
-
 ### 17. Single-threaded tokio runtime stalls WEF event pump on big I/O — MEDIUM
 
 `cli/rt_desktop/lib.rs:992-1017`
@@ -327,7 +309,7 @@ These pre-date this branch and currently block `tools/lint.js`.
 
 | Severity | Count | Items                                                         |
 | -------- | ----- | ------------------------------------------------------------- |
-| HIGH     | 3     | #2, #16, #28                                                  |
+| HIGH     | 2     | #2, #28                                                       |
 | MEDIUM   | 7     | #3, #7, #13, #17, #23, #24, #29                               |
 | LOW      | 14    | #6, #9, #12, #14, #15, #18, #19, #20, #21, #22, #27, #30, #31 |
 
@@ -337,9 +319,8 @@ These pre-date this branch and currently block `tools/lint.js`.
 architectural changes:
 
 1. **#2** tar symlink escape (`unpack_in`)
-2. **#16** correctly preserve `.update` on rename failure
-3. **#24** `kill_on_drop(true)` for the WEF subprocess
-4. **#28** move `set_var(DENO_SERVE_ADDRESS)` before runtime init
+2. **#24** `kill_on_drop(true)` for the WEF subprocess
+3. **#28** move `set_var(DENO_SERVE_ADDRESS)` before runtime init
 
 **Second batch — robustness wins**:
 
