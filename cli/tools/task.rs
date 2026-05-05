@@ -824,13 +824,36 @@ pub struct AvailableTaskDescription {
 pub fn get_available_tasks_for_completion(
   flags: Arc<Flags>,
 ) -> Result<Vec<AvailableTaskDescription>, AnyError> {
+  let recursive = match &flags.subcommand {
+    crate::args::DenoSubcommand::Task(task_flags) => {
+      task_flags.recursive || task_flags.filter.is_some()
+    }
+    _ => false,
+  };
+
   let factory = crate::factory::CliFactory::from_flags(flags);
   let options = factory.cli_options()?;
 
-  let member_dir = &options.start_dir;
-  let tasks_config = member_dir.to_tasks_config()?;
-
-  get_available_tasks(member_dir, &tasks_config).map_err(AnyError::from)
+  if recursive {
+    let workspace = options.workspace();
+    let mut all_tasks = Vec::new();
+    let mut seen_task_names = HashSet::new();
+    for folder_url in workspace.config_folders().keys() {
+      let member_dir = workspace.resolve_member_dir(folder_url);
+      let tasks_config = member_dir.to_tasks_config()?;
+      let tasks = get_available_tasks(&member_dir, &tasks_config)?;
+      for task in tasks {
+        if seen_task_names.insert(task.name.clone()) {
+          all_tasks.push(task);
+        }
+      }
+    }
+    Ok(all_tasks)
+  } else {
+    let member_dir = &options.start_dir;
+    let tasks_config = member_dir.to_tasks_config()?;
+    get_available_tasks(member_dir, &tasks_config).map_err(AnyError::from)
+  }
 }
 
 fn get_available_tasks(
