@@ -25,7 +25,7 @@ const {
   isWindowsDeviceRoot,
   normalizeString,
 } = core.loadExtScript("ext:deno_node/path/_util.ts");
-const { default: assert } = core.loadExtScript(
+const assert = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );
 import process from "node:process";

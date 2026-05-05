@@ -32,7 +32,7 @@ const {
   StringPrototypeStartsWith,
   StringPrototypeToUpperCase,
 } = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
-const { default: assert } = core.loadExtScript(
+const assert = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );
 import { EventEmitter } from "node:events";

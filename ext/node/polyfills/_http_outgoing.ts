@@ -6,7 +6,7 @@
 
 import { core } from "ext:core/mod.js";
 import { getDefaultHighWaterMark } from "ext:deno_node/internal/streams/state.js";
-const { default: assert } = core.loadExtScript(
+const assert = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );
 import EE from "node:events";
