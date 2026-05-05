@@ -148,12 +148,29 @@ function runAutoTests() {
     record("focus", false, String(e));
   }
 
-  // openDevtools
+  // openDevtools — also verifies the singleton fix (#21): a second
+  // call should NOT spawn another DevTools window. We can't observe
+  // the window count from JS, but we can at least verify both calls
+  // return cleanly.
   try {
     win.openDevtools();
-    record("openDevtools", true, "no crash");
+    win.openDevtools();
+    record("openDevtools", true, "called twice, singleton ⇒ one window");
   } catch (e) {
     record("openDevtools", false, String(e));
+  }
+
+  // isClosed — used to be `todo!` in Rust, now backed by the
+  // closed_windows set on the WefDesktopApi.
+  try {
+    const closed = win.isClosed();
+    record(
+      "isClosed",
+      closed === false,
+      `live window reports closed=${closed}`,
+    );
+  } catch (e) {
+    record("isClosed", false, String(e));
   }
 }
 
@@ -271,6 +288,273 @@ win.bind("showConfirm", async (msg: unknown) => {
 
 win.bind("showPrompt", async (msg: unknown, def: unknown) => {
   return prompt(String(msg), def != null ? String(def) : undefined);
+});
+
+// ── Dock (singleton at Deno.dock) ───────────────────────────────────────────
+
+// macOS: NSDockTile badge / NSApp.requestUserAttention. Other platforms
+// degrade to taskbar/title-prefix tweaks per the WEF backend; the JS
+// shape is the same.
+
+win.bind("dockSetBadge", async (text: unknown) => {
+  Deno.dock.setBadge(String(text));
+  return true;
+});
+
+win.bind("dockClearBadge", async () => {
+  Deno.dock.setBadge("");
+  return true;
+});
+
+win.bind("dockBounce", async (critical: unknown) => {
+  Deno.dock.bounce(critical === true);
+  return true;
+});
+
+const dockMenu: Deno.MenuItem[] = [
+  { item: { label: "Dock Item A", id: "dock-a", enabled: true } },
+  { item: { label: "Dock Item B", id: "dock-b", enabled: true } },
+  { separator: null } as unknown as Deno.MenuItem,
+  { item: { label: "Disabled Item", id: "dock-disabled", enabled: false } },
+];
+
+win.bind("dockSetMenu", async () => {
+  Deno.dock.setMenu(dockMenu);
+  return true;
+});
+
+win.bind("dockHide", async () => {
+  Deno.dock.setVisible(false);
+  return true;
+});
+
+win.bind("dockShow", async () => {
+  Deno.dock.setVisible(true);
+  return true;
+});
+
+Deno.dock.addEventListener("menuclick", (e: CustomEvent) => {
+  pushEvent({ type: "dockmenuclick", id: e.detail.id });
+});
+
+Deno.dock.addEventListener("reopen", (e: CustomEvent) => {
+  pushEvent({
+    type: "dockreopen",
+    hasVisibleWindows: e.detail.hasVisibleWindows,
+  });
+});
+
+// ── Tray ────────────────────────────────────────────────────────────────────
+
+// Tiny 16×16 transparent PNG (just a pixel grid placeholder) — enough
+// to feed `Tray.setIcon()` without bundling a real image.
+const TRAY_ICON_PNG = new Uint8Array([
+  0x89,
+  0x50,
+  0x4e,
+  0x47,
+  0x0d,
+  0x0a,
+  0x1a,
+  0x0a,
+  0x00,
+  0x00,
+  0x00,
+  0x0d,
+  0x49,
+  0x48,
+  0x44,
+  0x52,
+  0x00,
+  0x00,
+  0x00,
+  0x10,
+  0x00,
+  0x00,
+  0x00,
+  0x10,
+  0x08,
+  0x06,
+  0x00,
+  0x00,
+  0x00,
+  0x1f,
+  0xf3,
+  0xff,
+  0x61,
+  0x00,
+  0x00,
+  0x00,
+  0x1f,
+  0x49,
+  0x44,
+  0x41,
+  0x54,
+  0x38,
+  0x8d,
+  0x63,
+  0xfc,
+  0xff,
+  0xff,
+  0x3f,
+  0x03,
+  0x35,
+  0x00,
+  0x20,
+  0x80,
+  0x98,
+  0x18,
+  0x44,
+  0x71,
+  0x10,
+  0xc5,
+  0x41,
+  0x14,
+  0x07,
+  0x51,
+  0x1c,
+  0x44,
+  0x71,
+  0x10,
+  0x00,
+  0x00,
+  0xb6,
+  0xfd,
+  0x00,
+  0x01,
+  0x4f,
+  0x88,
+  0xa1,
+  0xc7,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x49,
+  0x45,
+  0x4e,
+  0x44,
+  0xae,
+  0x42,
+  0x60,
+  0x82,
+]);
+
+const trayMenu: Deno.MenuItem[] = [
+  { item: { label: "Tray Item A", id: "tray-a", enabled: true } },
+  { item: { label: "Tray Item B", id: "tray-b", enabled: true } },
+  { separator: null } as unknown as Deno.MenuItem,
+  { item: { label: "Quit", id: "tray-quit", enabled: true } },
+];
+
+let activeTray: Deno.Tray | null = null;
+
+win.bind("trayCreate", async () => {
+  if (activeTray) return { ok: true, trayId: activeTray.trayId, reused: true };
+  const tray = new Deno.Tray();
+  tray.setIcon(TRAY_ICON_PNG);
+  tray.setTooltip("Desktop Feature Test");
+  tray.setMenu(trayMenu);
+  tray.addEventListener("click", () => {
+    pushEvent({ type: "trayclick", trayId: tray.trayId });
+  });
+  tray.addEventListener("dblclick", () => {
+    pushEvent({ type: "traydblclick", trayId: tray.trayId });
+  });
+  tray.addEventListener("menuclick", (e: CustomEvent) => {
+    pushEvent({
+      type: "traymenuclick",
+      trayId: tray.trayId,
+      id: e.detail.id,
+    });
+  });
+  activeTray = tray;
+  return { ok: true, trayId: tray.trayId, reused: false };
+});
+
+win.bind("trayDestroy", async () => {
+  if (!activeTray) return { ok: false, reason: "no active tray" };
+  activeTray.destroy();
+  activeTray = null;
+  return { ok: true };
+});
+
+win.bind("traySetTooltip", async (text: unknown) => {
+  if (!activeTray) return { ok: false, reason: "no active tray" };
+  activeTray.setTooltip(String(text));
+  return { ok: true };
+});
+
+// ── Secondary window (multi-window) ─────────────────────────────────────────
+
+// Exercises issue #4 (HMR all-windows reload tracks every window) and
+// the open_windows / closed_windows bookkeeping (#21).
+
+let secondWin: Deno.BrowserWindow | null = null;
+
+win.bind("secondWindowOpen", async () => {
+  if (secondWin && !secondWin.isClosed()) {
+    secondWin.focus();
+    return { ok: true, reused: true, windowId: secondWin.windowId };
+  }
+  secondWin = new Deno.BrowserWindow({
+    title: "Secondary Window",
+    width: 600,
+    height: 400,
+    x: 200,
+    y: 200,
+  });
+  secondWin.addEventListener("close", () => {
+    pushEvent({ type: "secondwin:close", windowId: secondWin?.windowId });
+  });
+  // Point it at a tiny inline page so we have something to navigate.
+  await new Promise((r) => setTimeout(r, 200));
+  await secondWin.executeJs(
+    "document.body.style = 'background:#222;color:#fff;font-family:sans-serif;padding:20px';" +
+      "document.body.textContent = 'Secondary window — close me to test isClosed()'",
+  );
+  return { ok: true, reused: false, windowId: secondWin.windowId };
+});
+
+win.bind("secondWindowClose", async () => {
+  if (!secondWin) return { ok: false, reason: "no second window" };
+  secondWin.close();
+  return { ok: true };
+});
+
+win.bind("secondWindowStatus", async () => {
+  if (!secondWin) return { exists: false };
+  return {
+    exists: true,
+    windowId: secondWin.windowId,
+    isClosed: secondWin.isClosed(),
+  };
+});
+
+// ── Window navigate / reload ────────────────────────────────────────────────
+
+// Tests the BrowserWindow.navigate(url) and reload() ops. Reload uses
+// `location.reload()` under the hood; navigate replaces the current
+// document.
+
+win.bind("windowReload", async () => {
+  win.reload();
+  return true;
+});
+
+let savedHomeUrl: string | null = null;
+win.bind("windowNavigate", async (url: unknown) => {
+  win.navigate(String(url));
+  return true;
+});
+win.bind("windowSetHome", async (url: unknown) => {
+  savedHomeUrl = String(url);
+  return true;
+});
+win.bind("windowGoHome", async () => {
+  if (!savedHomeUrl) return { ok: false, reason: "no home url stashed" };
+  win.navigate(savedHomeUrl);
+  return { ok: true };
 });
 
 // ── Event Listeners ────────────────────────────────────────────────────────
@@ -557,6 +841,59 @@ const html = `<!DOCTYPE html>
       <div id="ctx-log" class="log">Waiting for context menu clicks...</div>
     </div>
 
+    <!-- Dock (singleton at Deno.dock) -->
+    <div class="card">
+      <h2>Dock <span class="count" id="dock-count">0</span></h2>
+      <div class="btn-row">
+        <input id="dock-badge-input" placeholder="badge text" value="3" style="background:#0d1117;border:1px solid #444;color:#e0e0e0;padding:2px 6px;border-radius:4px;width:80px;font-size:12px"/>
+        <button onclick="dockSetBadge()">Set Badge</button>
+        <button onclick="dockClearBadge()">Clear Badge</button>
+      </div>
+      <div class="btn-row">
+        <button onclick="dockBounce(false)">Bounce</button>
+        <button onclick="dockBounce(true)">Bounce Critical</button>
+        <button onclick="dockSetMenu()">Set Dock Menu</button>
+      </div>
+      <div class="btn-row">
+        <button onclick="dockHide()">Hide Dock</button>
+        <button onclick="dockShow()">Show Dock</button>
+      </div>
+      <div id="dock-log" class="log">macOS-only for most ops; other platforms degrade.</div>
+    </div>
+
+    <!-- Tray -->
+    <div class="card">
+      <h2>Tray <span class="count" id="tray-count">0</span></h2>
+      <div class="btn-row">
+        <button onclick="trayCreate()">Create Tray</button>
+        <button onclick="trayDestroy()">Destroy Tray</button>
+        <button onclick="traySetTooltip()">Set Tooltip</button>
+      </div>
+      <div id="tray-log" class="log">Click the tray icon (or its menu) once created.</div>
+    </div>
+
+    <!-- Secondary Window (multi-window) -->
+    <div class="card">
+      <h2>Secondary Window <span class="count" id="secondwin-count">0</span></h2>
+      <div class="btn-row">
+        <button onclick="secondWindowOpen()">Open Window</button>
+        <button onclick="secondWindowClose()">Close (op)</button>
+        <button onclick="secondWindowStatus()">Status</button>
+      </div>
+      <div id="secondwin-log" class="log">Tests multi-window tracking + isClosed().</div>
+    </div>
+
+    <!-- Window navigate / reload -->
+    <div class="card">
+      <h2>Navigate / Reload</h2>
+      <div class="btn-row">
+        <button onclick="windowReload()">reload()</button>
+        <button onclick="windowNavigateBlank()">navigate(blank page)</button>
+        <button onclick="windowGoHome()">navigate(home)</button>
+      </div>
+      <div id="navigate-log" class="log">reload() goes through location.reload(); navigate() replaces the document.</div>
+    </div>
+
     <!-- Close Event (manual) -->
     <div class="card">
       <h2>Close Event <span class="count" id="close-count">0</span></h2>
@@ -606,7 +943,7 @@ const html = `<!DOCTYPE html>
       const propKeys = [
         "windowId", "resizable", "alwaysOnTop", "visibility",
         "setTitle", "getSize", "setSize", "getPosition", "setPosition",
-        "focus", "openDevtools"
+        "focus", "openDevtools", "isClosed"
       ];
       const execKeys = [
         "executeJs:arithmetic", "executeJs:error",
@@ -698,6 +1035,19 @@ const html = `<!DOCTYPE html>
 
       renderEvents("close-log", events, ["close"]);
       updateCount("close-count", ["close"]);
+
+      renderEvents("dock-log", events, ["dockmenuclick", "dockreopen"]);
+      updateCount("dock-count", ["dockmenuclick", "dockreopen"]);
+
+      renderEvents("tray-log", events, [
+        "trayclick", "traydblclick", "traymenuclick"
+      ]);
+      updateCount("tray-count", [
+        "trayclick", "traydblclick", "traymenuclick"
+      ]);
+
+      renderEvents("secondwin-log", events, ["secondwin:close"]);
+      updateCount("secondwin-count", ["secondwin:close"]);
     } catch (_) {}
   }
 
@@ -729,6 +1079,99 @@ const html = `<!DOCTYPE html>
     el.textContent = "Showing prompt...";
     const result = await bindings.showPrompt("Enter something:", "default value");
     el.textContent = "prompt() returned: " + JSON.stringify(result);
+  }
+
+  // ── Dock ─────────────────────────────────────────────────────────────────
+
+  async function dockSetBadge() {
+    const text = document.getElementById("dock-badge-input").value || "";
+    await bindings.dockSetBadge(text);
+    document.getElementById("dock-log").textContent =
+      "setBadge(" + JSON.stringify(text) + ") OK";
+  }
+  async function dockClearBadge() {
+    await bindings.dockClearBadge();
+    document.getElementById("dock-log").textContent = "setBadge('') OK";
+  }
+  async function dockBounce(critical) {
+    await bindings.dockBounce(critical);
+    document.getElementById("dock-log").textContent =
+      "bounce(critical=" + critical + ") OK";
+  }
+  async function dockSetMenu() {
+    await bindings.dockSetMenu();
+    document.getElementById("dock-log").textContent =
+      "setMenu OK — right-click the dock icon";
+  }
+  async function dockHide() {
+    await bindings.dockHide();
+    document.getElementById("dock-log").textContent = "setVisible(false) OK";
+  }
+  async function dockShow() {
+    await bindings.dockShow();
+    document.getElementById("dock-log").textContent = "setVisible(true) OK";
+  }
+
+  // ── Tray ─────────────────────────────────────────────────────────────────
+
+  async function trayCreate() {
+    const r = await bindings.trayCreate();
+    document.getElementById("tray-log").textContent =
+      "trayCreate => " + JSON.stringify(r);
+  }
+  async function trayDestroy() {
+    const r = await bindings.trayDestroy();
+    document.getElementById("tray-log").textContent =
+      "trayDestroy => " + JSON.stringify(r);
+  }
+  async function traySetTooltip() {
+    const text = "Tray @ " + new Date().toLocaleTimeString();
+    const r = await bindings.traySetTooltip(text);
+    document.getElementById("tray-log").textContent =
+      "setTooltip(" + JSON.stringify(text) + ") => " + JSON.stringify(r);
+  }
+
+  // ── Secondary window ─────────────────────────────────────────────────────
+
+  async function secondWindowOpen() {
+    const r = await bindings.secondWindowOpen();
+    document.getElementById("secondwin-log").textContent =
+      "open => " + JSON.stringify(r);
+  }
+  async function secondWindowClose() {
+    const r = await bindings.secondWindowClose();
+    document.getElementById("secondwin-log").textContent =
+      "close => " + JSON.stringify(r);
+  }
+  async function secondWindowStatus() {
+    const r = await bindings.secondWindowStatus();
+    document.getElementById("secondwin-log").textContent =
+      "status => " + JSON.stringify(r);
+  }
+
+  // ── Window navigate / reload ─────────────────────────────────────────────
+
+  // Stash the URL the page loaded from so navigate-home brings us back.
+  bindings.windowSetHome(location.href);
+
+  async function windowReload() {
+    document.getElementById("navigate-log").textContent =
+      "reload() — page about to reload…";
+    await bindings.windowReload();
+  }
+  async function windowNavigateBlank() {
+    document.getElementById("navigate-log").textContent =
+      "navigate(data:…) — page about to leave…";
+    await bindings.windowNavigate(
+      "data:text/html,<body style='background:%23222;color:%23ccc;font-family:sans-serif;padding:20px'>" +
+        "<h1>Blank page (navigate test)</h1>" +
+        "<p>Use the WEF window's back gesture or reopen the dashboard.</p></body>",
+    );
+  }
+  async function windowGoHome() {
+    const r = await bindings.windowGoHome();
+    document.getElementById("navigate-log").textContent =
+      "navigate(home) => " + JSON.stringify(r);
   }
 
   // ── Re-run ───────────────────────────────────────────────────────────────
@@ -790,7 +1233,10 @@ const html = `<!DOCTYPE html>
       "keydown", "keyup", "mousedown", "mouseup", "click", "dblclick",
       "mousemove", "mouseenter", "mouseleave", "wheel",
       "focus", "blur", "resize", "move",
-      "menuclick", "contextmenuclick", "close"
+      "menuclick", "contextmenuclick", "close",
+      "dockmenuclick", "dockreopen",
+      "trayclick", "traydblclick", "traymenuclick",
+      "secondwin:close"
     ];
     const missing = allEventTypes.filter(t => !observedEvents.includes(t));
     if (missing.length > 0) {
@@ -799,7 +1245,6 @@ const html = `<!DOCTYPE html>
 
     report += "\\n--- Known Issues ---\\n";
     report += "  getSize/getPosition may return [0,0] (WEF cross-thread bug)\\n";
-    report += "  isClosed() / reload() are not yet implemented (todo! in Rust)\\n";
 
     const totalPassed = passed.length + bindPassed;
     const totalFailed = failed.length + bindFailed;
