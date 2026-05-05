@@ -546,6 +546,21 @@ fn setup_panic_hook() {
   //   should be reported to us.
   let orig_hook = std::panic::take_hook();
   std::panic::set_hook(Box::new(move |panic_info| {
+    // When stdout is a broken pipe (e.g. `deno info | head`), println! panics
+    // from Rust's stdio module. Detect this via the panic location and exit
+    // silently rather than printing a scary "Deno has panicked" message.
+    // Exit code 141 (128 + SIGPIPE) on Unix, 1 on Windows.
+    if let Some(location) = panic_info.location() {
+      if location.file().ends_with("io/stdio.rs")
+        || location.file().ends_with("io\\stdio.rs")
+      {
+        #[cfg(unix)]
+        std::process::exit(141);
+        #[cfg(not(unix))]
+        std::process::exit(1);
+      }
+    }
+
     eprintln!("\n============================================================");
     eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
     eprintln!("at https://github.com/denoland/deno/issues/new.");
