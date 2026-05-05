@@ -51,6 +51,7 @@ const { internalRidSymbol } = core;
 const _request = Symbol("request");
 const _headers = Symbol("headers");
 const _getHeaders = Symbol("get headers");
+const _headersGuard = Symbol("headers guard");
 const _headersCache = Symbol("headers cache");
 const _signal = Symbol("signal");
 const _signalCache = Symbol("signalCache");
@@ -250,6 +251,10 @@ function validateAndNormalizeMethod(m) {
       throw new TypeError("Method is forbidden");
   }
   return m;
+}
+
+function getHeadersFromInnerRequest() {
+  return headersFromHeaderList(this[_request].headerList, this[_headersGuard]);
 }
 
 class Request {
@@ -608,7 +613,8 @@ function toInnerRequest(request) {
 function fromInnerRequest(inner, guard) {
   const request = new Request(_brand);
   request[_request] = inner;
-  request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);
+  request[_headersGuard] = guard;
+  request[_getHeaders] = getHeadersFromInnerRequest;
   return request;
 }
 
