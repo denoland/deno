@@ -36,7 +36,13 @@ const VIRTUAL_FD_START: i32 = 1_000_000_000;
 static NEXT_VIRTUAL_FD: AtomicI32 = AtomicI32::new(VIRTUAL_FD_START);
 
 fn next_virtual_fd() -> i32 {
-  NEXT_VIRTUAL_FD.fetch_add(1, Ordering::Relaxed)
+  let fd = NEXT_VIRTUAL_FD.fetch_add(1, Ordering::Relaxed);
+  // Saturate at i32::MAX to avoid wrapping to negative values
+  // where is_virtual_fd would incorrectly return false.
+  if fd == i32::MAX {
+    NEXT_VIRTUAL_FD.store(i32::MAX, Ordering::Relaxed);
+  }
+  fd
 }
 
 #[cfg(windows)]
@@ -396,10 +402,9 @@ pub fn op_node_open_sync(
   let file = fs.open_sync(&path, open_options)?;
   // For VFS files (e.g. in deno compile), backing_fd() returns None.
   // Assign a virtual fd so the file can still be used through FdTable.
-  let fd = if file.clone().backing_fd().is_some() {
-    raw_fd_for_file(file.clone())?
-  } else {
-    next_virtual_fd()
+  let fd = match file.clone().backing_fd() {
+    Some(_) => raw_fd_for_file(file.clone())?,
+    None => next_virtual_fd(),
   };
 
   #[cfg(windows)]
@@ -458,10 +463,9 @@ pub async fn op_node_open(
   let file = fs.open_async(path.as_owned(), open_options).await?;
   // For VFS files (e.g. in deno compile), backing_fd() returns None.
   // Assign a virtual fd so the file can still be used through FdTable.
-  let fd = if file.clone().backing_fd().is_some() {
-    raw_fd_for_file(file.clone())?
-  } else {
-    next_virtual_fd()
+  let fd = match file.clone().backing_fd() {
+    Some(_) => raw_fd_for_file(file.clone())?,
+    None => next_virtual_fd(),
   };
 
   #[cfg(windows)]

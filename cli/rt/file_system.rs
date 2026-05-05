@@ -1540,9 +1540,12 @@ impl FileBackedVfsMetadata {
     // to use lower overhead, use mtime instead of all time params
     //
     // VFS files are always readable. Directories also get execute (traverse).
+    // Symlinks get 0o777 per Unix convention (target permissions matter).
     // This ensures node:fs access() checks succeed for embedded files.
     let mode = if self.file_type == sys_traits::FileType::Dir {
       0o555 // r-xr-xr-x
+    } else if self.file_type == sys_traits::FileType::Symlink {
+      0o777 // rwxrwxrwx (conventional for symlinks)
     } else {
       0o444 // r--r--r--
     };
