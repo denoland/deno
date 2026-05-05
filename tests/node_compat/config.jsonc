@@ -122,6 +122,8 @@
     "module-hooks/test-module-hooks-resolve-load-builtin-override-both-prefix.js": {},
     "module-hooks/test-module-hooks-resolve-load-builtin-redirect-prefix.js": {},
     "module-hooks/test-module-hooks-resolve-load-builtin-redirect.js": {},
+    "module-hooks/test-module-hooks-resolve-load-import-inline-typescript-override.mjs": {},
+    "module-hooks/test-module-hooks-resolve-load-import-inline-typescript.mjs": {},
     "module-hooks/test-module-hooks-resolve-load-require-inline-typescript-override.js": {},
     "module-hooks/test-module-hooks-resolve-load-require-inline-typescript.js": {},
     "module-hooks/test-module-hooks-resolve-require-resolve-builtin.js": {},

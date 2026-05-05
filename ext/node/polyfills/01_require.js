@@ -523,13 +523,44 @@ async function executeEsmResolveHookChain(specifier, context) {
   let index = 0;
   let currentContext = context;
 
-  async function nextResolve(spec, ctx) {
+  // nextResolve must NOT be async - sync hooks (from registerHooks)
+  // call it and use the return value directly, not as a Promise.
+  function nextResolve(spec, ctx) {
     if (ctx !== undefined && ctx !== null) {
       currentContext = { ...currentContext, ...ctx };
     }
     if (index >= resolveHooks.length) {
-      // End of chain - signal fallthrough to Rust default resolution
-      return { url: null, shortCircuit: true };
+      // End of chain - resolve the specifier so hooks can inspect
+      // the resolved URL. Use URL resolution for relative specifiers,
+      // and _resolveFilename (with re-entry guard) for bare specifiers.
+      if (StringPrototypeStartsWith(spec, "node:")) {
+        return { url: spec, shortCircuit: true };
+      }
+      try {
+        // Relative or absolute URL - resolve against parentURL
+        const resolved = new URL(spec, currentContext.parentURL).href;
+        return { url: resolved, shortCircuit: true };
+      } catch {
+        // Bare specifier - use Node resolution
+        insideResolveHook = true;
+        try {
+          const defaultResolved = Module._resolveFilename(
+            spec,
+            null,
+            false,
+          );
+          const resolvedUrl =
+            StringPrototypeStartsWith(defaultResolved, "node:") ||
+              StringPrototypeStartsWith(defaultResolved, "file://")
+              ? defaultResolved
+              : url.pathToFileURL(defaultResolved).href;
+          return { url: resolvedUrl, shortCircuit: true };
+        } catch {
+          return { url: null, shortCircuit: true };
+        } finally {
+          insideResolveHook = false;
+        }
+      }
     }
     const hook = resolveHooks[index++];
     let nextCalled = false;
@@ -537,7 +568,7 @@ async function executeEsmResolveHookChain(specifier, context) {
       nextCalled = true;
       return nextResolve(s, c);
     };
-    const result = await hook(spec, currentContext, wrappedNext);
+    const result = hook(spec, currentContext, wrappedNext);
     if (!nextCalled && !result?.shortCircuit) {
       throw new TypeError(
         "resolve hook must return { shortCircuit: true } or call nextResolve",
