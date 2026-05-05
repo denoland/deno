@@ -1096,16 +1096,39 @@ impl crate::fs::File for StdFileResourceInner {
     })
   }
   async fn lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<()> {
-    self
-      .with_inner_blocking_task(move |file| {
-        if exclusive {
-          file.lock()?;
+    // Use a poll-based approach instead of blocking a tokio threadpool thread.
+    // The blocking flock() syscall would hold a threadpool thread for the
+    // entire wait duration, which causes threadpool starvation when many
+    // concurrent locks are waiting (see #22504). Instead, we use try_lock
+    // (non-blocking flock with LOCK_NB) in a loop with async sleep.
+    use std::fs::TryLockError;
+    use std::time::Duration;
+
+    let mut interval = Duration::from_millis(1);
+    let max_interval = Duration::from_millis(50);
+
+    loop {
+      let result = self.with_sync(|file| {
+        let result = if exclusive {
+          file.try_lock()
         } else {
-          file.lock_shared()?;
+          file.try_lock_shared()
+        };
+        match result {
+          Ok(()) => Ok(true),
+          Err(TryLockError::WouldBlock) => Ok(false),
+          Err(TryLockError::Error(err)) => Err(err.into()),
         }
-        Ok(())
-      })
-      .await
+      })?;
+
+      if result {
+        return Ok(());
+      }
+
+      tokio::time::sleep(interval).await;
+      // Exponential backoff with cap
+      interval = std::cmp::min(interval * 2, max_interval);
+    }
   }
 
   fn try_lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
@@ -1124,30 +1147,17 @@ impl crate::fs::File for StdFileResourceInner {
     })
   }
   async fn try_lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
-    use std::fs::TryLockError;
-    self
-      .with_inner_blocking_task(move |file| {
-        let result = if exclusive {
-          file.try_lock()
-        } else {
-          file.try_lock_shared()
-        };
-        match result {
-          Ok(()) => Ok(true),
-          Err(TryLockError::WouldBlock) => Ok(false),
-          Err(TryLockError::Error(err)) => Err(err.into()),
-        }
-      })
-      .await
+    // try_lock with LOCK_NB is non-blocking (returns immediately),
+    // so no need to use spawn_blocking.
+    self.clone().try_lock_sync(exclusive)
   }
 
   fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
     self.with_sync(|file| Ok(file.unlock()?))
   }
   async fn unlock_async(self: Rc<Self>) -> FsResult<()> {
-    self
-      .with_inner_blocking_task(|file| Ok(file.unlock()?))
-      .await
+    // unlock (flock with LOCK_UN) is non-blocking, no need for spawn_blocking.
+    self.unlock_sync()
   }
 
   fn truncate_sync(self: Rc<Self>, len: u64) -> FsResult<()> {
