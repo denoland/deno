@@ -198,7 +198,9 @@ class ConnectionsList {
 }
 
 function onRequestTimeout(socket) {
-  socketOnError.call(socket, new Error("ERR_HTTP_REQUEST_TIMEOUT"));
+  const err = new Error("ERR_HTTP_REQUEST_TIMEOUT");
+  err.code = "ERR_HTTP_REQUEST_TIMEOUT";
+  socketOnError.call(socket, err);
 }
 
 const STATUS_CODES = {
@@ -684,6 +686,8 @@ const badRequestResponse =
   "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n";
 const requestHeaderFieldsTooLargeResponse =
   "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n";
+const requestTimeoutResponse =
+  "HTTP/1.1 408 Request Timeout\r\nConnection: close\r\n\r\n";
 
 function socketOnError(e) {
   // Ignore further errors
@@ -705,6 +709,9 @@ function socketOnError(e) {
       switch (e.code) {
         case "HPE_HEADER_OVERFLOW":
           response = requestHeaderFieldsTooLargeResponse;
+          break;
+        case "ERR_HTTP_REQUEST_TIMEOUT":
+          response = requestTimeoutResponse;
           break;
         default:
           response = badRequestResponse;
@@ -1105,6 +1112,18 @@ function storeHTTPOptions(options) {
     this.keepAliveTimeout = keepAliveTimeout;
   } else {
     this.keepAliveTimeout = 5_000;
+  }
+
+  const connectionsCheckingInterval = options.connectionsCheckingInterval;
+  if (connectionsCheckingInterval !== undefined) {
+    validateInteger(
+      connectionsCheckingInterval,
+      "connectionsCheckingInterval",
+      1,
+    );
+    this.connectionsCheckingInterval = connectionsCheckingInterval;
+  } else {
+    this.connectionsCheckingInterval = 30_000;
   }
 
   const requireHostHeader = options.requireHostHeader;

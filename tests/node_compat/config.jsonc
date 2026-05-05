@@ -1686,6 +1686,7 @@
     "parallel/test-http-server-options-incoming-message.js": {},
     "parallel/test-http-server-options-server-response.js": {},
     "parallel/test-http-server-reject-cr-no-lf.js": {},
+    "parallel/test-http-server-request-timeout-interrupted-headers.js": {},
     "parallel/test-http-server-request-timeout-upgrade.js": {},
     "parallel/test-http-server-response-standalone.js": {},
     "parallel/test-http-server-stale-close.js": {},
