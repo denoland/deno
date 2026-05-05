@@ -50,8 +50,8 @@
     },
     "cross-document.html": false
   },
-  "Channel_postMessage_Blob.any.html": false,
-  "Channel_postMessage_Blob.any.worker.html": false,
+  "Channel_postMessage_Blob.any.html": true,
+  "Channel_postMessage_Blob.any.worker.html": true,
   "Channel_postMessage_DataCloneErr.any.html": true,
   "Channel_postMessage_DataCloneErr.any.worker.html": true,
   "Channel_postMessage_clone_port.any.html": true,

@@ -1,0 +1,20 @@
+Blob clone instanceof Blob: true
+Blob clone size: 11
+Blob clone type: text/plain
+Blob clone text: hello world
+Blob clone is different object: true
+File clone instanceof File: true
+File clone instanceof Blob: true
+File clone name: test.txt
+File clone lastModified: 1234567890
+File clone size: 12
+File clone type: text/plain
+File clone text: file content
+Empty blob size: 0
+Empty blob type: ""
+Sliced blob text: hello
+Sliced blob size: 5
+Nested blob text: inner outer
+Nested blob size: 11
+Object blob text: in object
+Object value: 42
