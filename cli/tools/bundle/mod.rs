@@ -63,7 +63,6 @@ pub use provider::CliBundleProvider;
 use deno_core::anyhow::Context as _;
 use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
-use sys_traits::FsCreateDirAll;
 use sys_traits::PathsInErrorsExt;
 
 use crate::args::BundleFlags;
@@ -509,6 +508,44 @@ fn to_dts_path(source_path: &Path) -> PathBuf {
   parent.join(format!("{}.d.ts", stem.to_string_lossy()))
 }
 
+/// Join multi-line `export { ... } from "..."` and `import type { ... } from "..."`
+/// statements into single lines so that line-based parsing can handle them.
+fn join_multiline_statements(content: &str) -> String {
+  let mut result = Vec::new();
+  let mut accumulator: Option<String> = None;
+
+  for line in content.lines() {
+    if let Some(ref mut acc) = accumulator {
+      // We're inside a multi-line statement, keep accumulating
+      acc.push(' ');
+      acc.push_str(line.trim());
+      if line.contains(';') {
+        // Statement is complete
+        result.push(acc.clone());
+        accumulator = None;
+      }
+    } else {
+      let trimmed = line.trim();
+      // Detect start of a multi-line export/import that has `{` but no closing `}`
+      let is_export_or_import = trimmed.starts_with("export ")
+        || trimmed.starts_with("import ");
+      if is_export_or_import && trimmed.contains('{') && !trimmed.contains('}')
+      {
+        accumulator = Some(line.trim().to_string());
+      } else {
+        result.push(line.to_string());
+      }
+    }
+  }
+
+  // If there's an unterminated accumulator, flush it
+  if let Some(acc) = accumulator {
+    result.push(acc);
+  }
+
+  result.join("\n")
+}
+
 /// Flatten a .d.ts file by resolving all `export ... from "..."` re-exports,
 /// inlining the referenced declarations from other emitted .d.ts files.
 ///
@@ -526,7 +563,9 @@ fn flatten_declarations(
   let mut inlined_files: std::collections::HashSet<String> =
     std::collections::HashSet::new();
 
-  for line in entry_dts_content.lines() {
+  let joined = join_multiline_statements(entry_dts_content);
+
+  for line in joined.lines() {
     let trimmed = line.trim();
 
     // Skip amd-module directives
@@ -636,7 +675,9 @@ fn inline_declarations(
 ) {
   let source_dir = source_path.parent().unwrap_or(Path::new(""));
 
-  for line in dts_content.lines() {
+  let joined = join_multiline_statements(dts_content);
+
+  for line in joined.lines() {
     let trimmed = line.trim();
 
     // Skip amd-module directives
@@ -667,7 +708,8 @@ fn inline_declarations(
     // Strip `import type ... from "./relative"` lines when the referenced
     // file's declarations have been (or will be) inlined. The types are
     // available directly in the flattened output.
-    if trimmed.starts_with("import type ") {
+    if trimmed.starts_with("import type ") || trimmed.starts_with("import {")
+    {
       if let Some(import_path) = extract_import_path(trimmed) {
         let resolved = resolve_relative_dts_path(source_dir, &import_path);
         let resolved_str = resolved.to_string_lossy().to_string();
