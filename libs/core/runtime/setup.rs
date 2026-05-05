@@ -154,7 +154,8 @@ fn v8_init(
     " --harmony-temporal",
     " --js-float16array",
     " --js-explicit-resource-management",
-    " --js-source-phase-imports"
+    " --js-source-phase-imports",
+    " --js-defer-import-eval"
   );
   let snapshot_flags = "--predictable --random-seed=42";
   let expose_natives_flags = "--expose_gc --allow_natives_syntax";
@@ -180,8 +181,22 @@ fn v8_init(
   let v8_platform = v8_platform.unwrap_or_else(|| {
     let unprotected =
       cfg!(any(test, feature = "unsafe_use_unprotected_platform"));
-    v8::new_custom_platform(0, false, unprotected, DenoPlatformImpl)
-      .make_shared()
+    // Cap V8 platform thread pool to 4 threads (like Node.js).
+    // Using all available cores (the default when 0 is passed) wastes
+    // memory for workloads that rarely use background V8 tasks.
+    let thread_pool_size = std::cmp::min(
+      std::thread::available_parallelism()
+        .map(|n| n.get() as u32)
+        .unwrap_or(4),
+      4,
+    );
+    v8::new_custom_platform(
+      thread_pool_size,
+      false,
+      unprotected,
+      DenoPlatformImpl,
+    )
+    .make_shared()
   });
   v8::V8::initialize_platform(v8_platform.clone());
   v8::V8::initialize();

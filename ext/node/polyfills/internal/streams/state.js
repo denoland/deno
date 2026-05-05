@@ -2,9 +2,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import process from "node:process";
-import { primordials } from "ext:core/mod.js";
-import { validateInteger } from "ext:deno_node/internal/validators.mjs";
-import _mod1 from "ext:deno_node/internal/errors.ts";
+import { core, primordials } from "ext:core/mod.js";
+const { validateInteger } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const _mod1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { ERR_INVALID_ARG_VALUE } = _mod1.codes;
 "use strict";
 

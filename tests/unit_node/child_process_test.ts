@@ -1365,3 +1365,32 @@ Deno.test(function spawnSyncReturnsPid() {
   assertEquals(typeof ret.pid, "number");
   assert(ret.pid > 0);
 });
+
+Deno.test({
+  name: "spawnWithNumericFdInStdioArray",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const fs = await import("node:fs");
+    const tmpFile = Deno.makeTempFileSync();
+    try {
+      const fd = fs.openSync(tmpFile, "w");
+      const child = spawn("/bin/sh", [
+        "-c",
+        "echo hello from child >&3",
+      ], {
+        stdio: ["ignore", "pipe", "pipe", fd],
+      });
+      const { promise, resolve } = Promise.withResolvers<number>();
+      child.on("close", (code: number) => {
+        resolve(code);
+      });
+      const code = await promise;
+      fs.closeSync(fd);
+      assertEquals(code, 0);
+      const content = Deno.readTextFileSync(tmpFile);
+      assertEquals(content, "hello from child\n");
+    } finally {
+      Deno.removeSync(tmpFile);
+    }
+  },
+});

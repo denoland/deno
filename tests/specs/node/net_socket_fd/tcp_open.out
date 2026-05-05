@@ -1,0 +1,2 @@
+PASS: TCP.open(-1) returned error
+[WILDCARD]PASS: received: hello via tcp.open

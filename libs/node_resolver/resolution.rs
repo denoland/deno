@@ -2003,7 +2003,32 @@ impl<
     };
 
     if let Some(main) = maybe_main.as_deref() {
-      let guess = package_json.path.parent().unwrap().join(main).clean();
+      let package_path = package_json.path.parent().unwrap();
+
+      // Find the package root: if the package.json is inside a
+      // node_modules directory, the root is the package folder directly
+      // under node_modules (e.g. node_modules/pkg/ or
+      // node_modules/@scope/pkg/). This allows nested package.json files
+      // (subpath exports) to have "main" fields that reference sibling
+      // directories within the same package.
+      let package_root = find_package_root_from_node_modules(package_path)
+        .unwrap_or_else(|| package_path.to_path_buf());
+
+      let guess = package_path.join(main).clean();
+
+      // Ensure the resolved main path doesn't escape the package
+      // directory via path traversal (e.g. "main": "../../../secret.json")
+      if !guess.starts_with(&package_root) {
+        return Err(
+          ModuleNotFoundError {
+            specifier: UrlOrPath::Path(guess),
+            maybe_referrer: maybe_referrer.map(|r| r.display()),
+            suggested_ext: None,
+          }
+          .into(),
+        );
+      }
+
       if self.sys.is_file(Cow::Borrowed(&guess)) {
         return Ok(self.maybe_resolve_types(
           LocalUrlOrPath::Path(LocalPath {
@@ -2036,13 +2061,10 @@ impl<
         vec![".js", "/index.js"]
       };
       for ending in endings {
-        let guess = package_json
-          .path
-          .parent()
-          .unwrap()
-          .join(format!("{main}{ending}"))
-          .clean();
-        if self.sys.is_file(Cow::Borrowed(&guess)) {
+        let guess = package_path.join(format!("{main}{ending}")).clean();
+        if guess.starts_with(&package_root)
+          && self.sys.is_file(Cow::Borrowed(&guess))
+        {
           // TODO(bartlomieju): emitLegacyIndexDeprecation()
           return Ok(MaybeTypesResolvedUrl(LocalUrlOrPath::Path(LocalPath {
             path: guess,
@@ -2221,7 +2243,13 @@ fn resolve_pkg_json_import<'a>(
         let key_sub = &key[0..pattern_index];
         if name.starts_with(key_sub) {
           let pattern_trailer = &key[pattern_index + 1..];
-          if name.len() > key.len()
+          // The wildcard `*` in the pattern key matches a non-empty
+          // substring of `name`, so `name.len()` must be at least
+          // `key.len()` (one extra character to fill the wildcard).
+          // Using a strict `>` here required the wildcard to match two
+          // or more characters, so `"#E"` failed to match `"#*"`. See
+          // denoland/deno#30160.
+          if name.len() >= key.len()
             && name.ends_with(&pattern_trailer)
             && pattern_key_compare(best_match, key) == 1
             && key.rfind('*') == Some(pattern_index)
@@ -2725,6 +2753,41 @@ fn is_pe(data: &[u8]) -> bool {
   magic == 0x5a4d
 }
 
+/// Given a path inside a `node_modules` tree, find the package root by
+/// locating the last `node_modules` path component and taking the next
+/// segment (or two for scoped packages like `@scope/pkg`). Uses the last
+/// occurrence to handle nested node_modules trees correctly. Returns
+/// `None` if no `node_modules` component is found, in which case the
+/// caller should fall back to the package.json's own directory.
+fn find_package_root_from_node_modules(path: &Path) -> Option<PathBuf> {
+  let components: Vec<_> = path.components().collect();
+  // Find the last node_modules component
+  let nm_idx = components
+    .iter()
+    .rposition(|c| c.as_os_str() == "node_modules")?;
+  // Need at least one component after node_modules for the package name
+  if nm_idx + 1 >= components.len() {
+    return None;
+  }
+  let mut prefix = PathBuf::new();
+  for c in &components[..=nm_idx] {
+    prefix.push(c);
+  }
+  let first = &components[nm_idx + 1];
+  let first_str = first.as_os_str().to_string_lossy();
+  if first_str.starts_with('@') {
+    // Scoped package: @scope/name - need two components
+    if nm_idx + 2 >= components.len() {
+      return None;
+    }
+    prefix.push(first);
+    prefix.push(components[nm_idx + 2]);
+  } else {
+    prefix.push(first);
+  }
+  Some(prefix)
+}
+
 #[cfg(test)]
 mod tests {
   use deno_package_json::PackageJsonBins;
@@ -3079,6 +3142,41 @@ mod tests {
         "ts3.1/file.d.ts"
       );
     }
+  }
+
+  #[test]
+  fn test_resolve_pkg_json_import_single_char_wildcard() {
+    // Regression test for https://github.com/denoland/deno/issues/30160
+    // The pattern key `#*` must match short specifiers like `#E` whose
+    // wildcard segment is a single character. Previously the length
+    // check rejected these.
+    let pkg = build_package_json(serde_json::json!({
+      "name": "pkg",
+      "imports": {
+        "#mask/*": "./lib/private/mask/*.js",
+        "#types/*": "./lib/private/types/*.js",
+        "#*": "./lib/private/*.js"
+      }
+    }));
+    let single_char =
+      resolve_pkg_json_import(&pkg, "#E").expect("#E should match #*");
+    assert_eq!(single_char.package_sub_path, "#*");
+    assert_eq!(single_char.sub_path, "E");
+    assert!(single_char.is_pattern);
+
+    let multi_char =
+      resolve_pkg_json_import(&pkg, "#abc").expect("#abc should match #*");
+    assert_eq!(multi_char.package_sub_path, "#*");
+    assert_eq!(multi_char.sub_path, "abc");
+
+    // The more specific pattern still wins for inputs it can match.
+    let scoped = resolve_pkg_json_import(&pkg, "#mask/x")
+      .expect("#mask/x should match #mask/*");
+    assert_eq!(scoped.package_sub_path, "#mask/*");
+    assert_eq!(scoped.sub_path, "x");
+
+    // The wildcard still has to match a non-empty segment.
+    assert!(resolve_pkg_json_import(&pkg, "#").is_none());
   }
 
   #[test]

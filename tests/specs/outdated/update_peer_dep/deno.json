@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "@denotest/peer-dep-base": "npm:@denotest/peer-dep-base@~1.0.0",
+    "@denotest/peer-dep-consumer": "npm:@denotest/peer-dep-consumer@^1.0.0",
+    "@denotest/peer-dep-consumer-2": "npm:@denotest/peer-dep-consumer-2@^1.0.0"
+  }
+}

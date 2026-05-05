@@ -229,7 +229,7 @@ Deno.test("[util] styleText()", () => {
 
 Deno.test("[util] styleText() with array of formats", () => {
   const colored = util.styleText(["red", "green"], "error");
-  assertEquals(colored, "\x1b[32m\x1b[31merror\x1b[39m\x1b[39m");
+  assertEquals(colored, "\x1b[31m\x1b[32merror\x1b[39m\x1b[39m");
 });
 
 Deno.test("[util] stripVTControlCharacters() removes OSC 8 hyperlinks", () => {

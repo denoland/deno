@@ -5,6 +5,7 @@
     "jsr:@david/dax@0.42": "0.42.0",
     "jsr:@david/dax@~0.43.2": "0.43.2",
     "jsr:@david/gagen@0.2.18": "0.2.18",
+    "jsr:@david/gagen@0.3.1": "0.3.1",
     "jsr:@david/path@0.2": "0.2.0",
     "jsr:@david/which@~0.4.1": "0.4.1",
     "jsr:@deno/rust-automation@0.22.2": "0.22.2",
@@ -59,6 +60,12 @@
     },
     "@david/gagen@0.2.18": {
       "integrity": "1bc27d996d183ecb6cce9c89042ae5c872b07a7fa83bfee0876223bd1a6f8bde",
+      "dependencies": [
+        "jsr:@std/yaml@^1.0.11"
+      ]
+    },
+    "@david/gagen@0.3.1": {
+      "integrity": "888b90d356e6530f24d9c9ec5beff1f0d0565d44293b356cd6844768ffe31780",
       "dependencies": [
         "jsr:@std/yaml@^1.0.11"
       ]

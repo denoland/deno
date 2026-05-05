@@ -1,6 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::ptr;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use napi_sys::ValueType::napi_object;
 use napi_sys::*;
@@ -186,6 +188,55 @@ extern "C" fn test_wrap_leak(
   args[0]
 }
 
+/// Flag for testing deferred finalizer behavior.
+static DEFERRED_FINALIZER_RAN: AtomicBool = AtomicBool::new(false);
+
+unsafe extern "C" fn deferred_finalize_cb(
+  _env: napi_env,
+  data: *mut ::std::os::raw::c_void,
+  _hint: *mut ::std::os::raw::c_void,
+) {
+  unsafe {
+    let _ = Box::from_raw(data as *mut Thing);
+  }
+  DEFERRED_FINALIZER_RAN.store(true, Ordering::SeqCst);
+}
+
+/// Creates an external value with a finalizer that sets a flag when called.
+/// Used to test that GC finalizers are deferred to the event loop.
+extern "C" fn test_deferred_finalizer(
+  env: napi_env,
+  _: napi_callback_info,
+) -> napi_value {
+  // Reset the flag
+  DEFERRED_FINALIZER_RAN.store(false, Ordering::SeqCst);
+
+  let data = Box::into_raw(Box::new(Thing {
+    _allocation: vec![1, 2, 3],
+  }));
+
+  let mut result = ptr::null_mut();
+  assert_napi_ok!(napi_create_external(
+    env,
+    data as _,
+    Some(deferred_finalize_cb),
+    ptr::null_mut(),
+    &mut result
+  ));
+  result
+}
+
+/// Returns whether the deferred finalizer has been called.
+extern "C" fn test_deferred_finalizer_check(
+  env: napi_env,
+  _: napi_callback_info,
+) -> napi_value {
+  let ran = DEFERRED_FINALIZER_RAN.load(Ordering::SeqCst);
+  let mut result = ptr::null_mut();
+  assert_napi_ok!(napi_get_boolean(env, ran, &mut result));
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_bind_finalizer", test_bind_finalizer),
@@ -202,6 +253,12 @@ pub fn init(env: napi_env, exports: napi_value) {
       test_static_external_buffer
     ),
     napi_new_property!(env, "test_wrap_leak", test_wrap_leak),
+    napi_new_property!(env, "test_deferred_finalizer", test_deferred_finalizer),
+    napi_new_property!(
+      env,
+      "test_deferred_finalizer_check",
+      test_deferred_finalizer_check
+    ),
   ];
 
   assert_napi_ok!(napi_define_properties(

@@ -22,13 +22,11 @@ use jupyter_protocol::StreamContent;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
-use tokio_util::sync::CancellationToken;
 
 use crate::CliFactory;
 use crate::args::Flags;
 use crate::args::JupyterFlags;
 use crate::cdp;
-use crate::lsp::ReplCompletionItem;
 use crate::ops;
 use crate::tools::repl;
 use crate::tools::test::TestEventWorkerSender;
@@ -226,38 +224,33 @@ pub async fn kernel(
 }
 
 pub enum JupyterReplRequest {
-  LspCompletions {
-    line_text: String,
-    position: usize,
-  },
-  JsGetProperties {
+  GetProperties {
     object_id: String,
   },
-  JsEvaluate {
+  Evaluate {
     expr: String,
   },
-  JsGlobalLexicalScopeNames,
-  JsEvaluateLineWithObjectWrapping {
+  GlobalLexicalScopeNames,
+  EvaluateLineWithObjectWrapping {
     line: String,
   },
-  JsCallFunctionOnArgs {
+  CallFunctionOnArgs {
     function_declaration: String,
     args: Vec<cdp::RemoteObject>,
   },
-  JsCallFunctionOn {
+  CallFunctionOn {
     arg0: cdp::CallArgument,
     arg1: cdp::CallArgument,
   },
 }
 
 pub enum JupyterReplResponse {
-  LspCompletions(Vec<ReplCompletionItem>),
-  JsGetProperties(Option<cdp::GetPropertiesResponse>),
-  JsEvaluate(Option<cdp::EvaluateResponse>),
-  JsGlobalLexicalScopeNames(cdp::GlobalLexicalScopeNamesResponse),
-  JsEvaluateLineWithObjectWrapping(Result<repl::TsEvaluateResponse, AnyError>),
-  JsCallFunctionOnArgs(Result<cdp::CallFunctionOnResponse, AnyError>),
-  JsCallFunctionOn(Option<cdp::CallFunctionOnResponse>),
+  GetProperties(Option<cdp::GetPropertiesResponse>),
+  Evaluate(Option<cdp::EvaluateResponse>),
+  GlobalLexicalScopeNames(cdp::GlobalLexicalScopeNamesResponse),
+  EvaluateLineWithObjectWrapping(Result<repl::TsEvaluateResponse, AnyError>),
+  CallFunctionOnArgs(Result<cdp::CallFunctionOnResponse, AnyError>),
+  CallFunctionOn(Option<cdp::CallFunctionOnResponse>),
 }
 
 pub struct JupyterReplProxy {
@@ -266,30 +259,14 @@ pub struct JupyterReplProxy {
 }
 
 impl JupyterReplProxy {
-  pub async fn lsp_completions(
-    &mut self,
-    line_text: String,
-    position: usize,
-  ) -> Vec<ReplCompletionItem> {
-    let _ = self.tx.send(JupyterReplRequest::LspCompletions {
-      line_text,
-      position,
-    });
-    let Some(JupyterReplResponse::LspCompletions(resp)) = self.rx.recv().await
-    else {
-      unreachable!()
-    };
-    resp
-  }
-
   pub async fn get_properties(
     &mut self,
     object_id: String,
   ) -> Option<cdp::GetPropertiesResponse> {
     let _ = self
       .tx
-      .send(JupyterReplRequest::JsGetProperties { object_id });
-    let Some(JupyterReplResponse::JsGetProperties(resp)) = self.rx.recv().await
+      .send(JupyterReplRequest::GetProperties { object_id });
+    let Some(JupyterReplResponse::GetProperties(resp)) = self.rx.recv().await
     else {
       unreachable!()
     };
@@ -300,9 +277,8 @@ impl JupyterReplProxy {
     &mut self,
     expr: String,
   ) -> Option<cdp::EvaluateResponse> {
-    let _ = self.tx.send(JupyterReplRequest::JsEvaluate { expr });
-    let Some(JupyterReplResponse::JsEvaluate(resp)) = self.rx.recv().await
-    else {
+    let _ = self.tx.send(JupyterReplRequest::Evaluate { expr });
+    let Some(JupyterReplResponse::Evaluate(resp)) = self.rx.recv().await else {
       unreachable!()
     };
     resp
@@ -311,8 +287,8 @@ impl JupyterReplProxy {
   pub async fn global_lexical_scope_names(
     &mut self,
   ) -> cdp::GlobalLexicalScopeNamesResponse {
-    let _ = self.tx.send(JupyterReplRequest::JsGlobalLexicalScopeNames);
-    let Some(JupyterReplResponse::JsGlobalLexicalScopeNames(resp)) =
+    let _ = self.tx.send(JupyterReplRequest::GlobalLexicalScopeNames);
+    let Some(JupyterReplResponse::GlobalLexicalScopeNames(resp)) =
       self.rx.recv().await
     else {
       unreachable!()
@@ -326,8 +302,8 @@ impl JupyterReplProxy {
   ) -> Result<repl::TsEvaluateResponse, AnyError> {
     let _ = self
       .tx
-      .send(JupyterReplRequest::JsEvaluateLineWithObjectWrapping { line });
-    let Some(JupyterReplResponse::JsEvaluateLineWithObjectWrapping(resp)) =
+      .send(JupyterReplRequest::EvaluateLineWithObjectWrapping { line });
+    let Some(JupyterReplResponse::EvaluateLineWithObjectWrapping(resp)) =
       self.rx.recv().await
     else {
       unreachable!()
@@ -340,11 +316,11 @@ impl JupyterReplProxy {
     function_declaration: String,
     args: Vec<cdp::RemoteObject>,
   ) -> Result<cdp::CallFunctionOnResponse, AnyError> {
-    let _ = self.tx.send(JupyterReplRequest::JsCallFunctionOnArgs {
+    let _ = self.tx.send(JupyterReplRequest::CallFunctionOnArgs {
       function_declaration,
       args,
     });
-    let Some(JupyterReplResponse::JsCallFunctionOnArgs(resp)) =
+    let Some(JupyterReplResponse::CallFunctionOnArgs(resp)) =
       self.rx.recv().await
     else {
       unreachable!()
@@ -360,9 +336,8 @@ impl JupyterReplProxy {
   ) -> Option<cdp::CallFunctionOnResponse> {
     let _ = self
       .tx
-      .send(JupyterReplRequest::JsCallFunctionOn { arg0, arg1 });
-    let Some(JupyterReplResponse::JsCallFunctionOn(resp)) =
-      self.rx.recv().await
+      .send(JupyterReplRequest::CallFunctionOn { arg0, arg1 });
+    let Some(JupyterReplResponse::CallFunctionOn(resp)) = self.rx.recv().await
     else {
       unreachable!()
     };
@@ -404,61 +379,38 @@ impl JupyterReplSession {
     msg: JupyterReplRequest,
   ) -> Result<(), AnyError> {
     let resp = match msg {
-      JupyterReplRequest::LspCompletions {
-        line_text,
-        position,
-      } => JupyterReplResponse::LspCompletions(
-        self
-          .lsp_completions(&line_text, position, CancellationToken::new())
-          .await,
-      ),
-      JupyterReplRequest::JsGetProperties { object_id } => {
-        JupyterReplResponse::JsGetProperties(
-          self.get_properties(object_id).await,
-        )
+      JupyterReplRequest::GetProperties { object_id } => {
+        JupyterReplResponse::GetProperties(self.get_properties(object_id).await)
       }
-      JupyterReplRequest::JsEvaluate { expr } => {
-        JupyterReplResponse::JsEvaluate(self.evaluate(expr).await)
+      JupyterReplRequest::Evaluate { expr } => {
+        JupyterReplResponse::Evaluate(self.evaluate(expr).await)
       }
-      JupyterReplRequest::JsGlobalLexicalScopeNames => {
-        JupyterReplResponse::JsGlobalLexicalScopeNames(
+      JupyterReplRequest::GlobalLexicalScopeNames => {
+        JupyterReplResponse::GlobalLexicalScopeNames(
           self.global_lexical_scope_names().await,
         )
       }
-      JupyterReplRequest::JsEvaluateLineWithObjectWrapping { line } => {
-        JupyterReplResponse::JsEvaluateLineWithObjectWrapping(
+      JupyterReplRequest::EvaluateLineWithObjectWrapping { line } => {
+        JupyterReplResponse::EvaluateLineWithObjectWrapping(
           self.evaluate_line_with_object_wrapping(&line).await,
         )
       }
-      JupyterReplRequest::JsCallFunctionOnArgs {
+      JupyterReplRequest::CallFunctionOnArgs {
         function_declaration,
         args,
-      } => JupyterReplResponse::JsCallFunctionOnArgs(
+      } => JupyterReplResponse::CallFunctionOnArgs(
         self
           .call_function_on_args(function_declaration, &args)
           .await,
       ),
-      JupyterReplRequest::JsCallFunctionOn { arg0, arg1 } => {
-        JupyterReplResponse::JsCallFunctionOn(
+      JupyterReplRequest::CallFunctionOn { arg0, arg1 } => {
+        JupyterReplResponse::CallFunctionOn(
           self.call_function_on(arg0, arg1).await,
         )
       }
     };
 
     self.tx.send(resp).map_err(|e| e.into())
-  }
-
-  pub async fn lsp_completions(
-    &mut self,
-    line_text: &str,
-    position: usize,
-    token: CancellationToken,
-  ) -> Vec<ReplCompletionItem> {
-    self
-      .repl_session
-      .language_server
-      .completions(line_text, position, token)
-      .await
   }
 
   pub async fn get_properties(
