@@ -50,6 +50,13 @@ pub struct LoaderHookRegistry {
   pending_resolves: Rc<RefCell<VecDeque<PendingResolve>>>,
   resolve_waker: Rc<RefCell<Option<Waker>>>,
   resolve_senders: Rc<RefCell<HashMap<u32, ResolveSender>>>,
+  /// Maps request ID → (specifier, referrer) for deduplication tracking.
+  resolve_id_keys: Rc<RefCell<HashMap<u32, (String, String)>>>,
+  /// Piggybacking senders for duplicate resolve requests. deno_core calls
+  /// resolve twice for dynamic imports. The second call's sender is stored
+  /// here and fulfilled when the first request's respond_resolve fires.
+  #[allow(clippy::type_complexity)]
+  resolve_waiters: Rc<RefCell<HashMap<(String, String), Vec<ResolveSender>>>>,
 
   pending_loads: Rc<RefCell<VecDeque<PendingLoad>>>,
   load_waker: Rc<RefCell<Option<Waker>>>,
@@ -72,9 +79,33 @@ impl LoaderHookRegistry {
   ) -> deno_core::futures::channel::oneshot::Receiver<
     Result<Option<String>, String>,
   > {
+    let key = (specifier.clone(), referrer.clone());
+
+    // deno_core calls resolve twice for dynamic imports: first in
+    // load_dynamic_import's fast-path (whose future is dropped without
+    // awaiting), then in RecursiveModuleLoad. If there's already a
+    // pending request for this key, piggyback on it instead of pushing
+    // a new request to the hook queue.
+    if self.resolve_waiters.borrow().contains_key(&key) {
+      let (sender, receiver) = deno_core::futures::channel::oneshot::channel();
+      self
+        .resolve_waiters
+        .borrow_mut()
+        .get_mut(&key)
+        .unwrap()
+        .push(sender);
+      return receiver;
+    }
+    // Register this key for piggybacking.
+    self.resolve_waiters.borrow_mut().insert(key, Vec::new());
+
     let id = self.next_id();
     let (sender, receiver) = deno_core::futures::channel::oneshot::channel();
     self.resolve_senders.borrow_mut().insert(id, sender);
+    self
+      .resolve_id_keys
+      .borrow_mut()
+      .insert(id, (specifier.clone(), referrer.clone()));
     self
       .pending_resolves
       .borrow_mut()
@@ -155,12 +186,21 @@ pub fn op_module_hooks_respond_resolve(
   #[string] error: Option<String>,
 ) {
   let registry = state.borrow::<LoaderHookRegistry>().clone();
+  let result: Result<Option<String>, String> = if let Some(err) = error {
+    Err(err)
+  } else {
+    Ok(url) // None = fallthrough
+  };
+  // Fulfill piggybacking waiters (the second resolve call from
+  // RecursiveModuleLoad that was deduplicated in push_resolve).
+  if let Some(key) = registry.resolve_id_keys.borrow_mut().remove(&id)
+    && let Some(waiters) = registry.resolve_waiters.borrow_mut().remove(&key)
+  {
+    for waiter in waiters {
+      let _ = waiter.send(result.clone());
+    }
+  }
   if let Some(sender) = registry.resolve_senders.borrow_mut().remove(&id) {
-    let result: Result<Option<String>, String> = if let Some(err) = error {
-      Err(err)
-    } else {
-      Ok(url) // None = fallthrough
-    };
     let _ = sender.send(result);
   }
 }

@@ -571,13 +571,28 @@ async function executeEsmLoadHookChain(fileUrl, context) {
   let index = 0;
   let currentContext = context;
 
-  async function nextLoad(loadUrl, ctx) {
+  // nextLoad must NOT be async - sync hooks (from registerHooks)
+  // call it and use the return value directly, not as a Promise.
+  function nextLoad(loadUrl, ctx) {
     if (ctx !== undefined && ctx !== null) {
       currentContext = { ...currentContext, ...ctx };
     }
     if (index >= loadHooks.length) {
-      // End of chain - signal fallthrough to Rust default loading
-      return { source: null, shortCircuit: true };
+      // End of chain - read file from disk (same as sync path).
+      // Hooks expect nextLoad to return { source } so they can
+      // transform it.
+      if (StringPrototypeStartsWith(loadUrl, "node:")) {
+        return { source: null, format: "builtin", shortCircuit: true };
+      }
+      const filePath = StringPrototypeStartsWith(loadUrl, "file://")
+        ? url.fileURLToPath(loadUrl)
+        : loadUrl;
+      const source = op_require_read_file(filePath);
+      return {
+        source,
+        format: currentContext?.format ?? undefined,
+        shortCircuit: true,
+      };
     }
     const hook = loadHooks[index++];
     let nextCalled = false;
@@ -585,7 +600,7 @@ async function executeEsmLoadHookChain(fileUrl, context) {
       nextCalled = true;
       return nextLoad(u, c);
     };
-    const result = await hook(loadUrl, currentContext, wrappedNext);
+    const result = hook(loadUrl, currentContext, wrappedNext);
     if (!nextCalled && !result?.shortCircuit) {
       throw new TypeError(
         "load hook must return { shortCircuit: true } or call nextLoad",
@@ -1152,9 +1167,17 @@ Module._load = function (request, parent, isMain) {
   }
 
   const filename = Module._resolveFilename(request, parent, isMain);
-  if (StringPrototypeStartsWith(filename, "node:")) {
-    // Slice 'node:' prefix
-    const id = StringPrototypeSlice(filename, 5);
+  // Check if this is a builtin module - either with node: prefix or bare name
+  const isBuiltin = StringPrototypeStartsWith(filename, "node:") ||
+    nativeModuleCanBeRequiredByUsers(filename);
+  if (isBuiltin) {
+    const id = StringPrototypeStartsWith(filename, "node:")
+      ? StringPrototypeSlice(filename, 5)
+      : filename;
+    // Canonical URL form for hooks (always use node: prefix)
+    const hookUrl = StringPrototypeStartsWith(filename, "node:")
+      ? filename
+      : "node:" + filename;
 
     // Run load hooks for builtins if registered
     if (hookEntries.length > 0 && !insideLoadHook) {
@@ -1175,7 +1198,7 @@ Module._load = function (request, parent, isMain) {
         insideLoadHook = true;
         let result;
         try {
-          result = executeLoadHookChain(filename, context);
+          result = executeLoadHookChain(hookUrl, context);
         } finally {
           insideLoadHook = false;
         }
@@ -2184,9 +2207,12 @@ export function register(specifier, parentUrlOrOptions, maybeOptions) {
   loadPromise.then(() => {
     const idx = ArrayPrototypeIndexOf(pendingHookLoads, loadPromise);
     if (idx !== -1) ArrayPrototypeSplice(pendingHookLoads, idx, 1);
-  }, () => {
+  }, (err) => {
     const idx = ArrayPrototypeIndexOf(pendingHookLoads, loadPromise);
     if (idx !== -1) ArrayPrototypeSplice(pendingHookLoads, idx, 1);
+    // Re-throw so loader errors surface as unhandled rejections and
+    // cause the process to exit with a non-zero code (matches Node.js).
+    throw err;
   });
 
   // Pre-activate the resolve hook bridge so that subsequent imports are

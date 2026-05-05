@@ -3506,6 +3506,16 @@ fn add_common_flags(
 
   // Add inspector flags
   add_inspector_flags(deno_args, env_opts);
+
+  // Handle --experimental-loader / --loader -> --preload with module.register()
+  for loader in &env_opts.userland_loaders {
+    // Percent-encode characters that are problematic in data URLs
+    let escaped = loader.replace('%', "%25").replace('#', "%23");
+    deno_args.push(format!(
+      "--preload=data:text/javascript,import%7Bregister%7Dfrom%22node:module%22;register(%22{}%22)",
+      escaped
+    ));
+  }
 }
 
 fn add_conditions(deno_args: &mut Vec<String>, env_opts: &EnvironmentOptions) {
@@ -4287,6 +4297,25 @@ mod tests {
     assert_eq!(
       result.options.per_isolate.per_env.userland_loaders,
       svec!["./my-loader.js"]
+    );
+  }
+
+  #[test]
+  fn test_experimental_loader_translates_to_preload() {
+    let result = parse_args(svec![
+      "--experimental-loader",
+      "file:///path/to/loader.mjs",
+      "script.js"
+    ])
+    .unwrap();
+    let options = TranslateOptions::for_child_process();
+    let translated = translate_to_deno_args(result, &options);
+    assert!(
+      translated.deno_args.iter().any(|a| a.starts_with(
+        "--preload=data:text/javascript,import%7Bregister%7Dfrom%22node:module%22;register(%22file:///path/to/loader.mjs%22)"
+      )),
+      "Expected --preload with module.register() data URL, got: {:?}",
+      translated.deno_args
     );
   }
 
