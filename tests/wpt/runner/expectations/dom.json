@@ -1411,15 +1411,6 @@
       "observable-reduce.any.worker.html": false
     }
   },
-  "parts": {
-    "basic-dom-part-declarative-brace-syntax-innerhtml.tentative.html": false,
-    "basic-dom-part-declarative-brace-syntax.tentative.html": false,
-    "basic-dom-part-objects.tentative.html": false,
-    "dom-parts-parseparts-on-body.tentative.html": false,
-    "dom-parts-parseparts-on-head.tentative.html": false,
-    "dom-parts-parseparts-on-root.tentative.html": false,
-    "dom-parts-valid-node-types.tentative.html": false
-  },
   "ranges": {
     "Range-adopt-test.html": false,
     "Range-attributes.html": false,
@@ -1482,11 +1473,6 @@
       "window.addEventListener respects custom `this`",
       "window.addEventListener treats nullish `this` as `window`"
     ]
-  },
-  "xslt": {
-    "functions.tentative.window.html": false,
-    "transformToFragment.tentative.window.html": false,
-    "document-function.window.html": false
   },
   "historical-mutation-events.html": {
     "expectedFailures": [

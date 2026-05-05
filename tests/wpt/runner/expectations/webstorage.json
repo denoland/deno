@@ -16,7 +16,7 @@
   "storage_length.window.html": true,
   "storage_local_setitem_quotaexceedederr.window.html": false,
   "storage_removeitem.window.html": true,
-  "storage_session_setitem_quotaexceedederr.window.html": false,
+  "storage_session_setitem_quotaexceedederr.window.html": true,
   "storage_set_value_enumerate.window.html": true,
   "storage_setitem.window.html": {
     "expectedFailures": [
@@ -64,6 +64,8 @@
   "event_session_storagearea.html": false,
   "event_session_url.html": false,
   "event_setattribute.html": false,
+  "storage_local_quota_independent_from_session.window.html": true,
+  "storage_session_quota_independent_from_local.window.html": true,
   "localstorage-about-blank-3P-iframe-opens-3P-window.partitioned.html": false,
   "localstorage-basic-partitioned.sub.html": false,
   "localstorage-cross-origin-iframe.https.window.html": false,
