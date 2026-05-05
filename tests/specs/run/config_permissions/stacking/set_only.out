@@ -1,0 +1,7 @@
+Warning Permissions in the config file is an experimental feature and may change in the future.
+read foo.txt: granted
+read bar.txt: prompt
+read other: prompt
+net example.org: granted
+net www.google.com: prompt
+net other.com: prompt

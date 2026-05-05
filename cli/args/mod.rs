@@ -1631,7 +1631,32 @@ fn flags_to_permissions_options(
     if allow_all_flag {
       Some(vec![])
     } else if let Some(value) = value {
-      Some(value.clone())
+      // An empty vec means "allow all" — don't narrow it by merging
+      // specific config items into it.
+      if value.is_empty() {
+        Some(vec![])
+      } else if let Some(config) = config {
+        // Merge flag values with config values so that named permission
+        // sets stack with CLI flags (e.g. `-P=foo -R=bar.txt`).
+        match config {
+          PermissionConfigValue::All => Some(vec![]),
+          PermissionConfigValue::Some(items) => {
+            let mut merged = value.clone();
+            for item in items {
+              let parsed = parse_config_value(item);
+              if !merged.contains(&parsed) {
+                merged.push(parsed);
+              }
+            }
+            Some(merged)
+          }
+          PermissionConfigValue::None => Some(value.clone()),
+        }
+      } else if allow_all_config == Some(true) {
+        Some(vec![])
+      } else {
+        Some(value.clone())
+      }
     } else if let Some(config) = config {
       match config {
         PermissionConfigValue::All => Some(vec![]),
@@ -1662,7 +1687,30 @@ fn flags_to_permissions_options(
     parse_config_value: &impl Fn(&str) -> String,
   ) -> Option<Vec<String>> {
     if let Some(value) = value {
-      Some(value.clone())
+      // An empty vec means "deny/ignore all" — don't narrow it by
+      // merging specific config items into it.
+      if value.is_empty() {
+        Some(vec![])
+      } else if let Some(config) = config {
+        // Merge flag values with config values so that named permission
+        // sets stack with CLI flags.
+        match config {
+          PermissionConfigValue::All => Some(vec![]),
+          PermissionConfigValue::Some(items) => {
+            let mut merged = value.clone();
+            for item in items {
+              let parsed = parse_config_value(item);
+              if !merged.contains(&parsed) {
+                merged.push(parsed);
+              }
+            }
+            Some(merged)
+          }
+          PermissionConfigValue::None => Some(value.clone()),
+        }
+      } else {
+        Some(value.clone())
+      }
     } else if let Some(config) = config {
       match config {
         PermissionConfigValue::All => Some(vec![]),
@@ -2103,15 +2151,15 @@ mod test {
     }
     {
       let flags = PermissionFlags {
-        allow_read: Some(vec!["./folder".to_string()]),
+        allow_read: Some(vec![]),
         ..Default::default()
       };
       let config = PermissionsObjectWithBase {
         base: deno_path_util::url_from_file_path(&base_dir.join("deno.json"))
           .unwrap(),
         permissions: PermissionsObject {
-          // will use all permissions except for the explicitly specified permissions
-          // and the explicit flag will replace
+          // will use all permissions; the explicit flag merges with the
+          // config's `all: true`, so read still allows everything
           all: Some(true),
           write: AllowDenyPermissionConfig {
             allow: Some(PermissionConfigValue::Some(vec![
@@ -2136,7 +2184,7 @@ mod test {
           deny_net: None,
           allow_ffi: Some(vec![]),
           deny_ffi: None,
-          allow_read: Some(vec!["./folder".to_string()]),
+          allow_read: Some(vec![]),
           deny_read: None,
           ignore_read: None,
           allow_run: Some(vec![]),
@@ -2161,6 +2209,72 @@ mod test {
           deny_import: None,
           prompt: true
         }
+      );
+    }
+    // Test that CLI flags merge/stack with named permission set values
+    // rather than replacing them (https://github.com/denoland/deno/issues/32795)
+    {
+      let flags = PermissionFlags {
+        allow_read: Some(vec!["./bar.txt".to_string()]),
+        allow_net: Some(vec!["www.google.com".to_string()]),
+        ..Default::default()
+      };
+      let config = PermissionsObjectWithBase {
+        base: deno_path_util::url_from_file_path(&base_dir.join("deno.json"))
+          .unwrap(),
+        permissions: PermissionsObject {
+          all: None,
+          read: AllowDenyIgnorePermissionConfig {
+            allow: Some(PermissionConfigValue::Some(vec![
+              "./foo.txt".to_string(),
+            ])),
+            ..Default::default()
+          },
+          net: AllowDenyPermissionConfig {
+            allow: Some(PermissionConfigValue::Some(vec![
+              "example.org".to_string(),
+            ])),
+            ..Default::default()
+          },
+          env: AllowDenyIgnorePermissionConfig {
+            allow: Some(PermissionConfigValue::Some(vec![
+              "MY_VAR".to_string(),
+            ])),
+            deny: Some(PermissionConfigValue::Some(vec!["SECRET".to_string()])),
+            ..Default::default()
+          },
+          ..Default::default()
+        },
+      };
+      let permissions_options =
+        flags_to_permissions_options(&flags, Some(&config)).unwrap();
+      // CLI flags should be merged with the named permission set values
+      assert_eq!(
+        permissions_options.allow_read,
+        Some(vec![
+          "./bar.txt".to_string(),
+          base_dir
+            .join("foo.txt")
+            .into_os_string()
+            .into_string()
+            .unwrap(),
+        ])
+      );
+      assert_eq!(
+        permissions_options.allow_net,
+        Some(vec![
+          "www.google.com".to_string(),
+          "example.org".to_string(),
+        ])
+      );
+      // Config values without corresponding flags should still be used
+      assert_eq!(
+        permissions_options.allow_env,
+        Some(vec!["MY_VAR".to_string()])
+      );
+      assert_eq!(
+        permissions_options.deny_env,
+        Some(vec!["SECRET".to_string()])
       );
     }
   }
