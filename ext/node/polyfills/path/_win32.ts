@@ -25,8 +25,7 @@ const {
 const { default: assert } = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );
-const _proc = core.loadExtScript("ext:deno_node/_process/process.ts");
-const process = { cwd: _proc.cwd, env: _proc.env };
+core.loadExtScript("ext:deno_node/_process/process.ts");
 
 type FormatInputPathObject = {
   root?: string;
@@ -152,7 +151,7 @@ function resolve(...pathSegments: string[]): string {
       // absolute path, get cwd for that drive, or the process cwd if
       // the drive cwd is not available. We're sure the device is not
       // a UNC path at this points, because UNC paths are always absolute.
-      path = process.env[`=${resolvedDevice}`] || Deno.cwd();
+      path = globalThis.process.env[`=${resolvedDevice}`] || Deno.cwd();
 
       // Verify that a cwd was found and that it actually points
       // to our drive. If not, default to the drive's root.

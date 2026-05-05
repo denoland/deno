@@ -21,8 +21,7 @@ const { validateString } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
-const _proc = core.loadExtScript("ext:deno_node/_process/process.ts");
-const process = { cwd: _proc.cwd };
+core.loadExtScript("ext:deno_node/_process/process.ts");
 
 type FormatInputPathObject = {
   root?: string;
@@ -69,13 +68,13 @@ const posixCwd = (() => {
     // and truncates any drive indicator
     const regexp = new SafeRegExp(/\\/g);
     return () => {
-      const cwd = StringPrototypeReplace(process.cwd(), regexp, "/");
+      const cwd = StringPrototypeReplace(globalThis.process.cwd(), regexp, "/");
       return StringPrototypeSlice(cwd, StringPrototypeIndexOf(cwd, "/"));
     };
   }
 
   // We're already on POSIX, no need for any transformations
-  return () => process.cwd();
+  return () => globalThis.process.cwd();
 })();
 
 // path.resolve([from ...], to)
@@ -118,7 +117,7 @@ function resolve(...pathSegments: string[]): string {
   }
 
   // At this point the path should be resolved to a full absolute path, but
-  // handle relative paths to be safe (might happen when process.cwd() fails)
+  // handle relative paths to be safe (might happen when globalThis.process.cwd() fails)
 
   // Normalize the path
   resolvedPath = normalizeString(
