@@ -914,6 +914,7 @@ fn get_installer_root() -> Result<PathBuf, AnyError> {
         )
       })?;
   home_path.push(".deno");
+  home_path.push("bin");  // Fix: Match documentation default of $HOME/.deno/bin
   Ok(home_path)
 }
 

@@ -39,7 +39,14 @@ function prompt(message = "Prompt", defaultValue) {
   }
 
   const formattedMessage = message.length === 0 ? "" : `${message} `;
-  return op_read_line_prompt(formattedMessage, `${defaultValue}`);
+  core.print(`${formattedMessage}${defaultValue}`, false);
+
+  const answer = readLineFromStdinSync();
+
+  if (answer === "" && defaultValue !== "") {
+    return defaultValue;
+  }
+  return answer || defaultValue;
 }
 
 function readLineFromStdinSync() {
