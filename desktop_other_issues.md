@@ -77,17 +77,6 @@ return.
 **Fix**: add a SAFETY comment; log/panic on null return so we don't silently
 fail to expose NAPI symbols.
 
-### 13. `instance_create_surface` unsafe block panics inside a closure — MEDIUM
-
-`runtime/ops/desktop.rs:685-689`
-
-`.expect("failed to create surface")` is held inside a closure invoked from a v8
-callback path. The failure mode is wgpu-side (unsupported display, OOM, plugin
-missing) — user-controlled paths (window minimized, display detached) can hit
-it.
-
-**Fix**: bubble the error as a `JsErrorBox` instead of `unwrap`.
-
 ---
 
 ## Correctness
@@ -242,7 +231,7 @@ These pre-date this branch and currently block `tools/lint.js`.
 
 | Severity | Count | Items                                                         |
 | -------- | ----- | ------------------------------------------------------------- |
-| MEDIUM   | 5     | #7, #13, #17, #23, #29                                        |
+| MEDIUM   | 4     | #7, #17, #23, #29                                             |
 | LOW      | 13    | #6, #9, #12, #14, #15, #18, #19, #20, #21, #22, #27, #30, #31 |
 
 ## Suggested fix order
@@ -252,9 +241,8 @@ The CRITICAL/HIGH batch is done. What's left:
 **Robustness wins**:
 
 1. **#7** atomic-rename WEF cache extraction
-2. **#13** wgpu surface error → JsErrorBox
-3. **#17** `spawn_blocking` for auto-update I/O
-4. **#23** bound the panic-hook reporter
+2. **#17** `spawn_blocking` for auto-update I/O
+3. **#23** bound the panic-hook reporter
 
 **Cleanup** — everything else (#6, #9, #12, #14, #15, #18, #19, #20, #21, #22,
 #27, #29, #30) plus **#31** to unblock `tools/lint.js`.

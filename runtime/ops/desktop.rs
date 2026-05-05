@@ -680,16 +680,12 @@ impl BrowserWindow {
     let api = self.api.clone();
     let window_id = self.window_id;
 
-    // Hoisted out of the `surface.get` closure so failures can bubble to
-    // JS as a thrown error rather than being swallowed (the closure
-    // itself returns `T`, not `Result<T>`). `get_raw_window_handle` can
-    // legitimately fail on platforms WEF doesn't fully support, and we
-    // don't want a `panic!` unwinding across the WEF C ABI.
+    // Hoisted out of the `surface.try_get` closure so the
+    // `get_raw_window_handle` failure path can bubble before we ever
+    // touch wgpu (and can't unwind across the WEF C ABI).
     let (win_handle, display_handle) = api.get_raw_window_handle(window_id)?;
 
-    self.surface_taken.set(true);
-
-    Ok(self.surface.get(scope, move |_| {
+    let result = self.surface.try_get(scope, move |_| {
       // SAFETY: The raw handles are valid for the lifetime of the OS window.
       // `BrowserWindow.close()` is suppressed (downgraded to hide) once a
       // surface has been taken (`surface_taken`), and the OS window outlives
@@ -699,18 +695,24 @@ impl BrowserWindow {
       let surface_id = unsafe {
         instance
           .instance_create_surface(display_handle, win_handle, None)
-          .expect("failed to create surface")
+          .map_err(|e| {
+            deno_error::JsErrorBox::generic(format!(
+              "failed to create wgpu surface: {e}"
+            ))
+          })?
       };
-
       let (width, height) = api.get_window_size(window_id);
-
-      deno_webgpu::byow::UnsafeWindowSurface {
+      Ok::<_, deno_error::JsErrorBox>(deno_webgpu::byow::UnsafeWindowSurface {
         id: surface_id,
         width: RefCell::new(width as u32),
         height: RefCell::new(height as u32),
         context: SameObject::new(),
-      }
-    }))
+      })
+    })?;
+    // Only suppress close() once the surface is actually live. If
+    // surface creation failed above, the window is still safe to close.
+    self.surface_taken.set(true);
+    Ok(result)
   }
 }
 
