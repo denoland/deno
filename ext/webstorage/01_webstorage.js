@@ -7,6 +7,8 @@ const { core, primordials } = globalThis.__bootstrap;
 const { op_webstorage_iterate_keys, Storage } = core.ops;
 const {
   SymbolFor,
+  ObjectAssign,
+  ObjectCreate,
   ObjectFromEntries,
   ObjectEntries,
   ReflectDefineProperty,
@@ -30,7 +32,9 @@ function createStorage(persistent) {
 
     defineProperty(target, key, descriptor) {
       if (typeof key === "symbol") {
-        return ReflectDefineProperty(target, key, descriptor);
+        const desc = ObjectAssign(ObjectCreate(null), descriptor);
+        desc.configurable = true;
+        return ReflectDefineProperty(target, key, desc);
       }
       target.setItem(key, descriptor.value);
       return true;
