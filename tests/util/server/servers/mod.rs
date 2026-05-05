@@ -22,6 +22,7 @@ use denokv_proto::datapath::SnapshotReadStatus;
 use futures::FutureExt;
 use futures::StreamExt;
 use http;
+use http::HeaderName;
 use http::HeaderValue;
 use http::Method;
 use http::Request;
@@ -763,6 +764,19 @@ async fn main_server(
     (_, "/http_version") => {
       let version = format!("{:?}", req.version());
       Ok(Response::new(string_body(&version)))
+    }
+    (_, "/large_headers") => {
+      let mut res = Response::new(string_body("ok"));
+      // Add headers that total ~10KB to test http2 max header list size
+      for i in 0..100 {
+        let value = "a".repeat(100);
+        res.headers_mut().append(
+          HeaderName::from_bytes(format!("x-large-header-{i}").as_bytes())
+            .unwrap(),
+          HeaderValue::from_str(&value).unwrap(),
+        );
+      }
+      Ok(res)
     }
     (_, "/content_length") => {
       let content_length = format!("{:?}", req.headers().get("content-length"));

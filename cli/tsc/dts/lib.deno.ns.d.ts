@@ -6572,6 +6572,11 @@ declare namespace Deno {
     allowHost?: boolean;
     /** Sets the local address where the socket will connect from. */
     localAddress?: string;
+    /** Sets the max HTTP/2 header list size (in bytes) that the client will
+     * accept. This maps to the `SETTINGS_MAX_HEADER_LIST_SIZE` HTTP/2 setting.
+     *
+     * If not set, the default value from the underlying HTTP library is used. */
+    http2MaxHeaderListSize?: number;
   }
 
   /**
