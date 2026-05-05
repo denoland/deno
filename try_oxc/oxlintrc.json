@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
+  "rules": {
+    "no-debugger": "error",
+    "no-var": "error",
+    "no-unused-vars": "warn",
+    "eqeqeq": "warn",
+    "no-alert": "warn",
+    "react/jsx-no-duplicate-props": "error",
+    "react/jsx-key": "warn",
+    "jsx-a11y/alt-text": "warn"
+  }
+}
