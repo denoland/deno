@@ -3,9 +3,6 @@ import { register, registerHooks } from "node:module";
 // Register async hook FIRST
 register("./hooks-ordering-async.mjs", import.meta.url);
 
-// Allow hook module to load
-await new Promise((resolve) => setTimeout(resolve, 50));
-
 // Register sync hook SECOND - but sync hooks run BEFORE async hooks
 // per Node.js spec, regardless of registration order.
 // The sync hook intercepts "virtual:order-test" and short-circuits,

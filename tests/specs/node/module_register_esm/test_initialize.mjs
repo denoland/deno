@@ -14,14 +14,11 @@ register("./hooks-initialize.mjs", {
   transferList: [port2],
 });
 
-// Allow hook module to load
-await new Promise((resolve) => setTimeout(resolve, 50));
-
 const { value } = await import("virtual:tracked");
 console.log("value:", value);
 
-// Give messages time to arrive
-await new Promise((resolve) => setTimeout(resolve, 50));
+// Give messages time to arrive via the port
+await new Promise((resolve) => setTimeout(resolve, 10));
 port1.close();
 
 for (const msg of messages) {

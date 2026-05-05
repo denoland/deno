@@ -372,6 +372,10 @@ let patched = false;
 const hookEntries = [];
 // module.register() infrastructure - async hooks from loaded loader modules
 const asyncHookEntries = [];
+// Pending hook module loads from register(). The ESM hook loops await these
+// before processing requests, ensuring hooks are active before subsequent
+// imports are resolved.
+const pendingHookLoads = [];
 let insideResolveHook = false;
 let insideLoadHook = false;
 let utf8Decoder;
@@ -602,6 +606,12 @@ function _startEsmResolveLoop() {
       core.unrefOpPromise(pollPromise);
       const req = await pollPromise;
       if (req === null) break;
+      // Wait for any pending hook module loads to complete before
+      // processing requests. This ensures register() hooks are active
+      // before subsequent imports are resolved.
+      if (pendingHookLoads.length > 0) {
+        await Promise.all(pendingHookLoads);
+      }
       const [id, specifier, referrer] = req;
       const context = {
         conditions: ["node", "import"],
@@ -2162,39 +2172,54 @@ export function register(specifier, parentUrlOrOptions, maybeOptions) {
     resolvedUrl = String(specifier);
   }
 
-  // Load the hook module asynchronously and register its hooks.
-  // This matches Node.js behavior: register() returns immediately,
-  // hooks become active before the next import.
-  _loadAndRegisterHookModule(resolvedUrl, data, transferList);
+  // Load the hook module asynchronously. The promise is tracked so the
+  // ESM hook loops wait for it before processing requests, ensuring hooks
+  // are active before subsequent imports are resolved.
+  const loadPromise = _loadAndRegisterHookModule(
+    resolvedUrl,
+    data,
+    transferList,
+  );
+  ArrayPrototypePush(pendingHookLoads, loadPromise);
+  loadPromise.then(() => {
+    const idx = ArrayPrototypeIndexOf(pendingHookLoads, loadPromise);
+    if (idx !== -1) ArrayPrototypeSplice(pendingHookLoads, idx, 1);
+  }, () => {
+    const idx = ArrayPrototypeIndexOf(pendingHookLoads, loadPromise);
+    if (idx !== -1) ArrayPrototypeSplice(pendingHookLoads, idx, 1);
+  });
+
+  // Pre-activate the resolve hook bridge so that subsequent imports are
+  // routed through it and will wait for the hook module to load.
+  // Only activate resolve here - load activation happens in
+  // _activateEsmHooks() after the hook module loads. This avoids a
+  // circular deadlock where the hook module's own load would go through
+  // the bridge which is waiting for the hook module to load.
+  op_module_hooks_register(true, false);
+  _startEsmResolveLoop();
 
   return undefined;
 }
 
 async function _loadAndRegisterHookModule(resolvedUrl, data, transferList) {
-  try {
-    const hookModule = await import(resolvedUrl);
+  const hookModule = await import(resolvedUrl);
 
-    // Call initialize hook if exported
-    if (typeof hookModule.initialize === "function") {
-      await hookModule.initialize(data);
-    }
-
-    const resolve = typeof hookModule.resolve === "function"
-      ? hookModule.resolve
-      : null;
-    const load = typeof hookModule.load === "function" ? hookModule.load : null;
-
-    if (resolve === null && load === null) {
-      return;
-    }
-
-    ArrayPrototypePush(asyncHookEntries, { resolve, load });
-    _activateEsmHooks();
-  } catch (e) {
-    // Match Node.js behavior: errors in hook loading are reported but
-    // do not crash the process
-    console.error("Error loading module hooks from", resolvedUrl, e);
+  // Call initialize hook if exported
+  if (typeof hookModule.initialize === "function") {
+    await hookModule.initialize(data);
   }
+
+  const resolve = typeof hookModule.resolve === "function"
+    ? hookModule.resolve
+    : null;
+  const load = typeof hookModule.load === "function" ? hookModule.load : null;
+
+  if (resolve === null && load === null) {
+    return;
+  }
+
+  ArrayPrototypePush(asyncHookEntries, { resolve, load });
+  _activateEsmHooks();
 }
 
 Module.register = register;
