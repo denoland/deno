@@ -2,19 +2,21 @@ export {}; // Make this a module
 
 // #region Fetch and friends
 // Conditional type aliases, used at the end of this file.
-// Will either be empty if lib.dom (or lib.webworker) is included, or the undici version otherwise.
-type _Request = typeof globalThis extends { onmessage: any } ? {} : import("./undici/index.d.ts").Request;
-type _Response = typeof globalThis extends { onmessage: any } ? {} : import("./undici/index.d.ts").Response;
-type _FormData = typeof globalThis extends { onmessage: any } ? {} : import("./undici/index.d.ts").FormData;
-type _Headers = typeof globalThis extends { onmessage: any } ? {} : import("./undici/index.d.ts").Headers;
-type _MessageEvent = typeof globalThis extends { onmessage: any } ? {} : import("./undici/index.d.ts").MessageEvent;
-type _RequestInit = typeof globalThis extends { onmessage: any } ? {}
+// Deno's web globals don't expose `onmessage` on `globalThis` outside of
+// worker contexts, so detect Deno's web fetch surface via `Blob` instead.
+type _HasWebFetchGlobals = typeof globalThis extends { Blob: any } ? true : false;
+type _Request = _HasWebFetchGlobals extends true ? {} : import("./undici/index.d.ts").Request;
+type _Response = _HasWebFetchGlobals extends true ? {} : import("./undici/index.d.ts").Response;
+type _FormData = _HasWebFetchGlobals extends true ? {} : import("./undici/index.d.ts").FormData;
+type _Headers = _HasWebFetchGlobals extends true ? {} : import("./undici/index.d.ts").Headers;
+type _MessageEvent = _HasWebFetchGlobals extends true ? {} : import("./undici/index.d.ts").MessageEvent;
+type _RequestInit = _HasWebFetchGlobals extends true ? {}
     : import("./undici/index.d.ts").RequestInit;
-type _ResponseInit = typeof globalThis extends { onmessage: any } ? {}
+type _ResponseInit = _HasWebFetchGlobals extends true ? {}
     : import("./undici/index.d.ts").ResponseInit;
-type _WebSocket = typeof globalThis extends { onmessage: any } ? {} : import("./undici/index.d.ts").WebSocket;
-type _EventSource = typeof globalThis extends { onmessage: any } ? {} : import("./undici/index.d.ts").EventSource;
-type _CloseEvent = typeof globalThis extends { onmessage: any } ? {} : import("./undici/index.d.ts").CloseEvent;
+type _WebSocket = _HasWebFetchGlobals extends true ? {} : import("./undici/index.d.ts").WebSocket;
+type _EventSource = _HasWebFetchGlobals extends true ? {} : import("./undici/index.d.ts").EventSource;
+type _CloseEvent = _HasWebFetchGlobals extends true ? {} : import("./undici/index.d.ts").CloseEvent;
 // #endregion Fetch and friends
 
 // Conditional type definitions for webstorage interface, which conflicts with lib.dom otherwise.
