@@ -41,13 +41,17 @@ import {
   op_node_udp_set_ttl,
 } from "ext:core/ops";
 
-import {
+const {
   AsyncWrap,
   providerType,
-} from "ext:deno_node/internal_binding/async_wrap.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/async_wrap.ts");
 import { GetAddrInfoReqWrap } from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
-import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
+const { HandleWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/handle_wrap.ts",
+);
+const { ownerSymbol } = core.loadExtScript(
+  "ext:deno_node/internal_binding/symbols.ts",
+);
 const { codeMap, errorMap } = core.loadExtScript(
   "ext:deno_node/internal_binding/uv.ts",
 );

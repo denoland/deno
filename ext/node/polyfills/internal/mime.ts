@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Adapted from Node.js internal/mime.js
-
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   FunctionPrototypeCall,
   ObjectDefineProperty,
@@ -15,8 +15,6 @@ const {
   StringPrototypeToLowerCase,
   SymbolIterator,
 } = primordials;
-
-import { core } from "ext:core/mod.js";
 const { ERR_INVALID_MIME_SYNTAX } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -406,4 +404,8 @@ ObjectDefineProperty(MIMEType.prototype, "toJSON", {
   writable: true,
 });
 
-export { MIMEParams, MIMEType };
+return {
+  MIMEParams,
+  MIMEType,
+};
+})();

@@ -4,8 +4,12 @@
 // deno-lint-ignore-file ban-types prefer-primordials
 
 import { core, primordials } from "ext:core/mod.js";
-import { AssertionError } from "ext:deno_node/internal/assert/assertion_error.js";
-import { innerOk } from "ext:deno_node/internal/assert/utils.ts";
+const { AssertionError } = core.loadExtScript(
+  "ext:deno_node/internal/assert/assertion_error.js",
+);
+const { innerOk } = core.loadExtScript(
+  "ext:deno_node/internal/assert/utils.ts",
+);
 import { inspect } from "node:util";
 const {
   ERR_AMBIGUOUS_ARGUMENT,
@@ -20,7 +24,9 @@ import {
   isDeepStrictEqual,
   isPartialStrictEqual,
 } from "ext:deno_node/internal/util/comparisons.ts";
-import { CallTracker } from "ext:deno_node/internal/assert/calltracker.js";
+const { CallTracker } = core.loadExtScript(
+  "ext:deno_node/internal/assert/calltracker.js",
+);
 import { deprecate } from "node:util";
 const { isPromise, isRegExp } = core.loadExtScript(
   "ext:deno_node/internal_binding/types.ts",

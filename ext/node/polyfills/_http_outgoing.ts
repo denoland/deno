@@ -6,26 +6,28 @@
 
 import { core } from "ext:core/mod.js";
 import { getDefaultHighWaterMark } from "ext:deno_node/internal/streams/state.js";
-import assert from "ext:deno_node/internal/assert.mjs";
+const { default: assert } = core.loadExtScript(
+  "ext:deno_node/internal/assert.mjs",
+);
 import EE from "node:events";
 import { Stream } from "node:stream";
 import { deprecate } from "node:util";
 import type { Socket } from "node:net";
-import {
+const {
   kNeedDrain,
   kOutHeaders,
   utcDate,
-} from "ext:deno_node/internal/http.ts";
+} = core.loadExtScript("ext:deno_node/internal/http.ts");
 import { Buffer } from "node:buffer";
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
   _checkIsHttpToken as checkIsHttpToken,
   chunkExpression as RE_TE_CHUNKED,
 } from "node:_http_common";
-import {
+const {
   defaultTriggerAsyncIdScope,
   symbols,
-} from "ext:deno_node/internal/async_hooks.ts";
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { async_id_symbol } = symbols;
 const {
   ERR_HTTP_BODY_NOT_ALLOWED,
@@ -50,7 +52,9 @@ const { isUint8Array } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
 
-import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
+const { debuglog } = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
 let debug = debuglog("http", (fn) => {
   debug = fn;
 });

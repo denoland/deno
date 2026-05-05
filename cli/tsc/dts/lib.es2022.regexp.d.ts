@@ -7,14 +7,12 @@ License at http://www.apache.org/licenses/LICENSE-2.0
 THIS CODE IS PROVIDED ON AN *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED
 WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE,
-MERCHANTABLITY OR NON-INFRINGEMENT.
+MERCHANTABILITY OR NON-INFRINGEMENT.
 
 See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
-
-/// <reference no-default-lib="true"/>
 
 interface RegExpMatchArray {
     indices?: RegExpIndicesArray;
@@ -24,7 +22,7 @@ interface RegExpExecArray {
     indices?: RegExpIndicesArray;
 }
 
-interface RegExpIndicesArray extends Array<[number, number]> {
+interface RegExpIndicesArray extends Array<[number, number] | undefined> {
     groups?: {
         [key: string]: [number, number];
     };

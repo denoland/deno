@@ -75,13 +75,16 @@ const {
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { spliceOne } = core.loadExtScript("ext:deno_node/_utils.ts");
-import { nextTick } from "ext:deno_node/_process/process.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_process/process.ts");
 const {
   eventTargetData,
   kResistStopImmediatePropagation,
 } = core.loadExtScript("ext:deno_web/02_event.js");
 
-export { addAbortListener } from "./internal/events/abort_listener.mjs";
+const { addAbortListener } = core.loadExtScript(
+  "ext:deno_node/internal/events/abort_listener.mjs",
+);
+export { addAbortListener };
 
 export const kFirstEventParam = Symbol("kFirstEventParam");
 const kCapture = Symbol("kCapture");

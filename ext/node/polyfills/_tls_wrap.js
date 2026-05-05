@@ -12,7 +12,9 @@ const {
   ObjectAssign,
   StringPrototypeReplace,
 } = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
-import assert from "ext:deno_node/internal/assert.mjs";
+const { default: assert } = core.loadExtScript(
+  "ext:deno_node/internal/assert.mjs",
+);
 import * as net from "node:net";
 import {
   createSecureContext,
@@ -29,19 +31,21 @@ const {
   ERR_TLS_REQUIRED_SERVER_NAME,
   ERR_TLS_SNI_FROM_SERVER,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
-import {
-  constants as TCPConstants,
+const { debuglog } = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
+const {
+  constants: TCPConstants,
   TCP,
-} from "ext:deno_node/internal_binding/tcp_wrap.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
 import { kMaybeDestroy } from "ext:deno_node/internal/stream_base_commons.ts";
 import { kReinitializeHandle } from "ext:deno_node/internal/net.ts";
-import {
-  constants as PipeConstants,
+const {
+  constants: PipeConstants,
   Pipe,
-} from "ext:deno_node/internal_binding/pipe_wrap.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/pipe_wrap.ts");
 const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const {
   validateFunction,
   validateInt32,
@@ -52,8 +56,12 @@ const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
 import { op_tls_canonicalize_ipv4_address } from "ext:core/ops";
-import tlsWrap from "ext:deno_node/internal_binding/tls_wrap.ts";
-import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
+const { default: tlsWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/tls_wrap.ts",
+);
+const { ownerSymbol } = core.loadExtScript(
+  "ext:deno_node/internal_binding/symbols.ts",
+);
 import { X509Certificate } from "ext:deno_node/internal/crypto/x509.ts";
 
 const kConnectOptions = Symbol("connect-options");

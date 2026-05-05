@@ -31,11 +31,13 @@ import { core } from "ext:core/mod.js";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
 import { isIPv4, isIPv6 } from "ext:deno_node/internal/net.ts";
 const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
-import {
+const {
   AsyncWrap,
   providerType,
-} from "ext:deno_node/internal_binding/async_wrap.ts";
-import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/async_wrap.ts");
+const { ares_strerror } = core.loadExtScript(
+  "ext:deno_node/internal_binding/ares.ts",
+);
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import {
   op_dns_resolve,

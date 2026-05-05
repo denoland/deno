@@ -2,8 +2,8 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
 // deno-lint-ignore-file prefer-primordials
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const { inspect } = core.loadExtScript(
   "ext:deno_node/internal/util/inspect.mjs",
 );
@@ -11,12 +11,10 @@ const { isError } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const { isErrorStackTraceLimitWritable } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
-import * as colors from "ext:deno_node/internal/util/colors.ts";
-import {
-  myersDiff,
-  printMyersDiff,
-  printSimpleMyersDiff,
-} from "ext:deno_node/internal/assert/myers_diff.js";
+const colors = core.loadExtScript("ext:deno_node/internal/util/colors.ts");
+const { myersDiff, printMyersDiff, printSimpleMyersDiff } = core.loadExtScript(
+  "ext:deno_node/internal/assert/myers_diff.js",
+);
 const { validateObject } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
@@ -310,7 +308,7 @@ function addEllipsis(string) {
   return string;
 }
 
-export class AssertionError extends Error {
+class AssertionError extends Error {
   // deno-lint-ignore constructor-super
   constructor(options) {
     validateObject(options, "options");
@@ -490,4 +488,8 @@ export class AssertionError extends Error {
   }
 }
 
-export default AssertionError;
+return {
+  AssertionError,
+  default: AssertionError,
+};
+})();

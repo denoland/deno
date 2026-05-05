@@ -23,7 +23,9 @@
 import { Buffer } from "node:buffer";
 import { core } from "ext:core/mod.js";
 const { uvException } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import { writeBuffer } from "ext:deno_node/internal_binding/node_file.ts";
+const { writeBuffer } = core.loadExtScript(
+  "ext:deno_node/internal_binding/node_file.ts",
+);
 import { primordials } from "ext:core/mod.js";
 
 const { RegExpPrototypeTest, SafeRegExp, Symbol } = primordials;

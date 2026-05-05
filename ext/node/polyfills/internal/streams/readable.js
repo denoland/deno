@@ -17,7 +17,7 @@ import {
   getHighWaterMark,
 } from "ext:deno_node/internal/streams/state.js";
 
-import {
+const {
   kAutoDestroy,
   kClosed,
   kCloseEmitted,
@@ -29,7 +29,7 @@ import {
   kObjectMode,
   kOnConstructed,
   kState,
-} from "ext:deno_node/internal/streams/utils.js";
+} = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 
 const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { validateObject } = core.loadExtScript(
@@ -37,7 +37,7 @@ const { validateObject } = core.loadExtScript(
 );
 import { StringDecoder } from "node:string_decoder";
 import from from "ext:deno_node/internal/streams/from.js";
-import * as _mod2 from "ext:deno_node/internal/util/debuglog.ts";
+const _mod2 = core.loadExtScript("ext:deno_node/internal/util/debuglog.ts");
 import * as _mod3 from "ext:deno_node/internal/webstreams/adapters.js";
 
 const {

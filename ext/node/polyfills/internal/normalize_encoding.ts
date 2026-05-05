@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
 const { primordials } = globalThis.__bootstrap;
@@ -78,4 +77,4 @@ function slowCases(enc) {
 }
 
 return { normalizeEncoding };
-})()
+})();

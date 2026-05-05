@@ -1,17 +1,18 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 // deno-lint-ignore camelcase
-import * as async_wrap from "ext:deno_node/internal_binding/async_wrap.ts";
-import { core } from "ext:core/mod.js";
+const async_wrap = core.loadExtScript(
+  "ext:deno_node/internal_binding/async_wrap.ts",
+);
 const { ERR_ASYNC_CALLBACK } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
-export {
-  asyncIdSymbol,
-  ownerSymbol,
-} from "ext:deno_node/internal_binding/symbols.ts";
-import { primordials } from "ext:core/mod.js";
+const { asyncIdSymbol, ownerSymbol } = core.loadExtScript(
+  "ext:deno_node/internal_binding/symbols.ts",
+);
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
@@ -63,7 +64,7 @@ const active_hooks: ActiveHooks = {
   tmp_fields: null,
 };
 
-export const registerDestroyHook = async_wrap.registerDestroyHook;
+const registerDestroyHook = async_wrap.registerDestroyHook;
 const {
   async_hook_fields,
   // deno-lint-ignore camelcase
@@ -71,17 +72,16 @@ const {
   newAsyncId,
   constants,
 } = async_wrap;
-export { newAsyncId };
 
 // Track execution context
 const executionAsyncIdStack: number[] = [0];
 
-export function executionAsyncId(): number {
+function executionAsyncId(): number {
   return executionAsyncIdStack[executionAsyncIdStack.length - 1] || 0;
 }
 
 // Emit functions that work with the internal hook system
-export function emitBefore(asyncId: number): void {
+function emitBefore(asyncId: number): void {
   ArrayPrototypePush(executionAsyncIdStack, asyncId);
 
   // Call hooks if they exist
@@ -102,7 +102,7 @@ export function emitBefore(asyncId: number): void {
   }
 }
 
-export function emitAfter(asyncId: number): void {
+function emitAfter(asyncId: number): void {
   // Call hooks if they exist
   const hooks = active_hooks.array;
   try {
@@ -120,7 +120,7 @@ export function emitAfter(asyncId: number): void {
   }
 }
 
-export function emitDestroy(asyncId: number): void {
+function emitDestroy(asyncId: number): void {
   // Call hooks if they exist
   const hooks = active_hooks.array;
   for (let i = 0; i < hooks.length; i++) {
@@ -145,21 +145,21 @@ const {
 // deno-lint-ignore camelcase
 const resource_symbol = Symbol("resource");
 // deno-lint-ignore camelcase
-export const async_id_symbol = Symbol("trigger_async_id");
+const async_id_symbol = Symbol("trigger_async_id");
 // deno-lint-ignore camelcase
-export const trigger_async_id_symbol = Symbol("trigger_async_id");
+const trigger_async_id_symbol = Symbol("trigger_async_id");
 // deno-lint-ignore camelcase
-export const init_symbol = Symbol("init");
+const init_symbol = Symbol("init");
 // deno-lint-ignore camelcase
-export const before_symbol = Symbol("before");
+const before_symbol = Symbol("before");
 // deno-lint-ignore camelcase
-export const after_symbol = Symbol("after");
+const after_symbol = Symbol("after");
 // deno-lint-ignore camelcase
-export const destroy_symbol = Symbol("destroy");
+const destroy_symbol = Symbol("destroy");
 // deno-lint-ignore camelcase
-export const promise_resolve_symbol = Symbol("promiseResolve");
+const promise_resolve_symbol = Symbol("promiseResolve");
 
-export const symbols = {
+const symbols = {
   // deno-lint-ignore camelcase
   async_id_symbol,
   // deno-lint-ignore camelcase
@@ -227,7 +227,6 @@ function emitInitNative(
     restoreActiveHooks();
   }
 }
-export { emitInitNative as emitInit };
 
 function getHookArrays(): [AsyncHook[], number[] | Uint32Array] {
   if (active_hooks.call_depth === 0) {
@@ -298,7 +297,7 @@ function disableHooks() {
 // Return the triggerAsyncId meant for the constructor calling it. It's up to
 // the user to safeguard this call and make sure it's zero'd out when the
 // constructor is complete.
-export function getDefaultTriggerAsyncId() {
+function getDefaultTriggerAsyncId() {
   const defaultTriggerAsyncId =
     async_id_fields[async_wrap.UidFields.kDefaultTriggerAsyncId];
   // If defaultTriggerAsyncId isn't set, use the executionAsyncId
@@ -308,7 +307,7 @@ export function getDefaultTriggerAsyncId() {
   return defaultTriggerAsyncId;
 }
 
-export function defaultTriggerAsyncIdScope(
+function defaultTriggerAsyncIdScope(
   triggerAsyncId: number | undefined,
   // deno-lint-ignore no-explicit-any
   block: (...arg: any[]) => void,
@@ -333,19 +332,17 @@ function hasHooks(key: number) {
   return async_hook_fields[key] > 0;
 }
 
-export function enabledHooksExist() {
+function enabledHooksExist() {
   return hasHooks(kCheck);
 }
 
-export function hasAsyncIdStack() {
+function hasAsyncIdStack() {
   return hasHooks(kStackLength);
 }
 
-export { constants };
-
 type Fn = (...args: unknown[]) => unknown;
 
-export class AsyncHook {
+class AsyncHook {
   [init_symbol]: Fn;
   [before_symbol]: Fn;
   [after_symbol]: Fn;
@@ -452,3 +449,30 @@ export class AsyncHook {
     return this;
   }
 }
+
+return {
+  asyncIdSymbol,
+  ownerSymbol,
+  newAsyncId,
+  emitInit: emitInitNative,
+  constants,
+  executionAsyncId,
+  emitBefore,
+  emitAfter,
+  emitDestroy,
+  getDefaultTriggerAsyncId,
+  defaultTriggerAsyncIdScope,
+  enabledHooksExist,
+  hasAsyncIdStack,
+  AsyncHook,
+  registerDestroyHook,
+  async_id_symbol,
+  trigger_async_id_symbol,
+  init_symbol,
+  before_symbol,
+  after_symbol,
+  destroy_symbol,
+  promise_resolve_symbol,
+  symbols,
+};
+})();

@@ -9,15 +9,15 @@ const {
   validateFunction,
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import {
+const {
   AsyncHook,
   emitAfter,
   emitBefore,
-  emitDestroy as emitDestroyHook,
+  emitDestroy: emitDestroyHook,
   emitInit,
-  executionAsyncId as internalExecutionAsyncId,
+  executionAsyncId: internalExecutionAsyncId,
   newAsyncId,
-} from "ext:deno_node/internal/async_hooks.ts";
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 
 const {
   ObjectDefineProperties,

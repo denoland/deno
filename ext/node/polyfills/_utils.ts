@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
@@ -20,7 +19,9 @@ const { TextDecoder, TextEncoder } = core.loadExtScript(
 );
 const { errorMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
-const { ERR_NOT_IMPLEMENTED } = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { ERR_NOT_IMPLEMENTED } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 const { validateNumber } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
@@ -187,4 +188,4 @@ return {
   getSystemErrorName,
   getSystemErrorMessage,
 };
-})()
+})();

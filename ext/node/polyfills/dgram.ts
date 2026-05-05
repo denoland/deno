@@ -48,11 +48,11 @@ const {
 import type { Abortable } from "ext:deno_node/_events.d.ts";
 import { kStateSymbol, newHandle } from "ext:deno_node/internal/dgram.ts";
 import type { SocketType } from "ext:deno_node/internal/dgram.ts";
-import {
+const {
   asyncIdSymbol,
   defaultTriggerAsyncIdScope,
   ownerSymbol,
-} from "ext:deno_node/internal/async_hooks.ts";
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 import { SendWrap, UDP } from "ext:deno_node/internal_binding/udp_wrap.ts";
 const {
   isInt32,
@@ -62,7 +62,9 @@ const {
   validateString,
   validateUint32,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
+const { guessHandleType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
 const { os } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );

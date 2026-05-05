@@ -29,7 +29,7 @@ const {
   validateUnion,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
-import {
+const {
   findLongOptionForShort,
   isLoneLongOption,
   isLoneShortOption,
@@ -41,7 +41,7 @@ import {
   objectGetOwn,
   optionsGetOwn,
   useDefaultValueOption,
-} from "ext:deno_node/internal/util/parse_args/utils.js";
+} = core.loadExtScript("ext:deno_node/internal/util/parse_args/utils.js");
 
 const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
 const {

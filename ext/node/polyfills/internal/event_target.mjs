@@ -44,7 +44,7 @@ const {
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { emitWarning } from "node:process";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const {
   Event: WebEvent,
   EventTarget: WebEventTarget,

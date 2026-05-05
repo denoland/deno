@@ -15,7 +15,7 @@ import {
 } from "ext:deno_node/internal/streams/state.js";
 const imported2 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
-import {
+const {
   kAutoDestroy,
   kClosed,
   kCloseEmitted,
@@ -27,7 +27,7 @@ import {
   kObjectMode,
   kOnConstructed,
   kState,
-} from "ext:deno_node/internal/streams/utils.js";
+} = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 
 import * as _mod3 from "ext:deno_node/internal/webstreams/adapters.js";
 

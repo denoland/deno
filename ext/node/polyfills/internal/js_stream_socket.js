@@ -6,18 +6,18 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { Socket } from "node:net";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { core } from "ext:core/mod.js";
+import { Socket } from "node:net";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { codeMap, UV_ECANCELED } = core.loadExtScript(
   "ext:deno_node/internal_binding/uv.ts",
 );
 import { setImmediate } from "node:timers";
-import {
+const {
   kBytesWritten,
   kLastWriteWasAsync,
   streamBaseState,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/stream_wrap.ts");
 import { Buffer } from "node:buffer";
 
 const kCurrentWriteRequest = Symbol("kCurrentWriteRequest");

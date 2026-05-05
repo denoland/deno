@@ -5,7 +5,9 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-import { Readline } from "ext:deno_node/internal/readline/promises.mjs";
+const { Readline } = core.loadExtScript(
+  "ext:deno_node/internal/readline/promises.mjs",
+);
 
 import {
   Interface as _Interface,

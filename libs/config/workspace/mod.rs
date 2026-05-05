@@ -57,6 +57,8 @@ use crate::deno_json::LintRulesConfig;
 use crate::deno_json::MinimumDependencyAgeConfig;
 use crate::deno_json::NodeModulesDirMode;
 use crate::deno_json::NodeModulesDirParseError;
+use crate::deno_json::NodeModulesLinkerMode;
+use crate::deno_json::NodeModulesLinkerParseError;
 use crate::deno_json::PermissionsConfig;
 use crate::deno_json::PermissionsObjectWithBase;
 use crate::deno_json::PublishConfig;
@@ -1629,6 +1631,22 @@ impl Workspace {
       .map(|v| {
         serde_json::from_value::<NodeModulesDirMode>(v.clone())
           .map_err(|err| NodeModulesDirParseError { source: err })
+      })
+      .transpose()
+  }
+
+  pub fn node_modules_linker(
+    &self,
+  ) -> Result<
+    Option<NodeModulesLinkerMode>,
+    deno_json::NodeModulesLinkerParseError,
+  > {
+    self
+      .root_deno_json()
+      .and_then(|c| c.json.node_modules_linker.as_ref())
+      .map(|v| {
+        serde_json::from_value::<NodeModulesLinkerMode>(v.clone())
+          .map_err(|err| NodeModulesLinkerParseError { source: err })
       })
       .transpose()
   }

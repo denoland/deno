@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
 const { core, internals, primordials } = globalThis.__bootstrap;
@@ -39,8 +38,12 @@ const {
   ReadableStreamPrototype,
   resourceForReadableStream,
 } = core.loadExtScript("ext:deno_web/06_streams.js");
-const { extractBody, InnerBody } = core.loadExtScript("ext:deno_fetch/22_body.js");
-const { processUrlList, Request, toInnerRequest } = core.loadExtScript("ext:deno_fetch/23_request.js");
+const { extractBody, InnerBody } = core.loadExtScript(
+  "ext:deno_fetch/22_body.js",
+);
+const { processUrlList, Request, toInnerRequest } = core.loadExtScript(
+  "ext:deno_fetch/23_request.js",
+);
 const {
   abortedNetworkError,
   fromInnerResponse,
@@ -366,7 +369,9 @@ function fetch(input, init = { __proto__: null }) {
 
       if (span) {
         const context = ContextManager.active();
-        for (const propagator of new SafeArrayIterator(__telemetry.PROPAGATORS)) {
+        for (
+          const propagator of new SafeArrayIterator(__telemetry.PROPAGATORS)
+        ) {
           propagator.inject(context, requestObject.headers, {
             set(carrier, key, value) {
               carrier.append(key, value);
@@ -462,12 +467,12 @@ function fetch(input, init = { __proto__: null }) {
         }
       });
       return (async function fetch() {
-        try {
-          await opPromise;
-          return result;
-        } finally {
-          span?.end();
-        }
+      try {
+        await opPromise;
+        return result;
+      } finally {
+        span?.end();
+      }
       })();
     }
     // We need to end the span when the promise settles.
@@ -597,4 +602,4 @@ function handleWasmStreaming(source, rid) {
 }
 
 return { fetch, handleWasmStreaming, mainFetch };
-})()
+})();

@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const { getStringWidth } = core.loadExtScript(
   "ext:deno_node/internal/util/inspect.mjs",
 );
@@ -91,4 +91,8 @@ const table = (head: string[], columns: string[][]) => {
 
   return result;
 };
-export default table;
+
+return {
+  default: table,
+};
+})();

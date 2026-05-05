@@ -61,7 +61,7 @@ import {
 import httpAgent from "node:_http_agent";
 import { Buffer } from "node:buffer";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
-import { kOutHeaders } from "ext:deno_node/internal/http.ts";
+const { kOutHeaders } = core.loadExtScript("ext:deno_node/internal/http.ts");
 const {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
@@ -77,9 +77,11 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { addAbortSignal, finished } from "node:stream";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { defaultTriggerAsyncIdScope } from "ext:deno_node/internal/async_hooks.ts";
-import { kNeedDrain } from "ext:deno_node/internal/http.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { defaultTriggerAsyncIdScope } = core.loadExtScript(
+  "ext:deno_node/internal/async_hooks.ts",
+);
+const { kNeedDrain } = core.loadExtScript("ext:deno_node/internal/http.ts");
 import { channel } from "node:diagnostics_channel";
 
 const onClientRequestCreatedChannel = channel("http.client.request.created");

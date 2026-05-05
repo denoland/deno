@@ -24,7 +24,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, primordials } from "ext:core/mod.js";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { customPromisifyArgs } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
@@ -89,18 +89,18 @@ const {
   ERR_MISSING_ARGS,
   handleDnsError,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import {
-  AI_ADDRCONFIG as ADDRCONFIG,
-  AI_ALL as ALL,
-  AI_V4MAPPED as V4MAPPED,
-} from "ext:deno_node/internal_binding/ares.ts";
+const {
+  AI_ADDRCONFIG: ADDRCONFIG,
+  AI_ALL: ALL,
+  AI_V4MAPPED: V4MAPPED,
+} = core.loadExtScript("ext:deno_node/internal_binding/ares.ts");
 import cares, {
   type ChannelWrapQuery,
   GetAddrInfoReqWrap,
   GetNameInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { domainToASCII } from "ext:deno_node/internal/idna.ts";
+const { domainToASCII } = core.loadExtScript("ext:deno_node/internal/idna.ts");
 
 const { ObjectDefineProperty } = primordials;
 

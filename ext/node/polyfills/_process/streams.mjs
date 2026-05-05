@@ -14,16 +14,18 @@ const {
 } = primordials;
 
 import { Buffer } from "node:buffer";
-import {
+const {
   clearLine,
   clearScreenDown,
   cursorTo,
   moveCursor,
-} from "ext:deno_node/internal/readline/callbacks.mjs";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+} = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 import { Duplex, Readable, Writable } from "node:stream";
 const io = core.loadExtScript("ext:deno_io/12_io.js");
-import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
+const { guessHandleType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
 const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 import { op_bootstrap_color_depth } from "ext:core/ops";
 const { validateInteger } = core.loadExtScript(

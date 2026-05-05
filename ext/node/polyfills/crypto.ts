@@ -11,7 +11,9 @@ const { ERR_CRYPTO_FIPS_FORCED } = core.loadExtScript(
 const { crypto: constants } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
-import { getOptionValue } from "ext:deno_node/internal/options.ts";
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
 import {
   getFipsCrypto,
   setFipsCrypto,

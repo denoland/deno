@@ -72,7 +72,9 @@ const {
 import pathModule from "node:path";
 const kType = Symbol("type");
 const kStats = Symbol("stats");
-import assert from "ext:deno_node/internal/assert.mjs";
+const { default: assert } = core.loadExtScript(
+  "ext:deno_node/internal/assert.mjs",
+);
 import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 import process from "node:process";
