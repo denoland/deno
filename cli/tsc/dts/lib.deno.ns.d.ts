@@ -6278,6 +6278,20 @@ declare namespace Deno {
      *
      * Invalid UTF-8 characters are replaced with U+FFFD character in the returned string. */
     static getCString(pointer: PointerObject, offset?: number): string;
+    /** Gets a UTF-8 encoded string of length `byteLength` at the specified byte
+     * offset from the pointer.
+     *
+     * Invalid UTF-8 characters are replaced with U+FFFD character in the returned string. */
+    getString(byteLength: number, offset?: number): string;
+    /** Gets a UTF-8 encoded string of length `byteLength` at the specified byte
+     * offset from the specified pointer.
+     *
+     * Invalid UTF-8 characters are replaced with U+FFFD character in the returned string. */
+    static getString(
+      pointer: PointerObject,
+      byteLength: number,
+      offset?: number,
+    ): string;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the pointer. */
     getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
