@@ -367,6 +367,7 @@ export namespace core {
   function propNonEnumerable(value: unknown): PropertyDescriptor;
   function propReadOnly(value: unknown): PropertyDescriptor;
   function propGetterOnly(value: unknown): PropertyDescriptor;
+  function propReplaceable(name: string, value: unknown): PropertyDescriptor;
 
   function propWritableLazyLoaded<T>(
     getter: (loadedValue: T) => unknown,
