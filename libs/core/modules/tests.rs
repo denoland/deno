@@ -2713,3 +2713,122 @@ async fn test_lazy_loaded_esm_with_tla_no_panic() {
   runtime.run_event_loop(Default::default()).await.unwrap();
   receiver.await.unwrap();
 }
+
+/// Regression test for https://github.com/denoland/deno/issues/32821
+///
+/// When an async module graph has TLA and `has_tick_scheduled` is set during
+/// module evaluation (e.g. CJS `process.nextTick()` calls), the
+/// `has_tick_scheduled` guard on the microtask checkpoint in `mod_evaluate`
+/// could prevent TLA resume microtasks from being drained. For large module
+/// graphs where the TLA op resolves during event loop processing (not during
+/// `module.evaluate()` itself), this leaves the evaluation promise permanently
+/// stuck in Pending, causing a panic at
+/// "Expected at least one stalled top-level await".
+#[tokio::test]
+async fn test_tla_with_tick_scheduled_no_hang() {
+  // An async op that resolves on the next event loop iteration (not eagerly)
+  #[op2]
+  async fn op_async_resolve() -> u32 {
+    // Yield to the event loop so this does NOT resolve eagerly
+    tokio::task::yield_now().await;
+    42
+  }
+
+  deno_core::extension!(
+    test_ext,
+    ops = [op_async_resolve],
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "lazy_loaded.js",
+      "lazy_loaded_2.js",
+    ]
+  );
+
+  let loader = Rc::new(TestingModuleLoader::new(NoopModuleLoader));
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let module_map = runtime.module_map().clone();
+
+  // Build a module graph where:
+  //   main.js (main module)
+  //     +-- tick_mod.js  -- sets has_tick_scheduled (simulates CJS nextTick)
+  //     +-- tla_mod.js   -- has TLA on an async op + triggers lazy load
+  //
+  // The key scenario: tick_mod.js sets has_tick_scheduled = true during
+  // module evaluation, causing the checkpoint in mod_evaluate to be
+  // skipped. tla_mod.js has a TLA that resolves during event loop
+  // processing, not during module.evaluate(). Without the fix, the
+  // evaluation promise stays Pending forever.
+
+  let (mod_main, mod_tick, mod_tla) = {
+    deno_core::scope!(scope, runtime);
+
+    let mod_tick = module_map
+      .new_es_module(
+        scope,
+        false,
+        ascii_str!("file:///tick_mod.js").into(),
+        ascii_str!(
+          r#"
+          Deno.core.setHasTickScheduled(true);
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    let mod_tla = module_map
+      .new_es_module(
+        scope,
+        false,
+        ascii_str!("file:///tla_mod.js").into(),
+        ascii_str!(
+          r#"
+          const lazy1 = Deno.core.createLazyLoader("ext:test_ext/lazy_loaded.js")();
+          if (lazy1.foo !== "foo") throw new Error("lazy1.foo: " + lazy1.foo);
+          const result = await Deno.core.ops.op_async_resolve();
+          if (result !== 42) throw new Error("unexpected: " + result);
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    let mod_main = module_map
+      .new_es_module(
+        scope,
+        true,
+        ascii_str!("file:///main.js").into(),
+        ascii_str!(
+          r#"
+          import "./tick_mod.js";
+          import "./tla_mod.js";
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    (mod_main, mod_tick, mod_tla)
+  };
+
+  runtime.instantiate_module(mod_tick).unwrap();
+  runtime.instantiate_module(mod_tla).unwrap();
+  runtime.instantiate_module(mod_main).unwrap();
+
+  // This should not panic or hang
+  let receiver = runtime.mod_evaluate(mod_main);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  receiver.await.unwrap();
+}
