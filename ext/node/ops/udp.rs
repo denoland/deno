@@ -683,7 +683,7 @@ pub fn op_node_udp_open(
   }
   #[cfg(not(unix))]
   {
-    let _ = fd;
+    let _ = (state, fd);
     Err(NodeUdpError::Io(std::io::Error::new(
       std::io::ErrorKind::Unsupported,
       "UDP socket IPC handle passing is not supported on this platform",
