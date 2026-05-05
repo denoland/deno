@@ -2046,6 +2046,7 @@ dependencies = [
  "pathdiff",
  "percent-encoding",
  "phf 0.11.2",
+ "plist",
  "pretty_assertions",
  "pretty_yaml",
  "quick-junit",

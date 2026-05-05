@@ -1218,14 +1218,15 @@ fn locate_dev_app_bundle(wef: &Path, backend: &str) -> Option<PathBuf> {
   candidates.into_iter().find(|p| p.exists())
 }
 
-/// Extract a string value from a plist XML by key.
-fn extract_plist_string(plist_xml: &str, key: &str) -> Option<String> {
-  let key_tag = format!("<key>{}</key>", key);
-  let pos = plist_xml.find(&key_tag)?;
-  let after_key = &plist_xml[pos + key_tag.len()..];
-  let start = after_key.find("<string>")? + "<string>".len();
-  let end = after_key.find("</string>")?;
-  Some(after_key[start..end].to_string())
+/// Read a top-level string from a plist file (XML or binary).
+///
+/// Uses the `plist` crate so a hostile or just-non-trivial Info.plist
+/// (CDATA, entities, binary plist format, key reordered, etc.) parses
+/// correctly — the previous string-scan implementation could be tricked
+/// or silently mis-extract. Returns `None` on any read or parse failure.
+fn read_plist_string(path: &Path, key: &str) -> Option<String> {
+  let dict: plist::Dictionary = plist::from_file(path).ok()?;
+  dict.get(key)?.as_string().map(|s| s.to_string())
 }
 
 /// Create a macOS .app bundle from the compiled desktop dylib.
@@ -1262,14 +1263,11 @@ async fn package_macos_app_bundle(
   let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
   let target = wef_target_for(desktop_flags);
   let wef_app = wef_resolver.find_app_bundle(backend, target).await?;
-  let wef_plist_path = wef_app.join("Contents/Info.plist");
-  let wef_executable_name = if wef_plist_path.exists() {
-    let plist_content = std::fs::read_to_string(&wef_plist_path)?;
-    extract_plist_string(&plist_content, "CFBundleExecutable")
-      .unwrap_or_else(|| "wef_webview".to_string())
-  } else {
-    "wef_webview".to_string()
-  };
+  let wef_executable_name = read_plist_string(
+    &wef_app.join("Contents/Info.plist"),
+    "CFBundleExecutable",
+  )
+  .unwrap_or_else(|| "wef_webview".to_string());
   let wef_binary = wef_app.join("Contents/MacOS").join(&wef_executable_name);
   if !wef_binary.exists() {
     bail!(

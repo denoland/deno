@@ -159,6 +159,7 @@ p256.workspace = true
 pathdiff.workspace = true
 percent-encoding.workspace = true
 phf.workspace = true
+plist = "1"
 pretty_yaml.workspace = true
 quick-junit.workspace = true
 rand = { workspace = true, features = ["small_rng"] }

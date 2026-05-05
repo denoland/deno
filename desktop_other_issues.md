@@ -39,18 +39,6 @@ entry B writes `foo/passwd`.
 **Fix**: refuse `Symlink`/`Hardlink` whose link target contains `..` or absolute
 components, or call `unpack_in(dest)` so tar's own check applies.
 
-### 3. `extract_plist_string` is XML-string scanning, not parsing — MEDIUM
-
-`cli/tools/desktop.rs:1160-1167`
-
-Used on `wef.app/Contents/Info.plist`. A WEF-supplied plist whose
-`<key>CFBundleExecutable</key>` value contains `../../etc/something` would be
-joined as `wef_app.join("Contents/MacOS").join(name)` and used in launcher
-script generation. Today the path stays inside the bundle copy, but the parser
-ignores CDATA / entities and silently mis-extracts anything non-trivial.
-
-**Fix**: use the `plist` crate (already in tree elsewhere).
-
 ### 4. Launcher shell scripts inject names unsanitized — MEDIUM
 
 `cli/tools/desktop.rs:1257-1267, 700-711`
@@ -299,7 +287,7 @@ These pre-date this branch and currently block `tools/lint.js`.
 | Severity | Count | Items                                                         |
 | -------- | ----- | ------------------------------------------------------------- |
 | HIGH     | 2     | #2, #28                                                       |
-| MEDIUM   | 6     | #3, #7, #13, #17, #23, #29                                    |
+| MEDIUM   | 5     | #7, #13, #17, #23, #29                                        |
 | LOW      | 14    | #6, #9, #12, #14, #15, #18, #19, #20, #21, #22, #27, #30, #31 |
 
 ## Suggested fix order
@@ -312,12 +300,11 @@ architectural changes:
 
 **Second batch — robustness wins**:
 
-10. **#3** swap to the `plist` crate
-11. **#4 / #5** validate launcher names
-12. **#7** atomic-rename WEF cache extraction
-13. **#13** wgpu surface error → JsErrorBox
-14. **#17** `spawn_blocking` for auto-update I/O
-15. **#23** bound the panic-hook reporter
+10. **#4 / #5** validate launcher names
+11. **#7** atomic-rename WEF cache extraction
+12. **#13** wgpu surface error → JsErrorBox
+13. **#17** `spawn_blocking` for auto-update I/O
+14. **#23** bound the panic-hook reporter
 
 **Cleanup batch** — everything else (#6, #9, #12, #14, #15, #18, #19, #20, #21,
 #22, #27, #30) plus **#31** to unblock `tools/lint.js`.
