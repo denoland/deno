@@ -1213,24 +1213,38 @@ pub(crate) unsafe fn poll_tcp_handle(
             }
             Ok(n) => {
               any_work = true;
-              let buflen = buf.len;
               read_cb(tcp_ptr as *mut uv_stream_t, n as isize, &buf);
               count -= 1;
               if count == 0 {
                 break;
               }
-              // Match libuv's uv__read (src/unix/stream.c:1147):
-              // break on partial read to skip the predicted-EAGAIN
-              // syscall. tokio's readiness tracking is edge-style
-              // internally (`try_read` only clears the bit on
-              // WouldBlock), so this leaves readiness armed and
-              // unwoken. The re-register block at the end of this
-              // function detects that case and issues `mark_ready()`
-              // to put the handle back on the ready queue for the
-              // next run_io pass.
-              if n < buflen {
-                break;
-              }
+              // NOTE: libuv (uv__read) breaks here when `n < buf.len`
+              // to skip the predicted-EAGAIN syscall. We deliberately
+              // do NOT — keep looping until try_read returns
+              // WouldBlock.
+              //
+              // Tokio's TcpStream readiness is edge-triggered: the
+              // internal "readable" bit is cleared only by a
+              // WouldBlock return from try_read. Breaking on partial
+              // read leaves the bit armed, the re-register check at
+              // the end of this function then sees `poll_read_ready
+              // == Ready`, and `mark_ready()` puts the handle back
+              // on the ready queue.
+              //
+              // Under sustained HTTP keep-alive load that turns into
+              // a self-wake loop: every tick re-queues every active
+              // connection, so tokio's executor sees us continuously
+              // awoken and never yields to its reactor (event_interval
+              // controls when the reactor is polled). New TCP
+              // readiness from the kernel piles up undelivered,
+              // pushing p99 from ~3 ms to ~30 ms at 100 connections
+              // for short responses where every read is partial.
+              //
+              // Looping one more iteration costs an extra recv()
+              // syscall, but that recv returns WouldBlock, clears
+              // tokio's readiness bit, and lets the handle fall out
+              // of the ready queue until tokio actually delivers
+              // fresh readiness.
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
               // Match libuv: call read_cb with nread=0 so the user
