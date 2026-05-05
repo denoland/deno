@@ -17,21 +17,11 @@ fn init_subcommand_without_dir() {
   let stderr = output.stderr();
   assert_contains!(stderr, "Project initialized");
   assert!(!stderr.contains("cd"));
-  assert_contains!(stderr, "deno run main.ts");
+  assert_contains!(stderr, "deno run --allow-net main.ts");
   assert_contains!(stderr, "deno task dev");
   assert_contains!(stderr, "deno test");
 
   assert!(cwd.join("deno.json").exists());
-
-  let output = context
-    .new_command()
-    .env("NO_COLOR", "1")
-    .args("run main.ts")
-    .split_output()
-    .run();
-
-  output.assert_exit_code(0);
-  assert_eq!(output.stdout().as_bytes(), b"Add 2 + 3 = 5\n");
 
   let output = context
     .new_command()
@@ -41,7 +31,7 @@ fn init_subcommand_without_dir() {
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stdout(), "1 passed");
+  assert_contains!(output.stdout(), "2 passed");
   output.skip_output_check();
 }
 
@@ -61,23 +51,11 @@ fn init_subcommand_with_dir_arg() {
   let stderr = output.stderr();
   assert_contains!(stderr, "Project initialized");
   assert_contains!(stderr, "cd my_dir");
-  assert_contains!(stderr, "deno run main.ts");
+  assert_contains!(stderr, "deno run --allow-net main.ts");
   assert_contains!(stderr, "deno task dev");
   assert_contains!(stderr, "deno test");
 
   assert!(cwd.join("my_dir/deno.json").exists());
-
-  let output = context
-    .new_command()
-    .env("NO_COLOR", "1")
-    .args("run my_dir/main.ts")
-    .split_output()
-    .run();
-
-  output.assert_exit_code(0);
-
-  assert_eq!(output.stdout().as_bytes(), b"Add 2 + 3 = 5\n");
-  output.skip_output_check();
 
   let output = context
     .new_command()
@@ -88,7 +66,7 @@ fn init_subcommand_with_dir_arg() {
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stdout(), "1 passed");
+  assert_contains!(output.stdout(), "2 passed");
   output.skip_output_check();
 }
 
@@ -111,23 +89,12 @@ fn init_subcommand_with_quiet_arg() {
   let output = context
     .new_command()
     .env("NO_COLOR", "1")
-    .args("run main.ts")
-    .split_output()
-    .run();
-
-  output.assert_exit_code(0);
-  assert_eq!(output.stdout().as_bytes(), b"Add 2 + 3 = 5\n");
-  output.skip_output_check();
-
-  let output = context
-    .new_command()
-    .env("NO_COLOR", "1")
     .args("test")
     .split_output()
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stdout(), "1 passed");
+  assert_contains!(output.stdout(), "2 passed");
   output.skip_output_check();
 }
 
@@ -149,10 +116,10 @@ fn init_subcommand_with_existing_file() {
 
 Run these commands to get started
 
-  # Run the program
-  deno run main.ts
+  # Run the server
+  deno run --allow-net main.ts
 
-  # Run the program and watch for file changes
+  # Run the server and watch for file changes
   deno task dev
 
   # Run the tests
