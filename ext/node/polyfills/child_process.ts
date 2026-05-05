@@ -42,7 +42,7 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { getSystemErrorName, promisify } from "node:util";
 import process from "node:process";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   convertToValidSignal,
   kEmptyObject,

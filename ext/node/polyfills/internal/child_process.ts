@@ -32,7 +32,7 @@ const {
   StringPrototypeStartsWith,
   StringPrototypeToUpperCase,
 } = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
-import assert from "node:assert";
+const { default: assert } = core.loadExtScript("ext:deno_node/internal/assert.mjs");
 import { EventEmitter } from "node:events";
 const { os } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
@@ -53,7 +53,7 @@ const {
   ERR_MISSING_ARGS,
   ERR_UNKNOWN_SIGNAL,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { FastBuffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   ERR_IPC_DISCONNECTED,

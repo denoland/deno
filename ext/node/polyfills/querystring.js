@@ -4,7 +4,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { encodeStr, hexTable } = core.loadExtScript(
   "ext:deno_node/internal/querystring.ts",
 );

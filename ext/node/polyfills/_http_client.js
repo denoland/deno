@@ -59,7 +59,7 @@ import {
   parseUniqueHeadersOption,
 } from "node:_http_outgoing";
 import httpAgent from "node:_http_agent";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 const { kOutHeaders } = core.loadExtScript("ext:deno_node/internal/http.ts");
 const {

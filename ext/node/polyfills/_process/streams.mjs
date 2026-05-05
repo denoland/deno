@@ -13,7 +13,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
 } = primordials;
 
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   clearLine,
   clearScreenDown,

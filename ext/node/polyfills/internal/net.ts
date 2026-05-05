@@ -20,7 +20,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { core } from "ext:core/mod.js";
 const { uvException } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { writeBuffer } = core.loadExtScript(

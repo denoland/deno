@@ -36,7 +36,7 @@ const {
 } = primordials;
 
 import net from "node:net";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { ok as assert } from "node:assert";
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,

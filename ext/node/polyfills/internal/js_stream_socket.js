@@ -18,7 +18,7 @@ const {
   kLastWriteWasAsync,
   streamBaseState,
 } = core.loadExtScript("ext:deno_node/internal_binding/stream_wrap.ts");
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 
 const kCurrentWriteRequest = Symbol("kCurrentWriteRequest");
 const kCurrentShutdownRequest = Symbol("kCurrentShutdownRequest");

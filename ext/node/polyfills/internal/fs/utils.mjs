@@ -39,7 +39,7 @@ const {
   Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   ERR_FS_EISDIR,
   ERR_FS_INVALID_SYMLINK_TYPE,

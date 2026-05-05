@@ -4,7 +4,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { EventEmitter } from "node:events";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import {
   type BigIntStats,
   fchmod,
@@ -62,7 +62,7 @@ import {
   CreateReadStreamOptions,
   CreateWriteStreamOptions,
 } from "node:fs/promises";
-import assert from "node:assert";
+const { default: assert } = core.loadExtScript("ext:deno_node/internal/assert.mjs");
 const {
   denoErrorToNodeError,
   ERR_INVALID_STATE,

@@ -36,7 +36,7 @@ import {
   op_v8_write_value,
 } from "ext:core/ops";
 
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { writeFileSync } from "node:fs";
 import { Readable } from "node:stream";
 

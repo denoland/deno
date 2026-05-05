@@ -3,13 +3,13 @@
 
 // deno-lint-ignore-file
 import { core, primordials } from "ext:core/mod.js";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   getOwnNonIndexProperties,
   ONLY_ENUMERABLE,
   SKIP_SYMBOLS,
 } = core.loadExtScript("ext:deno_node/internal_binding/util.ts");
-import assert from "node:assert";
+const { default: assert } = core.loadExtScript("ext:deno_node/internal/assert.mjs");
 const {
   isAnyArrayBuffer,
   isArrayBufferView,

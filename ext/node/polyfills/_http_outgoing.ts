@@ -18,7 +18,7 @@ const {
   kOutHeaders,
   utcDate,
 } = core.loadExtScript("ext:deno_node/internal/http.ts");
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
   _checkIsHttpToken as checkIsHttpToken,

@@ -8,7 +8,7 @@ import {
   prependListener,
   Stream,
 } from "ext:deno_node/internal/streams/legacy.js";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { addAbortSignal } from "ext:deno_node/internal/streams/add-abort-signal.js";
 import eos from "ext:deno_node/internal/streams/end-of-stream.js";
 import destroyImpl from "ext:deno_node/internal/streams/destroy.js";
