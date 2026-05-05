@@ -1,0 +1,1 @@
+PASS: fs.writeSync() succeeded on raw fd

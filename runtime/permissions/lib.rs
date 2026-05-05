@@ -2975,6 +2975,117 @@ impl DenyDescriptor for SysDescriptor {
   }
 }
 
+// FdDescriptor -- gates access to raw OS file descriptors not opened by Deno.
+// Used with --allow-fd=<fd_numbers> to control which inherited or
+// externally-created fds may be read from / written to.
+
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum FdDescriptorParseError {
+  #[error("Empty fd descriptor")]
+  Empty,
+  #[error("Invalid fd number: {0}")]
+  InvalidFd(#[from] std::num::ParseIntError),
+  #[error("Negative fd number not allowed")]
+  Negative,
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
+pub struct FdDescriptor(pub i32);
+
+impl FdDescriptor {
+  pub fn parse(text: String) -> Result<Self, FdDescriptorParseError> {
+    if text.is_empty() {
+      return Err(FdDescriptorParseError::Empty);
+    }
+    let fd: i32 = text.parse()?;
+    if fd < 0 {
+      return Err(FdDescriptorParseError::Negative);
+    }
+    Ok(Self(fd))
+  }
+
+  pub fn into_string(self) -> String {
+    self.0.to_string()
+  }
+}
+
+impl QueryDescriptor for FdDescriptor {
+  type AllowDesc = FdDescriptor;
+  type DenyDesc = FdDescriptor;
+
+  fn flag_name() -> &'static str {
+    "fd"
+  }
+
+  fn display_name(&self) -> Cow<'_, str> {
+    Cow::Owned(self.0.to_string())
+  }
+
+  fn from_allow(allow: &Self::AllowDesc) -> Self {
+    allow.clone()
+  }
+
+  fn as_allow(&self) -> Option<Self::AllowDesc> {
+    Some(self.clone())
+  }
+
+  fn as_deny(&self) -> Self::DenyDesc {
+    self.clone()
+  }
+
+  fn check_in_permission(
+    &self,
+    perm: &mut UnaryPermission<Self::AllowDesc>,
+    api_name: Option<&str>,
+  ) -> Result<(), PermissionDeniedError> {
+    audit_and_skip_check_if_is_permission_fully_granted!(
+      perm,
+      Self::flag_name(),
+      ()
+    );
+    perm.check_desc(Some(self), false, api_name)
+  }
+
+  fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
+    self == other
+  }
+
+  fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
+    self == other
+  }
+
+  fn revokes(&self, other: &Self::AllowDesc) -> bool {
+    self == other
+  }
+
+  fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
+    self == other
+  }
+
+  fn overlaps_deny(&self, _other: &Self::DenyDesc) -> bool {
+    false
+  }
+}
+
+impl AllowDescriptor for FdDescriptor {
+  type QueryDesc<'a> = FdDescriptor;
+  type DenyDesc = FdDescriptor;
+
+  fn cmp_allow(&self, other: &Self) -> Ordering {
+    self.cmp(other)
+  }
+
+  fn cmp_deny(&self, _other: &Self::DenyDesc) -> Ordering {
+    Ordering::Greater
+  }
+}
+
+impl DenyDescriptor for FdDescriptor {
+  fn cmp_deny(&self, other: &Self) -> Ordering {
+    self.cmp(other)
+  }
+}
+
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct FfiQueryDescriptor<'a>(pub PathQueryDescriptor<'a>);
 
@@ -3471,6 +3582,42 @@ impl UnaryPermission<FfiDescriptor> {
   }
 }
 
+impl UnaryPermission<FdDescriptor> {
+  pub fn query(&self, fd: Option<&FdDescriptor>) -> PermissionState {
+    self.query_desc(fd, AllowPartial::TreatAsPartialGranted)
+  }
+
+  pub fn request(&mut self, fd: Option<&FdDescriptor>) -> PermissionState {
+    self.request_desc(fd)
+  }
+
+  pub fn revoke(&mut self, fd: Option<&FdDescriptor>) -> PermissionState {
+    self.revoke_desc(fd)
+  }
+
+  pub fn check(
+    &mut self,
+    fd: &FdDescriptor,
+    api_name: Option<&str>,
+  ) -> Result<(), PermissionDeniedError> {
+    audit_and_skip_check_if_is_permission_fully_granted!(
+      self,
+      FdDescriptor::flag_name(),
+      fd.display_name()
+    );
+    self.check_desc(Some(fd), false, api_name)
+  }
+
+  pub fn check_all(&mut self) -> Result<(), PermissionDeniedError> {
+    audit_and_skip_check_if_is_permission_fully_granted!(
+      self,
+      FdDescriptor::flag_name(),
+      ()
+    );
+    self.check_desc(None, false, None)
+  }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Permissions {
   // WARNING: update the methods below if ever adding anything here
@@ -3482,6 +3629,7 @@ pub struct Permissions {
   pub run: UnaryPermission<AllowRunDescriptor>,
   pub ffi: UnaryPermission<FfiDescriptor>,
   pub import: UnaryPermission<ImportDescriptor>,
+  pub fd: UnaryPermission<FdDescriptor>,
 }
 
 impl Permissions {
@@ -3494,6 +3642,7 @@ impl Permissions {
       && self.run.is_allow_all()
       && self.ffi.is_allow_all()
       && self.import.is_allow_all()
+      && self.fd.is_allow_all()
   }
 }
 
@@ -3517,6 +3666,8 @@ pub struct PermissionsOptions {
   pub deny_write: Option<Vec<String>>,
   pub allow_import: Option<Vec<String>>,
   pub deny_import: Option<Vec<String>>,
+  pub allow_fd: Option<Vec<String>>,
+  pub deny_fd: Option<Vec<String>>,
   pub prompt: bool,
 }
 
@@ -3532,6 +3683,8 @@ pub enum PermissionsFromOptionsError {
   EnvDescriptorParse(#[from] EnvDescriptorParseError),
   #[error("{0}")]
   RunDescriptorParse(#[from] RunDescriptorParseError),
+  #[error("{0}")]
+  FdDescriptorParse(#[from] FdDescriptorParseError),
   #[error("Empty command name not allowed in --allow-run=...")]
   RunEmptyCommandName,
 }
@@ -3742,6 +3895,15 @@ impl Permissions {
         })?,
         opts.prompt,
       ),
+      fd: Permissions::new_unary(
+        parse_maybe_vec(opts.allow_fd.as_deref(), |text| {
+          parser.parse_fd_descriptor(text)
+        })?,
+        parse_maybe_vec(opts.deny_fd.as_deref(), |text| {
+          parser.parse_fd_descriptor(text)
+        })?,
+        opts.prompt,
+      ),
     })
   }
 
@@ -3756,6 +3918,7 @@ impl Permissions {
       run: UnaryPermission::allow_all(),
       ffi: UnaryPermission::allow_all(),
       import: UnaryPermission::allow_all(),
+      fd: UnaryPermission::allow_all(),
     }
   }
 
@@ -3779,6 +3942,7 @@ impl Permissions {
       run: Permissions::new_unary(None, None, prompt),
       ffi: Permissions::new_unary(None, None, prompt),
       import: Permissions::new_unary(None, None, prompt),
+      fd: Permissions::new_unary(None, None, prompt),
     }
   }
 }
@@ -3809,6 +3973,9 @@ pub enum ChildPermissionError {
   #[class(inherit)]
   #[error("{0}")]
   RunDescriptorParse(#[from] RunDescriptorParseError),
+  #[class(generic)]
+  #[error("{0}")]
+  FdDescriptorParse(#[from] FdDescriptorParseError),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -3988,6 +4155,14 @@ impl PermissionsContainer {
         ))
       },
     )?;
+    worker_perms.fd =
+      inner
+        .fd
+        .create_child_permissions(child_permissions_arg.fd, |text| {
+          Ok::<_, FdDescriptorParseError>(Some(
+            self.descriptor_parser.parse_fd_descriptor(text)?,
+          ))
+        })?;
     worker_perms.run = inner.run.create_child_permissions(
       child_permissions_arg.run,
       |text| match self.descriptor_parser.parse_allow_run_descriptor(text)? {
@@ -4274,6 +4449,20 @@ impl PermissionsContainer {
   #[inline(always)]
   pub fn check_sys_all(&self) -> Result<(), PermissionCheckError> {
     self.inner.lock().sys.check_all()?;
+    Ok(())
+  }
+
+  #[inline(always)]
+  pub fn check_fd(
+    &self,
+    fd: i32,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    self
+      .inner
+      .lock()
+      .fd
+      .check(&FdDescriptor(fd), Some(api_name))?;
     Ok(())
   }
 
@@ -5181,6 +5370,7 @@ impl<'de> Deserialize<'de> for ChildUnaryPermissionArg {
 #[derive(Debug, Eq, PartialEq)]
 pub struct ChildPermissionsArg {
   env: ChildUnaryPermissionArg,
+  fd: ChildUnaryPermissionArg,
   net: ChildUnaryPermissionArg,
   ffi: ChildUnaryPermissionArg,
   import: ChildUnaryPermissionArg,
@@ -5194,6 +5384,7 @@ impl ChildPermissionsArg {
   pub fn inherit() -> Self {
     ChildPermissionsArg {
       env: ChildUnaryPermissionArg::Inherit,
+      fd: ChildUnaryPermissionArg::Inherit,
       net: ChildUnaryPermissionArg::Inherit,
       ffi: ChildUnaryPermissionArg::Inherit,
       import: ChildUnaryPermissionArg::Inherit,
@@ -5207,6 +5398,7 @@ impl ChildPermissionsArg {
   pub fn none() -> Self {
     ChildPermissionsArg {
       env: ChildUnaryPermissionArg::NotGranted,
+      fd: ChildUnaryPermissionArg::NotGranted,
       net: ChildUnaryPermissionArg::NotGranted,
       ffi: ChildUnaryPermissionArg::NotGranted,
       import: ChildUnaryPermissionArg::NotGranted,
@@ -5263,6 +5455,11 @@ impl<'de> Deserialize<'de> for ChildPermissionsArg {
             let arg = serde_json::from_value::<ChildUnaryPermissionArg>(value);
             child_permissions_arg.env = arg.map_err(|e| {
               de::Error::custom(format!("(deno.permissions.env) {e}"))
+            })?;
+          } else if key == "fd" {
+            let arg = serde_json::from_value::<ChildUnaryPermissionArg>(value);
+            child_permissions_arg.fd = arg.map_err(|e| {
+              de::Error::custom(format!("(deno.permissions.fd) {e}"))
             })?;
           } else if key == "net" {
             let arg = serde_json::from_value::<ChildUnaryPermissionArg>(value);
@@ -5358,6 +5555,11 @@ pub trait PermissionDescriptorParser: Debug + Send + Sync {
     &self,
     text: &str,
   ) -> Result<SysDescriptor, SysDescriptorParseError>;
+
+  fn parse_fd_descriptor(
+    &self,
+    text: &str,
+  ) -> Result<FdDescriptor, FdDescriptorParseError>;
 
   fn parse_allow_run_descriptor(
     &self,
@@ -5485,6 +5687,13 @@ mod tests {
       text: &str,
     ) -> Result<SysDescriptor, SysDescriptorParseError> {
       SysDescriptor::parse(text.to_string())
+    }
+
+    fn parse_fd_descriptor(
+      &self,
+      text: &str,
+    ) -> Result<FdDescriptor, FdDescriptorParseError> {
+      FdDescriptor::parse(text.to_string())
     }
 
     fn parse_allow_run_descriptor(
@@ -7222,6 +7431,7 @@ mod tests {
       ChildPermissionsArg::inherit(),
       ChildPermissionsArg {
         env: ChildUnaryPermissionArg::Inherit,
+        fd: ChildUnaryPermissionArg::Inherit,
         net: ChildUnaryPermissionArg::Inherit,
         ffi: ChildUnaryPermissionArg::Inherit,
         import: ChildUnaryPermissionArg::Inherit,
@@ -7235,6 +7445,7 @@ mod tests {
       ChildPermissionsArg::none(),
       ChildPermissionsArg {
         env: ChildUnaryPermissionArg::NotGranted,
+        fd: ChildUnaryPermissionArg::NotGranted,
         net: ChildUnaryPermissionArg::NotGranted,
         ffi: ChildUnaryPermissionArg::NotGranted,
         import: ChildUnaryPermissionArg::NotGranted,
@@ -7280,6 +7491,7 @@ mod tests {
       .unwrap(),
       ChildPermissionsArg {
         env: ChildUnaryPermissionArg::Granted,
+        fd: ChildUnaryPermissionArg::NotGranted,
         net: ChildUnaryPermissionArg::Granted,
         ffi: ChildUnaryPermissionArg::Granted,
         import: ChildUnaryPermissionArg::Granted,
@@ -7303,6 +7515,7 @@ mod tests {
       .unwrap(),
       ChildPermissionsArg {
         env: ChildUnaryPermissionArg::NotGranted,
+        fd: ChildUnaryPermissionArg::NotGranted,
         net: ChildUnaryPermissionArg::NotGranted,
         ffi: ChildUnaryPermissionArg::NotGranted,
         import: ChildUnaryPermissionArg::NotGranted,
@@ -7326,6 +7539,7 @@ mod tests {
       .unwrap(),
       ChildPermissionsArg {
         env: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar"]),
+        fd: ChildUnaryPermissionArg::NotGranted,
         net: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar:8000"]),
         ffi: ChildUnaryPermissionArg::GrantedList(svec![
           "foo",

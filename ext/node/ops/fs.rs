@@ -27,6 +27,44 @@ use tokio::task::JoinError;
 
 use crate::ops::constant::UV_FS_COPYFILE_EXCL;
 
+/// Call `libc::get_osfhandle` without crashing on invalid fds.
+///
+/// On Windows debug builds, the CRT's `_get_osfhandle` invokes the
+/// invalid-parameter handler for out-of-range fds, which by default
+/// aborts the process. We temporarily install a no-op handler so the
+/// call safely returns `INVALID_HANDLE_VALUE` (-1) instead.
+#[cfg(windows)]
+unsafe fn safe_get_osfhandle(fd: i32) -> isize {
+  type InvalidParameterHandler = Option<
+    unsafe extern "C" fn(*const u16, *const u16, *const u16, u32, usize),
+  >;
+
+  unsafe extern "C" {
+    fn _set_thread_local_invalid_parameter_handler(
+      handler: InvalidParameterHandler,
+    ) -> InvalidParameterHandler;
+  }
+
+  unsafe extern "C" fn noop_handler(
+    _: *const u16,
+    _: *const u16,
+    _: *const u16,
+    _: u32,
+    _: usize,
+  ) {
+  }
+
+  // SAFETY: We temporarily swap the CRT invalid-parameter handler to a
+  // no-op, call _get_osfhandle, then restore the original handler. All
+  // three FFI calls are safe given valid function pointers.
+  unsafe {
+    let prev = _set_thread_local_invalid_parameter_handler(Some(noop_handler));
+    let handle = libc::get_osfhandle(fd);
+    _set_thread_local_invalid_parameter_handler(prev);
+    handle
+  }
+}
+
 /// Extract the real OS file descriptor from a File trait object.
 /// On Unix, this is the raw fd (already an i32).
 /// On Windows, this duplicates the OS HANDLE and converts it to a CRT
@@ -123,16 +161,115 @@ fn ebadf() -> FsError {
   ))
 }
 
+fn eexist() -> FsError {
+  FsError::Io(std::io::Error::from_raw_os_error(
+    #[cfg(unix)]
+    libc::EEXIST,
+    #[cfg(windows)]
+    {
+      // Win32 ERROR_ALREADY_EXISTS
+      183
+    },
+  ))
+}
+
 /// Get the File trait object for an OS file descriptor from FdTable.
+///
+/// For fds not yet known to Deno (e.g. created by native addons or inherited
+/// from a parent process), this will auto-register the fd if the caller has
+/// `--allow-fd=<fd>` permission.
 fn file_for_fd(
-  state: &OpState,
+  state: &mut OpState,
   fd: i32,
 ) -> Result<Rc<dyn deno_io::fs::File>, FsError> {
+  if let Some(file) = state.borrow::<deno_io::FdTable>().get(fd) {
+    return Ok(file.clone());
+  }
+
+  // Unknown fd -- check permission and auto-register.
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_fd(fd, "node:fs")
+    .map_err(|_| ebadf())?;
+
+  register_raw_fd(state, fd)?;
+
   state
     .borrow::<deno_io::FdTable>()
     .get(fd)
     .cloned()
     .ok_or_else(ebadf)
+}
+
+/// Register a raw OS file descriptor into FdTable.
+/// Duplicates the fd so the original owner can close theirs independently.
+#[cfg(unix)]
+fn register_raw_fd(state: &mut OpState, fd: i32) -> Result<(), FsError> {
+  use std::fs::File as StdFile;
+  use std::os::unix::io::FromRawFd;
+
+  if fd < 0 {
+    return Err(ebadf());
+  }
+  // SAFETY: libc::dup is safe to call with any integer; it returns -1 on invalid fds.
+  let dup_fd = unsafe { libc::dup(fd) };
+  if dup_fd < 0 {
+    return Err(ebadf());
+  }
+  // SAFETY: dup_fd is a valid fd returned by dup() above.
+  let std_file = unsafe { StdFile::from_raw_fd(dup_fd) };
+  let file: Rc<dyn deno_io::fs::File> =
+    Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
+  Ok(())
+}
+
+/// Register a raw OS file descriptor into FdTable.
+/// Duplicates the OS handle so the original owner can close theirs independently.
+#[cfg(windows)]
+fn register_raw_fd(state: &mut OpState, fd: i32) -> Result<(), FsError> {
+  use std::fs::File as StdFile;
+  use std::os::windows::io::FromRawHandle;
+
+  use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
+  use windows_sys::Win32::Foundation::DuplicateHandle;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+  if fd < 0 {
+    return Err(ebadf());
+  }
+
+  // SAFETY: safe_get_osfhandle wraps get_osfhandle with a noop invalid
+  // parameter handler to avoid aborting on invalid fds in debug CRT builds.
+  let os_handle = unsafe { safe_get_osfhandle(fd) };
+  if os_handle == -1 {
+    return Err(ebadf());
+  }
+
+  let mut dup_handle = std::ptr::null_mut();
+  // SAFETY: DuplicateHandle with DUPLICATE_SAME_ACCESS is safe when the
+  // source handle is valid (checked above).
+  let ok = unsafe {
+    DuplicateHandle(
+      GetCurrentProcess(),
+      os_handle as *mut _,
+      GetCurrentProcess(),
+      &mut dup_handle,
+      0,
+      0,
+      DUPLICATE_SAME_ACCESS,
+    )
+  };
+  if ok == 0 {
+    return Err(ebadf());
+  }
+
+  // SAFETY: dup_handle is a valid duplicated OS handle.
+  let std_file = unsafe { StdFile::from_raw_handle(dup_handle) };
+  let file: Rc<dyn deno_io::fs::File> =
+    Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
+  Ok(())
 }
 
 /// When `sync_fs` is enabled, `FileSystemRc` is `Arc` (Send) and we can
@@ -856,6 +993,113 @@ pub async fn op_node_rmdir(
   Ok(())
 }
 
+/// Register an existing OS file descriptor in NodeFsState so it can be
+/// used with the fd-based read/write/close ops. This is used by
+/// Pipe.open(fd) to wrap pipes, PTYs, FIFOs, etc. for stream I/O.
+///
+/// On Unix, takes ownership of the fd via from_raw_fd.
+/// On Windows, duplicates the OS handle to get an independent copy,
+/// then wraps it as a CRT fd (same pattern as raw_fd_for_file).
+#[cfg(unix)]
+#[op2(fast)]
+pub fn op_node_register_fd(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<(), FsError> {
+  use std::fs::File as StdFile;
+  use std::os::unix::io::FromRawFd;
+
+  if fd < 0 {
+    return Err(ebadf());
+  }
+
+  // Stdio fds (0/1/2) are pre-registered in FdTable at startup.
+  // For these, Pipe.open(fd) is a no-op since both Deno and Node
+  // share the same entry.
+  if (0..=2).contains(&fd) && state.borrow::<deno_io::FdTable>().contains(fd) {
+    return Ok(());
+  }
+
+  // Reject if the fd is already tracked (e.g. from fs.openSync()).
+  if state.borrow::<deno_io::FdTable>().contains(fd) {
+    return Err(eexist());
+  }
+
+  // SAFETY: The caller is responsible for passing a valid fd that they own.
+  // Ownership transfers to the File -- matching libuv's uv_pipe_open()
+  // which takes ownership of the fd (closing the handle closes the fd).
+  let std_file = unsafe { StdFile::from_raw_fd(fd) };
+  let file: Rc<dyn deno_io::fs::File> =
+    Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
+  Ok(())
+}
+
+#[cfg(windows)]
+#[op2(fast)]
+pub fn op_node_register_fd(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<(), FsError> {
+  use std::fs::File as StdFile;
+  use std::os::windows::io::FromRawHandle;
+
+  use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
+  use windows_sys::Win32::Foundation::DuplicateHandle;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+  if fd < 0 {
+    return Err(ebadf());
+  }
+
+  // Stdio fds (0/1/2) are pre-registered in FdTable at startup.
+  if (0..=2).contains(&fd) && state.borrow::<deno_io::FdTable>().contains(fd) {
+    return Ok(());
+  }
+
+  // Reject if the fd is already tracked (e.g. from fs.openSync()).
+  if state.borrow::<deno_io::FdTable>().contains(fd) {
+    return Err(eexist());
+  }
+
+  // Convert the CRT fd to an OS HANDLE.
+  // SAFETY: safe_get_osfhandle wraps get_osfhandle with a noop invalid
+  // parameter handler to avoid aborting on invalid fds in debug CRT builds.
+  let os_handle = unsafe { safe_get_osfhandle(fd) };
+  if os_handle == -1 {
+    return Err(ebadf());
+  }
+
+  // Duplicate the OS handle so the File owns an independent copy.
+  // When the pipe is closed, op_node_fs_close drops the File (closing
+  // the dup) AND calls libc::close(fd) (closing the CRT fd + original
+  // handle). This matches libuv's uv_pipe_open ownership semantics.
+  let mut dup_handle = std::ptr::null_mut();
+  // SAFETY: DuplicateHandle with DUPLICATE_SAME_ACCESS creates a copy
+  // of the handle with the same access rights.
+  let ok = unsafe {
+    DuplicateHandle(
+      GetCurrentProcess(),
+      os_handle as _,
+      GetCurrentProcess(),
+      &mut dup_handle,
+      0,
+      0,
+      DUPLICATE_SAME_ACCESS,
+    )
+  };
+  if ok == 0 {
+    return Err(FsError::Io(std::io::Error::last_os_error()));
+  }
+
+  // SAFETY: dup_handle is a valid duplicated OS handle (DuplicateHandle succeeded above).
+  let std_file = unsafe { StdFile::from_raw_handle(dup_handle) };
+  let file: Rc<dyn deno_io::fs::File> =
+    Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
+  Ok(())
+}
+
 /// Create an anonymous pipe pair and return (read_fd, write_fd).
 /// The returned fds are NOT registered in FdTable; the caller
 /// is responsible for registering or closing them.
@@ -1047,7 +1291,7 @@ pub async fn op_node_fs_read_deferred(
   #[buffer] buf: JsBuffer,
   #[number] position: i64,
 ) -> Result<u32, FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
+  let file = file_for_fd(&mut state.borrow_mut(), fd)?;
   if position >= 0 {
     let view = deno_core::BufMutView::from(buf);
     let (nread, _) = file.read_at_async(view, position as u64).await?;
@@ -1112,7 +1356,7 @@ pub async fn op_node_fs_write_deferred(
   #[buffer] buf: JsBuffer,
   #[number] position: i64,
 ) -> Result<u32, FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
+  let file = file_for_fd(&mut state.borrow_mut(), fd)?;
   write_with_position(file, &buf, position)
 }
 
@@ -1148,7 +1392,7 @@ pub async fn op_node_fs_seek(
   #[number] offset: i64,
   #[smi] whence: i32,
 ) -> Result<u64, FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
+  let file = file_for_fd(&mut state.borrow_mut(), fd)?;
   let seek_from = match whence {
     0 => std::io::SeekFrom::Start(offset as u64),
     1 => std::io::SeekFrom::Current(offset),
@@ -1238,7 +1482,7 @@ pub async fn op_node_fs_fstat(
   state: Rc<RefCell<OpState>>,
   fd: i32,
 ) -> Result<NodeFsStat, FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
+  let file = file_for_fd(&mut state.borrow_mut(), fd)?;
   let stat = file.stat_async().await?;
   Ok(NodeFsStat::from(stat))
 }
@@ -1260,7 +1504,7 @@ pub async fn op_node_fs_ftruncate(
   fd: i32,
   #[number] len: u64,
 ) -> Result<(), FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
+  let file = file_for_fd(&mut state.borrow_mut(), fd)?;
   file.truncate_async(len).await?;
   Ok(())
 }
@@ -1280,7 +1524,7 @@ pub async fn op_node_fs_fsync(
   state: Rc<RefCell<OpState>>,
   fd: i32,
 ) -> Result<(), FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
+  let file = file_for_fd(&mut state.borrow_mut(), fd)?;
   file.sync_async().await?;
   Ok(())
 }
@@ -1300,7 +1544,7 @@ pub async fn op_node_fs_fdatasync(
   state: Rc<RefCell<OpState>>,
   fd: i32,
 ) -> Result<(), FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
+  let file = file_for_fd(&mut state.borrow_mut(), fd)?;
   file.datasync_async().await?;
   Ok(())
 }
@@ -1328,7 +1572,7 @@ pub async fn op_node_fs_futimes(
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
 ) -> Result<(), FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
+  let file = file_for_fd(&mut state.borrow_mut(), fd)?;
   file
     .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
     .await?;
@@ -1352,7 +1596,7 @@ pub async fn op_node_fs_fchmod(
   fd: i32,
   #[smi] mode: u32,
 ) -> Result<(), FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
+  let file = file_for_fd(&mut state.borrow_mut(), fd)?;
   file.chmod_async(mode).await?;
   Ok(())
 }
@@ -1376,7 +1620,7 @@ pub async fn op_node_fs_fchown(
   #[smi] uid: u32,
   #[smi] gid: u32,
 ) -> Result<(), FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
+  let file = file_for_fd(&mut state.borrow_mut(), fd)?;
   file.chown_async(Some(uid), Some(gid)).await?;
   Ok(())
 }
@@ -1398,7 +1642,7 @@ pub async fn op_node_fs_read_file(
   state: Rc<RefCell<OpState>>,
   fd: i32,
 ) -> Result<Vec<u8>, FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
+  let file = file_for_fd(&mut state.borrow_mut(), fd)?;
   let buf = file.read_all_async().await?;
   Ok(buf.to_vec())
 }

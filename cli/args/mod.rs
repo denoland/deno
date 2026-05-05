@@ -1825,6 +1825,14 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.import.deny.as_ref()),
       &identity,
     ),
+    allow_fd: handle_allow(
+      flags.allow_all,
+      config.and_then(|c| c.permissions.all),
+      flags.allow_fd.as_ref(),
+      None,
+      &identity,
+    ),
+    deny_fd: handle_deny_or_ignore(flags.deny_fd.as_ref(), None, &identity),
     prompt: !resolve_no_prompt(flags),
   })
 }
@@ -2097,6 +2105,8 @@ mod test {
           ]),
           allow_import: Some(vec!["jsr.io".to_string()]),
           deny_import: Some(vec!["example.com".to_string()]),
+          allow_fd: None,
+          deny_fd: None,
           prompt: true
         }
       );
@@ -2159,6 +2169,8 @@ mod test {
           ]),
           allow_import: Some(vec![]),
           deny_import: None,
+          allow_fd: Some(vec![]),
+          deny_fd: None,
           prompt: true
         }
       );

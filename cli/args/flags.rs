@@ -54,6 +54,7 @@ use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::UnstableFeatureKind;
 pub use deno_runtime::deno_inspector_server::InspectPublishUid;
+use deno_runtime::deno_permissions::FdDescriptor;
 use deno_runtime::deno_permissions::SysDescriptor;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageKind;
@@ -1007,6 +1008,8 @@ pub struct PermissionFlags {
   pub deny_run: Option<Vec<String>>,
   pub allow_sys: Option<Vec<String>>,
   pub deny_sys: Option<Vec<String>>,
+  pub allow_fd: Option<Vec<String>>,
+  pub deny_fd: Option<Vec<String>>,
   pub allow_write: Option<Vec<String>>,
   pub deny_write: Option<Vec<String>>,
   pub no_prompt: bool,
@@ -1031,6 +1034,8 @@ impl PermissionFlags {
       || self.deny_run.is_some()
       || self.allow_sys.is_some()
       || self.deny_sys.is_some()
+      || self.allow_fd.is_some()
+      || self.deny_fd.is_some()
       || self.allow_write.is_some()
       || self.deny_write.is_some()
       || self.allow_import.is_some()
@@ -1221,6 +1226,28 @@ impl Flags {
       Some(sys_denylist) => {
         let s = format!("--deny-sys={}", sys_denylist.join(","));
         args.push(s)
+      }
+      _ => {}
+    }
+
+    match &self.permissions.allow_fd {
+      Some(fd_allowlist) if fd_allowlist.is_empty() => {
+        args.push("--allow-fd".to_string());
+      }
+      Some(fd_allowlist) => {
+        let s = format!("--allow-fd={}", fd_allowlist.join(","));
+        args.push(s);
+      }
+      _ => {}
+    }
+
+    match &self.permissions.deny_fd {
+      Some(fd_denylist) if fd_denylist.is_empty() => {
+        args.push("--deny-fd".to_string());
+      }
+      Some(fd_denylist) => {
+        let s = format!("--deny-fd={}", fd_denylist.join(","));
+        args.push(s);
       }
       _ => {}
     }
@@ -1471,6 +1498,8 @@ impl Flags {
         || arg.starts_with("--deny-run")
         || arg.starts_with("--allow-sys")
         || arg.starts_with("--deny-sys")
+        || arg.starts_with("--allow-fd")
+        || arg.starts_with("--deny-fd")
         || arg.starts_with("--allow-write")
         || arg.starts_with("--deny-write")
     })
@@ -1485,6 +1514,7 @@ impl Flags {
     self.permissions.allow_run = None;
     self.permissions.allow_write = None;
     self.permissions.allow_sys = None;
+    self.permissions.allow_fd = None;
     self.permissions.allow_ffi = None;
     self.permissions.allow_import = None;
   }
@@ -5209,6 +5239,40 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
+        let mut arg = Arg::new("allow-fd")
+          .long("allow-fd")
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("FD")
+          .long_help("false")
+          .value_parser(|key: &str| FdDescriptor::parse(key.to_string()).map(|s| s.into_string()))
+          .hide(true);
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
+    )
+    .arg(
+      {
+        let mut arg = Arg::new("deny-fd")
+          .long("deny-fd")
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("FD")
+          .long_help("false")
+          .value_parser(|key: &str| FdDescriptor::parse(key.to_string()).map(|s| s.into_string()))
+          .hide(true);
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
+    )
+    .arg(
+      {
         let mut arg = Arg::new("allow-run")
           .long("allow-run")
           .num_args(0..)
@@ -7993,6 +8057,16 @@ fn permission_args_parse(
   if let Some(sys_wl) = matches.remove_many::<String>("deny-sys") {
     flags.permissions.deny_sys = Some(sys_wl.collect());
     debug!("sys info denylist: {:#?}", &flags.permissions.deny_sys);
+  }
+
+  if let Some(fd_wl) = matches.remove_many::<String>("allow-fd") {
+    flags.permissions.allow_fd = Some(fd_wl.collect());
+    debug!("fd allowlist: {:#?}", &flags.permissions.allow_fd);
+  }
+
+  if let Some(fd_wl) = matches.remove_many::<String>("deny-fd") {
+    flags.permissions.deny_fd = Some(fd_wl.collect());
+    debug!("fd denylist: {:#?}", &flags.permissions.deny_fd);
   }
 
   if let Some(ffi_wl) = matches.remove_many::<String>("allow-ffi") {
