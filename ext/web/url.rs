@@ -50,6 +50,33 @@ pub fn op_url_parse(
   parse_url(state, href, None, buf)
 }
 
+/// Detect Windows file paths like `C:\path\file.txt` and convert them to
+/// `file:///C:/path/file.txt` per the WHATWG URL spec change (url#874).
+///
+/// A Windows drive letter pattern is: a single ASCII alpha followed by `:`
+/// followed by `\` or `/`. This is detected in the "scheme start state" of the
+/// URL parser: the single letter would be parsed as a scheme, but the `:\` or
+/// `:/` combination signals a Windows path instead. Both separators are
+/// recognized so that JS callers writing `"C:/path"` get the same conversion
+/// as `"C:\\path"`.
+#[inline]
+fn maybe_convert_windows_path_to_file_url(href: &str) -> Option<String> {
+  let bytes = href.as_bytes();
+  // Must be at least 3 chars: letter, colon, separator
+  if bytes.len() >= 3
+    && bytes[0].is_ascii_alphabetic()
+    && bytes[1] == b':'
+    && (bytes[2] == b'\\' || bytes[2] == b'/')
+  {
+    let drive_letter = bytes[0] as char;
+    let rest = &href[3..];
+    let path = rest.replace('\\', "/");
+    Some(format!("file:///{drive_letter}:/{path}"))
+  } else {
+    None
+  }
+}
+
 /// `op_url_parse` and `op_url_parse_with_base` share the same implementation.
 ///
 /// This function is used to parse the URL and fill the `buf` with internal
@@ -81,7 +108,20 @@ fn parse_url(
   base_href: Option<&Url>,
   buf: &mut [u32],
 ) -> u32 {
-  match Url::options().base_url(base_href).parse(href) {
+  // Per WHATWG URL spec (url#874): detect Windows drive letter paths
+  // (e.g., "C:\path\file") and convert to file:/// URLs. The spec's
+  // scheme start state triggers this conversion regardless of base URL
+  // presence, since the single-letter "scheme" + `:` + `\` pattern
+  // unambiguously indicates a Windows drive path.
+  let converted;
+  let effective_href =
+    if let Some(file_url) = maybe_convert_windows_path_to_file_url(href) {
+      converted = file_url;
+      converted.as_str()
+    } else {
+      href
+    };
+  match Url::options().base_url(base_href).parse(effective_href) {
     Ok(url) => {
       let inner_url = quirks::internal_components(&url);
 

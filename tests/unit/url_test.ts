@@ -527,3 +527,67 @@ Deno.test(function urlTakeURLObjectAsParameter() {
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
   );
 });
+
+// WHATWG URL spec change: Windows file path handling (url#874)
+Deno.test(function urlWindowsFilePathBasic() {
+  const url = new URL("C:\\path\\file.txt");
+  assertEquals(url.href, "file:///C:/path/file.txt");
+  assertEquals(url.protocol, "file:");
+  assertEquals(url.pathname, "/C:/path/file.txt");
+  assertEquals(url.host, "");
+});
+
+Deno.test(function urlWindowsFilePathDifferentDrives() {
+  assertEquals(new URL("D:\\foo\\bar.exe").href, "file:///D:/foo/bar.exe");
+  assertEquals(
+    new URL("Z:\\deep\\nested\\path.rs").href,
+    "file:///Z:/deep/nested/path.rs",
+  );
+});
+
+Deno.test(function urlWindowsFilePathLowercaseDrive() {
+  assertEquals(
+    new URL("c:\\folder\\file.txt").href,
+    "file:///c:/folder/file.txt",
+  );
+});
+
+Deno.test(function urlWindowsFilePathMixedSeparators() {
+  assertEquals(
+    new URL("C:\\path/mixed\\separators/file.txt").href,
+    "file:///C:/path/mixed/separators/file.txt",
+  );
+});
+
+Deno.test(function urlWindowsFilePathWithBase() {
+  const url = new URL("C:\\path\\file.node", "http://example.org/");
+  assertEquals(url.href, "file:///C:/path/file.node");
+  assertEquals(url.protocol, "file:");
+});
+
+Deno.test(function urlWindowsFilePathUrlParse() {
+  const url = URL.parse("C:\\folder\\file.txt");
+  assert(url !== null);
+  assertEquals(url.href, "file:///C:/folder/file.txt");
+  assertEquals(url.protocol, "file:");
+  assertEquals(url.pathname, "/C:/folder/file.txt");
+});
+
+Deno.test(function urlWindowsFilePathForwardSlash() {
+  const url = new URL("C:/path/file.txt");
+  assertEquals(url.href, "file:///C:/path/file.txt");
+  assertEquals(url.protocol, "file:");
+  assertEquals(url.pathname, "/C:/path/file.txt");
+  assertEquals(url.host, "");
+});
+
+Deno.test(function urlWindowsFilePathPercentEncodesSpaces() {
+  assertEquals(
+    new URL("C:\\path with space\\file.txt").href,
+    "file:///C:/path%20with%20space/file.txt",
+  );
+  assertEquals(
+    new URL("C:/path with space/file.txt").href,
+    "file:///C:/path%20with%20space/file.txt",
+  );
+});
