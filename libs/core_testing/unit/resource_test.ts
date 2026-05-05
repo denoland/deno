@@ -189,3 +189,26 @@ test(function testFastProtoMethod() {
     obj.withScopeFast(); // trigger fast call
   }
 });
+
+// Regression test for op2 constructors being callable without `new`.
+// `DOMPoint()` used to bind into globalThis; `DOMPoint.call(proxy)` could
+// segfault. Construct-call enforcement at the slow-path entry rejects both.
+test(function testCppgcConstructorRequiresNew() {
+  let err1;
+  try {
+    // @ts-expect-error invoking constructor without `new`
+    DOMPoint();
+  } catch (e) {
+    err1 = e;
+  }
+  assert(err1 instanceof TypeError, `expected TypeError, got ${err1}`);
+
+  let err2;
+  try {
+    // @ts-expect-error invoking constructor without `new`
+    DOMPoint.call(new Proxy({}, {}));
+  } catch (e) {
+    err2 = e;
+  }
+  assert(err2 instanceof TypeError, `expected TypeError, got ${err2}`);
+});
