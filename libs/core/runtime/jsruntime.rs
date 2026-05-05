@@ -2900,12 +2900,44 @@ impl JsRuntime {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, CoreError> {
-    let isolate = &mut self.inner.v8_isolate;
-    self
-      .inner
-      .main_realm
-      .load_main_es_module_from_code(isolate, specifier, None)
-      .await
+    // Pump the event loop while loading the module so that async ops
+    // (e.g. module hook poll/respond ops from module.register()) can
+    // make progress. Without this, load hooks deadlock because the
+    // hook response requires the event loop to process the poll op,
+    // but the event loop isn't running during module loading.
+    //
+    // SAFETY: We use raw pointers to avoid conflicting borrows. The
+    // load future holds &mut Isolate but only uses it in scoped
+    // borrows within its on_module callback. The event loop pump
+    // uses a separate isolate handle from the raw pointer (same
+    // pattern as poll_event_loop). These never overlap temporally.
+    let isolate_ptr = self.v8_isolate_ptr();
+    let self_ptr = self as *const Self;
+    let isolate_raw: *mut v8::OwnedIsolate = &mut *self.inner.v8_isolate;
+    let realm_ptr: *const JsRealm = &*self.inner.main_realm;
+    let realm_context = self.inner.main_realm.context().clone();
+    let mut load_fut = std::pin::pin!(unsafe { &*realm_ptr }
+      .load_main_es_module_from_code(
+        unsafe { &mut *isolate_raw },
+        specifier,
+        None,
+      ));
+    poll_fn(|cx| {
+      {
+        let mut isolate =
+          unsafe { v8::Isolate::from_raw_isolate_ptr(isolate_ptr) };
+        v8::scope!(let isolate_scope, &mut isolate);
+        let context = v8::Local::new(isolate_scope, &realm_context);
+        let mut scope = v8::ContextScope::new(isolate_scope, context);
+        let _ = unsafe { &*self_ptr }.poll_event_loop_inner(
+          cx,
+          &mut scope,
+          PollEventLoopOptions::default(),
+        );
+      }
+      load_fut.as_mut().poll(cx)
+    })
+    .await
   }
 
   /// Asynchronously load specified ES module and all of its dependencies from the
@@ -2950,12 +2982,34 @@ impl JsRuntime {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, CoreError> {
-    let isolate = &mut self.inner.v8_isolate;
-    self
-      .inner
-      .main_realm
-      .load_side_es_module_from_code(isolate, specifier.to_string(), None)
-      .await
+    // Same event-loop pumping pattern as load_main_es_module.
+    let isolate_ptr = self.v8_isolate_ptr();
+    let self_ptr = self as *const Self;
+    let isolate_raw: *mut v8::OwnedIsolate = &mut *self.inner.v8_isolate;
+    let realm_ptr: *const JsRealm = &*self.inner.main_realm;
+    let realm_context = self.inner.main_realm.context().clone();
+    let mut load_fut = std::pin::pin!(unsafe { &*realm_ptr }
+      .load_side_es_module_from_code(
+        unsafe { &mut *isolate_raw },
+        specifier.to_string(),
+        None,
+      ));
+    poll_fn(|cx| {
+      {
+        let mut isolate =
+          unsafe { v8::Isolate::from_raw_isolate_ptr(isolate_ptr) };
+        v8::scope!(let isolate_scope, &mut isolate);
+        let context = v8::Local::new(isolate_scope, &realm_context);
+        let mut scope = v8::ContextScope::new(isolate_scope, context);
+        let _ = unsafe { &*self_ptr }.poll_event_loop_inner(
+          cx,
+          &mut scope,
+          PollEventLoopOptions::default(),
+        );
+      }
+      load_fut.as_mut().poll(cx)
+    })
+    .await
   }
 
   /// Load and evaluate an ES module provided the specifier and source code.
