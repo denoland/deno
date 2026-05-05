@@ -1,0 +1,20 @@
+{
+  "tests": {
+    "depth": {
+      "args": "info --quiet --depth 1 mod.ts",
+      "output": "depth.out"
+    },
+    "collapse_modules": {
+      "args": "info --quiet --collapse-modules mod.ts",
+      "output": "collapse_modules.out"
+    },
+    "depth_and_collapse_modules": {
+      "args": "info --quiet --depth 1 --collapse-modules mod.ts",
+      "output": "depth_and_collapse_modules.out"
+    },
+    "collapse_modules_repeated": {
+      "args": "info --quiet --collapse-modules repeated.ts",
+      "output": "collapse_modules_repeated.out"
+    }
+  }
+}
