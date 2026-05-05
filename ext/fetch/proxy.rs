@@ -123,6 +123,11 @@ pub(crate) enum Target {
   Unix {
     path: PathBuf,
   },
+  #[cfg(not(windows))]
+  SocksUnix {
+    path: PathBuf,
+    auth: Option<(String, String)>,
+  },
   #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
   Vsock {
     cid: u32,
@@ -233,6 +238,10 @@ impl Intercept {
       #[cfg(not(windows))]
       Target::Unix { .. } => {
         // Auth not supported for Unix sockets
+      }
+      #[cfg(not(windows))]
+      Target::SocksUnix { ref mut auth, .. } => {
+        *auth = Some((user.into(), pass.into()));
       }
       #[cfg(any(
         target_os = "android",
@@ -347,6 +356,14 @@ impl Target {
   #[cfg(not(windows))]
   pub(crate) fn new_unix(path: PathBuf) -> Self {
     Target::Unix { path }
+  }
+
+  #[cfg(not(windows))]
+  pub(crate) fn new_socks_unix(
+    path: PathBuf,
+    auth: Option<(String, String)>,
+  ) -> Self {
+    Target::SocksUnix { path, auth }
   }
 
   #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
@@ -554,6 +571,12 @@ pub enum Proxied<T> {
   Socks(TokioIo<TcpStream>),
   /// Tunneled through SOCKS and TLS
   SocksTls(TokioIo<TlsStream<TokioIo<TokioIo<TcpStream>>>>),
+  /// Tunneled through SOCKS via Unix socket
+  #[cfg(not(windows))]
+  SocksUnix(TokioIo<UnixStream>),
+  /// Tunneled through SOCKS via Unix socket and TLS
+  #[cfg(not(windows))]
+  SocksUnixTls(TokioIo<TlsStream<TokioIo<TokioIo<UnixStream>>>>),
   /// Forwarded via Unix socket
   #[cfg(not(windows))]
   Unix(TokioIo<UnixStream>),
@@ -659,6 +682,46 @@ where
               Ok(Proxied::SocksTls(TokioIo::new(io)))
             } else {
               Ok(Proxied::Socks(io))
+            }
+          })
+        }
+        #[cfg(not(windows))]
+        Target::SocksUnix { path, auth } => {
+          let tls = TlsConnector::from(self.tls.clone());
+          let path = path.clone();
+          Box::pin(async move {
+            let host = orig_dst.host().ok_or("no host in url")?;
+            let host = host
+              .strip_prefix('[')
+              .and_then(|s| s.strip_suffix(']'))
+              .unwrap_or(host);
+            let port = match orig_dst.port() {
+              Some(p) => p.as_u16(),
+              None if is_https => 443,
+              _ => 80,
+            };
+            let socket = UnixStream::connect(&path).await?;
+            let io = if let Some((user, pass)) = auth {
+              Socks5Stream::connect_with_password_and_socket(
+                socket,
+                (host, port),
+                &user,
+                &pass,
+              )
+              .await?
+            } else {
+              Socks5Stream::connect_with_socket(socket, (host, port)).await?
+            };
+            let io = TokioIo::new(io.into_inner());
+
+            if is_https {
+              let tokio_io = TokioIo::new(io);
+              let io = tls
+                .connect(TryFrom::try_from(host.to_owned())?, tokio_io)
+                .await?;
+              Ok(Proxied::SocksUnixTls(TokioIo::new(io)))
+            } else {
+              Ok(Proxied::SocksUnix(io))
             }
           })
         }
@@ -807,6 +870,10 @@ where
       Proxied::Socks(ref mut p) => Pin::new(p).poll_read(cx, buf),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_read(cx, buf),
       #[cfg(not(windows))]
+      Proxied::SocksUnix(ref mut p) => Pin::new(p).poll_read(cx, buf),
+      #[cfg(not(windows))]
+      Proxied::SocksUnixTls(ref mut p) => Pin::new(p).poll_read(cx, buf),
+      #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_read(cx, buf),
       #[cfg(any(
         target_os = "android",
@@ -834,6 +901,10 @@ where
       Proxied::Socks(ref mut p) => Pin::new(p).poll_write(cx, buf),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_write(cx, buf),
       #[cfg(not(windows))]
+      Proxied::SocksUnix(ref mut p) => Pin::new(p).poll_write(cx, buf),
+      #[cfg(not(windows))]
+      Proxied::SocksUnixTls(ref mut p) => Pin::new(p).poll_write(cx, buf),
+      #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_write(cx, buf),
       #[cfg(any(
         target_os = "android",
@@ -854,6 +925,10 @@ where
       Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_flush(cx),
       Proxied::Socks(ref mut p) => Pin::new(p).poll_flush(cx),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_flush(cx),
+      #[cfg(not(windows))]
+      Proxied::SocksUnix(ref mut p) => Pin::new(p).poll_flush(cx),
+      #[cfg(not(windows))]
+      Proxied::SocksUnixTls(ref mut p) => Pin::new(p).poll_flush(cx),
       #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_flush(cx),
       #[cfg(any(
@@ -876,6 +951,10 @@ where
       Proxied::Socks(ref mut p) => Pin::new(p).poll_shutdown(cx),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_shutdown(cx),
       #[cfg(not(windows))]
+      Proxied::SocksUnix(ref mut p) => Pin::new(p).poll_shutdown(cx),
+      #[cfg(not(windows))]
+      Proxied::SocksUnixTls(ref mut p) => Pin::new(p).poll_shutdown(cx),
+      #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_shutdown(cx),
       #[cfg(any(
         target_os = "android",
@@ -893,6 +972,10 @@ where
       Proxied::HttpTunneled(ref p) => p.is_write_vectored(),
       Proxied::Socks(ref p) => p.is_write_vectored(),
       Proxied::SocksTls(ref p) => p.is_write_vectored(),
+      #[cfg(not(windows))]
+      Proxied::SocksUnix(ref p) => p.is_write_vectored(),
+      #[cfg(not(windows))]
+      Proxied::SocksUnixTls(ref p) => p.is_write_vectored(),
       #[cfg(not(windows))]
       Proxied::Unix(ref p) => p.is_write_vectored(),
       #[cfg(any(
@@ -919,6 +1002,14 @@ where
       }
       Proxied::Socks(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
+      #[cfg(not(windows))]
+      Proxied::SocksUnix(ref mut p) => {
+        Pin::new(p).poll_write_vectored(cx, bufs)
+      }
+      #[cfg(not(windows))]
+      Proxied::SocksUnixTls(ref mut p) => {
+        Pin::new(p).poll_write_vectored(cx, bufs)
+      }
       #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
       #[cfg(any(
@@ -954,6 +1045,17 @@ where
           tunneled_tls.0.connected().negotiated_h2()
         } else {
           tunneled_tls.0.connected()
+        }
+      }
+      #[cfg(not(windows))]
+      Proxied::SocksUnix(_) => Connected::new().proxy(true),
+      #[cfg(not(windows))]
+      Proxied::SocksUnixTls(p) => {
+        let tunneled_tls = p.inner().get_ref();
+        if tunneled_tls.1.alpn_protocol() == Some(b"h2") {
+          tunneled_tls.0.connected().proxy(true).negotiated_h2()
+        } else {
+          tunneled_tls.0.connected().proxy(true)
         }
       }
       #[cfg(not(windows))]
