@@ -37,7 +37,9 @@ const {
   HTTP_STATUS_METHOD_NOT_ALLOWED,
   HTTP_STATUS_OK,
 } = core.loadExtScript("ext:deno_node/internal/http2/constants.ts");
-const { default: assert } = core.loadExtScript("ext:deno_node/internal/assert.mjs");
+const { default: assert } = core.loadExtScript(
+  "ext:deno_node/internal/assert.mjs",
+);
 import Stream, { Readable } from "node:stream";
 const { codes, hideStackFrames } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",

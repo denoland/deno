@@ -86,7 +86,7 @@ import _streamTransform from "node:_stream_transform";
 import _streamWritable from "node:_stream_writable";
 import _tlsCommon from "node:_tls_common";
 import _tlsWrap from "node:_tls_wrap";
-const { default: assert } = core.loadExtScript("ext:deno_node/internal/assert.mjs");
+import assert from "node:assert";
 import assertStrict from "node:assert/strict";
 import asyncHooks from "node:async_hooks";
 const {

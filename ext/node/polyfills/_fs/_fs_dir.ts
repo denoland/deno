@@ -5,7 +5,9 @@ import {
   type Dirent,
   direntFromDeno,
 } from "ext:deno_node/internal/fs/utils.mjs";
-const { default: assert } = core.loadExtScript("ext:deno_node/internal/assert.mjs");
+const { default: assert } = core.loadExtScript(
+  "ext:deno_node/internal/assert.mjs",
+);
 const { ERR_MISSING_ARGS } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
