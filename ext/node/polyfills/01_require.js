@@ -1327,6 +1327,16 @@ Module._resolveFilename = function (
     };
     const result = executeResolveHookChain(request, context, parent, isMain);
     if (result != null && result.url != null) {
+      if (StringPrototypeStartsWith(result.url, "node:")) {
+        // Strip node: prefix for builtin modules so that
+        // require.resolve('assert') returns 'assert' not 'node:assert'
+        // (matches Node.js behavior).
+        const bare = StringPrototypeSlice(result.url, 5);
+        if (nativeModuleCanBeRequiredByUsers(bare)) {
+          return bare;
+        }
+        return result.url;
+      }
       if (StringPrototypeStartsWith(result.url, "file://")) {
         try {
           return url.fileURLToPath(result.url);
