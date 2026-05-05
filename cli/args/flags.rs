@@ -5607,7 +5607,7 @@ fn preload_arg() -> Arg {
     .alias("import")
     .value_name("FILE")
     .action(ArgAction::Append)
-    .help("A list of files that will be executed before the main module")
+    .help("A list of modules that will be executed before the main module. In the REPL, their exports are also exposed in the global scope")
     .value_hint(ValueHint::FilePath)
 }
 
@@ -7295,6 +7295,7 @@ fn repl_parse(
   enable_testing_features_arg_parse(flags, matches);
   env_file_arg_parse(flags, matches);
   trace_ops_parse(flags, matches);
+  preload_arg_parse(flags, matches);
 
   let eval_files = matches
     .remove_many::<String>("eval-file")
@@ -15621,6 +15622,28 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           no_prompt: true,
           ..Default::default()
         },
+        ..Default::default()
+      }
+    );
+
+    // --import flag works with repl subcommand
+    let flags = flags_from_vec(svec![
+      "deno",
+      "repl",
+      "--import",
+      "jsr:@std/encoding",
+      "--import",
+      "./mod.ts",
+    ])
+    .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Repl(ReplFlags {
+          is_default_command: false,
+          ..Default::default()
+        }),
+        preload: svec!["jsr:@std/encoding", "./mod.ts"],
         ..Default::default()
       }
     );
