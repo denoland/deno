@@ -230,17 +230,6 @@ won't exit.
 **Fix**: bound it with a deadline (`thread::spawn` then a short `recv_timeout`
 on a channel; abandon thread on timeout).
 
-### 24. WEF subprocess survives parent Ctrl-C — MEDIUM
-
-`cli/tools/desktop.rs:461-479`
-
-If the parent is interrupted (Ctrl-C) the `tokio::process::Child` is dropped but
-the WEF backend keeps running detached. `tokio::process` has
-`kill_on_drop(true)` for this.
-
-**Fix**: set `cmd.kill_on_drop(true)` before spawning, or install a SIGINT
-handler.
-
 ---
 
 ## Cross-platform
@@ -310,7 +299,7 @@ These pre-date this branch and currently block `tools/lint.js`.
 | Severity | Count | Items                                                         |
 | -------- | ----- | ------------------------------------------------------------- |
 | HIGH     | 2     | #2, #28                                                       |
-| MEDIUM   | 7     | #3, #7, #13, #17, #23, #24, #29                               |
+| MEDIUM   | 6     | #3, #7, #13, #17, #23, #29                                    |
 | LOW      | 14    | #6, #9, #12, #14, #15, #18, #19, #20, #21, #22, #27, #30, #31 |
 
 ## Suggested fix order
@@ -319,8 +308,7 @@ These pre-date this branch and currently block `tools/lint.js`.
 architectural changes:
 
 1. **#2** tar symlink escape (`unpack_in`)
-2. **#24** `kill_on_drop(true)` for the WEF subprocess
-3. **#28** move `set_var(DENO_SERVE_ADDRESS)` before runtime init
+2. **#28** move `set_var(DENO_SERVE_ADDRESS)` before runtime init
 
 **Second batch — robustness wins**:
 

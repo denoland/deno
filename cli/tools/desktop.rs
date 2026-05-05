@@ -458,12 +458,18 @@ async fn run_desktop_hmr(
     None
   };
 
-  let mut child =
-    tokio::process::Command::from(cmd)
-      .spawn()
-      .with_context(|| {
-        format!("Failed to launch WEF backend: {}", wef_backend.display())
-      })?;
+  // `kill_on_drop` is a safety net: if the parent panics or exits via any
+  // path that doesn't reach the explicit `wait` below, the WEF backend
+  // (and its CEF renderer subprocesses) get SIGKILLed on `Child` drop
+  // rather than being orphaned. Normal Ctrl-C delivers SIGINT to the
+  // whole process group so this rarely matters in practice; it covers
+  // the abnormal-exit cases.
+  let mut child = tokio::process::Command::from(cmd)
+    .kill_on_drop(true)
+    .spawn()
+    .with_context(|| {
+      format!("Failed to launch WEF backend: {}", wef_backend.display())
+    })?;
 
   let status = child
     .wait()
