@@ -179,7 +179,7 @@ import querystring from "node:querystring";
 import readline from "node:readline";
 import readlinePromises from "node:readline/promises";
 import repl from "node:repl";
-import sqlite from "node:sqlite";
+const sqlite = core.loadExtScript("ext:deno_node/sqlite.ts");
 import stream from "node:stream";
 import streamConsumers from "node:stream/consumers";
 import streamPromises from "node:stream/promises";
