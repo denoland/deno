@@ -55,9 +55,7 @@ const { performance: webPerformance } = core.loadExtScript(
   "ext:deno_web/15_performance.js",
 );
 import net from "node:net";
-const assert = core.loadExtScript(
-  "ext:deno_node/internal/assert.mjs",
-);
+import assert from "node:assert";
 import http from "node:http";
 import { AsyncResource } from "node:async_hooks";
 import {

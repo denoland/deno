@@ -56,9 +56,7 @@ const {
 const { getOptionValue } = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
 );
-const assert = core.loadExtScript(
-  "ext:deno_node/internal/assert.mjs",
-);
+import assert from "node:assert";
 import { join } from "node:path";
 const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 const {

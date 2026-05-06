@@ -100,9 +100,7 @@ const {
 const { ShutdownWrap } = core.loadExtScript(
   "ext:deno_node/internal_binding/stream_wrap.ts",
 );
-const assert = core.loadExtScript(
-  "ext:deno_node/internal/assert.mjs",
-);
+import assert from "node:assert";
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
 const {

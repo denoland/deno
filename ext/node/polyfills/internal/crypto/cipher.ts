@@ -71,9 +71,7 @@ const { ERR_CRYPTO_INVALID_STATE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
 import { StringDecoder } from "node:string_decoder";
-const assert = core.loadExtScript(
-  "ext:deno_node/internal/assert.mjs",
-);
+import assert from "node:assert";
 const { normalizeEncoding } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );

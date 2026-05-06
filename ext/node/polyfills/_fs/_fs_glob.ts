@@ -39,9 +39,7 @@ const {
   hideStackFrames,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
-const assert = core.loadExtScript(
-  "ext:deno_node/internal/assert.mjs",
-);
+import assert from "node:assert";
 
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";

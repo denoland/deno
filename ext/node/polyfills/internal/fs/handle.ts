@@ -62,9 +62,7 @@ import {
   CreateReadStreamOptions,
   CreateWriteStreamOptions,
 } from "node:fs/promises";
-const assert = core.loadExtScript(
-  "ext:deno_node/internal/assert.mjs",
-);
+import assert from "node:assert";
 const {
   denoErrorToNodeError,
   ERR_INVALID_STATE,

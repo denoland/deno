@@ -25,9 +25,7 @@ const {
   isWindowsDeviceRoot,
   normalizeString,
 } = core.loadExtScript("ext:deno_node/path/_util.ts");
-const assert = core.loadExtScript(
-  "ext:deno_node/internal/assert.mjs",
-);
+import assert from "node:assert";
 import process from "node:process";
 import type * as fsGlob from "ext:deno_node/_fs/_fs_glob.ts";
 

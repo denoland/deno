@@ -9,9 +9,7 @@ const {
   ONLY_ENUMERABLE,
   SKIP_SYMBOLS,
 } = core.loadExtScript("ext:deno_node/internal_binding/util.ts");
-const assert = core.loadExtScript(
-  "ext:deno_node/internal/assert.mjs",
-);
+import assert from "node:assert";
 const {
   isAnyArrayBuffer,
   isArrayBufferView,
