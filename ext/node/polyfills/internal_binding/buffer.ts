@@ -1,7 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-
-import { Encodings } from "ext:deno_node/internal_binding/_node.ts";
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { Encodings } = core.loadExtScript(
+  "ext:deno_node/internal_binding/_node.ts",
+);
 
 const {
   Error,
@@ -12,7 +14,7 @@ const {
   Uint8Array,
 } = primordials;
 
-export function fill(
+function fill(
   buffer,
   value,
   start,
@@ -23,7 +25,7 @@ export function fill(
   return buffer.fill(value, start, end);
 }
 
-export function indexOfNeedle(
+function indexOfNeedle(
   source: Uint8Array,
   needle: Uint8Array,
   start = 0,
@@ -180,5 +182,13 @@ function indexOfNumber(
   );
 }
 
-export default { indexOfBuffer, indexOfNumber };
-export { indexOfBuffer, indexOfNumber };
+const _defaultExport = { indexOfBuffer, indexOfNumber };
+
+return {
+  indexOfBuffer,
+  indexOfNumber,
+  fill,
+  indexOfNeedle,
+  default: _defaultExport,
+};
+})();

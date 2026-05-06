@@ -57,6 +57,8 @@ use crate::deno_json::LintRulesConfig;
 use crate::deno_json::MinimumDependencyAgeConfig;
 use crate::deno_json::NodeModulesDirMode;
 use crate::deno_json::NodeModulesDirParseError;
+use crate::deno_json::NodeModulesLinkerMode;
+use crate::deno_json::NodeModulesLinkerParseError;
 use crate::deno_json::PermissionsConfig;
 use crate::deno_json::PermissionsObjectWithBase;
 use crate::deno_json::PublishConfig;
@@ -185,6 +187,10 @@ pub enum WorkspaceDiagnosticKind {
     "\"minimumDependencyAge.exclude\" entry \"{entry}\" missing jsr: or npm: prefix."
   )]
   MinimumDependencyAgeExcludeMissingPrefix { entry: String },
+  #[error(
+    "Invalid version requirement '{version_req}' for catalog entry '{name}'."
+  )]
+  InvalidCatalogVersionReq { name: String, version_req: String },
 }
 
 #[derive(Debug, Error, JsError, Clone, PartialEq, Eq)]
@@ -447,6 +453,7 @@ pub struct Workspace {
   config_folders: IndexMap<UrlRc, FolderConfigs>,
   links: BTreeMap<UrlRc, FolderConfigs>,
   pub(crate) vendor_dir: Option<PathBuf>,
+  catalogs: IndexMap<String, IndexMap<String, String>>,
   cached: WorkspaceCachedValues,
 }
 
@@ -458,6 +465,40 @@ impl Workspace {
     vendor_dir: Option<PathBuf>,
   ) -> Self {
     let root_dir_url = new_rc(root.folder_url());
+
+    // Load catalogs: prefer package.json, fall back to deno.json
+    let catalogs = {
+      let from_pkg_json = root.pkg_json().and_then(|pj| {
+        let has_catalog = pj.catalog.is_some();
+        let has_catalogs = pj.catalogs.is_some();
+        if !has_catalog && !has_catalogs {
+          return None;
+        }
+        let mut result: IndexMap<String, IndexMap<String, String>> =
+          IndexMap::new();
+        if let Some(c) = &pj.catalog {
+          result.insert("default".to_string(), c.clone());
+        }
+        if let Some(cs) = &pj.catalogs {
+          result.extend(cs.clone());
+        }
+        Some(result)
+      });
+      from_pkg_json.unwrap_or_else(|| {
+        let mut result: IndexMap<String, IndexMap<String, String>> =
+          IndexMap::new();
+        if let Some(dj) = root.deno_json() {
+          if let Some(c) = dj.catalog() {
+            result.insert("default".to_string(), c.clone());
+          }
+          if let Some(cs) = dj.catalogs() {
+            result.extend(cs.clone());
+          }
+        }
+        result
+      })
+    };
+
     let mut config_folders = IndexMap::with_capacity(members.len() + 1);
     config_folders.insert(
       root_dir_url.clone(),
@@ -476,6 +517,7 @@ impl Workspace {
         .map(|(url, folder)| (url, FolderConfigs::from_config_folder(folder)))
         .collect(),
       vendor_dir,
+      catalogs,
       cached: Default::default(),
     }
   }
@@ -494,6 +536,10 @@ impl Workspace {
 
   pub fn root_folder_configs(&self) -> &FolderConfigs {
     self.config_folders.get(&self.root_dir_url).unwrap()
+  }
+
+  pub fn catalogs(&self) -> &IndexMap<String, IndexMap<String, String>> {
+    &self.catalogs
   }
 
   pub fn root_deno_json(&self) -> Option<&ConfigFileRc> {
@@ -654,6 +700,7 @@ impl Workspace {
       }
     }
 
+    let catalogs = &self.catalogs;
     let mut folders = Vec::with_capacity(self.config_folders.len());
     for (index, (dir_url, folder)) in self.config_folders.iter().enumerate() {
       folders.push(Folder {
@@ -726,6 +773,22 @@ impl Workspace {
                         },
                       }))
                     }
+                    PackageJsonDepValue::Catalog(catalog_name) => catalogs
+                      .get(catalog_name.as_str())
+                      .and_then(|catalog| catalog.get(k.as_str()))
+                      .and_then(|version_req_str| {
+                        VersionReq::parse_from_npm(version_req_str).ok().map(
+                          |version_req| {
+                            Dep::Req(JsrDepPackageReq {
+                              kind: PackageKind::Npm,
+                              req: PackageReq {
+                                name: k.clone(),
+                                version_req,
+                              },
+                            })
+                          },
+                        )
+                      }),
                   })
               })
               .into_iter()
@@ -1090,6 +1153,18 @@ impl Workspace {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("nodeModulesDir"),
         });
       }
+      if member_config.json.catalog.is_some() {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: member_config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("catalog"),
+        });
+      }
+      if member_config.json.catalogs.is_some() {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: member_config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("catalogs"),
+        });
+      }
       if member_config.json.links.is_some() {
         diagnostics.push(WorkspaceDiagnostic {
           config_url: member_config.specifier.clone(),
@@ -1209,6 +1284,34 @@ impl Workspace {
           }
         }
       }
+      if let Some(catalog) = &config.json.catalog {
+        for (name, version_req) in catalog {
+          if VersionReq::parse_from_npm(version_req).is_err() {
+            diagnostics.push(WorkspaceDiagnostic {
+              config_url: config.specifier.clone(),
+              kind: WorkspaceDiagnosticKind::InvalidCatalogVersionReq {
+                name: name.clone(),
+                version_req: version_req.clone(),
+              },
+            });
+          }
+        }
+      }
+      if let Some(catalogs) = &config.json.catalogs {
+        for catalog in catalogs.values() {
+          for (name, version_req) in catalog {
+            if VersionReq::parse_from_npm(version_req).is_err() {
+              diagnostics.push(WorkspaceDiagnostic {
+                config_url: config.specifier.clone(),
+                kind: WorkspaceDiagnosticKind::InvalidCatalogVersionReq {
+                  name: name.clone(),
+                  version_req: version_req.clone(),
+                },
+              });
+            }
+          }
+        }
+      }
     }
 
     let mut diagnostics = Vec::new();
@@ -1225,14 +1328,25 @@ impl Workspace {
 
         check_all_configs(config, &mut diagnostics);
       }
-      if !is_root
-        && let Some(pkg_json) = &folder.pkg_json
-        && pkg_json.overrides.is_some()
-      {
-        diagnostics.push(WorkspaceDiagnostic {
-          config_url: pkg_json.specifier(),
-          kind: WorkspaceDiagnosticKind::PkgJsonRootOnlyOption("overrides"),
-        });
+      if !is_root && let Some(pkg_json) = &folder.pkg_json {
+        if pkg_json.overrides.is_some() {
+          diagnostics.push(WorkspaceDiagnostic {
+            config_url: pkg_json.specifier(),
+            kind: WorkspaceDiagnosticKind::PkgJsonRootOnlyOption("overrides"),
+          });
+        }
+        if pkg_json.catalog.is_some() {
+          diagnostics.push(WorkspaceDiagnostic {
+            config_url: pkg_json.specifier(),
+            kind: WorkspaceDiagnosticKind::PkgJsonRootOnlyOption("catalog"),
+          });
+        }
+        if pkg_json.catalogs.is_some() {
+          diagnostics.push(WorkspaceDiagnostic {
+            config_url: pkg_json.specifier(),
+            kind: WorkspaceDiagnosticKind::PkgJsonRootOnlyOption("catalogs"),
+          });
+        }
       }
     }
 
@@ -1521,6 +1635,22 @@ impl Workspace {
       .transpose()
   }
 
+  pub fn node_modules_linker(
+    &self,
+  ) -> Result<
+    Option<NodeModulesLinkerMode>,
+    deno_json::NodeModulesLinkerParseError,
+  > {
+    self
+      .root_deno_json()
+      .and_then(|c| c.json.node_modules_linker.as_ref())
+      .map(|v| {
+        serde_json::from_value::<NodeModulesLinkerMode>(v.clone())
+          .map_err(|err| NodeModulesLinkerParseError { source: err })
+      })
+      .transpose()
+  }
+
   pub fn minimum_dependency_age(
     &self,
     sys: &impl sys_traits::SystemTimeNow,
@@ -1628,6 +1758,7 @@ impl WorkspaceDirectory {
         VendorEnablement::Enable { cwd } => Some(cwd.join("vendor")),
         VendorEnablement::Disable => None,
       },
+      catalogs: IndexMap::new(),
       cached: Default::default(),
     });
     workspace.resolve_member_dir(&opts.root_dir)
@@ -1712,6 +1843,7 @@ impl WorkspaceDirectory {
           root_dir_url: start_dir.clone(),
           links: BTreeMap::new(),
           vendor_dir,
+          catalogs: IndexMap::new(),
           cached: Default::default(),
         });
         workspace.resolve_member_dir(&start_dir)

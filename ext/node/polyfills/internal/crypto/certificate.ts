@@ -1,12 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+import { core } from "ext:core/mod.js";
 import {
   op_node_cert_export_challenge,
   op_node_cert_export_public_key,
   op_node_verify_spkac,
 } from "ext:core/ops";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { getArrayBufferOrView } from "ext:deno_node/internal/crypto/keys.ts";
 
 // The functions contained in this file cover the SPKAC format

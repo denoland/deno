@@ -9,13 +9,14 @@
 // happen when internal stream code triggers debug logging during bootstrap
 // before the Node process is fully initialized (e.g. when stdin is unavailable
 // in compiled binaries run as Windows services or detached processes).
+(function () {
 let debugImpls: Record<string, (...args: unknown[]) => void> = Object.create(
   null,
 );
 let testEnabled: (str: string) => boolean = () => false;
 
 // `debugEnv` is initial value of process.env.NODE_DEBUG
-export function initializeDebugEnv(debugEnv: string) {
+function initializeDebugEnv(debugEnv: string) {
   debugImpls = Object.create(null);
   if (debugEnv) {
     // This is run before any user code, it's OK not to use primordials.
@@ -68,7 +69,7 @@ function debuglogImpl(
 // so it needs to be called lazily in top scopes of internal modules
 // that may be loaded before these run time states are allowed to
 // be accessed.
-export function debuglog(
+function debuglog(
   set: string,
   cb?: (debug: (...args: unknown[]) => void) => void,
 ) {
@@ -119,7 +120,7 @@ function pad(value: number | string): string {
   return `${value}`.padStart(2, "0");
 }
 
-export function formatTime(ms: number): string {
+function formatTime(ms: number): string {
   let hours = 0;
   let minutes = 0;
   let seconds = 0;
@@ -153,4 +154,12 @@ export function formatTime(ms: number): string {
   return `${Number(ms.toFixed(3))}ms`;
 }
 
-export default { debuglog, formatTime };
+const _defaultExport = { debuglog, formatTime };
+
+return {
+  initializeDebugEnv,
+  debuglog,
+  formatTime,
+  default: _defaultExport,
+};
+})();

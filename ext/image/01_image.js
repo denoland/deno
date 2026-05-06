@@ -4,9 +4,11 @@ import { core, internals, primordials } from "ext:core/mod.js";
 import { ImageBitmap, op_create_image_bitmap } from "ext:core/ops";
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import { BlobPrototype } from "ext:deno_web/09_file.js";
-import { sniffImage } from "ext:deno_web/01_mimesniff.js";
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
+const { sniffImage } = core.loadExtScript("ext:deno_web/01_mimesniff.js");
 const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
@@ -21,12 +23,12 @@ const {
   RangeError,
   ArrayPrototypeJoin,
 } = primordials;
-import {
+const {
   _data,
   _height,
   _width,
   ImageDataPrototype,
-} from "ext:deno_web/16_image_data.js";
+} = core.loadExtScript("ext:deno_web/16_image_data.js");
 
 webidl.converters["ImageOrientation"] = webidl.createEnumConverter(
   "ImageOrientation",

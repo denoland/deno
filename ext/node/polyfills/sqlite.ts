@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   DatabaseSync as DatabaseSyncOp,
   op_node_database_backup,
@@ -8,8 +8,10 @@ import {
   StatementSync,
 } from "ext:core/ops";
 import type { Buffer } from "node:buffer";
-import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
-import { URLPrototype } from "ext:deno_web/00_url.js";
+const { isUint8Array } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 import type { URL } from "node:url";
 
 const {

@@ -1,8 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
-  Error,
   StringPrototypeToUpperCase,
   StringPrototypeCharAt,
   StringPrototypeSlice,
@@ -10,16 +10,19 @@ const {
   DatePrototypeGetTime,
 } = primordials;
 
-import { arch, versions } from "ext:deno_node/_process/process.ts";
-import { cpus, hostname, networkInterfaces } from "node:os";
+const { arch, versions } = core.loadExtScript(
+  "ext:deno_node/_process/process.ts",
+);
+const lazyOs = core.createLazyLoader("node:os");
 
-function writeReport(_filename: string, _err: typeof Error) {
+function writeReport(_filename, _err) {
   return "";
 }
 
 const todoUndefined = undefined;
 
-function getReport(_err: typeof Error) {
+function getReport(_err) {
+  const os = lazyOs();
   const dumpEventTime = new Date();
   return {
     header: {
@@ -53,9 +56,9 @@ function getReport(_err: typeof Error) {
       osRelease: todoUndefined,
       osVersion: todoUndefined,
       osMachine: Deno.build.arch,
-      cpus: cpus(),
-      networkInterfaces: networkInterfaces(),
-      host: hostname(),
+      cpus: os.cpus(),
+      networkInterfaces: os.networkInterfaces(),
+      host: os.hostname(),
     },
     javascriptStack: todoUndefined,
     javascriptHeap: todoUndefined,
@@ -71,7 +74,7 @@ function getReport(_err: typeof Error) {
 }
 
 // https://nodejs.org/api/process.html#processreport
-export const report = {
+const report = {
   compact: false,
   directory: "",
   filename: "",
@@ -82,3 +85,8 @@ export const report = {
   signal: "SIGUSR2",
   writeReport,
 };
+
+return {
+  report,
+};
+})();
