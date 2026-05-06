@@ -1107,26 +1107,40 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     let specifier = specifier.clone();
     let maybe_referrer = maybe_referrer.cloned();
 
-    // When load hooks are active, delegate to JS hooks first
-    if self.0.hook_registry.load_active.get() && !options.is_synchronous {
+    // When load hooks are active, delegate to JS hooks first.
+    // Skip the hook bridge for CJS modules — they go through the
+    // default loader which invokes the sync load hook chain
+    // (executeLoadHookChain) in Module._load. Going through both
+    // the ESM bridge AND the CJS path would call hooks twice.
+    if self.0.hook_registry.load_active.get()
+      && !options.is_synchronous
+      && !{
+        let media_type = deno_media_type::MediaType::from_specifier(&specifier);
+        self
+          .0
+          .shared
+          .cjs_tracker
+          .is_maybe_cjs(&specifier, media_type)
+          .unwrap_or(false)
+      }
+    {
       let receiver = self.0.hook_registry.push_load(specifier.to_string());
       return deno_core::ModuleLoadResponse::Async(
         async move {
-          let hook_result: Result<Option<String>, String> = match receiver.await
-          {
+          let hook_result = match receiver.await {
             Ok(r) => r,
             Err(_) => {
               return Err(JsErrorBox::generic("module load hook cancelled"));
             }
           };
           match hook_result {
-            Ok(Some(source)) => Ok(deno_core::ModuleSource::new(
+            Ok((Some(source), _format)) => Ok(deno_core::ModuleSource::new(
               deno_core::ModuleType::JavaScript,
               deno_core::ModuleSourceCode::String(source.into()),
               &specifier,
               None,
             )),
-            Ok(None) => {
+            Ok((None, _)) => {
               // Fallthrough: hooks didn't intercept, use default
               inner
                 .load_inner(
