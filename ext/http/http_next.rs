@@ -719,10 +719,10 @@ fn modify_compressibility_from_response(
   compression: Compression,
   headers: &mut HeaderMap,
 ) -> Compression {
-  ensure_vary_accept_encoding(headers);
   if compression == Compression::None {
     return Compression::None;
   }
+  ensure_vary_accept_encoding(headers);
   if !is_response_compressible(headers) {
     return Compression::None;
   }
