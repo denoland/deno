@@ -702,6 +702,26 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
       let specifier = deno_path_util::url_from_file_path(&file_path)?;
       let media_type = MediaType::from_specifier(&specifier);
+      // Pre-filter: only script-flavored media types can have CJS exports.
+      // Without this, every byte-blob the user includes via `--include`
+      // (images, fonts, .wasm, json blobs that aren't `.json`, …) gets
+      // handed to swc, which is unhappy parsing binary.
+      if !matches!(
+        media_type,
+        MediaType::JavaScript
+          | MediaType::Mjs
+          | MediaType::Cjs
+          | MediaType::Jsx
+          | MediaType::TypeScript
+          | MediaType::Mts
+          | MediaType::Cts
+          | MediaType::Tsx
+          | MediaType::Dts
+          | MediaType::Dmts
+          | MediaType::Dcts
+      ) {
+        continue;
+      }
       if self.cjs_tracker.is_maybe_cjs(&specifier, media_type)? {
         let maybe_source = vfs
           .file_bytes(file.offset)
