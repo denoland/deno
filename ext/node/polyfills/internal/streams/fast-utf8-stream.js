@@ -5,7 +5,7 @@
 // Copyright (c) 2017 Matteo Collina
 
 import { core, primordials } from "ext:core/mod.js";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import EventEmitter from "node:events";
 import * as fs from "node:fs";
 import * as path from "node:path";

@@ -31,7 +31,7 @@ const {
   validatePort,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { isIP } from "ext:deno_node/internal/net.ts";
+const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
 import {
   dnsOrderToNumber,
   emitInvalidHostnameWarning,
@@ -67,7 +67,9 @@ import cares, {
   GetNameInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { domainToASCII } from "ext:deno_node/internal/idna.ts";
+const { domainToASCII } = core.loadExtScript(
+  "ext:deno_node/internal/idna.ts",
+);
 
 function onlookup(
   this: GetAddrInfoReqWrap,

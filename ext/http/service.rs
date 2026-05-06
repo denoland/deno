@@ -18,6 +18,7 @@ use std::task::ready;
 use deno_core::BufView;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 use http::request::Parts;
 use hyper::body::Body;
@@ -156,6 +157,84 @@ impl std::ops::Deref for HttpServerState {
   }
 }
 
+/// Holds the v8 callback registered by the JavaScript side via
+/// `op_http_serve` along with the isolate/context required to invoke
+/// it. This lets the hyper service synchronously call back into
+/// JavaScript when a new request arrives, instead of routing every
+/// request through an mpsc channel that the JS side has to drain in
+/// a separate task.
+pub struct ServerCallback {
+  isolate_ptr: v8::UnsafeRawIsolatePtr,
+  context: v8::Global<v8::Context>,
+  callback: v8::Global<v8::Function>,
+}
+
+impl ServerCallback {
+  pub fn new(
+    scope: &mut v8::PinScope<'_, '_>,
+    isolate: &mut v8::Isolate,
+    callback: v8::Global<v8::Function>,
+  ) -> Self {
+    let ctx = scope.get_current_context();
+    let context = v8::Global::new(scope, ctx);
+    // SAFETY: isolate is a valid live isolate.
+    let isolate_ptr = unsafe { isolate.as_raw_isolate_ptr() };
+    Self {
+      isolate_ptr,
+      context,
+      callback,
+    }
+  }
+
+  /// Invoke the JavaScript callback with the given record-pointer
+  /// argument. The pointer is wrapped as a v8 External so the JS side
+  /// can pass it back to ops that take `*const c_void` parameters.
+  ///
+  /// # Safety
+  /// `record_ptr` must be a valid `ExternalPointer<RcHttpRecord>` raw
+  /// pointer that the JS side will eventually consume (or that will
+  /// otherwise be reclaimed). The isolate pointed to by
+  /// `self.isolate_ptr` must still be live (this is upheld because the
+  /// `HttpJoinHandle` holding this `ServerCallback` is dropped as part
+  /// of resource teardown which happens before the isolate dies).
+  pub unsafe fn dispatch(&self, record_ptr: *mut std::ffi::c_void) {
+    // SAFETY: caller upholds isolate validity.
+    unsafe {
+      let mut isolate = v8::Isolate::from_raw_isolate_ptr(self.isolate_ptr);
+      v8::scope!(let handle_scope, &mut isolate);
+      let context = v8::Local::new(handle_scope, &self.context);
+      let scope = &mut v8::ContextScope::new(handle_scope, context);
+      let pin_scope: &mut v8::PinScope = scope;
+
+      {
+        v8::tc_scope!(tc, pin_scope);
+        let cb = v8::Local::new(tc, &self.callback);
+        let arg = v8::External::new(tc, record_ptr);
+        let recv = v8::undefined(tc);
+        let _ = cb.call(tc, recv.into(), &[arg.into()]);
+        // The JS side is responsible for catching its own errors via
+        // the wrapper installed in 00_serve.ts. Any exception that
+        // escapes is swallowed here -- otherwise we would leave the
+        // isolate in an exception-pending state and the next v8 call
+        // would crash.
+        if tc.has_caught() {
+          tc.reset();
+        }
+      }
+      // Drain microtasks queued by the JS callback. Because the
+      // hyper service runs as a free-standing tokio task (not
+      // registered with the JsRuntime's op driver), the runtime is
+      // not woken by request arrival, so any `await`-style microtask
+      // continuations in the handler chain would otherwise sit
+      // un-drained until some unrelated op happened to fire.
+      // Draining here makes the dispatch effectively synchronous up
+      // to the first real async-op boundary in user code -- matching
+      // how Bun's onRequest invokes its handler.
+      pin_scope.perform_microtask_checkpoint();
+    }
+  }
+}
+
 enum RequestBodyState {
   Incoming(BufferedIncoming),
   Resource(
@@ -206,13 +285,16 @@ fn validate_request(req: &Request) -> bool {
   true
 }
 
-pub(crate) async fn handle_request(
+pub(crate) async fn handle_request<F>(
   request: Request,
   request_info: HttpConnectionProperties,
   server_state: SignallingRc<HttpServerState>, // Keep server alive for duration of this future.
-  tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
+  dispatch: F,
   legacy_abort: bool,
-) -> Result<Response, hyper_v014::Error> {
+) -> Result<Response, hyper_v014::Error>
+where
+  F: FnOnce(Rc<HttpRecord>),
+{
   if !validate_request(&request) {
     let mut response = Response::new(HttpRecordResponse(None));
     *response.version_mut() = request.version();
@@ -266,9 +348,13 @@ pub(crate) async fn handle_request(
     HttpRecord::cancel,
   );
 
-  // Clone HttpRecord and send to JavaScript for processing.
-  // Safe to unwrap as channel receiver is never closed.
-  tx.send(guarded_record.clone()).await.unwrap();
+  // Synchronously dispatch to the registered JavaScript callback.
+  // The dispatch closure handles wrapping the record as a V8 external
+  // and invoking the user-supplied function under a HandleScope. The
+  // JS side is expected to call op_http_set_response_* eventually,
+  // which fires `record.complete()` and wakes the response_ready
+  // future below.
+  dispatch(guarded_record.clone());
 
   // Wait for JavaScript handler to return request.
   http_trace!(*guarded_record, "handle_request response_ready.await");
@@ -850,11 +936,14 @@ mod tests {
       stream_type: NetworkStreamType::Tcp,
     };
     let svc = service_fn(move |req: hyper::Request<Incoming>| {
+      let tx = tx.clone();
       handle_request(
         req,
         request_info.clone(),
         server_state.clone(),
-        tx.clone(),
+        move |record| {
+          tx.try_send(record).unwrap();
+        },
         true,
       )
     });

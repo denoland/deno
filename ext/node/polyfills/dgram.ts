@@ -24,7 +24,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { EventEmitter } from "node:events";
 import { lookup as defaultLookup } from "node:dns";
 import type {
@@ -48,11 +48,11 @@ const {
 import type { Abortable } from "ext:deno_node/_events.d.ts";
 import { kStateSymbol, newHandle } from "ext:deno_node/internal/dgram.ts";
 import type { SocketType } from "ext:deno_node/internal/dgram.ts";
-import {
+const {
   asyncIdSymbol,
   defaultTriggerAsyncIdScope,
   ownerSymbol,
-} from "ext:deno_node/internal/async_hooks.ts";
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 import { SendWrap, UDP } from "ext:deno_node/internal_binding/udp_wrap.ts";
 const {
   isInt32,
@@ -62,11 +62,13 @@ const {
   validateString,
   validateUint32,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
+const { guessHandleType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
 const { os } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
-import { nextTick } from "node:process";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 import { deprecate } from "node:util";
 import { channel } from "node:diagnostics_channel";
 const { isArrayBufferView } = core.loadExtScript(

@@ -14,6 +14,7 @@ use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::deno_json::MinimumDependencyAgeConfig;
 use deno_config::deno_json::NewestDependencyDate;
 use deno_config::deno_json::NodeModulesDirMode;
+use deno_config::deno_json::NodeModulesLinkerMode;
 use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::WorkspaceDirectory;
@@ -195,6 +196,7 @@ pub trait SpecifiedImportMapProvider:
 pub struct NpmProcessStateOptions {
   pub node_modules_dir: Option<Cow<'static, str>>,
   pub is_byonm: bool,
+  pub linker_mode: Option<NodeModulesLinkerMode>,
 }
 
 #[derive(Debug, Default)]
@@ -208,6 +210,7 @@ pub struct WorkspaceFactoryOptions {
   pub lockfile_skip_write: bool,
   pub maybe_custom_deno_dir_root: Option<PathBuf>,
   pub node_modules_dir: Option<NodeModulesDirMode>,
+  pub node_modules_linker: Option<NodeModulesLinkerMode>,
   pub no_lock: bool,
   pub no_npm: bool,
   /// The process state if using ext/node and the current process was "forked".
@@ -247,6 +250,7 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   npm_cache_dir: Deferred<NpmCacheDirRc>,
   npmrc: Deferred<(ResolvedNpmRcRc, Option<PathBuf>)>,
   node_modules_dir_mode: Deferred<NodeModulesDirMode>,
+  node_modules_linker_mode: Deferred<NodeModulesLinkerMode>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
   workspace_external_import_map_loader:
     Deferred<WorkspaceExternalImportMapLoaderRc<TSys>>,
@@ -273,6 +277,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       npm_cache_dir: Default::default(),
       npmrc: Default::default(),
       node_modules_dir_mode: Default::default(),
+      node_modules_linker_mode: Default::default(),
       workspace_directory: Default::default(),
       workspace_external_import_map_loader: Default::default(),
       workspace_npm_link_packages: Default::default(),
@@ -325,57 +330,61 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
     self.options.no_npm
   }
 
+  /// Resolves the raw node_modules dir mode before any promotion
+  /// (e.g. Manual → Auto for package manager subcommands).
+  fn raw_node_modules_dir_mode(
+    &self,
+  ) -> Result<NodeModulesDirMode, anyhow::Error> {
+    if let Some(process_state) = &self.options.npm_process_state {
+      if process_state.is_byonm {
+        return Ok(NodeModulesDirMode::Manual);
+      }
+      if process_state.node_modules_dir.is_some() {
+        return Ok(NodeModulesDirMode::Auto);
+      } else {
+        return Ok(NodeModulesDirMode::None);
+      }
+    }
+    if let Some(flag) = self.options.node_modules_dir {
+      return Ok(flag);
+    }
+    let workspace = &self.workspace_directory()?.workspace;
+    if let Some(mode) = workspace.node_modules_dir()? {
+      return Ok(mode);
+    }
+
+    let workspace = &self.workspace_directory()?.workspace;
+
+    if let Some(pkg_json) = workspace.root_pkg_json() {
+      if let Ok(deno_dir) = self.deno_dir() {
+        let deno_dir = &deno_dir.root;
+        // `deno_dir` can be symlink in macOS or on the CI
+        if let Ok(deno_dir) =
+          canonicalize_path_maybe_not_exists(&self.sys, deno_dir)
+          && pkg_json.path.starts_with(deno_dir)
+        {
+          // if the package.json is in deno_dir, then do not use node_modules
+          // next to it as local node_modules dir
+          return Ok(NodeModulesDirMode::None);
+        }
+      }
+
+      Ok(NodeModulesDirMode::Manual)
+    } else if workspace.vendor_dir_path().is_some() {
+      Ok(NodeModulesDirMode::Auto)
+    } else {
+      // use the global cache
+      Ok(NodeModulesDirMode::None)
+    }
+  }
+
   pub fn node_modules_dir_mode(
     &self,
   ) -> Result<NodeModulesDirMode, anyhow::Error> {
     self
       .node_modules_dir_mode
       .get_or_try_init(|| {
-        let raw_resolve = || -> Result<_, anyhow::Error> {
-          if let Some(process_state) = &self.options.npm_process_state {
-            if process_state.is_byonm {
-              return Ok(NodeModulesDirMode::Manual);
-            }
-            if process_state.node_modules_dir.is_some() {
-              return Ok(NodeModulesDirMode::Auto);
-            } else {
-              return Ok(NodeModulesDirMode::None);
-            }
-          }
-          if let Some(flag) = self.options.node_modules_dir {
-            return Ok(flag);
-          }
-          let workspace = &self.workspace_directory()?.workspace;
-          if let Some(mode) = workspace.node_modules_dir()? {
-            return Ok(mode);
-          }
-
-          let workspace = &self.workspace_directory()?.workspace;
-
-          if let Some(pkg_json) = workspace.root_pkg_json() {
-            if let Ok(deno_dir) = self.deno_dir() {
-              let deno_dir = &deno_dir.root;
-              // `deno_dir` can be symlink in macOS or on the CI
-              if let Ok(deno_dir) =
-                canonicalize_path_maybe_not_exists(&self.sys, deno_dir)
-                && pkg_json.path.starts_with(deno_dir)
-              {
-                // if the package.json is in deno_dir, then do not use node_modules
-                // next to it as local node_modules dir
-                return Ok(NodeModulesDirMode::None);
-              }
-            }
-
-            Ok(NodeModulesDirMode::Manual)
-          } else if workspace.vendor_dir_path().is_some() {
-            Ok(NodeModulesDirMode::Auto)
-          } else {
-            // use the global cache
-            Ok(NodeModulesDirMode::None)
-          }
-        };
-
-        let mode = raw_resolve()?;
+        let mode = self.raw_node_modules_dir_mode()?;
         if mode == NodeModulesDirMode::Manual
           && self.options.is_package_manager_subcommand
         {
@@ -385,6 +394,40 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
         } else {
           Ok(mode)
         }
+      })
+      .copied()
+  }
+
+  pub fn node_modules_linker_mode(
+    &self,
+  ) -> Result<NodeModulesLinkerMode, anyhow::Error> {
+    self
+      .node_modules_linker_mode
+      .get_or_try_init(|| {
+        if let Some(process_state) = &self.options.npm_process_state
+          && let Some(mode) = process_state.linker_mode
+        {
+          return Ok(mode);
+        }
+        let mode = if let Some(flag) = self.options.node_modules_linker {
+          flag
+        } else {
+          let workspace = &self.workspace_directory()?.workspace;
+          workspace
+            .node_modules_linker()?
+            .unwrap_or_default()
+        };
+        if mode == NodeModulesLinkerMode::Hoisted {
+          let dir_mode = self.raw_node_modules_dir_mode()?;
+          if dir_mode != NodeModulesDirMode::Manual {
+            bail!(
+              "The hoisted node_modules linker requires --node-modules-dir=manual. \
+               Add \"nodeModulesDir\": \"manual\" to your deno.json or pass \
+               --node-modules-dir=manual on the command line."
+            );
+          }
+        }
+        Ok(mode)
       })
       .copied()
   }
@@ -1082,6 +1125,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             .map(|p| p.to_path_buf()),
           npm_system_info: self.options.npm_system_info.clone(),
           npmrc: self.workspace_factory.npmrc()?.clone(),
+          linker_mode: self.workspace_factory.node_modules_linker_mode()?,
         })
       }))
     })

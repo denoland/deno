@@ -36,6 +36,7 @@ use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
 use deno_config::deno_json::NewestDependencyDate;
 use deno_config::deno_json::NodeModulesDirMode;
+use deno_config::deno_json::NodeModulesLinkerMode;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::Context;
@@ -120,6 +121,7 @@ pub struct AddFlags {
   pub default_registry: Option<DefaultRegistry>,
   pub lockfile_only: bool,
   pub save_exact: bool,
+  pub package_json: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -144,6 +146,7 @@ pub struct AuditFlags {
 pub struct RemoveFlags {
   pub packages: Vec<String>,
   pub lockfile_only: bool,
+  pub package_json: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -640,6 +643,18 @@ pub struct PublishFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PackFlags {
+  pub files: FileFlags,
+  pub output: Option<String>,
+  pub dry_run: bool,
+  pub allow_slow_types: bool,
+  pub allow_dirty: bool,
+  pub set_version: Option<String>,
+  pub no_shim: bool,
+  pub no_source_maps: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HelpFlags {
   pub help: clap::builder::StyledStr,
 }
@@ -706,6 +721,7 @@ pub enum DenoSubcommand {
   Why(WhyFlags),
   BumpVersion(VersionFlags),
   Publish(PublishFlags),
+  Pack(PackFlags),
   Help(HelpFlags),
   X(XFlags),
 }
@@ -953,6 +969,7 @@ pub struct Flags {
   pub type_check_mode: TypeCheckMode,
   pub config_flag: ConfigFlag,
   pub node_modules_dir: Option<NodeModulesDirMode>,
+  pub node_modules_linker: Option<NodeModulesLinkerMode>,
   pub vendor: Option<bool>,
   pub enable_testing_features: bool,
   pub ext: Option<String>,
@@ -1748,6 +1765,8 @@ static DENO_HELP: &str = cstr!(
     <g>init</>         Initialize a new project
     <g>test</>         Run tests
                   <p(245)>deno test  |  deno test test.ts</>
+    <g>pack</>         Create an npm-compatible tarball from a Deno project
+                  <p(245)>deno pack  |  deno pack --set-version 1.2.3</>
     <g>upgrade</>      Upgrade deno executable to given version
                   <p(245)>deno upgrade  |  deno upgrade 1.45.0  |  deno upgrade canary</>
 {after-help}
@@ -1984,6 +2003,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "vendor" => vendor_parse(&mut flags, &mut m),
         "why" => why_parse(&mut flags, &mut m),
         "publish" => publish_parse(&mut flags, &mut m)?,
+        "pack" => pack_parse(&mut flags, &mut m)?,
         "x" => x_parse(&mut flags, &mut m)?,
         _ => unreachable!(),
       }
@@ -2245,6 +2265,7 @@ pub fn clap_root() -> Command {
         .subcommand(lsp_subcommand())
         .subcommand(lint_subcommand())
         .subcommand(publish_subcommand())
+        .subcommand(pack_subcommand())
         .subcommand(repl_subcommand())
         .subcommand(task_subcommand())
         .subcommand(test_subcommand())
@@ -2331,6 +2352,7 @@ Or multiple dependencies at once:
           .help("Save exact version without the caret (^)")
           .action(ArgAction::SetTrue),
       )
+      .arg(package_json_arg())
   })
 }
 
@@ -2501,6 +2523,7 @@ You can remove multiple dependencies at once:
       )
       .args(lock_args())
       .arg(lockfile_only_arg())
+      .arg(package_json_arg())
   })
 }
 
@@ -2774,6 +2797,7 @@ fn clean_subcommand() -> Command {
           .requires("except"),
       )
       .arg(node_modules_dir_arg().requires("except"))
+      .arg(node_modules_linker_arg().requires("except"))
       .arg(vendor_arg().requires("except"))
   })
 }
@@ -3574,6 +3598,7 @@ The following information is shown:
       .arg(config_arg())
       .arg(import_map_arg())
       .arg(node_modules_dir_arg())
+      .arg(node_modules_linker_arg())
       .arg(vendor_arg())
       .arg(
         Arg::new("json")
@@ -3696,6 +3721,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .conflicts_with("global"),
         )
         .arg(lockfile_only_arg().conflicts_with("global"))
+        .arg(package_json_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .arg(
           Arg::new("os")
             .long("os")
@@ -3735,6 +3761,15 @@ fn lockfile_only_arg() -> Arg {
     .long("lockfile-only")
     .action(ArgAction::SetTrue)
     .help("Install only updating the lockfile")
+}
+
+fn package_json_arg() -> Arg {
+  Arg::new("package-json")
+    .long("package-json")
+    .action(ArgAction::SetTrue)
+    .help(
+      "Force using package.json for dependency management instead of deno.json",
+    )
 }
 
 fn json_reference_subcommand() -> Command {
@@ -3954,6 +3989,7 @@ The installation root is determined, in order of precedence:
       )
       .args(lock_args())
       .arg(lockfile_only_arg())
+      .arg(package_json_arg().conflicts_with("global"))
   })
 }
 
@@ -4403,6 +4439,7 @@ Evaluate a task from string:
           ).action(ArgAction::SetTrue)
       )
       .arg(node_modules_dir_arg())
+      .arg(node_modules_linker_arg())
       .arg(tunnel_arg())
   })
 }
@@ -4916,6 +4953,77 @@ fn publish_subcommand() -> Command {
     })
 }
 
+fn pack_subcommand() -> Command {
+  command(
+    "pack",
+    "Create an npm-compatible tarball from a Deno project",
+    UnstableArgsConfig::ResolutionOnly,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("output")
+          .short('o')
+          .long("output")
+          .help("Output file path (defaults to <name>-<version>.tgz)")
+          .value_name("FILE"),
+      )
+      .arg(config_arg())
+      .arg(no_config_arg())
+      .arg(
+        Arg::new("dry-run")
+          .long("dry-run")
+          .help("Show what would be packed without creating the tarball")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("allow-slow-types")
+          .long("allow-slow-types")
+          .help("Skip fast-check type extraction; .d.ts files are omitted from the output")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("allow-dirty")
+          .long("allow-dirty")
+          .help("Allow packing if the repository has uncommitted changes")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("set-version")
+          .long("set-version")
+          .help("Override the version in the tarball")
+          .value_name("VERSION"),
+      )
+      .arg(
+        Arg::new("no-deno-shim")
+          .long("no-deno-shim")
+          .help("Don't automatically add @deno/shim-deno dependency")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("no-source-maps")
+          .long("no-source-maps")
+          .help("Don't include source maps in the output")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("files")
+          .help("List of file patterns to include")
+          .num_args(..)
+          .action(ArgAction::Append),
+      )
+      .arg(
+        Arg::new("ignore")
+          .long("ignore")
+          .num_args(1..)
+          .action(ArgAction::Append)
+          .require_equals(true)
+          .help("Ignore files matching these patterns")
+          .value_hint(ValueHint::AnyPath),
+      )
+  })
+}
+
 fn compile_args(app: Command) -> Command {
   compile_args_without_check_args(app.arg(no_check_arg()))
 }
@@ -4926,6 +5034,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(no_remote_arg())
     .arg(no_npm_arg())
     .arg(node_modules_dir_arg())
+    .arg(node_modules_linker_arg())
     .arg(vendor_arg())
     .arg(node_conditions_arg())
     .arg(config_arg())
@@ -6082,6 +6191,41 @@ fn node_modules_dir_arg() -> Arg {
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
 }
 
+fn node_modules_linker_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let value =
+    matches.remove_one::<NodeModulesLinkerMode>("node-modules-linker");
+  if let Some(mode) = value {
+    flags.node_modules_linker = Some(mode);
+  }
+}
+
+fn node_modules_linker_arg() -> Arg {
+  fn parse_node_modules_linker_mode(
+    s: &str,
+  ) -> Result<NodeModulesLinkerMode, String> {
+    match s {
+      "isolated" => Ok(NodeModulesLinkerMode::Isolated),
+      "hoisted" => Ok(NodeModulesLinkerMode::Hoisted),
+      _ => Err(format!(
+        "Invalid value '{}': expected \"isolated\" or \"hoisted\"",
+        s
+      )),
+    }
+  }
+
+  Arg::new("node-modules-linker")
+    .long("node-modules-linker")
+    .alias("linker")
+    .num_args(1)
+    .value_parser(clap::builder::ValueParser::new(
+      parse_node_modules_linker_mode,
+    ))
+    .value_name("MODE")
+    .require_equals(true)
+    .help("Sets the linker mode for npm packages (isolated or hoisted)")
+    .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
+}
+
 fn vendor_arg() -> Arg {
   Arg::new("vendor")
     .long("vendor")
@@ -6298,6 +6442,7 @@ fn add_parse_inner(
     default_registry,
     lockfile_only: matches.get_flag("lockfile-only"),
     save_exact: matches.get_flag("save-exact"),
+    package_json: matches.get_flag("package-json"),
   }
 }
 
@@ -6306,6 +6451,7 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Remove(RemoveFlags {
     packages: matches.remove_many::<String>("packages").unwrap().collect(),
     lockfile_only: matches.get_flag("lockfile-only"),
+    package_json: matches.get_flag("package-json"),
   });
 }
 
@@ -7216,6 +7362,7 @@ fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     UninstallKind::Local(RemoveFlags {
       packages,
       lockfile_only: matches.get_flag("lockfile-only"),
+      package_json: matches.get_flag("package-json"),
     })
   };
 
@@ -7428,6 +7575,7 @@ fn task_parse(
 
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   node_modules_arg_parse(flags, matches);
+  node_modules_linker_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
 
   let mut recursive = matches.get_flag("recursive");
@@ -7789,6 +7937,39 @@ fn publish_parse(
     allow_dirty: matches.get_flag("allow-dirty"),
     no_provenance: matches.get_flag("no-provenance"),
     set_version: matches.remove_one::<String>("set-version"),
+  });
+
+  Ok(())
+}
+
+fn pack_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  flags.type_check_mode = TypeCheckMode::Local; // local by default
+  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
+  config_args_parse(flags, matches);
+
+  let include = match matches.remove_many::<String>("files") {
+    Some(f) => f.collect(),
+    None => vec![],
+  };
+  let ignore = match matches.remove_many::<String>("ignore") {
+    Some(f) => f
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?,
+    None => vec![],
+  };
+
+  flags.subcommand = DenoSubcommand::Pack(PackFlags {
+    files: FileFlags { include, ignore },
+    output: matches.remove_one("output"),
+    dry_run: matches.get_flag("dry-run"),
+    allow_slow_types: matches.get_flag("allow-slow-types"),
+    allow_dirty: matches.get_flag("allow-dirty"),
+    set_version: matches.remove_one::<String>("set-version"),
+    no_shim: matches.get_flag("no-deno-shim"),
+    no_source_maps: matches.get_flag("no-source-maps"),
   });
 
   Ok(())
@@ -8276,6 +8457,7 @@ fn node_modules_and_vendor_dir_arg_parse(
   matches: &mut ArgMatches,
 ) {
   node_modules_arg_parse(flags, matches);
+  node_modules_linker_arg_parse(flags, matches);
   flags.vendor = matches.remove_one::<bool>("vendor");
 }
 
@@ -11309,6 +11491,7 @@ mod tests {
           kind: UninstallKind::Local(RemoveFlags {
             packages: vec!["@std/load".to_string()],
             lockfile_only: true,
+            package_json: false,
           }),
         }),
         frozen_lockfile: Some(true),
@@ -11325,6 +11508,7 @@ mod tests {
           kind: UninstallKind::Local(RemoveFlags {
             packages: vec!["file_server".to_string(), "@std/load".to_string()],
             lockfile_only: false,
+            package_json: false,
           }),
         }),
         ..Flags::default()
@@ -14432,6 +14616,7 @@ mod tests {
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
+            package_json: false,
           })
         );
       }
@@ -14450,6 +14635,7 @@ mod tests {
           default_registry: Some(DefaultRegistry::Npm),
           lockfile_only: true,
           save_exact: false,
+          package_json: false,
         });
         expected_flags.frozen_lockfile = Some(true);
         assert_eq!(r.unwrap(), expected_flags);
@@ -14464,6 +14650,7 @@ mod tests {
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
+            package_json: false,
           }),
         );
       }
@@ -14477,6 +14664,7 @@ mod tests {
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
+            package_json: false,
           }),
         );
       }
@@ -14490,6 +14678,7 @@ mod tests {
             default_registry: Some(DefaultRegistry::Jsr),
             lockfile_only: false,
             save_exact: false,
+            package_json: false,
           }),
         );
       }
@@ -14508,6 +14697,7 @@ mod tests {
         subcommand: DenoSubcommand::Remove(RemoveFlags {
           packages: svec!["@david/which"],
           lockfile_only: false,
+          package_json: false,
         }),
         ..Flags::default()
       }
@@ -14527,6 +14717,7 @@ mod tests {
         subcommand: DenoSubcommand::Remove(RemoveFlags {
           packages: svec!["@david/which", "@luca/hello"],
           lockfile_only: true,
+          package_json: false,
         }),
         frozen_lockfile: Some(true),
         ..Flags::default()

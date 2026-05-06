@@ -29,7 +29,7 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { errorOrDestroy } from "ext:deno_node/internal/streams/destroy.js";
 import * as fs from "node:fs";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import {
   copyObject,
   getOptions,
@@ -38,7 +38,7 @@ import {
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { finished, Readable, Writable } from "node:stream";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 import { FileHandle, kRef, kUnref } from "ext:deno_node/internal/fs/handle.ts";
 
 const kIoDone = Symbol("kIoDone");

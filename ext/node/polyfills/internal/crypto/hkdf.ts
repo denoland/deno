@@ -33,7 +33,7 @@ import {
   KeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
 import type { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
-import { kMaxLength } from "ext:deno_node/internal/buffer.mjs";
+const { kMaxLength } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   isAnyArrayBuffer,
   isArrayBufferView,
@@ -42,7 +42,7 @@ const { isKeyObject } = core.loadExtScript(
   "ext:deno_node/internal/crypto/_keys.ts",
 );
 import { getHashes } from "ext:deno_node/internal/crypto/hash.ts";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 
 // Consume raw bytes for any ArrayBufferView/ArrayBuffer; strings via toBuf.
 function toRawBytes(x: unknown): Buffer {

@@ -15,7 +15,9 @@ import process from "node:process";
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 import { Worker } from "ext:deno_node/internal/cluster/worker.ts";
 import { internal, sendHelper } from "ext:deno_node/internal/cluster/utils.ts";
-import { ownerSymbol } from "ext:deno_node/internal/async_hooks.ts";
+const { ownerSymbol } = core.loadExtScript(
+  "ext:deno_node/internal/async_hooks.ts",
+);
 
 const {
   ArrayPrototypeJoin,

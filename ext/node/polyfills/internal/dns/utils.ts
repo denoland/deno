@@ -24,13 +24,15 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-import { getOptionValue } from "ext:deno_node/internal/options.ts";
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
 import { emitWarning } from "node:process";
-import {
+const {
   AI_ADDRCONFIG,
   AI_ALL,
   AI_V4MAPPED,
-} from "ext:deno_node/internal_binding/ares.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/ares.ts");
 import {
   ChannelWrap,
   DNS_ORDER_IPV4_FIRST,
@@ -50,7 +52,7 @@ const {
   validateOneOf,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { isIP } from "ext:deno_node/internal/net.ts";
+const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
 
 export interface LookupOptions {
   family?: number | undefined;

@@ -48,10 +48,10 @@ import {
 import { pipeline } from "ext:deno_node/internal/streams/pipeline.js";
 import { destroyer } from "ext:deno_node/internal/streams/destroy.js";
 import { eos } from "ext:deno_node/internal/streams/end-of-stream.js";
-import { Buffer } from "ext:deno_node/internal/buffer.mjs";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 
 import * as promises from "node:stream/promises";
-import * as utils from "ext:deno_node/internal/streams/utils.js";
+const utils = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 const {
   isArrayBufferView,
   isUint8Array,

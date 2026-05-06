@@ -7,7 +7,9 @@ import { core, primordials } from "ext:core/mod.js";
 const { ERR_UNHANDLED_ERROR } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
-import { AsyncHook } from "ext:deno_node/internal/async_hooks.ts";
+const { AsyncHook } = core.loadExtScript(
+  "ext:deno_node/internal/async_hooks.ts",
+);
 const {
   ArrayPrototypeIndexOf,
   ArrayPrototypeLastIndexOf,

@@ -5,14 +5,14 @@
 
 import { core } from "ext:core/mod.js";
 import { Buffer, kMaxLength } from "node:buffer";
-import {
+const {
   emitAfter,
   emitBefore,
   emitDestroy,
   emitInit,
   executionAsyncId,
   newAsyncId,
-} from "ext:deno_node/internal/async_hooks.ts";
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const {
   validateFunction,
   validateNumber,

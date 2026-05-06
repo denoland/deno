@@ -8,7 +8,9 @@ import { core, primordials } from "ext:core/mod.js";
 const { Symbol } = primordials;
 
 import { Interface } from "ext:deno_node/_readline.mjs";
-import { commonPrefix } from "ext:deno_node/internal/readline/utils.mjs";
+const { commonPrefix } = core.loadExtScript(
+  "ext:deno_node/internal/readline/utils.mjs",
+);
 const { inspect } = core.loadExtScript(
   "ext:deno_node/internal/util/inspect.mjs",
 );

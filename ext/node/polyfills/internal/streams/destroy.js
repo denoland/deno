@@ -5,7 +5,7 @@ import process from "node:process";
 import { core, primordials } from "ext:core/mod.js";
 const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
-import {
+const {
   isDestroyed,
   isFinished,
   isServerRequest,
@@ -19,7 +19,7 @@ import {
   kErrorEmitted,
   kIsDestroyed,
   kState,
-} from "ext:deno_node/internal/streams/utils.js";
+} = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 
 const {
   AbortError,

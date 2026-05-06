@@ -1,14 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const {
   op_create_worker,
   op_host_post_message,
   op_host_post_message_raw,
   op_host_recv_ctrl,
   op_host_recv_message,
   op_host_terminate_worker,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeJoin,
@@ -28,8 +29,10 @@ const { createFilteredInspectProxy } = core.loadExtScript(
 );
 const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
 const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
-import { serializePermissions } from "ext:runtime/10_permissions.js";
-import { log } from "ext:runtime/06_util.js";
+const { serializePermissions } = core.loadExtScript(
+  "ext:runtime/10_permissions.js",
+);
+const { log } = core.loadExtScript("ext:runtime/06_util.js");
 const {
   defineEventHandler,
   ErrorEvent,
@@ -42,7 +45,9 @@ const {
   MessagePortPrototype,
   serializeJsMessageData,
 } = core.loadExtScript("ext:deno_web/13_message_port.js");
-const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+const { DOMException } = core.loadExtScript(
+  "ext:deno_web/01_dom_exception.js",
+);
 
 function createWorker(
   specifier,
@@ -358,4 +363,5 @@ webidl.converters["WorkerType"] = webidl.createEnumConverter("WorkerType", [
   "module",
 ]);
 
-export { Worker };
+return { Worker };
+})();

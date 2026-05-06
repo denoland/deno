@@ -34,7 +34,7 @@ import {
   op_node_validate_oaep_hash,
 } from "ext:core/ops";
 
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import process from "node:process";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
 import { Transform } from "node:stream";

@@ -6,6 +6,11 @@ import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_fs_cwd,
   op_import_sync,
+  op_module_hooks_poll_load,
+  op_module_hooks_poll_resolve,
+  op_module_hooks_register,
+  op_module_hooks_respond_load,
+  op_module_hooks_respond_resolve,
   op_napi_open,
   op_require_as_file_path,
   op_require_break_on_next_statement,
@@ -84,12 +89,12 @@ import _tlsWrap from "node:_tls_wrap";
 import assert from "node:assert";
 import assertStrict from "node:assert/strict";
 import asyncHooks from "node:async_hooks";
-import {
-  emitAfter as internalAsyncHooksEmitAfter,
-  emitBefore as internalAsyncHooksEmitBefore,
-  emitDestroy as internalAsyncHooksEmitDestroy,
-  emitInit as internalAsyncHooksEmitInit,
-} from "ext:deno_node/internal/async_hooks.ts";
+const {
+  emitAfter: internalAsyncHooksEmitAfter,
+  emitBefore: internalAsyncHooksEmitBefore,
+  emitDestroy: internalAsyncHooksEmitDestroy,
+  emitInit: internalAsyncHooksEmitInit,
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 import buffer from "node:buffer";
 import childProcess from "node:child_process";
 import cluster from "node:cluster";
@@ -109,7 +114,9 @@ import http2 from "node:http2";
 import https from "node:https";
 import inspector from "node:inspector";
 import inspectorPromises from "node:inspector/promises";
-import internalAssertMyersDiff from "ext:deno_node/internal/assert/myers_diff.js";
+const internalAssertMyersDiff = core.loadExtScript(
+  "ext:deno_node/internal/assert/myers_diff.js",
+);
 import internalCp from "ext:deno_node/internal/child_process.ts";
 import internalCryptoCertificate from "ext:deno_node/internal/crypto/certificate.ts";
 import internalCryptoCipher from "ext:deno_node/internal/crypto/cipher.ts";
@@ -125,24 +132,34 @@ import internalCryptoSig from "ext:deno_node/internal/crypto/sig.ts";
 import internalCryptoUtil from "ext:deno_node/internal/crypto/util.ts";
 import internalCryptoX509 from "ext:deno_node/internal/crypto/x509.ts";
 import internalDgram from "ext:deno_node/internal/dgram.ts";
-import internalUndici from "ext:deno_node/internal/deps/undici/undici.js";
+const internalUndici = core.loadExtScript(
+  "ext:deno_node/internal/deps/undici/undici.js",
+);
 import internalDnsPromises from "ext:deno_node/internal/dns/promises.ts";
-import internalBuffer from "ext:deno_node/internal/buffer.mjs";
+const internalBuffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const internalErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
-import internalHttp from "ext:deno_node/internal/http.ts";
+const internalHttp = core.loadExtScript("ext:deno_node/internal/http.ts");
 import internalHttp2Core from "ext:deno_node/internal/http2/core.ts";
 import internalHttp2Util from "ext:deno_node/internal/http2/util.ts";
-import internalPriorityQueue from "ext:deno_node/internal/priority_queue.ts";
-import internalReadlineUtils from "ext:deno_node/internal/readline/utils.mjs";
+const internalPriorityQueue = core.loadExtScript(
+  "ext:deno_node/internal/priority_queue.ts",
+);
+const internalReadlineUtils = core.loadExtScript(
+  "ext:deno_node/internal/readline/utils.mjs",
+);
 import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
 import internalStreamsState from "ext:deno_node/internal/streams/state.js";
-import internalTestBinding from "ext:deno_node/internal/test/binding.ts";
+const internalTestBinding = core.loadExtScript(
+  "ext:deno_node/internal/test/binding.ts",
+);
 import internalTimers from "ext:deno_node/internal/timers.mjs";
 const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import internalUtilDebuglog from "ext:deno_node/internal/util/debuglog.ts";
+const internalUtilDebuglog = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
 const internalUtilInspect = core.loadExtScript(
   "ext:deno_node/internal/util/inspect.mjs",
 );
@@ -168,7 +185,6 @@ import streamConsumers from "node:stream/consumers";
 import streamPromises from "node:stream/promises";
 import streamWeb from "node:stream/web";
 import stringDecoder from "node:string_decoder";
-import sys from "node:sys";
 import test from "node:test";
 import timers from "node:timers";
 import timersPromises from "node:timers/promises";
@@ -223,7 +239,7 @@ function setupBuiltinModules() {
     https,
     inspector,
     "inspector/promises": inspectorPromises,
-    "internal/assert/myers_diff": internalAssertMyersDiff,
+    "internal/assert/myers_diff": internalAssertMyersDiff.default,
     "internal/console/constructor": internalConsole,
     "internal/child_process": internalCp,
     "internal/crypto/certificate": internalCryptoCertificate,
@@ -240,23 +256,23 @@ function setupBuiltinModules() {
     "internal/crypto/util": internalCryptoUtil,
     "internal/crypto/x509": internalCryptoX509,
     "internal/dgram": internalDgram,
-    "internal/deps/undici/undici": internalUndici,
+    "internal/deps/undici/undici": internalUndici.default,
     "internal/dns/promises": internalDnsPromises,
-    "internal/buffer": internalBuffer,
+    "internal/buffer": internalBuffer.default,
     "internal/errors": internalErrors,
     "internal/event_target": internalEventTarget,
     "internal/fs/utils": internalFsUtils,
-    "internal/http": internalHttp,
+    "internal/http": internalHttp.default,
     "internal/http2/core": internalHttp2Core,
     "internal/http2/util": internalHttp2Util,
-    "internal/priority_queue": internalPriorityQueue,
-    "internal/readline/utils": internalReadlineUtils,
+    "internal/priority_queue": internalPriorityQueue.default,
+    "internal/readline/utils": internalReadlineUtils.default,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
     "internal/streams/state": internalStreamsState,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
-    "internal/util/debuglog": internalUtilDebuglog,
+    "internal/util/debuglog": internalUtilDebuglog.default,
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
     "internal/validators": internalValidators,
@@ -287,7 +303,7 @@ function setupBuiltinModules() {
     "stream/promises": streamPromises,
     "stream/web": streamWeb,
     string_decoder: stringDecoder,
-    sys,
+    sys: util,
     test,
     timers,
     "timers/promises": timersPromises,
@@ -355,9 +371,17 @@ let patched = false;
 
 // module.registerHooks() infrastructure
 const hookEntries = [];
+// module.register() infrastructure - async hooks from loaded loader modules
+const asyncHookEntries = [];
+// Pending hook module loads from register(). The ESM hook loops await these
+// before processing requests, ensuring hooks are active before subsequent
+// imports are resolved.
+const pendingHookLoads = [];
 let insideResolveHook = false;
 let insideLoadHook = false;
 let utf8Decoder;
+let esmResolveLoopRunning = false;
+let esmLoadLoopRunning = false;
 
 function executeResolveHookChain(specifier, context, parent, isMain) {
   // Collect resolve hooks from hookEntries in LIFO order
@@ -476,6 +500,190 @@ function executeLoadHookChain(fileUrl, context) {
   }
 
   return nextLoad(fileUrl, context);
+}
+
+// ESM resolve hook chain: runs sync hooks (registerHooks) in LIFO order,
+// then async hooks (register) in LIFO order.
+// Returns { url } if hooks resolved, or null for fallthrough to default.
+async function executeEsmResolveHookChain(specifier, context) {
+  // Collect sync hooks first (run before async per Node.js spec)
+  const resolveHooks = [];
+  for (let i = hookEntries.length - 1; i >= 0; i--) {
+    if (hookEntries[i].resolve !== null) {
+      ArrayPrototypePush(resolveHooks, hookEntries[i].resolve);
+    }
+  }
+  // Then async hooks from register()
+  for (let i = asyncHookEntries.length - 1; i >= 0; i--) {
+    if (asyncHookEntries[i].resolve !== null) {
+      ArrayPrototypePush(resolveHooks, asyncHookEntries[i].resolve);
+    }
+  }
+  if (resolveHooks.length === 0) return null;
+
+  let index = 0;
+  let currentContext = context;
+
+  async function nextResolve(spec, ctx) {
+    if (ctx !== undefined && ctx !== null) {
+      currentContext = { ...currentContext, ...ctx };
+    }
+    if (index >= resolveHooks.length) {
+      // End of chain - signal fallthrough to Rust default resolution
+      return { url: null, shortCircuit: true };
+    }
+    const hook = resolveHooks[index++];
+    let nextCalled = false;
+    const wrappedNext = (s, c) => {
+      nextCalled = true;
+      return nextResolve(s, c);
+    };
+    const result = await hook(spec, currentContext, wrappedNext);
+    if (!nextCalled && !result?.shortCircuit) {
+      throw new TypeError(
+        "resolve hook must return { shortCircuit: true } or call nextResolve",
+      );
+    }
+    return result;
+  }
+
+  return nextResolve(specifier, context);
+}
+
+// ESM load hook chain: runs sync hooks (registerHooks) in LIFO order,
+// then async hooks (register) in LIFO order.
+// Returns { source } if hooks provided source, or null for fallthrough.
+async function executeEsmLoadHookChain(fileUrl, context) {
+  // Collect sync hooks first (run before async per Node.js spec)
+  const loadHooks = [];
+  for (let i = hookEntries.length - 1; i >= 0; i--) {
+    if (hookEntries[i].load !== null) {
+      ArrayPrototypePush(loadHooks, hookEntries[i].load);
+    }
+  }
+  // Then async hooks from register()
+  for (let i = asyncHookEntries.length - 1; i >= 0; i--) {
+    if (asyncHookEntries[i].load !== null) {
+      ArrayPrototypePush(loadHooks, asyncHookEntries[i].load);
+    }
+  }
+  if (loadHooks.length === 0) return null;
+
+  let index = 0;
+  let currentContext = context;
+
+  async function nextLoad(loadUrl, ctx) {
+    if (ctx !== undefined && ctx !== null) {
+      currentContext = { ...currentContext, ...ctx };
+    }
+    if (index >= loadHooks.length) {
+      // End of chain - signal fallthrough to Rust default loading
+      return { source: null, shortCircuit: true };
+    }
+    const hook = loadHooks[index++];
+    let nextCalled = false;
+    const wrappedNext = (u, c) => {
+      nextCalled = true;
+      return nextLoad(u, c);
+    };
+    const result = await hook(loadUrl, currentContext, wrappedNext);
+    if (!nextCalled && !result?.shortCircuit) {
+      throw new TypeError(
+        "load hook must return { shortCircuit: true } or call nextLoad",
+      );
+    }
+    return result;
+  }
+
+  return nextLoad(fileUrl, context);
+}
+
+function _startEsmResolveLoop() {
+  if (esmResolveLoopRunning) return;
+  esmResolveLoopRunning = true;
+  (async () => {
+    while (true) {
+      const pollPromise = op_module_hooks_poll_resolve();
+      core.unrefOpPromise(pollPromise);
+      const req = await pollPromise;
+      if (req === null) break;
+      // Wait for any pending hook module loads to complete before
+      // processing requests. This ensures register() hooks are active
+      // before subsequent imports are resolved.
+      if (pendingHookLoads.length > 0) {
+        await Promise.all(pendingHookLoads);
+      }
+      const [id, specifier, referrer] = req;
+      const context = {
+        conditions: ["node", "import"],
+        importAttributes: { __proto__: null },
+        parentURL: referrer || undefined,
+        importAssertions: { __proto__: null },
+      };
+      try {
+        const result = await executeEsmResolveHookChain(specifier, context);
+        if (result !== null && result.url != null) {
+          op_module_hooks_respond_resolve(id, result.url, null);
+        } else {
+          // Fallthrough: tell Rust to use default resolution
+          op_module_hooks_respond_resolve(id, null, null);
+        }
+      } catch (e) {
+        op_module_hooks_respond_resolve(id, null, String(e));
+      }
+    }
+  })();
+}
+
+function _startEsmLoadLoop() {
+  if (esmLoadLoopRunning) return;
+  esmLoadLoopRunning = true;
+  (async () => {
+    while (true) {
+      const pollPromise = op_module_hooks_poll_load();
+      core.unrefOpPromise(pollPromise);
+      const req = await pollPromise;
+      if (req === null) break;
+      const [id, fileUrl] = req;
+      const context = {
+        format: undefined,
+        conditions: ["node", "import"],
+        importAttributes: { __proto__: null },
+        importAssertions: { __proto__: null },
+      };
+      try {
+        const result = await executeEsmLoadHookChain(fileUrl, context);
+        if (result !== null && result.source != null) {
+          const source = typeof result.source === "string"
+            ? result.source
+            : new TextDecoder().decode(result.source);
+          const format = result.format || null;
+          op_module_hooks_respond_load(id, source, format, null);
+        } else {
+          // Fallthrough: tell Rust to use default loading
+          op_module_hooks_respond_load(id, null, null, null);
+        }
+      } catch (e) {
+        op_module_hooks_respond_load(id, null, null, String(e));
+      }
+    }
+  })();
+}
+
+function _activateEsmHooks() {
+  let hasResolve = false;
+  let hasLoad = false;
+  for (let i = 0; i < hookEntries.length; i++) {
+    if (hookEntries[i].resolve !== null) hasResolve = true;
+    if (hookEntries[i].load !== null) hasLoad = true;
+  }
+  for (let i = 0; i < asyncHookEntries.length; i++) {
+    if (asyncHookEntries[i].resolve !== null) hasResolve = true;
+    if (asyncHookEntries[i].load !== null) hasLoad = true;
+  }
+  op_module_hooks_register(hasResolve, hasLoad);
+  if (hasResolve) _startEsmResolveLoop();
+  if (hasLoad) _startEsmLoadLoop();
 }
 
 function stat(filename) {
@@ -964,6 +1172,7 @@ Module._load = function (request, parent, isMain) {
           format: "builtin",
           conditions: ["node", "require"],
           importAttributes: { __proto__: null },
+          importAssertions: { __proto__: null },
         };
         insideLoadHook = true;
         let result;
@@ -1093,6 +1302,7 @@ Module._resolveFilename = function (
       conditions: ["node", "require"],
       importAttributes: { __proto__: null },
       parentURL,
+      importAssertions: { __proto__: null },
     };
     const result = executeResolveHookChain(request, context, parent, isMain);
     if (result != null && result.url != null) {
@@ -1341,6 +1551,7 @@ Module.prototype.load = function (filename) {
         format: undefined,
         conditions: ["node", "require"],
         importAttributes: { __proto__: null },
+        importAssertions: { __proto__: null },
       };
       insideLoadHook = true;
       let result;
@@ -1891,12 +2102,18 @@ export function registerHooks(hooks) {
   }
   const entry = { resolve, load };
   ArrayPrototypePush(hookEntries, entry);
+
+  // Activate ESM hooks in Rust module loader
+  _activateEsmHooks();
+
   return {
     deregister() {
       const idx = ArrayPrototypeIndexOf(hookEntries, entry);
       if (idx !== -1) {
         ArrayPrototypeSplice(hookEntries, idx, 1);
       }
+      // Update Rust-side active flags
+      _activateEsmHooks();
     },
   };
 }
@@ -1904,17 +2121,110 @@ export function registerHooks(hooks) {
 Module.registerHooks = registerHooks;
 
 /**
- * @param {string | URL} _specifier
- * @param {string | URL} _parentUrl
- * @param {{ parentURL: string | URL, data: any, transferList: any[] }} [_options]
+ * @param {string | URL} specifier
+ * @param {string | URL | { parentURL?: string | URL, data?: any, transferList?: any[] }} [parentUrlOrOptions]
+ * @param {{ parentURL?: string | URL, data?: any, transferList?: any[] }} [maybeOptions]
  */
-export function register(_specifier, _parentUrl, _options) {
-  // TODO(@marvinhagemeister): Stub implementation for programs registering
-  // TypeScript loaders. We don't support registering loaders for file
-  // types that Deno itself doesn't support at the moment.
+export function register(specifier, parentUrlOrOptions, maybeOptions) {
+  if (typeof specifier !== "string" && !(specifier instanceof URL)) {
+    throw new TypeError("specifier must be a string or URL");
+  }
+
+  // Parse overloaded arguments:
+  // register(specifier)
+  // register(specifier, parentURL)
+  // register(specifier, options)
+  // register(specifier, parentURL, options)
+  let parentURL;
+  let options;
+  if (
+    typeof parentUrlOrOptions === "string" ||
+    parentUrlOrOptions instanceof URL
+  ) {
+    parentURL = String(parentUrlOrOptions);
+    options = maybeOptions || {};
+  } else if (
+    typeof parentUrlOrOptions === "object" && parentUrlOrOptions !== null
+  ) {
+    options = parentUrlOrOptions;
+    parentURL = options.parentURL != null
+      ? String(options.parentURL)
+      : undefined;
+  } else {
+    options = {};
+  }
+
+  const data = options.data;
+  const transferList = options.transferList;
+
+  // Resolve the specifier to a URL
+  let resolvedUrl;
+  if (
+    typeof specifier === "string" && !specifier.startsWith("file://") &&
+    !specifier.startsWith("data:") && !specifier.startsWith("node:")
+  ) {
+    // Relative or bare specifier - resolve against parentURL
+    const base = parentURL || "data:";
+    try {
+      resolvedUrl = new URL(specifier, base).href;
+    } catch {
+      resolvedUrl = specifier;
+    }
+  } else {
+    resolvedUrl = String(specifier);
+  }
+
+  // Load the hook module asynchronously. The promise is tracked so the
+  // ESM hook loops wait for it before processing requests, ensuring hooks
+  // are active before subsequent imports are resolved.
+  const loadPromise = _loadAndRegisterHookModule(
+    resolvedUrl,
+    data,
+    transferList,
+  );
+  ArrayPrototypePush(pendingHookLoads, loadPromise);
+  loadPromise.then(() => {
+    const idx = ArrayPrototypeIndexOf(pendingHookLoads, loadPromise);
+    if (idx !== -1) ArrayPrototypeSplice(pendingHookLoads, idx, 1);
+  }, () => {
+    const idx = ArrayPrototypeIndexOf(pendingHookLoads, loadPromise);
+    if (idx !== -1) ArrayPrototypeSplice(pendingHookLoads, idx, 1);
+  });
+
+  // Pre-activate the resolve hook bridge so that subsequent imports are
+  // routed through it and will wait for the hook module to load.
+  // Only activate resolve here - load activation happens in
+  // _activateEsmHooks() after the hook module loads. This avoids a
+  // circular deadlock where the hook module's own load would go through
+  // the bridge which is waiting for the hook module to load.
+  op_module_hooks_register(true, false);
+  _startEsmResolveLoop();
 
   return undefined;
 }
+
+async function _loadAndRegisterHookModule(resolvedUrl, data, transferList) {
+  const hookModule = await import(resolvedUrl);
+
+  // Call initialize hook if exported
+  if (typeof hookModule.initialize === "function") {
+    await hookModule.initialize(data);
+  }
+
+  const resolve = typeof hookModule.resolve === "function"
+    ? hookModule.resolve
+    : null;
+  const load = typeof hookModule.load === "function" ? hookModule.load : null;
+
+  if (resolve === null && load === null) {
+    return;
+  }
+
+  ArrayPrototypePush(asyncHookEntries, { resolve, load });
+  _activateEsmHooks();
+}
+
+Module.register = register;
 
 export { builtinModules, createRequire, getBuiltinModule, isBuiltin, Module };
 export const _cache = Module._cache;

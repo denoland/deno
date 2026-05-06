@@ -18,10 +18,10 @@ import {
 import { finished } from "ext:deno_node/internal/streams/end-of-stream.js";
 import staticCompose from "ext:deno_node/internal/streams/compose.js";
 import { addAbortSignalNoValidate } from "ext:deno_node/internal/streams/add-abort-signal.js";
-import {
+const {
   isNodeStream,
   isWritable,
-} from "ext:deno_node/internal/streams/utils.js";
+} = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 
 const {
   AbortError,

@@ -6,7 +6,7 @@
 
 // deno-lint-ignore-file prefer-primordials
 
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { core, primordials } from "ext:core/mod.js";
 const { codes } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {

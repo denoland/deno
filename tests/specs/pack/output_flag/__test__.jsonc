@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "tests": {
+    "output_flag_overrides_filename": {
+      "steps": [{
+        "args": "pack --output custom-name.tgz",
+        "output": "[WILDCARD]✓[WILDCARD]custom-name.tgz[WILDCARD]"
+      }, {
+        "args": [
+          "eval",
+          "console.log(Deno.statSync('./custom-name.tgz').isFile);"
+        ],
+        "output": "true\n"
+      }, {
+        "args": [
+          "eval",
+          "try { Deno.statSync('./test-output-flag-1.0.0.tgz'); console.log('default exists'); } catch { console.log('default absent'); }"
+        ],
+        "output": "default absent\n"
+      }]
+    }
+  }
+}

@@ -1,9 +1,9 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
 // Copyright 2018-2026 the Deno authors. MIT license.
-
-import type { FormatInputPathObject } from "ext:deno_node/path/_interface.ts";
-import {
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const {
   CHAR_BACKWARD_SLASH,
   CHAR_DOT,
   CHAR_FORWARD_SLASH,
@@ -11,8 +11,7 @@ import {
   CHAR_LOWERCASE_Z,
   CHAR_UPPERCASE_A,
   CHAR_UPPERCASE_Z,
-} from "ext:deno_node/path/_constants.ts";
-import { core, primordials } from "ext:core/mod.js";
+} = core.loadExtScript("ext:deno_node/path/_constants.ts");
 const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -22,21 +21,21 @@ const {
   StringPrototypeSlice,
 } = primordials;
 
-export function assertPath(path: string) {
+function assertPath(path: string) {
   if (typeof path !== "string") {
     throw new ERR_INVALID_ARG_TYPE("path", ["string"], path);
   }
 }
 
-export function isPosixPathSeparator(code: number): boolean {
+function isPosixPathSeparator(code: number): boolean {
   return code === CHAR_FORWARD_SLASH;
 }
 
-export function isPathSeparator(code: number): boolean {
+function isPathSeparator(code: number): boolean {
   return isPosixPathSeparator(code) || code === CHAR_BACKWARD_SLASH;
 }
 
-export function isWindowsDeviceRoot(code: number): boolean {
+function isWindowsDeviceRoot(code: number): boolean {
   return (
     (code >= CHAR_LOWERCASE_A && code <= CHAR_LOWERCASE_Z) ||
     (code >= CHAR_UPPERCASE_A && code <= CHAR_UPPERCASE_Z)
@@ -44,7 +43,7 @@ export function isWindowsDeviceRoot(code: number): boolean {
 }
 
 // Resolves . and .. elements in a path with directory names
-export function normalizeString(
+function normalizeString(
   path: string,
   allowAboveRoot: boolean,
   separator: string,
@@ -117,7 +116,7 @@ function formatExt(ext: string | undefined): string {
   return ext ? `${ext[0] === "." ? "" : "."}${ext}` : "";
 }
 
-export function _format(
+function _format(
   sep: string,
   pathObject: FormatInputPathObject,
 ): string {
@@ -128,3 +127,13 @@ export function _format(
   if (dir === pathObject.root) return dir + base;
   return dir + sep + base;
 }
+
+return {
+  assertPath,
+  isPosixPathSeparator,
+  isPathSeparator,
+  isWindowsDeviceRoot,
+  normalizeString,
+  _format,
+};
+})();

@@ -4,7 +4,7 @@
 import { core, primordials } from "ext:core/mod.js";
 const { TextDecoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
 const { Blob } = core.loadExtScript("ext:deno_web/09_file.js");
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_STATE,

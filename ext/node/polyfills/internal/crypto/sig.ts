@@ -28,7 +28,7 @@ const {
   validateFunction,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import type { WritableOptions } from "ext:deno_node/_stream.d.ts";
 import Writable from "node:_stream_writable";
 import type {

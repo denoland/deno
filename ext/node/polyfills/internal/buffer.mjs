@@ -1,8 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // Copyright Feross Aboukhadijeh, and other contributors. All rights reserved. MIT license.
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   isAnyArrayBuffer,
   isArrayBuffer,
@@ -63,7 +63,7 @@ const {
   Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
-import {
+const {
   op_base64_decode_into,
   op_base64_encode,
   op_base64_encode_from_buffer,
@@ -75,18 +75,19 @@ import {
   op_node_call_is_from_dependency,
   op_node_decode_utf8,
   op_transcode,
-} from "ext:core/ops";
+} = core.ops;
 
 const { TextDecoder, TextEncoder } = core.loadExtScript(
   "ext:deno_web/08_text_encoding.js",
 );
 const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
-import { encodings } from "ext:deno_node/internal_binding/string_decoder.ts";
-import {
-  indexOfBuffer,
-  indexOfNumber,
-} from "ext:deno_node/internal_binding/buffer.ts";
-import {
+const { encodings } = core.loadExtScript(
+  "ext:deno_node/internal_binding/string_decoder.ts",
+);
+const { indexOfBuffer, indexOfNumber } = core.loadExtScript(
+  "ext:deno_node/internal_binding/buffer.ts",
+);
+const {
   asciiToBytes,
   base64ToBytes,
   base64UrlToBytes,
@@ -94,18 +95,15 @@ import {
   bytesToUtf16le,
   hexToBytes,
   utf16leToBytes,
-} from "ext:deno_node/internal_binding/_utils.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/_utils.ts");
 const { inspect: utilInspect } = core.loadExtScript(
   "ext:deno_node/internal/util/inspect.mjs",
 );
 const { normalizeEncoding } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
-import {
-  ALL_PROPERTIES,
-  getOwnNonIndexProperties,
-  ONLY_ENUMERABLE,
-} from "ext:deno_node/internal_binding/util.ts";
+const { ALL_PROPERTIES, getOwnNonIndexProperties, ONLY_ENUMERABLE } = core
+  .loadExtScript("ext:deno_node/internal_binding/util.ts");
 const {
   validateBuffer,
   validateInteger,
@@ -120,7 +118,9 @@ const {
   genericNodeError,
   NodeError,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import { getOptionValue } from "ext:deno_node/internal/options.ts";
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
 const { forgivingBase64UrlEncode } = core.loadExtScript(
   "ext:deno_web/00_infra.js",
 );
@@ -128,9 +128,9 @@ const { atob, btoa } = core.loadExtScript("ext:deno_web/05_base64.js");
 const { Blob, blobFromObjectUrl, File } = core.loadExtScript(
   "ext:deno_web/09_file.js",
 );
-import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
-
-export { atob, Blob, btoa, File };
+const { untransferableSymbol } = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
 
 const utf8Encoder = new TextEncoder();
 
@@ -148,19 +148,19 @@ const uInt8Float64Array = new Uint8Array(
 float32Array[0] = -1; // 0xBF800000
 // Either it is [0, 0, 128, 191] or [191, 128, 0, 0]. It is not possible to
 // check this with `os.endianness()` because that is determined at compile time.
-export const bigEndian = uInt8Float32Array[3] === 0;
+const bigEndian = uInt8Float32Array[3] === 0;
 
-export const kMaxLength = NumberMAX_SAFE_INTEGER;
-export const kStringMaxLength = 536870888;
+const kMaxLength = NumberMAX_SAFE_INTEGER;
+const kStringMaxLength = 536870888;
 const MAX_UINT32 = 2 ** 32;
 
 const customInspectSymbol = SymbolFor("nodejs.util.inspect.custom");
 
 let INSPECT_MAX_BYTES_ = 50;
 
-export const INSPECT_MAX_BYTES = INSPECT_MAX_BYTES_;
+const INSPECT_MAX_BYTES = INSPECT_MAX_BYTES_;
 
-export const constants = {
+const constants = {
   MAX_LENGTH: kMaxLength,
   MAX_STRING_LENGTH: kStringMaxLength,
 };
@@ -194,7 +194,7 @@ function showFlaggedDeprecation() {
   bufferWarningAlreadyEmitted = true;
 }
 
-export class FastBuffer extends Uint8Array {
+class FastBuffer extends Uint8Array {
   constructor(bufferOrLength, byteOffset, length) {
     super(bufferOrLength, byteOffset, length);
   }
@@ -255,7 +255,7 @@ function isDetachedBuffer(O) {
   return ArrayBufferPrototypeGetDetached(O);
 }
 
-export function Buffer(arg, encodingOrOffset, length) {
+function Buffer(arg, encodingOrOffset, length) {
   showFlaggedDeprecation();
   if (typeof arg === "number") {
     if (typeof encodingOrOffset === "string") {
@@ -531,7 +531,7 @@ function checked(length) {
   return MathTrunc(length);
 }
 
-export function SlowBuffer(length) {
+function SlowBuffer(length) {
   if (!slowBufferWarningAlreadyEmitted) {
     slowBufferWarningAlreadyEmitted = true;
     process.emitWarning(slowBufferWarning, "DeprecationWarning", "DEP0030");
@@ -2213,7 +2213,7 @@ for (let i = 0; i < 16; ++i) {
 return table;
 }();
 
-export function readUInt48LE(buf, offset = 0) {
+function readUInt48LE(buf, offset = 0) {
   validateNumber(offset, "offset");
   const first = buf[offset];
   const last = buf[offset + 5];
@@ -2228,7 +2228,7 @@ export function readUInt48LE(buf, offset = 0) {
     (buf[++offset] + last * 2 ** 8) * 2 ** 32;
 }
 
-export function readUInt40LE(buf, offset = 0) {
+function readUInt40LE(buf, offset = 0) {
   validateNumber(offset, "offset");
   const first = buf[offset];
   const last = buf[offset + 4];
@@ -2243,7 +2243,7 @@ export function readUInt40LE(buf, offset = 0) {
     last * 2 ** 32;
 }
 
-export function readUInt24LE(buf, offset = 0) {
+function readUInt24LE(buf, offset = 0) {
   validateNumber(offset, "offset");
   const first = buf[offset];
   const last = buf[offset + 2];
@@ -2254,7 +2254,7 @@ export function readUInt24LE(buf, offset = 0) {
   return first + buf[++offset] * 2 ** 8 + last * 2 ** 16;
 }
 
-export function readUInt48BE(buf, offset = 0) {
+function readUInt48BE(buf, offset = 0) {
   validateNumber(offset, "offset");
   const first = buf[offset];
   const last = buf[offset + 5];
@@ -2269,7 +2269,7 @@ export function readUInt48BE(buf, offset = 0) {
     last;
 }
 
-export function readUInt40BE(buf, offset = 0) {
+function readUInt40BE(buf, offset = 0) {
   validateNumber(offset, "offset");
   const first = buf[offset];
   const last = buf[offset + 4];
@@ -2284,7 +2284,7 @@ export function readUInt40BE(buf, offset = 0) {
     last;
 }
 
-export function readUInt24BE(buf, offset = 0) {
+function readUInt24BE(buf, offset = 0) {
   validateNumber(offset, "offset");
   const first = buf[offset];
   const last = buf[offset + 2];
@@ -2295,7 +2295,7 @@ export function readUInt24BE(buf, offset = 0) {
   return first * 2 ** 16 + buf[++offset] * 2 ** 8 + last;
 }
 
-export function readUInt16BE(offset = 0) {
+function readUInt16BE(offset = 0) {
   validateNumber(offset, "offset");
   const first = this[offset];
   const last = this[offset + 1];
@@ -2306,7 +2306,7 @@ export function readUInt16BE(offset = 0) {
   return first * 2 ** 8 + last;
 }
 
-export function readUInt32BE(offset = 0) {
+function readUInt32BE(offset = 0) {
   validateNumber(offset, "offset");
   const first = this[offset];
   const last = this[offset + 3];
@@ -2320,7 +2320,7 @@ export function readUInt32BE(offset = 0) {
     last;
 }
 
-export function readDoubleBackwards(buffer, offset = 0) {
+function readDoubleBackwards(buffer, offset = 0) {
   validateNumber(offset, "offset");
   const first = buffer[offset];
   const last = buffer[offset + 7];
@@ -2339,7 +2339,7 @@ export function readDoubleBackwards(buffer, offset = 0) {
   return float64Array[0];
 }
 
-export function readDoubleForwards(buffer, offset = 0) {
+function readDoubleForwards(buffer, offset = 0) {
   validateNumber(offset, "offset");
   const first = buffer[offset];
   const last = buffer[offset + 7];
@@ -2358,7 +2358,7 @@ export function readDoubleForwards(buffer, offset = 0) {
   return float64Array[0];
 }
 
-export function writeDoubleForwards(buffer, val, offset = 0) {
+function writeDoubleForwards(buffer, val, offset = 0) {
   val = +val;
   checkBounds(buffer, offset, 7);
 
@@ -2374,7 +2374,7 @@ export function writeDoubleForwards(buffer, val, offset = 0) {
   return offset;
 }
 
-export function writeDoubleBackwards(buffer, val, offset = 0) {
+function writeDoubleBackwards(buffer, val, offset = 0) {
   val = +val;
   checkBounds(buffer, offset, 7);
 
@@ -2390,7 +2390,7 @@ export function writeDoubleBackwards(buffer, val, offset = 0) {
   return offset;
 }
 
-export function readFloatBackwards(buffer, offset = 0) {
+function readFloatBackwards(buffer, offset = 0) {
   validateNumber(offset, "offset");
   const first = buffer[offset];
   const last = buffer[offset + 3];
@@ -2405,7 +2405,7 @@ export function readFloatBackwards(buffer, offset = 0) {
   return float32Array[0];
 }
 
-export function readFloatForwards(buffer, offset = 0) {
+function readFloatForwards(buffer, offset = 0) {
   validateNumber(offset, "offset");
   const first = buffer[offset];
   const last = buffer[offset + 3];
@@ -2420,7 +2420,7 @@ export function readFloatForwards(buffer, offset = 0) {
   return float32Array[0];
 }
 
-export function writeFloatForwards(buffer, val, offset = 0) {
+function writeFloatForwards(buffer, val, offset = 0) {
   val = +val;
   checkBounds(buffer, offset, 3);
 
@@ -2432,7 +2432,7 @@ export function writeFloatForwards(buffer, val, offset = 0) {
   return offset;
 }
 
-export function writeFloatBackwards(buffer, val, offset = 0) {
+function writeFloatBackwards(buffer, val, offset = 0) {
   val = +val;
   checkBounds(buffer, offset, 3);
 
@@ -2444,7 +2444,7 @@ export function writeFloatBackwards(buffer, val, offset = 0) {
   return offset;
 }
 
-export function readInt24LE(buf, offset = 0) {
+function readInt24LE(buf, offset = 0) {
   validateNumber(offset, "offset");
   const first = buf[offset];
   const last = buf[offset + 2];
@@ -2456,7 +2456,7 @@ export function readInt24LE(buf, offset = 0) {
   return val | (val & 2 ** 23) * 0x1fe;
 }
 
-export function readInt40LE(buf, offset = 0) {
+function readInt40LE(buf, offset = 0) {
   validateNumber(offset, "offset");
   const first = buf[offset];
   const last = buf[offset + 4];
@@ -2471,7 +2471,7 @@ export function readInt40LE(buf, offset = 0) {
     buf[++offset] * 2 ** 24;
 }
 
-export function readInt48LE(buf, offset = 0) {
+function readInt48LE(buf, offset = 0) {
   validateNumber(offset, "offset");
   const first = buf[offset];
   const last = buf[offset + 5];
@@ -2487,7 +2487,7 @@ export function readInt48LE(buf, offset = 0) {
     buf[++offset] * 2 ** 24;
 }
 
-export function readInt24BE(buf, offset = 0) {
+function readInt24BE(buf, offset = 0) {
   validateNumber(offset, "offset");
   const first = buf[offset];
   const last = buf[offset + 2];
@@ -2499,7 +2499,7 @@ export function readInt24BE(buf, offset = 0) {
   return val | (val & 2 ** 23) * 0x1fe;
 }
 
-export function readInt48BE(buf, offset = 0) {
+function readInt48BE(buf, offset = 0) {
   validateNumber(offset, "offset");
   const first = buf[offset];
   const last = buf[offset + 5];
@@ -2515,7 +2515,7 @@ export function readInt48BE(buf, offset = 0) {
     last;
 }
 
-export function readInt40BE(buf, offset = 0) {
+function readInt40BE(buf, offset = 0) {
   validateNumber(offset, "offset");
   const first = buf[offset];
   const last = buf[offset + 4];
@@ -2530,7 +2530,7 @@ export function readInt40BE(buf, offset = 0) {
     last;
 }
 
-export function byteLengthUtf8(str) {
+function byteLengthUtf8(str) {
   return core.byteLength(str);
 }
 
@@ -2547,7 +2547,7 @@ function base64ByteLength(str, bytes) {
   return (bytes * 3) >>> 2;
 }
 
-export const encodingsMap = ObjectCreate(null);
+const encodingsMap = ObjectCreate(null);
 for (let i = 0; i < encodings.length; ++i) {
   encodingsMap[encodings[i]] = i;
 }
@@ -2556,7 +2556,7 @@ for (let i = 0; i < encodings.length; ++i) {
 // that calls like Buffer.prototype.toString.call(uint8array, 'utf16le') work
 // generically without requiring the receiver to carry Buffer's prototype.
 // Matches the standalone-helper shape used in Node's lib/buffer.js encodingOps.
-export const encodingOps = {
+const encodingOps = {
   ascii: {
     byteLength: (string) => string.length,
     encoding: "ascii",
@@ -2743,7 +2743,7 @@ export const encodingOps = {
   },
 };
 
-export function getEncodingOps(encoding) {
+function getEncodingOps(encoding) {
   encoding = StringPrototypeToLowerCase(String(encoding));
   switch (encoding.length) {
     case 4:
@@ -2792,7 +2792,7 @@ export function getEncodingOps(encoding) {
  * @param {number} sourceEnd
  * @returns {number}
  */
-export function _copyActual(
+function _copyActual(
   source,
   target,
   targetStart,
@@ -2819,7 +2819,7 @@ export function _copyActual(
   return nb;
 }
 
-export function boundsError(value, length, type) {
+function boundsError(value, length, type) {
   if (MathFloor(value) !== value) {
     validateNumber(value, type);
     throw new codes.ERR_OUT_OF_RANGE(type || "offset", "an integer", value);
@@ -2843,7 +2843,7 @@ export function boundsError(value, length, type) {
  * @param {number} max
  * @returns {asserts value is number}
  */
-export function validateNumber(value, name, min = undefined, max) {
+function validateNumber(value, name, min = undefined, max) {
   if (typeof value !== "number") {
     throw new codes.ERR_INVALID_ARG_TYPE(name, "number", value);
   }
@@ -2881,7 +2881,7 @@ function checkInt(value, min, max, buf, offset, byteLength) {
   checkBounds(buf, offset, byteLength);
 }
 
-export function toInteger(n, defaultVal) {
+function toInteger(n, defaultVal) {
   n = +n;
   if (
     !NumberIsNaN(n) &&
@@ -2894,7 +2894,7 @@ export function toInteger(n, defaultVal) {
 }
 
 // deno-lint-ignore camelcase
-export function writeU_Int8(buf, value, offset, min, max) {
+function writeU_Int8(buf, value, offset, min, max) {
   value = +value;
   validateNumber(offset, "offset");
   if (value > max || value < min) {
@@ -2909,7 +2909,7 @@ export function writeU_Int8(buf, value, offset, min, max) {
 }
 
 // deno-lint-ignore camelcase
-export function writeU_Int16BE(buf, value, offset, min, max) {
+function writeU_Int16BE(buf, value, offset, min, max) {
   value = +value;
   checkInt(value, min, max, buf, offset, 1);
 
@@ -2918,7 +2918,7 @@ export function writeU_Int16BE(buf, value, offset, min, max) {
   return offset;
 }
 
-export function _writeUInt32LE(buf, value, offset, min, max) {
+function _writeUInt32LE(buf, value, offset, min, max) {
   value = +value;
   checkInt(value, min, max, buf, offset, 3);
 
@@ -2933,7 +2933,7 @@ export function _writeUInt32LE(buf, value, offset, min, max) {
 }
 
 // deno-lint-ignore camelcase
-export function writeU_Int16LE(buf, value, offset, min, max) {
+function writeU_Int16LE(buf, value, offset, min, max) {
   value = +value;
   checkInt(value, min, max, buf, offset, 1);
 
@@ -2942,7 +2942,7 @@ export function writeU_Int16LE(buf, value, offset, min, max) {
   return offset;
 }
 
-export function _writeUInt32BE(buf, value, offset, min, max) {
+function _writeUInt32BE(buf, value, offset, min, max) {
   value = +value;
   checkInt(value, min, max, buf, offset, 3);
 
@@ -2957,7 +2957,7 @@ export function _writeUInt32BE(buf, value, offset, min, max) {
 }
 
 // deno-lint-ignore camelcase
-export function writeU_Int48BE(buf, value, offset, min, max) {
+function writeU_Int48BE(buf, value, offset, min, max) {
   value = +value;
   checkInt(value, min, max, buf, offset, 5);
 
@@ -2975,7 +2975,7 @@ export function writeU_Int48BE(buf, value, offset, min, max) {
 }
 
 // deno-lint-ignore camelcase
-export function writeU_Int40BE(buf, value, offset, min, max) {
+function writeU_Int40BE(buf, value, offset, min, max) {
   value = +value;
   checkInt(value, min, max, buf, offset, 4);
 
@@ -2991,7 +2991,7 @@ export function writeU_Int40BE(buf, value, offset, min, max) {
 }
 
 // deno-lint-ignore camelcase
-export function writeU_Int32BE(buf, value, offset, min, max) {
+function writeU_Int32BE(buf, value, offset, min, max) {
   value = +value;
   checkInt(value, min, max, buf, offset, 3);
 
@@ -3006,7 +3006,7 @@ export function writeU_Int32BE(buf, value, offset, min, max) {
 }
 
 // deno-lint-ignore camelcase
-export function writeU_Int24BE(buf, value, offset, min, max) {
+function writeU_Int24BE(buf, value, offset, min, max) {
   value = +value;
   checkInt(value, min, max, buf, offset, 2);
 
@@ -3018,7 +3018,7 @@ export function writeU_Int24BE(buf, value, offset, min, max) {
   return offset + 3;
 }
 
-export function validateOffset(
+function validateOffset(
   value,
   name,
   min = 0,
@@ -3036,7 +3036,7 @@ export function validateOffset(
 }
 
 // deno-lint-ignore camelcase
-export function writeU_Int48LE(buf, value, offset, min, max) {
+function writeU_Int48LE(buf, value, offset, min, max) {
   value = +value;
   checkInt(value, min, max, buf, offset, 5);
 
@@ -3054,7 +3054,7 @@ export function writeU_Int48LE(buf, value, offset, min, max) {
 }
 
 // deno-lint-ignore camelcase
-export function writeU_Int40LE(buf, value, offset, min, max) {
+function writeU_Int40LE(buf, value, offset, min, max) {
   value = +value;
   checkInt(value, min, max, buf, offset, 4);
 
@@ -3071,7 +3071,7 @@ export function writeU_Int40LE(buf, value, offset, min, max) {
 }
 
 // deno-lint-ignore camelcase
-export function writeU_Int32LE(buf, value, offset, min, max) {
+function writeU_Int32LE(buf, value, offset, min, max) {
   value = +value;
   checkInt(value, min, max, buf, offset, 3);
 
@@ -3086,7 +3086,7 @@ export function writeU_Int32LE(buf, value, offset, min, max) {
 }
 
 // deno-lint-ignore camelcase
-export function writeU_Int24LE(buf, value, offset, min, max) {
+function writeU_Int24LE(buf, value, offset, min, max) {
   value = +value;
   checkInt(value, min, max, buf, offset, 2);
 
@@ -3098,7 +3098,7 @@ export function writeU_Int24LE(buf, value, offset, min, max) {
   return offset;
 }
 
-export function isUtf8(input) {
+function isUtf8(input) {
   if (isTypedArray(input)) {
     if (isDetachedBuffer(TypedArrayPrototypeGetBuffer(input))) {
       throw new ERR_INVALID_STATE("Cannot validate on a detached buffer");
@@ -3120,7 +3120,7 @@ export function isUtf8(input) {
   ], input);
 }
 
-export function isAscii(input) {
+function isAscii(input) {
   if (isTypedArray(input)) {
     if (isDetachedBuffer(TypedArrayPrototypeGetBuffer(input))) {
       throw new ERR_INVALID_STATE("Cannot validate on a detached buffer");
@@ -3142,7 +3142,7 @@ export function isAscii(input) {
   ], input);
 }
 
-export function transcode(source, fromEnco, toEnco) {
+function transcode(source, fromEnco, toEnco) {
   if (!isUint8Array(source)) {
     throw new codes.ERR_INVALID_ARG_TYPE(
       "source",
@@ -3184,7 +3184,7 @@ export function transcode(source, fromEnco, toEnco) {
   }
 }
 
-export function resolveObjectURL(url) {
+function resolveObjectURL(url) {
   if (typeof url !== "string") {
     return undefined;
   }
@@ -3223,4 +3223,69 @@ const mod = {
 // as well as make it work with `require` in such a way that getters/setters
 // for `INSPECT_MAX_BYTES` work correctly - using `as "module.exports"` ensures
 // that `require`ing this module does that.
-export { mod as "module.exports", mod as default };
+
+return {
+  atob,
+  Blob,
+  btoa,
+  File,
+  "module.exports": mod,
+  default: mod,
+  Buffer,
+  SlowBuffer,
+  readUInt48LE,
+  readUInt40LE,
+  readUInt24LE,
+  readUInt48BE,
+  readUInt40BE,
+  readUInt24BE,
+  readUInt16BE,
+  readUInt32BE,
+  readDoubleBackwards,
+  readDoubleForwards,
+  writeDoubleForwards,
+  writeDoubleBackwards,
+  readFloatBackwards,
+  readFloatForwards,
+  writeFloatForwards,
+  writeFloatBackwards,
+  readInt24LE,
+  readInt40LE,
+  readInt48LE,
+  readInt24BE,
+  readInt48BE,
+  readInt40BE,
+  byteLengthUtf8,
+  getEncodingOps,
+  _copyActual,
+  boundsError,
+  validateNumber,
+  toInteger,
+  writeU_Int8,
+  writeU_Int16BE,
+  _writeUInt32LE,
+  writeU_Int16LE,
+  _writeUInt32BE,
+  writeU_Int48BE,
+  writeU_Int40BE,
+  writeU_Int32BE,
+  writeU_Int24BE,
+  validateOffset,
+  writeU_Int48LE,
+  writeU_Int40LE,
+  writeU_Int32LE,
+  writeU_Int24LE,
+  isUtf8,
+  isAscii,
+  transcode,
+  resolveObjectURL,
+  FastBuffer,
+  bigEndian,
+  kMaxLength,
+  kStringMaxLength,
+  INSPECT_MAX_BYTES,
+  constants,
+  encodingsMap,
+  encodingOps,
+};
+})();

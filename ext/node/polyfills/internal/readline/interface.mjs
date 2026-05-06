@@ -24,6 +24,7 @@
 // deno-lint-ignore-file prefer-primordials
 // deno-lint-ignore-file camelcase no-inner-declarations no-this-alias
 
+import { core, primordials } from "ext:core/mod.js";
 import { op_get_env_no_permission_check } from "ext:core/ops";
 
 const {
@@ -40,21 +41,21 @@ const {
 import EventEmitter from "node:events";
 import { kFirstEventParam } from "ext:deno_node/_events.mjs";
 import { emitKeypressEvents } from "ext:deno_node/internal/readline/emitKeypressEvents.mjs";
-import {
+const {
   charLengthAt,
   charLengthLeft,
   commonPrefix,
   kSubstringSearch,
-} from "ext:deno_node/internal/readline/utils.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/readline/utils.mjs");
+const {
   clearScreenDown,
   cursorTo,
   moveCursor,
-} from "ext:deno_node/internal/readline/callbacks.mjs";
+} = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
 import process from "node:process";
 
 import { StringDecoder } from "node:string_decoder";
-import {
+const {
   kAddHistory,
   kDecoder,
   kDeleteLeft,
@@ -86,8 +87,7 @@ import {
   kWordLeft,
   kWordRight,
   kWriteToOutput,
-} from "ext:deno_node/internal/readline/symbols.mjs";
-import { core, primordials } from "ext:core/mod.js";
+} = core.loadExtScript("ext:deno_node/internal/readline/symbols.mjs");
 const {
   validateAbortSignal,
   validateArray,

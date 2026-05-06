@@ -17,7 +17,7 @@ import {
 } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
 
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { Transform } from "node:stream";
 const {
   forgivingBase64Encode: encodeToBase64,

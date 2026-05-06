@@ -2,7 +2,7 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import {
   op_vm_compile_function,
