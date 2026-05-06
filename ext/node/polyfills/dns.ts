@@ -36,7 +36,7 @@ const {
   validatePort,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { isIP } from "ext:deno_node/internal/net.ts";
+const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
 import {
   dnsOrderToNumber,
   emitInvalidHostnameWarning,

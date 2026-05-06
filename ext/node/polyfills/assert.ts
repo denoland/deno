@@ -19,11 +19,11 @@ const {
   ERR_INVALID_RETURN_VALUE,
   ERR_MISSING_ARGS,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import {
+const {
   isDeepEqual,
   isDeepStrictEqual,
   isPartialStrictEqual,
-} from "ext:deno_node/internal/util/comparisons.ts";
+} = core.loadExtScript("ext:deno_node/internal/util/comparisons.ts");
 const { CallTracker } = core.loadExtScript(
   "ext:deno_node/internal/assert/calltracker.js",
 );

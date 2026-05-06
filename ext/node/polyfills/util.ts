@@ -47,7 +47,7 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/util/inspect.mjs");
 const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
 import types from "node:util/types";
-import { isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
+const { isDeepStrictEqual } = core.loadExtScript("ext:deno_node/internal/util/comparisons.ts");
 const {
   validateAbortSignal,
   validateNumber,

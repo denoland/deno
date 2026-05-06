@@ -59,7 +59,7 @@ const { codeMap, errorMap } = core.loadExtScript(
 );
 import { Buffer } from "node:buffer";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import { isIP } from "ext:deno_node/internal/net.ts";
+const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
 const { isLinux, isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 const { os } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",

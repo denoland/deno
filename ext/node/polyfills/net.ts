@@ -30,13 +30,13 @@ const { BlockList, SocketAddress } = core.loadExtScript(
 );
 
 import { EventEmitter } from "node:events";
-import {
+const {
   isIP,
   isIPv4,
   isIPv6,
   kReinitializeHandle,
   normalizedArgsSymbol,
-} from "ext:deno_node/internal/net.ts";
+} = core.loadExtScript("ext:deno_node/internal/net.ts");
 import { Duplex } from "node:stream";
 const {
   asyncIdSymbol,
