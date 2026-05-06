@@ -4,7 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
 const {
   SymbolSpecies,
@@ -14,6 +14,7 @@ import {
   op_node_create_private_key,
   op_node_create_public_key,
   op_node_derive_public_key_from_private_key,
+  op_node_get_asymmetric_key_details,
   op_node_get_asymmetric_key_type,
   op_node_sign,
   op_node_sign_ed25519,
@@ -23,11 +24,11 @@ import {
   op_node_verify_ed448,
 } from "ext:core/ops";
 
-import {
+const {
   validateFunction,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import { Buffer } from "node:buffer";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import type { WritableOptions } from "ext:deno_node/_stream.d.ts";
 import Writable from "node:_stream_writable";
 import type {
@@ -46,7 +47,11 @@ import {
   PublicKeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
 import { createHash } from "ext:deno_node/internal/crypto/hash.ts";
-import { ERR_CRYPTO_SIGN_KEY_REQUIRED } from "ext:deno_node/internal/errors.ts";
+const {
+  ERR_CRYPTO_SIGN_KEY_REQUIRED,
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const FastBuffer = Buffer[SymbolSpecies];
 
@@ -109,6 +114,18 @@ function isPrivateKeyType(type: string | undefined): boolean {
   return type !== undefined && PRIVATE_KEY_TYPES.includes(type);
 }
 
+function isPrivateKeyPem(data: ArrayBuffer | ArrayBufferView): boolean {
+  const bytes = data instanceof ArrayBuffer
+    ? new Uint8Array(data, 0, Math.min(data.byteLength, 100))
+    : new Uint8Array(
+      (data as ArrayBufferView).buffer,
+      (data as ArrayBufferView).byteOffset,
+      Math.min((data as ArrayBufferView).byteLength, 100),
+    );
+  const prefix = String.fromCharCode(...bytes);
+  return prefix.includes("PRIVATE KEY");
+}
+
 export type KeyLike = string | Buffer | KeyObject;
 
 export class SignImpl extends Writable {
@@ -128,7 +145,11 @@ export class SignImpl extends Writable {
     algorithm = algorithm.toLowerCase();
 
     this.#digestType = algorithm;
-    this.hash = createHash(this.#digestType);
+    try {
+      this.hash = createHash(this.#digestType);
+    } catch {
+      throw new Error(`Invalid digest: ${algorithm}`);
+    }
   }
 
   sign(
@@ -136,6 +157,10 @@ export class SignImpl extends Writable {
     privateKey: any,
     encoding?: BinaryToTextEncoding,
   ): Buffer | string {
+    if (!privateKey) {
+      throw new ERR_CRYPTO_SIGN_KEY_REQUIRED();
+    }
+
     const res = prepareAsymmetricKey(privateKey, kConsumePrivate);
 
     // Options specific to RSA
@@ -151,12 +176,18 @@ export class SignImpl extends Writable {
     if ("handle" in res) {
       handle = res.handle;
     } else {
-      handle = op_node_create_private_key(
-        res.data,
-        res.format,
-        res.type ?? "",
-        res.passphrase,
-      );
+      try {
+        handle = op_node_create_private_key(
+          res.data,
+          res.format,
+          res.type ?? "",
+          res.passphrase,
+        );
+      } catch (err) {
+        // Trigger any prototype setter for `library` (Node.js compatibility)
+        (err as Record<string, unknown>).library = "PEM routines";
+        throw err;
+      }
     }
     const ret = Buffer.from(op_node_sign(
       handle,
@@ -166,7 +197,7 @@ export class SignImpl extends Writable {
       rsaPadding,
       dsaSigEnc,
     ));
-    return encoding ? ret.toString(encoding) : ret;
+    return encoding && encoding !== "buffer" ? ret.toString(encoding) : ret;
   }
 
   update(
@@ -201,7 +232,11 @@ export class VerifyImpl extends Writable {
     algorithm = algorithm.toLowerCase();
 
     this.#digestType = algorithm;
-    this.hash = createHash(this.#digestType);
+    try {
+      this.hash = createHash(this.#digestType);
+    } catch {
+      throw new Error(`Invalid digest: ${algorithm}`);
+    }
   }
 
   update(data: BinaryLike, encoding?: string): this {
@@ -215,6 +250,16 @@ export class VerifyImpl extends Writable {
     signature: BinaryLike,
     encoding?: BinaryToTextEncoding,
   ): boolean {
+    if (
+      typeof signature !== "string" &&
+      !ArrayBuffer.isView(signature)
+    ) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "signature",
+        ["Buffer", "TypedArray", "DataView"],
+        signature,
+      );
+    }
     const res = prepareAsymmetricKey(publicKey, kConsumePublic);
 
     // Options specific to RSA
@@ -229,7 +274,10 @@ export class VerifyImpl extends Writable {
     let handle;
     if ("handle" in res) {
       handle = res.handle;
-    } else if (isPrivateKeyType(res.type)) {
+    } else if (
+      isPrivateKeyType(res.type) ||
+      (res.type === undefined && isPrivateKeyPem(res.data))
+    ) {
       const privateHandle = op_node_create_private_key(
         res.data,
         res.format,
@@ -277,9 +325,31 @@ export function signOneShot(
     validateFunction(callback, "callback");
   }
 
+  if (!ArrayBuffer.isView(data) && typeof data !== "string") {
+    throw new ERR_INVALID_ARG_TYPE(
+      "data",
+      ["Buffer", "TypedArray", "DataView"],
+      data,
+    );
+  }
+
   if (!key) {
     throw new ERR_CRYPTO_SIGN_KEY_REQUIRED();
   }
+
+  // Validate dsaEncoding early so it takes precedence over key errors
+  if (typeof key === "object" && key !== null && !(key instanceof KeyObject)) {
+    getDSASignatureEncoding(key);
+  }
+
+  // Normalize ArrayBufferView data to Uint8Array for Rust ops
+  const dataBytes = ArrayBuffer.isView(data) && !(data instanceof Uint8Array)
+    ? new Uint8Array(
+      (data as ArrayBufferView).buffer,
+      (data as ArrayBufferView).byteOffset,
+      (data as ArrayBufferView).byteLength,
+    )
+    : data as ArrayBufferView | string;
 
   try {
     const res = prepareAsymmetricKey(key, kConsumePrivate);
@@ -302,21 +372,39 @@ export function signOneShot(
         throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
       }
       result = new FastBuffer(64);
-      op_node_sign_ed25519(handle, data, result);
+      op_node_sign_ed25519(handle, dataBytes, result);
     } else if (keyType === "ed448") {
+      const keyOpts = typeof key === "object" && key !== null &&
+          !(key instanceof KeyObject)
+        ? key as Record<string, unknown>
+        : null;
+      const ctx = keyOpts?.context;
+      if (ctx instanceof Uint8Array && ctx.length > 0) {
+        throw new TypeError("Context parameter is unsupported");
+      }
       result = new FastBuffer(114);
-      op_node_sign_ed448(handle, data, result);
-    } else if (algorithm == null) {
-      throw new TypeError(
-        "Algorithm must be specified when using non-Ed25519 keys",
-      );
+      op_node_sign_ed448(handle, dataBytes, result);
     } else {
+      let digest = algorithm;
+      if (digest == null) {
+        if (keyType === "rsa-pss") {
+          const details = op_node_get_asymmetric_key_details(handle);
+          if (details.hashAlgorithm) {
+            digest = details.hashAlgorithm;
+          }
+        }
+        if (digest == null) {
+          throw new TypeError(
+            "Algorithm must be specified when using non-Ed25519 keys",
+          );
+        }
+      }
       // Preserve padding/saltLength options from the original key
       const privateKeyObject = new PrivateKeyObject(handle);
       const signKey = typeof key === "object" && !(key instanceof KeyObject)
         ? { ...key, key: privateKeyObject }
         : privateKeyObject;
-      result = Sign(algorithm!).update(data)
+      result = Sign(digest).update(dataBytes)
         .sign(signKey);
     }
 
@@ -349,16 +437,44 @@ export function verifyOneShot(
     validateFunction(callback, "callback");
   }
 
+  if (!ArrayBuffer.isView(data) && typeof data !== "string") {
+    throw new ERR_INVALID_ARG_TYPE(
+      "data",
+      ["Buffer", "TypedArray", "DataView"],
+      data,
+    );
+  }
+
+  if (!ArrayBuffer.isView(signature) && typeof signature !== "string") {
+    throw new ERR_INVALID_ARG_TYPE(
+      "signature",
+      ["Buffer", "TypedArray", "DataView"],
+      signature,
+    );
+  }
+
   if (!key) {
     throw new ERR_CRYPTO_SIGN_KEY_REQUIRED();
   }
+
+  // Normalize ArrayBufferView data to Uint8Array for Rust ops
+  const dataBytes = ArrayBuffer.isView(data) && !(data instanceof Uint8Array)
+    ? new Uint8Array(
+      (data as ArrayBufferView).buffer,
+      (data as ArrayBufferView).byteOffset,
+      (data as ArrayBufferView).byteLength,
+    )
+    : data as ArrayBufferView | string;
 
   try {
     const res = prepareAsymmetricKey(key, kConsumePublic);
     let handle;
     if ("handle" in res) {
       handle = res.handle;
-    } else if (isPrivateKeyType(res.type)) {
+    } else if (
+      isPrivateKeyType(res.type) ||
+      (res.type === undefined && isPrivateKeyPem(res.data))
+    ) {
       const privateHandle = op_node_create_private_key(
         res.data,
         res.format,
@@ -381,24 +497,41 @@ export function verifyOneShot(
       if (algorithm != null && algorithm !== "sha512") {
         throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
       }
-      result = op_node_verify_ed25519(handle, data, signature);
+      result = op_node_verify_ed25519(handle, dataBytes, signature);
     } else if (keyType === "ed448") {
-      result = op_node_verify_ed448(handle, data, signature);
+      const keyOpts = typeof key === "object" && key !== null &&
+          !(key instanceof KeyObject)
+        ? key as Record<string, unknown>
+        : null;
+      const ctx = keyOpts?.context;
+      if (ctx instanceof Uint8Array && ctx.length > 0) {
+        throw new TypeError("Context parameter is unsupported");
+      }
+      result = op_node_verify_ed448(handle, dataBytes, signature);
     } else if (keyType === "x25519" || keyType === "x448" || keyType === "dh") {
       throw new TypeError(
         "operation not supported for this keytype",
       );
-    } else if (algorithm == null) {
-      throw new TypeError(
-        "no default digest",
-      );
     } else {
+      let digest = algorithm;
+      if (digest == null) {
+        // RSA-PSS keys encode their hash algorithm in the key parameters
+        if (keyType === "rsa-pss") {
+          const details = op_node_get_asymmetric_key_details(handle);
+          if (details.hashAlgorithm) {
+            digest = details.hashAlgorithm;
+          }
+        }
+        if (digest == null) {
+          throw new TypeError("no default digest");
+        }
+      }
       // Preserve padding/saltLength options from the original key
       const publicKeyObject = new PublicKeyObject(handle);
       const verifyKey = typeof key === "object" && !(key instanceof KeyObject)
         ? { ...key, key: publicKeyObject }
         : publicKeyObject;
-      result = Verify(algorithm!).update(data)
+      result = Verify(digest).update(dataBytes)
         .verify(verifyKey, signature);
     }
 

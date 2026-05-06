@@ -911,6 +911,26 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       }));
     }
 
+    // Same-document fragment references in CSS — `url(#default#VML)`,
+    // `url(#gradient)` for SVG paint servers, etc. — are not file imports
+    // and must be left as-is in the output. Without this, `bundle_resolve`
+    // tries to resolve them as package import specifiers and fails (see
+    // denoland/deno#32232).
+    if matches!(
+      args.kind,
+      esbuild_client::protocol::ImportKind::UrlToken
+        | esbuild_client::protocol::ImportKind::ImportRule
+    ) && args.path.starts_with('#')
+    {
+      return Ok(Some(esbuild_client::OnResolveResult {
+        external: Some(true),
+        path: Some(args.path),
+        plugin_name: Some("deno".to_string()),
+        plugin_data: None,
+        ..Default::default()
+      }));
+    }
+
     let result = self.bundle_resolve(
       &args.path,
       args.importer.as_deref(),

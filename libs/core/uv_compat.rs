@@ -6,6 +6,7 @@ mod pipe;
 mod stream;
 mod tcp;
 mod tty;
+mod waker;
 
 #[cfg(all(not(miri), test))]
 mod tests;
@@ -17,6 +18,7 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::ffi::c_int;
 use std::ffi::c_void;
+use std::sync::Arc;
 use std::task::Context;
 use std::task::Waker;
 use std::time::Instant;
@@ -70,6 +72,10 @@ uv_errno!(UV_ENOTSUP, libc::ENOTSUP, -4049);
 uv_errno!(UV_EALREADY, libc::EALREADY, -4084);
 uv_errno!(UV_ENOENT, libc::ENOENT, -4058);
 uv_errno!(UV_ENOTSOCK, libc::ENOTSOCK, -4050);
+uv_errno!(UV_ECONNRESET, libc::ECONNRESET, -4077);
+uv_errno!(UV_ECONNABORTED, libc::ECONNABORTED, -4079);
+uv_errno!(UV_ETIMEDOUT, libc::ETIMEDOUT, -4039);
+uv_errno!(UV_EACCES, libc::EACCES, -4092);
 pub const UV_EOF: i32 = -4095;
 
 /// Map a `std::io::Error` to the closest libuv error code.
@@ -79,16 +85,43 @@ pub(crate) fn io_error_to_uv(err: &std::io::Error) -> c_int {
     ErrorKind::AddrInUse => UV_EADDRINUSE,
     ErrorKind::AddrNotAvailable => UV_EINVAL,
     ErrorKind::ConnectionRefused => UV_ECONNREFUSED,
+    ErrorKind::ConnectionReset => UV_ECONNRESET,
+    ErrorKind::ConnectionAborted => UV_ECONNABORTED,
     ErrorKind::NotConnected => UV_ENOTCONN,
     ErrorKind::NotFound => UV_ENOENT,
     ErrorKind::BrokenPipe => UV_EPIPE,
     ErrorKind::InvalidInput => UV_EINVAL,
     ErrorKind::WouldBlock => UV_EAGAIN,
+    ErrorKind::TimedOut => UV_ETIMEDOUT,
+    ErrorKind::PermissionDenied => {
+      // On Windows, ERROR_PIPE_BUSY (231) is mapped to PermissionDenied
+      // by Rust std, but it means the named pipe is already in use.
+      #[cfg(windows)]
+      if let Some(231) = err.raw_os_error() {
+        return UV_EADDRINUSE;
+      }
+      UV_EACCES
+    }
     _ => {
       // On Unix, try to use the raw OS error for a more accurate mapping.
       #[cfg(unix)]
       if let Some(code) = err.raw_os_error() {
         return -code;
+      }
+      // On Windows, map common Winsock errors to libuv codes.
+      #[cfg(windows)]
+      if let Some(code) = err.raw_os_error() {
+        return match code {
+          10054 => UV_ECONNRESET,   // WSAECONNRESET
+          10053 => UV_ECONNABORTED, // WSAECONNABORTED
+          10061 => UV_ECONNREFUSED, // WSAECONNREFUSED
+          10048 => UV_EADDRINUSE,   // WSAEADDRINUSE
+          10060 => UV_ETIMEDOUT,    // WSAETIMEDOUT
+          10057 => UV_ENOTCONN,     // WSAENOTCONN
+          10038 => UV_ENOTSOCK,     // WSAENOTSOCK
+          10035 => UV_EAGAIN,       // WSAEWOULDBLOCK
+          _ => UV_EINVAL,
+        };
       }
       UV_EINVAL
     }
@@ -198,6 +231,10 @@ pub(crate) struct UvLoopInner {
   /// Cached loop time in milliseconds. Updated once per tick via
   /// `update_time()`, matching libuv's `uv_update_time` semantics.
   cached_time_ms: Cell<u64>,
+  /// Shared state between the loop and per-handle wakers. Waker
+  /// callbacks may fire from tokio's reactor thread, so access goes
+  /// through this Send+Sync struct instead of `UvLoopInner` directly.
+  pub(crate) shared: std::sync::Arc<waker::LoopShared>,
 }
 
 impl UvLoopInner {
@@ -217,6 +254,7 @@ impl UvLoopInner {
       closing_handles: RefCell::new(VecDeque::with_capacity(16)),
       time_origin: origin,
       cached_time_ms: Cell::new(0),
+      shared: waker::LoopShared::new(),
     }
   }
 
@@ -226,6 +264,9 @@ impl UvLoopInner {
       Some(existing) if existing.will_wake(waker) => {}
       _ => *slot = Some(waker.clone()),
     }
+    // Register with the shared AtomicWaker too, so handle wakers
+    // (which run on tokio's reactor thread) can wake the loop.
+    self.shared.loop_waker.register(waker);
   }
 
   /// Wake the event loop so it re-polls on the next tick. Used on
@@ -479,84 +520,102 @@ impl UvLoopInner {
   /// # Safety
   /// All TCP handle pointers in `tcp_handles` must be valid.
   pub(crate) unsafe fn run_io(&self) -> bool {
-    let noop = Waker::noop();
-    let waker_ref = self.waker.borrow();
-    let waker = waker_ref.as_ref().unwrap_or(noop);
-    let mut cx = Context::from_waker(waker);
-
-    let mut did_any_work = false;
-
-    for _pass in 0..16 {
+    // Drain ready queues once. Each popped handle is polled with a
+    // `Context` built from its own per-handle waker; tokio re-registers
+    // interest under that waker so the next readiness signal re-queues
+    // the handle for the next tick.
+    //
+    // Validate each popped pointer against the authoritative `*_handles`
+    // list before dereferencing — the handle may have been closed
+    // between a waker fire and the drain.
+    //
+    // One pass only: looping in place (e.g. `for _ in 0..16`) batches
+    // more I/O per event-loop tick but under sustained HTTP load the
+    // ready queues refill as tokio delivers new readiness while we're
+    // still polling, so the loop never exits. Handles whose data lands
+    // mid-tick then wait for the entire batch to drain before their
+    // response fires, pushing p99 from ~1 ms (Node-matching) to 30–200
+    // ms at 50 concurrent connections. Libuv's uv_run does one
+    // uv__io_poll per iteration for the same reason.
+    {
       let mut any_work = false;
 
-      let mut i = 0;
-      loop {
-        let tcp_ptr = {
-          let handles = self.tcp_handles.borrow();
-          if i >= handles.len() {
-            break;
-          }
-          handles[i]
-        };
-        i += 1;
-        // SAFETY: tcp_ptr comes from tcp_handles; caller guarantees validity.
+      // --- TCP ---
+      // IMPORTANT: always call `reset_queued()` on every popped
+      // handle, even ones we skip (detached or inactive). If we
+      // skip without resetting, the per-handle `in_queue` flag
+      // stays `true` and a later `mark_ready()` from the same
+      // handle (e.g. after `uv_read_stop` cleared ACTIVE and then
+      // `uv_read_start` re-armed it) becomes a no-op — the handle
+      // never gets enqueued again and the event loop stops polling
+      // it entirely.
+      //
+      // Liveness is established by `handle_waker.live_ptr()`: the
+      // waker's ptr field is zeroed by `detach()` when the handle is
+      // torn down, so queued-then-closed entries self-invalidate.
+      // The Arc keeps the waker allocation alive across the handle's
+      // destruction, so the atomic load is always safe.
+      let mut tcp_ready: VecDeque<Arc<waker::TcpHandleWaker>> =
+        std::mem::take(&mut *self.shared.ready_tcp.borrow_mut());
+      while let Some(handle_waker) = tcp_ready.pop_front() {
+        handle_waker.reset_queued();
+        let ptr = handle_waker.live_ptr();
+        if ptr == 0 {
+          continue;
+        }
+        let tcp_ptr = ptr as *mut uv_tcp_t;
+        // SAFETY: ptr is non-zero, so the handle has not been detached.
         if unsafe { (*tcp_ptr).flags } & UV_HANDLE_ACTIVE == 0 {
           continue;
         }
+        let waker = std::task::Waker::from(handle_waker);
+        let mut cx = Context::from_waker(&waker);
+        // SAFETY: tcp_ptr is live per the ptr check above.
+        any_work |= unsafe { tcp::poll_tcp_handle(tcp_ptr, &mut cx) };
+      }
 
-        // SAFETY: tcp_ptr is valid; checked above.
-        let work = unsafe { tcp::poll_tcp_handle(tcp_ptr, &mut cx) };
-        any_work |= work;
-      } // end per-tcp-handle loop
-
-      {
-        let mut pi = 0;
-        loop {
-          let pipe_ptr = {
-            let handles = self.pipe_handles.borrow();
-            if pi >= handles.len() {
-              break;
-            }
-            handles[pi]
-          };
-          pi += 1;
-          // SAFETY: pipe_ptr comes from pipe_handles; caller guarantees validity.
-          if unsafe { (*pipe_ptr).flags } & UV_HANDLE_ACTIVE == 0 {
-            continue;
-          }
-
-          // SAFETY: pipe_ptr is valid; checked above.
-          let work = unsafe { pipe::poll_pipe_handle(pipe_ptr, &mut cx) };
-          any_work |= work;
+      // --- pipe ---
+      let mut pipe_ready: VecDeque<Arc<waker::PipeHandleWaker>> =
+        std::mem::take(&mut *self.shared.ready_pipe.borrow_mut());
+      while let Some(handle_waker) = pipe_ready.pop_front() {
+        handle_waker.reset_queued();
+        let ptr = handle_waker.live_ptr();
+        if ptr == 0 {
+          continue;
         }
-      } // end per-pipe-handle loop
+        let pipe_ptr = ptr as *mut uv_pipe_t;
+        // SAFETY: ptr is non-zero.
+        if unsafe { (*pipe_ptr).flags } & UV_HANDLE_ACTIVE == 0 {
+          continue;
+        }
+        let waker = std::task::Waker::from(handle_waker);
+        let mut cx = Context::from_waker(&waker);
+        // SAFETY: pipe_ptr is live.
+        any_work |= unsafe { pipe::poll_pipe_handle(pipe_ptr, &mut cx) };
+      }
 
-      let mut j = 0;
-      loop {
-        let tty_ptr = {
-          let handles = self.tty_handles.borrow();
-          if j >= handles.len() {
-            break;
-          }
-          handles[j]
-        };
-        j += 1;
-        // SAFETY: tty_ptr comes from tty_handles; caller guarantees validity.
+      // --- TTY ---
+      let mut tty_ready: VecDeque<Arc<waker::TtyHandleWaker>> =
+        std::mem::take(&mut *self.shared.ready_tty.borrow_mut());
+      while let Some(handle_waker) = tty_ready.pop_front() {
+        handle_waker.reset_queued();
+        let ptr = handle_waker.live_ptr();
+        if ptr == 0 {
+          continue;
+        }
+        let tty_ptr = ptr as *mut uv_tty_t;
+        // SAFETY: ptr is non-zero.
         if unsafe { (*tty_ptr).flags } & UV_HANDLE_ACTIVE == 0 {
           continue;
         }
-
-        // SAFETY: tty_ptr is valid; checked above.
+        let waker = std::task::Waker::from(handle_waker);
+        let mut cx = Context::from_waker(&waker);
+        // SAFETY: tty_ptr is live.
         any_work |= unsafe { tty::poll_tty_handle(tty_ptr, &mut cx) };
-      } // end per-tty-handle loop
-
-      if !any_work {
-        break;
       }
-      did_any_work = true;
-    } // end multi-pass loop
 
-    did_any_work
+      any_work
+    }
   }
 
   /// ### Safety
@@ -617,6 +676,9 @@ impl UvLoopInner {
     // SAFETY: Caller guarantees handle is valid and initialized.
     unsafe {
       let tty = &mut *handle;
+      if let Some(w) = tty.internal_waker.take() {
+        w.detach();
+      }
 
       // Always check if this fd is the globally tracked one, matching
       // libuv's unconditional check in uv__tty_close.
@@ -691,6 +753,12 @@ impl UvLoopInner {
     // SAFETY: Caller guarantees handle is valid and initialized.
     unsafe {
       let tcp = &mut *handle;
+      // Detach the per-handle waker so any late wake from tokio's
+      // reactor becomes a no-op. The Arc is dropped via take() so
+      // the waker memory is released.
+      if let Some(w) = tcp.internal_waker.take() {
+        w.detach();
+      }
       tcp.internal_reading = false;
       tcp.internal_alloc_cb = None;
       tcp.internal_read_cb = None;
@@ -710,14 +778,13 @@ impl UvLoopInner {
           cb(pw.req, UV_ECANCELED);
         }
       }
-      if let Some(stream) = tcp.internal_stream.take() {
-        // Match libuv: just close the fd. The OS delivers FIN/RST to the
-        // peer naturally; the peer's read loop detects EOF via recv()
-        // returning 0.  libuv does NOT manually signal EOF to peer handles.
-        if let Ok(std_stream) = stream.into_std() {
-          let _ = std_stream.shutdown(std::net::Shutdown::Both);
-        }
-      }
+      // Match libuv's uv__stream_close: plain close(2) on the fd, no
+      // shutdown. The kernel emits FIN when the kernel-level open file
+      // description (OFD) refcount reaches zero, which handles both regular
+      // closes and IPC-transferred fds (where the receiver still holds a dup,
+      // so FIN is correctly suppressed).
+      drop(tcp.internal_stream.take());
+      tcp.internal_fd = None;
       tcp.internal_socket = None;
       tcp.internal_delayed_error = 0;
       tcp.internal_listener = None;
@@ -741,6 +808,9 @@ impl UvLoopInner {
       .retain(|&h| !std::ptr::eq(h, handle));
     // SAFETY: Caller guarantees handle is valid and initialized.
     unsafe {
+      if let Some(w) = (*handle).internal_waker.take() {
+        w.detach();
+      }
       // Cancel in-flight write requests with UV_ECANCELED.
       while let Some(pw) = (*handle).internal_write_queue.pop_front() {
         if let Some(cb) = pw.cb {

@@ -59,6 +59,7 @@ impl std::fmt::Debug for ExtensionFileSourceCode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExtensionSourceType {
   LazyEsm,
+  LazyJs,
   Js,
   Esm,
 }
@@ -414,6 +415,9 @@ macro_rules! or {
 ///  * esm: a comma-separated list of ESM module filenames (see [`include_js_files`]), eg: `esm = [ dir "dir", "my_file.js" ]`
 ///  * lazy_loaded_esm: a comma-separated list of ESM module filenames (see [`include_js_files`]), that will be included in
 ///    the produced binary, but not automatically evaluated. Eg: `lazy_loaded_esm = [ dir "dir", "my_file.js" ]`
+///  * lazy_loaded_js: a comma-separated list of JS script filenames that will be included in
+///    the produced binary, but not automatically evaluated. Loaded on demand via `Deno.core.loadExtScript()`.
+///    Eg: `lazy_loaded_js = [ dir "dir", "my_file.js" ]`
 ///  * js: a comma-separated list of JS filenames (see [`include_js_files`]), eg: `js = [ dir "dir", "my_file.js" ]`
 ///  * config: a structure-like definition for configuration parameters which will be required when initializing this extension, eg: `config = { my_param: Option<usize> }`
 ///  * middleware: an [`OpDecl`] middleware function with the signature `fn (OpDecl) -> OpDecl`
@@ -434,6 +438,7 @@ macro_rules! extension {
     $(, esm_entry_point = $esm_entry_point:expr_2021 )?
     $(, esm = [ $($esm:tt)* ] )?
     $(, lazy_loaded_esm = [ $($lazy_loaded_esm:tt)* ] )?
+    $(, lazy_loaded_js = [ $($lazy_loaded_js:tt)* ] )?
     $(, js = [ $($js:tt)* ] )?
     $(, options = { $( $options_id:ident : $options_type:ty ),* $(,)? } )?
     $(, middleware = $middleware_fn:expr_2021 )?
@@ -484,6 +489,10 @@ macro_rules! extension {
           },
           lazy_loaded_esm_files: {
             const JS: &'static [$crate::ExtensionFileSource] = &$crate::include_lazy_loaded_js_files!( $name $($($lazy_loaded_esm)*)? );
+            ::std::borrow::Cow::Borrowed(JS)
+          },
+          lazy_loaded_js_files: {
+            const JS: &'static [$crate::ExtensionFileSource] = &$crate::include_lazy_loaded_js_files!( $name $($($lazy_loaded_js)*)? );
             ::std::borrow::Cow::Borrowed(JS)
           },
           esm_entry_point: {
@@ -639,6 +648,7 @@ pub struct Extension {
   pub js_files: Cow<'static, [ExtensionFileSource]>,
   pub esm_files: Cow<'static, [ExtensionFileSource]>,
   pub lazy_loaded_esm_files: Cow<'static, [ExtensionFileSource]>,
+  pub lazy_loaded_js_files: Cow<'static, [ExtensionFileSource]>,
   pub esm_entry_point: Option<&'static str>,
   pub ops: Cow<'static, [OpDecl]>,
   pub objects: Cow<'static, [OpMethodDecl]>,
@@ -665,6 +675,7 @@ impl Extension {
       js_files: Cow::Borrowed(&[]),
       esm_files: Cow::Borrowed(&[]),
       lazy_loaded_esm_files: Cow::Borrowed(&[]),
+      lazy_loaded_js_files: Cow::Borrowed(&[]),
       esm_entry_point: None,
       ops: self.ops.clone(),
       objects: self.objects.clone(),
@@ -684,6 +695,7 @@ impl Default for Extension {
       js_files: Cow::Borrowed(&[]),
       esm_files: Cow::Borrowed(&[]),
       lazy_loaded_esm_files: Cow::Borrowed(&[]),
+      lazy_loaded_js_files: Cow::Borrowed(&[]),
       esm_entry_point: None,
       ops: Cow::Borrowed(&[]),
       objects: Cow::Borrowed(&[]),

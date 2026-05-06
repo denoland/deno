@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "tests": {
+    "with_flag": {
+      "args": "x -y --unstable-kv jsr:@denotest/x-unstable-kv",
+      "output": "with_flag.out"
+    },
+    "without_flag": {
+      "args": "x -y jsr:@denotest/x-unstable-kv",
+      "exitCode": 1,
+      "output": "without_flag.out"
+    }
+  }
+}

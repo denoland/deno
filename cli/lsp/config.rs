@@ -1446,6 +1446,7 @@ impl ConfigData {
           &member_dir.workspace,
           byonm,
         )),
+        node_modules_linker: None,
         no_lock: false,
         no_npm: false,
         npm_process_state: None,
@@ -1497,6 +1498,8 @@ impl ConfigData {
         cache_setting: NpmCacheSetting::Use,
         caching_strategy: NpmCachingStrategy::Eager,
         lifecycle_scripts_config: LifecycleScriptsConfig::default(),
+        production: false,
+        skip_types: false,
         resolve_npm_resolution_snapshot: Box::new(|| Ok(None)),
       },
     );

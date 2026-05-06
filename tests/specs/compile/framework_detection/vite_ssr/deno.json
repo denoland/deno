@@ -1,0 +1,5 @@
+{
+  "tasks": {
+    "build": "deno run -A build.ts"
+  }
+}

@@ -108,12 +108,61 @@ extern "C" fn test_nested_scopes(
   result
 }
 
+/// Regression test for #33281: values created inside a handle scope
+/// must remain valid after the scope is closed. With real V8 HandleScopes
+/// this would be a use-after-free since closing the scope frees all
+/// handles allocated within it.
+extern "C" fn test_use_value_after_close(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut scope: napi_handle_scope = ptr::null_mut();
+  assert_napi_ok!(napi_open_handle_scope(env, &mut scope));
+
+  // Create a string inside the handle scope
+  let mut value: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    c"hello".as_ptr(),
+    5,
+    &mut value
+  ));
+
+  assert_napi_ok!(napi_close_handle_scope(env, scope));
+
+  // Use the value AFTER closing the scope. With real V8 HandleScopes
+  // the handle would be dangling and this would crash or corrupt data.
+  let mut obj: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_object(env, &mut obj));
+
+  let mut key: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    c"greeting".as_ptr(),
+    8,
+    &mut key
+  ));
+
+  assert_napi_ok!(napi_set_property(env, obj, key, value));
+
+  // Read it back to verify the handle is still valid
+  let mut read_back: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_property(env, obj, key, &mut read_back));
+
+  read_back
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_open_close_scope", test_open_close_scope),
     napi_new_property!(env, "test_escapable_scope", test_escapable_scope),
     napi_new_property!(env, "test_escape_twice", test_escape_twice),
     napi_new_property!(env, "test_nested_scopes", test_nested_scopes),
+    napi_new_property!(
+      env,
+      "test_use_value_after_close",
+      test_use_value_after_close
+    ),
   ];
 
   assert_napi_ok!(napi_define_properties(

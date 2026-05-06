@@ -1,12 +1,12 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
-import {
+import { core, primordials } from "ext:core/mod.js";
+const {
   isIterable,
   isNodeStream,
   isWebStream,
-} from "ext:deno_node/internal/streams/utils.js";
+} = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 import { pipelineImpl as pl } from "ext:deno_node/internal/streams/pipeline.js";
 import { finished } from "ext:deno_node/internal/streams/end-of-stream.js";
 import * as _mod2 from "node:stream";

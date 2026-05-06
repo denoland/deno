@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayFrom,
   Boolean,
@@ -33,29 +33,29 @@ const {
   WeakMapPrototypeSet,
   WeakRefPrototypeDeref,
 } = primordials;
-import {
+const {
   ERR_EVENT_RECURSION,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_THIS,
   ERR_MISSING_ARGS,
-} from "ext:deno_node/internal/errors.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   validateObject,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { emitWarning } from "node:process";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
-import {
-  Event as WebEvent,
-  EventTarget as WebEventTarget,
-} from "ext:deno_web/02_event.js";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const {
+  Event: WebEvent,
+  EventTarget: WebEventTarget,
+} = core.loadExtScript("ext:deno_web/02_event.js");
 
-import {
+const {
   customInspectSymbol,
   kEmptyObject,
   kEnumerableProperty,
-} from "ext:deno_node/internal/util.mjs";
-import { inspect } from "node:util";
+} = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { inspect } = core.loadExtScript("ext:deno_node/util.ts");
 
 const kIsEventTarget = SymbolFor("nodejs.event_target");
 const kIsNodeEventTarget = Symbol("kIsNodeEventTarget");

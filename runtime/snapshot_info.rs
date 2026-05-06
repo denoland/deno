@@ -20,10 +20,12 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_web::deno_web::init(
       Default::default(),
       Default::default(),
+      Default::default(),
       deno_web::InMemoryBroadcastChannel::default(),
     ),
     deno_webgpu::deno_webgpu::init(),
     deno_image::deno_image::init(),
+    deno_canvas::deno_canvas::init(),
     deno_fetch::deno_fetch::init(Default::default()),
     deno_cache::deno_cache::init(None),
     deno_websocket::deno_websocket::init(),
