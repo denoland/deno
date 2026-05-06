@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --allow-all main.ts",
+  "stdin": "null",
+  "output": "What is your name? [Jane] Name: Jane\nEnter something: Input: null\n"
+}
