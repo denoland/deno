@@ -2434,14 +2434,16 @@ impl ModuleMap {
     Ok(v8::Global::new(scope, mod_ns))
   }
 
-  /// Check if a lazy-loaded ESM source exists for the given specifier.
+  /// Check if a lazy-loaded ESM module is known to exist for the given
+  /// specifier. This checks the metadata set which survives snapshotting,
+  /// not just the source code map.
   pub(crate) fn has_lazy_esm_source(&self, specifier: &str) -> bool {
     self
       .data
       .borrow()
-      .lazy_esm_sources
+      .known_lazy_esm
       .borrow()
-      .contains_key(specifier)
+      .contains(specifier)
   }
 
   /// Try to take a lazy-loaded ESM source by specifier. Returns the source
@@ -2464,6 +2466,10 @@ impl ModuleMap {
     code: ModuleCodeString,
   ) {
     let data = self.data.borrow_mut();
+    data
+      .known_lazy_esm
+      .borrow_mut()
+      .insert(specifier.as_str().to_string());
     assert!(
       data
         .lazy_esm_sources
