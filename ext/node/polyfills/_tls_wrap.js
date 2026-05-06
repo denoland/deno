@@ -39,7 +39,9 @@ const {
   TCP,
 } = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
 import { kMaybeDestroy } from "ext:deno_node/internal/stream_base_commons.ts";
-const { kReinitializeHandle } = core.loadExtScript("ext:deno_node/internal/net.ts");
+const { kReinitializeHandle } = core.loadExtScript(
+  "ext:deno_node/internal/net.ts",
+);
 const {
   constants: PipeConstants,
   Pipe,
