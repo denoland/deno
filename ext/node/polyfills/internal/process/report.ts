@@ -3,7 +3,6 @@
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
 const {
-  Error,
   StringPrototypeToUpperCase,
   StringPrototypeCharAt,
   StringPrototypeSlice,
