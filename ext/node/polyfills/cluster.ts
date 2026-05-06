@@ -1,92 +1,99 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
+// Mirrors lib/cluster.js. Node decides at module-load whether to require
+// `internal/cluster/primary` or `internal/cluster/child` from
+// process.env.NODE_UNIQUE_ID. In Deno, cluster.ts is eagerly imported by
+// 01_require.js (before bootstrap delivers env), so we initialize the
+// primary side at module load and let `02_init.js` flip to the child side
+// via the `__initCluster` callback.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file no-explicit-any prefer-primordials
+
+import { internals } from "ext:core/mod.js";
 import { EventEmitter } from "node:events";
+import { init as initPrimary } from "ext:deno_node/internal/cluster/primary.ts";
+import { init as initChild } from "ext:deno_node/internal/cluster/child.ts";
 
-/** A Worker object contains all public information and method about a worker.
- * In the primary it can be obtained using cluster.workers. In a worker it can
- * be obtained using cluster.worker.
- */
-export class Worker {
-  constructor() {
-    notImplemented("cluster.Worker.prototype.constructor");
+const cluster: any = new EventEmitter();
+initPrimary(cluster);
+
+// ESM exports are live bindings: importers see the current value of the
+// local `let`. We sync from `cluster.*` after `initPrimary` (now), and
+// re-sync after `initChild` runs in `__initCluster` so workers don't see
+// stale primary-side values like `isWorker = false` or a primary-side
+// `fork` that was overwritten by the child-side init.
+let isPrimary = cluster.isPrimary;
+let isMaster = cluster.isMaster;
+let isWorker = cluster.isWorker;
+let workers = cluster.workers;
+let settings = cluster.settings;
+let schedulingPolicy = cluster.schedulingPolicy;
+let fork = cluster.fork;
+let disconnect = cluster.disconnect;
+let setupPrimary = cluster.setupPrimary;
+let setupMaster = cluster.setupMaster;
+let worker = cluster.worker;
+
+internals.__initCluster = (
+  uniqueId: string,
+  schedPolicyEnv: string | undefined,
+) => {
+  if (typeof uniqueId !== "string" || uniqueId.length === 0) {
+    return;
   }
-}
-/** Calls .disconnect() on each worker in cluster.workers. */
-export function disconnect() {
-  notImplemented("cluster.disconnect");
-}
-/** Spawn a new worker process. */
-// deno-lint-ignore no-explicit-any
-export function fork(_env?: any): Worker {
-  notImplemented("cluster.fork");
-}
-/** True if the process is a primary. This is determined by
- * the process.env.NODE_UNIQUE_ID. If process.env.NODE_UNIQUE_ID is undefined,
- * then isPrimary is true. */
-// TODO(@marvinhagemeister): Replace this with an env check once
-// we properly set NODE_UNIQUE_ID
-export const isPrimary = true;
-/** True if the process is not a primary (it is the negation of
- * cluster.isPrimary). */
-export const isWorker = false;
-/** Deprecated alias for cluster.isPrimary. details. */
-export const isMaster = isPrimary;
-/** The scheduling policy, either cluster.SCHED_RR for round-robin or
- * cluster.SCHED_NONE to leave it to the operating system. This is a global
- * setting and effectively frozen once either the first worker is spawned, or
- * .setupPrimary() is called, whichever comes first. */
-export const schedulingPolicy = undefined;
-/** The settings object */
-export const settings = {};
-/** setupPrimary is used to change the default 'fork' behavior. Once called,
- * the settings will be present in cluster.settings. */
-export function setupPrimary() {
-  notImplemented("cluster.setupPrimary");
-}
-/** Deprecated alias for .setupPrimary(). */
-export const setupMaster = setupPrimary;
-/** A reference to the current worker object. Not available in the primary
- * process. */
-export const worker = undefined;
-/** A hash that stores the active worker objects, keyed by id field. Makes it
- * easy to loop through all the workers. It is only available in the primary
- * process. */
-export const workers = {};
 
-export const SCHED_NONE = 1;
-export const SCHED_RR = 2;
+  initChild(cluster);
 
-const cluster = new EventEmitter() as EventEmitter & {
-  isWorker: boolean;
-  isMaster: boolean;
-  isPrimary: boolean;
-  Worker: Worker;
-  workers: Record<string, Worker>;
-  settings: Record<string, unknown>;
-  // deno-lint-ignore no-explicit-any
-  setupPrimary(options?: any): void;
-  // deno-lint-ignore no-explicit-any
-  setupMaster(options?: any): void;
-  // deno-lint-ignore no-explicit-any
-  fork(env: any): Worker;
-  // deno-lint-ignore no-explicit-any
-  disconnect(cb: any): void;
-  SCHED_NONE: 1;
-  SCHED_RR: 2;
+  if (typeof schedPolicyEnv === "string" && schedPolicyEnv.length > 0) {
+    if (schedPolicyEnv === "rr") {
+      cluster.schedulingPolicy = cluster.SCHED_RR;
+    } else if (schedPolicyEnv === "none") {
+      cluster.schedulingPolicy = cluster.SCHED_NONE;
+    } else {
+      const n = Number(schedPolicyEnv);
+      if (!Number.isNaN(n)) {
+        cluster.schedulingPolicy = n;
+      }
+    }
+  }
+
+  cluster._setupWorker();
+
+  // Resync the live bindings now that the child side has populated `cluster`
+  // (including `cluster.worker` set by `_setupWorker`).
+  isPrimary = cluster.isPrimary;
+  isMaster = cluster.isMaster;
+  isWorker = cluster.isWorker;
+  workers = cluster.workers;
+  settings = cluster.settings;
+  schedulingPolicy = cluster.schedulingPolicy;
+  fork = cluster.fork;
+  disconnect = cluster.disconnect;
+  setupPrimary = cluster.setupPrimary;
+  setupMaster = cluster.setupMaster;
+  worker = cluster.worker;
 };
-cluster.isWorker = isWorker;
-cluster.isMaster = isMaster;
-cluster.isPrimary = isPrimary;
-cluster.Worker = Worker;
-cluster.workers = workers;
-cluster.settings = {};
-cluster.setupPrimary = setupPrimary;
-cluster.setupMaster = setupMaster;
-cluster.fork = fork;
-cluster.disconnect = disconnect;
-cluster.SCHED_NONE = SCHED_NONE;
-cluster.SCHED_RR = SCHED_RR;
+
+// Stable across primary/child: `Worker`, `SCHED_NONE`, `SCHED_RR` are set by
+// both init paths to the same values.
+export const Worker = cluster.Worker;
+export const SCHED_NONE = cluster.SCHED_NONE;
+export const SCHED_RR = cluster.SCHED_RR;
+
+export {
+  disconnect,
+  fork,
+  isMaster,
+  isPrimary,
+  isWorker,
+  schedulingPolicy,
+  settings,
+  setupMaster,
+  setupPrimary,
+  worker,
+  workers,
+};
 
 export default cluster;

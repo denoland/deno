@@ -61,6 +61,8 @@ use crate::util::checksum;
 pub struct CreateModuleLoaderResult {
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_require_loader: Rc<dyn NodeRequireLoader>,
+  pub hook_registry:
+    Option<deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry>,
 }
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -257,6 +259,8 @@ pub struct LibMainWorkerOptions {
   pub location: Option<Url>,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
+  pub node_cluster_unique_id: Option<String>,
+  pub node_cluster_sched_policy: Option<String>,
   pub otel_config: OtelConfig,
   pub origin_data_folder_path: Option<PathBuf>,
   pub seed: Option<u64>,
@@ -335,6 +339,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       let CreateModuleLoaderResult {
         module_loader,
         node_require_loader,
+        hook_registry: _, // web workers don't support hooks yet
       } = shared.module_loader_factory.create_for_worker(
         args.parent_permissions.clone(),
         args.permissions.clone(),
@@ -452,6 +457,11 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           has_node_modules_dir: shared.options.has_node_modules_dir,
           argv0: shared.options.argv0.clone(),
           node_debug: shared.options.node_debug.clone(),
+          node_cluster_unique_id: shared.options.node_cluster_unique_id.clone(),
+          node_cluster_sched_policy: shared
+            .options
+            .node_cluster_sched_policy
+            .clone(),
           node_ipc_init: None,
           mode: WorkerExecutionMode::Worker,
           serve_port: shared.options.serve_port,
@@ -608,6 +618,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let CreateModuleLoaderResult {
       module_loader,
       node_require_loader,
+      hook_registry,
     } = shared
       .module_loader_factory
       .create_for_main(permissions.clone());
@@ -680,6 +691,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
+        node_cluster_unique_id: shared.options.node_cluster_unique_id.clone(),
+        node_cluster_sched_policy: shared
+          .options
+          .node_cluster_sched_policy
+          .clone(),
         node_ipc_init: shared.options.node_ipc_init,
         mode,
         no_legacy_abort: shared.options.no_legacy_abort,
@@ -715,6 +731,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let mut worker =
       MainWorker::bootstrap_from_options(&main_module, services, options);
     worker.setup_memory_trim_handler();
+
+    // Wire module hook registry into OpState so JS ops share it with the loader
+    if let Some(registry) = hook_registry {
+      worker.js_runtime.op_state().borrow_mut().put(registry);
+    }
 
     // Store the main inspector session sender for worker debugging
     let inspector = worker.js_runtime.inspector();

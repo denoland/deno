@@ -1,0 +1,35 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:@denotest/peer-dep-base@1.1": "1.1.0",
+    "npm:@denotest/peer-dep-consumer-2@1": "1.0.0_@denotest+peer-dep-base@1.1.0",
+    "npm:@denotest/peer-dep-consumer@1": "1.0.0_@denotest+peer-dep-base@1.1.0"
+  },
+  "npm": {
+    "@denotest/peer-dep-base@1.1.0": {
+      "integrity": "[WILDCARD]",
+      "tarball": "[WILDCARD]"
+    },
+    "@denotest/peer-dep-consumer-2@1.0.0_@denotest+peer-dep-base@1.1.0": {
+      "integrity": "[WILDCARD]",
+      "dependencies": [
+        "@denotest/peer-dep-base"
+      ],
+      "tarball": "[WILDCARD]"
+    },
+    "@denotest/peer-dep-consumer@1.0.0_@denotest+peer-dep-base@1.1.0": {
+      "integrity": "[WILDCARD]",
+      "dependencies": [
+        "@denotest/peer-dep-base"
+      ],
+      "tarball": "[WILDCARD]"
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:@denotest/peer-dep-base@1.1",
+      "npm:@denotest/peer-dep-consumer-2@1",
+      "npm:@denotest/peer-dep-consumer@1"
+    ]
+  }
+}

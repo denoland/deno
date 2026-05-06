@@ -204,8 +204,6 @@ pub struct WorkspaceTestOptions {
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
   pub trace_leaks: bool,
-  pub sanitize_ops: bool,
-  pub sanitize_resources: bool,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
   pub hide_stacktraces: bool,
@@ -222,13 +220,6 @@ impl WorkspaceTestOptions {
       no_run: test_flags.no_run,
       shuffle: test_flags.shuffle,
       trace_leaks: test_flags.trace_leaks,
-      sanitize_ops: test_flags.sanitize_ops
-        || std::env::var("DENO_TEST_SANITIZE_OPS").ok().as_deref() == Some("1"),
-      sanitize_resources: test_flags.sanitize_resources
-        || std::env::var("DENO_TEST_SANITIZE_RESOURCES")
-          .ok()
-          .as_deref()
-          == Some("1"),
       reporter: test_flags.reporter,
       junit_path: test_flags.junit_path.clone(),
       hide_stacktraces: test_flags.hide_stacktraces,
@@ -457,6 +448,24 @@ impl WorkspaceMainModuleResolver {
               )?
               .into_url()?
           }
+          deno_package_json::PackageJsonDepValue::Catalog(catalog_name) => {
+            match self
+              .workspace_resolver
+              .resolve_catalog_dep(alias, catalog_name)
+            {
+              Some(req) => ModuleSpecifier::parse(&format!(
+                "npm:{}{}",
+                req,
+                sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+              ))?,
+              None => {
+                return Err(deno_core::anyhow::anyhow!(
+                  "Package '{}' not found in catalog",
+                  alias
+                ));
+              }
+            }
+          }
         }
       }
       deno_resolver::workspace::MappedResolution::PackageJsonImport {
@@ -548,8 +557,9 @@ impl CliOptions {
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
       DenoSubcommand::Install(InstallFlags::Local(
         InstallFlagsLocal::Entrypoints(flags),
+        _,
       )) if flags.production => GraphKind::CodeOnly,
-      DenoSubcommand::Install(InstallFlags::Local(_)) => GraphKind::All,
+      DenoSubcommand::Install(InstallFlags::Local(_, _)) => GraphKind::All,
       _ => self.type_check_mode().as_graph_kind(),
     }
   }
@@ -1237,6 +1247,7 @@ impl CliOptions {
           .map(|url| vec![url]),
         DenoSubcommand::Install(InstallFlags::Local(
           InstallFlagsLocal::Entrypoints(flags),
+          _,
         )) => Some(files_to_urls(&flags.entrypoints)),
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
@@ -1371,11 +1382,21 @@ impl CliOptions {
   }
 
   /// Returns unstable feature flags as CLI arguments (e.g., "--unstable-unsafe-proto").
-  /// This includes features from both CLI flags and config file.
+  /// This includes features from both CLI flags and config file. Features that
+  /// are only valid in `deno.json` (e.g. `fmt-component`, `fmt-sql`) and don't
+  /// have a registered CLI flag are filtered out, otherwise child processes
+  /// spawned with these args (e.g. via `deno x`) would reject them with
+  /// "unexpected argument".
   pub fn unstable_args(&self) -> Vec<String> {
+    let cli_flag_names: std::collections::HashSet<&str> =
+      deno_runtime::UNSTABLE_FEATURES
+        .iter()
+        .map(|f| f.name)
+        .collect();
     self
       .unstable_features()
       .into_iter()
+      .filter(|f| cli_flag_names.contains(*f))
       .map(|f| format!("--unstable-{}", f))
       .collect()
   }
@@ -1462,7 +1483,8 @@ impl CliOptions {
           | InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
             lockfile_only: true,
             ..
-          })
+          }),
+        _,
       )) | DenoSubcommand::Add(_)
         | DenoSubcommand::Outdated(_)
     ) {

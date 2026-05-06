@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use serde::Deserialize;
@@ -200,6 +201,10 @@ pub(crate) struct ModuleMapData {
   pub(crate) synthetic_module_exports_store: SyntheticModuleExportsStore,
   pub(crate) lazy_esm_sources:
     Rc<RefCell<HashMap<ModuleName, ModuleCodeString>>>,
+  pub(crate) lazy_script_sources:
+    Rc<RefCell<HashMap<ModuleName, ModuleCodeString>>>,
+  /// Set of scripts currently being loaded (for circular dep detection).
+  pub(crate) lazy_script_loading: Rc<RefCell<HashSet<ModuleName>>>,
   pub(crate) sources: HashMap<ModuleSourceKey, Rc<v8::Global<v8::Object>>>,
 }
 

@@ -24,6 +24,7 @@ test_util.workspace = true
 anyhow.workspace = true
 async-stream.workspace = true
 base64.workspace = true
+bsdiff.workspace = true
 bytes.workspace = true
 deno_unsync = "0"
 denokv_proto.workspace = true

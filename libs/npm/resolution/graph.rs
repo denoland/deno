@@ -8180,8 +8180,12 @@ mod test {
   fn make_overrides(
     json: serde_json::Value,
   ) -> crate::resolution::NpmOverrides {
-    crate::resolution::NpmOverrides::from_value(json, &Default::default())
-      .unwrap()
+    crate::resolution::NpmOverrides::from_value(
+      json,
+      &Default::default(),
+      &Default::default(),
+    )
+    .unwrap()
   }
 
   fn make_overrides_with_root_deps(
@@ -8191,7 +8195,12 @@ mod test {
       deno_semver::StackString,
     >,
   ) -> crate::resolution::NpmOverrides {
-    crate::resolution::NpmOverrides::from_value(json, &root_deps).unwrap()
+    crate::resolution::NpmOverrides::from_value(
+      json,
+      &root_deps,
+      &Default::default(),
+    )
+    .unwrap()
   }
 
   #[tokio::test]

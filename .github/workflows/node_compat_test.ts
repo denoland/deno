@@ -10,12 +10,20 @@ import {
 
 const isMainBranch = conditions.isBranch("main");
 
+const shardCount = 3;
 const matrix = defineMatrix({
   include: [
     { os: "linux", runner: "ubuntu-latest" },
     { os: "windows", runner: "windows-latest" },
     { os: "darwin", runner: "macos-latest" },
-  ],
+  ].flatMap((entry) =>
+    Array.from({ length: shardCount }, (_, i) => ({
+      ...entry,
+      shard_index: i.toString(),
+      shard_total: shardCount.toString(),
+      shard_label: `(${i + 1}/${shardCount})`,
+    }))
+  ),
 });
 
 const checkout = step({
@@ -64,6 +72,8 @@ const runTests = step.dependsOn(setupGcloud)({
   name: "Run tests",
   env: {
     CARGO_ENCODED_RUSTFLAGS: "",
+    CI_SHARD_INDEX: matrix.shard_index,
+    CI_SHARD_TOTAL: matrix.shard_total,
   },
   run: "deno task --cwd tests/node_compat/runner test --report",
 });
@@ -83,7 +93,7 @@ const uploadReport = step.dependsOn(gzipReport)({
     AWS_DEFAULT_REGION: "${{vars.S3_REGION }}",
   },
   run:
-    "aws s3 cp tests/node_compat/report.json.gz s3://dl-deno-land/node-compat-test/$(date +%F)/report-${{matrix.os}}.json.gz",
+    "aws s3 cp tests/node_compat/report.json.gz s3://dl-deno-land/node-compat-test/$(date +%F)/report-${{matrix.os}}-${{matrix.shard_index}}.json.gz",
 });
 
 const testJob = job("test", {
@@ -173,7 +183,7 @@ const postSlack = step.dependsOn(uploadMonthSummary)({
 const workflow = createWorkflow({
   name: "node_compat_test",
   on: {
-    schedule: [{ cron: "0 10 * * 1-5" }],
+    schedule: [{ cron: "0 10 * * *" }],
     workflow_dispatch: {},
   },
   jobs: [
