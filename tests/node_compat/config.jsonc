@@ -336,7 +336,10 @@
     "parallel/test-child-process-reject-null-bytes.js": {},
     "parallel/test-child-process-send-after-close.js": {},
     "parallel/test-child-process-send-cb.js": {},
-    "parallel/test-child-process-send-returns-boolean.js": {},
+    "parallel/test-child-process-send-returns-boolean.js": {
+      "windows": false,
+      "reason": "handle passing not yet implemented on Windows"
+    },
     "parallel/test-child-process-send-keep-open.js": {
       "windows": false,
       "reason": "net.Socket IPC handle passing uses SCM_RIGHTS, not yet implemented on Windows"
