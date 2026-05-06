@@ -718,14 +718,14 @@ fn is_response_compressible(headers: &HeaderMap) -> bool {
 fn modify_compressibility_from_response(
   compression: Compression,
   headers: &mut HeaderMap,
-) -> Compression {
+) -> Compression {  
   if compression == Compression::None {
     return Compression::None;
   }
-  ensure_vary_accept_encoding(headers);
   if !is_response_compressible(headers) {
     return Compression::None;
   }
+  ensure_vary_accept_encoding(headers);
   let encoding = match compression {
     Compression::Brotli => "br",
     Compression::GZip => "gzip",
@@ -750,10 +750,6 @@ fn weaken_etag(hmap: &mut HeaderMap) {
   }
 }
 
-// Set Vary: Accept-Encoding header for direct body response.
-// Note: we set the header irrespective of whether or not we compress the data
-// to make sure cache services do not serve uncompressed data to clients that
-// support compression.
 fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
   if let Some(v) = hmap.get_mut(hyper::header::VARY)
     && let Ok(s) = v.to_str()
