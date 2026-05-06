@@ -638,17 +638,9 @@ pub fn op_node_udp_fd_for_ipc(
     if fd < 0 {
       return Ok(-1);
     }
-    // SAFETY: fd is a valid open file descriptor.
-    let dup = unsafe { libc::dup(fd) };
-    if dup != -1 {
-      // SAFETY: dup is a valid fd returned by dup().
-      unsafe {
-        let flags = libc::fcntl(dup, libc::F_GETFD);
-        if flags != -1 {
-          libc::fcntl(dup, libc::F_SETFD, flags | libc::FD_CLOEXEC);
-        }
-      }
-    }
+    // SAFETY: fd is a valid open file descriptor. F_DUPFD_CLOEXEC
+    // atomically dups and sets CLOEXEC, avoiding a race window.
+    let dup = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
     Ok(dup)
   }
   #[cfg(not(unix))]
