@@ -659,7 +659,6 @@ deno_core::extension!(deno_node,
     "path/_util.ts",
     "path/common.ts",
     "path/separator.ts",
-    "sys.ts",
   ],
   options = {
     maybe_init: Option<NodeExtInitServices<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>>,

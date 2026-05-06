@@ -155,7 +155,6 @@ import internalStreamsState from "ext:deno_node/internal/streams/state.js";
 const internalTestBinding = core.loadExtScript(
   "ext:deno_node/internal/test/binding.ts",
 );
-const sys = core.loadExtScript("ext:deno_node/sys.ts");
 import internalTimers from "ext:deno_node/internal/timers.mjs";
 const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const internalUtilDebuglog = core.loadExtScript(
@@ -304,7 +303,7 @@ function setupBuiltinModules() {
     "stream/promises": streamPromises,
     "stream/web": streamWeb,
     string_decoder: stringDecoder,
-    sys,
+    sys: util,
     test,
     timers,
     "timers/promises": timersPromises,
