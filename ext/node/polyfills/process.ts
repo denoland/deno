@@ -30,7 +30,7 @@ import {
 
 import { EventEmitter } from "node:events";
 import Module, { getBuiltinModule } from "node:module";
-import { report } from "ext:deno_node/internal/process/report.ts";
+const { report } = core.loadExtScript("ext:deno_node/internal/process/report.ts");
 const { onWarning } = core.loadExtScript(
   "ext:deno_node/internal/process/warning.ts",
 );
