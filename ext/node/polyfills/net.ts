@@ -83,7 +83,7 @@ const {
   DTRACE_NET_SERVER_CONNECTION,
   DTRACE_NET_STREAM_END,
 } = core.loadExtScript("ext:deno_node/internal/dtrace.ts");
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import type { LookupOneOptions } from "ext:deno_node/internal/dns/utils.ts";
 const {
   constants: TCPConstants,

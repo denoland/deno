@@ -4,7 +4,7 @@
 // deno-lint-ignore-file
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
-const lazyBuffer = core.createLazyLoader("node:buffer");
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   getOwnNonIndexProperties,
   ONLY_ENUMERABLE,
@@ -108,51 +108,39 @@ enum valueType {
   isMap,
 }
 
-let _Buffer: typeof import("node:buffer").Buffer;
-function getBuffer() {
-  if (!_Buffer) _Buffer = lazyBuffer().Buffer;
-  return _Buffer;
-}
-
-let _wellKnownConstructors: Set<unknown>;
-function getWellKnownConstructors() {
-  if (!_wellKnownConstructors) {
-    _wellKnownConstructors = new SafeSet()
-      .add(Array)
-      .add(ArrayBuffer)
-      .add(BigInt)
-      .add(BigInt64Array)
-      .add(BigUint64Array)
-      .add(Boolean)
-      .add(getBuffer())
-      .add(DataView)
-      .add(Date)
-      .add(Error)
-      // TODO(Tango992): add Float16Array
-      // .add(Float16Array)
-      .add(Float32Array)
-      .add(Float64Array)
-      .add(Function)
-      .add(Int16Array)
-      .add(Int32Array)
-      .add(Int8Array)
-      .add(Map)
-      .add(Number)
-      .add(Object)
-      .add(Promise)
-      .add(RegExp)
-      .add(Set)
-      .add(String)
-      .add(Symbol)
-      .add(Uint16Array)
-      .add(Uint32Array)
-      .add(Uint8Array)
-      .add(Uint8ClampedArray)
-      .add(WeakMap)
-      .add(WeakSet);
-  }
-  return _wellKnownConstructors;
-}
+const wellKnownConstructors = new SafeSet()
+  .add(Array)
+  .add(ArrayBuffer)
+  .add(BigInt)
+  .add(BigInt64Array)
+  .add(BigUint64Array)
+  .add(Boolean)
+  .add(Buffer)
+  .add(DataView)
+  .add(Date)
+  .add(Error)
+  // TODO(Tango992): add Float16Array
+  // .add(Float16Array)
+  .add(Float32Array)
+  .add(Float64Array)
+  .add(Function)
+  .add(Int16Array)
+  .add(Int32Array)
+  .add(Int8Array)
+  .add(Map)
+  .add(Number)
+  .add(Object)
+  .add(Promise)
+  .add(RegExp)
+  .add(Set)
+  .add(String)
+  .add(Symbol)
+  .add(Uint16Array)
+  .add(Uint32Array)
+  .add(Uint8Array)
+  .add(Uint8ClampedArray)
+  .add(WeakMap)
+  .add(WeakSet);
 
 const kStrict = 1;
 const kLoose = 0;
@@ -221,7 +209,7 @@ function areSimilarTypedArrays(
   if (a.byteLength !== b.byteLength) {
     return false;
   }
-  return getBuffer().compare(
+  return Buffer.compare(
     new Uint8Array(a.buffer, a.byteOffset, a.byteLength),
     new Uint8Array(b.buffer, b.byteOffset, b.byteLength),
   ) === 0;
@@ -229,7 +217,7 @@ function areSimilarTypedArrays(
 
 function areEqualArrayBuffers(buf1: ArrayBuffer, buf2: ArrayBuffer): boolean {
   return buf1.byteLength === buf2.byteLength &&
-    getBuffer().compare(new Uint8Array(buf1), new Uint8Array(buf2)) === 0;
+    Buffer.compare(new Uint8Array(buf1), new Uint8Array(buf2)) === 0;
 }
 
 function isEqualBoxedPrimitive(val1: unknown, val2: unknown) {
@@ -318,7 +306,6 @@ function objectComparisonStart(
   memos: Memo | null | undefined,
 ): boolean {
   if (mode === kStrict) {
-    const wellKnownConstructors = getWellKnownConstructors();
     if (
       wellKnownConstructors.has(val1.constructor) ||
       (val1.constructor !== undefined && !hasOwn(val1, "constructor"))

@@ -22,8 +22,9 @@
 
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import { HTTPParser as NativeHTTPParser } from "ext:core/ops";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { AsyncResource } from "node:async_hooks";
 
 // Method names indexed by llhttp method enum values.

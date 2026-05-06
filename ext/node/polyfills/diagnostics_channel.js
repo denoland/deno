@@ -8,7 +8,7 @@ import { core, primordials } from "ext:core/mod.js";
 const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
-import { nextTick } from "node:process";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { validateFunction } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );

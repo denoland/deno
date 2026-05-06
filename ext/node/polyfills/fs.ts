@@ -83,7 +83,7 @@ import {
   warnOnNonPortableTemplate,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { glob, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import process from "node:process";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 const { isIterable } = core.loadExtScript(

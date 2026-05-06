@@ -22,11 +22,11 @@
 
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { uvException } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { writeBuffer } = core.loadExtScript(
   "ext:deno_node/internal_binding/node_file.ts",
 );
-const lazyBuffer = core.createLazyLoader("node:buffer");
 
 const { RegExpPrototypeTest, SafeRegExp, Symbol } = primordials;
 
@@ -82,7 +82,7 @@ function getIPFamily(ip) {
 function makeSyncWrite(fd) {
   return function (chunk, enc, cb) {
     if (enc !== "buffer") {
-      chunk = lazyBuffer().Buffer.from(chunk, enc);
+      chunk = Buffer.from(chunk, enc);
     }
 
     this._handle.bytesWritten += chunk.length;

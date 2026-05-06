@@ -25,7 +25,7 @@ const {
   ERR_INVALID_ARG_TYPE,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import process from "node:process";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { Duplex, Readable, Writable } from "node:stream";
 
 function isWritableStream(object) {

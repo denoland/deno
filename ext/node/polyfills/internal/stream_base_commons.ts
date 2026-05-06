@@ -43,7 +43,7 @@ import { getTimerDuration, kTimeout } from "ext:deno_node/internal/timers.mjs";
 import { clearTimeout } from "node:timers";
 import { setUnrefTimeout } from "ext:deno_node/internal/timers.mjs";
 const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { isUint8Array } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );

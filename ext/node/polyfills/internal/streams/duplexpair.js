@@ -4,7 +4,7 @@
 import process from "node:process";
 import { core, primordials } from "ext:core/mod.js";
 import { Duplex } from "node:stream";
-const { default: assert } = core.loadExtScript(
+const assert = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );
 "use strict";

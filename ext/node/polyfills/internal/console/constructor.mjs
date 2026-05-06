@@ -66,7 +66,7 @@ const {
   validateInteger,
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { isBuffer } = Buffer;
 const {
   formatWithOptions,

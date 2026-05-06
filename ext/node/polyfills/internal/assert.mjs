@@ -17,7 +17,5 @@ function fail(message) {
 
 assert.fail = fail;
 
-return {
-  default: assert,
-};
+return assert;
 })();

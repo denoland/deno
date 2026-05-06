@@ -12,7 +12,7 @@ const {
   ObjectAssign,
   StringPrototypeReplace,
 } = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
-const { default: assert } = core.loadExtScript(
+const assert = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );
 import * as net from "node:net";
@@ -22,7 +22,7 @@ import {
 } from "node:_tls_common";
 import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
 import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   connResetException,
   ERR_INVALID_ARG_TYPE,

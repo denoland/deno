@@ -35,7 +35,7 @@ const {
   NodeError,
   NodeRangeError,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 
 export { default as randomBytes } from "ext:deno_node/internal/crypto/_randomBytes.ts";
 export {

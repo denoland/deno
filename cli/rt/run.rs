@@ -638,7 +638,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             }
           };
           match hook_result {
-            Ok(Some(source)) => {
+            Ok((Some(source), _format)) => {
               // Hook provided transformed source
               Ok(deno_core::ModuleSource::new(
                 deno_core::ModuleType::JavaScript,
@@ -647,7 +647,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 None,
               ))
             }
-            Ok(None) => {
+            Ok((None, _)) => {
               // Fallthrough: hooks didn't intercept, use default loading
               this.load_inner(&specifier, &requested_module_type)
             }

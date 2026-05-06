@@ -27,7 +27,7 @@ SOFTWARE.
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
 import { op_node_scrypt_async, op_node_scrypt_sync } from "ext:core/ops";
 const {

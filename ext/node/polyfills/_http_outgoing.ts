@@ -6,7 +6,7 @@
 
 import { core } from "ext:core/mod.js";
 import { getDefaultHighWaterMark } from "ext:deno_node/internal/streams/state.js";
-const { default: assert } = core.loadExtScript(
+const assert = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );
 import EE from "node:events";
@@ -18,7 +18,7 @@ const {
   kOutHeaders,
   utcDate,
 } = core.loadExtScript("ext:deno_node/internal/http.ts");
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
   _checkIsHttpToken as checkIsHttpToken,
