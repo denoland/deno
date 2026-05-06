@@ -1647,14 +1647,24 @@ Module.prototype.load = function (filename) {
             throw err;
           }
         } else {
-          // Default: detect whether it's CJS or ESM
+          // Default: try CJS first, fall back to ESM if the source
+          // contains ESM syntax. We handle ESM fallback here (rather
+          // than in _compile) so we can use op_import_sync_with_source
+          // which bypasses the module cache for hook-provided source.
           const source = typeof result.source === "string"
             ? result.source
             : (utf8Decoder ??= new TextDecoder()).decode(result.source);
-          if (op_require_can_parse_as_esm(source)) {
-            loadESMFromCJSWithHookSource(this, this.filename, source);
-          } else {
-            this._compile(source, this.filename);
+          try {
+            this._compile(source, this.filename, "commonjs");
+          } catch (err) {
+            if (
+              err instanceof SyntaxError &&
+              op_require_can_parse_as_esm(source)
+            ) {
+              loadESMFromCJSWithHookSource(this, this.filename, source);
+            } else {
+              throw err;
+            }
           }
         }
         this.loaded = true;
