@@ -152,7 +152,9 @@ const internalReadlineUtils = core.loadExtScript(
 import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
 import internalStreamsState from "ext:deno_node/internal/streams/state.js";
-const internalTestBinding = core.loadExtScript("ext:deno_node/internal/test/binding.ts");
+const internalTestBinding = core.loadExtScript(
+  "ext:deno_node/internal/test/binding.ts",
+);
 import internalTimers from "ext:deno_node/internal/timers.mjs";
 const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const internalUtilDebuglog = core.loadExtScript(
