@@ -47,7 +47,7 @@ const {
   styleText,
 } = core.loadExtScript("ext:deno_node/internal/util/inspect.mjs");
 const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
-const lazyTypes = core.createLazyLoader("node:util/types");
+const types = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 const { isDeepStrictEqual } = core.loadExtScript(
   "ext:deno_node/internal/util/comparisons.ts",
 );
@@ -356,9 +356,7 @@ const defaultExport = {
   MIMEType,
   promisify,
   inherits,
-  get types() {
-    return lazyTypes();
-  },
+  types,
   stripVTControlCharacters,
   TextDecoder,
   TextEncoder,
@@ -385,9 +383,7 @@ return {
   promisify,
   stripVTControlCharacters,
   styleText,
-  get types() {
-    return lazyTypes();
-  },
+  types,
   isArray,
   _extend,
   inherits,
