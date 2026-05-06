@@ -15,6 +15,7 @@ use ed25519_dalek::pkcs8::BitStringRef;
 use elliptic_curve::JwkEcKey;
 use num_bigint::BigInt;
 use num_traits::FromPrimitive as _;
+use p12::PFX as Pkcs12;
 use pkcs8::DecodePrivateKey as _;
 use pkcs8::Document;
 use pkcs8::EncodePrivateKey as _;
@@ -46,7 +47,6 @@ use spki::der::PemWriter;
 use spki::der::Reader as _;
 use spki::der::asn1;
 use spki::der::asn1::OctetStringRef;
-use p12::PFX as Pkcs12;
 use x509_parser::error::X509Error;
 use x509_parser::x509;
 
@@ -2507,7 +2507,9 @@ pub fn op_node_create_private_key(
   #[string] typ: &str,
   #[buffer] passphrase: Option<&[u8]>,
 ) -> Result<KeyObjectHandle, AsymmetricPrivateKeyError> {
-  KeyObjectHandle::new_asymmetric_private_key_from_js(key, format, typ, passphrase)
+  KeyObjectHandle::new_asymmetric_private_key_from_js(
+    key, format, typ, passphrase,
+  )
 }
 
 #[op2]
