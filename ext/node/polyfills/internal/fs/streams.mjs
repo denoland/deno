@@ -22,7 +22,7 @@ const {
   ERR_OUT_OF_RANGE,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import { deprecate } from "node:util";
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 const {
   validateFunction,
   validateInteger,

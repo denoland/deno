@@ -69,7 +69,7 @@ const { os } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
-import { deprecate } from "node:util";
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 import { channel } from "node:diagnostics_channel";
 const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",

@@ -10,7 +10,7 @@ const { AssertionError } = core.loadExtScript(
 const { innerOk } = core.loadExtScript(
   "ext:deno_node/internal/assert/utils.ts",
 );
-import { inspect } from "node:util";
+const { inspect } = core.loadExtScript("ext:deno_node/util.ts");
 const {
   ERR_AMBIGUOUS_ARGUMENT,
   ERR_CONSTRUCT_CALL_REQUIRED,
@@ -27,7 +27,7 @@ const {
 const { CallTracker } = core.loadExtScript(
   "ext:deno_node/internal/assert/calltracker.js",
 );
-import { deprecate } from "node:util";
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 const { isPromise, isRegExp } = core.loadExtScript(
   "ext:deno_node/internal_binding/types.ts",
 );

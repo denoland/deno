@@ -46,7 +46,7 @@ import { EventEmitter } from "node:events";
 import { clearTimeout, setTimeout } from "node:timers";
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import type { MaybeEmpty } from "ext:deno_node/_utils.ts";
-import { deprecate, promisify } from "node:util";
+const { deprecate, promisify } = core.loadExtScript("ext:deno_node/util.ts");
 import promises from "ext:deno_node/internal/fs/promises.ts";
 // @deno-types="./internal/fs/streams.d.ts"
 import {

@@ -70,7 +70,7 @@ import {
 } from "node:_http_server";
 import { Duplex } from "node:stream";
 import tls from "node:tls";
-import { deprecate } from "node:util";
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 import dc from "node:diagnostics_channel";
 const { utcDate } = core.loadExtScript("ext:deno_node/internal/http.ts");
 const {
@@ -99,7 +99,7 @@ export { addAbortListener };
 import fs from "node:fs";
 import { FileHandle as FsFileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
-import { format, inspect } from "node:util";
+const { format, inspect } = core.loadExtScript("ext:deno_node/util.ts");
 const {
   isUint32,
   validateAbortSignal,

@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-import { op_node_call_is_from_dependency } from "ext:core/ops";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { op_node_call_is_from_dependency } = core.ops;
 const {
   ArrayIsArray,
   ArrayPrototypeJoin,
@@ -46,7 +47,7 @@ const {
   styleText,
 } = core.loadExtScript("ext:deno_node/internal/util/inspect.mjs");
 const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
-import types from "node:util/types";
+const lazyTypes = core.createLazyLoader("node:util/types");
 const { isDeepStrictEqual } = core.loadExtScript(
   "ext:deno_node/internal/util/comparisons.ts",
 );
@@ -76,42 +77,21 @@ const { os: osConstants } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
 
-let process: NodeJS.Process;
-const lazyLoadProcess = core.createLazyLoader<NodeJS.Process>(
-  "node:process",
-);
-
-export {
-  callbackify,
-  debuglog,
-  debuglog as debug,
-  format,
-  formatWithOptions,
-  inspect,
-  MIMEParams,
-  MIMEType,
-  parseArgs,
-  promisify,
-  stripVTControlCharacters,
-  styleText,
-  types,
-};
+let process;
+const lazyLoadProcess = core.createLazyLoader("node:process");
 
 /** @deprecated - use `Array.isArray()` instead. */
-export const isArray = ArrayIsArray;
+const isArray = ArrayIsArray;
 
 /** @deprecated Use Object.assign() instead. */
-export function _extend(
-  target: Record<string, unknown>,
-  source: unknown,
-): Record<string, unknown> {
+function _extend(target, source) {
   // Don't do anything if source isn't an object
   if (source === null || typeof source !== "object") return target;
 
-  const keys = ObjectKeys(source!);
+  const keys = ObjectKeys(source);
   let i = keys.length;
   while (i--) {
-    target[keys[i]] = (source as Record<string, unknown>)[keys[i]];
+    target[keys[i]] = source[keys[i]];
   }
   return target;
 }
@@ -121,10 +101,7 @@ export function _extend(
  * @param ctor Constructor function which needs to inherit the prototype.
  * @param superCtor Constructor function to inherit prototype from.
  */
-export function inherits<T, U>(
-  ctor: new (...args: unknown[]) => T,
-  superCtor: new (...args: unknown[]) => U,
-) {
+function inherits(ctor, superCtor) {
   if (ctor === undefined || ctor === null) {
     throw new codes.ERR_INVALID_ARG_TYPE("ctor", "Function", ctor);
   }
@@ -157,21 +134,19 @@ const {
 } = core.loadExtScript("ext:deno_node/_utils.ts");
 
 /** The global TextDecoder */
-export type TextDecoder = import("./_utils.ts")._TextDecoder;
-export const TextDecoder = _TextDecoder;
+const TextDecoder = _TextDecoder;
 
 /** The global TextEncoder */
-export type TextEncoder = import("./_utils.ts")._TextEncoder;
-export const TextEncoder = _TextEncoder;
+const TextEncoder = _TextEncoder;
 
-export function toUSVString(str: string): string {
+function toUSVString(str) {
   if (StringPrototypeIsWellFormed(str)) {
     return str;
   }
   return StringPrototypeToWellFormed(str);
 }
 
-function pad(n: number) {
+function pad(n) {
   return StringPrototypePadStart(NumberPrototypeToString(n), 2, "0");
 }
 
@@ -193,7 +168,7 @@ const months = [
 /**
  * @returns 26 Feb 16:19:34
  */
-function timestamp(): string {
+function timestamp() {
   const d = new Date();
   const t = ArrayPrototypeJoin([
     pad(DatePrototypeGetHours(d)),
@@ -207,8 +182,7 @@ function timestamp(): string {
  * Log is just a thin wrapper to console.log that prepends a timestamp
  * @deprecated
  */
-// deno-lint-ignore no-explicit-any
-export function log(...args: any[]) {
+function log(...args) {
   // deno-lint-ignore no-console
   console.log("%s - %s", timestamp(), ReflectApply(format, undefined, args));
 }
@@ -220,13 +194,11 @@ const codesWarned = new SafeSet();
 // Mark that a method should not be used.
 // Returns a modified function which warns once by default.
 // If --no-deprecation is set, then it is a no-op.
-export function deprecate(
-  // deno-lint-ignore no-explicit-any
-  fn: any,
-  msg: string,
-  // deno-lint-ignore no-explicit-any
-  code?: any,
-  { modifyPrototype = true }: { __proto__: null; modifyPrototype?: boolean } = {
+function deprecate(
+  fn,
+  msg,
+  code,
+  { modifyPrototype = true } = {
     __proto__: null,
   },
 ) {
@@ -240,8 +212,7 @@ export function deprecate(
   }
 
   let warned = false;
-  // deno-lint-ignore no-explicit-any
-  function deprecated(this: any, ...args: any[]) {
+  function deprecated(...args) {
     if (!warned && !op_node_call_is_from_dependency()) {
       warned = true;
       if (code !== undefined) {
@@ -250,8 +221,7 @@ export function deprecate(
           SetPrototypeAdd(codesWarned, code);
         }
       } else {
-        // deno-lint-ignore no-explicit-any
-        process.emitWarning(msg, "DeprecationWarning", deprecated as any);
+        process.emitWarning(msg, "DeprecationWarning", deprecated);
       }
     }
     if (new.target) {
@@ -280,11 +250,10 @@ export function deprecate(
 }
 
 // deno-lint-ignore require-await
-export async function aborted(
-  signal: AbortSignal,
-  // deno-lint-ignore no-explicit-any
-  _resource: any,
-): Promise<void> {
+async function aborted(
+  signal,
+  _resource,
+) {
   if (signal === undefined) {
     throw new ERR_INVALID_ARG_TYPE("signal", "AbortSignal", signal);
   }
@@ -313,16 +282,15 @@ function prepareStackTrace(_error, stackTraces) {
 
 const kDefaultMaxCallStackSizeToCapture = 200;
 
-// deno-lint-ignore-start
 /**
  * Returns the call sites of the current call stack
  * @param frameCount The limit of the number of frames to return
  * @param _options The options
  * @returns The call sites
  */
-export function getCallSites(
+function getCallSites(
   frameCount = 10,
-  options: unknown = { __proto__: null },
+  options = { __proto__: null },
 ) {
   validateNumber(
     frameCount,
@@ -354,9 +322,7 @@ export function getCallSites(
   return capturedTraces;
 }
 
-export function parseEnv(
-  input: string,
-): Record<string, string> {
+function parseEnv(input) {
   validateString(input, "content");
   const parsed = binding.parseEnv(input);
   const result = ObjectCreate(null);
@@ -367,17 +333,13 @@ export function parseEnv(
   return result;
 }
 
-export function convertProcessSignalToExitCode(
-  signalCode: string,
-): number {
+function convertProcessSignalToExitCode(signalCode) {
   const { signals } = osConstants;
   validateOneOf(signalCode, "signalCode", ObjectKeys(signals));
   return 128 + signals[signalCode];
 }
 
-export { getSystemErrorMessage, getSystemErrorName, isDeepStrictEqual };
-
-export default {
+const defaultExport = {
   format,
   formatWithOptions,
   inspect,
@@ -394,7 +356,9 @@ export default {
   MIMEType,
   promisify,
   inherits,
-  types,
+  get types() {
+    return lazyTypes();
+  },
   stripVTControlCharacters,
   TextDecoder,
   TextEncoder,
@@ -407,3 +371,38 @@ export default {
   styleText,
   parseEnv,
 };
+
+return {
+  callbackify,
+  debuglog,
+  debug: debuglog,
+  format,
+  formatWithOptions,
+  inspect,
+  MIMEParams,
+  MIMEType,
+  parseArgs,
+  promisify,
+  stripVTControlCharacters,
+  styleText,
+  get types() {
+    return lazyTypes();
+  },
+  isArray,
+  _extend,
+  inherits,
+  TextDecoder,
+  TextEncoder,
+  toUSVString,
+  log,
+  deprecate,
+  aborted,
+  getCallSites,
+  parseEnv,
+  convertProcessSignalToExitCode,
+  getSystemErrorMessage,
+  getSystemErrorName,
+  isDeepStrictEqual,
+  default: defaultExport,
+};
+})();

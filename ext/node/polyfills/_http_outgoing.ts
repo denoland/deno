@@ -11,7 +11,7 @@ const assert = core.loadExtScript(
 );
 import EE from "node:events";
 import { Stream } from "node:stream";
-import { deprecate } from "node:util";
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 import type { Socket } from "node:net";
 const {
   kNeedDrain,
