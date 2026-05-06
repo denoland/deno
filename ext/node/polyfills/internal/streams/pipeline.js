@@ -3,9 +3,11 @@
 
 import process from "node:process";
 import { core, primordials } from "ext:core/mod.js";
-import eos from "ext:deno_node/internal/streams/end-of-stream.js";
+const eos =
+  core.loadExtScript("ext:deno_node/internal/streams/end-of-stream.js").default;
 const { once } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import destroyImpl from "ext:deno_node/internal/streams/destroy.js";
+const destroyImpl =
+  core.loadExtScript("ext:deno_node/internal/streams/destroy.js").default;
 import Duplex from "node:_stream_duplex";
 const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {

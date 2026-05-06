@@ -8,7 +8,8 @@ const {
   isWebStream,
   kControllerErrorFunction,
 } = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
-import eos from "ext:deno_node/internal/streams/end-of-stream.js";
+const eos =
+  core.loadExtScript("ext:deno_node/internal/streams/end-of-stream.js").default;
 const _mod2 = core.loadExtScript(
   "ext:deno_node/internal/events/abort_listener.mjs",
 );

@@ -1,25 +1,32 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import process from "node:process";
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const { validateInteger } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
 const _mod1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { ERR_INVALID_ARG_VALUE } = _mod1.codes;
-"use strict";
 
 const {
   MathFloor,
   NumberIsInteger,
 } = primordials;
 
+const lazyProcess = core.createLazyLoader("node:process");
+
 // TODO (fix): For some reason Windows CI fails with bigger hwm.
-let defaultHighWaterMarkBytes = process.platform === "win32"
-  ? 16 * 1024
-  : 64 * 1024;
+let defaultHighWaterMarkBytes;
 let defaultHighWaterMarkObjectMode = 16;
+
+function ensureDefaults() {
+  if (defaultHighWaterMarkBytes === undefined) {
+    defaultHighWaterMarkBytes = lazyProcess().platform === "win32"
+      ? 16 * 1024
+      : 64 * 1024;
+  }
+}
 
 function highWaterMarkFrom(options, isDuplex, duplexKey) {
   return options.highWaterMark != null
@@ -30,6 +37,7 @@ function highWaterMarkFrom(options, isDuplex, duplexKey) {
 }
 
 function getDefaultHighWaterMark(objectMode) {
+  ensureDefaults();
   return objectMode
     ? defaultHighWaterMarkObjectMode
     : defaultHighWaterMarkBytes;
@@ -58,11 +66,14 @@ function getHighWaterMark(state, options, duplexKey, isDuplex) {
   return getDefaultHighWaterMark(state.objectMode);
 }
 
-const _defaultExport2 = {
+return {
   getHighWaterMark,
   getDefaultHighWaterMark,
   setDefaultHighWaterMark,
+  default: {
+    getHighWaterMark,
+    getDefaultHighWaterMark,
+    setDefaultHighWaterMark,
+  },
 };
-
-export default _defaultExport2;
-export { getDefaultHighWaterMark, getHighWaterMark, setDefaultHighWaterMark };
+})();
