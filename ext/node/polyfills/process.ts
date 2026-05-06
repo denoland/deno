@@ -84,7 +84,10 @@ import {
   createWritableStdioStream,
   initStdin,
 } from "ext:deno_node/_process/streams.mjs";
-import { WriteStream as TTYWriteStream } from "ext:deno_node/internal/tty.js";
+import {
+  addSigwinchListener,
+  WriteStream as TTYWriteStream,
+} from "ext:deno_node/internal/tty.js";
 const { enableNextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { isAndroid, isWindows } = core.loadExtScript(
   "ext:deno_node/_util/os.ts",
@@ -1500,6 +1503,7 @@ internals.__bootstrapNodeProcess = function (
           nextTick(() => this.emit("close"));
         }
       };
+      addSigwinchListener(stdout);
     } else {
       stdout = process.stdout = createWritableStdioStream(
         io.stdout,
@@ -1521,6 +1525,7 @@ internals.__bootstrapNodeProcess = function (
           nextTick(() => this.emit("close"));
         }
       };
+      addSigwinchListener(stderr);
     } else {
       stderr = process.stderr = createWritableStdioStream(
         io.stderr,
