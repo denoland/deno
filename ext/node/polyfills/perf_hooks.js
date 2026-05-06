@@ -3,14 +3,15 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
+(function () {
+const { core } = globalThis.__bootstrap;
 const {
   performance,
   PerformanceEntry,
   PerformanceObserver: WebPerformanceObserver,
   PerformanceObserverEntryList,
 } = core.loadExtScript("ext:deno_web/15_performance.js");
-import { EldHistogram } from "ext:core/ops";
+const { EldHistogram } = core.ops;
 const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -130,7 +131,7 @@ class PerformanceObserver extends WebPerformanceObserver {
 // Internal helper used by node:http2 and other modules to dispatch
 // Node-only PerformanceObserver entries (e.g. `Http2Session`) that the web
 // PerformanceObserver does not understand.
-export function enqueueNodePerformanceEntry(entry) {
+function enqueueNodePerformanceEntry(entry) {
   for (let i = 0; i < nodeObservers.length; i++) {
     const obs = nodeObservers[i];
     if (!obs[_nodeTypes].includes(entry.entryType)) continue;
@@ -213,24 +214,25 @@ function monitorEventLoopDelay(options = {}) {
   return new EldHistogram(resolution);
 }
 
-export default {
+return {
+  default: {
+    performance,
+    PerformanceObserver,
+    PerformanceObserverEntryList,
+    PerformanceEntry,
+    monitorEventLoopDelay,
+    eventLoopUtilization,
+    timerify,
+    constants,
+  },
+  constants,
+  enqueueNodePerformanceEntry,
+  eventLoopUtilization,
+  monitorEventLoopDelay,
   performance,
+  PerformanceEntry,
   PerformanceObserver,
   PerformanceObserverEntryList,
-  PerformanceEntry,
-  monitorEventLoopDelay,
-  eventLoopUtilization,
-  timerify,
-  constants,
-};
-
-export {
-  constants,
-  eventLoopUtilization,
-  monitorEventLoopDelay,
-  performance,
-  PerformanceEntry,
-  PerformanceObserver,
-  PerformanceObserverEntryList,
   timerify,
 };
+})();
