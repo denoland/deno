@@ -1442,6 +1442,30 @@ impl ModuleMap {
       }
     }
 
+    // Fast path for lazy-loaded ESM: load synchronously and resolve
+    // immediately, avoiding the async RecursiveModuleLoad path entirely.
+    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
+      && phase == ModuleImportPhase::Evaluation
+      && let Ok(module_specifier) = resolve_result
+      && self.has_lazy_esm_source(module_specifier.as_str())
+    {
+      match self.lazy_load_esm_module(scope, module_specifier.as_str()) {
+        Ok(module_ns) => {
+          let resolver = resolver_handle.open(scope);
+          let module_ns_local = v8::Local::new(scope, module_ns);
+          resolver.resolve(scope, module_ns_local).unwrap();
+          return false;
+        }
+        Err(e) => {
+          let exception = e.to_v8_error(scope);
+          let exception_local = v8::Local::new(scope, exception);
+          let resolver = resolver_handle.open(scope);
+          resolver.reject(scope, exception_local).unwrap();
+          return false;
+        }
+      }
+    }
+
     let load = RecursiveModuleLoad::dynamic_import(
       specifier,
       referrer,
@@ -2408,6 +2432,16 @@ impl ModuleMap {
     let mod_ns = module_local.get_module_namespace();
 
     Ok(v8::Global::new(scope, mod_ns))
+  }
+
+  /// Check if a lazy-loaded ESM source exists for the given specifier.
+  pub(crate) fn has_lazy_esm_source(&self, specifier: &str) -> bool {
+    self
+      .data
+      .borrow()
+      .lazy_esm_sources
+      .borrow()
+      .contains_key(specifier)
   }
 
   /// Try to take a lazy-loaded ESM source by specifier. Returns the source

@@ -259,6 +259,15 @@ impl RecursiveModuleLoad {
         ),
       };
 
+    // Skip prepare_load for lazy-loaded ESM sources -- they are embedded
+    // in the binary and do not need fetching/preparation.
+    if self
+      .module_map_rc
+      .has_lazy_esm_source(module_specifier.as_str())
+    {
+      return Ok(());
+    }
+
     self
       .loader
       .prepare_load(
