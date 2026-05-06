@@ -129,7 +129,6 @@
     "module-hooks/test-module-hooks-resolve-require-resolve-redirect.js": {},
     "module-hooks/test-module-hooks-resolve-short-circuit-required-middle.js": {},
     "module-hooks/test-module-hooks-resolve-short-circuit-required-start.js": {},
-    "module-hooks/test-module-hooks-builtin-require.js": {},
     "module-hooks/test-module-hooks-resolve-short-circuit.js": {},
     "parallel/test-abort-controller-any-timeout.js": {},
     "parallel/test-abortcontroller-internal.js": {

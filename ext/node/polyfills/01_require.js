@@ -6,6 +6,7 @@ import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_fs_cwd,
   op_import_sync,
+  op_import_sync_with_source,
   op_module_hooks_poll_load,
   op_module_hooks_poll_resolve,
   op_module_hooks_register,
@@ -1646,7 +1647,7 @@ Module.prototype.load = function (filename) {
             throw err;
           }
         } else {
-          // Default to CJS when format is unspecified
+          // Default: let _compile detect the format (CJS or ESM)
           const source = typeof result.source === "string"
             ? result.source
             : (utf8Decoder ??= new TextDecoder()).decode(result.source);
@@ -1869,12 +1870,19 @@ function loadCjs(module, filename) {
 
 function loadESMFromCJS(module, filename, code) {
   const specifier = url.pathToFileURL(filename).toString();
-  const codeArg = code !== undefined
-    ? (typeof code === "string"
+  let namespace;
+  if (code !== undefined) {
+    // Use op_import_sync_with_source to compile source directly under the
+    // file URL. This ensures hook-provided source is used even if the module
+    // is already cached from a previous disk load, while preserving the
+    // correct import.meta.url (unlike data: URIs).
+    const src = typeof code === "string"
       ? code
-      : (utf8Decoder ??= new TextDecoder()).decode(code))
-    : undefined;
-  const namespace = op_import_sync(specifier, codeArg);
+      : (utf8Decoder ??= new TextDecoder()).decode(code);
+    namespace = op_import_sync_with_source(specifier, src);
+  } else {
+    namespace = op_import_sync(specifier, undefined);
+  }
   if (ObjectHasOwn(namespace, "module.exports")) {
     module.exports = namespace["module.exports"];
   } else {
