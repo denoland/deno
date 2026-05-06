@@ -8,7 +8,7 @@ import {
   type CallbackWithError,
   makeCallback,
 } from "ext:deno_node/_fs/_fs_common.ts";
-const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+import { Buffer } from "node:buffer";
 import {
   getValidatedPath,
   getValidMode,
