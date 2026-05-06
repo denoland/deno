@@ -83,6 +83,8 @@ const {
 } = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
 import { Server as NetServer, Socket } from "node:net";
 import { Socket as DgramSocket } from "node:dgram";
+import { kStateSymbol } from "ext:deno_node/internal/dgram.ts";
+import { UDP } from "ext:deno_node/internal_binding/udp_wrap.ts";
 const {
   kNeedsNpmProcessState,
   nodeSpawnChild,
@@ -1903,6 +1905,7 @@ const IPC_HANDLE_NET_SERVER = "net.Server";
 // connection handoffs (RoundRobinHandle) and shared listening sockets
 // (SharedHandle). Mirrors Node's `handleConversion["net.Native"]`.
 const IPC_HANDLE_NET_NATIVE = "net.Native";
+const IPC_HANDLE_DGRAM_SOCKET = "dgram.Socket";
 
 // deno-lint-ignore no-explicit-any
 function rawFdFromTcpHandle(tcpHandle: any): number {
@@ -1990,7 +1993,31 @@ function getIpcHandleInfo(handle: any, options: any): IpcHandleInfo {
   }
 
   if (handle instanceof DgramSocket) {
-    notImplemented("ChildProcess.send with dgram.Socket handle");
+    // deno-lint-ignore no-explicit-any
+    const udpHandle = (handle as any)[kStateSymbol]?.handle;
+    if (!udpHandle || typeof udpHandle.fdForIpc !== "function") {
+      throw new ERR_INVALID_HANDLE_TYPE();
+    }
+    const rawFd = udpHandle.fdForIpc();
+    if (rawFd < 0) {
+      throw new ERR_INVALID_HANDLE_TYPE();
+    }
+    return {
+      rawFd,
+      message: {
+        cmd: "NODE_HANDLE",
+        type: IPC_HANDLE_DGRAM_SOCKET,
+        dgramType: handle.type,
+        msg: undefined,
+      },
+      // Node's handleConversion["dgram.Socket"].postSend is undefined, so
+      // the IPC layer doesn't auto-close. The socket remains usable in the
+      // sender (both parent and child share the underlying UDP socket).
+      closeAfterSend: false,
+      close() {
+        handle.close();
+      },
+    };
   }
 
   throw new ERR_INVALID_HANDLE_TYPE();
@@ -2058,6 +2085,20 @@ function createIpcHandle(message: any, rawFd: number): any {
     // wrap to the listener. Cluster's worker-side onconnection() / shared()
     // takes ownership.
     return tcp;
+  }
+  if (message.type === IPC_HANDLE_DGRAM_SOCKET) {
+    const udp = new UDP();
+    const err = udp.open(rawFd);
+    if (err !== 0) {
+      throw errnoException(codeMap.get(err), "open");
+    }
+    // Reconstruct a dgram.Socket from the transferred handle, mirroring
+    // Node's handleConversion["dgram.Socket"].got which calls
+    // socket.bind(handle).  The `bind(udpHandle)` path in dgram.ts calls
+    // replaceHandle + startListening, making the socket immediately usable.
+    const socket = new DgramSocket(message.dgramType);
+    socket.bind(udp);
+    return socket;
   }
   return undefined;
 }
