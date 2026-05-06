@@ -36,8 +36,8 @@ const {
   validateInt32,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { Buffer } from "node:buffer";
-import { deprecate } from "node:util";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 import {
   EllipticCurve,
   ellipticCurves,

@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-import { op_fs_events_open, op_fs_events_poll } from "ext:core/ops";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { op_fs_events_open, op_fs_events_poll } = core.ops;
 const {
   BadResourcePrototype,
   InterruptedPrototype,
@@ -73,4 +74,5 @@ function watchFs(
   return new FsWatcher(ArrayIsArray(paths) ? paths : [paths], options);
 }
 
-export { watchFs };
+return { watchFs };
+})();

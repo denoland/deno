@@ -3,7 +3,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { core } from "ext:core/mod.js";
 const {
   ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH,

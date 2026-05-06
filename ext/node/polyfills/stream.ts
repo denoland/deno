@@ -41,13 +41,17 @@ import {
 } from "ext:deno_node/internal/streams/operators.js";
 
 import compose from "ext:deno_node/internal/streams/compose.js";
-import {
+const {
   getDefaultHighWaterMark,
   setDefaultHighWaterMark,
-} from "ext:deno_node/internal/streams/state.js";
+} = core.loadExtScript("ext:deno_node/internal/streams/state.js");
 import { pipeline } from "ext:deno_node/internal/streams/pipeline.js";
-import { destroyer } from "ext:deno_node/internal/streams/destroy.js";
-import { eos } from "ext:deno_node/internal/streams/end-of-stream.js";
+const { destroyer } = core.loadExtScript(
+  "ext:deno_node/internal/streams/destroy.js",
+);
+const { eos } = core.loadExtScript(
+  "ext:deno_node/internal/streams/end-of-stream.js",
+);
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 
 import * as promises from "node:stream/promises";
@@ -57,7 +61,9 @@ const {
   isUint8Array,
 } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 
-import { Stream } from "ext:deno_node/internal/streams/legacy.js";
+const { Stream } = core.loadExtScript(
+  "ext:deno_node/internal/streams/legacy.js",
+);
 import Readable from "node:_stream_readable";
 import Writable from "node:_stream_writable";
 import Duplex from "node:_stream_duplex";

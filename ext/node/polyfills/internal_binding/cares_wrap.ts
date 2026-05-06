@@ -29,7 +29,7 @@
 
 import { core } from "ext:core/mod.js";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import { isIPv4, isIPv6 } from "ext:deno_node/internal/net.ts";
+const { isIPv4, isIPv6 } = core.loadExtScript("ext:deno_node/internal/net.ts");
 const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 const {
   AsyncWrap,

@@ -2,11 +2,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-import _mod1 from "ext:deno_node/internal/streams/legacy.js";
+const _mod1 =
+  core.loadExtScript("ext:deno_node/internal/streams/legacy.js").default;
 import Readable from "node:_stream_readable";
 import Writable from "node:_stream_writable";
 import { addAbortSignal } from "ext:deno_node/internal/streams/add-abort-signal.js";
-import destroyImpl from "ext:deno_node/internal/streams/destroy.js";
+const destroyImpl =
+  core.loadExtScript("ext:deno_node/internal/streams/destroy.js").default;
 const { kOnConstructed } = core.loadExtScript(
   "ext:deno_node/internal/streams/utils.js",
 );

@@ -29,14 +29,14 @@ const { BlockList, SocketAddress } = core.loadExtScript(
   "ext:deno_node/internal/blocklist.mjs",
 );
 
-import { EventEmitter } from "node:events";
-import {
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+const {
   isIP,
   isIPv4,
   isIPv6,
   kReinitializeHandle,
   normalizedArgsSymbol,
-} from "ext:deno_node/internal/net.ts";
+} = core.loadExtScript("ext:deno_node/internal/net.ts");
 import { Duplex } from "node:stream";
 const {
   asyncIdSymbol,
@@ -83,7 +83,7 @@ const {
   DTRACE_NET_SERVER_CONNECTION,
   DTRACE_NET_STREAM_END,
 } = core.loadExtScript("ext:deno_node/internal/dtrace.ts");
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import type { LookupOneOptions } from "ext:deno_node/internal/dns/utils.ts";
 const {
   constants: TCPConstants,
@@ -100,7 +100,7 @@ const {
 const { ShutdownWrap } = core.loadExtScript(
   "ext:deno_node/internal_binding/stream_wrap.ts",
 );
-import assert from "node:assert";
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
 const {

@@ -28,9 +28,11 @@ import {
   op_process_abort,
 } from "ext:core/ops";
 
-import { EventEmitter } from "node:events";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 import Module, { getBuiltinModule } from "node:module";
-import { report } from "ext:deno_node/internal/process/report.ts";
+const { report } = core.loadExtScript(
+  "ext:deno_node/internal/process/report.ts",
+);
 const { onWarning } = core.loadExtScript(
   "ext:deno_node/internal/process/warning.ts",
 );
@@ -56,7 +58,7 @@ const {
 const { getOptionValue } = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
 );
-import assert from "node:assert";
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import { join } from "node:path";
 const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 const {

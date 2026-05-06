@@ -1346,6 +1346,31 @@ impl ModuleMap {
       return Some(v8::Local::new(scope, handle));
     }
 
+    // Fallback: check lazy-loaded ESM sources (modules embedded in the
+    // binary but not included in the snapshot).
+    let maybe_source = self.take_lazy_esm_source(resolved_specifier.as_str());
+    if let Some(source_code) = maybe_source {
+      match self.new_es_module(
+        scope,
+        false,
+        resolved_specifier.into(),
+        source_code,
+        false,
+        None,
+      ) {
+        Ok(mod_id) => {
+          if let Some(handle) = self.get_handle(mod_id) {
+            return Some(v8::Local::new(scope, handle));
+          }
+        }
+        Err(e) => {
+          let err = e.into_error(scope, false, true);
+          crate::error::throw_js_error_class(scope, &err);
+          return None;
+        }
+      }
+    }
+
     None
   }
 
@@ -1414,6 +1439,30 @@ impl ModuleMap {
         resolver.resolve(scope, module_namespace).unwrap();
 
         return false;
+      }
+    }
+
+    // Fast path for lazy-loaded ESM: load synchronously and resolve
+    // immediately, avoiding the async RecursiveModuleLoad path entirely.
+    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
+      && phase == ModuleImportPhase::Evaluation
+      && let Ok(module_specifier) = resolve_result
+      && self.has_lazy_esm_source(module_specifier.as_str())
+    {
+      match self.lazy_load_esm_module(scope, module_specifier.as_str()) {
+        Ok(module_ns) => {
+          let resolver = resolver_handle.open(scope);
+          let module_ns_local = v8::Local::new(scope, module_ns);
+          resolver.resolve(scope, module_ns_local).unwrap();
+          return false;
+        }
+        Err(e) => {
+          let exception = e.to_v8_error(scope);
+          let exception_local = v8::Local::new(scope, exception);
+          let resolver = resolver_handle.open(scope);
+          resolver.reject(scope, exception_local).unwrap();
+          return false;
+        }
       }
     }
 
@@ -2385,12 +2434,42 @@ impl ModuleMap {
     Ok(v8::Global::new(scope, mod_ns))
   }
 
+  /// Check if a lazy-loaded ESM module is known to exist for the given
+  /// specifier. This checks the metadata set which survives snapshotting,
+  /// not just the source code map.
+  pub(crate) fn has_lazy_esm_source(&self, specifier: &str) -> bool {
+    self
+      .data
+      .borrow()
+      .known_lazy_esm
+      .borrow()
+      .contains(specifier)
+  }
+
+  /// Try to take a lazy-loaded ESM source by specifier. Returns the source
+  /// code if found, removing it from the lazy sources map.
+  pub(crate) fn take_lazy_esm_source(
+    &self,
+    specifier: &str,
+  ) -> Option<ModuleCodeString> {
+    self
+      .data
+      .borrow()
+      .lazy_esm_sources
+      .borrow_mut()
+      .remove(specifier)
+  }
+
   pub(crate) fn add_lazy_loaded_esm_source(
     &self,
     specifier: ModuleName,
     code: ModuleCodeString,
   ) {
     let data = self.data.borrow_mut();
+    data
+      .known_lazy_esm
+      .borrow_mut()
+      .insert(specifier.as_str().to_string());
     assert!(
       data
         .lazy_esm_sources

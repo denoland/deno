@@ -39,7 +39,7 @@ const {
   Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   ERR_FS_EISDIR,
   ERR_FS_INVALID_SYMLINK_TYPE,
@@ -72,7 +72,7 @@ const {
 import pathModule from "node:path";
 const kType = Symbol("type");
 const kStats = Symbol("stats");
-const { default: assert } = core.loadExtScript(
+const assert = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );
 import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";

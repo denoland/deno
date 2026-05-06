@@ -86,7 +86,7 @@ import _streamTransform from "node:_stream_transform";
 import _streamWritable from "node:_stream_writable";
 import _tlsCommon from "node:_tls_common";
 import _tlsWrap from "node:_tls_wrap";
-import assert from "node:assert";
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import assertStrict from "node:assert/strict";
 import asyncHooks from "node:async_hooks";
 const {
@@ -106,7 +106,7 @@ import diagnosticsChannel from "node:diagnostics_channel";
 import dns from "node:dns";
 import dnsPromises from "node:dns/promises";
 import domain from "node:domain";
-import events from "node:events";
+const events = core.loadExtScript("ext:deno_node/_events.mjs").default;
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import http from "node:http";
@@ -151,8 +151,11 @@ const internalReadlineUtils = core.loadExtScript(
 );
 import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
-import internalStreamsState from "ext:deno_node/internal/streams/state.js";
-import internalTestBinding from "ext:deno_node/internal/test/binding.ts";
+const internalStreamsState =
+  core.loadExtScript("ext:deno_node/internal/streams/state.js").default;
+const internalTestBinding = core.loadExtScript(
+  "ext:deno_node/internal/test/binding.ts",
+);
 import internalTimers from "ext:deno_node/internal/timers.mjs";
 const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const internalUtilDebuglog = core.loadExtScript(
@@ -183,7 +186,6 @@ import streamConsumers from "node:stream/consumers";
 import streamPromises from "node:stream/promises";
 import streamWeb from "node:stream/web";
 import stringDecoder from "node:string_decoder";
-import sys from "node:sys";
 import test from "node:test";
 import timers from "node:timers";
 import timersPromises from "node:timers/promises";
@@ -191,8 +193,8 @@ import tls from "node:tls";
 import traceEvents from "node:trace_events";
 import tty from "node:tty";
 import url from "node:url";
-import utilTypes from "node:util/types";
-import util from "node:util";
+const utilTypes = core.loadExtScript("ext:deno_node/internal/util/types.ts");
+const util = core.loadExtScript("ext:deno_node/util.ts");
 import v8 from "node:v8";
 import vm from "node:vm";
 import workerThreads from "node:worker_threads";
@@ -302,7 +304,7 @@ function setupBuiltinModules() {
     "stream/promises": streamPromises,
     "stream/web": streamWeb,
     string_decoder: stringDecoder,
-    sys,
+    sys: util,
     test,
     timers,
     "timers/promises": timersPromises,
@@ -656,13 +658,14 @@ function _startEsmLoadLoop() {
           const source = typeof result.source === "string"
             ? result.source
             : new TextDecoder().decode(result.source);
-          op_module_hooks_respond_load(id, source, null);
+          const format = result.format || null;
+          op_module_hooks_respond_load(id, source, format, null);
         } else {
           // Fallthrough: tell Rust to use default loading
-          op_module_hooks_respond_load(id, null, null);
+          op_module_hooks_respond_load(id, null, null, null);
         }
       } catch (e) {
-        op_module_hooks_respond_load(id, null, String(e));
+        op_module_hooks_respond_load(id, null, null, String(e));
       }
     }
   })();

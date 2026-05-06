@@ -104,6 +104,7 @@
     "module-hooks/test-module-hooks-load-context-merged.js": {},
     "module-hooks/test-module-hooks-load-context-optional-esm.mjs": {},
     "module-hooks/test-module-hooks-load-context-optional.js": {},
+    "module-hooks/test-module-hooks-load-import-cjs.js": {},
     "module-hooks/test-module-hooks-load-mock.js": {},
     "module-hooks/test-module-hooks-load-short-circuit-required-middle.js": {},
     "module-hooks/test-module-hooks-load-short-circuit-required-start.js": {},
@@ -307,6 +308,7 @@
     "parallel/test-child-process-fork-and-spawn.js": {},
     "parallel/test-child-process-fork-close.js": {},
     "parallel/test-child-process-fork-detached.js": {},
+    "parallel/test-child-process-fork-dgram.js": {},
     "parallel/test-child-process-fork-net-socket.js": {
       "windows": false,
       "reason": "net.Socket IPC handle passing uses SCM_RIGHTS, not yet implemented on Windows"
@@ -327,9 +329,14 @@
     "parallel/test-child-process-no-deprecation.js": {},
     "parallel/test-child-process-promisified.js": {},
     "parallel/test-child-process-prototype-tampering.mjs": {},
+    "parallel/test-child-process-recv-handle.js": {
+      "ignore": true,
+      "reason": "Uses internal/child_process kChannelHandle with readStop/readStart which is not exposed in Deno"
+    },
     "parallel/test-child-process-reject-null-bytes.js": {},
     "parallel/test-child-process-send-after-close.js": {},
     "parallel/test-child-process-send-cb.js": {},
+    "parallel/test-child-process-send-returns-boolean.js": {},
     "parallel/test-child-process-send-keep-open.js": {
       "windows": false,
       "reason": "net.Socket IPC handle passing uses SCM_RIGHTS, not yet implemented on Windows"
@@ -1709,6 +1716,7 @@
     "parallel/test-http-server-options-incoming-message.js": {},
     "parallel/test-http-server-options-server-response.js": {},
     "parallel/test-http-server-reject-cr-no-lf.js": {},
+    "parallel/test-http-server-request-timeout-interrupted-headers.js": {},
     "parallel/test-http-server-request-timeout-upgrade.js": {},
     "parallel/test-http-server-response-standalone.js": {},
     "parallel/test-http-server-stale-close.js": {},

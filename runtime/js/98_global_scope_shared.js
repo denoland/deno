@@ -8,7 +8,7 @@ const encoding = core.loadExtScript("ext:deno_web/08_text_encoding.js");
 const console = core.loadExtScript("ext:deno_web/01_console.js");
 const caches = core.loadExtScript("ext:deno_cache/01_cache.js");
 const compression = core.loadExtScript("ext:deno_web/14_compression.js");
-import * as worker from "ext:runtime/11_workers.js";
+const worker = core.loadExtScript("ext:runtime/11_workers.js");
 const performance = core.loadExtScript("ext:deno_web/15_performance.js");
 const crypto = core.loadExtScript("ext:deno_crypto/00_crypto.js");
 const url = core.loadExtScript("ext:deno_web/00_url.js");

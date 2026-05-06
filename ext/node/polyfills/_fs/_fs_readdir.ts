@@ -12,7 +12,7 @@ import {
   direntFromDeno,
   getValidatedPath,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import { op_fs_read_dir_async, op_fs_read_dir_sync } from "ext:core/ops";
 import { join, relative } from "node:path";

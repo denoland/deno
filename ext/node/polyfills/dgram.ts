@@ -24,8 +24,8 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-import { Buffer } from "node:buffer";
-import { EventEmitter } from "node:events";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 import { lookup as defaultLookup } from "node:dns";
 import type {
   ErrnoException,
@@ -68,8 +68,8 @@ const { guessHandleType } = core.loadExtScript(
 const { os } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
-import { nextTick } from "node:process";
-import { deprecate } from "node:util";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 import { channel } from "node:diagnostics_channel";
 const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",

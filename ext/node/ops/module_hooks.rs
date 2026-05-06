@@ -27,8 +27,10 @@ struct PendingLoad {
 
 type ResolveSender =
   deno_core::futures::channel::oneshot::Sender<Result<Option<String>, String>>;
+/// Load hook result: (source, format). Format is e.g. "commonjs", "module".
+type LoadResult = (Option<String>, Option<String>);
 type LoadSender =
-  deno_core::futures::channel::oneshot::Sender<Result<Option<String>, String>>;
+  deno_core::futures::channel::oneshot::Sender<Result<LoadResult, String>>;
 
 /// Shared hook registry between ops and the module loader.
 ///
@@ -54,6 +56,10 @@ pub struct LoaderHookRegistry {
   pending_loads: Rc<RefCell<VecDeque<PendingLoad>>>,
   load_waker: Rc<RefCell<Option<Waker>>>,
   load_senders: Rc<RefCell<HashMap<u32, LoadSender>>>,
+  /// Maps load request ID to URL for dedup tracking.
+  load_id_keys: Rc<RefCell<HashMap<u32, String>>>,
+  /// Piggybacking senders for duplicate load requests.
+  load_waiters: Rc<RefCell<HashMap<String, Vec<LoadSender>>>>,
 }
 
 impl LoaderHookRegistry {
@@ -90,16 +96,33 @@ impl LoaderHookRegistry {
   }
 
   /// Push a load request and return a receiver for the response.
-  /// `Ok(Some(source))` = hook provided source, `Ok(None)` = fallthrough.
+  /// `Ok((Some(source), format))` = hook provided source,
+  /// `Ok((None, _))` = fallthrough.
   pub fn push_load(
     &self,
     url: String,
-  ) -> deno_core::futures::channel::oneshot::Receiver<
-    Result<Option<String>, String>,
-  > {
+  ) -> deno_core::futures::channel::oneshot::Receiver<Result<LoadResult, String>>
+  {
+    // Dedup: if there's already a pending load for this URL, piggyback.
+    if self.load_waiters.borrow().contains_key(&url) {
+      let (sender, receiver) = deno_core::futures::channel::oneshot::channel();
+      self
+        .load_waiters
+        .borrow_mut()
+        .get_mut(&url)
+        .unwrap()
+        .push(sender);
+      return receiver;
+    }
+    self
+      .load_waiters
+      .borrow_mut()
+      .insert(url.clone(), Vec::new());
+
     let id = self.next_id();
     let (sender, receiver) = deno_core::futures::channel::oneshot::channel();
     self.load_senders.borrow_mut().insert(id, sender);
+    self.load_id_keys.borrow_mut().insert(id, url.clone());
     self
       .pending_loads
       .borrow_mut()
@@ -189,15 +212,24 @@ pub fn op_module_hooks_respond_load(
   state: &mut OpState,
   id: u32,
   #[string] source: Option<String>,
+  #[string] format: Option<String>,
   #[string] error: Option<String>,
 ) {
   let registry = state.borrow::<LoaderHookRegistry>().clone();
+  let result: Result<LoadResult, String> = if let Some(err) = error {
+    Err(err)
+  } else {
+    Ok((source, format))
+  };
+  // Fulfill piggybacking waiters.
+  if let Some(key) = registry.load_id_keys.borrow_mut().remove(&id)
+    && let Some(waiters) = registry.load_waiters.borrow_mut().remove(&key)
+  {
+    for waiter in waiters {
+      let _ = waiter.send(result.clone());
+    }
+  }
   if let Some(sender) = registry.load_senders.borrow_mut().remove(&id) {
-    let result: Result<Option<String>, String> = if let Some(err) = error {
-      Err(err)
-    } else {
-      Ok(source) // None = fallthrough
-    };
     let _ = sender.send(result);
   }
 }

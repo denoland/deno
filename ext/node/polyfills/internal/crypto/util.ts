@@ -6,7 +6,7 @@
 
 import { core } from "ext:core/mod.js";
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   ERR_CRYPTO_INVALID_DIGEST,
   ERR_INVALID_ARG_TYPE,

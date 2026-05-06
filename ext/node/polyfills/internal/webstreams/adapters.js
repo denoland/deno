@@ -1,8 +1,11 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { core } from "ext:core/mod.js";
-import { destroy, destroyer } from "ext:deno_node/internal/streams/destroy.js";
-import finished from "ext:deno_node/internal/streams/end-of-stream.js";
+const { destroy, destroyer } = core.loadExtScript(
+  "ext:deno_node/internal/streams/destroy.js",
+);
+const finished =
+  core.loadExtScript("ext:deno_node/internal/streams/end-of-stream.js").default;
 const {
   isDestroyed,
   isReadable,
@@ -25,7 +28,7 @@ const {
   ERR_INVALID_ARG_TYPE,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import process from "node:process";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { Duplex, Readable, Writable } from "node:stream";
 
 function isWritableStream(object) {

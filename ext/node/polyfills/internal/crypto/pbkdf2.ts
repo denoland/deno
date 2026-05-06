@@ -10,7 +10,7 @@ import {
   op_node_pbkdf2_validate,
 } from "ext:core/ops";
 
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
 const {
   validateFunction,

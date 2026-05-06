@@ -67,7 +67,7 @@ const {
 const binding = core.loadExtScript("ext:deno_node/_zlib_binding.mjs");
 const { crc32: crc32Native } = binding;
 
-const { default: assert } = core.loadExtScript(
+const assert = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );
 import { Buffer, kMaxLength } from "node:buffer";

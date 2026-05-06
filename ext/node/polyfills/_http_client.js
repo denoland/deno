@@ -40,7 +40,7 @@ const {
 } = primordials;
 
 import net from "node:net";
-import { ok as assert } from "node:assert";
+const { ok: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 const { kEmptyObject, once } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
@@ -59,7 +59,7 @@ import {
   parseUniqueHeadersOption,
 } from "node:_http_outgoing";
 import httpAgent from "node:_http_agent";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 const { kOutHeaders } = core.loadExtScript("ext:deno_node/internal/http.ts");
 const {
