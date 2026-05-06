@@ -2720,6 +2720,19 @@ Server.prototype.listen = function (...args: unknown[]) {
     const pipeName = (this._pipeName = options.path);
     backlog = options.backlog || backlogFromArgs;
 
+    // Abstract Unix sockets (path starts with \0) have no filesystem
+    // entry, so readableAll/writableAll (which use chmod) are invalid.
+    if (
+      (options.readableAll === true || options.writableAll === true) &&
+      pipeName.charCodeAt(0) === 0
+    ) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options",
+        options,
+        "can not set readableAll or writableAllt to true when path is abstract unix socket",
+      );
+    }
+
     _listenInCluster(
       this,
       pipeName,

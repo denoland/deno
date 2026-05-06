@@ -2697,6 +2697,8 @@
       "ignore": true,
       "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
+    "parallel/test-pipe-abstract-socket.js": {},
+    "parallel/test-pipe-abstract-socket-http.js": {},
     "parallel/test-pipe-address.js": {},
     "parallel/test-pipe-file-to-http.js": {},
     "parallel/test-pipe-head.js": {},
