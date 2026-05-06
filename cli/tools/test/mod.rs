@@ -1238,12 +1238,23 @@ async fn run_tests_for_worker_inner(
       };
       slow_test_warning.abort();
 
+      // `disarm()` must run before any further JS executes on the isolate —
+      // a stale `Fired` flag would kill the next test. The
+      // `cancel_terminate_execution` below clears it; do not refactor this
+      // pair apart.
       let watchdog_fired = timeout_ms.is_some() && watchdog.disarm();
       if watchdog_fired {
         worker.js_runtime.v8_isolate().cancel_terminate_execution();
       }
 
-      let timed_out = raced.is_err() || watchdog_fired;
+      // Tokio fires for async hangs; the watchdog fires for sync hot loops.
+      // If the test still produced a valid result, a watchdog fire must have
+      // raced after V8 was already done — preserve the result.
+      let timed_out = match &raced {
+        Err(_) => true,
+        Ok(Ok(_)) => false,
+        Ok(Err(_)) => watchdog_fired,
+      };
 
       if timed_out {
         TestResult::Failed(TestFailure::TimedOut(timeout_ms.unwrap_or(0)))

@@ -20,6 +20,11 @@
       "args": "test --quiet validation_negative.ts",
       "exitCode": 1,
       "output": "validation_negative.out"
+    },
+    "validation_fractional": {
+      "args": "test --quiet validation_fractional.ts",
+      "exitCode": 1,
+      "output": "validation_fractional.out"
     }
   }
 }
