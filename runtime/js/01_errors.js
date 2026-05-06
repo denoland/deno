@@ -1,191 +1,191 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-  const { core, primordials } = globalThis.__bootstrap;
-  const { BadResource, Interrupted, NotCapable } = core;
-  const { Error } = primordials;
+const { core, primordials } = globalThis.__bootstrap;
+const { BadResource, Interrupted, NotCapable } = core;
+const { Error } = primordials;
 
-  class NotFound extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "NotFound";
-    }
+class NotFound extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "NotFound";
   }
+}
 
-  class ConnectionRefused extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "ConnectionRefused";
-    }
+class ConnectionRefused extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "ConnectionRefused";
   }
+}
 
-  class ConnectionReset extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "ConnectionReset";
-    }
+class ConnectionReset extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "ConnectionReset";
   }
+}
 
-  class ConnectionAborted extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "ConnectionAborted";
-    }
+class ConnectionAborted extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "ConnectionAborted";
   }
+}
 
-  class NotConnected extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "NotConnected";
-    }
+class NotConnected extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "NotConnected";
   }
+}
 
-  class AddrInUse extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "AddrInUse";
-    }
+class AddrInUse extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "AddrInUse";
   }
+}
 
-  class AddrNotAvailable extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "AddrNotAvailable";
-    }
+class AddrNotAvailable extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "AddrNotAvailable";
   }
+}
 
-  class BrokenPipe extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "BrokenPipe";
-    }
+class BrokenPipe extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "BrokenPipe";
   }
+}
 
-  class AlreadyExists extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "AlreadyExists";
-    }
+class AlreadyExists extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "AlreadyExists";
   }
+}
 
-  class InvalidData extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "InvalidData";
-    }
+class InvalidData extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "InvalidData";
   }
+}
 
-  class TimedOut extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "TimedOut";
-    }
+class TimedOut extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "TimedOut";
   }
+}
 
-  class WriteZero extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "WriteZero";
-    }
+class WriteZero extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "WriteZero";
   }
+}
 
-  class WouldBlock extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "WouldBlock";
-    }
+class WouldBlock extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "WouldBlock";
   }
+}
 
-  class UnexpectedEof extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "UnexpectedEof";
-    }
+class UnexpectedEof extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "UnexpectedEof";
   }
+}
 
-  class Http extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "Http";
-    }
+class Http extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "Http";
   }
+}
 
-  class Busy extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "Busy";
-    }
+class Busy extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "Busy";
   }
+}
 
-  class PermissionDenied extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "PermissionDenied";
-    }
+class PermissionDenied extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "PermissionDenied";
   }
+}
 
-  class NotSupported extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "NotSupported";
-    }
+class NotSupported extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "NotSupported";
   }
+}
 
-  class FilesystemLoop extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "FilesystemLoop";
-    }
+class FilesystemLoop extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "FilesystemLoop";
   }
+}
 
-  class IsADirectory extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "IsADirectory";
-    }
+class IsADirectory extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "IsADirectory";
   }
+}
 
-  class NetworkUnreachable extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "NetworkUnreachable";
-    }
+class NetworkUnreachable extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "NetworkUnreachable";
   }
+}
 
-  class NotADirectory extends Error {
-    constructor(msg, opts) {
-      super(msg, opts);
-      this.name = "NotADirectory";
-    }
+class NotADirectory extends Error {
+  constructor(msg, opts) {
+    super(msg, opts);
+    this.name = "NotADirectory";
   }
+}
 
-  const errors = {
-    NotFound,
-    PermissionDenied,
-    ConnectionRefused,
-    ConnectionReset,
-    ConnectionAborted,
-    NotConnected,
-    AddrInUse,
-    AddrNotAvailable,
-    BrokenPipe,
-    AlreadyExists,
-    InvalidData,
-    TimedOut,
-    Interrupted,
-    WriteZero,
-    WouldBlock,
-    UnexpectedEof,
-    BadResource,
-    Http,
-    Busy,
-    NotSupported,
-    FilesystemLoop,
-    IsADirectory,
-    NetworkUnreachable,
-    NotADirectory,
-    NotCapable,
-  };
+const errors = {
+  NotFound,
+  PermissionDenied,
+  ConnectionRefused,
+  ConnectionReset,
+  ConnectionAborted,
+  NotConnected,
+  AddrInUse,
+  AddrNotAvailable,
+  BrokenPipe,
+  AlreadyExists,
+  InvalidData,
+  TimedOut,
+  Interrupted,
+  WriteZero,
+  WouldBlock,
+  UnexpectedEof,
+  BadResource,
+  Http,
+  Busy,
+  NotSupported,
+  FilesystemLoop,
+  IsADirectory,
+  NetworkUnreachable,
+  NotADirectory,
+  NotCapable,
+};
 
-  return { errors };
+return { errors };
 })();
