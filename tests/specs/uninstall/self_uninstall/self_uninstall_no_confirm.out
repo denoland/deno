@@ -1,0 +1,2 @@
+[WILDCARD]
+error: Cannot prompt for confirmation in non-interactive mode. Use the --yes flag to skip confirmation.

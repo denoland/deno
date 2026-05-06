@@ -241,6 +241,10 @@ pub async fn uninstall(
   uninstall_flags: UninstallFlags,
 ) -> Result<(), AnyError> {
   let uninstall_flags = match uninstall_flags.kind {
+    UninstallKind::Self_(self_flags) => {
+      return crate::tools::self_uninstall::self_uninstall(flags, self_flags)
+        .await;
+    }
     UninstallKind::Global(flags) => flags,
     UninstallKind::Local(remove_flags) => {
       return crate::tools::pm::remove(flags, remove_flags).await;
