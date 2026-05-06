@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   FunctionPrototypeCall,
   ObjectPrototypeIsPrototypeOf,
@@ -11,10 +12,12 @@ const {
   ERR_INVALID_FD,
   ERR_TTY_INIT_FAILED,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import { op_tty_check_fd_permission, TTY } from "ext:core/ops";
-import { Socket } from "node:net";
-import { setReadStream } from "ext:deno_node/_process/streams.mjs";
-import { WriteStream } from "ext:deno_node/internal/tty.js";
+const { op_tty_check_fd_permission, TTY } = core.ops;
+const lazyNet = core.createLazyLoader("node:net");
+const lazyStreams = core.createLazyLoader(
+  "ext:deno_node/_process/streams.mjs",
+);
+const lazyInternalTty = core.createLazyLoader("ext:deno_node/internal/tty.js");
 
 // Returns true when the given numeric fd is associated with a TTY and false otherwise.
 function isatty(fd) {
@@ -43,6 +46,7 @@ function ReadStream(fd, options) {
   if (ctx.code !== undefined) {
     throw new ERR_TTY_INIT_FAILED(ctx);
   }
+  const { Socket } = lazyNet();
   FunctionPrototypeCall(Socket, this, {
     readableHighWaterMark: 0,
     handle: tty,
@@ -54,6 +58,7 @@ function ReadStream(fd, options) {
   this.isTTY = true;
 }
 
+const { Socket } = lazyNet();
 ObjectSetPrototypeOf(ReadStream.prototype, Socket.prototype);
 ObjectSetPrototypeOf(ReadStream, Socket);
 
@@ -65,9 +70,13 @@ ReadStream.prototype.setRawMode = function setRawMode(flag) {
   return this;
 };
 
-export { ReadStream };
+lazyStreams().setReadStream(ReadStream);
 
-setReadStream(ReadStream);
-
-export { isatty, WriteStream };
-export default { isatty, WriteStream, ReadStream };
+return {
+  isatty,
+  ReadStream,
+  get WriteStream() {
+    return lazyInternalTty().WriteStream;
+  },
+};
+})();
