@@ -252,41 +252,53 @@ struct ParallelInfo {
   name_pad_width: usize,
 }
 
-fn compute_concurrent_task_ids(tasks: &[ResolvedTask]) -> HashSet<usize> {
+/// For each task that could run concurrently with at least one other task,
+/// returns its sequential color index (0, 1, 2, …) so adjacent concurrent
+/// tasks always get distinct colors regardless of how `task.id` is allocated.
+///
+/// A task is "potentially concurrent" when at least one other task is neither
+/// a transitive dependency nor a transitive dependent — i.e. `run_tasks_in_parallel`
+/// could have both in flight at the same time.
+fn compute_concurrent_task_color_indices(
+  tasks: &[ResolvedTask],
+) -> HashMap<usize, usize> {
   if tasks.len() <= 1 {
-    return HashSet::new();
+    return HashMap::new();
   }
 
-  // Build transitive dependency sets. Tasks are in topological order so each
-  // task's direct dependencies have already had their own trans_deps computed.
+  // Build forward and reverse transitive dependency sets in a single pass.
+  // Tasks arrive in topological order, so each task's direct dependencies
+  // have already had their own trans_deps computed.
   let mut trans_deps: HashMap<usize, HashSet<usize>> = HashMap::new();
+  let mut trans_dependents: HashMap<usize, HashSet<usize>> = HashMap::new();
   for task in tasks {
-    let mut all_deps = HashSet::new();
+    let mut deps = HashSet::new();
     for &dep_id in &task.dependencies {
-      all_deps.insert(dep_id);
+      deps.insert(dep_id);
       if let Some(d) = trans_deps.get(&dep_id) {
-        all_deps.extend(d);
+        deps.extend(d);
       }
     }
-    trans_deps.insert(task.id, all_deps);
+    for &dep_id in &deps {
+      trans_dependents.entry(dep_id).or_default().insert(task.id);
+    }
+    trans_deps.insert(task.id, deps);
   }
 
-  // Task X is potentially concurrent with task Y when neither is a transitive
-  // dependency of the other — they could be in-flight simultaneously.
-  let mut concurrent = HashSet::new();
-  for i in 0..tasks.len() {
-    for j in (i + 1)..tasks.len() {
-      let id_i = tasks[i].id;
-      let id_j = tasks[j].id;
-      if !trans_deps[&id_i].contains(&id_j)
-        && !trans_deps[&id_j].contains(&id_i)
-      {
-        concurrent.insert(id_i);
-        concurrent.insert(id_j);
-      }
+  // Walk tasks in topological order (deterministic for a given graph) and
+  // assign sequential color indices only to tasks that are concurrent with
+  // at least one sibling. Stable across reruns for muscle memory.
+  let mut color_indices = HashMap::new();
+  let mut next_color = 0;
+  for task in tasks {
+    let dep_count = trans_deps[&task.id].len();
+    let dependent_count = trans_dependents.get(&task.id).map_or(0, |s| s.len());
+    if dep_count + dependent_count < tasks.len() - 1 {
+      color_indices.insert(task.id, next_color);
+      next_color += 1;
     }
   }
-  concurrent
+  color_indices
 }
 
 fn colorize_task_prefix(label: &str, color_index: usize) -> String {
@@ -371,10 +383,11 @@ impl<'a> TaskRunner<'a> {
     kill_signal: &KillSignal,
     args: &[String],
   ) -> Result<i32, deno_core::anyhow::Error> {
-    let concurrent_task_ids = compute_concurrent_task_ids(&tasks);
+    let concurrent_task_color_indices =
+      compute_concurrent_task_color_indices(&tasks);
     let max_task_name_len = tasks
       .iter()
-      .filter(|t| concurrent_task_ids.contains(&t.id))
+      .filter(|t| concurrent_task_color_indices.contains_key(&t.id))
       .map(|t| t.name.len())
       .max()
       .unwrap_or(0);
@@ -383,7 +396,7 @@ impl<'a> TaskRunner<'a> {
       completed: HashSet<usize>,
       running: HashSet<usize>,
       tasks: &'a [ResolvedTask<'a>],
-      concurrent_task_ids: HashSet<usize>,
+      concurrent_task_color_indices: HashMap<usize, usize>,
       max_task_name_len: usize,
     }
 
@@ -432,14 +445,13 @@ impl<'a> TaskRunner<'a> {
 
           self.running.insert(task.id);
           let kill_signal = kill_signal.clone();
-          let parallel_info = if self.concurrent_task_ids.contains(&task.id) {
-            Some(ParallelInfo {
-              color_index: task.id,
+          let parallel_info = self
+            .concurrent_task_color_indices
+            .get(&task.id)
+            .map(|&color_index| ParallelInfo {
+              color_index,
               name_pad_width: self.max_task_name_len,
-            })
-          } else {
-            None
-          };
+            });
           return Some(
             async move {
               match task.task_or_script {
@@ -483,7 +495,7 @@ impl<'a> TaskRunner<'a> {
       completed: HashSet::with_capacity(tasks.len()),
       running: HashSet::with_capacity(self.concurrency),
       tasks: &tasks,
-      concurrent_task_ids,
+      concurrent_task_color_indices,
       max_task_name_len,
     };
 
