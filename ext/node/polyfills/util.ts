@@ -56,7 +56,9 @@ const {
   validateObject,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
+const { parseArgs } = core.loadExtScript(
+  "ext:deno_node/internal/util/parse_args/parse_args.js",
+);
 const { MIMEParams, MIMEType } = core.loadExtScript(
   "ext:deno_node/internal/mime.ts",
 );
