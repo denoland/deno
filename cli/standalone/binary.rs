@@ -441,8 +441,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let mut remote_modules_store =
       SpecifierDataStore::with_capacity(specifiers_count);
     let mut asset_module_urls = graph.asset_module_urls();
-    let progress = progress_bar
-      .update_with_prompt(ProgressMessagePrompt::Compile, "Processing modules");
+    let progress =
+      progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
     progress.set_total_size(specifiers_count as u64);
     let mut modules_done: u64 = 0;
     // todo(dsherret): transpile and analyze CJS in parallel
@@ -945,12 +945,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       CliNpmResolver::Managed(npm_resolver) => {
         if let Some(node_modules_path) = npm_resolver.root_node_modules_path() {
           maybe_warn_different_system(&self.npm_system_info);
-          let progress = progress_bar.update_with_prompt(
-            ProgressMessagePrompt::Compile,
-            "Embedding node_modules",
-          );
+          let _progress =
+            progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
           builder.add_dir_recursive(node_modules_path)?;
-          drop(progress);
           Ok(())
         } else {
           let snapshot = snapshot.unwrap();
@@ -959,10 +956,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             snapshot.as_serialized().packages.iter().collect::<Vec<_>>();
           packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
           let current_system = NpmSystemInfo::default();
-          let progress = progress_bar.update_with_prompt(
-            ProgressMessagePrompt::Compile,
-            "Embedding npm packages",
-          );
+          let progress =
+            progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
           progress.set_total_size(packages.len() as u64);
           let mut packages_done: u64 = 0;
           for package in packages {
@@ -991,10 +986,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         for pkg_json in self.cli_options.workspace().package_jsons() {
           builder.add_path(&pkg_json.path)?;
         }
-        let _progress = progress_bar.update_with_prompt(
-          ProgressMessagePrompt::Compile,
-          "Embedding node_modules",
-        );
+        let _progress =
+          progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
         // traverse and add all the node_modules directories in the workspace
         let mut pending_dirs = VecDeque::new();
         pending_dirs.push_back(
