@@ -35,4 +35,4 @@ export const {
 
 export const debug = debuglog;
 
-export default mod.default;
+export default mod;
