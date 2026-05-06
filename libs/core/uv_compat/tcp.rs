@@ -115,6 +115,12 @@ pub struct uv_tcp_t {
   pub(crate) internal_alloc_cb: Option<uv_alloc_cb>,
   pub(crate) internal_read_cb: Option<uv_read_cb>,
   pub(crate) internal_reading: bool,
+  /// Set true once a non-zero read has occurred on this connection.
+  /// Used by the broken-connection probe to distinguish a peer that
+  /// FIN'd after sending data (legitimate half-close — write side
+  /// stays valid) from a peer that aborted before sending anything
+  /// (writes can't be delivered). Persists across polls.
+  pub(crate) internal_received_data: bool,
   pub(crate) internal_connect: Option<ConnectPending>,
   pub(crate) internal_write_queue: VecDeque<WritePending>,
   pub(crate) internal_connection_cb: Option<uv_connection_cb>,
@@ -396,6 +402,7 @@ pub unsafe fn uv_tcp_init(loop_: *mut uv_loop_t, tcp: *mut uv_tcp_t) -> c_int {
     write(addr_of_mut!((*tcp).internal_alloc_cb), None);
     write(addr_of_mut!((*tcp).internal_read_cb), None);
     write(addr_of_mut!((*tcp).internal_reading), false);
+    write(addr_of_mut!((*tcp).internal_received_data), false);
     write(addr_of_mut!((*tcp).internal_connect), None);
     write(addr_of_mut!((*tcp).internal_write_queue), VecDeque::new());
     write(addr_of_mut!((*tcp).internal_connection_cb), None);
@@ -1052,6 +1059,7 @@ pub fn new_tcp() -> uv_tcp_t {
     internal_alloc_cb: None,
     internal_read_cb: None,
     internal_reading: false,
+    internal_received_data: false,
     internal_connect: None,
     internal_write_queue: VecDeque::new(),
     internal_connection_cb: None,
@@ -1213,24 +1221,39 @@ pub(crate) unsafe fn poll_tcp_handle(
             }
             Ok(n) => {
               any_work = true;
-              let buflen = buf.len;
+              (*tcp_ptr).internal_received_data = true;
               read_cb(tcp_ptr as *mut uv_stream_t, n as isize, &buf);
               count -= 1;
               if count == 0 {
                 break;
               }
-              // Match libuv's uv__read (src/unix/stream.c:1147):
-              // break on partial read to skip the predicted-EAGAIN
-              // syscall. tokio's readiness tracking is edge-style
-              // internally (`try_read` only clears the bit on
-              // WouldBlock), so this leaves readiness armed and
-              // unwoken. The re-register block at the end of this
-              // function detects that case and issues `mark_ready()`
-              // to put the handle back on the ready queue for the
-              // next run_io pass.
-              if n < buflen {
-                break;
-              }
+              // NOTE: libuv (uv__read) breaks here when `n < buf.len`
+              // to skip the predicted-EAGAIN syscall. We deliberately
+              // do NOT — keep looping until try_read returns
+              // WouldBlock.
+              //
+              // Tokio's TcpStream readiness is edge-triggered: the
+              // internal "readable" bit is cleared only by a
+              // WouldBlock return from try_read. Breaking on partial
+              // read leaves the bit armed, the re-register check at
+              // the end of this function then sees `poll_read_ready
+              // == Ready`, and `mark_ready()` puts the handle back
+              // on the ready queue.
+              //
+              // Under sustained HTTP keep-alive load that turns into
+              // a self-wake loop: every tick re-queues every active
+              // connection, so tokio's executor sees us continuously
+              // awoken and never yields to its reactor (event_interval
+              // controls when the reactor is polled). New TCP
+              // readiness from the kernel piles up undelivered,
+              // pushing p99 from ~3 ms to ~30 ms at 100 connections
+              // for short responses where every read is partial.
+              //
+              // Looping one more iteration costs an extra recv()
+              // syscall, but that recv returns WouldBlock, clears
+              // tokio's readiness bit, and lets the handle fall out
+              // of the ready queue until tokio actually delivers
+              // fresh readiness.
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
               // Match libuv: call read_cb with nread=0 so the user
@@ -1294,7 +1317,19 @@ pub(crate) unsafe fn poll_tcp_handle(
         // we detect a broken connection (peer close / RST) promptly via
         // the readable side, rather than waiting for a TCP retransmit
         // timeout on the write side.
+        //
+        // Gate on `!internal_received_data`: if the peer has ever sent
+        // us a byte, treat a subsequent FIN as a legitimate half-close
+        // (write side stays valid — the peer just stopped sending).
+        // Without this gate the perf-fix's single-poll EOF observation
+        // turns test-net-allow-half-open's queued 'asd' write into a
+        // spurious EPIPE: the read loop now consumes the server's
+        // 1024 bytes and the peer FIN in the same poll, so by the time
+        // this probe runs `internal_reading` is already false and the
+        // FIN looks indistinguishable from a peer that aborted before
+        // ever writing. `internal_received_data` resolves the ambiguity.
         if !(*tcp_ptr).internal_reading
+          && !(*tcp_ptr).internal_received_data
           && let Poll::Ready(Ok(())) = stream.poll_read_ready(cx)
         {
           // Read side is ready -- peek (without consuming) to check
