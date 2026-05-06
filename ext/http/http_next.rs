@@ -718,7 +718,7 @@ fn is_response_compressible(headers: &HeaderMap) -> bool {
 fn modify_compressibility_from_response(
   compression: Compression,
   headers: &mut HeaderMap,
-) -> Compression {  
+) -> Compression {
   if compression == Compression::None {
     return Compression::None;
   }
