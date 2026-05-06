@@ -27,6 +27,28 @@ use crate::resolve_import;
 
 pub type ModuleLoaderError = JsErrorBox;
 
+/// Result of calling `ModuleLoader::resolve`.
+pub enum ModuleResolveResponse {
+  /// Resolution is available synchronously.
+  Sync(Result<ModuleSpecifier, ModuleLoaderError>),
+
+  /// Resolution requires async work (e.g., querying a registry or running
+  /// user-provided JS resolve hooks).
+  Async(
+    Pin<Box<dyn Future<Output = Result<ModuleSpecifier, ModuleLoaderError>>>>,
+  ),
+}
+
+impl ModuleResolveResponse {
+  /// Convert to a future that handles both variants.
+  pub async fn into_future(self) -> Result<ModuleSpecifier, ModuleLoaderError> {
+    match self {
+      Self::Sync(result) => result,
+      Self::Async(fut) => fut.await,
+    }
+  }
+}
+
 /// Result of calling `ModuleLoader::load`.
 pub enum ModuleLoadResponse {
   /// Source file is available synchronously - eg. embedder might have
@@ -71,15 +93,28 @@ pub trait ModuleLoader {
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError>;
+  ) -> ModuleResolveResponse;
 
   /// Override to customize the behavior of `import.meta.resolve` resolution.
+  ///
+  /// The default implementation calls `self.resolve()` and, if the result is
+  /// `ModuleResolveResponse::Sync`, returns it directly. Loaders that return
+  /// `ModuleResolveResponse::Async` from `resolve()` should override this
+  /// method to provide a synchronous resolution path, since
+  /// `import.meta.resolve` is synchronous.
   fn import_meta_resolve(
     &self,
     specifier: &str,
     referrer: &str,
   ) -> Result<ModuleSpecifier, ModuleLoaderError> {
-    self.resolve(specifier, referrer, ResolutionKind::DynamicImport)
+    match self.resolve(specifier, referrer, ResolutionKind::DynamicImport) {
+      ModuleResolveResponse::Sync(result) => result,
+      ModuleResolveResponse::Async(_) => {
+        // Async resolution is not supported for import.meta.resolve;
+        // fall back to basic URL resolution.
+        resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+      }
+    }
   }
 
   /// Given ModuleSpecifier, load its source code.
@@ -197,8 +232,10 @@ impl ModuleLoader for NoopModuleLoader {
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
-    resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+  ) -> ModuleResolveResponse {
+    ModuleResolveResponse::Sync(
+      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
+    )
   }
 
   fn load(
@@ -269,14 +306,11 @@ impl ExtModuleLoader {
 
     Ok(())
   }
-}
 
-impl ModuleLoader for ExtModuleLoader {
-  fn resolve(
+  fn resolve_inner(
     &self,
     specifier: &str,
     referrer: &str,
-    _kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, ModuleLoaderError> {
     // If specifier is relative to an extension module, we need to do some special handling
     if specifier.starts_with("../")
@@ -297,6 +331,17 @@ impl ModuleLoader for ExtModuleLoader {
       .map_err(JsErrorBox::from_err);
     }
     resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+  }
+}
+
+impl ModuleLoader for ExtModuleLoader {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    _kind: ResolutionKind,
+  ) -> ModuleResolveResponse {
+    ModuleResolveResponse::Sync(self.resolve_inner(specifier, referrer))
   }
 
   fn load(
@@ -372,8 +417,10 @@ impl ModuleLoader for LazyEsmModuleLoader {
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
-    resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+  ) -> ModuleResolveResponse {
+    ModuleResolveResponse::Sync(
+      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
+    )
   }
 
   fn load(
@@ -434,8 +481,10 @@ impl ModuleLoader for FsModuleLoader {
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
-    resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+  ) -> ModuleResolveResponse {
+    ModuleResolveResponse::Sync(
+      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
+    )
   }
 
   fn load(
@@ -533,8 +582,10 @@ impl ModuleLoader for StaticModuleLoader {
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
-    resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+  ) -> ModuleResolveResponse {
+    ModuleResolveResponse::Sync(
+      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
+    )
   }
 
   fn load(
@@ -600,7 +651,7 @@ impl<L: ModuleLoader> ModuleLoader for TestingModuleLoader<L> {
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+  ) -> ModuleResolveResponse {
     self.resolve_count.set(self.resolve_count.get() + 1);
     self.loader.resolve(specifier, referrer, kind)
   }

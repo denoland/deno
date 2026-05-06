@@ -36,6 +36,7 @@ use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
 use deno_config::deno_json::NewestDependencyDate;
 use deno_config::deno_json::NodeModulesDirMode;
+use deno_config::deno_json::NodeModulesLinkerMode;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::Context;
@@ -992,6 +993,7 @@ pub struct Flags {
   pub type_check_mode: TypeCheckMode,
   pub config_flag: ConfigFlag,
   pub node_modules_dir: Option<NodeModulesDirMode>,
+  pub node_modules_linker: Option<NodeModulesLinkerMode>,
   pub vendor: Option<bool>,
   pub enable_testing_features: bool,
   pub ext: Option<String>,
@@ -2346,13 +2348,13 @@ fn add_subcommand() -> Command {
     "add",
     cstr!(
       "Add dependencies to your configuration file.
+  <p(245)>deno add express</>
+
+Unprefixed packages default to npm. Use jsr: prefix for jsr packages:
   <p(245)>deno add jsr:@std/path</>
 
-You can also add npm packages:
-  <p(245)>deno add npm:react</>
-
 Or multiple dependencies at once:
-  <p(245)>deno add jsr:@std/path jsr:@std/assert npm:chalk</>"
+  <p(245)>deno add express jsr:@std/path</>"
     ),
     UnstableArgsConfig::None,
   )
@@ -2512,7 +2514,7 @@ fn default_registry_args() -> [Arg; 2] {
   [
     Arg::new("npm")
       .long("npm")
-      .help("assume unprefixed package names are npm packages")
+      .help("assume unprefixed package names are npm packages (default)")
       .action(ArgAction::SetTrue)
       .conflicts_with("jsr"),
     Arg::new("jsr")
@@ -2820,6 +2822,7 @@ fn clean_subcommand() -> Command {
           .requires("except"),
       )
       .arg(node_modules_dir_arg().requires("except"))
+      .arg(node_modules_linker_arg().requires("except"))
       .arg(vendor_arg().requires("except"))
   })
 }
@@ -3759,6 +3762,7 @@ The following information is shown:
       .arg(config_arg())
       .arg(import_map_arg())
       .arg(node_modules_dir_arg())
+      .arg(node_modules_linker_arg())
       .arg(vendor_arg())
       .arg(
         Arg::new("json")
@@ -3780,8 +3784,8 @@ in the package cache. If no dependency is specified, installs all dependencies l
 If the <p(245)>--entrypoint</> flag is passed, installs the dependencies of the specified entrypoint(s).
 
   <p(245)>deno install</>
+  <p(245)>deno install express</>
   <p(245)>deno install jsr:@std/bytes</>
-  <p(245)>deno install npm:chalk</>
   <p(245)>deno install --entrypoint entry1.ts entry2.ts</>
 
 <g>Global installation</>
@@ -4588,6 +4592,7 @@ Evaluate a task from string:
           ).action(ArgAction::SetTrue)
       )
       .arg(node_modules_dir_arg())
+      .arg(node_modules_linker_arg())
       .arg(tunnel_arg())
   })
 }
@@ -5111,6 +5116,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(no_remote_arg())
     .arg(no_npm_arg())
     .arg(node_modules_dir_arg())
+    .arg(node_modules_linker_arg())
     .arg(vendor_arg())
     .arg(node_conditions_arg())
     .arg(config_arg())
@@ -6267,6 +6273,41 @@ fn node_modules_dir_arg() -> Arg {
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
 }
 
+fn node_modules_linker_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let value =
+    matches.remove_one::<NodeModulesLinkerMode>("node-modules-linker");
+  if let Some(mode) = value {
+    flags.node_modules_linker = Some(mode);
+  }
+}
+
+fn node_modules_linker_arg() -> Arg {
+  fn parse_node_modules_linker_mode(
+    s: &str,
+  ) -> Result<NodeModulesLinkerMode, String> {
+    match s {
+      "isolated" => Ok(NodeModulesLinkerMode::Isolated),
+      "hoisted" => Ok(NodeModulesLinkerMode::Hoisted),
+      _ => Err(format!(
+        "Invalid value '{}': expected \"isolated\" or \"hoisted\"",
+        s
+      )),
+    }
+  }
+
+  Arg::new("node-modules-linker")
+    .long("node-modules-linker")
+    .alias("linker")
+    .num_args(1)
+    .value_parser(clap::builder::ValueParser::new(
+      parse_node_modules_linker_mode,
+    ))
+    .value_name("MODE")
+    .require_equals(true)
+    .help("Sets the linker mode for npm packages (isolated or hoisted)")
+    .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
+}
+
 fn vendor_arg() -> Arg {
   Arg::new("vendor")
     .long("vendor")
@@ -6473,7 +6514,9 @@ fn add_parse_inner(
   } else if matches.get_flag("jsr") {
     Some(DefaultRegistry::Jsr)
   } else {
-    None
+    // Default to npm when no --npm or --jsr flag is provided.
+    // This allows `deno add express` to work without requiring `npm:` prefix.
+    Some(DefaultRegistry::Npm)
   };
   AddFlags {
     packages,
@@ -7665,6 +7708,7 @@ fn task_parse(
 
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   node_modules_arg_parse(flags, matches);
+  node_modules_linker_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
 
   let mut recursive = matches.get_flag("recursive");
@@ -8513,6 +8557,7 @@ fn node_modules_and_vendor_dir_arg_parse(
   matches: &mut ArgMatches,
 ) {
   node_modules_arg_parse(flags, matches);
+  node_modules_linker_arg_parse(flags, matches);
   flags.vendor = matches.remove_one::<bool>("vendor");
 }
 
@@ -14666,7 +14711,7 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["@david/which"],
             dev: false, // default is false
-            default_registry: None,
+            default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
           })
@@ -14684,7 +14729,7 @@ mod tests {
         let mut expected_flags = mk_flags(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
           dev: false,
-          default_registry: None,
+          default_registry: Some(DefaultRegistry::Npm),
           lockfile_only: true,
           save_exact: false,
         });
@@ -14698,7 +14743,7 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["npm:chalk"],
             dev: true,
-            default_registry: None,
+            default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
           }),

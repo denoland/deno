@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeForEach,
   ArrayPrototypeIncludes,
@@ -19,7 +19,7 @@ const {
   StringPrototypeStartsWith,
 } = primordials;
 
-import {
+const {
   validateArray,
   validateBoolean,
   validateBooleanArray,
@@ -27,9 +27,9 @@ import {
   validateString,
   validateStringArray,
   validateUnion,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
-import {
+const {
   findLongOptionForShort,
   isLoneLongOption,
   isLoneShortOption,
@@ -41,9 +41,9 @@ import {
   objectGetOwn,
   optionsGetOwn,
   useDefaultValueOption,
-} from "ext:deno_node/internal/util/parse_args/utils.js";
+} = core.loadExtScript("ext:deno_node/internal/util/parse_args/utils.js");
 
-import { codes } from "ext:deno_node/internal/error_codes.ts";
+const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
 const {
   ERR_INVALID_ARG_VALUE,
   ERR_PARSE_ARGS_INVALID_OPTION_VALUE,

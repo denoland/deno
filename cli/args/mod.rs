@@ -448,6 +448,24 @@ impl WorkspaceMainModuleResolver {
               )?
               .into_url()?
           }
+          deno_package_json::PackageJsonDepValue::Catalog(catalog_name) => {
+            match self
+              .workspace_resolver
+              .resolve_catalog_dep(alias, catalog_name)
+            {
+              Some(req) => ModuleSpecifier::parse(&format!(
+                "npm:{}{}",
+                req,
+                sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+              ))?,
+              None => {
+                return Err(deno_core::anyhow::anyhow!(
+                  "Package '{}' not found in catalog",
+                  alias
+                ));
+              }
+            }
+          }
         }
       }
       deno_resolver::workspace::MappedResolution::PackageJsonImport {

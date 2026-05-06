@@ -1,38 +1,30 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import {
+import { core } from "ext:core/mod.js";
+const {
   TransformStream,
   TransformStreamDefaultController,
-} from "ext:deno_web/06_streams.js";
-
-import {
   WritableStream,
   WritableStreamDefaultController,
   WritableStreamDefaultWriter,
-} from "ext:deno_web/06_streams.js";
-
-import {
   ReadableByteStreamController,
   ReadableStream,
   ReadableStreamBYOBReader,
   ReadableStreamBYOBRequest,
   ReadableStreamDefaultController,
   ReadableStreamDefaultReader,
-} from "ext:deno_web/06_streams.js";
-
-import {
   ByteLengthQueuingStrategy,
   CountQueuingStrategy,
-} from "ext:deno_web/06_streams.js";
-import {
+} = core.loadExtScript("ext:deno_web/06_streams.js");
+const {
   TextDecoderStream,
   TextEncoderStream,
-} from "ext:deno_web/08_text_encoding.js";
-import {
+} = core.loadExtScript("ext:deno_web/08_text_encoding.js");
+const {
   CompressionStream,
   DecompressionStream,
-} from "ext:deno_web/14_compression.js";
+} = core.loadExtScript("ext:deno_web/14_compression.js");
 "use strict";
 
 const _defaultExport1 = {

@@ -75,7 +75,9 @@ fn parse_section(input: &str) -> ParseResult<'_, Section<'_>> {
 
 fn parse_section_header(input: &str) -> ParseResult<'_, &str> {
   let (input, _) = ch('[')(input)?;
-  let (input, header_text) = take_while(|c| c != ']' && c != '\n')(input)?;
+  // `]` and `\n` are ASCII; byte scan halts on a valid char boundary.
+  let (input, header_text) =
+    take_while_byte(|b| b != b']' && b != b'\n')(input)?;
   let (input, _) = ch(']')(input)?;
 
   Ok((input, header_text))
@@ -242,7 +244,7 @@ fn parse_quoted_string(input: &str) -> ParseResult<'_, Cow<'_, str>> {
 }
 
 fn skip_non_newline_whitespace(input: &str) -> ParseResult<'_, ()> {
-  skip_while(|c| c == ' ' || c == '\t')(input)
+  skip_while_byte(|b| b == b' ' || b == b'\t')(input)
 }
 
 fn skip_comment(input: &str) -> ParseResult<'_, ()> {
@@ -251,7 +253,7 @@ fn skip_comment(input: &str) -> ParseResult<'_, ()> {
   if maybe_found.is_none() {
     return Ok((input, ()));
   }
-  let (input, _) = skip_while(|c| c != '\n')(input)?;
+  let (input, _) = skip_while_byte(|b| b != b'\n')(input)?;
 
   Ok((input, ()))
 }

@@ -107,6 +107,7 @@ builtin_ops! {
   ops_builtin_v8::op_ref_op,
   ops_builtin_v8::op_unref_op,
   ops_builtin_v8::op_lazy_load_esm,
+  ops_builtin_v8::op_load_ext_script,
   ops_builtin_v8::op_run_microtasks,
   ops_builtin_v8::op_drain_pending_rejections,
   ops_builtin_v8::op_compile_function,

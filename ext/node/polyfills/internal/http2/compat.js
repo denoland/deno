@@ -24,7 +24,7 @@ const {
   Symbol,
 } = primordials;
 
-import {
+const {
   HTTP2_HEADER_AUTHORITY,
   HTTP2_HEADER_CONNECTION,
   HTTP2_HEADER_METHOD,
@@ -36,10 +36,12 @@ import {
   HTTP_STATUS_EXPECTATION_FAILED,
   HTTP_STATUS_METHOD_NOT_ALLOWED,
   HTTP_STATUS_OK,
-} from "ext:deno_node/internal/http2/constants.ts";
+} = core.loadExtScript("ext:deno_node/internal/http2/constants.ts");
 import assert from "node:assert";
 import Stream, { Readable } from "node:stream";
-import { codes, hideStackFrames } from "ext:deno_node/internal/errors.ts";
+const { codes, hideStackFrames } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 const {
   ERR_HTTP2_HEADERS_SENT,
   ERR_HTTP2_INFO_STATUS_NOT_ALLOWED,
@@ -52,12 +54,12 @@ const {
   ERR_INVALID_HTTP_TOKEN,
   ERR_STREAM_WRITE_AFTER_END,
 } = codes;
-import {
+const {
   validateFunction,
   validateLinkHeaderValue,
   validateObject,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import {
   assertValidPseudoHeader,
   getAuthority,

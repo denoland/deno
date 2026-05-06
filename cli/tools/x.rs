@@ -128,13 +128,24 @@ fn run_js_file(
 
 fn get_npm_process_state(npm_resolver: &CliNpmResolver) -> Option<String> {
   match npm_resolver {
-    deno_resolver::npm::NpmResolver::Managed(managed) => Some(
-      deno_npm_installer::process_state::NpmProcessState::new_managed(
-        managed.resolution().serialized_valid_snapshot(),
-        managed.root_node_modules_path(),
+    deno_resolver::npm::NpmResolver::Managed(managed) => {
+      let linker_mode = match managed.linker_mode() {
+        deno_config::deno_json::NodeModulesLinkerMode::Hoisted => {
+          deno_npm_installer::process_state::NpmProcessStateLinkerMode::Hoisted
+        }
+        deno_config::deno_json::NodeModulesLinkerMode::Isolated => {
+          deno_npm_installer::process_state::NpmProcessStateLinkerMode::Isolated
+        }
+      };
+      Some(
+        deno_npm_installer::process_state::NpmProcessState::new_managed(
+          managed.resolution().serialized_valid_snapshot(),
+          managed.root_node_modules_path(),
+          linker_mode,
+        )
+        .as_serialized(),
       )
-      .as_serialized(),
-    ),
+    }
     deno_resolver::npm::NpmResolver::Byonm(_) => None,
   }
 }

@@ -8,8 +8,9 @@
 // - timer nesting depth tracking (WHATWG spec)
 // - numeric timer IDs (vs Node's Timeout objects)
 
-import { core, primordials } from "ext:core/mod.js";
-import { op_defer } from "ext:core/ops";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { op_defer } = core.ops;
 const {
   PromisePrototypeThen,
   TypeError,
@@ -17,7 +18,7 @@ const {
   ReflectApply,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 
 const loadNodeTimers = core.createLazyLoader(
   "ext:deno_node/internal/timers.mjs",
@@ -145,7 +146,7 @@ function defer(go) {
   PromisePrototypeThen(op_defer(), () => go());
 }
 
-export {
+return {
   clearInterval,
   clearTimeout,
   defer,
@@ -154,3 +155,4 @@ export {
   setTimeout,
   unrefTimer,
 };
+})();

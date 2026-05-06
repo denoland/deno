@@ -343,7 +343,7 @@ Deno.test(function eventTargetDispatchShouldFireCurrentListenersOnly() {
 });
 
 Deno.test(function eventTargetAddEventListenerGlobalAbort() {
-  return new Promise((resolve) => {
+  return new Promise<void>((resolve) => {
     const c = new AbortController();
 
     c.signal.addEventListener("abort", () => resolve());

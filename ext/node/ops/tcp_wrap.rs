@@ -368,8 +368,46 @@ impl TCPWrap {
         let mut nonblocking: u32 = 1;
         ioctlsocket(fd as usize, FIONBIO, &mut nonblocking);
       }
+      // Match Node: a wrap constructed with `new TCP(SERVER)` opens the
+      // fd as a listener; `new TCP(SOCKET)` as a connected stream. Node's
+      // libuv layer doesn't autodetect — it uses the wrap's intent to
+      // decide how to register the fd, then `listen()` on a listening fd
+      // is a no-op at the kernel level.
+      #[cfg(unix)]
+      if self.socket_type.get() == SocketType::Server {
+        return uv_compat::uv_tcp_open_listener(tcp, fd);
+      }
       uv_compat::uv_tcp_open(tcp, fd)
     }
+  }
+
+  #[fast]
+  fn socket_type_for_ipc(&self) -> i32 {
+    // Match Node's `net.Native` IPC handle type: the receiver needs to know
+    // whether to reopen the fd as a connected stream (`uv_tcp_open`) or as a
+    // listening socket (`uv_tcp_open_listener`). 0 = SOCKET, 1 = SERVER, to
+    // mirror the constructor argument.
+    match self.socket_type.get() {
+      SocketType::Server => 1,
+      SocketType::Socket => 0,
+    }
+  }
+
+  #[fast]
+  fn fd_for_ipc(&self) -> i32 {
+    #[cfg(unix)]
+    {
+      let tcp = self.tcp_ptr();
+      if tcp.is_null() {
+        return -1;
+      }
+      // SAFETY: tcp is valid (null-checked above).
+      unsafe { uv_compat::uv_tcp_fd_for_ipc(tcp) }
+    }
+    // Windows IPC handle passing doesn't use SCM_RIGHTS-style fd transfer;
+    // returning -1 surfaces "not supported" to the JS handle-passing path.
+    #[cfg(not(unix))]
+    -1
   }
 
   #[fast]
@@ -481,6 +519,29 @@ impl TCPWrap {
         client_tcp as *mut UvStream,
       )
     }
+  }
+
+  /// Take the underlying TCP stream from this handle and place it in the
+  /// resource table as a `TcpStreamResource`. This detaches the stream
+  /// from libuv. Returns the resource ID of the stream, which can then
+  /// be passed to ext/http ops (e.g. for WebSocket upgrade).
+  fn take_stream(
+    &self,
+    state: &mut OpState,
+  ) -> Result<ResourceId, deno_error::JsErrorBox> {
+    let tcp = self.tcp_ptr();
+    if tcp.is_null() {
+      return Err(deno_error::JsErrorBox::generic("TCP handle is closed"));
+    }
+    // SAFETY: tcp is valid (null-checked above)
+    let tcp_stream = unsafe { (*tcp).take_stream() }.ok_or_else(|| {
+      deno_error::JsErrorBox::generic(
+        "TCP handle has no active stream - already taken or not connected",
+      )
+    })?;
+    let (read_half, write_half) = tcp_stream.into_split();
+    let resource = TcpStreamResource::new((read_half, write_half));
+    Ok(state.resource_table.add(resource))
   }
 
   #[fast]

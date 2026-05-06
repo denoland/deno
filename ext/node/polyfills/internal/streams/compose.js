@@ -1,12 +1,12 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { pipeline } from "ext:deno_node/internal/streams/pipeline.js";
 import Duplex from "node:_stream_duplex";
 import { destroyer } from "ext:deno_node/internal/streams/destroy.js";
 
-import {
+const {
   isNodeStream,
   isReadable,
   isReadableStream,
@@ -14,9 +14,9 @@ import {
   isWebStream,
   isWritable,
   isWritableStream,
-} from "ext:deno_node/internal/streams/utils.js";
+} = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 
-import imported1 from "ext:deno_node/internal/errors.ts";
+const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import eos from "ext:deno_node/internal/streams/end-of-stream.js";
 
 const {

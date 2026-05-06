@@ -159,8 +159,8 @@ impl std::fmt::Debug for EmbeddedModuleLoader {
   }
 }
 
-impl ModuleLoader for EmbeddedModuleLoader {
-  fn resolve(
+impl EmbeddedModuleLoader {
+  fn resolve_inner(
     &self,
     raw_specifier: &str,
     referrer: &str,
@@ -292,6 +292,34 @@ impl ModuleLoader for EmbeddedModuleLoader {
               })?,
           )
         }
+        PackageJsonDepValue::Catalog(catalog_name) => {
+          match self
+            .shared
+            .workspace_resolver
+            .resolve_catalog_dep(alias, catalog_name)
+          {
+            Some(req) => Ok(
+              self
+                .shared
+                .npm_req_resolver
+                .resolve_req_with_sub_path(
+                  &req,
+                  sub_path.as_deref(),
+                  &referrer,
+                  resolution_mode,
+                  NodeResolutionKind::Execution,
+                )
+                .map_err(JsErrorBox::from_err)
+                .and_then(|url_or_path| {
+                  url_or_path.into_url().map_err(JsErrorBox::from_err)
+                })?,
+            ),
+            None => Err(JsErrorBox::generic(format!(
+              "Package '{}' not found in catalog",
+              alias
+            ))),
+          }
+        }
       },
       Ok(MappedResolution::PackageJsonImport { pkg_json }) => self
         .shared
@@ -364,6 +392,21 @@ impl ModuleLoader for EmbeddedModuleLoader {
       }
       Err(err) => Err(JsErrorBox::from_err(err)),
     }
+  }
+}
+
+impl ModuleLoader for EmbeddedModuleLoader {
+  fn resolve(
+    &self,
+    raw_specifier: &str,
+    referrer: &str,
+    _kind: ResolutionKind,
+  ) -> deno_core::ModuleResolveResponse {
+    deno_core::ModuleResolveResponse::Sync(self.resolve_inner(
+      raw_specifier,
+      referrer,
+      _kind,
+    ))
   }
 
   fn get_host_defined_options<'s>(
@@ -765,6 +808,7 @@ impl StandaloneModuleLoaderFactory {
     CreateModuleLoaderResult {
       module_loader: loader.clone(),
       node_require_loader: loader,
+      hook_registry: None,
     }
   }
 }
@@ -983,6 +1027,7 @@ pub async fn run_with_options(
           maybe_node_modules_path,
           npm_system_info: Default::default(),
           npmrc,
+          linker_mode: deno_config::deno_json::NodeModulesLinkerMode::default(),
         }),
       );
       (in_npm_pkg_checker, npm_resolver)
@@ -1029,6 +1074,7 @@ pub async fn run_with_options(
           maybe_node_modules_path: None,
           npm_system_info: Default::default(),
           npmrc: create_default_npmrc(),
+          linker_mode: deno_config::deno_json::NodeModulesLinkerMode::default(),
         }),
       );
       (in_npm_pkg_checker, npm_resolver)
@@ -1135,6 +1181,7 @@ pub async fn run_with_options(
       },
       Default::default(),
       sys.clone(),
+      metadata.workspace_resolver.catalogs,
     )
   };
   let code_cache = match metadata.code_cache_key {

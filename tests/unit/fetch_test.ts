@@ -2227,8 +2227,8 @@ Deno.test(
 
 Deno.test("fetch async iterable", async () => {
   const iterable = (async function* () {
-    yield new Uint8Array([1, 2, 3, 4, 5]);
-    yield new Uint8Array([6, 7, 8, 9, 10]);
+  yield new Uint8Array([1, 2, 3, 4, 5]);
+  yield new Uint8Array([6, 7, 8, 9, 10]);
   })();
   const res = new Response(iterable);
   const actual = await res.bytes();
@@ -2238,8 +2238,8 @@ Deno.test("fetch async iterable", async () => {
 
 Deno.test("fetch iterable", async () => {
   const iterable = (function* () {
-    yield new Uint8Array([1, 2, 3, 4, 5]);
-    yield new Uint8Array([6, 7, 8, 9, 10]);
+  yield new Uint8Array([1, 2, 3, 4, 5]);
+  yield new Uint8Array([6, 7, 8, 9, 10]);
   })();
   const res = new Response(iterable);
   const actual = await res.bytes();

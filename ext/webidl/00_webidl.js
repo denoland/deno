@@ -6,7 +6,8 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, internals, primordials } from "ext:core/mod.js";
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
 const {
   isArrayBuffer,
   isDataView,
@@ -1447,7 +1448,7 @@ function setlikeObjectWrap(objPrototype, readonly) {
 
 internals.webidlBrand = brand;
 
-export {
+return {
   assertBranded,
   AsyncIterable,
   brand,
@@ -1472,3 +1473,4 @@ export {
   setlikeObjectWrap,
   type,
 };
+})();

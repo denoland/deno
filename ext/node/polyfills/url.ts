@@ -23,16 +23,19 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import {
+import { core } from "ext:core/mod.js";
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_FILE_URL_HOST,
   ERR_INVALID_FILE_URL_PATH,
   ERR_INVALID_URL,
   ERR_INVALID_URL_SCHEME,
-} from "ext:deno_node/internal/errors.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { validateString } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const {
   CHAR_0,
   CHAR_9,
   CHAR_AT,
@@ -68,17 +71,19 @@ import {
   CHAR_UPPERCASE_Z,
   CHAR_VERTICAL_LINE,
   CHAR_ZERO_WIDTH_NOBREAK_SPACE,
-} from "ext:deno_node/path/_constants.ts";
+} = core.loadExtScript("ext:deno_node/path/_constants.ts");
 import * as path from "node:path";
-import {
-  domainToASCII as idnaToASCII,
-  domainToUnicode as idnaToUnicode,
-} from "ext:deno_node/internal/idna.ts";
-import { isWindows, osType } from "ext:deno_node/_util/os.ts";
-import { encodeStr, hexTable } from "ext:deno_node/internal/querystring.ts";
+const {
+  domainToASCII: idnaToASCII,
+  domainToUnicode: idnaToUnicode,
+} = core.loadExtScript("ext:deno_node/internal/idna.ts");
+const { isWindows, osType } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { encodeStr, hexTable } = core.loadExtScript(
+  "ext:deno_node/internal/querystring.ts",
+);
 import querystring from "node:querystring";
 import type { ParsedUrlQuery, ParsedUrlQueryInput } from "node:querystring";
-import { URL, URLSearchParams } from "ext:deno_web/00_url.js";
+const { URL, URLSearchParams } = core.loadExtScript("ext:deno_web/00_url.js");
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 
 const forwardSlashRegEx = /\//g;

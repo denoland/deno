@@ -1132,6 +1132,14 @@ pub struct NodeModulesDirParseError {
   pub source: serde_json::Error,
 }
 
+#[derive(Debug, Error, JsError)]
+#[class(type)]
+#[error("Unsupported \"nodeModulesLinker\" value.")]
+pub struct NodeModulesLinkerParseError {
+  #[source]
+  pub source: serde_json::Error,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NewestDependencyDate {
   Enabled(chrono::DateTime<chrono::Utc>),
@@ -1256,6 +1264,62 @@ impl NodeModulesDirMode {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum NodeModulesLinkerMode {
+  #[default]
+  Isolated,
+  Hoisted,
+}
+
+impl<'de> Deserialize<'de> for NodeModulesLinkerMode {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    struct NodeModulesLinkerModeVisitor;
+
+    impl Visitor<'_> for NodeModulesLinkerModeVisitor {
+      type Value = NodeModulesLinkerMode;
+
+      fn expecting(
+        &self,
+        formatter: &mut std::fmt::Formatter,
+      ) -> std::fmt::Result {
+        formatter.write_str(r#""isolated" or "hoisted""#)
+      }
+
+      fn visit_str<E>(self, value: &str) -> Result<NodeModulesLinkerMode, E>
+      where
+        E: de::Error,
+      {
+        match value {
+          "isolated" => Ok(NodeModulesLinkerMode::Isolated),
+          "hoisted" => Ok(NodeModulesLinkerMode::Hoisted),
+          _ => Err(de::Error::invalid_value(Unexpected::Str(value), &self)),
+        }
+      }
+    }
+
+    deserializer.deserialize_str(NodeModulesLinkerModeVisitor)
+  }
+}
+
+impl std::fmt::Display for NodeModulesLinkerMode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.as_str())
+  }
+}
+
+impl NodeModulesLinkerMode {
+  pub fn as_str(self) -> &'static str {
+    match self {
+      NodeModulesLinkerMode::Isolated => "isolated",
+      NodeModulesLinkerMode::Hoisted => "hoisted",
+    }
+  }
+}
+
 /// `deploy` config representation for serde
 ///
 /// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
@@ -1311,12 +1375,16 @@ pub struct ConfigFileJson {
   pub exclude: Option<Value>,
   pub minimum_dependency_age: Option<Value>,
   pub node_modules_dir: Option<Value>,
+  pub node_modules_linker: Option<Value>,
   pub vendor: Option<bool>,
   pub license: Option<Value>,
   pub permissions: Option<Value>,
   pub publish: Option<Value>,
   pub deploy: Option<Value>,
   pub allow_scripts: Option<Value>,
+
+  pub catalog: Option<IndexMap<String, String>>,
+  pub catalogs: Option<IndexMap<String, IndexMap<String, String>>>,
 
   pub name: Option<String>,
   pub version: Option<String>,
@@ -1736,6 +1804,16 @@ impl ConfigFile {
       value.insert("scopes".to_string(), scopes.clone());
     }
     import_map::ext::expand_import_map_value(Value::Object(value))
+  }
+
+  pub fn catalog(&self) -> Option<&IndexMap<String, String>> {
+    self.json.catalog.as_ref()
+  }
+
+  pub fn catalogs(
+    &self,
+  ) -> Option<&IndexMap<String, IndexMap<String, String>>> {
+    self.json.catalogs.as_ref()
   }
 
   pub fn is_an_import_map(&self) -> bool {

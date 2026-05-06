@@ -22,25 +22,27 @@ const {
   SymbolToStringTag,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import { URL } from "ext:deno_web/00_url.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
+const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
 import { serializePermissions } from "ext:runtime/10_permissions.js";
 import { log } from "ext:runtime/06_util.js";
-import {
+const {
   defineEventHandler,
   ErrorEvent,
   EventTarget,
   MessageEvent,
   setIsTrusted,
-} from "ext:deno_web/02_event.js";
-import {
+} = core.loadExtScript("ext:deno_web/02_event.js");
+const {
   deserializeJsMessageData,
   MessagePortPrototype,
   serializeJsMessageData,
-} from "ext:deno_web/13_message_port.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+} = core.loadExtScript("ext:deno_web/13_message_port.js");
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 function createWorker(
   specifier,
