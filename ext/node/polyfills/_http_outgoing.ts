@@ -5,11 +5,13 @@
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
 import { core } from "ext:core/mod.js";
-import { getDefaultHighWaterMark } from "ext:deno_node/internal/streams/state.js";
+const { getDefaultHighWaterMark } = core.loadExtScript(
+  "ext:deno_node/internal/streams/state.js",
+);
 const assert = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );
-import EE from "node:events";
+const { EventEmitter: EE } = core.loadExtScript("ext:deno_node/_events.mjs");
 import { Stream } from "node:stream";
 const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 import type { Socket } from "node:net";

@@ -33,7 +33,7 @@ const {
   StringPrototypeToUpperCase,
 } = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
-import { EventEmitter } from "node:events";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const { os } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
@@ -2326,7 +2326,7 @@ export function setupChannel(
         options,
         callback,
       });
-      return handleQueue.length < 16;
+      return handleQueue.length === 1;
     }
 
     if (handle !== undefined) {

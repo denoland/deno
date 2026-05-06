@@ -4,7 +4,9 @@
 import { core, primordials } from "ext:core/mod.js";
 import { pipeline } from "ext:deno_node/internal/streams/pipeline.js";
 import Duplex from "node:_stream_duplex";
-import { destroyer } from "ext:deno_node/internal/streams/destroy.js";
+const { destroyer } = core.loadExtScript(
+  "ext:deno_node/internal/streams/destroy.js",
+);
 
 const {
   isNodeStream,
@@ -17,7 +19,8 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 
 const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import eos from "ext:deno_node/internal/streams/end-of-stream.js";
+const eos =
+  core.loadExtScript("ext:deno_node/internal/streams/end-of-stream.js").default;
 
 const {
   AbortError,

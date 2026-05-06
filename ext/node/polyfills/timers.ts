@@ -32,9 +32,9 @@ const {
   ERR_ILLEGAL_CONSTRUCTOR,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { kResistStopPropagation } from "ext:deno_node/internal/event_target.mjs";
-import type { Abortable } from "node:events";
 
-interface TimerOptions extends Abortable {
+interface TimerOptions {
+  signal?: AbortSignal | undefined;
   ref?: boolean | undefined;
 }
 

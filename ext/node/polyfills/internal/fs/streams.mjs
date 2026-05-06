@@ -27,7 +27,9 @@ const {
   validateFunction,
   validateInteger,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { errorOrDestroy } from "ext:deno_node/internal/streams/destroy.js";
+const { errorOrDestroy } = core.loadExtScript(
+  "ext:deno_node/internal/streams/destroy.js",
+);
 import * as fs from "node:fs";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import {

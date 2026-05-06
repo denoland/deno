@@ -339,37 +339,6 @@ function convertProcessSignalToExitCode(signalCode) {
   return 128 + signals[signalCode];
 }
 
-const defaultExport = {
-  format,
-  formatWithOptions,
-  inspect,
-  _extend,
-  convertProcessSignalToExitCode,
-  getCallSites,
-  getSystemErrorName,
-  getSystemErrorMessage,
-  aborted,
-  deprecate,
-  callbackify,
-  parseArgs,
-  MIMEParams,
-  MIMEType,
-  promisify,
-  inherits,
-  types,
-  stripVTControlCharacters,
-  TextDecoder,
-  TextEncoder,
-  toUSVString,
-  log,
-  debuglog,
-  debug: debuglog,
-  isDeepStrictEqual,
-  isArray,
-  styleText,
-  parseEnv,
-};
-
 return {
   callbackify,
   debuglog,
@@ -399,6 +368,5 @@ return {
   getSystemErrorMessage,
   getSystemErrorName,
   isDeepStrictEqual,
-  default: defaultExport,
 };
 })();

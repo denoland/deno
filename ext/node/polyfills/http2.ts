@@ -82,7 +82,7 @@ const {
   Http2Session: BindingHttp2Session,
   Http2Stream: BindingHttp2Stream,
 } = core.loadExtScript("ext:deno_node/internal_binding/http2.ts");
-import { EventEmitter } from "node:events";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const {
   defaultTriggerAsyncIdScope,
   symbols,

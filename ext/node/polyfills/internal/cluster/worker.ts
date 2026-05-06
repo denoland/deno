@@ -7,7 +7,7 @@
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
 import { core, primordials } from "ext:core/mod.js";
-import { EventEmitter } from "node:events";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const { kEmptyObject } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
