@@ -417,7 +417,7 @@ pub struct InitialWindowId(pub std::sync::Mutex<Option<u32>>);
 struct BrowserWindow {
   api: Arc<dyn DesktopApi>,
   window_id: u32,
-  surface: SameObject<deno_webgpu::byow::UnsafeWindowSurface>,
+  surface: SameObject<deno_canvas::byow::UnsafeWindowSurface>,
   /// Set when JS has taken a `getNativeWindow()` surface. Once a webgpu
   /// surface holds the underlying raw window handles, destroying the OS
   /// window underneath it would dangle those handles in wgpu-internal state
@@ -708,11 +708,14 @@ impl BrowserWindow {
           })?
       };
       let (width, height) = api.get_window_size(window_id);
-      Ok::<_, deno_error::JsErrorBox>(deno_webgpu::byow::UnsafeWindowSurface {
-        id: surface_id,
-        width: RefCell::new(width as u32),
-        height: RefCell::new(height as u32),
-        context: SameObject::new(),
+      Ok::<_, deno_error::JsErrorBox>(deno_canvas::byow::UnsafeWindowSurface {
+        data: std::rc::Rc::new(RefCell::new(deno_webgpu::canvas::SurfaceData {
+          id: surface_id,
+          width: width as u32,
+          height: height as u32,
+          instance,
+        })),
+        active_context: Default::default(),
       })
     })?;
     // Only suppress close() once the surface is actually live. If
