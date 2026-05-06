@@ -1,16 +1,17 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file ban-types prefer-primordials
+// deno-lint-ignore-file prefer-primordials no-process-global
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const { AssertionError } = core.loadExtScript(
   "ext:deno_node/internal/assert/assertion_error.js",
 );
 const { innerOk } = core.loadExtScript(
   "ext:deno_node/internal/assert/utils.ts",
 );
-import { inspect } from "node:util";
+const { inspect } = core.loadExtScript("ext:deno_node/util.ts");
 const {
   ERR_AMBIGUOUS_ARGUMENT,
   ERR_CONSTRUCT_CALL_REQUIRED,
@@ -27,7 +28,7 @@ const {
 const { CallTracker } = core.loadExtScript(
   "ext:deno_node/internal/assert/calltracker.js",
 );
-import { deprecate } from "node:util";
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 const { isPromise, isRegExp } = core.loadExtScript(
   "ext:deno_node/internal_binding/types.ts",
 );
@@ -58,24 +59,11 @@ const {
   Symbol,
 } = primordials;
 
-type AssertPredicate =
-  | RegExp
-  | (new () => object)
-  | ((thrown: unknown) => boolean)
-  | object
-  | Error;
-
-type AssertOptions = {
-  diff: "full" | "simple";
-  strict: boolean;
-  skipPrototype: boolean;
-};
-
 const kOptions = Symbol("options");
 
 const NO_EXCEPTION_SENTINEL = {};
 
-function Assert(options: AssertOptions) {
+function Assert(options) {
   if (!new.target) {
     throw new ERR_CONSTRUCT_CALL_REQUIRED("Assert");
   }
@@ -111,7 +99,7 @@ function Assert(options: AssertOptions) {
 Assert.prototype.fail = fail;
 // Duplicate of the `ok` function below so we don't inherit
 // the extra assigned properties from `assert` function later on.
-Assert.prototype.ok = function ok(...args: unknown[]) {
+Assert.prototype.ok = function ok(...args) {
   innerOk(ok, args.length, ...args);
 };
 Assert.prototype.equal = equal;
@@ -131,14 +119,7 @@ Assert.prototype.ifError = ifError;
 Assert.prototype.match = match;
 Assert.prototype.doesNotMatch = doesNotMatch;
 
-function innerFail(obj: {
-  actual?: unknown;
-  expected?: unknown;
-  message?: string | Error;
-  operator?: string;
-  stackStartFn?: Function;
-  diff?: "simple" | "full";
-}) {
+function innerFail(obj) {
   if (obj.message instanceof Error) {
     throw obj.message;
   }
@@ -153,13 +134,13 @@ function innerFail(obj: {
   });
 }
 
-function assert(...args: unknown[]) {
+function assert(...args) {
   innerOk(ok, args.length, ...args);
 }
 const ok = assert;
 
 class Comparison {
-  constructor(obj: object, keys: string[], actual?: unknown) {
+  constructor(obj, keys, actual) {
     for (const key of keys) {
       if (key in obj) {
         if (
@@ -178,12 +159,12 @@ class Comparison {
 }
 
 function compareExceptionKey(
-  actual: object,
-  expected: object,
-  key: string,
-  message: string | Error | undefined,
-  keys: string[],
-  fn: () => unknown | (() => Promise<unknown>),
+  actual,
+  expected,
+  key,
+  message,
+  keys,
+  fn,
 ) {
   if (!(key in actual) || !isDeepStrictEqual(actual[key], expected[key])) {
     if (!message) {
@@ -215,10 +196,10 @@ function compareExceptionKey(
 }
 
 function expectedException(
-  actual: unknown,
-  expected: AssertPredicate,
-  message: string | Error | undefined,
-  fn: Function,
+  actual,
+  expected,
+  message,
+  fn,
 ) {
   let generatedMessage = false;
   let throwError = false;
@@ -332,7 +313,7 @@ function expectedException(
   }
 }
 
-function getActual(fn: () => unknown): typeof NO_EXCEPTION_SENTINEL | unknown {
+function getActual(fn) {
   validateFunction(fn, "fn");
   try {
     fn();
@@ -342,7 +323,7 @@ function getActual(fn: () => unknown): typeof NO_EXCEPTION_SENTINEL | unknown {
   return NO_EXCEPTION_SENTINEL;
 }
 
-function checkIsPromise(obj: unknown): obj is Promise<unknown> {
+function checkIsPromise(obj) {
   // Accept native ES6 promises and promises that are implemented in a similar
   // way. Do not accept thenables that use a function as `obj` and that have no
   // `catch` handler.
@@ -353,8 +334,8 @@ function checkIsPromise(obj: unknown): obj is Promise<unknown> {
 }
 
 async function waitForActual(
-  promiseFn: (() => Promise<unknown>) | Promise<unknown>,
-): Promise<unknown> {
+  promiseFn,
+) {
   let resultPromise;
   if (typeof promiseFn === "function") {
     // Return a rejected promise if `promiseFn` throws synchronously.
@@ -386,10 +367,10 @@ async function waitForActual(
 }
 
 function expectsError(
-  stackStartFn: Function,
-  actual: unknown,
-  error: AssertPredicate | string | undefined,
-  message?: string | Error,
+  stackStartFn,
+  actual,
+  error,
+  message,
 ) {
   if (typeof error === "string") {
     if (arguments.length === 4) {
@@ -452,7 +433,7 @@ function expectsError(
   expectedException(actual, error, message, stackStartFn);
 }
 
-function hasMatchingError(actual: unknown, expected: unknown): boolean {
+function hasMatchingError(actual, expected) {
   if (typeof expected !== "function") {
     if (isRegExp(expected)) {
       const str = String(actual);
@@ -475,10 +456,10 @@ function hasMatchingError(actual: unknown, expected: unknown): boolean {
 }
 
 function expectsNoError(
-  stackStartFn: Function,
-  actual: unknown,
-  error: AssertPredicate | string | undefined,
-  message?: string | Error,
+  stackStartFn,
+  actual,
+  error,
+  message,
 ) {
   if (actual === NO_EXCEPTION_SENTINEL) {
     return;
@@ -506,41 +487,23 @@ function expectsNoError(
 }
 
 function throws(
-  fn: () => void,
-  message?: string | Error,
-): void;
-function throws(
-  fn: () => void,
-  error?: AssertPredicate,
-  message?: string | Error,
-): void;
-function throws(
-  fn: () => void,
-  ...args: [(AssertPredicate | string)?, (string | Error)?]
+  fn,
+  ...args
 ) {
   expectsError(throws, getActual(fn), ...args);
 }
 
 function doesNotThrow(
-  fn: () => void,
-  message?: string | Error,
-): void;
-function doesNotThrow(
-  fn: () => void,
-  error?: AssertPredicate,
-  message?: string | Error,
-): void;
-function doesNotThrow(
-  fn: () => void,
-  ...args: [(AssertPredicate | string)?, (string | Error)?]
+  fn,
+  ...args
 ) {
   expectsNoError(doesNotThrow, getActual(fn), ...args);
 }
 
 function equal(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -559,9 +522,9 @@ function equal(
 }
 
 function notEqual(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -580,9 +543,9 @@ function notEqual(
 }
 
 function strictEqual(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -601,9 +564,9 @@ function strictEqual(
 }
 
 function notStrictEqual(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -622,9 +585,9 @@ function notStrictEqual(
 }
 
 function partialDeepStrictEqual(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -642,9 +605,9 @@ function partialDeepStrictEqual(
 }
 
 function deepEqual(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -663,9 +626,9 @@ function deepEqual(
 }
 
 function notDeepEqual(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -684,9 +647,9 @@ function notDeepEqual(
 }
 
 function deepStrictEqual(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -705,9 +668,9 @@ function deepStrictEqual(
 }
 
 function notDeepStrictEqual(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -728,12 +691,12 @@ function notDeepStrictEqual(
 let warned = false;
 
 function fail(
-  actual?: string | Error,
-  expected?: unknown,
-  message?: string | Error,
-  operator?: string,
-  stackStartFn?: Function,
-): never {
+  actual,
+  expected,
+  message,
+  operator,
+  stackStartFn,
+) {
   const argsLen = arguments.length;
 
   let internalMessage = false;
@@ -746,7 +709,6 @@ function fail(
   } else {
     if (warned === false) {
       warned = true;
-      // deno-lint-ignore no-process-global
       process.emitWarning(
         "assert.fail() with more than one argument is deprecated. " +
           "Please use assert.strictEqual() instead or only pass a message.",
@@ -781,10 +743,10 @@ function fail(
 }
 
 function internalMatch(
-  string: string,
-  regexp: RegExp,
-  message: string | Error | undefined,
-  fn: typeof match | typeof doesNotMatch,
+  string,
+  regexp,
+  message,
+  fn,
 ) {
   if (!isRegExp(regexp)) {
     throw new ERR_INVALID_ARG_TYPE(
@@ -825,48 +787,32 @@ function internalMatch(
   }
 }
 
-function match(string: string, regexp: RegExp, message?: string | Error) {
+function match(string, regexp, message) {
   internalMatch(string, regexp, message, match);
 }
 
 function doesNotMatch(
-  string: string,
-  regexp: RegExp,
-  message?: string | Error,
+  string,
+  regexp,
+  message,
 ) {
   internalMatch(string, regexp, message, doesNotMatch);
 }
 
-function strict(...args: unknown[]) {
+function strict(...args) {
   innerOk(strict, args.length, ...args);
 }
 
 async function rejects(
-  asyncFn: Promise<unknown> | (() => Promise<unknown>),
-  error?: AssertPredicate,
-): Promise<void>;
-async function rejects(
-  asyncFn: Promise<unknown> | (() => Promise<unknown>),
-  message?: string | Error,
-): Promise<void>;
-async function rejects(
-  asyncFn: Promise<unknown> | (() => Promise<unknown>),
-  ...args: [(AssertPredicate | string)?, (string | Error)?]
+  asyncFn,
+  ...args
 ) {
   expectsError(rejects, await waitForActual(asyncFn), ...args);
 }
 
 async function doesNotReject(
-  asyncFn: Promise<unknown> | (() => Promise<unknown>),
-  error?: AssertPredicate,
-): Promise<void>;
-async function doesNotReject(
-  asyncFn: Promise<unknown> | (() => Promise<unknown>),
-  message?: string | Error,
-): Promise<void>;
-async function doesNotReject(
-  asyncFn: Promise<unknown> | (() => Promise<unknown>),
-  ...args: [(AssertPredicate | string)?, (string | Error)?]
+  asyncFn,
+  ...args
 ) {
   expectsNoError(doesNotReject, await waitForActual(asyncFn), ...args);
 }
@@ -876,8 +822,7 @@ async function doesNotReject(
  *
  * @param err
  */
-// deno-lint-ignore no-explicit-any
-function ifError(err: any) {
+function ifError(err) {
   if (err !== null && err !== undefined) {
     let message = "ifError got unwanted exception: ";
 
@@ -940,7 +885,7 @@ const CallTracker_ = deprecate(
   "DEP0173",
 );
 
-function setOwnProperty(obj: object, key: string, value: unknown) {
+function setOwnProperty(obj, key, value) {
   return ObjectDefineProperty(obj, key, {
     __proto__: null,
     configurable: true,
@@ -997,7 +942,7 @@ Object.assign(strict, {
   throws,
 });
 
-export default Object.assign(assert, {
+const default_ = Object.assign(assert, {
   Assert,
   AssertionError,
   CallTracker: CallTracker_,
@@ -1022,10 +967,11 @@ export default Object.assign(assert, {
   throws,
 });
 
-export {
+return {
+  default: default_,
   Assert,
   AssertionError,
-  CallTracker_ as CallTracker,
+  CallTracker: CallTracker_,
   deepEqual,
   deepStrictEqual,
   doesNotMatch,
@@ -1046,3 +992,4 @@ export {
   strictEqual,
   throws,
 };
+})();

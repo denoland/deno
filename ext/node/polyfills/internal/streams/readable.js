@@ -3,19 +3,21 @@
 
 import process from "node:process";
 import { core, primordials } from "ext:core/mod.js";
-import EE from "node:events";
-import {
+const { EventEmitter: EE } = core.loadExtScript("ext:deno_node/_events.mjs");
+const {
   prependListener,
   Stream,
-} from "ext:deno_node/internal/streams/legacy.js";
+} = core.loadExtScript("ext:deno_node/internal/streams/legacy.js");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { addAbortSignal } from "ext:deno_node/internal/streams/add-abort-signal.js";
-import eos from "ext:deno_node/internal/streams/end-of-stream.js";
-import destroyImpl from "ext:deno_node/internal/streams/destroy.js";
-import {
+const eos =
+  core.loadExtScript("ext:deno_node/internal/streams/end-of-stream.js").default;
+const destroyImpl =
+  core.loadExtScript("ext:deno_node/internal/streams/destroy.js").default;
+const {
   getDefaultHighWaterMark,
   getHighWaterMark,
-} from "ext:deno_node/internal/streams/state.js";
+} = core.loadExtScript("ext:deno_node/internal/streams/state.js");
 
 const {
   kAutoDestroy,

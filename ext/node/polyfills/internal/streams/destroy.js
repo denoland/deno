@@ -1,8 +1,9 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import process from "node:process";
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const lazyProcess = core.createLazyLoader("node:process");
 const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const {
@@ -120,9 +121,9 @@ function _destroy(self, err, cb) {
     }
 
     if (err) {
-      process.nextTick(emitErrorCloseNT, self, err);
+      lazyProcess().nextTick(emitErrorCloseNT, self, err);
     } else {
-      process.nextTick(emitCloseNT, self);
+      lazyProcess().nextTick(emitCloseNT, self);
     }
   }
   try {
@@ -241,7 +242,7 @@ function errorOrDestroy(stream, err, sync) {
       r.errored = err;
     }
     if (sync) {
-      process.nextTick(emitErrorNT, stream, err);
+      lazyProcess().nextTick(emitErrorNT, stream, err);
     } else {
       emitErrorNT(stream, err);
     }
@@ -270,7 +271,7 @@ function construct(stream, cb) {
     return;
   }
 
-  process.nextTick(constructNT, stream);
+  lazyProcess().nextTick(constructNT, stream);
 }
 
 function constructNT(stream) {
@@ -305,10 +306,10 @@ function constructNT(stream) {
 
   try {
     stream._construct((err) => {
-      process.nextTick(onConstruct, err);
+      lazyProcess().nextTick(onConstruct, err);
     });
   } catch (err) {
-    process.nextTick(onConstruct, err);
+    lazyProcess().nextTick(onConstruct, err);
   }
 }
 
@@ -322,7 +323,7 @@ function emitCloseLegacy(stream) {
 
 function emitErrorCloseLegacy(stream, err) {
   stream.emit("error", err);
-  process.nextTick(emitCloseLegacy, stream);
+  lazyProcess().nextTick(emitCloseLegacy, stream);
 }
 
 // Normalize destroy for legacy.
@@ -349,9 +350,9 @@ function destroyer(stream, err) {
     // TODO: Don't lose err?
     stream.close();
   } else if (err) {
-    process.nextTick(emitErrorCloseLegacy, stream, err);
+    lazyProcess().nextTick(emitErrorCloseLegacy, stream, err);
   } else {
-    process.nextTick(emitCloseLegacy, stream);
+    lazyProcess().nextTick(emitCloseLegacy, stream);
   }
 
   if (!stream.destroyed) {
@@ -367,5 +368,12 @@ const _defaultExport2 = {
   errorOrDestroy,
 };
 
-export default _defaultExport2;
-export { construct, destroy, destroyer, errorOrDestroy, undestroy };
+return {
+  construct,
+  destroyer,
+  destroy,
+  undestroy,
+  errorOrDestroy,
+  default: _defaultExport2,
+};
+})();

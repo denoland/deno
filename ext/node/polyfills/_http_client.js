@@ -40,7 +40,7 @@ const {
 } = primordials;
 
 import net from "node:net";
-import { ok as assert } from "node:assert";
+const { ok: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 const { kEmptyObject, once } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );

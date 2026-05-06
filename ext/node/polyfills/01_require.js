@@ -87,7 +87,7 @@ import _streamTransform from "node:_stream_transform";
 import _streamWritable from "node:_stream_writable";
 import _tlsCommon from "node:_tls_common";
 import _tlsWrap from "node:_tls_wrap";
-import assert from "node:assert";
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import assertStrict from "node:assert/strict";
 import asyncHooks from "node:async_hooks";
 const {
@@ -107,7 +107,7 @@ import diagnosticsChannel from "node:diagnostics_channel";
 import dns from "node:dns";
 import dnsPromises from "node:dns/promises";
 import domain from "node:domain";
-import events from "node:events";
+const events = core.loadExtScript("ext:deno_node/_events.mjs").default;
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import http from "node:http";
@@ -152,7 +152,8 @@ const internalReadlineUtils = core.loadExtScript(
 );
 import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
-import internalStreamsState from "ext:deno_node/internal/streams/state.js";
+const internalStreamsState =
+  core.loadExtScript("ext:deno_node/internal/streams/state.js").default;
 const internalTestBinding = core.loadExtScript(
   "ext:deno_node/internal/test/binding.ts",
 );
@@ -194,8 +195,8 @@ import tls from "node:tls";
 import traceEvents from "node:trace_events";
 import tty from "node:tty";
 import url from "node:url";
-import utilTypes from "node:util/types";
-import util from "node:util";
+const utilTypes = core.loadExtScript("ext:deno_node/internal/util/types.ts");
+const util = core.loadExtScript("ext:deno_node/util.ts");
 import v8 from "node:v8";
 import vm from "node:vm";
 import workerThreads from "node:worker_threads";

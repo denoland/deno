@@ -40,7 +40,9 @@ const {
   ERR_OUT_OF_RANGE,
   genericNodeError,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import { getSystemErrorName, promisify } from "node:util";
+const { getSystemErrorName, promisify } = core.loadExtScript(
+  "ext:deno_node/util.ts",
+);
 import process from "node:process";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {

@@ -29,7 +29,7 @@ const { BlockList, SocketAddress } = core.loadExtScript(
   "ext:deno_node/internal/blocklist.mjs",
 );
 
-import { EventEmitter } from "node:events";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const {
   isIP,
   isIPv4,
@@ -100,7 +100,7 @@ const {
 const { ShutdownWrap } = core.loadExtScript(
   "ext:deno_node/internal_binding/stream_wrap.ts",
 );
-import assert from "node:assert";
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
 const {
@@ -2719,6 +2719,19 @@ Server.prototype.listen = function (...args: unknown[]) {
   if (options.path && _isPipeName(options.path)) {
     const pipeName = (this._pipeName = options.path);
     backlog = options.backlog || backlogFromArgs;
+
+    // Abstract Unix sockets (path starts with \0) have no filesystem
+    // entry, so readableAll/writableAll (which use chmod) are invalid.
+    if (
+      (options.readableAll === true || options.writableAll === true) &&
+      pipeName.charCodeAt(0) === 0
+    ) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options",
+        options,
+        "can not set readableAll or writableAllt to true when path is abstract unix socket",
+      );
+    }
 
     _listenInCluster(
       this,

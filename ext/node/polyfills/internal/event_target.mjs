@@ -55,13 +55,14 @@ const {
   kEmptyObject,
   kEnumerableProperty,
 } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import { inspect } from "node:util";
+const { inspect } = core.loadExtScript("ext:deno_node/util.ts");
 
 const kIsEventTarget = SymbolFor("nodejs.event_target");
 const kIsNodeEventTarget = Symbol("kIsNodeEventTarget");
 
-import { kEvents } from "ext:deno_node/_events.mjs";
-import { EventEmitter } from "node:events";
+const { kEvents, EventEmitter } = core.loadExtScript(
+  "ext:deno_node/_events.mjs",
+);
 const {
   kMaxEventTargetListeners,
   kMaxEventTargetListenersWarned,

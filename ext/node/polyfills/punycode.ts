@@ -8,7 +8,7 @@ import {
   op_node_idna_punycode_to_unicode,
 } from "ext:core/ops";
 
-import { deprecate } from "node:util";
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 
 const { ucs2 } = core.loadExtScript("ext:deno_node/internal/idna.ts");
 

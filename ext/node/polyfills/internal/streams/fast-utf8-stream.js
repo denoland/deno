@@ -6,7 +6,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-import EventEmitter from "node:events";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 import * as fs from "node:fs";
 import * as path from "node:path";
 import process from "node:process";

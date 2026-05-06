@@ -183,7 +183,7 @@ const { validateString } = core.loadExtScript(
 const { crypto: webcrypto } = core.loadExtScript(
   "ext:deno_crypto/00_crypto.js",
 );
-import { deprecate } from "node:util";
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 
 const subtle = webcrypto.subtle;
 const fipsForced = getOptionValue("--force-fips");
