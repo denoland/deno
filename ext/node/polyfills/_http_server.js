@@ -37,7 +37,7 @@ const {
 
 import net from "node:net";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-import { ok as assert } from "node:assert";
+const { ok: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
   chunkExpression,
