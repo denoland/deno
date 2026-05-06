@@ -1064,6 +1064,7 @@ fn serve_http(
   lifetime: HttpLifetime,
   callback: Rc<ServerCallback>,
   options: Options,
+  wait_for_connection: bool,
 ) -> JoinHandle<Result<(), HttpNextError>> {
   let HttpLifetime {
     server_state,
@@ -1082,9 +1083,51 @@ fn serve_http(
       legacy_abort,
     )
   });
+  let connection_cancel_handle_for_outer = connection_cancel_handle.clone();
   spawn(
-    serve_http2_autodetect(io, svc, listen_cancel_handle, options)
-      .try_or_cancel(connection_cancel_handle),
+    async move {
+      let prefix = NetworkStreamPrefixCheck::new(io, HTTP2_PREFIX);
+      let (matches, io) = prefix
+        .match_prefix()
+        .try_or_cancel(listen_cancel_handle.clone())
+        .await?;
+      let join_handle = if matches {
+        spawn(
+          async move {
+            serve_http2_unconditional(
+              io,
+              svc,
+              listen_cancel_handle,
+              options.http2_builder_hook,
+            )
+            .await
+            .map_err(HttpNextError::Hyper)
+          }
+          .try_or_cancel(connection_cancel_handle),
+        )
+      } else {
+        spawn(
+          async move {
+            serve_http11_unconditional(
+              io,
+              svc,
+              listen_cancel_handle,
+              options.http1_builder_hook,
+            )
+            .await
+            .map_err(HttpNextError::Hyper)
+          }
+          .try_or_cancel(connection_cancel_handle),
+        )
+      };
+
+      if wait_for_connection {
+        join_handle.await?
+      } else {
+        Ok(())
+      }
+    }
+    .try_or_cancel(connection_cancel_handle_for_outer),
   )
 }
 
@@ -1094,6 +1137,7 @@ fn serve_http_on<HTTP>(
   lifetime: HttpLifetime,
   callback: Rc<ServerCallback>,
   options: Options,
+  wait_for_connection: bool,
 ) -> JoinHandle<Result<(), HttpNextError>>
 where
   HTTP: HttpPropertyExtractor,
@@ -1104,31 +1148,56 @@ where
   let network_stream = HTTP::to_network_stream_from_connection(connection);
 
   match network_stream {
-    NetworkStream::Tcp(conn) => {
-      serve_http(conn, connection_properties, lifetime, callback, options)
-    }
+    NetworkStream::Tcp(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
     NetworkStream::Tls(conn) => {
       serve_https(conn, connection_properties, lifetime, callback, options)
     }
     #[cfg(unix)]
-    NetworkStream::Unix(conn) => {
-      serve_http(conn, connection_properties, lifetime, callback, options)
-    }
+    NetworkStream::Unix(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
     #[cfg(any(
       target_os = "android",
       target_os = "linux",
       target_os = "macos"
     ))]
-    NetworkStream::Vsock(conn) => {
-      serve_http(conn, connection_properties, lifetime, callback, options)
-    }
-    NetworkStream::Tunnel(conn) => {
-      serve_http(conn, connection_properties, lifetime, callback, options)
-    }
+    NetworkStream::Vsock(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
+    NetworkStream::Tunnel(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
     #[cfg(windows)]
-    NetworkStream::WindowsPipe(conn) => {
-      serve_http(conn, connection_properties, lifetime, callback, options)
-    }
+    NetworkStream::WindowsPipe(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
   }
 }
 
@@ -1233,6 +1302,7 @@ where
         lifetime.clone(),
         callback.clone(),
         options,
+        false,
       );
     }
     #[allow(unreachable_code, reason = "to avoid typing closure")]
@@ -1283,6 +1353,7 @@ where
     resource.lifetime(),
     callback,
     options,
+    true,
   );
 
   // Set the handle after we start the future
