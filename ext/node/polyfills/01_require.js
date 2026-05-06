@@ -1624,7 +1624,7 @@ Module.prototype.load = function (filename) {
       if (result != null && result.source != null) {
         const format = result.format;
         if (format === "module") {
-          loadESMFromCJS(this, this.filename, result.source);
+          loadESMFromCJSWithHookSource(this, this.filename, result.source);
         } else if (format === "commonjs") {
           this._compile(
             typeof result.source === "string"
@@ -1647,11 +1647,15 @@ Module.prototype.load = function (filename) {
             throw err;
           }
         } else {
-          // Default: let _compile detect the format (CJS or ESM)
+          // Default: detect whether it's CJS or ESM
           const source = typeof result.source === "string"
             ? result.source
             : (utf8Decoder ??= new TextDecoder()).decode(result.source);
-          this._compile(source, this.filename);
+          if (op_require_can_parse_as_esm(source)) {
+            loadESMFromCJSWithHookSource(this, this.filename, source);
+          } else {
+            this._compile(source, this.filename);
+          }
         }
         this.loaded = true;
         return;
@@ -1868,21 +1872,30 @@ function loadCjs(module, filename) {
   module._compile(content, filename, "commonjs");
 }
 
+// Like loadESMFromCJS but uses op_import_sync_with_source to compile
+// source directly. Used for hook-provided source that must bypass the
+// module cache while preserving the correct import.meta.url.
+function loadESMFromCJSWithHookSource(module, filename, code) {
+  const specifier = url.pathToFileURL(filename).toString();
+  const src = typeof code === "string"
+    ? code
+    : (utf8Decoder ??= new TextDecoder()).decode(code);
+  const namespace = op_import_sync_with_source(specifier, src);
+  if (ObjectHasOwn(namespace, "module.exports")) {
+    module.exports = namespace["module.exports"];
+  } else {
+    module.exports = namespace;
+  }
+}
+
 function loadESMFromCJS(module, filename, code) {
   const specifier = url.pathToFileURL(filename).toString();
-  let namespace;
-  if (code !== undefined) {
-    // Use op_import_sync_with_source to compile source directly under the
-    // file URL. This ensures hook-provided source is used even if the module
-    // is already cached from a previous disk load, while preserving the
-    // correct import.meta.url (unlike data: URIs).
-    const src = typeof code === "string"
+  const codeArg = code !== undefined
+    ? (typeof code === "string"
       ? code
-      : (utf8Decoder ??= new TextDecoder()).decode(code);
-    namespace = op_import_sync_with_source(specifier, src);
-  } else {
-    namespace = op_import_sync(specifier, undefined);
-  }
+      : (utf8Decoder ??= new TextDecoder()).decode(code))
+    : undefined;
+  const namespace = op_import_sync(specifier, codeArg);
   if (ObjectHasOwn(namespace, "module.exports")) {
     module.exports = namespace["module.exports"];
   } else {
