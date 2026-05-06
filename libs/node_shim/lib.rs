@@ -3501,6 +3501,18 @@ fn add_common_flags(
     deno_args.push(format!("--v8-flags={}", parsed_args.v8_args.join(",")));
   }
 
+  // Add --import (ESM preloads)
+  for module in &env_opts.preload_esm_modules {
+    deno_args.push("--import".to_string());
+    deno_args.push(module.clone());
+  }
+
+  // Add --require (CJS preloads)
+  for module in &env_opts.preload_cjs_modules {
+    deno_args.push("--require".to_string());
+    deno_args.push(module.clone());
+  }
+
   // Add conditions
   add_conditions(deno_args, env_opts);
 
