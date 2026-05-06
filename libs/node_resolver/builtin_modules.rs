@@ -69,7 +69,6 @@ pub static DENO_SUPPORTED_BUILTIN_NODE_MODULES: &[&str] = &[
   "readline",
   "readline/promises",
   "repl",
-  "sea",
   "sqlite",
   "stream",
   "stream/consumers",

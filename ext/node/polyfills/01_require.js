@@ -179,7 +179,6 @@ import querystring from "node:querystring";
 import readline from "node:readline";
 import readlinePromises from "node:readline/promises";
 import repl from "node:repl";
-import sea from "node:sea";
 import sqlite from "node:sqlite";
 import stream from "node:stream";
 import streamConsumers from "node:stream/consumers";
@@ -299,7 +298,6 @@ function setupBuiltinModules() {
     readline,
     "readline/promises": readlinePromises,
     repl,
-    sea,
     sqlite,
     stream,
     "stream/consumers": streamConsumers,
@@ -327,7 +325,6 @@ function setupBuiltinModules() {
   // via the `node:` scheme (see lib/internal/bootstrap/realm.js), so they
   // appear in `builtinModules` as `node:<name>` rather than `<name>`.
   const schemelessBlockList = new SafeSet([
-    "sea",
     "sqlite",
     "test",
     "test/reporters",
@@ -1608,9 +1605,11 @@ Module.prototype.load = function (filename) {
           throw err;
         }
       }
-      // When shortCircuit is set with null/undefined source, also error
+      // When shortCircuit is set with null/undefined source, error
+      // unless the format is "builtin" (builtins legitimately have no source)
       if (
         result != null && result.shortCircuit &&
+        result.format !== "builtin" &&
         (result.source === null || result.source === undefined)
       ) {
         const err = new TypeError(
@@ -1869,21 +1868,12 @@ function loadCjs(module, filename) {
 }
 
 function loadESMFromCJS(module, filename, code) {
-  let specifier;
-  let codeArg;
-  if (code !== undefined) {
-    // When hook-provided code is given, use a data: URI to avoid
-    // colliding with the same module already loading in the ESM pipeline
-    // (which would cause a cycle error).
-    const src = typeof code === "string"
+  const specifier = url.pathToFileURL(filename).toString();
+  const codeArg = code !== undefined
+    ? (typeof code === "string"
       ? code
-      : (utf8Decoder ??= new TextDecoder()).decode(code);
-    specifier = "data:text/javascript," + encodeURIComponent(src);
-    codeArg = undefined;
-  } else {
-    specifier = url.pathToFileURL(filename).toString();
-    codeArg = undefined;
-  }
+      : (utf8Decoder ??= new TextDecoder()).decode(code))
+    : undefined;
   const namespace = op_import_sync(specifier, codeArg);
   if (ObjectHasOwn(namespace, "module.exports")) {
     module.exports = namespace["module.exports"];
