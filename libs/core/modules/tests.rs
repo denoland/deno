@@ -567,6 +567,68 @@ fn test_lazy_loaded_esm() {
 }
 
 #[test]
+fn test_lazy_loaded_esm_aliased_specifier() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "custom:aliased" = "lazy_loaded_aliased.js",
+    ]
+  );
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  // Test via createLazyLoader
+  runtime
+    .execute_script(
+      "setup.js",
+      r#"
+      const module = Deno.core.createLazyLoader("custom:aliased")();
+      if (module.value !== "aliased") throw new Error("expected 'aliased', got " + module.value);
+      if (module.default.value !== "aliased") throw new Error("expected default.value to be 'aliased'");
+      Deno.core.print("lazy_loaded_esm aliased specifier works\n");
+      "#,
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn test_lazy_loaded_esm_aliased_via_import() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "custom:aliased" = "lazy_loaded_aliased.js",
+    ]
+  );
+
+  let loader = Rc::new(StaticModuleLoader::with(
+    ModuleSpecifier::parse("file:///importer.js").unwrap(),
+    crate::ascii_str_include!("testdata/lazy_loaded_importer.js"),
+  ));
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let mod_id = runtime
+    .load_side_es_module_from_code(
+      &ModuleSpecifier::parse("file:///importer.js").unwrap(),
+      crate::ascii_str_include!("testdata/lazy_loaded_importer.js"),
+    )
+    .await
+    .unwrap();
+  let result = runtime.mod_evaluate(mod_id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  result.await.unwrap();
+}
+
+#[test]
 fn test_lazy_loaded_script() {
   deno_core::extension!(
     test_ext,

@@ -1,3 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-export * from "node:util";
-export { default } from "node:util";
+(function () {
+const { core } = globalThis.__bootstrap;
+return core.createLazyLoader("node:util")();
+})();

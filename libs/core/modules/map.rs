@@ -1346,6 +1346,31 @@ impl ModuleMap {
       return Some(v8::Local::new(scope, handle));
     }
 
+    // Fallback: check lazy-loaded ESM sources (modules embedded in the
+    // binary but not included in the snapshot).
+    let maybe_source = self.take_lazy_esm_source(resolved_specifier.as_str());
+    if let Some(source_code) = maybe_source {
+      match self.new_es_module(
+        scope,
+        false,
+        resolved_specifier.into(),
+        source_code,
+        false,
+        None,
+      ) {
+        Ok(mod_id) => {
+          if let Some(handle) = self.get_handle(mod_id) {
+            return Some(v8::Local::new(scope, handle));
+          }
+        }
+        Err(e) => {
+          let err = e.into_error(scope, false, true);
+          crate::error::throw_js_error_class(scope, &err);
+          return None;
+        }
+      }
+    }
+
     None
   }
 
@@ -2383,6 +2408,20 @@ impl ModuleMap {
     let mod_ns = module_local.get_module_namespace();
 
     Ok(v8::Global::new(scope, mod_ns))
+  }
+
+  /// Try to take a lazy-loaded ESM source by specifier. Returns the source
+  /// code if found, removing it from the lazy sources map.
+  pub(crate) fn take_lazy_esm_source(
+    &self,
+    specifier: &str,
+  ) -> Option<ModuleCodeString> {
+    self
+      .data
+      .borrow()
+      .lazy_esm_sources
+      .borrow_mut()
+      .remove(specifier)
   }
 
   pub(crate) fn add_lazy_loaded_esm_source(

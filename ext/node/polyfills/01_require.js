@@ -185,7 +185,6 @@ import streamConsumers from "node:stream/consumers";
 import streamPromises from "node:stream/promises";
 import streamWeb from "node:stream/web";
 import stringDecoder from "node:string_decoder";
-import sys from "node:sys";
 import test from "node:test";
 import timers from "node:timers";
 import timersPromises from "node:timers/promises";
@@ -304,7 +303,9 @@ function setupBuiltinModules() {
     "stream/promises": streamPromises,
     "stream/web": streamWeb,
     string_decoder: stringDecoder,
-    sys,
+    get sys() {
+      return core.loadExtScript("ext:deno_node/sys.ts");
+    },
     test,
     timers,
     "timers/promises": timersPromises,
