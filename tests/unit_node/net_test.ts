@@ -8,6 +8,107 @@ import * as dns from "node:dns";
 import * as dnsPromises from "node:dns/promises";
 import util from "node:util";
 import console from "node:console";
+import process from "node:process";
+
+type StreamWrapBinding = {
+  streamBaseState: Int32Array;
+  kBytesWritten: number;
+  kLastWriteWasAsync: number;
+};
+
+type TestWriteReq = {
+  _chunks?: unknown[];
+  async: boolean;
+  bytes: number;
+  oncomplete(status: number): void;
+};
+
+function dispatchFakeWritev(writeWasAsync: boolean) {
+  // @ts-ignore: untyped internal binding, used here to simulate native write
+  // completion state without relying on OS socket buffering behavior.
+  const streamWrap = process.binding("stream_wrap") as StreamWrapBinding;
+  const {
+    streamBaseState,
+    kBytesWritten,
+    kLastWriteWasAsync,
+  } = streamWrap;
+
+  let writeReq: TestWriteReq | undefined;
+  let callbackCalled = false;
+  const chunks = [
+    { chunk: "hello", encoding: "utf8" },
+    { chunk: "world", encoding: "utf8" },
+  ];
+  const handle = {
+    getAsyncId() {
+      return 1;
+    },
+    readStart() {
+      return 0;
+    },
+    readStop() {
+      return 0;
+    },
+    close() {},
+    writev(req: TestWriteReq, writeChunks: unknown[]) {
+      writeReq = req;
+      streamBaseState[kBytesWritten] = writeChunks.length;
+      streamBaseState[kLastWriteWasAsync] = writeWasAsync ? 1 : 0;
+      return 0;
+    },
+  };
+  const socket = new net.Socket({
+    handle,
+    readable: false,
+  } as unknown as net.SocketConstructorOpts);
+
+  (socket as unknown as {
+    _writev(chunks: unknown[], cb: () => void): void;
+  })._writev(chunks, () => {
+    callbackCalled = true;
+  });
+
+  return {
+    callbackCalled: () => callbackCalled,
+    resetWriteState() {
+      streamBaseState[kBytesWritten] = 0;
+      streamBaseState[kLastWriteWasAsync] = 0;
+    },
+    socket,
+    writeReq: () => writeReq,
+  };
+}
+
+Deno.test("[node/net] writev only retains chunks for async native writes", () => {
+  const syncWrite = dispatchFakeWritev(false);
+  try {
+    assert(syncWrite.callbackCalled());
+    assertEquals(syncWrite.writeReq()?.async, false);
+    assertEquals(syncWrite.writeReq()?._chunks, undefined);
+  } finally {
+    syncWrite.resetWriteState();
+    syncWrite.socket.destroy();
+  }
+
+  const asyncWrite = dispatchFakeWritev(true);
+  try {
+    assert(!asyncWrite.callbackCalled());
+    assertEquals(asyncWrite.writeReq()?.async, true);
+    assertEquals(asyncWrite.writeReq()?._chunks, [
+      "hello",
+      "utf8",
+      "world",
+      "utf8",
+    ]);
+
+    asyncWrite.writeReq()?.oncomplete(0);
+    assert(asyncWrite.callbackCalled());
+  } finally {
+    asyncWrite.resetWriteState();
+    asyncWrite.socket.destroy();
+  }
+});
+
 
 Deno.test("[node/net] close event emits after error event - when host is not found", async () => {
   const socket = net.createConnection(27009, "doesnotexist");

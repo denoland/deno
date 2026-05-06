@@ -136,14 +136,13 @@ pub(crate) struct WriteRequestCallbackState {
   pub stream_handle: v8::Global<v8::Object>,
   pub stream_base_state: v8::Global<v8::Int32Array>,
   pub bytes: usize,
-  /// Owned byte buffers that back the write's iovecs (specifically,
-  /// the encoded-strings concat buffer for mixed `writev` calls).
+  /// Owned byte buffers that back encoded string iovecs for async `writev`
+  /// calls.
   /// Kept alive by this field until the request is taken from the
   /// registry in `after_uv_write`; dropped there, which releases the
-  /// memory via the system allocator. Buffer-chunk iovecs don't go
-  /// here — they're retained JS-side via `req.buffer = data` in
-  /// `writevGeneric` (matches Node's StreamBase behavior, which
-  /// doesn't retain chunks on the WriteWrap either).
+  /// memory via the system allocator. Fully synchronous writes don't
+  /// allocate owned storage, and buffer-chunk iovecs don't go here — they're
+  /// retained JS-side while the native write is pending in `writevGeneric`.
   ///
   /// Typed as `Box<[MaybeUninit<u8>]>` rather than `Vec<u8>` because
   /// the encoders only fill the windows referenced by iovecs — bytes
