@@ -4172,7 +4172,10 @@ impl PermissionsContainer {
             inner.read.query(Some(&desc)),
             PermissionState::Denied | PermissionState::DeniedPartial
           ) {
-            inner.read.check(&desc, api_name).map_err(ignored_to_not_found)?;
+            inner
+              .read
+              .check(&desc, api_name)
+              .map_err(ignored_to_not_found)?;
           }
         }
         if access_kind.is_write() {

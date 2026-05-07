@@ -1,8 +1,8 @@
 {
   "tempDir": true,
-  "if": "unix",
   "tests": {
     "write_bypass": {
+      "if": "unix",
       "steps": [
         {
           "args": "run --allow-read --allow-write setup.ts",
@@ -15,6 +15,7 @@
       ]
     },
     "read_bypass": {
+      "if": "unix",
       "steps": [
         {
           "args": "run --allow-read --allow-write setup.ts",
