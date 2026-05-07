@@ -375,8 +375,6 @@ let patched = false;
 
 // module.registerHooks() infrastructure
 const hookEntries = [];
-// module.register() infrastructure - async hooks from loaded loader modules
-const asyncHookEntries = [];
 // Pending hook module loads from register(). The ESM hook loops await these
 // before processing requests, ensuring hooks are active before subsequent
 // imports are resolved.
@@ -390,6 +388,160 @@ let esmLoadLoopRunning = false;
 // Formats determined by resolve hooks, keyed by resolved URL.
 // Passed as context.format to load hooks per Node.js spec.
 const resolvedFormats = new SafeMap();
+
+// module.register() infrastructure - async hooks run in a dedicated worker
+// thread to avoid deadlocks when loading the hook module.
+let hooksWorker = null;
+let asyncHooksHaveResolve = false;
+let asyncHooksHaveLoad = false;
+let nextHookRequestId = 0;
+const pendingHookRequests = new SafeMap();
+
+// Source code for the hooks worker thread. The worker loads hook modules,
+// maintains the async hook chain, and processes resolve/load requests.
+// deno-lint-ignore prefer-primordials
+const HOOKS_WORKER_SOURCE = `
+const asyncHookEntries = [];
+
+function defaultResolve(spec, context) {
+  if (spec.startsWith("node:")) {
+    return { url: spec, shortCircuit: true };
+  }
+  const parentURL = context.parentURL;
+  if (parentURL) {
+    try {
+      return { url: new URL(spec, parentURL).href, shortCircuit: true };
+    } catch { /* fall through */ }
+  }
+  return { url: null, shortCircuit: true };
+}
+
+function defaultLoad(loadUrl) {
+  if (loadUrl.startsWith("node:")) {
+    return { source: null, format: "builtin", shortCircuit: true };
+  }
+  let source = null;
+  if (loadUrl.startsWith("file://")) {
+    try { source = Deno.readTextFileSync(new URL(loadUrl)); }
+    catch { /* fall through */ }
+  }
+  return { source, shortCircuit: true };
+}
+
+function runResolveChain(specifier, context) {
+  const hooks = [];
+  for (let i = asyncHookEntries.length - 1; i >= 0; i--) {
+    if (asyncHookEntries[i].resolve !== null) hooks.push(asyncHookEntries[i].resolve);
+  }
+  if (hooks.length === 0) return null;
+  let index = 0;
+  let currentContext = context;
+  function nextResolve(spec, ctx) {
+    if (ctx !== undefined && ctx !== null) currentContext = { ...currentContext, ...ctx };
+    if (index >= hooks.length) return defaultResolve(spec, currentContext);
+    const hook = hooks[index++];
+    let nextCalled = false;
+    const wrappedNext = (s, c) => { nextCalled = true; return nextResolve(s, c); };
+    const result = hook(spec, currentContext, wrappedNext);
+    if (result && typeof result.then === "function") {
+      return result.then((r) => {
+        if (!nextCalled && !r?.shortCircuit) throw new TypeError("resolve hook must call next or short-circuit");
+        return r;
+      });
+    }
+    if (!nextCalled && !result?.shortCircuit) throw new TypeError("resolve hook must call next or short-circuit");
+    return result;
+  }
+  return nextResolve(specifier, context);
+}
+
+function runLoadChain(fileUrl, context) {
+  const hooks = [];
+  for (let i = asyncHookEntries.length - 1; i >= 0; i--) {
+    if (asyncHookEntries[i].load !== null) hooks.push(asyncHookEntries[i].load);
+  }
+  if (hooks.length === 0) return null;
+  let index = 0;
+  let currentContext = context;
+  function nextLoad(loadUrl, ctx) {
+    if (ctx !== undefined && ctx !== null) currentContext = { ...currentContext, ...ctx };
+    if (index >= hooks.length) return defaultLoad(loadUrl);
+    const hook = hooks[index++];
+    let nextCalled = false;
+    const wrappedNext = (u, c) => { nextCalled = true; return nextLoad(u, c); };
+    const result = hook(loadUrl, currentContext, wrappedNext);
+    if (result && typeof result.then === "function") {
+      return result.then((r) => {
+        if (!nextCalled && !r?.shortCircuit) throw new TypeError("load hook must call next or short-circuit");
+        return r;
+      });
+    }
+    if (!nextCalled && !result?.shortCircuit) throw new TypeError("load hook must call next or short-circuit");
+    return result;
+  }
+  return nextLoad(fileUrl, context);
+}
+
+self.onmessage = (e) => {
+  const msg = e.data;
+  let promise;
+  if (msg.type === "register") {
+    promise = (async () => {
+      const hookModule = await import(msg.url);
+      if (typeof hookModule.initialize === "function") await hookModule.initialize(msg.data);
+      const resolve = typeof hookModule.resolve === "function" ? hookModule.resolve : null;
+      const load = typeof hookModule.load === "function" ? hookModule.load : null;
+      if (resolve !== null || load !== null) asyncHookEntries.push({ resolve, load });
+      return { type: "registered", id: msg.id, hasResolve: resolve !== null, hasLoad: load !== null };
+    })();
+  } else if (msg.type === "resolve") {
+    promise = Promise.resolve(runResolveChain(msg.specifier, msg.context))
+      .then((result) => ({ type: "resolve-result", id: msg.id, result }));
+  } else if (msg.type === "load") {
+    promise = Promise.resolve(runLoadChain(msg.url, msg.context))
+      .then((result) => ({ type: "load-result", id: msg.id, result }));
+  } else {
+    return;
+  }
+  promise.then(
+    (response) => self.postMessage(response),
+    (err) => self.postMessage({ type: "error", id: msg.id, error: String(err) }),
+  );
+};
+`;
+
+function _ensureHooksWorker() {
+  if (hooksWorker !== null) return;
+  // deno-lint-ignore prefer-primordials
+  const workerUrl = "data:text/javascript," +
+    encodeURIComponent(HOOKS_WORKER_SOURCE);
+  // deno-lint-ignore prefer-primordials
+  hooksWorker = new globalThis.Worker(workerUrl, { type: "module" });
+  hooksWorker.onmessage = (e) => {
+    const msg = e.data;
+    const entry = pendingHookRequests.get(msg.id);
+    if (entry === undefined) return;
+    pendingHookRequests.delete(msg.id);
+    if (msg.type === "error") {
+      entry.reject(new Error(msg.error));
+    } else {
+      entry.resolve(msg);
+    }
+  };
+}
+
+function _sendToHooksWorker(msg, transferList) {
+  const id = nextHookRequestId++;
+  msg.id = id;
+  const { promise, resolve, reject } = Promise.withResolvers();
+  pendingHookRequests.set(id, { resolve, reject });
+  if (transferList && transferList.length > 0) {
+    hooksWorker.postMessage(msg, transferList);
+  } else {
+    hooksWorker.postMessage(msg);
+  }
+  return promise;
+}
 
 function executeResolveHookChain(specifier, context, parent, isMain) {
   // Collect resolve hooks from hookEntries in LIFO order
@@ -516,156 +668,185 @@ function executeLoadHookChain(fileUrl, context) {
 // then async hooks (register) in LIFO order.
 // Returns { url } if hooks resolved, or null for fallthrough to default.
 async function executeEsmResolveHookChain(specifier, context) {
-  // Collect sync hooks first (run before async per Node.js spec)
-  const resolveHooks = [];
+  // Run sync hooks (registerHooks) first on the main thread
+  const syncResolveHooks = [];
   for (let i = hookEntries.length - 1; i >= 0; i--) {
     if (hookEntries[i].resolve !== null) {
-      ArrayPrototypePush(resolveHooks, hookEntries[i].resolve);
+      ArrayPrototypePush(syncResolveHooks, hookEntries[i].resolve);
     }
   }
-  // Then async hooks from register()
-  for (let i = asyncHookEntries.length - 1; i >= 0; i--) {
-    if (asyncHookEntries[i].resolve !== null) {
-      ArrayPrototypePush(resolveHooks, asyncHookEntries[i].resolve);
-    }
-  }
-  if (resolveHooks.length === 0) return null;
 
-  let index = 0;
-  let currentContext = context;
+  if (syncResolveHooks.length > 0) {
+    let index = 0;
+    let currentContext = context;
 
-  function nextResolve(spec, ctx) {
-    if (ctx !== undefined && ctx !== null) {
-      currentContext = { ...currentContext, ...ctx };
-    }
-    if (index >= resolveHooks.length) {
-      // Default resolve: resolve the specifier to a URL so hooks
-      // further up the chain can inspect the resolved path.
-      if (StringPrototypeStartsWith(spec, "node:")) {
-        return { url: spec, shortCircuit: true };
+    function nextResolve(spec, ctx) {
+      if (ctx !== undefined && ctx !== null) {
+        currentContext = { ...currentContext, ...ctx };
       }
-      if (nativeModuleCanBeRequiredByUsers(spec)) {
-        return { url: "node:" + spec, shortCircuit: true };
-      }
-      // For relative/absolute paths, resolve against parentURL
-      const parentURL = currentContext.parentURL;
-      if (parentURL) {
+      if (index >= syncResolveHooks.length) {
+        // End of sync chain - if async hooks exist, they will run
+        // in the worker below. For now return fallthrough.
+        if (asyncHooksHaveResolve) {
+          return { url: null, shortCircuit: false, _syncFallthrough: true };
+        }
+        // Default resolve (no async hooks)
+        if (StringPrototypeStartsWith(spec, "node:")) {
+          return { url: spec, shortCircuit: true };
+        }
+        if (nativeModuleCanBeRequiredByUsers(spec)) {
+          return { url: "node:" + spec, shortCircuit: true };
+        }
+        const parentURL = currentContext.parentURL;
+        if (parentURL) {
+          try {
+            return {
+              url: new URL(spec, parentURL).href,
+              shortCircuit: true,
+            };
+          } catch {
+            // Fall through
+          }
+        }
         try {
-          return { url: new URL(spec, parentURL).href, shortCircuit: true };
+          const resolved = Module._resolveFilename(spec, null, false);
+          if (StringPrototypeStartsWith(resolved, "node:")) {
+            return { url: resolved, shortCircuit: true };
+          }
+          return {
+            url: url.pathToFileURL(resolved).href,
+            shortCircuit: true,
+          };
         } catch {
-          // Fall through
+          // Could not resolve
         }
+        return { url: null, shortCircuit: true };
       }
-      // For bare specifiers, try CJS resolution as a fallback
-      try {
-        const resolved = Module._resolveFilename(spec, null, false);
-        if (StringPrototypeStartsWith(resolved, "node:")) {
-          return { url: resolved, shortCircuit: true };
-        }
-        return { url: url.pathToFileURL(resolved).href, shortCircuit: true };
-      } catch {
-        // Could not resolve
+      const hook = syncResolveHooks[index++];
+      let nextCalled = false;
+      const wrappedNext = (s, c) => {
+        nextCalled = true;
+        return nextResolve(s, c);
+      };
+      const result = hook(spec, currentContext, wrappedNext);
+      if (result && typeof result.then === "function") {
+        return result.then((r) => {
+          if (!nextCalled && !r?.shortCircuit) {
+            throw new TypeError(
+              "resolve hook must return { shortCircuit: true } or call nextResolve",
+            );
+          }
+          return r;
+        });
       }
-      return { url: null, shortCircuit: true };
+      if (!nextCalled && !result?.shortCircuit) {
+        throw new TypeError(
+          "resolve hook must return { shortCircuit: true } or call nextResolve",
+        );
+      }
+      return result;
     }
-    const hook = resolveHooks[index++];
-    let nextCalled = false;
-    const wrappedNext = (s, c) => {
-      nextCalled = true;
-      return nextResolve(s, c);
-    };
-    const result = hook(spec, currentContext, wrappedNext);
-    // If an async hook returned a promise, propagate it
-    if (result && typeof result.then === "function") {
-      return result.then((r) => {
-        if (!nextCalled && !r?.shortCircuit) {
-          throw new TypeError(
-            "resolve hook must return { shortCircuit: true } or call nextResolve",
-          );
-        }
-        return r;
-      });
+
+    const syncResult = await nextResolve(specifier, context);
+    if (syncResult && syncResult.shortCircuit && !syncResult._syncFallthrough) {
+      return syncResult;
     }
-    if (!nextCalled && !result?.shortCircuit) {
-      throw new TypeError(
-        "resolve hook must return { shortCircuit: true } or call nextResolve",
-      );
-    }
-    return result;
+    // Sync hooks fell through; continue to async hooks in the worker
   }
 
-  return nextResolve(specifier, context);
+  if (!asyncHooksHaveResolve) {
+    return syncResolveHooks.length === 0 ? null : { url: null };
+  }
+
+  // Forward to the hooks worker for async hook execution
+  const msg = await _sendToHooksWorker({
+    type: "resolve",
+    specifier,
+    context,
+  });
+  return msg.result;
 }
 
-// ESM load hook chain: runs sync hooks (registerHooks) in LIFO order,
-// then async hooks (register) in LIFO order.
+// ESM load hook chain: runs sync hooks (registerHooks) on main thread,
+// then async hooks (register) in the worker thread.
 // Returns { source } if hooks provided source, or null for fallthrough.
 async function executeEsmLoadHookChain(fileUrl, context) {
-  // Collect sync hooks first (run before async per Node.js spec)
-  const loadHooks = [];
+  // Run sync hooks first on the main thread
+  const syncLoadHooks = [];
   for (let i = hookEntries.length - 1; i >= 0; i--) {
     if (hookEntries[i].load !== null) {
-      ArrayPrototypePush(loadHooks, hookEntries[i].load);
+      ArrayPrototypePush(syncLoadHooks, hookEntries[i].load);
     }
   }
-  // Then async hooks from register()
-  for (let i = asyncHookEntries.length - 1; i >= 0; i--) {
-    if (asyncHookEntries[i].load !== null) {
-      ArrayPrototypePush(loadHooks, asyncHookEntries[i].load);
-    }
-  }
-  if (loadHooks.length === 0) return null;
 
-  let index = 0;
-  let currentContext = context;
+  if (syncLoadHooks.length > 0) {
+    let index = 0;
+    let currentContext = context;
 
-  function nextLoad(loadUrl, ctx) {
-    if (ctx !== undefined && ctx !== null) {
-      currentContext = { ...currentContext, ...ctx };
-    }
-    if (index >= loadHooks.length) {
-      // Default load: for builtins return null source, for files
-      // read from disk so hooks can inspect/transform the source.
-      if (StringPrototypeStartsWith(loadUrl, "node:")) {
-        return { source: null, format: "builtin", shortCircuit: true };
+    function nextLoad(loadUrl, ctx) {
+      if (ctx !== undefined && ctx !== null) {
+        currentContext = { ...currentContext, ...ctx };
       }
-      let source = null;
-      if (StringPrototypeStartsWith(loadUrl, "file://")) {
-        try {
-          source = op_require_read_file(url.fileURLToPath(loadUrl));
-        } catch {
-          // Fall through with null source if file can't be read
+      if (index >= syncLoadHooks.length) {
+        if (asyncHooksHaveLoad) {
+          return { source: null, shortCircuit: false, _syncFallthrough: true };
         }
+        // Default load (no async hooks)
+        if (StringPrototypeStartsWith(loadUrl, "node:")) {
+          return { source: null, format: "builtin", shortCircuit: true };
+        }
+        let source = null;
+        if (StringPrototypeStartsWith(loadUrl, "file://")) {
+          try {
+            source = op_require_read_file(url.fileURLToPath(loadUrl));
+          } catch {
+            // Fall through with null source
+          }
+        }
+        return { source, shortCircuit: true };
       }
-      return { source, shortCircuit: true };
+      const hook = syncLoadHooks[index++];
+      let nextCalled = false;
+      const wrappedNext = (u, c) => {
+        nextCalled = true;
+        return nextLoad(u, c);
+      };
+      const result = hook(loadUrl, currentContext, wrappedNext);
+      if (result && typeof result.then === "function") {
+        return result.then((r) => {
+          if (!nextCalled && !r?.shortCircuit) {
+            throw new TypeError(
+              "load hook must return { shortCircuit: true } or call nextLoad",
+            );
+          }
+          return r;
+        });
+      }
+      if (!nextCalled && !result?.shortCircuit) {
+        throw new TypeError(
+          "load hook must return { shortCircuit: true } or call nextLoad",
+        );
+      }
+      return result;
     }
-    const hook = loadHooks[index++];
-    let nextCalled = false;
-    const wrappedNext = (u, c) => {
-      nextCalled = true;
-      return nextLoad(u, c);
-    };
-    const result = hook(loadUrl, currentContext, wrappedNext);
-    // If an async hook returned a promise, propagate it
-    if (result && typeof result.then === "function") {
-      return result.then((r) => {
-        if (!nextCalled && !r?.shortCircuit) {
-          throw new TypeError(
-            "load hook must return { shortCircuit: true } or call nextLoad",
-          );
-        }
-        return r;
-      });
+
+    const syncResult = await nextLoad(fileUrl, context);
+    if (syncResult && syncResult.shortCircuit && !syncResult._syncFallthrough) {
+      return syncResult;
     }
-    if (!nextCalled && !result?.shortCircuit) {
-      throw new TypeError(
-        "load hook must return { shortCircuit: true } or call nextLoad",
-      );
-    }
-    return result;
   }
 
-  return nextLoad(fileUrl, context);
+  if (!asyncHooksHaveLoad) {
+    return syncLoadHooks.length === 0 ? null : { source: null };
+  }
+
+  // Forward to the hooks worker for async hook execution
+  const msg = await _sendToHooksWorker({
+    type: "load",
+    url: fileUrl,
+    context,
+  });
+  return msg.result;
 }
 
 function _startEsmResolveLoop() {
@@ -746,15 +927,11 @@ function _startEsmLoadLoop() {
 }
 
 function _activateEsmHooks() {
-  let hasResolve = false;
-  let hasLoad = false;
+  let hasResolve = asyncHooksHaveResolve;
+  let hasLoad = asyncHooksHaveLoad;
   for (let i = 0; i < hookEntries.length; i++) {
     if (hookEntries[i].resolve !== null) hasResolve = true;
     if (hookEntries[i].load !== null) hasLoad = true;
-  }
-  for (let i = 0; i < asyncHookEntries.length; i++) {
-    if (asyncHookEntries[i].resolve !== null) hasResolve = true;
-    if (asyncHookEntries[i].load !== null) hasLoad = true;
   }
   op_module_hooks_register(hasResolve, hasLoad);
   if (hasResolve) _startEsmResolveLoop();
@@ -2315,14 +2492,21 @@ export function register(specifier, parentUrlOrOptions, maybeOptions) {
     resolvedUrl = String(specifier);
   }
 
-  // Load the hook module asynchronously. The promise is tracked so the
-  // ESM hook loops wait for it before processing requests, ensuring hooks
-  // are active before subsequent imports are resolved.
-  const loadPromise = _loadAndRegisterHookModule(
-    resolvedUrl,
+  // Load the hook module in the hooks worker thread. This avoids
+  // deadlocks because the worker has its own module loader that
+  // doesn't go through hooks.
+  _ensureHooksWorker();
+
+  const loadPromise = _sendToHooksWorker({
+    type: "register",
+    url: resolvedUrl,
     data,
-    transferList,
-  );
+  }, transferList).then((msg) => {
+    if (msg.hasResolve) asyncHooksHaveResolve = true;
+    if (msg.hasLoad) asyncHooksHaveLoad = true;
+    _activateEsmHooks();
+  });
+
   ArrayPrototypePush(pendingHookLoads, loadPromise);
   loadPromise.then(() => {
     const idx = ArrayPrototypeIndexOf(pendingHookLoads, loadPromise);
@@ -2332,37 +2516,13 @@ export function register(specifier, parentUrlOrOptions, maybeOptions) {
     if (idx !== -1) ArrayPrototypeSplice(pendingHookLoads, idx, 1);
   });
 
-  // Pre-activate the resolve hook bridge so that subsequent imports are
-  // routed through it and will wait for the hook module to load.
-  // Only activate resolve here - load activation happens in
-  // _activateEsmHooks() after the hook module loads. This avoids a
-  // circular deadlock where the hook module's own load would go through
-  // the bridge which is waiting for the hook module to load.
-  op_module_hooks_register(true, false);
+  // Pre-activate hooks so subsequent imports are routed through the
+  // bridge and will wait for the hook module to load in the worker.
+  op_module_hooks_register(true, true);
   _startEsmResolveLoop();
+  _startEsmLoadLoop();
 
   return undefined;
-}
-
-async function _loadAndRegisterHookModule(resolvedUrl, data, transferList) {
-  const hookModule = await import(resolvedUrl);
-
-  // Call initialize hook if exported
-  if (typeof hookModule.initialize === "function") {
-    await hookModule.initialize(data);
-  }
-
-  const resolve = typeof hookModule.resolve === "function"
-    ? hookModule.resolve
-    : null;
-  const load = typeof hookModule.load === "function" ? hookModule.load : null;
-
-  if (resolve === null && load === null) {
-    return;
-  }
-
-  ArrayPrototypePush(asyncHookEntries, { resolve, load });
-  _activateEsmHooks();
 }
 
 Module.register = register;

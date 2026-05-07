@@ -15,6 +15,10 @@
     "ordering_sync_before_async": {
       "args": "run -A test_ordering.mjs",
       "output": "test_ordering.out"
+    },
+    "custom_filetype_yaml": {
+      "args": "run -A test_yaml.mjs",
+      "output": "test_yaml.out"
     }
   }
 }
