@@ -2723,6 +2723,7 @@ impl TLSWrap {
     context: v8::Local<v8::Object>,
     alpn_protocol: v8::Local<v8::Value>,
     scope: &mut v8::PinScope,
+    op_state: &mut OpState,
   ) -> i32 {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
 
@@ -2736,7 +2737,7 @@ impl TLSWrap {
 
     // Build server config from the provided SecureContext
     let (mut server_config, client_cert_verify_error) =
-      match build_server_config(scope, context) {
+      match build_server_config(scope, context, op_state) {
         Some(c) => c,
         None => {
           inner.error = Some("Failed to build server config".to_string());
@@ -3627,9 +3628,33 @@ fn build_client_config(
 
   let mut config = match maybe_cert_chain_and_key {
     TlsKeys::Static(deno_tls::TlsKey(cert_chain, private_key)) => {
-      config_builder
-        .with_client_auth_cert(cert_chain, private_key.clone_key())
-        .ok()?
+      // `with_client_auth_cert` internally calls `CertifiedKey::keys_match()`
+      // which parses the end-entity cert via webpki and rejects X.509v1 certs
+      // with `UnsupportedCertVersion`.  Node uses OpenSSL, which accepts v1
+      // certs, and several upstream test fixtures (e.g. agent3) are v1.
+      // Build the CertifiedKey manually and tolerate UnsupportedCertVersion,
+      // matching the server-side workaround in `build_server_config`.
+      let provider = config_builder.crypto_provider().clone();
+      let signing_key = provider
+        .key_provider
+        .load_private_key(private_key.clone_key())
+        .ok()?;
+      let certified_key =
+        rustls::sign::CertifiedKey::new(cert_chain, signing_key);
+      match certified_key.keys_match() {
+        Ok(()) => {}
+        Err(rustls::Error::InvalidCertificate(
+          rustls::CertificateError::Other(ref other),
+        )) if other.0.downcast_ref::<webpki::Error>().is_some_and(|e| {
+          matches!(e, webpki::Error::UnsupportedCertVersion)
+        }) => {}
+        Err(_) => return None,
+      }
+      let resolver =
+        Arc::new(StaticClientCertResolver(Arc::new(certified_key)));
+      let mut cfg = config_builder.with_no_client_auth();
+      cfg.client_auth_cert_resolver = resolver;
+      cfg
     }
     TlsKeys::Null => config_builder.with_no_client_auth(),
     TlsKeys::Resolver(_) => return None,
@@ -3789,7 +3814,20 @@ impl rustls::server::danger::ClientCertVerifier for NodeClientCertVerifier {
     dss: &rustls::DigitallySignedStruct,
   ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
   {
-    self.inner.verify_tls12_signature(message, cert, dss)
+    match self.inner.verify_tls12_signature(message, cert, dss) {
+      Ok(v) => Ok(v),
+      // X.509v1 client certs cannot be parsed by webpki for signature
+      // verification.  Node/OpenSSL accepts them, so tolerate the error.
+      Err(rustls::Error::InvalidCertificate(
+        rustls::CertificateError::Other(ref other),
+      )) if other.0.downcast_ref::<webpki::Error>().is_some_and(|e| {
+        matches!(e, webpki::Error::UnsupportedCertVersion)
+      }) =>
+      {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+      }
+      Err(e) => Err(e),
+    }
   }
 
   fn verify_tls13_signature(
@@ -3799,11 +3837,114 @@ impl rustls::server::danger::ClientCertVerifier for NodeClientCertVerifier {
     dss: &rustls::DigitallySignedStruct,
   ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
   {
-    self.inner.verify_tls13_signature(message, cert, dss)
+    match self.inner.verify_tls13_signature(message, cert, dss) {
+      Ok(v) => Ok(v),
+      Err(rustls::Error::InvalidCertificate(
+        rustls::CertificateError::Other(ref other),
+      )) if other.0.downcast_ref::<webpki::Error>().is_some_and(|e| {
+        matches!(e, webpki::Error::UnsupportedCertVersion)
+      }) =>
+      {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+      }
+      Err(e) => Err(e),
+    }
   }
 
   fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
     self.inner.supported_verify_schemes()
+  }
+}
+
+/// A `ClientCertVerifier` for `node:tls` servers when `requestCert` is true
+/// but no CA certificates were provided.  Node/OpenSSL still sends a
+/// CertificateRequest (so the client presents its cert) and reports the
+/// cert as unauthorized.  rustls's `WebPkiClientVerifier` requires at least
+/// one trust anchor, so this standalone verifier fills that gap.
+#[derive(Debug)]
+struct NodeClientCertVerifierNoRoots {
+  reject_unauthorized: bool,
+  verify_error: VerifyErrorStore,
+}
+
+impl rustls::server::danger::ClientCertVerifier
+  for NodeClientCertVerifierNoRoots
+{
+  fn offer_client_auth(&self) -> bool {
+    true
+  }
+
+  fn client_auth_mandatory(&self) -> bool {
+    self.reject_unauthorized
+  }
+
+  fn root_hint_subjects(&self) -> &[rustls::DistinguishedName] {
+    &[]
+  }
+
+  fn verify_client_cert(
+    &self,
+    _end_entity: &rustls::pki_types::CertificateDer<'_>,
+    _intermediates: &[rustls::pki_types::CertificateDer<'_>],
+    _now: rustls::pki_types::UnixTime,
+  ) -> Result<rustls::server::danger::ClientCertVerified, rustls::Error> {
+    // No root CAs — we cannot verify anything.  Store an error for
+    // verifyError() and let the JS layer decide via `authorized`.
+    *self.verify_error.lock().unwrap_or_else(|p| p.into_inner()) =
+      Some("UNABLE_TO_GET_ISSUER_CERT".to_string());
+    Ok(rustls::server::danger::ClientCertVerified::assertion())
+  }
+
+  fn verify_tls12_signature(
+    &self,
+    message: &[u8],
+    cert: &rustls::pki_types::CertificateDer<'_>,
+    dss: &rustls::DigitallySignedStruct,
+  ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
+  {
+    let algos = &rustls::crypto::aws_lc_rs::default_provider()
+      .signature_verification_algorithms;
+    match rustls::crypto::verify_tls12_signature(message, cert, dss, algos) {
+      Ok(v) => Ok(v),
+      Err(rustls::Error::InvalidCertificate(
+        rustls::CertificateError::Other(ref other),
+      )) if other.0.downcast_ref::<webpki::Error>().is_some_and(|e| {
+        matches!(e, webpki::Error::UnsupportedCertVersion)
+      }) =>
+      {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+      }
+      Err(e) => Err(e),
+    }
+  }
+
+  fn verify_tls13_signature(
+    &self,
+    message: &[u8],
+    cert: &rustls::pki_types::CertificateDer<'_>,
+    dss: &rustls::DigitallySignedStruct,
+  ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
+  {
+    let algos = &rustls::crypto::aws_lc_rs::default_provider()
+      .signature_verification_algorithms;
+    match rustls::crypto::verify_tls13_signature(message, cert, dss, algos) {
+      Ok(v) => Ok(v),
+      Err(rustls::Error::InvalidCertificate(
+        rustls::CertificateError::Other(ref other),
+      )) if other.0.downcast_ref::<webpki::Error>().is_some_and(|e| {
+        matches!(e, webpki::Error::UnsupportedCertVersion)
+      }) =>
+      {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+      }
+      Err(e) => Err(e),
+    }
+  }
+
+  fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+    rustls::crypto::aws_lc_rs::default_provider()
+      .signature_verification_algorithms
+      .supported_schemes()
   }
 }
 
@@ -3939,25 +4080,43 @@ fn build_server_config(
       }
     }
 
-    let mut verifier_builder =
-      rustls::server::WebPkiClientVerifier::builder(Arc::new(root_cert_store));
-    if !reject_unauthorized {
-      verifier_builder = verifier_builder.allow_unauthenticated();
-    }
     let client_verify_error: VerifyErrorStore = Default::default();
-    match verifier_builder.build() {
-      Ok(inner) => (
-        builder.with_client_cert_verifier(Arc::new(NodeClientCertVerifier {
-          inner,
-          root_cert_ders,
-          reject_unauthorized,
-          verify_error: client_verify_error.clone(),
-        })),
+    if root_cert_store.is_empty() {
+      // No CA certs provided.  Node/OpenSSL still sends a
+      // CertificateRequest (so the client presents its cert) but cannot
+      // actually verify it — `authorized` will be false.  rustls's
+      // WebPkiClientVerifier requires at least one trust anchor, so use
+      // our own verifier that accepts everything.
+      (
+        builder.with_client_cert_verifier(Arc::new(
+          NodeClientCertVerifierNoRoots {
+            reject_unauthorized,
+            verify_error: client_verify_error.clone(),
+          },
+        )),
         client_verify_error,
-      ),
-      Err(e) => {
-        log::debug!("TLSWrap: failed to build client cert verifier: {e}");
-        return None;
+      )
+    } else {
+      let mut verifier_builder = rustls::server::WebPkiClientVerifier::builder(
+        Arc::new(root_cert_store),
+      );
+      if !reject_unauthorized {
+        verifier_builder = verifier_builder.allow_unauthenticated();
+      }
+      match verifier_builder.build() {
+        Ok(inner) => (
+          builder.with_client_cert_verifier(Arc::new(NodeClientCertVerifier {
+            inner,
+            root_cert_ders,
+            reject_unauthorized,
+            verify_error: client_verify_error.clone(),
+          })),
+          client_verify_error,
+        ),
+        Err(e) => {
+          log::debug!("TLSWrap: failed to build client cert verifier: {e}");
+          return None;
+        }
       }
     }
   } else {
@@ -4036,6 +4195,26 @@ fn build_server_config(
   server_config.session_storage =
     rustls::server::ServerSessionMemoryCache::new(256);
   Some((server_config, client_cert_verify_error))
+}
+
+/// A `ResolvesClientCert` that always returns the same `CertifiedKey`.
+/// Used instead of `with_client_auth_cert` to tolerate X.509v1 client certs
+/// (which rustls's built-in path rejects via `keys_match`).
+#[derive(Debug)]
+struct StaticClientCertResolver(Arc<rustls::sign::CertifiedKey>);
+
+impl rustls::client::ResolvesClientCert for StaticClientCertResolver {
+  fn resolve(
+    &self,
+    _root_hint_subjects: &[&[u8]],
+    _sigschemes: &[rustls::SignatureScheme],
+  ) -> Option<Arc<rustls::sign::CertifiedKey>> {
+    Some(self.0.clone())
+  }
+
+  fn has_certs(&self) -> bool {
+    true
+  }
 }
 
 /// `ResolvesServerCert` impl that always returns `None`, used when a

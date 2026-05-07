@@ -581,15 +581,43 @@ TLSSocket.prototype._init = function (socket, wrap) {
 
         const finish = (ctx, selectedAlpn) => {
           if (owner.destroyed) return;
-          const context = ctx
-            ? (ctx.context || ctx)
-            : owner._tlsOptions.secureContext?.context;
+          let context;
+          if (ctx) {
+            // ctx must be a SecureContext (has .context) or a raw context
+            // object with cert/key.  An empty object like {} is invalid --
+            // Node's C++ layer rejects it as "Invalid SNI context".
+            context = ctx.context;
+            if (!context) {
+              // ctx is not a valid SecureContext -- Node's C++ layer
+              // rejects this as "Invalid SNI context".  Destroy the
+              // underlying TCP socket so the client sees ECONNRESET,
+              // then destroy the TLS socket with an error which
+              // triggers the "tlsClientError" event via onSocketTLSError.
+              const rawSocket = owner._parent || handle._parentWrap;
+              if (rawSocket && typeof rawSocket.destroy === "function") {
+                rawSocket.destroy();
+              }
+              owner.destroy(new Error("Invalid SNI context"));
+              return;
+            }
+          } else {
+            context = owner._tlsOptions.secureContext?.context;
+          }
           if (!context) {
             owner.destroy(new Error("No SecureContext available"));
             return;
           }
+          // Merge server-level requestCert/rejectUnauthorized into the
+          // context so build_server_config picks them up.  The
+          // SecureContext's .context only has cert/key/ca/protocol
+          // options, not connection-level settings.
+          const mergedContext = {
+            ...context,
+            requestCert: owner._tlsOptions.requestCert === true,
+            rejectUnauthorized: owner._tlsOptions.rejectUnauthorized !== false,
+          };
           handle.finishAccept(
-            context,
+            mergedContext,
             selectedAlpn != null ? String(selectedAlpn) : null,
           );
         };
@@ -990,8 +1018,45 @@ function onSocketClose(err) {
   }
 }
 
+// Match a servername against the [pattern, context] pairs from addContext().
+// Returns a SecureContext if found, null otherwise (use default).
+// Patterns can be exact ("a.example.com") or wildcard ("*.test.com").
+function matchContextByServername(contexts, servername) {
+  if (!servername || contexts.length === 0) return null;
+  const name = servername.toLowerCase();
+  for (let i = 0; i < contexts.length; i++) {
+    const [pattern, ctx] = contexts[i];
+    const pat = pattern.toLowerCase();
+    if (pat === name) {
+      return createSecureContext(ctx);
+    }
+    // Wildcard match: "*.test.com" matches "b.test.com" but not
+    // "a.b.test.com" (only one level).
+    if (pat.startsWith("*.")) {
+      const suffix = pat.slice(1); // ".test.com"
+      if (
+        name.endsWith(suffix) &&
+        name.indexOf(".") === name.length - suffix.length
+      ) {
+        return createSecureContext(ctx);
+      }
+    }
+  }
+  return null;
+}
+
 function tlsConnectionListener(rawSocket) {
   debug("net.Server.on(connection): new TLSSocket");
+  // When addContext() has been called but no explicit SNICallback is set,
+  // provide a default callback that matches servernames against _contexts.
+  // This mirrors Node's native OpenSSL SNI callback behavior.
+  let sniCallback = this._SNICallback;
+  if (!sniCallback && this._contexts.length > 0) {
+    const contexts = this._contexts;
+    sniCallback = (servername, cb) => {
+      cb(null, matchContextByServername(contexts, servername));
+    };
+  }
   const socket = new TLSSocket(rawSocket, {
     secureContext: this._sharedCreds,
     isServer: true,
@@ -1000,7 +1065,7 @@ function tlsConnectionListener(rawSocket) {
     rejectUnauthorized: this.rejectUnauthorized,
     ALPNProtocols: this.ALPNProtocols,
     ALPNCallback: this.ALPNCallback,
-    SNICallback: this._SNICallback,
+    SNICallback: sniCallback,
     pauseOnConnect: this.pauseOnConnect,
   });
 

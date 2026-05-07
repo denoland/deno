@@ -3449,6 +3449,8 @@
     "parallel/test-tls-set-default-ca-certificates-mixed-types.js": {},
     "parallel/test-tls-set-encoding.js": {},
     "parallel/test-tls-snicallback-error.js": {},
+    "parallel/test-tls-sni-option.js": {},
+    "parallel/test-tls-sni-server-client.js": {},
     "parallel/test-tls-socket-allow-half-open-option.js": {},
     "parallel/test-tls-socket-close.js": {},
     "parallel/test-tls-socket-constructor-alpn-options-parsing.js": {},
