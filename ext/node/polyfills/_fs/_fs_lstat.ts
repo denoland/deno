@@ -1,6 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import { core } from "ext:core/mod.js";
+const { denoErrorToNodeError } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 import {
   CFISBIS,
   type statCallback,
@@ -12,7 +15,7 @@ import {
   getValidatedPathToString,
   Stats,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import { promisify } from "ext:deno_node/internal/util.mjs";
+const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import { primordials } from "ext:core/mod.js";
 
 const {

@@ -619,3 +619,66 @@ pub async fn op_node_udp_recv(
     port: remote_addr.port(),
   })
 }
+
+/// Return an owned dup of the bound UDP socket's file descriptor, for use as
+/// the payload of an SCM_RIGHTS cmsg on an IPC channel.  The caller owns the
+/// returned fd and must close it after `sendmsg` has attached it to the IPC
+/// message.  Returns -1 on platforms that don't support fd-passing (Windows).
+#[op2(fast)]
+#[smi]
+pub fn op_node_udp_fd_for_ipc(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<i32, NodeUdpError> {
+  let resource = state.resource_table.get::<NodeUdpSocketResource>(rid)?;
+  #[cfg(unix)]
+  {
+    use std::os::unix::io::AsRawFd;
+    let fd = resource.socket.as_raw_fd();
+    if fd < 0 {
+      return Ok(-1);
+    }
+    // SAFETY: fd is a valid open file descriptor. F_DUPFD_CLOEXEC
+    // atomically dups and sets CLOEXEC, avoiding a race window.
+    let dup = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
+    Ok(dup)
+  }
+  #[cfg(not(unix))]
+  {
+    let _ = resource;
+    Ok(-1)
+  }
+}
+
+/// Adopt an existing file descriptor as a UDP socket resource.  Used on the
+/// receiving side of IPC handle passing.
+#[op2]
+#[serde]
+pub fn op_node_udp_open(
+  state: &mut OpState,
+  #[smi] fd: i32,
+) -> Result<(ResourceId, String, u16), NodeUdpError> {
+  #[cfg(unix)]
+  {
+    use std::os::unix::io::FromRawFd;
+    // SAFETY: The fd was received via SCM_RIGHTS and is a valid, open socket.
+    let std_socket = unsafe { std::net::UdpSocket::from_raw_fd(fd) };
+    std_socket.set_nonblocking(true)?;
+    let local_addr = std_socket.local_addr()?;
+    let socket = UdpSocket::from_std(std_socket)?;
+    let resource = NodeUdpSocketResource {
+      socket,
+      cancel: Default::default(),
+    };
+    let rid = state.resource_table.add(resource);
+    Ok((rid, local_addr.ip().to_string(), local_addr.port()))
+  }
+  #[cfg(not(unix))]
+  {
+    let _ = (state, fd);
+    Err(NodeUdpError::Io(std::io::Error::new(
+      std::io::ErrorKind::Unsupported,
+      "UDP socket IPC handle passing is not supported on this platform",
+    )))
+  }
+}

@@ -1,17 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { primordials } = globalThis.__bootstrap;
 const {
   ObjectFreeze,
 } = primordials;
 
-interface Version {
-  deno: string;
-  v8: string;
-  typescript: string;
-}
-
-const version: Version = {
+const version = {
   deno: "",
   v8: "",
   typescript: "",
@@ -29,4 +24,5 @@ function setVersions(
   ObjectFreeze(version);
 }
 
-export { setVersions, version };
+return { setVersions, version };
+})();

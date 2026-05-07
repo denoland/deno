@@ -2675,3 +2675,37 @@ Deno.test(function inspectEscapeSequencesFalse() {
     '"foo\nbar"',
   );
 });
+
+Deno.test(function inspectProxyDoesNotTriggerGetTrap() {
+  // Regression test for https://github.com/denoland/deno/issues/33719
+  // Proxies that return functions for any property access (e.g. grammy API
+  // client) should not have their get/has traps triggered for custom inspect
+  // symbols during inspection.
+  const accessed: PropertyKey[] = [];
+  const proxy = new Proxy({}, {
+    has(_target, prop) {
+      accessed.push(prop);
+      return false;
+    },
+    get(_target, prop) {
+      accessed.push(prop);
+      return () => {};
+    },
+  });
+
+  accessed.length = 0;
+  Deno.inspect(proxy);
+
+  const inspectSymbols = [
+    Symbol.for("nodejs.util.inspect.custom"),
+    Symbol.for("Deno.customInspect"),
+    Symbol.for("Deno.privateCustomInspect"),
+  ];
+  for (const sym of inspectSymbols) {
+    assertEquals(
+      accessed.filter((p) => p === sym).length,
+      0,
+      `Deno.inspect should not trigger proxy traps for ${String(sym)}`,
+    );
+  }
+});

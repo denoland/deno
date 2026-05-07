@@ -5,17 +5,19 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, primordials } from "ext:core/mod.js";
-import {
+const {
   validateFunction,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   AsyncHook,
-  emitDestroy as emitDestroyHook,
+  emitAfter,
+  emitBefore,
+  emitDestroy: emitDestroyHook,
   emitInit,
-  executionAsyncId as internalExecutionAsyncId,
+  executionAsyncId: internalExecutionAsyncId,
   newAsyncId,
-} from "ext:deno_node/internal/async_hooks.ts";
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 
 const {
   ObjectDefineProperties,
@@ -64,11 +66,13 @@ export class AsyncResource {
     ...args: unknown[]
   ) {
     const previousContext = getAsyncContext();
+    emitBefore(this.#asyncId);
     try {
       setAsyncContext(this.#snapshot);
       return ReflectApply(fn, thisArg, args);
     } finally {
       setAsyncContext(previousContext);
+      emitAfter(this.#asyncId);
     }
   }
 

@@ -27,7 +27,9 @@ use super::installer::BinNameResolver;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
 use crate::args::ConfigFlag;
+use crate::args::DenoSubcommand;
 use crate::args::Flags;
+use crate::args::TypeCheckMode;
 use crate::factory::CliFactory;
 use crate::standalone::binary::WriteBinOptions;
 use crate::standalone::binary::is_standalone_binary;
@@ -35,8 +37,115 @@ use crate::util::temp::create_temp_node_modules_dir;
 
 pub async fn compile(
   mut flags: Flags,
-  compile_flags: CompileFlags,
+  mut compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
+  // Framework detection: when the source is a directory, detect the
+  // framework and generate an entrypoint automatically.
+  let source_dir = if compile_flags.source_file == "." {
+    Some(flags.initial_cwd.clone().unwrap_or_else(|| {
+      crate::util::env::resolve_cwd(None).unwrap().to_path_buf()
+    }))
+  } else {
+    let path = PathBuf::from(&compile_flags.source_file);
+    let path = if path.is_absolute() {
+      path
+    } else {
+      flags
+        .initial_cwd
+        .clone()
+        .unwrap_or_else(|| {
+          crate::util::env::resolve_cwd(None).unwrap().to_path_buf()
+        })
+        .join(path)
+    };
+    path.is_dir().then_some(path)
+  };
+
+  let _framework_entrypoint_file = if let Some(dir) = source_dir {
+    if let Some(detection) = super::framework::detect_framework(&dir)? {
+      log::info!("Detected {} framework", detection.name);
+      // Run the framework's build step if needed.
+      if let Some(build_cmd) = &detection.build_command {
+        log::info!(
+          "{} {} project...",
+          colors::green("Building"),
+          detection.name,
+        );
+        let status = std::process::Command::new(&build_cmd[0])
+          .args(&build_cmd[1..])
+          .current_dir(&dir)
+          .status()
+          .with_context(|| {
+            format!("Failed to run build command: {}", build_cmd.join(" "))
+          })?;
+        if !status.success() {
+          bail!(
+            "{} build failed (exit code: {})",
+            detection.name,
+            status.code().unwrap_or(-1)
+          );
+        }
+      }
+      // Enable CJS detection for Node-based frameworks.
+      flags.unstable_config.detect_cjs = true;
+      if detection.name == "Next.js"
+        && !matches!(flags.type_check_mode, TypeCheckMode::None)
+      {
+        log::info!(
+          "Disabling Deno type checking for Next.js compile; Next handles app compilation itself"
+        );
+        flags.type_check_mode = TypeCheckMode::None;
+      }
+      // Write a temporary entrypoint file with a random suffix so we
+      // never overwrite an existing project file.
+      let entrypoint_path = dir.join(format!(
+        ".deno_compile_entry_{:08x}.ts",
+        rand::thread_rng().r#gen::<u32>()
+      ));
+      std::fs::write(&entrypoint_path, detection.entrypoint_code)?;
+      compile_flags.source_file = entrypoint_path.display().to_string();
+      if compile_flags.output.is_none()
+        && let Some(dir_name) = dir.file_name()
+      {
+        compile_flags.output = Some(dir_name.to_string_lossy().into_owned());
+      }
+      // Add framework build output to includes, resolved relative to the
+      // detected app directory so `deno compile ./myapp` picks up
+      // `./myapp/.next` rather than `./.next`.
+      for inc in detection.include_paths {
+        let resolved = dir.join(&inc).display().to_string();
+        if !compile_flags.include.contains(&resolved) {
+          compile_flags.include.push(resolved);
+        }
+      }
+      Some(entrypoint_path)
+    } else {
+      bail!(
+        "Could not detect a supported framework in '{}'.\n\
+         Supported frameworks: Next.js, Astro, Fresh, Remix, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite SSR\n\
+         Provide an explicit entrypoint instead of a directory.",
+        dir.display()
+      );
+    }
+  } else {
+    None
+  };
+
+  // Keep flags.subcommand in sync so resolve_main_module sees the
+  // rewritten source_file instead of the original directory path.
+  flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
+
+  // Clean up temp entrypoint on exit.
+  struct CleanupGuard(Option<PathBuf>);
+  impl Drop for CleanupGuard {
+    fn drop(&mut self) {
+      if let Some(ref path) = self.0 {
+        let _ = std::fs::remove_file(path);
+      }
+    }
+  }
+  let _cleanup = CleanupGuard(_framework_entrypoint_file);
+
   // use a temporary directory with a node_modules folder when the user
   // specifies an npm package for better compatibility
   let _temp_dir =
