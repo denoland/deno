@@ -1028,8 +1028,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         self.0.hook_registry.resolve_cache.borrow().get(&cache_key)
       {
         return deno_core::ModuleResolveResponse::Sync(
-          ModuleSpecifier::parse(cached)
-            .map_err(JsErrorBox::from_err),
+          ModuleSpecifier::parse(cached).map_err(JsErrorBox::from_err),
         );
       }
 
