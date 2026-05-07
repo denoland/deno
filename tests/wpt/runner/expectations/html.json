@@ -970,58 +970,16 @@
     "structured-clone": {
       "structured-clone.any.html": {
         "expectedFailures": [
-          "Blob basic",
-          "Blob unpaired high surrogate (invalid utf-8)",
-          "Blob unpaired low surrogate (invalid utf-8)",
-          "Blob paired surrogates (invalid utf-8)",
-          "Blob empty",
-          "Blob NUL",
-          "Array Blob object, Blob basic",
-          "Array Blob object, Blob unpaired high surrogate (invalid utf-8)",
-          "Array Blob object, Blob unpaired low surrogate (invalid utf-8)",
-          "Array Blob object, Blob paired surrogates (invalid utf-8)",
-          "Array Blob object, Blob empty",
-          "Array Blob object, Blob NUL",
-          "Array Blob object, two Blobs",
-          "Object Blob object, Blob basic",
-          "Object Blob object, Blob unpaired high surrogate (invalid utf-8)",
-          "Object Blob object, Blob unpaired low surrogate (invalid utf-8)",
-          "Object Blob object, Blob paired surrogates (invalid utf-8)",
-          "Object Blob object, Blob empty",
-          "Object Blob object, Blob NUL",
-          "File basic",
-          "An object whose interface is deleted from the global must still deserialize",
-          "A subclass instance will deserialize as its closest serializable superclass",
           "Growable SharedArrayBuffer",
-          "Transferring OOB TypedArray throws"
+          "Transferring OOB TypedArray throws",
+          "Transferring a non-transferable platform object fails"
         ]
       },
       "structured-clone.any.worker.html": {
         "expectedFailures": [
-          "Blob basic",
-          "Blob unpaired high surrogate (invalid utf-8)",
-          "Blob unpaired low surrogate (invalid utf-8)",
-          "Blob paired surrogates (invalid utf-8)",
-          "Blob empty",
-          "Blob NUL",
-          "Array Blob object, Blob basic",
-          "Array Blob object, Blob unpaired high surrogate (invalid utf-8)",
-          "Array Blob object, Blob unpaired low surrogate (invalid utf-8)",
-          "Array Blob object, Blob paired surrogates (invalid utf-8)",
-          "Array Blob object, Blob empty",
-          "Array Blob object, Blob NUL",
-          "Array Blob object, two Blobs",
-          "Object Blob object, Blob basic",
-          "Object Blob object, Blob unpaired high surrogate (invalid utf-8)",
-          "Object Blob object, Blob unpaired low surrogate (invalid utf-8)",
-          "Object Blob object, Blob paired surrogates (invalid utf-8)",
-          "Object Blob object, Blob empty",
-          "Object Blob object, Blob NUL",
-          "File basic",
-          "An object whose interface is deleted from the global must still deserialize",
-          "A subclass instance will deserialize as its closest serializable superclass",
           "Growable SharedArrayBuffer",
-          "Transferring OOB TypedArray throws"
+          "Transferring OOB TypedArray throws",
+          "Transferring a non-transferable platform object fails"
         ]
       },
       "structured-clone-cross-realm-method.html": false
