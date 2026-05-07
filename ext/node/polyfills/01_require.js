@@ -99,7 +99,7 @@ const {
 import buffer from "node:buffer";
 import childProcess from "node:child_process";
 import cluster from "node:cluster";
-const console = core.loadExtScript("ext:deno_node/console.ts");
+import console from "node:console";
 import constants from "node:constants";
 import crypto from "node:crypto";
 import dgram from "node:dgram";
@@ -179,7 +179,7 @@ const perfHooks = core.loadExtScript("ext:deno_node/perf_hooks.js").default;
 const punycode = core.loadExtScript("ext:deno_node/punycode.ts").default;
 import process from "node:process";
 const querystring = core.loadExtScript("ext:deno_node/querystring.js").default;
-const readline = core.loadExtScript("ext:deno_node/readline.ts");
+import readline from "node:readline";
 import readlinePromises from "node:readline/promises";
 import repl from "node:repl";
 const sqlite = core.loadExtScript("ext:deno_node/sqlite.ts");

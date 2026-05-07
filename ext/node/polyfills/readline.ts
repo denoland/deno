@@ -1,9 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // @deno-types="./_readline.d.ts"
 
-(function () {
-const { core } = globalThis.__bootstrap;
-const {
+import {
   clearLine,
   clearScreenDown,
   createInterface,
@@ -12,9 +10,9 @@ const {
   Interface,
   moveCursor,
   promises,
-} = core.loadExtScript("ext:deno_node/_readline.mjs");
+} from "ext:deno_node/_readline.mjs";
 
-return {
+export {
   clearLine,
   clearScreenDown,
   createInterface,
@@ -24,4 +22,14 @@ return {
   moveCursor,
   promises,
 };
-})();
+
+export default {
+  Interface,
+  clearLine,
+  clearScreenDown,
+  createInterface,
+  cursorTo,
+  emitKeypressEvents,
+  moveCursor,
+  promises,
+};

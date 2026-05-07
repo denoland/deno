@@ -232,7 +232,7 @@ const onServerStreamCloseChannel = dc.channel("http2.server.stream.close");
 const { debuglog } = core.loadExtScript(
   "ext:deno_node/internal/util/debuglog.ts",
 );
-const console = core.loadExtScript("ext:deno_node/console.ts");
+import console from "node:console";
 let debug = debuglog("http2", (fn) => {
   debug = fn;
 });

@@ -19,8 +19,8 @@ import {
   write as writeAsync,
   WriteStream,
 } from "node:fs";
-const { createInterface } = core.loadExtScript("ext:deno_node/readline.ts");
-type ReadlineInterface = import("node:readline").Interface;
+import { createInterface } from "node:readline";
+import type { Interface as ReadlineInterface } from "node:readline";
 import { core, primordials } from "ext:core/mod.js";
 import { op_node_fs_close } from "ext:core/ops";
 import type {
