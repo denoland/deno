@@ -48,11 +48,19 @@ pub struct PackageJsonDepValueParseWithLocationError {
   pub source: PackageJsonDepValueParseError,
 }
 
+#[derive(Debug)]
+pub struct TarballUrlPkg {
+  pub alias: StackString,
+  pub url: Url,
+  pub location: Url,
+}
+
 #[derive(Debug, Default)]
 pub struct NpmInstallDepsProvider {
   remote_pkgs: Vec<InstallNpmRemotePkg>,
   local_pkgs: Vec<InstallLocalPkg>,
   patch_pkgs: Vec<InstallPatchPkg>,
+  tarball_pkgs: Vec<TarballUrlPkg>,
   pkg_json_dep_errors: Vec<PackageJsonDepValueParseWithLocationError>,
 }
 
@@ -70,6 +78,7 @@ impl NpmInstallDepsProvider {
     let mut local_pkgs = Vec::new();
     let mut remote_pkgs = Vec::new();
     let mut patch_pkgs = Vec::new();
+    let mut tarball_pkgs = Vec::new();
     let mut pkg_json_dep_errors = Vec::new();
     let workspace_npm_pkgs = workspace.npm_packages();
 
@@ -191,11 +200,17 @@ impl NpmInstallDepsProvider {
                 });
               }
             }
-            PackageJsonDepValue::Tarball(_url) => {
-              // TODO: download remote tarball and treat like a file dep.
-              // For now, tarball URL deps recorded by `deno install` are
-              // cached as file: deps, so this path is only hit when someone
-              // manually writes an https:// dep in package.json.
+            PackageJsonDepValue::Tarball(url_str) => {
+              // Tarball URL deps from package.json require --allow-import.
+              // Collect them here; the CLI layer will check permissions
+              // before proceeding with the download.
+              if let Ok(url) = Url::parse(&url_str) {
+                tarball_pkgs.push(TarballUrlPkg {
+                  alias: alias.clone(),
+                  url,
+                  location: pkg_json.specifier(),
+                });
+              }
             }
             PackageJsonDepValue::Workspace(workspace_version_req) => {
               let version_req = match workspace_version_req {
@@ -282,6 +297,7 @@ impl NpmInstallDepsProvider {
       remote_pkgs,
       local_pkgs,
       patch_pkgs,
+      tarball_pkgs,
       pkg_json_dep_errors,
     }
   }
@@ -296,6 +312,10 @@ impl NpmInstallDepsProvider {
 
   pub fn patch_pkgs(&self) -> &[InstallPatchPkg] {
     &self.patch_pkgs
+  }
+
+  pub fn tarball_pkgs(&self) -> &[TarballUrlPkg] {
+    &self.tarball_pkgs
   }
 
   pub fn pkg_json_dep_errors(

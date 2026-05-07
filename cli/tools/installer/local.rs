@@ -165,6 +165,17 @@ async fn install_top_level(
   let npm_installer = factory.npm_installer().await?;
   npm_installer.ensure_no_pkg_json_dep_errors()?;
 
+  // Check that any tarball URL deps in package.json are allowed by --allow-import
+  let tarball_pkgs = npm_installer.tarball_pkgs();
+  if !tarball_pkgs.is_empty() {
+    let cli_options = factory.cli_options()?;
+    let permissions = cli_options.permissions_options()?;
+    let allowed_hosts = permissions.allow_import.as_deref();
+    for tarball in tarball_pkgs {
+      check_tarball_url_allowed(&tarball.url, allowed_hosts)?;
+    }
+  }
+
   // the actual work
   crate::tools::pm::cache_top_level_deps(
     &factory,
@@ -223,4 +234,45 @@ pub fn check_if_installs_a_single_package_globally(
     }
   }
   Ok(())
+}
+
+/// Check if a tarball URL is allowed by the --allow-import host list.
+/// When running bare `deno install` with tarball URL deps in package.json,
+/// the URL's host must be explicitly allowed via --allow-import to prevent
+/// data exfiltration. Explicit `deno install <url>` skips this check since
+/// the user directly provided the URL.
+fn check_tarball_url_allowed(
+  url: &Url,
+  allowed_hosts: Option<&[String]>,
+) -> Result<(), AnyError> {
+  let Some(allowed) = allowed_hosts else {
+    // --allow-import not set at all (None means allow all)
+    return Ok(());
+  };
+
+  if allowed.is_empty() {
+    // Empty list means allow all (e.g., --allow-import with no args)
+    return Ok(());
+  }
+
+  let host = match url.host_str() {
+    Some(h) => h,
+    None => bail!("Cannot install tarball from URL without a host: {}", url),
+  };
+  let port = url.port().unwrap_or(match url.scheme() {
+    "https" => 443,
+    "http" => 80,
+    _ => 0,
+  });
+  let host_port = format!("{}:{}", host, port);
+
+  if allowed.iter().any(|h| *h == host_port || *h == host) {
+    return Ok(());
+  }
+
+  bail!(
+    "Tarball URL '{}' in package.json is not allowed.\n  To allow this host, pass: --allow-import={}",
+    url,
+    host_port,
+  )
 }
