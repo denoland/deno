@@ -1029,7 +1029,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       {
         return deno_core::ModuleResolveResponse::Sync(
           ModuleSpecifier::parse(cached)
-            .map_err(|e| JsErrorBox::from_err(e).into()),
+            .map_err(JsErrorBox::from_err),
         );
       }
 
