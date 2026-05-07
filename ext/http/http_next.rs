@@ -538,15 +538,44 @@ pub fn op_http_get_request_headers<'scope>(
 /// which case the JS caller falls through to the streaming
 /// `op_http_read_request_body` path. The body is left intact
 /// on the `null` branch.
+/// Try to drain the entire request body without blocking, returning either:
+///   - `null` if the body is not yet fully buffered;
+///   - a `string` if the buffered bytes are valid UTF-8 (JSON, text, form-data,
+///     etc.); this lets `req.json()`/`req.text()` skip the Uint8Array/ArrayBuffer
+///     allocation and the TextDecoder round-trip;
+///   - a `Uint8Array` if the bytes are not valid UTF-8 (binary uploads).
+///
+/// Choosing the representation in the op (rather than always returning bytes
+/// and converting on the JS side) avoids the v8::ArrayBuffer + Uint8Array view
+/// allocations on the hot text-body path.
 #[op2]
-#[buffer]
-pub fn op_http_try_take_full_request_body(
+pub fn op_http_try_take_full_request_body<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
   external: *const c_void,
-) -> Option<Vec<u8>> {
+) -> v8::Local<'s, v8::Value> {
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_try_take_full_request_body") };
-  http.try_take_full_request_body()
+  let bytes = match http.try_take_full_request_body() {
+    Some(b) => b,
+    None => return v8::null(scope).into(),
+  };
+  if std::str::from_utf8(&bytes).is_ok() {
+    // SAFETY: we just validated UTF-8 above.
+    let s = unsafe { std::str::from_utf8_unchecked(&bytes) };
+    return v8::String::new_from_utf8(
+      scope,
+      s.as_bytes(),
+      v8::NewStringType::Normal,
+    )
+    .unwrap()
+    .into();
+  }
+  let len = bytes.len();
+  let backing =
+    v8::ArrayBuffer::new_backing_store_from_vec(bytes).make_shared();
+  let array_buffer = v8::ArrayBuffer::with_backing_store(scope, &backing);
+  v8::Uint8Array::new(scope, array_buffer, 0, len).unwrap().into()
 }
 
 #[op2(fast)]
