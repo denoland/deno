@@ -1,17 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // deno-lint-ignore-file no-explicit-any prefer-primordials
-
-import { PipeWrap, TLSWrap } from "ext:core/ops";
-import {
-  kReadBytesOrError,
-  streamBaseState,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
+(function () {
+const { core } = globalThis.__bootstrap;
+const { PipeWrap, TLSWrap } = core.ops;
+const { kReadBytesOrError, streamBaseState } = core.loadExtScript(
+  "ext:deno_node/internal_binding/stream_wrap.ts",
+);
 // Use Symbol.for to access symbols from js_stream_socket.js
 // without importing it (avoids circular dependency).
 const kJSStreamHandle = Symbol.for("kJSStreamHandle");
 const kOwner = Symbol.for("kJSStreamOwner");
-
-export { TLSWrap };
 
 /**
  * Create a TLSWrap that intercepts an underlying stream handle.
@@ -22,7 +20,7 @@ export { TLSWrap };
  * @param isServer - Whether this is a server-side TLS connection
  * @param servername - SNI hostname for client connections
  */
-export function wrap(
+function wrap(
   handle: any,
   context: any,
   isServer: boolean,
@@ -146,4 +144,11 @@ export function wrap(
   return res;
 }
 
-export default { TLSWrap, wrap };
+const _defaultExport = { TLSWrap, wrap };
+
+return {
+  TLSWrap,
+  wrap,
+  default: _defaultExport,
+};
+})();

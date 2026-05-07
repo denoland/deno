@@ -57,6 +57,25 @@ pub(crate) struct NodeTlsState {
   pub(crate) custom_ca_certs: Option<Vec<String>>,
   pub(crate) client_session_store:
     Arc<dyn deno_tls::rustls::client::ClientSessionStore>,
+  /// Process-shared TLS session ticketer used for every `node:tls` server
+  /// config in this isolate.  Sharing the ticketer across servers in a
+  /// process keeps RFC 5077 ticket keys consistent for all incoming
+  /// connections to a given `tls.createServer()`, which is what the upstream
+  /// `parallel/test-tls-ticket-cluster` test relies on.  Node maintains
+  /// per-server keys; this is a pragmatic simplification.
+  pub(crate) server_ticketer:
+    Option<Arc<dyn deno_tls::rustls::server::ProducesTickets>>,
+  /// Cached TLS-1.3 client cert verifier and the shared "no client cert"
+  /// resolver, used when a client connection is built without custom CA
+  /// certs or a client cert.  Reusing these `Arc`s across connections keeps
+  /// rustls's session-resumption identity check (`Arc::downgrade(&verifier)`)
+  /// stable, which is what allows `tls.TLSSocket#isSessionReused()` to
+  /// return true on subsequent connections.  Without identity stability the
+  /// cached session is dropped at handshake start and resumption never
+  /// succeeds.
+  pub(crate) cached_default_verifier: Option<CachedClientVerifier>,
+  pub(crate) cached_no_client_auth:
+    Option<Arc<dyn deno_tls::rustls::client::ResolvesClientCert>>,
 }
 
 fn cert_der_to_pem(cert: &[u8]) -> String {
@@ -72,6 +91,11 @@ fn cert_der_to_pem(cert: &[u8]) -> String {
     .join("\n");
   format!("-----BEGIN CERTIFICATE-----\n{pem_lines}\n-----END CERTIFICATE-----")
 }
+
+pub(crate) type CachedClientVerifier = (
+  Arc<dyn deno_tls::rustls::client::danger::ServerCertVerifier>,
+  Arc<std::sync::Mutex<Option<String>>>,
+);
 
 #[op2]
 pub fn op_get_root_certificates(
@@ -196,14 +220,25 @@ pub fn op_set_default_ca_certificates(
   state: &mut OpState,
   #[serde] certs: Vec<String>,
 ) {
+  // Treat `setDefaultCACertificates([])` as "use defaults" (None) rather
+  // than "use no custom CAs" (Some(vec![])).  The two are semantically
+  // identical for cert validation, but `Some(vec![])` would force the
+  // default-path verifier cache off in `build_client_config` and silently
+  // disable session resumption.
+  let normalized = if certs.is_empty() { None } else { Some(certs) };
   if let Some(tls_state) = state.try_borrow_mut::<NodeTlsState>() {
-    tls_state.custom_ca_certs = Some(certs);
+    tls_state.custom_ca_certs = normalized;
+    // Custom CA list changed; previously cached verifier no longer matches.
+    tls_state.cached_default_verifier = None;
   } else {
     state.put(NodeTlsState {
-      custom_ca_certs: Some(certs),
+      custom_ca_certs: normalized,
       client_session_store: Arc::new(
         deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
       ),
+      server_ticketer: None,
+      cached_default_verifier: None,
+      cached_no_client_auth: None,
     });
   }
 }

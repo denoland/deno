@@ -1,9 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-/// <reference path="../../core/internal.d.ts" />
-
-import { core, primordials } from "ext:core/mod.js";
-import { op_utf8_to_byte_string } from "ext:core/ops";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { op_utf8_to_byte_string } = core.ops;
 const {
   ArrayPrototypeFind,
   Number,
@@ -36,16 +35,16 @@ const { TextDecoderStream } = core.loadExtScript(
   "ext:deno_web/08_text_encoding.js",
 );
 const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
-import { newInnerRequest } from "ext:deno_fetch/23_request.js";
-import { mainFetch } from "ext:deno_fetch/26_fetch.js";
-import {
+const { newInnerRequest } = core.loadExtScript("ext:deno_fetch/23_request.js");
+const { mainFetch } = core.loadExtScript("ext:deno_fetch/26_fetch.js");
+const {
   fillHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "ext:deno_fetch/20_headers.js";
+} = core.loadExtScript("ext:deno_fetch/20_headers.js");
 
 // Copied from https://github.com/denoland/deno_std/blob/e0753abe0c8602552862a568348c046996709521/streams/text_line_stream.ts#L20-L74
-export class TextLineStream extends TransformStream {
+class TextLineStream extends TransformStream {
   #allowCR;
   #buf = "";
 
@@ -408,4 +407,5 @@ webidl.converters.EventSourceInit = webidl.createDictionaryConverter(
   ],
 );
 
-export { EventSource };
+return { EventSource, TextLineStream };
+})();

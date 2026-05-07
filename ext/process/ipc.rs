@@ -120,6 +120,12 @@ async fn write_with_optional_fd(
       // The fd has already been delivered with the first sendmsg. If the rest
       // of the frame fails, the reader must close the received fd while
       // discarding the malformed message.
+      // TODO(nathanwhit): the receiver path (`IpcJsonStream::read_msg_inner`)
+      // does not currently detect a truncated frame after an fd was attached.
+      // If the writer half is dropped mid-message, the receiver will close
+      // the IPC channel without explicitly closing the orphan fd. In practice
+      // truncation here only happens on connection teardown, where the parent
+      // process exit reaps everything anyway, so the leak window is bounded.
       write_half.write_all(&msg[nwritten..]).await?;
     }
     return Ok(());

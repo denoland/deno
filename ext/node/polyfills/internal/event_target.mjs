@@ -33,35 +33,36 @@ const {
   WeakMapPrototypeSet,
   WeakRefPrototypeDeref,
 } = primordials;
-import {
+const {
   ERR_EVENT_RECURSION,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_THIS,
   ERR_MISSING_ARGS,
-} from "ext:deno_node/internal/errors.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   validateObject,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { emitWarning } from "node:process";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const {
   Event: WebEvent,
   EventTarget: WebEventTarget,
 } = core.loadExtScript("ext:deno_web/02_event.js");
 
-import {
+const {
   customInspectSymbol,
   kEmptyObject,
   kEnumerableProperty,
-} from "ext:deno_node/internal/util.mjs";
-import { inspect } from "node:util";
+} = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { inspect } = core.loadExtScript("ext:deno_node/util.ts");
 
 const kIsEventTarget = SymbolFor("nodejs.event_target");
 const kIsNodeEventTarget = Symbol("kIsNodeEventTarget");
 
-import { kEvents } from "ext:deno_node/_events.mjs";
-import { EventEmitter } from "node:events";
+const { kEvents, EventEmitter } = core.loadExtScript(
+  "ext:deno_node/_events.mjs",
+);
 const {
   kMaxEventTargetListeners,
   kMaxEventTargetListenersWarned,

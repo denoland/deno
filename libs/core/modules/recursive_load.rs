@@ -259,6 +259,15 @@ impl RecursiveModuleLoad {
         ),
       };
 
+    // Skip prepare_load for lazy-loaded ESM sources -- they are embedded
+    // in the binary and do not need fetching/preparation.
+    if self
+      .module_map_rc
+      .has_lazy_esm_source(module_specifier.as_str())
+    {
+      return Ok(());
+    }
+
     self
       .loader
       .prepare_load(
@@ -454,19 +463,31 @@ impl RecursiveModuleLoad {
                   (request.reference.specifier.clone(), request)
                 };
 
-                let load_response = loader.load(
-                  &resolved_specifier,
-                  referrer_info.as_ref(),
-                  ModuleLoadOptions {
-                    is_dynamic_import,
-                    is_synchronous,
-                    requested_module_type,
-                  },
-                );
-
-                let load_result = match load_response {
-                  ModuleLoadResponse::Sync(result) => result,
-                  ModuleLoadResponse::Async(fut) => fut.await,
+                // First check if this module is a lazy-loaded ESM source
+                // (embedded in binary but not snapshotted).
+                let load_result = if let Some(source_code) = module_map_rc
+                  .take_lazy_esm_source(resolved_specifier.as_str())
+                {
+                  Ok(ModuleSource::new(
+                    crate::ModuleType::JavaScript,
+                    ModuleSourceCode::String(source_code),
+                    &resolved_specifier,
+                    None,
+                  ))
+                } else {
+                  let load_response = loader.load(
+                    &resolved_specifier,
+                    referrer_info.as_ref(),
+                    ModuleLoadOptions {
+                      is_dynamic_import,
+                      is_synchronous,
+                      requested_module_type,
+                    },
+                  );
+                  match load_response {
+                    ModuleLoadResponse::Sync(result) => result,
+                    ModuleLoadResponse::Async(fut) => fut.await,
+                  }
                 };
                 if let Ok(source) = &load_result
                   && let Some(found_specifier) = &source.module_url_found

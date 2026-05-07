@@ -1,12 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   BadResourcePrototype,
   InterruptedPrototype,
   internalRidSymbol,
 } = core;
-import {
+const {
   op_http_accept,
   op_http_headers,
   op_http_shutdown,
@@ -15,7 +16,7 @@ import {
   op_http_write,
   op_http_write_headers,
   op_http_write_resource,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ObjectPrototypeIsPrototypeOf,
   SafeSet,
@@ -30,19 +31,19 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
 } = primordials;
-import { _ws } from "ext:deno_http/02_websocket.ts";
-import { InnerBody } from "ext:deno_fetch/22_body.js";
+const { _ws } = core.loadExtScript("ext:deno_http/02_websocket.ts");
+const { InnerBody } = core.loadExtScript("ext:deno_fetch/22_body.js");
 const { Event } = core.loadExtScript("ext:deno_web/02_event.js");
 const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
-import {
+const {
   ResponsePrototype,
   toInnerResponse,
-} from "ext:deno_fetch/23_response.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/23_response.js");
+const {
   abortRequest,
   fromInnerRequest,
   newInnerRequest,
-} from "ext:deno_fetch/23_request.js";
+} = core.loadExtScript("ext:deno_fetch/23_request.js");
 const loadWebSocket = core.createLazyLoader(
   "ext:deno_websocket/01_websocket.js",
 );
@@ -401,4 +402,5 @@ function serveHttp(conn) {
   return new HttpConn(rid, conn.remoteAddr, conn.localAddr);
 }
 
-export { HttpConn, serveHttp };
+return { HttpConn, serveHttp };
+})();

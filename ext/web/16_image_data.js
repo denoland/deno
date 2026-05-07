@@ -1,11 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// deno-fmt-ignore-file
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
-const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
 const {
   ObjectPrototypeIsPrototypeOf,
   Symbol,
@@ -264,4 +265,4 @@ class ImageData {
 const ImageDataPrototype = ImageData.prototype;
 
 return { _data, _height, _width, ImageData, ImageDataPrototype };
-})()
+})();

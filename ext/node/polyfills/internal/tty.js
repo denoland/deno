@@ -4,7 +4,7 @@
 
 // deno-lint-ignore-file no-process-global
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeSome,
   FunctionPrototypeCall,
@@ -25,20 +25,22 @@ const {
   StringPrototypeToLowerCase,
 } = primordials;
 
-import {
+const {
   ERR_INVALID_FD,
   ERR_TTY_INIT_FAILED,
   errnoException,
-} from "ext:deno_node/internal/errors.ts";
-import { validateInteger } from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { validateInteger } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import { op_tty_check_fd_permission, TTY } from "ext:core/ops";
 import { Socket } from "node:net";
-import {
+const {
   clearLine,
   clearScreenDown,
   cursorTo,
   moveCursor,
-} from "ext:deno_node/internal/readline/callbacks.mjs";
+} = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
 import { release } from "node:os";
 
 // Color depth constants
@@ -434,5 +436,5 @@ WriteStream.prototype.getColorDepth = function getColorDepth_(env) {
   return getColorDepth(env);
 };
 
-export { WriteStream };
+export { addSigwinchListener, WriteStream };
 export default WriteStream;

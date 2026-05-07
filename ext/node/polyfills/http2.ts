@@ -51,8 +51,11 @@ import {
   op_http2_callbacks,
 } from "ext:core/ops";
 import { enqueueNodePerformanceEntry } from "node:perf_hooks";
+const { performance: webPerformance } = core.loadExtScript(
+  "ext:deno_web/15_performance.js",
+);
 import net from "node:net";
-import assert from "node:assert";
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import http from "node:http";
 import { AsyncResource } from "node:async_hooks";
 import {
@@ -67,35 +70,37 @@ import {
 } from "node:_http_server";
 import { Duplex } from "node:stream";
 import tls from "node:tls";
-import { deprecate } from "node:util";
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 import dc from "node:diagnostics_channel";
-import { utcDate } from "ext:deno_node/internal/http.ts";
-import {
+const { utcDate } = core.loadExtScript("ext:deno_node/internal/http.ts");
+const {
   kLastWriteWasAsync,
   ShutdownWrap,
   streamBaseState,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
-import {
-  Http2Session as BindingHttp2Session,
-  Http2Stream as BindingHttp2Stream,
-} from "ext:deno_node/internal_binding/http2.ts";
-import { EventEmitter } from "node:events";
-import {
+} = core.loadExtScript("ext:deno_node/internal_binding/stream_wrap.ts");
+const {
+  Http2Session: BindingHttp2Session,
+  Http2Stream: BindingHttp2Stream,
+} = core.loadExtScript("ext:deno_node/internal_binding/http2.ts");
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+const {
   defaultTriggerAsyncIdScope,
   symbols,
-} from "ext:deno_node/internal/async_hooks.ts";
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { async_id_symbol } = symbols;
 import { kTimeout } from "ext:deno_node/internal/timers.mjs";
 // Use node:timers' setTimeout/clearTimeout so the returned Timeout object
 // supports unref() -- globalThis.setTimeout returns a plain number.
 import { clearTimeout, setTimeout } from "node:timers";
-import { addAbortListener } from "ext:deno_node/internal/events/abort_listener.mjs";
-export { addAbortListener } from "ext:deno_node/internal/events/abort_listener.mjs";
+const { addAbortListener } = core.loadExtScript(
+  "ext:deno_node/internal/events/abort_listener.mjs",
+);
+export { addAbortListener };
 import fs from "node:fs";
 import { FileHandle as FsFileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
-import { format, inspect } from "node:util";
-import {
+const { format, inspect } = core.loadExtScript("ext:deno_node/util.ts");
+const {
   isUint32,
   validateAbortSignal,
   validateArray,
@@ -108,10 +113,12 @@ import {
   validateObject,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import { promisify } from "ext:deno_node/internal/util.mjs";
-import { customInspectSymbol as kInspect } from "ext:deno_node/internal/util.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { customInspectSymbol: kInspect } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+const {
   AbortError,
   aggregateTwoErrors,
   ERR_HTTP2_ALTSVC_INVALID_ORIGIN,
@@ -157,7 +164,7 @@ import {
   ERR_SOCKET_CLOSED,
   ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
   hideStackFrames,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import {
   kAfterAsyncWrite,
   kBoundSession,
@@ -201,7 +208,9 @@ import {
   updateOptionsBuffer,
   updateSettingsBuffer,
 } from "ext:deno_node/internal/http2/util.ts";
-import { ownerSymbol as owner_symbol } from "ext:deno_node/internal_binding/symbols.ts";
+const { ownerSymbol: owner_symbol } = core.loadExtScript(
+  "ext:deno_node/internal_binding/symbols.ts",
+);
 import {
   Http2ServerRequest,
   Http2ServerResponse,
@@ -218,7 +227,9 @@ const onServerStreamErrorChannel = dc.channel("http2.server.stream.error");
 const onServerStreamFinishChannel = dc.channel("http2.server.stream.finish");
 const onServerStreamCloseChannel = dc.channel("http2.server.stream.close");
 
-import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
+const { debuglog } = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
 import console from "node:console";
 let debug = debuglog("http2", (fn) => {
   debug = fn;
@@ -259,6 +270,89 @@ function getURLOrigin(urlStr) {
   }
 }
 
+function perfNow() {
+  return webPerformance.now();
+}
+
+function emitSessionPerfEntry(session) {
+  if (session[kPerfEmitted]) return;
+  session[kPerfEmitted] = true;
+  const stats = session[kPerfStats];
+  if (!stats) return;
+
+  const startTime = stats.startTime;
+  const duration = perfNow() - startTime;
+  const handle = session[kHandle];
+  const framesReceived = handle && typeof handle.framesReceived === "function"
+    ? handle.framesReceived()
+    : 0;
+  const framesSent = handle && typeof handle.framesSent === "function"
+    ? handle.framesSent()
+    : 0;
+  const streamCount = stats.streamCount;
+  const streamAverageDuration = streamCount > 0
+    ? stats.streamTotalDuration / streamCount
+    : 0;
+  const type = session[kType] === NGHTTP2_SESSION_SERVER ? "server" : "client";
+  const detail = {
+    bytesRead: stats.bytesRead,
+    bytesWritten: stats.bytesWritten,
+    framesReceived,
+    framesSent,
+    maxConcurrentStreams: stats.maxConcurrentStreams,
+    pingRTT: stats.pingRTT,
+    streamAverageDuration,
+    streamCount,
+    type,
+  };
+
+  enqueueNodePerformanceEntry({
+    name: "Http2Session",
+    entryType: "http2",
+    startTime,
+    duration,
+    detail,
+  });
+}
+
+function emitStreamPerfEntry(stream) {
+  if (stream[kPerfEmitted]) return;
+  stream[kPerfEmitted] = true;
+  const stats = stream[kPerfStats];
+  if (!stats) return;
+
+  const startTime = stats.startTime;
+  const duration = perfNow() - startTime;
+  const detail = {
+    bytesRead: stats.bytesRead,
+    bytesWritten: stats.bytesWritten,
+    timeToFirstByte: stats.firstByte > 0 ? stats.firstByte - startTime : 0,
+    timeToFirstByteSent: stats.firstByteSent > 0
+      ? stats.firstByteSent - startTime
+      : 0,
+    timeToFirstHeader: stats.firstHeader > 0
+      ? stats.firstHeader - startTime
+      : 0,
+  };
+
+  enqueueNodePerformanceEntry({
+    name: "Http2Stream",
+    entryType: "http2",
+    startTime,
+    duration,
+    detail,
+  });
+
+  // Roll the stream's lifetime into the parent session's averageDuration.
+  const session = stream[kSession];
+  if (session) {
+    const sstats = session[kPerfStats];
+    if (sstats) {
+      sstats.streamTotalDuration += duration;
+    }
+  }
+}
+
 // Schedule a deferred sendPending() call on the session's native handle.
 // This is deferred via queueMicrotask to avoid re-entrancy: nghttp2's
 // send_pending_data can invoke callbacks that call back into JS ops.
@@ -285,7 +379,9 @@ function flushDeferredHttp2Writes(session) {
 // HTTP2 Constants
 const MAX_ADDITIONAL_SETTINGS = 10;
 
-import * as constants from "ext:deno_node/internal/http2/constants.ts";
+const constants = core.loadExtScript(
+  "ext:deno_node/internal/http2/constants.ts",
+);
 const {
   NGHTTP2_CANCEL,
   NGHTTP2_FLOW_CONTROL_ERROR,
@@ -399,7 +495,15 @@ const kType = Symbol("type");
 const kWriteGeneric = Symbol("write-generic");
 const kSessions = Symbol("sessions");
 
+// Symbols for tracking perf_hooks `http2` performance entry stats. The
+// `pingRTT`, `streamCount`, etc. fields surfaced via `entry.detail` are
+// populated by Http2Session/Http2Stream methods when those events occur,
+// then read back when the entry is enqueued at session/stream destroy.
+const kPerfStats = Symbol("perf-stats");
+const kPerfEmitted = Symbol("perf-emitted");
+
 const kMaxOutstandingSettings = Symbol("maxOutstandingSettings");
+const kMaxOutstandingPings = Symbol("maxOutstandingPings");
 
 const kMaxFrameSize = (2 ** 24) - 1;
 const kMaxInt = (2 ** 32) - 1;
@@ -1747,6 +1851,16 @@ class Http2Stream extends Duplex {
     this[kRequest] = null;
     this[kProxySocket] = null;
 
+    this[kPerfEmitted] = false;
+    this[kPerfStats] = {
+      startTime: perfNow(),
+      firstByte: 0,
+      firstByteSent: 0,
+      firstHeader: 0,
+      bytesRead: 0,
+      bytesWritten: 0,
+    };
+
     this.on("pause", streamOnPause);
 
     this.on("newListener", streamListenerAdded);
@@ -1772,6 +1886,11 @@ class Http2Stream extends Duplex {
     const session = this[kSession];
     session[kState].pendingStreams.delete(this);
     session[kState].streams.set(id, this);
+
+    const sstats = session[kPerfStats];
+    if (sstats) {
+      sstats.streamCount++;
+    }
 
     this[kID] = id;
     //this[async_id_symbol] = handle.getAsyncId();
@@ -2314,6 +2433,8 @@ class Http2Stream extends Duplex {
       err = new ERR_HTTP2_STREAM_ERROR(nameForErrorCode[code] || code);
     }
 
+    emitStreamPerfEntry(this);
+
     this[kSession] = undefined;
     this[kHandle] = undefined;
 
@@ -2797,10 +2918,10 @@ class ServerHttp2Stream extends Http2Stream {
 
     const streamOptions = options.endStream ? STREAM_OPTION_EMPTY_PAYLOAD : 0;
 
-    const ret = this[kHandle].pushPromise(
-      headersList[0],
-      headersList[1],
-      streamOptions,
+    const ret = ReflectApply(
+      BindingHttp2Stream.prototype.pushPromise,
+      this[kHandle],
+      [headersList[0], headersList[1], streamOptions],
     );
     let err;
     if (typeof ret === "number") {
@@ -3423,25 +3544,7 @@ function cleanupSession(session) {
 function finishSessionClose(session, error) {
   debugSessionObj(session, "finishSessionClose");
 
-  // Emit a `Http2Session` PerformanceObserver entry with frame statistics
-  // from the native session before cleanupSession() drops the handle. Mirrors
-  // Node's `Http2Session::Close` reporting via PerformanceEntry. We surface
-  // only the fields the perf-hooks docs document and the in-tree tests
-  // observe.
-  const perfHandle = session[kHandle];
-  if (perfHandle && typeof perfHandle.framesReceived === "function") {
-    const framesReceived = perfHandle.framesReceived();
-    enqueueNodePerformanceEntry({
-      name: "Http2Session",
-      entryType: "http2",
-      startTime: 0,
-      duration: 0,
-      detail: {
-        type: session[kType] === NGHTTP2_SESSION_CLIENT ? "client" : "server",
-        framesReceived,
-      },
-    });
-  }
+  emitSessionPerfEntry(session);
 
   const socket = session[kSocket];
   cleanupSession(session);
@@ -3685,7 +3788,21 @@ class Http2Session extends EventEmitter {
       options.maxOutstandingSettings | 0,
       2 ** 31 - 1,
     ) || 10;
+    this[kMaxOutstandingPings] = MathMin(
+      options.maxOutstandingPings | 0,
+      2 ** 31 - 1,
+    ) || 10;
     this[kStrictSingleValueFields] = options.strictSingleValueFields !== false;
+    this[kPerfEmitted] = false;
+    this[kPerfStats] = {
+      startTime: perfNow(),
+      streamCount: 0,
+      streamTotalDuration: 0,
+      pingRTT: 0,
+      bytesRead: 0,
+      bytesWritten: 0,
+      maxConcurrentStreams: 0xffffffff,
+    };
 
     // Do not use nagle's algorithm
     if (typeof socket.setNoDelay === "function") {
@@ -3832,22 +3949,54 @@ class Http2Session extends EventEmitter {
     if (payload) {
       validateBuffer(payload, "payload");
     }
-    if (payload && payload.length !== 8) {
+    // Use byteLength rather than length so non-Uint8Array views (e.g. a
+    // Uint16Array of 4 elements = 8 bytes) are correctly accepted, matching
+    // Node's Http2Session#ping which validates the underlying byte length.
+    if (payload && payload.byteLength !== 8) {
       throw new ERR_HTTP2_PING_LENGTH();
     }
     validateFunction(callback, "callback");
 
-    const cb = pingCallback(callback);
+    // Allocate an HTTP2PING async resource so async_hooks observers see
+    // init/before/after/destroy for each ping, matching Node's Http2Ping
+    // AsyncWrap in src/node_http2.cc.
+    const userCb = pingCallback(callback);
+    const asyncResource = new AsyncResource("HTTP2PING");
+    const cb = (ack, duration, ackPayload) => {
+      try {
+        asyncResource.runInAsyncScope(
+          userCb,
+          this,
+          ack,
+          duration,
+          ackPayload,
+        );
+      } finally {
+        asyncResource.emitDestroy();
+      }
+    };
+
     if (this.connecting || this.closed) {
       process.nextTick(cb, false, 0.0, payload);
-      return;
+      return true;
+    }
+
+    // Enforce per-session maxOutstandingPings. Matches Http2Session::AddPing
+    // in src/node_http2.cc: when the queue is full the ping is rejected
+    // synchronously (returns false) and the callback fires as cancelled.
+    const state = this[kState];
+    if (state.pendingPings.length >= this[kMaxOutstandingPings]) {
+      process.nextTick(cb, false, 0.0, undefined);
+      return false;
     }
 
     // nghttp2_submit_ping accepts a NULL pointer (sends 8 zero bytes), but
-    // the Rust op uses #[buffer] which requires a typed array. Match the
-    // upstream behavior by allocating an 8-byte payload here when the caller
-    // didn't supply one.
-    const buf = payload || Buffer.alloc(8);
+    // the Rust op uses #[buffer] which requires a Uint8Array view. Reinterpret
+    // any caller-supplied ArrayBufferView as 8 bytes (so e.g. Uint16Array
+    // payloads work) and allocate a fresh 8-byte buffer when none was given.
+    const buf = payload
+      ? new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength)
+      : Buffer.alloc(8);
 
     const ret = this[kHandle].ping(buf);
     if (ret !== 0) {
@@ -3859,7 +4008,7 @@ class Http2Session extends EventEmitter {
     // ClearOutstandingPings in src/node_http2.cc. The wrapped pingCallback
     // (registered via Http2Session#ping) is consumed FIFO when an inbound
     // PING ACK is delivered to onPing below.
-    this[kState].pendingPings.push(cb);
+    state.pendingPings.push(cb);
     // The native ping op queues the PING frame inside nghttp2 but the
     // session's actual transport is owned by the JS socket (setupHandle
     // overrides handle.sendPending), so we must trigger the flush ourselves

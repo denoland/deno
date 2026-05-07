@@ -1,16 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// @ts-check
-/// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../web/internal.d.ts" />
-/// <reference path="../url/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
-/// <reference path="./internal.d.ts" />
-/// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
-/// <reference lib="esnext" />
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { createFilteredInspectProxy } = core.loadExtScript(
   "ext:deno_web/01_console.js",
@@ -21,17 +12,19 @@ const {
   regexMatcher,
   serializeJSValueToJSONString,
 } = core.loadExtScript("ext:deno_web/00_infra.js");
-import { extractBody, mixinBody } from "ext:deno_fetch/22_body.js";
+const { extractBody, mixinBody } = core.loadExtScript(
+  "ext:deno_fetch/22_body.js",
+);
 const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
 const { extractMimeType } = core.loadExtScript("ext:deno_web/01_mimesniff.js");
 const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
-import {
+const {
   fillHeaders,
   getDecodeSplitHeader,
   guardFromHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "ext:deno_fetch/20_headers.js";
+} = core.loadExtScript("ext:deno_fetch/20_headers.js");
 const { markNotSerializable } = core.loadExtScript(
   "ext:deno_web/13_message_port.js",
 );
@@ -522,7 +515,7 @@ function fromInnerResponse(inner, guard) {
   return response;
 }
 
-export {
+return {
   abortedNetworkError,
   fromInnerResponse,
   networkError,
@@ -533,3 +526,4 @@ export {
   ResponsePrototype,
   toInnerResponse,
 };
+})();

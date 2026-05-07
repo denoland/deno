@@ -1,12 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   isDate,
   internalRidSymbol,
   createCancelHandle,
 } = core;
-import {
+const {
   op_fs_chdir,
   op_fs_chmod_async,
   op_fs_chmod_sync,
@@ -71,7 +72,7 @@ import {
   op_fs_write_file_async,
   op_fs_write_file_sync,
   op_set_raw,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypeFilter,
   Date,
@@ -917,7 +918,7 @@ function writeTextFile(
   }
 }
 
-export {
+return {
   chdir,
   chmod,
   chmodSync,
@@ -969,3 +970,4 @@ export {
   writeTextFile,
   writeTextFileSync,
 };
+})();

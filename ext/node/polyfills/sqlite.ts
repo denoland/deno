@@ -8,7 +8,9 @@ import {
   StatementSync,
 } from "ext:core/ops";
 import type { Buffer } from "node:buffer";
-import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
+const { isUint8Array } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 import type { URL } from "node:url";
 

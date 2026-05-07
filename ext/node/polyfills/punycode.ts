@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+import { core } from "ext:core/mod.js";
 import {
   op_node_idna_punycode_decode,
   op_node_idna_punycode_encode,
@@ -7,9 +8,9 @@ import {
   op_node_idna_punycode_to_unicode,
 } from "ext:core/ops";
 
-import { deprecate } from "node:util";
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 
-import { ucs2 } from "ext:deno_node/internal/idna.ts";
+const { ucs2 } = core.loadExtScript("ext:deno_node/internal/idna.ts");
 
 const version = "2.1.0";
 

@@ -123,12 +123,13 @@
           "output": "update_latest_lockfile_only/update.out"
         },
         {
+          // --lockfile-only must not touch deno.json.
           "args": "-A print_file.ts ./deno.json",
-          "output": "./update_latest/deno.json.out"
+          "output": "./update_latest_lockfile_only/deno.json.out"
         },
         {
           "args": "-A print_file.ts ./deno.lock",
-          "output": "./update_latest/deno.lock.out"
+          "output": "./update_latest_lockfile_only/deno.lock.out"
         }
       ]
     }

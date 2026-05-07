@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// deno-fmt-ignore-file
-
 // Web timers (setTimeout/setInterval) built on top of Node's Timeout class.
 // The Node Timeout class is the canonical timer implementation that wraps
 // core.createTimer. Web timers add WHATWG-specific behavior on top:
@@ -157,4 +155,4 @@ return {
   setTimeout,
   unrefTimer,
 };
-})()
+})();

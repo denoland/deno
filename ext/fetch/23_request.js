@@ -1,15 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// @ts-check
-/// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../web/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
-/// <reference path="./internal.d.ts" />
-/// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
-/// <reference lib="esnext" />
-
-import { core, internals, primordials } from "ext:core/mod.js";
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
 const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
@@ -32,18 +24,22 @@ const { HTTP_TOKEN_CODE_POINT_RE } = core.loadExtScript(
   "ext:deno_web/00_infra.js",
 );
 const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
-import { extractBody, mixinBody } from "ext:deno_fetch/22_body.js";
+const { extractBody, mixinBody } = core.loadExtScript(
+  "ext:deno_fetch/22_body.js",
+);
 const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
 const { extractMimeType } = core.loadExtScript("ext:deno_web/01_mimesniff.js");
 const { blobFromObjectUrl } = core.loadExtScript("ext:deno_web/09_file.js");
-import {
+const {
   fillHeaders,
   getDecodeSplitHeader,
   guardFromHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "ext:deno_fetch/20_headers.js";
-import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
+} = core.loadExtScript("ext:deno_fetch/20_headers.js");
+const { HttpClientPrototype } = core.loadExtScript(
+  "ext:deno_fetch/22_http_client.js",
+);
 const {
   createDependentAbortSignal,
   newSignal,
@@ -638,7 +634,7 @@ function getCachedAbortSignal(request) {
 // For testing
 internals.getCachedAbortSignal = getCachedAbortSignal;
 
-export {
+return {
   abortRequest,
   fromInnerRequest,
   newInnerRequest,
@@ -647,3 +643,4 @@ export {
   RequestPrototype,
   toInnerRequest,
 };
+})();

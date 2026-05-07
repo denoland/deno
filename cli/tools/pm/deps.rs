@@ -29,6 +29,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::StackString;
 use deno_semver::Version;
 use deno_semver::VersionReq;
+use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
@@ -981,6 +982,35 @@ impl DepManager {
       updater.commit()?;
     }
 
+    Ok(())
+  }
+
+  /// Removes the lockfile specifier entries for the given dependencies and
+  /// writes the lockfile to disk. The next install will re-resolve the
+  /// missing entries to the latest version that matches each dependency's
+  /// existing version requirement, bumping the lockfile within ranges
+  /// without modifying `deno.json`/`package.json`.
+  pub fn invalidate_lockfile_for_update(
+    &self,
+    dep_ids: impl IntoIterator<Item = DepId>,
+  ) -> Result<(), AnyError> {
+    let Some(lockfile_lock) = &self.lockfile else {
+      return Ok(());
+    };
+    {
+      let mut lockfile = lockfile_lock.lock();
+      for dep_id in dep_ids {
+        let dep = &self.deps[dep_id.0];
+        let req = match dep.kind {
+          DepKind::Npm => JsrDepPackageReq::npm(dep.req.clone()),
+          DepKind::Jsr => JsrDepPackageReq::jsr(dep.req.clone()),
+        };
+        if lockfile.content.packages.specifiers.remove(&req).is_some() {
+          lockfile.has_content_changed = true;
+        }
+      }
+    }
+    lockfile_lock.write_if_changed()?;
     Ok(())
   }
 }
