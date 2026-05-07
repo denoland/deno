@@ -103,7 +103,10 @@
       "ignore": true,
       "reason": "Flaky timeout in debug builds - never-settling hook detection not yet implemented"
     },
-    "module-hooks/test-async-loader-hooks-no-leak-internals.mjs": {},
+    "module-hooks/test-async-loader-hooks-no-leak-internals.mjs": {
+      "ignore": true,
+      "reason": "CLI loaders (--experimental-loader) run on main thread; test expects isMainThread === false"
+    },
     "module-hooks/test-async-loader-hooks-with-worker-permission-allowed.mjs": {},
     "module-hooks/test-module-hooks-load-buffers.js": {},
     "module-hooks/test-module-hooks-load-context-merged-esm.mjs": {},
