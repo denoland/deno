@@ -563,6 +563,7 @@ pub struct TaskFlags {
   pub recursive: bool,
   pub filter: Option<String>,
   pub eval: bool,
+  pub no_prefix: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -4371,6 +4372,14 @@ Evaluate a task from string:
             "Evaluate the passed value as if it was a task in a configuration file",
           ).action(ArgAction::SetTrue)
       )
+      .arg(
+        Arg::new("no-prefix")
+          .long("no-prefix")
+          .help(
+            "Disable prefixing the output of concurrently-executing tasks with the task name",
+          )
+          .action(ArgAction::SetTrue),
+      )
       .arg(node_modules_dir_arg())
       .arg(tunnel_arg())
   })
@@ -7347,6 +7356,7 @@ fn task_parse(
     recursive,
     filter,
     eval: matches.get_flag("eval"),
+    no_prefix: matches.get_flag("no-prefix"),
   };
 
   match matches.remove_subcommand() {
@@ -13141,6 +13151,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         argv: svec!["hello", "world"],
         ..Flags::default()
@@ -13158,6 +13169,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         ..Flags::default()
       }
@@ -13174,6 +13186,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         ..Flags::default()
       }
@@ -13190,6 +13203,7 @@ mod tests {
           recursive: false,
           filter: Some("*".to_string()),
           eval: false,
+          no_prefix: false,
         }),
         ..Flags::default()
       }
@@ -13206,6 +13220,7 @@ mod tests {
           recursive: true,
           filter: Some("*".to_string()),
           eval: false,
+          no_prefix: false,
         }),
         ..Flags::default()
       }
@@ -13222,6 +13237,7 @@ mod tests {
           recursive: true,
           filter: Some("*".to_string()),
           eval: false,
+          no_prefix: false,
         }),
         ..Flags::default()
       }
@@ -13238,6 +13254,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: true,
+          no_prefix: false,
         }),
         ..Flags::default()
       }
@@ -13269,6 +13286,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         argv: svec!["--", "hello", "world"],
         config_flag: ConfigFlag::Path("deno.json".to_owned()),
@@ -13289,6 +13307,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         argv: svec!["--", "hello", "world"],
         ..Flags::default()
@@ -13310,6 +13329,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         argv: svec!["--"],
         ..Flags::default()
@@ -13330,6 +13350,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         argv: svec!["-1", "--test"],
         ..Flags::default()
@@ -13350,6 +13371,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         argv: svec!["--test"],
         ..Flags::default()
@@ -13371,6 +13393,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         log_level: Some(log::Level::Error),
         ..Flags::default()
@@ -13391,6 +13414,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         ..Flags::default()
       }
@@ -13410,6 +13434,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -13430,6 +13455,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()

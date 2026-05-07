@@ -383,8 +383,11 @@ impl<'a> TaskRunner<'a> {
     kill_signal: &KillSignal,
     args: &[String],
   ) -> Result<i32, deno_core::anyhow::Error> {
-    let concurrent_task_color_indices =
-      compute_concurrent_task_color_indices(&tasks);
+    let concurrent_task_color_indices = if self.task_flags.no_prefix {
+      HashMap::new()
+    } else {
+      compute_concurrent_task_color_indices(&tasks)
+    };
     let max_task_name_len = tasks
       .iter()
       .filter(|t| concurrent_task_color_indices.contains_key(&t.id))

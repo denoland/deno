@@ -11,6 +11,10 @@
     "prefix_padding_alignment": {
       "args": "task mixed",
       "output": "mixed.out"
+    },
+    "no_prefix_flag_disables_prefixing": {
+      "args": "task --no-prefix mixed",
+      "output": "no_prefix.out"
     }
   }
 }
