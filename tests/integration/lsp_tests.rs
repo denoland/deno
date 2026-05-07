@@ -9205,6 +9205,7 @@ fn lsp_completions_node_specifier() {
       "node:timers",
       "node:timers/promises",
       "node:tls",
+      "node:trace_events",
       "node:tty",
       "node:url",
       "node:util",

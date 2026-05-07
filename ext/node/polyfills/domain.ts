@@ -3,7 +3,8 @@
 // This code has been inspired by https://github.com/bevry/domain-browser/commit/8bce7f4a093966ca850da75b024239ad5d0b33c6
 // deno-lint-ignore-file no-process-global
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const { ERR_UNHANDLED_ERROR } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -30,8 +31,8 @@ function emitError(e) {
 }
 
 let stack = [];
-export let _stack = stack;
-export let active = null;
+let _stack = stack;
+let active = null;
 
 // Map asyncId -> domain for tracking async operations
 const pairing = new SafeMap();
@@ -71,16 +72,16 @@ const asyncHook = new AsyncHook({
   },
 });
 
-export function create() {
+function create() {
   return new Domain();
 }
 
-export function createDomain() {
+function createDomain() {
   return new Domain();
 }
 
-export class Domain extends EventEmitter {
-  members = [] as EventEmitter[];
+class Domain extends EventEmitter {
+  members = [];
 
   constructor() {
     super();
@@ -417,10 +418,18 @@ function patchEventEmitter() {
   };
 }
 
-export default {
+return {
+  default: {
+    _stack,
+    create,
+    active,
+    createDomain,
+    Domain,
+  },
   _stack,
   create,
   active,
   createDomain,
   Domain,
 };
+})();
