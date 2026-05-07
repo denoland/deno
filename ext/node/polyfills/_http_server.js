@@ -77,7 +77,9 @@ const {
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
-import { enqueueNodePerformanceEntry } from "node:perf_hooks";
+const { enqueueNodePerformanceEntry } = core.loadExtScript(
+  "ext:deno_node/perf_hooks.js",
+);
 const {
   otelState,
   builtinTracer,

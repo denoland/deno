@@ -70,7 +70,7 @@ const { os } = core.loadExtScript(
 );
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
-import { channel } from "node:diagnostics_channel";
+const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
 const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );

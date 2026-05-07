@@ -605,6 +605,17 @@ impl TCPWrap {
       Err(_) => return Ok(-1),
     };
 
+    // Post-resolution deny check: verify the resolved IP is not denied.
+    // This prevents numeric hostname aliases (e.g. 2130706433, 0x7f000001)
+    // from bypassing --deny-net rules that target the resolved IP.
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_resolved(
+        &socket_addr.ip(),
+        socket_addr.port(),
+        "node:net.connect()",
+      )?;
+
     let tcp = self.tcp_ptr();
     if tcp.is_null() {
       return Ok(-1);
@@ -665,6 +676,15 @@ impl TCPWrap {
       },
       Err(_) => return Ok(-1),
     };
+
+    // Post-resolution deny check for connect6 as well.
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_resolved(
+        &socket_addr.ip(),
+        socket_addr.port(),
+        "node:net.connect()",
+      )?;
 
     let tcp = self.tcp_ptr();
     if tcp.is_null() {

@@ -117,7 +117,7 @@ const { debuglog } = core.loadExtScript(
 import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
-import { channel } from "node:diagnostics_channel";
+const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
 // Imported lazily at module top via the cluster <-> net cycle. Only used
 // inside `_listenInCluster()`, which is invoked after cluster.ts has
 // finished evaluating, so the live bindings are fully populated by then.

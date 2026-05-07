@@ -89,7 +89,7 @@ import _tlsCommon from "node:_tls_common";
 import _tlsWrap from "node:_tls_wrap";
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import assertStrict from "node:assert/strict";
-import asyncHooks from "node:async_hooks";
+const asyncHooks = core.loadExtScript("ext:deno_node/async_hooks.ts").default;
 const {
   emitAfter: internalAsyncHooksEmitAfter,
   emitBefore: internalAsyncHooksEmitBefore,
@@ -103,7 +103,8 @@ import console from "node:console";
 import constants from "node:constants";
 import crypto from "node:crypto";
 import dgram from "node:dgram";
-import diagnosticsChannel from "node:diagnostics_channel";
+const diagnosticsChannel =
+  core.loadExtScript("ext:deno_node/diagnostics_channel.js").default;
 import dns from "node:dns";
 import dnsPromises from "node:dns/promises";
 const domain = core.loadExtScript("ext:deno_node/domain.ts").default;
@@ -177,7 +178,7 @@ import path from "node:path";
 const perfHooks = core.loadExtScript("ext:deno_node/perf_hooks.js").default;
 const punycode = core.loadExtScript("ext:deno_node/punycode.ts").default;
 import process from "node:process";
-import querystring from "node:querystring";
+const querystring = core.loadExtScript("ext:deno_node/querystring.js").default;
 import readline from "node:readline";
 import readlinePromises from "node:readline/promises";
 import repl from "node:repl";
