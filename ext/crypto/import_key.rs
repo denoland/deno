@@ -112,9 +112,9 @@ pub enum KeyData {
     y: String,
   },
   JwkPrivateEc {
-    #[allow(dead_code)]
+    #[allow(dead_code, reason = "deserialized but not directly read")]
     x: String,
-    #[allow(dead_code)]
+    #[allow(dead_code, reason = "deserialized but not directly read")]
     y: String,
     d: String,
   },
@@ -151,7 +151,7 @@ pub enum ImportKeyResult {
   #[serde(rename_all = "camelCase")]
   Ec { raw_data: RustRawKeyData },
   #[serde(rename_all = "camelCase")]
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "variant kept for completeness")]
   Aes { raw_data: RustRawKeyData },
   #[serde(rename_all = "camelCase")]
   Hmac { raw_data: RustRawKeyData },

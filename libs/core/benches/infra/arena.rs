@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::needless_range_loop)]
-#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(clippy::needless_range_loop, reason = "bench code")]
+#![allow(clippy::undocumented_unsafe_blocks, reason = "bench code")]
 
 use std::alloc::Layout;
 use std::cell::RefCell;
@@ -93,7 +93,10 @@ fn bench_box_arena(b: &mut Bencher) {
   });
 }
 
-#[allow(clippy::arc_with_non_send_sync)]
+#[allow(
+  clippy::arc_with_non_send_sync,
+  reason = "this is fine because it's in outputs"
+)]
 fn bench_arc(b: &mut Bencher) {
   b.iter(|| {
     let mut data = initialize_data();

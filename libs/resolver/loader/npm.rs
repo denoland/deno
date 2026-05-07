@@ -94,7 +94,7 @@ fn format_dir_import_message(
 #[sys_traits::auto_impl]
 pub trait NpmModuleLoaderSys: NodeCodeTranslatorSys {}
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type DenoNpmModuleLoaderRc<TSys> =
   deno_maybe_sync::MaybeArc<DenoNpmModuleLoader<TSys>>;
 

@@ -49,7 +49,7 @@ pub trait GlobalHttpCacheSys:
 {
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "arc wrapper type")]
 pub type GlobalHttpCacheRc<TSys> =
   deno_maybe_sync::MaybeArc<GlobalHttpCache<TSys>>;
 

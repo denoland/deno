@@ -222,7 +222,10 @@ pub async fn bundle_init(
     factory.main_module_graph_container().await?.clone();
 
   let (on_end_tx, on_end_rx) = tokio::sync::mpsc::channel(10);
-  #[allow(clippy::arc_with_non_send_sync)]
+  #[allow(
+    clippy::arc_with_non_send_sync,
+    reason = "fine because only used in output positions"
+  )]
   let mut plugin_handler = Arc::new(DenoPluginHandler {
     file_fetcher: factory.file_fetcher()?.clone(),
     resolver: resolver.clone(),
@@ -758,9 +761,12 @@ fn format_message(
     }
   )
 }
+#[derive(Debug, boxed_error::Boxed, JsError)]
+struct BundleError(Box<BundleErrorKind>);
+
 #[derive(Debug, thiserror::Error, JsError)]
 #[class(generic)]
-enum BundleError {
+enum BundleErrorKind {
   #[error(transparent)]
   Resolver(#[from] deno_resolver::graph::ResolveWithGraphError),
   #[error(transparent)]
@@ -785,7 +791,7 @@ enum BundleError {
   PackageReqReferenceParse(
     #[from] deno_semver::package::PackageReqReferenceParseError,
   ),
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "not used yet")]
   #[error("Http cache error")]
   HttpCache,
 }
@@ -874,62 +880,6 @@ impl DenoPluginHandler {
   }
 }
 
-// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
-#[allow(dead_code)]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum PluginImportKind {
-  EntryPoint,
-  ImportStatement,
-  RequireCall,
-  DynamicImport,
-  RequireResolve,
-  ImportRule,
-  ComposesFrom,
-  UrlToken,
-}
-
-impl From<protocol::ImportKind> for PluginImportKind {
-  fn from(kind: protocol::ImportKind) -> Self {
-    match kind {
-      protocol::ImportKind::EntryPoint => PluginImportKind::EntryPoint,
-      protocol::ImportKind::ImportStatement => {
-        PluginImportKind::ImportStatement
-      }
-      protocol::ImportKind::RequireCall => PluginImportKind::RequireCall,
-      protocol::ImportKind::DynamicImport => PluginImportKind::DynamicImport,
-      protocol::ImportKind::RequireResolve => PluginImportKind::RequireResolve,
-      protocol::ImportKind::ImportRule => PluginImportKind::ImportRule,
-      protocol::ImportKind::ComposesFrom => PluginImportKind::ComposesFrom,
-      protocol::ImportKind::UrlToken => PluginImportKind::UrlToken,
-    }
-  }
-}
-
-// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
-#[allow(dead_code)]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PluginOnResolveArgs {
-  path: String,
-  importer: Option<String>,
-  kind: PluginImportKind,
-  namespace: Option<String>,
-  resolve_dir: Option<String>,
-  with: IndexMap<String, String>,
-}
-
-// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
-#[allow(dead_code)]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PluginOnLoadArgs {
-  path: String,
-  namespace: String,
-  suffix: String,
-  with: IndexMap<String, String>,
-}
-
 #[async_trait::async_trait(?Send)]
 impl esbuild_client::PluginHandler for DenoPluginHandler {
   async fn on_resolve(
@@ -951,6 +901,26 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
 
     if let Some(matcher) = &self.externals_matcher
       && matcher.is_pre_resolve_match(&args.path)
+    {
+      return Ok(Some(esbuild_client::OnResolveResult {
+        external: Some(true),
+        path: Some(args.path),
+        plugin_name: Some("deno".to_string()),
+        plugin_data: None,
+        ..Default::default()
+      }));
+    }
+
+    // Same-document fragment references in CSS — `url(#default#VML)`,
+    // `url(#gradient)` for SVG paint servers, etc. — are not file imports
+    // and must be left as-is in the output. Without this, `bundle_resolve`
+    // tries to resolve them as package import specifiers and fails (see
+    // denoland/deno#32232).
+    if matches!(
+      args.kind,
+      esbuild_client::protocol::ImportKind::UrlToken
+        | esbuild_client::protocol::ImportKind::ImportRule
+    ) && args.path.starts_with('#')
     {
       return Ok(Some(esbuild_client::OnResolveResult {
         external: Some(true),
@@ -1102,8 +1072,11 @@ fn import_kind_to_resolution_mode(
   }
 }
 
+#[derive(Debug, boxed_error::Boxed, deno_error::JsError)]
+pub struct BundleLoadError(pub Box<BundleLoadErrorKind>);
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum BundleLoadError {
+pub enum BundleLoadErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   Fetch(#[from] deno_resolver::file_fetcher::FetchError),
@@ -1148,8 +1121,8 @@ pub enum BundleLoadError {
 
 impl BundleLoadError {
   pub fn is_unsupported_media_type(&self) -> bool {
-    match self {
-      BundleLoadError::LoadCodeSource(e) => match e.as_kind() {
+    match self.as_kind() {
+      BundleLoadErrorKind::LoadCodeSource(e) => match e.as_kind() {
         LoadCodeSourceErrorKind::LoadPreparedModule(e) => match e.as_kind() {
           LoadPreparedModuleErrorKind::Graph(e) => matches!(
             e.original().as_module_error_kind(),
@@ -1222,7 +1195,6 @@ impl DenoPluginHandler {
     Ok(())
   }
 
-  #[allow(clippy::result_large_err)]
   fn bundle_resolve(
     &self,
     path: &str,
@@ -1310,7 +1282,7 @@ impl DenoPluginHandler {
           // for fallible imports/requires
           return Ok(None);
         }
-        Err(BundleError::Resolver(e))
+        Err(BundleErrorKind::Resolver(e).into())
       }
     }
   }
@@ -1566,7 +1538,6 @@ impl DenoPluginHandler {
     Ok(source)
   }
 
-  #[allow(clippy::result_large_err)]
   fn apply_transform(
     resolved_roots: &IndexSet<ModuleSpecifier>,
     module_graph_container: &MainModuleGraphContainer,
@@ -1605,7 +1576,6 @@ impl DenoPluginHandler {
     Ok(code.text)
   }
 
-  #[allow(clippy::result_large_err)]
   fn specifier_and_type_from_graph(
     &self,
     specifier: &ModuleSpecifier,
@@ -1633,7 +1603,7 @@ impl DenoPluginHandler {
         esbuild_client::BuiltinLoader::Json,
       ),
       deno_graph::Module::Wasm(_) => {
-        return Err(BundleLoadError::WasmUnsupported);
+        return Err(BundleLoadErrorKind::WasmUnsupported.into());
       }
       deno_graph::Module::Npm(_) => {
         let req_ref =

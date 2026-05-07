@@ -3,7 +3,8 @@
 // Based on: https://github.com/nodejs/node/blob/0646eda/lib/constants.js
 
 import { constants as fsConstants } from "node:fs";
-import { constants as osConstants } from "node:os";
+import { core } from "ext:core/mod.js";
+const { constants: osConstants } = core.loadExtScript("ext:deno_node/os.ts");
 import { constants as cryptoConstants } from "node:crypto";
 import { constants as zlibConstants } from "node:zlib";
 

@@ -11,7 +11,7 @@ test(function testIsAnyArrayBuffer() {
 test(function testIsArgumentsObject() {
   let args: IArguments;
   (function () {
-    args = arguments;
+  args = arguments;
   })();
   assert(Deno.core.isArgumentsObject(args));
   assert(!Deno.core.isArgumentsObject({}));

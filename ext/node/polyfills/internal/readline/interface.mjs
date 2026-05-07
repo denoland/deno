@@ -24,43 +24,39 @@
 // deno-lint-ignore-file prefer-primordials
 // deno-lint-ignore-file camelcase no-inner-declarations no-this-alias
 
+import { core, primordials } from "ext:core/mod.js";
 import { op_get_env_no_permission_check } from "ext:core/ops";
 
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_OUT_OF_RANGE,
   ERR_USE_AFTER_CLOSE,
-} from "ext:deno_node/internal/errors.ts";
-import {
-  validateAbortSignal,
-  validateArray,
-  validateString,
-  validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   //   inspect,
   getStringWidth,
   stripVTControlCharacters,
-} from "ext:deno_node/internal/util/inspect.mjs";
-import EventEmitter from "node:events";
+} = core.loadExtScript("ext:deno_node/internal/util/inspect.mjs");
+const { EventEmitter, kFirstEventParam } = core.loadExtScript(
+  "ext:deno_node/_events.mjs",
+);
 import { emitKeypressEvents } from "ext:deno_node/internal/readline/emitKeypressEvents.mjs";
-import {
+const {
   charLengthAt,
   charLengthLeft,
   commonPrefix,
   kSubstringSearch,
-} from "ext:deno_node/internal/readline/utils.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/readline/utils.mjs");
+const {
   clearScreenDown,
   cursorTo,
   moveCursor,
-} from "ext:deno_node/internal/readline/callbacks.mjs";
-import { Readable } from "node:stream";
+} = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
 import process from "node:process";
 
-import { StringDecoder } from "node:string_decoder";
-import {
+const { StringDecoder } = core.loadExtScript("ext:deno_node/string_decoder.ts");
+const {
   kAddHistory,
   kDecoder,
   kDeleteLeft,
@@ -92,8 +88,13 @@ import {
   kWordLeft,
   kWordRight,
   kWriteToOutput,
-} from "ext:deno_node/internal/readline/symbols.mjs";
-import { primordials } from "ext:core/mod.js";
+} = core.loadExtScript("ext:deno_node/internal/readline/symbols.mjs");
+const {
+  validateAbortSignal,
+  validateArray,
+  validateString,
+  validateUint32,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 const {
   ArrayPrototypePush,
@@ -564,6 +565,9 @@ export class Interface extends InterfaceConstructor {
    * @returns {void | Interface}
    */
   pause() {
+    if (this.closed) {
+      throw new ERR_USE_AFTER_CLOSE("readline");
+    }
     if (this.paused) return;
     this.input.pause();
     this.paused = true;
@@ -576,6 +580,9 @@ export class Interface extends InterfaceConstructor {
    * @returns {void | Interface}
    */
   resume() {
+    if (this.closed) {
+      throw new ERR_USE_AFTER_CLOSE("readline");
+    }
     if (!this.paused) return;
     this.input.resume();
     this.paused = false;
@@ -1345,36 +1352,16 @@ export class Interface extends InterfaceConstructor {
    */
   [Symbol.asyncIterator]() {
     if (this[kLineObjectStream] === undefined) {
-      const readable = new Readable({
-        objectMode: true,
-        read: () => {
-          this.resume();
+      this[kLineObjectStream] = EventEmitter.on(
+        this,
+        "line",
+        {
+          close: ["close"],
+          highWaterMark: 1024,
+          [kFirstEventParam]: true,
         },
-        destroy: (err, cb) => {
-          this.off("line", lineListener);
-          this.off("close", closeListener);
-          this.close();
-          cb(err);
-        },
-      });
-      const lineListener = (input) => {
-        if (!readable.push(input)) {
-          // TODO(rexagod): drain to resume flow
-          this.pause();
-        }
-      };
-      const closeListener = () => {
-        readable.push(null);
-      };
-      const errorListener = (err) => {
-        readable.destroy(err);
-      };
-      this.on("error", errorListener);
-      this.on("line", lineListener);
-      this.on("close", closeListener);
-      this[kLineObjectStream] = readable;
+      );
     }
-
-    return this[kLineObjectStream][Symbol.asyncIterator]();
+    return this[kLineObjectStream];
   }
 }

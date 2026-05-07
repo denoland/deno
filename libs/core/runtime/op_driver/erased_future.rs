@@ -81,7 +81,7 @@ impl<const MAX_SIZE: usize> Drop for TypeErased<MAX_SIZE> {
 }
 
 // TODO(mmastrac): This code is also testing TypeErased above
-#[allow(dead_code)]
+#[allow(dead_code, reason = "used in tests and related modules")]
 pub struct ErasedFuture<const MAX_SIZE: usize, Output> {
   erased: TypeErased<MAX_SIZE>,
   poll: unsafe fn(
@@ -92,7 +92,7 @@ pub struct ErasedFuture<const MAX_SIZE: usize, Output> {
 }
 
 impl<const MAX_SIZE: usize, Output> ErasedFuture<MAX_SIZE, Output> {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "used in tests and related modules")]
   unsafe fn poll<F>(
     pin: Pin<&mut TypeErased<MAX_SIZE>>,
     cx: &mut Context<'_>,
@@ -108,7 +108,7 @@ impl<const MAX_SIZE: usize, Output> ErasedFuture<MAX_SIZE, Output> {
     }
   }
 
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "used in tests and related modules")]
   pub fn new<F>(f: F) -> Self
   where
     F: Future<Output = Output>,
@@ -176,7 +176,10 @@ mod tests {
   #[test]
   fn test_in_arena_selfref_easy() {
     let arena = ArenaUnique::<ErasedFuture<256, usize>>::with_capacity(16);
-    #[allow(clippy::useless_vec)]
+    #[allow(
+      clippy::useless_vec,
+      reason = "vec is needed to test arena with heap allocation"
+    )]
     let future = arena.allocate(ErasedFuture::new(async {
       let mut v = vec![1];
       let v = v.get_mut(0).unwrap();

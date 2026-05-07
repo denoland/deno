@@ -502,7 +502,7 @@ mod tests {
   }
 
   #[test]
-  #[allow(deprecated)]
+  #[allow(deprecated, reason = "test code")]
   fn bufmutview_resize() {
     let new =
       || BufMutView::from(BytesMut::from(Vec::from_iter(0..100).as_slice()));
@@ -531,7 +531,7 @@ mod tests {
   }
 
   #[test]
-  #[allow(deprecated)]
+  #[allow(deprecated, reason = "test code")]
   fn bufmutview_grow() {
     let new =
       || BufMutView::from(BytesMut::from(Vec::from_iter(0..100).as_slice()));

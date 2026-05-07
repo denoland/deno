@@ -758,7 +758,7 @@ fn split_host_port(arg: &str, errors: &mut Vec<String>) -> HostPort {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unsure why these are not used")] // TODO: investigate
 struct OptionInfo {
   option_type: OptionType,
   env_setting: OptionEnvvarSettings,
@@ -3192,7 +3192,7 @@ pub fn wrap_eval_code(source_code: &str) -> String {
     r#"(
     globalThis.require = process.getBuiltinModule("module").createRequire(import.meta.url),
     process.getBuiltinModule("module").builtinModules
-      .filter((m) => !/\/|crypto|process/.test(m))
+      .filter((m) => !/\/|crypto|process|_tls_common/.test(m))
       .forEach((m) => {{ globalThis[m] = process.getBuiltinModule(m); }}),
     process.getBuiltinModule("vm").runInThisContext({})
   )"#,
@@ -3500,6 +3500,16 @@ fn add_common_flags(
   if !parsed_args.v8_args.is_empty() {
     deno_args.push(format!("--v8-flags={}", parsed_args.v8_args.join(",")));
   }
+
+  // Add --import (ESM preloads)
+  for module in &env_opts.preload_esm_modules {
+    deno_args.push("--import".to_string());
+    deno_args.push(module.clone());
+  }
+
+  // Note: --require (CJS preloads) is not passed through yet because
+  // Deno's --require flag doesn't support bare package specifiers
+  // (e.g. `-r self_ref`). This needs package-aware resolution first.
 
   // Add conditions
   add_conditions(deno_args, env_opts);

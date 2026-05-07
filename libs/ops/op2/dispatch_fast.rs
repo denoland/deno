@@ -181,7 +181,7 @@ impl FastSignature {
   }
 }
 
-#[allow(unused)]
+#[allow(unused, reason = "some variants unused in deno_core")]
 #[derive(Debug, Default, PartialEq, Clone)]
 pub(crate) enum V8FastCallType {
   #[default]
@@ -281,7 +281,7 @@ impl V8FastCallType {
 }
 
 // TODO(mmastrac): see note about index_in below
-#[allow(clippy::explicit_counter_loop)]
+#[allow(clippy::explicit_counter_loop, reason = "bad code?")]
 pub(crate) fn get_fast_signature(
   signature: &ParsedSignature,
 ) -> Result<Option<FastSignature>, V8SignatureMappingError> {
@@ -669,7 +669,6 @@ fn fast_api_typed_array_to_buffer(
   })
 }
 
-#[allow(clippy::too_many_arguments)]
 fn map_v8_fastcall_arg_to_arg(
   generator_state: &mut GeneratorState,
   arg_ident: &Ident,

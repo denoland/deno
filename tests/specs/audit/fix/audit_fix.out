@@ -1,0 +1,12 @@
+╭ @denotest/with-vuln1 is susceptible to prototype pollution
+[WILDCARD]
+╭ @denotest/with-vuln2 can steal crypto keys
+[WILDCARD]
+Found 2 vulnerabilities
+Severity: 0 low, 0 moderate, 1 high, 1 critical
+[WILDCARD]
+Fixed 1 vulnerability:
+[WILDCARD]@denotest/with-vuln1 1.0.0 -> 1.1.0
+[WILDCARD]
+1 vulnerability could not be fixed automatically:
+[WILDCARD]@denotest/with-vuln2 (major upgrade to 2.0.0)

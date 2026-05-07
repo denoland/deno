@@ -23,19 +23,22 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import {
+import { core } from "ext:core/mod.js";
+const {
   charLengthAt,
   CSI,
   emitKeys,
-} from "ext:deno_node/internal/readline/utils.mjs";
-import { kSawKeyPress } from "ext:deno_node/internal/readline/symbols.mjs";
+} = core.loadExtScript("ext:deno_node/internal/readline/utils.mjs");
+const { kSawKeyPress } = core.loadExtScript(
+  "ext:deno_node/internal/readline/symbols.mjs",
+);
 import { clearTimeout, setTimeout } from "node:timers";
 
 const {
   kEscape,
 } = CSI;
 
-import { StringDecoder } from "node:string_decoder";
+const { StringDecoder } = core.loadExtScript("ext:deno_node/string_decoder.ts");
 
 const KEYPRESS_DECODER = Symbol("keypress-decoder");
 const ESCAPE_DECODER = Symbol("escape-decoder");

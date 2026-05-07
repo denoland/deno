@@ -388,7 +388,7 @@ impl DOMPoint3D {
 #[repr(u8)]
 #[derive(Clone, Copy)]
 pub enum TestEnumWrap {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "variant used via enum representation")]
   A,
 }
 

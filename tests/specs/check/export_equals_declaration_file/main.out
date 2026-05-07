@@ -1,6 +1,7 @@
 Check [WILDCARD]main.ts
-TS1203 [WARN]: Export assignment cannot be used when targeting ECMAScript modules. Consider using 'export default' or another module format instead. This will start erroring in a future version of Deno 2 in order to align with TypeScript.
-export = other;
-~~~~~~~~~~~~~~~
-    at file:///[WILDLINE]/other.d.ts:1:1
+TS1192 [ERROR]: Module '"file:///[WILDLINE]/other.d.ts"' has no default export.
+import Test, { type Attributes } from "./other.js";
+       ~~~~
+    at file:///[WILDLINE]/main.ts:2:8
 
+error: Type checking failed.

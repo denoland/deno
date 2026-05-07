@@ -37,7 +37,6 @@ use super::search::PackageSearchApi;
 use super::tsc;
 use crate::jsr::JsrFetchResolver;
 use crate::lsp::registries::DocumentationCompletionItemData;
-use crate::lsp::tsgo;
 use crate::util::env::resolve_cwd;
 use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
@@ -55,7 +54,6 @@ pub(crate) const IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'"];
 pub enum CompletionItemData {
   Documentation(DocumentationCompletionItemData),
   TsJs(tsc::TsJsCompletionItemData),
-  TsGo(tsgo::TsGoCompletionItemData),
 }
 
 /// Check if the origin can be auto-configured for completions, and if so, send
@@ -148,7 +146,7 @@ fn to_narrow_lsp_range(
 /// Given a specifier, a position, and a snapshot, optionally return a
 /// completion response, which will be valid import completions for the specific
 /// context.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
 #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
 pub async fn get_import_completions(
   module: &DocumentModule,

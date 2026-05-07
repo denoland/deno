@@ -2,7 +2,7 @@
   "urlpattern.any.html": {
     "expectedFailures": [
       "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []",
-      "Pattern: [{\"pathname\":\":a\udb40\udd00b\"}] Inputs: []",
+      "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
       "Pattern: [] Inputs: []",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
@@ -13,7 +13,7 @@
   "urlpattern.any.worker.html": {
     "expectedFailures": [
       "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []",
-      "Pattern: [{\"pathname\":\":a\udb40\udd00b\"}] Inputs: []",
+      "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
       "Pattern: [] Inputs: []",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
@@ -24,7 +24,7 @@
   "urlpattern.https.any.html": {
     "expectedFailures": [
       "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []",
-      "Pattern: [{\"pathname\":\":a\udb40\udd00b\"}] Inputs: []",
+      "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
       "Pattern: [] Inputs: []",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
@@ -35,7 +35,7 @@
   "urlpattern.https.any.worker.html": {
     "expectedFailures": [
       "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []",
-      "Pattern: [{\"pathname\":\":a\udb40\udd00b\"}] Inputs: []",
+      "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
       "Pattern: [] Inputs: []",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",

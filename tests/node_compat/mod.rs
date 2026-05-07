@@ -93,6 +93,11 @@ struct TestConfig {
   exit_code: Option<i32>,
   /// Expected output pattern (with [WILDCARD] support) for all platforms
   output: Option<String>,
+  /// Per-test environment variables, layered on top of the runner's defaults.
+  /// Used when a single Node test exercises a code path that needs a config
+  /// override (e.g. `node_shared_openssl=1`) which would regress other tests
+  /// if applied globally.
+  env: Option<HashMap<String, String>>,
 }
 
 /// The full config.json structure
@@ -140,6 +145,14 @@ fn main() {
       _ => true,
     });
   }
+
+  // Apply sharding if CI_SHARD_INDEX / CI_SHARD_TOTAL are set
+  let category =
+    if let Some(shard) = test_util::test_runner::ShardConfig::from_env() {
+      test_util::test_runner::filter_to_shard(category, &shard)
+    } else {
+      category
+    };
 
   if category.is_empty() {
     return;
@@ -261,11 +274,8 @@ fn parse_cli_args() -> CliArgs {
 fn load_config() -> NodeCompatConfig {
   let config_path = tests_path().join("node_compat").join("config.jsonc");
   let config_content = std::fs::read_to_string(&config_path).unwrap();
-  let value =
-    jsonc_parser::parse_to_serde_value(&config_content, &Default::default())
-      .unwrap()
-      .unwrap();
-  serde_json::from_value(value).unwrap()
+  jsonc_parser::parse_to_serde_value(&config_content, &Default::default())
+    .unwrap()
 }
 
 // Directories that don't contain runnable tests
@@ -492,8 +502,14 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
           "--pending-deprecation" => {
             node_options.push("--pending-deprecation".to_string());
           }
+          f if f.starts_with("--dns-result-order=") => {
+            node_options.push(f.to_string());
+          }
           "--allow-natives-syntax" => {
             v8_flags.push("--allow-natives-syntax".to_string());
+          }
+          f if f.starts_with("--title=") => {
+            node_options.push(f.to_string());
           }
           _ => {}
         }
@@ -507,7 +523,7 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
 
 fn truncate_output(output: &str, max_len: usize) -> String {
   if output.len() > max_len {
-    format!("{} ...", &output[..max_len])
+    format!("{} ...", &output[..output.floor_char_boundary(max_len)])
   } else {
     output.to_string()
   }
@@ -523,7 +539,11 @@ struct TestSetup {
 }
 
 impl TestSetup {
-  fn new(cli_args: &CliArgs, data: &NodeCompatTestData) -> Self {
+  fn new(
+    cli_args: &CliArgs,
+    data: &NodeCompatTestData,
+    test_config: Option<&TestConfig>,
+  ) -> Self {
     let test_suite_path = tests_path().join("node_compat/runner/suite");
     let test_path = format!("test/{}", data.test_path);
     let full_test_path = test_suite_path.join(&test_path);
@@ -557,6 +577,13 @@ impl TestSetup {
     env_vars.insert("NODE_OPTIONS".to_string(), node_options.join(" "));
     env_vars.insert("NO_COLOR".to_string(), "1".to_string());
     env_vars.insert("TEST_SERIAL_ID".to_string(), serial_id.to_string());
+
+    // Per-test env overrides win over the defaults above.
+    if let Some(extra) = test_config.and_then(|c| c.env.as_ref()) {
+      for (key, value) in extra {
+        env_vars.insert(key.clone(), value.clone());
+      }
+    }
 
     let timeout = Duration::from_millis(if cfg!(target_os = "macos") {
       20_000
@@ -642,10 +669,32 @@ impl TestSetup {
       })
       .collect::<Vec<_>>()
       .join(" ");
+    // Surface any test-specific env vars (set via TestConfig.env) so the
+    // copy-pasted command reproduces the failure faithfully.
+    let well_known: &[&str] = &[
+      "NODE_TEST_KNOWN_GLOBALS",
+      "NODE_SKIP_FLAG_CHECK",
+      "NODE_OPTIONS",
+      "NO_COLOR",
+      "TEST_SERIAL_ID",
+    ];
+    let mut extras = self
+      .env_vars
+      .iter()
+      .filter(|(k, _)| !well_known.contains(&k.as_str()))
+      .map(|(k, v)| format!("{}='{}'", k, v.replace("'", "\\'")))
+      .collect::<Vec<_>>();
+    extras.sort();
+    let extras_str = if extras.is_empty() {
+      String::new()
+    } else {
+      format!("{} ", extras.join(" "))
+    };
     format!(
       "Command: {}",
       deno_terminal::colors::gray(format!(
-        "NODE_TEST_KNOWN_GLOBALS=0 NODE_SKIP_FLAG_CHECK=1 NODE_OPTIONS='{}' deno {}",
+        "{}NODE_TEST_KNOWN_GLOBALS=0 NODE_SKIP_FLAG_CHECK=1 NODE_OPTIONS='{}' deno {}",
+        extras_str,
         node_options.replace("'", "\\'"),
         args_str,
       ))
@@ -728,7 +777,7 @@ fn run_test(
     return TestResult::Ignored;
   }
 
-  let setup = TestSetup::new(cli_args, data);
+  let setup = TestSetup::new(cli_args, data, test_config);
 
   let (success, output_text, exit_code) = if is_pseudo_tty_test {
     setup.run_pty()
@@ -784,7 +833,7 @@ fn run_test(
 ///
 /// Returns `Passed` when the test fails in the expected way (matching exit code
 /// and/or output pattern), and `Failed` otherwise.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 fn handle_expected_failure(
   ef: &ExpectedFailure,
   success: bool,

@@ -244,8 +244,7 @@ fn spawn_memory_monitor(
   let threshold = info.total / 10; // 10% of total memory
 
   let (tx, rx) = std::sync::mpsc::channel::<()>();
-  #[allow(clippy::disallowed_methods)]
-  std::thread::spawn(move || {
+  crate::print::spawn_thread(move || {
     loop {
       match rx.recv_timeout(Duration::from_secs(2)) {
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
@@ -299,7 +298,7 @@ pub fn run_maybe_flaky_test(
       return result;
     }
     flaky_test_tracker.record_flaky(test_name);
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stderr, reason = "test reporter")]
     if *IS_CI {
       ::std::eprintln!(
         "{} {} was flaky on run {}",
@@ -312,7 +311,7 @@ pub fn run_maybe_flaky_test(
   }
 
   // on the CI, try running the test in isolation with no other tests running
-  #[allow(clippy::print_stderr)]
+  #[allow(clippy::print_stderr, reason = "test reporter")]
   let _maybe_guard = if let Some(parallelism) = ci_parallelism {
     let guard = parallelism.raise_single_concurrency_flag();
     ::std::eprintln!(
@@ -358,14 +357,12 @@ pub fn with_timeout(
   duration: Duration,
 ) -> TestTimeoutHolder {
   let (tx, rx) = ::std::sync::mpsc::channel::<()>();
-  // ok to allow because we don't need to maintain logging context here
-  #[allow(clippy::disallowed_methods)]
-  std::thread::spawn(move || {
+  crate::print::spawn_thread(move || {
     if rx.recv_timeout(duration)
       == Err(::std::sync::mpsc::RecvTimeoutError::Timeout)
     {
       use std::io::Write;
-      #[allow(clippy::print_stderr)]
+      #[allow(clippy::print_stderr, reason = "test reporter")]
       {
         ::std::eprintln!(
           "Test {test_name} timed out after {} seconds, aborting",
@@ -373,7 +370,7 @@ pub fn with_timeout(
         );
       }
       _ = std::io::stderr().flush();
-      #[allow(clippy::disallowed_methods)]
+      #[allow(clippy::disallowed_methods, reason = "test code")]
       ::std::process::exit(1);
     }
   });
@@ -599,7 +596,7 @@ pub fn print_tests_if_list_flag<TData>(
       match child {
         CollectedCategoryOrTest::Category(c) => print_tests_recursive(c),
         CollectedCategoryOrTest::Test(t) => {
-          #[allow(clippy::print_stdout)]
+          #[allow(clippy::print_stdout, reason = "test code")]
           {
             println!("{}: test", t.name);
           }
@@ -742,8 +739,8 @@ impl PtyReporter {
       ignored_tests: Default::default(),
       hide: false,
     }));
-    #[allow(clippy::disallowed_methods)]
-    std::thread::spawn({
+
+    crate::print::spawn_thread({
       let data = data.clone();
       move || {
         loop {

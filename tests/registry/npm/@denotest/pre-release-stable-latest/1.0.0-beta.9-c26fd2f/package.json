@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/pre-release-stable-latest",
+  "version": "1.0.0-beta.9-c26fd2f",
+  "publishConfig": {
+    "tag": "nightly"
+  }
+}

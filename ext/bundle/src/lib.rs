@@ -42,8 +42,14 @@ impl BundleProvider for () {
     &self,
     _options: BundleOptions,
   ) -> Result<BuildResponse, AnyError> {
+    // Embedders that don't wire up a real provider (notably `denort`, used
+    // by `deno compile` outputs) fall through to this no-op implementation.
+    // Surface that limitation directly to the user instead of leaking the
+    // historical "default BundleProvider does not do anything" string.
+    // See denoland/deno#31597.
     Err(deno_core::anyhow::anyhow!(
-      "default BundleProvider does not do anything"
+      "Deno.bundle() is not available in compiled binaries (`deno compile`). \
+       Run with `deno run` instead, or pre-bundle the entrypoints at build time."
     ))
   }
 }

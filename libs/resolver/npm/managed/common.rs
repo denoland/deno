@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::path::Path;
 use std::path::PathBuf;
@@ -96,15 +95,6 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
       ),
     }
   }
-}
-
-pub fn join_package_name_to_path(path: &Path, package_name: &str) -> PathBuf {
-  let mut path = Cow::Borrowed(path);
-  // ensure backslashes are used on windows
-  for part in package_name.split('/') {
-    path = Cow::Owned(path.join(part));
-  }
-  path.into_owned()
 }
 
 /// Attempt to choose the "best" `@types/*` package

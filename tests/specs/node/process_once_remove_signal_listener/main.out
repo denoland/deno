@@ -1,0 +1,12 @@
+SIGINT listeners before removeListener: 1
+SIGINT listeners after removeListener: 0
+SIGINT listeners before off: 1
+SIGINT listeners after off: 0
+SIGINT listeners before on removeListener: 1
+SIGINT listeners after on removeListener: 0
+SIGINT listeners before prependOnce removeListener: 1
+SIGINT listeners after prependOnce removeListener: 0
+SIGINT listeners before removeAllListeners: 2
+SIGINT listeners after removeAllListeners: 0
+SIGINT listeners before removeAllListeners(): 2
+SIGINT listeners after removeAllListeners(): 0

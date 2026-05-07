@@ -26,12 +26,14 @@
 import { core } from "ext:core/mod.js";
 import {
   op_node_udp_bind,
+  op_node_udp_fd_for_ipc,
   op_node_udp_join_multi_v4,
   op_node_udp_join_multi_v6,
   op_node_udp_join_source_specific,
   op_node_udp_leave_multi_v4,
   op_node_udp_leave_multi_v6,
   op_node_udp_leave_source_specific,
+  op_node_udp_open,
   op_node_udp_recv,
   op_node_udp_send,
   op_node_udp_set_broadcast,
@@ -41,20 +43,27 @@ import {
   op_node_udp_set_ttl,
 } from "ext:core/ops";
 
-import {
+const {
   AsyncWrap,
   providerType,
-} from "ext:deno_node/internal_binding/async_wrap.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/async_wrap.ts");
 import { GetAddrInfoReqWrap } from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
-import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
-import { codeMap, errorMap } from "ext:deno_node/internal_binding/uv.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
+const { HandleWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/handle_wrap.ts",
+);
+const { ownerSymbol } = core.loadExtScript(
+  "ext:deno_node/internal_binding/symbols.ts",
+);
+const { codeMap, errorMap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/uv.ts",
+);
 import { Buffer } from "node:buffer";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import { isIP } from "ext:deno_node/internal/net.ts";
-import { isLinux, isWindows } from "ext:deno_node/_util/os.ts";
-import { os } from "ext:deno_node/internal_binding/constants.ts";
+const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
+const { isLinux, isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { os } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 
 type MessageType = string | Uint8Array | Buffer | DataView;
 
@@ -63,27 +72,31 @@ const AF_INET6 = 10;
 
 const UDP_DGRAM_MAXSIZE = 64 * 1024;
 
-/** Validate that the multicast and optional interface addresses are parseable IPv4 addresses. */
-function isValidIPv4Address(
+/** Validate that the address is a parseable IPv4 address. */
+function isValidIPv4Address(address: string): boolean {
+  return isIP(address) === 4;
+}
+
+/** Validate multicast address matches the socket family. */
+function isValidMulticastAddress(
   multicastAddress: string,
+  family: string | undefined,
   interfaceAddress?: string,
 ): boolean {
-  // Quick validation: each octet must be 0-255
-  const parts = multicastAddress.split(".");
-  if (parts.length !== 4) return false;
-  for (const part of parts) {
-    const n = Number(part);
-    if (!Number.isInteger(n) || n < 0 || n > 255) return false;
-  }
-  if (interfaceAddress !== undefined) {
-    const ifaceParts = interfaceAddress.split(".");
-    if (ifaceParts.length !== 4) return false;
-    for (const part of ifaceParts) {
-      const n = Number(part);
-      if (!Number.isInteger(n) || n < 0 || n > 255) return false;
+  if (family === "IPv6") {
+    // IPv6 multicast - interface can be address, name, or address%zone
+    // Validation of interface is done in Rust
+    return isIP(multicastAddress) === 6;
+  } else {
+    // IPv4 multicast
+    if (!isValidIPv4Address(multicastAddress)) return false;
+    if (
+      interfaceAddress !== undefined && !isValidIPv4Address(interfaceAddress)
+    ) {
+      return false;
     }
+    return true;
   }
-  return true;
 }
 
 export class SendWrap extends AsyncWrap {
@@ -144,7 +157,9 @@ export class UDP extends HandleWrap {
   }
 
   addMembership(multicastAddress: string, interfaceAddress?: string): number {
-    if (!isValidIPv4Address(multicastAddress, interfaceAddress)) {
+    if (
+      !isValidMulticastAddress(multicastAddress, this.#family, interfaceAddress)
+    ) {
       return codeMap.get("EINVAL")!;
     }
 
@@ -154,7 +169,11 @@ export class UDP extends HandleWrap {
 
     try {
       if (this.#family === "IPv6") {
-        op_node_udp_join_multi_v6(this.#rid, multicastAddress, 0);
+        op_node_udp_join_multi_v6(
+          this.#rid,
+          multicastAddress,
+          interfaceAddress ?? null,
+        );
       } else {
         op_node_udp_join_multi_v4(
           this.#rid,
@@ -265,7 +284,9 @@ export class UDP extends HandleWrap {
     multicastAddress: string,
     interfaceAddress?: string,
   ): number {
-    if (!isValidIPv4Address(multicastAddress, interfaceAddress)) {
+    if (
+      !isValidMulticastAddress(multicastAddress, this.#family, interfaceAddress)
+    ) {
       return codeMap.get("EINVAL")!;
     }
 
@@ -275,7 +296,11 @@ export class UDP extends HandleWrap {
 
     try {
       if (this.#family === "IPv6") {
-        op_node_udp_leave_multi_v6(this.#rid, multicastAddress, 0);
+        op_node_udp_leave_multi_v6(
+          this.#rid,
+          multicastAddress,
+          interfaceAddress ?? null,
+        );
       } else {
         op_node_udp_leave_multi_v4(
           this.#rid,
@@ -353,13 +378,35 @@ export class UDP extends HandleWrap {
   }
 
   /**
-   * Opens a file descriptor.
+   * Opens an existing file descriptor as this UDP socket.
    * @param fd The file descriptor to open.
    * @return An error status code.
    */
-  open(_fd: number): number {
-    // REF: https://github.com/denoland/deno/issues/6529
-    notImplemented("udp.UDP.prototype.open");
+  open(fd: number): number {
+    try {
+      const [rid, hostname, boundPort] = op_node_udp_open(fd);
+      this.#rid = rid;
+      this.#address = hostname;
+      this.#port = boundPort;
+      // Determine family from the address string returned by the op.
+      this.#family = hostname.includes(":")
+        ? ("IPv6" as const)
+        : ("IPv4" as const);
+      return 0;
+    } catch (e) {
+      return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
+    }
+  }
+
+  /**
+   * Return the raw fd so it can be sent over IPC via SCM_RIGHTS.
+   * Returns -1 on platforms that don't support fd-passing.
+   */
+  fdForIpc(): number {
+    if (this.#rid === undefined) {
+      return -1;
+    }
+    return op_node_udp_fd_for_ipc(this.#rid);
   }
 
   /**

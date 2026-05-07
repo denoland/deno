@@ -38,7 +38,7 @@ use thiserror::Error;
 use super::signature_retval::RetVal;
 use crate::op2::combine_err;
 
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, reason = "placeholder values")]
 #[derive(
   Copy, Clone, Debug, Eq, PartialEq, IntoStaticStr, EnumString, EnumIter,
 )]
@@ -418,7 +418,10 @@ impl Arg {
 
   /// Is this argument virtual? ie: does it come from the æther rather than a concrete JavaScript input
   /// argument?
-  #[allow(clippy::match_like_matches_macro)]
+  #[allow(
+    clippy::match_like_matches_macro,
+    reason = "matches!(..) would be not great here"
+  )]
   pub const fn is_virtual(&self) -> bool {
     match self {
       Self::Special(
@@ -448,7 +451,7 @@ impl Arg {
   }
 
   /// Convert the [`Arg`] into a [`TokenStream`] representing the fully-qualified type.
-  #[allow(unused)] // unused for now but keeping
+  #[allow(unused, reason = "unused for now but keeping")]
   pub fn type_token(&self, deno_core: &TokenStream) -> TokenStream {
     match self {
       Arg::V8Ref(RefType::Ref, v8) => quote!(&deno_core::v8::#v8),
@@ -651,7 +654,7 @@ impl ParsedType {
 }
 
 #[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
+#[allow(clippy::large_enum_variant, reason = "unsure")] // TODO(dsherret): investigate
 pub enum ParsedTypeContainer {
   CBare(ParsedType),
   COption(ParsedType),
@@ -1957,6 +1960,9 @@ pub(crate) fn parse_type(
 
 #[cfg(test)]
 mod tests {
+  #![allow(clippy::disallowed_methods, reason = "test code")]
+  #![allow(clippy::print_stdout, reason = "test code")]
+
   use syn::ItemFn;
   use syn::parse_str;
 
@@ -2048,11 +2054,11 @@ mod tests {
     ($name:ident, $error:expr_2021, $f:item) => {
       #[test]
       pub fn $name() {
-        #[allow(unused)]
+        #[allow(unused, reason = "make available in macro")]
         use super::ArgError::*;
-        #[allow(unused)]
+        #[allow(unused, reason = "make available in macro")]
         use super::AttributeError::*;
-        #[allow(unused)]
+        #[allow(unused, reason = "make available in macro")]
         use super::SignatureError::*;
 
         let op = stringify!($f);

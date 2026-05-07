@@ -3,32 +3,33 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import {
   op_node_pbkdf2,
   op_node_pbkdf2_async,
   op_node_pbkdf2_validate,
 } from "ext:core/ops";
 
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
-import {
+const {
   validateFunction,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { getArrayBufferOrView } from "ext:deno_node/internal/crypto/keys.ts";
-import {
+const {
   ERR_CRYPTO_INVALID_DIGEST,
   ERR_OUT_OF_RANGE,
-} from "ext:deno_node/internal/errors.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   emitAfter,
   emitBefore,
   emitDestroy,
   emitInit,
   executionAsyncId,
   newAsyncId,
-} from "ext:deno_node/internal/async_hooks.ts";
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 import process from "node:process";
 
 export const MAX_ALLOC = Math.pow(2, 30) - 1;

@@ -1,0 +1,27 @@
+{
+  "tempDir": true,
+  "tests": {
+    "shim_inserted_after_shebang": {
+      "steps": [{
+        "args": "pack",
+        "output": "[WILDCARD]✓[WILDCARD]test-shebang-1.0.0.tgz[WILDCARD]"
+      }, {
+        "if": "unix",
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "tar -xzf test-shebang-1.0.0.tgz && head -1 package/mod.js"
+        ],
+        "output": "#!/usr/bin/env -S deno run -A\n"
+      }, {
+        "if": "unix",
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "head -2 package/mod.js | tail -1"
+        ],
+        "output": "import { Deno } from \"@deno/shim-deno\";\n"
+      }]
+    }
+  }
+}

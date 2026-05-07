@@ -2347,7 +2347,7 @@ fn serialize_class_member(
   }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
 fn serialize_class_method(
   ctx: &mut TsEsTreeBuilder,
   span: &Span,

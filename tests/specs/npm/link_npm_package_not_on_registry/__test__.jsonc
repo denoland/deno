@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "tests": {
+    "node_modules_dir_auto": {
+      "args": "run --node-modules-dir=auto main/main.ts",
+      "output": "[WILDCARD]Hello, world!\n"
+    }
+  }
+}

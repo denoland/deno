@@ -58,7 +58,7 @@ impl Trampoline {
   }
 }
 
-#[allow(unused)]
+#[allow(unused, reason = "used on supported platforms")]
 pub(crate) fn compile_trampoline(
   sym: &Symbol,
 ) -> Result<Trampoline, TurbocallError> {
@@ -229,7 +229,9 @@ pub(crate) fn compile_trampoline(
 
     if *TRACE_TURBO {
       let options = f.use_var(options_v);
-      let trace_fn = f.ins().iconst(ISIZE, turbocall_trace as usize as i64);
+      let trace_fn = f
+        .ins()
+        .iconst(ISIZE, turbocall_trace as *const () as usize as i64);
       f.ins().call_indirect(ab_sig, trace_fn, &[options]);
     }
 
@@ -254,8 +256,9 @@ pub(crate) fn compile_trampoline(
           f.def_var(target_v, v);
         }
         NativeType::Buffer => {
-          let callee =
-            f.ins().iconst(ISIZE, turbocall_ab_contents as usize as i64);
+          let callee = f
+            .ins()
+            .iconst(ISIZE, turbocall_ab_contents as *const () as usize as i64);
           let call = f.ins().call_indirect(ab_sig, callee, &[arg]);
           let result = f.inst_results(call)[0];
           f.def_var(target_v, result);
@@ -301,7 +304,9 @@ pub(crate) fn compile_trampoline(
     f.seal_block(error);
     if !f.is_unreachable() {
       let options = f.use_var(options_v);
-      let callee = f.ins().iconst(ISIZE, turbocall_raise as usize as i64);
+      let callee = f
+        .ins()
+        .iconst(ISIZE, turbocall_raise as *const () as usize as i64);
       f.ins().call_indirect(raise_sig, callee, &[options]);
       let rty = convert(&sym.result_type, true);
       if rty.value_type.is_invalid() {
@@ -343,10 +348,10 @@ pub(crate) fn compile_trampoline(
 pub(crate) struct Turbocall {
   pub trampoline: Trampoline,
   // Held in a box to keep the memory alive for CFunctionInfo
-  #[allow(unused)]
+  #[allow(unused, reason = "kept alive for CFunctionInfo")]
   pub param_info: Box<[fast_api::CTypeInfo]>,
   // Held in a box to keep the memory alive for V8
-  #[allow(unused)]
+  #[allow(unused, reason = "kept alive for V8 fast API")]
   pub c_function_info: Box<fast_api::CFunctionInfo>,
 }
 
