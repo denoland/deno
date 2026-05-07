@@ -73,6 +73,7 @@ const fetch = core.loadExtScript("ext:deno_fetch/26_fetch.js");
 const messagePort = core.loadExtScript("ext:deno_web/13_message_port.js");
 import {
   denoNs,
+  denoNsLazy,
   denoNsUnstableById,
   unstableIds,
 } from "ext:runtime/90_deno_ns.js";
@@ -637,6 +638,8 @@ const finalDenoNs = {
     },
   },
 };
+// Apply lazy descriptors separately (spread would force their getters).
+ObjectDefineProperties(finalDenoNs, denoNsLazy);
 
 ObjectDefineProperties(finalDenoNs, {
   pid: core.propGetterOnly(opPid),
@@ -779,14 +782,9 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       });
     }
 
-    removeImportedOps();
-
     performance.setTimeOrigin();
     globalThis_ = globalThis;
 
-    // Remove bootstrapping data from the global scope
-    delete globalThis.__bootstrap;
-    delete globalThis.bootstrap;
     hasBootstrapped = true;
 
     // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
@@ -915,9 +913,6 @@ function bootstrapWorkerRuntime(
     performance.setTimeOrigin();
     globalThis_ = globalThis;
 
-    // Remove bootstrapping data from the global scope
-    delete globalThis.__bootstrap;
-    delete globalThis.bootstrap;
     hasBootstrapped = true;
 
     if (workerType === "node") {
@@ -1032,8 +1027,6 @@ event.defineEventHandler(globalThis, "unhandledrejection");
 
 // Nothing listens to this, but it warms up the code paths for event dispatch
 (new event.EventTarget()).dispatchEvent(new event.Event("warmup"));
-
-removeImportedOps();
 
 // Run the warmup path through node and runtime/worker bootstrap functions
 bootstrapMainRuntime(undefined, true);

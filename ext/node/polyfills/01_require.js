@@ -100,18 +100,18 @@ import childProcess from "node:child_process";
 import cluster from "node:cluster";
 import console from "node:console";
 import constants from "node:constants";
-import crypto from "node:crypto";
+const loadCrypto = core.createLazyLoader("node:crypto");
 import dgram from "node:dgram";
 import diagnosticsChannel from "node:diagnostics_channel";
 import dns from "node:dns";
 import dnsPromises from "node:dns/promises";
 import domain from "node:domain";
 const events = core.loadExtScript("ext:deno_node/_events.mjs").default;
-import fs from "node:fs";
-import fsPromises from "node:fs/promises";
-import http from "node:http";
-import http2 from "node:http2";
-import https from "node:https";
+const loadFs = core.createLazyLoader("node:fs");
+const loadFsPromises = core.createLazyLoader("node:fs/promises");
+const loadHttp = core.createLazyLoader("node:http");
+const loadHttp2 = core.createLazyLoader("node:http2");
+const loadHttps = core.createLazyLoader("node:https");
 import inspector from "node:inspector";
 import inspectorPromises from "node:inspector/promises";
 const internalAssertMyersDiff = core.loadExtScript(
@@ -181,10 +181,10 @@ import readline from "node:readline";
 import readlinePromises from "node:readline/promises";
 import repl from "node:repl";
 import sqlite from "node:sqlite";
-import stream from "node:stream";
-import streamConsumers from "node:stream/consumers";
-import streamPromises from "node:stream/promises";
-import streamWeb from "node:stream/web";
+const loadStream = core.createLazyLoader("node:stream");
+const loadStreamConsumers = core.createLazyLoader("node:stream/consumers");
+const loadStreamPromises = core.createLazyLoader("node:stream/promises");
+const loadStreamWeb = core.createLazyLoader("node:stream/web");
 import stringDecoder from "node:string_decoder";
 import test from "node:test";
 import timers from "node:timers";
@@ -222,7 +222,10 @@ function setupBuiltinModules() {
     "assert/strict": assertStrict,
     "async_hooks": asyncHooks,
     buffer,
-    crypto,
+    // crypto, fs, fs/promises, http, http2, https, stream, stream/consumers,
+    // stream/promises, stream/web added below as lazy descriptors so their
+    // polyfills (and transitively, the web platform modules they depend on)
+    // don't load at snapshot time.
     console,
     constants,
     child_process: childProcess,
@@ -233,11 +236,6 @@ function setupBuiltinModules() {
     "dns/promises": dnsPromises,
     domain,
     events,
-    fs,
-    "fs/promises": fsPromises,
-    http,
-    http2,
-    https,
     inspector,
     "inspector/promises": inspectorPromises,
     "internal/assert/myers_diff": internalAssertMyersDiff.default,
@@ -267,6 +265,7 @@ function setupBuiltinModules() {
     "internal/http2/core": internalHttp2Core,
     "internal/http2/util": internalHttp2Util,
     "internal/priority_queue": internalPriorityQueue.default,
+    "internal/repl": repl,
     "internal/readline/utils": internalReadlineUtils.default,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
@@ -299,10 +298,6 @@ function setupBuiltinModules() {
     "readline/promises": readlinePromises,
     repl,
     sqlite,
-    stream,
-    "stream/consumers": streamConsumers,
-    "stream/promises": streamPromises,
-    "stream/web": streamWeb,
     string_decoder: stringDecoder,
     sys: util,
     test,
@@ -341,6 +336,33 @@ function setupBuiltinModules() {
     } else {
       ArrayPrototypePush(builtinModules, name);
     }
+  }
+
+  // Lazy-loaded native modules. Their polyfill ESM only runs on first access,
+  // which keeps their transitive dependencies (e.g. ext:deno_web/06_streams.js
+  // for stream/web) out of the startup snapshot when not used.
+  const lazyEntries = [
+    ["crypto", loadCrypto],
+    ["fs", loadFs],
+    ["fs/promises", loadFsPromises],
+    ["http", loadHttp],
+    ["http2", loadHttp2],
+    ["https", loadHttps],
+    ["stream", loadStream],
+    ["stream/consumers", loadStreamConsumers],
+    ["stream/promises", loadStreamPromises],
+    ["stream/web", loadStreamWeb],
+  ];
+  for (const { 0: name, 1: loader } of lazyEntries) {
+    ObjectDefineProperty(nativeModuleExports, name, {
+      __proto__: null,
+      enumerable: true,
+      configurable: true,
+      get() {
+        return loader();
+      },
+    });
+    ArrayPrototypePush(builtinModules, name);
   }
 }
 setupBuiltinModules();

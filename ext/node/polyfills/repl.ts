@@ -36,6 +36,65 @@ const kBufferedCommandSymbol = Symbol("bufferedCommand");
 const kLoadingSymbol = Symbol("loading");
 const kContextId = Symbol("contextId");
 const kStandaloneREPL = Symbol("standaloneREPL");
+const globalBuiltins = new Set([
+  "AggregateError",
+  "Array",
+  "ArrayBuffer",
+  "Atomics",
+  "BigInt",
+  "BigInt64Array",
+  "BigUint64Array",
+  "Boolean",
+  "DataView",
+  "Date",
+  "Error",
+  "EvalError",
+  "FinalizationRegistry",
+  "Float32Array",
+  "Float64Array",
+  "Function",
+  "Infinity",
+  "Int16Array",
+  "Int32Array",
+  "Int8Array",
+  "Intl",
+  "JSON",
+  "Map",
+  "Math",
+  "NaN",
+  "Number",
+  "Object",
+  "Promise",
+  "Proxy",
+  "RangeError",
+  "ReferenceError",
+  "Reflect",
+  "RegExp",
+  "Set",
+  "String",
+  "Symbol",
+  "SyntaxError",
+  "TypeError",
+  "URIError",
+  "Uint16Array",
+  "Uint32Array",
+  "Uint8Array",
+  "Uint8ClampedArray",
+  "WeakMap",
+  "WeakRef",
+  "WeakSet",
+  "decodeURI",
+  "decodeURIComponent",
+  "encodeURI",
+  "encodeURIComponent",
+  "eval",
+  "globalThis",
+  "isFinite",
+  "isNaN",
+  "parseFloat",
+  "parseInt",
+  "undefined",
+]);
 
 // Multiline prompt indicator
 const kMultilinePrompt = "... ";
@@ -339,7 +398,8 @@ export class REPLServer extends (Interface as any) {
       options.terminal = !!(options.output as { isTTY?: boolean })?.isTTY;
     }
     options.terminal = !!options.terminal;
-    const usePreview = !!options.terminal && options.preview !== false;
+    const usePreview = !!options.terminal &&
+      (options.preview !== undefined ? !!options.preview : !eval_);
 
     if (options.terminal && options.useColors === undefined) {
       // Check if the output stream supports colors
@@ -1334,7 +1394,20 @@ export class REPLServer extends (Interface as any) {
       context = globalThis;
     } else {
       context = vm.createContext();
+      for (const name of Object.getOwnPropertyNames(globalThis)) {
+        if (globalBuiltins.has(name) || name === "global") {
+          continue;
+        }
+        if (name in context) {
+          continue;
+        }
+        const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
+        if (descriptor) {
+          Object.defineProperty(context, name, descriptor);
+        }
+      }
       context.global = context;
+      context.globalThis = context;
       let _console;
       try {
         _console = new Console(this.output);
@@ -1479,6 +1552,52 @@ export function start(
   );
 }
 
+export function createInternalRepl(env: any, opts?: any, cb?: any) {
+  if (typeof opts === "function") {
+    cb = opts;
+    opts = null;
+  }
+
+  opts = {
+    [kStandaloneREPL]: true,
+    ignoreUndefined: false,
+    useGlobal: true,
+    breakEvalOnSigint: true,
+    ...opts,
+  };
+
+  if (Number.parseInt(env.NODE_NO_READLINE)) {
+    opts.terminal = false;
+  }
+
+  if (opts.terminal && opts.useColors === undefined) {
+    opts.useColors = !!env.FORCE_COLOR && env.FORCE_COLOR !== "0";
+  }
+
+  if (env.NODE_REPL_MODE) {
+    opts.replMode = {
+      strict: REPL_MODE_STRICT,
+      sloppy: REPL_MODE_SLOPPY,
+    }[String(env.NODE_REPL_MODE).toLowerCase().trim()];
+  }
+
+  if (opts.replMode === undefined) {
+    opts.replMode = REPL_MODE_SLOPPY;
+  }
+
+  const size = Number(env.NODE_REPL_HISTORY_SIZE);
+  opts.size = !Number.isNaN(size) && size > 0 ? size : 1000;
+
+  const term = "terminal" in opts
+    ? opts.terminal
+    : (process.stdout as { isTTY?: boolean }).isTTY;
+  opts.filePath = term ? env.NODE_REPL_HISTORY : "";
+
+  const repl = start(opts);
+  repl.setupHistory(opts.filePath, cb);
+  return repl;
+}
+
 export const builtinModules = [
   "assert",
   "async_hooks",
@@ -1534,6 +1653,7 @@ export default {
   builtinModules,
   _builtinLibs,
   start,
+  createInternalRepl,
   writer,
   REPL_MODE_SLOPPY,
   REPL_MODE_STRICT,

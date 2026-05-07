@@ -2,37 +2,34 @@
 
 import { core } from "ext:core/mod.js";
 
+// Eager modules: required at snapshot time by 99_main.js or by other eager
+// modules. webidl is used by every class IIFE; event/DOMException/console/
+// performance are used at snapshot time by 99_main.js itself; base64 has
+// trivial atob/btoa values so laziness has near-zero benefit.
 const event = core.loadExtScript("ext:deno_web/02_event.js");
 const base64 = core.loadExtScript("ext:deno_web/05_base64.js");
-const encoding = core.loadExtScript("ext:deno_web/08_text_encoding.js");
 const console = core.loadExtScript("ext:deno_web/01_console.js");
-const caches = core.loadExtScript("ext:deno_cache/01_cache.js");
-const compression = core.loadExtScript("ext:deno_web/14_compression.js");
-const worker = core.loadExtScript("ext:runtime/11_workers.js");
 const performance = core.loadExtScript("ext:deno_web/15_performance.js");
-const crypto = core.loadExtScript("ext:deno_crypto/00_crypto.js");
-const url = core.loadExtScript("ext:deno_web/00_url.js");
-const urlPattern = core.loadExtScript("ext:deno_web/01_urlpattern.js");
-const headers = core.loadExtScript("ext:deno_fetch/20_headers.js");
-const streams = core.loadExtScript("ext:deno_web/06_streams.js");
-const fileReader = core.loadExtScript("ext:deno_web/10_filereader.js");
-const broadcastChannel = core.loadExtScript(
-  "ext:deno_web/01_broadcast_channel.js",
-);
-const file = core.loadExtScript("ext:deno_web/09_file.js");
-const formData = core.loadExtScript("ext:deno_fetch/21_formdata.js");
-const request = core.loadExtScript("ext:deno_fetch/23_request.js");
-const response = core.loadExtScript("ext:deno_fetch/23_response.js");
-const fetch = core.loadExtScript("ext:deno_fetch/26_fetch.js");
-const eventSource = core.loadExtScript("ext:deno_fetch/27_eventsource.js");
-const messagePort = core.loadExtScript("ext:deno_web/13_message_port.js");
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const {
   DOMException,
   QuotaExceededError,
 } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
-const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
-const imageData = core.loadExtScript("ext:deno_web/16_image_data.js");
+
+// Lazy module loaders for the big web-platform surfaces. Each module's IIFE
+// runs only when one of its exposed globals is first accessed.
+const loadEncoding = () =>
+  core.loadExtScript("ext:deno_web/08_text_encoding.js");
+const loadCrypto = () => core.loadExtScript("ext:deno_crypto/00_crypto.js");
+const loadUrl = () => core.loadExtScript("ext:deno_web/00_url.js");
+const loadHeaders = () => core.loadExtScript("ext:deno_fetch/20_headers.js");
+const loadStreams = () => core.loadExtScript("ext:deno_web/06_streams.js");
+const loadFile = () => core.loadExtScript("ext:deno_web/09_file.js");
+const loadRequest = () => core.loadExtScript("ext:deno_fetch/23_request.js");
+const loadResponse = () => core.loadExtScript("ext:deno_fetch/23_response.js");
+const loadFetch = () => core.loadExtScript("ext:deno_fetch/26_fetch.js");
+const loadAbortSignal = () =>
+  core.loadExtScript("ext:deno_web/03_abort_signal.js");
 import process from "node:process";
 import { Buffer } from "node:buffer";
 import {
@@ -58,24 +55,62 @@ const loadWebSocketStream = core.createLazyLoader(
 const loadWebTransport = core.createLazyLoader(
   "ext:deno_web/webtransport.js",
 );
+const loadBroadcastChannel = () =>
+  core.loadExtScript("ext:deno_web/01_broadcast_channel.js");
+const loadEventSource = () =>
+  core.loadExtScript("ext:deno_fetch/27_eventsource.js");
+const loadFileReader = () =>
+  core.loadExtScript("ext:deno_web/10_filereader.js");
+const loadImageData = () =>
+  core.loadExtScript("ext:deno_web/16_image_data.js");
+const loadCaches = () => core.loadExtScript("ext:deno_cache/01_cache.js");
+const loadCompression = () =>
+  core.loadExtScript("ext:deno_web/14_compression.js");
+const loadWorker = () => core.loadExtScript("ext:runtime/11_workers.js");
+const loadUrlPattern = () =>
+  core.loadExtScript("ext:deno_web/01_urlpattern.js");
+const loadFormData = () =>
+  core.loadExtScript("ext:deno_fetch/21_formdata.js");
+const loadMessagePort = () =>
+  core.loadExtScript("ext:deno_web/13_message_port.js");
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 const windowOrWorkerGlobalScope = {
-  AbortController: core.propNonEnumerable(abortSignal.AbortController),
-  AbortSignal: core.propNonEnumerable(abortSignal.AbortSignal),
-  Blob: core.propNonEnumerable(file.Blob),
-  BroadcastChannel: core.propNonEnumerable(broadcastChannel.BroadcastChannel),
-  ByteLengthQueuingStrategy: core.propNonEnumerable(
-    streams.ByteLengthQueuingStrategy,
+  AbortController: core.propNonEnumerableLazyLoaded(
+    (a) => a.AbortController,
+    loadAbortSignal,
+  ),
+  AbortSignal: core.propNonEnumerableLazyLoaded(
+    (a) => a.AbortSignal,
+    loadAbortSignal,
+  ),
+  Blob: core.propNonEnumerableLazyLoaded((f) => f.Blob, loadFile),
+  BroadcastChannel: core.propNonEnumerableLazyLoaded(
+    (bc) => bc.BroadcastChannel,
+    loadBroadcastChannel,
+  ),
+  ByteLengthQueuingStrategy: core.propNonEnumerableLazyLoaded(
+    (s) => s.ByteLengthQueuingStrategy,
+    loadStreams,
   ),
   CloseEvent: core.propNonEnumerable(event.CloseEvent),
-  CompressionStream: core.propNonEnumerable(compression.CompressionStream),
-  CountQueuingStrategy: core.propNonEnumerable(
-    streams.CountQueuingStrategy,
+  CompressionStream: core.propNonEnumerableLazyLoaded(
+    (c) => c.CompressionStream,
+    loadCompression,
   ),
-  CryptoKey: core.propNonEnumerable(crypto.CryptoKey),
+  CountQueuingStrategy: core.propNonEnumerableLazyLoaded(
+    (s) => s.CountQueuingStrategy,
+    loadStreams,
+  ),
+  CryptoKey: core.propNonEnumerableLazyLoaded(
+    (c) => c.CryptoKey,
+    loadCrypto,
+  ),
   CustomEvent: core.propNonEnumerable(event.CustomEvent),
-  DecompressionStream: core.propNonEnumerable(compression.DecompressionStream),
+  DecompressionStream: core.propNonEnumerableLazyLoaded(
+    (c) => c.DecompressionStream,
+    loadCompression,
+  ),
   DOMException: core.propNonEnumerable(DOMException),
   QuotaExceededError: core.propNonEnumerable(QuotaExceededError),
   DOMMatrix: core.propNonEnumerableLazyLoaded(
@@ -109,11 +144,20 @@ const windowOrWorkerGlobalScope = {
   ErrorEvent: core.propNonEnumerable(event.ErrorEvent),
   Event: core.propNonEnumerable(event.Event),
   EventTarget: core.propNonEnumerable(event.EventTarget),
-  File: core.propNonEnumerable(file.File),
-  FileReader: core.propNonEnumerable(fileReader.FileReader),
-  FormData: core.propNonEnumerable(formData.FormData),
-  Headers: core.propNonEnumerable(headers.Headers),
-  ImageData: core.propNonEnumerable(imageData.ImageData),
+  File: core.propNonEnumerableLazyLoaded((f) => f.File, loadFile),
+  FileReader: core.propNonEnumerableLazyLoaded(
+    (fr) => fr.FileReader,
+    loadFileReader,
+  ),
+  FormData: core.propNonEnumerableLazyLoaded(
+    (fd) => fd.FormData,
+    loadFormData,
+  ),
+  Headers: core.propNonEnumerableLazyLoaded((h) => h.Headers, loadHeaders),
+  ImageData: core.propNonEnumerableLazyLoaded(
+    (id) => id.ImageData,
+    loadImageData,
+  ),
   ImageBitmap: core.propNonEnumerableLazyLoaded(
     (image) => image.ImageBitmap,
     loadImage,
@@ -129,48 +173,92 @@ const windowOrWorkerGlobalScope = {
   ),
   PromiseRejectionEvent: core.propNonEnumerable(event.PromiseRejectionEvent),
   ProgressEvent: core.propNonEnumerable(event.ProgressEvent),
-  ReadableStream: core.propNonEnumerable(streams.ReadableStream),
-  ReadableStreamDefaultReader: core.propNonEnumerable(
-    streams.ReadableStreamDefaultReader,
+  ReadableStream: core.propNonEnumerableLazyLoaded(
+    (s) => s.ReadableStream,
+    loadStreams,
   ),
-  Request: core.propNonEnumerable(request.Request),
-  Response: core.propNonEnumerable(response.Response),
-  TextDecoder: core.propNonEnumerable(encoding.TextDecoder),
-  TextEncoder: core.propNonEnumerable(encoding.TextEncoder),
-  TextDecoderStream: core.propNonEnumerable(encoding.TextDecoderStream),
-  TextEncoderStream: core.propNonEnumerable(encoding.TextEncoderStream),
-  TransformStream: core.propNonEnumerable(streams.TransformStream),
-  URL: core.propNonEnumerable(url.URL),
-  URLPattern: core.propNonEnumerable(urlPattern.URLPattern),
-  URLSearchParams: core.propNonEnumerable(url.URLSearchParams),
+  ReadableStreamDefaultReader: core.propNonEnumerableLazyLoaded(
+    (s) => s.ReadableStreamDefaultReader,
+    loadStreams,
+  ),
+  Request: core.propNonEnumerableLazyLoaded((r) => r.Request, loadRequest),
+  Response: core.propNonEnumerableLazyLoaded((r) => r.Response, loadResponse),
+  TextDecoder: core.propNonEnumerableLazyLoaded(
+    (e) => e.TextDecoder,
+    loadEncoding,
+  ),
+  TextEncoder: core.propNonEnumerableLazyLoaded(
+    (e) => e.TextEncoder,
+    loadEncoding,
+  ),
+  TextDecoderStream: core.propNonEnumerableLazyLoaded(
+    (e) => e.TextDecoderStream,
+    loadEncoding,
+  ),
+  TextEncoderStream: core.propNonEnumerableLazyLoaded(
+    (e) => e.TextEncoderStream,
+    loadEncoding,
+  ),
+  TransformStream: core.propNonEnumerableLazyLoaded(
+    (s) => s.TransformStream,
+    loadStreams,
+  ),
+  URL: core.propNonEnumerableLazyLoaded((u) => u.URL, loadUrl),
+  URLPattern: core.propNonEnumerableLazyLoaded(
+    (p) => p.URLPattern,
+    loadUrlPattern,
+  ),
+  URLSearchParams: core.propNonEnumerableLazyLoaded(
+    (u) => u.URLSearchParams,
+    loadUrl,
+  ),
   WebSocket: core.propNonEnumerableLazyLoaded(
     (ws) => ws.WebSocket,
     loadWebSocket,
   ),
-  MessageChannel: core.propNonEnumerable(messagePort.MessageChannel),
-  MessagePort: core.propNonEnumerable(messagePort.MessagePort),
-  Worker: core.propNonEnumerable(worker.Worker),
-  WritableStream: core.propNonEnumerable(streams.WritableStream),
-  WritableStreamDefaultWriter: core.propNonEnumerable(
-    streams.WritableStreamDefaultWriter,
+  MessageChannel: core.propNonEnumerableLazyLoaded(
+    (mp) => mp.MessageChannel,
+    loadMessagePort,
   ),
-  WritableStreamDefaultController: core.propNonEnumerable(
-    streams.WritableStreamDefaultController,
+  MessagePort: core.propNonEnumerableLazyLoaded(
+    (mp) => mp.MessagePort,
+    loadMessagePort,
   ),
-  ReadableByteStreamController: core.propNonEnumerable(
-    streams.ReadableByteStreamController,
+  Worker: core.propNonEnumerableLazyLoaded(
+    (w) => w.Worker,
+    loadWorker,
   ),
-  ReadableStreamBYOBReader: core.propNonEnumerable(
-    streams.ReadableStreamBYOBReader,
+  WritableStream: core.propNonEnumerableLazyLoaded(
+    (s) => s.WritableStream,
+    loadStreams,
   ),
-  ReadableStreamBYOBRequest: core.propNonEnumerable(
-    streams.ReadableStreamBYOBRequest,
+  WritableStreamDefaultWriter: core.propNonEnumerableLazyLoaded(
+    (s) => s.WritableStreamDefaultWriter,
+    loadStreams,
   ),
-  ReadableStreamDefaultController: core.propNonEnumerable(
-    streams.ReadableStreamDefaultController,
+  WritableStreamDefaultController: core.propNonEnumerableLazyLoaded(
+    (s) => s.WritableStreamDefaultController,
+    loadStreams,
   ),
-  TransformStreamDefaultController: core.propNonEnumerable(
-    streams.TransformStreamDefaultController,
+  ReadableByteStreamController: core.propNonEnumerableLazyLoaded(
+    (s) => s.ReadableByteStreamController,
+    loadStreams,
+  ),
+  ReadableStreamBYOBReader: core.propNonEnumerableLazyLoaded(
+    (s) => s.ReadableStreamBYOBReader,
+    loadStreams,
+  ),
+  ReadableStreamBYOBRequest: core.propNonEnumerableLazyLoaded(
+    (s) => s.ReadableStreamBYOBRequest,
+    loadStreams,
+  ),
+  ReadableStreamDefaultController: core.propNonEnumerableLazyLoaded(
+    (s) => s.ReadableStreamDefaultController,
+    loadStreams,
+  ),
+  TransformStreamDefaultController: core.propNonEnumerableLazyLoaded(
+    (s) => s.TransformStreamDefaultController,
+    loadStreams,
   ),
   atob: core.propWritable(base64.atob),
   btoa: core.propWritable(base64.btoa),
@@ -183,18 +271,39 @@ const windowOrWorkerGlobalScope = {
   caches: {
     enumerable: true,
     configurable: true,
-    get: caches.cacheStorage,
+    get() {
+      return loadCaches().cacheStorage();
+    },
   },
-  CacheStorage: core.propNonEnumerable(caches.CacheStorage),
-  Cache: core.propNonEnumerable(caches.Cache),
+  CacheStorage: core.propNonEnumerableLazyLoaded(
+    (c) => c.CacheStorage,
+    loadCaches,
+  ),
+  Cache: core.propNonEnumerableLazyLoaded(
+    (c) => c.Cache,
+    loadCaches,
+  ),
   console: core.propNonEnumerable(
     new console.Console((msg, level) => core.print(msg, level > 1)),
   ),
-  crypto: core.propReadOnly(crypto.crypto),
-  Crypto: core.propNonEnumerable(crypto.Crypto),
-  SubtleCrypto: core.propNonEnumerable(crypto.SubtleCrypto),
-  fetch: core.propWritable(fetch.fetch),
-  EventSource: core.propWritable(eventSource.EventSource),
+  crypto: {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      return loadCrypto().crypto;
+    },
+  },
+  Crypto: core.propNonEnumerableLazyLoaded((c) => c.Crypto, loadCrypto),
+  SubtleCrypto: core.propNonEnumerableLazyLoaded(
+    (c) => c.SubtleCrypto,
+    loadCrypto,
+  ),
+  fetch: core.propWritableLazyLoaded((f) => f.fetch, loadFetch),
+  EventSource: core.propWritableLazyLoaded(
+    (es) => es.EventSource,
+    loadEventSource,
+  ),
   performance: core.propWritable(performance.performance),
   process: core.propWritable(process),
   setImmediate: core.propWritable(setImmediate),
@@ -204,7 +313,10 @@ const windowOrWorkerGlobalScope = {
   reportError: core.propWritable(event.reportError),
   setInterval: core.propWritable(nodeSetInterval),
   setTimeout: core.propWritable(nodeSetTimeout),
-  structuredClone: core.propWritable(messagePort.structuredClone),
+  structuredClone: core.propWritableLazyLoaded(
+    (mp) => mp.structuredClone,
+    loadMessagePort,
+  ),
   // Branding as a WebIDL object
   [webidl.brand]: core.propNonEnumerable(webidl.brand),
 
