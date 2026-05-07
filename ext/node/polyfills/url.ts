@@ -81,7 +81,7 @@ const { isWindows, osType } = core.loadExtScript("ext:deno_node/_util/os.ts");
 const { encodeStr, hexTable } = core.loadExtScript(
   "ext:deno_node/internal/querystring.ts",
 );
-import querystring from "node:querystring";
+const querystring = core.loadExtScript("ext:deno_node/querystring.js").default;
 import type { ParsedUrlQuery, ParsedUrlQueryInput } from "node:querystring";
 const { URL, URLSearchParams } = core.loadExtScript("ext:deno_web/00_url.js");
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
