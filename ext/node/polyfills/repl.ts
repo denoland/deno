@@ -25,7 +25,7 @@ const vm = core.loadExtScript("ext:deno_node/vm.js").default;
 import process from "node:process";
 import path from "node:path";
 import fs from "node:fs";
-import { Console } from "node:console";
+const { Console } = core.loadExtScript("ext:deno_node/console.ts");
 import Module from "node:module";
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 
