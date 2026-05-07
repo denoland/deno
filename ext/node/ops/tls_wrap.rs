@@ -2723,7 +2723,6 @@ impl TLSWrap {
     context: v8::Local<v8::Object>,
     alpn_protocol: v8::Local<v8::Value>,
     scope: &mut v8::PinScope,
-    op_state: &mut OpState,
   ) -> i32 {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
 
@@ -2735,15 +2734,21 @@ impl TLSWrap {
       }
     };
 
-    // Build server config from the provided SecureContext
-    let (mut server_config, client_cert_verify_error) =
-      match build_server_config(scope, context, op_state) {
+    // Build server config from the provided SecureContext.
+    // We borrow op_state in a limited scope so it is released before
+    // any reentrant V8 calls (cycle / do_emit_error) which may trigger
+    // prepare_stack_trace_callback, which also borrows op_state.
+    let op_state_rc = deno_core::JsRuntime::op_state_from(scope);
+    let (mut server_config, client_cert_verify_error) = {
+      let mut op_state = op_state_rc.borrow_mut();
+      match build_server_config(scope, context, &mut op_state) {
         Some(c) => c,
         None => {
           inner.error = Some("Failed to build server config".to_string());
           return -1;
         }
-      };
+      }
+    };
     inner.verify_error = client_cert_verify_error;
 
     // Determine ALPN protocols
@@ -2763,9 +2768,21 @@ impl TLSWrap {
       Ok(conn) => {
         inner.tls_conn = Some(TlsConnection::Server(conn));
       }
-      Err((e, _accepted)) => {
+      Err((e, mut alert)) => {
         let (error_msg, error_code) = rustls_error_to_node_error(&e, None);
         inner.error = Some(error_msg.clone());
+        // Flush the TLS alert to the client so it sees a proper
+        // handshake_failure instead of ECONNRESET.
+        let mut alert_bytes = Vec::new();
+        let _ = alert.write_all(&mut alert_bytes);
+        if !alert_bytes.is_empty() {
+          inner.pending_enc_out.extend_from_slice(&alert_bytes);
+          if inner.underlying.is_attached()
+            && let UnderlyingStream::Uv { .. } = inner.underlying
+          {
+            inner.enc_out_uv();
+          }
+        }
         let inner_ptr = inner as *mut TLSWrapInner;
         unsafe {
           if let Some(ctx) = extract_emit_ctx(inner_ptr) {
