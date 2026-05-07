@@ -386,6 +386,9 @@ let insideLoadHook = false;
 let utf8Decoder;
 let esmResolveLoopRunning = false;
 let esmLoadLoopRunning = false;
+// Formats determined by resolve hooks, keyed by resolved URL.
+// Passed as context.format to load hooks per Node.js spec.
+const resolvedFormats = new SafeMap();
 
 function executeResolveHookChain(specifier, context, parent, isMain) {
   // Collect resolve hooks from hookEntries in LIFO order
@@ -535,7 +538,33 @@ async function executeEsmResolveHookChain(specifier, context) {
       currentContext = { ...currentContext, ...ctx };
     }
     if (index >= resolveHooks.length) {
-      // End of chain - signal fallthrough to Rust default resolution
+      // Default resolve: resolve the specifier to a URL so hooks
+      // further up the chain can inspect the resolved path.
+      if (StringPrototypeStartsWith(spec, "node:")) {
+        return { url: spec, shortCircuit: true };
+      }
+      if (nativeModuleCanBeRequiredByUsers(spec)) {
+        return { url: "node:" + spec, shortCircuit: true };
+      }
+      // For relative/absolute paths, resolve against parentURL
+      const parentURL = currentContext.parentURL;
+      if (parentURL) {
+        try {
+          return { url: new URL(spec, parentURL).href, shortCircuit: true };
+        } catch {
+          // Fall through
+        }
+      }
+      // For bare specifiers, try CJS resolution as a fallback
+      try {
+        const resolved = Module._resolveFilename(spec, null, false);
+        if (StringPrototypeStartsWith(resolved, "node:")) {
+          return { url: resolved, shortCircuit: true };
+        }
+        return { url: url.pathToFileURL(resolved).href, shortCircuit: true };
+      } catch {
+        // Could not resolve
+      }
       return { url: null, shortCircuit: true };
     }
     const hook = resolveHooks[index++];
@@ -652,6 +681,9 @@ function _startEsmResolveLoop() {
       try {
         const result = await executeEsmResolveHookChain(specifier, context);
         if (result !== null && result.url != null) {
+          if (result.format != null) {
+            resolvedFormats.set(result.url, result.format);
+          }
           op_module_hooks_respond_resolve(id, result.url, null);
         } else {
           // Fallthrough: tell Rust to use default resolution
@@ -674,8 +706,10 @@ function _startEsmLoadLoop() {
       const req = await pollPromise;
       if (req === null) break;
       const [id, fileUrl] = req;
+      const storedFormat = resolvedFormats.get(fileUrl);
+      if (storedFormat !== undefined) resolvedFormats.delete(fileUrl);
       const context = {
-        format: undefined,
+        format: storedFormat ?? undefined,
         conditions: ["node", "import"],
         importAttributes: { __proto__: null },
         importAssertions: { __proto__: null },
