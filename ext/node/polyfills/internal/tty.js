@@ -436,5 +436,5 @@ WriteStream.prototype.getColorDepth = function getColorDepth_(env) {
   return getColorDepth(env);
 };
 
-export { WriteStream };
+export { addSigwinchListener, WriteStream };
 export default WriteStream;

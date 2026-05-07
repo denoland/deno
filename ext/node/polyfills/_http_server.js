@@ -77,6 +77,7 @@ const {
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+import { enqueueNodePerformanceEntry } from "node:perf_hooks";
 const {
   otelState,
   builtinTracer,
@@ -92,6 +93,7 @@ const kConnectionsCheckingInterval = Symbol(
 const kOtelSpan = Symbol("kOtelSpan");
 const kOtelStartTime = Symbol("kOtelStartTime");
 const kOtelReqBodySize = Symbol("kOtelReqBodySize");
+const kPerfStartTime = Symbol("kPerfStartTime");
 
 // OTel server metrics - lazy initialized
 let otelMetrics = null;
@@ -749,6 +751,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   }
 
   state.incoming.push(req);
+  req[kPerfStartTime] = performance.now();
 
   if (!socket._paused) {
     const ws = socket._writableState;
@@ -891,6 +894,30 @@ function resOnFinish(req, res, socket, state, server) {
     }
     span.end();
     res[kOtelSpan] = null;
+  }
+
+  // Emit HttpRequest perf entry
+  const perfStartTime = req[kPerfStartTime];
+  if (perfStartTime !== undefined) {
+    enqueueNodePerformanceEntry({
+      name: "HttpRequest",
+      entryType: "http",
+      startTime: perfStartTime,
+      duration: performance.now() - perfStartTime,
+      detail: {
+        req: {
+          method: req.method,
+          url: req.url || "/",
+          headers: req.headers,
+        },
+        res: {
+          statusCode: res.statusCode,
+          statusMessage: res.statusMessage ||
+            STATUS_CODES[res.statusCode] || "",
+          headers: res.getHeaders(),
+        },
+      },
+    });
   }
 
   // Record OTel server metrics
