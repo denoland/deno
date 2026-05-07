@@ -2534,24 +2534,26 @@ Module.register = register;
  * @param {string[]} loaderUrls
  */
 export async function _registerCliLoaders(loaderUrls) {
+  // CLI loaders from --experimental-loader are loaded eagerly before the
+  // main module, so they don't have the deadlock issue that register() has.
+  // Load them directly on the main thread for simplicity.
   for (let i = 0; i < loaderUrls.length; i++) {
-    const url = loaderUrls[i];
+    const loaderUrl = loaderUrls[i];
     let hookModule;
     try {
-      hookModule = await import(url);
+      hookModule = await import(loaderUrl);
     } catch (e) {
       // Match Node.js behavior: print the thrown value and exit with code 1.
       // Node uses util.inspect for objects/functions, String() for primitives.
       const util = await import("node:util");
-      const msg = (typeof e === "object" && e !== null) ||
+      const errMsg = (typeof e === "object" && e !== null) ||
           typeof e === "function"
         ? util.inspect(e)
         : String(e);
-      process.stderr.write(msg + "\n");
+      process.stderr.write(errMsg + "\n");
       process.exit(1);
     }
 
-    // Call initialize hook if exported
     if (typeof hookModule.initialize === "function") {
       await hookModule.initialize(undefined);
     }
@@ -2562,7 +2564,9 @@ export async function _registerCliLoaders(loaderUrls) {
     const load = typeof hookModule.load === "function" ? hookModule.load : null;
 
     if (resolve !== null || load !== null) {
-      ArrayPrototypePush(asyncHookEntries, { resolve, load });
+      // CLI loaders run on the main thread (no worker needed).
+      // Store in hookEntries so they're executed by the sync hook chain.
+      ArrayPrototypePush(hookEntries, { resolve, load });
     }
   }
   _activateEsmHooks();
