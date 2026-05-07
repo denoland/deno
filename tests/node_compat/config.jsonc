@@ -1486,6 +1486,7 @@
     "parallel/test-http-agent-no-protocol.js": {},
     "parallel/test-http-agent-null.js": {},
     "parallel/test-http-agent-remove.js": {},
+    "parallel/test-http-agent-reuse-drained-socket-only.js": {},
     "parallel/test-http-agent-scheduling.js": {},
     "parallel/test-http-agent-timeout-option.js": {},
     "parallel/test-http-agent-timeout.js": {},
