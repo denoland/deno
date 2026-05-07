@@ -1586,6 +1586,7 @@ pub fn get_default_v8_flags() -> Vec<String> {
   vec![
     "--stack-size=1024".to_string(),
     "--inspector-live-edit".to_string(),
+    "--external-memory-max-reasonable-size=0".to_string(),
   ]
 }
 
