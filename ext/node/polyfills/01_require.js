@@ -6,6 +6,7 @@ import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_fs_cwd,
   op_import_sync,
+  op_import_sync_with_source,
   op_module_hooks_poll_load,
   op_module_hooks_poll_resolve,
   op_module_hooks_register,
@@ -187,6 +188,7 @@ import streamPromises from "node:stream/promises";
 import streamWeb from "node:stream/web";
 import stringDecoder from "node:string_decoder";
 import test from "node:test";
+import testReporters from "node:test/reporters";
 import timers from "node:timers";
 import timersPromises from "node:timers/promises";
 import tls from "node:tls";
@@ -306,6 +308,7 @@ function setupBuiltinModules() {
     string_decoder: stringDecoder,
     sys: util,
     test,
+    "test/reporters": testReporters,
     timers,
     "timers/promises": timersPromises,
     tls,
@@ -324,7 +327,6 @@ function setupBuiltinModules() {
   // via the `node:` scheme (see lib/internal/bootstrap/realm.js), so they
   // appear in `builtinModules` as `node:<name>` rather than `<name>`.
   const schemelessBlockList = new SafeSet([
-    "sea",
     "sqlite",
     "test",
     "test/reporters",
@@ -379,6 +381,7 @@ const asyncHookEntries = [];
 // imports are resolved.
 const pendingHookLoads = [];
 let insideResolveHook = false;
+let hookResolveConditions = null;
 let insideLoadHook = false;
 let utf8Decoder;
 let esmResolveLoopRunning = false;
@@ -407,6 +410,7 @@ function executeResolveHookChain(specifier, context, parent, isMain) {
     if (index >= resolveHooks.length) {
       // Default resolve: use Module._resolveFilename
       insideResolveHook = true;
+      hookResolveConditions = currentContext.conditions ?? null;
       try {
         // Handle node: builtins
         if (StringPrototypeStartsWith(spec, "node:")) {
@@ -425,6 +429,7 @@ function executeResolveHookChain(specifier, context, parent, isMain) {
         return { url: resolvedUrl, shortCircuit: true };
       } finally {
         insideResolveHook = false;
+        hookResolveConditions = null;
       }
     }
     const hook = resolveHooks[index++];
@@ -573,13 +578,25 @@ async function executeEsmLoadHookChain(fileUrl, context) {
   let index = 0;
   let currentContext = context;
 
-  async function nextLoad(loadUrl, ctx) {
+  function nextLoad(loadUrl, ctx) {
     if (ctx !== undefined && ctx !== null) {
       currentContext = { ...currentContext, ...ctx };
     }
     if (index >= loadHooks.length) {
-      // End of chain - signal fallthrough to Rust default loading
-      return { source: null, shortCircuit: true };
+      // Default load: for builtins return null source, for files
+      // read from disk so hooks can inspect/transform the source.
+      if (StringPrototypeStartsWith(loadUrl, "node:")) {
+        return { source: null, format: "builtin", shortCircuit: true };
+      }
+      let source = null;
+      if (StringPrototypeStartsWith(loadUrl, "file://")) {
+        try {
+          source = op_require_read_file(url.fileURLToPath(loadUrl));
+        } catch {
+          // Fall through with null source if file can't be read
+        }
+      }
+      return { source, shortCircuit: true };
     }
     const hook = loadHooks[index++];
     let nextCalled = false;
@@ -587,7 +604,18 @@ async function executeEsmLoadHookChain(fileUrl, context) {
       nextCalled = true;
       return nextLoad(u, c);
     };
-    const result = await hook(loadUrl, currentContext, wrappedNext);
+    const result = hook(loadUrl, currentContext, wrappedNext);
+    // If an async hook returned a promise, propagate it
+    if (result && typeof result.then === "function") {
+      return result.then((r) => {
+        if (!nextCalled && !r?.shortCircuit) {
+          throw new TypeError(
+            "load hook must return { shortCircuit: true } or call nextLoad",
+          );
+        }
+        return r;
+      });
+    }
     if (!nextCalled && !result?.shortCircuit) {
       throw new TypeError(
         "load hook must return { shortCircuit: true } or call nextLoad",
@@ -979,6 +1007,7 @@ function resolveExports(
     name,
     expansion,
     parentPath ?? "",
+    hookResolveConditions,
   ) ?? false;
 }
 
@@ -1561,10 +1590,42 @@ Module.prototype.load = function (filename) {
       } finally {
         insideLoadHook = false;
       }
+      // When shortCircuit is set, validate source type strictly
+      if (result != null && result.shortCircuit && result.source != null) {
+        const src = result.source;
+        if (
+          typeof src !== "string" &&
+          !ArrayBuffer.isView(src) &&
+          !(src instanceof ArrayBuffer)
+        ) {
+          const err = new TypeError(
+            `Expected a string, an ArrayBuffer, or a TypedArray to be returned for the "source" from the "load" hook but got ${
+              src === null ? "null" : `type ${typeof src}`
+            }.`,
+          );
+          err.code = "ERR_INVALID_RETURN_PROPERTY_VALUE";
+          throw err;
+        }
+      }
+      // When shortCircuit is set with null/undefined source, error
+      // unless the format is "builtin" (builtins legitimately have no source)
+      if (
+        result != null && result.shortCircuit &&
+        result.format !== "builtin" &&
+        (result.source === null || result.source === undefined)
+      ) {
+        const err = new TypeError(
+          `Expected a string, an ArrayBuffer, or a TypedArray to be returned for the "source" from the "load" hook but got ${
+            result.source === null ? "null" : "type undefined"
+          }.`,
+        );
+        err.code = "ERR_INVALID_RETURN_PROPERTY_VALUE";
+        throw err;
+      }
       if (result != null && result.source != null) {
         const format = result.format;
         if (format === "module") {
-          loadESMFromCJS(this, this.filename, result.source);
+          loadESMFromCJSWithHookSource(this, this.filename, result.source);
         } else if (format === "commonjs") {
           this._compile(
             typeof result.source === "string"
@@ -1587,11 +1648,25 @@ Module.prototype.load = function (filename) {
             throw err;
           }
         } else {
-          // Default to CJS when format is unspecified
+          // Default: try CJS first, fall back to ESM if the source
+          // contains ESM syntax. We handle ESM fallback here (rather
+          // than in _compile) so we can use op_import_sync_with_source
+          // which bypasses the module cache for hook-provided source.
           const source = typeof result.source === "string"
             ? result.source
             : (utf8Decoder ??= new TextDecoder()).decode(result.source);
-          this._compile(source, this.filename);
+          try {
+            this._compile(source, this.filename, "commonjs");
+          } catch (err) {
+            if (
+              err instanceof SyntaxError &&
+              op_require_can_parse_as_esm(source)
+            ) {
+              loadESMFromCJSWithHookSource(this, this.filename, source);
+            } else {
+              throw err;
+            }
+          }
         }
         this.loaded = true;
         return;
@@ -1808,11 +1883,30 @@ function loadCjs(module, filename) {
   module._compile(content, filename, "commonjs");
 }
 
+// Like loadESMFromCJS but uses op_import_sync_with_source to compile
+// source directly. Used for hook-provided source that must bypass the
+// module cache while preserving the correct import.meta.url.
+function loadESMFromCJSWithHookSource(module, filename, code) {
+  const specifier = url.pathToFileURL(filename).toString();
+  const src = typeof code === "string"
+    ? code
+    : (utf8Decoder ??= new TextDecoder()).decode(code);
+  const namespace = op_import_sync_with_source(specifier, src);
+  if (ObjectHasOwn(namespace, "module.exports")) {
+    module.exports = namespace["module.exports"];
+  } else {
+    module.exports = namespace;
+  }
+}
+
 function loadESMFromCJS(module, filename, code) {
-  const namespace = op_import_sync(
-    url.pathToFileURL(filename).toString(),
-    code,
-  );
+  const specifier = url.pathToFileURL(filename).toString();
+  const codeArg = code !== undefined
+    ? (typeof code === "string"
+      ? code
+      : (utf8Decoder ??= new TextDecoder()).decode(code))
+    : undefined;
+  const namespace = op_import_sync(specifier, codeArg);
   if (ObjectHasOwn(namespace, "module.exports")) {
     module.exports = namespace["module.exports"];
   } else {
