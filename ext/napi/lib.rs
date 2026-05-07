@@ -1,8 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(non_camel_case_types)]
-#![allow(non_upper_case_globals)]
-#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(non_camel_case_types, reason = "matches Node-API naming conventions")]
+#![allow(
+  non_upper_case_globals,
+  reason = "matches Node-API naming conventions"
+)]
+#![allow(
+  clippy::undocumented_unsafe_blocks,
+  reason = "pervasive FFI unsafe blocks throughout NAPI implementation"
+)]
 #![deny(clippy::missing_safety_doc)]
 
 //! Symbols to be exported are now defined in this JSON file.
@@ -320,6 +326,14 @@ pub struct NapiState {
   /// Matches Node.js `finalizing_reflist` / `reflist` behavior.
   pub ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
   pub env_shared_ptrs: Vec<*mut EnvShared>,
+  /// Raw Env pointers for teardown of external string finalizers.
+  pub env_ptrs: Vec<*mut Env>,
+  /// Per-isolate V8 Private key for napi_wrap/napi_unwrap.
+  /// Node.js stores this per-isolate so that objects wrapped by one addon
+  /// can be unwrapped by another. Lazily initialized on first addon load.
+  pub napi_wrap: Option<v8::Global<v8::Private>>,
+  /// Per-isolate V8 Private key for type tags.
+  pub type_tag: Option<v8::Global<v8::Private>>,
 }
 
 // SAFETY: finalizer pointers in env_shared_ptrs are only accessed during Drop
@@ -328,6 +342,20 @@ unsafe impl Send for NapiState {}
 
 impl Drop for NapiState {
   fn drop(&mut self) {
+    // Drain external string finalizers from all tracked Envs and remove
+    // their entries from the global EXTERNAL_STRING_ENVS map. This
+    // prevents stale Env pointer dereferences if V8 GCs the external
+    // string after the Env is gone.
+    for env_ptr in &self.env_ptrs {
+      let env = unsafe { &mut **env_ptr };
+      let keys: Vec<usize> =
+        env.external_string_finalizers.keys().copied().collect();
+      for key in keys {
+        crate::js_native_api::remove_external_string_env_entry(key);
+      }
+      env.external_string_finalizers.clear();
+    }
+
     let hooks = {
       let h = self.env_cleanup_hooks.borrow_mut();
       h.clone()
@@ -432,6 +460,7 @@ pub struct Env {
   context: NonNull<v8::Context>,
   pub isolate_ptr: v8::UnsafeRawIsolatePtr,
   pub open_handle_scopes: usize,
+  pub open_callback_scopes: usize,
   pub shared: *mut EnvShared,
   pub async_work_sender: V8CrossThreadTaskSpawner,
   cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
@@ -442,19 +471,29 @@ pub struct Env {
   pub global: v8::Global<v8::Object>,
   pub create_buffer: v8::Global<v8::Function>,
   pub report_error: v8::Global<v8::Function>,
+  pub async_hooks_init: v8::Global<v8::Function>,
+  pub async_hooks_before: v8::Global<v8::Function>,
+  pub async_hooks_after: v8::Global<v8::Function>,
+  pub async_hooks_destroy: v8::Global<v8::Function>,
+  pub next_async_id: i64,
+  pub external_string_finalizers: HashMap<usize, (napi_finalize, *mut c_void)>,
 }
 
 unsafe impl Send for Env {}
 unsafe impl Sync for Env {}
 
 impl Env {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     isolate_ptr: v8::UnsafeRawIsolatePtr,
     context: v8::Global<v8::Context>,
     global: v8::Global<v8::Object>,
     create_buffer: v8::Global<v8::Function>,
     report_error: v8::Global<v8::Function>,
+    async_hooks_init: v8::Global<v8::Function>,
+    async_hooks_before: v8::Global<v8::Function>,
+    async_hooks_after: v8::Global<v8::Function>,
+    async_hooks_destroy: v8::Global<v8::Function>,
     sender: V8CrossThreadTaskSpawner,
     cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
     ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
@@ -466,8 +505,14 @@ impl Env {
       global,
       create_buffer,
       report_error,
+      async_hooks_init,
+      async_hooks_before,
+      async_hooks_after,
+      async_hooks_destroy,
+      next_async_id: 1,
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
+      open_callback_scopes: 0,
       async_work_sender: sender,
       cleanup_hooks,
       ref_tracker,
@@ -479,6 +524,7 @@ impl Env {
         error_code: Cell::new(napi_ok),
       },
       last_exception: None,
+      external_string_finalizers: HashMap::new(),
     }
   }
 
@@ -589,6 +635,9 @@ deno_core::extension!(deno_napi,
       env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
       ref_tracker: Rc::new(RefCell::new(vec![])),
       env_shared_ptrs: vec![],
+      env_ptrs: vec![],
+      napi_wrap: None,
+      type_tag: None,
     });
     if let Some(loader) = options.deno_rt_native_addon_loader {
       state.put(loader);
@@ -615,6 +664,10 @@ fn op_napi_open<'scope>(
   global: v8::Local<'scope, v8::Object>,
   create_buffer: v8::Local<'scope, v8::Function>,
   report_error: v8::Local<'scope, v8::Function>,
+  async_hooks_init: v8::Local<'scope, v8::Function>,
+  async_hooks_before: v8::Local<'scope, v8::Function>,
+  async_hooks_after: v8::Local<'scope, v8::Function>,
+  async_hooks_destroy: v8::Local<'scope, v8::Function>,
 ) -> Result<v8::Local<'scope, v8::Value>, NApiError> {
   // We must limit the OpState borrow because this function can trigger a
   // re-borrow through the NAPI module.
@@ -641,14 +694,38 @@ fn op_napi_open<'scope>(
     )
   };
 
-  let napi_wrap_name = v8::String::new(scope, "napi_wrap").unwrap();
-  let napi_wrap = v8::Private::new(scope, Some(napi_wrap_name));
-  let napi_wrap = v8::Global::new(scope, napi_wrap);
+  // Use per-isolate Private keys (like Node.js) so that objects wrapped by one
+  // addon can be unwrapped by another. Lazily create on first addon load.
+  let (napi_wrap, type_tag) = {
+    let mut op_state_mut = op_state.borrow_mut();
+    let napi_state = op_state_mut.borrow_mut::<NapiState>();
+    let napi_wrap = match &napi_state.napi_wrap {
+      Some(existing) => existing.clone(),
+      None => {
+        let name = v8::String::new(scope, "napi_wrap").unwrap();
+        let key = v8::Private::new(scope, Some(name));
+        let global = v8::Global::new(scope, key);
+        napi_state.napi_wrap = Some(global.clone());
+        global
+      }
+    };
+    let type_tag = match &napi_state.type_tag {
+      Some(existing) => existing.clone(),
+      None => {
+        let name = v8::String::new(scope, "type_tag").unwrap();
+        let key = v8::Private::new(scope, Some(name));
+        let global = v8::Global::new(scope, key);
+        napi_state.type_tag = Some(global.clone());
+        global
+      }
+    };
+    (napi_wrap, type_tag)
+  };
 
-  let type_tag_name = v8::String::new(scope, "type_tag").unwrap();
-  let type_tag = v8::Private::new(scope, Some(type_tag_name));
-  let type_tag = v8::Global::new(scope, type_tag);
-
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "napi requires file path URL conversion"
+  )]
   let url_filename =
     Url::from_file_path(&path).map_err(|_| NApiError::InvalidPath)?;
   let env_shared =
@@ -661,6 +738,10 @@ fn op_napi_open<'scope>(
     v8::Global::new(scope, global),
     v8::Global::new(scope, create_buffer),
     v8::Global::new(scope, report_error),
+    v8::Global::new(scope, async_hooks_init),
+    v8::Global::new(scope, async_hooks_before),
+    v8::Global::new(scope, async_hooks_after),
+    v8::Global::new(scope, async_hooks_destroy),
     async_work_sender,
     cleanup_hooks,
     ref_tracker,
@@ -670,12 +751,16 @@ fn op_napi_open<'scope>(
   // Track the EnvShared pointer so we can call instance data finalize
   // callbacks when the runtime exits. Each op_napi_open call creates a
   // fresh EnvShared, so entries are always unique.
-  op_state
-    .borrow_mut()
-    .borrow_mut::<NapiState>()
-    .env_shared_ptrs
-    .push(env.shared);
-  let env_ptr = Box::into_raw(Box::new(env)) as _;
+  let env_ptr = Box::into_raw(Box::new(env));
+  {
+    let mut state = op_state.borrow_mut();
+    let napi_state = state.borrow_mut::<NapiState>();
+    napi_state
+      .env_shared_ptrs
+      .push(unsafe { (*env_ptr).shared });
+    napi_state.env_ptrs.push(env_ptr);
+  }
+  let env_ptr = env_ptr as _;
 
   #[cfg(unix)]
   let flags = RTLD_LAZY;
@@ -746,7 +831,7 @@ fn op_napi_open<'scope>(
   Ok(exports)
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "cargo build script output")]
 pub fn print_linker_flags(name: &str) {
   let symbols_path =
     include_str!(concat!(env!("OUT_DIR"), "/napi_symbol_path.txt"));

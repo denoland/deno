@@ -79,7 +79,7 @@ pub struct CreateCliFileFetcherOptions {
   pub progress_bar: Option<ProgressBar>,
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "construction")]
 pub fn create_cli_file_fetcher(
   blob_store: Arc<BlobStore>,
   http_cache: GlobalOrLocalHttpCache<CliSys>,

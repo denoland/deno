@@ -1,32 +1,37 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Array,
+  FunctionPrototypeBind,
   MathMin,
   NumberPOSITIVE_INFINITY,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
+  PromisePrototypeThen,
   Promise,
   ReflectApply,
   StringPrototypeToString,
   Symbol,
 } = primordials;
-import {
+const {
   ERR_INVALID_ARG_TYPE,
+  ERR_METHOD_NOT_IMPLEMENTED,
   ERR_OUT_OF_RANGE,
-} from "ext:deno_node/internal/errors.ts";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
-import { deprecate } from "node:util";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
+const {
   validateFunction,
   validateInteger,
-} from "ext:deno_node/internal/validators.mjs";
-import { errorOrDestroy } from "ext:deno_node/internal/streams/destroy.js";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { errorOrDestroy } = core.loadExtScript(
+  "ext:deno_node/internal/streams/destroy.js",
+);
 import * as fs from "node:fs";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import {
   copyObject,
   getOptions,
@@ -35,11 +40,13 @@ import {
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { finished, Readable, Writable } from "node:stream";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+import { FileHandle, kRef, kUnref } from "ext:deno_node/internal/fs/handle.ts";
+
 const kIoDone = Symbol("kIoDone");
 const kIsPerformingIO = Symbol("kIsPerformingIO");
-
 const kFs = Symbol("kFs");
+const kHandle = Symbol("kHandle");
 
 function _construct(callback) {
   // deno-lint-ignore no-this-alias
@@ -87,6 +94,46 @@ function _construct(callback) {
     );
   }
 }
+/**
+ * @param {import("node:fs/promises").FileHandle} handle
+ */
+const FileHandleOperations = (handle) => {
+  return {
+    open: (_path, _flags, _mode, _cb) => {
+      throw new ERR_METHOD_NOT_IMPLEMENTED("open()");
+    },
+    close: (_fd, cb) => {
+      handle[kUnref]();
+      PromisePrototypeThen(handle.close(), () => cb(), cb);
+    },
+    fsync: (_fd, cb) => {
+      PromisePrototypeThen(handle.sync(), () => cb(), cb);
+    },
+    read: (_fd, buf, offset, length, pos, cb) => {
+      PromisePrototypeThen(
+        handle.read(buf, offset, length, pos),
+        // deno-lint-ignore prefer-primordials
+        (r) => cb(null, r.bytesRead, r.buffer),
+        (err) => cb(err, 0, buf),
+      );
+    },
+    write: (_fd, buf, offset, length, pos, cb) => {
+      PromisePrototypeThen(
+        handle.write(buf, offset, length, pos),
+        // deno-lint-ignore prefer-primordials
+        (r) => cb(null, r.bytesWritten, r.buffer),
+        (err) => cb(err, 0, buf),
+      );
+    },
+    writev: (_fd, buffers, pos, cb) => {
+      PromisePrototypeThen(
+        handle.writev(buffers, pos),
+        (r) => cb(null, r.bytesWritten, r.buffers),
+        (err) => cb(err, 0, buffers),
+      );
+    },
+  };
+};
 
 function close(stream, err, cb) {
   if (!stream.fd) {
@@ -99,23 +146,35 @@ function close(stream, err, cb) {
   }
 }
 
-// TODO(bartlomieju): looks like this impl is completely out of sync with Node.js...
 function importFd(stream, options) {
   if (typeof options.fd === "number") {
     // When fd is a raw descriptor, we must keep our fingers crossed
     // that the descriptor won't get closed, or worse, replaced with
     // another one
     // https://github.com/nodejs/node/issues/35862
-    if (ObjectPrototypeIsPrototypeOf(ReadStream.prototype, stream)) {
-      stream[kFs] = options.fs || fs;
-    }
-    if (ObjectPrototypeIsPrototypeOf(WriteStream.prototype, stream)) {
-      stream[kFs] = options.fs || fs;
-    }
+    stream[kFs] = options.fs || fs;
     return options.fd;
+  } else if (
+    typeof options.fd === "object" &&
+    ObjectPrototypeIsPrototypeOf(FileHandle.prototype, options.fd)
+  ) {
+    // When fd is a FileHandle we can listen for 'close' events
+    if (options.fs) {
+      // FileHandle is not supported with custom fs operations
+      throw new ERR_METHOD_NOT_IMPLEMENTED("FileHandle with fs");
+    }
+    stream[kHandle] = options.fd;
+    stream[kFs] = FileHandleOperations(stream[kHandle]);
+    stream[kHandle][kRef]();
+    options.fd.on("close", FunctionPrototypeBind(stream.close, stream));
+    return options.fd.fd;
   }
 
-  throw new ERR_INVALID_ARG_TYPE("options.fd", ["number"], options.fd);
+  throw new ERR_INVALID_ARG_TYPE(
+    "options.fd",
+    ["number", "FileHandle"],
+    options.fd,
+  );
 }
 
 export function ReadStream(path, options) {

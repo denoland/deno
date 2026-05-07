@@ -53,11 +53,11 @@ pub enum WorkerThreadsFilenameError {
   #[error("Relative path entries must start with '.' or '..'")]
   InvalidRelativeUrl,
   #[class(generic)]
-  #[error("URL from Path-String")]
-  UrlFromPathString,
+  #[error(transparent)]
+  UrlFromPathString(#[from] deno_path_util::PathToUrlError),
   #[class(generic)]
-  #[error("URL to Path-String")]
-  UrlToPathString,
+  #[error(transparent)]
+  UrlToPathString(#[from] deno_path_util::UrlToFilePathError),
   #[class(generic)]
   #[error("URL to Path")]
   UrlToPath,
@@ -101,15 +101,12 @@ pub fn op_worker_threads_filename<TSys: ExtNodeSys + 'static>(
       .map_err(WorkerThreadsFilenameError::Permission)?;
     let sys = state.borrow::<TSys>();
     let canonicalized_path = match sys.fs_canonicalize(&path) {
-      Ok(p) => deno_path_util::strip_unc_prefix(p),
-      Err(_) => path.to_path_buf(),
+      Ok(p) => Cow::Owned(deno_path_util::strip_unc_prefix(p)),
+      Err(_) => path,
     };
-    Url::from_file_path(canonicalized_path)
-      .map_err(|_| WorkerThreadsFilenameError::UrlFromPathString)?
+    deno_path_util::url_from_file_path(&canonicalized_path)?
   };
-  let url_path = url
-    .to_file_path()
-    .map_err(|_| WorkerThreadsFilenameError::UrlToPathString)?;
+  let url_path = deno_path_util::url_to_file_path(&url)?;
   let _url_path = ensure_read_permission(state, Cow::Owned(url_path))
     .map_err(WorkerThreadsFilenameError::Permission)?;
   Ok(Some(url.into()))

@@ -1,0 +1,5 @@
+{
+  "name": "@test/dts-gen",
+  "version": "1.0.0",
+  "exports": "./mod.ts"
+}

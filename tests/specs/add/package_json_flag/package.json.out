@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@denotest/add": "npm:@jsr/denotest__add@^1.0.0",
+    "@denotest/esm-basic": "^1.0.0"
+  }
+}

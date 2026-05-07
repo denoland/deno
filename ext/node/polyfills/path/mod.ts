@@ -2,7 +2,8 @@
 // Ported mostly from https://github.com/browserify/path-browserify/
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { isWindows } from "ext:deno_node/_util/os.ts";
+import { core } from "ext:core/mod.js";
+const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 import _win32 from "ext:deno_node/path/_win32.ts";
 import _posix from "ext:deno_node/path/_posix.ts";
 
@@ -40,5 +41,6 @@ export const {
   matchesGlob,
 } = path;
 export default path;
-export * from "ext:deno_node/path/common.ts";
-export * from "ext:deno_node/path/_interface.ts";
+const { common } = core.loadExtScript("ext:deno_node/path/common.ts");
+export { common };
+// _interface.ts only exports TypeScript types, no runtime re-export needed

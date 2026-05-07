@@ -1,26 +1,34 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { destroy } from "ext:deno_node/internal/streams/destroy.js";
-import finished from "ext:deno_node/internal/streams/end-of-stream.js";
-import {
+import { core } from "ext:core/mod.js";
+const { destroy, destroyer } = core.loadExtScript(
+  "ext:deno_node/internal/streams/destroy.js",
+);
+const finished =
+  core.loadExtScript("ext:deno_node/internal/streams/end-of-stream.js").default;
+const {
   isDestroyed,
   isReadable,
   isReadableEnded,
   isWritable,
   isWritableEnded,
-} from "ext:deno_node/internal/streams/utils.js";
+} = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 import { ReadableStream, WritableStream } from "node:stream/web";
-import {
+const {
   validateBoolean,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+  validateOneOf,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   kEmptyObject,
   normalizeEncoding,
-} from "ext:deno_node/internal/util.mjs";
-import { AbortError } from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const {
+  AbortError,
+  ERR_INVALID_ARG_TYPE,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import process from "node:process";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import { Duplex, Readable, Writable } from "node:stream";
 
 function isWritableStream(object) {
@@ -470,6 +478,10 @@ export function newReadableStreamFromStreamReadable(
       streamReadable,
     );
   }
+  validateObject(options, "options");
+  if (options.type !== undefined) {
+    validateOneOf(options.type, "options.type", ["bytes", undefined]);
+  }
 
   if (isDestroyed(streamReadable) || !isReadable(streamReadable)) {
     const readable = new ReadableStream();
@@ -539,7 +551,8 @@ export function newReadableStreamFromStreamReadable(
 
   streamReadable.on("data", onData);
 
-  return new ReadableStream({
+  const isByteStream = options?.type === "bytes";
+  const underlyingSource = {
     start(c) {
       controller = c;
     },
@@ -550,9 +563,13 @@ export function newReadableStreamFromStreamReadable(
 
     cancel(reason) {
       isCanceled = true;
-      destroy.call(streamReadable, reason);
+      destroyer(streamReadable, reason);
     },
-  }, strategy);
+  };
+  if (isByteStream) {
+    underlyingSource.type = "bytes";
+  }
+  return new ReadableStream(underlyingSource, strategy);
 }
 
 export function newWritableStreamFromStreamWritable(streamWritable) {
@@ -560,7 +577,11 @@ export function newWritableStreamFromStreamWritable(streamWritable) {
   // here because it will return false if streamWritable is a Duplex
   // whose writable option is false. For a Duplex that is not writable,
   // we want it to pass this check but return a closed WritableStream.
-  if (typeof streamWritable?._writableState !== "object") {
+  // We check if the given stream is a stream.Writable or http.OutgoingMessage
+  const checkIfWritableOrOutgoingMessage = streamWritable &&
+    typeof streamWritable?.write === "function" &&
+    typeof streamWritable?.on === "function";
+  if (!checkIfWritableOrOutgoingMessage) {
     throw new ERR_INVALID_ARG_TYPE(
       "streamWritable",
       "stream.Writable",
@@ -657,7 +678,10 @@ export function newWritableStreamFromStreamWritable(streamWritable) {
   }, strategy);
 }
 
-export function newReadableWritablePairFromDuplex(duplex) {
+export function newReadableWritablePairFromDuplex(
+  duplex,
+  options = kEmptyObject,
+) {
   // Not using the internal/streams/utils isWritableNodeStream and
   // isReadableNodestream utilities here because they will return false
   // if the duplex was created with writable or readable options set to
@@ -687,8 +711,11 @@ export function newReadableWritablePairFromDuplex(duplex) {
     writable.close();
   }
 
+  const readableType = options?.readableType || options?.type;
+  const readableOptions = readableType ? { type: readableType } : kEmptyObject;
+
   const readable = isReadable(duplex)
-    ? newReadableStreamFromStreamReadable(duplex)
+    ? newReadableStreamFromStreamReadable(duplex, readableOptions)
     : new ReadableStream();
 
   if (!isReadable(duplex)) {

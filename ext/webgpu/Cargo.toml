@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_webgpu"
-version = "0.205.0"
+version = "0.214.0"
 authors = ["the Deno authors"]
 edition.workspace = true
 license = "MIT"
@@ -28,6 +28,7 @@ thiserror.workspace = true
 indexmap.workspace = true
 serde_json.workspace = true
 deno_unsync.workspace = true
+deno_image.workspace = true
 
 # Apple Platforms
 #

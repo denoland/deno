@@ -1,0 +1,6 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/22083
+  // npm packages with file: dependencies should not cause resolution errors.
+  "args": "run main.ts",
+  "output": "main.out"
+}

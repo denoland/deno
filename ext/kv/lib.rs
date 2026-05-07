@@ -76,7 +76,7 @@ deno_core::extension!(deno_kv,
     op_kv_watch<DBH>,
     op_kv_watch_next,
   ],
-  esm = [ "01_db.ts" ],
+  lazy_loaded_js = [ "01_db.ts" ],
   options = {
     handler: DBH,
     config: KvConfig,

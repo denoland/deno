@@ -27,27 +27,28 @@
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
-
-import {
+(function () {
+const { core } = globalThis.__bootstrap;
+const {
   op_node_get_own_non_index_properties,
   op_node_guess_handle_type,
   op_node_parse_env,
   op_node_view_has_buffer,
-} from "ext:core/ops";
+} = core.ops;
 
 const handleTypes = ["TCP", "TTY", "UDP", "FILE", "PIPE", "UNKNOWN"];
-export function guessHandleType(fd: number): string {
+function guessHandleType(fd: number): string {
   const type = op_node_guess_handle_type(fd);
   return handleTypes[type];
 }
 
-export const ALL_PROPERTIES = 0;
-export const ONLY_WRITABLE = 1;
-export const ONLY_ENUMERABLE = 2;
-export const ONLY_CONFIGURABLE = 4;
-export const ONLY_ENUM_WRITABLE = 6;
-export const SKIP_STRINGS = 8;
-export const SKIP_SYMBOLS = 16;
+const ALL_PROPERTIES = 0;
+const ONLY_WRITABLE = 1;
+const ONLY_ENUMERABLE = 2;
+const ONLY_CONFIGURABLE = 4;
+const ONLY_ENUM_WRITABLE = 6;
+const SKIP_STRINGS = 8;
+const SKIP_SYMBOLS = 16;
 
 /**
  * Efficiently determine whether the provided property key is numeric
@@ -60,7 +61,7 @@ export const SKIP_SYMBOLS = 16;
  * Results are cached.
  */
 const isNumericLookup: Record<string, boolean> = {};
-export function isArrayIndex(value: unknown): value is number | string {
+function isArrayIndex(value: unknown): value is number | string {
   switch (typeof value) {
     case "number":
       return value >= 0 && (value | 0) === value;
@@ -91,28 +92,28 @@ export function isArrayIndex(value: unknown): value is number | string {
   }
 }
 
-export function getOwnNonIndexProperties(
+function getOwnNonIndexProperties(
   obj: object,
   filter: number,
 ): (string | symbol)[] {
   return op_node_get_own_non_index_properties(obj, filter);
 }
 
-export function arrayBufferViewHasBuffer(
+function arrayBufferViewHasBuffer(
   view: ArrayBufferView,
 ): boolean {
   return op_node_view_has_buffer(view);
 }
 
-export const parseEnv = op_node_parse_env as (
+const parseEnv = op_node_parse_env as (
   env: string,
 ) => Record<string, string>;
 
-export const untransferableSymbol = Symbol.for(
+const untransferableSymbol = Symbol.for(
   "nodejs.worker_threads.untransferable",
 );
 
-export default {
+const _defaultExport = {
   guessHandleType,
   isArrayIndex,
   getOwnNonIndexProperties,
@@ -120,3 +121,21 @@ export default {
   parseEnv,
   untransferableSymbol,
 };
+
+return {
+  guessHandleType,
+  isArrayIndex,
+  getOwnNonIndexProperties,
+  arrayBufferViewHasBuffer,
+  ALL_PROPERTIES,
+  ONLY_WRITABLE,
+  ONLY_ENUMERABLE,
+  ONLY_CONFIGURABLE,
+  ONLY_ENUM_WRITABLE,
+  SKIP_STRINGS,
+  SKIP_SYMBOLS,
+  parseEnv,
+  untransferableSymbol,
+  default: _defaultExport,
+};
+})();

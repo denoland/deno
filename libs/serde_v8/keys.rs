@@ -6,7 +6,7 @@ use std::collections::HashMap;
 // to minimize allocs and speed up decoding/encoding `v8::Object`s
 // TODO: experiment with in from_v8/to_v8
 // TODO: this is unused
-#[allow(dead_code)]
+#[allow(dead_code, reason = "experiment")]
 pub struct KeyCache(HashMap<&'static str, v8::Global<v8::String>>);
 
 // creates an optimized v8::String for a struct field

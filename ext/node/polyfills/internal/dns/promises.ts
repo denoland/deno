@@ -23,14 +23,15 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import {
+import { core } from "ext:core/mod.js";
+const {
   validateBoolean,
   validateNumber,
   validateOneOf,
   validatePort,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import { isIP } from "ext:deno_node/internal/net.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
 import {
   dnsOrderToNumber,
   emitInvalidHostnameWarning,
@@ -42,6 +43,8 @@ import {
   validateHints,
   validDnsOrders,
 } from "ext:deno_node/internal/dns/utils.ts";
+
+export { getDefaultDnsOrder as getDefaultResultOrder };
 import type {
   LookupAddress,
   LookupAllOptions,
@@ -51,20 +54,22 @@ import type {
   ResolveOptions,
   ResolveWithTtlOptions,
 } from "ext:deno_node/internal/dns/utils.ts";
-import {
+const {
   dnsException,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_MISSING_ARGS,
   handleDnsError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import cares, {
   type ChannelWrapQuery,
   GetAddrInfoReqWrap,
   GetNameInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { toASCII } from "node:punycode";
+const { domainToASCII } = core.loadExtScript(
+  "ext:deno_node/internal/idna.ts",
+);
 
 function onlookup(
   this: GetAddrInfoReqWrap,
@@ -139,7 +144,7 @@ function createLookupPromise(
 
     const err = cares.getaddrinfo(
       req,
-      toASCII(hostname),
+      domainToASCII(hostname),
       family,
       hints,
       dnsOrderToNumber(dnsOrder),
@@ -318,7 +323,7 @@ function createResolverPromise(
     req.reject = reject;
     req.ttl = ttl;
 
-    const err = resolver._handle[bindingName](req, toASCII(hostname));
+    const err = resolver._handle[bindingName](req, domainToASCII(hostname));
 
     if (err) {
       reject(dnsException(err, bindingName, hostname));
@@ -574,6 +579,7 @@ export default {
   lookup,
   lookupService,
   Resolver,
+  getDefaultResultOrder: getDefaultDnsOrder,
   getServers,
   resolveAny,
   resolve4,

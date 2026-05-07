@@ -1,6 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::print_stdout, clippy::print_stderr, clippy::unused_async)]
+#![allow(clippy::print_stdout, reason = "test code")]
+#![allow(clippy::print_stderr, reason = "test code")]
+#![allow(clippy::unused_async, reason = "test code")]
 
 use std::cell::RefCell;
 use std::future::Future;
@@ -60,7 +62,7 @@ async fn test_async_opstate_borrow() {
 
 #[tokio::test]
 async fn test_sync_op_serialize_object_with_numbers_as_keys() {
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(clippy::unnecessary_wraps, reason = "test code")]
   #[op2]
   fn op_sync_serialize_object_with_numbers_as_keys(
     #[serde] value: serde_json::Value,
@@ -146,7 +148,7 @@ async fn test_async_op_serialize_object_with_numbers_as_keys() {
 
 #[test]
 fn test_op_return_serde_v8_error() {
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(clippy::unnecessary_wraps, reason = "test code")]
   #[op2]
   #[serde]
   fn op_err() -> Result<std::collections::BTreeMap<u64, u64>, JsErrorBox> {
@@ -170,7 +172,7 @@ fn test_op_return_serde_v8_error() {
 
 #[test]
 fn test_op_high_arity() {
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(clippy::unnecessary_wraps, reason = "test code")]
   #[op2(fast)]
   #[number]
   fn op_add_4(
@@ -196,7 +198,7 @@ fn test_op_high_arity() {
 
 #[test]
 fn test_op_disabled() {
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(clippy::unnecessary_wraps, reason = "test code")]
   #[op2(fast)]
   #[number]
   fn op_foo() -> Result<i64, JsErrorBox> {
@@ -221,13 +223,13 @@ fn test_op_disabled() {
 
 #[test]
 fn test_op_detached_buffer() {
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(clippy::unnecessary_wraps, reason = "test code")]
   #[op2]
   fn op_sum_take(#[buffer(detach)] b: JsBuffer) -> Result<u32, JsErrorBox> {
     Ok(b.as_ref().iter().clone().map(|x| *x as u32).sum())
   }
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(clippy::unnecessary_wraps, reason = "test code")]
   #[op2]
   #[buffer]
   fn op_boomerang(
@@ -304,7 +306,7 @@ fn duplicate_op_names() {
   mod a {
     use super::*;
 
-    #[allow(clippy::unnecessary_wraps)]
+    #[allow(clippy::unnecessary_wraps, reason = "test code")]
     #[op2]
     #[string]
     pub fn op_test() -> Result<String, JsErrorBox> {
@@ -314,7 +316,7 @@ fn duplicate_op_names() {
 
   #[op2]
   #[string]
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(clippy::unnecessary_wraps, reason = "test code")]
   pub fn op_test() -> Result<String, JsErrorBox> {
     Ok(String::from("Test"))
   }
@@ -328,7 +330,7 @@ fn duplicate_op_names() {
 
 #[test]
 fn ops_in_js_have_proper_names() {
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(clippy::unnecessary_wraps, reason = "test code")]
   #[op2]
   #[string]
   fn op_test_sync() -> Result<String, JsErrorBox> {
@@ -545,7 +547,7 @@ pub async fn op_async() {
 }
 
 #[op2]
-#[allow(unreachable_code)]
+#[allow(unreachable_code, reason = "tricks to not bother typing stuff")]
 pub fn op_async_impl_future_error()
 -> Result<impl Future<Output = ()>, JsErrorBox> {
   return Err(JsErrorBox::generic("dead"));
@@ -663,7 +665,7 @@ pub async fn test_op_metrics() {
     "#,
   )
   .unwrap();
-  #[allow(deprecated)]
+  #[allow(deprecated, reason = "test code")]
   runtime
     .resolve_value(promise)
     .await

@@ -1,7 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
-#[allow(clippy::disallowed_types)]
+#[allow(
+  clippy::disallowed_types,
+  reason = "deterministic ordering not needed for GPU feature sets"
+)]
 use std::collections::HashSet;
 
 use deno_core::WebIDL;
@@ -522,7 +525,10 @@ pub fn feature_names_to_features(
   features
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(
+  clippy::disallowed_types,
+  reason = "deterministic ordering not needed for GPU feature sets"
+)]
 pub fn features_to_feature_names(
   features: wgpu_types::Features,
 ) -> HashSet<GPUFeatureName> {

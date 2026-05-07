@@ -4,6 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
 import { kAesKeyLengths } from "ext:deno_node/internal/crypto/util.ts";
 import {
@@ -11,7 +12,7 @@ import {
   PublicKeyObject,
   SecretKeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
-import {
+const {
   ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS,
   ERR_CRYPTO_INVALID_DIGEST,
   ERR_CRYPTO_UNKNOWN_CIPHER,
@@ -19,10 +20,10 @@ import {
   ERR_INCOMPATIBLE_OPTION_PAIR,
   ERR_INVALID_ARG_VALUE,
   ERR_MISSING_OPTION,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import { getCiphers } from "ext:deno_node/internal/crypto/util.ts";
 import { getHashes } from "ext:deno_node/internal/crypto/hash.ts";
-import {
+const {
   validateBuffer,
   validateFunction,
   validateInt32,
@@ -31,11 +32,11 @@ import {
   validateOneOf,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import { Buffer } from "node:buffer";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 import process from "node:process";
-import { promisify } from "node:util";
+const { promisify } = core.loadExtScript("ext:deno_node/util.ts");
 
 import {
   op_node_generate_dh_group_key,
@@ -1093,7 +1094,7 @@ function createJob(mode, type, options) {
         return op_node_generate_rsa_pss_key(
           modulusLength,
           publicExponent,
-          hashAlgorithm,
+          hashAlgorithm ?? hash,
           mgf1HashAlgorithm ?? mgf1Hash,
           saltLength,
         );
@@ -1101,7 +1102,7 @@ function createJob(mode, type, options) {
         return op_node_generate_rsa_pss_key_async(
           modulusLength,
           publicExponent,
-          hashAlgorithm,
+          hashAlgorithm ?? hash,
           mgf1HashAlgorithm ?? mgf1Hash,
           saltLength,
         );
@@ -1114,7 +1115,8 @@ function createJob(mode, type, options) {
 
       let { divisorLength } = options;
       if (divisorLength == null) {
-        divisorLength = 256;
+        // Match OpenSSL defaults based on modulus length (FIPS 186-4)
+        divisorLength = modulusLength <= 1024 ? 160 : 256;
       } else {
         validateInt32(divisorLength, "options.divisorLength", 0);
       }
@@ -1136,8 +1138,15 @@ function createJob(mode, type, options) {
       if (paramEncoding == null || paramEncoding === "named") {
         // pass.
       } else if (paramEncoding === "explicit") {
-        // TODO(@littledivy): Explicit param encoding is very rarely used, and not supported by the ring crate.
-        throw new TypeError("Explicit encoding is not supported");
+        // Explicit param encoding embeds full curve parameters instead of a
+        // named curve OID. The underlying crypto library only emits named-curve
+        // encoding, so fall back silently with a warning so callers that rely
+        // on byte-for-byte explicit encoding can detect the mismatch.
+        process.emitWarning(
+          'paramEncoding: "explicit" is not supported; ' +
+            "the generated key will use named-curve encoding instead.",
+          "Warning",
+        );
       } else {
         throw new ERR_INVALID_ARG_VALUE("options.paramEncoding", paramEncoding);
       }

@@ -220,36 +220,6 @@ export namespace core {
   /** Symbol key used for the refed state on Immediate/Timeout objects. */
   const kRefed: unique symbol;
 
-  /** Enqueue a user timer at the given depth, optionally repeating. User
-   * timers may generate call traces for sanitization, and may be clamped
-   * depending on the depth of nesting. */
-  function queueUserTimer(
-    depth: number,
-    repeat: boolean,
-    delay: number,
-    callback: () => void,
-  ): number;
-
-  /** Enqueue a system timer at the given depth, optionally repeating. System
-   * timers do not generate call traces, and are never clamped at any nesting
-   * depth. System timers are also associated with an op to provide contextual
-   * information. */
-  function queueSystemTimer(
-    associatedOp: Function | undefined,
-    repeat: boolean,
-    delay: number,
-    callback: () => void,
-  ): number;
-
-  /** Cancel a timer with a given ID. */
-  function cancelTimer(id: number): void;
-
-  /** Ref a timer with a given ID, blocking the runtime from exiting if the timer is still running. */
-  function refTimer(id: number): void;
-
-  /** Unref a timer with a given ID, allowing the runtime to exit if the timer is still running. */
-  function unrefTimer(id: number): void;
-
   /** Gets the current timer depth. */
   function getTimerDepth(): number;
 

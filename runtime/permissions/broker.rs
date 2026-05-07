@@ -81,6 +81,7 @@ impl PermissionBroker {
       v: 1,
       pid: *PID.get().unwrap(),
       id,
+      #[allow(clippy::disallowed_methods, reason = "TODO: use sys_traits")]
       datetime: chrono::Utc::now().to_rfc3339(),
       permission,
       value: stringified_value,

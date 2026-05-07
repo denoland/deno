@@ -18,7 +18,7 @@ pub struct DenoDirOptions {
 #[sys_traits::auto_impl]
 pub trait DenoDirSys: DiskCacheSys + ResolveDenoDirSys + Clone {}
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type DenoDirProviderRc<TSys> =
   deno_maybe_sync::MaybeArc<DenoDirProvider<TSys>>;
 
@@ -153,6 +153,10 @@ impl<TSys: DiskCacheSys> DenoDir<TSys> {
   /// Path used for the REPL history file.
   /// Can be overridden or disabled by setting `DENO_REPL_HISTORY` environment variable.
   pub fn repl_history_file_path(&self) -> Option<PathBuf> {
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "needs real environment variable"
+    )]
     if let Some(deno_repl_history) = env::var_os("DENO_REPL_HISTORY") {
       if deno_repl_history.is_empty() {
         None
