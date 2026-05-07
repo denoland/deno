@@ -2311,7 +2311,7 @@ impl NavigateToItem {
     }
 
     // The field `deprecated` is deprecated but SymbolInformation does not have
-    // a default, therefore we have to supply the deprecated deprecated
+    // a default, therefore we have to supply the deprecated
     // field. It is like a bad version of Inception.
     #[allow(deprecated, reason = "see comment")]
     Some(lsp::SymbolInformation {
@@ -2534,7 +2534,7 @@ impl NavigationTree {
         };
 
         // The field `deprecated` is deprecated but DocumentSymbol does not have
-        // a default, therefore we have to supply the deprecated deprecated
+        // a default, therefore we have to supply the deprecated
         // field. It is like a bad version of Inception.
         #[allow(deprecated, reason = "see comment")]
         document_symbols.push(lsp::DocumentSymbol {
@@ -6567,6 +6567,8 @@ mod tests {
       json!(diagnostics),
       json!([
         {
+          "category": 1,
+          "code": 2339,
           "start": {
             "line": 2,
             "character": 16,
@@ -6575,11 +6577,9 @@ mod tests {
             "line": 2,
             "character": 17
           },
-          "fileName": specifier,
-          "messageText": "Property \'a\' does not exist on type \'typeof import(\"https://deno.land/x/example/a\")\'.",
+          "messageText": "Property \'a\' does not exist on type \'typeof import(\"https://deno.land/x/example/a\", { with: { \"resolution-mode\": \"import\" } })\'.",
           "sourceLine": "          if (a.a === \"b\") {",
-          "code": 2339,
-          "category": 1,
+          "fileName": specifier,
         }
       ]),
     );

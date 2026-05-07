@@ -2,7 +2,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   isAnyArrayBuffer,
   isArrayBuffer,
@@ -49,13 +49,16 @@ const {
   TypeError,
 } = primordials;
 
-import { URL } from "ext:deno_web/00_url.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import { clearTimeout, setTimeout } from "ext:deno_web/02_timers.js";
-import {
+const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { HTTP_TOKEN_CODE_POINT_RE } = core.loadExtScript(
+  "ext:deno_web/00_infra.js",
+);
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+const {
   CloseEvent,
   defineEventHandler,
   dispatch,
@@ -64,15 +67,24 @@ import {
   EventTarget,
   MessageEvent,
   setIsTrusted,
-} from "ext:deno_web/02_event.js";
-import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
-import {
+} = core.loadExtScript("ext:deno_web/02_event.js");
+const { Blob, BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
+const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
+const {
   fillHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "ext:deno_fetch/20_headers.js";
-import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
+} = core.loadExtScript("ext:deno_fetch/20_headers.js");
+const { HttpClientPrototype } = core.loadExtScript(
+  "ext:deno_fetch/22_http_client.js",
+);
+
+const kNodeUndiciDispatcherOptions = SymbolFor(
+  "Deno.internal.node.undici.dispatcherOptions",
+);
+const kNodeUndiciGlobalDispatcher = SymbolFor(
+  "Deno.internal.node.undici.globalDispatcher",
+);
 
 webidl.converters["WebSocketInit"] = webidl.createDictionaryConverter(
   "WebSocketInit",
@@ -86,6 +98,7 @@ webidl.converters["WebSocketInit"] = webidl.createDictionaryConverter(
       converter: webidl.converters["sequence<DOMString>"],
     },
     { key: "client", converter: webidl.converters.any },
+    { key: "dispatcher", converter: webidl.converters.any },
   ],
 );
 
@@ -210,6 +223,8 @@ class WebSocket extends EventTarget {
     let protocols;
     let headers = null;
     let clientRid = null;
+    let caCerts = null;
+    let unsafelyIgnoreCertificateErrors = false;
 
     if (typeof initOrProtocols === "string") {
       protocols = [initOrProtocols];
@@ -240,6 +255,24 @@ class WebSocket extends EventTarget {
           );
         }
         clientRid = initOrProtocols.client?.[internalRidSymbol] ?? null;
+      }
+
+      let dispatcher = initOrProtocols.dispatcher;
+      if (
+        dispatcher === undefined &&
+        internals[kNodeUndiciGlobalDispatcher] !== undefined
+      ) {
+        dispatcher = internals[kNodeUndiciGlobalDispatcher];
+      }
+
+      if (clientRid === null && dispatcher !== undefined) {
+        clientRid = dispatcher?.client?.[internalRidSymbol] ?? null;
+        const dispatcherOptions = dispatcher?.[kNodeUndiciDispatcherOptions];
+        if (dispatcherOptions !== undefined) {
+          caCerts = dispatcherOptions.caCerts ?? null;
+          unsafelyIgnoreCertificateErrors =
+            dispatcherOptions.unsafelyIgnoreCertificateErrors === true;
+        }
       }
     }
 
@@ -285,6 +318,8 @@ class WebSocket extends EventTarget {
         ArrayPrototypeJoin(protocols, ", "),
         cancelRid,
         headers ? headerListFromHeaders(headers) : null,
+        caCerts,
+        unsafelyIgnoreCertificateErrors,
         clientRid,
       ),
       (create) => {
@@ -592,7 +627,9 @@ class WebSocket extends EventTarget {
           const reason = code == 1005 ? "" : op_ws_get_error(rid);
           const prevState = this[_readyState];
           this[_readyState] = CLOSED;
-          clearTimeout(this[_idleTimeoutTimeout]);
+          if (this[_idleTimeoutTimeout]) {
+            core.cancelTimer(this[_idleTimeoutTimeout]);
+          }
 
           if (prevState === OPEN) {
             try {
@@ -653,40 +690,54 @@ class WebSocket extends EventTarget {
 
   [_serverHandleIdleTimeout]() {
     if (this[_idleTimeoutDuration]) {
-      clearTimeout(this[_idleTimeoutTimeout]);
-      this[_idleTimeoutTimeout] = setTimeout(async () => {
-        if (this[_readyState] === OPEN) {
-          await PromisePrototypeCatch(op_ws_send_ping(this[_rid]), () => {});
-          this[_idleTimeoutTimeout] = setTimeout(async () => {
-            if (this[_readyState] === OPEN) {
-              this[_readyState] = CLOSING;
-              const reason = "No response from ping frame.";
-              await PromisePrototypeCatch(
-                op_ws_close(this[_rid], 1001, reason),
-                () => {},
-              );
-              this[_readyState] = CLOSED;
+      if (this[_idleTimeoutTimeout]) {
+        core.cancelTimer(this[_idleTimeoutTimeout]);
+      }
+      this[_idleTimeoutTimeout] = core.createSystemTimer(
+        async () => {
+          if (this[_readyState] === OPEN) {
+            await PromisePrototypeCatch(op_ws_send_ping(this[_rid]), () => {});
+            this[_idleTimeoutTimeout] = core.createSystemTimer(
+              async () => {
+                if (this[_readyState] === OPEN) {
+                  this[_readyState] = CLOSING;
+                  const reason = "No response from ping frame.";
+                  await PromisePrototypeCatch(
+                    op_ws_close(this[_rid], 1001, reason),
+                    () => {},
+                  );
+                  this[_readyState] = CLOSED;
 
-              const errEvent = new ErrorEvent("error", {
-                message: reason,
-              });
-              this.dispatchEvent(errEvent);
+                  const errEvent = new ErrorEvent("error", {
+                    message: reason,
+                  });
+                  this.dispatchEvent(errEvent);
 
-              const event = new CloseEvent("close", {
-                wasClean: false,
-                code: 1001,
-                reason,
-              });
-              this.dispatchEvent(event);
-              core.tryClose(this[_rid]);
-            } else {
-              clearTimeout(this[_idleTimeoutTimeout]);
+                  const event = new CloseEvent("close", {
+                    wasClean: false,
+                    code: 1001,
+                    reason,
+                  });
+                  this.dispatchEvent(event);
+                  core.tryClose(this[_rid]);
+                } else {
+                  if (this[_idleTimeoutTimeout]) {
+                    core.cancelTimer(this[_idleTimeoutTimeout]);
+                  }
+                }
+              },
+              (this[_idleTimeoutDuration] / 2) * 1000,
+              true,
+            );
+          } else {
+            if (this[_idleTimeoutTimeout]) {
+              core.cancelTimer(this[_idleTimeoutTimeout]);
             }
-          }, (this[_idleTimeoutDuration] / 2) * 1000);
-        } else {
-          clearTimeout(this[_idleTimeoutTimeout]);
-        }
-      }, (this[_idleTimeoutDuration] / 2) * 1000);
+          }
+        },
+        (this[_idleTimeoutDuration] / 2) * 1000,
+        true,
+      );
     }
   }
 

@@ -517,9 +517,12 @@ async fn setup_config_dir(
   let entrypoint_flags = InstallEntrypointsFlags {
     lockfile_only: false,
     entrypoints: vec![bin_name_and_url.module_url.to_string()],
+    production: false,
+    skip_types: false,
   };
   new_flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
     InstallFlagsLocal::Entrypoints(entrypoint_flags.clone()),
+    Default::default(),
   ));
 
   crate::tools::installer::install_from_entrypoints(
@@ -965,7 +968,7 @@ fn is_in_path(dir: &Path) -> bool {
 struct JsrLockfileFetcher<'a> {
   jsr_resolver: Arc<JsrFetchResolver>,
   file_fetcher: Arc<CliFileFetcher>,
-  npmrc: Arc<deno_npm::npm_rc::ResolvedNpmRc>,
+  npmrc: Arc<deno_npmrc::ResolvedNpmRc>,
   npm_package_info_provider: &'a dyn deno_lockfile::NpmPackageInfoProvider,
 }
 
@@ -1041,12 +1044,12 @@ impl JsrLockfileFetcher<'_> {
 /// Returns `Err(bad_url)` on the first tarball from an unknown registry.
 fn validate_npm_tarball_urls(
   content: &deno_lockfile::LockfileContent,
-  npmrc: &deno_npm::npm_rc::ResolvedNpmRc,
+  npmrc: &deno_npmrc::ResolvedNpmRc,
 ) -> Result<(), String> {
   let mut allowed_registries = npmrc.get_all_known_registries_urls();
   // always allow the default npm registry
   let default_npm_registry =
-    Url::parse(deno_npm::npm_rc::NPM_DEFAULT_REGISTRY).unwrap();
+    Url::parse(deno_npmrc::NPM_DEFAULT_REGISTRY).unwrap();
   if !allowed_registries.contains(&default_npm_registry) {
     allowed_registries.push(default_npm_registry);
   }
@@ -1980,10 +1983,10 @@ mod tests {
   fn create_npmrc_with_registries(
     default_url: &str,
     scope_urls: &[(&str, &str)],
-  ) -> Arc<deno_npm::npm_rc::ResolvedNpmRc> {
-    use deno_npm::npm_rc::RegistryConfig;
-    use deno_npm::npm_rc::RegistryConfigWithUrl;
-    use deno_npm::npm_rc::ResolvedNpmRc;
+  ) -> Arc<deno_npmrc::ResolvedNpmRc> {
+    use deno_npmrc::RegistryConfig;
+    use deno_npmrc::RegistryConfigWithUrl;
+    use deno_npmrc::ResolvedNpmRc;
 
     let mut scopes = std::collections::HashMap::new();
     for (scope, url) in scope_urls {

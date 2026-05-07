@@ -24,15 +24,16 @@
 // (https://github.com/nodejs/node/blob/ba06c5c509956dc413f91b755c1c93798bb700d4/src/string_decoder.cc)
 
 import { Buffer, constants } from "node:buffer";
-import { normalizeEncoding as castEncoding } from "ext:deno_node/internal/util.mjs";
-import {
+import { core, primordials } from "ext:core/mod.js";
+const { normalizeEncoding: castEncoding } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_THIS,
   ERR_UNKNOWN_ENCODING,
   NodeError,
-} from "ext:deno_node/internal/errors.ts";
-
-import { core, primordials } from "ext:core/mod.js";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   ArrayBufferIsView,
   ObjectDefineProperties,

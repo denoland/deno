@@ -1,0 +1,11 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/30607
+  // npm packages that shadow Node.js built-in names (e.g. "events")
+  // should resolve from node_modules in manual mode, not error out.
+  "tests": {
+    "byonm_builtin_shadow": {
+      "args": "run --node-modules-dir=manual main.mts",
+      "output": "true\n"
+    }
+  }
+}

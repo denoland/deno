@@ -368,6 +368,16 @@ pub enum SeparatorKind {
   Comma,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub enum VueComponentCase {
+  Ignore,
+  #[serde(alias = "pascalCase", alias = "PascalCase")]
+  PascalCase,
+  #[serde(alias = "kebabCase")]
+  KebabCase,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Hash, PartialEq)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct FmtOptionsConfig {
@@ -391,6 +401,8 @@ pub struct FmtOptionsConfig {
   pub type_literal_separator_kind: Option<SeparatorKind>,
   pub space_around: Option<bool>,
   pub space_surrounding_properties: Option<bool>,
+  pub vue_component_case: Option<VueComponentCase>,
+  pub angular_next_control_flow_same_line: Option<bool>,
 }
 
 impl FmtOptionsConfig {
@@ -415,6 +427,8 @@ impl FmtOptionsConfig {
       && self.type_literal_separator_kind.is_none()
       && self.space_around.is_none()
       && self.space_surrounding_properties.is_none()
+      && self.vue_component_case.is_none()
+      && self.angular_next_control_flow_same_line.is_none()
   }
 }
 
@@ -488,6 +502,8 @@ struct SerializedFmtConfig {
   pub type_literal_separator_kind: Option<SeparatorKind>,
   pub space_around: Option<bool>,
   pub space_surrounding_properties: Option<bool>,
+  pub vue_component_case: Option<VueComponentCase>,
+  pub angular_next_control_flow_same_line: Option<bool>,
   #[serde(rename = "options")]
   pub deprecated_options: FmtOptionsConfig,
   pub include: Option<Vec<String>>,
@@ -525,6 +541,9 @@ impl SerializedFmtConfig {
       type_literal_separator_kind: self.type_literal_separator_kind,
       space_around: self.space_around,
       space_surrounding_properties: self.space_surrounding_properties,
+      vue_component_case: self.vue_component_case,
+      angular_next_control_flow_same_line: self
+        .angular_next_control_flow_same_line,
     };
     if !self.deprecated_files.is_null() {
       log::warn!(
@@ -735,9 +754,13 @@ impl BenchConfig {
 }
 
 /// `compile` config representation for serde
+///
+/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedCompileConfig {
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
   pub permissions: Option<PermissionNameOrObject>,
 }
 
@@ -747,7 +770,19 @@ impl SerializedCompileConfig {
     config_file_specifier: &Url,
     permissions: &PermissionsConfig,
   ) -> Result<CompileConfig, IntoResolvedError> {
+    let config_dir = url_parent(config_file_specifier);
+    let config_dir_path = url_to_file_path(&config_dir)?;
     Ok(CompileConfig {
+      include: self
+        .include
+        .into_iter()
+        .map(|p| config_dir_path.join(&p).to_string_lossy().to_string())
+        .collect(),
+      exclude: self
+        .exclude
+        .into_iter()
+        .map(|p| config_dir_path.join(&p).to_string_lossy().to_string())
+        .collect(),
       permissions: match self.permissions {
         Some(PermissionNameOrObject::Name(name)) => {
           Some(Box::new(permissions.get(&name)?.clone()))
@@ -766,6 +801,8 @@ impl SerializedCompileConfig {
 
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct CompileConfig {
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
   pub permissions: Option<Box<PermissionsObjectWithBase>>,
 }
 
@@ -933,6 +970,14 @@ pub struct NodeModulesDirParseError {
   pub source: serde_json::Error,
 }
 
+#[derive(Debug, Error, JsError)]
+#[class(type)]
+#[error("Unsupported \"nodeModulesLinker\" value.")]
+pub struct NodeModulesLinkerParseError {
+  #[source]
+  pub source: serde_json::Error,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NewestDependencyDate {
   Enabled(chrono::DateTime<chrono::Utc>),
@@ -1057,6 +1102,62 @@ impl NodeModulesDirMode {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum NodeModulesLinkerMode {
+  #[default]
+  Isolated,
+  Hoisted,
+}
+
+impl<'de> Deserialize<'de> for NodeModulesLinkerMode {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    struct NodeModulesLinkerModeVisitor;
+
+    impl Visitor<'_> for NodeModulesLinkerModeVisitor {
+      type Value = NodeModulesLinkerMode;
+
+      fn expecting(
+        &self,
+        formatter: &mut std::fmt::Formatter,
+      ) -> std::fmt::Result {
+        formatter.write_str(r#""isolated" or "hoisted""#)
+      }
+
+      fn visit_str<E>(self, value: &str) -> Result<NodeModulesLinkerMode, E>
+      where
+        E: de::Error,
+      {
+        match value {
+          "isolated" => Ok(NodeModulesLinkerMode::Isolated),
+          "hoisted" => Ok(NodeModulesLinkerMode::Hoisted),
+          _ => Err(de::Error::invalid_value(Unexpected::Str(value), &self)),
+        }
+      }
+    }
+
+    deserializer.deserialize_str(NodeModulesLinkerModeVisitor)
+  }
+}
+
+impl std::fmt::Display for NodeModulesLinkerMode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.as_str())
+  }
+}
+
+impl NodeModulesLinkerMode {
+  pub fn as_str(self) -> &'static str {
+    match self {
+      NodeModulesLinkerMode::Isolated => "isolated",
+      NodeModulesLinkerMode::Hoisted => "hoisted",
+    }
+  }
+}
+
 /// `deploy` config representation for serde
 ///
 /// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
@@ -1111,12 +1212,16 @@ pub struct ConfigFileJson {
   pub exclude: Option<Value>,
   pub minimum_dependency_age: Option<Value>,
   pub node_modules_dir: Option<Value>,
+  pub node_modules_linker: Option<Value>,
   pub vendor: Option<bool>,
   pub license: Option<Value>,
   pub permissions: Option<Value>,
   pub publish: Option<Value>,
   pub deploy: Option<Value>,
   pub allow_scripts: Option<Value>,
+
+  pub catalog: Option<IndexMap<String, String>>,
+  pub catalogs: Option<IndexMap<String, IndexMap<String, String>>>,
 
   pub name: Option<String>,
   pub version: Option<String>,
@@ -1538,6 +1643,16 @@ impl ConfigFile {
     import_map::ext::expand_import_map_value(Value::Object(value))
   }
 
+  pub fn catalog(&self) -> Option<&IndexMap<String, String>> {
+    self.json.catalog.as_ref()
+  }
+
+  pub fn catalogs(
+    &self,
+  ) -> Option<&IndexMap<String, IndexMap<String, String>>> {
+    self.json.catalogs.as_ref()
+  }
+
   pub fn is_an_import_map(&self) -> bool {
     self.json.imports.is_some() || self.json.scopes.is_some()
   }
@@ -1811,7 +1926,7 @@ impl ConfigFile {
             source: error,
           })
       }
-      None => Ok(CompileConfig { permissions: None }),
+      None => Ok(CompileConfig::default()),
     }
   }
 
@@ -2404,7 +2519,9 @@ mod tests {
         "jsx.multiLineParens": "never",
         "typeLiteral.separatorKind": "semiColon",
         "spaceAround": true,
-        "spaceSurroundingProperties": true
+        "spaceSurroundingProperties": true,
+        "vueComponentCase": "pascal-case",
+        "angularNextControlFlowSameLine": false
       },
       "tasks": {
         "build": "deno run --allow-read --allow-write build.ts",
@@ -2478,6 +2595,8 @@ mod tests {
           type_literal_separator_kind: Some(SeparatorKind::SemiColon),
           space_around: Some(true),
           space_surrounding_properties: Some(true),
+          vue_component_case: Some(VueComponentCase::PascalCase),
+          angular_next_control_flow_same_line: Some(false),
         },
       }
     );

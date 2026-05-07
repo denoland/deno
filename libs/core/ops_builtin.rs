@@ -70,6 +70,7 @@ builtin_ops! {
   op_encode_binary_string,
   op_is_terminal,
   op_import_sync,
+  op_import_sync_with_source,
   ops_builtin_types::op_is_any_array_buffer,
   ops_builtin_types::op_is_arguments_object,
   ops_builtin_types::op_is_array_buffer,
@@ -107,6 +108,7 @@ builtin_ops! {
   ops_builtin_v8::op_ref_op,
   ops_builtin_v8::op_unref_op,
   ops_builtin_v8::op_lazy_load_esm,
+  ops_builtin_v8::op_load_ext_script,
   ops_builtin_v8::op_run_microtasks,
   ops_builtin_v8::op_drain_pending_rejections,
   ops_builtin_v8::op_compile_function,
@@ -132,6 +134,7 @@ builtin_ops! {
   ops_builtin_v8::op_current_user_call_site,
   ops_builtin_v8::op_set_format_exception_callback,
   ops_builtin_v8::op_event_loop_has_more_work,
+  ops_builtin_v8::op_immediate_check,
   ops_builtin_v8::op_leak_tracing_enable,
   ops_builtin_v8::op_leak_tracing_submit,
   ops_builtin_v8::op_leak_tracing_get_all,
@@ -219,13 +222,28 @@ pub fn op_print(
   #[string] msg: &str,
   is_err: bool,
 ) -> Result<(), std::io::Error> {
-  if is_err {
-    stderr().write_all(msg.as_bytes())?;
-    stderr().flush().unwrap();
+  let mut out: Box<dyn Write> = if is_err {
+    Box::new(stderr())
   } else {
-    stdout().write_all(msg.as_bytes())?;
-    stdout().flush().unwrap();
+    Box::new(stdout())
+  };
+  // Use a manual write loop instead of write_all because the fd may be
+  // in non-blocking mode (e.g. when Node's process.stdout sets
+  // O_NONBLOCK via uv_pipe_open/uv_tty_init). write_all does not
+  // retry on WouldBlock.
+  let mut buf = msg.as_bytes();
+  while !buf.is_empty() {
+    match out.write(buf) {
+      Ok(n) => buf = &buf[n..],
+      Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+        std::thread::yield_now();
+        continue;
+      }
+      Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+      Err(e) => return Err(e),
+    }
   }
+  out.flush().unwrap();
   Ok(())
 }
 
@@ -695,6 +713,64 @@ fn op_import_sync<'s, 'i>(
   let default = v8_static_strings::DEFAULT.v8_string(scope).unwrap();
   let es_module = v8_static_strings::ESMODULE.v8_string(scope).unwrap();
   // If the module has a default export and no __esModule export, wrap it.
+  if namespace.has_own_property(scope, default.into()) == Some(true)
+    && namespace.has_own_property(scope, es_module.into()) == Some(false)
+  {
+    let Some(module) = wrap_module(scope, module) else {
+      let exception = scope.exception().unwrap();
+      return exception_to_err_result(scope, exception, false, false)
+        .map_err(|e| CoreErrorKind::Js(e).into_box());
+    };
+    Ok(v8::Local::new(scope, module.get_module_namespace()))
+  } else {
+    Ok(v8::Local::new(scope, namespace).into())
+  }
+}
+
+/// Like `op_import_sync`, but when `code` is provided, compiles the source
+/// directly under the given specifier URL instead of going through the module
+/// loader. This ensures hook-provided source is used even if the module is
+/// already cached in the module map from a previous disk load.
+#[op2(reentrant)]
+fn op_import_sync_with_source<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  #[string] specifier: &str,
+  #[string] code: String,
+) -> Result<v8::Local<'s, v8::Value>, CoreError> {
+  let module_map_rc = JsRealm::module_map_from(scope);
+
+  let module_id = module_map_rc
+    .new_module_from_js_source(
+      scope,
+      false,
+      crate::modules::ModuleType::JavaScript,
+      crate::modules::ModuleName::from(specifier.to_string()),
+      crate::modules::ModuleCodeString::from(code),
+      false,
+      None,
+    )
+    .map_err(|e| e.into_error(scope, false, false))?;
+
+  module_map_rc
+    .instantiate_module(scope, module_id)
+    .map_err(|e| {
+      let exception = v8::Local::new(scope, e);
+      CoreErrorKind::Js(exception_to_err(scope, exception, false, false))
+        .into_box()
+    })?;
+
+  module_map_rc.mod_evaluate_sync(scope, module_id)?;
+
+  let module = module_map_rc
+    .get_module(scope, module_id)
+    .expect("Module must exist");
+
+  let namespace = module.get_module_namespace().cast::<v8::Object>();
+
+  v8::tc_scope!(let scope, scope);
+
+  let default = v8_static_strings::DEFAULT.v8_string(scope).unwrap();
+  let es_module = v8_static_strings::ESMODULE.v8_string(scope).unwrap();
   if namespace.has_own_property(scope, default.into()) == Some(true)
     && namespace.has_own_property(scope, es_module.into()) == Some(false)
   {

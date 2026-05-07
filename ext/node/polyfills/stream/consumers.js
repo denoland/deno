@@ -2,13 +2,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
-import { Blob } from "ext:deno_web/09_file.js";
-import { Buffer } from "node:buffer";
-import {
+const { TextDecoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
+const { Blob } = core.loadExtScript("ext:deno_web/09_file.js");
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_STATE,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const {
   ArrayBufferIsView,
@@ -65,6 +65,14 @@ async function buffer(stream) {
 
 /**
  * @param {AsyncIterable|ReadableStream|Readable} stream
+ * @returns {Promise<Uint8Array>}
+ */
+async function bytes(stream) {
+  return new Uint8Array(await arrayBuffer(stream));
+}
+
+/**
+ * @param {AsyncIterable|ReadableStream|Readable} stream
  * @returns {Promise<string>}
  */
 async function text(stream) {
@@ -104,9 +112,10 @@ const _defaultExport1 = {
   arrayBuffer,
   blob,
   buffer,
+  bytes,
   text,
   json,
 };
 
 export default _defaultExport1;
-export { arrayBuffer, blob, buffer, json, text };
+export { arrayBuffer, blob, buffer, bytes, json, text };

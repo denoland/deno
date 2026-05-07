@@ -150,6 +150,7 @@ pub enum PackageJsonDepValue {
   /// A tarball URL (http or https), e.g.
   /// `"dep": "https://example.com/pkg-1.0.0.tgz"`
   Tarball(String),
+  Catalog(String),
 }
 
 impl PackageJsonDepValue {
@@ -192,6 +193,14 @@ impl PackageJsonDepValue {
           } else {
             from_name_and_version_req(value.into(), "*")
           }
+        }
+        "catalog" => {
+          let name = if value.is_empty() || value == "default" {
+            "default".to_string()
+          } else {
+            value.to_string()
+          };
+          Ok(Self::Catalog(name))
         }
         "workspace" => {
           let workspace_req = match value {
@@ -300,6 +309,10 @@ pub struct PackageJson {
   pub cpu: Option<Vec<String>>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub overrides: Option<Map<String, Value>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub catalog: Option<IndexMap<String, String>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub catalogs: Option<IndexMap<String, IndexMap<String, String>>>,
   #[serde(skip_serializing)]
   resolved_deps: PackageJsonDepsRcCell,
 }
@@ -372,6 +385,8 @@ impl PackageJson {
         os: None,
         cpu: None,
         overrides: None,
+        catalog: None,
+        catalogs: None,
         resolved_deps: Default::default(),
       });
     }
@@ -516,12 +531,59 @@ impl PackageJson {
       .and_then(map_string);
     let types_versions =
       package_json.remove("typesVersions").and_then(map_object);
-    let workspaces = package_json
-      .remove("workspaces")
-      .and_then(parse_string_array);
+    // workspaces can be either an array of globs or an object with
+    // "packages" (array) and optionally "catalog"/"catalogs" sub-fields
+    // (Bun/Yarn object form).
+    let (workspaces, ws_catalog, ws_catalogs) =
+      match package_json.remove("workspaces") {
+        Some(Value::Array(arr)) => {
+          (parse_string_array(Value::Array(arr)), None, None)
+        }
+        Some(Value::Object(mut obj)) => {
+          let pkgs = obj.remove("packages").and_then(parse_string_array);
+          let cat = obj.remove("catalog").and_then(parse_string_map);
+          let cats = obj.remove("catalogs").and_then(|v| {
+            if let Value::Object(map) = v {
+              let mut result = IndexMap::with_capacity(map.len());
+              for (k, v) in map {
+                if let Some(inner) = parse_string_map(v) {
+                  result.insert(k, inner);
+                }
+              }
+              Some(result)
+            } else {
+              None
+            }
+          });
+          (pkgs, cat, cats)
+        }
+        _ => (None, None, None),
+      };
     let os = package_json.remove("os").and_then(parse_string_array);
     let cpu = package_json.remove("cpu").and_then(parse_string_array);
     let overrides = package_json.remove("overrides").and_then(map_object);
+    // Top-level catalog/catalogs take precedence; fall back to those
+    // extracted from the workspaces object form.
+    let catalog = package_json
+      .remove("catalog")
+      .and_then(parse_string_map)
+      .or(ws_catalog);
+    let catalogs = package_json
+      .remove("catalogs")
+      .and_then(|v| {
+        if let Value::Object(map) = v {
+          let mut result = IndexMap::with_capacity(map.len());
+          for (k, v) in map {
+            if let Some(inner) = parse_string_map(v) {
+              result.insert(k, inner);
+            }
+          }
+          Some(result)
+        } else {
+          None
+        }
+      })
+      .or(ws_catalogs);
 
     Ok(PackageJson {
       path,
@@ -548,6 +610,8 @@ impl PackageJson {
       os,
       cpu,
       overrides,
+      catalog,
+      catalogs,
       resolved_deps: Default::default(),
     })
   }
@@ -879,6 +943,15 @@ mod test {
       ("work-test-star".to_string(), "workspace:*".to_string()),
       ("work-test-tilde".to_string(), "workspace:~".to_string()),
       ("work-test-caret".to_string(), "workspace:^".to_string()),
+      ("catalog-test".to_string(), "catalog:".to_string()),
+      (
+        "catalog-default-test".to_string(),
+        "catalog:default".to_string(),
+      ),
+      (
+        "catalog-named-test".to_string(),
+        "catalog:react18".to_string(),
+      ),
       ("file-test".to_string(), "file:something".to_string()),
       ("git-test".to_string(), "git:something".to_string()),
       ("http-test".to_string(), "http://something".to_string()),
@@ -921,6 +994,18 @@ mod test {
           Ok(PackageJsonDepValue::Workspace(
             PackageJsonDepWorkspaceReq::Caret
           ))
+        ),
+        (
+          "catalog-test".to_string(),
+          Ok(PackageJsonDepValue::Catalog("default".to_string())),
+        ),
+        (
+          "catalog-default-test".to_string(),
+          Ok(PackageJsonDepValue::Catalog("default".to_string())),
+        ),
+        (
+          "catalog-named-test".to_string(),
+          Ok(PackageJsonDepValue::Catalog("react18".to_string())),
         ),
         (
           "file-test".to_string(),
@@ -1022,5 +1107,46 @@ mod test {
       ),
       Err(PackageJsonLoadError::InvalidExports)
     ));
+  }
+
+  #[test]
+  fn test_workspaces_object_form_catalog() {
+    let json_value = serde_json::json!({
+      "workspaces": {
+        "packages": ["packages/*"],
+        "catalog": {
+          "@types/bun": "1.3.12",
+          "@types/node": "22.13.9"
+        }
+      }
+    });
+    let pj =
+      PackageJson::load_from_value(PathBuf::from("/package.json"), json_value)
+        .unwrap();
+    assert_eq!(pj.workspaces, Some(vec!["packages/*".to_string()]));
+    let catalog = pj.catalog.unwrap();
+    assert_eq!(catalog.get("@types/bun").unwrap(), "1.3.12");
+    assert_eq!(catalog.get("@types/node").unwrap(), "22.13.9");
+  }
+
+  #[test]
+  fn test_workspaces_object_form_top_level_catalog_takes_precedence() {
+    let json_value = serde_json::json!({
+      "catalog": {
+        "foo": "1.0.0"
+      },
+      "workspaces": {
+        "packages": ["packages/*"],
+        "catalog": {
+          "foo": "2.0.0"
+        }
+      }
+    });
+    let pj =
+      PackageJson::load_from_value(PathBuf::from("/package.json"), json_value)
+        .unwrap();
+    // Top-level catalog should win
+    let catalog = pj.catalog.unwrap();
+    assert_eq!(catalog.get("foo").unwrap(), "1.0.0");
   }
 }

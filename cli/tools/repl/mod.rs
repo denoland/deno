@@ -11,7 +11,6 @@ use deno_core::unsync::spawn_blocking;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_runtime::WorkerExecutionMode;
 use rustyline::error::ReadlineError;
-use tokio_util::sync::CancellationToken;
 
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -118,17 +117,6 @@ async fn read_line_and_poll(
               .await;
             message_handler.send(RustylineSyncResponse::PostMessage(result)).unwrap();
           },
-          Some(RustylineSyncMessage::LspCompletions {
-            line_text,
-            position,
-          }) => {
-            let result = repl_session.language_server.completions(
-              &line_text,
-              position,
-              CancellationToken::new(),
-            ).await;
-            message_handler.send(RustylineSyncResponse::LspCompletions(result)).unwrap();
-          }
           None => {}, // channel closed
         }
 
@@ -372,10 +360,6 @@ async fn run_json(mut repl_session: ReplSession) -> Result<i32, AnyError> {
               text: exception_details.text,
             }
           } else {
-            repl_session
-              .language_server
-              .commit_text(&evaluate_response.ts_code)
-              .await;
             repl_session.set_last_eval_result(&result).await?;
 
             let output = if output {
