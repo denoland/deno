@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core } from "ext:core/mod.js";
+(function () {
+const { core } = globalThis.__bootstrap;
 const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -22,9 +23,12 @@ function getEnabledCategories() {
   return "";
 }
 
-export { createTracing, getEnabledCategories };
-
-export default {
+return {
+  default: {
+    createTracing,
+    getEnabledCategories,
+  },
   createTracing,
   getEnabledCategories,
 };
+})();

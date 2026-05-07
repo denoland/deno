@@ -37,6 +37,7 @@ pub use crate::blob::Blob;
 pub use crate::blob::BlobPart;
 pub use crate::blob::BlobStore;
 pub use crate::blob::InMemoryBlobPart;
+use crate::blob::op_blob_clone_part;
 use crate::blob::op_blob_create_object_url;
 use crate::blob::op_blob_create_part;
 use crate::blob::op_blob_from_object_url;
@@ -80,6 +81,7 @@ deno_core::extension!(deno_web,
     op_blob_slice_part,
     op_blob_read_part,
     op_blob_remove_part,
+    op_blob_clone_part,
     op_blob_create_object_url,
     op_blob_revoke_object_url,
     op_blob_from_object_url,
