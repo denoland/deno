@@ -82,8 +82,10 @@ const { defaultTriggerAsyncIdScope } = core.loadExtScript(
   "ext:deno_node/internal/async_hooks.ts",
 );
 const { kNeedDrain } = core.loadExtScript("ext:deno_node/internal/http.ts");
-import { channel } from "node:diagnostics_channel";
-import { enqueueNodePerformanceEntry } from "node:perf_hooks";
+const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
+const { enqueueNodePerformanceEntry } = core.loadExtScript(
+  "ext:deno_node/perf_hooks.js",
+);
 
 const onClientRequestCreatedChannel = channel("http.client.request.created");
 const onClientRequestStartChannel = channel("http.client.request.start");

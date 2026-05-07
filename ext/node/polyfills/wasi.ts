@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { primordials } = globalThis.__bootstrap;
 
 const { Error } = primordials;
 
@@ -10,6 +11,10 @@ class Context {
   }
 }
 
-export const WASI = Context;
+const WASI = Context;
 
-export default { WASI };
+return {
+  default: { WASI },
+  WASI,
+};
+})();

@@ -21,7 +21,7 @@ const {
 const { validateFunction } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-import vm from "node:vm";
+const vm = core.loadExtScript("ext:deno_node/vm.js").default;
 import process from "node:process";
 import path from "node:path";
 import fs from "node:fs";
