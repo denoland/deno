@@ -1,19 +1,22 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+import { core, primordials } from "ext:core/mod.js";
 import {
+  op_lock_manager_await_lock,
+  op_lock_manager_cancel,
   op_lock_manager_query,
   op_lock_manager_release,
   op_lock_manager_request,
 } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
 
-const { Symbol, StringPrototypeStartsWith } = primordials;
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+
+const { Symbol, StringPrototypeStartsWith, TypeError } = primordials;
 
 const _name = Symbol("[[name]]");
 const _mode = Symbol("[[mode]]");
 
-export class LockManager {
+class LockManager {
   [webidl.brand] = webidl.brand;
 
   constructor() {
@@ -32,6 +35,10 @@ export class LockManager {
       callback = optionsOrCallback;
     } else {
       options = optionsOrCallback;
+    }
+
+    if (typeof callback !== "function") {
+      throw new TypeError("callback must be a function");
     }
 
     options = webidl.converters.LockOptions(
@@ -65,30 +72,67 @@ export class LockManager {
       );
     }
 
-    const rid = await op_lock_manager_request(
+    if (options.signal) {
+      options.signal.throwIfAborted();
+    }
+
+    const { status, rid } = op_lock_manager_request(
       name,
       options.mode,
       options.ifAvailable,
       options.steal,
     );
-    if (rid) {
-      try {
-        const lock = webidl.createBranded(Lock);
-        lock[_name] = name;
-        lock[_mode] = options.mode;
-        const r = await callback(lock);
-        return r;
-      } finally {
-        await op_lock_manager_release(rid);
-      }
+
+    // status 2 = ifAvailable but lock not grantable
+    if (status === 2) {
+      return await callback(null);
+    }
+
+    let heldRid;
+    if (status === 0) {
+      // Granted immediately
+      heldRid = rid;
     } else {
-      return callback(null);
+      // Pending (status === 1) - wait for the lock to be granted
+      if (options.signal) {
+        const onAbort = () => op_lock_manager_cancel(rid);
+        options.signal.addEventListener("abort", onAbort, { once: true });
+        try {
+          heldRid = await op_lock_manager_await_lock(rid);
+        } finally {
+          options.signal.removeEventListener("abort", onAbort);
+        }
+        if (heldRid == null) {
+          throw options.signal.reason ??
+            new DOMException(
+              "The lock request was aborted",
+              "AbortError",
+            );
+        }
+      } else {
+        heldRid = await op_lock_manager_await_lock(rid);
+        if (heldRid == null) {
+          throw new DOMException(
+            "The lock request was aborted",
+            "AbortError",
+          );
+        }
+      }
+    }
+
+    try {
+      const lock = webidl.createBranded(Lock);
+      lock[_name] = name;
+      lock[_mode] = options.mode;
+      return await callback(lock);
+    } finally {
+      op_lock_manager_release(heldRid);
     }
   }
 
-  async query() {
+  query() {
     webidl.assertBranded(this, LockManagerPrototype);
-    const { held, pending } = await op_lock_manager_query();
+    const { held, pending } = op_lock_manager_query();
     return { held, pending };
   }
 }
@@ -96,7 +140,7 @@ export class LockManager {
 webidl.configureInterface(LockManager);
 const LockManagerPrototype = LockManager.prototype;
 
-export class Lock {
+class Lock {
   [_name];
   [_mode];
   [webidl.brand] = webidl.brand;
@@ -107,13 +151,11 @@ export class Lock {
 
   get name() {
     webidl.assertBranded(this, LockPrototype);
-
     return this[_name];
   }
 
   get mode() {
     webidl.assertBranded(this, LockPrototype);
-
     return this[_mode];
   }
 }
@@ -152,4 +194,6 @@ webidl.converters.LockOptions = webidl
     ],
   );
 
-export const locks = webidl.createBranded(LockManager);
+const locks = webidl.createBranded(LockManager);
+
+export { Lock, LockManager, locks };

@@ -22,7 +22,7 @@ const globalInterfaces = core.loadExtScript(
 );
 const webStorage = core.loadExtScript("ext:deno_webstorage/01_webstorage.js");
 const prompt = core.loadExtScript("ext:runtime/41_prompt.js");
-const locks = core.loadExtScript("ext:deno_web/locks.js");
+const loadLocks = core.createLazyLoader("ext:deno_web/locks.js");
 const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
 
 /**
@@ -159,7 +159,7 @@ ObjectDefineProperties(Navigator.prototype, {
     enumerable: true,
     get() {
       webidl.assertBranded(this, NavigatorPrototype);
-      return locks.locks;
+      return loadLocks().locks;
     },
   },
   platform: {

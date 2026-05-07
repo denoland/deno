@@ -33,7 +33,7 @@ const {
 } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
 const imageData = core.loadExtScript("ext:deno_web/16_image_data.js");
-const locks = core.loadExtScript("ext:deno_web/locks.js");
+const loadLocks = core.createLazyLoader("ext:deno_web/locks.js");
 import process from "node:process";
 import { Buffer } from "node:buffer";
 import {
@@ -370,8 +370,14 @@ const windowOrWorkerGlobalScope = {
     (webgpu) => webgpu.GPUValidationError,
     loadWebGPU,
   ),
-  Lock: core.propNonEnumerable(locks.Lock),
-  LockManager: core.propNonEnumerable(locks.LockManager),
+  Lock: core.propNonEnumerableLazyLoaded(
+    (locks) => locks.Lock,
+    loadLocks,
+  ),
+  LockManager: core.propNonEnumerableLazyLoaded(
+    (locks) => locks.LockManager,
+    loadLocks,
+  ),
 };
 
 const unstableForWindowOrWorkerGlobalScope = { __proto__: null };
