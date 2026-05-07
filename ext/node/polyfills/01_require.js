@@ -528,6 +528,24 @@ function _ensureHooksWorker() {
       entry.resolve(msg);
     }
   };
+  // Unref the worker so it doesn't prevent process exit (like Node.js
+  // hooks thread). Find the internal unref method via its Symbol key.
+  // deno-lint-ignore prefer-primordials
+  const proto = Object.getPrototypeOf(hooksWorker);
+  // deno-lint-ignore prefer-primordials
+  const syms = Object.getOwnPropertySymbols(proto);
+  for (let i = 0; i < syms.length; i++) {
+    const s = syms[i];
+    // The privateWorkerRef symbol is an anonymous Symbol() (no description)
+    // deno-lint-ignore prefer-primordials
+    if (s.description === undefined) {
+      const desc = ObjectGetOwnPropertyDescriptor(proto, s);
+      if (desc && typeof desc.value === "function") {
+        desc.value.call(hooksWorker, false);
+        break;
+      }
+    }
+  }
 }
 
 function _sendToHooksWorker(msg, transferList) {
@@ -2534,9 +2552,10 @@ Module.register = register;
  * @param {string[]} loaderUrls
  */
 export async function _registerCliLoaders(loaderUrls) {
-  // CLI loaders from --experimental-loader are loaded eagerly before the
-  // main module, so they don't have the deadlock issue that register() has.
-  // Load them directly on the main thread for simplicity.
+  // CLI loaders from --experimental-loader run on the main thread.
+  // Unlike register(), they're loaded eagerly before user code runs,
+  // so there's no deadlock risk. Running on the main thread also
+  // ensures process.exit() and uncaught errors propagate correctly.
   for (let i = 0; i < loaderUrls.length; i++) {
     const loaderUrl = loaderUrls[i];
     let hookModule;
@@ -2544,7 +2563,6 @@ export async function _registerCliLoaders(loaderUrls) {
       hookModule = await import(loaderUrl);
     } catch (e) {
       // Match Node.js behavior: print the thrown value and exit with code 1.
-      // Node uses util.inspect for objects/functions, String() for primitives.
       const util = await import("node:util");
       const errMsg = (typeof e === "object" && e !== null) ||
           typeof e === "function"
@@ -2564,8 +2582,6 @@ export async function _registerCliLoaders(loaderUrls) {
     const load = typeof hookModule.load === "function" ? hookModule.load : null;
 
     if (resolve !== null || load !== null) {
-      // CLI loaders run on the main thread (no worker needed).
-      // Store in hookEntries so they're executed by the sync hook chain.
       ArrayPrototypePush(hookEntries, { resolve, load });
     }
   }
