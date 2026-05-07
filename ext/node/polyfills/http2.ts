@@ -50,12 +50,14 @@ import {
   Http2Session as InternalHttp2Session,
   op_http2_callbacks,
 } from "ext:core/ops";
-import { enqueueNodePerformanceEntry } from "node:perf_hooks";
+const { enqueueNodePerformanceEntry } = core.loadExtScript(
+  "ext:deno_node/perf_hooks.js",
+);
 const { performance: webPerformance } = core.loadExtScript(
   "ext:deno_web/15_performance.js",
 );
 import net from "node:net";
-import assert from "node:assert";
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import http from "node:http";
 import { AsyncResource } from "node:async_hooks";
 import {
@@ -70,7 +72,7 @@ import {
 } from "node:_http_server";
 import { Duplex } from "node:stream";
 import tls from "node:tls";
-import { deprecate } from "node:util";
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 import dc from "node:diagnostics_channel";
 const { utcDate } = core.loadExtScript("ext:deno_node/internal/http.ts");
 const {
@@ -82,7 +84,7 @@ const {
   Http2Session: BindingHttp2Session,
   Http2Stream: BindingHttp2Stream,
 } = core.loadExtScript("ext:deno_node/internal_binding/http2.ts");
-import { EventEmitter } from "node:events";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const {
   defaultTriggerAsyncIdScope,
   symbols,
@@ -99,7 +101,7 @@ export { addAbortListener };
 import fs from "node:fs";
 import { FileHandle as FsFileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
-import { format, inspect } from "node:util";
+const { format, inspect } = core.loadExtScript("ext:deno_node/util.ts");
 const {
   isUint32,
   validateAbortSignal,

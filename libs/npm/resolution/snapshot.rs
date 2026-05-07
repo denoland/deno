@@ -1022,7 +1022,7 @@ pub fn snapshot_from_lockfile(
       id,
       dependencies: dependencies
         .into_iter()
-        .chain(optional_dependencies.clone().into_iter())
+        .chain(optional_dependencies.clone())
         .collect(),
       optional_dependencies: optional_dependencies.into_keys().collect(),
       system: NpmResolutionPackageSystemInfo {

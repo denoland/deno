@@ -329,9 +329,17 @@
     "parallel/test-child-process-no-deprecation.js": {},
     "parallel/test-child-process-promisified.js": {},
     "parallel/test-child-process-prototype-tampering.mjs": {},
+    "parallel/test-child-process-recv-handle.js": {
+      "ignore": true,
+      "reason": "Uses internal/child_process kChannelHandle with readStop/readStart which is not exposed in Deno"
+    },
     "parallel/test-child-process-reject-null-bytes.js": {},
     "parallel/test-child-process-send-after-close.js": {},
     "parallel/test-child-process-send-cb.js": {},
+    "parallel/test-child-process-send-returns-boolean.js": {
+      "windows": false,
+      "reason": "handle passing not yet implemented on Windows"
+    },
     "parallel/test-child-process-send-keep-open.js": {
       "windows": false,
       "reason": "net.Socket IPC handle passing uses SCM_RIGHTS, not yet implemented on Windows"
@@ -961,7 +969,8 @@
     "parallel/test-dns-resolveany-bad-ancount.js": {},
     "parallel/test-dns-resolvens-typeerror.js": {},
     "parallel/test-dns-resolver-max-timeout.js": {
-      "flaky": true
+      "flaky": true,
+      "windows": false // incredibly flaky in CI
     },
     "parallel/test-dns-resolvesrv.js": {},
     "parallel/test-dns-resolvesrv-econnrefused.js": {},
@@ -1652,10 +1661,12 @@
     "parallel/test-http-parser-free.js": {},
     "parallel/test-http-parser-freed-before-upgrade.js": {},
     "parallel/test-http-parser-freed-during-execute.js": {},
+    "parallel/test-http-parser-multiple-execute.js": {},
     "parallel/test-http-parser.js": {},
     "parallel/test-http-pause-no-dump.js": {},
     "parallel/test-http-pause-resume-one-end.js": {},
     "parallel/test-http-pause.js": {},
+    "parallel/test-http-perf_hooks.js": {},
     "parallel/test-http-pipe-fs.js": {},
     "parallel/test-http-pipeline-assertionerror-finish.js": {},
     "parallel/test-http-pipeline-flood.js": {},
@@ -2692,6 +2703,8 @@
       "ignore": true,
       "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
+    "parallel/test-pipe-abstract-socket.js": {},
+    "parallel/test-pipe-abstract-socket-http.js": {},
     "parallel/test-pipe-address.js": {},
     "parallel/test-pipe-file-to-http.js": {},
     "parallel/test-pipe-head.js": {},

@@ -22,12 +22,14 @@ const {
   ERR_OUT_OF_RANGE,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import { deprecate } from "node:util";
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 const {
   validateFunction,
   validateInteger,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { errorOrDestroy } from "ext:deno_node/internal/streams/destroy.js";
+const { errorOrDestroy } = core.loadExtScript(
+  "ext:deno_node/internal/streams/destroy.js",
+);
 import * as fs from "node:fs";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import {

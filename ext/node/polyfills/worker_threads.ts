@@ -43,7 +43,7 @@ const {
   validateArray,
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { EventEmitter } from "node:events";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 import { Readable, Writable } from "node:stream";
 const {
   BroadcastChannel: WebBroadcastChannel,

@@ -1,8 +1,11 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { core } from "ext:core/mod.js";
-import { destroy, destroyer } from "ext:deno_node/internal/streams/destroy.js";
-import finished from "ext:deno_node/internal/streams/end-of-stream.js";
+const { destroy, destroyer } = core.loadExtScript(
+  "ext:deno_node/internal/streams/destroy.js",
+);
+const finished =
+  core.loadExtScript("ext:deno_node/internal/streams/end-of-stream.js").default;
 const {
   isDestroyed,
   isReadable,

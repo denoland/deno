@@ -42,11 +42,11 @@ import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { lutimes, lutimesSync } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { read, readSync } from "ext:deno_node/_fs/_fs_read.ts";
 import { readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
-import { EventEmitter } from "node:events";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 import { clearTimeout, setTimeout } from "node:timers";
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import type { MaybeEmpty } from "ext:deno_node/_utils.ts";
-import { deprecate, promisify } from "node:util";
+const { deprecate, promisify } = core.loadExtScript("ext:deno_node/util.ts");
 import promises from "ext:deno_node/internal/fs/promises.ts";
 // @deno-types="./internal/fs/streams.d.ts"
 import {

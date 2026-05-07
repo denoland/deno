@@ -1,8 +1,9 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import process from "node:process";
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const lazyProcess = core.createLazyLoader("node:process");
 const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { kEmptyObject, once } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
@@ -234,10 +235,10 @@ function eos(stream, options, callback) {
   stream.on("close", onclose);
 
   if (closed) {
-    process.nextTick(onclose);
+    lazyProcess().nextTick(onclose);
   } else if (wState?.errorEmitted || rState?.errorEmitted) {
     if (!willEmitClose) {
-      process.nextTick(onclosed);
+      lazyProcess().nextTick(onclosed);
     }
   } else if (
     !readable &&
@@ -245,15 +246,15 @@ function eos(stream, options, callback) {
     (writableFinished || isWritable(stream) === false) &&
     (wState == null || wState.pendingcb === undefined || wState.pendingcb === 0)
   ) {
-    process.nextTick(onclosed);
+    lazyProcess().nextTick(onclosed);
   } else if (
     !writable &&
     (!willEmitClose || isWritable(stream)) &&
     (readableFinished || isReadable(stream) === false)
   ) {
-    process.nextTick(onclosed);
+    lazyProcess().nextTick(onclosed);
   } else if ((rState && stream.req && stream.aborted)) {
-    process.nextTick(onclosed);
+    lazyProcess().nextTick(onclosed);
   }
 
   const cleanup = () => {
@@ -282,7 +283,7 @@ function eos(stream, options, callback) {
       );
     };
     if (options.signal.aborted) {
-      process.nextTick(abort);
+      lazyProcess().nextTick(abort);
     } else {
       addAbortListener ??= _mod2.addAbortListener;
       const disposable = addAbortListener(options.signal, abort);
@@ -309,7 +310,7 @@ function eosWeb(stream, options, callback) {
       );
     };
     if (options.signal.aborted) {
-      process.nextTick(abort);
+      lazyProcess().nextTick(abort);
     } else {
       addAbortListener ??= _mod2.addAbortListener;
       const disposable = addAbortListener(options.signal, abort);
@@ -322,7 +323,7 @@ function eosWeb(stream, options, callback) {
   }
   const resolverFn = (...args) => {
     if (!isAborted) {
-      process.nextTick(() => callback.apply(stream, args));
+      lazyProcess().nextTick(() => callback.apply(stream, args));
     }
   };
   PromisePrototypeThen(
@@ -356,6 +357,9 @@ function finished(stream, opts) {
   });
 }
 
-export { finished };
-export default eos;
-export { eos };
+return {
+  finished,
+  eos,
+  default: eos,
+};
+})();

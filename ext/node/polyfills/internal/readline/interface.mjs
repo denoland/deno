@@ -38,8 +38,9 @@ const {
   getStringWidth,
   stripVTControlCharacters,
 } = core.loadExtScript("ext:deno_node/internal/util/inspect.mjs");
-import EventEmitter from "node:events";
-import { kFirstEventParam } from "ext:deno_node/_events.mjs";
+const { EventEmitter, kFirstEventParam } = core.loadExtScript(
+  "ext:deno_node/_events.mjs",
+);
 import { emitKeypressEvents } from "ext:deno_node/internal/readline/emitKeypressEvents.mjs";
 const {
   charLengthAt,

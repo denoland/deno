@@ -36,7 +36,7 @@ const {
 import { Buffer } from "node:buffer";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 import process from "node:process";
-import { promisify } from "node:util";
+const { promisify } = core.loadExtScript("ext:deno_node/util.ts");
 
 import {
   op_node_generate_dh_group_key,

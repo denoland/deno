@@ -11,8 +11,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
-import { internals } from "ext:core/mod.js";
-import { EventEmitter } from "node:events";
+import { core, internals } from "ext:core/mod.js";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 import { init as initPrimary } from "ext:deno_node/internal/cluster/primary.ts";
 import { init as initChild } from "ext:deno_node/internal/cluster/child.ts";
 

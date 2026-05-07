@@ -54,7 +54,7 @@ const {
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import type { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
-import { inspect } from "node:util";
+const { inspect } = core.loadExtScript("ext:deno_node/util.ts");
 const { customInspectSymbol: kInspect } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );

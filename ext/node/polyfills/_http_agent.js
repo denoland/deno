@@ -6,7 +6,7 @@
 
 import { core } from "ext:core/mod.js";
 import * as net from "node:net";
-import EventEmitter from "node:events";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const { debuglog } = core.loadExtScript(
   "ext:deno_node/internal/util/debuglog.ts",
 );

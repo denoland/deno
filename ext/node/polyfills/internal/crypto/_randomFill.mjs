@@ -7,7 +7,9 @@ import { core } from "ext:core/mod.js";
 import { op_node_fill_random, op_node_fill_random_async } from "ext:core/ops";
 
 import { Buffer, kMaxLength } from "node:buffer";
-import { isAnyArrayBuffer, isArrayBufferView } from "node:util/types";
+const { isAnyArrayBuffer, isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 const {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,

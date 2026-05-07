@@ -21,13 +21,13 @@ const {
 const { validateFunction } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-import vm from "node:vm";
+const vm = core.loadExtScript("ext:deno_node/vm.js").default;
 import process from "node:process";
 import path from "node:path";
 import fs from "node:fs";
 import { Console } from "node:console";
 import Module from "node:module";
-import EventEmitter from "node:events";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 
 export const REPL_MODE_SLOPPY = Symbol("repl-sloppy");
 export const REPL_MODE_STRICT = Symbol("repl-strict");

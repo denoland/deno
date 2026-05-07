@@ -99,7 +99,7 @@ const {
   validateFunction,
   validateInteger,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import assert from "node:assert";
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 
 const methodsToCopy = [
   "deepEqual",
