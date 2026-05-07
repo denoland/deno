@@ -29,7 +29,7 @@
 const { core, primordials } = globalThis.__bootstrap;
 const bufMod = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { Buffer } = bufMod;
-const { MAX_LENGTH: MAX_STRING_LENGTH } = bufMod.constants;
+const { MAX_STRING_LENGTH } = bufMod.constants;
 const { normalizeEncoding: castEncoding } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
