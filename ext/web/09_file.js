@@ -19,6 +19,7 @@ const {
   isTypedArray,
 } = core;
 const {
+  op_blob_clone_part,
   op_blob_create_object_url,
   op_blob_create_part,
   op_blob_from_object_url,
@@ -40,6 +41,7 @@ const {
   DatePrototypeGetTime,
   MathMax,
   MathMin,
+  ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeTest,
   SafeFinalizationRegistry,
@@ -656,6 +658,99 @@ class BlobReference {
     // }
   }
 }
+
+/**
+ * Get all Parts as a flat array of BlobReference objects.
+ * @param {Blob} blob
+ * @param {BlobReference[]} bag
+ * @returns {BlobReference[]}
+ */
+function getPartRefs(blob, bag = []) {
+  const parts = blob[_parts];
+  for (let i = 0; i < parts.length; ++i) {
+    const part = parts[i];
+    if (ObjectPrototypeIsPrototypeOf(BlobPrototype, part)) {
+      getPartRefs(part, bag);
+    } else {
+      ArrayPrototypePush(bag, part);
+    }
+  }
+  return bag;
+}
+
+/**
+ * Clone blob part references in BlobStore and return serializable metadata.
+ * @param {Blob} blob
+ * @returns {{ uuid: string, size: number }[]}
+ */
+function cloneBlobParts(blob) {
+  const refs = getPartRefs(blob);
+  const cloned = [];
+  for (let i = 0; i < refs.length; ++i) {
+    ArrayPrototypePush(cloned, op_blob_clone_part(refs[i]._id));
+  }
+  return cloned;
+}
+
+ObjectDefineProperty(Blob.prototype, core.hostObjectBrand, {
+  __proto__: null,
+  value: function () {
+    return {
+      type: "Blob",
+      mimeType: this[_type],
+      parts: cloneBlobParts(this),
+      size: this[_size],
+    };
+  },
+  enumerable: false,
+  configurable: false,
+  writable: false,
+});
+
+core.registerCloneableResource("Blob", (data) => {
+  const parts = [];
+  for (let i = 0; i < data.parts.length; ++i) {
+    const { uuid, size } = data.parts[i];
+    ArrayPrototypePush(parts, new BlobReference(uuid, size));
+  }
+  const blob = new Blob();
+  blob[_type] = data.mimeType;
+  blob[_size] = data.size;
+  blob[_parts] = parts;
+  return blob;
+});
+
+ObjectDefineProperty(File.prototype, core.hostObjectBrand, {
+  __proto__: null,
+  value: function () {
+    return {
+      type: "File",
+      mimeType: this[_type],
+      parts: cloneBlobParts(this),
+      size: this[_size],
+      name: this[_Name],
+      lastModified: this[_LastModified],
+    };
+  },
+  enumerable: false,
+  configurable: false,
+  writable: false,
+});
+
+core.registerCloneableResource("File", (data) => {
+  const parts = [];
+  for (let i = 0; i < data.parts.length; ++i) {
+    const { uuid, size } = data.parts[i];
+    ArrayPrototypePush(parts, new BlobReference(uuid, size));
+  }
+  const file = new File([], data.name, {
+    type: data.mimeType,
+    lastModified: data.lastModified,
+  });
+  file[_size] = data.size;
+  file[_parts] = parts;
+  return file;
+});
 
 /**
  * Construct a new Blob object from an object URL.

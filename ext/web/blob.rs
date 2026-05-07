@@ -244,6 +244,21 @@ pub fn op_blob_remove_part(state: &mut OpState, #[serde] id: Uuid) {
 }
 
 #[op2]
+#[serde]
+pub fn op_blob_clone_part(
+  state: &mut OpState,
+  #[serde] id: Uuid,
+) -> Result<ReturnBlobPart, BlobError> {
+  let blob_store = state.borrow::<Arc<BlobStore>>();
+  let part = blob_store
+    .get_part(&id)
+    .ok_or(BlobError::BlobPartNotFound)?;
+  let size = part.size();
+  let new_id = blob_store.insert_part(part);
+  Ok(ReturnBlobPart { uuid: new_id, size })
+}
+
+#[op2]
 #[string]
 pub fn op_blob_create_object_url(
   state: &mut OpState,
