@@ -2498,7 +2498,10 @@ impl JsRuntime {
               CoreErrorKind::ModuleEvaluationDeadlock.into_box(),
             ));
           }
-          #[allow(clippy::print_stderr, reason = "intentional debug diagnostic for TLA stall recovery")]
+          #[allow(
+            clippy::print_stderr,
+            reason = "intentional debug diagnostic for TLA stall recovery"
+          )]
           {
             eprintln!(
               "warning: module evaluation pending but no stalled top-level \
@@ -2536,7 +2539,10 @@ impl JsRuntime {
               CoreErrorKind::ModuleEvaluationDeadlock.into_box(),
             ));
           }
-          #[allow(clippy::print_stderr, reason = "intentional debug diagnostic for TLA stall recovery")]
+          #[allow(
+            clippy::print_stderr,
+            reason = "intentional debug diagnostic for TLA stall recovery"
+          )]
           {
             eprintln!(
               "warning: dynamic module evaluation pending but no stalled \
