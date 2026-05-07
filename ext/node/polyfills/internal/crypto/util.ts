@@ -290,7 +290,7 @@ const supportedCiphers = [
   "id-aes256-wrap-pad",
 ];
 
-export function getCiphers(): string[] {
+function getCiphers(): string[] {
   return supportedCiphers.slice();
 }
 
@@ -423,7 +423,7 @@ const curveNames: readonly string[] = [
   "secp384r1",
   "secp521r1",
 ];
-export function getCurves(): string[] {
+function getCurves(): string[] {
   return curveNames.slice();
 }
 
