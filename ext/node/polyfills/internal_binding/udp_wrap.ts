@@ -149,7 +149,7 @@ export class UDP extends HandleWrap {
       address: string,
       family: number,
     ) => void,
-  // deno-lint-ignore no-explicit-any
+    // deno-lint-ignore no-explicit-any
   ) => any;
 
   constructor() {
