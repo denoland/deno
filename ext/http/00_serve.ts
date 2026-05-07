@@ -13,6 +13,7 @@ const {
   op_http_close,
   op_http_close_after_finish,
   op_http_copy_span_to_otel_info,
+  op_http_get_request_header,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_metric_handle_otel_error,
@@ -416,6 +417,17 @@ class InnerRequest {
 
   get external() {
     return this.#external;
+  }
+
+  // Fast-path used by lazy Headers (see fromInnerRequest in 23_request.js).
+  // Lets `req.headers.get(name)` query a single header without paying for
+  // `op_http_get_request_headers`'s flat-array allocation. Returns the
+  // header value as a string, or `null`/`undefined` when absent.
+  getRequestHeader(name) {
+    if (this.#external === null) {
+      throw new TypeError("Request closed");
+    }
+    return op_http_get_request_header(this.#external, name);
   }
 
   onCancel(callback) {
