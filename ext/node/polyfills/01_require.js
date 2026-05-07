@@ -96,7 +96,7 @@ const {
   emitDestroy: internalAsyncHooksEmitDestroy,
   emitInit: internalAsyncHooksEmitInit,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
-import buffer from "node:buffer";
+const buffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs").default;
 import childProcess from "node:child_process";
 import cluster from "node:cluster";
 import console from "node:console";

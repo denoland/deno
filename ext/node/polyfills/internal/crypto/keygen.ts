@@ -37,7 +37,7 @@ const {
   validateString,
   validateUint32,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { Buffer } from "node:buffer";
+import type { Buffer } from "node:buffer";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 import process from "node:process";
 const { promisify } = core.loadExtScript("ext:deno_node/util.ts");

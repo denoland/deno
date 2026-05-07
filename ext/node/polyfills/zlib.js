@@ -70,7 +70,9 @@ const { crc32: crc32Native } = binding;
 const assert = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );
-import { Buffer, kMaxLength } from "node:buffer";
+const { Buffer, kMaxLength } = core.loadExtScript(
+  "ext:deno_node/internal/buffer.mjs",
+);
 const { ownerSymbol: owner_symbol } = core.loadExtScript(
   "ext:deno_node/internal_binding/symbols.ts",
 );

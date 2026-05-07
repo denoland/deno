@@ -4,7 +4,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
-import { Buffer } from "node:buffer";
+import type { Buffer } from "node:buffer";
 import {
   type BigIntStats,
   fchmod,
