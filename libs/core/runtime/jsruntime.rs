@@ -469,6 +469,10 @@ pub struct JsRuntimeState {
   inspector: RefCell<Option<Rc<JsRuntimeInspector>>>,
   has_inspector: Cell<bool>,
   lazy_extensions: Vec<&'static str>,
+  /// Counter for consecutive event loop iterations where module evaluation
+  /// is pending but V8 reports no stalled top-level await. Used to detect
+  /// deadlocks and avoid spinning the event loop indefinitely.
+  tla_stall_retries: Cell<u32>,
 }
 
 #[derive(Default)]
@@ -790,6 +794,7 @@ impl JsRuntime {
       function_templates: Default::default(),
       callsite_prototype: None.into(),
       lazy_extensions,
+      tla_stall_retries: Cell::new(0),
     });
 
     // ...now we're moving on to ops; set them up, create `OpCtx` for each op
@@ -2472,24 +2477,30 @@ impl JsRuntime {
         let modules = &realm.0.module_map();
         if !modules.has_pending_module_evaluation() {
           // The checkpoint resolved the evaluation -- keep going
+          self.inner.state.tla_stall_retries.set(0);
           self.inner.state.waker.wake();
         } else if let Some(js_error) =
-          find_and_report_stalled_level_await_in_any_realm(
-            scope, &realm.0,
-          )
+          find_and_report_stalled_level_await_in_any_realm(scope, &realm.0)
         {
-          return Poll::Ready(Err(
-            CoreErrorKind::Js(js_error).into_box(),
-          ));
+          self.inner.state.tla_stall_retries.set(0);
+          return Poll::Ready(Err(CoreErrorKind::Js(js_error).into_box()));
         } else {
           // V8 reports no stalled TLA but the evaluation promise is still
           // pending. This can happen with large async module graphs under
-          // Explicit microtask policy. Give the event loop one more
-          // iteration to make progress.
-          #[cfg(debug_assertions)]
+          // Explicit microtask policy. Give the event loop a few more
+          // iterations to make progress, but bail if we are stuck.
+          const MAX_TLA_STALL_RETRIES: u32 = 10;
+          let retries = self.inner.state.tla_stall_retries.get() + 1;
+          self.inner.state.tla_stall_retries.set(retries);
+          if retries > MAX_TLA_STALL_RETRIES {
+            self.inner.state.tla_stall_retries.set(0);
+            return Poll::Ready(Err(
+              CoreErrorKind::ModuleEvaluationDeadlock.into_box(),
+            ));
+          }
           eprintln!(
             "warning: module evaluation pending but no stalled top-level \
-             await found, retrying event loop iteration"
+             await found, retrying event loop iteration ({retries}/{MAX_TLA_STALL_RETRIES})"
           );
           self.inner.state.waker.wake();
         }
@@ -2508,18 +2519,24 @@ impl JsRuntime {
         // pass, will be polled again
       } else if realm.modules_idle() {
         if let Some(js_error) =
-          find_and_report_stalled_level_await_in_any_realm(
-            scope, &realm.0,
-          )
+          find_and_report_stalled_level_await_in_any_realm(scope, &realm.0)
         {
-          return Poll::Ready(Err(
-            CoreErrorKind::Js(js_error).into_box(),
-          ));
+          self.inner.state.tla_stall_retries.set(0);
+          return Poll::Ready(Err(CoreErrorKind::Js(js_error).into_box()));
         } else {
-          #[cfg(debug_assertions)]
+          const MAX_TLA_STALL_RETRIES: u32 = 10;
+          let retries = self.inner.state.tla_stall_retries.get() + 1;
+          self.inner.state.tla_stall_retries.set(retries);
+          if retries > MAX_TLA_STALL_RETRIES {
+            self.inner.state.tla_stall_retries.set(0);
+            return Poll::Ready(Err(
+              CoreErrorKind::ModuleEvaluationDeadlock.into_box(),
+            ));
+          }
           eprintln!(
             "warning: dynamic module evaluation pending but no stalled \
-             top-level await found, retrying event loop iteration"
+             top-level await found, retrying event loop iteration \
+             ({retries}/{MAX_TLA_STALL_RETRIES})"
           );
           self.inner.state.waker.wake();
         }
