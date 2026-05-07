@@ -691,11 +691,49 @@ pub async fn add(
       for (name, version, info) in &tarball_lockfile_entries {
         let serialized_id =
           StackString::from(format!("{}@{}", name, version).as_str());
+
+        // Resolve dependency names to their lockfile IDs (e.g., "is-number" -> "is-number@6.0.0")
+        // by looking up packages that were resolved during npm install.
+        let resolve_dep = |dep_name: &str| -> Option<
+          deno_lockfile::NpmPackageDependencyLockfileInfo,
+        > {
+          // Find the resolved package ID in the lockfile's npm packages
+          let prefix = format!("{}@", dep_name);
+          let resolved_id = lockfile
+            .content
+            .packages
+            .npm
+            .keys()
+            .find(|key| key.starts_with(&prefix))?;
+          Some(deno_lockfile::NpmPackageDependencyLockfileInfo {
+            name: StackString::from(dep_name),
+            id: resolved_id.clone(),
+          })
+        };
+
+        let dependencies = info
+          .dependencies
+          .iter()
+          .filter(|(dep_name, _)| {
+            !info
+              .optional_dependencies
+              .iter()
+              .any(|(opt_name, _)| opt_name == dep_name)
+          })
+          .filter_map(|(dep_name, _)| resolve_dep(dep_name))
+          .collect();
+
+        let optional_dependencies = info
+          .optional_dependencies
+          .iter()
+          .filter_map(|(dep_name, _)| resolve_dep(dep_name))
+          .collect();
+
         lockfile.insert_npm_package(deno_lockfile::NpmPackageLockfileInfo {
           serialized_id,
           integrity: Some(info.integrity.clone()),
-          dependencies: Vec::new(),
-          optional_dependencies: Vec::new(),
+          dependencies,
+          optional_dependencies,
           optional_peers: Vec::new(),
           os: Vec::new(),
           cpu: Vec::new(),
@@ -732,6 +770,10 @@ struct TarballLockfileInfo {
   integrity: String,
   /// The tarball source (file: path or URL)
   tarball_url: String,
+  /// Dependencies from the tarball's package.json (name -> version_req)
+  dependencies: Vec<(String, String)>,
+  /// Optional dependencies from the tarball's package.json (name -> version_req)
+  optional_dependencies: Vec<(String, String)>,
 }
 
 enum NotFoundHelp {
@@ -817,7 +859,7 @@ async fn resolve_tarball_package(
   let package_json =
     package_json.context("No package.json found in tarball")?;
 
-  // Step 3: Extract name and version
+  // Step 3: Extract name, version, and dependencies
   let name = package_json
     .get("name")
     .and_then(|v| v.as_str())
@@ -828,6 +870,26 @@ async fn resolve_tarball_package(
     .and_then(|v| v.as_str())
     .context("package.json in tarball is missing \"version\" field")?
     .to_string();
+
+  fn extract_dep_entries(
+    package_json: &deno_core::serde_json::Value,
+    field: &str,
+  ) -> Vec<(String, String)> {
+    package_json
+      .get(field)
+      .and_then(|v| v.as_object())
+      .map(|obj| {
+        obj
+          .iter()
+          .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
+          .collect()
+      })
+      .unwrap_or_default()
+  }
+
+  let dependencies = extract_dep_entries(&package_json, "dependencies");
+  let optional_dependencies =
+    extract_dep_entries(&package_json, "optionalDependencies");
 
   // The tarball is extracted to node_modules by the npm installer's
   // local package handling (it detects .tgz/.tar.gz targets and
@@ -884,6 +946,8 @@ async fn resolve_tarball_package(
     tarball_info: Some(TarballLockfileInfo {
       integrity: hash,
       tarball_url: tarball_url_for_lockfile,
+      dependencies,
+      optional_dependencies,
     }),
   })
 }
