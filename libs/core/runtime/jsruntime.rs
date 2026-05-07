@@ -2498,10 +2498,13 @@ impl JsRuntime {
               CoreErrorKind::ModuleEvaluationDeadlock.into_box(),
             ));
           }
-          eprintln!(
-            "warning: module evaluation pending but no stalled top-level \
-             await found, retrying event loop iteration ({retries}/{MAX_TLA_STALL_RETRIES})"
-          );
+          #[allow(clippy::print_stderr, reason = "intentional debug diagnostic for TLA stall recovery")]
+          {
+            eprintln!(
+              "warning: module evaluation pending but no stalled top-level \
+               await found, retrying event loop iteration ({retries}/{MAX_TLA_STALL_RETRIES})"
+            );
+          }
           self.inner.state.waker.wake();
         }
       }
@@ -2533,11 +2536,14 @@ impl JsRuntime {
               CoreErrorKind::ModuleEvaluationDeadlock.into_box(),
             ));
           }
-          eprintln!(
-            "warning: dynamic module evaluation pending but no stalled \
-             top-level await found, retrying event loop iteration \
-             ({retries}/{MAX_TLA_STALL_RETRIES})"
-          );
+          #[allow(clippy::print_stderr, reason = "intentional debug diagnostic for TLA stall recovery")]
+          {
+            eprintln!(
+              "warning: dynamic module evaluation pending but no stalled \
+               top-level await found, retrying event loop iteration \
+               ({retries}/{MAX_TLA_STALL_RETRIES})"
+            );
+          }
           self.inner.state.waker.wake();
         }
       } else {
