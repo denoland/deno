@@ -50,14 +50,16 @@ import {
   Http2Session as InternalHttp2Session,
   op_http2_callbacks,
 } from "ext:core/ops";
-import { enqueueNodePerformanceEntry } from "node:perf_hooks";
+const { enqueueNodePerformanceEntry } = core.loadExtScript(
+  "ext:deno_node/perf_hooks.js",
+);
 const { performance: webPerformance } = core.loadExtScript(
   "ext:deno_web/15_performance.js",
 );
 import net from "node:net";
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import http from "node:http";
-import { AsyncResource } from "node:async_hooks";
+const { AsyncResource } = core.loadExtScript("ext:deno_node/async_hooks.ts");
 import {
   _connectionListener as httpConnectionListener,
   httpServerPreClose,
@@ -71,7 +73,7 @@ import {
 import { Duplex } from "node:stream";
 import tls from "node:tls";
 const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
-import dc from "node:diagnostics_channel";
+const dc = core.loadExtScript("ext:deno_node/diagnostics_channel.js").default;
 const { utcDate } = core.loadExtScript("ext:deno_node/internal/http.ts");
 const {
   kLastWriteWasAsync,

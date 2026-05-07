@@ -117,7 +117,7 @@ const { debuglog } = core.loadExtScript(
 import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
-import { channel } from "node:diagnostics_channel";
+const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
 // Imported lazily at module top via the cluster <-> net cycle. Only used
 // inside `_listenInCluster()`, which is invoked after cluster.ts has
 // finished evaluating, so the live bindings are fully populated by then.
@@ -2719,6 +2719,19 @@ Server.prototype.listen = function (...args: unknown[]) {
   if (options.path && _isPipeName(options.path)) {
     const pipeName = (this._pipeName = options.path);
     backlog = options.backlog || backlogFromArgs;
+
+    // Abstract Unix sockets (path starts with \0) have no filesystem
+    // entry, so readableAll/writableAll (which use chmod) are invalid.
+    if (
+      (options.readableAll === true || options.writableAll === true) &&
+      pipeName.charCodeAt(0) === 0
+    ) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options",
+        options,
+        "can not set readableAll or writableAllt to true when path is abstract unix socket",
+      );
+    }
 
     _listenInCluster(
       this,
