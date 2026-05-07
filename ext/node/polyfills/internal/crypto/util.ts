@@ -4,7 +4,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
+(function () {
+const { core } = globalThis.__bootstrap;
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
@@ -28,7 +29,7 @@ const {
   kKeyObject,
 } = core.loadExtScript("ext:deno_node/internal/crypto/constants.ts");
 
-export type EllipticCurve = {
+type EllipticCurve = {
   name: string;
   ephemeral: boolean;
   privateKeySize: number;
@@ -37,7 +38,7 @@ export type EllipticCurve = {
   sharedSecretSize: number;
 };
 
-export const ellipticCurves: Array<EllipticCurve> = [
+const ellipticCurves: Array<EllipticCurve> = [
   {
     name: "secp256k1",
     privateKeySize: 32,
@@ -288,7 +289,7 @@ const supportedCiphers = [
   "id-aes256-wrap-pad",
 ];
 
-export function getCiphers(): string[] {
+function getCiphers(): string[] {
   return supportedCiphers;
 }
 
@@ -311,7 +312,7 @@ const hashBlockSizes: Record<string, number> = {
   blake2s256: 64,
 };
 
-export function getHashBlockSize(algorithm: string): number {
+function getHashBlockSize(algorithm: string): number {
   const blockSize = hashBlockSizes[algorithm];
   if (blockSize === undefined) {
     throw new ERR_CRYPTO_INVALID_DIGEST(algorithm);
@@ -319,7 +320,7 @@ export function getHashBlockSize(algorithm: string): number {
   return blockSize;
 }
 
-export function getCipherInfo(
+function getCipherInfo(
   nameOrNid: string | number,
   options?: { keyLength?: number; ivLength?: number },
 ) {
@@ -372,18 +373,18 @@ export function getCipherInfo(
 
 let defaultEncoding = "buffer";
 
-export function setDefaultEncoding(val: string) {
+function setDefaultEncoding(val: string) {
   defaultEncoding = val;
 }
 
-export function getDefaultEncoding(): string {
+function getDefaultEncoding(): string {
   return defaultEncoding;
 }
 
 // This is here because many functions accepted binary strings without
 // any explicit encoding in older versions of node, and we don't want
 // to break them unnecessarily.
-export function toBuf(val: string | Buffer, encoding?: string): Buffer {
+function toBuf(val: string | Buffer, encoding?: string): Buffer {
   if (typeof val === "string") {
     if (encoding === "buffer") {
       encoding = "utf8";
@@ -395,7 +396,7 @@ export function toBuf(val: string | Buffer, encoding?: string): Buffer {
   return val;
 }
 
-export const validateByteSource = hideStackFrames((val, name) => {
+const validateByteSource = hideStackFrames((val, name) => {
   val = toBuf(val);
 
   if (isAnyArrayBuffer(val) || isArrayBufferView(val)) {
@@ -420,34 +421,32 @@ const curveNames: readonly string[] = [
   "secp256k1",
   "secp224r1",
 ];
-export function getCurves(): readonly string[] {
+function getCurves(): readonly string[] {
   return curveNames;
 }
 
-export interface SecureHeapUsage {
+interface SecureHeapUsage {
   total: number;
   min: number;
   used: number;
   utilization: number;
 }
 
-export function secureHeapUsed(): SecureHeapUsage {
+function secureHeapUsed(): SecureHeapUsage {
   notImplemented("crypto.secureHeapUsed");
 }
 
-export function setEngine(_engine: string, _flags: typeof constants) {
+function setEngine(_engine: string, _flags: typeof constants) {
   notImplemented("crypto.setEngine");
 }
 
-export function getOpenSSLSecLevel(): number {
+function getOpenSSLSecLevel(): number {
   return 5; // highest sec level, used in tests.
 }
 
 const kAesKeyLengths = [128, 192, 256];
 
-export { kAesKeyLengths, kHandle, kKeyObject };
-
-export default {
+const _defaultExport = {
   getDefaultEncoding,
   setDefaultEncoding,
   getCiphers,
@@ -463,3 +462,23 @@ export default {
   kKeyObject,
   kAesKeyLengths,
 };
+
+return {
+  ellipticCurves,
+  getCiphers,
+  getHashBlockSize,
+  getCipherInfo,
+  setDefaultEncoding,
+  getDefaultEncoding,
+  toBuf,
+  validateByteSource,
+  getCurves,
+  secureHeapUsed,
+  setEngine,
+  getOpenSSLSecLevel,
+  kAesKeyLengths,
+  kHandle,
+  kKeyObject,
+  default: _defaultExport,
+};
+})();

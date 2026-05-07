@@ -9,7 +9,9 @@ const {
   Stream,
 } = core.loadExtScript("ext:deno_node/internal/streams/legacy.js");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-import { addAbortSignal } from "ext:deno_node/internal/streams/add-abort-signal.js";
+const { addAbortSignal } = core.loadExtScript(
+  "ext:deno_node/internal/streams/add-abort-signal.js",
+);
 const eos =
   core.loadExtScript("ext:deno_node/internal/streams/end-of-stream.js").default;
 const destroyImpl =

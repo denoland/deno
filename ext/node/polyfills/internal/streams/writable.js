@@ -11,7 +11,9 @@ const destroyImpl =
   core.loadExtScript("ext:deno_node/internal/streams/destroy.js").default;
 const eos =
   core.loadExtScript("ext:deno_node/internal/streams/end-of-stream.js").default;
-import { addAbortSignal } from "ext:deno_node/internal/streams/add-abort-signal.js";
+const { addAbortSignal } = core.loadExtScript(
+  "ext:deno_node/internal/streams/add-abort-signal.js",
+);
 const {
   getDefaultHighWaterMark,
   getHighWaterMark,

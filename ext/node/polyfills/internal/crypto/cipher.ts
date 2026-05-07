@@ -55,7 +55,9 @@ import type {
   BinaryLike,
   Encoding,
 } from "ext:deno_node/internal/crypto/types.ts";
-import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
+const { getDefaultEncoding } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/util.ts",
+);
 const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,

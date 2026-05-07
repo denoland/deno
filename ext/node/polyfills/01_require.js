@@ -131,7 +131,9 @@ import internalCryptoPbkdf2 from "ext:deno_node/internal/crypto/pbkdf2.ts";
 import internalCryptoRandom from "ext:deno_node/internal/crypto/random.ts";
 import internalCryptoScrypt from "ext:deno_node/internal/crypto/scrypt.ts";
 import internalCryptoSig from "ext:deno_node/internal/crypto/sig.ts";
-import internalCryptoUtil from "ext:deno_node/internal/crypto/util.ts";
+const internalCryptoUtil = core.loadExtScript(
+  "ext:deno_node/internal/crypto/util.ts",
+).default;
 import internalCryptoX509 from "ext:deno_node/internal/crypto/x509.ts";
 import internalDgram from "ext:deno_node/internal/dgram.ts";
 const internalUndici = core.loadExtScript(
@@ -151,7 +153,9 @@ const internalPriorityQueue = core.loadExtScript(
 const internalReadlineUtils = core.loadExtScript(
   "ext:deno_node/internal/readline/utils.mjs",
 );
-import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
+const internalStreamsAddAbortSignal = core.loadExtScript(
+  "ext:deno_node/internal/streams/add-abort-signal.js",
+).default;
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
 const internalStreamsState =
   core.loadExtScript("ext:deno_node/internal/streams/state.js").default;

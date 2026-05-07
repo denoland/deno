@@ -21,7 +21,9 @@ import {
   translatePeerCertificate,
 } from "node:_tls_common";
 import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
-import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
+const { convertALPNProtocols } = core.loadExtScript(
+  "ext:deno_node/internal/tls_common.js",
+);
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   connResetException,

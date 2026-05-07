@@ -47,7 +47,6 @@ const {
   AsyncWrap,
   providerType,
 } = core.loadExtScript("ext:deno_node/internal_binding/async_wrap.ts");
-import { GetAddrInfoReqWrap } from "ext:deno_node/internal_binding/cares_wrap.ts";
 const { HandleWrap } = core.loadExtScript(
   "ext:deno_node/internal_binding/handle_wrap.ts",
 );
@@ -150,7 +149,8 @@ export class UDP extends HandleWrap {
       address: string,
       family: number,
     ) => void,
-  ) => GetAddrInfoReqWrap | Record<string, never>;
+  // deno-lint-ignore no-explicit-any
+  ) => any;
 
   constructor() {
     super(providerType.UDPWRAP);

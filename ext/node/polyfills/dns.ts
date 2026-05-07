@@ -94,12 +94,12 @@ const {
   AI_ALL: ALL,
   AI_V4MAPPED: V4MAPPED,
 } = core.loadExtScript("ext:deno_node/internal_binding/ares.ts");
-import cares, {
-  type ChannelWrapQuery,
+const {
+  default: cares,
   GetAddrInfoReqWrap,
   GetNameInfoReqWrap,
   QueryReqWrap,
-} from "ext:deno_node/internal_binding/cares_wrap.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
 const { domainToASCII } = core.loadExtScript("ext:deno_node/internal/idna.ts");
 
 const { ObjectDefineProperty } = primordials;
@@ -412,7 +412,7 @@ function onresolve(
   this.callback(null, parsedRecords);
 }
 
-function resolver(bindingName: keyof ChannelWrapQuery) {
+function resolver(bindingName: string) {
   function query(
     this: Resolver,
     name: string,

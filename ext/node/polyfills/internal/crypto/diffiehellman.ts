@@ -38,12 +38,11 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
-import {
-  EllipticCurve,
+const {
   ellipticCurves,
   getDefaultEncoding,
   toBuf,
-} from "ext:deno_node/internal/crypto/util.ts";
+} = core.loadExtScript("ext:deno_node/internal/crypto/util.ts");
 import type {
   BinaryLike,
   BinaryToTextEncoding,
