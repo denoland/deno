@@ -767,7 +767,7 @@ TLSSocket.prototype._finishInit = function () {
     this.alpnProtocol = alpnOut.alpnProtocol || false;
     if (this.servername === null) {
       const sni = this._handle.getServername?.();
-      this.servername = (sni !== undefined && sni !== "")
+      this.servername = (sni !== undefined && sni !== null && sni !== "")
         ? sni
         : (this._tlsOptions?.servername ?? null);
     }

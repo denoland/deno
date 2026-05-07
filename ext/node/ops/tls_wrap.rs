@@ -2764,7 +2764,14 @@ impl TLSWrap {
         inner.tls_conn = Some(TlsConnection::Server(conn));
       }
       Err((e, _accepted)) => {
-        inner.error = Some(format!("TLS accept error: {e}"));
+        let (error_msg, error_code) = rustls_error_to_node_error(&e, None);
+        inner.error = Some(error_msg.clone());
+        let inner_ptr = inner as *mut TLSWrapInner;
+        unsafe {
+          if let Some(ctx) = extract_emit_ctx(inner_ptr) {
+            do_emit_error(&ctx, &error_msg, &error_code);
+          }
+        }
         return -1;
       }
     }
