@@ -358,6 +358,10 @@
       "windows": false,
       "reason": "net.Socket IPC handle passing uses SCM_RIGHTS, not yet implemented on Windows"
     },
+    "parallel/test-child-process-send-returns-boolean.js": {
+      "windows": false,
+      "reason": "IPC handle passing not yet implemented on Windows"
+    },
     "parallel/test-child-process-send-type-error.js": {},
     "parallel/test-child-process-set-blocking.js": {},
     "parallel/test-child-process-silent.js": {},
