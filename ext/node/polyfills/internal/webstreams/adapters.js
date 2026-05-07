@@ -13,7 +13,9 @@ const {
   isWritable,
   isWritableEnded,
 } = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
-import { ReadableStream, WritableStream } from "node:stream/web";
+const { ReadableStream, WritableStream } = core.loadExtScript(
+  "ext:deno_node/stream/web.js",
+);
 const {
   validateBoolean,
   validateObject,

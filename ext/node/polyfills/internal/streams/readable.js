@@ -37,7 +37,7 @@ const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { validateObject } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-import { StringDecoder } from "node:string_decoder";
+const { StringDecoder } = core.loadExtScript("ext:deno_node/string_decoder.ts");
 import from from "ext:deno_node/internal/streams/from.js";
 const _mod2 = core.loadExtScript("ext:deno_node/internal/util/debuglog.ts");
 import * as _mod3 from "ext:deno_node/internal/webstreams/adapters.js";

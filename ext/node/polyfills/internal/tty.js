@@ -41,7 +41,7 @@ const {
   cursorTo,
   moveCursor,
 } = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
-import { release } from "node:os";
+const { release } = core.loadExtScript("ext:deno_node/os.ts");
 
 // Color depth constants
 const COLORS_2 = 1;

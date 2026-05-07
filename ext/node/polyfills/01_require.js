@@ -171,7 +171,7 @@ const internalValidators = core.loadExtScript(
 );
 import internalConsole from "ext:deno_node/internal/console/constructor.mjs";
 import net from "node:net";
-import os from "node:os";
+const os = core.loadExtScript("ext:deno_node/os.ts").default;
 import pathPosix from "node:path/posix";
 import pathWin32 from "node:path/win32";
 import path from "node:path";
@@ -184,12 +184,13 @@ import readlinePromises from "node:readline/promises";
 import repl from "node:repl";
 const sqlite = core.loadExtScript("ext:deno_node/sqlite.ts");
 import stream from "node:stream";
-import streamConsumers from "node:stream/consumers";
+const streamConsumers = core.loadExtScript("ext:deno_node/stream/consumers.js");
 import streamPromises from "node:stream/promises";
-import streamWeb from "node:stream/web";
-import stringDecoder from "node:string_decoder";
-import test from "node:test";
-import testReporters from "node:test/reporters";
+const streamWeb = core.loadExtScript("ext:deno_node/stream/web.js");
+const stringDecoder =
+  core.loadExtScript("ext:deno_node/string_decoder.ts").default;
+const test = core.loadExtScript("ext:deno_node/testing.ts").default;
+const testReporters = core.loadExtScript("ext:deno_node/test/reporters.ts");
 import timers from "node:timers";
 import timersPromises from "node:timers/promises";
 import tls from "node:tls";
