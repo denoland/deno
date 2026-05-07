@@ -3501,6 +3501,16 @@ fn add_common_flags(
     deno_args.push(format!("--v8-flags={}", parsed_args.v8_args.join(",")));
   }
 
+  // Add --import (ESM preloads)
+  for module in &env_opts.preload_esm_modules {
+    deno_args.push("--import".to_string());
+    deno_args.push(module.clone());
+  }
+
+  // Note: --require (CJS preloads) is not passed through yet because
+  // Deno's --require flag doesn't support bare package specifiers
+  // (e.g. `-r self_ref`). This needs package-aware resolution first.
+
   // Add conditions
   add_conditions(deno_args, env_opts);
 
