@@ -67,9 +67,7 @@ const {
   denoErrorToNodeError,
   ERR_INVALID_STATE,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-const { readableStreamCancel } = core.loadExtScript(
-  "ext:deno_web/06_streams.js",
-);
+const loadStreams = () => core.loadExtScript("ext:deno_web/06_streams.js");
 const {
   validateBoolean,
   validateObject,
@@ -389,7 +387,7 @@ export class FileHandle extends EventEmitter {
 
     this[kRef]();
     this.once("close", () => {
-      readableStreamCancel(readable);
+      loadStreams().readableStreamCancel(readable);
     });
 
     return readable;
