@@ -2527,6 +2527,47 @@ export function register(specifier, parentUrlOrOptions, maybeOptions) {
 
 Module.register = register;
 
+/**
+ * Register loader hooks from --experimental-loader CLI flag.
+ * Eagerly imports each loader module (so top-level errors crash the process
+ * like Node.js), then registers resolve/load hooks via the async hook system.
+ * @param {string[]} loaderUrls
+ */
+export async function _registerCliLoaders(loaderUrls) {
+  for (let i = 0; i < loaderUrls.length; i++) {
+    const url = loaderUrls[i];
+    let hookModule;
+    try {
+      hookModule = await import(url);
+    } catch (e) {
+      // Match Node.js behavior: print the thrown value and exit with code 1.
+      // Node uses util.inspect for objects/functions, String() for primitives.
+      const util = await import("node:util");
+      const msg = (typeof e === "object" && e !== null) ||
+          typeof e === "function"
+        ? util.inspect(e)
+        : String(e);
+      process.stderr.write(msg + "\n");
+      process.exit(1);
+    }
+
+    // Call initialize hook if exported
+    if (typeof hookModule.initialize === "function") {
+      await hookModule.initialize(undefined);
+    }
+
+    const resolve = typeof hookModule.resolve === "function"
+      ? hookModule.resolve
+      : null;
+    const load = typeof hookModule.load === "function" ? hookModule.load : null;
+
+    if (resolve !== null || load !== null) {
+      ArrayPrototypePush(asyncHookEntries, { resolve, load });
+    }
+  }
+  _activateEsmHooks();
+}
+
 export { builtinModules, createRequire, getBuiltinModule, isBuiltin, Module };
 export const _cache = Module._cache;
 export const _extensions = Module._extensions;
