@@ -401,6 +401,16 @@ const pendingHookRequests = new SafeMap();
 // maintains the async hook chain, and processes resolve/load requests.
 // deno-lint-ignore prefer-primordials
 const HOOKS_WORKER_SOURCE = `
+// In Node.js, the hooks thread's process.exit() exits the whole process.
+// We intercept it and send a message so the main thread can call process.exit().
+if (globalThis.process) {
+  globalThis.process.exit = (code) => {
+    self.postMessage({ type: "process-exit", code: code ?? 0 });
+    // Block the worker so no more code runs after process.exit()
+    for (;;) { /* spin until main process terminates us */ }
+  };
+}
+
 const asyncHookEntries = [];
 
 function defaultResolve(spec, context) {
@@ -505,7 +515,16 @@ self.onmessage = (e) => {
   }
   promise.then(
     (response) => self.postMessage(response),
-    (err) => self.postMessage({ type: "error", id: msg.id, error: String(err) }),
+    (err) => {
+      // Format like Node.js: use inspect for objects/functions, String for primitives
+      let errStr;
+      if ((typeof err === "object" && err !== null) || typeof err === "function") {
+        errStr = typeof Deno !== "undefined" && Deno.inspect ? Deno.inspect(err) : String(err);
+      } else {
+        errStr = String(err);
+      }
+      self.postMessage({ type: "error", id: msg.id, error: errStr });
+    },
   );
 };
 `;
@@ -519,6 +538,11 @@ function _ensureHooksWorker() {
   hooksWorker = new globalThis.Worker(workerUrl, { type: "module" });
   hooksWorker.onmessage = (e) => {
     const msg = e.data;
+    // process.exit() in the hooks worker should exit the main process
+    if (msg.type === "process-exit") {
+      process.exit(msg.code ?? 1);
+      return;
+    }
     const entry = pendingHookRequests.get(msg.id);
     if (entry === undefined) return;
     pendingHookRequests.delete(msg.id);
@@ -528,29 +552,47 @@ function _ensureHooksWorker() {
       entry.resolve(msg);
     }
   };
-  // Unref the worker so it doesn't prevent process exit (like Node.js
-  // hooks thread). Find the internal unref method via its Symbol key.
-  // deno-lint-ignore prefer-primordials
-  const proto = Object.getPrototypeOf(hooksWorker);
-  // deno-lint-ignore prefer-primordials
-  const syms = Object.getOwnPropertySymbols(proto);
-  for (let i = 0; i < syms.length; i++) {
-    const s = syms[i];
-    // The privateWorkerRef symbol is an anonymous Symbol() (no description)
+  hooksWorker.onerror = (e) => {
+    // Uncaught errors in the hooks worker should terminate the main process
+    process.stderr.write(e.message + "\n");
+    process.exit(1);
+  };
+  // Unref the worker so it doesn't prevent process exit when idle
+  // (like Node.js hooks thread). It gets ref'd during active requests.
+  _refHooksWorker(false);
+}
+
+function _refHooksWorker(ref) {
+  if (!hooksWorker) return;
+  if (!_refHooksWorker._fn) {
+    // Find the internal ref/unref method on the Worker prototype
     // deno-lint-ignore prefer-primordials
-    if (s.description === undefined) {
-      const desc = ObjectGetOwnPropertyDescriptor(proto, s);
-      if (desc && typeof desc.value === "function") {
-        desc.value.call(hooksWorker, false);
-        break;
+    const proto = Object.getPrototypeOf(hooksWorker);
+    // deno-lint-ignore prefer-primordials
+    const syms = Object.getOwnPropertySymbols(proto);
+    for (let i = 0; i < syms.length; i++) {
+      const s = syms[i];
+      // deno-lint-ignore prefer-primordials
+      if (s.description === undefined) {
+        const desc = ObjectGetOwnPropertyDescriptor(proto, s);
+        if (desc && typeof desc.value === "function") {
+          _refHooksWorker._fn = desc.value;
+          _refHooksWorker._sym = s;
+          break;
+        }
       }
     }
+  }
+  if (_refHooksWorker._fn) {
+    _refHooksWorker._fn.call(hooksWorker, ref);
   }
 }
 
 function _sendToHooksWorker(msg, transferList) {
   const id = nextHookRequestId++;
   msg.id = id;
+  // Ref the worker so the event loop stays alive while waiting
+  _refHooksWorker(true);
   const { promise, resolve, reject } = Promise.withResolvers();
   pendingHookRequests.set(id, { resolve, reject });
   if (transferList && transferList.length > 0) {
@@ -558,7 +600,13 @@ function _sendToHooksWorker(msg, transferList) {
   } else {
     hooksWorker.postMessage(msg);
   }
-  return promise;
+  return promise.finally(() => {
+    // Unref once we have the response so the worker doesn't keep
+    // the process alive
+    if (pendingHookRequests.size === 0) {
+      _refHooksWorker(false);
+    }
+  });
 }
 
 function executeResolveHookChain(specifier, context, parent, isMain) {
@@ -2552,37 +2600,22 @@ Module.register = register;
  * @param {string[]} loaderUrls
  */
 export async function _registerCliLoaders(loaderUrls) {
-  // CLI loaders from --experimental-loader run on the main thread.
-  // Unlike register(), they're loaded eagerly before user code runs,
-  // so there's no deadlock risk. Running on the main thread also
-  // ensures process.exit() and uncaught errors propagate correctly.
+  _ensureHooksWorker();
   for (let i = 0; i < loaderUrls.length; i++) {
     const loaderUrl = loaderUrls[i];
-    let hookModule;
     try {
-      hookModule = await import(loaderUrl);
+      const msg = await _sendToHooksWorker({
+        type: "register",
+        url: loaderUrl,
+        data: undefined,
+      });
+      if (msg.hasResolve) asyncHooksHaveResolve = true;
+      if (msg.hasLoad) asyncHooksHaveLoad = true;
     } catch (e) {
-      // Match Node.js behavior: print the thrown value and exit with code 1.
-      const util = await import("node:util");
-      const errMsg = (typeof e === "object" && e !== null) ||
-          typeof e === "function"
-        ? util.inspect(e)
-        : String(e);
-      process.stderr.write(errMsg + "\n");
+      // Match Node.js behavior: loader errors crash the process.
+      // The error message is already formatted by the worker.
+      process.stderr.write((e?.message || String(e)) + "\n");
       process.exit(1);
-    }
-
-    if (typeof hookModule.initialize === "function") {
-      await hookModule.initialize(undefined);
-    }
-
-    const resolve = typeof hookModule.resolve === "function"
-      ? hookModule.resolve
-      : null;
-    const load = typeof hookModule.load === "function" ? hookModule.load : null;
-
-    if (resolve !== null || load !== null) {
-      ArrayPrototypePush(hookEntries, { resolve, load });
     }
   }
   _activateEsmHooks();

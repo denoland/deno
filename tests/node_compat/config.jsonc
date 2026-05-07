@@ -105,7 +105,7 @@
     },
     "module-hooks/test-async-loader-hooks-no-leak-internals.mjs": {
       "ignore": true,
-      "reason": "CLI loaders (--experimental-loader) run on main thread; test expects isMainThread === false"
+      "reason": "Deno provides import.meta.resolve in workers; test asserts typeof import.meta.resolve === 'undefined'"
     },
     "module-hooks/test-async-loader-hooks-with-worker-permission-allowed.mjs": {},
     "module-hooks/test-module-hooks-load-buffers.js": {},
