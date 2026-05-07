@@ -533,7 +533,7 @@ async function executeEsmResolveHookChain(specifier, context) {
   let index = 0;
   let currentContext = context;
 
-  async function nextResolve(spec, ctx) {
+  function nextResolve(spec, ctx) {
     if (ctx !== undefined && ctx !== null) {
       currentContext = { ...currentContext, ...ctx };
     }
@@ -573,7 +573,18 @@ async function executeEsmResolveHookChain(specifier, context) {
       nextCalled = true;
       return nextResolve(s, c);
     };
-    const result = await hook(spec, currentContext, wrappedNext);
+    const result = hook(spec, currentContext, wrappedNext);
+    // If an async hook returned a promise, propagate it
+    if (result && typeof result.then === "function") {
+      return result.then((r) => {
+        if (!nextCalled && !r?.shortCircuit) {
+          throw new TypeError(
+            "resolve hook must return { shortCircuit: true } or call nextResolve",
+          );
+        }
+        return r;
+      });
+    }
     if (!nextCalled && !result?.shortCircuit) {
       throw new TypeError(
         "resolve hook must return { shortCircuit: true } or call nextResolve",
