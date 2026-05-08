@@ -23,8 +23,6 @@ const {
   normalizeString,
 } = core.loadExtScript("ext:deno_node/path/_util.ts");
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
-const lazyProcess = core.createLazyLoader("node:process");
-
 const lazyLoadGlob = core.createLazyLoader(
   "ext:deno_node/_fs/_fs_glob.ts",
 );
@@ -125,7 +123,7 @@ function resolve(...pathSegments: string[]): string {
       // absolute path, get cwd for that drive, or the process cwd if
       // the drive cwd is not available. We're sure the device is not
       // a UNC path at this points, because UNC paths are always absolute.
-      path = lazyProcess().env[`=${resolvedDevice}`] || Deno.cwd();
+      path = globalThis.process.env[`=${resolvedDevice}`] || Deno.cwd();
 
       // Verify that a cwd was found and that it actually points
       // to our drive. If not, default to the drive's root.
