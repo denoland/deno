@@ -432,8 +432,11 @@ function defaultLoad(loadUrl) {
   }
   let source = null;
   if (loadUrl.startsWith("file://")) {
+    // Read file so hooks calling nextLoad() can inspect/transform the source.
+    // Uses Deno.readTextFileSync which respects --allow-read/--deny-read
+    // permissions (worker inherits parent permissions).
     try { source = Deno.readTextFileSync(new URL(loadUrl)); }
-    catch { /* fall through */ }
+    catch { /* fall through with null source */ }
   }
   return { source, shortCircuit: true };
 }
@@ -566,28 +569,8 @@ function _ensureHooksWorker() {
 
 function _refHooksWorker(ref) {
   if (!hooksWorker) return;
-  if (!_refHooksWorker._fn) {
-    // Find the internal ref/unref method on the Worker prototype
-    // deno-lint-ignore prefer-primordials
-    const proto = Object.getPrototypeOf(hooksWorker);
-    // deno-lint-ignore prefer-primordials
-    const syms = Object.getOwnPropertySymbols(proto);
-    for (let i = 0; i < syms.length; i++) {
-      const s = syms[i];
-      // deno-lint-ignore prefer-primordials
-      if (s.description === undefined) {
-        const desc = ObjectGetOwnPropertyDescriptor(proto, s);
-        if (desc && typeof desc.value === "function") {
-          _refHooksWorker._fn = desc.value;
-          _refHooksWorker._sym = s;
-          break;
-        }
-      }
-    }
-  }
-  if (_refHooksWorker._fn) {
-    _refHooksWorker._fn.call(hooksWorker, ref);
-  }
+  const { privateWorkerRef } = core.loadExtScript("ext:runtime/11_workers.js");
+  hooksWorker[privateWorkerRef](ref);
 }
 
 function _sendToHooksWorker(msg, transferList) {

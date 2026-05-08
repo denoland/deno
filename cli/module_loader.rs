@@ -1024,11 +1024,15 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       // instantiation callback (module_resolve_callback) which calls
       // resolve synchronously -- we cannot return Async there.
       let cache_key = format!("{specifier}\x00{referrer}");
-      if let Some(cached) =
-        self.0.hook_registry.resolve_cache.borrow().get(&cache_key)
+      if let Some(cached) = self
+        .0
+        .hook_registry
+        .resolve_cache
+        .borrow_mut()
+        .remove(&cache_key)
       {
         return deno_core::ModuleResolveResponse::Sync(
-          ModuleSpecifier::parse(cached).map_err(JsErrorBox::from_err),
+          ModuleSpecifier::parse(&cached).map_err(JsErrorBox::from_err),
         );
       }
 

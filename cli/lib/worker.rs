@@ -938,23 +938,19 @@ impl LibMainWorker {
     if self.experimental_loaders.is_empty() {
       return Ok(());
     }
-    // Build a JS array of loader URLs
-    let urls_js: Vec<String> = self
+    // Build a JS array of loader URLs using JSON serialization
+    // for robust escaping of special characters in URLs.
+    let urls_json: Vec<String> = self
       .experimental_loaders
       .iter()
-      .map(|u| {
-        format!(
-          "\"{}\"",
-          u.as_str().replace('\\', "\\\\").replace('"', "\\\"")
-        )
-      })
+      .map(|u| serde_json::to_string(u.as_str()).unwrap())
       .collect();
     let script = format!(
       r#"(async () => {{
         const {{ _registerCliLoaders }} = await import("node:module");
         await _registerCliLoaders([{}]);
       }})()"#,
-      urls_js.join(",")
+      urls_json.join(",")
     );
     self
       .worker
