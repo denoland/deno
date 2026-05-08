@@ -96,7 +96,7 @@ const {
   emitDestroy: internalAsyncHooksEmitDestroy,
   emitInit: internalAsyncHooksEmitInit,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
-import buffer from "node:buffer";
+const buffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs").default;
 import childProcess from "node:child_process";
 import cluster from "node:cluster";
 import console from "node:console";
@@ -131,7 +131,9 @@ import internalCryptoPbkdf2 from "ext:deno_node/internal/crypto/pbkdf2.ts";
 import internalCryptoRandom from "ext:deno_node/internal/crypto/random.ts";
 import internalCryptoScrypt from "ext:deno_node/internal/crypto/scrypt.ts";
 import internalCryptoSig from "ext:deno_node/internal/crypto/sig.ts";
-import internalCryptoUtil from "ext:deno_node/internal/crypto/util.ts";
+const internalCryptoUtil = core.loadExtScript(
+  "ext:deno_node/internal/crypto/util.ts",
+).default;
 import internalCryptoX509 from "ext:deno_node/internal/crypto/x509.ts";
 import internalDgram from "ext:deno_node/internal/dgram.ts";
 const internalUndici = core.loadExtScript(
@@ -151,7 +153,9 @@ const internalPriorityQueue = core.loadExtScript(
 const internalReadlineUtils = core.loadExtScript(
   "ext:deno_node/internal/readline/utils.mjs",
 );
-import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
+const internalStreamsAddAbortSignal = core.loadExtScript(
+  "ext:deno_node/internal/streams/add-abort-signal.js",
+).default;
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
 const internalStreamsState =
   core.loadExtScript("ext:deno_node/internal/streams/state.js").default;
@@ -171,7 +175,7 @@ const internalValidators = core.loadExtScript(
 );
 import internalConsole from "ext:deno_node/internal/console/constructor.mjs";
 import net from "node:net";
-import os from "node:os";
+const os = core.loadExtScript("ext:deno_node/os.ts").default;
 import pathPosix from "node:path/posix";
 import pathWin32 from "node:path/win32";
 import path from "node:path";
@@ -182,14 +186,15 @@ const querystring = core.loadExtScript("ext:deno_node/querystring.js").default;
 import readline from "node:readline";
 import readlinePromises from "node:readline/promises";
 import repl from "node:repl";
-import sqlite from "node:sqlite";
+const sqlite = core.loadExtScript("ext:deno_node/sqlite.ts");
 import stream from "node:stream";
-import streamConsumers from "node:stream/consumers";
+const streamConsumers = core.loadExtScript("ext:deno_node/stream/consumers.js");
 import streamPromises from "node:stream/promises";
-import streamWeb from "node:stream/web";
-import stringDecoder from "node:string_decoder";
-import test from "node:test";
-import testReporters from "node:test/reporters";
+const streamWeb = core.loadExtScript("ext:deno_node/stream/web.js");
+const stringDecoder =
+  core.loadExtScript("ext:deno_node/string_decoder.ts").default;
+const test = core.loadExtScript("ext:deno_node/testing.ts").default;
+const testReporters = core.loadExtScript("ext:deno_node/test/reporters.ts");
 import timers from "node:timers";
 import timersPromises from "node:timers/promises";
 import tls from "node:tls";
@@ -387,6 +392,9 @@ let insideLoadHook = false;
 let utf8Decoder;
 let esmResolveLoopRunning = false;
 let esmLoadLoopRunning = false;
+// Formats determined by resolve hooks, keyed by resolved URL.
+// Passed as context.format to load hooks per Node.js spec.
+const resolvedFormats = new SafeMap();
 
 function executeResolveHookChain(specifier, context, parent, isMain) {
   // Collect resolve hooks from hookEntries in LIFO order
@@ -531,12 +539,38 @@ async function executeEsmResolveHookChain(specifier, context) {
   let index = 0;
   let currentContext = context;
 
-  async function nextResolve(spec, ctx) {
+  function nextResolve(spec, ctx) {
     if (ctx !== undefined && ctx !== null) {
       currentContext = { ...currentContext, ...ctx };
     }
     if (index >= resolveHooks.length) {
-      // End of chain - signal fallthrough to Rust default resolution
+      // Default resolve: resolve the specifier to a URL so hooks
+      // further up the chain can inspect the resolved path.
+      if (StringPrototypeStartsWith(spec, "node:")) {
+        return { url: spec, shortCircuit: true };
+      }
+      if (nativeModuleCanBeRequiredByUsers(spec)) {
+        return { url: "node:" + spec, shortCircuit: true };
+      }
+      // For relative/absolute paths, resolve against parentURL
+      const parentURL = currentContext.parentURL;
+      if (parentURL) {
+        try {
+          return { url: new URL(spec, parentURL).href, shortCircuit: true };
+        } catch {
+          // Fall through
+        }
+      }
+      // For bare specifiers, try CJS resolution as a fallback
+      try {
+        const resolved = Module._resolveFilename(spec, null, false);
+        if (StringPrototypeStartsWith(resolved, "node:")) {
+          return { url: resolved, shortCircuit: true };
+        }
+        return { url: url.pathToFileURL(resolved).href, shortCircuit: true };
+      } catch {
+        // Could not resolve
+      }
       return { url: null, shortCircuit: true };
     }
     const hook = resolveHooks[index++];
@@ -545,7 +579,18 @@ async function executeEsmResolveHookChain(specifier, context) {
       nextCalled = true;
       return nextResolve(s, c);
     };
-    const result = await hook(spec, currentContext, wrappedNext);
+    const result = hook(spec, currentContext, wrappedNext);
+    // If an async hook returned a promise, propagate it
+    if (result && typeof result.then === "function") {
+      return result.then((r) => {
+        if (!nextCalled && !r?.shortCircuit) {
+          throw new TypeError(
+            "resolve hook must return { shortCircuit: true } or call nextResolve",
+          );
+        }
+        return r;
+      });
+    }
     if (!nextCalled && !result?.shortCircuit) {
       throw new TypeError(
         "resolve hook must return { shortCircuit: true } or call nextResolve",
@@ -653,6 +698,9 @@ function _startEsmResolveLoop() {
       try {
         const result = await executeEsmResolveHookChain(specifier, context);
         if (result !== null && result.url != null) {
+          if (result.format != null) {
+            resolvedFormats.set(result.url, result.format);
+          }
           op_module_hooks_respond_resolve(id, result.url, null);
         } else {
           // Fallthrough: tell Rust to use default resolution
@@ -675,8 +723,10 @@ function _startEsmLoadLoop() {
       const req = await pollPromise;
       if (req === null) break;
       const [id, fileUrl] = req;
+      const storedFormat = resolvedFormats.get(fileUrl);
+      if (storedFormat !== undefined) resolvedFormats.delete(fileUrl);
       const context = {
-        format: undefined,
+        format: storedFormat ?? undefined,
         conditions: ["node", "import"],
         importAttributes: { __proto__: null },
         importAssertions: { __proto__: null },

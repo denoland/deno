@@ -4,7 +4,9 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-import { Buffer, kMaxLength } from "node:buffer";
+const { Buffer, kMaxLength } = core.loadExtScript(
+  "ext:deno_node/internal/buffer.mjs",
+);
 const {
   emitAfter,
   emitBefore,

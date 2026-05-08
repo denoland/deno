@@ -1,24 +1,24 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 
-import { type CopySyncOptions } from "node:fs";
+(function () {
+const { core } = globalThis.__bootstrap;
 const {
   denoErrorToNodeError,
   ERR_INVALID_RETURN_VALUE,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import { core } from "ext:core/mod.js";
-import { op_node_cp_sync } from "ext:core/ops";
-import { throwCpError } from "ext:deno_node/_fs/cp/cp.ts";
+const { op_node_cp_sync } = core.ops;
+const { throwCpError } = core.loadExtScript("ext:deno_node/_fs/cp/cp.ts");
 
 const {
   isPromise,
 } = core;
 
-export function cpSyncFn(
-  src: string,
-  dest: string,
-  opts: CopySyncOptions,
-): void {
+function cpSyncFn(
+  src,
+  dest,
+  opts,
+) {
   try {
     if (opts.filter) {
       // deno-lint-ignore prefer-primordials
@@ -43,7 +43,7 @@ export function cpSyncFn(
     );
   } catch (err) {
     if (typeof err?.os_errno === "number") {
-      throw denoErrorToNodeError(err as Error, {
+      throw denoErrorToNodeError(err, {
         path: err.path,
         dest: err.dest,
         syscall: err.syscall,
@@ -53,3 +53,6 @@ export function cpSyncFn(
     throwCpError(err);
   }
 }
+
+return { cpSyncFn };
+})();

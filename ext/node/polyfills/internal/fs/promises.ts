@@ -6,10 +6,10 @@ import type { Encodings } from "ext:deno_node/_utils.ts";
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const constants = core.loadExtScript("ext:deno_node/_fs/_fs_constants.ts");
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
-import { cpPromise } from "ext:deno_node/_fs/_fs_cp.ts";
+const { cpPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_cp.ts");
 import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { readdirPromise } from "ext:deno_node/_fs/_fs_readdir.ts";
-import { lstatPromise } from "ext:deno_node/_fs/_fs_lstat.ts";
+const { lstatPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_lstat.ts");
 import {
   access,
   appendFile,
@@ -38,7 +38,7 @@ import {
 } from "node:fs";
 import { globPromise } from "ext:deno_node/_fs/_fs_glob.ts";
 import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
-import { Buffer } from "node:buffer";
+import type { Buffer } from "node:buffer";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { primordials } from "ext:core/mod.js";

@@ -86,6 +86,11 @@ const {
   ContextManager,
   telemetry,
 } = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
+const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
+
+const onServerRequestStartChannel = channel("http.server.request.start");
+const onServerResponseCreatedChannel = channel("http.server.response.created");
+const onServerResponseFinishChannel = channel("http.server.response.finish");
 
 const kServerResponse = Symbol("ServerResponse");
 const kConnectionsKey = Symbol("http.server.connections");
@@ -292,6 +297,13 @@ function ServerResponse(req, options) {
       req.headers?.te,
     );
     this.shouldKeepAlive = false;
+  }
+
+  if (onServerResponseCreatedChannel.hasSubscribers) {
+    onServerResponseCreatedChannel.publish({
+      request: req,
+      response: this,
+    });
   }
 }
 ObjectSetPrototypeOf(ServerResponse.prototype, OutgoingMessage.prototype);
@@ -826,6 +838,15 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
     resOnFinish.bind(undefined, req, res, socket, state, server),
   );
 
+  if (onServerRequestStartChannel.hasSubscribers) {
+    onServerRequestStartChannel.publish({
+      request: req,
+      response: res,
+      socket,
+      server,
+    });
+  }
+
   let handled = false;
 
   if (req.httpVersionMajor === 1 && req.httpVersionMinor === 1) {
@@ -884,6 +905,15 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
 }
 
 function resOnFinish(req, res, socket, state, server) {
+  if (onServerResponseFinishChannel.hasSubscribers) {
+    onServerResponseFinishChannel.publish({
+      request: req,
+      response: res,
+      socket,
+      server,
+    });
+  }
+
   assert(state.incoming.length === 0 || state.incoming[0] === req);
 
   // End OTel server span

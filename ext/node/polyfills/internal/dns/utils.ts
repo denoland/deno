@@ -33,13 +33,13 @@ const {
   AI_ALL,
   AI_V4MAPPED,
 } = core.loadExtScript("ext:deno_node/internal_binding/ares.ts");
-import {
+const {
   ChannelWrap,
   DNS_ORDER_IPV4_FIRST,
   DNS_ORDER_IPV6_FIRST,
   DNS_ORDER_VERBATIM,
   strerror,
-} from "ext:deno_node/internal_binding/cares_wrap.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
 const {
   ERR_DNS_SET_SERVERS_FAILED,
   ERR_INVALID_ARG_VALUE,

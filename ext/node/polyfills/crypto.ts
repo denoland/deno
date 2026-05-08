@@ -14,11 +14,11 @@ const { crypto: constants } = core.loadExtScript(
 const { getOptionValue } = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
 );
-import {
+const {
   getFipsCrypto,
   setFipsCrypto,
   timingSafeEqual,
-} from "ext:deno_node/internal_binding/crypto.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/crypto.ts");
 import {
   checkPrime,
   checkPrimeSync,
@@ -158,14 +158,13 @@ import type {
   PeerCertificate,
   X509CheckOptions,
 } from "ext:deno_node/internal/crypto/x509.ts";
-import {
+const {
   getCipherInfo,
   getCiphers,
   getCurves,
   secureHeapUsed,
   setEngine,
-} from "ext:deno_node/internal/crypto/util.ts";
-import type { SecureHeapUsage } from "ext:deno_node/internal/crypto/util.ts";
+} = core.loadExtScript("ext:deno_node/internal/crypto/util.ts");
 import Certificate from "ext:deno_node/internal/crypto/certificate.ts";
 import type {
   TransformOptions,

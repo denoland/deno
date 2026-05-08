@@ -6,7 +6,9 @@
 
 import { core } from "ext:core/mod.js";
 import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
-import { kAesKeyLengths } from "ext:deno_node/internal/crypto/util.ts";
+const { kAesKeyLengths } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/util.ts",
+);
 import {
   PrivateKeyObject,
   PublicKeyObject,
@@ -21,7 +23,9 @@ const {
   ERR_INVALID_ARG_VALUE,
   ERR_MISSING_OPTION,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import { getCiphers } from "ext:deno_node/internal/crypto/util.ts";
+const { getCiphers } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/util.ts",
+);
 import { getHashes } from "ext:deno_node/internal/crypto/hash.ts";
 const {
   validateBuffer,
@@ -33,7 +37,7 @@ const {
   validateString,
   validateUint32,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { Buffer } from "node:buffer";
+import type { Buffer } from "node:buffer";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 import process from "node:process";
 const { promisify } = core.loadExtScript("ext:deno_node/util.ts");

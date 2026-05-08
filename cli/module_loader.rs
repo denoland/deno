@@ -1134,12 +1134,19 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
             }
           };
           match hook_result {
-            Ok((Some(source), _format)) => Ok(deno_core::ModuleSource::new(
-              deno_core::ModuleType::JavaScript,
-              deno_core::ModuleSourceCode::String(source.into()),
-              &specifier,
-              None,
-            )),
+            Ok((Some(source), format)) => {
+              let module_type = match format.as_deref() {
+                Some("json") => deno_core::ModuleType::Json,
+                Some("wasm") => deno_core::ModuleType::Wasm,
+                _ => deno_core::ModuleType::JavaScript,
+              };
+              Ok(deno_core::ModuleSource::new(
+                module_type,
+                deno_core::ModuleSourceCode::String(source.into()),
+                &specifier,
+                None,
+              ))
+            }
             Ok((None, _)) => {
               // Fallthrough: hooks didn't intercept, use default
               inner

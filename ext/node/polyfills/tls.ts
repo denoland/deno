@@ -5,7 +5,9 @@ import { core, primordials } from "ext:core/mod.js";
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
-import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
+const { convertALPNProtocols } = core.loadExtScript(
+  "ext:deno_node/internal/tls_common.js",
+);
 import {
   op_get_env_no_permission_check,
   op_get_root_certificates,

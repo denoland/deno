@@ -23,11 +23,11 @@ const {
   ERR_OUT_OF_RANGE,
   hideStackFrames,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import {
+const {
   kHandle,
   toBuf,
   validateByteSource,
-} from "ext:deno_node/internal/crypto/util.ts";
+} = core.loadExtScript("ext:deno_node/internal/crypto/util.ts");
 import {
   createSecretKey,
   KeyObject,

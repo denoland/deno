@@ -38,7 +38,7 @@ const {
   kEscape,
 } = CSI;
 
-import { StringDecoder } from "node:string_decoder";
+const { StringDecoder } = core.loadExtScript("ext:deno_node/string_decoder.ts");
 
 const KEYPRESS_DECODER = Symbol("keypress-decoder");
 const ESCAPE_DECODER = Symbol("escape-decoder");

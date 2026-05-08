@@ -44,11 +44,11 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import LazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
 import process from "node:process";
-import {
+const {
   getDefaultEncoding,
   getHashBlockSize,
   toBuf,
-} from "ext:deno_node/internal/crypto/util.ts";
+} = core.loadExtScript("ext:deno_node/internal/crypto/util.ts");
 const {
   isAnyArrayBuffer,
   isArrayBufferView,

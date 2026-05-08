@@ -6,7 +6,9 @@
 import { core } from "ext:core/mod.js";
 import { op_node_fill_random, op_node_fill_random_async } from "ext:core/ops";
 
-import { Buffer, kMaxLength } from "node:buffer";
+const { Buffer, kMaxLength } = core.loadExtScript(
+  "ext:deno_node/internal/buffer.mjs",
+);
 const { isAnyArrayBuffer, isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );

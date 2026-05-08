@@ -3,7 +3,9 @@
 import { op_node_fs_exists, op_node_fs_exists_sync } from "ext:core/ops";
 import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
 import { core, primordials } from "ext:core/mod.js";
-import { makeCallback } from "ext:deno_node/_fs/_fs_common.ts";
+const { makeCallback } = core.loadExtScript(
+  "ext:deno_node/_fs/_fs_common.ts",
+);
 import type { Buffer } from "node:buffer";
 const { kCustomPromisifiedSymbol } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",

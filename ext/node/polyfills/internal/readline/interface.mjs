@@ -55,7 +55,7 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
 import process from "node:process";
 
-import { StringDecoder } from "node:string_decoder";
+const { StringDecoder } = core.loadExtScript("ext:deno_node/string_decoder.ts");
 const {
   kAddHistory,
   kDecoder,

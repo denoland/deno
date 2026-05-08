@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { fileURLToPath } from "node:url";
-import { Buffer } from "node:buffer";
+import type { Buffer } from "node:buffer";
 import { core, primordials } from "ext:core/mod.js";
 const { validateObject } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",

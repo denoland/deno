@@ -22,14 +22,15 @@
 
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
-import { core } from "ext:core/mod.js";
-import { HTTPParser as NativeHTTPParser } from "ext:core/ops";
+(function () {
+const { core } = globalThis.__bootstrap;
+const { HTTPParser: NativeHTTPParser } = core.ops;
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { AsyncResource } = core.loadExtScript("ext:deno_node/async_hooks.ts");
 
 // Method names indexed by llhttp method enum values.
 // Order must match llhttp_method_t in llhttp.h.
-export const methods = [
+const methods = [
   "DELETE",
   "GET",
   "HEAD",
@@ -67,7 +68,7 @@ export const methods = [
   "QUERY",
 ];
 
-export const allMethods = [
+const allMethods = [
   "DELETE",
   "GET",
   "HEAD",
@@ -136,7 +137,7 @@ const kOnTimeout = 6;
  * The native parser reads these during execute() and calls them
  * synchronously from the C callbacks.
  */
-export function HTTPParser(this: any, type?: number) {
+function HTTPParser(this: any, type?: number) {
   // Create the native cppgc parser
   this._native = new NativeHTTPParser();
 
@@ -313,3 +314,6 @@ HTTPParser.kLenientOptionalCRLFAfterChunk = 128;
 HTTPParser.kLenientOptionalCRBeforeLF = 256;
 HTTPParser.kLenientSpacesAfterChunkSize = 512;
 HTTPParser.kLenientAll = 1023;
+
+return { methods, allMethods, HTTPParser };
+})();
