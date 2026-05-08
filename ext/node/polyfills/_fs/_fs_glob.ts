@@ -17,10 +17,10 @@ import {
   readdirPromise as readdir,
   readdirSync,
 } from "ext:deno_node/_fs/_fs_readdir.ts";
-import {
-  lstatPromise as lstat,
+const {
+  lstatPromise: lstat,
   lstatSync,
-} from "ext:deno_node/_fs/_fs_lstat.ts";
+} = core.loadExtScript("ext:deno_node/_fs/_fs_lstat.ts");
 
 import {
   basename,

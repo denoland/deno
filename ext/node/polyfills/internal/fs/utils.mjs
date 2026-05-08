@@ -75,7 +75,9 @@ const kStats = Symbol("stats");
 const assert = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );
-import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
+const { lstat, lstatSync } = core.loadExtScript(
+  "ext:deno_node/_fs/_fs_lstat.ts",
+);
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 import process from "node:process";
 const { ERR_INCOMPATIBLE_OPTION_PAIR } = core.loadExtScript(

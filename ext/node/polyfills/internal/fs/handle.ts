@@ -48,7 +48,7 @@ function writevPromise(
   });
 }
 import { readvPromise, type ReadVResult } from "node:fs";
-import { fstatPromise } from "ext:deno_node/_fs/_fs_fstat.ts";
+const { fstatPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_fstat.ts");
 import {
   fchown as fchownCb,
   ftruncate as ftruncateCb,
