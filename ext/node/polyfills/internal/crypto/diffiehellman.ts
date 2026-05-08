@@ -4,9 +4,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-(function () {
-const { core } = globalThis.__bootstrap;
-const {
+import { core } from "ext:core/mod.js";
+import {
   op_node_dh_check,
   op_node_dh_compute_secret,
   op_node_dh_keys_generate_and_export,
@@ -18,7 +17,7 @@ const {
   op_node_ecdh_validate_private_key,
   op_node_ecdh_validate_public_key,
   op_node_gen_prime,
-} = core.ops;
+} from "ext:core/ops";
 
 const {
   isAnyArrayBuffer,
@@ -44,16 +43,23 @@ const {
   getDefaultEncoding,
   toBuf,
 } = core.loadExtScript("ext:deno_node/internal/crypto/util.ts");
-const {
+import type {
+  BinaryLike,
+  BinaryToTextEncoding,
+  ECDHKeyFormat,
+} from "ext:deno_node/internal/crypto/types.ts";
+import {
   getArrayBufferOrView,
   getKeyObjectHandle,
   kConsumePrivate,
   kConsumePublic,
-} = core.loadExtScript("ext:deno_node/internal/crypto/keys.ts");
+  KeyObject,
+} from "ext:deno_node/internal/crypto/keys.ts";
+import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 
 const DH_GENERATOR = 2;
 
-function DiffieHellman(
+export function DiffieHellman(
   sizeOrKey: number | string | ArrayBufferView,
   keyEncoding?: unknown,
   generator?: unknown,
@@ -67,7 +73,7 @@ function DiffieHellman(
   );
 }
 
-class DiffieHellmanImpl {
+export class DiffieHellmanImpl {
   verifyError!: number;
   #prime: Buffer;
   #primeLength: number;
@@ -101,7 +107,7 @@ class DiffieHellmanImpl {
 
     if (
       keyEncoding &&
-      !Buffer.isEncoding(keyEncoding as any) &&
+      !Buffer.isEncoding(keyEncoding as BinaryToTextEncoding) &&
       keyEncoding !== "buffer"
     ) {
       genEncoding = generator;
@@ -198,10 +204,24 @@ class DiffieHellmanImpl {
     return generator;
   }
 
+  computeSecret(otherPublicKey: ArrayBufferView): Buffer;
+  computeSecret(
+    otherPublicKey: string,
+    inputEncoding: BinaryToTextEncoding,
+  ): Buffer;
+  computeSecret(
+    otherPublicKey: ArrayBufferView,
+    outputEncoding: BinaryToTextEncoding,
+  ): string;
+  computeSecret(
+    otherPublicKey: string,
+    inputEncoding: BinaryToTextEncoding,
+    outputEncoding: BinaryToTextEncoding,
+  ): string;
   computeSecret(
     otherPublicKey: ArrayBufferView | string,
-    inputEncoding?: any,
-    outputEncoding?: any,
+    inputEncoding?: BinaryToTextEncoding,
+    outputEncoding?: BinaryToTextEncoding,
   ): Buffer | string {
     const buf = getArrayBufferOrView(otherPublicKey, "key", inputEncoding);
     if (buf.length === 0) {
@@ -233,7 +253,9 @@ class DiffieHellmanImpl {
     return secretBuf.toString(outputEncoding);
   }
 
-  generateKeys(_encoding?: any): Buffer | string {
+  generateKeys(): Buffer;
+  generateKeys(encoding: BinaryToTextEncoding): string;
+  generateKeys(_encoding?: BinaryToTextEncoding): Buffer | string {
     const generator = this.#checkGenerator();
 
     if (this.#privateKey && this.#publicKey && !this.#publicKeyNeedsUpdate) {
@@ -265,7 +287,9 @@ class DiffieHellmanImpl {
     return this.#publicKey;
   }
 
-  getGenerator(encoding?: any): Buffer | string {
+  getGenerator(): Buffer;
+  getGenerator(encoding: BinaryToTextEncoding): string;
+  getGenerator(encoding?: BinaryToTextEncoding): Buffer | string {
     if (encoding !== undefined && encoding != "buffer") {
       return this.#generator.toString(encoding);
     }
@@ -273,7 +297,9 @@ class DiffieHellmanImpl {
     return this.#generator;
   }
 
-  getPrime(encoding?: any): Buffer | string {
+  getPrime(): Buffer;
+  getPrime(encoding: BinaryToTextEncoding): string;
+  getPrime(encoding?: BinaryToTextEncoding): Buffer | string {
     if (encoding !== undefined && encoding != "buffer") {
       return this.#prime.toString(encoding);
     }
@@ -281,7 +307,9 @@ class DiffieHellmanImpl {
     return this.#prime;
   }
 
-  getPrivateKey(encoding?: any): Buffer | string {
+  getPrivateKey(): Buffer;
+  getPrivateKey(encoding: BinaryToTextEncoding): string;
+  getPrivateKey(encoding?: BinaryToTextEncoding): Buffer | string {
     if (encoding !== undefined && encoding != "buffer") {
       return this.#privateKey.toString(encoding);
     }
@@ -289,7 +317,9 @@ class DiffieHellmanImpl {
     return this.#privateKey;
   }
 
-  getPublicKey(encoding?: any): Buffer | string {
+  getPublicKey(): Buffer;
+  getPublicKey(encoding: BinaryToTextEncoding): string;
+  getPublicKey(encoding?: BinaryToTextEncoding): Buffer | string {
     if (encoding !== undefined && encoding != "buffer") {
       return this.#publicKey.toString(encoding);
     }
@@ -297,9 +327,11 @@ class DiffieHellmanImpl {
     return this.#publicKey;
   }
 
+  setPrivateKey(privateKey: ArrayBufferView): void;
+  setPrivateKey(privateKey: string, encoding: BufferEncoding): void;
   setPrivateKey(
     privateKey: ArrayBufferView | string,
-    encoding?: any,
+    encoding?: BufferEncoding,
   ) {
     if (encoding == undefined || encoding == "buffer") {
       this.#privateKey = Buffer.from(privateKey);
@@ -310,9 +342,11 @@ class DiffieHellmanImpl {
     this.#publicKeyNeedsUpdate = true;
   }
 
+  setPublicKey(publicKey: ArrayBufferView): void;
+  setPublicKey(publicKey: string, encoding: BufferEncoding): void;
   setPublicKey(
     publicKey: ArrayBufferView | string,
-    encoding?: any,
+    encoding?: BufferEncoding,
   ) {
     if (encoding == undefined || encoding == "buffer") {
       this.#publicKey = Buffer.from(publicKey);
@@ -1219,11 +1253,11 @@ const DH_GROUPS = {
 
 DiffieHellman.prototype = DiffieHellmanImpl.prototype;
 
-function DiffieHellmanGroup(name: string) {
+export function DiffieHellmanGroup(name: string) {
   return new DiffieHellmanGroupImpl(name);
 }
 
-class DiffieHellmanGroupImpl {
+export class DiffieHellmanGroupImpl {
   verifyError!: number;
   #diffiehellman: DiffieHellmanImpl;
 
@@ -1243,10 +1277,24 @@ class DiffieHellmanGroupImpl {
     this.verifyError = 0;
   }
 
+  computeSecret(otherPublicKey: ArrayBufferView): Buffer;
+  computeSecret(
+    otherPublicKey: string,
+    inputEncoding: BinaryToTextEncoding,
+  ): Buffer;
+  computeSecret(
+    otherPublicKey: ArrayBufferView,
+    outputEncoding: BinaryToTextEncoding,
+  ): string;
+  computeSecret(
+    otherPublicKey: string,
+    inputEncoding: BinaryToTextEncoding,
+    outputEncoding: BinaryToTextEncoding,
+  ): string;
   computeSecret(
     otherPublicKey: ArrayBufferView | string,
-    inputEncoding?: any,
-    outputEncoding?: any,
+    inputEncoding?: BinaryToTextEncoding,
+    outputEncoding?: BinaryToTextEncoding,
   ): Buffer | string {
     return this.#diffiehellman.computeSecret(
       otherPublicKey,
@@ -1255,23 +1303,33 @@ class DiffieHellmanGroupImpl {
     );
   }
 
-  generateKeys(encoding?: any): Buffer | string {
+  generateKeys(): Buffer;
+  generateKeys(encoding: BinaryToTextEncoding): string;
+  generateKeys(encoding?: BinaryToTextEncoding): Buffer | string {
     return this.#diffiehellman.generateKeys(encoding);
   }
 
-  getGenerator(encoding?: any): Buffer | string {
+  getGenerator(): Buffer;
+  getGenerator(encoding: BinaryToTextEncoding): string;
+  getGenerator(encoding?: BinaryToTextEncoding): Buffer | string {
     return this.#diffiehellman.getGenerator(encoding);
   }
 
-  getPrime(encoding?: any): Buffer | string {
+  getPrime(): Buffer;
+  getPrime(encoding: BinaryToTextEncoding): string;
+  getPrime(encoding?: BinaryToTextEncoding): Buffer | string {
     return this.#diffiehellman.getPrime(encoding);
   }
 
-  getPrivateKey(encoding?: any): Buffer | string {
+  getPrivateKey(): Buffer;
+  getPrivateKey(encoding: BinaryToTextEncoding): string;
+  getPrivateKey(encoding?: BinaryToTextEncoding): Buffer | string {
     return this.#diffiehellman.getPrivateKey(encoding);
   }
 
-  getPublicKey(encoding?: any): Buffer | string {
+  getPublicKey(): Buffer;
+  getPublicKey(encoding: BinaryToTextEncoding): string;
+  getPublicKey(encoding?: BinaryToTextEncoding): Buffer | string {
     return this.#diffiehellman.getPublicKey(encoding);
   }
 }
@@ -1279,11 +1337,11 @@ class DiffieHellmanGroupImpl {
 DiffieHellmanGroup.prototype = DiffieHellmanGroupImpl.prototype;
 DiffieHellmanGroup.prototype.constructor = DiffieHellmanGroup;
 
-function ECDH(curve: string) {
+export function ECDH(curve: string) {
   return new ECDHImpl(curve);
 }
 
-function validateEcdhFormat(format: any): void {
+function validateEcdhFormat(format: ECDHKeyFormat | string): void {
   if (
     format !== "compressed" &&
     format !== "uncompressed" &&
@@ -1295,7 +1353,7 @@ function validateEcdhFormat(format: any): void {
 
 function ecdhEncode(
   buffer: Buffer,
-  encoding?: any,
+  encoding?: BinaryToTextEncoding | "buffer",
 ): Buffer | string {
   if (encoding === undefined || encoding === "buffer") {
     return buffer;
@@ -1303,8 +1361,8 @@ function ecdhEncode(
   return buffer.toString(encoding);
 }
 
-class ECDHImpl {
-  #curve: any; // the selected curve
+export class ECDHImpl {
+  #curve: EllipticCurve; // the selected curve
   #privbuf: Buffer | null = null; // the private key
   #pubbuf: Buffer | null = null; // the public key
 
@@ -1320,11 +1378,11 @@ class ECDHImpl {
   }
 
   static convertKey(
-    key: any,
+    key: BinaryLike,
     curve: string,
-    inputEncoding?: any,
-    outputEncoding?: any,
-    format?: any,
+    inputEncoding?: BinaryToTextEncoding,
+    outputEncoding?: "latin1" | "hex" | "base64" | "base64url",
+    format?: "uncompressed" | "compressed" | "hybrid",
   ): Buffer | string {
     validateString(curve, "curve");
     const buf = getArrayBufferOrView(key, "key", inputEncoding);
@@ -1371,10 +1429,24 @@ class ECDHImpl {
     return result;
   }
 
+  computeSecret(otherPublicKey: ArrayBufferView): Buffer;
+  computeSecret(
+    otherPublicKey: string,
+    inputEncoding: BinaryToTextEncoding,
+  ): Buffer;
+  computeSecret(
+    otherPublicKey: ArrayBufferView,
+    outputEncoding: BinaryToTextEncoding,
+  ): string;
+  computeSecret(
+    otherPublicKey: string,
+    inputEncoding: BinaryToTextEncoding,
+    outputEncoding: BinaryToTextEncoding,
+  ): string;
   computeSecret(
     otherPublicKey: ArrayBufferView | string,
-    inputEncoding?: any,
-    outputEncoding?: any,
+    inputEncoding?: BinaryToTextEncoding,
+    outputEncoding?: BinaryToTextEncoding,
   ): Buffer | string {
     if (this.#privbuf === null) {
       throw new ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY();
@@ -1410,9 +1482,11 @@ class ECDHImpl {
     return ecdhEncode(secretBuf, outputEncoding ?? "buffer");
   }
 
+  generateKeys(): Buffer;
+  generateKeys(encoding: BinaryToTextEncoding, format?: ECDHKeyFormat): string;
   generateKeys(
-    encoding?: any,
-    format: any = "uncompressed",
+    encoding?: BinaryToTextEncoding,
+    format: ECDHKeyFormat = "uncompressed",
   ): Buffer | string {
     validateEcdhFormat(format);
     const pubbuf = Buffer.alloc(
@@ -1442,16 +1516,20 @@ class ECDHImpl {
     return ecdhEncode(pubbuf, encoding ?? "buffer");
   }
 
-  getPrivateKey(encoding?: any): Buffer | string {
+  getPrivateKey(): Buffer;
+  getPrivateKey(encoding: BinaryToTextEncoding): string;
+  getPrivateKey(encoding?: BinaryToTextEncoding): Buffer | string {
     if (this.#privbuf === null) {
       throw new Error("Failed to get ECDH private key");
     }
     return ecdhEncode(this.#privbuf, encoding ?? "buffer");
   }
 
+  getPublicKey(): Buffer;
+  getPublicKey(encoding: BinaryToTextEncoding, format?: ECDHKeyFormat): string;
   getPublicKey(
-    encoding?: any,
-    format: any = "uncompressed",
+    encoding?: BinaryToTextEncoding,
+    format: ECDHKeyFormat = "uncompressed",
   ): Buffer | string {
     if (this.#pubbuf === null) {
       throw new Error("Failed to get ECDH public key");
@@ -1473,9 +1551,11 @@ class ECDHImpl {
     return ecdhEncode(pubbuf, encoding ?? "buffer");
   }
 
+  setPrivateKey(privateKey: ArrayBufferView): void;
+  setPrivateKey(privateKey: string, encoding: BinaryToTextEncoding): void;
   setPrivateKey(
     privateKey: ArrayBufferView | string,
-    encoding?: any,
+    encoding?: BinaryToTextEncoding,
   ): Buffer | string {
     const privbuf = typeof privateKey === "string"
       ? Buffer.from(privateKey, encoding)
@@ -1498,9 +1578,11 @@ class ECDHImpl {
     return pubbuf;
   }
 
+  setPublicKey(publicKey: ArrayBufferView): void;
+  setPublicKey(publicKey: string, encoding: BinaryToTextEncoding): void;
   setPublicKey(
     publicKey: ArrayBufferView | string,
-    encoding?: any,
+    encoding?: BinaryToTextEncoding,
   ): void {
     const pubbuf = typeof publicKey === "string"
       ? Buffer.from(publicKey, encoding)
@@ -1528,9 +1610,16 @@ function statelessDH(
   privateKeyObject: KeyObject,
   publicKeyObject: KeyObject,
 ): Buffer {
+  // getKeyObjectHandle validates key.type and throws ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE
+  // for incompatible key kinds (e.g. secret instead of private), so we must
+  // call it before doing the asymmetricKeyType cross-check below.
   const privateKey = getKeyObjectHandle(privateKeyObject, kConsumePrivate);
   const publicKey = getKeyObjectHandle(publicKeyObject, kConsumePublic);
 
+  // Check that the asymmetric key types are compatible. EC and DH report
+  // mismatching domain parameters from the underlying op when the curves or
+  // group parameters differ; everything else (e.g. x25519 vs x448) is a key
+  // type mismatch and should surface as ERR_CRYPTO_INCOMPATIBLE_KEY.
   const privType = privateKeyObject.asymmetricKeyType;
   const pubType = publicKeyObject.asymmetricKeyType;
   if (privType !== undefined && pubType !== undefined && privType !== pubType) {
@@ -1556,7 +1645,7 @@ function statelessDH(
   }
 }
 
-function diffieHellman(
+export function diffieHellman(
   options: {
     privateKey: KeyObject;
     publicKey: KeyObject;
@@ -1591,16 +1680,9 @@ function diffieHellman(
   return statelessDH(options.privateKey, options.publicKey);
 }
 
-return {
+export default {
   DiffieHellman,
   DiffieHellmanGroup,
   ECDH,
   diffieHellman,
-  default: {
-    DiffieHellman,
-    DiffieHellmanGroup,
-    ECDH,
-    diffieHellman,
-  },
 };
-})();

@@ -4,10 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-(function () {
-const { core, primordials } = globalThis.__bootstrap;
-
-const {
+import {
   Hasher,
   op_node_create_hash,
   op_node_export_secret_key,
@@ -17,35 +14,36 @@ const {
   op_node_hash_digest_hex,
   op_node_hash_update,
   op_node_hash_update_str,
-} = core.ops;
+} from "ext:core/ops";
+import { core, primordials } from "ext:core/mod.js";
 
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-
-const lazyStream = core.createLazyLoader("node:stream");
-
+import { Transform } from "node:stream";
 const {
   forgivingBase64Encode: encodeToBase64,
   forgivingBase64UrlEncode: encodeToBase64Url,
 } = core.loadExtScript("ext:deno_web/00_infra.js");
+import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
 const {
   validateEncoding,
   validateString,
   validateUint32,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-const {
+import type {
+  BinaryToTextEncoding,
+  Encoding,
+} from "ext:deno_node/internal/crypto/types.ts";
+import {
+  KeyObject,
   prepareSecretKey,
-} = core.loadExtScript("ext:deno_node/internal/crypto/keys.ts");
+} from "ext:deno_node/internal/crypto/keys.ts";
 const {
   ERR_CRYPTO_HASH_FINALIZED,
   ERR_INVALID_ARG_TYPE,
   NodeError,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-
-const lazyLazyTransform = core.createLazyLoader(
-  "ext:deno_node/internal/streams/lazy_transform.js",
-);
-const lazyProcess = core.createLazyLoader("node:process");
-
+import LazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
+import process from "node:process";
 const {
   getDefaultEncoding,
   getHashBlockSize,
@@ -67,7 +65,8 @@ const kFinalized = Symbol("kFinalized");
 
 let warnedShakeOutputLength = false;
 
-function Hash(
+export function Hash(
+  this: Hash,
   algorithm: string | Hasher,
   options?: { outputLength?: number },
 ): Hash {
@@ -94,7 +93,6 @@ function Hash(
     !warnedShakeOutputLength
   ) {
     warnedShakeOutputLength = true;
-    const process = lazyProcess();
     process.emitWarning(
       "Creating SHAKE128/256 digests without an explicit options.outputLength is deprecated.",
       "DeprecationWarning",
@@ -120,7 +118,6 @@ function Hash(
 
   if (this[kHandle] === null) throw new ERR_CRYPTO_HASH_FINALIZED();
 
-  const LazyTransform = lazyLazyTransform().default;
   ReflectApply(LazyTransform, this, [options]);
 }
 
@@ -129,20 +126,8 @@ interface Hash {
   [kFinalized]: boolean;
 }
 
-function _getLazyTransformProto() {
-  const LazyTransform = lazyLazyTransform().default;
-  return LazyTransform;
-}
-
-// Defer prototype chain setup
-let _protoSetup = false;
-function ensureProtoSetup() {
-  if (_protoSetup) return;
-  _protoSetup = true;
-  const LazyTransform = _getLazyTransformProto();
-  ObjectSetPrototypeOf(Hash.prototype, LazyTransform.prototype);
-  ObjectSetPrototypeOf(Hash, LazyTransform);
-}
+ObjectSetPrototypeOf(Hash.prototype, LazyTransform.prototype);
+ObjectSetPrototypeOf(Hash, LazyTransform);
 
 Hash.prototype.copy = function copy(options?: { outputLength: number }) {
   return new Hash(this[kHandle], options);
@@ -150,7 +135,7 @@ Hash.prototype.copy = function copy(options?: { outputLength: number }) {
 
 Hash.prototype._transform = function _transform(
   chunk: string | Buffer,
-  encoding: any,
+  encoding: Encoding | "buffer",
   callback: () => void,
 ) {
   this.update(chunk, encoding);
@@ -158,6 +143,11 @@ Hash.prototype._transform = function _transform(
 };
 
 Hash.prototype._flush = function _flush(callback: () => void) {
+  // Internal Transform flush: pull the digest from the native handle without
+  // marking the JS-level hash as finalised. Node does the same: its `_flush`
+  // calls `this[kHandle].digest()` directly, allowing a single user-level
+  // `hash.digest(encoding)` to still succeed afterwards (e.g. when the hash
+  // is consumed via `stream.pipeline`).
   const digest = op_node_hash_digest(this[kHandle]);
   this.push(digest === null ? Buffer.alloc(0) : Buffer.from(digest));
   callback();
@@ -165,7 +155,7 @@ Hash.prototype._flush = function _flush(callback: () => void) {
 
 Hash.prototype.update = function update(
   data: string | Buffer,
-  encoding: any,
+  encoding: Encoding | "buffer",
 ) {
   encoding = encoding || getDefaultEncoding();
 
@@ -185,6 +175,8 @@ Hash.prototype.update = function update(
     unwrapErr(op_node_hash_update_str(this[kHandle], data));
   } else {
     const buf = toBuf(data as string | Buffer, encoding);
+    // Ensure we pass a Uint8Array to the op (non-Uint8Array typed arrays
+    // need to be viewed as raw bytes over their underlying ArrayBuffer)
     const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(
       (buf as ArrayBufferView).buffer,
       (buf as ArrayBufferView).byteOffset,
@@ -196,7 +188,7 @@ Hash.prototype.update = function update(
   return this;
 };
 
-Hash.prototype.digest = function digest(outputEncoding: any) {
+Hash.prototype.digest = function digest(outputEncoding: Encoding | "buffer") {
   if (this[kFinalized]) {
     throw new ERR_CRYPTO_HASH_FINALIZED();
   }
@@ -214,6 +206,7 @@ Hash.prototype.digest = function digest(outputEncoding: any) {
   if (digest === null) throw new ERR_CRYPTO_HASH_FINALIZED();
   this[kFinalized] = true;
 
+  // TODO(@littedivy): Fast paths for below encodings.
   switch (outputEncoding) {
     case "binary":
       return String.fromCharCode(...digest);
@@ -229,23 +222,17 @@ Hash.prototype.digest = function digest(outputEncoding: any) {
   }
 };
 
-function Hmac(
+export function Hmac(
   hmac: string,
   key: string | ArrayBuffer | KeyObject,
-  options?: any,
+  options?: TransformOptions,
 ): Hmac {
   return new HmacImpl(hmac, key, options);
 }
 
 type Hmac = HmacImpl;
 
-let Transform;
-function getTransform() {
-  if (!Transform) Transform = lazyStream().Transform;
-  return Transform;
-}
-
-class HmacImpl {
+class HmacImpl extends Transform {
   #ipad: Uint8Array;
   #opad: Uint8Array;
   #ZEROES = Buffer.alloc(128);
@@ -255,15 +242,12 @@ class HmacImpl {
 
   constructor(
     hmac: string,
-    key: string | ArrayBuffer,
-    options?: any,
+    key: string | ArrayBuffer | KeyObject,
+    options?: TransformOptions,
   ) {
-    ensureHmacProtoSetup();
-    const T = getTransform();
-    // deno-lint-ignore no-this-alias
-    const self = this;
-    T.call(this, {
+    super({
       transform(chunk: string, encoding: string, callback: () => void) {
+        // deno-lint-ignore no-explicit-any
         self.update(Buffer.from(chunk), encoding as any);
         callback();
       },
@@ -272,6 +256,8 @@ class HmacImpl {
         callback();
       },
     });
+    // deno-lint-ignore no-this-alias
+    const self = this;
 
     validateString(hmac, "hmac");
 
@@ -311,7 +297,9 @@ class HmacImpl {
     this.#hash.update(this.#ipad);
   }
 
-  digest(encoding?: any): Buffer | string {
+  digest(): Buffer;
+  digest(encoding: BinaryToTextEncoding): string;
+  digest(encoding?: BinaryToTextEncoding): Buffer | string {
     if (this.#finalized) {
       if (encoding && encoding !== "buffer") {
         return "";
@@ -328,20 +316,10 @@ class HmacImpl {
       );
   }
 
-  update(data: string | ArrayBuffer, inputEncoding?: any): this {
+  update(data: string | ArrayBuffer, inputEncoding?: Encoding): this {
     this.#hash.update(data, inputEncoding);
     return this;
   }
-}
-
-// Set up prototype chain after Transform is available
-let _hmacProtoSetup = false;
-function ensureHmacProtoSetup() {
-  if (_hmacProtoSetup) return;
-  _hmacProtoSetup = true;
-  const T = getTransform();
-  Object.setPrototypeOf(HmacImpl.prototype, T.prototype);
-  Object.setPrototypeOf(HmacImpl, T);
 }
 
 Hmac.prototype = HmacImpl.prototype;
@@ -350,8 +328,7 @@ Hmac.prototype = HmacImpl.prototype;
  * Creates and returns a Hash object that can be used to generate hash digests
  * using the given `algorithm`. Optional `options` argument controls stream behavior.
  */
-function createHash(algorithm: string, opts?: any) {
-  ensureProtoSetup();
+export function createHash(algorithm: string, opts?: TransformOptions) {
   return new Hash(algorithm, opts);
 }
 
@@ -359,19 +336,12 @@ function createHash(algorithm: string, opts?: any) {
  * Get the list of implemented hash algorithms.
  * @returns Array of hash algorithm names.
  */
-function getHashes() {
+export function getHashes() {
   return op_node_get_hashes();
 }
 
-return {
+export default {
   Hash,
   Hmac,
   createHash,
-  getHashes,
-  default: {
-    Hash,
-    Hmac,
-    createHash,
-  },
 };
-})();

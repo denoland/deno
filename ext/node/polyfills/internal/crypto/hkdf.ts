@@ -4,13 +4,12 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-(function () {
-const { core } = globalThis.__bootstrap;
-const {
+import { core } from "ext:core/mod.js";
+import {
   op_node_get_hash_size,
   op_node_hkdf,
   op_node_hkdf_async,
-} = core.ops;
+} from "ext:core/ops";
 
 const {
   validateFunction,
@@ -29,9 +28,11 @@ const {
   toBuf,
   validateByteSource,
 } = core.loadExtScript("ext:deno_node/internal/crypto/util.ts");
-const {
+import {
   createSecretKey,
-} = core.loadExtScript("ext:deno_node/internal/crypto/keys.ts");
+  KeyObject,
+} from "ext:deno_node/internal/crypto/keys.ts";
+import type { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
 const { kMaxLength } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   isAnyArrayBuffer,
@@ -40,9 +41,7 @@ const {
 const { isKeyObject } = core.loadExtScript(
   "ext:deno_node/internal/crypto/_keys.ts",
 );
-const { getHashes } = core.loadExtScript(
-  "ext:deno_node/internal/crypto/hash.ts",
-);
+import { getHashes } from "ext:deno_node/internal/crypto/hash.ts";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 
 // Consume raw bytes for any ArrayBufferView/ArrayBuffer; strings via toBuf.
@@ -93,7 +92,7 @@ const validateParameters = hideStackFrames((hash, key, salt, info, length) => {
   };
 });
 
-function prepareKey(key: any) {
+function prepareKey(key: BinaryLike | KeyObject) {
   if (isKeyObject(key)) {
     return key;
   }
@@ -122,11 +121,11 @@ function prepareKey(key: any) {
   return createSecretKey(key);
 }
 
-function hkdf(
+export function hkdf(
   hash: string,
-  key: any,
-  salt: any,
-  info: any,
+  key: BinaryLike | KeyObject,
+  salt: BinaryLike,
+  info: BinaryLike,
   length: number,
   callback: (err: Error | null, derivedKey: ArrayBuffer | undefined) => void,
 ) {
@@ -147,11 +146,11 @@ function hkdf(
     .catch((err) => callback(new ERR_CRYPTO_INVALID_DIGEST(err), undefined));
 }
 
-function hkdfSync(
+export function hkdfSync(
   hash: string,
-  key: any,
-  salt: any,
-  info: any,
+  key: BinaryLike | KeyObject,
+  salt: BinaryLike,
+  info: BinaryLike,
   length: number,
 ) {
   ({ hash, key, salt, info, length } = validateParameters(
@@ -185,12 +184,7 @@ function validateAlgorithm(algorithm: string) {
   }
 }
 
-return {
+export default {
   hkdf,
   hkdfSync,
-  default: {
-    hkdf,
-    hkdfSync,
-  },
 };
-})();

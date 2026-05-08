@@ -4,15 +4,14 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
-(function () {
-const { core, primordials } = globalThis.__bootstrap;
+import { core, primordials } from "ext:core/mod.js";
 const {
   encode,
 } = core;
 const {
   SymbolSpecies,
 } = primordials;
-const {
+import {
   op_node_aes_unwrap_key,
   op_node_aes_wrap_key,
   op_node_cipheriv_encrypt,
@@ -33,24 +32,29 @@ const {
   op_node_public_decrypt,
   op_node_public_encrypt,
   op_node_validate_oaep_hash,
-} = core.ops;
+} from "ext:core/ops";
 
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-
-const lazyProcess = core.createLazyLoader("node:process");
-const lazyStream = core.createLazyLoader("node:stream");
-
-const {
+import process from "node:process";
+import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
+import { Transform } from "node:stream";
+import {
   createPrivateKey,
   createPublicKey,
   getArrayBufferOrView,
-} = core.loadExtScript("ext:deno_node/internal/crypto/keys.ts");
+  KeyObject,
+} from "ext:deno_node/internal/crypto/keys.ts";
 const { isKeyObject } = core.loadExtScript(
   "ext:deno_node/internal/crypto/_keys.ts",
 );
 const { kHandle } = core.loadExtScript(
   "ext:deno_node/internal/crypto/constants.ts",
 );
+import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
+import type {
+  BinaryLike,
+  Encoding,
+} from "ext:deno_node/internal/crypto/types.ts";
 const { getDefaultEncoding } = core.loadExtScript(
   "ext:deno_node/internal/crypto/util.ts",
 );
@@ -74,12 +78,6 @@ const { normalizeEncoding } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
 
-let Transform;
-function getTransform() {
-  if (!Transform) Transform = lazyStream().Transform;
-  return Transform;
-}
-
 const FastBuffer = Buffer[SymbolSpecies];
 
 function opensslError(code: string, reason: string): NodeError {
@@ -94,7 +92,7 @@ function isAesWrap(cipher: string): boolean {
     cipher === "id-aes192-wrap-pad" || cipher === "id-aes256-wrap-pad";
 }
 
-function isStringOrBuffer(
+export function isStringOrBuffer(
   val: unknown,
 ): val is string | Buffer | ArrayBuffer | ArrayBufferView {
   return typeof val === "string" ||
@@ -118,6 +116,102 @@ function validateCipherUpdateData(data: unknown): void {
 
 const NO_TAG = new Uint8Array();
 
+export type CipherCCMTypes =
+  | "aes-128-ccm"
+  | "aes-192-ccm"
+  | "aes-256-ccm"
+  | "chacha20-poly1305";
+export type CipherGCMTypes = "aes-128-gcm" | "aes-192-gcm" | "aes-256-gcm";
+export type CipherOCBTypes = "aes-128-ocb" | "aes-192-ocb" | "aes-256-ocb";
+
+export type CipherKey = BinaryLike | KeyObject;
+
+export interface CipherCCMOptions extends TransformOptions {
+  authTagLength: number;
+}
+
+export interface CipherGCMOptions extends TransformOptions {
+  authTagLength?: number | undefined;
+}
+
+export interface CipherOCBOptions extends TransformOptions {
+  authTagLength: number;
+}
+
+export interface Cipher extends ReturnType<typeof Transform> {
+  update(
+    data: string,
+    inputEncoding?: Encoding,
+    outputEncoding?: Encoding,
+  ): string;
+
+  final(outputEncoding?: BufferEncoding): string;
+
+  setAutoPadding(autoPadding?: boolean): this;
+}
+
+export type Decipher = Cipher;
+
+export interface CipherCCM extends Cipher {
+  setAAD(
+    buffer: ArrayBufferView,
+    options: {
+      plaintextLength: number;
+    },
+  ): this;
+  getAuthTag(): Buffer;
+}
+
+export interface CipherGCM extends Cipher {
+  setAAD(
+    buffer: ArrayBufferView,
+    options?: {
+      plaintextLength: number;
+    },
+  ): this;
+  getAuthTag(): Buffer;
+}
+
+export interface CipherOCB extends Cipher {
+  setAAD(
+    buffer: ArrayBufferView,
+    options?: {
+      plaintextLength: number;
+    },
+  ): this;
+  getAuthTag(): Buffer;
+}
+
+export interface DecipherCCM extends Decipher {
+  setAuthTag(buffer: ArrayBufferView): this;
+  setAAD(
+    buffer: ArrayBufferView,
+    options: {
+      plaintextLength: number;
+    },
+  ): this;
+}
+
+export interface DecipherGCM extends Decipher {
+  setAuthTag(buffer: ArrayBufferView): this;
+  setAAD(
+    buffer: ArrayBufferView,
+    options?: {
+      plaintextLength: number;
+    },
+  ): this;
+}
+
+export interface DecipherOCB extends Decipher {
+  setAuthTag(buffer: ArrayBufferView): this;
+  setAAD(
+    buffer: ArrayBufferView,
+    options?: {
+      plaintextLength: number;
+    },
+  ): this;
+}
+
 function toU8(
   input: string | Uint8Array | KeyObject | null,
 ): Uint8Array {
@@ -130,11 +224,11 @@ function toU8(
   return typeof input === "string" ? encode(input) : input;
 }
 
-function Cipheriv(
+export function Cipheriv(
   cipher: string,
-  key: any,
-  iv: any,
-  options?: any,
+  key: CipherKey,
+  iv: BinaryLike | null,
+  options?: TransformOptions,
 ) {
   if (!(this instanceof Cipheriv)) {
     return new Cipheriv(cipher, key, iv, options);
@@ -142,7 +236,7 @@ function Cipheriv(
 
   const authTagLength = getUIntOption(options, "authTagLength");
 
-  getTransform().call(this, {
+  Transform.call(this, {
     transform(chunk, encoding, cb) {
       this.push(this.update(chunk, encoding));
       cb();
@@ -185,8 +279,8 @@ function Cipheriv(
   this._decoder = undefined;
 }
 
-Object.setPrototypeOf(Cipheriv.prototype, getTransform().prototype);
-Object.setPrototypeOf(Cipheriv, getTransform());
+Object.setPrototypeOf(Cipheriv.prototype, Transform.prototype);
+Object.setPrototypeOf(Cipheriv, Transform);
 
 Cipheriv.prototype.final = function (
   encoding: string = getDefaultEncoding(),
@@ -267,8 +361,8 @@ Cipheriv.prototype.setAutoPadding = function (autoPadding?: boolean) {
 
 Cipheriv.prototype.update = function (
   data: string | Buffer | ArrayBufferView,
-  inputEncoding?: any,
-  outputEncoding: any = getDefaultEncoding(),
+  inputEncoding?: Encoding,
+  outputEncoding: Encoding = getDefaultEncoding(),
 ): Buffer | string {
   if (this._finalized) {
     throw new ERR_CRYPTO_INVALID_STATE("update");
@@ -411,11 +505,11 @@ function getUIntOption(options, key) {
   return -1;
 }
 
-function Decipheriv(
+export function Decipheriv(
   cipher: string,
-  key: any,
-  iv: any,
-  options?: any,
+  key: CipherKey,
+  iv: BinaryLike | null,
+  options?: TransformOptions,
 ) {
   if (!(this instanceof Decipheriv)) {
     return new Decipheriv(cipher, key, iv, options);
@@ -423,7 +517,7 @@ function Decipheriv(
 
   const authTagLength = getUIntOption(options, "authTagLength");
 
-  getTransform().call(this, {
+  Transform.call(this, {
     transform(chunk, encoding, cb) {
       this.push(this.update(chunk, encoding));
       cb();
@@ -469,8 +563,8 @@ function Decipheriv(
   this._decoder = undefined;
 }
 
-Object.setPrototypeOf(Decipheriv.prototype, getTransform().prototype);
-Object.setPrototypeOf(Decipheriv, getTransform());
+Object.setPrototypeOf(Decipheriv.prototype, Transform.prototype);
+Object.setPrototypeOf(Decipheriv, Transform);
 
 Decipheriv.prototype.final = function (
   encoding: string = getDefaultEncoding(),
@@ -541,7 +635,7 @@ Decipheriv.prototype.setAAD = function (
 let gcmShortTagDeprecationEmitted = false;
 
 Decipheriv.prototype.setAuthTag = function (
-  buffer: any,
+  buffer: BinaryLike,
   _encoding?: string,
 ) {
   if (this._authTag) {
@@ -554,7 +648,6 @@ Decipheriv.prototype.setAuthTag = function (
     buffer.byteLength !== 16 && !gcmShortTagDeprecationEmitted
   ) {
     gcmShortTagDeprecationEmitted = true;
-    const process = lazyProcess();
     process.emitWarning(
       "Using AES-GCM authentication tags of less than 128 bits without " +
         "specifying the authTagLength option when initializing decryption " +
@@ -576,8 +669,8 @@ Decipheriv.prototype.setAutoPadding = function (autoPadding?: boolean) {
 
 Decipheriv.prototype.update = function (
   data: string | Buffer | ArrayBufferView,
-  inputEncoding?: any,
-  outputEncoding: any = getDefaultEncoding(),
+  inputEncoding?: Encoding,
+  outputEncoding: Encoding = getDefaultEncoding(),
 ): Buffer | string {
   if (this._finalized) {
     throw new ERR_CRYPTO_INVALID_STATE("update");
@@ -709,7 +802,7 @@ function validateOaepLabel(
   return label as ArrayBufferView | ArrayBuffer;
 }
 
-function privateEncrypt(
+export function privateEncrypt(
   privateKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView,
 ): Buffer {
@@ -729,7 +822,7 @@ function privateEncrypt(
   );
 }
 
-function privateDecrypt(
+export function privateDecrypt(
   privateKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView,
 ): Buffer {
@@ -750,7 +843,7 @@ function privateDecrypt(
   );
 }
 
-function publicEncrypt(
+export function publicEncrypt(
   publicKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView,
 ): Buffer {
@@ -771,7 +864,7 @@ function publicEncrypt(
   );
 }
 
-function prepareKey(key) {
+export function prepareKey(key) {
   // TODO(@littledivy): handle these cases
   // - web CryptoKey
   if (isStringOrBuffer(key)) {
@@ -829,7 +922,7 @@ function prepareKey(key) {
   throw new TypeError("Invalid key type");
 }
 
-function publicDecrypt(
+export function publicDecrypt(
   publicKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView,
 ): Buffer {
@@ -845,23 +938,12 @@ function publicDecrypt(
   return Buffer.from(op_node_public_decrypt(data, buffer, padding));
 }
 
-return {
-  isStringOrBuffer,
+export default {
+  privateDecrypt,
+  privateEncrypt,
+  publicDecrypt,
+  publicEncrypt,
   Cipheriv,
   Decipheriv,
-  privateEncrypt,
-  privateDecrypt,
-  publicEncrypt,
-  publicDecrypt,
   prepareKey,
-  default: {
-    privateDecrypt,
-    privateEncrypt,
-    publicDecrypt,
-    publicEncrypt,
-    Cipheriv,
-    Decipheriv,
-    prepareKey,
-  },
 };
-})();

@@ -26,10 +26,10 @@ SOFTWARE.
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-(function () {
-const { core } = globalThis.__bootstrap;
+import { core } from "ext:core/mod.js";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-const { op_node_scrypt_async, op_node_scrypt_sync } = core.ops;
+import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
+import { op_node_scrypt_async, op_node_scrypt_sync } from "ext:core/ops";
 const {
   validateFunction,
   validateInt32,
@@ -40,15 +40,23 @@ const {
   ERR_CRYPTO_INVALID_SCRYPT_PARAMS,
   ERR_INCOMPATIBLE_OPTION_PAIR,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-const { getArrayBufferOrView } = core.loadExtScript(
-  "ext:deno_node/internal/crypto/keys.ts",
-);
+import { getArrayBufferOrView } from "ext:deno_node/internal/crypto/keys.ts";
 
-function scryptSync(
-  password: any,
-  salt: any,
+type Opts = Partial<{
+  N: number;
+  cost: number;
+  p: number;
+  parallelization: number;
+  r: number;
+  blockSize: number;
+  maxmem: number;
+}>;
+
+export function scryptSync(
+  password: HASH_DATA,
+  salt: HASH_DATA,
   keylen: number,
-  _opts?: any,
+  _opts?: Opts,
 ): Buffer {
   const options = check(password, salt, keylen, _opts);
   const { N, r, p, maxmem } = options;
@@ -73,15 +81,17 @@ function scryptSync(
   return buf;
 }
 
-function scrypt(
-  password: any,
-  salt: any,
+type Callback = (err: unknown, result?: Buffer) => void;
+
+export function scrypt(
+  password: HASH_DATA,
+  salt: HASH_DATA,
   keylen: number,
-  _opts: any,
-  cb?: any,
+  _opts: Opts | null | Callback,
+  cb?: Callback,
 ) {
   if (!cb) {
-    cb = _opts;
+    cb = _opts as Callback;
     _opts = null;
   }
   const options = check(password, salt, keylen, _opts);
@@ -188,12 +198,7 @@ function validateScryptParams(N: number, r: number, p: number, maxmem: number) {
   }
 }
 
-return {
+export default {
   scrypt,
   scryptSync,
-  default: {
-    scrypt,
-    scryptSync,
-  },
 };
-})();

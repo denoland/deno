@@ -3,9 +3,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-(function () {
-const { core, primordials } = globalThis.__bootstrap;
-const { op_node_fill_random, op_node_fill_random_async } = core.ops;
+import { core } from "ext:core/mod.js";
+import { op_node_fill_random, op_node_fill_random_async } from "ext:core/ops";
 
 const { Buffer, kMaxLength } = core.loadExtScript(
   "ext:deno_node/internal/buffer.mjs",
@@ -62,7 +61,7 @@ function assertSize(size, elementSize, offset, length) {
   return size >>> 0;
 }
 
-function randomFill(buf, offset, size, cb) {
+export default function randomFill(buf, offset, size, cb) {
   if (!isAnyArrayBuffer(buf) && !isArrayBufferView(buf)) {
     throw new ERR_INVALID_ARG_TYPE(
       "buf",
@@ -112,7 +111,7 @@ function randomFill(buf, offset, size, cb) {
   });
 }
 
-function randomFillSync(buf, offset = 0, size) {
+export function randomFillSync(buf, offset = 0, size) {
   if (!isAnyArrayBuffer(buf) && !isArrayBufferView(buf)) {
     throw new ERR_INVALID_ARG_TYPE(
       "buf",
@@ -142,6 +141,3 @@ function randomFillSync(buf, offset = 0, size) {
 
   return buf;
 }
-
-return { default: randomFill, randomFill, randomFillSync };
-})();

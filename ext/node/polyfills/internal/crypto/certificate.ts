@@ -1,17 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-(function () {
-const { core } = globalThis.__bootstrap;
-const {
+import { core } from "ext:core/mod.js";
+import {
   op_node_cert_export_challenge,
   op_node_cert_export_public_key,
   op_node_verify_spkac,
-} = core.ops;
+} from "ext:core/ops";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-const { getArrayBufferOrView } = core.loadExtScript(
-  "ext:deno_node/internal/crypto/keys.ts",
-);
+import { getArrayBufferOrView } from "ext:deno_node/internal/crypto/keys.ts";
 
 // The functions contained in this file cover the SPKAC format
 // (also referred to as Netscape SPKI). A general description of
@@ -45,7 +42,7 @@ function exportChallenge(spkac, encoding) {
 
 // For backwards compatibility reasons, this cannot be converted into a
 // ES6 Class.
-function Certificate() {
+export function Certificate() {
   // deno-lint-ignore prefer-primordials
   if (!(this instanceof Certificate)) {
     return new Certificate();
@@ -60,5 +57,4 @@ Certificate.exportChallenge = exportChallenge;
 Certificate.exportPublicKey = exportPublicKey;
 Certificate.verifySpkac = verifySpkac;
 
-return { Certificate, default: Certificate };
-})();
+export default Certificate;

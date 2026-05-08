@@ -3,9 +3,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-(function () {
-const { core } = globalThis.__bootstrap;
-
+import { core } from "ext:core/mod.js";
 const { Buffer, kMaxLength } = core.loadExtScript(
   "ext:deno_node/internal/buffer.mjs",
 );
@@ -24,13 +22,12 @@ const {
 const { ERR_OUT_OF_RANGE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
+import process from "node:process";
 
-const lazyProcess = core.createLazyLoader("node:process");
-
-const MAX_RANDOM_VALUES = 65536;
+export const MAX_RANDOM_VALUES = 65536;
 const kMaxInt32 = 2 ** 31 - 1;
 const kMaxPossibleLength = Math.min(kMaxLength, kMaxInt32);
-const MAX_SIZE = kMaxPossibleLength;
+export const MAX_SIZE = kMaxPossibleLength;
 
 // Mirrors Node's lib/internal/crypto/random.js assertSize() with
 // elementSize = 1, offset = 0, length = Infinity.
@@ -68,7 +65,12 @@ function generateRandomBytes(size: number) {
 /**
  * @param size Buffer length, must be equal or greater than zero
  */
-function randomBytes(
+export default function randomBytes(size: number): Buffer;
+export default function randomBytes(
+  size: number,
+  cb?: (err: Error | null, buf?: Buffer) => void,
+): void;
+export default function randomBytes(
   size: number,
   cb?: (err: Error | null, buf?: Buffer) => void,
 ): Buffer | void {
@@ -94,7 +96,6 @@ function randomBytes(
     const resource = {};
     emitInit(asyncId, "RANDOMBYTESREQUEST", triggerAsyncId, resource);
 
-    const process = lazyProcess();
     process.nextTick(() => {
       emitBefore(asyncId);
       try {
@@ -119,6 +120,3 @@ function randomBytes(
     return generateRandomBytes(size);
   }
 }
-
-return { default: randomBytes, randomBytes, MAX_RANDOM_VALUES, MAX_SIZE };
-})();
