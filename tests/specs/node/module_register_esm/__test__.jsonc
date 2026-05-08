@@ -19,6 +19,10 @@
     "custom_filetype_yaml": {
       "args": "run -A test_yaml.mjs",
       "output": "test_yaml.out"
+    },
+    "node_builtin_import_after_register": {
+      "args": "run -A test_node_builtin_import.mjs",
+      "output": "test_node_builtin_import.out"
     }
   }
 }

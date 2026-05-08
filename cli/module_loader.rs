@@ -999,6 +999,7 @@ fn is_already_resolved_specifier(specifier: &str) -> bool {
     || specifier.starts_with("data:")
     || specifier.starts_with("blob:")
     || specifier.starts_with("node:")
+    || specifier.starts_with("ext:")
 }
 
 #[derive(Clone)]
