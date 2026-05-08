@@ -1397,6 +1397,7 @@ pub async fn run(
     WorkerExecutionMode::Run,
     permissions,
     main_module,
+    vec![], // no experimental loaders in standalone binaries
     preload_modules,
     require_modules,
   )?;

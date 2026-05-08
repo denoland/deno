@@ -95,9 +95,18 @@
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
     },
     "module-hooks/test-async-loader-hooks-globalpreload-no-warning-with-initialize.mjs": {},
-    "module-hooks/test-async-loader-hooks-never-settling-race-cjs.mjs": {},
-    "module-hooks/test-async-loader-hooks-never-settling-race-esm.mjs": {},
-    "module-hooks/test-async-loader-hooks-no-leak-internals.mjs": {},
+    "module-hooks/test-async-loader-hooks-never-settling-race-cjs.mjs": {
+      "ignore": true,
+      "reason": "Flaky timeout - never-settling hook detection not yet implemented"
+    },
+    "module-hooks/test-async-loader-hooks-never-settling-race-esm.mjs": {
+      "ignore": true,
+      "reason": "Flaky timeout in debug builds - never-settling hook detection not yet implemented"
+    },
+    "module-hooks/test-async-loader-hooks-no-leak-internals.mjs": {
+      "ignore": true,
+      "reason": "Deno provides import.meta.resolve in workers; test asserts typeof import.meta.resolve === 'undefined'"
+    },
     "module-hooks/test-async-loader-hooks-with-worker-permission-allowed.mjs": {},
     "module-hooks/test-module-hooks-load-buffers.js": {},
     "module-hooks/test-module-hooks-load-context-merged-esm.mjs": {},

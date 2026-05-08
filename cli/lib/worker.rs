@@ -587,12 +587,14 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     mode: WorkerExecutionMode,
     permissions: PermissionsContainer,
     main_module: Url,
+    experimental_loaders: Vec<Url>,
     preload_modules: Vec<Url>,
     require_modules: Vec<Url>,
   ) -> Result<LibMainWorker, CoreError> {
     self.create_custom_worker(
       mode,
       main_module,
+      experimental_loaders,
       preload_modules,
       require_modules,
       permissions,
@@ -607,6 +609,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     &self,
     mode: WorkerExecutionMode,
     main_module: Url,
+    experimental_loaders: Vec<Url>,
     preload_modules: Vec<Url>,
     require_modules: Vec<Url>,
     permissions: PermissionsContainer,
@@ -744,6 +747,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
 
     Ok(LibMainWorker {
       main_module,
+      experimental_loaders,
       preload_modules,
       require_modules,
       worker,
@@ -835,6 +839,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
 
 pub struct LibMainWorker {
   main_module: Url,
+  experimental_loaders: Vec<Url>,
   preload_modules: Vec<Url>,
   require_modules: Vec<Url>,
   worker: MainWorker,
@@ -927,6 +932,33 @@ impl LibMainWorker {
     Ok(())
   }
 
+  pub async fn execute_experimental_loaders(
+    &mut self,
+  ) -> Result<(), CoreError> {
+    if self.experimental_loaders.is_empty() {
+      return Ok(());
+    }
+    // Build a JS array of loader URLs using JSON serialization
+    // for robust escaping of special characters in URLs.
+    let urls_json: Vec<String> = self
+      .experimental_loaders
+      .iter()
+      .map(|u| serde_json::to_string(u.as_str()).unwrap())
+      .collect();
+    let script = format!(
+      r#"(async () => {{
+        const {{ _registerCliLoaders }} = await import("node:module");
+        await _registerCliLoaders([{}]);
+      }})()"#,
+      urls_json.join(",")
+    );
+    self
+      .worker
+      .execute_script("experimental-loader-setup", script.into())?;
+    self.worker.run_event_loop(false).await?;
+    Ok(())
+  }
+
   pub async fn execute_preload_modules(&mut self) -> Result<(), CoreError> {
     for preload_module_url in self.preload_modules.iter() {
       let id = self.worker.preload_side_module(preload_module_url).await?;
@@ -945,6 +977,9 @@ impl LibMainWorker {
 
   pub async fn run(&mut self) -> Result<i32, CoreError> {
     log::debug!("main_module {}", self.main_module);
+
+    // Register experimental loader hooks before anything else
+    self.execute_experimental_loaders().await?;
 
     // Run preload modules first if they were defined
     self.execute_preload_modules().await?;
