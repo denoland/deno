@@ -1226,6 +1226,7 @@ Module._load = function (request, parent, isMain) {
       if (cachedModule !== undefined) {
         updateChildren(parent, cachedModule, true);
         if (!cachedModule.loaded) {
+          _throwIfEsmCycle(cachedModule, parent);
           return getExportsForCircularRequire(cachedModule);
         }
         return cachedModule.exports;
@@ -1302,6 +1303,7 @@ Module._load = function (request, parent, isMain) {
   if (cachedModule !== undefined) {
     updateChildren(parent, cachedModule, true);
     if (!cachedModule.loaded) {
+      _throwIfEsmCycle(cachedModule, parent);
       return getExportsForCircularRequire(cachedModule);
     }
     return cachedModule.exports;
@@ -1932,6 +1934,23 @@ function loadMaybeCjs(module, filename) {
 function loadCjs(module, filename) {
   const content = op_require_read_file(filename);
   module._compile(content, filename, "commonjs");
+}
+
+function _throwIfEsmCycle(cachedModule, parent) {
+  const fn = cachedModule.filename;
+  if (
+    fn != null &&
+    (StringPrototypeEndsWith(fn, ".mjs") ||
+      (StringPrototypeEndsWith(fn, ".js") &&
+        op_require_is_maybe_cjs(fn) === false))
+  ) {
+    const parentPath = parent?.filename ?? "<unknown>";
+    const err = new Error(
+      `Cannot require() ES Module ${fn} in a cycle. (from ${parentPath})`,
+    );
+    err.code = "ERR_REQUIRE_CYCLE_MODULE";
+    throw err;
+  }
 }
 
 function _throwRequireAsyncModule(specifier, module) {

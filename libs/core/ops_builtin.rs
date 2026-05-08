@@ -656,6 +656,14 @@ fn wrap_module<'s, 'i>(
   Some(wrapper_module)
 }
 
+thread_local! {
+  /// Tracks module IDs currently being evaluated via `op_import_sync` to
+  /// detect cycles that V8's module status alone cannot catch (V8 may
+  /// report `Evaluated` for a module whose evaluation hasn't finished
+  /// because it re-entered via CJS require).
+  static IMPORT_SYNC_EVAL_STACK: RefCell<Vec<ModuleId>> = const { RefCell::new(Vec::new()) };
+}
+
 #[op2(reentrant)]
 fn op_import_sync<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
@@ -671,6 +679,20 @@ fn op_import_sync<'s, 'i>(
     specifier,
     code,
   ))?;
+
+  // Check for re-entrant require() cycle: if this module is already on
+  // the op_import_sync call stack, it means CJS code required an ESM
+  // that (transitively) requires the same ESM back.
+  let is_cycle =
+    IMPORT_SYNC_EVAL_STACK.with(|stack| stack.borrow().contains(&module_id));
+  if is_cycle {
+    return Err(
+      JsErrorBox::generic(format!(
+        "Cannot require() ES Module {specifier} in a cycle."
+      ))
+      .into(),
+    );
+  }
 
   let module = module_map_rc
     .get_module(scope, module_id)
@@ -688,7 +710,10 @@ fn op_import_sync<'s, 'i>(
       );
     }
     v8::ModuleStatus::Instantiated => {
-      module_map_rc.mod_evaluate_sync(scope, module_id)?;
+      IMPORT_SYNC_EVAL_STACK.with(|stack| stack.borrow_mut().push(module_id));
+      let result = module_map_rc.mod_evaluate_sync(scope, module_id);
+      IMPORT_SYNC_EVAL_STACK.with(|stack| stack.borrow_mut().pop());
+      result?;
     }
     v8::ModuleStatus::Evaluated => {
       // OK
