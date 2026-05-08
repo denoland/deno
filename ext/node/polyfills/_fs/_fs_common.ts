@@ -74,12 +74,12 @@ function maybeCallback(cb) {
 // Ensure that callbacks run in the global context. Only use this function
 // for callbacks that are passed to the binding layer, callbacks that are
 // invoked from JS already run in the proper scope.
-function makeCallback(
-  cb,
-) {
+function makeCallback(cb) {
   validateFunction(cb, "cb");
-
-  return (...args) => ReflectApply(cb, this, args);
+  // Callbacks run with `this` = undefined, matching Node.js ESM strict-mode
+  // behavior (the original code was an ESM arrow function capturing `this`
+  // from makeCallback's call site, which is undefined in strict mode).
+  return (...args) => ReflectApply(cb, undefined, args);
 }
 
 return {
