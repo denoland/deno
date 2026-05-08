@@ -1934,6 +1934,15 @@ function loadCjs(module, filename) {
   module._compile(content, filename, "commonjs");
 }
 
+function _throwRequireAsyncModule(specifier, module) {
+  const parent = module?.parent?.filename ?? "<unknown>";
+  const err = new Error(
+    `require() cannot be used on an ESM graph with top-level await. Use import() instead. To see where the top-level await comes from, use --stack-trace-limit=100 and inspect the dependency graph. Requiring ${specifier}. From ${parent}`,
+  );
+  err.code = "ERR_REQUIRE_ASYNC_MODULE";
+  throw err;
+}
+
 // Like loadESMFromCJS but uses op_import_sync_with_source to compile
 // source directly. Used for hook-provided source that must bypass the
 // module cache while preserving the correct import.meta.url.
@@ -1942,7 +1951,21 @@ function loadESMFromCJSWithHookSource(module, filename, code) {
   const src = typeof code === "string"
     ? code
     : (utf8Decoder ??= new TextDecoder()).decode(code);
-  const namespace = op_import_sync_with_source(specifier, src);
+  let namespace;
+  try {
+    namespace = op_import_sync_with_source(specifier, src);
+  } catch (e) {
+    if (
+      e instanceof Error &&
+      StringPrototypeIncludes(
+        e.message,
+        "Top-level await is not allowed in synchronous evaluation",
+      )
+    ) {
+      _throwRequireAsyncModule(specifier, module);
+    }
+    throw e;
+  }
   if (ObjectHasOwn(namespace, "module.exports")) {
     module.exports = namespace["module.exports"];
   } else {
@@ -1957,7 +1980,21 @@ function loadESMFromCJS(module, filename, code) {
       ? code
       : (utf8Decoder ??= new TextDecoder()).decode(code))
     : undefined;
-  const namespace = op_import_sync(specifier, codeArg);
+  let namespace;
+  try {
+    namespace = op_import_sync(specifier, codeArg);
+  } catch (e) {
+    if (
+      e instanceof Error &&
+      StringPrototypeIncludes(
+        e.message,
+        "Top-level await is not allowed in synchronous evaluation",
+      )
+    ) {
+      _throwRequireAsyncModule(specifier, module);
+    }
+    throw e;
+  }
   if (ObjectHasOwn(namespace, "module.exports")) {
     module.exports = namespace["module.exports"];
   } else {
