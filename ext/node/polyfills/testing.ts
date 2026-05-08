@@ -907,6 +907,11 @@ const mock = {
 
 test.test = test;
 test.mock = mock;
+test.before = before;
+test.after = after;
+test.beforeEach = beforeEach;
+test.afterEach = afterEach;
+test.run = run;
 
 return {
   run,
