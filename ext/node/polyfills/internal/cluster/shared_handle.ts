@@ -6,20 +6,22 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
-import { core, primordials } from "ext:core/mod.js";
-import * as net from "node:net";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const lazyNet = core.createLazyLoader("node:net");
 const { codeMap } = core.loadExtScript(
   "ext:deno_node/internal_binding/uv.ts",
 );
 
 const { SafeMap } = primordials;
 
-export function SharedHandle(
+function SharedHandle(
   this: any,
   key: string,
   address: string | null,
   { port, addressType, fd, flags }: any,
 ) {
+  const net = lazyNet();
   this.key = key;
   this.workers = new SafeMap();
   this.handle = null;
@@ -85,4 +87,5 @@ SharedHandle.prototype.has = function (this: any, worker: any) {
   return this.workers.has(worker.id);
 };
 
-export default SharedHandle;
+return { SharedHandle, default: SharedHandle };
+})();

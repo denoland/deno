@@ -6,8 +6,9 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-import {
+(function () {
+const { core } = globalThis.__bootstrap;
+const {
   op_node_in_npm_package,
   op_node_ipc_buffer_constructor,
   op_node_ipc_read_advanced,
@@ -18,7 +19,7 @@ import {
   op_node_ipc_write_json,
   op_node_parse_shell_args,
   op_node_translate_cli_args,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayIsArray,
   ArrayPrototypeFilter,
@@ -38,7 +39,7 @@ const { os } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
-import { Readable, Stream, Writable } from "node:stream";
+const lazyStream = core.createLazyLoader("node:stream");
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const {
@@ -59,7 +60,6 @@ const {
   ERR_IPC_DISCONNECTED,
   errnoException,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import { ErrnoException } from "ext:deno_node/_global.d.ts";
 const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 const {
   validateBoolean,
@@ -69,8 +69,10 @@ const {
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
-import process from "node:process";
+const lazyFsUtils = core.createLazyLoader(
+  "ext:deno_node/internal/fs/utils.mjs",
+);
+const lazyProcess = core.createLazyLoader("node:process");
 const { StringPrototypeSlice } = core.loadExtScript(
   "ext:deno_node/internal/primordials.mjs",
 );
@@ -81,21 +83,25 @@ const {
   socketType: tcpSocketType,
   TCP,
 } = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
-import { Server as NetServer, Socket } from "node:net";
-import { Socket as DgramSocket } from "node:dgram";
-import { kStateSymbol } from "ext:deno_node/internal/dgram.ts";
-import { UDP } from "ext:deno_node/internal_binding/udp_wrap.ts";
+const lazyNet = core.createLazyLoader("node:net");
+const lazyDgram = core.createLazyLoader("node:dgram");
+const lazyDgramInternal = core.createLazyLoader(
+  "ext:deno_node/internal/dgram.ts",
+);
+const lazyUdpWrap = core.createLazyLoader(
+  "ext:deno_node/internal_binding/udp_wrap.ts",
+);
 const {
   kNeedsNpmProcessState,
   nodeSpawnChild,
   nodeSpawnSyncChild,
 } = core.loadExtScript("ext:deno_process/40_process.js");
 
-export function mapValues<T, O>(
-  record: Readonly<Record<string, T>>,
-  transformer: (value: T) => O,
-): Record<string, O> {
-  const ret: Record<string, O> = {};
+function mapValues(
+  record,
+  transformer,
+) {
+  const ret = {};
   const entries = Object.entries(record);
 
   for (const [key, value] of entries) {
@@ -114,14 +120,11 @@ export function mapValues<T, O>(
   return ret;
 }
 
-type NodeStdio = "pipe" | "overlapped" | "ignore" | "inherit" | "ipc";
-type DenoStdio = "inherit" | "piped" | "null";
-
-export function stdioStringToArray(
-  stdio: NodeStdio,
-  channel: NodeStdio | number,
+function stdioStringToArray(
+  stdio,
+  channel,
 ) {
-  const options: (NodeStdio | number)[] = [];
+  const options = [];
 
   switch (stdio) {
     case "ignore":
@@ -149,14 +152,14 @@ let emittedShellDeprecation = false;
 // We only want to emit a close event for the child process when all of
 // the writable streams have closed. The value of `child[kClosesNeeded]` should be 1 +
 // the number of opened writable streams (note this excludes `stdin`).
-function maybeClose(child: ChildProcess) {
+function maybeClose(child) {
   child[kClosesReceived]++;
   if (child[kClosesNeeded] === child[kClosesReceived]) {
     child.emit("close", child.exitCode, child.signalCode);
   }
 }
 
-function flushStdio(subprocess: ChildProcess) {
+function flushStdio(subprocess) {
   const stdio = subprocess.stdio;
 
   if (stdio == null) return;
@@ -170,11 +173,11 @@ function flushStdio(subprocess: ChildProcess) {
   }
 }
 
-export class ChildProcess extends EventEmitter {
+class ChildProcess extends EventEmitter {
   /**
    * The exit code of the child process. This property will be `null` until the child process exits.
    */
-  exitCode: number | null = null;
+  exitCode = null;
 
   /**
    * This property is set to `true` after `kill()` is called.
@@ -184,52 +187,51 @@ export class ChildProcess extends EventEmitter {
   /**
    * The PID of this child process.
    */
-  pid!: number;
+  pid;
 
   /**
    * The signal received by this child process.
    */
-  signalCode: string | null = null;
+  signalCode = null;
 
   /**
    * Command line arguments given to this child process.
    */
-  spawnargs: string[] = [];
+  spawnargs = [];
 
   /**
    * The executable file name of this child process.
    */
-  spawnfile: string = "";
+  spawnfile = "";
 
   /**
    * This property represents the child process's stdin.
    */
-  stdin: Writable | null = null;
+  stdin = null;
 
   /**
    * This property represents the child process's stdout.
    */
-  stdout: Readable | null = null;
+  stdout = null;
 
   /**
    * This property represents the child process's stderr.
    */
-  stderr: Readable | null = null;
+  stderr = null;
 
   /**
    * Pipes to this child process.
    */
-  stdio: [Writable | null, Readable | null, Readable | null] = [
+  stdio = [
     null,
     null,
     null,
   ];
 
-  disconnect?: () => void;
+  disconnect;
 
-  // deno-lint-ignore no-explicit-any
-  #process!: any;
-  #spawned = Promise.withResolvers<void>();
+  #process;
+  #spawned = Promise.withResolvers();
   [kClosesNeeded] = 1;
   [kClosesReceived] = 0;
   [kCanDisconnect] = false;
@@ -242,19 +244,7 @@ export class ChildProcess extends EventEmitter {
    * Internal spawn method used by Node.js internals.
    * This is called after creating a ChildProcess instance.
    */
-  spawn(options: {
-    file?: string;
-    args?: string[];
-    cwd?: string;
-    stdio?: Array<NodeStdio | number | Stream | null | undefined> | NodeStdio;
-    envPairs?: string[];
-    windowsVerbatimArguments?: boolean;
-    detached?: boolean;
-    signal?: AbortSignal;
-    serialization?: "json" | "advanced";
-    // deno-lint-ignore no-explicit-any
-    [key: string]: any;
-  }): void {
+  spawn(options) {
     // Validate options
     if (options == null || typeof options !== "object") {
       throw new ERR_INVALID_ARG_TYPE("options", "object", options);
@@ -285,20 +275,10 @@ export class ChildProcess extends EventEmitter {
    * Internal method that performs the actual spawning.
    */
   #spawnInternal(
-    command: string,
-    args: string[],
-    options: {
-      cwd?: string;
-      stdio?: Array<NodeStdio | number | Stream | null | undefined> | NodeStdio;
-      envPairs?: string[];
-      windowsVerbatimArguments?: boolean;
-      detached?: boolean;
-      signal?: AbortSignal;
-      serialization?: "json" | "advanced";
-      // deno-lint-ignore no-explicit-any
-      [key: string]: any;
-    },
-  ): void {
+    command,
+    args,
+    options,
+  ) {
     const {
       stdio = ["pipe", "pipe", "pipe"],
       cwd,
@@ -311,7 +291,7 @@ export class ChildProcess extends EventEmitter {
     } = options;
 
     // Convert envPairs array to env object
-    const env: Record<string, string> = {};
+    const env = {};
     if (envPairs) {
       for (const pair of envPairs) {
         const idx = pair.indexOf("=");
@@ -329,6 +309,9 @@ export class ChildProcess extends EventEmitter {
       stderr = "pipe",
       ...extraStdio
     ] = normalizedStdio;
+
+    const { Stream } = lazyStream();
+    const { Socket } = lazyNet();
 
     // buildCommand handles Node.js to Deno CLI arg translation when spawning Deno
     // args[0] is argv0 (prepended by normalizeSpawnArguments). Capture it
@@ -350,7 +333,7 @@ export class ChildProcess extends EventEmitter {
 
     const extraStdioOffset = 3; // stdin, stdout, stderr
 
-    const extraStdioNormalized: DenoStdio[] = [];
+    const extraStdioNormalized = [];
     for (let i = 0; i < extraStdio.length; i++) {
       const fd = i + extraStdioOffset;
       if (fd === ipc) {
@@ -507,7 +490,7 @@ export class ChildProcess extends EventEmitter {
 
       const extraPipeFds = this.#process.extraPipeFds;
       for (let i = 0; i < extraPipeFds.length; i++) {
-        const extraFd: number | null = extraPipeFds[i];
+        const extraFd = extraPipeFds[i];
         const fd = i + extraStdioOffset;
         if (extraFd !== null && extraFd !== undefined) {
           this[kClosesNeeded]++;
@@ -516,8 +499,7 @@ export class ChildProcess extends EventEmitter {
           this.stdio[fd] = new Socket(
             {
               handle: pipe,
-              // deno-lint-ignore no-explicit-any
-            } as any,
+            },
           );
           this.stdio[fd]?.on("close", () => {
             maybeClose(this);
@@ -534,7 +516,7 @@ export class ChildProcess extends EventEmitter {
         const killSignal = options.killSignal ?? "SIGTERM";
         const onAbortListener = () => {
           try {
-            if (this.kill(killSignal as string)) {
+            if (this.kill(killSignal)) {
               this.emit(
                 "error",
                 new AbortError(
@@ -585,6 +567,7 @@ export class ChildProcess extends EventEmitter {
         });
       })();
     } catch (err) {
+      const { Readable, Writable } = lazyStream();
       let e = err;
       if (e instanceof Deno.errors.NotFound) {
         // args.slice(1) to exclude argv0 (prepended by normalizeSpawnArguments)
@@ -644,14 +627,15 @@ export class ChildProcess extends EventEmitter {
   /**
    * @param signal NOTE: this parameter is not yet implemented.
    */
-  kill(signal?: number | string): boolean {
+  kill(signal) {
+    const process = lazyProcess().default;
     // Signal 0 is a special case: it checks if the process exists
     // without sending a signal (POSIX kill(pid, 0)). This must run
     // before the `killed` check because kill(0) is an existence probe
     // that should work even after a prior successful kill().
     if (signal === 0 || signal === "0") {
       try {
-        process.kill(this.pid!, 0);
+        process.kill(this.pid, 0);
         return true;
       } catch {
         return false;
@@ -665,7 +649,7 @@ export class ChildProcess extends EventEmitter {
     let signalName = signal == null ? "SIGTERM" : toDenoSignal(signal);
     this.#closePipes();
     try {
-      this.#process.kill(signalName as Deno.Signal);
+      this.#process.kill(signalName);
     } catch (err) {
       if (isWindows) {
         // On Windows, unsupported signals fall back to SIGKILL
@@ -717,7 +701,9 @@ export class ChildProcess extends EventEmitter {
   }
 
   async #_waitForChildStreamsToClose() {
-    const promises = [] as Array<Promise<void>>;
+    const { Readable } = lazyStream();
+    const process = lazyProcess().default;
+    const promises = [];
     // Don't close parent process stdin if that's passed through
     if (this.stdin && !this.stdin.destroyed && this.stdin !== process.stdin) {
       assert(this.stdin);
@@ -739,7 +725,7 @@ export class ChildProcess extends EventEmitter {
     await Promise.all(promises);
   }
 
-  #_handleError(err: unknown) {
+  #_handleError(err) {
     nextTick(() => {
       this.emit("error", err); // TODO(uki00a) Convert `err` into nodejs's `SystemError` class.
     });
@@ -753,8 +739,7 @@ export class ChildProcess extends EventEmitter {
   }
 }
 
-// deno-lint-ignore no-explicit-any
-function streamHandleFd(stream: any): number {
+function streamHandleFd(stream) {
   const handle = stream._handle;
   if (handle && typeof handle.fd === "number" && handle.fd >= 0) {
     return handle.fd;
@@ -763,8 +748,9 @@ function streamHandleFd(stream: any): number {
 }
 
 function toDenoStdio(
-  pipe: NodeStdio | number | Stream | null | undefined,
-): DenoStdio {
+  pipe,
+) {
+  const { Stream } = lazyStream();
   if (pipe instanceof Stream) {
     // If the stream has an underlying handle with a valid fd (e.g. a Socket
     // backed by a PipeWrap), pass that fd directly to the child process.
@@ -799,99 +785,36 @@ function toDenoStdio(
   }
 }
 
-function toDenoSignal(signal: number | string): Deno.Signal {
-  const nodeSignals = os.signals as Record<string, number>;
+function toDenoSignal(signal) {
+  const nodeSignals = os.signals;
   if (typeof signal === "number") {
     for (const name of keys(nodeSignals)) {
       if (nodeSignals[name] === signal) {
-        return name as Deno.Signal;
+        return name;
       }
     }
     throw new ERR_UNKNOWN_SIGNAL(String(signal));
   }
 
   if (signal in nodeSignals) {
-    return signal as Deno.Signal;
+    return signal;
   }
   // On Windows, os.signals only lists native signals. Accept any
   // POSIX signal name so the caller can remap it to SIGTERM.
   if (isWindows && signal.startsWith("SIG")) {
-    return signal as Deno.Signal;
+    return signal;
   }
   throw new ERR_UNKNOWN_SIGNAL(signal);
 }
 
-function keys<T extends Record<string, unknown>>(object: T): Array<keyof T> {
+function keys(object) {
   return Object.keys(object);
 }
 
-export interface ChildProcessOptions {
-  /**
-   * Current working directory of the child process.
-   */
-  cwd?: string | URL;
-
-  /**
-   * Environment variables passed to the child process.
-   */
-  env?: Record<string, string | number | boolean>;
-
-  /**
-   * This option defines child process's stdio configuration.
-   * @see https://nodejs.org/api/child_process.html#child_process_options_stdio
-   */
-  stdio?: Array<NodeStdio | number | Stream | null | undefined> | NodeStdio;
-
-  /**
-   * Whether to spawn the process in a detached state.
-   */
-  detached?: boolean;
-
-  /**
-   * NOTE: This option is not yet implemented.
-   */
-  uid?: number;
-
-  /**
-   * NOTE: This option is not yet implemented.
-   */
-  gid?: number;
-
-  /**
-   * NOTE: This option is not yet implemented.
-   */
-  argv0?: string;
-
-  /**
-   * * If this option is `true`, run the command in the shell.
-   * * If this option is a string, run the command in the specified shell.
-   */
-  shell?: string | boolean;
-
-  /**
-   * Allows aborting the child process using an AbortSignal.
-   */
-  signal?: AbortSignal;
-
-  /**
-   * NOTE: This option is not yet implemented.
-   */
-  serialization?: "json" | "advanced";
-
-  /** No quoting or escaping of arguments is done on Windows. Ignored on Unix.
-   * Default: false. */
-  windowsVerbatimArguments?: boolean;
-
-  /**
-   * NOTE: This option is not yet implemented.
-   */
-  windowsHide?: boolean;
-}
-
 function copyProcessEnvToEnv(
-  env: Record<string, string | number | boolean | undefined>,
-  name: string,
-  optionEnv?: Record<string, string | number | boolean>,
+  env,
+  name,
+  optionEnv,
 ) {
   if (
     Deno.env.get(name) &&
@@ -903,17 +826,12 @@ function copyProcessEnvToEnv(
 }
 
 function normalizeStdioOption(
-  stdio: Array<NodeStdio | number | null | undefined | Stream> | NodeStdio = [
+  stdio = [
     "pipe",
     "pipe",
     "pipe",
   ],
-): [
-  Stream | NodeStdio | number,
-  Stream | NodeStdio | number,
-  Stream | NodeStdio | number,
-  ...Array<Stream | NodeStdio | number>,
-] {
+) {
   if (Array.isArray(stdio)) {
     // `[0, 1, 2]` is equivalent to `"inherit"`
     if (
@@ -959,24 +877,17 @@ function normalizeStdioOption(
 // Valid stdio string values
 const validStdioStrings = ["ignore", "pipe", "inherit", "overlapped"];
 
-// Result type for getValidStdio
-export interface StdioResult {
-  stdio: Array<{ type: string; fd?: number } | null>;
-  ipc: number | undefined;
-  ipcFd: number | undefined;
-}
-
 /**
  * Validates and processes stdio configuration.
  * This is an internal function used by Node.js's child_process module.
  */
-export function getValidStdio(
-  // deno-lint-ignore no-explicit-any
-  stdio: any,
-  sync?: boolean,
-): StdioResult {
-  let ipc: number | undefined;
-  let ipcFd: number | undefined;
+function getValidStdio(
+  stdio,
+  sync,
+) {
+  const { Stream } = lazyStream();
+  let ipc;
+  let ipcFd;
 
   // If stdio is a string, validate it
   if (typeof stdio === "string") {
@@ -995,7 +906,7 @@ export function getValidStdio(
   }
 
   // Process each stdio element
-  const result: Array<{ type: string; fd?: number } | null> = [];
+  const result = [];
 
   for (let i = 0; i < stdio.length; i++) {
     const value = stdio[i];
@@ -1046,7 +957,7 @@ export function getValidStdio(
 }
 
 // Check for null bytes in a string and throw ERR_INVALID_ARG_VALUE if found
-export function validateNullByteNotInArg(value: string, name: string): void {
+function validateNullByteNotInArg(value, name) {
   if (StringPrototypeIncludes(value, "\0")) {
     throw new ERR_INVALID_ARG_VALUE(
       name,
@@ -1056,11 +967,12 @@ export function validateNullByteNotInArg(value: string, name: string): void {
   }
 }
 
-export function normalizeSpawnArguments(
-  file: string,
-  args: string[],
-  options: SpawnOptions & SpawnSyncOptions,
+function normalizeSpawnArguments(
+  file,
+  args,
+  options,
 ) {
+  const process = lazyProcess().default;
   validateString(file, "file");
 
   if (file.length === 0) {
@@ -1095,13 +1007,13 @@ export function normalizeSpawnArguments(
     validateObject(options, "options");
   }
 
-  options = { __proto__: null, ...options } as typeof options;
+  options = { __proto__: null, ...options };
 
   let cwd = options.cwd;
 
   // Validate the cwd, if present.
   if (cwd != null) {
-    cwd = getValidatedPath(cwd, "options.cwd") as string;
+    cwd = lazyFsUtils().getValidatedPath(cwd, "options.cwd");
     validateNullByteNotInArg(cwd, "options.cwd");
   }
 
@@ -1217,7 +1129,7 @@ export function normalizeSpawnArguments(
   }
 
   const env = options.env || Deno.env.toObject();
-  const envPairs: string[][] = [];
+  const envPairs = [];
 
   // process.env.NODE_V8_COVERAGE always propagates, making it possible to
   // collect coverage for programs that spawn with white-listed environment.
@@ -1225,7 +1137,7 @@ export function normalizeSpawnArguments(
 
   /** TODO: add `isZOS` condition */
 
-  let envKeys: string[] = [];
+  let envKeys = [];
   // Prototype values are intentionally included.
   // deno-lint-ignore guard-for-in
   for (const key in env) {
@@ -1239,7 +1151,7 @@ export function normalizeSpawnArguments(
     const sawKey = new Set();
     envKeys = ArrayPrototypeFilter(
       ArrayPrototypeSort(envKeys),
-      (key: string) => {
+      (key) => {
         const uppercaseKey = StringPrototypeToUpperCase(key);
         if (sawKey.has(uppercaseKey)) {
           return false;
@@ -1276,13 +1188,13 @@ export function normalizeSpawnArguments(
   };
 }
 
-function waitForReadableToClose(readable: Readable) {
+function waitForReadableToClose(readable) {
   readable.resume(); // Ensure buffered data will be consumed.
-  return waitForStreamToClose(readable as unknown as Stream);
+  return waitForStreamToClose(readable);
 }
 
-function waitForStreamToClose(stream: Stream) {
-  const deferred = Promise.withResolvers<void>();
+function waitForStreamToClose(stream) {
+  const deferred = Promise.withResolvers();
   const cleanup = () => {
     stream.removeListener("close", onClose);
     stream.removeListener("error", onError);
@@ -1291,7 +1203,7 @@ function waitForStreamToClose(stream: Stream) {
     cleanup();
     deferred.resolve();
   };
-  const onError = (err: Error) => {
+  const onError = (err) => {
     cleanup();
     deferred.reject(err);
   };
@@ -1305,7 +1217,8 @@ function waitForStreamToClose(stream: Stream) {
  * On Unix, wraps in single quotes and escapes embedded single quotes.
  * On Windows, wraps in double quotes and escapes embedded double quotes and backslashes.
  */
-function escapeShellArg(arg: string): string {
+function escapeShellArg(arg) {
+  const process = lazyProcess().default;
   if (process.platform === "win32") {
     // Windows: use double quotes, escape double quotes and backslashes
     // Empty string needs to be quoted
@@ -1346,10 +1259,10 @@ function escapeShellArg(arg: string): string {
  * including subcommand detection, -c/--check flag handling, and adding "run -A".
  */
 function transformDenoShellCommand(
-  command: string,
-  env?: Record<string, string | number | boolean>,
-  isCmdExe: boolean = false,
-): string {
+  command,
+  env,
+  isCmdExe = false,
+) {
   const denoPath = Deno.execPath();
 
   // Check if the command starts with the Deno executable (possibly quoted)
@@ -1469,7 +1382,7 @@ function transformDenoShellCommand(
  * This is used to determine if the user is spawning a Deno subcommand
  * or a script, and to check if the script is in an npm package.
  */
-function findFirstNonFlagArg(args: string[]): string | null {
+function findFirstNonFlagArg(args) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     // Stop at '--' - everything after is positional
@@ -1502,10 +1415,10 @@ function findFirstNonFlagArg(args: string[]): string | null {
  * Copyright Joyent, Inc. and other Node contributors. All rights reserved. MIT license.
  */
 function buildCommand(
-  file: string,
-  args: string[],
-  env: Record<string, string | number | boolean>,
-): [string, string[], boolean] {
+  file,
+  args,
+  env,
+) {
   let includeNpmProcessState = false;
   if (file === Deno.execPath() && !Deno.build.standalone) {
     // Ensure all args are strings (Node allows numbers in args array)
@@ -1601,8 +1514,7 @@ function buildCommand(
   return [file, args, includeNpmProcessState];
 }
 
-// deno-lint-ignore no-explicit-any
-function restorePrototype(obj: any) {
+function restorePrototype(obj) {
   if (obj === null || typeof obj !== "object") return;
   if (Array.isArray(obj)) {
     for (let i = 0; i < obj.length; i++) {
@@ -1618,8 +1530,8 @@ function restorePrototype(obj: any) {
 
 /** Convert a killSignal (string name or number) to its string name. */
 function _resolveKillSignalName(
-  killSignal: string | number | undefined,
-): string {
+  killSignal,
+) {
   if (typeof killSignal === "string") return killSignal;
   if (typeof killSignal === "number") {
     for (const [name, num] of Object.entries(os.signals)) {
@@ -1631,11 +1543,11 @@ function _resolveKillSignalName(
 }
 
 function _createSpawnError(
-  status: string,
-  command: string,
-  args: string[] = [],
-  sync: boolean = false,
-): ErrnoException {
+  status,
+  command,
+  args = [],
+  sync = false,
+) {
   const syscall = sync ? "spawnSync " : "spawn ";
   const error = errnoException(
     codeMap.get(status),
@@ -1646,47 +1558,7 @@ function _createSpawnError(
   return error;
 }
 
-export interface SpawnOptions extends ChildProcessOptions {
-  timeout?: number;
-  killSignal?: string;
-}
-
-export interface SpawnSyncOptions extends
-  Pick<
-    ChildProcessOptions,
-    | "cwd"
-    | "env"
-    | "argv0"
-    | "stdio"
-    | "uid"
-    | "gid"
-    | "shell"
-    | "windowsVerbatimArguments"
-    | "windowsHide"
-  > {
-  file?: string;
-  args?: string[];
-  input?: string | Buffer | DataView;
-  timeout?: number;
-  maxBuffer?: number;
-  encoding?: string;
-  /**
-   * NOTE: This option is not yet implemented.
-   */
-  killSignal?: string;
-}
-
-export interface SpawnSyncResult {
-  pid?: number;
-  output?: [string | null, string | Buffer | null, string | Buffer | null];
-  stdout?: Buffer | string | null;
-  stderr?: Buffer | string | null;
-  status?: number | null;
-  signal?: string | null;
-  error?: Error;
-}
-
-function normalizeInput(input: unknown) {
+function normalizeInput(input) {
   if (input == null) {
     return null;
   }
@@ -1704,9 +1576,9 @@ function normalizeInput(input: unknown) {
   ], input);
 }
 
-export function spawnSync(
-  options: SpawnSyncOptions,
-): SpawnSyncResult {
+function spawnSync(
+  options,
+) {
   const {
     env = Deno.env.toObject(),
     input,
@@ -1721,7 +1593,7 @@ export function spawnSync(
     windowsVerbatimArguments = false,
   } = options;
   let command = options.file || "";
-  let args: string[] = options.args || [];
+  let args = options.args || [];
   const [
     stdin_ = "pipe",
     stdout_ = "pipe",
@@ -1729,7 +1601,7 @@ export function spawnSync(
     ...extraStdio_
   ] = normalizeStdioOption(stdio);
 
-  const extraStdioNormalized: DenoStdio[] = [];
+  const extraStdioNormalized = [];
   for (let i = 0; i < extraStdio_.length; i++) {
     const val = extraStdio_[i];
     const fd = i + 3; // extra stdio starts at FD 3
@@ -1756,7 +1628,7 @@ export function spawnSync(
   );
   const input_ = normalizeInput(input);
 
-  const result: SpawnSyncResult = {};
+  const result = {};
   try {
     const output = nodeSpawnSyncChild({
       args: [command, ...args],
@@ -1771,8 +1643,7 @@ export function spawnSync(
       clearEnv: false,
       extraStdio: extraStdioNormalized,
       windowsRawArguments: windowsVerbatimArguments,
-      // deno-lint-ignore no-explicit-any
-      needsNpmProcessState: (options as any)[kNeedsNpmProcessState] ||
+      needsNpmProcessState: options[kNeedsNpmProcessState] ||
         includeNpmProcessState,
       input: input_,
       timeout,
@@ -1780,14 +1651,12 @@ export function spawnSync(
     });
 
     const status = output.signal ? null : output.code;
-    // deno-lint-ignore no-explicit-any
-    let stdout: any = output.stdout ? Buffer.from(output.stdout) : null;
-    // deno-lint-ignore no-explicit-any
-    let stderr: any = output.stderr ? Buffer.from(output.stderr) : null;
+    let stdout = output.stdout ? Buffer.from(output.stdout) : null;
+    let stderr = output.stderr ? Buffer.from(output.stderr) : null;
 
     if (
-      (stdout && stdout.length > maxBuffer!) ||
-      (stderr && stderr.length > maxBuffer!)
+      (stdout && stdout.length > maxBuffer) ||
+      (stderr && stderr.length > maxBuffer)
     ) {
       result.error = _createSpawnError("ENOBUFS", command, args, true);
     }
@@ -1825,13 +1694,13 @@ const kPendingMessages = Symbol("kPendingMessages");
 
 // controls refcounting for the IPC channel
 class Control extends EventEmitter {
-  #channel: number;
-  #refs: number = 0;
+  #channel;
+  #refs = 0;
   #refExplicitlySet = false;
   #connected = true;
   [kPendingMessages] = [];
-  #serialization: "json" | "advanced";
-  constructor(channel: number, serialization: "json" | "advanced") {
+  #serialization;
+  constructor(channel, serialization) {
     super();
     this.#channel = channel;
     this.#serialization = serialization;
@@ -1878,12 +1747,7 @@ class Control extends EventEmitter {
   }
 }
 
-type InternalMessage = {
-  cmd: `NODE_${string}`;
-};
-
-// deno-lint-ignore no-explicit-any
-function isInternal(msg: any): msg is InternalMessage {
+function isInternal(msg) {
   if (msg && typeof msg === "object") {
     const cmd = msg["cmd"];
     if (typeof cmd === "string") {
@@ -1893,7 +1757,7 @@ function isInternal(msg: any): msg is InternalMessage {
   return false;
 }
 
-function internalCmdName(msg: InternalMessage): string {
+function internalCmdName(msg) {
   return StringPrototypeSlice(msg.cmd, 5);
 }
 
@@ -1907,8 +1771,7 @@ const IPC_HANDLE_NET_SERVER = "net.Server";
 const IPC_HANDLE_NET_NATIVE = "net.Native";
 const IPC_HANDLE_DGRAM_SOCKET = "dgram.Socket";
 
-// deno-lint-ignore no-explicit-any
-function rawFdFromTcpHandle(tcpHandle: any): number {
+function rawFdFromTcpHandle(tcpHandle) {
   if (typeof tcpHandle.fdForIpc !== "function") {
     notImplemented("ChildProcess.send with handle on this platform");
   }
@@ -1919,16 +1782,10 @@ function rawFdFromTcpHandle(tcpHandle: any): number {
   return rawFd;
 }
 
-interface IpcHandleInfo {
-  rawFd: number;
-  // deno-lint-ignore no-explicit-any
-  message: Record<string, any>;
-  closeAfterSend: boolean;
-  close(): void;
-}
-
-// deno-lint-ignore no-explicit-any
-function getIpcHandleInfo(handle: any, options: any): IpcHandleInfo {
+function getIpcHandleInfo(handle, options) {
+  const { Socket } = lazyNet();
+  const { Server: NetServer } = lazyNet();
+  const { Socket: DgramSocket } = lazyDgram();
   if (handle instanceof Socket) {
     if (!(handle._handle instanceof TCP)) {
       notImplemented("ChildProcess.send with non-TCP net.Socket handle");
@@ -1993,8 +1850,7 @@ function getIpcHandleInfo(handle: any, options: any): IpcHandleInfo {
   }
 
   if (handle instanceof DgramSocket) {
-    // deno-lint-ignore no-explicit-any
-    const udpHandle = (handle as any)[kStateSymbol]?.handle;
+    const udpHandle = handle[lazyDgramInternal().kStateSymbol]?.handle;
     if (!udpHandle || typeof udpHandle.fdForIpc !== "function") {
       throw new ERR_INVALID_HANDLE_TYPE();
     }
@@ -2023,8 +1879,10 @@ function getIpcHandleInfo(handle: any, options: any): IpcHandleInfo {
   throw new ERR_INVALID_HANDLE_TYPE();
 }
 
-// deno-lint-ignore no-explicit-any
-function createIpcHandle(message: any, rawFd: number): any {
+function createIpcHandle(message, rawFd) {
+  const { Socket } = lazyNet();
+  const { Server: NetServer } = lazyNet();
+  const { Socket: DgramSocket } = lazyDgram();
   if (message.type === IPC_HANDLE_NET_SOCKET) {
     const tcp = new TCP(tcpSocketType.SOCKET);
     const err = tcp.open(rawFd);
@@ -2087,7 +1945,7 @@ function createIpcHandle(message: any, rawFd: number): any {
     return tcp;
   }
   if (message.type === IPC_HANDLE_DGRAM_SOCKET) {
-    const udp = new UDP();
+    const udp = new (lazyUdpWrap().UDP)();
     const err = udp.open(rawFd);
     if (err !== 0) {
       throw errnoException(codeMap.get(err), "open");
@@ -2103,12 +1961,14 @@ function createIpcHandle(message: any, rawFd: number): any {
   return undefined;
 }
 
-export function setupChannel(
-  // deno-lint-ignore no-explicit-any
-  target: any,
-  ipc: number,
-  serialization: "json" | "advanced",
+function setupChannel(
+  target,
+  ipc,
+  serialization,
 ) {
+  const { Socket } = lazyNet();
+  const { Server: NetServer } = lazyNet();
+  const { Socket: DgramSocket } = lazyDgram();
   const control = new Control(ipc, serialization);
   target.channel = control;
 
@@ -2356,7 +2216,7 @@ export function setupChannel(
         if (callback) {
           nextTick(callback, null);
         }
-      }, (err: Error) => {
+      }, (err) => {
         control.unrefCounted();
         if (handleInfo) {
           // Write failed: the receiver won't ACK, so close the handle now
@@ -2383,8 +2243,7 @@ export function setupChannel(
           // Match Node: errors raised from a failed IPC send carry
           // `syscall: "write"`. Tests like `test-cluster-concurrent-disconnect`
           // assert on this when racing send() against worker disconnect.
-          // deno-lint-ignore no-explicit-any
-          const errAny = err as any;
+          const errAny = err;
           if (errAny && typeof errAny === "object" && !errAny.syscall) {
             errAny.syscall = "write";
           }
@@ -2422,11 +2281,22 @@ export function setupChannel(
   return control;
 }
 
-export default {
+return {
   ChildProcess,
-  getValidStdio,
-  normalizeSpawnArguments,
+  mapValues,
   stdioStringToArray,
+  getValidStdio,
+  validateNullByteNotInArg,
+  normalizeSpawnArguments,
   spawnSync,
   setupChannel,
+  default: {
+    ChildProcess,
+    getValidStdio,
+    normalizeSpawnArguments,
+    stdioStringToArray,
+    spawnSync,
+    setupChannel,
+  },
 };
+})();

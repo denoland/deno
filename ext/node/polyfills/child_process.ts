@@ -13,18 +13,15 @@ import {
   op_node_translate_cli_args,
 } from "ext:core/ops";
 
-import {
+const {
   ChildProcess,
   ChildProcessOptions,
   normalizeSpawnArguments,
   setupChannel,
-  type SpawnOptions,
-  type SpawnSyncOptions,
-  type SpawnSyncResult,
   stdioStringToArray,
   validateNullByteNotInArg,
-} from "ext:deno_node/internal/child_process.ts";
-import internalChildProcess from "ext:deno_node/internal/child_process.ts";
+  default: internalChildProcess,
+} = core.loadExtScript("ext:deno_node/internal/child_process.ts");
 const {
   validateAbortSignal,
   validateFunction,

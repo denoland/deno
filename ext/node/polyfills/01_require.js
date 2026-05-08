@@ -119,7 +119,9 @@ import inspectorPromises from "node:inspector/promises";
 const internalAssertMyersDiff = core.loadExtScript(
   "ext:deno_node/internal/assert/myers_diff.js",
 );
-import internalCp from "ext:deno_node/internal/child_process.ts";
+const internalCp = core.loadExtScript(
+  "ext:deno_node/internal/child_process.ts",
+).default;
 const internalCryptoCertificate = core.loadExtScript(
   "ext:deno_node/internal/crypto/certificate.ts",
 ).default;
@@ -197,7 +199,9 @@ const internalUtilInspect = core.loadExtScript(
 const internalValidators = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-import internalConsole from "ext:deno_node/internal/console/constructor.mjs";
+const internalConsole = core.loadExtScript(
+  "ext:deno_node/internal/console/constructor.mjs",
+).default;
 import net from "node:net";
 const os = core.loadExtScript("ext:deno_node/os.ts").default;
 import pathPosix from "node:path/posix";
