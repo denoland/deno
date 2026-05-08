@@ -91,10 +91,18 @@ fn move_string_iovecs_to_owned_storage(
     return None;
   }
 
-  let mut async_storage = Box::new_uninit_slice(string_storage.len());
-  let async_storage_ptr = async_storage.as_mut_ptr();
   let string_storage_start = string_storage.as_ptr() as usize;
   let string_storage_end = string_storage_start + string_storage.len();
+
+  if !iovecs.iter().any(|buf| {
+    let base = buf.base as usize;
+    base >= string_storage_start && base < string_storage_end
+  }) {
+    return None;
+  }
+
+  let mut async_storage = Box::new_uninit_slice(string_storage.len());
+  let async_storage_ptr = async_storage.as_mut_ptr();
   // SAFETY: copying MaybeUninit bytes does not read them; iovecs only point at
   // ranges filled by the string encoders.
   unsafe {
@@ -219,6 +227,27 @@ mod tests {
       move_string_iovecs_to_owned_storage(
         std::slice::from_mut(&mut iovec),
         &[],
+      )
+      .is_none()
+    );
+    assert_eq!(iovec.base, original_base);
+    assert_eq!(iovec.len, buffer_storage.len());
+  }
+
+  #[test]
+  fn move_string_iovecs_to_owned_storage_ignores_buffer_only_tail() {
+    let string_storage = [MaybeUninit::<u8>::new(1); 4];
+    let mut buffer_storage = [1_u8, 2, 3, 4];
+    let mut iovec = uv_buf_t {
+      base: buffer_storage.as_mut_ptr() as *mut c_char,
+      len: buffer_storage.len(),
+    };
+    let original_base = iovec.base;
+
+    assert!(
+      move_string_iovecs_to_owned_storage(
+        std::slice::from_mut(&mut iovec),
+        &string_storage,
       )
       .is_none()
     );
