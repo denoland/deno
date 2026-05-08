@@ -395,7 +395,7 @@ function createJob(mode, type, options) {
     validateObject(options, "options");
   }
 
-  const process = lazyProcess();
+  const process = lazyProcess().default;
 
   switch (type) {
     case "rsa":

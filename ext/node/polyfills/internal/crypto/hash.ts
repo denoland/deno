@@ -94,7 +94,7 @@ function Hash(
     !warnedShakeOutputLength
   ) {
     warnedShakeOutputLength = true;
-    const process = lazyProcess();
+    const process = lazyProcess().default;
     process.emitWarning(
       "Creating SHAKE128/256 digests without an explicit options.outputLength is deprecated.",
       "DeprecationWarning",

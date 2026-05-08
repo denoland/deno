@@ -94,7 +94,7 @@ function randomBytes(
     const resource = {};
     emitInit(asyncId, "RANDOMBYTESREQUEST", triggerAsyncId, resource);
 
-    const process = lazyProcess();
+    const process = lazyProcess().default;
     process.nextTick(() => {
       emitBefore(asyncId);
       try {

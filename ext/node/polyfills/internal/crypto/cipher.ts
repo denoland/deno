@@ -554,7 +554,7 @@ Decipheriv.prototype.setAuthTag = function (
     buffer.byteLength !== 16 && !gcmShortTagDeprecationEmitted
   ) {
     gcmShortTagDeprecationEmitted = true;
-    const process = lazyProcess();
+    const process = lazyProcess().default;
     process.emitWarning(
       "Using AES-GCM authentication tags of less than 128 bits without " +
         "specifying the authTagLength option when initializing decryption " +

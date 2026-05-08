@@ -132,7 +132,7 @@ function pbkdf2(
   // Track if callback was already invoked (to avoid calling twice if callback throws)
   let callbackInvoked = false;
 
-  const process = lazyProcess();
+  const process = lazyProcess().default;
 
   op_node_pbkdf2_async(
     password,
