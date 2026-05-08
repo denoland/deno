@@ -2,7 +2,7 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file prefer-primordials no-explicit-any
 
 (function () {
 const { core } = globalThis.__bootstrap;
@@ -59,7 +59,6 @@ const { customInspectSymbol: kInspect } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
 
-// deno-lint-ignore no-explicit-any
 const kEmptyObject = Object.freeze({ __proto__: null } as any);
 
 function getFlags(options = kEmptyObject): number {
@@ -209,7 +208,6 @@ class X509Certificate {
     }
     return op_node_x509_check_private_key(
       this.#handle,
-      // deno-lint-ignore no-explicit-any
       (privateKey as any)[kHandle],
     );
   }
@@ -337,7 +335,6 @@ class X509Certificate {
     }
     return op_node_x509_verify(
       this.#handle,
-      // deno-lint-ignore no-explicit-any
       (publicKey as any)[kHandle],
     );
   }

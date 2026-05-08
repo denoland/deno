@@ -2,7 +2,7 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file prefer-primordials no-explicit-any
 
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
@@ -569,7 +569,6 @@ function parsePrivateKeyEncoding(
 }
 
 function decorateOsslDecoderError(err: unknown): unknown {
-  // deno-lint-ignore no-explicit-any
   const e = err as any;
   if (
     e && typeof e.message === "string" &&

@@ -2,7 +2,7 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file prefer-primordials no-explicit-any
 
 (function () {
 const { core } = globalThis.__bootstrap;
@@ -1399,7 +1399,6 @@ class ECDHImpl {
         secretBuf,
       );
     } catch (e) {
-      // deno-lint-ignore no-explicit-any
       const err = e as any;
       if (err && err.message === "Invalid key pair") {
         throw new Error("Invalid key pair");
