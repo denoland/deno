@@ -16,7 +16,9 @@ const { isArrayBufferView } = core.loadExtScript(
 const { validateString } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-import { createPrivateKey } from "ext:deno_node/internal/crypto/keys.ts";
+const { createPrivateKey } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/keys.ts",
+);
 
 // OpenSSL cipher names are uppercase alphanumeric with hyphens/underscores
 // and "=" (for @SECLEVEL=N). Examples: "ECDHE-RSA-AES128-GCM-SHA256",

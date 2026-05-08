@@ -120,21 +120,45 @@ const internalAssertMyersDiff = core.loadExtScript(
   "ext:deno_node/internal/assert/myers_diff.js",
 );
 import internalCp from "ext:deno_node/internal/child_process.ts";
-import internalCryptoCertificate from "ext:deno_node/internal/crypto/certificate.ts";
-import internalCryptoCipher from "ext:deno_node/internal/crypto/cipher.ts";
-import internalCryptoDiffiehellman from "ext:deno_node/internal/crypto/diffiehellman.ts";
-import internalCryptoHash from "ext:deno_node/internal/crypto/hash.ts";
-import internalCryptoHkdf from "ext:deno_node/internal/crypto/hkdf.ts";
-import internalCryptoKeygen from "ext:deno_node/internal/crypto/keygen.ts";
-import internalCryptoKeys from "ext:deno_node/internal/crypto/keys.ts";
-import internalCryptoPbkdf2 from "ext:deno_node/internal/crypto/pbkdf2.ts";
-import internalCryptoRandom from "ext:deno_node/internal/crypto/random.ts";
-import internalCryptoScrypt from "ext:deno_node/internal/crypto/scrypt.ts";
-import internalCryptoSig from "ext:deno_node/internal/crypto/sig.ts";
+const internalCryptoCertificate = core.loadExtScript(
+  "ext:deno_node/internal/crypto/certificate.ts",
+).default;
+const internalCryptoCipher = core.loadExtScript(
+  "ext:deno_node/internal/crypto/cipher.ts",
+).default;
+const internalCryptoDiffiehellman = core.loadExtScript(
+  "ext:deno_node/internal/crypto/diffiehellman.ts",
+).default;
+const internalCryptoHash = core.loadExtScript(
+  "ext:deno_node/internal/crypto/hash.ts",
+).default;
+const internalCryptoHkdf = core.loadExtScript(
+  "ext:deno_node/internal/crypto/hkdf.ts",
+).default;
+const internalCryptoKeygen = core.loadExtScript(
+  "ext:deno_node/internal/crypto/keygen.ts",
+).default;
+const internalCryptoKeys = core.loadExtScript(
+  "ext:deno_node/internal/crypto/keys.ts",
+).default;
+const internalCryptoPbkdf2 = core.loadExtScript(
+  "ext:deno_node/internal/crypto/pbkdf2.ts",
+).default;
+const internalCryptoRandom = core.loadExtScript(
+  "ext:deno_node/internal/crypto/random.ts",
+).default;
+const internalCryptoScrypt = core.loadExtScript(
+  "ext:deno_node/internal/crypto/scrypt.ts",
+).default;
+const internalCryptoSig = core.loadExtScript(
+  "ext:deno_node/internal/crypto/sig.ts",
+).default;
 const internalCryptoUtil = core.loadExtScript(
   "ext:deno_node/internal/crypto/util.ts",
 ).default;
-import internalCryptoX509 from "ext:deno_node/internal/crypto/x509.ts";
+const internalCryptoX509 = core.loadExtScript(
+  "ext:deno_node/internal/crypto/x509.ts",
+).default;
 import internalDgram from "ext:deno_node/internal/dgram.ts";
 const internalUndici = core.loadExtScript(
   "ext:deno_node/internal/deps/undici/undici.js",

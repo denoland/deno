@@ -68,7 +68,9 @@ const { default: tlsWrap } = core.loadExtScript(
 const { ownerSymbol } = core.loadExtScript(
   "ext:deno_node/internal_binding/symbols.ts",
 );
-import { X509Certificate } from "ext:deno_node/internal/crypto/x509.ts";
+const { X509Certificate } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/x509.ts",
+);
 
 const kConnectOptions = Symbol("connect-options");
 const kHandshakeTimer = Symbol("handshake-timer");
