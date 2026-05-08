@@ -389,7 +389,38 @@ class TestSuite {
           for (const hook of new SafeArrayIterator(beforeEach)) {
             await hook(newNodeTextContext);
           }
-          const result = await prepared.fn(newNodeTextContext);
+          let result;
+          if (prepared.fn.length >= 2) {
+            // Node-style callback API: fn(t, done) - wait for `done()` (or
+            // promise rejection) before treating the test as complete.
+            await new Promise((testResolve, testReject) => {
+              pendingCallbackReject = testReject;
+              const done = (err) => {
+                pendingCallbackReject = null;
+                if (err) testReject(err);
+                else testResolve(undefined);
+              };
+              try {
+                const r = ReflectApply(prepared.fn, newNodeTextContext, [
+                  newNodeTextContext,
+                  done,
+                ]);
+                if (
+                  r !== null && r !== undefined && typeof r.then === "function"
+                ) {
+                  PromisePrototypeThen(r, undefined, (err) => {
+                    pendingCallbackReject = null;
+                    testReject(err);
+                  });
+                }
+              } catch (err) {
+                pendingCallbackReject = null;
+                testReject(err);
+              }
+            });
+          } else {
+            result = await prepared.fn(newNodeTextContext);
+          }
           newNodeTextContext._checkPlan();
           return result;
         } catch (err) {
@@ -689,6 +720,10 @@ function afterEach(fn, _options) {
 test.it = test;
 test.describe = suite;
 test.suite = suite;
+test.before = before;
+test.after = after;
+test.beforeEach = beforeEach;
+test.afterEach = afterEach;
 
 const activeMocks = [];
 

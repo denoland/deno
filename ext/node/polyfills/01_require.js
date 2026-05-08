@@ -214,6 +214,7 @@ const querystring = core.loadExtScript("ext:deno_node/querystring.js").default;
 import readline from "node:readline";
 import readlinePromises from "node:readline/promises";
 import repl from "node:repl";
+import internalRepl from "ext:deno_node/internal/repl.ts";
 const sqlite = core.loadExtScript("ext:deno_node/sqlite.ts");
 import stream from "node:stream";
 const streamConsumers = core.loadExtScript("ext:deno_node/stream/consumers.js");
@@ -304,6 +305,7 @@ function setupBuiltinModules() {
     "internal/http2/util": internalHttp2Util,
     "internal/priority_queue": internalPriorityQueue.default,
     "internal/readline/utils": internalReadlineUtils.default,
+    "internal/repl": internalRepl,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
     "internal/streams/state": internalStreamsState,
