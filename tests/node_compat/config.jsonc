@@ -2906,6 +2906,7 @@
     "parallel/test-require-resolve.js": {},
     "parallel/test-require-resolve-invalid-paths.js": {},
     "parallel/test-require-resolve-opts-paths-relative.js": {},
+    "parallel/test-runner-aftereach-runtime-skip.js": {},
     "parallel/test-runner-aliases.js": {},
     "parallel/test-runner-cli-concurrency.js": {
       "ignore": true,
@@ -2925,6 +2926,7 @@
     // "parallel/test-runner-coverage-thresholds.js": {},
     "parallel/test-runner-enable-source-maps-issue.js": {},
     "parallel/test-runner-filter-warning.js": {},
+    "parallel/test-runner-root-after-with-refed-handles.js": {},
     "parallel/test-runner-snapshot-file-tests.js": {
       "ignore": true,
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
@@ -4056,6 +4058,8 @@
       "ignore": true,
       "reason": "Node.js system CA certificate handling is not implemented in Deno"
     },
+    "test-runner/test-output-arbitrary-output-colored.mjs": {},
+    "test-runner/test-output-no-tests.mjs": {},
     "test-runner/test-output-output-cli.mjs": {
       "ignore": true,
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
@@ -4064,6 +4068,7 @@
       "ignore": true,
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
     },
+    "test-runner/test-output-typescript-coverage.mjs": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-watch-mode-inspect.mjs": {},
     // TODO(bartlomieju): this test is very flaky on CI, especially on Windows ARM
