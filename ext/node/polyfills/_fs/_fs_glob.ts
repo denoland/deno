@@ -22,13 +22,13 @@ const {
   lstatSync,
 } = core.loadExtScript("ext:deno_node/_fs/_fs_lstat.ts");
 
-import {
+const {
   basename,
   dirname,
   isAbsolute,
   join,
   resolve,
-} from "ext:deno_node/path/mod.ts";
+} = core.loadExtScript("ext:deno_node/path/mod.ts");
 import {
   type Dirent,
   DirentFromStats,
