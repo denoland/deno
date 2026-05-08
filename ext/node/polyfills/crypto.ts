@@ -19,7 +19,7 @@ const {
   setFipsCrypto,
   timingSafeEqual,
 } = core.loadExtScript("ext:deno_node/internal_binding/crypto.ts");
-import {
+const {
   checkPrime,
   checkPrimeSync,
   generatePrime,
@@ -29,7 +29,75 @@ import {
   randomFillSync,
   randomInt,
   randomUUID,
-} from "ext:deno_node/internal/crypto/random.ts";
+} = core.loadExtScript("ext:deno_node/internal/crypto/random.ts");
+const { pbkdf2, pbkdf2Sync } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/pbkdf2.ts",
+);
+const { scrypt, scryptSync } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/scrypt.ts",
+);
+const { hkdf, hkdfSync } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/hkdf.ts",
+);
+const {
+  generateKey,
+  generateKeyPair,
+  generateKeyPairSync,
+  generateKeySync,
+} = core.loadExtScript("ext:deno_node/internal/crypto/keygen.ts");
+const {
+  createPrivateKey,
+  createPublicKey,
+  createSecretKey,
+  KeyObject,
+} = core.loadExtScript("ext:deno_node/internal/crypto/keys.ts");
+const {
+  DiffieHellman,
+  diffieHellman,
+  DiffieHellmanGroup,
+  ECDH,
+} = core.loadExtScript("ext:deno_node/internal/crypto/diffiehellman.ts");
+const {
+  Cipheriv,
+  Decipheriv,
+  privateDecrypt,
+  privateEncrypt,
+  publicDecrypt,
+  publicEncrypt,
+} = core.loadExtScript("ext:deno_node/internal/crypto/cipher.ts");
+const {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
+  Sign,
+  signOneShot,
+  Verify,
+  verifyOneShot,
+} = core.loadExtScript("ext:deno_node/internal/crypto/sig.ts");
+const {
+  createHash,
+  getHashes,
+  Hash: Hash_,
+  Hmac: Hmac_,
+} = core.loadExtScript("ext:deno_node/internal/crypto/hash.ts");
+const { X509Certificate } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/x509.ts",
+);
+const {
+  getCipherInfo,
+  getCiphers,
+  getCurves,
+  secureHeapUsed,
+  setEngine,
+} = core.loadExtScript("ext:deno_node/internal/crypto/util.ts");
+const { default: Certificate } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/certificate.ts",
+);
+import type {
+  TransformOptions,
+  WritableOptions,
+} from "ext:deno_node/_stream.d.ts";
 import type {
   CheckPrimeOptions,
   GeneratePrimeOptions,
@@ -37,19 +105,10 @@ import type {
   GeneratePrimeOptionsBigInt,
   LargeNumberLike,
 } from "ext:deno_node/internal/crypto/random.ts";
-import { pbkdf2, pbkdf2Sync } from "ext:deno_node/internal/crypto/pbkdf2.ts";
 import type {
   Algorithms,
   NormalizedAlgorithms,
 } from "ext:deno_node/internal/crypto/pbkdf2.ts";
-import { scrypt, scryptSync } from "ext:deno_node/internal/crypto/scrypt.ts";
-import { hkdf, hkdfSync } from "ext:deno_node/internal/crypto/hkdf.ts";
-import {
-  generateKey,
-  generateKeyPair,
-  generateKeyPairSync,
-  generateKeySync,
-} from "ext:deno_node/internal/crypto/keygen.ts";
 import type {
   BasePrivateKeyEncodingOptions,
   DSAKeyPairKeyObjectOptions,
@@ -71,12 +130,6 @@ import type {
   X448KeyPairKeyObjectOptions,
   X448KeyPairOptions,
 } from "ext:deno_node/internal/crypto/keygen.ts";
-import {
-  createPrivateKey,
-  createPublicKey,
-  createSecretKey,
-  KeyObject,
-} from "ext:deno_node/internal/crypto/keys.ts";
 import type {
   AsymmetricKeyDetails,
   JsonWebKeyInput,
@@ -84,24 +137,6 @@ import type {
   KeyExportOptions,
   KeyObjectType,
 } from "ext:deno_node/internal/crypto/keys.ts";
-import {
-  DiffieHellman,
-  diffieHellman,
-  DiffieHellmanGroup,
-  ECDH,
-} from "ext:deno_node/internal/crypto/diffiehellman.ts";
-import {
-  Cipheriv,
-  Decipheriv,
-  privateDecrypt,
-  privateEncrypt,
-  publicDecrypt,
-  publicEncrypt,
-} from "ext:deno_node/internal/crypto/cipher.ts";
-const {
-  ERR_INVALID_ARG_TYPE,
-  ERR_INVALID_ARG_VALUE,
-} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import type {
   Cipher,
   CipherCCM,
@@ -132,12 +167,6 @@ import type {
   PrivateKeyInput,
   PublicKeyInput,
 } from "ext:deno_node/internal/crypto/types.ts";
-import {
-  Sign,
-  signOneShot,
-  Verify,
-  verifyOneShot,
-} from "ext:deno_node/internal/crypto/sig.ts";
 import type {
   DSAEncoding,
   KeyLike,
@@ -147,29 +176,10 @@ import type {
   VerifyKeyObjectInput,
   VerifyPublicKeyInput,
 } from "ext:deno_node/internal/crypto/sig.ts";
-import {
-  createHash,
-  getHashes,
-  Hash as Hash_,
-  Hmac as Hmac_,
-} from "ext:deno_node/internal/crypto/hash.ts";
-import { X509Certificate } from "ext:deno_node/internal/crypto/x509.ts";
 import type {
   PeerCertificate,
   X509CheckOptions,
 } from "ext:deno_node/internal/crypto/x509.ts";
-const {
-  getCipherInfo,
-  getCiphers,
-  getCurves,
-  secureHeapUsed,
-  setEngine,
-} = core.loadExtScript("ext:deno_node/internal/crypto/util.ts");
-import Certificate from "ext:deno_node/internal/crypto/certificate.ts";
-import type {
-  TransformOptions,
-  WritableOptions,
-} from "ext:deno_node/_stream.d.ts";
 const { normalizeEncoding } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
