@@ -250,6 +250,10 @@ pub(crate) struct ModuleMap {
   /// A counter used to delay our dynamic import deadlock detection by one spin
   /// of the event loop.
   pub(crate) dyn_module_evaluate_idle_counter: Cell<u32>,
+
+  /// Tracks module IDs currently being evaluated via `op_import_sync` to
+  /// detect require() cycles that V8's module status alone cannot catch.
+  pub(crate) import_sync_eval_stack: RefCell<Vec<ModuleId>>,
 }
 
 impl ModuleMap {
@@ -329,6 +333,7 @@ impl ModuleMap {
       code_cache_ready_futs: Default::default(),
       module_waker: Default::default(),
       data: Default::default(),
+      import_sync_eval_stack: Default::default(),
     }
   }
 
