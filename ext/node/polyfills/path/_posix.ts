@@ -21,8 +21,6 @@ const { validateString } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
-const lazyProcess = core.createLazyLoader("node:process");
-
 const lazyLoadGlob = core.createLazyLoader(
   "ext:deno_node/_fs/_fs_glob.ts",
 );
@@ -44,13 +42,13 @@ const posixCwd = (() => {
     // and truncates any drive indicator
     const regexp = new SafeRegExp(/\\/g);
     return () => {
-      const cwd = StringPrototypeReplace(lazyProcess().cwd(), regexp, "/");
+      const cwd = StringPrototypeReplace(globalThis.process.cwd(), regexp, "/");
       return StringPrototypeSlice(cwd, StringPrototypeIndexOf(cwd, "/"));
     };
   }
 
   // We're already on POSIX, no need for any transformations
-  return () => lazyProcess().cwd();
+  return () => globalThis.process.cwd();
 })();
 
 // path.resolve([from ...], to)
@@ -93,7 +91,7 @@ function resolve(...pathSegments: string[]): string {
   }
 
   // At this point the path should be resolved to a full absolute path, but
-  // handle relative paths to be safe (might happen when lazyProcess().cwd() fails)
+  // handle relative paths to be safe (might happen when globalThis.process.cwd() fails)
 
   // Normalize the path
   resolvedPath = normalizeString(
