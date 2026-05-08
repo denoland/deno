@@ -557,8 +557,10 @@ function _ensureHooksWorker() {
     process.stderr.write(e.message + "\n");
     process.exit(1);
   };
-  // Unref the worker so it doesn't prevent process exit when idle
-  // (like Node.js hooks thread). It gets ref'd during active requests.
+  // Unref the worker so it doesn't prevent process exit (like Node.js
+  // hooks thread). The Rust module loader's pending futures keep the
+  // event loop alive during active imports, so unref'd worker messages
+  // still get processed.
   _refHooksWorker(false);
 }
 
@@ -591,8 +593,6 @@ function _refHooksWorker(ref) {
 function _sendToHooksWorker(msg, transferList) {
   const id = nextHookRequestId++;
   msg.id = id;
-  // Ref the worker so the event loop stays alive while waiting
-  _refHooksWorker(true);
   const { promise, resolve, reject } = Promise.withResolvers();
   pendingHookRequests.set(id, { resolve, reject });
   if (transferList && transferList.length > 0) {
@@ -600,13 +600,7 @@ function _sendToHooksWorker(msg, transferList) {
   } else {
     hooksWorker.postMessage(msg);
   }
-  return promise.finally(() => {
-    // Unref once we have the response so the worker doesn't keep
-    // the process alive
-    if (pendingHookRequests.size === 0) {
-      _refHooksWorker(false);
-    }
-  });
+  return promise;
 }
 
 function executeResolveHookChain(specifier, context, parent, isMain) {
@@ -2574,13 +2568,11 @@ export function register(specifier, parentUrlOrOptions, maybeOptions) {
   });
 
   ArrayPrototypePush(pendingHookLoads, loadPromise);
-  loadPromise.then(() => {
+  const removePending = () => {
     const idx = ArrayPrototypeIndexOf(pendingHookLoads, loadPromise);
     if (idx !== -1) ArrayPrototypeSplice(pendingHookLoads, idx, 1);
-  }, () => {
-    const idx = ArrayPrototypeIndexOf(pendingHookLoads, loadPromise);
-    if (idx !== -1) ArrayPrototypeSplice(pendingHookLoads, idx, 1);
-  });
+  };
+  loadPromise.then(removePending, removePending);
 
   // Pre-activate hooks so subsequent imports are routed through the
   // bridge and will wait for the hook module to load in the worker.
@@ -2601,6 +2593,9 @@ Module.register = register;
  */
 export async function _registerCliLoaders(loaderUrls) {
   _ensureHooksWorker();
+  // Temporarily ref the worker during registration so run_event_loop
+  // stays alive to process messages (called from execute_script context).
+  _refHooksWorker(true);
   for (let i = 0; i < loaderUrls.length; i++) {
     const loaderUrl = loaderUrls[i];
     try {
@@ -2619,6 +2614,8 @@ export async function _registerCliLoaders(loaderUrls) {
     }
   }
   _activateEsmHooks();
+  // Unref now that registration is done
+  _refHooksWorker(false);
 }
 
 export { builtinModules, createRequire, getBuiltinModule, isBuiltin, Module };
