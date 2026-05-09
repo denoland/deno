@@ -252,8 +252,8 @@ function join(path, name) {
   }
 
   if (typeof path === "string" && isUint8Array(name)) {
-    // deno-lint-ignore prefer-primordials `join` is a `node:path` function
     const pathBuffer = Buffer.from(
+      // deno-lint-ignore prefer-primordials `join` is a `node:path` function
       lazyPath().default.join(path, lazyPath().default.sep),
     );
     // Ignore lint. `concat` is a 'node:buffer' static method on `Buffer`

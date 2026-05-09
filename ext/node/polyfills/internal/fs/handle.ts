@@ -1,13 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file prefer-primordials no-explicit-any no-node-globals
 
+import { core, primordials } from "ext:core/mod.js";
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
-import type { Buffer } from "node:buffer";
 const lazyFs = core.createLazyLoader("node:fs");
 const lazyReadline = core.createLazyLoader("node:readline");
-import { core, primordials } from "ext:core/mod.js";
 import { op_node_fs_close } from "ext:core/ops";
 import type {
   BinaryOptionsArgument,
