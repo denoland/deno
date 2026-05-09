@@ -43,10 +43,25 @@ Only attempt reproduction for bug reports that have a clear repro case.
 
 ### Setup
 
-Create a temporary directory for the reproduction:
+Prefer running reproductions inside a Docker container for isolation. Fall back to a local temp directory only if Docker is unavailable.
+
+**Docker (preferred):**
+
+```sh
+# Run repro with latest canary
+docker run --rm -v "$REPRO_DIR":/repro -w /repro denoland/deno:canary deno run repro.ts
+
+# Run repro with a specific version (e.g., 2.1.4)
+docker run --rm -v "$REPRO_DIR":/repro -w /repro denoland/deno:2.1.4 deno run repro.ts
+```
+
+Use `docker run --rm` so containers are cleaned up automatically. Mount the repro files via `-v`.
+
+**Local fallback (if Docker is not available):**
 
 ```sh
 REPRO_DIR=$(mktemp -d)
+deno run "$REPRO_DIR/repro.ts"
 ```
 
 ### Get Deno versions
@@ -55,21 +70,15 @@ Try to reproduce with both:
 1. **The version from the issue** (if specified) — to confirm the bug exists
 2. **Latest canary** — to check if it's already fixed
 
-```sh
-# Check current deno version
-deno --version
-
-# Install canary if needed
-deno upgrade --canary
-```
+Use the appropriate Docker image tag for each version (e.g., `denoland/deno:2.1.4`, `denoland/deno:canary`).
 
 If the issue specifies a particular Deno version and the bug does NOT reproduce on canary, note that it may already be fixed. Check git log for relevant fixes.
 
 ### Run the reproduction
 
 - Extract the reproduction code from the issue body
-- Write it to a file in the temp directory
-- Run it with the appropriate `deno` subcommand and flags
+- Write it to a local temp directory
+- Run it inside a Docker container (or locally as fallback) with the appropriate `deno` subcommand and flags
 - Capture both stdout and stderr
 - Compare actual output against the expected behavior described in the issue
 
