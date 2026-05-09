@@ -306,46 +306,104 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
 /// `fd` must be a valid CRT file descriptor.
 #[cfg(windows)]
 pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
+  use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
+  use windows_sys::Win32::Foundation::DuplicateHandle;
+  use windows_sys::Win32::Foundation::HANDLE;
   use windows_sys::Win32::Storage::FileSystem::FILE_TYPE_PIPE;
   use windows_sys::Win32::Storage::FileSystem::GetFileType;
+  use windows_sys::Win32::System::Pipes::GetNamedPipeInfo;
+  use windows_sys::Win32::System::Pipes::PIPE_SERVER_END;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
   if fd < 0 {
     return UV_EBADF;
   }
 
-  // Convert CRT fd to OS HANDLE.
+  // Read the OS HANDLE backing the CRT fd. `_get_osfhandle` does not
+  // transfer ownership; the CRT fd still owns the original handle and
+  // will close it via `_close(fd)`.
   // SAFETY: libc::get_osfhandle returns the OS handle for a CRT fd.
   let handle = unsafe { libc::get_osfhandle(fd) };
   if handle == -1 {
     return UV_EBADF;
   }
 
-  // If this is a named pipe, wrap it in a tokio NamedPipeClient so reads
-  // and writes go through the async reactor. A sync `ReadFile` on a pipe
-  // opened with `FILE_FLAG_OVERLAPPED` aborts inside Rust's std when the
-  // operation returns `ERROR_IO_PENDING`, which is the common case when
-  // no data is immediately available. We cannot know the overlapped flag
-  // after the fact, so we fall through to the raw-handle path only for
-  // non-pipe handles.
+  // Duplicate the handle so the pipe owns an independent copy. The CRT
+  // fd retains the original. `PipeWrap::close` calls `libc::close(fd)`
+  // after `close_pipe` has closed the dup, so each handle value is
+  // closed exactly once and there is no double-close even if Windows
+  // recycles the handle value between the two closes.
+  let cur = unsafe { GetCurrentProcess() };
+  let mut dup: HANDLE = std::ptr::null_mut();
+  let ok = unsafe {
+    DuplicateHandle(
+      cur,
+      handle as HANDLE,
+      cur,
+      &mut dup,
+      0,
+      0,
+      DUPLICATE_SAME_ACCESS,
+    )
+  };
+  if ok == 0 {
+    return UV_EBADF;
+  }
+
+  // If this is a named pipe, wrap it in a tokio NamedPipeServer or
+  // NamedPipeClient so reads and writes go through the async reactor.
+  // A sync `ReadFile` on a pipe opened with `FILE_FLAG_OVERLAPPED`
+  // aborts inside Rust's std when the operation returns
+  // `ERROR_IO_PENDING`, which is the common case when no data is
+  // immediately available.
+  //
+  // The wrapper choice matters: parent ends of child stdio pipes are
+  // server-side handles created via `CreateNamedPipeW`. Wrapping a
+  // server-side handle in `NamedPipeClient` masks broken-pipe / EOF
+  // events through the tokio reactor, so the JS Socket above never
+  // sees EOF after the child exits, never destroys, and the handle
+  // leaks. Use `GetNamedPipeInfo` to detect server vs client end.
+  //
+  // Note: tokio's `NamedPipe{Server,Client}::from_raw_handle` always
+  // takes ownership of the handle, even on `Err`. Do not reuse `dup`
+  // after a failed attempt — the handle has been closed.
   unsafe {
-    let h = handle as *mut std::ffi::c_void;
-    if GetFileType(h) == FILE_TYPE_PIPE {
-      match tokio::net::windows::named_pipe::NamedPipeClient::from_raw_handle(
-        handle as std::os::windows::io::RawHandle,
-      ) {
-        Ok(client) => {
-          (*pipe).internal_win_client = Some(client);
-          return 0;
+    if GetFileType(dup) == FILE_TYPE_PIPE {
+      let mut flags: u32 = 0;
+      let info_ok = GetNamedPipeInfo(
+        dup,
+        &mut flags,
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+      );
+      let is_server = info_ok != 0 && (flags & PIPE_SERVER_END) != 0;
+
+      let raw = dup as std::os::windows::io::RawHandle;
+      return if is_server {
+        match tokio::net::windows::named_pipe::NamedPipeServer::from_raw_handle(
+          raw,
+        ) {
+          Ok(server) => {
+            (*pipe).internal_win_server = Some(std::sync::Arc::new(server));
+            0
+          }
+          Err(_) => UV_EBADF,
         }
-        Err(_) => {
-          // Fall through to raw-handle path on failure (e.g. handle not
-          // overlapped). NamedPipeClient owns the handle on success; on
-          // failure it does not, so it is safe to reuse `handle` below.
+      } else {
+        match tokio::net::windows::named_pipe::NamedPipeClient::from_raw_handle(
+          raw,
+        ) {
+          Ok(client) => {
+            (*pipe).internal_win_client = Some(client);
+            0
+          }
+          Err(_) => UV_EBADF,
         }
-      }
+      };
     }
 
-    (*pipe).internal_handle = Some(handle as std::os::windows::io::RawHandle);
+    (*pipe).internal_handle = Some(dup as std::os::windows::io::RawHandle);
     // Note: do NOT set UV_HANDLE_ACTIVE here. See Unix uv_pipe_open.
   }
   0
