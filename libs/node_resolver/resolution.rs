@@ -2721,7 +2721,7 @@ impl BinValue {
     }
   }
 }
-fn is_binary(data: &[u8]) -> bool {
+pub fn is_binary(data: &[u8]) -> bool {
   is_elf(data) || is_macho(data) || is_pe(data)
 }
 
