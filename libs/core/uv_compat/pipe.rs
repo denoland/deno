@@ -134,6 +134,46 @@ impl uv_pipe_t {
   }
 }
 
+/// ### Safety
+/// `pipe` must be a valid pointer to an initialized `uv_pipe_t`.
+///
+/// Returns a dup of the underlying socket file descriptor, suitable for use
+/// as the payload of an SCM_RIGHTS cmsg on an IPC channel. Mirrors the TCP
+/// equivalent: caller owns the returned fd and must close it after the
+/// kernel attaches it to the outgoing message.
+#[cfg(unix)]
+pub unsafe fn uv_pipe_fd_for_ipc(pipe: *mut uv_pipe_t) -> c_int {
+  use std::os::fd::AsRawFd;
+
+  if pipe.is_null() {
+    return -1;
+  }
+
+  // SAFETY: Caller guarantees pipe is initialized and valid.
+  unsafe {
+    let p = &*pipe;
+    let fd = if let Some(stream) = p.internal_stream.as_ref() {
+      stream.as_raw_fd()
+    } else if let Some(listener) = p.internal_listener.as_ref() {
+      listener.as_raw_fd()
+    } else {
+      p.internal_fd.unwrap_or(-1)
+    };
+    if fd < 0 {
+      return -1;
+    }
+
+    let dup = libc::dup(fd);
+    if dup != -1 {
+      let flags = libc::fcntl(dup, libc::F_GETFD);
+      if flags != -1 {
+        libc::fcntl(dup, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+      }
+    }
+    dup
+  }
+}
+
 /// Set the number of pending pipe instances for Windows named pipes.
 /// On Unix this is a no-op.
 ///
@@ -311,7 +351,68 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
   0
 }
 
+/// Build a `sockaddr_un` from a path, handling both abstract sockets
+/// (path starts with `\0`, Linux-only) and filesystem sockets.
+///
+/// Returns `(addr, addr_len)` on success, or `UV_EINVAL` on failure.
+#[cfg(unix)]
+fn make_sockaddr_un(
+  path: &str,
+) -> Result<(libc::sockaddr_un, libc::socklen_t), c_int> {
+  let path_bytes = path.as_bytes();
+  if path_bytes.is_empty() {
+    return Err(super::UV_EINVAL);
+  }
+
+  // SAFETY: zeroing a sockaddr_un is safe — it's a plain C struct.
+  let mut addr: libc::sockaddr_un = unsafe { std::mem::zeroed() };
+  addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
+
+  let is_abstract = path_bytes[0] == 0;
+  if is_abstract {
+    // Abstract socket (Linux): sun_path starts with \0 followed by the
+    // name bytes. No NUL terminator needed — the name length is
+    // determined by addr_len.
+    if path_bytes.len() > addr.sun_path.len() {
+      return Err(super::UV_EINVAL);
+    }
+    unsafe {
+      std::ptr::copy_nonoverlapping(
+        path_bytes.as_ptr(),
+        addr.sun_path.as_mut_ptr() as *mut u8,
+        path_bytes.len(),
+      );
+    }
+    let addr_len = std::mem::size_of::<libc::sa_family_t>() + path_bytes.len();
+    Ok((addr, addr_len as libc::socklen_t))
+  } else {
+    // Filesystem socket: must be NUL-terminated, reject interior NULs.
+    if path_bytes.contains(&0) {
+      return Err(super::UV_EINVAL);
+    }
+    // +1 for the NUL terminator
+    let total_len = path_bytes.len() + 1;
+    if total_len > addr.sun_path.len() {
+      return Err(super::UV_EINVAL);
+    }
+    unsafe {
+      std::ptr::copy_nonoverlapping(
+        path_bytes.as_ptr(),
+        addr.sun_path.as_mut_ptr() as *mut u8,
+        path_bytes.len(),
+      );
+      // NUL terminator (sun_path was zeroed, but be explicit)
+      *(addr.sun_path.as_mut_ptr().add(path_bytes.len()) as *mut u8) = 0;
+    }
+    let addr_len = std::mem::size_of::<libc::sa_family_t>() + total_len;
+    Ok((addr, addr_len as libc::socklen_t))
+  }
+}
+
 /// Bind to a Unix domain socket path.
+///
+/// Supports both filesystem sockets (`/tmp/foo.sock`) and abstract
+/// sockets (`\0foo` — Linux-only, used by Nitro/Nuxt on Linux).
 ///
 /// # Safety
 /// `pipe` must be a valid pointer to an initialized `uv_pipe_t`.
@@ -330,33 +431,16 @@ pub unsafe fn uv_pipe_bind(pipe: *mut uv_pipe_t, path: &str) -> c_int {
         return io_error_to_uv(&std::io::Error::last_os_error());
       }
 
-      // Bind it to the path.
-      let c_path = match std::ffi::CString::new(path) {
-        Ok(p) => p,
-        Err(_) => {
+      // Build the sockaddr_un (handles abstract and filesystem sockets).
+      let (addr, addr_len) = match make_sockaddr_un(path) {
+        Ok(v) => v,
+        Err(e) => {
           libc::close(fd);
-          return super::UV_EINVAL;
+          return e;
         }
       };
-      let mut addr: libc::sockaddr_un = std::mem::zeroed();
-      addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
-      let path_bytes = c_path.as_bytes_with_nul();
-      if path_bytes.len() > addr.sun_path.len() {
-        libc::close(fd);
-        return super::UV_EINVAL;
-      }
-      std::ptr::copy_nonoverlapping(
-        path_bytes.as_ptr(),
-        addr.sun_path.as_mut_ptr() as *mut u8,
-        path_bytes.len(),
-      );
-      let addr_len =
-        std::mem::size_of::<libc::sa_family_t>() + path_bytes.len();
-      if libc::bind(
-        fd,
-        &addr as *const _ as *const libc::sockaddr,
-        addr_len as libc::socklen_t,
-      ) != 0
+      if libc::bind(fd, &addr as *const _ as *const libc::sockaddr, addr_len)
+        != 0
       {
         let err = std::io::Error::last_os_error();
         libc::close(fd);
@@ -476,19 +560,13 @@ pub unsafe fn uv_pipe_connect(
       // Non-blocking connect on the pre-bound socket.
       // SAFETY: fd is a valid socket from uv_pipe_bind.
       unsafe {
-        let c_path = std::ffi::CString::new(path.as_str()).map_err(|_| {
-          std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid path")
-        })?;
-        let mut addr: libc::sockaddr_un = std::mem::zeroed();
-        addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
-        let path_bytes = c_path.as_bytes_with_nul();
-        std::ptr::copy_nonoverlapping(
-          path_bytes.as_ptr(),
-          addr.sun_path.as_mut_ptr() as *mut u8,
-          path_bytes.len(),
-        );
-        let addr_len =
-          std::mem::size_of::<libc::sa_family_t>() + path_bytes.len();
+        let (addr, addr_len) =
+          make_sockaddr_un(path.as_str()).map_err(|_| {
+            std::io::Error::new(
+              std::io::ErrorKind::InvalidInput,
+              "invalid path",
+            )
+          })?;
 
         // Set non-blocking before connect.
         let flags = libc::fcntl(fd, libc::F_GETFL);
@@ -848,8 +926,11 @@ pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
 
     // Match libuv: unlink the socket file before closing the fd so
     // another server can bind to the same path immediately.
+    // Abstract sockets (path starts with \0) have no filesystem entry.
     #[cfg(unix)]
-    if let Some(ref path) = (*pipe).internal_bind_path {
+    if let Some(ref path) = (*pipe).internal_bind_path
+      && path.as_bytes().first().is_none_or(|&b| b != 0)
+    {
       #[allow(
         clippy::disallowed_methods,
         reason = "uv_compat is not compiled to WASM"
@@ -1069,7 +1150,21 @@ pub(crate) unsafe fn poll_pipe_handle(
         continue;
       }
       // Try writing to whichever pipe type we have.
-      let remaining = &pw.data[pw.offset..];
+      let remaining: &[u8] = if let Some(ref iov) = pw.iovecs {
+        // SAFETY: caller retention keeps iovec memory valid.
+        let s = iov.head_slice();
+        if s.is_empty() {
+          let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
+          any_work = true;
+          if let Some(cb) = pw.cb {
+            cb(pw.req, 0);
+          }
+          continue;
+        }
+        s
+      } else {
+        &pw.data[pw.offset..]
+      };
       use std::io::Write;
       use std::os::windows::io::FromRawHandle;
       // Register write-readiness with the reactor so the waker fires
@@ -1098,8 +1193,14 @@ pub(crate) unsafe fn poll_pipe_handle(
         Ok(n) => {
           any_work = true;
           let pw = (*pipe_ptr).internal_write_queue.front_mut().unwrap();
-          pw.offset += n;
-          if pw.offset >= pw.data.len() {
+          let drained = if let Some(ref mut iov) = pw.iovecs {
+            iov.advance(n);
+            iov.is_empty()
+          } else {
+            pw.offset += n;
+            pw.offset >= pw.data.len()
+          };
+          if drained {
             let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
             if let Some(cb) = pw.cb {
               cb(pw.req, 0);
@@ -1399,7 +1500,24 @@ pub(crate) unsafe fn poll_pipe_handle(
         }
         continue;
       }
-      let remaining = &pw.data[pw.offset..];
+      // When iovecs are set, walk them one head-at-a-time; otherwise
+      // use the legacy single-buf `data`/`offset` view.
+      let remaining: &[u8] = if let Some(ref iov) = pw.iovecs {
+        // SAFETY: caller retention keeps iovec memory valid.
+        let s = iov.head_slice();
+        if s.is_empty() {
+          // Fully drained — pop and fire callback.
+          let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
+          any_work = true;
+          if let Some(cb) = pw.cb {
+            cb(pw.req, 0);
+          }
+          continue;
+        }
+        s
+      } else {
+        &pw.data[pw.offset..]
+      };
       // Prefer AsyncFd for proper readiness tracking, then UnixStream,
       // then fall back to raw libc::write.
       let write_result = if let Some(ref afd) = (*pipe_ptr).internal_async_fd {
@@ -1462,8 +1580,14 @@ pub(crate) unsafe fn poll_pipe_handle(
         Ok(n) => {
           any_work = true;
           let pw = (*pipe_ptr).internal_write_queue.front_mut().unwrap();
-          pw.offset += n;
-          if pw.offset >= pw.data.len() {
+          let drained = if let Some(ref mut iov) = pw.iovecs {
+            iov.advance(n);
+            iov.is_empty()
+          } else {
+            pw.offset += n;
+            pw.offset >= pw.data.len()
+          };
+          if drained {
             let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
             if let Some(cb) = pw.cb {
               cb(pw.req, 0);

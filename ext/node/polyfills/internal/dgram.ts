@@ -20,17 +20,21 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import dns from "node:dns";
-import {
+import { core, primordials } from "ext:core/mod.js";
+const lazyDns = core.createLazyLoader("node:dns");
+import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
+const { ERR_SOCKET_BAD_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+import { UDP } from "ext:deno_node/internal_binding/udp_wrap.ts";
+const { guessHandleType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const {
   isInt32,
   validateFunction,
-} from "ext:deno_node/internal/validators.mjs";
-import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import { ERR_SOCKET_BAD_TYPE } from "ext:deno_node/internal/errors.ts";
-import { UDP } from "ext:deno_node/internal_binding/udp_wrap.ts";
-import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { primordials } from "ext:core/mod.js";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { FunctionPrototypeBind, MapPrototypeGet, Symbol } = primordials;
 
 export type SocketType = "udp4" | "udp6";
@@ -38,7 +42,7 @@ export type SocketType = "udp4" | "udp6";
 export const kStateSymbol: unique symbol = Symbol("kStateSymbol");
 
 function lookup4(
-  lookup: typeof dns.lookup,
+  lookup: (...args: unknown[]) => void,
   address: string,
   callback: (
     err: ErrnoException | null,
@@ -50,7 +54,7 @@ function lookup4(
 }
 
 function lookup6(
-  lookup: typeof dns.lookup,
+  lookup: (...args: unknown[]) => void,
   address: string,
   callback: (
     err: ErrnoException | null,
@@ -63,10 +67,10 @@ function lookup6(
 
 export function newHandle(
   type: SocketType,
-  lookup?: typeof dns.lookup,
+  lookup?: (...args: unknown[]) => void,
 ): UDP {
   if (lookup === undefined) {
-    lookup = dns.lookup;
+    lookup = lazyDns().default.lookup;
   } else {
     validateFunction(lookup, "lookup");
   }

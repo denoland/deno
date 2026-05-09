@@ -1,0 +1,3 @@
+parent got: ping
+client got: child-saw:ping
+ok

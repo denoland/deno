@@ -9,6 +9,16 @@
       "args": "run main.mjs",
       "output": "main_esm.out",
       "exitCode": 1
+    },
+    "main_nested_package_cjs": {
+      "args": "run main_nested.cjs",
+      "output": "main_nested.out",
+      "exitCode": 0
+    },
+    "main_nested_escape_cjs": {
+      "args": "run main_nested_escape.cjs",
+      "output": "main_nested_escape.out",
+      "exitCode": 1
     }
   }
 }

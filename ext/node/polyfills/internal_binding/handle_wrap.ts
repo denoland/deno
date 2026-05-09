@@ -23,7 +23,11 @@
 // This module ports:
 // - https://github.com/nodejs/node/blob/master/src/handle_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/handle_wrap.h
+(function () {
+const { core } = globalThis.__bootstrap;
+const { HandleWrap } = core.ops;
 
-import { HandleWrap } from "ext:core/ops";
-
-export { HandleWrap };
+return {
+  HandleWrap,
+};
+})();

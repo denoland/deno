@@ -6,7 +6,9 @@ import { core, internals } from "ext:core/mod.js";
 const requireImpl = internals.requireImpl;
 
 import { op_stream_base_register_state } from "ext:core/ops";
-import { streamBaseState } from "ext:deno_node/internal_binding/stream_wrap.ts";
+const { streamBaseState } = core.loadExtScript(
+  "ext:deno_node/internal_binding/stream_wrap.ts",
+);
 import "node:module";
 
 let initialized = false;

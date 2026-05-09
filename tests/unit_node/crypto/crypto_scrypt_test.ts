@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { scrypt, scryptSync } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 
 Deno.test("scrypt works correctly", async () => {
   const { promise, resolve } = Promise.withResolvers<boolean>();
@@ -193,6 +193,30 @@ Deno.test("log_n > 64 doesn't panic", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
 
   scrypt("password", "salt", 128, () => {
+    resolve();
+  });
+
+  await promise;
+});
+
+Deno.test("scryptSync throws Node-compatible error for invalid params", () => {
+  const error = assertThrows(() => {
+    scryptSync("pass", "salt", 1, { N: 1, p: 1, r: 1 });
+  }) as RangeError & { code?: string };
+  assertEquals(error instanceof RangeError, true);
+  assertEquals(error.code, "ERR_CRYPTO_INVALID_SCRYPT_PARAMS");
+  assertEquals(error.message, "Invalid scrypt params");
+});
+
+Deno.test("scrypt accepts large safe maxmem values", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+  scrypt("", "", 4, { maxmem: 2 ** 52 }, (err, key) => {
+    if (err) {
+      reject(err);
+      return;
+    }
+    assertEquals(key?.toString("hex"), "d72c87d0");
     resolve();
   });
 

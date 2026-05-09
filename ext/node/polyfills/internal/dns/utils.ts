@@ -23,33 +23,36 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { getOptionValue } from "ext:deno_node/internal/options.ts";
-import { emitWarning } from "node:process";
-import {
+import { core } from "ext:core/mod.js";
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
+const lazyProcess = core.createLazyLoader("node:process");
+const {
   AI_ADDRCONFIG,
   AI_ALL,
   AI_V4MAPPED,
-} from "ext:deno_node/internal_binding/ares.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal_binding/ares.ts");
+const {
   ChannelWrap,
   DNS_ORDER_IPV4_FIRST,
   DNS_ORDER_IPV6_FIRST,
   DNS_ORDER_VERBATIM,
   strerror,
-} from "ext:deno_node/internal_binding/cares_wrap.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
+const {
   ERR_DNS_SET_SERVERS_FAILED,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_IP_ADDRESS,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import {
+const {
   validateArray,
   validateInt32,
   validateOneOf,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import { isIP } from "ext:deno_node/internal/net.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
 
 export interface LookupOptions {
   family?: number | undefined;
@@ -237,12 +240,21 @@ export function validateTries(options?: { tries?: number }) {
   return tries;
 }
 
+export function validateMaxTimeout(
+  options?: { maxTimeout?: number },
+): number {
+  if (options?.maxTimeout === undefined) return -1; // no cap
+  validateInt32(options.maxTimeout, "options.maxTimeout", 0, 2 ** 31 - 1);
+  return options.maxTimeout;
+}
+
 export interface ResolverOptions {
   timeout?: number | undefined;
   /**
    * @default 4
    */
   tries?: number;
+  maxTimeout?: number | undefined;
 }
 
 /**
@@ -288,7 +300,8 @@ export class Resolver {
   constructor(options?: ResolverOptions) {
     const timeout = validateTimeout(options);
     const tries = validateTries(options);
-    this._handle = new ChannelWrap(timeout, tries);
+    const maxTimeout = validateMaxTimeout(options);
+    this._handle = new ChannelWrap(timeout, tries, maxTimeout);
   }
 
   cancel() {
@@ -417,7 +430,7 @@ export function emitInvalidHostnameWarning(hostname: string) {
 
   invalidHostnameWarningEmitted = true;
 
-  emitWarning(
+  lazyProcess().default.emitWarning(
     `The provided hostname "${hostname}" is not a valid ` +
       "hostname, and is supported in the dns module solely for compatibility.",
     "DeprecationWarning",

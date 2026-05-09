@@ -4,13 +4,22 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
-import {
+import { core } from "ext:core/mod.js";
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_TLS_INVALID_PROTOCOL_VERSION,
   ERR_TLS_PROTOCOL_VERSION_CONFLICT,
-} from "ext:deno_node/internal/errors.ts";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const { validateString } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+import { op_node_validate_crl, op_node_validate_pfx } from "ext:core/ops";
+const { createPrivateKey } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/keys.ts",
+);
 
 // OpenSSL cipher names are uppercase alphanumeric with hyphens/underscores
 // and "=" (for @SECLEVEL=N). Examples: "ECDHE-RSA-AES128-GCM-SHA256",
@@ -33,6 +42,122 @@ function validateCipherList(ciphers: string): void {
     const err = new Error("no cipher match") as any;
     err.code = "ERR_SSL_NO_CIPHER_MATCH";
     throw err;
+  }
+}
+
+// Mirrors OpenSSL's SECLEVEL bit-strength requirements (see
+// `ssl_security_default_callback` in OpenSSL). OpenSSL 3 defaults `DEFAULT`
+// to SECLEVEL=1 for the cipher list itself, but loading a key/cert checks
+// against SECLEVEL=2 unless the cipher list lowers it. We mirror that by
+// defaulting to 2 here so small RSA keys are rejected when no level is given.
+function parseSecLevel(ciphers: unknown): number {
+  if (typeof ciphers !== "string") return 2;
+  const re = /(?:^|:)@SECLEVEL=(\d+)(?=$|:)/;
+  const match = re.exec(ciphers);
+  if (!match) return 2;
+  const n = globalThis.parseInt(match[1], 10);
+  if (Number.isNaN(n) || n < 0) return 2;
+  return n;
+}
+
+function rsaMinBitsForSecLevel(level: number): number {
+  if (level <= 0) return 0;
+  if (level === 1) return 1024;
+  if (level === 2) return 2048;
+  if (level === 3) return 3072;
+  if (level === 4) return 7680;
+  return 15360;
+}
+
+function ecMinBitsForSecLevel(level: number): number {
+  if (level <= 0) return 0;
+  if (level === 1) return 160;
+  if (level === 2) return 224;
+  if (level === 3) return 256;
+  if (level === 4) return 384;
+  return 512;
+}
+
+function ecCurveBits(name: string | undefined): number {
+  switch (name) {
+    case "prime256v1":
+      return 256;
+    case "secp224r1":
+      return 224;
+    case "secp384r1":
+      return 384;
+    case "secp521r1":
+      return 521;
+    case "secp256k1":
+      return 256;
+    default:
+      return 0;
+  }
+}
+
+function throwKeyTooSmall(): never {
+  const err = new Error(
+    "error:0A00018A:SSL routines::key too small",
+  ) as any;
+  err.code = "ERR_OSSL_SSL_KEY_TOO_SMALL";
+  err.library = "SSL routines";
+  err.reason = "key too small";
+  throw err;
+}
+
+// Validates each PEM/DER private key against the security level implied by
+// `options.ciphers`. Mirrors OpenSSL's behaviour so that Node-compat callers
+// can rely on `SECLEVEL=0` to permit weak keys (and the default SECLEVEL to
+// reject them).
+function validateKeyStrength(options: any): void {
+  if (!options.key) return;
+  const level = parseSecLevel(options.ciphers);
+  if (level <= 0) return;
+
+  const keys = globalThis.Array.isArray(options.key)
+    ? options.key
+    : [options.key];
+  for (const k of keys) {
+    if (!k) continue;
+    let keyData: any = k;
+    let passphrase: any = options.passphrase;
+    if (
+      typeof k === "object" && !isArrayBufferView(k) &&
+      !(k instanceof globalThis.ArrayBuffer)
+    ) {
+      keyData = (k as any).pem ?? (k as any).key;
+      passphrase = (k as any).passphrase ?? passphrase;
+    }
+    if (!keyData) continue;
+
+    let keyObject;
+    try {
+      keyObject = passphrase != null
+        ? createPrivateKey({ key: keyData, passphrase })
+        : createPrivateKey(keyData);
+    } catch {
+      // Don't mask the underlying parse error - let the TLS layer surface it.
+      continue;
+    }
+
+    const type = keyObject.asymmetricKeyType;
+    const details = keyObject.asymmetricKeyDetails as any;
+    let bits = 0;
+    let minBits = 0;
+
+    if (type === "rsa" || type === "rsa-pss" || type === "dsa") {
+      bits = (details && details.modulusLength) || 0;
+      minBits = rsaMinBitsForSecLevel(level);
+    } else if (type === "ec") {
+      bits = ecCurveBits(details && details.namedCurve);
+      minBits = ecMinBitsForSecLevel(level);
+    } else {
+      continue;
+    }
+
+    if (bits > 0 && bits < minBits) {
+      throwKeyTooSmall();
+    }
   }
 }
 
@@ -170,6 +295,19 @@ function validateKeyCertOption(
   );
 }
 
+function toUint8Array(val: any): Uint8Array {
+  if (typeof val === "string") {
+    return new TextEncoder().encode(val);
+  }
+  if (val instanceof globalThis.ArrayBuffer) {
+    return new Uint8Array(val);
+  }
+  if (isArrayBufferView(val)) {
+    return new Uint8Array(val.buffer, val.byteOffset, val.byteLength);
+  }
+  return new TextEncoder().encode(String(val));
+}
+
 const secureContextBrand = new WeakSet<object>();
 
 export class SecureContext {
@@ -213,6 +351,31 @@ export class SecureContext {
     validateKeyCertOption(options.key, "options.key", true);
     validateKeyCertOption(options.ca, "options.ca", false);
 
+    // Validate PFX / PKCS#12 data.
+    if (options.pfx != null) {
+      const pfxData = toUint8Array(options.pfx);
+      const pfxPassphrase = options.passphrase != null
+        ? String(options.passphrase)
+        : null;
+      op_node_validate_pfx(pfxData, pfxPassphrase);
+    }
+
+    // Validate CRL data.
+    if (options.crl != null) {
+      const crls = globalThis.Array.isArray(options.crl)
+        ? options.crl
+        : [options.crl];
+      for (const crl of crls) {
+        op_node_validate_crl(toUint8Array(crl));
+      }
+    }
+
+    // Mirror OpenSSL's SECLEVEL key-size enforcement. The cipher list is
+    // applied before the key is loaded (matching Node.js' order in
+    // `SecureContext::Init`), so `DEFAULT:@SECLEVEL=0` retains compatibility
+    // with weak keys while `DEFAULT` rejects them.
+    validateKeyStrength(options);
+
     const { minVersion, maxVersion } = getProtocolRange(options);
 
     this.context = {
@@ -232,16 +395,20 @@ export class SecureContext {
       configurable: true,
       enumerable: false,
       get(this: object) {
-        // In Node, `_external` is the C++ external pointer; reading it on a
-        // non-context receiver hits an internal slot check and throws. Match
-        // that behaviour so prototype-tampering tests don't get a silent
-        // undefined.
         if (!secureContextBrand.has(this)) {
           throw new TypeError("Illegal invocation");
         }
         return this;
       },
     });
+    (this.context as any).setOptions = function setOptions(
+      this: object,
+      _options?: number,
+    ) {
+      if (!secureContextBrand.has(this)) {
+        throw new TypeError("Illegal invocation");
+      }
+    };
   }
 
   // Backward compat: current _tls_wrap.js accesses .ca, .cert, .key directly

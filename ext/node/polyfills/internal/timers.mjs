@@ -28,22 +28,26 @@ const {
   SymbolDispose,
   SymbolToPrimitive,
 } = primordials;
-import {
+const {
   emitAfter,
   emitBefore,
   emitDestroy,
   emitInit,
   enabledHooksExist,
   executionAsyncId,
-  newAsyncId as nextAsyncId,
-} from "ext:deno_node/internal/async_hooks.ts";
-import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
-import {
+  newAsyncId: nextAsyncId,
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+const { inspect } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
+const {
   validateFunction,
   validateNumber,
-} from "ext:deno_node/internal/validators.mjs";
-import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
-import { emitWarning } from "node:process";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { ERR_OUT_OF_RANGE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const lazyProcess = core.createLazyLoader("node:process");
 
 // Timeout values > TIMEOUT_MAX are set to 1.
 export const TIMEOUT_MAX = 2 ** 31 - 1;
@@ -83,21 +87,21 @@ export function Timeout(callback, after, args, isRepeat, isRefed) {
 
   if (!(after >= 1 && after <= TIMEOUT_MAX)) {
     if (after > TIMEOUT_MAX) {
-      emitWarning(
+      lazyProcess().default.emitWarning(
         `${after} does not fit into a 32-bit signed integer.` +
           "\nTimeout duration was set to 1.",
         "TimeoutOverflowWarning",
       );
     } else if (after < 0 && !warnedNegativeNumber) {
       warnedNegativeNumber = true;
-      emitWarning(
+      lazyProcess().default.emitWarning(
         `${after} is a negative number.` +
           "\nTimeout duration was set to 1.",
         "TimeoutNegativeWarning",
       );
     } else if (NumberIsNaN(after) && !warnedNotNumber) {
       warnedNotNumber = true;
-      emitWarning(
+      lazyProcess().default.emitWarning(
         `${after} is not a number.` +
           "\nTimeout duration was set to 1.",
         "TimeoutNaNWarning",
@@ -107,6 +111,8 @@ export function Timeout(callback, after, args, isRepeat, isRefed) {
   }
   this._idleTimeout = after;
   this._idleStart = DateNow();
+  this._idlePrev = null;
+  this._idleNext = null;
   this._onTimeout = callback;
   this._timerArgs = args;
   this._repeat = isRepeat;
@@ -317,7 +323,7 @@ export function getTimerDuration(msecs, name) {
 
   // Ensure that msecs fits into signed int32
   if (msecs > TIMEOUT_MAX) {
-    emitWarning(
+    lazyProcess().default.emitWarning(
       `${msecs} does not fit into a 32-bit signed integer.` +
         `\nTimer duration was truncated to ${TIMEOUT_MAX}.`,
       "TimeoutOverflowWarning",
@@ -341,11 +347,14 @@ export const runImmediates = core.runImmediates;
 export class Immediate {
   constructor(unboundCallback, ...args) {
     const asyncContext = getAsyncContext();
+    // Match Node's `immediate._onImmediate(...argv)` invocation: the callback's
+    // `this` is the Immediate instance, not the global.
+    const self = this;
     const callback = (...argv) => {
       const oldContext = getAsyncContext();
       try {
         setAsyncContext(asyncContext);
-        return ReflectApply(unboundCallback, globalThis, argv);
+        return ReflectApply(unboundCallback, self, argv);
       } finally {
         setAsyncContext(oldContext);
       }

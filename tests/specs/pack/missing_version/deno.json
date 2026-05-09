@@ -1,0 +1,4 @@
+{
+  "name": "@test/missing-version",
+  "exports": "./mod.ts"
+}
