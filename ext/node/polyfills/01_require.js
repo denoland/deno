@@ -2968,6 +2968,10 @@ function resolveSourceMapPayload(url, filePath) {
  * @returns {SourceMap | undefined}
  */
 export function findSourceMap(path) {
+  // Normalize the path to avoid duplicate cache entries for equivalent paths
+  // (e.g. "/foo/bar.js" vs "/foo/./bar.js")
+  path = op_require_path_resolve([path]);
+
   if (sourceMapCache.has(path)) {
     const cached = sourceMapCache.get(path);
     return cached === null ? undefined : cached;
