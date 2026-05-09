@@ -96,7 +96,6 @@ pub use crate::convert::ToV8;
 pub use crate::cppgc::GarbageCollected;
 pub use crate::error::exception_to_err;
 pub use crate::event_loop_metrics::EventLoopMetrics;
-pub use crate::event_loop_metrics::SharedEventLoopMetrics;
 pub use crate::extensions::AccessorType;
 pub use crate::extensions::Extension;
 pub use crate::extensions::ExtensionArguments;

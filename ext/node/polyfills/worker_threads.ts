@@ -829,31 +829,18 @@ class NodeWorker extends EventEmitter {
       this.#performanceObj = {
         // deno-lint-ignore no-explicit-any
         eventLoopUtilization(util1?: any, util2?: any) {
+          if (util2) {
+            const idle = util1.idle - util2.idle;
+            const active = util1.active - util2.active;
+            return { idle, active, utilization: active / (idle + active) };
+          }
+
           op_host_get_worker_event_loop_metrics(workerId, eluU8);
-          const loopStart = eluBuf[0];
           const idle = eluBuf[1];
           const active = eluBuf[2];
 
-          if (loopStart <= 0) {
-            return { idle: 0, active: 0, utilization: 0 };
-          }
-
-          if (util2) {
-            const idleDelta = util1.idle - util2.idle;
-            const activeDelta = util1.active - util2.active;
-            return {
-              idle: idleDelta,
-              active: activeDelta,
-              utilization: activeDelta / (idleDelta + activeDelta),
-            };
-          }
-
           if (!util1) {
-            return {
-              idle,
-              active,
-              utilization: active / (idle + active),
-            };
+            return { idle, active, utilization: active / (idle + active) };
           }
 
           const idleDelta = idle - util1.idle;

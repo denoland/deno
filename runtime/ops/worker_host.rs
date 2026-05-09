@@ -76,7 +76,7 @@ pub struct WorkerThread {
   worker_handle: WebWorkerHandle,
   cancel_handle: Rc<CancelHandle>,
   cpu_thread_handle: Arc<AtomicU64>,
-  event_loop_metrics: Arc<deno_core::SharedEventLoopMetrics>,
+  event_loop_metrics: Arc<deno_core::EventLoopMetrics>,
 
   // A WorkerThread that hasn't been explicitly terminated can only be removed
   // from the WorkersTable once close messages have been received for both the
@@ -542,8 +542,7 @@ pub fn op_host_get_worker_event_loop_metrics(
   #[buffer] out: &mut [u8],
 ) {
   if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
-    let (loop_start, idle, active) =
-      worker_thread.event_loop_metrics.read_metrics();
+    let (loop_start, idle, active) = worker_thread.event_loop_metrics.read();
     out[..8].copy_from_slice(&loop_start.to_ne_bytes());
     out[8..16].copy_from_slice(&idle.to_ne_bytes());
     out[16..24].copy_from_slice(&active.to_ne_bytes());

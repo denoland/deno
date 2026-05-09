@@ -469,7 +469,7 @@ pub struct JsRuntimeState {
   inspector: RefCell<Option<Rc<JsRuntimeInspector>>>,
   has_inspector: Cell<bool>,
   lazy_extensions: Vec<&'static str>,
-  pub(crate) event_loop_metrics: Rc<crate::EventLoopMetrics>,
+  pub(crate) event_loop_metrics: Arc<crate::EventLoopMetrics>,
   /// Counter for consecutive event loop iterations where module evaluation
   /// is pending but V8 reports no stalled top-level await. Used to detect
   /// deadlocks and avoid spinning the event loop indefinitely.
@@ -721,7 +721,7 @@ impl JsRuntime {
 
     // First let's create an `OpState` and contribute to it from extensions...
     let mut op_state = OpState::new(options.maybe_op_stack_trace_callback);
-    let event_loop_metrics = Rc::new(crate::EventLoopMetrics::default());
+    let event_loop_metrics = Arc::new(crate::EventLoopMetrics::default());
     op_state.put(event_loop_metrics.clone());
     let unrefed_ops = op_state.unrefed_ops.clone();
 

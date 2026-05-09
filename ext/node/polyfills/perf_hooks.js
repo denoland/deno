@@ -153,36 +153,25 @@ function enqueueNodePerformanceEntry(entry) {
   }
 }
 
-const eluBuf = new Float64Array(2);
+const eluBuf = new Float64Array(3);
 const eluU8 = new Uint8Array(eluBuf.buffer);
 
 function eventLoopUtilization(util1, util2) {
-  op_node_event_loop_metrics(eluU8);
-  const loopStart = eluBuf[0];
-  const idleTime = eluBuf[1];
-
-  if (loopStart <= 0) {
-    return { idle: 0, active: 0, utilization: 0 };
-  }
-
   if (util2) {
     const idle = util1.idle - util2.idle;
     const active = util1.active - util2.active;
     return { idle, active, utilization: active / (idle + active) };
   }
 
-  const now = performance.now();
-  const active = now - loopStart - idleTime;
+  op_node_event_loop_metrics(eluU8);
+  const idle = eluBuf[1];
+  const active = eluBuf[2];
 
   if (!util1) {
-    return {
-      idle: idleTime,
-      active,
-      utilization: active / (idleTime + active),
-    };
+    return { idle, active, utilization: active / (idle + active) };
   }
 
-  const idleDelta = idleTime - util1.idle;
+  const idleDelta = idle - util1.idle;
   const activeDelta = active - util1.active;
   return {
     idle: idleDelta,

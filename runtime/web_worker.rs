@@ -269,7 +269,7 @@ pub struct SendableWebWorkerHandle {
   receiver: mpsc::Receiver<WorkerControlEvent>,
   termination_signal: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
-  pub event_loop_metrics: Arc<deno_core::SharedEventLoopMetrics>,
+  pub event_loop_metrics: Arc<deno_core::EventLoopMetrics>,
 }
 
 impl From<SendableWebWorkerHandle> for WebWorkerHandle {
@@ -352,9 +352,7 @@ fn create_handles(
     port: worker_port,
     termination_signal,
     terminate_waker,
-    event_loop_metrics: Arc::new(deno_core::SharedEventLoopMetrics::new(
-      std::time::Instant::now(),
-    )),
+    event_loop_metrics: Arc::new(deno_core::EventLoopMetrics::default()),
   };
   (internal_handle, external_handle)
 }
@@ -708,8 +706,8 @@ impl WebWorker {
       let mut op_state = op_state.borrow_mut();
       // Share event loop metrics with the parent so it can read worker ELU.
       external_handle.event_loop_metrics = op_state
-        .borrow::<std::rc::Rc<deno_core::EventLoopMetrics>>()
-        .shared();
+        .borrow::<Arc<deno_core::EventLoopMetrics>>()
+        .clone();
       op_state.put(internal_handle.clone());
       (internal_handle, external_handle)
     };
@@ -974,15 +972,6 @@ impl WebWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), CoreError> {
-    // Mark the event loop as started before module evaluation so that
-    // eventLoopUtilization() returns non-zero values during top-level code.
-    {
-      let op_state = self.js_runtime.op_state();
-      let op_state = op_state.borrow();
-      op_state
-        .borrow::<std::rc::Rc<deno_core::EventLoopMetrics>>()
-        .record_tick_start();
-    }
     let mut receiver = self.js_runtime.mod_evaluate(id);
     let poll_options = PollEventLoopOptions::default();
 
