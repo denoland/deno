@@ -28,6 +28,7 @@
         "Global object's getter throws when called on incompatible object",
         "Global object's setter throws when called on incompatible object",
         "Global object's operation throws when called on incompatible object",
+        "Global object's operation works when called on null / undefined",
         "Global object's getter works when called on null / undefined",
         "Global object's setter works when called on null / undefined"
       ]
@@ -37,21 +38,14 @@
         "Global object's getter throws when called on incompatible object",
         "Global object's setter throws when called on incompatible object",
         "Global object's operation throws when called on incompatible object",
+        "Global object's operation works when called on null / undefined",
         "Global object's getter works when called on null / undefined",
         "Global object's setter works when called on null / undefined"
       ]
     },
     "legacy-factor-function-subclass.window.html": false,
-    "no-regexp-special-casing.any.html": {
-      "expectedFailures": [
-        "Conversion to a sequence works"
-      ]
-    },
-    "no-regexp-special-casing.any.worker.html": {
-      "expectedFailures": [
-        "Conversion to a sequence works"
-      ]
-    },
+    "no-regexp-special-casing.any.html": true,
+    "no-regexp-special-casing.any.worker.html": true,
     "builtin-function-properties.any.html": true,
     "builtin-function-properties.any.worker.html": true,
     "observable-array-no-leak-of-internals.window.html": false,

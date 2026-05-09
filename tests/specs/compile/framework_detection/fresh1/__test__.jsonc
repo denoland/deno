@@ -1,0 +1,26 @@
+{
+  "tempDir": true,
+  "tests": {
+    "fresh1": {
+      "steps": [{
+        "if": "unix",
+        "args": "compile -A --output main .",
+        "output": "compile.out"
+      }, {
+        "if": "unix",
+        "commandName": "./main",
+        "args": [],
+        "output": "main.out"
+      }, {
+        "if": "windows",
+        "args": "compile -A --output main.exe .",
+        "output": "compile.out"
+      }, {
+        "if": "windows",
+        "commandName": "./main.exe",
+        "args": [],
+        "output": "main.out"
+      }]
+    }
+  }
+}

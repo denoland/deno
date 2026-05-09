@@ -19,8 +19,7 @@ use super::draw_thread::DrawThread;
 
 /// Gets the console size.
 pub fn console_size() -> Option<ConsoleSize> {
-  let stderr = &deno_runtime::deno_io::STDERR_HANDLE;
-  deno_runtime::ops::tty::console_size(stderr).ok()
+  deno_runtime::ops::tty::console_size_of_stderr().ok()
 }
 
 pub fn new_console_static_text() -> ConsoleStaticText {
@@ -131,11 +130,29 @@ fn skip_str_seq(data: &[u8]) -> usize {
 
 pub struct RawMode {
   needs_disable: bool,
+  #[cfg(windows)]
+  original_mode: Option<u32>,
 }
 
 impl RawMode {
   pub fn enable() -> io::Result<Self> {
     terminal::enable_raw_mode()?;
+
+    #[cfg(windows)]
+    {
+      // Clear ENABLE_VIRTUAL_TERMINAL_INPUT so that arrow keys and
+      // special keys are delivered as VK_* key events via
+      // ReadConsoleInput, rather than as VT escape sequences.
+      // Windows Terminal enables this flag by default, which causes
+      // crossterm to miss arrow keys, Enter, and Ctrl+C.
+      let original_mode = windows_vt_input::clear_vt_input_flag();
+      Ok(Self {
+        needs_disable: true,
+        original_mode,
+      })
+    }
+
+    #[cfg(not(windows))]
     Ok(Self {
       needs_disable: true,
     })
@@ -143,6 +160,8 @@ impl RawMode {
 
   pub fn disable(mut self) -> io::Result<()> {
     self.needs_disable = false;
+    #[cfg(windows)]
+    windows_vt_input::restore_mode(self.original_mode);
     terminal::disable_raw_mode()
   }
 }
@@ -150,7 +169,55 @@ impl RawMode {
 impl Drop for RawMode {
   fn drop(&mut self) {
     if self.needs_disable {
+      #[cfg(windows)]
+      windows_vt_input::restore_mode(self.original_mode);
       let _ = terminal::disable_raw_mode();
+    }
+  }
+}
+
+#[cfg(windows)]
+mod windows_vt_input {
+  use winapi::shared::minwindef::DWORD;
+  use winapi::um::consoleapi::GetConsoleMode;
+  use winapi::um::consoleapi::SetConsoleMode;
+  use winapi::um::processenv::GetStdHandle;
+  use winapi::um::winbase::STD_INPUT_HANDLE;
+
+  const ENABLE_VIRTUAL_TERMINAL_INPUT: DWORD = 0x0200;
+
+  /// Clear ENABLE_VIRTUAL_TERMINAL_INPUT on stdin and return the
+  /// original mode so it can be restored later.
+  pub fn clear_vt_input_flag() -> Option<u32> {
+    // SAFETY: GetStdHandle/GetConsoleMode/SetConsoleMode are safe
+    // Windows API calls with valid handle constants.
+    unsafe {
+      let handle = GetStdHandle(STD_INPUT_HANDLE);
+      if handle.is_null() {
+        return None;
+      }
+      let mut mode: DWORD = 0;
+      if GetConsoleMode(handle, &mut mode) == 0 {
+        return None;
+      }
+      if mode & ENABLE_VIRTUAL_TERMINAL_INPUT != 0 {
+        SetConsoleMode(handle, mode & !ENABLE_VIRTUAL_TERMINAL_INPUT);
+        Some(mode)
+      } else {
+        None // flag wasn't set, nothing to restore
+      }
+    }
+  }
+
+  pub fn restore_mode(original_mode: Option<u32>) {
+    if let Some(mode) = original_mode {
+      // SAFETY: restoring previously saved console mode.
+      unsafe {
+        let handle = GetStdHandle(STD_INPUT_HANDLE);
+        if !handle.is_null() {
+          SetConsoleMode(handle, mode);
+        }
+      }
     }
   }
 }

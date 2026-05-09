@@ -23,14 +23,15 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import {
+import { core } from "ext:core/mod.js";
+const {
   validateBoolean,
   validateNumber,
   validateOneOf,
   validatePort,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import { isIP } from "ext:deno_node/internal/net.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
 import {
   dnsOrderToNumber,
   emitInvalidHostnameWarning,
@@ -42,6 +43,8 @@ import {
   validateHints,
   validDnsOrders,
 } from "ext:deno_node/internal/dns/utils.ts";
+
+export { getDefaultDnsOrder as getDefaultResultOrder };
 import type {
   LookupAddress,
   LookupAllOptions,
@@ -51,20 +54,22 @@ import type {
   ResolveOptions,
   ResolveWithTtlOptions,
 } from "ext:deno_node/internal/dns/utils.ts";
-import {
+const {
   dnsException,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_MISSING_ARGS,
   handleDnsError,
-} from "ext:deno_node/internal/errors.ts";
-import cares, {
-  type ChannelWrapQuery,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
+  default: cares,
   GetAddrInfoReqWrap,
   GetNameInfoReqWrap,
   QueryReqWrap,
-} from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { domainToASCII } from "ext:deno_node/internal/idna.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
+const { domainToASCII } = core.loadExtScript(
+  "ext:deno_node/internal/idna.ts",
+);
 
 function onlookup(
   this: GetAddrInfoReqWrap,
@@ -304,7 +309,7 @@ export function lookupService(address: string, port: number) {
 
 function createResolverPromise(
   resolver: Resolver,
-  bindingName: keyof ChannelWrapQuery,
+  bindingName: string,
   hostname: string,
   ttl: boolean,
 ) {
@@ -326,7 +331,7 @@ function createResolverPromise(
   });
 }
 
-function resolver(bindingName: keyof ChannelWrapQuery) {
+function resolver(bindingName: string) {
   function query(
     this: Resolver,
     name: string,
@@ -574,6 +579,7 @@ export default {
   lookup,
   lookupService,
   Resolver,
+  getDefaultResultOrder: getDefaultDnsOrder,
   getServers,
   resolveAny,
   resolve4,

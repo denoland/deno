@@ -304,6 +304,25 @@ pub trait File {
     mtime_nanos: u32,
   ) -> FsResult<()>;
 
+  /// Read at a position without moving the file cursor (pread).
+  fn read_at_sync(
+    self: Rc<Self>,
+    buf: &mut [u8],
+    position: u64,
+  ) -> FsResult<usize>;
+  /// Async pread -- runs on a blocking thread.
+  async fn read_at_async(
+    self: Rc<Self>,
+    buf: BufMutView,
+    position: u64,
+  ) -> FsResult<(usize, BufMutView)>;
+  /// Write at a position without moving the file cursor (pwrite).
+  fn write_at_sync(
+    self: Rc<Self>,
+    buf: &[u8],
+    position: u64,
+  ) -> FsResult<usize>;
+
   // lower level functionality
   fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio>;
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd>;

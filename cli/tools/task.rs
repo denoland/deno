@@ -102,11 +102,18 @@ pub async fn execute_script(
     let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
 
     let workspace = cli_options.workspace();
+    let root_dir_url = workspace.root_dir_url();
     for (folder_url, folder) in
       workspace.config_folders_sorted_by_dependencies()
     {
       if !task_flags.recursive
-        && !matches_package(folder, force_use_pkg_json, &package_regex)
+        && !matches_package(
+          folder,
+          folder_url,
+          force_use_pkg_json,
+          &package_regex,
+          folder_url == root_dir_url,
+        )
       {
         continue;
       }
@@ -707,8 +714,10 @@ fn sort_tasks_topo<'a>(
 
 fn matches_package(
   config: &FolderConfigs,
+  folder_url: &Url,
   force_use_pkg_json: bool,
   regex: &Regex,
+  is_workspace_root: bool,
 ) -> bool {
   if !force_use_pkg_json
     && let Some(deno_json) = &config.deno_json
@@ -725,7 +734,24 @@ fn matches_package(
     return true;
   }
 
+  // Fall back to matching the workspace member's directory name so that
+  // `deno task --filter <dir>` works when the package name diverges
+  // from the directory (#28620). Skip the workspace root so it is never
+  // accidentally selected by `--filter *`.
+  if !is_workspace_root
+    && let Some(dir_name) = workspace_folder_dir_name(folder_url)
+    && regex.is_match(dir_name)
+  {
+    return true;
+  }
+
   false
+}
+
+fn workspace_folder_dir_name(folder_url: &Url) -> Option<&str> {
+  let path = folder_url.path();
+  let trimmed = path.strip_suffix('/').unwrap_or(path);
+  trimmed.rsplit('/').next().filter(|s| !s.is_empty())
 }
 
 fn print_available_tasks_workspace(
@@ -736,10 +762,18 @@ fn print_available_tasks_workspace(
   recursive: bool,
 ) -> Result<(), AnyError> {
   let workspace = cli_options.workspace();
+  let root_dir_url = workspace.root_dir_url();
 
   let mut matched = false;
   for (folder_url, folder) in workspace.config_folders() {
-    if !recursive && !matches_package(folder, force_use_pkg_json, package_regex)
+    if !recursive
+      && !matches_package(
+        folder,
+        folder_url,
+        force_use_pkg_json,
+        package_regex,
+        folder_url == root_dir_url,
+      )
     {
       continue;
     }

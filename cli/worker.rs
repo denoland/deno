@@ -43,6 +43,7 @@ pub type CreateHmrRunnerCb = Box<dyn Fn() -> HmrRunnerState + Send + Sync>;
 
 pub struct CliMainWorkerOptions {
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
+  pub experimental_loaders: Vec<ModuleSpecifier>,
   pub maybe_coverage_dir: Option<PathBuf>,
   pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub default_npm_caching_strategy: NpmCachingStrategy,
@@ -94,6 +95,7 @@ impl CliMainWorker {
     {
       let coverage_for_exit = coverage_cell.clone();
       let profiler_for_exit = profiler_cell.clone();
+      let inspector = self.worker.js_runtime().inspector();
       let mut cbs = OpExitCallbacks::default();
       cbs.push(Box::new(move || {
         if let Some(mut cc) = coverage_for_exit.borrow_mut().take() {
@@ -105,6 +107,21 @@ impl CliMainWorker {
           let _ = cp.stop_profiling();
         }
       }));
+      // When an inspector session is connected, notify it that the
+      // execution context is being destroyed before exiting. Without this,
+      // process.exit() would call std::process::exit() immediately,
+      // skipping the normal event-loop shutdown path where V8's
+      // context_destroyed is called and Runtime.executionContextDestroyed
+      // is sent to debuggers.
+      cbs.push(Box::new(move || {
+        let sessions_state = inspector.sessions_state();
+        if sessions_state.has_nonblocking_wait_for_disconnect {
+          inspector.broadcast_context_destroyed();
+          // Match Node.js message format that debugger clients rely on
+          log::info!("Waiting for the debugger to disconnect...");
+          inspector.wait_for_sessions_disconnect();
+        }
+      }));
       self.worker.js_runtime().op_state().borrow_mut().put(cbs);
     }
 
@@ -114,6 +131,9 @@ impl CliMainWorker {
     // changes made here so that they affect deno_compile as well.
 
     log::debug!("main_module {}", self.worker.main_module());
+
+    // Register experimental loader hooks before anything else
+    self.worker.execute_experimental_loaders().await?;
 
     // Run preload modules first if they were defined
     self.worker.execute_preload_modules().await?;
@@ -342,6 +362,7 @@ pub enum CreateCustomWorkerError {
 }
 
 pub struct CliMainWorkerFactory {
+  experimental_loaders: Vec<ModuleSpecifier>,
   lib_main_worker_factory: LibMainWorkerFactory<CliSys>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   npm_installer: Option<Arc<CliNpmInstaller>>,
@@ -366,6 +387,7 @@ impl CliMainWorkerFactory {
     root_permissions: PermissionsContainer,
   ) -> Self {
     Self {
+      experimental_loaders: options.experimental_loaders,
       lib_main_worker_factory,
       maybe_lockfile,
       npm_installer,
@@ -489,6 +511,7 @@ impl CliMainWorkerFactory {
     let mut worker = self.lib_main_worker_factory.create_custom_worker(
       mode,
       main_module,
+      self.experimental_loaders.clone(),
       preload_modules,
       require_modules,
       permissions,

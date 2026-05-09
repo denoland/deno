@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Array,
   FunctionPrototypeBind,
@@ -16,20 +16,22 @@ const {
   StringPrototypeToString,
   Symbol,
 } = primordials;
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_METHOD_NOT_IMPLEMENTED,
   ERR_OUT_OF_RANGE,
-} from "ext:deno_node/internal/errors.ts";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
-import { deprecate } from "node:util";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
+const {
   validateFunction,
   validateInteger,
-} from "ext:deno_node/internal/validators.mjs";
-import { errorOrDestroy } from "ext:deno_node/internal/streams/destroy.js";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { errorOrDestroy } = core.loadExtScript(
+  "ext:deno_node/internal/streams/destroy.js",
+);
 import * as fs from "node:fs";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import {
   copyObject,
   getOptions,
@@ -38,7 +40,7 @@ import {
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { finished, Readable, Writable } from "node:stream";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 import { FileHandle, kRef, kUnref } from "ext:deno_node/internal/fs/handle.ts";
 
 const kIoDone = Symbol("kIoDone");

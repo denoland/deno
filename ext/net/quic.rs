@@ -556,6 +556,14 @@ pub(crate) fn op_quic_endpoint_connect(
   let sock_addr = resolve_addr_sync(&args.addr.hostname, args.addr.port)?
     .next()
     .ok_or_else(|| QuicError::UnableToResolve)?;
+  state
+    .borrow_mut()
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(
+      &sock_addr.ip(),
+      sock_addr.port(),
+      "Deno.connectQuic()",
+    )?;
 
   let root_cert_store = state
     .borrow()
