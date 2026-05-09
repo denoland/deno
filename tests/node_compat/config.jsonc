@@ -3632,6 +3632,7 @@
     "parallel/test-vm-access-process-env.js": {},
     "parallel/test-vm-api-handles-getter-errors.js": {},
     "parallel/test-vm-attributes-property-not-on-sandbox.js": {},
+    "parallel/test-vm-basic.js": {},
     "parallel/test-vm-codegen.js": {},
     "parallel/test-vm-context-async-script.js": {},
     "parallel/test-vm-context-property-forwarding.js": {},
