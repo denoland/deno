@@ -20,7 +20,9 @@ import {
   createSecureContext,
   translatePeerCertificate,
 } from "node:_tls_common";
-import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
+const { JSStreamSocket } = core.loadExtScript(
+  "ext:deno_node/internal/js_stream_socket.js",
+);
 const { convertALPNProtocols } = core.loadExtScript(
   "ext:deno_node/internal/tls_common.js",
 );
@@ -42,7 +44,9 @@ const {
   constants: TCPConstants,
   TCP,
 } = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
-import { kMaybeDestroy } from "ext:deno_node/internal/stream_base_commons.ts";
+const { kMaybeDestroy } = core.loadExtScript(
+  "ext:deno_node/internal/stream_base_commons.ts",
+);
 const { kReinitializeHandle } = core.loadExtScript(
   "ext:deno_node/internal/net.ts",
 );

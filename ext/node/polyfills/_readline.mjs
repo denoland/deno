@@ -33,7 +33,9 @@ const {
   cursorTo,
   moveCursor,
 } = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
-import { emitKeypressEvents } from "ext:deno_node/internal/readline/emitKeypressEvents.mjs";
+const { emitKeypressEvents } = core.loadExtScript(
+  "ext:deno_node/internal/readline/emitKeypressEvents.mjs",
+);
 import promises from "ext:deno_node/readline/promises.ts";
 const { validateAbortSignal } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
@@ -41,8 +43,8 @@ const { validateAbortSignal } = core.loadExtScript(
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const { AbortError } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
-import {
-  Interface as _Interface,
+const {
+  Interface: _Interface,
   InterfaceConstructor,
   kAddHistory,
   kDecoder,
@@ -77,7 +79,7 @@ import {
   kWordLeft,
   kWordRight,
   kWriteToOutput,
-} from "ext:deno_node/internal/readline/interface.mjs";
+} = core.loadExtScript("ext:deno_node/internal/readline/interface.mjs");
 
 function Interface(input, output, completer, terminal) {
   if (!(this instanceof Interface)) {

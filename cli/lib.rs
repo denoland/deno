@@ -274,6 +274,7 @@ async fn run_subcommand(
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         };
         let mut flags = flags;
         flags.subcommand = DenoSubcommand::Task(task_flags.clone());
@@ -381,6 +382,7 @@ async fn run_subcommand(
                   recursive: false,
                   filter: None,
                   eval: false,
+                  no_prefix: false,
                 };
                 new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
                 let result = tools::task::execute_script(
