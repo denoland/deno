@@ -27,7 +27,7 @@ import { core } from "ext:core/mod.js";
 const { getOptionValue } = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
 );
-import { emitWarning } from "node:process";
+const lazyProcess = core.createLazyLoader("node:process");
 const {
   AI_ADDRCONFIG,
   AI_ALL,
@@ -430,7 +430,7 @@ export function emitInvalidHostnameWarning(hostname: string) {
 
   invalidHostnameWarningEmitted = true;
 
-  emitWarning(
+  lazyProcess().default.emitWarning(
     `The provided hostname "${hostname}" is not a valid ` +
       "hostname, and is supported in the dns module solely for compatibility.",
     "DeprecationWarning",

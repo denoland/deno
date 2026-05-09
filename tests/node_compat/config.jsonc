@@ -1016,6 +1016,46 @@
     "parallel/test-domain-nested-throw.js": {},
     "parallel/test-domain-nested.js": {},
     "parallel/test-domain-nexttick.js": {},
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-0.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-1.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-2.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-3.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-4.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-5.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-6.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-7.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-8.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-9.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
     "parallel/test-domain-run.js": {},
     "parallel/test-domain-safe-exit.js": {},
     "parallel/test-domain-stack-empty-in-process-uncaughtexception.js": {},

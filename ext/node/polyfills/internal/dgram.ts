@@ -21,7 +21,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import { core, primordials } from "ext:core/mod.js";
-import dns from "node:dns";
+const lazyDns = core.createLazyLoader("node:dns");
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
 const { ERR_SOCKET_BAD_TYPE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
@@ -42,7 +42,7 @@ export type SocketType = "udp4" | "udp6";
 export const kStateSymbol: unique symbol = Symbol("kStateSymbol");
 
 function lookup4(
-  lookup: typeof dns.lookup,
+  lookup: (...args: unknown[]) => void,
   address: string,
   callback: (
     err: ErrnoException | null,
@@ -54,7 +54,7 @@ function lookup4(
 }
 
 function lookup6(
-  lookup: typeof dns.lookup,
+  lookup: (...args: unknown[]) => void,
   address: string,
   callback: (
     err: ErrnoException | null,
@@ -67,10 +67,10 @@ function lookup6(
 
 export function newHandle(
   type: SocketType,
-  lookup?: typeof dns.lookup,
+  lookup?: (...args: unknown[]) => void,
 ): UDP {
   if (lookup === undefined) {
-    lookup = dns.lookup;
+    lookup = lazyDns().default.lookup;
   } else {
     validateFunction(lookup, "lookup");
   }

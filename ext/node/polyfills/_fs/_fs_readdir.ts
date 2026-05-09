@@ -15,7 +15,7 @@ import {
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import { op_fs_read_dir_async, op_fs_read_dir_sync } from "ext:core/ops";
-import { join, relative } from "node:path";
+const lazyPath = core.createLazyLoader("node:path");
 
 type readDirOptions = {
   encoding?: string;
@@ -95,7 +95,7 @@ export function readdir(
         for (let i = 0; i < entries.length; i++) {
           const entry = entries[i];
           if (options?.recursive && entry.isDirectory) {
-            dirs.push(join(current, entry.name));
+            dirs.push(lazyPath().join(current, entry.name));
           }
 
           if (options?.withFileTypes) {
@@ -104,7 +104,7 @@ export function readdir(
           } else {
             let name = entry.name;
             if (options?.recursive) {
-              name = relative(path, join(current, name));
+              name = lazyPath().relative(path, lazyPath().join(current, name));
             }
             result.push(decode(name, options?.encoding));
           }
@@ -174,7 +174,7 @@ export function readdirSync(
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
         if (options?.recursive && entry.isDirectory) {
-          dirs.push(join(current, entry.name));
+          dirs.push(lazyPath().join(current, entry.name));
         }
 
         if (options?.withFileTypes) {
@@ -183,7 +183,7 @@ export function readdirSync(
         } else {
           let name = entry.name;
           if (options?.recursive) {
-            name = relative(path, join(current, name));
+            name = lazyPath().relative(path, lazyPath().join(current, name));
           }
           result.push(decode(name, options?.encoding));
         }
