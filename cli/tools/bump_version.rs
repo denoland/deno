@@ -753,15 +753,14 @@ const SCOPE_REQUIRED_TAGS: &[&str] =
 fn is_release_commit(subject: &str) -> bool {
   // Skip commits whose subject looks like a version bump or a release marker.
   let s = subject.trim_start();
-  let release_re = regex::Regex::new(r"^v?\d+\.\d+\.\d+").unwrap();
-  let release_word_re = regex::Regex::new(r"^Release \d+\.\d+\.\d+").unwrap();
+  let release_re = lazy_regex::regex!(r"^v?\d+\.\d+\.\d+");
+  let release_word_re = lazy_regex::regex!(r"^Release \d+\.\d+\.\d+");
   release_re.is_match(s) || release_word_re.is_match(s)
 }
 
 /// Parse a commit subject of the form `<tag>(<scopes,...>)<!>: <message>`.
 fn parse_commit(commit: &Commit, pkg_names: &BTreeSet<String>) -> ParsedCommit {
-  let re =
-    regex::Regex::new(r"^([^:()]+)(?:\(([^)]+)\))?(\!)?: (.*)$").unwrap();
+  let re = lazy_regex::regex!(r"^([^:()]+)(?:\(([^)]+)\))?(\!)?: (.*)$");
   let Some(caps) = re.captures(&commit.subject) else {
     return ParsedCommit::Diagnostic(Diagnostic {
       kind: DiagnosticKind::UnknownCommit,
@@ -816,8 +815,7 @@ fn parse_commit(commit: &Commit, pkg_names: &BTreeSet<String>) -> ParsedCommit {
     });
   }
 
-  let unstable_re =
-    regex::Regex::new(r"^(?:unstable/(.+)|(.+)/unstable)$").unwrap();
+  let unstable_re = lazy_regex::regex!(r"^(?:unstable/(.+)|(.+)/unstable)$");
 
   let mut bumps = Vec::new();
   let mut had_unknown = false;
@@ -939,8 +937,11 @@ fn read_version_at_ref(
 ) -> Option<Version> {
   let refspec = format!("{}:{}", git_ref, relative_path);
   let content = run_git(cwd, &["show", &refspec]).ok()?;
-  // Parse as JSON/JSONC to extract the version field.
-  let value: serde_json::Value = serde_json::from_str(&content).ok()?;
+  // Parse as JSONC since deno.json may contain comments/trailing commas.
+  let value: serde_json::Value =
+    jsonc_parser::parse_to_serde_value(&content, &Default::default())
+      .ok()
+      .flatten()?;
   let version_str = value.get("version")?.as_str()?;
   Version::parse_standard(version_str).ok()
 }
