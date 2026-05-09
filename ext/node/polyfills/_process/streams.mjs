@@ -21,7 +21,7 @@ const {
   moveCursor,
 } = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
-import { Duplex, Readable, Writable } from "node:stream";
+const lazyStream = core.createLazyLoader("node:stream");
 const io = core.loadExtScript("ext:deno_io/12_io.js");
 const { guessHandleType } = core.loadExtScript(
   "ext:deno_node/internal_binding/util.ts",
@@ -34,7 +34,7 @@ const { validateInteger } = core.loadExtScript(
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
 export function createWritableStdioStream(writer, name, warmup = false) {
-  const stream = new Writable({
+  const stream = new (lazyStream().Writable)({
     emitClose: false,
     write(buf, enc, cb) {
       if (!writer) {
@@ -230,7 +230,7 @@ export const initStdin = (warmup = false) => {
       // use `Readable` instead.
       // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L200
       // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/fs/streams.js#L148
-      stdin = new Readable({
+      stdin = new (lazyStream().Readable)({
         highWaterMark: 64 * 1024,
         autoDestroy: false,
         read: _read,
@@ -256,7 +256,7 @@ export const initStdin = (warmup = false) => {
       // 2. Creating a net.Socket() from a fd is not currently supported.
       // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L206
       // https://github.com/nodejs/node/blob/v18.12.1/lib/net.js#L329
-      stdin = new Duplex({
+      stdin = new (lazyStream().Duplex)({
         readable: stdinType === "TTY" ? undefined : true,
         writable: stdinType === "TTY" ? undefined : false,
         readableHighWaterMark: stdinType === "TTY" ? 0 : undefined,
@@ -298,7 +298,7 @@ export const initStdin = (warmup = false) => {
     default: {
       // Provide a dummy contentless input for e.g. non-console
       // Windows applications.
-      stdin = new Readable({ read() {} });
+      stdin = new (lazyStream().Readable)({ read() {} });
       // deno-lint-ignore prefer-primordials
       stdin.push(null);
     }
