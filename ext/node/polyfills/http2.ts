@@ -100,7 +100,9 @@ const { addAbortListener } = core.loadExtScript(
 export { addAbortListener };
 import fs from "node:fs";
 import { FileHandle as FsFileHandle } from "ext:deno_node/internal/fs/handle.ts";
-import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
+const { JSStreamSocket } = core.loadExtScript(
+  "ext:deno_node/internal/js_stream_socket.js",
+);
 const { format, inspect } = core.loadExtScript("ext:deno_node/util.ts");
 const {
   isUint32,
@@ -167,7 +169,7 @@ const {
   ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
   hideStackFrames,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import {
+const {
   kAfterAsyncWrite,
   kBoundSession,
   kHandle,
@@ -178,8 +180,8 @@ import {
   setStreamTimeout,
   writeGeneric,
   writevGeneric,
-} from "ext:deno_node/internal/stream_base_commons.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/stream_base_commons.ts");
+const {
   assertIsArray,
   assertIsObject,
   assertValidPseudoHeader,
@@ -209,15 +211,15 @@ import {
   toHeaderObject,
   updateOptionsBuffer,
   updateSettingsBuffer,
-} from "ext:deno_node/internal/http2/util.ts";
+} = core.loadExtScript("ext:deno_node/internal/http2/util.ts");
 const { ownerSymbol: owner_symbol } = core.loadExtScript(
   "ext:deno_node/internal_binding/symbols.ts",
 );
-import {
+const {
   Http2ServerRequest,
   Http2ServerResponse,
   onServerStream,
-} from "ext:deno_node/internal/http2/compat.js";
+} = core.loadExtScript("ext:deno_node/internal/http2/compat.js");
 const onClientStreamCreatedChannel = dc.channel("http2.client.stream.created");
 const onClientStreamStartChannel = dc.channel("http2.client.stream.start");
 const onClientStreamErrorChannel = dc.channel("http2.client.stream.error");
@@ -379,7 +381,6 @@ function flushDeferredHttp2Writes(session) {
 }
 
 // HTTP2 Constants
-const MAX_ADDITIONAL_SETTINGS = 10;
 
 const constants = core.loadExtScript(
   "ext:deno_node/internal/http2/constants.ts",

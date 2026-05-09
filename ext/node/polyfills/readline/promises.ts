@@ -9,11 +9,11 @@ const { Readline } = core.loadExtScript(
   "ext:deno_node/internal/readline/promises.mjs",
 );
 
-import {
-  Interface as _Interface,
+const {
+  Interface: _Interface,
   kQuestion,
   kQuestionCancel,
-} from "ext:deno_node/internal/readline/interface.mjs";
+} = core.loadExtScript("ext:deno_node/internal/readline/interface.mjs");
 const { AbortError } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { validateAbortSignal } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",

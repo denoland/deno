@@ -24,8 +24,9 @@
 // deno-lint-ignore-file prefer-primordials
 // deno-lint-ignore-file camelcase no-inner-declarations no-this-alias
 
-import { core, primordials } from "ext:core/mod.js";
-import { op_get_env_no_permission_check } from "ext:core/ops";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { op_get_env_no_permission_check } = core.ops;
 
 const {
   ERR_INVALID_ARG_TYPE,
@@ -41,7 +42,9 @@ const {
 const { EventEmitter, kFirstEventParam } = core.loadExtScript(
   "ext:deno_node/_events.mjs",
 );
-import { emitKeypressEvents } from "ext:deno_node/internal/readline/emitKeypressEvents.mjs";
+const { emitKeypressEvents } = core.loadExtScript(
+  "ext:deno_node/internal/readline/emitKeypressEvents.mjs",
+);
 const {
   charLengthAt,
   charLengthLeft,
@@ -53,7 +56,7 @@ const {
   cursorTo,
   moveCursor,
 } = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
-import process from "node:process";
+const lazyProcess = core.createLazyLoader("node:process");
 
 const { StringDecoder } = core.loadExtScript("ext:deno_node/string_decoder.ts");
 const {
@@ -119,8 +122,8 @@ const kMincrlfDelay = 100;
 const lineEnding = new SafeRegExp(/\r?\n|\r(?!\n)|\u2028|\u2029/g);
 
 const kLineObjectStream = Symbol("line object stream");
-export const kQuestionCancel = Symbol("kQuestionCancel");
-export const kQuestion = Symbol("kQuestion");
+const kQuestionCancel = Symbol("kQuestionCancel");
+const kQuestion = Symbol("kQuestion");
 const kKillRing = Symbol("kKillRing");
 const kKillRingCursor = Symbol("kKillRingCursor");
 const kYank = Symbol("kYank");
@@ -134,41 +137,7 @@ const kPushToUndoStack = Symbol("kPushToUndoStack");
 // GNU readline library - keyseq-timeout is 500ms (default)
 const ESCAPE_CODE_TIMEOUT = 500;
 
-export {
-  kAddHistory,
-  kDecoder,
-  kDeleteLeft,
-  kDeleteLineLeft,
-  kDeleteLineRight,
-  kDeleteRight,
-  kDeleteWordLeft,
-  kDeleteWordRight,
-  kGetDisplayPos,
-  kHistoryNext,
-  kHistoryPrev,
-  kInsertString,
-  kLine,
-  kLine_buffer,
-  kMoveCursor,
-  kNormalWrite,
-  kOldPrompt,
-  kOnLine,
-  kPreviousKey,
-  kPrompt,
-  kQuestionCallback,
-  kRefreshLine,
-  kSawKeyPress,
-  kSawReturnAt,
-  kSetRawMode,
-  kTabComplete,
-  kTabCompleter,
-  kTtyWrite,
-  kWordLeft,
-  kWordRight,
-  kWriteToOutput,
-};
-
-export function InterfaceConstructor(input, output, completer, terminal) {
+function InterfaceConstructor(input, output, completer, terminal) {
   this[kSawReturnAt] = 0;
   // TODO(BridgeAR): Document this property. The name is not ideal, so we
   // might want to expose an alias and document that instead.
@@ -358,6 +327,7 @@ export function InterfaceConstructor(input, output, completer, terminal) {
   }
 
   if (signal) {
+    const process = lazyProcess().default;
     const onAborted = () => self.close();
     if (signal.aborted) {
       process.nextTick(onAborted);
@@ -376,7 +346,7 @@ export function InterfaceConstructor(input, output, completer, terminal) {
 Object.setPrototypeOf(InterfaceConstructor.prototype, EventEmitter.prototype);
 Object.setPrototypeOf(InterfaceConstructor, EventEmitter);
 
-export class Interface extends InterfaceConstructor {
+class Interface extends InterfaceConstructor {
   // eslint-disable-next-line no-useless-constructor
   constructor(input, output, completer, terminal) {
     super(input, output, completer, terminal);
@@ -1180,7 +1150,8 @@ export class Interface extends InterfaceConstructor {
           this[kYank]();
           break;
 
-        case "z":
+        case "z": {
+          const process = lazyProcess().default;
           if (process.platform === "win32") break;
           if (this.listenerCount("SIGTSTP") > 0) {
             this.emit("SIGTSTP");
@@ -1203,6 +1174,7 @@ export class Interface extends InterfaceConstructor {
             process.kill(process.pid, "SIGTSTP");
           }
           break;
+        }
 
         case "w": // Delete backwards to a word boundary
         // TODO(BridgeAR): The transmitted escape sequence is `\b` and that is
@@ -1365,3 +1337,42 @@ export class Interface extends InterfaceConstructor {
     return this[kLineObjectStream];
   }
 }
+
+return {
+  Interface,
+  InterfaceConstructor,
+  kAddHistory,
+  kDecoder,
+  kDeleteLeft,
+  kDeleteLineLeft,
+  kDeleteLineRight,
+  kDeleteRight,
+  kDeleteWordLeft,
+  kDeleteWordRight,
+  kGetDisplayPos,
+  kHistoryNext,
+  kHistoryPrev,
+  kInsertString,
+  kLine,
+  kLine_buffer,
+  kMoveCursor,
+  kNormalWrite,
+  kOldPrompt,
+  kOnLine,
+  kPreviousKey,
+  kPrompt,
+  kQuestion,
+  kQuestionCallback,
+  kQuestionCancel,
+  kRefreshLine,
+  kSawKeyPress,
+  kSawReturnAt,
+  kSetRawMode,
+  kTabComplete,
+  kTabCompleter,
+  kTtyWrite,
+  kWordLeft,
+  kWordRight,
+  kWriteToOutput,
+};
+})();

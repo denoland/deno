@@ -2,7 +2,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 
 const { internalRidSymbol } = core;
 const {
@@ -38,7 +39,7 @@ const {
   HTTP_STATUS_OK,
 } = core.loadExtScript("ext:deno_node/internal/http2/constants.ts");
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
-import Stream, { Readable } from "node:stream";
+const lazyStream = core.createLazyLoader("node:stream");
 const { codes, hideStackFrames } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -60,14 +61,15 @@ const {
   validateObject,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import {
+const {
   assertValidPseudoHeader,
   getAuthority,
   kProxySocket,
   kRequest,
   kSocket,
-} from "ext:deno_node/internal/http2/util.ts";
-import { _checkIsHttpToken as checkIsHttpToken } from "node:_http_common";
+} = core.loadExtScript("ext:deno_node/internal/http2/util.ts");
+const lazyHttpCommon = core.createLazyLoader("node:_http_common");
+const lazyProcess = core.createLazyLoader("node:process");
 
 const kBeginSend = Symbol("begin-send");
 const kState = Symbol("state");
@@ -122,7 +124,7 @@ function isPseudoHeader(name) {
 
 function statusMessageWarn() {
   if (statusMessageWarned === false) {
-    process.emitWarning(
+    lazyProcess().default.emitWarning(
       "Status message is not supported by HTTP/2 (RFC7540 8.1.2.4)",
       "UnsupportedWarning",
     );
@@ -137,7 +139,7 @@ function isConnectionHeaderAllowed(name, value) {
 
 function connectionHeaderMessageWarn() {
   if (statusConnectionHeaderWarned === false) {
-    process.emitWarning(
+    lazyProcess().default.emitWarning(
       "The provided connection header is not valid, " +
         "the value will be dropped from the header and " +
         "will never be in use.",
@@ -334,7 +336,7 @@ function onStreamTimeout(kind) {
   };
 }
 
-class Http2ServerRequest extends Readable {
+class Http2ServerRequest extends lazyStream().Readable {
   constructor(stream, headers, options, rawHeaders) {
     super({ autoDestroy: false, ...options });
     this[kState] = {
@@ -427,7 +429,7 @@ class Http2ServerRequest extends Readable {
       state.didRead = true;
       this[kStream].on("data", onStreamData);
     } else {
-      process.nextTick(resumeStream, this[kStream]);
+      lazyProcess().default.nextTick(resumeStream, this[kStream]);
     }
   }
 
@@ -496,7 +498,7 @@ function onStreamCloseResponse() {
   res.emit("close");
 }
 
-class Http2ServerResponse extends Stream {
+class Http2ServerResponse extends lazyStream().default {
   constructor(stream, options) {
     super(options);
     this[kState] = {
@@ -677,7 +679,7 @@ class Http2ServerResponse extends Stream {
 
     if (name[0] === ":") {
       assertValidPseudoHeader(name);
-    } else if (!checkIsHttpToken(name)) {
+    } else if (!lazyHttpCommon()._checkIsHttpToken(name)) {
       this.destroy(new ERR_INVALID_HTTP_TOKEN("Header name", name));
     }
 
@@ -703,7 +705,7 @@ class Http2ServerResponse extends Stream {
 
     if (name[0] === ":") {
       assertValidPseudoHeader(name);
-    } else if (!checkIsHttpToken(name)) {
+    } else if (!lazyHttpCommon()._checkIsHttpToken(name)) {
       this.destroy(new ERR_INVALID_HTTP_TOKEN("Header name", name));
     }
 
@@ -843,7 +845,7 @@ class Http2ServerResponse extends Stream {
 
     if (err) {
       if (typeof cb === "function") {
-        process.nextTick(cb, err);
+        lazyProcess().default.nextTick(cb, err);
       }
       this.destroy(err);
       return false;
@@ -873,7 +875,7 @@ class Http2ServerResponse extends Stream {
       state.headRequest === stream.headRequest
     ) {
       if (typeof cb === "function") {
-        process.nextTick(cb);
+        lazyProcess().default.nextTick(cb);
       }
       return this;
     }
@@ -925,7 +927,7 @@ class Http2ServerResponse extends Stream {
   createPushResponse(headers, callback) {
     validateFunction(callback, "callback");
     if (this[kState].closed) {
-      process.nextTick(callback, new ERR_HTTP2_INVALID_STREAM());
+      lazyProcess().default.nextTick(callback, new ERR_HTTP2_INVALID_STREAM());
       return;
     }
     this[kStream].pushStream(headers, {}, (err, stream, headers, options) => {
@@ -1037,10 +1039,14 @@ function onServerStream(
   server.emit("request", request, response);
 }
 
-export { Http2ServerRequest, Http2ServerResponse, onServerStream };
-
-export default {
-  onServerStream,
+return {
   Http2ServerRequest,
   Http2ServerResponse,
+  onServerStream,
+  default: {
+    onServerStream,
+    Http2ServerRequest,
+    Http2ServerResponse,
+  },
 };
+})();

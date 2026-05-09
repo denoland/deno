@@ -171,8 +171,12 @@ const internalErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
 const internalHttp = core.loadExtScript("ext:deno_node/internal/http.ts");
-import internalHttp2Core from "ext:deno_node/internal/http2/core.ts";
-import internalHttp2Util from "ext:deno_node/internal/http2/util.ts";
+const internalHttp2Core = core.loadExtScript(
+  "ext:deno_node/internal/http2/core.ts",
+).default;
+const internalHttp2Util = core.loadExtScript(
+  "ext:deno_node/internal/http2/util.ts",
+).default;
 const internalPriorityQueue = core.loadExtScript(
   "ext:deno_node/internal/priority_queue.ts",
 );
