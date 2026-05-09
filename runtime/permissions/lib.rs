@@ -2882,7 +2882,7 @@ impl SysDescriptor {
       "hostname" | "inspector" | "osRelease" | "osUptime" | "loadavg"
       | "networkInterfaces" | "systemMemoryInfo" | "uid" | "gid" | "cpus"
       | "homedir" | "getegid" | "statfs" | "getPriority" | "setPriority"
-      | "userInfo" | "setegid" | "seteuid" | "setgid" | "setuid" => {
+      | "userInfo" | "setegid" | "seteuid" | "setgid" | "setuid" | "ca" => {
         Ok(Self(kind))
       }
 
@@ -3225,10 +3225,10 @@ impl UnaryPermission<NetDescriptor> {
     for item in self.descriptors.iter() {
       match item {
         UnaryPermissionDesc::FlagDenied(v)
-        | UnaryPermissionDesc::FlagIgnored(v) => {
-          if desc.matches_deny(v) {
-            return Err(denied());
-          }
+        | UnaryPermissionDesc::FlagIgnored(v)
+          if desc.matches_deny(v) =>
+        {
+          return Err(denied());
         }
         _ => {}
       }

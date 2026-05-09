@@ -9,6 +9,7 @@ members = [
   "cli/snapshot",
   "ext/bundle",
   "ext/cache",
+  "ext/canvas",
   "ext/cron",
   "ext/crypto",
   "ext/fetch",
@@ -87,17 +88,17 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.53.1", features = ["transpiling"] }
+deno_ast = { version = "=0.53.2", features = ["transpiling"] }
 deno_core_icudata = "0.77.0"
-deno_doc = "=0.198.0"
+deno_doc = "=0.199.0"
 deno_error = "=0.7.1"
-deno_graph = { version = "=0.107.2", default-features = false }
-deno_lint = "=0.84.0"
+deno_graph = { version = "=0.108.1", default-features = false }
+deno_lint = "=0.84.1"
 deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
 deno_path_util = "=0.6.4"
-deno_semver = "=0.9.1"
-deno_task_shell = "=0.29.0"
+deno_semver = "=0.10.0"
+deno_task_shell = "=0.30.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
@@ -111,6 +112,7 @@ denokv_sqlite = { default-features = false, version = "0.13.0" }
 # exts
 deno_bundle_runtime = { version = "0.34.0", path = "./ext/bundle" }
 deno_cache = { version = "0.180.0", path = "./ext/cache" }
+deno_canvas = { version = "0.109.0", path = "./ext/canvas" }
 deno_cron = { version = "0.127.0", path = "./ext/cron" }
 deno_crypto = { version = "0.261.0", path = "./ext/crypto" }
 deno_fetch = { version = "0.271.0", path = "./ext/fetch" }
@@ -179,8 +181,8 @@ async-compression = "0.4"
 async-once-cell = "0.5.4"
 async-stream = "0.3"
 async-trait = "0.1.73"
-aws-lc-rs = { version = "1.16.1" }
-aws-lc-sys = { version = "0.39.0", features = ["prebuilt-nasm"] }
+aws-lc-rs = { version = "1.16.3" }
+aws-lc-sys = { version = "0.40.0", features = ["prebuilt-nasm"] }
 base32 = "=0.5.1"
 base64 = "0.22.1"
 base64-simd = "0.8"
@@ -252,7 +254,7 @@ log = { version = "0.4.28", features = ["kv"] }
 lsp-types = { package = "ls-types", version = "=0.0.3" }
 memchr = "2.7.4"
 mime = "0.3.16"
-monch = "=0.5.0"
+monch = "=0.6.0"
 netif = "0.1.6"
 notify = "=6.1.1"
 num-bigint = { version = "0.4", features = ["rand"] }
@@ -282,7 +284,7 @@ regex = "^1.7.0"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 rstest = "0"
 rusqlite = { version = "0.37.0", features = ["unlock_notify", "bundled", "session", "modern_sqlite", "limits", "backup"] } # "modern_sqlite": need sqlite >= 3.49.0 for some db configs
-rustls = { version = "=0.23.28", default-features = false, features = ["logging", "std", "tls12", "aws_lc_rs"] }
+rustls = { version = "=0.23.40", default-features = false, features = ["logging", "std", "tls12", "aws_lc_rs"] }
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.8.0"
 rustls-webpki = "0.102"
@@ -344,6 +346,7 @@ zip = { version = "2.4.1", default-features = false, features = ["flate2"] }
 opentelemetry = "0.27.0"
 opentelemetry-http = "0.27.0"
 opentelemetry-otlp = { version = "0.27.0", features = ["logs", "http-proto", "http-json", "populate-logs-event-name"] }
+opentelemetry-proto = { version = "0.27.0", features = ["gen-tonic-messages", "trace", "logs", "metrics"] }
 opentelemetry-semantic-conventions = { version = "0.27.0", features = ["semconv_experimental"] }
 opentelemetry_sdk = { version = "0.27.0", features = ["rt-tokio", "trace"] }
 
@@ -406,6 +409,7 @@ k256 = { version = "0.13.1", features = ["ecdh", "jwk", "pem"] }
 md-5 = "0.10.5"
 md4 = "0.10.2"
 ocb3 = "0.1.0"
+p12 = "0.6"
 p224 = { version = "0.13.0", features = ["ecdh"] }
 p256 = { version = "0.13.2", features = ["ecdh", "jwk"] }
 p384 = { version = "0.13.0", features = ["ecdh", "jwk"] }

@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::env;
 use std::ffi::OsString;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
@@ -29,6 +30,32 @@ pub fn resolve_cwd(
         format!("could not read current working directory: {err}"),
       )
     }),
+  }
+}
+
+/// Like `resolve_cwd`, but falls back to a sensible default (the system
+/// root) when the current working directory can't be determined — for
+/// example when it has been unlinked. This matches Node.js semantics where
+/// the REPL still starts even if the parent process's cwd was deleted.
+pub fn resolve_cwd_or_fallback(initial_cwd: Option<&Path>) -> PathBuf {
+  match resolve_cwd(initial_cwd) {
+    Ok(cwd) => cwd.into_owned(),
+    Err(_) => fallback_cwd(),
+  }
+}
+
+fn fallback_cwd() -> PathBuf {
+  if cfg!(windows) {
+    // System drive root, e.g. `C:\`.
+    std::env::var_os("SystemDrive")
+      .map(|d| {
+        let mut p = PathBuf::from(d);
+        p.push("\\");
+        p
+      })
+      .unwrap_or_else(|| PathBuf::from("C:\\"))
+  } else {
+    PathBuf::from("/")
   }
 }
 

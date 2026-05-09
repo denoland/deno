@@ -1,0 +1,1 @@
+export const greeting = "original";

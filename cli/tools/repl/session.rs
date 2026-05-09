@@ -450,7 +450,36 @@ impl ReplSession {
   }
 
   pub async fn run_event_loop(&mut self) -> Result<(), CoreError> {
-    self.worker.run_event_loop(true).await
+    // Pump inspector sessions ahead of the rest of the event-loop tick and
+    // drain microtasks before any other V8 work runs. Under V8's Explicit
+    // microtask policy, REPL-mode Runtime.evaluate (replMode: true) wraps
+    // the expression in an async IIFE and tracks the result promise via a
+    // weak handle. If GC runs after the inspector dispatch but before the
+    // resolution microtask drains, the weakly-held promise is collected and
+    // the CDP client gets a `-32000 "Promise was collected"` error. Doing
+    // the dispatch + drain pair here closes that window for external
+    // debuggers attached via `deno repl --inspect`.
+    // (post_message_with_event_loop above handles the same race for the
+    // in-process REPL session.)
+    std::future::poll_fn(|cx| {
+      self
+        .worker
+        .js_runtime
+        .inspector()
+        .poll_sessions_from_event_loop(cx);
+      self
+        .worker
+        .js_runtime
+        .v8_isolate()
+        .perform_microtask_checkpoint();
+      self.worker.js_runtime.poll_event_loop(
+        cx,
+        deno_core::PollEventLoopOptions {
+          wait_for_inspector: true,
+        },
+      )
+    })
+    .await
   }
 
   pub async fn evaluate_line_and_get_output(

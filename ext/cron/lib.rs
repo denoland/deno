@@ -32,7 +32,7 @@ deno_core::extension!(deno_cron,
     op_cron_create<C>,
     op_cron_next<C>,
   ],
-  esm = [ "01_cron.ts" ],
+  lazy_loaded_js = [ "01_cron.ts" ],
   options = {
     cron_handler: C,
   },

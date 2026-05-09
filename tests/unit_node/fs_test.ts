@@ -25,6 +25,7 @@ import {
   closeSync,
   constants,
   copyFileSync,
+  createReadStream,
   createWriteStream,
   existsSync,
   fchmod,
@@ -1211,6 +1212,28 @@ Deno.test({
     closeSync(rid), Deno.errors.BadResource;
   });
   await Deno.remove(tempFile);
+});
+
+// Regression test for https://github.com/denoland/deno/issues/33712
+// `fs.close` used to defer via `setTimeout(0)`, which Deno's test sanitizer
+// flagged as a leaked timer when a stream auto-closed at end-of-stream.
+// `createReadStream(...).on("end", ...)` triggers exactly that path.
+Deno.test({
+  name: "[node/fs.close] createReadStream auto-close doesn't leak a timer",
+  async fn() {
+    const tempFile = await Deno.makeTempFile();
+    try {
+      await Deno.writeTextFile(tempFile, "hello");
+      await new Promise<void>((resolve, reject) => {
+        const stream = createReadStream(tempFile);
+        stream.on("data", () => {});
+        stream.on("end", () => resolve());
+        stream.on("error", reject);
+      });
+    } finally {
+      await Deno.remove(tempFile);
+    }
+  },
 });
 
 // ==========

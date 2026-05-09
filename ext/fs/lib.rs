@@ -97,7 +97,7 @@ deno_core::extension!(deno_fs,
     op_fs_futime_async,
 
   ],
-  esm = [ "30_fs.js" ],
+  lazy_loaded_js = [ "30_fs.js" ],
   options = {
     fs: FileSystemRc,
   },
