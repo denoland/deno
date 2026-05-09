@@ -1,0 +1,5 @@
+ok 1 - process.domain preserved in setTimeout
+ok 2 - domain catches errors in setTimeout
+ok 3 - domain catches EE errors in setTimeout
+ok 4 - process.domain preserved in setInterval
+ok 5 - nested setTimeout preserves domain

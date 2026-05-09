@@ -3,8 +3,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { EventEmitter } from "node:events";
-import { Buffer } from "node:buffer";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+import type { Buffer } from "node:buffer";
 import {
   type BigIntStats,
   fchmod,
@@ -22,7 +22,8 @@ import {
 import { createInterface } from "node:readline";
 import type { Interface as ReadlineInterface } from "node:readline";
 import { core, primordials } from "ext:core/mod.js";
-import {
+import { op_node_fs_close } from "ext:core/ops";
+import type {
   BinaryOptionsArgument,
   FileOptionsArgument,
   TextOptionsArgument,
@@ -47,28 +48,32 @@ function writevPromise(
   });
 }
 import { readvPromise, type ReadVResult } from "node:fs";
-import { fstatPromise } from "ext:deno_node/_fs/_fs_fstat.ts";
+const { fstatPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_fstat.ts");
 import {
   fchown as fchownCb,
   ftruncate as ftruncateCb,
   futimes as futimesCb,
 } from "node:fs";
-import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
+const { kEmptyObject, promisify } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 
 import {
   CreateReadStreamOptions,
   CreateWriteStreamOptions,
 } from "node:fs/promises";
-import assert from "node:assert";
-import {
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
+const {
   denoErrorToNodeError,
   ERR_INVALID_STATE,
-} from "ext:deno_node/internal/errors.ts";
-import { readableStreamCancel } from "ext:deno_web/06_streams.js";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { readableStreamCancel } = core.loadExtScript(
+  "ext:deno_web/06_streams.js",
+);
+const {
   validateBoolean,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 import process from "node:process";
 
 const fchmodPromise = promisify(fchmod) as (
@@ -234,7 +239,7 @@ export class FileHandle extends EventEmitter {
   #close(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        core.close(this.fd);
+        op_node_fs_close(this.fd);
         this.#rid = -1;
         resolve();
       } catch (err) {
@@ -318,7 +323,7 @@ export class FileHandle extends EventEmitter {
 
   readLines(options?: CreateReadStreamOptions): ReadlineInterface {
     return createInterface({
-      input: this.createReadStream({ ...options, autoClose: false }),
+      input: this.createReadStream(options),
       crlfDelay: Infinity,
     });
   }
@@ -435,12 +440,19 @@ function readPromise(
   position?: number | null,
 ): Promise<ReadResult> {
   if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, bufferOrOpt)) {
-    if (typeof length !== "number" && typeof position !== "number") {
+    if (
+      typeof offsetOrOpt !== "number" && typeof length !== "number" &&
+      typeof position !== "number"
+    ) {
+      // fileHandle.read(buffer) or fileHandle.read(buffer, options)
+      const opts = (offsetOrOpt ?? {}) as ReadAsyncOptions<
+        NodeJS.ArrayBufferView
+      >;
       return new Promise((resolve, reject) => {
         readAsync(
           rid,
           bufferOrOpt,
-          offsetOrOpt,
+          opts,
           (err: Error, bytesRead: number, buffer: Buffer) => {
             if (err) reject(err);
             else resolve({ buffer, bytesRead });

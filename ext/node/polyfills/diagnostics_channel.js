@@ -4,10 +4,15 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials ban-untagged-todo
 
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
-import { validateFunction } from "ext:deno_node/internal/validators.mjs";
-import { nextTick } from "node:process";
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { validateFunction } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
 const {
   ArrayPrototypeAt,
@@ -26,7 +31,7 @@ const {
   SafeMap,
   SymbolHasInstance,
 } = primordials;
-import { WeakReference } from "ext:deno_node/internal/util.mjs";
+const { WeakReference } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
 // Can't delete when weakref count reaches 0 as it could increment again.
 // Only GC can be used as a valid time to clean up the channels map.
@@ -211,9 +216,9 @@ class Channel {
 
 const channels = new WeakRefMap();
 
-export function channel(name) {
-  const channel = channels.get(name);
-  if (channel) return channel;
+function channel(name) {
+  const ch = channels.get(name);
+  if (ch) return ch;
 
   if (typeof name !== "string" && typeof name !== "symbol") {
     throw new ERR_INVALID_ARG_TYPE("channel", ["string", "symbol"], name);
@@ -222,19 +227,19 @@ export function channel(name) {
   return new Channel(name);
 }
 
-export function subscribe(name, subscription) {
+function subscribe(name, subscription) {
   return channel(name).subscribe(subscription);
 }
 
-export function unsubscribe(name, subscription) {
+function unsubscribe(name, subscription) {
   return channel(name).unsubscribe(subscription);
 }
 
-export function hasSubscribers(name) {
-  const channel = channels.get(name);
-  if (!channel) return false;
+function hasSubscribers(name) {
+  const ch = channels.get(name);
+  if (!ch) return false;
 
-  return channel.hasSubscribers;
+  return ch.hasSubscribers;
 }
 
 const traceEvents = [
@@ -257,9 +262,9 @@ function tracingChannelFrom(nameOrChannels, name) {
   }
 
   if (typeof nameOrChannels === "object" && nameOrChannels !== null) {
-    const channel = nameOrChannels[name];
-    assertChannel(channel, `nameOrChannels.${name}`);
-    return channel;
+    const ch = nameOrChannels[name];
+    assertChannel(ch, `nameOrChannels.${name}`);
+    return ch;
   }
 
   throw new ERR_INVALID_ARG_TYPE("nameOrChannels", [
@@ -416,11 +421,19 @@ class TracingChannel {
   }
 }
 
-export function tracingChannel(nameOrChannels) {
+function tracingChannel(nameOrChannels) {
   return new TracingChannel(nameOrChannels);
 }
 
-export default {
+return {
+  default: {
+    channel,
+    hasSubscribers,
+    subscribe,
+    tracingChannel,
+    unsubscribe,
+    Channel,
+  },
   channel,
   hasSubscribers,
   subscribe,
@@ -428,3 +441,4 @@ export default {
   unsubscribe,
   Channel,
 };
+})();

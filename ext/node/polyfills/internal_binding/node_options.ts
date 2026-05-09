@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { primordials } = globalThis.__bootstrap;
 const {
   SafeMap,
   ArrayPrototypeForEach,
@@ -50,7 +50,7 @@ function splitNodeOptions(input: string): string[] {
 /** Gets the all options for Node.js
  * This function is expensive to execute. `getOptionValue` in `internal/options.ts`
  * should be used instead to get a specific option. */
-export function getOptions() {
+function getOptions() {
   const options = new SafeMap([
     ["--warnings", { value: true }],
     ["--pending-deprecation", { value: false }],
@@ -71,10 +71,21 @@ export function getOptions() {
       case "--pending-deprecation":
         options.set("--pending-deprecation", { value: true });
         break;
-      // TODO(kt3k): Handle other options.
       default:
+        if (StringPrototypeStartsWith(arg, "--dns-result-order=")) {
+          const value = StringPrototypeSlice(
+            arg,
+            "--dns-result-order=".length,
+          );
+          options.set("--dns-result-order", { value });
+        }
         break;
     }
   });
   return { options };
 }
+
+return {
+  getOptions,
+};
+})();

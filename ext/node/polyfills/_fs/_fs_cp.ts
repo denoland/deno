@@ -1,48 +1,47 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { primordials } from "ext:core/mod.js";
-import {
-  getValidatedPathToString,
-  validateCpOptions,
-} from "ext:deno_node/internal/fs/utils.mjs";
-import { cpFn } from "ext:deno_node/_fs/cp/cp.ts";
-import { cpSyncFn } from "ext:deno_node/_fs/cp/cp_sync.ts";
-import type {
-  CopyOptions,
-  CopySyncOptions,
-} from "ext:deno_node/_fs/cp/cp.d.ts";
-import {
-  type CallbackWithError,
-  makeCallback,
-} from "ext:deno_node/_fs/_fs_common.ts";
+
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+
+const lazyFsUtils = core.createLazyLoader(
+  "ext:deno_node/internal/fs/utils.mjs",
+);
+const { cpFn, throwCpError: _throwCpError } = core.loadExtScript(
+  "ext:deno_node/_fs/cp/cp.ts",
+);
+const { cpSyncFn } = core.loadExtScript("ext:deno_node/_fs/cp/cp_sync.ts");
+const { makeCallback } = core.loadExtScript(
+  "ext:deno_node/_fs/_fs_common.ts",
+);
 
 const { PromisePrototypeThen } = primordials;
 
-export function cpSync(
-  src: string | URL,
-  dest: string | URL,
-  options: CopySyncOptions,
+function cpSync(
+  src,
+  dest,
+  options,
 ) {
-  options = validateCpOptions(options);
-  const srcPath = getValidatedPathToString(src, "src");
-  const destPath = getValidatedPathToString(dest, "dest");
+  options = lazyFsUtils().validateCpOptions(options);
+  const srcPath = lazyFsUtils().getValidatedPathToString(src, "src");
+  const destPath = lazyFsUtils().getValidatedPathToString(dest, "dest");
 
   cpSyncFn(srcPath, destPath, options);
 }
 
-export function cp(
-  src: string | URL,
-  dest: string | URL,
-  options: CopyOptions | undefined,
-  callback: CallbackWithError,
+function cp(
+  src,
+  dest,
+  options,
+  callback,
 ) {
   if (typeof options === "function") {
     callback = options;
     options = undefined;
   }
   callback = makeCallback(callback);
-  options = validateCpOptions(options);
-  const srcPath = getValidatedPathToString(src, "src");
-  const destPath = getValidatedPathToString(dest, "dest");
+  options = lazyFsUtils().validateCpOptions(options);
+  const srcPath = lazyFsUtils().getValidatedPathToString(src, "src");
+  const destPath = lazyFsUtils().getValidatedPathToString(dest, "dest");
 
   PromisePrototypeThen(
     cpFn(srcPath, destPath, options),
@@ -51,13 +50,16 @@ export function cp(
   );
 }
 
-export async function cpPromise(
-  src: string | URL,
-  dest: string | URL,
-  options?: CopyOptions,
-): Promise<void> {
-  options = validateCpOptions(options);
-  const srcPath = getValidatedPathToString(src, "src");
-  const destPath = getValidatedPathToString(dest, "dest");
+async function cpPromise(
+  src,
+  dest,
+  options,
+) {
+  options = lazyFsUtils().validateCpOptions(options);
+  const srcPath = lazyFsUtils().getValidatedPathToString(src, "src");
+  const destPath = lazyFsUtils().getValidatedPathToString(dest, "dest");
   return await cpFn(srcPath, destPath, options);
 }
+
+return { cpSync, cp, cpPromise };
+})();

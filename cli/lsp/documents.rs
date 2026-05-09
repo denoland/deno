@@ -42,7 +42,6 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::Lazy;
-use percent_encoding::percent_decode_str;
 use serde::Serialize;
 use tower_lsp::lsp_types as lsp;
 use weak_table::PtrWeakKeyHashMap;
@@ -207,29 +206,6 @@ fn data_url_to_uri(url: &Url) -> Option<Uri> {
   Some(uri)
 }
 
-fn resource_to_raw_import_types_uri(
-  resource_uri: &Uri,
-  kind: RawImportKind,
-) -> Uri {
-  let mut encoded_path =
-    fluent_uri::pct_enc::EString::<fluent_uri::pct_enc::encoder::Path>::new();
-  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
-  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(match kind {
-    RawImportKind::Text => "text-import-types",
-    RawImportKind::Bytes => "bytes-import-types",
-  });
-  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
-  encoded_path
-    .encode_str::<fluent_uri::pct_enc::encoder::Path>(resource_uri.as_str());
-  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(".ts");
-  fluent_uri::Uri::builder()
-    .scheme(fluent_uri::component::Scheme::new_or_panic("deno"))
-    .path(encoded_path.as_ref())
-    .build()
-    .expect("component constraints should be met by the above")
-    .into()
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum DocumentText {
@@ -286,7 +262,6 @@ pub enum ServerDocumentKind {
     line_index: Arc<LineIndex>,
   },
   RawImportTypes {
-    resource_uri: Uri,
     kind: RawImportKind,
   },
 }
@@ -403,36 +378,28 @@ impl ServerDocument {
   }
 
   fn raw_import_types(uri: &Uri) -> Option<Self> {
-    if let Some(encoded_resource_uri) = uri
+    if uri
       .as_str()
       .strip_prefix("deno:/text-import-types/")
       .and_then(|s| s.strip_suffix(".ts"))
+      .is_some()
     {
-      let resource_uri = Uri::from_str(
-        &percent_decode_str(encoded_resource_uri).decode_utf8_lossy(),
-      )
-      .ok()?;
       return Some(ServerDocument {
         uri: Arc::new(uri.clone()),
         kind: ServerDocumentKind::RawImportTypes {
-          resource_uri,
           kind: RawImportKind::Text,
         },
       });
     }
-    if let Some(encoded_resource_uri) = uri
+    if uri
       .as_str()
       .strip_prefix("deno:/bytes-import-types/")
       .and_then(|s| s.strip_suffix(".ts"))
+      .is_some()
     {
-      let resource_uri = Uri::from_str(
-        &percent_decode_str(encoded_resource_uri).decode_utf8_lossy(),
-      )
-      .ok()?;
       return Some(ServerDocument {
         uri: Arc::new(uri.clone()),
         kind: ServerDocumentKind::RawImportTypes {
-          resource_uri,
           kind: RawImportKind::Bytes,
         },
       });
@@ -1294,15 +1261,6 @@ impl DocumentModules {
     self.documents.remove_server_doc(&module.uri);
   }
 
-  pub fn assign_scopes(
-    &self,
-    entries: impl IntoIterator<
-      Item = (Arc<Uri>, (Option<Arc<Url>>, CompilerOptionsKey)),
-    >,
-  ) {
-    self.assigned_scopes.write().extend(entries);
-  }
-
   fn infer_specifier(&self, document: &Document) -> Option<Arc<Url>> {
     if let Some(document) = document.server() {
       match &document.kind {
@@ -1416,49 +1374,6 @@ impl DocumentModules {
       );
     }
     module
-  }
-
-  pub fn module_for_tsgo_document(
-    &self,
-    uri: &Uri,
-    compiler_options_key: &CompilerOptionsKey,
-  ) -> Option<Arc<DocumentModule>> {
-    let document = self.documents.get(uri)?;
-    let scope = self.primary_scope(document.uri()).unwrap_or_else(|| {
-      self
-        .compiler_options_resolver
-        .for_key(compiler_options_key)
-        .unwrap()
-        .workspace_dir_or_source_url
-        .as_ref()
-        .and_then(|s| self.config.tree.scope_for_specifier(s))
-    });
-    self.module(&document, scope.map(|s| s.as_ref()))
-  }
-
-  pub fn module_for_tsgo_specifier(
-    &self,
-    specifier: &Url,
-    compiler_options_key: &CompilerOptionsKey,
-  ) -> Option<Arc<DocumentModule>> {
-    let scope = if specifier.scheme() == "file"
-      && !self.cache.in_global_cache_directory(specifier)
-    {
-      self.config.tree.scope_for_specifier(specifier)
-    } else {
-      self
-        .compiler_options_resolver
-        .for_key(compiler_options_key)
-        .unwrap()
-        .workspace_dir_or_source_url
-        .as_ref()
-        .and_then(|s| self.config.tree.scope_for_specifier(s))
-    };
-    self.module_for_specifier(
-      specifier,
-      scope.map(|s| s.as_ref()),
-      Some(compiler_options_key),
-    )
   }
 
   pub fn primary_module(
@@ -1902,112 +1817,6 @@ impl DocumentModules {
       ))
     }
   }
-
-  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  pub fn resolve_dependency_document(
-    &self,
-    raw_specifier: &str,
-    referrer_module: &DocumentModule,
-    resolution_mode: ResolutionMode,
-    import_attribute_type: Option<&str>,
-  ) -> Option<(Arc<Uri>, MediaType)> {
-    if raw_specifier.starts_with("asset:") {
-      let specifier = resolve_url(raw_specifier).ok()?;
-      let uri = remote_or_asset_url_to_uri(&specifier)?;
-      let media_type = MediaType::from_specifier(&specifier);
-      return Some((Arc::new(uri), media_type));
-    }
-    let specifier = if let Some(dependency) =
-      referrer_module.dependencies.get(raw_specifier)
-    {
-      Cow::Borrowed(
-        dependency
-          .maybe_type
-          .maybe_specifier()
-          .or_else(|| dependency.maybe_code.maybe_specifier())?,
-      )
-    } else {
-      let scoped_resolver = self
-        .resolver
-        .get_scoped_resolver(referrer_module.scope.as_deref());
-      Cow::Owned(
-        scoped_resolver
-          .as_cli_resolver()
-          .resolve(
-            raw_specifier,
-            &referrer_module.specifier,
-            deno_graph::Position::zeroed(),
-            resolution_mode,
-            NodeResolutionKind::Types,
-          )
-          .ok()?,
-      )
-    };
-    let (mut uri, mut media_type) = self.resolve_dependency_document_inner(
-      &specifier,
-      referrer_module,
-      resolution_mode,
-      &referrer_module.compiler_options_key,
-      import_attribute_type,
-    )?;
-    if import_attribute_type == Some("text") {
-      uri =
-        Arc::new(resource_to_raw_import_types_uri(&uri, RawImportKind::Text));
-      media_type = MediaType::TypeScript;
-    } else if import_attribute_type == Some("bytes") {
-      uri =
-        Arc::new(resource_to_raw_import_types_uri(&uri, RawImportKind::Bytes));
-      media_type = MediaType::TypeScript;
-    }
-    Some((uri, media_type))
-  }
-
-  fn resolve_dependency_document_inner(
-    &self,
-    specifier: &Url,
-    referrer_module: &DocumentModule,
-    resolution_mode: ResolutionMode,
-    compiler_options_key: &CompilerOptionsKey,
-    import_attribute_type: Option<&str>,
-  ) -> Option<(Arc<Uri>, MediaType)> {
-    if let Some(module_name) = specifier.as_str().strip_prefix("node:")
-      && deno_node::is_builtin_node_module(module_name)
-    {
-      // Don't resolve node: specifiers because during type checking we resolve
-      // to the ambient modules in the @types/node package.
-      return None;
-    }
-    let mut specifier = Cow::Borrowed(specifier);
-    if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&specifier) {
-      let scoped_resolver = self
-        .resolver
-        .get_scoped_resolver(referrer_module.scope.as_deref());
-      let (s, _) = scoped_resolver.npm_to_file_url(
-        &npm_ref,
-        &referrer_module.specifier,
-        NodeResolutionKind::Types,
-        resolution_mode,
-      )?;
-      specifier = Cow::Owned(s);
-    }
-    let module =
-      self.module_for_tsgo_specifier(&specifier, compiler_options_key)?;
-    if !matches!(import_attribute_type, Some("text" | "bytes"))
-      && let Some(types) = module
-        .types_dependency
-        .as_ref()
-        .and_then(|d| d.dependency.maybe_specifier())
-    {
-      return self.resolve_dependency_document_inner(
-        types,
-        &module,
-        module.resolution_mode,
-        compiler_options_key,
-        import_attribute_type,
-      );
-    }
-    Some((module.uri.clone(), module.media_type))
-  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2081,30 +1890,6 @@ impl LanguageId {
       LanguageId::Vento => None,
       LanguageId::Nunjucks => None,
       LanguageId::Unknown => None,
-    }
-  }
-
-  pub fn as_ts_script_kind(&self) -> i32 {
-    match self {
-      LanguageId::JavaScript => 1,
-      LanguageId::Jsx => 2,
-      LanguageId::TypeScript => 3,
-      LanguageId::Tsx => 4,
-      LanguageId::Json | LanguageId::JsonC => 6,
-      LanguageId::Markdown => 0,
-      LanguageId::Html => 0,
-      LanguageId::Css => 0,
-      LanguageId::Scss => 0,
-      LanguageId::Sass => 0,
-      LanguageId::Less => 0,
-      LanguageId::Yaml => 0,
-      LanguageId::Sql => 0,
-      LanguageId::Svelte => 0,
-      LanguageId::Vue => 0,
-      LanguageId::Astro => 0,
-      LanguageId::Vento => 0,
-      LanguageId::Nunjucks => 0,
-      LanguageId::Unknown => 0,
     }
   }
 
