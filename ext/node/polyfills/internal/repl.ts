@@ -9,8 +9,9 @@
 
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
-import REPL from "node:repl";
-import process from "node:process";
+import { core } from "ext:core/mod.js";
+const lazyREPL = core.createLazyLoader("node:repl");
+const lazyProcess = core.createLazyLoader("node:process");
 
 const kStandaloneREPL = Symbol.for("nodejs.repl.kStandaloneREPL");
 
@@ -37,12 +38,12 @@ function createRepl(
 
   if (env && env.NODE_REPL_MODE) {
     const mode = env.NODE_REPL_MODE.toLowerCase().trim();
-    opts.replMode = (REPL as any)[
+    opts.replMode = (lazyREPL().default as any)[
       mode === "strict" ? "REPL_MODE_STRICT" : "REPL_MODE_SLOPPY"
     ];
   }
   if (opts.replMode === undefined) {
-    opts.replMode = (REPL as any).REPL_MODE_SLOPPY;
+    opts.replMode = (lazyREPL().default as any).REPL_MODE_SLOPPY;
   }
 
   const size = Number(env?.NODE_REPL_HISTORY_SIZE);
@@ -54,10 +55,10 @@ function createRepl(
 
   const term = "terminal" in opts
     ? opts.terminal
-    : (process as any).stdout?.isTTY;
+    : (lazyProcess().default as any).stdout?.isTTY;
   opts.filePath = term ? env?.NODE_REPL_HISTORY : "";
 
-  const repl = (REPL as any).start(opts);
+  const repl = (lazyREPL().default as any).start(opts);
 
   // Honour both the legacy (filePath, cb) and modern object-form signatures.
   repl.setupHistory({
@@ -67,7 +68,7 @@ function createRepl(
   });
 }
 
-const exported: any = Object.create(REPL);
+const exported: any = Object.create(lazyREPL().default);
 exported.createInternalRepl = createRepl;
 
 export default exported;

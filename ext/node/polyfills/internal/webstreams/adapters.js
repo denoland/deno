@@ -29,9 +29,9 @@ const {
   AbortError,
   ERR_INVALID_ARG_TYPE,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import process from "node:process";
+const lazyProcess = core.createLazyLoader("node:process");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-import { Duplex, Readable, Writable } from "node:stream";
+const lazyStream = core.createLazyLoader("node:stream");
 
 function isWritableStream(object) {
   return object instanceof WritableStream;
@@ -69,7 +69,7 @@ export function newStreamReadableFromReadableStream(
   const reader = readableStream.getReader();
   let closed = false;
 
-  const readable = new Readable({
+  const readable = new (lazyStream().Readable)({
     objectMode,
     highWaterMark,
     encoding,
@@ -98,7 +98,7 @@ export function newStreamReadableFromReadableStream(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => {
+          lazyProcess().default.nextTick(() => {
             throw error;
           });
         }
@@ -152,7 +152,7 @@ export function newStreamWritableFromWritableStream(
   const writer = writableStream.getWriter();
   let closed = false;
 
-  const writable = new Writable({
+  const writable = new (lazyStream().Writable)({
     highWaterMark,
     objectMode,
     decodeStrings,
@@ -169,7 +169,7 @@ export function newStreamWritableFromWritableStream(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => destroy.call(writable, error));
+          lazyProcess().default.nextTick(() => destroy.call(writable, error));
         }
       }
 
@@ -216,7 +216,7 @@ export function newStreamWritableFromWritableStream(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => {
+          lazyProcess().default.nextTick(() => {
             throw error;
           });
         }
@@ -244,7 +244,7 @@ export function newStreamWritableFromWritableStream(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => destroy.call(writable, error));
+          lazyProcess().default.nextTick(() => destroy.call(writable, error));
         }
       }
 
@@ -312,7 +312,7 @@ export function newStreamDuplexFromReadableWritablePair(
   let writableClosed = false;
   let readableClosed = false;
 
-  const duplex = new Duplex({
+  const duplex = new (lazyStream().Duplex)({
     allowHalfOpen,
     highWaterMark,
     objectMode,
@@ -331,7 +331,7 @@ export function newStreamDuplexFromReadableWritablePair(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => destroy(duplex, error));
+          lazyProcess().default.nextTick(() => destroy(duplex, error));
         }
       }
 
@@ -378,7 +378,7 @@ export function newStreamDuplexFromReadableWritablePair(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => destroy(duplex, error));
+          lazyProcess().default.nextTick(() => destroy(duplex, error));
         }
       }
 
@@ -410,7 +410,7 @@ export function newStreamDuplexFromReadableWritablePair(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => {
+          lazyProcess().default.nextTick(() => {
             throw error;
           });
         }

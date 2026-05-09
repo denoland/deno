@@ -1,8 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { fileURLToPath } from "node:url";
-import type { Buffer } from "node:buffer";
 import { core, primordials } from "ext:core/mod.js";
+const lazyUrl = core.createLazyLoader("node:url");
+import type { Buffer } from "node:buffer";
 const { validateObject } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
@@ -43,7 +43,7 @@ export function toPathIfFileURL(
   if (!(ObjectPrototypeIsPrototypeOf(URL.prototype, fileURLOrPath))) {
     return fileURLOrPath;
   }
-  return fileURLToPath(fileURLOrPath);
+  return lazyUrl().fileURLToPath(fileURLOrPath);
 }
 
 // Utility function that converts a URL object into an ordinary
