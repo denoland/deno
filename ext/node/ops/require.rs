@@ -249,20 +249,12 @@ pub fn op_require_is_request_relative(#[string] request: &str) -> bool {
 
 #[op2]
 #[string]
-pub fn op_require_resolve_deno_dir<
-  TInNpmPackageChecker: InNpmPackageChecker + 'static,
-  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
-  TSys: ExtNodeSys + 'static,
->(
+pub fn op_require_resolve_deno_dir(
   state: &mut OpState,
   #[string] request: &str,
   #[string] parent_filename: &str,
 ) -> Result<Option<String>, deno_path_util::PathToUrlError> {
-  let resolver = state.borrow::<NodeResolverRc<
-    TInNpmPackageChecker,
-    TNpmPackageFolderResolver,
-    TSys,
-  >>();
+  let resolver = state.borrow::<crate::DynNodeResolverRc>();
 
   let path = Path::new(parent_filename);
   Ok(
@@ -277,19 +269,11 @@ pub fn op_require_resolve_deno_dir<
 }
 
 #[op2(fast)]
-pub fn op_require_is_deno_dir_package<
-  TInNpmPackageChecker: InNpmPackageChecker + 'static,
-  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
-  TSys: ExtNodeSys + 'static,
->(
+pub fn op_require_is_deno_dir_package(
   state: &mut OpState,
   #[string] path: &str,
 ) -> bool {
-  let resolver = state.borrow::<NodeResolverRc<
-    TInNpmPackageChecker,
-    TNpmPackageFolderResolver,
-    TSys,
-  >>();
+  let resolver = state.borrow::<crate::DynNodeResolverRc>();
   match deno_path_util::url_from_file_path(Path::new(path)) {
     Ok(specifier) => resolver.in_npm_package(&specifier),
     Err(_) => false,

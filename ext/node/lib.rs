@@ -25,6 +25,8 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::PackageJsonResolverRc;
+use node_resolver::UrlOrPathRef;
+use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageJsonLoadError;
 
 extern crate libz_sys as zlib;
@@ -161,6 +163,54 @@ pub struct NodeExtInitServices<
     NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
   pub pkg_json_resolver: PackageJsonResolverRc<TSys>,
   pub sys: TSys,
+}
+
+/// A type-erased subset of [`NodeResolver`]. Used by ops that only need a
+/// handful of resolver methods, so they don't have to be monomorphized over
+/// every concrete `(InNpmPackageChecker, NpmPackageFolderResolver, ExtNodeSys)`
+/// tuple. The wrapping costs one extra `Rc<dyn _>` indirection per call,
+/// which is negligible compared to the work the ops actually do.
+pub trait DynNodeResolver {
+  fn in_npm_package(&self, specifier: &Url) -> bool;
+  fn resolve_package_folder_from_package(
+    &self,
+    package_name: &str,
+    referrer: &UrlOrPathRef,
+  ) -> Result<std::path::PathBuf, PackageFolderResolveError>;
+}
+
+pub type DynNodeResolverRc = std::rc::Rc<dyn DynNodeResolver>;
+
+struct GenericNodeResolverAdapter<
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: ExtNodeSys,
+>(NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>);
+
+impl<
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+  TSys: ExtNodeSys + 'static,
+> DynNodeResolver
+  for GenericNodeResolverAdapter<
+    TInNpmPackageChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >
+{
+  fn in_npm_package(&self, specifier: &Url) -> bool {
+    self.0.in_npm_package(specifier)
+  }
+
+  fn resolve_package_folder_from_package(
+    &self,
+    package_name: &str,
+    referrer: &UrlOrPathRef,
+  ) -> Result<std::path::PathBuf, PackageFolderResolveError> {
+    self
+      .0
+      .resolve_package_folder_from_package(package_name, referrer)
+  }
 }
 
 deno_core::extension!(deno_node,
@@ -314,8 +364,8 @@ deno_core::extension!(deno_node,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<TSys>,
     ops::require::op_require_proxy_path,
-    ops::require::op_require_is_deno_dir_package<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
-    ops::require::op_require_resolve_deno_dir<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::require::op_require_is_deno_dir_package,
+    ops::require::op_require_resolve_deno_dir,
     ops::require::op_require_is_maybe_cjs,
     ops::require::op_require_is_request_relative,
     ops::require::op_require_resolve_lookup_paths,
@@ -335,8 +385,8 @@ deno_core::extension!(deno_node,
     ops::util::op_node_guess_handle_type,
     ops::util::op_node_view_has_buffer,
     ops::util::op_node_get_own_non_index_properties,
-    ops::util::op_node_call_is_from_dependency<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
-    ops::util::op_node_in_npm_package<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::util::op_node_call_is_from_dependency,
+    ops::util::op_node_in_npm_package,
     ops::util::op_node_parse_env,
     ops::worker_threads::op_worker_threads_filename<TSys>,
     ops::worker_threads::op_worker_get_resource_limits,
@@ -693,6 +743,10 @@ deno_core::extension!(deno_node,
       state.put(init.node_require_loader.clone());
       state.put(init.node_resolver.clone());
       state.put(init.pkg_json_resolver.clone());
+      let dyn_resolver: DynNodeResolverRc = std::rc::Rc::new(
+        GenericNodeResolverAdapter(init.node_resolver.clone()),
+      );
+      state.put(dyn_resolver);
     }
 
     // Always seed `NodeTlsState` so the shared client session cache is
