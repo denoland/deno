@@ -70,6 +70,10 @@
     "es-module/test-require-module-detect-entry-point.js": {},
     "es-module/test-require-module-dont-detect-cjs.js": {},
     "es-module/test-require-module-dynamic-import-3.js": {},
+    "es-module/test-require-module-feature-detect.js": {
+      "ignore": true,
+      "reason": "Deno always supports require(esm); --no-experimental-require-module flag is not implemented"
+    },
     "es-module/test-require-module-retry-import-evaluating.js": {},
     "es-module/test-require-module-dynamic-import-4.js": {},
     "es-module/test-require-module-synchronous-rejection-handling.js": {},
