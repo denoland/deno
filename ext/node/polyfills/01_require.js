@@ -41,8 +41,10 @@ const {
   ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
   ArrayPrototypeJoin,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeSlice,
+  ArrayPrototypeSort,
   ArrayPrototypeSplice,
   Error,
   JSONParse,
@@ -57,6 +59,7 @@ const {
   ObjectSetPrototypeOf,
   Proxy,
   ReflectSet,
+  RegExpPrototypeExec,
   RegExpPrototypeTest,
   SafeArrayIterator,
   SafeMap,
@@ -70,6 +73,7 @@ const {
   StringPrototypeIndexOf,
   StringPrototypeLastIndexOf,
   StringPrototypeMatch,
+  StringPrototypeReplace,
   StringPrototypeSlice,
   StringPrototypeSplit,
   StringPrototypeStartsWith,
@@ -2526,9 +2530,10 @@ internals.requireImpl = {
 // VLQ Base64 decoding for source maps
 const BASE64_CHARS =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-const BASE64_LOOKUP = new Int32Array(128).fill(-1);
+const BASE64_LOOKUP = new Int32Array(128);
+for (let i = 0; i < 128; i++) BASE64_LOOKUP[i] = -1;
 for (let i = 0; i < BASE64_CHARS.length; i++) {
-  BASE64_LOOKUP[BASE64_CHARS.charCodeAt(i)] = i;
+  BASE64_LOOKUP[StringPrototypeCharCodeAt(BASE64_CHARS, i)] = i;
 }
 
 const VLQ_BASE_SHIFT = 5;
@@ -2550,7 +2555,7 @@ function decodeVLQ(str, iter) {
     if (iter.pos >= str.length) {
       return 0;
     }
-    const charCode = str.charCodeAt(iter.pos++);
+    const charCode = StringPrototypeCharCodeAt(str, iter.pos++);
     digit = BASE64_LOOKUP[charCode];
     if (digit === -1) {
       return 0;
@@ -2594,7 +2599,7 @@ function parseMappings(mappings, sources, names, sourceRoot) {
   const iter = { pos: 0 };
 
   while (iter.pos < mappings.length) {
-    const ch = mappings.charAt(iter.pos);
+    const ch = mappings[iter.pos];
     if (ch === ";") {
       generatedLine++;
       previousGeneratedColumn = 0;
@@ -2612,7 +2617,7 @@ function parseMappings(mappings, sources, names, sourceRoot) {
 
     // Check if there are more fields (source mapping)
     if (iter.pos < mappings.length) {
-      const next = mappings.charAt(iter.pos);
+      const next = mappings[iter.pos];
       if (next !== "," && next !== ";") {
         const sourceIndex = previousSource + decodeVLQ(mappings, iter);
         previousSource = sourceIndex;
@@ -2627,7 +2632,8 @@ function parseMappings(mappings, sources, names, sourceRoot) {
 
         let source = sources[sourceIndex] || "";
         if (
-          sourceRoot && !source.startsWith("/") && !source.match(/^\w+:\/\//)
+          sourceRoot && !StringPrototypeStartsWith(source, "/") &&
+          !RegExpPrototypeTest(/^\w+:\/\//, source)
         ) {
           source = sourceRoot + source;
         }
@@ -2636,15 +2642,15 @@ function parseMappings(mappings, sources, names, sourceRoot) {
         // Check for optional name index
         if (
           iter.pos < mappings.length &&
-          mappings.charAt(iter.pos) !== "," &&
-          mappings.charAt(iter.pos) !== ";"
+          mappings[iter.pos] !== "," &&
+          mappings[iter.pos] !== ";"
         ) {
           const nameIndex = previousName + decodeVLQ(mappings, iter);
           previousName = nameIndex;
           name = names ? names[nameIndex] : undefined;
         }
 
-        entries.push({
+        ArrayPrototypePush(entries, {
           generatedLine,
           generatedColumn,
           originalSource: source,
@@ -2652,18 +2658,11 @@ function parseMappings(mappings, sources, names, sourceRoot) {
           originalColumn,
           name,
         });
-        continue;
       }
     }
 
-    // Segment with only generated column (no source mapping)
-    entries.push({
-      generatedLine,
-      generatedColumn,
-      originalSource: "",
-      originalLine: 0,
-      originalColumn: 0,
-    });
+    // Segments with only generated column (no source mapping) are skipped,
+    // matching Node.js behavior - only full mapping entries are included.
   }
 
   return entries;
@@ -2718,10 +2717,11 @@ function findEntryInMappings(entries, line, column) {
  */
 function deepClone(obj) {
   if (obj === null || typeof obj !== "object") return obj;
-  if (Array.isArray(obj)) return obj.map(deepClone);
+  if (ArrayIsArray(obj)) return ArrayPrototypeMap(obj, deepClone);
   const clone = {};
-  for (const key of Object.keys(obj)) {
-    clone[key] = deepClone(obj[key]);
+  const keys = ObjectKeys(obj);
+  for (let i = 0; i < keys.length; i++) {
+    clone[keys[i]] = deepClone(obj[keys[i]]);
   }
   return clone;
 }
@@ -2742,19 +2742,22 @@ class SourceMap {
   constructor(payload, options) {
     if (
       typeof payload !== "object" || payload === null ||
-      Array.isArray(payload)
+      ArrayIsArray(payload)
     ) {
       let received;
       if (payload === null) {
         received = " Received null";
       } else if (typeof payload === "object") {
-        const name = payload.constructor?.name;
+        const proto = ObjectGetPrototypeOf(payload);
+        const name = proto?.constructor?.name;
         received = name
           ? ` Received an instance of ${name}`
           : ` Received ${typeof payload}`;
       } else {
         let inspected = String(payload);
-        if (inspected.length > 28) inspected = inspected.slice(0, 25) + "...";
+        if (inspected.length > 28) {
+          inspected = StringPrototypeSlice(inspected, 0, 25) + "...";
+        }
         received = ` Received type ${typeof payload} (${inspected})`;
       }
       const err = new TypeError(
@@ -2766,13 +2769,13 @@ class SourceMap {
 
     this.#payload = deepClone(payload);
     this.#lineLengths = options?.lineLengths
-      ? [...options.lineLengths]
+      ? ArrayPrototypeSlice(options.lineLengths)
       : undefined;
 
     // Parse mappings - handle both regular and index source maps
     this.#mappings = this.#parseMap(payload);
     // Sort entries by generated position
-    this.#mappings.sort(compareEntries);
+    ArrayPrototypeSort(this.#mappings, compareEntries);
   }
 
   /**
@@ -2783,7 +2786,9 @@ class SourceMap {
     if (payload.sections) {
       // Index Source Map V3
       const entries = [];
-      for (const section of payload.sections) {
+      const sections = payload.sections;
+      for (let i = 0; i < sections.length; i++) {
+        const section = sections[i];
         const offset = section.offset || { line: 0, column: 0 };
         const map = section.map;
         const sectionEntries = parseMappings(
@@ -2793,12 +2798,13 @@ class SourceMap {
           map.sourceRoot || "",
         );
         // Apply section offset
-        for (const entry of sectionEntries) {
+        for (let j = 0; j < sectionEntries.length; j++) {
+          const entry = sectionEntries[j];
           entry.generatedLine += offset.line;
           if (entry.generatedLine === offset.line) {
             entry.generatedColumn += offset.column;
           }
-          entries.push(entry);
+          ArrayPrototypePush(entries, entry);
         }
       }
       // For index maps, flatten the sources and mappings into the payload clone
@@ -2904,7 +2910,7 @@ const SOURCE_MAP_URL_RE =
 function extractSourceMapUrl(content) {
   // Search backwards from the end for the sourceMappingURL comment.
   // The comment must appear in the last non-empty line.
-  const match = SOURCE_MAP_URL_RE.exec(content);
+  const match = RegExpPrototypeExec(SOURCE_MAP_URL_RE, content);
   return match ? match[1] : null;
 }
 
@@ -2917,8 +2923,9 @@ function extractSourceMapUrl(content) {
  */
 function resolveSourceMapPayload(url, filePath) {
   // Handle inline base64 data URIs
-  if (url.startsWith("data:")) {
-    const dataUrlMatch = url.match(
+  if (StringPrototypeStartsWith(url, "data:")) {
+    const dataUrlMatch = StringPrototypeMatch(
+      url,
       /^data:application\/json;(?:charset=utf-?8;)?base64,(.+)$/,
     );
     if (dataUrlMatch) {
@@ -2935,7 +2942,10 @@ function resolveSourceMapPayload(url, filePath) {
   // Handle external source map files
   try {
     let mapPath;
-    if (url.startsWith("/") || url.match(/^[a-zA-Z]:\\/)) {
+    if (
+      StringPrototypeStartsWith(url, "/") ||
+      RegExpPrototypeTest(/^[a-zA-Z]:\\/, url)
+    ) {
       // Absolute path
       mapPath = url;
     } else {
@@ -2983,10 +2993,13 @@ export function findSourceMap(path) {
     }
 
     // Compute lineLengths from the source file content
-    const lines = content.replace(/\n$/, "").split("\n");
+    const lines = StringPrototypeSplit(
+      StringPrototypeReplace(content, /\n$/, ""),
+      "\n",
+    );
     const lineLengths = [];
     for (let i = 0; i < lines.length; i++) {
-      lineLengths.push(lines[i].length);
+      ArrayPrototypePush(lineLengths, lines[i].length);
     }
 
     const sourceMap = new SourceMap(payload, { lineLengths });
