@@ -175,3 +175,13 @@ Re-run the test one final time to confirm the outcome matches expectations:
 
 The full schema for `config.jsonc` entries is in
 `tests/node_compat/schema.json`.
+
+## PR title conventions
+
+When opening a PR for node-compat work, use the appropriate prefix:
+
+- `test:` — when the PR only updates `tests/node_compat/config.jsonc` to skip,
+  ignore, or otherwise reclassify tests without changing implementation code.
+- `fix(ext/node):` — when the PR actually fixes the implementation so a
+  previously failing test now passes (typically changes under `ext/node/` plus
+  enabling the test in `config.jsonc`).
