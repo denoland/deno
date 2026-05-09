@@ -1136,7 +1136,7 @@ fn create_release_note(
     out.push_str(&format!("#### {} {} ({})\n\n", name, to, diff));
     if let Some(commits) = commits_by_pkg.get(name) {
       let mut sorted = commits.clone();
-      sorted.sort_by(|a, b| tag_priority(&a.tag).cmp(&tag_priority(&b.tag)));
+      sorted.sort_by_key(|a| tag_priority(&a.tag));
       for c in sorted {
         out.push_str(&format!("- {}\n", c.commit.subject));
       }
