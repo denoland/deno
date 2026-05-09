@@ -16,7 +16,8 @@ Work on Node.js compatibility test `$ARGUMENTS`.
 ./x test-compat $ARGUMENTS
 ```
 
-If the test passes, report success and stop — there is nothing to fix.
+If the test passes, report success and ensure test is specified in
+`tests/node_compat/config.jsonc`.
 
 ## Step 2: Diagnose the failure
 
@@ -82,24 +83,19 @@ provides negligible value:
 If the failure is fixable:
 
 1. Locate the relevant code in `ext/node/` (or elsewhere).
-2. Implement the fix. Match Node.js behavior — check Node.js docs and/or source
+2. Implement the fix. Match Node.js behavior - check Node.js docs and/or source
    code, not just what "seems right."
 3. Use lazy-loaded imports where possible.
 4. Use primordials for internal JS code to avoid prototype pollution.
-5. Re-run the test to verify the fix:
+5. Rebuild the source code with `./x build` - this is paramount, changes won't
+   take effect until you do.
+6. Re-run the test to verify the fix:
 
 ```sh
 ./x test-compat $ARGUMENTS
 ```
 
-6. Run related tests to check for regressions:
-
-```sh
-# Run unit_node tests for the affected module
-cargo test unit_node::<module>
-```
-
-7. Once the test passes, make sure the test is listed in
+6. Once the test passes, make sure the test is listed in
    `tests/node_compat/config.jsonc` with an empty config:
 
 ```jsonc
@@ -123,6 +119,8 @@ If the test cannot or should not be fixed, update
 }
 ```
 
+`"reason"` must be specified otherwise the lint step will fail!
+
 ### Platform-specific skip
 
 If the test only fails on certain platforms:
@@ -145,6 +143,10 @@ If you want the test to run but expect a specific failure:
 }
 ```
 
+This is a good middle ground for tests that are generally compatible but have a
+specific known issue. If a fix is ever done this assertion will notify the
+implementer to update the config.
+
 ### Writing good reasons
 
 Reasons should be specific and actionable. Good examples:
@@ -161,14 +163,7 @@ Bad examples:
 - "Doesn't work" (says nothing)
 - "Node-specific" (which part?)
 
-## Step 6: Format and verify
-
-After making changes:
-
-```sh
-tools/format.js
-tools/lint.js --js
-```
+## Step 6: Verify
 
 Re-run the test one final time to confirm the outcome matches expectations:
 
