@@ -58,7 +58,6 @@ function getREPLResourceName(): string {
 const _activeREPLs: REPLServer[] = [];
 let _captureHookInstalled = false;
 let _prevCaptureCallback: any = null;
-// deno-lint-ignore no-explicit-any
 function _replCaptureCallback(err: any) {
   const repl = _activeREPLs[_activeREPLs.length - 1];
   if (repl) {
@@ -94,7 +93,6 @@ function _replCaptureCallback(err: any) {
 function _installCaptureHook() {
   if (_captureHookInstalled) return;
   _captureHookInstalled = true;
-  // deno-lint-ignore no-explicit-any
   const p = process as any;
   if (
     typeof p.hasUncaughtExceptionCaptureCallback === "function" &&
@@ -109,7 +107,6 @@ function _installCaptureHook() {
 function _uninstallCaptureHookIfIdle() {
   if (_activeREPLs.length !== 0 || !_captureHookInstalled) return;
   _captureHookInstalled = false;
-  // deno-lint-ignore no-explicit-any
   const p = process as any;
   p.setUncaughtExceptionCaptureCallback(null);
   if (typeof _prevCaptureCallback === "function") {
@@ -870,7 +867,7 @@ export class REPLServer extends (Interface as any) {
 
       if (expr) {
         // Member expression completion
-        let chaining = ".";
+        const chaining = ".";
         let evalExpr = expr;
         if (expr.endsWith("?")) {
           // `expr` already contains the trailing `?`; strip it for eval

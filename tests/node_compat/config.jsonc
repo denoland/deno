@@ -45,7 +45,10 @@
     "es-module/test-esm-path-win32.mjs": {},
     "es-module/test-esm-prototype-pollution.mjs": {},
     "es-module/test-esm-recursive-cjs-dependencies.mjs": {},
-    "es-module/test-esm-repl-imports.js": {},
+    "es-module/test-esm-repl-imports.js": {
+      "ignore": true,
+      "reason": "requires `deno --interactive` flag (not yet implemented); previously passed only because the test runner did not await Node-style `done` callbacks, which masked the failing assertion"
+    },
     "es-module/test-esm-require-cache.mjs": {},
     "es-module/test-esm-scope-node-modules.mjs": {},
     "es-module/test-esm-shared-loader-dep.mjs": {},
@@ -2907,6 +2910,17 @@
     "parallel/test-repl-pretty-stack.js": {},
     "parallel/test-repl-recoverable.js": {},
     "parallel/test-repl-use-global.js": {},
+    "parallel/test-repl-history-perm.js": {},
+    "parallel/test-repl-load-multiline-from-history.js": {},
+    "parallel/test-repl-mode.js": {},
+    "parallel/test-repl-multiline-navigation-while-adding.js": {},
+    "parallel/test-repl-multiline-navigation.js": {},
+    "parallel/test-repl-no-terminal-restore-process-listeners.js": {},
+    "parallel/test-repl-null-thrown.js": {},
+    "parallel/test-repl-pretty-custom-stack.js": {},
+    "parallel/test-repl-uncaught-exception-async.js": {},
+    "parallel/test-repl-uncaught-exception.js": {},
+    "parallel/test-repl-underscore.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-repl-inspector.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before

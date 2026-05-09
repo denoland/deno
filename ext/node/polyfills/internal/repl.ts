@@ -7,9 +7,10 @@
 // exercises is `createInternalRepl(env, opts, cb)` plus the public
 // re-exports of node:repl.
 
-// deno-lint-ignore-file no-explicit-any
+// deno-lint-ignore-file no-explicit-any prefer-primordials
 
 import REPL from "node:repl";
+import process from "node:process";
 
 const kStandaloneREPL = Symbol.for("nodejs.repl.kStandaloneREPL");
 
