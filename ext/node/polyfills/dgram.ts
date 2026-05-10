@@ -23,14 +23,10 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
+(function () {
+const { core } = globalThis.__bootstrap;
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
-import { lookup as defaultLookup } from "node:dns";
-import type {
-  ErrnoException,
-  NodeSystemErrorCtx,
-} from "ext:deno_node/internal/errors.ts";
 const {
   ERR_BUFFER_OUT_OF_BOUNDS,
   ERR_INVALID_ARG_TYPE,
@@ -45,15 +41,17 @@ const {
   errnoException,
   exceptionWithHostPort,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import type { Abortable } from "ext:deno_node/_events.d.ts";
-import { kStateSymbol, newHandle } from "ext:deno_node/internal/dgram.ts";
-import type { SocketType } from "ext:deno_node/internal/dgram.ts";
+const { kStateSymbol, newHandle } = core.loadExtScript(
+  "ext:deno_node/internal/dgram.ts",
+);
 const {
   asyncIdSymbol,
   defaultTriggerAsyncIdScope,
   ownerSymbol,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
-import { SendWrap, UDP } from "ext:deno_node/internal_binding/udp_wrap.ts";
+const { SendWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/udp_wrap.ts",
+);
 const {
   isInt32,
   validateAbortSignal,
@@ -90,29 +88,29 @@ const CONNECT_STATE_CONNECTED = 2;
 const RECV_BUFFER = true;
 const SEND_BUFFER = false;
 
-export interface AddressInfo {
+interface AddressInfo {
   address: string;
   family: number;
   port: number;
 }
 
-export type MessageType = string | Uint8Array | Buffer | DataView;
+type MessageType = string | Uint8Array | Buffer | DataView;
 
-export type RemoteInfo = {
+type RemoteInfo = {
   address: string;
   family: "IPv4" | "IPv6";
   port: number;
   size?: number;
 };
 
-export interface BindOptions {
+interface BindOptions {
   port?: number;
   address?: string;
   exclusive?: boolean;
   fd?: number;
 }
 
-export interface SocketOptions extends Abortable {
+interface SocketOptions extends Abortable {
   type: SocketType;
   reuseAddr?: boolean;
   /**
@@ -161,7 +159,7 @@ const isBindOptions = (options: unknown): options is BindOptions =>
  * New instances of `dgram.Socket` are created using `createSocket`.
  * The `new` keyword is not to be used to create `dgram.Socket` instances.
  */
-export class Socket extends EventEmitter {
+class Socket extends EventEmitter {
   [asyncIdSymbol]!: number;
   [kStateSymbol]!: SocketInternalState;
 
@@ -1328,15 +1326,15 @@ Socket.prototype._stopReceiving = deprecate(
  * @param options
  * @param callback Attached as a listener for `'message'` events. Optional.
  */
-export function createSocket(
+function createSocket(
   type: SocketType,
   listener?: (msg: Buffer, rinfo: RemoteInfo) => void,
 ): Socket;
-export function createSocket(
+function createSocket(
   type: SocketOptions,
   listener?: (msg: Buffer, rinfo: RemoteInfo) => void,
 ): Socket;
-export function createSocket(
+function createSocket(
   type: SocketType | SocketOptions,
   listener?: (msg: Buffer, rinfo: RemoteInfo) => void,
 ): Socket {
@@ -1657,9 +1655,12 @@ function afterSend(this: SendWrap, err: number | null, sent?: number) {
   this.callback(ex, sent);
 }
 
-export type { SocketType };
-
-export default {
+return {
+  default: {
+    createSocket,
+    Socket,
+  },
   createSocket,
   Socket,
 };
+})();

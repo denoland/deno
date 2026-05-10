@@ -102,15 +102,17 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const buffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs").default;
 import childProcess from "node:child_process";
-import cluster from "node:cluster";
-import console from "node:console";
-import constants from "node:constants";
-import crypto from "node:crypto";
-import dgram from "node:dgram";
+const cluster = core.loadExtScript("ext:deno_node/cluster.ts").default;
+const console = core.loadExtScript("ext:deno_node/console.ts").default;
+const constants = core.loadExtScript("ext:deno_node/constants.ts").default;
+const crypto = core.loadExtScript("ext:deno_node/crypto.ts").default;
+const dgram = core.loadExtScript("ext:deno_node/dgram.ts").default;
 const diagnosticsChannel =
   core.loadExtScript("ext:deno_node/diagnostics_channel.js").default;
-import dns from "node:dns";
-import dnsPromises from "node:dns/promises";
+const dns = core.loadExtScript("ext:deno_node/dns.ts").default;
+const dnsPromises = core.loadExtScript(
+  "ext:deno_node/dns/promises.ts",
+).default;
 const domain = core.loadExtScript("ext:deno_node/domain.ts").default;
 const events = core.loadExtScript("ext:deno_node/_events.mjs").default;
 import fs from "node:fs";
@@ -165,11 +167,15 @@ const internalCryptoUtil = core.loadExtScript(
 const internalCryptoX509 = core.loadExtScript(
   "ext:deno_node/internal/crypto/x509.ts",
 ).default;
-import internalDgram from "ext:deno_node/internal/dgram.ts";
+const internalDgram = core.loadExtScript(
+  "ext:deno_node/internal/dgram.ts",
+).default;
 const internalUndici = core.loadExtScript(
   "ext:deno_node/internal/deps/undici/undici.js",
 );
-import internalDnsPromises from "ext:deno_node/internal/dns/promises.ts";
+const internalDnsPromises = core.loadExtScript(
+  "ext:deno_node/internal/dns/promises.ts",
+).default;
 const internalBuffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const internalErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
