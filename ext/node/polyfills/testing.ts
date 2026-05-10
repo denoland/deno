@@ -21,6 +21,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   Promise,
   PromisePrototypeThen,
+  PromiseResolve,
   ReflectApply,
   ReflectConstruct,
   SafeArrayIterator,
@@ -562,11 +563,9 @@ function prepareDenoTest(name, options, fn, overrides) {
 
   activeNodeTests++;
 
-  const { promise, resolve } = Promise.withResolvers();
-
   const denoTestOptions = {
     name: prepared.name,
-    fn: wrapTestFn(prepared.fn, resolve, prepared.name),
+    fn: wrapTestFn(prepared.fn, noop, prepared.name),
     only: prepared.options.only,
     ignore: !!prepared.options.todo || !!prepared.options.skip,
     sanitizeOnly: false,
@@ -575,7 +574,12 @@ function prepareDenoTest(name, options, fn, overrides) {
     sanitizeResources: false,
   };
   Deno.test(denoTestOptions);
-  return promise;
+  // The Deno test runner only executes registered tests after the module
+  // has finished evaluating, so we cannot return a promise that resolves on
+  // completion: top-level `await test(...)` would deadlock the module. The
+  // test still runs and is reported by the runner; we return an already
+  // resolved promise so the await unblocks.
+  return PromiseResolve();
 }
 
 function wrapSuiteFn(fn, resolve, name, parentNodeContext) {
@@ -616,11 +620,9 @@ function prepareDenoTestForSuite(name, options, fn, overrides) {
 
   activeNodeTests++;
 
-  const { promise, resolve } = Promise.withResolvers();
-
   const denoTestOptions = {
     name: prepared.name,
-    fn: wrapSuiteFn(prepared.fn, resolve, prepared.name, undefined),
+    fn: wrapSuiteFn(prepared.fn, noop, prepared.name, undefined),
     only: prepared.options.only,
     ignore: !!prepared.options.todo || !!prepared.options.skip,
     sanitizeOnly: false,
@@ -629,7 +631,9 @@ function prepareDenoTestForSuite(name, options, fn, overrides) {
     sanitizeResources: false,
   };
   Deno.test(denoTestOptions);
-  return promise;
+  // See `prepareDenoTest`: returning a completion promise here would
+  // deadlock top-level `await suite(...)`.
+  return PromiseResolve();
 }
 
 function test(name, options, fn, overrides) {
