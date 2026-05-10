@@ -20,7 +20,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+
 const { ownerSymbol } = core.loadExtScript(
   "ext:deno_node/internal/async_hooks.ts",
 );
@@ -39,9 +41,10 @@ const {
 const { errnoException } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
-import { getTimerDuration, kTimeout } from "ext:deno_node/internal/timers.mjs";
-import { clearTimeout } from "node:timers";
-import { setUnrefTimeout } from "ext:deno_node/internal/timers.mjs";
+const lazyInternalTimers = core.createLazyLoader(
+  "ext:deno_node/internal/timers.mjs",
+);
+const lazyTimers = core.createLazyLoader("node:timers");
 const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { isUint8Array } = core.loadExtScript(
@@ -61,15 +64,15 @@ const {
   TypedArrayPrototypeGetBuffer,
 } = primordials;
 
-export const kMaybeDestroy = Symbol("kMaybeDestroy");
-export const kUpdateTimer = Symbol("kUpdateTimer");
-export const kAfterAsyncWrite = Symbol("kAfterAsyncWrite");
-export const kBoundSession = Symbol("kBoundSession");
-export const kHandle = Symbol("kHandle");
-export const kSession = Symbol("kSession");
-export const kBuffer = Symbol("kBuffer");
-export const kBufferGen = Symbol("kBufferGen");
-export const kBufferCb = Symbol("kBufferCb");
+const kMaybeDestroy = Symbol("kMaybeDestroy");
+const kUpdateTimer = Symbol("kUpdateTimer");
+const kAfterAsyncWrite = Symbol("kAfterAsyncWrite");
+const kBoundSession = Symbol("kBoundSession");
+const kHandle = Symbol("kHandle");
+const kSession = Symbol("kSession");
+const kBuffer = Symbol("kBuffer");
+const kBufferGen = Symbol("kBufferGen");
+const kBufferCb = Symbol("kBufferCb");
 
 // deno-lint-ignore no-explicit-any
 function handleWriteReq(req: any, data: any, encoding: string) {
@@ -163,7 +166,7 @@ function createWriteWrap(
   return req;
 }
 
-export function writevGeneric(
+function writevGeneric(
   // deno-lint-ignore no-explicit-any
   owner: any,
   // deno-lint-ignore no-explicit-any
@@ -216,7 +219,7 @@ export function writevGeneric(
   return req;
 }
 
-export function writeGeneric(
+function writeGeneric(
   // deno-lint-ignore no-explicit-any
   owner: any,
   // deno-lint-ignore no-explicit-any
@@ -254,7 +257,7 @@ function afterWriteDispatched(
 // entry of the `streamBaseState` array from the `stream_wrap` internal binding.
 // Here we pass the `nread` value directly to this method as async Deno APIs
 // don't grant us the ability to rely on some mutable array entry setting.
-export function onStreamRead(
+function onStreamRead(
   // deno-lint-ignore no-explicit-any
   this: any,
   arrayBuffer: Uint8Array,
@@ -366,7 +369,7 @@ export function onStreamRead(
   }
 }
 
-export function setStreamTimeout(
+function setStreamTimeout(
   // deno-lint-ignore no-explicit-any
   this: any,
   msecs: number,
@@ -379,11 +382,11 @@ export function setStreamTimeout(
   this.timeout = msecs;
 
   // Type checking identical to timers.enroll()
-  msecs = getTimerDuration(msecs, "msecs");
+  msecs = lazyInternalTimers().getTimerDuration(msecs, "msecs");
 
   // Attempt to clear an existing timer in both cases -
   //  even if it will be rescheduled we don't want to leak an existing timer.
-  clearTimeout(this[kTimeout]);
+  lazyTimers().clearTimeout(this[lazyInternalTimers().kTimeout]);
 
   if (msecs === 0) {
     if (callback !== undefined) {
@@ -391,7 +394,7 @@ export function setStreamTimeout(
       this.removeListener("timeout", callback);
     }
   } else {
-    this[kTimeout] = setUnrefTimeout(
+    this[lazyInternalTimers().kTimeout] = lazyInternalTimers().setUnrefTimeout(
       FunctionPrototypeBind(this._onTimeout, this),
       msecs,
     );
@@ -408,3 +411,20 @@ export function setStreamTimeout(
 
   return this;
 }
+
+return {
+  kMaybeDestroy,
+  kUpdateTimer,
+  kAfterAsyncWrite,
+  kBoundSession,
+  kHandle,
+  kSession,
+  kBuffer,
+  kBufferGen,
+  kBufferCb,
+  writevGeneric,
+  writeGeneric,
+  onStreamRead,
+  setStreamTimeout,
+};
+})();

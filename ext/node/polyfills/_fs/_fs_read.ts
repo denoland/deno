@@ -29,8 +29,7 @@ const {
   customPromisifyArgs,
   kEmptyObject,
 } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import * as process from "node:process";
-import type { ReadAsyncOptions, ReadSyncOptions } from "node:fs";
+const lazyProcess = core.createLazyLoader("node:process");
 
 const { ObjectDefineProperty } = primordials;
 
@@ -125,7 +124,7 @@ export function read(
   (length as number) |= 0;
 
   if (length === 0) {
-    return process.nextTick(function tick() {
+    return lazyProcess().default.nextTick(function tick() {
       callback!(null, 0, buffer);
     });
   }

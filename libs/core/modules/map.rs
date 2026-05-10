@@ -250,6 +250,10 @@ pub(crate) struct ModuleMap {
   /// A counter used to delay our dynamic import deadlock detection by one spin
   /// of the event loop.
   pub(crate) dyn_module_evaluate_idle_counter: Cell<u32>,
+
+  /// Tracks module IDs currently being evaluated via `op_import_sync` to
+  /// detect require() cycles that V8's module status alone cannot catch.
+  pub(crate) import_sync_eval_stack: RefCell<Vec<ModuleId>>,
 }
 
 impl ModuleMap {
@@ -329,6 +333,7 @@ impl ModuleMap {
       code_cache_ready_futs: Default::default(),
       module_waker: Default::default(),
       data: Default::default(),
+      import_sync_eval_stack: Default::default(),
     }
   }
 
@@ -1555,6 +1560,8 @@ impl ModuleMap {
     };
     self.evaluating_top_level.set(false);
 
+    let is_graph_async = module.is_graph_async();
+
     self.pending_mod_evaluation.set(true);
 
     // Update status after evaluating.
@@ -1679,7 +1686,16 @@ impl ModuleMap {
       // Under Explicit microtask policy, guard this checkpoint so that
       // nextTick callbacks can run before promise microtasks queued during
       // module evaluation (e.g., Promise.resolve().then(...)).
-      if !JsRealm::state_from_scope(tc_scope).has_tick_scheduled() {
+      //
+      // However, for async module graphs (with TLA), this checkpoint is
+      // critical for draining TLA resume microtasks that V8 enqueued
+      // during module.evaluate(). If skipped, the evaluation promise may
+      // never resolve because V8's internal async module evaluation state
+      // machine relies on these microtasks being processed. The nextTick
+      // ordering concern does not apply to V8-internal TLA resolution.
+      if is_graph_async
+        || !JsRealm::state_from_scope(tc_scope).has_tick_scheduled()
+      {
         tc_scope.perform_microtask_checkpoint();
       }
     }

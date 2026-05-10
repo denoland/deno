@@ -13,8 +13,12 @@
 
 import { core, internals } from "ext:core/mod.js";
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
-import { init as initPrimary } from "ext:deno_node/internal/cluster/primary.ts";
-import { init as initChild } from "ext:deno_node/internal/cluster/child.ts";
+const { init: initPrimary } = core.loadExtScript(
+  "ext:deno_node/internal/cluster/primary.ts",
+);
+const { init: initChild } = core.loadExtScript(
+  "ext:deno_node/internal/cluster/child.ts",
+);
 
 const cluster: any = new EventEmitter();
 initPrimary(cluster);

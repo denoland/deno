@@ -2271,6 +2271,14 @@ class ERR_TLS_RENEGOTIATION_DISABLED extends NodeError {
     );
   }
 }
+class ERR_TLS_ALPN_CALLBACK_INVALID_RESULT extends NodeError {
+  constructor() {
+    super(
+      "ERR_TLS_ALPN_CALLBACK_INVALID_RESULT",
+      `ALPN callback returned a value not present in the client's ALPN protocols`,
+    );
+  }
+}
 class ERR_TLS_REQUIRED_SERVER_NAME extends NodeError {
   constructor() {
     super(
@@ -3383,6 +3391,7 @@ return {
   ERR_TLS_HANDSHAKE_TIMEOUT,
   ERR_TLS_INVALID_CONTEXT,
   ERR_TLS_INVALID_PROTOCOL_VERSION,
+  ERR_TLS_ALPN_CALLBACK_INVALID_RESULT,
   ERR_TLS_INVALID_STATE,
   ERR_TLS_PROTOCOL_VERSION_CONFLICT,
   ERR_TLS_RENEGOTIATION_DISABLED,

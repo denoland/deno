@@ -47,7 +47,6 @@ const {
   AsyncWrap,
   providerType,
 } = core.loadExtScript("ext:deno_node/internal_binding/async_wrap.ts");
-import { GetAddrInfoReqWrap } from "ext:deno_node/internal_binding/cares_wrap.ts";
 const { HandleWrap } = core.loadExtScript(
   "ext:deno_node/internal_binding/handle_wrap.ts",
 );
@@ -57,7 +56,7 @@ const { ownerSymbol } = core.loadExtScript(
 const { codeMap, errorMap } = core.loadExtScript(
   "ext:deno_node/internal_binding/uv.ts",
 );
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
 const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
 const { isLinux, isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
@@ -150,7 +149,8 @@ export class UDP extends HandleWrap {
       address: string,
       family: number,
     ) => void,
-  ) => GetAddrInfoReqWrap | Record<string, never>;
+    // deno-lint-ignore no-explicit-any
+  ) => any;
 
   constructor() {
     super(providerType.UDPWRAP);

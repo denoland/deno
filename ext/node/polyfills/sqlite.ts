@@ -1,18 +1,17 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-import {
-  DatabaseSync as DatabaseSyncOp,
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const {
+  DatabaseSync: DatabaseSyncOp,
   op_node_database_backup,
   Session,
   StatementSync,
-} from "ext:core/ops";
-import type { Buffer } from "node:buffer";
+} = core.ops;
 const { isUint8Array } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
 const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
-import type { URL } from "node:url";
 
 const {
   FunctionPrototypeCall,
@@ -44,16 +43,16 @@ const LIMIT_NAMES = [
   "likePatternLength",
   "variableNumber",
   "triggerDepth",
-] as const;
+];
 
 const LIMIT_NAMES_SET = new SafeSet(LIMIT_NAMES);
 
 const nativeLimitsGetter = ObjectGetOwnPropertyDescriptor(
   DatabaseSyncOp.prototype,
   "limits",
-)!.get;
+).get;
 
-function createLimitsProxy(nativeLimits: object): object {
+function createLimitsProxy(nativeLimits) {
   return new Proxy(nativeLimits, {
     get(target, prop, _receiver) {
       if (typeof prop !== "string" || !LIMIT_NAMES_SET.has(prop)) {
@@ -92,7 +91,7 @@ function createLimitsProxy(nativeLimits: object): object {
 }
 
 class ConstructCallRequiredError extends TypeError {
-  code: string;
+  code;
   constructor() {
     super("Cannot call constructor without `new`");
     this.code = "ERR_CONSTRUCT_CALL_REQUIRED";
@@ -100,34 +99,33 @@ class ConstructCallRequiredError extends TypeError {
 }
 
 class InvalidArgTypeError extends TypeError {
-  code: string;
-  constructor(message: string) {
+  code;
+  constructor(message) {
     super(message);
     this.code = "ERR_INVALID_ARG_TYPE";
   }
 }
 
 class InvalidURLSchemeError extends TypeError {
-  code: string;
+  code;
   constructor() {
     super("The URL must be of scheme file:");
     this.code = "ERR_INVALID_URL_SCHEME";
   }
 }
 
-const parsePath = (path: unknown): string => {
-  let parsedPath: string | undefined;
+const parsePath = (path) => {
+  let parsedPath;
   if (typeof path === "string") {
     parsedPath = path;
   } else if (isUint8Array(path)) {
     const decoder = new TextDecoder("utf8");
     parsedPath = decoder.decode(path);
-    // @ts-expect-error safe to check even though `path` is unknown
   } else if (ObjectPrototypeIsPrototypeOf(URLPrototype, path)) {
-    if ((path as URL).protocol !== "file:") {
+    if (path.protocol !== "file:") {
       throw new InvalidURLSchemeError();
     }
-    parsedPath = (path as URL).href;
+    parsedPath = path.href;
   }
 
   if (
@@ -145,9 +143,9 @@ const parsePath = (path: unknown): string => {
 // Using ES5 class allows custom error to be thrown
 // when called without `new`.
 function DatabaseSync(
-  path: string | URL | Buffer,
-  options?: unknown,
-): DatabaseSyncOp {
+  path,
+  options,
+) {
   if (new.target === undefined) {
     throw new ConstructCallRequiredError();
   }
@@ -160,72 +158,12 @@ function DatabaseSync(
 ObjectSetPrototypeOf(DatabaseSync.prototype, DatabaseSyncOp.prototype);
 ObjectSetPrototypeOf(DatabaseSync, DatabaseSyncOp);
 
-interface BackupOptions {
-  /**
-   * Name of the source database. This can be `'main'` (the default primary database) or any other
-   * database that have been added with [`ATTACH DATABASE`](https://www.sqlite.org/lang_attach.html)
-   * @default 'main'
-   */
-  source?: string | undefined;
-  /**
-   * Name of the target database. This can be `'main'` (the default primary database) or any other
-   * database that have been added with [`ATTACH DATABASE`](https://www.sqlite.org/lang_attach.html)
-   * @default 'main'
-   */
-  target?: string | undefined;
-  /**
-   * Number of pages to be transmitted in each batch of the backup.
-   * @default 100
-   */
-  rate?: number | undefined;
-  /**
-   * Callback function that will be called with the number of pages copied and the total number of
-   * pages.
-   */
-  progress?: ((progressInfo: BackupProgressInfo) => void) | undefined;
-}
-
-interface BackupProgressInfo {
-  totalPages: number;
-  remainingPages: number;
-}
-
-/**
- * This method makes a database backup. This method abstracts the
- * [`sqlite3_backup_init()`](https://www.sqlite.org/c3ref/backup_finish.html#sqlite3backupinit),
- * [`sqlite3_backup_step()`](https://www.sqlite.org/c3ref/backup_finish.html#sqlite3backupstep)
- * and [`sqlite3_backup_finish()`](https://www.sqlite.org/c3ref/backup_finish.html#sqlite3backupfinish) functions.
- *
- * The backed-up database can be used normally during the backup process. Mutations coming from the same connection - same
- * `DatabaseSync` - object will be reflected in the backup right away. However, mutations from other connections will cause
- * the backup process to restart.
- *
- * ```js
- * import { backup, DatabaseSync } from 'node:sqlite';
- *
- * const sourceDb = new DatabaseSync('source.db');
- * const totalPagesTransferred = await backup(sourceDb, 'backup.db', {
- *   rate: 1, // Copy one page at a time.
- *   progress: ({ totalPages, remainingPages }) => {
- *     console.log('Backup in progress', { totalPages, remainingPages });
- *   },
- * });
- *
- * console.log('Backup completed', totalPagesTransferred);
- * ```
- * @param sourceDb The database to backup. The source database must be open.
- * @param path The path where the backup will be created. If the file already exists,
- * the contents will be overwritten.
- * @param options Optional configuration for the backup. The
- * following properties are supported:
- * @returns A promise that resolves when the backup is completed and rejects if an error occurs.
- */
 // deno-lint-ignore require-await
 async function backup(
-  sourceDb: DatabaseSync,
-  path: string | Buffer | URL,
-  options?: BackupOptions,
-): Promise<number> {
+  sourceDb,
+  path,
+  options,
+) {
   if (!ObjectPrototypeIsPrototypeOf(DatabaseSync.prototype, sourceDb)) {
     throw new InvalidArgTypeError(
       'The "sourceDb" argument must be an object.',
@@ -247,7 +185,7 @@ ObjectDefineProperty(backup, "length", {
   writable: false,
 });
 
-export const constants = {
+const constants = {
   SQLITE_CHANGESET_OMIT: 0,
   SQLITE_CHANGESET_REPLACE: 1,
   SQLITE_CHANGESET_ABORT: 2,
@@ -298,7 +236,7 @@ export const constants = {
 };
 
 const sqliteTypeSymbol = SymbolFor("sqlite-type");
-const limitsCache = new SafeWeakMap<object, object>();
+const limitsCache = new SafeWeakMap();
 
 ObjectDefineProperties(DatabaseSync.prototype, {
   [sqliteTypeSymbol]: {
@@ -352,11 +290,10 @@ ObjectDefineProperties(Session.prototype, {
   },
 });
 
-export { backup, DatabaseSync, StatementSync };
-
-export default {
+return {
   backup,
   constants,
   DatabaseSync,
   StatementSync,
 };
+})();

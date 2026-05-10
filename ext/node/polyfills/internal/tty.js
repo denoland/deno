@@ -34,14 +34,14 @@ const { validateInteger } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
 import { op_tty_check_fd_permission, TTY } from "ext:core/ops";
-import { Socket } from "node:net";
+const lazyNet = core.createLazyLoader("node:net");
 const {
   clearLine,
   clearScreenDown,
   cursorTo,
   moveCursor,
 } = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
-import { release } from "node:os";
+const { release } = core.loadExtScript("ext:deno_node/os.ts");
 
 // Color depth constants
 const COLORS_2 = 1;
@@ -310,7 +310,7 @@ function WriteStream(fd) {
     throw new ERR_TTY_INIT_FAILED(ctx);
   }
 
-  FunctionPrototypeCall(Socket, this, {
+  FunctionPrototypeCall(lazyNet().Socket, this, {
     readableHighWaterMark: 0,
     handle: tty,
     manualStart: true,
@@ -331,13 +331,13 @@ function WriteStream(fd) {
   }
 }
 
-ObjectSetPrototypeOf(WriteStream.prototype, Socket.prototype);
-ObjectSetPrototypeOf(WriteStream, Socket);
+ObjectSetPrototypeOf(WriteStream.prototype, lazyNet().Socket.prototype);
+ObjectSetPrototypeOf(WriteStream, lazyNet().Socket);
 
 WriteStream.prototype.isTTY = true;
 
 WriteStream.prototype.on = function on(event, listener) {
-  FunctionPrototypeCall(Socket.prototype.on, this, event, listener);
+  FunctionPrototypeCall(lazyNet().Socket.prototype.on, this, event, listener);
   if (event === "resize" && this.listenerCount("resize") === 1) {
     addSigwinchListener(this);
   }
@@ -352,7 +352,12 @@ WriteStream.prototype.removeListener = function removeListener(
   event,
   listener,
 ) {
-  FunctionPrototypeCall(Socket.prototype.removeListener, this, event, listener);
+  FunctionPrototypeCall(
+    lazyNet().Socket.prototype.removeListener,
+    this,
+    event,
+    listener,
+  );
   if (event === "resize" && this.listenerCount("resize") === 0) {
     removeSigwinchListener(this);
   }
@@ -364,7 +369,11 @@ WriteStream.prototype.off = function off(event, listener) {
 };
 
 WriteStream.prototype.removeAllListeners = function removeAllListeners(event) {
-  FunctionPrototypeCall(Socket.prototype.removeAllListeners, this, event);
+  FunctionPrototypeCall(
+    lazyNet().Socket.prototype.removeAllListeners,
+    this,
+    event,
+  );
   if (!event || event === "resize") {
     removeSigwinchListener(this);
   }

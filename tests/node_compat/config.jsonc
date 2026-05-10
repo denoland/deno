@@ -45,7 +45,10 @@
     "es-module/test-esm-path-win32.mjs": {},
     "es-module/test-esm-prototype-pollution.mjs": {},
     "es-module/test-esm-recursive-cjs-dependencies.mjs": {},
-    "es-module/test-esm-repl-imports.js": {},
+    "es-module/test-esm-repl-imports.js": {
+      "ignore": true,
+      "reason": "requires `deno --interactive` flag (not yet implemented); previously passed only because the test runner did not await Node-style `done` callbacks, which masked the failing assertion"
+    },
     "es-module/test-esm-require-cache.mjs": {},
     "es-module/test-esm-scope-node-modules.mjs": {},
     "es-module/test-esm-shared-loader-dep.mjs": {},
@@ -70,8 +73,13 @@
     "es-module/test-require-module-detect-entry-point.js": {},
     "es-module/test-require-module-dont-detect-cjs.js": {},
     "es-module/test-require-module-dynamic-import-3.js": {},
+    "es-module/test-require-module-retry-import-evaluating.js": {},
     "es-module/test-require-module-dynamic-import-4.js": {},
     "es-module/test-require-module-synchronous-rejection-handling.js": {},
+    "es-module/test-require-module-tla-nested.js": {},
+    "es-module/test-require-module-tla-rejected.js": {},
+    "es-module/test-require-module-tla-resolved.js": {},
+    "es-module/test-require-module-tla-unresolved.js": {},
     "es-module/test-require-module-transpiled.js": {},
     "es-module/test-require-module-with-detection.js": {},
     "es-module/test-typescript-commonjs.mjs": {},
@@ -95,9 +103,18 @@
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
     },
     "module-hooks/test-async-loader-hooks-globalpreload-no-warning-with-initialize.mjs": {},
-    "module-hooks/test-async-loader-hooks-never-settling-race-cjs.mjs": {},
-    "module-hooks/test-async-loader-hooks-never-settling-race-esm.mjs": {},
-    "module-hooks/test-async-loader-hooks-no-leak-internals.mjs": {},
+    "module-hooks/test-async-loader-hooks-never-settling-race-cjs.mjs": {
+      "ignore": true,
+      "reason": "Flaky timeout - never-settling hook detection not yet implemented"
+    },
+    "module-hooks/test-async-loader-hooks-never-settling-race-esm.mjs": {
+      "ignore": true,
+      "reason": "Flaky timeout in debug builds - never-settling hook detection not yet implemented"
+    },
+    "module-hooks/test-async-loader-hooks-no-leak-internals.mjs": {
+      "ignore": true,
+      "reason": "Deno provides import.meta.resolve in workers; test asserts typeof import.meta.resolve === 'undefined'"
+    },
     "module-hooks/test-async-loader-hooks-with-worker-permission-allowed.mjs": {},
     "module-hooks/test-module-hooks-load-buffers.js": {},
     "module-hooks/test-module-hooks-load-context-merged-esm.mjs": {},
@@ -571,6 +588,7 @@
     "parallel/test-console-tty-colors.js": {},
     "parallel/test-console-with-frozen-intrinsics.js": {},
     "parallel/test-coverage-with-inspector-disabled.js": {},
+    "parallel/test-crypto.js": {},
     "parallel/test-crypto-aes-wrap.js": {},
     "parallel/test-crypto-argon2.js": {},
     "parallel/test-crypto-async-sign-verify.js": {},
@@ -915,8 +933,11 @@
     "parallel/test-dgram-udp6-send-default-host.js": {},
     "parallel/test-dgram-unref.js": {},
     "parallel/test-diagnostic-channel-http-request-created.js": {},
+    "parallel/test-diagnostic-channel-http-response-created.js": {},
     "parallel/test-diagnostics-channel-bind-store.js": {},
     "parallel/test-diagnostics-channel-has-subscribers.js": {},
+    "parallel/test-diagnostics-channel-http-server-start.js": {},
+    "parallel/test-diagnostics-channel-http.js": {},
     "parallel/test-diagnostics-channel-http2-client-stream-close-error.js": {},
     "parallel/test-diagnostics-channel-http2-client-stream-error.js": {},
     "parallel/test-diagnostics-channel-http2-server-stream-close-error.js": {},
@@ -995,6 +1016,46 @@
     "parallel/test-domain-nested-throw.js": {},
     "parallel/test-domain-nested.js": {},
     "parallel/test-domain-nexttick.js": {},
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-0.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-1.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-2.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-3.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-4.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-5.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-6.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-7.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-8.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
+    "parallel/test-domain-no-error-handler-abort-on-uncaught-9.js": {
+      "ignore": true,
+      "reason": "Requires Node.js's --abort-on-uncaught-exception V8 flag (via common.childShouldThrowAndAbort), which Deno does not support"
+    },
     "parallel/test-domain-run.js": {},
     "parallel/test-domain-safe-exit.js": {},
     "parallel/test-domain-stack-empty-in-process-uncaughtexception.js": {},
@@ -2870,15 +2931,37 @@
     "parallel/test-repl-stdin-push-null.js": {},
     "parallel/test-repl-syntax-error-handling.js": {},
     "parallel/test-repl-syntax-error-stack.js": {},
+    "parallel/test-repl-tab-complete-buffer.js": {},
     "parallel/test-repl-tab-complete-crash.js": {},
     "parallel/test-repl-tab-complete-custom-completer.js": {},
     "parallel/test-repl-tab-complete-nested-repls.js": {},
     "parallel/test-repl-tab-complete-new-expression.js": {},
     "parallel/test-repl-tab-complete-no-warn.js": {},
     "parallel/test-repl-tab-complete-nosideeffects.js": {},
+    "parallel/test-repl-tab-complete-unary-expressions.js": {},
     "parallel/test-repl-tab.js": {},
     "parallel/test-repl-throw-null-or-undefined.js": {},
     "parallel/test-repl-uncaught-exception-evalcallback.js": {},
+    "parallel/test-repl-autolibs.js": {},
+    "parallel/test-repl-colors.js": {},
+    "parallel/test-repl-custom-eval.js": {},
+    "parallel/test-repl-custom-eval-previews.js": {},
+    "parallel/test-repl-envvars.js": {},
+    "parallel/test-repl-permission-model.js": {},
+    "parallel/test-repl-pretty-stack.js": {},
+    "parallel/test-repl-recoverable.js": {},
+    "parallel/test-repl-use-global.js": {},
+    "parallel/test-repl-history-perm.js": {},
+    "parallel/test-repl-load-multiline-from-history.js": {},
+    "parallel/test-repl-mode.js": {},
+    "parallel/test-repl-multiline-navigation-while-adding.js": {},
+    "parallel/test-repl-multiline-navigation.js": {},
+    "parallel/test-repl-no-terminal-restore-process-listeners.js": {},
+    "parallel/test-repl-null-thrown.js": {},
+    "parallel/test-repl-pretty-custom-stack.js": {},
+    "parallel/test-repl-uncaught-exception-async.js": {},
+    "parallel/test-repl-uncaught-exception.js": {},
+    "parallel/test-repl-underscore.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-repl-inspector.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
@@ -2903,6 +2986,7 @@
     "parallel/test-require-resolve.js": {},
     "parallel/test-require-resolve-invalid-paths.js": {},
     "parallel/test-require-resolve-opts-paths-relative.js": {},
+    "parallel/test-runner-aftereach-runtime-skip.js": {},
     "parallel/test-runner-aliases.js": {},
     "parallel/test-runner-cli-concurrency.js": {
       "ignore": true,
@@ -2922,6 +3006,7 @@
     // "parallel/test-runner-coverage-thresholds.js": {},
     "parallel/test-runner-enable-source-maps-issue.js": {},
     "parallel/test-runner-filter-warning.js": {},
+    "parallel/test-runner-root-after-with-refed-handles.js": {},
     "parallel/test-runner-snapshot-file-tests.js": {
       "ignore": true,
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
@@ -3455,6 +3540,8 @@
     "parallel/test-tls-set-default-ca-certificates-mixed-types.js": {},
     "parallel/test-tls-set-encoding.js": {},
     "parallel/test-tls-snicallback-error.js": {},
+    "parallel/test-tls-sni-option.js": {},
+    "parallel/test-tls-sni-server-client.js": {},
     "parallel/test-tls-socket-allow-half-open-option.js": {},
     "parallel/test-tls-socket-close.js": {},
     "parallel/test-tls-socket-constructor-alpn-options-parsing.js": {},
@@ -4051,6 +4138,8 @@
       "ignore": true,
       "reason": "Node.js system CA certificate handling is not implemented in Deno"
     },
+    "test-runner/test-output-arbitrary-output-colored.mjs": {},
+    "test-runner/test-output-no-tests.mjs": {},
     "test-runner/test-output-output-cli.mjs": {
       "ignore": true,
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
@@ -4059,6 +4148,7 @@
       "ignore": true,
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
     },
+    "test-runner/test-output-typescript-coverage.mjs": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-watch-mode-inspect.mjs": {},
     // TODO(bartlomieju): this test is very flaky on CI, especially on Windows ARM

@@ -3516,6 +3516,18 @@ fn add_common_flags(
 
   // Add inspector flags
   add_inspector_flags(deno_args, env_opts);
+
+  // Pass --experimental-loader through as a native Deno flag
+  add_loader_hooks(deno_args, env_opts);
+}
+
+fn add_loader_hooks(
+  deno_args: &mut Vec<String>,
+  env_opts: &EnvironmentOptions,
+) {
+  for loader_url in &env_opts.userland_loaders {
+    deno_args.push(format!("--experimental-loader={}", loader_url));
+  }
 }
 
 fn add_conditions(deno_args: &mut Vec<String>, env_opts: &EnvironmentOptions) {

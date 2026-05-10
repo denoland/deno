@@ -3,4 +3,6 @@
 // Stub for node:test/reporters.
 // Currently not supported in Deno.
 
-export default {};
+(function () {
+return {};
+})();

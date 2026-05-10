@@ -6,13 +6,16 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-import { Socket } from "node:net";
+(function () {
+const { core } = globalThis.__bootstrap;
+
+const lazyNet = core.createLazyLoader("node:net");
+const lazyTimers = core.createLazyLoader("node:timers");
+
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { codeMap, UV_ECANCELED } = core.loadExtScript(
   "ext:deno_node/internal_binding/uv.ts",
 );
-import { setImmediate } from "node:timers";
 const {
   kBytesWritten,
   kLastWriteWasAsync,
@@ -54,7 +57,7 @@ const kOwner = Symbol.for("kJSStreamOwner");
  * composability, we need a way to create "fake" net.Socket instances that
  * call back into a "real" JavaScript stream. JSStreamSocket is exactly this.
  */
-class JSStreamSocket extends Socket {
+class JSStreamSocket extends lazyNet().Socket {
   constructor(stream) {
     // Create a lightweight handle object that mimics what Node's
     // JSStream C++ binding provides. TLSWrap detects kJSStreamHandle
@@ -248,7 +251,7 @@ class JSStreamSocket extends Socket {
         errCode = codeMap.get(err.code) || codeMap.get("EPIPE");
       }
 
-      setImmediate(() => {
+      lazyTimers().setImmediate(() => {
         self.finishWrite(handle, errCode);
       });
     }
@@ -277,7 +280,7 @@ class JSStreamSocket extends Socket {
 
     this.stream.destroy();
 
-    setImmediate(() => {
+    lazyTimers().setImmediate(() => {
       this.finishWrite(handle, UV_ECANCELED);
       this.finishShutdown(handle, UV_ECANCELED);
       this[kPendingClose] = false;
@@ -286,5 +289,5 @@ class JSStreamSocket extends Socket {
   }
 }
 
-export { JSStreamSocket, kJSStreamHandle, kOwner };
-export default JSStreamSocket;
+return { JSStreamSocket, kJSStreamHandle, kOwner, default: JSStreamSocket };
+})();

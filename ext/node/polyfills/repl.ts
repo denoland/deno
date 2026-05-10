@@ -16,6 +16,7 @@ const { inspect } = core.loadExtScript(
 );
 const {
   ERR_INVALID_REPL_EVAL_CONFIG,
+  ERR_INVALID_REPL_INPUT,
   ERR_MISSING_ARGS,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { validateFunction } = core.loadExtScript(
@@ -37,8 +38,176 @@ const kLoadingSymbol = Symbol("loading");
 const kContextId = Symbol("contextId");
 const kStandaloneREPL = Symbol("standaloneREPL");
 
-// Multiline prompt indicator
-const kMultilinePrompt = "... ";
+// Multiline prompt indicator (matches Node's `| `).
+const kMultilinePrompt = "| ";
+
+// Per-instance unique resource name, matching Node's `REPL{n}` scheme so that
+// stack traces reproduce the resource ID expected by node_compat tests.
+let nextREPLResourceNumber = 1;
+function getREPLResourceName(): string {
+  return `REPL${nextREPLResourceNumber++}`;
+}
+
+// REPLs that are "active" route async (uncaught) errors through their
+// `_handleError`. We use `process.setUncaughtExceptionCaptureCallback` so
+// user code inspecting `process.listenerCount('uncaughtException')` sees 0
+// (matching Node, which uses `domain` and never installs a process
+// listener). The capture callback is a single slot - we save the previous
+// value when adding the first REPL hook and restore it when the last
+// REPL exits.
+const _activeREPLs: REPLServer[] = [];
+let _captureHookInstalled = false;
+let _prevCaptureCallback: any = null;
+function _replCaptureCallback(err: any) {
+  const repl = _activeREPLs[_activeREPLs.length - 1];
+  if (repl) {
+    // Always print the error via the REPL output. Node's REPL installs a
+    // default `_domain.on('error', e => repl._handleError(e))` listener so
+    // that domain-routed errors still surface in the REPL.
+    try {
+      repl._handleError(err);
+    } catch {
+      // ignore inspect failures
+    }
+    // Mirror Node's domain integration: also emit on `_domain` so user
+    // listeners (e.g. test-repl-tab-complete-nested-repls's
+    // `_domain.on('error', err => { throw err; })`) run. If a listener
+    // re-throws, the throw escapes from emit so callers like
+    // `child_process.spawn` see a non-zero exit code.
+    const dom = (repl as any)._domain;
+    if (
+      dom && typeof dom.listenerCount === "function" &&
+      dom.listenerCount("error") > 0
+    ) {
+      dom.emit("error", err);
+    }
+    return;
+  }
+  if (typeof _prevCaptureCallback === "function") {
+    _prevCaptureCallback(err);
+  } else {
+    // Re-throw so deno_core's default uncaught handler runs.
+    throw err;
+  }
+}
+function _installCaptureHook() {
+  if (_captureHookInstalled) return;
+  _captureHookInstalled = true;
+  const p = process as any;
+  if (
+    typeof p.hasUncaughtExceptionCaptureCallback === "function" &&
+    p.hasUncaughtExceptionCaptureCallback()
+  ) {
+    _prevCaptureCallback = (p as any)._uncaughtExceptionCaptureFn ?? null;
+    // Clear before re-setting (the API throws if already set).
+    p.setUncaughtExceptionCaptureCallback(null);
+  }
+  p.setUncaughtExceptionCaptureCallback(_replCaptureCallback);
+}
+function _uninstallCaptureHookIfIdle() {
+  if (_activeREPLs.length !== 0 || !_captureHookInstalled) return;
+  _captureHookInstalled = false;
+  const p = process as any;
+  p.setUncaughtExceptionCaptureCallback(null);
+  if (typeof _prevCaptureCallback === "function") {
+    p.setUncaughtExceptionCaptureCallback(_prevCaptureCallback);
+  }
+  _prevCaptureCallback = null;
+}
+
+// Node's REPL refuses user-installed `uncaughtException` listeners so the
+// REPL's own handler isn't shadowed. Mirror that with a counted
+// `newListener` guard installed once and removed when the last non-
+// standalone REPL exits. The REPL's own handler is named
+// `_replUncaughtHandler`, matching the only allowed function name.
+let _newListenerGuardCount = 0;
+function _newListenerGuard(event: string, listener: any) {
+  if (
+    event === "uncaughtException" &&
+    listener && listener.name !== "_replUncaughtHandler"
+  ) {
+    throw new ERR_INVALID_REPL_INPUT(
+      "Listeners for `uncaughtException` cannot be used in the REPL",
+    );
+  }
+}
+function _addNewListenerGuard() {
+  if (_newListenerGuardCount++ === 0) {
+    process.prependListener("newListener", _newListenerGuard);
+  }
+}
+function _removeNewListenerGuard() {
+  if (--_newListenerGuardCount === 0) {
+    process.removeListener("newListener", _newListenerGuard);
+  }
+}
+
+// Mirrors Node's internal/util/colors.shouldColorize so node_compat tests
+// that flip FORCE_COLOR / NODE_DISABLE_COLORS / NO_COLOR / TERM=dumb behave
+// like Node. NO_COLOR / NODE_DISABLE_COLORS / TERM=dumb only apply via
+// `stream.getColorDepth()` (matching Node's tty.WriteStream.getColorDepth)
+// or under FORCE_COLOR; a non-TTY plain stream stays at `false`, while a
+// fake stream with `isTTY=true` and no `getColorDepth` returns `true`.
+function _shouldColorize(stream: any): boolean {
+  const env = (process as any).env || {};
+  if (env.FORCE_COLOR !== undefined) {
+    const v = String(env.FORCE_COLOR);
+    if (v === "0" || v === "false") return false;
+    if (
+      (env.NODE_DISABLE_COLORS !== undefined &&
+        env.NODE_DISABLE_COLORS !== "") ||
+      (env.NO_COLOR !== undefined && env.NO_COLOR !== "") ||
+      env.TERM === "dumb"
+    ) {
+      // FORCE_COLOR with any non-default value still wins in Node 20+.
+      return v !== "" && v !== "0";
+    }
+    return true;
+  }
+  if (!stream?.isTTY) return false;
+  if (typeof stream.getColorDepth === "function") {
+    return stream.getColorDepth() > 2;
+  }
+  // Match Node: TTY-flagged stream with no getColorDepth defaults to colorful.
+  return true;
+}
+
+// Drop frames that originate from the REPL polyfill / deno_core internals,
+// plus the trailing top-level eval frame, so the stack matches Node's
+// `overrideStackTrace`-filtered output.
+function filterReplStack(stack: string): string {
+  const rawLines = stack.split("\n");
+  const filtered: string[] = [];
+  for (const line of rawLines) {
+    if (!/^\s+at\s/.test(line)) {
+      filtered.push(line);
+      continue;
+    }
+    if (/\bext:[a-z_]+\//.test(line)) continue;
+    if (/\(node:[a-z_]+:/.test(line)) continue;
+    if (/\bnode:[a-z_]+:\d+:\d+\)?$/.test(line)) continue;
+    filtered.push(line);
+  }
+  // Mirror Node: from the bottom up, drop the last "anonymous" frame
+  // (one without a function name, e.g. "    at FILE:line:col") and
+  // everything below it. That removes the synthetic top-level eval frame
+  // (Node uses overrideStackTrace + ArrayPrototypeFindLastIndex). The
+  // calling code is responsible for dealing with the bracketed inspect
+  // form when this leaves zero frames.
+  let lastAnon = -1;
+  for (let i = filtered.length - 1; i >= 0; i--) {
+    const ln = filtered[i];
+    if (!/^\s+at\s/.test(ln)) continue;
+    if (!/\(/.test(ln)) {
+      lastAnon = i;
+      break;
+    }
+  }
+  if (lastAnon !== -1) {
+    filtered.length = lastAnon;
+  }
+  return filtered.join("\n");
+}
 
 // This is the default "writer" value
 const writer = (obj: unknown) => inspect(obj, writer.options);
@@ -64,10 +233,36 @@ function _clearLine(stream: any, dir?: number) {
   else stream.write("\x1b[2K");
 }
 
+// Match Node's REPL: hide the legacy `__define*Getter|Setter__` and
+// `__lookup*Getter|Setter__` prototype helpers from completion. `__proto__`
+// is intentionally kept since it is widely used.
+const _replHiddenProtoNames = new Set([
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+]);
+
 function _getPropertyNames(obj: any): string[] {
   if (!obj) return [];
   try {
+    // Skip getOwnPropertyNames for huge indexed collections; arrays and
+    // typed arrays with millions of elements would otherwise allocate
+    // millions of name strings and trip a v8 internal assertion.
+    const len = (obj as any)?.length;
+    const tooBigIndexed = typeof len === "number" && len > 100_000 &&
+      (Array.isArray(obj) || ArrayBuffer.isView(obj));
+    if (tooBigIndexed) {
+      const symbolKeyed = Object.keys(obj).filter((k: string) =>
+        !/^\d+$/.test(k)
+      );
+      return symbolKeyed.filter((name: string) => {
+        if (_replHiddenProtoNames.has(name)) return false;
+        return /^[a-zA-Z_$][\w$]*$/.test(name);
+      });
+    }
     return Object.getOwnPropertyNames(obj).filter((name: string) => {
+      if (_replHiddenProtoNames.has(name)) return false;
       return /^[a-zA-Z_$][\w$]*$/.test(name);
     });
   } catch {
@@ -339,11 +534,12 @@ export class REPLServer extends (Interface as any) {
       options.terminal = !!(options.output as { isTTY?: boolean })?.isTTY;
     }
     options.terminal = !!options.terminal;
-    const usePreview = !!options.terminal && options.preview !== false;
+    // Node: default preview to ON only if no custom eval was provided.
+    const usePreview = !!options.terminal &&
+      (options.preview !== undefined ? !!options.preview : !eval_);
 
     if (options.terminal && options.useColors === undefined) {
-      // Check if the output stream supports colors
-      options.useColors = !!(options.output as { isTTY?: boolean })?.isTTY;
+      options.useColors = _shouldColorize(options.output);
     }
 
     // Default prompt
@@ -397,6 +593,9 @@ export class REPLServer extends (Interface as any) {
     this.editorMode = false;
     this[kContextId] = undefined;
     this._initialPrompt = prompt as string;
+    // Stable resource name like Node's "REPL1"/"REPL2"/... - used as the
+    // filename for compiled scripts so stack traces match Node's output.
+    this._resourceName = getREPLResourceName();
 
     if (this.breakEvalOnSigint && eval_) {
       throw new ERR_INVALID_REPL_EVAL_CONFIG();
@@ -404,6 +603,27 @@ export class REPLServer extends (Interface as any) {
 
     if ((options as Record<symbol, unknown>)[kStandaloneREPL]) {
       _module.exports.repl = this;
+    } else {
+      // Non-standalone REPLs install the user-listener guard and route
+      // async errors via `process._fatalException`. The fatal-exception
+      // hook is global; the guard is refcounted so multiple concurrent
+      // REPLs co-exist and the process is left clean once the last exits.
+      // We use `_fatalException` (rather than process.on) so user code
+      // inspecting `process.listenerCount('uncaughtException')` sees 0,
+      // matching Node's domain-based REPL.
+      _installCaptureHook();
+      _addNewListenerGuard();
+      _activeREPLs.push(this);
+      this._processListenersAttached = true;
+      this.once("exit", () => {
+        const idx = _activeREPLs.indexOf(this);
+        if (idx !== -1) _activeREPLs.splice(idx, 1);
+        if (this._processListenersAttached) {
+          this._processListenersAttached = false;
+          _removeNewListenerGuard();
+        }
+        _uninstallCaptureHookIfIdle();
+      });
     }
 
     eval_ = eval_ || defaultEval;
@@ -536,6 +756,13 @@ export class REPLServer extends (Interface as any) {
       _doComplete(text, callback);
     }
 
+    // Wire the real completer into both `this.completer` (used by readline
+    // and by user code via `replServer.completer(...)`) and the local
+    // `completer` reference. `super(...)` set this to the outer stub.
+    if (!options.completer) {
+      self.completer = completer;
+    }
+
     function _doComplete(
       line: string,
       callback: (err: Error | null, result: [string[], string]) => void,
@@ -544,16 +771,67 @@ export class REPLServer extends (Interface as any) {
       let completeOn = "";
       let filter = "";
 
-      // Handle REPL commands (.break, .clear, etc.)
+      // Handle REPL commands (.break, .clear, etc.). Node returns command
+      // names without the leading dot and a completeOn matching the typed
+      // suffix (also without the dot), so e.g. completing ".b" produces
+      // [['break'], 'b'].
       const cmdMatch = /^\s*\.(\w*)$/.exec(line);
       if (cmdMatch) {
-        completionGroups.push(
-          Object.keys(self.commands).map((cmd) => `.${cmd}`),
-        );
-        completeOn = `.${cmdMatch[1]}`;
+        completionGroups.push(Object.keys(self.commands));
+        completeOn = cmdMatch[1];
         if (cmdMatch[1].length) {
-          filter = completeOn;
+          filter = cmdMatch[1];
         }
+        completionGroupsLoaded();
+        return;
+      }
+
+      // Variable declarations like `let a`, `const x`, `var foo` should
+      // not produce identifier completions for the binding name.
+      if (/^\s*(?:let|const|var)\s+[a-zA-Z_$][\w$]*$/.test(line)) {
+        callback(null, [[], line]);
+        return;
+      }
+
+      // Module-name completions for `require('...` and `import('...`.
+      // Returns the list of public builtin modules (and, for `import(...)`,
+      // their `node:` URL forms). Third-party node_modules-on-disk lookup
+      // is left to a future pass.
+      const modMatch =
+        /(?:^|[\s;({,])(require|import)\s*\(\s*(['"`])((?:(?!\2|\\).)*)$/
+          .exec(line);
+      if (modMatch) {
+        const subject = modMatch[3];
+        const fromModule: string[] =
+          Array.isArray((Module as any).builtinModules)
+            ? (Module as any).builtinModules
+            : [];
+        const fromModulePublic = fromModule.filter((m: string) =>
+          !m.startsWith("_")
+        );
+        const unprefixed = fromModulePublic.filter((m: string) =>
+          !m.startsWith("node:")
+        );
+        const alreadyPrefixed = fromModulePublic.filter((m: string) =>
+          m.startsWith("node:")
+        );
+        const knownInModule = new Set(fromModule);
+        const replExtras = (builtinModules as string[]).filter((m: string) =>
+          !knownInModule.has(m) && !m.startsWith("_")
+        );
+        // Group A: unprefixed builtins + user-pushed extras. Pushing a
+        // single new entry must produce only one extra completion (no extra
+        // group separator), so merge replExtras into this group.
+        completionGroups.push([...unprefixed, ...replExtras]);
+        // Group B: every `node:` URL form. Includes both the originally-
+        // prefixed names from `Module.builtinModules` (e.g. `node:sqlite`)
+        // and the `node:`-prefixed forms of the unprefixed builtins.
+        completionGroups.push([
+          ...unprefixed.map((m: string) => `node:${m}`),
+          ...alreadyPrefixed,
+        ]);
+        completeOn = subject;
+        filter = subject;
         completionGroupsLoaded();
         return;
       }
@@ -589,11 +867,13 @@ export class REPLServer extends (Interface as any) {
 
       if (expr) {
         // Member expression completion
-        let chaining = ".";
+        const chaining = ".";
         let evalExpr = expr;
         if (expr.endsWith("?")) {
+          // `expr` already contains the trailing `?`; strip it for eval
+          // and keep the chaining as a plain `.` so we render
+          // `console?.log` rather than `console??.log`.
           evalExpr = expr.slice(0, -1);
-          chaining = "?.";
         }
 
         const wrappedExpr = `try { ${evalExpr} } catch {}`;
@@ -653,6 +933,17 @@ export class REPLServer extends (Interface as any) {
               }
               obj = Object.getPrototypeOf(obj);
             }
+          } catch {
+            // ignore
+          }
+        }
+        // Also include the JS-level globals (Object, Array, Uint8Array,
+        // ...). When `useGlobal` is false, our `vm.createContext()` returns
+        // an object whose prototype doesn't expose the built-in
+        // constructors as own properties, so completion misses them.
+        if (!self.useGlobal) {
+          try {
+            completionGroups.push(_getPropertyNames(globalThis));
           } catch {
             // ignore
           }
@@ -1078,7 +1369,7 @@ export class REPLServer extends (Interface as any) {
 
       const evalCmd = self[kBufferedCommandSymbol] + cmd + "\n";
 
-      self.eval(evalCmd, self.context, "repl", finish);
+      self.eval(evalCmd, self.context, self._resourceName, finish);
 
       function finish(e: Error | null, ret?: any) {
         _memory.call(self, cmd);
@@ -1212,11 +1503,16 @@ export class REPLServer extends (Interface as any) {
   }
 
   setupHistory(
-    _historyFile?: string,
+    arg1?: any,
     cb?: (err: Error | null, repl: REPLServer) => void,
   ) {
-    if (typeof cb === "function") {
-      cb(null, this);
+    // Newer API: setupHistory({ filePath, size, onHistoryFileLoaded })
+    let onLoaded = cb;
+    if (typeof arg1 === "object" && arg1 !== null) {
+      onLoaded = arg1.onHistoryFileLoaded;
+    }
+    if (typeof onLoaded === "function") {
+      onLoaded(null, this);
     }
   }
 
@@ -1247,7 +1543,7 @@ export class REPLServer extends (Interface as any) {
             // Node.js uses V8's Message.GetStartColumn() which we don't have.
             let col = 0;
             const tokenMatch = e.message.match(
-              /Unexpected token '(.+?)'/,
+              /Unexpected (?:token|identifier|string|number|keyword|reserved\s+word) '(.+?)'/,
             );
             if (tokenMatch) {
               const idx = srcLine.indexOf(tokenMatch[1]);
@@ -1257,10 +1553,35 @@ export class REPLServer extends (Interface as any) {
             errStack = `${srcLine}\n${caret}\n\n${errStack}`;
           }
         } else {
-          // For non-syntax errors, strip ALL stack frames.
-          // Node uses overrideStackTrace to filter internal frames;
-          // we simply remove all "at ..." lines for REPL errors.
-          errStack = e.stack.replace(/\n\s+at\s.*/g, "");
+          // For non-syntax errors, keep user stack frames but drop frames
+          // that originate from the REPL/runtime internals, plus the trailing
+          // top-level eval frame, so the trace matches Node's output
+          // (which uses overrideStackTrace). Mutate `e.stack` so the
+          // subsequent `writer(e)` call (inspect) renders the filtered stack
+          // alongside any custom Error properties.
+          (e as any).stack = filterReplStack(e.stack);
+        }
+        if (e.name !== "SyntaxError") {
+          // Some node-style Errors (NodeTypeError etc.) install `toString`
+          // as an own property; inspect would render that as a noisy
+          // `[Function]` entry inside the `{ ... }` block AND wrap the
+          // whole error in `[ ... ]`. Temporarily hide it (and any
+          // similarly own-shadowed prototype methods) for the inspect call.
+          const hidden: { key: string; desc: PropertyDescriptor }[] = [];
+          for (const key of ["toString"]) {
+            const desc = Object.getOwnPropertyDescriptor(e, key);
+            if (desc) {
+              hidden.push({ key, desc });
+              delete (e as any)[key];
+            }
+          }
+          try {
+            errStack = this.writer(e);
+          } finally {
+            for (const { key, desc } of hidden) {
+              Object.defineProperty(e, key, desc);
+            }
+          }
         }
       }
 
@@ -1268,9 +1589,16 @@ export class REPLServer extends (Interface as any) {
         errStack = this.writer(e);
       }
 
-      // Remove one line error braces to keep the old style in place.
-      if (errStack[0] === "[" && errStack[errStack.length - 1] === "]") {
-        errStack = errStack.slice(1, -1);
+      // Remove one line error braces to keep the old style in place. inspect
+      // wraps an Error with no `at` frames in `[ErrorName: msg]`, optionally
+      // followed by ` { extra: props }` when the Error has own enumerable
+      // props. Node's REPL only strips the outer `[...]`, leaving the props
+      // section intact.
+      if (errStack[0] === "[") {
+        const m = errStack.match(/^\[(.*)\](?: (\{[\s\S]*\}))?$/);
+        if (m) {
+          errStack = m[2] ? `${m[1]} ${m[2]}` : m[1];
+        }
       }
     }
 
@@ -1316,6 +1644,16 @@ export class REPLServer extends (Interface as any) {
   close() {
     if (this.closed || this._closing) return;
     this._closing = true;
+    // Drop the `newListener` guard synchronously so user code can register
+    // its own `uncaughtException` listener on the closed REPL (matches
+    // Node, which removes the guard via 'exit'). The capture-callback
+    // hook stays installed so async errors that were already pending in
+    // the user's REPL eval still flow through `_handleError` to the REPL
+    // output stream.
+    if (this._processListenersAttached) {
+      this._processListenersAttached = false;
+      _removeNewListenerGuard();
+    }
     const self = this;
     process.nextTick(() => {
       try {
@@ -1334,13 +1672,27 @@ export class REPLServer extends (Interface as any) {
       context = globalThis;
     } else {
       context = vm.createContext();
+      // Match Node: copy non-builtin own properties from globalThis into the
+      // new context so user-defined globals are visible at REPL start.
+      const builtinNames = new Set(
+        (vm as any).runInNewContext?.(
+          "Object.getOwnPropertyNames(globalThis)",
+        ) ?? [],
+      );
+      for (const name of Object.getOwnPropertyNames(globalThis)) {
+        if (builtinNames.has(name)) continue;
+        try {
+          const desc = Object.getOwnPropertyDescriptor(globalThis, name);
+          if (desc) Object.defineProperty(context, name, desc);
+        } catch {
+          // Non-configurable / non-writable props just get skipped.
+        }
+      }
       context.global = context;
       let _console;
       try {
         _console = new Console(this.output);
       } catch {
-        // If Console constructor fails (e.g., non-standard stream),
-        // fall back to the global console.
         _console = console;
       }
       Object.defineProperty(context, "console", {
@@ -1369,6 +1721,48 @@ export class REPLServer extends (Interface as any) {
       writable: true,
       value: { exports: {} },
     });
+
+    // Mirror Node's addBuiltinLibsToObject: expose each non-underscored,
+    // non-slashed builtin module as a lazy getter on the REPL context. This
+    // is what makes `util.inspect(...)` work in the REPL without requiring
+    // an explicit `require('util')`.
+    const ctxRequire = (context as any).require;
+    if (typeof ctxRequire === "function") {
+      for (const name of builtinModules) {
+        if (
+          name[0] === "_" || name.includes("/") ||
+          Object.prototype.hasOwnProperty.call(context, name)
+        ) {
+          continue;
+        }
+        const setReal = (val: unknown) => {
+          delete (context as any)[name];
+          (context as any)[name] = val;
+        };
+        try {
+          Object.defineProperty(context, name, {
+            get: () => {
+              try {
+                const mod = ctxRequire(name);
+                Object.defineProperty(context, name, {
+                  configurable: true,
+                  writable: true,
+                  value: mod,
+                });
+                return mod;
+              } catch {
+                return undefined;
+              }
+            },
+            set: setReal,
+            configurable: true,
+            enumerable: false,
+          });
+        } catch {
+          // Property may already be non-configurable; skip silently.
+        }
+      }
+    }
 
     return context;
   }

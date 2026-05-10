@@ -5,18 +5,19 @@
 
 // deno-lint-ignore-file no-explicit-any
 
-export function init(list: any) {
+(function () {
+function init(list: any) {
   list._idleNext = list;
   list._idlePrev = list;
   return list;
 }
 
-export function peek(list: any) {
+function peek(list: any) {
   if (list._idlePrev === list) return null;
   return list._idlePrev;
 }
 
-export function remove(item: any) {
+function remove(item: any) {
   if (item._idleNext) {
     item._idleNext._idlePrev = item._idlePrev;
   }
@@ -27,7 +28,7 @@ export function remove(item: any) {
   item._idlePrev = null;
 }
 
-export function append(list: any, item: any) {
+function append(list: any, item: any) {
   if (item._idleNext || item._idlePrev) {
     remove(item);
   }
@@ -37,6 +38,9 @@ export function append(list: any, item: any) {
   list._idleNext = item;
 }
 
-export function isEmpty(list: any) {
+function isEmpty(list: any) {
   return list._idleNext === list;
 }
+
+return { init, peek, remove, append, isEmpty };
+})();

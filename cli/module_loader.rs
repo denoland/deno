@@ -999,6 +999,7 @@ fn is_already_resolved_specifier(specifier: &str) -> bool {
     || specifier.starts_with("data:")
     || specifier.starts_with("blob:")
     || specifier.starts_with("node:")
+    || specifier.starts_with("ext:")
 }
 
 #[derive(Clone)]
@@ -1019,6 +1020,23 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     if self.0.hook_registry.resolve_active.get()
       && !is_already_resolved_specifier(specifier)
     {
+      // Check if this specifier was already resolved by hooks during
+      // the load phase. This cache lookup is critical for V8's module
+      // instantiation callback (module_resolve_callback) which calls
+      // resolve synchronously -- we cannot return Async there.
+      let cache_key = format!("{specifier}\x00{referrer}");
+      if let Some(cached) = self
+        .0
+        .hook_registry
+        .resolve_cache
+        .borrow_mut()
+        .remove(&cache_key)
+      {
+        return deno_core::ModuleResolveResponse::Sync(
+          ModuleSpecifier::parse(&cached).map_err(JsErrorBox::from_err),
+        );
+      }
+
       let receiver = self
         .0
         .hook_registry
@@ -1039,6 +1057,12 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
             Ok(Some(url)) => {
               let parsed =
                 ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err)?;
+              // Cache the resolve result so instantiation can look it up
+              // synchronously later.
+              inner.hook_registry.resolve_cache.borrow_mut().insert(
+                format!("{specifier}\x00{referrer}"),
+                parsed.to_string(),
+              );
               // Track that this specifier was hook-intercepted (virtual module)
               // so prepare_load knows to skip graph building for it.
               inner
@@ -1049,8 +1073,17 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               Ok(parsed)
             }
             Ok(None) => {
-              // Fallthrough: hooks didn't intercept, use default
-              inner.inner_resolve(&specifier, &referrer, kind, false)
+              // Fallthrough: hooks didn't intercept, use default.
+              // Cache the result so instantiation doesn't go async.
+              let result =
+                inner.inner_resolve(&specifier, &referrer, kind, false);
+              if let Ok(ref resolved) = result {
+                inner.hook_registry.resolve_cache.borrow_mut().insert(
+                  format!("{specifier}\x00{referrer}"),
+                  resolved.to_string(),
+                );
+              }
+              result
             }
             Err(err) => Err(JsErrorBox::generic(err)),
           }
@@ -1134,12 +1167,19 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
             }
           };
           match hook_result {
-            Ok((Some(source), _format)) => Ok(deno_core::ModuleSource::new(
-              deno_core::ModuleType::JavaScript,
-              deno_core::ModuleSourceCode::String(source.into()),
-              &specifier,
-              None,
-            )),
+            Ok((Some(source), format)) => {
+              let module_type = match format.as_deref() {
+                Some("json") => deno_core::ModuleType::Json,
+                Some("wasm") => deno_core::ModuleType::Wasm,
+                _ => deno_core::ModuleType::JavaScript,
+              };
+              Ok(deno_core::ModuleSource::new(
+                module_type,
+                deno_core::ModuleSourceCode::String(source.into()),
+                &specifier,
+                None,
+              ))
+            }
             Ok((None, _)) => {
               // Fallthrough: hooks didn't intercept, use default
               inner

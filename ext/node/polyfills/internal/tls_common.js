@@ -6,8 +6,9 @@
 
 // deno-lint-ignore-file prefer-primordials
 
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-import { core, primordials } from "ext:core/mod.js";
 const { codes } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   isArrayBufferView,
@@ -44,7 +45,7 @@ function convertProtocols(protocols) {
   return buffer;
 }
 
-export function convertALPNProtocols(protocols, out) {
+function convertALPNProtocols(protocols, out) {
   if (ArrayIsArray(protocols)) {
     out.ALPNProtocols = convertProtocols(protocols);
   } else if (isUint8Array(protocols)) {
@@ -58,3 +59,6 @@ export function convertALPNProtocols(protocols, out) {
     );
   }
 }
+
+return { convertALPNProtocols, default: { convertALPNProtocols } };
+})();

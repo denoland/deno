@@ -61,12 +61,12 @@ const {
   ERR_MISSING_ARGS,
   handleDnsError,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import cares, {
-  type ChannelWrapQuery,
+const {
+  default: cares,
   GetAddrInfoReqWrap,
   GetNameInfoReqWrap,
   QueryReqWrap,
-} from "ext:deno_node/internal_binding/cares_wrap.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
 const { domainToASCII } = core.loadExtScript(
   "ext:deno_node/internal/idna.ts",
 );
@@ -309,7 +309,7 @@ export function lookupService(address: string, port: number) {
 
 function createResolverPromise(
   resolver: Resolver,
-  bindingName: keyof ChannelWrapQuery,
+  bindingName: string,
   hostname: string,
   ttl: boolean,
 ) {
@@ -331,7 +331,7 @@ function createResolverPromise(
   });
 }
 
-function resolver(bindingName: keyof ChannelWrapQuery) {
+function resolver(bindingName: string) {
   function query(
     this: Resolver,
     name: string,

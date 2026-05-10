@@ -27,19 +27,19 @@ import { core } from "ext:core/mod.js";
 const { getOptionValue } = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
 );
-import { emitWarning } from "node:process";
+const lazyProcess = core.createLazyLoader("node:process");
 const {
   AI_ADDRCONFIG,
   AI_ALL,
   AI_V4MAPPED,
 } = core.loadExtScript("ext:deno_node/internal_binding/ares.ts");
-import {
+const {
   ChannelWrap,
   DNS_ORDER_IPV4_FIRST,
   DNS_ORDER_IPV6_FIRST,
   DNS_ORDER_VERBATIM,
   strerror,
-} from "ext:deno_node/internal_binding/cares_wrap.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
 const {
   ERR_DNS_SET_SERVERS_FAILED,
   ERR_INVALID_ARG_VALUE,
@@ -430,7 +430,7 @@ export function emitInvalidHostnameWarning(hostname: string) {
 
   invalidHostnameWarningEmitted = true;
 
-  emitWarning(
+  lazyProcess().default.emitWarning(
     `The provided hostname "${hostname}" is not a valid ` +
       "hostname, and is supported in the dns module solely for compatibility.",
     "DeprecationWarning",
