@@ -4,7 +4,7 @@
 [![Twitter badge][]][Twitter link] [![Bluesky badge][]][Bluesky link]
 [![Discord badge][]][Discord link] [![YouTube badge][]][YouTube link]
 
-<img align="right" src="https://deno.land/logo.svg" height="150px" alt="the deno mascot dinosaur standing in the rain">
+<img align="right" src="https://deno.land/logo.svg" height="150px" alt="the deno mascot dinosaur">
 
 [Deno](https://deno.com)
 ([/ˈdiːnoʊ/](https://ipa-reader.com/?text=%CB%88di%CB%90no%CA%8A), pronounced
