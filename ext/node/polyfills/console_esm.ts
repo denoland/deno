@@ -1,9 +1,21 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { core } from "ext:core/mod.js";
-const mod = core.loadExtScript("ext:deno_node/console.ts");
 
+import { core, primordials } from "ext:core/mod.js";
+import { windowOrWorkerGlobalScope } from "ext:runtime/98_global_scope_shared.js";
+const { Console } = core.loadExtScript("ext:deno_node/console.ts");
+
+// Don't rely on global `console` because during bootstrapping, it is pointing
+// to the native `console` object provided by V8.
+const console = windowOrWorkerGlobalScope.console.value;
+
+const { ObjectAssign } = primordials;
+
+ObjectAssign(console, { Console });
+
+export default console;
+
+export { Console };
 export const {
-  Console,
   assert,
   clear,
   count,
@@ -26,7 +38,6 @@ export const {
   timeStamp,
   trace,
   warn,
-  indentLevel,
-} = mod;
-
-export default mod.default;
+} = console;
+// deno-lint-ignore no-explicit-any
+export const indentLevel = (console as any)?.indentLevel;

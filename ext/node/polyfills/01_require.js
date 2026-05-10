@@ -103,7 +103,7 @@ const {
 const buffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs").default;
 import childProcess from "node:child_process";
 const cluster = core.loadExtScript("ext:deno_node/cluster.ts").default;
-const console = core.loadExtScript("ext:deno_node/console.ts").default;
+import console from "node:console";
 const constants = core.loadExtScript("ext:deno_node/constants.ts").default;
 const crypto = core.loadExtScript("ext:deno_node/crypto.ts").default;
 const dgram = core.loadExtScript("ext:deno_node/dgram.ts").default;
