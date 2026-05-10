@@ -2653,15 +2653,14 @@ function tryClose(fd) {
 function handleAsyncFileResponseError(stream, err, onError) {
   if (
     !stream.destroyed &&
+    !stream.closed &&
     (stream[kState].flags & STREAM_FLAGS_HEADERS_SENT) !== 0
   ) {
     // Async respondWithFile/respondWithFD failures after headers are sent
     // intentionally map to a forced stream reset. Avoid synthesizing an extra
     // server-side stream error for this internal control-flow path.
     stream[kState].skipEmitStreamError = true;
-    if (!stream.closed) {
-      closeStream(stream, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
-    }
+    closeStream(stream, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
     stream.destroy();
     return;
   }
