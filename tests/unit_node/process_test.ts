@@ -1205,6 +1205,9 @@ Deno.test({
     assert(typeof result.header.host === "string");
     delete result.header.host;
 
+    // glibc version is "" on non-glibc builds (musl, Windows, macOS), matching
+    // Node's behavior where gnu_get_libc_version() is unavailable.
+    const expectedGlibcVersion = Deno.build.env === "gnu" ? "2.38" : "";
     // test hardcoded part
     assertEquals(result, {
       header: {
@@ -1213,8 +1216,8 @@ Deno.test({
         trigger: "GetReport",
         threadId: 0,
         commandLine: ["node"],
-        glibcVersionRuntime: "2.38",
-        glibcVersionCompiler: "2.38",
+        glibcVersionRuntime: expectedGlibcVersion,
+        glibcVersionCompiler: expectedGlibcVersion,
         wordSize: 64,
         release: {
           name: "node",

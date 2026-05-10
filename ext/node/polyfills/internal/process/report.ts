@@ -24,6 +24,12 @@ const todoUndefined = undefined;
 function getReport(_err) {
   const os = lazyOs();
   const dumpEventTime = new Date();
+  // Match Node.js: glibcVersion* are populated from gnu_get_libc_version()
+  // when built against glibc, and are empty strings otherwise (e.g. musl,
+  // Windows, macOS). Deno.build.env carries the target-triple env component
+  // ("gnu" for glibc, "musl" for musl, "msvc" on Windows, undefined on macOS).
+  const isGlibc = Deno.build.env === "gnu";
+  const glibcVersion = isGlibc ? "2.38" : "";
   return {
     header: {
       reportVersion: 3,
@@ -37,8 +43,8 @@ function getReport(_err) {
       cwd: Deno.cwd(),
       commandLine: ["node"],
       nodejsVersion: `v${versions.node}`,
-      glibcVersionRuntime: "2.38",
-      glibcVersionCompiler: "2.38",
+      glibcVersionRuntime: glibcVersion,
+      glibcVersionCompiler: glibcVersion,
       wordSize: 64,
       arch: arch(),
       platform: Deno.build.os,
