@@ -584,11 +584,23 @@ fn resolve_native_binary_path(
       .clone()
   };
 
-  let node_resolution_sys =
-    node_resolver::cache::NodeResolutionSys::new(sys, None);
-  match node_resolver::read_bin_value(&bin_path, &node_resolution_sys)? {
-    node_resolver::BinValue::Executable(path) => Some(path),
-    node_resolver::BinValue::JsFile(_) => None,
+  // Only treat the bin entry as a native binary if its magic bytes match
+  // ELF/Mach-O/PE. `node_resolver::read_bin_value` returns `Executable` for
+  // any file whose first line isn't a recognized npx-style shebang (e.g.
+  // `#!/usr/bin/env deno` scripts) — which would incorrectly cause us to
+  // generate an `exec`-the-file shim instead of a `deno run` shim. On
+  // Windows there is no shebang interpretation, so that breaks installs of
+  // ordinary npm packages whose bin scripts use a non-Node shebang.
+  use std::io::Read;
+  let mut file = std::fs::File::open(&bin_path).ok()?;
+  let mut buf = [0u8; 4];
+  if file.read(&mut buf).ok()? < 4 {
+    return None;
+  }
+  if node_resolver::is_binary(&buf) {
+    Some(bin_path)
+  } else {
+    None
   }
 }
 
@@ -2286,6 +2298,42 @@ mod tests {
     assert!(
       result.is_none(),
       "should not detect JS file as native binary"
+    );
+  }
+
+  #[test]
+  fn native_binary_not_detected_for_non_node_shebang_js() {
+    // Regression: a JS bin script with a non-Node shebang (e.g.
+    // `#!/usr/bin/env deno`) was being misclassified as a native binary,
+    // which broke `deno install -g` on Windows since the generated shim
+    // execed the .js file directly instead of running `deno run`.
+    let temp_dir = TempDir::new();
+    let bin_dir = temp_dir.path().join("bin").to_path_buf();
+    let config_dir = bin_dir.join(".mytool");
+    let pkg_dir = config_dir.join("node_modules").join("mytool");
+    std::fs::create_dir_all(&pkg_dir).unwrap();
+
+    std::fs::write(
+      pkg_dir.join("package.json"),
+      r#"{"name": "mytool", "bin": {"mytool": "./main.js"}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+      pkg_dir.join("main.js"),
+      "#!/usr/bin/env deno\nconsole.log('hello');",
+    )
+    .unwrap();
+
+    let bin_name_and_url = BinaryNameAndUrl {
+      name: "mytool".to_string(),
+      module_url: Url::parse("npm:mytool@1.0.0").unwrap(),
+      config_name: None,
+    };
+
+    let result = super::resolve_native_binary_path(&bin_name_and_url, &bin_dir);
+    assert!(
+      result.is_none(),
+      "JS file with non-Node shebang must not be classified as native binary"
     );
   }
 
