@@ -13,18 +13,15 @@ import {
   op_node_translate_cli_args,
 } from "ext:core/ops";
 
-import {
+const {
   ChildProcess,
   ChildProcessOptions,
   normalizeSpawnArguments,
   setupChannel,
-  type SpawnOptions,
-  type SpawnSyncOptions,
-  type SpawnSyncResult,
   stdioStringToArray,
   validateNullByteNotInArg,
-} from "ext:deno_node/internal/child_process.ts";
-import internalChildProcess from "ext:deno_node/internal/child_process.ts";
+  default: internalChildProcess,
+} = core.loadExtScript("ext:deno_node/internal/child_process.ts");
 const {
   validateAbortSignal,
   validateFunction,
@@ -40,14 +37,18 @@ const {
   ERR_OUT_OF_RANGE,
   genericNodeError,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import { getSystemErrorName, promisify } from "node:util";
+const { getSystemErrorName, promisify } = core.loadExtScript(
+  "ext:deno_node/util.ts",
+);
 import process from "node:process";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   convertToValidSignal,
   kEmptyObject,
 } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
+const { toPathIfFileURL } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
 const { kNeedsNpmProcessState } = core.loadExtScript(
   "ext:deno_process/40_process.js",
 );

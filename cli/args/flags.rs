@@ -121,6 +121,7 @@ pub struct AddFlags {
   pub default_registry: Option<DefaultRegistry>,
   pub lockfile_only: bool,
   pub save_exact: bool,
+  pub package_json: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -145,6 +146,7 @@ pub struct AuditFlags {
 pub struct RemoveFlags {
   pub packages: Vec<String>,
   pub lockfile_only: bool,
+  pub package_json: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -599,6 +601,7 @@ pub struct TaskFlags {
   pub recursive: bool,
   pub filter: Option<String>,
   pub eval: bool,
+  pub no_prefix: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -673,6 +676,18 @@ pub struct PublishFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PackFlags {
+  pub files: FileFlags,
+  pub output: Option<String>,
+  pub dry_run: bool,
+  pub allow_slow_types: bool,
+  pub allow_dirty: bool,
+  pub set_version: Option<String>,
+  pub no_shim: bool,
+  pub no_source_maps: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HelpFlags {
   pub help: clap::builder::StyledStr,
 }
@@ -740,6 +755,7 @@ pub enum DenoSubcommand {
   Why(WhyFlags),
   BumpVersion(VersionFlags),
   Publish(PublishFlags),
+  Pack(PackFlags),
   Help(HelpFlags),
   X(XFlags),
 }
@@ -1025,6 +1041,7 @@ pub struct Flags {
   pub permission_set: Option<String>,
   pub eszip: bool,
   pub node_conditions: Vec<String>,
+  pub experimental_loaders: Vec<String>,
   pub preload: Vec<String>,
   pub require: Vec<String>,
   pub tunnel: bool,
@@ -1793,6 +1810,8 @@ static DENO_HELP: &str = cstr!(
     <g>init</>         Initialize a new project
     <g>test</>         Run tests
                   <p(245)>deno test  |  deno test test.ts</>
+    <g>pack</>         Create an npm-compatible tarball from a Deno project
+                  <p(245)>deno pack  |  deno pack --set-version 1.2.3</>
     <g>upgrade</>      Upgrade deno executable to given version
                   <p(245)>deno upgrade  |  deno upgrade 1.45.0  |  deno upgrade canary</>
 {after-help}
@@ -2030,6 +2049,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "vendor" => vendor_parse(&mut flags, &mut m),
         "why" => why_parse(&mut flags, &mut m),
         "publish" => publish_parse(&mut flags, &mut m)?,
+        "pack" => pack_parse(&mut flags, &mut m)?,
         "x" => x_parse(&mut flags, &mut m)?,
         _ => unreachable!(),
       }
@@ -2293,6 +2313,7 @@ pub fn clap_root() -> Command {
         .subcommand(lsp_subcommand())
         .subcommand(lint_subcommand())
         .subcommand(publish_subcommand())
+        .subcommand(pack_subcommand())
         .subcommand(repl_subcommand())
         .subcommand(task_subcommand())
         .subcommand(test_subcommand())
@@ -2379,6 +2400,7 @@ Or multiple dependencies at once:
           .help("Save exact version without the caret (^)")
           .action(ArgAction::SetTrue),
       )
+      .arg(package_json_arg())
   })
 }
 
@@ -2549,6 +2571,7 @@ You can remove multiple dependencies at once:
       )
       .args(lock_args())
       .arg(lockfile_only_arg())
+      .arg(package_json_arg())
   })
 }
 
@@ -3885,6 +3908,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .conflicts_with("global"),
         )
         .arg(lockfile_only_arg().conflicts_with("global"))
+        .arg(package_json_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .arg(
           Arg::new("os")
             .long("os")
@@ -3924,6 +3948,15 @@ fn lockfile_only_arg() -> Arg {
     .long("lockfile-only")
     .action(ArgAction::SetTrue)
     .help("Install only updating the lockfile")
+}
+
+fn package_json_arg() -> Arg {
+  Arg::new("package-json")
+    .long("package-json")
+    .action(ArgAction::SetTrue)
+    .help(
+      "Force using package.json for dependency management instead of deno.json",
+    )
 }
 
 fn json_reference_subcommand() -> Command {
@@ -4143,6 +4176,7 @@ The installation root is determined, in order of precedence:
       )
       .args(lock_args())
       .arg(lockfile_only_arg())
+      .arg(package_json_arg().conflicts_with("global"))
   })
 }
 
@@ -4590,6 +4624,14 @@ Evaluate a task from string:
           .help(
             "Evaluate the passed value as if it was a task in a configuration file",
           ).action(ArgAction::SetTrue)
+      )
+      .arg(
+        Arg::new("no-prefix")
+          .long("no-prefix")
+          .help(
+            "Disable prefixing the output of concurrently-executing tasks with the task name",
+          )
+          .action(ArgAction::SetTrue),
       )
       .arg(node_modules_dir_arg())
       .arg(node_modules_linker_arg())
@@ -5106,6 +5148,77 @@ fn publish_subcommand() -> Command {
     })
 }
 
+fn pack_subcommand() -> Command {
+  command(
+    "pack",
+    "Create an npm-compatible tarball from a Deno project",
+    UnstableArgsConfig::ResolutionOnly,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("output")
+          .short('o')
+          .long("output")
+          .help("Output file path (defaults to <name>-<version>.tgz)")
+          .value_name("FILE"),
+      )
+      .arg(config_arg())
+      .arg(no_config_arg())
+      .arg(
+        Arg::new("dry-run")
+          .long("dry-run")
+          .help("Show what would be packed without creating the tarball")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("allow-slow-types")
+          .long("allow-slow-types")
+          .help("Skip fast-check type extraction; .d.ts files are omitted from the output")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("allow-dirty")
+          .long("allow-dirty")
+          .help("Allow packing if the repository has uncommitted changes")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("set-version")
+          .long("set-version")
+          .help("Override the version in the tarball")
+          .value_name("VERSION"),
+      )
+      .arg(
+        Arg::new("no-deno-shim")
+          .long("no-deno-shim")
+          .help("Don't automatically add @deno/shim-deno dependency")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("no-source-maps")
+          .long("no-source-maps")
+          .help("Don't include source maps in the output")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("files")
+          .help("List of file patterns to include")
+          .num_args(..)
+          .action(ArgAction::Append),
+      )
+      .arg(
+        Arg::new("ignore")
+          .long("ignore")
+          .num_args(1..)
+          .action(ArgAction::Append)
+          .require_equals(true)
+          .help("Ignore files matching these patterns")
+          .value_hint(ValueHint::AnyPath),
+      )
+  })
+}
+
 fn compile_args(app: Command) -> Command {
   compile_args_without_check_args(app.arg(no_check_arg()))
 }
@@ -5584,6 +5697,7 @@ fn runtime_misc_args(app: Command) -> Command {
     .arg(enable_testing_features_arg())
     .arg(trace_ops_arg())
     .arg(eszip_arg())
+    .arg(experimental_loader_arg())
     .arg(preload_arg())
     .arg(require_arg())
 }
@@ -5790,6 +5904,17 @@ fn reload_arg() -> Arg {
     ))
     .value_hint(ValueHint::FilePath)
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
+}
+
+fn experimental_loader_arg() -> Arg {
+  Arg::new("experimental-loader")
+    .long("experimental-loader")
+    .alias("loader")
+    .value_name("MODULE")
+    .action(ArgAction::Append)
+    .help("Use the specified module as a custom loader (Node.js compat)")
+    .hide(true)
+    .value_hint(ValueHint::FilePath)
 }
 
 fn preload_arg() -> Arg {
@@ -6524,6 +6649,7 @@ fn add_parse_inner(
     default_registry,
     lockfile_only: matches.get_flag("lockfile-only"),
     save_exact: matches.get_flag("save-exact"),
+    package_json: matches.get_flag("package-json"),
   }
 }
 
@@ -6532,6 +6658,7 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Remove(RemoveFlags {
     packages: matches.remove_many::<String>("packages").unwrap().collect(),
     lockfile_only: matches.get_flag("lockfile-only"),
+    package_json: matches.get_flag("package-json"),
   });
 }
 
@@ -7496,6 +7623,7 @@ fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     UninstallKind::Local(RemoveFlags {
       packages,
       lockfile_only: matches.get_flag("lockfile-only"),
+      package_json: matches.get_flag("package-json"),
     })
   };
 
@@ -7730,6 +7858,7 @@ fn task_parse(
     recursive,
     filter,
     eval: matches.get_flag("eval"),
+    no_prefix: matches.get_flag("no-prefix"),
   };
 
   match matches.remove_subcommand() {
@@ -8075,6 +8204,39 @@ fn publish_parse(
   Ok(())
 }
 
+fn pack_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  flags.type_check_mode = TypeCheckMode::Local; // local by default
+  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
+  config_args_parse(flags, matches);
+
+  let include = match matches.remove_many::<String>("files") {
+    Some(f) => f.collect(),
+    None => vec![],
+  };
+  let ignore = match matches.remove_many::<String>("ignore") {
+    Some(f) => f
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?,
+    None => vec![],
+  };
+
+  flags.subcommand = DenoSubcommand::Pack(PackFlags {
+    files: FileFlags { include, ignore },
+    output: matches.remove_one("output"),
+    dry_run: matches.get_flag("dry-run"),
+    allow_slow_types: matches.get_flag("allow-slow-types"),
+    allow_dirty: matches.get_flag("allow-dirty"),
+    set_version: matches.remove_one::<String>("set-version"),
+    no_shim: matches.get_flag("no-deno-shim"),
+    no_source_maps: matches.get_flag("no-source-maps"),
+  });
+
+  Ok(())
+}
+
 fn compile_args_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
@@ -8370,6 +8532,7 @@ fn runtime_args_parse(
   env_file_arg_parse(flags, matches);
   trace_ops_parse(flags, matches);
   eszip_arg_parse(flags, matches);
+  experimental_loader_arg_parse(flags, matches);
   preload_arg_parse(flags, matches);
   require_arg_parse(flags, matches);
   Ok(())
@@ -8418,6 +8581,12 @@ fn reload_arg_parse(
   }
 
   Ok(())
+}
+
+fn experimental_loader_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if let Some(loaders) = matches.remove_many::<String>("experimental-loader") {
+    flags.experimental_loaders = loaders.collect();
+  }
 }
 
 fn preload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -11591,6 +11760,7 @@ mod tests {
           kind: UninstallKind::Local(RemoveFlags {
             packages: vec!["@std/load".to_string()],
             lockfile_only: true,
+            package_json: false,
           }),
         }),
         frozen_lockfile: Some(true),
@@ -11607,6 +11777,7 @@ mod tests {
           kind: UninstallKind::Local(RemoveFlags {
             packages: vec!["file_server".to_string(), "@std/load".to_string()],
             lockfile_only: false,
+            package_json: false,
           }),
         }),
         ..Flags::default()
@@ -13558,6 +13729,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         argv: svec!["hello", "world"],
         ..Flags::default()
@@ -13575,6 +13747,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         ..Flags::default()
       }
@@ -13591,6 +13764,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         ..Flags::default()
       }
@@ -13607,6 +13781,7 @@ mod tests {
           recursive: false,
           filter: Some("*".to_string()),
           eval: false,
+          no_prefix: false,
         }),
         ..Flags::default()
       }
@@ -13623,6 +13798,7 @@ mod tests {
           recursive: true,
           filter: Some("*".to_string()),
           eval: false,
+          no_prefix: false,
         }),
         ..Flags::default()
       }
@@ -13639,6 +13815,7 @@ mod tests {
           recursive: true,
           filter: Some("*".to_string()),
           eval: false,
+          no_prefix: false,
         }),
         ..Flags::default()
       }
@@ -13655,6 +13832,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: true,
+          no_prefix: false,
         }),
         ..Flags::default()
       }
@@ -13686,6 +13864,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         argv: svec!["--", "hello", "world"],
         config_flag: ConfigFlag::Path("deno.json".to_owned()),
@@ -13706,6 +13885,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         argv: svec!["--", "hello", "world"],
         ..Flags::default()
@@ -13727,6 +13907,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         argv: svec!["--"],
         ..Flags::default()
@@ -13747,6 +13928,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         argv: svec!["-1", "--test"],
         ..Flags::default()
@@ -13767,6 +13949,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         argv: svec!["--test"],
         ..Flags::default()
@@ -13788,6 +13971,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         log_level: Some(log::Level::Error),
         ..Flags::default()
@@ -13808,6 +13992,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         ..Flags::default()
       }
@@ -13827,6 +14012,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -13847,6 +14033,7 @@ mod tests {
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -14714,6 +14901,7 @@ mod tests {
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
+            package_json: false,
           })
         );
       }
@@ -14732,6 +14920,7 @@ mod tests {
           default_registry: Some(DefaultRegistry::Npm),
           lockfile_only: true,
           save_exact: false,
+          package_json: false,
         });
         expected_flags.frozen_lockfile = Some(true);
         assert_eq!(r.unwrap(), expected_flags);
@@ -14746,6 +14935,7 @@ mod tests {
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
+            package_json: false,
           }),
         );
       }
@@ -14759,6 +14949,7 @@ mod tests {
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
+            package_json: false,
           }),
         );
       }
@@ -14772,6 +14963,7 @@ mod tests {
             default_registry: Some(DefaultRegistry::Jsr),
             lockfile_only: false,
             save_exact: false,
+            package_json: false,
           }),
         );
       }
@@ -14790,6 +14982,7 @@ mod tests {
         subcommand: DenoSubcommand::Remove(RemoveFlags {
           packages: svec!["@david/which"],
           lockfile_only: false,
+          package_json: false,
         }),
         ..Flags::default()
       }
@@ -14809,6 +15002,7 @@ mod tests {
         subcommand: DenoSubcommand::Remove(RemoveFlags {
           packages: svec!["@david/which", "@luca/hello"],
           lockfile_only: true,
+          package_json: false,
         }),
         frozen_lockfile: Some(true),
         ..Flags::default()

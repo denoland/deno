@@ -26,6 +26,13 @@ extension!(runtime,
   esm_entry_point = "ext:runtime/90_deno_ns.js",
   esm = [
     dir "js",
+    "90_deno_ns.js",
+    "98_global_scope_shared.js",
+    "98_global_scope_window.js",
+    "98_global_scope_worker.js"
+  ],
+  lazy_loaded_js = [
+    dir "js",
     "01_errors.js",
     "01_version.ts",
     "06_util.js",
@@ -34,10 +41,6 @@ extension!(runtime,
     "40_fs_events.js",
     "40_tty.js",
     "41_prompt.js",
-    "90_deno_ns.js",
-    "98_global_scope_shared.js",
-    "98_global_scope_window.js",
-    "98_global_scope_worker.js"
   ],
   customizer = |ext: &mut Extension| {
     #[cfg(not(feature = "exclude_runtime_main_js"))]

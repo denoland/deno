@@ -277,11 +277,7 @@ impl TestNameTree {
     let mut current_id = Some(id);
     let mut name_pieces = VecDeque::new();
 
-    loop {
-      let Some(id) = current_id else {
-        break;
-      };
-
+    while let Some(id) = current_id {
       let Some(node) = self.0.get(&id) else {
         // The ID specified as a parent node by the child node should exist in
         // the tree, but it doesn't. In this case we give up constructing the

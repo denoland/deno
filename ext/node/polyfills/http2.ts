@@ -50,14 +50,16 @@ import {
   Http2Session as InternalHttp2Session,
   op_http2_callbacks,
 } from "ext:core/ops";
-import { enqueueNodePerformanceEntry } from "node:perf_hooks";
+const { enqueueNodePerformanceEntry } = core.loadExtScript(
+  "ext:deno_node/perf_hooks.js",
+);
 const { performance: webPerformance } = core.loadExtScript(
   "ext:deno_web/15_performance.js",
 );
 import net from "node:net";
-import assert from "node:assert";
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import http from "node:http";
-import { AsyncResource } from "node:async_hooks";
+const { AsyncResource } = core.loadExtScript("ext:deno_node/async_hooks.ts");
 import {
   _connectionListener as httpConnectionListener,
   httpServerPreClose,
@@ -70,8 +72,8 @@ import {
 } from "node:_http_server";
 import { Duplex } from "node:stream";
 import tls from "node:tls";
-import { deprecate } from "node:util";
-import dc from "node:diagnostics_channel";
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
+const dc = core.loadExtScript("ext:deno_node/diagnostics_channel.js").default;
 const { utcDate } = core.loadExtScript("ext:deno_node/internal/http.ts");
 const {
   kLastWriteWasAsync,
@@ -82,13 +84,15 @@ const {
   Http2Session: BindingHttp2Session,
   Http2Stream: BindingHttp2Stream,
 } = core.loadExtScript("ext:deno_node/internal_binding/http2.ts");
-import { EventEmitter } from "node:events";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const {
   defaultTriggerAsyncIdScope,
   symbols,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { async_id_symbol } = symbols;
-import { kTimeout } from "ext:deno_node/internal/timers.mjs";
+const { kTimeout } = core.loadExtScript(
+  "ext:deno_node/internal/timers.mjs",
+);
 // Use node:timers' setTimeout/clearTimeout so the returned Timeout object
 // supports unref() -- globalThis.setTimeout returns a plain number.
 import { clearTimeout, setTimeout } from "node:timers";
@@ -98,8 +102,10 @@ const { addAbortListener } = core.loadExtScript(
 export { addAbortListener };
 import fs from "node:fs";
 import { FileHandle as FsFileHandle } from "ext:deno_node/internal/fs/handle.ts";
-import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
-import { format, inspect } from "node:util";
+const { JSStreamSocket } = core.loadExtScript(
+  "ext:deno_node/internal/js_stream_socket.js",
+);
+const { format, inspect } = core.loadExtScript("ext:deno_node/util.ts");
 const {
   isUint32,
   validateAbortSignal,
@@ -165,7 +171,7 @@ const {
   ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
   hideStackFrames,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import {
+const {
   kAfterAsyncWrite,
   kBoundSession,
   kHandle,
@@ -176,8 +182,8 @@ import {
   setStreamTimeout,
   writeGeneric,
   writevGeneric,
-} from "ext:deno_node/internal/stream_base_commons.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/stream_base_commons.ts");
+const {
   assertIsArray,
   assertIsObject,
   assertValidPseudoHeader,
@@ -207,15 +213,15 @@ import {
   toHeaderObject,
   updateOptionsBuffer,
   updateSettingsBuffer,
-} from "ext:deno_node/internal/http2/util.ts";
+} = core.loadExtScript("ext:deno_node/internal/http2/util.ts");
 const { ownerSymbol: owner_symbol } = core.loadExtScript(
   "ext:deno_node/internal_binding/symbols.ts",
 );
-import {
+const {
   Http2ServerRequest,
   Http2ServerResponse,
   onServerStream,
-} from "ext:deno_node/internal/http2/compat.js";
+} = core.loadExtScript("ext:deno_node/internal/http2/compat.js");
 const onClientStreamCreatedChannel = dc.channel("http2.client.stream.created");
 const onClientStreamStartChannel = dc.channel("http2.client.stream.start");
 const onClientStreamErrorChannel = dc.channel("http2.client.stream.error");
@@ -377,7 +383,6 @@ function flushDeferredHttp2Writes(session) {
 }
 
 // HTTP2 Constants
-const MAX_ADDITIONAL_SETTINGS = 10;
 
 const constants = core.loadExtScript(
   "ext:deno_node/internal/http2/constants.ts",
@@ -4753,6 +4758,7 @@ function initializeTLSOptions(options, servername) {
       );
     }
     options.ALPNProtocols = [selected];
+    delete options.ALPNCallback;
   } else {
     options.ALPNProtocols = ["h2"];
     if (options.allowHTTP1 === true) {

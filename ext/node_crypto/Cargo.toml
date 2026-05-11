@@ -44,6 +44,7 @@ num-bigint.workspace = true
 num-bigint-dig.workspace = true
 num-integer.workspace = true
 num-traits.workspace = true
+p12.workspace = true
 p224.workspace = true
 p256.workspace = true
 p384.workspace = true

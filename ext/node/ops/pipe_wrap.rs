@@ -447,6 +447,11 @@ impl PipeWrap {
       }
       // SAFETY: pipe is valid (null-checked above).
       if let Some(path) = unsafe { &*pipe }.bind_path() {
+        // Abstract sockets (path starts with \0) have no filesystem
+        // entry, so chmod is a no-op.
+        if path.as_bytes().first().is_some_and(|&b| b == 0) {
+          return 0;
+        }
         let c_path = match std::ffi::CString::new(path) {
           Ok(p) => p,
           Err(_) => return uv_compat::UV_EINVAL,

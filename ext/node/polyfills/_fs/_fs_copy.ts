@@ -4,11 +4,11 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-import {
-  type CallbackWithError,
-  makeCallback,
-} from "ext:deno_node/_fs/_fs_common.ts";
-import { Buffer } from "node:buffer";
+import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
+const { makeCallback } = core.loadExtScript(
+  "ext:deno_node/_fs/_fs_common.ts",
+);
+import type { Buffer } from "node:buffer";
 import {
   getValidatedPath,
   getValidMode,

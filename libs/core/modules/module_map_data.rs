@@ -201,6 +201,10 @@ pub(crate) struct ModuleMapData {
   pub(crate) synthetic_module_exports_store: SyntheticModuleExportsStore,
   pub(crate) lazy_esm_sources:
     Rc<RefCell<HashMap<ModuleName, ModuleCodeString>>>,
+  /// Specifiers of lazy-loaded ESM modules known to exist (survives
+  /// snapshotting). Used to check if a module should be loaded from
+  /// `lazy_esm_sources` without going through the external module loader.
+  pub(crate) known_lazy_esm: RefCell<HashSet<String>>,
   pub(crate) lazy_script_sources:
     Rc<RefCell<HashMap<ModuleName, ModuleCodeString>>>,
   /// Set of scripts currently being loaded (for circular dep detection).
@@ -217,6 +221,11 @@ pub(crate) struct ModuleMapSnapshotData {
   module_handles: Vec<SnapshotDataId>,
   main_module_callbacks: Vec<SnapshotDataId>,
   by_name: Vec<(FastString, RequestedModuleType, SymbolicModule)>,
+  /// Specifiers of lazy-loaded ESM modules that are known to exist but
+  /// are not compiled/instantiated in the snapshot. They will be loaded
+  /// from the binary on first access at runtime.
+  #[serde(default)]
+  lazy_esm_specifiers: Vec<String>,
 }
 
 impl ModuleMapData {
@@ -385,6 +394,13 @@ impl ModuleMapData {
       ser.by_name.push((name, module_type.clone(), module));
     });
 
+    ser.lazy_esm_specifiers = self
+      .known_lazy_esm
+      .borrow()
+      .iter()
+      .map(|s| s.to_string())
+      .collect();
+
     ser
   }
 
@@ -415,6 +431,9 @@ impl ModuleMapData {
     for (name, module_type, module) in data.by_name {
       self.by_name.insert(&module_type, name, module)
     }
+
+    *self.known_lazy_esm.borrow_mut() =
+      data.lazy_esm_specifiers.into_iter().collect();
   }
 
   // TODO(mmastrac): this is better than giving the entire crate access to the internals.

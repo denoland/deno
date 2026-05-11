@@ -1,13 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 
-import { join } from "node:path";
-import {
-  mkdirPromise,
-  opendirPromise,
-} from "ext:deno_node/internal/fs/promises.ts";
-import { EEXIST, EINVAL, EISDIR, ENOTDIR } from "node:constants";
-import { core, primordials } from "ext:core/mod.js";
+// deno-lint-ignore-file prefer-primordials
+
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const lazyPath = core.createLazyLoader("node:path");
+const lazyFsPromises = core.createLazyLoader(
+  "ext:deno_node/internal/fs/promises.ts",
+);
+const lazyConstants = core.createLazyLoader("node:constants");
 const {
   denoErrorToNodeError,
   ERR_FS_CP_DIR_TO_NON_DIR,
@@ -20,13 +22,12 @@ const {
   ERR_FS_CP_UNKNOWN,
   ERR_FS_EISDIR,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import {
+const {
   op_node_cp_check_paths_recursive,
   op_node_cp_on_file,
   op_node_cp_on_link,
   op_node_cp_validate_and_prepare,
-} from "ext:core/ops";
-import type { CopyOptions } from "node:fs";
+} = core.ops;
 
 /**
   Layout (bigint):
@@ -34,9 +35,6 @@ import type { CopyOptions } from "node:fs";
   - bit 32      : whether destination exists
   - bits 33..39 : source entry type flags (dir, file, char/block device,
                   symlink, socket, fifo)
-
-  This keeps the op boundary cheap by passing a single bigint instead of
-  a JS object.
 */
 const CpEntryFlags = {
   SrcModeMask: (1n << 32n) - 1n,
@@ -48,15 +46,15 @@ const CpEntryFlags = {
   IsSrcSymlink: 1n << 37n,
   IsSrcSocket: 1n << 38n,
   IsSrcFifo: 1n << 39n,
-} as const;
+};
 
 const {
   Number,
   PromiseResolve,
 } = primordials;
 
-// deno-lint-ignore no-explicit-any
-export function throwCpError(err: any): never {
+function throwCpError(err) {
+  const { EEXIST, EINVAL, EISDIR, ENOTDIR } = lazyConstants();
   switch (err.kind) {
     case "EINVAL":
       throw new ERR_FS_CP_EINVAL({
@@ -135,15 +133,14 @@ export function throwCpError(err: any): never {
   }
 }
 
-export async function cpFn(
-  src: string,
-  dest: string,
-  opts: CopyOptions,
-): Promise<void> {
+async function cpFn(
+  src,
+  dest,
+  opts,
+) {
   try {
-    // deno-lint-ignore prefer-primordials
     if (opts.filter && !(await opts.filter(src, dest))) return;
-    const statInfo: bigint = await op_node_cp_validate_and_prepare(
+    const statInfo = await op_node_cp_validate_and_prepare(
       src,
       dest,
       opts.dereference,
@@ -163,11 +160,12 @@ export async function cpFn(
 }
 
 function getStatsForCopy(
-  statInfo: bigint,
-  src: string,
-  dest: string,
-  opts: CopyOptions,
+  statInfo,
+  src,
+  dest,
+  opts,
 ) {
+  const { EISDIR, EINVAL } = lazyConstants();
   if ((statInfo & CpEntryFlags.IsSrcDirectory) && opts.recursive) {
     return onDir(statInfo, src, dest, opts);
   } else if (statInfo & CpEntryFlags.IsSrcDirectory) {
@@ -214,10 +212,10 @@ function getStatsForCopy(
 }
 
 async function onFile(
-  statInfo: bigint,
-  src: string,
-  dest: string,
-  opts: CopyOptions,
+  statInfo,
+  src,
+  dest,
+  opts,
 ) {
   const srcMode = Number(statInfo & CpEntryFlags.SrcModeMask);
   const isDestExists = !!(statInfo & CpEntryFlags.IsDestExists);
@@ -233,17 +231,17 @@ async function onFile(
   );
 }
 
-function setDestMode(dest: string, srcMode: number | null): Promise<void> {
+function setDestMode(dest, srcMode) {
   if (!srcMode) return PromiseResolve();
   return Deno.chmod(dest, srcMode);
 }
 
 function onDir(
-  statInfo: bigint,
-  src: string,
-  dest: string,
-  opts: CopyOptions,
-): Promise<void> {
+  statInfo,
+  src,
+  dest,
+  opts,
+) {
   if (!(statInfo & CpEntryFlags.IsDestExists)) {
     const srcMode = Number(statInfo & CpEntryFlags.SrcModeMask);
     return mkDirAndCopy(srcMode, src, dest, opts);
@@ -252,29 +250,27 @@ function onDir(
 }
 
 async function mkDirAndCopy(
-  srcMode: number | null,
-  src: string,
-  dest: string,
-  opts: CopyOptions,
-): Promise<void> {
-  await mkdirPromise(dest);
+  srcMode,
+  src,
+  dest,
+  opts,
+) {
+  await lazyFsPromises().mkdirPromise(dest);
   await copyDir(src, dest, opts);
   return setDestMode(dest, srcMode);
 }
 
 async function copyDir(
-  src: string,
-  dest: string,
-  opts: CopyOptions,
-): Promise<void> {
-  const dir = await opendirPromise(src);
-  // deno-lint-ignore prefer-primordials
+  src,
+  dest,
+  opts,
+) {
+  const dir = await lazyFsPromises().opendirPromise(src);
   for await (const { name } of dir) {
-    const srcItem = join(src, name);
-    const destItem = join(dest, name);
-    // deno-lint-ignore prefer-primordials
+    const srcItem = lazyPath().join(src, name);
+    const destItem = lazyPath().join(dest, name);
     if (opts.filter && !(await opts.filter(srcItem, destItem))) continue;
-    const statInfo: bigint = await op_node_cp_check_paths_recursive(
+    const statInfo = await op_node_cp_check_paths_recursive(
       srcItem,
       destItem,
       opts.dereference,
@@ -284,11 +280,11 @@ async function copyDir(
 }
 
 async function onLink(
-  destExists: boolean,
-  src: string,
-  dest: string,
-  opts: CopyOptions,
-): Promise<void> {
+  destExists,
+  src,
+  dest,
+  opts,
+) {
   await op_node_cp_on_link(
     src,
     dest,
@@ -296,3 +292,6 @@ async function onLink(
     opts.verbatimSymlinks,
   );
 }
+
+return { throwCpError, cpFn };
+})();

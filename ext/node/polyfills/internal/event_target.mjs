@@ -43,7 +43,7 @@ const {
   validateObject,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { emitWarning } from "node:process";
+const lazyProcess = core.createLazyLoader("node:process");
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const {
   Event: WebEvent,
@@ -55,13 +55,14 @@ const {
   kEmptyObject,
   kEnumerableProperty,
 } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import { inspect } from "node:util";
+const { inspect } = core.loadExtScript("ext:deno_node/util.ts");
 
 const kIsEventTarget = SymbolFor("nodejs.event_target");
 const kIsNodeEventTarget = Symbol("kIsNodeEventTarget");
 
-import { kEvents } from "ext:deno_node/_events.mjs";
-import { EventEmitter } from "node:events";
+const { kEvents, EventEmitter } = core.loadExtScript(
+  "ext:deno_node/_events.mjs",
+);
 const {
   kMaxEventTargetListeners,
   kMaxEventTargetListenersWarned,
@@ -529,7 +530,7 @@ class EventTarget extends WebEventTarget {
       w.target = this;
       w.type = type;
       w.count = size;
-      emitWarning(w);
+      lazyProcess().default.emitWarning(w);
     }
   }
   [kRemoveListener](_size, _type, _listener, _capture) {}
@@ -583,7 +584,7 @@ class EventTarget extends WebEventTarget {
       w.name = "AddEventListenerArgumentTypeWarning";
       w.target = this;
       w.type = type;
-      emitWarning(w);
+      lazyProcess().default.emitWarning(w);
       return;
     }
     type = String(type);

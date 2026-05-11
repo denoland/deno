@@ -4,19 +4,21 @@ const { fs: fsConstants } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
 const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
-import {
-  type BinaryOptionsArgument,
-  type CallbackWithError,
-  type FileOptions,
-  type FileOptionsArgument,
+import type {
+  BinaryOptionsArgument,
+  CallbackWithError,
+  FileOptions,
+  FileOptionsArgument,
+  TextOptionsArgument,
+  WriteFileOptions,
+} from "ext:deno_node/_fs/_fs_common.ts";
+const {
   getValidatedEncoding,
   isFd,
   isFileOptions,
   makeCallback,
   maybeCallback,
-  type TextOptionsArgument,
-  type WriteFileOptions,
-} from "ext:deno_node/_fs/_fs_common.ts";
+} = core.loadExtScript("ext:deno_node/_fs/_fs_common.ts");
 import type { Encodings } from "ext:deno_node/_utils.ts";
 const {
   AbortError,
@@ -34,19 +36,23 @@ import {
   type statOptions,
 } from "ext:deno_node/internal/fs/stat_utils.ts";
 import { copyFile, copyFileSync } from "ext:deno_node/_fs/_fs_copy.ts";
-import { cp, cpSync } from "ext:deno_node/_fs/_fs_cp.ts";
+const { cp, cpSync } = core.loadExtScript("ext:deno_node/_fs/_fs_cp.ts");
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
-import { fstat, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
-import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
+const { fstat, fstatSync } = core.loadExtScript(
+  "ext:deno_node/_fs/_fs_fstat.ts",
+);
+const { lstat, lstatSync } = core.loadExtScript(
+  "ext:deno_node/_fs/_fs_lstat.ts",
+);
 import { lutimes, lutimesSync } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { read, readSync } from "ext:deno_node/_fs/_fs_read.ts";
 import { readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
-import { EventEmitter } from "node:events";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 import { clearTimeout, setTimeout } from "node:timers";
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 import type { MaybeEmpty } from "ext:deno_node/_utils.ts";
-import { deprecate, promisify } from "node:util";
+const { deprecate, promisify } = core.loadExtScript("ext:deno_node/util.ts");
 import promises from "ext:deno_node/internal/fs/promises.ts";
 // @deno-types="./internal/fs/streams.d.ts"
 import {
@@ -83,7 +89,7 @@ import {
   warnOnNonPortableTemplate,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { glob, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import process from "node:process";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 const { isIterable } = core.loadExtScript(

@@ -6,14 +6,14 @@
 
 import { core } from "ext:core/mod.js";
 import * as net from "node:net";
-import EventEmitter from "node:events";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const { debuglog } = core.loadExtScript(
   "ext:deno_node/internal/util/debuglog.ts",
 );
 let debug = debuglog("http", (fn) => {
   debug = fn;
 });
-import { AsyncResource } from "node:async_hooks";
+const { AsyncResource } = core.loadExtScript("ext:deno_node/async_hooks.ts");
 const { symbols } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { async_id_symbol } = symbols;
 const { once } = core.loadExtScript("ext:deno_node/internal/util.mjs");

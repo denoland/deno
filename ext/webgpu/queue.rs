@@ -144,11 +144,7 @@ impl GPUQueue {
       v8::Local::<v8::TypedArray>::try_from(data_arg)
     {
       let len = typed_array.length();
-      let bpe = if len > 0 {
-        typed_array.byte_length() / len
-      } else {
-        1
-      };
+      let bpe = (typed_array.byte_length()).checked_div(len).unwrap_or(1);
       let byte_offset = typed_array.byte_offset();
       let byte_len = typed_array.byte_length();
       let ab = typed_array.buffer(scope).unwrap();

@@ -5,14 +5,15 @@
 
 // deno-lint-ignore-file no-explicit-any
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { primordials } = globalThis.__bootstrap;
 
 const { ReflectApply, SafeMap } = primordials;
 
 const callbacks = new SafeMap();
 let seq = 0;
 
-export function sendHelper(
+function sendHelper(
   proc: any,
   message: any,
   handle: any,
@@ -32,7 +33,7 @@ export function sendHelper(
 
 // Returns an internalMessage listener that hands off normal messages to the
 // callback but intercepts and redirects ACK messages.
-export function internal(
+function internal(
   worker: any,
   cb: (this: any, message: any, handle?: any) => void,
 ) {
@@ -55,3 +56,6 @@ export function internal(
     ReflectApply(fn, worker, arguments);
   };
 }
+
+return { sendHelper, internal };
+})();

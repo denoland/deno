@@ -5,7 +5,9 @@ import process from "node:process";
 import { core, primordials } from "ext:core/mod.js";
 const _mod1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import Duplex from "node:_stream_duplex";
-import { getHighWaterMark } from "ext:deno_node/internal/streams/state.js";
+const { getHighWaterMark } = core.loadExtScript(
+  "ext:deno_node/internal/streams/state.js",
+);
 
 const {
   ERR_METHOD_NOT_IMPLEMENTED,
