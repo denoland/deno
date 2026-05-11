@@ -97,6 +97,32 @@ Deno.test(function headerDeleteSuccess() {
   }
 });
 
+// Regression test: set/delete on a list with many entries that share a name
+// must run in linear time. A quadratic implementation would take many seconds
+// (or minutes) at this size; the linear implementation finishes in
+// milliseconds. The 5s bound is intentionally loose to avoid CI flakes.
+Deno.test(function headerSetDeleteManyDuplicatesIsLinear() {
+  const N = 20_000;
+  const init: [string, string][] = [];
+  for (let i = 0; i < N; i++) init.push(["x-dup", String(i)]);
+
+  const a = new Headers(init);
+  const t1 = performance.now();
+  a.delete("x-dup");
+  assert(performance.now() - t1 < 5_000);
+  assertEquals(a.get("x-dup"), null);
+
+  const b = new Headers(init);
+  const t2 = performance.now();
+  b.set("x-dup", "final");
+  assert(performance.now() - t2 < 5_000);
+  assertEquals(b.get("x-dup"), "final");
+  // Single entry remains after set.
+  let count = 0;
+  for (const _ of b) count++;
+  assertEquals(count, 1);
+});
+
 Deno.test(function headerGetSuccess() {
   const headers = new Headers(headerDict);
   for (const [name, value] of Object.entries(headerDict)) {
