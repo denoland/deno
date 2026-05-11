@@ -258,28 +258,24 @@ impl ContextifyScript {
         if let Some(msg) = scope.message() {
           if let Some(exception) = scope.exception() {
             if exception.is_object() {
-              if let Ok(exc_obj) =
-                v8::Local::<v8::Object>::try_from(exception)
+              if let Ok(exc_obj) = v8::Local::<v8::Object>::try_from(exception)
               {
-                let filename = if let Some(v) =
-                  msg.get_script_resource_name(scope)
-                {
-                  if let Some(s) = v.to_string(scope) {
-                    s.to_rust_string_lossy(scope)
-                  } else {
-                    String::new()
-                  }
-                } else {
-                  String::new()
-                };
-                let line_number =
-                  msg.get_line_number(scope).unwrap_or(1);
-                let source_line =
-                  if let Some(s) = msg.get_source_line(scope) {
-                    s.to_rust_string_lossy(scope)
+                let filename =
+                  if let Some(v) = msg.get_script_resource_name(scope) {
+                    if let Some(s) = v.to_string(scope) {
+                      s.to_rust_string_lossy(scope)
+                    } else {
+                      String::new()
+                    }
                   } else {
                     String::new()
                   };
+                let line_number = msg.get_line_number(scope).unwrap_or(1);
+                let source_line = if let Some(s) = msg.get_source_line(scope) {
+                  s.to_rust_string_lossy(scope)
+                } else {
+                  String::new()
+                };
                 if !filename.is_empty() {
                   let start_col = msg.get_start_column();
                   let arrow = format!("{}^", " ".repeat(start_col));
@@ -288,10 +284,9 @@ impl ContextifyScript {
                     filename, line_number, source_line, arrow
                   );
 
-                  let stack_key = v8::String::new_external_onebyte_static(
-                    scope, b"stack",
-                  )
-                  .unwrap();
+                  let stack_key =
+                    v8::String::new_external_onebyte_static(scope, b"stack")
+                      .unwrap();
                   let current_stack =
                     if let Some(v) = exc_obj.get(scope, stack_key.into()) {
                       if let Some(s) = v.to_string(scope) {
@@ -306,8 +301,7 @@ impl ContextifyScript {
                   if let Some(new_stack_str) =
                     v8::String::new(scope, &new_stack)
                   {
-                    exc_obj
-                      .set(scope, stack_key.into(), new_stack_str.into());
+                    exc_obj.set(scope, stack_key.into(), new_stack_str.into());
                   }
                 }
               }

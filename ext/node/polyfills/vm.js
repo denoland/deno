@@ -349,6 +349,7 @@ function compileFunction(code, params, options = { __proto__: null }) {
   if (params !== undefined) {
     validateStringArray(params, "params");
   }
+  validateObject(options, "options");
   const {
     filename = "",
     columnOffset = 0,
