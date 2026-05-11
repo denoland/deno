@@ -7,7 +7,9 @@ const { core, primordials } = globalThis.__bootstrap;
 const { fs: fsConstants } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
-const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const { codeMap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/uv.ts",
+);
 type BinaryOptionsArgument = any;
 type CallbackWithError = any;
 type FileOptions = any;
@@ -81,6 +83,13 @@ const lazyInternalStreams = core.createLazyLoader(
 const lazyInternalHandle = core.createLazyLoader(
   "ext:deno_node/internal/fs/handle.ts",
 );
+// Backing storage so the lazy getters below can be paired with setters;
+// some packages monkey-patch these on the `node:fs` namespace.
+let _createReadStream: any;
+let _createWriteStream: any;
+let _ReadStream: any;
+let _WriteStream: any;
+let _promises: any;
 const { default: SyncWriteStream } = core.loadExtScript(
   "ext:deno_node/internal/fs/sync_write_stream.js",
 );
@@ -164,7 +173,9 @@ const {
   ERR_INVALID_ARG_VALUE,
   uvException,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-const { isMacOS, isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { isMacOS, isWindows } = core.loadExtScript(
+  "ext:deno_node/_util/os.ts",
+);
 const {
   customPromisifyArgs,
   kEmptyObject,
@@ -230,7 +241,9 @@ const {
   queueMicrotask,
 } = primordials;
 
-const { TextEncoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
+const { TextEncoder } = core.loadExtScript(
+  "ext:deno_web/08_text_encoding.js",
+);
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
 const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
@@ -713,7 +726,10 @@ async function readFileFromFd(fd: number, options?: FileOptions) {
     if (totalRead > kIoMaxLength) {
       throw new ERR_FS_FILE_TOO_LARGE(totalRead);
     }
-    ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(buffer, 0, nread));
+    ArrayPrototypePush(
+      buffers,
+      TypedArrayPrototypeSubarray(buffer, 0, nread),
+    );
   }
 
   return readFileConcatBuffers(buffers);
@@ -1127,7 +1143,9 @@ function access(
       if ((m & fileMode) === m) {
         cb(null);
       } else {
-        const e: any = new Error(`EACCES: permission denied, access '${path}'`);
+        const e: any = new Error(
+          `EACCES: permission denied, access '${path}'`,
+        );
         e.path = path;
         e.syscall = "access";
         e.errno = codeMap.get("EACCES");
@@ -2151,7 +2169,11 @@ function parseMkdtempEncoding(
 
   const parsedEncoding = normalizeEncoding(encoding);
   if (!parsedEncoding) {
-    throw new ERR_INVALID_ARG_TYPE("encoding", encoding, "is invalid encoding");
+    throw new ERR_INVALID_ARG_TYPE(
+      "encoding",
+      encoding,
+      "is invalid encoding",
+    );
   }
 
   return parsedEncoding;
@@ -2932,7 +2954,8 @@ function _isCustomIterable(
 ): obj is
   | Iterable<NodeJS.TypedArray | string>
   | AsyncIterable<NodeJS.TypedArray | string> {
-  return isIterable(obj) && !ArrayBufferIsView(obj) && typeof obj !== "string";
+  return isIterable(obj) && !ArrayBufferIsView(obj) &&
+    typeof obj !== "string";
 }
 
 function _checkAborted(signal?: AbortSignal) {
@@ -3784,10 +3807,18 @@ return {
   cp,
   cpSync,
   get createReadStream() {
-    return lazyInternalStreams().createReadStream;
+    return _createReadStream ??
+      (_createReadStream = lazyInternalStreams().createReadStream);
+  },
+  set createReadStream(v) {
+    _createReadStream = v;
   },
   get createWriteStream() {
-    return lazyInternalStreams().createWriteStream;
+    return _createWriteStream ??
+      (_createWriteStream = lazyInternalStreams().createWriteStream);
+  },
+  set createWriteStream(v) {
+    _createWriteStream = v;
   },
   Dir,
   Dirent,
@@ -3830,7 +3861,10 @@ return {
   opendirSync,
   openSync,
   get promises() {
-    return lazyInternalPromises().default;
+    return _promises ?? (_promises = lazyInternalPromises().default);
+  },
+  set promises(v) {
+    _promises = v;
   },
   read,
   readdir,
@@ -3842,7 +3876,10 @@ return {
   readlinkPromise,
   readlinkSync,
   get ReadStream() {
-    return lazyInternalStreams().ReadStream;
+    return _ReadStream ?? (_ReadStream = lazyInternalStreams().ReadStream);
+  },
+  set ReadStream(v) {
+    _ReadStream = v;
   },
   readSync,
   readv,
@@ -3879,7 +3916,10 @@ return {
   writeFile,
   writeFileSync,
   get WriteStream() {
-    return lazyInternalStreams().WriteStream;
+    return _WriteStream ?? (_WriteStream = lazyInternalStreams().WriteStream);
+  },
+  set WriteStream(v) {
+    _WriteStream = v;
   },
   writeSync,
   writev,

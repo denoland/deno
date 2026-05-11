@@ -16,11 +16,11 @@ class Session extends inspector.Session {
 Session.prototype.post = promisify(inspector.Session.prototype.post);
 
 return {
-  Session,
   close: inspector.close,
   console: inspector.console,
   Network: inspector.Network,
   open: inspector.open,
+  Session,
   url: inspector.url,
   waitForDebugger: inspector.waitForDebugger,
 };
