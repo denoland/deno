@@ -1116,6 +1116,7 @@ mod tests {
       &binary_name_and_url,
       flags,
       &installation_dir,
+      install_flags_global.force,
       None,
     )
     .await
