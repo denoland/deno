@@ -48,7 +48,6 @@ use deno_tls::TlsKeys;
 use deno_web::BlobStore;
 use deno_web::InMemoryBroadcastChannel;
 use log::debug;
-use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
 use crate::BootstrapOptions;
@@ -167,7 +166,6 @@ impl Drop for MainWorker {
 }
 
 pub struct WorkerServiceOptions<
-  TInNpmPackageChecker: InNpmPackageChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
   TExtNodeSys: ExtNodeSys,
 > {
@@ -182,13 +180,8 @@ pub struct WorkerServiceOptions<
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub node_services: Option<
-    NodeExtInitServices<
-      TInNpmPackageChecker,
-      TNpmPackageFolderResolver,
-      TExtNodeSys,
-    >,
-  >,
+  pub node_services:
+    Option<NodeExtInitServices<TNpmPackageFolderResolver, TExtNodeSys>>,
   pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
@@ -340,16 +333,11 @@ pub fn create_op_metrics(
 
 impl MainWorker {
   pub fn bootstrap_from_options<
-    TInNpmPackageChecker: InNpmPackageChecker + 'static,
     TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
     TExtNodeSys: ExtNodeSys + 'static,
   >(
     main_module: &ModuleSpecifier,
-    services: WorkerServiceOptions<
-      TInNpmPackageChecker,
-      TNpmPackageFolderResolver,
-      TExtNodeSys,
-    >,
+    services: WorkerServiceOptions<TNpmPackageFolderResolver, TExtNodeSys>,
     options: WorkerOptions,
   ) -> Self {
     let (mut worker, bootstrap_options) =
@@ -359,16 +347,11 @@ impl MainWorker {
   }
 
   fn from_options<
-    TInNpmPackageChecker: InNpmPackageChecker + 'static,
     TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
     TExtNodeSys: ExtNodeSys + 'static,
   >(
     main_module: &ModuleSpecifier,
-    services: WorkerServiceOptions<
-      TInNpmPackageChecker,
-      TNpmPackageFolderResolver,
-      TExtNodeSys,
-    >,
+    services: WorkerServiceOptions<TNpmPackageFolderResolver, TExtNodeSys>,
     mut options: WorkerOptions,
   ) -> (Self, BootstrapOptions) {
     fn create_cache_inner(options: &WorkerOptions) -> Option<CreateCache> {
@@ -447,7 +430,6 @@ impl MainWorker {
       js_runtime
     } else {
       let mut extensions = common_extensions::<
-        TInNpmPackageChecker,
         TNpmPackageFolderResolver,
         TExtNodeSys,
       >(options.startup_snapshot.is_some(), false);
@@ -575,11 +557,10 @@ impl MainWorker {
         deno_fs::deno_fs::args(services.fs.clone()),
         deno_os::deno_os::args(Some(exit_code.clone())),
         deno_process::deno_process::args(services.npm_process_state_provider),
-        deno_node::deno_node::args::<
-          TInNpmPackageChecker,
-          TNpmPackageFolderResolver,
-          TExtNodeSys,
-        >(services.node_services, services.fs.clone()),
+        deno_node::deno_node::args::<TNpmPackageFolderResolver, TExtNodeSys>(
+          services.node_services,
+          services.fs.clone(),
+        ),
         ops::runtime::deno_runtime::args(main_module.clone()),
         ops::worker_host::deno_worker_host::args(
           options.create_web_worker_cb.clone(),
@@ -1057,7 +1038,6 @@ impl MainWorker {
 }
 
 fn common_extensions<
-  TInNpmPackageChecker: InNpmPackageChecker + 'static,
   TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
   TExtNodeSys: ExtNodeSys + 'static,
 >(
@@ -1093,11 +1073,7 @@ fn common_extensions<
     deno_process::deno_process::lazy_init(),
     deno_node_crypto::deno_node_crypto::init(),
     deno_node_sqlite::deno_node_sqlite::init(),
-    deno_node::deno_node::lazy_init::<
-      TInNpmPackageChecker,
-      TNpmPackageFolderResolver,
-      TExtNodeSys,
-    >(),
+    deno_node::deno_node::lazy_init::<TNpmPackageFolderResolver, TExtNodeSys>(),
     // Ops from this crate
     ops::runtime::deno_runtime::lazy_init(),
     ops::worker_host::deno_worker_host::lazy_init(),
@@ -1208,17 +1184,13 @@ pub struct UnconfiguredRuntime {
 
 impl UnconfiguredRuntime {
   pub fn new<
-    TInNpmPackageChecker: InNpmPackageChecker + 'static,
     TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
     TExtNodeSys: ExtNodeSys + 'static,
   >(
     options: UnconfiguredRuntimeOptions,
   ) -> Self {
-    let mut extensions = common_extensions::<
-      TInNpmPackageChecker,
-      TNpmPackageFolderResolver,
-      TExtNodeSys,
-    >(true, true);
+    let mut extensions =
+      common_extensions::<TNpmPackageFolderResolver, TExtNodeSys>(true, true);
 
     extensions.extend(options.additional_extensions);
 

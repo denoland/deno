@@ -7,11 +7,8 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_dotenv::parse_env_content_hook;
 use deno_error::JsErrorBox;
-use node_resolver::InNpmPackageChecker;
-use node_resolver::NpmPackageFolderResolver;
 
-use crate::ExtNodeSys;
-use crate::NodeResolverRc;
+use crate::DynNodeResolverRc;
 
 #[repr(u32)]
 enum HandleType {
@@ -85,11 +82,7 @@ pub fn op_node_view_has_buffer(buffer: v8::Local<v8::ArrayBufferView>) -> bool {
 
 /// Checks if the current call site is from a dependency package.
 #[op2(fast)]
-pub fn op_node_call_is_from_dependency<
-  TInNpmPackageChecker: InNpmPackageChecker + 'static,
-  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
-  TSys: ExtNodeSys + 'static,
->(
+pub fn op_node_call_is_from_dependency(
   state: &mut OpState,
   scope: &mut v8::PinScope<'_, '_>,
 ) -> bool {
@@ -131,21 +124,15 @@ pub fn op_node_call_is_from_dependency<
     if only_internal {
       return true;
     }
-    return state.borrow::<NodeResolverRc<
-        TInNpmPackageChecker,
-        TNpmPackageFolderResolver,
-        TSys,
-      >>().in_npm_package(&specifier);
+    return state
+      .borrow::<DynNodeResolverRc>()
+      .in_npm_package(&specifier);
   }
   only_internal
 }
 
 #[op2(fast)]
-pub fn op_node_in_npm_package<
-  TInNpmPackageChecker: InNpmPackageChecker + 'static,
-  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
-  TSys: ExtNodeSys + 'static,
->(
+pub fn op_node_in_npm_package(
   state: &mut OpState,
   #[string] path: &str,
 ) -> bool {
@@ -161,11 +148,9 @@ pub fn op_node_in_npm_package<
     }
   };
 
-  state.borrow::<NodeResolverRc<
-    TInNpmPackageChecker,
-    TNpmPackageFolderResolver,
-    TSys,
-  >>().in_npm_package(&specifier)
+  state
+    .borrow::<DynNodeResolverRc>()
+    .in_npm_package(&specifier)
 }
 
 #[op2]

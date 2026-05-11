@@ -560,7 +560,6 @@ mod tests {
 
   use deno_core::FsModuleLoader;
   use deno_core::resolve_path;
-  use deno_resolver::npm::DenoInNpmPackageChecker;
   use deno_runtime::deno_fs::RealFs;
   use deno_runtime::deno_permissions::Permissions;
   use deno_runtime::permissions::RuntimePermissionDescriptorParser;
@@ -582,11 +581,7 @@ mod tests {
       ..Default::default()
     };
 
-    MainWorker::bootstrap_from_options::<
-      DenoInNpmPackageChecker,
-      CliNpmResolver,
-      CliSys,
-    >(
+    MainWorker::bootstrap_from_options::<CliNpmResolver, CliSys>(
       &main_module,
       WorkerServiceOptions {
         deno_rt_native_addon_loader: None,
