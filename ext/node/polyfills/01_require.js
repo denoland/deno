@@ -101,7 +101,7 @@ const {
   emitInit: internalAsyncHooksEmitInit,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const buffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs").default;
-import childProcess from "node:child_process";
+const childProcess = core.loadExtScript("ext:deno_node/child_process.ts");
 const cluster = core.loadExtScript("ext:deno_node/cluster.ts").default;
 import console from "node:console";
 const constants = core.loadExtScript("ext:deno_node/constants.ts").default;
@@ -115,13 +115,17 @@ const dnsPromises = core.loadExtScript(
 ).default;
 const domain = core.loadExtScript("ext:deno_node/domain.ts").default;
 const events = core.loadExtScript("ext:deno_node/_events.mjs").default;
-import fs from "node:fs";
-import fsPromises from "node:fs/promises";
-import http from "node:http";
-import http2 from "node:http2";
-import https from "node:https";
-import inspector from "node:inspector";
-import inspectorPromises from "node:inspector/promises";
+const fs = core.loadExtScript("ext:deno_node/fs.ts");
+const fsPromises = core.loadExtScript(
+  "ext:deno_node/fs/promises.ts",
+).fsPromises;
+const http = core.loadExtScript("ext:deno_node/http.ts");
+const http2 = core.loadExtScript("ext:deno_node/http2.ts");
+const https = core.loadExtScript("ext:deno_node/https.ts");
+const inspector = core.loadExtScript("ext:deno_node/inspector.js");
+const inspectorPromises = core.loadExtScript(
+  "ext:deno_node/inspector/promises.js",
+);
 const internalAssertMyersDiff = core.loadExtScript(
   "ext:deno_node/internal/assert/myers_diff.js",
 );
