@@ -46,7 +46,9 @@ const {
   convertToValidSignal,
   kEmptyObject,
 } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
+const { toPathIfFileURL } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
 const { kNeedsNpmProcessState } = core.loadExtScript(
   "ext:deno_process/40_process.js",
 );

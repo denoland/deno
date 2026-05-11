@@ -6,7 +6,9 @@
 
 import { core } from "ext:core/mod.js";
 import tls from "node:tls";
-import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
+const { urlToHttpOptions } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
 import {
   _connectionListener,
   ClientRequest,

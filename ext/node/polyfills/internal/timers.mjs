@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   createTimer: createTimer_,
   cancelTimer: cancelTimer_,
@@ -50,12 +51,12 @@ const { ERR_OUT_OF_RANGE } = core.loadExtScript(
 const lazyProcess = core.createLazyLoader("node:process");
 
 // Timeout values > TIMEOUT_MAX are set to 1.
-export const TIMEOUT_MAX = 2 ** 31 - 1;
+const TIMEOUT_MAX = 2 ** 31 - 1;
 
-export const kDestroy = Symbol("destroy");
-export const kTimerId = Symbol("timerId");
-export const kTimeout = Symbol("timeout");
-export const kRefed = core.kRefed;
+const kDestroy = Symbol("destroy");
+const kTimerId = Symbol("timerId");
+const kTimeout = Symbol("timeout");
+const kRefed = core.kRefed;
 const createTimer = Symbol("createTimer");
 
 /**
@@ -70,7 +71,7 @@ const activeTimers = new SafeMap();
  * @param {number} id
  * @returns {Timeout | undefined}
  */
-export function getActiveTimer(id) {
+function getActiveTimer(id) {
   return MapPrototypeGet(activeTimers, id);
 }
 
@@ -78,7 +79,7 @@ let warnedNegativeNumber = false;
 let warnedNotNumber = false;
 
 // Timer constructor function.
-export function Timeout(callback, after, args, isRepeat, isRefed) {
+function Timeout(callback, after, args, isRepeat, isRefed) {
   if (after === undefined) {
     after = 1;
   } else {
@@ -314,7 +315,7 @@ Timeout.prototype[SymbolToPrimitive] = function () {
  * @param {string} name
  * @returns
  */
-export function getTimerDuration(msecs, name) {
+function getTimerDuration(msecs, name) {
   validateNumber(msecs, name);
 
   if (msecs < 0 || !NumberIsFinite(msecs)) {
@@ -335,16 +336,16 @@ export function getTimerDuration(msecs, name) {
   return msecs;
 }
 
-export function setUnrefTimeout(callback, timeout, ...args) {
+function setUnrefTimeout(callback, timeout, ...args) {
   validateFunction(callback, "callback");
   return new Timeout(callback, timeout, args, false, false);
 }
 
 // Re-export immediate queue and runImmediates from core for consumers
-export const immediateQueue = core.immediateQueue;
-export const runImmediates = core.runImmediates;
+const immediateQueue = core.immediateQueue;
+const runImmediates = core.runImmediates;
 
-export class Immediate {
+class Immediate {
   constructor(unboundCallback, ...args) {
     const asyncContext = getAsyncContext();
     // Match Node's `immediate._onImmediate(...argv)` invocation: the callback's
@@ -412,11 +413,18 @@ export class Immediate {
   };
 }
 
-export default {
-  getTimerDuration,
+return {
+  TIMEOUT_MAX,
+  kDestroy,
   kTimerId,
   kTimeout,
-  setUnrefTimeout,
+  kRefed,
+  getActiveTimer,
   Timeout,
-  TIMEOUT_MAX,
+  getTimerDuration,
+  setUnrefTimeout,
+  immediateQueue,
+  runImmediates,
+  Immediate,
 };
+})();
