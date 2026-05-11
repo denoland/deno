@@ -445,10 +445,10 @@ async fn setup_config_dir(
   fs::create_dir_all(&dir)
     .with_context(|| format!("failed creating '{}'", dir.display()))?;
 
-  // When --force or --reload is specified, the user is explicitly asking for a
-  // fresh install. Remove the stale auto-generated lockfile so dependency
-  // resolution isn't constrained to previously pinned versions.
-  if force || flags.reload {
+  // When --force is specified, the user is explicitly asking for a fresh
+  // install. Remove the stale auto-generated lockfile so dependency resolution
+  // isn't constrained to previously pinned versions.
+  if force {
     let lockfile_path = dir.join("deno.lock");
     if lockfile_path.exists() {
       fs::remove_file(&lockfile_path).with_context(|| {
