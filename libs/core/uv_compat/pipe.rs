@@ -350,10 +350,10 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
     return UV_EBADF;
   }
 
-  // If this is a *named* pipe, wrap it in a tokio NamedPipeServer or
-  // NamedPipeClient so reads and writes go through the async reactor.
-  // A sync `ReadFile` on a pipe opened with `FILE_FLAG_OVERLAPPED`
-  // aborts inside Rust's std when the operation returns
+  // If this is a *named* pipe opened with FILE_FLAG_OVERLAPPED, wrap it
+  // in a tokio NamedPipeServer or NamedPipeClient so reads and writes
+  // go through the async reactor. A sync `ReadFile` on an overlapped
+  // pipe aborts inside Rust's std when the operation returns
   // `ERROR_IO_PENDING`, which is the common case when no data is
   // immediately available.
   //
@@ -364,15 +364,15 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
   // sees EOF after the child exits, never destroys, and the handle
   // leaks. Use `GetNamedPipeInfo` to detect server vs client end.
   //
-  // Anonymous pipes (`CreatePipe`) also report `FILE_TYPE_PIPE` but
-  // are not overlapped, so tokio's named-pipe wrappers cannot adopt
-  // them. For those (and any other pipe where `GetNamedPipeInfo`
-  // fails) fall through to the raw-handle path, which drives reads
-  // and writes synchronously via the raw HANDLE.
-  //
-  // Note: tokio's `NamedPipe{Server,Client}::from_raw_handle` always
-  // takes ownership of the handle, even on `Err`. Do not reuse `dup`
-  // after a failed attempt — the handle has been closed.
+  // Anonymous pipes (`CreatePipe`) are implemented as named pipes on
+  // Windows so `GetNamedPipeInfo` succeeds, but they are not opened
+  // with `FILE_FLAG_OVERLAPPED`. There is no direct API to query the
+  // overlapped flag, so we detect this empirically: tokio's
+  // `from_raw_handle` returns `Err` for non-overlapped handles. On
+  // failure, re-duplicate the original CRT handle (the first dup was
+  // consumed by `from_raw_handle`, which takes ownership even on
+  // `Err`) and fall through to the raw-handle path, which drives
+  // reads and writes synchronously via the raw HANDLE.
   unsafe {
     if GetFileType(dup) == FILE_TYPE_PIPE {
       let mut flags: u32 = 0;
@@ -386,15 +386,15 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
       if info_ok != 0 {
         let is_server = (flags & PIPE_SERVER_END) != 0;
         let raw = dup as std::os::windows::io::RawHandle;
-        return if is_server {
+        let wrap_ok = if is_server {
           match tokio::net::windows::named_pipe::NamedPipeServer::from_raw_handle(
             raw,
           ) {
             Ok(server) => {
               (*pipe).internal_win_server = Some(std::sync::Arc::new(server));
-              0
+              true
             }
-            Err(_) => UV_EBADF,
+            Err(_) => false,
           }
         } else {
           match tokio::net::windows::named_pipe::NamedPipeClient::from_raw_handle(
@@ -402,13 +402,33 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
           ) {
             Ok(client) => {
               (*pipe).internal_win_client = Some(client);
-              0
+              true
             }
-            Err(_) => UV_EBADF,
+            Err(_) => false,
           }
         };
+        if wrap_ok {
+          return 0;
+        }
+        // `dup` was consumed by `from_raw_handle` on Err. Re-duplicate
+        // the original CRT-owned handle for the raw-handle path.
+        let mut redup: HANDLE = std::ptr::null_mut();
+        let ok = DuplicateHandle(
+          cur,
+          handle as HANDLE,
+          cur,
+          &mut redup,
+          0,
+          0,
+          DUPLICATE_SAME_ACCESS,
+        );
+        if ok == 0 {
+          return UV_EBADF;
+        }
+        (*pipe).internal_handle =
+          Some(redup as std::os::windows::io::RawHandle);
+        return 0;
       }
-      // Anonymous pipe — fall through to the raw-handle path below.
     }
 
     (*pipe).internal_handle = Some(dup as std::os::windows::io::RawHandle);
