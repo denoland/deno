@@ -1599,7 +1599,7 @@ const denoCoreTestJob = job("deno-core-test", {
       name: "Cargo nextest (release)",
       run: [
         `cargo nextest run --release`,
-        `  --features "deno_core/default deno_core/include_js_files_for_snapshotting deno_core/unsafe_use_unprotected_platform"`,
+        `  --features "deno_core/default deno_core/unsafe_use_unprotected_platform"`,
         `  --tests --examples`,
         `  ${denoCorePackageNames.map((p) => `-p ${p}`).join(" ")}`,
       ].join(" \\\n    "),
@@ -1622,7 +1622,6 @@ const denoCoreTestJob = job("deno-core-test", {
       name: "Run examples (regression tests)",
       run: [
         "cargo run -p deno_core --example op2",
-        "cargo run -p deno_core --example op2 --features include_js_files_for_snapshotting",
       ],
     },
     denoCoreTestCacheSteps.saveCacheStep,

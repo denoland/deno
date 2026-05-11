@@ -321,6 +321,27 @@ pub fn into_sources_and_source_maps(
   for (extension, extension_in_snapshot) in
     extensions.iter().zip(extensions_in_snapshot)
   {
+    if let Some(name) = extension_in_snapshot {
+      if extension.name != *name {
+        return Err(
+          CoreErrorKind::ExtensionSnapshotMismatch(
+            crate::error::ExtensionSnapshotMismatchError {
+              expected: name,
+              actual: extension.name,
+            },
+          )
+          .into_box(),
+        );
+      }
+      // Extensions baked into the startup snapshot don't need their JS files
+      // loaded again at runtime — the snapshot already holds the evaluated
+      // state of `js`/`esm` files, and `lazy_loaded_*` files are supplied via
+      // the residual sources table emitted by the snapshot build.
+      continue;
+    }
+
+    // No snapshot for this extension: every declared file needs to be loaded
+    // from disk now (this is the hmr / fresh-runtime path).
     for file in &*extension.lazy_loaded_esm_files {
       let (code, maybe_source_map) =
         load(transpiler, file, &mut load_callback)?;
@@ -341,21 +362,6 @@ pub fn into_sources_and_source_maps(
         code,
         maybe_source_map,
       });
-    }
-
-    if let Some(name) = extension_in_snapshot {
-      if extension.name != *name {
-        return Err(
-          CoreErrorKind::ExtensionSnapshotMismatch(
-            crate::error::ExtensionSnapshotMismatchError {
-              expected: name,
-              actual: extension.name,
-            },
-          )
-          .into_box(),
-        );
-      }
-      continue;
     }
 
     if let Some(esm_entry_point) = extension.esm_entry_point {

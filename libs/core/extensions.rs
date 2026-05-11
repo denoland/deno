@@ -904,7 +904,7 @@ macro_rules! include_lazy_loaded_js_files {
     $(with_specifier $s2:literal)?
     $(= $config:tt)?
   ),* $(,)?) => {
-    $crate::__extension_include_js_files_inner!(mode=included, name=$name, dir=$crate::__extension_root_dir!($($dir)?), $([
+    $crate::__extension_include_js_files_inner!(mode=loaded, name=$name, dir=$crate::__extension_root_dir!($($dir)?), $([
       // These entries will be parsed in __extension_include_js_files_inner
       $s1 $(with_specifier $s2)? $(= $config)?
     ]),*)
@@ -926,22 +926,11 @@ macro_rules! include_js_files_doctest {
   };
 }
 
-/// When `#[cfg(not(feature = "include_js_files_for_snapshotting"))]` matches, ie: the `include_js_files_for_snapshotting`
-/// feature is not set, we want all JS files to be included.
-///
-/// Maps `(...)` to `(mode=included, ...)`
-#[cfg(not(feature = "include_js_files_for_snapshotting"))]
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __extension_include_js_files_detect {
-  ($($rest:tt)*) => { $crate::__extension_include_js_files_inner!(mode=included, $($rest)*) };
-}
-
-/// When `#[cfg(feature = "include_js_files_for_snapshotting")]` matches, ie: the `include_js_files_for_snapshotting`
-/// feature is set, we want the pathnames for the JS files to be included and not the file contents.
-///
-/// Maps `(...)` to `(mode=loaded, ...)`
-#[cfg(feature = "include_js_files_for_snapshotting")]
+/// Source files declared on an extension are recorded by absolute path; their
+/// bytes are read from disk during snapshot creation and never embedded in the
+/// final binary. With a startup snapshot, the source is reachable via the
+/// snapshot bytes (for `esm`/`js`) or the residual lazy table emitted by the
+/// snapshot build (for `lazy_loaded_*`).
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __extension_include_js_files_detect {

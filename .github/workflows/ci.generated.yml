@@ -6038,7 +6038,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: |-
           cargo nextest run --release \
-                --features "deno_core/default deno_core/include_js_files_for_snapshotting deno_core/unsafe_use_unprotected_platform" \
+                --features "deno_core/default deno_core/unsafe_use_unprotected_platform" \
                 --tests --examples \
                 -p deno_core -p build-your-own-js-snapshot -p dcore -p deno_ops -p deno_ops_compile_test_runner -p serde_v8 -p deno_core_testing
       - name: Cargo nextest ops compile test runner (release)
@@ -6049,9 +6049,7 @@ jobs:
         run: cargo test --doc --release -p deno_core -p build-your-own-js-snapshot -p deno_ops -p serde_v8 -p deno_core_testing
       - name: Run examples (regression tests)
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: |-
-          cargo run -p deno_core --example op2
-          cargo run -p deno_core --example op2 --features include_js_files_for_snapshotting
+        run: cargo run -p deno_core --example op2
       - name: Cache cargo home
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
