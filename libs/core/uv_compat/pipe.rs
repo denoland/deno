@@ -371,9 +371,27 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
   // `from_raw_handle` returns `Err` for non-overlapped handles. On
   // failure, re-duplicate the original CRT handle (the first dup was
   // consumed by `from_raw_handle`, which takes ownership even on
-  // `Err`) and fall through to the raw-handle path, which drives
-  // reads and writes synchronously via the raw HANDLE.
+  // `Err`) and try the alternate wrapper before falling through to
+  // the raw-handle path. `NamedPipeClient` wraps server-end handles
+  // without surfacing EOF (the leak this change fixes), but its
+  // writes drive through the async reactor — vastly faster than the
+  // blocking raw-handle path for the bulk-write workload of e.g.
+  // `child_process.spawn` stdin.
   unsafe {
+    let redup = |handle: isize| -> Option<HANDLE> {
+      let mut redup: HANDLE = std::ptr::null_mut();
+      let ok = DuplicateHandle(
+        cur,
+        handle as HANDLE,
+        cur,
+        &mut redup,
+        0,
+        0,
+        DUPLICATE_SAME_ACCESS,
+      );
+      if ok == 0 { None } else { Some(redup) }
+    };
+
     if GetFileType(dup) == FILE_TYPE_PIPE {
       let mut flags: u32 = 0;
       let info_ok = GetNamedPipeInfo(
@@ -386,7 +404,7 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
       if info_ok != 0 {
         let is_server = (flags & PIPE_SERVER_END) != 0;
         let raw = dup as std::os::windows::io::RawHandle;
-        let wrap_ok = if is_server {
+        let primary_ok = if is_server {
           match tokio::net::windows::named_pipe::NamedPipeServer::from_raw_handle(
             raw,
           ) {
@@ -407,26 +425,37 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
             Err(_) => false,
           }
         };
-        if wrap_ok {
+        if primary_ok {
           return 0;
         }
-        // `dup` was consumed by `from_raw_handle` on Err. Re-duplicate
-        // the original CRT-owned handle for the raw-handle path.
-        let mut redup: HANDLE = std::ptr::null_mut();
-        let ok = DuplicateHandle(
-          cur,
-          handle as HANDLE,
-          cur,
-          &mut redup,
-          0,
-          0,
-          DUPLICATE_SAME_ACCESS,
-        );
-        if ok == 0 {
-          return UV_EBADF;
+        // `dup` was consumed by `from_raw_handle` on Err. For server-end
+        // handles, try `NamedPipeClient` as a fallback before giving up
+        // on the async path: this matches the prior behavior and keeps
+        // bulk writes fast, at the cost of EOF propagation that the
+        // initial `NamedPipeServer` attempt would have provided.
+        if is_server {
+          let redup1 = match redup(handle) {
+            Some(h) => h,
+            None => return UV_EBADF,
+          };
+          let raw = redup1 as std::os::windows::io::RawHandle;
+          if let Ok(client) =
+            tokio::net::windows::named_pipe::NamedPipeClient::from_raw_handle(
+              raw,
+            )
+          {
+            (*pipe).internal_win_client = Some(client);
+            return 0;
+          }
         }
+        // Both wrappers failed (or only the client-end attempt did).
+        // Re-duplicate again for the raw-handle path.
+        let raw_handle_dup = match redup(handle) {
+          Some(h) => h,
+          None => return UV_EBADF,
+        };
         (*pipe).internal_handle =
-          Some(redup as std::os::windows::io::RawHandle);
+          Some(raw_handle_dup as std::os::windows::io::RawHandle);
         return 0;
       }
     }
