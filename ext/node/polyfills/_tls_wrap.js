@@ -1230,9 +1230,10 @@ Server.prototype.setTicketKeys = function (keys) {
       `The value of "keys.byteLength" is out of range. It must be 48. Received ${keys.byteLength}`,
     );
   }
-  // TODO: propagate to the TLS backend so already-running listeners
-  // actually rotate their session-ticket keys. Today this only stores
-  // the bytes; new listeners pick them up through options.ticketKeys.
+  // TODO(#33963): propagate to the TLS backend so already-running
+  // listeners actually rotate their session-ticket keys. Today this
+  // only stores the bytes; new listeners pick them up through
+  // options.ticketKeys.
   this._ticketKeys = Buffer.from(keys);
 };
 
