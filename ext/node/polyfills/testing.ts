@@ -574,11 +574,13 @@ function prepareDenoTest(name, options, fn, overrides) {
     sanitizeResources: false,
   };
   Deno.test(denoTestOptions);
-  // The Deno test runner only executes registered tests after the module
-  // has finished evaluating, so we cannot return a promise that resolves on
-  // completion: top-level `await test(...)` would deadlock the module. The
-  // test still runs and is reported by the runner; we return an already
-  // resolved promise so the await unblocks.
+  // Node resolves the returned promise on test completion, but the
+  // Deno runner only executes registered tests after the module
+  // finishes evaluating, so top-level `await test(...)` deadlocks.
+  // Resolve immediately to unblock; the test still runs and is
+  // reported normally. Trade-off: code that awaits `test()` for
+  // sequencing (`await test('a'); await test('b')`) sees them run
+  // out of order.
   return PromiseResolve();
 }
 
@@ -631,8 +633,8 @@ function prepareDenoTestForSuite(name, options, fn, overrides) {
     sanitizeResources: false,
   };
   Deno.test(denoTestOptions);
-  // See `prepareDenoTest`: returning a completion promise here would
-  // deadlock top-level `await suite(...)`.
+  // See `prepareDenoTest` for the Node-divergence trade-off; top-level
+  // `await suite(...)` would deadlock if we waited for completion.
   return PromiseResolve();
 }
 
