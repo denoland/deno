@@ -522,9 +522,18 @@ impl ModuleLoader for EmbeddedModuleLoader {
       && (!is_already_resolved_specifier(raw_specifier)
         || self.is_external_file_specifier(raw_specifier));
     if should_use_resolve_hooks {
-      let receiver = self
-        .hook_registry
-        .push_resolve(raw_specifier.to_string(), referrer.to_string());
+      // Pre-compute the default-resolved URL so the hook chain's
+      // `defaultResolve()` returns Deno's actual resolution rather than a
+      // naive `new URL(spec, parentURL)`.
+      let default_url = self
+        .resolve_inner(raw_specifier, referrer, kind)
+        .ok()
+        .map(|u| u.to_string());
+      let receiver = self.hook_registry.push_resolve(
+        raw_specifier.to_string(),
+        referrer.to_string(),
+        default_url,
+      );
       let this = self.clone();
       let raw_specifier = raw_specifier.to_string();
       let referrer = referrer.to_string();

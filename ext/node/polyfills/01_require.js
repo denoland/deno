@@ -462,9 +462,22 @@ if (globalThis.process) {
 
 const asyncHookEntries = [];
 
+// Pre-computed Deno default-resolved URL for the current resolve request.
+// Set per-request from the message payload so \`defaultResolve()\` (called by
+// user hooks via \`next()\`) returns Deno's actual resolution (import map,
+// jsr, npm) rather than a naive URL.parse.
+let currentRequestSpecifier = null;
+let currentRequestDefaultUrl = null;
+
 function defaultResolve(spec, context) {
   if (spec.startsWith("node:")) {
     return { url: spec, shortCircuit: true };
+  }
+  // When the user hook called next() with the same specifier, use Deno's
+  // pre-computed resolution. The hook is expected to then transform that
+  // URL (or pass it through).
+  if (spec === currentRequestSpecifier && currentRequestDefaultUrl !== null) {
+    return { url: currentRequestDefaultUrl, shortCircuit: true };
   }
   const parentURL = context.parentURL;
   if (parentURL) {
@@ -557,8 +570,18 @@ self.onmessage = (e) => {
       return { type: "registered", id: msg.id, hasResolve: resolve !== null, hasLoad: load !== null };
     })();
   } else if (msg.type === "resolve") {
+    currentRequestSpecifier = msg.specifier;
+    currentRequestDefaultUrl = msg.defaultUrl ?? null;
     promise = Promise.resolve(runResolveChain(msg.specifier, msg.context))
-      .then((result) => ({ type: "resolve-result", id: msg.id, result }));
+      .then((result) => {
+        currentRequestSpecifier = null;
+        currentRequestDefaultUrl = null;
+        return { type: "resolve-result", id: msg.id, result };
+      }, (err) => {
+        currentRequestSpecifier = null;
+        currentRequestDefaultUrl = null;
+        throw err;
+      });
   } else if (msg.type === "load") {
     promise = Promise.resolve(runLoadChain(msg.url, msg.context))
       .then((result) => ({ type: "load-result", id: msg.id, result }));
@@ -759,7 +782,12 @@ function executeLoadHookChain(fileUrl, context) {
 // ESM resolve hook chain: runs sync hooks (registerHooks) in LIFO order,
 // then async hooks (register) in LIFO order.
 // Returns { url } if hooks resolved, or null for fallthrough to default.
-async function executeEsmResolveHookChain(specifier, context) {
+//
+// `defaultUrl` is the URL that Deno's default resolver (import map, jsr,
+// npm, etc.) produced for `specifier`. Returned from `defaultResolve()` so
+// user hooks calling `next()` see Deno's real resolution -- not a naive
+// `new URL(spec, parentURL)`.
+async function executeEsmResolveHookChain(specifier, context, defaultUrl) {
   // Run sync hooks (registerHooks) first on the main thread
   const syncResolveHooks = [];
   for (let i = hookEntries.length - 1; i >= 0; i--) {
@@ -782,7 +810,11 @@ async function executeEsmResolveHookChain(specifier, context) {
         if (asyncHooksHaveResolve) {
           return { url: null, shortCircuit: false, _syncFallthrough: true };
         }
-        // Default resolve (no async hooks)
+        // Default resolve (no async hooks). If the spec is unchanged we
+        // can use Deno's pre-computed default URL.
+        if (spec === specifier && defaultUrl != null) {
+          return { url: defaultUrl, shortCircuit: true };
+        }
         if (StringPrototypeStartsWith(spec, "node:")) {
           return { url: spec, shortCircuit: true };
         }
@@ -855,6 +887,7 @@ async function executeEsmResolveHookChain(specifier, context) {
     type: "resolve",
     specifier,
     context,
+    defaultUrl,
   });
   return msg.result;
 }
@@ -956,7 +989,7 @@ function _startEsmResolveLoop() {
       if (pendingHookLoads.length > 0) {
         await Promise.all(pendingHookLoads);
       }
-      const [id, specifier, referrer] = req;
+      const [id, specifier, referrer, defaultUrl] = req;
       const context = {
         conditions: ["node", "import"],
         importAttributes: { __proto__: null },
@@ -964,7 +997,11 @@ function _startEsmResolveLoop() {
         importAssertions: { __proto__: null },
       };
       try {
-        const result = await executeEsmResolveHookChain(specifier, context);
+        const result = await executeEsmResolveHookChain(
+          specifier,
+          context,
+          defaultUrl ?? null,
+        );
         if (result !== null && result.url != null) {
           if (result.format != null) {
             resolvedFormats.set(result.url, result.format);
