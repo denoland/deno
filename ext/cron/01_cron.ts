@@ -2,10 +2,22 @@
 
 (function () {
 const { core, internals, primordials } = globalThis.__bootstrap;
-const { op_cron_create, op_cron_next } = core.ops;
 const {
+  op_cron_create,
+  op_cron_next,
+  op_cron_persistent_create,
+  op_cron_persistent_list,
+  op_cron_persistent_remove,
+} = core.ops;
+const {
+  ArrayIsArray,
   ArrayPrototypeJoin,
+  ArrayPrototypePush,
+  ArrayPrototypeSort,
   NumberPrototypeToString,
+  ObjectKeys,
+  ObjectPrototypeHasOwnProperty,
+  PromiseResolve,
   SafeArrayIterator,
   TypeError,
 } = primordials;
@@ -222,6 +234,116 @@ function cron(
     }
   })();
 }
+
+function persistent(
+  options: {
+    name: string;
+    schedule: string | Deno.CronSchedule;
+    script: string;
+    permissions?: string[];
+    cwd?: string;
+    env?: Record<string, string>;
+  },
+): Promise<void> {
+  if (options === null || typeof options !== "object") {
+    throw new TypeError(
+      "Cannot register persistent cron: options must be an object",
+    );
+  }
+  const { name, schedule, script } = options;
+  if (typeof name !== "string" || name.length === 0) {
+    throw new TypeError(
+      "Cannot register persistent cron: 'name' must be a non-empty string",
+    );
+  }
+  if (schedule === undefined) {
+    throw new TypeError(
+      "Cannot register persistent cron: 'schedule' is required",
+    );
+  }
+  if (typeof script !== "string" || script.length === 0) {
+    throw new TypeError(
+      "Cannot register persistent cron: 'script' must be a non-empty path",
+    );
+  }
+
+  const scheduleStr = parseScheduleToString(schedule);
+
+  const permissions = options.permissions ?? [];
+  if (!ArrayIsArray(permissions)) {
+    throw new TypeError(
+      "Cannot register persistent cron: 'permissions' must be an array of strings",
+    );
+  }
+  for (const p of new SafeArrayIterator(permissions)) {
+    if (typeof p !== "string") {
+      throw new TypeError(
+        "Cannot register persistent cron: 'permissions' entries must be strings",
+      );
+    }
+  }
+
+  const envObj = options.env;
+  const env: [string, string][] = [];
+  if (envObj !== undefined) {
+    if (envObj === null || typeof envObj !== "object") {
+      throw new TypeError(
+        "Cannot register persistent cron: 'env' must be an object",
+      );
+    }
+    for (const key of new SafeArrayIterator(ObjectKeys(envObj))) {
+      if (!ObjectPrototypeHasOwnProperty(envObj, key)) continue;
+      const value = envObj[key];
+      if (typeof value !== "string") {
+        throw new TypeError(
+          `Cannot register persistent cron: env value for '${key}' must be a string`,
+        );
+      }
+      ArrayPrototypePush(env, [key, value]);
+    }
+    // Sort for stable on-disk representation.
+    ArrayPrototypeSort(
+      env,
+      (a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0),
+    );
+  }
+
+  op_cron_persistent_create(
+    name,
+    scheduleStr,
+    script,
+    permissions,
+    options.cwd,
+    env,
+  );
+  return PromiseResolve();
+}
+
+function remove(name: string): Promise<void> {
+  if (typeof name !== "string" || name.length === 0) {
+    throw new TypeError(
+      "Cannot remove persistent cron: 'name' must be a non-empty string",
+    );
+  }
+  op_cron_persistent_remove(name);
+  return PromiseResolve();
+}
+
+function list(): Promise<
+  { name: string; schedule: string; script: string }[]
+> {
+  return PromiseResolve(op_cron_persistent_list());
+}
+
+// Attach persistent-cron methods as properties of the `cron` function so
+// callers can do `Deno.cron.persistent(...)`.
+(cron as unknown as {
+  persistent: typeof persistent;
+  remove: typeof remove;
+  list: typeof list;
+}).persistent = persistent;
+(cron as unknown as { remove: typeof remove }).remove = remove;
+(cron as unknown as { list: typeof list }).list = list;
 
 // For testing
 internals.formatToCronSchedule = formatToCronSchedule;

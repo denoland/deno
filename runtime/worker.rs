@@ -1084,7 +1084,10 @@ fn common_extensions<
     deno_net::deno_net::lazy_init(),
     deno_tls::deno_tls::init(),
     deno_kv::deno_kv::lazy_init::<MultiBackendDbHandler>(),
-    deno_cron::deno_cron::init(CronHandlerImpl::create_from_env()),
+    deno_cron::deno_cron::init(
+      CronHandlerImpl::create_from_env(),
+      deno_cron::PersistentCronHandlerImpl::create_from_env(),
+    ),
     deno_napi::deno_napi::lazy_init(),
     deno_http::deno_http::lazy_init(),
     deno_io::deno_io::lazy_init(),
