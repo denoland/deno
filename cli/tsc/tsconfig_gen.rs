@@ -8,6 +8,7 @@
 //! Deno type definitions so that the `Deno` namespace and other Deno-specific
 //! globals are available.
 
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -15,6 +16,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
+use deno_core::url::Url;
 
 use super::get_types_declaration_file_text;
 
@@ -39,6 +41,7 @@ pub fn generate_tsconfig(
   deno_compiler_options: Option<&Value>,
   deno_imports: Option<&Value>,
   files: &[String],
+  http_modules: &BTreeSet<Url>,
 ) -> Result<GeneratedTsConfig, std::io::Error> {
   // Write Deno type definitions to node_modules/@types/deno/
   let types_dir = project_root.join("node_modules/@types/deno");
@@ -57,8 +60,13 @@ pub fn generate_tsconfig(
   )?;
 
   // Build tsconfig
-  let tsconfig =
-    build_tsconfig(project_root, deno_compiler_options, deno_imports, files);
+  let tsconfig = build_tsconfig(
+    project_root,
+    deno_compiler_options,
+    deno_imports,
+    files,
+    http_modules,
+  );
 
   // Write to .deno/tsconfig.json
   let deno_dir = project_root.join(".deno");
@@ -149,6 +157,7 @@ fn build_tsconfig(
   deno_compiler_options: Option<&Value>,
   deno_imports: Option<&Value>,
   check_files: &[String],
+  http_modules: &BTreeSet<Url>,
 ) -> Value {
   let mut compiler_options = base_compiler_options();
 
@@ -162,6 +171,8 @@ fn build_tsconfig(
   let mut specifier_paths = generate_npm_paths(project_root, deno_imports);
   let jsr_paths = generate_jsr_paths(project_root, deno_imports);
   specifier_paths.extend(jsr_paths);
+  let http_paths = generate_http_paths(http_modules);
+  specifier_paths.extend(http_paths);
 
   // Merge user-defined paths from deno.json compilerOptions — these take
   // priority over generated specifier mappings.
@@ -338,6 +349,31 @@ fn resolve_jsr_types_entry(pkg_dir: &Path) -> Option<String> {
   } else {
     Some(format!("../node_modules/{pkg_name}/{types_path}"))
   }
+}
+
+/// Generate tsconfig "paths" entries for http(s): specifiers.
+///
+/// For each absolute URL the installer materialized under `.deno/remote/`, emit:
+///   `"https://deno.land/x/jose@v6.2.3/index.ts": ["./remote/deno.land/x/jose@v6.2.3/index.ts"]`
+///
+/// Paths are relative to the tsconfig location (`.deno/`). With
+/// `moduleResolution: "bundler"`, stock tsc accepts colon-containing keys
+/// like `https://...`, which lets us redirect URL imports to local files.
+fn generate_http_paths(http_modules: &BTreeSet<Url>) -> Map<String, Value> {
+  let mut paths = Map::new();
+  for url in http_modules {
+    let Some(host) = url.host_str() else {
+      continue;
+    };
+    let path = url.path();
+    if path.ends_with('/') || path.is_empty() {
+      continue;
+    }
+    let rel = path.trim_start_matches('/');
+    let local = format!("./remote/{host}/{rel}");
+    paths.insert(url.as_str().to_string(), json!([local]));
+  }
+  paths
 }
 
 /// Parse a jsr specifier like "jsr:@std/assert@1" or "jsr:@scope/name@1.2.3"
@@ -668,7 +704,8 @@ mod tests {
   #[test]
   fn test_build_tsconfig_includes_relative_to_deno_dir() {
     let project_root = Path::new("/tmp/project");
-    let tsconfig = build_tsconfig(project_root, None, None, &[]);
+    let tsconfig =
+      build_tsconfig(project_root, None, None, &[], &BTreeSet::new());
 
     let include = tsconfig.get("include").unwrap().as_array().unwrap();
     assert_eq!(include, &vec![json!("../**/*")]);
@@ -681,7 +718,8 @@ mod tests {
   fn test_build_tsconfig_with_files() {
     let project_root = Path::new("/tmp/project");
     let files = vec!["main.ts".to_string(), "lib.ts".to_string()];
-    let tsconfig = build_tsconfig(project_root, None, None, &files);
+    let tsconfig =
+      build_tsconfig(project_root, None, None, &files, &BTreeSet::new());
 
     // Should use "files" instead of "include"/"exclude"
     assert!(tsconfig.get("include").is_none());
@@ -707,6 +745,7 @@ mod tests {
       Some(&compiler_options),
       Some(&imports),
       &[],
+      &BTreeSet::new(),
     );
 
     let paths = tsconfig
