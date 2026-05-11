@@ -1042,10 +1042,12 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       // cache miss happens here, fall back to Deno's default sync resolver.
       // This path is hit when `recursive_load` skipped an async resolve
       // because the placeholder URL already matched a registered module --
-      // so the hook never got a chance to populate the cache. The hook
-      // chain has already produced a definitive URL for this (specifier,
-      // referrer) elsewhere; falling back to `inner_resolve` reproduces
-      // it deterministically.
+      // so the hook never got a chance to populate the cache. We bypass
+      // the user hook chain for this single resolution because the
+      // alternative is a panic in V8's sync callback; in practice the
+      // placeholder match means the module is already registered under
+      // the URL that Deno's default resolver will produce, so the
+      // bypassed hook would have returned the same URL anyway.
       if matches!(kind, deno_core::ResolutionKind::Import) {
         return deno_core::ModuleResolveResponse::Sync(
           self.0.inner_resolve(specifier, referrer, kind, false),

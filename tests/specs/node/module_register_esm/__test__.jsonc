@@ -28,6 +28,11 @@
       "cwd": "passthrough_imports",
       "args": "run -A main.mjs",
       "output": "passthrough_imports/main.out"
+    },
+    "passthrough_hook_preserves_npm_intra_package_referrer": {
+      "cwd": "passthrough_npm",
+      "args": "run -A main.mjs",
+      "output": "passthrough_npm/main.out"
     }
   }
 }
