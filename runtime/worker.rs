@@ -33,6 +33,7 @@ use deno_core::SourceCodeCacheInfo;
 use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::v8;
+use deno_cron::CronHandler;
 use deno_cron::CronHandlerImpl;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
@@ -439,9 +440,11 @@ impl MainWorker {
 
       let op_state = js_runtime.op_state();
       let current_handler =
-        op_state.borrow().borrow::<Rc<CronHandlerImpl>>().clone();
+        op_state.borrow().borrow::<Rc<dyn CronHandler>>().clone();
       if let Some(new_handler) = current_handler.maybe_reload() {
-        op_state.borrow_mut().put(Rc::new(new_handler));
+        op_state
+          .borrow_mut()
+          .put::<Rc<dyn CronHandler>>(Rc::from(new_handler));
       }
 
       js_runtime
