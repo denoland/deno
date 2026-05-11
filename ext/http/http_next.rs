@@ -538,44 +538,15 @@ pub fn op_http_get_request_headers<'scope>(
 /// which case the JS caller falls through to the streaming
 /// `op_http_read_request_body` path. The body is left intact
 /// on the `null` branch.
-/// Try to drain the entire request body without blocking, returning either:
-///   - `null` if the body is not yet fully buffered;
-///   - a `string` if the buffered bytes are valid UTF-8 (JSON, text, form-data,
-///     etc.); this lets `req.json()`/`req.text()` skip the Uint8Array/ArrayBuffer
-///     allocation and the TextDecoder round-trip;
-///   - a `Uint8Array` if the bytes are not valid UTF-8 (binary uploads).
-///
-/// Choosing the representation in the op (rather than always returning bytes
-/// and converting on the JS side) avoids the v8::ArrayBuffer + Uint8Array view
-/// allocations on the hot text-body path.
 #[op2]
-pub fn op_http_try_take_full_request_body<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
+#[buffer]
+pub fn op_http_try_take_full_request_body(
   external: *const c_void,
-) -> v8::Local<'s, v8::Value> {
+) -> Option<Vec<u8>> {
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_try_take_full_request_body") };
-  let bytes = match http.try_take_full_request_body() {
-    Some(b) => b,
-    None => return v8::null(scope).into(),
-  };
-  if std::str::from_utf8(&bytes).is_ok() {
-    // SAFETY: we just validated UTF-8 above.
-    let s = unsafe { std::str::from_utf8_unchecked(&bytes) };
-    return v8::String::new_from_utf8(
-      scope,
-      s.as_bytes(),
-      v8::NewStringType::Normal,
-    )
-    .unwrap()
-    .into();
-  }
-  let len = bytes.len();
-  let backing =
-    v8::ArrayBuffer::new_backing_store_from_vec(bytes).make_shared();
-  let array_buffer = v8::ArrayBuffer::with_backing_store(scope, &backing);
-  v8::Uint8Array::new(scope, array_buffer, 0, len).unwrap().into()
+  http.try_take_full_request_body()
 }
 
 #[op2(fast)]
@@ -748,13 +719,13 @@ fn modify_compressibility_from_response(
   compression: Compression,
   headers: &mut HeaderMap,
 ) -> Compression {
-  ensure_vary_accept_encoding(headers);
   if compression == Compression::None {
     return Compression::None;
   }
   if !is_response_compressible(headers) {
     return Compression::None;
   }
+  ensure_vary_accept_encoding(headers);
   let encoding = match compression {
     Compression::Brotli => "br",
     Compression::GZip => "gzip",
@@ -779,10 +750,6 @@ fn weaken_etag(hmap: &mut HeaderMap) {
   }
 }
 
-// Set Vary: Accept-Encoding header for direct body response.
-// Note: we set the header irrespective of whether or not we compress the data
-// to make sure cache services do not serve uncompressed data to clients that
-// support compression.
 fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
   if let Some(v) = hmap.get_mut(hyper::header::VARY)
     && let Ok(s) = v.to_str()
@@ -1093,6 +1060,7 @@ fn serve_http(
   lifetime: HttpLifetime,
   callback: Rc<ServerCallback>,
   options: Options,
+  wait_for_connection: bool,
 ) -> JoinHandle<Result<(), HttpNextError>> {
   let HttpLifetime {
     server_state,
@@ -1111,9 +1079,51 @@ fn serve_http(
       legacy_abort,
     )
   });
+  let connection_cancel_handle_for_outer = connection_cancel_handle.clone();
   spawn(
-    serve_http2_autodetect(io, svc, listen_cancel_handle, options)
-      .try_or_cancel(connection_cancel_handle),
+    async move {
+      let prefix = NetworkStreamPrefixCheck::new(io, HTTP2_PREFIX);
+      let (matches, io) = prefix
+        .match_prefix()
+        .try_or_cancel(listen_cancel_handle.clone())
+        .await?;
+      let join_handle = if matches {
+        spawn(
+          async move {
+            serve_http2_unconditional(
+              io,
+              svc,
+              listen_cancel_handle,
+              options.http2_builder_hook,
+            )
+            .await
+            .map_err(HttpNextError::Hyper)
+          }
+          .try_or_cancel(connection_cancel_handle),
+        )
+      } else {
+        spawn(
+          async move {
+            serve_http11_unconditional(
+              io,
+              svc,
+              listen_cancel_handle,
+              options.http1_builder_hook,
+            )
+            .await
+            .map_err(HttpNextError::Hyper)
+          }
+          .try_or_cancel(connection_cancel_handle),
+        )
+      };
+
+      if wait_for_connection {
+        join_handle.await?
+      } else {
+        Ok(())
+      }
+    }
+    .try_or_cancel(connection_cancel_handle_for_outer),
   )
 }
 
@@ -1123,6 +1133,7 @@ fn serve_http_on<HTTP>(
   lifetime: HttpLifetime,
   callback: Rc<ServerCallback>,
   options: Options,
+  wait_for_connection: bool,
 ) -> JoinHandle<Result<(), HttpNextError>>
 where
   HTTP: HttpPropertyExtractor,
@@ -1133,31 +1144,56 @@ where
   let network_stream = HTTP::to_network_stream_from_connection(connection);
 
   match network_stream {
-    NetworkStream::Tcp(conn) => {
-      serve_http(conn, connection_properties, lifetime, callback, options)
-    }
+    NetworkStream::Tcp(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
     NetworkStream::Tls(conn) => {
       serve_https(conn, connection_properties, lifetime, callback, options)
     }
     #[cfg(unix)]
-    NetworkStream::Unix(conn) => {
-      serve_http(conn, connection_properties, lifetime, callback, options)
-    }
+    NetworkStream::Unix(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
     #[cfg(any(
       target_os = "android",
       target_os = "linux",
       target_os = "macos"
     ))]
-    NetworkStream::Vsock(conn) => {
-      serve_http(conn, connection_properties, lifetime, callback, options)
-    }
-    NetworkStream::Tunnel(conn) => {
-      serve_http(conn, connection_properties, lifetime, callback, options)
-    }
+    NetworkStream::Vsock(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
+    NetworkStream::Tunnel(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
     #[cfg(windows)]
-    NetworkStream::WindowsPipe(conn) => {
-      serve_http(conn, connection_properties, lifetime, callback, options)
-    }
+    NetworkStream::WindowsPipe(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
   }
 }
 
@@ -1262,6 +1298,7 @@ where
         lifetime.clone(),
         callback.clone(),
         options,
+        false,
       );
     }
     #[allow(unreachable_code, reason = "to avoid typing closure")]
@@ -1312,6 +1349,7 @@ where
     resource.lifetime(),
     callback,
     options,
+    true,
   );
 
   // Set the handle after we start the future

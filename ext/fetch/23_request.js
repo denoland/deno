@@ -36,7 +36,6 @@ const {
   guardFromHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-  headersFromLazy,
 } = core.loadExtScript("ext:deno_fetch/20_headers.js");
 const { HttpClientPrototype } = core.loadExtScript(
   "ext:deno_fetch/22_http_client.js",
@@ -612,20 +611,7 @@ function toInnerRequest(request) {
 function fromInnerRequest(inner, guard) {
   const request = new Request(_brand);
   request[_request] = inner;
-  // If the InnerRequest can satisfy a single header lookup without
-  // materializing the full list (server requests with `getRequestHeader`),
-  // build a lazy Headers - `req.headers.get(name)` will then issue a single
-  // op call instead of allocating the full op_http_get_request_headers array.
-  if (inner.getRequestHeader !== undefined) {
-    request[_getHeaders] = () =>
-      headersFromLazy(
-        (name) => inner.getRequestHeader(name),
-        () => inner.headerList,
-        guard,
-      );
-  } else {
-    request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);
-  }
+  request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);
   return request;
 }
 

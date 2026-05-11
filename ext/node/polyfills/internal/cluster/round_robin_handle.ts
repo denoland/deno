@@ -6,16 +6,19 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
-import { core, primordials } from "ext:core/mod.js";
-import * as net from "node:net";
-import { sendHelper } from "ext:deno_node/internal/cluster/utils.ts";
-import {
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const lazyNet = core.createLazyLoader("node:net");
+const { sendHelper } = core.loadExtScript(
+  "ext:deno_node/internal/cluster/utils.ts",
+);
+const {
   append,
   init,
   isEmpty,
   peek,
   remove,
-} from "ext:deno_node/internal/cluster/linkedlist.ts";
+} = core.loadExtScript("ext:deno_node/internal/cluster/linkedlist.ts");
 const {
   constants: TCPConstants,
   setupListenWrap: setupTCPListenWrap,
@@ -28,12 +31,13 @@ const {
 
 const { ArrayIsArray, Boolean, SafeMap } = primordials;
 
-export function RoundRobinHandle(
+function RoundRobinHandle(
   this: any,
   key: string,
   address: string | null,
   { port, fd, flags, backlog, readableAll, writableAll }: any,
 ) {
+  const net = lazyNet();
   this.key = key;
   this.all = new SafeMap();
   this.free = new SafeMap();
@@ -190,4 +194,5 @@ RoundRobinHandle.prototype.has = function (this: any, worker: any) {
   return this.all.has(worker.id);
 };
 
-export default RoundRobinHandle;
+return { RoundRobinHandle, default: RoundRobinHandle };
+})();

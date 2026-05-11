@@ -23,8 +23,9 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-import {
+(function () {
+const { core } = globalThis.__bootstrap;
+const {
   op_node_udp_bind,
   op_node_udp_fd_for_ipc,
   op_node_udp_join_multi_v4,
@@ -41,13 +42,12 @@ import {
   op_node_udp_set_multicast_loopback,
   op_node_udp_set_multicast_ttl,
   op_node_udp_set_ttl,
-} from "ext:core/ops";
+} = core.ops;
 
 const {
   AsyncWrap,
   providerType,
 } = core.loadExtScript("ext:deno_node/internal_binding/async_wrap.ts");
-import { GetAddrInfoReqWrap } from "ext:deno_node/internal_binding/cares_wrap.ts";
 const { HandleWrap } = core.loadExtScript(
   "ext:deno_node/internal_binding/handle_wrap.ts",
 );
@@ -57,8 +57,7 @@ const { ownerSymbol } = core.loadExtScript(
 const { codeMap, errorMap } = core.loadExtScript(
   "ext:deno_node/internal_binding/uv.ts",
 );
-import { Buffer } from "node:buffer";
-import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
 const { isLinux, isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 const { os } = core.loadExtScript(
@@ -99,12 +98,12 @@ function isValidMulticastAddress(
   }
 }
 
-export class SendWrap extends AsyncWrap {
+class SendWrap extends AsyncWrap {
   list!: MessageType[];
   address!: string;
   port!: number;
 
-  callback!: (error: ErrnoException | null, bytes?: number) => void;
+  callback!: (error: Error | null, bytes?: number) => void;
   oncomplete!: (err: number | null, sent?: number) => void;
 
   constructor() {
@@ -112,7 +111,7 @@ export class SendWrap extends AsyncWrap {
   }
 }
 
-export class UDP extends HandleWrap {
+class UDP extends HandleWrap {
   [ownerSymbol]: unknown = null;
 
   #address?: string;
@@ -146,11 +145,12 @@ export class UDP extends HandleWrap {
   lookup!: (
     address: string,
     callback: (
-      err: ErrnoException | null,
+      err: Error | null,
       address: string,
       family: number,
     ) => void,
-  ) => GetAddrInfoReqWrap | Record<string, never>;
+    // deno-lint-ignore no-explicit-any
+  ) => any;
 
   constructor() {
     super(providerType.UDPWRAP);
@@ -715,3 +715,10 @@ export class UDP extends HandleWrap {
     return 0;
   }
 }
+
+return {
+  default: { SendWrap, UDP },
+  SendWrap,
+  UDP,
+};
+})();

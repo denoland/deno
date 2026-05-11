@@ -77,12 +77,20 @@ const {
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { enqueueNodePerformanceEntry } = core.loadExtScript(
+  "ext:deno_node/perf_hooks.js",
+);
 const {
   otelState,
   builtinTracer,
   ContextManager,
   telemetry,
 } = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
+const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
+
+const onServerRequestStartChannel = channel("http.server.request.start");
+const onServerResponseCreatedChannel = channel("http.server.response.created");
+const onServerResponseFinishChannel = channel("http.server.response.finish");
 
 const kServerResponse = Symbol("ServerResponse");
 const kConnectionsKey = Symbol("http.server.connections");
@@ -92,6 +100,7 @@ const kConnectionsCheckingInterval = Symbol(
 const kOtelSpan = Symbol("kOtelSpan");
 const kOtelStartTime = Symbol("kOtelStartTime");
 const kOtelReqBodySize = Symbol("kOtelReqBodySize");
+const kPerfStartTime = Symbol("kPerfStartTime");
 
 // OTel server metrics - lazy initialized
 let otelMetrics = null;
@@ -288,6 +297,13 @@ function ServerResponse(req, options) {
       req.headers?.te,
     );
     this.shouldKeepAlive = false;
+  }
+
+  if (onServerResponseCreatedChannel.hasSubscribers) {
+    onServerResponseCreatedChannel.publish({
+      request: req,
+      response: this,
+    });
   }
 }
 ObjectSetPrototypeOf(ServerResponse.prototype, OutgoingMessage.prototype);
@@ -749,6 +765,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   }
 
   state.incoming.push(req);
+  req[kPerfStartTime] = performance.now();
 
   if (!socket._paused) {
     const ws = socket._writableState;
@@ -821,6 +838,15 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
     resOnFinish.bind(undefined, req, res, socket, state, server),
   );
 
+  if (onServerRequestStartChannel.hasSubscribers) {
+    onServerRequestStartChannel.publish({
+      request: req,
+      response: res,
+      socket,
+      server,
+    });
+  }
+
   let handled = false;
 
   if (req.httpVersionMajor === 1 && req.httpVersionMinor === 1) {
@@ -879,6 +905,15 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
 }
 
 function resOnFinish(req, res, socket, state, server) {
+  if (onServerResponseFinishChannel.hasSubscribers) {
+    onServerResponseFinishChannel.publish({
+      request: req,
+      response: res,
+      socket,
+      server,
+    });
+  }
+
   assert(state.incoming.length === 0 || state.incoming[0] === req);
 
   // End OTel server span
@@ -891,6 +926,30 @@ function resOnFinish(req, res, socket, state, server) {
     }
     span.end();
     res[kOtelSpan] = null;
+  }
+
+  // Emit HttpRequest perf entry
+  const perfStartTime = req[kPerfStartTime];
+  if (perfStartTime !== undefined) {
+    enqueueNodePerformanceEntry({
+      name: "HttpRequest",
+      entryType: "http",
+      startTime: perfStartTime,
+      duration: performance.now() - perfStartTime,
+      detail: {
+        req: {
+          method: req.method,
+          url: req.url || "/",
+          headers: req.headers,
+        },
+        res: {
+          statusCode: res.statusCode,
+          statusMessage: res.statusMessage ||
+            STATUS_CODES[res.statusCode] || "",
+          headers: res.getHeaders(),
+        },
+      },
+    });
   }
 
   // Record OTel server metrics

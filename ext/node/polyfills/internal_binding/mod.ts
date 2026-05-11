@@ -10,11 +10,15 @@ const asyncWrap = core.loadExtScript(
 const buffer = core.loadExtScript(
   "ext:deno_node/internal_binding/buffer.ts",
 );
-import caresWrap from "ext:deno_node/internal_binding/cares_wrap.ts";
+const { default: caresWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/cares_wrap.ts",
+);
 const constants = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
-import * as crypto from "ext:deno_node/internal_binding/crypto.ts";
+const crypto = core.loadExtScript(
+  "ext:deno_node/internal_binding/crypto.ts",
+);
 const pipeWrap = core.loadExtScript(
   "ext:deno_node/internal_binding/pipe_wrap.ts",
 );
@@ -34,12 +38,16 @@ const ttyWrap = core.loadExtScript(
   "ext:deno_node/internal_binding/tty_wrap.ts",
 );
 const types = core.loadExtScript("ext:deno_node/internal_binding/types.ts");
-import * as udpWrap from "ext:deno_node/internal_binding/udp_wrap.ts";
+const udpWrap = core.loadExtScript(
+  "ext:deno_node/internal_binding/udp_wrap.ts",
+);
 const util = core.loadExtScript(
   "ext:deno_node/internal_binding/util.ts",
 );
 const uvNamespace = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
-import * as httpParser from "ext:deno_node/internal_binding/http_parser.ts";
+const httpParser = core.loadExtScript(
+  "ext:deno_node/internal_binding/http_parser.ts",
+);
 const http2Binding = core.loadExtScript(
   "ext:deno_node/internal_binding/http2.ts",
 );

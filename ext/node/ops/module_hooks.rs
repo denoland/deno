@@ -49,6 +49,12 @@ pub struct LoaderHookRegistry {
   /// don't exist on disk.
   pub hook_intercepted_specifiers: Rc<RefCell<HashSet<String>>>,
 
+  /// Cache of resolve results (key: "specifier\0referrer" → resolved URL).
+  /// Populated during the async load phase so that V8's synchronous module
+  /// instantiation callback can look up previously-resolved specifiers
+  /// without going through the async hook bridge.
+  pub resolve_cache: Rc<RefCell<HashMap<String, String>>>,
+
   pending_resolves: Rc<RefCell<VecDeque<PendingResolve>>>,
   resolve_waker: Rc<RefCell<Option<Waker>>>,
   resolve_senders: Rc<RefCell<HashMap<u32, ResolveSender>>>,

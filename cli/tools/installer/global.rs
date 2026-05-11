@@ -184,6 +184,7 @@ pub async fn install_global(
       &name_and_url,
       &flags,
       &installation_dir,
+      install_flags_global.force,
       Some(&jsr_lockfile_fetcher),
     )
     .await?;
@@ -420,6 +421,7 @@ async fn setup_config_dir(
   bin_name_and_url: &BinaryNameAndUrl,
   flags: &Flags,
   installation_dir: &Path,
+  force: bool,
   jsr_lockfile_fetcher: Option<&JsrLockfileFetcher<'_>>,
 ) -> Result<(), AnyError> {
   fn resolve_implicit_node_modules_dir(
@@ -442,6 +444,9 @@ async fn setup_config_dir(
   let dir = installation_dir.join(format!(".{}", bin_name_and_url.name));
   fs::create_dir_all(&dir)
     .with_context(|| format!("failed creating '{}'", dir.display()))?;
+  if force {
+    remove_file_if_exists(&dir.join("deno.lock"))?;
+  }
 
   let config_text = if let ConfigFlag::Path(config_path) = &flags.config_flag {
     fs::read_to_string(config_path)

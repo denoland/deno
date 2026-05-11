@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": [
+      "eval",
+      "Deno.mkdirSync('./bins/bin/.cli-esm', { recursive: true }); Deno.writeTextFileSync('./bins/bin/.cli-esm/deno.lock', JSON.stringify({ version: '4', specifiers: { 'npm:@denotest/bin@*': '0.6.0' }, npm: { '@denotest/bin@0.6.0': { integrity: 'sha512-gJoWmWwknNuizB+IQ9uRUjmruDSn45+eGmHR5n/n2L571UPCFBN2QJ6XehIWqliVQM4wV9jlHoIjY93q8fkTpw==' } }, workspace: { packageJson: { dependencies: ['npm:@denotest/bin@*'] } } }, null, 2));"
+    ],
+    "output": ""
+  }, {
+    "args": "install -g -f --root ./bins --name cli-esm npm:@denotest/bin/cli.mjs",
+    "output": "[WILDCARD]"
+  }, {
+    "args": [
+      "eval",
+      "const lock = JSON.parse(Deno.readTextFileSync('./bins/bin/.cli-esm/deno.lock')); console.log(lock.specifiers['npm:@denotest/bin@*']);"
+    ],
+    "output": "1.0.0\n"
+  }]
+}

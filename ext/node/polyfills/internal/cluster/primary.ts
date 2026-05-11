@@ -9,17 +9,26 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
-import { fork as childProcessFork } from "node:child_process";
-import * as path from "node:path";
-import process from "node:process";
+const lazyChildProcess = core.createLazyLoader("node:child_process");
+const lazyPath = core.createLazyLoader("node:path");
+const lazyProcess = core.createLazyLoader("node:process");
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 
-import { Worker } from "ext:deno_node/internal/cluster/worker.ts";
-import { internal, sendHelper } from "ext:deno_node/internal/cluster/utils.ts";
-import { RoundRobinHandle } from "ext:deno_node/internal/cluster/round_robin_handle.ts";
-import { SharedHandle } from "ext:deno_node/internal/cluster/shared_handle.ts";
+const { Worker } = core.loadExtScript(
+  "ext:deno_node/internal/cluster/worker.ts",
+);
+const { internal, sendHelper } = core.loadExtScript(
+  "ext:deno_node/internal/cluster/utils.ts",
+);
+const { RoundRobinHandle } = core.loadExtScript(
+  "ext:deno_node/internal/cluster/round_robin_handle.ts",
+);
+const { SharedHandle } = core.loadExtScript(
+  "ext:deno_node/internal/cluster/shared_handle.ts",
+);
 
 const {
   ArrayPrototypeSlice,
@@ -35,9 +44,12 @@ let initialized = false;
 
 // Initialize primary-side state and methods on the shared cluster object.
 // Mirrors lib/internal/cluster/primary.js's top-level setup.
-export function init(cluster: any) {
+function init(cluster: any) {
   if (initialized) return;
   initialized = true;
+
+  const process = lazyProcess().default;
+  const path = lazyPath();
 
   const intercom = new EventEmitter();
   const handles = new SafeMap();
@@ -112,17 +124,21 @@ export function init(cluster: any) {
 
     const execArgv = [...(cluster.settings.execArgv || [])];
 
-    return childProcessFork(cluster.settings.exec, cluster.settings.args, {
-      cwd: cluster.settings.cwd,
-      env: workerEnv,
-      serialization: cluster.settings.serialization,
-      silent: cluster.settings.silent,
-      windowsHide: cluster.settings.windowsHide,
-      execArgv,
-      stdio: cluster.settings.stdio,
-      gid: cluster.settings.gid,
-      uid: cluster.settings.uid,
-    });
+    return lazyChildProcess().fork(
+      cluster.settings.exec,
+      cluster.settings.args,
+      {
+        cwd: cluster.settings.cwd,
+        env: workerEnv,
+        serialization: cluster.settings.serialization,
+        silent: cluster.settings.silent,
+        windowsHide: cluster.settings.windowsHide,
+        execArgv,
+        stdio: cluster.settings.stdio,
+        gid: cluster.settings.gid,
+        uid: cluster.settings.uid,
+      },
+    );
   }
 
   function removeWorker(worker: any) {
@@ -342,3 +358,6 @@ export function init(cluster: any) {
     this.process.kill(signal);
   };
 }
+
+return { init, default: init };
+})();

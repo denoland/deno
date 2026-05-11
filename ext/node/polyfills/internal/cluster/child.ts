@@ -9,12 +9,17 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
-import { core, primordials } from "ext:core/mod.js";
-import * as path from "node:path";
-import process from "node:process";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const lazyPath = core.createLazyLoader("node:path");
+const lazyProcess = core.createLazyLoader("node:process");
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
-import { Worker } from "ext:deno_node/internal/cluster/worker.ts";
-import { internal, sendHelper } from "ext:deno_node/internal/cluster/utils.ts";
+const { Worker } = core.loadExtScript(
+  "ext:deno_node/internal/cluster/worker.ts",
+);
+const { internal, sendHelper } = core.loadExtScript(
+  "ext:deno_node/internal/cluster/utils.ts",
+);
 const { ownerSymbol } = core.loadExtScript(
   "ext:deno_node/internal/async_hooks.ts",
 );
@@ -31,10 +36,12 @@ const {
 
 let initialized = false;
 
-export function init(cluster: any) {
+function init(cluster: any) {
   if (initialized) return;
   initialized = true;
 
+  const process = lazyProcess().default;
+  const path = lazyPath();
   const handles = new SafeMap();
   const indexes = new SafeMap();
   const noop = FunctionPrototype;
@@ -342,3 +349,6 @@ export function init(cluster: any) {
     }
   };
 }
+
+return { init, default: init };
+})();

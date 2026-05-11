@@ -2,10 +2,11 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file prefer-primordials no-explicit-any
 
-import { core } from "ext:core/mod.js";
-import {
+(function () {
+const { core } = globalThis.__bootstrap;
+const {
   op_node_x509_ca,
   op_node_x509_check_email,
   op_node_x509_check_host,
@@ -31,12 +32,12 @@ import {
   op_node_x509_to_legacy_object,
   op_node_x509_to_string,
   op_node_x509_verify,
-} from "ext:core/ops";
+} = core.ops;
 
-import {
+const {
   KeyObject,
   PublicKeyObject,
-} from "ext:deno_node/internal/crypto/keys.ts";
+} = core.loadExtScript("ext:deno_node/internal/crypto/keys.ts");
 const { kHandle } = core.loadExtScript(
   "ext:deno_node/internal/crypto/constants.ts",
 );
@@ -53,40 +54,11 @@ const {
   validateObject,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import type { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
 const { inspect } = core.loadExtScript("ext:deno_node/util.ts");
 const { customInspectSymbol: kInspect } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
-import type { InspectOptions } from "node:util";
 
-// deno-lint-ignore no-explicit-any
-export type PeerCertificate = any;
-
-export interface X509CheckOptions {
-  /**
-   * @default 'always'
-   */
-  subject: "always" | "never";
-  /**
-   * @default true
-   */
-  wildcards: boolean;
-  /**
-   * @default true
-   */
-  partialWildcards: boolean;
-  /**
-   * @default false
-   */
-  multiLabelWildcards: boolean;
-  /**
-   * @default false
-   */
-  singleLabelSubdomains: boolean;
-}
-
-// deno-lint-ignore no-explicit-any
 const kEmptyObject = Object.freeze({ __proto__: null } as any);
 
 function getFlags(options = kEmptyObject): number {
@@ -116,9 +88,6 @@ function getFlags(options = kEmptyObject): number {
     default:
       throw new ERR_INVALID_ARG_VALUE("options.subject", subject);
   }
-  // Flags are parsed for validation but not currently used
-  // as the underlying implementation doesn't use OpenSSL's
-  // X509_check_* functions.
   if (!wildcards) flags |= 0x4;
   if (!partialWildcards) flags |= 0x8;
   if (multiLabelWildcards) flags |= 0x10;
@@ -126,10 +95,10 @@ function getFlags(options = kEmptyObject): number {
   return flags;
 }
 
-export class X509Certificate {
+class X509Certificate {
   #handle: number;
 
-  constructor(buffer: BinaryLike) {
+  constructor(buffer: any) {
     if (typeof buffer === "string") {
       buffer = Buffer.from(buffer);
     }
@@ -151,7 +120,7 @@ export class X509Certificate {
     });
   }
 
-  [kInspect](depth: number, options: InspectOptions) {
+  [kInspect](depth: number, options: any) {
     if (depth < 0) {
       return this;
     }
@@ -186,7 +155,7 @@ export class X509Certificate {
 
   checkEmail(
     email: string,
-    options?: Pick<X509CheckOptions, "subject">,
+    options?: any,
   ): string | undefined {
     validateString(email, "email");
     if (email.includes("\0")) {
@@ -198,7 +167,7 @@ export class X509Certificate {
     }
   }
 
-  checkHost(name: string, options?: X509CheckOptions): string | undefined {
+  checkHost(name: string, options?: any): string | undefined {
     validateString(name, "name");
     if (name.includes("\0")) {
       throw new ERR_INVALID_ARG_VALUE("name", name);
@@ -239,7 +208,6 @@ export class X509Certificate {
     }
     return op_node_x509_check_private_key(
       this.#handle,
-      // deno-lint-ignore no-explicit-any
       (privateKey as any)[kHandle],
     );
   }
@@ -317,7 +285,7 @@ export class X509Certificate {
     return this.toString();
   }
 
-  toLegacyObject(): PeerCertificate {
+  toLegacyObject(): any {
     const obj = op_node_x509_to_legacy_object(this.#handle);
     if (obj.raw) {
       obj.raw = Buffer.from(obj.raw);
@@ -367,7 +335,6 @@ export class X509Certificate {
     }
     return op_node_x509_verify(
       this.#handle,
-      // deno-lint-ignore no-explicit-any
       (publicKey as any)[kHandle],
     );
   }
@@ -382,7 +349,12 @@ core.registerCloneableResource(
   (data: { data: ArrayBuffer }) => new X509Certificate(Buffer.from(data.data)),
 );
 
-export default {
+return {
   X509Certificate,
   isX509Certificate,
+  default: {
+    X509Certificate,
+    isX509Certificate,
+  },
 };
+})();

@@ -23,8 +23,13 @@
 // Logic and comments translated pretty much one-to-one from node's impl
 // (https://github.com/nodejs/node/blob/ba06c5c509956dc413f91b755c1c93798bb700d4/src/string_decoder.cc)
 
-import { Buffer, constants } from "node:buffer";
-import { core, primordials } from "ext:core/mod.js";
+// deno-lint-ignore-file prefer-primordials
+
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const bufMod = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { Buffer } = bufMod;
+const { MAX_STRING_LENGTH } = bufMod.constants;
 const { normalizeEncoding: castEncoding } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
@@ -53,34 +58,32 @@ const {
 } = primordials;
 const { isTypedArray } = core;
 
-const { MAX_STRING_LENGTH } = constants;
+const ENCODING_UTF8 = 0;
+const ENCODING_BASE64 = 1;
+const ENCODING_BASE64URL = 2;
+const ENCODING_UTF16 = 3;
+const ENCODING_ASCII = 4;
+const ENCODING_LATIN1 = 5;
+const ENCODING_HEX = 6;
 
-// to cast from string to `BufferEncoding`, which doesn't seem nameable from here
-// deno-lint-ignore no-explicit-any
-type Any = any;
-
-function normalizeEncoding(enc?: string): string {
+function normalizeEncoding(enc) {
   const encoding = castEncoding(enc ?? null);
   if (!encoding) {
     if (typeof enc !== "string" || StringPrototypeToLowerCase(enc) !== "raw") {
       throw new ERR_UNKNOWN_ENCODING(
-        enc as Any,
+        enc,
       );
     }
   }
   return String(encoding);
 }
 
-/**
- * Check is `ArrayBuffer` and not `TypedArray`. Typescript allowed `TypedArray` to be passed as `ArrayBuffer` and does not do a deep check
- */
-
-function isBufferType(buf: Buffer) {
+function isBufferType(buf) {
   return ObjectPrototypeIsPrototypeOf(Buffer.prototype, buf) &&
     buf.BYTES_PER_ELEMENT;
 }
 
-function normalizeBuffer(buf: Buffer) {
+function normalizeBuffer(buf) {
   if (!ArrayBufferIsView(buf)) {
     throw new ERR_INVALID_ARG_TYPE(
       "buf",
@@ -109,12 +112,7 @@ function normalizeBuffer(buf: Buffer) {
 }
 
 const maxStringLengthHex = NumberPrototypeToString(MAX_STRING_LENGTH, 16);
-function bufferToString(
-  buf: Buffer,
-  encoding?: string,
-  start?: number,
-  end?: number,
-): string {
+function bufferToString(buf, encoding, start, end) {
   const len = (end ?? buf.length) - (start ?? 0);
   if (len > MAX_STRING_LENGTH) {
     throw new NodeError(
@@ -122,13 +120,13 @@ function bufferToString(
       `Cannot create a string longer than 0x${maxStringLengthHex} characters`,
     );
   }
-  // deno-lint-ignore prefer-primordials
-  return buf.toString(encoding as Any, start, end);
+  return buf.toString(encoding, start, end);
 }
 
-// the heart of the logic, decodes a buffer, storing
-// incomplete characters in a buffer if applicable
-function decode(this: StringDecoder, buf: Buffer) {
+const kBufferedBytes = Symbol("bufferedBytes");
+const kMissingBytes = Symbol("missingBytes");
+
+function decode(buf) {
   const enc = this.enc;
 
   let bufIdx = 0;
@@ -138,25 +136,17 @@ function decode(this: StringDecoder, buf: Buffer) {
   let rest = "";
 
   if (
-    enc === Encoding.Utf8 || enc === Encoding.Utf16 ||
-    enc === Encoding.Base64 || enc === Encoding.Base64Url
+    enc === ENCODING_UTF8 || enc === ENCODING_UTF16 ||
+    enc === ENCODING_BASE64 || enc === ENCODING_BASE64URL
   ) {
-    // check if we need to finish an incomplete char from the last chunk
-    // written. If we do, we copy the bytes into our `lastChar` buffer
-    // and prepend the completed char to the result of decoding the rest of the buffer
     if (this[kMissingBytes] > 0) {
-      if (enc === Encoding.Utf8) {
-        // Edge case for incomplete character at a chunk boundary
-        // (see https://github.com/nodejs/node/blob/73025c4dec042e344eeea7912ed39f7b7c4a3991/src/string_decoder.cc#L74)
+      if (enc === ENCODING_UTF8) {
         for (
           let i = 0;
           i < buf.length - bufIdx && i < this[kMissingBytes];
           i++
         ) {
           if ((buf[i] & 0xC0) !== 0x80) {
-            // We expected a continuation byte, but got something else.
-            // Stop trying to decode the incomplete char, and assume
-            // the byte we got starts a new char.
             this[kMissingBytes] = 0;
             buf.copy(this.lastChar, this[kBufferedBytes], bufIdx, bufIdx + i);
             this[kBufferedBytes] += i;
@@ -180,42 +170,29 @@ function decode(this: StringDecoder, buf: Buffer) {
       this[kMissingBytes] -= bytesToCopy;
 
       if (this[kMissingBytes] === 0) {
-        // we have all the bytes, complete the char
         prepend = bufferToString(
           this.lastChar,
           this.encoding,
           0,
           this[kBufferedBytes],
         );
-        // reset the char buffer
         this[kBufferedBytes] = 0;
       }
     }
 
     if (buf.length - bufIdx === 0) {
-      // we advanced the bufIdx, so we may have completed the
-      // incomplete char
       rest = prepend.length > 0 ? prepend : "";
       prepend = "";
     } else {
-      // no characters left to finish
-
-      // check if the end of the buffer has an incomplete
-      // character, if so we write it into our `lastChar` buffer and
-      // truncate buf
-      if (enc === Encoding.Utf8 && (buf[buf.length - 1] & 0x80)) {
+      if (enc === ENCODING_UTF8 && (buf[buf.length - 1] & 0x80)) {
         for (let i = buf.length - 1;; i--) {
           this[kBufferedBytes] += 1;
           if ((buf[i] & 0xC0) === 0x80) {
-            // Doesn't start a character (i.e. it's a trailing byte)
             if (this[kBufferedBytes] >= 4 || i === 0) {
-              // invalid utf8, we'll just pass it to the underlying decoder
               this[kBufferedBytes] = 0;
               break;
             }
           } else {
-            // First byte of a UTF-8 char, check
-            // to see how long it should be
             if ((buf[i] & 0xE0) === 0xC0) {
               this[kMissingBytes] = 2;
             } else if ((buf[i] & 0xF0) === 0xE0) {
@@ -223,14 +200,11 @@ function decode(this: StringDecoder, buf: Buffer) {
             } else if ((buf[i] & 0xF8) === 0xF0) {
               this[kMissingBytes] = 4;
             } else {
-              // invalid
               this[kBufferedBytes] = 0;
               break;
             }
 
             if (this[kBufferedBytes] >= this[kMissingBytes]) {
-              // We have enough trailing bytes to complete
-              // the char
               this[kMissingBytes] = 0;
               this[kBufferedBytes] = 0;
             }
@@ -239,17 +213,15 @@ function decode(this: StringDecoder, buf: Buffer) {
             break;
           }
         }
-      } else if (enc === Encoding.Utf16) {
+      } else if (enc === ENCODING_UTF16) {
         if ((buf.length - bufIdx) % 2 === 1) {
-          // Have half of a code unit
           this[kBufferedBytes] = 1;
           this[kMissingBytes] = 1;
         } else if ((buf[buf.length - 1] & 0xFC) === 0xD8) {
-          // 2 bytes out of a 4 byte UTF-16 char
           this[kBufferedBytes] = 2;
           this[kMissingBytes] = 2;
         }
-      } else if (enc === Encoding.Base64 || enc === Encoding.Base64Url) {
+      } else if (enc === ENCODING_BASE64 || enc === ENCODING_BASE64URL) {
         this[kBufferedBytes] = (buf.length - bufIdx) % 3;
         if (this[kBufferedBytes] > 0) {
           this[kMissingBytes] = 3 - this[kBufferedBytes];
@@ -257,8 +229,6 @@ function decode(this: StringDecoder, buf: Buffer) {
       }
 
       if (this[kBufferedBytes] > 0) {
-        // Copy the bytes that make up the incomplete char
-        // from the end of the buffer into our `lastChar` buffer
         buf.copy(
           this.lastChar,
           0,
@@ -280,11 +250,10 @@ function decode(this: StringDecoder, buf: Buffer) {
   }
 }
 
-function flush(this: StringDecoder) {
+function flush() {
   const enc = this.enc;
 
-  if (enc === Encoding.Utf16 && this[kBufferedBytes] % 2 === 1) {
-    // ignore trailing byte if it isn't a complete code unit (2 bytes)
+  if (enc === ENCODING_UTF16 && this[kBufferedBytes] % 2 === 1) {
     this[kBufferedBytes] -= 1;
     this[kMissingBytes] -= 1;
   }
@@ -306,73 +275,37 @@ function flush(this: StringDecoder) {
   return ret;
 }
 
-enum Encoding {
-  Utf8,
-  Base64,
-  Base64Url,
-  Utf16,
-  Ascii,
-  Latin1,
-  Hex,
-}
-
-const kBufferedBytes = Symbol("bufferedBytes");
-const kMissingBytes = Symbol("missingBytes");
-
-type StringDecoder = {
-  encoding: string;
-  end: (buf: Buffer) => string;
-  write: (buf: Buffer) => string;
-  lastChar: Buffer;
-  lastNeed: number;
-  lastTotal: number;
-  text: (buf: Buffer, idx: number) => string;
-  enc: Encoding;
-
-  decode: (buf: Buffer) => string;
-
-  [kBufferedBytes]: number;
-  [kMissingBytes]: number;
-
-  flush: () => string;
-};
-
-/*
- * StringDecoder provides an interface for efficiently splitting a series of
- * buffers into a series of JS strings without breaking apart multi-byte
- * characters.
- */
-export function StringDecoder(this: Partial<StringDecoder>, encoding?: string) {
+function StringDecoder(encoding) {
   const normalizedEncoding = normalizeEncoding(encoding);
-  let enc: Encoding = Encoding.Utf8;
+  let enc = ENCODING_UTF8;
   let bufLen = 0;
   switch (normalizedEncoding) {
     case "utf8":
-      enc = Encoding.Utf8;
+      enc = ENCODING_UTF8;
       bufLen = 4;
       break;
     case "base64":
-      enc = Encoding.Base64;
+      enc = ENCODING_BASE64;
       bufLen = 4;
       break;
     case "base64url":
-      enc = Encoding.Base64Url;
+      enc = ENCODING_BASE64URL;
       bufLen = 4;
       break;
     case "utf16le":
-      enc = Encoding.Utf16;
+      enc = ENCODING_UTF16;
       bufLen = 4;
       break;
     case "hex":
-      enc = Encoding.Hex;
+      enc = ENCODING_HEX;
       bufLen = 0;
       break;
     case "latin1":
-      enc = Encoding.Latin1;
+      enc = ENCODING_LATIN1;
       bufLen = 0;
       break;
     case "ascii":
-      enc = Encoding.Ascii;
+      enc = ENCODING_ASCII;
       bufLen = 0;
       break;
   }
@@ -385,11 +318,7 @@ export function StringDecoder(this: Partial<StringDecoder>, encoding?: string) {
   this.decode = decode;
 }
 
-/**
- * Returns a decoded string, omitting any incomplete multi-bytes
- * characters at the end of the Buffer, or TypedArray, or DataView
- */
-StringDecoder.prototype.write = function write(buf: Buffer): string {
+StringDecoder.prototype.write = function write(buf) {
   if (typeof buf === "string") {
     return buf;
   }
@@ -400,12 +329,7 @@ StringDecoder.prototype.write = function write(buf: Buffer): string {
   return this.decode(normalizedBuf);
 };
 
-/**
- * Returns any remaining input stored in the internal buffer as a string.
- * After end() is called, the stringDecoder object can be reused for new
- * input.
- */
-StringDecoder.prototype.end = function end(buf: Buffer): string {
+StringDecoder.prototype.end = function end(buf) {
   let ret = "";
   if (buf !== undefined) {
     ret = this.write(buf);
@@ -416,12 +340,7 @@ StringDecoder.prototype.end = function end(buf: Buffer): string {
   return ret;
 };
 
-// Below is undocumented but accessible stuff from node's old impl
-// (node's tests assert on these, so we need to support them)
-StringDecoder.prototype.text = function text(
-  buf: Buffer,
-  offset: number,
-): string {
+StringDecoder.prototype.text = function text(buf, offset) {
   this[kBufferedBytes] = 0;
   this[kMissingBytes] = 0;
   return this.write(buf.subarray(offset));
@@ -432,7 +351,7 @@ ObjectDefineProperties(StringDecoder.prototype, {
     __proto__: null,
     configurable: true,
     enumerable: true,
-    get(this: StringDecoder): number {
+    get() {
       return this[kMissingBytes];
     },
   },
@@ -440,10 +359,14 @@ ObjectDefineProperties(StringDecoder.prototype, {
     __proto__: null,
     configurable: true,
     enumerable: true,
-    get(this: StringDecoder): number {
+    get() {
       return this[kBufferedBytes] + this[kMissingBytes];
     },
   },
 });
 
-export default { StringDecoder };
+return {
+  StringDecoder,
+  default: { StringDecoder },
+};
+})();

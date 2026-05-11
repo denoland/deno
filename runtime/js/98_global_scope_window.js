@@ -20,11 +20,9 @@ const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const globalInterfaces = core.loadExtScript(
   "ext:deno_web/04_global_interfaces.js",
 );
+const webStorage = core.loadExtScript("ext:deno_webstorage/01_webstorage.js");
+const prompt = core.loadExtScript("ext:runtime/41_prompt.js");
 const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
-
-const loadWebStorage = () =>
-  core.loadExtScript("ext:deno_webstorage/01_webstorage.js");
-const loadPrompt = () => core.loadExtScript("ext:runtime/41_prompt.js");
 
 /**
  * @param {string} arch
@@ -173,29 +171,12 @@ const mainRuntimeGlobalProperties = {
   self: core.propGetterOnly(() => globalThis),
   Navigator: core.propNonEnumerable(Navigator),
   navigator: core.propGetterOnly(() => navigator),
-  alert: core.propWritableLazyLoaded((m) => m.alert, loadPrompt),
-  confirm: core.propWritableLazyLoaded((m) => m.confirm, loadPrompt),
-  prompt: core.propWritableLazyLoaded((m) => m.prompt, loadPrompt),
-  localStorage: {
-    __proto__: null,
-    enumerable: true,
-    configurable: true,
-    get() {
-      return loadWebStorage().localStorage();
-    },
-  },
-  sessionStorage: {
-    __proto__: null,
-    enumerable: true,
-    configurable: true,
-    get() {
-      return loadWebStorage().sessionStorage();
-    },
-  },
-  Storage: core.propNonEnumerableLazyLoaded(
-    (m) => m.Storage,
-    loadWebStorage,
-  ),
+  alert: core.propWritable(prompt.alert),
+  confirm: core.propWritable(prompt.confirm),
+  prompt: core.propWritable(prompt.prompt),
+  localStorage: core.propGetterOnly(webStorage.localStorage),
+  sessionStorage: core.propGetterOnly(webStorage.sessionStorage),
+  Storage: core.propNonEnumerable(webStorage.Storage),
 };
 
 export { mainRuntimeGlobalProperties, memoizeLazy };

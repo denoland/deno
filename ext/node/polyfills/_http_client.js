@@ -82,7 +82,10 @@ const { defaultTriggerAsyncIdScope } = core.loadExtScript(
   "ext:deno_node/internal/async_hooks.ts",
 );
 const { kNeedDrain } = core.loadExtScript("ext:deno_node/internal/http.ts");
-import { channel } from "node:diagnostics_channel";
+const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
+const { enqueueNodePerformanceEntry } = core.loadExtScript(
+  "ext:deno_node/perf_hooks.js",
+);
 
 const onClientRequestCreatedChannel = channel("http.client.request.created");
 const onClientRequestStartChannel = channel("http.client.request.start");
@@ -102,6 +105,7 @@ const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
 const kError = Symbol("kError");
 const kPath = Symbol("kPath");
 const kOtelSpan = Symbol("kOtelSpan");
+const kPerfStartTime = Symbol("kPerfStartTime");
 const kRetryData = Symbol("kRetryData");
 const kRetryOptions = Symbol("kRetryOptions");
 
@@ -298,6 +302,7 @@ function ClientRequest(input, options, cb) {
   this.reusedSocket = false;
   this.host = host;
   this.protocol = protocol;
+  this[kPerfStartTime] = performance.now();
 
   if (this.agent) {
     if (!this.agent.keepAlive && !NumberIsFinite(this.agent.maxSockets)) {
@@ -799,6 +804,30 @@ function parserOnIncomingClient(res, shouldKeepAlive) {
 
   req.res = res;
   res.req = req;
+
+  // Emit HttpClient perf entry (at response-header time)
+  const perfStartTime = req[kPerfStartTime];
+  if (perfStartTime !== undefined) {
+    const host = req.getHeader("host") || req.host || "localhost";
+    enqueueNodePerformanceEntry({
+      name: "HttpClient",
+      entryType: "http",
+      startTime: perfStartTime,
+      duration: performance.now() - perfStartTime,
+      detail: {
+        req: {
+          method: req.method,
+          url: `${req.protocol || "http:"}//${host}${req.path || "/"}`,
+          headers: req.getHeaders(),
+        },
+        res: {
+          statusCode: res.statusCode,
+          statusMessage: res.statusMessage || "",
+          headers: res.headers,
+        },
+      },
+    });
+  }
 
   if (onClientResponseFinishChannel.hasSubscribers) {
     onClientResponseFinishChannel.publish({

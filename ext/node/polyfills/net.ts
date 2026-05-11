@@ -65,7 +65,7 @@ const {
   uvExceptionWithHostPort,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import {
+const {
   kAfterAsyncWrite,
   kBuffer,
   kBufferCb,
@@ -76,7 +76,7 @@ import {
   setStreamTimeout,
   writeGeneric,
   writevGeneric,
-} from "ext:deno_node/internal/stream_base_commons.ts";
+} = core.loadExtScript("ext:deno_node/internal/stream_base_commons.ts");
 import { kDestroy, kTimeout } from "ext:deno_node/internal/timers.mjs";
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const {
@@ -117,7 +117,7 @@ const { debuglog } = core.loadExtScript(
 import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
-import { channel } from "node:diagnostics_channel";
+const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
 // Imported lazily at module top via the cluster <-> net cycle. Only used
 // inside `_listenInCluster()`, which is invoked after cluster.ts has
 // finished evaluating, so the live bindings are fully populated by then.

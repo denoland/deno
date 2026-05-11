@@ -38,33 +38,7 @@ const _headerList = Symbol("header list");
 const _iterableHeaders = Symbol("iterable headers");
 const _iterableHeadersCache = Symbol("iterable headers cache");
 const _guard = Symbol("guard");
-// Optional callback `(lowercaseName) => string|null|undefined` for fast-path
-// single-header lookup. When set, `Headers.get(name)` skips materializing the
-// full header list and queries one name directly. The fetcher is cleared on
-// any operation that needs the full list.
-const _lazyGetter = Symbol("lazy header getter");
-// Optional callback that materializes the full header list onto `_headerList`
-// (lazily, on first non-`get` access).
-const _lazyMaterializer = Symbol("lazy header materializer");
-// Flag set when the header list comes from a source that already canonicalized
-// names to lowercase (e.g. hyper request headers). When true, lookup helpers
-// can skip the per-entry `byteLowerCase` call.
-const _listLowercased = Symbol("list is lowercased");
 const _brand = webidl.brand;
-
-/**
- * Materialize the full header list if a lazy materializer is installed.
- * After materialization, the Headers behaves like a normal eager Headers.
- * @param {Headers} headers
- */
-function materializeIfLazy(headers) {
-  const m = headers[_lazyMaterializer];
-  if (m !== undefined) {
-    m();
-    headers[_lazyMaterializer] = undefined;
-    headers[_lazyGetter] = undefined;
-  }
-}
 
 /**
  * @typedef Header
@@ -181,23 +155,13 @@ function appendHeader(headers, name, value) {
  * https://fetch.spec.whatwg.org/#concept-header-list-get
  * @param {HeaderList} list
  * @param {string} name
- * @param {boolean=} listIsLowercased  When true, skip per-entry `byteLowerCase`
- *   because the list keys are already lowercase (e.g. hyper request headers).
  */
-function getHeader(list, name, listIsLowercased) {
+function getHeader(list, name) {
   const lowercaseName = byteLowerCase(name);
   const entries = [];
-  if (listIsLowercased) {
-    for (let i = 0; i < list.length; i++) {
-      if (list[i][0] === lowercaseName) {
-        ArrayPrototypePush(entries, list[i][1]);
-      }
-    }
-  } else {
-    for (let i = 0; i < list.length; i++) {
-      if (byteLowerCase(list[i][0]) === lowercaseName) {
-        ArrayPrototypePush(entries, list[i][1]);
-      }
+  for (let i = 0; i < list.length; i++) {
+    if (byteLowerCase(list[i][0]) === lowercaseName) {
+      ArrayPrototypePush(entries, list[i][1]);
     }
   }
 
@@ -261,7 +225,6 @@ class Headers {
   [_guard];
 
   get [_iterableHeaders]() {
-    materializeIfLazy(this);
     const list = this[_headerList];
 
     if (
@@ -391,24 +354,12 @@ class Headers {
       throw new TypeError(`Invalid header name: "${name}"`);
     }
 
-    // Fast path: when this Headers was created with a single-header fetcher
-    // (e.g. for an incoming server request) and we haven't yet been forced to
-    // materialize the full header list, query just this name without paying
-    // for the per-request `op_http_get_request_headers` array allocation.
-    const lazy = this[_lazyGetter];
-    if (lazy !== undefined) {
-      const lowercaseName = byteLowerCase(name);
-      const value = lazy(lowercaseName);
-      return value === undefined || value === null ? null : value;
-    }
-
     const list = this[_headerList];
-    return getHeader(list, name, this[_listLowercased] === true);
+    return getHeader(list, name);
   }
 
   getSetCookie() {
     webidl.assertBranded(this, HeadersPrototype);
-    materializeIfLazy(this);
     const list = this[_headerList];
 
     const entries = [];
@@ -434,24 +385,11 @@ class Headers {
       throw new TypeError(`Invalid header name: "${name}"`);
     }
 
-    // Mirror the fast path in `get`: when this Headers was created with a
-    // lazy single-header fetcher, ask once instead of materializing the list.
-    const lazy = this[_lazyGetter];
-    if (lazy !== undefined) {
-      const lowercaseName = byteLowerCase(name);
-      const value = lazy(lowercaseName);
-      return value !== undefined && value !== null;
-    }
-
     const list = this[_headerList];
     const lowercaseName = byteLowerCase(name);
-    if (this[_listLowercased] === true) {
-      for (let i = 0; i < list.length; i++) {
-        if (list[i][0] === lowercaseName) return true;
-      }
-    } else {
-      for (let i = 0; i < list.length; i++) {
-        if (byteLowerCase(list[i][0]) === lowercaseName) return true;
+    for (let i = 0; i < list.length; i++) {
+      if (byteLowerCase(list[i][0]) === lowercaseName) {
+        return true;
       }
     }
     return false;
@@ -561,35 +499,10 @@ function headersFromHeaderList(list, guard) {
 }
 
 /**
- * Build a Headers backed by a lazily-fetched list. `getOne(lowercaseName)`
- * returns the value of a single header without materializing the full list;
- * `getAll()` is invoked the first time someone needs the full list (e.g.
- * iteration, `.has()` after the fast path is consumed, or
- * `headerListFromHeaders`). Names produced by `getAll` are assumed to already
- * be lowercase, matching how hyper canonicalizes incoming HTTP/1.1 headers.
- *
- * @param {(name: string) => string | null | undefined} getOne
- * @param {() => HeaderList} getAll
- * @param {"immutable" | "request" | "request-no-cors" | "response" | "none"} guard
- * @returns {Headers}
- */
-function headersFromLazy(getOne, getAll, guard) {
-  const headers = new Headers(_brand);
-  headers[_guard] = guard;
-  headers[_listLowercased] = true;
-  headers[_lazyGetter] = getOne;
-  headers[_lazyMaterializer] = () => {
-    headers[_headerList] = getAll();
-  };
-  return headers;
-}
-
-/**
  * @param {Headers} headers
  * @returns {HeaderList}
  */
 function headerListFromHeaders(headers) {
-  materializeIfLazy(headers);
   return headers[_headerList];
 }
 
@@ -618,6 +531,5 @@ return {
   Headers,
   headersEntries,
   headersFromHeaderList,
-  headersFromLazy,
 };
 })();

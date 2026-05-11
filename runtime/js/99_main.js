@@ -52,6 +52,9 @@ const {
 const {
   isNativeError,
 } = core;
+const { registerDeclarativeServer } = core.loadExtScript(
+  "ext:deno_http/00_serve.ts",
+);
 const event = core.loadExtScript("ext:deno_web/02_event.js");
 const location = core.loadExtScript("ext:deno_web/12_location.js");
 const version = core.loadExtScript("ext:runtime/01_version.ts");
@@ -65,18 +68,11 @@ const {
   setNoColorFns,
 } = core.loadExtScript("ext:deno_web/01_console.js");
 const performance = core.loadExtScript("ext:deno_web/15_performance.js");
-
-// Lazy: only used inside callbacks / function bodies, never at module init.
-// Keeping these out of the bootstrap path stops fetch/streams/url/messagePort
-// from being deserialized into the snapshot.
-const loadServe = () => core.loadExtScript("ext:deno_http/00_serve.ts");
-const loadUrl = () => core.loadExtScript("ext:deno_web/00_url.js");
-const loadFetch = () => core.loadExtScript("ext:deno_fetch/26_fetch.js");
-const loadMessagePort = () =>
-  core.loadExtScript("ext:deno_web/13_message_port.js");
+const url = core.loadExtScript("ext:deno_web/00_url.js");
+const fetch = core.loadExtScript("ext:deno_fetch/26_fetch.js");
+const messagePort = core.loadExtScript("ext:deno_web/13_message_port.js");
 import {
   denoNs,
-  denoNsLazy,
   denoNsUnstableById,
   unstableIds,
 } from "ext:runtime/90_deno_ns.js";
@@ -223,7 +219,7 @@ function postMessage(message, transferOrOptions = { __proto__: null }) {
     );
   }
   const { transfer } = options;
-  const data = loadMessagePort().serializeJsMessageData(message, transfer);
+  const data = messagePort.serializeJsMessageData(message, transfer);
   op_worker_post_message(data);
 }
 
@@ -236,14 +232,14 @@ function hasMessageEventListener() {
   // as if we have message event listeners if a node message port is explicitly
   // refed (and the inverse as well)
   return (event.listenerCount(globalThis, "message") > 0 &&
-    !globalThis[loadMessagePort().unrefParentPort]) ||
-    loadMessagePort().refedMessagePortsCount > 0;
+    !globalThis[messagePort.unrefParentPort]) ||
+    messagePort.refedMessagePortsCount > 0;
 }
 
 function dispatchWorkerMessage(data) {
   let message, transferables;
   try {
-    const v = loadMessagePort().deserializeJsMessageData(data);
+    const v = messagePort.deserializeJsMessageData(data);
     message = v[0];
     transferables = v[1];
   } catch (err) {
@@ -261,7 +257,7 @@ function dispatchWorkerMessage(data) {
     data: message,
     ports: ArrayPrototypeFilter(
       transferables,
-      (t) => ObjectPrototypeIsPrototypeOf(loadMessagePort().MessagePortPrototype, t),
+      (t) => ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
     ),
   });
   event.setIsTrusted(msgEvent, true);
@@ -326,7 +322,7 @@ function importScripts(...urls) {
   const baseUrl = location.getLocationHref();
   const parsedUrls = ArrayPrototypeMap(urls, (scriptUrl) => {
     try {
-      return new (loadUrl().URL)(scriptUrl, baseUrl ?? undefined).href;
+      return new url.URL(scriptUrl, baseUrl ?? undefined).href;
     } catch {
       throw new DOMException(
         `Failed to parse URL: ${scriptUrl}`,
@@ -461,9 +457,7 @@ function runtimeStart(
   tsVersion,
   target,
 ) {
-  core.setWasmStreamingCallback((...args) =>
-    loadFetch().handleWasmStreaming(...args)
-  );
+  core.setWasmStreamingCallback(fetch.handleWasmStreaming);
   core.setReportExceptionCallback(event.reportException);
   op_set_format_exception_callback(formatException);
   version.setVersions(
@@ -643,8 +637,6 @@ const finalDenoNs = {
     },
   },
 };
-// Apply lazy descriptors separately (spread would force their getters).
-ObjectDefineProperties(finalDenoNs, denoNsLazy);
 
 ObjectDefineProperties(finalDenoNs, {
   pid: core.propGetterOnly(opPid),
@@ -740,7 +732,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       core.addMainModuleHandler((main) => {
         if (ObjectHasOwn(main, "default")) {
           try {
-            serve = loadServe().registerDeclarativeServer(main.default);
+            serve = registerDeclarativeServer(main.default);
           } catch (e) {
             if (mode === executionModes.serve || autoServe) {
               throw e;
@@ -787,9 +779,14 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       });
     }
 
+    removeImportedOps();
+
     performance.setTimeOrigin();
     globalThis_ = globalThis;
 
+    // Remove bootstrapping data from the global scope
+    delete globalThis.__bootstrap;
+    delete globalThis.bootstrap;
     hasBootstrapped = true;
 
     // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
@@ -918,6 +915,9 @@ function bootstrapWorkerRuntime(
     performance.setTimeOrigin();
     globalThis_ = globalThis;
 
+    // Remove bootstrapping data from the global scope
+    delete globalThis.__bootstrap;
+    delete globalThis.bootstrap;
     hasBootstrapped = true;
 
     if (workerType === "node") {
@@ -987,7 +987,7 @@ function bootstrapWorkerRuntime(
     ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
     const workerMetadata = maybeWorkerMetadata
-      ? loadMessagePort().deserializeJsMessageData(maybeWorkerMetadata)
+      ? messagePort.deserializeJsMessageData(maybeWorkerMetadata)
       : undefined;
 
     if (nodeBootstrap) {
@@ -1032,6 +1032,8 @@ event.defineEventHandler(globalThis, "unhandledrejection");
 
 // Nothing listens to this, but it warms up the code paths for event dispatch
 (new event.EventTarget()).dispatchEvent(new event.Event("warmup"));
+
+removeImportedOps();
 
 // Run the warmup path through node and runtime/worker bootstrap functions
 bootstrapMainRuntime(undefined, true);

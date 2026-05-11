@@ -6,7 +6,9 @@ const _mod1 =
   core.loadExtScript("ext:deno_node/internal/streams/legacy.js").default;
 import Readable from "node:_stream_readable";
 import Writable from "node:_stream_writable";
-import { addAbortSignal } from "ext:deno_node/internal/streams/add-abort-signal.js";
+const { addAbortSignal } = core.loadExtScript(
+  "ext:deno_node/internal/streams/add-abort-signal.js",
+);
 const destroyImpl =
   core.loadExtScript("ext:deno_node/internal/streams/destroy.js").default;
 const { kOnConstructed } = core.loadExtScript(

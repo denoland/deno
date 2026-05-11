@@ -47,7 +47,7 @@ const {
 const { ERR_OUT_OF_RANGE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
-import { emitWarning } from "node:process";
+const lazyProcess = core.createLazyLoader("node:process");
 
 // Timeout values > TIMEOUT_MAX are set to 1.
 export const TIMEOUT_MAX = 2 ** 31 - 1;
@@ -87,21 +87,21 @@ export function Timeout(callback, after, args, isRepeat, isRefed) {
 
   if (!(after >= 1 && after <= TIMEOUT_MAX)) {
     if (after > TIMEOUT_MAX) {
-      emitWarning(
+      lazyProcess().default.emitWarning(
         `${after} does not fit into a 32-bit signed integer.` +
           "\nTimeout duration was set to 1.",
         "TimeoutOverflowWarning",
       );
     } else if (after < 0 && !warnedNegativeNumber) {
       warnedNegativeNumber = true;
-      emitWarning(
+      lazyProcess().default.emitWarning(
         `${after} is a negative number.` +
           "\nTimeout duration was set to 1.",
         "TimeoutNegativeWarning",
       );
     } else if (NumberIsNaN(after) && !warnedNotNumber) {
       warnedNotNumber = true;
-      emitWarning(
+      lazyProcess().default.emitWarning(
         `${after} is not a number.` +
           "\nTimeout duration was set to 1.",
         "TimeoutNaNWarning",
@@ -323,7 +323,7 @@ export function getTimerDuration(msecs, name) {
 
   // Ensure that msecs fits into signed int32
   if (msecs > TIMEOUT_MAX) {
-    emitWarning(
+    lazyProcess().default.emitWarning(
       `${msecs} does not fit into a 32-bit signed integer.` +
         `\nTimer duration was truncated to ${TIMEOUT_MAX}.`,
       "TimeoutOverflowWarning",
