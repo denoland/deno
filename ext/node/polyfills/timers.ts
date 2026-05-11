@@ -336,15 +336,6 @@ const scheduler = ObjectCreate(Scheduler.prototype);
 promises.scheduler = scheduler;
 
 return {
-  default: {
-    setTimeout,
-    clearTimeout,
-    setInterval,
-    clearInterval,
-    setImmediate,
-    clearImmediate,
-    promises,
-  },
   setTimeout,
   clearTimeout,
   setInterval,

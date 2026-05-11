@@ -391,23 +391,6 @@ class DefaultDeserializer extends Deserializer {
   }
 }
 return {
-  default: {
-    cachedDataVersionTag,
-    getHeapCodeStatistics,
-    getHeapSnapshot,
-    getHeapSpaceStatistics,
-    getHeapStatistics,
-    setFlagsFromString,
-    stopCoverage,
-    takeCoverage,
-    writeHeapSnapshot,
-    serialize,
-    deserialize,
-    Serializer,
-    Deserializer,
-    DefaultSerializer,
-    DefaultDeserializer,
-  },
   cachedDataVersionTag,
   getHeapCodeStatistics,
   getHeapSnapshot,

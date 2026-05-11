@@ -17,4 +17,4 @@ export const {
   pathToFileURL,
 } = mod;
 
-export default mod.default;
+export default mod;

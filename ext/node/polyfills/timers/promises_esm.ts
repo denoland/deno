@@ -4,4 +4,4 @@ const mod = core.loadExtScript("ext:deno_node/timers/promises.ts");
 
 export const { setTimeout, setImmediate, setInterval, scheduler } = mod;
 
-export default mod.default;
+export default mod;

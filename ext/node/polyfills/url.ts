@@ -1481,20 +1481,6 @@ function pathToFileURL(
 const URLSearchParams_ = URLSearchParams;
 
 return {
-  default: {
-    parse,
-    format,
-    resolve,
-    resolveObject,
-    domainToASCII,
-    domainToUnicode,
-    fileURLToPath,
-    pathToFileURL,
-    urlToHttpOptions,
-    Url,
-    URL: _url,
-    URLSearchParams,
-  },
   URL: _url,
   URLSearchParams: URLSearchParams_,
   urlToHttpOptions,

@@ -1404,39 +1404,7 @@ class BroadcastChannel extends WebBroadcastChannel {
   }
 }
 
-const defaultExport = {
-  markAsUntransferable,
-  moveMessagePortToContext,
-  receiveMessageOnPort,
-  MessagePort,
-  MessageChannel: NodeMessageChannel,
-  BroadcastChannel,
-  Worker: NodeWorker,
-  getEnvironmentData,
-  setEnvironmentData,
-  SHARE_ENV,
-  get threadId() {
-    return threadId;
-  },
-  get threadName() {
-    return threadName;
-  },
-  get workerData() {
-    return workerData;
-  },
-  get resourceLimits() {
-    return resourceLimits;
-  },
-  get parentPort() {
-    return parentPort;
-  },
-  get isMainThread() {
-    return isMainThread;
-  },
-};
-
 return {
-  default: defaultExport,
   BroadcastChannel,
   MessagePort,
   MessageChannel: NodeMessageChannel,

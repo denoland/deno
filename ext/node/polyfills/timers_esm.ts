@@ -12,4 +12,4 @@ export const {
   promises,
 } = mod;
 
-export default mod.default;
+export default mod;

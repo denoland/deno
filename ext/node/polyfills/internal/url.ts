@@ -79,7 +79,6 @@ function urlToHttpOptions(url: URL): HttpOptions {
 }
 
 return {
-  default: { toPathIfFileURL },
   isURL,
   toPathIfFileURL,
   urlToHttpOptions,

@@ -52,4 +52,4 @@ export const {
   codes,
 } = mod;
 
-export default mod.default;
+export default mod;

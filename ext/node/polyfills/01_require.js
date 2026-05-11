@@ -204,7 +204,7 @@ const internalTestBinding = core.loadExtScript(
 );
 const internalTimers = core.loadExtScript(
   "ext:deno_node/internal/timers.mjs",
-).default;
+);
 const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const internalUtilDebuglog = core.loadExtScript(
   "ext:deno_node/internal/util/debuglog.ts",
@@ -240,23 +240,23 @@ const stringDecoder =
   core.loadExtScript("ext:deno_node/string_decoder.ts").default;
 const test = core.loadExtScript("ext:deno_node/testing.ts").default;
 const testReporters = core.loadExtScript("ext:deno_node/test/reporters.ts");
-const timers = core.loadExtScript("ext:deno_node/timers.ts").default;
+const timers = core.loadExtScript("ext:deno_node/timers.ts");
 const timersPromises = core.loadExtScript(
   "ext:deno_node/timers/promises.ts",
-).default;
+);
 import tls from "node:tls";
 const traceEvents = core.loadExtScript("ext:deno_node/trace_events.ts").default;
 import tty from "node:tty";
-const url = core.loadExtScript("ext:deno_node/url.ts").default;
+const url = core.loadExtScript("ext:deno_node/url.ts");
 const utilTypes = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 const util = core.loadExtScript("ext:deno_node/util.ts");
-const v8 = core.loadExtScript("ext:deno_node/v8.ts").default;
+const v8 = core.loadExtScript("ext:deno_node/v8.ts");
 const vm = core.loadExtScript("ext:deno_node/vm.js").default;
 const workerThreads = core.loadExtScript(
   "ext:deno_node/worker_threads.ts",
-).default;
+);
 const wasi = core.loadExtScript("ext:deno_node/wasi.ts").default;
-const zlib = core.loadExtScript("ext:deno_node/zlib.js").default;
+const zlib = core.loadExtScript("ext:deno_node/zlib.js");
 
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];

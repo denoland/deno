@@ -414,14 +414,6 @@ class Immediate {
 }
 
 return {
-  default: {
-    getTimerDuration,
-    kTimerId,
-    kTimeout,
-    setUnrefTimeout,
-    Timeout,
-    TIMEOUT_MAX,
-  },
   TIMEOUT_MAX,
   kDestroy,
   kTimerId,

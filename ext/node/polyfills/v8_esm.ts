@@ -20,4 +20,4 @@ export const {
   DefaultDeserializer,
 } = mod;
 
-export default mod.default;
+export default mod;

@@ -32,4 +32,4 @@ internals.__refreshWorkerThreadsWrapper = () => {
   resourceLimits = mod.resourceLimits;
 };
 
-export default mod.default;
+export default mod;
