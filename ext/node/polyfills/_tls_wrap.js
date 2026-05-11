@@ -1217,6 +1217,25 @@ Server.prototype.addContext = function (servername, context) {
   this._contexts.push([servername, context]);
 };
 
+Server.prototype.setTicketKeys = function (keys) {
+  if (!isArrayBufferView(keys) && !Buffer.isBuffer(keys)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "keys",
+      ["Buffer", "TypedArray", "DataView"],
+      keys,
+    );
+  }
+  if (keys.byteLength !== 48) {
+    throw new RangeError(
+      `The value of "keys.byteLength" is out of range. It must be 48. Received ${keys.byteLength}`,
+    );
+  }
+  // TODO: propagate to the TLS backend so already-running listeners
+  // actually rotate their session-ticket keys. Today this only stores
+  // the bytes; new listeners pick them up through options.ticketKeys.
+  this._ticketKeys = Buffer.from(keys);
+};
+
 // ---------------------------------------------------------------------------
 // connect
 // ---------------------------------------------------------------------------
