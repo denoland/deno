@@ -260,16 +260,15 @@ impl ContextifyScript {
         && let Some(exception) = scope.exception()
         && let Ok(exc_obj) = v8::Local::<v8::Object>::try_from(exception)
       {
-        let filename =
-          if let Some(v) = msg.get_script_resource_name(scope) {
-            if let Some(s) = v.to_string(scope) {
-              s.to_rust_string_lossy(scope)
-            } else {
-              String::new()
-            }
+        let filename = if let Some(v) = msg.get_script_resource_name(scope) {
+          if let Some(s) = v.to_string(scope) {
+            s.to_rust_string_lossy(scope)
           } else {
             String::new()
-          };
+          }
+        } else {
+          String::new()
+        };
         let line_number = msg.get_line_number(scope).unwrap_or(1);
         let source_line = if let Some(s) = msg.get_source_line(scope) {
           s.to_rust_string_lossy(scope)
