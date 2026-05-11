@@ -350,7 +350,7 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
     return UV_EBADF;
   }
 
-  // If this is a named pipe, wrap it in a tokio NamedPipeServer or
+  // If this is a *named* pipe, wrap it in a tokio NamedPipeServer or
   // NamedPipeClient so reads and writes go through the async reactor.
   // A sync `ReadFile` on a pipe opened with `FILE_FLAG_OVERLAPPED`
   // aborts inside Rust's std when the operation returns
@@ -363,6 +363,12 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
   // events through the tokio reactor, so the JS Socket above never
   // sees EOF after the child exits, never destroys, and the handle
   // leaks. Use `GetNamedPipeInfo` to detect server vs client end.
+  //
+  // Anonymous pipes (`CreatePipe`) also report `FILE_TYPE_PIPE` but
+  // are not overlapped, so tokio's named-pipe wrappers cannot adopt
+  // them. For those (and any other pipe where `GetNamedPipeInfo`
+  // fails) fall through to the raw-handle path, which drives reads
+  // and writes synchronously via the raw HANDLE.
   //
   // Note: tokio's `NamedPipe{Server,Client}::from_raw_handle` always
   // takes ownership of the handle, even on `Err`. Do not reuse `dup`
@@ -377,30 +383,32 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
         std::ptr::null_mut(),
         std::ptr::null_mut(),
       );
-      let is_server = info_ok != 0 && (flags & PIPE_SERVER_END) != 0;
-
-      let raw = dup as std::os::windows::io::RawHandle;
-      return if is_server {
-        match tokio::net::windows::named_pipe::NamedPipeServer::from_raw_handle(
-          raw,
-        ) {
-          Ok(server) => {
-            (*pipe).internal_win_server = Some(std::sync::Arc::new(server));
-            0
+      if info_ok != 0 {
+        let is_server = (flags & PIPE_SERVER_END) != 0;
+        let raw = dup as std::os::windows::io::RawHandle;
+        return if is_server {
+          match tokio::net::windows::named_pipe::NamedPipeServer::from_raw_handle(
+            raw,
+          ) {
+            Ok(server) => {
+              (*pipe).internal_win_server = Some(std::sync::Arc::new(server));
+              0
+            }
+            Err(_) => UV_EBADF,
           }
-          Err(_) => UV_EBADF,
-        }
-      } else {
-        match tokio::net::windows::named_pipe::NamedPipeClient::from_raw_handle(
-          raw,
-        ) {
-          Ok(client) => {
-            (*pipe).internal_win_client = Some(client);
-            0
+        } else {
+          match tokio::net::windows::named_pipe::NamedPipeClient::from_raw_handle(
+            raw,
+          ) {
+            Ok(client) => {
+              (*pipe).internal_win_client = Some(client);
+              0
+            }
+            Err(_) => UV_EBADF,
           }
-          Err(_) => UV_EBADF,
-        }
-      };
+        };
+      }
+      // Anonymous pipe — fall through to the raw-handle path below.
     }
 
     (*pipe).internal_handle = Some(dup as std::os::windows::io::RawHandle);
