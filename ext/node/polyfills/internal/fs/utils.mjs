@@ -59,7 +59,9 @@ const {
 const { kEmptyObject, once } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
-import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
+const { toPathIfFileURL } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
 const {
   validateAbortSignal,
   validateBoolean,
