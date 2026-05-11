@@ -1861,9 +1861,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn install_reload_regenerates_lockfile() {
-    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
-
+  async fn install_reload_preserves_lockfile() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -1889,7 +1887,8 @@ mod tests {
     fs::write(&lockfile_path, stale_lockfile).unwrap();
     assert!(lockfile_path.exists());
 
-    // reinstall with --reload; stale lockfile should be removed
+    // reinstall with --reload only (no --force); lockfile must be preserved
+    // because --reload invalidates the module cache, not the lockfile.
     create_install_shim(
       &Flags {
         reload: true,
@@ -1900,15 +1899,15 @@ mod tests {
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
-        force: true,
+        force: false,
         compile: false,
       },
     )
     .await
     .unwrap();
 
-    let post_reload_content = fs::read_to_string(&lockfile_path).ok();
-    assert_ne!(post_reload_content.as_deref(), Some(stale_lockfile));
+    let post_reload_content = fs::read_to_string(&lockfile_path).unwrap();
+    assert_eq!(post_reload_content, stale_lockfile);
   }
 
   #[tokio::test]
