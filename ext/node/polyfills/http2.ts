@@ -90,7 +90,9 @@ const {
   symbols,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { async_id_symbol } = symbols;
-import { kTimeout } from "ext:deno_node/internal/timers.mjs";
+const { kTimeout } = core.loadExtScript(
+  "ext:deno_node/internal/timers.mjs",
+);
 // Use node:timers' setTimeout/clearTimeout so the returned Timeout object
 // supports unref() -- globalThis.setTimeout returns a plain number.
 import { clearTimeout, setTimeout } from "node:timers";
