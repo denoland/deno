@@ -5,7 +5,6 @@ use std::fs;
 use std::fs::File;
 use std::io;
 use std::io::ErrorKind;
-use std::io::Read as _;
 use std::io::Write;
 #[cfg(not(windows))]
 use std::os::unix::fs::PermissionsExt;
@@ -547,54 +546,49 @@ fn resolve_native_binary_path(
   let npm_ref =
     NpmPackageReqReference::from_specifier(&bin_name_and_url.module_url)
       .ok()?;
-  let config_dir_name = bin_name_and_url.config_dir_name();
   let pkg_name = &npm_ref.req().name;
   let node_modules_pkg_dir = installation_dir
-    .join(format!(".{}", config_dir_name))
+    .join(format!(".{}", bin_name_and_url.config_dir_name()))
     .join("node_modules")
     .join(pkg_name.as_str());
 
-  // Determine the bin script path
-  let bin_script = if let Some(sub_path) = npm_ref.sub_path() {
-    // Extra bin entries have the script path as the sub_path
-    sub_path.to_string()
+  let sys = crate::sys::CliSys::default();
+  let bin_path = if let Some(sub_path) = npm_ref.sub_path() {
+    // Extra bin entries encode the script path as the sub_path.
+    node_modules_pkg_dir.join(sub_path)
   } else {
-    // Primary entry: read the installed package.json to find the bin script
-    let pkg_json_path = node_modules_pkg_dir.join("package.json");
-    let pkg_json_text = fs::read_to_string(&pkg_json_path).ok()?;
-    let pkg_json: serde_json::Value =
-      serde_json::from_str(&pkg_json_text).ok()?;
-    resolve_bin_script_from_pkg_json(&pkg_json, &bin_name_and_url.name)?
+    // Primary entry: resolve the bin script via package.json.
+    let pkg_json = deno_package_json::PackageJson::load_from_path(
+      &sys,
+      None,
+      &node_modules_pkg_dir.join("package.json"),
+    )
+    .ok()
+    .flatten()?;
+    let bins = pkg_json.resolve_bins().ok()?;
+    let deno_package_json::PackageJsonBins::Bins(bins) = bins else {
+      return None;
+    };
+    // For a string bin field, `resolve_bins` keys the entry by the
+    // package's default bin name, which may not match `--name` overrides.
+    // Fall back to the sole entry when there's only one bin.
+    bins
+      .get(&bin_name_and_url.name)
+      .or_else(|| {
+        if bins.len() == 1 {
+          bins.values().next()
+        } else {
+          None
+        }
+      })?
+      .clone()
   };
 
-  let bin_path = node_modules_pkg_dir.join(&bin_script);
-
-  // Read magic bytes to check if it's a native binary
-  let mut file = fs::File::open(&bin_path).ok()?;
-  let mut buf = [0u8; 16];
-  let bytes_read = file.read(&mut buf).ok()?;
-  if bytes_read < 4 {
-    return None;
-  }
-
-  if node_resolver::is_binary(&buf[..bytes_read]) {
-    Some(bin_path)
-  } else {
-    None
-  }
-}
-
-fn resolve_bin_script_from_pkg_json(
-  pkg_json: &serde_json::Value,
-  bin_name: &str,
-) -> Option<String> {
-  let bin = pkg_json.get("bin")?;
-  match bin {
-    serde_json::Value::String(s) => Some(s.clone()),
-    serde_json::Value::Object(map) => {
-      map.get(bin_name).and_then(|v| v.as_str()).map(String::from)
-    }
-    _ => None,
+  let node_resolution_sys =
+    node_resolver::cache::NodeResolutionSys::new(sys, None);
+  match node_resolver::read_bin_value(&bin_path, &node_resolution_sys)? {
+    node_resolver::BinValue::Executable(path) => Some(path),
+    node_resolver::BinValue::JsFile(_) => None,
   }
 }
 
@@ -2220,46 +2214,6 @@ mod tests {
       Some("https://registry.npmjs.org.evil.com/evil/-/evil-1.0.0.tgz"),
     )]);
     assert!(super::validate_npm_tarball_urls(&content, &npmrc).is_err());
-  }
-
-  #[test]
-  fn resolve_bin_script_from_pkg_json_string() {
-    let pkg_json: serde_json::Value =
-      serde_json::from_str(r#"{"bin": "cli.js"}"#).unwrap();
-    assert_eq!(
-      super::resolve_bin_script_from_pkg_json(&pkg_json, "anything"),
-      Some("cli.js".to_string())
-    );
-  }
-
-  #[test]
-  fn resolve_bin_script_from_pkg_json_map() {
-    let pkg_json: serde_json::Value = serde_json::from_str(
-      r#"{"bin": {"claude": "bin/claude.exe", "other": "bin/other.js"}}"#,
-    )
-    .unwrap();
-    assert_eq!(
-      super::resolve_bin_script_from_pkg_json(&pkg_json, "claude"),
-      Some("bin/claude.exe".to_string())
-    );
-    assert_eq!(
-      super::resolve_bin_script_from_pkg_json(&pkg_json, "other"),
-      Some("bin/other.js".to_string())
-    );
-    assert_eq!(
-      super::resolve_bin_script_from_pkg_json(&pkg_json, "missing"),
-      None
-    );
-  }
-
-  #[test]
-  fn resolve_bin_script_from_pkg_json_no_bin() {
-    let pkg_json: serde_json::Value =
-      serde_json::from_str(r#"{"name": "foo"}"#).unwrap();
-    assert_eq!(
-      super::resolve_bin_script_from_pkg_json(&pkg_json, "foo"),
-      None
-    );
   }
 
   #[test]
