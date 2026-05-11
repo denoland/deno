@@ -3,6 +3,7 @@
 mod handler_impl;
 mod interface;
 pub mod local;
+pub mod persistent;
 mod socket;
 
 use std::borrow::Cow;
@@ -19,6 +20,8 @@ use deno_error::JsErrorClass;
 use deno_features::FeatureChecker;
 pub use handler_impl::CronHandleImpl;
 pub use handler_impl::CronHandlerImpl;
+pub use persistent::PersistentCronHandlerImpl;
+pub use persistent::UnimplementedPersistentCronHandler;
 pub use socket::SocketCronHandle;
 pub use socket::SocketCronHandler;
 
@@ -27,19 +30,28 @@ pub use crate::interface::*;
 pub const UNSTABLE_FEATURE_NAME: &str = "cron";
 
 deno_core::extension!(deno_cron,
-  parameters = [ C: CronHandler ],
+  parameters = [ C: CronHandler, P: PersistentCronHandler ],
   ops = [
     op_cron_create<C>,
     op_cron_next<C>,
+    op_cron_persistent_create<P>,
+    op_cron_persistent_remove<P>,
+    op_cron_persistent_list<P>,
   ],
   lazy_loaded_js = [ "01_cron.ts" ],
   options = {
     cron_handler: C,
+    persistent_cron_handler: P,
   },
   state = |state, options| {
     state.put(Rc::new(options.cron_handler));
+    state.put(PersistentHandlerSlot(Rc::new(options.persistent_cron_handler)));
   }
 );
+
+/// Newtype wrapper so the persistent handler can be stored in `OpState`
+/// without colliding with the regular `Rc<C>` slot.
+struct PersistentHandlerSlot<P: PersistentCronHandler + 'static>(Rc<P>);
 
 struct CronResource<EH: CronHandle + 'static> {
   handle: Rc<EH>,
@@ -89,6 +101,12 @@ pub enum CronError {
   #[class(generic)]
   #[error("Error registering cron: {0}")]
   RejectedError(String),
+  #[class(generic)]
+  #[error("{0}")]
+  Unsupported(String),
+  #[class(generic)]
+  #[error("Persistent cron error: {0}")]
+  Persistent(String),
   #[class(inherit)]
   #[error(transparent)]
   Other(JsErrorBox),
@@ -159,6 +177,75 @@ where
   };
 
   cron_handler.next(prev_success).await
+}
+
+#[op2]
+fn op_cron_persistent_create<P>(
+  state: Rc<RefCell<OpState>>,
+  #[string] name: String,
+  #[string] cron_schedule: String,
+  #[string] script: String,
+  #[serde] permissions: Vec<String>,
+  #[string] cwd: Option<String>,
+  #[serde] env: Vec<(String, String)>,
+) -> Result<(), CronError>
+where
+  P: PersistentCronHandler + 'static,
+{
+  let handler = {
+    let state = state.borrow();
+    state
+      .borrow::<Arc<FeatureChecker>>()
+      .check_or_exit(UNSTABLE_FEATURE_NAME, "Deno.cron.persistent");
+    state.borrow::<PersistentHandlerSlot<P>>().0.clone()
+  };
+
+  validate_cron_name(&name)?;
+
+  handler.register(PersistentCronSpec {
+    name,
+    cron_schedule,
+    script,
+    cwd,
+    permissions,
+    env,
+  })
+}
+
+#[op2(fast)]
+fn op_cron_persistent_remove<P>(
+  state: Rc<RefCell<OpState>>,
+  #[string] name: String,
+) -> Result<(), CronError>
+where
+  P: PersistentCronHandler + 'static,
+{
+  let handler = {
+    let state = state.borrow();
+    state
+      .borrow::<Arc<FeatureChecker>>()
+      .check_or_exit(UNSTABLE_FEATURE_NAME, "Deno.cron.remove");
+    state.borrow::<PersistentHandlerSlot<P>>().0.clone()
+  };
+  handler.unregister(&name)
+}
+
+#[op2]
+#[serde]
+fn op_cron_persistent_list<P>(
+  state: Rc<RefCell<OpState>>,
+) -> Result<Vec<PersistentCronEntry>, CronError>
+where
+  P: PersistentCronHandler + 'static,
+{
+  let handler = {
+    let state = state.borrow();
+    state
+      .borrow::<Arc<FeatureChecker>>()
+      .check_or_exit(UNSTABLE_FEATURE_NAME, "Deno.cron.list");
+    state.borrow::<PersistentHandlerSlot<P>>().0.clone()
+  };
+  handler.list()
 }
 
 fn validate_cron_name(name: &str) -> Result<(), CronError> {

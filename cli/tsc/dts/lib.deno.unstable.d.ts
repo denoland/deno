@@ -491,6 +491,125 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * Namespace augmentation of {@linkcode Deno.cron} that adds persistent
+   * (OS-scheduled) cron registration. Persistent crons survive process exit
+   * and reboot because they are registered with the host OS scheduler
+   * (`crontab` on Linux, `launchd` on macOS, `schtasks` on Windows).
+   *
+   * @category Cloud
+   * @experimental
+   */
+  export namespace cron {
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * Options accepted by {@linkcode Deno.cron.persistent}.
+     *
+     * @category Cloud
+     * @experimental
+     */
+    export interface PersistentOptions {
+      /** Unique title. Re-registering with the same name overwrites the
+       * existing entry. Same naming rules as {@linkcode Deno.cron}
+       * (alphanumerics, hyphens, underscores, whitespace; ≤ 64 chars). */
+      name: string;
+      /** Unix-format cron expression or a {@linkcode Deno.CronSchedule}. */
+      schedule: string | CronSchedule;
+      /** Path to a module that exports `default.scheduled`. Resolved
+       * against the current working directory at registration time. */
+      script: string;
+      /** Permission flags forwarded to `deno run` when the OS scheduler
+       * fires (e.g. `["--allow-net", "--allow-read=."]`). */
+      permissions?: string[];
+      /** Working directory the script will run in. Defaults to the cwd of
+       * the registering process. */
+      cwd?: string;
+      /** Environment variables to set when the cron fires. */
+      env?: Record<string, string>;
+    }
+
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * One row returned from {@linkcode Deno.cron.list}.
+     *
+     * @category Cloud
+     * @experimental
+     */
+    export interface PersistentEntry {
+      name: string;
+      schedule: string;
+      script: string;
+    }
+
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * Register a persistent cron with the host OS scheduler. The current
+     * process exits without keeping a tokio loop alive — the OS launches
+     * `deno cron exec <script>` at each scheduled time, which calls the
+     * module's `default.scheduled(controller)` export.
+     *
+     * ```ts
+     * await Deno.cron.persistent({
+     *   name: "weekly-report",
+     *   schedule: "30 2 * * MON",
+     *   script: "./worker.ts",
+     *   permissions: ["--allow-net"],
+     * });
+     * ```
+     *
+     * The worker entry point:
+     *
+     * ```ts
+     * export default {
+     *   async scheduled(controller: Deno.CronController) {
+     *     console.log(controller.cron, controller.scheduledTime);
+     *   },
+     * };
+     * ```
+     *
+     * @category Cloud
+     * @experimental
+     */
+    export function persistent(options: PersistentOptions): Promise<void>;
+
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * Unregister a persistent cron previously registered with
+     * {@linkcode Deno.cron.persistent}. Resolves silently if no entry
+     * matches.
+     *
+     * @category Cloud
+     * @experimental
+     */
+    export function remove(name: string): Promise<void>;
+
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * List persistent crons registered by the current user on this host.
+     *
+     * @category Cloud
+     * @experimental
+     */
+    export function list(): Promise<PersistentEntry[]>;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Argument passed to a persistent cron's `default.scheduled` handler.
+   *
+   * @category Cloud
+   * @experimental
+   */
+  export interface CronController {
+    /** The cron expression that triggered this run, normalized to a 5-field
+     * Unix cron string. */
+    readonly cron: string;
+    /** Unix timestamp in milliseconds at which the OS scheduler fired this
+     * run. May differ slightly from `Date.now()` if invocation was delayed. */
+    readonly scheduledTime: number;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * A key to be persisted in a {@linkcode Deno.Kv}. A key is a sequence
    * of {@linkcode Deno.KvKeyPart}s.
    *
