@@ -402,54 +402,18 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
         std::ptr::null_mut(),
       );
       if info_ok != 0 {
-        let is_server = (flags & PIPE_SERVER_END) != 0;
+        let _is_server = (flags & PIPE_SERVER_END) != 0;
         let raw = dup as std::os::windows::io::RawHandle;
-        let primary_ok = if is_server {
-          match tokio::net::windows::named_pipe::NamedPipeServer::from_raw_handle(
-            raw,
-          ) {
-            Ok(server) => {
-              (*pipe).internal_win_server = Some(std::sync::Arc::new(server));
-              true
-            }
-            Err(_) => false,
-          }
-        } else {
-          match tokio::net::windows::named_pipe::NamedPipeClient::from_raw_handle(
-            raw,
-          ) {
-            Ok(client) => {
-              (*pipe).internal_win_client = Some(client);
-              true
-            }
-            Err(_) => false,
-          }
-        };
-        if primary_ok {
+        // EXPERIMENT: always use NamedPipeClient (the prior behavior),
+        // even on server-end handles. If this restores fast writes,
+        // the regression is from the wrapper-type change (not the dup).
+        if let Ok(client) =
+          tokio::net::windows::named_pipe::NamedPipeClient::from_raw_handle(raw)
+        {
+          (*pipe).internal_win_client = Some(client);
           return 0;
         }
-        // `dup` was consumed by `from_raw_handle` on Err. For server-end
-        // handles, try `NamedPipeClient` as a fallback before giving up
-        // on the async path: this matches the prior behavior and keeps
-        // bulk writes fast, at the cost of EOF propagation that the
-        // initial `NamedPipeServer` attempt would have provided.
-        if is_server {
-          let redup1 = match redup(handle) {
-            Some(h) => h,
-            None => return UV_EBADF,
-          };
-          let raw = redup1 as std::os::windows::io::RawHandle;
-          if let Ok(client) =
-            tokio::net::windows::named_pipe::NamedPipeClient::from_raw_handle(
-              raw,
-            )
-          {
-            (*pipe).internal_win_client = Some(client);
-            return 0;
-          }
-        }
-        // Both wrappers failed (or only the client-end attempt did).
-        // Re-duplicate again for the raw-handle path.
+        // Re-duplicate for the raw-handle fallback path.
         let raw_handle_dup = match redup(handle) {
           Some(h) => h,
           None => return UV_EBADF,
