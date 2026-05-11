@@ -1,15 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use async_trait::async_trait;
+use std::rc::Rc;
 
 use crate::CronError;
 use crate::CronHandle;
 use crate::CronHandler;
-use crate::CronNextResult;
 use crate::CronSpec;
-use crate::local::CronExecutionHandle;
 use crate::local::LocalCronHandler;
-use crate::socket::SocketCronHandle;
 use crate::socket::SocketCronHandler;
 
 pub enum CronHandlerImpl {
@@ -61,37 +58,10 @@ impl CronHandlerImpl {
 }
 
 impl CronHandler for CronHandlerImpl {
-  type EH = CronHandleImpl;
-
-  fn create(&self, spec: CronSpec) -> Result<Self::EH, CronError> {
+  fn create(&self, spec: CronSpec) -> Result<Rc<dyn CronHandle>, CronError> {
     match self {
-      Self::Local(h) => h.create(spec).map(CronHandleImpl::Local),
-      Self::Socket(h) => h.create(spec).map(CronHandleImpl::Socket),
-    }
-  }
-}
-
-pub enum CronHandleImpl {
-  Local(CronExecutionHandle),
-  Socket(SocketCronHandle),
-}
-
-#[async_trait(?Send)]
-impl CronHandle for CronHandleImpl {
-  async fn next(
-    &self,
-    prev_success: bool,
-  ) -> Result<CronNextResult, CronError> {
-    match self {
-      Self::Local(h) => h.next(prev_success).await,
-      Self::Socket(h) => h.next(prev_success).await,
-    }
-  }
-
-  fn close(&self) {
-    match self {
-      Self::Local(h) => h.close(),
-      Self::Socket(h) => h.close(),
+      Self::Local(h) => h.create(spec),
+      Self::Socket(h) => h.create(spec),
     }
   }
 }

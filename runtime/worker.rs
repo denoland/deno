@@ -547,7 +547,7 @@ impl MainWorker {
           options.unsafely_ignore_certificate_errors.clone(),
         ),
         deno_kv::deno_kv::args(
-          MultiBackendDbHandler::remote_or_sqlite(
+          Box::new(MultiBackendDbHandler::remote_or_sqlite(
             options.origin_storage_dir.clone(),
             options.seed,
             deno_kv::remote::HttpOptions {
@@ -561,7 +561,7 @@ impl MainWorker {
               client_cert_chain_and_key: TlsKeys::Null,
               proxy: None,
             },
-          ),
+          )),
           deno_kv::KvConfig::builder().build(),
         ),
         deno_napi::deno_napi::args(
@@ -1083,8 +1083,8 @@ fn common_extensions<
     deno_ffi::deno_ffi::lazy_init(),
     deno_net::deno_net::lazy_init(),
     deno_tls::deno_tls::init(),
-    deno_kv::deno_kv::lazy_init::<MultiBackendDbHandler>(),
-    deno_cron::deno_cron::init(CronHandlerImpl::create_from_env()),
+    deno_kv::deno_kv::lazy_init(),
+    deno_cron::deno_cron::init(Box::new(CronHandlerImpl::create_from_env())),
     deno_napi::deno_napi::lazy_init(),
     deno_http::deno_http::lazy_init(),
     deno_io::deno_io::lazy_init(),

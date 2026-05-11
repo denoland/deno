@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::rc::Rc;
+
 use async_trait::async_trait;
 
 use crate::CronError;
@@ -13,9 +15,7 @@ pub struct CronNextResult {
 }
 
 pub trait CronHandler {
-  type EH: CronHandle + 'static;
-
-  fn create(&self, spec: CronSpec) -> Result<Self::EH, CronError>;
+  fn create(&self, spec: CronSpec) -> Result<Rc<dyn CronHandle>, CronError>;
 }
 
 #[async_trait(?Send)]
