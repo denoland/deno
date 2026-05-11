@@ -387,7 +387,19 @@ impl RecursiveModuleLoad {
     while let Some((module_id, module_reference)) =
       already_registered.pop_front()
     {
-      let referrer = &module_reference.specifier;
+      // Use the module's canonical (post-redirect) URL as the referrer for
+      // its child imports. After `new_module` aliases e.g. `npm:foo@^1` to
+      // its `file:///.../node_modules/...` location, V8 records the module
+      // under the file URL, and Deno's resolver requires that file URL to
+      // resolve bare specifiers via the package's `package.json`. Using the
+      // original specifier (e.g. `npm:foo@^1`) here strands intra-package
+      // imports without resolution context.
+      let canonical_specifier = self
+        .module_map_rc
+        .get_name_by_id(module_id)
+        .and_then(|n| ModuleSpecifier::parse(&n).ok())
+        .unwrap_or_else(|| module_reference.specifier.clone());
+      let referrer = &canonical_specifier;
       let imports = self
         .module_map_rc
         .get_requested_modules(module_id)
