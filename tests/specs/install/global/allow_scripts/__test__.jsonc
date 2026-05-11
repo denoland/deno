@@ -1,4 +1,7 @@
 {
+  // Skipped on windows-aarch64: flakes intermittently (`flakyCount: 4`),
+  // independently reproduced across orthogonal PRs. Tracked in #33976.
+  "if": "notWindowsArm",
   "tempDir": true,
   "steps": [{
     "if": "unix",
