@@ -77,7 +77,9 @@ const {
   writeGeneric,
   writevGeneric,
 } = core.loadExtScript("ext:deno_node/internal/stream_base_commons.ts");
-import { kDestroy, kTimeout } from "ext:deno_node/internal/timers.mjs";
+const { kDestroy, kTimeout } = core.loadExtScript(
+  "ext:deno_node/internal/timers.mjs",
+);
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const {
   DTRACE_NET_SERVER_CONNECTION,

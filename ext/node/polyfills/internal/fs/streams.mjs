@@ -39,7 +39,9 @@ import {
   validatePath,
 } from "ext:deno_node/internal/fs/utils.mjs";
 const lazyStream = core.createLazyLoader("node:stream");
-import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
+const { toPathIfFileURL } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 import { FileHandle, kRef, kUnref } from "ext:deno_node/internal/fs/handle.ts";
 
