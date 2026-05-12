@@ -114,6 +114,20 @@ impl ExtensionFileSource {
     }
   }
 
+  /// Whether this source's bytes are reachable at runtime without an external
+  /// table (e.g. from a snapshot build's residual sources). True for inline
+  /// or compile-time embedded sources, false for paths that were only valid
+  /// on the build machine.
+  pub fn is_runtime_loadable(&self) -> bool {
+    #[allow(deprecated, reason = "matching deprecated variant we still inspect")]
+    match &self.code {
+      ExtensionFileSourceCode::IncludedInBinary(_)
+      | ExtensionFileSourceCode::LoadedFromMemoryDuringSnapshot(_)
+      | ExtensionFileSourceCode::Computed(_) => true,
+      ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(_) => false,
+    }
+  }
+
   fn find_non_ascii(s: &str) -> String {
     s.chars().filter(|c| !c.is_ascii()).collect::<String>()
   }
