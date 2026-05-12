@@ -835,10 +835,7 @@ impl JsRuntime {
     // Capture the extension, op and source counts. `source_count` mirrors the
     // number of `v8::OneByteConst` external strings produced by
     // [`bindings::externalize_sources`] (which iterates `js + esm + lazy_esm`
-    // — `lazy_loaded_js` scripts are not externalized as module sources). We
-    // can't use [`LoadedSources::len`] here because it also counts
-    // `lazy_loaded_js`, leading to a mismatch with the snapshot's external
-    // string table at restore time.
+    // — `lazy_loaded_js` scripts are not externalized as module sources).
     let extensions = extensions.iter().map(|e| e.name).collect();
     let op_count = op_ctxs.len();
     let source_count =
