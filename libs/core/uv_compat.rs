@@ -88,11 +88,14 @@ pub(crate) fn io_error_to_uv(err: &std::io::Error) -> c_int {
   #[cfg(windows)]
   if let Some(code) = err.raw_os_error() {
     match code {
-      231 => return UV_EBUSY,    // ERROR_PIPE_BUSY
-      535 => return UV_EPIPE,    // ERROR_PIPE_CONNECTED -- already connected
-      536 => return UV_EAGAIN,   // ERROR_PIPE_LISTENING
-      230 => return UV_EPIPE,    // ERROR_BAD_PIPE
-      233 => return UV_ENOTCONN, // ERROR_PIPE_NOT_CONNECTED
+      231 => return UV_EBUSY,  // ERROR_PIPE_BUSY
+      536 => return UV_EAGAIN, // ERROR_PIPE_LISTENING
+      230 => return UV_EPIPE,  // ERROR_BAD_PIPE
+      // `ERROR_PIPE_NOT_CONNECTED` maps to `UV_EPIPE` to match libuv's
+      // `uv_translate_sys_error` — node code pattern-matches against
+      // libuv's actual values, so semantic accuracy (`UV_ENOTCONN`)
+      // would break those callers.
+      233 => return UV_EPIPE, // ERROR_PIPE_NOT_CONNECTED
       _ => {}
     }
   }

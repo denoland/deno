@@ -893,6 +893,11 @@ pub(crate) fn wait_named_pipe_and_open(
       windows_sys::Win32::System::Pipes::WaitNamedPipeW(wide.as_ptr(), 30000)
     };
     if ok == 0 {
+      // Any `WaitNamedPipeW` failure — including `ERROR_SEM_TIMEOUT` —
+      // exits the loop. Matches libuv's `pipe_connect_thread_proc`:
+      // the 30s timeout signals the server is unresponsive and the
+      // connect should be reported as failed rather than retried
+      // indefinitely.
       return Err(std::io::Error::last_os_error());
     }
     match tokio::net::windows::named_pipe::ClientOptions::new().open(path) {
