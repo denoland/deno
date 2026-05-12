@@ -192,8 +192,7 @@ impl GPURenderBundleEncoder {
       // backing buffer's length. Without this check, `&data[start..end]`
       // below would panic on out-of-range input; the panic crosses the
       // op's `extern "C"` boundary and aborts the process. See #33956.
-      let Some(end) =
-        start.checked_add(len).filter(|end| *end <= view_len)
+      let Some(end) = start.checked_add(len).filter(|end| *end <= view_len)
       else {
         return Err(JsErrorBox::generic(format!(
           "{PREFIX}: dynamicOffsetsDataStart + dynamicOffsetsDataLength ({start} + {len}) is outside the bounds of dynamicOffsetsData (length {view_len})",
