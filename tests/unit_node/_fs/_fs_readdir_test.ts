@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assertEquals, assertNotEquals, fail } from "@std/assert";
+import { assert, assertEquals, assertNotEquals, fail } from "@std/assert";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { readdir, readdirSync } from "node:fs";
+import { type Dirent, readdir, readdirSync } from "node:fs";
+import { Buffer } from "node:buffer";
 import { join } from "@std/path";
 
 Deno.test({
@@ -113,6 +114,62 @@ Deno.test("SYNC: read dirs recursively", () => {
       files,
       ["file1.txt", "sub", join("sub", "file2.txt")],
     );
+  } finally {
+    Deno.removeSync(dir, { recursive: true });
+  }
+});
+
+Deno.test("ASYNC: withFileTypes + encoding 'buffer' returns Buffer names", async () => {
+  const dir = Deno.makeTempDirSync();
+  Deno.writeTextFileSync(join(dir, "file1.txt"), "hi");
+  try {
+    const entries = await new Promise<Dirent[]>((resolve, reject) => {
+      readdir(
+        dir,
+        { withFileTypes: true, encoding: "buffer" },
+        (err, files) => err ? reject(err) : resolve(files as Dirent[]),
+      );
+    });
+    assertEquals(entries.length, 1);
+    assert(Buffer.isBuffer(entries[0].name));
+    assertEquals(
+      (entries[0].name as unknown as Buffer).toString(),
+      "file1.txt",
+    );
+  } finally {
+    Deno.removeSync(dir, { recursive: true });
+  }
+});
+
+Deno.test("SYNC: withFileTypes + encoding 'buffer' returns Buffer names", () => {
+  const dir = Deno.makeTempDirSync();
+  Deno.writeTextFileSync(join(dir, "file1.txt"), "hi");
+  try {
+    const entries = readdirSync(dir, {
+      withFileTypes: true,
+      encoding: "buffer",
+    });
+    assertEquals(entries.length, 1);
+    assert(Buffer.isBuffer(entries[0].name));
+    assertEquals(
+      (entries[0].name as unknown as Buffer).toString(),
+      "file1.txt",
+    );
+  } finally {
+    Deno.removeSync(dir, { recursive: true });
+  }
+});
+
+Deno.test("SYNC: withFileTypes + encoding 'hex' returns hex-encoded names", () => {
+  const dir = Deno.makeTempDirSync();
+  Deno.writeTextFileSync(join(dir, "ab"), "hi");
+  try {
+    const entries = readdirSync(dir, {
+      withFileTypes: true,
+      encoding: "hex",
+    });
+    assertEquals(entries.length, 1);
+    assertEquals(entries[0].name, "6162");
   } finally {
     Deno.removeSync(dir, { recursive: true });
   }

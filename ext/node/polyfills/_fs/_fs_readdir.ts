@@ -100,7 +100,9 @@ export function readdir(
 
           if (options?.withFileTypes) {
             entry.parentPath = current;
-            result.push(direntFromDeno(entry));
+            const dirent = direntFromDeno(entry);
+            dirent.name = decode(dirent.name, options?.encoding);
+            result.push(dirent);
           } else {
             let name = entry.name;
             if (options?.recursive) {
@@ -179,7 +181,9 @@ export function readdirSync(
 
         if (options?.withFileTypes) {
           entry.parentPath = current;
-          result.push(direntFromDeno(entry));
+          const dirent = direntFromDeno(entry);
+          dirent.name = decode(dirent.name, options?.encoding);
+          result.push(dirent);
         } else {
           let name = entry.name;
           if (options?.recursive) {
