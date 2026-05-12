@@ -25,10 +25,10 @@ const todoUndefined = undefined;
 // binaries linked against glibc. On musl Linux and non-Linux platforms the
 // fields are absent, and tools such as rollup rely on that to detect the
 // libc flavor (denoland/deno#33948). Evaluated inside `getReport` because
-// `Deno.build` is not populated when this polyfill is loaded during
-// snapshot creation.
+// `core.build` isn't populated until startup runs `setBuildInfo` after the
+// snapshot is restored.
 function getGlibcVersions() {
-  return Deno.build.os === "linux" && Deno.build.env === "gnu"
+  return core.build.os === "linux" && core.build.env === "gnu"
     ? { glibcVersionRuntime: "2.38", glibcVersionCompiler: "2.38" }
     : {};
 }
