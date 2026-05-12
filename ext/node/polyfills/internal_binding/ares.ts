@@ -15,21 +15,21 @@
  */
 
 // REF: https://github.com/nodejs/node/blob/master/deps/cares/include/ares.h#L190
-
-export const ARES_AI_CANONNAME = 1 << 0;
-export const ARES_AI_NUMERICHOST = 1 << 1;
-export const ARES_AI_PASSIVE = 1 << 2;
-export const ARES_AI_NUMERICSERV = 1 << 3;
-export const AI_V4MAPPED = 1 << 4;
-export const AI_ALL = 1 << 5;
-export const AI_ADDRCONFIG = 1 << 6;
-export const ARES_AI_NOSORT = 1 << 7;
-export const ARES_AI_ENVHOSTS = 1 << 8;
+(function () {
+const ARES_AI_CANONNAME = 1 << 0;
+const ARES_AI_NUMERICHOST = 1 << 1;
+const ARES_AI_PASSIVE = 1 << 2;
+const ARES_AI_NUMERICSERV = 1 << 3;
+const AI_V4MAPPED = 1 << 4;
+const AI_ALL = 1 << 5;
+const AI_ADDRCONFIG = 1 << 6;
+const ARES_AI_NOSORT = 1 << 7;
+const ARES_AI_ENVHOSTS = 1 << 8;
 
 // REF: https://github.com/nodejs/node/blob/master/deps/cares/src/lib/ares_strerror.c
 
 // deno-lint-ignore camelcase
-export function ares_strerror(code: number) {
+function ares_strerror(code: number) {
   /* Return a string literal from a table. */
   const errorText = [
     "Successful completion",
@@ -65,3 +65,17 @@ export function ares_strerror(code: number) {
     return "unknown";
   }
 }
+
+return {
+  ares_strerror,
+  ARES_AI_CANONNAME,
+  ARES_AI_NUMERICHOST,
+  ARES_AI_PASSIVE,
+  ARES_AI_NUMERICSERV,
+  AI_V4MAPPED,
+  AI_ALL,
+  AI_ADDRCONFIG,
+  ARES_AI_NOSORT,
+  ARES_AI_ENVHOSTS,
+};
+})();

@@ -469,6 +469,10 @@ pub struct JsRuntimeState {
   inspector: RefCell<Option<Rc<JsRuntimeInspector>>>,
   has_inspector: Cell<bool>,
   lazy_extensions: Vec<&'static str>,
+  /// Counter for consecutive event loop iterations where module evaluation
+  /// is pending but V8 reports no stalled top-level await. Used to detect
+  /// deadlocks and avoid spinning the event loop indefinitely.
+  tla_stall_retries: Cell<u32>,
 }
 
 #[derive(Default)]
@@ -790,6 +794,7 @@ impl JsRuntime {
       function_templates: Default::default(),
       callsite_prototype: None.into(),
       lazy_extensions,
+      tla_stall_retries: Cell::new(0),
     });
 
     // ...now we're moving on to ops; set them up, create `OpCtx` for each op
@@ -1350,6 +1355,11 @@ impl JsRuntime {
     // First, add all the lazy ESM
     for source in loaded_sources.lazy_esm {
       module_map.add_lazy_loaded_esm_source(source.specifier, source.code);
+    }
+
+    // Add lazy-loaded scripts (loaded on demand via loadExtScript())
+    for source in loaded_sources.lazy_js {
+      module_map.add_lazy_loaded_script_source(source.specifier, source.code);
     }
 
     // Temporarily override the loader of the `ModuleMap` so we can load
@@ -2296,19 +2306,20 @@ impl JsRuntime {
     }
 
     // ===== Phase 4: I/O =====
-    // Tight I/O loop: when run_io reads data and fires callbacks, the
-    // resulting JS work (nextTick/macrotasks from HTTP2 frame processing)
-    // may produce write calls. Drain those immediately and re-poll for
-    // more data, avoiding kqueue/kevent round-trip latency between batches.
+    // Single run_io call per tick, matching libuv's uv_run (one
+    // uv__io_poll per iteration, callbacks fire, then we return).
+    // Spinning run_io in place until it returns `false` batches more
+    // work per tick but under sustained inbound traffic never exits —
+    // tokio keeps delivering readiness as we poll — and traps the
+    // event loop processing hundreds of handles back-to-back, which
+    // crushes tail latency (p99 30–200 ms vs ~1 ms with a single
+    // call).
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe {
         (*uv_inner_ptr).set_waker(cx.waker());
       }
-      for _io_spin in 0..8 {
-        let did_io = unsafe { (*uv_inner_ptr).run_io() };
-        if !did_io {
-          break;
-        }
+      let did_io = unsafe { (*uv_inner_ptr).run_io() };
+      if did_io {
         uv_did_io = true;
         // Flush microtasks from I/O callbacks, then drain ticks.
         // processTicksAndRejections runs op_run_microtasks internally,
@@ -2352,6 +2363,14 @@ impl JsRuntime {
     }
     scope.perform_microtask_checkpoint();
 
+    // Drain nextTick queue before close phase, matching Node.js/libuv
+    // where process.nextTick fires between each event loop phase.
+    // This ensures nextTicks from I/O callbacks (Phase 4) fire before
+    // close callbacks (Phase 6).
+    if context_state.has_tick_scheduled() {
+      Self::drain_next_tick_and_macrotasks(scope, context_state)?;
+    }
+
     // ===== Phase 6: Close =====
     exception_state.check_exception_condition(scope)?;
     {
@@ -2361,8 +2380,27 @@ impl JsRuntime {
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe { (*uv_inner_ptr).run_close() };
     }
+    // Run V8 close callbacks (JS handle.close() callbacks).
+    // These are deferred to Phase 6 to match libuv's uv_close behavior
+    // where close callbacks fire at the END of the event loop iteration,
+    // after all nextTick and microtask queues have drained.
+    {
+      let v8_cbs = context_state
+        .event_loop_phases
+        .borrow_mut()
+        .drain_v8_close_callbacks();
+      for cb in v8_cbs {
+        (cb.callback)(scope);
+      }
+    }
     // libuv close callbacks may call into JS; flush microtasks if present.
-    if has_uv {
+    if has_uv
+      || !context_state
+        .event_loop_phases
+        .borrow()
+        .v8_close_callbacks
+        .is_empty()
+    {
       scope.perform_microtask_checkpoint();
     }
 
@@ -2429,12 +2467,49 @@ impl JsRuntime {
       {
         // pass, will be polled again
       } else {
-        return Poll::Ready(Err(
-          CoreErrorKind::Js(find_and_report_stalled_level_await_in_any_realm(
-            scope, &realm.0,
-          ))
-          .into_box(),
-        ));
+        // Last-resort: try one more microtask checkpoint before reporting
+        // a stalled TLA. Under Explicit microtask policy, V8's internal
+        // async module evaluation state machine may require an additional
+        // checkpoint to fully resolve the evaluation promise (e.g. when
+        // TLA resumes trigger lazy module loads whose nested checkpoints
+        // are no-ops due to V8's reentrancy guard).
+        scope.perform_microtask_checkpoint();
+        let modules = &realm.0.module_map();
+        if !modules.has_pending_module_evaluation() {
+          // The checkpoint resolved the evaluation -- keep going
+          self.inner.state.tla_stall_retries.set(0);
+          self.inner.state.waker.wake();
+        } else if let Some(js_error) =
+          find_and_report_stalled_level_await_in_any_realm(scope, &realm.0)
+        {
+          self.inner.state.tla_stall_retries.set(0);
+          return Poll::Ready(Err(CoreErrorKind::Js(js_error).into_box()));
+        } else {
+          // V8 reports no stalled TLA but the evaluation promise is still
+          // pending. This can happen with large async module graphs under
+          // Explicit microtask policy. Give the event loop a few more
+          // iterations to make progress, but bail if we are stuck.
+          const MAX_TLA_STALL_RETRIES: u32 = 10;
+          let retries = self.inner.state.tla_stall_retries.get() + 1;
+          self.inner.state.tla_stall_retries.set(retries);
+          if retries > MAX_TLA_STALL_RETRIES {
+            self.inner.state.tla_stall_retries.set(0);
+            return Poll::Ready(Err(
+              CoreErrorKind::ModuleEvaluationDeadlock.into_box(),
+            ));
+          }
+          #[allow(
+            clippy::print_stderr,
+            reason = "intentional debug diagnostic for TLA stall recovery"
+          )]
+          {
+            eprintln!(
+              "warning: module evaluation pending but no stalled top-level \
+               await found, retrying event loop iteration ({retries}/{MAX_TLA_STALL_RETRIES})"
+            );
+          }
+          self.inner.state.waker.wake();
+        }
       }
     }
 
@@ -2449,12 +2524,34 @@ impl JsRuntime {
       {
         // pass, will be polled again
       } else if realm.modules_idle() {
-        return Poll::Ready(Err(
-          CoreErrorKind::Js(find_and_report_stalled_level_await_in_any_realm(
-            scope, &realm.0,
-          ))
-          .into_box(),
-        ));
+        if let Some(js_error) =
+          find_and_report_stalled_level_await_in_any_realm(scope, &realm.0)
+        {
+          self.inner.state.tla_stall_retries.set(0);
+          return Poll::Ready(Err(CoreErrorKind::Js(js_error).into_box()));
+        } else {
+          const MAX_TLA_STALL_RETRIES: u32 = 10;
+          let retries = self.inner.state.tla_stall_retries.get() + 1;
+          self.inner.state.tla_stall_retries.set(retries);
+          if retries > MAX_TLA_STALL_RETRIES {
+            self.inner.state.tla_stall_retries.set(0);
+            return Poll::Ready(Err(
+              CoreErrorKind::ModuleEvaluationDeadlock.into_box(),
+            ));
+          }
+          #[allow(
+            clippy::print_stderr,
+            reason = "intentional debug diagnostic for TLA stall recovery"
+          )]
+          {
+            eprintln!(
+              "warning: dynamic module evaluation pending but no stalled \
+               top-level await found, retrying event loop iteration \
+               ({retries}/{MAX_TLA_STALL_RETRIES})"
+            );
+          }
+          self.inner.state.waker.wake();
+        }
       } else {
         realm.increment_modules_idle();
         self.inner.state.waker.wake();
@@ -2468,7 +2565,7 @@ impl JsRuntime {
 fn find_and_report_stalled_level_await_in_any_realm(
   scope: &mut v8::PinScope,
   inner_realm: &JsRealmInner,
-) -> Box<JsError> {
+) -> Option<Box<JsError>> {
   let module_map = inner_realm.module_map();
   let messages = module_map.find_stalled_top_level_await(scope);
 
@@ -2479,10 +2576,10 @@ fn find_and_report_stalled_level_await_in_any_realm(
     // situation is gonna be very rare, if ever happening).
     let msg = v8::Local::new(scope, &messages[0]);
     let js_error = JsError::from_v8_message(scope, msg);
-    return js_error;
+    return Some(js_error);
   }
 
-  unreachable!("Expected at least one stalled top-level await");
+  None
 }
 
 fn create_context<'s, 'i>(

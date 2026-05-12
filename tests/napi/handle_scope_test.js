@@ -23,3 +23,10 @@ Deno.test("napi nested handle scopes", function () {
   const result = lib.test_nested_scopes();
   assertEquals(result, true);
 });
+
+// Regression test for #33281: values created inside a handle scope
+// must remain usable after the scope is closed.
+Deno.test("napi use value after handle scope close", function () {
+  const result = lib.test_use_value_after_close();
+  assertEquals(result, "hello");
+});

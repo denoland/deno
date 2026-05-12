@@ -1,20 +1,23 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
+const {
   op_create_worker,
   op_host_get_worker_cpu_usage,
   op_host_post_message,
+  op_host_post_message_raw,
   op_host_recv_ctrl,
   op_host_recv_message,
+  op_host_recv_message_sync,
   op_host_terminate_worker,
   op_mark_as_untransferable,
   op_message_port_recv_message_sync,
   op_worker_get_resource_limits,
   op_worker_threads_filename,
-} from "ext:core/ops";
-import {
+} = core.ops;
+const {
   deserializeJsMessageData,
   MessageChannel,
   MessagePort,
@@ -26,31 +29,39 @@ import {
   refMessagePort,
   serializeJsMessageData,
   unrefParentPort,
-} from "ext:deno_web/13_message_port.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { notImplemented } from "ext:deno_node/_utils.ts";
-import {
+} = core.loadExtScript("ext:deno_web/13_message_port.js");
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_URL_SCHEME,
   ERR_OUT_OF_RANGE,
   ERR_WORKER_INVALID_EXEC_ARGV,
   ERR_WORKER_NOT_RUNNING,
   ERR_WORKER_PATH,
-} from "ext:deno_node/internal/errors.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   validateArray,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import { EventEmitter } from "node:events";
-import { Readable, Writable } from "node:stream";
-import {
-  BroadcastChannel as WebBroadcastChannel,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+const lazyStream = core.createLazyLoader("node:stream");
+const {
+  BroadcastChannel: WebBroadcastChannel,
   refBroadcastChannel,
-} from "ext:deno_web/01_broadcast_channel.js";
-import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
-import process from "node:process";
-import { fileURLToPath } from "node:url";
-import { createRequire } from "node:module";
+} = core.loadExtScript("ext:deno_web/01_broadcast_channel.js");
+const { untransferableSymbol } = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
+const lazyProcess = core.createLazyLoader("node:process");
+const lazyUrl = core.createLazyLoader("node:url");
+const lazyModule = core.createLazyLoader("node:module");
+
+// Eagerly bind: node:process is in the eager ESM bundle so this is cheap, and
+// it's used pervasively throughout this module. `Readable`/`Writable`,
+// `fileURLToPath`, and `createRequire` stay deferred via their `lazy*`
+// loaders.
+const process = lazyProcess().default;
 
 const {
   ArrayIsArray,
@@ -59,6 +70,8 @@ const {
   FunctionPrototypeCall,
   NumberIsFinite,
   NumberIsNaN,
+  ObjectCreate,
+  ObjectDefineProperty,
   ObjectHasOwn,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
@@ -179,7 +192,7 @@ const workerDisallowedFlags = new SafeSet([
   "--report-uncaught-exception",
 ]);
 
-export interface WorkerOptions {
+interface WorkerOptions {
   // only for typings
   argv?: unknown[];
   env?: Record<string, unknown>;
@@ -223,11 +236,14 @@ class NodeWorker extends EventEmitter {
   // https://nodejs.org/api/worker_threads.html#workerresourcelimits
   resourceLimits: WorkerOptions["resourceLimits"] = {};
   // https://nodejs.org/api/worker_threads.html#workerstdin
-  stdin: Writable | null = null;
+  // deno-lint-ignore no-explicit-any
+  stdin: any = null;
   // https://nodejs.org/api/worker_threads.html#workerstdout
-  stdout: Readable = new Readable({ read() {} });
+  // deno-lint-ignore no-explicit-any
+  stdout: any = new (lazyStream().Readable)({ read() {} });
   // https://nodejs.org/api/worker_threads.html#workerstderr
-  stderr: Readable = new Readable({ read() {} });
+  // deno-lint-ignore no-explicit-any
+  stderr: any = new (lazyStream().Readable)({ read() {} });
 
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
@@ -472,7 +488,7 @@ class NodeWorker extends EventEmitter {
     if (options?.stdin) {
       // deno-lint-ignore no-this-alias
       const worker = this;
-      this.stdin = new Writable({
+      this.stdin = new (lazyStream().Writable)({
         write(chunk, _encoding, callback) {
           try {
             worker.postMessage({
@@ -531,10 +547,18 @@ class NodeWorker extends EventEmitter {
 
   #closeStdio() {
     if (!this.stdout.readableEnded) {
-      FunctionPrototypeCall(Readable.prototype.push, this.stdout, null);
+      FunctionPrototypeCall(
+        lazyStream().Readable.prototype.push,
+        this.stdout,
+        null,
+      );
     }
     if (!this.stderr.readableEnded) {
-      FunctionPrototypeCall(Readable.prototype.push, this.stderr, null);
+      FunctionPrototypeCall(
+        lazyStream().Readable.prototype.push,
+        this.stderr,
+        null,
+      );
     }
   }
 
@@ -609,6 +633,42 @@ class NodeWorker extends EventEmitter {
     }
   };
 
+  #dispatchWorkerThreadMessage(data) {
+    let message, _transferables;
+    try {
+      const v = deserializeJsMessageData(data);
+      message = v[0];
+      _transferables = v[1];
+    } catch (err) {
+      this.emit("messageerror", err);
+      return false;
+    }
+    if (
+      // only emit "online" event once, and since the message
+      // has to come before user messages, we are safe to assume
+      // it came from us
+      !this.#workerOnline && isWorkerOnlineMsg(message)
+    ) {
+      this.#workerOnline = true;
+      this.emit("online");
+    } else if (isWorkerStdoutMsg(message)) {
+      FunctionPrototypeCall(
+        lazyStream().Readable.prototype.push,
+        this.stdout,
+        message.data,
+      );
+    } else if (isWorkerStderrMsg(message)) {
+      FunctionPrototypeCall(
+        lazyStream().Readable.prototype.push,
+        this.stderr,
+        message.data,
+      );
+    } else {
+      this.emit("message", message);
+    }
+    return true;
+  }
+
   #pollMessages = async () => {
     while (this.#status !== "TERMINATED") {
       this.#messagePromise = op_host_recv_message(this.#id);
@@ -619,37 +679,15 @@ class NodeWorker extends EventEmitter {
       if (this.#status === "TERMINATED" || data === null) {
         return;
       }
-      let message, _transferables;
-      try {
-        const v = deserializeJsMessageData(data);
-        message = v[0];
-        _transferables = v[1];
-      } catch (err) {
-        this.emit("messageerror", err);
-        return;
-      }
-      if (
-        // only emit "online" event once, and since the message
-        // has to come before user messages, we are safe to assume
-        // it came from us
-        !this.#workerOnline && isWorkerOnlineMsg(message)
-      ) {
-        this.#workerOnline = true;
-        this.emit("online");
-      } else if (isWorkerStdoutMsg(message)) {
-        FunctionPrototypeCall(
-          Readable.prototype.push,
-          this.stdout,
-          message.data,
-        );
-      } else if (isWorkerStderrMsg(message)) {
-        FunctionPrototypeCall(
-          Readable.prototype.push,
-          this.stderr,
-          message.data,
-        );
-      } else {
-        this.emit("message", message);
+      if (!this.#dispatchWorkerThreadMessage(data)) return;
+      // Sync drain: process a limited batch of already-queued messages
+      // without going through the async op machinery. The batch limit
+      // prevents starvation of the event loop when message handlers
+      // synchronously post new messages (e.g. ping-pong patterns).
+      for (let i = 0; i < 1000 && this.#status !== "TERMINATED"; i++) {
+        const syncData = op_host_recv_message_sync(this.#id);
+        if (syncData === null) break;
+        if (!this.#dispatchWorkerThreadMessage(syncData)) return;
       }
     }
   };
@@ -657,6 +695,19 @@ class NodeWorker extends EventEmitter {
   postMessage(message, transferOrOptions = { __proto__: null }) {
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);
+    if (this.#status !== "RUNNING") return;
+    // Fast path: no transferables
+    if (
+      transferOrOptions === undefined ||
+      transferOrOptions === null ||
+      (arguments.length <= 1)
+    ) {
+      op_host_post_message_raw(
+        this.#id,
+        core.serialize(message),
+      );
+      return;
+    }
     message = webidl.converters.any(message);
     let options;
     if (
@@ -679,9 +730,7 @@ class NodeWorker extends EventEmitter {
     }
     const { transfer } = options;
     const data = serializeJsMessageData(message, transfer);
-    if (this.#status === "RUNNING") {
-      op_host_post_message(this.#id, data);
-    }
+    op_host_post_message(this.#id, data);
   }
 
   // https://nodejs.org/api/worker_threads.html#workerterminate
@@ -780,9 +829,9 @@ class NodeWorker extends EventEmitter {
   readonly performance = globalThis.performance;
 }
 
-export let isMainThread;
-export let resourceLimits;
-export let threadName: string = "";
+let isMainThread;
+let resourceLimits;
+let threadName: string = "";
 
 let threadId = 0;
 let workerData: unknown = null;
@@ -806,7 +855,29 @@ interface NodeEventTarget extends
   removeListener: NodeEventTarget["off"];
 }
 
-type ParentPort = typeof self & NodeEventTarget;
+interface ParentPort extends NodeEventTarget {
+  postMessage(message: unknown, transferOrOptions?: unknown): void;
+  addEventListener(
+    name: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  removeEventListener(
+    name: string,
+    listener: EventListenerOrEventListenerObject,
+  ): void;
+  onmessage: ((ev: Event) => void) | null;
+  // deno-lint-ignore no-explicit-any
+  emit(...args: any[]): any;
+  removeAllListeners(): void;
+  setMaxListeners(n: number): void;
+  getMaxListeners(): number;
+  eventNames(): string[];
+  listenerCount(): number;
+  unref(): void;
+  ref(): void;
+  [key: symbol]: unknown;
+}
 
 // deno-lint-ignore no-explicit-any
 let parentPort: ParentPort = null as any;
@@ -820,11 +891,8 @@ internals.__initWorkerThreads = (
   isMainThread = runningOnMainThread;
   internals.__isWorkerThread = !runningOnMainThread;
 
-  defaultExport.isMainThread = isMainThread;
-
   if (isMainThread) {
     resourceLimits = {};
-    defaultExport.resourceLimits = resourceLimits;
   }
 
   if (!isMainThread) {
@@ -832,7 +900,7 @@ internals.__initWorkerThreads = (
     // require in worker_threads - this should be rewritten to use proper
     // CJS/ESM loading
     if (moduleSpecifier) {
-      globalThis.require = createRequire(
+      globalThis.require = lazyModule().createRequire(
         StringPrototypeStartsWith(moduleSpecifier, "data:")
           ? `${Deno.cwd()}/[worker eval]`
           : moduleSpecifier,
@@ -846,7 +914,102 @@ internals.__initWorkerThreads = (
       (ev: any) => any
     >();
 
-    parentPort = globalThis as ParentPort;
+    // Create parentPort as a separate object that delegates to the web
+    // worker's native APIs. We capture the native methods here (before
+    // user code runs) so that user code overriding globalThis.postMessage
+    // (e.g. Emscripten/z3-solver) doesn't cause infinite recursion.
+    const nativePostMessage = FunctionPrototypeBind(
+      globalThis.postMessage,
+      globalThis,
+    );
+    const nativeAddEventListener = FunctionPrototypeBind(
+      globalThis.addEventListener,
+      globalThis,
+    );
+    const nativeRemoveEventListener = FunctionPrototypeBind(
+      globalThis.removeEventListener,
+      globalThis,
+    );
+    // Track message listener count to prevent double delivery.
+    // When parentPort message listeners exist, suppress the web IDL
+    // onmessage handler (globalThis.onmessage) since both would fire
+    // for the same MessageEvent.
+    let messageListenerCount = 0;
+    // Track Web API message listeners to prevent underflow on
+    // double-remove (same concern as the Node-style off() path).
+    const webMessageListeners = new SafeSet();
+
+    parentPort = ObjectCreate(null) as ParentPort;
+    parentPort.postMessage = function (message, transferOrOptions?) {
+      return nativePostMessage(message, transferOrOptions);
+    };
+    parentPort.addEventListener = function (name, listener, options?) {
+      nativeAddEventListener(name, listener, options);
+      if (name === "message" && !webMessageListeners.has(listener)) {
+        webMessageListeners.add(listener);
+        messageListenerCount++;
+      }
+    };
+    parentPort.removeEventListener = function (name, listener) {
+      nativeRemoveEventListener(name, listener);
+      if (name === "message" && webMessageListeners.has(listener)) {
+        webMessageListeners.delete(listener);
+        messageListenerCount--;
+      }
+    };
+    // Delegate parentPort.onmessage to globalThis.onmessage so that
+    // setting parentPort.onmessage = handler works like the old code
+    // where parentPort === globalThis.
+    ObjectDefineProperty(parentPort, "onmessage", {
+      __proto__: null,
+      get() {
+        return globalThis.onmessage;
+      },
+      set(handler) {
+        globalThis.onmessage = handler;
+      },
+      configurable: true,
+      enumerable: true,
+    });
+
+    // Only intercept globalThis.onmessage for Node worker threads
+    // (not plain Deno web workers) to prevent double message delivery
+    // when both parentPort.on('message') and self.onmessage are set.
+    if (maybeWorkerMetadata) {
+      let storedOnmessage: ((ev: Event) => void) | null = null;
+      // Dynamically add/remove the forwarding listener so we don't
+      // keep a permanent "message" listener on globalThis. A permanent
+      // listener would make hasMessageEventListener() always true and
+      // prevent the worker from exiting.
+      let onmessageForwarder: ((ev: Event) => void) | null = null;
+      ObjectDefineProperty(globalThis, "onmessage", {
+        __proto__: null,
+        get() {
+          return storedOnmessage;
+        },
+        set(handler) {
+          // Remove old forwarder if any
+          if (onmessageForwarder) {
+            nativeRemoveEventListener("message", onmessageForwarder);
+            onmessageForwarder = null;
+          }
+          storedOnmessage = handler;
+          // Add forwarder only when a handler is set
+          if (typeof handler === "function") {
+            onmessageForwarder = (ev: Event) => {
+              if (messageListenerCount > 0) return;
+              if (typeof storedOnmessage === "function") {
+                storedOnmessage(ev);
+              }
+            };
+            nativeAddEventListener("message", onmessageForwarder);
+          }
+        },
+        configurable: true,
+        enumerable: true,
+      });
+    }
+
     threadId = workerId;
     let isWorkerThread = false;
     if (maybeWorkerMetadata) {
@@ -868,7 +1031,6 @@ internals.__initWorkerThreads = (
       } else {
         resourceLimits = {};
       }
-      defaultExport.resourceLimits = resourceLimits;
 
       // Set process.argv for worker threads.
       // In Node.js, worker process.argv is [execPath, scriptPath, ...argv].
@@ -880,7 +1042,7 @@ internals.__initWorkerThreads = (
           moduleSpecifier &&
           StringPrototypeStartsWith(moduleSpecifier, "file:")
         ) {
-          scriptPath = fileURLToPath(moduleSpecifier);
+          scriptPath = lazyUrl().fileURLToPath(moduleSpecifier);
         } else {
           scriptPath = moduleSpecifier ?? "";
         }
@@ -904,7 +1066,7 @@ internals.__initWorkerThreads = (
         // Replace process.stdin with a Readable that receives
         // data from the parent via WORKER_STDIN messages.
         if (metadata.hasStdin) {
-          const workerStdin = new Readable({ read() {} });
+          const workerStdin = new (lazyStream().Readable)({ read() {} });
           process.stdin = workerStdin;
 
           // Register an early listener to intercept stdin messages
@@ -967,24 +1129,20 @@ internals.__initWorkerThreads = (
         };
       }
     }
-    defaultExport.workerData = workerData;
-    defaultExport.parentPort = parentPort;
-    defaultExport.threadId = threadId;
-    defaultExport.threadName = threadName;
-
     patchMessagePortIfFound(workerData);
 
     parentPort.off = parentPort.removeListener = function (
-      this: ParentPort,
       name,
       listener,
     ) {
-      this.removeEventListener(name, listeners.get(listener)!);
-      listeners.delete(listener);
-      return this;
+      if (listeners.has(listener)) {
+        nativeRemoveEventListener(name, listeners.get(listener)!);
+        listeners.delete(listener);
+        if (name === "message") messageListenerCount--;
+      }
+      return parentPort;
     };
     parentPort.on = parentPort.addListener = function (
-      this: ParentPort,
       name,
       listener,
     ) {
@@ -995,21 +1153,24 @@ internals.__initWorkerThreads = (
         return listener(message);
       };
       listeners.set(listener, _listener);
-      this.addEventListener(name, _listener);
-      return this;
+      nativeAddEventListener(name, _listener);
+      if (name === "message") messageListenerCount++;
+      return parentPort;
     };
 
-    parentPort.once = function (this: ParentPort, name, listener) {
+    parentPort.once = function (name, listener) {
       // deno-lint-ignore no-explicit-any
       const _listener = (ev: any) => {
         listeners.delete(listener);
+        if (name === "message") messageListenerCount--;
         const message = ev.data;
         patchMessagePortIfFound(message);
         return listener(message);
       };
       listeners.set(listener, _listener);
-      this.addEventListener(name, _listener, { once: true });
-      return this;
+      nativeAddEventListener(name, _listener, { once: true });
+      if (name === "message") messageListenerCount++;
+      return parentPort;
     };
 
     // mocks
@@ -1022,14 +1183,18 @@ internals.__initWorkerThreads = (
     parentPort.removeAllListeners = () =>
       notImplemented("parentPort.removeAllListeners");
 
-    parentPort.addEventListener("offline", () => {
+    nativeAddEventListener("offline", () => {
       parentPort.emit("close");
     });
     parentPort.unref = () => {
       parentPort[unrefParentPort] = true;
+      // Also set on globalThis so runtime/js/99_main.js event loop
+      // check (globalThis[unrefParentPort]) still works.
+      globalThis[unrefParentPort] = true;
     };
     parentPort.ref = () => {
       parentPort[unrefParentPort] = false;
+      globalThis[unrefParentPort] = false;
     };
 
     if (isWorkerThread) {
@@ -1041,13 +1206,17 @@ internals.__initWorkerThreads = (
       );
     }
   }
+
+  // Refresh the `node:worker_threads` ESM wrapper's `let` bindings so
+  // ESM live bindings (e.g. `import { isMainThread }`) see post-init values.
+  internals.__refreshWorkerThreadsWrapper?.();
 };
 
-export function getEnvironmentData(key: unknown) {
+function getEnvironmentData(key: unknown) {
   return environmentData.get(key);
 }
 
-export function setEnvironmentData(key: unknown, value?: unknown) {
+function setEnvironmentData(key: unknown, value?: unknown) {
   if (value === undefined) {
     environmentData.delete(key);
   } else {
@@ -1055,13 +1224,13 @@ export function setEnvironmentData(key: unknown, value?: unknown) {
   }
 }
 
-export const SHARE_ENV = SymbolFor("nodejs.worker_threads.SHARE_ENV");
-export function markAsUntransferable(obj: object) {
+const SHARE_ENV = SymbolFor("nodejs.worker_threads.SHARE_ENV");
+function markAsUntransferable(obj: object) {
   if (core.isArrayBuffer(obj)) {
     op_mark_as_untransferable(obj as ArrayBuffer);
   }
 }
-export function moveMessagePortToContext() {
+function moveMessagePortToContext() {
   notImplemented("moveMessagePortToContext");
 }
 
@@ -1069,7 +1238,7 @@ export function moveMessagePortToContext() {
  * @param { MessagePort } port
  * @returns {object | undefined}
  */
-export function receiveMessageOnPort(port: MessagePort): object | undefined {
+function receiveMessageOnPort(port: MessagePort): object | undefined {
   if (!(ObjectPrototypeIsPrototypeOf(MessagePortPrototype, port))) {
     const err = new TypeError(
       'The "port" argument must be a MessagePort instance',
@@ -1235,33 +1404,34 @@ class BroadcastChannel extends WebBroadcastChannel {
   }
 }
 
-export {
+return {
   BroadcastChannel,
   MessagePort,
-  NodeMessageChannel as MessageChannel,
-  NodeWorker as Worker,
-  parentPort,
-  threadId,
-  workerData,
-};
-
-const defaultExport = {
+  MessageChannel: NodeMessageChannel,
+  Worker: NodeWorker,
+  get parentPort() {
+    return parentPort;
+  },
+  get threadId() {
+    return threadId;
+  },
+  get workerData() {
+    return workerData;
+  },
+  get isMainThread() {
+    return isMainThread;
+  },
+  get resourceLimits() {
+    return resourceLimits;
+  },
+  get threadName() {
+    return threadName;
+  },
   markAsUntransferable,
   moveMessagePortToContext,
   receiveMessageOnPort,
-  MessagePort,
-  MessageChannel: NodeMessageChannel,
-  BroadcastChannel,
-  Worker: NodeWorker,
   getEnvironmentData,
   setEnvironmentData,
   SHARE_ENV,
-  threadId,
-  threadName,
-  workerData,
-  resourceLimits,
-  parentPort,
-  isMainThread,
 };
-
-export default defaultExport;
+})();

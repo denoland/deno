@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "pack_jsx_options": {
+      "steps": [{
+        "args": "pack --allow-dirty",
+        "output": "[WILDCARD]✓[WILDCARD]test-jsx-pack-1.0.0.tgz[WILDCARD]"
+      }, {
+        "args": [
+          "eval",
+          "const fs = Deno; const tar = './test-jsx-pack-1.0.0.tgz'; const data = fs.readFileSync(tar); console.log('Tarball created:', data.length > 0);"
+        ],
+        "output": "Tarball created: true\n"
+      }]
+    }
+  }
+}

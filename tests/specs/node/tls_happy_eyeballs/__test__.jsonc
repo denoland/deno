@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "tls_happy_eyeballs": {
+      "args": "run -A main.mjs",
+      "output": "main.out"
+    }
+  }
+}

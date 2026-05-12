@@ -525,10 +525,12 @@ impl WebWorker {
       deno_web::deno_web::init(
         services.blob_store,
         Some(options.main_module.clone()),
+        Default::default(),
         services.broadcast_channel,
       ),
       deno_webgpu::deno_webgpu::init(),
       deno_image::deno_image::init(),
+      deno_canvas::deno_canvas::init(),
       deno_fetch::deno_fetch::init(deno_fetch::Options {
         user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store_provider: services.root_cert_store_provider.clone(),
@@ -549,7 +551,7 @@ impl WebWorker {
       ),
       deno_tls::deno_tls::init(),
       deno_kv::deno_kv::init(
-        MultiBackendDbHandler::remote_or_sqlite(
+        Box::new(MultiBackendDbHandler::remote_or_sqlite(
           None,
           options.seed,
           deno_kv::remote::HttpOptions {
@@ -561,10 +563,10 @@ impl WebWorker {
             client_cert_chain_and_key: TlsKeys::Null,
             proxy: None,
           },
-        ),
+        )),
         deno_kv::KvConfig::builder().build(),
       ),
-      deno_cron::deno_cron::init(CronHandlerImpl::create_from_env()),
+      deno_cron::deno_cron::init(Box::new(CronHandlerImpl::create_from_env())),
       deno_napi::deno_napi::init(services.deno_rt_native_addon_loader.clone()),
       deno_http::deno_http::init(deno_http::Options {
         no_legacy_abort: options.bootstrap.no_legacy_abort,

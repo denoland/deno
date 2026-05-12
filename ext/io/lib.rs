@@ -210,7 +210,7 @@ fn stdio_fd(fd: i32) -> StdFile {
 
 deno_core::extension!(deno_io,
   deps = [ deno_web ],
-  esm = [ "12_io.js" ],
+  lazy_loaded_js = [ "12_io.js" ],
   options = {
     stdio: Option<Stdio>,
   },
@@ -646,6 +646,10 @@ impl StdFileResourceInner {
     loop {
       let state = state.clone();
 
+      #[allow(
+        clippy::result_large_err,
+        reason = "error carries the buffer back for reuse"
+      )]
       let fut = self.with_inner_blocking_task(move |file| {
         /* Start reading, and set the reading flag to true */
         state.lock().reading = true;

@@ -1,0 +1,3 @@
+[WILDCARD]deno transpile is experimental and subject to changes
+Warning Skipping [WILDCARD]plain.js (not a TypeScript/JSX/TSX file)
+error: No emittable files found. Only TypeScript/JSX/TSX files can be transpiled.

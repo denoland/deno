@@ -1,0 +1,6 @@
+{
+  "workspace": [
+    "./foo-dir",
+    "./bar-dir"
+  ]
+}
