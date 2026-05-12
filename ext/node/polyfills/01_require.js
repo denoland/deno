@@ -99,8 +99,12 @@ const _streamTransform = core.loadExtScript(
 const _streamWritable = core.loadExtScript(
   "ext:deno_node/internal/streams/writable.js",
 ).default;
-import _tlsCommon from "node:_tls_common";
-import _tlsWrap from "node:_tls_wrap";
+const _tlsCommon = core.loadExtScript(
+  "ext:deno_node/_tls_common.ts",
+).default;
+const _tlsWrap = core.loadExtScript(
+  "ext:deno_node/_tls_wrap.js",
+).default;
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import assertStrict from "node:assert/strict";
 const asyncHooks = core.loadExtScript("ext:deno_node/async_hooks.ts").default;
@@ -232,7 +236,7 @@ const internalValidators = core.loadExtScript(
 const internalConsole = core.loadExtScript(
   "ext:deno_node/internal/console/constructor.mjs",
 ).default;
-import net from "node:net";
+const net = core.loadExtScript("ext:deno_node/net.ts").default;
 const os = core.loadExtScript("ext:deno_node/os.ts").default;
 import pathPosix from "node:path/posix";
 import pathWin32 from "node:path/win32";

@@ -4,7 +4,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
-import { core } from "ext:core/mod.js";
+(function () {
+const { core } = globalThis.__bootstrap;
 const {
   ERR_INVALID_ARG_TYPE,
   ERR_TLS_INVALID_PROTOCOL_VERSION,
@@ -16,7 +17,7 @@ const { isArrayBufferView } = core.loadExtScript(
 const { validateString } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-import { op_node_validate_crl, op_node_validate_pfx } from "ext:core/ops";
+const { op_node_validate_crl, op_node_validate_pfx } = core.ops;
 const { createPrivateKey } = core.loadExtScript(
   "ext:deno_node/internal/crypto/keys.ts",
 );
@@ -310,7 +311,7 @@ function toUint8Array(val: any): Uint8Array {
 
 const secureContextBrand = new WeakSet<object>();
 
-export class SecureContext {
+class SecureContext {
   context: {
     ca?: string | string[];
     cert?: string;
@@ -423,11 +424,11 @@ export class SecureContext {
   }
 }
 
-export function createSecureContext(options: any = {}) {
+function createSecureContext(options: any = {}) {
   return new SecureContext(options);
 }
 
-export function translatePeerCertificate(c: any) {
+function translatePeerCertificate(c: any) {
   if (!c) {
     return null;
   }
@@ -465,8 +466,14 @@ export function translatePeerCertificate(c: any) {
   return c;
 }
 
-export default {
+return {
   SecureContext,
   createSecureContext,
   translatePeerCertificate,
+  default: {
+    SecureContext,
+    createSecureContext,
+    translatePeerCertificate,
+  },
 };
+})();

@@ -21,9 +21,10 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file prefer-primordials no-explicit-any
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 
 const { BlockList, SocketAddress } = core.loadExtScript(
   "ext:deno_node/internal/blocklist.mjs",
@@ -37,7 +38,7 @@ const {
   kReinitializeHandle,
   normalizedArgsSymbol,
 } = core.loadExtScript("ext:deno_node/internal/net.ts");
-import { Duplex } from "node:stream";
+const { Duplex } = core.createLazyLoader("node:stream")();
 const {
   asyncIdSymbol,
   defaultTriggerAsyncIdScope,
@@ -64,7 +65,7 @@ const {
   NodeAggregateError,
   uvExceptionWithHostPort,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
+type ErrnoException = any;
 const {
   kAfterAsyncWrite,
   kBuffer,
@@ -86,7 +87,7 @@ const {
   DTRACE_NET_STREAM_END,
 } = core.loadExtScript("ext:deno_node/internal/dtrace.ts");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-import type { LookupOneOptions } from "ext:deno_node/internal/dns/utils.ts";
+type LookupOneOptions = any;
 const {
   constants: TCPConstants,
   setupListenWrap,
@@ -104,7 +105,8 @@ const { ShutdownWrap } = core.loadExtScript(
 );
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
-import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
+const { ADDRCONFIG, lookup: dnsLookup } = core.createLazyLoader("node:dns")()
+  .default;
 const {
   codeMap,
   UV_ECANCELED,
@@ -116,14 +118,13 @@ const { guessHandleType } = core.loadExtScript(
 const { debuglog } = core.loadExtScript(
   "ext:deno_node/internal/util/debuglog.ts",
 );
-import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
-import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
-import type { Abortable } from "ext:deno_node/_events.d.ts";
+type DuplexOptions = any;
+type BufferEncoding = any;
+type Abortable = any;
 const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
-// Imported lazily at module top via the cluster <-> net cycle. Only used
-// inside `_listenInCluster()`, which is invoked after cluster.ts has
-// finished evaluating, so the live bindings are fully populated by then.
-import cluster from "node:cluster";
+// Lazily resolved at call sites via `lazyCluster()` to break the cluster
+// <-> net cycle. Only used inside `_listenInCluster()`.
+const lazyCluster = core.createLazyLoader("node:cluster");
 const { isUint8Array } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
@@ -318,7 +319,7 @@ function _createHandle(fd: number, isServer: boolean): Handle {
 // For `Socket.prototype.connect()`, the [...] part is ignored
 // For `Server.prototype.listen()`, the [...] part is [, backlog]
 // but will not be handled here (handled in listen())
-export function _normalizeArgs(args: unknown[]): NormalizedArgs {
+function _normalizeArgs(args: unknown[]): NormalizedArgs {
   let arr: NormalizedArgs;
 
   if (args.length === 0) {
@@ -361,7 +362,6 @@ export function _normalizeArgs(args: unknown[]): NormalizedArgs {
 
 function _afterConnect(
   status: number,
-  // deno-lint-ignore no-explicit-any
   handle: any,
   req: PipeConnectWrap | TCPConnectWrap,
   readable: boolean,
@@ -801,7 +801,6 @@ function _internalConnectMultiple(context, canceled?: boolean) {
 // is overly vague, and makes it seem like the user's code is to blame.
 function _writeAfterFIN(
   this: Socket,
-  // deno-lint-ignore no-explicit-any
   chunk: any,
   encoding?:
     | BufferEncoding
@@ -878,7 +877,6 @@ function _initSocketHandle(socket: Socket) {
 
   // Handle creation may be deferred to bind() or connect() time.
   if (socket._handle) {
-    // deno-lint-ignore no-explicit-any
     (socket._handle as any)[ownerSymbol] = socket;
     socket._handle.onread = onStreamRead;
     socket[asyncIdSymbol] = _getNewAsyncId(socket._handle);
@@ -1092,7 +1090,6 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
 function _lookupAndConnectMultiple(
   self: Socket,
   asyncIdSymbol: number,
-  // deno-lint-ignore no-explicit-any
   lookup: any,
   host: string,
   options: TcpSocketConnectOptions,
@@ -1231,7 +1228,6 @@ function _lookupAndConnectMultiple(
 }
 
 function _afterShutdown(this: ShutdownWrap<TCP>) {
-  // deno-lint-ignore no-explicit-any
   const self: any = this.handle[ownerSymbol];
 
   debug("afterShutdown destroyed=%j", self.destroyed, self._readableState);
@@ -1280,7 +1276,7 @@ function _addClientAbortSignalOption(socket: Socket, signal: AbortSignal) {
  * is received. For example, it is passed to the listeners of a `"connection"` event emitted on a `Server`, so the user can use
  * it to interact with the client.
  */
-export function Socket(options) {
+function Socket(options) {
   if (!(this instanceof Socket)) {
     return new Socket(options);
   }
@@ -2022,7 +2018,7 @@ Socket.prototype[kReinitializeHandle] = function (handle) {
   _initSocketHandle(this);
 };
 
-export const Stream = Socket;
+const Stream = Socket;
 
 // Target API:
 //
@@ -2036,17 +2032,17 @@ export const Stream = Socket;
 // connect(port, [host], [cb])
 // connect(path, [cb]);
 //
-export function connect(
+function connect(
   options: NetConnectOptions,
   connectionListener?: () => void,
 ): Socket;
-export function connect(
+function connect(
   port: number,
   host?: string,
   connectionListener?: () => void,
 ): Socket;
-export function connect(path: string, connectionListener?: () => void): Socket;
-export function connect(...args: unknown[]) {
+function connect(path: string, connectionListener?: () => void): Socket;
+function connect(...args: unknown[]) {
   const normalized = _normalizeArgs(args);
   const options = normalized[0] as Partial<NetConnectOptions>;
   debug("createConnection", normalized);
@@ -2065,26 +2061,26 @@ export function connect(...args: unknown[]) {
   return socket.connect(normalized);
 }
 
-export const createConnection = connect;
+const createConnection = connect;
 
 /** https://docs.deno.com/api/node/net/#namespace_getdefaultautoselectfamily */
-export function getDefaultAutoSelectFamily() {
+function getDefaultAutoSelectFamily() {
   return autoSelectFamilyDefault;
 }
 
 /** https://docs.deno.com/api/node/net/#namespace_setdefaultautoselectfamily */
-export function setDefaultAutoSelectFamily(value: boolean) {
+function setDefaultAutoSelectFamily(value: boolean) {
   validateBoolean(value, "value");
   autoSelectFamilyDefault = value;
 }
 
 /** https://docs.deno.com/api/node/net/#namespace_getdefaultautoselectfamilyattempttimeout */
-export function getDefaultAutoSelectFamilyAttemptTimeout() {
+function getDefaultAutoSelectFamilyAttemptTimeout() {
   return autoSelectFamilyAttemptTimeoutDefault;
 }
 
 /** https://docs.deno.com/api/node/net/#namespace_setdefaultautoselectfamilyattempttimeout */
-export function setDefaultAutoSelectFamilyAttemptTimeout(value: number) {
+function setDefaultAutoSelectFamilyAttemptTimeout(value: number) {
   validateInt32(value, "value", 1);
 
   if (value < 10) {
@@ -2094,7 +2090,7 @@ export function setDefaultAutoSelectFamilyAttemptTimeout(value: number) {
   autoSelectFamilyAttemptTimeoutDefault = value;
 }
 
-export interface ListenOptions extends Abortable {
+interface ListenOptions extends Abortable {
   fd?: number;
   port?: number | undefined;
   host?: string | undefined;
@@ -2169,9 +2165,9 @@ function _listenInCluster(
 ) {
   exclusive = !!exclusive;
 
-  // ESM live binding: cluster is statically imported below. Accessing it
-  // inside this function is safe even with the cluster <-> net cycle because
-  // by the time a server is being listen()ed on, both modules are evaluated.
+  // Resolved lazily to break the cluster <-> net cycle; by the time a server
+  // is being listen()ed on, both modules are evaluated.
+  const cluster = lazyCluster().default;
   if (cluster.isPrimary || exclusive) {
     server._listen2(address, port, addressType, backlog, fd, flags);
     return;
@@ -2271,7 +2267,7 @@ function _addAbortSignalOption(server: Server, options: ListenOptions) {
 }
 
 // Returns handle if it can be created, or error code if it can't
-export function _createServerHandle(
+function _createServerHandle(
   address: string | null,
   port: number | null,
   addressType: number | null,
@@ -2369,7 +2365,6 @@ function _emitListeningNT(server: Server) {
   }
 }
 
-// deno-lint-ignore no-explicit-any
 function _onconnection(this: any, err: number, clientHandle?: Handle) {
   // deno-lint-ignore no-this-alias
   const handle = this;
@@ -2541,12 +2536,12 @@ function _setupListenHandle(
  * - `"listening"` - Emitted when the server has been bound after calling
  * `server.listen()`.
  */
-export function Server(connectionListener?: ConnectionListener);
-export function Server(
+function Server(connectionListener?: ConnectionListener);
+function Server(
   options?: ServerOptions,
   connectionListener?: ConnectionListener,
 );
-export function Server(
+function Server(
   options?: ServerOptions | ConnectionListener,
   connectionListener?: ConnectionListener,
 ) {
@@ -2639,7 +2634,6 @@ Server.prototype.listen = function (...args: unknown[]) {
     _toNumber(args.length > 1 && args[1]) ||
     (_toNumber(args.length > 2 && args[2]) as number); // (port, host, backlog)
 
-  // deno-lint-ignore no-explicit-any
   options = (options as any)._handle || (options as any).handle || options;
   const flags = _getFlags(options.ipv6Only, options.reusePort);
 
@@ -3014,7 +3008,6 @@ Server.prototype._setupWorker = function (socketList: EventEmitter) {
   this._usingWorkers = true;
   this._workers.push(socketList);
 
-  // deno-lint-ignore no-explicit-any
   socketList.once("exit", (socketList: any) => {
     const index = this._workers.indexOf(socketList);
     this._workers.splice(index, 1);
@@ -3073,31 +3066,49 @@ Server.prototype[EventEmitter.captureRejectionSymbol] = function (
  * @param connectionListener Automatically set as a listener for the `"connection"` event.
  * @return A `net.Server`.
  */
-export function createServer(
+function createServer(
   options?: ServerOptions,
   connectionListener?: ConnectionListener,
 ): Server {
   return new Server(options, connectionListener);
 }
 
-export { BlockList, isIP, isIPv4, isIPv6, SocketAddress };
-
-export default {
+return {
+  BlockList,
+  isIP,
+  isIPv4,
+  isIPv6,
+  SocketAddress,
   _createServerHandle,
   _normalizeArgs,
-  BlockList,
   connect,
   createConnection,
   createServer,
   getDefaultAutoSelectFamily,
   getDefaultAutoSelectFamilyAttemptTimeout,
-  isIP,
-  isIPv4,
-  isIPv6,
   Server,
   setDefaultAutoSelectFamily,
   setDefaultAutoSelectFamilyAttemptTimeout,
   Socket,
-  SocketAddress,
   Stream,
+  default: {
+    _createServerHandle,
+    _normalizeArgs,
+    BlockList,
+    connect,
+    createConnection,
+    createServer,
+    getDefaultAutoSelectFamily,
+    getDefaultAutoSelectFamilyAttemptTimeout,
+    isIP,
+    isIPv4,
+    isIPv6,
+    Server,
+    setDefaultAutoSelectFamily,
+    setDefaultAutoSelectFamilyAttemptTimeout,
+    Socket,
+    SocketAddress,
+    Stream,
+  },
 };
+})();
