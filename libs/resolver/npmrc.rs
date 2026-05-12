@@ -136,6 +136,9 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
         project_rc.registry_configs,
         home_rc.registry_configs,
       ),
+      min_release_age_days: project_rc
+        .min_release_age_days
+        .or(home_rc.min_release_age_days),
     }
   }
 
@@ -235,5 +238,6 @@ pub fn create_default_npmrc(sys: &impl EnvVar) -> ResolvedNpmRc {
       },
     )]),
     registry_configs: Default::default(),
+    min_release_age_days: None,
   }
 }
