@@ -588,7 +588,8 @@ mod tests {
           permission_desc_parser,
           Permissions::none_without_prompt(),
         ),
-        blob_store: Arc::new(deno_runtime::deno_web::BlobStore::default()) as Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
+        blob_store: Arc::new(deno_runtime::deno_web::BlobStore::default())
+          as Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
         broadcast_channel: Default::default(),
         feature_checker: Default::default(),
         node_services: Default::default(),
