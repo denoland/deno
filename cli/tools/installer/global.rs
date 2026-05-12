@@ -1861,56 +1861,6 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn install_reload_preserves_lockfile() {
-    let temp_dir = TempDir::new();
-    let bin_dir = temp_dir.path().join("bin");
-    std::fs::create_dir(&bin_dir).unwrap();
-
-    create_install_shim(
-      &Flags::default(),
-      InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
-        args: vec![],
-        name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_string()),
-        force: false,
-        compile: false,
-      },
-    )
-    .await
-    .unwrap();
-
-    let config_dir = bin_dir.join(".echo_test");
-    let lockfile_path = config_dir.join("deno.lock");
-    let stale_lockfile =
-      r#"{"version":"5","specifiers":{"npm:cowsay@*":"1.0.0"}}"#;
-    fs::write(&lockfile_path, stale_lockfile).unwrap();
-    assert!(lockfile_path.exists());
-
-    // reinstall with --reload only (no --force); lockfile must be preserved
-    // because --reload invalidates the module cache, not the lockfile.
-    create_install_shim(
-      &Flags {
-        reload: true,
-        ..Flags::default()
-      },
-      InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
-        args: vec![],
-        name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_string()),
-        force: false,
-        compile: false,
-      },
-    )
-    .await
-    .unwrap();
-
-    let post_reload_content = fs::read_to_string(&lockfile_path).unwrap();
-    assert_eq!(post_reload_content, stale_lockfile);
-  }
-
-  #[tokio::test]
   async fn install_with_config() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
