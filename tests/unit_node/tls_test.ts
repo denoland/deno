@@ -954,6 +954,8 @@ Deno.test("tls.Server.setTicketKeys accepts a 48-byte Buffer", () => {
 Deno.test("tls.Server.setTicketKeys accepts a 48-byte Uint8Array", () => {
   const server = new tls.Server();
   const keys = new Uint8Array(48);
+  // @ts-expect-error: @types/node types this as Buffer-only, but the
+  // runtime (here and in Node) accepts any TypedArray of 48 bytes.
   assertEquals(server.setTicketKeys(keys), undefined);
 });
 
