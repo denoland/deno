@@ -126,7 +126,9 @@ impl NpmRc {
                 }
                 Value::String(text) => {
                   let value = expand_vars(text, sys);
-                  if let Ok(days) = value.trim().parse::<u64>() {
+                  if let Ok(days) = value.trim().parse::<u64>()
+                    && days > 0
+                  {
                     min_release_age_days = Some(days);
                   }
                 }
