@@ -2580,6 +2580,28 @@ impl JsRuntimeForSnapshot {
     Ok(JsRuntimeForSnapshot(runtime))
   }
 
+  /// Returns the (specifier, source) pairs for lazy-loaded scripts that
+  /// have NOT been evaluated during snapshot bootstrap. These are the
+  /// scripts whose source the runtime will need access to at runtime,
+  /// since they aren't already baked into V8's startup heap.
+  ///
+  /// Embedders use this to bake transpiled-on-demand sources (e.g.
+  /// TypeScript → JavaScript) into the binary as a build-time-only cost,
+  /// without keeping `deno_ast` as a runtime dependency.
+  pub fn unloaded_lazy_script_sources(&self) -> Vec<(String, String)> {
+    let module_map = self.0.inner.main_realm.0.module_map();
+    let data_cell = module_map.get_data().borrow();
+    let sources_cell = data_cell.lazy_script_sources.borrow();
+    let mut out: Vec<(String, String)> =
+      Vec::with_capacity(sources_cell.len());
+    for (name, code) in sources_cell.iter() {
+      let name_str: &str = name.as_str();
+      let code_str: &str = code.as_str();
+      out.push((name_str.to_string(), code_str.to_string()));
+    }
+    out
+  }
+
   /// Takes a snapshot and consumes the runtime.
   ///
   /// `Error` can usually be downcast to `JsError`.

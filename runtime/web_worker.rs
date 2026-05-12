@@ -405,6 +405,9 @@ pub struct WebWorkerOptions {
   pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub enable_raw_imports: bool,
   pub enable_stack_trace_arg_in_ops: bool,
+  /// Same role as `WorkerOptions::extension_transpiler` — see that field.
+  pub extension_transpiler:
+    Option<std::rc::Rc<deno_core::ExtensionTranspiler>>,
 }
 
 /// This struct is an implementation of `Worker` Web API
@@ -633,12 +636,18 @@ impl WebWorker {
       shared_array_buffer_store: services.shared_array_buffer_store,
       compiled_wasm_module_store: services.compiled_wasm_module_store,
       extensions,
-      #[cfg(feature = "transpile")]
-      extension_transpiler: Some(Rc::new(|specifier, source| {
-        crate::transpile::maybe_transpile_source(specifier, source)
-      })),
-      #[cfg(not(feature = "transpile"))]
-      extension_transpiler: None,
+      extension_transpiler: options.extension_transpiler.or_else(|| {
+        #[cfg(feature = "transpile")]
+        {
+          Some(Rc::new(|specifier, source| {
+            crate::transpile::maybe_transpile_source(specifier, source)
+          }))
+        }
+        #[cfg(not(feature = "transpile"))]
+        {
+          None
+        }
+      }),
       inspector: true,
       op_metrics_factory_fn,
       validate_import_attributes_cb: Some(

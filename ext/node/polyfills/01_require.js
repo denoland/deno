@@ -96,24 +96,24 @@ const {
   emitInit: internalAsyncHooksEmitInit,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 import buffer from "node:buffer";
-import childProcess from "node:child_process";
-import cluster from "node:cluster";
+const loadChildProcess = core.createLazyLoader("node:child_process");
+const loadCluster = core.createLazyLoader("node:cluster");
 import console from "node:console";
 import constants from "node:constants";
 const loadCrypto = core.createLazyLoader("node:crypto");
-import dgram from "node:dgram";
-import diagnosticsChannel from "node:diagnostics_channel";
-import dns from "node:dns";
-import dnsPromises from "node:dns/promises";
-import domain from "node:domain";
+const loadDgram = core.createLazyLoader("node:dgram");
+const loadDiagnosticsChannel = core.createLazyLoader("node:diagnostics_channel");
+const loadDns = core.createLazyLoader("node:dns");
+const loadDnsPromises = core.createLazyLoader("node:dns/promises");
+const loadDomain = core.createLazyLoader("node:domain");
 const events = core.loadExtScript("ext:deno_node/_events.mjs").default;
 const loadFs = core.createLazyLoader("node:fs");
 const loadFsPromises = core.createLazyLoader("node:fs/promises");
 const loadHttp = core.createLazyLoader("node:http");
 const loadHttp2 = core.createLazyLoader("node:http2");
 const loadHttps = core.createLazyLoader("node:https");
-import inspector from "node:inspector";
-import inspectorPromises from "node:inspector/promises";
+const loadInspector = core.createLazyLoader("node:inspector");
+const loadInspectorPromises = core.createLazyLoader("node:inspector/promises");
 const internalAssertMyersDiff = core.loadExtScript(
   "ext:deno_node/internal/assert/myers_diff.js",
 );
@@ -168,38 +168,38 @@ const internalValidators = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
 import internalConsole from "ext:deno_node/internal/console/constructor.mjs";
-import net from "node:net";
+const loadNet = core.createLazyLoader("node:net");
 import os from "node:os";
 import pathPosix from "node:path/posix";
 import pathWin32 from "node:path/win32";
 import path from "node:path";
-import perfHooks from "node:perf_hooks";
-import punycode from "node:punycode";
+const loadPerfHooks = core.createLazyLoader("node:perf_hooks");
+const loadPunycode = core.createLazyLoader("node:punycode");
 import process from "node:process";
-import querystring from "node:querystring";
-import readline from "node:readline";
-import readlinePromises from "node:readline/promises";
-import repl from "node:repl";
-import sqlite from "node:sqlite";
+const loadQuerystring = core.createLazyLoader("node:querystring");
+const loadReadline = core.createLazyLoader("node:readline");
+const loadReadlinePromises = core.createLazyLoader("node:readline/promises");
+const loadRepl = core.createLazyLoader("node:repl");
+const loadSqlite = core.createLazyLoader("node:sqlite");
 const loadStream = core.createLazyLoader("node:stream");
 const loadStreamConsumers = core.createLazyLoader("node:stream/consumers");
 const loadStreamPromises = core.createLazyLoader("node:stream/promises");
 const loadStreamWeb = core.createLazyLoader("node:stream/web");
 import stringDecoder from "node:string_decoder";
-import test from "node:test";
+const loadTest = core.createLazyLoader("node:test");
 import timers from "node:timers";
-import timersPromises from "node:timers/promises";
-import tls from "node:tls";
-import traceEvents from "node:trace_events";
-import tty from "node:tty";
+const loadTimersPromises = core.createLazyLoader("node:timers/promises");
+const loadTls = core.createLazyLoader("node:tls");
+const loadTraceEvents = core.createLazyLoader("node:trace_events");
+const loadTty = core.createLazyLoader("node:tty");
 import url from "node:url";
 const utilTypes = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 const util = core.loadExtScript("ext:deno_node/util.ts");
-import v8 from "node:v8";
-import vm from "node:vm";
+const loadV8 = core.createLazyLoader("node:v8");
+const loadVm = core.createLazyLoader("node:vm");
 import workerThreads from "node:worker_threads";
-import wasi from "node:wasi";
-import zlib from "node:zlib";
+const loadWasi = core.createLazyLoader("node:wasi");
+const loadZlib = core.createLazyLoader("node:zlib");
 
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
@@ -228,16 +228,7 @@ function setupBuiltinModules() {
     // don't load at snapshot time.
     console,
     constants,
-    child_process: childProcess,
-    cluster,
-    dgram,
-    diagnostics_channel: diagnosticsChannel,
-    dns,
-    "dns/promises": dnsPromises,
-    domain,
     events,
-    inspector,
-    "inspector/promises": inspectorPromises,
     "internal/assert/myers_diff": internalAssertMyersDiff.default,
     "internal/console/constructor": internalConsole,
     "internal/child_process": internalCp,
@@ -265,7 +256,6 @@ function setupBuiltinModules() {
     "internal/http2/core": internalHttp2Core,
     "internal/http2/util": internalHttp2Util,
     "internal/priority_queue": internalPriorityQueue.default,
-    "internal/repl": repl,
     "internal/readline/utils": internalReadlineUtils.default,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
@@ -276,44 +266,19 @@ function setupBuiltinModules() {
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
     "internal/validators": internalValidators,
-    net,
     module: Module,
     os,
     "path/posix": pathPosix,
     "path/win32": pathWin32,
     path,
-    perf_hooks: perfHooks,
     process,
-    get punycode() {
-      process.emitWarning(
-        "The `punycode` module is deprecated. Please use a userland " +
-          "alternative instead.",
-        "DeprecationWarning",
-        "DEP0040",
-      );
-      return punycode;
-    },
-    querystring,
-    readline,
-    "readline/promises": readlinePromises,
-    repl,
-    sqlite,
     string_decoder: stringDecoder,
     sys: util,
-    test,
     timers,
-    "timers/promises": timersPromises,
-    tls,
-    trace_events: traceEvents,
-    tty,
     url,
     util,
     "util/types": utilTypes,
-    v8,
-    vm,
-    wasi,
     worker_threads: workerThreads,
-    zlib,
   };
   // Match Node's schemelessBlockList: these modules can only be imported
   // via the `node:` scheme (see lib/internal/bootstrap/realm.js), so they
@@ -342,16 +307,42 @@ function setupBuiltinModules() {
   // which keeps their transitive dependencies (e.g. ext:deno_web/06_streams.js
   // for stream/web) out of the startup snapshot when not used.
   const lazyEntries = [
+    ["child_process", loadChildProcess],
+    ["cluster", loadCluster],
     ["crypto", loadCrypto],
+    ["dgram", loadDgram],
+    ["diagnostics_channel", loadDiagnosticsChannel],
+    ["dns", loadDns],
+    ["dns/promises", loadDnsPromises],
+    ["domain", loadDomain],
     ["fs", loadFs],
     ["fs/promises", loadFsPromises],
     ["http", loadHttp],
     ["http2", loadHttp2],
     ["https", loadHttps],
+    ["inspector", loadInspector],
+    ["inspector/promises", loadInspectorPromises],
+    ["net", loadNet],
+    ["perf_hooks", loadPerfHooks],
+    ["punycode", loadPunycode],
+    ["querystring", loadQuerystring],
+    ["readline", loadReadline],
+    ["readline/promises", loadReadlinePromises],
+    ["repl", loadRepl],
+    ["sqlite", loadSqlite],
     ["stream", loadStream],
     ["stream/consumers", loadStreamConsumers],
     ["stream/promises", loadStreamPromises],
     ["stream/web", loadStreamWeb],
+    ["test", loadTest],
+    ["timers/promises", loadTimersPromises],
+    ["tls", loadTls],
+    ["trace_events", loadTraceEvents],
+    ["tty", loadTty],
+    ["v8", loadV8],
+    ["vm", loadVm],
+    ["wasi", loadWasi],
+    ["zlib", loadZlib],
   ];
   for (const { 0: name, 1: loader } of lazyEntries) {
     ObjectDefineProperty(nativeModuleExports, name, {

@@ -255,6 +255,14 @@ pub struct WorkerOptions {
   pub origin_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
   pub enable_raw_imports: bool,
+
+  /// Optional extension transpiler. Used by the cli to provide a
+  /// pre-baked lookup-only transpiler so TS files in `lazy_loaded_js` /
+  /// `lazy_loaded_esm` can be lazy-loaded at runtime without pulling in
+  /// `deno_ast` as a runtime dependency. When `None`, falls back to the
+  /// behavior gated by the `transpile` cargo feature.
+  pub extension_transpiler:
+    Option<std::rc::Rc<deno_core::ExtensionTranspiler>>,
   pub enable_stack_trace_arg_in_ops: bool,
 
   pub unconfigured_runtime: Option<UnconfiguredRuntime>,
@@ -281,6 +289,7 @@ impl Default for WorkerOptions {
       bootstrap: Default::default(),
       stdio: Default::default(),
       enable_raw_imports: false,
+      extension_transpiler: None,
       enable_stack_trace_arg_in_ops: false,
       unconfigured_runtime: None,
     }
@@ -462,6 +471,7 @@ impl MainWorker {
         shared_array_buffer_store: services.shared_array_buffer_store,
         compiled_wasm_module_store: services.compiled_wasm_module_store,
         extensions,
+        extension_transpiler: options.extension_transpiler.clone(),
         op_metrics_factory_fn,
         enable_stack_trace_arg_in_ops: options.enable_stack_trace_arg_in_ops,
       })
@@ -1127,6 +1137,7 @@ struct CommonRuntimeOptions {
   shared_array_buffer_store: Option<SharedArrayBufferStore>,
   compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   extensions: Vec<Extension>,
+  extension_transpiler: Option<Rc<deno_core::ExtensionTranspiler>>,
   op_metrics_factory_fn: Option<OpMetricsFactoryFn>,
   enable_stack_trace_arg_in_ops: bool,
 }
@@ -1144,12 +1155,18 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
     shared_array_buffer_store: opts.shared_array_buffer_store,
     compiled_wasm_module_store: opts.compiled_wasm_module_store,
     extensions: opts.extensions,
-    #[cfg(feature = "transpile")]
-    extension_transpiler: Some(Rc::new(|specifier, source| {
-      crate::transpile::maybe_transpile_source(specifier, source)
-    })),
-    #[cfg(not(feature = "transpile"))]
-    extension_transpiler: None,
+    extension_transpiler: opts.extension_transpiler.or_else(|| {
+      #[cfg(feature = "transpile")]
+      {
+        Some(Rc::new(|specifier, source| {
+          crate::transpile::maybe_transpile_source(specifier, source)
+        }))
+      }
+      #[cfg(not(feature = "transpile"))]
+      {
+        None
+      }
+    }),
     inspector: true,
     is_main: true,
     worker_id: None,
@@ -1233,6 +1250,7 @@ impl UnconfiguredRuntime {
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       extensions,
+      extension_transpiler: None,
       op_metrics_factory_fn: None,
       enable_stack_trace_arg_in_ops: false,
     });

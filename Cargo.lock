@@ -2653,6 +2653,7 @@ dependencies = [
  "deno_resolver",
  "deno_runtime",
  "deno_semver",
+ "deno_snapshots",
  "deno_terminal",
  "env_logger",
  "faster-hex",

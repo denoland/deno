@@ -8,12 +8,16 @@ fn main() {
   {
     let o = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
     let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
-    create_cli_snapshot(cli_snapshot_path);
+    let lazy_transpile_path = o.join("CLI_TRANSPILED_LAZY.bin");
+    create_cli_snapshot(cli_snapshot_path, lazy_transpile_path);
   }
 }
 
 #[cfg(not(feature = "disable"))]
-fn create_cli_snapshot(snapshot_path: std::path::PathBuf) {
+fn create_cli_snapshot(
+  snapshot_path: std::path::PathBuf,
+  lazy_transpile_path: std::path::PathBuf,
+) {
   use deno_runtime::ops::bootstrap::SnapshotOptions;
 
   let snapshot_options = SnapshotOptions {
@@ -22,9 +26,10 @@ fn create_cli_snapshot(snapshot_path: std::path::PathBuf) {
     target: std::env::var("TARGET").unwrap(),
   };
 
-  deno_runtime::snapshot::create_runtime_snapshot(
+  deno_runtime::snapshot::create_runtime_snapshot_with_lazy_transpile_out(
     snapshot_path,
     snapshot_options,
     vec![],
+    Some(lazy_transpile_path),
   );
 }

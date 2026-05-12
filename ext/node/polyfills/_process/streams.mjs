@@ -22,7 +22,9 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 import { Duplex, Readable, Writable } from "node:stream";
-const io = core.loadExtScript("ext:deno_io/12_io.js");
+// Lazy: io only used inside function bodies. Defers 12_io.js -> 06_streams.js.
+let _io;
+function io() { return _io || (_io = core.loadExtScript("ext:deno_io/12_io.js")); }
 const { guessHandleType } = core.loadExtScript(
   "ext:deno_node/internal_binding/util.ts",
 );
@@ -46,7 +48,7 @@ export function createWritableStdioStream(writer, name, warmup = false) {
       // TODO(fraidev): This try/catch is a workaround. When process.stdout
       // is a pipe (not a TTY), Node.js backs it with a real fd-based net.Socket
       // so BrokenPipe flows naturally through stream_wrap.ts as EPIPE. Deno
-      // always uses createWritableStdioStream(io.stdout) regardless of pipe/TTY,
+      // always uses createWritableStdioStream(io().stdout) regardless of pipe/TTY,
       // so BrokenPipe throws synchronously here instead. Once net.Socket supports
       // being created from a raw fd (new Socket({ fd: 1 })), process.stdout/stderr
       // should be switched to net.Socket for non-TTY cases and this can be removed.
@@ -92,11 +94,11 @@ export function createWritableStdioStream(writer, name, warmup = false) {
   let fd = -1;
 
   // deno-lint-ignore prefer-primordials
-  if (writer instanceof io.Stdout) {
-    fd = io.STDOUT_RID;
+  if (writer instanceof io().Stdout) {
+    fd = io().STDOUT_RID;
     // deno-lint-ignore prefer-primordials
-  } else if (writer instanceof io.Stderr) {
-    fd = io.STDERR_RID;
+  } else if (writer instanceof io().Stderr) {
+    fd = io().STDERR_RID;
   }
   stream.fd = fd;
   stream.destroySoon = stream.destroy;
@@ -200,9 +202,9 @@ function _guessStdinType(fd) {
 }
 
 const _read = function (size) {
-  io.stdin?.[io.REF]();
+  io().stdin?.[io().REF]();
   const p = Buffer.alloc(size || 16 * 1024);
-  PromisePrototypeThen(io.stdin?.read(p), (length) => {
+  PromisePrototypeThen(io().stdin?.read(p), (length) => {
     // deno-lint-ignore prefer-primordials
     this.push(length === null ? null : TypedArrayPrototypeSlice(p, 0, length));
   }, (error) => {
@@ -219,7 +221,7 @@ export function setReadStream(s) {
 // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L189
 /** Create process.stdin */
 export const initStdin = (warmup = false) => {
-  const fd = io.stdin ? io.STDIN_RID : undefined;
+  const fd = io().stdin ? io().STDIN_RID : undefined;
   let stdin;
   // Warmup assumes a TTY for all stdio
   const stdinType = warmup ? "TTY" : _guessStdinType(fd);
@@ -275,19 +277,19 @@ export const initStdin = (warmup = false) => {
       // Provide a minimal _handle so code that checks process.stdin._handle
       // (e.g. test-stdout-close-unref.js) works. We intentionally omit
       // readStart/readStop/reading so the onpause handler takes the simple
-      // io.stdin UNREF path - adding those methods causes _readableState.reading
+      // io().stdin UNREF path - adding those methods causes _readableState.reading
       // to be reset, which triggers duplicate _read() calls and orphaned
       // reffed promises that prevent process exit.
       stdin._handle = {
         close(cb) {
-          io.stdin?.close();
+          io().stdin?.close();
           if (typeof cb === "function") cb();
         },
         ref() {
-          io.stdin?.[io.REF]();
+          io().stdin?.[io().REF]();
         },
         unref() {
-          io.stdin?.[io.UNREF]();
+          io().stdin?.[io().UNREF]();
         },
         getAsyncId() {
           return -1;
@@ -304,8 +306,8 @@ export const initStdin = (warmup = false) => {
     }
   }
 
-  stdin.on("close", () => io.stdin?.close());
-  stdin.fd = io.stdin ? io.STDIN_RID : -1;
+  stdin.on("close", () => io().stdin?.close());
+  stdin.fd = io().stdin ? io().STDIN_RID : -1;
 
   // `stdin` starts out life in a paused state. Explicitly to readStop() it to put it in the
   // not-reading state.
@@ -318,7 +320,7 @@ export const initStdin = (warmup = false) => {
   function onpause() {
     if (!stdin._handle || !stdin._handle.readStop) {
       // This allows the process to exit when stdin is paused.
-      io.stdin?.[io.UNREF]();
+      io().stdin?.[io().UNREF]();
       return;
     }
 
@@ -336,7 +338,7 @@ export const initStdin = (warmup = false) => {
 
   // Allow users to overwrite isTTY for test isolation and terminal mocking.
   // This mirrors the stdout/stderr behavior added in #26130.
-  let getStdinIsTTY = () => io.stdin?.isTerminal();
+  let getStdinIsTTY = () => io().stdin?.isTerminal();
   ObjectDefineProperty(stdin, "isTTY", {
     __proto__: null,
     enumerable: true,
@@ -350,8 +352,8 @@ export const initStdin = (warmup = false) => {
   });
   stdin._isRawMode = false;
   stdin.setRawMode = (enable) => {
-    if (io.stdin?.isTerminal()) {
-      io.stdin.setRaw(enable);
+    if (io().stdin?.isTerminal()) {
+      io().stdin.setRaw(enable);
     }
     stdin._isRawMode = enable;
     return stdin;

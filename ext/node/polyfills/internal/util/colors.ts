@@ -2,7 +2,10 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
 (function () {
 const { core } = globalThis.__bootstrap;
-const io = core.loadExtScript("ext:deno_io/12_io.js");
+// Lazy: only used inside shouldColorize(). Defers 12_io.js (which loads
+// 06_streams.js) out of the boot snapshot.
+let _io;
+function io() { return _io || (_io = core.loadExtScript("ext:deno_io/12_io.js")); }
 
 let blue = "";
 let green = "";
@@ -15,7 +18,7 @@ let reset = "";
 let hasColors = false;
 
 function shouldColorize() {
-  if (!io.stderr.isTerminal()) {
+  if (!io().stderr.isTerminal()) {
     return false;
   }
 
@@ -46,19 +49,35 @@ function refresh() {
   }
 }
 
-refresh();
+// Defer the initial refresh() call: it would invoke isTerminal() on stderr,
+// which loads 12_io.js -> 06_streams.js. Instead, expose getter properties
+// that run refresh on first access.
+let refreshed = false;
+function lazyRefresh() {
+  if (!refreshed) {
+    refreshed = true;
+    refresh();
+  }
+}
 
-return {
-  blue,
-  clear,
-  gray,
-  green,
-  hasColors,
-  red,
-  refresh,
-  reset,
+const exports_ = {
+  refresh() { refreshed = true; refresh(); },
   shouldColorize,
-  white,
-  yellow,
 };
+const desc = (k, v) => ({
+  enumerable: true, configurable: true,
+  get() { lazyRefresh(); return v(); },
+});
+Object.defineProperties(exports_, {
+  blue: desc("blue", () => blue),
+  clear: desc("clear", () => clear),
+  gray: desc("gray", () => gray),
+  green: desc("green", () => green),
+  hasColors: desc("hasColors", () => hasColors),
+  red: desc("red", () => red),
+  reset: desc("reset", () => reset),
+  white: desc("white", () => white),
+  yellow: desc("yellow", () => yellow),
+});
+return exports_;
 })();

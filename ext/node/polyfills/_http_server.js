@@ -77,12 +77,16 @@ const {
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
-const {
-  otelState,
-  builtinTracer,
-  ContextManager,
-  telemetry,
-} = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
+// Lazy: defer telemetry.ts (TS, served via transpile lookup) until first
+// request. Each name is a self-replacing data property.
+const otel = { __proto__: null };
+{
+  const load = () => core.loadExtScript("ext:deno_telemetry/telemetry.ts");
+  core.defineLazyProperty(otel, "otelState", () => load().otelState);
+  core.defineLazyProperty(otel, "builtinTracer", () => load().builtinTracer);
+  core.defineLazyProperty(otel, "ContextManager", () => load().ContextManager);
+  core.defineLazyProperty(otel, "telemetry", () => load().telemetry);
+}
 
 const kServerResponse = Symbol("ServerResponse");
 const kConnectionsKey = Symbol("http.server.connections");
@@ -98,7 +102,7 @@ let otelMetrics = null;
 
 function getOtelMetrics() {
   if (otelMetrics) return otelMetrics;
-  const meter = telemetry.meterProvider.getMeter("deno.http.server");
+  const meter = otel.telemetry.meterProvider.getMeter("deno.http.server");
   otelMetrics = {
     activeRequests: meter.createUpDownCounter("http.server.active_requests", {
       description: "Number of active HTTP server requests.",
@@ -772,11 +776,11 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   res[kUniqueHeaders] = server[kUniqueHeaders];
 
   // Start OTel server span and metrics
-  if (otelState.TRACING_ENABLED) {
+  if (otel.otelState.TRACING_ENABLED) {
     // Extract trace context from incoming request headers
-    let context = ContextManager.active();
-    if (otelState.PROPAGATORS.length > 0) {
-      for (const propagator of otelState.PROPAGATORS) {
+    let context = otel.ContextManager.active();
+    if (otel.otelState.PROPAGATORS.length > 0) {
+      for (const propagator of otel.otelState.PROPAGATORS) {
         context = propagator.extract(context, req.headers, {
           get(carrier, key) {
             return carrier[key];
@@ -788,7 +792,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
       }
     }
     // Create server span within extracted context, without modifying async context
-    const span = builtinTracer().startSpan(req.method, { kind: 1 }, context); // SpanKind.SERVER = 1
+    const span = otel.builtinTracer().startSpan(req.method, { kind: 1 }, context); // SpanKind.SERVER = 1
     const url = req.url || "/";
     const host = req.headers?.host || "localhost";
     const scheme = socket.encrypted ? "https" : "http";
@@ -799,7 +803,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
     span.setAttribute("url.query", url.includes("?") ? url.split("?")[1] : "");
     res[kOtelSpan] = span;
   }
-  if (otelState.METRICS_ENABLED) {
+  if (otel.otelState.METRICS_ENABLED) {
     res[kOtelStartTime] = performance.now();
     res[kOtelReqBodySize] = 0;
     const metrics = getOtelMetrics();

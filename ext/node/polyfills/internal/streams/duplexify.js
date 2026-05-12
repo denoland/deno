@@ -25,10 +25,15 @@ import Duplex from "node:_stream_duplex";
 import Readable from "node:_stream_readable";
 import Writable from "node:_stream_writable";
 import from from "ext:deno_node/internal/streams/from.js";
-const { isBlob } = core.loadExtScript("ext:deno_web/09_file.js");
-const { AbortController } = core.loadExtScript(
-  "ext:deno_web/03_abort_signal.js",
-);
+// Lazy: defers 09_file.js (-> 06_streams.js) and 03_abort_signal.js out of boot.
+let _file, _abortSignal;
+function file() {
+  return _file || (_file = core.loadExtScript("ext:deno_web/09_file.js"));
+}
+function abortSignal() {
+  return _abortSignal ||
+    (_abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js"));
+}
 
 const {
   AbortError,
@@ -157,7 +162,7 @@ export default function duplexify(body, name) {
     );
   }
 
-  if (isBlob(body)) {
+  if (file().isBlob(body)) {
     return duplexify(body.arrayBuffer());
   }
 
@@ -239,7 +244,7 @@ export default function duplexify(body, name) {
 
 function fromAsyncGen(fn) {
   let { promise, resolve } = PromiseWithResolvers();
-  const ac = new AbortController();
+  const ac = new (abortSignal().AbortController)();
   const signal = ac.signal;
   const value = fn(
     async function* () {

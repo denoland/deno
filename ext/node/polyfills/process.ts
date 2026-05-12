@@ -89,7 +89,9 @@ const { enableNextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { isAndroid, isWindows } = core.loadExtScript(
   "ext:deno_node/_util/os.ts",
 );
-const io = core.loadExtScript("ext:deno_io/12_io.js");
+// Lazy: defers 12_io.js -> 06_streams.js out of the boot snapshot.
+let _io: any;
+function io() { return _io || (_io = core.loadExtScript("ext:deno_io/12_io.js")); }
 const denoOs = core.loadExtScript("ext:deno_os/30_os.js");
 
 export let argv0 = "";
@@ -1478,7 +1480,7 @@ internals.__bootstrapNodeProcess = function (
     enableNextTick();
 
     // Replace warmup stdout/stderr with proper streams
-    if (io.stdout.isTerminal()) {
+    if (io().stdout.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stdout */
       stdout = process.stdout = new TTYWriteStream(1);
       // For supporting legacy API we put the FD here.
@@ -1502,12 +1504,12 @@ internals.__bootstrapNodeProcess = function (
       };
     } else {
       stdout = process.stdout = createWritableStdioStream(
-        io.stdout,
+        io().stdout,
         "stdout",
       );
     }
 
-    if (io.stderr.isTerminal()) {
+    if (io().stderr.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stderr */
       stderr = process.stderr = new TTYWriteStream(2);
       // For supporting legacy API we put the FD here.
@@ -1523,7 +1525,7 @@ internals.__bootstrapNodeProcess = function (
       };
     } else {
       stderr = process.stderr = createWritableStdioStream(
-        io.stderr,
+        io().stderr,
         "stderr",
       );
     }
@@ -1618,14 +1620,14 @@ internals.__bootstrapNodeProcess = function (
 
     /** https://nodejs.org/api/process.html#process_process_stdout */
     stdout = process.stdout = createWritableStdioStream(
-      io.stdout,
+      io().stdout,
       "stdout",
       true,
     );
 
     /** https://nodejs.org/api/process.html#process_process_stderr */
     stderr = process.stderr = createWritableStdioStream(
-      io.stderr,
+      io().stderr,
       "stderr",
       true,
     );

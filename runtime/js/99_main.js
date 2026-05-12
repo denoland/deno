@@ -98,9 +98,11 @@ import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
 const { SymbolMetadata } = core.loadExtScript("ext:deno_web/00_infra.js");
-const { bootstrap: bootstrapOtel } = core.loadExtScript(
-  "ext:deno_telemetry/telemetry.ts",
-);
+// Lazy: only invoked from inside bootstrap functions; defer the load so
+// telemetry.ts (TS, served via the transpile lookup) doesn't end up in
+// the V8 snapshot heap when otel is the no-op default.
+const bootstrapOtel = (...args) =>
+  core.loadExtScript("ext:deno_telemetry/telemetry.ts").bootstrap(...args);
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
@@ -816,7 +818,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectSetPrototypeOf(globalThis, Window.prototype);
 
-    bootstrapOtel(otelConfig);
+    // Skip telemetry bootstrap when both tracing and metrics are off and
+    // no propagators are configured. Avoids loading telemetry.ts for the
+    // common case (no OTEL_ env vars set).
+    if (otelConfig[0] === 1 || otelConfig[1] === 1 || otelConfig.length > 3) {
+      bootstrapOtel(otelConfig);
+    }
 
     if (inspectFlag) {
       core.wrapConsole(globalThis.console, core.v8Console);
@@ -941,7 +948,12 @@ function bootstrapWorkerRuntime(
     exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
-    bootstrapOtel(otelConfig);
+    // Skip telemetry bootstrap when both tracing and metrics are off and
+    // no propagators are configured. Avoids loading telemetry.ts for the
+    // common case (no OTEL_ env vars set).
+    if (otelConfig[0] === 1 || otelConfig[1] === 1 || otelConfig.length > 3) {
+      bootstrapOtel(otelConfig);
+    }
 
     core.wrapConsole(globalThis.console, core.v8Console);
 

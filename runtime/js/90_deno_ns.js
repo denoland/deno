@@ -17,9 +17,15 @@ const console = core.loadExtScript("ext:deno_web/01_console.js");
 const errors = core.loadExtScript("ext:runtime/01_errors.js");
 const version = core.loadExtScript("ext:runtime/01_version.ts");
 const surface = core.loadExtScript("ext:deno_canvas/02_surface.js");
-const telemetry = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
-const kv = core.loadExtScript("ext:deno_kv/01_db.ts");
-const cron = core.loadExtScript("ext:deno_cron/01_cron.ts");
+// Lazy: telemetry.ts, 01_cron.ts, 01_db.ts are TS files. Their post-transpile
+// JS is captured in CLI_TRANSPILED_LAZY.bin at build time and served at
+// runtime via a lookup-only extension transpiler. Each `loadX()` is a
+// memoizing thunk; first call loads the script, subsequent calls hit the
+// JS-side `loadedScripts` cache.
+const loadTelemetry = () =>
+  core.loadExtScript("ext:deno_telemetry/telemetry.ts");
+const loadKv = () => core.loadExtScript("ext:deno_kv/01_db.ts");
+const loadCron = () => core.loadExtScript("ext:deno_cron/01_cron.ts");
 import { unstableIds } from "ext:deno_features/flags.js";
 const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
 import { bundle } from "ext:deno_bundle_runtime/bundle.ts";
@@ -88,7 +94,6 @@ const denoNs = {
   build: core.build,
   errors: errors.errors,
   inspect: console.inspect,
-  telemetry: telemetry.telemetry,
 };
 
 // Lazy property descriptors. Applied on the final Deno namespace via
@@ -258,6 +263,9 @@ const denoNsLazy = {
   // timers (deno_web/02_timers.js)
   refTimer: core.propWritableLazyLoaded((m) => m.refTimer, loadTimers),
   unrefTimer: core.propWritableLazyLoaded((m) => m.unrefTimer, loadTimers),
+  // telemetry (deno_telemetry/telemetry.ts) -- TS, served via the
+  // transpile lookup table baked at snapshot build.
+  telemetry: core.propWritableLazyLoaded((m) => m.telemetry, loadTelemetry),
 };
 
 const denoNsUnstableById = { __proto__: null };
@@ -269,15 +277,15 @@ denoNsUnstableById[unstableIds.bundle] = {
 // denoNsUnstableById[unstableIds.broadcastChannel] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.cron] = {
-  cron: cron.cron,
+  get cron() { return loadCron().cron; },
 };
 
 denoNsUnstableById[unstableIds.kv] = {
-  openKv: kv.openKv,
-  AtomicOperation: kv.AtomicOperation,
-  Kv: kv.Kv,
-  KvU64: kv.KvU64,
-  KvListIterator: kv.KvListIterator,
+  get openKv() { return loadKv().openKv; },
+  get AtomicOperation() { return loadKv().AtomicOperation; },
+  get Kv() { return loadKv().Kv; },
+  get KvU64() { return loadKv().KvU64; },
+  get KvListIterator() { return loadKv().KvListIterator; },
 };
 
 denoNsUnstableById[unstableIds.net] = {};

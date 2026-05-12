@@ -125,6 +125,44 @@ impl StorageKeyResolver {
   }
 }
 
+/// Build an `extension_transpiler` that linearly scans the pre-baked
+/// transpile-cache for each lookup. Lazy modules load at most a handful
+/// of times per process, so the linear scan is trivially fast and avoids
+/// the heap cost of building a HashMap upfront just to keep the strings
+/// alive (the data lives in static memory via `include_bytes!`).
+fn make_lookup_only_transpiler()
+-> Rc<deno_runtime::deno_core::ExtensionTranspiler> {
+  let bytes: &'static [u8] = deno_snapshots::CLI_TRANSPILED_LAZY;
+  Rc::new(move |specifier, source| {
+    let needle: &str = specifier.as_ref();
+    let needle_bytes = needle.as_bytes();
+    let mut cursor = 0usize;
+    while cursor + 4 <= bytes.len() {
+      let spec_len = u32::from_le_bytes(
+        bytes[cursor..cursor + 4].try_into().unwrap(),
+      ) as usize;
+      cursor += 4;
+      let spec_end = cursor + spec_len;
+      let src_len_offset = spec_end;
+      let src_len = u32::from_le_bytes(
+        bytes[src_len_offset..src_len_offset + 4].try_into().unwrap(),
+      ) as usize;
+      let src_start = src_len_offset + 4;
+      let src_end = src_start + src_len;
+      if &bytes[cursor..spec_end] == needle_bytes {
+        let prebaked = std::str::from_utf8(&bytes[src_start..src_end])
+          .expect("transpiled source not utf-8");
+        return Ok((prebaked.to_string().into(), None));
+      }
+      cursor = src_end;
+    }
+    // Pass-through for anything we didn't bake. The cli's own runtime
+    // doesn't ship `deno_ast`, so there shouldn't be any TS reaching
+    // this branch -- if it does, V8 will raise its own SyntaxError.
+    Ok((source, None))
+  })
+}
+
 pub fn get_cache_storage_dir() -> PathBuf {
   #[allow(
     clippy::disallowed_methods,
@@ -494,6 +532,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(
           &shared.sys,
         ),
+        extension_transpiler: Some(make_lookup_only_transpiler()),
       };
 
       let has_resource_limits = args.resource_limits.is_some();
@@ -724,6 +763,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       stdio,
       skip_op_registration: shared.options.skip_op_registration,
       enable_raw_imports: shared.options.enable_raw_imports,
+      extension_transpiler: Some(make_lookup_only_transpiler()),
       enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(&shared.sys),
       unconfigured_runtime,
     };

@@ -40,11 +40,12 @@ const {
   MessageEvent,
   setIsTrusted,
 } = core.loadExtScript("ext:deno_web/02_event.js");
-const {
-  deserializeJsMessageData,
-  MessagePortPrototype,
-  serializeJsMessageData,
-} = core.loadExtScript("ext:deno_web/13_message_port.js");
+// Lazy: 13_message_port.js -> 06_streams.js. All three uses are inside
+// method bodies that fire only when a worker actually runs.
+let _mp;
+function loadMessagePort() {
+  return _mp || (_mp = core.loadExtScript("ext:deno_web/13_message_port.js"));
+}
 const { DOMException } = core.loadExtScript(
   "ext:deno_web/01_dom_exception.js",
 );
@@ -245,7 +246,7 @@ class Worker extends EventTarget {
   #dispatchWorkerMessage(data) {
     let message, transferables;
     try {
-      const v = deserializeJsMessageData(data);
+      const v = loadMessagePort().deserializeJsMessageData(data);
       message = v[0];
       transferables = v[1];
     } catch (err) {
@@ -262,7 +263,8 @@ class Worker extends EventTarget {
       data: message,
       ports: ArrayPrototypeFilter(
         transferables,
-        (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
+        (t) =>
+          ObjectPrototypeIsPrototypeOf(loadMessagePort().MessagePortPrototype, t),
       ),
     });
     setIsTrusted(event, true);
@@ -323,7 +325,7 @@ class Worker extends EventTarget {
       );
     }
     const { transfer } = options;
-    const data = serializeJsMessageData(message, transfer);
+    const data = loadMessagePort().serializeJsMessageData(message, transfer);
     hostPostMessage(this.#id, data);
   }
 

@@ -18,7 +18,9 @@ const { myersDiff, printMyersDiff, printSimpleMyersDiff } = core.loadExtScript(
 const { validateObject } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-const io = core.loadExtScript("ext:deno_io/12_io.js");
+// Lazy: only used inside method bodies. Defers 12_io.js -> 06_streams.js out of boot.
+let _io;
+function io() { return _io || (_io = core.loadExtScript("ext:deno_io/12_io.js")); }
 
 function getConsoleWidth() {
   try {
@@ -154,7 +156,7 @@ function getStackedDiff(actual, expected) {
   let message =
     `\n${colors.green}+${colors.white} ${actual}\n${colors.red}- ${colors.white}${expected}`;
   const stringsLen = actual.length + expected.length;
-  const maxTerminalLength = io.stderr.isTerminal() ? getConsoleWidth() : 80;
+  const maxTerminalLength = io().stderr.isTerminal() ? getConsoleWidth() : 80;
   const showIndicator = isStringComparison && (stringsLen <= maxTerminalLength);
 
   if (showIndicator) {

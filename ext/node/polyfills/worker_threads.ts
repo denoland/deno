@@ -16,19 +16,40 @@ import {
   op_worker_get_resource_limits,
   op_worker_threads_filename,
 } from "ext:core/ops";
-const {
-  deserializeJsMessageData,
-  MessageChannel,
-  MessagePort,
-  MessagePortIdSymbol,
-  MessagePortPrototype,
-  MessagePortReceiveMessageOnPortSymbol,
-  nodeWorkerThreadCloseCb,
-  nodeWorkerThreadCloseCbInvoked,
-  refMessagePort,
-  serializeJsMessageData,
-  unrefParentPort,
-} = core.loadExtScript("ext:deno_web/13_message_port.js");
+// Lazy: 13_message_port.js pulls 06_streams.js. Defer evaluation until
+// first use of MessagePort/MessageChannel (most apps never touch these).
+let _mp: any;
+function loadMp() {
+  return _mp || (_mp = core.loadExtScript("ext:deno_web/13_message_port.js"));
+}
+// MessagePort/MessageChannel exported as Proxies so module-eval doesn't
+// trigger 13_message_port.js. Every interaction (construct, prop read,
+// instanceof prototype walk) goes through the lazy load.
+const MessagePort = new Proxy(function () {}, {
+  construct(_t, args, newTarget) {
+    return Reflect.construct(loadMp().MessagePort, args, newTarget);
+  },
+  get(_t, prop) {
+    return loadMp().MessagePort[prop];
+  },
+  getPrototypeOf() {
+    return Reflect.getPrototypeOf(loadMp().MessagePort);
+  },
+  has(_t, prop) {
+    return prop in loadMp().MessagePort;
+  },
+  hasInstance(value: any) {
+    return value instanceof loadMp().MessagePort;
+  },
+}) as any;
+const MessageChannel = new Proxy(function () {}, {
+  construct(_t, args, newTarget) {
+    return Reflect.construct(loadMp().MessageChannel, args, newTarget);
+  },
+  get(_t, prop) {
+    return loadMp().MessageChannel[prop];
+  },
+}) as any;
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const {
@@ -400,7 +421,7 @@ class NodeWorker extends EventEmitter {
 
     const resourceLimits_ = options?.resourceLimits ?? undefined;
 
-    const serializedWorkerMetadata = serializeJsMessageData({
+    const serializedWorkerMetadata = loadMp().serializeJsMessageData({
       workerData: options?.workerData,
       environmentData: environmentData,
       env: env_,
@@ -618,7 +639,7 @@ class NodeWorker extends EventEmitter {
   #dispatchWorkerThreadMessage(data) {
     let message, _transferables;
     try {
-      const v = deserializeJsMessageData(data);
+      const v = loadMp().deserializeJsMessageData(data);
       message = v[0];
       _transferables = v[1];
     } catch (err) {
@@ -711,7 +732,7 @@ class NodeWorker extends EventEmitter {
       );
     }
     const { transfer } = options;
-    const data = serializeJsMessageData(message, transfer);
+    const data = loadMp().serializeJsMessageData(message, transfer);
     op_host_post_message(this.#id, data);
   }
 
@@ -1178,14 +1199,14 @@ internals.__initWorkerThreads = (
       parentPort.emit("close");
     });
     parentPort.unref = () => {
-      parentPort[unrefParentPort] = true;
+      parentPort[loadMp().unrefParentPort] = true;
       // Also set on globalThis so runtime/js/99_main.js event loop
-      // check (globalThis[unrefParentPort]) still works.
-      globalThis[unrefParentPort] = true;
+      // check (globalThis[loadMp().unrefParentPort]) still works.
+      globalThis[loadMp().unrefParentPort] = true;
     };
     parentPort.ref = () => {
-      parentPort[unrefParentPort] = false;
-      globalThis[unrefParentPort] = false;
+      parentPort[loadMp().unrefParentPort] = false;
+      globalThis[loadMp().unrefParentPort] = false;
     };
 
     if (isWorkerThread) {
@@ -1226,17 +1247,17 @@ export function moveMessagePortToContext() {
  * @returns {object | undefined}
  */
 export function receiveMessageOnPort(port: MessagePort): object | undefined {
-  if (!(ObjectPrototypeIsPrototypeOf(MessagePortPrototype, port))) {
+  if (!(ObjectPrototypeIsPrototypeOf(loadMp().MessagePortPrototype, port))) {
     const err = new TypeError(
       'The "port" argument must be a MessagePort instance',
     );
     err["code"] = "ERR_INVALID_ARG_TYPE";
     throw err;
   }
-  port[MessagePortReceiveMessageOnPortSymbol] = true;
-  const data = op_message_port_recv_message_sync(port[MessagePortIdSymbol]);
+  port[loadMp().MessagePortReceiveMessageOnPortSymbol] = true;
+  const data = op_message_port_recv_message_sync(port[loadMp().MessagePortIdSymbol]);
   if (data === null) return undefined;
-  const message = deserializeJsMessageData(data)[0];
+  const message = loadMp().deserializeJsMessageData(data)[0];
   patchMessagePortIfFound(message);
   return { message };
 }
@@ -1257,15 +1278,15 @@ class NodeMessageChannel {
 
     port1.close = () => {
       origClose1();
-      if (!port2[nodeWorkerThreadCloseCbInvoked]) {
-        port2[nodeWorkerThreadCloseCbInvoked] = true;
+      if (!port2[loadMp().nodeWorkerThreadCloseCbInvoked]) {
+        port2[loadMp().nodeWorkerThreadCloseCbInvoked] = true;
         port2.dispatchEvent(new Event("close"));
       }
     };
     port2.close = () => {
       origClose2();
-      if (!port1[nodeWorkerThreadCloseCbInvoked]) {
-        port1[nodeWorkerThreadCloseCbInvoked] = true;
+      if (!port1[loadMp().nodeWorkerThreadCloseCbInvoked]) {
+        port1[loadMp().nodeWorkerThreadCloseCbInvoked] = true;
         port1.dispatchEvent(new Event("close"));
       }
     };
@@ -1322,14 +1343,14 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
     listeners.delete(listener);
     return this;
   };
-  port[nodeWorkerThreadCloseCb] = () => {
+  port[loadMp().nodeWorkerThreadCloseCb] = () => {
     port.dispatchEvent(new Event("close"));
   };
   port.unref = () => {
-    port[refMessagePort](false);
+    port[loadMp().refMessagePort](false);
   };
   port.ref = () => {
-    port[refMessagePort](true);
+    port[loadMp().refMessagePort](true);
   };
   const webPostMessage = port.postMessage;
   port.postMessage = (message, transferList) => {
@@ -1368,7 +1389,7 @@ function patchMessagePortIfFound(data: any, seen = new SafeSet<any>()) {
   }
   seen.add(data);
 
-  if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, data)) {
+  if (ObjectPrototypeIsPrototypeOf(loadMp().MessagePortPrototype, data)) {
     webMessagePortToNodeMessagePort(data);
   } else {
     for (const obj in data as Record<string, unknown>) {

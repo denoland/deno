@@ -12,7 +12,10 @@ const destroyImpl =
 const { kOnConstructed } = core.loadExtScript(
   "ext:deno_node/internal/streams/utils.js",
 );
-import * as _mod2 from "ext:deno_node/internal/webstreams/adapters.js";
+// Lazy: adapters.js statically imports node:stream/web (-> 06_streams.js).
+const _adaptersLoader = core.createLazyLoader(
+  "ext:deno_node/internal/webstreams/adapters.js",
+);
 import _mod3 from "ext:deno_node/internal/streams/duplexify.js";
 const Stream = _mod1.Stream;
 // Copyright Joyent, Inc. and other Node contributors.
@@ -216,7 +219,7 @@ let webStreamsAdapters;
 // Lazy to avoid circular references
 function lazyWebStreams() {
   if (webStreamsAdapters === undefined) {
-    webStreamsAdapters = _mod2;
+    webStreamsAdapters = _adaptersLoader();
   }
   return webStreamsAdapters;
 }

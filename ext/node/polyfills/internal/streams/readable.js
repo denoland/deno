@@ -40,7 +40,11 @@ const { validateObject } = core.loadExtScript(
 import { StringDecoder } from "node:string_decoder";
 import from from "ext:deno_node/internal/streams/from.js";
 const _mod2 = core.loadExtScript("ext:deno_node/internal/util/debuglog.ts");
-import * as _mod3 from "ext:deno_node/internal/webstreams/adapters.js";
+// Lazy: adapters.js statically imports node:stream/web, which forces
+// 06_streams.js. fromWeb/toWeb are rarely called and never at boot.
+const _adaptersLoader = core.createLazyLoader(
+  "ext:deno_node/internal/webstreams/adapters.js",
+);
 
 const {
   AbortError,
@@ -1830,7 +1834,7 @@ let webStreamsAdapters;
 // Lazy to avoid circular references
 function lazyWebStreams() {
   if (webStreamsAdapters === undefined) {
-    webStreamsAdapters = _mod3;
+    webStreamsAdapters = _adaptersLoader();
   }
   return webStreamsAdapters;
 }

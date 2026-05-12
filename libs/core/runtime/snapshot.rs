@@ -155,6 +155,13 @@ pub struct CreateSnapshotOutput {
 
   /// The resulting snapshot file's bytes.
   pub output: Box<[u8]>,
+
+  /// `(specifier, source)` pairs for `lazy_loaded_js` scripts that were
+  /// registered but never evaluated during snapshot creation. Sources are
+  /// already post-transpile (the snapshot's `extension_transpiler` ran on
+  /// each one when the extension was registered). Embedders can bake these
+  /// into the binary so the runtime can serve them without re-transpiling.
+  pub unloaded_lazy_sources: Vec<(String, String)>,
 }
 
 /// Create a snapshot of a JavaScript runtime, which may yield better startup
@@ -227,6 +234,11 @@ pub fn create_snapshot(
     with_runtime_cb(&mut js_runtime);
   }
 
+  // Capture sources for lazy scripts that were registered but never
+  // evaluated during the cold snapshot pass. The post-warmup runtime
+  // overrides these only if it loads them too.
+  let mut unloaded_lazy_sources = js_runtime.unloaded_lazy_script_sources();
+
   let mut snapshot = js_runtime.snapshot();
   if let Some(warmup_script) = warmup_script {
     let leaked_snapshot = Box::leak(snapshot);
@@ -249,6 +261,13 @@ pub fn create_snapshot(
     }
 
     js_runtime.execute_script("warmup", warmup_script)?;
+
+    // Re-narrow after warmup: any script that became loaded during the
+    // warmup pass no longer needs to be in the lookup.
+    let post_warmup = js_runtime.unloaded_lazy_script_sources();
+    let still_unloaded: std::collections::HashSet<String> =
+      post_warmup.iter().map(|(s, _)| s.clone()).collect();
+    unloaded_lazy_sources.retain(|(s, _)| still_unloaded.contains(s));
 
     snapshot = js_runtime.snapshot();
   }
@@ -280,6 +299,7 @@ pub fn create_snapshot(
   Ok(CreateSnapshotOutput {
     files_loaded_during_snapshot,
     output: snapshot,
+    unloaded_lazy_sources,
   })
 }
 

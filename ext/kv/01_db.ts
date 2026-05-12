@@ -45,7 +45,11 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
-const { ReadableStream } = core.loadExtScript("ext:deno_web/06_streams.js");
+// Lazy: only used inside Kv.watch() -- defers 06_streams.js out of boot.
+let _streams;
+function loadStreams() {
+  return _streams || (_streams = core.loadExtScript("ext:deno_web/06_streams.js"));
+}
 
 const encodeCursor: (
   selector: [Deno.KvKey | null, Deno.KvKey | null, Deno.KvKey | null],
@@ -354,7 +358,7 @@ class Kv {
     const lastEntries: (Deno.KvEntryMaybe<unknown> | undefined)[] = ArrayFrom(
       { length: keys.length },
     );
-    return new ReadableStream({
+    return new (loadStreams().ReadableStream)({
       async pull(controller) {
         while (true) {
           let updates;

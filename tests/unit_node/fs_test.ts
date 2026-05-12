@@ -287,6 +287,33 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "[node/fs/promises cp] recursive copy preserves dotfile basenames",
+  async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "foo-"));
+    const src = join(tempDir, "src");
+    const dest = join(tempDir, "dest");
+    const relsDir = join(src, "templates", "minimal_xlsx", "_rels");
+    mkdirSync(relsDir, { recursive: true });
+    writeFileSync(join(relsDir, ".rels"), "relationships");
+
+    try {
+      await cp(src, dest, { recursive: true, dereference: true });
+
+      const copiedFile = join(
+        dest,
+        "templates",
+        "minimal_xlsx",
+        "_rels",
+        ".rels",
+      );
+      assertEquals(readFileSync(copiedFile, "utf8"), "relationships");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  },
+);
+
 // TODO(kt3k): Delete this test case, and instead enable the compat case
 // `test/parallel/test-fs-writestream-open-write.js`, when we update
 // `tests/node_compat/runner/suite`.

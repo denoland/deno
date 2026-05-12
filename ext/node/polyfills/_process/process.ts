@@ -26,7 +26,12 @@ const { nextTick: _nextTick } = core.loadExtScript(
   "ext:deno_node/_next_tick.ts",
 );
 const { _exiting } = core.loadExtScript("ext:deno_node/_process/exiting.ts");
-const fs = core.loadExtScript("ext:deno_fs/30_fs.js");
+// Lazy: 30_fs.js pulls 12_io.js -> 06_streams.js. cwd/chdir are not on
+// the boot path -- defer until first call.
+let _fs: { cwd(): string; chdir(p: string): void } | undefined;
+function loadFs() {
+  return _fs ??= core.loadExtScript("ext:deno_fs/30_fs.js");
+}
 const {
   denoErrorToNodeError,
   ERR_INVALID_ARG_TYPE,
@@ -61,6 +66,7 @@ function chdir(directory: string): void {
   // `fs.cwd()` itself throws -- fall back to an empty string so the wrapper
   // still has a sensible `path`, and don't surface the cwd lookup error.
   let fromPath = "";
+  const fs = loadFs();
   try {
     fromPath = fs.cwd();
   } catch {
@@ -78,7 +84,9 @@ function chdir(directory: string): void {
 }
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
-const cwd = fs.cwd;
+function cwd() {
+  return loadFs().cwd();
+}
 
 /** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
 const nextTick = _nextTick;

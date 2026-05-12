@@ -32,7 +32,10 @@ const {
   kState,
 } = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 
-import * as _mod3 from "ext:deno_node/internal/webstreams/adapters.js";
+// Lazy: adapters.js statically imports node:stream/web (-> 06_streams.js).
+const _adaptersLoader = core.createLazyLoader(
+  "ext:deno_node/internal/webstreams/adapters.js",
+);
 
 const {
   AbortError,
@@ -1220,7 +1223,7 @@ let webStreamsAdapters;
 // Lazy to avoid circular references
 function lazyWebStreams() {
   if (webStreamsAdapters === undefined) {
-    webStreamsAdapters = _mod3;
+    webStreamsAdapters = _adaptersLoader();
   }
   return webStreamsAdapters;
 }

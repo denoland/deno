@@ -26,9 +26,12 @@ const {
   isWebStream,
 } = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 
-const { AbortController } = core.loadExtScript(
-  "ext:deno_web/03_abort_signal.js",
-);
+// Lazy: defers 03_abort_signal.js out of boot.
+let _abortSignal;
+function abortSignal() {
+  return _abortSignal ||
+    (_abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js"));
+}
 import _mod3 from "node:_stream_readable";
 const _mod4 = core.loadExtScript(
   "ext:deno_node/internal/events/abort_listener.mjs",
@@ -216,7 +219,7 @@ function pipelineImpl(streams, callback, opts) {
     throw new ERR_MISSING_ARGS("streams");
   }
 
-  const ac = new AbortController();
+  const ac = new (abortSignal().AbortController)();
   const signal = ac.signal;
   const outerSignal = opts?.signal;
 

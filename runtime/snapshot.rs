@@ -20,6 +20,29 @@ pub fn create_runtime_snapshot(
   // NOTE: For embedders that wish to add additional extensions to the snapshot
   custom_extensions: Vec<Extension>,
 ) {
+  create_runtime_snapshot_with_lazy_transpile_out(
+    snapshot_path,
+    snapshot_options,
+    custom_extensions,
+    None,
+  );
+}
+
+/// Same as `create_runtime_snapshot`, but also writes a binary file containing
+/// every transpiled (specifier, source) pair the extension transpiler produced
+/// for files that didn't end up loaded into the V8 snapshot. Embedders use this
+/// to avoid pulling `deno_ast` into the runtime: at startup, they install a
+/// lookup-only transpiler that returns the pre-baked source for known
+/// specifiers and falls through for everything else.
+///
+/// File format: a sequence of records. Each record is
+///   `len_specifier(u32 LE) | specifier_bytes | len_source(u32 LE) | source_bytes`.
+pub fn create_runtime_snapshot_with_lazy_transpile_out(
+  snapshot_path: PathBuf,
+  snapshot_options: SnapshotOptions,
+  custom_extensions: Vec<Extension>,
+  lazy_transpile_out: Option<PathBuf>,
+) {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs`, `runtime/snapshot_info.rs`
   // and `runtime/snapshot.rs`!
@@ -97,6 +120,31 @@ pub fn create_runtime_snapshot(
   .unwrap();
   let mut snapshot = std::fs::File::create(snapshot_path).unwrap();
   snapshot.write_all(&output.output).unwrap();
+
+  if let Some(out_path) = lazy_transpile_out {
+    let mut buf = Vec::new();
+    // Only files that were registered as lazy_loaded_js but NEVER
+    // evaluated during snapshot bootstrap need a runtime lookup entry.
+    // Anything that was already loaded is in the V8 snapshot heap.
+    for (specifier, source) in &output.unloaded_lazy_sources {
+      // Only TypeScript needs the lookup -- JS lazy scripts can be
+      // executed by V8 directly from the binary's static source.
+      let needs_transpile = specifier.ends_with(".ts")
+        || specifier.ends_with(".tsx")
+        || specifier.ends_with(".mts")
+        || specifier.ends_with(".cts");
+      if !needs_transpile {
+        continue;
+      }
+      let spec_bytes = specifier.as_bytes();
+      let src_bytes = source.as_bytes();
+      buf.extend_from_slice(&(spec_bytes.len() as u32).to_le_bytes());
+      buf.extend_from_slice(spec_bytes);
+      buf.extend_from_slice(&(src_bytes.len() as u32).to_le_bytes());
+      buf.extend_from_slice(src_bytes);
+    }
+    std::fs::write(out_path, &buf).unwrap();
+  }
 
   #[allow(clippy::print_stdout, reason = "necessary for build code")]
   for path in output.files_loaded_during_snapshot {

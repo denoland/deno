@@ -2,9 +2,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-const { AbortController, AbortSignal } = core.loadExtScript(
-  "ext:deno_web/03_abort_signal.js",
-);
+// Lazy: defers 03_abort_signal.js out of boot.
+let _abortSignal;
+function abortSignal() {
+  return _abortSignal ||
+    (_abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js"));
+}
 const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   validateAbortSignal,
@@ -109,7 +112,7 @@ function map(fn, options) {
   highWaterMark += concurrency;
 
   return async function* map() {
-    const signal = AbortSignal.any([options?.signal].filter(Boolean));
+    const signal = abortSignal().AbortSignal.any([options?.signal].filter(Boolean));
     const stream = this;
     const queue = [];
     const signalOpt = { signal };
@@ -323,7 +326,7 @@ async function reduce(reducer, initialValue, options) {
     await finished(this.destroy(err));
     throw err;
   }
-  const ac = new AbortController();
+  const ac = new (abortSignal().AbortController)();
   const signal = ac.signal;
   if (options?.signal) {
     const opts = {

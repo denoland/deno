@@ -34,20 +34,68 @@ const {
   SymbolFor,
 } = primordials;
 
-const { FsFile } = core.loadExtScript("ext:deno_fs/30_fs.js");
-const { readAll } = core.loadExtScript("ext:deno_io/12_io.js");
+// Lazy: 30_fs.js pulls 12_io.js -> 06_streams.js. FsFile is only used
+// when spawning a subprocess with piped stdio, never at boot.
+let _fs;
+function loadFs() {
+  return _fs || (_fs = core.loadExtScript("ext:deno_fs/30_fs.js"));
+}
+// Lazy: 12_io.js pulls 06_streams.js. readAll is only used by Process.output()
+// and Process.stderrOutput(), never at boot.
+let _io;
+function loadIo() {
+  return _io || (_io = core.loadExtScript("ext:deno_io/12_io.js"));
+}
 const { assert, pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
-const { packageData } = core.loadExtScript("ext:deno_fetch/22_body.js");
+// Lazy: 22_body.js -> 21_formdata.js -> 09_file.js -> 06_streams.js. Only
+// used inside ReadableStreamWithCollectors async methods, never at boot.
+let _body;
+function loadBody() {
+  return _body || (_body = core.loadExtScript("ext:deno_fetch/22_body.js"));
+}
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
-const {
-  ReadableStream,
-  readableStreamCollectIntoUint8Array,
-  readableStreamForRidUnrefable,
-  readableStreamForRidUnrefableRef,
-  readableStreamForRidUnrefableUnref,
-  ReadableStreamPrototype,
-  writableStreamForRid,
-} = core.loadExtScript("ext:deno_web/06_streams.js");
+// Lazy: 06_streams.js is only needed when a subprocess is spawned with
+// piped stdio. Boot path doesn't touch it.
+let _streams;
+function loadStreams() {
+  return _streams || (_streams = core.loadExtScript("ext:deno_web/06_streams.js"));
+}
+let _ReadableStreamWithCollectors;
+function getReadableStreamWithCollectors() {
+  if (_ReadableStreamWithCollectors) return _ReadableStreamWithCollectors;
+  const { ReadableStream } = loadStreams();
+  _ReadableStreamWithCollectors = class ReadableStreamWithCollectors
+    extends ReadableStream {
+    constructor(underlyingSource = undefined, strategy = undefined) {
+      super(underlyingSource, strategy);
+    }
+    async arrayBuffer() {
+      const buffer = await loadStreams().readableStreamCollectIntoUint8Array(
+        this,
+      );
+      return loadBody().packageData(buffer, "ArrayBuffer", null);
+    }
+    async bytes() {
+      const buffer = await loadStreams().readableStreamCollectIntoUint8Array(
+        this,
+      );
+      return loadBody().packageData(buffer, "bytes", null);
+    }
+    async json() {
+      const buffer = await loadStreams().readableStreamCollectIntoUint8Array(
+        this,
+      );
+      return loadBody().packageData(buffer, "JSON", null);
+    }
+    async text() {
+      const buffer = await loadStreams().readableStreamCollectIntoUint8Array(
+        this,
+      );
+      return loadBody().packageData(buffer, "text", null);
+    }
+  };
+  return _ReadableStreamWithCollectors;
+}
 
 // The key for private `input` option for `Deno.Command`
 const kInputOption = Symbol("kInputOption");
@@ -92,18 +140,18 @@ class Process {
     this.pid = res.pid;
 
     if (res.stdinRid && res.stdinRid > 0) {
-      this.stdin = new FsFile(res.stdinRid, SymbolFor("Deno.internal.FsFile"));
+      this.stdin = new (loadFs().FsFile)(res.stdinRid, SymbolFor("Deno.internal.FsFile"));
     }
 
     if (res.stdoutRid && res.stdoutRid > 0) {
-      this.stdout = new FsFile(
+      this.stdout = new (loadFs().FsFile)(
         res.stdoutRid,
         SymbolFor("Deno.internal.FsFile"),
       );
     }
 
     if (res.stderrRid && res.stderrRid > 0) {
-      this.stderr = new FsFile(
+      this.stderr = new (loadFs().FsFile)(
         res.stderrRid,
         SymbolFor("Deno.internal.FsFile"),
       );
@@ -119,7 +167,7 @@ class Process {
       throw new TypeError("Cannot collect output: 'stdout' is not piped");
     }
     try {
-      return await readAll(this.stdout);
+      return await loadIo().readAll(this.stdout);
     } finally {
       this.stdout.close();
     }
@@ -130,7 +178,7 @@ class Process {
       throw new TypeError("Cannot collect output: 'stderr' is not piped");
     }
     try {
-      return await readAll(this.stderr);
+      return await loadIo().readAll(this.stderr);
     } finally {
       this.stderr.close();
     }
@@ -233,13 +281,14 @@ function spawnChild(command, options = { __proto__: null }) {
 }
 
 function collectOutput(readableStream) {
+  const s = loadStreams();
   if (
-    !(ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, readableStream))
+    !(ObjectPrototypeIsPrototypeOf(s.ReadableStreamPrototype, readableStream))
   ) {
     return null;
   }
 
-  return readableStreamCollectIntoUint8Array(readableStream);
+  return s.readableStreamCollectIntoUint8Array(readableStream);
 }
 
 const READ_PER_ITER = 64 * 1024;
@@ -472,22 +521,23 @@ class ChildProcess {
     this[_stdoutRid] = stdoutRid;
     this[_stderrRid] = stderrRid;
 
-    if (stdinRid !== null) {
-      this.#stdin = writableStreamForRid(stdinRid);
-    }
-
-    if (stdoutRid !== null) {
-      this.#stdout = readableStreamForRidUnrefable(
-        stdoutRid,
-        ReadableStreamWithCollectors,
-      );
-    }
-
-    if (stderrRid !== null) {
-      this.#stderr = readableStreamForRidUnrefable(
-        stderrRid,
-        ReadableStreamWithCollectors,
-      );
+    if (stdinRid !== null || stdoutRid !== null || stderrRid !== null) {
+      const s = loadStreams();
+      if (stdinRid !== null) {
+        this.#stdin = s.writableStreamForRid(stdinRid);
+      }
+      if (stdoutRid !== null) {
+        this.#stdout = s.readableStreamForRidUnrefable(
+          stdoutRid,
+          getReadableStreamWithCollectors(),
+        );
+      }
+      if (stderrRid !== null) {
+        this.#stderr = s.readableStreamForRidUnrefable(
+          stderrRid,
+          getReadableStreamWithCollectors(),
+        );
+      }
     }
 
     const onAbort = () => {
@@ -567,8 +617,11 @@ class ChildProcess {
 
   ref() {
     core.refOpPromise(this.#waitPromise);
-    if (this.#stdout) readableStreamForRidUnrefableRef(this.#stdout);
-    if (this.#stderr) readableStreamForRidUnrefableRef(this.#stderr);
+    if (this.#stdout || this.#stderr) {
+      const s = loadStreams();
+      if (this.#stdout) s.readableStreamForRidUnrefableRef(this.#stdout);
+      if (this.#stderr) s.readableStreamForRidUnrefableRef(this.#stderr);
+    }
     if (!this.#waitComplete) {
       op_spawn_child_ref(this.#rid);
     }
@@ -576,37 +629,14 @@ class ChildProcess {
 
   unref() {
     core.unrefOpPromise(this.#waitPromise);
-    if (this.#stdout) readableStreamForRidUnrefableUnref(this.#stdout);
-    if (this.#stderr) readableStreamForRidUnrefableUnref(this.#stderr);
+    if (this.#stdout || this.#stderr) {
+      const s = loadStreams();
+      if (this.#stdout) s.readableStreamForRidUnrefableUnref(this.#stdout);
+      if (this.#stderr) s.readableStreamForRidUnrefableUnref(this.#stderr);
+    }
     if (!this.#waitComplete) {
       op_spawn_child_unref(this.#rid);
     }
-  }
-}
-
-class ReadableStreamWithCollectors extends ReadableStream {
-  constructor(underlyingSource = undefined, strategy = undefined) {
-    super(underlyingSource, strategy);
-  }
-
-  async arrayBuffer() {
-    const buffer = await readableStreamCollectIntoUint8Array(this);
-    return packageData(buffer, "ArrayBuffer", null);
-  }
-
-  async bytes() {
-    const buffer = await readableStreamCollectIntoUint8Array(this);
-    return packageData(buffer, "bytes", null);
-  }
-
-  async json() {
-    const buffer = await readableStreamCollectIntoUint8Array(this);
-    return packageData(buffer, "JSON", null);
-  }
-
-  async text() {
-    const buffer = await readableStreamCollectIntoUint8Array(this);
-    return packageData(buffer, "text", null);
   }
 }
 

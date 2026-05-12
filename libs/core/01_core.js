@@ -9,6 +9,7 @@
     ErrorCaptureStackTrace,
     FunctionPrototypeBind,
     ObjectAssign,
+    ObjectDefineProperty,
     ObjectFreeze,
     ObjectFromEntries,
     ObjectKeys,
@@ -898,15 +899,68 @@
   }
 
   const loadedScripts = { __proto__: null };
+  const loadOrder = [];
+  const loadStack = [];
 
   function loadExtScript(specifier) {
     if (specifier in loadedScripts) {
       return loadedScripts[specifier];
     }
-    const result = op_load_ext_script(specifier);
+    const parent = loadStack.length > 0 ? loadStack[loadStack.length - 1] : null;
+    if (specifier === "ext:deno_io/12_io.js") {
+      // Persist a stable error-stack-style string into loadOrder so it
+      // can be retrieved post-bootstrap from JS.
+      const e = new Error("loaded ext:deno_io/12_io.js");
+      // Force eager stack creation by accessing it now.
+      // eslint-disable-next-line no-unused-expressions
+      e.stack;
+      // Save the snapshot; e.stack returns undefined here so capture msg.
+      loadOrder.push({ specifier, parent, errMessage: e.message, errStack: e.stack ?? "(no e.stack)" });
+    } else {
+      loadOrder.push({ specifier, parent });
+    }
+    loadStack.push(specifier);
+    let result;
+    try {
+      result = op_load_ext_script(specifier);
+    } finally {
+      loadStack.pop();
+    }
     loadedScripts[specifier] = result;
     return result;
   }
+
+  // Node-style self-replacing lazy property. The getter fires once, then
+  // the slot is rewritten as a plain data property -- subsequent reads
+  // have no indirection. Mirrors `defineLazyProperties` from Node's util.
+  function defineLazyProperty(target, key, loader) {
+    ObjectDefineProperty(target, key, {
+      __proto__: null,
+      configurable: true,
+      enumerable: true,
+      get() {
+        const value = loader();
+        ObjectDefineProperty(target, key, {
+          __proto__: null,
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value,
+        });
+        return value;
+      },
+      set(value) {
+        ObjectDefineProperty(target, key, {
+          __proto__: null,
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value,
+        });
+      },
+    });
+  }
+
 
   const getAsyncContext = getContinuationPreservedEmbedderData;
   const setAsyncContext = setContinuationPreservedEmbedderData;
@@ -1184,6 +1238,7 @@
     propNonEnumerableLazyLoaded,
     createLazyLoader,
     loadExtScript,
+    defineLazyProperty,
     createCancelHandle: () => op_cancel_handle(),
     getAsyncContext,
     setAsyncContext,
@@ -1192,6 +1247,8 @@
   });
 
   const internals = {};
+  internals.loadedScripts = loadedScripts;
+  internals.loadOrder = loadOrder;
   ObjectAssign(globalThis.__bootstrap, { core, internals });
   ObjectAssign(globalThis.Deno, { core });
   ObjectFreeze(globalThis.__bootstrap.core);

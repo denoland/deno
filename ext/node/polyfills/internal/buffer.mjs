@@ -125,9 +125,11 @@ const { forgivingBase64UrlEncode } = core.loadExtScript(
   "ext:deno_web/00_infra.js",
 );
 const { atob, btoa } = core.loadExtScript("ext:deno_web/05_base64.js");
-const { Blob, blobFromObjectUrl, File } = core.loadExtScript(
-  "ext:deno_web/09_file.js",
-);
+// Lazy: 09_file.js loads 06_streams.js. Defer to first use of Blob/File/etc.
+let _file;
+function loadFile() {
+  return _file || (_file = core.loadExtScript("ext:deno_web/09_file.js"));
+}
 const { untransferableSymbol } = core.loadExtScript(
   "ext:deno_node/internal_binding/util.ts",
 );
@@ -3189,7 +3191,7 @@ function resolveObjectURL(url) {
     return undefined;
   }
   try {
-    return blobFromObjectUrl(url) ?? undefined;
+    return loadFile().blobFromObjectUrl(url) ?? undefined;
   } catch {
     return undefined;
   }
@@ -3198,8 +3200,6 @@ function resolveObjectURL(url) {
 const mod = {
   atob,
   btoa,
-  Blob,
-  File,
   Buffer,
   constants,
   isAscii,
@@ -3219,16 +3219,20 @@ const mod = {
   transcode,
 };
 
+// Lazy Blob/File on `mod` and on the IIFE return: defers 09_file.js (which
+// pulls 06_streams.js) until first read of Blob/File. Self-replacing -- once
+// loaded, the slot becomes a plain data property with no further indirection.
+core.defineLazyProperty(mod, "Blob", () => loadFile().Blob);
+core.defineLazyProperty(mod, "File", () => loadFile().File);
+
 // NB(bartlomieju): we want to have a default exports from this module for ES imports,
 // as well as make it work with `require` in such a way that getters/setters
 // for `INSPECT_MAX_BYTES` work correctly - using `as "module.exports"` ensures
 // that `require`ing this module does that.
 
-return {
+const ret = {
   atob,
-  Blob,
   btoa,
-  File,
   "module.exports": mod,
   default: mod,
   Buffer,
@@ -3288,4 +3292,7 @@ return {
   encodingsMap,
   encodingOps,
 };
+core.defineLazyProperty(ret, "Blob", () => loadFile().Blob);
+core.defineLazyProperty(ret, "File", () => loadFile().File);
+return ret;
 })();

@@ -63,7 +63,12 @@ const { parseArgs } = core.loadExtScript(
 const { MIMEParams, MIMEType } = core.loadExtScript(
   "ext:deno_node/internal/mime.ts",
 );
-const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+// Lazy: only used inside aborted() function.
+let _abortSignal: any;
+function abortSignal() {
+  return _abortSignal ||
+    (_abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js"));
+}
 const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -262,7 +267,7 @@ async function aborted(
     return PromiseResolve();
   }
   const abortPromise = PromiseWithResolvers();
-  signal[abortSignal.add](abortPromise.resolve);
+  signal[abortSignal().add](abortPromise.resolve);
   return abortPromise.promise;
 }
 
