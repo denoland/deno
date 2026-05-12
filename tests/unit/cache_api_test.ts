@@ -196,6 +196,101 @@ Deno.test(async function cacheStorageMatch() {
   }
 });
 
+Deno.test(async function cacheKeys() {
+  const cacheName = "cache-keys-v1";
+  await caches.delete(cacheName);
+  const cache = await caches.open(cacheName);
+
+  // Empty cache yields an empty array.
+  const empty = await cache.keys();
+  assert(Array.isArray(empty));
+  assertEquals(empty.length, 0);
+
+  // Insertion order is preserved.
+  const urls = [
+    "https://example.com/keys/a",
+    "https://example.com/keys/b",
+    "https://example.com/keys/c",
+  ];
+  for (const url of urls) {
+    await cache.put(url, new Response(url));
+  }
+
+  const all = await cache.keys();
+  assertEquals(all.length, urls.length);
+  for (let i = 0; i < urls.length; i++) {
+    assert(all[i] instanceof Request);
+    assertEquals(all[i].url, urls[i]);
+    assertEquals(all[i].method, "GET");
+  }
+
+  // Fragments are stripped on insert, and equivalent on lookup.
+  const filteredByString = await cache.keys(urls[1]);
+  assertEquals(filteredByString.length, 1);
+  assertEquals(filteredByString[0].url, urls[1]);
+
+  // Accepts URL and Request inputs.
+  const filteredByUrl = await cache.keys(new URL(urls[2]));
+  assertEquals(filteredByUrl.length, 1);
+  assertEquals(filteredByUrl[0].url, urls[2]);
+
+  const filteredByRequest = await cache.keys(new Request(urls[0]));
+  assertEquals(filteredByRequest.length, 1);
+  assertEquals(filteredByRequest[0].url, urls[0]);
+
+  // Misses yield an empty array.
+  const miss = await cache.keys("https://example.com/keys/missing");
+  assertEquals(miss.length, 0);
+
+  // Non-GET request yields an empty array.
+  const post = await cache.keys(
+    new Request(urls[0], { method: "POST" }),
+  );
+  assertEquals(post.length, 0);
+
+  // After delete, the entry no longer appears in keys().
+  assert(await cache.delete(urls[1]));
+  const afterDelete = await cache.keys();
+  assertEquals(afterDelete.length, urls.length - 1);
+  assertEquals(afterDelete.map((r) => r.url), [urls[0], urls[2]]);
+
+  assert(await caches.delete(cacheName));
+});
+
+Deno.test(async function cacheKeysVary() {
+  const cacheName = "cache-keys-vary";
+  await caches.delete(cacheName);
+  const cache = await caches.open(cacheName);
+
+  const url = "https://example.com/keys-vary";
+  await cache.put(
+    new Request(url, { headers: { "Accept": "application/json" } }),
+    new Response("{}", {
+      headers: { "Content-Type": "application/json", "Vary": "Accept" },
+    }),
+  );
+
+  // Vary mismatch -> excluded.
+  const mismatch = await cache.keys(
+    new Request(url, { headers: { "Accept": "text/html" } }),
+  );
+  assertEquals(mismatch.length, 0);
+
+  // Vary match -> included.
+  const match = await cache.keys(
+    new Request(url, { headers: { "Accept": "application/json" } }),
+  );
+  assertEquals(match.length, 1);
+  assertEquals(match[0].url, url);
+
+  // Listing without a request returns the entry regardless of Vary.
+  const all = await cache.keys();
+  assertEquals(all.length, 1);
+  assertEquals(all[0].url, url);
+
+  assert(await caches.delete(cacheName));
+});
+
 Deno.test(function cacheIllegalConstructor() {
   assertThrows(() => new Cache(), TypeError, "Illegal constructor");
   // @ts-expect-error illegal constructor

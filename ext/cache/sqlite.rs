@@ -21,6 +21,8 @@ use tokio::io::AsyncWriteExt;
 
 use crate::CacheDeleteRequest;
 use crate::CacheError;
+use crate::CacheKeysRequest;
+use crate::CacheKeysResponse;
 use crate::CacheMatchRequest;
 use crate::CacheMatchResponseMeta;
 use crate::CachePutRequest;
@@ -378,6 +380,73 @@ impl SqliteBackedCache {
         (request.cache_id, &request.request_url),
       )?;
       Ok::<bool, CacheError>(rows_effected > 0)
+    })
+    .await?
+  }
+
+  /// List request keys for a cache. When `request_url` is `None`, returns
+  /// every entry stored under the cache id (in insertion order). When
+  /// `request_url` is `Some`, returns the matching entry if any, honoring
+  /// the cached response's `Vary` header.
+  pub async fn keys(
+    &self,
+    request: CacheKeysRequest,
+  ) -> Result<Vec<CacheKeysResponse>, CacheError> {
+    let db = self.connection.clone();
+    spawn_blocking(move || {
+      let db = db.lock();
+      let mut keys: Vec<CacheKeysResponse> = Vec::new();
+      if let Some(request_url) = request.request_url {
+        let row = db
+          .query_row(
+            "SELECT request_url, request_headers, response_headers
+             FROM request_response_list
+             WHERE cache_id = ?1 AND request_url = ?2",
+            (request.cache_id, &request_url),
+            |row| {
+              let request_url: String = row.get(0)?;
+              let request_headers: Vec<u8> = row.get(1)?;
+              let response_headers: Vec<u8> = row.get(2)?;
+              Ok((request_url, request_headers, response_headers))
+            },
+          )
+          .optional()?;
+        if let Some((url, req_headers_blob, resp_headers_blob)) = row {
+          let request_headers = deserialize_headers(&req_headers_blob);
+          let response_headers = deserialize_headers(&resp_headers_blob);
+          if let Some(vary_header) = get_header("vary", &response_headers)
+            && !vary_header_matches(
+              &vary_header,
+              &request.request_headers,
+              &request_headers,
+            )
+          {
+            return Ok(Vec::new());
+          }
+          keys.push(CacheKeysResponse {
+            request_url: url,
+            request_headers,
+          });
+        }
+      } else {
+        let mut stmt = db.prepare(
+          "SELECT request_url, request_headers FROM request_response_list
+           WHERE cache_id = ?1 ORDER BY id",
+        )?;
+        let rows = stmt.query_map([request.cache_id], |row| {
+          let request_url: String = row.get(0)?;
+          let request_headers: Vec<u8> = row.get(1)?;
+          Ok((request_url, request_headers))
+        })?;
+        for row in rows {
+          let (url, blob) = row?;
+          keys.push(CacheKeysResponse {
+            request_url: url,
+            request_headers: deserialize_headers(&blob),
+          });
+        }
+      }
+      Ok::<Vec<CacheKeysResponse>, CacheError>(keys)
     })
     .await?
   }

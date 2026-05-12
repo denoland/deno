@@ -63,6 +63,19 @@ interface Cache {
     request: RequestInfo | URL,
     options?: CacheQueryOptions,
   ): Promise<boolean>;
+  /**
+   * Return an array of `Request` objects representing the keys stored in the
+   * cache. When `request` is provided, the array is restricted to matching
+   * entries.
+   *
+   * How is the API different from browsers?
+   * 1. You cannot match cache objects by relative paths.
+   * 2. You cannot pass options like `ignoreVary`, `ignoreMethod`, `ignoreSearch`.
+   */
+  keys(
+    request?: RequestInfo | URL,
+    options?: CacheQueryOptions,
+  ): Promise<ReadonlyArray<Request>>;
 }
 
 /** @category Cache */

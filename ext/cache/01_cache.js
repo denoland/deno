@@ -4,6 +4,7 @@
 const { core, primordials } = globalThis.__bootstrap;
 const {
   op_cache_delete,
+  op_cache_keys,
   op_cache_match,
   op_cache_put,
   op_cache_storage_delete,
@@ -251,6 +252,54 @@ class Cache {
       cacheId: this[_id],
       requestUrl: r.url,
     });
+  }
+
+  /** See https://w3c.github.io/ServiceWorker/#cache-keys */
+  async keys(request, _options) {
+    webidl.assertBranded(this, CachePrototype);
+    let r = null;
+    let requestUrl = null;
+    let requestHeaders = [];
+    if (request !== undefined) {
+      const prefix = "Failed to execute 'keys' on 'Cache'";
+      request = webidl.converters["RequestInfo_DOMString"](
+        request,
+        prefix,
+        "Argument 1",
+      );
+      if (ObjectPrototypeIsPrototypeOf(RequestPrototype, request)) {
+        r = request;
+        if (request.method !== "GET") {
+          return [];
+        }
+      } else if (
+        typeof request === "string" ||
+        ObjectPrototypeIsPrototypeOf(URLPrototype, request)
+      ) {
+        r = new Request(request);
+      }
+      const url = new URL(r.url);
+      url.hash = "";
+      // deno-lint-ignore prefer-primordials
+      requestUrl = url.toString();
+      requestHeaders = toInnerRequest(r).headerList;
+    }
+
+    const entries = await op_cache_keys({
+      cacheId: this[_id],
+      requestUrl,
+      requestHeaders,
+    });
+
+    const result = [];
+    for (let i = 0; i < entries.length; ++i) {
+      const entry = entries[i];
+      ArrayPrototypePush(
+        result,
+        new Request(entry.requestUrl, { headers: entry.requestHeaders }),
+      );
+    }
+    return result;
   }
 
   /** See https://w3c.github.io/ServiceWorker/#cache-matchall

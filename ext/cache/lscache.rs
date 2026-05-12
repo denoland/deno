@@ -21,6 +21,8 @@ use slab::Slab;
 
 use crate::CacheDeleteRequest;
 use crate::CacheError;
+use crate::CacheKeysRequest;
+use crate::CacheKeysResponse;
 use crate::CacheMatchRequest;
 use crate::CacheMatchResponseMeta;
 use crate::CachePutRequest;
@@ -262,6 +264,15 @@ impl LscBackend {
     let body = CacheResponseResource::lsc(body);
 
     Ok(Some((meta, Some(body))))
+  }
+
+  /// Listing request keys is not supported by the remote LSC backend, since
+  /// the shard exposes only point lookups (no list API).
+  pub async fn keys(
+    &self,
+    _request: CacheKeysRequest,
+  ) -> Result<Vec<CacheKeysResponse>, CacheError> {
+    Err(CacheError::KeysNotSupported)
   }
 
   pub async fn delete(
