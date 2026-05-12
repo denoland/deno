@@ -185,6 +185,7 @@ pub async fn install_global(
       &flags,
       &installation_dir,
       Some(&jsr_lockfile_fetcher),
+      install_flags_global.force,
     )
     .await?;
 
@@ -421,6 +422,7 @@ async fn setup_config_dir(
   flags: &Flags,
   installation_dir: &Path,
   jsr_lockfile_fetcher: Option<&JsrLockfileFetcher<'_>>,
+  force: bool,
 ) -> Result<(), AnyError> {
   fn resolve_implicit_node_modules_dir(
     flags: &Flags,
@@ -442,6 +444,18 @@ async fn setup_config_dir(
   let dir = installation_dir.join(format!(".{}", bin_name_and_url.name));
   fs::create_dir_all(&dir)
     .with_context(|| format!("failed creating '{}'", dir.display()))?;
+
+  // When --force is specified, the user is explicitly asking for a fresh
+  // install. Remove the stale auto-generated lockfile so dependency resolution
+  // isn't constrained to previously pinned versions.
+  if force {
+    let lockfile_path = dir.join("deno.lock");
+    if lockfile_path.exists() {
+      fs::remove_file(&lockfile_path).with_context(|| {
+        format!("failed removing '{}'", lockfile_path.display())
+      })?;
+    }
+  }
 
   let config_text = if let ConfigFlag::Path(config_path) = &flags.config_flag {
     fs::read_to_string(config_path)
@@ -1220,6 +1234,7 @@ mod tests {
       flags,
       &installation_dir,
       None,
+      install_flags_global.force,
     )
     .await
     .unwrap();
@@ -1795,6 +1810,54 @@ mod tests {
     // Assert modified
     let file_content_2 = fs::read_to_string(&file_path).unwrap();
     assert!(file_content_2.contains("cat.ts"));
+  }
+
+  #[tokio::test]
+  async fn install_force_regenerates_lockfile() {
+    let temp_dir = TempDir::new();
+    let bin_dir = temp_dir.path().join("bin");
+    std::fs::create_dir(&bin_dir).unwrap();
+
+    // initial install creates the config dir
+    create_install_shim(
+      &Flags::default(),
+      InstallFlagsGlobal {
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_string()),
+        force: false,
+        compile: false,
+      },
+    )
+    .await
+    .unwrap();
+
+    // simulate a stale auto-generated lockfile from a prior install
+    let config_dir = bin_dir.join(".echo_test");
+    let lockfile_path = config_dir.join("deno.lock");
+    let stale_lockfile =
+      r#"{"version":"5","specifiers":{"npm:cowsay@*":"1.0.0"}}"#;
+    fs::write(&lockfile_path, stale_lockfile).unwrap();
+    assert!(lockfile_path.exists());
+
+    // reinstall with --force; stale lockfile should be removed
+    create_install_shim(
+      &Flags::default(),
+      InstallFlagsGlobal {
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_string()),
+        force: true,
+        compile: false,
+      },
+    )
+    .await
+    .unwrap();
+
+    let post_force_content = fs::read_to_string(&lockfile_path).ok();
+    assert_ne!(post_force_content.as_deref(), Some(stale_lockfile));
   }
 
   #[tokio::test]

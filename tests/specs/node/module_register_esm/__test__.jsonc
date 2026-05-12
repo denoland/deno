@@ -23,6 +23,16 @@
     "node_builtin_import_after_register": {
       "args": "run -A test_node_builtin_import.mjs",
       "output": "test_node_builtin_import.out"
+    },
+    "passthrough_hook_preserves_import_map": {
+      "cwd": "passthrough_imports",
+      "args": "run -A main.mjs",
+      "output": "passthrough_imports/main.out"
+    },
+    "passthrough_hook_preserves_npm_intra_package_referrer": {
+      "cwd": "passthrough_npm",
+      "args": "run -A main.mjs",
+      "output": "passthrough_npm/main.out"
     }
   }
 }

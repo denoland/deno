@@ -84,13 +84,27 @@ import _httpAgent from "node:_http_agent";
 import _httpCommon from "node:_http_common";
 import _httpOutgoing from "node:_http_outgoing";
 import _httpServer from "node:_http_server";
-import _streamDuplex from "node:_stream_duplex";
-import _streamPassthrough from "node:_stream_passthrough";
-import _streamReadable from "node:_stream_readable";
-import _streamTransform from "node:_stream_transform";
-import _streamWritable from "node:_stream_writable";
-import _tlsCommon from "node:_tls_common";
-import _tlsWrap from "node:_tls_wrap";
+const _streamDuplex = core.loadExtScript(
+  "ext:deno_node/internal/streams/duplex.js",
+).default;
+const _streamPassthrough = core.loadExtScript(
+  "ext:deno_node/internal/streams/passthrough.js",
+).default;
+const _streamReadable = core.loadExtScript(
+  "ext:deno_node/internal/streams/readable.js",
+).default;
+const _streamTransform = core.loadExtScript(
+  "ext:deno_node/internal/streams/transform.js",
+).default;
+const _streamWritable = core.loadExtScript(
+  "ext:deno_node/internal/streams/writable.js",
+).default;
+const _tlsCommon = core.loadExtScript(
+  "ext:deno_node/_tls_common.ts",
+).default;
+const _tlsWrap = core.loadExtScript(
+  "ext:deno_node/_tls_wrap.js",
+).default;
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import assertStrict from "node:assert/strict";
 const asyncHooks = core.loadExtScript("ext:deno_node/async_hooks.ts").default;
@@ -222,7 +236,7 @@ const internalValidators = core.loadExtScript(
 const internalConsole = core.loadExtScript(
   "ext:deno_node/internal/console/constructor.mjs",
 ).default;
-import net from "node:net";
+const net = core.loadExtScript("ext:deno_node/net.ts").default;
 const os = core.loadExtScript("ext:deno_node/os.ts").default;
 import pathPosix from "node:path/posix";
 import pathWin32 from "node:path/win32";
@@ -472,9 +486,22 @@ if (globalThis.process) {
 
 const asyncHookEntries = [];
 
+// Pre-computed Deno default-resolved URL for the current resolve request.
+// Set per-request from the message payload so \`defaultResolve()\` (called by
+// user hooks via \`next()\`) returns Deno's actual resolution (import map,
+// jsr, npm) rather than a naive URL.parse.
+let currentRequestSpecifier = null;
+let currentRequestDefaultUrl = null;
+
 function defaultResolve(spec, context) {
   if (spec.startsWith("node:")) {
     return { url: spec, shortCircuit: true };
+  }
+  // When the user hook called next() with the same specifier, use Deno's
+  // pre-computed resolution. The hook is expected to then transform that
+  // URL (or pass it through).
+  if (spec === currentRequestSpecifier && currentRequestDefaultUrl !== null) {
+    return { url: currentRequestDefaultUrl, shortCircuit: true };
   }
   const parentURL = context.parentURL;
   if (parentURL) {
@@ -567,8 +594,18 @@ self.onmessage = (e) => {
       return { type: "registered", id: msg.id, hasResolve: resolve !== null, hasLoad: load !== null };
     })();
   } else if (msg.type === "resolve") {
+    currentRequestSpecifier = msg.specifier;
+    currentRequestDefaultUrl = msg.defaultUrl ?? null;
     promise = Promise.resolve(runResolveChain(msg.specifier, msg.context))
-      .then((result) => ({ type: "resolve-result", id: msg.id, result }));
+      .then((result) => {
+        currentRequestSpecifier = null;
+        currentRequestDefaultUrl = null;
+        return { type: "resolve-result", id: msg.id, result };
+      }, (err) => {
+        currentRequestSpecifier = null;
+        currentRequestDefaultUrl = null;
+        throw err;
+      });
   } else if (msg.type === "load") {
     promise = Promise.resolve(runLoadChain(msg.url, msg.context))
       .then((result) => ({ type: "load-result", id: msg.id, result }));
@@ -769,7 +806,12 @@ function executeLoadHookChain(fileUrl, context) {
 // ESM resolve hook chain: runs sync hooks (registerHooks) in LIFO order,
 // then async hooks (register) in LIFO order.
 // Returns { url } if hooks resolved, or null for fallthrough to default.
-async function executeEsmResolveHookChain(specifier, context) {
+//
+// `defaultUrl` is the URL that Deno's default resolver (import map, jsr,
+// npm, etc.) produced for `specifier`. Returned from `defaultResolve()` so
+// user hooks calling `next()` see Deno's real resolution -- not a naive
+// `new URL(spec, parentURL)`.
+async function executeEsmResolveHookChain(specifier, context, defaultUrl) {
   // Run sync hooks (registerHooks) first on the main thread
   const syncResolveHooks = [];
   for (let i = hookEntries.length - 1; i >= 0; i--) {
@@ -792,7 +834,11 @@ async function executeEsmResolveHookChain(specifier, context) {
         if (asyncHooksHaveResolve) {
           return { url: null, shortCircuit: false, _syncFallthrough: true };
         }
-        // Default resolve (no async hooks)
+        // Default resolve (no async hooks). If the spec is unchanged we
+        // can use Deno's pre-computed default URL.
+        if (spec === specifier && defaultUrl != null) {
+          return { url: defaultUrl, shortCircuit: true };
+        }
         if (StringPrototypeStartsWith(spec, "node:")) {
           return { url: spec, shortCircuit: true };
         }
@@ -865,6 +911,7 @@ async function executeEsmResolveHookChain(specifier, context) {
     type: "resolve",
     specifier,
     context,
+    defaultUrl,
   });
   return msg.result;
 }
@@ -966,7 +1013,7 @@ function _startEsmResolveLoop() {
       if (pendingHookLoads.length > 0) {
         await Promise.all(pendingHookLoads);
       }
-      const [id, specifier, referrer] = req;
+      const [id, specifier, referrer, defaultUrl] = req;
       const context = {
         conditions: ["node", "import"],
         importAttributes: { __proto__: null },
@@ -974,7 +1021,11 @@ function _startEsmResolveLoop() {
         importAssertions: { __proto__: null },
       };
       try {
-        const result = await executeEsmResolveHookChain(specifier, context);
+        const result = await executeEsmResolveHookChain(
+          specifier,
+          context,
+          defaultUrl ?? null,
+        );
         if (result !== null && result.url != null) {
           if (result.format != null) {
             resolvedFormats.set(result.url, result.format);
