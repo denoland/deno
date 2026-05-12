@@ -5,12 +5,16 @@ use std::cell::RefCell;
 
 use deno_core::GarbageCollected;
 use deno_core::op2;
+use hdrhistogram::Histogram;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PerfHooksError {
   #[class(generic)]
   #[error(transparent)]
   TokioEld(#[from] tokio_eld::Error),
+  #[class(generic)]
+  #[error(transparent)]
+  HistogramCreation(#[from] hdrhistogram::errors::CreationError),
 }
 
 pub struct EldHistogram {
@@ -145,5 +149,201 @@ impl EldHistogram {
   #[getter]
   fn stddev(&self) -> f64 {
     self.eld.borrow().stdev()
+  }
+}
+
+// Backs the user-facing `RecordableHistogram` returned by
+// `perf_hooks.createHistogram()`. Wraps an `hdrhistogram::Histogram<u64>`
+// configured with caller-supplied bounds, plus the bookkeeping needed for
+// `recordDelta()` and the `exceeds` counter (incremented when a recorded
+// value overflows the histogram's `highest` bound).
+pub struct BaseHistogram {
+  inner: RefCell<Histogram<u64>>,
+  exceeds: Cell<u64>,
+  prev_delta_ns: Cell<Option<u64>>,
+}
+
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for BaseHistogram {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"BaseHistogram"
+  }
+}
+
+fn now_ns() -> u64 {
+  // Match Node's `process.hrtime` clock domain — monotonic nanoseconds.
+  use std::time::Instant;
+  thread_local! {
+    static ORIGIN: Instant = Instant::now();
+  }
+  ORIGIN.with(|origin| origin.elapsed().as_nanos() as u64)
+}
+
+#[op2]
+impl BaseHistogram {
+  // Creates a `RecordableHistogram` with the given bounds and significant
+  // figures. Mirrors the behavior of Node's `createHistogram(options)`.
+  //
+  // Caller is responsible for validating bounds; this just forwards them to
+  // `hdrhistogram::Histogram::new_with_bounds`.
+  #[constructor]
+  #[cppgc]
+  pub fn new(
+    #[bigint] lowest: u64,
+    #[bigint] highest: u64,
+    #[smi] figures: u32,
+  ) -> Result<BaseHistogram, PerfHooksError> {
+    let inner =
+      Histogram::<u64>::new_with_bounds(lowest, highest, figures as u8)?;
+    Ok(BaseHistogram {
+      inner: RefCell::new(inner),
+      exceeds: Cell::new(0),
+      prev_delta_ns: Cell::new(None),
+    })
+  }
+
+  // Records a value into the histogram. If the value exceeds the configured
+  // `highest`, increments the `exceeds` counter instead of erroring.
+  #[fast]
+  fn record(&self, #[bigint] value: u64) {
+    let mut h = self.inner.borrow_mut();
+    if h.record(value).is_err() {
+      self.exceeds.set(self.exceeds.get().saturating_add(1));
+    }
+  }
+
+  // Records the nanoseconds elapsed since the previous call to recordDelta.
+  // The first call seeds the timestamp without recording (matches Node).
+  #[fast]
+  fn record_delta(&self) {
+    let now = now_ns();
+    if let Some(prev) = self.prev_delta_ns.get() {
+      let delta = now.saturating_sub(prev);
+      let mut h = self.inner.borrow_mut();
+      if h.record(delta).is_err() {
+        self.exceeds.set(self.exceeds.get().saturating_add(1));
+      }
+    }
+    self.prev_delta_ns.set(Some(now));
+  }
+
+  // Adds counts from another histogram into this one.
+  #[fast]
+  fn add(&self, #[cppgc] other: &BaseHistogram) {
+    let other_h = other.inner.borrow();
+    let mut h = self.inner.borrow_mut();
+    let _ = h.add(&*other_h);
+    self
+      .exceeds
+      .set(self.exceeds.get().saturating_add(other.exceeds.get()));
+  }
+
+  #[fast]
+  fn reset(&self) {
+    self.inner.borrow_mut().reset();
+    self.exceeds.set(0);
+    self.prev_delta_ns.set(None);
+  }
+
+  #[fast]
+  #[number]
+  fn percentile(&self, percentile: f64) -> u64 {
+    self.inner.borrow().value_at_percentile(percentile)
+  }
+
+  #[fast]
+  #[bigint]
+  fn percentile_big_int(&self, percentile: f64) -> u64 {
+    self.inner.borrow().value_at_percentile(percentile)
+  }
+
+  // Returns the percentile distribution as a flat `[percentile, value, ...]`
+  // array. The JS layer turns it into a `Map`. We iterate the recorded values
+  // and emit one entry per distinct value.
+  //
+  // Values are bounded by `highest` (validated to fit in a JS safe integer by
+  // the createHistogram caller), so emitting them as f64 is lossless.
+  #[serde]
+  fn percentiles(&self) -> Vec<f64> {
+    let h = self.inner.borrow();
+    let mut out = Vec::new();
+    for v in h.iter_recorded() {
+      out.push(v.percentile());
+      out.push(v.value_iterated_to() as f64);
+    }
+    out
+  }
+
+  // Same shape as `percentiles`; the JS layer re-wraps the value entries as
+  // BigInt when exposing them through `percentilesBigInt`.
+  #[serde]
+  fn percentiles_big_int(&self) -> Vec<f64> {
+    let h = self.inner.borrow();
+    let mut out = Vec::new();
+    for v in h.iter_recorded() {
+      out.push(v.percentile());
+      out.push(v.value_iterated_to() as f64);
+    }
+    out
+  }
+
+  #[getter]
+  #[number]
+  fn count(&self) -> u64 {
+    self.inner.borrow().len()
+  }
+
+  #[getter]
+  #[bigint]
+  fn count_big_int(&self) -> u64 {
+    self.inner.borrow().len()
+  }
+
+  #[getter]
+  #[number]
+  fn min(&self) -> u64 {
+    self.inner.borrow().min()
+  }
+
+  #[getter]
+  #[bigint]
+  fn min_big_int(&self) -> u64 {
+    self.inner.borrow().min()
+  }
+
+  #[getter]
+  #[number]
+  fn max(&self) -> u64 {
+    self.inner.borrow().max()
+  }
+
+  #[getter]
+  #[bigint]
+  fn max_big_int(&self) -> u64 {
+    self.inner.borrow().max()
+  }
+
+  #[getter]
+  fn mean(&self) -> f64 {
+    self.inner.borrow().mean()
+  }
+
+  #[getter]
+  fn stddev(&self) -> f64 {
+    self.inner.borrow().stdev()
+  }
+
+  #[getter]
+  #[number]
+  fn exceeds(&self) -> u64 {
+    self.exceeds.get()
+  }
+
+  #[getter]
+  #[bigint]
+  fn exceeds_big_int(&self) -> u64 {
+    self.exceeds.get()
   }
 }

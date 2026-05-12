@@ -11,10 +11,11 @@ const {
   PerformanceObserver: WebPerformanceObserver,
   PerformanceObserverEntryList,
 } = core.loadExtScript("ext:deno_web/15_performance.js");
-const { EldHistogram } = core.ops;
-const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
-  "ext:deno_node/internal/errors.ts",
-);
+const { EldHistogram, BaseHistogram } = core.ops;
+const { ERR_INVALID_ARG_TYPE, ERR_OUT_OF_RANGE } = core
+  .loadExtScript(
+    "ext:deno_node/internal/errors.ts",
+  );
 
 const constants = {
   NODE_PERFORMANCE_ENTRY_TYPE_NODE: 0,
@@ -214,6 +215,178 @@ function monitorEventLoopDelay(options = {}) {
   return new EldHistogram(resolution);
 }
 
+const NUMBER_MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
+const _handle = Symbol("[[handle]]");
+
+// Public, JS-side Histogram class - `instanceof` works against both
+// `monitorEventLoopDelay()` results and `createHistogram()` results.
+class Histogram {
+  constructor(handle) {
+    // Intentionally not user-constructable.
+    if (handle === undefined) {
+      throw new ERR_INVALID_ARG_TYPE("handle", "object", handle);
+    }
+    this[_handle] = handle;
+  }
+
+  get count() {
+    return this[_handle].count;
+  }
+  get countBigInt() {
+    return this[_handle].countBigInt;
+  }
+  get min() {
+    return this[_handle].min;
+  }
+  get minBigInt() {
+    return BigInt(this[_handle].minBigInt);
+  }
+  get max() {
+    return this[_handle].max;
+  }
+  get maxBigInt() {
+    return BigInt(this[_handle].maxBigInt);
+  }
+  get mean() {
+    return this[_handle].mean;
+  }
+  get stddev() {
+    return this[_handle].stddev;
+  }
+  get exceeds() {
+    return this[_handle].exceeds ?? 0;
+  }
+  get exceedsBigInt() {
+    return BigInt(this[_handle].exceedsBigInt ?? 0);
+  }
+  get percentiles() {
+    const out = new Map();
+    if (typeof this[_handle].percentiles === "function") {
+      const flat = this[_handle].percentiles();
+      for (let i = 0; i < flat.length; i += 2) {
+        out.set(flat[i], flat[i + 1]);
+      }
+    }
+    return out;
+  }
+  get percentilesBigInt() {
+    const out = new Map();
+    if (typeof this[_handle].percentilesBigInt === "function") {
+      const flat = this[_handle].percentilesBigInt();
+      for (let i = 0; i < flat.length; i += 2) {
+        out.set(flat[i], BigInt(flat[i + 1]));
+      }
+    }
+    return out;
+  }
+  percentile(p) {
+    if (typeof p !== "number") {
+      throw new ERR_INVALID_ARG_TYPE("percentile", "number", p);
+    }
+    if (!(p > 0 && p <= 100)) {
+      throw new ERR_OUT_OF_RANGE("percentile", "> 0 && <= 100", p);
+    }
+    return this[_handle].percentile(p);
+  }
+  percentileBigInt(p) {
+    if (typeof p !== "number") {
+      throw new ERR_INVALID_ARG_TYPE("percentile", "number", p);
+    }
+    if (!(p > 0 && p <= 100)) {
+      throw new ERR_OUT_OF_RANGE("percentile", "> 0 && <= 100", p);
+    }
+    return BigInt(this[_handle].percentileBigInt(p));
+  }
+  reset() {
+    this[_handle].reset();
+  }
+}
+
+class RecordableHistogram extends Histogram {
+  constructor(handle) {
+    super(handle);
+  }
+
+  record(val) {
+    if (typeof val === "bigint") {
+      if (val < 1n || val > 0xFFFFFFFFFFFFFFFFn) {
+        throw new ERR_OUT_OF_RANGE("val", "a positive integer", val);
+      }
+      this[_handle].record(val);
+      return;
+    }
+    if (typeof val !== "number" || !Number.isInteger(val)) {
+      throw new ERR_INVALID_ARG_TYPE("val", ["integer", "bigint"], val);
+    }
+    if (val < 1) {
+      throw new ERR_OUT_OF_RANGE("val", ">= 1", val);
+    }
+    this[_handle].record(BigInt(val));
+  }
+
+  recordDelta() {
+    this[_handle].recordDelta();
+  }
+
+  add(other) {
+    if (!(other instanceof RecordableHistogram)) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "other",
+        "RecordableHistogram",
+        other,
+      );
+    }
+    this[_handle].add(other[_handle]);
+  }
+}
+
+function validateInteger(value, name, min, max) {
+  if (typeof value === "bigint") {
+    if (value < BigInt(min) || value > BigInt(max)) {
+      throw new ERR_OUT_OF_RANGE(name, `>= ${min} && <= ${max}`, value);
+    }
+    return Number(value);
+  }
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw new ERR_INVALID_ARG_TYPE(name, ["integer", "bigint"], value);
+  }
+  if (value < min || value > max) {
+    throw new ERR_OUT_OF_RANGE(name, `>= ${min} && <= ${max}`, value);
+  }
+  return value;
+}
+
+function createHistogram(options = {}) {
+  if (options === null || typeof options !== "object") {
+    throw new ERR_INVALID_ARG_TYPE("options", "Object", options);
+  }
+  const {
+    lowest = 1,
+    highest = NUMBER_MAX_SAFE_INTEGER,
+    figures = 3,
+  } = options;
+  const lo = validateInteger(
+    lowest,
+    "options.lowest",
+    1,
+    NUMBER_MAX_SAFE_INTEGER,
+  );
+  const hi = validateInteger(
+    highest,
+    "options.highest",
+    2 * lo,
+    NUMBER_MAX_SAFE_INTEGER,
+  );
+  if (typeof figures !== "number" || !Number.isInteger(figures)) {
+    throw new ERR_INVALID_ARG_TYPE("options.figures", "integer", figures);
+  }
+  if (figures < 1 || figures > 5) {
+    throw new ERR_OUT_OF_RANGE("options.figures", ">= 1 && <= 5", figures);
+  }
+  const handle = new BaseHistogram(BigInt(lo), BigInt(hi), figures);
+  return new RecordableHistogram(handle);
+}
+
 return {
   default: {
     performance,
@@ -221,13 +394,19 @@ return {
     PerformanceObserverEntryList,
     PerformanceEntry,
     monitorEventLoopDelay,
+    createHistogram,
+    Histogram,
+    RecordableHistogram,
     eventLoopUtilization,
     timerify,
     constants,
   },
   constants,
+  createHistogram,
   enqueueNodePerformanceEntry,
   eventLoopUtilization,
+  Histogram,
+  RecordableHistogram,
   monitorEventLoopDelay,
   performance,
   PerformanceEntry,

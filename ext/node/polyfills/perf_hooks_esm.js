@@ -4,8 +4,11 @@ const mod = core.loadExtScript("ext:deno_node/perf_hooks.js");
 
 export const {
   constants,
+  createHistogram,
   enqueueNodePerformanceEntry,
   eventLoopUtilization,
+  Histogram,
+  RecordableHistogram,
   monitorEventLoopDelay,
   performance,
   PerformanceEntry,
