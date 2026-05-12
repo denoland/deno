@@ -18,3 +18,21 @@ Nested blob text: inner outer
 Nested blob size: 11
 Object blob text: in object
 Object value: 42
+Empty file instanceof File: true
+Empty file instanceof Blob: true
+Empty file name: example.txt
+Empty file size: 0
+Empty file type: ""
+Empty file is different object: true
+Empty file lastModified preserved: true
+Nested empty file instanceof File: true
+Nested empty blob instanceof Blob: true
+Nested empty file name: example.txt
+Nested empty file size: 0
+Nested empty blob size: 0
+Array length: 3
+Array[0] instanceof Blob: true
+Array[1] instanceof File: true
+Array[2] type: image/png
+Array[0] text: a
+Array[1] name: b.txt
