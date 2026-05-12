@@ -119,7 +119,10 @@ impl ExtensionFileSource {
   /// or compile-time embedded sources, false for paths that were only valid
   /// on the build machine.
   pub fn is_runtime_loadable(&self) -> bool {
-    #[allow(deprecated, reason = "matching deprecated variant we still inspect")]
+    #[allow(
+      deprecated,
+      reason = "matching deprecated variant we still inspect"
+    )]
     match &self.code {
       ExtensionFileSourceCode::IncludedInBinary(_)
       | ExtensionFileSourceCode::LoadedFromMemoryDuringSnapshot(_)
