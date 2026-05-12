@@ -435,6 +435,11 @@ test.afterAll = function (fn) {
 };
 
 test.sanitizer = function (options) {
+  if (typeof options !== "object" || options === null) {
+    throw new TypeError(
+      "Deno.test.sanitizer: options must be an object",
+    );
+  }
   if (options.ops !== undefined) {
     moduleSanitizeOps = options.ops;
   }

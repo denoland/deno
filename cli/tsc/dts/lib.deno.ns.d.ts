@@ -1258,6 +1258,11 @@ declare namespace Deno {
      * config file settings, but can still be overridden per-test via
      * `sanitizeOps` / `sanitizeResources` in test options.
      *
+     * Should be called at the top of the module, before any `Deno.test()`
+     * registrations — each call sets the defaults that subsequently registered
+     * tests inherit, so tests registered before the call use the previous
+     * defaults.
+     *
      * ```ts
      * // Enable both sanitizers for all tests in this file
      * Deno.test.sanitizer({ ops: true, resources: true });

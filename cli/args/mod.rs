@@ -216,7 +216,11 @@ impl WorkspaceTestOptions {
     test_flags: &TestFlags,
     test_config: Option<&TestConfig>,
   ) -> Self {
-    // Precedence (highest wins): CLI flag > env var > deno.json config
+    // The CLI flag, env var, and config layers are enable-only: any of them
+    // setting `true` turns the sanitizer on, and none of them can turn it
+    // back off. To disable a sanitizer that was enabled by one of these
+    // layers, opt out from JS via `Deno.test.sanitizer({ ops: false })` at
+    // the module level, or `{ sanitizeOps: false }` on the individual test.
     let config_sanitize_ops =
       test_config.and_then(|c| c.sanitize_ops).unwrap_or(false);
     let config_sanitize_resources = test_config
