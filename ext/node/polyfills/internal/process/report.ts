@@ -21,6 +21,15 @@ function writeReport(_filename, _err) {
 
 const todoUndefined = undefined;
 
+// Node only sets `glibcVersionRuntime` / `glibcVersionCompiler` on Linux
+// binaries linked against glibc. On musl Linux and non-Linux platforms the
+// fields are absent, and tools such as rollup rely on that to detect the
+// libc flavor (denoland/deno#33948).
+const glibcVersions =
+  Deno.build.os === "linux" && Deno.build.env === "gnu"
+    ? { glibcVersionRuntime: "2.38", glibcVersionCompiler: "2.38" }
+    : {};
+
 function getReport(_err) {
   const os = lazyOs();
   const dumpEventTime = new Date();
@@ -37,8 +46,7 @@ function getReport(_err) {
       cwd: Deno.cwd(),
       commandLine: ["node"],
       nodejsVersion: `v${versions.node}`,
-      glibcVersionRuntime: "2.38",
-      glibcVersionCompiler: "2.38",
+      ...glibcVersions,
       wordSize: 64,
       arch: arch(),
       platform: Deno.build.os,
