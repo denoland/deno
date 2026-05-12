@@ -45,10 +45,13 @@ const _brand = webidl.brand;
  * Returns a parallel array to `headers[_headerList]` whose i-th entry is the
  * byte-lowercased form of `headers[_headerList][i][0]`.
  *
- * Rebuilt from scratch when the lengths diverge -- that catches the only
- * external mutation pattern in the codebase, where `initializeAResponse` and
- * `Request`'s splice/refill block push directly to `_headerList` without
- * going through `appendHeader` / `set` / `delete`.
+ * Rebuilt from scratch when the lengths diverge -- that catches the
+ * `Request` constructor's splice/refill block, which empties `_headerList`
+ * without going through `appendHeader` / `set` / `delete`.
+ *
+ * `initializeAResponse` (`23_response.js`) reads via `ensureLowerNames`
+ * directly and pushes to both arrays in lockstep, so its mutation no longer
+ * relies on the length-divergence rebuild.
  */
 function ensureLowerNames(headers) {
   let lower = headers[_lowerNames];
@@ -603,6 +606,7 @@ function headersEntries(headers) {
 }
 
 return {
+  ensureLowerNames,
   fillHeaders,
   getDecodeSplitHeader,
   getHeader,
