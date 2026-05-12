@@ -104,7 +104,7 @@ impl AsyncWrite for WebSocketStream {
 
         send.reserve_capacity(buf.len());
         match ready!(send.poll_capacity(cx)) {
-          Some(Ok(())) => {} // capacity reserved
+          Some(Ok(_)) => {} // capacity reserved
           Some(Err(e)) => {
             return Poll::Ready(Err(std::io::Error::new(
               ErrorKind::ConnectionReset,
