@@ -1534,6 +1534,10 @@ impl Workspace {
       for folder_url in matched_folder_urls {
         let entry = results.entry((*folder_url).clone());
         let folder_path = url_to_file_path(folder_url).unwrap();
+        let scoped_include = pattern
+          .include
+          .as_ref()
+          .map(|i| scope_include_to_folder(i, &folder_path));
         match entry {
           indexmap::map::Entry::Occupied(entry) => {
             let entry = entry.into_mut();
@@ -1545,7 +1549,7 @@ impl Workspace {
             }
             match &mut entry.include {
               Some(set) => {
-                if let Some(includes) = &pattern.include {
+                if let Some(includes) = &scoped_include {
                   for include in includes.inner() {
                     if !set.inner().contains(include) {
                       set.push(include.clone())
@@ -1554,7 +1558,7 @@ impl Workspace {
                 }
               }
               None => {
-                entry.include.clone_from(&pattern.include);
+                entry.include = scoped_include;
               }
             }
           }
@@ -1565,7 +1569,7 @@ impl Workspace {
               } else {
                 folder_path.clone()
               },
-              include: pattern.include.clone(),
+              include: scoped_include,
               exclude: pattern.exclude.clone(),
             });
           }
@@ -2794,6 +2798,30 @@ fn combine_patterns(
     },
     base: member_patterns.base,
   }
+}
+
+/// Restrict a CLI-supplied include set to a single workspace folder.
+///
+/// `split_by_base` uses each include path as the walk root, so an include path
+/// that's a proper parent of the member's folder (e.g. `Path(cwd)` for member
+/// `cwd/member-a`) would cause every member to traverse the entire workspace.
+/// Clamp such paths down to the member's folder so each member only walks its
+/// own subtree.
+fn scope_include_to_folder(
+  include: &PathOrPatternSet,
+  folder_path: &Path,
+) -> PathOrPatternSet {
+  let scoped = include
+    .inner()
+    .iter()
+    .map(|p| match p {
+      PathOrPattern::Path(path) if folder_path.starts_with(path) => {
+        PathOrPattern::Path(folder_path.to_path_buf())
+      }
+      _ => p.clone(),
+    })
+    .collect::<Vec<_>>();
+  PathOrPatternSet::new(scoped)
 }
 
 fn combine_files_config_with_cli_args(
@@ -6030,6 +6058,72 @@ pub mod test {
         .map(|(_ctx, config)| config.files)
         .collect::<Vec<_>>()
     });
+  }
+
+  // Regression test for https://github.com/denoland/deno/issues/30915 — running
+  // `deno fmt .` (or `deno lint .`) from the workspace root must not cause each
+  // member to walk the whole workspace.
+  #[test]
+  fn test_resolve_config_for_members_cli_include_workspace_root() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": ["./member-a", "./member-b"],
+      }),
+    );
+    sys.fs_insert_json(root_dir().join("member-a/deno.json"), json!({}));
+    sys.fs_insert_json(root_dir().join("member-b/deno.json"), json!({}));
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
+    // Simulate CLI args from `deno fmt .` — base + include both pointing at the
+    // workspace root.
+    let cli_args = FilePatterns {
+      base: root_dir(),
+      include: Some(PathOrPatternSet::new(vec![PathOrPattern::Path(
+        root_dir(),
+      )])),
+      exclude: Default::default(),
+    };
+    let config_for_members = workspace_dir
+      .workspace
+      .resolve_fmt_config_for_members(&cli_args)
+      .unwrap();
+    let file_patterns = config_for_members
+      .into_iter()
+      .map(|(_ctx, config)| config.files)
+      .collect::<Vec<_>>();
+    assert_eq!(
+      file_patterns,
+      vec![
+        // Root walks from the workspace root, but excludes the member dirs.
+        FilePatterns {
+          base: root_dir(),
+          include: Some(PathOrPatternSet::new(vec![PathOrPattern::Path(
+            root_dir()
+          )])),
+          exclude: PathOrPatternSet::new(vec![
+            PathOrPattern::Path(root_dir().join("member-a")),
+            PathOrPattern::Path(root_dir().join("member-b")),
+          ]),
+        },
+        // Each member's include is clamped to the member's own directory so
+        // that file collection walks only that subtree.
+        FilePatterns {
+          base: root_dir().join("member-a"),
+          include: Some(PathOrPatternSet::new(vec![PathOrPattern::Path(
+            root_dir().join("member-a")
+          )])),
+          exclude: Default::default(),
+        },
+        FilePatterns {
+          base: root_dir().join("member-b"),
+          include: Some(PathOrPatternSet::new(vec![PathOrPattern::Path(
+            root_dir().join("member-b")
+          )])),
+          exclude: Default::default(),
+        },
+      ]
+    );
   }
 
   #[test]

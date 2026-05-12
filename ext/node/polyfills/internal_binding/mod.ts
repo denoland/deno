@@ -38,7 +38,9 @@ const ttyWrap = core.loadExtScript(
   "ext:deno_node/internal_binding/tty_wrap.ts",
 );
 const types = core.loadExtScript("ext:deno_node/internal_binding/types.ts");
-import * as udpWrap from "ext:deno_node/internal_binding/udp_wrap.ts";
+const udpWrap = core.loadExtScript(
+  "ext:deno_node/internal_binding/udp_wrap.ts",
+);
 const util = core.loadExtScript(
   "ext:deno_node/internal_binding/util.ts",
 );

@@ -361,12 +361,17 @@ class Headers {
     const list = this[_headerList];
     const lowerNames = ensureLowerNames(this);
     const lowercaseName = byteLowerCase(name);
+    let writeIdx = 0;
     for (let i = 0; i < lowerNames.length; i++) {
-      if (lowerNames[i] === lowercaseName) {
-        ArrayPrototypeSplice(list, i, 1);
-        ArrayPrototypeSplice(lowerNames, i, 1);
-        i--;
+      if (lowerNames[i] !== lowercaseName) {
+        list[writeIdx] = list[i];
+        lowerNames[writeIdx] = lowerNames[i];
+        writeIdx++;
       }
+    }
+    if (writeIdx !== list.length) {
+      ArrayPrototypeSplice(list, writeIdx);
+      ArrayPrototypeSplice(lowerNames, writeIdx);
     }
   }
 
@@ -464,22 +469,30 @@ class Headers {
     const list = this[_headerList];
     const lowerNames = ensureLowerNames(this);
     const lowercaseName = byteLowerCase(name);
+    let writeIdx = 0;
     let added = false;
     for (let i = 0; i < lowerNames.length; i++) {
       if (lowerNames[i] === lowercaseName) {
         if (!added) {
-          list[i][1] = value;
+          const entry = list[i];
+          entry[1] = value;
+          list[writeIdx] = entry;
+          lowerNames[writeIdx] = lowerNames[i];
+          writeIdx++;
           added = true;
-        } else {
-          ArrayPrototypeSplice(list, i, 1);
-          ArrayPrototypeSplice(lowerNames, i, 1);
-          i--;
         }
+      } else {
+        list[writeIdx] = list[i];
+        lowerNames[writeIdx] = lowerNames[i];
+        writeIdx++;
       }
     }
     if (!added) {
       ArrayPrototypePush(list, [name, value]);
       ArrayPrototypePush(lowerNames, lowercaseName);
+    } else if (writeIdx !== list.length) {
+      ArrayPrototypeSplice(list, writeIdx);
+      ArrayPrototypeSplice(lowerNames, writeIdx);
     }
   }
 

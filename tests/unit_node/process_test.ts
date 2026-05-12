@@ -1205,6 +1205,26 @@ Deno.test({
     assert(typeof result.header.host === "string");
     delete result.header.host;
 
+    // glibc fields only exist on Linux+glibc builds; on musl Linux and
+    // non-Linux platforms the keys must be absent so libc-flavor detection
+    // works (denoland/deno#33948).
+    const isGlibc = Deno.build.os === "linux" && Deno.build.env === "gnu";
+    if (isGlibc) {
+      assertEquals(result.header.glibcVersionRuntime, "2.38");
+      assertEquals(result.header.glibcVersionCompiler, "2.38");
+      delete result.header.glibcVersionRuntime;
+      delete result.header.glibcVersionCompiler;
+    } else {
+      assert(
+        !("glibcVersionRuntime" in result.header),
+        "glibcVersionRuntime must not be present on non-glibc platforms",
+      );
+      assert(
+        !("glibcVersionCompiler" in result.header),
+        "glibcVersionCompiler must not be present on non-glibc platforms",
+      );
+    }
+
     // test hardcoded part
     assertEquals(result, {
       header: {
@@ -1213,8 +1233,6 @@ Deno.test({
         trigger: "GetReport",
         threadId: 0,
         commandLine: ["node"],
-        glibcVersionRuntime: "2.38",
-        glibcVersionCompiler: "2.38",
         wordSize: 64,
         release: {
           name: "node",

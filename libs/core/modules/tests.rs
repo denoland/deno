@@ -628,6 +628,48 @@ async fn test_lazy_loaded_esm_aliased_via_import() {
   result.await.unwrap();
 }
 
+/// Regression test for https://github.com/denoland/deno/issues/33940
+///
+/// When two lazy-loaded ESM modules (A and B) are statically imported as
+/// siblings, V8 instantiates both during the link phase and evaluates them
+/// in DFS post-order. If A's evaluation calls `createLazyLoader(B)()`, the
+/// `op_lazy_load_esm` early-return path used to hand back B's module
+/// namespace without first evaluating it, so any `export const` bindings in
+/// B were in the temporal dead zone — producing `Cannot access 'X' before
+/// initialization`. This reproduces the gemini-cli failure where
+/// `events_esm.ts` eagerly destructures `EventEmitterAsyncResource`, whose
+/// getter lazy-loads `async_hooks_esm.ts` (a sibling in the user's bundle).
+#[tokio::test]
+async fn test_lazy_load_esm_evaluates_pre_instantiated_sibling() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "custom:lazy_a" = "lazy_load_sibling_a.js",
+      "custom:lazy_b" = "lazy_load_sibling_b.js",
+    ]
+  );
+
+  let loader = Rc::new(StaticModuleLoader::with(
+    ModuleSpecifier::parse("file:///main.js").unwrap(),
+    crate::ascii_str_include!("testdata/lazy_load_sibling_main.js"),
+  ));
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let mod_id = runtime
+    .load_main_es_module(&ModuleSpecifier::parse("file:///main.js").unwrap())
+    .await
+    .unwrap();
+  let result = runtime.mod_evaluate(mod_id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  result.await.unwrap();
+}
+
 #[test]
 fn test_lazy_loaded_script() {
   deno_core::extension!(

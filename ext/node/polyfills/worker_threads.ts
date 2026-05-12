@@ -1,8 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
+const {
   op_create_worker,
   op_host_get_worker_cpu_usage,
   op_host_post_message,
@@ -15,7 +16,7 @@ import {
   op_message_port_recv_message_sync,
   op_worker_get_resource_limits,
   op_worker_threads_filename,
-} from "ext:core/ops";
+} = core.ops;
 const {
   deserializeJsMessageData,
   MessageChannel,
@@ -44,7 +45,7 @@ const {
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
-import { Readable, Writable } from "node:stream";
+const lazyStream = core.createLazyLoader("node:stream");
 const {
   BroadcastChannel: WebBroadcastChannel,
   refBroadcastChannel,
@@ -52,9 +53,15 @@ const {
 const { untransferableSymbol } = core.loadExtScript(
   "ext:deno_node/internal_binding/util.ts",
 );
-import process from "node:process";
-import { fileURLToPath } from "node:url";
-import { createRequire } from "node:module";
+const lazyProcess = core.createLazyLoader("node:process");
+const lazyUrl = core.createLazyLoader("node:url");
+const lazyModule = core.createLazyLoader("node:module");
+
+// Eagerly bind: node:process is in the eager ESM bundle so this is cheap, and
+// it's used pervasively throughout this module. `Readable`/`Writable`,
+// `fileURLToPath`, and `createRequire` stay deferred via their `lazy*`
+// loaders.
+const process = lazyProcess().default;
 
 const {
   ArrayIsArray,
@@ -185,7 +192,7 @@ const workerDisallowedFlags = new SafeSet([
   "--report-uncaught-exception",
 ]);
 
-export interface WorkerOptions {
+interface WorkerOptions {
   // only for typings
   argv?: unknown[];
   env?: Record<string, unknown>;
@@ -229,11 +236,14 @@ class NodeWorker extends EventEmitter {
   // https://nodejs.org/api/worker_threads.html#workerresourcelimits
   resourceLimits: WorkerOptions["resourceLimits"] = {};
   // https://nodejs.org/api/worker_threads.html#workerstdin
-  stdin: Writable | null = null;
+  // deno-lint-ignore no-explicit-any
+  stdin: any = null;
   // https://nodejs.org/api/worker_threads.html#workerstdout
-  stdout: Readable = new Readable({ read() {} });
+  // deno-lint-ignore no-explicit-any
+  stdout: any = new (lazyStream().Readable)({ read() {} });
   // https://nodejs.org/api/worker_threads.html#workerstderr
-  stderr: Readable = new Readable({ read() {} });
+  // deno-lint-ignore no-explicit-any
+  stderr: any = new (lazyStream().Readable)({ read() {} });
 
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
@@ -478,7 +488,7 @@ class NodeWorker extends EventEmitter {
     if (options?.stdin) {
       // deno-lint-ignore no-this-alias
       const worker = this;
-      this.stdin = new Writable({
+      this.stdin = new (lazyStream().Writable)({
         write(chunk, _encoding, callback) {
           try {
             worker.postMessage({
@@ -537,10 +547,18 @@ class NodeWorker extends EventEmitter {
 
   #closeStdio() {
     if (!this.stdout.readableEnded) {
-      FunctionPrototypeCall(Readable.prototype.push, this.stdout, null);
+      FunctionPrototypeCall(
+        lazyStream().Readable.prototype.push,
+        this.stdout,
+        null,
+      );
     }
     if (!this.stderr.readableEnded) {
-      FunctionPrototypeCall(Readable.prototype.push, this.stderr, null);
+      FunctionPrototypeCall(
+        lazyStream().Readable.prototype.push,
+        this.stderr,
+        null,
+      );
     }
   }
 
@@ -635,13 +653,13 @@ class NodeWorker extends EventEmitter {
       this.emit("online");
     } else if (isWorkerStdoutMsg(message)) {
       FunctionPrototypeCall(
-        Readable.prototype.push,
+        lazyStream().Readable.prototype.push,
         this.stdout,
         message.data,
       );
     } else if (isWorkerStderrMsg(message)) {
       FunctionPrototypeCall(
-        Readable.prototype.push,
+        lazyStream().Readable.prototype.push,
         this.stderr,
         message.data,
       );
@@ -811,9 +829,9 @@ class NodeWorker extends EventEmitter {
   readonly performance = globalThis.performance;
 }
 
-export let isMainThread;
-export let resourceLimits;
-export let threadName: string = "";
+let isMainThread;
+let resourceLimits;
+let threadName: string = "";
 
 let threadId = 0;
 let workerData: unknown = null;
@@ -873,11 +891,8 @@ internals.__initWorkerThreads = (
   isMainThread = runningOnMainThread;
   internals.__isWorkerThread = !runningOnMainThread;
 
-  defaultExport.isMainThread = isMainThread;
-
   if (isMainThread) {
     resourceLimits = {};
-    defaultExport.resourceLimits = resourceLimits;
   }
 
   if (!isMainThread) {
@@ -885,7 +900,7 @@ internals.__initWorkerThreads = (
     // require in worker_threads - this should be rewritten to use proper
     // CJS/ESM loading
     if (moduleSpecifier) {
-      globalThis.require = createRequire(
+      globalThis.require = lazyModule().createRequire(
         StringPrototypeStartsWith(moduleSpecifier, "data:")
           ? `${Deno.cwd()}/[worker eval]`
           : moduleSpecifier,
@@ -1016,7 +1031,6 @@ internals.__initWorkerThreads = (
       } else {
         resourceLimits = {};
       }
-      defaultExport.resourceLimits = resourceLimits;
 
       // Set process.argv for worker threads.
       // In Node.js, worker process.argv is [execPath, scriptPath, ...argv].
@@ -1028,7 +1042,7 @@ internals.__initWorkerThreads = (
           moduleSpecifier &&
           StringPrototypeStartsWith(moduleSpecifier, "file:")
         ) {
-          scriptPath = fileURLToPath(moduleSpecifier);
+          scriptPath = lazyUrl().fileURLToPath(moduleSpecifier);
         } else {
           scriptPath = moduleSpecifier ?? "";
         }
@@ -1052,7 +1066,7 @@ internals.__initWorkerThreads = (
         // Replace process.stdin with a Readable that receives
         // data from the parent via WORKER_STDIN messages.
         if (metadata.hasStdin) {
-          const workerStdin = new Readable({ read() {} });
+          const workerStdin = new (lazyStream().Readable)({ read() {} });
           process.stdin = workerStdin;
 
           // Register an early listener to intercept stdin messages
@@ -1115,11 +1129,6 @@ internals.__initWorkerThreads = (
         };
       }
     }
-    defaultExport.workerData = workerData;
-    defaultExport.parentPort = parentPort;
-    defaultExport.threadId = threadId;
-    defaultExport.threadName = threadName;
-
     patchMessagePortIfFound(workerData);
 
     parentPort.off = parentPort.removeListener = function (
@@ -1197,13 +1206,17 @@ internals.__initWorkerThreads = (
       );
     }
   }
+
+  // Refresh the `node:worker_threads` ESM wrapper's `let` bindings so
+  // ESM live bindings (e.g. `import { isMainThread }`) see post-init values.
+  internals.__refreshWorkerThreadsWrapper?.();
 };
 
-export function getEnvironmentData(key: unknown) {
+function getEnvironmentData(key: unknown) {
   return environmentData.get(key);
 }
 
-export function setEnvironmentData(key: unknown, value?: unknown) {
+function setEnvironmentData(key: unknown, value?: unknown) {
   if (value === undefined) {
     environmentData.delete(key);
   } else {
@@ -1211,13 +1224,13 @@ export function setEnvironmentData(key: unknown, value?: unknown) {
   }
 }
 
-export const SHARE_ENV = SymbolFor("nodejs.worker_threads.SHARE_ENV");
-export function markAsUntransferable(obj: object) {
+const SHARE_ENV = SymbolFor("nodejs.worker_threads.SHARE_ENV");
+function markAsUntransferable(obj: object) {
   if (core.isArrayBuffer(obj)) {
     op_mark_as_untransferable(obj as ArrayBuffer);
   }
 }
-export function moveMessagePortToContext() {
+function moveMessagePortToContext() {
   notImplemented("moveMessagePortToContext");
 }
 
@@ -1225,7 +1238,7 @@ export function moveMessagePortToContext() {
  * @param { MessagePort } port
  * @returns {object | undefined}
  */
-export function receiveMessageOnPort(port: MessagePort): object | undefined {
+function receiveMessageOnPort(port: MessagePort): object | undefined {
   if (!(ObjectPrototypeIsPrototypeOf(MessagePortPrototype, port))) {
     const err = new TypeError(
       'The "port" argument must be a MessagePort instance',
@@ -1391,33 +1404,34 @@ class BroadcastChannel extends WebBroadcastChannel {
   }
 }
 
-export {
+return {
   BroadcastChannel,
   MessagePort,
-  NodeMessageChannel as MessageChannel,
-  NodeWorker as Worker,
-  parentPort,
-  threadId,
-  workerData,
-};
-
-const defaultExport = {
+  MessageChannel: NodeMessageChannel,
+  Worker: NodeWorker,
+  get parentPort() {
+    return parentPort;
+  },
+  get threadId() {
+    return threadId;
+  },
+  get workerData() {
+    return workerData;
+  },
+  get isMainThread() {
+    return isMainThread;
+  },
+  get resourceLimits() {
+    return resourceLimits;
+  },
+  get threadName() {
+    return threadName;
+  },
   markAsUntransferable,
   moveMessagePortToContext,
   receiveMessageOnPort,
-  MessagePort,
-  MessageChannel: NodeMessageChannel,
-  BroadcastChannel,
-  Worker: NodeWorker,
   getEnvironmentData,
   setEnvironmentData,
   SHARE_ENV,
-  threadId,
-  threadName,
-  workerData,
-  resourceLimits,
-  parentPort,
-  isMainThread,
 };
-
-export default defaultExport;
+})();
