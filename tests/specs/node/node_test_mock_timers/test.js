@@ -78,6 +78,17 @@ test("runAll runs all pending timers", () => {
   mock.timers.reset();
 });
 
+test("runAll fires each interval exactly once", () => {
+  mock.timers.enable({ apis: ["setInterval", "clearInterval"] });
+  let count = 0;
+  setInterval(() => {
+    count++;
+  }, 100);
+  mock.timers.runAll();
+  assert.strictEqual(count, 1);
+  mock.timers.reset();
+});
+
 test("Date is mocked and tracks tick", () => {
   mock.timers.enable({ apis: ["Date"], now: 5000 });
   assert.strictEqual(Date.now(), 5000);

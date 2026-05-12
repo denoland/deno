@@ -29,6 +29,9 @@ const {
   ReflectConstruct,
   SafeArrayIterator,
   SafeMap,
+  SafeSet,
+  SetPrototypeAdd,
+  SetPrototypeHas,
   String,
   Symbol,
   SymbolFor,
@@ -1138,9 +1141,16 @@ class MockTimers {
         "You should enable MockTimers first by calling the .enable function",
       );
     }
+    // Intervals re-arm in `_timers` after firing (their `fireAt` is bumped)
+    // instead of being deleted, so without bookkeeping `runAll()` with an
+    // active interval loops forever. Match Node and fire each registered
+    // timer at most once: track ids that have already fired and stop when
+    // `#findNextTimer()` returns one of them.
+    const fired = new SafeSet();
     while (true) {
       const next = this.#findNextTimer();
-      if (next === null) break;
+      if (next === null || SetPrototypeHas(fired, next.id)) break;
+      SetPrototypeAdd(fired, next.id);
       this._now = next.fireAt;
       this.#fireTimer(next);
     }
@@ -1172,7 +1182,9 @@ class MockTimers {
     if (delay === undefined || delay === null) delay = 1;
     if (typeof delay !== "number") delay = +delay;
     if (!NumberIsFinite(delay) || delay < 0) delay = 1;
-    if (delay > 2147483647) delay = 1;
+    // Match Node's mock and Deno's real setTimeout: clamp to TIMEOUT_MAX
+    // (2^31 - 1 ms, ~24.8 days) rather than silently snapping to 1ms.
+    if (delay > 2147483647) delay = 2147483647;
     const id = this._nextId++;
     const timer = {
       id,
@@ -1192,7 +1204,7 @@ class MockTimers {
     if (delay === undefined || delay === null) delay = 1;
     if (typeof delay !== "number") delay = +delay;
     if (!NumberIsFinite(delay) || delay < 1) delay = 1;
-    if (delay > 2147483647) delay = 1;
+    if (delay > 2147483647) delay = 2147483647;
     const id = this._nextId++;
     const timer = {
       id,
