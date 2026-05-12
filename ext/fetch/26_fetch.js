@@ -346,7 +346,7 @@ function httpRedirectFetch(request, response, terminator) {
  * @param {RequestInfo} input
  * @param {RequestInit} init
  */
-function fetch(input, init = { __proto__: null }) {
+function fetch(input, init = undefined) {
   let span;
   let snapshot;
   try {
