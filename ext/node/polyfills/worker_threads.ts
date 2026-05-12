@@ -1285,37 +1285,61 @@ class NodeMessageChannel {
   }
 }
 
-const listeners = new SafeWeakMap<
+// Per-port listener registry: port -> event name -> listener -> wrapper.
+// Keyed by port so the same listener registered on multiple ports doesn't
+// collide, and so removal can find the correct wrapper.
+const portListeners = new SafeWeakMap<
+  MessagePort,
   // deno-lint-ignore no-explicit-any
-  (...args: any[]) => void,
-  // deno-lint-ignore no-explicit-any
-  (ev: any) => any
+  SafeMap<string, SafeMap<(...args: any[]) => void, (ev: any) => any>>
 >();
+
+function getPortListenerMap(port: MessagePort, name: string) {
+  let byName = portListeners.get(port);
+  if (byName === undefined) {
+    byName = new SafeMap();
+    portListeners.set(port, byName);
+  }
+  let map = byName.get(name);
+  if (map === undefined) {
+    map = new SafeMap();
+    byName.set(name, map);
+  }
+  return map;
+}
+
 function webMessagePortToNodeMessagePort(port: MessagePort) {
   port.on = port.addListener = function (this: MessagePort, name, listener) {
+    if (name !== "message" && name !== "messageerror" && name !== "close") {
+      throw new Error(`Unknown event: "${name}"`);
+    }
+    const map = getPortListenerMap(port, name);
+    // Match Node.js MessagePort: registering the same listener twice for
+    // the same event is a no-op (EventTarget-style deduplication).
+    if (map.has(listener)) {
+      return this;
+    }
     // deno-lint-ignore no-explicit-any
     const _listener = (ev: any) => {
       patchMessagePortIfFound(ev.data);
       listener(ev.data);
     };
-    if (name == "message") {
+    map.set(listener, _listener);
+    if (name === "message") {
       if (port.onmessage === null) {
         port.onmessage = _listener;
       } else {
         port.addEventListener("message", _listener);
       }
-    } else if (name == "messageerror") {
+    } else if (name === "messageerror") {
       if (port.onmessageerror === null) {
         port.onmessageerror = _listener;
       } else {
         port.addEventListener("messageerror", _listener);
       }
-    } else if (name == "close") {
-      port.addEventListener("close", _listener);
     } else {
-      throw new Error(`Unknown event: "${name}"`);
+      port.addEventListener("close", _listener);
     }
-    listeners.set(listener, _listener);
     return this;
   };
   port.off = port.removeListener = function (
@@ -1323,16 +1347,27 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
     name,
     listener,
   ) {
-    if (name == "message") {
-      port.removeEventListener("message", listeners.get(listener)!);
-    } else if (name == "messageerror") {
-      port.removeEventListener("messageerror", listeners.get(listener)!);
-    } else if (name == "close") {
-      port.removeEventListener("close", listeners.get(listener)!);
-    } else {
+    if (name !== "message" && name !== "messageerror" && name !== "close") {
       throw new Error(`Unknown event: "${name}"`);
     }
-    listeners.delete(listener);
+    const map = getPortListenerMap(port, name);
+    const _listener = map.get(listener);
+    if (_listener === undefined) {
+      return this;
+    }
+    map.delete(listener);
+    // The first message/messageerror listener is installed on the
+    // onmessage/onmessageerror property (so the port auto-starts).
+    // removeEventListener won't clear those properties, so handle them.
+    if (name === "message" && port.onmessage === _listener) {
+      port.onmessage = null;
+    } else if (
+      name === "messageerror" && port.onmessageerror === _listener
+    ) {
+      port.onmessageerror = null;
+    } else {
+      port.removeEventListener(name, _listener);
+    }
     return this;
   };
   port[nodeWorkerThreadCloseCb] = () => {
