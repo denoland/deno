@@ -123,19 +123,16 @@ Deno.test("ASYNC: withFileTypes + encoding 'buffer' returns Buffer names", async
   const dir = Deno.makeTempDirSync();
   Deno.writeTextFileSync(join(dir, "file1.txt"), "hi");
   try {
-    const entries = await new Promise<Dirent[]>((resolve, reject) => {
+    const entries = await new Promise<Dirent<Buffer>[]>((resolve, reject) => {
       readdir(
         dir,
         { withFileTypes: true, encoding: "buffer" },
-        (err, files) => err ? reject(err) : resolve(files as Dirent[]),
+        (err, files) => err ? reject(err) : resolve(files),
       );
     });
     assertEquals(entries.length, 1);
     assert(Buffer.isBuffer(entries[0].name));
-    assertEquals(
-      (entries[0].name as unknown as Buffer).toString(),
-      "file1.txt",
-    );
+    assertEquals(entries[0].name.toString(), "file1.txt");
   } finally {
     Deno.removeSync(dir, { recursive: true });
   }
@@ -151,10 +148,7 @@ Deno.test("SYNC: withFileTypes + encoding 'buffer' returns Buffer names", () => 
     });
     assertEquals(entries.length, 1);
     assert(Buffer.isBuffer(entries[0].name));
-    assertEquals(
-      (entries[0].name as unknown as Buffer).toString(),
-      "file1.txt",
-    );
+    assertEquals(entries[0].name.toString(), "file1.txt");
   } finally {
     Deno.removeSync(dir, { recursive: true });
   }
