@@ -84,11 +84,21 @@ import _httpAgent from "node:_http_agent";
 import _httpCommon from "node:_http_common";
 import _httpOutgoing from "node:_http_outgoing";
 import _httpServer from "node:_http_server";
-import _streamDuplex from "node:_stream_duplex";
-import _streamPassthrough from "node:_stream_passthrough";
-import _streamReadable from "node:_stream_readable";
-import _streamTransform from "node:_stream_transform";
-import _streamWritable from "node:_stream_writable";
+const _streamDuplex = core.loadExtScript(
+  "ext:deno_node/internal/streams/duplex.js",
+).default;
+const _streamPassthrough = core.loadExtScript(
+  "ext:deno_node/internal/streams/passthrough.js",
+).default;
+const _streamReadable = core.loadExtScript(
+  "ext:deno_node/internal/streams/readable.js",
+).default;
+const _streamTransform = core.loadExtScript(
+  "ext:deno_node/internal/streams/transform.js",
+).default;
+const _streamWritable = core.loadExtScript(
+  "ext:deno_node/internal/streams/writable.js",
+).default;
 import _tlsCommon from "node:_tls_common";
 import _tlsWrap from "node:_tls_wrap";
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
