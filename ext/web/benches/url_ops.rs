@@ -25,6 +25,7 @@ fn setup() -> Vec<Extension> {
         as std::sync::Arc<dyn deno_web::BlobStoreTrait>,
       None,
       Default::default(),
+      Default::default(),
     ),
     bench_setup::init(),
   ]

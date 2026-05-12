@@ -298,7 +298,9 @@ Deno.test({
         eval: true,
       },
     );
-    assertEquals((await once(worker, "message"))[0], true);
+    // parentPort is a delegate object that forwards to globalThis,
+    // so it is not an instance of EventTarget or EventEmitter.
+    assertEquals((await once(worker, "message"))[0], false);
     assertEquals((await once(worker, "message"))[0], false);
     assert(worker instanceof EventEmitter);
     assert(!(worker instanceof EventTarget));

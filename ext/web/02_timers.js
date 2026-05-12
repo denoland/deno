@@ -8,8 +8,9 @@
 // - timer nesting depth tracking (WHATWG spec)
 // - numeric timer IDs (vs Node's Timeout objects)
 
-import { core, primordials } from "ext:core/mod.js";
-import { op_defer } from "ext:core/ops";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { op_defer } = core.ops;
 const {
   PromisePrototypeThen,
   TypeError,
@@ -17,11 +18,10 @@ const {
   ReflectApply,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 
-const loadNodeTimers = core.createLazyLoader(
-  "ext:deno_node/internal/timers.mjs",
-);
+const loadNodeTimers = () =>
+  core.loadExtScript("ext:deno_node/internal/timers.mjs");
 
 // WHATWG timer nesting depth tracking.
 let timerDepth = 0;
@@ -114,7 +114,10 @@ function clearInterval(id = 0) {
  * Mark a timer as not blocking event loop exit.
  */
 function unrefTimer(id) {
-  const { getActiveTimer } = loadNodeTimers();
+  const { getActiveTimer, kTimerId } = loadNodeTimers();
+  if (typeof id !== "number") {
+    id = id[kTimerId];
+  }
   const timer = getActiveTimer(id);
   if (timer) {
     timer.unref();
@@ -125,7 +128,10 @@ function unrefTimer(id) {
  * Mark a timer as blocking event loop exit.
  */
 function refTimer(id) {
-  const { getActiveTimer } = loadNodeTimers();
+  const { getActiveTimer, kTimerId } = loadNodeTimers();
+  if (typeof id !== "number") {
+    id = id[kTimerId];
+  }
   const timer = getActiveTimer(id);
   if (timer) {
     timer.ref();
@@ -139,7 +145,7 @@ function defer(go) {
   PromisePrototypeThen(op_defer(), () => go());
 }
 
-export {
+return {
   clearInterval,
   clearTimeout,
   defer,
@@ -148,3 +154,4 @@ export {
   setTimeout,
   unrefTimer,
 };
+})();

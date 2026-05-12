@@ -76,16 +76,19 @@ Deno.test({
 Deno.test({
   name: "process.chdir failure",
   fn() {
-    assertThrows(
+    // process.chdir now wraps Deno errors into Node-shaped uv errors with
+    // syscall/path/dest, so a missing directory throws a plain Error with
+    // code "ENOENT" rather than Deno.errors.NotFound.
+    const err = assertThrows(
       () => {
         process.chdir("non-existent-directory-name");
       },
-      Deno.errors.NotFound,
-      "file",
-      // On every OS Deno returns: "No such file" except for Windows, where it's:
-      // "The system cannot find the file specified. (os error 2)" so "file" is
-      // the only common string here.
-    );
+      Error,
+      "ENOENT",
+    ) as Error & { code?: string; syscall?: string; dest?: string };
+    assertEquals(err.code, "ENOENT");
+    assertEquals(err.syscall, "chdir");
+    assertEquals(err.dest, "non-existent-directory-name");
   },
 });
 
@@ -514,33 +517,6 @@ Deno.test({
   fn() {
     const symbol = Symbol.for("67");
     Reflect.has(globalThis.process.env, symbol);
-  },
-});
-
-Deno.test({
-  // NB(Tango992): Node.js does not support using symbols as env keys,
-  // thus this test should be omitted once we align with Node.js behavior.
-  name: "process.env: setting and getting a symbol key",
-  fn() {
-    const symbol = Symbol.for("foo");
-    // @ts-expect-error setting a symbol key
-    process.env[symbol] = "foo";
-    // @ts-expect-error getting a symbol key
-    assertEquals(process.env[symbol], "foo");
-    assert(Reflect.has(process.env, symbol));
-
-    // @ts-expect-error deleting a symbol key
-    delete process.env[symbol];
-    assertFalse(Reflect.has(process.env, symbol));
-
-    Object.defineProperty(process.env, symbol, {
-      value: "bar",
-      configurable: true,
-      writable: true,
-      enumerable: true,
-    });
-    // @ts-expect-error getting a symbol key
-    assertEquals(process.env[symbol], "bar");
   },
 });
 
@@ -1229,6 +1205,26 @@ Deno.test({
     assert(typeof result.header.host === "string");
     delete result.header.host;
 
+    // glibc fields only exist on Linux+glibc builds; on musl Linux and
+    // non-Linux platforms the keys must be absent so libc-flavor detection
+    // works (denoland/deno#33948).
+    const isGlibc = Deno.build.os === "linux" && Deno.build.env === "gnu";
+    if (isGlibc) {
+      assertEquals(result.header.glibcVersionRuntime, "2.38");
+      assertEquals(result.header.glibcVersionCompiler, "2.38");
+      delete result.header.glibcVersionRuntime;
+      delete result.header.glibcVersionCompiler;
+    } else {
+      assert(
+        !("glibcVersionRuntime" in result.header),
+        "glibcVersionRuntime must not be present on non-glibc platforms",
+      );
+      assert(
+        !("glibcVersionCompiler" in result.header),
+        "glibcVersionCompiler must not be present on non-glibc platforms",
+      );
+    }
+
     // test hardcoded part
     assertEquals(result, {
       header: {
@@ -1237,8 +1233,6 @@ Deno.test({
         trigger: "GetReport",
         threadId: 0,
         commandLine: ["node"],
-        glibcVersionRuntime: "2.38",
-        glibcVersionCompiler: "2.38",
         wordSize: 64,
         release: {
           name: "node",
@@ -1707,5 +1701,22 @@ Deno.test({
     // should load fine as in Node.js
     process.loadEnvFile(envFilePath);
     Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+// Regression test: signal handlers receive the signal name as first argument
+Deno.test({
+  name: "[node/process] signal handlers receive signal name",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const received: string[] = [];
+    const handler = (signal: string) => {
+      received.push(signal);
+    };
+    process.once("SIGUSR1", handler);
+    process.kill(process.pid, "SIGUSR1");
+    // Signal delivery is async; wait for it
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assertEquals(received, ["SIGUSR1"]);
   },
 });

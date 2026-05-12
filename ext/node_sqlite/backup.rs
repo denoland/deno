@@ -51,7 +51,7 @@ impl<'a> BackupOptions<'a> {
 
     let Ok(obj) = v8::Local::<v8::Object>::try_from(value) else {
       return Err(validators::Error::InvalidArgType(
-        "The \"options\" argument must be an object.",
+        "The \"options\" argument must be an object.".into(),
       ));
     };
 
@@ -69,7 +69,7 @@ impl<'a> BackupOptions<'a> {
       let source_str =
         v8::Local::<v8::String>::try_from(source_val).map_err(|_| {
           validators::Error::InvalidArgType(
-            "The \"options.source\" argument must be a string.",
+            "The \"options.source\" argument must be a string.".into(),
           )
         })?;
       options.source = source_str.to_rust_string_lossy(scope);
@@ -82,7 +82,7 @@ impl<'a> BackupOptions<'a> {
       let target_str =
         v8::Local::<v8::String>::try_from(target_val).map_err(|_| {
           validators::Error::InvalidArgType(
-            "The \"options.target\" argument must be a string.",
+            "The \"options.target\" argument must be a string.".into(),
           )
         })?;
       options.target = target_str.to_rust_string_lossy(scope);
@@ -95,14 +95,14 @@ impl<'a> BackupOptions<'a> {
       let rate_int = v8::Local::<v8::Integer>::try_from(rate_val)
         .map_err(|_| {
           validators::Error::InvalidArgType(
-            "The \"options.rate\" argument must be an integer.",
+            "The \"options.rate\" argument must be an integer.".into(),
           )
         })?
         .value();
 
       options.rate = i32::try_from(rate_int).map_err(|_| {
         validators::Error::InvalidArgType(
-          "The \"options.rate\" argument must be an integer.",
+          "The \"options.rate\" argument must be an integer.".into(),
         )
       })?;
     }
@@ -114,7 +114,7 @@ impl<'a> BackupOptions<'a> {
       let progress_fn = v8::Local::<v8::Function>::try_from(progress_val)
         .map_err(|_| {
           validators::Error::InvalidArgType(
-            "The \"options.progress\" argument must be a function.",
+            "The \"options.progress\" argument must be a function.".into(),
           )
         })?;
       options.progress = Some(progress_fn);
