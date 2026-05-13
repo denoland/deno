@@ -268,18 +268,33 @@ fn permissions_prompt_allow_all() {
       console.human_delay();
       console.write_line_raw("A");
       console.expect("Granted all write access.");
-      // "net" permissions
+      // "net" permissions: after the --allow-net split, requesting
+      // `{ name: "net", host }` with no legacy --allow-net active produces
+      // two prompts in sequence — one for `net-connect`, one for
+      // `net-listen` — so the legacy descriptor name doesn't override the
+      // directional flag rendering.
       console.expect(concat!(
-        "┏ ⚠️  Deno requests net access to \"foo\".\r\n",
+        "┏ ⚠️  Deno requests net-connect access to \"foo\".\r\n",
         "┠─ Requested by `Deno.permissions.request()` API.\r\n",
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
-        "┠─ Learn more at: https://docs.deno.com/go/--allow-net\r\n",
-        "┠─ Run again with --allow-net to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all net permissions)",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-net-connect\r\n",
+        "┠─ Run again with --allow-net-connect to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all net-connect permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("Granted all net access.");
+      console.expect("Granted all net-connect access.");
+      console.expect(concat!(
+        "┏ ⚠️  Deno requests net-listen access to \"foo\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-net-listen\r\n",
+        "┠─ Run again with --allow-net-listen to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all net-listen permissions)",
+      ));
+      console.human_delay();
+      console.write_line_raw("A");
+      console.expect("Granted all net-listen access.");
       // "env" permissions
       console.expect(concat!(
         "┏ ⚠️  Deno requests env access to \"FOO\".\r\n",
