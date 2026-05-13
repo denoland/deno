@@ -321,29 +321,7 @@ pub fn into_sources_and_source_maps(
   for (extension, extension_in_snapshot) in
     extensions.iter().zip(extensions_in_snapshot)
   {
-    for file in &*extension.lazy_loaded_esm_files {
-      let (code, maybe_source_map) =
-        load(transpiler, file, &mut load_callback)?;
-      sources.lazy_esm.push(LoadedSource {
-        source_type: ExtensionSourceType::LazyEsm,
-        specifier: ModuleName::from_static(file.specifier),
-        code,
-        maybe_source_map,
-      });
-    }
-
-    for file in &*extension.lazy_loaded_js_files {
-      let (code, maybe_source_map) =
-        load(transpiler, file, &mut load_callback)?;
-      sources.lazy_js.push(LoadedSource {
-        source_type: ExtensionSourceType::LazyJs,
-        specifier: ModuleName::from_static(file.specifier),
-        code,
-        maybe_source_map,
-      });
-    }
-
-    if let Some(name) = extension_in_snapshot {
+    let snapshotted = if let Some(name) = extension_in_snapshot {
       if extension.name != *name {
         return Err(
           CoreErrorKind::ExtensionSnapshotMismatch(
@@ -355,6 +333,49 @@ pub fn into_sources_and_source_maps(
           .into_box(),
         );
       }
+      true
+    } else {
+      false
+    };
+
+    // `lazy_loaded_*` files always need a runtime registration so
+    // `core.loadExtScript()` / lazy ESM imports can find them. For extensions
+    // baked into the snapshot, skip entries whose source isn't reachable at
+    // runtime (`LoadedFromFsDuringSnapshot` paths only exist on the build
+    // machine) — those are supplied via the snapshot build's residual table.
+    // For extensions not in the snapshot (hmr / fresh runtime), load every
+    // declared file from disk, matching pre-refactor behavior.
+    for file in &*extension.lazy_loaded_esm_files {
+      if snapshotted && !file.is_runtime_loadable() {
+        continue;
+      }
+      let (code, maybe_source_map) =
+        load(transpiler, file, &mut load_callback)?;
+      sources.lazy_esm.push(LoadedSource {
+        source_type: ExtensionSourceType::LazyEsm,
+        specifier: ModuleName::from_static(file.specifier),
+        code,
+        maybe_source_map,
+      });
+    }
+
+    for file in &*extension.lazy_loaded_js_files {
+      if snapshotted && !file.is_runtime_loadable() {
+        continue;
+      }
+      let (code, maybe_source_map) =
+        load(transpiler, file, &mut load_callback)?;
+      sources.lazy_js.push(LoadedSource {
+        source_type: ExtensionSourceType::LazyJs,
+        specifier: ModuleName::from_static(file.specifier),
+        code,
+        maybe_source_map,
+      });
+    }
+
+    if snapshotted {
+      // `js`/`esm` files are already evaluated in the snapshot — no need to
+      // re-execute them at runtime.
       continue;
     }
 

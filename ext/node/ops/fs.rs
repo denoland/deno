@@ -1065,7 +1065,7 @@ pub fn op_node_fs_read_sync(
   state: &mut OpState,
   fd: i32,
   #[buffer] buf: &mut [u8],
-  #[number] position: i64,
+  #[bigint] position: i64,
 ) -> Result<u32, FsError> {
   let file = file_for_fd(state, fd)?;
   read_with_position(file, buf, position)
@@ -1081,7 +1081,7 @@ pub async fn op_node_fs_read_deferred(
   state: Rc<RefCell<OpState>>,
   fd: i32,
   #[buffer] buf: JsBuffer,
-  #[number] position: i64,
+  #[bigint] position: i64,
 ) -> Result<u32, FsError> {
   let file = file_for_fd(&state.borrow(), fd)?;
   if position >= 0 {
