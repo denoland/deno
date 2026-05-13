@@ -226,6 +226,7 @@ const internalTestBinding = core.loadExtScript(
 const internalTimers = core.loadExtScript(
   "ext:deno_node/internal/timers.mjs",
 );
+const internalUrl = core.loadExtScript("ext:deno_node/internal/url.ts");
 const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const internalUtilDebuglog = core.loadExtScript(
   "ext:deno_node/internal/util/debuglog.ts",
@@ -353,6 +354,7 @@ function setupBuiltinModules() {
     "internal/socketaddress": internalSocketAddress,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
+    "internal/url": internalUrl,
     "internal/util/debuglog": internalUtilDebuglog.default,
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
