@@ -1,0 +1,3 @@
+monitor uncaughtException err= boom
+uncaught uncaughtException err= boom
+done monitor=1 uncaught=1

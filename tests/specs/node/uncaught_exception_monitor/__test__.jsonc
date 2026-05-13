@@ -8,6 +8,10 @@
     "monitor_origin_for_unhandled_rejection": {
       "args": "run --allow-read rejection.cjs",
       "output": "rejection.out"
+    },
+    "sync_top_level_cjs_primitive_throw": {
+      "args": "run --allow-read primitive.cjs",
+      "output": "primitive.out"
     }
   }
 }
