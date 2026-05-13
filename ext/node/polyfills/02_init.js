@@ -58,6 +58,9 @@ function initialize(args) {
     // value through, so plain `deno run` invocations never touch
     // `Deno.permissions`/`Deno.env` here and never load `node:cluster`.
     if (nodeClusterUniqueId) {
+      // Force loading the cluster polyfill so it can register
+      // `internals.__initCluster`.
+      core.loadExtScript("ext:deno_node/cluster.ts");
       internals.__initCluster(nodeClusterUniqueId, nodeClusterSchedPolicy);
     }
     op_stream_base_register_state(streamBaseState);

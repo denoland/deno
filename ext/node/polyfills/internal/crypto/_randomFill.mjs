@@ -3,11 +3,16 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-import { op_node_fill_random, op_node_fill_random_async } from "ext:core/ops";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { op_node_fill_random, op_node_fill_random_async } = core.ops;
 
-import { Buffer, kMaxLength } from "node:buffer";
-import { isAnyArrayBuffer, isArrayBufferView } from "node:util/types";
+const { Buffer, kMaxLength } = core.loadExtScript(
+  "ext:deno_node/internal/buffer.mjs",
+);
+const { isAnyArrayBuffer, isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 const {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
@@ -57,7 +62,7 @@ function assertSize(size, elementSize, offset, length) {
   return size >>> 0;
 }
 
-export default function randomFill(buf, offset, size, cb) {
+function randomFill(buf, offset, size, cb) {
   if (!isAnyArrayBuffer(buf) && !isArrayBufferView(buf)) {
     throw new ERR_INVALID_ARG_TYPE(
       "buf",
@@ -107,7 +112,7 @@ export default function randomFill(buf, offset, size, cb) {
   });
 }
 
-export function randomFillSync(buf, offset = 0, size) {
+function randomFillSync(buf, offset = 0, size) {
   if (!isAnyArrayBuffer(buf) && !isArrayBufferView(buf)) {
     throw new ERR_INVALID_ARG_TYPE(
       "buf",
@@ -137,3 +142,6 @@ export function randomFillSync(buf, offset = 0, size) {
 
   return buf;
 }
+
+return { default: randomFill, randomFill, randomFillSync };
+})();

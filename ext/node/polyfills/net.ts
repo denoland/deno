@@ -29,14 +29,14 @@ const { BlockList, SocketAddress } = core.loadExtScript(
   "ext:deno_node/internal/blocklist.mjs",
 );
 
-import { EventEmitter } from "node:events";
-import {
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+const {
   isIP,
   isIPv4,
   isIPv6,
   kReinitializeHandle,
   normalizedArgsSymbol,
-} from "ext:deno_node/internal/net.ts";
+} = core.loadExtScript("ext:deno_node/internal/net.ts");
 import { Duplex } from "node:stream";
 const {
   asyncIdSymbol,
@@ -65,7 +65,7 @@ const {
   uvExceptionWithHostPort,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import {
+const {
   kAfterAsyncWrite,
   kBuffer,
   kBufferCb,
@@ -76,14 +76,16 @@ import {
   setStreamTimeout,
   writeGeneric,
   writevGeneric,
-} from "ext:deno_node/internal/stream_base_commons.ts";
-import { kDestroy, kTimeout } from "ext:deno_node/internal/timers.mjs";
+} = core.loadExtScript("ext:deno_node/internal/stream_base_commons.ts");
+const { kDestroy, kTimeout } = core.loadExtScript(
+  "ext:deno_node/internal/timers.mjs",
+);
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const {
   DTRACE_NET_SERVER_CONNECTION,
   DTRACE_NET_STREAM_END,
 } = core.loadExtScript("ext:deno_node/internal/dtrace.ts");
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import type { LookupOneOptions } from "ext:deno_node/internal/dns/utils.ts";
 const {
   constants: TCPConstants,
@@ -100,7 +102,7 @@ const {
 const { ShutdownWrap } = core.loadExtScript(
   "ext:deno_node/internal_binding/stream_wrap.ts",
 );
-import assert from "node:assert";
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
 const {
@@ -117,7 +119,7 @@ const { debuglog } = core.loadExtScript(
 import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
-import { channel } from "node:diagnostics_channel";
+const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
 // Imported lazily at module top via the cluster <-> net cycle. Only used
 // inside `_listenInCluster()`, which is invoked after cluster.ts has
 // finished evaluating, so the live bindings are fully populated by then.
@@ -2719,6 +2721,19 @@ Server.prototype.listen = function (...args: unknown[]) {
   if (options.path && _isPipeName(options.path)) {
     const pipeName = (this._pipeName = options.path);
     backlog = options.backlog || backlogFromArgs;
+
+    // Abstract Unix sockets (path starts with \0) have no filesystem
+    // entry, so readableAll/writableAll (which use chmod) are invalid.
+    if (
+      (options.readableAll === true || options.writableAll === true) &&
+      pipeName.charCodeAt(0) === 0
+    ) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options",
+        options,
+        "can not set readableAll or writableAllt to true when path is abstract unix socket",
+      );
+    }
 
     _listenInCluster(
       this,

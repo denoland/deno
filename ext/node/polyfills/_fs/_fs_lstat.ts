@@ -1,22 +1,18 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const { denoErrorToNodeError } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
-import {
-  CFISBIS,
-  type statCallback,
-  type statCallbackBigInt,
-  type statOptions,
-} from "ext:deno_node/internal/fs/stat_utils.ts";
-import {
-  BigIntStats,
-  getValidatedPathToString,
-  Stats,
-} from "ext:deno_node/internal/fs/utils.mjs";
+
+const lazyStatUtils = core.createLazyLoader(
+  "ext:deno_node/internal/fs/stat_utils.ts",
+);
+const lazyFsUtils = core.createLazyLoader(
+  "ext:deno_node/internal/fs/utils.mjs",
+);
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import { primordials } from "ext:core/mod.js";
 
 const {
   Error,
@@ -24,28 +20,14 @@ const {
   ObjectPrototypeIsPrototypeOf,
 } = primordials;
 
-export function lstat(path: string | URL, callback: statCallback): void;
-export function lstat(
-  path: string | URL,
-  options: { bigint: false },
-  callback: statCallback,
-): void;
-export function lstat(
-  path: string | URL,
-  options: { bigint: true },
-  callback: statCallbackBigInt,
-): void;
-export function lstat(
-  path: string | URL,
-  optionsOrCallback: statCallback | statCallbackBigInt | statOptions,
-  maybeCallback?: statCallback | statCallbackBigInt,
+function lstat(
+  path,
+  optionsOrCallback,
+  maybeCallback,
 ) {
-  const callback =
-    (typeof optionsOrCallback === "function"
-      ? optionsOrCallback
-      : maybeCallback) as (
-        ...args: [Error] | [null, BigIntStats | Stats]
-      ) => void;
+  const callback = typeof optionsOrCallback === "function"
+    ? optionsOrCallback
+    : maybeCallback;
   const options = typeof optionsOrCallback === "object"
     ? optionsOrCallback
     : { bigint: false };
@@ -53,50 +35,40 @@ export function lstat(
   if (!callback) throw new Error("No callback function supplied");
 
   // Match Node: errors carry the requested path (see lib/fs.js lstat).
-  const validatedPath = getValidatedPathToString(path);
+  const validatedPath = lazyFsUtils().getValidatedPathToString(path);
   PromisePrototypeThen(
     Deno.lstat(validatedPath),
-    (stat) => callback(null, CFISBIS(stat, options.bigint)),
+    (stat) => callback(null, lazyStatUtils().CFISBIS(stat, options.bigint)),
     (err) => {
       // Match Node: `{ throwIfNoEntry: false }` suppresses ENOENT and yields
       // undefined stats (see lib/fs.js lstat()).
       if (
-        (options as statOptions)?.throwIfNoEntry === false &&
+        options?.throwIfNoEntry === false &&
         ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
       ) {
         callback(null, undefined);
         return;
       }
       callback(
-        denoErrorToNodeError(err, { syscall: "lstat", path: validatedPath }),
+        denoErrorToNodeError(err, {
+          syscall: "lstat",
+          path: validatedPath,
+        }),
       );
     },
   );
 }
 
-export const lstatPromise = promisify(lstat) as (
-  & ((path: string | URL) => Promise<Stats>)
-  & ((path: string | URL, options: { bigint: false }) => Promise<Stats>)
-  & ((path: string | URL, options: { bigint: true }) => Promise<BigIntStats>)
-);
+const lstatPromise = promisify(lstat);
 
-export function lstatSync(path: string | URL): Stats;
-export function lstatSync(
-  path: string | URL,
-  options: { bigint: false; throwIfNoEntry?: boolean },
-): Stats;
-export function lstatSync(
-  path: string | URL,
-  options: { bigint: true; throwIfNoEntry?: boolean },
-): BigIntStats;
-export function lstatSync(
-  path: string | URL,
-  options?: statOptions,
-): Stats | BigIntStats {
-  const validatedPath = getValidatedPathToString(path);
+function lstatSync(
+  path,
+  options,
+) {
+  const validatedPath = lazyFsUtils().getValidatedPathToString(path);
   try {
     const origin = Deno.lstatSync(validatedPath);
-    return CFISBIS(origin, options?.bigint || false);
+    return lazyStatUtils().CFISBIS(origin, options?.bigint || false);
   } catch (err) {
     if (
       options?.throwIfNoEntry === false &&
@@ -104,6 +76,12 @@ export function lstatSync(
     ) {
       return;
     }
-    throw denoErrorToNodeError(err, { syscall: "lstat", path: validatedPath });
+    throw denoErrorToNodeError(err, {
+      syscall: "lstat",
+      path: validatedPath,
+    });
   }
 }
+
+return { lstat, lstatPromise, lstatSync };
+})();

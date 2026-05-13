@@ -15,9 +15,12 @@ const {
   isWritableStream,
 } = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 
-import eos from "ext:deno_node/internal/streams/end-of-stream.js";
+const eos =
+  core.loadExtScript("ext:deno_node/internal/streams/end-of-stream.js").default;
 const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import { destroyer } from "ext:deno_node/internal/streams/destroy.js";
+const { destroyer } = core.loadExtScript(
+  "ext:deno_node/internal/streams/destroy.js",
+);
 import Duplex from "node:_stream_duplex";
 import Readable from "node:_stream_readable";
 import Writable from "node:_stream_writable";

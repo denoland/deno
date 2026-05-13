@@ -1,14 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core } from "ext:core/mod.js";
-import {
+(function () {
+const { core } = globalThis.__bootstrap;
+const {
   op_node_idna_punycode_decode,
   op_node_idna_punycode_encode,
   op_node_idna_punycode_to_ascii,
   op_node_idna_punycode_to_unicode,
-} from "ext:core/ops";
+} = core.ops;
 
-import { deprecate } from "node:util";
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 
 const { ucs2 } = core.loadExtScript("ext:deno_node/internal/idna.ts");
 
@@ -40,9 +41,15 @@ function encode(domain) {
   return punyDeprecated(op_node_idna_punycode_encode)(domain);
 }
 
-export { decode, encode, toASCII, toUnicode, ucs2, version };
-
-export default {
+return {
+  default: {
+    decode,
+    encode,
+    toASCII,
+    toUnicode,
+    ucs2,
+    version,
+  },
   decode,
   encode,
   toASCII,
@@ -50,3 +57,4 @@ export default {
   ucs2,
   version,
 };
+})();

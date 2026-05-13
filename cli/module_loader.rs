@@ -999,6 +999,7 @@ fn is_already_resolved_specifier(specifier: &str) -> bool {
     || specifier.starts_with("data:")
     || specifier.starts_with("blob:")
     || specifier.starts_with("node:")
+    || specifier.starts_with("ext:")
 }
 
 #[derive(Clone)]
@@ -1019,6 +1020,23 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     if self.0.hook_registry.resolve_active.get()
       && !is_already_resolved_specifier(specifier)
     {
+      // Check if this specifier was already resolved by hooks during
+      // the load phase. This cache lookup is critical for V8's module
+      // instantiation callback (module_resolve_callback) which calls
+      // resolve synchronously -- we cannot return Async there.
+      let cache_key = format!("{specifier}\x00{referrer}");
+      if let Some(cached) = self
+        .0
+        .hook_registry
+        .resolve_cache
+        .borrow_mut()
+        .remove(&cache_key)
+      {
+        return deno_core::ModuleResolveResponse::Sync(
+          ModuleSpecifier::parse(&cached).map_err(JsErrorBox::from_err),
+        );
+      }
+
       let receiver = self
         .0
         .hook_registry
@@ -1039,6 +1057,12 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
             Ok(Some(url)) => {
               let parsed =
                 ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err)?;
+              // Cache the resolve result so instantiation can look it up
+              // synchronously later.
+              inner.hook_registry.resolve_cache.borrow_mut().insert(
+                format!("{specifier}\x00{referrer}"),
+                parsed.to_string(),
+              );
               // Track that this specifier was hook-intercepted (virtual module)
               // so prepare_load knows to skip graph building for it.
               inner
@@ -1049,8 +1073,17 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               Ok(parsed)
             }
             Ok(None) => {
-              // Fallthrough: hooks didn't intercept, use default
-              inner.inner_resolve(&specifier, &referrer, kind, false)
+              // Fallthrough: hooks didn't intercept, use default.
+              // Cache the result so instantiation doesn't go async.
+              let result =
+                inner.inner_resolve(&specifier, &referrer, kind, false);
+              if let Ok(ref resolved) = result {
+                inner.hook_registry.resolve_cache.borrow_mut().insert(
+                  format!("{specifier}\x00{referrer}"),
+                  resolved.to_string(),
+                );
+              }
+              result
             }
             Err(err) => Err(JsErrorBox::generic(err)),
           }
@@ -1107,26 +1140,47 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     let specifier = specifier.clone();
     let maybe_referrer = maybe_referrer.cloned();
 
-    // When load hooks are active, delegate to JS hooks first
-    if self.0.hook_registry.load_active.get() && !options.is_synchronous {
+    // When load hooks are active, delegate to JS hooks first.
+    // Skip the hook bridge for CJS modules — they go through the
+    // default loader which invokes the sync load hook chain
+    // (executeLoadHookChain) in Module._load. Going through both
+    // the ESM bridge AND the CJS path would call hooks twice.
+    if self.0.hook_registry.load_active.get()
+      && !options.is_synchronous
+      && !{
+        let media_type = deno_media_type::MediaType::from_specifier(&specifier);
+        self
+          .0
+          .shared
+          .cjs_tracker
+          .is_maybe_cjs(&specifier, media_type)
+          .unwrap_or(false)
+      }
+    {
       let receiver = self.0.hook_registry.push_load(specifier.to_string());
       return deno_core::ModuleLoadResponse::Async(
         async move {
-          let hook_result: Result<Option<String>, String> = match receiver.await
-          {
+          let hook_result = match receiver.await {
             Ok(r) => r,
             Err(_) => {
               return Err(JsErrorBox::generic("module load hook cancelled"));
             }
           };
           match hook_result {
-            Ok(Some(source)) => Ok(deno_core::ModuleSource::new(
-              deno_core::ModuleType::JavaScript,
-              deno_core::ModuleSourceCode::String(source.into()),
-              &specifier,
-              None,
-            )),
-            Ok(None) => {
+            Ok((Some(source), format)) => {
+              let module_type = match format.as_deref() {
+                Some("json") => deno_core::ModuleType::Json,
+                Some("wasm") => deno_core::ModuleType::Wasm,
+                _ => deno_core::ModuleType::JavaScript,
+              };
+              Ok(deno_core::ModuleSource::new(
+                module_type,
+                deno_core::ModuleSourceCode::String(source.into()),
+                &specifier,
+                None,
+              ))
+            }
+            Ok((None, _)) => {
               // Fallthrough: hooks didn't intercept, use default
               inner
                 .load_inner(

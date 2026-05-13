@@ -11,6 +11,10 @@
     "fallthrough_dynamic": {
       "args": "run -A test_fallthrough_dynamic.mjs",
       "output": "test_fallthrough_dynamic.out"
+    },
+    "custom_filetype": {
+      "args": "run -A test_custom_filetype.mjs",
+      "output": "test_custom_filetype.out"
     }
   }
 }

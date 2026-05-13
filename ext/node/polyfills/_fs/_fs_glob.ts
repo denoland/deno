@@ -11,24 +11,22 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { isMacOS, isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import process from "node:process";
-
-import {
-  readdirPromise as readdir,
-  readdirSync,
-} from "ext:deno_node/_fs/_fs_readdir.ts";
-import {
-  lstatPromise as lstat,
+const lazyProcess = core.createLazyLoader("node:process");
+const lazyReaddir = core.createLazyLoader(
+  "ext:deno_node/_fs/_fs_readdir.ts",
+);
+const {
+  lstatPromise: lstat,
   lstatSync,
-} from "ext:deno_node/_fs/_fs_lstat.ts";
+} = core.loadExtScript("ext:deno_node/_fs/_fs_lstat.ts");
 
-import {
+const {
   basename,
   dirname,
   isAbsolute,
   join,
   resolve,
-} from "ext:deno_node/path/mod.ts";
+} = core.loadExtScript("ext:deno_node/path/mod.ts");
 import {
   type Dirent,
   DirentFromStats,
@@ -39,10 +37,12 @@ const {
   hideStackFrames,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
-import assert from "node:assert";
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
-import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
+const { toPathIfFileURL } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
 
 interface GlobOptionsBase {
   /**
@@ -170,7 +170,7 @@ function createMatcher(pattern, options = kEmptyObject) {
     nonegate: true,
     nocomment: true,
     optimizationLevel: 2,
-    platform: process.platform,
+    platform: lazyProcess().default.platform,
     nocaseMagicOnly: true,
     ...options,
   };
@@ -210,7 +210,10 @@ class Cache {
       return cached;
     }
     const promise = PromisePrototypeThen(
-      readdir(path, { __proto__: null, withFileTypes: true }),
+      lazyReaddir().readdirPromise(path, {
+        __proto__: null,
+        withFileTypes: true,
+      }),
       null,
       () => [],
     );
@@ -224,7 +227,10 @@ class Cache {
     }
     let val;
     try {
-      val = readdirSync(path, { __proto__: null, withFileTypes: true });
+      val = lazyReaddir().readdirSync(path, {
+        __proto__: null,
+        withFileTypes: true,
+      });
     } catch {
       val = [];
     }

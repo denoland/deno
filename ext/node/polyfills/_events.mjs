@@ -23,9 +23,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-"use strict";
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   ArrayPrototypeMap,
   ArrayPrototypeFilter,
@@ -51,7 +50,7 @@ const {
 
 const kRejection = SymbolFor("nodejs.rejection");
 const kWatermarkData = SymbolFor("nodejs.watermarkData");
-export const kEvents = Symbol("kEvents");
+const kEvents = Symbol("kEvents");
 
 const { inspect } = core.loadExtScript(
   "ext:deno_node/internal/util/inspect.mjs",
@@ -64,7 +63,7 @@ const {
   ERR_UNHANDLED_ERROR,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
-import { AsyncResource } from "node:async_hooks";
+const lazyAsyncHooks = core.createLazyLoader("node:async_hooks");
 const {
   validateAbortSignal,
   validateBoolean,
@@ -84,9 +83,7 @@ const {
 const { addAbortListener } = core.loadExtScript(
   "ext:deno_node/internal/events/abort_listener.mjs",
 );
-export { addAbortListener };
-
-export const kFirstEventParam = Symbol("kFirstEventParam");
+const kFirstEventParam = Symbol("kFirstEventParam");
 const kCapture = Symbol("kCapture");
 const kErrorMonitor = Symbol("events.errorMonitor");
 const kMaxEventTargetListeners = Symbol("events.maxEventTargetListeners");
@@ -99,10 +96,9 @@ const kMaxEventTargetListenersWarned = Symbol(
  * @param {{ captureRejections?: boolean; }} [opts]
  * @returns {EventEmitter}
  */
-export function EventEmitter(opts) {
+function EventEmitter(opts) {
   FunctionPrototypeCall(EventEmitter.init, this, opts);
 }
-export default EventEmitter;
 EventEmitter.on = on;
 EventEmitter.once = once;
 EventEmitter.getEventListeners = getEventListeners;
@@ -114,8 +110,8 @@ EventEmitter.EventEmitter = EventEmitter;
 EventEmitter.usingDomains = false;
 
 EventEmitter.captureRejectionSymbol = kRejection;
-export const captureRejectionSymbol = EventEmitter.captureRejectionSymbol;
-export const errorMonitor = EventEmitter.errorMonitor;
+const captureRejectionSymbol = EventEmitter.captureRejectionSymbol;
+const errorMonitor = EventEmitter.errorMonitor;
 
 ObjectDefineProperty(EventEmitter, "captureRejections", {
   get() {
@@ -144,7 +140,7 @@ EventEmitter.prototype._maxListeners = undefined;
 
 // By default EventEmitters will print a warning if more than 10 listeners are
 // added to it. This is a useful default which helps finding memory leaks.
-export let defaultMaxListeners = 10;
+let defaultMaxListeners = 10;
 
 function checkListener(listener) {
   validateFunction(listener, "listener");
@@ -182,7 +178,7 @@ Object.defineProperties(EventEmitter, {
  * @param {EventTarget[] | EventEmitter[]} [eventTargets]
  * @returns {void}
  */
-export function setMaxListeners(
+function setMaxListeners(
   n = defaultMaxListeners,
   ...eventTargets
 ) {
@@ -288,7 +284,7 @@ EventEmitter.prototype.setMaxListeners = function setMaxListeners(n) {
  * @param {EventEmitter | EventTarget} emitterOrTarget
  * @returns {number}
  */
-export function getMaxListeners(emitterOrTarget) {
+function getMaxListeners(emitterOrTarget) {
   if (typeof emitterOrTarget?.getMaxListeners === "function") {
     return _getMaxListeners(emitterOrTarget);
   } else if (
@@ -817,7 +813,7 @@ EventEmitter.prototype.listenerCount = _listenerCount;
  * @param {string | symbol} type
  * @returns {number}
  */
-export function listenerCount(emitter, type) {
+function listenerCount(emitter, type) {
   if (typeof emitter.listenerCount === "function") {
     return emitter.listenerCount(type);
   }
@@ -872,7 +868,7 @@ function unwrapListeners(arr) {
  * @param {string | symbol} type
  * @returns {Function[]}
  */
-export function getEventListeners(emitterOrTarget, type) {
+function getEventListeners(emitterOrTarget, type) {
   // First check if EventEmitter
   if (typeof emitterOrTarget.listeners === "function") {
     return emitterOrTarget.listeners(type);
@@ -898,7 +894,7 @@ export function getEventListeners(emitterOrTarget, type) {
  * @returns {Promise}
  */
 // deno-lint-ignore require-await
-export async function once(emitter, name, options = kEmptyObject) {
+async function once(emitter, name, options = kEmptyObject) {
   validateObject(options, "options");
   const signal = options?.signal;
   validateAbortSignal(signal, "options.signal");
@@ -1010,7 +1006,7 @@ const kEventsGetter = {
  * @param {{ signal: AbortSignal; }} [options]
  * @returns {AsyncIterator}
  */
-export function on(emitter, event, options = kEmptyObject) {
+function on(emitter, event, options = kEmptyObject) {
   validateObject(options, "options");
   const signal = options?.signal;
   validateAbortSignal(signal, "options.signal");
@@ -1194,116 +1190,119 @@ function listenersController() {
 const kAsyncResource = Symbol("kAsyncResource");
 const kEventEmitter = Symbol("kEventEmitter");
 
-class EventEmitterReferencingAsyncResource extends AsyncResource {
-  /**
-   * @param {EventEmitter} ee
-   * @param {string} [type]
-   * @param {{
-   *   triggerAsyncId?: number,
-   *   requireManualDestroy?: boolean,
-   * }} [options]
-   */
-  constructor(ee, type, options) {
-    super(type, options);
-    this[kEventEmitter] = ee;
-  }
+// EventEmitterAsyncResource and its helper class are defined lazily to avoid
+// eagerly loading node:async_hooks (which provides AsyncResource).
+let _EventEmitterAsyncResource;
+function getEventEmitterAsyncResource() {
+  if (_EventEmitterAsyncResource) return _EventEmitterAsyncResource;
+  const { AsyncResource } = lazyAsyncHooks();
 
-  /**
-   * @type {EventEmitter}
-   */
-  get eventEmitter() {
-    if (this[kEventEmitter] === undefined) {
-      throw new ERR_INVALID_THIS("EventEmitterReferencingAsyncResource");
+  class EventEmitterReferencingAsyncResource extends AsyncResource {
+    constructor(ee, type, options) {
+      super(type, options);
+      this[kEventEmitter] = ee;
     }
-    return this[kEventEmitter];
-  }
-}
 
-export class EventEmitterAsyncResource extends EventEmitter {
-  /**
-   * @param {{
-   *   name?: string,
-   *   triggerAsyncId?: number,
-   *   requireManualDestroy?: boolean,
-   * }} [options]
-   */
-  constructor(options = undefined) {
-    let name;
-    if (typeof options === "string") {
-      name = options;
-      options = undefined;
-    } else {
-      if (new.target === EventEmitterAsyncResource) {
-        validateString(options?.name, "options.name");
+    get eventEmitter() {
+      if (this[kEventEmitter] === undefined) {
+        throw new ERR_INVALID_THIS("EventEmitterReferencingAsyncResource");
       }
-      name = options?.name || new.target.name;
+      return this[kEventEmitter];
     }
-    super(options);
-
-    this[kAsyncResource] = new EventEmitterReferencingAsyncResource(
-      this,
-      name,
-      options,
-    );
   }
 
-  /**
-   * @param {symbol,string} event
-   * @param  {...any} args
-   * @returns {boolean}
-   */
-  emit(event, ...args) {
-    if (this[kAsyncResource] === undefined) {
-      throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
-    }
-    const { asyncResource } = this;
-    ArrayPrototypeUnshift(args, super.emit, this, event);
-    return FunctionPrototypeApply(
-      asyncResource.runInAsyncScope,
-      asyncResource,
-      args,
-    );
-  }
+  _EventEmitterAsyncResource = class EventEmitterAsyncResource
+    extends EventEmitter {
+    constructor(options = undefined) {
+      let name;
+      if (typeof options === "string") {
+        name = options;
+        options = undefined;
+      } else {
+        if (new.target === _EventEmitterAsyncResource) {
+          validateString(options?.name, "options.name");
+        }
+        name = options?.name || new.target.name;
+      }
+      super(options);
 
-  /**
-   * @returns {void}
-   */
-  emitDestroy() {
-    if (this[kAsyncResource] === undefined) {
-      throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+      this[kAsyncResource] = new EventEmitterReferencingAsyncResource(
+        this,
+        name,
+        options,
+      );
     }
-    this.asyncResource.emitDestroy();
-  }
 
-  /**
-   * @type {number}
-   */
-  get asyncId() {
-    if (this[kAsyncResource] === undefined) {
-      throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+    emit(event, ...args) {
+      if (this[kAsyncResource] === undefined) {
+        throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+      }
+      const { asyncResource } = this;
+      ArrayPrototypeUnshift(args, super.emit, this, event);
+      return FunctionPrototypeApply(
+        asyncResource.runInAsyncScope,
+        asyncResource,
+        args,
+      );
     }
-    return this.asyncResource.asyncId();
-  }
 
-  /**
-   * @type {number}
-   */
-  get triggerAsyncId() {
-    if (this[kAsyncResource] === undefined) {
-      throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+    emitDestroy() {
+      if (this[kAsyncResource] === undefined) {
+        throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+      }
+      this.asyncResource.emitDestroy();
     }
-    return this.asyncResource.triggerAsyncId();
-  }
 
-  /**
-   * @type {EventEmitterReferencingAsyncResource}
-   */
-  get asyncResource() {
-    if (this[kAsyncResource] === undefined) {
-      throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+    get asyncId() {
+      if (this[kAsyncResource] === undefined) {
+        throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+      }
+      return this.asyncResource.asyncId();
     }
-    return this[kAsyncResource];
-  }
+
+    get triggerAsyncId() {
+      if (this[kAsyncResource] === undefined) {
+        throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+      }
+      return this.asyncResource.triggerAsyncId();
+    }
+
+    get asyncResource() {
+      if (this[kAsyncResource] === undefined) {
+        throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+      }
+      return this[kAsyncResource];
+    }
+  };
+
+  EventEmitter.EventEmitterAsyncResource = _EventEmitterAsyncResource;
+  return _EventEmitterAsyncResource;
 }
 
-EventEmitter.EventEmitterAsyncResource = EventEmitterAsyncResource;
+ObjectDefineProperty(EventEmitter, "EventEmitterAsyncResource", {
+  __proto__: null,
+  configurable: true,
+  enumerable: true,
+  get: getEventEmitterAsyncResource,
+});
+
+return {
+  addAbortListener,
+  captureRejectionSymbol,
+  default: EventEmitter,
+  defaultMaxListeners,
+  errorMonitor,
+  EventEmitter,
+  get EventEmitterAsyncResource() {
+    return getEventEmitterAsyncResource();
+  },
+  getEventListeners,
+  getMaxListeners,
+  kEvents,
+  kFirstEventParam,
+  listenerCount,
+  on,
+  once,
+  setMaxListeners,
+};
+})();

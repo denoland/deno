@@ -3,12 +3,14 @@
 import { op_node_fs_exists, op_node_fs_exists_sync } from "ext:core/ops";
 import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
 import { core, primordials } from "ext:core/mod.js";
-import { makeCallback } from "ext:deno_node/_fs/_fs_common.ts";
+const { makeCallback } = core.loadExtScript(
+  "ext:deno_node/_fs/_fs_common.ts",
+);
 import type { Buffer } from "node:buffer";
 const { kCustomPromisifiedSymbol } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
-import * as process from "node:process";
+const lazyProcess = core.createLazyLoader("node:process");
 
 const { ObjectDefineProperty, Promise, PromisePrototypeThen } = primordials;
 
@@ -63,7 +65,7 @@ export function existsSync(path: string | Buffer | URL): boolean {
   } catch (err) {
     // @ts-expect-error `code` is safe to check with optional chaining
     if (showExistsDeprecation && err?.code === "ERR_INVALID_ARG_TYPE") {
-      process.emitWarning(
+      lazyProcess().default.emitWarning(
         "Passing invalid argument types to fs.existsSync is deprecated",
         "DeprecationWarning",
         "DEP0187",

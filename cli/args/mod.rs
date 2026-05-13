@@ -689,6 +689,19 @@ impl CliOptions {
       .filter_map(|p| canonicalize_path(&p).ok())
   }
 
+  pub fn experimental_loaders(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
+    if self.flags.experimental_loaders.is_empty() {
+      return Ok(vec![]);
+    }
+
+    let mut modules = Vec::with_capacity(self.flags.experimental_loaders.len());
+    for loader_specifier in self.flags.experimental_loaders.iter() {
+      modules.push(resolve_url_or_path(loader_specifier, self.initial_cwd())?);
+    }
+
+    Ok(modules)
+  }
+
   pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
     if self.flags.preload.is_empty() {
       return Ok(vec![]);
@@ -1595,6 +1608,7 @@ pub fn get_default_v8_flags() -> Vec<String> {
   vec![
     "--stack-size=1024".to_string(),
     "--inspector-live-edit".to_string(),
+    "--external-memory-max-reasonable-size=0".to_string(),
   ]
 }
 

@@ -277,6 +277,7 @@ async fn run_subcommand(
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         };
         let mut flags = flags;
         flags.subcommand = DenoSubcommand::Task(task_flags.clone());
@@ -384,6 +385,7 @@ async fn run_subcommand(
                   recursive: false,
                   filter: None,
                   eval: false,
+                  no_prefix: false,
                 };
                 new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
                 let result = tools::task::execute_script(
@@ -491,6 +493,9 @@ async fn run_subcommand(
     ),
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
       tools::publish::publish(Arc::new(flags), publish_flags).await
+    }),
+    DenoSubcommand::Pack(pack_flags) => spawn_subcommand(async {
+      tools::pack::pack(flags.into(), pack_flags).await
     }),
     DenoSubcommand::Help(help_flags) => spawn_subcommand(async move {
       use std::io::Write;

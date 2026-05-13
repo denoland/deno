@@ -647,6 +647,7 @@ impl CliFactory {
             | DenoSubcommand::Upgrade { .. }
             | DenoSubcommand::Vendor
             | DenoSubcommand::Why { .. }
+            | DenoSubcommand::Pack { .. }
             | DenoSubcommand::Publish { .. }
             | DenoSubcommand::Help { .. }
             | DenoSubcommand::X { .. }
@@ -1278,6 +1279,7 @@ impl CliFactory {
     Ok(CliMainWorkerOptions {
       needs_test_modules: cli_options.sub_command().needs_test(),
       create_hmr_runner,
+      experimental_loaders: cli_options.experimental_loaders()?,
       maybe_coverage_dir,
       maybe_cpu_prof_config,
       default_npm_caching_strategy: cli_options.default_npm_caching_strategy(),
