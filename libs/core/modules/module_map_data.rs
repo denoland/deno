@@ -210,6 +210,10 @@ pub(crate) struct ModuleMapData {
   /// Set of scripts currently being loaded (for circular dep detection).
   pub(crate) lazy_script_loading: Rc<RefCell<HashSet<ModuleName>>>,
   pub(crate) sources: HashMap<ModuleSourceKey, Rc<v8::Global<v8::Object>>>,
+  /// Specifiers of `lazy_loaded_esm` / `lazy_loaded_js` files whose source
+  /// was actually compiled by V8 during snapshot creation. Their bytes live
+  /// in the snapshot blob; the binary does not need a separate copy.
+  pub(crate) consumed_lazy_specifiers: RefCell<HashSet<String>>,
 }
 
 /// Snapshot-compatible representation of this data.
