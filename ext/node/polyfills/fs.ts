@@ -207,7 +207,6 @@ const {
   ArrayBufferIsView,
   ArrayIsArray,
   BigInt,
-  DatePrototypeGetTime,
   DateUTC,
   Error,
   FunctionPrototypeBind,
@@ -3164,12 +3163,20 @@ function symlinkSync(
 
 // -- watch --
 
-const statPromisified = promisify(stat);
-const statAsync = async (filename: string): Promise<Stats | null> => {
+const statPromisified = promisify(stat) as {
+  (filename: string, options: { bigint: false }): Promise<Stats>;
+  (filename: string, options: { bigint: true }): Promise<BigIntStats>;
+};
+const statAsync = async (
+  filename: string,
+  bigint: boolean,
+): Promise<Stats | BigIntStats> => {
   try {
-    return await statPromisified(filename);
+    return bigint
+      ? await statPromisified(filename, { bigint: true })
+      : await statPromisified(filename, { bigint: false });
   } catch {
-    return emptyStats;
+    return bigint ? emptyBigIntStats : emptyStats;
   }
 };
 const emptyStats = new Stats(
@@ -3188,6 +3195,38 @@ const emptyStats = new Stats(
   DateUTC(1970, 0, 1, 0, 0, 0),
   DateUTC(1970, 0, 1, 0, 0, 0),
 ) as unknown as Stats;
+const emptyBigIntStats = new BigIntStats(
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+) as unknown as BigIntStats;
+
+// Mirrors libuv's `uv_fs_poll_t` field comparison so chmod/chown,
+// file replacement, and sub-mtime-resolution changes all fire "change".
+function statsChanged(
+  prev: Stats | BigIntStats,
+  curr: Stats | BigIntStats,
+): boolean {
+  return prev.mtimeMs !== curr.mtimeMs ||
+    prev.ctimeMs !== curr.ctimeMs ||
+    prev.size !== curr.size ||
+    prev.mode !== curr.mode ||
+    prev.uid !== curr.uid ||
+    prev.gid !== curr.gid ||
+    prev.ino !== curr.ino ||
+    prev.dev !== curr.dev;
+}
 
 function asyncIterableToCallback<T>(
   iter: AsyncIterable<T>,
@@ -3645,21 +3684,20 @@ class StatWatcher extends EventEmitter {
       this.#refCount++;
     }
 
+    const bigint = this.#bigint;
     (async () => {
-      let prev = await statAsync(filename);
+      let prev = await statAsync(filename, bigint);
 
-      if (prev === emptyStats) {
+      // libuv emits an initial "change" only when the first stat fails.
+      if (prev === emptyStats || prev === emptyBigIntStats) {
         this.emit("change", prev, prev);
       }
 
       try {
         while (true) {
           await this.#sleep(interval);
-          const curr = await statAsync(filename);
-          if (
-            DatePrototypeGetTime(curr?.mtime) !==
-              DatePrototypeGetTime(prev?.mtime)
-          ) {
+          const curr = await statAsync(filename, bigint);
+          if (statsChanged(prev, curr)) {
             this.emit("change", curr, prev);
             prev = curr;
           }

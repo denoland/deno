@@ -3127,6 +3127,7 @@
     // "parallel/test-snapshot-console.js": {},
     // "parallel/test-snapshot-coverage.js": {},
     "parallel/test-socket-address.js": {},
+    "parallel/test-socketaddress.js": {},
     "parallel/test-socket-write-after-fin-error.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-source-map-enable.js": {},
