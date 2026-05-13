@@ -1235,6 +1235,12 @@
     core: capturedCore,
     internals,
   };
+  // Expose the captured view so 99_main.js can reinstall it on globalThis
+  // permanently after bootstrap (instead of deleting __bootstrap), so any
+  // path that loads a lazy_loaded_js script - including the synthetic_esm
+  // path which doesn't go through this file's `loadExtScript` wrapper -
+  // sees a populated __bootstrap.
+  internals.capturedBootstrap = capturedBootstrap;
 
   // Direct bindings on `globalThis`
   ObjectAssign(globalThis, { queueMicrotask });

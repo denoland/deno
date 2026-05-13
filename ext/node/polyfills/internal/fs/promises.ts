@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+// deno-lint-ignore-file no-explicit-any
+
 import { core } from "ext:core/mod.js";
 import type { WriteFileOptions } from "ext:deno_node/_fs/_fs_common.ts";
 import type { Encodings } from "ext:deno_node/_utils.ts";
@@ -28,18 +30,37 @@ const { ERR_METHOD_NOT_IMPLEMENTED } = core.loadExtScript(
 const lazyPath = core.createLazyLoader("node:path");
 const lazyProcess = core.createLazyLoader("node:process");
 
-const { Promise, PromiseReject, SymbolAsyncDispose } = primordials;
+const { Promise, PromiseReject, SafeArrayIterator, SymbolAsyncDispose } = primordials;
+
+// Promisified fs.X wrappers MUST NOT be built at module body. handle.ts /
+// internal/fs/promises.ts are loaded during the initial `fs.promises`
+// access, and calling `lazyFs()` here re-enters `node:fs`'s evaluating body
+// (its `export const promises = mod.promises` line re-triggers `get
+// promises` on fs.ts, whose lazyInternalPromises() then hits a TDZ on the
+// in-flight `default` binding). Build wrappers lazily on first call.
+const _promisifyCache: Record<string, any> = { __proto__: null } as any;
+function lazyPromisifyFs(name: string): any {
+  return (...args: any[]) => {
+    let fn = _promisifyCache[name];
+    if (fn === undefined) {
+      fn = promisify((lazyFs() as any)[name]);
+      _promisifyCache[name] = fn;
+    }
+    return fn(...new SafeArrayIterator(args));
+  };
+}
+
 
 // -- access --
 
-const accessPromise = promisify(lazyFs().access) as (
+const accessPromise = lazyPromisifyFs("access") as (
   path: string | Buffer | URL,
   mode?: number,
 ) => Promise<void>;
 
 // -- appendFile --
 
-const appendFilePromise = promisify(lazyFs().appendFile) as (
+const appendFilePromise = lazyPromisifyFs("appendFile") as (
   path: string | number | URL,
   data: string | Uint8Array,
   options?: Encodings | WriteFileOptions,
@@ -47,14 +68,14 @@ const appendFilePromise = promisify(lazyFs().appendFile) as (
 
 // -- chmod --
 
-const chmodPromise = promisify(lazyFs().chmod) as (
+const chmodPromise = lazyPromisifyFs("chmod") as (
   path: string | Buffer | URL,
   mode: string | number,
 ) => Promise<void>;
 
 // -- chown --
 
-const chownPromise = promisify(lazyFs().chown) as (
+const chownPromise = lazyPromisifyFs("chown") as (
   path: string | Buffer | URL,
   uid: number,
   gid: number,
@@ -71,22 +92,22 @@ const lchmodPromise: (
     return await op_node_lchmod(path, mode);
   };
 
-const lchownPromise = promisify(lazyFs().lchown) as (
+const lchownPromise = lazyPromisifyFs("lchown") as (
   path: string | Buffer | URL,
   uid: number,
   gid: number,
 ) => Promise<void>;
 
-const linkPromise = promisify(lazyFs().link) as (
+const linkPromise = lazyPromisifyFs("link") as (
   existingPath: string | Buffer | URL,
   newPath: string | Buffer | URL,
 ) => Promise<void>;
 
-const unlinkPromise = promisify(lazyFs().unlink) as (
+const unlinkPromise = lazyPromisifyFs("unlink") as (
   path: string | Buffer | URL,
 ) => Promise<void>;
 
-const renamePromise = promisify(lazyFs().rename) as (
+const renamePromise = lazyPromisifyFs("rename") as (
   oldPath: string | Buffer | URL,
   newPath: string | Buffer | URL,
 ) => Promise<void>;
@@ -100,7 +121,7 @@ type rmOptions = {
   retryDelay?: number;
 };
 
-const rmPromise = promisify(lazyFs().rm) as (
+const rmPromise = lazyPromisifyFs("rm") as (
   path: string | URL,
   options?: rmOptions,
 ) => Promise<void>;
@@ -113,7 +134,7 @@ type rmdirOptions = {
   retryDelay?: number;
 };
 
-const rmdirPromise = promisify(lazyFs().rmdir) as (
+const rmdirPromise = lazyPromisifyFs("rmdir") as (
   path: string | Buffer | URL,
   options?: rmdirOptions,
 ) => Promise<void>;
@@ -123,12 +144,12 @@ type MkdirOptions =
   | number
   | boolean;
 
-const mkdirPromise = promisify(lazyFs().mkdir) as (
+const mkdirPromise = lazyPromisifyFs("mkdir") as (
   path: string | URL,
   options?: MkdirOptions,
 ) => Promise<string | undefined>;
 
-const mkdtempPromise = promisify(lazyFs().mkdtemp) as (
+const mkdtempPromise = lazyPromisifyFs("mkdtemp") as (
   prefix: string | Buffer | Uint8Array | URL,
   options?: { encoding: string } | string,
 ) => Promise<string>;
@@ -201,14 +222,14 @@ type OpendirOptions = {
   bufferSize?: number;
 };
 
-const opendirPromise = promisify(lazyFs().opendir) as (
+const opendirPromise = lazyPromisifyFs("opendir") as (
   path: string | Buffer | URL,
   options?: OpendirOptions,
 ) => Promise<Dir>;
 
 // -- symlink --
 
-const symlinkPromise = promisify(lazyFs().symlink) as (
+const symlinkPromise = lazyPromisifyFs("symlink") as (
   target: string | Buffer | URL,
   path: string | Buffer | URL,
   type?: string,
@@ -216,14 +237,14 @@ const symlinkPromise = promisify(lazyFs().symlink) as (
 
 // -- truncate --
 
-const truncatePromise = promisify(lazyFs().truncate) as (
+const truncatePromise = lazyPromisifyFs("truncate") as (
   path: string | URL,
   len?: number,
 ) => Promise<void>;
 
 // -- utimes --
 
-const utimesPromise = promisify(lazyFs().utimes) as (
+const utimesPromise = lazyPromisifyFs("utimes") as (
   path: string | URL,
   atime: number | string | Date,
   mtime: number | string | Date,
@@ -231,7 +252,7 @@ const utimesPromise = promisify(lazyFs().utimes) as (
 
 // -- writeFile --
 
-const writeFilePromise = promisify(lazyFs().writeFile) as (
+const writeFilePromise = lazyPromisifyFs("writeFile") as (
   pathOrRid: string | number | URL | FileHandle,
   data:
     | string
@@ -243,30 +264,30 @@ const writeFilePromise = promisify(lazyFs().writeFile) as (
 
 // -- realpath --
 
-const realpathPromise = promisify(lazyFs().realpath) as (
+const realpathPromise = lazyPromisifyFs("realpath") as (
   path: string | Buffer,
   options?: string | { encoding?: string },
 ) => Promise<string | Buffer>;
 
 // -- stat --
 
-const statPromise = promisify(lazyFs().stat) as (
+const statPromise = lazyPromisifyFs("stat") as (
   path: string | Buffer | URL,
   options?: { bigint?: boolean },
 ) => Promise<unknown>;
 
 // -- statfs --
 
-const statfsPromise = promisify(lazyFs().statfs) as (
+const statfsPromise = lazyPromisifyFs("statfs") as (
   path: string | Buffer | URL,
   options?: { bigint?: boolean },
 ) => Promise<unknown>;
 
 // -- readFile / readlink --
 
-const readFilePromise = promisify(lazyFs().readFile);
+const readFilePromise = lazyPromisifyFs("readFile");
 
-const readlinkPromise = promisify(lazyFs().readlink) as (
+const readlinkPromise = lazyPromisifyFs("readlink") as (
   path: string | Buffer | URL,
   opt?: { encoding?: string | null },
 ) => Promise<string | Uint8Array>;
@@ -306,7 +327,7 @@ const promises = {
   writeFile: writeFilePromise,
   appendFile: appendFilePromise,
   readFile: readFilePromise,
-  watch: lazyFs().watchPromise,
+  watch: ((...args: any[]) => (lazyFs() as any).watchPromise(...new SafeArrayIterator(args))) as any,
 };
 
 export default promises;

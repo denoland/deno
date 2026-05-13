@@ -104,7 +104,7 @@ const _streamWritable = core.loadExtScript(
 // scripts extend net.Socket at module body, which pulls node:net (and then
 // node:stream) into the snapshot.
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
-import assertStrict from "node:assert/strict";
+const assertStrict = core.createLazyLoader("node:assert/strict");
 const asyncHooks = core.loadExtScript("ext:deno_node/async_hooks.ts").default;
 const {
   emitAfter: internalAsyncHooksEmitAfter,
@@ -147,9 +147,8 @@ const inspectorPromises = core.loadExtScript(
 const internalAssertMyersDiff = core.loadExtScript(
   "ext:deno_node/internal/assert/myers_diff.js",
 );
-const internalCp = core.loadExtScript(
-  "ext:deno_node/internal/child_process.ts",
-).default;
+// internal/child_process pulls deno_process/40_process.js -> 22_body
+// -> 06_streams (208 KB). Lazy-loaded via lazyNodeModules.
 const internalCryptoCertificate = core.loadExtScript(
   "ext:deno_node/internal/crypto/certificate.ts",
 ).default;
@@ -200,8 +199,12 @@ const internalDnsPromises = core.loadExtScript(
 ).default;
 const internalBuffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const internalErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
-import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
+const internalEventTarget = core.createLazyLoader(
+  "ext:deno_node/internal/event_target.mjs",
+);
+const internalFsUtils = core.createLazyLoader(
+  "ext:deno_node/internal/fs/utils.mjs",
+);
 // internal/http, internal/http2/core, internal/http2/util are lazy-loaded
 // via `lazyNodeModules` below. Loading them eagerly here pulls the entire
 // http2 ESM chain (node:http2 -> http2.ts -> node:http -> http.ts -> the
@@ -244,9 +247,10 @@ const internalValidators = core.loadExtScript(
 const internalConsole = core.loadExtScript(
   "ext:deno_node/internal/console/constructor.mjs",
 ).default;
-// net is lazy-loaded via `lazyNodeModules` below: net.ts extends Duplex
-// from node:stream at module body, which pulls the stream subtree into
-// the snapshot.
+// net stays eager: internal/tty.js's TTYWriteStream extends net.Socket
+// inside its constructor, and process bootstrap creates a TTYWriteStream
+// for stdout/stderr whenever they're TTYs (every interactive run).
+import net from "node:net";
 const os = core.loadExtScript("ext:deno_node/os.ts").default;
 import pathPosix from "node:path/posix";
 import pathWin32 from "node:path/win32";
@@ -255,8 +259,8 @@ const perfHooks = core.loadExtScript("ext:deno_node/perf_hooks.js").default;
 const punycode = core.loadExtScript("ext:deno_node/punycode.ts").default;
 import process from "node:process";
 const querystring = core.loadExtScript("ext:deno_node/querystring.js").default;
-import readline from "node:readline";
-import readlinePromises from "node:readline/promises";
+const readline = core.createLazyLoader("node:readline");
+const readlinePromises = core.createLazyLoader("node:readline/promises");
 const repl = core.createLazyLoader("node:repl");
 const internalRepl = core.createLazyLoader(
   "ext:deno_node/internal/repl.ts",
@@ -270,7 +274,8 @@ const sqlite = core.loadExtScript("ext:deno_node/sqlite.ts");
 import stream from "node:stream";
 const streamConsumers = core.loadExtScript("ext:deno_node/stream/consumers.js");
 import streamPromises from "node:stream/promises";
-const streamWeb = core.loadExtScript("ext:deno_node/stream/web.js");
+// stream/web pulls ext:deno_web/14_compression.js -> 06_streams (208 KB).
+// Only loaded when `require("node:stream/web")` happens.
 const stringDecoder =
   core.loadExtScript("ext:deno_node/string_decoder.ts").default;
 const test = core.loadExtScript("ext:deno_node/testing.ts").default;
@@ -281,7 +286,7 @@ const timersPromises = core.loadExtScript(
 );
 const tls = core.createLazyLoader("node:tls");
 const traceEvents = core.loadExtScript("ext:deno_node/trace_events.ts").default;
-const tty = core.createLazyLoader("node:tty");
+import tty from "node:tty";
 const url = core.loadExtScript("ext:deno_node/url.ts");
 const utilTypes = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 const util = core.loadExtScript("ext:deno_node/util.ts");
@@ -320,7 +325,6 @@ const lazyNodeModules = {
   "internal/http2/util": () =>
     core.loadExtScript("ext:deno_node/internal/http2/util.ts").default,
   "internal/streams/lazy_transform": () => internalStreamsLazyTransform().default,
-  "tty": () => tty().default,
   "child_process": () => core.loadExtScript("ext:deno_node/child_process.ts"),
   "crypto": () => core.loadExtScript("ext:deno_node/crypto.ts").default,
   "dgram": () => core.loadExtScript("ext:deno_node/dgram.ts").default,
@@ -331,11 +335,18 @@ const lazyNodeModules = {
   "_tls_common": () =>
     core.loadExtScript("ext:deno_node/_tls_common.ts").default,
   "_tls_wrap": () => core.loadExtScript("ext:deno_node/_tls_wrap.js").default,
-  "net": () => core.loadExtScript("ext:deno_node/net.ts").default,
   "repl": () => repl().default,
   "internal/repl": () => internalRepl().default,
   "fs/promises": () =>
     core.loadExtScript("ext:deno_node/fs/promises.ts").fsPromises,
+  "assert/strict": () => assertStrict().default,
+  "internal/event_target": () => internalEventTarget().default,
+  "internal/fs/utils": () => internalFsUtils().default,
+  "readline": () => readline().default,
+  "readline/promises": () => readlinePromises().default,
+  "internal/child_process": () =>
+    core.loadExtScript("ext:deno_node/internal/child_process.ts").default,
+  "stream/web": () => core.loadExtScript("ext:deno_node/stream/web.js"),
 };
 
 function defineLazyNativeModule(name, loader) {
@@ -366,7 +377,6 @@ function setupBuiltinModules() {
     "_stream_transform": _streamTransform,
     "_stream_writable": _streamWritable,
     assert,
-    "assert/strict": assertStrict,
     "async_hooks": asyncHooks,
     buffer,
     cluster,
@@ -382,7 +392,6 @@ function setupBuiltinModules() {
     "inspector/promises": inspectorPromises,
     "internal/assert/myers_diff": internalAssertMyersDiff.default,
     "internal/console/constructor": internalConsole,
-    "internal/child_process": internalCp,
     "internal/crypto/certificate": internalCryptoCertificate,
     "internal/crypto/diffiehellman": internalCryptoDiffiehellman,
     "internal/crypto/hash": internalCryptoHash,
@@ -400,8 +409,6 @@ function setupBuiltinModules() {
     "internal/dns/promises": internalDnsPromises,
     "internal/buffer": internalBuffer.default,
     "internal/errors": internalErrors,
-    "internal/event_target": internalEventTarget,
-    "internal/fs/utils": internalFsUtils,
     "internal/priority_queue": internalPriorityQueue.default,
     "internal/readline/utils": internalReadlineUtils.default,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
@@ -415,6 +422,7 @@ function setupBuiltinModules() {
     "internal/util": internalUtil,
     "internal/validators": internalValidators,
     module: Module,
+    net,
     os,
     "path/posix": pathPosix,
     "path/win32": pathWin32,
@@ -431,13 +439,10 @@ function setupBuiltinModules() {
       return punycode;
     },
     querystring,
-    readline,
-    "readline/promises": readlinePromises,
     sqlite,
     stream,
     "stream/consumers": streamConsumers,
     "stream/promises": streamPromises,
-    "stream/web": streamWeb,
     string_decoder: stringDecoder,
     sys: util,
     test,
@@ -445,6 +450,7 @@ function setupBuiltinModules() {
     timers,
     "timers/promises": timersPromises,
     trace_events: traceEvents,
+    tty,
     url,
     util,
     "util/types": utilTypes,

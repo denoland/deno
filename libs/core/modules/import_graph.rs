@@ -18,6 +18,18 @@
 //! For `lazy_*` edges `from` is the calling script (best-effort via the v8
 //! stack trace) and is `"<unknown>"` if no user frame could be identified.
 
+// This module is a developer-facing instrumentation knob gated entirely on
+// env vars set by humans running snapshot builds or debugging startup time
+// (`DENO_SNAPSHOT_IMPORT_GRAPH`, `DENO_LOG_LAZY_LOAD`). Using `sys_traits`
+// here would force every embedder to plumb a Sys through, for zero benefit
+// since this code never runs except when those env vars are set. Same for
+// stderr: this is a debug print to a human, not user-facing CLI output.
+#![allow(
+  clippy::disallowed_methods,
+  clippy::print_stderr,
+  reason = "developer-facing snapshot/startup instrumentation gated on env vars"
+)]
+
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::BufWriter;
@@ -63,7 +75,7 @@ pub(crate) fn is_enabled() -> bool {
 fn stderr_log_enabled() -> bool {
   static ENABLED: OnceLock<bool> = OnceLock::new();
   *ENABLED.get_or_init(|| {
-    matches!(std::env::var_os(STDERR_ENV_VAR).as_deref(), Some(v) if v != "0" && v != "")
+    matches!(std::env::var_os(STDERR_ENV_VAR).as_deref(), Some(v) if v != "0" && !v.is_empty())
   })
 }
 

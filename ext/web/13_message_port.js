@@ -56,12 +56,6 @@ const {
   setIsTrusted,
 } = core.loadExtScript("ext:deno_web/02_event.js");
 
-const {
-  ReadableStream,
-  WritableStream,
-  TransformStream,
-} = core.loadExtScript("ext:deno_web/06_streams.js");
-
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 // counter of how many message ports are actively refed
@@ -604,12 +598,9 @@ function markNotSerializable(target) {
   });
 }
 
-// Streams are defined in this extension, so mark them here. Fetch types
-// (Headers / Request / Response) call `markNotSerializable` themselves at
-// the bottom of their respective modules.
-markNotSerializable(ReadableStream.prototype);
-markNotSerializable(WritableStream.prototype);
-markNotSerializable(TransformStream.prototype);
+// Streams self-register their prototypes at the bottom of 06_streams.js.
+// Fetch types (Headers / Request / Response) call `markNotSerializable`
+// themselves at the bottom of their respective modules.
 
 function structuredClone(value, options) {
   // Fast path for primitives that StructuredSerialize returns by reference:

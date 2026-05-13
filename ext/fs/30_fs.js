@@ -99,11 +99,14 @@ const { read, readSync, write, writeSync } = core.loadExtScript(
   "ext:deno_io/12_io.js",
 );
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
-const {
-  readableStreamForRid,
-  ReadableStreamPrototype,
-  writableStreamForRid,
-} = core.loadExtScript("ext:deno_web/06_streams.js");
+// Defer loading the 208 KB `06_streams.js` polyfill: these helpers are only
+// used inside File class methods and writeFile-family functions, so pay
+// the parse cost on first use rather than at every startup.
+let _streamsImpl;
+function lazyStreams() {
+  return _streamsImpl ??
+    (_streamsImpl = core.loadExtScript("ext:deno_web/06_streams.js"));
+}
 const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 
 function chmodSync(path, mode) {
@@ -659,14 +662,14 @@ class FsFile {
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRid(this.#rid);
+      this.#readable = lazyStreams().readableStreamForRid(this.#rid);
     }
     return this.#readable;
   }
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(
+      this.#writable = lazyStreams().writableStreamForRid(
         this.#rid,
         true,
         undefined,
@@ -859,7 +862,7 @@ async function writeFile(
     options.signal[abortSignal.add](abortHandler);
   }
   try {
-    if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, data)) {
+    if (ObjectPrototypeIsPrototypeOf(lazyStreams().ReadableStreamPrototype, data)) {
       const file = await open(path, {
         mode: options.mode,
         append: options.append ?? false,
@@ -906,7 +909,7 @@ function writeTextFile(
   data,
   options = { __proto__: null },
 ) {
-  if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, data)) {
+  if (ObjectPrototypeIsPrototypeOf(lazyStreams().ReadableStreamPrototype, data)) {
     return writeFile(
       path,
       data.pipeThrough(new TextEncoderStream()),

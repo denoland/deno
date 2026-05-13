@@ -7285,6 +7285,19 @@ internals.resourceForReadableStream = resourceForReadableStream;
 internals.readableStreamForRid = readableStreamForRid;
 internals.writableStreamForRid = writableStreamForRid;
 
+// Register stream prototypes with the structured clone allowlist.
+// 13_message_port used to do this from its own module body, but doing it
+// there pulled this 208 KB module into the snapshot. Inverting the import
+// keeps message_port snapshot-light.
+{
+  const { markNotSerializable } = core.loadExtScript(
+    "ext:deno_web/13_message_port.js",
+  );
+  markNotSerializable(ReadableStream.prototype);
+  markNotSerializable(WritableStream.prototype);
+  markNotSerializable(TransformStream.prototype);
+}
+
 return {
   _isClosedPromise,
   // Non-Public

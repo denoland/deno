@@ -54,14 +54,29 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const lazyProcess = core.createLazyLoader("node:process");
 
-const fchmodPromise = promisify(lazyFs().fchmod) as (
+// Promisified wrappers must NOT be built at module body: handle.ts is loaded
+// during `fs.promises` evaluation, and calling `lazyFs()` here re-enters
+// `node:fs`'s still-evaluating module body. Its `export const promises =
+// mod.promises` then re-triggers `get promises` -> `lazyInternalPromises()
+// .default` which is in TDZ. Build the wrappers on first call instead.
+let _fchmodPromise: any;
+const fchmodPromise = (
   fd: number,
   mode: string | number,
-) => Promise<void>;
-const fdatasyncPromise = promisify(lazyFs().fdatasync) as (
-  fd: number,
-) => Promise<void>;
-const fsyncPromise = promisify(lazyFs().fsync) as (fd: number) => Promise<void>;
+): Promise<void> => {
+  _fchmodPromise ??= promisify(lazyFs().fchmod);
+  return _fchmodPromise(fd, mode);
+};
+let _fdatasyncPromise: any;
+const fdatasyncPromise = (fd: number): Promise<void> => {
+  _fdatasyncPromise ??= promisify(lazyFs().fdatasync);
+  return _fdatasyncPromise(fd);
+};
+let _fsyncPromise: any;
+const fsyncPromise = (fd: number): Promise<void> => {
+  _fsyncPromise ??= promisify(lazyFs().fsync);
+  return _fsyncPromise(fd);
+};
 
 const {
   Error,
@@ -85,9 +100,22 @@ export const kRef = Symbol("kRef");
 export const kUnref = Symbol("kUnref");
 const kLocked = Symbol("kLocked");
 
-const ftruncatePromise = promisify(lazyFs().ftruncate);
-const fchownPromise = promisify(lazyFs().fchown);
-const futimesPromise = promisify(lazyFs().futimes);
+// See `fchmodPromise` above for why these are deferred.
+let _ftruncatePromise: any;
+const ftruncatePromise = (...args: any[]) => {
+  _ftruncatePromise ??= promisify(lazyFs().ftruncate);
+  return _ftruncatePromise(...new SafeArrayIterator(args));
+};
+let _fchownPromise: any;
+const fchownPromise = (...args: any[]) => {
+  _fchownPromise ??= promisify(lazyFs().fchown);
+  return _fchownPromise(...new SafeArrayIterator(args));
+};
+let _futimesPromise: any;
+const futimesPromise = (...args: any[]) => {
+  _futimesPromise ??= promisify(lazyFs().futimes);
+  return _futimesPromise(...new SafeArrayIterator(args));
+};
 
 interface WriteResult {
   bytesWritten: number;

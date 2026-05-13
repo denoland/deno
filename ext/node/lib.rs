@@ -426,6 +426,11 @@ deno_core::extension!(deno_node,
     // though most programs never directly require('stream').
     "node:stream" = "stream.ts",
     "node:stream/promises" = "stream/promises.js",
+    // node:net and node:tty are needed at every TTY-stdout startup via
+    // internal/tty.js's TTYWriteStream constructor extending net.Socket.
+    // Keeping them eager is a startup-time win for interactive runs.
+    "node:net" = "net_esm.ts",
+    "node:tty" = "tty_esm.ts",
   ],
   lazy_loaded_esm = [
     dir "polyfills",
@@ -499,7 +504,6 @@ deno_core::extension!(deno_node,
     "node:timers" = "timers_esm.ts",
     "node:timers/promises" = "timers/promises_esm.ts",
     "node:tls" = "tls_esm.ts",
-    "node:tty" = "tty_esm.ts",
     "node:v8" = "v8_esm.ts",
     "node:child_process" = "child_process_esm.ts",
     "node:fs" = "fs_esm.ts",
@@ -514,7 +518,6 @@ deno_core::extension!(deno_node,
     "node:_stream_readable" = "internal/streams/readable_esm.js",
     "node:_stream_transform" = "internal/streams/transform_esm.js",
     "node:_stream_writable" = "internal/streams/writable_esm.js",
-    "node:net" = "net_esm.ts",
     "node:_tls_common" = "_tls_common_esm.ts",
     "node:_tls_wrap" = "_tls_wrap_esm.js",
     "node:assert" = "assert_esm.ts",
