@@ -8,7 +8,7 @@
 //! Deno type definitions so that the `Deno` namespace and other Deno-specific
 //! globals are available.
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -41,7 +41,7 @@ pub fn generate_tsconfig(
   deno_compiler_options: Option<&Value>,
   deno_imports: Option<&Value>,
   files: &[String],
-  http_modules: &BTreeSet<Url>,
+  http_modules: &BTreeMap<Url, String>,
 ) -> Result<GeneratedTsConfig, std::io::Error> {
   // Write Deno type definitions to node_modules/@types/deno/
   let types_dir = project_root.join("node_modules/@types/deno");
@@ -157,7 +157,7 @@ fn build_tsconfig(
   deno_compiler_options: Option<&Value>,
   deno_imports: Option<&Value>,
   check_files: &[String],
-  http_modules: &BTreeSet<Url>,
+  http_modules: &BTreeMap<Url, String>,
 ) -> Value {
   let mut compiler_options = base_compiler_options();
 
@@ -353,24 +353,18 @@ fn resolve_jsr_types_entry(pkg_dir: &Path) -> Option<String> {
 
 /// Generate tsconfig "paths" entries for http(s): specifiers.
 ///
-/// For each absolute URL the installer materialized under `.deno/remote/`, emit:
-///   `"https://deno.land/x/jose@v6.2.3/index.ts": ["./remote/deno.land/x/jose@v6.2.3/index.ts"]`
+/// The installer returns a map from user-facing URL → local mirror path
+/// (already relative to `.deno/`). For X-TypeScript-Types-bearing modules
+/// the local path points at the `.d.ts` rather than the JS source.
 ///
-/// Paths are relative to the tsconfig location (`.deno/`). With
-/// `moduleResolution: "bundler"`, stock tsc accepts colon-containing keys
-/// like `https://...`, which lets us redirect URL imports to local files.
-fn generate_http_paths(http_modules: &BTreeSet<Url>) -> Map<String, Value> {
+/// With `moduleResolution: "bundler"`, stock tsc accepts colon-containing
+/// keys like `https://...`, which lets us redirect URL imports to local
+/// files.
+fn generate_http_paths(
+  http_modules: &BTreeMap<Url, String>,
+) -> Map<String, Value> {
   let mut paths = Map::new();
-  for url in http_modules {
-    let Some(host) = url.host_str() else {
-      continue;
-    };
-    let path = url.path();
-    if path.ends_with('/') || path.is_empty() {
-      continue;
-    }
-    let rel = path.trim_start_matches('/');
-    let local = format!("./remote/{host}/{rel}");
+  for (url, local) in http_modules {
     paths.insert(url.as_str().to_string(), json!([local]));
   }
   paths
@@ -705,7 +699,7 @@ mod tests {
   fn test_build_tsconfig_includes_relative_to_deno_dir() {
     let project_root = Path::new("/tmp/project");
     let tsconfig =
-      build_tsconfig(project_root, None, None, &[], &BTreeSet::new());
+      build_tsconfig(project_root, None, None, &[], &BTreeMap::new());
 
     let include = tsconfig.get("include").unwrap().as_array().unwrap();
     assert_eq!(include, &vec![json!("../**/*")]);
@@ -719,7 +713,7 @@ mod tests {
     let project_root = Path::new("/tmp/project");
     let files = vec!["main.ts".to_string(), "lib.ts".to_string()];
     let tsconfig =
-      build_tsconfig(project_root, None, None, &files, &BTreeSet::new());
+      build_tsconfig(project_root, None, None, &files, &BTreeMap::new());
 
     // Should use "files" instead of "include"/"exclude"
     assert!(tsconfig.get("include").is_none());
@@ -745,7 +739,7 @@ mod tests {
       Some(&compiler_options),
       Some(&imports),
       &[],
-      &BTreeSet::new(),
+      &BTreeMap::new(),
     );
 
     let paths = tsconfig

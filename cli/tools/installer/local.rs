@@ -169,12 +169,19 @@ async fn install_top_level(
   // mappings for stock TypeScript compatibility. Run before the report so
   // installed jsr packages appear in the Dependencies section.
   let cli_options = factory.cli_options()?;
-  let installed_jsr =
-    super::npm_compat::setup_npm_compat(cli_options.initial_cwd())
-      .unwrap_or_else(|e| {
-        log::warn!("Failed to set up TypeScript compatibility: {e}");
-        vec![]
-      });
+  let file_fetcher = factory.file_fetcher()?.clone();
+  let installed_jsr = match super::npm_compat::setup_npm_compat(
+    cli_options.initial_cwd(),
+    &file_fetcher,
+  )
+  .await
+  {
+    Ok(v) => v,
+    Err(e) => {
+      log::warn!("Failed to set up TypeScript compatibility: {e}");
+      vec![]
+    }
+  };
 
   let install_reporter = factory.install_reporter()?.unwrap().clone();
   let workspace = factory.workspace_resolver().await?;

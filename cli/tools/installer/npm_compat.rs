@@ -10,7 +10,7 @@
 //! This enables stock TypeScript tooling (tsc, tsserver, VS Code) to work
 //! with Deno projects that use jsr:, npm:, and http(s): specifiers.
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
@@ -24,6 +24,8 @@ use deno_core::url::Url;
 use deno_semver::Version;
 use deno_semver::VersionReq;
 
+use crate::file_fetcher::CliFileFetcher;
+
 /// Installed JSR package info for reporting.
 pub struct InstalledJsrPackage {
   /// e.g. "@jsr/std__assert"
@@ -36,8 +38,9 @@ pub struct InstalledJsrPackage {
 ///
 /// Called after `deno install` completes npm resolution and node_modules setup.
 /// Returns the list of newly installed JSR packages for reporting.
-pub fn setup_npm_compat(
+pub async fn setup_npm_compat(
   project_root: &Path,
+  file_fetcher: &CliFileFetcher,
 ) -> Result<Vec<InstalledJsrPackage>, AnyError> {
   let deno_json = read_deno_json(project_root)?;
   let Some(deno_json) = deno_json else {
@@ -70,11 +73,19 @@ pub fn setup_npm_compat(
 
   // Mirror http(s): modules (and their transitive remote/relative imports)
   // into .deno/remote/<host><path>/...
-  let http_modules = install_http_modules(project_root, deno_imports)
-    .unwrap_or_else(|e| {
+  let http_modules = match install_http_modules(
+    project_root,
+    deno_imports,
+    file_fetcher,
+  )
+  .await
+  {
+    Ok(map) => map,
+    Err(e) => {
       log::warn!("Failed to materialize remote modules: {e}");
-      BTreeSet::new()
-    });
+      BTreeMap::new()
+    }
+  };
 
   // Generate .deno/tsconfig.json and ensure root tsconfig.json extends it
   generate_deno_tsconfig(
@@ -111,7 +122,7 @@ fn generate_deno_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
   deno_imports: Option<&Value>,
-  http_modules: &BTreeSet<Url>,
+  http_modules: &BTreeMap<Url, String>,
 ) -> Result<(), AnyError> {
   let generated = crate::tsc::tsconfig_gen::generate_tsconfig(
     project_root,
@@ -239,24 +250,35 @@ fn install_jsr_packages(
   Ok(installed)
 }
 
-/// Materialize http(s): modules referenced from `deno.json` `imports` (and their
-/// transitive remote/relative imports) into `.deno/remote/<host><path>`.
+/// A resolved entry for the tsconfig `paths` table: maps a user-facing URL
+/// (whatever appears in source as `import "..."`) to the local mirror file
+/// path (relative to `.deno/`) that tsc should resolve it to.
+pub type HttpModulePaths = BTreeMap<Url, String>;
+
+/// Materialize http(s): modules referenced from `deno.json` `imports` (and
+/// their transitive remote/relative imports) into `.deno/remote/<host><path>`.
 ///
-/// This is the prototype scanner: it parses module specifiers with a regex
-/// rather than a real JS/TS parser. Good enough to walk a typical Deno-style
-/// remote module graph. The production implementation should use deno_graph.
+/// Uses `CliFileFetcher`, which transparently reuses `DENO_DIR` cache, follows
+/// redirects, and exposes response headers. When a module advertises types via
+/// the `X-TypeScript-Types` header (esm.sh and friends), the types URL is
+/// fetched too and the paths entry for the original URL is pointed at the
+/// types file so tsc gets real declarations.
 ///
-/// Returns the set of fully-resolved http(s) URLs that were successfully
-/// materialized; the tsconfig generator turns each into a `paths` entry.
-pub fn install_http_modules(
+/// Module specifier discovery within source still uses a regex scanner — this
+/// is acknowledged tech debt; a deno_graph walk is the production answer.
+///
+/// Returns a map from user-facing URL to the local mirror path (relative to
+/// `.deno/`), suitable for direct use as tsconfig `paths` values.
+pub async fn install_http_modules(
   project_root: &Path,
   deno_imports: Option<&Value>,
-) -> Result<BTreeSet<Url>, AnyError> {
-  let mut fetched: BTreeSet<Url> = BTreeSet::new();
+  file_fetcher: &CliFileFetcher,
+) -> Result<HttpModulePaths, AnyError> {
+  let mut paths: HttpModulePaths = BTreeMap::new();
   let mut queue: VecDeque<Url> = VecDeque::new();
 
   let Some(imports) = deno_imports.and_then(|v| v.as_object()) else {
-    return Ok(fetched);
+    return Ok(paths);
   };
 
   for (_alias, target) in imports {
@@ -272,63 +294,130 @@ pub fn install_http_modules(
   }
 
   if queue.is_empty() {
-    return Ok(fetched);
+    return Ok(paths);
   }
 
   let remote_root = project_root.join(".deno").join("remote");
 
-  while let Some(url) = queue.pop_front() {
-    if fetched.contains(&url) {
+  while let Some(requested_url) = queue.pop_front() {
+    if paths.contains_key(&requested_url) {
       continue;
     }
 
-    let Some(local_path) = url_to_local_path(&remote_root, &url) else {
-      continue;
-    };
-
-    let body = if local_path.exists() {
-      std::fs::read_to_string(&local_path).ok()
-    } else {
-      log::debug!("Fetching {}", url);
-      let out = std::process::Command::new("curl")
-        .args(["-fsSL", url.as_str()])
-        .output()
-        .map_err(|e| anyhow!("curl failed for {url}: {e}"))?;
-      if !out.status.success() {
-        log::debug!("Skipping {} (fetch failed)", url);
+    // Fetch (cached) source + headers via the standard file fetcher. Follows
+    // redirects; `file.url` is the canonical post-redirect URL.
+    let file = match file_fetcher.fetch_bypass_permissions(&requested_url).await
+    {
+      Ok(f) => f,
+      Err(e) => {
+        log::debug!("Skipping {requested_url} ({e})");
         continue;
       }
-      if let Some(parent) = local_path.parent() {
-        std::fs::create_dir_all(parent)?;
+    };
+    let final_url = file.url.clone();
+
+    // If the module advertises a separate types file (X-TypeScript-Types,
+    // common on esm.sh), fetch *that* and use it as the source-of-truth for
+    // both mirroring and import scanning. Otherwise use the module itself.
+    let types_url = file
+      .maybe_headers
+      .as_ref()
+      .and_then(|h| {
+        h.get("x-typescript-types")
+          .or_else(|| h.get("types"))
+          .or_else(|| h.get("typescript-types"))
+      })
+      .and_then(|v| Url::parse(v).ok().or_else(|| final_url.join(v).ok()));
+
+    let (effective_url, effective_bytes) = if let Some(t) = types_url.as_ref() {
+      match file_fetcher.fetch_bypass_permissions(t).await {
+        Ok(f) => (f.url.clone(), f.source.clone()),
+        Err(e) => {
+          log::debug!(
+            "X-TypeScript-Types fetch failed for {t} ({e}), falling back to source"
+          );
+          (final_url.clone(), file.source.clone())
+        }
       }
-      std::fs::write(&local_path, &out.stdout)?;
-      String::from_utf8(out.stdout).ok()
+    } else {
+      (final_url.clone(), file.source.clone())
     };
 
-    fetched.insert(url.clone());
+    // Mirror the chosen content. We deliberately don't mirror both the JS
+    // and the .d.ts: their URL paths often collide on disk (e.g.
+    // `cowsay@1.6.0` as file vs `cowsay@1.6.0/index.d.ts` under a dir).
+    let local = match write_mirror(
+      &remote_root,
+      &effective_url,
+      effective_bytes.as_ref(),
+    ) {
+      Ok(p) => p,
+      Err(e) => {
+        log::debug!("Failed to mirror {effective_url} ({e})");
+        continue;
+      }
+    };
+    // Emit paths entries for every URL form the user (or transitive imports)
+    // might reference for this module — all pointing at the same mirror.
+    paths.insert(requested_url.clone(), local.clone());
+    if final_url != requested_url {
+      paths.insert(final_url.clone(), local.clone());
+    }
+    if effective_url != final_url {
+      paths.insert(effective_url.clone(), local.clone());
+    }
 
-    if let Some(source) = body {
-      for spec in scan_import_specifiers(&source) {
-        // Skip non-relative, non-remote (bare / npm: / jsr: / node:)
-        let resolved =
-          if spec.starts_with("http://") || spec.starts_with("https://") {
-            Url::parse(&spec).ok()
-          } else if spec.starts_with("./") || spec.starts_with("../") {
-            url.join(&spec).ok()
-          } else {
-            None
-          };
-        if let Some(child) = resolved
-          && (child.scheme() == "http" || child.scheme() == "https")
-          && !fetched.contains(&child)
-        {
-          queue.push_back(child);
-        }
+    // Scan the effective (type-bearing) source for transitive imports.
+    let scan_source =
+      String::from_utf8_lossy(effective_bytes.as_ref()).into_owned();
+    for spec in scan_import_specifiers(&scan_source) {
+      let resolved =
+        if spec.starts_with("http://") || spec.starts_with("https://") {
+          Url::parse(&spec).ok()
+        } else if spec.starts_with("./") || spec.starts_with("../") {
+          effective_url.join(&spec).ok()
+        } else {
+          None
+        };
+      if let Some(child) = resolved
+        && (child.scheme() == "http" || child.scheme() == "https")
+        && !paths.contains_key(&child)
+      {
+        queue.push_back(child);
       }
     }
   }
 
-  Ok(fetched)
+  Ok(paths)
+}
+
+/// Write `bytes` to the local mirror file for `url`, returning the path
+/// relative to `.deno/` (suitable for tsconfig `paths`).
+fn write_mirror(
+  remote_root: &Path,
+  url: &Url,
+  bytes: &[u8],
+) -> Result<String, AnyError> {
+  let local_path = url_to_local_path(remote_root, url)
+    .ok_or_else(|| anyhow!("URL has no resolvable mirror path: {url}"))?;
+  if let Some(parent) = local_path.parent() {
+    std::fs::create_dir_all(parent)?;
+  }
+  std::fs::write(&local_path, bytes)?;
+  url_to_tsconfig_path(url)
+    .ok_or_else(|| anyhow!("URL has no resolvable mirror path: {url}"))
+}
+
+/// Compute the `paths`-relative mirror location for `url`, e.g.
+/// `https://example.com/x/foo.ts` → `./remote/example.com/x/foo.ts`.
+fn url_to_tsconfig_path(url: &Url) -> Option<String> {
+  let host = url.host_str()?;
+  let path = url.path();
+  if path.ends_with('/') || path.is_empty() {
+    return None;
+  }
+  let rel = path.trim_start_matches('/');
+  Some(format!("./remote/{host}/{rel}"))
 }
 
 /// Map a URL to its mirror file path under `<remote_root>/<host><path>`.
