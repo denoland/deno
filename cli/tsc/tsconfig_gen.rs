@@ -274,28 +274,13 @@ fn generate_npm_paths(
   paths
 }
 
-/// Parse an npm specifier like "npm:express@4" or "npm:@scope/pkg@1.2.3"
-/// and return the package name (without version).
+/// Parse an npm specifier like "npm:express@4", "npm:@scope/pkg@1.2.3",
+/// or "npm:express/foo" and return just the package name (without version
+/// or subpath). Returns `None` if `specifier` is not a valid npm: reference.
 pub fn parse_npm_specifier(specifier: &str) -> Option<String> {
-  let rest = specifier.strip_prefix("npm:")?;
-  // Handle scoped packages: @scope/pkg@version
-  if let Some(without_at) = rest.strip_prefix('@') {
-    // Find the second @ (version separator) after the scope
-    let after_scope = without_at.find('/')? + 1;
-    let after_slash = &rest[after_scope + 1..];
-    if let Some(version_at) = after_slash.find('@') {
-      Some(rest[..after_scope + 1 + version_at].to_string())
-    } else {
-      Some(rest.to_string())
-    }
-  } else {
-    // Unscoped: pkg@version
-    if let Some(at_pos) = rest.find('@') {
-      Some(rest[..at_pos].to_string())
-    } else {
-      Some(rest.to_string())
-    }
-  }
+  deno_semver::npm::NpmPackageReqReference::from_str(specifier)
+    .ok()
+    .map(|r| r.req().name.to_string())
 }
 
 /// Generate tsconfig "paths" entries for jsr: specifiers.
@@ -631,6 +616,26 @@ mod tests {
     );
     assert_eq!(
       parse_npm_specifier("npm:@scope/pkg"),
+      Some("@scope/pkg".to_string())
+    );
+  }
+
+  #[test]
+  fn test_parse_npm_specifier_with_subpath() {
+    assert_eq!(
+      parse_npm_specifier("npm:express/foo"),
+      Some("express".to_string())
+    );
+    assert_eq!(
+      parse_npm_specifier("npm:express@4/foo"),
+      Some("express".to_string())
+    );
+    assert_eq!(
+      parse_npm_specifier("npm:@scope/pkg/subpath"),
+      Some("@scope/pkg".to_string())
+    );
+    assert_eq!(
+      parse_npm_specifier("npm:@scope/pkg@1.0.0/subpath"),
       Some("@scope/pkg".to_string())
     );
   }
