@@ -21,6 +21,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::Version;
 use deno_semver::VersionReq;
 
@@ -41,6 +42,7 @@ pub struct InstalledJsrPackage {
 pub async fn setup_npm_compat(
   project_root: &Path,
   file_fetcher: &CliFileFetcher,
+  permissions: &PermissionsContainer,
 ) -> Result<Vec<InstalledJsrPackage>, AnyError> {
   let deno_json = read_deno_json(project_root)?;
   let Some(deno_json) = deno_json else {
@@ -77,6 +79,7 @@ pub async fn setup_npm_compat(
     project_root,
     deno_imports,
     file_fetcher,
+    permissions,
   )
   .await
   {
@@ -273,6 +276,7 @@ pub async fn install_http_modules(
   project_root: &Path,
   deno_imports: Option<&Value>,
   file_fetcher: &CliFileFetcher,
+  permissions: &PermissionsContainer,
 ) -> Result<HttpModulePaths, AnyError> {
   let mut paths: HttpModulePaths = BTreeMap::new();
   let mut queue: VecDeque<Url> = VecDeque::new();
@@ -304,13 +308,15 @@ pub async fn install_http_modules(
       continue;
     }
 
-    // Fetch (cached) source + headers via the standard file fetcher. Follows
+    // Fetch (cached) source + headers via the standard file fetcher, gated
+    // by --allow-import the same way runtime http imports are. Follows
     // redirects; `file.url` is the canonical post-redirect URL.
-    let file = match file_fetcher.fetch_bypass_permissions(&requested_url).await
-    {
+    let file = match file_fetcher.fetch(&requested_url, permissions).await {
       Ok(f) => f,
       Err(e) => {
-        log::debug!("Skipping {requested_url} ({e})");
+        log::warn!(
+          "Skipping {requested_url}: {e} (try running `deno install --allow-import` to grant access)"
+        );
         continue;
       }
     };
@@ -330,7 +336,7 @@ pub async fn install_http_modules(
       .and_then(|v| Url::parse(v).ok().or_else(|| final_url.join(v).ok()));
 
     let (effective_url, effective_bytes) = if let Some(t) = types_url.as_ref() {
-      match file_fetcher.fetch_bypass_permissions(t).await {
+      match file_fetcher.fetch(t, permissions).await {
         Ok(f) => (f.url.clone(), f.source.clone()),
         Err(e) => {
           log::debug!(
