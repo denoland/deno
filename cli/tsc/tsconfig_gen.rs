@@ -221,9 +221,14 @@ fn build_tsconfig(
     compiler_options.insert("paths".to_string(), json!(specifier_paths));
   }
 
+  // The `_deno_generated` sentinel lets Deno's own resolver identify this
+  // tsconfig and exclude it from extends chains it processes — see
+  // libs/resolver/deno_json.rs. Stock tsc/tsgo ignore unknown top-level
+  // properties.
   if check_files.is_empty() {
     // No specific files — check entire project
     json!({
+      "_deno_generated": true,
       "compilerOptions": compiler_options,
       "include": ["../**/*"],
       "exclude": ["../**/node_modules"],
@@ -233,6 +238,7 @@ fn build_tsconfig(
     let files_array: Vec<Value> =
       check_files.iter().map(|f| json!(f)).collect();
     json!({
+      "_deno_generated": true,
       "compilerOptions": compiler_options,
       "files": files_array,
     })

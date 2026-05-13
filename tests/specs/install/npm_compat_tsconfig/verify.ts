@@ -21,9 +21,9 @@ console.log(
   rootTsconfig.extends === "./.deno/tsconfig.json",
 );
 
-// Check @types/deno exists
+// Check @types/deno exists at the private typeRoots location
 try {
-  const stat = Deno.statSync("node_modules/@types/deno/index.d.ts");
+  const stat = Deno.statSync(".deno/types/deno/index.d.ts");
   console.log("deno types exist:", stat.isFile);
 } catch {
   console.log("deno types exist: false");
