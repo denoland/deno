@@ -42,6 +42,7 @@
     "libs/eszip/testdata",
     "gh-pages",
     "libs/config/testdata",
+    "libs/qjs_v8_compat/vendor",
     "target",
     "tests/bench/testdata/express-router.js",
     "tests/bench/testdata/lsp_benchdata/",

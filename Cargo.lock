@@ -8351,6 +8351,9 @@ dependencies = [
 [[package]]
 name = "qjs_v8_compat"
 version = "0.1.0"
+dependencies = [
+ "cc",
+]
 
 [[package]]
 name = "quick-error"

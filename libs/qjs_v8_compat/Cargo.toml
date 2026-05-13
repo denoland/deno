@@ -23,13 +23,17 @@ path = "src/lib.rs"
 # library is linked. Tests that only exercise the pure-Rust logic (refcount
 # tracking, semantic round-trip) run without QuickJS present.
 default = []
-# Link against a system or vendored QuickJS-ng. The build script honors:
-#   QUICKJS_NG_DIR        — path to a built quickjs-ng tree (with libquickjs.a)
-#   QUICKJS_NG_LIB_DIR    — explicit library path (overrides above)
-#   QUICKJS_NG_STATIC=1   — force static linkage (default if a static lib exists)
+# Link against QuickJS-ng. Default behavior compiles the vendored
+# `vendor/quickjs-ng` submodule via the `cc` crate. Override with:
+#   QUICKJS_NG_LIB_DIR    — explicit directory containing libquickjs.{a,so}
+#   QUICKJS_NG_DIR        — path to a built quickjs-ng tree
+#   QUICKJS_NG_STATIC=1   — force `static` linkage when using LIB_DIR/DIR
 link_quickjs = []
 # Compile the cppgc and fast_api shim modules. They are no-ops on the
 # QuickJS backend; the flag exists so deno_core compiles unchanged.
 cppgc_shim = []
 
 [dependencies]
+
+[build-dependencies]
+cc = "1.0"

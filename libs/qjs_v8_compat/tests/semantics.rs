@@ -6,8 +6,14 @@
 // every scope-nesting pattern. This file verifies that the actual *value*
 // surface — property get/set, promise state transitions, TryCatch capture,
 // bytecode-cache round-trip — observably works against the mock arena.
-// When the linked-quickjs backend lands we re-run the same fixtures
-// against the real engine and expect identical observable behavior.
+//
+// Real-engine equivalents live in `tests/real_engine.rs` and run only with
+// `--features link_quickjs`. Mock-specific assumptions encoded here (e.g.
+// promise state immediately after resolver invocation) don't always hold
+// against the real engine — that's expected, the two backends are
+// separately validated.
+
+#![cfg(not(feature = "link_quickjs"))]
 
 use qjs_v8_compat::v8;
 

@@ -65,11 +65,12 @@ pub struct JSValue {
   pub tag: i64,
 }
 
-// Tag constants (from quickjs.h, -ng layout).
-pub const JS_TAG_FIRST: i64 = -11;
-pub const JS_TAG_BIG_INT: i64 = -10;
+// Tag constants — match quickjs-ng `quickjs.h` enum exactly.
+pub const JS_TAG_FIRST: i64 = -9;
+pub const JS_TAG_BIG_INT: i64 = -9;
 pub const JS_TAG_SYMBOL: i64 = -8;
 pub const JS_TAG_STRING: i64 = -7;
+pub const JS_TAG_STRING_ROPE: i64 = -6;
 pub const JS_TAG_MODULE: i64 = -3;
 pub const JS_TAG_FUNCTION_BYTECODE: i64 = -2;
 pub const JS_TAG_OBJECT: i64 = -1;
@@ -80,7 +81,8 @@ pub const JS_TAG_UNDEFINED: i64 = 3;
 pub const JS_TAG_UNINITIALIZED: i64 = 4;
 pub const JS_TAG_CATCH_OFFSET: i64 = 5;
 pub const JS_TAG_EXCEPTION: i64 = 6;
-pub const JS_TAG_FLOAT64: i64 = 7;
+pub const JS_TAG_SHORT_BIG_INT: i64 = 7;
+pub const JS_TAG_FLOAT64: i64 = 8;
 
 #[inline]
 pub const fn make_value(tag: i64, u: JSValueUnion) -> JSValue {
@@ -275,11 +277,14 @@ unsafe extern "C" {
   pub fn JS_ToInt64(ctx: *mut JSContext, pres: *mut i64, v: JSValue) -> c_int;
   pub fn JS_ToFloat64(ctx: *mut JSContext, pres: *mut f64, v: JSValue)
   -> c_int;
-  pub fn JS_ToCString(ctx: *mut JSContext, v: JSValue) -> *const c_char;
-  pub fn JS_ToCStringLen(
+  // The exported symbol is `JS_ToCStringLen2`. `JS_ToCString` and
+  // `JS_ToCStringLen` are `static inline` wrappers in quickjs.h — see
+  // `JS_ToCString` / `JS_ToCStringLen` Rust wrappers below.
+  pub fn JS_ToCStringLen2(
     ctx: *mut JSContext,
     plen: *mut usize,
     v: JSValue,
+    cesu8: bool,
   ) -> *const c_char;
   pub fn JS_FreeCString(ctx: *mut JSContext, ptr: *const c_char);
 
@@ -312,15 +317,17 @@ unsafe extern "C" {
     idx: u32,
     val: JSValue,
   ) -> c_int;
-  pub fn JS_HasPropertyStr(
+  // QuickJS-ng exports the atom-based forms only; the str-based forms are
+  // provided as Rust wrappers below.
+  pub fn JS_HasProperty(
     ctx: *mut JSContext,
     this_obj: JSValue,
-    prop: *const c_char,
+    prop: JSAtom,
   ) -> c_int;
-  pub fn JS_DeletePropertyStr(
+  pub fn JS_DeleteProperty(
     ctx: *mut JSContext,
     this_obj: JSValue,
-    prop: *const c_char,
+    prop: JSAtom,
     flags: c_int,
   ) -> c_int;
   pub fn JS_Call(
@@ -336,11 +343,15 @@ unsafe extern "C" {
     argc: c_int,
     argv: *mut JSValue,
   ) -> JSValue;
-  pub fn JS_NewCFunction(
+  // The exported symbol is `JS_NewCFunction2`. `JS_NewCFunction` is a
+  // `static inline` wrapper in quickjs.h — see Rust wrapper below.
+  pub fn JS_NewCFunction2(
     ctx: *mut JSContext,
     func: JSCFunction,
     name: *const c_char,
     length: c_int,
+    cproto: c_int, // JSCFunctionEnum, 0 = JS_CFUNC_generic
+    magic: c_int,
   ) -> JSValue;
 
   // Eval/script.
@@ -444,4 +455,103 @@ unsafe extern "C" {
   pub fn JS_FreeAtom(ctx: *mut JSContext, v: JSAtom);
   pub fn JS_AtomToString(ctx: *mut JSContext, atom: JSAtom) -> JSValue;
   pub fn JS_AtomToValue(ctx: *mut JSContext, atom: JSAtom) -> JSValue;
+}
+
+// ---- inline-wrapper FFI shims ------------------------------------------
+//
+// QuickJS-ng exposes some entry points only as `static inline` in
+// `quickjs.h`, so they don't appear in the linker's symbol table. We
+// re-implement the inline wrapper in Rust over the exported underlying
+// symbol. Names match the C API spelling so the rest of the crate (and
+// users who follow the QuickJS docs) can call the familiar function.
+
+pub const JS_CFUNC_GENERIC: c_int = 0;
+pub const JS_CFUNC_GENERIC_MAGIC: c_int = 1;
+
+/// Equivalent of the inline `JS_NewCFunction` in `quickjs.h`:
+/// `JS_NewCFunction2(ctx, func, name, length, JS_CFUNC_generic, 0)`.
+///
+/// # Safety
+///
+/// `ctx` must be a live `JSContext`; `name` must be a NUL-terminated string
+/// or `NULL`; `func` must be ABI-compatible with `JSCFunction`.
+#[inline]
+pub unsafe fn JS_NewCFunction(
+  ctx: *mut JSContext,
+  func: JSCFunction,
+  name: *const c_char,
+  length: c_int,
+) -> JSValue {
+  unsafe { JS_NewCFunction2(ctx, func, name, length, JS_CFUNC_GENERIC, 0) }
+}
+
+/// Equivalent of the inline `JS_ToCString` in `quickjs.h`:
+/// `JS_ToCStringLen2(ctx, NULL, val, false)`. Caller must release the
+/// returned pointer with `JS_FreeCString`.
+///
+/// # Safety
+///
+/// `ctx` must be a live `JSContext`; `v` must be a JSValue owned (or
+/// borrowed) by the caller for the duration of this call.
+#[inline]
+pub unsafe fn JS_ToCString(ctx: *mut JSContext, v: JSValue) -> *const c_char {
+  unsafe { JS_ToCStringLen2(ctx, std::ptr::null_mut(), v, false) }
+}
+
+/// Equivalent of the inline `JS_ToCStringLen` in `quickjs.h`:
+/// `JS_ToCStringLen2(ctx, plen, val, false)`.
+///
+/// # Safety
+///
+/// Same requirements as [`JS_ToCString`]; `plen` must be a writable
+/// `usize` or `NULL`.
+#[inline]
+pub unsafe fn JS_ToCStringLen(
+  ctx: *mut JSContext,
+  plen: *mut usize,
+  v: JSValue,
+) -> *const c_char {
+  unsafe { JS_ToCStringLen2(ctx, plen, v, false) }
+}
+
+/// Wrapper for the str-keyed `JS_HasProperty` lookup that was inline in
+/// classic QuickJS but is not present in QuickJS-ng. Internally creates a
+/// transient atom for the property name.
+///
+/// # Safety
+///
+/// `ctx` must be a live `JSContext`; `prop` must be a NUL-terminated
+/// string; `this_obj` must be a JSValue owned (or borrowed) by the caller.
+#[inline]
+pub unsafe fn JS_HasPropertyStr(
+  ctx: *mut JSContext,
+  this_obj: JSValue,
+  prop: *const c_char,
+) -> c_int {
+  unsafe {
+    let atom = JS_NewAtom(ctx, prop);
+    let r = JS_HasProperty(ctx, this_obj, atom);
+    JS_FreeAtom(ctx, atom);
+    r
+  }
+}
+
+/// Wrapper for the str-keyed `JS_DeleteProperty` that QuickJS-ng dropped.
+///
+/// # Safety
+///
+/// Same requirements as [`JS_HasPropertyStr`].
+#[inline]
+pub unsafe fn JS_DeletePropertyStr(
+  ctx: *mut JSContext,
+  this_obj: JSValue,
+  prop: *const c_char,
+  flags: c_int,
+) -> c_int {
+  unsafe {
+    let atom = JS_NewAtom(ctx, prop);
+    let r = JS_DeleteProperty(ctx, this_obj, atom, flags);
+    JS_FreeAtom(ctx, atom);
+    r
+  }
 }
