@@ -48,6 +48,7 @@ const {
   ObjectCreate,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectFreeze,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetOwnPropertyDescriptors,
   ObjectGetPrototypeOf,
@@ -90,6 +91,12 @@ const {
   Uint8Array,
   Uint8ClampedArray,
 } = primordials;
+
+// Shared empty options object used as the default for `opts` parameters in
+// converter functions, so callers that omit `opts` (the common case) don't
+// allocate a fresh `{ __proto__: null }` on every call. Converters only read
+// from `opts` -- never mutate -- so a shared frozen object is safe.
+const EMPTY_OPTS = ObjectFreeze({ __proto__: null });
 
 function makeException(ErrorType, message, prefix, context) {
   return new ErrorType(
@@ -478,7 +485,7 @@ converters.ArrayBuffer = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = { __proto__: null },
+  opts = EMPTY_OPTS,
 ) => {
   if (!isArrayBuffer(V)) {
     if (opts.allowShared && !isSharedArrayBuffer(V)) {
@@ -504,7 +511,7 @@ converters.DataView = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = { __proto__: null },
+  opts = EMPTY_OPTS,
 ) => {
   if (!isDataView(V)) {
     throw makeException(
@@ -553,7 +560,7 @@ ArrayPrototypeForEach(
       V,
       prefix = undefined,
       context = undefined,
-      opts = { __proto__: null },
+      opts = EMPTY_OPTS,
     ) => {
       if (TypedArrayPrototypeGetSymbolToStringTag(V) !== name) {
         throw makeException(
@@ -586,7 +593,7 @@ converters.ArrayBufferView = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = { __proto__: null },
+  opts = EMPTY_OPTS,
 ) => {
   if (!ArrayBufferIsView(V)) {
     throw makeException(
@@ -618,7 +625,7 @@ converters.BufferSource = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = { __proto__: null },
+  opts = EMPTY_OPTS,
 ) => {
   if (ArrayBufferIsView(V)) {
     let buffer;
@@ -864,7 +871,7 @@ function createEnumConverter(name, values) {
     V,
     prefix = undefined,
     _context = undefined,
-    _opts = { __proto__: null },
+    _opts = EMPTY_OPTS,
   ) {
     const S = String(V);
 
@@ -885,7 +892,7 @@ function createNullableConverter(converter) {
     V,
     prefix = undefined,
     context = undefined,
-    opts = { __proto__: null },
+    opts = EMPTY_OPTS,
   ) => {
     // FIXME: If Type(V) is not Object, and the conversion to an IDL value is
     // being performed due to V being assigned to an attribute whose type is a
@@ -904,7 +911,7 @@ function createSequenceConverter(converter) {
     V,
     prefix = undefined,
     context = undefined,
-    opts = { __proto__: null },
+    opts = EMPTY_OPTS,
   ) {
     if (type(V) !== "Object") {
       throw makeException(
@@ -964,7 +971,7 @@ function createAsyncIterableConverter(converter) {
     V,
     prefix = undefined,
     context = undefined,
-    opts = { __proto__: null },
+    opts = EMPTY_OPTS,
   ) {
     if (type(V) !== "Object") {
       throw makeException(

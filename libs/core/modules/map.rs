@@ -2468,12 +2468,15 @@ impl ModuleMap {
     &self,
     specifier: &str,
   ) -> Option<ModuleCodeString> {
-    self
-      .data
-      .borrow()
-      .lazy_esm_sources
-      .borrow_mut()
-      .remove(specifier)
+    let data = self.data.borrow();
+    let source = data.lazy_esm_sources.borrow_mut().remove(specifier);
+    if source.is_some() {
+      data
+        .consumed_lazy_specifiers
+        .borrow_mut()
+        .insert(specifier.to_string());
+    }
+    source
   }
 
   pub(crate) fn add_lazy_loaded_esm_source(
@@ -2631,6 +2634,11 @@ impl ModuleMap {
         );
       }
     };
+
+    data
+      .consumed_lazy_specifiers
+      .borrow_mut()
+      .insert(specifier_str.clone());
 
     // Mark as loading for circular dep detection.
     data
