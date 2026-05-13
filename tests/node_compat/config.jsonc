@@ -3791,6 +3791,7 @@
     "parallel/test-worker-load-file-with-extension-other-than-js.js": {},
     "parallel/test-worker-memory.js": {},
     "parallel/test-worker-message-channel.js": {},
+    "parallel/test-worker-messaging-errors-invalid.js": {},
     "parallel/test-worker-message-channel-sharedarraybuffer.js": {},
     "parallel/test-worker-message-port-infinite-message-loop.js": {},
     "parallel/test-worker-message-port-multiple-sharedarraybuffers.js": {},

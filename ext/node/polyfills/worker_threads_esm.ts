@@ -9,6 +9,7 @@ export const {
   Worker,
   markAsUntransferable,
   moveMessagePortToContext,
+  postMessageToThread,
   receiveMessageOnPort,
   getEnvironmentData,
   setEnvironmentData,

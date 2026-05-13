@@ -37,11 +37,14 @@ const {
   ERR_INVALID_URL_SCHEME,
   ERR_OUT_OF_RANGE,
   ERR_WORKER_INVALID_EXEC_ARGV,
+  ERR_WORKER_MESSAGING_FAILED,
+  ERR_WORKER_MESSAGING_SAME_THREAD,
   ERR_WORKER_NOT_RUNNING,
   ERR_WORKER_PATH,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   validateArray,
+  validateInteger,
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
@@ -1248,6 +1251,52 @@ function setEnvironmentData(key: unknown, value?: unknown) {
 }
 
 const SHARE_ENV = SymbolFor("nodejs.worker_threads.SHARE_ENV");
+
+// https://nodejs.org/api/worker_threads.html#workerpostmessagetothreadthreadid-value-transferlist-timeout
+// Partial implementation: validates input and rejects with the expected
+// error codes. Cross-thread message routing (via `workerMessage` event
+// listeners on the destination thread) is not yet wired up, so calls
+// that pass validation always reject with ERR_WORKER_MESSAGING_FAILED.
+function postMessageToThread(
+  targetThreadId: number,
+  _value?: unknown,
+  transferListOrTimeout?: unknown[] | number,
+  maybeTimeout?: number,
+): Promise<void> {
+  try {
+    validateInteger(targetThreadId, "threadId", 0);
+    let transferList: unknown[] | undefined;
+    let timeout: number | undefined;
+    if (ArrayIsArray(transferListOrTimeout)) {
+      transferList = transferListOrTimeout;
+      timeout = maybeTimeout;
+    } else if (typeof transferListOrTimeout === "number") {
+      timeout = transferListOrTimeout;
+    } else if (transferListOrTimeout !== undefined) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "transferList",
+        "Array",
+        transferListOrTimeout,
+      );
+    }
+    if (timeout !== undefined) {
+      validateInteger(timeout, "timeout", 0);
+    }
+    if (transferList !== undefined) {
+      validateArray(transferList, "transferList");
+    }
+    if (targetThreadId === threadId) {
+      throw new ERR_WORKER_MESSAGING_SAME_THREAD();
+    }
+    // No cross-thread `workerMessage` routing yet: any otherwise-valid
+    // call is treated as a delivery failure, matching the error code
+    // that Node.js emits when no listener is registered on the target.
+    throw new ERR_WORKER_MESSAGING_FAILED();
+  } catch (err) {
+    return PromiseReject(err);
+  }
+}
+
 function markAsUntransferable(obj: object) {
   if (core.isArrayBuffer(obj)) {
     op_mark_as_untransferable(obj as ArrayBuffer);
@@ -1478,6 +1527,7 @@ return {
   },
   markAsUntransferable,
   moveMessagePortToContext,
+  postMessageToThread,
   receiveMessageOnPort,
   getEnvironmentData,
   setEnvironmentData,
