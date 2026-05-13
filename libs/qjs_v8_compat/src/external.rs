@@ -2,10 +2,11 @@
 //
 // External pointers + serializers.
 
+use core::ffi::c_void;
+
 use crate::scope::HandleScope;
 use crate::sys;
 use crate::value::Local;
-use core::ffi::c_void;
 
 crate::value_type!(External);
 

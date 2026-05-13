@@ -4,7 +4,8 @@
 
 use crate::scope::HandleScope;
 use crate::sys;
-use crate::value::{Local, Primitive};
+use crate::value::Local;
+use crate::value::Primitive;
 
 // Marker types
 crate::value_type!(

@@ -15,7 +15,9 @@
 #![allow(non_upper_case_globals)]
 #![allow(dead_code)]
 
-use core::ffi::{c_char, c_int, c_void};
+use core::ffi::c_char;
+use core::ffi::c_int;
+use core::ffi::c_void;
 
 // ----- Opaque types -----------------------------------------------------
 

@@ -11,9 +11,10 @@
 // Local; we put methods on `Local<'s, T>` directly. The call sites
 // (`local.method(scope, ...)`) work identically.
 
+use core::marker::PhantomData;
+
 use crate::scope::HandleScope;
 use crate::sys;
-use core::marker::PhantomData;
 
 macro_rules! v8_type {
   ($($name:ident),* $(,)?) => {

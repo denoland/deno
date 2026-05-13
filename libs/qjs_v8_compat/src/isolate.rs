@@ -9,11 +9,12 @@
 // We mirror rusty_v8's split between `Isolate` (a borrowed view) and
 // `OwnedIsolate` (the owning RAII handle).
 
-use crate::sys;
 use core::ffi::c_void;
 use core::ptr::NonNull;
 use std::cell::RefCell;
 use std::sync::Arc;
+
+use crate::sys;
 
 /// Backing data we attach to every Isolate. Stored in the runtime's opaque
 /// pointer so `&mut Isolate` and `Local<T>` can both reach it without

@@ -11,7 +11,8 @@
 // any entry is still live, surfacing leaks loudly.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MockTag {

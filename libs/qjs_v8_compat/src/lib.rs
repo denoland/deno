@@ -124,7 +124,8 @@ pub mod v8 {
     //! `JSON.stringify` / `JSON.parse` exposed through QuickJS.
     use crate::primitives::String;
     use crate::scope::HandleScope;
-    use crate::value::{Local, Value};
+    use crate::value::Local;
+    use crate::value::Value;
 
     pub fn stringify<'s>(
       _scope: &mut HandleScope<'s>,
@@ -195,4 +196,7 @@ pub mod v8 {
   }
 }
 
-pub use arena::{Arena, ArenaStats, MockJSValue, MockTag};
+pub use arena::Arena;
+pub use arena::ArenaStats;
+pub use arena::MockJSValue;
+pub use arena::MockTag;

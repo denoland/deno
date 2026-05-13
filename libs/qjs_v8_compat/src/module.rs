@@ -7,7 +7,8 @@ use crate::object::Object;
 use crate::primitives::String as JsString;
 use crate::scope::HandleScope;
 use crate::sys;
-use crate::value::{Local, Value};
+use crate::value::Local;
+use crate::value::Value;
 
 crate::value_type!(Module, ModuleRequest, FixedArray);
 

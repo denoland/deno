@@ -14,19 +14,35 @@
 
 use core::ffi::c_void;
 
+pub use crate::ffi::JS_TAG_BIG_INT;
+pub use crate::ffi::JS_TAG_BOOL;
+pub use crate::ffi::JS_TAG_EXCEPTION;
+pub use crate::ffi::JS_TAG_FLOAT64;
+pub use crate::ffi::JS_TAG_INT;
+pub use crate::ffi::JS_TAG_NULL;
+pub use crate::ffi::JS_TAG_OBJECT;
+pub use crate::ffi::JS_TAG_STRING;
+pub use crate::ffi::JS_TAG_SYMBOL;
+pub use crate::ffi::JS_TAG_UNDEFINED;
 pub use crate::ffi::JSValue;
 pub use crate::ffi::JSValueUnion;
-pub use crate::ffi::{
-  JS_TAG_BIG_INT, JS_TAG_BOOL, JS_TAG_EXCEPTION, JS_TAG_FLOAT64, JS_TAG_INT,
-  JS_TAG_NULL, JS_TAG_OBJECT, JS_TAG_STRING, JS_TAG_SYMBOL, JS_TAG_UNDEFINED,
-};
-
-pub use crate::ffi::{
-  jsv_bool, jsv_exception, jsv_float64, jsv_int32, jsv_is_bigint, jsv_is_bool,
-  jsv_is_exception, jsv_is_float64, jsv_is_int, jsv_is_null, jsv_is_number,
-  jsv_is_object, jsv_is_string, jsv_is_symbol, jsv_is_undefined, jsv_null,
-  jsv_undefined,
-};
+pub use crate::ffi::jsv_bool;
+pub use crate::ffi::jsv_exception;
+pub use crate::ffi::jsv_float64;
+pub use crate::ffi::jsv_int32;
+pub use crate::ffi::jsv_is_bigint;
+pub use crate::ffi::jsv_is_bool;
+pub use crate::ffi::jsv_is_exception;
+pub use crate::ffi::jsv_is_float64;
+pub use crate::ffi::jsv_is_int;
+pub use crate::ffi::jsv_is_null;
+pub use crate::ffi::jsv_is_number;
+pub use crate::ffi::jsv_is_object;
+pub use crate::ffi::jsv_is_string;
+pub use crate::ffi::jsv_is_symbol;
+pub use crate::ffi::jsv_is_undefined;
+pub use crate::ffi::jsv_null;
+pub use crate::ffi::jsv_undefined;
 
 /// QuickJS-ng `JS_WRITE_OBJ_BYTECODE` flag. Mirrored here so callers don't
 /// need to reach into `ffi`.
@@ -48,9 +64,10 @@ pub enum PromiseStateRaw {
 
 #[cfg(feature = "link_quickjs")]
 mod backend {
+  use core::ffi::c_char;
+
   use super::*;
   use crate::ffi;
-  use core::ffi::c_char;
 
   pub type Runtime = *mut ffi::JSRuntime;
   pub type Context = *mut ffi::JSContext;
@@ -263,10 +280,12 @@ mod backend {
   //! refcount; `free_value` decrements and drops on zero. If the program
   //! exits with any nonzero refcount, the test fixtures notice and fail.
 
+  use std::sync::Mutex;
+  use std::sync::atomic::AtomicUsize;
+  use std::sync::atomic::Ordering;
+
   use super::*;
   use crate::arena::Arena;
-  use std::sync::Mutex;
-  use std::sync::atomic::{AtomicUsize, Ordering};
 
   static RT_COUNTER: AtomicUsize = AtomicUsize::new(1);
 

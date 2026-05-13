@@ -24,7 +24,8 @@
 use crate::isolate::OwnedIsolate;
 use crate::scope::HandleScope;
 use crate::sys;
-use crate::value::{Local, Value};
+use crate::value::Local;
+use crate::value::Value;
 
 /// `StartupData` carries the serialized bytecode blob.
 ///
@@ -266,5 +267,7 @@ pub fn load_blob_entries<'s>(
 }
 
 pub mod snapshot_mod {
-  pub use super::{FunctionCodeHandling, SnapshotCreator, StartupData};
+  pub use super::FunctionCodeHandling;
+  pub use super::SnapshotCreator;
+  pub use super::StartupData;
 }

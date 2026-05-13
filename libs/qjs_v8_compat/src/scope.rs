@@ -15,11 +15,15 @@
 // The `'s` lifetime on `Local<'s, T>` is invariant: a Local can't outlive
 // its scope, but multiple Locals from the same scope can be copied freely.
 
-use crate::context::{Context, ScopeParent};
-use crate::isolate::{Isolate, IsolateState, OwnedIsolate};
+use core::marker::PhantomData;
+
+use crate::context::Context;
+use crate::context::ScopeParent;
+use crate::isolate::Isolate;
+use crate::isolate::IsolateState;
+use crate::isolate::OwnedIsolate;
 use crate::sys;
 use crate::value::Local;
-use core::marker::PhantomData;
 
 const MAX_SCOPE_DEPTH: usize = 4096;
 

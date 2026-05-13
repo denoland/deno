@@ -12,8 +12,8 @@ version = "0.1.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "rusty_v8-shaped API surface backed by QuickJS-ng"
 repository.workspace = true
+description = "rusty_v8-shaped API surface backed by QuickJS-ng"
 
 [lib]
 path = "src/lib.rs"

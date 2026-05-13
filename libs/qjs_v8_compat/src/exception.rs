@@ -12,7 +12,8 @@
 
 use crate::scope::HandleScope;
 use crate::sys;
-use crate::value::{Local, Value};
+use crate::value::Local;
+use crate::value::Value;
 
 /// V8's `Exception` namespace exposes error constructors. We mirror them.
 ///
