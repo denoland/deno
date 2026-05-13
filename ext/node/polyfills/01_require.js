@@ -35,6 +35,7 @@ import {
   op_require_resolve_lookup_paths,
   op_require_stat,
   op_require_try_self,
+  op_stream_base_register_state,
 } from "ext:core/ops";
 const {
   ArrayIsArray,
@@ -2591,19 +2592,6 @@ function packageSpecifierSubPath(specifier) {
   return ArrayPrototypeJoin(parts, "/");
 }
 
-// This is a temporary namespace, that will be removed when initializing
-// in `02_init.js`.
-internals.requireImpl = {
-  setUsesLocalNodeModulesDir() {
-    usesLocalNodeModulesDir = true;
-  },
-  setInspectBrk() {
-    hasInspectBrk = true;
-  },
-  Module,
-  nativeModuleExports,
-};
-
 // VLQ Base64 decoding for source maps
 const BASE64_CHARS =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -3252,6 +3240,104 @@ export async function _registerCliLoaders(loaderUrls) {
   // Unref now that registration is done
   _refHooksWorker(false);
 }
+
+let initialized = false;
+
+function initialize(args) {
+  const {
+    usesLocalNodeModulesDir: usesLocalNodeModulesDirArg,
+    argv0,
+    runningOnMainThread,
+    workerId,
+    maybeWorkerMetadata,
+    nodeDebug,
+    nodeClusterUniqueId,
+    nodeClusterSchedPolicy,
+    warmup = false,
+    moduleSpecifier = null,
+  } = args;
+  if (!warmup) {
+    if (initialized) {
+      throw new Error("Node runtime already initialized");
+    }
+    initialized = true;
+    if (usesLocalNodeModulesDirArg) {
+      usesLocalNodeModulesDir = true;
+    }
+
+    // FIXME(bartlomieju): not nice to depend on `Deno` namespace here
+    // but it's the only way to get `args` and `version` and this point.
+    internals.__bootstrapNodeProcess(
+      argv0,
+      Deno.args,
+      Deno.version,
+      nodeDebug ?? "",
+      false,
+      runningOnMainThread,
+    );
+    internals.__initWorkerThreads(
+      runningOnMainThread,
+      workerId,
+      maybeWorkerMetadata,
+      moduleSpecifier,
+    );
+    internals.__setupChildProcessIpcChannel();
+    // node:cluster worker state is initialized only when NODE_UNIQUE_ID was
+    // present in the environment at process startup. The Rust side reads the
+    // env var (see `BootstrapOptions::node_cluster_unique_id`) and passes the
+    // value through, so plain `deno run` invocations never touch
+    // `Deno.permissions`/`Deno.env` here and never load `node:cluster`.
+    if (nodeClusterUniqueId) {
+      // Force loading the cluster polyfill so it can register
+      // `internals.__initCluster`.
+      core.loadExtScript("ext:deno_node/cluster.ts");
+      internals.__initCluster(nodeClusterUniqueId, nodeClusterSchedPolicy);
+    }
+    const { streamBaseState } = core.loadExtScript(
+      "ext:deno_node/internal_binding/stream_wrap.ts",
+    );
+    op_stream_base_register_state(streamBaseState);
+    nativeModuleExports["internal/console/constructor"].bindStreamsLazy(
+      nativeModuleExports["console"],
+      nativeModuleExports["process"],
+    );
+  } else {
+    // Warm up the process module
+    internals.__bootstrapNodeProcess(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      true,
+    );
+  }
+}
+
+globalThis.nodeBootstrap = initialize;
+
+function closeIdleConnections() {
+  // Close all idle connections in Node.js HTTP Agent pools.
+  // This is called by the test runner before sanitizer checks to prevent
+  // false positive resource leak detection for pooled keepAlive connections.
+  try {
+    const http = nativeModuleExports["http"];
+    if (http?.globalAgent) {
+      http.globalAgent.destroy();
+    }
+  } catch {
+    // Ignore
+  }
+  try {
+    const https = nativeModuleExports["https"];
+    if (https?.globalAgent) {
+      https.globalAgent.destroy();
+    }
+  } catch {
+    // Ignore
+  }
+}
+
+internals.closeIdleConnections = closeIdleConnections;
 
 export {
   builtinModules,
