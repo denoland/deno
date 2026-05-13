@@ -4432,17 +4432,17 @@ impl PermissionsContainer {
         ))
       },
     )?;
-    worker_perms.net_listen = inner.net_listen.create_child_permissions(
-      directional_arg,
-      |text| {
-        Ok::<_, NetDescriptorParseError>(Some(
-          self
-            .descriptor_parser
-            .parse_net_descriptor(text)?
-            .into_listen(),
-        ))
-      },
-    )?;
+    worker_perms.net_listen =
+      inner
+        .net_listen
+        .create_child_permissions(directional_arg, |text| {
+          Ok::<_, NetDescriptorParseError>(Some(
+            self
+              .descriptor_parser
+              .parse_net_descriptor(text)?
+              .into_listen(),
+          ))
+        })?;
     worker_perms.env = inner.env.create_child_permissions(
       child_permissions_arg.env,
       |text| {
