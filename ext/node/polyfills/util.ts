@@ -204,17 +204,20 @@ function deprecate(
     __proto__: null,
   },
 ) {
-  process ??= lazyLoadProcess();
-  if (process.noDeprecation === true) {
-    return fn;
-  }
-
+  // Note: `process` is loaded lazily on first invocation of `deprecated`,
+  // not here. Loading it eagerly during `deprecate()` is enough to deadlock
+  // snapshot evaluation when `deprecate` is called from a module body that
+  // is itself in `process.ts`'s transitive load chain (e.g. assert.ts).
   if (code !== undefined) {
     validateString(code, "code");
   }
 
   let warned = false;
   function deprecated(...args) {
+    process ??= lazyLoadProcess();
+    if (process.noDeprecation === true) {
+      return ReflectApply(fn, this, args);
+    }
     if (!warned && !op_node_call_is_from_dependency()) {
       warned = true;
       if (code !== undefined) {
