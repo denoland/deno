@@ -27,6 +27,7 @@ use deno_semver::VersionReq;
 use flate2::read::GzDecoder;
 
 use crate::file_fetcher::CliFileFetcher;
+use crate::http_util::HttpClient;
 
 /// Installed JSR package info for reporting.
 pub struct InstalledJsrPackage {
@@ -43,6 +44,7 @@ pub struct InstalledJsrPackage {
 pub async fn setup_npm_compat(
   project_root: &Path,
   file_fetcher: &CliFileFetcher,
+  http_client: &HttpClient,
   permissions: &PermissionsContainer,
 ) -> Result<Vec<InstalledJsrPackage>, AnyError> {
   let deno_json = read_deno_json(project_root)?;
@@ -73,7 +75,7 @@ pub async fn setup_npm_compat(
 
   // Install jsr: packages to node_modules/@jsr/
   let installed =
-    install_jsr_packages(project_root, deno_imports, file_fetcher).await?;
+    install_jsr_packages(project_root, deno_imports, http_client).await?;
 
   // Mirror http(s): modules (and their transitive remote/relative imports)
   // into .deno/remote/<host><path>/...
@@ -144,10 +146,16 @@ fn generate_deno_tsconfig(
 }
 
 /// Install jsr: packages to node_modules/@jsr/ by downloading from npm.jsr.io.
+///
+/// Uses `HttpClient::download` directly (not `CliFileFetcher`) because we
+/// don't want each registry/tarball URL surfacing as a user-visible
+/// "Download …" line in `deno install` output — those are an
+/// implementation detail of the stock-tsc compatibility setup. The
+/// fetcher's caching and redirect handling are unnecessary for npm.jsr.io.
 async fn install_jsr_packages(
   project_root: &Path,
   deno_imports: Option<&Value>,
-  file_fetcher: &CliFileFetcher,
+  http_client: &HttpClient,
 ) -> Result<Vec<InstalledJsrPackage>, AnyError> {
   let mut installed = Vec::new();
   let imports = match deno_imports.and_then(|v| v.as_object()) {
@@ -194,22 +202,16 @@ async fn install_jsr_packages(
 
     log::debug!("Installing {} from {}", registry_name, npm_jsr_registry);
 
-    // Registry metadata + tarball fetches go through CliFileFetcher (with
-    // bypass-permissions because this is package-registry traffic, the same
-    // surface npm install uses, not arbitrary user-supplied http imports).
-    // Reusing the fetcher gets DENO_DIR cache and redirect handling for free,
-    // and avoids depending on curl being present on the host.
-    let metadata_file =
-      match file_fetcher.fetch_bypass_permissions(&metadata_url).await {
-        Ok(f) => f,
-        Err(e) => {
-          log::debug!("Failed to fetch metadata for {registry_name}: {e}");
-          continue;
-        }
-      };
+    let metadata_bytes = match http_client.download(metadata_url).await {
+      Ok(b) => b,
+      Err(e) => {
+        log::debug!("Failed to fetch metadata for {registry_name}: {e}");
+        continue;
+      }
+    };
 
-    let metadata: Value = serde_json::from_slice(&metadata_file.source)
-      .map_err(|e| {
+    let metadata: Value =
+      serde_json::from_slice(&metadata_bytes).map_err(|e| {
         anyhow!("Failed to parse metadata for {registry_name}: {e}")
       })?;
 
@@ -235,16 +237,15 @@ async fn install_jsr_packages(
       }
     };
 
-    let tarball_file =
-      match file_fetcher.fetch_bypass_permissions(&tarball_url).await {
-        Ok(f) => f,
-        Err(e) => {
-          log::debug!("Failed to download {registry_name}: {e}");
-          continue;
-        }
-      };
+    let tarball_bytes = match http_client.download(tarball_url).await {
+      Ok(b) => b,
+      Err(e) => {
+        log::debug!("Failed to download {registry_name}: {e}");
+        continue;
+      }
+    };
 
-    if let Err(e) = extract_tarball_gz(&tarball_file.source, &pkg_dir) {
+    if let Err(e) = extract_tarball_gz(&tarball_bytes, &pkg_dir) {
       log::debug!("Failed to extract {registry_name}: {e}");
       let _ = std::fs::remove_dir_all(&pkg_dir);
       continue;

@@ -170,10 +170,12 @@ async fn install_top_level(
   // installed jsr packages appear in the Dependencies section.
   let cli_options = factory.cli_options()?;
   let file_fetcher = factory.file_fetcher()?.clone();
+  let http_client = factory.http_client_provider().get_or_create()?;
   let permissions = factory.root_permissions_container()?.clone();
   let installed_jsr = match super::npm_compat::setup_npm_compat(
     cli_options.initial_cwd(),
     &file_fetcher,
+    &http_client,
     &permissions,
   )
   .await
