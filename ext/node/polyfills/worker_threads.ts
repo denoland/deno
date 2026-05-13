@@ -14,6 +14,10 @@ const {
   op_host_terminate_worker,
   op_mark_as_untransferable,
   op_message_port_recv_message_sync,
+  op_node_worker_thread_post_message,
+  op_node_worker_thread_recv_message,
+  op_node_worker_thread_register,
+  op_node_worker_thread_set_listener_count,
   op_worker_get_resource_limits,
   op_worker_threads_filename,
 } = core.ops;
@@ -37,8 +41,10 @@ const {
   ERR_INVALID_URL_SCHEME,
   ERR_OUT_OF_RANGE,
   ERR_WORKER_INVALID_EXEC_ARGV,
+  ERR_WORKER_MESSAGING_ERRORED,
   ERR_WORKER_MESSAGING_FAILED,
   ERR_WORKER_MESSAGING_SAME_THREAD,
+  ERR_WORKER_MESSAGING_TIMEOUT,
   ERR_WORKER_NOT_RUNNING,
   ERR_WORKER_PATH,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
@@ -78,6 +84,7 @@ const {
   ObjectHasOwn,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  Promise,
   PromisePrototypeThen,
   PromiseReject,
   PromiseResolve,
@@ -1233,6 +1240,10 @@ internals.__initWorkerThreads = (
     }
   }
 
+  // Register this thread in the cross-thread registry so it can receive
+  // `postMessageToThread` calls.
+  setupCrossThreadMessaging();
+
   // Refresh the `node:worker_threads` ESM wrapper's `let` bindings so
   // ESM live bindings (e.g. `import { isMainThread }`) see post-init values.
   internals.__refreshWorkerThreadsWrapper?.();
@@ -1252,21 +1263,184 @@ function setEnvironmentData(key: unknown, value?: unknown) {
 
 const SHARE_ENV = SymbolFor("nodejs.worker_threads.SHARE_ENV");
 
+// ---------------------------------------------------------------
+// Cross-thread messaging (`postMessageToThread` / `workerMessage`)
+// ---------------------------------------------------------------
+//
+// Each thread (main + every Node worker) registers itself with the Rust
+// side via `op_node_worker_thread_register`, which hands back a receive
+// channel. The send side lives in a process-wide table keyed by thread
+// id; any thread can post to any other thread by id, and the receive
+// loop here decodes the envelope and dispatches it as a `workerMessage`
+// event on `process`.
+//
+// A short envelope { sender, id, kind, payload, status? } wraps each
+// payload so we can carry the sender id alongside an ack message back to
+// the sender once the destination's `workerMessage` listeners have run.
+// The ack resolves the sender's pending promise (or rejects it on
+// listener throw / timeout), matching the Node.js semantics that
+// `postMessageToThread` only resolves once the destination has actually
+// handled the message.
+
+const kMessageKindData = 0;
+const kMessageKindAck = 1;
+const kAckStatusOk = 0;
+const kAckStatusError = 1;
+
+let threadMessageRid: number | undefined;
+let workerMessageListenerCount = 0;
+let nextThreadMessageId = 1;
+const pendingThreadMessages = new SafeMap<
+  number,
+  {
+    resolve: (v: void) => void;
+    reject: (err: unknown) => void;
+    timer: number | undefined;
+  }
+>();
+
+function isCrossThreadEnvelope(
+  v: unknown,
+): v is {
+  sender: number;
+  id: number;
+  kind: number;
+  payload?: unknown;
+  status?: number;
+} {
+  return typeof v === "object" && v !== null &&
+    ObjectHasOwn(v, "__nodeWorkerMessage") &&
+    (v as { __nodeWorkerMessage: unknown }).__nodeWorkerMessage === true;
+}
+
+function deliverThreadMessageAck(
+  id: number,
+  status: number,
+) {
+  const pending = pendingThreadMessages.get(id);
+  if (pending === undefined) return;
+  pendingThreadMessages.delete(id);
+  if (pending.timer !== undefined) clearTimeout(pending.timer);
+  if (status === kAckStatusOk) {
+    pending.resolve(undefined);
+  } else {
+    pending.reject(new ERR_WORKER_MESSAGING_ERRORED());
+  }
+}
+
+function sendAck(
+  senderThreadId: number,
+  id: number,
+  status: number,
+) {
+  try {
+    const envelope = {
+      __nodeWorkerMessage: true,
+      sender: threadId,
+      id,
+      kind: kMessageKindAck,
+      status,
+    };
+    const data = serializeJsMessageData(envelope, []);
+    // Acks bypass the listener-count gate: the sender is, by definition,
+    // waiting on this reply even though it has no `workerMessage`
+    // listener of its own.
+    op_node_worker_thread_post_message(senderThreadId, data, true);
+  } catch {
+    // Best-effort: a failed ack just means the sender will time out.
+  }
+}
+
+async function pollCrossThreadMessages() {
+  if (threadMessageRid === undefined) return;
+  while (threadMessageRid !== undefined) {
+    const promise = op_node_worker_thread_recv_message(threadMessageRid);
+    // Don't let the cross-thread receive op keep the event loop alive
+    // on its own: the thread should be free to exit when there's no
+    // other work, even though we're permanently parked on this op.
+    core.unrefOpPromise(promise);
+    const data = await promise;
+    if (data === null) return;
+    let envelope;
+    try {
+      envelope = deserializeJsMessageData(data)[0];
+    } catch {
+      continue;
+    }
+    if (!isCrossThreadEnvelope(envelope)) {
+      continue;
+    }
+    if (envelope.kind === kMessageKindAck) {
+      deliverThreadMessageAck(envelope.id, envelope.status ?? kAckStatusOk);
+      continue;
+    }
+    // kMessageKindData - surface to user code as a `workerMessage` event
+    // on `process`, then ack with whatever the listeners produced.
+    let status = kAckStatusOk;
+    try {
+      process.emit("workerMessage", envelope.payload);
+    } catch {
+      status = kAckStatusError;
+    }
+    sendAck(envelope.sender, envelope.id, status);
+  }
+}
+
+function setupCrossThreadMessaging() {
+  if (threadMessageRid !== undefined) return;
+  threadMessageRid = op_node_worker_thread_register(threadId);
+
+  // Account for any `workerMessage` listeners already on `process` when
+  // we wire ourselves up: `newListener` only fires for additions made
+  // after this point.
+  workerMessageListenerCount = process.listenerCount?.("workerMessage") ?? 0;
+  if (workerMessageListenerCount > 0) {
+    op_node_worker_thread_set_listener_count(
+      threadId,
+      workerMessageListenerCount,
+    );
+  }
+
+  // Track `workerMessage` listeners so the Rust side knows whether to
+  // accept inbound posts. `newListener` / `removeListener` fire on every
+  // `on` / `off` for any event, so we filter on event name.
+  process.on("newListener", (eventName: string) => {
+    if (eventName === "workerMessage") {
+      workerMessageListenerCount++;
+      op_node_worker_thread_set_listener_count(
+        threadId,
+        workerMessageListenerCount,
+      );
+    }
+  });
+  process.on("removeListener", (eventName: string) => {
+    if (eventName === "workerMessage") {
+      // EventEmitter only fires removeListener for actually-registered
+      // listeners, so this stays in sync with newListener.
+      if (workerMessageListenerCount > 0) workerMessageListenerCount--;
+      op_node_worker_thread_set_listener_count(
+        threadId,
+        workerMessageListenerCount,
+      );
+    }
+  });
+
+  // The poll loop runs forever; the underlying receive op resolves to
+  // null when the channel is torn down, ending the loop cleanly.
+  pollCrossThreadMessages();
+}
+
 // https://nodejs.org/api/worker_threads.html#workerpostmessagetothreadthreadid-value-transferlist-timeout
-// Partial implementation: validates input and rejects with the expected
-// error codes. Cross-thread message routing (via `workerMessage` event
-// listeners on the destination thread) is not yet wired up, so calls
-// that pass validation always reject with ERR_WORKER_MESSAGING_FAILED.
 function postMessageToThread(
   targetThreadId: number,
-  _value?: unknown,
+  value?: unknown,
   transferListOrTimeout?: unknown[] | number,
   maybeTimeout?: number,
 ): Promise<void> {
+  let transferList: unknown[] | undefined;
+  let timeout: number | undefined;
   try {
     validateInteger(targetThreadId, "threadId", 0);
-    let transferList: unknown[] | undefined;
-    let timeout: number | undefined;
     if (ArrayIsArray(transferListOrTimeout)) {
       transferList = transferListOrTimeout;
       timeout = maybeTimeout;
@@ -1288,13 +1462,64 @@ function postMessageToThread(
     if (targetThreadId === threadId) {
       throw new ERR_WORKER_MESSAGING_SAME_THREAD();
     }
-    // No cross-thread `workerMessage` routing yet: any otherwise-valid
-    // call is treated as a delivery failure, matching the error code
-    // that Node.js emits when no listener is registered on the target.
-    throw new ERR_WORKER_MESSAGING_FAILED();
   } catch (err) {
     return PromiseReject(err);
   }
+
+  const id = nextThreadMessageId++;
+  let data;
+  try {
+    const envelope = {
+      __nodeWorkerMessage: true,
+      sender: threadId,
+      id,
+      kind: kMessageKindData,
+      payload: value,
+    };
+    data = serializeJsMessageData(envelope, transferList ?? []);
+  } catch (err) {
+    return PromiseReject(err);
+  }
+
+  // Register the pending entry *before* posting so that an ack delivered
+  // synchronously by a single-threaded test runner still finds it.
+  let pendingResolve!: (v: void) => void;
+  let pendingReject!: (err: unknown) => void;
+  const promise = new Promise<void>((resolve, reject) => {
+    pendingResolve = resolve;
+    pendingReject = reject;
+  });
+  let timer: number | undefined;
+  if (timeout !== undefined && timeout > 0) {
+    timer = setTimeout(() => {
+      if (pendingThreadMessages.has(id)) {
+        pendingThreadMessages.delete(id);
+        pendingReject(new ERR_WORKER_MESSAGING_TIMEOUT());
+      }
+    }, timeout);
+  }
+  pendingThreadMessages.set(id, {
+    resolve: pendingResolve,
+    reject: pendingReject,
+    timer,
+  });
+
+  let result;
+  try {
+    result = op_node_worker_thread_post_message(targetThreadId, data, false);
+  } catch (err) {
+    pendingThreadMessages.delete(id);
+    if (timer !== undefined) clearTimeout(timer);
+    return PromiseReject(err);
+  }
+  // 0 = no such thread, 1 = destination has no `workerMessage` listener.
+  if (result === 0 || result === 1) {
+    pendingThreadMessages.delete(id);
+    if (timer !== undefined) clearTimeout(timer);
+    return PromiseReject(new ERR_WORKER_MESSAGING_FAILED());
+  }
+
+  return promise;
 }
 
 function markAsUntransferable(obj: object) {
