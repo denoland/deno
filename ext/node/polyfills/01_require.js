@@ -81,10 +81,10 @@ const {
   TypeError,
 } = primordials;
 
-import _httpAgent from "node:_http_agent";
-import _httpCommon from "node:_http_common";
-import _httpOutgoing from "node:_http_outgoing";
-import _httpServer from "node:_http_server";
+const _httpAgent = core.createLazyLoader("node:_http_agent");
+const _httpCommon = core.createLazyLoader("node:_http_common");
+const _httpOutgoing = core.createLazyLoader("node:_http_outgoing");
+const _httpServer = core.createLazyLoader("node:_http_server");
 const _streamDuplex = core.loadExtScript(
   "ext:deno_node/internal/streams/duplex.js",
 ).default;
@@ -134,9 +134,9 @@ const fs = core.loadExtScript("ext:deno_node/fs.ts");
 const fsPromises = core.loadExtScript(
   "ext:deno_node/fs/promises.ts",
 ).fsPromises;
-const http = core.loadExtScript("ext:deno_node/http.ts");
-const http2 = core.loadExtScript("ext:deno_node/http2.ts");
-const https = core.loadExtScript("ext:deno_node/https.ts");
+// http/http2/https are lazy-loaded via `lazyNodeModules` below: their script
+// bodies eagerly chain into the entire node:_http_* / node:net / node:stream
+// graph, so running them at snapshot time defeats lazifying _http_*.
 const inspector = core.loadExtScript("ext:deno_node/inspector.js");
 const inspectorPromises = core.loadExtScript(
   "ext:deno_node/inspector/promises.js",
@@ -199,13 +199,11 @@ const internalBuffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const internalErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
-const internalHttp = core.loadExtScript("ext:deno_node/internal/http.ts");
-const internalHttp2Core = core.loadExtScript(
-  "ext:deno_node/internal/http2/core.ts",
-).default;
-const internalHttp2Util = core.loadExtScript(
-  "ext:deno_node/internal/http2/util.ts",
-).default;
+// internal/http, internal/http2/core, internal/http2/util are lazy-loaded
+// via `lazyNodeModules` below. Loading them eagerly here pulls the entire
+// http2 ESM chain (node:http2 -> http2.ts -> node:http -> http.ts -> the
+// node:_http_* graph) into the snapshot, defeating the http/_http_*
+// lazification we set up.
 const internalPriorityQueue = core.loadExtScript(
   "ext:deno_node/internal/priority_queue.ts",
 );
@@ -284,13 +282,51 @@ const zlib = core.loadExtScript("ext:deno_node/zlib.js");
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
 
+// Modules installed as lazy getters on `nativeModuleExports`. Each value is
+// a `() => exports` thunk that's only invoked the first time the require name
+// is accessed. Keeping these out of the eager `nodeModules` map means the
+// snapshot does not have to compile their bodies (and everything those
+// bodies transitively pull in via `loadExtScript`/`op_lazy_load_esm`).
+// Use `() => createLazyLoader("...")().default` for `lazy_loaded_esm` entries
+// and `() => loadExtScript("...")` for `lazy_loaded_js` entries.
+const lazyNodeModules = {
+  "_http_agent": () => _httpAgent().default,
+  "_http_common": () => _httpCommon().default,
+  "_http_outgoing": () => _httpOutgoing().default,
+  "_http_server": () => _httpServer().default,
+  "http": () => core.loadExtScript("ext:deno_node/http.ts"),
+  "http2": () => core.loadExtScript("ext:deno_node/http2.ts"),
+  "https": () => core.loadExtScript("ext:deno_node/https.ts"),
+  "internal/http": () =>
+    core.loadExtScript("ext:deno_node/internal/http.ts").default,
+  "internal/http2/core": () =>
+    core.loadExtScript("ext:deno_node/internal/http2/core.ts").default,
+  "internal/http2/util": () =>
+    core.loadExtScript("ext:deno_node/internal/http2/util.ts").default,
+};
+
+function defineLazyNativeModule(name, loader) {
+  ObjectDefineProperty(nativeModuleExports, name, {
+    __proto__: null,
+    get() {
+      const value = loader();
+      ObjectDefineProperty(nativeModuleExports, name, {
+        __proto__: null,
+        value,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
+      return value;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+}
+
 // NOTE(bartlomieju): keep this list in sync with `ext/node/lib.rs`
 function setupBuiltinModules() {
   const nodeModules = {
-    "_http_agent": _httpAgent,
-    "_http_common": _httpCommon,
-    "_http_outgoing": _httpOutgoing,
-    "_http_server": _httpServer,
     "_stream_duplex": _streamDuplex,
     "_stream_passthrough": _streamPassthrough,
     "_stream_readable": _streamReadable,
@@ -315,9 +351,6 @@ function setupBuiltinModules() {
     events,
     fs,
     "fs/promises": fsPromises,
-    http,
-    http2,
-    https,
     inspector,
     "inspector/promises": inspectorPromises,
     "internal/assert/myers_diff": internalAssertMyersDiff.default,
@@ -343,9 +376,6 @@ function setupBuiltinModules() {
     "internal/errors": internalErrors,
     "internal/event_target": internalEventTarget,
     "internal/fs/utils": internalFsUtils,
-    "internal/http": internalHttp.default,
-    "internal/http2/core": internalHttp2Core,
-    "internal/http2/util": internalHttp2Util,
     "internal/priority_queue": internalPriorityQueue.default,
     "internal/readline/utils": internalReadlineUtils.default,
     "internal/repl": internalRepl,
@@ -412,18 +442,25 @@ function setupBuiltinModules() {
     "test",
     "test/reporters",
   ]);
-  for (const [name, moduleExports] of ObjectEntries(nodeModules)) {
-    nativeModuleExports[name] = moduleExports;
+  function registerName(name) {
     // `internal/*` modules are only exposed under --expose-internals, so
     // they aren't part of the public builtinModules list.
     if (StringPrototypeStartsWith(name, "internal/")) {
-      continue;
+      return;
     }
     if (SetPrototypeHas(schemelessBlockList, name)) {
       ArrayPrototypePush(builtinModules, `node:${name}`);
     } else {
       ArrayPrototypePush(builtinModules, name);
     }
+  }
+  for (const [name, moduleExports] of ObjectEntries(nodeModules)) {
+    nativeModuleExports[name] = moduleExports;
+    registerName(name);
+  }
+  for (const [name, loader] of ObjectEntries(lazyNodeModules)) {
+    defineLazyNativeModule(name, loader);
+    registerName(name);
   }
 }
 setupBuiltinModules();
@@ -1775,7 +1812,7 @@ Module._resolveFilename = function (
 
   if (StringPrototypeStartsWith(request, "node:")) {
     const id = StringPrototypeSlice(request, 5);
-    if (nativeModuleExports[id]) {
+    if (id in nativeModuleExports) {
       return request;
     }
     const err = new Error(`Cannot find module '${request}'`);
@@ -2607,7 +2644,9 @@ function loadNativeModule(_id, request) {
 }
 
 function nativeModuleCanBeRequiredByUsers(request) {
-  return !!nativeModuleExports[request];
+  // `in` rather than bracket access avoids triggering the lazy getters
+  // installed by `defineLazyNativeModule`.
+  return request in nativeModuleExports;
 }
 
 function readPackageScope() {
