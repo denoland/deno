@@ -1,8 +1,8 @@
-import { readHostname } from "./helper.ts";
+import { readSelf } from "./helper.ts";
 
 try {
-  const text = readHostname();
-  console.log("ok:", typeof text);
+  const result = readSelf();
+  console.log("ok:", result);
 } catch (err) {
   console.log((err as Error).name + ": " + (err as Error).message);
   throw err;
