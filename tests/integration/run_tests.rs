@@ -2357,7 +2357,10 @@ fn test_resolve_dns() {
       let out = String::from_utf8_lossy(&output.stdout);
       assert!(!output.status.success());
       assert!(err.starts_with("Check run/resolve_dns.ts"));
-      assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
+      // After the --allow-net split, the no-permission path is checked
+      // against `net-connect` (DNS resolution is a connect-direction op),
+      // so the human-rendered message reads "net connect access".
+      assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net connect access to "127.0.0.1:4553""#));
       assert!(out.is_empty());
     }
 
