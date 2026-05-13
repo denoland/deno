@@ -21,6 +21,7 @@ import {
 const cacheVersion = 113;
 
 const ubuntuX86Runner = "ubuntu-24.04";
+const ubuntuX86XlRunner = "ubuntu-24.04-xl";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
@@ -47,7 +48,10 @@ const Runners = {
   linuxX86Xl: {
     os: "linux",
     arch: "x86_64",
-    runner: ubuntuX86Runner,
+    runner: isDenoland.and(isMainOrTag).then(ubuntuX86XlRunner).else(
+      ubuntuX86Runner,
+    ),
+    testRunner: ubuntuX86Runner,
   },
   linuxArm: {
     os: "linux",
