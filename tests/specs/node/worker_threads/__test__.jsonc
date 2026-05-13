@@ -23,6 +23,12 @@
       // Note: successful exit asserts that the test passed
       "exitCode": 0
     },
+    "message_port_dedupe": {
+      // Test for https://github.com/denoland/deno/issues/33373
+      "args": "run message_port_dedupe.mjs",
+      "output": "message_port_dedupe.out",
+      "exitCode": 0
+    },
     "message_port_unref": {
       "args": "run --allow-env --allow-read message_port_unref.mjs",
       "output": "message_port_unref.out",
