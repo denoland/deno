@@ -603,6 +603,7 @@ const NOT_IMPORTED_OPS = [
   "BrowserWindow",
   "Dock",
   "Tray",
+  "Notification",
   "op_desktop_apply_patch",
   "op_desktop_confirm_update",
   "op_desktop_init",
@@ -613,6 +614,8 @@ const NOT_IMPORTED_OPS = [
   "op_desktop_confirm",
   "op_desktop_prompt",
   "op_desktop_send_error_report",
+  "op_desktop_request_notification_permission",
+  "op_desktop_query_notification_permission",
 
   // deno deploy subcommand
   "op_deploy_token_get",

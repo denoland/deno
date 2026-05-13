@@ -93,6 +93,156 @@ declare class WheelEvent extends MouseEvent {
   readonly deltaMode: number;
 }
 
+declare type NotificationPermission = "default" | "denied" | "granted";
+declare type NotificationDirection = "auto" | "ltr" | "rtl";
+
+declare interface NotificationOptions {
+  body?: string;
+  data?: any;
+  dir?: NotificationDirection;
+  icon?: string;
+  lang?: string;
+  badge?: string;
+  requireInteraction?: boolean;
+  silent?: boolean | null;
+  tag?: string;
+}
+
+declare interface NotificationPermissionCallback {
+  (permission: NotificationPermission): void;
+}
+
+declare interface NotificationEventMap {
+  click: Event;
+  close: Event;
+  error: Event;
+  show: Event;
+}
+
+declare interface Notification extends EventTarget {
+  readonly title: string;
+  readonly body: string;
+  readonly data: any;
+  readonly dir: NotificationDirection;
+  readonly icon: string;
+  readonly lang: string;
+  readonly badge: string;
+  readonly tag: string;
+  readonly silent: boolean | null;
+  readonly requireInteraction: boolean;
+
+  onclick: ((this: Notification, ev: Event) => any) | null;
+  onclose: ((this: Notification, ev: Event) => any) | null;
+  onerror: ((this: Notification, ev: Event) => any) | null;
+  onshow: ((this: Notification, ev: Event) => any) | null;
+
+  close(): void;
+
+  addEventListener<K extends keyof NotificationEventMap>(
+    type: K,
+    listener: (this: Notification, ev: NotificationEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  removeEventListener<K extends keyof NotificationEventMap>(
+    type: K,
+    listener: (this: Notification, ev: NotificationEventMap[K]) => any,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void;
+}
+
+/** Web Notifications API.
+ *
+ * Construct a notification to display it. Only available in apps
+ * compiled with `deno desktop`.
+ *
+ * Notification permission is checked against the OS (e.g. macOS User
+ * Notifications). {@linkcode Notification.permission} reports the
+ * cached result of the most recent query/request, and
+ * {@linkcode Notification.requestPermission} triggers a system prompt
+ * if the user has not yet decided.
+ *
+ * The Web Notifications API specifies `icon` as a URL string. The
+ * desktop runtime can only resolve `data:` URLs synchronously; other
+ * URL schemes are accepted (the value round-trips through the
+ * {@linkcode Notification.icon} property) but the OS notification is
+ * shown without an icon.
+ */
+declare var Notification: {
+  prototype: Notification;
+  new (title: string, options?: NotificationOptions): Notification;
+  readonly permission: NotificationPermission;
+  readonly maxActions: number;
+  requestPermission(
+    deprecatedCallback?: NotificationPermissionCallback,
+  ): Promise<NotificationPermission>;
+};
+
+/** Permissions API state value. Mirrors the Web Permissions API. */
+declare type PermissionState = "granted" | "denied" | "prompt";
+
+declare interface PermissionStatusEventMap {
+  change: Event;
+}
+
+declare interface PermissionStatus extends EventTarget {
+  readonly name: string;
+  readonly state: PermissionState;
+  onchange: ((this: PermissionStatus, ev: Event) => any) | null;
+
+  addEventListener<K extends keyof PermissionStatusEventMap>(
+    type: K,
+    listener: (
+      this: PermissionStatus,
+      ev: PermissionStatusEventMap[K],
+    ) => any,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  removeEventListener<K extends keyof PermissionStatusEventMap>(
+    type: K,
+    listener: (
+      this: PermissionStatus,
+      ev: PermissionStatusEventMap[K],
+    ) => any,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void;
+}
+
+declare var PermissionStatus: {
+  prototype: PermissionStatus;
+};
+
+declare interface PermissionDescriptor {
+  name: string;
+}
+
+declare interface Permissions {
+  query(descriptor: PermissionDescriptor): Promise<PermissionStatus>;
+}
+
+declare interface Navigator {
+  readonly permissions: Permissions;
+}
+
 declare namespace Deno {
   export {}; // stop default export type behavior
 

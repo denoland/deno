@@ -832,6 +832,12 @@ struct SerializedDesktopIconsConfig {
 struct SerializedDesktopAppConfig {
   pub name: Option<String>,
   pub icons: Option<SerializedDesktopIconsConfig>,
+  /// Bundle/application identifier in reverse-DNS form (e.g.
+  /// `com.acme.foo`). Used as the macOS `CFBundleIdentifier`, the Linux
+  /// `.desktop` file identifier, and (eventually) the Windows
+  /// AppUserModelID. Optional; when omitted a synthetic
+  /// `com.deno.desktop.<slug>` is generated from the app name.
+  pub identifier: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -857,6 +863,17 @@ struct SerializedDesktopErrorReportingConfig {
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
+struct SerializedDesktopMacOSConfig {
+  /// Codesigning identity passed to `codesign --sign`. Typically
+  /// `Developer ID Application: Acme, Inc. (TEAMID)` for distribution,
+  /// or `-` for an ad-hoc signature (still required on Apple Silicon to
+  /// launch unsigned binaries).
+  #[serde(rename = "codesignIdentity")]
+  pub codesign_identity: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
 struct SerializedDesktopConfig {
   pub app: Option<SerializedDesktopAppConfig>,
   pub backend: Option<String>,
@@ -864,6 +881,7 @@ struct SerializedDesktopConfig {
   pub release: Option<SerializedDesktopReleaseConfig>,
   #[serde(rename = "errorReporting")]
   pub error_reporting: Option<SerializedDesktopErrorReportingConfig>,
+  pub macos: Option<SerializedDesktopMacOSConfig>,
 }
 
 impl SerializedDesktopConfig {
@@ -871,6 +889,7 @@ impl SerializedDesktopConfig {
     DesktopConfig {
       app: self.app.map(|a| DesktopAppConfig {
         name: a.name,
+        identifier: a.identifier,
         icons: a.icons.map(|i| {
           fn resolve_icon_value(
             v: SerializedDesktopIconValue,
@@ -911,6 +930,9 @@ impl SerializedDesktopConfig {
       error_reporting: self
         .error_reporting
         .map(|e| DesktopErrorReportingConfig { url: e.url }),
+      macos: self.macos.map(|m| DesktopMacOSConfig {
+        codesign_identity: m.codesign_identity,
+      }),
     }
   }
 }
@@ -939,6 +961,7 @@ pub struct DesktopIconsConfig {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DesktopAppConfig {
   pub name: Option<String>,
+  pub identifier: Option<String>,
   pub icons: Option<DesktopIconsConfig>,
 }
 
@@ -960,12 +983,18 @@ pub struct DesktopErrorReportingConfig {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopMacOSConfig {
+  pub codesign_identity: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct DesktopConfig {
   pub app: Option<DesktopAppConfig>,
   pub backend: Option<String>,
   pub output: Option<DesktopOutputConfig>,
   pub release: Option<DesktopReleaseConfig>,
   pub error_reporting: Option<DesktopErrorReportingConfig>,
+  pub macos: Option<DesktopMacOSConfig>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]

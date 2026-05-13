@@ -35,6 +35,17 @@ use deno_terminal::colors;
 use denort::desktop::DesktopApi;
 use denort::run::RunOptions;
 
+/// Compile-time check: the just-wef crate we're linking against must use the
+/// same C ABI version as the prebuilt backend we ship. If just-wef bumps
+/// `WEF_API_VERSION` without our side updating, `init_api` would reject the
+/// backend at startup with `-2`. Catching the mismatch at `cargo build` time
+/// makes the failure mode obvious instead of "the desktop app silently won't
+/// launch".
+const _: () = assert!(
+  just_wef::WEF_API_VERSION == 24,
+  "WEF_API_VERSION mismatch: update this assert and the prebuilt backend release pin in cli/tools/desktop.rs when just-wef bumps its API version",
+);
+
 /// WEF-backed implementation of [`denort::desktop::DesktopApi`].
 struct WefDesktopApi {
   event_tx: deno_runtime::ops::desktop::DesktopEventTx,
@@ -44,6 +55,7 @@ struct WefDesktopApi {
   /// callback so it can refresh all windows, not just the initial one.
   open_windows: Arc<Mutex<HashSet<u32>>>,
   trays: Arc<Mutex<HashMap<u32, just_wef::TrayIcon>>>,
+  notifications: Arc<Mutex<HashMap<u32, just_wef::NotificationHandle>>>,
   /// Singleton for the unified-mux DevTools window. Without this, every
   /// `openDevtools()` call would spawn another DevTools window.
   devtools_window: Mutex<Option<u32>>,
@@ -623,6 +635,138 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       }
       None => tray.clear_menu(),
     }
+  }
+
+  fn show_notification(
+    &self,
+    title: &str,
+    body: Option<&str>,
+    icon: Option<&[u8]>,
+    tag: Option<&str>,
+    silent: Option<bool>,
+    require_interaction: Option<bool>,
+  ) -> u32 {
+    let mut builder = just_wef::Notification::new(title);
+    if let Some(body) = body {
+      builder = builder.body(body);
+    }
+    if let Some(icon) = icon {
+      builder = builder.icon(icon.to_vec());
+    }
+    if let Some(tag) = tag {
+      builder = builder.tag(tag);
+    }
+    if let Some(silent) = silent {
+      builder = builder.silent(silent);
+    }
+    if let Some(require) = require_interaction {
+      builder = builder.require_interaction(require);
+    }
+
+    // The wef handler closure receives only the event; it needs the
+    // notification id to route the event through the desktop channel.
+    // We can't know the id until `on_event` returns, so we capture it
+    // through a shared slot populated immediately after.
+    let id_slot: Arc<std::sync::OnceLock<u32>> =
+      Arc::new(std::sync::OnceLock::new());
+    let id_for_handler = id_slot.clone();
+    let tx = self.event_tx.clone();
+    let notifications = self.notifications.clone();
+
+    let handle = builder.on_event(move |event| {
+      let Some(&nid) = id_for_handler.get() else {
+        return;
+      };
+      use just_wef::NotificationEvent;
+      let desktop_event = match event {
+        NotificationEvent::Shown => {
+          deno_runtime::ops::desktop::DesktopEvent::NotificationShow {
+            notification_id: nid,
+          }
+        }
+        NotificationEvent::Clicked => {
+          deno_runtime::ops::desktop::DesktopEvent::NotificationClick {
+            notification_id: nid,
+          }
+        }
+        NotificationEvent::Closed => {
+          deno_runtime::ops::desktop::DesktopEvent::NotificationClose {
+            notification_id: nid,
+          }
+        }
+        // The Web Notification API has no "action" event in window context;
+        // surface action button clicks as a click event for compatibility.
+        NotificationEvent::Action(_) => {
+          deno_runtime::ops::desktop::DesktopEvent::NotificationClick {
+            notification_id: nid,
+          }
+        }
+      };
+      let is_terminal = matches!(event, just_wef::NotificationEvent::Closed);
+      let _ = tx.try_send(desktop_event);
+      if is_terminal {
+        notifications.lock().unwrap().remove(&nid);
+      }
+    });
+
+    let id = handle.id();
+    if id == 0 {
+      // Backend doesn't support notifications. Emit a synthetic error
+      // event so the user can observe the failure.
+      let _ = self.event_tx.try_send(
+        deno_runtime::ops::desktop::DesktopEvent::NotificationError {
+          notification_id: 0,
+        },
+      );
+      return 0;
+    }
+    let _ = id_slot.set(id);
+    self.notifications.lock().unwrap().insert(id, handle);
+    id
+  }
+
+  fn close_notification(&self, notification_id: u32) {
+    if let Some(handle) =
+      self.notifications.lock().unwrap().get(&notification_id)
+    {
+      handle.close();
+    }
+  }
+
+  fn request_notification_permission(
+    &self,
+    cb: Box<
+      dyn FnOnce(deno_runtime::ops::desktop::PermissionState) + Send + 'static,
+    >,
+  ) {
+    just_wef::request_permission(
+      just_wef::PermissionKind::Notifications,
+      move |status| cb(map_permission_status(status)),
+    );
+  }
+
+  fn query_notification_permission(
+    &self,
+    cb: Box<
+      dyn FnOnce(deno_runtime::ops::desktop::PermissionState) + Send + 'static,
+    >,
+  ) {
+    just_wef::query_permission(
+      just_wef::PermissionKind::Notifications,
+      move |status| cb(map_permission_status(status)),
+    );
+  }
+}
+
+fn map_permission_status(
+  status: just_wef::PermissionStatus,
+) -> deno_runtime::ops::desktop::PermissionState {
+  use deno_runtime::ops::desktop::PermissionState;
+  match status {
+    just_wef::PermissionStatus::Granted => PermissionState::Granted,
+    just_wef::PermissionStatus::Denied => PermissionState::Denied,
+    just_wef::PermissionStatus::Prompt => PermissionState::Prompt,
+    just_wef::PermissionStatus::Unsupported => PermissionState::Unsupported,
   }
 }
 
@@ -1497,6 +1641,7 @@ async fn run_desktop(
         closed_windows: Arc::new(Mutex::new(HashSet::new())),
         open_windows: open_windows_for_api.clone(),
         trays: Arc::new(Mutex::new(HashMap::new())),
+        notifications: Arc::new(Mutex::new(HashMap::new())),
         devtools_window: Mutex::new(None),
       };
 

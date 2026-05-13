@@ -94,12 +94,25 @@ pub async fn desktop(
     {
       desktop_flags.output = Some(name);
     }
+
+    if let Some(identifier) = app_config.identifier
+      && desktop_flags.identifier.is_none()
+    {
+      desktop_flags.identifier = Some(identifier);
+    }
   }
 
   if let Some(backend) = desktop_config.backend
     && desktop_flags.backend.is_none()
   {
     desktop_flags.backend = Some(backend);
+  }
+
+  if let Some(macos_config) = desktop_config.macos
+    && let Some(identity) = macos_config.codesign_identity
+    && desktop_flags.codesign_identity.is_none()
+  {
+    desktop_flags.codesign_identity = Some(identity);
   }
 
   if all_targets {
@@ -773,6 +786,36 @@ async fn package_linux_app_dir(
     }
   }
 
+  // Write a `.desktop` entry alongside the launcher so a user dropping
+  // the app dir into `~/.local/share/applications/` gets the right
+  // name/icon attribution on notifications and in the taskbar. wef
+  // doesn't read this file — only the OS does — but libnotify and
+  // GNOME Shell key notification attribution on the desktop file's
+  // `StartupWMClass` and `Icon` fields.
+  let desktop_id = desktop_flags
+    .identifier
+    .clone()
+    .unwrap_or_else(|| format!("com.deno.desktop.{}", app_name.to_lowercase()));
+  if let Err(e) = validate_bundle_identifier(&desktop_id) {
+    log::warn!(
+      "skipping .desktop file: {e} (desktop file IDs follow the same reverse-DNS rules as macOS bundle IDs)"
+    );
+  } else {
+    let desktop_entry = format!(
+      "[Desktop Entry]\n\
+       Type=Application\n\
+       Name={app_name}\n\
+       Exec={app_name}\n\
+       Icon=AppIcon\n\
+       StartupWMClass={desktop_id}\n\
+       Categories=Utility;\n",
+    );
+    std::fs::write(
+      app_dir.join(format!("{desktop_id}.desktop")),
+      desktop_entry,
+    )?;
+  }
+
   // Remove the standalone dylib (it's now inside the app dir).
   let _ = std::fs::remove_file(dylib_path);
 
@@ -1313,6 +1356,260 @@ fn read_plist_string(path: &Path, key: &str) -> Option<String> {
   dict.get(key)?.as_string().map(|s| s.to_string())
 }
 
+/// Validate a reverse-DNS bundle identifier (Apple `CFBundleIdentifier`,
+/// also used for Linux `.desktop` filenames and Windows AppUserModelID).
+///
+/// Apple's rules: ASCII alphanumerics, hyphens, and dots; must have at
+/// least one dot (so it looks like reverse DNS); each dot-separated
+/// segment must be non-empty and not start with a digit. We don't
+/// enforce the segment-leading-letter rule strictly (some legacy apps
+/// use digits) but we do reject empty segments and obvious shell
+/// metacharacters — the identifier ends up as a `codesign` argument and
+/// a path component of the helper bundles.
+fn validate_bundle_identifier(id: &str) -> Result<(), AnyError> {
+  if id.is_empty() {
+    bail!("bundle identifier is empty");
+  }
+  if id.len() > 155 {
+    // Apple's documented limit for CFBundleIdentifier on receipts is
+    // 155 chars; bigger values quietly truncate elsewhere in the
+    // toolchain.
+    bail!("bundle identifier {id:?} is longer than 155 characters");
+  }
+  if !id.contains('.') {
+    bail!(
+      "bundle identifier {id:?} must be in reverse-DNS form (e.g. com.acme.foo)"
+    );
+  }
+  for c in id.chars() {
+    if !(c.is_ascii_alphanumeric() || c == '.' || c == '-') {
+      bail!(
+        "bundle identifier {id:?} must match [A-Za-z0-9.-]+, but contains {c:?}",
+      );
+    }
+  }
+  if id.split('.').any(|seg| seg.is_empty()) {
+    bail!("bundle identifier {id:?} has an empty segment");
+  }
+  Ok(())
+}
+
+/// Walk every `.app` under `Contents/Frameworks/` and rewrite its
+/// `CFBundleIdentifier` so it's a strict suffix of `main_bundle_id`.
+///
+/// CEF's process model: when the browser process spawns a helper for a
+/// child role (gpu, renderer, plugin, …), the helper inspects its own
+/// `CFBundleIdentifier` and refuses to attach to a parent whose id
+/// doesn't match it as a prefix. wef's default helper plists ship with
+/// `com.example.wef.helper.*` — which is inconsistent with whatever id
+/// we wrote into the main bundle, so we'd get a launch-time refusal
+/// (the helper exits silently and the browser hangs waiting for it).
+///
+/// We compute the new id by extracting the "kind" suffix from the
+/// existing id (everything from the last `helper` segment onward) and
+/// concatenating it onto the main id. So `com.example.wef.helper` →
+/// `<main>.helper`, `com.example.wef.helper.gpu` → `<main>.helper.gpu`.
+fn rewrite_cef_helper_bundle_ids(
+  contents_dir: &Path,
+  main_bundle_id: &str,
+) -> Result<(), AnyError> {
+  let frameworks = contents_dir.join("Frameworks");
+  if !frameworks.exists() {
+    return Ok(());
+  }
+  let entries = match std::fs::read_dir(&frameworks) {
+    Ok(e) => e,
+    Err(_) => return Ok(()),
+  };
+  for entry in entries.flatten() {
+    let path = entry.path();
+    let name = path
+      .file_name()
+      .map(|s| s.to_string_lossy().into_owned())
+      .unwrap_or_default();
+    // Only touch helper apps. The CEF framework directory
+    // (`Chromium Embedded Framework.framework`) also lives here and
+    // has its own bundle id that we must not rewrite — touching it
+    // would invalidate its embedded code signature.
+    if !path.is_dir() || !name.ends_with(".app") || !name.contains("Helper") {
+      continue;
+    }
+    let plist_path = path.join("Contents/Info.plist");
+    if !plist_path.exists() {
+      continue;
+    }
+    rewrite_helper_plist_identifier(&plist_path, main_bundle_id).with_context(
+      || format!("failed to rewrite helper plist at {}", plist_path.display()),
+    )?;
+  }
+  Ok(())
+}
+
+/// Rewrite a single helper's `CFBundleIdentifier` based on the existing
+/// value's "kind" suffix.
+fn rewrite_helper_plist_identifier(
+  plist_path: &Path,
+  main_bundle_id: &str,
+) -> Result<(), AnyError> {
+  let mut dict: plist::Dictionary = plist::from_file(plist_path)
+    .with_context(|| format!("failed to parse {}", plist_path.display()))?;
+  let existing = dict
+    .get("CFBundleIdentifier")
+    .and_then(|v| v.as_string())
+    .ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "helper plist {} has no CFBundleIdentifier",
+        plist_path.display()
+      )
+    })?;
+  // Extract the suffix from the last `helper` segment onward. Falls back
+  // to a bare `helper` if the existing id doesn't contain that token
+  // (defensive — every wef helper plist has it today).
+  let suffix = existing
+    .find("helper")
+    .map(|i| &existing[i..])
+    .unwrap_or("helper");
+  let new_id = format!("{main_bundle_id}.{suffix}");
+  dict.insert(
+    "CFBundleIdentifier".to_string(),
+    plist::Value::String(new_id),
+  );
+  // Write XML format for stability and human-diffability. Helper plists
+  // are tiny so we don't gain anything by switching to binary plist
+  // format; XML is what wef ships and what `codesign` expects to find.
+  plist::to_file_xml(plist_path, &dict)
+    .with_context(|| format!("failed to write {}", plist_path.display()))?;
+  Ok(())
+}
+
+/// Codesign the macOS bundle in place. Signs every helper `.app` and
+/// the embedded CEF framework first, then the main bundle (signatures
+/// nest: the outer signature's CodeDirectory hashes the inner ones, so
+/// outer-last is the only order that works).
+///
+/// Re-uses the JIT entitlements that ship with the wef CEF bundle
+/// (`Contents/Frameworks/<helper>.app/Contents/Resources/...entitlements...`
+/// or, more robustly, the per-helper entitlements wef bundles next to
+/// each helper). When entitlements aren't present we fall back to
+/// signing without them — the binary will still launch but V8 won't
+/// get JIT permission.
+fn codesign_macos_bundle(
+  app_bundle: &Path,
+  identity: &str,
+) -> Result<(), AnyError> {
+  if !cfg!(target_os = "macos") {
+    bail!(
+      "codesigning requires a macOS build host (uses `codesign(1)`). \
+       Run `deno desktop` on macOS, or drop `macos.codesignIdentity` \
+       from your deno.json when cross-building."
+    );
+  }
+  if identity.is_empty() {
+    bail!("macos.codesignIdentity is empty");
+  }
+  log::info!(
+    "{} bundle with identity {:?}",
+    colors::green("Codesigning"),
+    identity,
+  );
+
+  // Sign helpers first (inside → outside). The order within helpers
+  // doesn't matter — they don't nest into each other.
+  let frameworks = app_bundle.join("Contents/Frameworks");
+  if frameworks.exists()
+    && let Ok(entries) = std::fs::read_dir(&frameworks)
+  {
+    for entry in entries.flatten() {
+      let path = entry.path();
+      let Some(name) =
+        path.file_name().map(|s| s.to_string_lossy().into_owned())
+      else {
+        continue;
+      };
+      if path.is_dir() && name.ends_with(".app") {
+        let helper_entitlements = locate_helper_entitlements(&path);
+        codesign_one(&path, identity, helper_entitlements.as_deref())?;
+      } else if path.is_dir() && name.ends_with(".framework") {
+        // Frameworks (notably the CEF framework) have an embedded
+        // signature already — `codesign --force` re-signs the
+        // versioned directory in place.
+        codesign_one(&path, identity, None)?;
+      }
+    }
+  }
+
+  // Finally the main bundle. Use the browser-process entitlements if
+  // wef shipped them; otherwise sign with no entitlements (still
+  // launches, just no JIT for V8 in the browser process — which doesn't
+  // host V8 anyway, so this is fine).
+  let browser_entitlements = locate_browser_entitlements(app_bundle);
+  codesign_one(app_bundle, identity, browser_entitlements.as_deref())?;
+  Ok(())
+}
+
+/// Search for a per-helper entitlements plist that wef bundled with this
+/// helper. Returns the path if found, `None` otherwise.
+fn locate_helper_entitlements(helper_app: &Path) -> Option<PathBuf> {
+  // wef ships these alongside the helper binaries; the exact filename
+  // pattern depends on the wef build. Probe the well-known names; fall
+  // back to the generic `entitlements-helper.plist` next to Contents.
+  let candidates = [
+    helper_app.join("Contents/Resources/entitlements-helper.plist"),
+    helper_app
+      .parent()
+      .map(|p| p.join("entitlements-helper.plist"))
+      .unwrap_or_default(),
+  ];
+  candidates.into_iter().find(|p| p.exists())
+}
+
+/// Locate the browser-process entitlements plist for the main bundle.
+fn locate_browser_entitlements(app_bundle: &Path) -> Option<PathBuf> {
+  let candidates = [
+    app_bundle.join("Contents/Resources/entitlements-browser.plist"),
+    app_bundle.join("Contents/Resources/entitlements.plist"),
+  ];
+  candidates.into_iter().find(|p| p.exists())
+}
+
+/// Run `codesign --force --options runtime --sign <identity> [--entitlements <plist>] <path>`.
+///
+/// `--options runtime` enables the Hardened Runtime, which is required
+/// for notarization. `--force` overwrites any existing signature; the
+/// helpers come pre-signed by wef with an ad-hoc signature that we
+/// always need to replace.
+fn codesign_one(
+  target: &Path,
+  identity: &str,
+  entitlements: Option<&Path>,
+) -> Result<(), AnyError> {
+  let mut cmd = std::process::Command::new("codesign");
+  cmd
+    .arg("--force")
+    .arg("--timestamp")
+    .arg("--options")
+    .arg("runtime")
+    .arg("--sign")
+    .arg(identity);
+  if let Some(ent) = entitlements {
+    cmd.arg("--entitlements").arg(ent);
+  }
+  cmd.arg(target);
+  let status = cmd
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::inherit())
+    .status()
+    .context("failed to invoke codesign(1)")?;
+  if !status.success() {
+    bail!(
+      "codesign failed for {} (identity {:?})",
+      target.display(),
+      identity,
+    );
+  }
+  Ok(())
+}
+
 /// Reject any name we'd interpolate into a generated launcher script
 /// (POSIX shell on macOS/Linux, `.bat` on Windows). Even the
 /// double-quoted positions take expansions: `$`, backticks, `\` in
@@ -1480,9 +1777,26 @@ async fn package_macos_app_bundle(
     )?;
   }
 
+  // Resolve the bundle identifier. The user-configured `identifier` is
+  // preferred; otherwise we synthesize one from the app name. The
+  // synthetic form is fine for `deno run`-like local use, but real
+  // distribution wants a stable reverse-DNS identifier — notification
+  // permission (and other tcc-keyed permissions) are decided per
+  // (bundle id, code signature), so a synthetic id changes the user's
+  // grant whenever they rename the app.
+  let bundle_id = match desktop_flags.identifier.as_deref() {
+    Some(id) => {
+      validate_bundle_identifier(id)?;
+      id.to_string()
+    }
+    None => {
+      let slug = app_name.to_lowercase().replace(' ', "-");
+      format!("com.deno.desktop.{slug}")
+    }
+  };
+
   // Generate Info.plist.
   let has_icon = desktop_flags.icon.is_some();
-  let bundle_id = app_name.to_lowercase().replace(' ', "-");
   let info_plist = format!(
     r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -1495,7 +1809,7 @@ async fn package_macos_app_bundle(
   <key>CFBundleIconFile</key>
   <string>{icon_file}</string>
   <key>CFBundleIdentifier</key>
-  <string>com.deno.desktop.{bundle_id}</string>
+  <string>{bundle_id}</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
@@ -1525,6 +1839,22 @@ async fn package_macos_app_bundle(
     icon_file = if has_icon { "AppIcon" } else { "" },
   );
   std::fs::write(contents_dir.join("Info.plist"), info_plist)?;
+
+  // Rewrite each CEF helper's CFBundleIdentifier to be a strict suffix
+  // of the main bundle id. CEF's process model requires this — the
+  // browser process matches a helper's bundle id prefix against its own
+  // to verify the helper is part of the same app, and the wef defaults
+  // (`com.example.wef.helper.*`) don't share a prefix with whatever
+  // identifier we just wrote into the main plist.
+  rewrite_cef_helper_bundle_ids(&contents_dir, &bundle_id)?;
+
+  // Codesign the assembled bundle if the user provided an identity.
+  // Helpers must be signed before the main bundle (Gatekeeper / CEF
+  // verify them in that order), and the main bundle's signature seals
+  // the helpers' signatures into its CodeDirectory.
+  if let Some(identity) = desktop_flags.codesign_identity.as_deref() {
+    codesign_macos_bundle(&app_bundle, identity)?;
+  }
 
   // Handle icon.
   if let Some(ref icon) = desktop_flags.icon {

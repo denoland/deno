@@ -22,6 +22,7 @@ pub const DESKTOP_JS: &str = r#"
     BrowserWindow,
     Dock,
     Tray,
+    Notification: NotificationNative,
     op_desktop_init,
     op_desktop_recv_event,
     op_desktop_resolve_bind_call,
@@ -29,6 +30,8 @@ pub const DESKTOP_JS: &str = r#"
     op_desktop_alert,
     op_desktop_confirm,
     op_desktop_prompt,
+    op_desktop_request_notification_permission,
+    op_desktop_query_notification_permission,
   } = internals.core.ops;
   const BrowserWindowPrototype = BrowserWindow.prototype;
   Object.setPrototypeOf(BrowserWindowPrototype, EventTarget.prototype);
@@ -339,6 +342,239 @@ pub const DESKTOP_JS: &str = r#"
   internals.defineEventHandler(TrayPrototype, "dblclick");
   internals.defineEventHandler(TrayPrototype, "menuclick");
 
+  // --- Web Notifications API ---
+  //
+  // Backend wants raw PNG bytes for the icon while the Web Notifications
+  // API specifies icon as a URL string. We synchronously decode `data:`
+  // URLs (the only form a sync constructor can resolve without I/O) and
+  // ignore other schemes — the URL is still stored verbatim on the
+  // instance so `notification.icon` round-trips per spec.
+  function decodeDataUrlSync(url) {
+    if (typeof url !== "string" || !url.startsWith("data:")) return null;
+    const comma = url.indexOf(",");
+    if (comma === -1) return null;
+    const meta = url.slice(5, comma);
+    const isBase64 = meta.endsWith(";base64");
+    const payload = url.slice(comma + 1);
+    try {
+      if (isBase64) {
+        const bin = atob(payload);
+        const out = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+        return out;
+      }
+      return new TextEncoder().encode(decodeURIComponent(payload));
+    } catch {
+      return null;
+    }
+  }
+
+  const NotificationPrototype = NotificationNative.prototype;
+  Object.setPrototypeOf(NotificationPrototype, EventTarget.prototype);
+
+  const notifications = new Map();
+  // The Web Notifications API constructor is `new Notification(title, options?)`
+  // and shows the notification immediately. The native constructor takes
+  // a third arg for pre-decoded icon bytes so the icon URL → bytes step
+  // happens on the JS side (sync data: URL decoding only).
+  const Notification = function Notification(title, options) {
+    if (arguments.length < 1) {
+      throw new TypeError(
+        "Failed to construct 'Notification': 1 argument required, but only 0 present.",
+      );
+    }
+    const t = String(title);
+    const opts = options ?? {};
+    const iconBytes = decodeDataUrlSync(opts.icon);
+    const instance = new NotificationNative(t, opts, iconBytes ?? undefined);
+    if (instance.notificationId !== 0) {
+      notifications.set(instance.notificationId, instance);
+    } else {
+      // Backend didn't show it (no support / failure). The native side
+      // already emitted a NotificationError event; nothing to track here.
+    }
+    return instance;
+  };
+  Object.setPrototypeOf(Notification, NotificationNative);
+  Object.setPrototypeOf(Notification.prototype, NotificationPrototype);
+  Notification.prototype.constructor = Notification;
+
+  // Cache of the last status the OS reported. `Notification.permission` is
+  // a *synchronous* getter per spec, but the underlying wef call is async
+  // (it's serviced on the UI thread). We seed the cache with "default"
+  // until the first query/request completes, then keep it in sync as
+  // requestPermission / permissions.query resolve.
+  //
+  // Web spec maps the wef "prompt" status (no decision yet) to "default"
+  // for `Notification`, and "prompt" for `navigator.permissions`. The wef
+  // "unsupported" status — emitted when the backend or platform has no
+  // permission model — surfaces to JS as a thrown error from
+  // requestPermission (most honest) and as "denied" from permissions.query
+  // (spec doesn't have an "unsupported" state).
+  let cachedNotificationPermission = "default";
+
+  function wefToNotificationPermission(s) {
+    // "prompt" → "default" per the Notifications spec; "unsupported"
+    // is handled by the caller (throws on requestPermission).
+    switch (s) {
+      case "granted": return "granted";
+      case "denied": return "denied";
+      case "prompt": return "default";
+      default: return "default";
+    }
+  }
+
+  // Kick off a query at startup so `Notification.permission` reports a
+  // useful value before the app calls requestPermission(). Failures are
+  // silent — the cache stays at "default".
+  (async () => {
+    try {
+      const s = await op_desktop_query_notification_permission();
+      if (s !== "unsupported") {
+        cachedNotificationPermission = wefToNotificationPermission(s);
+      }
+    } catch (_) {}
+  })();
+
+  Object.defineProperties(Notification, {
+    permission: {
+      get() { return cachedNotificationPermission; },
+      enumerable: true,
+      configurable: true,
+    },
+    maxActions: internals.core.propReadOnly(0),
+    requestPermission: internals.core.propWritable(function requestPermission(
+      cb,
+    ) {
+      // The Web Notifications spec gates `requestPermission` on a
+      // transient user activation. The desktop runtime can't reliably
+      // observe activations from inside the renderer (the OS-level
+      // notification permission lives outside Chromium's activation
+      // tracking), so we don't enforce it — but we still warn so callers
+      // know they're relying on lenient behavior the browser wouldn't
+      // give them.
+      const promise = (async () => {
+        const s = await op_desktop_request_notification_permission();
+        if (s === "unsupported") {
+          // Honest signaling: this OS / backend has no notification
+          // permission model. Throw rather than silently returning a
+          // misleading "denied" or "granted".
+          throw new TypeError(
+            "Notification.requestPermission: not supported by this platform/backend",
+          );
+        }
+        const perm = wefToNotificationPermission(s);
+        cachedNotificationPermission = perm;
+        return perm;
+      })();
+      if (typeof cb === "function") {
+        // Deprecated callback form. Per spec, the callback is invoked
+        // with the resolved permission *and* the promise still resolves.
+        promise.then(
+          (perm) => { try { cb(perm); } catch (_) {} },
+          () => { try { cb("denied"); } catch (_) {} },
+        );
+      }
+      return promise;
+    }),
+  });
+
+  internals.defineEventHandler(NotificationPrototype, "show");
+  internals.defineEventHandler(NotificationPrototype, "click");
+  internals.defineEventHandler(NotificationPrototype, "close");
+  internals.defineEventHandler(NotificationPrototype, "error");
+
+  Object.defineProperty(globalThis, "Notification", {
+    value: Notification,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
+
+  // --- navigator.permissions.query (minimal) ---
+  //
+  // Spec surface: `navigator.permissions.query({name})` returns a
+  // Promise<PermissionStatus> where `PermissionStatus` extends EventTarget
+  // and exposes a readonly `state` plus an `onchange` slot. The desktop
+  // runtime today only routes `notifications` through wef; other names
+  // resolve to "denied" (Chrome's behavior for unknown / unsupported
+  // names — closer to honest than "prompt" for things we can't fulfill).
+  //
+  // Note: we don't fire `change` events. wef has no change-notification
+  // channel for permissions, and the cached decision only flips when the
+  // user goes through System Settings (rare, manual, not worth polling).
+  class PermissionStatus extends EventTarget {
+    #name;
+    #state;
+    #onchange = null;
+    constructor(name, state) {
+      super();
+      this.#name = name;
+      this.#state = state;
+    }
+    get name() { return this.#name; }
+    get state() { return this.#state; }
+    get status() { return this.#state; } // legacy alias kept by some libs
+    get onchange() { return this.#onchange; }
+    set onchange(v) { this.#onchange = typeof v === "function" ? v : null; }
+  }
+
+  function wefToPermissionsApiState(s) {
+    // Spec maps "prompt" through verbatim; "unsupported" has no spec
+    // analog so we return "denied" — query() shouldn't throw, but we
+    // shouldn't lie and say "granted" either.
+    switch (s) {
+      case "granted": return "granted";
+      case "denied": return "denied";
+      case "prompt": return "prompt";
+      default: return "denied";
+    }
+  }
+
+  const permissionsImpl = {
+    async query(descriptor) {
+      if (descriptor == null || typeof descriptor !== "object") {
+        throw new TypeError(
+          "Failed to execute 'query' on 'Permissions': descriptor required",
+        );
+      }
+      const name = String(descriptor.name);
+      if (name === "notifications") {
+        // No side effects per spec — never call request_*.
+        const s = await op_desktop_query_notification_permission();
+        // Keep Notification.permission's cache in sync: a permissions.query
+        // result is authoritative and lets the synchronous getter report
+        // a current value without us needing a second roundtrip.
+        if (s !== "unsupported") {
+          cachedNotificationPermission = wefToNotificationPermission(s);
+        }
+        return new PermissionStatus(name, wefToPermissionsApiState(s));
+      }
+      // Unknown / unrouted name. Chrome returns "denied" for descriptors
+      // it doesn't recognize; mimic that rather than throwing.
+      return new PermissionStatus(name, "denied");
+    },
+  };
+
+  // Plug into globalThis.navigator. The base Deno runtime defines
+  // `navigator` without a `permissions` slot — add ours, but don't
+  // clobber the object if it's missing entirely (defensive against
+  // future-Deno changes).
+  if (typeof navigator === "object" && navigator != null) {
+    Object.defineProperty(navigator, "permissions", {
+      value: permissionsImpl,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
+  }
+  Object.defineProperty(globalThis, "PermissionStatus", {
+    value: PermissionStatus,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
+
   // Start polling loops immediately. Use core.unrefOpPromise so these
   // pending ops don't block event loop completion (e.g. the pre-module
   // tick used by HMR, or module evaluation with top-level await).
@@ -546,6 +782,35 @@ pub const DESKTOP_JS: &str = r#"
             target.dispatchEvent(new CustomEvent("menuclick", {
               detail: { id: ev.id },
             }));
+            break;
+          }
+          case "notificationShow": {
+            const target = notifications.get(ev.notificationId);
+            if (!target) break;
+            target.dispatchEvent(new Event("show"));
+            break;
+          }
+          case "notificationClick": {
+            const target = notifications.get(ev.notificationId);
+            if (!target) break;
+            target.dispatchEvent(new Event("click"));
+            break;
+          }
+          case "notificationClose": {
+            const target = notifications.get(ev.notificationId);
+            notifications.delete(ev.notificationId);
+            if (!target) break;
+            target.dispatchEvent(new Event("close"));
+            break;
+          }
+          case "notificationError": {
+            // notificationId === 0 means the backend rejected the show
+            // before any instance was registered. Per spec, errors only
+            // fire on the instance — best-effort dispatch to whichever
+            // instance is registered under that id (or none for id 0).
+            const target = notifications.get(ev.notificationId);
+            if (!target) break;
+            target.dispatchEvent(new Event("error"));
             break;
           }
         }

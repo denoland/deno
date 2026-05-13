@@ -214,6 +214,14 @@ pub enum DesktopEvent {
   TrayDoubleClick { tray_id: u32 },
   #[serde(rename_all = "camelCase")]
   TrayMenuClick { tray_id: u32, id: String },
+  #[serde(rename_all = "camelCase")]
+  NotificationShow { notification_id: u32 },
+  #[serde(rename_all = "camelCase")]
+  NotificationClick { notification_id: u32 },
+  #[serde(rename_all = "camelCase")]
+  NotificationClose { notification_id: u32 },
+  #[serde(rename_all = "camelCase")]
+  NotificationError { notification_id: u32 },
 }
 
 /// Capacity of the runtime-bound event channel. A misbehaving renderer could
@@ -407,6 +415,54 @@ pub trait DesktopApi: Send + Sync + 'static {
   /// Set the right-click context menu on the tray icon. `None` clears
   /// any menu previously set.
   fn set_tray_menu(&self, tray_id: u32, menu: Option<Vec<MenuItem>>);
+
+  /// Show an OS notification. Returns the notification id (`0` if the
+  /// backend doesn't support system notifications). Events for this
+  /// notification (`Show`, `Click`, `Close`, `Error`) are delivered via
+  /// the desktop event channel keyed by the returned id.
+  fn show_notification(
+    &self,
+    title: &str,
+    body: Option<&str>,
+    icon: Option<&[u8]>,
+    tag: Option<&str>,
+    silent: Option<bool>,
+    require_interaction: Option<bool>,
+  ) -> u32;
+  /// Dismiss a notification previously shown via `show_notification`.
+  /// No-op if the id is unknown or already dismissed.
+  fn close_notification(&self, notification_id: u32);
+
+  /// Request OS authorization to show notifications. If the user has not
+  /// yet decided, this triggers a system prompt; otherwise the cached
+  /// decision is returned without a re-prompt. The callback fires on the
+  /// UI thread with one of [`PermissionState::Granted`],
+  /// [`PermissionState::Denied`], [`PermissionState::Prompt`] (rare —
+  /// happens if the user dismissed the prompt without deciding) or
+  /// [`PermissionState::Unsupported`] (backend / platform has no
+  /// permission model — e.g. an unbundled macOS process, Linux libnotify).
+  fn request_notification_permission(
+    &self,
+    cb: Box<dyn FnOnce(PermissionState) + Send + 'static>,
+  );
+  /// Query the current authorization state without prompting. Same status
+  /// codes as [`request_notification_permission`].
+  fn query_notification_permission(
+    &self,
+    cb: Box<dyn FnOnce(PermissionState) + Send + 'static>,
+  );
+}
+
+/// Authorization state for a capability that the OS (or a runtime
+/// component) gates. Mirrors the Web Permissions API state set with an
+/// extra `Unsupported` variant for environments where the capability has
+/// no permission model at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PermissionState {
+  Granted,
+  Denied,
+  Prompt,
+  Unsupported,
 }
 
 /// Stores the window ID of the initial window created during runtime init.
@@ -709,12 +765,14 @@ impl BrowserWindow {
       };
       let (width, height) = api.get_window_size(window_id);
       Ok::<_, deno_error::JsErrorBox>(deno_canvas::byow::UnsafeWindowSurface {
-        data: std::rc::Rc::new(RefCell::new(deno_webgpu::canvas::SurfaceData {
-          id: surface_id,
-          width: width as u32,
-          height: height as u32,
-          instance,
-        })),
+        data: std::rc::Rc::new(RefCell::new(
+          deno_webgpu::canvas::SurfaceData {
+            id: surface_id,
+            width: width as u32,
+            height: height as u32,
+            instance,
+          },
+        )),
         active_context: Default::default(),
       })
     })?;
@@ -1154,6 +1212,65 @@ fn op_desktop_prompt(
   }
 }
 
+fn permission_state_to_web_string(state: PermissionState) -> &'static str {
+  // Web Permissions API state values; `Notification.requestPermission`
+  // additionally maps `Prompt` → `"default"` per the Notifications spec.
+  match state {
+    PermissionState::Granted => "granted",
+    PermissionState::Denied => "denied",
+    PermissionState::Prompt => "prompt",
+    PermissionState::Unsupported => "unsupported",
+  }
+}
+
+#[op2]
+#[string]
+async fn op_desktop_request_notification_permission(
+  state: std::rc::Rc<std::cell::RefCell<OpState>>,
+) -> String {
+  let api = {
+    let s = state.borrow();
+    s.try_borrow::<Arc<dyn DesktopApi>>().cloned()
+  };
+  let Some(api) = api else {
+    // No backend wired up (snapshot build or non-desktop runtime).
+    return "unsupported".to_string();
+  };
+  let (tx, rx) = tokio::sync::oneshot::channel::<PermissionState>();
+  api.request_notification_permission(Box::new(move |state| {
+    let _ = tx.send(state);
+  }));
+  // If the backend forgets to invoke the callback (programmer error in a
+  // hypothetical custom backend), the channel drops and `recv` returns
+  // `Err` — surface that as "unsupported" so JS gets a stable result.
+  permission_state_to_web_string(
+    rx.await.unwrap_or(PermissionState::Unsupported),
+  )
+  .to_string()
+}
+
+#[op2]
+#[string]
+async fn op_desktop_query_notification_permission(
+  state: std::rc::Rc<std::cell::RefCell<OpState>>,
+) -> String {
+  let api = {
+    let s = state.borrow();
+    s.try_borrow::<Arc<dyn DesktopApi>>().cloned()
+  };
+  let Some(api) = api else {
+    return "unsupported".to_string();
+  };
+  let (tx, rx) = tokio::sync::oneshot::channel::<PermissionState>();
+  api.query_notification_permission(Box::new(move |state| {
+    let _ = tx.send(state);
+  }));
+  permission_state_to_web_string(
+    rx.await.unwrap_or(PermissionState::Unsupported),
+  )
+  .to_string()
+}
+
 struct Dock {
   api: Arc<dyn DesktopApi>,
 }
@@ -1296,6 +1413,195 @@ impl Tray {
   }
 }
 
+struct Notification {
+  api: Arc<dyn DesktopApi>,
+  notification_id: u32,
+  title: String,
+  body: String,
+  icon: String,
+  tag: String,
+  dir: String,
+  lang: String,
+  badge: String,
+  silent: Option<bool>,
+  require_interaction: bool,
+  data: v8::Global<v8::Value>,
+}
+
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for Notification {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Notification"
+  }
+}
+
+impl deno_core::Resource for Notification {
+  fn name(&self) -> Cow<'_, str> {
+    "Notification".into()
+  }
+}
+
+#[derive(FromV8)]
+struct NotificationConstructorOptions {
+  body: Option<String>,
+  icon: Option<String>,
+  tag: Option<String>,
+  dir: Option<String>,
+  lang: Option<String>,
+  badge: Option<String>,
+  silent: Option<bool>,
+  require_interaction: Option<bool>,
+  data: Option<v8::Global<v8::Value>>,
+}
+
+#[op2]
+impl Notification {
+  #[constructor]
+  fn new(
+    state: &OpState,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[string] title: String,
+    #[scoped] options: Option<NotificationConstructorOptions>,
+    #[buffer] icon_bytes: Option<&[u8]>,
+  ) -> v8::Global<v8::Value> {
+    let api = state
+      .try_borrow::<Arc<dyn DesktopApi>>()
+      .expect("desktop mode enabled")
+      .clone();
+
+    let options = options.unwrap_or(NotificationConstructorOptions {
+      body: None,
+      icon: None,
+      tag: None,
+      dir: None,
+      lang: None,
+      badge: None,
+      silent: None,
+      require_interaction: None,
+      data: None,
+    });
+
+    let notification_id = api.show_notification(
+      &title,
+      options.body.as_deref(),
+      icon_bytes,
+      options.tag.as_deref(),
+      options.silent,
+      options.require_interaction,
+    );
+
+    let data = options.data.unwrap_or_else(|| {
+      let null: v8::Local<v8::Value> = v8::null(scope).into();
+      v8::Global::new(scope, null)
+    });
+
+    let notification = Notification {
+      api,
+      notification_id,
+      title,
+      body: options.body.unwrap_or_default(),
+      icon: options.icon.unwrap_or_default(),
+      tag: options.tag.unwrap_or_default(),
+      dir: options.dir.unwrap_or_else(|| "auto".to_string()),
+      lang: options.lang.unwrap_or_default(),
+      badge: options.badge.unwrap_or_default(),
+      silent: options.silent,
+      require_interaction: options.require_interaction.unwrap_or(false),
+      data,
+    };
+    let notification = deno_core::cppgc::make_cppgc_object(scope, notification);
+    let event_target_setup = state.borrow::<EventTargetSetup>();
+    let webidl_brand = v8::Local::new(scope, event_target_setup.brand.clone());
+    notification.set(scope, webidl_brand, webidl_brand);
+    let set_event_target_data =
+      v8::Local::new(scope, event_target_setup.set_event_target_data.clone())
+        .cast::<v8::Function>();
+    let null = v8::null(scope);
+    set_event_target_data.call(scope, null.into(), &[notification.into()]);
+    let notification = notification.cast::<v8::Value>();
+
+    v8::Global::new(scope, notification)
+  }
+
+  #[getter]
+  fn notification_id(&self) -> u32 {
+    self.notification_id
+  }
+
+  #[getter]
+  #[string]
+  fn title(&self) -> String {
+    self.title.clone()
+  }
+
+  #[getter]
+  #[string]
+  fn body(&self) -> String {
+    self.body.clone()
+  }
+
+  #[getter]
+  #[string]
+  fn icon(&self) -> String {
+    self.icon.clone()
+  }
+
+  #[getter]
+  #[string]
+  fn tag(&self) -> String {
+    self.tag.clone()
+  }
+
+  #[getter]
+  #[string]
+  fn dir(&self) -> String {
+    self.dir.clone()
+  }
+
+  #[getter]
+  #[string]
+  fn lang(&self) -> String {
+    self.lang.clone()
+  }
+
+  #[getter]
+  #[string]
+  fn badge(&self) -> String {
+    self.badge.clone()
+  }
+
+  #[getter]
+  fn silent<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, '_>,
+  ) -> v8::Local<'a, v8::Value> {
+    match self.silent {
+      Some(b) => v8::Boolean::new(scope, b).into(),
+      None => v8::null(scope).into(),
+    }
+  }
+
+  #[fast]
+  #[getter]
+  fn require_interaction(&self) -> bool {
+    self.require_interaction
+  }
+
+  #[getter]
+  fn data(&self) -> v8::Global<v8::Value> {
+    self.data.clone()
+  }
+
+  #[fast]
+  fn close(&self) {
+    if self.notification_id != 0 {
+      self.api.close_notification(self.notification_id);
+    }
+  }
+}
+
 deno_core::extension!(
   deno_desktop,
   ops = [
@@ -1310,6 +1616,8 @@ deno_core::extension!(
     op_desktop_confirm,
     op_desktop_prompt,
     op_desktop_send_error_report,
+    op_desktop_request_notification_permission,
+    op_desktop_query_notification_permission,
   ],
-  objects = [BrowserWindow, Dock, Tray],
+  objects = [BrowserWindow, Dock, Tray, Notification],
 );

@@ -226,6 +226,15 @@ pub struct DesktopFlags {
   pub hmr: bool,
   pub backend: Option<String>,
   pub all_targets: bool,
+  /// Reverse-DNS bundle / application identifier (e.g. `com.acme.foo`).
+  /// Used for the macOS `CFBundleIdentifier`, the Linux `.desktop` file
+  /// identifier, and (eventually) the Windows AppUserModelID. When unset
+  /// a synthetic `com.deno.desktop.<app-slug>` is generated.
+  pub identifier: Option<String>,
+  /// macOS codesigning identity (e.g. `Developer ID Application: Acme,
+  /// Inc. (TEAMID)`, or `-` for ad-hoc). When unset the bundle is left
+  /// unsigned; the system will quarantine it on download.
+  pub codesign_identity: Option<String>,
   /// Optional override for the CEF renderer debugger port. When unset, a free
   /// port is allocated. The user-visible inspector port (from `--inspect`) is
   /// separate and is carried on `Flags::inspect`.
@@ -6827,6 +6836,8 @@ fn desktop_parse(
     hmr,
     backend,
     all_targets,
+    identifier: None,
+    codesign_identity: None,
     inspect_renderer,
   });
 
