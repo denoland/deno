@@ -1684,18 +1684,15 @@ pub fn op_vm_module_set_synthetic_export<'a>(
   #[cppgc] this: &ContextifyModule,
   name: v8::Local<'a, v8::String>,
   value: v8::Local<'a, v8::Value>,
-) -> bool {
+) {
   let module = this.module.get(scope).unwrap();
   let context = this.context.get(scope).unwrap();
   let scope = &mut v8::ContextScope::new(scope, context);
   v8::tc_scope!(scope, scope);
-  let ok = module
-    .set_synthetic_module_export(scope, name, value)
-    .unwrap_or(false);
+  let _ = module.set_synthetic_module_export(scope, name, value);
   if scope.has_caught() && !scope.has_terminated() {
     scope.rethrow();
   }
-  ok
 }
 
 #[op2(fast)]
