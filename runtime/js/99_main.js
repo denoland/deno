@@ -1046,4 +1046,9 @@ bootstrapWorkerRuntime(
   undefined,
   true,
 );
-nodeBootstrap({ warmup: true });
+// Skip warmup. The warmup branch creates placeholder stdin/stdout/stderr
+// streams that the runtime bootstrap (__bootstrapNodeProcess(warmup=false))
+// then unconditionally overwrites with fresh TTYWriteStream instances, so
+// the only observable effect of warmup was pulling node:stream and friends
+// into the snapshot via createWritableStdioStream/initStdin.
+// nodeBootstrap({ warmup: true });

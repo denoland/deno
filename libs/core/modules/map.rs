@@ -2743,7 +2743,6 @@ impl ModuleMap {
     scope: &mut v8::PinScope,
     module_specifier: &str,
   ) -> Result<v8::Global<v8::Value>, CoreError> {
-    crate::modules::import_graph::record_lazy_esm(scope, module_specifier);
     let lazy_esm_sources = self.data.borrow().lazy_esm_sources.clone();
     let loader = LazyEsmModuleLoader::new(lazy_esm_sources);
 
@@ -2753,6 +2752,12 @@ impl ModuleMap {
       if let Some(id) =
         module_map_data.get_id(module_specifier, RequestedModuleType::None)
       {
+        // Cache hit: still record for the graph but don't log as a fresh
+        // load on stderr.
+        crate::modules::import_graph::record_lazy_esm_cached(
+          scope,
+          module_specifier,
+        );
         let handle = module_map_data.get_handle(id).unwrap();
         let handle_local = v8::Local::new(scope, handle);
         // The module may be present in the map but not yet evaluated — e.g.
@@ -2779,6 +2784,10 @@ impl ModuleMap {
         return Ok(module);
       }
     }
+
+    // Cache miss: real load incoming. This is the call that pays the
+    // parse/compile/evaluate cost at runtime.
+    crate::modules::import_graph::record_lazy_esm(scope, module_specifier);
 
     let specifier = ModuleSpecifier::parse(module_specifier)?;
 

@@ -416,20 +416,25 @@ deno_core::extension!(deno_node,
   esm_entry_point = "node:module",
   esm = [
     dir "polyfills",
-    "internal/streams/compose.js",
-    "internal/streams/duplexpair.js",
-    "internal/streams/lazy_transform.js",
-    "internal/streams/pipeline.js",
     "internal_binding/mod.ts",
-    "internal/streams/operators.js",
     "node:module" = "01_require.js",
     "node:process" = "process.ts",
-    "node:repl" = "repl.ts",
+    // node:stream + node:stream/promises stay eager: every Deno program
+    // pays their parse/compile cost at runtime startup via
+    // `__bootstrapNodeProcess` -> `createWritableStdioStream` -> Writable,
+    // so keeping them in the snapshot is a net startup-time win even
+    // though most programs never directly require('stream').
     "node:stream" = "stream.ts",
     "node:stream/promises" = "stream/promises.js",
   ],
   lazy_loaded_esm = [
     dir "polyfills",
+    "internal/streams/compose.js",
+    "internal/streams/duplexpair.js",
+    "internal/streams/lazy_transform.js",
+    "internal/streams/operators.js",
+    "internal/streams/pipeline.js",
+    "node:repl" = "repl.ts",
     "_fs/_fs_copy.ts",
     "_fs/_fs_dir.ts",
     "_fs/_fs_exists.ts",
