@@ -56,6 +56,7 @@ members = [
   "libs/ops",
   "libs/ops/compile_test_runner",
   "libs/package_json",
+  "libs/qjs_v8_compat",
   "libs/resolver",
   "libs/serde_v8",
   "libs/typescript_go_client",
