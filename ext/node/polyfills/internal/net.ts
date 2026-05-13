@@ -21,96 +21,104 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
-const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-const { uvException } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-const { writeBuffer } = core.loadExtScript(
-  "ext:deno_node/internal_binding/node_file.ts",
-);
+  const { core, primordials } = globalThis.__bootstrap;
+  const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+  const { uvException } = core.loadExtScript(
+    "ext:deno_node/internal/errors.ts",
+  );
+  const { writeBuffer } = core.loadExtScript(
+    "ext:deno_node/internal_binding/node_file.ts",
+  );
 
-const { RegExpPrototypeTest, SafeRegExp, Symbol } = primordials;
+  const { RegExpPrototypeTest, SafeRegExp, Symbol } = primordials;
 
-// IPv4 Segment
-const v4Seg = "(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])";
-const v4Str = `(${v4Seg}[.]){3}${v4Seg}`;
-const IPv4Reg = new SafeRegExp(`^${v4Str}$`);
+  // IPv4 Segment
+  const v4Seg = "(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])";
+  const v4Str = `(${v4Seg}[.]){3}${v4Seg}`;
+  const IPv4Reg = new SafeRegExp(`^${v4Str}$`);
 
-// IPv6 Segment
-const v6Seg = "(?:[0-9a-fA-F]{1,4})";
-const IPv6Reg = new SafeRegExp(
-  "^(" +
-    `(?:${v6Seg}:){7}(?:${v6Seg}|:)|` +
-    `(?:${v6Seg}:){6}(?:${v4Str}|:${v6Seg}|:)|` +
-    `(?:${v6Seg}:){5}(?::${v4Str}|(:${v6Seg}){1,2}|:)|` +
-    `(?:${v6Seg}:){4}(?:(:${v6Seg}){0,1}:${v4Str}|(:${v6Seg}){1,3}|:)|` +
-    `(?:${v6Seg}:){3}(?:(:${v6Seg}){0,2}:${v4Str}|(:${v6Seg}){1,4}|:)|` +
-    `(?:${v6Seg}:){2}(?:(:${v6Seg}){0,3}:${v4Str}|(:${v6Seg}){1,5}|:)|` +
-    `(?:${v6Seg}:){1}(?:(:${v6Seg}){0,4}:${v4Str}|(:${v6Seg}){1,6}|:)|` +
-    `(?::((?::${v6Seg}){0,5}:${v4Str}|(?::${v6Seg}){1,7}|:))` +
-    ")(%[0-9a-zA-Z-.:]{1,})?$",
-);
+  // IPv6 Segment
+  const v6Seg = "(?:[0-9a-fA-F]{1,4})";
+  const IPv6Reg = new SafeRegExp(
+    "^(" +
+      `(?:${v6Seg}:){7}(?:${v6Seg}|:)|` +
+      `(?:${v6Seg}:){6}(?:${v4Str}|:${v6Seg}|:)|` +
+      `(?:${v6Seg}:){5}(?::${v4Str}|(:${v6Seg}){1,2}|:)|` +
+      `(?:${v6Seg}:){4}(?:(:${v6Seg}){0,1}:${v4Str}|(:${v6Seg}){1,3}|:)|` +
+      `(?:${v6Seg}:){3}(?:(:${v6Seg}){0,2}:${v4Str}|(:${v6Seg}){1,4}|:)|` +
+      `(?:${v6Seg}:){2}(?:(:${v6Seg}){0,3}:${v4Str}|(:${v6Seg}){1,5}|:)|` +
+      `(?:${v6Seg}:){1}(?:(:${v6Seg}){0,4}:${v4Str}|(:${v6Seg}){1,6}|:)|` +
+      `(?::((?::${v6Seg}){0,5}:${v4Str}|(?::${v6Seg}){1,7}|:))` +
+      ")(%[0-9a-zA-Z-.:]{1,})?$",
+  );
 
-function isIPv4(ip) {
-  return RegExpPrototypeTest(IPv4Reg, ip);
-}
-
-function isIPv6(ip) {
-  return RegExpPrototypeTest(IPv6Reg, ip);
-}
-
-function isIP(ip) {
-  if (isIPv4(ip)) {
-    return 4;
-  }
-  if (isIPv6(ip)) {
-    return 6;
+  function isIPv4(ip) {
+    return RegExpPrototypeTest(IPv4Reg, ip);
   }
 
-  return 0;
-}
-
-function getIPFamily(ip) {
-  if (isIPv4(ip)) {
-    return "IPv4";
+  function isIPv6(ip) {
+    return RegExpPrototypeTest(IPv6Reg, ip);
   }
-  if (isIPv6(ip)) {
-    return "IPv6";
-  }
-  return undefined;
-}
 
-function makeSyncWrite(fd) {
-  return function (chunk, enc, cb) {
-    if (enc !== "buffer") {
-      chunk = Buffer.from(chunk, enc);
+  function isIP(ip) {
+    if (isIPv4(ip)) {
+      return 4;
+    }
+    if (isIPv6(ip)) {
+      return 6;
     }
 
-    this._handle.bytesWritten += chunk.length;
+    return 0;
+  }
 
-    const ctx = {};
-    writeBuffer(fd, chunk, 0, chunk.length, null, ctx);
-
-    if (ctx.errno !== undefined) {
-      const ex = uvException(ctx);
-      ex.errno = ctx.errno;
-
-      return cb(ex);
+  function getIPFamily(ip) {
+    if (isIPv4(ip)) {
+      return "IPv4";
     }
+    if (isIPv6(ip)) {
+      return "IPv6";
+    }
+    return undefined;
+  }
 
-    cb();
+  function makeSyncWrite(fd) {
+    return function (chunk, enc, cb) {
+      if (enc !== "buffer") {
+        chunk = Buffer.from(chunk, enc);
+      }
+
+      this._handle.bytesWritten += chunk.length;
+
+      const ctx = {};
+      writeBuffer(fd, chunk, 0, chunk.length, null, ctx);
+
+      if (ctx.errno !== undefined) {
+        const ex = uvException(ctx);
+        ex.errno = ctx.errno;
+
+        return cb(ex);
+      }
+
+      cb();
+    };
+  }
+
+  const kReinitializeHandle = Symbol("kReinitializeHandle");
+  const normalizedArgsSymbol = Symbol("normalizedArgs");
+  const kSetNoDelay = Symbol("kSetNoDelay");
+  const kSetKeepAlive = Symbol("kSetKeepAlive");
+  const kSetKeepAliveInitialDelay = Symbol("kSetKeepAliveInitialDelay");
+
+  return {
+    isIPv4,
+    isIPv6,
+    isIP,
+    getIPFamily,
+    makeSyncWrite,
+    kReinitializeHandle,
+    normalizedArgsSymbol,
+    kSetNoDelay,
+    kSetKeepAlive,
+    kSetKeepAliveInitialDelay,
   };
-}
-
-const kReinitializeHandle = Symbol("kReinitializeHandle");
-const normalizedArgsSymbol = Symbol("normalizedArgs");
-
-return {
-  isIPv4,
-  isIPv6,
-  isIP,
-  getIPFamily,
-  makeSyncWrite,
-  kReinitializeHandle,
-  normalizedArgsSymbol,
-};
 })();

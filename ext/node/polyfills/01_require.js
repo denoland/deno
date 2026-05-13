@@ -194,6 +194,10 @@ const internalUndici = core.loadExtScript(
 const internalDnsPromises = core.loadExtScript(
   "ext:deno_node/internal/dns/promises.ts",
 ).default;
+const internalNet = core.loadExtScript("ext:deno_node/internal/net.ts");
+const internalTlsCommon = core.loadExtScript(
+  "ext:deno_node/_tls_common.ts",
+);
 const internalBuffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const internalErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
@@ -335,6 +339,8 @@ function setupBuiltinModules() {
     "internal/dgram": internalDgram,
     "internal/deps/undici/undici": internalUndici.default,
     "internal/dns/promises": internalDnsPromises,
+    "internal/net": internalNet,
+    "internal/tls/common": internalTlsCommon,
     "internal/buffer": internalBuffer.default,
     "internal/errors": internalErrors,
     "internal/event_target": internalEventTarget,
