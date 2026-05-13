@@ -1371,6 +1371,7 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
 ];
 
 pub static NODE_ONLY_GLOBALS: &[&str] = &[
+  "console",
   "Console",
   "crypto",
   "gc",
