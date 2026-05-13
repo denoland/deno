@@ -30,8 +30,14 @@ pub struct GeneratedTsConfig {
 /// Generate `.deno/tsconfig.json` and Deno type definitions for use with
 /// stock TypeScript tooling.
 ///
-/// Writes Deno types to `node_modules/@types/deno/index.d.ts` so that
-/// tsc picks them up automatically via standard `@types` resolution.
+/// Writes Deno types to `.deno/types/deno/index.d.ts` (a private typeRoot
+/// only the generated tsconfig points at). They deliberately do NOT go to
+/// `node_modules/@types/deno/`: TypeScript auto-discovers everything under
+/// `node_modules/@types/*` whenever `compilerOptions.types` is unset, which
+/// is exactly the state Deno's own type checker sees after the resolver
+/// filters our generated tsconfig out of the extends chain. With @types/deno
+/// auto-loaded into Deno's checker, every global also declared in
+/// `lib.deno.shared_globals.d.ts` would duplicate (TS2403).
 ///
 /// Generates `.deno/tsconfig.json` with compiler options and paths mappings
 /// for npm:/jsr: specifiers. Also ensures a root `tsconfig.json` exists
@@ -43,12 +49,13 @@ pub fn generate_tsconfig(
   files: &[String],
   http_modules: &BTreeMap<Url, String>,
 ) -> Result<GeneratedTsConfig, std::io::Error> {
-  // Write Deno type definitions to node_modules/@types/deno/
-  let types_dir = project_root.join("node_modules/@types/deno");
+  // Write Deno type definitions to .deno/types/deno/ (private typeRoot).
+  let types_dir = project_root.join(".deno/types/deno");
   std::fs::create_dir_all(&types_dir)?;
   write_deno_types(&types_dir.join("index.d.ts"))?;
 
-  // Write a package.json for the @types/deno package
+  // Write a package.json for the @types/deno package so the typeRoots lookup
+  // resolves the directory as a package.
   std::fs::write(
     types_dir.join("package.json"),
     serde_json::to_string_pretty(&json!({
@@ -441,10 +448,15 @@ fn base_compiler_options() -> Map<String, Value> {
     "allowImportingTsExtensions": true,
 
     // Standard libs (Deno-specific libs like deno.window are replaced by
-    // the @types/deno package in node_modules)
+    // the @types/deno package under .deno/types/)
     "lib": ["esnext"],
 
-    // Explicitly include @types/deno for Deno namespace, console, etc.
+    // typeRoots points at our private .deno/types/ dir; "types: [deno]"
+    // tells tsc to load exactly that and nothing else. Without this, tsc
+    // would auto-include every @types/* in node_modules, which would
+    // collide with Deno's runtime types when this file is read by Deno's
+    // own checker.
+    "typeRoots": ["./types"],
     "types": ["deno"],
 
     // Skip checking node_modules types for speed
