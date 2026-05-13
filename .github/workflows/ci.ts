@@ -21,8 +21,8 @@ import {
 const cacheVersion = 113;
 
 const ubuntuX86Runner = "ubuntu-24.04";
-const ubuntuX86XlRunner = "ubuntu-24.04-xl";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
+const ubuntuARMXlRunner = "ubuntu-24.04-arm-xl";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const windowsArmRunner = "windows-11-arm";
@@ -48,15 +48,20 @@ const Runners = {
   linuxX86Xl: {
     os: "linux",
     arch: "x86_64",
-    runner: isDenoland.and(isMainOrTag).then(ubuntuX86XlRunner).else(
-      ubuntuX86Runner,
-    ),
-    testRunner: ubuntuX86Runner,
+    runner: ubuntuX86Runner,
   },
   linuxArm: {
     os: "linux",
     arch: "aarch64",
     runner: ubuntuARMRunner,
+  },
+  linuxArmXl: {
+    os: "linux",
+    arch: "aarch64",
+    runner: isDenoland.and(isMainOrTag).then(ubuntuARMXlRunner).else(
+      ubuntuARMRunner,
+    ),
+    testRunner: ubuntuARMRunner,
   },
   macosX86: {
     os: "macos",
@@ -570,7 +575,7 @@ const buildItems = handleBuildItems([{
   ...Runners.linuxArm,
   profile: "debug",
 }, {
-  ...Runners.linuxArm,
+  ...Runners.linuxArmXl,
   profile: "release",
   use_sysroot: true,
   skip_pr: true,
