@@ -990,7 +990,17 @@ impl ModuleMap {
       let (module_specifier, needs_resolve) = match resolve_response {
         ModuleResolveResponse::Sync(Ok(s)) => (s, false),
         ModuleResolveResponse::Sync(Err(e)) => {
-          return Err(ModuleError::Core(e.into()));
+          // Fall back to lazy ESM sources for bare internal specifiers (e.g.
+          // `node:_http_common` from `node:_http_outgoing`) that the
+          // user-facing loader doesn't know about. If the specifier matches
+          // a registered lazy ESM entry, use it verbatim.
+          if self.has_lazy_esm_source(&import_specifier)
+            && let Ok(parsed) = ModuleSpecifier::parse(&import_specifier)
+          {
+            (parsed, false)
+          } else {
+            return Err(ModuleError::Core(e.into()));
+          }
         }
         ModuleResolveResponse::Async(_) => {
           // Async resolution for child imports is deferred to
@@ -1466,8 +1476,20 @@ impl ModuleMap {
       match self.resolve_sync(specifier, referrer, ResolutionKind::Import) {
         Ok(s) => s,
         Err(e) => {
-          crate::error::throw_js_error_class(scope, &e);
-          return None;
+          // Fall back to lazy ESM sources for bare internal specifiers like
+          // `node:_http_common` that the runtime's user-facing loader
+          // doesn't know how to resolve (only public `node:` modules go
+          // through the normal path). The lazy_esm registry has them by
+          // exact specifier, so if the specifier is a registered lazy ESM
+          // entry, use it verbatim instead of erroring.
+          if self.has_lazy_esm_source(specifier)
+            && let Ok(parsed) = ModuleSpecifier::parse(specifier)
+          {
+            parsed
+          } else {
+            crate::error::throw_js_error_class(scope, &e);
+            return None;
+          }
         }
       };
 
