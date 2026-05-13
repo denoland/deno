@@ -1711,9 +1711,17 @@ Module._load = function (request, parent, isMain) {
       // Not handled. Mark the error so the unhandled-rejection fallback in
       // process.ts skips a redundant second emit of monitor/uncaughtException
       // when the re-thrown error surfaces as a module-evaluation rejection.
+      // Objects go in the WeakSet; primitive throws (and `null`) use the
+      // single-slot sentinel since WeakSet rejects non-objects. The
+      // rejection-fallback in process.ts also wraps non-Error primitives
+      // in an `ERR_UNHANDLED_REJECTION` Error, so the dedupe check happens
+      // before that wrapping.
       if (err !== null && typeof err === "object") {
         const set = internals._dispatchedFatalErrors;
         if (set !== undefined) set.add(err);
+      } else {
+        const mark = internals._markDispatchedFatalPrimitive;
+        if (typeof mark === "function") mark(err);
       }
     }
     throw err;

@@ -549,6 +549,17 @@ const ALLOWED_FLAGS = buildAllowedFlags();
 const _dispatchedFatalErrors = new WeakSet<any>();
 internals._dispatchedFatalErrors = _dispatchedFatalErrors;
 
+// Companion slot for primitive throws (e.g. `throw "boom"`, `throw 5`,
+// `throw null`) which cannot be inserted into a WeakSet. The CJS entry
+// runs synchronously so at most one such throw is in flight before the
+// unhandled-rejection fallback runs and clears it.
+let _dispatchedFatalPrimitive: unknown;
+let _hasDispatchedFatalPrimitive = false;
+internals._markDispatchedFatalPrimitive = (value: unknown) => {
+  _dispatchedFatalPrimitive = value;
+  _hasDispatchedFatalPrimitive = true;
+};
+
 // deno-lint-ignore no-explicit-any
 function uncaughtExceptionHandler(err: any, origin: string): boolean {
   // The origin parameter can be 'unhandledRejection' or 'uncaughtException'
@@ -1422,10 +1433,17 @@ function synchronizeListeners() {
         // double-emit 'uncaughtExceptionMonitor' (and 'uncaughtException')
         // for the same value. Skip and let Deno's default unhandled-rejection
         // handling print the error and terminate the runtime.
+        //
+        // Objects use the WeakSet; primitives (incl. null/undefined) match
+        // against the single-slot sentinel populated by Module._load.
         if (
-          reason !== null && typeof reason === "object" &&
-          _dispatchedFatalErrors.has(reason)
+          reason !== null && typeof reason === "object"
+            ? _dispatchedFatalErrors.has(reason)
+            : _hasDispatchedFatalPrimitive &&
+              reason === _dispatchedFatalPrimitive
         ) {
+          _hasDispatchedFatalPrimitive = false;
+          _dispatchedFatalPrimitive = undefined;
           return;
         }
 
