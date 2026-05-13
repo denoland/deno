@@ -48,6 +48,42 @@
           "output": "verify_no_tsconfig.out"
         }
       ]
+    },
+    "http_x_typescript_types": {
+      "tempDir": true,
+      "steps": [
+        {
+          "commandName": "cp",
+          "args": "deno_http_xtt.json deno.json",
+          "output": ""
+        },
+        {
+          "args": "install --allow-import",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --allow-read verify_http_xtt.ts",
+          "output": "verify_http_xtt.out"
+        }
+      ]
+    },
+    "http_raw_ts": {
+      "tempDir": true,
+      "steps": [
+        {
+          "commandName": "cp",
+          "args": "deno_http_raw.json deno.json",
+          "output": ""
+        },
+        {
+          "args": "install --allow-import",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --allow-read verify_http_raw.ts",
+          "output": "verify_http_raw.out"
+        }
+      ]
     }
   }
 }
