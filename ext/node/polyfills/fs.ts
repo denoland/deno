@@ -3110,13 +3110,18 @@ function symlinkSync(
 
 // -- watch --
 
+const statPromisified = promisify(stat) as {
+  (filename: string, options: { bigint: false }): Promise<Stats>;
+  (filename: string, options: { bigint: true }): Promise<BigIntStats>;
+};
 const statAsync = async (
   filename: string,
   bigint: boolean,
 ): Promise<Stats | BigIntStats> => {
   try {
-    const info = await Deno.stat(filename);
-    return CFISBIS(info, bigint);
+    return bigint
+      ? await statPromisified(filename, { bigint: true })
+      : await statPromisified(filename, { bigint: false });
   } catch {
     return bigint ? emptyBigIntStats : emptyStats;
   }
