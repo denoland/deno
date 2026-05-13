@@ -254,7 +254,7 @@ pub fn op_blob_clone_part(
   state: &mut OpState,
   #[serde] id: Uuid,
 ) -> Result<ReturnBlobPart, BlobError> {
-  let blob_store = state.borrow::<Arc<BlobStore>>();
+  let blob_store = state.borrow::<Arc<dyn BlobStoreTrait>>();
   let part = blob_store
     .get_part(&id)
     .ok_or(BlobError::BlobPartNotFound)?;
@@ -343,5 +343,91 @@ pub fn op_blob_from_object_url(
       }))
     }
     _ => Ok(None),
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// A minimal custom BlobStoreTrait implementation used to verify that
+  /// deno_web correctly works with a non-default blob store.
+  #[derive(Debug, Default)]
+  struct CustomBlobStore {
+    inner: BlobStore,
+  }
+
+  impl BlobStoreTrait for CustomBlobStore {
+    fn insert_part(&self, part: Arc<dyn BlobPart + Send + Sync>) -> Uuid {
+      self.inner.insert_part(part)
+    }
+    fn get_part(
+      &self,
+      id: &Uuid,
+    ) -> Option<Arc<dyn BlobPart + Send + Sync>> {
+      self.inner.get_part(id)
+    }
+    fn remove_part(
+      &self,
+      id: &Uuid,
+    ) -> Option<Arc<dyn BlobPart + Send + Sync>> {
+      self.inner.remove_part(id)
+    }
+    fn get_object_url(&self, url: Url) -> Option<Arc<Blob>> {
+      self.inner.get_object_url(url)
+    }
+    fn insert_object_url(
+      &self,
+      blob: Blob,
+      maybe_location: Option<Url>,
+    ) -> Url {
+      self.inner.insert_object_url(blob, maybe_location)
+    }
+    fn remove_object_url(&self, url: &Url) {
+      self.inner.remove_object_url(url)
+    }
+    fn clear(&self) {
+      self.inner.clear()
+    }
+  }
+
+  #[test]
+  fn custom_blob_store_insert_get_remove() {
+    let store: Arc<dyn BlobStoreTrait> =
+      Arc::new(CustomBlobStore::default());
+
+    // A trivial in-memory BlobPart for testing.
+    #[derive(Debug)]
+    struct MemPart(Vec<u8>);
+
+    #[async_trait]
+    impl BlobPart for MemPart {
+      async fn read<'a>(&'a self) -> &'a [u8] {
+        &self.0
+      }
+      fn size(&self) -> usize {
+        self.0.len()
+      }
+    }
+
+    let data: Arc<dyn BlobPart + Send + Sync> =
+      Arc::new(MemPart(b"hello".to_vec()));
+    let id = store.insert_part(data);
+
+    // get_part returns the part we just inserted.
+    let part = store.get_part(&id).expect("part should exist");
+    assert_eq!(part.size(), 5);
+
+    // clone_part scenario: get + insert produces a new id.
+    let cloned_part = store.get_part(&id).unwrap();
+    let new_id = store.insert_part(cloned_part);
+    assert_ne!(id, new_id);
+
+    // remove_part works.
+    assert!(store.remove_part(&id).is_some());
+    assert!(store.get_part(&id).is_none());
+
+    // The cloned part is still accessible.
+    assert!(store.get_part(&new_id).is_some());
   }
 }
