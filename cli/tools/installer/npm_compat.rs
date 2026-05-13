@@ -370,7 +370,7 @@ pub async fn install_http_modules(
     // Scan the effective (type-bearing) source for transitive imports.
     let scan_source =
       String::from_utf8_lossy(effective_bytes.as_ref()).into_owned();
-    for spec in scan_import_specifiers(&scan_source) {
+    for spec in scan_import_specifiers(&effective_url, &scan_source) {
       let resolved =
         if spec.starts_with("http://") || spec.starts_with("https://") {
           Url::parse(&spec).ok()
@@ -436,19 +436,64 @@ fn url_to_local_path(remote_root: &Path, url: &Url) -> Option<PathBuf> {
   Some(remote_root.join(host).join(rel))
 }
 
-/// Extract module specifier string literals from a JS/TS source.
-/// Matches:
-///   import ... from "X"   |   import "X"   |   import("X")   |   export ... from "X"
-/// This is a prototype-grade scanner — it does not handle comments or template
-/// strings precisely. The production version should use a real parser.
-fn scan_import_specifiers(source: &str) -> Vec<String> {
-  use regex::Regex;
-  // Match `from "X"`, `import "X"`, `import("X")` (single or double quotes).
-  let re = Regex::new(
-    r#"(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+)["']([^"'\n]+)["']"#,
-  )
-  .unwrap();
-  re.captures_iter(source).map(|c| c[1].to_string()).collect()
+/// Extract module specifier string literals from a JS/TS source via
+/// `deno_ast` + `deno_graph` analysis. Returns the raw specifier strings for
+/// static imports/exports and string-literal dynamic imports. Template/expr
+/// dynamic imports are skipped — they aren't statically analyzable.
+///
+/// Returns an empty vec if the source can't be parsed; the caller will simply
+/// stop walking that branch.
+fn scan_import_specifiers(specifier: &Url, source: &str) -> Vec<String> {
+  use deno_ast::MediaType;
+  use deno_graph::analysis::DependencyDescriptor;
+  use deno_graph::analysis::DynamicArgument;
+
+  let media_type = MediaType::from_specifier(specifier);
+  if !matches!(
+    media_type,
+    MediaType::JavaScript
+      | MediaType::Jsx
+      | MediaType::Mjs
+      | MediaType::Cjs
+      | MediaType::TypeScript
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Tsx
+  ) {
+    return Vec::new();
+  }
+
+  let parsed = match deno_ast::parse_module(deno_ast::ParseParams {
+    specifier: specifier.clone(),
+    text: source.into(),
+    media_type,
+    capture_tokens: false,
+    maybe_syntax: None,
+    scope_analysis: false,
+  }) {
+    Ok(p) => p,
+    Err(e) => {
+      log::debug!("Failed to parse {specifier} for import scan: {e}");
+      return Vec::new();
+    }
+  };
+
+  let module_info = deno_graph::ast::ParserModuleAnalyzer::module_info(&parsed);
+  let mut out = Vec::new();
+  for dep in &module_info.dependencies {
+    match dep {
+      DependencyDescriptor::Static(d) => out.push(d.specifier.to_string()),
+      DependencyDescriptor::Dynamic(d) => {
+        if let DynamicArgument::String(s) = &d.argument {
+          out.push(s.clone());
+        }
+      }
+    }
+  }
+  out
 }
 
 fn resolve_jsr_version(
