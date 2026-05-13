@@ -241,7 +241,7 @@ pub(crate) fn op_quic_endpoint_create(
     state
       .borrow_mut()
       .borrow_mut::<PermissionsContainer>()
-      .check_net(
+      .check_net_listen(
         &(&addr.ip().to_string(), Some(addr.port())),
         "new Deno.QuicEndpoint()",
       )?
@@ -548,7 +548,7 @@ pub(crate) fn op_quic_endpoint_connect(
   state
     .borrow_mut()
     .borrow_mut::<PermissionsContainer>()
-    .check_net(
+    .check_net_connect(
       &(&args.addr.hostname, Some(args.addr.port)),
       "Deno.connectQuic()",
     )?;
@@ -559,7 +559,7 @@ pub(crate) fn op_quic_endpoint_connect(
   state
     .borrow_mut()
     .borrow_mut::<PermissionsContainer>()
-    .check_net_resolved(
+    .check_net_connect_resolved(
       &sock_addr.ip(),
       sock_addr.port(),
       "Deno.connectQuic()",
