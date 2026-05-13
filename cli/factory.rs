@@ -1382,7 +1382,13 @@ impl CliFactory {
           } else {
             deno_resolver::loader::AllowJsonImports::WithAttribute
           },
-          require_modules: options.require_modules()?,
+          require_modules: {
+            let mut modules = options.require_modules()?;
+            if options.cjs_main_module() {
+              modules.push(options.resolve_main_module()?.clone());
+            }
+            modules
+          },
         },
       )))
     })

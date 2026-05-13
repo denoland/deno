@@ -457,6 +457,7 @@ pub struct RunFlags {
   pub bare: bool,
   pub coverage_dir: Option<String>,
   pub print_task_list: bool,
+  pub cjs: bool,
 }
 
 impl RunFlags {
@@ -468,6 +469,7 @@ impl RunFlags {
       bare: false,
       coverage_dir: None,
       print_task_list: false,
+      cjs: false,
     }
   }
 
@@ -4241,7 +4243,8 @@ fn run_args(command: Command, top_level: bool) -> Command {
       })
       .arg(env_file_arg())
       .arg(no_code_cache_arg())
-      .arg(coverage_arg()),
+      .arg(coverage_arg())
+      .arg(cjs_arg()),
   )
   .arg(tunnel_arg())
 }
@@ -5921,6 +5924,13 @@ fn no_code_cache_arg() -> Arg {
     .action(ArgAction::SetTrue)
 }
 
+fn cjs_arg() -> Arg {
+  Arg::new("cjs")
+    .long("cjs")
+    .help("Treat the entry point file as CommonJS")
+    .action(ArgAction::SetTrue)
+}
+
 fn coverage_arg() -> Arg {
   Arg::new("coverage")
     .long("coverage")
@@ -7504,6 +7514,7 @@ fn run_parse(
   flags.tunnel = matches.get_flag("tunnel");
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   let coverage_dir = matches.remove_one::<String>("coverage");
+  let cjs = matches.get_flag("cjs");
   flags.cpu_prof = cpu_prof_parse(matches);
 
   match matches.remove_many::<String>("script_arg") {
@@ -7516,6 +7527,7 @@ fn run_parse(
         bare,
         coverage_dir,
         print_task_list: false,
+        cjs,
       });
     }
     _ => {
@@ -7532,6 +7544,7 @@ fn run_parse(
           bare: false,
           coverage_dir: None,
           print_task_list: true,
+          cjs: false,
         });
       }
     }
@@ -8765,6 +8778,7 @@ mod tests {
           bare: false,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -8792,6 +8806,7 @@ mod tests {
           bare: true,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -8820,6 +8835,7 @@ mod tests {
           bare: false,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -8848,6 +8864,7 @@ mod tests {
           bare: false,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -8876,6 +8893,7 @@ mod tests {
           bare: false,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -8905,6 +8923,7 @@ mod tests {
           bare: true,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -8937,6 +8956,7 @@ mod tests {
           bare: false,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -8968,6 +8988,7 @@ mod tests {
           bare: true,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -8996,6 +9017,7 @@ mod tests {
           bare: false,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -9025,6 +9047,7 @@ mod tests {
           bare: false,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -9053,6 +9076,7 @@ mod tests {
           bare: true,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -9093,6 +9117,7 @@ mod tests {
           bare: false,
           coverage_dir: Some("foo".to_string()),
           print_task_list: false,
+          cjs: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -9346,6 +9371,7 @@ mod tests {
           bare: true,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         permissions: PermissionFlags {
           deny_read: Some(vec![]),
@@ -10756,6 +10782,7 @@ mod tests {
           bare: true,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         permissions: PermissionFlags {
           deny_net: Some(svec!["127.0.0.1"]),
@@ -10989,6 +11016,7 @@ mod tests {
           bare: true,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         permissions: PermissionFlags {
           deny_sys: Some(svec!["hostname"]),
@@ -11290,7 +11318,28 @@ mod tests {
           bare: true,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_cjs() {
+    let r = flags_from_vec(svec!["deno", "run", "--cjs", "script.js"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.js".to_string(),
+          watch: None,
+          bare: false,
+          coverage_dir: None,
+          print_task_list: false,
+          cjs: true,
+        }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -11616,6 +11665,7 @@ mod tests {
           bare: true,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         log_level: Some(Level::Error),
         code_cache_enabled: true,
@@ -11738,6 +11788,7 @@ mod tests {
           bare: true,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         type_check_mode: TypeCheckMode::None,
         code_cache_enabled: true,
@@ -11911,6 +11962,7 @@ mod tests {
           bare: true,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         node_modules_dir: Some(NodeModulesDirMode::Auto),
         code_cache_enabled: true,
@@ -13229,6 +13281,7 @@ mod tests {
           bare: true,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         inspect_wait: Some("127.0.0.1:9229".parse().unwrap()),
         code_cache_enabled: true,
@@ -13952,6 +14005,7 @@ mod tests {
           bare: true,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         type_check_mode: TypeCheckMode::None,
         code_cache_enabled: true,
@@ -14871,6 +14925,7 @@ mod tests {
           bare: true,
           coverage_dir: None,
           print_task_list: false,
+          cjs: false,
         }),
         config_flag: ConfigFlag::Disabled,
         code_cache_enabled: true,

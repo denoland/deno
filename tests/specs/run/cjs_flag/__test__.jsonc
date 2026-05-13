@@ -1,0 +1,17 @@
+{
+  "tests": {
+    "entry_as_cjs": {
+      "args": "run --cjs main.js",
+      "output": "main.out"
+    },
+    "transitive_require": {
+      "args": "run -R --cjs uses_require.js",
+      "output": "uses_require.out"
+    },
+    "without_flag_errors": {
+      "args": "run needs_cjs.js",
+      "output": "without_flag.out",
+      "exitCode": 1
+    }
+  }
+}
