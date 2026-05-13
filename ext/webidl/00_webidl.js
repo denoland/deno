@@ -1160,11 +1160,14 @@ function createBranded(Type) {
   return t;
 }
 
-function assertBranded(self, prototype) {
+function assertBranded(self, prototype, interfaceName) {
   if (
     !ObjectPrototypeIsPrototypeOf(prototype, self) || self[brand] !== brand
   ) {
-    const err = new TypeError("Illegal invocation");
+    const message = interfaceName === undefined
+      ? "Illegal invocation"
+      : `Value of "this" must be of type ${interfaceName}`;
+    const err = new TypeError(message);
     err.code = "ERR_INVALID_THIS";
     throw err;
   }
@@ -1241,7 +1244,7 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
   }
 
   function entries() {
-    assertBranded(this, prototype.prototype);
+    assertBranded(this, prototype.prototype, name);
     return createDefaultIterator(this, "key+value");
   }
 
@@ -1260,7 +1263,7 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
     },
     keys: {
       value: function keys() {
-        assertBranded(this, prototype.prototype);
+        assertBranded(this, prototype.prototype, name);
         return createDefaultIterator(this, "key");
       },
       writable: true,
@@ -1269,7 +1272,7 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
     },
     values: {
       value: function values() {
-        assertBranded(this, prototype.prototype);
+        assertBranded(this, prototype.prototype, name);
         return createDefaultIterator(this, "value");
       },
       writable: true,
@@ -1278,7 +1281,7 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
     },
     forEach: {
       value: function forEach(idlCallback, thisArg = undefined) {
-        assertBranded(this, prototype.prototype);
+        assertBranded(this, prototype.prototype, name);
         const prefix = `Failed to execute 'forEach' on '${name}'`;
         requiredArguments(arguments.length, 1, { prefix });
         idlCallback = converters["Function"](idlCallback, {

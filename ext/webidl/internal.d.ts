@@ -517,7 +517,7 @@ declare module "ext:deno_webidl/00_webidl.js" {
   /**
    * Assert that self is branded.
    */
-  function assertBranded(self: any, type: any): void;
+  function assertBranded(self: any, type: any, interfaceName?: string): void;
 
   /**
    * Create a converter for interfaces.

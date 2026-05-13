@@ -170,7 +170,7 @@ class URLSearchParams {
    * @param {string} value
    */
   append(name, value) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'append' on 'URLSearchParams'";
     webidl.requiredArguments(arguments.length, 2, prefix);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
@@ -184,7 +184,7 @@ class URLSearchParams {
    * @param {string} [value]
    */
   delete(name, value = undefined) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'append' on 'URLSearchParams'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
@@ -216,7 +216,7 @@ class URLSearchParams {
    * @returns {string[]}
    */
   getAll(name) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'getAll' on 'URLSearchParams'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
@@ -236,7 +236,7 @@ class URLSearchParams {
    * @return {string | null}
    */
   get(name) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'get' on 'URLSearchParams'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
@@ -256,7 +256,7 @@ class URLSearchParams {
    * @return {boolean}
    */
   has(name, value = undefined) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'has' on 'URLSearchParams'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
@@ -275,7 +275,7 @@ class URLSearchParams {
    * @param {string} value
    */
   set(name, value) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'set' on 'URLSearchParams'";
     webidl.requiredArguments(arguments.length, 2, prefix);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
@@ -313,7 +313,7 @@ class URLSearchParams {
   }
 
   sort() {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     ArrayPrototypeSort(
       this[_list],
       (a, b) => (a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1),
@@ -325,12 +325,12 @@ class URLSearchParams {
    * @return {string}
    */
   toString() {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     return op_url_stringify_search_params(this[_list]);
   }
 
   get size() {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     return this[_list].length;
   }
 }
