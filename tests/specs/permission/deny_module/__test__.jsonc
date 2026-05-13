@@ -1,0 +1,28 @@
+{
+  "tests": {
+    "deny_read_in_substring_match": {
+      "args": "run --allow-read --deny-module=helper.ts:read main.ts",
+      "output": "deny_read.out",
+      "exitCode": 1
+    },
+    "allows_when_module_not_on_stack": {
+      "args": "run --allow-read --deny-module=other.ts:read main.ts",
+      "output": "ok.out"
+    },
+    "deny_all_perms": {
+      "args": "run -A --deny-module=helper.ts:all main.ts",
+      "output": "deny_read.out",
+      "exitCode": 1
+    },
+    "rejects_invalid_kind": {
+      "args": "run --deny-module=helper.ts:bogus main.ts",
+      "output": "invalid_kind.out",
+      "exitCode": 1
+    },
+    "rejects_missing_perms": {
+      "args": "run --deny-module=helper.ts main.ts",
+      "output": "missing_perms.out",
+      "exitCode": 1
+    }
+  }
+}

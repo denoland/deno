@@ -34,10 +34,18 @@ use url::Url;
 
 pub mod broker;
 mod ipc_pipe;
+pub mod module_perms;
 pub mod prompter;
 mod runtime_descriptor_parser;
 pub mod which;
 
+pub use module_perms::MatchedDenial;
+pub use module_perms::ModuleDenyRule;
+pub use module_perms::ModuleDenyRuleParseError;
+pub use module_perms::ModulePattern;
+pub use module_perms::ModulePermissionKind;
+pub use module_perms::matching_denied_module;
+pub use module_perms::set_current_op_frames;
 use prompter::MAYBE_CURRENT_STACKTRACE;
 use prompter::PERMISSION_EMOJI;
 use prompter::permission_prompt;
@@ -3517,6 +3525,9 @@ pub struct PermissionsOptions {
   pub deny_write: Option<Vec<String>>,
   pub allow_import: Option<Vec<String>>,
   pub deny_import: Option<Vec<String>>,
+  /// Per-module permission denials. Each entry is `<pattern>:<kinds>` and
+  /// is parsed via [`ModuleDenyRule::parse`].
+  pub deny_module: Option<Vec<String>>,
   pub prompt: bool,
 }
 
@@ -3534,6 +3545,8 @@ pub enum PermissionsFromOptionsError {
   RunDescriptorParse(#[from] RunDescriptorParseError),
   #[error("Empty command name not allowed in --allow-run=...")]
   RunEmptyCommandName,
+  #[error("{0}")]
+  ModuleDenyParse(#[from] ModuleDenyRuleParseError),
 }
 
 impl Permissions {
@@ -3586,6 +3599,19 @@ impl Permissions {
       "all",
       false, // never prompt for all
     )
+  }
+
+  /// Parse the per-module deny rules from a [`PermissionsOptions`].
+  ///
+  /// This is decoupled from [`Permissions::from_options`] so it can be
+  /// reused by call sites that build a [`PermissionsContainer`] directly.
+  pub fn parse_module_deny_rules(
+    opts: &PermissionsOptions,
+  ) -> Result<Vec<ModuleDenyRule>, PermissionsFromOptionsError> {
+    match opts.deny_module.as_ref() {
+      Some(items) => Ok(ModuleDenyRule::parse_list(items)?),
+      None => Ok(Vec::new()),
+    }
   }
 
   pub fn from_options(
@@ -3904,6 +3930,7 @@ impl PermissionCheckError {
 pub struct PermissionsContainer {
   descriptor_parser: Arc<dyn PermissionDescriptorParser>,
   inner: Arc<Mutex<Permissions>>,
+  module_deny_rules: Arc<Vec<ModuleDenyRule>>,
 }
 
 impl PermissionsContainer {
@@ -3911,9 +3938,18 @@ impl PermissionsContainer {
     descriptor_parser: Arc<dyn PermissionDescriptorParser>,
     perms: Permissions,
   ) -> Self {
+    Self::new_with_module_deny(descriptor_parser, perms, Vec::new())
+  }
+
+  pub fn new_with_module_deny(
+    descriptor_parser: Arc<dyn PermissionDescriptorParser>,
+    perms: Permissions,
+    module_deny_rules: Vec<ModuleDenyRule>,
+  ) -> Self {
     Self {
       descriptor_parser,
       inner: Arc::new(Mutex::new(perms)),
+      module_deny_rules: Arc::new(module_deny_rules),
     }
   }
 
@@ -3921,6 +3957,7 @@ impl PermissionsContainer {
     Self {
       descriptor_parser: self.descriptor_parser.clone(),
       inner: Arc::new(Mutex::new(self.inner.lock().clone())),
+      module_deny_rules: self.module_deny_rules.clone(),
     }
   }
 
@@ -3928,6 +3965,62 @@ impl PermissionsContainer {
     descriptor_parser: Arc<dyn PermissionDescriptorParser>,
   ) -> Self {
     Self::new(descriptor_parser, Permissions::allow_all())
+  }
+
+  /// Convenience constructor that builds both the inner [`Permissions`] and
+  /// the per-module overlay from a [`PermissionsOptions`] in one step.
+  pub fn from_options(
+    descriptor_parser: Arc<dyn PermissionDescriptorParser>,
+    opts: &PermissionsOptions,
+  ) -> Result<Self, PermissionsFromOptionsError> {
+    let perms = Permissions::from_options(descriptor_parser.as_ref(), opts)?;
+    let module_deny_rules = Permissions::parse_module_deny_rules(opts)?;
+    Ok(Self::new_with_module_deny(
+      descriptor_parser,
+      perms,
+      module_deny_rules,
+    ))
+  }
+
+  /// True when at least one `--deny-module` rule is active. Used by the
+  /// runtime to decide whether to capture per-op JS stacks.
+  pub fn has_module_deny_rules(&self) -> bool {
+    !self.module_deny_rules.is_empty()
+  }
+
+  pub fn module_deny_rules(&self) -> &Arc<Vec<ModuleDenyRule>> {
+    &self.module_deny_rules
+  }
+
+  /// Returns an error if any frame on the current op's JS call stack matches
+  /// a per-module deny rule for `kind`. Cheap when no rules are configured.
+  #[inline]
+  pub fn check_module_overlay(
+    &self,
+    kind: ModulePermissionKind,
+  ) -> Result<(), PermissionDeniedError> {
+    if self.module_deny_rules.is_empty() {
+      return Ok(());
+    }
+    let Some(matched) = matching_denied_module(&self.module_deny_rules, kind)
+    else {
+      return Ok(());
+    };
+    let access = format!(
+      "{kind} access (denied to module matching '{rule}' on stack frame {frame})",
+      kind = kind,
+      rule = matched.rule_raw,
+      frame = matched.module,
+    );
+    Err(PermissionDeniedError {
+      access,
+      name: kind.as_flag_name(),
+      custom_message: Some(format!(
+        "module '{}' is restricted by --deny-module='{}'",
+        matched.module, matched.rule_raw
+      )),
+      state: PermissionState::Denied,
+    })
   }
 
   pub fn create_child_permissions(
@@ -4006,10 +4099,11 @@ impl PermissionsContainer {
       },
     )?;
 
-    Ok(PermissionsContainer::new(
-      self.descriptor_parser.clone(),
-      worker_perms,
-    ))
+    Ok(PermissionsContainer {
+      descriptor_parser: self.descriptor_parser.clone(),
+      inner: Arc::new(Mutex::new(worker_perms)),
+      module_deny_rules: self.module_deny_rules.clone(),
+    })
   }
 
   #[inline(always)]
@@ -4018,6 +4112,11 @@ impl PermissionsContainer {
     specifier: &Url,
     kind: CheckSpecifierKind,
   ) -> Result<(), PermissionCheckError> {
+    if specifier.scheme() == "file" {
+      self.check_module_overlay(ModulePermissionKind::Read)?;
+    } else if !matches!(specifier.scheme(), "data" | "blob") {
+      self.check_module_overlay(ModulePermissionKind::Import)?;
+    }
     let mut inner = self.inner.lock();
     match specifier.scheme() {
       "file" => {
@@ -4098,6 +4197,12 @@ impl PermissionsContainer {
     blind_requested: Option<&str>,
     api_name: Option<&str>,
   ) -> Result<CheckedPath<'a>, PermissionCheckError> {
+    if access_kind.is_read() {
+      self.check_module_overlay(ModulePermissionKind::Read)?;
+    }
+    if access_kind.is_write() {
+      self.check_module_overlay(ModulePermissionKind::Write)?;
+    }
     let path = {
       let mut inner = self.inner.lock();
       if inner.all_granted() {
@@ -4167,6 +4272,7 @@ impl PermissionsContainer {
     &self,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
+    self.check_module_overlay(ModulePermissionKind::Read)?;
     self
       .inner
       .lock()
@@ -4185,6 +4291,7 @@ impl PermissionsContainer {
     &self,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
+    self.check_module_overlay(ModulePermissionKind::Write)?;
     self.inner.lock().write.check_all(Some(api_name))?;
     Ok(())
   }
@@ -4195,6 +4302,7 @@ impl PermissionsContainer {
     path: Cow<'a, Path>,
     api_name: &str,
   ) -> Result<CheckedPath<'a>, PermissionCheckError> {
+    self.check_module_overlay(ModulePermissionKind::Write)?;
     let mut inner = self.inner.lock();
     let inner = &mut inner.write;
     if inner.is_allow_all() {
@@ -4228,6 +4336,7 @@ impl PermissionsContainer {
     cmd: &RunQueryDescriptor,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
+    self.check_module_overlay(ModulePermissionKind::Run)?;
     self.inner.lock().run.check(cmd, Some(api_name))?;
     Ok(())
   }
@@ -4237,6 +4346,7 @@ impl PermissionsContainer {
     &mut self,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
+    self.check_module_overlay(ModulePermissionKind::Run)?;
     self.inner.lock().run.check_all(Some(api_name))?;
     Ok(())
   }
@@ -4252,6 +4362,7 @@ impl PermissionsContainer {
     kind: &str,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
+    self.check_module_overlay(ModulePermissionKind::Sys)?;
     self.inner.lock().sys.check(
       &self.descriptor_parser.parse_sys_descriptor(kind)?,
       Some(api_name),
@@ -4261,24 +4372,28 @@ impl PermissionsContainer {
 
   #[inline(always)]
   pub fn check_env(&self, var: &str) -> Result<(), PermissionCheckError> {
+    self.check_module_overlay(ModulePermissionKind::Env)?;
     self.inner.lock().env.check(var, None)?;
     Ok(())
   }
 
   #[inline(always)]
   pub fn check_env_all(&self) -> Result<(), PermissionCheckError> {
+    self.check_module_overlay(ModulePermissionKind::Env)?;
     self.inner.lock().env.check_all()?;
     Ok(())
   }
 
   #[inline(always)]
   pub fn check_sys_all(&self) -> Result<(), PermissionCheckError> {
+    self.check_module_overlay(ModulePermissionKind::Sys)?;
     self.inner.lock().sys.check_all()?;
     Ok(())
   }
 
   #[inline(always)]
   pub fn check_ffi_all(&self) -> Result<(), PermissionCheckError> {
+    self.check_module_overlay(ModulePermissionKind::Ffi)?;
     self.inner.lock().ffi.check_all()?;
     Ok(())
   }
@@ -4463,6 +4578,7 @@ impl PermissionsContainer {
     url: &Url,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
+    self.check_module_overlay(ModulePermissionKind::Net)?;
     let mut inner = self.inner.lock();
     audit_and_skip_check_if_is_permission_fully_granted!(
       inner.net,
@@ -4480,6 +4596,7 @@ impl PermissionsContainer {
     host: &(T, Option<u16>),
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
+    self.check_module_overlay(ModulePermissionKind::Net)?;
     let mut inner = self.inner.lock();
     let inner = &mut inner.net;
     audit_and_skip_check_if_is_permission_fully_granted!(
@@ -4507,6 +4624,7 @@ impl PermissionsContainer {
     port: u16,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
+    self.check_module_overlay(ModulePermissionKind::Net)?;
     let mut inner = self.inner.lock();
     let desc = NetDescriptor(Host::Ip(*resolved_ip), Some(port.into()));
     inner.net.check_resolved_ip_deny(&desc, Some(api_name))?;
@@ -4520,6 +4638,7 @@ impl PermissionsContainer {
     port: u32,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
+    self.check_module_overlay(ModulePermissionKind::Net)?;
     let mut inner = self.inner.lock();
     audit_and_skip_check_if_is_permission_fully_granted!(
       inner.net,
@@ -4536,6 +4655,7 @@ impl PermissionsContainer {
     &mut self,
     path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+    self.check_module_overlay(ModulePermissionKind::Ffi)?;
     let mut inner = self.inner.lock();
     let inner = &mut inner.ffi;
     if inner.is_allow_all() {
@@ -4553,6 +4673,7 @@ impl PermissionsContainer {
   pub fn check_ffi_partial_no_path(
     &mut self,
   ) -> Result<(), PermissionCheckError> {
+    self.check_module_overlay(ModulePermissionKind::Ffi)?;
     let mut inner = self.inner.lock();
     let inner = &mut inner.ffi;
     if !inner.is_allow_all() {
@@ -4569,6 +4690,7 @@ impl PermissionsContainer {
     &mut self,
     path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+    self.check_module_overlay(ModulePermissionKind::Ffi)?;
     let mut inner = self.inner.lock();
     let inner = &mut inner.ffi;
     if inner.is_allow_all() {

@@ -1188,6 +1188,15 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
 pub fn create_permissions_stack_trace_callback()
 -> deno_core::OpStackTraceCallback {
   Box::new(|stack: Vec<deno_core::error::JsStackFrame>| {
+    // Record the script URL of each frame for the per-module permission
+    // overlay. Cheap when no rules are configured because the consumer
+    // exits on `module_deny_rules.is_empty()`.
+    let frame_urls: Vec<String> = stack
+      .iter()
+      .filter_map(|frame| frame.file_name.clone())
+      .collect();
+    deno_permissions::set_current_op_frames(frame_urls);
+
     deno_permissions::prompter::set_current_stacktrace(Box::new(move || {
       stack
         .iter()

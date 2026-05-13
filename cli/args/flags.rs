@@ -1031,6 +1031,7 @@ pub struct PermissionFlags {
   pub no_prompt: bool,
   pub allow_import: Option<Vec<String>>,
   pub deny_import: Option<Vec<String>>,
+  pub deny_module: Option<Vec<String>>,
 }
 
 impl PermissionFlags {
@@ -1054,6 +1055,7 @@ impl PermissionFlags {
       || self.deny_write.is_some()
       || self.allow_import.is_some()
       || self.deny_import.is_some()
+      || self.deny_module.is_some()
   }
 }
 
@@ -1286,6 +1288,12 @@ impl Flags {
         args.push(s);
       }
       _ => {}
+    }
+
+    if let Some(deny_module) = &self.permissions.deny_module {
+      for item in deny_module {
+        args.push(format!("--deny-module={item}"));
+      }
     }
 
     args
@@ -5136,6 +5144,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
                                              <p(245)>--deny-ffi  |  --deny-ffi="./libfoo.so"</>
       <g>--deny-import[=<<IP_OR_HOSTNAME>...]</>  Deny importing from remote hosts. Optionally specify denied IP addresses and host names, with ports as necessary.
                                              <p(245)>--deny-import  |  --deny-import="example.com:443,github.com:443"</>
+      <g>--deny-module=<<MODULE:PERMS>...</>     Deny specific runtime permissions to a module on the call stack.
+                                             <p(245)>--deny-module="npm:chalk:all"  |  --deny-module="npm:chalk:net,run"</>
       <g>--ignore-env[=<<VARIABLE_NAME>...]</>    Ignore access to environment variables returning `undefined`. Optionally specify ignored environment variables.
                                              <p(245)>--ignore-env  |  --ignore-env="PORT,HOME,PATH"</>
       <g>--ignore-read[=<<PATH>...]</>            Ignore file system read access with a `NotFound` error. Optionally specify ignored paths.
@@ -5456,6 +5466,15 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
         arg
       }
     )
+    .arg({
+      let mut arg = deny_module_arg().hide(true);
+      if let Some(requires) = requires
+        && requires != "global"
+      {
+        arg = arg.requires(requires)
+      }
+      arg
+    })
 }
 
 fn allow_all_arg() -> Arg {
@@ -5549,6 +5568,18 @@ fn deny_import_arg() -> Arg {
     "Deny importing from remote hosts. Optionally specify denied IP addresses and host names, with ports as necessary."
   ))
   .value_parser(flags_net::validator)
+}
+
+fn deny_module_arg() -> Arg {
+  Arg::new("deny-module")
+  .long("deny-module")
+  .num_args(1..)
+  .action(ArgAction::Append)
+  .require_equals(true)
+  .value_name("MODULE:PERMS")
+  .help(cstr!(
+    "Deny specific runtime permissions to a single module on the call stack. Format is <p(245)>\"<<MODULE>:<<PERM,PERM,...>\"</> where <<MODULE> may be <p(245)>npm:<<name></>, <p(245)>jsr:<<scope>/<<name></>, or any substring of the script URL. Permissions are one of <p(245)>read,write,net,env,sys,run,ffi,import</> or <p(245)>all</>. May be repeated. Example: <p(245)>--deny-module=\"npm:chalk:all\"</>"
+  ))
 }
 
 pub fn inspect_value_parser(host_and_port: &str) -> Result<SocketAddr, String> {
@@ -8231,11 +8262,37 @@ fn permission_args_parse(
   }
 
   allow_and_deny_import_parse(flags, matches)?;
+  deny_module_parse(flags, matches)?;
 
   if matches.get_flag("no-prompt") {
     flags.permissions.no_prompt = true;
   }
 
+  Ok(())
+}
+
+fn deny_module_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  if let Some(items) = matches.remove_many::<String>("deny-module") {
+    let items: Vec<String> = items.collect();
+    if !items.is_empty() {
+      // Best-effort early validation; the runtime will re-parse and surface
+      // a structured error if anything is still wrong.
+      for raw in &items {
+        if let Err(err) =
+          deno_runtime::deno_permissions::ModuleDenyRule::parse(raw)
+        {
+          return Err(clap::Error::raw(
+            clap::error::ErrorKind::InvalidValue,
+            format!("--deny-module: {err}\n"),
+          ));
+        }
+      }
+      flags.permissions.deny_module = Some(items);
+    }
+  }
   Ok(())
 }
 

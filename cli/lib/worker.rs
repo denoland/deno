@@ -365,6 +365,8 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       let unstable_features =
         shared.resolve_unstable_features(feature_checker.as_ref());
 
+      let has_module_deny_rules = args.permissions.has_module_deny_rules();
+
       let services = WebWorkerServiceOptions {
         deno_rt_native_addon_loader: shared.deno_rt_native_addon_loader.clone(),
         root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
@@ -499,7 +501,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         enable_raw_imports: shared.options.enable_raw_imports,
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(
           &shared.sys,
-        ),
+        ) || has_module_deny_rules,
       };
 
       let has_resource_limits = args.resource_limits.is_some();
@@ -654,6 +656,8 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
     });
 
+    let has_module_deny_rules = permissions.has_module_deny_rules();
+
     let services = WorkerServiceOptions {
       deno_rt_native_addon_loader: shared.deno_rt_native_addon_loader.clone(),
       root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
@@ -735,7 +739,8 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       stdio,
       skip_op_registration: shared.options.skip_op_registration,
       enable_raw_imports: shared.options.enable_raw_imports,
-      enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(&shared.sys),
+      enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(&shared.sys)
+        || has_module_deny_rules,
       unconfigured_runtime,
     };
 
