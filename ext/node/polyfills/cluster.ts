@@ -3,15 +3,16 @@
 
 // Mirrors lib/cluster.js. Node decides at module-load whether to require
 // `internal/cluster/primary` or `internal/cluster/child` from
-// process.env.NODE_UNIQUE_ID. In Deno, cluster.ts is eagerly imported by
-// 01_require.js (before bootstrap delivers env), so we initialize the
-// primary side at module load and let `02_init.js` flip to the child side
-// via the `__initCluster` callback.
+// process.env.NODE_UNIQUE_ID. In Deno, the IIFE initializes the primary side
+// at module load, and `02_init.js` flips to the child side via the
+// `__initCluster` callback (after triggering this script when
+// NODE_UNIQUE_ID is set).
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
-import { core, internals } from "ext:core/mod.js";
+(function () {
+const { core, internals } = globalThis.__bootstrap;
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const { init: initPrimary } = core.loadExtScript(
   "ext:deno_node/internal/cluster/primary.ts",
@@ -22,23 +23,6 @@ const { init: initChild } = core.loadExtScript(
 
 const cluster: any = new EventEmitter();
 initPrimary(cluster);
-
-// ESM exports are live bindings: importers see the current value of the
-// local `let`. We sync from `cluster.*` after `initPrimary` (now), and
-// re-sync after `initChild` runs in `__initCluster` so workers don't see
-// stale primary-side values like `isWorker = false` or a primary-side
-// `fork` that was overwritten by the child-side init.
-let isPrimary = cluster.isPrimary;
-let isMaster = cluster.isMaster;
-let isWorker = cluster.isWorker;
-let workers = cluster.workers;
-let settings = cluster.settings;
-let schedulingPolicy = cluster.schedulingPolicy;
-let fork = cluster.fork;
-let disconnect = cluster.disconnect;
-let setupPrimary = cluster.setupPrimary;
-let setupMaster = cluster.setupMaster;
-let worker = cluster.worker;
 
 internals.__initCluster = (
   uniqueId: string,
@@ -64,40 +48,47 @@ internals.__initCluster = (
   }
 
   cluster._setupWorker();
-
-  // Resync the live bindings now that the child side has populated `cluster`
-  // (including `cluster.worker` set by `_setupWorker`).
-  isPrimary = cluster.isPrimary;
-  isMaster = cluster.isMaster;
-  isWorker = cluster.isWorker;
-  workers = cluster.workers;
-  settings = cluster.settings;
-  schedulingPolicy = cluster.schedulingPolicy;
-  fork = cluster.fork;
-  disconnect = cluster.disconnect;
-  setupPrimary = cluster.setupPrimary;
-  setupMaster = cluster.setupMaster;
-  worker = cluster.worker;
 };
 
-// Stable across primary/child: `Worker`, `SCHED_NONE`, `SCHED_RR` are set by
-// both init paths to the same values.
-export const Worker = cluster.Worker;
-export const SCHED_NONE = cluster.SCHED_NONE;
-export const SCHED_RR = cluster.SCHED_RR;
-
-export {
-  disconnect,
-  fork,
-  isMaster,
-  isPrimary,
-  isWorker,
-  schedulingPolicy,
-  settings,
-  setupMaster,
-  setupPrimary,
-  worker,
-  workers,
+// Use getters so consumers see the current value of `cluster.*` even after
+// `__initCluster` has flipped the EventEmitter to the child side.
+return {
+  default: cluster,
+  Worker: cluster.Worker,
+  SCHED_NONE: cluster.SCHED_NONE,
+  SCHED_RR: cluster.SCHED_RR,
+  get isPrimary() {
+    return cluster.isPrimary;
+  },
+  get isMaster() {
+    return cluster.isMaster;
+  },
+  get isWorker() {
+    return cluster.isWorker;
+  },
+  get workers() {
+    return cluster.workers;
+  },
+  get settings() {
+    return cluster.settings;
+  },
+  get schedulingPolicy() {
+    return cluster.schedulingPolicy;
+  },
+  get fork() {
+    return cluster.fork;
+  },
+  get disconnect() {
+    return cluster.disconnect;
+  },
+  get setupPrimary() {
+    return cluster.setupPrimary;
+  },
+  get setupMaster() {
+    return cluster.setupMaster;
+  },
+  get worker() {
+    return cluster.worker;
+  },
 };
-
-export default cluster;
+})();

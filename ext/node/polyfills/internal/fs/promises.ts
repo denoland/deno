@@ -10,32 +10,7 @@ const { cpPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_cp.ts");
 import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { readdirPromise } from "ext:deno_node/_fs/_fs_readdir.ts";
 const { lstatPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_lstat.ts");
-import {
-  access,
-  appendFile,
-  chmod,
-  chown,
-  lchown,
-  link,
-  mkdir,
-  mkdtemp,
-  open,
-  opendir,
-  readFile,
-  readlink,
-  realpath,
-  rename,
-  rm,
-  rmdir,
-  stat,
-  statfs,
-  symlink,
-  truncate,
-  unlink,
-  utimes,
-  watchPromise,
-  writeFile,
-} from "node:fs";
+const lazyFs = core.createLazyLoader("node:fs");
 import { globPromise } from "ext:deno_node/_fs/_fs_glob.ts";
 import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
 import type { Buffer } from "node:buffer";
@@ -50,21 +25,21 @@ const { isMacOS } = core.loadExtScript("ext:deno_node/_util/os.ts");
 const { ERR_METHOD_NOT_IMPLEMENTED } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
-import { resolve as pathResolve } from "node:path";
-import process from "node:process";
+const lazyPath = core.createLazyLoader("node:path");
+const lazyProcess = core.createLazyLoader("node:process");
 
 const { Promise, PromiseReject, SymbolAsyncDispose } = primordials;
 
 // -- access --
 
-const accessPromise = promisify(access) as (
+const accessPromise = promisify(lazyFs().access) as (
   path: string | Buffer | URL,
   mode?: number,
 ) => Promise<void>;
 
 // -- appendFile --
 
-const appendFilePromise = promisify(appendFile) as (
+const appendFilePromise = promisify(lazyFs().appendFile) as (
   path: string | number | URL,
   data: string | Uint8Array,
   options?: Encodings | WriteFileOptions,
@@ -72,14 +47,14 @@ const appendFilePromise = promisify(appendFile) as (
 
 // -- chmod --
 
-const chmodPromise = promisify(chmod) as (
+const chmodPromise = promisify(lazyFs().chmod) as (
   path: string | Buffer | URL,
   mode: string | number,
 ) => Promise<void>;
 
 // -- chown --
 
-const chownPromise = promisify(chown) as (
+const chownPromise = promisify(lazyFs().chown) as (
   path: string | Buffer | URL,
   uid: number,
   gid: number,
@@ -96,22 +71,22 @@ const lchmodPromise: (
     return await op_node_lchmod(path, mode);
   };
 
-const lchownPromise = promisify(lchown) as (
+const lchownPromise = promisify(lazyFs().lchown) as (
   path: string | Buffer | URL,
   uid: number,
   gid: number,
 ) => Promise<void>;
 
-const linkPromise = promisify(link) as (
+const linkPromise = promisify(lazyFs().link) as (
   existingPath: string | Buffer | URL,
   newPath: string | Buffer | URL,
 ) => Promise<void>;
 
-const unlinkPromise = promisify(unlink) as (
+const unlinkPromise = promisify(lazyFs().unlink) as (
   path: string | Buffer | URL,
 ) => Promise<void>;
 
-const renamePromise = promisify(rename) as (
+const renamePromise = promisify(lazyFs().rename) as (
   oldPath: string | Buffer | URL,
   newPath: string | Buffer | URL,
 ) => Promise<void>;
@@ -125,7 +100,7 @@ type rmOptions = {
   retryDelay?: number;
 };
 
-const rmPromise = promisify(rm) as (
+const rmPromise = promisify(lazyFs().rm) as (
   path: string | URL,
   options?: rmOptions,
 ) => Promise<void>;
@@ -138,7 +113,7 @@ type rmdirOptions = {
   retryDelay?: number;
 };
 
-const rmdirPromise = promisify(rmdir) as (
+const rmdirPromise = promisify(lazyFs().rmdir) as (
   path: string | Buffer | URL,
   options?: rmdirOptions,
 ) => Promise<void>;
@@ -148,12 +123,12 @@ type MkdirOptions =
   | number
   | boolean;
 
-const mkdirPromise = promisify(mkdir) as (
+const mkdirPromise = promisify(lazyFs().mkdir) as (
   path: string | URL,
   options?: MkdirOptions,
 ) => Promise<string | undefined>;
 
-const mkdtempPromise = promisify(mkdtemp) as (
+const mkdtempPromise = promisify(lazyFs().mkdtemp) as (
   prefix: string | Buffer | Uint8Array | URL,
   options?: { encoding: string } | string,
 ) => Promise<string>;
@@ -166,9 +141,9 @@ async function mkdtempDisposablePromise(
   prefix: string | Buffer | Uint8Array | URL,
   options?: { encoding: string } | string,
 ) {
-  const cwd = process.cwd();
+  const cwd = lazyProcess().default.cwd();
   const path = await mkdtempPromise(prefix, options);
-  const fullPath = pathResolve(cwd, path);
+  const fullPath = lazyPath().resolve(cwd, path);
   // `force: true` makes the second remove() a no-op when the dir is already
   // gone (Node's rimraf-based implementation treats ENOENT as success); other
   // errors (EACCES, EPERM, ...) still propagate.
@@ -214,7 +189,7 @@ function openPromise(
   mode = 0o666,
 ): Promise<FileHandle> {
   return new Promise((resolve, reject) => {
-    open(path, flags, mode, (err, fd) => {
+    lazyFs().open(path, flags, mode, (err, fd) => {
       if (err) reject(err);
       else resolve(new FileHandle(fd as number));
     });
@@ -226,14 +201,14 @@ type OpendirOptions = {
   bufferSize?: number;
 };
 
-const opendirPromise = promisify(opendir) as (
+const opendirPromise = promisify(lazyFs().opendir) as (
   path: string | Buffer | URL,
   options?: OpendirOptions,
 ) => Promise<Dir>;
 
 // -- symlink --
 
-const symlinkPromise = promisify(symlink) as (
+const symlinkPromise = promisify(lazyFs().symlink) as (
   target: string | Buffer | URL,
   path: string | Buffer | URL,
   type?: string,
@@ -241,14 +216,14 @@ const symlinkPromise = promisify(symlink) as (
 
 // -- truncate --
 
-const truncatePromise = promisify(truncate) as (
+const truncatePromise = promisify(lazyFs().truncate) as (
   path: string | URL,
   len?: number,
 ) => Promise<void>;
 
 // -- utimes --
 
-const utimesPromise = promisify(utimes) as (
+const utimesPromise = promisify(lazyFs().utimes) as (
   path: string | URL,
   atime: number | string | Date,
   mtime: number | string | Date,
@@ -256,7 +231,7 @@ const utimesPromise = promisify(utimes) as (
 
 // -- writeFile --
 
-const writeFilePromise = promisify(writeFile) as (
+const writeFilePromise = promisify(lazyFs().writeFile) as (
   pathOrRid: string | number | URL | FileHandle,
   data:
     | string
@@ -268,30 +243,30 @@ const writeFilePromise = promisify(writeFile) as (
 
 // -- realpath --
 
-const realpathPromise = promisify(realpath) as (
+const realpathPromise = promisify(lazyFs().realpath) as (
   path: string | Buffer,
   options?: string | { encoding?: string },
 ) => Promise<string | Buffer>;
 
 // -- stat --
 
-const statPromise = promisify(stat) as (
+const statPromise = promisify(lazyFs().stat) as (
   path: string | Buffer | URL,
   options?: { bigint?: boolean },
 ) => Promise<unknown>;
 
 // -- statfs --
 
-const statfsPromise = promisify(statfs) as (
+const statfsPromise = promisify(lazyFs().statfs) as (
   path: string | Buffer | URL,
   options?: { bigint?: boolean },
 ) => Promise<unknown>;
 
 // -- readFile / readlink --
 
-const readFilePromise = promisify(readFile);
+const readFilePromise = promisify(lazyFs().readFile);
 
-const readlinkPromise = promisify(readlink) as (
+const readlinkPromise = promisify(lazyFs().readlink) as (
   path: string | Buffer | URL,
   opt?: { encoding?: string | null },
 ) => Promise<string | Uint8Array>;
@@ -331,7 +306,7 @@ const promises = {
   writeFile: writeFilePromise,
   appendFile: appendFilePromise,
   readFile: readFilePromise,
-  watch: watchPromise,
+  watch: lazyFs().watchPromise,
 };
 
 export default promises;

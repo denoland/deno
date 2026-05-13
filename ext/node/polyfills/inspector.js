@@ -3,10 +3,9 @@
 
 // deno-lint-ignore-file prefer-primordials
 
-import process from "node:process";
-const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
-import { core, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const {
   op_get_extras_binding_object,
   op_inspector_close,
   op_inspector_connect,
@@ -17,7 +16,10 @@ import {
   op_inspector_open,
   op_inspector_url,
   op_inspector_wait,
-} from "ext:core/ops";
+} = core.ops;
+const lazyProcess = core.createLazyLoader("node:process");
+const lazyWorkerThreads = core.createLazyLoader("node:worker_threads");
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const {
   isUint32,
   validateFunction,
@@ -34,7 +36,8 @@ const {
   ERR_INSPECTOR_NOT_CONNECTED,
   ERR_INSPECTOR_NOT_WORKER,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import { isMainThread } from "node:worker_threads";
+
+const process = lazyProcess().default;
 
 function isLoopback(host) {
   const hostLower = host.toLowerCase();
@@ -75,7 +78,7 @@ class Session extends EventEmitter {
   }
 
   connectToMainThread() {
-    if (isMainThread) {
+    if (lazyWorkerThreads().isMainThread) {
       throw new ERR_INSPECTOR_NOT_WORKER();
     }
     if (this.#connection) {
@@ -255,16 +258,15 @@ const Network = {
     broadcastToFrontend("Network.loadingFailed", params),
 };
 
-const console = op_get_extras_binding_object().console;
+const inspectorConsole = op_get_extras_binding_object().console;
 
-export { close, console, Network, open, Session, url, waitForDebugger };
-
-export default {
-  open,
+return {
   close,
+  console: inspectorConsole,
+  Network,
+  open,
+  Session,
   url,
   waitForDebugger,
-  console,
-  Session,
-  Network,
 };
+})();

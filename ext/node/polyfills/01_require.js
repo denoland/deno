@@ -84,13 +84,27 @@ import _httpAgent from "node:_http_agent";
 import _httpCommon from "node:_http_common";
 import _httpOutgoing from "node:_http_outgoing";
 import _httpServer from "node:_http_server";
-import _streamDuplex from "node:_stream_duplex";
-import _streamPassthrough from "node:_stream_passthrough";
-import _streamReadable from "node:_stream_readable";
-import _streamTransform from "node:_stream_transform";
-import _streamWritable from "node:_stream_writable";
-import _tlsCommon from "node:_tls_common";
-import _tlsWrap from "node:_tls_wrap";
+const _streamDuplex = core.loadExtScript(
+  "ext:deno_node/internal/streams/duplex.js",
+).default;
+const _streamPassthrough = core.loadExtScript(
+  "ext:deno_node/internal/streams/passthrough.js",
+).default;
+const _streamReadable = core.loadExtScript(
+  "ext:deno_node/internal/streams/readable.js",
+).default;
+const _streamTransform = core.loadExtScript(
+  "ext:deno_node/internal/streams/transform.js",
+).default;
+const _streamWritable = core.loadExtScript(
+  "ext:deno_node/internal/streams/writable.js",
+).default;
+const _tlsCommon = core.loadExtScript(
+  "ext:deno_node/_tls_common.ts",
+).default;
+const _tlsWrap = core.loadExtScript(
+  "ext:deno_node/_tls_wrap.js",
+).default;
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import assertStrict from "node:assert/strict";
 const asyncHooks = core.loadExtScript("ext:deno_node/async_hooks.ts").default;
@@ -101,25 +115,31 @@ const {
   emitInit: internalAsyncHooksEmitInit,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const buffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs").default;
-import childProcess from "node:child_process";
-import cluster from "node:cluster";
+const childProcess = core.loadExtScript("ext:deno_node/child_process.ts");
+const cluster = core.loadExtScript("ext:deno_node/cluster.ts").default;
 import console from "node:console";
-import constants from "node:constants";
-import crypto from "node:crypto";
-import dgram from "node:dgram";
+const constants = core.loadExtScript("ext:deno_node/constants.ts").default;
+const crypto = core.loadExtScript("ext:deno_node/crypto.ts").default;
+const dgram = core.loadExtScript("ext:deno_node/dgram.ts").default;
 const diagnosticsChannel =
   core.loadExtScript("ext:deno_node/diagnostics_channel.js").default;
-import dns from "node:dns";
-import dnsPromises from "node:dns/promises";
+const dns = core.loadExtScript("ext:deno_node/dns.ts").default;
+const dnsPromises = core.loadExtScript(
+  "ext:deno_node/dns/promises.ts",
+).default;
 const domain = core.loadExtScript("ext:deno_node/domain.ts").default;
 const events = core.loadExtScript("ext:deno_node/_events.mjs").default;
-import fs from "node:fs";
-import fsPromises from "node:fs/promises";
-import http from "node:http";
-import http2 from "node:http2";
-import https from "node:https";
-import inspector from "node:inspector";
-import inspectorPromises from "node:inspector/promises";
+const fs = core.loadExtScript("ext:deno_node/fs.ts");
+const fsPromises = core.loadExtScript(
+  "ext:deno_node/fs/promises.ts",
+).fsPromises;
+const http = core.loadExtScript("ext:deno_node/http.ts");
+const http2 = core.loadExtScript("ext:deno_node/http2.ts");
+const https = core.loadExtScript("ext:deno_node/https.ts");
+const inspector = core.loadExtScript("ext:deno_node/inspector.js");
+const inspectorPromises = core.loadExtScript(
+  "ext:deno_node/inspector/promises.js",
+);
 const internalAssertMyersDiff = core.loadExtScript(
   "ext:deno_node/internal/assert/myers_diff.js",
 );
@@ -165,11 +185,15 @@ const internalCryptoUtil = core.loadExtScript(
 const internalCryptoX509 = core.loadExtScript(
   "ext:deno_node/internal/crypto/x509.ts",
 ).default;
-import internalDgram from "ext:deno_node/internal/dgram.ts";
+const internalDgram = core.loadExtScript(
+  "ext:deno_node/internal/dgram.ts",
+).default;
 const internalUndici = core.loadExtScript(
   "ext:deno_node/internal/deps/undici/undici.js",
 );
-import internalDnsPromises from "ext:deno_node/internal/dns/promises.ts";
+const internalDnsPromises = core.loadExtScript(
+  "ext:deno_node/internal/dns/promises.ts",
+).default;
 const internalBuffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const internalErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
@@ -196,7 +220,10 @@ const internalStreamsState =
 const internalTestBinding = core.loadExtScript(
   "ext:deno_node/internal/test/binding.ts",
 );
-import internalTimers from "ext:deno_node/internal/timers.mjs";
+const internalTimers = core.loadExtScript(
+  "ext:deno_node/internal/timers.mjs",
+);
+const internalUrl = core.loadExtScript("ext:deno_node/internal/url.ts");
 const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const internalUtilDebuglog = core.loadExtScript(
   "ext:deno_node/internal/util/debuglog.ts",
@@ -210,7 +237,7 @@ const internalValidators = core.loadExtScript(
 const internalConsole = core.loadExtScript(
   "ext:deno_node/internal/console/constructor.mjs",
 ).default;
-import net from "node:net";
+const net = core.loadExtScript("ext:deno_node/net.ts").default;
 const os = core.loadExtScript("ext:deno_node/os.ts").default;
 import pathPosix from "node:path/posix";
 import pathWin32 from "node:path/win32";
@@ -232,19 +259,23 @@ const stringDecoder =
   core.loadExtScript("ext:deno_node/string_decoder.ts").default;
 const test = core.loadExtScript("ext:deno_node/testing.ts").default;
 const testReporters = core.loadExtScript("ext:deno_node/test/reporters.ts");
-import timers from "node:timers";
-import timersPromises from "node:timers/promises";
+const timers = core.loadExtScript("ext:deno_node/timers.ts");
+const timersPromises = core.loadExtScript(
+  "ext:deno_node/timers/promises.ts",
+);
 import tls from "node:tls";
 const traceEvents = core.loadExtScript("ext:deno_node/trace_events.ts").default;
 import tty from "node:tty";
-import url from "node:url";
+const url = core.loadExtScript("ext:deno_node/url.ts");
 const utilTypes = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 const util = core.loadExtScript("ext:deno_node/util.ts");
-import v8 from "node:v8";
+const v8 = core.loadExtScript("ext:deno_node/v8.ts");
 const vm = core.loadExtScript("ext:deno_node/vm.js").default;
-import workerThreads from "node:worker_threads";
+const workerThreads = core.loadExtScript(
+  "ext:deno_node/worker_threads.ts",
+);
 const wasi = core.loadExtScript("ext:deno_node/wasi.ts").default;
-import zlib from "node:zlib";
+const zlib = core.loadExtScript("ext:deno_node/zlib.js");
 
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
@@ -319,6 +350,7 @@ function setupBuiltinModules() {
     "internal/streams/state": internalStreamsState,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
+    "internal/url": internalUrl,
     "internal/util/debuglog": internalUtilDebuglog.default,
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
@@ -456,9 +488,22 @@ if (globalThis.process) {
 
 const asyncHookEntries = [];
 
+// Pre-computed Deno default-resolved URL for the current resolve request.
+// Set per-request from the message payload so \`defaultResolve()\` (called by
+// user hooks via \`next()\`) returns Deno's actual resolution (import map,
+// jsr, npm) rather than a naive URL.parse.
+let currentRequestSpecifier = null;
+let currentRequestDefaultUrl = null;
+
 function defaultResolve(spec, context) {
   if (spec.startsWith("node:")) {
     return { url: spec, shortCircuit: true };
+  }
+  // When the user hook called next() with the same specifier, use Deno's
+  // pre-computed resolution. The hook is expected to then transform that
+  // URL (or pass it through).
+  if (spec === currentRequestSpecifier && currentRequestDefaultUrl !== null) {
+    return { url: currentRequestDefaultUrl, shortCircuit: true };
   }
   const parentURL = context.parentURL;
   if (parentURL) {
@@ -551,8 +596,18 @@ self.onmessage = (e) => {
       return { type: "registered", id: msg.id, hasResolve: resolve !== null, hasLoad: load !== null };
     })();
   } else if (msg.type === "resolve") {
+    currentRequestSpecifier = msg.specifier;
+    currentRequestDefaultUrl = msg.defaultUrl ?? null;
     promise = Promise.resolve(runResolveChain(msg.specifier, msg.context))
-      .then((result) => ({ type: "resolve-result", id: msg.id, result }));
+      .then((result) => {
+        currentRequestSpecifier = null;
+        currentRequestDefaultUrl = null;
+        return { type: "resolve-result", id: msg.id, result };
+      }, (err) => {
+        currentRequestSpecifier = null;
+        currentRequestDefaultUrl = null;
+        throw err;
+      });
   } else if (msg.type === "load") {
     promise = Promise.resolve(runLoadChain(msg.url, msg.context))
       .then((result) => ({ type: "load-result", id: msg.id, result }));
@@ -753,7 +808,12 @@ function executeLoadHookChain(fileUrl, context) {
 // ESM resolve hook chain: runs sync hooks (registerHooks) in LIFO order,
 // then async hooks (register) in LIFO order.
 // Returns { url } if hooks resolved, or null for fallthrough to default.
-async function executeEsmResolveHookChain(specifier, context) {
+//
+// `defaultUrl` is the URL that Deno's default resolver (import map, jsr,
+// npm, etc.) produced for `specifier`. Returned from `defaultResolve()` so
+// user hooks calling `next()` see Deno's real resolution -- not a naive
+// `new URL(spec, parentURL)`.
+async function executeEsmResolveHookChain(specifier, context, defaultUrl) {
   // Run sync hooks (registerHooks) first on the main thread
   const syncResolveHooks = [];
   for (let i = hookEntries.length - 1; i >= 0; i--) {
@@ -776,7 +836,11 @@ async function executeEsmResolveHookChain(specifier, context) {
         if (asyncHooksHaveResolve) {
           return { url: null, shortCircuit: false, _syncFallthrough: true };
         }
-        // Default resolve (no async hooks)
+        // Default resolve (no async hooks). If the spec is unchanged we
+        // can use Deno's pre-computed default URL.
+        if (spec === specifier && defaultUrl != null) {
+          return { url: defaultUrl, shortCircuit: true };
+        }
         if (StringPrototypeStartsWith(spec, "node:")) {
           return { url: spec, shortCircuit: true };
         }
@@ -849,6 +913,7 @@ async function executeEsmResolveHookChain(specifier, context) {
     type: "resolve",
     specifier,
     context,
+    defaultUrl,
   });
   return msg.result;
 }
@@ -950,7 +1015,7 @@ function _startEsmResolveLoop() {
       if (pendingHookLoads.length > 0) {
         await Promise.all(pendingHookLoads);
       }
-      const [id, specifier, referrer] = req;
+      const [id, specifier, referrer, defaultUrl] = req;
       const context = {
         conditions: ["node", "import"],
         importAttributes: { __proto__: null },
@@ -958,7 +1023,11 @@ function _startEsmResolveLoop() {
         importAssertions: { __proto__: null },
       };
       try {
-        const result = await executeEsmResolveHookChain(specifier, context);
+        const result = await executeEsmResolveHookChain(
+          specifier,
+          context,
+          defaultUrl ?? null,
+        );
         if (result !== null && result.url != null) {
           if (result.format != null) {
             resolvedFormats.set(result.url, result.format);

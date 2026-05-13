@@ -4,7 +4,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
-import { core } from "ext:core/mod.js";
+(function () {
+const { core } = globalThis.__bootstrap;
 const {
   ERR_INVALID_ARG_TYPE,
   ERR_TLS_INVALID_PROTOCOL_VERSION,
@@ -16,7 +17,7 @@ const { isArrayBufferView } = core.loadExtScript(
 const { validateString } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-import { op_node_validate_crl, op_node_validate_pfx } from "ext:core/ops";
+const { op_node_validate_crl, op_node_validate_pfx } = core.ops;
 const { createPrivateKey } = core.loadExtScript(
   "ext:deno_node/internal/crypto/keys.ts",
 );
@@ -310,7 +311,7 @@ function toUint8Array(val: any): Uint8Array {
 
 const secureContextBrand = new WeakSet<object>();
 
-export class SecureContext {
+class SecureContext {
   context: {
     ca?: string | string[];
     cert?: string;
@@ -333,6 +334,22 @@ export class SecureContext {
     }
     if (options.clientCertEngine != null) {
       validateString(options.clientCertEngine, "options.clientCertEngine");
+      // OpenSSL engines are not supported in Deno (which uses rustls).
+      // Match Node's behaviour when OpenSSL fails to load the engine: throw
+      // an Error whose message contains "could not load the shared library"
+      // and carries an `opensslErrorStack` array.
+      const err = new Error(
+        `error:25066067:DSO support routines:dlfcn_load:could not load the shared library`,
+      ) as any;
+      err.opensslErrorStack = [
+        `error:25070067:DSO support routines:DSO_load:could not load the shared library`,
+        `error:260B6084:engine routines:dynamic_load:dso not found`,
+      ];
+      err.library = "DSO support routines";
+      err.function = "dlfcn_load";
+      err.reason = "could not load the shared library";
+      err.code = "ERR_OSSL_DSO_COULD_NOT_LOAD_THE_SHARED_LIBRARY";
+      throw err;
     }
     if (options.privateKeyEngine != null) {
       validateString(options.privateKeyEngine, "options.privateKeyEngine");
@@ -423,11 +440,11 @@ export class SecureContext {
   }
 }
 
-export function createSecureContext(options: any = {}) {
+function createSecureContext(options: any = {}) {
   return new SecureContext(options);
 }
 
-export function translatePeerCertificate(c: any) {
+function translatePeerCertificate(c: any) {
   if (!c) {
     return null;
   }
@@ -465,8 +482,14 @@ export function translatePeerCertificate(c: any) {
   return c;
 }
 
-export default {
+return {
   SecureContext,
   createSecureContext,
   translatePeerCertificate,
+  default: {
+    SecureContext,
+    createSecureContext,
+    translatePeerCertificate,
+  },
 };
+})();

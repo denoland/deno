@@ -37,7 +37,7 @@ const { kKeyObject } = core.loadExtScript(
   "ext:deno_node/internal/crypto/constants.ts",
 );
 const { isError } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-const lazyUrl = core.createLazyLoader("ext:deno_node/internal/url.ts");
+const lazyUrl = () => core.loadExtScript("ext:deno_node/internal/url.ts");
 
 const {
   Array,

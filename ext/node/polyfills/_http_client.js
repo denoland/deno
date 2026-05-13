@@ -60,7 +60,9 @@ import {
 } from "node:_http_outgoing";
 import httpAgent from "node:_http_agent";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
+const { urlToHttpOptions } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
 const { kOutHeaders } = core.loadExtScript("ext:deno_node/internal/http.ts");
 const {
   connResetException,
@@ -75,7 +77,9 @@ const {
   validateBoolean,
   validateInteger,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
+const { getTimerDuration } = core.loadExtScript(
+  "ext:deno_node/internal/timers.mjs",
+);
 import { addAbortSignal, finished } from "node:stream";
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { defaultTriggerAsyncIdScope } = core.loadExtScript(

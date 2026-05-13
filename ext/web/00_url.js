@@ -189,24 +189,24 @@ class URLSearchParams {
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     const list = this[_list];
-    let i = 0;
+    let writeIdx = 0;
     if (value === undefined) {
-      while (i < list.length) {
-        if (list[i][0] === name) {
-          ArrayPrototypeSplice(list, i, 1);
-        } else {
-          i++;
+      for (let i = 0; i < list.length; i++) {
+        if (list[i][0] !== name) {
+          list[writeIdx++] = list[i];
         }
       }
     } else {
       value = webidl.converters.USVString(value, prefix, "Argument 2");
-      while (i < list.length) {
-        if (list[i][0] === name && list[i][1] === value) {
-          ArrayPrototypeSplice(list, i, 1);
-        } else {
-          i++;
+      for (let i = 0; i < list.length; i++) {
+        const entry = list[i];
+        if (entry[0] !== name || entry[1] !== value) {
+          list[writeIdx++] = entry;
         }
       }
+    }
+    if (writeIdx !== list.length) {
+      ArrayPrototypeSplice(list, writeIdx);
     }
     this.#updateUrlSearch();
   }
@@ -286,19 +286,18 @@ class URLSearchParams {
     // If there are any name-value pairs whose name is name, in list,
     // set the value of the first such name-value pair to value
     // and remove the others.
+    let writeIdx = 0;
     let found = false;
-    let i = 0;
-    while (i < list.length) {
-      if (list[i][0] === name) {
+    for (let i = 0; i < list.length; i++) {
+      const entry = list[i];
+      if (entry[0] === name) {
         if (!found) {
-          list[i][1] = value;
+          entry[1] = value;
+          list[writeIdx++] = entry;
           found = true;
-          i++;
-        } else {
-          ArrayPrototypeSplice(list, i, 1);
         }
       } else {
-        i++;
+        list[writeIdx++] = entry;
       }
     }
 
@@ -306,6 +305,8 @@ class URLSearchParams {
     // and value is value, to list.
     if (!found) {
       ArrayPrototypePush(list, [name, value]);
+    } else if (writeIdx !== list.length) {
+      ArrayPrototypeSplice(list, writeIdx);
     }
 
     this.#updateUrlSearch();

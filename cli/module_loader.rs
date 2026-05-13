@@ -1037,10 +1037,37 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         );
       }
 
-      let receiver = self
+      // For synchronous resolution contexts (V8's `module_resolve_callback`
+      // during instantiation), we cannot return an Async response. If the
+      // cache miss happens here, fall back to Deno's default sync resolver.
+      // This path is hit when `recursive_load` skipped an async resolve
+      // because the placeholder URL already matched a registered module --
+      // so the hook never got a chance to populate the cache. We bypass
+      // the user hook chain for this single resolution because the
+      // alternative is a panic in V8's sync callback; in practice the
+      // placeholder match means the module is already registered under
+      // the URL that Deno's default resolver will produce, so the
+      // bypassed hook would have returned the same URL anyway.
+      if matches!(kind, deno_core::ResolutionKind::Import) {
+        return deno_core::ModuleResolveResponse::Sync(
+          self.0.inner_resolve(specifier, referrer, kind, false),
+        );
+      }
+
+      // Pre-compute the default-resolved URL so the hook chain's
+      // `defaultResolve()` (in the hooks worker) returns Deno's actual
+      // resolution -- including import map and jsr lookups -- instead of
+      // naively URL-parsing the bare specifier against the referrer.
+      let default_url = self
         .0
-        .hook_registry
-        .push_resolve(specifier.to_string(), referrer.to_string());
+        .inner_resolve(specifier, referrer, kind, false)
+        .ok()
+        .map(|u| u.to_string());
+      let receiver = self.0.hook_registry.push_resolve(
+        specifier.to_string(),
+        referrer.to_string(),
+        default_url,
+      );
       let inner = self.0.clone();
       let specifier = specifier.to_string();
       let referrer = referrer.to_string();
