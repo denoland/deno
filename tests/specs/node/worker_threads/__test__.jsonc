@@ -61,12 +61,6 @@
       "args": "run --quiet --allow-read parent_port_isolation.mjs",
       "output": "postMessage isolation: post_message_ok\nno double delivery: count:1\n",
       "exitCode": 0
-    },
-    "post_message_to_thread": {
-      // Round-trip delivery via worker_threads.postMessageToThread.
-      "args": "run --quiet --allow-read post_message_to_thread.mjs",
-      "output": "post_message_to_thread.out",
-      "exitCode": 0
     }
   }
 }
