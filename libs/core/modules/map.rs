@@ -1028,6 +1028,12 @@ impl ModuleMap {
       } else {
         Some(module_request.get_source_offset())
       };
+      if crate::modules::import_graph::is_enabled() {
+        crate::modules::import_graph::record_esm_import(
+          name.as_ref(),
+          module_specifier.as_str(),
+        );
+      }
       let request = ModuleRequest {
         reference: ModuleReference {
           specifier: module_specifier,
@@ -2715,6 +2721,7 @@ impl ModuleMap {
     scope: &mut v8::PinScope,
     module_specifier: &str,
   ) -> Result<v8::Global<v8::Value>, CoreError> {
+    crate::modules::import_graph::record_lazy_esm(scope, module_specifier);
     let lazy_esm_sources = self.data.borrow().lazy_esm_sources.clone();
     let loader = LazyEsmModuleLoader::new(lazy_esm_sources);
 
@@ -2903,6 +2910,7 @@ impl ModuleMap {
     scope: &mut v8::PinScope,
     specifier: &str,
   ) -> Result<v8::Global<v8::Value>, CoreError> {
+    crate::modules::import_graph::record_lazy_script(scope, specifier);
     let specifier_str = String::from(specifier);
     let data = self.data.borrow();
 
