@@ -420,7 +420,13 @@ pub async fn install_http_modules(
       let resolved =
         if spec.starts_with("http://") || spec.starts_with("https://") {
           Url::parse(&spec).ok()
-        } else if spec.starts_with("./") || spec.starts_with("../") {
+        } else if spec.starts_with("./")
+          || spec.starts_with("../")
+          || spec.starts_with('/')
+        {
+          // `./`, `../`, and same-host absolute paths (e.g. `/src/foo.ts`,
+          // common on deno.land/x and esm.sh CDNs) all resolve against the
+          // effective URL via Url::join.
           effective_url.join(&spec).ok()
         } else {
           None
