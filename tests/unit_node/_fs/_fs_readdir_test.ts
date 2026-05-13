@@ -133,6 +133,8 @@ Deno.test("ASYNC: withFileTypes + encoding 'buffer' returns Buffer names", async
     assertEquals(entries.length, 1);
     assert(Buffer.isBuffer(entries[0].name));
     assertEquals(entries[0].name.toString(), "file1.txt");
+    assert(Buffer.isBuffer(entries[0].parentPath));
+    assertEquals(entries[0].parentPath.toString(), dir);
   } finally {
     Deno.removeSync(dir, { recursive: true });
   }
@@ -149,6 +151,8 @@ Deno.test("SYNC: withFileTypes + encoding 'buffer' returns Buffer names", () => 
     assertEquals(entries.length, 1);
     assert(Buffer.isBuffer(entries[0].name));
     assertEquals(entries[0].name.toString(), "file1.txt");
+    assert(Buffer.isBuffer(entries[0].parentPath));
+    assertEquals(entries[0].parentPath.toString(), dir);
   } finally {
     Deno.removeSync(dir, { recursive: true });
   }

@@ -100,9 +100,10 @@ export function readdir(
 
           if (options?.withFileTypes) {
             entry.parentPath = current;
-            const dirent = direntFromDeno(entry);
-            dirent.name = decode(dirent.name, options?.encoding);
-            result.push(dirent);
+            result.push(applyDirentEncoding(
+              direntFromDeno(entry),
+              options?.encoding,
+            ));
           } else {
             let name = entry.name;
             if (options?.recursive) {
@@ -124,6 +125,17 @@ export function readdir(
 
     callback(null, result);
   })();
+}
+
+function applyDirentEncoding(dirent: Dirent, encoding?: string): Dirent {
+  if (!encoding || encoding === "utf8" || encoding === "utf-8") {
+    return dirent;
+  }
+  dirent.name = decode(dirent.name as string, encoding);
+  if (typeof dirent.parentPath === "string") {
+    dirent.parentPath = decode(dirent.parentPath, encoding);
+  }
+  return dirent;
 }
 
 function decode(str: string, encoding?: string): string | Buffer {
@@ -181,9 +193,10 @@ export function readdirSync(
 
         if (options?.withFileTypes) {
           entry.parentPath = current;
-          const dirent = direntFromDeno(entry);
-          dirent.name = decode(dirent.name, options?.encoding);
-          result.push(dirent);
+          result.push(applyDirentEncoding(
+            direntFromDeno(entry),
+            options?.encoding,
+          ));
         } else {
           let name = entry.name;
           if (options?.recursive) {
