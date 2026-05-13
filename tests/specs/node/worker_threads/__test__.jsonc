@@ -63,7 +63,7 @@
       "exitCode": 0
     },
     "post_message_to_thread": {
-      // Real cross-thread delivery via worker_threads.postMessageToThread.
+      // Round-trip delivery via worker_threads.postMessageToThread.
       "args": "run --quiet --allow-read post_message_to_thread.mjs",
       "output": "post_message_to_thread.out",
       "exitCode": 0
