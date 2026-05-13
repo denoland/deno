@@ -84,44 +84,69 @@ pub fn generate_tsconfig(
 
 /// Ensure a root `tsconfig.json` exists that extends `.deno/tsconfig.json`.
 ///
-/// If no `tsconfig.json` exists, creates one with just `{ "extends": "./.deno/tsconfig.json" }`.
-/// If one already exists, adds/updates the `"extends"` field to point to `.deno/tsconfig.json`.
+/// - No existing tsconfig: create one with `extends: "./.deno/tsconfig.json"`.
+/// - Existing `extends` is a single string (or absent): coerce into an array
+///   that includes the original entry followed by our generated path. TS 5.0+
+///   resolves array extends left-to-right, with later entries overriding
+///   earlier ones — putting ours last lets us add the URL `paths` mappings
+///   without clobbering user-managed settings inherited from e.g. a shared
+///   team config.
+/// - Existing `extends` is already an array: append our path if missing,
+///   otherwise leave it alone.
 fn ensure_root_tsconfig(project_root: &Path) -> Result<(), std::io::Error> {
   let root_tsconfig_path = project_root.join("tsconfig.json");
+  let extends_path = "./.deno/tsconfig.json";
 
-  if root_tsconfig_path.exists() {
-    // Read existing tsconfig.json and add/update extends
-    let content = std::fs::read_to_string(&root_tsconfig_path)?;
-    let mut tsconfig: Value =
-      serde_json::from_str(&content).unwrap_or_else(|_| json!({}));
-
-    if let Some(obj) = tsconfig.as_object_mut() {
-      let extends_path = "./.deno/tsconfig.json";
-      match obj.get("extends") {
-        Some(Value::String(s)) if s == extends_path => {
-          // Already correct, nothing to do
-          return Ok(());
-        }
-        _ => {
-          obj.insert("extends".to_string(), json!(extends_path));
-        }
-      }
-    }
-
+  if !root_tsconfig_path.exists() {
+    let tsconfig = json!({ "extends": extends_path });
     let content = serde_json::to_string_pretty(&tsconfig)
       .expect("failed to serialize tsconfig");
-    std::fs::write(&root_tsconfig_path, &content)?;
-  } else {
-    // Create a minimal tsconfig.json
-    let tsconfig = json!({
-      "extends": "./.deno/tsconfig.json"
-    });
-    let content = serde_json::to_string_pretty(&tsconfig)
-      .expect("failed to serialize tsconfig");
-    std::fs::write(&root_tsconfig_path, &content)?;
+    return std::fs::write(&root_tsconfig_path, &content);
   }
 
-  Ok(())
+  let content = std::fs::read_to_string(&root_tsconfig_path)?;
+  let mut tsconfig: Value =
+    serde_json::from_str(&content).unwrap_or_else(|_| json!({}));
+
+  let Some(obj) = tsconfig.as_object_mut() else {
+    return Ok(());
+  };
+
+  match obj.get("extends").cloned() {
+    None => {
+      obj.insert("extends".to_string(), json!(extends_path));
+    }
+    Some(Value::String(s)) if s == extends_path => {
+      return Ok(());
+    }
+    Some(Value::String(existing)) => {
+      obj.insert("extends".to_string(), json!([existing, extends_path]));
+    }
+    Some(Value::Array(arr)) => {
+      let already = arr
+        .iter()
+        .any(|v| v.as_str().is_some_and(|s| s == extends_path));
+      if already {
+        return Ok(());
+      }
+      let mut new_arr = arr;
+      new_arr.push(json!(extends_path));
+      obj.insert("extends".to_string(), Value::Array(new_arr));
+    }
+    Some(_) => {
+      // Non-string, non-array extends — leave the user's config alone rather
+      // than guessing.
+      log::warn!(
+        "tsconfig.json has a non-string `extends`; not modifying. \
+         Add \"{extends_path}\" to it manually for stock tsc support."
+      );
+      return Ok(());
+    }
+  }
+
+  let content = serde_json::to_string_pretty(&tsconfig)
+    .expect("failed to serialize tsconfig");
+  std::fs::write(&root_tsconfig_path, &content)
 }
 
 /// Write the Deno type declarations to a `.d.ts` file.
@@ -803,6 +828,69 @@ mod tests {
         .get("strict")
         .unwrap(),
       &json!(true)
+    );
+  }
+
+  #[test]
+  fn test_ensure_root_tsconfig_preserves_string_extends() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    std::fs::write(
+      root.join("tsconfig.json"),
+      r#"{ "extends": "./team-shared.json" }"#,
+    )
+    .unwrap();
+
+    ensure_root_tsconfig(root).unwrap();
+
+    let content = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
+    let tsconfig: Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(
+      tsconfig.get("extends").unwrap(),
+      &json!(["./team-shared.json", "./.deno/tsconfig.json"])
+    );
+  }
+
+  #[test]
+  fn test_ensure_root_tsconfig_preserves_array_extends() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    std::fs::write(
+      root.join("tsconfig.json"),
+      r#"{ "extends": ["./a.json", "./b.json"] }"#,
+    )
+    .unwrap();
+
+    ensure_root_tsconfig(root).unwrap();
+
+    let content = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
+    let tsconfig: Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(
+      tsconfig.get("extends").unwrap(),
+      &json!(["./a.json", "./b.json", "./.deno/tsconfig.json"])
+    );
+  }
+
+  #[test]
+  fn test_ensure_root_tsconfig_array_idempotent() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    std::fs::write(
+      root.join("tsconfig.json"),
+      r#"{ "extends": ["./a.json", "./.deno/tsconfig.json"] }"#,
+    )
+    .unwrap();
+
+    ensure_root_tsconfig(root).unwrap();
+
+    let content = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
+    let tsconfig: Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(
+      tsconfig.get("extends").unwrap(),
+      &json!(["./a.json", "./.deno/tsconfig.json"])
     );
   }
 
