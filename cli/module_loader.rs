@@ -998,8 +998,17 @@ fn is_already_resolved_specifier(specifier: &str) -> bool {
     || specifier.starts_with("https://")
     || specifier.starts_with("data:")
     || specifier.starts_with("blob:")
-    || specifier.starts_with("node:")
-    || specifier.starts_with("ext:")
+    || is_builtin_module_specifier(specifier)
+}
+
+/// Returns true if the specifier names a runtime built-in (`node:` or `ext:`).
+/// These modules are served by the runtime itself and must never be routed
+/// through user-supplied `module.register()` load hooks — the JS-side
+/// `defaultLoad` returns `{ source: null, format: "builtin" }` for them, which
+/// would otherwise fall through to the default file loader and surface as a
+/// confusing "Unsupported scheme" error.
+fn is_builtin_module_specifier(specifier: &str) -> bool {
+  specifier.starts_with("node:") || specifier.starts_with("ext:")
 }
 
 #[derive(Clone)]
@@ -1168,12 +1177,17 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     let maybe_referrer = maybe_referrer.cloned();
 
     // When load hooks are active, delegate to JS hooks first.
-    // Skip the hook bridge for CJS modules — they go through the
-    // default loader which invokes the sync load hook chain
-    // (executeLoadHookChain) in Module._load. Going through both
-    // the ESM bridge AND the CJS path would call hooks twice.
+    // Skip the hook bridge for:
+    // - CJS modules — they go through the default loader which invokes the
+    //   sync load hook chain (executeLoadHookChain) in Module._load. Going
+    //   through both the ESM bridge AND the CJS path would call hooks twice.
+    // - `node:` and `ext:` built-ins — these are served by the runtime
+    //   itself. Routing them through the hook bridge ends in a fallthrough
+    //   to the default file loader, which doesn't understand the scheme and
+    //   surfaces as "Unsupported scheme" errors (see #34004).
     if self.0.hook_registry.load_active.get()
       && !options.is_synchronous
+      && !is_builtin_module_specifier(specifier.as_str())
       && !{
         let media_type = deno_media_type::MediaType::from_specifier(&specifier);
         self
