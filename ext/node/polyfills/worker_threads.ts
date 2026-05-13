@@ -316,7 +316,7 @@ class NodeWorker extends EventEmitter {
             }
             if (
               !process.allowedNodeEnvironmentFlags.has(part) ||
-              workerDisallowedFlags.has(part)
+              workerDisallowedFlags.has(partName)
             ) {
               hasInvalid = true;
               break;

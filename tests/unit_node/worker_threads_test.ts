@@ -1032,3 +1032,19 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name:
+    "[node/worker_threads] disallowed NODE_OPTIONS flag with =value is still rejected",
+  fn() {
+    assertThrows(
+      () =>
+        new workerThreads.Worker("/*noop*/", {
+          eval: true,
+          env: { NODE_OPTIONS: "--title=foo" },
+        }),
+      Error,
+      "invalid NODE_OPTIONS env variable",
+    );
+  },
+});
