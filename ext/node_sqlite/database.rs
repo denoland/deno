@@ -1866,6 +1866,223 @@ impl DatabaseSync {
       v8::Global::new(scope, db_object),
     ))
   }
+
+  // Serializes the contents of the database into a Uint8Array. The database
+  // can be either an in-memory database or a database opened from a file.
+  //
+  // This method is a wrapper around `sqlite3_serialize()`.
+  #[validate(is_open)]
+  fn serialize<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, '_>,
+    db_name_value: v8::Local<'a, v8::Value>,
+  ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
+    let db = self.conn.borrow();
+    let conn = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+
+    let db_name = if db_name_value.is_undefined() {
+      "main".to_string()
+    } else {
+      let Ok(s) = v8::Local::<v8::String>::try_from(db_name_value) else {
+        return Err(SqliteError::Validation(
+          validators::Error::InvalidArgType(
+            "The \"dbName\" argument must be a string.".into(),
+          ),
+        ));
+      };
+      s.to_rust_string_lossy(scope)
+    };
+
+    let name_cstring = CString::new(db_name)?;
+
+    // SAFETY: lifetime of the connection is guaranteed by reference counting.
+    let raw_handle = unsafe { conn.handle() };
+
+    let mut size: libsqlite3_sys::sqlite3_int64 = 0;
+    // SAFETY: `raw_handle` is a valid sqlite3 pointer; `name_cstring` is a
+    // valid C string for the lifetime of this call; `size` is a valid out
+    // pointer.
+    let data = unsafe {
+      libsqlite3_sys::sqlite3_serialize(
+        raw_handle,
+        name_cstring.as_ptr(),
+        &mut size,
+        0,
+      )
+    };
+
+    if data.is_null() {
+      return Err(SqliteError::SqliteSysError {
+        message: "unable to serialize database".to_string(),
+        errstr: "unable to serialize database".to_string(),
+        errcode: libsqlite3_sys::SQLITE_ERROR as _,
+      });
+    }
+
+    let len = size as usize;
+    // SAFETY: `data` points to `len` bytes owned by SQLite and is valid for
+    // reads of that length.
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) }.to_vec();
+    // SAFETY: `data` was allocated by `sqlite3_serialize` and must be freed
+    // with `sqlite3_free`.
+    unsafe {
+      libsqlite3_sys::sqlite3_free(data as *mut c_void);
+    }
+
+    let backing =
+      v8::ArrayBuffer::new_backing_store_from_vec(bytes).make_shared();
+    let ab = v8::ArrayBuffer::with_backing_store(scope, &backing);
+    let view = v8::Uint8Array::new(scope, ab, 0, len).unwrap();
+    Ok(view.into())
+  }
+
+  // Deserializes the given buffer into the database. Replaces the contents
+  // of the named database (default `"main"`) with the contents of the
+  // serialized buffer.
+  //
+  // This method is a wrapper around `sqlite3_deserialize()`.
+  #[fast]
+  #[validate(is_open)]
+  #[undefined]
+  fn deserialize<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, '_>,
+    buffer_value: v8::Local<'a, v8::Value>,
+    options_value: v8::Local<'a, v8::Value>,
+  ) -> Result<(), SqliteError> {
+    if !buffer_value.is_array_buffer_view() {
+      return Err(SqliteError::Validation(validators::Error::InvalidArgType(
+        "The \"serialized\" argument must be a TypedArray or a DataView."
+          .into(),
+      )));
+    }
+
+    let mut db_name = "main".to_string();
+    let mut read_only = false;
+
+    if !options_value.is_undefined() {
+      let Ok(options_obj) = v8::Local::<v8::Object>::try_from(options_value)
+      else {
+        return Err(SqliteError::Validation(
+          validators::Error::InvalidArgType(
+            "The \"options\" argument must be an object.".into(),
+          ),
+        ));
+      };
+
+      v8_static_strings! {
+        DB_NAME_STRING = "dbName",
+        READ_ONLY_STRING = "readOnly",
+      }
+
+      let db_name_string = DB_NAME_STRING.v8_string(scope).unwrap();
+      if let Some(name_val) = options_obj.get(scope, db_name_string.into())
+        && !name_val.is_undefined()
+      {
+        let Ok(name_str) = v8::Local::<v8::String>::try_from(name_val) else {
+          return Err(SqliteError::Validation(
+            validators::Error::InvalidArgType(
+              "The \"options.dbName\" argument must be a string.".into(),
+            ),
+          ));
+        };
+        db_name = name_str.to_rust_string_lossy(scope);
+      }
+
+      let read_only_string = READ_ONLY_STRING.v8_string(scope).unwrap();
+      if let Some(read_only_val) =
+        options_obj.get(scope, read_only_string.into())
+        && !read_only_val.is_undefined()
+      {
+        let Ok(b) = v8::Local::<v8::Boolean>::try_from(read_only_val) else {
+          return Err(SqliteError::Validation(
+            validators::Error::InvalidArgType(
+              "The \"options.readOnly\" argument must be a boolean.".into(),
+            ),
+          ));
+        };
+        read_only = b.is_true();
+      }
+    }
+
+    let view: v8::Local<v8::ArrayBufferView> = buffer_value.try_into().unwrap();
+    let byte_length = view.byte_length();
+    let name_cstring = CString::new(db_name)?;
+
+    // Per Node's contract, existing prepared statements are finalized before
+    // deserialization is attempted, even if the operation subsequently fails.
+    for stmt in self.statements.borrow_mut().drain(..) {
+      if let Some(ptr) = stmt.get() {
+        // SAFETY: `ptr` is a valid statement handle.
+        unsafe {
+          libsqlite3_sys::sqlite3_finalize(ptr);
+        }
+        stmt.set(None);
+      }
+    }
+
+    let db = self.conn.borrow();
+    let conn = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+    // SAFETY: lifetime of the connection is guaranteed by reference counting.
+    let raw_handle = unsafe { conn.handle() };
+
+    // Allocate memory owned by SQLite, copy the input bytes in, and hand
+    // ownership over via the FREEONCLOSE flag so SQLite frees it when the
+    // database is closed or another deserialize replaces it.
+    // sqlite3_malloc64(0) is allowed to return null; only treat null as an
+    // error when we actually need a non-empty allocation.
+    // SAFETY: ffi call with no preconditions other than a valid size.
+    let buf = unsafe {
+      libsqlite3_sys::sqlite3_malloc64(byte_length.max(1) as u64) as *mut u8
+    };
+    if buf.is_null() {
+      return Err(SqliteError::SqliteSysError {
+        message: "out of memory".to_string(),
+        errstr: "out of memory".to_string(),
+        errcode: libsqlite3_sys::SQLITE_NOMEM as _,
+      });
+    }
+
+    if byte_length > 0 {
+      let data = view.data() as *const u8;
+      // SAFETY: `data` points to `byte_length` bytes; `buf` is a freshly
+      // allocated buffer with the same capacity; the two regions do not
+      // overlap.
+      unsafe {
+        std::ptr::copy_nonoverlapping(data, buf, byte_length);
+      }
+    }
+
+    let mut flags: u32 = libsqlite3_sys::SQLITE_DESERIALIZE_FREEONCLOSE;
+    if read_only {
+      flags |= libsqlite3_sys::SQLITE_DESERIALIZE_READONLY;
+    } else {
+      flags |= libsqlite3_sys::SQLITE_DESERIALIZE_RESIZEABLE;
+    }
+
+    // SAFETY: `raw_handle` is a valid sqlite3 pointer; `name_cstring` is a
+    // valid C string for the lifetime of this call; `buf` was allocated by
+    // SQLite and ownership transfers via FREEONCLOSE.
+    let r = unsafe {
+      libsqlite3_sys::sqlite3_deserialize(
+        raw_handle,
+        name_cstring.as_ptr(),
+        buf,
+        byte_length as i64,
+        byte_length as i64,
+        flags,
+      )
+    };
+
+    if r != libsqlite3_sys::SQLITE_OK {
+      // sqlite3_deserialize frees `buf` itself on failure when FREEONCLOSE
+      // is set.
+      check_error_code(r, raw_handle)?;
+      check_error_code2(r)?;
+    }
+
+    Ok(())
+  }
 }
 
 #[repr(C)]
