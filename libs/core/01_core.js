@@ -899,13 +899,40 @@
 
   const loadedScripts = { __proto__: null };
 
+  // Captured below at the very end of this IIFE, after `__bootstrap.core`
+  // is fully populated and `core.ops` has every op registered. Every
+  // `lazy_loaded_js` polyfill's IIFE preamble destructures
+  // `globalThis.__bootstrap` and `__bootstrap.core.ops`, but at runtime
+  // (`runtime/js/99_main.js`) the harness deletes `globalThis.__bootstrap`
+  // and `removeImportedOps()` strips most entries out of `Deno.core.ops`
+  // (those that are imported via the virtual `ext:core/ops` module
+  // instead). Lazy scripts that load *after* that pruning see
+  // `__bootstrap === undefined` and miss most of the ops they expect.
+  //
+  // We work around both by stashing a snapshot-time view: a shallow clone
+  // of `core.ops` (immune to `removeImportedOps`) and a Proxy over `core`
+  // that returns that clone for the `.ops` property. `loadExtScript`
+  // reinstalls this captured view on `globalThis` for the duration of
+  // the synchronous `op_load_ext_script` call.
+  let capturedBootstrap;
+
   function loadExtScript(specifier) {
     if (specifier in loadedScripts) {
       return loadedScripts[specifier];
     }
-    const result = op_load_ext_script(specifier);
-    loadedScripts[specifier] = result;
-    return result;
+    const hadBootstrap = "__bootstrap" in globalThis;
+    if (!hadBootstrap) {
+      globalThis.__bootstrap = capturedBootstrap;
+    }
+    try {
+      const result = op_load_ext_script(specifier);
+      loadedScripts[specifier] = result;
+      return result;
+    } finally {
+      if (!hadBootstrap) {
+        delete globalThis.__bootstrap;
+      }
+    }
   }
 
   const getAsyncContext = getContinuationPreservedEmbedderData;
@@ -1195,6 +1222,19 @@
   ObjectAssign(globalThis.__bootstrap, { core, internals });
   ObjectAssign(globalThis.Deno, { core });
   ObjectFreeze(globalThis.__bootstrap.core);
+
+  // Build the snapshot-time view of __bootstrap that `loadExtScript` will
+  // reinstall on `globalThis` when a lazy_loaded_js script loads after
+  // runtime bootstrap. See the comment above the `let capturedBootstrap`
+  // declaration earlier in this file for context.
+  const capturedCore = ObjectAssign({ __proto__: null }, core);
+  capturedCore.ops = ObjectAssign({ __proto__: null }, core.ops);
+  capturedBootstrap = {
+    __proto__: null,
+    primordials: globalThis.__bootstrap.primordials,
+    core: capturedCore,
+    internals,
+  };
 
   // Direct bindings on `globalThis`
   ObjectAssign(globalThis, { queueMicrotask });
