@@ -217,6 +217,9 @@ const internalStreamsAddAbortSignal = core.loadExtScript(
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
 const internalStreamsState =
   core.loadExtScript("ext:deno_node/internal/streams/state.js").default;
+const internalSocketAddress = core.loadExtScript(
+  "ext:deno_node/internal/socketaddress.js",
+);
 const internalTestBinding = core.loadExtScript(
   "ext:deno_node/internal/test/binding.ts",
 );
@@ -347,6 +350,7 @@ function setupBuiltinModules() {
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
     "internal/streams/state": internalStreamsState,
+    "internal/socketaddress": internalSocketAddress,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
     "internal/util/debuglog": internalUtilDebuglog.default,
