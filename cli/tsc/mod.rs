@@ -1371,15 +1371,10 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
 ];
 
 pub static NODE_ONLY_GLOBALS: &[&str] = &[
-  "__dirname",
-  "__filename",
   "Console",
   "crypto",
-  "ErrorConstructor",
   "gc",
-  "Global",
   "localStorage",
-  "queueMicrotask",
   "RequestInit",
   "ResponseInit",
   "sessionStorage",
