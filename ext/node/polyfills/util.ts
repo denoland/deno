@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = globalThis.__bootstrap;
 const { op_node_call_is_from_dependency } = core.ops;
 const {
   ArrayIsArray,
@@ -53,6 +53,7 @@ const { isDeepStrictEqual } = core.loadExtScript(
 );
 const {
   validateAbortSignal,
+  validateBoolean,
   validateNumber,
   validateObject,
   validateString,
@@ -64,9 +65,10 @@ const { MIMEParams, MIMEType } = core.loadExtScript(
   "ext:deno_node/internal/mime.ts",
 );
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
-const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
-  "ext:deno_node/internal/errors.ts",
-);
+const { ERR_INVALID_ARG_TYPE, ERR_WORKER_UNSUPPORTED_OPERATION } = core
+  .loadExtScript(
+    "ext:deno_node/internal/errors.ts",
+  );
 const { default: binding } = core.loadExtScript(
   "ext:deno_node/internal_binding/util.ts",
 );
@@ -333,6 +335,15 @@ function parseEnv(input) {
   return result;
 }
 
+function setTraceSigInt(enabled) {
+  validateBoolean(enabled, "enabled");
+  if (internals.__isWorkerThread) {
+    throw new ERR_WORKER_UNSUPPORTED_OPERATION("Setting trace SIGINT");
+  }
+  // No-op on the main thread: Deno does not implement Node's SIGINT trace
+  // facility, but the call should succeed so user code can opt in/out.
+}
+
 function convertProcessSignalToExitCode(signalCode) {
   const { signals } = osConstants;
   validateOneOf(signalCode, "signalCode", ObjectKeys(signals));
@@ -364,6 +375,7 @@ return {
   aborted,
   getCallSites,
   parseEnv,
+  setTraceSigInt,
   convertProcessSignalToExitCode,
   getSystemErrorMessage,
   getSystemErrorName,
