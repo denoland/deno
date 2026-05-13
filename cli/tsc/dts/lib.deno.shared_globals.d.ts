@@ -353,75 +353,6 @@ declare namespace WebAssembly {
   export function validate(bytes: BufferSource): boolean;
 }
 
-/** Sets a timer which executes a function once after the delay (in milliseconds) elapses. Returns
- * a timeout object which may be used to cancel the timeout.
- *
- * ```ts
- * setTimeout(() => { console.log('hello'); }, 500);
- * ```
- *
- * @category Platform
- */
-declare function setTimeout<TArgs extends any[]>(
-  cb: (...args: TArgs) => void,
-  delay?: number,
-  ...args: TArgs
-): NodeJS.Timeout;
-/** @category Platform */
-declare function setTimeout(
-  cb: string | ((...args: any[]) => void),
-  delay?: number,
-  ...args: any[]
-): NodeJS.Timeout;
-
-/** Repeatedly calls a function , with a fixed time delay between each call.
- *
- * ```ts
- * // Outputs 'hello' to the console every 500ms
- * setInterval(() => { console.log('hello'); }, 500);
- * ```
- *
- * @category Platform
- */
-declare function setInterval<TArgs extends any[]>(
-  cb: (...args: TArgs) => void,
-  delay?: number,
-  ...args: TArgs
-): NodeJS.Timeout;
-/** @category Platform */
-declare function setInterval(
-  cb: string | ((...args: any[]) => void),
-  delay?: number,
-  ...args: any[]
-): NodeJS.Timeout;
-
-/** Cancels a timed, repeating action which was previously started by a call
- * to `setInterval()`
- *
- * ```ts
- * const id = setInterval(() => {console.log('hello');}, 500);
- * // ...
- * clearInterval(id);
- * ```
- *
- * @category Platform
- */
-declare function clearInterval(
-  id?: NodeJS.Timeout | number | undefined,
-): void;
-
-/** Cancels a scheduled action initiated by `setTimeout()`
- *
- * ```ts
- * const id = setTimeout(() => {console.log('hello');}, 500);
- * // ...
- * clearTimeout(id);
- * ```
- *
- * @category Platform
- */
-declare function clearTimeout(id?: NodeJS.Timeout | number | undefined): void;
-
 /** @category Platform */
 interface VoidFunction {
   (): void;
@@ -470,25 +401,6 @@ type BufferSource = ArrayBufferView<ArrayBuffer> | ArrayBuffer;
 
 /** @category Platform */
 type AllowSharedBufferSource = ArrayBufferView | ArrayBufferLike;
-
-/**
- * A global console object that provides methods for logging, debugging, and error reporting.
- * The console object provides access to the browser's or runtime's debugging console functionality.
- * It allows developers to output text and data for debugging purposes.
- *
- * @example
- * ```typescript
- * console.log("Hello, world!");
- * console.error("An error occurred");
- * console.warn("Warning message");
- * console.debug("Debug information");
- * ```
- *
- * @see https://developer.mozilla.org/en-US/docs/Web/API/console
- *
- * @category I/O
- */
-declare var console: Console;
 
 /** @category Events */
 interface ErrorEventInit extends EventInit {
