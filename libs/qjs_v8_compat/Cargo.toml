@@ -37,3 +37,11 @@ cppgc_shim = []
 
 [build-dependencies]
 cc = "1.0"
+
+[dev-dependencies]
+bytes = { workspace = true }
+http = { workspace = true }
+http-body-util = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+tokio = { workspace = true }

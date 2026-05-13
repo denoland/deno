@@ -206,3 +206,148 @@ fn console_log_called_in_loop() {
     ]
   );
 }
+
+// ---- promises + microtask draining --------------------------------------
+//
+// QuickJS-ng uses a job queue (`JS_ExecutePendingJob`) for microtasks
+// (Promise callbacks, queueMicrotask). Eval-ing `Promise.resolve(42).then(...)`
+// only schedules the callback; the callback fires when we drain pending jobs.
+// This is the central fact every async integration has to model: the host
+// pumps `JS_ExecutePendingJob` until `JS_IsJobPending` returns 0 (or until
+// the host wants to suspend the loop and wait for an external event).
+//
+// These tests prove the drain loop works against the real engine, which
+// is the foundation for a tokio-driven event loop in any future deno_core
+// integration.
+
+fn drain_jobs(rt: *mut ffi::JSRuntime) {
+  unsafe {
+    while ffi::JS_IsJobPending(rt) > 0 {
+      let mut pctx: *mut ffi::JSContext = std::ptr::null_mut();
+      let r = ffi::JS_ExecutePendingJob(rt, &mut pctx);
+      if r <= 0 {
+        // 0 = no more jobs, <0 = job threw. Stop in either case; if it
+        // threw, the test will detect it via the captured collector.
+        break;
+      }
+    }
+  }
+}
+
+#[test]
+fn promise_resolve_then_drains_to_callback() {
+  // Promise.resolve(42).then(v => Rust callback) — fires after drain.
+  let out = COLLECTOR.with(|c| {
+    c.borrow_mut().clear();
+    let src =
+      "Promise.resolve(42).then(v => collect('p=' + (v + 1))); 'scheduled'";
+    let src_c = CString::new(src).unwrap();
+    let fname_c = CString::new("<promise>").unwrap();
+    let collect_name = CString::new("collect").unwrap();
+
+    unsafe {
+      let rt = ffi::JS_NewRuntime();
+      let ctx = ffi::JS_NewContext(rt);
+      let global = ffi::JS_GetGlobalObject(ctx);
+      let collect_fn = ffi::JS_NewCFunction(
+        ctx,
+        console_log_callback,
+        collect_name.as_ptr(),
+        1,
+      );
+      ffi::JS_SetPropertyStr(ctx, global, collect_name.as_ptr(), collect_fn);
+      ffi::JS_FreeValue(ctx, global);
+
+      let val = ffi::JS_Eval(
+        ctx,
+        src_c.as_ptr(),
+        src.len(),
+        fname_c.as_ptr(),
+        ffi::JS_EVAL_TYPE_GLOBAL,
+      );
+      assert_ne!(val.tag, ffi::JS_TAG_EXCEPTION, "promise eval threw: {src}");
+      ffi::JS_FreeValue(ctx, val);
+
+      // Before draining, no callback has fired yet.
+      let pre = c.borrow().clone();
+      assert!(pre.is_empty(), "callback fired synchronously: {:?}", pre);
+
+      drain_jobs(rt);
+
+      ffi::JS_FreeContext(ctx);
+      ffi::JS_FreeRuntime(rt);
+    }
+
+    c.borrow().clone()
+  });
+
+  assert_eq!(out, vec!["p=43".to_string()]);
+}
+
+#[test]
+fn promise_chain_drains_in_order() {
+  // Multiple .then steps and a queueMicrotask all interleave correctly
+  // when we keep pumping pending jobs.
+  let out = COLLECTOR.with(|c| {
+    c.borrow_mut().clear();
+    let src = r#"
+      Promise.resolve(1)
+        .then(v => { collect('a=' + v); return v + 1; })
+        .then(v => { collect('b=' + v); return v + 1; })
+        .then(v => { collect('c=' + v); });
+      queueMicrotask(() => collect('mt'));
+      'scheduled'
+    "#;
+    let src_c = CString::new(src).unwrap();
+    let fname_c = CString::new("<chain>").unwrap();
+    let collect_name = CString::new("collect").unwrap();
+
+    unsafe {
+      let rt = ffi::JS_NewRuntime();
+      let ctx = ffi::JS_NewContext(rt);
+      let global = ffi::JS_GetGlobalObject(ctx);
+      let collect_fn = ffi::JS_NewCFunction(
+        ctx,
+        console_log_callback,
+        collect_name.as_ptr(),
+        1,
+      );
+      ffi::JS_SetPropertyStr(ctx, global, collect_name.as_ptr(), collect_fn);
+      ffi::JS_FreeValue(ctx, global);
+
+      let val = ffi::JS_Eval(
+        ctx,
+        src_c.as_ptr(),
+        src.len(),
+        fname_c.as_ptr(),
+        ffi::JS_EVAL_TYPE_GLOBAL,
+      );
+      assert_ne!(val.tag, ffi::JS_TAG_EXCEPTION);
+      ffi::JS_FreeValue(ctx, val);
+
+      drain_jobs(rt);
+
+      ffi::JS_FreeContext(ctx);
+      ffi::JS_FreeRuntime(rt);
+    }
+
+    c.borrow().clone()
+  });
+
+  // a=1 fires first (queued before mt), then mt (its own microtask),
+  // then b=2 (chained off a's resolution), then c=3.
+  // QuickJS's queueing puts the .then callback in the job queue at the
+  // moment its parent settles; queueMicrotask puts the cb at top-level
+  // immediately. Exact interleaving is "all four fired and the chain
+  // is in order" — assert that, not the precise position of mt.
+  assert!(out.contains(&"a=1".to_string()));
+  assert!(out.contains(&"b=2".to_string()));
+  assert!(out.contains(&"c=3".to_string()));
+  assert!(out.contains(&"mt".to_string()));
+  assert_eq!(out.len(), 4);
+
+  let a = out.iter().position(|s| s == "a=1").unwrap();
+  let b = out.iter().position(|s| s == "b=2").unwrap();
+  let c = out.iter().position(|s| s == "c=3").unwrap();
+  assert!(a < b && b < c, "chain out of order: {out:?}");
+}

@@ -8352,7 +8352,13 @@ dependencies = [
 name = "qjs_v8_compat"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "cc",
+ "http 1.4.0",
+ "http-body-util",
+ "hyper 1.6.0",
+ "hyper-util",
+ "tokio",
 ]
 
 [[package]]
