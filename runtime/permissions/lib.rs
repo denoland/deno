@@ -3894,11 +3894,16 @@ pub struct Permissions {
 
 impl Permissions {
   pub fn all_granted(&self) -> bool {
+    // Net is "fully granted" if either the legacy `--allow-net` field
+    // grants all, or both directional permissions grant all. The two
+    // models are mutually exclusive at the CLI layer, so this avoids
+    // requiring the directional fields to be populated when the user is
+    // running in legacy mode (and vice versa).
+    let net_granted = self.net.is_allow_all()
+      || (self.net_connect.is_allow_all() && self.net_listen.is_allow_all());
     self.read.is_allow_all()
       && self.write.is_allow_all()
-      && self.net.is_allow_all()
-      && self.net_connect.is_allow_all()
-      && self.net_listen.is_allow_all()
+      && net_granted
       && self.env.is_allow_all()
       && self.sys.is_allow_all()
       && self.run.is_allow_all()
