@@ -1330,7 +1330,6 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "FormData",
   "Headers",
   "ImportMeta",
-  "localStorage",
   "MessageChannel",
   "MessageEvent",
   "MessagePort",
@@ -1354,7 +1353,6 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "ReadonlyArray",
   "Request",
   "Response",
-  "sessionStorage",
   "Storage",
   "SubtleCrypto",
   "TextDecoder",
@@ -1372,4 +1370,23 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "WritableStreamDefaultWriter",
 ];
 
-pub static NODE_ONLY_GLOBALS: &[&str] = &[];
+pub static NODE_ONLY_GLOBALS: &[&str] = &[
+  "__dirname",
+  "__filename",
+  "\"buffer\"",
+  "Buffer",
+  "BufferConstructor",
+  "BufferEncoding",
+  "clearImmediate",
+  "Console",
+  "crypto",
+  "ErrorConstructor",
+  "gc",
+  "Global",
+  "localStorage",
+  "queueMicrotask",
+  "RequestInit",
+  "ResponseInit",
+  "sessionStorage",
+  "setImmediate",
+];
