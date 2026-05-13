@@ -24,6 +24,7 @@ use deno_core::url::Url;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::Version;
 use deno_semver::VersionReq;
+use flate2::read::GzDecoder;
 
 use crate::file_fetcher::CliFileFetcher;
 
@@ -71,7 +72,8 @@ pub async fn setup_npm_compat(
   }
 
   // Install jsr: packages to node_modules/@jsr/
-  let installed = install_jsr_packages(project_root, deno_imports)?;
+  let installed =
+    install_jsr_packages(project_root, deno_imports, file_fetcher).await?;
 
   // Mirror http(s): modules (and their transitive remote/relative imports)
   // into .deno/remote/<host><path>/...
@@ -142,9 +144,10 @@ fn generate_deno_tsconfig(
 }
 
 /// Install jsr: packages to node_modules/@jsr/ by downloading from npm.jsr.io.
-fn install_jsr_packages(
+async fn install_jsr_packages(
   project_root: &Path,
   deno_imports: Option<&Value>,
+  file_fetcher: &CliFileFetcher,
 ) -> Result<Vec<InstalledJsrPackage>, AnyError> {
   let mut installed = Vec::new();
   let imports = match deno_imports.and_then(|v| v.as_object()) {
@@ -181,20 +184,31 @@ fn install_jsr_packages(
       npm_jsr_registry.trim_end_matches('/'),
       registry_name.replace('/', "%2f")
     );
+    let metadata_url = match Url::parse(&metadata_url) {
+      Ok(u) => u,
+      Err(e) => {
+        log::debug!("Invalid jsr registry URL {metadata_url}: {e}");
+        continue;
+      }
+    };
 
     log::debug!("Installing {} from {}", registry_name, npm_jsr_registry);
 
-    let metadata_output = std::process::Command::new("curl")
-      .args(["-fsSL", &metadata_url])
-      .output()
-      .map_err(|e| anyhow!("Failed to fetch jsr package metadata: {e}"))?;
+    // Registry metadata + tarball fetches go through CliFileFetcher (with
+    // bypass-permissions because this is package-registry traffic, the same
+    // surface npm install uses, not arbitrary user-supplied http imports).
+    // Reusing the fetcher gets DENO_DIR cache and redirect handling for free,
+    // and avoids depending on curl being present on the host.
+    let metadata_file =
+      match file_fetcher.fetch_bypass_permissions(&metadata_url).await {
+        Ok(f) => f,
+        Err(e) => {
+          log::debug!("Failed to fetch metadata for {registry_name}: {e}");
+          continue;
+        }
+      };
 
-    if !metadata_output.status.success() {
-      log::debug!("Failed to fetch metadata for {}", registry_name,);
-      continue;
-    }
-
-    let metadata: Value = serde_json::from_slice(&metadata_output.stdout)
+    let metadata: Value = serde_json::from_slice(&metadata_file.source)
       .map_err(|e| {
         anyhow!("Failed to parse metadata for {registry_name}: {e}")
       })?;
@@ -211,35 +225,27 @@ fn install_jsr_packages(
       .ok_or_else(|| {
         anyhow!("No tarball URL for {registry_name}@{resolved_version}")
       })?;
+    let tarball_url = match Url::parse(tarball_url) {
+      Ok(u) => u,
+      Err(e) => {
+        log::debug!(
+          "Invalid tarball URL {tarball_url} for {registry_name}: {e}"
+        );
+        continue;
+      }
+    };
 
-    let temp_dir = tempfile::tempdir()?;
-    let tgz_path = temp_dir.path().join("package.tgz");
+    let tarball_file =
+      match file_fetcher.fetch_bypass_permissions(&tarball_url).await {
+        Ok(f) => f,
+        Err(e) => {
+          log::debug!("Failed to download {registry_name}: {e}");
+          continue;
+        }
+      };
 
-    let dl_status = std::process::Command::new("curl")
-      .args(["-fsSL", "-o", &tgz_path.to_string_lossy(), tarball_url])
-      .status()
-      .map_err(|e| anyhow!("Failed to download {registry_name}: {e}"))?;
-
-    if !dl_status.success() {
-      log::debug!("Failed to download {}", registry_name);
-      continue;
-    }
-
-    std::fs::create_dir_all(&pkg_dir)?;
-
-    let extract_status = std::process::Command::new("tar")
-      .args([
-        "xzf",
-        &tgz_path.to_string_lossy(),
-        "-C",
-        &pkg_dir.to_string_lossy(),
-        "--strip-components=1",
-      ])
-      .status()
-      .map_err(|e| anyhow!("Failed to extract {registry_name}: {e}"))?;
-
-    if !extract_status.success() {
-      log::debug!("Failed to extract {}", registry_name);
+    if let Err(e) = extract_tarball_gz(&tarball_file.source, &pkg_dir) {
+      log::debug!("Failed to extract {registry_name}: {e}");
       let _ = std::fs::remove_dir_all(&pkg_dir);
       continue;
     }
@@ -251,6 +257,40 @@ fn install_jsr_packages(
   }
 
   Ok(installed)
+}
+
+/// Extract a gzipped npm-style tarball into `dest`, stripping the leading
+/// `package/` directory the way `tar --strip-components=1` does. Replaces
+/// the previous `tar` shell-out so the install works the same on Linux,
+/// macOS (BSD tar), Windows, and minimal containers without `tar`/`curl`.
+fn extract_tarball_gz(gz_bytes: &[u8], dest: &Path) -> Result<(), AnyError> {
+  std::fs::create_dir_all(dest)?;
+  let mut archive = tar::Archive::new(GzDecoder::new(gz_bytes));
+  for entry in archive.entries()? {
+    let mut entry = entry?;
+    let path = entry.path()?.into_owned();
+    // Skip the leading "package/" (or whatever the single root dir is named).
+    let stripped: PathBuf = path.components().skip(1).collect();
+    if stripped.as_os_str().is_empty() {
+      continue;
+    }
+    if stripped.is_absolute()
+      || stripped.components().any(|c| {
+        matches!(
+          c,
+          std::path::Component::ParentDir | std::path::Component::RootDir
+        )
+      })
+    {
+      return Err(anyhow!(
+        "Refusing to extract tar entry outside dest: {}",
+        path.display()
+      ));
+    }
+    let out_path = dest.join(stripped);
+    entry.unpack(&out_path)?;
+  }
+  Ok(())
 }
 
 /// A resolved entry for the tsconfig `paths` table: maps a user-facing URL
