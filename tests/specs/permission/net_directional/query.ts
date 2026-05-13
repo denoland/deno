@@ -15,9 +15,9 @@ const connectPrompt = await Deno.permissions.query({
 });
 console.log(`net-connect ${connectAddr}: ${connectPrompt.state}`);
 
-// Legacy name: "net" with the listen-only grant should be Prompt because
-// only one direction is granted (the conjunction of the two directional
-// states).
+// Legacy name: "net" operates on the legacy `--allow-net` field only,
+// not on the directional fields. With only `--allow-net-listen` set, the
+// legacy field is empty, so this returns prompt.
 const legacy = await Deno.permissions.query({
   name: "net",
   host: listenAddr,

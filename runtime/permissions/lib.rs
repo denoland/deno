@@ -446,27 +446,6 @@ struct PromptOptions<'a> {
   is_unary: bool,
 }
 
-/// Combine two net `PermissionState`s into the legacy "net" state.
-///
-/// The legacy `name: "net"` query returns Granted only if BOTH directions
-/// are granted, Denied if EITHER direction is denied, and Prompt otherwise.
-/// This matches the intuition that the legacy permission was "permission to
-/// do any net operation against this host" — i.e. the conjunction.
-fn combine_net_states(
-  a: PermissionState,
-  b: PermissionState,
-) -> PermissionState {
-  use PermissionState::*;
-  match (a, b) {
-    (Denied, _) | (_, Denied) => Denied,
-    (DeniedPartial, _) | (_, DeniedPartial) => DeniedPartial,
-    (Ignored, _) | (_, Ignored) => Ignored,
-    (Prompt, _) | (_, Prompt) => Prompt,
-    (GrantedPartial, _) | (_, GrantedPartial) => GrantedPartial,
-    (Granted, Granted) => Granted,
-  }
-}
-
 /// Pick the more permissive of two `PermissionState`s for direction-specific
 /// queries that should reflect *either* a legacy `--allow-net` rule *or* the
 /// matching directional rule.
@@ -603,8 +582,13 @@ impl PermissionState {
       }
       PermissionState::Prompt if prompt => {
         let info = info();
+        let pretty_name = match name {
+          "net-connect" => "net connect",
+          "net-listen" => "net listen",
+          other => other,
+        };
         let msg = StringBuilder::<String>::build(|builder| {
-          builder.append(name);
+          builder.append(pretty_name);
           builder.append(" access");
           if let Some(info) = &info {
             builder.append(" to ");
@@ -5283,42 +5267,28 @@ impl PermissionsContainer {
     &self,
     host: Option<&str>,
   ) -> Result<PermissionState, NetDescriptorParseError> {
+    // The legacy `name: "net"` descriptor operates on the legacy `net`
+    // permission field only. The new direction-specific descriptors
+    // (`name: "net-connect"` / `name: "net-listen"`) operate on the
+    // matching directional fields. Keeping the legacy descriptor on its
+    // own field preserves the existing
+    // `Deno.permissions.{query,request,revoke}({name: "net"})` behavior
+    // bit-for-bit, and avoids firing two prompts (one per direction)
+    // when code that hasn't migrated calls `request({name: "net"})`.
     let inner = self.inner.lock();
     let permission = &inner.net;
     if permission.is_allow_all() {
       return Ok(PermissionState::Granted);
     }
-    if !permission.is_empty() {
-      return Ok(
-        permission.query(
-          match host {
-            None => None,
-            Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
-          }
-          .as_ref(),
-        ),
-      );
-    }
-    // Legacy "net" maps to the conjunction of net-connect and net-listen.
-    // It is Granted iff both directions are granted, Denied iff either is
-    // denied, and Prompt otherwise.
-    let query_desc = match host {
-      None => None,
-      Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
-    };
-    let connect_state = inner.net_connect.query(
-      query_desc
-        .as_ref()
-        .map(|d| NetConnectDescriptor(d.clone()))
+    Ok(
+      permission.query(
+        match host {
+          None => None,
+          Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
+        }
         .as_ref(),
-    );
-    let listen_state = inner.net_listen.query(
-      query_desc
-        .as_ref()
-        .map(|d| NetListenDescriptor(d.clone()))
-        .as_ref(),
-    );
-    Ok(combine_net_states(connect_state, listen_state))
+      ),
+    )
   }
 
   #[inline(always)]
@@ -5522,31 +5492,18 @@ impl PermissionsContainer {
     &self,
     host: Option<&str>,
   ) -> Result<PermissionState, NetDescriptorParseError> {
-    let mut inner = self.inner.lock();
-    let query_desc = match host {
-      None => None,
-      Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
-    };
-    // Revoke from all three so that revoking `name: "net"` doesn't leave a
-    // dangling directional grant behind.
-    let legacy_state = inner.net.revoke(query_desc.as_ref());
-    let connect_state = inner.net_connect.revoke(
-      query_desc
-        .as_ref()
-        .map(|d| NetConnectDescriptor(d.clone()))
+    // The legacy `name: "net"` descriptor revokes only from the legacy
+    // `net` field. Use `name: "net-connect"` / `name: "net-listen"` to
+    // revoke directional grants.
+    Ok(
+      self.inner.lock().net.revoke(
+        match host {
+          None => None,
+          Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
+        }
         .as_ref(),
-    );
-    let listen_state = inner.net_listen.revoke(
-      query_desc
-        .as_ref()
-        .map(|d| NetListenDescriptor(d.clone()))
-        .as_ref(),
-    );
-    if !inner.net.is_empty() {
-      Ok(legacy_state)
-    } else {
-      Ok(combine_net_states(connect_state, listen_state))
-    }
+      ),
+    )
   }
 
   #[inline(always)]
@@ -5715,30 +5672,19 @@ impl PermissionsContainer {
     &self,
     host: Option<&str>,
   ) -> Result<PermissionState, NetDescriptorParseError> {
-    let mut inner = self.inner.lock();
-    let query_desc = match host {
-      None => None,
-      Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
-    };
-    // If legacy is in use, route the request to it. Otherwise, request both
-    // direction-specific permissions so the legacy "net" descriptor name
-    // remains useful for code that hasn't migrated yet.
-    if !inner.net.is_empty() {
-      return Ok(inner.net.request(query_desc.as_ref()));
-    }
-    let connect_state = inner.net_connect.request(
-      query_desc
-        .as_ref()
-        .map(|d| NetConnectDescriptor(d.clone()))
+    // The legacy `name: "net"` descriptor requests on the legacy `net`
+    // field only, preserving the existing prompt text and single-prompt
+    // behavior. To prompt for a specific direction, use
+    // `name: "net-connect"` or `name: "net-listen"`.
+    Ok(
+      self.inner.lock().net.request(
+        match host {
+          None => None,
+          Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
+        }
         .as_ref(),
-    );
-    let listen_state = inner.net_listen.request(
-      query_desc
-        .as_ref()
-        .map(|d| NetListenDescriptor(d.clone()))
-        .as_ref(),
-    );
-    Ok(combine_net_states(connect_state, listen_state))
+      ),
+    )
   }
 
   #[inline(always)]
@@ -7070,7 +7016,7 @@ mod tests {
   }
 
   #[test]
-  fn test_query_net_with_directional_flags() {
+  fn test_query_net_directional_flags_independent_of_legacy() {
     set_prompter(Box::new(TestPrompter));
     let parser = TestPermissionDescriptorParser;
     let perms = Permissions::from_options(
@@ -7084,11 +7030,7 @@ mod tests {
     .unwrap();
     let perms = PermissionsContainer::new(Arc::new(parser.clone()), perms);
 
-    // Both directions granted ⇒ legacy `name: "net"` query returns Granted.
-    assert_eq!(
-      perms.query_net(Some("deno.land")).unwrap(),
-      PermissionState::Granted
-    );
+    // Direction-specific descriptors reflect their own permission grants.
     assert_eq!(
       perms.query_net_connect(Some("deno.land")).unwrap(),
       PermissionState::Granted
@@ -7096,6 +7038,14 @@ mod tests {
     assert_eq!(
       perms.query_net_listen(Some("deno.land")).unwrap(),
       PermissionState::Granted
+    );
+    // The legacy `name: "net"` descriptor operates on the legacy `net`
+    // permission field only (which is empty here), so it returns Prompt.
+    // Code using directional permissions should query the matching
+    // directional descriptor instead of `name: "net"`.
+    assert_eq!(
+      perms.query_net(Some("deno.land")).unwrap(),
+      PermissionState::Prompt
     );
   }
 
@@ -7114,17 +7064,17 @@ mod tests {
     .unwrap();
     let perms = PermissionsContainer::new(Arc::new(parser.clone()), perms);
 
-    // Legacy "net" query reports Prompt because listen is not granted.
-    assert_eq!(
-      perms.query_net(Some("deno.land")).unwrap(),
-      PermissionState::Prompt
-    );
     assert_eq!(
       perms.query_net_connect(Some("deno.land")).unwrap(),
       PermissionState::Granted
     );
     assert_eq!(
       perms.query_net_listen(Some("deno.land")).unwrap(),
+      PermissionState::Prompt
+    );
+    // The legacy net field is empty.
+    assert_eq!(
+      perms.query_net(Some("deno.land")).unwrap(),
       PermissionState::Prompt
     );
   }
