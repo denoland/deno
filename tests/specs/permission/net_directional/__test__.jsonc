@@ -1,0 +1,52 @@
+{
+  "tempDir": true,
+  "tests": {
+    "listen_allowed_by_allow_net_listen": {
+      "args": "run --allow-net-listen=127.0.0.1:0 listen.ts",
+      "output": "listen_allowed.out"
+    },
+    "listen_denied_when_only_connect_granted": {
+      "args": "run --allow-net-connect=127.0.0.1:0 listen.ts",
+      "exitCode": 1,
+      "output": "listen_denied.out"
+    },
+    "connect_allowed_by_allow_net_connect": {
+      "args": "run --allow-net-connect=127.0.0.1:0,127.0.0.1:1,127.0.0.1:2,127.0.0.1:3,127.0.0.1:4,127.0.0.1:5,127.0.0.1:6,127.0.0.1:7,127.0.0.1:8,127.0.0.1:9 connect.ts",
+      "output": "connect_allowed.out"
+    },
+    "connect_denied_when_only_listen_granted": {
+      "args": "run --allow-net-listen=127.0.0.1:0 connect.ts",
+      "exitCode": 1,
+      "output": "connect_denied.out"
+    },
+    "deny_net_listen_blocks_listen_with_connect_allow": {
+      "args": "run --allow-net-connect --deny-net-listen=127.0.0.1 listen.ts",
+      "exitCode": 1,
+      "output": "listen_denied.out"
+    },
+    "legacy_allow_net_conflicts_with_directional_allow_connect": {
+      "args": "run --allow-net --allow-net-connect listen.ts",
+      "exitCode": 1,
+      "output": "legacy_conflict.out"
+    },
+    "legacy_allow_net_conflicts_with_directional_deny_connect": {
+      "args": "run --allow-net=deno.land --deny-net-connect=evil.com listen.ts",
+      "exitCode": 1,
+      "output": "legacy_conflict.out"
+    },
+    "legacy_allow_net_conflicts_with_directional_allow_listen": {
+      "args": "run --allow-net --allow-net-listen=127.0.0.1 listen.ts",
+      "exitCode": 1,
+      "output": "legacy_conflict.out"
+    },
+    "legacy_deny_net_conflicts_with_directional_deny_listen": {
+      "args": "run --deny-net=evil.com --deny-net-listen=0.0.0.0:22 listen.ts",
+      "exitCode": 1,
+      "output": "legacy_conflict.out"
+    },
+    "query_net_listen_descriptor": {
+      "args": "run --allow-net-listen=127.0.0.1:0 query.ts",
+      "output": "query.out"
+    }
+  }
+}

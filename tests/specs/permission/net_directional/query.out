@@ -1,0 +1,3 @@
+net-listen 127.0.0.1:0: granted
+net-connect deno.land:443: prompt
+net 127.0.0.1:0: prompt
