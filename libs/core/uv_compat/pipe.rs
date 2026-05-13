@@ -80,6 +80,20 @@ pub struct uv_pipe_t {
       Box<dyn std::future::Future<Output = std::io::Result<()>> + Send>,
     >,
   >,
+  /// In-flight `WaitNamedPipeW` retry task spawned when a synchronous
+  /// `ClientOptions::open()` returned `ERROR_PIPE_BUSY`. The deferred
+  /// connect callback fires once this task completes (success or final
+  /// failure). Mirrors libuv's `pipe_connect_thread_proc`.
+  #[cfg(windows)]
+  #[allow(
+    clippy::type_complexity,
+    reason = "JoinHandle<io::Result<NamedPipeClient>> is inherently complex"
+  )]
+  pub(crate) internal_win_connect_retry: Option<
+    tokio::task::JoinHandle<
+      std::io::Result<tokio::net::windows::named_pipe::NamedPipeClient>,
+    >,
+  >,
 
   // Connected stream (from connect or accept)
   #[cfg(unix)]
@@ -219,6 +233,8 @@ pub fn new_pipe(ipc: bool) -> uv_pipe_t {
     internal_win_client: None,
     #[cfg(windows)]
     internal_win_connect_fut: None,
+    #[cfg(windows)]
+    internal_win_connect_retry: None,
     #[cfg(unix)]
     internal_stream: None,
     #[cfg(unix)]
@@ -813,6 +829,32 @@ pub unsafe fn uv_pipe_connect(
         }
         0
       }
+      Err(e) if e.raw_os_error() == Some(231) => {
+        // ERROR_PIPE_BUSY: all of the server's pipe instances are in use.
+        // Match libuv (`pipe_connect_thread_proc`) by retrying on a worker
+        // thread using `WaitNamedPipeW`. The connect callback fires
+        // asynchronously once the retry resolves.
+        if !req.is_null() {
+          (*req).handle = pipe as *mut super::stream::uv_stream_t;
+        }
+        let path_owned = path.to_owned();
+        let join = tokio::task::spawn_blocking(move || {
+          wait_named_pipe_and_open(&path_owned)
+        });
+        (*pipe).internal_win_connect_retry = Some(join);
+        (*pipe).internal_connect = Some(PipeConnectPending { req, cb });
+        (*pipe).flags |= UV_HANDLE_ACTIVE;
+
+        let inner = super::get_inner((*pipe).loop_);
+        let mut handles = inner.pipe_handles.borrow_mut();
+        if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
+          handles.push(pipe);
+        }
+        if let Some(w) = (*pipe).internal_waker.as_ref() {
+          w.mark_ready();
+        }
+        0
+      }
       Err(e) => {
         // If the path exists but isn't a named pipe, return ENOTSOCK
         // (matching libuv behavior). ClientOptions::open returns NotFound
@@ -824,6 +866,49 @@ pub unsafe fn uv_pipe_connect(
         }
         io_error_to_uv(&e)
       }
+    }
+  }
+}
+
+/// Wait for a Windows named pipe instance to become free and open a client.
+///
+/// Mirrors libuv's `pipe_connect_thread_proc`: loop on `WaitNamedPipeW`
+/// (30s per attempt) until an instance is available, then try to open it
+/// via `CreateFileW`. If another client races us, the wait/open loop
+/// continues until success or `WaitNamedPipeW` itself fails (e.g. the
+/// server is gone).
+#[cfg(windows)]
+pub(crate) fn wait_named_pipe_and_open(
+  path: &str,
+) -> std::io::Result<tokio::net::windows::named_pipe::NamedPipeClient> {
+  use std::os::windows::ffi::OsStrExt;
+  let wide: Vec<u16> = std::ffi::OsStr::new(path)
+    .encode_wide()
+    .chain(std::iter::once(0))
+    .collect();
+  loop {
+    // SAFETY: `wide` is a null-terminated wide string for the lifetime
+    // of this call. WaitNamedPipeW has no other safety requirements.
+    let ok = unsafe {
+      windows_sys::Win32::System::Pipes::WaitNamedPipeW(wide.as_ptr(), 30000)
+    };
+    if ok == 0 {
+      // Any `WaitNamedPipeW` failure — including `ERROR_SEM_TIMEOUT` —
+      // exits the loop. Matches libuv's `pipe_connect_thread_proc`:
+      // the 30s timeout signals the server is unresponsive and the
+      // connect should be reported as failed rather than retried
+      // indefinitely.
+      return Err(std::io::Error::last_os_error());
+    }
+    match tokio::net::windows::named_pipe::ClientOptions::new().open(path) {
+      Ok(client) => return Ok(client),
+      Err(e) if e.raw_os_error() == Some(231) => {
+        // Another client raced us to the freed instance. Loop and wait
+        // for another one. Yield first to avoid a hot spin.
+        std::thread::yield_now();
+        continue;
+      }
+      Err(e) => return Err(e),
     }
   }
 }
@@ -962,6 +1047,9 @@ pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
     {
       if let Some(handle) = (*pipe).internal_pending_read.take() {
         handle.abort();
+      }
+      if let Some(retry) = (*pipe).internal_win_connect_retry.take() {
+        retry.abort();
       }
       if let Some(handle) = (*pipe).internal_handle.take() {
         // SAFETY: handle is a valid OS handle from get_osfhandle.
@@ -1115,7 +1203,50 @@ pub(crate) unsafe fn poll_pipe_handle(
 
   unsafe {
     // 1. Poll deferred connect callback (from uv_pipe_connect on Windows).
-    if let Some(pending) = (*pipe_ptr).internal_connect.take() {
+    //
+    // Two sub-cases:
+    //   a) Sync-success: ClientOptions::open() returned a connected client
+    //      immediately; the client is already stored in `internal_win_client`
+    //      and we just need to fire cb(req, 0).
+    //   b) Retry-in-flight: ClientOptions::open() returned ERROR_PIPE_BUSY
+    //      and a worker task is calling WaitNamedPipeW + retry. Wait for the
+    //      task to finish before firing cb with the resolved status.
+    if let Some(ref mut join) = (*pipe_ptr).internal_win_connect_retry {
+      match std::pin::Pin::new(join).poll(cx) {
+        Poll::Pending => { /* keep waiting */ }
+        Poll::Ready(join_res) => {
+          (*pipe_ptr).internal_win_connect_retry = None;
+          let status = match join_res {
+            Ok(Ok(client)) => {
+              // Same FILE_TYPE_PIPE sanity check as the sync path.
+              use std::os::windows::io::AsRawHandle;
+              let handle = client.as_raw_handle();
+              let file_type =
+                windows_sys::Win32::Storage::FileSystem::GetFileType(
+                  handle as _,
+                );
+              if file_type
+                != windows_sys::Win32::Storage::FileSystem::FILE_TYPE_PIPE
+              {
+                drop(client);
+                super::UV_ENOTSOCK
+              } else {
+                (*pipe_ptr).internal_win_client = Some(client);
+                0
+              }
+            }
+            Ok(Err(ref e)) => io_error_to_uv(e),
+            Err(_) => super::UV_ECANCELED,
+          };
+          if let Some(pending) = (*pipe_ptr).internal_connect.take()
+            && let Some(cb) = pending.cb
+          {
+            cb(pending.req, status);
+          }
+          any_work = true;
+        }
+      }
+    } else if let Some(pending) = (*pipe_ptr).internal_connect.take() {
       if let Some(cb) = pending.cb {
         cb(pending.req, 0);
       }

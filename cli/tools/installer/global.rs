@@ -185,6 +185,7 @@ pub async fn install_global(
       &flags,
       &installation_dir,
       Some(&jsr_lockfile_fetcher),
+      install_flags_global.force,
     )
     .await?;
 
@@ -421,6 +422,7 @@ async fn setup_config_dir(
   flags: &Flags,
   installation_dir: &Path,
   jsr_lockfile_fetcher: Option<&JsrLockfileFetcher<'_>>,
+  force: bool,
 ) -> Result<(), AnyError> {
   fn resolve_implicit_node_modules_dir(
     flags: &Flags,
@@ -442,6 +444,18 @@ async fn setup_config_dir(
   let dir = installation_dir.join(format!(".{}", bin_name_and_url.name));
   fs::create_dir_all(&dir)
     .with_context(|| format!("failed creating '{}'", dir.display()))?;
+
+  // When --force is specified, the user is explicitly asking for a fresh
+  // install. Remove the stale auto-generated lockfile so dependency resolution
+  // isn't constrained to previously pinned versions.
+  if force {
+    let lockfile_path = dir.join("deno.lock");
+    if lockfile_path.exists() {
+      fs::remove_file(&lockfile_path).with_context(|| {
+        format!("failed removing '{}'", lockfile_path.display())
+      })?;
+    }
+  }
 
   let config_text = if let ConfigFlag::Path(config_path) = &flags.config_flag {
     fs::read_to_string(config_path)
@@ -584,11 +598,23 @@ fn resolve_native_binary_path(
       .clone()
   };
 
-  let node_resolution_sys =
-    node_resolver::cache::NodeResolutionSys::new(sys, None);
-  match node_resolver::read_bin_value(&bin_path, &node_resolution_sys)? {
-    node_resolver::BinValue::Executable(path) => Some(path),
-    node_resolver::BinValue::JsFile(_) => None,
+  // Only treat the bin entry as a native binary if its magic bytes match
+  // ELF/Mach-O/PE. `node_resolver::read_bin_value` returns `Executable` for
+  // any file whose first line isn't a recognized npx-style shebang (e.g.
+  // `#!/usr/bin/env deno` scripts) — which would incorrectly cause us to
+  // generate an `exec`-the-file shim instead of a `deno run` shim. On
+  // Windows there is no shebang interpretation, so that breaks installs of
+  // ordinary npm packages whose bin scripts use a non-Node shebang.
+  use std::io::Read;
+  let mut file = std::fs::File::open(&bin_path).ok()?;
+  let mut buf = [0u8; 4];
+  if file.read(&mut buf).ok()? < 4 {
+    return None;
+  }
+  if node_resolver::is_binary(&buf) {
+    Some(bin_path)
+  } else {
+    None
   }
 }
 
@@ -1208,6 +1234,7 @@ mod tests {
       flags,
       &installation_dir,
       None,
+      install_flags_global.force,
     )
     .await
     .unwrap();
@@ -1786,6 +1813,54 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn install_force_regenerates_lockfile() {
+    let temp_dir = TempDir::new();
+    let bin_dir = temp_dir.path().join("bin");
+    std::fs::create_dir(&bin_dir).unwrap();
+
+    // initial install creates the config dir
+    create_install_shim(
+      &Flags::default(),
+      InstallFlagsGlobal {
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_string()),
+        force: false,
+        compile: false,
+      },
+    )
+    .await
+    .unwrap();
+
+    // simulate a stale auto-generated lockfile from a prior install
+    let config_dir = bin_dir.join(".echo_test");
+    let lockfile_path = config_dir.join("deno.lock");
+    let stale_lockfile =
+      r#"{"version":"5","specifiers":{"npm:cowsay@*":"1.0.0"}}"#;
+    fs::write(&lockfile_path, stale_lockfile).unwrap();
+    assert!(lockfile_path.exists());
+
+    // reinstall with --force; stale lockfile should be removed
+    create_install_shim(
+      &Flags::default(),
+      InstallFlagsGlobal {
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_string()),
+        force: true,
+        compile: false,
+      },
+    )
+    .await
+    .unwrap();
+
+    let post_force_content = fs::read_to_string(&lockfile_path).ok();
+    assert_ne!(post_force_content.as_deref(), Some(stale_lockfile));
+  }
+
+  #[tokio::test]
   async fn install_with_config() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
@@ -2101,6 +2176,7 @@ mod tests {
       },
       scopes,
       registry_configs: Default::default(),
+      min_release_age_days: None,
     })
   }
 
@@ -2286,6 +2362,42 @@ mod tests {
     assert!(
       result.is_none(),
       "should not detect JS file as native binary"
+    );
+  }
+
+  #[test]
+  fn native_binary_not_detected_for_non_node_shebang_js() {
+    // Regression: a JS bin script with a non-Node shebang (e.g.
+    // `#!/usr/bin/env deno`) was being misclassified as a native binary,
+    // which broke `deno install -g` on Windows since the generated shim
+    // execed the .js file directly instead of running `deno run`.
+    let temp_dir = TempDir::new();
+    let bin_dir = temp_dir.path().join("bin").to_path_buf();
+    let config_dir = bin_dir.join(".mytool");
+    let pkg_dir = config_dir.join("node_modules").join("mytool");
+    std::fs::create_dir_all(&pkg_dir).unwrap();
+
+    std::fs::write(
+      pkg_dir.join("package.json"),
+      r#"{"name": "mytool", "bin": {"mytool": "./main.js"}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+      pkg_dir.join("main.js"),
+      "#!/usr/bin/env deno\nconsole.log('hello');",
+    )
+    .unwrap();
+
+    let bin_name_and_url = BinaryNameAndUrl {
+      name: "mytool".to_string(),
+      module_url: Url::parse("npm:mytool@1.0.0").unwrap(),
+      config_name: None,
+    };
+
+    let result = super::resolve_native_binary_path(&bin_name_and_url, &bin_dir);
+    assert!(
+      result.is_none(),
+      "JS file with non-Node shebang must not be classified as native binary"
     );
   }
 
