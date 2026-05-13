@@ -624,6 +624,9 @@ impl PackageJson {
       };
       let mut result = IndexMap::with_capacity(deps.len());
       for (key, value) in deps {
+        if key.is_empty() {
+          continue;
+        }
         result
           .entry(StackString::from(key.as_str()))
           .or_insert_with(|| PackageJsonDepValue::parse(key, value));
@@ -812,6 +815,20 @@ mod test {
         ),
       ])
     );
+  }
+
+  #[test]
+  fn test_resolve_local_package_json_deps_skips_empty_keys() {
+    let mut package_json =
+      PackageJson::load_from_string(PathBuf::from("/package.json"), "{}")
+        .unwrap();
+    package_json.dependencies = Some(IndexMap::from([
+      ("test".to_string(), "^1.2".to_string()),
+      ("".to_string(), ".".to_string()),
+    ]));
+    let deps = package_json.resolve_local_package_json_deps();
+    assert_eq!(deps.dependencies.len(), 1);
+    assert!(deps.dependencies.contains_key("test"));
   }
 
   #[test]
