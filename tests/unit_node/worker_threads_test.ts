@@ -578,6 +578,72 @@ Deno.test({
   },
 });
 
+// Regression test for https://github.com/denoland/deno/issues/33373
+// Node's MessagePort.on('message', fn) deduplicates by listener
+// reference. Registering the same function multiple times must
+// deliver only once, and `.off` must clean up the listener fully.
+Deno.test({
+  name: "[node/worker_threads] MessagePort.on deduplicates listeners",
+  async fn() {
+    const output: string[] = [];
+    const { port1, port2 } = new workerThreads.MessageChannel();
+    const onMessage = (msg: string) => output.push(msg);
+
+    port1.on("message", onMessage);
+    port1.on("message", onMessage);
+    port1.on("message", onMessage);
+
+    const first = Promise.withResolvers<void>();
+    port1.on("message", () => first.resolve());
+    port2.postMessage("hi");
+    await first.promise;
+    assertEquals(output, ["hi"]);
+
+    port1.off("message", onMessage);
+    const second = Promise.withResolvers<void>();
+    port1.on("message", () => second.resolve());
+    port2.postMessage("again");
+    await second.promise;
+    assertEquals(output, ["hi"]);
+
+    port1.close();
+    port2.close();
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] MessagePort.on dedup is per-event-name and per-port",
+  async fn() {
+    const events: string[] = [];
+    const { port1, port2 } = new workerThreads.MessageChannel();
+    const handler = (_: unknown) => events.push("hit");
+
+    // Same fn for different event names registers independently.
+    port1.on("message", handler);
+    port1.on("message", handler);
+    port1.on("close", handler);
+    port1.on("close", handler);
+
+    const messageDone = Promise.withResolvers<void>();
+    port1.on("message", () => messageDone.resolve());
+    port2.postMessage("m");
+    await messageDone.promise;
+    assertEquals(events, ["hit"]);
+
+    // off("message", handler) must not remove the "close" registration.
+    port1.off("message", handler);
+
+    const closeDone = Promise.withResolvers<void>();
+    port1.on("close", () => closeDone.resolve());
+    port1.close();
+    port2.close();
+    await closeDone.promise;
+    // One delivery for "message", one for "close".
+    assertEquals(events, ["hit", "hit"]);
+  },
+});
+
 // Test for https://github.com/denoland/deno/issues/23854
 Deno.test({
   name: "[node/worker_threads] MessagePort.addListener is present",

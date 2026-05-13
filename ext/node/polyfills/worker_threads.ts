@@ -75,12 +75,12 @@ const {
   ObjectHasOwn,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeThen,
   PromiseReject,
   PromiseResolve,
   SafeMap,
   SafeRegExp,
   SafeSet,
-  SafeWeakMap,
   String,
   StringPrototypeIndexOf,
   StringPrototypeSlice,
@@ -907,12 +907,21 @@ internals.__initWorkerThreads = (
       );
     }
 
-    const listeners = new SafeWeakMap<
-      // deno-lint-ignore no-explicit-any
-      (...args: any[]) => void,
-      // deno-lint-ignore no-explicit-any
-      (ev: any) => any
-    >();
+    // Per-event-name listener map so the same listener reference
+    // passed to parentPort.on twice for the same event registers only
+    // once, matching Node MessagePort behavior. Maps are created on
+    // demand since parentPort accepts any event name.
+    // deno-lint-ignore no-explicit-any
+    type ListenerMap = SafeMap<(...args: any[]) => void, (ev: any) => any>;
+    const parentPortListeners: Record<string, ListenerMap> = ObjectCreate(null);
+    const getParentPortListenerMap = (name: string): ListenerMap => {
+      let map = parentPortListeners[name];
+      if (map === undefined) {
+        map = new SafeMap();
+        parentPortListeners[name] = map;
+      }
+      return map;
+    };
 
     // Create parentPort as a separate object that delegates to the web
     // worker's native APIs. We capture the native methods here (before
@@ -1135,10 +1144,14 @@ internals.__initWorkerThreads = (
       name,
       listener,
     ) {
-      if (listeners.has(listener)) {
-        nativeRemoveEventListener(name, listeners.get(listener)!);
-        listeners.delete(listener);
-        if (name === "message") messageListenerCount--;
+      const map = parentPortListeners[name];
+      if (map !== undefined) {
+        const wrapper = map.get(listener);
+        if (wrapper !== undefined) {
+          nativeRemoveEventListener(name, wrapper);
+          map.delete(listener);
+          if (name === "message") messageListenerCount--;
+        }
       }
       return parentPort;
     };
@@ -1146,28 +1159,38 @@ internals.__initWorkerThreads = (
       name,
       listener,
     ) {
+      const map = getParentPortListenerMap(name);
+      if (map.has(listener)) {
+        // Same listener already registered for this event -- dedup to
+        // match Node MessagePort behavior.
+        return parentPort;
+      }
       // deno-lint-ignore no-explicit-any
       const _listener = (ev: any) => {
         const message = ev.data;
         patchMessagePortIfFound(message);
         return listener(message);
       };
-      listeners.set(listener, _listener);
+      map.set(listener, _listener);
       nativeAddEventListener(name, _listener);
       if (name === "message") messageListenerCount++;
       return parentPort;
     };
 
     parentPort.once = function (name, listener) {
+      const map = getParentPortListenerMap(name);
+      if (map.has(listener)) {
+        return parentPort;
+      }
       // deno-lint-ignore no-explicit-any
       const _listener = (ev: any) => {
-        listeners.delete(listener);
+        map.delete(listener);
         if (name === "message") messageListenerCount--;
         const message = ev.data;
         patchMessagePortIfFound(message);
         return listener(message);
       };
-      listeners.set(listener, _listener);
+      map.set(listener, _listener);
       nativeAddEventListener(name, _listener, { once: true });
       if (name === "message") messageListenerCount++;
       return parentPort;
@@ -1285,37 +1308,62 @@ class NodeMessageChannel {
   }
 }
 
-const listeners = new SafeWeakMap<
-  // deno-lint-ignore no-explicit-any
-  (...args: any[]) => void,
-  // deno-lint-ignore no-explicit-any
-  (ev: any) => any
->();
+const nodePortListenersSymbol = Symbol("nodePortListeners");
 function webMessagePortToNodeMessagePort(port: MessagePort) {
+  // Patch idempotently: a port can be reached more than once through
+  // patchMessagePortIfFound (e.g. when included in a nested message
+  // payload). Re-patching would discard tracked listeners.
+  // deno-lint-ignore no-explicit-any
+  if ((port as any)[nodePortListenersSymbol]) return port;
+  // Track listeners per port and per event name so the same handler
+  // reference passed to `on` twice registers only once (Node parity),
+  // and `off` can locate the wrapper that was actually attached.
+  const portListeners = {
+    // deno-lint-ignore no-explicit-any
+    message: new SafeMap<(...args: any[]) => void, (ev: any) => any>(),
+    // deno-lint-ignore no-explicit-any
+    messageerror: new SafeMap<(...args: any[]) => void, (ev: any) => any>(),
+    // deno-lint-ignore no-explicit-any
+    close: new SafeMap<(...args: any[]) => void, (ev: any) => any>(),
+  };
+  ObjectDefineProperty(port, nodePortListenersSymbol, {
+    __proto__: null,
+    value: portListeners,
+    writable: false,
+    enumerable: false,
+    configurable: false,
+  });
   port.on = port.addListener = function (this: MessagePort, name, listener) {
+    const map = portListeners[name as "message" | "messageerror" | "close"] as
+      | typeof portListeners.message
+      | undefined;
+    if (map === undefined) {
+      throw new Error(`Unknown event: "${name}"`);
+    }
+    if (map.has(listener)) {
+      // Same listener already registered for this event on this port --
+      // matches Node.js MessagePort, where repeated `.on('message', fn)`
+      // calls with the same reference do not produce duplicate
+      // deliveries.
+      return this;
+    }
     // deno-lint-ignore no-explicit-any
     const _listener = (ev: any) => {
       patchMessagePortIfFound(ev.data);
       listener(ev.data);
     };
-    if (name == "message") {
-      if (port.onmessage === null) {
-        port.onmessage = _listener;
-      } else {
-        port.addEventListener("message", _listener);
-      }
-    } else if (name == "messageerror") {
-      if (port.onmessageerror === null) {
-        port.onmessageerror = _listener;
-      } else {
-        port.addEventListener("messageerror", _listener);
-      }
-    } else if (name == "close") {
-      port.addEventListener("close", _listener);
-    } else {
-      throw new Error(`Unknown event: "${name}"`);
+    map.set(listener, _listener);
+    port.addEventListener(name, _listener);
+    if (name === "message") {
+      // Mirror the auto-start behavior of `port.onmessage = fn` so that
+      // Node code that does `port.on('message', ...)` without an explicit
+      // `port.start()` still receives messages. Deferred via a microtask
+      // so `receiveMessageOnPort` (sync) gets a chance to drain the
+      // queue first -- this is the same pattern the web MessagePort
+      // applies in its `message` event handler init, which `piscina`
+      // relies on.
+      PromisePrototypeThen(PromiseResolve(undefined), () => port.start());
     }
-    listeners.set(listener, _listener);
     return this;
   };
   port.off = port.removeListener = function (
@@ -1323,16 +1371,17 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
     name,
     listener,
   ) {
-    if (name == "message") {
-      port.removeEventListener("message", listeners.get(listener)!);
-    } else if (name == "messageerror") {
-      port.removeEventListener("messageerror", listeners.get(listener)!);
-    } else if (name == "close") {
-      port.removeEventListener("close", listeners.get(listener)!);
-    } else {
+    const map = portListeners[name as "message" | "messageerror" | "close"] as
+      | typeof portListeners.message
+      | undefined;
+    if (map === undefined) {
       throw new Error(`Unknown event: "${name}"`);
     }
-    listeners.delete(listener);
+    const wrapper = map.get(listener);
+    if (wrapper !== undefined) {
+      port.removeEventListener(name, wrapper);
+      map.delete(listener);
+    }
     return this;
   };
   port[nodeWorkerThreadCloseCb] = () => {

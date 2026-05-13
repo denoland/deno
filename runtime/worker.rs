@@ -229,6 +229,14 @@ pub struct WorkerOptions {
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<&'static [u8]>,
 
+  /// `(specifier, source)` pairs for `lazy_loaded_js` files that were not
+  /// consumed during snapshot creation. Emitted by the snapshot build script.
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+
+  /// `(specifier, source)` pairs for `lazy_loaded_esm` files that were not
+  /// consumed during snapshot creation. Emitted by the snapshot build script.
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
+
   /// Should op registration be skipped?
   pub skip_op_registration: bool,
 
@@ -278,6 +286,8 @@ impl Default for WorkerOptions {
       cache_storage_dir: Default::default(),
       extensions: Default::default(),
       startup_snapshot: Default::default(),
+      residual_lazy_js_sources: &[],
+      residual_lazy_esm_sources: &[],
       create_params: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
@@ -424,17 +434,6 @@ impl MainWorker {
       options.unconfigured_runtime = None;
     }
 
-    #[cfg(feature = "hmr")]
-    const {
-      assert!(
-        cfg!(not(feature = "only_snapshotted_js_sources")),
-        "'hmr' is incompatible with 'only_snapshotted_js_sources'."
-      );
-    }
-
-    #[cfg(feature = "only_snapshotted_js_sources")]
-    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
-
     let mut js_runtime = if let Some(u) = options.unconfigured_runtime {
       let js_runtime = u.hydrate(services.module_loader);
 
@@ -460,6 +459,8 @@ impl MainWorker {
       common_runtime(CommonRuntimeOptions {
         module_loader: services.module_loader.clone(),
         startup_snapshot: options.startup_snapshot,
+        residual_lazy_js_sources: options.residual_lazy_js_sources,
+        residual_lazy_esm_sources: options.residual_lazy_esm_sources,
         create_params: options.create_params,
         skip_op_registration: options.skip_op_registration,
         shared_array_buffer_store: services.shared_array_buffer_store,
@@ -1125,6 +1126,8 @@ fn common_extensions<
 struct CommonRuntimeOptions {
   module_loader: Rc<dyn ModuleLoader>,
   startup_snapshot: Option<&'static [u8]>,
+  residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   create_params: Option<v8::CreateParams>,
   skip_op_registration: bool,
   shared_array_buffer_store: Option<SharedArrayBufferStore>,
@@ -1142,6 +1145,8 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
   let js_runtime = JsRuntime::new(RuntimeOptions {
     module_loader: Some(opts.module_loader),
     startup_snapshot: opts.startup_snapshot,
+    residual_lazy_js_sources: opts.residual_lazy_js_sources,
+    residual_lazy_esm_sources: opts.residual_lazy_esm_sources,
     create_params: opts.create_params,
     skip_op_registration: opts.skip_op_registration,
     shared_array_buffer_store: opts.shared_array_buffer_store,
@@ -1198,6 +1203,8 @@ pub fn create_permissions_stack_trace_callback()
 
 pub struct UnconfiguredRuntimeOptions {
   pub startup_snapshot: &'static [u8],
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   pub create_params: Option<v8::CreateParams>,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
@@ -1231,6 +1238,8 @@ impl UnconfiguredRuntime {
     let js_runtime = common_runtime(CommonRuntimeOptions {
       module_loader: module_loader.clone(),
       startup_snapshot: Some(options.startup_snapshot),
+      residual_lazy_js_sources: options.residual_lazy_js_sources,
+      residual_lazy_esm_sources: options.residual_lazy_esm_sources,
       create_params: options.create_params,
       skip_op_registration: true,
       shared_array_buffer_store: options.shared_array_buffer_store,
