@@ -407,18 +407,17 @@ converters["unrestricted double?"] = createNullableConverter(
   converters["unrestricted double"],
 );
 
-converters.DOMString = function (V, prefix, context, opts) {
+converters.DOMString = function (V, _prefix, _context, opts) {
   if (typeof V === "string") {
     return V;
   } else if (V === null && opts && opts.treatNullAsEmptyString) {
     return "";
   } else if (typeof V === "symbol") {
-    throw makeException(
-      TypeError,
-      "is a symbol, which cannot be converted to a string",
-      prefix,
-      context,
-    );
+    // V8's `String(sym)` returns the symbol description rather than throwing,
+    // so we throw explicitly to match Node and other WHATWG-conformant
+    // runtimes, which use V8's native "Cannot convert a Symbol value to a
+    // string" message (raised by ToPrimitive on Symbols).
+    throw new TypeError("Cannot convert a Symbol value to a string");
   }
 
   return String(V);
@@ -717,8 +716,31 @@ converters["sequence<DOMString>"] = createSequenceConverter(
   converters.DOMString,
 );
 
-function requiredArguments(length, required, prefix) {
+function requiredArguments(length, required, prefix, argNames) {
   if (length < required) {
+    if (argNames !== undefined) {
+      // Node-compatible error: ERR_MISSING_ARGS with a message that names the
+      // required arguments, e.g. `The "name" and "value" arguments must be
+      // specified`.
+      let formatted;
+      const n = argNames.length;
+      if (n === 1) {
+        formatted = `"${argNames[0]}"`;
+      } else if (n === 2) {
+        formatted = `"${argNames[0]}" and "${argNames[1]}"`;
+      } else {
+        let joined = "";
+        for (let i = 0; i < n - 1; i++) {
+          joined += `"${argNames[i]}", `;
+        }
+        formatted = `${joined}and "${argNames[n - 1]}"`;
+      }
+      const err = new TypeError(
+        `The ${formatted} argument${n === 1 ? "" : "s"} must be specified`,
+      );
+      err.code = "ERR_MISSING_ARGS";
+      throw err;
+    }
     const errMsg = `${prefix ? prefix + ": " : ""}${required} argument${
       required === 1 ? "" : "s"
     } required, but only ${length} present`;

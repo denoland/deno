@@ -370,6 +370,7 @@ declare module "ext:deno_webidl/00_webidl.js" {
     length: number,
     required: number,
     prefix: string,
+    argNames?: readonly string[],
   ): void;
   type Dictionary = DictionaryMember[];
   interface DictionaryMember {

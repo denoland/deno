@@ -3751,6 +3751,7 @@
     "parallel/test-whatwg-url-custom-href-side-effect.js": {},
     "parallel/test-whatwg-url-custom-inspect.js": {},
     "parallel/test-whatwg-url-custom-parsing.js": {},
+    "parallel/test-whatwg-url-custom-searchparams-append.js": {},
     "parallel/test-whatwg-url-custom-searchparams-sort.js": {},
     "parallel/test-whatwg-url-custom-setters.js": {},
     "parallel/test-whatwg-url-custom-tostringtag.js": {},

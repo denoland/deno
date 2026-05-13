@@ -42,6 +42,11 @@ const { createFilteredInspectProxy } = core.loadExtScript(
 const _list = Symbol("list");
 const _urlObject = Symbol("url object");
 
+// Pre-frozen argument-name arrays used to produce Node-compatible
+// `ERR_MISSING_ARGS` messages from `webidl.requiredArguments`.
+const NAME_ARG_NAMES = ["name"];
+const APPEND_ARG_NAMES = ["name", "value"];
+
 // WARNING: must match rust code's UrlSetter::*
 const SET_HASH = 0;
 const SET_HOST = 1;
@@ -172,7 +177,7 @@ class URLSearchParams {
   append(name, value) {
     webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'append' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 2, prefix);
+    webidl.requiredArguments(arguments.length, 2, prefix, APPEND_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     value = webidl.converters.USVString(value, prefix, "Argument 2");
     ArrayPrototypePush(this[_list], [name, value]);
@@ -186,7 +191,7 @@ class URLSearchParams {
   delete(name, value = undefined) {
     webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'append' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
+    webidl.requiredArguments(arguments.length, 1, prefix, NAME_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     const list = this[_list];
     let writeIdx = 0;
@@ -218,7 +223,7 @@ class URLSearchParams {
   getAll(name) {
     webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'getAll' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
+    webidl.requiredArguments(arguments.length, 1, prefix, NAME_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     const values = [];
     const entries = this[_list];
@@ -238,7 +243,7 @@ class URLSearchParams {
   get(name) {
     webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'get' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
+    webidl.requiredArguments(arguments.length, 1, prefix, NAME_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     const entries = this[_list];
     for (let i = 0; i < entries.length; ++i) {
@@ -258,7 +263,7 @@ class URLSearchParams {
   has(name, value = undefined) {
     webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'has' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
+    webidl.requiredArguments(arguments.length, 1, prefix, NAME_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     if (value !== undefined) {
       value = webidl.converters.USVString(value, prefix, "Argument 2");
@@ -277,7 +282,7 @@ class URLSearchParams {
   set(name, value) {
     webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'set' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 2, prefix);
+    webidl.requiredArguments(arguments.length, 2, prefix, APPEND_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     value = webidl.converters.USVString(value, prefix, "Argument 2");
 
