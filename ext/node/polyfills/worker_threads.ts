@@ -192,6 +192,21 @@ const workerDisallowedFlags = new SafeSet([
   "--report-uncaught-exception",
 ]);
 
+// V8 profiling flags Node accepts in worker execArgv. Deno doesn't wire up
+// the underlying profiling integration, but rejecting them with
+// ERR_WORKER_INVALID_EXEC_ARGV breaks scripts that pass them unconditionally,
+// so accept and ignore.
+const workerSilentlyIgnoredFlags = new SafeSet([
+  "--heap-prof",
+  "--heap-prof-interval",
+  "--heap-prof-name",
+  "--heap-prof-dir",
+  "--cpu-prof",
+  "--cpu-prof-interval",
+  "--cpu-prof-name",
+  "--cpu-prof-dir",
+]);
+
 interface WorkerOptions {
   // only for typings
   argv?: unknown[];
@@ -259,14 +274,17 @@ class NodeWorker extends EventEmitter {
           if (!StringPrototypeStartsWith(flag, "-")) {
             continue;
           }
-          if (!process.allowedNodeEnvironmentFlags.has(flag)) {
-            invalidFlags[invalidFlags.length] = flag;
-            continue;
-          }
           const eqIdx = StringPrototypeIndexOf(flag, "=");
           const flagName = eqIdx === -1
             ? flag
             : StringPrototypeSlice(flag, 0, eqIdx);
+          if (workerSilentlyIgnoredFlags.has(flagName)) {
+            continue;
+          }
+          if (!process.allowedNodeEnvironmentFlags.has(flag)) {
+            invalidFlags[invalidFlags.length] = flag;
+            continue;
+          }
           if (workerDisallowedFlags.has(flagName)) {
             invalidFlags[invalidFlags.length] = flag;
           }
@@ -289,6 +307,13 @@ class NodeWorker extends EventEmitter {
         for (let i = 0; i < parts.length; i++) {
           const part = parts[i];
           if (StringPrototypeStartsWith(part, "-")) {
+            const eqIdx = StringPrototypeIndexOf(part, "=");
+            const partName = eqIdx === -1
+              ? part
+              : StringPrototypeSlice(part, 0, eqIdx);
+            if (workerSilentlyIgnoredFlags.has(partName)) {
+              continue;
+            }
             if (
               !process.allowedNodeEnvironmentFlags.has(part) ||
               workerDisallowedFlags.has(part)
