@@ -67,21 +67,63 @@
     "es-module/test-import-preload-require-cycle.js": {},
     "es-module/test-loaders-hidden-from-users.js": {},
     "es-module/test-require-as-esm-interop.mjs": {},
+    "es-module/test-require-module.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
+    "es-module/test-require-module-cached-tla.js": {},
     "es-module/test-require-module-cycle-cjs-esm-esm.js": {},
     "es-module/test-require-module-defined-esmodule.js": {},
     "es-module/test-require-module-detect-entry-point-aou.js": {},
     "es-module/test-require-module-detect-entry-point.js": {},
     "es-module/test-require-module-dont-detect-cjs.js": {},
+    "es-module/test-require-module-dynamic-import-1.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
+    "es-module/test-require-module-dynamic-import-2.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
     "es-module/test-require-module-dynamic-import-3.js": {},
     "es-module/test-require-module-retry-import-evaluating.js": {},
     "es-module/test-require-module-dynamic-import-4.js": {},
+    "es-module/test-require-module-feature-detect.js": {
+      "ignore": true,
+      "reason": "Tests Node's process.features.require_module flag, which Deno does not expose."
+    },
+    "es-module/test-require-module-instantiated.mjs": {},
+    "es-module/test-require-module-preload.js": {
+      "ignore": true,
+      "reason": "Tests Node's --require / --import preload CLI flags, which Deno does not implement."
+    },
     "es-module/test-require-module-synchronous-rejection-handling.js": {},
+    "es-module/test-require-module-tla-execution.js": {},
     "es-module/test-require-module-tla-nested.js": {},
+    "es-module/test-require-module-tla-print-execution.js": {
+      "ignore": true,
+      "reason": "Requires Node's --experimental-print-required-tla CLI flag, which Deno does not implement."
+    },
     "es-module/test-require-module-tla-rejected.js": {},
     "es-module/test-require-module-tla-resolved.js": {},
+    "es-module/test-require-module-tla-retry-import.js": {},
+    "es-module/test-require-module-tla-retry-import-2.js": {},
+    "es-module/test-require-module-tla-retry-require.js": {},
     "es-module/test-require-module-tla-unresolved.js": {},
     "es-module/test-require-module-transpiled.js": {},
+    "es-module/test-require-module-twice.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
+    "es-module/test-require-module-warning.js": {
+      "ignore": true,
+      "reason": "Tests Node's --trace-require-module / ExperimentalWarning stderr emissions, which Deno does not emit."
+    },
     "es-module/test-require-module-with-detection.js": {},
+    "es-module/test-require-node-modules-warning.js": {
+      "ignore": true,
+      "reason": "Tests Node's --trace-require-module / ExperimentalWarning stderr emissions, which Deno does not emit."
+    },
     "es-module/test-typescript-commonjs.mjs": {},
     "es-module/test-typescript-eval.mjs": {},
     "es-module/test-typescript-module.mjs": {},
@@ -2979,8 +3021,24 @@
     // "parallel/test-repl-top-level-await.js": {},
     "parallel/test-require-cache.js": {},
     "parallel/test-require-dot.js": {},
+    "parallel/test-require-empty-main.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
     "parallel/test-require-exceptions.js": {},
     "parallel/test-require-extension-over-directory.js": {},
+    "parallel/test-require-extensions-main.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
+    "parallel/test-require-extensions-same-filename-as-dir.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
+    "parallel/test-require-extensions-same-filename-as-dir-trailing-slash.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
     "parallel/test-require-invalid-main-no-exports.js": {},
     "parallel/test-require-invalid-package.js": {},
     "parallel/test-require-json.js": {},
@@ -2990,6 +3048,10 @@
     "parallel/test-require-resolve.js": {},
     "parallel/test-require-resolve-invalid-paths.js": {},
     "parallel/test-require-resolve-opts-paths-relative.js": {},
+    "parallel/test-require-unicode.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
     "parallel/test-runner-aftereach-runtime-skip.js": {},
     "parallel/test-runner-aliases.js": {},
     "parallel/test-runner-cli-concurrency.js": {

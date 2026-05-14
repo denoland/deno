@@ -2034,6 +2034,29 @@ class ERR_QUIC_TLS13_REQUIRED extends NodeError {
     super("ERR_QUIC_TLS13_REQUIRED", `QUIC requires TLS version 1.3`);
   }
 }
+class ERR_REQUIRE_ASYNC_MODULE extends NodeError {
+  constructor(filename: string, parentFilename: string) {
+    super(
+      "ERR_REQUIRE_ASYNC_MODULE",
+      `require() cannot be used on an ESM graph with top-level await. Use import() instead. To see where the top-level await comes from, use --stack-trace-limit=100 and inspect the dependency graph. Requiring ${filename}. From ${parentFilename}`,
+    );
+    this.name = `Error [${this.code}]`;
+    this.toString = nodeErrorToStringWithEmbeddedCode;
+  }
+}
+class ERR_REQUIRE_CYCLE_MODULE extends NodeError {
+  constructor(filename: string, parentFilename: string) {
+    super(
+      "ERR_REQUIRE_CYCLE_MODULE",
+      `Cannot require() ES Module ${filename} in a cycle. (from ${parentFilename})`,
+    );
+    this.name = `Error [${this.code}]`;
+    this.toString = nodeErrorToStringWithEmbeddedCode;
+  }
+}
+function nodeErrorToStringWithEmbeddedCode(this: NodeErrorAbstraction) {
+  return `${this.name}: ${this.message}`;
+}
 class ERR_SCRIPT_EXECUTION_INTERRUPTED extends NodeError {
   constructor() {
     super(
@@ -3392,6 +3415,8 @@ return {
   ERR_QUICSTREAM_OPEN_FAILED,
   ERR_QUICSTREAM_UNSUPPORTED_PUSH,
   ERR_QUIC_TLS13_REQUIRED,
+  ERR_REQUIRE_ASYNC_MODULE,
+  ERR_REQUIRE_CYCLE_MODULE,
   ERR_SCRIPT_EXECUTION_INTERRUPTED,
   ERR_SERVER_ALREADY_LISTEN,
   ERR_SERVER_NOT_RUNNING,
@@ -3697,6 +3722,8 @@ return {
     ERR_QUICSTREAM_OPEN_FAILED,
     ERR_QUICSTREAM_UNSUPPORTED_PUSH,
     ERR_QUIC_TLS13_REQUIRED,
+    ERR_REQUIRE_ASYNC_MODULE,
+    ERR_REQUIRE_CYCLE_MODULE,
     ERR_SCRIPT_EXECUTION_INTERRUPTED,
     ERR_SERVER_ALREADY_LISTEN,
     ERR_SERVER_NOT_RUNNING,

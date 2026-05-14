@@ -558,9 +558,10 @@ async fn do_load_job<'s, 'i>(
           exception_to_err(scope, exception, false, false)
         })?;
     }
-    v8::ModuleStatus::Instantiated
-    | v8::ModuleStatus::Instantiating
-    | v8::ModuleStatus::Evaluating => {
+    v8::ModuleStatus::Instantiated => {
+      // Already instantiated — caller (op_import_sync) will evaluate.
+    }
+    v8::ModuleStatus::Instantiating | v8::ModuleStatus::Evaluating => {
       return Err(
         JsErrorBox::generic(format!(
           "Cannot require() ES Module {specifier} in a cycle."
@@ -691,6 +692,14 @@ fn op_import_sync<'s, 'i>(
   let module = module_map_rc
     .get_module(scope, module_id)
     .expect("Module must exist");
+
+  // A module that was evaluated asynchronously (e.g. via `await import()`)
+  // and contains top-level await cannot be loaded via `require()`. Detect
+  // this regardless of current status so retries after async load still
+  // throw ERR_REQUIRE_ASYNC_MODULE.
+  if module.is_graph_async() {
+    return Err(CoreErrorKind::TLA.into_box());
+  }
 
   match module.get_status() {
     v8::ModuleStatus::Uninstantiated
