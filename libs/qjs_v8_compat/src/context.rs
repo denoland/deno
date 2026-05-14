@@ -84,9 +84,10 @@ impl<'s> Local<'s, Context> {
 }
 
 impl Context {
-  pub fn from_snapshot<'s, S>(
+  pub fn from_snapshot<'s, S, X>(
     _scope: &mut S,
     _index: usize,
+    _extras: X,
   ) -> Option<Local<'s, Context>> {
     None
   }

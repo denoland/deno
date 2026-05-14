@@ -85,9 +85,8 @@ impl<'s> Local<'s, Module> {
   ) -> Option<Local<'s, Value>> {
     None
   }
-  pub fn get_module_namespace_with_phase<S>(
+  pub fn get_module_namespace_with_phase(
     &self,
-    _scope: S,
     _phase: ModuleImportPhase,
   ) -> Local<'s, Object> {
     Local::from_raw(sys::jsv_undefined())
@@ -159,7 +158,7 @@ impl<'s> Local<'s, FixedArray> {
   pub fn get<S>(
     &self,
     _scope: &mut S,
-    _index: i32,
+    _index: usize,
   ) -> Option<Local<'s, Value>> {
     Some(Local::from_raw(sys::jsv_undefined()))
   }

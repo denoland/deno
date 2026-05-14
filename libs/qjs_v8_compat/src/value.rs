@@ -1200,10 +1200,11 @@ impl<T> Clone for Global<T> {
 }
 
 impl<T> Global<T> {
-  pub fn new<'sc, 'lo>(
+  pub fn new<'sc, 'lo, L: Into<Local<'lo, T>>>(
     scope: &mut HandleScope<'sc>,
-    local: Local<'lo, T>,
+    local: L,
   ) -> Self {
+    let local = local.into();
     let ctx = scope.ctx();
     sys::dup_value(ctx, local.raw);
     Self {
@@ -1260,17 +1261,13 @@ impl Global<crate::module::Module> {
   pub fn get_status(&self) -> crate::module::ModuleStatus {
     crate::module::ModuleStatus::Uninstantiated
   }
-  pub fn get_exception<'s>(
-    &self,
-    scope: &mut HandleScope<'s>,
-  ) -> Local<'s, Value> {
-    self.to_local(scope).get_exception()
+  pub fn get_exception<'s>(&self) -> Local<'s, Value> {
+    Local::from_raw(self.raw)
   }
   pub fn get_module_namespace<'s>(
     &self,
-    scope: &mut HandleScope<'s>,
   ) -> Local<'s, crate::object::Object> {
-    self.to_local(scope).get_module_namespace()
+    Local::from_raw(self.raw)
   }
 }
 

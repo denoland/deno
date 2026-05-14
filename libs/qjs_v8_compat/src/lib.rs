@@ -911,7 +911,7 @@ pub mod v8 {
   /// Stub for `v8::latin1_to_utf8`. The real API converts a latin1
   /// buffer to UTF-8 in-place; we never call this on QuickJS, so the
   /// fn-pointer existence is what matters.
-  pub fn latin1_to_utf8(_input: &[u8], _output: &mut [u8]) -> usize {
+  pub fn latin1_to_utf8(_input_len: usize, _input: *const u8, _output: *mut u8) -> usize {
     0
   }
 
