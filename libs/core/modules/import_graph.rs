@@ -127,15 +127,16 @@ pub(crate) fn record_lazy_esm(scope: &mut v8::PinScope, to: &str) {
 /// Like [`record_lazy_esm`] but for the cache-hit path. Recorded into the
 /// graph file (so analysis sees the edge) but suppressed from stderr —
 /// nothing was actually parsed.
-pub(crate) fn record_lazy_esm_cached(
-  scope: &mut v8::PinScope,
-  to: &str,
-) {
+pub(crate) fn record_lazy_esm_cached(scope: &mut v8::PinScope, to: &str) {
   if !is_enabled() {
     return;
   }
   let from = caller_specifier(scope);
-  record(from.as_deref().unwrap_or("<unknown>"), to, "lazy_esm_cached");
+  record(
+    from.as_deref().unwrap_or("<unknown>"),
+    to,
+    "lazy_esm_cached",
+  );
 }
 
 /// `Deno.core.loadExtScript(...)`. Called via the op only on cache miss

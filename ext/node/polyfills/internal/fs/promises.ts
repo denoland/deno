@@ -30,7 +30,8 @@ const { ERR_METHOD_NOT_IMPLEMENTED } = core.loadExtScript(
 const lazyPath = core.createLazyLoader("node:path");
 const lazyProcess = core.createLazyLoader("node:process");
 
-const { Promise, PromiseReject, SafeArrayIterator, SymbolAsyncDispose } = primordials;
+const { Promise, PromiseReject, SafeArrayIterator, SymbolAsyncDispose } =
+  primordials;
 
 // Promisified fs.X wrappers MUST NOT be built at module body. handle.ts /
 // internal/fs/promises.ts are loaded during the initial `fs.promises`
@@ -49,7 +50,6 @@ function lazyPromisifyFs(name: string): any {
     return fn(...new SafeArrayIterator(args));
   };
 }
-
 
 // -- access --
 
@@ -327,7 +327,9 @@ const promises = {
   writeFile: writeFilePromise,
   appendFile: appendFilePromise,
   readFile: readFilePromise,
-  watch: ((...args: any[]) => (lazyFs() as any).watchPromise(...new SafeArrayIterator(args))) as any,
+  watch:
+    ((...args: any[]) =>
+      (lazyFs() as any).watchPromise(...new SafeArrayIterator(args))) as any,
 };
 
 export default promises;

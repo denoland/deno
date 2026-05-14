@@ -324,7 +324,8 @@ const lazyNodeModules = {
     core.loadExtScript("ext:deno_node/internal/http2/core.ts").default,
   "internal/http2/util": () =>
     core.loadExtScript("ext:deno_node/internal/http2/util.ts").default,
-  "internal/streams/lazy_transform": () => internalStreamsLazyTransform().default,
+  "internal/streams/lazy_transform": () =>
+    internalStreamsLazyTransform().default,
   "child_process": () => core.loadExtScript("ext:deno_node/child_process.ts"),
   "crypto": () => core.loadExtScript("ext:deno_node/crypto.ts").default,
   "dgram": () => core.loadExtScript("ext:deno_node/dgram.ts").default,

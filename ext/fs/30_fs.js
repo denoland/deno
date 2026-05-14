@@ -862,7 +862,9 @@ async function writeFile(
     options.signal[abortSignal.add](abortHandler);
   }
   try {
-    if (ObjectPrototypeIsPrototypeOf(lazyStreams().ReadableStreamPrototype, data)) {
+    if (
+      ObjectPrototypeIsPrototypeOf(lazyStreams().ReadableStreamPrototype, data)
+    ) {
       const file = await open(path, {
         mode: options.mode,
         append: options.append ?? false,
@@ -909,7 +911,9 @@ function writeTextFile(
   data,
   options = { __proto__: null },
 ) {
-  if (ObjectPrototypeIsPrototypeOf(lazyStreams().ReadableStreamPrototype, data)) {
+  if (
+    ObjectPrototypeIsPrototypeOf(lazyStreams().ReadableStreamPrototype, data)
+  ) {
     return writeFile(
       path,
       data.pipeThrough(new TextEncoderStream()),
