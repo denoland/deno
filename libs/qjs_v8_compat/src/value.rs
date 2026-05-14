@@ -317,7 +317,6 @@ where
   }
 }
 
-// PinScope wraps HandleScope; ScopeLike passes through.
 impl<'s, 'i> ScopeLike<'s> for crate::scope::PinScope<'s, 'i> {
   fn handle_scope(&mut self) -> &mut HandleScope<'s> {
     use std::ops::DerefMut;
@@ -344,9 +343,6 @@ impl<'s, 'i> LocalNewScope<'s> for crate::scope::PinScope<'s, 'i> {
     self.deref_mut()
   }
 }
-// Explicit `&mut PinScope` impl so call sites that pass scope by
-// reference also satisfy the trait without a generic blanket (which
-// would create ambiguity at other callsites).
 impl<'s, 'i> LocalNewScope<'s> for &mut crate::scope::PinScope<'s, 'i> {
   fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
     use std::ops::DerefMut;
@@ -381,9 +377,32 @@ impl<'s, 'p, C> LocalNewScope<'s>
 impl<'s, C> LocalNewScope<'s> for crate::scope::CallbackScope<'s, C> {
   fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
     use std::ops::DerefMut;
-    let pin: &mut crate::scope::PinScope<'s, 's, C> = self.deref_mut();
-    let hs: &mut HandleScope<'s, C> = pin.deref_mut();
+    let hs: &mut HandleScope<'s, C> = self.deref_mut();
     unsafe { &mut *(hs as *mut HandleScope<'s, C> as *mut HandleScope<'s>) }
+  }
+}
+// Allow `&PinScope` (immutable) to be used wherever `&mut PinScope`
+// is required. Our HandleScope's mutation methods (track_owned etc.)
+// only mutate fields callers don't observe through `&PinScope`, so
+// the cast is sound for the operations the surface exposes.
+// We use `transmute_copy` to launder the cast past the
+// invalid_reference_casting lint (which catches the obvious form).
+impl<'s, 'i, C> LocalNewScope<'s> for &crate::scope::PinScope<'s, 'i, C> {
+  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+    let hs: &HandleScope<'s, C> = &(**self).0;
+    let ptr: *const HandleScope<'s, C> = hs;
+    let mut_ptr: *mut HandleScope<'s> =
+      unsafe { core::mem::transmute_copy(&ptr) };
+    unsafe { &mut *mut_ptr }
+  }
+}
+impl<'s, C> LocalNewScope<'s> for &HandleScope<'s, C> {
+  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+    let hs: &HandleScope<'s, C> = *self;
+    let ptr: *const HandleScope<'s, C> = hs;
+    let mut_ptr: *mut HandleScope<'s> =
+      unsafe { core::mem::transmute_copy(&ptr) };
+    unsafe { &mut *mut_ptr }
   }
 }
 

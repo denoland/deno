@@ -111,17 +111,18 @@ impl<'s, C> HandleScopeSource for CallbackScope<'s, C> {
   }
 }
 
-impl<'s, S> HandleScopeSource for crate::exception::TryCatch<'s, S>
-where
-  S: HandleScopeSource,
+impl<'s, 'p, C> HandleScopeSource
+  for crate::exception::TryCatch<'s, HandleScope<'p, C>>
 {
   fn default_ctx(&mut self) -> sys::Context {
     use std::ops::DerefMut;
-    self.deref_mut().default_ctx()
+    let pin = self.deref_mut();
+    pin.0.ctx
   }
   fn isolate_ptr(&mut self) -> *mut Isolate {
     use std::ops::DerefMut;
-    self.deref_mut().isolate_ptr()
+    let pin = self.deref_mut();
+    pin.0.isolate
   }
 }
 
@@ -560,9 +561,6 @@ pub struct PinScope<'s, 'i: 's, C = Context>(
   PhantomData<&'i ()>,
 );
 
-// Allow `&mut HandleScope` to be used everywhere `&mut PinScope`
-// is required and vice versa. The transparent layout makes the
-// reinterpret safe.
 impl<'s, 'i: 's, C> PinScope<'s, 'i, C> {
   /// Construct a PinScope wrapping an existing HandleScope.
   pub fn from_handle_scope_mut<'r>(

@@ -62,7 +62,7 @@ impl<'a, 'b, 'c, 'i, S> VariantSerializer<'a, 'b, 'c, 'i, S> {
   fn end(self, inner: impl FnOnce(S) -> JsResult<'a>) -> JsResult<'a> {
     let value = inner(self.inner)?;
     let scope = &mut *self.scope.borrow_mut();
-    let null = v8::null(scope).into();
+    let null = v8::null(&mut *scope).into();
     let key = v8_struct_key(scope, self.variant).into();
     let obj =
       v8::Object::with_prototype_and_properties(scope, null, &[key], &[value]);
@@ -214,7 +214,7 @@ impl<'a> ser::SerializeStruct for ObjectSerializer<'a, '_, '_, '_> {
 
   fn end(self) -> JsResult<'a> {
     let scope = &mut *self.scope.borrow_mut();
-    let null = v8::null(scope);
+    let null = v8::null(&mut *scope);
     let obj = v8::Object::with_prototype_and_properties(
       scope,
       null.into(),
@@ -370,7 +370,7 @@ impl<'a> ser::SerializeMap for MapSerializer<'a, '_, '_, '_> {
   fn end(self) -> JsResult<'a> {
     debug_assert!(self.keys.len() == self.values.len());
     let scope = &mut *self.scope.borrow_mut();
-    let null = v8::null(scope).into();
+    let null = v8::null(&mut *scope).into();
     let obj = v8::Object::with_prototype_and_properties(
       scope,
       null,

@@ -97,15 +97,20 @@ impl<'a, P> Drop for ContextScope<'a, P> {
   }
 }
 
+// Deref to PinScope (transparent over HandleScope) so
+// `&mut ContextScope<HandleScope>` auto-coerces to `&mut PinScope`
+// at function call sites — matching deno_core's canonical scope shape.
 impl<'a, 's, C> std::ops::Deref for ContextScope<'a, HandleScope<'s, C>> {
-  type Target = HandleScope<'s, C>;
+  type Target = crate::scope::PinScope<'s, 's, C>;
   fn deref(&self) -> &Self::Target {
-    self.parent
+    let hs: &HandleScope<'s, C> = self.parent;
+    unsafe { &*(hs as *const HandleScope<'s, C> as *const Self::Target) }
   }
 }
 impl<'a, 's, C> std::ops::DerefMut for ContextScope<'a, HandleScope<'s, C>> {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    self.parent
+    let hs: &mut HandleScope<'s, C> = self.parent;
+    unsafe { &mut *(hs as *mut HandleScope<'s, C> as *mut Self::Target) }
   }
 }
 

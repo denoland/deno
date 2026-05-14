@@ -51,45 +51,50 @@ impl<'s> FunctionBuilder<'s> {
 }
 
 impl FunctionTemplate {
-  pub fn new<'s, F>(
-    scope: &mut HandleScope<'s>,
+  pub fn new<'s, S, F>(
+    scope: &mut S,
     _callback: F,
   ) -> Local<'s, FunctionTemplate>
   where
     F: crate::function::MapFnTo<FunctionCallback>,
+    S: crate::scope::HandleScopeSource,
   {
-    let raw = sys::new_object(scope.ctx());
-    scope.track_owned(raw);
+    let raw = sys::new_object(scope.default_ctx());
     Local::from_raw(raw)
+  }
+  pub fn builder<F>(callback: F) -> FunctionBuilder<'static>
+  where
+    F: crate::function::MapFnTo<FunctionCallback>,
+  {
+    FunctionBuilder::new(callback.map_fn_to())
+  }
+  pub fn builder_raw(callback: FunctionCallback) -> FunctionBuilder<'static> {
+    FunctionBuilder::new(callback)
   }
 }
 
 impl<'s> Local<'s, FunctionTemplate> {
-  pub fn get_function(
+  pub fn get_function<S>(
     &self,
-    _scope: &mut HandleScope<'s>,
+    _scope: &S,
   ) -> Option<Local<'s, crate::function::Function>> {
     None
   }
-  pub fn instance_template(
-    &self,
-    _scope: &mut HandleScope<'s>,
-  ) -> Local<'s, ObjectTemplate> {
+  pub fn instance_template<S>(&self, _scope: &S) -> Local<'s, ObjectTemplate> {
     Local::from_raw(self.raw)
   }
-  pub fn prototype_template(
-    &self,
-    _scope: &mut HandleScope<'s>,
-  ) -> Local<'s, ObjectTemplate> {
+  pub fn prototype_template<S>(&self, _scope: &S) -> Local<'s, ObjectTemplate> {
     Local::from_raw(self.raw)
   }
   pub fn set_class_name(&self, _name: Local<'s, crate::primitives::String>) {}
 }
 
 impl ObjectTemplate {
-  pub fn new<'s>(scope: &mut HandleScope<'s>) -> Local<'s, ObjectTemplate> {
-    let raw = sys::new_object(scope.ctx());
-    scope.track_owned(raw);
+  pub fn new<'s, S>(scope: &mut S) -> Local<'s, ObjectTemplate>
+  where
+    S: crate::scope::HandleScopeSource,
+  {
+    let raw = sys::new_object(scope.default_ctx());
     Local::from_raw(raw)
   }
 }
@@ -112,10 +117,7 @@ impl<'s> Local<'s, ObjectTemplate> {
     _value: Local<'s, crate::value::Value>,
   ) {
   }
-  pub fn new_instance(
-    &self,
-    _scope: &mut HandleScope<'s>,
-  ) -> Option<Local<'s, Object>> {
+  pub fn new_instance<S>(&self, _scope: &S) -> Option<Local<'s, Object>> {
     None
   }
   pub fn set_internal_field_count(&self, _n: i32) {}

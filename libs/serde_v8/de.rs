@@ -384,7 +384,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
   {
     // Unit variant
     if self.input.is_string() || self.input.is_string_object() {
-      let payload = v8::undefined(self.scope).into();
+      let payload = v8::undefined(&mut *self.scope).into();
       visitor.visit_enum(EnumAccess {
         scope: self.scope,
         tag: self.input,

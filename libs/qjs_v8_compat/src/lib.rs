@@ -148,11 +148,13 @@ macro_rules! scope {
 macro_rules! tc_scope {
   (let $name:ident, $parent:expr) => {
     let mut __tc_inner = $crate::HandleScope::new($parent);
-    let mut $name = $crate::TryCatch::new(&mut __tc_inner);
+    let mut __tc_outer = $crate::TryCatch::new(&mut __tc_inner);
+    let $name = &mut __tc_outer;
   };
   ($name:ident, $parent:expr) => {
     let mut __tc_inner = $crate::HandleScope::new($parent);
-    let mut $name = $crate::TryCatch::new(&mut __tc_inner);
+    let mut __tc_outer = $crate::TryCatch::new(&mut __tc_inner);
+    let $name = &mut __tc_outer;
   };
 }
 
@@ -683,13 +685,13 @@ pub mod v8 {
     std::rc::Rc::new(())
   }
 
-  pub fn undefined<'s>(
-    _scope: &mut crate::scope::HandleScope<'s>,
+  pub fn undefined<'s, S>(
+    _scope: S,
   ) -> crate::value::Local<'s, crate::value::Primitive> {
     crate::value::Local::from_raw(crate::sys::jsv_undefined())
   }
-  pub fn null<'s>(
-    _scope: &mut crate::scope::HandleScope<'s>,
+  pub fn null<'s, S>(
+    _scope: S,
   ) -> crate::value::Local<'s, crate::value::Primitive> {
     crate::value::Local::from_raw(crate::sys::jsv_null())
   }

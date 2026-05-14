@@ -190,15 +190,22 @@ impl<'s, S> TryCatch<'s, S> {
 // TryCatch is Unpin so Pin<&mut TryCatch>::deref reaches the inner.
 impl<'s, S> Unpin for TryCatch<'s, S> {}
 
-impl<'s, S> std::ops::Deref for TryCatch<'s, S> {
-  type Target = S;
-  fn deref(&self) -> &S {
-    self.parent
+// Specialized Deref: when the parent is a HandleScope, we deref to a
+// PinScope (PinScope is repr(transparent) over HandleScope, so this
+// is a free reinterpret). This lets `&mut TryCatch<HandleScope>`
+// auto-coerce to `&mut PinScope` via deref coercion at function call
+// sites — matching the canonical scope shape that deno_core uses.
+impl<'s, 'p, C> std::ops::Deref for TryCatch<'s, HandleScope<'p, C>> {
+  type Target = crate::scope::PinScope<'p, 'p, C>;
+  fn deref(&self) -> &Self::Target {
+    let hs: &HandleScope<'p, C> = self.parent;
+    unsafe { &*(hs as *const HandleScope<'p, C> as *const Self::Target) }
   }
 }
-impl<'s, S> std::ops::DerefMut for TryCatch<'s, S> {
-  fn deref_mut(&mut self) -> &mut S {
-    self.parent
+impl<'s, 'p, C> std::ops::DerefMut for TryCatch<'s, HandleScope<'p, C>> {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    let hs: &mut HandleScope<'p, C> = self.parent;
+    unsafe { &mut *(hs as *mut HandleScope<'p, C> as *mut Self::Target) }
   }
 }
 

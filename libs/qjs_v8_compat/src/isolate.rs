@@ -126,6 +126,18 @@ impl OwnedIsolate {
   }
 }
 
+impl std::ops::Deref for OwnedIsolate {
+  type Target = Isolate;
+  fn deref(&self) -> &Isolate {
+    unsafe { &*(self as *const OwnedIsolate as *const Isolate) }
+  }
+}
+impl std::ops::DerefMut for OwnedIsolate {
+  fn deref_mut(&mut self) -> &mut Isolate {
+    unsafe { &mut *(self as *mut OwnedIsolate as *mut Isolate) }
+  }
+}
+
 impl Drop for OwnedIsolate {
   fn drop(&mut self) {
     sys::free_context(self.default_ctx);

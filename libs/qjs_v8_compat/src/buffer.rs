@@ -91,8 +91,17 @@ impl ArrayBuffer {
     })
   }
   /// Mirror of `v8::ArrayBuffer::new_backing_store_from_bytes`.
-  pub fn new_backing_store_from_bytes(bytes: Box<[u8]>) -> Box<BackingStore> {
-    Box::new(BackingStore { data: bytes })
+  /// Generic over POD element type so callers passing Box<[i8]>,
+  /// Box<[u16]>, etc. (typed-array bodies) compile.
+  pub fn new_backing_store_from_bytes<T: Copy + 'static>(
+    bytes: Box<[T]>,
+  ) -> Box<BackingStore> {
+    let len = bytes.len() * std::mem::size_of::<T>();
+    let raw = Box::into_raw(bytes) as *mut u8;
+    let v = unsafe { Vec::from_raw_parts(raw, len, len) };
+    Box::new(BackingStore {
+      data: v.into_boxed_slice(),
+    })
   }
   /// Mirror of `v8::ArrayBuffer::new_backing_store_from_boxed_slice`.
   pub fn new_backing_store_from_boxed_slice(
