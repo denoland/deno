@@ -987,8 +987,9 @@ pub fn op_structured_clone<'s, 'i>(
   if scope.has_caught() || scope.has_terminated() {
     scope.rethrow();
     // Dummy value, this result will be discarded because an error was thrown.
-    let v = v8::undefined(scope);
-    return Ok(v.into());
+    let v: v8::Local<v8::Primitive> = v8::undefined(scope);
+    let v: v8::Local<'_, v8::Value> = v.into();
+    return Ok(unsafe { core::mem::transmute(v) });
   }
 
   if !matches!(ret, Some(true)) {

@@ -861,13 +861,13 @@ pub mod v8 {
     std::rc::Rc::new(())
   }
 
-  pub fn undefined<'s, S>(
-    _scope: &mut S,
+  pub fn undefined<'s, 'i>(
+    _scope: &mut crate::scope::PinScope<'s, 'i>,
   ) -> crate::value::Local<'s, crate::value::Primitive> {
     crate::value::Local::from_raw(crate::sys::jsv_undefined())
   }
-  pub fn null<'s, S>(
-    _scope: &mut S,
+  pub fn null<'s, 'i>(
+    _scope: &mut crate::scope::PinScope<'s, 'i>,
   ) -> crate::value::Local<'s, crate::value::Primitive> {
     crate::value::Local::from_raw(crate::sys::jsv_null())
   }

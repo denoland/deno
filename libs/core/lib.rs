@@ -17,7 +17,7 @@
 // `pub use deno_core::v8` re-export hands to consumers. The default
 // build keeps the rusty_v8 crate as `v8` via the `v8-engine` feature.
 #[cfg(feature = "quickjs")]
-extern crate qjs_v8_compat as v8;
+pub extern crate qjs_v8_compat as v8;
 
 pub mod arena;
 mod async_cancel;
@@ -83,12 +83,10 @@ pub use serde_v8::U16String;
 pub use sourcemap;
 pub use thiserror;
 pub use url;
-// Engine re-export. With `v8-engine` (the default), `v8` here is the
-// rusty_v8 crate. With `quickjs`, `v8` is already in scope from the
-// `extern crate qjs_v8_compat as v8` at the top of this file, and
-// `extern crate` aliases automatically count as a `pub use` for the
-// purposes of name resolution from outside the crate — so we only
-// need the explicit re-export under v8-engine.
+// Engine re-export. With `v8-engine` (the default), `v8` is the
+// rusty_v8 crate; we re-export it here. Under `quickjs`, the
+// `pub extern crate qjs_v8_compat as v8;` at the top of this file
+// already makes `deno_core::v8` resolve to `qjs_v8_compat`.
 #[cfg(not(feature = "quickjs"))]
 pub use v8;
 
