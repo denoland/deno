@@ -26,15 +26,14 @@ use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsFactoryFn;
-use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceCodeCacheInfo;
 use deno_core::error::CoreError;
 use deno_core::error::JsError;
-use deno_core::merge_op_metrics;
 use deno_core::v8;
+use deno_cron::CronHandler;
 use deno_cron::CronHandlerImpl;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
@@ -133,9 +132,8 @@ pub fn make_wait_for_inspector_disconnect_callback() -> Box<dyn Fn()> {
     if !has_notified_of_inspector_disconnect
       .swap(true, std::sync::atomic::Ordering::SeqCst)
     {
-      log::info!(
-        "Program finished. Waiting for inspector to disconnect to exit the process..."
-      );
+      // Match Node.js message format that debugger clients rely on
+      log::info!("Waiting for the debugger to disconnect...");
     }
   })
 }
@@ -231,6 +229,14 @@ pub struct WorkerOptions {
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<&'static [u8]>,
 
+  /// `(specifier, source)` pairs for `lazy_loaded_js` files that were not
+  /// consumed during snapshot creation. Emitted by the snapshot build script.
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+
+  /// `(specifier, source)` pairs for `lazy_loaded_esm` files that were not
+  /// consumed during snapshot creation. Emitted by the snapshot build script.
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
+
   /// Should op registration be skipped?
   pub skip_op_registration: bool,
 
@@ -280,6 +286,8 @@ impl Default for WorkerOptions {
       cache_storage_dir: Default::default(),
       extensions: Default::default(),
       startup_snapshot: Default::default(),
+      residual_lazy_js_sources: &[],
+      residual_lazy_esm_sources: &[],
       create_params: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
@@ -291,69 +299,54 @@ impl Default for WorkerOptions {
 }
 
 pub fn create_op_metrics(
-  enable_op_summary_metrics: bool,
   trace_ops: Option<Vec<String>>,
-) -> (
-  Option<Rc<OpMetricsSummaryTracker>>,
-  Option<OpMetricsFactoryFn>,
-) {
-  let mut op_summary_metrics = None;
-  let mut op_metrics_factory_fn: Option<OpMetricsFactoryFn> = None;
+) -> Option<OpMetricsFactoryFn> {
+  let patterns = trace_ops?;
   let now = Instant::now();
   let max_len: Rc<std::cell::Cell<usize>> = Default::default();
-  if let Some(patterns) = trace_ops {
-    /// Match an op name against a list of patterns
-    fn matches_pattern(patterns: &[String], name: &str) -> bool {
-      let mut found_match = false;
-      let mut found_nomatch = false;
-      for pattern in patterns.iter() {
-        if let Some(pattern) = pattern.strip_prefix('-') {
-          if name.contains(pattern) {
-            return false;
-          }
-        } else if name.contains(pattern.as_str()) {
-          found_match = true;
-        } else {
-          found_nomatch = true;
-        }
-      }
 
-      found_match || !found_nomatch
+  /// Match an op name against a list of patterns
+  fn matches_pattern(patterns: &[String], name: &str) -> bool {
+    let mut found_match = false;
+    let mut found_nomatch = false;
+    for pattern in patterns.iter() {
+      if let Some(pattern) = pattern.strip_prefix('-') {
+        if name.contains(pattern) {
+          return false;
+        }
+      } else if name.contains(pattern.as_str()) {
+        found_match = true;
+      } else {
+        found_nomatch = true;
+      }
     }
 
-    op_metrics_factory_fn = Some(Box::new(move |_, _, decl| {
-      // If we don't match a requested pattern, or we match a negative pattern, bail
-      if !matches_pattern(&patterns, decl.name) {
-        return None;
-      }
-
-      max_len.set(max_len.get().max(decl.name.len()));
-      let max_len = max_len.clone();
-      Some(Rc::new(
-        #[allow(clippy::print_stderr)]
-        move |op: &deno_core::_ops::OpCtx, event, source| {
-          eprintln!(
-            "[{: >10.3}] {name:max_len$}: {event:?} {source:?}",
-            now.elapsed().as_secs_f64(),
-            name = op.decl().name,
-            max_len = max_len.get()
-          );
-        },
-      ))
-    }));
+    found_match || !found_nomatch
   }
 
-  if enable_op_summary_metrics {
-    let summary = Rc::new(OpMetricsSummaryTracker::default());
-    let summary_metrics = summary.clone().op_metrics_factory_fn(|_| true);
-    op_metrics_factory_fn = Some(match op_metrics_factory_fn {
-      Some(f) => merge_op_metrics(f, summary_metrics),
-      None => summary_metrics,
-    });
-    op_summary_metrics = Some(summary);
-  }
+  Some(Box::new(move |_, _, decl| {
+    // If we don't match a requested pattern, or we match a negative pattern, bail
+    if !matches_pattern(&patterns, decl.name) {
+      return None;
+    }
 
-  (op_summary_metrics, op_metrics_factory_fn)
+    max_len.set(max_len.get().max(decl.name.len()));
+    let max_len = max_len.clone();
+    Some(Rc::new(
+      #[allow(
+        clippy::print_stderr,
+        reason = "we actually want to output here"
+      )]
+      move |op: &deno_core::_ops::OpCtx, event, source| {
+        eprintln!(
+          "[{: >10.3}] {name:max_len$}: {event:?} {source:?}",
+          now.elapsed().as_secs_f64(),
+          name = op.decl().name,
+          max_len = max_len.get()
+        );
+      },
+    ))
+  }))
 }
 
 impl MainWorker {
@@ -405,7 +398,10 @@ impl MainWorker {
 
             Ok(CacheImpl::Lsc(x))
           };
-          #[allow(clippy::arc_with_non_send_sync)]
+          #[allow(
+            clippy::arc_with_non_send_sync,
+            reason = "fine because the Rc is in the return type"
+          )]
           return Some(CreateCache(Arc::new(create_cache_fn)));
         }
       }
@@ -424,10 +420,7 @@ impl MainWorker {
     let create_cache = create_cache_inner(&options);
 
     // Get our op metrics
-    let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
-      options.bootstrap.enable_op_summary_metrics,
-      options.trace_ops,
-    );
+    let op_metrics_factory_fn = create_op_metrics(options.trace_ops);
 
     // Permissions: many ops depend on this
     let enable_testing_features = options.bootstrap.enable_testing_features;
@@ -441,25 +434,16 @@ impl MainWorker {
       options.unconfigured_runtime = None;
     }
 
-    #[cfg(feature = "hmr")]
-    const {
-      assert!(
-        cfg!(not(feature = "only_snapshotted_js_sources")),
-        "'hmr' is incompatible with 'only_snapshotted_js_sources'."
-      );
-    }
-
-    #[cfg(feature = "only_snapshotted_js_sources")]
-    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
-
     let mut js_runtime = if let Some(u) = options.unconfigured_runtime {
       let js_runtime = u.hydrate(services.module_loader);
 
       let op_state = js_runtime.op_state();
       let current_handler =
-        op_state.borrow().borrow::<Rc<CronHandlerImpl>>().clone();
+        op_state.borrow().borrow::<Rc<dyn CronHandler>>().clone();
       if let Some(new_handler) = current_handler.maybe_reload() {
-        op_state.borrow_mut().put(Rc::new(new_handler));
+        op_state
+          .borrow_mut()
+          .put::<Rc<dyn CronHandler>>(Rc::from(new_handler));
       }
 
       js_runtime
@@ -475,6 +459,8 @@ impl MainWorker {
       common_runtime(CommonRuntimeOptions {
         module_loader: services.module_loader.clone(),
         startup_snapshot: options.startup_snapshot,
+        residual_lazy_js_sources: options.residual_lazy_js_sources,
+        residual_lazy_esm_sources: options.residual_lazy_esm_sources,
         create_params: options.create_params,
         skip_op_registration: options.skip_op_registration,
         shared_array_buffer_store: services.shared_array_buffer_store,
@@ -540,6 +526,7 @@ impl MainWorker {
         deno_web::deno_web::args(
           services.blob_store.clone(),
           options.bootstrap.location.clone(),
+          true,
           services.broadcast_channel.clone(),
         ),
         deno_fetch::deno_fetch::args(deno_fetch::Options {
@@ -564,7 +551,7 @@ impl MainWorker {
           options.unsafely_ignore_certificate_errors.clone(),
         ),
         deno_kv::deno_kv::args(
-          MultiBackendDbHandler::remote_or_sqlite(
+          Box::new(MultiBackendDbHandler::remote_or_sqlite(
             options.origin_storage_dir.clone(),
             options.seed,
             deno_kv::remote::HttpOptions {
@@ -578,7 +565,7 @@ impl MainWorker {
               client_cert_chain_and_key: TlsKeys::Null,
               proxy: None,
             },
-          ),
+          )),
           deno_kv::KvConfig::builder().build(),
         ),
         deno_napi::deno_napi::args(
@@ -608,10 +595,6 @@ impl MainWorker {
       ])
       .unwrap();
 
-    if let Some(op_summary_metrics) = op_summary_metrics {
-      js_runtime.op_state().borrow_mut().put(op_summary_metrics);
-    }
-
     {
       let state = js_runtime.op_state();
       let mut state = state.borrow_mut();
@@ -624,6 +607,9 @@ impl MainWorker {
       state.put(ops::TestingFeaturesEnabled(enable_testing_features));
       state.put(services.feature_checker);
     }
+
+    // Register the uv_loop_t (created by deno_node extension state callback)
+    // The uv loop is auto-created and registered by JsRuntime::new_inner.
 
     if let Some(server) = get_inspector_server() {
       let inspector_url = server.register_inspector(
@@ -930,10 +916,7 @@ impl MainWorker {
   ) -> Result<(), CoreError> {
     self
       .js_runtime
-      .run_event_loop(PollEventLoopOptions {
-        wait_for_inspector,
-        ..Default::default()
-      })
+      .run_event_loop(PollEventLoopOptions { wait_for_inspector })
       .await
   }
 
@@ -954,8 +937,9 @@ impl MainWorker {
     let undefined = v8::undefined(tc_scope);
     dispatch_load_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error);
+      return Err(deno_core::exception_to_err(
+        tc_scope, exception, false, true,
+      ));
     }
     Ok(())
   }
@@ -971,8 +955,9 @@ impl MainWorker {
     let undefined = v8::undefined(tc_scope);
     dispatch_unload_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error);
+      return Err(deno_core::exception_to_err(
+        tc_scope, exception, false, true,
+      ));
     }
     Ok(())
   }
@@ -986,10 +971,47 @@ impl MainWorker {
     let undefined = v8::undefined(tc_scope);
     dispatch_process_exit_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error);
+      return Err(deno_core::exception_to_err(
+        tc_scope, exception, false, true,
+      ));
     }
     Ok(())
+  }
+
+  /// Runs pending NAPI ref/wrap finalizers by calling them directly while V8
+  /// is still alive. This matches Node.js behavior where `napi_env::DeleteMe()`
+  /// calls `RefTracker::FinalizeAll()` during environment teardown.
+  pub fn run_napi_ref_finalizers(&mut self) {
+    let finalizers = {
+      let op_state = self.js_runtime.op_state();
+      let op_state = op_state.borrow();
+      match op_state.try_borrow::<deno_napi::NapiState>() {
+        Some(s) => {
+          let mut tracker = s.ref_tracker.borrow_mut();
+          std::mem::take(&mut *tracker)
+        }
+        None => return,
+      }
+    };
+    if finalizers.is_empty() {
+      return;
+    }
+
+    // Call each finalizer in reverse (LIFO) order within a proper HandleScope
+    // so native addon code can use NAPI functions during cleanup. LIFO matches
+    // Node.js's linked list behavior (head insertion → reverse iteration).
+    {
+      deno_core::scope!(scope, &mut self.js_runtime);
+      let _scope = v8::HandleScope::new(scope);
+      for f in finalizers.into_iter().rev() {
+        // SAFETY: The pointers (env, data, hint) were stored when the native
+        // addon called napi_wrap/napi_create_external/napi_add_finalizer and
+        // V8 is still alive (we have an active HandleScope).
+        unsafe {
+          (f.cb)(f.env, f.data, f.hint);
+        }
+      }
+    }
   }
 
   /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
@@ -1004,8 +1026,9 @@ impl MainWorker {
     let ret_val =
       dispatch_beforeunload_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error);
+      return Err(deno_core::exception_to_err(
+        tc_scope, exception, false, true,
+      ));
     }
     let ret_val = ret_val.unwrap();
     Ok(ret_val.is_false())
@@ -1028,8 +1051,9 @@ impl MainWorker {
       &[],
     );
     if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error);
+      return Err(deno_core::exception_to_err(
+        tc_scope, exception, false, true,
+      ));
     }
     let ret_val = ret_val.unwrap();
     Ok(ret_val.is_true())
@@ -1054,6 +1078,7 @@ fn common_extensions<
     deno_web::deno_web::lazy_init(),
     deno_webgpu::deno_webgpu::init(),
     deno_image::deno_image::init(),
+    deno_canvas::deno_canvas::init(),
     deno_fetch::deno_fetch::lazy_init(),
     deno_cache::deno_cache::lazy_init(),
     deno_websocket::deno_websocket::lazy_init(),
@@ -1062,8 +1087,8 @@ fn common_extensions<
     deno_ffi::deno_ffi::lazy_init(),
     deno_net::deno_net::lazy_init(),
     deno_tls::deno_tls::init(),
-    deno_kv::deno_kv::lazy_init::<MultiBackendDbHandler>(),
-    deno_cron::deno_cron::init(CronHandlerImpl::create_from_env()),
+    deno_kv::deno_kv::lazy_init(),
+    deno_cron::deno_cron::init(Box::new(CronHandlerImpl::create_from_env())),
     deno_napi::deno_napi::lazy_init(),
     deno_http::deno_http::lazy_init(),
     deno_io::deno_io::lazy_init(),
@@ -1101,6 +1126,8 @@ fn common_extensions<
 struct CommonRuntimeOptions {
   module_loader: Rc<dyn ModuleLoader>,
   startup_snapshot: Option<&'static [u8]>,
+  residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   create_params: Option<v8::CreateParams>,
   skip_op_registration: bool,
   shared_array_buffer_store: Option<SharedArrayBufferStore>,
@@ -1112,13 +1139,14 @@ struct CommonRuntimeOptions {
 
 struct EnableRawImports(Arc<AtomicBool>);
 
-#[allow(clippy::too_many_arguments)]
 fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
   let enable_raw_imports = Arc::new(AtomicBool::new(false));
 
   let js_runtime = JsRuntime::new(RuntimeOptions {
     module_loader: Some(opts.module_loader),
     startup_snapshot: opts.startup_snapshot,
+    residual_lazy_js_sources: opts.residual_lazy_js_sources,
+    residual_lazy_esm_sources: opts.residual_lazy_esm_sources,
     create_params: opts.create_params,
     skip_op_registration: opts.skip_op_registration,
     shared_array_buffer_store: opts.shared_array_buffer_store,
@@ -1175,6 +1203,8 @@ pub fn create_permissions_stack_trace_callback()
 
 pub struct UnconfiguredRuntimeOptions {
   pub startup_snapshot: &'static [u8],
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   pub create_params: Option<v8::CreateParams>,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
@@ -1208,6 +1238,8 @@ impl UnconfiguredRuntime {
     let js_runtime = common_runtime(CommonRuntimeOptions {
       module_loader: module_loader.clone(),
       startup_snapshot: Some(options.startup_snapshot),
+      residual_lazy_js_sources: options.residual_lazy_js_sources,
+      residual_lazy_esm_sources: options.residual_lazy_esm_sources,
       create_params: options.create_params,
       skip_op_registration: true,
       shared_array_buffer_store: options.shared_array_buffer_store,
@@ -1239,7 +1271,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     specifier: &str,
     referrer: &str,
     kind: deno_core::ResolutionKind,
-  ) -> Result<ModuleSpecifier, deno_core::error::ModuleLoaderError> {
+  ) -> deno_core::ModuleResolveResponse {
     self
       .0
       .borrow_mut()

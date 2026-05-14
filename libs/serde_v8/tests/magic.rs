@@ -8,12 +8,12 @@ use serde_v8_utilities::v8_do;
 
 #[derive(Serialize, Deserialize)]
 struct MagicOp {
-  #[allow(unused)]
+  #[allow(unused, reason = "used via serde deserialization")]
   pub a: u64,
-  #[allow(unused)]
+  #[allow(unused, reason = "used via serde deserialization")]
   pub b: u64,
   pub c: String,
-  #[allow(unused)]
+  #[allow(unused, reason = "used via serde deserialization")]
   pub operator: Option<String>,
 }
 

@@ -410,7 +410,23 @@ fn export_key_ec(
             Err(SharedError::ExpectedValidPublicECKey.into())
           }
         }
-        _ => Err(ExportKeyError::UnsupportedNamedCurve),
+        EcNamedCurve::P521 => {
+          let ec_key = p521::SecretKey::from_pkcs8_der(private_key)
+            .map_err(|_| SharedError::FailedDecodePrivateKey)?;
+
+          let point = ec_key.public_key().to_encoded_point(false);
+          if let elliptic_curve::sec1::Coordinates::Uncompressed { x, y } =
+            point.coordinates()
+          {
+            Ok(ExportKeyResult::JwkPrivateEc {
+              x: bytes_to_b64(x),
+              y: bytes_to_b64(y),
+              d: bytes_to_b64(&ec_key.to_bytes()),
+            })
+          } else {
+            Err(SharedError::ExpectedValidPublicECKey.into())
+          }
+        }
       }
     }
     ExportKeyFormat::JwkSecret => Err(SharedError::UnsupportedFormat.into()),

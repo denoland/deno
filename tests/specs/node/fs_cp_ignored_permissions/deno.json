@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "default": {
+      "read": {
+        "allow": ["./dir1", "./dir2"],
+        "ignore": true
+      },
+      "write": ["./dir2"]
+    }
+  }
+}

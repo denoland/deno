@@ -3,7 +3,10 @@
 use std::borrow::Cow;
 use std::ffi::OsStr;
 use std::io;
+use std::pin::Pin;
 use std::rc::Rc;
+use std::task::Context;
+use std::task::Poll;
 
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -11,8 +14,11 @@ use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::RcRef;
 use deno_core::Resource;
+use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
+use tokio::io::ReadBuf;
 use tokio::io::ReadHalf;
 use tokio::io::WriteHalf;
 use tokio::net::windows::named_pipe;
@@ -120,6 +126,28 @@ impl NamedPipe {
       )),
     }
   }
+
+  /// Cancel all pending read/write operations on this pipe.
+  /// This triggers the `CancelHandle`, causing any in-flight async ops
+  /// (e.g., reads started by `readStart()`) to complete with a cancellation
+  /// error, releasing their `Rc` references to this resource.
+  pub fn cancel_pending_ops(&self) {
+    self.cancel.cancel();
+  }
+
+  /// Consume this `NamedPipe` and reunite the split read/write halves back
+  /// into a `NamedPipeClient`. Only works for client pipes.
+  pub fn into_client(self) -> io::Result<named_pipe::NamedPipeClient> {
+    let read_half = self.read_half.into_inner();
+    let write_half = self.write_half.into_inner();
+    match (read_half, write_half) {
+      (NamedPipeRead::Client(r), NamedPipeWrite::Client(w)) => Ok(r.unsplit(w)),
+      _ => Err(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "cannot extract client from non-client pipe",
+      )),
+    }
+  }
 }
 
 impl Resource for NamedPipe {
@@ -132,5 +160,92 @@ impl Resource for NamedPipe {
 
   fn close(self: Rc<Self>) {
     self.cancel.cancel();
+  }
+}
+
+/// A stub address type for Windows named pipes.
+/// Pipes don't have traditional network addresses.
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct WindowsPipeAddr;
+
+/// A wrapper around `NamedPipeClient` that implements the stream traits
+/// required by the network stream abstraction.
+pub struct WindowsPipeStream(named_pipe::NamedPipeClient);
+
+impl WindowsPipeStream {
+  pub fn new(client: named_pipe::NamedPipeClient) -> Self {
+    Self(client)
+  }
+
+  pub fn local_addr(&self) -> io::Result<WindowsPipeAddr> {
+    Ok(WindowsPipeAddr)
+  }
+
+  pub fn peer_addr(&self) -> io::Result<WindowsPipeAddr> {
+    Ok(WindowsPipeAddr)
+  }
+
+  pub fn into_split(
+    self,
+  ) -> (tokio::io::ReadHalf<Self>, tokio::io::WriteHalf<Self>) {
+    tokio::io::split(self)
+  }
+}
+
+impl AsyncRead for WindowsPipeStream {
+  fn poll_read(
+    self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+    buf: &mut ReadBuf<'_>,
+  ) -> Poll<io::Result<()>> {
+    Pin::new(&mut self.get_mut().0).poll_read(cx, buf)
+  }
+}
+
+impl AsyncWrite for WindowsPipeStream {
+  fn poll_write(
+    self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+    buf: &[u8],
+  ) -> Poll<io::Result<usize>> {
+    Pin::new(&mut self.get_mut().0).poll_write(cx, buf)
+  }
+
+  fn poll_flush(
+    self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<io::Result<()>> {
+    Pin::new(&mut self.get_mut().0).poll_flush(cx)
+  }
+
+  fn poll_shutdown(
+    self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<io::Result<()>> {
+    Pin::new(&mut self.get_mut().0).poll_shutdown(cx)
+  }
+}
+
+/// A stub listener type for Windows named pipes.
+/// Not used for HTTP client connections, but required by the
+/// network stream abstraction.
+pub struct WindowsPipeListener;
+
+impl WindowsPipeListener {
+  #[allow(clippy::unused_async, reason = "same interface as unix")]
+  pub async fn accept(
+    &self,
+  ) -> io::Result<(WindowsPipeStream, WindowsPipeAddr)> {
+    Err(io::Error::new(
+      io::ErrorKind::Unsupported,
+      "WindowsPipeListener::accept is not supported",
+    ))
+  }
+
+  pub fn local_addr(&self) -> io::Result<WindowsPipeAddr> {
+    Err(io::Error::new(
+      io::ErrorKind::Unsupported,
+      "WindowsPipeListener::local_addr is not supported",
+    ))
   }
 }

@@ -68,6 +68,8 @@ impl Semaphore {
 
 #[cfg(test)]
 mod tests {
+  #![allow(clippy::disallowed_methods, reason = "test code")]
+
   use std::sync::Arc;
   use std::thread;
   use std::time::Duration;
@@ -92,7 +94,6 @@ mod tests {
 
     for _ in 0..5 {
       let sem_clone = Arc::clone(&sem);
-      #[allow(clippy::disallowed_methods)]
       let handle = thread::spawn(move || {
         let _perimt = sem_clone.acquire();
         thread::sleep(Duration::from_millis(10));
@@ -112,7 +113,6 @@ mod tests {
 
     let permit = sem.acquire();
 
-    #[allow(clippy::disallowed_methods)]
     let handle = thread::spawn(move || {
       let start = std::time::Instant::now();
       let _permit = sem_clone.acquire();
@@ -133,7 +133,6 @@ mod tests {
 
     let permit = sem.acquire();
 
-    #[allow(clippy::disallowed_methods)]
     let handle = thread::spawn(move || {
       let _permit = sem_clone.acquire();
     });
@@ -162,7 +161,6 @@ mod tests {
     let sem = Arc::new(Semaphore::new(0));
     let sem_clone = Arc::clone(&sem);
 
-    #[allow(clippy::disallowed_methods)]
     let handle = thread::spawn(move || {
       let _permit = sem_clone.acquire();
     });
@@ -182,7 +180,6 @@ mod tests {
     for _ in 0..10 {
       let sem_clone = Arc::clone(&sem);
       let counter_clone = Arc::clone(&counter);
-      #[allow(clippy::disallowed_methods)]
       let handle = thread::spawn(move || {
         let _permit = sem_clone.acquire();
         let mut count = counter_clone.lock();

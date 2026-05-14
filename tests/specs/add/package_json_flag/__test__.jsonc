@@ -1,0 +1,52 @@
+{
+  "tempDir": true,
+  "tests": {
+    "forces_all_deps_to_package_json": {
+      // When both deno.json and package.json exist, --package-json forces
+      // all packages (including jsr) into package.json
+      "steps": [
+        {
+          "args": "add --package-json npm:@denotest/esm-basic jsr:@denotest/add",
+          "output": "add.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('package.json').trim())"
+          ],
+          "output": "package.json.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('deno.json').trim())"
+          ],
+          "output": "{}\n"
+        }
+      ]
+    },
+    "creates_package_json_if_missing": {
+      // When only deno.json exists, --package-json creates package.json
+      "steps": [
+        {
+          "args": [
+            "eval",
+            "Deno.removeSync('package.json')"
+          ],
+          "output": ""
+        },
+        {
+          "args": "add --package-json npm:@denotest/esm-basic",
+          "output": "add_create.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('package.json').trim())"
+          ],
+          "output": "created_package.json.out"
+        }
+      ]
+    }
+  }
+}

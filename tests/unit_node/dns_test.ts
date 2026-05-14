@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assertEquals, fail } from "@std/assert";
-import dns, { lookupService } from "node:dns";
+import { assert, assertEquals, fail } from "@std/assert";
+import dns, { getDefaultResultOrder, lookupService } from "node:dns";
 import dnsPromises, {
+  getDefaultResultOrder as getDefaultResultOrderPromise,
   lookup as lookupPromise,
   lookupService as lookupServicePromise,
 } from "node:dns/promises";
@@ -88,6 +89,42 @@ Deno.test("lookupService not found", async () => {
     assertEquals((err as ErrnoException).code, "ENOTFOUND");
     assertEquals((err as ErrnoException).syscall, "getnameinfo");
   });
+});
+
+Deno.test("[node/dns] getDefaultResultOrder returns valid order", () => {
+  // Named export from dns
+  const order = getDefaultResultOrder();
+  assertEquals(typeof order, "string");
+  assert(
+    ["ipv4first", "ipv6first", "verbatim"].includes(order),
+    `unexpected order: ${order}`,
+  );
+
+  // Default export from dns
+  assertEquals(dns.getDefaultResultOrder(), order);
+
+  // dns/promises named export
+  assertEquals(getDefaultResultOrderPromise(), order);
+
+  // dns.promises
+  assertEquals(dns.promises.getDefaultResultOrder(), order);
+
+  // dnsPromises default export
+  assertEquals(dnsPromises.getDefaultResultOrder(), order);
+});
+
+Deno.test("[node/dns] getDefaultResultOrder reflects setDefaultResultOrder", () => {
+  const original = dns.getDefaultResultOrder();
+  try {
+    dns.setDefaultResultOrder("ipv4first");
+    assertEquals(dns.getDefaultResultOrder(), "ipv4first");
+
+    dns.setDefaultResultOrder("verbatim");
+    assertEquals(dns.getDefaultResultOrder(), "verbatim");
+  } finally {
+    // Restore original
+    dns.setDefaultResultOrder(original);
+  }
 });
 
 Deno.test("[node/dns] lookup accepts string family values", async () => {

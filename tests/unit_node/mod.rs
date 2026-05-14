@@ -17,7 +17,7 @@ use util::deno_config_path;
 use util::env_vars_for_npm_tests;
 
 fn main() {
-  if test_util::hash::should_skip_on_ci("unit_node", |hasher| {
+  let ci_hash = test_util::hash::check_ci_hash("unit_node", |hasher| {
     let tests = test_util::tests_path();
     hasher
       .hash_dir(tests.join("unit_node"))
@@ -26,7 +26,8 @@ fn main() {
       .hash_dir(tests.join("registry"))
       .hash_file(test_util::deno_exe_path())
       .hash_file(test_util::test_server_path());
-  }) {
+  });
+  if matches!(ci_hash, test_util::hash::CiHashStatus::Skip) {
     return;
   }
 
@@ -38,6 +39,9 @@ fn main() {
     filter_override: None,
   });
   if category.is_empty() {
+    return;
+  }
+  if test_util::test_runner::print_tests_if_list_flag(&category) {
     return;
   }
   let parallelism = Parallelism::default();
@@ -78,6 +82,9 @@ fn main() {
       flaky_test_ci(&test.name, &flaky_test_tracker, None, || run_test(test))
     },
   );
+  if let test_util::hash::CiHashStatus::RunThenCommit(pending) = ci_hash {
+    pending.commit();
+  }
 }
 
 fn run_test(test: &CollectedTest) -> TestResult {

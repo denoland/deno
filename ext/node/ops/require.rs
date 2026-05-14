@@ -226,7 +226,10 @@ pub fn op_require_proxy_path(#[string] filename: &str) -> Option<String> {
 
 #[op2(fast)]
 pub fn op_require_is_request_relative(#[string] request: &str) -> bool {
-  if request.starts_with("./") || request.starts_with("../") || request == ".."
+  if request.starts_with("./")
+    || request.starts_with("../")
+    || request == "."
+    || request == ".."
   {
     return true;
   }
@@ -320,15 +323,17 @@ pub fn op_require_resolve_lookup_paths(
     }
   }
 
-  // In REPL, parent.filename is null.
-  // if (!parent || !parent.id || !parent.filename) {
-  //   // Make require('./path/to/foo') work - normally the path is taken
-  //   // from realpath(__filename) but in REPL there is no filename
-  //   const mainPaths = ['.'];
-
-  //   debug('looking for %j in %j', request, mainPaths);
-  //   return mainPaths;
-  // }
+  // In REPL, parent.filename is null/empty.
+  if parent_filename.is_empty() {
+    // If parent has paths (e.g. fakeParent from require.resolve with
+    // options.paths), use those. Otherwise fall back to cwd.
+    if let Some(parent_paths) = maybe_parent_paths
+      && !parent_paths.is_empty()
+    {
+      return Some(parent_paths);
+    }
+    return Some(vec![".".to_string()]);
+  }
 
   let p = Path::new(parent_filename);
   Some(vec![p.parent().unwrap().to_string_lossy().into_owned()])
@@ -514,6 +519,10 @@ pub fn op_require_read_file(
 #[op2]
 #[string]
 pub fn op_require_as_file_path(#[string] file_or_url: &str) -> Option<String> {
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "don't need error and this doesn't need to work in Wasm"
+  )]
   if let Ok(url) = Url::parse(file_or_url)
     && let Ok(p) = url.to_file_path()
   {
@@ -537,6 +546,7 @@ pub fn op_require_resolve_exports<
   #[string] name: &str,
   #[string] expansion: &str,
   #[string] parent_path: &str,
+  #[serde] conditions: Option<Vec<String>>,
 ) -> Result<Option<String>, RequireError> {
   let sys = state.borrow::<TSys>();
   let node_resolver = state.borrow::<NodeResolverRc<
@@ -575,6 +585,15 @@ pub fn op_require_resolve_exports<
     Some(PathBuf::from(parent_path))
   };
   NodeResolutionThreadLocalCache::clear();
+  let conditions_cow: Vec<Cow<'static, str>> = conditions
+    .as_ref()
+    .map(|c| c.iter().map(|s| Cow::Owned(s.clone())).collect())
+    .unwrap_or_default();
+  let resolve_conditions = if conditions.is_some() {
+    &conditions_cow[..]
+  } else {
+    node_resolver.require_conditions()
+  };
   let r = node_resolver.package_exports_resolve(
     &pkg.path,
     &format!(".{expansion}"),
@@ -584,7 +603,7 @@ pub fn op_require_resolve_exports<
       .map(|r| UrlOrPathRef::from_path(r))
       .as_ref(),
     ResolutionMode::Require,
-    node_resolver.require_conditions(),
+    resolve_conditions,
     NodeResolutionKind::Execution,
   )?;
   Ok(Some(url_or_path_to_string(r)?))

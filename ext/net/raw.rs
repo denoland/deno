@@ -21,7 +21,7 @@ pub trait NetworkStreamTrait: Into<NetworkStream> {
   fn peer_address(&self) -> Result<NetworkStreamAddress, std::io::Error>;
 }
 
-#[allow(async_fn_in_trait)]
+#[allow(async_fn_in_trait, reason = "it's fine")]
 pub trait NetworkStreamListenerTrait:
   Into<NetworkStreamListener> + Send + Sync
 {
@@ -39,7 +39,7 @@ pub trait NetworkStreamListenerTrait:
 pub struct NetworkListenerResource<T: NetworkStreamListenerTrait> {
   pub listener: AsyncRefCell<T>,
   /// Associated data for this resource. Not required.
-  #[allow(unused)]
+  #[allow(unused, reason = "someone might not use it")]
   pub data: T::ResourceData,
   pub cancel: CancelHandle,
 }
@@ -90,7 +90,7 @@ macro_rules! network_stream {
   ) => {
     /// A raw stream of one of the types handled by this extension.
     #[pin_project::pin_project(project = NetworkStreamProject)]
-    #[allow(clippy::large_enum_variant)]
+    #[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
     pub enum NetworkStream {
       $(
         $( #[ $meta ] )?
@@ -468,6 +468,17 @@ network_stream!(
     crate::tunnel::TunnelStreamResource,
     crate::tunnel::OwnedReadHalf,
     crate::tunnel::OwnedWriteHalf,
+  ],
+  #[cfg(windows)]
+  [
+    WindowsPipe,
+    windowsPipe,
+    crate::win_pipe::WindowsPipeStream,
+    crate::win_pipe::WindowsPipeListener,
+    crate::win_pipe::WindowsPipeAddr,
+    crate::win_pipe::NamedPipe,
+    tokio::io::ReadHalf<crate::win_pipe::WindowsPipeStream>,
+    tokio::io::WriteHalf<crate::win_pipe::WindowsPipeStream>,
   ]
 );
 
@@ -478,6 +489,8 @@ pub enum NetworkStreamAddress {
   #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
   Vsock(tokio_vsock::VsockAddr),
   Tunnel(crate::tunnel::TunnelAddr),
+  #[cfg(windows)]
+  WindowsPipe(crate::win_pipe::WindowsPipeAddr),
 }
 
 impl From<std::net::SocketAddr> for NetworkStreamAddress {
@@ -506,6 +519,13 @@ impl From<crate::tunnel::TunnelAddr> for NetworkStreamAddress {
   }
 }
 
+#[cfg(windows)]
+impl From<crate::win_pipe::WindowsPipeAddr> for NetworkStreamAddress {
+  fn from(value: crate::win_pipe::WindowsPipeAddr) -> Self {
+    NetworkStreamAddress::WindowsPipe(value)
+  }
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum TakeNetworkStreamError {
   #[class("Busy")]
@@ -525,6 +545,10 @@ pub enum TakeNetworkStreamError {
   #[class("Busy")]
   #[error("Tunnel socket is currently in use")]
   TunnelBusy,
+  #[cfg(windows)]
+  #[class("Busy")]
+  #[error("Windows named pipe is currently in use")]
+  WindowsPipeBusy,
   #[class(generic)]
   #[error(transparent)]
   ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
@@ -604,6 +628,20 @@ pub fn take_network_stream_resource(
       .map_err(|_| TakeNetworkStreamError::TunnelBusy)?;
     let stream = resource.into_inner();
     return Ok(NetworkStream::Tunnel(stream));
+  }
+
+  #[cfg(windows)]
+  if let Ok(resource_rc) =
+    resource_table.take::<crate::win_pipe::NamedPipe>(stream_rid)
+  {
+    let resource = Rc::try_unwrap(resource_rc)
+      .map_err(|_| TakeNetworkStreamError::WindowsPipeBusy)?;
+    let client = resource.into_client().map_err(|_| {
+      TakeNetworkStreamError::Resource(ResourceError::BadResourceId)
+    })?;
+    return Ok(NetworkStream::WindowsPipe(
+      crate::win_pipe::WindowsPipeStream::new(client),
+    ));
   }
 
   Err(TakeNetworkStreamError::Resource(

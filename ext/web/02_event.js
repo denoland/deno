@@ -5,7 +5,8 @@
 // parts still exists.  This means you will observe a lot of strange structures
 // and impossible logic branches based on what Deno currently supports.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
@@ -33,9 +34,20 @@ const {
   TypeError,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { DOMException } from "./01_dom_exception.js";
-import { createFilteredInspectProxy } from "./01_console.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+
+// Lazy-load createFilteredInspectProxy from console to avoid
+// circular dependency at load time. Only needed for custom inspect.
+let _createFilteredInspectProxy;
+function getCreateFilteredInspectProxy() {
+  if (!_createFilteredInspectProxy) {
+    _createFilteredInspectProxy = core.loadExtScript(
+      "ext:deno_web/01_console.js",
+    ).createFilteredInspectProxy;
+  }
+  return _createFilteredInspectProxy;
+}
 
 // This should be set via setGlobalThis this is required so that if even
 // user deletes globalThis it is still usable
@@ -158,7 +170,7 @@ class Event {
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(EventPrototype, this),
         keys: EVENT_PROPS,
@@ -343,7 +355,9 @@ class Event {
 
   set returnValue(value) {
     if (!webidl.converters.boolean(value)) {
-      this[_canceledFlag] = true;
+      if (this[_attributes].cancelable && !this[_inPassiveListener]) {
+        this[_canceledFlag] = true;
+      }
     }
   }
 
@@ -830,15 +844,21 @@ function invokeEventListeners(tuple, eventImpl) {
   }
 }
 
+// https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
 function normalizeEventHandlerOptions(
   options,
 ) {
-  if (typeof options === "boolean" || typeof options === "undefined") {
+  if (
+    typeof options === "boolean" || typeof options === "undefined" ||
+    options === null
+  ) {
     return {
       capture: Boolean(options),
     };
   } else {
-    return options;
+    return {
+      capture: Boolean(options.capture),
+    };
   }
 }
 
@@ -868,8 +888,8 @@ function retarget(a, b) {
 
 // Accessors for non-public data
 
-export const eventTargetData = Symbol();
-export const kResistStopImmediatePropagation = Symbol(
+const eventTargetData = Symbol();
+const kResistStopImmediatePropagation = Symbol(
   "kResistStopImmediatePropagation",
 );
 
@@ -940,7 +960,11 @@ function addEventListenerOptionsConverter(V, prefix) {
 
 class EventTarget {
   constructor() {
-    this[eventTargetData] = getDefaultTargetData();
+    // eventTargetData is allocated lazily on first addEventListener (or via
+    // setEventTargetData for objects built with webidl.createBranded). Most
+    // short-lived EventTarget instances created on the request/response hot
+    // path (AbortSignal, transient streams) never have a listener attached
+    // and never need the listeners map / 5-field default object.
     this[webidl.brand] = webidl.brand;
   }
 
@@ -961,7 +985,11 @@ class EventTarget {
       return;
     }
 
-    const { listeners } = self[eventTargetData];
+    let data = self[eventTargetData];
+    if (data === undefined) {
+      data = self[eventTargetData] = getDefaultTargetData();
+    }
+    const { listeners } = data;
 
     if (!listeners[type]) {
       listeners[type] = [];
@@ -1010,10 +1038,11 @@ class EventTarget {
       "Failed to execute 'removeEventListener' on 'EventTarget'",
     );
 
-    const { listeners } = self[eventTargetData];
-    if (callback === null || !listeners[type]) {
+    const data = self[eventTargetData];
+    if (data === undefined || callback === null || !data.listeners[type]) {
       return;
     }
+    const { listeners } = data;
 
     options = normalizeEventHandlerOptions(options);
 
@@ -1054,8 +1083,8 @@ class EventTarget {
       globalThis_[SymbolFor("Deno.isUnloadDispatched")] = true;
     }
 
-    const { listeners } = self[eventTargetData];
-    if (!listeners[event.type]) {
+    const data = self[eventTargetData];
+    if (data === undefined || !data.listeners[event.type]) {
       setTarget(event, this);
       return true;
     }
@@ -1140,7 +1169,7 @@ class ErrorEvent extends Event {
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(ErrorEventPrototype, this),
         keys: [
@@ -1206,7 +1235,7 @@ class CloseEvent extends Event {
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(CloseEventPrototype, this),
         keys: [
@@ -1224,8 +1253,10 @@ class CloseEvent extends Event {
 const CloseEventPrototype = CloseEvent.prototype;
 
 class MessageEvent extends Event {
+  #source = null;
+
   get source() {
-    return null;
+    return this.#source;
   }
 
   constructor(type, eventInitDict) {
@@ -1236,14 +1267,20 @@ class MessageEvent extends Event {
     });
 
     this.data = eventInitDict?.data ?? null;
-    this.ports = eventInitDict?.ports ?? [];
+    const ports = eventInitDict?.ports;
+    this.ports = ports == null ? [] : webidl.converters["sequence<object>"](
+      ports,
+      "Failed to construct 'MessageEvent'",
+      "Argument 2 'ports'",
+    );
     this.origin = eventInitDict?.origin ?? "";
     this.lastEventId = eventInitDict?.lastEventId ?? "";
+    this.#source = eventInitDict?.source ?? null;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(MessageEventPrototype, this),
         keys: [
@@ -1283,7 +1320,7 @@ class CustomEvent extends Event {
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(CustomEventPrototype, this),
         keys: [
@@ -1319,7 +1356,7 @@ class ProgressEvent extends Event {
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(ProgressEventPrototype, this),
         keys: [
@@ -1372,7 +1409,7 @@ class PromiseRejectionEvent extends Event {
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(
           PromiseRejectionEventPrototype,
@@ -1542,15 +1579,17 @@ function reportError(error) {
   reportException(error);
 }
 
-export {
+return {
   CloseEvent,
   CustomEvent,
   defineEventHandler,
   dispatch,
   ErrorEvent,
   Event,
+  eventTargetData,
   EventTarget,
   EventTargetPrototype,
+  kResistStopImmediatePropagation,
   listenerCount,
   MessageEvent,
   ProgressEvent,
@@ -1562,3 +1601,4 @@ export {
   setIsTrusted,
   setTarget,
 };
+})();

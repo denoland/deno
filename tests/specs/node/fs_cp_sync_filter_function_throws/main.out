@@ -1,0 +1,5 @@
+error: Uncaught (in promise) Error: Test error on iter 4
+    throw new Error("Test error on iter 4");
+          ^
+    at filter (file:///[WILDCARD]/main.ts:24:11)
+[WILDCARD]

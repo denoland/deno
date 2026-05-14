@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
@@ -26,21 +27,55 @@ enum CertificateSources {
   Pem(pem::Pem),
 }
 
+/// A certificate field value that may have one or multiple values.
+/// Serializes as a plain string when there is exactly one value,
+/// or as an array of strings when there are multiple (matching Node.js behavior).
+#[derive(Default, Debug, PartialEq, Eq)]
+struct StringOrArray(Vec<String>);
+
+impl StringOrArray {
+  fn is_empty(&self) -> bool {
+    self.0.is_empty()
+  }
+
+  fn push(&mut self, value: String) {
+    self.0.push(value);
+  }
+}
+
+impl serde::Serialize for StringOrArray {
+  fn serialize<S: serde::Serializer>(
+    &self,
+    serializer: S,
+  ) -> Result<S::Ok, S::Error> {
+    if self.0.len() == 1 {
+      serializer.serialize_str(&self.0[0])
+    } else {
+      self.0.serialize(serializer)
+    }
+  }
+}
+
 #[derive(serde::Serialize, Default)]
 #[serde(rename_all = "UPPERCASE")]
 struct SubjectOrIssuer {
-  #[serde(skip_serializing_if = "Option::is_none")]
-  c: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  st: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  l: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  o: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  ou: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  cn: Option<String>,
+  #[serde(skip_serializing_if = "StringOrArray::is_empty")]
+  c: StringOrArray,
+  #[serde(skip_serializing_if = "StringOrArray::is_empty")]
+  st: StringOrArray,
+  #[serde(skip_serializing_if = "StringOrArray::is_empty")]
+  l: StringOrArray,
+  #[serde(skip_serializing_if = "StringOrArray::is_empty")]
+  o: StringOrArray,
+  #[serde(skip_serializing_if = "StringOrArray::is_empty")]
+  ou: StringOrArray,
+  #[serde(skip_serializing_if = "StringOrArray::is_empty")]
+  cn: StringOrArray,
+  #[serde(
+    rename = "emailAddress",
+    skip_serializing_if = "StringOrArray::is_empty"
+  )]
+  email_address: StringOrArray,
 }
 
 #[derive(serde::Serialize)]
@@ -57,6 +92,8 @@ pub struct CertificateObject {
   fingerprint256: String,
   fingerprint512: String,
   subjectaltname: String,
+  #[serde(rename = "infoAccess", skip_serializing_if = "Option::is_none")]
+  info_access: Option<HashMap<String, Vec<String>>>,
   // RSA key fields
   #[serde(skip_serializing_if = "Option::is_none")]
   bits: Option<u32>,
@@ -143,8 +180,16 @@ impl Certificate {
       CertificateSources::Der(der) => der.to_vec(),
     };
 
-    let valid_from = cert.validity().not_before.to_string();
-    let valid_to = cert.validity().not_after.to_string();
+    let valid_from = cert
+      .validity()
+      .not_before
+      .to_string()
+      .replace("+00:00", "GMT");
+    let valid_to = cert
+      .validity()
+      .not_after
+      .to_string()
+      .replace("+00:00", "GMT");
 
     let mut serial_number = cert.serial.to_str_radix(16);
     serial_number.make_ascii_uppercase();
@@ -154,6 +199,7 @@ impl Certificate {
     let fingerprint512 = self.fingerprint::<sha2::Sha512>().unwrap_or_default();
 
     let subjectaltname = get_subject_alt_name(cert).unwrap_or_default();
+    let info_access = get_info_access_object(cert);
 
     let subject = extract_subject_or_issuer(cert.subject());
     let issuer = extract_subject_or_issuer(cert.issuer());
@@ -179,6 +225,7 @@ impl Certificate {
       fingerprint256,
       fingerprint512,
       subjectaltname,
+      info_access,
       bits,
       exponent,
       modulus,
@@ -366,22 +413,25 @@ fn extract_subject_or_issuer(name: &X509Name) -> SubjectOrIssuer {
       {
         match attr.attr_type() {
           oid if oid == &x509_parser::oid_registry::OID_X509_COUNTRY_NAME => {
-            result.c = Some(value_str);
+            result.c.push(value_str);
           }
           oid if oid == &x509_parser::oid_registry::OID_X509_STATE_OR_PROVINCE_NAME => {
-            result.st = Some(value_str);
+            result.st.push(value_str);
           }
           oid if oid == &x509_parser::oid_registry::OID_X509_LOCALITY_NAME => {
-            result.l = Some(value_str);
+            result.l.push(value_str);
           }
           oid if oid == &x509_parser::oid_registry::OID_X509_ORGANIZATION_NAME => {
-            result.o = Some(value_str);
+            result.o.push(value_str);
           }
           oid if oid == &x509_parser::oid_registry::OID_X509_ORGANIZATIONAL_UNIT => {
-            result.ou = Some(value_str);
+            result.ou.push(value_str);
           }
           oid if oid == &x509_parser::oid_registry::OID_X509_COMMON_NAME => {
-            result.cn = Some(value_str);
+            result.cn.push(value_str);
+          }
+          oid if oid == &x509_parser::oid_registry::OID_PKCS9_EMAIL_ADDRESS => {
+            result.email_address.push(value_str);
           }
           _ => {}
         }
@@ -435,9 +485,15 @@ fn x509name_to_string(
         let val_str =
           attribute_value_to_string(attr.attr_value(), attr.attr_type())?;
         // look ABBREV, and if not found, use shortname
-        let abbrev = match oid2abbrev(attr.attr_type(), oid_registry) {
-          Ok(s) => String::from(s),
-          _ => format!("{:?}", attr.attr_type()),
+        let abbrev = if *attr.attr_type()
+          == x509_parser::oid_registry::OID_PKCS9_EMAIL_ADDRESS
+        {
+          String::from("emailAddress")
+        } else {
+          match oid2abbrev(attr.attr_type(), oid_registry) {
+            Ok(s) => String::from(s),
+            _ => format!("{:?}", attr.attr_type()),
+          }
         };
         let rdn = format!("{}={}", abbrev, val_str);
         match acc2.len() {
@@ -456,14 +512,22 @@ fn x509name_to_string(
 #[string]
 pub fn op_node_x509_get_valid_from(#[cppgc] cert: &Certificate) -> String {
   let cert = cert.inner.get().deref();
-  cert.validity().not_before.to_string()
+  cert
+    .validity()
+    .not_before
+    .to_string()
+    .replace("+00:00", "GMT")
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_get_valid_to(#[cppgc] cert: &Certificate) -> String {
   let cert = cert.inner.get().deref();
-  cert.validity().not_after.to_string()
+  cert
+    .validity()
+    .not_after
+    .to_string()
+    .replace("+00:00", "GMT")
 }
 
 #[op2]
@@ -509,9 +573,25 @@ fn extract_key_info(spki: &x509_parser::x509::SubjectPublicKeyInfo) -> KeyInfo {
       let modulus_bytes = key.modulus;
       let exponent_bytes = key.exponent;
 
-      let bits = Some((modulus_bytes.len() * 8) as u32);
-      let modulus = Some(data_encoding::HEXUPPER.encode(modulus_bytes));
-      let exponent = Some(data_encoding::HEXUPPER.encode(exponent_bytes));
+      // Strip leading zero byte used for ASN.1 positive integer encoding
+      let modulus_trimmed = if modulus_bytes.first() == Some(&0) {
+        &modulus_bytes[1..]
+      } else {
+        modulus_bytes
+      };
+      let bits = Some((modulus_trimmed.len() * 8) as u32);
+      let modulus = Some(data_encoding::HEXUPPER.encode(modulus_trimmed));
+      // Format exponent as "0x" + hex without leading zeros (e.g., "0x10001")
+      let exp_hex = data_encoding::HEXLOWER.encode(exponent_bytes);
+      let exp_trimmed = exp_hex.trim_start_matches('0');
+      let exponent = Some(format!(
+        "0x{}",
+        if exp_trimmed.is_empty() {
+          "0"
+        } else {
+          exp_trimmed
+        }
+      ));
       let pubkey = Some(spki.raw.to_vec());
 
       KeyInfo {
@@ -537,25 +617,27 @@ fn extract_key_info(spki: &x509_parser::x509::SubjectPublicKeyInfo) -> KeyInfo {
         const ID_SECP384R1: &[u8] = &oid!(raw 1.3.132.0.34);
         const ID_SECP521R1: &[u8] = &oid!(raw 1.3.132.0.35);
 
+        // Use OpenSSL short names for asn1Curve and NIST names for
+        // nistCurve to match Node.js behavior.
         match curve_oid.as_bytes() {
           ID_SECP224R1 => {
-            asn1_curve = Some("1.3.132.0.33".to_string());
-            nist_curve = Some("secp224r1".to_string());
+            asn1_curve = Some("secp224r1".to_string());
+            nist_curve = Some("P-224".to_string());
             bits = Some(224);
           }
           ID_SECP256R1 => {
-            asn1_curve = Some("1.2.840.10045.3.1.7".to_string());
-            nist_curve = Some("secp256r1".to_string());
+            asn1_curve = Some("prime256v1".to_string());
+            nist_curve = Some("P-256".to_string());
             bits = Some(256);
           }
           ID_SECP384R1 => {
-            asn1_curve = Some("1.3.132.0.34".to_string());
-            nist_curve = Some("secp384r1".to_string());
+            asn1_curve = Some("secp384r1".to_string());
+            nist_curve = Some("P-384".to_string());
             bits = Some(384);
           }
           ID_SECP521R1 => {
-            asn1_curve = Some("1.3.132.0.35".to_string());
-            nist_curve = Some("secp521r1".to_string());
+            asn1_curve = Some("secp521r1".to_string());
+            nist_curve = Some("P-521".to_string());
             bits = Some(521);
           }
           _ => {
@@ -640,6 +722,61 @@ fn get_subject_alt_name(cert: &X509Certificate) -> Option<String> {
     None
   } else {
     Some(alt_names.join(", "))
+  }
+}
+
+fn get_info_access_object(
+  cert: &X509Certificate,
+) -> Option<HashMap<String, Vec<String>>> {
+  let oid_aia = Oid::from(&[1, 3, 6, 1, 5, 5, 7, 1, 1]).ok()?;
+  let oid_ocsp = Oid::from(&[1, 3, 6, 1, 5, 5, 7, 48, 1]).ok()?;
+  let oid_ca_issuers = Oid::from(&[1, 3, 6, 1, 5, 5, 7, 48, 2]).ok()?;
+
+  let ext = cert.extensions().iter().find(|e| e.oid == oid_aia)?;
+
+  let data = ext.value;
+  let (_, seq) =
+    x509_parser::der_parser::asn1_rs::Sequence::from_der(data).ok()?;
+
+  let mut result: HashMap<String, Vec<String>> = HashMap::new();
+  let mut remaining = seq.content.as_ref();
+
+  while !remaining.is_empty() {
+    let (rest, access_desc) =
+      x509_parser::der_parser::asn1_rs::Sequence::from_der(remaining).ok()?;
+    remaining = rest;
+
+    let (general_name_data, method_oid) =
+      Oid::from_der(access_desc.content.as_ref()).ok()?;
+
+    let method_name = if method_oid == oid_ocsp {
+      "OCSP - URI"
+    } else if method_oid == oid_ca_issuers {
+      "CA Issuers - URI"
+    } else {
+      continue;
+    };
+
+    if !general_name_data.is_empty() {
+      let (_, any) =
+        x509_parser::der_parser::asn1_rs::Any::from_der(general_name_data)
+          .ok()?;
+      if any.class() == x509_parser::der_parser::asn1_rs::Class::ContextSpecific
+        && any.tag().0 == 6
+        && let Ok(uri) = std::str::from_utf8(any.data)
+      {
+        result
+          .entry(method_name.to_string())
+          .or_default()
+          .push(uri.to_string());
+      }
+    }
+  }
+
+  if result.is_empty() {
+    None
+  } else {
+    Some(result)
   }
 }
 
@@ -1087,6 +1224,44 @@ pub fn op_node_x509_verify(
   }
 }
 
+/// Map well-known signature algorithm OIDs to their OpenSSL names.
+fn sig_alg_oid_to_name(oid: &str) -> Option<&'static str> {
+  match oid {
+    "1.2.840.113549.1.1.4" => Some("md5WithRSAEncryption"),
+    "1.2.840.113549.1.1.5" => Some("sha1WithRSAEncryption"),
+    "1.2.840.113549.1.1.11" => Some("sha256WithRSAEncryption"),
+    "1.2.840.113549.1.1.12" => Some("sha384WithRSAEncryption"),
+    "1.2.840.113549.1.1.13" => Some("sha512WithRSAEncryption"),
+    "1.2.840.113549.1.1.10" => Some("rsassaPss"),
+    "1.2.840.10045.4.1" => Some("ecdsa-with-SHA1"),
+    "1.2.840.10045.4.3.2" => Some("ecdsa-with-SHA256"),
+    "1.2.840.10045.4.3.3" => Some("ecdsa-with-SHA384"),
+    "1.2.840.10045.4.3.4" => Some("ecdsa-with-SHA512"),
+    "1.3.101.112" => Some("ED25519"),
+    "1.3.101.113" => Some("ED448"),
+    _ => None,
+  }
+}
+
+#[op2]
+#[string]
+pub fn op_node_x509_get_signature_algorithm_name(
+  #[cppgc] cert: &Certificate,
+) -> Option<String> {
+  let cert = cert.inner.get().deref();
+  let oid = cert.signature_algorithm.algorithm.to_id_string();
+  sig_alg_oid_to_name(&oid).map(|s| s.to_string())
+}
+
+#[op2]
+#[string]
+pub fn op_node_x509_get_signature_algorithm_oid(
+  #[cppgc] cert: &Certificate,
+) -> String {
+  let cert = cert.inner.get().deref();
+  cert.signature_algorithm.algorithm.to_id_string()
+}
+
 #[op2]
 #[string]
 pub fn op_node_x509_get_info_access(
@@ -1132,8 +1307,8 @@ pub fn op_node_x509_get_info_access(
       let (_, any) =
         x509_parser::der_parser::asn1_rs::Any::from_der(general_name_data)
           .ok()?;
-      // Tag 6 is context-specific for URI in GeneralName
-      if any.tag().0 == 6
+      if any.class() == x509_parser::der_parser::asn1_rs::Class::ContextSpecific
+        && any.tag().0 == 6
         && let Ok(uri) = std::str::from_utf8(any.data)
       {
         entries.push(format!("{}:{}", method_name, uri));
@@ -1185,11 +1360,11 @@ r6C3V5F4Z9y8o8i9E4j5V8O5Q7Y8Z4W8n7R8B8l8H8L4P4F8r8c8A4v3O4g8L8S6
 
     let result = extract_subject_or_issuer(cert_inner.subject());
 
-    assert_eq!(result.cn, Some("CN".to_string()));
-    assert_eq!(result.c, None);
-    assert_eq!(result.st, None);
-    assert_eq!(result.l, None);
-    assert_eq!(result.o, None);
-    assert_eq!(result.ou, None);
+    assert_eq!(result.cn, StringOrArray(vec!["CN".to_string()]));
+    assert!(result.c.is_empty());
+    assert!(result.st.is_empty());
+    assert!(result.l.is_empty());
+    assert!(result.o.is_empty());
+    assert!(result.ou.is_empty());
   }
 }

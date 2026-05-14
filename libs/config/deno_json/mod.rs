@@ -14,7 +14,6 @@ use deno_path_util::url_to_file_path;
 use deno_semver::jsr::JsrDepPackageReq;
 use import_map::ImportMapWithDiagnostics;
 use indexmap::IndexMap;
-use jsonc_parser::ParseResult;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
@@ -369,6 +368,16 @@ pub enum SeparatorKind {
   Comma,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub enum VueComponentCase {
+  Ignore,
+  #[serde(alias = "pascalCase", alias = "PascalCase")]
+  PascalCase,
+  #[serde(alias = "kebabCase")]
+  KebabCase,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Hash, PartialEq)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct FmtOptionsConfig {
@@ -392,6 +401,8 @@ pub struct FmtOptionsConfig {
   pub type_literal_separator_kind: Option<SeparatorKind>,
   pub space_around: Option<bool>,
   pub space_surrounding_properties: Option<bool>,
+  pub vue_component_case: Option<VueComponentCase>,
+  pub angular_next_control_flow_same_line: Option<bool>,
 }
 
 impl FmtOptionsConfig {
@@ -416,6 +427,8 @@ impl FmtOptionsConfig {
       && self.type_literal_separator_kind.is_none()
       && self.space_around.is_none()
       && self.space_surrounding_properties.is_none()
+      && self.vue_component_case.is_none()
+      && self.angular_next_control_flow_same_line.is_none()
   }
 }
 
@@ -489,6 +502,8 @@ struct SerializedFmtConfig {
   pub type_literal_separator_kind: Option<SeparatorKind>,
   pub space_around: Option<bool>,
   pub space_surrounding_properties: Option<bool>,
+  pub vue_component_case: Option<VueComponentCase>,
+  pub angular_next_control_flow_same_line: Option<bool>,
   #[serde(rename = "options")]
   pub deprecated_options: FmtOptionsConfig,
   pub include: Option<Vec<String>>,
@@ -526,6 +541,9 @@ impl SerializedFmtConfig {
       type_literal_separator_kind: self.type_literal_separator_kind,
       space_around: self.space_around,
       space_surrounding_properties: self.space_surrounding_properties,
+      vue_component_case: self.vue_component_case,
+      angular_next_control_flow_same_line: self
+        .angular_next_control_flow_same_line,
     };
     if !self.deprecated_files.is_null() {
       log::warn!(
@@ -736,9 +754,13 @@ impl BenchConfig {
 }
 
 /// `compile` config representation for serde
+///
+/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedCompileConfig {
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
   pub permissions: Option<PermissionNameOrObject>,
 }
 
@@ -748,7 +770,19 @@ impl SerializedCompileConfig {
     config_file_specifier: &Url,
     permissions: &PermissionsConfig,
   ) -> Result<CompileConfig, IntoResolvedError> {
+    let config_dir = url_parent(config_file_specifier);
+    let config_dir_path = url_to_file_path(&config_dir)?;
     Ok(CompileConfig {
+      include: self
+        .include
+        .into_iter()
+        .map(|p| config_dir_path.join(&p).to_string_lossy().to_string())
+        .collect(),
+      exclude: self
+        .exclude
+        .into_iter()
+        .map(|p| config_dir_path.join(&p).to_string_lossy().to_string())
+        .collect(),
       permissions: match self.permissions {
         Some(PermissionNameOrObject::Name(name)) => {
           Some(Box::new(permissions.get(&name)?.clone()))
@@ -767,6 +801,8 @@ impl SerializedCompileConfig {
 
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct CompileConfig {
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
   pub permissions: Option<Box<PermissionsObjectWithBase>>,
 }
 
@@ -915,19 +951,11 @@ pub enum ConfigFileReadErrorKind {
     source: std::io::Error,
   },
   #[class(type)]
-  #[error("Unable to parse config file JSON {specifier}.")]
-  Parse {
-    specifier: Url,
-    #[source]
-    source: Box<jsonc_parser::errors::ParseError>,
-  },
-  #[class(inherit)]
   #[error("Failed deserializing config file '{specifier}'.")]
   Deserialize {
     specifier: Url,
     #[source]
-    #[inherit]
-    source: serde_json::Error,
+    source: Box<jsonc_parser::errors::ParseError>,
   },
   #[class(type)]
   #[error("Config file JSON should be an object '{specifier}'.")]
@@ -938,6 +966,14 @@ pub enum ConfigFileReadErrorKind {
 #[class(type)]
 #[error("Unsupported \"nodeModulesDir\" value.")]
 pub struct NodeModulesDirParseError {
+  #[source]
+  pub source: serde_json::Error,
+}
+
+#[derive(Debug, Error, JsError)]
+#[class(type)]
+#[error("Unsupported \"nodeModulesLinker\" value.")]
+pub struct NodeModulesLinkerParseError {
   #[source]
   pub source: serde_json::Error,
 }
@@ -1066,11 +1102,66 @@ impl NodeModulesDirMode {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum NodeModulesLinkerMode {
+  #[default]
+  Isolated,
+  Hoisted,
+}
+
+impl<'de> Deserialize<'de> for NodeModulesLinkerMode {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    struct NodeModulesLinkerModeVisitor;
+
+    impl Visitor<'_> for NodeModulesLinkerModeVisitor {
+      type Value = NodeModulesLinkerMode;
+
+      fn expecting(
+        &self,
+        formatter: &mut std::fmt::Formatter,
+      ) -> std::fmt::Result {
+        formatter.write_str(r#""isolated" or "hoisted""#)
+      }
+
+      fn visit_str<E>(self, value: &str) -> Result<NodeModulesLinkerMode, E>
+      where
+        E: de::Error,
+      {
+        match value {
+          "isolated" => Ok(NodeModulesLinkerMode::Isolated),
+          "hoisted" => Ok(NodeModulesLinkerMode::Hoisted),
+          _ => Err(de::Error::invalid_value(Unexpected::Str(value), &self)),
+        }
+      }
+    }
+
+    deserializer.deserialize_str(NodeModulesLinkerModeVisitor)
+  }
+}
+
+impl std::fmt::Display for NodeModulesLinkerMode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.as_str())
+  }
+}
+
+impl NodeModulesLinkerMode {
+  pub fn as_str(self) -> &'static str {
+    match self {
+      NodeModulesLinkerMode::Isolated => "isolated",
+      NodeModulesLinkerMode::Hoisted => "hoisted",
+    }
+  }
+}
+
 /// `deploy` config representation for serde
 ///
 /// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 struct SerializedDeployConfig {
   pub org: String,
   pub app: Option<String>,
@@ -1104,7 +1195,7 @@ pub struct DeployConfig {
   pub files: FilePatterns,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
@@ -1121,12 +1212,16 @@ pub struct ConfigFileJson {
   pub exclude: Option<Value>,
   pub minimum_dependency_age: Option<Value>,
   pub node_modules_dir: Option<Value>,
+  pub node_modules_linker: Option<Value>,
   pub vendor: Option<bool>,
   pub license: Option<Value>,
   pub permissions: Option<Value>,
   pub publish: Option<Value>,
   pub deploy: Option<Value>,
   pub allow_scripts: Option<Value>,
+
+  pub catalog: Option<IndexMap<String, String>>,
+  pub catalogs: Option<IndexMap<String, IndexMap<String, String>>>,
 
   pub name: Option<String>,
   pub version: Option<String>,
@@ -1318,7 +1413,7 @@ pub enum ToLockConfigError {
   UrlToFilePath(#[from] UrlToFilePathError),
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type ConfigFileRc = deno_maybe_sync::MaybeArc<ConfigFile>;
 
 #[derive(Clone, Debug)]
@@ -1423,43 +1518,21 @@ impl ConfigFile {
   }
 
   pub fn new(text: &str, specifier: Url) -> Result<Self, ConfigFileReadError> {
-    let jsonc = match jsonc_parser::parse_to_ast(
-      text,
-      &Default::default(),
-      &Default::default(),
-    ) {
-      Ok(ParseResult {
-        value: Some(value @ jsonc_parser::ast::Value::Object(_)),
-        ..
-      }) => Value::from(value),
-      Ok(ParseResult { value: None, .. }) => {
-        json!({})
-      }
-      Err(e) => {
-        return Err(
-          ConfigFileReadErrorKind::Parse {
-            specifier,
-            source: Box::new(e),
+    let json: Option<ConfigFileJson> =
+      jsonc_parser::parse_to_serde_value(text, &Default::default()).map_err(
+        |err| {
+          ConfigFileReadErrorKind::Deserialize {
+            specifier: specifier.clone(),
+            source: Box::new(err),
           }
-          .into_box(),
-        );
-      }
-      _ => {
-        return Err(
-          ConfigFileReadErrorKind::NotObject { specifier }.into_box(),
-        );
-      }
-    };
-    let json: ConfigFileJson =
-      serde_json::from_value(jsonc).map_err(|err| {
-        ConfigFileReadErrorKind::Deserialize {
-          specifier: specifier.clone(),
-          source: err,
-        }
-        .into_box()
-      })?;
+          .into_box()
+        },
+      )?;
 
-    Ok(Self { specifier, json })
+    Ok(Self {
+      specifier,
+      json: json.unwrap_or_default(),
+    })
   }
 
   pub fn dir_path(&self) -> PathBuf {
@@ -1568,6 +1641,16 @@ impl ConfigFile {
       value.insert("scopes".to_string(), scopes.clone());
     }
     import_map::ext::expand_import_map_value(Value::Object(value))
+  }
+
+  pub fn catalog(&self) -> Option<&IndexMap<String, String>> {
+    self.json.catalog.as_ref()
+  }
+
+  pub fn catalogs(
+    &self,
+  ) -> Option<&IndexMap<String, IndexMap<String, String>>> {
+    self.json.catalogs.as_ref()
   }
 
   pub fn is_an_import_map(&self) -> bool {
@@ -1843,7 +1926,7 @@ impl ConfigFile {
             source: error,
           })
       }
-      None => Ok(CompileConfig { permissions: None }),
+      None => Ok(CompileConfig::default()),
     }
   }
 
@@ -2436,7 +2519,9 @@ mod tests {
         "jsx.multiLineParens": "never",
         "typeLiteral.separatorKind": "semiColon",
         "spaceAround": true,
-        "spaceSurroundingProperties": true
+        "spaceSurroundingProperties": true,
+        "vueComponentCase": "pascal-case",
+        "angularNextControlFlowSameLine": false
       },
       "tasks": {
         "build": "deno run --allow-read --allow-write build.ts",
@@ -2510,6 +2595,8 @@ mod tests {
           type_literal_separator_kind: Some(SeparatorKind::SemiColon),
           space_around: Some(true),
           space_surrounding_properties: Some(true),
+          vue_component_case: Some(VueComponentCase::PascalCase),
+          angular_next_control_flow_same_line: Some(false),
         },
       }
     );
@@ -3104,7 +3191,9 @@ mod tests {
       ) -> std::io::Result<Cow<'static, [u8]>> {
         assert_eq!(
           path,
-          root_url().to_file_path().unwrap().join("import_map.json")
+          deno_path_util::url_to_file_path(&root_url())
+            .unwrap()
+            .join("import_map.json")
         );
         Ok(Cow::Borrowed(
           r#"{ "imports": { "@std/test": "jsr:@std/test@0.2.0" } }"#.as_bytes(),
@@ -3198,12 +3287,12 @@ mod tests {
   #[test]
   fn resolve_import_map_url_parent() {
     let config_text = r#"{ "importMap": "../import_map.json" }"#;
-    let file_path = root_url()
-      .join("sub/deno.json")
-      .unwrap()
-      .to_file_path()
-      .unwrap();
-    let config_specifier = Url::from_file_path(&file_path).unwrap();
+    let file_path = deno_path_util::url_to_file_path(
+      &root_url().join("sub/deno.json").unwrap(),
+    )
+    .unwrap();
+    let config_specifier =
+      deno_path_util::url_from_file_path(&file_path).unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     assert_eq!(
       config_file.to_import_map_path().unwrap().unwrap(),
@@ -3219,7 +3308,7 @@ mod tests {
   #[test]
   fn lock_object() {
     fn root_joined(path: &str) -> PathBuf {
-      root_url().join(path).unwrap().to_file_path().unwrap()
+      deno_path_util::url_to_file_path(&root_url().join(path).unwrap()).unwrap()
     }
     let cases = [
       (

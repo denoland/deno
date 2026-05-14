@@ -1,4 +1,4 @@
-cover [WILDCARD]/coverage/complex.ts ... 60.000% (21/35)
+cover [WILDCARD]/coverage/complex.ts ... 62.857% (22/35)
   55 | export function unused(
   56 |   foo: string,
   57 |   bar: string,
@@ -17,5 +17,3 @@ cover [WILDCARD]/coverage/complex.ts ... 60.000% (21/35)
   79 |     0
 -----|-----
   81 | }
------|-----
-  84 | console.log("%s", () => 1);

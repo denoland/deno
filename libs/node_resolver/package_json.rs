@@ -38,7 +38,7 @@ where
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type PackageJsonCacheRc =
   deno_maybe_sync::MaybeArc<dyn NodePackageJsonCache>;
 
@@ -72,7 +72,7 @@ impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type PackageJsonResolverRc<TSys> =
   deno_maybe_sync::MaybeArc<PackageJsonResolver<TSys>>;
 

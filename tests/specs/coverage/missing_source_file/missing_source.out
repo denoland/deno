@@ -1,5 +1,5 @@
 Source not found for "[WILDCARD]helper.ts" (was it deleted after coverage was collected?). Skipping.
-| File      | Branch % | Line % |
-| --------- | -------- | ------ |
-| main.ts   |    100.0 |  100.0 |
-| All files |    100.0 |  100.0 |
+| File      | Branch % | Function % | Line % |
+| --------- | -------- | ---------- | ------ |
+| main.ts   |    100.0 |      100.0 |  100.0 |
+| All files |    100.0 |      100.0 |  100.0 |

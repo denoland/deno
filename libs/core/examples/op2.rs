@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![allow(clippy::disallowed_methods, reason = "test code")]
+
 use std::rc::Rc;
 
 use anyhow::Context;

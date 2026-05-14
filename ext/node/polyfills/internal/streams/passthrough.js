@@ -1,8 +1,5 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
-
-import { primordials } from "ext:core/mod.js";
-import Transform from "node:_stream_transform";
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -28,7 +25,11 @@ import Transform from "node:_stream_transform";
 // basically just the most minimal sort of Transform stream.
 // Every written chunk gets output as-is.
 
-"use strict";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const Transform = core.loadExtScript(
+  "ext:deno_node/internal/streams/transform.js",
+).default;
 
 const {
   ObjectSetPrototypeOf,
@@ -48,5 +49,6 @@ function PassThrough(options) {
 PassThrough.prototype._transform = function (chunk, encoding, cb) {
   cb(null, chunk);
 };
-export default PassThrough;
-export { PassThrough };
+
+return { default: PassThrough, PassThrough };
+})();

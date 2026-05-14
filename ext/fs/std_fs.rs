@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::disallowed_methods)]
+#![allow(clippy::disallowed_methods, reason = "file system implementation")]
 
 use std::borrow::Cow;
 use std::fs;
@@ -106,7 +106,15 @@ impl FileSystem for RealFs {
     path: CheckedPathBuf,
     options: OpenOptions,
   ) -> FsResult<Rc<dyn File>> {
-    let std_file = open_with_checked_path(options, &path.as_checked_path())?;
+    // Open on the blocking pool: opening a FIFO with O_RDONLY (or O_WRONLY)
+    // blocks until the other end is opened, which would otherwise stall the
+    // runtime thread.
+    let std_file = spawn_blocking(move || {
+      open_with_checked_path(options, &path.as_checked_path())
+        .map(|f| (f, path))
+    })
+    .await??;
+    let (std_file, path) = std_file;
     Ok(Rc::new(StdFileResourceInner::file(
       std_file,
       Some(path.to_path_buf()),
@@ -694,7 +702,7 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
 
     let ty = source_meta.file_type();
     if ty.is_dir() {
-      #[allow(unused_mut)]
+      #[allow(unused_mut, reason = "mutable on unix")]
       let mut builder = fs::DirBuilder::new();
       #[cfg(unix)]
       {
@@ -719,19 +727,27 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
       entries
         .into_par_iter()
         .map(|file_name| {
-          cp_(
-            fs::symlink_metadata(from.join(&file_name)).unwrap(),
-            &from.join(&file_name),
-            &to.join(&file_name),
-          )
-          .map_err(|err| {
+          let from_path = from.join(&file_name);
+          let to_path = to.join(&file_name);
+          let meta = fs::symlink_metadata(&from_path).map_err(|err| {
             io::Error::new(
               err.kind(),
               format!(
                 "failed to copy '{}' to '{}': {:?}",
-                from.join(&file_name).display(),
-                to.join(&file_name).display(),
-                err
+                from_path.display(),
+                to_path.display(),
+                err,
+              ),
+            )
+          })?;
+          cp_(meta, &from_path, &to_path).map_err(|err| {
+            io::Error::new(
+              err.kind(),
+              format!(
+                "failed to copy '{}' to '{}': {:?}",
+                from_path.display(),
+                to_path.display(),
+                err,
               ),
             )
           })
@@ -1043,7 +1059,12 @@ fn open_options(options: OpenOptions) -> fs::OpenOptions {
   open_options.read(options.read);
   open_options.create(options.create);
   open_options.write(options.write);
-  open_options.truncate(options.truncate);
+  // On Windows, truncate and create_new produce conflicting
+  // dwCreationDisposition flags (TRUNCATE_EXISTING vs CREATE_NEW).
+  // When create_new is set, the file must not exist, so truncation
+  // is meaningless. Passing both can cause spurious "os error 0"
+  // (ERROR_SUCCESS) failures and file corruption on Windows.
+  open_options.truncate(options.truncate && !options.create_new);
   open_options.append(options.append);
   open_options.create_new(options.create_new);
   open_options

@@ -108,7 +108,10 @@ pub(super) fn report_summary(
   options: &TestFailureFormatOptions,
 ) {
   if !summary.failures.is_empty() || !summary.uncaught_errors.is_empty() {
-    #[allow(clippy::type_complexity)] // Type alias doesn't look better here
+    #[allow(
+      clippy::type_complexity,
+      reason = "Type alias doesn't look better here"
+    )]
     let mut failures_by_origin: BTreeMap<
       String,
       (

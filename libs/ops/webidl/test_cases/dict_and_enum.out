@@ -48,9 +48,8 @@ impl<'a> ::deno_core::webidl::WebIdlConverter<'a> for GPURequestAdapterOptions {
                     ::deno_core::webidl::ContextFn::new_borrowed(
                         &|| {
                             format!(
-                                "'{}' of '{}' ({})",
-                                "forceFallbackAdapter",
-                                "GPURequestAdapterOptions",
+                                "{} ({})",
+                                "'forceFallbackAdapter' of 'GPURequestAdapterOptions'",
                                 __context.call(),
                             )
                                 .into()
@@ -84,9 +83,8 @@ impl<'a> ::deno_core::webidl::WebIdlConverter<'a> for GPURequestAdapterOptions {
                     ::deno_core::webidl::ContextFn::new_borrowed(
                         &|| {
                             format!(
-                                "'{}' of '{}' ({})",
-                                "powerPreference",
-                                "GPURequestAdapterOptions",
+                                "{} ({})",
+                                "'powerPreference' of 'GPURequestAdapterOptions'",
                                 __context.call(),
                             )
                                 .into()
@@ -114,20 +112,25 @@ impl<'a> ::deno_core::webidl::WebIdlConverter<'a> for GPUPowerPreference {
         __context: ::deno_core::webidl::ContextFn<'b>,
         __options: &Self::Options,
     ) -> Result<Self, ::deno_core::webidl::WebIdlError> {
-        match __value.to_rust_string_lossy(__scope).as_str() {
-            "low-power" => Ok(Self::LowPower),
-            "high-performance" => Ok(Self::HighPerformance),
-            s => {
-                Err(
-                    ::deno_core::webidl::WebIdlError::new(
-                        __prefix,
-                        __context,
-                        ::deno_core::webidl::WebIdlErrorKind::InvalidEnumVariant {
-                            converter: "GPUPowerPreference",
-                            variant: s.to_string(),
-                        },
-                    ),
-                )
+        {
+            let mut __buf: [::std::mem::MaybeUninit<
+                u8,
+            >; deno_core::_ops::STRING_STACK_BUFFER_SIZE] = [::std::mem::MaybeUninit::uninit(); deno_core::_ops::STRING_STACK_BUFFER_SIZE];
+            match deno_core::_ops::to_str(__scope, &*__value, &mut __buf).as_ref() {
+                "low-power" => Ok(Self::LowPower),
+                "high-performance" => Ok(Self::HighPerformance),
+                s => {
+                    Err(
+                        ::deno_core::webidl::WebIdlError::new(
+                            __prefix,
+                            __context,
+                            ::deno_core::webidl::WebIdlErrorKind::InvalidEnumVariant {
+                                converter: "GPUPowerPreference",
+                                variant: s.to_string(),
+                            },
+                        ),
+                    )
+                }
             }
         }
     }
