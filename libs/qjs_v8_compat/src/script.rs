@@ -33,9 +33,9 @@ pub struct ScriptOrigin<'s> {
 }
 
 impl<'s> ScriptOrigin<'s> {
-  pub fn new<S, R, M, H>(
+  pub fn new<S, M>(
     _scope: &mut S,
-    _resource_name: R,
+    _resource_name: Local<'s, Value>,
     _resource_line_offset: i32,
     _resource_column_offset: i32,
     _resource_is_shared_cross_origin: bool,
@@ -44,7 +44,7 @@ impl<'s> ScriptOrigin<'s> {
     _resource_is_opaque: bool,
     _is_wasm: bool,
     _is_module: bool,
-    _host_defined_options: H,
+    _host_defined_options: Option<Local<'s, crate::value::Data>>,
   ) -> Self {
     Self {
       filename: None,

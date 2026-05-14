@@ -2281,7 +2281,7 @@ impl ModuleMap {
 
   pub(crate) fn get_module<'s, 'i>(
     &self,
-    scope: &v8::PinScope<'s, 'i>,
+    scope: &mut v8::PinScope<'s, 'i>,
     module_id: ModuleId,
   ) -> Option<v8::Local<'s, v8::Module>> {
     self
