@@ -27,6 +27,42 @@ pub enum NewStringType {
   Internalized,
 }
 
+// rusty_v8 calls these as inherent associated functions on the `String`
+// marker type (e.g. `v8::String::new(scope, s)`). Mirror that surface.
+impl String {
+  pub fn new<'s>(
+    scope: &mut HandleScope<'s>,
+    s: &str,
+  ) -> Option<Local<'s, String>> {
+    Local::<String>::new(scope, s)
+  }
+  pub fn new_from_utf8<'s>(
+    scope: &mut HandleScope<'s>,
+    bytes: &[u8],
+    ty: NewStringType,
+  ) -> Option<Local<'s, String>> {
+    Local::<String>::new_from_utf8(scope, bytes, ty)
+  }
+  pub fn new_from_one_byte<'s>(
+    scope: &mut HandleScope<'s>,
+    bytes: &[u8],
+    _ty: NewStringType,
+  ) -> Option<Local<'s, String>> {
+    let s = std::str::from_utf8(bytes).ok()?;
+    Local::<String>::new(scope, s)
+  }
+  pub fn new_external_onebyte_static<'s>(
+    scope: &mut HandleScope<'s>,
+    bytes: &'static [u8],
+  ) -> Option<Local<'s, String>> {
+    let s = std::str::from_utf8(bytes).ok()?;
+    Local::<String>::new(scope, s)
+  }
+  pub fn empty<'s>(scope: &mut HandleScope<'s>) -> Local<'s, String> {
+    Self::new(scope, "").unwrap()
+  }
+}
+
 impl<'s> Local<'s, String> {
   pub fn new(scope: &mut HandleScope<'s>, s: &str) -> Option<Self> {
     let raw = sys::new_string(scope.ctx(), s);
@@ -44,9 +80,6 @@ impl<'s> Local<'s, String> {
     std::str::from_utf8(bytes)
       .ok()
       .and_then(|s| Self::new(scope, s))
-  }
-  pub fn empty(scope: &mut HandleScope<'s>) -> Self {
-    Self::new(scope, "").unwrap()
   }
   pub fn length(&self) -> usize {
     // Returning byte length of the UTF-8 form is an approximation; V8 uses
