@@ -113,6 +113,10 @@ pub use crate::v8::WasmModuleObject;
 pub use crate::v8::WasmStreaming;
 pub use crate::v8::WriteFlags;
 pub use crate::v8::TimeZoneDetection;
+/// Mirror of `v8::VERSION_STRING` — what we report. Used by some
+/// Node.js compatibility code (deno_inspector_server) to identify
+/// the engine.
+pub const VERSION_STRING: &str = "qjs_v8_compat (QuickJS-ng)";
 pub use crate::v8::GCType;
 pub use crate::v8::GCCallbackFlags;
 pub use crate::v8::GCCallback;
