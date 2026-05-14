@@ -1000,10 +1000,8 @@ function makeVerifyError(code) {
     DEPTH_ZERO_SELF_SIGNED_CERT: "self-signed certificate",
     SELF_SIGNED_CERT_IN_CHAIN: "self-signed certificate in certificate chain",
     UNABLE_TO_GET_ISSUER_CERT: "unable to get issuer certificate",
-    UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
-      "unable to get local issuer certificate",
-    UNABLE_TO_VERIFY_LEAF_SIGNATURE:
-      "unable to verify the first certificate",
+    UNABLE_TO_GET_ISSUER_CERT_LOCALLY: "unable to get local issuer certificate",
+    UNABLE_TO_VERIFY_LEAF_SIGNATURE: "unable to verify the first certificate",
   }[code] ?? code;
   const err = new Error(message);
   err.code = code;

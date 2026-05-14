@@ -640,14 +640,8 @@ Deno.test("tls.setDefaultCACertificates validates input - array elements must be
 });
 
 Deno.test("tls.setDefaultCACertificates accepts valid certificate array", () => {
-  const testCert = `-----BEGIN CERTIFICATE-----
-MIIBkTCB+wIJAKHHCgVZU1FFMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnRl
-c3RDQTAeFw0yMDAxMDEwMDAwMDBaFw0zMDAxMDEwMDAwMDBaMBExDzANBgNVBAMM
-BnRlc3RDQTCB
------END CERTIFICATE-----`;
-
   // deno-lint-ignore no-explicit-any
-  (tls as any).setDefaultCACertificates([testCert]);
+  (tls as any).setDefaultCACertificates([rootCaCert]);
 });
 
 // https://github.com/denoland/deno/issues/31759

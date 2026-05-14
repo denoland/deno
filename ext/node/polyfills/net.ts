@@ -1005,13 +1005,11 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
     debug("connect: autodetecting");
 
     dnsOpts.all = true;
-    const lookupOpts = options.lookup === undefined
-      ? dnsOpts
-      : {
-        family: dnsOpts.family,
-        hints: dnsOpts.hints,
-        all: dnsOpts.all,
-      };
+    const lookupOpts = options.lookup === undefined ? dnsOpts : {
+      family: dnsOpts.family,
+      hints: dnsOpts.hints,
+      all: dnsOpts.all,
+    };
     defaultTriggerAsyncIdScope(self[asyncIdSymbol], function () {
       _lookupAndConnectMultiple(
         self,
@@ -1031,13 +1029,11 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   }
 
   defaultTriggerAsyncIdScope(self[asyncIdSymbol], function () {
-    const lookupOpts = options.lookup === undefined
-      ? dnsOpts
-      : {
-        family: dnsOpts.family,
-        hints: dnsOpts.hints,
-        all: dnsOpts.all,
-      };
+    const lookupOpts = options.lookup === undefined ? dnsOpts : {
+      family: dnsOpts.family,
+      hints: dnsOpts.hints,
+      all: dnsOpts.all,
+    };
     lookup(
       host,
       lookupOpts,
