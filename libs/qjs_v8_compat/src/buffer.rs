@@ -230,9 +230,31 @@ pub enum WasmAsyncSuccess {
   Success,
   Fail,
 }
-pub struct WasmStreaming;
-impl WasmStreaming {
-  pub fn on_bytes_received(&self, _bytes: &[u8]) {}
-  pub fn finish(self) {}
-  pub fn abort(self, _err: Option<Local<'_, Value>>) {}
+pub struct WasmStreaming<const FOR_ASYNC_COMPILE: bool = true>;
+impl<const FOR_ASYNC_COMPILE: bool> WasmStreaming<FOR_ASYNC_COMPILE> {
+  pub fn on_bytes_received(&mut self, _bytes: &[u8]) {}
+  pub fn finish(&mut self) {}
+  pub fn abort(&mut self, _err: Option<Local<'_, Value>>) {}
+  pub fn set_url(&mut self, _url: &str) {}
+}
+
+impl WasmModuleObject {
+  pub fn compile<'s, S>(
+    _scope: &mut S,
+    _bytes: &[u8],
+  ) -> Option<Local<'s, WasmModuleObject>> {
+    None
+  }
+  pub fn from_compiled_module<'s, S>(
+    _scope: &mut S,
+    _module: &CompiledWasmModule,
+  ) -> Option<Local<'s, WasmModuleObject>> {
+    None
+  }
+}
+
+impl<'s> Local<'s, WasmModuleObject> {
+  pub fn get_compiled_module(&self) -> CompiledWasmModule {
+    CompiledWasmModule
+  }
 }

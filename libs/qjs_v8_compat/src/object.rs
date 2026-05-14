@@ -10,6 +10,18 @@ use crate::value::Value;
 crate::value_type!(Object, Array, Map, Proxy);
 
 impl Object {
+  pub fn wrap<'s, T>(
+    _scope: &mut crate::scope::HandleScope<'s>,
+    _wrapper: Local<'_, Object>,
+    _value: &T,
+  ) {
+  }
+  pub fn unwrap<'s, T: 'static>(
+    _scope: &mut crate::scope::HandleScope<'s>,
+    _wrapper: Local<'_, Object>,
+  ) -> Option<*mut T> {
+    None
+  }
   pub fn new<'s>(scope: &mut HandleScope<'s>) -> Local<'s, Object> {
     let raw = sys::new_object(scope.ctx());
     scope.track_owned(raw);

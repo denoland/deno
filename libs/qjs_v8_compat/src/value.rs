@@ -80,6 +80,68 @@ impl StackTrace {
   }
 }
 
+impl<'s> Local<'s, StackTrace> {
+  pub fn get_frame_count(&self) -> usize {
+    0
+  }
+  pub fn get_frame<S>(
+    &self,
+    _scope: &mut S,
+    _index: usize,
+  ) -> Option<Local<'s, StackFrame>> {
+    None
+  }
+}
+
+impl<'s> Local<'s, StackFrame> {
+  pub fn get_function_name<'sc>(
+    &self,
+    _scope: &mut HandleScope<'sc>,
+  ) -> Option<Local<'sc, crate::primitives::String>> {
+    None
+  }
+  pub fn get_script_name<'sc>(
+    &self,
+    _scope: &mut HandleScope<'sc>,
+  ) -> Option<Local<'sc, crate::primitives::String>> {
+    None
+  }
+  pub fn get_line_number(&self) -> usize {
+    0
+  }
+  pub fn get_column(&self) -> usize {
+    0
+  }
+  pub fn is_eval(&self) -> bool {
+    false
+  }
+  pub fn is_user_javascript(&self) -> bool {
+    true
+  }
+}
+
+// Marker-level shims for `Local<v8::String>` is_null/is_undefined that
+// deno_core sometimes calls on a String typed slot as part of optional
+// handling. Since `Local<String>` is non-null-ish to construct, these
+// just check the underlying tag.
+impl<'s> Local<'s, crate::primitives::String> {
+  pub fn is_null(&self) -> bool {
+    crate::sys::jsv_is_null(&self.raw)
+  }
+  pub fn is_undefined(&self) -> bool {
+    crate::sys::jsv_is_undefined(&self.raw)
+  }
+}
+
+impl<'s> Local<'s, crate::object::Proxy> {
+  pub fn get_target<S>(&self, _scope: &mut S) -> Local<'s, crate::value::Value> {
+    Local::from_raw(crate::sys::jsv_undefined())
+  }
+  pub fn get_handler<S>(&self, _scope: &mut S) -> Local<'s, crate::value::Value> {
+    Local::from_raw(crate::sys::jsv_undefined())
+  }
+}
+
 // Methods on Value the marker — deno_core occasionally dispatches
 // directly through `&v8::Value`. The marker is ZST so these can't
 // inspect the underlying tag; returns conservative defaults.
@@ -931,6 +993,18 @@ impl<'s> Local<'s, Value> {
     } else {
       None
     }
+  }
+  pub fn to_big_int<'sc>(
+    &self,
+    _scope: &mut HandleScope<'sc>,
+  ) -> Option<Local<'sc, crate::primitives::BigInt>> {
+    None
+  }
+  pub fn unwrap<'sc, T>(
+    &self,
+    _scope: &mut HandleScope<'sc>,
+  ) -> Option<*mut T> {
+    None
   }
 }
 

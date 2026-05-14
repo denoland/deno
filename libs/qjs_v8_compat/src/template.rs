@@ -48,6 +48,30 @@ impl<'s> FunctionBuilder<'s> {
     scope.track_owned(raw);
     Local::from_raw(raw)
   }
+  pub fn constructor_behavior(
+    self,
+    _b: crate::function::ConstructorBehavior,
+  ) -> Self {
+    self
+  }
+  pub fn side_effect_type(
+    self,
+    _t: crate::function::SideEffectType,
+  ) -> Self {
+    self
+  }
+  pub fn name(mut self, name: Local<'s, crate::primitives::String>) -> Self {
+    let _ = name;
+    self.name = Some(std::string::String::new());
+    self
+  }
+  pub fn build_fast<'b>(
+    self,
+    scope: &mut HandleScope<'s>,
+    _fast_function: &'b crate::v8::fast_api::CFunction,
+  ) -> Local<'s, FunctionTemplate> {
+    self.build(scope)
+  }
 }
 
 impl FunctionTemplate {
@@ -87,6 +111,13 @@ impl<'s> Local<'s, FunctionTemplate> {
     Local::from_raw(self.raw)
   }
   pub fn set_class_name(&self, _name: Local<'s, crate::primitives::String>) {}
+  pub fn inherit(&self, _parent: Local<'_, FunctionTemplate>) {}
+  pub fn set(
+    &self,
+    _key: Local<'_, crate::value::Name>,
+    _value: Local<'_, crate::value::Data>,
+  ) {
+  }
 }
 
 impl ObjectTemplate {
@@ -119,6 +150,14 @@ impl<'s> Local<'s, ObjectTemplate> {
   }
   pub fn new_instance<S>(&self, _scope: &S) -> Option<Local<'s, Object>> {
     None
+  }
+  pub fn set_accessor_property(
+    &self,
+    _key: Local<'_, crate::value::Name>,
+    _getter: Option<Local<'_, FunctionTemplate>>,
+    _setter: Option<Local<'_, FunctionTemplate>>,
+    _attr: crate::object::PropertyAttribute,
+  ) {
   }
   pub fn set_internal_field_count(&self, _n: i32) {}
   pub fn set_named_property_handler(

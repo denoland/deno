@@ -12,6 +12,20 @@ crate::value_type!(Script);
 crate::value_type!(UnboundScript);
 crate::value_type!(UnboundModuleScript);
 
+impl<'s> Local<'s, UnboundModuleScript> {
+  pub fn get_source_mapping_url<'sc>(
+    &self,
+    _scope: &mut HandleScope<'sc>,
+  ) -> Local<'sc, JsString> {
+    Local::from_raw(sys::jsv_undefined())
+  }
+  pub fn create_code_cache(
+    &self,
+  ) -> Option<Box<crate::external::CachedData>> {
+    None
+  }
+}
+
 /// V8 carries a `ScriptOrigin` for source maps, filename, line offsets.
 pub struct ScriptOrigin<'s> {
   filename: Option<String>,

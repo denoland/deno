@@ -112,6 +112,22 @@ impl<'a, P: ScopeParent> ContextScope<'a, P> {
   }
 }
 
+impl<'a, P> ContextScope<'a, P> {
+  pub fn add_context(
+    &mut self,
+    _ctx: Local<'_, Context>,
+  ) -> i32 {
+    0
+  }
+  pub fn set_default_context(&mut self, _ctx: Local<'_, Context>) {}
+  pub fn get_context_data_from_snapshot_once<T>(
+    &mut self,
+    _index: usize,
+  ) -> Option<Local<'_, T>> {
+    None
+  }
+}
+
 impl<'a, P> Drop for ContextScope<'a, P> {
   fn drop(&mut self) {
     // Use a fn pointer captured at construction so the Drop impl doesn't
@@ -155,4 +171,10 @@ impl<'a, P> AllowJavascriptExecutionScope<'a, P> {
       _scope: std::marker::PhantomData,
     }
   }
+  pub fn init(
+    self: core::pin::Pin<&mut Self>,
+  ) -> core::pin::Pin<&mut Self> {
+    self
+  }
 }
+impl<'a, P> Unpin for AllowJavascriptExecutionScope<'a, P> {}

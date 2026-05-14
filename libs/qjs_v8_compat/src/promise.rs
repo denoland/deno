@@ -49,6 +49,18 @@ pub struct PromiseRejectMessage<'a> {
   pub value: Local<'a, Value>,
 }
 
+impl<'a> PromiseRejectMessage<'a> {
+  pub fn get_event(&self) -> PromiseRejectEvent {
+    self.event
+  }
+  pub fn get_promise(&self) -> Local<'a, Promise> {
+    self.promise
+  }
+  pub fn get_value(&self) -> Local<'a, Value> {
+    self.value
+  }
+}
+
 /// Internal: paired resolve/reject functions live alongside the promise.
 /// The mock backend stores them as separate JSValues whose `.label` encodes
 /// the back-pointer; we don't expose this struct publicly.

@@ -164,6 +164,13 @@ impl<'s, T> ReturnValue<'s, T> {
   pub fn set_int32(&mut self, v: i32) {
     unsafe { *self.slot = sys::jsv_int32(v) }
   }
+  pub fn set_uint32(&mut self, v: u32) {
+    if v <= i32::MAX as u32 {
+      unsafe { *self.slot = sys::jsv_int32(v as i32) }
+    } else {
+      unsafe { *self.slot = sys::jsv_float64(v as f64) }
+    }
+  }
   pub fn set_double(&mut self, v: f64) {
     unsafe { *self.slot = sys::jsv_float64(v) }
   }

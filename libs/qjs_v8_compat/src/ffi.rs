@@ -65,6 +65,12 @@ pub struct JSValue {
   pub tag: i64,
 }
 
+impl JSValue {
+  pub fn as_ptr(&self) -> *const Self {
+    self as *const Self
+  }
+}
+
 // Tag constants — match quickjs-ng `quickjs.h` enum exactly.
 pub const JS_TAG_FIRST: i64 = -9;
 pub const JS_TAG_BIG_INT: i64 = -9;

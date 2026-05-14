@@ -335,6 +335,18 @@ impl Symbol {
   ) -> Local<'s, Symbol> {
     Self::new(scope)
   }
+  pub fn get_iterator<'s, S>(_scope: &mut S) -> Local<'s, Symbol> {
+    Local::from_raw(sys::JSValue {
+      u: sys::JSValueUnion { int32: 0 },
+      tag: sys::JS_TAG_SYMBOL,
+    })
+  }
+  pub fn get_async_iterator<'s, S>(_scope: &mut S) -> Local<'s, Symbol> {
+    Local::from_raw(sys::JSValue {
+      u: sys::JSValueUnion { int32: 0 },
+      tag: sys::JS_TAG_SYMBOL,
+    })
+  }
 }
 
 // ----- Primitive helpers -----------------------------------------------

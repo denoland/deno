@@ -576,6 +576,28 @@ pub mod v8 {
       ) {
       }
     }
+
+    /// Helper trait some deno_core code uses to call `.context_created`
+    /// on `Rc<Rc<V8Inspector>>`. Mirrors the rusty_v8 ergonomic.
+    pub trait V8InspectorContextCreated {
+      fn context_created(
+        &self,
+        _isolate: &mut crate::isolate::Isolate,
+        _context_group_id: i32,
+        _human_readable_name: StringView<'_>,
+        _aux_data: StringView<'_>,
+      );
+    }
+    impl V8InspectorContextCreated for std::rc::Rc<std::rc::Rc<V8Inspector>> {
+      fn context_created(
+        &self,
+        _isolate: &mut crate::isolate::Isolate,
+        _context_group_id: i32,
+        _human_readable_name: StringView<'_>,
+        _aux_data: StringView<'_>,
+      ) {
+      }
+    }
     impl Channel {
       pub fn new<C: ChannelImpl>(_channel: C) -> Self {
         Self
@@ -636,16 +658,19 @@ pub mod v8 {
 
     /// Mirror of v8's `UniquePtr<T>`. Just a wrapper around Option<Box<T>>
     /// so deno_core's signatures (which use `v8::UniquePtr<...>`) compile.
-    pub struct UniquePtr<T>(Option<Box<T>>);
+    pub struct UniquePtr<T>(Option<std::boxed::Box<T>>);
     impl<T> UniquePtr<T> {
-      pub fn from(value: Box<T>) -> Self {
+      pub fn from(value: std::boxed::Box<T>) -> Self {
         Self(Some(value))
       }
       pub fn into_raw(self) -> *mut T {
         match self.0 {
-          Some(b) => Box::into_raw(b),
+          Some(b) => std::boxed::Box::into_raw(b),
           None => core::ptr::null_mut(),
         }
+      }
+      pub fn unwrap(self) -> std::boxed::Box<T> {
+        self.0.expect("UniquePtr unwrap on null")
       }
     }
   }
@@ -995,12 +1020,10 @@ pub mod v8 {
     }
   }
   pub struct Task;
+  impl Task {
+    pub fn run(&mut self) {}
+  }
   pub struct IdleTask;
-  /// Stub for v8::WasmModuleObject. QuickJS has no WASM.
-  pub struct WasmModuleObject;
-  /// Stub for `v8::WasmStreaming<const FOR_ASYNC_COMPILE: bool>`.
-  /// QuickJS has no WASM streaming compile.
-  pub struct WasmStreaming<const FOR_ASYNC_COMPILE: bool = false>;
   /// Stub for `v8::FunctionBuilder<T>` — used to construct
   /// FunctionTemplates with various typed wrappers in the deno_core
   /// snapshot/init code. The phantom generic is the v8 type the

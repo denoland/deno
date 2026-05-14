@@ -30,6 +30,12 @@ impl<'s> Local<'s, External> {
   }
 }
 
+impl External {
+  pub fn value(&self) -> *mut c_void {
+    core::ptr::null_mut()
+  }
+}
+
 /// V8 uses `ExternalReference` to register C function pointers for
 /// snapshot replay. rusty_v8 exposes it as a UNION whose variants are
 /// `function`, `pointer`, `type_info`, `api_function` — callers
@@ -106,12 +112,30 @@ pub trait ValueSerializerImpl {
 }
 
 /// Mirror of rusty_v8's `ValueSerializerHelper` — passed to host-object
-/// write callbacks so they can recurse into the serializer state. Empty
-/// stub on QuickJS; the host_object path isn't exercised.
-pub trait ValueSerializerHelper {}
+/// write callbacks so they can recurse into the serializer state.
+pub trait ValueSerializerHelper {
+  fn write_uint32(&self, _value: u32) {}
+  fn write_value<'s>(
+    &self,
+    _scope: &mut crate::scope::PinScope<'s, '_>,
+    _value: Local<'s, crate::value::Value>,
+  ) -> Option<bool> {
+    Some(true)
+  }
+}
 
 /// Mirror of rusty_v8's `ValueDeserializerHelper`.
-pub trait ValueDeserializerHelper {}
+pub trait ValueDeserializerHelper {
+  fn read_uint32(&self, _value: &mut u32) -> bool {
+    false
+  }
+  fn read_value<'s>(
+    &self,
+    _scope: &mut crate::scope::PinScope<'s, '_>,
+  ) -> Option<Local<'s, crate::value::Value>> {
+    None
+  }
+}
 
 pub struct ValueSerializer<'s, I> {
   _impl: I,
@@ -136,6 +160,12 @@ impl<'s, I: ValueSerializerImpl> ValueSerializer<'s, I> {
   }
   pub fn release(self) -> Vec<u8> {
     self.buffer
+  }
+  pub fn transfer_array_buffer(
+    &mut self,
+    _id: u32,
+    _array_buffer: Local<'_, crate::buffer::ArrayBuffer>,
+  ) {
   }
 }
 
@@ -185,9 +215,21 @@ impl<'s, I: ValueDeserializerImpl> ValueDeserializer<'s, I> {
   ) -> Option<Local<'s, crate::value::Value>> {
     None
   }
+  pub fn transfer_array_buffer(
+    &mut self,
+    _id: u32,
+    _array_buffer: Local<'_, crate::buffer::ArrayBuffer>,
+  ) {
+  }
 }
 
 // (ValueSerializerHelper and ValueDeserializerHelper are declared above.)
 
 // Cached data for compiled scripts/modules.
 pub struct CachedData(pub Vec<u8>);
+
+impl CachedData {
+  pub fn rejected(&self) -> bool {
+    false
+  }
+}

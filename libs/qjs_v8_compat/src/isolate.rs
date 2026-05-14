@@ -55,6 +55,15 @@ impl CreateParams {
   pub fn allow_atomics_wait(self, _allow: bool) -> Self {
     self
   }
+  pub fn external_references(
+    self,
+    _refs: std::borrow::Cow<'static, [crate::external::ExternalReference]>,
+  ) -> Self {
+    self
+  }
+  pub fn snapshot_blob<B: Into<Box<[u8]>>>(self, _blob: B) -> Self {
+    self
+  }
 }
 
 pub enum MicrotasksPolicy {
@@ -124,7 +133,60 @@ impl OwnedIsolate {
     // internal pointer; we hand out a reborrow tied to self's lifetime.
     unsafe { &mut *(self as *mut OwnedIsolate as *mut Isolate) }
   }
+  pub fn as_raw_isolate_ptr(&self) -> UnsafeRawIsolatePtr {
+    UnsafeRawIsolatePtr(self.rt as *mut c_void)
+  }
+  pub fn as_mut(&mut self) -> &mut Isolate {
+    self.as_isolate()
+  }
+  pub fn create_blob(
+    &mut self,
+    _function_code_handling: crate::function::FunctionCodeHandling,
+  ) -> Option<crate::snapshot::StartupData> {
+    None
+  }
+  pub fn add_near_heap_limit_callback(
+    &mut self,
+    _cb: NearHeapLimitCallback,
+    _data: *mut c_void,
+  ) {
+  }
+  pub fn remove_near_heap_limit_callback(
+    &mut self,
+    _cb: NearHeapLimitCallback,
+    _heap_limit: usize,
+  ) {
+  }
+  pub fn set_capture_stack_trace_for_uncaught_exceptions(
+    &mut self,
+    _capture: bool,
+    _frame_limit: i32,
+  ) {
+  }
+  pub fn set_host_import_module_dynamically_callback<F>(
+    &mut self,
+    _cb: F,
+  ) {
+  }
+  pub fn set_host_import_module_with_phase_dynamically_callback<F>(
+    &mut self,
+    _cb: F,
+  ) {
+  }
+  pub fn set_host_initialize_import_meta_object_callback<F>(
+    &mut self,
+    _cb: F,
+  ) {
+  }
+  pub fn set_prepare_stack_trace_callback<F>(&mut self, _cb: F) {}
+  pub fn set_wasm_async_resolve_promise_callback<F>(&mut self, _cb: F) {}
 }
+
+pub type NearHeapLimitCallback = unsafe extern "C" fn(
+  data: *mut c_void,
+  current_heap_limit: usize,
+  initial_heap_limit: usize,
+) -> usize;
 
 impl std::ops::Deref for OwnedIsolate {
   type Target = Isolate;
@@ -154,6 +216,26 @@ impl Drop for OwnedIsolate {
 pub struct Isolate(OwnedIsolate);
 
 impl Isolate {
+  pub fn new(params: CreateParams) -> OwnedIsolate {
+    OwnedIsolate::new(params)
+  }
+  pub fn snapshot_creator(
+    _external_references: Option<&'static [crate::external::ExternalReference]>,
+    _params: Option<CreateParams>,
+  ) -> crate::snapshot::SnapshotCreator {
+    crate::snapshot::SnapshotCreator::new(None)
+  }
+  pub fn snapshot_creator_from_existing_snapshot(
+    _snapshot_blob: Box<[u8]>,
+    _external_references: Option<&'static [crate::external::ExternalReference]>,
+    _params: Option<CreateParams>,
+  ) -> crate::snapshot::SnapshotCreator {
+    crate::snapshot::SnapshotCreator::new(None)
+  }
+  pub fn enqueue_microtask(&mut self, _task: crate::value::Local<'_, crate::function::Function>) {}
+  pub fn get_cpp_heap(&mut self) -> Option<*mut c_void> {
+    None
+  }
   pub fn thread_safe_handle(&self) -> IsolateHandle {
     self.0.thread_safe_handle()
   }
@@ -279,6 +361,27 @@ pub struct HeapStatistics {
 impl HeapStatistics {
   pub fn used_heap_size(&self) -> usize {
     self.used_heap_size
+  }
+  pub fn external_memory(&self) -> usize {
+    self.external_memory
+  }
+  pub fn total_heap_size(&self) -> usize {
+    self.total_heap_size
+  }
+  pub fn total_physical_size(&self) -> usize {
+    self.total_physical_size
+  }
+  pub fn total_available_size(&self) -> usize {
+    self.total_available_size
+  }
+  pub fn heap_size_limit(&self) -> usize {
+    self.heap_size_limit
+  }
+  pub fn malloced_memory(&self) -> usize {
+    self.malloced_memory
+  }
+  pub fn peak_malloced_memory(&self) -> usize {
+    self.peak_malloced_memory
   }
 }
 

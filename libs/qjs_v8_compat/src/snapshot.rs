@@ -57,6 +57,9 @@ impl StartupData {
   pub fn as_slice(&self) -> &[u8] {
     &self.data
   }
+  pub fn len(&self) -> usize {
+    self.data.len()
+  }
 
   /// Decompose the blob into `(url, bytecode)` entries. Returns None on
   /// corruption / unsupported version.
