@@ -14,19 +14,10 @@ description = "Provides the deno runtime library"
 docsrs = []
 # A feature that allows excluding `./js/99_main.js` from the exported extension.
 exclude_runtime_main_js = []
-# A feature that disables embedding of the JavaScript source files in the binary.
-# With this feature enabled, the sources must be consumed during build time,
-# by creating a startup snapshot.
-include_js_files_for_snapshotting = [
-  "deno_core/include_js_files_for_snapshotting",
-]
-# A dev feature to disable creations and loading of snapshots in favor of
-# loading JS sources at runtime.
-hmr = ["include_js_files_for_snapshotting", "transpile"]
-# Signal that only snapshotted JS sources should be used. This will
-# conditionally exclude the runtime source transpilation logic, and add an
-# assertion that a snapshot is provided.
-only_snapshotted_js_sources = ["include_js_files_for_snapshotting"]
+# A dev feature to disable creation and loading of snapshots in favor of
+# loading JS sources at runtime. Extensions' `lazy_loaded_*` files are read
+# from disk via their `LoadedFromFsDuringSnapshot` paths.
+hmr = ["transpile"]
 snapshot = ["transpile"]
 transpile = ["deno_ast"]
 

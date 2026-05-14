@@ -1,22 +1,5 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
-
-import { core, primordials } from "ext:core/mod.js";
-const _mod1 =
-  core.loadExtScript("ext:deno_node/internal/streams/legacy.js").default;
-import Readable from "node:_stream_readable";
-import Writable from "node:_stream_writable";
-const { addAbortSignal } = core.loadExtScript(
-  "ext:deno_node/internal/streams/add-abort-signal.js",
-);
-const destroyImpl =
-  core.loadExtScript("ext:deno_node/internal/streams/destroy.js").default;
-const { kOnConstructed } = core.loadExtScript(
-  "ext:deno_node/internal/streams/utils.js",
-);
-import * as _mod2 from "ext:deno_node/internal/webstreams/adapters.js";
-import _mod3 from "ext:deno_node/internal/streams/duplexify.js";
-const Stream = _mod1.Stream;
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -43,7 +26,31 @@ const Stream = _mod1.Stream;
 // prototypically inherits from Readable, and then parasitically from
 // Writable.
 
-"use strict";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const _mod1 =
+  core.loadExtScript("ext:deno_node/internal/streams/legacy.js").default;
+const Readable = core.loadExtScript(
+  "ext:deno_node/internal/streams/readable.js",
+).default;
+const Writable = core.loadExtScript(
+  "ext:deno_node/internal/streams/writable.js",
+).default;
+const { addAbortSignal } = core.loadExtScript(
+  "ext:deno_node/internal/streams/add-abort-signal.js",
+);
+const destroyImpl =
+  core.loadExtScript("ext:deno_node/internal/streams/destroy.js").default;
+const { kOnConstructed } = core.loadExtScript(
+  "ext:deno_node/internal/streams/utils.js",
+);
+const lazyWebStreamsAdapters = core.createLazyLoader(
+  "ext:deno_node/internal/webstreams/adapters.js",
+);
+const lazyDuplexify = core.createLazyLoader(
+  "ext:deno_node/internal/streams/duplexify.js",
+);
+const Stream = _mod1.Stream;
 
 const {
   ObjectDefineProperties,
@@ -218,7 +225,7 @@ let webStreamsAdapters;
 // Lazy to avoid circular references
 function lazyWebStreams() {
   if (webStreamsAdapters === undefined) {
-    webStreamsAdapters = _mod2;
+    webStreamsAdapters = lazyWebStreamsAdapters();
   }
   return webStreamsAdapters;
 }
@@ -237,8 +244,9 @@ Duplex.toWeb = function (duplex, options) {
 let duplexify;
 
 Duplex.from = function (body) {
-  duplexify ??= _mod3;
+  duplexify ??= lazyDuplexify().default;
   return duplexify(body, "body");
 };
-export default Duplex;
-export { Duplex };
+
+return { default: Duplex, Duplex };
+})();

@@ -539,7 +539,7 @@ impl ModuleSource {
 pub type ModuleSourceFuture =
   dyn Future<Output = Result<ModuleSource, ModuleLoaderError>>;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResolutionKind {
   /// This kind is used in only one situation: when a module is loaded via
   /// `JsRuntime::load_main_module` and is the top-level module, ie. the one

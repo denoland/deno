@@ -1,8 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const lazyUrl = core.createLazyLoader("node:url");
-import type { Buffer } from "node:buffer";
 const { validateObject } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
@@ -30,16 +30,19 @@ interface HttpOptions {
 
 const searchParams = Symbol("query");
 
-export function isURL(self: unknown): self is URL {
+function isURL(self: unknown): self is URL {
   return Boolean(
-    self?.href && self.protocol && self.auth === undefined &&
-      self.path === undefined,
+    // deno-lint-ignore no-explicit-any
+    (self as any)?.href && (self as any).protocol &&
+      // deno-lint-ignore no-explicit-any
+      (self as any).auth === undefined && (self as any).path === undefined,
   );
 }
 
-export function toPathIfFileURL(
-  fileURLOrPath: string | Buffer | URL,
-): string | Buffer {
+function toPathIfFileURL(
+  // deno-lint-ignore no-explicit-any
+  fileURLOrPath: any,
+) {
   if (!(ObjectPrototypeIsPrototypeOf(URL.prototype, fileURLOrPath))) {
     return fileURLOrPath;
   }
@@ -49,7 +52,7 @@ export function toPathIfFileURL(
 // Utility function that converts a URL object into an ordinary
 // options object as expected by the http.request and https.request
 // APIs.
-export function urlToHttpOptions(url: URL): HttpOptions {
+function urlToHttpOptions(url: URL): HttpOptions {
   validateObject(url, "url", { allowArray: true, allowFunction: true });
   const options: HttpOptions = {
     ...url, // In case the url object was extended by the user.
@@ -75,8 +78,10 @@ export function urlToHttpOptions(url: URL): HttpOptions {
   return options;
 }
 
-export { searchParams as searchParamsSymbol };
-
-export default {
+return {
+  isURL,
   toPathIfFileURL,
+  urlToHttpOptions,
+  searchParamsSymbol: searchParams,
 };
+})();

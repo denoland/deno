@@ -293,6 +293,7 @@ function removeSigwinchListener(stream) {
 
 // WriteStream needs to be callable without `new` to match Node.js behavior.
 function WriteStream(fd) {
+  ensureWriteStreamPrototype();
   if (!ObjectPrototypeIsPrototypeOf(WriteStream.prototype, this)) {
     return new WriteStream(fd);
   }
@@ -331,8 +332,18 @@ function WriteStream(fd) {
   }
 }
 
-ObjectSetPrototypeOf(WriteStream.prototype, lazyNet().Socket.prototype);
-ObjectSetPrototypeOf(WriteStream, lazyNet().Socket);
+// `lazyNet().Socket` may be in TDZ at module-eval time when net.ts is
+// lazy-loaded JS, since this module's body can run before net_esm.ts
+// finishes evaluating. Defer the prototype hookup until the first
+// WriteStream is constructed.
+let writeStreamPrototypeReady = false;
+function ensureWriteStreamPrototype() {
+  if (writeStreamPrototypeReady) return;
+  writeStreamPrototypeReady = true;
+  const NetSocket = lazyNet().Socket;
+  ObjectSetPrototypeOf(WriteStream.prototype, NetSocket.prototype);
+  ObjectSetPrototypeOf(WriteStream, NetSocket);
+}
 
 WriteStream.prototype.isTTY = true;
 

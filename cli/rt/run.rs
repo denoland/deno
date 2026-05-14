@@ -522,9 +522,18 @@ impl ModuleLoader for EmbeddedModuleLoader {
       && (!is_already_resolved_specifier(raw_specifier)
         || self.is_external_file_specifier(raw_specifier));
     if should_use_resolve_hooks {
-      let receiver = self
-        .hook_registry
-        .push_resolve(raw_specifier.to_string(), referrer.to_string());
+      // Pre-compute the default-resolved URL so the hook chain's
+      // `defaultResolve()` returns Deno's actual resolution rather than a
+      // naive `new URL(spec, parentURL)`.
+      let default_url = self
+        .resolve_inner(raw_specifier, referrer, kind)
+        .ok()
+        .map(|u| u.to_string());
+      let receiver = self.hook_registry.push_resolve(
+        raw_specifier.to_string(),
+        referrer.to_string(),
+        default_url,
+      );
       let this = self.clone();
       let raw_specifier = raw_specifier.to_string();
       let referrer = referrer.to_string();
@@ -1062,6 +1071,7 @@ pub async fn run(
         },
         scopes: Default::default(),
         registry_configs: Default::default(),
+        min_release_age_days: None,
       });
       let npm_cache_dir = Arc::new(NpmCacheDir::new(
         &sys,
@@ -1340,6 +1350,8 @@ pub async fn run(
     otel_config: metadata.otel_config,
     no_legacy_abort: false,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
+    residual_lazy_js_sources: deno_snapshots::RESIDUAL_LAZY_JS,
+    residual_lazy_esm_sources: deno_snapshots::RESIDUAL_LAZY_ESM,
     enable_raw_imports: metadata.unstable_config.raw_imports,
     maybe_initial_cwd: None,
   };
@@ -1416,5 +1428,6 @@ fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
     },
     scopes: Default::default(),
     registry_configs: Default::default(),
+    min_release_age_days: None,
   })
 }

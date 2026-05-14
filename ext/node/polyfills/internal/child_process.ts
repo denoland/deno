@@ -85,12 +85,10 @@ const {
 } = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
 const lazyNet = core.createLazyLoader("node:net");
 const lazyDgram = core.createLazyLoader("node:dgram");
-const lazyDgramInternal = core.createLazyLoader(
-  "ext:deno_node/internal/dgram.ts",
-);
-const lazyUdpWrap = core.createLazyLoader(
-  "ext:deno_node/internal_binding/udp_wrap.ts",
-);
+const lazyDgramInternal = () =>
+  core.loadExtScript("ext:deno_node/internal/dgram.ts");
+const lazyUdpWrap = () =>
+  core.loadExtScript("ext:deno_node/internal_binding/udp_wrap.ts");
 const {
   kNeedsNpmProcessState,
   nodeSpawnChild,
