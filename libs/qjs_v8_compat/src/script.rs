@@ -91,3 +91,11 @@ impl<'s> Local<'s, Script> {
     Local::from_raw(self.raw)
   }
 }
+
+impl<'s> Local<'s, UnboundScript> {
+  pub fn create_code_cache(
+    &self,
+  ) -> Option<Box<crate::external::CachedData>> {
+    None
+  }
+}

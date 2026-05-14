@@ -536,10 +536,7 @@ pub mod v8 {
     pub struct StringBuffer;
 
     impl V8Inspector {
-      pub fn create<C, P>(
-        _isolate: P,
-        _client: std::boxed::Box<C>,
-      ) -> V8Inspector {
+      pub fn create<C, P>(_isolate: P, _client: C) -> V8Inspector {
         V8Inspector
       }
       pub fn context_created(
@@ -553,7 +550,7 @@ pub mod v8 {
       pub fn connect<C>(
         &self,
         _context_group_id: i32,
-        _channel: std::boxed::Box<C>,
+        _channel: C,
         _state: StringView<'_>,
         _trust: V8InspectorClientTrustLevel,
       ) -> V8InspectorSession {
@@ -619,7 +616,7 @@ pub mod v8 {
       }
     }
     impl Channel {
-      pub fn new<C: ChannelImpl>(_channel: C) -> Self {
+      pub fn new<C>(_channel: C) -> Self {
         Self
       }
     }
@@ -817,11 +814,11 @@ pub mod v8 {
     ) -> Option<Local<'s, Function>> {
       None
     }
-    pub fn compile_module2<'s>(
-      _scope: &mut HandleScope<'s>,
-      _source: Source,
-      _options: CompileOptions,
-      _no_cache_reason: NoCacheReason,
+    pub fn compile_module2<'s, S, O, N>(
+      _scope: &mut S,
+      _source: &mut Source,
+      _options: O,
+      _no_cache_reason: N,
     ) -> Option<Local<'s, Module>> {
       None
     }

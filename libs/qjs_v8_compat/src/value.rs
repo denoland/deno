@@ -721,6 +721,8 @@ upcasts_to_value!(
   crate::buffer::Uint8Array,
   // External handled separately below — needs From not TryFrom
   crate::module::Module,
+  crate::module::ModuleRequest,
+  crate::module::FixedArray,
   crate::script::Script,
   crate::promise::Promise,
   crate::promise::PromiseResolver,

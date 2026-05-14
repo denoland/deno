@@ -338,7 +338,12 @@ impl Map {
 
 // Argument-extraction enums used by get-property-names.
 #[derive(Default)]
-pub struct GetPropertyNamesArgs;
+pub struct GetPropertyNamesArgs {
+  pub mode: KeyCollectionMode,
+  pub property_filter: PropertyFilter,
+  pub index_filter: IndexFilter,
+  pub key_conversion: KeyConversionMode,
+}
 impl GetPropertyNamesArgs {
   pub fn builder() -> GetPropertyNamesArgsBuilder {
     GetPropertyNamesArgsBuilder
@@ -365,22 +370,25 @@ impl GetPropertyNamesArgsBuilder {
     self
   }
   pub fn build(self) -> GetPropertyNamesArgs {
-    GetPropertyNamesArgs
+    GetPropertyNamesArgs::default()
   }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub enum KeyCollectionMode {
+  #[default]
   OwnOnly,
   IncludePrototypes,
 }
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub enum KeyConversionMode {
+  #[default]
   ConvertToString,
   KeepNumbers,
 }
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub enum IndexFilter {
+  #[default]
   IncludeIndices,
   SkipIndices,
 }
