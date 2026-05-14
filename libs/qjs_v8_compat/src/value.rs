@@ -98,13 +98,66 @@ impl<'s, T> Local<'s, T> {
   }
 }
 
+/// Trait abstracting "anything that can act as a scope" so
+/// `Local::new(scope, ...)` accepts both `&mut HandleScope` and
+/// `&mut TryCatch<HandleScope>` (mirroring rusty_v8's overloads).
+pub trait ScopeLike<'s> {
+  fn handle_scope(&mut self) -> &mut HandleScope<'s>;
+}
+
+impl<'s> ScopeLike<'s> for HandleScope<'s> {
+  fn handle_scope(&mut self) -> &mut HandleScope<'s> {
+    self
+  }
+}
+
+impl<'s, 'p: 's, C> ScopeLike<'s>
+  for crate::exception::TryCatch<'_, HandleScope<'p, C>>
+where
+  HandleScope<'p, C>: ScopeLike<'s>,
+{
+  fn handle_scope(&mut self) -> &mut HandleScope<'s> {
+    use std::ops::DerefMut;
+    self.deref_mut().handle_scope()
+  }
+}
+
 /// Generic `Local::<T>::new(scope, &Global<T>) -> Local<T>` mirroring
 /// rusty_v8. The per-type constructors (`String::new`, `Integer::new`,
 /// etc.) live on the marker types themselves so they don't conflict
-/// with this generic impl.
+/// with this generic impl. Accepts anything ScopeLike, plus an
+/// optional handle (Local or Global).
 impl<'s, T> Local<'s, T> {
-  pub fn new(scope: &mut HandleScope<'s>, global: &Global<T>) -> Local<'s, T> {
-    global.to_local(scope)
+  pub fn new<S, H>(scope: &mut S, handle: H) -> Local<'s, T>
+  where
+    S: ScopeLike<'s>,
+    H: ToLocal<'s, T>,
+  {
+    handle.to_local(scope.handle_scope())
+  }
+}
+
+/// Helper trait used by `Local::new` to accept either `&Global<T>` or a
+/// previously-issued `Local<T>` as the handle source. Mirrors rusty_v8.
+pub trait ToLocal<'s, T> {
+  fn to_local(self, scope: &mut HandleScope<'s>) -> Local<'s, T>;
+}
+
+impl<'s, T> ToLocal<'s, T> for &Global<T> {
+  fn to_local(self, scope: &mut HandleScope<'s>) -> Local<'s, T> {
+    Global::to_local(self, scope)
+  }
+}
+
+impl<'s, T> ToLocal<'s, T> for Global<T> {
+  fn to_local(self, scope: &mut HandleScope<'s>) -> Local<'s, T> {
+    Global::to_local(&self, scope)
+  }
+}
+
+impl<'s, 'a, T> ToLocal<'s, T> for Local<'a, T> {
+  fn to_local(self, _scope: &mut HandleScope<'s>) -> Local<'s, T> {
+    Local::from_raw(self.raw)
   }
 }
 
