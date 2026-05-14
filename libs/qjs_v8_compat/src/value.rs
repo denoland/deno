@@ -325,18 +325,50 @@ impl<'s, 'i> ScopeLike<'s> for crate::scope::PinScope<'s, 'i> {
   }
 }
 
-/// Generic `Local::<T>::new(scope, &Global<T>) -> Local<T>` mirroring
-/// rusty_v8. The per-type constructors (`String::new`, `Integer::new`,
-/// etc.) live on the marker types themselves so they don't conflict
-/// with this generic impl. Accepts anything ScopeLike, plus an
-/// optional handle (Local or Global).
+/// `LocalNewScope` lets `Local::new` accept the scope by value, by
+/// shared reference, or by mutable reference. deno_core's macros pass
+/// the scope by value (after `v8::scope!` shadow-binds it as a value)
+/// and then reuse it on the next line; for that to work the conversion
+/// to a `&mut HandleScope` must not consume.
+pub trait LocalNewScope<'s> {
+  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s>;
+}
+impl<'s> LocalNewScope<'s> for HandleScope<'s> {
+  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+    self
+  }
+}
+impl<'s, 'i> LocalNewScope<'s> for crate::scope::PinScope<'s, 'i> {
+  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+    use std::ops::DerefMut;
+    self.deref_mut()
+  }
+}
+// Explicit `&mut PinScope` impl so call sites that pass scope by
+// reference also satisfy the trait without a generic blanket (which
+// would create ambiguity at other callsites).
+impl<'s, 'i> LocalNewScope<'s> for &mut crate::scope::PinScope<'s, 'i> {
+  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+    use std::ops::DerefMut;
+    (**self).deref_mut()
+  }
+}
+impl<'s> LocalNewScope<'s> for &mut HandleScope<'s> {
+  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+    self
+  }
+}
+
+// Generic Local::<T>::new(scope, handle) — `scope` accepts
+// HandleScope by value (the macro binding) plus the usual reference
+// shapes via the LocalNewScope trait.
 impl<'s, T> Local<'s, T> {
-  pub fn new<S, H>(scope: &mut S, handle: H) -> Local<'s, T>
+  pub fn new<S, H>(mut scope: S, handle: H) -> Local<'s, T>
   where
-    S: ScopeLike<'s>,
+    S: LocalNewScope<'s>,
     H: ToLocal<'s, T>,
   {
-    handle.to_local(scope.handle_scope())
+    handle.to_local(scope.as_mut_handle_scope())
   }
 }
 
