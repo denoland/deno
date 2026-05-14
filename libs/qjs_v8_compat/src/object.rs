@@ -10,14 +10,14 @@ use crate::value::Value;
 crate::value_type!(Object, Array, Map, Proxy);
 
 impl Object {
-  pub fn wrap<const TAG: u16, T, S>(
-    _scope: &mut S,
+  pub fn wrap<const TAG: u16, T>(
+    _isolate: &mut crate::isolate::Isolate,
     _wrapper: Local<'_, Object>,
     _value: &T,
   ) {
   }
-  pub fn unwrap<const TAG: u16, T: 'static, S>(
-    _scope: &mut S,
+  pub fn unwrap<const TAG: u16, T: 'static>(
+    _isolate: &mut crate::isolate::Isolate,
     _wrapper: Local<'_, Object>,
   ) -> Option<crate::v8::cppgc::UnsafePtr<T>> {
     None
