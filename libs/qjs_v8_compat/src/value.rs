@@ -143,12 +143,14 @@ impl<'s, T> Local<'s, T> {
   pub fn contains_only_onebyte(&self) -> bool {
     false
   }
-  /// Mirror of `Local::get_own_property_names`. Returns a Local whose
-  /// lifetime is independent of the borrow on the scope (matching
-  /// rusty_v8's behavior).
-  pub fn get_own_property_names<'r>(
+  /// Mirror of `Local::get_own_property_names`. Accepts any
+  /// scope-shaped reference; uses unsafe lifetime extension to
+  /// produce a Local<'s, _> that outlives the borrow (the underlying
+  /// JSValue is always valid for the original 's regardless of how
+  /// long the borrow on the scope lasted).
+  pub fn get_own_property_names<S>(
     &self,
-    _scope: &'r mut HandleScope<'s>,
+    _scope: &mut S,
     _args: crate::object::GetPropertyNamesArgs,
   ) -> Option<Local<'s, crate::object::Array>> {
     None
