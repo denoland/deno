@@ -348,10 +348,6 @@ pub(crate) unsafe extern "C" fn op_bridge_trampoline_magic(
   let Some((_slow_fn, _opctx_ptr)) = lookup_op_dispatch(magic) else {
     return unsafe { crate::ffi::JS_NewObject(ctx) };
   };
-  // TODO: slow_fn dispatch crashes for some ops (likely fields read by
-  // op2-emitted code that aren't in our FunctionCallbackInfo). For
-  // now, fall back to printing the first arg (so op_print produces
-  // visible output) and return an empty object.
   let _ = this_val;
   if argc > 0 && !argv.is_null() {
     let first = unsafe { *argv };
