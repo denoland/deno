@@ -26,14 +26,14 @@ use crate::value::Value;
 pub struct Exception;
 
 fn new_error<'s, S>(
-  scope: &mut S,
+  scope: &S,
   name: &str,
   message: Local<'_, crate::primitives::String>,
 ) -> Local<'s, Value>
 where
-  S: crate::scope::HandleScopeSource + ?Sized,
+  S: crate::value::GlobalScope + ?Sized,
 {
-  let ctx = scope.default_ctx();
+  let ctx = scope.scope_ctx_shared();
   let raw = sys::new_object(ctx);
   let obj_local: Local<'s, crate::object::Object> = Local::from_raw(raw);
 
@@ -48,47 +48,47 @@ where
 
 impl Exception {
   pub fn error<'s, S>(
-    scope: &mut S,
+    scope: &S,
     message: Local<'_, crate::primitives::String>,
   ) -> Local<'s, Value>
   where
-    S: crate::scope::HandleScopeSource + ?Sized,
+    S: crate::value::GlobalScope + ?Sized,
   {
     new_error(scope, "Error", message)
   }
   pub fn type_error<'s, S>(
-    scope: &mut S,
+    scope: &S,
     message: Local<'_, crate::primitives::String>,
   ) -> Local<'s, Value>
   where
-    S: crate::scope::HandleScopeSource + ?Sized,
+    S: crate::value::GlobalScope + ?Sized,
   {
     new_error(scope, "TypeError", message)
   }
   pub fn range_error<'s, S>(
-    scope: &mut S,
+    scope: &S,
     message: Local<'_, crate::primitives::String>,
   ) -> Local<'s, Value>
   where
-    S: crate::scope::HandleScopeSource + ?Sized,
+    S: crate::value::GlobalScope + ?Sized,
   {
     new_error(scope, "RangeError", message)
   }
   pub fn syntax_error<'s, S>(
-    scope: &mut S,
+    scope: &S,
     message: Local<'_, crate::primitives::String>,
   ) -> Local<'s, Value>
   where
-    S: crate::scope::HandleScopeSource + ?Sized,
+    S: crate::value::GlobalScope + ?Sized,
   {
     new_error(scope, "SyntaxError", message)
   }
   pub fn reference_error<'s, S>(
-    scope: &mut S,
+    scope: &S,
     message: Local<'_, crate::primitives::String>,
   ) -> Local<'s, Value>
   where
-    S: crate::scope::HandleScopeSource + ?Sized,
+    S: crate::value::GlobalScope + ?Sized,
   {
     new_error(scope, "ReferenceError", message)
   }

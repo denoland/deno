@@ -335,7 +335,7 @@ impl<'s, C> HandleScope<'s, C> {
   /// `Local<Value>` that wraps the thrown value (in V8 the return is
   /// the exception itself).
   pub fn throw_exception(
-    &mut self,
+    &self,
     exc: crate::value::Local<'s, crate::value::Value>,
   ) -> crate::value::Local<'s, crate::value::Value> {
     crate::sys::throw(self.inner.ctx, exc.raw());

@@ -396,7 +396,7 @@ impl Isolate {
   /// pending-exception slot; we `JS_DupValue` first so the caller's
   /// `Local` stays valid (its scope still owns the original refcount).
   pub fn throw_exception<'s>(
-    &mut self,
+    &self,
     value: crate::value::Local<'s, crate::value::Value>,
   ) -> crate::value::Local<'s, crate::value::Value> {
     let ctx = self.0.default_ctx;

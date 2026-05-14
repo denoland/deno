@@ -184,13 +184,11 @@ pub trait ValueDeserializerHelper {
 }
 
 pub struct ValueSerializer<'s> {
-  // The boxed Impl is tied to the serializer's lifetime parameter 's
-  // (real v8 ties it to the same 'a). For callers declaring the field
-  // as `ValueSerializer<'static>`, they need to pass an Impl that is
-  // also 'static (i.e., does not borrow scope-local state). Other
-  // callers tie 's to their scope's 's for shorter-lived state.
+  // The boxed Impl is bounded by 's. Callers declaring the field as
+  // `ValueSerializer<'static>` need to pass an Impl that is also
+  // 'static. Other callers tie 's to a shorter scope lifetime.
   _impl: Box<dyn ValueSerializerImpl + 's>,
-  _scope: std::marker::PhantomData<&'s ()>,
+  _scope: std::marker::PhantomData<fn(&'s ()) -> ()>,
   buffer: Vec<u8>,
 }
 impl<I: ValueSerializerImpl + ?Sized> ValueSerializerImpl for Box<I> {}
@@ -206,10 +204,10 @@ impl<'s> ValueSerializer<'s> {
     }
   }
   pub fn write_header(&self) {}
-  pub fn write_value<S>(
+  pub fn write_value<S, V>(
     &self,
     _scope_or_ctx: S,
-    _value: Local<'s, crate::value::Value>,
+    _value: V,
   ) -> Option<bool> {
     Some(true)
   }
@@ -220,8 +218,8 @@ impl<'s> ValueSerializer<'s> {
   pub fn write_int64(&self, _v: i64) {}
   pub fn write_raw_bytes(&self, _bytes: &[u8]) {}
   pub fn set_treat_array_buffer_views_as_host_objects(&self, _v: bool) {}
-  pub fn release(self) -> Vec<u8> {
-    self.buffer
+  pub fn release(&self) -> Vec<u8> {
+    self.buffer.clone()
   }
   pub fn transfer_array_buffer(
     &self,
@@ -257,7 +255,7 @@ pub trait ValueDeserializerImpl {
 
 pub struct ValueDeserializer<'s> {
   _impl: Box<dyn ValueDeserializerImpl + 's>,
-  _scope: std::marker::PhantomData<&'s ()>,
+  _scope: std::marker::PhantomData<fn(&'s ()) -> ()>,
   data: Vec<u8>,
 }
 impl<I: ValueDeserializerImpl + ?Sized> ValueDeserializerImpl for Box<I> {}

@@ -497,13 +497,17 @@ mod impl_ {
     })
   }
 
-  struct AdvancedSerializer {
-    inner: v8::ValueSerializer<'static>,
+  // The 'sc lifetime is the scope's lifetime — the serializer borrows
+  // the scope's heap-arena indirectly via its impl. Was 'static; that
+  // requires a serializer that outlives any scope, which our QuickJS
+  // compat cannot promise.
+  struct AdvancedSerializer<'sc> {
+    inner: v8::ValueSerializer<'sc>,
   }
 
-  impl AdvancedSerializer {
+  impl<'sc> AdvancedSerializer<'sc> {
     fn new(
-      scope: &mut v8::PinScope<'_, '_>,
+      scope: &mut v8::PinScope<'sc, '_>,
       constants: AdvancedIpcConstants,
     ) -> Self {
       let inner = v8::ValueSerializer::new(
@@ -533,8 +537,8 @@ mod impl_ {
     }
   }
 
-  struct AdvancedIpcDeserializer {
-    inner: v8::ValueDeserializer<'static>,
+  struct AdvancedIpcDeserializer<'sc> {
+    inner: v8::ValueDeserializer<'sc>,
   }
 
   struct AdvancedIpcDeserializerDelegate {
@@ -547,7 +551,7 @@ mod impl_ {
       scope: &mut v8::PinScope<'s, '_>,
       deser: &dyn ValueDeserializerHelper,
     ) -> Option<v8::Local<'s, v8::Object>> {
-      let throw_error = |message: &str| {
+      let mut throw_error = |message: &str| {
         scope.throw_exception(v8::Exception::type_error(
           scope,
           v8::String::new_from_utf8(
@@ -712,9 +716,9 @@ mod impl_ {
     }
   }
 
-  impl AdvancedIpcDeserializer {
+  impl<'sc> AdvancedIpcDeserializer<'sc> {
     fn new(
-      scope: &mut v8::PinScope<'_, '_>,
+      scope: &mut v8::PinScope<'sc, '_>,
       constants: AdvancedIpcConstants,
       msg_bytes: &[u8],
     ) -> Self {

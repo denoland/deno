@@ -190,10 +190,10 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
 
 #[op2]
 #[cppgc]
-pub fn op_v8_new_serializer(
-  scope: &mut v8::PinScope<'_, '_>,
+pub fn op_v8_new_serializer<'sc>(
+  scope: &mut v8::PinScope<'sc, '_>,
   obj: v8::Local<v8::Object>,
-) -> Serializer<'static> {
+) -> Serializer<'sc> {
   let obj = v8::Global::new(scope, obj);
   let inner =
     v8::ValueSerializer::new(scope, Box::new(SerializerDelegate { obj }));
@@ -335,11 +335,11 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
 
 #[op2]
 #[cppgc]
-pub fn op_v8_new_deserializer(
-  scope: &mut v8::PinScope<'_, '_>,
+pub fn op_v8_new_deserializer<'sc>(
+  scope: &mut v8::PinScope<'sc, '_>,
   obj: v8::Local<v8::Object>,
   buffer: v8::Local<v8::ArrayBufferView>,
-) -> Result<Deserializer<'static>, JsErrorBox> {
+) -> Result<Deserializer<'sc>, JsErrorBox> {
   let offset = buffer.byte_offset();
   let len = buffer.byte_length();
   let backing_store = buffer.get_backing_store().ok_or_else(|| {

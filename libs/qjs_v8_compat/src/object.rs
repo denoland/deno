@@ -208,18 +208,18 @@ impl<'s> Local<'s, Object> {
     }
     Some(Local::from_raw(raw))
   }
-  pub fn set_index<'sc, 'v>(
+  pub fn set_index<'v, S>(
     &self,
-    scope: &mut HandleScope<'sc>,
+    scope: &S,
     idx: u32,
     value: Local<'v, Value>,
-  ) -> bool {
-    let was_tracked = scope.release_owned(value.raw());
-    let ok = sys::set_indexed(scope.ctx(), self.raw(), idx, value.raw());
-    if !ok && was_tracked {
-      scope.track_owned(value.raw());
-    }
-    ok
+  ) -> Option<bool>
+  where
+    S: crate::value::GlobalScope + ?Sized,
+  {
+    let ctx = scope.scope_ctx_shared();
+    let ok = sys::set_indexed(ctx, self.raw(), idx, value.raw());
+    Some(ok)
   }
   pub fn create_data_property<'sc, 'k>(
     &self,
@@ -319,18 +319,18 @@ impl Array {
 
 impl<'s> Local<'s, Array> {
   /// Mirror of `v8::Array::set_index` — store `value` at integer index.
-  pub fn set_index(
+  /// Takes &S so callers can chain `arr.set_index(scope, i, Number::new(scope, x).into())`.
+  pub fn set_index<S>(
     &self,
-    scope: &mut HandleScope<'s>,
+    scope: &S,
     index: u32,
-    value: Local<'s, Value>,
-  ) -> Option<bool> {
-    Some(sys::set_indexed(
-      scope.ctx(),
-      self.raw(),
-      index,
-      value.raw(),
-    ))
+    value: Local<'_, Value>,
+  ) -> Option<bool>
+  where
+    S: crate::value::GlobalScope + ?Sized,
+  {
+    let ctx = scope.scope_ctx_shared();
+    Some(sys::set_indexed(ctx, self.raw(), index, value.raw()))
   }
   /// Mirror of `v8::Array::get_index`. Lifetime decoupled from
   /// receiver per rusty_v8 (the returned Local is owned by `scope`,

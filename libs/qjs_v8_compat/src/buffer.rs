@@ -54,8 +54,8 @@ macro_rules! typed_array_view_methods {
         core::ptr::null_mut()
       }
       pub fn copy_contents(&self, _dest: &mut [u8]) -> usize { 0 }
-      pub fn get_contents<'a>(&self, _storage: &'a mut [u8]) -> &'a mut [u8] {
-        &mut []
+      pub fn get_contents<'a>(&self, _storage: &'a mut [u8]) -> &'a [u8] {
+        &[]
       }
       pub fn set_index<S>(
         &self,
@@ -333,8 +333,8 @@ impl<'s> Local<'s, ArrayBufferView> {
     core::ptr::null_mut()
   }
   pub fn copy_contents(&self, _dest: &mut [u8]) -> usize { 0 }
-  pub fn get_contents<'a>(&self, _storage: &'a mut [u8]) -> &'a mut [u8] {
-    &mut []
+  pub fn get_contents<'a>(&self, _storage: &'a mut [u8]) -> &'a [u8] {
+    &[]
   }
   pub fn get<S>(
     &self,

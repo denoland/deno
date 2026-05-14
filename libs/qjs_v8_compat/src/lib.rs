@@ -939,13 +939,13 @@ pub mod v8 {
     std::rc::Rc::new(())
   }
 
-  pub fn undefined<'s, 'i>(
-    _scope: &crate::scope::PinScope<'s, 'i>,
+  pub fn undefined<'s, S: ?Sized>(
+    _scope: &S,
   ) -> crate::value::Local<'s, crate::value::Primitive> {
     crate::value::Local::from_raw(crate::sys::jsv_undefined())
   }
-  pub fn null<'s, 'i>(
-    _scope: &crate::scope::PinScope<'s, 'i>,
+  pub fn null<'s, S: ?Sized>(
+    _scope: &S,
   ) -> crate::value::Local<'s, crate::value::Primitive> {
     crate::value::Local::from_raw(crate::sys::jsv_null())
   }
@@ -1319,7 +1319,7 @@ pub mod v8 {
   /// PinScope methods deno_node uses but our compat doesn't have yet.
   impl<'s, 'i, C> crate::scope::PinScope<'s, 'i, C> {
     pub fn take_heap_snapshot<F>(&mut self, _writer: F)
-    where F: FnMut(&[u8]) -> usize {}
+    where F: FnMut(&[u8]) -> bool {}
     pub fn get_heap_code_and_metadata_statistics(
       &mut self,
     ) -> Option<HeapCodeStatistics> {
@@ -1348,6 +1348,31 @@ pub mod v8 {
     fn as_mut_handle_scope_ref(&self) -> &mut crate::scope::HandleScope<'s> {
       let p_ptr = self as *const _ as *const u8 as *const P;
       unsafe { (*p_ptr).as_mut_handle_scope_ref() }
+    }
+  }
+  /// `throw_exception` for the various AllowJavascriptExecutionScope wrappers.
+  impl<'a, 's, 'i, C>
+    crate::context::AllowJavascriptExecutionScope<'a, crate::scope::PinScope<'s, 'i, C>>
+  {
+    pub fn throw_exception(
+      &self,
+      exc: crate::value::Local<'s, crate::value::Value>,
+    ) -> crate::value::Local<'s, crate::value::Value> {
+      use crate::value::GlobalScope;
+      let ctx = self.scope_ctx_shared();
+      crate::sys::throw(ctx, exc.raw());
+      exc
+    }
+  }
+  /// `GlobalScope` impl for AllowJavascriptExecutionScope — derives via the inner.
+  impl<'a, P> crate::value::GlobalScope
+    for crate::context::AllowJavascriptExecutionScope<'a, P>
+  where
+    P: crate::value::GlobalScope,
+  {
+    fn scope_ctx_shared(&self) -> crate::sys::Context {
+      let p_ptr = self as *const _ as *const u8 as *const P;
+      unsafe { (*p_ptr).scope_ctx_shared() }
     }
   }
 
