@@ -1123,21 +1123,44 @@ pub mod v8 {
       // QuickJS-ng's JS_NewCFunction stores length in a smallish
       // bitfield (16 bits). Clamp.
       let length = self.length.clamp(0, 0x7fff);
-      // Without JS_NewCFunctionData (which segfaults under our current
-      // FFI binding for reasons not yet diagnosed), fall back to plain
-      // JS_NewCFunction. The trampoline returns a fresh empty object
-      // so JS callers that immediately do `result.foo = ...` don't
-      // blow up. Real op dispatch will need
-      // JS_NewCFunctionData wired up correctly.
-      let _ = self.callback;
-      let _ = self.data_ptr;
-      let raw = unsafe {
-        crate::ffi::JS_NewCFunction(
-          ctx,
-          super::function::function_new_trampoline,
-          core::ptr::null(),
-          length,
-        )
+      let raw = if let Some(cb) = self.callback {
+        // Stash the (slow_fn, OpCtx) pair in a thread-local table
+        // keyed by a small integer index, then JS_NewCFunction with
+        // that index as `magic` — read back in the trampoline. This
+        // sidesteps JS_NewCFunctionData which crashed in our build.
+        let idx = super::function::register_op_dispatch(
+          cb,
+          self.data_ptr,
+        );
+        let raw = unsafe {
+          crate::ffi::JS_NewCFunction2(
+            ctx,
+            core::mem::transmute::<
+              unsafe extern "C" fn(
+                *mut crate::ffi::JSContext,
+                crate::sys::JSValue,
+                core::ffi::c_int,
+                *mut crate::sys::JSValue,
+                core::ffi::c_int,
+              ) -> crate::sys::JSValue,
+              crate::ffi::JSCFunction,
+            >(super::function::op_bridge_trampoline_magic),
+            core::ptr::null(),
+            length,
+            crate::ffi::JS_CFUNC_GENERIC_MAGIC,
+            idx,
+          )
+        };
+        raw
+      } else {
+        unsafe {
+          crate::ffi::JS_NewCFunction(
+            ctx,
+            super::function::function_new_trampoline,
+            core::ptr::null(),
+            length,
+          )
+        }
       };
       Some(super::Local::from_raw(raw))
     }

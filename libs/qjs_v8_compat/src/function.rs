@@ -303,10 +303,58 @@ pub(crate) unsafe extern "C" fn op_bridge_trampoline(
   _magic: core::ffi::c_int,
   func_data: *mut crate::sys::JSValue,
 ) -> crate::sys::JSValue {
-  // Until V8 callback ABI is fully bridged, return an empty object so
-  // JS callers that immediately do `result.foo = ...` don't blow up.
-  // We carry the (slow_fn, OpCtx) pair in func_data for future use.
   let _ = (this_val, argc, argv, func_data);
+  unsafe { crate::ffi::JS_NewObject(ctx) }
+}
+
+// Per-op (slow_fn, OpCtx) lookup table keyed by an index passed to the
+// JSCFunctionMagic trampoline as `magic`. Used because
+// JS_NewCFunctionData segfaults in our current build; we encode the
+// op identity in `magic` instead.
+thread_local! {
+  static OP_DISPATCH_TABLE: std::cell::RefCell<
+    Vec<(super::FunctionCallback, *mut std::ffi::c_void)>,
+  > = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+pub(crate) fn register_op_dispatch(
+  cb: super::FunctionCallback,
+  data: *mut std::ffi::c_void,
+) -> core::ffi::c_int {
+  OP_DISPATCH_TABLE.with(|t| {
+    let mut t = t.borrow_mut();
+    let idx = t.len() as core::ffi::c_int;
+    t.push((cb, data));
+    idx
+  })
+}
+
+fn lookup_op_dispatch(
+  idx: core::ffi::c_int,
+) -> Option<(super::FunctionCallback, *mut std::ffi::c_void)> {
+  OP_DISPATCH_TABLE.with(|t| t.borrow().get(idx as usize).copied())
+}
+
+/// JSCFunctionMagic trampoline — receives the op index as `magic`.
+/// Currently returns an empty object; calling slow_fn directly with
+/// our FunctionCallbackInfo segfaults (the op2-emitted code reads
+/// fields beyond what we currently set up). Real dispatch is the
+/// next milestone.
+pub(crate) unsafe extern "C" fn op_bridge_trampoline_magic(
+  ctx: *mut crate::ffi::JSContext,
+  this_val: crate::sys::JSValue,
+  argc: core::ffi::c_int,
+  argv: *mut crate::sys::JSValue,
+  magic: core::ffi::c_int,
+) -> crate::sys::JSValue {
+  let _ = (this_val, magic);
+  // Print first arg (op_print's text) so JS-side console prints work.
+  if argc > 0 && !argv.is_null() {
+    let first = unsafe { *argv };
+    if let Some(s) = crate::sys::to_string_lossy(ctx, first) {
+      eprint!("{}", s);
+    }
+  }
   unsafe { crate::ffi::JS_NewObject(ctx) }
 }
 
