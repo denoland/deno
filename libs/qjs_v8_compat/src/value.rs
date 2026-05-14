@@ -750,6 +750,7 @@ impl<'s> From<Local<'s, crate::object::Object>>
     Local::from_raw(v.raw)
   }
 }
+// Object -> Value conversion already provided by upcast_to! / value_type! family.
 // (`TryFrom` derives from `From` automatically via std's blanket impl.)
 
 // Common From<String> -> Name etc.

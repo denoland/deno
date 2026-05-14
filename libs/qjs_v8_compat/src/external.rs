@@ -233,3 +233,15 @@ impl CachedData {
     false
   }
 }
+
+impl std::ops::Deref for CachedData {
+  type Target = [u8];
+  fn deref(&self) -> &[u8] {
+    &self.0
+  }
+}
+impl AsRef<[u8]> for CachedData {
+  fn as_ref(&self) -> &[u8] {
+    &self.0
+  }
+}

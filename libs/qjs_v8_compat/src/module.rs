@@ -153,7 +153,7 @@ impl<'s> Local<'s, ModuleRequest> {
 }
 
 impl<'s> Local<'s, FixedArray> {
-  pub fn length(&self) -> i32 {
+  pub fn length(&self) -> usize {
     0
   }
   pub fn get<S>(

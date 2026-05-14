@@ -795,7 +795,7 @@ pub mod v8 {
     }
     pub fn compile_module<'s>(
       _scope: &mut HandleScope<'s>,
-      _source: Source,
+      _source: &mut Source,
     ) -> Option<Local<'s, Module>> {
       None
     }
