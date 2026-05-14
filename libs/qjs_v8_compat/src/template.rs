@@ -93,10 +93,10 @@ impl ObjectTemplate {
 
 impl<'s> Local<'s, ObjectTemplate> {
   /// Mirror of `v8::ObjectTemplate::set_with_attr` — sets a template
-  /// property with explicit `PropertyAttribute` flags.
+  /// property with explicit `PropertyAttribute` flags. rusty_v8's
+  /// signature is `(key, value, attr)` (no scope).
   pub fn set_with_attr(
     &self,
-    _scope: &mut HandleScope<'s>,
     _key: Local<'s, crate::value::Name>,
     _value: Local<'s, crate::value::Value>,
     _attr: crate::object::PropertyAttribute,
