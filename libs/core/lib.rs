@@ -185,6 +185,7 @@ pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::SharedArrayBufferStore;
 pub use crate::runtime::V8_WRAPPER_OBJECT_INDEX;
 pub use crate::runtime::V8_WRAPPER_TYPE_INDEX;
+pub use crate::runtime::create_sibling_context;
 pub use crate::runtime::stats;
 pub use crate::source_map::SourceMapApplication;
 pub use crate::source_map::SourceMapData;
