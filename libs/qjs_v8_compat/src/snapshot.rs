@@ -57,6 +57,11 @@ impl From<Vec<u8>> for StartupData {
     Self { data: b }
   }
 }
+impl From<&[u8]> for StartupData {
+  fn from(b: &[u8]) -> Self {
+    Self { data: b.to_vec() }
+  }
+}
 impl StartupData {
   pub fn is_empty(&self) -> bool {
     self.data.is_empty()
