@@ -32,16 +32,10 @@ impl<'s> Local<'s, Module> {
   pub fn get_status(&self) -> ModuleStatus {
     ModuleStatus::Uninstantiated
   }
-  pub fn get_module_requests<'a>(
-    &self,
-    _scope: &mut HandleScope<'s>,
-  ) -> Local<'s, FixedArray> {
+  pub fn get_module_requests(&self) -> Local<'s, FixedArray> {
     Local::from_raw(sys::jsv_undefined())
   }
-  pub fn get_module_namespace(
-    &self,
-    _scope: &mut HandleScope<'s>,
-  ) -> Local<'s, Object> {
+  pub fn get_module_namespace(&self) -> Local<'s, Object> {
     Local::from_raw(sys::jsv_undefined())
   }
   pub fn evaluate(

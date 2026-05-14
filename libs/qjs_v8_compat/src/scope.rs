@@ -284,6 +284,11 @@ impl<'s, 'e: 's, C> std::ops::DerefMut for EscapableHandleScope<'s, 'e, C> {
 /// side it's a regular HandleScope reconstructed from the raw callback ctx.
 pub struct CallbackScope<'s, C = Context>(pub(crate) HandleScope<'s, C>);
 
+// Mark CallbackScope as Unpin so `Pin<&mut CallbackScope>::deref_mut()`
+// works and Pin's auto-deref chain reaches the inner HandleScope's
+// inherent methods (throw_exception, get_current_context, etc.).
+impl<'s, C> Unpin for CallbackScope<'s, C> {}
+
 impl<'s> CallbackScope<'s, Context> {
   /// SAFETY: `ctx` must be a live JSContext owned by `iso`.
   pub unsafe fn new_from_context<'r>(
@@ -337,7 +342,10 @@ impl<'s> CallbackScope<'s, Context> {
   /// then `Pin::new(&mut scope).init(raw)`. We accept the same shape
   /// and just overwrite the inner HandleScope with one constructed
   /// from the raw source.
-  pub unsafe fn init<R>(self: core::pin::Pin<&mut Self>, raw: R)
+  pub unsafe fn init<R>(
+    self: core::pin::Pin<&mut Self>,
+    raw: R,
+  ) -> core::pin::Pin<&mut Self>
   where
     R: CallbackScopeSource<'s>,
   {
@@ -346,6 +354,7 @@ impl<'s> CallbackScope<'s, Context> {
     // its fields in place.
     let dst = unsafe { self.get_unchecked_mut() };
     dst.0 = cs.0;
+    unsafe { core::pin::Pin::new_unchecked(dst) }
   }
 }
 
