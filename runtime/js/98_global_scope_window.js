@@ -21,8 +21,8 @@ const globalInterfaces = core.loadExtScript(
   "ext:deno_web/04_global_interfaces.js",
 );
 const webStorage = core.loadExtScript("ext:deno_webstorage/01_webstorage.js");
-import * as prompt from "ext:runtime/41_prompt.js";
-import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
+const prompt = core.loadExtScript("ext:runtime/41_prompt.js");
+const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
 
 /**
  * @param {string} arch

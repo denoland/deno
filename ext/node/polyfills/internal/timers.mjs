@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   createTimer: createTimer_,
   cancelTimer: cancelTimer_,
@@ -28,30 +29,34 @@ const {
   SymbolDispose,
   SymbolToPrimitive,
 } = primordials;
-import {
+const {
   emitAfter,
   emitBefore,
   emitDestroy,
   emitInit,
   enabledHooksExist,
   executionAsyncId,
-  newAsyncId as nextAsyncId,
-} from "ext:deno_node/internal/async_hooks.ts";
-import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
-import {
+  newAsyncId: nextAsyncId,
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+const { inspect } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
+const {
   validateFunction,
   validateNumber,
-} from "ext:deno_node/internal/validators.mjs";
-import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
-import { emitWarning } from "node:process";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { ERR_OUT_OF_RANGE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const lazyProcess = core.createLazyLoader("node:process");
 
 // Timeout values > TIMEOUT_MAX are set to 1.
-export const TIMEOUT_MAX = 2 ** 31 - 1;
+const TIMEOUT_MAX = 2 ** 31 - 1;
 
-export const kDestroy = Symbol("destroy");
-export const kTimerId = Symbol("timerId");
-export const kTimeout = Symbol("timeout");
-export const kRefed = core.kRefed;
+const kDestroy = Symbol("destroy");
+const kTimerId = Symbol("timerId");
+const kTimeout = Symbol("timeout");
+const kRefed = core.kRefed;
 const createTimer = Symbol("createTimer");
 
 /**
@@ -66,7 +71,7 @@ const activeTimers = new SafeMap();
  * @param {number} id
  * @returns {Timeout | undefined}
  */
-export function getActiveTimer(id) {
+function getActiveTimer(id) {
   return MapPrototypeGet(activeTimers, id);
 }
 
@@ -74,7 +79,7 @@ let warnedNegativeNumber = false;
 let warnedNotNumber = false;
 
 // Timer constructor function.
-export function Timeout(callback, after, args, isRepeat, isRefed) {
+function Timeout(callback, after, args, isRepeat, isRefed) {
   if (after === undefined) {
     after = 1;
   } else {
@@ -83,21 +88,21 @@ export function Timeout(callback, after, args, isRepeat, isRefed) {
 
   if (!(after >= 1 && after <= TIMEOUT_MAX)) {
     if (after > TIMEOUT_MAX) {
-      emitWarning(
+      lazyProcess().default.emitWarning(
         `${after} does not fit into a 32-bit signed integer.` +
           "\nTimeout duration was set to 1.",
         "TimeoutOverflowWarning",
       );
     } else if (after < 0 && !warnedNegativeNumber) {
       warnedNegativeNumber = true;
-      emitWarning(
+      lazyProcess().default.emitWarning(
         `${after} is a negative number.` +
           "\nTimeout duration was set to 1.",
         "TimeoutNegativeWarning",
       );
     } else if (NumberIsNaN(after) && !warnedNotNumber) {
       warnedNotNumber = true;
-      emitWarning(
+      lazyProcess().default.emitWarning(
         `${after} is not a number.` +
           "\nTimeout duration was set to 1.",
         "TimeoutNaNWarning",
@@ -310,7 +315,7 @@ Timeout.prototype[SymbolToPrimitive] = function () {
  * @param {string} name
  * @returns
  */
-export function getTimerDuration(msecs, name) {
+function getTimerDuration(msecs, name) {
   validateNumber(msecs, name);
 
   if (msecs < 0 || !NumberIsFinite(msecs)) {
@@ -319,7 +324,7 @@ export function getTimerDuration(msecs, name) {
 
   // Ensure that msecs fits into signed int32
   if (msecs > TIMEOUT_MAX) {
-    emitWarning(
+    lazyProcess().default.emitWarning(
       `${msecs} does not fit into a 32-bit signed integer.` +
         `\nTimer duration was truncated to ${TIMEOUT_MAX}.`,
       "TimeoutOverflowWarning",
@@ -331,16 +336,16 @@ export function getTimerDuration(msecs, name) {
   return msecs;
 }
 
-export function setUnrefTimeout(callback, timeout, ...args) {
+function setUnrefTimeout(callback, timeout, ...args) {
   validateFunction(callback, "callback");
   return new Timeout(callback, timeout, args, false, false);
 }
 
 // Re-export immediate queue and runImmediates from core for consumers
-export const immediateQueue = core.immediateQueue;
-export const runImmediates = core.runImmediates;
+const immediateQueue = core.immediateQueue;
+const runImmediates = core.runImmediates;
 
-export class Immediate {
+class Immediate {
   constructor(unboundCallback, ...args) {
     const asyncContext = getAsyncContext();
     // Match Node's `immediate._onImmediate(...argv)` invocation: the callback's
@@ -408,11 +413,18 @@ export class Immediate {
   };
 }
 
-export default {
-  getTimerDuration,
+return {
+  TIMEOUT_MAX,
+  kDestroy,
   kTimerId,
   kTimeout,
-  setUnrefTimeout,
+  kRefed,
+  getActiveTimer,
   Timeout,
-  TIMEOUT_MAX,
+  getTimerDuration,
+  setUnrefTimeout,
+  immediateQueue,
+  runImmediates,
+  Immediate,
 };
+})();

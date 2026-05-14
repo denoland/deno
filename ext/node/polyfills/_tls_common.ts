@@ -4,14 +4,23 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
-import {
+(function () {
+const { core } = globalThis.__bootstrap;
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_TLS_INVALID_PROTOCOL_VERSION,
   ERR_TLS_PROTOCOL_VERSION_CONFLICT,
-} from "ext:deno_node/internal/errors.ts";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
-import { createPrivateKey } from "ext:deno_node/internal/crypto/keys.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const { validateString } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const { op_node_validate_crl, op_node_validate_pfx } = core.ops;
+const { createPrivateKey } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/keys.ts",
+);
 
 // OpenSSL cipher names are uppercase alphanumeric with hyphens/underscores
 // and "=" (for @SECLEVEL=N). Examples: "ECDHE-RSA-AES128-GCM-SHA256",
@@ -287,9 +296,22 @@ function validateKeyCertOption(
   );
 }
 
+function toUint8Array(val: any): Uint8Array {
+  if (typeof val === "string") {
+    return new TextEncoder().encode(val);
+  }
+  if (val instanceof globalThis.ArrayBuffer) {
+    return new Uint8Array(val);
+  }
+  if (isArrayBufferView(val)) {
+    return new Uint8Array(val.buffer, val.byteOffset, val.byteLength);
+  }
+  return new TextEncoder().encode(String(val));
+}
+
 const secureContextBrand = new WeakSet<object>();
 
-export class SecureContext {
+class SecureContext {
   context: {
     ca?: string | string[];
     cert?: string;
@@ -312,6 +334,22 @@ export class SecureContext {
     }
     if (options.clientCertEngine != null) {
       validateString(options.clientCertEngine, "options.clientCertEngine");
+      // OpenSSL engines are not supported in Deno (which uses rustls).
+      // Match Node's behaviour when OpenSSL fails to load the engine: throw
+      // an Error whose message contains "could not load the shared library"
+      // and carries an `opensslErrorStack` array.
+      const err = new Error(
+        `error:25066067:DSO support routines:dlfcn_load:could not load the shared library`,
+      ) as any;
+      err.opensslErrorStack = [
+        `error:25070067:DSO support routines:DSO_load:could not load the shared library`,
+        `error:260B6084:engine routines:dynamic_load:dso not found`,
+      ];
+      err.library = "DSO support routines";
+      err.function = "dlfcn_load";
+      err.reason = "could not load the shared library";
+      err.code = "ERR_OSSL_DSO_COULD_NOT_LOAD_THE_SHARED_LIBRARY";
+      throw err;
     }
     if (options.privateKeyEngine != null) {
       validateString(options.privateKeyEngine, "options.privateKeyEngine");
@@ -329,6 +367,25 @@ export class SecureContext {
     validateKeyCertOption(options.cert, "options.cert", false);
     validateKeyCertOption(options.key, "options.key", true);
     validateKeyCertOption(options.ca, "options.ca", false);
+
+    // Validate PFX / PKCS#12 data.
+    if (options.pfx != null) {
+      const pfxData = toUint8Array(options.pfx);
+      const pfxPassphrase = options.passphrase != null
+        ? String(options.passphrase)
+        : null;
+      op_node_validate_pfx(pfxData, pfxPassphrase);
+    }
+
+    // Validate CRL data.
+    if (options.crl != null) {
+      const crls = globalThis.Array.isArray(options.crl)
+        ? options.crl
+        : [options.crl];
+      for (const crl of crls) {
+        op_node_validate_crl(toUint8Array(crl));
+      }
+    }
 
     // Mirror OpenSSL's SECLEVEL key-size enforcement. The cipher list is
     // applied before the key is loaded (matching Node.js' order in
@@ -355,16 +412,20 @@ export class SecureContext {
       configurable: true,
       enumerable: false,
       get(this: object) {
-        // In Node, `_external` is the C++ external pointer; reading it on a
-        // non-context receiver hits an internal slot check and throws. Match
-        // that behaviour so prototype-tampering tests don't get a silent
-        // undefined.
         if (!secureContextBrand.has(this)) {
           throw new TypeError("Illegal invocation");
         }
         return this;
       },
     });
+    (this.context as any).setOptions = function setOptions(
+      this: object,
+      _options?: number,
+    ) {
+      if (!secureContextBrand.has(this)) {
+        throw new TypeError("Illegal invocation");
+      }
+    };
   }
 
   // Backward compat: current _tls_wrap.js accesses .ca, .cert, .key directly
@@ -379,11 +440,11 @@ export class SecureContext {
   }
 }
 
-export function createSecureContext(options: any = {}) {
+function createSecureContext(options: any = {}) {
   return new SecureContext(options);
 }
 
-export function translatePeerCertificate(c: any) {
+function translatePeerCertificate(c: any) {
   if (!c) {
     return null;
   }
@@ -421,8 +482,14 @@ export function translatePeerCertificate(c: any) {
   return c;
 }
 
-export default {
+return {
   SecureContext,
   createSecureContext,
   translatePeerCertificate,
+  default: {
+    SecureContext,
+    createSecureContext,
+    translatePeerCertificate,
+  },
 };
+})();

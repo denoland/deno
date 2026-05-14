@@ -130,7 +130,7 @@ deno_core::extension!(
     op_otel_metric_observation_done,
   ],
   objects = [OtelTracer, OtelMeter, OtelSpan],
-  esm = ["telemetry.ts", "util.ts"],
+  lazy_loaded_js = ["telemetry.ts", "util.ts"],
 );
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

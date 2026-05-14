@@ -448,6 +448,24 @@ impl WorkspaceMainModuleResolver {
               )?
               .into_url()?
           }
+          deno_package_json::PackageJsonDepValue::Catalog(catalog_name) => {
+            match self
+              .workspace_resolver
+              .resolve_catalog_dep(alias, catalog_name)
+            {
+              Some(req) => ModuleSpecifier::parse(&format!(
+                "npm:{}{}",
+                req,
+                sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+              ))?,
+              None => {
+                return Err(deno_core::anyhow::anyhow!(
+                  "Package '{}' not found in catalog",
+                  alias
+                ));
+              }
+            }
+          }
         }
       }
       deno_resolver::workspace::MappedResolution::PackageJsonImport {
@@ -665,6 +683,19 @@ impl CliOptions {
         deno_dotenv::candidate_paths(&self.initial_cwd, env_file)
       })
       .filter_map(|p| canonicalize_path(&p).ok())
+  }
+
+  pub fn experimental_loaders(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
+    if self.flags.experimental_loaders.is_empty() {
+      return Ok(vec![]);
+    }
+
+    let mut modules = Vec::with_capacity(self.flags.experimental_loaders.len());
+    for loader_specifier in self.flags.experimental_loaders.iter() {
+      modules.push(resolve_url_or_path(loader_specifier, self.initial_cwd())?);
+    }
+
+    Ok(modules)
   }
 
   pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
@@ -1568,6 +1599,7 @@ pub fn get_default_v8_flags() -> Vec<String> {
   vec![
     "--stack-size=1024".to_string(),
     "--inspector-live-edit".to_string(),
+    "--external-memory-max-reasonable-size=0".to_string(),
   ]
 }
 

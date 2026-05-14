@@ -1,0 +1,11 @@
+{
+  "tests": {
+    "tag_in_byonm_does_not_panic": {
+      // Regression test for https://github.com/denoland/deno/issues/33959.
+      // Importing an npm specifier with a tag (e.g. @latest) under BYONM
+      // used to panic in `VersionReq::matches`.
+      "args": "run -A main.ts",
+      "output": "1.0.0\n"
+    }
+  }
+}

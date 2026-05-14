@@ -23,17 +23,20 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-import {
+(function () {
+const { core } = globalThis.__bootstrap;
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_FILE_URL_HOST,
   ERR_INVALID_FILE_URL_PATH,
   ERR_INVALID_URL,
   ERR_INVALID_URL_SCHEME,
-} from "ext:deno_node/internal/errors.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { validateString } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const {
   CHAR_0,
   CHAR_9,
   CHAR_AT,
@@ -69,18 +72,21 @@ import {
   CHAR_UPPERCASE_Z,
   CHAR_VERTICAL_LINE,
   CHAR_ZERO_WIDTH_NOBREAK_SPACE,
-} from "ext:deno_node/path/_constants.ts";
-import * as path from "node:path";
-import {
-  domainToASCII as idnaToASCII,
-  domainToUnicode as idnaToUnicode,
-} from "ext:deno_node/internal/idna.ts";
-import { isWindows, osType } from "ext:deno_node/_util/os.ts";
-import { encodeStr, hexTable } from "ext:deno_node/internal/querystring.ts";
-import querystring from "node:querystring";
-import type { ParsedUrlQuery, ParsedUrlQueryInput } from "node:querystring";
+} = core.loadExtScript("ext:deno_node/path/_constants.ts");
+const lazyPath = core.createLazyLoader("node:path");
+const {
+  domainToASCII: idnaToASCII,
+  domainToUnicode: idnaToUnicode,
+} = core.loadExtScript("ext:deno_node/internal/idna.ts");
+const { isWindows, osType } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { encodeStr, hexTable } = core.loadExtScript(
+  "ext:deno_node/internal/querystring.ts",
+);
+const querystring = core.loadExtScript("ext:deno_node/querystring.js").default;
 const { URL, URLSearchParams } = core.loadExtScript("ext:deno_web/00_url.js");
-import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
+const { urlToHttpOptions } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
 
 const forwardSlashRegEx = /\//g;
 const percentRegEx = /%/g;
@@ -161,10 +167,9 @@ const forbiddenHostChars = /[\0\t\n\r #%/:<>?@[\\\]^|]/;
 const forbiddenHostCharsIpv6 = /[\0\t\n\r #%/<>?@\\^|]/;
 
 const _url = URL;
-export { _url as URL };
 
 // Legacy URL API
-export class Url {
+class Url {
   public protocol: string | null;
   public slashes: boolean | null;
   public auth: string | null;
@@ -932,7 +937,7 @@ interface UrlObject {
   query?: string | null | ParsedUrlQueryInput | undefined;
 }
 
-export function format(
+function format(
   urlObject: string | URL | Url | UrlObject,
   options?: {
     auth: boolean;
@@ -1229,7 +1234,7 @@ function autoEscapeStr(rest: string) {
  * the query property on the returned URL object will be an unparsed, undecoded string. Default: false.
  * @param slashesDenoteHost If `true`, the first token after the literal string // and preceding the next / will be interpreted as the host
  */
-export function parse(
+function parse(
   url: string | Url,
   parseQueryString: boolean,
   slashesDenoteHost: boolean,
@@ -1245,11 +1250,11 @@ export function parse(
  * @see https://nodejs.org/api/url.html#urlresolvefrom-to
  * @legacy
  */
-export function resolve(from: string, to: string) {
+function resolve(from: string, to: string) {
   return parse(from, false, true).resolve(to);
 }
 
-export function resolveObject(source: string | Url, relative: string) {
+function resolveObject(source: string | Url, relative: string) {
   if (!source) return relative;
   return parse(source, false, true).resolveObject(relative);
 }
@@ -1260,7 +1265,7 @@ export function resolveObject(source: string | Url, relative: string) {
  * @param domain The domain to convert to an IDN
  * @see https://www.rfc-editor.org/rfc/rfc3490#section-4
  */
-export function domainToASCII(domain: string) {
+function domainToASCII(domain: string) {
   return idnaToASCII(domain);
 }
 
@@ -1270,7 +1275,7 @@ export function domainToASCII(domain: string) {
  * @param domain The IDN to convert to Unicode
  * @see https://www.rfc-editor.org/rfc/rfc3490#section-4
  */
-export function domainToUnicode(domain: string) {
+function domainToUnicode(domain: string) {
   return idnaToUnicode(domain);
 }
 
@@ -1280,7 +1285,7 @@ export function domainToUnicode(domain: string) {
  * @param path The file URL string or URL object to convert to a path.
  * @returns The fully-resolved platform-specific Node.js file path.
  */
-export function fileURLToPath(path: string | URL): string {
+function fileURLToPath(path: string | URL): string {
   if (typeof path === "string") path = new URL(path);
   else if (!(path instanceof URL)) {
     throw new ERR_INVALID_ARG_TYPE("path", ["string", "URL"], path);
@@ -1407,7 +1412,7 @@ function encodePathChars(
  * @param options The options.
  * @returns The file URL object.
  */
-export function pathToFileURL(
+function pathToFileURL(
   filepath: string,
   options: { windows?: boolean } = {},
 ): URL {
@@ -1454,6 +1459,7 @@ export function pathToFileURL(
       windows,
     });
   } else {
+    const path = lazyPath();
     let resolved = (windows ?? isWindows)
       ? path.win32.resolve(filepath)
       : path.posix.resolve(filepath);
@@ -1473,9 +1479,12 @@ export function pathToFileURL(
 }
 
 const URLSearchParams_ = URLSearchParams;
-export { URLSearchParams_ as URLSearchParams, urlToHttpOptions };
 
-export default {
+return {
+  URL: _url,
+  URLSearchParams: URLSearchParams_,
+  urlToHttpOptions,
+  Url,
   parse,
   format,
   resolve,
@@ -1484,8 +1493,5 @@ export default {
   domainToUnicode,
   fileURLToPath,
   pathToFileURL,
-  urlToHttpOptions,
-  Url,
-  URL,
-  URLSearchParams,
 };
+})();

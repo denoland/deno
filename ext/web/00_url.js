@@ -5,7 +5,6 @@
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 
-// deno-fmt-ignore-file
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
 const {
@@ -36,10 +35,17 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
 
 const _list = Symbol("list");
 const _urlObject = Symbol("url object");
+
+// Pre-frozen argument-name arrays used to produce Node-compatible
+// `ERR_MISSING_ARGS` messages from `webidl.requiredArguments`.
+const NAME_ARG_NAMES = ["name"];
+const APPEND_ARG_NAMES = ["name", "value"];
 
 // WARNING: must match rust code's UrlSetter::*
 const SET_HASH = 0;
@@ -169,9 +175,9 @@ class URLSearchParams {
    * @param {string} value
    */
   append(name, value) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'append' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 2, prefix);
+    webidl.requiredArguments(arguments.length, 2, prefix, APPEND_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     value = webidl.converters.USVString(value, prefix, "Argument 2");
     ArrayPrototypePush(this[_list], [name, value]);
@@ -183,29 +189,29 @@ class URLSearchParams {
    * @param {string} [value]
    */
   delete(name, value = undefined) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'append' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
+    webidl.requiredArguments(arguments.length, 1, prefix, NAME_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     const list = this[_list];
-    let i = 0;
+    let writeIdx = 0;
     if (value === undefined) {
-      while (i < list.length) {
-        if (list[i][0] === name) {
-          ArrayPrototypeSplice(list, i, 1);
-        } else {
-          i++;
+      for (let i = 0; i < list.length; i++) {
+        if (list[i][0] !== name) {
+          list[writeIdx++] = list[i];
         }
       }
     } else {
       value = webidl.converters.USVString(value, prefix, "Argument 2");
-      while (i < list.length) {
-        if (list[i][0] === name && list[i][1] === value) {
-          ArrayPrototypeSplice(list, i, 1);
-        } else {
-          i++;
+      for (let i = 0; i < list.length; i++) {
+        const entry = list[i];
+        if (entry[0] !== name || entry[1] !== value) {
+          list[writeIdx++] = entry;
         }
       }
+    }
+    if (writeIdx !== list.length) {
+      ArrayPrototypeSplice(list, writeIdx);
     }
     this.#updateUrlSearch();
   }
@@ -215,9 +221,9 @@ class URLSearchParams {
    * @returns {string[]}
    */
   getAll(name) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'getAll' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
+    webidl.requiredArguments(arguments.length, 1, prefix, NAME_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     const values = [];
     const entries = this[_list];
@@ -235,9 +241,9 @@ class URLSearchParams {
    * @return {string | null}
    */
   get(name) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'get' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
+    webidl.requiredArguments(arguments.length, 1, prefix, NAME_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     const entries = this[_list];
     for (let i = 0; i < entries.length; ++i) {
@@ -255,9 +261,9 @@ class URLSearchParams {
    * @return {boolean}
    */
   has(name, value = undefined) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'has' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
+    webidl.requiredArguments(arguments.length, 1, prefix, NAME_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     if (value !== undefined) {
       value = webidl.converters.USVString(value, prefix, "Argument 2");
@@ -274,9 +280,9 @@ class URLSearchParams {
    * @param {string} value
    */
   set(name, value) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'set' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 2, prefix);
+    webidl.requiredArguments(arguments.length, 2, prefix, APPEND_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     value = webidl.converters.USVString(value, prefix, "Argument 2");
 
@@ -285,19 +291,18 @@ class URLSearchParams {
     // If there are any name-value pairs whose name is name, in list,
     // set the value of the first such name-value pair to value
     // and remove the others.
+    let writeIdx = 0;
     let found = false;
-    let i = 0;
-    while (i < list.length) {
-      if (list[i][0] === name) {
+    for (let i = 0; i < list.length; i++) {
+      const entry = list[i];
+      if (entry[0] === name) {
         if (!found) {
-          list[i][1] = value;
+          entry[1] = value;
+          list[writeIdx++] = entry;
           found = true;
-          i++;
-        } else {
-          ArrayPrototypeSplice(list, i, 1);
         }
       } else {
-        i++;
+        list[writeIdx++] = entry;
       }
     }
 
@@ -305,13 +310,15 @@ class URLSearchParams {
     // and value is value, to list.
     if (!found) {
       ArrayPrototypePush(list, [name, value]);
+    } else if (writeIdx !== list.length) {
+      ArrayPrototypeSplice(list, writeIdx);
     }
 
     this.#updateUrlSearch();
   }
 
   sort() {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     ArrayPrototypeSort(
       this[_list],
       (a, b) => (a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1),
@@ -323,12 +330,12 @@ class URLSearchParams {
    * @return {string}
    */
   toString() {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     return op_url_stringify_search_params(this[_list]);
   }
 
   get size() {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     return this[_list].length;
   }
 }
@@ -907,4 +914,4 @@ return {
   URLSearchParams,
   URLSearchParamsPrototype,
 };
-})()
+})();

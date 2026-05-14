@@ -23,14 +23,11 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { Buffer } from "node:buffer";
-import { EventEmitter } from "node:events";
-import { lookup as defaultLookup } from "node:dns";
-import type {
-  ErrnoException,
-  NodeSystemErrorCtx,
-} from "ext:deno_node/internal/errors.ts";
-import {
+(function () {
+const { core } = globalThis.__bootstrap;
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+const {
   ERR_BUFFER_OUT_OF_BOUNDS,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_FD_TYPE,
@@ -43,30 +40,38 @@ import {
   ERR_SOCKET_DGRAM_NOT_RUNNING,
   errnoException,
   exceptionWithHostPort,
-} from "ext:deno_node/internal/errors.ts";
-import type { Abortable } from "ext:deno_node/_events.d.ts";
-import { kStateSymbol, newHandle } from "ext:deno_node/internal/dgram.ts";
-import type { SocketType } from "ext:deno_node/internal/dgram.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { kStateSymbol, newHandle } = core.loadExtScript(
+  "ext:deno_node/internal/dgram.ts",
+);
+const {
   asyncIdSymbol,
   defaultTriggerAsyncIdScope,
   ownerSymbol,
-} from "ext:deno_node/internal/async_hooks.ts";
-import { SendWrap, UDP } from "ext:deno_node/internal_binding/udp_wrap.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+const { SendWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/udp_wrap.ts",
+);
+const {
   isInt32,
   validateAbortSignal,
   validateNumber,
   validatePort,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
-import { os } from "ext:deno_node/internal_binding/constants.ts";
-import { nextTick } from "node:process";
-import { deprecate } from "node:util";
-import { channel } from "node:diagnostics_channel";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { guessHandleType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
+const { os } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
+const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 
 const { UV_UDP_REUSEADDR, UV_UDP_IPV6ONLY } = os;
 
@@ -83,29 +88,29 @@ const CONNECT_STATE_CONNECTED = 2;
 const RECV_BUFFER = true;
 const SEND_BUFFER = false;
 
-export interface AddressInfo {
+interface AddressInfo {
   address: string;
   family: number;
   port: number;
 }
 
-export type MessageType = string | Uint8Array | Buffer | DataView;
+type MessageType = string | Uint8Array | Buffer | DataView;
 
-export type RemoteInfo = {
+type RemoteInfo = {
   address: string;
   family: "IPv4" | "IPv6";
   port: number;
   size?: number;
 };
 
-export interface BindOptions {
+interface BindOptions {
   port?: number;
   address?: string;
   exclusive?: boolean;
   fd?: number;
 }
 
-export interface SocketOptions extends Abortable {
+interface SocketOptions extends Abortable {
   type: SocketType;
   reuseAddr?: boolean;
   /**
@@ -154,7 +159,7 @@ const isBindOptions = (options: unknown): options is BindOptions =>
  * New instances of `dgram.Socket` are created using `createSocket`.
  * The `new` keyword is not to be used to create `dgram.Socket` instances.
  */
-export class Socket extends EventEmitter {
+class Socket extends EventEmitter {
   [asyncIdSymbol]!: number;
   [kStateSymbol]!: SocketInternalState;
 
@@ -1321,15 +1326,15 @@ Socket.prototype._stopReceiving = deprecate(
  * @param options
  * @param callback Attached as a listener for `'message'` events. Optional.
  */
-export function createSocket(
+function createSocket(
   type: SocketType,
   listener?: (msg: Buffer, rinfo: RemoteInfo) => void,
 ): Socket;
-export function createSocket(
+function createSocket(
   type: SocketOptions,
   listener?: (msg: Buffer, rinfo: RemoteInfo) => void,
 ): Socket;
-export function createSocket(
+function createSocket(
   type: SocketType | SocketOptions,
   listener?: (msg: Buffer, rinfo: RemoteInfo) => void,
 ): Socket {
@@ -1650,9 +1655,12 @@ function afterSend(this: SendWrap, err: number | null, sent?: number) {
   this.callback(ex, sent);
 }
 
-export type { SocketType };
-
-export default {
+return {
+  default: {
+    createSocket,
+    Socket,
+  },
   createSocket,
   Socket,
 };
+})();

@@ -1,5 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { unwatchFile, watch, watchFile } from "node:fs";
+import {
+  type BigIntStats,
+  type Stats,
+  unwatchFile,
+  watch,
+  watchFile,
+} from "node:fs";
 import { watch as watchPromise } from "node:fs/promises";
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { spy } from "@std/testing/mock";
@@ -48,6 +54,60 @@ Deno.test({
     unwatchFile(file);
     await wait(100);
     assertEquals(spyFn.calls.length, 1);
+  },
+});
+
+Deno.test({
+  name: "watchFile detects metadata-only changes (chmod)",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const file = Deno.makeTempFileSync();
+    Deno.writeTextFileSync(file, "foo");
+    Deno.chmodSync(file, 0o644);
+
+    const calls: Array<[Stats, Stats]> = [];
+    watchFile(
+      file,
+      { interval: 10 },
+      (curr, prev) => calls.push([curr as Stats, prev as Stats]),
+    );
+
+    try {
+      await wait(50);
+      assertEquals(calls.length, 0);
+      Deno.chmodSync(file, 0o600);
+      await wait(150);
+      assertEquals(calls.length, 1);
+      assert(calls[0][0].mode !== calls[0][1].mode);
+    } finally {
+      unwatchFile(file);
+    }
+  },
+});
+
+Deno.test({
+  name: "watchFile honors bigint option",
+  async fn() {
+    const file = Deno.makeTempFileSync();
+    Deno.writeTextFileSync(file, "foo");
+
+    const calls: Array<[BigIntStats, BigIntStats]> = [];
+    watchFile(
+      file,
+      { interval: 10, bigint: true },
+      (curr, prev) => calls.push([curr as BigIntStats, prev as BigIntStats]),
+    );
+
+    try {
+      await wait(50);
+      Deno.writeTextFileSync(file, "bar");
+      await wait(150);
+      assert(calls.length >= 1);
+      assertEquals(typeof calls[0][0].mtimeMs, "bigint");
+      assertEquals(typeof calls[0][0].ino, "bigint");
+    } finally {
+      unwatchFile(file);
+    }
   },
 });
 

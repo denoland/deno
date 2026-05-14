@@ -345,14 +345,46 @@ impl std::fmt::Display for AddCommandName {
   }
 }
 
+fn create_package_json(
+  flags: &Arc<Flags>,
+  options: &CliOptions,
+) -> Result<CliFactory, AnyError> {
+  std::fs::write(options.initial_cwd().join("package.json"), "{}\n")
+    .context("Failed to create package.json file")?;
+  log::info!("Created package.json configuration file.");
+  let factory = CliFactory::from_flags(flags.clone());
+  Ok(factory)
+}
+
 fn load_configs(
   flags: &Arc<Flags>,
   has_jsr_specifiers: impl FnOnce() -> bool,
+  force_package_json: bool,
 ) -> Result<(CliFactory, Option<ConfigUpdater>, Option<ConfigUpdater>), AnyError>
 {
   let cli_factory = CliFactory::from_flags(flags.clone());
   let options = cli_factory.cli_options()?;
   let start_dir = &options.start_dir;
+
+  if force_package_json {
+    let npm_config = match start_dir.member_pkg_json() {
+      Some(pkg_json) => Some(ConfigUpdater::new(
+        ConfigKind::PackageJson,
+        pkg_json.path.clone(),
+      )?),
+      None => {
+        let pkg_json_path = options.initial_cwd().join("package.json");
+        let factory = create_package_json(flags, options)?;
+        return Ok((
+          factory,
+          Some(ConfigUpdater::new(ConfigKind::PackageJson, pkg_json_path)?),
+          None,
+        ));
+      }
+    };
+    return Ok((cli_factory, npm_config, None));
+  }
+
   let npm_config = match start_dir.member_pkg_json() {
     Some(pkg_json) => Some(ConfigUpdater::new(
       ConfigKind::PackageJson,
@@ -407,10 +439,12 @@ pub async fn add(
   cmd_name: AddCommandName,
 ) -> Result<(), AnyError> {
   let save_exact = add_flags.save_exact;
-  let (cli_factory, mut npm_config, mut deno_config) =
-    load_configs(&flags, || {
-      add_flags.packages.iter().any(|s| s.starts_with("jsr:"))
-    })?;
+  let force_package_json = add_flags.package_json;
+  let (cli_factory, mut npm_config, mut deno_config) = load_configs(
+    &flags,
+    || add_flags.packages.iter().any(|s| s.starts_with("jsr:")),
+    force_package_json,
+  )?;
 
   if let Some(deno) = &deno_config
     && deno.obj().get("importMap").is_some()
@@ -482,6 +516,9 @@ pub async fn add(
 
     match req {
       Ok(add_req) => package_reqs.push(add_req),
+      // Currently unreachable: default_registry is always Some (defaults to Npm),
+      // so parse() always resolves a prefix. Kept as a safety fallback in case
+      // the API is called with None from elsewhere.
       Err(package_req) => {
         if jsr_resolver
           .req_to_nv(&package_req)
@@ -583,7 +620,11 @@ pub async fn add(
       selected_package.selected_version
     );
 
-    if selected_package.package_name.starts_with("npm:") && prefer_npm_config {
+    if force_package_json {
+      npm_config.as_mut().unwrap().add(selected_package, dev);
+    } else if selected_package.package_name.starts_with("npm:")
+      && prefer_npm_config
+    {
       if let Some(npm) = &mut npm_config {
         npm.add(selected_package, dev);
       } else {
@@ -848,7 +889,6 @@ impl AddRmPackageReq {
     }
 
     let (maybe_prefix, entry_text) = parse_prefix(entry_text);
-    let maybe_prefix = maybe_prefix.or(default_prefix);
     let (prefix, maybe_alias, entry_text) = match maybe_prefix {
       Some(prefix) => (prefix, None, entry_text),
       None => match parse_alias(entry_text) {
@@ -865,7 +905,10 @@ impl AddRmPackageReq {
             entry_text,
           )
         }
-        None => return Ok(Err(PackageReq::from_str(entry_text)?)),
+        None => match default_prefix {
+          Some(prefix) => (prefix, None, entry_text),
+          None => return Ok(Err(PackageReq::from_str(entry_text)?)),
+        },
       },
     };
 
@@ -896,9 +939,15 @@ pub async fn remove(
   flags: Arc<Flags>,
   remove_flags: RemoveFlags,
 ) -> Result<(), AnyError> {
-  let (_, npm_config, deno_config) = load_configs(&flags, || false)?;
+  let force_package_json = remove_flags.package_json;
+  let (_, npm_config, deno_config) =
+    load_configs(&flags, || false, force_package_json)?;
 
-  let mut configs = [npm_config, deno_config];
+  let mut configs = if force_package_json {
+    [npm_config, None]
+  } else {
+    [npm_config, deno_config]
+  };
 
   let mut removed_packages = vec![];
 
@@ -1093,6 +1142,24 @@ mod test {
       (("jsr:foo", Some(Prefix::Jsr)), jsr_pkg_req("foo", "foo")),
       (("npm:foo", Some(Prefix::Jsr)), npm_pkg_req("foo", "foo@*")),
       (("jsr:foo", Some(Prefix::Npm)), jsr_pkg_req("foo", "foo")),
+      // Alias with explicit prefix still works when default is set
+      (
+        ("my-alias@npm:foo", Some(Prefix::Npm)),
+        npm_pkg_req("my-alias", "foo@*"),
+      ),
+      (
+        ("my-alias@jsr:foo", Some(Prefix::Npm)),
+        jsr_pkg_req("my-alias", "foo"),
+      ),
+      // Unprefixed without alias defaults to npm
+      (
+        ("chalk", Some(Prefix::Npm)),
+        npm_pkg_req("chalk", "chalk@*"),
+      ),
+      (
+        ("@scope/pkg", Some(Prefix::Npm)),
+        npm_pkg_req("@scope/pkg", "@scope/pkg@*"),
+      ),
     ];
 
     for ((input, maybe_prefix), expected) in cases {

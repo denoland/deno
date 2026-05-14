@@ -4,7 +4,7 @@
 
 // deno-lint-ignore-file no-process-global
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeSome,
   FunctionPrototypeCall,
@@ -25,21 +25,23 @@ const {
   StringPrototypeToLowerCase,
 } = primordials;
 
-import {
+const {
   ERR_INVALID_FD,
   ERR_TTY_INIT_FAILED,
   errnoException,
-} from "ext:deno_node/internal/errors.ts";
-import { validateInteger } from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { validateInteger } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import { op_tty_check_fd_permission, TTY } from "ext:core/ops";
-import { Socket } from "node:net";
-import {
+const lazyNet = core.createLazyLoader("node:net");
+const {
   clearLine,
   clearScreenDown,
   cursorTo,
   moveCursor,
-} from "ext:deno_node/internal/readline/callbacks.mjs";
-import { release } from "node:os";
+} = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
+const { release } = core.loadExtScript("ext:deno_node/os.ts");
 
 // Color depth constants
 const COLORS_2 = 1;
@@ -291,6 +293,7 @@ function removeSigwinchListener(stream) {
 
 // WriteStream needs to be callable without `new` to match Node.js behavior.
 function WriteStream(fd) {
+  ensureWriteStreamPrototype();
   if (!ObjectPrototypeIsPrototypeOf(WriteStream.prototype, this)) {
     return new WriteStream(fd);
   }
@@ -308,7 +311,7 @@ function WriteStream(fd) {
     throw new ERR_TTY_INIT_FAILED(ctx);
   }
 
-  FunctionPrototypeCall(Socket, this, {
+  FunctionPrototypeCall(lazyNet().Socket, this, {
     readableHighWaterMark: 0,
     handle: tty,
     manualStart: true,
@@ -329,13 +332,23 @@ function WriteStream(fd) {
   }
 }
 
-ObjectSetPrototypeOf(WriteStream.prototype, Socket.prototype);
-ObjectSetPrototypeOf(WriteStream, Socket);
+// `lazyNet().Socket` may be in TDZ at module-eval time when net.ts is
+// lazy-loaded JS, since this module's body can run before net_esm.ts
+// finishes evaluating. Defer the prototype hookup until the first
+// WriteStream is constructed.
+let writeStreamPrototypeReady = false;
+function ensureWriteStreamPrototype() {
+  if (writeStreamPrototypeReady) return;
+  writeStreamPrototypeReady = true;
+  const NetSocket = lazyNet().Socket;
+  ObjectSetPrototypeOf(WriteStream.prototype, NetSocket.prototype);
+  ObjectSetPrototypeOf(WriteStream, NetSocket);
+}
 
 WriteStream.prototype.isTTY = true;
 
 WriteStream.prototype.on = function on(event, listener) {
-  FunctionPrototypeCall(Socket.prototype.on, this, event, listener);
+  FunctionPrototypeCall(lazyNet().Socket.prototype.on, this, event, listener);
   if (event === "resize" && this.listenerCount("resize") === 1) {
     addSigwinchListener(this);
   }
@@ -350,7 +363,12 @@ WriteStream.prototype.removeListener = function removeListener(
   event,
   listener,
 ) {
-  FunctionPrototypeCall(Socket.prototype.removeListener, this, event, listener);
+  FunctionPrototypeCall(
+    lazyNet().Socket.prototype.removeListener,
+    this,
+    event,
+    listener,
+  );
   if (event === "resize" && this.listenerCount("resize") === 0) {
     removeSigwinchListener(this);
   }
@@ -362,7 +380,11 @@ WriteStream.prototype.off = function off(event, listener) {
 };
 
 WriteStream.prototype.removeAllListeners = function removeAllListeners(event) {
-  FunctionPrototypeCall(Socket.prototype.removeAllListeners, this, event);
+  FunctionPrototypeCall(
+    lazyNet().Socket.prototype.removeAllListeners,
+    this,
+    event,
+  );
   if (!event || event === "resize") {
     removeSigwinchListener(this);
   }
@@ -434,5 +456,5 @@ WriteStream.prototype.getColorDepth = function getColorDepth_(env) {
   return getColorDepth(env);
 };
 
-export { WriteStream };
+export { addSigwinchListener, WriteStream };
 export default WriteStream;
