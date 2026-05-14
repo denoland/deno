@@ -208,18 +208,51 @@ impl<'s, T> ReturnValue<'s, T> {
 impl<'s> Local<'s, Function> {
   pub fn call<S>(
     &self,
-    _scope: &mut S,
-    _recv: Local<'s, Value>,
-    _args: &[Local<'s, Value>],
-  ) -> Option<Local<'s, Value>> {
-    None
+    scope: &mut S,
+    recv: Local<'s, Value>,
+    args: &[Local<'s, Value>],
+  ) -> Option<Local<'s, Value>>
+  where
+    S: crate::scope::HandleScopeSource,
+  {
+    let ctx = scope.default_ctx();
+    let mut argv: Vec<sys::JSValue> = args.iter().map(|a| a.raw()).collect();
+    eprintln!("[qjs] Function::call self.tag={} recv.tag={} argc={}", self.raw().tag, recv.raw().tag, args.len());
+    let raw = sys::call(ctx, self.raw(), recv.raw(), argv.as_mut_slice());
+    if sys::jsv_is_exception(&raw) {
+      eprintln!("[qjs] Function::call -> exception");
+      if let Some(exc) = sys::take_pending_exception(ctx) {
+        if let Some(s) = sys::to_string_lossy(ctx, exc) {
+          eprintln!("[qjs]   exception: {}", s);
+        }
+        sys::free_value(ctx, exc);
+      }
+      return None;
+    }
+    eprintln!("[qjs] Function::call done tag={}", raw.tag);
+    Some(Local::from_raw(raw))
   }
   pub fn new_instance<S>(
     &self,
-    _scope: &mut S,
-    _args: &[Local<'s, Value>],
-  ) -> Option<Local<'s, Object>> {
-    None
+    scope: &mut S,
+    args: &[Local<'s, Value>],
+  ) -> Option<Local<'s, Object>>
+  where
+    S: crate::scope::HandleScopeSource,
+  {
+    // Best-effort: treat as a plain call with no `this`. The caller
+    // (cppgc machinery) just wants a fresh object back.
+    let ctx = scope.default_ctx();
+    let mut argv: Vec<sys::JSValue> = args.iter().map(|a| a.raw()).collect();
+    let undef = sys::jsv_undefined();
+    let raw = sys::call(ctx, self.raw(), undef, argv.as_mut_slice());
+    if sys::jsv_is_exception(&raw) {
+      // Fallback: return a fresh empty object so cppgc has something
+      // to hold onto rather than panicking.
+      let obj = sys::new_object(ctx);
+      return Some(Local::from_raw(obj));
+    }
+    Some(Local::from_raw(raw))
   }
   pub fn set_name(&self, _name: Local<'_, crate::primitives::String>) {}
   pub fn create_code_cache(&self) -> Option<Box<crate::external::CachedData>> {
@@ -227,15 +260,40 @@ impl<'s> Local<'s, Function> {
   }
 }
 
+/// Trampoline used by `Function::new` and `FunctionBuilder::build` until
+/// V8's full FunctionCallback ABI is bridged. Returns undefined so JS
+/// callers see a no-op function.
+pub(crate) unsafe extern "C" fn function_new_trampoline(
+  _ctx: *mut crate::ffi::JSContext,
+  _this: crate::sys::JSValue,
+  _argc: core::ffi::c_int,
+  _argv: *mut crate::sys::JSValue,
+) -> crate::sys::JSValue {
+  crate::sys::jsv_undefined()
+}
+
 impl Function {
   pub fn new<'s, S, F>(
-    _scope: &mut S,
+    scope: &mut S,
     _callback: F,
   ) -> Option<Local<'s, Function>>
   where
+    S: crate::scope::HandleScopeSource,
     F: crate::function::MapFnTo<crate::function::FunctionCallback>,
   {
-    None
+    // We use JS_NewCFunction to create a real callable function that
+    // has a proper `length` property. The trampoline currently returns
+    // undefined because the V8 FunctionCallback ABI isn't bridged yet.
+    let ctx = scope.default_ctx();
+    let raw = unsafe {
+      crate::ffi::JS_NewCFunction(
+        ctx,
+        function_new_trampoline,
+        core::ptr::null(),
+        0,
+      )
+    };
+    Some(Local::from_raw(raw))
   }
 }
 

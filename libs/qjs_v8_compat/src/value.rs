@@ -1318,7 +1318,9 @@ impl<T> Global<T> {
     local: Local<'lo, T>,
   ) -> Self {
     let ctx = scope.ctx();
+    eprintln!("[qjs] Global::new ctx={:p} tag={}", ctx, local.raw.tag);
     sys::dup_value(ctx, local.raw);
+    eprintln!("[qjs] Global::new dup_value done");
     Self {
       raw: local.raw,
       ctx: Some(ctx),

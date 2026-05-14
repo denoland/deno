@@ -152,8 +152,13 @@ impl<'s> Local<'s, ObjectTemplate> {
     _value: Local<'s, crate::value::Value>,
   ) {
   }
-  pub fn new_instance<S>(&self, _scope: &S) -> Option<Local<'s, Object>> {
-    None
+  pub fn new_instance<S>(&self, scope: &mut S) -> Option<Local<'s, Object>>
+  where
+    S: crate::scope::HandleScopeSource,
+  {
+    let ctx = scope.default_ctx();
+    let raw = crate::sys::new_object(ctx);
+    Some(Local::from_raw(raw))
   }
   pub fn set_accessor_property<G, S>(
     &self,

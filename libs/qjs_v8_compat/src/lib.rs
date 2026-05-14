@@ -1061,22 +1061,30 @@ pub mod v8 {
     pub fn run(&mut self) {}
   }
   pub struct IdleTask;
-  /// Stub for `v8::FunctionBuilder<T>` — used to construct
-  /// FunctionTemplates with various typed wrappers in the deno_core
-  /// snapshot/init code. The phantom generic is the v8 type the
-  /// builder produces.
-  pub struct FunctionBuilder<T>(core::marker::PhantomData<T>);
+  /// `v8::FunctionBuilder<T>` — used to construct FunctionTemplates and
+  /// Functions. The phantom generic is the v8 type the builder produces.
+  /// We track the declared `length` so the produced JS function has the
+  /// right `.length` property (deno_core's `setUpAsyncStub` reads it
+  /// when wiring async ops).
+  pub struct FunctionBuilder<T> {
+    length: i32,
+    _t: core::marker::PhantomData<T>,
+  }
   impl<T> FunctionBuilder<T> {
     pub fn new<F>(_callback: F) -> Self
     where
       F: crate::function::MapFnTo<super::FunctionCallback>,
     {
-      Self(core::marker::PhantomData)
+      Self {
+        length: 0,
+        _t: core::marker::PhantomData,
+      }
     }
     pub fn data<'s>(self, _data: super::Local<'s, super::Value>) -> Self {
       self
     }
-    pub fn length(self, _length: i32) -> Self {
+    pub fn length(mut self, length: i32) -> Self {
+      self.length = length;
       self
     }
     pub fn side_effect_type(self, _t: super::SideEffectType) -> Self {
@@ -1086,7 +1094,15 @@ pub mod v8 {
       self,
       scope: &mut S,
     ) -> Option<super::Local<'s, T>> {
-      let raw = crate::sys::new_object(scope.default_ctx());
+      let ctx = scope.default_ctx();
+      let raw = unsafe {
+        crate::ffi::JS_NewCFunction(
+          ctx,
+          super::function::function_new_trampoline,
+          core::ptr::null(),
+          self.length,
+        )
+      };
       Some(super::Local::from_raw(raw))
     }
     pub fn build_fast<'s, S: crate::scope::HandleScopeSource, F>(

@@ -84,11 +84,15 @@ unsafe impl Send for OwnedIsolate {}
 
 impl OwnedIsolate {
   pub fn new(_params: CreateParams) -> Self {
+    eprintln!("[qjs] OwnedIsolate::new start");
     let rt = sys::new_runtime();
+    eprintln!("[qjs] OwnedIsolate::new rt={:p}", rt);
     let ctx = sys::new_context(rt);
+    eprintln!("[qjs] OwnedIsolate::new ctx={:p}", ctx);
     let mut state = Box::new(IsolateState::new());
     let state_ptr: *mut IsolateState = state.as_mut();
     sys::set_runtime_opaque(rt, state_ptr as *mut c_void);
+    eprintln!("[qjs] OwnedIsolate::new done");
     Self {
       rt,
       default_ctx: ctx,

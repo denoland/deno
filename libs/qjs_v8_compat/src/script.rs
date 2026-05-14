@@ -81,11 +81,24 @@ impl Script {
 }
 
 impl<'s> Local<'s, Script> {
-  pub fn run(&self, _scope: &mut HandleScope<'s>) -> Option<Local<'s, Value>> {
-    // QJS-DIVERGE: compile-only in QuickJS produces a function bytecode
-    // value; we'd need JS_EvalFunction to actually run it. Wired in the
-    // follow-up that connects deno_core's eval pipeline.
-    None
+  pub fn run(&self, scope: &mut HandleScope<'s>) -> Option<Local<'s, Value>> {
+    // The compile path used JS_EVAL_FLAG_COMPILE_ONLY, so `self` carries
+    // the resulting bytecode function. JS_EvalFunction executes it.
+    eprintln!("[qjs] Script::run start");
+    let raw = sys::eval_function(scope.ctx(), self.raw());
+    if sys::jsv_is_exception(&raw) {
+      eprintln!("[qjs] Script::run -> exception");
+      if let Some(exc) = sys::take_pending_exception(scope.ctx()) {
+        if let Some(s) = sys::to_string_lossy(scope.ctx(), exc) {
+          eprintln!("[qjs]   exception: {}", s);
+        }
+        sys::free_value(scope.ctx(), exc);
+      }
+      return None;
+    }
+    eprintln!("[qjs] Script::run done tag={}", raw.tag);
+    scope.track_owned(raw);
+    Some(Local::from_raw(raw))
   }
   pub fn get_unbound_script<S>(&self, _scope: &mut S) -> Local<'s, UnboundScript> {
     Local::from_raw(self.raw)

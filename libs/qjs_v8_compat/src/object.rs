@@ -111,6 +111,7 @@ impl<'s> Local<'s, Object> {
     key: &str,
     value: Local<'s, Value>,
   ) -> bool {
+    eprintln!("[qjs] Object::set_str key={:?} self.tag={} val.tag={}", key, self.raw().tag, value.raw().tag);
     // The scope owned `value`; the property slot now owns it. Release it
     // from the scope's tracked vec so it doesn't get freed twice.
     let was_tracked = scope.release_owned(value.raw());
@@ -119,6 +120,7 @@ impl<'s> Local<'s, Object> {
       // Set failed; put the value back so it's freed with the scope.
       scope.track_owned(value.raw());
     }
+    eprintln!("[qjs] Object::set_str done ok={}", ok);
     ok
   }
   pub fn has<'a>(

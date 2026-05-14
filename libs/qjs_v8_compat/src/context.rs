@@ -29,15 +29,27 @@ pub struct ContextOptions<'s> {
 
 impl Context {
   /// Create a new context (a new realm) on the current isolate.
+  ///
+  /// QuickJS-ng has one JSContext per JSRuntime in our compat layer; we
+  /// reuse the isolate's default JSContext rather than creating a new
+  /// realm. Returning a null pointer here previously caused null-deref
+  /// segfaults the moment any helper read `ctx.ctx_raw()`.
   pub fn new<'s, S>(
-    _scope: &mut S,
+    scope: &mut S,
     _options: ContextOptions<'s>,
-  ) -> Local<'s, Context> {
+  ) -> Local<'s, Context>
+  where
+    S: crate::scope::HandleScopeSource,
+  {
+    let ctx = scope.default_ctx();
+    // Local<Context> isn't a real JSValue: we stash the JSContext* in the
+    // pointer slot. Using a non-refcounted tag (JS_TAG_UNDEFINED) keeps
+    // sys::dup_value / sys::free_value a no-op for these handles, which
+    // is what we want — the JSContext is owned by OwnedIsolate, not by
+    // any individual Local/Global.
     let raw = sys::JSValue {
-      u: sys::JSValueUnion {
-        ptr: std::ptr::null_mut(),
-      },
-      tag: sys::JS_TAG_OBJECT,
+      u: sys::JSValueUnion { ptr: ctx as *mut std::ffi::c_void },
+      tag: sys::JS_TAG_UNDEFINED,
     };
     Local::from_raw(raw)
   }
@@ -56,13 +68,27 @@ impl<'s> Local<'s, Context> {
     &self,
     _scope: &mut S,
   ) -> Local<'s, crate::object::Object> {
-    Local::from_raw(self.raw)
+    // Return the JS global object for the underlying JSContext. The
+    // Local<Context> stashes the JSContext pointer in u.ptr (tag is
+    // JS_TAG_UNDEFINED to keep it non-refcounted); pull it out and ask
+    // QuickJS for the real global.
+    let ctx = self.ctx_raw();
+    let raw = crate::sys::get_global_object(ctx);
+    Local::from_raw(raw)
   }
   pub fn get_extras_binding_object(
     &self,
     scope: &mut HandleScope<'s>,
   ) -> Local<'s, crate::object::Object> {
-    self.global(scope)
+    // V8 exposes `console` on the extras binding object. We synthesize
+    // an object carrying a stub console so deno_core's bindings.rs
+    // doesn't panic at startup when it does
+    // `get_extras_binding_object(scope).console`.
+    let ctx = scope.ctx();
+    let obj_raw = crate::sys::new_object(ctx);
+    let console_raw = crate::sys::new_object(ctx);
+    crate::sys::set_property_str(ctx, obj_raw, "console", console_raw);
+    Local::from_raw(obj_raw)
   }
   pub(crate) fn ctx_raw(&self) -> sys::Context {
     unsafe { self.raw.u.ptr as sys::Context }
@@ -182,13 +208,16 @@ pub trait ScopeParent {
 }
 
 /// V8 disables JS execution during certain callbacks. QuickJS has no such
-/// restriction, so this scope is a no-op.
+/// restriction, so this scope is a thin wrapper that forwards
+/// `HandleScopeSource` to its parent.
 pub struct AllowJavascriptExecutionScope<'a, P> {
+  parent: *mut P,
   _scope: std::marker::PhantomData<&'a mut P>,
 }
 impl<'a, P> AllowJavascriptExecutionScope<'a, P> {
-  pub fn new(_parent: &'a mut P) -> Self {
+  pub fn new(parent: &'a mut P) -> Self {
     Self {
+      parent: parent as *mut P,
       _scope: std::marker::PhantomData,
     }
   }
@@ -199,3 +228,31 @@ impl<'a, P> AllowJavascriptExecutionScope<'a, P> {
   }
 }
 impl<'a, P> Unpin for AllowJavascriptExecutionScope<'a, P> {}
+
+impl<'a, P> crate::scope::HandleScopeSource
+  for AllowJavascriptExecutionScope<'a, P>
+where
+  P: crate::scope::HandleScopeSource,
+{
+  fn default_ctx(&mut self) -> crate::sys::Context {
+    unsafe { (*self.parent).default_ctx() }
+  }
+  fn isolate_ptr(&mut self) -> *mut crate::isolate::Isolate {
+    unsafe { (*self.parent).isolate_ptr() }
+  }
+}
+
+impl<'a, P> crate::scope::HandleScopeSource
+  for core::pin::Pin<&mut AllowJavascriptExecutionScope<'a, P>>
+where
+  P: crate::scope::HandleScopeSource,
+{
+  fn default_ctx(&mut self) -> crate::sys::Context {
+    let inner: &mut AllowJavascriptExecutionScope<'a, P> = &mut *self.as_mut();
+    inner.default_ctx()
+  }
+  fn isolate_ptr(&mut self) -> *mut crate::isolate::Isolate {
+    let inner: &mut AllowJavascriptExecutionScope<'a, P> = &mut *self.as_mut();
+    inner.isolate_ptr()
+  }
+}
