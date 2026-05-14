@@ -47,7 +47,20 @@ pub trait MapFnTo<T> {
   fn map_fn_to(self) -> T;
 }
 
-// (FunctionCallback's identity impl is now covered by the blanket impl below.)
+// SyntheticModuleEvaluationSteps shape — used by Module::create_synthetic_module
+unsafe extern "C" fn syn_eval_stub(
+  _ctx: *mut crate::context::Context,
+  _module: *mut crate::module::Module,
+) {
+}
+impl<F> MapFnTo<crate::module::SyntheticModuleEvaluationSteps> for F
+where
+  F: MapFnToHelper,
+{
+  fn map_fn_to(self) -> crate::module::SyntheticModuleEvaluationSteps {
+    syn_eval_stub
+  }
+}
 
 // Op2-generated callback shapes:
 // `fn(&mut PinScope, FunctionCallbackArguments, ReturnValue)`

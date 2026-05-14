@@ -537,7 +537,7 @@ fn op_ctx_template_or_accessor<'s, 'i>(
       let tmpl = v8::FunctionTemplate::builder_raw(getter_raw)
         .data(external.into())
         .build(scope);
-      let op_fn = tmpl.get_function(scope).unwrap();
+      let op_fn = tmpl.unwrap().get_function(scope).unwrap();
       let method_name = format!("get {}", op_ctx.decl.name_fast);
       let method_name = v8::String::new(scope, method_name.as_str()).unwrap();
       op_fn.set_name(method_name);
@@ -558,7 +558,7 @@ fn op_ctx_template_or_accessor<'s, 'i>(
         .data(external.into())
         .length(1)
         .build(scope);
-      let op_fn = tmpl.get_function(scope).unwrap();
+      let op_fn = tmpl.unwrap().get_function(scope).unwrap();
       let method_name = format!("set {}", op_ctx.decl.name_fast);
       let method_name = v8::String::new(scope, method_name.as_str()).unwrap();
       op_fn.set_name(method_name);

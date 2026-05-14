@@ -689,7 +689,7 @@ unsafe fn abview_to_box<T>(
   let mut out = Box::<[T]>::new_uninit_slice(len);
   unsafe {
     std::ptr::copy_nonoverlapping(
-      data.cast::<T>(),
+      data.cast::<T>().as_ptr(),
       out.as_mut_ptr().cast::<T>(),
       len,
     );
