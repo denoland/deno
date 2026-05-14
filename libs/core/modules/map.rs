@@ -1630,7 +1630,9 @@ impl ModuleMap {
           sender.module_map.pending_mod_evaluation.set(false);
           sender.module_map.module_waker.wake();
           _ = sender.sender.take().unwrap().send(Ok(()));
-          scope.throw_exception(args.get(0));
+          let exc = args.get(0);
+          let exc: v8::Local<v8::Value> = unsafe { core::mem::transmute(exc) };
+          scope.throw_exception(exc);
         },
       )
       .data(evaluation.into())
@@ -2760,7 +2762,12 @@ pub(crate) fn synthetic_module_evaluation_steps<'s>(
   let undefined = v8::undefined(tc_scope);
   let undef_value: v8::Local<v8::Value> = undefined.into();
   resolver.resolve(tc_scope, undef_value);
-  Some(resolver.get_promise(tc_scope).into())
+  let promise = resolver.get_promise(tc_scope);
+  // SAFETY: extending the lifetime back to the function's 's. The
+  // underlying JSValue is owned by the parent context's arena (via
+  // the promise resolver), not by the local callback_scope.
+  let promise: v8::Local<v8::Promise> = unsafe { core::mem::transmute(promise) };
+  Some(promise.into())
 }
 
 pub fn script_origin<'s, 'i>(

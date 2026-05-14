@@ -338,9 +338,10 @@ pub(crate) fn load_snapshotted_data_from_snapshot<'snapshot>(
   let scope = &mut v8::ContextScope::new(scope, context);
   let mut data = SnapshotLoadDataStore::default();
   for i in 0..raw_data.data_count {
-    let item = scope
+    let item: v8::Local<v8::Data> = scope
       .get_context_data_from_snapshot_once::<v8::Data>(i as usize)
       .unwrap();
+    let item: v8::Local<v8::Data> = unsafe { core::mem::transmute(item) };
     let item = v8::Global::new(scope, item);
     data.data.push(Some(item));
   }

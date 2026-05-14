@@ -219,8 +219,8 @@ impl<'s> Local<'s, ArrayBufferView> {
   pub fn get_contents_raw_parts<S>(
     &self,
     _storage: S,
-  ) -> (std::ptr::NonNull<core::ffi::c_void>, usize, usize) {
-    (std::ptr::NonNull::dangling(), 0, 0)
+  ) -> (*mut u8, usize) {
+    (std::ptr::null_mut(), 0)
   }
 }
 

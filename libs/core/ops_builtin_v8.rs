@@ -676,8 +676,10 @@ impl v8::ValueSerializerImpl for SerializeDeserialize<'_> {
       }
     }
     if let Some(host_objects) = self.host_objects {
+      let host_objects: v8::Local<v8::Array> = unsafe { core::mem::transmute(host_objects) };
       for i in 0..host_objects.length() {
         let value = host_objects.get_index(scope, i).unwrap();
+        let value: v8::Local<v8::Value> = unsafe { core::mem::transmute(value) };
         let object_val: v8::Local<v8::Value> = object.into();
         if value == object_val {
           value_serializer.write_uint32(i);
@@ -758,8 +760,10 @@ impl v8::ValueDeserializerImpl for SerializeDeserialize<'_> {
         return res.to_object(scope);
       }
     } else if let Some(host_objects) = self.host_objects {
+      let host_objects: v8::Local<v8::Array> = unsafe { core::mem::transmute(host_objects) };
       let maybe_value = host_objects.get_index(scope, i);
       if let Some(value) = maybe_value {
+        let value: v8::Local<v8::Value> = unsafe { core::mem::transmute(value) };
         return value.to_object(scope);
       }
     }
@@ -1217,29 +1221,29 @@ pub fn op_set_wasm_streaming_callback(
   }
   *context_state_rc.js_wasm_streaming_cb.borrow_mut() = Some(cb);
 
-  scope.set_wasm_streaming_callback(|scope, arg, wasm_streaming| {
-    let (cb_handle, streaming_rid) = {
+  scope.set_wasm_streaming_callback(|scope: &mut v8::PinScope, arg, wasm_streaming| {
+    let cb_handle = {
       let context_state_rc = JsRealm::state_from_scope(scope);
-      let cb_handle = context_state_rc
+      context_state_rc
         .js_wasm_streaming_cb
         .borrow()
         .as_ref()
         .unwrap()
-        .clone();
+        .clone()
+    };
+    let streaming_rid = {
       let state = JsRuntime::state_from(scope);
-      let streaming_rid = state
+      state
         .op_state
         .borrow_mut()
         .resource_table
-        .add(WasmStreamingResource(RefCell::new(wasm_streaming)));
-      (cb_handle, streaming_rid)
+        .add(WasmStreamingResource(RefCell::new(wasm_streaming)))
     };
 
     let undefined = v8::undefined(scope);
     let rid = serde_v8::to_v8(scope, streaming_rid).unwrap();
-    cb_handle
-      .open(scope)
-      .call(scope, undefined.into(), &[arg, rid]);
+    let func = cb_handle.open(scope);
+    func.call(scope, undefined.into(), &[arg, rid]);
   });
   Ok(())
 }
