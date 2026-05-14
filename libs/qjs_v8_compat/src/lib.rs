@@ -128,17 +128,17 @@ pub use crate::value::*;
 
 /// Mirror of `v8::scope!(let name, parent)` — the rusty_v8 declarative
 /// macro that elides a handle-scope rooted on `parent` into the local
-/// binding. On the QuickJS backend this just creates a `HandleScope`
-/// directly; the lifetime hygiene the macro provides on V8 isn't
-/// enforceable here, but the call-site syntax is preserved so
-/// deno_core's source compiles unchanged.
+/// binding. The bare `($name, $parent)` form binds `$name` as a
+/// `&mut HandleScope` (matching what rusty_v8 produces) so call sites
+/// like `Local::new($scope, handle)` don't move a value-typed scope.
 #[macro_export]
 macro_rules! scope {
   (let $name:ident, $parent:expr) => {
     let mut $name = $crate::HandleScope::new($parent);
   };
   ($name:ident, $parent:expr) => {
-    let mut $name = $crate::HandleScope::new($parent);
+    let mut __scope_inner = $crate::HandleScope::new($parent);
+    let $name = &mut __scope_inner;
   };
 }
 
