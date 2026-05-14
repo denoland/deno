@@ -312,7 +312,21 @@ pub mod v8 {
     }
 
     impl CTypeInfo {
-      pub const fn new(ty: Type, seq: SequenceType, flags: Flags) -> Self {
+      /// Mirrors rusty_v8's `CTypeInfo::new(ty, flags)` (2 args). The
+      /// sequence type defaults to Scalar.
+      pub const fn new(ty: Type, flags: Flags) -> Self {
+        Self {
+          _ty: ty,
+          _seq: SequenceType::Scalar,
+          _flags: flags,
+        }
+      }
+      /// Variant including sequence type explicitly.
+      pub const fn new_with_seq(
+        ty: Type,
+        seq: SequenceType,
+        flags: Flags,
+      ) -> Self {
         Self {
           _ty: ty,
           _seq: seq,
@@ -388,7 +402,7 @@ pub mod v8 {
       /// describing this type with default flags. The op2 macro uses
       /// this to build CFunctionInfo descriptors.
       pub const fn as_info(self) -> CTypeInfo {
-        CTypeInfo::new(self, SequenceType::Scalar, Flags::NONE)
+        CTypeInfo::new(self, Flags::NONE)
       }
     }
 
