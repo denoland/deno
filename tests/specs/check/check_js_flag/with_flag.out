@@ -1,0 +1,4 @@
+Check [WILDCARD]main.js
+TS2554 [ERROR]: Expected 2 arguments, but got 1.
+[WILDCARD]
+error: Type checking failed.

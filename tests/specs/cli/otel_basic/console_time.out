@@ -1,0 +1,69 @@
+{
+  "spans": [],
+  "logs": [
+    {
+      "timeUnixNano": "[WILDLINE]",
+      "observedTimeUnixNano": "[WILDCARD]",
+      "severityNumber": 9,
+      "severityText": "INFO",
+      "body": {
+        "stringValue": "my timer: [WILDCARD]\n"
+      },
+      "attributes": [
+        {
+          "key": "log.iostream",
+          "value": {
+            "stringValue": "stdout"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "flags": 0,
+      "traceId": "",
+      "spanId": ""
+    },
+    {
+      "timeUnixNano": "[WILDLINE]",
+      "observedTimeUnixNano": "[WILDCARD]",
+      "severityNumber": 9,
+      "severityText": "INFO",
+      "body": {
+        "stringValue": "my counter: 1\n"
+      },
+      "attributes": [
+        {
+          "key": "log.iostream",
+          "value": {
+            "stringValue": "stdout"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "flags": 0,
+      "traceId": "",
+      "spanId": ""
+    },
+    {
+      "timeUnixNano": "[WILDLINE]",
+      "observedTimeUnixNano": "[WILDCARD]",
+      "severityNumber": 9,
+      "severityText": "INFO",
+      "body": {
+        "stringValue": "my counter: 2\n"
+      },
+      "attributes": [
+        {
+          "key": "log.iostream",
+          "value": {
+            "stringValue": "stdout"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "flags": 0,
+      "traceId": "",
+      "spanId": ""
+    }
+  ],
+  "metrics": []
+}

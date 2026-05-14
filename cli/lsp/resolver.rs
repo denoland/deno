@@ -81,6 +81,7 @@ use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
+use crate::npm::NpmPackumentFormat;
 use crate::resolver::CliIsCjsResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
@@ -211,6 +212,7 @@ impl LspScopedResolver {
                 root_node_modules_dir: byonm_npm_resolver
                   .root_node_modules_path()
                   .map(|p| p.to_path_buf()),
+                search_stop_dir: None,
                 sys: factory.node_resolution_sys.clone(),
                 pkg_json_resolver: self.pkg_json_resolver.clone(),
               },
@@ -218,19 +220,19 @@ impl LspScopedResolver {
           }
           CliNpmResolver::Managed(managed_npm_resolver) => {
             CliNpmResolverCreateOptions::Managed({
-              let sys = CliSys::default();
+              let sys = &factory.sys;
               let npmrc = self
                 .config_data
                 .as_ref()
                 .and_then(|d| d.npmrc.clone())
-                .unwrap_or_else(|| Arc::new(create_default_npmrc(&sys)));
+                .unwrap_or_else(|| Arc::new(create_default_npmrc(sys)));
               let npm_cache_dir = Arc::new(NpmCacheDir::new(
-                &sys,
+                sys,
                 managed_npm_resolver.global_cache_root_path().to_path_buf(),
                 npmrc.get_all_known_registries_urls(),
               ));
               ManagedNpmResolverCreateOptions {
-                sys,
+                sys: factory.node_resolution_sys.clone(),
                 npm_cache_dir,
                 maybe_node_modules_path: managed_npm_resolver
                   .root_node_modules_path()
@@ -238,6 +240,8 @@ impl LspScopedResolver {
                 npmrc,
                 npm_resolution: factory.services.npm_resolution.clone(),
                 npm_system_info: NpmSystemInfo::default(),
+                linker_mode:
+                  deno_config::deno_json::NodeModulesLinkerMode::default(),
               }
             })
           }
@@ -879,6 +883,7 @@ impl<'a> ResolverFactory<'a> {
               .map(|p| p.join("node_modules/"))
           })
         }),
+        search_stop_dir: None,
       })
     } else {
       let npmrc = self
@@ -904,11 +909,13 @@ impl<'a> ResolverFactory<'a> {
       let npm_client = Arc::new(CliNpmCacheHttpClient::new(
         http_client_provider.clone(),
         pb.clone(),
+        NpmPackumentFormat::Abbreviated,
       ));
       let registry_info_provider = Arc::new(CliNpmRegistryInfoProvider::new(
         npm_cache.clone(),
         npm_client.clone(),
         npmrc.clone(),
+        NpmPackumentFormat::Abbreviated,
       ));
       let link_packages: WorkspaceNpmLinkPackagesRc = self
         .config_data
@@ -976,6 +983,7 @@ impl<'a> ResolverFactory<'a> {
           clean_on_install: false,
           maybe_lockfile,
           maybe_node_modules_path: maybe_node_modules_path.clone(),
+          linker_mode: deno_config::deno_json::NodeModulesLinkerMode::default(),
           lifecycle_scripts: Arc::new(LifecycleScriptsConfig::default()),
           system_info: NpmSystemInfo::default(),
           workspace_link_packages: link_packages,
@@ -987,12 +995,13 @@ impl<'a> ResolverFactory<'a> {
       }
 
       CliNpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
-        sys: CliSys::default(),
+        sys: self.node_resolution_sys.clone(),
         npm_cache_dir,
         maybe_node_modules_path,
         npmrc,
         npm_resolution: self.services.npm_resolution.clone(),
         npm_system_info: NpmSystemInfo::default(),
+        linker_mode: deno_config::deno_json::NodeModulesLinkerMode::default(),
       })
     };
     self.set_npm_resolver(CliNpmResolver::<CliSys>::new(options));
@@ -1095,6 +1104,7 @@ impl<'a> ResolverFactory<'a> {
               Default::default(),
               Default::default(),
               CliSys::default(),
+              d.member_dir.workspace.catalogs().clone(),
             )
           })
         })
@@ -1109,6 +1119,7 @@ impl<'a> ResolverFactory<'a> {
             Default::default(),
             Default::default(),
             self.sys.clone(),
+            Default::default(),
           )
         });
       let diagnostics = workspace_resolver.diagnostics();

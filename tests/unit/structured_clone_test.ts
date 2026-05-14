@@ -59,3 +59,75 @@ Deno.test("correct DataCloneError message", () => {
   // ab2 should not be detached after above failure
   structuredClone(ab2, { transfer: [ab2] });
 });
+
+Deno.test("structuredClone CryptoKey", async () => {
+  // AES key
+  const aesKey = await crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  const aesClone = structuredClone(aesKey);
+  assert(aesKey !== aesClone);
+  assertEquals(aesClone.type, aesKey.type);
+  assertEquals(aesClone.extractable, aesKey.extractable);
+  assertEquals(aesClone.algorithm, aesKey.algorithm);
+  assertEquals([...aesClone.usages], [...aesKey.usages]);
+
+  // Verify the cloned key actually works
+  const data = new TextEncoder().encode("hello");
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    aesClone,
+    data,
+  );
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv },
+    aesKey,
+    encrypted,
+  );
+  assertEquals(new Uint8Array(decrypted), data);
+
+  // Non-extractable key can be cloned
+  const nonExtractable = await crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+  const nonExtractableClone = structuredClone(nonExtractable);
+  assertEquals(nonExtractableClone.extractable, false);
+  assertEquals(nonExtractableClone.algorithm, nonExtractable.algorithm);
+
+  // HMAC key
+  const hmacKey = await crypto.subtle.generateKey(
+    { name: "HMAC", hash: "SHA-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const hmacClone = structuredClone(hmacKey);
+  assertEquals(hmacClone.type, hmacKey.type);
+  assertEquals(hmacClone.algorithm, hmacKey.algorithm);
+  assertEquals([...hmacClone.usages], [...hmacKey.usages]);
+
+  // EC key pair
+  const ecKeyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  ) as CryptoKeyPair;
+  const ecPrivateClone = structuredClone(ecKeyPair.privateKey);
+  const ecPublicClone = structuredClone(ecKeyPair.publicKey);
+  assertEquals(ecPrivateClone.type, "private");
+  assertEquals(ecPublicClone.type, "public");
+
+  // Ed25519 key pair
+  const edKeyPair = await crypto.subtle.generateKey(
+    "Ed25519",
+    true,
+    ["sign", "verify"],
+  ) as CryptoKeyPair;
+  const edClone = structuredClone(edKeyPair.privateKey);
+  assertEquals(edClone.type, "private");
+  assertEquals(edClone.algorithm.name, "Ed25519");
+});

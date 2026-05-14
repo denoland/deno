@@ -21,7 +21,10 @@ impl<'a> RangeTreeArena<'a> {
     RangeTreeArena(Arena::with_capacity(n))
   }
 
-  #[allow(clippy::mut_from_ref)]
+  #[allow(
+    clippy::mut_from_ref,
+    reason = "Arena::alloc takes &self but returns &mut, which is safe by design"
+  )]
   pub fn alloc(&'a self, value: RangeTree<'a>) -> &'a mut RangeTree<'a> {
     self.0.alloc(value)
   }

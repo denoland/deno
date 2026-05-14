@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/lifecycle-scripts-simple",
+  "version": "1.0.0",
+  "bin": {
+    "lifecycle-scripts-simple": "./main.js"
+  },
+  "scripts": {
+    "postinstall": "echo 'module.exports = \"postinstall works\";' > message.js"
+  }
+}

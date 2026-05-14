@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.6.10"
+version = "2.7.14"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -44,8 +44,8 @@ lsp-tracing = ["dep:tracing", "dep:tracing-subscriber", "dep:tracing-opentelemet
 panic-trace = ["deno_panic"]
 
 [build-dependencies]
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_runtime = { workspace = true }
+deno_core = { workspace = true }
 lazy-regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -62,7 +62,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_bundle_runtime.workspace = true
 deno_cache_dir = { workspace = true, features = ["sync"] }
 deno_config = { workspace = true, features = ["sync", "workspace"] }
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_core.workspace = true
 deno_doc = { workspace = true, features = ["rust", "comrak"] }
 deno_error.workspace = true
 deno_graph = { workspace = true, features = ["fast_check"] }
@@ -73,11 +73,12 @@ deno_media_type = { workspace = true, features = ["data_url", "decoding", "modul
 deno_npm.workspace = true
 deno_npm_cache.workspace = true
 deno_npm_installer = { workspace = true }
+deno_npmrc.workspace = true
 deno_package_json = { workspace = true, features = ["sync"] }
 deno_panic = { version = "0.2.0", optional = true }
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["deno_ast", "graph", "sync"] }
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_runtime.workspace = true
 deno_semver.workspace = true
 deno_signals.workspace = true
 deno_snapshots.workspace = true
@@ -96,6 +97,7 @@ aws-lc-rs.workspace = true
 base64.workspace = true
 bincode.workspace = true
 boxed_error.workspace = true
+bsdiff.workspace = true
 bytes.workspace = true
 bytes-str = "0.2.5"
 capacity_builder.workspace = true
@@ -108,9 +110,8 @@ comrak.workspace = true
 console_static_text.workspace = true
 crossterm.workspace = true
 dashmap.workspace = true
+deno_dotenv.workspace = true
 dhat = { workspace = true, optional = true }
-dissimilar.workspace = true
-dotenvy.workspace = true
 dprint-core.workspace = true
 dprint-plugin-json.workspace = true
 dprint-plugin-jupyter.workspace = true
@@ -125,11 +126,12 @@ fluent-uri.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
+imara-diff.workspace = true
 import_map.workspace = true
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
-jupyter-protocol = "0.8.0"
-jupyter_runtime = { package = "runtimelib", version = "=0.28.0", default-features = false, features = ["tokio-runtime", "aws-lc-rs"] }
+jupyter-protocol.workspace = true
+jupyter_runtime.workspace = true
 keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service", "windows-native", "vendored"] }
 lazy-regex.workspace = true
 libc.workspace = true
@@ -190,7 +192,7 @@ zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+winapi = { workspace = true, features = ["consoleapi", "knownfolders", "mswsock", "objbase", "processenv", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
 deno_subprocess_windows.workspace = true
 
 [target.'cfg(unix)'.dependencies]
@@ -202,7 +204,7 @@ tokio-vsock.workspace = true
 [dev-dependencies]
 # unsafe_use_unprotected_platform is a workaround for a segfault that may occur
 # when running multiple v8 tests on different threads
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting", "unsafe_use_unprotected_platform"] }
+deno_core = { workspace = true, features = ["unsafe_use_unprotected_platform"] }
 pretty_assertions.workspace = true
 sys_traits = { workspace = true, features = ["memory"] }
 test_util.workspace = true

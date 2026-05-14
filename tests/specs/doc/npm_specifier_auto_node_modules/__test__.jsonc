@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "tests": {
+    "npm_specifier_cli": {
+      "args": "doc npm:@denotest/esm-basic",
+      "output": "specifier.out"
+    },
+    "npm_reexport": {
+      "args": "doc mod.ts",
+      "output": "reexport.out"
+    }
+  }
+}

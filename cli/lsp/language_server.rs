@@ -44,8 +44,6 @@ use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::IndexSet;
 use log::error;
-use node_resolver::NodeResolutionKind;
-use node_resolver::ResolutionMode;
 use serde::Deserialize;
 use serde_json::from_value;
 use tokio::sync::OnceCell;
@@ -118,6 +116,7 @@ use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::tools::upgrade::check_for_upgrades_for_lsp;
 use crate::tools::upgrade::upgrade_check_enabled;
+use crate::util::env::resolve_cwd;
 use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::to_percent_decoded_str;
 use crate::util::sync::AsyncFlag;
@@ -579,14 +578,8 @@ impl Inner {
       }),
     );
     let config = Config::default();
-    let ts_server = Arc::new(TsServer::new(
-      performance.clone(),
-      cache.deno_dir(),
-      &http_client_provider,
-    ));
-    let initial_cwd = std::env::current_dir().unwrap_or_else(|_| {
-      panic!("Could not resolve current working directory")
-    });
+    let ts_server = Arc::new(TsServer::new(performance.clone()));
+    let initial_cwd = resolve_cwd(None).unwrap().into_owned();
 
     Self {
       ambient_modules_regex_cache: Default::default(),
@@ -711,7 +704,8 @@ impl Inner {
             .into()
           })
         });
-    if let TsServer::Js(ts_server) = self.ts_server.as_ref() {
+    {
+      let TsServer::Js(ts_server) = self.ts_server.as_ref();
       ts_server
         .set_tracing_enabled(tracing.as_ref().is_some_and(|t| t.enabled()));
     }
@@ -753,6 +747,7 @@ impl Inner {
       .root_url()
       .and_then(|url| url_to_file_path(url).ok());
     let root_cert_store = get_root_cert_store(
+      &CliSys::default(),
       maybe_root_path,
       workspace_settings.certificate_stores.clone(),
       workspace_settings.tls_certificate.clone().map(CaData::File),
@@ -906,9 +901,11 @@ impl Inner {
           })
           .collect();
       }
-      // rootUri is deprecated by the LSP spec. If it's specified, merge it into
-      // workspace_folders.
-      #[allow(deprecated)]
+
+      #[allow(
+        deprecated,
+        reason = "rootUri is deprecated by the LSP spec. If it's specified, merge it into workspace_folders."
+      )]
       if let Some(root_uri) = params.root_uri
         && !workspace_folders.iter().any(|(_, f)| f.uri == root_uri)
       {
@@ -953,7 +950,8 @@ impl Inner {
       diagnostics_server.start();
       self.diagnostics_server = Some(diagnostics_server);
     }
-    if let TsServer::Js(ts_server) = self.ts_server.as_ref() {
+    {
+      let TsServer::Js(ts_server) = self.ts_server.as_ref();
       ts_server
         .set_inspector_server_addr(self.config.internal_inspect().to_address());
     }
@@ -1106,7 +1104,7 @@ impl Inner {
         }
       }
       workspace_files.extend(dir_files);
-      pending.extend(dir_subdirs.into_iter());
+      pending.extend(dir_subdirs);
     }
     (workspace_files, false)
   }
@@ -1194,42 +1192,6 @@ impl Inner {
       &self.compiler_options_resolver,
       &self.resolver,
     ));
-  }
-
-  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  fn dispatch_cache_jsx_import_sources(&self) {
-    for specifier_config in self
-      .compiler_options_resolver
-      .entries()
-      .filter_map(|(_, d)| d.jsx_import_source_config.as_ref())
-      .flat_map(|c| c.import_source.iter().chain(c.import_source_types.iter()))
-    {
-      let referrer = specifier_config.base.clone();
-      let specifier = format!("{}/jsx-runtime", &specifier_config.specifier);
-      self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
-        spawn(async move {
-          let specifier = {
-            let inner = ls.inner.read().await;
-            let scoped_resolver =
-              inner.resolver.get_scoped_resolver(Some(&referrer));
-            let resolver = scoped_resolver.as_cli_resolver();
-            let Ok(specifier) = resolver.resolve(
-              &specifier,
-              &referrer,
-              deno_graph::Position::zeroed(),
-              ResolutionMode::Import,
-              NodeResolutionKind::Types,
-            ) else {
-              return;
-            };
-            specifier
-          };
-          if let Err(err) = ls.cache(vec![specifier], referrer, false).await {
-            lsp_warn!("{:#}", err);
-          }
-        });
-      }));
-    }
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1610,7 +1572,6 @@ impl Inner {
     self.update_cache();
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
-    self.dispatch_cache_jsx_import_sources();
     self.refresh_linter_resolver();
     self.refresh_documents_config();
     self.send_diagnostics_update();
@@ -1675,11 +1636,6 @@ impl Inner {
       self.update_cache();
       self.refresh_resolver().await;
       self.refresh_compiler_options_resolver();
-      // Don't cache anything if only a lockfile has changed, or it can
-      // retrigger this notification and cause an infinite loop.
-      if changed_deno_json {
-        self.dispatch_cache_jsx_import_sources();
-      }
       self.refresh_linter_resolver();
       self.refresh_documents_config();
       self.project_changed(
@@ -1693,14 +1649,8 @@ impl Inner {
         ProjectScopesChange::None,
       );
 
-      match self.ts_server.as_ref() {
-        TsServer::Js(ts_server) => {
-          ts_server.cleanup_semantic_cache(self.snapshot()).await;
-        }
-        TsServer::Go(_) => {
-          // TODO(nayeemrmn): Determine if anything needs to be done here.
-        }
-      }
+      let TsServer::Js(ts_server) = self.ts_server.as_ref();
+      ts_server.cleanup_semantic_cache(self.snapshot()).await;
       self.send_diagnostics_update();
       if !self.is_using_push_based_diagnostics()
         && self.config.diagnostic_refresh_capable()
@@ -1823,7 +1773,10 @@ impl Inner {
     let text_edits = deno_core::unsync::spawn_blocking({
       let mut fmt_options = fmt_config.options.clone();
       let config_data = self.config.tree.data_for_specifier(&module.specifier);
-      #[allow(clippy::nonminimal_bool)] // clippy's suggestion is more confusing
+      #[allow(
+        clippy::nonminimal_bool,
+        reason = "clippy's suggestion is more confusing"
+      )]
       if !config_data.is_some_and(|d| d.maybe_deno_json().is_some()) {
         fmt_options.use_tabs = Some(!params.options.insert_spaces);
         fmt_options.indent_width = Some(params.options.tab_size as u8);
@@ -2234,13 +2187,7 @@ impl Inner {
     let mark = self
       .performance
       .mark_with_args("lsp.code_action_resolve", &params);
-    let TsServer::Js(ts_server) = self.ts_server.as_ref() else {
-      lsp_warn!(
-        "Assertion failure: Received a codeAction/resolve request without the JS-based TS server: {:#?}",
-        params
-      );
-      return Ok(params);
-    };
+    let TsServer::Js(ts_server) = self.ts_server.as_ref();
     let (Some(kind), Some(data)) = (params.kind.clone(), params.data.clone())
     else {
       return Ok(params);
@@ -2417,9 +2364,9 @@ impl Inner {
       &self.document_modules,
       module.scope.clone(),
       &self.resolver,
-      match self.ts_server.as_ref() {
-        TsServer::Js(ts_server) => ts_server.specifier_map.clone(),
-        TsServer::Go(_) => Default::default(),
+      {
+        let TsServer::Js(ts_server) = self.ts_server.as_ref();
+        ts_server.specifier_map.clone()
       },
     )
   }
@@ -2595,7 +2542,7 @@ impl Inner {
         &module,
         params.text_document_position.position,
         params.context,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -2637,7 +2584,7 @@ impl Inner {
       .provide_definition(
         &module,
         params.text_document_position_params.position,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -2679,7 +2626,7 @@ impl Inner {
       .provide_type_definition(
         &module,
         params.text_document_position_params.position,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -2796,7 +2743,6 @@ impl Inner {
         });
       }
       CompletionItemData::TsJs(data) => &data.uri,
-      CompletionItemData::TsGo(data) => &data.uri,
     };
     let Some(document) = self.get_document(
       uri,
@@ -2968,7 +2914,7 @@ impl Inner {
         &document,
         &module,
         params.text_document_position_params.position,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3048,7 +2994,7 @@ impl Inner {
         &document,
         &module,
         &params.item,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3090,7 +3036,7 @@ impl Inner {
       .provide_call_hierarchy_outgoing_calls(
         &module,
         &params.item,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3132,7 +3078,7 @@ impl Inner {
       .provide_prepare_call_hierarchy(
         &module,
         params.text_document_position_params.position,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3175,7 +3121,7 @@ impl Inner {
         params.text_document_position.position,
         &params.new_name,
         self,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3396,7 +3342,7 @@ impl Inner {
     let mark = self.performance.mark_with_args("lsp.symbol", &params);
     let symbol_information = self
       .ts_server
-      .provide_workspace_symbol(&params.query, self.snapshot(), token)
+      .provide_workspace_symbol(&params.query, &self.snapshot(), token)
       .await
       .map_err(|err| {
         if token.is_cancelled() {
@@ -3987,7 +3933,7 @@ struct PrepareCacheResult {
 impl Inner {
   async fn initialized(&mut self) -> Vec<Registration> {
     let mut registrations = Vec::with_capacity(2);
-    init_log_file(self.config.log_file());
+    init_log_file(self.config.log_file(), &self.initial_cwd);
     self.update_debug_flag();
     self.update_global_cache().await;
     self.refresh_workspace_files();
@@ -3995,7 +3941,6 @@ impl Inner {
     self.update_cache();
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
-    self.dispatch_cache_jsx_import_sources();
     self.refresh_linter_resolver();
     self.refresh_documents_config();
 
@@ -4179,14 +4124,8 @@ impl Inner {
     self.resolver.did_cache();
     self.refresh_dep_info();
     self.project_changed(vec![], ProjectScopesChange::Config);
-    match self.ts_server.as_ref() {
-      TsServer::Js(ts_server) => {
-        ts_server.cleanup_semantic_cache(self.snapshot()).await;
-      }
-      TsServer::Go(_) => {
-        // TODO(nayeemrmn): Determine if anything needs to be done here.
-      }
-    }
+    let TsServer::Js(ts_server) = self.ts_server.as_ref();
+    ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
     if !self.is_using_push_based_diagnostics()
       && self.config.diagnostic_refresh_capable()
@@ -4232,7 +4171,6 @@ impl Inner {
     self.refresh_config_tree().await;
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
-    self.dispatch_cache_jsx_import_sources();
     self.refresh_linter_resolver();
     self.refresh_documents_config();
     self.send_diagnostics_update();
@@ -4337,7 +4275,7 @@ impl Inner {
     }
     let inlay_hints = self
       .ts_server
-      .provide_inlay_hint(&module, params.range, self.snapshot(), token)
+      .provide_inlay_hint(&module, params.range, &self.snapshot(), token)
       .await
       .map_err(|err| {
         if token.is_cancelled() {

@@ -25,7 +25,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
 
-pub mod npm_rc;
 pub mod registry;
 pub mod resolution;
 
@@ -158,7 +157,12 @@ impl NpmPackageId {
     }
 
     fn parse_version(input: &str) -> ParseResult<'_, &str> {
-      if_not_empty(substring(skip_while(|c| c != '_')))(input)
+      // `_` is ASCII so the byte-level scan halts on a valid char boundary.
+      let (rest, version) = take_while_byte(|b| b != b'_')(input)?;
+      if version.is_empty() {
+        return ParseError::backtrace();
+      }
+      Ok((rest, version))
     }
 
     fn parse_name_and_version(input: &str) -> ParseResult<'_, (&str, Version)> {
@@ -166,7 +170,6 @@ impl NpmPackageId {
       let (input, _) = ch('@')(input)?;
       let at_version_input = input;
       let (input, version) = parse_version(input)?;
-      // todo: improve monch to provide the error message without source
       match Version::parse_from_npm(version) {
         Ok(version) => Ok((input, (name, version))),
         Err(err) => ParseError::fail(
@@ -427,6 +430,22 @@ impl NpmSystemInfo {
   }
 }
 
+/// Extracts the package name from a specifier that may contain a subpath.
+/// For example, "@denotest/add2/sub.js" -> "@denotest/add2", "foo/bar" -> "foo".
+pub fn package_name_without_subpath(name: &str) -> &str {
+  let mut search_start_index = 0;
+  if name.starts_with('@')
+    && let Some(slash_index) = name.find('/')
+  {
+    search_start_index = slash_index + 1;
+  }
+  if let Some(slash_index) = name[search_start_index..].find('/') {
+    &name[..search_start_index + slash_index]
+  } else {
+    name
+  }
+}
+
 fn matches_os_or_cpu_vec(items: &[SmallStackString], target: &str) -> bool {
   if items.is_empty() {
     return true;
@@ -572,5 +591,13 @@ mod test {
       &["!arm64".into(), "!x86".into(), "other".into()],
       "x64"
     ));
+  }
+
+  #[test]
+  fn test_package_name_without_subpath() {
+    assert_eq!(package_name_without_subpath("foo"), "foo");
+    assert_eq!(package_name_without_subpath("@foo/bar"), "@foo/bar");
+    assert_eq!(package_name_without_subpath("@foo/bar/baz"), "@foo/bar");
+    assert_eq!(package_name_without_subpath("@hello"), "@hello");
   }
 }

@@ -10,14 +10,16 @@
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   isAnyArrayBuffer,
   isArrayBuffer,
   isDataView,
   isTypedArray,
 } = core;
-import {
+const {
+  op_blob_clone_part,
   op_blob_create_object_url,
   op_blob_create_part,
   op_blob_from_object_url,
@@ -25,7 +27,7 @@ import {
   op_blob_remove_part,
   op_blob_revoke_object_url,
   op_blob_slice_part,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
@@ -39,6 +41,7 @@ const {
   DatePrototypeGetTime,
   MathMax,
   MathMin,
+  ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeTest,
   SafeFinalizationRegistry,
@@ -56,10 +59,12 @@ const {
   Uint8Array,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { ReadableStream } from "./06_streams.js";
-import { URL } from "ext:deno_web/00_url.js";
-import { createFilteredInspectProxy } from "./01_console.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { ReadableStream } = core.loadExtScript("ext:deno_web/06_streams.js");
+const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
 
 // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
 // host os.
@@ -655,6 +660,99 @@ class BlobReference {
 }
 
 /**
+ * Get all Parts as a flat array of BlobReference objects.
+ * @param {Blob} blob
+ * @param {BlobReference[]} bag
+ * @returns {BlobReference[]}
+ */
+function getPartRefs(blob, bag = []) {
+  const parts = blob[_parts];
+  for (let i = 0; i < parts.length; ++i) {
+    const part = parts[i];
+    if (ObjectPrototypeIsPrototypeOf(BlobPrototype, part)) {
+      getPartRefs(part, bag);
+    } else {
+      ArrayPrototypePush(bag, part);
+    }
+  }
+  return bag;
+}
+
+/**
+ * Clone blob part references in BlobStore and return serializable metadata.
+ * @param {Blob} blob
+ * @returns {{ uuid: string, size: number }[]}
+ */
+function cloneBlobParts(blob) {
+  const refs = getPartRefs(blob);
+  const cloned = [];
+  for (let i = 0; i < refs.length; ++i) {
+    ArrayPrototypePush(cloned, op_blob_clone_part(refs[i]._id));
+  }
+  return cloned;
+}
+
+ObjectDefineProperty(Blob.prototype, core.hostObjectBrand, {
+  __proto__: null,
+  value: function () {
+    return {
+      type: "Blob",
+      mimeType: this[_type],
+      parts: cloneBlobParts(this),
+      size: this[_size],
+    };
+  },
+  enumerable: false,
+  configurable: false,
+  writable: false,
+});
+
+core.registerCloneableResource("Blob", (data) => {
+  const parts = [];
+  for (let i = 0; i < data.parts.length; ++i) {
+    const { uuid, size } = data.parts[i];
+    ArrayPrototypePush(parts, new BlobReference(uuid, size));
+  }
+  const blob = new Blob();
+  blob[_type] = data.mimeType;
+  blob[_size] = data.size;
+  blob[_parts] = parts;
+  return blob;
+});
+
+ObjectDefineProperty(File.prototype, core.hostObjectBrand, {
+  __proto__: null,
+  value: function () {
+    return {
+      type: "File",
+      mimeType: this[_type],
+      parts: cloneBlobParts(this),
+      size: this[_size],
+      name: this[_Name],
+      lastModified: this[_LastModified],
+    };
+  },
+  enumerable: false,
+  configurable: false,
+  writable: false,
+});
+
+core.registerCloneableResource("File", (data) => {
+  const parts = [];
+  for (let i = 0; i < data.parts.length; ++i) {
+    const { uuid, size } = data.parts[i];
+    ArrayPrototypePush(parts, new BlobReference(uuid, size));
+  }
+  const file = new File([], data.name, {
+    type: data.mimeType,
+    lastModified: data.lastModified,
+  });
+  file[_size] = data.size;
+  file[_parts] = parts;
+  return file;
+});
+
+/**
  * Construct a new Blob object from an object URL.
  *
  * This new object will not duplicate data in memory with the original Blob
@@ -684,7 +782,7 @@ function blobFromObjectUrl(url) {
     totalSize += size;
   }
 
-  const blob = webidl.createBranded(Blob);
+  const blob = new Blob();
   blob[_type] = blobData.media_type;
   blob[_size] = totalSize;
   blob[_parts] = parts;
@@ -709,7 +807,13 @@ function createObjectURL(blob) {
  */
 function revokeObjectURL(url) {
   const prefix = "Failed to execute 'revokeObjectURL' on 'URL'";
-  webidl.requiredArguments(arguments.length, 1, prefix);
+  if (arguments.length < 1) {
+    const err = new TypeError(
+      `${prefix}: 1 argument required, but only 0 present`,
+    );
+    err.code = "ERR_MISSING_ARGS";
+    throw err;
+  }
   url = webidl.converters["DOMString"](url, prefix, "Argument 1");
 
   op_blob_revoke_object_url(url);
@@ -722,7 +826,7 @@ function isBlob(obj) {
   return ObjectPrototypeIsPrototypeOf(BlobPrototype, obj);
 }
 
-export {
+return {
   Blob,
   blobFromObjectUrl,
   BlobPrototype,
@@ -731,3 +835,4 @@ export {
   getParts,
   isBlob,
 };
+})();

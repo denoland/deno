@@ -210,7 +210,6 @@ impl ModuleInfoCacheModuleAnalyzer<'_> {
     }
   }
 
-  #[allow(clippy::result_large_err)]
   pub fn analyze_sync(
     &self,
     specifier: &ModuleSpecifier,

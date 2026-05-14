@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::print_stdout)]
-#![allow(clippy::print_stderr)]
+#![allow(clippy::print_stdout, reason = "CLI tool")]
+#![allow(clippy::print_stderr, reason = "CLI tool")]
+#![allow(clippy::disallowed_methods, reason = "CLI tool")]
 
 use std::env;
 use std::process::Stdio;

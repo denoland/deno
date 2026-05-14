@@ -15,6 +15,7 @@ use syn::punctuated::Punctuated;
 struct TestAttributes {
   flaky: bool,
   timeout: Option<usize>,
+  fork_with_suffix: Option<String>,
 }
 
 #[proc_macro_attribute]
@@ -50,7 +51,7 @@ fn parse_test_attributes(attr: TokenStream) -> TestAttributes {
             .map(|i| i.to_string())
             .unwrap_or_else(|| path.to_token_stream().to_string());
           panic!(
-            "Unknown test attribute: '{}'. Valid attributes are:\n  - flaky\n  - timeout = <number>",
+            "Unknown test attribute: '{}'. Valid attributes are:\n  - flaky\n  - timeout = <number>\n  - fork = \"<suffix>\"",
             ident
           );
         }
@@ -89,6 +90,27 @@ fn parse_test_attributes(attr: TokenStream) -> TestAttributes {
               );
             }
           }
+        } else if name_value.path.is_ident("fork_with_suffix") {
+          // Extract the string literal value
+          match &name_value.value {
+            syn::Expr::Lit(expr_lit) => match &expr_lit.lit {
+              syn::Lit::Str(lit_str) => {
+                result.fork_with_suffix = Some(lit_str.value());
+              }
+              _ => {
+                panic!(
+                  "Invalid fork value type. Expected a string literal (e.g., fork_with_suffix = \"_suffix\"), got: {:?}",
+                  expr_lit.lit
+                );
+              }
+            },
+            _ => {
+              panic!(
+                "Invalid fork value. Expected a string literal (e.g., fork_with_suffix = \"_suffix\"), got: {}",
+                quote::quote!(#name_value.value)
+              );
+            }
+          }
         } else {
           let ident = name_value
             .path
@@ -96,7 +118,7 @@ fn parse_test_attributes(attr: TokenStream) -> TestAttributes {
             .map(|i| i.to_string())
             .unwrap_or_else(|| name_value.path.to_token_stream().to_string());
           panic!(
-            "Unknown test attribute: '{}'. Valid attributes are:\n  - flaky\n  - timeout = <number>",
+            "Unknown test attribute: '{}'. Valid attributes are:\n  - flaky\n  - timeout = <number>\n  - fork = \"<suffix>\"",
             ident
           );
         }
@@ -104,7 +126,7 @@ fn parse_test_attributes(attr: TokenStream) -> TestAttributes {
       // Handle other meta types (List, etc.)
       _ => {
         panic!(
-          "Invalid test attribute format: '{}'. Expected format:\n  - flaky\n  - timeout = <number>",
+          "Invalid test attribute format: '{}'. Expected format:\n  - flaky\n  - timeout = <number>\n  - fork = \"<suffix>\"",
           quote::quote!(#meta)
         );
       }
@@ -153,6 +175,100 @@ fn generate_test_macro(
     }
     _ => false,
   };
+
+  // Handle fork attribute - generates two test cases
+  if let Some(suffix) = attrs.fork_with_suffix {
+    let forked_name =
+      syn::Ident::new(&format!("{}{}", fn_name, suffix), fn_name.span());
+    let wrapper_name =
+      syn::Ident::new(&format!("{}_wrapper", fn_name), fn_name.span());
+    let forked_wrapper_name = syn::Ident::new(
+      &format!("{}{}_wrapper", fn_name, suffix),
+      fn_name.span(),
+    );
+
+    let (wrapper_body_false, wrapper_body_true) = if is_async {
+      let call_false = if returns_result {
+        quote! { #fn_name(false).await.unwrap(); }
+      } else {
+        quote! { #fn_name(false).await; }
+      };
+      let call_true = if returns_result {
+        quote! { #fn_name(true).await.unwrap(); }
+      } else {
+        quote! { #fn_name(true).await; }
+      };
+      (
+        quote! {
+          let rt = tokio::runtime::Builder::new_current_thread()
+              .enable_all()
+              .build()
+              .unwrap();
+          rt.block_on(async {
+              #call_false
+          });
+        },
+        quote! {
+          let rt = tokio::runtime::Builder::new_current_thread()
+              .enable_all()
+              .build()
+              .unwrap();
+          rt.block_on(async {
+              #call_true
+          });
+        },
+      )
+    } else if returns_result {
+      (
+        quote! { #fn_name(false).unwrap(); },
+        quote! { #fn_name(true).unwrap(); },
+      )
+    } else {
+      (quote! { #fn_name(false); }, quote! { #fn_name(true); })
+    };
+
+    let expanded = quote! {
+      #input
+
+      fn #wrapper_name() {
+        #wrapper_body_false
+      }
+
+      fn #forked_wrapper_name() {
+        #wrapper_body_true
+      }
+
+      test_util::submit! {
+          test_util::TestMacroCase {
+              name: stringify!(#fn_name),
+              module_name: module_path!(),
+              func: #wrapper_name,
+              flaky: #is_flaky,
+              file: file!(),
+              line: line!(),
+              col: column!(),
+              ignore: #is_ignored,
+              timeout: #timeout_expr,
+          }
+      }
+
+      test_util::submit! {
+          test_util::TestMacroCase {
+              name: stringify!(#forked_name),
+              module_name: module_path!(),
+              func: #forked_wrapper_name,
+              flaky: #is_flaky,
+              file: file!(),
+              line: line!(),
+              col: column!(),
+              ignore: #is_ignored,
+              timeout: #timeout_expr,
+          }
+      }
+    };
+
+    return TokenStream::from(expanded);
+  }
 
   // Determine if we need a wrapper function
   let needs_wrapper = is_async || returns_result;

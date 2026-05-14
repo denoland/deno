@@ -871,6 +871,81 @@ Deno.test("websocket close ongoing handshake", async () => {
   }
 });
 
+// Regression test: non-ASCII bytes in Sec-WebSocket-Protocol header
+// should not cause a panic.
+Deno.test(
+  { sanitizeOps: false, sanitizeResources: false },
+  async function websocketNonAsciiProtocolHeader() {
+    const port = 14248;
+    const listener = Deno.listen({ port, hostname: "127.0.0.1" });
+
+    const serverTask = (async () => {
+      const conn = await listener.accept();
+      const buf = new Uint8Array(4096);
+      let total = 0;
+      while (true) {
+        const n = await conn.read(buf.subarray(total));
+        if (n === null) break;
+        total += n;
+        const text = new TextDecoder().decode(buf.subarray(0, total));
+        if (text.includes("\r\n\r\n")) break;
+      }
+
+      // Parse Sec-WebSocket-Key from the request
+      const request = new TextDecoder().decode(buf.subarray(0, total));
+      const keyMatch = request.match(/sec-websocket-key:\s*(\S+)/i);
+      assert(keyMatch !== null, "Expected Sec-WebSocket-Key in: " + request);
+      const key = keyMatch[1];
+
+      // Compute accept key
+      const hash = await crypto.subtle.digest(
+        "SHA-1",
+        new TextEncoder().encode(key + "258EAFA5-E914-47DA-95CA-5AB5DF85B1E3"),
+      );
+      const accept = btoa(
+        String.fromCharCode(...new Uint8Array(hash)),
+      );
+
+      // Build response with non-ASCII bytes in Sec-WebSocket-Protocol
+      const headerPart =
+        `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\nSec-WebSocket-Protocol: `;
+      const headerPartBytes = new TextEncoder().encode(headerPart);
+      // 0xFF is non-ASCII
+      const nonAscii = new Uint8Array([0xFF, 0xFE]);
+      const ending = new TextEncoder().encode("\r\n\r\n");
+
+      const response = new Uint8Array(
+        headerPartBytes.length + nonAscii.length + ending.length,
+      );
+      response.set(headerPartBytes, 0);
+      response.set(nonAscii, headerPartBytes.length);
+      response.set(ending, headerPartBytes.length + nonAscii.length);
+      await conn.write(response);
+
+      // Send a close frame
+      await conn.write(new Uint8Array([0x88, 0x02, 0x03, 0xE8]));
+
+      // Give it a moment then clean up
+      await delay(100);
+      conn.close();
+    })();
+
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+    ws.onerror = () => {};
+    ws.onopen = () => {
+      // If we get here without panicking, the fix works.
+      ws.close();
+    };
+    ws.onclose = () => resolve();
+    setTimeout(() => reject(new Error("timeout")), 5000);
+
+    await promise;
+    await serverTask;
+    listener.close();
+  },
+);
+
 function createOnErrorCb(ac: AbortController): (err: unknown) => Response {
   return (err) => {
     console.error(err);

@@ -1,0 +1,34 @@
+impl<'a> ::deno_core::convert::FromV8<'a> for Tuple {
+    type Error = ::deno_error::JsErrorBox;
+    fn from_v8<'i>(
+        __scope: &mut ::deno_core::v8::PinScope<'a, 'i>,
+        __value: ::deno_core::v8::Local<'a, ::deno_core::v8::Value>,
+    ) -> Result<Self, Self::Error> {
+        let __array = ::deno_core::v8::Local::<::deno_core::v8::Array>::try_from(__value)
+            .map_err(|err| ::deno_error::JsErrorBox::from_err(
+                ::deno_core::error::DataError::from(err),
+            ))?;
+        Ok(
+            Self(
+                {
+                    let __element_value = __array
+                        .get_index(__scope, 0u32)
+                        .ok_or_else(|| ::deno_error::JsErrorBox::type_error(
+                            concat!("Missing element ", 0u32, " on '", "Tuple", "'"),
+                        ))?;
+                    ::deno_core::serde_v8::from_v8(__scope, __element_value)
+                        .map_err(::deno_error::JsErrorBox::from_err)?
+                },
+                {
+                    let __element_value = __array
+                        .get_index(__scope, 1u32)
+                        .ok_or_else(|| ::deno_error::JsErrorBox::type_error(
+                            concat!("Missing element ", 1u32, " on '", "Tuple", "'"),
+                        ))?;
+                    ::deno_core::convert::FromV8::from_v8(__scope, __element_value)
+                        .map_err(::deno_error::JsErrorBox::from_err)?
+                },
+            ),
+        )
+    }
+}

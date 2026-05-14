@@ -483,12 +483,15 @@ fn handle_inbound_messages(
 }
 
 impl CronHandler for SocketCronHandler {
-  type EH = SocketCronHandle;
-
-  fn create(&self, spec: CronSpec) -> Result<Self::EH, CronError> {
+  fn create(&self, spec: CronSpec) -> Result<Rc<dyn CronHandle>, CronError> {
     if let Some(reason) = self.reject_reason.get() {
       return Err(CronError::RejectedError(reason.clone()));
     }
+
+    spec
+      .cron_schedule
+      .parse::<saffron::Cron>()
+      .map_err(|_| CronError::InvalidCron)?;
 
     let (invocation_tx, invocation_rx) = mpsc::channel::<Traceparent>(1);
     let socket_task_tx = self.socket_task_tx.clone();
@@ -507,6 +510,10 @@ impl CronHandler for SocketCronHandler {
         }
       })?;
 
-    Ok(SocketCronHandle::new(spec, invocation_rx, socket_task_tx))
+    Ok(Rc::new(SocketCronHandle::new(
+      spec,
+      invocation_rx,
+      socket_task_tx,
+    )))
   }
 }

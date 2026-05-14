@@ -12,7 +12,7 @@ use url::Url;
 
 pub mod analyzer;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type CjsTrackerRc<TInNpmPackageChecker, TSys> =
   deno_maybe_sync::MaybeArc<CjsTracker<TInNpmPackageChecker, TSys>>;
 

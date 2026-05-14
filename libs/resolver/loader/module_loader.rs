@@ -30,7 +30,10 @@ use crate::graph::EnhancedGraphError;
 use crate::graph::enhance_graph_error;
 use crate::npm::DenoInNpmPackageChecker;
 
-#[allow(clippy::disallowed_types)]
+#[allow(
+  clippy::disallowed_types,
+  reason = "source text is always stored as Arc<str>"
+)]
 type ArcStr = std::sync::Arc<str>;
 
 #[derive(Debug, deno_error::JsError, Boxed)]
@@ -110,7 +113,7 @@ pub struct LoadUnpreparedModuleError {
   maybe_referrer: Option<Url>,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type ModuleLoaderRc<TSys> = deno_maybe_sync::MaybeArc<ModuleLoader<TSys>>;
 
 #[sys_traits::auto_impl]
@@ -148,7 +151,7 @@ pub struct ModuleLoader<TSys: ModuleLoaderSys> {
 }
 
 impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   pub fn new(
     cjs_tracker: CjsTrackerRc<DenoInNpmPackageChecker, TSys>,
     emitter: EmitterRc<DenoInNpmPackageChecker, TSys>,

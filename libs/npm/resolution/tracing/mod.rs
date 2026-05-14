@@ -68,13 +68,21 @@ const rawTraces = {json};
 </script>
 "
   );
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "debug tracing writes to temp directory"
+  )]
   let temp_file_path = std::env::temp_dir().join("deno-npm-trace.html");
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "debug tracing writes to temp directory"
+  )]
   std::fs::write(&temp_file_path, html).unwrap();
   let url = format!(
     "file://{}",
     temp_file_path.to_string_lossy().replace('\\', "/")
   );
-  #[allow(clippy::print_stderr)]
+  #[allow(clippy::print_stderr, reason = "debug tracing output")]
   {
     eprintln!(
       "\n==============\nTrace output ready! Please open your browser to: {}\n==============\n",

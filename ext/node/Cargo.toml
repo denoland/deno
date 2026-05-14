@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.170.0"
+version = "0.185.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -24,11 +24,13 @@ bytes.workspace = true
 data-encoding.workspace = true
 deno_ast.workspace = true
 deno_core.workspace = true
+deno_dotenv.workspace = true
 deno_error.workspace = true
 deno_fetch.workspace = true
 deno_fs.workspace = true
 deno_inspector_server.workspace = true
 deno_io.workspace = true
+deno_native_certs.workspace = true
 deno_net.workspace = true
 deno_node_crypto.workspace = true
 deno_node_sqlite.workspace = true
@@ -38,7 +40,6 @@ deno_permissions.workspace = true
 deno_process.workspace = true
 deno_tls.workspace = true
 deno_whoami.workspace = true
-dotenvy.workspace = true
 h2.workspace = true
 http.workspace = true
 http-body-util.workspace = true
@@ -47,6 +48,7 @@ hyper-util.workspace = true
 idna.workspace = true
 ipnetwork.workspace = true
 libc.workspace = true
+libnghttp2 = "1.68.0"
 libz-sys.workspace = true
 log.workspace = true
 node_resolver.workspace = true
@@ -54,7 +56,11 @@ node_shim.workspace = true
 once_cell.workspace = true
 rand.workspace = true
 rustls-tokio-stream.workspace = true
+# Pinned to the same major rustls 0.23.x uses internally so we can downcast
+# `rustls::CertificateError::Other` payloads to `webpki::Error`.
+rustls-webpki = "0.103"
 serde.workspace = true
+smallvec.workspace = true
 socket2.workspace = true
 sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }
 thiserror.workspace = true
@@ -70,7 +76,10 @@ zstd.workspace = true
 errno = "0.3.10"
 nix = { workspace = true, features = ["user"] }
 
+[build-dependencies]
+cc = "1"
+
 [target.'cfg(windows)'.dependencies]
-windows-sys = { workspace = true, features = ["Win32_Networking_WinSock"] }
+windows-sys = { workspace = true, features = ["Win32_Networking_WinSock", "Win32_NetworkManagement_IpHelper"] }
 winapi = { workspace = true, features = ["consoleapi"] }
 deno_subprocess_windows.workspace = true

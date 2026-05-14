@@ -1,0 +1,8 @@
+Error: async
+    at test:///integration/error_async_stack/error_async_stack.js:5:13
+    at async test:///integration/error_async_stack/error_async_stack.js:4:5
+    at async test:///integration/error_async_stack/error_async_stack.js:9:5
+[ERR] Error: async
+[ERR]     at test:///integration/error_async_stack/error_async_stack.js:5:13
+[ERR]     at async test:///integration/error_async_stack/error_async_stack.js:4:5
+[ERR]     at async test:///integration/error_async_stack/error_async_stack.js:9:5

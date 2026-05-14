@@ -1,8 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 /// <reference path="../../cli/tsc/dts/lib.deno.unstable.d.ts" />
 import { op_bundle } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
-import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
+import { core, primordials } from "ext:core/mod.js";
+const { TextDecoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
 
 const { SafeArrayIterator, Uint8Array, ObjectPrototypeIsPrototypeOf } =
   primordials;

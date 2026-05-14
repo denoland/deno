@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "async_local_storage_unhandled_rejection": {
+      "args": "run main.mjs",
+      "output": "rejectionValue => data\n"
+    }
+  }
+}

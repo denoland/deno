@@ -56,7 +56,7 @@ impl JsonReporter {
   }
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "reporter")]
 impl BenchReporter for JsonReporter {
   fn report_group_summary(&mut self) {}
   #[cold]
@@ -125,7 +125,7 @@ impl ConsoleReporter {
   }
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "reporter")]
 impl BenchReporter for ConsoleReporter {
   #[cold]
   fn report_plan(&mut self, plan: &BenchPlan) {

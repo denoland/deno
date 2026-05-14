@@ -87,7 +87,7 @@ pub fn op_ppid() -> i64 {
   }
 }
 
-#[allow(clippy::match_single_binding)] // needed for temporary lifetime
+#[allow(clippy::match_single_binding, reason = "needed for temporary lifetime")]
 #[op2(fast)]
 fn op_internal_log(
   #[string] url: &str,

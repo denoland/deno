@@ -113,7 +113,7 @@ where
     static_text.eprint_items(rendered_items.iter());
 
     let event = crossterm::event::read()?;
-    #[allow(clippy::single_match)]
+    #[allow(clippy::single_match, reason = "more clear")]
     match event {
       crossterm::event::Event::Key(KeyEvent {
         kind: KeyEventKind::Press,
@@ -132,10 +132,8 @@ where
         (KeyCode::Down | KeyCode::Char('j'), KeyModifiers::NONE) => {
           currently_selected = (currently_selected + 1) % items.len();
         }
-        (KeyCode::Char(' '), _) => {
-          if !checked.insert(currently_selected) {
-            checked.remove(&currently_selected);
-          }
+        (KeyCode::Char(' '), _) if !checked.insert(currently_selected) => {
+          checked.remove(&currently_selected);
         }
         (KeyCode::Char('a'), _) => {
           if (0..items.len()).all(|idx| checked.contains(&idx)) {
