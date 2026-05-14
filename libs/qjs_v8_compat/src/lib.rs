@@ -426,10 +426,10 @@ pub mod v8 {
           _info: info,
         }
       }
-      pub fn address(&self) -> *const core::ffi::c_void {
+      pub const fn address(&self) -> *const core::ffi::c_void {
         self._addr
       }
-      pub fn type_info(&self) -> *const CFunctionInfo {
+      pub const fn type_info(&self) -> *const CFunctionInfo {
         self._info
       }
     }

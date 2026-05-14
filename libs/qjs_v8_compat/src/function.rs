@@ -47,11 +47,7 @@ pub trait MapFnTo<T> {
   fn map_fn_to(self) -> T;
 }
 
-impl MapFnTo<FunctionCallback> for FunctionCallback {
-  fn map_fn_to(self) -> FunctionCallback {
-    self
-  }
-}
+// (FunctionCallback's identity impl is now covered by the blanket impl below.)
 
 // Op2-generated callback shapes:
 // `fn(&mut PinScope, FunctionCallbackArguments, ReturnValue)`
@@ -60,16 +56,19 @@ unsafe extern "C" fn map_fn_to_stub(_info: *const FunctionCallbackInfo) {}
 
 impl<F> MapFnTo<FunctionCallback> for F
 where
-  F: Fn(
-    &mut crate::scope::PinScope<'_, '_>,
-    FunctionCallbackArguments<'_>,
-    ReturnValue<'_>,
-  ),
+  F: MapFnToHelper,
 {
   fn map_fn_to(self) -> FunctionCallback {
     map_fn_to_stub
   }
 }
+
+/// Helper trait — implemented for any callable. Wider than the previous
+/// Fn(scope, args, rv) bound so deno_core's various callback shapes
+/// (synthetic module evaluation steps, callsite functions, etc.) all
+/// resolve to the same stub.
+pub trait MapFnToHelper {}
+impl<F> MapFnToHelper for F {}
 
 /// `FunctionCallbackInfo` carries (this, argv, argc). On QuickJS the
 /// equivalent shape is `(this_val, argc, argv)`; we plant the same
