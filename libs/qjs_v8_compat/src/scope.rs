@@ -427,15 +427,21 @@ impl<'s, 'r> CallbackScopeSource<'s>
   }
 }
 
+// CallbackScope derefs to PinScope (which itself derefs to HandleScope)
+// so the `Pin<&mut CallbackScope>` chain auto-coerces to
+// `&mut PinScope` when passed to deno_core APIs that expect a
+// PinScope reference.
 impl<'s, C> std::ops::Deref for CallbackScope<'s, C> {
-  type Target = HandleScope<'s, C>;
+  type Target = PinScope<'s, 's, C>;
   fn deref(&self) -> &Self::Target {
-    &self.0
+    // SAFETY: PinScope is #[repr(transparent)] over HandleScope
+    // and CallbackScope's first field IS a HandleScope.
+    unsafe { &*(self as *const Self as *const PinScope<'s, 's, C>) }
   }
 }
 impl<'s, C> std::ops::DerefMut for CallbackScope<'s, C> {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.0
+    unsafe { &mut *(self as *mut Self as *mut PinScope<'s, 's, C>) }
   }
 }
 
@@ -474,19 +480,23 @@ impl<'s, 'i, C> std::ops::DerefMut for PinScope<'s, 'i, C> {
   }
 }
 
-pub struct PinCallbackScope<'s, 'i, C = Context>(
+#[repr(transparent)]
+pub struct PinCallbackScope<'s, 'i: 's, C = Context>(
   pub(crate) CallbackScope<'s, C>,
   PhantomData<&'i ()>,
 );
-impl<'s, 'i, C> std::ops::Deref for PinCallbackScope<'s, 'i, C> {
-  type Target = CallbackScope<'s, C>;
-  fn deref(&self) -> &CallbackScope<'s, C> {
-    &self.0
+// PinCallbackScope derefs to PinScope so deno_core's
+// `to_v8_error(scope, err)` (which expects &mut PinScope) accepts a
+// &mut PinCallbackScope.
+impl<'s, 'i: 's, C> std::ops::Deref for PinCallbackScope<'s, 'i, C> {
+  type Target = PinScope<'s, 'i, C>;
+  fn deref(&self) -> &PinScope<'s, 'i, C> {
+    unsafe { &*(self as *const Self as *const PinScope<'s, 'i, C>) }
   }
 }
-impl<'s, 'i, C> std::ops::DerefMut for PinCallbackScope<'s, 'i, C> {
-  fn deref_mut(&mut self) -> &mut CallbackScope<'s, C> {
-    &mut self.0
+impl<'s, 'i: 's, C> std::ops::DerefMut for PinCallbackScope<'s, 'i, C> {
+  fn deref_mut(&mut self) -> &mut PinScope<'s, 'i, C> {
+    unsafe { &mut *(self as *mut Self as *mut PinScope<'s, 'i, C>) }
   }
 }
 
