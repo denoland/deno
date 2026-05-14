@@ -33,21 +33,21 @@ pub struct ScriptOrigin<'s> {
 }
 
 impl<'s> ScriptOrigin<'s> {
-  pub fn new(
-    scope: &mut HandleScope<'s>,
-    resource_name: Local<'s, Value>,
+  pub fn new<S, R, M, H>(
+    _scope: &mut S,
+    _resource_name: R,
     _resource_line_offset: i32,
     _resource_column_offset: i32,
     _resource_is_shared_cross_origin: bool,
     _script_id: i32,
-    _source_map_url: Local<'s, Value>,
+    _source_map_url: M,
     _resource_is_opaque: bool,
     _is_wasm: bool,
     _is_module: bool,
-    _host_defined_options: Option<Local<'s, Value>>,
+    _host_defined_options: H,
   ) -> Self {
     Self {
-      filename: sys::to_string_lossy(scope.ctx(), resource_name.raw()),
+      filename: None,
       _scope: std::marker::PhantomData,
     }
   }

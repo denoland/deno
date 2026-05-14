@@ -309,6 +309,22 @@ impl<'s, T> Clone for Local<'s, T> {
   }
 }
 
+impl<'s, T> std::hash::Hash for Local<'s, T> {
+  fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    let p: u64 = unsafe { self.raw.u.ptr as usize as u64 };
+    p.hash(state);
+    self.raw.tag.hash(state);
+  }
+}
+impl<'s, T> PartialEq for Local<'s, T> {
+  fn eq(&self, other: &Self) -> bool {
+    let a: usize = unsafe { self.raw.u.ptr as usize };
+    let b: usize = unsafe { other.raw.u.ptr as usize };
+    a == b && self.raw.tag == other.raw.tag
+  }
+}
+impl<'s, T> Eq for Local<'s, T> {}
+
 // Local derefs to the marker type T so callers can do `local.method()`
 // where method is defined on T (rusty_v8's pattern). The marker type
 // is zero-sized, so we cast our raw to a reference at any layout.
@@ -1245,7 +1261,7 @@ impl<T> Global<T> {
   pub fn get<'sc>(&self, scope: &mut HandleScope<'sc>) -> Local<'sc, T> {
     self.to_local(scope)
   }
-  pub fn set(&self, _value: Local<'_, T>) {}
+  pub fn set<S, V>(&self, _scope: &mut S, _value: V) {}
 }
 
 impl Global<crate::primitives::String> {

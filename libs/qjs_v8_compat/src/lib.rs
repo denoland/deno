@@ -1104,9 +1104,13 @@ pub mod v8 {
 
   /// Stub for `v8::new_custom_platform` — used for snapshot/test
   /// platforms. QuickJS has no platform abstraction; returns a unit Rc.
-  pub fn new_custom_platform(
+  /// Generic over extra args for compatibility with rusty_v8 variants
+  /// that take additional arguments (worker tasks, platform impl, etc).
+  pub fn new_custom_platform<A, B>(
     _thread_pool_size: u32,
     _idle_task_support: bool,
+    _a: A,
+    _b: B,
   ) -> Platform {
     Platform
   }

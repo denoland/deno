@@ -211,6 +211,22 @@ pub struct OneByteConst {
   pub _data: &'static [u8],
 }
 
+impl OneByteConst {
+  pub fn as_str(&self) -> &str {
+    std::str::from_utf8(self._data).unwrap_or("")
+  }
+}
+impl AsRef<str> for OneByteConst {
+  fn as_ref(&self) -> &str {
+    self.as_str()
+  }
+}
+impl AsRef<[u8]> for OneByteConst {
+  fn as_ref(&self) -> &[u8] {
+    self._data
+  }
+}
+
 // ----- Integer / Number / Boolean / BigInt -----------------------------
 //
 // `new` constructors live as inherent methods on the marker types

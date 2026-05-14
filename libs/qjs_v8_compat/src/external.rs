@@ -142,7 +142,8 @@ pub struct ValueSerializer<'s, I> {
   _scope: std::marker::PhantomData<&'s ()>,
   buffer: Vec<u8>,
 }
-impl<'s, I: ValueSerializerImpl> ValueSerializer<'s, I> {
+impl<I: ValueSerializerImpl> ValueSerializerImpl for Box<I> {}
+impl<'s, I> ValueSerializer<'s, I> {
   pub fn new(_scope: &mut HandleScope<'s>, impl_: I) -> Self {
     Self {
       _impl: impl_,
@@ -198,7 +199,8 @@ pub struct ValueDeserializer<'s, I> {
   _scope: std::marker::PhantomData<&'s ()>,
   data: Vec<u8>,
 }
-impl<'s, I: ValueDeserializerImpl> ValueDeserializer<'s, I> {
+impl<I: ValueDeserializerImpl> ValueDeserializerImpl for Box<I> {}
+impl<'s, I> ValueDeserializer<'s, I> {
   pub fn new(_scope: &mut HandleScope<'s>, impl_: I, data: &[u8]) -> Self {
     Self {
       _impl: impl_,
