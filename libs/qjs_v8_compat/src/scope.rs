@@ -249,9 +249,14 @@ impl<'s, C> HandleScope<'s, C> {
   }
 
   /// Mirror of `HandleScope::perform_microtask_checkpoint` — drains
-  /// the microtask queue once. Stubbed; the QuickJS event loop bridge
-  /// drives microtasks separately via `JS_ExecutePendingJob`.
-  pub fn perform_microtask_checkpoint(&mut self) {}
+  /// the microtask queue once. Loops draining pending QuickJS jobs
+  /// until the queue is empty so promises settled this turn surface
+  /// before the caller inspects them.
+  pub fn perform_microtask_checkpoint(&mut self) {
+    if self.isolate.is_null() { return; }
+    let rt = unsafe { (*self.isolate).rt() };
+    while crate::sys::run_pending_job(rt) {}
+  }
 
   /// Mirror of `HandleScope::cancel_terminate_execution`.
   pub fn cancel_terminate_execution(&mut self) {}

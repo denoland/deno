@@ -217,19 +217,16 @@ impl<'s> Local<'s, Function> {
   {
     let ctx = scope.default_ctx();
     let mut argv: Vec<sys::JSValue> = args.iter().map(|a| a.raw()).collect();
-    eprintln!("[qjs] Function::call self.tag={} recv.tag={} argc={}", self.raw().tag, recv.raw().tag, args.len());
     let raw = sys::call(ctx, self.raw(), recv.raw(), argv.as_mut_slice());
     if sys::jsv_is_exception(&raw) {
-      eprintln!("[qjs] Function::call -> exception");
       if let Some(exc) = sys::take_pending_exception(ctx) {
         if let Some(s) = sys::to_string_lossy(ctx, exc) {
-          eprintln!("[qjs]   exception: {}", s);
+          eprintln!("[qjs] Function::call exception: {}", s);
         }
         sys::free_value(ctx, exc);
       }
       return None;
     }
-    eprintln!("[qjs] Function::call done tag={}", raw.tag);
     Some(Local::from_raw(raw))
   }
   pub fn new_instance<S>(

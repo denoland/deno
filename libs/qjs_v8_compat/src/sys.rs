@@ -164,6 +164,34 @@ mod backend {
     unsafe { ffi::JS_GetRuntimeOpaque(rt) }
   }
 
+  // Per-Context embedder slots. V8 lets the embedder stash arbitrary
+  // pointers indexed by integer; deno_core uses slots 0/1 for context
+  // state and module map. Backed by a thread-local map keyed by the
+  // raw JSContext pointer.
+  thread_local! {
+    static CONTEXT_SLOTS: std::cell::RefCell<
+      std::collections::HashMap<usize, Vec<*mut c_void>>
+    > = std::cell::RefCell::new(std::collections::HashMap::new());
+  }
+  pub fn set_context_embedder_slot(ctx: Context, index: usize, value: *mut c_void) {
+    CONTEXT_SLOTS.with(|m| {
+      let mut m = m.borrow_mut();
+      let entry = m.entry(ctx as usize).or_default();
+      if entry.len() <= index {
+        entry.resize(index + 1, core::ptr::null_mut());
+      }
+      entry[index] = value;
+    });
+  }
+  pub fn get_context_embedder_slot(ctx: Context, index: usize) -> *mut c_void {
+    CONTEXT_SLOTS.with(|m| {
+      let m = m.borrow();
+      m.get(&(ctx as usize))
+        .and_then(|v| v.get(index).copied())
+        .unwrap_or(core::ptr::null_mut())
+    })
+  }
+
   pub fn get_property_str(ctx: Context, obj: JSValue, key: &str) -> JSValue {
     let k = std::ffi::CString::new(key).unwrap();
     unsafe { ffi::JS_GetPropertyStr(ctx, obj, k.as_ptr()) }
@@ -234,7 +262,14 @@ mod backend {
   }
   pub fn take_pending_exception(ctx: Context) -> Option<JSValue> {
     let exc = unsafe { ffi::JS_GetException(ctx) };
-    if jsv_is_null(&exc) { None } else { Some(exc) }
+    // JS_GetException returns JS_NULL when there's nothing to take, but
+    // some QuickJS-ng builds also surface JS_UNINITIALIZED. Treat both
+    // as "no exception".
+    if jsv_is_null(&exc) || exc.tag == ffi::JS_TAG_UNINITIALIZED {
+      None
+    } else {
+      Some(exc)
+    }
   }
   pub fn throw(ctx: Context, exc: JSValue) -> JSValue {
     unsafe { ffi::JS_Throw(ctx, exc) }
@@ -491,6 +526,30 @@ mod backend {
   pub fn get_runtime_opaque(rt: Runtime) -> *mut c_void {
     let v = unsafe { *(*rt).opaque.lock().unwrap() };
     v as *mut c_void
+  }
+
+  thread_local! {
+    static CONTEXT_SLOTS: std::cell::RefCell<
+      std::collections::HashMap<usize, Vec<*mut c_void>>
+    > = std::cell::RefCell::new(std::collections::HashMap::new());
+  }
+  pub fn set_context_embedder_slot(ctx: Context, index: usize, value: *mut c_void) {
+    CONTEXT_SLOTS.with(|m| {
+      let mut m = m.borrow_mut();
+      let entry = m.entry(ctx as usize).or_default();
+      if entry.len() <= index {
+        entry.resize(index + 1, core::ptr::null_mut());
+      }
+      entry[index] = value;
+    });
+  }
+  pub fn get_context_embedder_slot(ctx: Context, index: usize) -> *mut c_void {
+    CONTEXT_SLOTS.with(|m| {
+      let m = m.borrow();
+      m.get(&(ctx as usize))
+        .and_then(|v| v.get(index).copied())
+        .unwrap_or(core::ptr::null_mut())
+    })
   }
 
   // ---- Property access ------------------------------------------------

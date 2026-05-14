@@ -78,10 +78,55 @@ thread_local! {
   static RESOLVING_FUNCS: std::cell::RefCell<
     std::collections::HashMap<u64, (sys::JSValue, sys::JSValue)>,
   > = std::cell::RefCell::new(std::collections::HashMap::new());
+
+  /// promise -> (state, ctx). Mirrors the QuickJS-side state so V8's
+  /// scopeless `Promise::state()` can answer (V8 doesn't take a scope
+  /// for this). `ctx` is needed so `result()` can fetch the value.
+  static PROMISE_STATE: std::cell::RefCell<
+    std::collections::HashMap<u64, (sys::PromiseStateRaw, sys::Context)>,
+  > = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+pub(crate) fn record_promise_state(
+  promise: &sys::JSValue,
+  state: sys::PromiseStateRaw,
+  ctx: sys::Context,
+) {
+  PROMISE_STATE.with(|t| {
+    t.borrow_mut().insert(handle_of(promise), (state, ctx));
+  });
+}
+
+pub(crate) fn lookup_promise_state(
+  promise: &sys::JSValue,
+) -> Option<(sys::PromiseStateRaw, sys::Context)> {
+  PROMISE_STATE.with(|t| t.borrow().get(&handle_of(promise)).copied())
 }
 
 fn handle_of(v: &sys::JSValue) -> u64 {
   unsafe { v.u.ptr as usize as u64 }
+}
+
+/// Look up the (resolve, reject) functions for a promise handle. Used by
+/// crate-internal callers that have the promise JSValue but need to fire
+/// resolution from outside `PromiseResolver::resolve` / `::reject`.
+pub(crate) fn resolving_funcs(
+  promise: &sys::JSValue,
+) -> Option<(sys::JSValue, sys::JSValue)> {
+  RESOLVING_FUNCS.with(|t| t.borrow().get(&handle_of(promise)).copied())
+}
+
+/// Track a promise capability's (resolve, reject) so a later
+/// `PromiseResolver::resolve` / `reject` can find the funcs.
+pub(crate) fn register_resolving_funcs(
+  promise: &sys::JSValue,
+  resolve: sys::JSValue,
+  reject: sys::JSValue,
+) {
+  RESOLVING_FUNCS.with(|t| {
+    t.borrow_mut()
+      .insert(handle_of(promise), (resolve, reject));
+  });
 }
 
 impl PromiseResolver {
@@ -101,6 +146,11 @@ impl PromiseResolver {
       t.borrow_mut()
         .insert(handle_of(&promise), (resolve, reject));
     });
+    record_promise_state(
+      &promise,
+      sys::PromiseStateRaw::Pending,
+      scope.ctx(),
+    );
     Some(Local::from_raw(promise))
   }
 }
@@ -179,11 +229,18 @@ impl<'s> Local<'s, PromiseResolver> {
 
 impl<'s> Local<'s, Promise> {
   pub fn state(&self) -> PromiseState {
-    // QJS-DIVERGE: this requires a JSContext to inspect. We try to look up
-    // the per-handle state from the mock arena via the resolving-funcs
-    // table's bookkeeping. For the linked backend, callers should use
-    // `state_with` which carries a scope.
-    PromiseState::Pending
+    // V8's `Promise::state()` takes no scope. We mirror QuickJS-side
+    // state into a thread-local so we can answer it. Resolve/reject
+    // call sites update the table; if the promise isn't tracked (e.g.
+    // raw value), default to Pending.
+    if let Some((state, ctx)) = lookup_promise_state(&self.raw()) {
+      // The state in our table may be stale if microtasks just ran;
+      // re-fetch from QuickJS to be safe.
+      let _ = state;
+      sys::promise_state(ctx, self.raw()).into()
+    } else {
+      PromiseState::Pending
+    }
   }
   /// Scoped state query — the recommended path. The free `state()` above
   /// is a fallback for parity with V8's no-scope signature.

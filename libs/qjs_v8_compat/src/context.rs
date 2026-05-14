@@ -98,15 +98,18 @@ impl<'s> Local<'s, Context> {
   }
   pub fn get_aligned_pointer_from_embedder_data(
     &self,
-    _index: i32,
+    index: i32,
   ) -> *mut std::ffi::c_void {
-    std::ptr::null_mut()
+    let ctx = self.ctx_raw();
+    crate::sys::get_context_embedder_slot(ctx, index as usize)
   }
   pub fn set_aligned_pointer_in_embedder_data(
     &self,
-    _index: i32,
-    _value: *mut std::ffi::c_void,
+    index: i32,
+    value: *mut std::ffi::c_void,
   ) {
+    let ctx = self.ctx_raw();
+    crate::sys::set_context_embedder_slot(ctx, index as usize, value);
   }
 }
 
