@@ -1095,12 +1095,16 @@ pub mod v8 {
       scope: &mut S,
     ) -> Option<super::Local<'s, T>> {
       let ctx = scope.default_ctx();
+      // QuickJS-ng's JS_NewCFunction stores length in a smallish
+      // bitfield (16 bits). Clamp to avoid overflow corrupting the
+      // function object and crashing later compiles.
+      let length = self.length.clamp(0, 0x7fff);
       let raw = unsafe {
         crate::ffi::JS_NewCFunction(
           ctx,
           super::function::function_new_trampoline,
           core::ptr::null(),
-          self.length,
+          length,
         )
       };
       Some(super::Local::from_raw(raw))
