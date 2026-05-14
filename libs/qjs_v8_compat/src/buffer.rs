@@ -227,6 +227,7 @@ impl<'s> Local<'s, ArrayBufferView> {
 /// V8's wasm module wrapper. QuickJS has no WASM execution.
 pub struct WasmModuleObject;
 pub struct CompiledWasmModule;
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum WasmAsyncSuccess {
   Success,
   Fail,

@@ -131,6 +131,14 @@ impl String {
 }
 
 impl<'s> Local<'s, String> {
+  /// Mirror of `Local<String>::to_string(scope) -> Option<Local<String>>`.
+  /// On a String input it's a no-op identity.
+  pub fn to_string<'sc>(
+    &self,
+    _scope: &mut HandleScope<'sc>,
+  ) -> Option<Local<'sc, String>> {
+    Some(Local::from_raw(self.raw))
+  }
   pub fn length(&self) -> usize {
     0
   }
