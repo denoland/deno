@@ -1341,29 +1341,29 @@ Deno.test("TagStore capacity, size, and clear", () => {
   db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
   sql.clear();
   assertStrictEquals(sql.capacity, 10);
-  assertStrictEquals(sql.size(), 0);
+  assertStrictEquals(sql.size, 0);
 
   assertStrictEquals(
     sql.run`INSERT INTO foo (text) VALUES (${"one"})`.changes,
     1,
   );
-  assertStrictEquals(sql.size(), 1);
+  assertStrictEquals(sql.size, 1);
 
   assert(sql.get`SELECT * FROM foo WHERE text = ${"one"}`);
-  assertStrictEquals(sql.size(), 2);
+  assertStrictEquals(sql.size, 2);
 
   // Using the same template string shouldn't increase the size
   assertStrictEquals(
     sql.get`SELECT * FROM foo WHERE text = ${"two"}`,
     undefined,
   );
-  assertStrictEquals(sql.size(), 2);
+  assertStrictEquals(sql.size, 2);
 
   assertStrictEquals(sql.all`SELECT * FROM foo`.length, 1);
-  assertStrictEquals(sql.size(), 3);
+  assertStrictEquals(sql.size, 3);
 
   sql.clear();
-  assertStrictEquals(sql.size(), 0);
+  assertStrictEquals(sql.size, 0);
   assertStrictEquals(sql.capacity, 10);
 });
 
@@ -1374,4 +1374,48 @@ Deno.test("sql.db returns the associated DatabaseSync instance", () => {
   db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
   sql.clear();
   assertStrictEquals(sql.db, db);
+});
+
+Deno.test("createTagStore throws error if database is not open", () => {
+  const db = new DatabaseSync(":memory:", { open: false });
+
+  assertThrows(
+    () => {
+      // @ts-expect-error createTagStore is a valid method
+      db.createTagStore(10);
+    },
+    Error,
+    "database is not open",
+  );
+});
+
+Deno.test("createTagStore: sql error messages are descriptive", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"test"})`.changes,
+    1,
+  );
+
+  assertThrows(
+    () => sql.get`SELECT nonexistent_column FROM foo`,
+    Error,
+    "no such column",
+  );
+
+  assertThrows(
+    () => sql.get`SELECT * FROM nonexistent_table`,
+    Error,
+    "no such table",
+  );
+});
+
+Deno.test("createTagStore uses default capacity when not specified", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore();
+  assertStrictEquals(sql.capacity, 1000);
 });

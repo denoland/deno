@@ -4,8 +4,8 @@
 // Mirrors lib/cluster.js. Node decides at module-load whether to require
 // `internal/cluster/primary` or `internal/cluster/child` from
 // process.env.NODE_UNIQUE_ID. In Deno, the IIFE initializes the primary side
-// at module load, and `02_init.js` flips to the child side via the
-// `__initCluster` callback (after triggering this script when
+// at module load, and `01_require.js`'s `initialize` flips to the child side
+// via the `__initCluster` callback (after triggering this script when
 // NODE_UNIQUE_ID is set).
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
