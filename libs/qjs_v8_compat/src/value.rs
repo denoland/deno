@@ -1250,6 +1250,26 @@ impl<'s> Local<'s, Value> {
 // ----- Global<T> --------------------------------------------------------
 
 /// A heap-rooted handle that outlives any HandleScope.
+/// Stub for `v8::TracedReference<T>` — V8's GC-traced handle. We
+/// don't trace; this just wraps a Global semantically.
+pub struct TracedReference<T> {
+  inner: Global<T>,
+}
+impl<T> TracedReference<T> {
+  pub fn empty() -> Self {
+    Self { inner: Global::empty() }
+  }
+  pub fn new<'s>(scope: &mut HandleScope<'s>, value: Local<'s, T>) -> Self {
+    Self { inner: Global::new(scope, value) }
+  }
+  pub fn get<'s>(&self, scope: &mut HandleScope<'s>) -> Option<Local<'s, T>> {
+    self.inner.get(scope)
+  }
+  pub fn reset(&mut self, _scope: &mut HandleScope) {
+    self.inner = Global::empty();
+  }
+}
+
 pub struct Global<T> {
   pub(crate) raw: sys::JSValue,
   ctx: Option<sys::Context>,
