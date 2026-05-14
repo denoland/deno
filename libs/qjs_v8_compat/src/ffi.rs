@@ -216,6 +216,15 @@ pub type JSCFunction = unsafe extern "C" fn(
   argv: *mut JSValue,
 ) -> JSValue;
 
+pub type JSCFunctionData = unsafe extern "C" fn(
+  ctx: *mut JSContext,
+  this_val: JSValue,
+  argc: c_int,
+  argv: *mut JSValue,
+  magic: c_int,
+  func_data: *mut JSValue,
+) -> JSValue;
+
 pub type JSModuleNormalizeFunc = unsafe extern "C" fn(
   ctx: *mut JSContext,
   module_base_name: *const c_char,
@@ -370,6 +379,14 @@ unsafe extern "C" {
     length: c_int,
     cproto: c_int, // JSCFunctionEnum, 0 = JS_CFUNC_generic
     magic: c_int,
+  ) -> JSValue;
+  pub fn JS_NewCFunctionData(
+    ctx: *mut JSContext,
+    func: JSCFunctionData,
+    length: c_int,
+    magic: c_int,
+    data_len: c_int,
+    data: *mut JSValue,
   ) -> JSValue;
 
   // Eval/script.

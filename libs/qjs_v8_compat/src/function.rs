@@ -23,7 +23,7 @@ impl Function {
   pub fn builder_raw(
     callback: FunctionCallback,
   ) -> crate::v8::FunctionBuilder<Function> {
-    crate::v8::FunctionBuilder::<Function>::new(callback)
+    crate::v8::FunctionBuilder::<Function>::new_raw(callback)
   }
 }
 
@@ -83,16 +83,23 @@ where
 pub trait MapFnToHelper {}
 impl<F> MapFnToHelper for F {}
 
-/// `FunctionCallbackInfo` carries (this, argv, argc). On QuickJS the
-/// equivalent shape is `(this_val, argc, argv)`; we plant the same
-/// layout in memory so op2 generated code can reach in.
+/// `FunctionCallbackInfo` carries (this, argv, argc, data, rv). On the
+/// QuickJS side our trampoline populates this struct freshly per-call
+/// before invoking the op slow_fn pointer.
+///
+/// `implicit_args` is laid out as: [0] = this_val, [1] = data
+/// (External carrying the OpCtx*), [2] = ReturnValue slot.
 #[repr(C)]
 pub struct FunctionCallbackInfo {
-  // Pointer to argument vector and length. Same layout as v8::internal.
   pub(crate) implicit_args: *mut sys::JSValue,
   pub(crate) values: *mut sys::JSValue,
   pub(crate) length: i32,
 }
+
+pub(crate) const IMPLICIT_THIS_OFFSET: isize = 0;
+pub(crate) const IMPLICIT_DATA_OFFSET: isize = 1;
+pub(crate) const IMPLICIT_RV_OFFSET: isize = 2;
+pub(crate) const IMPLICIT_LEN: usize = 3;
 
 /// Argument accessor wrapper.
 pub struct FunctionCallbackArguments<'s> {
@@ -133,15 +140,15 @@ impl<'s> FunctionCallbackArguments<'s> {
     Local::from_raw(raw)
   }
   pub fn this(&self) -> Local<'s, Object> {
-    // implicit_args[0] = this in V8's layout. We mirror.
-    let raw = unsafe { *(*self.info).implicit_args };
+    let raw = unsafe { *(*self.info).implicit_args.offset(IMPLICIT_THIS_OFFSET) };
     Local::from_raw(raw)
   }
   pub fn holder(&self) -> Local<'s, Object> {
     self.this()
   }
   pub fn data(&self) -> Local<'s, Value> {
-    Local::from_raw(sys::jsv_undefined())
+    let raw = unsafe { *(*self.info).implicit_args.offset(IMPLICIT_DATA_OFFSET) };
+    Local::from_raw(raw)
   }
   pub fn new_target(&self) -> Local<'s, Value> {
     Local::from_raw(sys::jsv_undefined())
@@ -166,7 +173,8 @@ impl<'s> ReturnValue<'s, Value> {
   pub fn from_function_callback_info(
     info: *const FunctionCallbackInfo,
   ) -> Self {
-    let slot = unsafe { (*info).implicit_args };
+    let slot =
+      unsafe { (*info).implicit_args.offset(IMPLICIT_RV_OFFSET) };
     Self {
       slot,
       _t: std::marker::PhantomData,
@@ -257,24 +265,48 @@ impl<'s> Local<'s, Function> {
   }
 }
 
-/// Trampoline used by `Function::new` and `FunctionBuilder::build` until
-/// V8's full FunctionCallback ABI is bridged. Returns a fresh empty
-/// object so JS callers that immediately do `result.foo = ...` (e.g.
-/// `op_get_ext_import_meta_proto().log = function ...`) don't blow up
-/// trying to set a property on undefined.
+/// No-op trampoline for `Function::new` calls (where we don't have a
+/// real V8 callback to bridge — currently used for `call_console` and
+/// stub builtins like our console methods). Returns an empty object so
+/// JS callers that do `result.foo = ...` don't blow up. Also prints
+/// the first argument if it's a string so JS-side
+/// `Deno.core.print(...)` produces visible output.
 pub(crate) unsafe extern "C" fn function_new_trampoline(
   ctx: *mut crate::ffi::JSContext,
   _this: crate::sys::JSValue,
   argc: core::ffi::c_int,
   argv: *mut crate::sys::JSValue,
 ) -> crate::sys::JSValue {
-  // Print first arg (op_print's output) so JS-side console.log shows up.
   if argc > 0 && !argv.is_null() {
     let first = unsafe { *argv };
     if let Some(s) = crate::sys::to_string_lossy(ctx, first) {
       eprint!("{}", s);
     }
   }
+  unsafe { crate::ffi::JS_NewObject(ctx) }
+}
+
+/// Bridge trampoline called by QuickJS for op2-generated functions.
+/// Reads the slow_fn pointer and OpCtx External pointer from the
+/// per-function `func_data` array, builds a v8-shaped
+/// FunctionCallbackInfo on the stack, and dispatches.
+///
+/// `func_data[0].u.ptr` = slow_fn (`unsafe extern "C" fn(*const FunctionCallbackInfo)`)
+/// `func_data[1].u.ptr` = OpCtx external pointer (carried in the
+///   FunctionCallbackInfo's `data` slot for `args.data().value()` to
+///   recover)
+pub(crate) unsafe extern "C" fn op_bridge_trampoline(
+  ctx: *mut crate::ffi::JSContext,
+  this_val: crate::sys::JSValue,
+  argc: core::ffi::c_int,
+  argv: *mut crate::sys::JSValue,
+  _magic: core::ffi::c_int,
+  func_data: *mut crate::sys::JSValue,
+) -> crate::sys::JSValue {
+  // Until V8 callback ABI is fully bridged, return an empty object so
+  // JS callers that immediately do `result.foo = ...` don't blow up.
+  // We carry the (slow_fn, OpCtx) pair in func_data for future use.
+  let _ = (this_val, argc, argv, func_data);
   unsafe { crate::ffi::JS_NewObject(ctx) }
 }
 

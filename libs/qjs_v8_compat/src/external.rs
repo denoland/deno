@@ -12,21 +12,23 @@ crate::value_type!(External);
 
 impl External {
   pub fn new<'s>(
-    scope: &mut HandleScope<'s>,
-    _p: *mut c_void,
+    _scope: &mut HandleScope<'s>,
+    p: *mut c_void,
   ) -> Local<'s, External> {
-    // QJS-DIVERGE: real impl wraps `p` into a JSValue with JS_TAG_OBJECT
-    // and an external-class id. The pointer is recoverable via
-    // JS_GetOpaque. Mocked here as a sentinel.
-    let raw = sys::new_object(scope.ctx());
-    scope.track_owned(raw);
+    // Stash the raw pointer in a JSValue's `ptr` slot with a
+    // non-refcounted tag (JS_TAG_UNDEFINED). The op2 trampoline reads
+    // the pointer back via `args.data().value()` to recover the OpCtx*.
+    let raw = sys::JSValue {
+      u: sys::JSValueUnion { ptr: p },
+      tag: sys::JS_TAG_UNDEFINED,
+    };
     Local::from_raw(raw)
   }
 }
 
 impl<'s> Local<'s, External> {
   pub fn value(&self) -> *mut c_void {
-    core::ptr::null_mut()
+    unsafe { self.raw.u.ptr as *mut c_void }
   }
 }
 

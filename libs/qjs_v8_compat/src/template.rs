@@ -97,7 +97,7 @@ impl FunctionTemplate {
   pub fn builder_raw(
     callback: FunctionCallback,
   ) -> crate::v8::FunctionBuilder<FunctionTemplate> {
-    crate::v8::FunctionBuilder::<FunctionTemplate>::new(callback)
+    crate::v8::FunctionBuilder::<FunctionTemplate>::new_raw(callback)
   }
 }
 

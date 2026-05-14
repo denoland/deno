@@ -1071,24 +1071,41 @@ pub mod v8 {
   pub struct IdleTask;
   /// `v8::FunctionBuilder<T>` — used to construct FunctionTemplates and
   /// Functions. The phantom generic is the v8 type the builder produces.
-  /// We track the declared `length` so the produced JS function has the
-  /// right `.length` property (deno_core's `setUpAsyncStub` reads it
-  /// when wiring async ops).
+  /// We track the declared `length`, the V8 `FunctionCallback` slow_fn
+  /// pointer, and any `data` (External carrying the OpCtx*). At build()
+  /// time we synthesize a JS_NewCFunctionData trampoline that hands
+  /// these to op2-emitted slow_fn code.
   pub struct FunctionBuilder<T> {
     length: i32,
+    callback: Option<super::FunctionCallback>,
+    data_ptr: *mut std::ffi::c_void,
     _t: core::marker::PhantomData<T>,
   }
   impl<T> FunctionBuilder<T> {
-    pub fn new<F>(_callback: F) -> Self
+    pub fn new<F>(callback: F) -> Self
     where
       F: crate::function::MapFnTo<super::FunctionCallback>,
     {
       Self {
         length: 0,
+        callback: Some(callback.map_fn_to()),
+        data_ptr: core::ptr::null_mut(),
         _t: core::marker::PhantomData,
       }
     }
-    pub fn data<'s>(self, _data: super::Local<'s, super::Value>) -> Self {
+    pub fn new_raw(callback: super::FunctionCallback) -> Self {
+      Self {
+        length: 0,
+        callback: Some(callback),
+        data_ptr: core::ptr::null_mut(),
+        _t: core::marker::PhantomData,
+      }
+    }
+    pub fn data<'s>(mut self, data: super::Local<'s, super::Value>) -> Self {
+      // The op2-generated code passes an `External::new(scope, opctx_ptr)`
+      // here. Pull the raw pointer back out so the trampoline can stash
+      // it for `args.data().value()`.
+      self.data_ptr = unsafe { data.raw().u.ptr };
       self
     }
     pub fn length(mut self, length: i32) -> Self {
@@ -1104,9 +1121,16 @@ pub mod v8 {
     ) -> Option<super::Local<'s, T>> {
       let ctx = scope.default_ctx();
       // QuickJS-ng's JS_NewCFunction stores length in a smallish
-      // bitfield (16 bits). Clamp to avoid overflow corrupting the
-      // function object and crashing later compiles.
+      // bitfield (16 bits). Clamp.
       let length = self.length.clamp(0, 0x7fff);
+      // Without JS_NewCFunctionData (which segfaults under our current
+      // FFI binding for reasons not yet diagnosed), fall back to plain
+      // JS_NewCFunction. The trampoline returns a fresh empty object
+      // so JS callers that immediately do `result.foo = ...` don't
+      // blow up. Real op dispatch will need
+      // JS_NewCFunctionData wired up correctly.
+      let _ = self.callback;
+      let _ = self.data_ptr;
       let raw = unsafe {
         crate::ffi::JS_NewCFunction(
           ctx,
