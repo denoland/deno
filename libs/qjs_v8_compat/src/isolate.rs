@@ -55,10 +55,7 @@ impl CreateParams {
   pub fn allow_atomics_wait(self, _allow: bool) -> Self {
     self
   }
-  pub fn external_references(
-    self,
-    _refs: std::borrow::Cow<'static, [crate::external::ExternalReference]>,
-  ) -> Self {
+  pub fn external_references<R>(self, _refs: R) -> Self {
     self
   }
   pub fn snapshot_blob<B>(self, _blob: B) -> Self {
@@ -219,18 +216,18 @@ impl Isolate {
   pub fn new(params: CreateParams) -> OwnedIsolate {
     OwnedIsolate::new(params)
   }
-  pub fn snapshot_creator(
-    _external_references: Option<&'static [crate::external::ExternalReference]>,
-    _params: Option<CreateParams>,
-  ) -> crate::snapshot::SnapshotCreator {
-    crate::snapshot::SnapshotCreator::new(None)
+  pub fn snapshot_creator<R, P>(
+    _external_references: R,
+    _params: P,
+  ) -> OwnedIsolate {
+    OwnedIsolate::new(CreateParams::default())
   }
-  pub fn snapshot_creator_from_existing_snapshot(
-    _snapshot_blob: Box<[u8]>,
-    _external_references: Option<&'static [crate::external::ExternalReference]>,
-    _params: Option<CreateParams>,
-  ) -> crate::snapshot::SnapshotCreator {
-    crate::snapshot::SnapshotCreator::new(None)
+  pub fn snapshot_creator_from_existing_snapshot<B, R, P>(
+    _snapshot_blob: B,
+    _external_references: R,
+    _params: P,
+  ) -> OwnedIsolate {
+    OwnedIsolate::new(CreateParams::default())
   }
   pub fn enqueue_microtask(&mut self, _task: crate::value::Local<'_, crate::function::Function>) {}
   pub fn get_cpp_heap(&mut self) -> Option<*mut c_void> {
