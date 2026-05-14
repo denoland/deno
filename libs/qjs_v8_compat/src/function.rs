@@ -114,8 +114,8 @@ impl<'s, T> ReturnValue<'s, T> {
       _t: std::marker::PhantomData,
     }
   }
-  pub fn set(&mut self, value: Local<'s, T>) {
-    unsafe { *self.slot = value.raw }
+  pub fn set<'a>(&mut self, value: Local<'a, T>) {
+    unsafe { *self.slot = value.raw() }
   }
   pub fn set_undefined(&mut self) {
     unsafe { *self.slot = sys::jsv_undefined() }

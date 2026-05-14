@@ -31,11 +31,19 @@ impl<'s> Local<'s, External> {
 }
 
 /// V8 uses `ExternalReference` to register C function pointers for
-/// snapshot replay. QuickJS doesn't have snapshots so we stash them in a
-/// Vec; deno_core only reads back what it wrote.
+/// snapshot replay. rusty_v8 exposes it as a UNION whose variants are
+/// `function`, `pointer`, `type_info`, `api_function` — callers
+/// initialize exactly one variant via struct-literal syntax. We mirror
+/// the union shape so `ExternalReference { function: x }` and
+/// `ExternalReference { pointer: x }` both compile (which a struct
+/// would have rejected as "missing fields").
+#[repr(C)]
 #[derive(Copy, Clone)]
-pub struct ExternalReference {
-  pub function: *mut c_void,
+pub union ExternalReference {
+  pub function: *const c_void,
+  pub pointer: *const c_void,
+  pub type_info: *const c_void,
+  pub api_function: *const c_void,
 }
 impl ExternalReference {
   pub const fn new(function: *mut c_void) -> Self {
