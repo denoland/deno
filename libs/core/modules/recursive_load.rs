@@ -158,10 +158,6 @@ impl RecursiveModuleLoad {
   fn new(init: LoadInit, module_map_rc: Rc<ModuleMap>) -> Self {
     let id = module_map_rc.next_load_id();
     let loader = module_map_rc.loader.borrow().clone();
-    let requested_module_type = match &init {
-      LoadInit::DynamicImport(_, _, module_type, _) => module_type.clone(),
-      _ => RequestedModuleType::None,
-    };
     // Resolve the root specifier eagerly. For sync resolution, cache the
     // result. For async, store the future for later resolution.
     let resolve_response = Self::resolve_root_from_init(&init, &module_map_rc);
@@ -175,7 +171,10 @@ impl RecursiveModuleLoad {
       .as_ref()
       .and_then(|r| r.as_ref().ok())
       .and_then(|spec| {
-        module_map_rc.get_id(spec.as_str(), requested_module_type)
+        module_map_rc.get_id(
+          spec.as_str(),
+          Self::requested_module_type_from_init(&init),
+        )
       });
     Self {
       id,
@@ -203,6 +202,25 @@ impl RecursiveModuleLoad {
 
   pub(crate) fn root_module_reference(&self) -> Option<&ModuleReference> {
     self.root_module_reference.as_ref()
+  }
+
+  fn requested_module_type_from_init(
+    init: &LoadInit,
+  ) -> &RequestedModuleType {
+    match init {
+      LoadInit::DynamicImport(_, _, module_type, _) => module_type,
+      _ => &RequestedModuleType::None,
+    }
+  }
+
+  fn set_root_module_id_from_resolved_specifier(
+    &mut self,
+    module_specifier: &ModuleSpecifier,
+  ) {
+    self.root_module_id = self.module_map_rc.get_id(
+      module_specifier.as_str(),
+      Self::requested_module_type_from_init(&self.init),
+    );
   }
 
   fn resolve_root_from_init(
@@ -236,6 +254,7 @@ impl RecursiveModuleLoad {
         );
         let spec = fut.await.map_err(CoreError::from)?;
         self.resolved_specifier = Some(Ok(spec.clone()));
+        self.set_root_module_id_from_resolved_specifier(&spec);
         spec
       }
     };
@@ -715,6 +734,9 @@ impl Stream for RecursiveModuleLoad {
         match resolve_fut.poll_unpin(cx) {
           Poll::Ready(Ok(module_specifier)) => {
             inner.pending_root_resolve = None;
+            inner.set_root_module_id_from_resolved_specifier(
+              &module_specifier,
+            );
             Self::init_with_resolved_root(inner, module_specifier, cx)
           }
           Poll::Ready(Err(error)) => {
