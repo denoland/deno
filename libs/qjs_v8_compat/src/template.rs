@@ -65,10 +65,10 @@ impl<'s> FunctionBuilder<'s> {
     self.name = Some(std::string::String::new());
     self
   }
-  pub fn build_fast<'b>(
+  pub fn build_fast<F>(
     self,
     scope: &mut HandleScope<'s>,
-    _fast_function: &'b crate::v8::fast_api::CFunction,
+    _fast_function: F,
   ) -> Local<'s, FunctionTemplate> {
     self.build(scope)
   }
@@ -86,14 +86,18 @@ impl FunctionTemplate {
     let raw = sys::new_object(scope.default_ctx());
     Local::from_raw(raw)
   }
-  pub fn builder<F>(callback: F) -> FunctionBuilder<'static>
+  pub fn builder<F>(
+    callback: F,
+  ) -> crate::v8::FunctionBuilder<FunctionTemplate>
   where
     F: crate::function::MapFnTo<FunctionCallback>,
   {
-    FunctionBuilder::new(callback.map_fn_to())
+    crate::v8::FunctionBuilder::<FunctionTemplate>::new(callback)
   }
-  pub fn builder_raw(callback: FunctionCallback) -> FunctionBuilder<'static> {
-    FunctionBuilder::new(callback)
+  pub fn builder_raw(
+    callback: FunctionCallback,
+  ) -> crate::v8::FunctionBuilder<FunctionTemplate> {
+    crate::v8::FunctionBuilder::<FunctionTemplate>::new(callback)
   }
 }
 

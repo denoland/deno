@@ -117,7 +117,7 @@ pub trait ValueSerializerHelper {
   fn write_uint32(&self, _value: u32) {}
   fn write_value<'s>(
     &self,
-    _scope: &mut crate::scope::PinScope<'s, '_>,
+    _ctx: Local<'s, crate::context::Context>,
     _value: Local<'s, crate::value::Value>,
   ) -> Option<bool> {
     Some(true)
@@ -131,7 +131,7 @@ pub trait ValueDeserializerHelper {
   }
   fn read_value<'s>(
     &self,
-    _scope: &mut crate::scope::PinScope<'s, '_>,
+    _ctx: Local<'s, crate::context::Context>,
   ) -> Option<Local<'s, crate::value::Value>> {
     None
   }

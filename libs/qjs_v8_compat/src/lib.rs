@@ -1085,10 +1085,10 @@ pub mod v8 {
       let _ = scope;
       None
     }
-    pub fn build_fast<'s, S: crate::scope::HandleScopeSource>(
+    pub fn build_fast<'s, S: crate::scope::HandleScopeSource, F>(
       self,
       scope: &mut S,
-      _fast_function: &'static crate::v8::fast_api::CFunction,
+      _fast_function: F,
     ) -> Option<super::Local<'s, T>> {
       self.build(scope)
     }

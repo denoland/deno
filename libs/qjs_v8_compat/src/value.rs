@@ -688,26 +688,9 @@ to_local_value_for!(
   crate::module::Module,
   crate::promise::Promise,
 );
-// Same shape for Global<T> — `Local::new(scope, &Global<Object>)`
-// where dest is `Local<Value>`.
-macro_rules! to_local_value_for_global {
-  ($($ty:ty),* $(,)?) => { $(
-    impl<'s> ToLocal<'s, Value> for &Global<$ty> {
-      fn to_local(self, scope: &mut HandleScope<'s>) -> Local<'s, Value> {
-        let l = Global::to_local(self, scope);
-        Local::from_raw(l.raw)
-      }
-    }
-  )* };
-}
-to_local_value_for_global!(
-  crate::object::Object,
-  crate::object::Array,
-  crate::primitives::String,
-  crate::primitives::Symbol,
-  crate::function::Function,
-  crate::module::Module,
-);
+// (Removed to_local_value_for_global! — caused inference ambiguity at
+// callsites like `let m = v8::Local::new(scope, &handle)` where the
+// caller relies on T being unified with the Global's T.)
 
 // ----- Upcasts ----------------------------------------------------------
 // `Local<T> -> Local<U>` where T derives from U in the V8 type lattice.

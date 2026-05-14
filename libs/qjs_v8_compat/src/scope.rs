@@ -318,12 +318,12 @@ impl<'s, C> HandleScope<'s, C> {
   pub fn get_heap_statistics(&self) -> crate::isolate::HeapStatistics {
     crate::isolate::HeapStatistics::default()
   }
-  pub fn set_promise_hooks(
+  pub fn set_promise_hooks<I, B, A, R>(
     &mut self,
-    _init: crate::value::Local<'_, crate::value::Value>,
-    _before: crate::value::Local<'_, crate::value::Value>,
-    _after: crate::value::Local<'_, crate::value::Value>,
-    _resolve: crate::value::Local<'_, crate::value::Value>,
+    _init: I,
+    _before: B,
+    _after: A,
+    _resolve: R,
   ) {
   }
   pub fn set_wasm_streaming_callback(
