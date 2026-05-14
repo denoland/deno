@@ -37,6 +37,7 @@ const {
   SetPrototypeHas,
   String,
   Symbol,
+  SymbolDispose,
   SymbolFor,
   TypeError,
 } = primordials;
@@ -968,11 +969,8 @@ function mockMethodImpl(object, methodName, implementation, options) {
 
 const SUPPORTED_APIS = [
   "setTimeout",
-  "clearTimeout",
   "setInterval",
-  "clearInterval",
   "setImmediate",
-  "clearImmediate",
   "Date",
 ];
 
@@ -1075,11 +1073,6 @@ class MockTimers {
             this._setTimeout(callback, delay, args, false),
         );
         this.#mockGlobal("clearTimeout", (handle) => this._clearTimer(handle));
-      } else if (api === "clearTimeout") {
-        this.#mockGlobal(
-          "clearTimeout",
-          (handle) => this._clearTimer(handle),
-        );
       } else if (api === "setInterval") {
         this.#mockGlobal(
           "setInterval",
@@ -1087,21 +1080,11 @@ class MockTimers {
             this._setInterval(callback, delay, args),
         );
         this.#mockGlobal("clearInterval", (handle) => this._clearTimer(handle));
-      } else if (api === "clearInterval") {
-        this.#mockGlobal(
-          "clearInterval",
-          (handle) => this._clearTimer(handle),
-        );
       } else if (api === "setImmediate") {
         this.#mockGlobal(
           "setImmediate",
           (callback, ...args) => this._setTimeout(callback, 0, args, true),
         );
-        this.#mockGlobal(
-          "clearImmediate",
-          (handle) => this._clearTimer(handle),
-        );
-      } else if (api === "clearImmediate") {
         this.#mockGlobal(
           "clearImmediate",
           (handle) => this._clearTimer(handle),
@@ -1188,7 +1171,7 @@ class MockTimers {
     this._now = milliseconds;
   }
 
-  [SymbolFor("nodejs.dispose")]() {
+  [SymbolDispose]() {
     this.reset();
   }
 
@@ -1385,7 +1368,7 @@ const mock = {
     tick: (ms) => mockTimers.tick(ms),
     runAll: () => mockTimers.runAll(),
     setTime: (ms) => mockTimers.setTime(ms),
-    [SymbolFor("nodejs.dispose")]: () => mockTimers.reset(),
+    [SymbolDispose]: () => mockTimers.reset(),
   },
 };
 

@@ -9,7 +9,7 @@ test("reproducer from issue 32987 does not throw", () => {
 });
 
 test("setTimeout fires on tick", () => {
-  mock.timers.enable({ apis: ["setTimeout", "clearTimeout"] });
+  mock.timers.enable({ apis: ["setTimeout"] });
   let called = false;
   setTimeout(() => {
     called = true;
@@ -23,7 +23,7 @@ test("setTimeout fires on tick", () => {
 });
 
 test("setInterval fires repeatedly on tick", () => {
-  mock.timers.enable({ apis: ["setInterval", "clearInterval"] });
+  mock.timers.enable({ apis: ["setInterval"] });
   let count = 0;
   const id = setInterval(() => {
     count++;
@@ -37,7 +37,7 @@ test("setInterval fires repeatedly on tick", () => {
 });
 
 test("clearTimeout cancels a mocked timer", () => {
-  mock.timers.enable({ apis: ["setTimeout", "clearTimeout"] });
+  mock.timers.enable({ apis: ["setTimeout"] });
   let fired = false;
   const id = setTimeout(() => {
     fired = true;
@@ -61,7 +61,7 @@ test("clearTimeout works when only setTimeout is requested", () => {
 });
 
 test("setImmediate fires on tick", () => {
-  mock.timers.enable({ apis: ["setImmediate", "clearImmediate"] });
+  mock.timers.enable({ apis: ["setImmediate"] });
   let fired = false;
   setImmediate(() => {
     fired = true;
@@ -116,7 +116,7 @@ test("runAll runs all pending timers", () => {
 });
 
 test("runAll fires each interval exactly once", () => {
-  mock.timers.enable({ apis: ["setInterval", "clearInterval"] });
+  mock.timers.enable({ apis: ["setInterval"] });
   let count = 0;
   setInterval(() => {
     count++;
@@ -182,6 +182,16 @@ test("reset restores original globals", () => {
   assert.strictEqual(globalThis.Date, realDate);
 });
 
+test("Symbol.dispose resets original globals", () => {
+  const realSetTimeout = globalThis.setTimeout;
+  {
+    using timers = mock.timers;
+    timers.enable({ apis: ["setTimeout"] });
+    assert.notStrictEqual(globalThis.setTimeout, realSetTimeout);
+  }
+  assert.strictEqual(globalThis.setTimeout, realSetTimeout);
+});
+
 test("throws ERR_INVALID_STATE when not enabled", () => {
   assert.throws(() => mock.timers.tick(100), { code: "ERR_INVALID_STATE" });
   assert.throws(() => mock.timers.runAll(), { code: "ERR_INVALID_STATE" });
@@ -196,6 +206,9 @@ test("throws ERR_INVALID_STATE when enabling twice", () => {
 
 test("throws on invalid api name", () => {
   assert.throws(() => mock.timers.enable({ apis: ["unknown"] }), {
+    code: "ERR_INVALID_ARG_VALUE",
+  });
+  assert.throws(() => mock.timers.enable({ apis: ["clearTimeout"] }), {
     code: "ERR_INVALID_ARG_VALUE",
   });
 });
