@@ -70,6 +70,29 @@ impl<'s, T> Local<'s, T> {
   pub fn from_raw_for_test(raw: sys::JSValue) -> Self {
     Self::from_raw(raw)
   }
+
+  /// Reinterpret a Local as another type without runtime checks. Mirrors
+  /// rusty_v8's `Local::cast_unchecked`.
+  ///
+  /// # Safety
+  ///
+  /// The caller must guarantee that the underlying JSValue actually has
+  /// the type `U`. Misuse will produce undefined behavior at the C-API
+  /// level when `U`-typed methods are subsequently invoked on it.
+  pub unsafe fn cast_unchecked<U>(self) -> Local<'s, U> {
+    Local::from_raw(self.raw)
+  }
+
+  /// Type-checked downcast. Returns `Some` if the JSValue's tag matches
+  /// the target type's `ValueType::is` predicate. Mirrors rusty_v8's
+  /// `Local::try_cast` / `Local::cast`.
+  pub fn cast<U: ValueType>(self) -> Option<Local<'s, U>> {
+    if U::is(&self.raw) {
+      Some(Local::from_raw(self.raw))
+    } else {
+      None
+    }
+  }
 }
 
 // ----- Upcasts ----------------------------------------------------------

@@ -95,9 +95,145 @@ pub mod v8 {
   pub mod fast_api {
     //! Stub — QuickJS has no JIT and no fast-API analog. Fast-api call
     //! paths fall through to the slow path on the QuickJS backend.
-    pub struct FastApiCallbackOptions;
-    pub struct CFunction;
-    pub struct CTypeInfo;
+    //!
+    //! The op2 macro generates code that constructs `CFunction` /
+    //! `CFunctionInfo` / `CTypeInfo` descriptors and reads
+    //! `FastApiCallbackOptions::data`. We mirror their shape so the
+    //! generated code compiles; the slow-path callbacks fire instead
+    //! and the descriptors are never consulted at runtime.
+
+    use core::marker::PhantomData;
+
+    pub struct FastApiCallbackOptions<'s> {
+      pub data: super::Local<'s, super::Value>,
+      _scope: PhantomData<&'s ()>,
+    }
+
+    impl<'s> FastApiCallbackOptions<'s> {
+      pub fn data(&self) -> super::Local<'s, super::Value> {
+        self.data
+      }
+    }
+
+    /// Mirror of v8's `CTypeInfo`. We accept the same constructor args
+    /// and store nothing — the descriptor is never inspected because
+    /// fast paths are disabled on QuickJS.
+    #[derive(Copy, Clone)]
+    pub struct CTypeInfo {
+      _ty: Type,
+      _seq: SequenceType,
+      _flags: Flags,
+    }
+
+    impl CTypeInfo {
+      pub const fn new(ty: Type, seq: SequenceType, flags: Flags) -> Self {
+        Self {
+          _ty: ty,
+          _seq: seq,
+          _flags: flags,
+        }
+      }
+    }
+
+    /// Mirror of v8's `CFunctionInfo`. Stores its descriptor pointers as
+    /// raw pointers; on QuickJS the fast-call dispatcher doesn't read
+    /// them so we keep them as opaque addresses.
+    pub struct CFunctionInfo {
+      _return_info: *const CTypeInfo,
+      _args: *const CTypeInfo,
+      _len: usize,
+      _i64: Int64Representation,
+    }
+
+    impl CFunctionInfo {
+      pub const fn new(
+        return_info: *const CTypeInfo,
+        args: *const CTypeInfo,
+        len: usize,
+        i64: Int64Representation,
+      ) -> Self {
+        Self {
+          _return_info: return_info,
+          _args: args,
+          _len: len,
+          _i64: i64,
+        }
+      }
+    }
+
+    pub struct CFunction {
+      _addr: *const core::ffi::c_void,
+      _info: *const CFunctionInfo,
+    }
+
+    impl CFunction {
+      pub const fn new(
+        addr: *const core::ffi::c_void,
+        info: *const CFunctionInfo,
+      ) -> Self {
+        Self {
+          _addr: addr,
+          _info: info,
+        }
+      }
+    }
+
+    #[repr(u8)]
+    #[derive(Copy, Clone, Eq, PartialEq)]
+    pub enum Type {
+      Void,
+      Bool,
+      Uint8,
+      Uint32,
+      Int32,
+      Int64,
+      Uint64,
+      Float32,
+      Float64,
+      Pointer,
+      V8Value,
+      SeqOneByteString,
+      ApiObject,
+      Any,
+      CallbackOptions,
+    }
+
+    #[repr(u8)]
+    #[derive(Copy, Clone, Eq, PartialEq)]
+    pub enum SequenceType {
+      Scalar,
+      IsSequence,
+      IsTypedArray,
+      IsArrayBuffer,
+    }
+
+    /// Mirror of v8's `fast_api::Flags`. Bit-flag set; the values match
+    /// V8's enum where they exist. The fast-call dispatcher on QuickJS
+    /// never reads these so we just store them.
+    #[repr(transparent)]
+    #[derive(Copy, Clone, Eq, PartialEq, Debug)]
+    pub struct Flags(pub u8);
+
+    impl Flags {
+      pub const NONE: Self = Self(0);
+      pub const ALLOW_SHARED: Self = Self(1 << 0);
+      pub const ENFORCE_RANGE: Self = Self(1 << 1);
+      pub const CLAMP: Self = Self(1 << 2);
+    }
+
+    impl core::ops::BitOr for Flags {
+      type Output = Self;
+      fn bitor(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+      }
+    }
+
+    #[repr(u8)]
+    #[derive(Copy, Clone, Eq, PartialEq)]
+    pub enum Int64Representation {
+      Number,
+      BigInt,
+    }
   }
 
   pub mod inspector {

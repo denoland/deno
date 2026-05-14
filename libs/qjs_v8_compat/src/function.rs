@@ -52,6 +52,18 @@ impl<'s> FunctionCallbackArguments<'s> {
       _scope: std::marker::PhantomData,
     }
   }
+  /// Mirrors rusty_v8's `FunctionCallbackArguments::from_function_callback_info`.
+  /// The op2-generated code constructs args by handing in the raw info pointer.
+  ///
+  /// # Safety
+  ///
+  /// `info` must point to a valid `FunctionCallbackInfo` whose lifetime
+  /// covers `'s`.
+  pub unsafe fn from_function_callback_info(
+    info: *const FunctionCallbackInfo,
+  ) -> Self {
+    unsafe { Self::from_raw(info) }
+  }
   pub fn length(&self) -> i32 {
     unsafe { (*self.info).length }
   }
@@ -91,6 +103,25 @@ pub struct ReturnValue<'s, T = Value> {
 }
 
 impl<'s, T> ReturnValue<'s, T> {
+  /// Mirrors rusty_v8's `ReturnValue::from_function_callback_info`.
+  /// The op2-generated code constructs the return slot from the raw info
+  /// pointer; the slot lives at `implicit_args[V8_RETURN_VALUE_INDEX]`,
+  /// which on V8 is implicit_args[0]; we mirror that layout.
+  ///
+  /// # Safety
+  ///
+  /// `info` must point to a valid `FunctionCallbackInfo` whose lifetime
+  /// covers `'s`.
+  pub unsafe fn from_function_callback_info(
+    info: *const FunctionCallbackInfo,
+  ) -> Self {
+    unsafe {
+      Self {
+        slot: (*info).implicit_args,
+        _t: std::marker::PhantomData,
+      }
+    }
+  }
   pub fn set(&mut self, value: Local<'s, T>) {
     unsafe { *self.slot = value.raw }
   }

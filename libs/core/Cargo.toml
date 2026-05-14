@@ -55,6 +55,7 @@ libc.workspace = true
 parking_lot.workspace = true
 percent-encoding.workspace = true
 pin-project.workspace = true
+qjs_v8_compat = { workspace = true, optional = true }
 serde.workspace = true
 serde_json = { workspace = true, features = ["float_roundtrip", "preserve_order"] }
 serde_v8.workspace = true
@@ -66,7 +67,6 @@ thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
 v8.workspace = true
-qjs_v8_compat = { workspace = true, optional = true }
 wasm_dep_analyzer = "0.4.0"
 
 [target.'cfg(windows)'.dependencies]

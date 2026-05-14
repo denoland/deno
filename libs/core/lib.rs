@@ -62,6 +62,8 @@ pub use deno_path_util::specifier_has_uri_scheme;
 pub use deno_unsync as unsync;
 pub use futures;
 pub use parking_lot;
+#[cfg(feature = "quickjs")]
+pub use qjs_v8_compat::v8;
 pub use serde;
 pub use serde_json;
 pub use serde_v8;
@@ -74,7 +76,6 @@ pub use serde_v8::U16String;
 pub use sourcemap;
 pub use thiserror;
 pub use url;
-
 // Engine selector: by default, re-export the rusty_v8 crate so that
 // `deno_core::v8::*` resolves to V8. With `--features quickjs`, re-export
 // the QuickJS-ng-backed compat layer's `v8` module so consumers see the
@@ -90,8 +91,6 @@ pub use url;
 // engine without a separate fork.
 #[cfg(not(feature = "quickjs"))]
 pub use v8;
-#[cfg(feature = "quickjs")]
-pub use qjs_v8_compat::v8;
 
 pub use crate::async_cancel::CancelFuture;
 pub use crate::async_cancel::CancelHandle;
