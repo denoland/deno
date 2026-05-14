@@ -1439,6 +1439,23 @@ impl ModuleMap {
     referrer: &str,
     import_attributes: HashMap<String, String>,
   ) -> Option<v8::Local<'s, v8::Module>> {
+    // Synthetic ESM dispatch first, by raw specifier. The active loader
+    // may not know about the spec (e.g. `LazyEsmModuleLoader` only
+    // resolves `lazy_loaded_esm` entries), so checking before
+    // `resolve_sync` ensures the synthetic dispatch wins over a loader
+    // "cannot resolve" error. `node:foo` specifiers are their own
+    // canonical form, so no further resolution is needed.
+    if self.has_synthetic_esm_module(specifier) {
+      if let Some(id) = self.get_id(specifier, &RequestedModuleType::None)
+        && let Some(handle) = self.get_handle(id)
+      {
+        return Some(v8::Local::new(scope, handle));
+      }
+      if let Some(module) = self.try_resolve_synthetic_esm(scope, specifier) {
+        return Some(module);
+      }
+    }
+
     let resolved_specifier =
       match self.resolve_sync(specifier, referrer, ResolutionKind::Import) {
         Ok(s) => s,
@@ -1457,9 +1474,9 @@ impl ModuleMap {
       return Some(v8::Local::new(scope, handle));
     }
 
-    // Synthetic ESM dispatch: if the specifier was registered via
-    // `synthetic_esm`, build a synthetic module from the IIFE exports of
-    // its backing script.
+    // Synthetic ESM dispatch (post-resolve): in case the loader returned
+    // a redirected/normalized form, also check here. Most callers hit
+    // the pre-resolve branch above.
     if let Some(module) =
       self.try_resolve_synthetic_esm(scope, resolved_specifier.as_str())
     {
