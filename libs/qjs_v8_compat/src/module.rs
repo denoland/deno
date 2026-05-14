@@ -48,16 +48,12 @@ impl<'s> Local<'s, Module> {
   pub fn get_module_namespace(&self) -> Local<'s, Object> {
     Local::from_raw(sys::jsv_undefined())
   }
-  pub fn evaluate<S>(&self, _scope: S) -> Option<Local<'s, Value>>
-  where
-    S: Sized,
-  {
-    let _ = _scope;
+  pub fn evaluate<S>(&self, _scope: &mut S) -> Option<Local<'s, Value>> {
     None
   }
   pub fn instantiate_module<S, C>(
     &self,
-    _scope: S,
+    _scope: &mut S,
     _cb: C,
   ) -> Option<bool> {
     Some(true)
@@ -73,7 +69,7 @@ impl<'s> Local<'s, Module> {
   }
   pub fn instantiate_module2<S, C, F>(
     &self,
-    scope: S,
+    scope: &mut S,
     cb: C,
     _src_cb: F,
   ) -> Option<bool> {
@@ -81,7 +77,7 @@ impl<'s> Local<'s, Module> {
   }
   pub fn evaluate_for_import_defer<S>(
     &self,
-    _scope: S,
+    _scope: &mut S,
   ) -> Option<Local<'s, Value>> {
     None
   }
@@ -99,13 +95,13 @@ impl<'s> Local<'s, Module> {
   }
   pub fn get_stalled_top_level_await_message<S>(
     &self,
-    _scope: S,
+    _scope: &mut S,
   ) -> Vec<(Local<'s, Module>, Local<'s, crate::value::Message>)> {
     Vec::new()
   }
   pub fn set_synthetic_module_export<S>(
     &self,
-    _scope: S,
+    _scope: &mut S,
     _export_name: Local<'_, crate::primitives::String>,
     _value: Local<'_, Value>,
   ) -> Option<bool> {

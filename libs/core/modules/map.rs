@@ -2447,7 +2447,7 @@ impl ModuleMap {
 
     let mod_ns = module_local.get_module_namespace();
 
-    Ok(v8::Global::new(scope, mod_ns))
+    Ok(v8::Global::new(scope, mod_ns.into()))
   }
 
   /// Check if a lazy-loaded ESM module is known to exist for the given
