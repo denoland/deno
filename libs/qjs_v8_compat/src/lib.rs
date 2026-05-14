@@ -97,12 +97,15 @@ pub use crate::v8::Int16Array;
 pub use crate::v8::Int32;
 pub use crate::v8::Int32Array;
 pub use crate::v8::NearHeapLimitCallback;
+pub use crate::v8::PlatformImpl;
 pub use crate::v8::Task;
 pub use crate::v8::Uint8ClampedArray;
 pub use crate::v8::Uint16Array;
 pub use crate::v8::Uint32;
 pub use crate::v8::Uint32Array;
+pub use crate::v8::UniquePtr;
 pub use crate::v8::V8;
+pub use crate::v8::WasmModuleObject;
 pub use crate::v8::WriteFlags;
 // And the sub-namespaces — these have to be explicit `pub use` because
 // glob re-export doesn't include modules.
@@ -240,10 +243,10 @@ pub mod v8 {
 
     /// Marker trait — same shape as rusty_v8's `cppgc::GarbageCollected`.
     /// On QuickJS no specialized GC tracing happens; the JSRuntime's
-    /// refcount is the only mechanism. The two methods mirror rusty_v8's
-    /// trait surface; deno_core's bindings call `trace`/`get_name` which
-    /// have no-op effect under refcounting.
-    pub trait GarbageCollected {
+    /// refcount is the only mechanism. Marked `unsafe` to match rusty_v8;
+    /// deno_core's `unsafe impl GarbageCollected for ...` blocks rely on
+    /// that.
+    pub unsafe trait GarbageCollected {
       fn trace(&self, _visitor: &Visitor) {}
       fn get_name(&self) -> &'static core::ffi::CStr {
         c"qjs::GarbageCollected"
@@ -251,7 +254,7 @@ pub mod v8 {
     }
 
     /// Trait stub for `cppgc::Traced`.
-    pub trait Traced {
+    pub unsafe trait Traced {
       fn trace(&self, _visitor: &Visitor) {}
     }
 
@@ -445,10 +448,53 @@ pub mod v8 {
     /// Stub trait for `inspector::V8InspectorClientImpl`. On QuickJS the
     /// inspector path is never taken; deno_core's session bookkeeping
     /// implements this trait but the methods are unreachable at runtime.
-    pub trait V8InspectorClientImpl {}
+    /// The method set mirrors rusty_v8's so deno_core's impl block
+    /// matches.
+    pub trait V8InspectorClientImpl {
+      fn run_message_loop_on_pause(&self, _context_group_id: i32) {}
+      fn quit_message_loop_on_pause(&self) {}
+      fn run_if_waiting_for_debugger(&self, _context_group_id: i32) {}
+      fn ensure_default_context_in_group(
+        &self,
+        _context_group_id: i32,
+      ) -> Option<crate::value::Local<'_, crate::context::Context>> {
+        None
+      }
+      fn resource_name_to_url(
+        &self,
+        _resource_name: &StringView<'_>,
+      ) -> Option<UniquePtr<StringBuffer>> {
+        None
+      }
+    }
 
-    /// Stub trait for `inspector::ChannelImpl`.
-    pub trait ChannelImpl {}
+    /// Stub trait for `inspector::ChannelImpl`. Same approach as
+    /// V8InspectorClientImpl.
+    pub trait ChannelImpl {
+      fn send_response(
+        &self,
+        _call_id: i32,
+        _message: UniquePtr<StringBuffer>,
+      ) {
+      }
+      fn send_notification(&self, _message: UniquePtr<StringBuffer>) {}
+      fn flush_protocol_notifications(&self) {}
+    }
+
+    /// Mirror of v8's `UniquePtr<T>`. Just a wrapper around Option<Box<T>>
+    /// so deno_core's signatures (which use `v8::UniquePtr<...>`) compile.
+    pub struct UniquePtr<T>(Option<Box<T>>);
+    impl<T> UniquePtr<T> {
+      pub fn from(value: Box<T>) -> Self {
+        Self(Some(value))
+      }
+      pub fn into_raw(self) -> *mut T {
+        match self.0 {
+          Some(b) => Box::into_raw(b),
+          None => core::ptr::null_mut(),
+        }
+      }
+    }
   }
 
   pub mod icu {
@@ -624,10 +670,43 @@ pub mod v8 {
     }
   }
 
-  /// Stub trait for `v8::PlatformImpl`. deno_core defines a custom
-  /// platform implementation in some test paths; under QuickJS the
-  /// platform abstraction is unused.
-  pub trait PlatformImpl {}
+  /// Stub trait for `v8::PlatformImpl`. deno_core implements this on
+  /// its custom platform type; under QuickJS the platform abstraction
+  /// is unused but the trait must accept the method set deno_core
+  /// declares.
+  pub trait PlatformImpl {
+    fn post_task(&self, _isolate_ptr: *mut core::ffi::c_void, _task: Task) {}
+    fn post_non_nestable_task(
+      &self,
+      _isolate_ptr: *mut core::ffi::c_void,
+      _task: Task,
+    ) {
+    }
+    fn post_delayed_task(
+      &self,
+      _isolate_ptr: *mut core::ffi::c_void,
+      _task: Task,
+      _delay_in_seconds: f64,
+    ) {
+    }
+    fn post_non_nestable_delayed_task(
+      &self,
+      _isolate_ptr: *mut core::ffi::c_void,
+      _task: Task,
+      _delay_in_seconds: f64,
+    ) {
+    }
+    fn post_idle_task(
+      &self,
+      _isolate_ptr: *mut core::ffi::c_void,
+      _task: IdleTask,
+    ) {
+    }
+  }
+
+  // Re-export inspector::UniquePtr as v8::UniquePtr so deno_core
+  // signatures using `v8::UniquePtr<v8::inspector::StringBuffer>` resolve.
+  pub use inspector::UniquePtr;
 
   // Typed-array stubs. QuickJS-ng has typed arrays under the hood (they're
   // ordinary JSObjects of class TypedArray) but we don't yet expose
@@ -662,6 +741,8 @@ pub mod v8 {
   pub struct Uint32;
   pub struct Task;
   pub struct IdleTask;
+  /// Stub for v8::WasmModuleObject. QuickJS has no WASM.
+  pub struct WasmModuleObject;
   pub type NearHeapLimitCallback = unsafe extern "C" fn(
     data: *mut core::ffi::c_void,
     current_heap_limit: usize,

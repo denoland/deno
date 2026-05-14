@@ -45,54 +45,59 @@ unsafe impl Sync for ExternalReference {}
 // algorithm. QuickJS-ng has a similar serializer via `JS_WriteObject` /
 // `JS_ReadObject` for cross-realm clone; we wire that up.
 
+// Trait signatures match deno_core's existing impls (which target rusty_v8):
+// `&self` (not `&mut self`), and the WASM/SAB hooks take `Local` of the
+// specific type rusty_v8 declares (WasmModuleObject for WASM,
+// SharedArrayBuffer for SAB). `has_custom_host_object` takes an Isolate
+// reference.
 pub trait ValueSerializerImpl {
   fn write_host_object<'s>(
-    &mut self,
+    &self,
     _scope: &mut HandleScope<'s>,
     _object: Local<'s, crate::object::Object>,
+    _value_serializer: &dyn ValueSerializerHelper,
   ) -> Option<bool> {
     Some(false)
   }
   fn throw_data_clone_error<'s>(
-    &mut self,
+    &self,
     _scope: &mut HandleScope<'s>,
     _message: Local<'s, crate::primitives::String>,
   ) {
   }
-  /// Mirrors v8::ValueSerializerImpl::is_host_object — returns whether
-  /// the value should be serialized via the host_object path. Defaults
-  /// to false on QuickJS (no host objects).
   fn is_host_object<'s>(
-    &mut self,
+    &self,
     _scope: &mut HandleScope<'s>,
     _object: Local<'s, crate::object::Object>,
   ) -> Option<bool> {
     Some(false)
   }
-  /// Mirrors v8::ValueSerializerImpl::has_custom_host_object — feature
-  /// gate for the host_object protocol.
-  fn has_custom_host_object(&mut self) -> bool {
+  fn has_custom_host_object(&self, _isolate: &crate::isolate::Isolate) -> bool {
     false
   }
-  /// Mirrors v8::ValueSerializerImpl::get_shared_array_buffer_id.
-  /// QuickJS has no SAB; always returns None.
   fn get_shared_array_buffer_id<'s>(
-    &mut self,
+    &self,
     _scope: &mut HandleScope<'s>,
     _shared_array_buffer: Local<'s, crate::buffer::SharedArrayBuffer>,
   ) -> Option<u32> {
     None
   }
-  /// Mirrors v8::ValueSerializerImpl::get_wasm_module_transfer_id.
-  /// QuickJS has no WASM; always returns None.
   fn get_wasm_module_transfer_id<'s>(
-    &mut self,
+    &self,
     _scope: &mut HandleScope<'s>,
-    _module: Local<'s, crate::value::Value>,
+    _module: Local<'s, crate::v8::WasmModuleObject>,
   ) -> Option<u32> {
     None
   }
 }
+
+/// Mirror of rusty_v8's `ValueSerializerHelper` — passed to host-object
+/// write callbacks so they can recurse into the serializer state. Empty
+/// stub on QuickJS; the host_object path isn't exercised.
+pub trait ValueSerializerHelper {}
+
+/// Mirror of rusty_v8's `ValueDeserializerHelper`.
+pub trait ValueDeserializerHelper {}
 
 pub struct ValueSerializer<'s, I> {
   _impl: I,
@@ -122,27 +127,24 @@ impl<'s, I: ValueSerializerImpl> ValueSerializer<'s, I> {
 
 pub trait ValueDeserializerImpl {
   fn read_host_object<'s>(
-    &mut self,
+    &self,
     _scope: &mut HandleScope<'s>,
+    _value_deserializer: &dyn ValueDeserializerHelper,
   ) -> Option<Local<'s, crate::object::Object>> {
     None
   }
-  /// Mirrors v8::ValueDeserializerImpl::get_shared_array_buffer_from_id.
-  /// QuickJS has no SAB; always returns None.
   fn get_shared_array_buffer_from_id<'s>(
-    &mut self,
+    &self,
     _scope: &mut HandleScope<'s>,
     _transfer_id: u32,
   ) -> Option<Local<'s, crate::buffer::SharedArrayBuffer>> {
     None
   }
-  /// Mirrors v8::ValueDeserializerImpl::get_wasm_module_from_id.
-  /// QuickJS has no WASM; always returns None.
   fn get_wasm_module_from_id<'s>(
-    &mut self,
+    &self,
     _scope: &mut HandleScope<'s>,
     _clone_id: u32,
-  ) -> Option<Local<'s, crate::value::Value>> {
+  ) -> Option<Local<'s, crate::v8::WasmModuleObject>> {
     None
   }
 }
@@ -171,10 +173,7 @@ impl<'s, I: ValueDeserializerImpl> ValueDeserializer<'s, I> {
   }
 }
 
-// Helper traits surfaced by deno_core's serde_v8 integration. They're
-// purely opt-in extension points.
-pub trait ValueSerializerHelper {}
-pub trait ValueDeserializerHelper {}
+// (ValueSerializerHelper and ValueDeserializerHelper are declared above.)
 
 // Cached data for compiled scripts/modules.
 pub struct CachedData(pub Vec<u8>);
