@@ -1,0 +1,115 @@
+Testing v8 version different from logging version
+(node:76267) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+Statistical profiling result from /tmp/prof_url/v8.log, (1559 ticks, 44 unaccounted, 0 excluded).
+ [Shared libraries]:
+   ticks  total  nonlib   name
+   1209   77.5%          /var/agent-loop/repo/target/release/deno
+    111    7.1%          /usr/lib/x86_64-linux-gnu/libc.so.6
+ [JavaScript]:
+   ticks  total  nonlib   name
+     35    2.2%   14.6%  Builtin: LoadIC
+     16    1.0%    6.7%  JS: *<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+     11    0.7%    4.6%  Builtin: StringPrototypeToWellFormed
+     11    0.7%    4.6%  Builtin: ObjectPrototypeHasOwnProperty
+      8    0.5%    3.3%  Builtin: KeyedLoadIC_Megamorphic
+      8    0.5%    3.3%  Builtin: ArrayMap
+      7    0.4%    2.9%  Builtin: CallFunction_ReceiverIsNullOrUndefined
+      6    0.4%    2.5%  Builtin: ObjectHasOwn
+      6    0.4%    2.5%  Builtin: KeyedStoreIC_Megamorphic
+      5    0.3%    2.1%  JS: *<anonymous> ext:deno_web/00_url.js:159:9
+      5    0.3%    2.1%  Builtin: CreateShallowObjectLiteral
+      5    0.3%    2.1%  Builtin: Call_ReceiverIsNullOrUndefined
+      4    0.3%    1.7%  Builtin: CallFunction_ReceiverIsAny
+      4    0.3%    1.7%  Builtin: CEntry_Return1_ArgvOnStack_NoBuiltinExit
+      3    0.2%    1.3%  Builtin: RecordWriteSaveFP
+      3    0.2%    1.3%  Builtin: ObjectKeys
+      2    0.1%    0.8%  JS: +<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+      2    0.1%    0.8%  Builtin: KeyedStoreICTrampoline_Megamorphic
+      2    0.1%    0.8%  Builtin: KeyedLoadIC
+      2    0.1%    0.8%  Builtin: ForInEnumerate
+      2    0.1%    0.8%  Builtin: FastNewObject
+      2    0.1%    0.8%  Builtin: CallApiCallbackOptimizedNoProfiling
+      1    0.1%    0.4%  JS: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:21:31
+      1    0.1%    0.4%  Builtin: Typeof
+      1    0.1%    0.4%  Builtin: StringPrototypeSlice
+      1    0.1%    0.4%  Builtin: LoadICTrampoline
+      1    0.1%    0.4%  Builtin: KeyedLoadICTrampoline_Megamorphic
+      1    0.1%    0.4%  Builtin: Call_ReceiverIsAny
+      1    0.1%    0.4%  Builtin: ArrayFilter
+ [C++]:
+   ticks  total  nonlib   name
+     14    0.9%    5.9%  __libc_malloc@@GLIBC_2.2.5
+     11    0.7%    4.6%  __libc_free@@GLIBC_2.2.5
+      7    0.4%    2.9%  syscall@@GLIBC_2.2.5
+      4    0.3%    1.7%  __libc_realloc@@GLIBC_2.2.5
+      2    0.1%    0.8%  __getpid@@GLIBC_2.2.5
+      1    0.1%    0.4%  __mmap@@GLIBC_PRIVATE
+ [Summary]:
+   ticks  total  nonlib   name
+    156   10.0%   65.3%  JavaScript
+     39    2.5%   16.3%  C++
+     42    2.7%   17.6%  GC
+   1320   84.7%          Shared libraries
+     44    2.8%          Unaccounted
+ [C++ entry points]:
+   ticks    cpp   total   name
+     14   46.7%    0.9%  __libc_malloc@@GLIBC_2.2.5
+     11   36.7%    0.7%  __libc_free@@GLIBC_2.2.5
+      4   13.3%    0.3%  __libc_realloc@@GLIBC_2.2.5
+      1    3.3%    0.1%  syscall@@GLIBC_2.2.5
+ [Bottom up (heavy) profile]:
+  Note: percentage shows a share of a particular caller in the total
+  amount of its parent calls.
+  Callers occupying less than 1.0% are not shown.
+   ticks parent  name
+   1209   77.5%  /var/agent-loop/repo/target/release/deno
+   1106   91.5%    Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:1:1
+   1106  100.0%      Builtin: GeneratorPrototypeNext
+     56    4.6%    /var/agent-loop/repo/target/release/deno
+     28   50.0%      JS: *<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+     28  100.0%        Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:1:1
+     28  100.0%          Builtin: GeneratorPrototypeNext
+     21   37.5%      Builtin: ObjectKeys
+     21  100.0%        Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:1:1
+     21  100.0%          Builtin: GeneratorPrototypeNext
+      5    8.9%      Builtin: StringPrototypeToWellFormed
+      3   60.0%        JS: *<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+      3  100.0%          Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:1:1
+      3  100.0%            Builtin: GeneratorPrototypeNext
+      1   20.0%        Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:1:1
+      1  100.0%          Builtin: GeneratorPrototypeNext
+      1   20.0%        JS: +<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+      1  100.0%          Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:1:1
+      1  100.0%            Builtin: GeneratorPrototypeNext
+      1    1.8%      Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:1:1
+      1  100.0%        Builtin: GeneratorPrototypeNext
+      1    1.8%      JS: +<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+      1  100.0%        Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:1:1
+      1  100.0%          Builtin: GeneratorPrototypeNext
+    111    7.1%  /usr/lib/x86_64-linux-gnu/libc.so.6
+    104   93.7%    Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:1:1
+    104  100.0%      Builtin: GeneratorPrototypeNext
+     44    2.8%  UNKNOWN
+     42   95.5%    Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:1:1
+     42  100.0%      Builtin: GeneratorPrototypeNext
+      1    2.3%    JS: ^bench file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:10:15
+      1  100.0%      Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:1:1
+      1  100.0%        Builtin: GeneratorPrototypeNext
+     35    2.2%  Builtin: LoadIC
+     24   68.6%    Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:1:1
+     24  100.0%      Builtin: GeneratorPrototypeNext
+      9   25.7%    JS: *<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+      9  100.0%      Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:1:1
+      9  100.0%        Builtin: GeneratorPrototypeNext
+      1    2.9%    JS: ^<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+      1  100.0%      JS: ^<anonymous> ext:deno_web/00_url.js:889:7
+      1  100.0%        JS: ^URLSearchParams ext:deno_web/00_url.js:120:14
+      1  100.0%          JS: ^<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:81:28
+      1  100.0%            Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:1:1
+      1    2.9%    JS: +<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+      1  100.0%      Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:1:1
+      1  100.0%        Builtin: GeneratorPrototypeNext
+     16    1.0%  JS: *<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+     16  100.0%    Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/url/micro/url_micro.js:1:1
+     16  100.0%      Builtin: GeneratorPrototypeNext
