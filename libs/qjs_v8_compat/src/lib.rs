@@ -356,6 +356,16 @@ pub mod v8 {
       pub fn data(&self) -> super::Local<'s, super::Value> {
         self.data
       }
+      /// Recover the active `&mut Isolate` from the fast-callback. On
+      /// QuickJS the fast path is never actually taken (slow path
+      /// fires instead), but op2-emitted code references this to
+      /// satisfy `&mut Isolate` arguments.
+      pub fn isolate_unchecked_mut(
+        &mut self,
+      ) -> &mut crate::isolate::Isolate {
+        let p = crate::isolate::current_isolate_ptr();
+        unsafe { &mut *p }
+      }
     }
 
     /// Mirror of v8's `CTypeInfo`. We accept the same constructor args
@@ -1121,6 +1131,55 @@ pub mod v8 {
   pub use crate::buffer::Float32Array;
   pub use crate::buffer::Float64Array;
   pub use crate::buffer::Uint32Array;
+
+  // GC callback stubs used by ext/telemetry.
+  #[derive(Copy, Clone, Default)]
+  pub struct GCType(pub u32);
+  impl GCType {
+    pub const ALL: Self = Self(0xff);
+    pub const SCAVENGE: Self = Self(1);
+    pub const MARK_SWEEP_COMPACT: Self = Self(2);
+    pub const INCREMENTAL_MARKING: Self = Self(4);
+    pub const PROCESS_WEAK_CALLBACKS: Self = Self(8);
+  }
+  #[derive(Copy, Clone, Default)]
+  pub struct GCCallbackFlags(pub u32);
+
+  pub type GCCallback = fn(&mut crate::isolate::Isolate, GCType, GCCallbackFlags);
+
+  // String content viewer stubs — used by ext/telemetry to read raw
+  // string contents without materializing a Rust String.
+  pub struct ValueView<'s> {
+    _p: core::marker::PhantomData<&'s ()>,
+  }
+  pub struct ValueViewData<'a> {
+    _p: core::marker::PhantomData<&'a ()>,
+  }
+  impl<'s> ValueView<'s> {
+    pub fn new<'a>(
+      _scope: &mut crate::scope::HandleScope<'a>,
+      _s: crate::value::Local<'a, crate::primitives::String>,
+    ) -> Self {
+      Self { _p: core::marker::PhantomData }
+    }
+    pub fn length(&self) -> usize {
+      0
+    }
+    pub fn data(&self) -> ValueViewData<'_> {
+      ValueViewData { _p: core::marker::PhantomData }
+    }
+  }
+  impl<'a> ValueViewData<'a> {
+    pub fn is_one_byte(&self) -> bool {
+      true
+    }
+    pub fn one_byte_data(&self) -> &[u8] {
+      &[]
+    }
+    pub fn two_byte_data(&self) -> &[u16] {
+      &[]
+    }
+  }
 
   // Other oddballs deno_core references by name.
   pub struct Int32;

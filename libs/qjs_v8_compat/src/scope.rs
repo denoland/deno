@@ -44,6 +44,43 @@ impl<'r, T: ?Sized> std::ops::DerefMut for PinnedRef<'r, T> {
   }
 }
 
+/// Heap stats stubs used by ext/telemetry.
+#[derive(Default)]
+pub struct HeapStatistics {
+  _p: (),
+}
+impl HeapStatistics {
+  pub fn new() -> Self { Self::default() }
+  pub fn total_heap_size(&self) -> usize { 0 }
+  pub fn total_heap_size_executable(&self) -> usize { 0 }
+  pub fn total_physical_size(&self) -> usize { 0 }
+  pub fn total_available_size(&self) -> usize { 0 }
+  pub fn used_heap_size(&self) -> usize { 0 }
+  pub fn heap_size_limit(&self) -> usize { 0 }
+  pub fn malloced_memory(&self) -> usize { 0 }
+  pub fn peak_malloced_memory(&self) -> usize { 0 }
+  pub fn does_zap_garbage(&self) -> bool { false }
+  pub fn number_of_native_contexts(&self) -> usize { 0 }
+  pub fn number_of_detached_contexts(&self) -> usize { 0 }
+  pub fn external_memory(&self) -> usize { 0 }
+  pub fn used_global_handles_size(&self) -> usize { 0 }
+  pub fn total_global_handles_size(&self) -> usize { 0 }
+  pub fn total_heap_size_executable_size(&self) -> usize { 0 }
+}
+
+#[derive(Default)]
+pub struct HeapSpaceStatistics {
+  _p: (),
+}
+impl HeapSpaceStatistics {
+  pub fn new() -> Self { Self::default() }
+  pub fn space_name(&self) -> &'static str { "" }
+  pub fn space_size(&self) -> usize { 0 }
+  pub fn space_used_size(&self) -> usize { 0 }
+  pub fn space_available_size(&self) -> usize { 0 }
+  pub fn physical_space_size(&self) -> usize { 0 }
+}
+
 /// The handle scope. On drop, all values registered with `track_owned`
 /// have `JS_FreeValue` called on them.
 pub struct HandleScope<'s, C = Context> {
@@ -264,6 +301,47 @@ impl<'s, C> HandleScope<'s, C> {
 
   /// Mirror of `HandleScope::cancel_terminate_execution`.
   pub fn cancel_terminate_execution(&mut self) {}
+  /// `Isolate::add_gc_prologue_callback` / `epilogue_callback` —
+  /// no-op stubs (QuickJS doesn't expose V8-style GC hooks).
+  pub fn add_gc_prologue_callback(
+    &mut self,
+    _cb: crate::v8::GCCallback,
+    _data: *mut std::ffi::c_void,
+    _gc_type: crate::v8::GCType,
+  ) {
+  }
+  pub fn add_gc_epilogue_callback(
+    &mut self,
+    _cb: crate::v8::GCCallback,
+    _data: *mut std::ffi::c_void,
+    _gc_type: crate::v8::GCType,
+  ) {
+  }
+  pub fn remove_gc_prologue_callback(
+    &mut self,
+    _cb: crate::v8::GCCallback,
+    _data: *mut std::ffi::c_void,
+  ) {
+  }
+  pub fn remove_gc_epilogue_callback(
+    &mut self,
+    _cb: crate::v8::GCCallback,
+    _data: *mut std::ffi::c_void,
+  ) {
+  }
+  pub fn get_heap_space_statistics(
+    &mut self,
+    _stats: &mut HeapSpaceStatistics,
+    _index: usize,
+  ) -> bool {
+    false
+  }
+  pub fn get_number_of_data_slots(&mut self) -> u32 {
+    8
+  }
+  pub fn number_of_heap_spaces(&self) -> usize {
+    0
+  }
 
   /// Mirror of rusty_v8's `HandleScope::escape` — used by EscapableHandleScope
   /// to extend a handle to the parent scope's lifetime. On QuickJS we

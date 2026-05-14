@@ -335,6 +335,12 @@ impl Isolate {
     let p = current_isolate_ptr();
     Self::from_raw_isolate_ptr_inner(p)
   }
+  /// Alias for `from_raw_isolate_ptr` — ext/telemetry calls this name.
+  pub unsafe fn from_raw_isolate_ptr_unchecked<'a>(
+    ptr: impl Into<UnsafeRawIsolatePtr>,
+  ) -> &'a mut Self {
+    unsafe { Self::from_raw_isolate_ptr(ptr) }
+  }
   pub unsafe fn from_raw_isolate_ptr_inner<'a>(ptr: *mut Self) -> &'a mut Self {
     unsafe { &mut *ptr }
   }
