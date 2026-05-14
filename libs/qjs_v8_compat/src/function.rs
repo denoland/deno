@@ -24,6 +24,10 @@ impl Function {
 pub type FunctionCallback = unsafe extern "C" fn(*const FunctionCallbackInfo);
 
 pub type PropertyCallback = unsafe extern "C" fn();
+pub type WasmStreamingCallback = unsafe extern "C" fn();
+pub type FunctionCallbackOptions = ();
+pub type AccessorNameSetterCallback = unsafe extern "C" fn();
+pub type AccessorNameGetterCallback = unsafe extern "C" fn();
 
 /// Adapter trait V8 uses to convert various function pointer flavors to
 /// `FunctionCallback`. We mirror it. Implemented for FunctionCallback

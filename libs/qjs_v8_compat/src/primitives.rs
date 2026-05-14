@@ -81,6 +81,54 @@ impl String {
     let s = std::string::String::from_utf16_lossy(units);
     Self::new(scope, &s)
   }
+  pub fn new_from_onebyte_const<'s>(
+    scope: &mut HandleScope<'s>,
+    bytes: &'static OneByteConst,
+  ) -> Option<Local<'s, String>> {
+    Self::new(scope, bytes.data)
+  }
+  pub fn create_external_onebyte_const(
+    bytes: &'static [u8],
+  ) -> &'static OneByteConst {
+    let s = std::str::from_utf8(bytes).unwrap_or("");
+    Box::leak(Box::new(OneByteConst { data: s }))
+  }
+  // Marker-level method shims — deno_core sometimes invokes through
+  // `&v8::String` (the marker, not `Local<String>`). The marker is a
+  // ZST so these can't introspect the underlying value.
+  pub fn length(&self) -> usize {
+    0
+  }
+  pub fn is_onebyte(&self) -> bool {
+    true
+  }
+  pub fn contains_only_onebyte(&self) -> bool {
+    true
+  }
+  pub fn write_one_byte_uninit_v2<'sc, S>(
+    &self,
+    _scope: &mut S,
+    _start: usize,
+    _buf: &mut [std::mem::MaybeUninit<u8>],
+    _flags: crate::v8::WriteFlags,
+  ) -> usize {
+    0
+  }
+  pub fn write_utf8_into<'sc, S>(
+    &self,
+    _scope: &mut S,
+    _buf: &mut [std::mem::MaybeUninit<u8>],
+    _flags: crate::v8::WriteFlags,
+  ) -> (usize, usize) {
+    (0, 0)
+  }
+  pub fn to_rust_cow_lossy<'sc, 'b, S>(
+    &self,
+    _scope: &mut S,
+    _buf: &'b mut [std::mem::MaybeUninit<u8>],
+  ) -> std::borrow::Cow<'b, str> {
+    std::borrow::Cow::Borrowed("")
+  }
 }
 
 impl<'s> Local<'s, String> {
@@ -103,6 +151,36 @@ impl<'s> Local<'s, String> {
     scope: &mut HandleScope<'s>,
   ) -> std::string::String {
     sys::to_string_lossy(scope.ctx(), self.raw).unwrap_or_default()
+  }
+  pub fn is_onebyte(&self) -> bool {
+    true
+  }
+  pub fn write_one_byte_uninit_v2<'sc>(
+    &self,
+    _scope: &mut HandleScope<'sc>,
+    _start: usize,
+    buf: &mut [std::mem::MaybeUninit<u8>],
+    _flags: crate::v8::WriteFlags,
+  ) -> usize {
+    let s = sys::to_string_lossy(_scope.ctx(), self.raw).unwrap_or_default();
+    let n = s.len().min(buf.len());
+    for (i, b) in s.as_bytes()[..n].iter().enumerate() {
+      buf[i].write(*b);
+    }
+    n
+  }
+  pub fn write_utf8_into<'sc>(
+    &self,
+    _scope: &mut HandleScope<'sc>,
+    buf: &mut [std::mem::MaybeUninit<u8>],
+    _flags: crate::v8::WriteFlags,
+  ) -> (usize, usize) {
+    let s = sys::to_string_lossy(_scope.ctx(), self.raw).unwrap_or_default();
+    let n = s.len().min(buf.len());
+    for (i, b) in s.as_bytes()[..n].iter().enumerate() {
+      buf[i].write(*b);
+    }
+    (n, n)
   }
 }
 
@@ -142,6 +220,9 @@ impl<'s> Local<'s, Integer> {
       sys::JS_TAG_FLOAT64 => unsafe { self.raw.u.float64 as i64 },
       _ => 0,
     }
+  }
+  pub fn int32_value<S>(&self, _scope: &mut S) -> Option<i32> {
+    Some(self.value() as i32)
   }
 }
 

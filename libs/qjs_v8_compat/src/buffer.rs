@@ -143,6 +143,12 @@ impl<'s> Local<'s, ArrayBuffer> {
   pub fn get_backing_store(&self) -> std::sync::Arc<BackingStore> {
     std::sync::Arc::new(BackingStore { data: Box::new([]) })
   }
+  pub fn data(&self) -> std::ptr::NonNull<core::ffi::c_void> {
+    std::ptr::NonNull::dangling()
+  }
+  pub fn was_detached(&self) -> bool {
+    false
+  }
 }
 
 impl SharedArrayBuffer {
@@ -154,6 +160,18 @@ impl SharedArrayBuffer {
     // does not provide. Using SAB on the QuickJS backend throws at runtime
     // (deno_core tests that need SAB are gated to V8).
     Local::from_raw(sys::jsv_undefined())
+  }
+  pub fn with_backing_store<'s>(
+    _scope: &mut HandleScope<'s>,
+    _backing: &std::sync::Arc<BackingStore>,
+  ) -> Local<'s, SharedArrayBuffer> {
+    Local::from_raw(sys::jsv_undefined())
+  }
+}
+
+impl<'s> Local<'s, SharedArrayBuffer> {
+  pub fn get_backing_store(&self) -> std::sync::Arc<BackingStore> {
+    std::sync::Arc::new(BackingStore { data: Box::new([]) })
   }
 }
 
@@ -191,6 +209,17 @@ impl<'s> Local<'s, ArrayBufferView> {
   }
   pub fn byte_length(&self) -> usize {
     0
+  }
+  pub fn data(&self) -> std::ptr::NonNull<core::ffi::c_void> {
+    std::ptr::NonNull::dangling()
+  }
+  pub fn get_backing_store(&self) -> std::sync::Arc<BackingStore> {
+    std::sync::Arc::new(BackingStore { data: Box::new([]) })
+  }
+  pub fn get_contents_raw_parts(
+    &self,
+  ) -> (std::ptr::NonNull<core::ffi::c_void>, usize, usize) {
+    (std::ptr::NonNull::dangling(), 0, 0)
   }
 }
 

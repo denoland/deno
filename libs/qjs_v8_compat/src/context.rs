@@ -66,6 +66,30 @@ impl<'s> Local<'s, Context> {
   pub(crate) fn ctx_raw(&self) -> sys::Context {
     unsafe { self.raw.u.ptr as sys::Context }
   }
+  pub fn extend_lifetime_unchecked<'r>(self) -> Local<'r, Context> {
+    unsafe { core::mem::transmute(self) }
+  }
+  pub fn get_aligned_pointer_from_embedder_data(
+    &self,
+    _index: i32,
+  ) -> *mut std::ffi::c_void {
+    std::ptr::null_mut()
+  }
+  pub fn set_aligned_pointer_in_embedder_data(
+    &self,
+    _index: i32,
+    _value: *mut std::ffi::c_void,
+  ) {
+  }
+}
+
+impl Context {
+  pub fn from_snapshot<'s, S>(
+    _scope: &mut S,
+    _index: usize,
+  ) -> Option<Local<'s, Context>> {
+    None
+  }
 }
 
 /// `ContextScope` enters a context for the duration of the borrow. On

@@ -280,6 +280,53 @@ impl<'s, C> HandleScope<'s, C> {
     };
     Local::from_raw(raw)
   }
+
+  // Slot bookkeeping — V8 lets you stash arbitrary type-keyed values
+  // on a scope. On QuickJS we route through the IsolateState's slot
+  // map (set up by JsRuntime). For unwiring tests we keep the API but
+  // store nothing.
+  pub fn set_slot<T: 'static>(&mut self, _value: T) -> bool {
+    false
+  }
+  pub fn get_slot<T: 'static>(&self) -> Option<&T> {
+    None
+  }
+  pub fn get_slot_mut<T: 'static>(&mut self) -> Option<&mut T> {
+    None
+  }
+  pub fn remove_slot<T: 'static>(&mut self) -> Option<T> {
+    None
+  }
+  pub fn add_context_data<T>(&mut self, _data: T) {}
+  pub fn set_continuation_preserved_embedder_data(
+    &mut self,
+    _data: crate::value::Local<'_, crate::value::Value>,
+  ) {
+  }
+  pub fn get_continuation_preserved_embedder_data<'r>(
+    &mut self,
+  ) -> crate::value::Local<'r, crate::value::Value> {
+    Local::from_raw(sys::jsv_undefined())
+  }
+  pub fn get_heap_statistics(&self) -> crate::isolate::HeapStatistics {
+    crate::isolate::HeapStatistics::default()
+  }
+  pub fn set_promise_hooks(
+    &mut self,
+    _init: crate::value::Local<'_, crate::value::Value>,
+    _before: crate::value::Local<'_, crate::value::Value>,
+    _after: crate::value::Local<'_, crate::value::Value>,
+    _resolve: crate::value::Local<'_, crate::value::Value>,
+  ) {
+  }
+  pub fn set_wasm_streaming_callback(
+    &mut self,
+    _cb: crate::function::WasmStreamingCallback,
+  ) {
+  }
+  pub fn has_pending_background_tasks(&self) -> bool {
+    false
+  }
 }
 
 fn value_equal(a: &sys::JSValue, b: &sys::JSValue) -> bool {

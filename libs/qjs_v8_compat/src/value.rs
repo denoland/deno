@@ -29,6 +29,57 @@ v8_type!(
   Value, Data, Primitive, Name, Private, Message, StackTrace, StackFrame,
 );
 
+impl<'s> Local<'s, Message> {
+  pub fn get<'sc>(
+    &self,
+    _scope: &mut HandleScope<'sc>,
+  ) -> Local<'sc, crate::primitives::String> {
+    Local::from_raw(crate::sys::jsv_undefined())
+  }
+  pub fn get_line_number<S>(&self, _scope: &mut S) -> Option<usize> {
+    None
+  }
+  pub fn get_start_column(&self) -> usize {
+    0
+  }
+  pub fn get_script_resource_name<'sc>(
+    &self,
+    _scope: &mut HandleScope<'sc>,
+  ) -> Option<Local<'sc, Value>> {
+    None
+  }
+  pub fn get_source_line<'sc>(
+    &self,
+    _scope: &mut HandleScope<'sc>,
+  ) -> Option<Local<'sc, crate::primitives::String>> {
+    None
+  }
+  pub fn get_stack_trace<'sc>(
+    &self,
+    _scope: &mut HandleScope<'sc>,
+  ) -> Option<Local<'sc, StackTrace>> {
+    None
+  }
+}
+
+impl crate::exception::Exception {
+  pub fn create_message<'s, S>(
+    _scope: &mut S,
+    _exception: Local<'_, Value>,
+  ) -> Local<'s, Message> {
+    Local::from_raw(crate::sys::jsv_undefined())
+  }
+}
+
+impl StackTrace {
+  pub fn current_stack_trace<'s, S>(
+    _scope: &mut S,
+    _frame_limit: usize,
+  ) -> Option<Local<'s, StackTrace>> {
+    None
+  }
+}
+
 // Methods on Value the marker — deno_core occasionally dispatches
 // directly through `&v8::Value`. The marker is ZST so these can't
 // inspect the underlying tag; returns conservative defaults.

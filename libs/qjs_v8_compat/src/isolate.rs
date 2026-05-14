@@ -244,6 +244,42 @@ impl IsolateHandle {
     // TODO: wire JS_RequestInterrupt
     false
   }
+  pub fn request_interrupt<F: FnOnce(&mut Isolate, *mut c_void)>(
+    &self,
+    _cb: F,
+    _data: *mut c_void,
+  ) {
+  }
+}
+
+impl UnsafeRawIsolatePtr {
+  pub const fn null() -> Self {
+    Self(std::ptr::null_mut())
+  }
+}
+
+#[derive(Default, Copy, Clone, Debug)]
+pub struct HeapStatistics {
+  pub total_heap_size: usize,
+  pub total_heap_size_executable: usize,
+  pub total_physical_size: usize,
+  pub total_available_size: usize,
+  pub used_heap_size: usize,
+  pub heap_size_limit: usize,
+  pub malloced_memory: usize,
+  pub external_memory: usize,
+  pub peak_malloced_memory: usize,
+  pub does_zap_garbage: usize,
+  pub number_of_native_contexts: usize,
+  pub number_of_detached_contexts: usize,
+  pub total_global_handles_size: usize,
+  pub used_global_handles_size: usize,
+}
+
+impl HeapStatistics {
+  pub fn used_heap_size(&self) -> usize {
+    self.used_heap_size
+  }
 }
 
 /// Marker for the unsafe raw isolate pointer that some op2 paths take. We

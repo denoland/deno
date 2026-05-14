@@ -282,6 +282,31 @@ pub mod v8 {
     pub struct UnsafePtr<T>(core::marker::PhantomData<T>);
     pub struct Visitor;
 
+    impl<T> Member<T> {
+      pub fn new(_value: &T) -> Self {
+        Self(core::marker::PhantomData)
+      }
+      pub fn get(&self) -> Option<&T> {
+        None
+      }
+    }
+    impl<T> Persistent<T> {
+      pub fn new(_value: &T) -> Self {
+        Self(core::marker::PhantomData)
+      }
+      pub fn get(&self) -> Option<&T> {
+        None
+      }
+    }
+    impl<T> UnsafePtr<T> {
+      pub fn as_ref(&self) -> Option<&T> {
+        None
+      }
+    }
+    impl Visitor {
+      pub fn trace<T>(&mut self, _member: &Member<T>) {}
+    }
+
     pub fn initalize_process() {}
     pub fn shutdown_process() {}
   }
@@ -383,6 +408,19 @@ pub mod v8 {
           _info: info,
         }
       }
+      pub fn address(&self) -> *const core::ffi::c_void {
+        self._addr
+      }
+      pub fn type_info(&self) -> *const CFunctionInfo {
+        self._info
+      }
+    }
+    impl FastApiOneByteString {
+      pub fn as_bytes(&self) -> &[u8] {
+        unsafe {
+          core::slice::from_raw_parts(self.data, self.length as usize)
+        }
+      }
     }
 
     #[repr(u8)]
@@ -478,6 +516,82 @@ pub mod v8 {
     pub struct Channel;
     pub struct StringView<'s>(core::marker::PhantomData<&'s ()>);
     pub struct StringBuffer;
+
+    impl V8Inspector {
+      pub fn create<C: V8InspectorClientImpl>(
+        _isolate: *mut crate::isolate::Isolate,
+        _client: std::boxed::Box<C>,
+      ) -> std::rc::Rc<V8Inspector> {
+        std::rc::Rc::new(V8Inspector)
+      }
+      pub fn connect<C: ChannelImpl>(
+        &self,
+        _context_group_id: i32,
+        _channel: std::boxed::Box<C>,
+        _state: StringView<'_>,
+        _trust: V8InspectorClientTrustLevel,
+      ) -> std::boxed::Box<V8InspectorSession> {
+        std::boxed::Box::new(V8InspectorSession)
+      }
+      pub fn context_destroyed(
+        &self,
+        _isolate: &mut crate::isolate::Isolate,
+        _context_group_id: i32,
+      ) {
+      }
+      pub fn create_stack_trace(
+        &self,
+        _stack_trace: crate::value::Local<'_, crate::value::StackTrace>,
+      ) -> std::boxed::Box<V8StackTrace> {
+        std::boxed::Box::new(V8StackTrace)
+      }
+      pub fn exception_thrown(
+        &self,
+        _isolate: &mut crate::isolate::Isolate,
+        _context: crate::value::Local<'_, crate::context::Context>,
+        _message: StringView<'_>,
+        _exception: crate::value::Local<'_, crate::value::Value>,
+        _detailed_message: StringView<'_>,
+        _url: StringView<'_>,
+        _line_number: u32,
+        _column_number: u32,
+        _stack_trace: std::boxed::Box<V8StackTrace>,
+        _script_id: i32,
+      ) -> u32 {
+        0
+      }
+    }
+    pub struct V8StackTrace;
+    impl V8InspectorClient {
+      pub fn new<C: V8InspectorClientImpl>(_client: C) -> Self {
+        Self
+      }
+    }
+    impl V8InspectorSession {
+      pub fn dispatch_protocol_message(&self, _message: StringView<'_>) {}
+      pub fn schedule_pause_on_next_statement(
+        &self,
+        _reason: StringView<'_>,
+        _details: StringView<'_>,
+      ) {
+      }
+    }
+    impl Channel {
+      pub fn new<C: ChannelImpl>(_channel: C) -> Self {
+        Self
+      }
+    }
+    impl<'s> StringView<'s> {
+      pub fn empty() -> Self {
+        Self(core::marker::PhantomData)
+      }
+    }
+    impl StringBuffer {
+      pub fn create<'s>(_view: StringView<'s>) -> UniquePtr<StringBuffer> {
+        UniquePtr::from(std::boxed::Box::new(Self))
+      }
+    }
+    use std::boxed::Box;
     #[derive(Copy, Clone, Eq, PartialEq)]
     pub enum V8InspectorClientTrustLevel {
       Untrusted,

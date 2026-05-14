@@ -207,14 +207,14 @@ impl<'s> Local<'s, Object> {
   pub fn get_private<S>(
     &self,
     _scope: &mut S,
-    _key: Local<'_, Private>,
+    _key: Local<'_, crate::value::Private>,
   ) -> Option<Local<'s, Value>> {
     None
   }
   pub fn set_private<S>(
     &self,
     _scope: &mut S,
-    _key: Local<'_, Private>,
+    _key: Local<'_, crate::value::Private>,
     _value: Local<'_, Value>,
   ) -> Option<bool> {
     Some(true)
@@ -228,12 +228,11 @@ impl<'s> Local<'s, Object> {
   }
 }
 
-crate::value_type!(Private);
-impl Private {
+impl crate::value::Private {
   pub fn for_api<'s>(
     _scope: &mut crate::scope::HandleScope<'s>,
     _name: Option<Local<'_, crate::primitives::String>>,
-  ) -> Local<'s, Private> {
+  ) -> Local<'s, crate::value::Private> {
     Local::from_raw(crate::sys::jsv_undefined())
   }
 }
