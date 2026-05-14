@@ -10,6 +10,15 @@ use crate::value::Value;
 
 crate::value_type!(Function);
 
+impl Function {
+  /// Mirror of `v8::Function::builder(callback)`.
+  pub fn builder(
+    callback: FunctionCallback,
+  ) -> crate::v8::FunctionBuilder<Function> {
+    crate::v8::FunctionBuilder::<Function>::new(callback)
+  }
+}
+
 /// V8's `FunctionCallback` signature. We mirror it byte-for-byte so the
 /// op2 macro expansions compile against either backend.
 pub type FunctionCallback = unsafe extern "C" fn(*const FunctionCallbackInfo);

@@ -125,6 +125,15 @@ impl<'s> Local<'s, Object> {
     let key_s = sys::to_string_lossy(scope.ctx(), key.raw())?;
     Some(sys::delete_property_str(scope.ctx(), self.raw(), &key_s))
   }
+  /// Mirror of `v8::Object::has_own_property`.
+  pub fn has_own_property<'a>(
+    &self,
+    scope: &mut HandleScope<'s>,
+    key: Local<'a, crate::value::Name>,
+  ) -> Option<bool> {
+    let key_s = sys::to_string_lossy(scope.ctx(), key.raw())?;
+    Some(sys::has_property_str(scope.ctx(), self.raw(), &key_s))
+  }
   /// Indexed get for typed-array-like access. Returns None on exception.
   /// Result lifetime decoupled from receiver per rusty_v8.
   pub fn get_index<'sc>(

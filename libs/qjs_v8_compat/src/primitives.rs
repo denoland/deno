@@ -139,9 +139,28 @@ impl<'s> Local<'s, Integer> {
   }
 }
 
+// Integer the marker type also gets a value() — deno_core occasionally
+// dispatches through `(&Integer).value()` (via auto-deref or pattern
+// destructure) and expects a marker-level method.
+impl Integer {
+  pub fn value(&self) -> i64 {
+    0
+  }
+}
+impl Number {
+  pub fn value_marker(&self) -> f64 {
+    0.0
+  }
+}
+
 impl Number {
   pub fn new<'s>(_scope: &mut HandleScope<'s>, v: f64) -> Local<'s, Number> {
     Local::from_raw(sys::jsv_float64(v))
+  }
+  /// Mirror of `v8::Number::value`. ZST markers can't store the value;
+  /// this returns 0 — real callsites should go through Local::value().
+  pub fn value(&self) -> f64 {
+    0.0
   }
 }
 
@@ -200,6 +219,13 @@ impl BigInt {
 }
 
 impl Symbol {
+  /// Mirror of `v8::Symbol::for_key(scope, key)`.
+  pub fn for_key<'s>(
+    scope: &mut HandleScope<'s>,
+    _key: Local<'s, String>,
+  ) -> Local<'s, Symbol> {
+    Self::new(scope)
+  }
   pub fn new<'s>(scope: &mut HandleScope<'s>) -> Local<'s, Symbol> {
     // QJS-DIVERGE: real path is JS_NewSymbol(ctx, NULL, false). Mocked.
     let raw = sys::JSValue {

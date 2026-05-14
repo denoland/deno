@@ -106,6 +106,25 @@ impl ArrayBuffer {
       data: bytes.into_boxed_slice(),
     })
   }
+  /// Mirror of `v8::ArrayBuffer::new_backing_store_from_ptr` — wraps a
+  /// raw pointer + length + custom deleter. We copy into our own
+  /// boxed slice (deleter is ignored on QuickJS).
+  pub unsafe fn new_backing_store_from_ptr(
+    data: *mut core::ffi::c_void,
+    byte_length: usize,
+    _deleter_callback: extern "C" fn(
+      *mut core::ffi::c_void,
+      usize,
+      *mut core::ffi::c_void,
+    ),
+    _deleter_data: *mut core::ffi::c_void,
+  ) -> Box<BackingStore> {
+    let slice =
+      unsafe { std::slice::from_raw_parts(data as *const u8, byte_length) };
+    Box::new(BackingStore {
+      data: slice.to_vec().into_boxed_slice(),
+    })
+  }
 }
 
 impl<'s> Local<'s, ArrayBuffer> {

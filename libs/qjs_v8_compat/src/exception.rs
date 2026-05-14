@@ -169,7 +169,26 @@ impl<'s, 'p, C> TryCatch<'s, HandleScope<'p, C>> {
     false
   }
   pub fn set_capture_message(&mut self, _v: bool) {}
+  /// Mirror of `TryCatch::has_terminated`.
+  pub fn has_terminated(&self) -> bool {
+    false
+  }
+  /// Mirror of `TryCatch::is_execution_terminating`.
+  pub fn is_execution_terminating(&self) -> bool {
+    false
+  }
+  /// Mirror of `TryCatch::cancel_terminate_execution`.
+  pub fn cancel_terminate_execution(&mut self) {}
 }
+
+// Pin<&mut TryCatch>::init mirrors Pin<&mut CallbackScope>::init.
+impl<'s, S> TryCatch<'s, S> {
+  pub fn init(self: core::pin::Pin<&mut Self>) -> core::pin::Pin<&mut Self> {
+    self
+  }
+}
+// TryCatch is Unpin so Pin<&mut TryCatch>::deref reaches the inner.
+impl<'s, S> Unpin for TryCatch<'s, S> {}
 
 impl<'s, S> std::ops::Deref for TryCatch<'s, S> {
   type Target = S;

@@ -388,6 +388,24 @@ impl<'s, 'r> CallbackScopeSource<'s> for &'r mut HandleScope<'s, Context> {
   }
 }
 
+// Local<Context> can be a CallbackScope source — deno_core uses
+// `v8::CallbackScope::new(unsafe scope, ctx)` style with a Local<Context>.
+impl<'s, 'r> CallbackScopeSource<'s>
+  for crate::value::Local<'r, crate::context::Context>
+{
+  unsafe fn into_callback_scope(self) -> CallbackScope<'s, Context> {
+    CallbackScope(HandleScope {
+      isolate: core::ptr::null_mut(),
+      ctx: core::ptr::null_mut(),
+      owned: Vec::new(),
+      parent_owned: None,
+      depth: 0,
+      _scope: PhantomData,
+      _ctx: PhantomData,
+    })
+  }
+}
+
 impl<'s, 'r> CallbackScopeSource<'s>
   for &'r crate::function::FunctionCallbackInfo
 {

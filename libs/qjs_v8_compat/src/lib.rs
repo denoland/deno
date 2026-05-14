@@ -577,6 +577,27 @@ pub mod v8 {
     use crate::value::Local;
 
     pub struct Source;
+    impl Source {
+      pub fn new<'s>(
+        _source_string: crate::value::Local<'s, crate::primitives::String>,
+        _origin: Option<&crate::script::ScriptOrigin<'s>>,
+      ) -> Self {
+        Self
+      }
+      pub fn new_with_cached_data<'s>(
+        _source_string: crate::value::Local<'s, crate::primitives::String>,
+        _origin: Option<&crate::script::ScriptOrigin<'s>>,
+        _cached_data: CachedData,
+      ) -> Self {
+        Self
+      }
+    }
+    impl CachedData {
+      pub fn new(_data: &[u8]) -> Self {
+        Self(Vec::new())
+      }
+    }
+
     pub enum CompileOptions {
       NoCompileOptions,
       ConsumeCodeCache,
@@ -811,6 +832,15 @@ pub mod v8 {
           Some(crate::value::Local::from_raw(raw))
         }
       }
+      impl<'s> From<crate::value::Local<'s, $name>>
+        for crate::value::Local<'s, crate::value::Value>
+      {
+        fn from(
+          v: crate::value::Local<'s, $name>,
+        ) -> crate::value::Local<'s, crate::value::Value> {
+          crate::value::Local::from_raw(crate::value::Local::raw(&v))
+        }
+      }
     )* }
   }
   typed_array_stub!(
@@ -829,7 +859,17 @@ pub mod v8 {
 
   // Other oddballs deno_core references by name.
   pub struct Int32;
+  impl Int32 {
+    pub fn value(&self) -> i32 {
+      0
+    }
+  }
   pub struct Uint32;
+  impl Uint32 {
+    pub fn value(&self) -> u32 {
+      0
+    }
+  }
   pub struct Task;
   pub struct IdleTask;
   /// Stub for v8::WasmModuleObject. QuickJS has no WASM.

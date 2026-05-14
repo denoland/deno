@@ -29,6 +29,72 @@ v8_type!(
   Value, Data, Primitive, Name, Private, Message, StackTrace, StackFrame,
 );
 
+// Methods on Value the marker — deno_core occasionally dispatches
+// directly through `&v8::Value`. The marker is ZST so these can't
+// inspect the underlying tag; returns conservative defaults.
+impl Value {
+  pub fn is_number(&self) -> bool {
+    false
+  }
+  pub fn is_big_int(&self) -> bool {
+    false
+  }
+  pub fn is_uint32(&self) -> bool {
+    false
+  }
+  pub fn is_int32(&self) -> bool {
+    false
+  }
+  pub fn is_string(&self) -> bool {
+    false
+  }
+  pub fn is_string_object(&self) -> bool {
+    false
+  }
+  pub fn is_object(&self) -> bool {
+    false
+  }
+  pub fn is_array(&self) -> bool {
+    false
+  }
+  pub fn is_function(&self) -> bool {
+    false
+  }
+  pub fn is_promise(&self) -> bool {
+    false
+  }
+  pub fn is_undefined(&self) -> bool {
+    false
+  }
+  pub fn is_null(&self) -> bool {
+    false
+  }
+  pub fn is_null_or_undefined(&self) -> bool {
+    false
+  }
+  pub fn is_true(&self) -> bool {
+    false
+  }
+  pub fn is_false(&self) -> bool {
+    false
+  }
+  pub fn is_array_buffer(&self) -> bool {
+    false
+  }
+  pub fn is_array_buffer_view(&self) -> bool {
+    false
+  }
+  pub fn is_uint8_array(&self) -> bool {
+    false
+  }
+  pub fn is_typed_array(&self) -> bool {
+    false
+  }
+  pub fn type_repr(&self) -> &'static str {
+    "value"
+  }
+}
+
 /// Scope-bound JS handle.
 pub struct Local<'s, T> {
   pub(crate) raw: sys::JSValue,
@@ -737,6 +803,49 @@ pub struct Global<T> {
 }
 
 unsafe impl<T> Send for Global<T> {}
+
+impl<T> std::hash::Hash for Global<T> {
+  fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    self.raw.tag.hash(state);
+    unsafe { (self.raw.u.ptr as usize).hash(state) };
+  }
+}
+impl<T> PartialEq for Global<T> {
+  fn eq(&self, other: &Self) -> bool {
+    self.raw.tag == other.raw.tag
+      && unsafe { self.raw.u.ptr == other.raw.u.ptr }
+  }
+}
+impl<T> Eq for Global<T> {}
+
+// Convenience methods on Global<Function> / Global<PromiseResolver>
+// that mirror rusty_v8's auto-deref-via-Local pattern.
+impl Global<crate::function::Function> {
+  pub fn call<'s, S>(
+    &self,
+    _scope: &mut S,
+    _recv: Local<'s, Value>,
+    _args: &[Local<'s, Value>],
+  ) -> Option<Local<'s, Value>> {
+    None
+  }
+}
+impl Global<crate::promise::PromiseResolver> {
+  pub fn resolve<'s, S>(
+    &self,
+    _scope: &mut S,
+    _value: Local<'s, Value>,
+  ) -> Option<bool> {
+    None
+  }
+  pub fn reject<'s, S>(
+    &self,
+    _scope: &mut S,
+    _value: Local<'s, Value>,
+  ) -> Option<bool> {
+    None
+  }
+}
 
 impl<T> Clone for Global<T> {
   fn clone(&self) -> Self {
