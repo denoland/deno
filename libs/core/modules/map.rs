@@ -119,6 +119,30 @@ fn strip_bom(source_code: &[u8]) -> &[u8] {
   }
 }
 
+/// Build a unique synthetic placeholder URL for a (specifier, referrer) pair
+/// when the referrer is a cannot-be-a-base URL (blob:, data:, ...) so the
+/// usual `base.join(spec)` fails. Used only when the loader returned an
+/// async resolve response: `needs_resolve = true` ensures this placeholder
+/// is replaced by the real URL before any load is attempted. Uniqueness per
+/// (specifier, referrer) pair is required to avoid `visited`/`visited_as_alias`
+/// false dedup.
+fn synth_async_resolve_placeholder(
+  specifier: &str,
+  referrer: &str,
+) -> ModuleSpecifier {
+  use std::collections::hash_map::DefaultHasher;
+  use std::hash::Hash;
+  use std::hash::Hasher;
+  let mut h = DefaultHasher::new();
+  specifier.hash(&mut h);
+  referrer.hash(&mut h);
+  ModuleSpecifier::parse(&format!(
+    "data:text/plain;charset=utf-8,deno-async-resolve-{:x}",
+    h.finish()
+  ))
+  .expect("synthetic placeholder URL must parse")
+}
+
 /// A `FuturesUnordered` paired with a `Cell<bool>` flag that tracks whether
 /// the collection has pending items. The flag avoids borrowing the `RefCell`
 /// just to check `is_empty()`.
@@ -984,13 +1008,15 @@ impl ModuleMap {
                 .and_then(|base| base.join(&import_specifier))
               {
                 Ok(s) => s,
-                Err(e) => {
-                  return Err(ModuleError::Core(
-                    JsErrorBox::type_error(format!(
-                      "Cannot resolve module \"{import_specifier}\": {e}"
-                    ))
-                    .into(),
-                  ));
+                Err(_) => {
+                  // Base is cannot-be-a-base (e.g. blob:, data:), so the
+                  // join failed. Synthesize a unique placeholder URL; it
+                  // will be replaced by the async resolver's result before
+                  // any actual load via `needs_resolve = true`.
+                  synth_async_resolve_placeholder(
+                    &import_specifier,
+                    name.as_ref(),
+                  )
                 }
               }
             }

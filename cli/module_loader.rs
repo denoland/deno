@@ -1001,6 +1001,14 @@ fn is_already_resolved_specifier(specifier: &str) -> bool {
     || is_builtin_module_specifier(specifier)
 }
 
+/// Returns true if the referrer is a cannot-be-a-base URL (blob:, data:).
+/// Bare-specifier resolution against such referrers can't form a relative URL,
+/// so deno_core's async-resolve placeholder construction fails. We bypass the
+/// hook bridge in this case and resolve via the default resolver.
+fn referrer_is_cannot_be_a_base(referrer: &str) -> bool {
+  referrer.starts_with("blob:") || referrer.starts_with("data:")
+}
+
 /// Returns true if the specifier names a runtime built-in (`node:` or `ext:`).
 /// These modules are served by the runtime itself and must never be routed
 /// through user-supplied `module.register()` load hooks — the JS-side
@@ -1028,6 +1036,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
   ) -> deno_core::ModuleResolveResponse {
     if self.0.hook_registry.resolve_active.get()
       && !is_already_resolved_specifier(specifier)
+      && !referrer_is_cannot_be_a_base(referrer)
     {
       // Check if this specifier was already resolved by hooks during
       // the load phase. This cache lookup is critical for V8's module

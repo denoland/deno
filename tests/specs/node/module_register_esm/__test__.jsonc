@@ -37,6 +37,11 @@
       "cwd": "passthrough_npm",
       "args": "run -A main.mjs",
       "output": "passthrough_npm/main.out"
+    },
+    "blob_referrer_bare_specifier": {
+      "cwd": "blob_bare_specifier",
+      "args": "run -A main.mjs",
+      "output": "blob_bare_specifier/main.out"
     }
   }
 }

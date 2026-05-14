@@ -2936,3 +2936,102 @@ async fn test_tla_with_tick_scheduled_no_hang() {
   runtime.run_event_loop(Default::default()).await.unwrap();
   receiver.await.unwrap();
 }
+
+/// Regression: bare-specifier imports from a `cannot-be-a-base` referrer
+/// (e.g. `blob:`, `data:`) must succeed when the loader returns
+/// `ModuleResolveResponse::Async` for the bare specifier. Previously, the
+/// async-resolve placeholder construction tried `base.join(spec)`, which
+/// fails for cannot-be-a-base referrers and surfaced as `Cannot resolve
+/// module "<spec>": relative URL with a cannot-be-a-base base`.
+#[tokio::test]
+async fn bare_import_from_cannot_be_a_base_referrer_async_resolve() {
+  // Main imports a data: module (cannot-be-a-base) that in turn imports a
+  // bare specifier. The loader returns Async for the bare resolve and
+  // produces a file:/// URL once awaited -- mirroring the hook-bridge
+  // behaviour without involving Node hook machinery.
+  const DATA_SRC: &str =
+    r#"import{value}from'bare-spec';globalThis.bareValue=value;"#;
+  let data_url = format!("data:text/javascript,{DATA_SRC}");
+  let main_src = format!(
+    r#"await import("{data_url}");
+if (globalThis.bareValue !== "from-bare") throw new Error("bad: " + globalThis.bareValue);"#,
+  );
+
+  struct BareAsyncLoader {
+    main_src: String,
+    // Cache the async-resolve result so V8's synchronous
+    // `module_resolve_callback` at instantiation time can return Sync,
+    // mirroring how the CLI module loader handles the hook bridge.
+    resolve_cache: Rc<RefCell<HashMap<String, String>>>,
+  }
+
+  impl ModuleLoader for BareAsyncLoader {
+    fn resolve(
+      &self,
+      specifier: &str,
+      referrer: &str,
+      _kind: ResolutionKind,
+    ) -> ModuleResolveResponse {
+      if specifier == "bare-spec" {
+        let key = format!("{specifier}\x00{referrer}");
+        if let Some(cached) = self.resolve_cache.borrow().get(&key) {
+          return ModuleResolveResponse::Sync(
+            Url::parse(cached).map_err(JsErrorBox::from_err),
+          );
+        }
+        let cache = self.resolve_cache.clone();
+        return ModuleResolveResponse::Async(
+          async move {
+            let url = Url::parse("file:///bare.js").unwrap();
+            cache.borrow_mut().insert(key, url.to_string());
+            Ok(url)
+          }
+          .boxed_local(),
+        );
+      }
+      ModuleResolveResponse::Sync(
+        resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
+      )
+    }
+
+    fn load(
+      &self,
+      module_specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<&ModuleLoadReferrer>,
+      _options: ModuleLoadOptions,
+    ) -> ModuleLoadResponse {
+      let src = match module_specifier.as_str() {
+        "file:///main.js" => self.main_src.clone(),
+        "file:///bare.js" => r#"export const value = "from-bare";"#.to_string(),
+        s if s.starts_with("data:") => {
+          // data: bodies are decoded by the runtime; loader shouldn't be
+          // called for them in this configuration. Return source mirroring
+          // the data payload as a fallback.
+          DATA_SRC.to_string()
+        }
+        other => panic!("unexpected load: {other}"),
+      };
+      ModuleLoadResponse::Sync(Ok(ModuleSource::new(
+        ModuleType::JavaScript,
+        ModuleSourceCode::String(src.into()),
+        module_specifier,
+        None,
+      )))
+    }
+  }
+
+  let loader = Rc::new(BareAsyncLoader {
+    main_src,
+    resolve_cache: Rc::new(RefCell::new(HashMap::new())),
+  });
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let spec = resolve_url("file:///main.js").unwrap();
+  let mod_id = runtime.load_main_es_module(&spec).await.unwrap();
+  let receiver = runtime.mod_evaluate(mod_id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  receiver.await.unwrap();
+}
