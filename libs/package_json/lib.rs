@@ -1019,15 +1019,13 @@ mod test {
         ),
         (
           "http-test".to_string(),
-          Err(PackageJsonDepValueParseErrorKind::Unsupported {
-            scheme: "http".to_string()
-          }),
+          Ok(PackageJsonDepValue::Tarball("http://something".to_string())),
         ),
         (
           "https-test".to_string(),
-          Err(PackageJsonDepValueParseErrorKind::Unsupported {
-            scheme: "https".to_string()
-          }),
+          Ok(PackageJsonDepValue::Tarball(
+            "https://something".to_string()
+          )),
         ),
       ])
     );

@@ -685,69 +685,69 @@ pub async fn add(
   .await?;
 
   // Write tarball package entries to the lockfile
-  if !tarball_lockfile_entries.is_empty() {
+  if !tarball_lockfile_entries.is_empty()
+    && let Some(lockfile) = cli_factory.maybe_lockfile().await?
+  {
+    let mut lockfile = lockfile.lock();
+    for (name, version, info) in &tarball_lockfile_entries {
+      let serialized_id =
+        StackString::from(format!("{}@{}", name, version).as_str());
+
+      // Resolve dependency names to their lockfile IDs (e.g., "is-number" -> "is-number@6.0.0")
+      // by looking up packages that were resolved during npm install.
+      let resolve_dep = |dep_name: &str| -> Option<
+        deno_lockfile::NpmPackageDependencyLockfileInfo,
+      > {
+        // Find the resolved package ID in the lockfile's npm packages
+        let prefix = format!("{}@", dep_name);
+        let resolved_id = lockfile
+          .content
+          .packages
+          .npm
+          .keys()
+          .find(|key| key.starts_with(&prefix))?;
+        Some(deno_lockfile::NpmPackageDependencyLockfileInfo {
+          name: StackString::from(dep_name),
+          id: resolved_id.clone(),
+        })
+      };
+
+      let dependencies = info
+        .dependencies
+        .iter()
+        .filter(|(dep_name, _)| {
+          !info
+            .optional_dependencies
+            .iter()
+            .any(|(opt_name, _)| opt_name == dep_name)
+        })
+        .filter_map(|(dep_name, _)| resolve_dep(dep_name))
+        .collect();
+
+      let optional_dependencies = info
+        .optional_dependencies
+        .iter()
+        .filter_map(|(dep_name, _)| resolve_dep(dep_name))
+        .collect();
+
+      lockfile.insert_npm_package(deno_lockfile::NpmPackageLockfileInfo {
+        serialized_id,
+        integrity: Some(info.integrity.clone()),
+        dependencies,
+        optional_dependencies,
+        optional_peers: Vec::new(),
+        os: Vec::new(),
+        cpu: Vec::new(),
+        tarball: Some(StackString::from(info.tarball_url.as_str())),
+        deprecated: false,
+        scripts: false,
+        bin: false,
+      });
+    }
+    drop(lockfile);
+    // Write the updated lockfile
     if let Some(lockfile) = cli_factory.maybe_lockfile().await? {
-      let mut lockfile = lockfile.lock();
-      for (name, version, info) in &tarball_lockfile_entries {
-        let serialized_id =
-          StackString::from(format!("{}@{}", name, version).as_str());
-
-        // Resolve dependency names to their lockfile IDs (e.g., "is-number" -> "is-number@6.0.0")
-        // by looking up packages that were resolved during npm install.
-        let resolve_dep = |dep_name: &str| -> Option<
-          deno_lockfile::NpmPackageDependencyLockfileInfo,
-        > {
-          // Find the resolved package ID in the lockfile's npm packages
-          let prefix = format!("{}@", dep_name);
-          let resolved_id = lockfile
-            .content
-            .packages
-            .npm
-            .keys()
-            .find(|key| key.starts_with(&prefix))?;
-          Some(deno_lockfile::NpmPackageDependencyLockfileInfo {
-            name: StackString::from(dep_name),
-            id: resolved_id.clone(),
-          })
-        };
-
-        let dependencies = info
-          .dependencies
-          .iter()
-          .filter(|(dep_name, _)| {
-            !info
-              .optional_dependencies
-              .iter()
-              .any(|(opt_name, _)| opt_name == dep_name)
-          })
-          .filter_map(|(dep_name, _)| resolve_dep(dep_name))
-          .collect();
-
-        let optional_dependencies = info
-          .optional_dependencies
-          .iter()
-          .filter_map(|(dep_name, _)| resolve_dep(dep_name))
-          .collect();
-
-        lockfile.insert_npm_package(deno_lockfile::NpmPackageLockfileInfo {
-          serialized_id,
-          integrity: Some(info.integrity.clone()),
-          dependencies,
-          optional_dependencies,
-          optional_peers: Vec::new(),
-          os: Vec::new(),
-          cpu: Vec::new(),
-          tarball: Some(StackString::from(info.tarball_url.as_str())),
-          deprecated: false,
-          scripts: false,
-          bin: false,
-        });
-      }
-      drop(lockfile);
-      // Write the updated lockfile
-      if let Some(lockfile) = cli_factory.maybe_lockfile().await? {
-        lockfile.write_if_changed()?;
-      }
+      lockfile.write_if_changed()?;
     }
   }
 
@@ -900,7 +900,7 @@ async fn resolve_tarball_package(
   // resolved on subsequent `deno install` without re-downloading.
   let tarball_ref = match source {
     TarballSource::Local(path) => format!("file:{}", path.display()),
-    TarballSource::Remote(url) => {
+    TarballSource::Remote(_url) => {
       // Cache the remote tarball locally alongside node_modules
       let cache_dir = start_dir.join(".deno_tarball_cache");
       std::fs::create_dir_all(&cache_dir)

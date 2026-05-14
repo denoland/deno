@@ -2,7 +2,6 @@
 
 use std::path::Path;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use deno_config::workspace::Workspace;
@@ -17,6 +16,7 @@ use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use serde_json;
+use sys_traits::FsRead;
 use thiserror::Error;
 use url::Url;
 
@@ -164,16 +164,16 @@ impl NpmInstallDepsProvider {
               // installs them. This is equivalent to npm's behavior where
               // `npm install ./foo.tgz` also resolves the tarball's deps.
               let target_str = target.to_string_lossy();
-              if target_str.ends_with(".tgz") || target_str.ends_with(".tar.gz")
+              if (target_str.ends_with(".tgz")
+                || target_str.ends_with(".tar.gz"))
+                && let Ok(tarball_deps) = read_tarball_dependencies(&target)
               {
-                if let Ok(tarball_deps) = read_tarball_dependencies(&target) {
-                  for (dep_alias, dep_req) in tarball_deps {
-                    pkg_pkgs.push(InstallNpmRemotePkg {
-                      alias: Some(dep_alias),
-                      base_dir: pkg_json.dir_path().to_path_buf(),
-                      req: dep_req,
-                    });
-                  }
+                for (dep_alias, dep_req) in tarball_deps {
+                  pkg_pkgs.push(InstallNpmRemotePkg {
+                    alias: Some(dep_alias),
+                    base_dir: pkg_json.dir_path().to_path_buf(),
+                    req: dep_req,
+                  });
                 }
               }
             }
@@ -204,7 +204,7 @@ impl NpmInstallDepsProvider {
               // Tarball URL deps from package.json require --allow-import.
               // Collect them here; the CLI layer will check permissions
               // before proceeding with the download.
-              if let Ok(url) = Url::parse(&url_str) {
+              if let Ok(url) = Url::parse(url_str) {
                 tarball_pkgs.push(TarballUrlPkg {
                   alias: alias.clone(),
                   url,
@@ -334,7 +334,7 @@ fn read_tarball_dependencies(
 
   use flate2::read::GzDecoder;
 
-  let tarball_bytes = std::fs::read(tarball_path)?;
+  let tarball_bytes = sys_traits::impls::RealSys.fs_read(tarball_path)?;
   let mut decoder = GzDecoder::new(&tarball_bytes[..]);
   let mut decompressed = Vec::new();
   decoder.read_to_end(&mut decompressed)?;

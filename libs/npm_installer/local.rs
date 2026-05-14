@@ -858,7 +858,7 @@ impl<
           // Tarball dependency: extract the tarball to node_modules
           // instead of symlinking (tarballs are files, not directories).
           if !sys.fs_exists_no_err(&dest) {
-            let tarball_bytes = std::fs::read(&pkg.target_dir)?;
+            let tarball_bytes = sys.fs_read(&pkg.target_dir)?;
             let tar_data = deno_npm_cache::tarball_extract::decompress_tarball(
               &tarball_bytes,
             )
