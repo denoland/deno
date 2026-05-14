@@ -85,13 +85,13 @@ impl String {
     scope: &mut HandleScope<'s>,
     bytes: &'static OneByteConst,
   ) -> Option<Local<'s, String>> {
-    Self::new(scope, bytes.data)
+    let s = std::str::from_utf8(bytes._data).ok()?;
+    Self::new(scope, s)
   }
-  pub fn create_external_onebyte_const(
+  pub const fn create_external_onebyte_const(
     bytes: &'static [u8],
-  ) -> &'static OneByteConst {
-    let s = std::str::from_utf8(bytes).unwrap_or("");
-    Box::leak(Box::new(OneByteConst { data: s }))
+  ) -> OneByteConst {
+    OneByteConst { _data: bytes }
   }
   // Marker-level method shims — deno_core sometimes invokes through
   // `&v8::String` (the marker, not `Local<String>`). The marker is a
@@ -208,7 +208,7 @@ impl WriteUtf8Buf for Vec<u8> {
 /// QuickJS doesn't expose embed-able static strings to its C API directly;
 /// we wrap a `&'static str` and intern-on-first-use.
 pub struct OneByteConst {
-  pub data: &'static str,
+  pub _data: &'static [u8],
 }
 
 // ----- Integer / Number / Boolean / BigInt -----------------------------

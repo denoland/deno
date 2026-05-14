@@ -154,6 +154,25 @@ impl<'a, 's, C> std::ops::DerefMut for ContextScope<'a, HandleScope<'s, C>> {
   }
 }
 
+// Same shape but for ContextScope<PinScope> — what the new scope!
+// macro produces (it binds scope as &mut PinScope, so ContextScope::new
+// receives &mut PinScope as its parent).
+impl<'a, 's, 'i, C> std::ops::Deref
+  for ContextScope<'a, crate::scope::PinScope<'s, 'i, C>>
+{
+  type Target = crate::scope::PinScope<'s, 'i, C>;
+  fn deref(&self) -> &Self::Target {
+    self.parent
+  }
+}
+impl<'a, 's, 'i, C> std::ops::DerefMut
+  for ContextScope<'a, crate::scope::PinScope<'s, 'i, C>>
+{
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    self.parent
+  }
+}
+
 pub trait ScopeParent {
   fn isolate(&mut self) -> &mut Isolate;
   fn set_current_context(&mut self, ctx: sys::Context);

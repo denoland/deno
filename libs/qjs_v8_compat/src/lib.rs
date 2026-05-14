@@ -134,11 +134,12 @@ pub use crate::value::*;
 #[macro_export]
 macro_rules! scope {
   (let $name:ident, $parent:expr) => {
-    let mut $name = $crate::HandleScope::new($parent);
+    let mut __scope_inner = $crate::HandleScope::new($parent);
+    let $name = $crate::scope::PinScope::from_handle_scope_mut(&mut __scope_inner);
   };
   ($name:ident, $parent:expr) => {
     let mut __scope_inner = $crate::HandleScope::new($parent);
-    let $name = &mut __scope_inner;
+    let $name = $crate::scope::PinScope::from_handle_scope_mut(&mut __scope_inner);
   };
 }
 

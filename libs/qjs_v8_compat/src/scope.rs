@@ -345,6 +345,18 @@ impl<'s, C> ScopeParent for HandleScope<'s, C> {
   }
 }
 
+impl<'s, 'i, C> ScopeParent for PinScope<'s, 'i, C> {
+  fn isolate(&mut self) -> &mut Isolate {
+    unsafe { &mut *self.0.isolate }
+  }
+  fn set_current_context(&mut self, ctx: sys::Context) {
+    self.0.ctx = ctx;
+  }
+  fn current_context(&self) -> sys::Context {
+    self.0.ctx
+  }
+}
+
 // HandleScope derefs to Isolate so the deref chain
 // PinScope -> HandleScope -> Isolate makes Isolate methods reachable
 // from a `&mut PinScope` reference.
@@ -596,12 +608,12 @@ impl<'s, C> std::ops::DerefMut for CallbackScope<'s, C> {
   }
 }
 
-/// Mirror of rusty_v8's two-lifetime `PinScope<'s, 'i>`. Both lifetimes
-/// collapse to one on QuickJS — we don't enforce the pinning hygiene
-/// rusty_v8 uses, but the call-site signatures must accept both args.
-/// We model PinScope as a transparent wrapper around HandleScope so
-/// borrow-check sees `&mut PinScope` and `&mut HandleScope` as
-/// freely interconvertible at the variance level.
+/// Mirror of rusty_v8's two-lifetime `PinScope<'s, 'i>`. We model it
+/// as a `#[repr(transparent)]` wrapper around HandleScope so callers
+/// can transmute between `&mut HandleScope` and `&mut PinScope` for
+/// free. Helper macros (`scope!`, `tc_scope!`, etc.) bind the scope
+/// as `&mut PinScope` so deno_core helpers that take `&mut PinScope`
+/// see the right type without further coercion.
 #[repr(transparent)]
 pub struct PinScope<'s, 'i: 's, C = Context>(
   pub(crate) HandleScope<'s, C>,
@@ -644,6 +656,16 @@ where
   fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
     use std::ops::DerefMut;
     let hs: &mut HandleScope<'s, C> = self.deref_mut();
+    unsafe { &mut *(hs as *mut HandleScope<'s, C> as *mut HandleScope<'s>) }
+  }
+}
+impl<'a, 's, 'i, C> crate::value::LocalNewScope<'s>
+  for crate::context::ContextScope<'a, PinScope<'s, 'i, C>>
+{
+  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+    use std::ops::DerefMut;
+    let pin: &mut PinScope<'s, 'i, C> = self.deref_mut();
+    let hs: &mut HandleScope<'s, C> = pin.deref_mut();
     unsafe { &mut *(hs as *mut HandleScope<'s, C> as *mut HandleScope<'s>) }
   }
 }
