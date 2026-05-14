@@ -23,7 +23,7 @@ fn single_scope_with_object() {
   let mut iso = fresh();
   {
     let mut scope = v8::HandleScope::new(&mut iso);
-    let _obj = v8::Local::<v8::Object>::new(&mut scope);
+    let _obj = v8::Object::new(&mut scope);
     // Scope drops here; object is freed.
   }
   // Isolate drops here; arena must be empty.
@@ -35,15 +35,15 @@ fn nested_scopes_each_drop_their_handles() {
   let mut iso = fresh();
   let mut outer = v8::HandleScope::new(&mut iso);
   assert_eq!(outer.owned_count(), 0);
-  let _outer_obj = v8::Local::<v8::Object>::new(&mut outer);
+  let _outer_obj = v8::Object::new(&mut outer);
   assert_eq!(outer.owned_count(), 1);
   {
     // Inner scope: alloc, then drop. Outer count unchanged.
     let mut inner = v8::HandleScope::new(unsafe {
       &mut *(outer.isolate() as *mut v8::Isolate as *mut v8::OwnedIsolate)
     });
-    let _inner_obj = v8::Local::<v8::Object>::new(&mut inner);
-    let _inner_str = v8::Local::<v8::String>::new(&mut inner, "hi").unwrap();
+    let _inner_obj = v8::Object::new(&mut inner);
+    let _inner_str = v8::String::new(&mut inner, "hi").unwrap();
     assert_eq!(inner.owned_count(), 2);
   }
   // Inner dropped; outer still has its one obj.
@@ -57,7 +57,7 @@ fn global_extends_lifetime_past_scope() {
   let mut iso = fresh();
   let global = {
     let mut scope = v8::HandleScope::new(&mut iso);
-    let obj = v8::Local::<v8::Object>::new(&mut scope);
+    let obj = v8::Object::new(&mut scope);
     v8::Global::new(&mut scope, obj)
     // scope drops; the scope-bound refcount goes away, but the Global's
     // separate refcount keeps the entry alive in the arena.
@@ -72,7 +72,7 @@ fn global_to_local_round_trip() {
   let mut iso = fresh();
   let global = {
     let mut scope = v8::HandleScope::new(&mut iso);
-    let obj = v8::Local::<v8::Object>::new(&mut scope);
+    let obj = v8::Object::new(&mut scope);
     v8::Global::new(&mut scope, obj)
   };
   {
@@ -92,9 +92,9 @@ fn primitives_have_no_refcount() {
     // None of these are refcounted; the arena stays empty.
     let _undef = v8::undefined(&mut scope);
     let _null = v8::null(&mut scope);
-    let _int = v8::Local::<v8::Integer>::new(&mut scope, 42);
-    let _num = v8::Local::<v8::Number>::new(&mut scope, 3.14);
-    let _b = v8::Local::<v8::Boolean>::new(&mut scope, true);
+    let _int = v8::Integer::new(&mut scope, 42);
+    let _num = v8::Number::new(&mut scope, 3.14);
+    let _b = v8::Boolean::new(&mut scope, true);
     // After dropping scope and isolate the arena should remain empty —
     // the only refcounted entries would be JSStrings etc.
   }
@@ -107,8 +107,7 @@ fn many_strings_in_one_scope() {
   {
     let mut scope = v8::HandleScope::new(&mut iso);
     for i in 0..1000 {
-      let _s =
-        v8::Local::<v8::String>::new(&mut scope, &format!("s{}", i)).unwrap();
+      let _s = v8::String::new(&mut scope, &format!("s{}", i)).unwrap();
     }
     // All freed when scope drops.
   }
@@ -119,7 +118,7 @@ fn many_strings_in_one_scope() {
 fn refcounted_value_types_detected_as_objects() {
   let mut iso = fresh();
   let mut scope = v8::HandleScope::new(&mut iso);
-  let obj = v8::Local::<v8::Object>::new(&mut scope);
+  let obj = v8::Object::new(&mut scope);
   let as_value: v8::Local<v8::Value> = unsafe {
     // Force the upcast — our shim doesn't have an Object→Value impl yet.
     std::mem::transmute::<v8::Local<v8::Object>, v8::Local<v8::Value>>(obj)

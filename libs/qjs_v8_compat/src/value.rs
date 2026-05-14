@@ -103,6 +103,16 @@ impl<'s, T> Local<'s, T> {
   }
 }
 
+/// Generic `Local::<T>::new(scope, &Global<T>) -> Local<T>` mirroring
+/// rusty_v8. The per-type constructors (`String::new`, `Integer::new`,
+/// etc.) live on the marker types themselves so they don't conflict
+/// with this generic impl.
+impl<'s, T> Local<'s, T> {
+  pub fn new(scope: &mut HandleScope<'s>, global: &Global<T>) -> Local<'s, T> {
+    global.to_local(scope)
+  }
+}
+
 // ----- Upcasts ----------------------------------------------------------
 // `Local<T> -> Local<U>` where T derives from U in the V8 type lattice.
 

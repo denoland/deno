@@ -72,8 +72,10 @@ fn handle_of(v: &sys::JSValue) -> u64 {
   unsafe { v.u.ptr as usize as u64 }
 }
 
-impl<'s> Local<'s, PromiseResolver> {
-  pub fn new(scope: &mut HandleScope<'s>) -> Option<Self> {
+impl PromiseResolver {
+  pub fn new<'s>(
+    scope: &mut HandleScope<'s>,
+  ) -> Option<Local<'s, PromiseResolver>> {
     let (promise, resolve, reject) = sys::new_promise_capability(scope.ctx())?;
     // The scope owns one refcount on each of the three returned values.
     // In the mock backend the promise also internally retains its own
@@ -89,6 +91,9 @@ impl<'s> Local<'s, PromiseResolver> {
     });
     Some(Local::from_raw(promise))
   }
+}
+
+impl<'s> Local<'s, PromiseResolver> {
   pub fn get_promise(
     &self,
     _scope: &mut HandleScope<'s>,

@@ -29,42 +29,14 @@ pub enum NewStringType {
 
 // rusty_v8 calls these as inherent associated functions on the `String`
 // marker type (e.g. `v8::String::new(scope, s)`). Mirror that surface.
+// The body lives here (not on Local<String>) because the generic
+// `Local::<T>::new(scope, &Global<T>)` impl in value.rs would otherwise
+// duplicate-define `Local<'s, String>::new`.
 impl String {
   pub fn new<'s>(
     scope: &mut HandleScope<'s>,
     s: &str,
   ) -> Option<Local<'s, String>> {
-    Local::<String>::new(scope, s)
-  }
-  pub fn new_from_utf8<'s>(
-    scope: &mut HandleScope<'s>,
-    bytes: &[u8],
-    ty: NewStringType,
-  ) -> Option<Local<'s, String>> {
-    Local::<String>::new_from_utf8(scope, bytes, ty)
-  }
-  pub fn new_from_one_byte<'s>(
-    scope: &mut HandleScope<'s>,
-    bytes: &[u8],
-    _ty: NewStringType,
-  ) -> Option<Local<'s, String>> {
-    let s = std::str::from_utf8(bytes).ok()?;
-    Local::<String>::new(scope, s)
-  }
-  pub fn new_external_onebyte_static<'s>(
-    scope: &mut HandleScope<'s>,
-    bytes: &'static [u8],
-  ) -> Option<Local<'s, String>> {
-    let s = std::str::from_utf8(bytes).ok()?;
-    Local::<String>::new(scope, s)
-  }
-  pub fn empty<'s>(scope: &mut HandleScope<'s>) -> Local<'s, String> {
-    Self::new(scope, "").unwrap()
-  }
-}
-
-impl<'s> Local<'s, String> {
-  pub fn new(scope: &mut HandleScope<'s>, s: &str) -> Option<Self> {
     let raw = sys::new_string(scope.ctx(), s);
     if sys::jsv_is_exception(&raw) {
       return None;
@@ -72,15 +44,37 @@ impl<'s> Local<'s, String> {
     scope.track_owned(raw);
     Some(Local::from_raw(raw))
   }
-  pub fn new_from_utf8(
+  pub fn new_from_utf8<'s>(
     scope: &mut HandleScope<'s>,
     bytes: &[u8],
-    _ty: NewStringType,
-  ) -> Option<Self> {
+    ty: NewStringType,
+  ) -> Option<Local<'s, String>> {
+    let _ = ty;
     std::str::from_utf8(bytes)
       .ok()
       .and_then(|s| Self::new(scope, s))
   }
+  pub fn new_from_one_byte<'s>(
+    scope: &mut HandleScope<'s>,
+    bytes: &[u8],
+    _ty: NewStringType,
+  ) -> Option<Local<'s, String>> {
+    let s = std::str::from_utf8(bytes).ok()?;
+    Self::new(scope, s)
+  }
+  pub fn new_external_onebyte_static<'s>(
+    scope: &mut HandleScope<'s>,
+    bytes: &'static [u8],
+  ) -> Option<Local<'s, String>> {
+    let s = std::str::from_utf8(bytes).ok()?;
+    Self::new(scope, s)
+  }
+  pub fn empty<'s>(scope: &mut HandleScope<'s>) -> Local<'s, String> {
+    Self::new(scope, "").unwrap()
+  }
+}
+
+impl<'s> Local<'s, String> {
   pub fn length(&self) -> usize {
     // Returning byte length of the UTF-8 form is an approximation; V8 uses
     // UTF-16 code units. Refined later.
@@ -105,19 +99,28 @@ pub struct OneByteConst {
 }
 
 // ----- Integer / Number / Boolean / BigInt -----------------------------
+//
+// `new` constructors live as inherent methods on the marker types
+// themselves (mirroring rusty_v8) so they don't conflict with the
+// generic `Local::<T>::new(scope, &Global<T>)` impl in value.rs.
 
-impl<'s> Local<'s, Integer> {
-  pub fn new(_scope: &mut HandleScope<'s>, v: i32) -> Self {
+impl Integer {
+  pub fn new<'s>(_scope: &mut HandleScope<'s>, v: i32) -> Local<'s, Integer> {
     Local::from_raw(sys::jsv_int32(v))
   }
-  pub fn new_from_unsigned(_scope: &mut HandleScope<'s>, v: u32) -> Self {
-    // u32 can overflow i32; fall back to float64 if needed.
+  pub fn new_from_unsigned<'s>(
+    _scope: &mut HandleScope<'s>,
+    v: u32,
+  ) -> Local<'s, Integer> {
     if v <= i32::MAX as u32 {
       Local::from_raw(sys::jsv_int32(v as i32))
     } else {
       Local::from_raw(sys::jsv_float64(v as f64))
     }
   }
+}
+
+impl<'s> Local<'s, Integer> {
   pub fn value(&self) -> i64 {
     match self.raw.tag {
       sys::JS_TAG_INT => unsafe { self.raw.u.int32 as i64 },
@@ -127,10 +130,13 @@ impl<'s> Local<'s, Integer> {
   }
 }
 
-impl<'s> Local<'s, Number> {
-  pub fn new(_scope: &mut HandleScope<'s>, v: f64) -> Self {
+impl Number {
+  pub fn new<'s>(_scope: &mut HandleScope<'s>, v: f64) -> Local<'s, Number> {
     Local::from_raw(sys::jsv_float64(v))
   }
+}
+
+impl<'s> Local<'s, Number> {
   pub fn value(&self) -> f64 {
     match self.raw.tag {
       sys::JS_TAG_INT => unsafe { self.raw.u.int32 as f64 },
@@ -140,17 +146,23 @@ impl<'s> Local<'s, Number> {
   }
 }
 
-impl<'s> Local<'s, Boolean> {
-  pub fn new(_scope: &mut HandleScope<'s>, v: bool) -> Self {
+impl Boolean {
+  pub fn new<'s>(_scope: &mut HandleScope<'s>, v: bool) -> Local<'s, Boolean> {
     Local::from_raw(sys::jsv_bool(v))
   }
+}
+
+impl<'s> Local<'s, Boolean> {
   pub fn is_true(&self) -> bool {
     sys::jsv_is_bool(&self.raw) && unsafe { self.raw.u.int32 != 0 }
   }
 }
 
-impl<'s> Local<'s, BigInt> {
-  pub fn new_from_i64(scope: &mut HandleScope<'s>, _v: i64) -> Self {
+impl BigInt {
+  pub fn new_from_i64<'s>(
+    scope: &mut HandleScope<'s>,
+    _v: i64,
+  ) -> Local<'s, BigInt> {
     // QJS-DIVERGE: a real implementation routes through JS_NewBigInt64. We
     // pretend with a tagged sentinel until JS_NewBigInt64 wiring is added
     // to sys.rs.
@@ -163,8 +175,8 @@ impl<'s> Local<'s, BigInt> {
   }
 }
 
-impl<'s> Local<'s, Symbol> {
-  pub fn new(scope: &mut HandleScope<'s>) -> Self {
+impl Symbol {
+  pub fn new<'s>(scope: &mut HandleScope<'s>) -> Local<'s, Symbol> {
     // QJS-DIVERGE: real path is JS_NewSymbol(ctx, NULL, false). Mocked.
     let raw = sys::JSValue {
       u: sys::JSValueUnion { int32: 0 },
@@ -173,7 +185,10 @@ impl<'s> Local<'s, Symbol> {
     scope.track_owned(raw);
     Local::from_raw(raw)
   }
-  pub fn for_(scope: &mut HandleScope<'s>, _desc: Local<'s, String>) -> Self {
+  pub fn for_<'s>(
+    scope: &mut HandleScope<'s>,
+    _desc: Local<'s, String>,
+  ) -> Local<'s, Symbol> {
     Self::new(scope)
   }
 }
@@ -205,10 +220,15 @@ macro_rules! value_type {
 }
 
 // PrimitiveArray methods
-impl<'s> Local<'s, PrimitiveArray> {
-  pub fn new(_scope: &mut HandleScope<'s>, _length: i32) -> Self {
+impl PrimitiveArray {
+  pub fn new<'s>(
+    _scope: &mut HandleScope<'s>,
+    _length: i32,
+  ) -> Local<'s, PrimitiveArray> {
     Local::from_raw(sys::jsv_undefined())
   }
+}
+impl<'s> Local<'s, PrimitiveArray> {
   pub fn length(&self) -> i32 {
     0
   }

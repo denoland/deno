@@ -38,8 +38,11 @@ impl BackingStore {
   }
 }
 
-impl<'s> Local<'s, ArrayBuffer> {
-  pub fn new(scope: &mut HandleScope<'s>, byte_length: usize) -> Self {
+impl ArrayBuffer {
+  pub fn new<'s>(
+    scope: &mut HandleScope<'s>,
+    byte_length: usize,
+  ) -> Local<'s, ArrayBuffer> {
     // QJS-DIVERGE: real impl routes through JS_NewArrayBuffer; mock allocates
     // an object placeholder.
     let _ = byte_length;
@@ -47,6 +50,24 @@ impl<'s> Local<'s, ArrayBuffer> {
     scope.track_owned(raw);
     Local::from_raw(raw)
   }
+  /// Mirror of v8's `ArrayBuffer::with_backing_store`.
+  pub fn with_backing_store<'s>(
+    scope: &mut HandleScope<'s>,
+    _store: &std::sync::Arc<BackingStore>,
+  ) -> Local<'s, ArrayBuffer> {
+    Self::new(scope, 0)
+  }
+  pub fn new_backing_store(
+    _scope: &mut crate::isolate::Isolate,
+    byte_length: usize,
+  ) -> Box<BackingStore> {
+    Box::new(BackingStore {
+      data: vec![0u8; byte_length].into_boxed_slice(),
+    })
+  }
+}
+
+impl<'s> Local<'s, ArrayBuffer> {
   pub fn byte_length(&self) -> usize {
     0
   }
@@ -55,8 +76,11 @@ impl<'s> Local<'s, ArrayBuffer> {
   }
 }
 
-impl<'s> Local<'s, SharedArrayBuffer> {
-  pub fn new(_scope: &mut HandleScope<'s>, _byte_length: usize) -> Self {
+impl SharedArrayBuffer {
+  pub fn new<'s>(
+    _scope: &mut HandleScope<'s>,
+    _byte_length: usize,
+  ) -> Local<'s, SharedArrayBuffer> {
     // QJS-DIVERGE: SharedArrayBuffer requires threading semantics QuickJS
     // does not provide. Using SAB on the QuickJS backend throws at runtime
     // (deno_core tests that need SAB are gated to V8).
@@ -64,13 +88,13 @@ impl<'s> Local<'s, SharedArrayBuffer> {
   }
 }
 
-impl<'s> Local<'s, Uint8Array> {
-  pub fn new(
+impl Uint8Array {
+  pub fn new<'s>(
     scope: &mut HandleScope<'s>,
     _buffer: Local<'s, ArrayBuffer>,
     _offset: usize,
     _length: usize,
-  ) -> Option<Self> {
+  ) -> Option<Local<'s, Uint8Array>> {
     let raw = sys::new_object(scope.ctx());
     scope.track_owned(raw);
     Some(Local::from_raw(raw))

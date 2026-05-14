@@ -50,12 +50,18 @@ impl<'s> FunctionBuilder<'s> {
   }
 }
 
-impl<'s> Local<'s, FunctionTemplate> {
-  pub fn new(scope: &mut HandleScope<'s>, _callback: FunctionCallback) -> Self {
+impl FunctionTemplate {
+  pub fn new<'s>(
+    scope: &mut HandleScope<'s>,
+    _callback: FunctionCallback,
+  ) -> Local<'s, FunctionTemplate> {
     let raw = sys::new_object(scope.ctx());
     scope.track_owned(raw);
     Local::from_raw(raw)
   }
+}
+
+impl<'s> Local<'s, FunctionTemplate> {
   pub fn get_function(
     &self,
     _scope: &mut HandleScope<'s>,
@@ -77,12 +83,15 @@ impl<'s> Local<'s, FunctionTemplate> {
   pub fn set_class_name(&self, _name: Local<'s, crate::primitives::String>) {}
 }
 
-impl<'s> Local<'s, ObjectTemplate> {
-  pub fn new(scope: &mut HandleScope<'s>) -> Self {
+impl ObjectTemplate {
+  pub fn new<'s>(scope: &mut HandleScope<'s>) -> Local<'s, ObjectTemplate> {
     let raw = sys::new_object(scope.ctx());
     scope.track_owned(raw);
     Local::from_raw(raw)
   }
+}
+
+impl<'s> Local<'s, ObjectTemplate> {
   pub fn new_instance(
     &self,
     _scope: &mut HandleScope<'s>,

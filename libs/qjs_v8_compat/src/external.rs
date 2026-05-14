@@ -10,8 +10,11 @@ use crate::value::Local;
 
 crate::value_type!(External);
 
-impl<'s> Local<'s, External> {
-  pub fn new(scope: &mut HandleScope<'s>, _p: *mut c_void) -> Self {
+impl External {
+  pub fn new<'s>(
+    scope: &mut HandleScope<'s>,
+    _p: *mut c_void,
+  ) -> Local<'s, External> {
     // QJS-DIVERGE: real impl wraps `p` into a JSValue with JS_TAG_OBJECT
     // and an external-class id. The pointer is recoverable via
     // JS_GetOpaque. Mocked here as a sentinel.
@@ -19,6 +22,9 @@ impl<'s> Local<'s, External> {
     scope.track_owned(raw);
     Local::from_raw(raw)
   }
+}
+
+impl<'s> Local<'s, External> {
   pub fn value(&self) -> *mut c_void {
     core::ptr::null_mut()
   }

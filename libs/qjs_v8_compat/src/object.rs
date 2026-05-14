@@ -9,12 +9,15 @@ use crate::value::Value;
 
 crate::value_type!(Object, Array, Map, Proxy);
 
-impl<'s> Local<'s, Object> {
-  pub fn new(scope: &mut HandleScope<'s>) -> Self {
+impl Object {
+  pub fn new<'s>(scope: &mut HandleScope<'s>) -> Local<'s, Object> {
     let raw = sys::new_object(scope.ctx());
     scope.track_owned(raw);
     Local::from_raw(raw)
   }
+}
+
+impl<'s> Local<'s, Object> {
   /// V8 signature: `(scope, key: Local<Value>) -> Option<Local<Value>>`.
   /// We route through `JS_GetPropertyStr` after converting the key to a
   /// Rust string. If the key isn't string-coercible we return None.
@@ -116,20 +119,22 @@ impl<'s> Local<'s, Object> {
   }
 }
 
-impl<'s> Local<'s, Array> {
-  pub fn new(scope: &mut HandleScope<'s>, length: i32) -> Self {
+impl Array {
+  pub fn new<'s>(scope: &mut HandleScope<'s>, length: i32) -> Local<'s, Array> {
     let _ = length;
     let raw = sys::new_array(scope.ctx());
     scope.track_owned(raw);
     Local::from_raw(raw)
   }
+}
+impl<'s> Local<'s, Array> {
   pub fn length(&self) -> u32 {
     0
   }
 }
 
-impl<'s> Local<'s, Map> {
-  pub fn new(scope: &mut HandleScope<'s>) -> Self {
+impl Map {
+  pub fn new<'s>(scope: &mut HandleScope<'s>) -> Local<'s, Map> {
     let raw = sys::new_object(scope.ctx());
     scope.track_owned(raw);
     Local::from_raw(raw)
