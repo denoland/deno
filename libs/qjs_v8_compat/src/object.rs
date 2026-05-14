@@ -10,16 +10,16 @@ use crate::value::Value;
 crate::value_type!(Object, Array, Map, Proxy);
 
 impl Object {
-  pub fn wrap<'s, T>(
-    _scope: &mut crate::scope::HandleScope<'s>,
+  pub fn wrap<const TAG: u16, T, S>(
+    _scope: &mut S,
     _wrapper: Local<'_, Object>,
     _value: &T,
   ) {
   }
-  pub fn unwrap<'s, T: 'static>(
-    _scope: &mut crate::scope::HandleScope<'s>,
+  pub fn unwrap<const TAG: u16, T: 'static, S>(
+    _scope: &mut S,
     _wrapper: Local<'_, Object>,
-  ) -> Option<*mut T> {
+  ) -> Option<crate::v8::cppgc::UnsafePtr<T>> {
     None
   }
   pub fn new<'s>(scope: &mut HandleScope<'s>) -> Local<'s, Object> {

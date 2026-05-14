@@ -401,7 +401,7 @@ pub type PromiseRejectCallback =
 
 // `Platform` is a Rust-side placeholder. Real V8 uses libplatform; QuickJS
 // has no equivalent and runs all work on the embedder's thread.
-pub type Platform = ();
+pub use crate::v8::Platform;
 
 thread_local! {
   /// rusty_v8 has implicit isolate context. We replicate the slot so code

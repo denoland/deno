@@ -118,7 +118,6 @@ impl String {
     &self,
     _scope: &mut S,
     _buf: &mut [std::mem::MaybeUninit<u8>],
-    _flags: crate::v8::WriteFlags,
   ) -> (usize, usize) {
     (0, 0)
   }
@@ -173,7 +172,6 @@ impl<'s> Local<'s, String> {
     &self,
     _scope: &mut HandleScope<'sc>,
     buf: &mut [std::mem::MaybeUninit<u8>],
-    _flags: crate::v8::WriteFlags,
   ) -> (usize, usize) {
     let s = sys::to_string_lossy(_scope.ctx(), self.raw).unwrap_or_default();
     let n = s.len().min(buf.len());

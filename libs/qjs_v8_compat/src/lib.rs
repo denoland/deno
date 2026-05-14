@@ -271,8 +271,11 @@ pub mod v8 {
 
     /// Stub for `cppgc::make_garbage_collected`. On V8 this allocates a
     /// `Member<T>` in the cppgc heap; on QuickJS we just box the value.
-    pub fn make_garbage_collected<T: 'static>(value: T) -> Box<T> {
-      Box::new(value)
+    /// Accepts an optional heap argument (rusty_v8 takes `(heap, value)`
+    /// in newer versions and `(value)` in older).
+    pub fn make_garbage_collected<H, T: 'static>(_heap: H, value: T) -> Member<T> {
+      let _ = std::boxed::Box::new(value);
+      Member(core::marker::PhantomData)
     }
 
     pub struct Member<T>(core::marker::PhantomData<T>);
@@ -283,7 +286,7 @@ pub mod v8 {
     pub struct Visitor;
 
     impl<T> Member<T> {
-      pub fn new(_value: &T) -> Self {
+      pub fn new<U>(_value: &U) -> Self {
         Self(core::marker::PhantomData)
       }
       pub fn get(&self) -> Option<&T> {
@@ -291,7 +294,7 @@ pub mod v8 {
       }
     }
     impl<T> Persistent<T> {
-      pub fn new(_value: &T) -> Self {
+      pub fn new<U>(_value: &U) -> Self {
         Self(core::marker::PhantomData)
       }
       pub fn get(&self) -> Option<&T> {
@@ -524,6 +527,14 @@ pub mod v8 {
       ) -> std::rc::Rc<V8Inspector> {
         std::rc::Rc::new(V8Inspector)
       }
+      pub fn context_created(
+        &self,
+        _context: crate::value::Local<'_, crate::context::Context>,
+        _context_group_id: i32,
+        _human_readable_name: StringView<'_>,
+        _aux_data: StringView<'_>,
+      ) {
+      }
       pub fn connect<C: ChannelImpl>(
         &self,
         _context_group_id: i32,
@@ -607,10 +618,26 @@ pub mod v8 {
       pub fn empty() -> Self {
         Self(core::marker::PhantomData)
       }
+      pub fn from(_bytes: &'s [u8]) -> Self {
+        Self(core::marker::PhantomData)
+      }
+    }
+    impl<'s> From<&'s [u8]> for StringView<'s> {
+      fn from(_b: &'s [u8]) -> Self {
+        Self(core::marker::PhantomData)
+      }
     }
     impl StringBuffer {
       pub fn create<'s>(_view: StringView<'s>) -> UniquePtr<StringBuffer> {
         UniquePtr::from(std::boxed::Box::new(Self))
+      }
+      pub fn string(&self) -> StringView<'_> {
+        StringView::empty()
+      }
+    }
+    impl<'s> StringView<'s> {
+      pub fn to_string(&self) -> std::string::String {
+        std::string::String::new()
       }
     }
     use std::boxed::Box;
@@ -825,12 +852,12 @@ pub mod v8 {
   }
 
   pub fn undefined<'s, S>(
-    _scope: S,
+    _scope: &mut S,
   ) -> crate::value::Local<'s, crate::value::Primitive> {
     crate::value::Local::from_raw(crate::sys::jsv_undefined())
   }
   pub fn null<'s, S>(
-    _scope: S,
+    _scope: &mut S,
   ) -> crate::value::Local<'s, crate::value::Primitive> {
     crate::value::Local::from_raw(crate::sys::jsv_null())
   }
@@ -1052,6 +1079,13 @@ pub mod v8 {
       let _ = scope;
       None
     }
+    pub fn build_fast<'s, S: crate::scope::HandleScopeSource>(
+      self,
+      scope: &mut S,
+      _fast_function: &'static crate::v8::fast_api::CFunction,
+    ) -> Option<super::Local<'s, super::FunctionTemplate>> {
+      self.build(scope)
+    }
   }
   pub type NearHeapLimitCallback = unsafe extern "C" fn(
     data: *mut core::ffi::c_void,
@@ -1064,8 +1098,18 @@ pub mod v8 {
   pub fn new_custom_platform(
     _thread_pool_size: u32,
     _idle_task_support: bool,
-  ) -> std::rc::Rc<()> {
-    std::rc::Rc::new(())
+  ) -> Platform {
+    Platform
+  }
+
+  /// Wrapper around `()` so we can hang `.make_shared()` and similar
+  /// builder methods used by deno_core's platform setup. Mirrors the
+  /// rusty_v8 call chain `new_custom_platform(...).make_shared()`.
+  pub struct Platform;
+  impl Platform {
+    pub fn make_shared(self) -> std::rc::Rc<Self> {
+      std::rc::Rc::new(self)
+    }
   }
 }
 

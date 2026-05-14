@@ -87,4 +87,7 @@ impl<'s> Local<'s, Script> {
     // follow-up that connects deno_core's eval pipeline.
     None
   }
+  pub fn get_unbound_script(&self) -> Local<'s, UnboundScript> {
+    Local::from_raw(self.raw)
+  }
 }

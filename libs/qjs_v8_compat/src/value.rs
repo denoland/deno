@@ -1065,11 +1065,15 @@ impl<'s> Local<'s, Value> {
     sys::jsv_is_object(&self.raw)
   }
 
-  pub fn to_boolean(&self, scope: &mut HandleScope<'s>) -> bool {
-    sys::to_bool(scope.ctx(), self.raw)
+  pub fn to_boolean(
+    &self,
+    scope: &mut HandleScope<'s>,
+  ) -> Local<'s, crate::primitives::Boolean> {
+    let b = sys::to_bool(scope.ctx(), self.raw);
+    Local::from_raw(sys::jsv_bool(b))
   }
   pub fn boolean_value(&self, scope: &mut HandleScope<'s>) -> bool {
-    self.to_boolean(scope)
+    sys::to_bool(scope.ctx(), self.raw)
   }
   pub fn int32_value(&self, scope: &mut HandleScope<'s>) -> Option<i32> {
     sys::to_int32(scope.ctx(), self.raw)
