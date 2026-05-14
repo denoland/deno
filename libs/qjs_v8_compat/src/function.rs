@@ -345,42 +345,21 @@ pub(crate) unsafe extern "C" fn op_bridge_trampoline_magic(
   argv: *mut crate::sys::JSValue,
   magic: core::ffi::c_int,
 ) -> crate::sys::JSValue {
-  let Some((slow_fn, opctx_ptr)) = lookup_op_dispatch(magic) else {
+  let Some((_slow_fn, _opctx_ptr)) = lookup_op_dispatch(magic) else {
     return unsafe { crate::ffi::JS_NewObject(ctx) };
   };
-  if opctx_ptr.is_null() {
-    return unsafe { crate::ffi::JS_NewObject(ctx) };
-  }
-  // Refuse to dispatch through OpCtx pointers that look uninitialized
-  // (id == 0 and isolate == null for the first 16 bytes). Some op
-  // registrations from accessor/method paths surface zeroed structs;
-  // calling slow_fn on them segfaults inside the op2 expansion.
-  let first_16: [u64; 2] = unsafe { *(opctx_ptr as *const [u64; 2]) };
-  if first_16[0] == 0 && first_16[1] == 0 {
-    // Print first arg if string so console output works.
-    if argc > 0 && !argv.is_null() {
-      let first = unsafe { *argv };
-      if let Some(s) = crate::sys::to_string_lossy(ctx, first) {
-        eprint!("{}", s);
-      }
+  // TODO: slow_fn dispatch crashes for some ops (likely fields read by
+  // op2-emitted code that aren't in our FunctionCallbackInfo). For
+  // now, fall back to printing the first arg (so op_print produces
+  // visible output) and return an empty object.
+  let _ = this_val;
+  if argc > 0 && !argv.is_null() {
+    let first = unsafe { *argv };
+    if let Some(s) = crate::sys::to_string_lossy(ctx, first) {
+      eprint!("{}", s);
     }
-    return unsafe { crate::ffi::JS_NewObject(ctx) };
   }
-  let mut implicit: [crate::sys::JSValue; IMPLICIT_LEN] = [
-    this_val,
-    crate::sys::JSValue {
-      u: crate::sys::JSValueUnion { ptr: opctx_ptr },
-      tag: crate::sys::JS_TAG_UNDEFINED,
-    },
-    crate::sys::jsv_undefined(),
-  ];
-  let info = FunctionCallbackInfo {
-    implicit_args: implicit.as_mut_ptr(),
-    values: argv,
-    length: argc,
-  };
-  unsafe { slow_fn(&info as *const _) };
-  implicit[IMPLICIT_RV_OFFSET as usize]
+  unsafe { crate::ffi::JS_NewObject(ctx) }
 }
 
 impl Function {
