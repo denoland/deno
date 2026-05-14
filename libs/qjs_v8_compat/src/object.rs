@@ -319,7 +319,26 @@ impl<'s> Local<'s, Array> {
 }
 impl<'s> Local<'s, Array> {
   pub fn length(&self) -> u32 {
-    0
+    // V8's Array::length takes no scope, so we recover ctx from the
+    // thread-local current isolate (set by HandleScope::new). Read
+    // the array's `length` property via JS_GetPropertyStr.
+    let iso = crate::isolate::current_isolate_ptr();
+    if iso.is_null() {
+      return 0;
+    }
+    let ctx = unsafe { (*iso).default_ctx() };
+    let len_v = sys::get_property_str(ctx, self.raw(), "length");
+    let len = if sys::jsv_is_int(&len_v) {
+      let v = unsafe { len_v.u.int32 };
+      v as u32
+    } else if sys::jsv_is_number(&len_v) {
+      let v = unsafe { len_v.u.float64 };
+      v as u32
+    } else {
+      0u32
+    };
+    sys::free_value(ctx, len_v);
+    len
   }
 }
 
