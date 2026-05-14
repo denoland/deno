@@ -40,12 +40,12 @@ impl<'s> ScriptOrigin<'s> {
   }
 }
 
-impl<'s> Local<'s, Script> {
-  pub fn compile(
+impl Script {
+  pub fn compile<'s>(
     scope: &mut HandleScope<'s>,
     source: Local<'s, JsString>,
     origin: Option<&ScriptOrigin<'s>>,
-  ) -> Option<Self> {
+  ) -> Option<Local<'s, Script>> {
     let src = sys::to_string_lossy(scope.ctx(), source.raw())?;
     let filename = origin
       .and_then(|o| o.filename().map(str::to_owned))
@@ -62,6 +62,9 @@ impl<'s> Local<'s, Script> {
     scope.track_owned(raw);
     Some(Local::from_raw(raw))
   }
+}
+
+impl<'s> Local<'s, Script> {
   pub fn run(&self, _scope: &mut HandleScope<'s>) -> Option<Local<'s, Value>> {
     // QJS-DIVERGE: compile-only in QuickJS produces a function bytecode
     // value; we'd need JS_EvalFunction to actually run it. Wired in the

@@ -145,6 +145,19 @@ impl Isolate {
   pub fn thread_safe_handle(&self) -> IsolateHandle {
     self.0.thread_safe_handle()
   }
+  /// Mirror of rusty_v8's `Isolate::from_raw_isolate_ptr`. Reconstructs
+  /// an Isolate reference from an opaque pointer V8 hands callbacks.
+  ///
+  /// # Safety
+  ///
+  /// `ptr` must be a live isolate pointer for the duration of the
+  /// returned reference's lifetime.
+  pub unsafe fn from_raw_isolate_ptr<'a>(ptr: *mut Self) -> &'a mut Self {
+    unsafe { &mut *ptr }
+  }
+  pub fn raw_isolate_ptr(&mut self) -> *mut Self {
+    self as *mut Self
+  }
   pub fn perform_microtask_checkpoint(&mut self) {
     self.0.perform_microtask_checkpoint()
   }

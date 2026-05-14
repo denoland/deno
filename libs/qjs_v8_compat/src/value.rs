@@ -258,6 +258,28 @@ impl<'s> From<Local<'s, crate::primitives::Symbol>> for Local<'s, Name> {
   }
 }
 
+// `Option<Local<T>> -> Local<Value>` — deno_core does
+// `function_builder.build(scope).into()` where build returns Option;
+// `.into()` should produce a Local<Value> with undefined-as-fallback.
+impl<'s, T> From<Option<Local<'s, T>>> for Local<'s, Value> {
+  fn from(v: Option<Local<'s, T>>) -> Local<'s, Value> {
+    match v {
+      Some(local) => Local::from_raw(local.raw),
+      None => Local::from_raw(sys::jsv_undefined()),
+    }
+  }
+}
+
+// `Option<Local<T>>` to `Local<Name>` for set_with_attr's key arg.
+impl<'s, T> From<Option<Local<'s, T>>> for Local<'s, Name> {
+  fn from(v: Option<Local<'s, T>>) -> Local<'s, Name> {
+    match v {
+      Some(local) => Local::from_raw(local.raw),
+      None => Local::from_raw(sys::jsv_undefined()),
+    }
+  }
+}
+
 // `Data` is the root of v8's data hierarchy (above Value). It's already
 // declared via the value_type! macro at the top of this file; just wire
 // up the upcast.
@@ -571,6 +593,19 @@ pub struct Global<T> {
 }
 
 unsafe impl<T> Send for Global<T> {}
+
+impl<T> Clone for Global<T> {
+  fn clone(&self) -> Self {
+    if let Some(ctx) = self.ctx {
+      sys::dup_value(ctx, self.raw);
+    }
+    Self {
+      raw: self.raw,
+      ctx: self.ctx,
+      _t: PhantomData,
+    }
+  }
+}
 
 impl<T> Global<T> {
   pub fn new<'s>(scope: &mut HandleScope<'s>, local: Local<'s, T>) -> Self {
