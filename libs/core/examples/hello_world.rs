@@ -23,13 +23,11 @@ fn main() {
     ..Default::default()
   };
 
-  eprintln!("[main] before JsRuntime::new");
   // Initialize a runtime instance
   let mut runtime = JsRuntime::new(RuntimeOptions {
     extensions: vec![ext],
     ..Default::default()
   });
-  eprintln!("[main] after JsRuntime::new");
 
   // Now we see how to invoke the op we just defined. The runtime automatically
   // contains a Deno.core object with several functions for interacting with it.
