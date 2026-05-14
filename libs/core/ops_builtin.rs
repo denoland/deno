@@ -538,10 +538,21 @@ async fn do_load_job<'s, 'i>(
     code,
   )
   .await?
-  .run_to_completion(|load, request, source| {
-    load
+  .run_to_completion(|load, step| match step {
+    crate::modules::recursive_load::RegisterStep::Register {
+      request,
+      source,
+    } => load
       .register_and_recurse(scope, request, source)
-      .map_err(|e| e.into_error(scope, false, false))
+      .map_err(|e| e.into_error(scope, false, false)),
+    crate::modules::recursive_load::RegisterStep::Finalize {
+      module_id,
+      reference,
+      code,
+    } => {
+      load.finalize_after_pending(module_id, reference, code);
+      Ok(crate::modules::recursive_load::RegisterOutcome::Done)
+    }
   })
   .await?;
 

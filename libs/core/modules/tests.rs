@@ -391,7 +391,6 @@ fn test_recursive_load() {
         specifier_key: Some("/b.js".to_string()),
         referrer_source_offset: Some(19),
         phase: crate::modules::ModuleImportPhase::Evaluation,
-        needs_resolve: false,
       },
       ModuleRequest {
         reference: crate::modules::ModuleReference {
@@ -401,7 +400,6 @@ fn test_recursive_load() {
         specifier_key: Some("/c.js".to_string()),
         referrer_source_offset: Some(46),
         phase: crate::modules::ModuleImportPhase::Evaluation,
-        needs_resolve: false,
       },
     ])
   );
@@ -415,7 +413,6 @@ fn test_recursive_load() {
       specifier_key: Some("/c.js".to_string()),
       referrer_source_offset: Some(19),
       phase: crate::modules::ModuleImportPhase::Evaluation,
-      needs_resolve: false,
     },])
   );
   assert_eq!(
@@ -428,7 +425,6 @@ fn test_recursive_load() {
       specifier_key: Some("/d.js".to_string()),
       referrer_source_offset: Some(19),
       phase: crate::modules::ModuleImportPhase::Evaluation,
-      needs_resolve: false,
     },])
   );
   assert_eq!(modules.get_requested_modules(d_id), Some(vec![]));
@@ -504,7 +500,6 @@ fn test_mods() {
         specifier_key: Some("./b.js".to_string()),
         referrer_source_offset: Some(29),
         phase: crate::modules::ModuleImportPhase::Evaluation,
-        needs_resolve: false,
       },])
     );
 
@@ -792,7 +787,6 @@ fn test_json_text_bytes_modules() {
           specifier_key: Some("./c.json".to_string()),
           referrer_source_offset: Some(32),
           phase: crate::modules::ModuleImportPhase::Evaluation,
-          needs_resolve: false,
         },
         ModuleRequest {
           reference: crate::modules::ModuleReference {
@@ -802,7 +796,6 @@ fn test_json_text_bytes_modules() {
           specifier_key: Some("./d.txt".to_string()),
           referrer_source_offset: Some(165),
           phase: crate::modules::ModuleImportPhase::Evaluation,
-          needs_resolve: false,
         },
         ModuleRequest {
           reference: crate::modules::ModuleReference {
@@ -812,7 +805,6 @@ fn test_json_text_bytes_modules() {
           specifier_key: Some("./e.bin".to_string()),
           referrer_source_offset: Some(264),
           phase: crate::modules::ModuleImportPhase::Evaluation,
-          needs_resolve: false,
         },
       ])
     );
@@ -1244,7 +1236,6 @@ export const foo = bytes;
         specifier_key: Some("file:///b.png".to_string()),
         referrer_source_offset: Some(19),
         phase: crate::modules::ModuleImportPhase::Evaluation,
-        needs_resolve: false,
       }],
       module_type: ModuleType::Other("foobar".into()),
     }
@@ -1449,7 +1440,6 @@ fn test_circular_load() {
         specifier_key: Some("/circular2.js".to_string()),
         referrer_source_offset: Some(8),
         phase: crate::modules::ModuleImportPhase::Evaluation,
-        needs_resolve: false,
       }])
     );
 
@@ -1463,7 +1453,6 @@ fn test_circular_load() {
         specifier_key: Some("/circular3.js".to_string()),
         referrer_source_offset: Some(8),
         phase: crate::modules::ModuleImportPhase::Evaluation,
-        needs_resolve: false,
       }])
     );
 
@@ -1486,7 +1475,6 @@ fn test_circular_load() {
           specifier_key: Some("/circular1.js".to_string()),
           referrer_source_offset: Some(8),
           phase: crate::modules::ModuleImportPhase::Evaluation,
-          needs_resolve: false,
         },
         ModuleRequest {
           reference: crate::modules::ModuleReference {
@@ -1496,7 +1484,6 @@ fn test_circular_load() {
           specifier_key: Some("/circular2.js".to_string()),
           referrer_source_offset: Some(32),
           phase: crate::modules::ModuleImportPhase::Evaluation,
-          needs_resolve: false,
         }
       ])
     );
@@ -1751,7 +1738,6 @@ fn recursive_load_main_with_code() {
         specifier_key: Some("/b.js".to_string()),
         referrer_source_offset: Some(23),
         phase: crate::modules::ModuleImportPhase::Evaluation,
-        needs_resolve: false,
       },
       ModuleRequest {
         reference: crate::modules::ModuleReference {
@@ -1761,7 +1747,6 @@ fn recursive_load_main_with_code() {
         specifier_key: Some("/c.js".to_string()),
         referrer_source_offset: Some(54),
         phase: crate::modules::ModuleImportPhase::Evaluation,
-        needs_resolve: false,
       }
     ])
   );
@@ -1775,7 +1760,6 @@ fn recursive_load_main_with_code() {
       specifier_key: Some("/c.js".to_string()),
       referrer_source_offset: Some(19),
       phase: crate::modules::ModuleImportPhase::Evaluation,
-      needs_resolve: false,
     }])
   );
   assert_eq!(
@@ -1788,7 +1772,6 @@ fn recursive_load_main_with_code() {
       specifier_key: Some("/d.js".to_string()),
       referrer_source_offset: Some(19),
       phase: crate::modules::ModuleImportPhase::Evaluation,
-      needs_resolve: false,
     }])
   );
   assert_eq!(modules.get_requested_modules(d_id), Some(vec![]));
