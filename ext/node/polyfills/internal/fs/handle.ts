@@ -1,33 +1,19 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file prefer-primordials no-explicit-any no-node-globals
 
-import { EventEmitter } from "node:events";
-import { Buffer } from "node:buffer";
-import {
-  type BigIntStats,
-  fchmod,
-  fdatasync,
-  fsync,
-  Mode,
-  promises,
-  read as readAsync,
-  type ReadAsyncOptions,
-  ReadStream,
-  type Stats,
-  write as writeAsync,
-  WriteStream,
-} from "node:fs";
-import { createInterface } from "node:readline";
-import type { Interface as ReadlineInterface } from "node:readline";
 import { core, primordials } from "ext:core/mod.js";
-import {
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+const lazyFs = core.createLazyLoader("node:fs");
+const lazyReadline = core.createLazyLoader("node:readline");
+import { op_node_fs_close } from "ext:core/ops";
+import type {
   BinaryOptionsArgument,
   FileOptionsArgument,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
-import { writev } from "node:fs";
+// writev loaded lazily from node:fs via lazyFs
 
 export interface WriteVResult {
   bytesWritten: number;
@@ -40,45 +26,42 @@ function writevPromise(
   position?: number,
 ): Promise<WriteVResult> {
   return new Promise((resolve, reject) => {
-    writev(fd, buffers, position, (err, bytesWritten, buffers) => {
+    lazyFs().writev(fd, buffers, position, (err, bytesWritten, buffers) => {
       if (err) reject(err);
       else resolve({ bytesWritten, buffers });
     });
   });
 }
-import { readvPromise, type ReadVResult } from "node:fs";
-import { fstatPromise } from "ext:deno_node/_fs/_fs_fstat.ts";
-import {
-  fchown as fchownCb,
-  ftruncate as ftruncateCb,
-  futimes as futimesCb,
-} from "node:fs";
-import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
+// readvPromise loaded lazily from node:fs via lazyFs
+const { fstatPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_fstat.ts");
+// fchown, ftruncate, futimes loaded lazily from node:fs via lazyFs
+const { kEmptyObject, promisify } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 
-import {
-  CreateReadStreamOptions,
-  CreateWriteStreamOptions,
-} from "node:fs/promises";
-import assert from "node:assert";
-import {
+// CreateReadStreamOptions, CreateWriteStreamOptions types from node:fs/promises
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
+const {
   denoErrorToNodeError,
   ERR_INVALID_STATE,
-} from "ext:deno_node/internal/errors.ts";
-import { readableStreamCancel } from "ext:deno_web/06_streams.js";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { readableStreamCancel } = core.loadExtScript(
+  "ext:deno_web/06_streams.js",
+);
+const {
   validateBoolean,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import process from "node:process";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const lazyProcess = core.createLazyLoader("node:process");
 
-const fchmodPromise = promisify(fchmod) as (
+const fchmodPromise = promisify(lazyFs().fchmod) as (
   fd: number,
   mode: string | number,
 ) => Promise<void>;
-const fdatasyncPromise = promisify(fdatasync) as (
+const fdatasyncPromise = promisify(lazyFs().fdatasync) as (
   fd: number,
 ) => Promise<void>;
-const fsyncPromise = promisify(fsync) as (fd: number) => Promise<void>;
+const fsyncPromise = promisify(lazyFs().fsync) as (fd: number) => Promise<void>;
 
 const {
   Error,
@@ -98,13 +81,13 @@ const kRefs = Symbol("kRefs");
 const kClosePromise = Symbol("kClosePromise");
 const kCloseResolve = Symbol("kCloseResolve");
 const kCloseReject = Symbol("kCloseReject");
-const kRef = Symbol("kRef");
-const kUnref = Symbol("kUnref");
+export const kRef = Symbol("kRef");
+export const kUnref = Symbol("kUnref");
 const kLocked = Symbol("kLocked");
 
-const ftruncatePromise = promisify(ftruncateCb);
-const fchownPromise = promisify(fchownCb);
-const futimesPromise = promisify(futimesCb);
+const ftruncatePromise = promisify(lazyFs().ftruncate);
+const fchownPromise = promisify(lazyFs().fchown);
+const futimesPromise = promisify(lazyFs().futimes);
 
 interface WriteResult {
   bytesWritten: number;
@@ -145,12 +128,12 @@ export class FileHandle extends EventEmitter {
   ): Promise<ReadResult>;
   read(
     buffer: ArrayBufferView,
-    options?: ReadAsyncOptions<NodeJS.ArrayBufferView>,
+    options?: any,
   ): Promise<ReadResult>;
-  read(options?: ReadAsyncOptions<NodeJS.ArrayBufferView>): Promise<ReadResult>;
+  read(options?: any): Promise<ReadResult>;
   read(
-    bufferOrOpt?: ArrayBufferView | ReadAsyncOptions<NodeJS.ArrayBufferView>,
-    offsetOrOpt?: number | ReadAsyncOptions<NodeJS.ArrayBufferView>,
+    bufferOrOpt?: ArrayBufferView | any,
+    offsetOrOpt?: number | any,
     length?: number,
     position?: number | null,
   ): Promise<ReadResult> {
@@ -172,7 +155,7 @@ export class FileHandle extends EventEmitter {
   readFile(
     opt?: TextOptionsArgument | BinaryOptionsArgument | FileOptionsArgument,
   ): Promise<string | Buffer> {
-    return fsCall(promises.readFile, "readFile", this, opt);
+    return fsCall(lazyFs().promises.readFile, "readFile", this, opt);
   }
 
   write(
@@ -200,7 +183,13 @@ export class FileHandle extends EventEmitter {
   }
 
   writeFile(data, options): Promise<void> {
-    return fsCall(promises.writeFile, "writeFile", this, data, options);
+    return fsCall(
+      lazyFs().promises.writeFile,
+      "writeFile",
+      this,
+      data,
+      options,
+    );
   }
 
   writev(buffers: ArrayBufferView[], position?: number): Promise<WriteVResult> {
@@ -210,8 +199,8 @@ export class FileHandle extends EventEmitter {
   readv(
     buffers: readonly ArrayBufferView[],
     position?: number,
-  ): Promise<ReadVResult> {
-    return fsCall(readvPromise, "readv", this, buffers, position);
+  ): Promise<any> {
+    return fsCall(lazyFs().readvPromise, "readv", this, buffers, position);
   }
 
   [kRef]() {
@@ -234,7 +223,7 @@ export class FileHandle extends EventEmitter {
   #close(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        core.close(this.fd);
+        op_node_fs_close(this.fd);
         this.#rid = -1;
         resolve();
       } catch (err) {
@@ -278,14 +267,14 @@ export class FileHandle extends EventEmitter {
     return this[kClosePromise];
   }
 
-  stat(): Promise<Stats>;
-  stat(options: { bigint: false }): Promise<Stats>;
-  stat(options: { bigint: true }): Promise<BigIntStats>;
-  stat(options?: { bigint: boolean }): Promise<Stats | BigIntStats> {
+  stat(): Promise<any>;
+  stat(options: { bigint: false }): Promise<any>;
+  stat(options: { bigint: true }): Promise<any>;
+  stat(options?: { bigint: boolean }): Promise<any> {
     return fsCall(fstatPromise, "fstat", this, options);
   }
 
-  chmod(mode: Mode): Promise<void> {
+  chmod(mode: any): Promise<void> {
     return fsCall(fchmodPromise, "fchmod", this, mode);
   }
 
@@ -308,17 +297,17 @@ export class FileHandle extends EventEmitter {
     return fsCall(fchownPromise, "fchown", this, uid, gid);
   }
 
-  createReadStream(options?: CreateReadStreamOptions): ReadStream {
-    return new ReadStream(undefined, { ...options, fd: this.fd });
+  createReadStream(options?: any): any {
+    return new (lazyFs().ReadStream)(undefined, { ...options, fd: this });
   }
 
-  createWriteStream(options?: CreateWriteStreamOptions): WriteStream {
-    return new WriteStream(undefined, { ...options, fd: this.fd });
+  createWriteStream(options?: any): any {
+    return new (lazyFs().WriteStream)(undefined, { ...options, fd: this });
   }
 
-  readLines(options?: CreateReadStreamOptions): ReadlineInterface {
-    return createInterface({
-      input: this.createReadStream({ ...options, autoClose: false }),
+  readLines(options?: any): any {
+    return lazyReadline().createInterface({
+      input: this.createReadStream(options),
       crlfDelay: Infinity,
     });
   }
@@ -343,7 +332,7 @@ export class FileHandle extends EventEmitter {
     validateBoolean(autoClose, "options.autoClose");
 
     if (type !== "bytes") {
-      process.emitWarning(
+      lazyProcess().default.emitWarning(
         'A non-"bytes" options.type has no effect. A byte-oriented steam is ' +
           "always created.",
         "ExperimentalWarning",
@@ -407,7 +396,13 @@ export class FileHandle extends EventEmitter {
       flag: resolvedOptions.flag ?? "a",
     };
 
-    return fsCall(promises.writeFile, "writeFile", this, data, optsWithAppend);
+    return fsCall(
+      lazyFs().promises.writeFile,
+      "writeFile",
+      this,
+      data,
+      optsWithAppend,
+    );
   }
 }
 
@@ -421,26 +416,31 @@ function readPromise(
 function readPromise(
   rid: number,
   buffer: ArrayBufferView,
-  options?: ReadAsyncOptions<NodeJS.ArrayBufferView>,
+  options?: any,
 ): Promise<ReadResult>;
 function readPromise(
   rid: number,
-  options?: ReadAsyncOptions<NodeJS.ArrayBufferView>,
+  options?: any,
 ): Promise<ReadResult>;
 function readPromise(
   rid: number,
-  bufferOrOpt?: ArrayBufferView | ReadAsyncOptions<NodeJS.ArrayBufferView>,
-  offsetOrOpt?: number | ReadAsyncOptions<NodeJS.ArrayBufferView>,
+  bufferOrOpt?: ArrayBufferView | any,
+  offsetOrOpt?: number | any,
   length?: number,
   position?: number | null,
 ): Promise<ReadResult> {
   if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, bufferOrOpt)) {
-    if (typeof length !== "number" && typeof position !== "number") {
+    if (
+      typeof offsetOrOpt !== "number" && typeof length !== "number" &&
+      typeof position !== "number"
+    ) {
+      // fileHandle.read(buffer) or fileHandle.read(buffer, options)
+      const opts = (offsetOrOpt ?? {}) as any;
       return new Promise((resolve, reject) => {
-        readAsync(
+        lazyFs().read(
           rid,
           bufferOrOpt,
-          offsetOrOpt,
+          opts,
           (err: Error, bytesRead: number, buffer: Buffer) => {
             if (err) reject(err);
             else resolve({ buffer, bytesRead });
@@ -450,7 +450,7 @@ function readPromise(
     }
 
     return new Promise((resolve, reject) => {
-      readAsync(
+      lazyFs().read(
         rid,
         bufferOrOpt,
         offsetOrOpt,
@@ -464,7 +464,7 @@ function readPromise(
     });
   } else {
     return new Promise((resolve, reject) => {
-      readAsync(
+      lazyFs().read(
         rid,
         bufferOrOpt,
         (err: Error, bytesRead: number, buffer: Buffer) => {
@@ -502,7 +502,7 @@ function writePromise(
     const length = lengthOrEncoding;
 
     return new Promise((resolve, reject) => {
-      writeAsync(
+      lazyFs().write(
         rid,
         buffer,
         offset,
@@ -520,7 +520,7 @@ function writePromise(
     const encoding = lengthOrEncoding;
 
     return new Promise((resolve, reject) => {
-      writeAsync(
+      lazyFs().write(
         rid,
         str,
         position,

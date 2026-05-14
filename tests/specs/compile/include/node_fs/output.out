@@ -1,0 +1,6 @@
+accessSync F_OK: ok
+accessSync R_OK: ok
+access R_OK: ok
+openSync+readSync: Hello from VFS
+readFile: Hello from VFS
+createReadStream: Hello from VFS

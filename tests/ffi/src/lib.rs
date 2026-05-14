@@ -154,6 +154,39 @@ pub unsafe extern "C" fn nonblocking_buffer(ptr: *const u8, len: usize) {
   }
 }
 
+/// Verify that a buffer filled with a specific byte pattern remains valid after
+/// a delay. Used to test that nonblocking FFI calls keep the backing store alive
+/// even when GC is forced via --expose-gc. Sleeps to give JS time to call gc(),
+/// then validates the buffer contents. Returns the checksum of the buffer.
+///
+/// # Safety
+///
+/// The pointer to the buffer must be valid and initialized, and the length must
+/// not be longer than the buffer's allocation.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nonblocking_buffer_checksum(
+  ptr: *const u8,
+  len: usize,
+  fill_value: u8,
+) -> u64 {
+  // Sleep to give JS time to call gc() and force collection
+  sleep(Duration::from_millis(100));
+  unsafe {
+    let buf = std::slice::from_raw_parts(ptr, len);
+    let mut checksum: u64 = 0;
+    for &byte in buf {
+      // If GC freed the buffer, at least some bytes won't match fill_value
+      assert_eq!(
+        byte, fill_value,
+        "Buffer corrupted: expected 0x{fill_value:02x}, got 0x{byte:02x}. \
+         Backing store was likely freed by GC."
+      );
+      checksum += byte as u64;
+    }
+    checksum
+  }
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn get_add_u32_ptr() -> *const c_void {
   add_u32 as *const c_void

@@ -258,10 +258,13 @@ fn handle_ws_request(
   let (parts, body) = req.into_parts();
   let req = http::Request::from_parts(parts, ());
 
-  let maybe_uuid = req
-    .uri()
-    .path()
+  // Accept both /UUID (Node.js-compatible format) and /ws/UUID (legacy
+  // format) so existing clients keep working while new ones can use the
+  // shorter Node.js-style URL.
+  let path = req.uri().path();
+  let maybe_uuid = path
     .strip_prefix("/ws/")
+    .or_else(|| path.strip_prefix('/'))
     .and_then(|s| Uuid::parse_str(s).ok());
 
   let Some(uuid) = maybe_uuid else {
@@ -581,6 +584,12 @@ async fn server(
               (&http::Method::GET, "/json/list") if publish_uid.http => {
                 handle_json_request(Rc::clone(&inspector_map), host)
               }
+              // Node.js-compatible "/UUID" path for the WebSocket session.
+              (&http::Method::GET, path)
+                if Uuid::parse_str(path.trim_start_matches('/')).is_ok() =>
+              {
+                handle_ws_request(req, Rc::clone(&inspector_map))
+              }
               _ => http::Response::builder()
                 .status(http::StatusCode::NOT_FOUND)
                 .body(Box::new(http_body_util::Full::new(Bytes::from(
@@ -671,21 +680,28 @@ async fn pump_websocket_messages(
             let msg = Frame::text(msg.content.into_bytes().into());
             let _ = websocket.write_frame(msg).await;
         }
-        Ok(msg) = websocket.read_frame() => {
-            match msg.opcode {
-                OpCode::Text => {
-                    if let Ok(s) = String::from_utf8(msg.payload.to_vec()) {
-                      let _ = inbound_tx.unbounded_send(s);
+        result = websocket.read_frame() => {
+            match result {
+                Ok(msg) => match msg.opcode {
+                    OpCode::Text => {
+                        if let Ok(s) = String::from_utf8(msg.payload.to_vec()) {
+                          let _ = inbound_tx.unbounded_send(s);
+                        }
                     }
-                }
-                OpCode::Close => {
-                    // Users don't care if there was an error coming from debugger,
-                    // just about the fact that debugger did disconnect.
-                    log::info!("Debugger session ended");
+                    OpCode::Close => {
+                        // Users don't care if there was an error coming from debugger,
+                        // just about the fact that debugger did disconnect.
+                        log::info!("Debugger session ended");
+                        break 'pump;
+                    }
+                    _ => {
+                        // Ignore other messages.
+                    }
+                },
+                Err(_) => {
+                    // WebSocket read error (remote disconnected without close frame).
+                    log::info!("Debugger session ended (connection lost)");
                     break 'pump;
-                }
-                _ => {
-                    // Ignore other messages.
                 }
             }
         }
@@ -743,12 +759,12 @@ impl InspectorInfo {
   }
 
   pub fn get_websocket_debugger_url(&self, host: &str) -> String {
-    format!("ws://{}/ws/{}", host, &self.uuid)
+    format!("ws://{}/{}", host, &self.uuid)
   }
 
   fn get_frontend_url(&self, host: &str) -> String {
     format!(
-      "devtools://devtools/bundled/js_app.html?ws={}/ws/{}&experiments=true&v8only=true",
+      "devtools://devtools/bundled/js_app.html?ws={}/{}&experiments=true&v8only=true",
       host, &self.uuid
     )
   }

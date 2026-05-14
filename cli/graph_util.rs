@@ -414,6 +414,10 @@ impl ModuleGraphCreator {
     }
   }
 
+  pub fn module_graph_builder(&self) -> &Arc<ModuleGraphBuilder> {
+    &self.module_graph_builder
+  }
+
   pub async fn create_graph(
     &self,
     graph_kind: GraphKind,
@@ -522,7 +526,30 @@ impl ModuleGraphCreator {
     if self.options.type_check_mode().is_true()
       && !graph_has_external_remote(&graph)
     {
-      self.type_check_graph(graph.clone())?;
+      // Include compilerOptions.types imports for type checking so that
+      // ambient type declarations (e.g. Vite's import.meta.hot) are
+      // available, but do not include them in the publish graph itself.
+      let types_imports = self
+        .module_graph_builder
+        .resolve_compiler_options_types_imports(deno_graph::GraphKind::All);
+      if !types_imports.is_empty() {
+        let mut type_check_graph = graph.clone();
+        self
+          .module_graph_builder
+          .build_graph_with_npm_resolution(
+            &mut type_check_graph,
+            BuildGraphRequest::Roots(vec![], types_imports),
+            BuildGraphWithNpmOptions {
+              is_dynamic: false,
+              loader: Some(&publish_loader),
+              npm_caching: self.options.default_npm_caching_strategy(),
+            },
+          )
+          .await?;
+        self.type_check_graph(type_check_graph)?;
+      } else {
+        self.type_check_graph(graph.clone())?;
+      }
     }
 
     if options.build_fast_check_graph {
@@ -537,6 +564,7 @@ impl ModuleGraphCreator {
           workspace_fast_check: WorkspaceFastCheckOption::Enabled(
             &fast_check_workspace_members,
           ),
+          fast_check_dts: false,
         },
       )?;
     }
@@ -620,6 +648,8 @@ pub struct BuildFastCheckGraphOptions<'a> {
   /// Whether to do fast check on workspace members. This
   /// is mostly only useful when publishing.
   pub workspace_fast_check: deno_graph::WorkspaceFastCheckOption<'a>,
+  /// Whether to generate .d.ts files during fast check.
+  pub fast_check_dts: bool,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -984,7 +1014,7 @@ impl ModuleGraphBuilder {
       deno_graph::BuildFastCheckTypeGraphOptions {
         es_parser: Some(&parser),
         fast_check_cache: fast_check_cache.as_ref().map(|c| c as _),
-        fast_check_dts: false,
+        fast_check_dts: options.fast_check_dts,
         jsr_url_provider: &CliJsrUrlProvider,
         resolver: Some(&graph_resolver),
         workspace_fast_check: options.workspace_fast_check,
@@ -1064,6 +1094,19 @@ impl ModuleGraphBuilder {
         allow_unknown_jsr_exports,
       },
     )
+  }
+
+  fn resolve_compiler_options_types_imports(
+    &self,
+    graph_kind: GraphKind,
+  ) -> Vec<deno_graph::ReferrerImports> {
+    if graph_kind.include_types() {
+      self
+        .compiler_options_resolver
+        .to_compiler_options_types_imports()
+    } else {
+      Vec::new()
+    }
   }
 
   fn maybe_resolve_ts_config_imports(

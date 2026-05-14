@@ -22,9 +22,9 @@ use deno_lib::util::checksum;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_npmrc::ResolvedNpmRc;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::DenoResolveErrorKind;
 use deno_resolver::display::DisplayTreeNode;
@@ -125,6 +125,16 @@ pub async fn info(
               req,
               sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
             ))?)
+          }
+          deno_package_json::PackageJsonDepValue::Catalog(catalog_name) => {
+            match resolver.resolve_catalog_dep(alias, catalog_name) {
+              Some(req) => Some(ModuleSpecifier::parse(&format!(
+                "npm:{}{}",
+                req,
+                sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+              ))?),
+              None => None,
+            }
           }
         },
         deno_resolver::workspace::MappedResolution::PackageJsonImport {

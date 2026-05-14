@@ -160,6 +160,7 @@ deno_core::extension!(
     http_next::op_http_get_request_method_and_url<HTTP>,
     http_next::op_http_get_request_cancelled,
     http_next::op_http_read_request_body,
+    http_next::op_http_try_take_full_request_body,
     http_next::op_http_serve_on<HTTP>,
     http_next::op_http_serve<HTTP>,
     http_next::op_http_set_promise_complete,
@@ -173,15 +174,16 @@ deno_core::extension!(
     http_next::op_http_upgrade_raw,
     http_next::op_http_upgrade_raw_connect,
     http_next::op_http_upgrade_raw_get_head,
+    http_next::op_http_ws_create_from_stream_resource,
     http_next::op_raw_write_vectored,
     http_next::op_can_write_vectored,
-    http_next::op_http_try_wait,
     http_next::op_http_wait,
     http_next::op_http_close,
     http_next::op_http_cancel,
     http_next::op_http_metric_handle_otel_error,
+    http_next::op_http_copy_span_to_otel_info,
   ],
-  esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
+  lazy_loaded_js = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
   options = {
     options: Options,
   },
@@ -212,6 +214,7 @@ deno_core::extension!(
     http_next::op_http_get_request_method_and_url<DefaultHttpPropertyExtractor>,
     http_next::op_http_get_request_cancelled,
     http_next::op_http_read_request_body,
+    http_next::op_http_try_take_full_request_body,
     http_next::op_http_serve_on<DefaultHttpPropertyExtractor>,
     http_next::op_http_serve<DefaultHttpPropertyExtractor>,
     http_next::op_http_set_promise_complete,
@@ -225,15 +228,16 @@ deno_core::extension!(
     http_next::op_http_upgrade_raw,
     http_next::op_http_upgrade_raw_connect,
     http_next::op_http_upgrade_raw_get_head,
+    http_next::op_http_ws_create_from_stream_resource,
     http_next::op_raw_write_vectored,
     http_next::op_can_write_vectored,
-    http_next::op_http_try_wait,
     http_next::op_http_wait,
     http_next::op_http_close,
     http_next::op_http_cancel,
     http_next::op_http_metric_handle_otel_error,
+    http_next::op_http_copy_span_to_otel_info,
   ],
-  esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
+  lazy_loaded_js = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
   options = {
     options: Options,
   },
@@ -321,6 +325,7 @@ struct OtelInfoAttributes {
   server_address: Option<String>,
   server_port: Option<i64>,
   error_type: Option<&'static str>,
+  http_route: Option<String>,
   http_response_status_code: Option<i64>,
 }
 
@@ -435,6 +440,11 @@ impl OtelInfoAttributes {
     if let Some(error) = self.error_type {
       histogram_attributes
         .push(deno_telemetry::KeyValue::new("error.type", error));
+    }
+
+    if let Some(route) = self.http_route.clone() {
+      histogram_attributes
+        .push(deno_telemetry::KeyValue::new("http.route", route));
     }
 
     histogram_attributes
@@ -697,6 +707,7 @@ impl HttpConnResource {
               server_address: request.uri().host().map(|host| host.to_string()),
               server_port: request.uri().port_u16().map(|port| port as i64),
               error_type: Default::default(),
+              http_route: None,
               http_response_status_code: Default::default(),
             },
           ))))

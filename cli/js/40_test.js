@@ -20,14 +20,20 @@ const {
   DateNow,
   Error,
   Map,
+  NumberIsFinite,
+  NumberIsInteger,
+  NumberIsNaN,
   MapPrototypeGet,
   MapPrototypeSet,
   SafeArrayIterator,
+  StringPrototypeLastIndexOf,
+  StringPrototypeSlice,
+  SymbolFor,
   SymbolToStringTag,
   TypeError,
 } = primordials;
 
-import { setExitHandler } from "ext:deno_os/30_os.js";
+const { setExitHandler } = core.loadExtScript("ext:deno_os/30_os.js");
 
 // Capture `Deno` global so that users deleting or mangling it, won't
 // have impact on our sanitizers.
@@ -80,6 +86,51 @@ const DenoNs = globalThis.Deno;
 
 /** @type {Map<number, TestState | TestStepState>} */
 const testStates = new Map();
+
+/**
+ * Symbol that test functions (or their wrappers) can carry to tell the test
+ * runner which source location to report for the test, instead of the call
+ * site of `Deno.test()` itself.
+ *
+ * The value must be a string in the format `"fileName:lineNumber:columnNumber"`,
+ * where `fileName` may be an absolute file URL or any remote URL.  Parsing
+ * works from the right so that URL schemes (which also contain `:`) are
+ * handled correctly.
+ *
+ * This is primarily intended for test-helper libraries (e.g. `@std/testing/bdd`)
+ * that call `Deno.test()` on behalf of the user: by setting this symbol on the
+ * wrapped function they can report the location in *user* code rather than the
+ * location inside the library itself.
+ */
+const TEST_LOCATION_SYMBOL = SymbolFor("Deno.test.location");
+
+/**
+ * Parse a location string of the form `"fileName:lineNumber:columnNumber"`.
+ * Parsing is done from the right so that file names that contain `:` (such as
+ * `file://` or `https://` URLs) are handled correctly.
+ *
+ * Returns `null` if the string is not a valid location.
+ *
+ * @param {string} str
+ * @returns {{ fileName: string, lineNumber: number, columnNumber: number } | null}
+ */
+function parseTestLocation(str) {
+  if (typeof str !== "string") return null;
+  const lastColon = StringPrototypeLastIndexOf(str, ":");
+  if (lastColon <= 0) return null;
+  const secondLastColon = StringPrototypeLastIndexOf(str, ":", lastColon - 1);
+  if (secondLastColon <= 0) return null;
+  const lineNumber = parseInt(
+    StringPrototypeSlice(str, secondLastColon + 1, lastColon),
+  );
+  const columnNumber = parseInt(StringPrototypeSlice(str, lastColon + 1));
+  if (NumberIsNaN(lineNumber) || NumberIsNaN(columnNumber)) return null;
+  return {
+    fileName: StringPrototypeSlice(str, 0, secondLastColon),
+    lineNumber,
+    columnNumber,
+  };
+}
 
 // Wrap test function in additional assertion that makes sure
 // that the test case does not accidentally exit prematurely.
@@ -196,6 +247,27 @@ function wrapInner(fn) {
 const registerTestIdRetBuf = new Uint32Array(1);
 const registerTestIdRetBufU8 = new Uint8Array(registerTestIdRetBuf.buffer);
 
+const TIMEOUT_MAX = 0x7FFFFFFF;
+
+function encodeTimeout(value) {
+  if (value === undefined || value === null) return 0;
+  if (
+    typeof value !== "number" || NumberIsNaN(value) ||
+    !NumberIsFinite(value) || !NumberIsInteger(value) || value < 0
+  ) {
+    throw new TypeError(
+      "Test timeout must be a non-negative integer number of milliseconds",
+    );
+  }
+  if (value === 0) return 0;
+  if (value > TIMEOUT_MAX) {
+    throw new TypeError(
+      "Test timeout out of range (must be between 1 and 2147483647 ms)",
+    );
+  }
+  return value;
+}
+
 // As long as we're using one isolate per test, we can cache the origin since it won't change
 let cachedOrigin = undefined;
 
@@ -218,6 +290,7 @@ function testInner(
     sanitizeResources: true,
     sanitizeExit: true,
     permissions: null,
+    timeout: undefined,
   };
 
   if (typeof nameOrFnOrOptions === "string") {
@@ -299,7 +372,10 @@ function testInner(
     cachedOrigin = op_test_get_origin();
   }
 
-  testDesc.location = core.currentUserCallSite();
+  const locationOverride = parseTestLocation(
+    testDesc.fn[TEST_LOCATION_SYMBOL],
+  );
+  testDesc.location = locationOverride ?? core.currentUserCallSite();
   testDesc.fn = wrapTest(testDesc);
   testDesc.name = escapeName(testDesc.name);
 
@@ -315,6 +391,7 @@ function testInner(
     testDesc.location.columnNumber,
     registerTestIdRetBufU8,
     testDesc.sanitizeOnly ?? true,
+    encodeTimeout(testDesc.timeout),
   );
   testDesc.id = registerTestIdRetBuf[0];
   testDesc.origin = cachedOrigin;

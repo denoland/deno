@@ -1,0 +1,3 @@
+virtual: 42
+dynamic fallthrough: dynamically resolved
+done

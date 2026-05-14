@@ -228,6 +228,123 @@ RUST_BACKTRACE=1 ./target/debug/deno run script.ts
 
 In Rust code: `eprintln!("Debug: {:?}", var);` or `dbg!(var);`
 
+## Pull Request Reviews
+
+### Before commenting, verify your claims
+
+- If you claim something is missing (a stub, a test, error handling), search the
+  full diff AND the existing codebase before commenting. Do not flag missing
+  code that already exists elsewhere in the PR or the repository.
+- If you suggest a code change, verify it compiles and does not break the
+  intended behavior. Do not suggest fixes that contradict the PR's stated goal.
+- Do not duplicate your own comments. If you already flagged an issue, do not
+  post a second comment about the same thing.
+
+### Focus on high-value issues
+
+Prioritize these (in order):
+
+1. **Correctness bugs** — logic errors, race conditions (e.g. spurious wakeups
+   on `Condvar`), use-after-free, null derefs
+2. **Public API leaks** — internal fields accidentally exposed in public return
+   types
+3. **Security** — unsafe blocks with incorrect safety invariants, unsanitized
+   inputs at system boundaries
+4. **Missing error handling** — errors silently swallowed where they should
+   propagate, or propagated where they should be caught
+
+Do NOT comment on:
+
+- Style preferences already enforced by the project's formatter (dprint) and
+  linter (clippy + dlint)
+- Suggesting longer timeouts or shorter delays in tests without evidence of
+  flakiness
+- Minor documentation wording unless it is actively misleading
+- Hypothetical edge cases that cannot realistically occur (e.g. a process having
+  > 256 direct children)
+
+### Understand the runtime model before suggesting fixes
+
+Deno embeds V8 and uses a single-threaded async event loop (tokio). Code that
+looks like a busy-spin may actually be required because:
+
+- `poll_sessions(None)` in the inspector drives async I/O — parking the thread
+  prevents WebSocket close frames from being processed, causing deadlocks
+- The event loop must keep running for futures to make progress; blocking the
+  main thread stops the I/O reactor
+- Some loops intentionally spin to allow the waker/poller to process events each
+  iteration
+
+Before suggesting `sleep`, `park`, or backoff in a polling loop, check whether
+the loop body drives async I/O that would stall if the thread were blocked.
+
+### Trace through the actual code path, not just the function signature
+
+A common review mistake is looking at a function's local behavior without
+tracing its callers and the runtime context. For example:
+
+- A function that "doesn't check field X" may not need to because callers
+  guarantee X is consumed before the check runs (e.g., `handshake` is always
+  `take()`n at the top of `poll_sessions` before any session-count checks)
+- A heuristic that "doesn't handle case Y" may already handle it through a
+  different code path (e.g., dotenv comment detection via `#` prefix check
+  happens before the inner-quote fallback is reached)
+
+### Don't suggest fixes that introduce circular dependencies
+
+In parsers and state machines, be careful not to suggest fixes that require
+knowing the answer to the question being solved. For example, suggesting "detect
+where the comment starts before matching quotes" is circular when the quote
+matching is what determines where the value (and thus the comment) begins.
+
+### Verify suggestions against existing tests
+
+Before suggesting a change, check whether the codebase already has test coverage
+for the case in question. The `test_valid_env` test in `libs/dotenv/lib.rs`
+covers many edge cases including inline comments with quotes
+(`EDGE_CASE_INLINE_COMMENTS`). Running existing tests before and after a
+suggested change catches regressions.
+
+### Match existing patterns in the codebase
+
+When suggesting changes to a function, look for similar functions nearby that
+solve analogous problems. If the existing pattern (e.g., `wait_for_session`)
+uses a specific flag/mechanism, understand why before suggesting a different
+approach for a similar function (e.g., `wait_for_sessions_disconnect`). The
+difference may be intentional.
+
+### Deno-specific conventions
+
+- Ops use the `#[op2]` macro. Fast ops use `#[op2(fast)]`.
+- Internal symbols in JS (`ext/process/40_process.js`, `ext/node/polyfills/`)
+  use the `k` prefix convention: `kIpc`, `kSerialization`, `kInputOption`. Flag
+  deviations.
+- Node.js compatibility code is in `ext/node/polyfills/`. When reviewing these
+  files, check behavior against Node.js docs, not just Deno conventions. Some
+  patterns (like synchronous `throw` in `spawn()` for EPERM but async error
+  event for ENOENT) are intentional Node.js compatibility.
+
+### When suggesting error handling changes
+
+- Check whether the function's callers expect the error to propagate or be
+  swallowed. Do not suggest propagating errors in paths that are intentionally
+  best-effort (e.g. killing already-exited processes).
+- When suggesting a specific error variant or code change, verify the types
+  actually match. For example, `Option::or_else` takes `FnOnce() -> Option<T>`,
+  not `FnOnce(E) -> ...`.
+- If a Rust function returns `Result` and an `Option` is needed, use `.ok()`
+  before `.or_else()` or `.unwrap_or()`.
+
+### Platform-specific code
+
+- `#[cfg(unix)]` code that calls `find_descendant_pids` or similar must have
+  stubs for non-Linux/non-macOS Unix targets. Check that
+  `#[cfg(all(unix, not(target_os = "linux"), not(target_os = "macos")))]` stubs
+  exist before flagging missing platform support.
+- Windows `unsafe` blocks using `windows_sys` are common for process management.
+  Verify handle cleanup (`CloseHandle`) but do not flag the `unsafe` usage
+  itself.
+
 ## Troubleshooting
 
 - **Slow compile times**: Use `cargo check`, `--bin deno`, or `sccache`

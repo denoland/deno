@@ -1,13 +1,16 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 
-import { join, resolve, sep } from "node:path";
-import {
-  mkdirPromise,
-  opendirPromise,
-} from "ext:deno_node/internal/fs/promises.ts";
-import { EEXIST, EINVAL, EISDIR, ENOTDIR } from "node:constants";
-import {
+// deno-lint-ignore-file prefer-primordials
+
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const lazyPath = core.createLazyLoader("node:path");
+const lazyFsPromises = core.createLazyLoader(
+  "ext:deno_node/internal/fs/promises.ts",
+);
+const lazyConstants = core.createLazyLoader("node:constants");
+const {
   denoErrorToNodeError,
   ERR_FS_CP_DIR_TO_NON_DIR,
   ERR_FS_CP_EEXIST,
@@ -18,50 +21,40 @@ import {
   ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY,
   ERR_FS_CP_UNKNOWN,
   ERR_FS_EISDIR,
-} from "ext:deno_node/internal/errors.ts";
-import { primordials } from "ext:core/mod.js";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   op_node_cp_check_paths_recursive,
   op_node_cp_on_file,
   op_node_cp_on_link,
   op_node_cp_validate_and_prepare,
-} from "ext:core/ops";
-import type { CopyOptions } from "ext:deno_node/_fs/cp/cp.d.ts";
+} = core.ops;
 
-interface StatInfo {
-  destExists: boolean;
-  isDirectory: boolean;
-  isFile: boolean;
-  isCharDevice: boolean;
-  isBlockDevice: boolean;
-  isSymlink: boolean;
-  isSocket: boolean;
-  isFifo: boolean;
-  mode: number;
-}
-
-const {
-  ArrayPrototypeEvery,
-  ArrayPrototypeFilter,
-  Boolean,
-  PromiseResolve,
-  StringPrototypeSplit,
-} = primordials;
-
-export type CheckPathsResult = {
-  __proto__: null;
-  srcStat: Deno.FileInfo;
-  destStat: Deno.FileInfo | undefined;
-  skipped: false;
-} | {
-  __proto__: null;
-  srcStat?: undefined;
-  destStat?: undefined;
-  skipped: true;
+/**
+  Layout (bigint):
+  - bits 0..31  : source mode (`st_mode`) masked by `SrcModeMask`
+  - bit 32      : whether destination exists
+  - bits 33..39 : source entry type flags (dir, file, char/block device,
+                  symlink, socket, fifo)
+*/
+const CpEntryFlags = {
+  SrcModeMask: (1n << 32n) - 1n,
+  IsDestExists: 1n << 32n,
+  IsSrcDirectory: 1n << 33n,
+  IsSrcFile: 1n << 34n,
+  IsSrcCharDevice: 1n << 35n,
+  IsSrcBlockDevice: 1n << 36n,
+  IsSrcSymlink: 1n << 37n,
+  IsSrcSocket: 1n << 38n,
+  IsSrcFifo: 1n << 39n,
 };
 
-// deno-lint-ignore no-explicit-any
-function throwCpError(err: any): never {
+const {
+  Number,
+  PromiseResolve,
+} = primordials;
+
+function throwCpError(err) {
+  const { EEXIST, EINVAL, EISDIR, ENOTDIR } = lazyConstants();
   switch (err.kind) {
     case "EINVAL":
       throw new ERR_FS_CP_EINVAL({
@@ -95,6 +88,38 @@ function throwCpError(err: any): never {
         errno: EEXIST,
         code: "EEXIST",
       });
+    case "EISDIR":
+      throw new ERR_FS_EISDIR({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EISDIR,
+        code: "EISDIR",
+      });
+    case "SOCKET":
+      throw new ERR_FS_CP_SOCKET({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
+    case "FIFO":
+      throw new ERR_FS_CP_FIFO_PIPE({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
+    case "UNKNOWN":
+      throw new ERR_FS_CP_UNKNOWN({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
     case "SYMLINK_TO_SUBDIRECTORY":
       throw new ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY({
         message: err.message,
@@ -108,13 +133,12 @@ function throwCpError(err: any): never {
   }
 }
 
-export async function cpFn(
-  src: string,
-  dest: string,
-  opts: CopyOptions,
-): Promise<void> {
+async function cpFn(
+  src,
+  dest,
+  opts,
+) {
   try {
-    // deno-lint-ignore prefer-primordials
     if (opts.filter && !(await opts.filter(src, dest))) return;
     const statInfo = await op_node_cp_validate_and_prepare(
       src,
@@ -125,7 +149,6 @@ export async function cpFn(
   } catch (err) {
     if (typeof err?.os_errno === "number") {
       throw denoErrorToNodeError(err, {
-        message: err.message,
         path: err.path,
         dest: err.dest,
         syscall: err.syscall,
@@ -136,34 +159,16 @@ export async function cpFn(
   }
 }
 
-export function areIdentical(
-  srcStat: Deno.FileInfo,
-  destStat: Deno.FileInfo,
-): boolean {
-  return !!(destStat.ino && destStat.dev && destStat.ino === srcStat.ino &&
-    destStat.dev === srcStat.dev);
-}
-
-const normalizePathToArray = (path: string): string[] =>
-  ArrayPrototypeFilter(StringPrototypeSplit(resolve(path), sep), Boolean);
-
-// Return true if dest is a subdir of src, otherwise false.
-// It only checks the path strings.
-export function isSrcSubdir(src: string, dest: string): boolean {
-  const srcArr = normalizePathToArray(src);
-  const destArr = normalizePathToArray(dest);
-  return ArrayPrototypeEvery(srcArr, (cur, i) => destArr[i] === cur);
-}
-
 function getStatsForCopy(
-  statInfo: StatInfo,
-  src: string,
-  dest: string,
-  opts: CopyOptions,
+  statInfo,
+  src,
+  dest,
+  opts,
 ) {
-  if (statInfo.isDirectory && opts.recursive) {
+  const { EISDIR, EINVAL } = lazyConstants();
+  if ((statInfo & CpEntryFlags.IsSrcDirectory) && opts.recursive) {
     return onDir(statInfo, src, dest, opts);
-  } else if (statInfo.isDirectory) {
+  } else if (statInfo & CpEntryFlags.IsSrcDirectory) {
     throw new ERR_FS_EISDIR({
       message: `${src} is a directory (not copied)`,
       path: src,
@@ -172,14 +177,15 @@ function getStatsForCopy(
       code: "EISDIR",
     });
   } else if (
-    statInfo.isFile ||
-    statInfo.isCharDevice ||
-    statInfo.isBlockDevice
+    (statInfo & CpEntryFlags.IsSrcFile) ||
+    (statInfo & CpEntryFlags.IsSrcCharDevice) ||
+    (statInfo & CpEntryFlags.IsSrcBlockDevice)
   ) {
     return onFile(statInfo, src, dest, opts);
-  } else if (statInfo.isSymlink) {
-    return onLink(statInfo.destExists, src, dest, opts);
-  } else if (statInfo.isSocket) {
+  } else if (statInfo & CpEntryFlags.IsSrcSymlink) {
+    const isDestExists = !!(statInfo & CpEntryFlags.IsDestExists);
+    return onLink(isDestExists, src, dest, opts);
+  } else if (statInfo & CpEntryFlags.IsSrcSocket) {
     throw new ERR_FS_CP_SOCKET({
       message: `cannot copy a socket file: ${dest}`,
       path: dest,
@@ -187,7 +193,7 @@ function getStatsForCopy(
       errno: EINVAL,
       code: "EINVAL",
     });
-  } else if (statInfo.isFifo) {
+  } else if (statInfo & CpEntryFlags.IsSrcFifo) {
     throw new ERR_FS_CP_FIFO_PIPE({
       message: `cannot copy a FIFO pipe: ${dest}`,
       path: dest,
@@ -206,59 +212,63 @@ function getStatsForCopy(
 }
 
 async function onFile(
-  statInfo: StatInfo,
-  src: string,
-  dest: string,
-  opts: CopyOptions,
+  statInfo,
+  src,
+  dest,
+  opts,
 ) {
+  const srcMode = Number(statInfo & CpEntryFlags.SrcModeMask);
+  const isDestExists = !!(statInfo & CpEntryFlags.IsDestExists);
   await op_node_cp_on_file(
     src,
     dest,
-    statInfo.mode,
-    statInfo.destExists,
+    srcMode,
+    isDestExists,
     opts.force,
     opts.errorOnExist,
     opts.preserveTimestamps,
+    opts.mode ?? 0,
   );
 }
 
-function setDestMode(dest: string, srcMode: number | null): Promise<void> {
+function setDestMode(dest, srcMode) {
   if (!srcMode) return PromiseResolve();
   return Deno.chmod(dest, srcMode);
 }
 
 function onDir(
-  statInfo: StatInfo,
-  src: string,
-  dest: string,
-  opts: CopyOptions,
-): Promise<void> {
-  if (!statInfo.destExists) return mkDirAndCopy(statInfo.mode, src, dest, opts);
+  statInfo,
+  src,
+  dest,
+  opts,
+) {
+  if (!(statInfo & CpEntryFlags.IsDestExists)) {
+    const srcMode = Number(statInfo & CpEntryFlags.SrcModeMask);
+    return mkDirAndCopy(srcMode, src, dest, opts);
+  }
   return copyDir(src, dest, opts);
 }
 
 async function mkDirAndCopy(
-  srcMode: number | null,
-  src: string,
-  dest: string,
-  opts: CopyOptions,
-): Promise<void> {
-  await mkdirPromise(dest);
+  srcMode,
+  src,
+  dest,
+  opts,
+) {
+  await lazyFsPromises().mkdirPromise(dest);
   await copyDir(src, dest, opts);
   return setDestMode(dest, srcMode);
 }
 
 async function copyDir(
-  src: string,
-  dest: string,
-  opts: CopyOptions,
-): Promise<void> {
-  const dir = await opendirPromise(src);
-  // deno-lint-ignore prefer-primordials
+  src,
+  dest,
+  opts,
+) {
+  const dir = await lazyFsPromises().opendirPromise(src);
   for await (const { name } of dir) {
-    const srcItem = join(src, name);
-    const destItem = join(dest, name);
-    // deno-lint-ignore prefer-primordials
+    const srcItem = lazyPath().join(src, name);
+    const destItem = lazyPath().join(dest, name);
     if (opts.filter && !(await opts.filter(srcItem, destItem))) continue;
     const statInfo = await op_node_cp_check_paths_recursive(
       srcItem,
@@ -270,11 +280,11 @@ async function copyDir(
 }
 
 async function onLink(
-  destExists: boolean,
-  src: string,
-  dest: string,
-  opts: CopyOptions,
-): Promise<void> {
+  destExists,
+  src,
+  dest,
+  opts,
+) {
   await op_node_cp_on_link(
     src,
     dest,
@@ -282,3 +292,6 @@ async function onLink(
     opts.verbatimSymlinks,
   );
 }
+
+return { throwCpError, cpFn };
+})();

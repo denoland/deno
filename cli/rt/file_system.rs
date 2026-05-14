@@ -1464,6 +1464,34 @@ impl deno_io::fs::File for FileBackedVfsFile {
   fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio> {
     Err(FsError::NotSupported)
   }
+  fn read_at_sync(
+    self: Rc<Self>,
+    buf: &mut [u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    self
+      .vfs
+      .read_file(&self.file, position, buf)
+      .map_err(FsError::Io)
+  }
+  async fn read_at_async(
+    self: Rc<Self>,
+    mut buf: BufMutView,
+    position: u64,
+  ) -> FsResult<(usize, BufMutView)> {
+    let nread = self
+      .vfs
+      .read_file(&self.file, position, &mut buf)
+      .map_err(FsError::Io)?;
+    Ok((nread, buf))
+  }
+  fn write_at_sync(
+    self: Rc<Self>,
+    _buf: &[u8],
+    _position: u64,
+  ) -> FsResult<usize> {
+    Err(FsError::NotSupported)
+  }
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     None
   }
@@ -1510,6 +1538,17 @@ impl FileBackedVfsMetadata {
 
   pub fn as_fs_stat(&self) -> FsStat {
     // to use lower overhead, use mtime instead of all time params
+    //
+    // VFS files are always readable. Directories also get execute (traverse).
+    // Symlinks get 0o777 per Unix convention (target permissions matter).
+    // This ensures node:fs access() checks succeed for embedded files.
+    let mode = if self.file_type == sys_traits::FileType::Dir {
+      0o555 // r-xr-xr-x
+    } else if self.file_type == sys_traits::FileType::Symlink {
+      0o777 // rwxrwxrwx (conventional for symlinks)
+    } else {
+      0o444 // r--r--r--
+    };
     FsStat {
       is_directory: self.file_type == sys_traits::FileType::Dir,
       is_file: self.file_type == sys_traits::FileType::File,
@@ -1522,7 +1561,7 @@ impl FileBackedVfsMetadata {
       size: self.len,
       dev: 0,
       ino: None,
-      mode: 0,
+      mode,
       nlink: None,
       uid: 0,
       gid: 0,
