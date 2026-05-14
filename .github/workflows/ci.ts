@@ -471,7 +471,7 @@ function getOsSpecificSteps({
   const installLldStep = step
     .dependsOn(
       cloneStdSubmoduleStep,
-          cloneQuickjsSubmoduleStep,
+      cloneQuickjsSubmoduleStep,
       installDenoStep,
       setupPrebuiltMacStep,
     )({
@@ -1448,7 +1448,7 @@ const benchJob = job(
         installRustStep,
         cloneSubmodule("./tests/bench/testdata/lsp_benchdata"),
         cloneStdSubmoduleStep,
-          cloneQuickjsSubmoduleStep,
+        cloneQuickjsSubmoduleStep,
         step(sysRootConfig),
         installDenoStep,
         {
@@ -1539,7 +1539,7 @@ const lintJob = job("lint", {
     return step(
       cloneRepoStep,
       cloneStdSubmoduleStep,
-          cloneQuickjsSubmoduleStep,
+      cloneQuickjsSubmoduleStep,
       restoreCacheStep,
       installRustStep,
       installDenoStep,

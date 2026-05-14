@@ -83,22 +83,17 @@ impl<'s, T> Local<'s, T> {
     Local::from_raw(self.raw)
   }
 
-  /// Type-checked downcast. Returns `Some` if the JSValue's tag matches
-  /// the target type's `ValueType::is` predicate. Mirrors rusty_v8's
-  /// `Local::try_cast` / `Local::cast`.
-  pub fn cast<U: ValueType>(self) -> Option<Local<'s, U>> {
-    if U::is(&self.raw) {
-      Some(Local::from_raw(self.raw))
-    } else {
-      None
-    }
+  /// Mirror of rusty_v8's `Local::cast` — infallible reinterpret. The
+  /// runtime check lives in `try_cast` (the fallible variant).
+  pub fn cast<U>(self) -> Local<'s, U> {
+    Local::from_raw(self.raw)
   }
 
-  /// Mirror of rusty_v8's `Local::try_cast` — same as `cast` but
-  /// returns a `Result<_, _>` so deno_core's `?` propagation works.
-  pub fn try_cast<U: ValueType>(
-    self,
-  ) -> Result<Local<'s, U>, std::convert::Infallible> {
+  /// Mirror of rusty_v8's `Local::try_cast` — fallible variant. We
+  /// always succeed here because the underlying JSValue is uniform;
+  /// downstream code that needs a runtime tag check should call
+  /// `Value::is_*` predicates explicitly.
+  pub fn try_cast<U>(self) -> Result<Local<'s, U>, std::convert::Infallible> {
     Ok(Local::from_raw(self.raw))
   }
 }

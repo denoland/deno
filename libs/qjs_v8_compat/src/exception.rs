@@ -200,11 +200,29 @@ pub mod tc_scope {
 }
 
 /// `DataError` is V8's structured marshalling error.
+///
+/// rusty_v8 exposes it as an enum with `BadType { actual, expected }`
+/// and `NoData` variants. We mirror that exactly so deno_core's
+/// `DataError::BadType { ... }` construction compiles.
 #[derive(Debug)]
-pub struct DataError(pub String);
+pub enum DataError {
+  BadType {
+    actual: &'static str,
+    expected: &'static str,
+  },
+  NoData,
+}
 impl std::fmt::Display for DataError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.write_str(&self.0)
+    match self {
+      Self::BadType { actual, expected } => {
+        write!(
+          f,
+          "DataError::BadType {{ actual: {actual}, expected: {expected} }}"
+        )
+      }
+      Self::NoData => f.write_str("DataError::NoData"),
+    }
   }
 }
 impl std::error::Error for DataError {}
