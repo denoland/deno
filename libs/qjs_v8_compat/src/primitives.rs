@@ -72,6 +72,15 @@ impl String {
   pub fn empty<'s>(scope: &mut HandleScope<'s>) -> Local<'s, String> {
     Self::new(scope, "").unwrap()
   }
+  /// Mirror of `String::new_from_two_byte` — UTF-16 input.
+  pub fn new_from_two_byte<'s>(
+    scope: &mut HandleScope<'s>,
+    units: &[u16],
+    _ty: NewStringType,
+  ) -> Option<Local<'s, String>> {
+    let s = std::string::String::from_utf16_lossy(units);
+    Self::new(scope, &s)
+  }
 }
 
 impl<'s> Local<'s, String> {
@@ -159,6 +168,21 @@ impl<'s> Local<'s, Boolean> {
 }
 
 impl BigInt {
+  /// Mirror of `BigInt::new_from_words` — construct from sign + words.
+  /// Stub on QuickJS.
+  pub fn new_from_words<'s>(
+    scope: &mut HandleScope<'s>,
+    _sign_bit: bool,
+    _words: &[u64],
+  ) -> Option<Local<'s, BigInt>> {
+    Some(Self::new_from_i64(scope, 0))
+  }
+  pub fn new_from_u64<'s>(
+    scope: &mut HandleScope<'s>,
+    v: u64,
+  ) -> Local<'s, BigInt> {
+    Self::new_from_i64(scope, v as i64)
+  }
   pub fn new_from_i64<'s>(
     scope: &mut HandleScope<'s>,
     _v: i64,

@@ -26,6 +26,10 @@ pub struct BackingStore {
   data: Box<[u8]>,
 }
 
+/// Mirror of rusty_v8's `SharedRef<T>` — a wrapper around `Arc<T>`
+/// that provides `.len()` and other accessors directly.
+pub type SharedRef<T> = std::sync::Arc<T>;
+
 impl BackingStore {
   pub fn data(&self) -> *mut u8 {
     self.data.as_ptr() as *mut u8
@@ -35,6 +39,21 @@ impl BackingStore {
   }
   pub fn as_slice(&self) -> &[u8] {
     &self.data
+  }
+  pub fn len(&self) -> usize {
+    self.data.len()
+  }
+  pub fn is_empty(&self) -> bool {
+    self.data.is_empty()
+  }
+  /// Mirror of `BackingStore::is_shared` — whether multiple Arc holders
+  /// can read/write concurrently. Always false on QuickJS (no SAB).
+  pub fn is_shared(&self) -> bool {
+    false
+  }
+  /// Mirror of `BackingStore::is_resizable_by_user_javascript`.
+  pub fn is_resizable_by_user_javascript(&self) -> bool {
+    false
   }
   /// Mirror of rusty_v8's `Box<BackingStore>::make_shared` — uses the
   /// `self: Box<Self>` receiver trick. Converts an exclusively-owned
@@ -73,6 +92,12 @@ impl ArrayBuffer {
   }
   /// Mirror of `v8::ArrayBuffer::new_backing_store_from_bytes`.
   pub fn new_backing_store_from_bytes(bytes: Box<[u8]>) -> Box<BackingStore> {
+    Box::new(BackingStore { data: bytes })
+  }
+  /// Mirror of `v8::ArrayBuffer::new_backing_store_from_boxed_slice`.
+  pub fn new_backing_store_from_boxed_slice(
+    bytes: Box<[u8]>,
+  ) -> Box<BackingStore> {
     Box::new(BackingStore { data: bytes })
   }
   /// Mirror of `v8::ArrayBuffer::new_backing_store_from_vec`.

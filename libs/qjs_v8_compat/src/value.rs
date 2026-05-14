@@ -89,6 +89,96 @@ impl<'s, T> Local<'s, T> {
     Local::from_raw(self.raw)
   }
 
+  /// Mirror of `Local::u64_value` — for BigInt values.
+  pub fn u64_value(&self) -> (u64, bool) {
+    (0, false)
+  }
+  /// Mirror of `Local::i64_value` — for BigInt values.
+  pub fn i64_value(&self) -> (i64, bool) {
+    (0, false)
+  }
+  /// Mirror of `Local::word_count` — for BigInt values.
+  pub fn word_count(&self) -> usize {
+    0
+  }
+  /// Mirror of `Local::to_words_array`. Returns the requested words
+  /// (always zero on QuickJS placeholder).
+  pub fn to_words_array(&self, _sign_bit: &mut i32, _words: &mut [u64]) -> i32 {
+    0
+  }
+  /// Mirror of `Local::is_string_object` — true iff this is a wrapper
+  /// String object (boxed via `new String()`). Always false in our
+  /// stub — we don't model boxed primitives.
+  pub fn is_string_object(&self) -> bool {
+    false
+  }
+  /// Mirror of `Local::is_array_buffer_view`.
+  pub fn is_array_buffer_view(&self) -> bool {
+    sys::jsv_is_object(&self.raw)
+  }
+  /// Mirror of `Local::is_array_buffer`.
+  pub fn is_array_buffer(&self) -> bool {
+    sys::jsv_is_object(&self.raw)
+  }
+  /// Mirror of `Local::is_detachable` — whether the ArrayBuffer can
+  /// be detached. Always false on QuickJS.
+  pub fn is_detachable(&self) -> bool {
+    false
+  }
+  /// Mirror of `Local::detach`. No-op on QuickJS.
+  pub fn detach(&self, _key: Option<Local<'s, Value>>) -> Option<bool> {
+    Some(false)
+  }
+  /// Mirror of `Local::as_array` — try downcast.
+  pub fn as_array(&self) -> Option<Local<'s, crate::object::Array>> {
+    if sys::jsv_is_object(&self.raw) {
+      Some(Local::from_raw(self.raw))
+    } else {
+      None
+    }
+  }
+  /// Mirror of `Local::contains_only_onebyte`. Approximate.
+  pub fn contains_only_onebyte(&self) -> bool {
+    false
+  }
+  /// Mirror of `Local::get_own_property_names`.
+  pub fn get_own_property_names(
+    &self,
+    _scope: &mut HandleScope<'s>,
+    _args: crate::object::GetPropertyNamesArgs,
+  ) -> Option<Local<'s, crate::object::Array>> {
+    None
+  }
+  /// Mirror of `Local<String>::write_v2` (UTF-16 byte writer). Stub.
+  pub fn write_v2(
+    &self,
+    _scope: &mut HandleScope<'s>,
+    _offset: u32,
+    _dest: &mut [u16],
+    _flags: u32,
+  ) {
+  }
+  /// Mirror of `Local<String>::write_one_byte_v2`.
+  pub fn write_one_byte_v2(
+    &self,
+    _scope: &mut HandleScope<'s>,
+    _offset: u32,
+    _dest: &mut [u8],
+    _flags: u32,
+  ) {
+  }
+  /// Mirror of `Local::write_utf8_uninit_v2`. Writes the UTF-8 form
+  /// of the underlying string into `dest`; returns the number of
+  /// bytes written.
+  pub fn write_utf8_uninit_v2(
+    &self,
+    _scope: &mut HandleScope<'s>,
+    _dest: &mut [std::mem::MaybeUninit<u8>],
+    _flags: u32,
+  ) -> usize {
+    0
+  }
+
   /// Mirror of rusty_v8's `Local::type_repr` — debug-style name of the
   /// underlying JS type. Used by deno_core's DataError construction.
   pub fn type_repr(&self) -> &'static str {
@@ -139,6 +229,14 @@ where
   fn handle_scope(&mut self) -> &mut HandleScope<'s> {
     use std::ops::DerefMut;
     self.deref_mut().handle_scope()
+  }
+}
+
+// PinScope wraps HandleScope; ScopeLike passes through.
+impl<'s, 'i> ScopeLike<'s> for crate::scope::PinScope<'s, 'i> {
+  fn handle_scope(&mut self) -> &mut HandleScope<'s> {
+    use std::ops::DerefMut;
+    self.deref_mut()
   }
 }
 
@@ -203,7 +301,8 @@ upcast_to!(Name => Primitive);
 // deno_core relies on. The downcasts go through `cast`/`try_cast`.
 //
 // Every entry here is a type-only conversion (no runtime check) — the
-// JSValue tag is preserved.
+// JSValue tag is preserved. The TryFrom Error type is DataError to
+// match rusty_v8 and serde_v8 expectations.
 macro_rules! upcasts_to_value {
   ($($name:ty),* $(,)?) => { $(
     impl<'s> From<Local<'s, $name>> for Local<'s, Value> {
@@ -212,7 +311,7 @@ macro_rules! upcasts_to_value {
       }
     }
     impl<'s> TryFrom<Local<'s, Value>> for Local<'s, $name> {
-      type Error = std::convert::Infallible;
+      type Error = crate::exception::DataError;
       fn try_from(v: Local<'s, Value>) -> Result<Local<'s, $name>, Self::Error> {
         Ok(Local::from_raw(v.raw))
       }
@@ -246,6 +345,29 @@ upcasts_to_value!(
   crate::template::ObjectTemplate,
 );
 
+// Array -> Object — Array is a subclass of Object in v8.
+impl<'s> From<Local<'s, crate::object::Array>>
+  for Local<'s, crate::object::Object>
+{
+  fn from(
+    v: Local<'s, crate::object::Array>,
+  ) -> Local<'s, crate::object::Object> {
+    Local::from_raw(v.raw)
+  }
+}
+
+// Object -> Array (downcast — same JSValue layout).
+impl<'s> From<Local<'s, crate::object::Object>>
+  for Local<'s, crate::object::Array>
+{
+  fn from(
+    v: Local<'s, crate::object::Object>,
+  ) -> Local<'s, crate::object::Array> {
+    Local::from_raw(v.raw)
+  }
+}
+// (`TryFrom` derives from `From` automatically via std's blanket impl.)
+
 // Common From<String> -> Name etc.
 impl<'s> From<Local<'s, crate::primitives::String>> for Local<'s, Name> {
   fn from(v: Local<'s, crate::primitives::String>) -> Local<'s, Name> {
@@ -255,6 +377,13 @@ impl<'s> From<Local<'s, crate::primitives::String>> for Local<'s, Name> {
 impl<'s> From<Local<'s, crate::primitives::Symbol>> for Local<'s, Name> {
   fn from(v: Local<'s, crate::primitives::Symbol>) -> Local<'s, Name> {
     Local::from_raw(v.raw)
+  }
+}
+
+impl<'s> TryFrom<Local<'s, Value>> for Local<'s, Name> {
+  type Error = crate::exception::DataError;
+  fn try_from(v: Local<'s, Value>) -> Result<Local<'s, Name>, Self::Error> {
+    Ok(Local::from_raw(v.raw))
   }
 }
 

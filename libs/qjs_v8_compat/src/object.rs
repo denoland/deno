@@ -15,6 +15,24 @@ impl Object {
     scope.track_owned(raw);
     Local::from_raw(raw)
   }
+  /// Mirror of `v8::Object::with_prototype_and_properties` — the
+  /// constructor that lets the embedder pass an explicit prototype
+  /// object plus a list of (name, value) pairs to install. On QuickJS
+  /// we do the simpler thing: create an object and set the named
+  /// properties; prototype is ignored.
+  pub fn with_prototype_and_properties<'s>(
+    scope: &mut HandleScope<'s>,
+    _prototype: Local<'s, Value>,
+    names: &[Local<'s, crate::value::Name>],
+    values: &[Local<'s, Value>],
+  ) -> Local<'s, Object> {
+    let obj = Object::new(scope);
+    for (n, v) in names.iter().zip(values.iter()) {
+      let key = sys::to_string_lossy(scope.ctx(), n.raw()).unwrap_or_default();
+      sys::set_property_str(scope.ctx(), obj.raw(), &key, v.raw());
+    }
+    obj
+  }
 }
 
 impl<'s> Local<'s, Object> {
@@ -126,6 +144,19 @@ impl Array {
     scope.track_owned(raw);
     Local::from_raw(raw)
   }
+  /// Mirror of `v8::Array::new_with_elements`. Build a JS array from a
+  /// slice of values.
+  pub fn new_with_elements<'s>(
+    scope: &mut HandleScope<'s>,
+    elements: &[Local<'s, Value>],
+  ) -> Local<'s, Array> {
+    let raw = sys::new_array(scope.ctx());
+    scope.track_owned(raw);
+    for (i, el) in elements.iter().enumerate() {
+      sys::set_indexed(scope.ctx(), raw, i as u32, el.raw());
+    }
+    Local::from_raw(raw)
+  }
 }
 
 impl<'s> Local<'s, Array> {
@@ -172,13 +203,20 @@ impl Map {
 }
 
 // Argument-extraction enums used by get-property-names.
+#[derive(Default)]
 pub struct GetPropertyNamesArgs;
 impl GetPropertyNamesArgs {
   pub fn builder() -> GetPropertyNamesArgsBuilder {
     GetPropertyNamesArgsBuilder
   }
 }
+#[derive(Default)]
 pub struct GetPropertyNamesArgsBuilder;
+impl GetPropertyNamesArgsBuilder {
+  pub fn new() -> Self {
+    Self
+  }
+}
 impl GetPropertyNamesArgsBuilder {
   pub fn mode(self, _m: KeyCollectionMode) -> Self {
     self

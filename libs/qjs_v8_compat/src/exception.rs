@@ -210,7 +210,9 @@ pub enum DataError {
     actual: &'static str,
     expected: &'static str,
   },
-  NoData,
+  NoData {
+    expected: &'static str,
+  },
 }
 impl std::fmt::Display for DataError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -221,7 +223,9 @@ impl std::fmt::Display for DataError {
           "DataError::BadType {{ actual: {actual}, expected: {expected} }}"
         )
       }
-      Self::NoData => f.write_str("DataError::NoData"),
+      Self::NoData { expected } => {
+        write!(f, "DataError::NoData {{ expected: {expected} }}")
+      }
     }
   }
 }

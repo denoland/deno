@@ -679,7 +679,28 @@ pub mod v8 {
     }
   }
 
-  pub struct WriteFlags;
+  /// `WriteFlags` — string write-flag bitset. Mirrors rusty_v8's
+  /// associated-constant set.
+  #[derive(Copy, Clone, Eq, PartialEq, Debug)]
+  pub struct WriteFlags(pub u32);
+  impl WriteFlags {
+    pub const NONE: Self = Self(0);
+    pub const HINT_MANY_WRITES_EXPECTED: Self = Self(1);
+    pub const NO_NULL_TERMINATION: Self = Self(2);
+    pub const PRESERVE_ONE_BYTE_NULL: Self = Self(4);
+    pub const REPLACE_INVALID_UTF8: Self = Self(8);
+    #[allow(non_upper_case_globals)]
+    pub const kReplaceInvalidUtf8: Self = Self::REPLACE_INVALID_UTF8;
+    pub const fn empty() -> Self {
+      Self(0)
+    }
+  }
+  impl core::ops::BitOr for WriteFlags {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self {
+      Self(self.0 | rhs.0)
+    }
+  }
 
   /// Stub for `v8::latin1_to_utf8`. The real API converts a latin1
   /// buffer to UTF-8 in-place; we never call this on QuickJS, so the
@@ -776,6 +797,19 @@ pub mod v8 {
       pub struct $name;
       impl crate::value::ValueType for $name {
         fn is(_raw: &crate::sys::JSValue) -> bool { false }
+      }
+      impl $name {
+        /// Mirror of `v8::TypedArray::new(scope, buf, offset, length)`.
+        pub fn new<'s>(
+          scope: &mut crate::scope::HandleScope<'s>,
+          _buf: crate::value::Local<'s, crate::buffer::ArrayBuffer>,
+          _offset: usize,
+          _length: usize,
+        ) -> Option<crate::value::Local<'s, $name>> {
+          let raw = crate::sys::new_object(scope.ctx());
+          scope.track_owned(raw);
+          Some(crate::value::Local::from_raw(raw))
+        }
       }
     )* }
   }
