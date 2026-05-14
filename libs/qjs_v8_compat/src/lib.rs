@@ -270,15 +270,16 @@ pub mod v8 {
     /// deno_core's `unsafe impl GarbageCollected for ...` blocks rely on
     /// that.
     pub unsafe trait GarbageCollected {
-      fn trace(&self, _visitor: &Visitor) {}
+      fn trace(&self, _visitor: &mut Visitor) {}
       fn get_name(&self) -> &'static core::ffi::CStr {
         c"qjs::GarbageCollected"
       }
     }
 
-    /// Trait stub for `cppgc::Traced`.
+    /// Trait stub for `cppgc::Traced`. Mirror of rusty_v8 — marked
+    /// unsafe to match the upstream impl signature.
     pub unsafe trait Traced {
-      fn trace(&self, _visitor: &Visitor) {}
+      fn trace(&self, _visitor: &mut Visitor) {}
     }
 
     /// Stub for `cppgc::make_garbage_collected`. On V8 this allocates a
@@ -313,9 +314,14 @@ pub mod v8 {
         None
       }
     }
-    impl<T> UnsafePtr<T> {
-      pub fn as_ref(&self) -> Option<&T> {
-        None
+    impl<T: 'static> UnsafePtr<T> {
+      /// SAFETY: caller guarantees the pointer is still valid.
+      /// Stub — returns a reference to a leaked default T (cppgc isn't
+      /// wired up on the QuickJS backend, so this is unreachable in
+      /// practice).
+      pub unsafe fn as_ref(&self) -> &T {
+        let p: *const T = core::ptr::dangling();
+        unsafe { &*p }
       }
     }
     impl Visitor {

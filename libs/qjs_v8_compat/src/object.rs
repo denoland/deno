@@ -10,10 +10,10 @@ use crate::value::Value;
 crate::value_type!(Object, Array, Map, Proxy);
 
 impl Object {
-  pub fn wrap<const TAG: u16, T, V>(
+  pub fn wrap<const TAG: u16, T>(
     _isolate: &mut crate::isolate::Isolate,
     _wrapper: Local<'_, Object>,
-    _value: V,
+    _value: &impl std::any::Any,
   ) {
   }
   pub fn unwrap<const TAG: u16, T: 'static>(

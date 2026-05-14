@@ -262,7 +262,7 @@ impl<T: GarbageCollected> std::ops::Deref for Member<T> {
   }
 }
 
-impl<T: GarbageCollected> v8::cppgc::Traced for Member<T> {
+unsafe impl<T: GarbageCollected> v8::cppgc::Traced for Member<T> {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     visitor.trace(&self.inner);
   }

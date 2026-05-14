@@ -424,11 +424,8 @@ pub unsafe fn to_slice_buffer(
     };
     let len = buf.byte_length();
     let slice = if len > 0 {
-      if let Some(ptr) = buf.data() {
-        std::slice::from_raw_parts_mut(ptr.as_ptr() as _, len)
-      } else {
-        &mut []
-      }
+      let ptr = buf.data();
+      std::slice::from_raw_parts_mut(ptr.as_ptr() as _, len)
     } else {
       &mut []
     };
