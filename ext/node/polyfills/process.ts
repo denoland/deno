@@ -539,16 +539,27 @@ export { getegid, geteuid, getgid, getuid, setegid, seteuid, setgid, setuid };
 
 const ALLOWED_FLAGS = buildAllowedFlags();
 
+// Tracks error values for which the synchronous Module._load entry-module
+// path in 01_require.js has already invoked process._fatalException. When
+// the same error is later re-thrown and surfaces as a module-evaluation
+// rejection (via the ESM wrapper that loads the main CJS module), the
+// unhandled-rejection fallback below uses this set to skip emitting
+// 'uncaughtExceptionMonitor' / 'uncaughtException' a second time.
 // deno-lint-ignore no-explicit-any
-function uncaughtExceptionHandler(err: any, origin: string) {
+const _dispatchedFatalErrors = new WeakSet<any>();
+internals._dispatchedFatalErrors = _dispatchedFatalErrors;
+
+// deno-lint-ignore no-explicit-any
+function uncaughtExceptionHandler(err: any, origin: string): boolean {
   // The origin parameter can be 'unhandledRejection' or 'uncaughtException'
   // depending on how the uncaught exception was created. In Node.js,
   // exceptions thrown from the top level of a CommonJS module are reported as
   // 'uncaughtException', while exceptions thrown from the top level of an ESM
   // module are reported as 'unhandledRejection'. Deno does not have a true
-  // CommonJS implementation, so all exceptions thrown from the top level are
-  // reported as 'uncaughtException'.
-  process._fatalException(err, origin === "unhandledRejection");
+  // CommonJS implementation; sync throws in the entry CJS module are
+  // dispatched up-front via Module._load (see ext/node/polyfills/01_require.js)
+  // so this path only fires for real unhandled promise rejections.
+  return process._fatalException(err, origin === "unhandledRejection");
 }
 
 export let execPath: string = "";
@@ -1297,6 +1308,7 @@ export const removeAllListeners = process.removeAllListeners;
 let unhandledRejectionListenerCount = 0;
 let rejectionHandledListenerCount = 0;
 let uncaughtExceptionListenerCount = 0;
+let uncaughtExceptionMonitorListenerCount = 0;
 let beforeExitListenerCount = 0;
 let exitListenerCount = 0;
 
@@ -1310,6 +1322,9 @@ process.on("newListener", (event: string) => {
       break;
     case "uncaughtException":
       uncaughtExceptionListenerCount++;
+      break;
+    case "uncaughtExceptionMonitor":
+      uncaughtExceptionMonitorListenerCount++;
       break;
     case "beforeExit":
       beforeExitListenerCount++;
@@ -1333,6 +1348,9 @@ process.on("removeListener", (event: string) => {
       break;
     case "uncaughtException":
       uncaughtExceptionListenerCount--;
+      break;
+    case "uncaughtExceptionMonitor":
+      uncaughtExceptionMonitorListenerCount--;
       break;
     case "beforeExit":
       beforeExitListenerCount--;
@@ -1388,6 +1406,7 @@ function synchronizeListeners() {
   if (
     unhandledRejectionListenerCount > 0 ||
     uncaughtExceptionListenerCount > 0 ||
+    uncaughtExceptionMonitorListenerCount > 0 ||
     _uncaughtExceptionCaptureFn !== null
   ) {
     internals.nodeProcessUnhandledRejectionCallback = (event) => {
@@ -1396,9 +1415,20 @@ function synchronizeListeners() {
         // an unhandled rejection occurs and there are no unhandledRejection
         // listeners.
 
-        event.preventDefault();
-
         let reason = event.reason;
+
+        // The synchronous Module._load path in 01_require.js already invoked
+        // process._fatalException for this error. Re-firing here would
+        // double-emit 'uncaughtExceptionMonitor' (and 'uncaughtException')
+        // for the same value. Skip and let Deno's default unhandled-rejection
+        // handling print the error and terminate the runtime.
+        if (
+          reason !== null && typeof reason === "object" &&
+          _dispatchedFatalErrors.has(reason)
+        ) {
+          return;
+        }
+
         // If the rejection reason is not an Error, wrap it in an
         // ERR_UNHANDLED_REJECTION error, matching Node.js behavior.
         if (!(reason instanceof Error)) {
@@ -1419,7 +1449,12 @@ function synchronizeListeners() {
           reason = err;
         }
 
-        uncaughtExceptionHandler(reason, "unhandledRejection");
+        // Only preventDefault if a registered handler (uncaughtException
+        // listener or capture callback) actually consumed the error.
+        // Otherwise we want the runtime to terminate normally.
+        if (uncaughtExceptionHandler(reason, "unhandledRejection")) {
+          event.preventDefault();
+        }
         return;
       }
 
@@ -1441,7 +1476,9 @@ function synchronizeListeners() {
   }
 
   if (
-    uncaughtExceptionListenerCount > 0 || _uncaughtExceptionCaptureFn !== null
+    uncaughtExceptionListenerCount > 0 ||
+    uncaughtExceptionMonitorListenerCount > 0 ||
+    _uncaughtExceptionCaptureFn !== null
   ) {
     globalThis.addEventListener("error", processOnError);
   } else {
