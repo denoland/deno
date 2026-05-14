@@ -136,6 +136,14 @@ impl<'s, C> HandleScope<'s, C> {
     crate::sys::has_pending_exception(self.ctx)
   }
 
+  /// Mirror of `HandleScope::perform_microtask_checkpoint` — drains
+  /// the microtask queue once. Stubbed; the QuickJS event loop bridge
+  /// drives microtasks separately via `JS_ExecutePendingJob`.
+  pub fn perform_microtask_checkpoint(&mut self) {}
+
+  /// Mirror of `HandleScope::cancel_terminate_execution`.
+  pub fn cancel_terminate_execution(&mut self) {}
+
   /// Mirror of rusty_v8's `HandleScope::escape` — used by EscapableHandleScope
   /// to extend a handle to the parent scope's lifetime. On QuickJS we
   /// just pass through: the parent scope owns the same arena so the

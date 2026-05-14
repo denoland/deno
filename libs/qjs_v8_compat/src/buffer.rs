@@ -65,6 +65,16 @@ impl ArrayBuffer {
       data: vec![0u8; byte_length].into_boxed_slice(),
     })
   }
+  /// Mirror of `v8::ArrayBuffer::new_backing_store_from_bytes`.
+  pub fn new_backing_store_from_bytes(bytes: Box<[u8]>) -> Box<BackingStore> {
+    Box::new(BackingStore { data: bytes })
+  }
+  /// Mirror of `v8::ArrayBuffer::new_backing_store_from_vec`.
+  pub fn new_backing_store_from_vec(bytes: Vec<u8>) -> Box<BackingStore> {
+    Box::new(BackingStore {
+      data: bytes.into_boxed_slice(),
+    })
+  }
 }
 
 impl<'s> Local<'s, ArrayBuffer> {

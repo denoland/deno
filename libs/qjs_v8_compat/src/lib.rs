@@ -322,23 +322,22 @@ pub mod v8 {
     /// raw pointers; on QuickJS the fast-call dispatcher doesn't read
     /// them so we keep them as opaque addresses.
     pub struct CFunctionInfo {
-      _return_info: *const CTypeInfo,
-      _args: *const CTypeInfo,
-      _len: usize,
+      _return_info: CTypeInfo,
+      _args: &'static [CTypeInfo],
       _i64: Int64Representation,
     }
 
     impl CFunctionInfo {
+      /// Mirror of v8's `CFunctionInfo::new(return_type, &args, repr)` —
+      /// the const-callable shape the op2 macro emits at compile time.
       pub const fn new(
-        return_info: *const CTypeInfo,
-        args: *const CTypeInfo,
-        len: usize,
+        return_info: CTypeInfo,
+        args: &'static [CTypeInfo],
         i64: Int64Representation,
       ) -> Self {
         Self {
           _return_info: return_info,
           _args: args,
-          _len: len,
           _i64: i64,
         }
       }
@@ -411,6 +410,12 @@ pub mod v8 {
       pub const ALLOW_SHARED: Self = Self(1 << 0);
       pub const ENFORCE_RANGE: Self = Self(1 << 1);
       pub const CLAMP: Self = Self(1 << 2);
+      pub const fn empty() -> Self {
+        Self(0)
+      }
+      pub const fn bits(self) -> u8 {
+        self.0
+      }
     }
 
     impl core::ops::BitOr for Flags {

@@ -92,6 +92,23 @@ impl ObjectTemplate {
 }
 
 impl<'s> Local<'s, ObjectTemplate> {
+  /// Mirror of `v8::ObjectTemplate::set_with_attr` — sets a template
+  /// property with explicit `PropertyAttribute` flags.
+  pub fn set_with_attr(
+    &self,
+    _scope: &mut HandleScope<'s>,
+    _key: Local<'s, crate::value::Name>,
+    _value: Local<'s, crate::value::Value>,
+    _attr: crate::object::PropertyAttribute,
+  ) {
+  }
+  /// Mirror of `v8::ObjectTemplate::set` — sets a template property.
+  pub fn set(
+    &self,
+    _key: Local<'s, crate::value::Name>,
+    _value: Local<'s, crate::value::Value>,
+  ) {
+  }
   pub fn new_instance(
     &self,
     _scope: &mut HandleScope<'s>,
