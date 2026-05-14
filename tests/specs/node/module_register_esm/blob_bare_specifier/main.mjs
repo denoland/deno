@@ -1,11 +1,13 @@
 import { register } from "node:module";
 
-// Registering a passthrough hook flips on the global `resolve_active`
-// flag. Bare-specifier imports from a blob: referrer must still resolve
-// via the import map -- a blob: URL is "cannot-be-a-base", so a naive
-// async-resolve placeholder would fail to URL-join with the bare
-// specifier and surface as "relative URL with a cannot-be-a-base base".
-register("../hooks-passthrough.mjs", import.meta.url);
+// Reproduces the regression hit by lume's MDX plugin when any registered
+// resolve hook (e.g. @tailwindcss/postcss transitive) flips on
+// `resolve_active`. The MDX plugin compiles MDX to a `blob:` module that
+// statically imports bare-mapped specifiers like `lume/jsx-runtime`. The
+// blob URL is `cannot-be-a-base`, so the async-resolve placeholder used
+// to error with `relative URL with a cannot-be-a-base base` before the
+// hook chain had a chance to run.
+register("./hooks.mjs", import.meta.url);
 
 const code = `import { value } from "@mapped/foo";\n` +
   `console.log("blob got:", value);\n`;

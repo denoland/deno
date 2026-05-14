@@ -519,7 +519,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
     // that the resolve loop's pendingHookLoads wait ensures hook modules
     // are loaded before proceeding to load().
     let should_use_resolve_hooks = self.hook_registry.resolve_active.get()
-      && !referrer_is_cannot_be_a_base(referrer)
       && (!is_already_resolved_specifier(raw_specifier)
         || self.is_external_file_specifier(raw_specifier));
     if should_use_resolve_hooks {
@@ -989,14 +988,6 @@ fn is_already_resolved_specifier(specifier: &str) -> bool {
     || specifier.starts_with("data:")
     || specifier.starts_with("blob:")
     || specifier.starts_with("node:")
-}
-
-/// Returns true if the referrer is a cannot-be-a-base URL (blob:, data:).
-/// Bare-specifier resolution against such referrers can't form a relative URL,
-/// so deno_core's async-resolve placeholder construction fails. We bypass the
-/// hook bridge in this case and resolve via the default resolver.
-fn referrer_is_cannot_be_a_base(referrer: &str) -> bool {
-  referrer.starts_with("blob:") || referrer.starts_with("data:")
 }
 
 struct StandaloneRootCertStoreProvider {

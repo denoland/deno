@@ -1003,21 +1003,34 @@ impl ModuleMap {
           let specifier = match ModuleSpecifier::parse(&import_specifier) {
             Ok(s) => s,
             Err(_) => {
-              // Try resolving as relative URL with the module name as base
-              match ModuleSpecifier::parse(name.as_ref())
-                .and_then(|base| base.join(&import_specifier))
-              {
-                Ok(s) => s,
-                Err(_) => {
-                  // Base is cannot-be-a-base (e.g. blob:, data:), so the
-                  // join failed. Synthesize a unique placeholder URL; it
-                  // will be replaced by the async resolver's result before
-                  // any actual load via `needs_resolve = true`.
-                  synth_async_resolve_placeholder(
-                    &import_specifier,
-                    name.as_ref(),
+              // Try resolving as relative URL with the module name as base.
+              let base =
+                ModuleSpecifier::parse(name.as_ref()).map_err(|e| {
+                  ModuleError::Core(
+                    JsErrorBox::type_error(format!(
+                      "Cannot resolve module \"{import_specifier}\": {e}"
+                    ))
+                    .into(),
                   )
-                }
+                })?;
+              if base.cannot_be_a_base() {
+                // Bare specifier from a cannot-be-a-base referrer
+                // (e.g. blob:, data:). We can't form a relative URL here,
+                // so synthesize a unique placeholder; the async resolver
+                // replaces it before any load via `needs_resolve = true`.
+                synth_async_resolve_placeholder(
+                  &import_specifier,
+                  name.as_ref(),
+                )
+              } else {
+                base.join(&import_specifier).map_err(|e| {
+                  ModuleError::Core(
+                    JsErrorBox::type_error(format!(
+                      "Cannot resolve module \"{import_specifier}\": {e}"
+                    ))
+                    .into(),
+                  )
+                })?
               }
             }
           };
