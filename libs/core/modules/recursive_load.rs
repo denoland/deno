@@ -260,10 +260,15 @@ impl RecursiveModuleLoad {
       };
 
     // Skip prepare_load for lazy-loaded ESM sources -- they are embedded
-    // in the binary and do not need fetching/preparation.
+    // in the binary and do not need fetching/preparation. Same goes for
+    // `synthetic_esm` modules: their exports come from a backing polyfill
+    // script, not an external fetch.
     if self
       .module_map_rc
       .has_lazy_esm_source(module_specifier.as_str())
+      || self
+        .module_map_rc
+        .has_synthetic_esm_module(module_specifier.as_str())
     {
       return Ok(());
     }
@@ -310,6 +315,39 @@ impl RecursiveModuleLoad {
     module_request: &ModuleRequest,
     mut module_source: ModuleSource,
   ) -> Result<(), ModuleError> {
+    // Synthetic_esm specifiers carry a sentinel `ModuleSource` from
+    // the load step. Divert to building the synthetic module from the
+    // backing script's cached exports instead of going through
+    // `new_module`.
+    if self
+      .module_map_rc
+      .has_synthetic_esm_module(module_request.reference.specifier.as_str())
+    {
+      let module_id = self
+        .module_map_rc
+        .build_synthetic_esm_module(
+          scope,
+          module_request.reference.specifier.as_str(),
+        )
+        .map_err(|e| {
+          let exception = e.to_v8_error(scope);
+          ModuleError::Exception(v8::Global::new(scope, exception))
+        })?;
+      self.register_and_recurse_inner(
+        module_id,
+        &module_request.reference,
+        None,
+      );
+      if self.state == LoadState::LoadingRoot {
+        self.root_module_id = Some(module_id);
+        self.state = LoadState::LoadingImports;
+      }
+      if self.pending.is_empty() {
+        self.state = LoadState::Done;
+      }
+      return Ok(());
+    }
+
     if let Some(source_kind) =
       ModuleSourceKind::from_module_type(&module_source.module_type)
     {
@@ -483,6 +521,19 @@ impl RecursiveModuleLoad {
                   Ok(ModuleSource::new(
                     crate::ModuleType::JavaScript,
                     ModuleSourceCode::String(source_code),
+                    &resolved_specifier,
+                    None,
+                  ))
+                } else if module_map_rc
+                  .has_synthetic_esm_module(resolved_specifier.as_str())
+                {
+                  // Sentinel source. `register_and_recurse` detects the
+                  // synthetic_esm specifier and constructs the module from
+                  // its backing script's cached exports object instead of
+                  // calling `new_module` with this source.
+                  Ok(ModuleSource::new(
+                    crate::ModuleType::JavaScript,
+                    ModuleSourceCode::String("".to_string().into()),
                     &resolved_specifier,
                     None,
                   ))

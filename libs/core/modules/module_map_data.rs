@@ -207,6 +207,20 @@ pub(crate) struct ModuleMapData {
   pub(crate) known_lazy_esm: RefCell<HashSet<String>>,
   pub(crate) lazy_script_sources:
     Rc<RefCell<HashMap<ModuleName, ModuleCodeString>>>,
+  /// Results of `load_ext_script` evaluations. Populated on first
+  /// evaluation so later callers (`Deno.core.loadExtScript()` from JS,
+  /// the `synthetic_esm` dispatch from Rust) share a single evaluated
+  /// exports value — the source is removed from `lazy_script_sources`
+  /// on first eval, so subsequent reads come from here. Runtime-only —
+  /// not snapshotted.
+  pub(crate) loaded_script_results:
+    Rc<RefCell<HashMap<ModuleName, v8::Global<v8::Value>>>>,
+  /// `synthetic_esm` registry: module specifier (e.g. `node:worker_threads`)
+  /// to backing-script specifier (e.g. `ext:deno_node/worker_threads.ts`).
+  /// Populated at extension init from each extension's
+  /// `synthetic_esm_files` list. Runtime-only — not snapshotted.
+  pub(crate) synthetic_esm_modules:
+    Rc<RefCell<HashMap<ModuleName, ModuleName>>>,
   /// Set of scripts currently being loaded (for circular dep detection).
   pub(crate) lazy_script_loading: Rc<RefCell<HashSet<ModuleName>>>,
   pub(crate) sources: HashMap<ModuleSourceKey, Rc<v8::Global<v8::Object>>>,
@@ -230,6 +244,13 @@ pub(crate) struct ModuleMapSnapshotData {
   /// from the binary on first access at runtime.
   #[serde(default)]
   lazy_esm_specifiers: Vec<String>,
+  /// `load_ext_script` cache snapshot. Captures the exports object
+  /// returned by each polyfill IIFE evaluated at snapshot time so the
+  /// runtime can share the same value (with the `synthetic_esm` dispatch
+  /// in particular) without re-evaluating — re-eval would clobber
+  /// registered `internals.__*` hooks and duplicate class identities.
+  #[serde(default)]
+  loaded_script_results: Vec<(FastString, SnapshotDataId)>,
 }
 
 impl ModuleMapData {
@@ -405,6 +426,14 @@ impl ModuleMapData {
       .map(|s| s.to_string())
       .collect();
 
+    // Move out of the Rc<RefCell<...>> so we can consume the values.
+    let cached_results: HashMap<ModuleName, v8::Global<v8::Value>> =
+      std::mem::take(&mut *self.loaded_script_results.borrow_mut());
+    ser.loaded_script_results = cached_results
+      .into_iter()
+      .map(|(name, value)| (name, data_store.register(value)))
+      .collect();
+
     ser
   }
 
@@ -438,6 +467,12 @@ impl ModuleMapData {
 
     *self.known_lazy_esm.borrow_mut() =
       data.lazy_esm_specifiers.into_iter().collect();
+
+    let mut cached_results = self.loaded_script_results.borrow_mut();
+    for (name, id) in data.loaded_script_results {
+      let value = data_store.get::<v8::Value>(scope, id);
+      cached_results.insert(name, value);
+    }
   }
 
   // TODO(mmastrac): this is better than giving the entire crate access to the internals.
