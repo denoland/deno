@@ -320,6 +320,11 @@ pub struct SpawnArgs {
     allow(dead_code, reason = "deserialized from JS but only used on Unix")
   )]
   kill_signal: Option<KillSignal>,
+  /// Maximum number of bytes that may accumulate in stdout/stderr before the
+  /// child is killed. Mirrors Node.js `child_process.spawnSync({ maxBuffer })`.
+  /// `None` means unlimited.
+  #[serde(default)]
+  max_buffer: Option<u64>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -479,6 +484,7 @@ pub struct SpawnOutput {
   stdout: Option<Uint8Array>,
   stderr: Option<Uint8Array>,
   killed_by_timeout: bool,
+  killed_by_max_buffer: bool,
 }
 
 type CreateCommand = (
@@ -1408,6 +1414,7 @@ fn op_spawn_sync(
   let stderr = matches!(args.stdio.stderr, StdioOrFd::Stdio(Stdio::Piped));
   let input = args.input.clone();
   let timeout = args.timeout;
+  let max_buffer = args.max_buffer;
   #[cfg(unix)]
   let kill_signal = args.kill_signal.clone();
   let (mut command, _, _, _) = create_command(
@@ -1417,10 +1424,12 @@ fn op_spawn_sync(
     /* allow_cwd_inherit */ false,
   )?;
 
-  // When timeout is specified on Unix, create a new process group so we can
-  // kill the entire tree (shell + children) on timeout, not just the shell.
+  // When timeout or maxBuffer is specified on Unix, create a new process
+  // group so we can kill the entire tree (shell + children), not just the
+  // shell. Otherwise a shell-wrapped child that exceeds the limit would
+  // outlive the kill signal.
   #[cfg(unix)]
-  if timeout.is_some_and(|t| t > 0) {
+  if timeout.is_some_and(|t| t > 0) || max_buffer.is_some() {
     command.process_group(0);
   }
 
@@ -1440,26 +1449,111 @@ fn op_spawn_sync(
     stdin.flush()?;
   }
 
+  // Resolve the configured kill signal once so it can be shared with the
+  // background threads that enforce timeout and maxBuffer. On Windows there
+  // are no real Unix signals, but the signal is still tracked so JS can
+  // surface the configured `killSignal` to callers.
+  #[cfg(unix)]
+  let kill_signal_int: i32 = match &kill_signal {
+    Some(KillSignal::Number(n)) => *n,
+    Some(KillSignal::String(s)) => {
+      deno_signals::signal_str_to_int(s).unwrap_or(libc::SIGTERM)
+    }
+    None => libc::SIGTERM,
+  };
+
+  #[cfg(unix)]
+  let child_pid_for_kill = child.id();
+  #[cfg(windows)]
+  let child_pid_for_kill = child.id().expect("Process ID should be set.");
+
+  // Kill the spawned child (its whole process group on Unix). Called either
+  // by the timeout watchdog or the maxBuffer reader threads.
+  let kill_child: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+    #[cfg(unix)]
+    // SAFETY: child_pid_for_kill is the PID of the just-spawned child;
+    // signaling its process group (negative PID) terminates shell-wrapped
+    // subprocesses too. There is a minor race window if the child has
+    // already exited and the PID was recycled; in practice the watchdog
+    // and readers race against EOF / wait() returning so this window is
+    // negligible.
+    unsafe {
+      libc::kill(-(child_pid_for_kill as i32), kill_signal_int);
+    }
+    #[cfg(windows)]
+    // SAFETY: standard Win32 calls; child_pid_for_kill is a valid PID.
+    unsafe {
+      let handle = windows_sys::Win32::System::Threading::OpenProcess(
+        windows_sys::Win32::System::Threading::PROCESS_TERMINATE,
+        false.into(),
+        child_pid_for_kill,
+      );
+      if !handle.is_null() {
+        windows_sys::Win32::System::Threading::TerminateProcess(handle, 1);
+        windows_sys::Win32::Foundation::CloseHandle(handle);
+      }
+    }
+  });
+
   // Take stdout/stderr pipes from child so we can read them in background
   // threads. This lets us drop the pipes on timeout to unblock the readers
   // (matching libuv's behavior of stopping pipe reads after process kill).
   let child_stdout = child.stdout.take();
   let child_stderr = child.stderr.take();
 
-  let stdout_handle = child_stdout.map(|pipe| {
-    std::thread::spawn(move || {
-      let mut buf = Vec::new();
-      let mut pipe = pipe;
+  let killed_by_max_buffer = Arc::new(AtomicBool::new(false));
+
+  // Read a pipe to EOF, enforcing `max_buffer` if set. On overflow the first
+  // reader to notice flips `killed_by_max_buffer` (CAS-style) and kills the
+  // child; the subsequent EOF lets both reader threads return.
+  fn read_with_limit<R: std::io::Read>(
+    mut pipe: R,
+    max_buffer: Option<u64>,
+    killed_by_max_buffer: Arc<AtomicBool>,
+    kill_child: Arc<dyn Fn() + Send + Sync>,
+  ) -> Vec<u8> {
+    let mut buf = Vec::new();
+    // No limit: fall back to read_to_end so we don't waste cycles checking.
+    let Some(limit) = max_buffer else {
       let _ = std::io::Read::read_to_end(&mut pipe, &mut buf);
-      buf
+      return buf;
+    };
+    let mut tmp = [0u8; 64 * 1024];
+    let mut overflowed = false;
+    loop {
+      match pipe.read(&mut tmp) {
+        Ok(0) => break,
+        Ok(n) => {
+          if !overflowed {
+            buf.extend_from_slice(&tmp[..n]);
+            if buf.len() as u64 > limit {
+              overflowed = true;
+              if !killed_by_max_buffer.swap(true, Ordering::SeqCst) {
+                kill_child();
+              }
+            }
+          }
+          // After overflow, drain the pipe without buffering further so
+          // the child's pending writes don't keep the pipe open.
+        }
+        Err(_) => break,
+      }
+    }
+    buf
+  }
+
+  let stdout_handle = child_stdout.map(|pipe| {
+    let killed = killed_by_max_buffer.clone();
+    let kill_child = kill_child.clone();
+    std::thread::spawn(move || {
+      read_with_limit(pipe, max_buffer, killed, kill_child)
     })
   });
   let stderr_handle = child_stderr.map(|pipe| {
+    let killed = killed_by_max_buffer.clone();
+    let kill_child = kill_child.clone();
     std::thread::spawn(move || {
-      let mut buf = Vec::new();
-      let mut pipe = pipe;
-      let _ = std::io::Read::read_to_end(&mut pipe, &mut buf);
-      buf
+      read_with_limit(pipe, max_buffer, killed, kill_child)
     })
   });
 
@@ -1471,20 +1565,9 @@ fn op_spawn_sync(
   if let Some(timeout_ms) = timeout
     && timeout_ms > 0
   {
-    #[cfg(unix)]
-    let child_id = child.id();
-    #[cfg(windows)]
-    let child_id = child.id().expect("Process ID should be set.");
     let killed = killed_by_timeout.clone();
     let cancel2 = cancel.clone();
-    #[cfg(unix)]
-    let signal: i32 = match &kill_signal {
-      Some(KillSignal::Number(n)) => *n,
-      Some(KillSignal::String(s)) => {
-        deno_signals::signal_str_to_int(s).unwrap_or(libc::SIGTERM)
-      }
-      None => libc::SIGTERM,
-    };
+    let kill_child = kill_child.clone();
     std::thread::spawn(move || {
       let (lock, cvar) = &*cancel2;
       let guard = lock.lock().unwrap();
@@ -1497,40 +1580,10 @@ fn op_spawn_sync(
         return;
       }
       killed.store(true, Ordering::SeqCst);
-      // NOTE: There is a minor race window where the child exits and its
-      // PID gets recycled before we send the kill signal. The condvar
-      // cancel above prevents this in practice (the main thread cancels
-      // the timer immediately after wait() returns), but if the OS
-      // recycles the PID in that narrow window we could signal the wrong
-      // process. This matches libuv's behavior.
-      #[cfg(unix)]
-      // SAFETY: child_id is a valid PID from the spawned child process.
-      // We use negative PID to kill the entire process group (created via
-      // process_group(0) above), ensuring shell children are also killed.
-      // NOTE: There is a minor theoretical race window where the child
-      // could exit and its PID get recycled between wait() returning and
-      // the condvar cancel reaching this thread. In practice the condvar
-      // cancellation is near-instant so this window is negligible.
-      unsafe {
-        libc::kill(-(child_id as i32), signal);
-      }
-      #[cfg(windows)]
-      // SAFETY: child_id is a valid PID from the spawned child process.
-      // OpenProcess/TerminateProcess/CloseHandle are safe to call with
-      // valid arguments.
-      unsafe {
-        let handle = windows_sys::Win32::System::Threading::OpenProcess(
-          windows_sys::Win32::System::Threading::PROCESS_TERMINATE,
-          false.into(),
-          child_id,
-        );
-        if !handle.is_null() {
-          windows_sys::Win32::System::Threading::TerminateProcess(handle, 1);
-          windows_sys::Win32::Foundation::CloseHandle(handle);
-        }
-      }
+      kill_child();
     });
   }
+  drop(kill_child);
 
   #[cfg(unix)]
   let status = child.wait().map_err(|e| ProcessError::SpawnFailed {
@@ -1555,6 +1608,7 @@ fn op_spawn_sync(
   }
 
   let timed_out = killed_by_timeout.load(Ordering::SeqCst);
+  let buffered_overflow = killed_by_max_buffer.load(Ordering::SeqCst);
 
   // Collect stdout/stderr from background reader threads.
   // On Unix, the process group kill ensures all children are dead and
@@ -1571,7 +1625,7 @@ fn op_spawn_sync(
     }
     #[cfg(windows)]
     {
-      if timed_out {
+      if timed_out || buffered_overflow {
         // Brief timeout to avoid blocking on orphaned grandchildren.
         let start = std::time::Instant::now();
         loop {
@@ -1605,6 +1659,7 @@ fn op_spawn_sync(
       None
     },
     killed_by_timeout: timed_out,
+    killed_by_max_buffer: buffered_overflow,
   })
 }
 
