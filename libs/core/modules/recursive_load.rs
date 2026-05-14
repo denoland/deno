@@ -516,7 +516,10 @@ impl RecursiveModuleLoad {
                   // `register_and_recurse_inner` later picks up the
                   // existing module id via `get_id`.
                   if module_map_rc
-                    .get_id(resolved.as_str(), &request.reference.requested_module_type)
+                    .get_id(
+                      resolved.as_str(),
+                      &request.reference.requested_module_type,
+                    )
                     .is_some()
                   {
                     visited_as_alias
