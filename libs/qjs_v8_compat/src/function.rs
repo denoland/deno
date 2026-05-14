@@ -364,16 +364,7 @@ pub(crate) unsafe extern "C" fn op_bridge_trampoline_magic(
     values: argv,
     length: argc,
   };
-  // For magic=20 (likely op_print): inspect args[0] before dispatch.
-  if magic == 20 && argc > 0 {
-    let first = unsafe { *argv };
-    let is_str = crate::sys::jsv_is_string(&first);
-    let s = crate::sys::to_string_lossy(ctx, first);
-    eprintln!("[bridge] magic=20 args[0].tag={} is_string={} val={:?}", first.tag, is_str, s);
-  }
   unsafe { slow_fn(&info as *const _) };
-  use std::io::Write as _;
-  let _ = std::io::stdout().flush();
   let rv = implicit[IMPLICIT_RV_OFFSET as usize];
   rv
 }
