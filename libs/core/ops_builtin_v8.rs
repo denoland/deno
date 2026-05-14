@@ -678,7 +678,8 @@ impl v8::ValueSerializerImpl for SerializeDeserialize<'_> {
     if let Some(host_objects) = self.host_objects {
       for i in 0..host_objects.length() {
         let value = host_objects.get_index(scope, i).unwrap();
-        if value == object {
+        let object_val: v8::Local<v8::Value> = object.into();
+        if value == object_val {
           value_serializer.write_uint32(i);
           return Some(true);
         }

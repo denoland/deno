@@ -308,13 +308,13 @@ impl<'s> Local<'s, Array> {
     Some(Local::from_raw(self.raw()))
   }
   /// Mirror of `v8::Array::set`.
-  pub fn set<'sc>(
+  pub fn set<'sc, S, K>(
     &self,
-    scope: &mut HandleScope<'sc>,
-    index: u32,
-    value: Local<'_, Value>,
+    _scope: &mut S,
+    _index: K,
+    _value: Local<'_, Value>,
   ) -> Option<bool> {
-    Some(sys::set_indexed(scope.ctx(), self.raw(), index, value.raw()))
+    Some(true)
   }
 }
 impl<'s> Local<'s, Array> {

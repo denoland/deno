@@ -350,11 +350,7 @@ impl<'s, C> HandleScope<'s, C> {
     _resolve: R,
   ) {
   }
-  pub fn set_wasm_streaming_callback(
-    &mut self,
-    _cb: crate::function::WasmStreamingCallback,
-  ) {
-  }
+  pub fn set_wasm_streaming_callback<F>(&mut self, _cb: F) {}
   pub fn has_pending_background_tasks(&self) -> bool {
     false
   }

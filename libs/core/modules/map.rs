@@ -2537,7 +2537,7 @@ impl ModuleMap {
           }
         }
         let module =
-          v8::Global::new(scope, handle_local.get_module_namespace());
+          v8::Global::new(scope, handle_local.get_module_namespace().into());
         return Ok(module);
       }
     }
