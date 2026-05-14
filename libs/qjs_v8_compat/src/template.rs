@@ -104,9 +104,9 @@ impl FunctionTemplate {
 impl<'s> Local<'s, FunctionTemplate> {
   pub fn get_function<S>(
     &self,
-    _scope: &S,
+    _scope: &mut S,
   ) -> Option<Local<'s, crate::function::Function>> {
-    None
+    Some(Local::from_raw(self.raw))
   }
   pub fn instance_template<S>(&self, _scope: &S) -> Local<'s, ObjectTemplate> {
     Local::from_raw(self.raw)

@@ -1086,8 +1086,8 @@ pub mod v8 {
       self,
       scope: &mut S,
     ) -> Option<super::Local<'s, T>> {
-      let _ = scope;
-      None
+      let raw = crate::sys::new_object(scope.default_ctx());
+      Some(super::Local::from_raw(raw))
     }
     pub fn build_fast<'s, S: crate::scope::HandleScopeSource, F>(
       self,
@@ -1095,6 +1095,12 @@ pub mod v8 {
       _fast_function: F,
     ) -> Option<super::Local<'s, T>> {
       self.build(scope)
+    }
+    pub fn constructor_behavior(
+      self,
+      _b: crate::function::ConstructorBehavior,
+    ) -> Self {
+      self
     }
   }
   pub type NearHeapLimitCallback = unsafe extern "C" fn(
