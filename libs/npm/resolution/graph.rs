@@ -1042,7 +1042,7 @@ impl Graph {
       .keys()
       .copied()
       .collect::<Vec<_>>();
-    node_ids.sort_by(|a, b| a.0.cmp(&b.0));
+    node_ids.sort_by_key(|a| a.0);
     for node_id in node_ids {
       Self::output_node_with_ids(&self.nodes, &pkg_ids, node_id, true);
     }
@@ -7793,7 +7793,7 @@ mod test {
         )
       })
       .collect::<Vec<_>>();
-    package_reqs.sort_by(|a, b| a.0.to_string().cmp(&b.0.to_string()));
+    package_reqs.sort_by_key(|a| a.0.to_string());
 
     let packages = packages
       .into_iter()
@@ -8180,8 +8180,12 @@ mod test {
   fn make_overrides(
     json: serde_json::Value,
   ) -> crate::resolution::NpmOverrides {
-    crate::resolution::NpmOverrides::from_value(json, &Default::default())
-      .unwrap()
+    crate::resolution::NpmOverrides::from_value(
+      json,
+      &Default::default(),
+      &Default::default(),
+    )
+    .unwrap()
   }
 
   fn make_overrides_with_root_deps(
@@ -8191,7 +8195,12 @@ mod test {
       deno_semver::StackString,
     >,
   ) -> crate::resolution::NpmOverrides {
-    crate::resolution::NpmOverrides::from_value(json, &root_deps).unwrap()
+    crate::resolution::NpmOverrides::from_value(
+      json,
+      &root_deps,
+      &Default::default(),
+    )
+    .unwrap()
   }
 
   #[tokio::test]

@@ -33,6 +33,7 @@ use deno_core::SourceCodeCacheInfo;
 use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::v8;
+use deno_cron::CronHandler;
 use deno_cron::CronHandlerImpl;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
@@ -228,6 +229,14 @@ pub struct WorkerOptions {
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<&'static [u8]>,
 
+  /// `(specifier, source)` pairs for `lazy_loaded_js` files that were not
+  /// consumed during snapshot creation. Emitted by the snapshot build script.
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+
+  /// `(specifier, source)` pairs for `lazy_loaded_esm` files that were not
+  /// consumed during snapshot creation. Emitted by the snapshot build script.
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
+
   /// Should op registration be skipped?
   pub skip_op_registration: bool,
 
@@ -277,6 +286,8 @@ impl Default for WorkerOptions {
       cache_storage_dir: Default::default(),
       extensions: Default::default(),
       startup_snapshot: Default::default(),
+      residual_lazy_js_sources: &[],
+      residual_lazy_esm_sources: &[],
       create_params: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
@@ -423,25 +434,16 @@ impl MainWorker {
       options.unconfigured_runtime = None;
     }
 
-    #[cfg(feature = "hmr")]
-    const {
-      assert!(
-        cfg!(not(feature = "only_snapshotted_js_sources")),
-        "'hmr' is incompatible with 'only_snapshotted_js_sources'."
-      );
-    }
-
-    #[cfg(feature = "only_snapshotted_js_sources")]
-    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
-
     let mut js_runtime = if let Some(u) = options.unconfigured_runtime {
       let js_runtime = u.hydrate(services.module_loader);
 
       let op_state = js_runtime.op_state();
       let current_handler =
-        op_state.borrow().borrow::<Rc<CronHandlerImpl>>().clone();
+        op_state.borrow().borrow::<Rc<dyn CronHandler>>().clone();
       if let Some(new_handler) = current_handler.maybe_reload() {
-        op_state.borrow_mut().put(Rc::new(new_handler));
+        op_state
+          .borrow_mut()
+          .put::<Rc<dyn CronHandler>>(Rc::from(new_handler));
       }
 
       js_runtime
@@ -457,6 +459,8 @@ impl MainWorker {
       common_runtime(CommonRuntimeOptions {
         module_loader: services.module_loader.clone(),
         startup_snapshot: options.startup_snapshot,
+        residual_lazy_js_sources: options.residual_lazy_js_sources,
+        residual_lazy_esm_sources: options.residual_lazy_esm_sources,
         create_params: options.create_params,
         skip_op_registration: options.skip_op_registration,
         shared_array_buffer_store: services.shared_array_buffer_store,
@@ -522,6 +526,7 @@ impl MainWorker {
         deno_web::deno_web::args(
           services.blob_store.clone(),
           options.bootstrap.location.clone(),
+          true,
           services.broadcast_channel.clone(),
         ),
         deno_fetch::deno_fetch::args(deno_fetch::Options {
@@ -546,7 +551,7 @@ impl MainWorker {
           options.unsafely_ignore_certificate_errors.clone(),
         ),
         deno_kv::deno_kv::args(
-          MultiBackendDbHandler::remote_or_sqlite(
+          Box::new(MultiBackendDbHandler::remote_or_sqlite(
             options.origin_storage_dir.clone(),
             options.seed,
             deno_kv::remote::HttpOptions {
@@ -560,7 +565,7 @@ impl MainWorker {
               client_cert_chain_and_key: TlsKeys::Null,
               proxy: None,
             },
-          ),
+          )),
           deno_kv::KvConfig::builder().build(),
         ),
         deno_napi::deno_napi::args(
@@ -1073,6 +1078,7 @@ fn common_extensions<
     deno_web::deno_web::lazy_init(),
     deno_webgpu::deno_webgpu::init(),
     deno_image::deno_image::init(),
+    deno_canvas::deno_canvas::init(),
     deno_fetch::deno_fetch::lazy_init(),
     deno_cache::deno_cache::lazy_init(),
     deno_websocket::deno_websocket::lazy_init(),
@@ -1081,8 +1087,8 @@ fn common_extensions<
     deno_ffi::deno_ffi::lazy_init(),
     deno_net::deno_net::lazy_init(),
     deno_tls::deno_tls::init(),
-    deno_kv::deno_kv::lazy_init::<MultiBackendDbHandler>(),
-    deno_cron::deno_cron::init(CronHandlerImpl::create_from_env()),
+    deno_kv::deno_kv::lazy_init(),
+    deno_cron::deno_cron::init(Box::new(CronHandlerImpl::create_from_env())),
     deno_napi::deno_napi::lazy_init(),
     deno_http::deno_http::lazy_init(),
     deno_io::deno_io::lazy_init(),
@@ -1120,6 +1126,8 @@ fn common_extensions<
 struct CommonRuntimeOptions {
   module_loader: Rc<dyn ModuleLoader>,
   startup_snapshot: Option<&'static [u8]>,
+  residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   create_params: Option<v8::CreateParams>,
   skip_op_registration: bool,
   shared_array_buffer_store: Option<SharedArrayBufferStore>,
@@ -1137,6 +1145,8 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
   let js_runtime = JsRuntime::new(RuntimeOptions {
     module_loader: Some(opts.module_loader),
     startup_snapshot: opts.startup_snapshot,
+    residual_lazy_js_sources: opts.residual_lazy_js_sources,
+    residual_lazy_esm_sources: opts.residual_lazy_esm_sources,
     create_params: opts.create_params,
     skip_op_registration: opts.skip_op_registration,
     shared_array_buffer_store: opts.shared_array_buffer_store,
@@ -1193,6 +1203,8 @@ pub fn create_permissions_stack_trace_callback()
 
 pub struct UnconfiguredRuntimeOptions {
   pub startup_snapshot: &'static [u8],
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   pub create_params: Option<v8::CreateParams>,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
@@ -1226,6 +1238,8 @@ impl UnconfiguredRuntime {
     let js_runtime = common_runtime(CommonRuntimeOptions {
       module_loader: module_loader.clone(),
       startup_snapshot: Some(options.startup_snapshot),
+      residual_lazy_js_sources: options.residual_lazy_js_sources,
+      residual_lazy_esm_sources: options.residual_lazy_esm_sources,
       create_params: options.create_params,
       skip_op_registration: true,
       shared_array_buffer_store: options.shared_array_buffer_store,
@@ -1257,7 +1271,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     specifier: &str,
     referrer: &str,
     kind: deno_core::ResolutionKind,
-  ) -> Result<ModuleSpecifier, deno_core::error::ModuleLoaderError> {
+  ) -> deno_core::ModuleResolveResponse {
     self
       .0
       .borrow_mut()

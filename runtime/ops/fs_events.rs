@@ -287,6 +287,28 @@ fn start_watcher(
   Ok(())
 }
 
+/// Make `path` absolute and collapse `.` / `..` segments so that paths
+/// reported back in `FsEvent` don't carry the leftover relative bits notify
+/// pastes onto its event paths (see denoland/deno#32000). Symlinks are
+/// intentionally not resolved here so user-visible event paths still reflect
+/// the path the caller passed in.
+fn normalize_watch_path(path: PathBuf) -> PathBuf {
+  if path.is_absolute() {
+    return deno_path_util::normalize_path(Cow::Owned(path)).into_owned();
+  }
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "fs watcher needs the real cwd to absolutize the watch path"
+  )]
+  let cwd = std::env::current_dir();
+  match cwd {
+    Ok(cwd) => {
+      deno_path_util::normalize_path(Cow::Owned(cwd.join(&path))).into_owned()
+    }
+    Err(_) => path,
+  }
+}
+
 #[op2(stack_trace)]
 #[smi]
 fn op_fs_events_open(
@@ -298,15 +320,14 @@ fn op_fs_events_open(
   {
     let permissions_container = state.borrow_mut::<PermissionsContainer>();
     for path in paths {
-      resolved_paths.push(
-        permissions_container
-          .check_open(
-            Cow::Owned(PathBuf::from(path)),
-            deno_permissions::OpenAccessKind::ReadNoFollow,
-            Some("Deno.watchFs()"),
-          )?
-          .into_owned_path(),
-      );
+      let checked = permissions_container
+        .check_open(
+          Cow::Owned(PathBuf::from(path)),
+          deno_permissions::OpenAccessKind::ReadNoFollow,
+          Some("Deno.watchFs()"),
+        )?
+        .into_owned_path();
+      resolved_paths.push(normalize_watch_path(checked));
     }
   }
 

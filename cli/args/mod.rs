@@ -448,6 +448,24 @@ impl WorkspaceMainModuleResolver {
               )?
               .into_url()?
           }
+          deno_package_json::PackageJsonDepValue::Catalog(catalog_name) => {
+            match self
+              .workspace_resolver
+              .resolve_catalog_dep(alias, catalog_name)
+            {
+              Some(req) => ModuleSpecifier::parse(&format!(
+                "npm:{}{}",
+                req,
+                sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+              ))?,
+              None => {
+                return Err(deno_core::anyhow::anyhow!(
+                  "Package '{}' not found in catalog",
+                  alias
+                ));
+              }
+            }
+          }
         }
       }
       deno_resolver::workspace::MappedResolution::PackageJsonImport {
@@ -537,7 +555,11 @@ impl CliOptions {
       DenoSubcommand::Add(_) => GraphKind::All,
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
-      DenoSubcommand::Install(InstallFlags::Local(_)) => GraphKind::All,
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::Entrypoints(flags),
+        _,
+      )) if flags.production => GraphKind::CodeOnly,
+      DenoSubcommand::Install(InstallFlags::Local(_, _)) => GraphKind::All,
       _ => self.type_check_mode().as_graph_kind(),
     }
   }
@@ -661,6 +683,19 @@ impl CliOptions {
         deno_dotenv::candidate_paths(&self.initial_cwd, env_file)
       })
       .filter_map(|p| canonicalize_path(&p).ok())
+  }
+
+  pub fn experimental_loaders(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
+    if self.flags.experimental_loaders.is_empty() {
+      return Ok(vec![]);
+    }
+
+    let mut modules = Vec::with_capacity(self.flags.experimental_loaders.len());
+    for loader_specifier in self.flags.experimental_loaders.iter() {
+      modules.push(resolve_url_or_path(loader_specifier, self.initial_cwd())?);
+    }
+
+    Ok(modules)
   }
 
   pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
@@ -1225,6 +1260,7 @@ impl CliOptions {
           .map(|url| vec![url]),
         DenoSubcommand::Install(InstallFlags::Local(
           InstallFlagsLocal::Entrypoints(flags),
+          _,
         )) => Some(files_to_urls(&flags.entrypoints)),
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
@@ -1359,11 +1395,21 @@ impl CliOptions {
   }
 
   /// Returns unstable feature flags as CLI arguments (e.g., "--unstable-unsafe-proto").
-  /// This includes features from both CLI flags and config file.
+  /// This includes features from both CLI flags and config file. Features that
+  /// are only valid in `deno.json` (e.g. `fmt-component`, `fmt-sql`) and don't
+  /// have a registered CLI flag are filtered out, otherwise child processes
+  /// spawned with these args (e.g. via `deno x`) would reject them with
+  /// "unexpected argument".
   pub fn unstable_args(&self) -> Vec<String> {
+    let cli_flag_names: std::collections::HashSet<&str> =
+      deno_runtime::UNSTABLE_FEATURES
+        .iter()
+        .map(|f| f.name)
+        .collect();
     self
       .unstable_features()
       .into_iter()
+      .filter(|f| cli_flag_names.contains(*f))
       .map(|f| format!("--unstable-{}", f))
       .collect()
   }
@@ -1450,7 +1496,8 @@ impl CliOptions {
           | InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
             lockfile_only: true,
             ..
-          })
+          }),
+        _,
       )) | DenoSubcommand::Add(_)
         | DenoSubcommand::Outdated(_)
     ) {
@@ -1552,6 +1599,7 @@ pub fn get_default_v8_flags() -> Vec<String> {
   vec![
     "--stack-size=1024".to_string(),
     "--inspector-live-edit".to_string(),
+    "--external-memory-max-reasonable-size=0".to_string(),
   ]
 }
 

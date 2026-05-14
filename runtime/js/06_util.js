@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
-import { op_bootstrap_log_level } from "ext:core/ops";
+(function () {
+const { primordials } = globalThis.__bootstrap;
+const { op_bootstrap_log_level } = globalThis.__bootstrap.core.ops;
 const { SafeArrayIterator } = primordials;
 
 // WARNING: Keep this in sync with Rust (search for LogLevel)
@@ -33,4 +34,5 @@ function log(...args) {
   }
 }
 
-export { log };
+return { log };
+})();

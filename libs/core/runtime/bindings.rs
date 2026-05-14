@@ -192,11 +192,18 @@ pub(crate) fn externalize_sources(
   // Because we don't have that trait, we work around it with [usize; 3].
   const INIT_VALUE: MaybeUninit<[usize; 3]> =
     MaybeUninit::<[usize; 3]>::uninit();
+  // Size to match the actual iteration (`js + esm + lazy_esm`). `LoadedSources::len`
+  // also counts `lazy_loaded_js`, which are *not* externalized here — counting them
+  // leaves trailing uninitialized slots that later flow into V8's external_references
+  // list and shift snapshot indices, causing miscompilation of JIT'd code that
+  // references those entries.
+  let sources_count =
+    sources.js.len() + sources.esm.len() + sources.lazy_esm.len();
   let externals =
-    vec![INIT_VALUE; sources.len() + snapshot_sources.len()].into_boxed_slice();
+    vec![INIT_VALUE; sources_count + snapshot_sources.len()].into_boxed_slice();
 
   // Keep the original sources around, since we're borrowing from them.
-  let mut original_sources = Vec::with_capacity(sources.len());
+  let mut original_sources = Vec::with_capacity(sources_count);
 
   // SAFETY: We are creating `v8::OneByteConst`s here for each of the input sources. Because
   // we keep the original source alive, we can safely make a `v8::OneByteConst` from _any_
