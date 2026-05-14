@@ -100,6 +100,17 @@ impl<'s> Local<'s, Script> {
         if let Some(s) = sys::to_string_lossy(scope.ctx(), exc) {
           eprintln!("[qjs] Script::run exception: {}", s);
         }
+        // Get stack property for more info
+        let stack_key = std::ffi::CString::new("stack").unwrap();
+        let stack_val = unsafe {
+          crate::ffi::JS_GetPropertyStr(scope.ctx(), exc, stack_key.as_ptr())
+        };
+        if !sys::jsv_is_undefined(&stack_val) {
+          if let Some(s) = sys::to_string_lossy(scope.ctx(), stack_val) {
+            eprintln!("[qjs]   stack: {}", s);
+          }
+        }
+        sys::free_value(scope.ctx(), stack_val);
         sys::free_value(scope.ctx(), exc);
       }
       return None;

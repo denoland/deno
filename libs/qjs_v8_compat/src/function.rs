@@ -258,15 +258,17 @@ impl<'s> Local<'s, Function> {
 }
 
 /// Trampoline used by `Function::new` and `FunctionBuilder::build` until
-/// V8's full FunctionCallback ABI is bridged. Returns undefined so JS
-/// callers see a no-op function.
+/// V8's full FunctionCallback ABI is bridged. Returns a fresh empty
+/// object so JS callers that immediately do `result.foo = ...` (e.g.
+/// `op_get_ext_import_meta_proto().log = function ...`) don't blow up
+/// trying to set a property on undefined.
 pub(crate) unsafe extern "C" fn function_new_trampoline(
-  _ctx: *mut crate::ffi::JSContext,
+  ctx: *mut crate::ffi::JSContext,
   _this: crate::sys::JSValue,
   _argc: core::ffi::c_int,
   _argv: *mut crate::sys::JSValue,
 ) -> crate::sys::JSValue {
-  crate::sys::jsv_undefined()
+  unsafe { crate::ffi::JS_NewObject(ctx) }
 }
 
 impl Function {

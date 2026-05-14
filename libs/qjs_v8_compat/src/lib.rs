@@ -805,10 +805,14 @@ pub mod v8 {
       None
     }
     pub fn compile_module<'s>(
-      _scope: &mut HandleScope<'s>,
+      scope: &mut HandleScope<'s>,
       _source: &mut Source,
     ) -> Option<Local<'s, Module>> {
-      None
+      // Stub: return a placeholder Module handle. Real V8 module
+      // compilation isn't bridged to QuickJS-ng modules yet; deno_core
+      // will then call instantiate_module / evaluate which we also stub.
+      let raw = crate::sys::new_object(scope.ctx());
+      Some(super::Local::from_raw(raw))
     }
     pub fn compile_function<'s, S, O, N>(
       _scope: &mut S,
@@ -821,12 +825,16 @@ pub mod v8 {
       None
     }
     pub fn compile_module2<'s, S, O, N>(
-      _scope: &mut S,
+      scope: &mut S,
       _source: &mut Source,
       _options: O,
       _no_cache_reason: N,
-    ) -> Option<Local<'s, Module>> {
-      None
+    ) -> Option<Local<'s, Module>>
+    where
+      S: crate::scope::HandleScopeSource,
+    {
+      let raw = crate::sys::new_object(scope.default_ctx());
+      Some(super::Local::from_raw(raw))
     }
     pub enum NoCacheReason {
       NoReason,

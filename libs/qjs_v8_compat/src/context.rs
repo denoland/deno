@@ -80,13 +80,34 @@ impl<'s> Local<'s, Context> {
     &self,
     scope: &mut HandleScope<'s>,
   ) -> Local<'s, crate::object::Object> {
-    // V8 exposes `console` on the extras binding object. We synthesize
-    // an object carrying a stub console so deno_core's bindings.rs
-    // doesn't panic at startup when it does
-    // `get_extras_binding_object(scope).console`.
+    // V8 exposes `console` on the extras binding object with all the
+    // standard methods (log, error, warn, debug, info, etc.). We
+    // synthesize a stub here so deno_core's bindings.rs and 01_core.js's
+    // `wrapConsole` (which Object.keys(consoleFromV8)) both find a
+    // usable object.
     let ctx = scope.ctx();
     let obj_raw = crate::sys::new_object(ctx);
     let console_raw = crate::sys::new_object(ctx);
+    // Populate console with no-op methods so wrapConsole's
+    // FunctionPrototypeBind(callConsole, ..., consoleFromV8[key], ...)
+    // gets actual functions rather than undefined.
+    for method in [
+      "log", "debug", "info", "warn", "error", "dir", "dirxml",
+      "table", "trace", "group", "groupCollapsed", "groupEnd",
+      "clear", "count", "countReset", "assert", "profile",
+      "profileEnd", "time", "timeLog", "timeEnd", "timeStamp",
+      "context",
+    ] {
+      let f = unsafe {
+        crate::ffi::JS_NewCFunction(
+          ctx,
+          crate::function::function_new_trampoline,
+          core::ptr::null(),
+          0,
+        )
+      };
+      crate::sys::set_property_str(ctx, console_raw, method, f);
+    }
     crate::sys::set_property_str(ctx, obj_raw, "console", console_raw);
     Local::from_raw(obj_raw)
   }

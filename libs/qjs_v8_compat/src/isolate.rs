@@ -89,6 +89,52 @@ impl OwnedIsolate {
     let mut state = Box::new(IsolateState::new());
     let state_ptr: *mut IsolateState = state.as_mut();
     sys::set_runtime_opaque(rt, state_ptr as *mut c_void);
+
+    // QuickJS-ng's default JS_NewContext doesn't install a global
+    // `console` object the way V8 does. deno_core's 01_core.js boot
+    // reads `globalThis.console`, then calls `Object.keys(consoleFromV8)`
+    // on it, which throws on undefined. Install a stub console with
+    // no-op methods so that path completes.
+    let g = sys::get_global_object(ctx);
+    let console_raw = sys::new_object(ctx);
+    for method in [
+      "log", "debug", "info", "warn", "error", "dir", "dirxml",
+      "table", "trace", "group", "groupCollapsed", "groupEnd",
+      "clear", "count", "countReset", "assert", "profile",
+      "profileEnd", "time", "timeLog", "timeEnd", "timeStamp",
+      "context",
+    ] {
+      let f = unsafe {
+        crate::ffi::JS_NewCFunction(
+          ctx,
+          crate::function::function_new_trampoline,
+          core::ptr::null(),
+          0,
+        )
+      };
+      sys::set_property_str(ctx, console_raw, method, f);
+    }
+    sys::set_property_str(ctx, g, "console", console_raw);
+
+    // Stub WebAssembly.{Instance,Module,Memory,Table} so deno_core's
+    // wasm_instance_fn lookup doesn't panic. Real WASM support would
+    // require bridging QuickJS's lack of WASM into something compatible.
+    let wasm_raw = sys::new_object(ctx);
+    for cls in ["Instance", "Module", "Memory", "Table"] {
+      let ctor = unsafe {
+        crate::ffi::JS_NewCFunction(
+          ctx,
+          crate::function::function_new_trampoline,
+          core::ptr::null(),
+          0,
+        )
+      };
+      sys::set_property_str(ctx, wasm_raw, cls, ctor);
+    }
+    sys::set_property_str(ctx, g, "WebAssembly", wasm_raw);
+
+    sys::free_value(ctx, g);
+
     Self {
       rt,
       default_ctx: ctx,
@@ -248,8 +294,7 @@ impl Isolate {
   /// returned reference's lifetime.
   pub unsafe fn from_raw_isolate_ptr<'a>(ptr: impl Into<UnsafeRawIsolatePtr>) -> &'a mut Self {
     let ptr = ptr.into();
-    let _ = ptr;
-    Self::from_raw_isolate_ptr_inner(std::ptr::null_mut())
+    Self::from_raw_isolate_ptr_inner(ptr.0 as *mut Self)
   }
   pub unsafe fn from_raw_isolate_ptr_inner<'a>(ptr: *mut Self) -> &'a mut Self {
     unsafe { &mut *ptr }
