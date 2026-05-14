@@ -816,6 +816,45 @@ impl<'s> From<Local<'s, crate::template::ObjectTemplate>>
     Local::from_raw(other.raw)
   }
 }
+
+// Many marker types upcast to Data and downcast (TryFrom) from Data.
+macro_rules! data_conv {
+  ($($ty:ty),* $(,)?) => { $(
+    impl<'s> From<Local<'s, $ty>> for Local<'s, Data> {
+      fn from(other: Local<'s, $ty>) -> Self {
+        Local::from_raw(other.raw)
+      }
+    }
+    impl<'s> TryFrom<Local<'s, Data>> for Local<'s, $ty> {
+      type Error = crate::exception::DataError;
+      fn try_from(d: Local<'s, Data>) -> Result<Self, Self::Error> {
+        Ok(Local::from_raw(d.raw))
+      }
+    }
+  )* };
+}
+data_conv!(
+  crate::function::Function,
+  crate::module::Module,
+  crate::object::Object,
+  crate::object::Array,
+  crate::primitives::String,
+  crate::primitives::PrimitiveArray,
+  crate::primitives::Symbol,
+  crate::script::Script,
+  crate::script::UnboundScript,
+  crate::script::UnboundModuleScript,
+);
+
+// WasmModuleObject -> Object upcast (rusty_v8 expresses some
+// wasm operations via Object handles).
+impl<'s> From<Local<'s, crate::buffer::WasmModuleObject>>
+  for Local<'s, crate::object::Object>
+{
+  fn from(other: Local<'s, crate::buffer::WasmModuleObject>) -> Self {
+    Local::from_raw(other.raw)
+  }
+}
 impl<'s> From<Local<'s, crate::primitives::String>> for Local<'s, Name> {
   fn from(v: Local<'s, crate::primitives::String>) -> Local<'s, Name> {
     Local::from_raw(v.raw)
@@ -876,8 +915,6 @@ tryfrom_data!(
   Value,
   crate::template::FunctionTemplate,
   crate::template::ObjectTemplate,
-  crate::module::Module,
-  crate::primitives::String,
 );
 
 // Uint8Array is a subclass of ArrayBufferView in V8.

@@ -208,7 +208,7 @@ impl<'s, I> ValueDeserializer<'s, I> {
       data: data.to_vec(),
     }
   }
-  pub fn read_header(&mut self) -> Option<bool> {
+  pub fn read_header<C>(&mut self, _ctx: C) -> Option<bool> {
     Some(true)
   }
   pub fn read_value<S>(

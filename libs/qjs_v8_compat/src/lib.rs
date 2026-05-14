@@ -875,9 +875,7 @@ pub mod v8 {
     }
     pub fn dispose_platform() {}
     pub fn set_flags_from_string(_s: &str) {}
-    pub fn set_flags_from_command_line<S: Into<String> + Clone>(
-      args: Vec<S>,
-    ) -> Vec<S> {
+    pub fn set_flags_from_command_line<S>(args: Vec<S>) -> Vec<S> {
       args
     }
   }
