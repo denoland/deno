@@ -2310,21 +2310,13 @@ function _throwIfEsmCycle(cachedModule, parent) {
         op_require_is_maybe_cjs(fn) === false))
   ) {
     const parentPath = parent?.filename ?? "<unknown>";
-    const err = new Error(
-      `Cannot require() ES Module ${fn} in a cycle. (from ${parentPath})`,
-    );
-    err.code = "ERR_REQUIRE_CYCLE_MODULE";
-    throw err;
+    throw new internalErrors.ERR_REQUIRE_CYCLE_MODULE(fn, parentPath);
   }
 }
 
 function _throwRequireAsyncModule(specifier, module) {
   const parent = module?.parent?.filename ?? "<unknown>";
-  const err = new Error(
-    `require() cannot be used on an ESM graph with top-level await. Use import() instead. To see where the top-level await comes from, use --stack-trace-limit=100 and inspect the dependency graph. Requiring ${specifier}. From ${parent}`,
-  );
-  err.code = "ERR_REQUIRE_ASYNC_MODULE";
-  throw err;
+  throw new internalErrors.ERR_REQUIRE_ASYNC_MODULE(specifier, parent);
 }
 
 // Like loadESMFromCJS but uses op_import_sync_with_source to compile

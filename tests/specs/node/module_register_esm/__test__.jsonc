@@ -42,6 +42,11 @@
       "cwd": "blob_bare_specifier",
       "args": "run -A main.mjs",
       "output": "blob_bare_specifier/main.out"
+    },
+    "passthrough_hook_preserves_npm_node_builtin": {
+      "cwd": "passthrough_npm_node_builtin",
+      "args": "run -A main.mjs",
+      "output": "passthrough_npm_node_builtin/main.out"
     }
   }
 }
