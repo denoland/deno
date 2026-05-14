@@ -40,7 +40,9 @@ const {
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
-import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
+const { toPathIfFileURL } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
 
 interface GlobOptionsBase {
   /**

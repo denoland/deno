@@ -1,38 +1,45 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { promises as fsPromises } from "node:fs";
 
-export const access = fsPromises.access;
-export const constants = fsPromises.constants;
-export const copyFile = fsPromises.copyFile;
-export const open = fsPromises.open;
-export const opendir = fsPromises.opendir;
-export const rename = fsPromises.rename;
-export const truncate = fsPromises.truncate;
-export const rm = fsPromises.rm;
-export const rmdir = fsPromises.rmdir;
-export const mkdir = fsPromises.mkdir;
-export const readdir = fsPromises.readdir;
-export const readlink = fsPromises.readlink;
-export const symlink = fsPromises.symlink;
-export const lstat = fsPromises.lstat;
-export const stat = fsPromises.stat;
-export const statfs = fsPromises.statfs;
-export const link = fsPromises.link;
-export const unlink = fsPromises.unlink;
-export const chmod = fsPromises.chmod;
-export const lchmod = fsPromises.lchmod;
-export const lchown = fsPromises.lchown;
-export const chown = fsPromises.chown;
-export const utimes = fsPromises.utimes;
-export const lutimes = fsPromises.lutimes;
-export const realpath = fsPromises.realpath;
-export const mkdtemp = fsPromises.mkdtemp;
-export const mkdtempDisposable = fsPromises.mkdtempDisposable;
-export const writeFile = fsPromises.writeFile;
-export const appendFile = fsPromises.appendFile;
-export const readFile = fsPromises.readFile;
-export const watch = fsPromises.watch;
-export const cp = fsPromises.cp;
-export const glob = fsPromises.glob;
+(function () {
+const { core } = globalThis.__bootstrap;
+const lazyFs = core.createLazyLoader("node:fs");
 
-export default fsPromises;
+const fsPromises = lazyFs().promises;
+
+return {
+  access: fsPromises.access,
+  constants: fsPromises.constants,
+  copyFile: fsPromises.copyFile,
+  open: fsPromises.open,
+  opendir: fsPromises.opendir,
+  rename: fsPromises.rename,
+  truncate: fsPromises.truncate,
+  rm: fsPromises.rm,
+  rmdir: fsPromises.rmdir,
+  mkdir: fsPromises.mkdir,
+  readdir: fsPromises.readdir,
+  readlink: fsPromises.readlink,
+  symlink: fsPromises.symlink,
+  lstat: fsPromises.lstat,
+  stat: fsPromises.stat,
+  statfs: fsPromises.statfs,
+  link: fsPromises.link,
+  unlink: fsPromises.unlink,
+  chmod: fsPromises.chmod,
+  lchmod: fsPromises.lchmod,
+  lchown: fsPromises.lchown,
+  chown: fsPromises.chown,
+  utimes: fsPromises.utimes,
+  lutimes: fsPromises.lutimes,
+  realpath: fsPromises.realpath,
+  mkdtemp: fsPromises.mkdtemp,
+  mkdtempDisposable: fsPromises.mkdtempDisposable,
+  writeFile: fsPromises.writeFile,
+  appendFile: fsPromises.appendFile,
+  readFile: fsPromises.readFile,
+  watch: fsPromises.watch,
+  cp: fsPromises.cp,
+  glob: fsPromises.glob,
+  fsPromises,
+};
+})();

@@ -998,8 +998,17 @@ fn is_already_resolved_specifier(specifier: &str) -> bool {
     || specifier.starts_with("https://")
     || specifier.starts_with("data:")
     || specifier.starts_with("blob:")
-    || specifier.starts_with("node:")
-    || specifier.starts_with("ext:")
+    || is_builtin_module_specifier(specifier)
+}
+
+/// Returns true if the specifier names a runtime built-in (`node:` or `ext:`).
+/// These modules are served by the runtime itself and must never be routed
+/// through user-supplied `module.register()` load hooks — the JS-side
+/// `defaultLoad` returns `{ source: null, format: "builtin" }` for them, which
+/// would otherwise fall through to the default file loader and surface as a
+/// confusing "Unsupported scheme" error.
+fn is_builtin_module_specifier(specifier: &str) -> bool {
+  specifier.starts_with("node:") || specifier.starts_with("ext:")
 }
 
 #[derive(Clone)]
@@ -1037,10 +1046,37 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         );
       }
 
-      let receiver = self
+      // For synchronous resolution contexts (V8's `module_resolve_callback`
+      // during instantiation), we cannot return an Async response. If the
+      // cache miss happens here, fall back to Deno's default sync resolver.
+      // This path is hit when `recursive_load` skipped an async resolve
+      // because the placeholder URL already matched a registered module --
+      // so the hook never got a chance to populate the cache. We bypass
+      // the user hook chain for this single resolution because the
+      // alternative is a panic in V8's sync callback; in practice the
+      // placeholder match means the module is already registered under
+      // the URL that Deno's default resolver will produce, so the
+      // bypassed hook would have returned the same URL anyway.
+      if matches!(kind, deno_core::ResolutionKind::Import) {
+        return deno_core::ModuleResolveResponse::Sync(
+          self.0.inner_resolve(specifier, referrer, kind, false),
+        );
+      }
+
+      // Pre-compute the default-resolved URL so the hook chain's
+      // `defaultResolve()` (in the hooks worker) returns Deno's actual
+      // resolution -- including import map and jsr lookups -- instead of
+      // naively URL-parsing the bare specifier against the referrer.
+      let default_url = self
         .0
-        .hook_registry
-        .push_resolve(specifier.to_string(), referrer.to_string());
+        .inner_resolve(specifier, referrer, kind, false)
+        .ok()
+        .map(|u| u.to_string());
+      let receiver = self.0.hook_registry.push_resolve(
+        specifier.to_string(),
+        referrer.to_string(),
+        default_url,
+      );
       let inner = self.0.clone();
       let specifier = specifier.to_string();
       let referrer = referrer.to_string();
@@ -1141,12 +1177,17 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     let maybe_referrer = maybe_referrer.cloned();
 
     // When load hooks are active, delegate to JS hooks first.
-    // Skip the hook bridge for CJS modules — they go through the
-    // default loader which invokes the sync load hook chain
-    // (executeLoadHookChain) in Module._load. Going through both
-    // the ESM bridge AND the CJS path would call hooks twice.
+    // Skip the hook bridge for:
+    // - CJS modules — they go through the default loader which invokes the
+    //   sync load hook chain (executeLoadHookChain) in Module._load. Going
+    //   through both the ESM bridge AND the CJS path would call hooks twice.
+    // - `node:` and `ext:` built-ins — these are served by the runtime
+    //   itself. Routing them through the hook bridge ends in a fallthrough
+    //   to the default file loader, which doesn't understand the scheme and
+    //   surfaces as "Unsupported scheme" errors (see #34004).
     if self.0.hook_registry.load_active.get()
       && !options.is_synchronous
+      && !is_builtin_module_specifier(specifier.as_str())
       && !{
         let media_type = deno_media_type::MediaType::from_specifier(&specifier);
         self

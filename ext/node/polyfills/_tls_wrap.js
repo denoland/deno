@@ -6,7 +6,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
+(function () {
+const { core } = globalThis.__bootstrap;
 const {
   ArrayIsArray,
   ObjectAssign,
@@ -15,11 +16,11 @@ const {
 const assert = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );
-import * as net from "node:net";
-import {
+const net = core.createLazyLoader("node:net")().default;
+const {
   createSecureContext,
   translatePeerCertificate,
-} from "node:_tls_common";
+} = core.loadExtScript("ext:deno_node/_tls_common.ts");
 const { JSStreamSocket } = core.loadExtScript(
   "ext:deno_node/internal/js_stream_socket.js",
 );
@@ -65,7 +66,7 @@ const {
 const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
-import { op_tls_canonicalize_ipv4_address } from "ext:core/ops";
+const { op_tls_canonicalize_ipv4_address } = core.ops;
 const { default: tlsWrap } = core.loadExtScript(
   "ext:deno_node/internal_binding/tls_wrap.ts",
 );
@@ -1562,7 +1563,7 @@ const DEFAULT_CIPHERS = [
   "ECDHE-RSA-CHACHA20-POLY1305",
 ].join(":");
 
-export {
+return {
   checkServerIdentity,
   connect,
   createServer,
@@ -1570,14 +1571,14 @@ export {
   Server,
   TLSSocket,
   unfqdn,
+  default: {
+    TLSSocket,
+    connect,
+    createServer,
+    checkServerIdentity,
+    DEFAULT_CIPHERS,
+    Server,
+    unfqdn,
+  },
 };
-
-export default {
-  TLSSocket,
-  connect,
-  createServer,
-  checkServerIdentity,
-  DEFAULT_CIPHERS,
-  Server,
-  unfqdn,
-};
+})();

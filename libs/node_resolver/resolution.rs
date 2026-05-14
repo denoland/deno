@@ -839,7 +839,7 @@ impl<
       deno_package_json::PackageJsonBins::Bins(items) => items
         .into_iter()
         .filter_map(|(command, path)| {
-          let bin_value = bin_value_from_file(&path, &self.sys)?;
+          let bin_value = read_bin_value(&path, &self.sys)?;
           Some((command, bin_value))
         })
         .collect(),
@@ -889,7 +889,7 @@ impl<
       return None;
     };
     let command_name = entry.file_name().to_string_lossy().into_owned();
-    let bin_value = bin_value_from_file(&path, &self.sys)?;
+    let bin_value = read_bin_value(&path, &self.sys)?;
     Some((command_name, bin_value))
   }
 
@@ -2276,7 +2276,11 @@ fn resolve_pkg_json_import<'a>(
   }
 }
 
-fn bin_value_from_file<TSys: FsOpen>(
+/// Reads a file from disk and classifies it as a [`BinValue`] —
+/// `Executable` for native binaries, `JsFile` for JavaScript bin scripts
+/// (resolving through npx shims when applicable). Returns `None` if the
+/// file does not exist.
+pub fn read_bin_value<TSys: FsOpen>(
   path: &Path,
   sys: &NodeResolutionSys<TSys>,
 ) -> Option<BinValue> {
@@ -2721,7 +2725,7 @@ impl BinValue {
     }
   }
 }
-fn is_binary(data: &[u8]) -> bool {
+pub fn is_binary(data: &[u8]) -> bool {
   is_elf(data) || is_macho(data) || is_pe(data)
 }
 

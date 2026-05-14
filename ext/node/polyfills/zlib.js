@@ -22,9 +22,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+(function () {
 "use strict";
 
-import { core, primordials } from "ext:core/mod.js";
+const { core, primordials } = globalThis.__bootstrap;
 const {
   ArrayBuffer,
   MathMax,
@@ -55,7 +56,7 @@ const {
   ERR_ZSTD_INVALID_PARAM,
 } = errorCodes;
 
-import { finished, Transform } from "node:stream";
+const { finished, Transform } = core.createLazyLoader("node:stream")();
 const { deprecateInstantiation } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
@@ -134,10 +135,10 @@ const {
   ZSTD_e_end,
 } = zlibConstants;
 
-export const constants = ObjectFreeze(zlibConstants);
+const constants = ObjectFreeze(zlibConstants);
 
 // Translation table for return codes.
-export const codes = {
+const codes = {
   Z_OK: constants.Z_OK,
   Z_STREAM_END: constants.Z_STREAM_END,
   Z_NEED_DICT: constants.Z_NEED_DICT,
@@ -1159,65 +1160,51 @@ ObjectDefineProperty(binding.Zlib.prototype, "jsref", {
   },
 });
 
-export {
-  BrotliCompress,
-  BrotliDecompress,
-  crc32,
-  Deflate,
-  DeflateRaw,
-  Gunzip,
-  Gzip,
-  Inflate,
-  InflateRaw,
-  Unzip,
-  ZstdCompress,
-  ZstdDecompress,
-};
 // Convenience methods
-export const deflate = createConvenienceMethod(Deflate, false);
-export const deflateSync = createConvenienceMethod(Deflate, true);
-export const gzip = createConvenienceMethod(Gzip, false);
-export const gzipSync = createConvenienceMethod(Gzip, true);
-export const deflateRaw = createConvenienceMethod(DeflateRaw, false);
-export const deflateRawSync = createConvenienceMethod(DeflateRaw, true);
-export const unzip = createConvenienceMethod(Unzip, false);
-export const unzipSync = createConvenienceMethod(Unzip, true);
-export const inflate = createConvenienceMethod(Inflate, false);
-export const inflateSync = createConvenienceMethod(Inflate, true);
-export const gunzip = createConvenienceMethod(Gunzip, false);
-export const gunzipSync = createConvenienceMethod(Gunzip, true);
-export const inflateRaw = createConvenienceMethod(InflateRaw, false);
-export const inflateRawSync = createConvenienceMethod(InflateRaw, true);
-export const brotliCompress = createConvenienceMethod(BrotliCompress, false);
-export const brotliCompressSync = createConvenienceMethod(BrotliCompress, true);
-export const brotliDecompress = createConvenienceMethod(
+const deflate = createConvenienceMethod(Deflate, false);
+const deflateSync = createConvenienceMethod(Deflate, true);
+const gzip = createConvenienceMethod(Gzip, false);
+const gzipSync = createConvenienceMethod(Gzip, true);
+const deflateRaw = createConvenienceMethod(DeflateRaw, false);
+const deflateRawSync = createConvenienceMethod(DeflateRaw, true);
+const unzip = createConvenienceMethod(Unzip, false);
+const unzipSync = createConvenienceMethod(Unzip, true);
+const inflate = createConvenienceMethod(Inflate, false);
+const inflateSync = createConvenienceMethod(Inflate, true);
+const gunzip = createConvenienceMethod(Gunzip, false);
+const gunzipSync = createConvenienceMethod(Gunzip, true);
+const inflateRaw = createConvenienceMethod(InflateRaw, false);
+const inflateRawSync = createConvenienceMethod(InflateRaw, true);
+const brotliCompress = createConvenienceMethod(BrotliCompress, false);
+const brotliCompressSync = createConvenienceMethod(BrotliCompress, true);
+const brotliDecompress = createConvenienceMethod(
   BrotliDecompress,
   false,
 );
-export const brotliDecompressSync = createConvenienceMethod(
+const brotliDecompressSync = createConvenienceMethod(
   BrotliDecompress,
   true,
 );
-export const zstdCompress = createConvenienceMethod(ZstdCompress, false);
-export const zstdCompressSync = createConvenienceMethod(ZstdCompress, true);
-export const zstdDecompress = createConvenienceMethod(ZstdDecompress, false);
-export const zstdDecompressSync = createConvenienceMethod(ZstdDecompress, true);
+const zstdCompress = createConvenienceMethod(ZstdCompress, false);
+const zstdCompressSync = createConvenienceMethod(ZstdCompress, true);
+const zstdDecompress = createConvenienceMethod(ZstdDecompress, false);
+const zstdDecompressSync = createConvenienceMethod(ZstdDecompress, true);
 
 // Factory methods (match Object.defineProperties behavior)
-export const createDeflate = createProperty(Deflate).value;
-export const createInflate = createProperty(Inflate).value;
-export const createDeflateRaw = createProperty(DeflateRaw).value;
-export const createInflateRaw = createProperty(InflateRaw).value;
-export const createGzip = createProperty(Gzip).value;
-export const createGunzip = createProperty(Gunzip).value;
-export const createUnzip = createProperty(Unzip).value;
-export const createBrotliCompress = createProperty(BrotliCompress).value;
-export const createBrotliDecompress = createProperty(BrotliDecompress).value;
-export const createZstdCompress = createProperty(ZstdCompress).value;
-export const createZstdDecompress = createProperty(ZstdDecompress).value;
+const createDeflate = createProperty(Deflate).value;
+const createInflate = createProperty(Inflate).value;
+const createDeflateRaw = createProperty(DeflateRaw).value;
+const createInflateRaw = createProperty(InflateRaw).value;
+const createGzip = createProperty(Gzip).value;
+const createGunzip = createProperty(Gunzip).value;
+const createUnzip = createProperty(Unzip).value;
+const createBrotliCompress = createProperty(BrotliCompress).value;
+const createBrotliDecompress = createProperty(BrotliDecompress).value;
+const createZstdCompress = createProperty(ZstdCompress).value;
+const createZstdDecompress = createProperty(ZstdDecompress).value;
 
 // Deprecated constants: export individually
-export const deprecatedConstants = {};
+const deprecatedConstants = {};
 for (const [key, value] of Object.entries(constants)) {
   if (!key.startsWith("BROTLI")) {
     deprecatedConstants[key] = value;
@@ -1280,4 +1267,5 @@ const zlib = {
   ...deprecatedConstants,
 };
 
-export default Object.freeze(zlib);
+return Object.freeze(zlib);
+})();

@@ -2468,12 +2468,15 @@ impl ModuleMap {
     &self,
     specifier: &str,
   ) -> Option<ModuleCodeString> {
-    self
-      .data
-      .borrow()
-      .lazy_esm_sources
-      .borrow_mut()
-      .remove(specifier)
+    let data = self.data.borrow();
+    let source = data.lazy_esm_sources.borrow_mut().remove(specifier);
+    if source.is_some() {
+      data
+        .consumed_lazy_specifiers
+        .borrow_mut()
+        .insert(specifier.to_string());
+    }
+    source
   }
 
   pub(crate) fn add_lazy_loaded_esm_source(
@@ -2514,6 +2517,25 @@ impl ModuleMap {
       {
         let handle = module_map_data.get_handle(id).unwrap();
         let handle_local = v8::Local::new(scope, handle);
+        // The module may be present in the map but not yet evaluated — e.g.
+        // when this lazy load fires from a sibling ES module that V8 is
+        // evaluating earlier in DFS post-order. Returning the namespace
+        // before evaluation leaves `export const` bindings in the temporal
+        // dead zone, so trigger evaluation here.
+        if handle_local.get_status() == v8::ModuleStatus::Instantiated {
+          let value = handle_local.evaluate(scope).unwrap();
+          if !self.evaluating_top_level.get() {
+            scope.perform_microtask_checkpoint();
+          }
+          let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
+          let result = promise.result(scope);
+          if !result.is_undefined() {
+            return Err(
+              CoreErrorKind::Js(exception_to_err(scope, result, false, true))
+                .into_box(),
+            );
+          }
+        }
         let module =
           v8::Global::new(scope, handle_local.get_module_namespace());
         return Ok(module);
@@ -2612,6 +2634,11 @@ impl ModuleMap {
         );
       }
     };
+
+    data
+      .consumed_lazy_specifiers
+      .borrow_mut()
+      .insert(specifier_str.clone());
 
     // Mark as loading for circular dep detection.
     data

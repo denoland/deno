@@ -509,6 +509,16 @@ pub struct RuntimeOptions {
   // a static slice.
   pub startup_snapshot: Option<&'static [u8]>,
 
+  /// Source for `lazy_loaded_js` files that were *not* consumed at snapshot
+  /// build time and therefore aren't reachable via the snapshot blob. The
+  /// build script that produced `startup_snapshot` emits this table.
+  /// Each entry is `(specifier, source)`.
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+
+  /// Source for `lazy_loaded_esm` files that were *not* consumed at snapshot
+  /// build time. See [`Self::residual_lazy_js_sources`].
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
+
   /// Should op registration be skipped?
   pub skip_op_registration: bool,
 
@@ -822,10 +832,14 @@ impl JsRuntime {
       additional_references,
     ) = extension_set::get_middlewares_and_external_refs(&mut extensions);
 
-    // Capture the extension, op and source counts
+    // Capture the extension, op and source counts. `source_count` mirrors the
+    // number of `v8::OneByteConst` external strings produced by
+    // [`bindings::externalize_sources`] (which iterates `js + esm + lazy_esm`
+    // — `lazy_loaded_js` scripts are not externalized as module sources).
     let extensions = extensions.iter().map(|e| e.name).collect();
     let op_count = op_ctxs.len();
-    let source_count = sources.len();
+    let source_count =
+      sources.js.len() + sources.esm.len() + sources.lazy_esm.len();
     let addl_refs_count = additional_references.len();
 
     let ops_in_snapshot = sidecar_data
@@ -1119,6 +1133,25 @@ impl JsRuntime {
 
       js_runtime.store_js_callbacks(&realm, will_snapshot);
 
+      // Register residual `lazy_loaded_*` sources from the snapshot bundle.
+      // These are the files that were declared on extensions but were not
+      // consumed at snapshot build time, so the snapshot blob doesn't carry
+      // them and `core.loadExtScript()` / lazy ESM imports need to find them
+      // here. (When there is no snapshot, the same sources are loaded from
+      // disk through `Extension.lazy_loaded_*_files` instead.)
+      for (specifier, code) in options.residual_lazy_js_sources {
+        module_map.add_lazy_loaded_script_source(
+          crate::ModuleName::from_static(specifier),
+          crate::ModuleCodeString::from_static(code),
+        );
+      }
+      for (specifier, code) in options.residual_lazy_esm_sources {
+        module_map.add_lazy_loaded_esm_source(
+          crate::ModuleName::from_static(specifier),
+          crate::ModuleCodeString::from_static(code),
+        );
+      }
+
       js_runtime.init_extension_js(
         &realm,
         &module_map,
@@ -1276,6 +1309,21 @@ impl JsRuntime {
   // a struct that contains this data.
   pub(crate) fn files_loaded_from_fs_during_snapshot(&self) -> &[&'static str] {
     &self.files_loaded_from_fs_during_snapshot
+  }
+
+  /// Returns the specifiers of every `lazy_loaded_esm` / `lazy_loaded_js` file
+  /// whose source was compiled into the V8 snapshot during snapshot creation.
+  pub(crate) fn consumed_lazy_specifiers(&self) -> Vec<String> {
+    let module_map = self.inner.main_realm.0.module_map();
+    let data = module_map.get_data().borrow();
+    let mut set: Vec<String> = data
+      .consumed_lazy_specifiers
+      .borrow()
+      .iter()
+      .cloned()
+      .collect();
+    set.sort();
+    set
   }
 
   /// Create a synthetic module - `ext:core/ops` - that exports all ops registered

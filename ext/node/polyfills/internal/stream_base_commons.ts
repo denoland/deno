@@ -41,9 +41,8 @@ const {
 const { errnoException } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
-const lazyInternalTimers = core.createLazyLoader(
-  "ext:deno_node/internal/timers.mjs",
-);
+const lazyInternalTimers = () =>
+  core.loadExtScript("ext:deno_node/internal/timers.mjs");
 const lazyTimers = core.createLazyLoader("node:timers");
 const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
