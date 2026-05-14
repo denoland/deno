@@ -1458,6 +1458,10 @@ pub struct ContextifyModule {
   /// Populated by `op_vm_module_link` before instantiation, and consumed by
   /// the resolve callback during `instantiate_module`.
   resolutions: RefCell<HashMap<String, v8::TracedReference<v8::Module>>>,
+  /// If this is a synthetic module, the V8 identity hash used as the key in
+  /// `SYNTHETIC_CALLBACKS`. Stored separately so `Drop` can clean up the
+  /// registry entry without needing a v8 scope.
+  synthetic_identity_hash: Option<NonZeroI32>,
 }
 
 // SAFETY: all v8 references are visited during cppgc trace.
@@ -1475,6 +1479,31 @@ unsafe impl v8::cppgc::GarbageCollected for ContextifyModule {
   }
 }
 
+impl Drop for ContextifyModule {
+  fn drop(&mut self) {
+    if let Some(hash) = self.synthetic_identity_hash {
+      SYNTHETIC_CALLBACKS.with(|m| {
+        m.borrow_mut().remove(&hash);
+      });
+    }
+  }
+}
+
+/// Per-synthetic-module entry: the user-provided evaluation callback and the
+/// JS Module wrapper passed as `this` when V8 invokes the steps.
+struct SyntheticCallbackEntry {
+  callback: v8::Global<v8::Function>,
+  this_obj: v8::Global<v8::Object>,
+}
+
+thread_local! {
+  /// Map from V8 Module identity hash -> synthetic evaluation steps. The
+  /// extern "C" callback registered with V8 has no closure state, so it
+  /// looks up the user callback here using the Module passed by V8.
+  static SYNTHETIC_CALLBACKS: RefCell<HashMap<NonZeroI32, SyntheticCallbackEntry>> =
+    RefCell::new(HashMap::new());
+}
+
 #[op2]
 #[cppgc]
 pub fn op_vm_module_create_source_text_module<'a>(
@@ -1483,11 +1512,10 @@ pub fn op_vm_module_create_source_text_module<'a>(
   #[string] identifier: String,
   line_offset: i32,
   column_offset: i32,
-  context_object: v8::Local<'a, v8::Object>,
+  context_object: Option<v8::Local<'a, v8::Object>>,
 ) -> Option<ContextifyModule> {
-  let contextify = ContextifyContext::from_sandbox_obj(scope, context_object)?;
-  let context = contextify.context(scope);
-  let microtask_queue = contextify.microtask_queue;
+  let (context, microtask_queue) =
+    resolve_module_context(scope, context_object)?;
 
   let scope = &mut v8::ContextScope::new(scope, context);
   let host_defined_options = create_host_defined_options(scope);
@@ -1523,7 +1551,148 @@ pub fn op_vm_module_create_source_text_module<'a>(
     microtask_queue,
     identifier,
     resolutions: RefCell::new(HashMap::new()),
+    synthetic_identity_hash: None,
   })
+}
+
+/// Resolves the context for a new module: if `context_object` is provided,
+/// looks it up as a contextified sandbox; otherwise falls back to the
+/// current context (matching Node's behavior when `options.context` is
+/// omitted).
+fn resolve_module_context<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  context_object: Option<v8::Local<'s, v8::Object>>,
+) -> Option<(v8::Local<'s, v8::Context>, *mut v8::MicrotaskQueue)> {
+  if let Some(context_object) = context_object {
+    let contextify =
+      ContextifyContext::from_sandbox_obj(scope, context_object)?;
+    Some((contextify.context(scope), contextify.microtask_queue))
+  } else {
+    Some((scope.get_current_context(), std::ptr::null_mut()))
+  }
+}
+
+#[op2]
+#[cppgc]
+pub fn op_vm_module_create_synthetic_module<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[string] identifier: String,
+  export_names: v8::Local<'a, v8::Array>,
+  context_object: Option<v8::Local<'a, v8::Object>>,
+  evaluate_callback: v8::Local<'a, v8::Function>,
+  this_obj: v8::Local<'a, v8::Object>,
+) -> Option<ContextifyModule> {
+  let (context, microtask_queue) =
+    resolve_module_context(scope, context_object)?;
+
+  let scope = &mut v8::ContextScope::new(scope, context);
+
+  let len = export_names.length();
+  let mut names: Vec<v8::Local<v8::String>> = Vec::with_capacity(len as usize);
+  for i in 0..len {
+    let item = export_names.get_index(scope, i)?;
+    let s: v8::Local<v8::String> = item.try_into().ok()?;
+    names.push(s);
+  }
+
+  let module_name = v8::String::new(scope, &identifier)?;
+  let module = v8::Module::create_synthetic_module(
+    scope,
+    module_name,
+    &names,
+    synthetic_evaluation_steps_callback,
+  );
+
+  let hash = module.get_identity_hash();
+  SYNTHETIC_CALLBACKS.with(|m| {
+    m.borrow_mut().insert(
+      hash,
+      SyntheticCallbackEntry {
+        callback: v8::Global::new(scope, evaluate_callback),
+        this_obj: v8::Global::new(scope, this_obj),
+      },
+    );
+  });
+
+  Some(ContextifyModule {
+    module: v8::TracedReference::new(scope, module),
+    context: v8::TracedReference::new(scope, context),
+    microtask_queue,
+    identifier,
+    resolutions: RefCell::new(HashMap::new()),
+    synthetic_identity_hash: Some(hash),
+  })
+}
+
+/// V8 invokes this for a SyntheticModule's evaluation step. We call the
+/// user-provided JS callback (with the JS Module wrapper as `this`),
+/// propagate any exception, and return a Promise synchronously resolved to
+/// `undefined` (matching Node's wrapper, which discards the callback's
+/// return value).
+fn synthetic_evaluation_steps_callback<'s>(
+  context: v8::Local<'s, v8::Context>,
+  module: v8::Local<'s, v8::Module>,
+) -> Option<v8::Local<'s, v8::Value>> {
+  // SAFETY: callback runs inside an active V8 callback context.
+  let mut scope_storage = unsafe { v8::CallbackScope::new(context) };
+  // SAFETY: `scope_storage` is a local that must not be moved after this
+  // point; the `Pin` below relies on its address staying stable for the
+  // rest of this function.
+  let mut scope_pin =
+    unsafe { std::pin::Pin::new_unchecked(&mut scope_storage) };
+  let scope = &mut scope_pin.as_mut().init();
+
+  let hash = module.get_identity_hash();
+  let entry = SYNTHETIC_CALLBACKS.with(|m| {
+    m.borrow().get(&hash).map(|e| {
+      (
+        v8::Local::new(scope, &e.callback),
+        v8::Local::new(scope, &e.this_obj),
+      )
+    })
+  });
+  let Some((callback, this_obj)) = entry else {
+    let message =
+      v8::String::new(scope, "synthetic module evaluation callback missing")?;
+    let exception = v8::Exception::error(scope, message);
+    scope.throw_exception(exception);
+    return None;
+  };
+
+  v8::tc_scope!(tc_scope, scope);
+  let _ = callback.call(tc_scope, this_obj.into(), &[]);
+  if tc_scope.has_caught() {
+    if !tc_scope.has_terminated() {
+      tc_scope.rethrow();
+    }
+    return None;
+  }
+
+  // Always return a Promise synchronously resolved to undefined, matching
+  // Node.js. V8's SyntheticModule.Evaluate consumes this and produces a
+  // synchronously-resolved top-level capability.
+  let resolver = v8::PromiseResolver::new(tc_scope)?;
+  let promise = resolver.get_promise(tc_scope);
+  let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
+  resolver.resolve(tc_scope, undefined)?;
+  Some(promise.into())
+}
+
+#[op2(fast)]
+pub fn op_vm_module_set_synthetic_export<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[cppgc] this: &ContextifyModule,
+  name: v8::Local<'a, v8::String>,
+  value: v8::Local<'a, v8::Value>,
+) {
+  let module = this.module.get(scope).unwrap();
+  let context = this.context.get(scope).unwrap();
+  let scope = &mut v8::ContextScope::new(scope, context);
+  v8::tc_scope!(scope, scope);
+  let _ = module.set_synthetic_module_export(scope, name, value);
+  if scope.has_caught() && !scope.has_terminated() {
+    scope.rethrow();
+  }
 }
 
 #[op2(fast)]

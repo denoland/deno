@@ -22,7 +22,7 @@ const cacheVersion = 113;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
-const ubuntuARMXlRunner = "ubuntu-24.04-arm-xl";
+const ubuntuARMXlRunner = "ubuntu-24.04-arm64-xl";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const windowsArmRunner = "windows-11-arm";

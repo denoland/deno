@@ -1202,6 +1202,10 @@ function connectionCorkNT(conn: any) {
 
 function onFinish(outmsg: any) {
   if (outmsg?.socket?._hadError) return;
+  // If the response (or its socket) was destroyed before `res.end()` ran
+  // (e.g. the client aborted the connection), do not emit 'finish' - Node
+  // only emits 'close' in that scenario.
+  if (outmsg?.destroyed || outmsg?.socket?.destroyed) return;
   outmsg.emit("finish");
 }
 
