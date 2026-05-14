@@ -74,6 +74,15 @@ impl CreateParams {
   pub fn snapshot_blob<B>(self, _blob: B) -> Self {
     self
   }
+  pub fn heap_limits_from_system_memory(self, _physical_memory: u64, _virtual_memory: u64) -> Self {
+    self
+  }
+  pub fn set_max_old_generation_size_in_bytes(self, _bytes: usize) -> Self { self }
+  pub fn set_max_young_generation_size_in_bytes(self, _bytes: usize) -> Self { self }
+  pub fn set_code_range_size_in_bytes(self, _bytes: usize) -> Self { self }
+  pub fn max_old_generation_size_in_bytes(&self) -> usize { 0 }
+  pub fn max_young_generation_size_in_bytes(&self) -> usize { 0 }
+  pub fn code_range_size_in_bytes(&self) -> usize { 0 }
 }
 
 pub enum MicrotasksPolicy {

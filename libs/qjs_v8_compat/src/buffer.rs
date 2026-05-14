@@ -84,7 +84,12 @@ typed_array_view_methods!(
   TypedArray,
 );
 
-pub const TYPED_ARRAY_MAX_SIZE_IN_HEAP: usize = 64;
+/// Mirror of v8's `TYPED_ARRAY_MAX_SIZE_IN_HEAP`. Real v8 uses 64
+/// bytes; deno_ffi const-asserts this is 0 so it can skip retaining
+/// the heap buffer for tiny views. We set it to 0 too — QuickJS-ng
+/// doesn't have an inline-typed-array optimisation, so any backing
+/// store is always heap-allocated and stable.
+pub const TYPED_ARRAY_MAX_SIZE_IN_HEAP: usize = 0;
 
 /// Mirror of v8::BackingStoreDeleterCallback.
 pub type BackingStoreDeleterCallback = unsafe extern "C" fn(

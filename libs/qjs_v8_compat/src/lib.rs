@@ -804,6 +804,13 @@ pub mod v8 {
     pub fn set_common_data_77(_data: &[u8]) -> Result<(), ()> {
       Ok(())
     }
+    /// Mirror of `v8::icu::get_language_tag` — returns the canonical
+    /// BCP-47 tag for the given locale string (real v8 takes the
+    /// requested locale string and returns canonical form). The
+    /// no-arg variant returns the runtime's current locale.
+    pub fn get_language_tag() -> std::string::String {
+      "en-US".to_string()
+    }
   }
 
   pub mod json {
@@ -986,7 +993,9 @@ pub mod v8 {
     pub fn set_flags_from_command_line<S>(args: Vec<S>) -> Vec<S> {
       args
     }
+    pub fn set_fatal_error_handler<F>(_handler: F) {}
   }
+  // Platform is defined later in this module.
 
   /// `WriteFlags` — string write-flag bitset. Mirrors rusty_v8's
   /// associated-constant set.
@@ -1354,6 +1363,11 @@ pub mod v8 {
   /// PinScope methods deno_node uses but our compat doesn't have yet.
   impl<'s, 'i, C> crate::scope::PinScope<'s, 'i, C> {
     pub fn low_memory_notification(&mut self) {}
+    /// Mirror of `Isolate::add_context` — returns a context index.
+    /// QuickJS doesn't have multi-context contexts; we return 0.
+    pub fn add_context(&mut self, _ctx: crate::value::Local<'_, crate::context::Context>) -> usize {
+      0
+    }
     pub fn take_heap_snapshot<F>(&mut self, _writer: F)
     where F: FnMut(&[u8]) -> bool {}
     pub fn get_heap_code_and_metadata_statistics(
@@ -2111,6 +2125,18 @@ pub mod v8 {
     pub fn make_shared(self) -> std::sync::Arc<Self> {
       std::sync::Arc::new(self)
     }
+    pub fn new_single_threaded(_idle_task_support: bool) -> Box<Platform> {
+      Box::new(Platform)
+    }
+    pub fn new_default_platform(_thread_pool_size: u32, _idle_task_support: bool) -> Box<Platform> {
+      Box::new(Platform)
+    }
+  }
+  /// `Box<Platform>::make_shared` returns `Arc<Platform>` to match
+  /// real v8's `UniquePtr<Platform>::make_shared` chain.
+  pub trait PlatformMakeShared { fn make_shared(self) -> std::sync::Arc<Platform>; }
+  impl PlatformMakeShared for Box<Platform> {
+    fn make_shared(self) -> std::sync::Arc<Platform> { std::sync::Arc::from(self) }
   }
 }
 

@@ -24,7 +24,13 @@ path = "integration_tests_runner.rs"
 harness = false
 
 [features]
-default = ["upgrade", "__vendored_zlib_ng"]
+default = ["upgrade", "__vendored_zlib_ng", "v8-engine"]
+# Engine selection (matches what deno_runtime exposes).
+v8-engine = ["deno_runtime/v8-engine"]
+# QuickJS engine: also disables CLI snapshot generation, since the
+# snapshot build executes JS bootstrap code that exercises V8-only
+# webgpu APIs not bridged in qjs_v8_compat yet.
+quickjs = ["deno_runtime/quickjs", "deno_snapshots/disable"]
 # A feature that enables heap profiling with dhat on Linux.
 # 1. Compile with `cargo build --profile=release-with-debug --features=dhat-heap`
 # 2. Run the executable. It will output a dhat-heap.json file.
