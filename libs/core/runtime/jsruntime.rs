@@ -2255,7 +2255,7 @@ impl JsRuntime {
       // Uses the local Arc shared with the registry — no global map lookup.
       let tasks =
         std::mem::take(&mut *self.inner.state.foreground_tasks.lock().unwrap());
-      for task in tasks {
+      for mut task in tasks {
         task.run();
       }
 

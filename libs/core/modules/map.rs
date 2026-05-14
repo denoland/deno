@@ -91,7 +91,8 @@ impl ModEvaluate {
       let module = v8::Local::new(scope, self.module.take().unwrap());
       let ns = module.get_module_namespace();
       let recv = v8::undefined(scope).into();
-      let args = &[ns];
+      let ns_val: v8::Local<v8::Value> = ns.into();
+      let args = &[ns_val];
       for notify in std::mem::take(&mut self.notify).into_iter() {
         let notify = v8::Local::new(scope, notify);
         notify.call(scope, recv, args);
