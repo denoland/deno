@@ -15,6 +15,8 @@ use thiserror::Error;
 use crate::registry::NpmPackageInfo;
 use crate::registry::NpmPackageVersionInfo;
 use crate::registry::NpmPackageVersionInfosIterator;
+use crate::registry::NpmRegistryApi;
+use crate::registry::NpmRegistryPackageInfoLoadError;
 use crate::resolution::overrides::NpmOverrides;
 
 /// Error that occurs when the version is not found in the package information.
@@ -345,6 +347,60 @@ impl<'a> NpmPackageVersionResolver<'a> {
         dist_tag: tag.to_string(),
       })
     }
+  }
+}
+
+/// Creates a synthetic `NpmPackageInfo` from link package version infos.
+/// Used when a package exists only as a workspace link and is not published
+/// to the npm registry.
+fn create_link_package_info(
+  name: &PackageName,
+  versions: &[NpmPackageVersionInfo],
+) -> Arc<NpmPackageInfo> {
+  let mut version_map = HashMap::new();
+  let mut latest_version: Option<&Version> = None;
+  for info in versions {
+    let is_newer = latest_version.map(|v| info.version > *v).unwrap_or(true);
+    if is_newer {
+      latest_version = Some(&info.version);
+    }
+    version_map.insert(info.version.clone(), info.clone());
+  }
+  let mut dist_tags = HashMap::new();
+  if let Some(latest) = latest_version {
+    dist_tags.insert("latest".to_string(), latest.clone());
+  }
+  Arc::new(NpmPackageInfo {
+    name: name.clone(),
+    versions: version_map,
+    dist_tags,
+    time: HashMap::new(),
+  })
+}
+
+/// Fetches package info from the npm registry, falling back to link packages
+/// if the package does not exist on the registry. This allows packages that
+/// are only linked locally (not published to npm) to be resolved.
+pub async fn package_info_or_link_fallback(
+  api: &(impl NpmRegistryApi + ?Sized),
+  name: &str,
+  link_packages: &HashMap<PackageName, Vec<NpmPackageVersionInfo>>,
+) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
+  let package_name = PackageName::from_str(name);
+  let link_versions = link_packages.get(&package_name);
+  let has_link = link_versions.is_some_and(|v| !v.is_empty());
+
+  match api.package_info(name).await {
+    Ok(info) => Ok(info),
+    Err(NpmRegistryPackageInfoLoadError::PackageNotExists { .. })
+      if has_link =>
+    {
+      Ok(create_link_package_info(
+        &package_name,
+        link_versions.unwrap(),
+      ))
+    }
+    Err(err) => Err(err),
   }
 }
 

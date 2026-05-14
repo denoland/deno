@@ -18,8 +18,10 @@ use deno_npm::resolution::DefaultTarballUrlProvider;
 use deno_npm::resolution::NpmRegistryDefaultTarballUrlProvider;
 use deno_package_json::PackageJsonDepValue;
 use deno_path_util::fs::atomic_write_file_with_retries;
+use deno_semver::VersionReq;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use futures::TryStreamExt;
 use futures::stream::FuturesOrdered;
 use indexmap::IndexMap;
@@ -280,6 +282,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
   ) -> Result<Option<Self>, AnyError> {
     fn pkg_json_deps(
       maybe_pkg_json: Option<&PackageJson>,
+      catalogs: &IndexMap<String, IndexMap<String, String>>,
     ) -> HashSet<JsrDepPackageReq> {
       let Some(pkg_json) = maybe_pkg_json else {
         return Default::default();
@@ -288,10 +291,10 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
 
       deps
         .dependencies
-        .values()
-        .chain(deps.dev_dependencies.values())
-        .filter_map(|dep| dep.as_ref().ok())
-        .filter_map(|dep| match dep {
+        .iter()
+        .chain(deps.dev_dependencies.iter())
+        .filter_map(|(alias, dep)| dep.as_ref().ok().map(|d| (alias, d)))
+        .filter_map(|(alias, dep)| match dep {
           PackageJsonDepValue::File(_) => {
             // ignored because this will have its own separate lockfile
             None
@@ -300,6 +303,16 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
             Some(JsrDepPackageReq::npm(req.clone()))
           }
           PackageJsonDepValue::Workspace(_) => None,
+          PackageJsonDepValue::Catalog(catalog_name) => {
+            let catalog = catalogs.get(catalog_name.as_str())?;
+            let version_req_str = catalog.get(alias.as_str())?;
+            let version_req =
+              VersionReq::parse_from_npm(version_req_str).ok()?;
+            Some(JsrDepPackageReq::npm(PackageReq {
+              name: alias.clone(),
+              version_req,
+            }))
+          }
         })
         .collect()
     }
@@ -335,7 +348,10 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     let root_url = workspace.root_dir_url();
     let config = deno_lockfile::WorkspaceConfig {
       root: WorkspaceMemberConfig {
-        package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
+        package_json_deps: pkg_json_deps(
+          root_folder.pkg_json.as_deref(),
+          workspace.catalogs(),
+        ),
         dependencies: if let Some(map) = maybe_external_import_map {
           deno_config::import_map::import_map_deps_from_value(map)
             .collect::<HashSet<_>>()
@@ -365,7 +381,10 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
             },
             {
               let config = WorkspaceMemberConfig {
-                package_json_deps: pkg_json_deps(folder.pkg_json.as_deref()),
+                package_json_deps: pkg_json_deps(
+                  folder.pkg_json.as_deref(),
+                  workspace.catalogs(),
+                ),
                 dependencies: folder
                   .deno_json
                   .as_deref()
@@ -399,7 +418,8 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
                     }
                     // not supported
                     PackageJsonDepValue::File(_)
-                    | PackageJsonDepValue::Workspace(_) => None,
+                    | PackageJsonDepValue::Workspace(_)
+                    | PackageJsonDepValue::Catalog(_) => None,
                   })
                   .collect()
               })
@@ -515,8 +535,19 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       let diff = crate::display::diff(&contents, &new_contents);
       // has an extra newline at the end
       let diff = diff.trim_end();
+      const MAX_DIFF_LINES: usize = 50;
+      let truncated_diff = {
+        let lines: Vec<&str> = diff.lines().collect();
+        if lines.len() > MAX_DIFF_LINES {
+          let shown: String = lines[..MAX_DIFF_LINES].join("\n");
+          let remaining = lines.len() - MAX_DIFF_LINES;
+          format!("{shown}\n... {remaining} more lines omitted ...")
+        } else {
+          diff.to_string()
+        }
+      };
       Err(JsErrorBox::generic(format!(
-        "The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{diff}"
+        "The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{truncated_diff}"
       )))
     } else {
       Ok(())

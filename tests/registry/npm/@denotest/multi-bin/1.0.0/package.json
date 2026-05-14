@@ -1,0 +1,8 @@
+{
+  "name": "@denotest/multi-bin",
+  "version": "1.0.0",
+  "bin": {
+    "multi-bin": "./cli.mjs",
+    "multi-bin-server": "./server.mjs"
+  }
+}

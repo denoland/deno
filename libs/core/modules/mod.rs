@@ -33,6 +33,7 @@ pub use loaders::ModuleLoadReferrer;
 pub use loaders::ModuleLoadResponse;
 pub use loaders::ModuleLoader;
 pub use loaders::ModuleLoaderError;
+pub use loaders::ModuleResolveResponse;
 pub use loaders::NoopModuleLoader;
 pub use loaders::StaticModuleLoader;
 pub(crate) use map::ModuleMap;
@@ -538,7 +539,7 @@ impl ModuleSource {
 pub type ModuleSourceFuture =
   dyn Future<Output = Result<ModuleSource, ModuleLoaderError>>;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResolutionKind {
   /// This kind is used in only one situation: when a module is loaded via
   /// `JsRuntime::load_main_module` and is the top-level module, ie. the one
@@ -722,6 +723,10 @@ pub(crate) struct ModuleRequest {
   /// None if this is a root request.
   pub referrer_source_offset: Option<i32>,
   pub phase: ModuleImportPhase,
+  /// If true, the specifier in `reference` is a best-effort parse and
+  /// needs to be properly resolved asynchronously during module loading.
+  #[serde(default)]
+  pub needs_resolve: bool,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]

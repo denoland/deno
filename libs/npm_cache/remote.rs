@@ -2,7 +2,7 @@
 
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
-use deno_npm::npm_rc::RegistryConfig;
+use deno_npmrc::RegistryConfig;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum AuthHeaderForNpmRegistryError {

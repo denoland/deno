@@ -732,6 +732,10 @@ fn resolve_workspace_for_config_folder<
       })
     };
 
+  #[allow(
+    clippy::result_large_err,
+    reason = "WorkspaceDiscoverErrorKind is large by design"
+  )]
   let collect_member_config_folders =
     |kind: &'static str,
      pattern_members: Vec<&String>,

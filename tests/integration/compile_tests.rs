@@ -851,21 +851,6 @@ fn compile_npm_cowsay_explicit() {
   });
 }
 
-#[test]
-fn compile_npm_cowthink() {
-  run_npm_bin_compile_test(RunNpmBinCompileOptions {
-    input_specifier: "npm:cowsay@1.5.0/cowthink",
-    copy_temp_dir: None,
-    compile_args: vec!["--allow-read", "--allow-env"],
-    run_args: vec!["Hello"],
-    output_file: "npm/deno_run_cowthink.out",
-    node_modules_local: false,
-    input_name: None,
-    expected_name: "cowthink",
-    exit_code: 0,
-  });
-}
-
 struct RunNpmBinCompileOptions<'a> {
   input_specifier: &'a str,
   copy_temp_dir: Option<&'a str>,
