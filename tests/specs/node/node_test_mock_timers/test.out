@@ -1,9 +1,12 @@
-running 16 tests from ./test.js
+running 19 tests from ./test.js
 reproducer from issue 32987 does not throw ... ok ([WILDLINE])
 setTimeout fires on tick ... ok ([WILDLINE])
 setInterval fires repeatedly on tick ... ok ([WILDLINE])
 clearTimeout cancels a mocked timer ... ok ([WILDLINE])
+clearTimeout works when only setTimeout is requested ... ok ([WILDLINE])
 setImmediate fires on tick ... ok ([WILDLINE])
+setImmediate runs before zero-delay setTimeout ... ok ([WILDLINE])
+timeout overflow is coerced to one millisecond ... ok ([WILDLINE])
 runAll runs all pending timers ... ok ([WILDLINE])
 runAll fires each interval exactly once ... ok ([WILDLINE])
 Date is mocked and tracks tick ... ok ([WILDLINE])
@@ -16,5 +19,4 @@ throws ERR_INVALID_STATE when not enabled ... ok ([WILDLINE])
 throws ERR_INVALID_STATE when enabling twice ... ok ([WILDLINE])
 throws on invalid api name ... ok ([WILDLINE])
 
-ok | 16 passed | 0 failed ([WILDLINE])
-
+ok | 19 passed | 0 failed ([WILDLINE])

@@ -12,10 +12,12 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypePush,
   ArrayPrototypeSplice,
+  DatePrototypeToString,
   Error,
   ErrorPrototype,
   MapPrototypeDelete,
   MapPrototypeGet,
+  MapPrototypeHas,
   MapPrototypeSet,
   NumberIsFinite,
   NumberIsInteger,
@@ -1016,6 +1018,13 @@ class MockTimers {
   _nextId = 1;
   #originals = new SafeMap();
 
+  #mockGlobal(name, value) {
+    if (!MapPrototypeHas(this.#originals, name)) {
+      MapPrototypeSet(this.#originals, name, globalThis[name]);
+    }
+    globalThis[name] = value;
+  }
+
   enable(options = { __proto__: null }) {
     if (this._enabled) {
       throw new ERR_INVALID_STATE(
@@ -1058,45 +1067,45 @@ class MockTimers {
     for (let i = 0; i < apis.length; i++) {
       const api = apis[i];
       if (api === "Date") {
-        MapPrototypeSet(this.#originals, "Date", globalThis.Date);
-        globalThis.Date = createMockDate(this);
+        this.#mockGlobal("Date", createMockDate(this));
       } else if (api === "setTimeout") {
-        MapPrototypeSet(this.#originals, "setTimeout", globalThis.setTimeout);
-        globalThis.setTimeout = (callback, delay, ...args) =>
-          this._setTimeout(callback, delay, args, false);
+        this.#mockGlobal(
+          "setTimeout",
+          (callback, delay, ...args) =>
+            this._setTimeout(callback, delay, args, false),
+        );
+        this.#mockGlobal("clearTimeout", (handle) => this._clearTimer(handle));
       } else if (api === "clearTimeout") {
-        MapPrototypeSet(
-          this.#originals,
+        this.#mockGlobal(
           "clearTimeout",
-          globalThis.clearTimeout,
+          (handle) => this._clearTimer(handle),
         );
-        globalThis.clearTimeout = (handle) => this._clearTimer(handle);
       } else if (api === "setInterval") {
-        MapPrototypeSet(this.#originals, "setInterval", globalThis.setInterval);
-        globalThis.setInterval = (callback, delay, ...args) =>
-          this._setInterval(callback, delay, args);
+        this.#mockGlobal(
+          "setInterval",
+          (callback, delay, ...args) =>
+            this._setInterval(callback, delay, args),
+        );
+        this.#mockGlobal("clearInterval", (handle) => this._clearTimer(handle));
       } else if (api === "clearInterval") {
-        MapPrototypeSet(
-          this.#originals,
+        this.#mockGlobal(
           "clearInterval",
-          globalThis.clearInterval,
+          (handle) => this._clearTimer(handle),
         );
-        globalThis.clearInterval = (handle) => this._clearTimer(handle);
       } else if (api === "setImmediate") {
-        MapPrototypeSet(
-          this.#originals,
+        this.#mockGlobal(
           "setImmediate",
-          globalThis.setImmediate,
+          (callback, ...args) => this._setTimeout(callback, 0, args, true),
         );
-        globalThis.setImmediate = (callback, ...args) =>
-          this._setTimeout(callback, 0, args, true);
-      } else if (api === "clearImmediate") {
-        MapPrototypeSet(
-          this.#originals,
+        this.#mockGlobal(
           "clearImmediate",
-          globalThis.clearImmediate,
+          (handle) => this._clearTimer(handle),
         );
-        globalThis.clearImmediate = (handle) => this._clearTimer(handle);
+      } else if (api === "clearImmediate") {
+        this.#mockGlobal(
+          "clearImmediate",
+          (handle) => this._clearTimer(handle),
+        );
       }
     }
   }
@@ -1188,9 +1197,7 @@ class MockTimers {
     if (delay === undefined || delay === null) delay = 1;
     if (typeof delay !== "number") delay = +delay;
     if (!NumberIsFinite(delay) || delay < 0) delay = 1;
-    // Match Node's mock and Deno's real setTimeout: clamp to TIMEOUT_MAX
-    // (2^31 - 1 ms, ~24.8 days) rather than silently snapping to 1ms.
-    if (delay > 2147483647) delay = 2147483647;
+    if (delay > 2147483647) delay = 1;
     const id = this._nextId++;
     const timer = {
       id,
@@ -1210,7 +1217,7 @@ class MockTimers {
     if (delay === undefined || delay === null) delay = 1;
     if (typeof delay !== "number") delay = +delay;
     if (!NumberIsFinite(delay) || delay < 1) delay = 1;
-    if (delay > 2147483647) delay = 2147483647;
+    if (delay > 2147483647) delay = 1;
     const id = this._nextId++;
     const timer = {
       id,
@@ -1244,7 +1251,8 @@ class MockTimers {
       if (
         next === null ||
         t.fireAt < next.fireAt ||
-        (t.fireAt === next.fireAt && t.id < next.id)
+        (t.fireAt === next.fireAt &&
+          (t.immediate !== next.immediate ? t.immediate : t.id < next.id))
       ) {
         next = t;
       }
@@ -1279,7 +1287,9 @@ const originalDateGetTime = originalDate.prototype.getTime;
 function createMockDate(mockTimers) {
   function MockDate(...args) {
     if (!new.target) {
-      return originalDate();
+      return DatePrototypeToString(
+        ReflectConstruct(originalDate, [mockTimers._now], MockDate),
+      );
     }
     if (args.length === 0) {
       return ReflectConstruct(originalDate, [mockTimers._now], MockDate);
@@ -1297,6 +1307,8 @@ function createMockDate(mockTimers) {
   MockDate.now = () => mockTimers._now;
   MockDate.parse = originalDate.parse;
   MockDate.UTC = originalDate.UTC;
+  MockDate.isMock = true;
+  MockDate.toString = () => "function Date() { [native code] }";
   return MockDate;
 }
 

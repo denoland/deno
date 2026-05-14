@@ -48,6 +48,18 @@ test("clearTimeout cancels a mocked timer", () => {
   mock.timers.reset();
 });
 
+test("clearTimeout works when only setTimeout is requested", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  let fired = false;
+  const id = setTimeout(() => {
+    fired = true;
+  }, 100);
+  clearTimeout(id);
+  mock.timers.tick(200);
+  assert.strictEqual(fired, false);
+  mock.timers.reset();
+});
+
 test("setImmediate fires on tick", () => {
   mock.timers.enable({ apis: ["setImmediate", "clearImmediate"] });
   let fired = false;
@@ -55,6 +67,31 @@ test("setImmediate fires on tick", () => {
     fired = true;
   });
   mock.timers.tick(0);
+  assert.strictEqual(fired, true);
+  mock.timers.reset();
+});
+
+test("setImmediate runs before zero-delay setTimeout", () => {
+  mock.timers.enable({ apis: ["setImmediate", "setTimeout"] });
+  const calls = [];
+  setTimeout(() => {
+    calls.push("timeout");
+  }, 0);
+  setImmediate(() => {
+    calls.push("immediate");
+  });
+  mock.timers.tick(0);
+  assert.deepStrictEqual(calls, ["immediate", "timeout"]);
+  mock.timers.reset();
+});
+
+test("timeout overflow is coerced to one millisecond", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  let fired = false;
+  setTimeout(() => {
+    fired = true;
+  }, 2147483648);
+  mock.timers.tick(1);
   assert.strictEqual(fired, true);
   mock.timers.reset();
 });
@@ -93,6 +130,9 @@ test("Date is mocked and tracks tick", () => {
   mock.timers.enable({ apis: ["Date"], now: 5000 });
   assert.strictEqual(Date.now(), 5000);
   assert.strictEqual(new Date().getTime(), 5000);
+  assert.strictEqual(Date.isMock, true);
+  assert.strictEqual(Date.toString(), "function Date() { [native code] }");
+  assert.match(Date(), /1970/);
   // explicit timestamp still works
   assert.strictEqual(new Date(0).getTime(), 0);
   mock.timers.reset();
