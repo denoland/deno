@@ -686,6 +686,151 @@
             "type": "string"
           }
         },
+        "overrides": {
+          "type": "array",
+          "description": "File-specific formatter options applied in order. Later matching overrides take precedence.",
+          "items": {
+            "type": "object",
+            "required": ["files"],
+            "properties": {
+              "files": {
+                "type": "array",
+                "description": "List of files, directories or globs this override applies to.",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "useTabs": {
+                "description": "Whether to use tabs (true) or spaces (false) for indentation.",
+                "type": "boolean",
+                "default": false
+              },
+              "lineWidth": {
+                "description": "The width of a line the printer will try to stay under. Note that the printer may exceed this width in certain cases.",
+                "type": "number",
+                "default": 80
+              },
+              "indentWidth": {
+                "description": "The number of characters for an indent.",
+                "type": "number",
+                "default": 2
+              },
+              "singleQuote": {
+                "type": "boolean",
+                "description": "Whether to use single quote (true) or double quote (false) for quotation.",
+                "default": false
+              },
+              "proseWrap": {
+                "description": "Define how prose should be wrapped in Markdown files.",
+                "default": "always",
+                "enum": ["always", "never", "preserve"]
+              },
+              "semiColons": {
+                "description": "Whether to prefer using semicolons.",
+                "type": "boolean",
+                "default": true
+              },
+              "quoteProps": {
+                "description": "Change when properties in objects are quoted in JavaScript and TypeScript.",
+                "default": "preserve",
+                "enum": ["asNeeded", "consistent", "preserve"]
+              },
+              "newLineKind": {
+                "description": "The newline character to use.",
+                "default": "lf",
+                "enum": ["auto", "crlf", "lf", "system"]
+              },
+              "useBraces": {
+                "description": "Whether to use braces for if statements, for statements, and while statements in JavaScript and TypeScript.",
+                "default": "whenNotSingleLine",
+                "enum": ["maintain", "whenNotSingleLine", "always", "preferNone"]
+              },
+              "bracePosition": {
+                "description": "The position of opening braces for blocks in JavaScript and TypeScript.",
+                "default": "sameLine",
+                "enum": [
+                  "maintain",
+                  "sameLine",
+                  "nextLine",
+                  "sameLineUnlessHanging"
+                ]
+              },
+              "singleBodyPosition": {
+                "description": "The position of the body in single body blocks in JavaScript and TypeScript.",
+                "default": "sameLineUnlessHanging",
+                "enum": [
+                  "maintain",
+                  "sameLine",
+                  "nextLine",
+                  "sameLineUnlessHanging"
+                ]
+              },
+              "nextControlFlowPosition": {
+                "description": "Where to place the next control flow within a control flow statement in JavaScript and TypeScript.",
+                "default": "sameLine",
+                "enum": [
+                  "maintain",
+                  "sameLine",
+                  "nextLine"
+                ]
+              },
+              "trailingCommas": {
+                "description": "Whether to add trailing commas in JavaScript and TypeScript.",
+                "default": "onlyMultiLine",
+                "enum": ["never", "always", "onlyMultiLine"]
+              },
+              "operatorPosition": {
+                "description": "Where to place the operator for expressions that span multiple lines in JavaScript and TypeScript.",
+                "default": "sameLine",
+                "enum": [
+                  "maintain",
+                  "sameLine",
+                  "nextLine"
+                ]
+              },
+              "jsx.bracketPosition": {
+                "description": "If the end angle bracket of a jsx open element or self closing element should be on the same or next line when the attributes span multiple lines.",
+                "default": "nextLine",
+                "enum": ["maintain", "sameLine", "nextLine"]
+              },
+              "jsx.forceNewLineSurroundingContent": {
+                "description": "Forces newlines surrounding the content of JSX elements.",
+                "default": false,
+                "type": "boolean"
+              },
+              "jsx.multiLineParens": {
+                "description": "Surrounds the top-most JSX element or fragment in parentheses when it spans multiple lines.",
+                "default": "prefer",
+                "enum": ["never", "prefer", "always"]
+              },
+              "typeLiteral.separatorKind": {
+                "description": "The kind of separator to use in type literals.",
+                "default": "semiColon",
+                "enum": ["comma", "semiColon"]
+              },
+              "spaceAround": {
+                "description": "Whether to place spaces around enclosed expressions in JavaScript and TypeScript.",
+                "default": false,
+                "type": "boolean"
+              },
+              "spaceSurroundingProperties": {
+                "description": "Whether to add a space surrounding the properties of single line object-like nodes in JavaScript and TypeScript.",
+                "default": true,
+                "type": "boolean"
+              },
+              "vueComponentCase": {
+                "description": "Case style for Vue component tags.",
+                "default": "ignore",
+                "enum": ["ignore", "pascal-case", "kebab-case"]
+              },
+              "angularNextControlFlowSameLine": {
+                "description": "Whether Angular next control-flow clauses stay on the same line.",
+                "default": true,
+                "type": "boolean"
+              }
+            }
+          }
+        },
         "useTabs": {
           "description": "Whether to use tabs (true) or spaces (false) for indentation.",
           "type": "boolean",

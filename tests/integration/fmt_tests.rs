@@ -323,6 +323,42 @@ fn fmt_with_glob_config_and_flags() {
 }
 
 #[test]
+fn fmt_with_overrides_config() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "fmt": {
+      "singleQuote": false,
+      "semiColons": true,
+      "overrides": [
+        {
+          "files": ["single.ts"],
+          "singleQuote": true,
+          "semiColons": false
+        }
+      ]
+    }
+  }));
+
+  temp_dir.join("main.ts").write("const message = 'hello'\n");
+  temp_dir
+    .join("single.ts")
+    .write("const message = \"hello\";\n");
+
+  let output = context.new_command().arg("fmt").run();
+  output.assert_exit_code(0);
+
+  assert_eq!(
+    temp_dir.join("main.ts").read_to_string(),
+    "const message = \"hello\";\n"
+  );
+  assert_eq!(
+    temp_dir.join("single.ts").read_to_string(),
+    "const message = 'hello'\n"
+  );
+}
+
+#[test]
 fn opt_out_top_level_exclude_via_fmt_unexclude() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir().path();
