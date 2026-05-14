@@ -222,7 +222,7 @@ fn console_log_called_in_loop() {
 
 fn drain_jobs(rt: *mut ffi::JSRuntime) {
   unsafe {
-    while ffi::JS_IsJobPending(rt) > 0 {
+    while ffi::JS_IsJobPending(rt) {
       let mut pctx: *mut ffi::JSContext = std::ptr::null_mut();
       let r = ffi::JS_ExecutePendingJob(rt, &mut pctx);
       if r <= 0 {

@@ -164,6 +164,18 @@ pub fn jsv_is_exception(v: &JSValue) -> bool {
   v.tag == JS_TAG_EXCEPTION
 }
 
+/// Extract the pointer payload of a tagged-pointer JSValue (`JS_TAG_OBJECT`,
+/// `JS_TAG_MODULE`, `JS_TAG_FUNCTION_BYTECODE`, `JS_TAG_STRING`, etc).
+///
+/// Returns `null` for non-pointer tags (numbers, booleans, undefined).
+#[inline]
+pub fn jsv_get_ptr(v: &JSValue) -> *mut c_void {
+  // Safe: for pointer-tagged values the union's `ptr` field is the live
+  // discriminant; for non-pointer tags the read still returns a defined
+  // bit pattern (we just don't promise it's a valid pointer).
+  unsafe { v.u.ptr }
+}
+
 // Eval flags (quickjs.h).
 pub const JS_EVAL_TYPE_GLOBAL: c_int = 0;
 pub const JS_EVAL_TYPE_MODULE: c_int = 1;
@@ -230,7 +242,7 @@ unsafe extern "C" {
   pub fn JS_SetMaxStackSize(rt: *mut JSRuntime, stack_size: usize);
   pub fn JS_SetGCThreshold(rt: *mut JSRuntime, gc_threshold: usize);
   pub fn JS_RunGC(rt: *mut JSRuntime);
-  pub fn JS_IsJobPending(rt: *mut JSRuntime) -> c_int;
+  pub fn JS_IsJobPending(rt: *mut JSRuntime) -> bool;
   pub fn JS_ExecutePendingJob(
     rt: *mut JSRuntime,
     pctx: *mut *mut JSContext,
@@ -447,6 +459,14 @@ unsafe extern "C" {
 
   // Atoms.
   pub fn JS_NewAtom(ctx: *mut JSContext, str: *const c_char) -> JSAtom;
+  // QuickJS-ng allocator. The module loader / normalizer contract requires
+  // returned strings to come from `js_malloc`/`js_strdup` because QuickJS
+  // will free them via `js_free`. Plain libc allocators won't work — the
+  // free side must match the malloc side.
+  pub fn js_malloc(ctx: *mut JSContext, size: usize) -> *mut c_void;
+  pub fn js_free(ctx: *mut JSContext, ptr: *mut c_void);
+  pub fn js_strdup(ctx: *mut JSContext, s: *const c_char) -> *mut c_char;
+
   pub fn JS_NewAtomLen(
     ctx: *mut JSContext,
     str: *const c_char,
