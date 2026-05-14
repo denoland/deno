@@ -13,13 +13,22 @@ description = "Rust to V8 serialization and deserialization"
 [lib]
 path = "lib.rs"
 
+[features]
+default = ["v8-engine"]
+# Engine selection. Mirrors deno_core's: exactly one of `v8-engine` or
+# `quickjs` should be enabled. With `quickjs`, serde_v8 binds against
+# the QuickJS-ng-backed compat layer instead of rusty_v8.
+v8-engine = ["dep:v8"]
+quickjs = ["dep:qjs_v8_compat"]
+
 [dependencies]
 deno_error.workspace = true
 num-bigint.workspace = true
+qjs_v8_compat = { workspace = true, optional = true }
 serde.workspace = true
 smallvec = { workspace = true, features = ["union"] }
 thiserror.workspace = true
-v8.workspace = true
+v8 = { workspace = true, optional = true }
 
 [dev-dependencies]
 bencher.workspace = true

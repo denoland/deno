@@ -35,8 +35,8 @@ uv_compat_export = []
 # layer. Internally, deno_core's source `use v8::*` resolves to whichever
 # crate is aliased as `v8` in lib.rs (see the `extern crate ... as v8`
 # block there).
-v8-engine = ["dep:v8"]
-quickjs = ["dep:qjs_v8_compat"]
+v8-engine = ["dep:v8", "serde_v8/v8-engine"]
+quickjs = ["dep:qjs_v8_compat", "serde_v8/quickjs"]
 
 [dependencies]
 anyhow.workspace = true
@@ -63,7 +63,7 @@ pin-project.workspace = true
 qjs_v8_compat = { workspace = true, optional = true }
 serde.workspace = true
 serde_json = { workspace = true, features = ["float_roundtrip", "preserve_order"] }
-serde_v8.workspace = true
+serde_v8 = { workspace = true }
 smallvec.workspace = true
 sourcemap.workspace = true
 static_assertions.workspace = true

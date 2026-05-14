@@ -78,6 +78,9 @@ pub use crate::module::*;
 pub use crate::object::*;
 pub use crate::primitives::*;
 pub use crate::promise::*;
+// And the sub-namespaces — these have to be explicit `pub use` because
+// glob re-export doesn't include modules.
+pub use crate::scope::PinnedRef;
 pub use crate::scope::*;
 pub use crate::script::*;
 pub use crate::snapshot::*;
@@ -109,8 +112,6 @@ pub use crate::v8::V8;
 pub use crate::v8::WasmModuleObject;
 pub use crate::v8::WasmStreaming;
 pub use crate::v8::WriteFlags;
-// And the sub-namespaces — these have to be explicit `pub use` because
-// glob re-export doesn't include modules.
 pub use crate::v8::cppgc;
 pub use crate::v8::data;
 pub use crate::v8::fast_api;

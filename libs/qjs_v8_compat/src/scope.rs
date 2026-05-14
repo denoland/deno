@@ -27,6 +27,23 @@ use crate::value::Local;
 
 const MAX_SCOPE_DEPTH: usize = 4096;
 
+/// Mirror of rusty_v8's `PinnedRef` — a thin wrapper around a mutable
+/// borrow of a scope-like value, used by serde_v8 and op2 macros.
+/// On the QuickJS side it's just a transparent alias.
+#[repr(transparent)]
+pub struct PinnedRef<'r, T: ?Sized>(pub &'r mut T);
+impl<'r, T: ?Sized> std::ops::Deref for PinnedRef<'r, T> {
+  type Target = T;
+  fn deref(&self) -> &T {
+    self.0
+  }
+}
+impl<'r, T: ?Sized> std::ops::DerefMut for PinnedRef<'r, T> {
+  fn deref_mut(&mut self) -> &mut T {
+    self.0
+  }
+}
+
 /// The handle scope. On drop, all values registered with `track_owned`
 /// have `JS_FreeValue` called on them.
 pub struct HandleScope<'s, C = Context> {
@@ -425,10 +442,39 @@ impl<'s, C> std::ops::DerefMut for CallbackScope<'s, C> {
 /// Mirror of rusty_v8's two-lifetime `PinScope<'s, 'i>`. Both lifetimes
 /// collapse to one on QuickJS — we don't enforce the pinning hygiene
 /// rusty_v8 uses, but the call-site signatures must accept both args.
-/// Rust doesn't support defaulting lifetime params on type aliases, so
-/// we just take them all and ignore the ones we don't use.
-pub type PinScope<'s, 'i, C = Context> = HandleScope<'s, C>;
-pub type PinCallbackScope<'s, 'i, C = Context> = CallbackScope<'s, C>;
+/// We use the second lifetime as a PhantomData carrier so it's not
+/// "unused" per the type alias rules.
+pub struct PinScope<'s, 'i, C = Context>(
+  pub(crate) HandleScope<'s, C>,
+  PhantomData<&'i ()>,
+);
+impl<'s, 'i, C> std::ops::Deref for PinScope<'s, 'i, C> {
+  type Target = HandleScope<'s, C>;
+  fn deref(&self) -> &HandleScope<'s, C> {
+    &self.0
+  }
+}
+impl<'s, 'i, C> std::ops::DerefMut for PinScope<'s, 'i, C> {
+  fn deref_mut(&mut self) -> &mut HandleScope<'s, C> {
+    &mut self.0
+  }
+}
+
+pub struct PinCallbackScope<'s, 'i, C = Context>(
+  pub(crate) CallbackScope<'s, C>,
+  PhantomData<&'i ()>,
+);
+impl<'s, 'i, C> std::ops::Deref for PinCallbackScope<'s, 'i, C> {
+  type Target = CallbackScope<'s, C>;
+  fn deref(&self) -> &CallbackScope<'s, C> {
+    &self.0
+  }
+}
+impl<'s, 'i, C> std::ops::DerefMut for PinCallbackScope<'s, 'i, C> {
+  fn deref_mut(&mut self) -> &mut CallbackScope<'s, C> {
+    &mut self.0
+  }
+}
 
 // v8::scope free fn — used by deno_core's scope macro.
 pub fn scope<'s, 'r>(iso: &'r mut OwnedIsolate) -> HandleScope<'s, Context>

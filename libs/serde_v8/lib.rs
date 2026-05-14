@@ -1,5 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+// Engine alias: with `--features quickjs`, the QuickJS-ng-backed compat
+// crate becomes the source of truth for the `v8` crate name throughout
+// serde_v8 — same alias trick deno_core uses.
+#[cfg(feature = "quickjs")]
+extern crate qjs_v8_compat as v8;
+
 mod de;
 mod error;
 mod keys;

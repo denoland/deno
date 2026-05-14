@@ -9501,6 +9501,7 @@ dependencies = [
  "bencher",
  "deno_error",
  "num-bigint",
+ "qjs_v8_compat",
  "serde",
  "serde_bytes",
  "serde_json",
