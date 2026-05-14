@@ -39,14 +39,44 @@ pub type PartMap = HashMap<Uuid, Arc<dyn BlobPart + Send + Sync>>;
 
 /// Trait abstracting the blob store, allowing custom implementations
 /// (e.g. with memory limits or persistence).
+///
+/// All methods have default `unimplemented!()` bodies so that new methods
+/// can be added in the future without breaking existing embedder impls.
 pub trait BlobStoreTrait: Debug + Send + Sync {
-  fn insert_part(&self, part: Arc<dyn BlobPart + Send + Sync>) -> Uuid;
-  fn get_part(&self, id: &Uuid) -> Option<Arc<dyn BlobPart + Send + Sync>>;
-  fn remove_part(&self, id: &Uuid) -> Option<Arc<dyn BlobPart + Send + Sync>>;
-  fn get_object_url(&self, url: Url) -> Option<Arc<Blob>>;
-  fn insert_object_url(&self, blob: Blob, maybe_location: Option<Url>) -> Url;
-  fn remove_object_url(&self, url: &Url);
-  fn clear(&self);
+  fn insert_part(
+    &self,
+    _part: Arc<dyn BlobPart + Send + Sync>,
+  ) -> Uuid {
+    unimplemented!()
+  }
+  fn get_part(
+    &self,
+    _id: &Uuid,
+  ) -> Option<Arc<dyn BlobPart + Send + Sync>> {
+    unimplemented!()
+  }
+  fn remove_part(
+    &self,
+    _id: &Uuid,
+  ) -> Option<Arc<dyn BlobPart + Send + Sync>> {
+    unimplemented!()
+  }
+  fn get_object_url(&self, _url: Url) -> Option<Arc<Blob>> {
+    unimplemented!()
+  }
+  fn insert_object_url(
+    &self,
+    _blob: Blob,
+    _maybe_location: Option<Url>,
+  ) -> Url {
+    unimplemented!()
+  }
+  fn remove_object_url(&self, _url: &Url) {
+    unimplemented!()
+  }
+  fn clear(&self) {
+    unimplemented!()
+  }
 }
 
 #[derive(Default, Debug)]
@@ -348,17 +378,37 @@ pub fn op_blob_from_object_url(
 
 #[cfg(test)]
 mod tests {
+  use std::sync::atomic::AtomicUsize;
+  use std::sync::atomic::Ordering;
+
+  use deno_core::OpState;
+
   use super::*;
 
-  /// A minimal custom BlobStoreTrait implementation used to verify that
-  /// deno_web correctly works with a non-default blob store.
-  #[derive(Debug, Default)]
-  struct CustomBlobStore {
+  /// A counting wrapper around `BlobStore` that increments a counter
+  /// on every `insert_part` call. Used to prove that a custom impl
+  /// plumbed through `deno_web::init()` is actually invoked by ops.
+  #[derive(Debug)]
+  struct CountingBlobStore {
     inner: BlobStore,
+    insert_count: AtomicUsize,
   }
 
-  impl BlobStoreTrait for CustomBlobStore {
-    fn insert_part(&self, part: Arc<dyn BlobPart + Send + Sync>) -> Uuid {
+  impl Default for CountingBlobStore {
+    fn default() -> Self {
+      Self {
+        inner: BlobStore::default(),
+        insert_count: AtomicUsize::new(0),
+      }
+    }
+  }
+
+  impl BlobStoreTrait for CountingBlobStore {
+    fn insert_part(
+      &self,
+      part: Arc<dyn BlobPart + Send + Sync>,
+    ) -> Uuid {
+      self.insert_count.fetch_add(1, Ordering::SeqCst);
       self.inner.insert_part(part)
     }
     fn get_part(
@@ -391,10 +441,32 @@ mod tests {
     }
   }
 
+  /// Verify that a custom `BlobStoreTrait` impl passed through
+  /// `deno_web::init()` ends up in `OpState` and is the same
+  /// instance the ops would use.
   #[test]
-  fn custom_blob_store_insert_get_remove() {
-    let store: Arc<dyn BlobStoreTrait> =
-      Arc::new(CustomBlobStore::default());
+  fn custom_blob_store_through_init() {
+    let counting: Arc<CountingBlobStore> =
+      Arc::new(CountingBlobStore::default());
+    let blob_store: Arc<dyn BlobStoreTrait> = counting.clone();
+
+    // Build the extension the same way the runtime does.
+    let ext = crate::deno_web::init(
+      blob_store,
+      None,
+      Default::default(),
+      Default::default(),
+    );
+
+    // Run the extension's state initializer on a fresh OpState.
+    let mut op_state = OpState::new(None);
+    let state_fn = ext
+      .op_state_fn
+      .expect("deno_web extension should have an op_state_fn");
+    state_fn(&mut op_state);
+
+    // Extract the store from OpState — same code path as the ops.
+    let store = op_state.borrow::<Arc<dyn BlobStoreTrait>>();
 
     // A trivial in-memory BlobPart for testing.
     #[derive(Debug)]
@@ -410,24 +482,20 @@ mod tests {
       }
     }
 
-    let data: Arc<dyn BlobPart + Send + Sync> =
+    assert_eq!(counting.insert_count.load(Ordering::SeqCst), 0);
+
+    let part: Arc<dyn BlobPart + Send + Sync> =
       Arc::new(MemPart(b"hello".to_vec()));
-    let id = store.insert_part(data);
+    let id = store.insert_part(part);
 
-    // get_part returns the part we just inserted.
-    let part = store.get_part(&id).expect("part should exist");
-    assert_eq!(part.size(), 5);
+    // The counter proves our custom impl was called, not the default.
+    assert_eq!(counting.insert_count.load(Ordering::SeqCst), 1);
 
-    // clone_part scenario: get + insert produces a new id.
-    let cloned_part = store.get_part(&id).unwrap();
-    let new_id = store.insert_part(cloned_part);
-    assert_ne!(id, new_id);
+    // Basic round-trip still works.
+    let retrieved = store.get_part(&id).expect("part should exist");
+    assert_eq!(retrieved.size(), 5);
 
-    // remove_part works.
     assert!(store.remove_part(&id).is_some());
     assert!(store.get_part(&id).is_none());
-
-    // The cloned part is still accessible.
-    assert!(store.get_part(&new_id).is_some());
   }
 }
