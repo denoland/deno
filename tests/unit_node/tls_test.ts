@@ -355,7 +355,7 @@ Deno.test("tls.rootCertificates is not empty", () => {
 
 Deno.test("TLSSocket.alpnProtocol is set for client", async () => {
   const listener = Deno.listenTls({
-    hostname: "localhost",
+    hostname: "::1",
     port: 0,
     key,
     cert,
