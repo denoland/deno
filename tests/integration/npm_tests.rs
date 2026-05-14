@@ -1369,7 +1369,7 @@ console.log(getKind());
     r#"import { expect } from "chai";
 
     const timeout = setTimeout(() => {}, 0);
-    expect(timeout).to.be.a("number");
+    expect(timeout).to.be.a("object");
     clearTimeout(timeout);"#,
   );
   test_context.new_command().args("run chai.ts").run();
@@ -1532,7 +1532,7 @@ fn byonm_npm_workspaces() {
 import { expect } from "chai";
 
 const timeout = setTimeout(() => {}, 0);
-expect(timeout).to.be.a("number");
+expect(timeout).to.be.a("object");
 clearTimeout(timeout);
 
 export function add(a, b) {
@@ -1631,7 +1631,7 @@ fn future_byonm_npm_workspaces() {
 import { expect } from "chai";
 
 const timeout = setTimeout(() => {}, 0);
-expect(timeout).to.be.a("number");
+expect(timeout).to.be.a("object");
 clearTimeout(timeout);
 
 export function add(a, b) {
@@ -1922,4 +1922,34 @@ async fn test_private_npm_registry() {
   );
   let resp = client.execute(req).await.unwrap();
   assert_eq!(resp.status(), reqwest::StatusCode::OK);
+}
+
+#[test]
+fn npm_config_registry_overrides_npmrc() {
+  let _server = http_server();
+
+  let context = util::TestContextBuilder::new()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+
+  // Create .npmrc with a wrong registry that would fail if used
+  temp_dir.write(".npmrc", "registry=http://localhost:99999/\n");
+
+  // Create a simple script that imports from npm
+  temp_dir.write(
+    "main.ts",
+    "import { getValue, setValue } from 'npm:@denotest/esm-basic'; setValue(2); console.log(getValue());",
+  );
+
+  // NPM_CONFIG_REGISTRY should override the .npmrc registry
+  // If it doesn't, this would fail trying to connect to localhost:99999
+  let output = context
+    .new_command()
+    .args("run -A main.ts")
+    .env("NPM_CONFIG_REGISTRY", "http://localhost:4260/")
+    .run();
+
+  output.assert_matches_text("[WILDCARD]2\n");
 }

@@ -14,6 +14,14 @@ use crate::magic::transl8::impl_magic;
 pub struct DetachedBuffer(V8Slice<u8>);
 impl_magic!(DetachedBuffer);
 
+impl DetachedBuffer {
+  /// Create a `DetachedBuffer` from an existing `V8Slice`, for cases where
+  /// we already have a detached buffer (e.g., from a `JsBuffer`).
+  pub fn from_v8slice(slice: V8Slice<u8>) -> Self {
+    DetachedBuffer(slice)
+  }
+}
+
 impl AsRef<[u8]> for DetachedBuffer {
   fn as_ref(&self) -> &[u8] {
     self.0.as_ref()

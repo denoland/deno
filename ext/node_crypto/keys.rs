@@ -15,6 +15,7 @@ use ed25519_dalek::pkcs8::BitStringRef;
 use elliptic_curve::JwkEcKey;
 use num_bigint::BigInt;
 use num_traits::FromPrimitive as _;
+use p12::PFX as Pkcs12;
 use pkcs8::DecodePrivateKey as _;
 use pkcs8::Document;
 use pkcs8::EncodePrivateKey as _;
@@ -80,6 +81,8 @@ pub enum AsymmetricPrivateKey {
   Ec(EcPrivateKey),
   X25519(x25519_dalek::StaticSecret),
   Ed25519(ed25519_dalek::SigningKey),
+  X448([u8; 56]),
+  Ed448(ed448_goldilocks::SigningKey),
   Dh(DhPrivateKey),
 }
 
@@ -89,7 +92,7 @@ pub struct RsaPssPrivateKey {
   pub details: Option<RsaPssDetails>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct RsaPssDetails {
   pub hash_algorithm: RsaPssHashAlgorithm,
   pub mf1_hash_algorithm: RsaPssHashAlgorithm,
@@ -154,6 +157,8 @@ pub enum AsymmetricPublicKey {
   Ec(EcPublicKey),
   X25519(x25519_dalek::PublicKey),
   Ed25519(ed25519_dalek::VerifyingKey),
+  X448([u8; 56]),
+  Ed448(ed448_goldilocks::VerifyingKey),
   Dh(DhPublicKey),
 }
 
@@ -230,8 +235,29 @@ impl AsymmetricPrivateKey {
       AsymmetricPrivateKey::Ed25519(key) => {
         AsymmetricPublicKey::Ed25519(key.verifying_key())
       }
-      AsymmetricPrivateKey::Dh(_) => {
-        panic!("cannot derive public key from DH private key")
+      AsymmetricPrivateKey::X448(key) => {
+        let mut scalar_bytes = [0u8; 57];
+        scalar_bytes[..56].copy_from_slice(&key[..56]);
+        let scalar = ed448_goldilocks::EdwardsScalar::from_bytes_mod_order(
+          &scalar_bytes.into(),
+        );
+        let point = &ed448_goldilocks::MontgomeryPoint::GENERATOR * &scalar;
+        AsymmetricPublicKey::X448(point.0)
+      }
+      AsymmetricPrivateKey::Ed448(key) => {
+        AsymmetricPublicKey::Ed448(key.verifying_key())
+      }
+      AsymmetricPrivateKey::Dh(dh_key) => {
+        let prime = num_bigint_dig::BigUint::from_bytes_be(
+          dh_key.params.prime.as_bytes(),
+        );
+        let base =
+          num_bigint_dig::BigUint::from_bytes_be(dh_key.params.base.as_bytes());
+        let public_key = dh_key.key.compute_public_key(&base, &prime);
+        AsymmetricPublicKey::Dh(DhPublicKey {
+          key: public_key,
+          params: dh_key.params.clone(),
+        })
       }
     }
   }
@@ -286,6 +312,115 @@ impl EcPrivateKey {
   }
 }
 
+impl PartialEq for EcPublicKey {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (EcPublicKey::P224(a), EcPublicKey::P224(b)) => a == b,
+      (EcPublicKey::P256(a), EcPublicKey::P256(b)) => a == b,
+      (EcPublicKey::P384(a), EcPublicKey::P384(b)) => a == b,
+      (EcPublicKey::P521(a), EcPublicKey::P521(b)) => a == b,
+      (EcPublicKey::Secp256k1(a), EcPublicKey::Secp256k1(b)) => a == b,
+      _ => false,
+    }
+  }
+}
+
+impl PartialEq for EcPrivateKey {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (EcPrivateKey::P224(a), EcPrivateKey::P224(b)) => a == b,
+      (EcPrivateKey::P256(a), EcPrivateKey::P256(b)) => a == b,
+      (EcPrivateKey::P384(a), EcPrivateKey::P384(b)) => a == b,
+      (EcPrivateKey::P521(a), EcPrivateKey::P521(b)) => a == b,
+      (EcPrivateKey::Secp256k1(a), EcPrivateKey::Secp256k1(b)) => a == b,
+      _ => false,
+    }
+  }
+}
+
+impl PartialEq for RsaPssPublicKey {
+  fn eq(&self, other: &Self) -> bool {
+    self.key == other.key && self.details == other.details
+  }
+}
+
+impl PartialEq for RsaPssPrivateKey {
+  fn eq(&self, other: &Self) -> bool {
+    self.key == other.key && self.details == other.details
+  }
+}
+
+fn dh_params_eq(a: &DhParameter, b: &DhParameter) -> bool {
+  let a_der = a.to_der().unwrap_or_default();
+  let b_der = b.to_der().unwrap_or_default();
+  a_der == b_der
+}
+
+impl PartialEq for DhPublicKey {
+  fn eq(&self, other: &Self) -> bool {
+    self.key == other.key && dh_params_eq(&self.params, &other.params)
+  }
+}
+
+impl PartialEq for DhPrivateKey {
+  fn eq(&self, other: &Self) -> bool {
+    self.key == other.key && dh_params_eq(&self.params, &other.params)
+  }
+}
+
+impl PartialEq for AsymmetricPublicKey {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::Rsa(a), Self::Rsa(b)) => a == b,
+      (Self::RsaPss(a), Self::RsaPss(b)) => a == b,
+      (Self::Dsa(a), Self::Dsa(b)) => {
+        a.to_public_key_der().ok() == b.to_public_key_der().ok()
+      }
+      (Self::Ec(a), Self::Ec(b)) => a == b,
+      (Self::X25519(a), Self::X25519(b)) => a == b,
+      (Self::Ed25519(a), Self::Ed25519(b)) => a == b,
+      (Self::X448(a), Self::X448(b)) => a == b,
+      (Self::Ed448(a), Self::Ed448(b)) => a == b,
+      (Self::Dh(a), Self::Dh(b)) => a == b,
+      _ => false,
+    }
+  }
+}
+
+impl PartialEq for AsymmetricPrivateKey {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::Rsa(a), Self::Rsa(b)) => a == b,
+      (Self::RsaPss(a), Self::RsaPss(b)) => a == b,
+      (Self::Dsa(a), Self::Dsa(b)) => {
+        a.to_pkcs8_der().ok().map(|d| d.to_bytes())
+          == b.to_pkcs8_der().ok().map(|d| d.to_bytes())
+      }
+      (Self::Ec(a), Self::Ec(b)) => a == b,
+      (Self::X25519(a), Self::X25519(b)) => a.to_bytes() == b.to_bytes(),
+      (Self::Ed25519(a), Self::Ed25519(b)) => a.to_bytes() == b.to_bytes(),
+      (Self::X448(a), Self::X448(b)) => a == b,
+      (Self::Ed448(a), Self::Ed448(b)) => a == b,
+      (Self::Dh(a), Self::Dh(b)) => a == b,
+      _ => false,
+    }
+  }
+}
+
+impl PartialEq for KeyObjectHandle {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::AsymmetricPrivate(a), Self::AsymmetricPrivate(b)) => a == b,
+      (Self::AsymmetricPublic(a), Self::AsymmetricPublic(b)) => a == b,
+      (Self::Secret(a), Self::Secret(b)) => {
+        use subtle::ConstantTimeEq;
+        a.ct_eq(b).into()
+      }
+      _ => false,
+    }
+  }
+}
+
 // https://oidref.com/
 const ID_SHA1_OID: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new_unwrap("1.3.14.3.2.26");
@@ -327,6 +462,10 @@ pub const X25519_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.101.110");
 pub const ED25519_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.101.112");
+pub const X448_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.3.101.111");
+pub const ED448_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.3.101.113");
 pub const DH_KEY_AGREEMENT_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.3.1");
 
@@ -424,6 +563,9 @@ pub enum X509PublicKeyError {
   #[error("invalid Ed25519 public key")]
   InvalidEd25519Key,
   #[class(type)]
+  #[error("invalid Ed448 public key")]
+  InvalidEd448Key,
+  #[class(type)]
   #[error("invalid X25519 public key")]
   InvalidX25519Key,
   #[class(type)]
@@ -463,22 +605,47 @@ pub enum EdRawError {
   #[error("invalid Ed25519 key")]
   InvalidEd25519Key,
   #[class(type)]
+  #[error("invalid Ed448 key")]
+  InvalidEd448Key,
+  #[class(type)]
+  #[error("invalid X448 key")]
+  InvalidX448Key,
+  #[class(type)]
   #[error("unsupported curve")]
   UnsupportedCurve,
 }
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+#[error("unsupported")]
+#[property("code" = "ERR_OSSL_UNSUPPORTED")]
+pub struct UnsupportedPrivateKeyOidError;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(type)]
 pub enum AsymmetricPrivateKeyError {
   #[error("invalid PEM private key: not valid utf8 starting at byte {0}")]
   InvalidPemPrivateKeyInvalidUtf8(usize),
-  #[error("invalid encrypted PEM private key")]
+  #[class(generic)]
+  #[error("error:1E08010C:DECODER routines::unsupported")]
   InvalidEncryptedPemPrivateKey,
-  #[error("invalid PEM private key")]
+  #[class(generic)]
+  #[error("error:1C800064:Provider routines::bad decrypt")]
+  EncryptedPrivateKeyBadDecrypt,
+  #[error("error:1E08010C:DECODER routines::unsupported")]
   InvalidPemPrivateKey,
-  #[error("encrypted private key requires a passphrase to decrypt")]
+  #[class(generic)]
+  #[property("code" = "ERR_OSSL_EVP_BAD_DECRYPT")]
+  #[error("error:1C800064:Provider routines::bad decrypt")]
+  BadDecrypt,
+  #[class(generic)]
+  #[property("code" = "ERR_OSSL_CRYPTO_INTERRUPTED_OR_CANCELLED")]
+  #[error("error:07880109:common libcrypto routines::interrupted or cancelled")]
   EncryptedPrivateKeyRequiresPassphraseToDecrypt,
-  #[error("invalid PKCS#1 private key")]
+  #[property("code" = "ERR_MISSING_PASSPHRASE")]
+  #[error("Passphrase required for encrypted key")]
+  EncryptedPkcs8DerRequiresPassphrase,
+  #[error("error:1E08010C:DECODER routines::unsupported")]
   InvalidPkcs1PrivateKey,
   #[error("invalid SEC1 private key")]
   InvalidSec1PrivateKey,
@@ -517,10 +684,21 @@ pub enum AsymmetricPrivateKeyError {
   X25519PrivateKeyIsWrongLength,
   #[error("invalid Ed25519 private key")]
   InvalidEd25519PrivateKey,
+  #[error("invalid x448 private key")]
+  InvalidX448PrivateKey,
+  #[error("x448 private key is the wrong length")]
+  X448PrivateKeyIsWrongLength,
+  #[error("invalid Ed448 private key")]
+  InvalidEd448PrivateKey,
   #[error("missing dh parameters")]
   MissingDhParameters,
-  #[error("unsupported private key oid")]
-  UnsupportedPrivateKeyOid,
+  #[class(inherit)]
+  #[error(transparent)]
+  UnsupportedPrivateKeyOid(
+    #[from]
+    #[inherit]
+    UnsupportedPrivateKeyOidError,
+  ),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -604,6 +782,15 @@ pub enum AsymmetricPublicKeyError {
   #[error("invalid Ed25519 public key")]
   InvalidEd25519PublicKey,
   #[class(type)]
+  #[error("malformed or missing public key in x448 spki")]
+  MalformedOrMissingPublicKeyInX448Spki,
+  #[class(type)]
+  #[error("x448 public key is too short")]
+  X448PublicKeyIsTooShort,
+  #[class(type)]
+  #[error("invalid Ed448 public key")]
+  InvalidEd448PublicKey,
+  #[class(type)]
   #[error("missing dh parameters")]
   MissingDhParameters,
   #[class(type)]
@@ -612,9 +799,93 @@ pub enum AsymmetricPublicKeyError {
   #[class(type)]
   #[error("malformed or missing public key in dh spki")]
   MalformedOrMissingPublicKeyInDhSpki,
-  #[class(type)]
-  #[error("unsupported private key oid")]
+  #[class(generic)]
+  #[error("unsupported")]
+  #[property("code" = "ERR_OSSL_EVP_DECODE_ERROR")]
   UnsupportedPrivateKeyOid,
+}
+
+/// Parse an EC private key from SEC1 DER bytes using the named curve OID.
+/// The curve OID is required — inferring from key length is unreliable
+/// (e.g. P-256 and secp256k1 both use 32-byte keys).
+fn ec_private_key_from_named_curve_and_sec1_der(
+  named_curve: Option<const_oid::ObjectIdentifier>,
+  sec1_der: &[u8],
+) -> Result<AsymmetricPrivateKey, AsymmetricPrivateKeyError> {
+  let ec_key = sec1::EcPrivateKey::from_der(sec1_der)
+    .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+
+  let oid = named_curve.ok_or(
+    AsymmetricPrivateKeyError::MalformedOrMissingNamedCurveInEcParameters,
+  )?;
+
+  match oid {
+    ID_SECP224R1_OID => {
+      let key = p224::SecretKey::try_from(ec_key)
+        .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+      Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P224(key)))
+    }
+    ID_SECP256R1_OID => {
+      let key = p256::SecretKey::try_from(ec_key)
+        .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+      Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P256(key)))
+    }
+    ID_SECP384R1_OID => {
+      let key = p384::SecretKey::try_from(ec_key)
+        .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+      Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P384(key)))
+    }
+    ID_SECP521R1_OID => {
+      let key = p521::SecretKey::try_from(ec_key)
+        .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+      Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P521(key)))
+    }
+    ID_SECP256K1_OID => {
+      let key = k256::SecretKey::try_from(ec_key)
+        .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+      Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(key)))
+    }
+    _ => Err(AsymmetricPrivateKeyError::UnsupportedEcNamedCurve),
+  }
+}
+
+fn normalize_pem_line_width(pem: &str) -> Cow<'_, str> {
+  let mut needs_reformat = false;
+  let mut header = "";
+  let mut footer = "";
+  let mut base64_body = String::new();
+  let mut in_body = false;
+
+  for line in pem.lines() {
+    if line.starts_with("-----BEGIN ") {
+      header = line;
+      in_body = true;
+    } else if line.starts_with("-----END ") {
+      footer = line;
+      in_body = false;
+    } else if in_body {
+      let trimmed = line.trim();
+      if trimmed.len() > 64 {
+        needs_reformat = true;
+      }
+      base64_body.push_str(trimmed);
+    }
+  }
+
+  if !needs_reformat || header.is_empty() || footer.is_empty() {
+    return Cow::Borrowed(pem);
+  }
+
+  let mut result = String::with_capacity(pem.len() + 10);
+  result.push_str(header);
+  result.push('\n');
+  for chunk in base64_body.as_bytes().chunks(64) {
+    result.push_str(std::str::from_utf8(chunk).unwrap_or(""));
+    result.push('\n');
+  }
+  result.push_str(footer);
+  result.push('\n');
+  Cow::Owned(result)
 }
 
 impl KeyObjectHandle {
@@ -632,12 +903,70 @@ impl KeyObjectHandle {
           )
         })?;
 
-        if let Some(passphrase) = passphrase {
-          SecretDocument::from_pkcs8_encrypted_pem(pem, passphrase).map_err(
-            |_| AsymmetricPrivateKeyError::InvalidEncryptedPemPrivateKey,
-          )?
+        // Legacy encrypted PEM (Proc-Type/DEK-Info) — handle before
+        // SecretDocument::from_pem, which doesn't understand these headers.
+        if let Some((label, decrypted)) =
+          parse_legacy_encrypted_pem(pem, passphrase)?
+        {
+          match label {
+            "RSA PRIVATE KEY" => SecretDocument::from_pkcs1_der(&decrypted)
+              .map_err(|_| AsymmetricPrivateKeyError::InvalidPkcs1PrivateKey)?,
+            "EC PRIVATE KEY" => SecretDocument::from_sec1_der(&decrypted)
+              .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?,
+            "PRIVATE KEY" => SecretDocument::from_pkcs8_der(&decrypted)
+              .map_err(|_| AsymmetricPrivateKeyError::InvalidPkcs8PrivateKey)?,
+            "DSA PRIVATE KEY" => {
+              let private_key = parse_traditional_dsa_private_key(&decrypted)?;
+              return Ok(KeyObjectHandle::AsymmetricPrivate(
+                AsymmetricPrivateKey::Dsa(private_key),
+              ));
+            }
+            _ => {
+              return Err(AsymmetricPrivateKeyError::UnsupportedPemLabel(
+                label.to_string(),
+              ));
+            }
+          }
+        } else if let Some(passphrase) = passphrase {
+          // Try standard PKCS#8 encrypted PEM. Distinguish wrong passphrase
+          // (correct format, decryption fails) from PEM that isn't actually
+          // encrypted PKCS#8 — Node ignores the passphrase in the latter.
+          match SecretDocument::from_pkcs8_encrypted_pem(pem, passphrase) {
+            Ok(doc) => doc,
+            Err(pkcs8::Error::EncryptedPrivateKey(_)) => {
+              return Err(
+                AsymmetricPrivateKeyError::EncryptedPrivateKeyBadDecrypt,
+              );
+            }
+            Err(_) => {
+              let normalized = normalize_pem_line_width(pem);
+              let (label, doc) = SecretDocument::from_pem(&normalized)
+                .map_err(|_| AsymmetricPrivateKeyError::InvalidPemPrivateKey)?;
+              match label {
+                PrivateKeyInfo::PEM_LABEL => doc,
+                rsa::pkcs1::RsaPrivateKey::PEM_LABEL => {
+                  SecretDocument::from_pkcs1_der(doc.as_bytes()).map_err(
+                    |_| AsymmetricPrivateKeyError::InvalidPkcs1PrivateKey,
+                  )?
+                }
+                sec1::EcPrivateKey::PEM_LABEL => {
+                  SecretDocument::from_sec1_der(doc.as_bytes()).map_err(
+                    |_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey,
+                  )?
+                }
+                _ => {
+                  return Err(
+                    AsymmetricPrivateKeyError::InvalidEncryptedPemPrivateKey,
+                  );
+                }
+              }
+            }
+          }
         } else {
-          let (label, doc) = SecretDocument::from_pem(pem)
+          // Skip EC PARAMETERS block if present (legacy EC key format includes both)
+          let pem = skip_ec_parameters_block(pem);
+          let normalized = normalize_pem_line_width(pem);
+          let (label, doc) = SecretDocument::from_pem(&normalized)
             .map_err(|_| AsymmetricPrivateKeyError::InvalidPemPrivateKey)?;
 
           match label {
@@ -646,13 +975,30 @@ impl KeyObjectHandle {
             }
             PrivateKeyInfo::PEM_LABEL => doc,
             rsa::pkcs1::RsaPrivateKey::PEM_LABEL => {
-              SecretDocument::from_pkcs1_der(doc.as_bytes()).map_err(|_| {
+              let pkcs1_der = doc.as_bytes();
+              SecretDocument::from_pkcs1_der(pkcs1_der).map_err(|_| {
                 AsymmetricPrivateKeyError::InvalidPkcs1PrivateKey
               })?
             }
             sec1::EcPrivateKey::PEM_LABEL => {
               SecretDocument::from_sec1_der(doc.as_bytes())
                 .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?
+            }
+            "DSA PRIVATE KEY" => {
+              // Traditional DSA private key format:
+              // DSAPrivateKey ::= SEQUENCE {
+              //   version  INTEGER,
+              //   p        INTEGER,
+              //   q        INTEGER,
+              //   g        INTEGER,
+              //   pub_key  INTEGER,
+              //   priv_key INTEGER
+              // }
+              let private_key =
+                parse_traditional_dsa_private_key(doc.as_bytes())?;
+              return Ok(KeyObjectHandle::AsymmetricPrivate(
+                AsymmetricPrivateKey::Dsa(private_key),
+              ));
             }
             _ => {
               return Err(AsymmetricPrivateKeyError::UnsupportedPemLabel(
@@ -665,9 +1011,22 @@ impl KeyObjectHandle {
       "der" => match typ {
         "pkcs8" => {
           if let Some(passphrase) = passphrase {
-            SecretDocument::from_pkcs8_encrypted_der(key, passphrase).map_err(
-              |_| AsymmetricPrivateKeyError::InvalidEncryptedPkcs8PrivateKey,
-            )?
+            if EncryptedPrivateKeyInfo::try_from(key).is_ok() {
+              SecretDocument::from_pkcs8_encrypted_der(key, passphrase)
+                .map_err(|_| {
+                  AsymmetricPrivateKeyError::InvalidEncryptedPkcs8PrivateKey
+                })?
+            } else {
+              // Node ignores the passphrase when the key isn't actually
+              // encrypted.
+              SecretDocument::from_pkcs8_der(key).map_err(|_| {
+                AsymmetricPrivateKeyError::InvalidPkcs8PrivateKey
+              })?
+            }
+          } else if EncryptedPrivateKeyInfo::try_from(key).is_ok() {
+            return Err(
+              AsymmetricPrivateKeyError::EncryptedPkcs8DerRequiresPassphrase,
+            );
           } else {
             SecretDocument::from_pkcs8_der(key)
               .map_err(|_| AsymmetricPrivateKeyError::InvalidPkcs8PrivateKey)?
@@ -700,7 +1059,8 @@ impl KeyObjectHandle {
       }
     };
 
-    let pk_info = PrivateKeyInfo::try_from(document.as_bytes())
+    let document_bytes = document.as_bytes();
+    let pk_info = PrivateKeyInfo::try_from(document_bytes)
       .map_err(|_| AsymmetricPrivateKeyError::InvalidPrivateKey)?;
 
     let alg = pk_info.algorithm.oid;
@@ -727,47 +1087,19 @@ impl KeyObjectHandle {
         AsymmetricPrivateKey::Dsa(private_key)
       }
       EC_OID => {
-        let named_curve = pk_info.algorithm.parameters_oid().map_err(|_| {
-          AsymmetricPrivateKeyError::MalformedOrMissingNamedCurveInEcParameters
-        })?;
-        match named_curve {
-          ID_SECP224R1_OID => {
-            let secret_key = p224::SecretKey::from_sec1_der(
-              pk_info.private_key,
-            )
-            .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
-            AsymmetricPrivateKey::Ec(EcPrivateKey::P224(secret_key))
-          }
-          ID_SECP256R1_OID => {
-            let secret_key = p256::SecretKey::from_sec1_der(
-              pk_info.private_key,
-            )
-            .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
-            AsymmetricPrivateKey::Ec(EcPrivateKey::P256(secret_key))
-          }
-          ID_SECP384R1_OID => {
-            let secret_key = p384::SecretKey::from_sec1_der(
-              pk_info.private_key,
-            )
-            .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
-            AsymmetricPrivateKey::Ec(EcPrivateKey::P384(secret_key))
-          }
-          ID_SECP521R1_OID => {
-            let secret_key = p521::SecretKey::from_sec1_der(
-              pk_info.private_key,
-            )
-            .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
-            AsymmetricPrivateKey::Ec(EcPrivateKey::P521(secret_key))
-          }
-          ID_SECP256K1_OID => {
-            let secret_key = k256::SecretKey::from_sec1_der(
-              pk_info.private_key,
-            )
-            .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
-            AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(secret_key))
-          }
-          _ => return Err(AsymmetricPrivateKeyError::UnsupportedEcNamedCurve),
-        }
+        // Try to get the named curve from the PKCS#8 AlgorithmIdentifier
+        // parameters. If that fails, fall back to extracting it from the
+        // inner SEC1 ECPrivateKey structure's parameters field.
+        let named_curve =
+          pk_info.algorithm.parameters_oid().ok().or_else(|| {
+            let ec_key =
+              sec1::EcPrivateKey::from_der(pk_info.private_key).ok()?;
+            ec_key.parameters.and_then(|p| p.named_curve())
+          });
+        ec_private_key_from_named_curve_and_sec1_der(
+          named_curve,
+          pk_info.private_key,
+        )?
       }
       X25519_OID => {
         let string_ref = OctetStringRef::from_der(pk_info.private_key)
@@ -784,6 +1116,28 @@ impl KeyObjectHandle {
           .map_err(|_| AsymmetricPrivateKeyError::InvalidEd25519PrivateKey)?;
         AsymmetricPrivateKey::Ed25519(signing_key)
       }
+      X448_OID => {
+        let string_ref = OctetStringRef::from_der(pk_info.private_key)
+          .map_err(|_| AsymmetricPrivateKeyError::InvalidX448PrivateKey)?;
+        if string_ref.as_bytes().len() != 56 {
+          return Err(AsymmetricPrivateKeyError::X448PrivateKeyIsWrongLength);
+        }
+        let mut bytes = [0u8; 56];
+        bytes.copy_from_slice(string_ref.as_bytes());
+        AsymmetricPrivateKey::X448(bytes)
+      }
+      ED448_OID => {
+        let string_ref = OctetStringRef::from_der(pk_info.private_key)
+          .map_err(|_| AsymmetricPrivateKeyError::InvalidEd448PrivateKey)?;
+        let key_bytes = string_ref.as_bytes();
+        if key_bytes.len() != 57 {
+          return Err(AsymmetricPrivateKeyError::InvalidEd448PrivateKey);
+        }
+        let mut seed = [0u8; 57];
+        seed.copy_from_slice(key_bytes);
+        let seed = ed448_goldilocks::EdwardsScalarBytes::from(seed);
+        AsymmetricPrivateKey::Ed448(ed448_goldilocks::SigningKey::from(seed))
+      }
       DH_KEY_AGREEMENT_OID => {
         let params = pk_info
           .algorithm
@@ -791,12 +1145,17 @@ impl KeyObjectHandle {
           .ok_or(AsymmetricPrivateKeyError::MissingDhParameters)?;
         let params = pkcs3::DhParameter::from_der(&params.to_der().unwrap())
           .map_err(|_| AsymmetricPrivateKeyError::MissingDhParameters)?;
+        // pk_info.private_key is a DER-encoded INTEGER (tag + length + value)
+        // inside the PKCS#8 OCTET STRING, so we need to decode it first.
+        let private_key_int =
+          <AnyRef<'_> as spki::der::Decode>::from_der(pk_info.private_key)
+            .map_err(|_| AsymmetricPrivateKeyError::MissingDhParameters)?;
         AsymmetricPrivateKey::Dh(DhPrivateKey {
-          key: dh::PrivateKey::from_bytes(pk_info.private_key),
+          key: dh::PrivateKey::from_bytes(private_key_int.value()),
           params,
         })
       }
-      _ => return Err(AsymmetricPrivateKeyError::UnsupportedPrivateKeyOid),
+      _ => return Err(UnsupportedPrivateKeyOidError.into()),
     };
 
     Ok(KeyObjectHandle::AsymmetricPrivate(private_key))
@@ -861,6 +1220,8 @@ impl KeyObjectHandle {
       _ => {
         const ID_ED25519: &[u8] = &oid!(raw 1.3.101.112);
         const ID_X25519: &[u8] = &oid!(raw 1.3.101.110);
+        const ID_ED448: &[u8] = &oid!(raw 1.3.101.113);
+        const ID_X448: &[u8] = &oid!(raw 1.3.101.111);
 
         match spki.algorithm.algorithm.as_bytes() {
           ID_ED25519 => {
@@ -879,6 +1240,22 @@ impl KeyObjectHandle {
               .try_into()
               .map_err(|_| X509PublicKeyError::InvalidX25519Key)?;
             AsymmetricPublicKey::X25519(x25519_dalek::PublicKey::from(data))
+          }
+          ID_ED448 => {
+            let data = spki.subject_public_key.as_ref();
+            let point_bytes: &[u8; 57] = data
+              .try_into()
+              .map_err(|_| X509PublicKeyError::InvalidEd448Key)?;
+            let vk = ed448_goldilocks::VerifyingKey::from_bytes(point_bytes)
+              .map_err(|_| X509PublicKeyError::InvalidEd448Key)?;
+            AsymmetricPublicKey::Ed448(vk)
+          }
+          ID_X448 => {
+            let data: &[u8] = spki.subject_public_key.as_ref();
+            let data: [u8; 56] = data
+              .try_into()
+              .map_err(|_| X509PublicKeyError::InvalidX25519Key)?;
+            AsymmetricPublicKey::X448(data)
           }
           _ => return Err(X509PublicKeyError::UnsupportedX509KeyType),
         }
@@ -1029,6 +1406,39 @@ impl KeyObjectHandle {
           ))
         }
       }
+      "Ed448" => {
+        if !is_public {
+          let key_bytes: [u8; 57] =
+            data.try_into().map_err(|_| EdRawError::InvalidEd448Key)?;
+          let seed = ed448_goldilocks::EdwardsScalarBytes::from(key_bytes);
+          Ok(KeyObjectHandle::AsymmetricPrivate(
+            AsymmetricPrivateKey::Ed448(ed448_goldilocks::SigningKey::from(
+              seed,
+            )),
+          ))
+        } else {
+          let point_bytes: &[u8; 57] =
+            data.try_into().map_err(|_| EdRawError::InvalidEd448Key)?;
+          let vk = ed448_goldilocks::VerifyingKey::from_bytes(point_bytes)
+            .map_err(|_| EdRawError::InvalidEd448Key)?;
+          Ok(KeyObjectHandle::AsymmetricPublic(
+            AsymmetricPublicKey::Ed448(vk),
+          ))
+        }
+      }
+      "X448" => {
+        let data: [u8; 56] =
+          data.try_into().map_err(|_| EdRawError::InvalidX448Key)?;
+        if !is_public {
+          Ok(KeyObjectHandle::AsymmetricPrivate(
+            AsymmetricPrivateKey::X448(data),
+          ))
+        } else {
+          Ok(KeyObjectHandle::AsymmetricPublic(
+            AsymmetricPublicKey::X448(data),
+          ))
+        }
+      }
       _ => Err(EdRawError::UnsupportedCurve),
     }
   }
@@ -1047,10 +1457,29 @@ impl KeyObjectHandle {
           )
         })?;
 
-        let (label, document) = Document::from_pem(pem)
-          .map_err(|_| AsymmetricPublicKeyError::InvalidPemPublicKey)?;
+        // Legacy "Proc-Type: 4,ENCRYPTED" PEMs (e.g. EC PRIVATE KEY encrypted
+        // with AES-128-CBC) cannot be parsed by decode_pem_lenient because the
+        // DEK-Info header bytes aren't valid base64. Route directly through
+        // the private key path, which knows how to decrypt them.
+        if pem.contains("Proc-Type: 4,ENCRYPTED") {
+          let handle = KeyObjectHandle::new_asymmetric_private_key_from_js(
+            key, format, typ, passphrase,
+          )?;
+          match handle {
+            KeyObjectHandle::AsymmetricPrivate(private) => {
+              return Ok(KeyObjectHandle::AsymmetricPublic(
+                private.to_public_key(),
+              ));
+            }
+            KeyObjectHandle::AsymmetricPublic(_)
+            | KeyObjectHandle::Secret(_) => unreachable!(),
+          }
+        }
 
-        match label {
+        let (label, document) = decode_pem_lenient(pem)
+          .ok_or(AsymmetricPublicKeyError::InvalidPemPublicKey)?;
+
+        match label.as_str() {
           SubjectPublicKeyInfoRef::PEM_LABEL => document,
           rsa::pkcs1::RsaPublicKey::PEM_LABEL => {
             Document::from_pkcs1_der(document.as_bytes())
@@ -1059,7 +1488,8 @@ impl KeyObjectHandle {
           EncryptedPrivateKeyInfo::PEM_LABEL
           | PrivateKeyInfo::PEM_LABEL
           | sec1::EcPrivateKey::PEM_LABEL
-          | rsa::pkcs1::RsaPrivateKey::PEM_LABEL => {
+          | rsa::pkcs1::RsaPrivateKey::PEM_LABEL
+          | "DSA PRIVATE KEY" => {
             let handle = KeyObjectHandle::new_asymmetric_private_key_from_js(
               key, format, typ, passphrase,
             )?;
@@ -1180,6 +1610,29 @@ impl KeyObjectHandle {
           .map_err(|_| AsymmetricPublicKeyError::InvalidEd25519PublicKey)?;
         AsymmetricPublicKey::Ed25519(verifying_key)
       }
+      X448_OID => {
+        let mut bytes = [0; 56];
+        let data = spki.subject_public_key.as_bytes().ok_or(
+          AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInX448Spki,
+        )?;
+        if data.len() < 56 {
+          return Err(AsymmetricPublicKeyError::X448PublicKeyIsTooShort);
+        }
+        bytes.copy_from_slice(&data[0..56]);
+        AsymmetricPublicKey::X448(bytes)
+      }
+      ED448_OID => {
+        let data = spki
+          .subject_public_key
+          .as_bytes()
+          .ok_or(AsymmetricPublicKeyError::InvalidEd448PublicKey)?;
+        let point_bytes: &[u8; 57] = data
+          .try_into()
+          .map_err(|_| AsymmetricPublicKeyError::InvalidEd448PublicKey)?;
+        let vk = ed448_goldilocks::VerifyingKey::from_bytes(point_bytes)
+          .map_err(|_| AsymmetricPublicKeyError::InvalidEd448PublicKey)?;
+        AsymmetricPublicKey::Ed448(vk)
+      }
       DH_KEY_AGREEMENT_OID => {
         let params = spki
           .algorithm
@@ -1193,8 +1646,15 @@ impl KeyObjectHandle {
             AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInDhSpki,
           );
         };
+        // subject_public_key is a DER-encoded INTEGER inside the BIT STRING,
+        // so we need to decode it to get the raw key bytes.
+        let public_key_int =
+          <AnyRef<'_> as spki::der::Decode>::from_der(subject_public_key)
+            .map_err(|_| {
+              AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInDhSpki
+            })?;
         AsymmetricPublicKey::Dh(DhPublicKey {
-          key: dh::PublicKey::from_bytes(subject_public_key),
+          key: dh::PublicKey::from_bytes(public_key_int.value()),
           params,
         })
       }
@@ -1216,6 +1676,119 @@ pub enum RsaPssParamsParseError {
   UnsupportedPssMaskGenAlgorithm,
   #[error("malformed or missing pss mask gen algorithm parameters")]
   MalformedOrMissingPssMaskGenAlgorithm,
+}
+
+/// Parse a traditional DSA private key (PEM label "DSA PRIVATE KEY").
+///
+/// The traditional format is:
+/// ```asn1
+/// DSAPrivateKey ::= SEQUENCE {
+///   version  INTEGER,
+///   p        INTEGER,
+///   q        INTEGER,
+///   g        INTEGER,
+///   pub_key  INTEGER,
+///   priv_key INTEGER
+/// }
+/// ```
+/// Skips the EC PARAMETERS PEM block if present at the start.
+/// Legacy EC key files sometimes include an EC PARAMETERS block before the
+/// actual EC PRIVATE KEY block; `SecretDocument::from_pem` reads only the
+/// first block, so we need to skip it.
+fn skip_ec_parameters_block(pem: &str) -> &str {
+  const BEGIN_EC_PARAMS: &str = "-----BEGIN EC PARAMETERS-----";
+  const END_EC_PARAMS: &str = "-----END EC PARAMETERS-----";
+  let trimmed = pem.trim_start();
+  if trimmed.starts_with(BEGIN_EC_PARAMS)
+    && let Some(pos) = trimmed.find(END_EC_PARAMS)
+  {
+    return trimmed[pos + END_EC_PARAMS.len()..].trim_start();
+  }
+  trimmed
+}
+
+fn parse_traditional_dsa_private_key(
+  der: &[u8],
+) -> Result<dsa::SigningKey, AsymmetricPrivateKeyError> {
+  use spki::der::Decode;
+  use spki::der::Reader as _;
+  use spki::der::SliceReader;
+
+  let err = || AsymmetricPrivateKeyError::InvalidDsaPrivateKey;
+
+  let mut reader = SliceReader::new(der).map_err(|_| err())?;
+  reader
+    .sequence(|seq_reader| {
+      // version
+      let _version = asn1::UintRef::decode(seq_reader)?;
+      // p
+      let p_ref = asn1::UintRef::decode(seq_reader)?;
+      // q
+      let q_ref = asn1::UintRef::decode(seq_reader)?;
+      // g
+      let g_ref = asn1::UintRef::decode(seq_reader)?;
+      // y (public key)
+      let y_ref = asn1::UintRef::decode(seq_reader)?;
+      // x (private key)
+      let x_ref = asn1::UintRef::decode(seq_reader)?;
+
+      let p = num_bigint_dig::BigUint::from_bytes_be(p_ref.as_bytes());
+      let q = num_bigint_dig::BigUint::from_bytes_be(q_ref.as_bytes());
+      let g = num_bigint_dig::BigUint::from_bytes_be(g_ref.as_bytes());
+      let y = num_bigint_dig::BigUint::from_bytes_be(y_ref.as_bytes());
+      let x = num_bigint_dig::BigUint::from_bytes_be(x_ref.as_bytes());
+
+      let components = dsa::Components::from_components(p, q, g)
+        .map_err(|_| spki::der::Tag::Sequence.value_error())?;
+      let verifying_key = dsa::VerifyingKey::from_components(components, y)
+        .map_err(|_| spki::der::Tag::Sequence.value_error())?;
+      dsa::SigningKey::from_components(verifying_key, x)
+        .map_err(|_| spki::der::Tag::Sequence.value_error())
+    })
+    .map_err(|_| err())
+}
+
+/// Leniently decode a PEM string, tolerating non-standard line widths.
+/// The strict `Document::from_pem` / `SecretDocument::from_pem` reject PEM
+/// with lines longer than 64 base64 characters (per RFC 7468), but OpenSSL
+/// and Node.js accept any line width. This function falls back to manual
+/// base64 decoding when the strict parser fails.
+fn decode_pem_lenient(pem: &str) -> Option<(String, Document)> {
+  // Try strict parsing first
+  if let Ok((label, doc)) = Document::from_pem(pem) {
+    return Some((label.to_string(), doc));
+  }
+
+  // Fall back to lenient parsing: extract label and base64 manually
+  let pem = pem.trim();
+  let first_line = pem.lines().next()?;
+  let last_line = pem.lines().next_back()?;
+
+  let label = first_line
+    .strip_prefix("-----BEGIN ")
+    .and_then(|s: &str| s.strip_suffix("-----"))?;
+  let end_label = last_line
+    .strip_prefix("-----END ")
+    .and_then(|s: &str| s.strip_suffix("-----"))?;
+
+  if label != end_label {
+    return None;
+  }
+
+  let b64: String = pem
+    .lines()
+    .filter(|line| !line.starts_with("-----"))
+    .flat_map(|line| line.chars())
+    .filter(|c| !c.is_whitespace())
+    .collect();
+
+  let der = base64::engine::general_purpose::STANDARD
+    .decode(&b64)
+    .ok()?;
+
+  let doc = Document::from_der(&der).ok()?;
+
+  Some((label.to_string(), doc))
 }
 
 fn parse_rsa_pss_params(
@@ -1242,10 +1815,25 @@ fn parse_rsa_pss_params(
         if alg.oid != ID_MFG1 {
           return Err(RsaPssParamsParseError::UnsupportedPssMaskGenAlgorithm);
         }
-        let params = alg.parameters_oid().map_err(|_| {
-          RsaPssParamsParseError::MalformedOrMissingPssMaskGenAlgorithm
-        })?;
-        match params {
+        let mgf1_params_any = alg.parameters.ok_or(
+          RsaPssParamsParseError::MalformedOrMissingPssMaskGenAlgorithm,
+        )?;
+        // MGF1 parameters are an AlgorithmIdentifier (SEQUENCE { OID, params? }).
+        // parameters_oid() fails because it expects a bare OID, but the actual
+        // value is a SEQUENCE. Decode the SEQUENCE to extract the hash OID.
+        let mgf1_hash_oid = mgf1_params_any
+          .sequence(|reader| {
+            let oid = rsa::pkcs8::ObjectIdentifier::decode(reader)?;
+            // Consume optional parameters (e.g. NULL) without failing
+            while !reader.is_finished() {
+              rsa::pkcs8::der::asn1::AnyRef::decode(reader)?;
+            }
+            Ok(oid)
+          })
+          .map_err(|_| {
+            RsaPssParamsParseError::MalformedOrMissingPssMaskGenAlgorithm
+          })?;
+        match mgf1_hash_oid {
           ID_SHA1_OID => RsaPssHashAlgorithm::Sha1,
           ID_SHA224_OID => RsaPssHashAlgorithm::Sha224,
           ID_SHA256_OID => RsaPssHashAlgorithm::Sha256,
@@ -1261,9 +1849,9 @@ fn parse_rsa_pss_params(
       None => hash_algorithm,
     };
 
-    let salt_length = params
-      .salt_length
-      .unwrap_or_else(|| hash_algorithm.salt_length());
+    // RFC 4055 / PKCS#1 v2.1 default for RSASSA-PSS-params.saltLength is 20,
+    // independent of the hash algorithm.
+    let salt_length = params.salt_length.unwrap_or(20);
 
     Some(RsaPssDetails {
       hash_algorithm,
@@ -1286,9 +1874,13 @@ fn bytes_to_b64(bytes: &[u8]) -> String {
 pub enum AsymmetricPrivateKeyJwkError {
   #[error("key is not an asymmetric private key")]
   KeyIsNotAsymmetricPrivateKey,
-  #[error("Unsupported JWK EC curve: P224")]
+  #[class(generic)]
+  #[property("code" = "ERR_CRYPTO_JWK_UNSUPPORTED_CURVE")]
+  #[error("Unsupported JWK EC curve: secp224r1.")]
   UnsupportedJwkEcCurveP224,
-  #[error("jwk export not implemented for this key type")]
+  #[class(generic)]
+  #[property("code" = "ERR_CRYPTO_JWK_UNSUPPORTED_KEY_TYPE")]
+  #[error("Unsupported JWK Key Type.")]
   JwkExportNotImplementedForKeyType,
 }
 
@@ -1297,9 +1889,13 @@ pub enum AsymmetricPrivateKeyJwkError {
 pub enum AsymmetricPublicKeyJwkError {
   #[error("key is not an asymmetric public key")]
   KeyIsNotAsymmetricPublicKey,
-  #[error("Unsupported JWK EC curve: P224")]
+  #[class(generic)]
+  #[property("code" = "ERR_CRYPTO_JWK_UNSUPPORTED_CURVE")]
+  #[error("Unsupported JWK EC curve: secp224r1.")]
   UnsupportedJwkEcCurveP224,
-  #[error("jwk export not implemented for this key type")]
+  #[class(generic)]
+  #[property("code" = "ERR_CRYPTO_JWK_UNSUPPORTED_KEY_TYPE")]
+  #[error("Unsupported JWK Key Type.")]
   JwkExportNotImplementedForKeyType,
 }
 
@@ -1322,6 +1918,10 @@ pub enum AsymmetricPublicKeyDerError {
   InvalidX25519PublicKey,
   #[error("invalid Ed25519 public key")]
   InvalidEd25519PublicKey,
+  #[error("invalid X448 public key")]
+  InvalidX448PublicKey,
+  #[error("invalid Ed448 public key")]
+  InvalidEd448PublicKey,
   #[error("invalid DH public key")]
   InvalidDhPublicKey,
   #[error("unsupported key type: {0}")]
@@ -1355,6 +1955,23 @@ impl AsymmetricPublicKey {
         });
         Ok(jwk)
       }
+      AsymmetricPublicKey::X448(key) => {
+        let jwk = deno_core::serde_json::json!({
+            "kty": "OKP",
+            "crv": "X448",
+            "x": bytes_to_b64(key),
+        });
+        Ok(jwk)
+      }
+      AsymmetricPublicKey::Ed448(key) => {
+        let bytes = key.to_bytes();
+        let jwk = deno_core::serde_json::json!({
+            "kty": "OKP",
+            "crv": "Ed448",
+            "x": bytes_to_b64(&bytes),
+        });
+        Ok(jwk)
+      }
       AsymmetricPublicKey::Rsa(key) => {
         let n = key.n();
         let e = key.e();
@@ -1366,17 +1983,7 @@ impl AsymmetricPublicKey {
         });
         Ok(jwk)
       }
-      AsymmetricPublicKey::RsaPss(key) => {
-        let n = key.key.n();
-        let e = key.key.e();
-
-        let jwk = deno_core::serde_json::json!({
-            "kty": "RSA",
-            "n": bytes_to_b64(&n.to_bytes_be()),
-            "e": bytes_to_b64(&e.to_bytes_be()),
-        });
-        Ok(jwk)
-      }
+      // RSA-PSS, DSA, X448 all map to "Unsupported JWK Key Type." in Node.js.
       _ => Err(AsymmetricPublicKeyJwkError::JwkExportNotImplementedForKeyType),
     }
   }
@@ -1404,8 +2011,22 @@ impl AsymmetricPublicKey {
             .map_err(|_| AsymmetricPublicKeyDerError::InvalidRsaPublicKey)?
             .into_vec()
             .into_boxed_slice(),
-          AsymmetricPublicKey::RsaPss(_key) => {
-            return Err(AsymmetricPublicKeyDerError::ExportingNonRsaPssPublicKeyAsSpkiUnsupported)
+          AsymmetricPublicKey::RsaPss(key) => {
+            let pkcs1_der = key.key
+              .to_pkcs1_der()
+              .map_err(|_| AsymmetricPublicKeyDerError::InvalidRsaPublicKey)?;
+            let spki = SubjectPublicKeyInfoRef {
+              algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
+                oid: RSASSA_PSS_OID,
+                parameters: None,
+              },
+              subject_public_key: BitStringRef::from_bytes(pkcs1_der.as_bytes())
+                .map_err(|_| AsymmetricPublicKeyDerError::InvalidRsaPublicKey)?,
+            };
+            spki
+              .to_der()
+              .map_err(|_| AsymmetricPublicKeyDerError::InvalidRsaPublicKey)?
+              .into_boxed_slice()
           }
           AsymmetricPublicKey::Dsa(key) => key
             .to_public_key_der()
@@ -1413,12 +2034,31 @@ impl AsymmetricPublicKey {
             .into_vec()
             .into_boxed_slice(),
           AsymmetricPublicKey::Ec(key) => {
-            let (sec1, oid) = match key {
-              EcPublicKey::P224(key) => (key.to_sec1_bytes(), ID_SECP224R1_OID),
-              EcPublicKey::P256(key) => (key.to_sec1_bytes(), ID_SECP256R1_OID),
-              EcPublicKey::P384(key) => (key.to_sec1_bytes(), ID_SECP384R1_OID),
-              EcPublicKey::P521(key) => (key.to_sec1_bytes(), ID_SECP521R1_OID),
-              EcPublicKey::Secp256k1(key) => (key.to_sec1_bytes(), ID_SECP256K1_OID),
+            // Always emit the uncompressed SEC1 form for SPKI export — that
+            // is what Node.js / OpenSSL produce, regardless of the curve's
+            // `PointCompression` default (k256 defaults to compressed).
+            use elliptic_curve::sec1::ToEncodedPoint;
+            let (sec1, oid): (Box<[u8]>, _) = match key {
+              EcPublicKey::P224(key) => (
+                key.to_encoded_point(false).as_bytes().to_vec().into_boxed_slice(),
+                ID_SECP224R1_OID,
+              ),
+              EcPublicKey::P256(key) => (
+                key.to_encoded_point(false).as_bytes().to_vec().into_boxed_slice(),
+                ID_SECP256R1_OID,
+              ),
+              EcPublicKey::P384(key) => (
+                key.to_encoded_point(false).as_bytes().to_vec().into_boxed_slice(),
+                ID_SECP384R1_OID,
+              ),
+              EcPublicKey::P521(key) => (
+                key.to_encoded_point(false).as_bytes().to_vec().into_boxed_slice(),
+                ID_SECP521R1_OID,
+              ),
+              EcPublicKey::Secp256k1(key) => (
+                key.to_encoded_point(false).as_bytes().to_vec().into_boxed_slice(),
+                ID_SECP256K1_OID,
+              ),
             };
 
             let spki = SubjectPublicKeyInfoRef {
@@ -1465,15 +2105,51 @@ impl AsymmetricPublicKey {
               .map_err(|_| AsymmetricPublicKeyDerError::InvalidEd25519PublicKey)?
               .into_boxed_slice()
           }
+          AsymmetricPublicKey::X448(key) => {
+            let spki = SubjectPublicKeyInfoRef {
+              algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
+                oid: X448_OID,
+                parameters: None,
+              },
+              subject_public_key: BitStringRef::from_bytes(key)
+                .map_err(|_| AsymmetricPublicKeyDerError::InvalidX448PublicKey)?,
+            };
+
+            spki
+              .to_der()
+              .map_err(|_| AsymmetricPublicKeyDerError::InvalidX448PublicKey)?
+              .into_boxed_slice()
+          }
+          AsymmetricPublicKey::Ed448(key) => {
+            let bytes = key.to_bytes();
+            let spki = SubjectPublicKeyInfoRef {
+              algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
+                oid: ED448_OID,
+                parameters: None,
+              },
+              subject_public_key: BitStringRef::from_bytes(&bytes)
+                .map_err(|_| AsymmetricPublicKeyDerError::InvalidEd448PublicKey)?,
+            };
+
+            spki
+              .to_der()
+              .map_err(|_| AsymmetricPublicKeyDerError::InvalidEd448PublicKey)?
+              .into_boxed_slice()
+          }
           AsymmetricPublicKey::Dh(key) => {
-            let public_key_bytes = key.key.clone().into_vec();
+            // The public key in SPKI for DH must be a DER-encoded INTEGER
+            let raw_key = key.key.clone().into_vec();
+            let public_key_int = asn1::Int::new(&raw_key).unwrap();
+            let public_key_der = public_key_int
+              .to_der()
+              .map_err(|_| AsymmetricPublicKeyDerError::InvalidDhPublicKey)?;
             let params = key.params.to_der().unwrap();
             let spki = SubjectPublicKeyInfoRef {
               algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
                 oid: DH_KEY_AGREEMENT_OID,
                 parameters: Some(AnyRef::new(Tag::Sequence, &params).unwrap()),
               },
-              subject_public_key: BitStringRef::from_bytes(&public_key_bytes)
+              subject_public_key: BitStringRef::from_bytes(&public_key_der)
                 .map_err(|_| {
                   AsymmetricPublicKeyDerError::InvalidDhPublicKey
               })?,
@@ -1513,6 +2189,10 @@ pub enum AsymmetricPrivateKeyDerError {
   InvalidX25519PrivateKey,
   #[error("invalid Ed25519 private key")]
   InvalidEd25519PrivateKey,
+  #[error("invalid X448 private key")]
+  InvalidX448PrivateKey,
+  #[error("invalid Ed448 private key")]
+  InvalidEd448PrivateKey,
   #[error("invalid DH private key")]
   InvalidDhPrivateKey,
   #[error("unsupported key type: {0}")]
@@ -1558,7 +2238,9 @@ impl AsymmetricPrivateKey {
   ) -> Result<deno_core::serde_json::Value, AsymmetricPrivateKeyJwkError> {
     match self {
       AsymmetricPrivateKey::Rsa(key) => Ok(rsa_private_to_jwk(key)),
-      AsymmetricPrivateKey::RsaPss(key) => Ok(rsa_private_to_jwk(&key.key)),
+      AsymmetricPrivateKey::RsaPss(_) => {
+        Err(AsymmetricPrivateKeyJwkError::JwkExportNotImplementedForKeyType)
+      }
       AsymmetricPrivateKey::Ec(key) => {
         let jwk = key.to_jwk()?;
         Ok(deno_core::serde_json::json!(jwk))
@@ -1590,6 +2272,32 @@ impl AsymmetricPrivateKey {
             "kty": "OKP",
         }))
       }
+      AsymmetricPrivateKey::X448(key) => {
+        let AsymmetricPublicKey::X448(x) = self.to_public_key() else {
+          unreachable!();
+        };
+
+        Ok(deno_core::serde_json::json!({
+            "crv": "X448",
+            "x": bytes_to_b64(&x),
+            "d": bytes_to_b64(&key[..56]),
+            "kty": "OKP",
+        }))
+      }
+      AsymmetricPrivateKey::Ed448(key) => {
+        let bytes = key.to_bytes();
+        let AsymmetricPublicKey::Ed448(x) = self.to_public_key() else {
+          unreachable!();
+        };
+        let x_bytes = x.to_bytes();
+
+        Ok(deno_core::serde_json::json!({
+            "crv": "Ed448",
+            "x": bytes_to_b64(&x_bytes),
+            "d": bytes_to_b64(&bytes),
+            "kty": "OKP",
+        }))
+      }
       _ => Err(AsymmetricPrivateKeyJwkError::JwkExportNotImplementedForKeyType),
     }
   }
@@ -1615,15 +2323,38 @@ impl AsymmetricPrivateKey {
       },
       "sec1" => match self {
         AsymmetricPrivateKey::Ec(key) => {
-          let sec1 = match key {
-            EcPrivateKey::P224(key) => key.to_sec1_der(),
-            EcPrivateKey::P256(key) => key.to_sec1_der(),
-            EcPrivateKey::P384(key) => key.to_sec1_der(),
-            EcPrivateKey::P521(key) => key.to_sec1_der(),
-            EcPrivateKey::Secp256k1(key) => key.to_sec1_der(),
-          }
-          .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEcPrivateKey)?;
-          Ok(sec1.to_vec().into_boxed_slice())
+          let (sec1_der, curve_oid) = match key {
+            EcPrivateKey::P224(key) => {
+              (key.to_sec1_der(), ID_SECP224R1_OID)
+            }
+            EcPrivateKey::P256(key) => {
+              (key.to_sec1_der(), ID_SECP256R1_OID)
+            }
+            EcPrivateKey::P384(key) => {
+              (key.to_sec1_der(), ID_SECP384R1_OID)
+            }
+            EcPrivateKey::P521(key) => {
+              (key.to_sec1_der(), ID_SECP521R1_OID)
+            }
+            EcPrivateKey::Secp256k1(key) => {
+              (key.to_sec1_der(), ID_SECP256K1_OID)
+            }
+          };
+          let sec1_der = sec1_der
+            .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEcPrivateKey)?;
+          // The elliptic-curve crate's to_sec1_der() omits the optional
+          // `parameters` field. Re-encode with the curve OID included to
+          // match OpenSSL/Node.js behavior.
+          let mut ec_key =
+            sec1::EcPrivateKey::from_der(&sec1_der)
+              .map_err(|_| {
+                AsymmetricPrivateKeyDerError::InvalidEcPrivateKey
+              })?;
+          ec_key.parameters = Some(curve_oid.into());
+          let der = ec_key
+            .to_der()
+            .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEcPrivateKey)?;
+          Ok(der.into_boxed_slice())
         }
         _ => Err(AsymmetricPrivateKeyDerError::ExportingNonEcPrivateKeyAsSec1Unsupported),
       },
@@ -1696,15 +2427,61 @@ impl AsymmetricPrivateKey {
               .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEd25519PrivateKey)?
               .into_boxed_slice()
           }
+          AsymmetricPrivateKey::X448(key) => {
+            let private_key = OctetStringRef::new(&key[..56])
+              .map_err(|_| AsymmetricPrivateKeyDerError::InvalidX448PrivateKey)?
+              .to_der()
+              .map_err(|_| AsymmetricPrivateKeyDerError::InvalidX448PrivateKey)?;
+
+            let private_key = PrivateKeyInfo {
+              algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
+                oid: X448_OID,
+                parameters: None,
+              },
+              private_key: &private_key,
+              public_key: None,
+            };
+
+            private_key
+              .to_der()
+              .map_err(|_| AsymmetricPrivateKeyDerError::InvalidX448PrivateKey)?
+              .into_boxed_slice()
+          }
+          AsymmetricPrivateKey::Ed448(key) => {
+            let seed = key.to_bytes();
+            let private_key = OctetStringRef::new(&seed)
+              .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEd448PrivateKey)?
+              .to_der()
+              .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEd448PrivateKey)?;
+
+            let private_key = PrivateKeyInfo {
+              algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
+                oid: ED448_OID,
+                parameters: None,
+              },
+              private_key: &private_key,
+              public_key: None,
+            };
+
+            private_key
+              .to_der()
+              .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEd448PrivateKey)?
+              .into_boxed_slice()
+          }
           AsymmetricPrivateKey::Dh(key) => {
-            let private_key = key.key.clone().into_vec();
+            // The private key in PKCS#8 for DH must be a DER-encoded INTEGER
+            let raw_key = key.key.clone().into_vec();
+            let private_key_int = asn1::Int::new(&raw_key).unwrap();
+            let private_key_der = private_key_int
+              .to_der()
+              .map_err(|_| AsymmetricPrivateKeyDerError::InvalidDhPrivateKey)?;
             let params = key.params.to_der().unwrap();
             let private_key = PrivateKeyInfo {
               algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
                 oid: DH_KEY_AGREEMENT_OID,
                 parameters: Some(AnyRef::new(Tag::Sequence, &params).unwrap()),
               },
-              private_key: &private_key,
+              private_key: &private_key_der,
               public_key: None,
             };
 
@@ -1821,6 +2598,14 @@ pub fn op_node_get_asymmetric_key_type(
     | KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Ed25519(_)) => {
       Ok("ed25519")
     }
+    KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::X448(_))
+    | KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::X448(_)) => {
+      Ok("x448")
+    }
+    KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Ed448(_))
+    | KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Ed448(_)) => {
+      Ok("ed448")
+    }
     KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Dh(_))
     | KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Dh(_)) => Ok("dh"),
     KeyObjectHandle::Secret(_) => Err(JsErrorBox::type_error(
@@ -1845,7 +2630,7 @@ pub enum AsymmetricKeyDetails {
     mgf1_hash_algorithm: &'static str,
     salt_length: u32,
   },
-  #[serde(rename = "rsaPss")]
+  #[serde(rename = "rsaPss", rename_all = "camelCase")]
   RsaPssBasic {
     modulus_length: usize,
     public_exponent: V8BigInt,
@@ -1861,6 +2646,8 @@ pub enum AsymmetricKeyDetails {
   },
   X25519,
   Ed25519,
+  X448,
+  Ed448,
   Dh,
 }
 
@@ -1923,6 +2710,8 @@ pub fn op_node_get_asymmetric_key_details(
       }
       AsymmetricPrivateKey::X25519(_) => Ok(AsymmetricKeyDetails::X25519),
       AsymmetricPrivateKey::Ed25519(_) => Ok(AsymmetricKeyDetails::Ed25519),
+      AsymmetricPrivateKey::X448(_) => Ok(AsymmetricKeyDetails::X448),
+      AsymmetricPrivateKey::Ed448(_) => Ok(AsymmetricKeyDetails::Ed448),
       AsymmetricPrivateKey::Dh(_) => Ok(AsymmetricKeyDetails::Dh),
     },
     KeyObjectHandle::AsymmetricPublic(public_key) => match public_key {
@@ -1978,6 +2767,8 @@ pub fn op_node_get_asymmetric_key_details(
       }
       AsymmetricPublicKey::X25519(_) => Ok(AsymmetricKeyDetails::X25519),
       AsymmetricPublicKey::Ed25519(_) => Ok(AsymmetricKeyDetails::Ed25519),
+      AsymmetricPublicKey::X448(_) => Ok(AsymmetricKeyDetails::X448),
+      AsymmetricPublicKey::Ed448(_) => Ok(AsymmetricKeyDetails::Ed448),
       AsymmetricPublicKey::Dh(_) => Ok(AsymmetricKeyDetails::Dh),
     },
     KeyObjectHandle::Secret(_) => Err(JsErrorBox::type_error(
@@ -1996,7 +2787,7 @@ pub fn op_node_get_symmetric_key_size(
     | KeyObjectHandle::AsymmetricPublic(_) => Err(JsErrorBox::type_error(
       "asymmetric key is not a symmetric key",
     )),
-    KeyObjectHandle::Secret(key) => Ok(key.len() * 8),
+    KeyObjectHandle::Secret(key) => Ok(key.len()),
   }
 }
 
@@ -2071,18 +2862,25 @@ pub fn op_node_get_private_key_from_pair(
 fn generate_rsa(
   modulus_length: usize,
   public_exponent: usize,
-) -> KeyObjectHandlePair {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
+  if public_exponent <= 1 || public_exponent.is_multiple_of(2) {
+    return Err(JsErrorBox::generic(format!(
+      "invalid RSA public exponent: {}",
+      public_exponent
+    )));
+  }
+
   let private_key = RsaPrivateKey::new_with_exp(
     &mut thread_rng(),
     modulus_length,
     &rsa::BigUint::from_usize(public_exponent).unwrap(),
   )
-  .unwrap();
+  .map_err(|e| JsErrorBox::generic(e.to_string()))?;
 
   let private_key = AsymmetricPrivateKey::Rsa(private_key);
   let public_key = private_key.to_public_key();
 
-  KeyObjectHandlePair::new(private_key, public_key)
+  Ok(KeyObjectHandlePair::new(private_key, public_key))
 }
 
 #[op2]
@@ -2090,7 +2888,7 @@ fn generate_rsa(
 pub fn op_node_generate_rsa_key(
   #[smi] modulus_length: usize,
   #[smi] public_exponent: usize,
-) -> KeyObjectHandlePair {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   generate_rsa(modulus_length, public_exponent)
 }
 
@@ -2099,7 +2897,7 @@ pub fn op_node_generate_rsa_key(
 pub async fn op_node_generate_rsa_key_async(
   #[smi] modulus_length: usize,
   #[smi] public_exponent: usize,
-) -> KeyObjectHandlePair {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   spawn_blocking(move || generate_rsa(modulus_length, public_exponent))
     .await
     .unwrap()
@@ -2217,7 +3015,10 @@ fn dsa_generate(
   use dsa::SigningKey;
 
   let key_size = match (modulus_length, divisor_length) {
-    #[allow(deprecated)]
+    #[allow(
+      deprecated,
+      reason = "needed for compatibility with legacy DSA key sizes"
+    )]
     (1024, 160) => KeySize::DSA_1024_160,
     (2048, 224) => KeySize::DSA_2048_224,
     (2048, 256) => KeySize::DSA_2048_256,
@@ -2282,10 +3083,7 @@ fn ec_generate(named_curve: &str) -> Result<KeyObjectHandlePair, JsErrorBox> {
       AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(key))
     }
     _ => {
-      return Err(JsErrorBox::type_error(format!(
-        "unsupported named curve: {}",
-        named_curve
-      )));
+      return Err(JsErrorBox::type_error("Invalid EC curve name"));
     }
   };
   let public_key = private_key.to_public_key();
@@ -2348,14 +3146,47 @@ pub async fn op_node_generate_ed25519_key_async() -> KeyObjectHandlePair {
   spawn_blocking(ed25519_generate).await.unwrap()
 }
 
-fn u32_slice_to_u8_slice(slice: &[u32]) -> &[u8] {
-  // SAFETY: just reinterpreting the slice as u8
-  unsafe {
-    std::slice::from_raw_parts(
-      slice.as_ptr() as *const u8,
-      std::mem::size_of_val(slice),
-    )
-  }
+fn x448_generate() -> KeyObjectHandlePair {
+  let mut seed = [0u8; 56];
+  thread_rng().fill_bytes(&mut seed);
+  let private_key = AsymmetricPrivateKey::X448(seed);
+  let public_key = private_key.to_public_key();
+  KeyObjectHandlePair::new(private_key, public_key)
+}
+
+#[op2]
+#[cppgc]
+pub fn op_node_generate_x448_key() -> KeyObjectHandlePair {
+  x448_generate()
+}
+
+#[op2]
+#[cppgc]
+pub async fn op_node_generate_x448_key_async() -> KeyObjectHandlePair {
+  spawn_blocking(x448_generate).await.unwrap()
+}
+
+fn ed448_generate() -> KeyObjectHandlePair {
+  let mut seed = [0u8; 57];
+  thread_rng().fill_bytes(&mut seed);
+  let signing_key = ed448_goldilocks::SigningKey::from(
+    ed448_goldilocks::EdwardsScalarBytes::from(seed),
+  );
+  let private_key = AsymmetricPrivateKey::Ed448(signing_key);
+  let public_key = private_key.to_public_key();
+  KeyObjectHandlePair::new(private_key, public_key)
+}
+
+#[op2]
+#[cppgc]
+pub fn op_node_generate_ed448_key() -> KeyObjectHandlePair {
+  ed448_generate()
+}
+
+#[op2]
+#[cppgc]
+pub async fn op_node_generate_ed448_key_async() -> KeyObjectHandlePair {
+  spawn_blocking(ed448_generate).await.unwrap()
 }
 
 fn dh_group_generate(
@@ -2394,9 +3225,18 @@ fn dh_group_generate(
     ),
     _ => return Err(JsErrorBox::type_error("Unsupported group name")),
   };
+  // MODULUS arrays are big-endian u32 words. Convert to big-endian bytes
+  // for ASN.1, matching the prime used during key generation.
+  // Prepend 0x00 if MSB is set, since ASN.1 integers are signed.
+  let mut prime_bytes: Vec<u8> =
+    prime.iter().flat_map(|x| x.to_be_bytes()).collect();
+  if prime_bytes.first().is_some_and(|b| b & 0x80 != 0) {
+    prime_bytes.insert(0, 0x00);
+  }
+  let gen_bytes = [generator as u8];
   let params = DhParameter {
-    prime: asn1::Int::new(u32_slice_to_u8_slice(prime)).unwrap(),
-    base: asn1::Int::new(generator.to_be_bytes().as_slice()).unwrap(),
+    prime: asn1::Int::new(&prime_bytes).unwrap(),
+    base: asn1::Int::new(&gen_bytes).unwrap(),
     private_value_length: None,
   };
   Ok(KeyObjectHandlePair::new(
@@ -2438,9 +3278,27 @@ fn dh_generate(
     .map(|p| p.into())
     .unwrap_or_else(|| Prime::generate(prime_len));
   let dh = dh::DiffieHellman::new(prime.clone(), generator);
+  let gen_bytes = if generator <= 0xFF {
+    vec![generator as u8]
+  } else if generator <= 0xFFFF {
+    vec![(generator >> 8) as u8, generator as u8]
+  } else {
+    generator
+      .to_be_bytes()
+      .iter()
+      .copied()
+      .skip_while(|&b| b == 0)
+      .collect()
+  };
+  // Prepend 0x00 if MSB is set, since ASN.1 INTEGERs are signed; without
+  // the sign byte the leading 0xFF bytes of safe primes would be stripped.
+  let mut prime_bytes = prime.0.to_bytes_be();
+  if prime_bytes.first().is_some_and(|b| b & 0x80 != 0) {
+    prime_bytes.insert(0, 0x00);
+  }
   let params = DhParameter {
-    prime: asn1::Int::new(&prime.0.to_bytes_be()).unwrap(),
-    base: asn1::Int::new(generator.to_be_bytes().as_slice()).unwrap(),
+    prime: asn1::Int::new(&prime_bytes).unwrap(),
+    base: asn1::Int::new(&gen_bytes).unwrap(),
     private_value_length: None,
   };
   KeyObjectHandlePair::new(
@@ -2597,6 +3455,401 @@ pub enum ExportPrivateKeyPemError {
   #[class(generic)]
   #[error(transparent)]
   Der(#[from] der::Error),
+  #[class(type)]
+  #[error("{0}")]
+  UnsupportedCipher(String),
+  #[class(type)]
+  #[error(
+    "cipher and passphrase must both be provided for encrypted key export"
+  )]
+  MissingCipherOrPassphrase,
+}
+
+/// Parse a legacy encrypted PEM (Proc-Type/DEK-Info headers) and return the
+/// label and decrypted DER data, or None if not a legacy encrypted PEM.
+///
+/// SECURITY: This format is known-weak — it derives the encryption key with a
+/// single MD5 round of EVP_BytesToKey, has no MAC (only PKCS#7 padding to
+/// detect corruption), and reuses the first 8 bytes of the IV as the salt.
+/// PKCS#7 unpadding is implemented in constant time (`pkcs7_unpad_ct`) so the
+/// decrypt path itself doesn't leak through padding-oracle timing, but the
+/// format-level weaknesses above are inherent to RFC 1421. Acceptable for
+/// one-shot local PEM imports; do not use as a transport.
+fn parse_legacy_encrypted_pem<'a>(
+  pem: &'a str,
+  passphrase: Option<&[u8]>,
+) -> Result<Option<(&'a str, Vec<u8>)>, AsymmetricPrivateKeyError> {
+  if !pem.contains("Proc-Type: 4,ENCRYPTED") {
+    return Ok(None);
+  }
+
+  let passphrase = match passphrase {
+    Some(p) => p,
+    None => {
+      return Err(
+        AsymmetricPrivateKeyError::EncryptedPrivateKeyRequiresPassphraseToDecrypt,
+      );
+    }
+  };
+
+  let mut lines = pem.lines();
+
+  let label = loop {
+    match lines.next() {
+      Some(line)
+        if line.starts_with("-----BEGIN ") && line.ends_with("-----") =>
+      {
+        break &line[11..line.len() - 5];
+      }
+      Some(_) => continue,
+      None => return Err(AsymmetricPrivateKeyError::InvalidPemPrivateKey),
+    }
+  };
+
+  let proc_type_line = lines
+    .next()
+    .ok_or(AsymmetricPrivateKeyError::InvalidPemPrivateKey)?;
+  if !proc_type_line.starts_with("Proc-Type:") {
+    return Err(AsymmetricPrivateKeyError::InvalidPemPrivateKey);
+  }
+
+  let dek_info_line = lines
+    .next()
+    .ok_or(AsymmetricPrivateKeyError::InvalidPemPrivateKey)?;
+  let dek_info = dek_info_line
+    .strip_prefix("DEK-Info: ")
+    .ok_or(AsymmetricPrivateKeyError::InvalidPemPrivateKey)?;
+  let (cipher_name, iv_hex) = dek_info
+    .split_once(',')
+    .ok_or(AsymmetricPrivateKeyError::InvalidPemPrivateKey)?;
+
+  let _ = lines.next();
+
+  let mut b64_data = String::new();
+  for line in lines {
+    if line.starts_with("-----END ") {
+      break;
+    }
+    b64_data.push_str(line.trim());
+  }
+
+  let encrypted_data = base64::engine::general_purpose::STANDARD
+    .decode(&b64_data)
+    .map_err(|_| AsymmetricPrivateKeyError::InvalidPemPrivateKey)?;
+
+  if !iv_hex.len().is_multiple_of(2) {
+    return Err(AsymmetricPrivateKeyError::InvalidPemPrivateKey);
+  }
+  let mut iv = vec![0u8; iv_hex.len() / 2];
+  faster_hex::hex_decode(iv_hex.as_bytes(), &mut iv)
+    .map_err(|_| AsymmetricPrivateKeyError::InvalidPemPrivateKey)?;
+
+  let (key_len, expected_iv_len) = match cipher_name {
+    "AES-128-CBC" => (16, 16),
+    "AES-192-CBC" => (24, 16),
+    "AES-256-CBC" => (32, 16),
+    "DES-EDE3-CBC" => (24, 8),
+    _ => {
+      return Err(AsymmetricPrivateKeyError::InvalidEncryptedPemPrivateKey);
+    }
+  };
+
+  if iv.len() != expected_iv_len {
+    return Err(AsymmetricPrivateKeyError::InvalidEncryptedPemPrivateKey);
+  }
+
+  let mut salt = [0u8; 8];
+  salt.copy_from_slice(&iv[..8]);
+  let key = evp_bytes_to_key(passphrase, &salt, key_len);
+
+  // Decryption failure here most commonly means wrong passphrase; map to
+  // the OpenSSL-compatible "bad decrypt" error so Node.js tests that check
+  // the error message work correctly.
+  let decrypted =
+    decrypt_legacy_pem_data(cipher_name, &key, &iv, &encrypted_data)
+      .map_err(|_| AsymmetricPrivateKeyError::BadDecrypt)?;
+
+  Ok(Some((label, decrypted)))
+}
+
+fn decrypt_legacy_pem_data(
+  cipher_name: &str,
+  key: &[u8],
+  iv: &[u8],
+  data: &[u8],
+) -> Result<Vec<u8>, ()> {
+  use aes::cipher::BlockDecryptMut;
+  use aes::cipher::KeyIvInit;
+  use aes::cipher::block_padding::NoPadding;
+
+  let (mut decrypted, block_size) = match cipher_name {
+    "AES-128-CBC" => (
+      cbc::Decryptor::<aes::Aes128>::new_from_slices(key, iv)
+        .map_err(|_| ())?
+        .decrypt_padded_vec_mut::<NoPadding>(data)
+        .map_err(|_| ())?,
+      16usize,
+    ),
+    "AES-192-CBC" => (
+      cbc::Decryptor::<aes::Aes192>::new_from_slices(key, iv)
+        .map_err(|_| ())?
+        .decrypt_padded_vec_mut::<NoPadding>(data)
+        .map_err(|_| ())?,
+      16usize,
+    ),
+    "AES-256-CBC" => (
+      cbc::Decryptor::<aes::Aes256>::new_from_slices(key, iv)
+        .map_err(|_| ())?
+        .decrypt_padded_vec_mut::<NoPadding>(data)
+        .map_err(|_| ())?,
+      16usize,
+    ),
+    "DES-EDE3-CBC" => (
+      cbc::Decryptor::<des::TdesEde3>::new_from_slices(key, iv)
+        .map_err(|_| ())?
+        .decrypt_padded_vec_mut::<NoPadding>(data)
+        .map_err(|_| ())?,
+      8usize,
+    ),
+    _ => return Err(()),
+  };
+
+  pkcs7_unpad_ct(&mut decrypted, block_size).ok_or(())?;
+  Ok(decrypted)
+}
+
+/// Constant-time PKCS#7 unpadding. Verifies and strips the trailing padding
+/// from a decrypted CBC buffer without branching on padding-byte values, so
+/// the decrypt path doesn't expose a Vaudenay-style padding oracle.
+///
+/// All bytes in the last block are inspected on every call; the comparison
+/// against the claimed pad length and the equality checks against the pad
+/// byte are computed branchlessly and combined with bitwise AND so the only
+/// data-dependent branch is the final accept/reject.
+fn pkcs7_unpad_ct(buf: &mut Vec<u8>, block_size: usize) -> Option<()> {
+  use subtle::Choice;
+  use subtle::ConstantTimeEq;
+
+  let len = buf.len();
+  if len == 0 || len < block_size || !len.is_multiple_of(block_size) {
+    return None;
+  }
+
+  let pad_byte = buf[len - 1];
+
+  // valid_pad_len: pad_byte is in [1, block_size]. Computed branchlessly so
+  // the decision doesn't leak the actual pad length.
+  let pad_nonzero = !pad_byte.ct_eq(&0u8);
+  let pad_in_range = u8_le_ct(pad_byte, block_size as u8);
+  let mut valid: Choice = pad_nonzero & pad_in_range;
+
+  // For each position in the last block, if position-from-end < pad_byte the
+  // byte must equal pad_byte. Loop over all `block_size` positions every time
+  // to avoid leaking pad_byte through loop length.
+  let start = len - block_size;
+  for i in 0..block_size {
+    let pos_from_end = (block_size - 1 - i) as u8;
+    // is_in_pad: pad_byte > pos_from_end. Branchless via i16 subtraction.
+    let is_in_pad = u8_gt_ct(pad_byte, pos_from_end);
+    let byte_matches = buf[start + i].ct_eq(&pad_byte);
+    // valid &= !is_in_pad | byte_matches
+    valid &= !is_in_pad | byte_matches;
+  }
+
+  if !bool::from(valid) {
+    return None;
+  }
+  let pad_len = pad_byte as usize;
+  buf.truncate(len - pad_len);
+  Some(())
+}
+
+#[inline]
+fn u8_gt_ct(a: u8, b: u8) -> subtle::Choice {
+  let diff = (b as i16).wrapping_sub(a as i16);
+  subtle::Choice::from(((diff as u16) >> 15) as u8)
+}
+
+#[inline]
+fn u8_le_ct(a: u8, b: u8) -> subtle::Choice {
+  !u8_gt_ct(a, b)
+}
+
+/// Derive an encryption key from a passphrase and salt using the legacy
+/// OpenSSL EVP_BytesToKey algorithm (MD5-based). This is used for the
+/// traditional PEM encryption format (Proc-Type/DEK-Info headers).
+fn evp_bytes_to_key(
+  passphrase: &[u8],
+  salt: &[u8; 8],
+  key_len: usize,
+) -> Vec<u8> {
+  use digest::Digest;
+
+  let mut key = Vec::with_capacity(key_len);
+  let mut prev_hash: Option<[u8; 16]> = None;
+
+  while key.len() < key_len {
+    let mut hasher = md5::Md5::new();
+    if let Some(ref prev) = prev_hash {
+      hasher.update(prev);
+    }
+    hasher.update(passphrase);
+    hasher.update(salt);
+    let hash: [u8; 16] = hasher.finalize().into();
+    key.extend_from_slice(&hash);
+    prev_hash = Some(hash);
+  }
+
+  key.truncate(key_len);
+  key
+}
+
+/// Encrypt PKCS#8 PrivateKeyInfo DER and format as a PEM-encoded
+/// PKCS#8 `EncryptedPrivateKeyInfo` (RFC 5208 / RFC 5958), which is what
+/// Node.js produces when exporting `{ type: 'pkcs8', cipher, passphrase }`.
+fn encrypt_pkcs8_private_key_pem(
+  data: &[u8],
+  cipher_name: &str,
+  passphrase: &[u8],
+) -> Result<String, ExportPrivateKeyPemError> {
+  use pkcs8::pkcs5::pbes2;
+
+  // PBKDF2 salt and cipher IV. Node.js uses a 16-byte salt and 8-byte IV for
+  // 3DES, 16-byte IV for AES-CBC.
+  let mut salt = [0u8; 16];
+  thread_rng().fill_bytes(&mut salt);
+
+  let pbkdf2_iters: u32 = 2048;
+
+  let mut aes_iv = [0u8; 16];
+
+  let pbes2_params = match cipher_name {
+    "aes-128-cbc" => {
+      thread_rng().fill_bytes(&mut aes_iv);
+      pbes2::Parameters::pbkdf2_sha256_aes128cbc(pbkdf2_iters, &salt, &aes_iv)
+        .map_err(|_| {
+        ExportPrivateKeyPemError::UnsupportedCipher(format!(
+          "Unsupported cipher for PKCS#8 encryption: {cipher_name}"
+        ))
+      })?
+    }
+    "aes-192-cbc" => {
+      thread_rng().fill_bytes(&mut aes_iv);
+      let kdf = pbes2::Pbkdf2Params::hmac_with_sha256(pbkdf2_iters, &salt)
+        .map_err(|_| {
+          ExportPrivateKeyPemError::UnsupportedCipher(format!(
+            "Unsupported cipher for PKCS#8 encryption: {cipher_name}"
+          ))
+        })?
+        .into();
+      pbes2::Parameters {
+        kdf,
+        encryption: pbes2::EncryptionScheme::Aes192Cbc { iv: &aes_iv },
+      }
+    }
+    "aes-256-cbc" => {
+      thread_rng().fill_bytes(&mut aes_iv);
+      pbes2::Parameters::pbkdf2_sha256_aes256cbc(pbkdf2_iters, &salt, &aes_iv)
+        .map_err(|_| {
+        ExportPrivateKeyPemError::UnsupportedCipher(format!(
+          "Unsupported cipher for PKCS#8 encryption: {cipher_name}"
+        ))
+      })?
+    }
+    _ => {
+      return Err(ExportPrivateKeyPemError::UnsupportedCipher(format!(
+        "Unsupported cipher for PKCS#8 encryption: {cipher_name}"
+      )));
+    }
+  };
+
+  let pk_info = PrivateKeyInfo::try_from(data).map_err(|_| {
+    ExportPrivateKeyPemError::UnsupportedCipher(
+      "could not parse PKCS#8 private key for encryption".to_string(),
+    )
+  })?;
+  let secret_doc = pk_info
+    .encrypt_with_params(pbes2_params, passphrase)
+    .map_err(|_| {
+      ExportPrivateKeyPemError::UnsupportedCipher(format!(
+        "Failed to encrypt PKCS#8 with cipher {cipher_name}"
+      ))
+    })?;
+  let pem = secret_doc
+    .to_pem(EncryptedPrivateKeyInfo::PEM_LABEL, LineEnding::LF)
+    .map_err(|_| ExportPrivateKeyPemError::VeryLargeData)?;
+  Ok(pem.to_string())
+}
+
+/// Encrypt DER data and format as legacy OpenSSL encrypted PEM with
+/// Proc-Type and DEK-Info headers.
+fn encrypt_private_key_pem(
+  label: &str,
+  data: &[u8],
+  cipher_name: &str,
+  passphrase: &[u8],
+) -> Result<String, ExportPrivateKeyPemError> {
+  use aes::cipher::BlockEncryptMut;
+  use aes::cipher::KeyIvInit;
+  use aes::cipher::block_padding::Pkcs7;
+
+  let (key_len, dek_info_name, iv_len) = match cipher_name {
+    "aes-128-cbc" => (16, "AES-128-CBC", 16),
+    "aes-192-cbc" => (24, "AES-192-CBC", 16),
+    "aes-256-cbc" => (32, "AES-256-CBC", 16),
+    "des-ede3-cbc" => (24, "DES-EDE3-CBC", 8),
+    _ => {
+      return Err(ExportPrivateKeyPemError::UnsupportedCipher(format!(
+        "Unsupported cipher for PEM encryption: {cipher_name}"
+      )));
+    }
+  };
+
+  // Generate random IV
+  let mut iv = vec![0u8; iv_len];
+  thread_rng().fill_bytes(&mut iv);
+
+  // Derive key using EVP_BytesToKey (uses first 8 bytes of IV as salt)
+  let mut salt = [0u8; 8];
+  salt.copy_from_slice(&iv[..8]);
+  let key = evp_bytes_to_key(passphrase, &salt, key_len);
+
+  // Encrypt with PKCS#7 padding
+  let encrypted = match cipher_name {
+    "aes-128-cbc" => cbc::Encryptor::<aes::Aes128>::new_from_slices(&key, &iv)
+      .unwrap()
+      .encrypt_padded_vec_mut::<Pkcs7>(data),
+    "aes-192-cbc" => cbc::Encryptor::<aes::Aes192>::new_from_slices(&key, &iv)
+      .unwrap()
+      .encrypt_padded_vec_mut::<Pkcs7>(data),
+    "aes-256-cbc" => cbc::Encryptor::<aes::Aes256>::new_from_slices(&key, &iv)
+      .unwrap()
+      .encrypt_padded_vec_mut::<Pkcs7>(data),
+    "des-ede3-cbc" => {
+      cbc::Encryptor::<des::TdesEde3>::new_from_slices(&key, &iv)
+        .unwrap()
+        .encrypt_padded_vec_mut::<Pkcs7>(data)
+    }
+    _ => unreachable!(),
+  };
+
+  // Format as legacy encrypted PEM
+  let iv_hex = iv.iter().map(|b| format!("{b:02X}")).collect::<String>();
+  let b64 = base64::engine::general_purpose::STANDARD.encode(&encrypted);
+
+  // Split base64 into 64-char lines
+  let mut pem = String::new();
+  pem.push_str(&format!("-----BEGIN {label}-----\n"));
+  pem.push_str("Proc-Type: 4,ENCRYPTED\n");
+  pem.push_str(&format!("DEK-Info: {dek_info_name},{iv_hex}\n"));
+  pem.push('\n');
+  for chunk in b64.as_bytes().chunks(64) {
+    pem.push_str(std::str::from_utf8(chunk).unwrap());
+    pem.push('\n');
+  }
+  pem.push_str(&format!("-----END {label}-----\n"));
+
+  Ok(pem)
 }
 
 #[op2]
@@ -2604,6 +3857,8 @@ pub enum ExportPrivateKeyPemError {
 pub fn op_node_export_private_key_pem(
   #[cppgc] handle: &KeyObjectHandle,
   #[string] typ: &str,
+  #[string] cipher: Option<String>,
+  #[string] passphrase: Option<String>,
 ) -> Result<String, ExportPrivateKeyPemError> {
   let private_key = handle
     .as_private_key()
@@ -2616,6 +3871,31 @@ pub fn op_node_export_private_key_pem(
     "sec1" => "EC PRIVATE KEY",
     _ => unreachable!("export_der would have errored"),
   };
+
+  match (&cipher, &passphrase) {
+    (Some(cipher), Some(passphrase)) => {
+      // Node.js uses PKCS#8 EncryptedPrivateKeyInfo for `pkcs8` exports with
+      // a cipher (label "ENCRYPTED PRIVATE KEY"); for `pkcs1`/`sec1` it uses
+      // the legacy OpenSSL PEM encryption format with Proc-Type/DEK-Info.
+      if typ == "pkcs8" {
+        return encrypt_pkcs8_private_key_pem(
+          &data,
+          cipher,
+          passphrase.as_bytes(),
+        );
+      }
+      return encrypt_private_key_pem(
+        label,
+        &data,
+        cipher,
+        passphrase.as_bytes(),
+      );
+    }
+    (Some(_), None) | (None, Some(_)) => {
+      return Err(ExportPrivateKeyPemError::MissingCipherOrPassphrase);
+    }
+    (None, None) => {}
+  }
 
   let pem_len = der::pem::encapsulated_len(label, LineEnding::LF, data.len())
     .map_err(|_| ExportPrivateKeyPemError::VeryLargeData)?;
@@ -2653,16 +3933,108 @@ pub fn op_node_export_private_key_jwk(
   Ok(private_key.export_jwk()?)
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum ExportPrivateKeyDerError {
+  #[class(inherit)]
+  #[error(transparent)]
+  AsymmetricPrivateKeyDer(
+    #[from]
+    #[inherit]
+    AsymmetricPrivateKeyDerError,
+  ),
+  #[class(type)]
+  #[error("{0}")]
+  UnsupportedCipher(String),
+  #[class(type)]
+  #[error(
+    "cipher and passphrase must both be provided for encrypted key export"
+  )]
+  MissingCipherOrPassphrase,
+  #[class(type)]
+  #[error("encryption is only supported for PKCS#8 private keys")]
+  EncryptionRequiresPkcs8,
+  #[class(generic)]
+  #[error("failed to encrypt private key")]
+  EncryptionFailed,
+}
+
+/// Encrypt a PKCS#8 DER private key using PBES2 (PBKDF2-HMAC-SHA256 + AES-CBC),
+/// matching the format produced by OpenSSL when given a cipher name like
+/// "aes-128-cbc". Returns the DER-encoded `EncryptedPrivateKeyInfo`.
+fn encrypt_private_key_pkcs8_der(
+  data: &[u8],
+  cipher_name: &str,
+  passphrase: &[u8],
+) -> Result<Vec<u8>, ExportPrivateKeyDerError> {
+  use pkcs8::pkcs5::pbes2;
+
+  // 16-byte PBKDF2 salt and 16-byte AES IV, both random.
+  let mut salt = [0u8; 16];
+  let mut iv = [0u8; 16];
+  thread_rng().fill_bytes(&mut salt);
+  thread_rng().fill_bytes(&mut iv);
+
+  // OpenSSL's default for PKCS#8 PBES2 export is 2048 iterations.
+  const ITERATIONS: u32 = 2048;
+
+  let pbes2_params = match cipher_name {
+    "aes-128-cbc" => {
+      pbes2::Parameters::pbkdf2_sha256_aes128cbc(ITERATIONS, &salt, &iv)
+        .map_err(|_| ExportPrivateKeyDerError::EncryptionFailed)?
+    }
+    "aes-256-cbc" => {
+      pbes2::Parameters::pbkdf2_sha256_aes256cbc(ITERATIONS, &salt, &iv)
+        .map_err(|_| ExportPrivateKeyDerError::EncryptionFailed)?
+    }
+    _ => {
+      return Err(ExportPrivateKeyDerError::UnsupportedCipher(format!(
+        "Unsupported cipher for PKCS#8 DER encryption: {cipher_name}"
+      )));
+    }
+  };
+
+  let encrypted_data = pbes2_params
+    .encrypt(passphrase, data)
+    .map_err(|_| ExportPrivateKeyDerError::EncryptionFailed)?;
+
+  let info = pkcs8::EncryptedPrivateKeyInfo {
+    encryption_algorithm: pbes2_params.into(),
+    encrypted_data: &encrypted_data,
+  };
+
+  let doc: SecretDocument = (&info)
+    .try_into()
+    .map_err(|_| ExportPrivateKeyDerError::EncryptionFailed)?;
+  Ok(doc.as_bytes().to_vec())
+}
+
 #[op2]
 #[buffer]
 pub fn op_node_export_private_key_der(
   #[cppgc] handle: &KeyObjectHandle,
   #[string] typ: &str,
-) -> Result<Box<[u8]>, AsymmetricPrivateKeyDerError> {
+  #[string] cipher: Option<String>,
+  #[string] passphrase: Option<String>,
+) -> Result<Box<[u8]>, ExportPrivateKeyDerError> {
   let private_key = handle
     .as_private_key()
     .ok_or(AsymmetricPrivateKeyDerError::KeyIsNotAsymmetricPrivateKey)?;
-  private_key.export_der(typ)
+  let data = private_key.export_der(typ)?;
+
+  match (&cipher, &passphrase) {
+    (Some(cipher), Some(passphrase)) => {
+      if typ != "pkcs8" {
+        return Err(ExportPrivateKeyDerError::EncryptionRequiresPkcs8);
+      }
+      let encrypted =
+        encrypt_private_key_pkcs8_der(&data, cipher, passphrase.as_bytes())?;
+      Ok(encrypted.into_boxed_slice())
+    }
+    (Some(_), None) | (None, Some(_)) => {
+      Err(ExportPrivateKeyDerError::MissingCipherOrPassphrase)
+    }
+    (None, None) => Ok(data),
+  }
 }
 
 #[op2]
@@ -2673,6 +4045,14 @@ pub fn op_node_key_type(#[cppgc] handle: &KeyObjectHandle) -> &'static str {
     KeyObjectHandle::AsymmetricPublic(_) => "public",
     KeyObjectHandle::Secret(_) => "secret",
   }
+}
+
+#[op2(fast)]
+pub fn op_node_key_equals(
+  #[cppgc] handle: &KeyObjectHandle,
+  #[cppgc] other: &KeyObjectHandle,
+) -> bool {
+  handle == other
 }
 
 #[op2]
@@ -2687,4 +4067,54 @@ pub fn op_node_derive_public_key_from_private_key(
   Ok(KeyObjectHandle::AsymmetricPublic(
     private_key.to_public_key(),
   ))
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum PfxValidationError {
+  #[class(generic)]
+  #[error("not enough data")]
+  NotEnoughData,
+  #[class(generic)]
+  #[error("mac verify failure")]
+  MacVerifyFailure,
+}
+
+#[op2]
+pub fn op_node_validate_pfx(
+  #[buffer] pfx: &[u8],
+  #[string] passphrase: Option<String>,
+) -> Result<(), PfxValidationError> {
+  let parsed =
+    Pkcs12::parse(pfx).map_err(|_| PfxValidationError::NotEnoughData)?;
+  let password = passphrase.as_deref().unwrap_or("");
+  if !parsed.verify_mac(password) {
+    return Err(PfxValidationError::MacVerifyFailure);
+  }
+  Ok(())
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum CrlValidationError {
+  #[class(generic)]
+  #[error("Failed to parse CRL")]
+  ParseFailed,
+}
+
+#[op2(fast)]
+pub fn op_node_validate_crl(
+  #[buffer] crl: &[u8],
+) -> Result<(), CrlValidationError> {
+  if crl.starts_with(b"-----") {
+    match x509_parser::pem::parse_x509_pem(crl) {
+      Ok((_, pem)) => {
+        x509_parser::parse_x509_crl(&pem.contents)
+          .map_err(|_| CrlValidationError::ParseFailed)?;
+      }
+      Err(_) => return Err(CrlValidationError::ParseFailed),
+    }
+  } else {
+    x509_parser::parse_x509_crl(crl)
+      .map_err(|_| CrlValidationError::ParseFailed)?;
+  }
+  Ok(())
 }

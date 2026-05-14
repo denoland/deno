@@ -2,7 +2,7 @@
 
 // NOTE(bartlomieju): some fields are marked as never read, even though they are
 // actually used in the CLI.
-#![allow(dead_code)]
+#![allow(dead_code, reason = "fields are used in the CLI crate")]
 
 use crate::structs::UnstableFeatureKind;
 

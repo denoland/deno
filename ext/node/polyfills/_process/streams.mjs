@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Uint8ArrayPrototype,
   Error,
@@ -13,24 +13,28 @@ const {
   ObjectPrototypeIsPrototypeOf,
 } = primordials;
 
-import { Buffer } from "node:buffer";
-import {
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const {
   clearLine,
   clearScreenDown,
   cursorTo,
   moveCursor,
-} from "ext:deno_node/internal/readline/callbacks.mjs";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { Duplex, Readable, Writable } from "node:stream";
-import * as io from "ext:deno_io/12_io.js";
-import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+} = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const lazyStream = core.createLazyLoader("node:stream");
+const io = core.loadExtScript("ext:deno_io/12_io.js");
+const { guessHandleType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 import { op_bootstrap_color_depth } from "ext:core/ops";
-import { validateInteger } from "ext:deno_node/internal/validators.mjs";
+const { validateInteger } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
 export function createWritableStdioStream(writer, name, warmup = false) {
-  const stream = new Writable({
+  const stream = new (lazyStream().Writable)({
     emitClose: false,
     write(buf, enc, cb) {
       if (!writer) {
@@ -47,11 +51,18 @@ export function createWritableStdioStream(writer, name, warmup = false) {
       // being created from a raw fd (new Socket({ fd: 1 })), process.stdout/stderr
       // should be switched to net.Socket for non-TTY cases and this can be removed.
       try {
-        writer.writeSync(
-          ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
-            ? buf
-            : Buffer.from(buf, enc),
-        );
+        let data = ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
+          ? buf
+          : Buffer.from(buf, enc);
+        // Handle partial writes - writeSync may not write all bytes at once
+        // (e.g., when stdout is a pipe and the pipe buffer is near capacity).
+        // deno-lint-ignore prefer-primordials
+        while (data.byteLength > 0) {
+          const nwritten = writer.writeSync(data);
+          // deno-lint-ignore prefer-primordials
+          if (nwritten >= data.byteLength) break;
+          data = TypedArrayPrototypeSlice(data, nwritten);
+        }
       } catch (e) {
         if (
           ObjectPrototypeIsPrototypeOf(Deno.errors.BrokenPipe.prototype, e)
@@ -219,7 +230,7 @@ export const initStdin = (warmup = false) => {
       // use `Readable` instead.
       // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L200
       // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/fs/streams.js#L148
-      stdin = new Readable({
+      stdin = new (lazyStream().Readable)({
         highWaterMark: 64 * 1024,
         autoDestroy: false,
         read: _read,
@@ -245,7 +256,7 @@ export const initStdin = (warmup = false) => {
       // 2. Creating a net.Socket() from a fd is not currently supported.
       // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L206
       // https://github.com/nodejs/node/blob/v18.12.1/lib/net.js#L329
-      stdin = new Duplex({
+      stdin = new (lazyStream().Duplex)({
         readable: stdinType === "TTY" ? undefined : true,
         writable: stdinType === "TTY" ? undefined : false,
         readableHighWaterMark: stdinType === "TTY" ? 0 : undefined,
@@ -287,7 +298,7 @@ export const initStdin = (warmup = false) => {
     default: {
       // Provide a dummy contentless input for e.g. non-console
       // Windows applications.
-      stdin = new Readable({ read() {} });
+      stdin = new (lazyStream().Readable)({ read() {} });
       // deno-lint-ignore prefer-primordials
       stdin.push(null);
     }
@@ -339,7 +350,9 @@ export const initStdin = (warmup = false) => {
   });
   stdin._isRawMode = false;
   stdin.setRawMode = (enable) => {
-    io.stdin?.setRaw?.(enable);
+    if (io.stdin?.isTerminal()) {
+      io.stdin.setRaw(enable);
+    }
     stdin._isRawMode = enable;
     return stdin;
   };

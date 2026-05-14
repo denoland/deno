@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "tests": {
+    "pack_includes_readme_and_license": {
+      "steps": [{
+        "args": "pack",
+        "output": "[WILDCARD]✓[WILDCARD]test-readme-license-1.0.0.tgz[WILDCARD]"
+      }, {
+        "if": "unix",
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "tar -tzf test-readme-license-1.0.0.tgz | LC_ALL=C sort"
+        ],
+        "output": "tarball_contents.out"
+      }]
+    }
+  }
+}

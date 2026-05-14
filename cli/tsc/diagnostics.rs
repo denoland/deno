@@ -162,13 +162,10 @@ impl Diagnostic {
     maybe_range: Option<&deno_graph::Range>,
     additional_message: Option<String>,
   ) -> Self {
-    Self {
-      category: DiagnosticCategory::Error,
-      code: 2307,
-      start: maybe_range.map(|r| Position::from_deno_graph(r.range.start)),
-      end: maybe_range.map(|r| Position::from_deno_graph(r.range.end)),
-      original_source_start: None, // will be applied later
-      message_text: Some(format!(
+    Self::from_missing_error_with_message(
+      specifier,
+      maybe_range,
+      format!(
         "Cannot find module '{}'.{}{}",
         specifier,
         if additional_message.is_none() {
@@ -177,7 +174,22 @@ impl Diagnostic {
           " "
         },
         additional_message.unwrap_or_default()
-      )),
+      ),
+    )
+  }
+
+  pub fn from_missing_error_with_message(
+    specifier: &str,
+    maybe_range: Option<&deno_graph::Range>,
+    message: String,
+  ) -> Self {
+    Self {
+      category: DiagnosticCategory::Error,
+      code: 2307,
+      start: maybe_range.map(|r| Position::from_deno_graph(r.range.start)),
+      end: maybe_range.map(|r| Position::from_deno_graph(r.range.end)),
+      original_source_start: None, // will be applied later
+      message_text: Some(message),
       message_chain: None,
       source: None,
       source_line: None,
@@ -191,31 +203,36 @@ impl Diagnostic {
   }
 
   pub fn maybe_from_resolution_error(error: &ResolutionError) -> Option<Self> {
+    /// Some node resolution errors say "imported from '...'", but it's not
+    /// very useful in a tsc diagnostic because it already has the referrer
+    /// context, so remove that text
+    fn remove_imported_from(message: &mut String) {
+      let prefix = " imported from '";
+      if let Some(start) = message.find(prefix)
+        && let Some(end) = message[start + prefix.len()..].find('\'')
+      {
+        let end = start + prefix.len() + end + 1;
+        message.replace_range(start..end, "");
+      }
+    }
+
     let error_ref = resolution_error_for_tsc_diagnostic(error)?;
     if error_ref.is_module_not_found {
-      return Some(Self::from_missing_error(
+      Some(Self::from_missing_error(
         error_ref.specifier,
         Some(error_ref.range),
         None,
-      ));
+      ))
+    } else {
+      let mut message = enhanced_resolution_error_message(error);
+      // the diagnostic already shows the location, so this is redundant
+      remove_imported_from(&mut message);
+      Some(Self::from_missing_error_with_message(
+        error_ref.specifier,
+        Some(error_ref.range),
+        message,
+      ))
     }
-    Some(Self {
-      category: DiagnosticCategory::Error,
-      code: 2307,
-      start: Some(Position::from_deno_graph(error_ref.range.range.start)),
-      end: Some(Position::from_deno_graph(error_ref.range.range.end)),
-      original_source_start: None, // will be applied later
-      message_text: Some(enhanced_resolution_error_message(error)),
-      message_chain: None,
-      source: None,
-      source_line: None,
-      file_name: Some(error_ref.range.specifier.to_string()),
-      related_information: None,
-      reports_deprecated: None,
-      reports_unnecessary: None,
-      other: Default::default(),
-      missing_specifier: Some(error_ref.specifier.to_string()),
-    })
   }
 
   /// If this diagnostic should be included when it comes from a remote module.

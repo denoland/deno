@@ -1,0 +1,517 @@
+{
+  "Worker-base64.any.worker.html": true,
+  "Worker-call.worker.html": true,
+  "Worker-constructor-proto.any.worker.html": true,
+  "Worker-custom-event.any.worker.html": true,
+  "Worker-formdata.any.worker.html": false,
+  "Worker-location.sub.any.worker.html": false,
+  "Worker-replace-event-handler.any.worker.html": true,
+  "Worker-replace-global-constructor.any.worker.html": true,
+  "Worker-replace-self.any.worker.html": true,
+  "WorkerLocation-origin.sub.window.html": false,
+  "WorkerNavigator-hardware-concurrency.any.worker.html": true,
+  "WorkerNavigator.any.worker.html": false,
+  "constructors": {
+    "Worker": {
+      "DedicatedWorkerGlobalScope-members.worker.html": {
+        "expectedFailures": [
+          "existence of onoffline",
+          "existence of ononline"
+        ]
+      },
+      "expected-self-properties.worker.html": {
+        "expectedFailures": [
+          "existence of XMLHttpRequest",
+          "existence of SharedWorker"
+        ]
+      },
+      "unexpected-self-properties.worker.html": true,
+      "AbstractWorker.onerror.html": false,
+      "Blob-url.html": true,
+      "Worker-constructor.html": {
+        "expectedFailures": [
+          "Test worker creation with no arguments",
+          "Test invalid script URL."
+        ]
+      },
+      "ctor-1.html": false,
+      "ctor-null.html": false,
+      "ctor-undefined.html": false,
+      "terminate.html": true,
+      "use-base-url.html": false,
+      "same-origin.html": {
+        "ignore": true
+      }
+    },
+    "SharedWorker": {
+      "Infinity-arguments.html": false,
+      "NaN-arguments.html": false,
+      "SharedWorker-constructor.html": false,
+      "connect-event.html": false,
+      "dummy-name.html": false,
+      "dummy-shared-worker.html": false,
+      "empty-name.html": false,
+      "global-members.html": false,
+      "interface-objects.html": false,
+      "name.html": false,
+      "no-arguments-ctor.html": false,
+      "null-arguments.html": false,
+      "number-arguments.html": false,
+      "port-onmessage.html": false,
+      "port-properties.html": false,
+      "port-readonly.html": false,
+      "same-origin.html": false,
+      "setting-port-members.html": false,
+      "undefined-arguments.html": false,
+      "unexpected-global-properties.html": false,
+      "unresolvable-url.html": false
+    }
+  },
+  "dedicated-worker-in-data-url-context.window.html": {
+    "expectedFailures": [
+      "Create a dedicated worker in a data url frame",
+      "Create a dedicated worker in a data url dedicated worker",
+      "Create a data url dedicated worker in a data url frame"
+    ]
+  },
+  "examples": {
+    "general.any.worker.html": true,
+    "general.worker.html": true,
+    "fetch_tests_from_worker.html": false
+  },
+  "importscripts_mime.any.worker.html": {
+    "expectedFailures": [
+      "importScripts() requires scripty MIME types: text/ecmascript is allowed."
+    ]
+  },
+  "interfaces": {
+    "DedicatedWorkerGlobalScope": {
+      "EventTarget.worker.html": true,
+      "onmessage.worker.html": true,
+      "postMessage": {
+        "return-value.worker.html": true,
+        "event-ports-dedicated.html": true,
+        "imagedata-cloned-canvas-in-array.html": false,
+        "message-event.html": true,
+        "second-argument-dictionary.html": true,
+        "second-argument-null-in-array.html": true,
+        "second-argument-null.html": true,
+        "second-argument-undefined.html": true,
+        "setting-postMessage.html": true,
+        "structured-clone-imagedata.html": false,
+        "structured-clone-message.html": {
+          "expectedFailures": [
+            "undefined"
+          ]
+        }
+      }
+    },
+    "WorkerGlobalScope": {
+      "location": {
+        "returns-same-object.any.worker.html": true,
+        "members.html": true,
+        "redirect-module.html": false,
+        "redirect.html": false,
+        "setting-members.html": true,
+        "worker-separate-file.html": false
+      },
+      "self.any.worker.html": true,
+      "close": {
+        "incoming-message.html": true,
+        "sending-messages.html": false,
+        "setInterval.html": true,
+        "setTimeout.html": true
+      },
+      "onerror": {
+        "exception-in-onerror.html": false,
+        "handled.html": false,
+        "message-classic-DOMException.html": false,
+        "message-classic-Error.html": false,
+        "message-module-DOMException.html": false,
+        "message-module-Error.html": false,
+        "not-handled.html": false,
+        "propagate-to-window-onerror.html": false
+      }
+    },
+    "WorkerUtils": {
+      "importScripts": {
+        "001.worker.html": true,
+        "002.worker.html": true,
+        "blob-url.worker.html": {
+          "expectedFailures": [
+            "A revoked blob URL will fail"
+          ]
+        },
+        "catch.sub.any.worker.html": {
+          "expectedFailures": [
+            "Cross-origin syntax error",
+            "Cross-origin throw"
+          ]
+        },
+        "report-error-cross-origin.sub.any.worker.html": false,
+        "report-error-redirect-to-cross-origin.sub.any.worker.html": false,
+        "report-error-same-origin.sub.any.worker.html": false,
+        "report-error-setTimeout-cross-origin.sub.any.worker.html": {
+          "expectedFailures": [
+            "WorkerGlobalScope error event: error",
+            "WorkerGlobalScope error event: filename",
+            "WorkerGlobalScope error event: lineno"
+          ]
+        },
+        "report-error-setTimeout-redirect-to-cross-origin.sub.any.worker.html": {
+          "expectedFailures": [
+            "WorkerGlobalScope error event: filename",
+            "WorkerGlobalScope error event: lineno"
+          ]
+        },
+        "report-error-setTimeout-same-origin.sub.any.worker.html": {
+          "expectedFailures": [
+            "WorkerGlobalScope error event: filename",
+            "WorkerGlobalScope error event: lineno"
+          ]
+        },
+        "003.html": true,
+        "004.html": true,
+        "005.html": true,
+        "006.html": true,
+        "007.html": true,
+        "008.html": true,
+        "009.html": true,
+        "010.html": true,
+        "011.html": true,
+        "012.html": true
+      },
+      "WindowTimers": {
+        "001.html": true,
+        "002.html": true,
+        "003.html": true,
+        "004.html": true,
+        "005.html": false
+      },
+      "navigator": {
+        "002.html": false,
+        "003.html": false,
+        "004.html": true,
+        "005.html": true,
+        "006.html": false,
+        "007.html": true,
+        "008.worker.html": true,
+        "language.html": true
+      }
+    },
+    "SharedWorkerGlobalScope": {
+      "name": {
+        "getting.html": false,
+        "setting.html": false
+      },
+      "onconnect.html": false
+    }
+  },
+  "modules": {
+    "dedicated-worker-import-blob-url.any.html": {
+      "ignore": true
+    },
+    "dedicated-worker-import-blob-url.any.worker.html": {
+      "ignore": true
+    },
+    "dedicated-worker-import-data-url.any.html": {
+      "ignore": true
+    },
+    "dedicated-worker-import-data-url.any.worker.html": {
+      "ignore": true
+    },
+    "dedicated-worker-import.any.html": {
+      "ignore": true
+    },
+    "dedicated-worker-import.any.worker.html": {
+      "ignore": true
+    },
+    "shared-worker-import-blob-url.window.html": false,
+    "shared-worker-import-data-url.window.html": false,
+    "shared-worker-import.window.html": false,
+    "dedicated-worker-import-csp.html": false,
+    "dedicated-worker-import-data-url-cross-origin.html": {
+      "expectedFailures": [
+        "dynamic import script from data: URL should be blocked."
+      ]
+    },
+    "dedicated-worker-import-failure.html": {
+      "expectedFailures": [
+        "Worker construction for an invalid URL should throw an exception.",
+        "importScripts() on module worker should throw an exception.",
+        "Worker construction for non-existent script should dispatch an ErrorEvent.",
+        "Static import for non-existent script should dispatch an ErrorEvent.",
+        "Dynamic import for non-existent script should throw an exception."
+      ]
+    },
+    "dedicated-worker-import-meta.html": false,
+    "dedicated-worker-import-referrer.html": false,
+    "dedicated-worker-options-credentials.html": {
+      "expectedFailures": [
+        "new Worker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials",
+        "new Worker() with type=module and credentials=omit should not send the credentials",
+        "new Worker() with type=module and credentials=same-origin should send the credentials",
+        "new Worker() with type=module and credentials=include should send the credentials",
+        "new Worker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials for same-origin static imports",
+        "new Worker() with type=module and credentials=omit should not send the credentials for same-origin static imports",
+        "new Worker() with type=module and credentials=same-origin should send the credentials for same-origin static imports",
+        "new Worker() with type=module and credentials=include should send the credentials for same-origin static imports",
+        "new Worker() with type=module and default credentials option should behave as credentials=same-origin and not send the credentials for cross-origin static imports",
+        "new Worker() with type-module credentials=omit should not send the credentials for cross-origin static imports",
+        "new Worker() with type=module and credentials=same-origin should not send the credentials for cross-origin static imports",
+        "new Worker() with type=module and credentials=include should send the credentials for cross-origin static imports",
+        "new Worker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials for same-origin dynamic imports",
+        "new Worker() with type=module and credentials=omit should not send the credentials for same-origin dynamic imports",
+        "new Worker() with type=module and credentials=same-origin should send the credentials for same-origin dynamic imports",
+        "new Worker() with type=module and credentials=include should send the credentials for same-origin dynamic imports",
+        "new Worker() with type=module and default credentials option should behave as credentials=same-origin and not send the credentials for cross-origin dynamic imports",
+        "new Worker() with type-module credentials=omit should not send the credentials for cross-origin dynamic imports",
+        "new Worker() with type=module and credentials=same-origin should not send the credentials for cross-origin dynamic imports",
+        "new Worker() with type=module and credentials=include should send the credentials for cross-origin dynamic imports",
+        "new Worker() with type=classic should always send the credentials regardless of the credentials option (default).",
+        "new Worker() with type=classic should always send the credentials regardless of the credentials option (omit).",
+        "new Worker() with type=classic should always send the credentials regardless of the credentials option (same-origin).",
+        "new Worker() with type=classic should always send the credentials regardless of the credentials option (include).",
+        "new Worker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (default).",
+        "new Worker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (omit).",
+        "new Worker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (same-origin).",
+        "new Worker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (include)."
+      ]
+    },
+    "dedicated-worker-options-type.html": {
+      "expectedFailures": [
+        "Test worker construction with the \"module\" worker type."
+      ]
+    },
+    "dedicated-worker-parse-error-failure.html": false,
+    "shared-worker-import-csp.html": false,
+    "shared-worker-import-data-url-cross-origin.html": false,
+    "shared-worker-import-failure.html": false,
+    "shared-worker-import-meta.html": false,
+    "shared-worker-import-referrer.html": false,
+    "shared-worker-options-credentials.html": {
+      "expectedFailures": [
+        "new SharedWorker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials",
+        "new SharedWorker() with type=module and credentials=omit should not send the credentials",
+        "new SharedWorker() with type=module and credentials=same-origin should send the credentials",
+        "new SharedWorker() with type=module and credentials=include should send the credentials",
+        "new SharedWorker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials for same-origin static imports",
+        "new SharedWorker() with type=module and credentials=omit should not send the credentials for same-origin static imports",
+        "new SharedWorker() with type=module and credentials=same-origin should send the credentials for same-origin static imports",
+        "new SharedWorker() with type=module and credentials=include should send the credentials for same-origin static imports",
+        "new SharedWorker() with type=module and default credentials option should behave as credentials=same-origin and not send the credentials for cross-origin static imports",
+        "new SharedWorker() with type=module and credentials=omit should not send the credentials for cross-origin static imports",
+        "new SharedWorker() with type=module and credentials=same-origin should not send the credentials for cross-origin static imports",
+        "new SharedWorker() with type=module and credentials=include should send the credentials for cross-origin static imports",
+        "new SharedWorker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials for same-origin dynamic imports",
+        "new SharedWorker() with type=module and credentials=omit should not send the credentials for same-origin dynamic imports",
+        "new SharedWorker() with type=module and credentials=same-origin should send the credentials for same-origin dynamic imports",
+        "new SharedWorker() with type=module and credentials=include should send the credentials for same-origin dynamic imports",
+        "new SharedWorker() with type=module and default credentials option should behave as credentials=same-origin and not send the credentials for cross-origin dynamic imports",
+        "new SharedWorker() with type=module and credentials=omit should not send the credentials for cross-origin dynamic imports",
+        "new SharedWorker() with type=module and credentials=same-origin should not send the credentials for cross-origin dynamic imports",
+        "new SharedWorker() with type=module and credentials=include should send the credentials for cross-origin dynamic imports",
+        "new SharedWorker() with type=classic should always send the credentials regardless of the credentials option (default).",
+        "new SharedWorker() with type=classic should always send the credentials regardless of the credentials option (omit).",
+        "new SharedWorker() with type=classic should always send the credentials regardless of the credentials option (same-origin).",
+        "new SharedWorker() with type=classic should always send the credentials regardless of the credentials option (include).",
+        "new SharedWorker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (default).",
+        "new SharedWorker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (omit).",
+        "new SharedWorker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (same-origin).",
+        "new SharedWorker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (include).",
+        "new SharedWorker() with type=classic should never send the credentials for cross-origin dynamic imports regardless of the credentials option (default).",
+        "new SharedWorker() with type=classic should never send the credentials for cross-origin dynamic imports regardless of the credentials option (omit).",
+        "new SharedWorker() with type=classic should never send the credentials for cross-origin dynamic imports regardless of the credentials option (same-origin).",
+        "new SharedWorker() with type=classic should never send the credentials for cross-origin dynamic imports regardless of the credentials option (include)."
+      ]
+    },
+    "shared-worker-options-type.html": false,
+    "shared-worker-parse-error-failure.html": false
+  },
+  "nested_worker.worker.html": true,
+  "nested_worker_close_self.worker.html": true,
+  "nested_worker_importScripts.worker.html": true,
+  "nested_worker_sync_xhr.worker.html": false,
+  "semantics": {
+    "encodings": {
+      "004.worker.html": true,
+      "001.html": true,
+      "002.html": false,
+      "003.html": false,
+      "004.html": false
+    },
+    "interface-objects": {
+      "001.worker.html": {
+        "expectedFailures": [
+          "The CanvasGradient interface object should be exposed.",
+          "The CanvasPattern interface object should be exposed.",
+          "The TextMetrics interface object should be exposed.",
+          "The Path2D interface object should be exposed.",
+          "The XMLHttpRequestEventTarget interface object should be exposed.",
+          "The XMLHttpRequestUpload interface object should be exposed.",
+          "The XMLHttpRequest interface object should be exposed.",
+          "The FileList interface object should be exposed.",
+          "The FileReaderSync interface object should be exposed.",
+          "The IDBRequest interface object should be exposed.",
+          "The IDBOpenDBRequest interface object should be exposed.",
+          "The IDBVersionChangeEvent interface object should be exposed.",
+          "The IDBFactory interface object should be exposed.",
+          "The IDBDatabase interface object should be exposed.",
+          "The IDBObjectStore interface object should be exposed.",
+          "The IDBIndex interface object should be exposed.",
+          "The IDBKeyRange interface object should be exposed.",
+          "The IDBCursor interface object should be exposed.",
+          "The IDBCursorWithValue interface object should be exposed.",
+          "The IDBTransaction interface object should be exposed."
+        ]
+      },
+      "002.worker.html": true
+    },
+    "multiple-workers": {
+      "exposure.any.html": {
+        "expectedFailures": [
+          "SharedWorker exposure"
+        ]
+      },
+      "exposure.any.worker.html": true,
+      "001.html": {
+        "expectedFailures": [
+          "shared"
+        ]
+      },
+      "002.html": true,
+      "003.html": true,
+      "004.html": false,
+      "008.html": false
+    },
+    "navigation": {
+      "001.html": false,
+      "002.html": false
+    },
+    "reporting-errors": {
+      "001.html": false,
+      "002.html": false,
+      "003.html": false,
+      "004.html": false
+    },
+    "run-a-worker": {
+      "001.html": true,
+      "002.html": false,
+      "003.html": {
+        "expectedFailures": [
+          "shared"
+        ]
+      }
+    },
+    "structured-clone": {
+      "dedicated.html": false,
+      "shared.html": false
+    },
+    "xhr": {
+      "001.html": false,
+      "002.html": false,
+      "003.html": false,
+      "004.html": false,
+      "005.html": false,
+      "006.html": false
+    }
+  },
+  "shared-worker-from-blob-url.window.html": false,
+  "shared-worker-in-data-url-context.window.html": false,
+  "worker-performance.worker.html": {
+    "expectedFailures": [
+      "Resource timing seems to work in workers",
+      "performance.setResourceTimingBufferSize in workers"
+    ]
+  },
+  "importscripts_mime_local.any.worker.html": {
+    "expectedFailures": [
+      "importScripts() requires scripty MIME types for data: URLs: text/ecmascript is allowed.",
+      "importScripts() requires scripty MIME types for blob: URLs: text/ecmascript is allowed."
+    ]
+  },
+  "SharedWorker-constructor.html": false,
+  "SharedWorker-detach-frame-in-error-event.html": false,
+  "SharedWorker-exception-propagation.html": false,
+  "SharedWorker-exception.html": false,
+  "SharedWorker-script-error.html": false,
+  "SharedWorker-simple.html": false,
+  "SharedWorkerPerformanceNow.html": false,
+  "SharedWorker_blobUrl.html": false,
+  "SharedWorker_dataUrl.html": false,
+  "Worker-creation-happens-in-parallel.https.html": true,
+  "Worker-messageport.html": true,
+  "Worker-multi-port.html": {
+    "expectedFailures": [
+      "Test postMessage on channel with previous failed postMessage calls."
+    ]
+  },
+  "Worker-nested-importScripts-error.html": false,
+  "Worker-postMessage-happens-in-parallel.https.html": true,
+  "Worker-simultaneous-errors.html": true,
+  "Worker-structure-message.html": true,
+  "Worker-terminate-forever-during-evaluation.html": {
+    "expectedFailures": [
+      "Worker is terminated during top-level script evaluation (module)",
+      "Worker is terminated during dynamic import() (module)",
+      "Worker is terminated during top-level await"
+    ]
+  },
+  "Worker-terminate-forever.html": true,
+  "Worker-termination-with-port-messages.html": true,
+  "Worker-timeout-cancel-order.html": true,
+  "Worker-timeout-decreasing-order.html": true,
+  "Worker-timeout-increasing-order.html": true,
+  "WorkerGlobalScope-close.html": false,
+  "WorkerGlobalScope_requestAnimationFrame.worker.html": false,
+  "WorkerNavigator_userAgentData.http.html": true,
+  "WorkerNavigator_userAgentData.https.html": false,
+  "WorkerPerformanceNow.html": true,
+  "abrupt-completion.html": false,
+  "baseurl": {
+    "alpha": {
+      "import-in-moduleworker.html": true,
+      "importScripts-in-worker.html": false,
+      "worker-in-worker.html": false,
+      "xhr-in-moduleworker.html": false,
+      "xhr-in-worker.html": false
+    }
+  },
+  "data-url-shared.html": false,
+  "data-url.html": {
+    "expectedFailures": [
+      "indexedDB is present"
+    ]
+  },
+  "dedicated-worker-from-blob-url.window.html": {
+    "expectedFailures": [
+      "Creating a dedicated worker from a blob URL works immediately before revoking."
+    ],
+    "flaky": true
+  },
+  "dedicated-worker-parse-error-failure.html": false,
+  "multi-globals": {
+    "url-parsing.html": false
+  },
+  "name-property.html": false,
+  "nested_worker_close_from_parent_worker.html": true,
+  "nested_worker_terminate_from_document.html": true,
+  "opaque-origin.html": false,
+  "postMessage_block.https.html": true,
+  "same-origin-check.sub.html": false,
+  "same-site-cookies": {
+    "first-party.all.tentative.https.window.html": false,
+    "first-party.default.tentative.https.window.html": false,
+    "first-party.none.tentative.https.window.html": false,
+    "third-party.all.tentative.sub.https.window.html": false,
+    "third-party.default.tentative.sub.https.window.html": false,
+    "third-party.none.tentative.sub.https.window.html": false
+  },
+  "shared-worker-name-via-options.html": false,
+  "shared-worker-options-mismatch.html": false,
+  "shared-worker-parse-error-failure.html": false,
+  "shared-worker-partitioned-cookies.tentative.https.html": false,
+  "shared-worker-partitioned.tentative.html": false,
+  "worker-request-animation-frame.html": false,
+  "WorkerNavigator_userAgentData.https.tentative.html": false
+}

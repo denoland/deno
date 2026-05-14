@@ -629,8 +629,7 @@ impl VfsBuilder {
       return Ok(());
     }
     self.add_dir_raw(dir_path);
-    // ok, building fs implementation
-    #[allow(clippy::disallowed_methods)]
+    #[allow(clippy::disallowed_methods, reason = "ok, creating vfs")]
     let read_dir = std::fs::read_dir(dir_path.as_ref())
       .with_context(|| format!("Reading {}", dir_path.display()))?;
 
@@ -650,8 +649,7 @@ impl VfsBuilder {
 
   pub fn add_path(&mut self, path: &Path) -> Result<(), AnyError> {
     let path = self.ensure_canonical_parent_path(path);
-    // ok, building fs implementation
-    #[allow(clippy::disallowed_methods)]
+    #[allow(clippy::disallowed_methods, reason = "ok, creating vfs")]
     let file_type = path.as_ref().symlink_metadata()?.file_type();
     self.add_path_with_file_type(&path, file_type)
   }
@@ -770,8 +768,7 @@ impl VfsBuilder {
     &self,
     path: &CanonicalPath,
   ) -> Result<(Vec<u8>, Option<SystemTime>), AnyError> {
-    // ok, building fs implementation
-    #[allow(clippy::disallowed_methods)]
+    #[allow(clippy::disallowed_methods, reason = "ok, creating vfs")]
     {
       let mut file = std::fs::OpenOptions::new()
         .read(true)
@@ -870,15 +867,13 @@ impl VfsBuilder {
 
       let candidate = current_real.join(component.as_os_str());
 
-      // ok, fs implementation
-      #[allow(clippy::disallowed_methods)]
+      #[allow(clippy::disallowed_methods, reason = "ok, creating vfs")]
       let is_symlink = std::fs::symlink_metadata(&candidate)
         .map(|m| m.is_symlink())
         .unwrap_or(false);
 
       if is_symlink {
-        // ok, fs implementation
-        #[allow(clippy::disallowed_methods)]
+        #[allow(clippy::disallowed_methods, reason = "ok, creating vfs")]
         if let Ok(link_target) = std::fs::read_link(&candidate) {
           let resolved = normalize_path(Cow::Owned(
             current_real.join(strip_unc_prefix(link_target)),
@@ -891,8 +886,7 @@ impl VfsBuilder {
             .into_owned();
 
           // determine if the final target is a directory
-          // ok, fs implementation
-          #[allow(clippy::disallowed_methods)]
+          #[allow(clippy::disallowed_methods, reason = "ok, creating vfs")]
           let dest_is_dir = std::fs::metadata(&candidate)
             .map(|m| m.is_dir())
             .unwrap_or(true);
@@ -935,8 +929,7 @@ impl VfsBuilder {
       // symlinks for case differences on case-insensitive filesystems.
       #[cfg(windows)]
       {
-        // ok, fs implementation
-        #[allow(clippy::disallowed_methods)]
+        #[allow(clippy::disallowed_methods, reason = "ok, creating vfs")]
         if let Ok(canonical) = std::fs::canonicalize(&candidate) {
           let canonical = strip_unc_prefix(canonical);
           if let Some(canon_name) = canonical.file_name() {
@@ -1003,8 +996,7 @@ impl VfsBuilder {
     // canonicalize parent to resolve aliased directory components
     // (e.g. Windows 8.3 short names), adding VFS symlinks as needed
     let path = self.ensure_canonical_parent_path(path);
-    // ok, fs implementation
-    #[allow(clippy::disallowed_methods)]
+    #[allow(clippy::disallowed_methods, reason = "ok, creating vfs")]
     let metadata =
       std::fs::symlink_metadata(path.as_ref()).with_context(|| {
         format!("Resolving target path for '{}'", path.display())
@@ -1084,8 +1076,7 @@ impl VfsBuilder {
       #[cfg(unix)]
       {
         use std::os::unix::fs::PermissionsExt;
-        // ok, fs implementation
-        #[allow(clippy::disallowed_methods)]
+        #[allow(clippy::disallowed_methods, reason = "ok, creating vfs")]
         std::fs::metadata(path.as_ref())
           .map(|m| m.permissions().mode() & 0o111 != 0)
           .unwrap_or(false)
@@ -1156,8 +1147,7 @@ impl VfsBuilder {
   ) -> Result<SymlinkTarget, AnyError> {
     log::debug!("Adding symlink '{}'", path.display());
     let target = strip_unc_prefix(
-      // ok, fs implementation
-      #[allow(clippy::disallowed_methods)]
+      #[allow(clippy::disallowed_methods, reason = "ok, creating vfs")]
       std::fs::read_link(path.as_ref())
         .with_context(|| format!("Reading symlink '{}'", path.display()))?,
     );
@@ -1166,7 +1156,7 @@ impl VfsBuilder {
       normalize_path(Cow::Owned(path.as_ref().parent().unwrap().join(&target)));
     let target = self.ensure_canonical_parent_path(&target);
     // use metadata (follows symlinks) to determine final target type
-    #[allow(clippy::disallowed_methods)]
+    #[allow(clippy::disallowed_methods, reason = "ok, creating vfs")]
     let dest_is_dir = std::fs::metadata(target.as_ref())
       .map(|m| m.is_dir())
       .unwrap_or(false);
@@ -1186,8 +1176,7 @@ impl VfsBuilder {
         // ignore previously inserted
       },
     );
-    // ok, fs implementation
-    #[allow(clippy::disallowed_methods)]
+    #[allow(clippy::disallowed_methods, reason = "ok, creating vfs")]
     let target_metadata = std::fs::symlink_metadata(target.as_ref())
       .with_context(|| {
         format!("Reading symlink target '{}'", target.display())

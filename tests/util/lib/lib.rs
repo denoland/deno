@@ -36,7 +36,6 @@ pub use builders::TestCommandBuilder;
 pub use builders::TestCommandOutput;
 pub use builders::TestContext;
 pub use builders::TestContextBuilder;
-pub use consts::tsgo_prebuilt_path;
 pub use fs::PathRef;
 pub use fs::TempDir;
 #[cfg(feature = "lsp")]
@@ -311,7 +310,7 @@ fn ensure_test_server_built() {
   }
 }
 
-pub const TEST_SERVERS_COUNT: usize = 37;
+pub const TEST_SERVERS_COUNT: usize = 38;
 
 #[derive(Default)]
 struct HttpServerCount {

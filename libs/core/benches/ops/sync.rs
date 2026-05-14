@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(deprecated)]
+#![allow(deprecated, reason = "bench code")]
 use std::borrow::Cow;
 use std::ffi::c_void;
 
@@ -23,6 +23,8 @@ deno_core::extension!(
     op_string_bytestring,
     op_string_bytestring_no_side_effects,
     op_string_option_u32,
+    op_string_serde,
+    op_string_owned,
     op_local,
     op_local_scope,
     op_local_nofast,
@@ -89,6 +91,19 @@ pub fn op_string_bytestring(#[serde] s: ByteString) -> u32 {
 
 #[op2(no_side_effects)]
 pub fn op_string_bytestring_no_side_effects(#[serde] s: ByteString) -> u32 {
+  s.len() as _
+}
+
+#[derive(serde::Deserialize)]
+struct StringWrapper(String);
+
+#[op2]
+pub fn op_string_serde(#[serde] s: StringWrapper) -> u32 {
+  s.0.len() as _
+}
+
+#[op2(fast)]
+pub fn op_string_owned(#[string] s: String) -> u32 {
   s.len() as _
 }
 
@@ -205,7 +220,7 @@ fn bench_op(
     .unwrap();
   let bench = runtime.execute_script("", ascii_str!("bench")).unwrap();
   deno_core::scope!(scope, &mut runtime);
-  #[allow(clippy::unnecessary_fallible_conversions)]
+  #[allow(clippy::unnecessary_fallible_conversions, reason = "bench code")]
   let bench: v8::Local<v8::Function> =
     v8::Local::<v8::Value>::new(scope, bench)
       .try_into()
@@ -411,6 +426,68 @@ fn bench_op_string_option_u32(b: &mut Bencher) {
   );
 }
 
+/// A #[serde] String function (exercises serde_v8 to_utf8 path).
+fn bench_op_string_serde(b: &mut Bencher) {
+  bench_op(
+    b,
+    BENCH_COUNT,
+    "op_string_serde",
+    1,
+    "accum += op_string_serde('this is a reasonably long string that we would like to get the length of!');",
+  );
+}
+
+fn bench_op_string_serde_large_1000(b: &mut Bencher) {
+  bench_op(
+    b,
+    BENCH_COUNT,
+    "op_string_serde",
+    1,
+    "accum += op_string_serde(LARGE_STRING_1000);",
+  );
+}
+
+fn bench_op_string_serde_large_utf8_1000(b: &mut Bencher) {
+  bench_op(
+    b,
+    BENCH_COUNT,
+    "op_string_serde",
+    1,
+    "accum += op_string_serde(LARGE_STRING_UTF8_1000);",
+  );
+}
+
+/// A #[string] String function (exercises ops::to_string thread-local path).
+fn bench_op_string_owned(b: &mut Bencher) {
+  bench_op(
+    b,
+    BENCH_COUNT,
+    "op_string_owned",
+    1,
+    "accum += op_string_owned('this is a reasonably long string that we would like to get the length of!');",
+  );
+}
+
+fn bench_op_string_owned_large_1000(b: &mut Bencher) {
+  bench_op(
+    b,
+    BENCH_COUNT,
+    "op_string_owned",
+    1,
+    "accum += op_string_owned(LARGE_STRING_1000);",
+  );
+}
+
+fn bench_op_string_owned_large_utf8_1000(b: &mut Bencher) {
+  bench_op(
+    b,
+    BENCH_COUNT,
+    "op_string_owned",
+    1,
+    "accum += op_string_owned(LARGE_STRING_UTF8_1000);",
+  );
+}
+
 /// A fast function that takes a v8::Local<String>
 fn bench_op_v8_local(b: &mut Bencher) {
   bench_op(
@@ -545,6 +622,12 @@ benchmark_group!(
   bench_op_string_large_utf8_1000,
   bench_op_string_large_utf8_1000000,
   bench_op_string_option_u32,
+  bench_op_string_serde,
+  bench_op_string_serde_large_1000,
+  bench_op_string_serde_large_utf8_1000,
+  bench_op_string_owned,
+  bench_op_string_owned_large_1000,
+  bench_op_string_owned_large_utf8_1000,
   bench_op_v8_local,
   bench_op_v8_local_scope,
   bench_op_v8_local_nofast,

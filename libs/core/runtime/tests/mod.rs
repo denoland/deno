@@ -33,7 +33,7 @@ struct TestState {
   dispatch_count: Arc<AtomicUsize>,
 }
 
-#[allow(clippy::await_holding_refcell_ref)] // False positive.
+#[allow(clippy::await_holding_refcell_ref, reason = "false positive")]
 #[op2]
 async fn op_test(
   rc_op_state: Rc<RefCell<OpState>>,

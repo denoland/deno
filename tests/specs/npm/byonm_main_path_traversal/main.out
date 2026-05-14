@@ -1,0 +1,4 @@
+error: Uncaught (in promise) Error: Cannot find module '[WILDCARD]secret.json'. Please verify that the package.json has a valid "main" entry
+const pkg = require("evil-pkg");
+[WILDCARD]
+    at [WILDCARD]main.cjs:1:[WILDCARD]

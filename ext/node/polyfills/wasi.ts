@@ -3,22 +3,24 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials ban-types no-this-alias
 
-import { primordials } from "ext:core/mod.js";
-import { WasiContext } from "ext:core/ops";
-import {
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { WasiContext } = core.ops;
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_WASI_ALREADY_STARTED,
   ERR_WASI_NOT_STARTED,
-} from "ext:deno_node/internal/errors.ts";
-import { statSync } from "ext:deno_node/_fs/_fs_stat.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const {
+  ArrayPrototypeMap,
   ArrayIsArray,
   Error,
   NumberIsInteger,
   ObjectEntries,
   ObjectPrototypeToString,
+  String,
   TypeError,
 } = primordials;
 
@@ -105,6 +107,8 @@ function validateString(
 // deno-lint-ignore no-explicit-any
 type WasiOptions = any;
 
+// WASI preopens use direct host filesystem access in the native ops. They do
+// not read from the in-memory VFS that `deno compile` uses for embedded files.
 class WASI {
   #ctx;
   #version: string;
@@ -133,10 +137,11 @@ class WASI {
     }
 
     // Validate args
-    const args = options.args ?? [];
+    const argsValue = options.args ?? [];
     if (options.args !== undefined) {
       validateArray(options.args, "options.args");
     }
+    const args = ArrayPrototypeMap(argsValue, (arg) => String(arg));
 
     // Validate env
     const envObj = options.env ?? {};
@@ -145,9 +150,7 @@ class WASI {
     }
     const envPairs: [string, string][] = [];
     for (const [key, value] of ObjectEntries(envObj)) {
-      if (typeof value === "string") {
-        envPairs.push([key, value]);
-      }
+      envPairs.push([key, String(value)]);
     }
 
     // Validate preopens
@@ -157,18 +160,16 @@ class WASI {
     const preopens: [string, string][] = [];
     if (options.preopens) {
       for (const [virtualPath, realPath] of ObjectEntries(options.preopens)) {
-        if (typeof realPath === "string") {
-          // Validate that the path exists
-          try {
-            statSync(realPath);
-          } catch {
-            throw new UVWASIError(
-              "UVWASI_ENOENT",
-              `uvwasi_init: failed to open preopen "${realPath}"`,
-            );
-          }
-          preopens.push([virtualPath, realPath]);
+        const realPathString = String(realPath);
+        try {
+          Deno.statSync(realPathString);
+        } catch {
+          throw new UVWASIError(
+            "UVWASI_ENOENT",
+            `uvwasi_init: failed to open preopen "${realPathString}"`,
+          );
         }
+        preopens.push([String(virtualPath), realPathString]);
       }
     }
 
@@ -246,7 +247,10 @@ class WASI {
       },
       proc_exit(code: number) {
         const exitCode = ctx.procExit(code);
-        throw new WASIProcExit(exitCode);
+        if (self.#returnOnExit) {
+          throw new WASIProcExit(exitCode);
+        }
+        Deno.exit(exitCode);
       },
       proc_raise(sig: number) {
         return ctx.procRaise(sig);
@@ -762,5 +766,8 @@ class WASI {
   }
 }
 
-export { WASI };
-export default { WASI };
+return {
+  default: { WASI },
+  WASI,
+};
+})();

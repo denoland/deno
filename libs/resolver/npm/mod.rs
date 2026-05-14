@@ -379,7 +379,7 @@ pub struct NpmReqResolverOptions<
   pub sys: TSys,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NpmReqResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
@@ -544,6 +544,36 @@ impl<
       resolution_kind,
     );
     match resolution_result {
+      Ok(NodeResolution::BuiltIn(builtin_name)) => {
+        // The specifier matches a Node built-in name (e.g. "events") but
+        // an npm package with the same name may be installed. Try resolving
+        // as an npm package first -- if found, the npm package takes
+        // precedence over the built-in, matching Node.js behavior where
+        // node_modules packages shadow built-ins.
+        match self.node_resolver.resolve_package(
+          specifier,
+          referrer,
+          resolution_mode,
+          resolution_kind,
+        ) {
+          Ok(res) => Ok(Some(res)),
+          Err(err) => {
+            let err_kind = err.into_kind();
+            match err_kind {
+              // If the npm package can't be found in node_modules, fall
+              // back to the built-in. Other errors (e.g. broken exports
+              // map) should propagate so the user gets a useful diagnostic.
+              NodeResolveErrorKind::PackageResolve(_) => {
+                Ok(Some(NodeResolution::BuiltIn(builtin_name)))
+              }
+              _ => Err(
+                ResolveIfForNpmPackageErrorKind::NodeResolve(err_kind.into())
+                  .into_box(),
+              ),
+            }
+          }
+        }
+      }
       Ok(res) => Ok(Some(res)),
       Err(err) => {
         let err = err.into_kind();
@@ -640,4 +670,20 @@ impl<
       }
     }
   }
+}
+
+pub(crate) fn join_package_name_to_path(
+  mut path: Cow<'_, Path>,
+  package_name: &str,
+) -> PathBuf {
+  // ensure backslashes are used on windows
+  for part in package_name.split('/') {
+    match path {
+      Cow::Borrowed(inner) => path = Cow::Owned(inner.join(part)),
+      Cow::Owned(ref mut path) => {
+        path.push(part);
+      }
+    }
+  }
+  path.into_owned()
 }

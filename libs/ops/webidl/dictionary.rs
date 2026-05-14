@@ -55,6 +55,7 @@ pub fn get_body(
   let fields = fields.into_iter().map(|field| {
     let field_name = field.name;
     let js_name = field.js_name.to_string();
+    let context_prefix = format!("'{}' of '{}'", js_name, ident_string);
     let key = crate::get_internalized_string(field.js_name)?;
 
     let options = if field.converter_options.is_empty() {
@@ -117,7 +118,9 @@ pub fn get_body(
             __scope,
             __value,
             __prefix.clone(),
-            ::deno_core::webidl::ContextFn::new_borrowed(&|| format!("'{}' of '{}' ({})", #js_name, #ident_string, __context.call()).into()),
+            ::deno_core::webidl::ContextFn::new_borrowed(&|| {
+              format!("{} ({})", #context_prefix, __context.call()).into()
+            }),
             &#options,
           )?
         } else {
@@ -230,7 +233,7 @@ impl TryFrom<Field> for DictionaryField {
   }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unused properties")]
 enum DictionaryFieldArgument {
   Default {
     name_token: kw::default,

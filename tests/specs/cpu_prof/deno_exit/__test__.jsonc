@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "deno_exit": {
+      "steps": [
+        {
+          "args": "run --cpu-prof-dir=. main.js",
+          "output": "calling Deno.exit()\n"
+        },
+        {
+          "args": "run --allow-read verify.js",
+          "output": "Valid profile with [WILDCARD] nodes\n"
+        }
+      ]
+    }
+  }
+}

@@ -123,6 +123,7 @@ enum FdEntry {
   },
   Dir {
     path: std::path::PathBuf,
+    preopen_root_path: std::path::PathBuf,
     rights: u64,
   },
 }
@@ -163,16 +164,34 @@ impl WasiInner {
   ) -> Result<std::path::PathBuf, i32> {
     let real_root = match self.get_fd(dirfd) {
       Some(FdEntry::PreopenDir { real_path, .. }) => real_path.as_str(),
-      Some(FdEntry::Dir { path: dir_path, .. }) => {
+      Some(FdEntry::Dir {
+        path: dir_path,
+        preopen_root_path,
+        ..
+      }) => {
         let resolved = dir_path.join(path);
+        let canonical_base =
+          std::fs::canonicalize(preopen_root_path).map_err(|_| ERRNO_NOENT)?;
+        let canonical_resolved = if resolved.exists() {
+          std::fs::canonicalize(&resolved).map_err(|_| ERRNO_NOENT)?
+        } else {
+          let parent = resolved.parent().ok_or(ERRNO_NOENT)?;
+          let parent_canonical =
+            std::fs::canonicalize(parent).map_err(|_| ERRNO_NOENT)?;
+          let filename = resolved.file_name().ok_or(ERRNO_INVAL)?;
+          parent_canonical.join(filename)
+        };
+        if !canonical_resolved.starts_with(&canonical_base) {
+          return Err(ERRNO_PERM);
+        }
         permissions
           .check_open(
-            Cow::Owned(resolved.clone()),
+            Cow::Owned(canonical_resolved.clone()),
             access_kind,
             Some("node:wasi"),
           )
           .map_err(|_| ERRNO_ACCES)?;
-        return Ok(resolved);
+        return Ok(canonical_resolved);
       }
       _ => return Err(ERRNO_BADF),
     };
@@ -1125,8 +1144,21 @@ impl WasiContext {
       if oflags & OFLAGS_DIRECTORY != 0 && !resolved.is_dir() {
         return ERRNO_NOTDIR;
       }
+      let preopen_root_path = match inner.get_fd(dirfd) {
+        Some(FdEntry::PreopenDir { real_path, .. }) => {
+          match std::fs::canonicalize(real_path) {
+            Ok(path) => path,
+            Err(e) => return io_err_to_errno(&e),
+          }
+        }
+        Some(FdEntry::Dir {
+          preopen_root_path, ..
+        }) => preopen_root_path.clone(),
+        _ => return ERRNO_BADF,
+      };
       let new_fd = inner.alloc_fd(FdEntry::Dir {
         path: resolved,
+        preopen_root_path,
         rights: RIGHTS_DIR,
       });
       if write_i32(memory, fd_ptr, new_fd).is_none() {

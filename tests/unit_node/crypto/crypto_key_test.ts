@@ -156,15 +156,16 @@ for (
   });
 
   Deno.test({
-    name: `generate ec key ${namedCurve} paramEncoding=explicit fails`,
+    name: `generate ec key ${namedCurve} paramEncoding=explicit`,
     fn() {
-      assertThrows(() => {
-        // @ts-ignore: @types/node is broken?
-        generateKeyPairSync("ec", {
-          namedCurve,
-          paramEncoding: "explicit",
-        });
+      // @ts-ignore: @types/node is broken?
+      const { publicKey, privateKey } = generateKeyPairSync("ec", {
+        namedCurve,
+        paramEncoding: "explicit",
       });
+
+      assertEquals(publicKey.type, "public");
+      assertEquals(privateKey.type, "private");
     },
   });
 }
@@ -714,7 +715,7 @@ Deno.test("generateKeyPair promisify", async () => {
   });
 
   assert(publicKey.startsWith("-----BEGIN PUBLIC KEY-----"));
-  assert(privateKey.startsWith("-----BEGIN PRIVATE KEY-----"));
+  assert(privateKey.startsWith("-----BEGIN ENCRYPTED PRIVATE KEY-----"));
 });
 
 Deno.test("RSA export private JWK", function () {
@@ -787,13 +788,19 @@ Deno.test("X509Certificate inspect", async function () {
   assertEquals(
     trimmedStdout,
     `X509Certificate {
-  subject: 'C=US\\nST=CA\\nL=SF\\nO=Joyent\\nOU=Node.js\\nCN=agent1\\nEmail=ry@tinyclouds.org',
+  subject: 'C=US\\n' +
+    'ST=CA\\n' +
+    'L=SF\\n' +
+    'O=Joyent\\n' +
+    'OU=Node.js\\n' +
+    'CN=agent1\\n' +
+    'emailAddress=ry@tinyclouds.org',
   subjectAltName: undefined,
-  issuer: 'C=US\\nST=CA\\nL=SF\\nO=Joyent\\nOU=Node.js\\nCN=ca1\\nEmail=ry@tinyclouds.org',
+  issuer: 'C=US\\nST=CA\\nL=SF\\nO=Joyent\\nOU=Node.js\\nCN=ca1\\nemailAddress=ry@tinyclouds.org',
   infoAccess: 'OCSP - URI:http://ocsp.nodejs.org/\\n' +
     'CA Issuers - URI:http://ca.nodejs.org/ca.cert',
-  validFrom: 'Sep  3 21:40:37 2022 +00:00',
-  validTo: 'Jun 17 21:40:37 2296 +00:00',
+  validFrom: 'Sep  3 21:40:37 2022 GMT',
+  validTo: 'Jun 17 21:40:37 2296 GMT',
   validFromDate: 2022-09-03T21:40:37.000Z,
   validToDate: 2296-06-17T21:40:37.000Z,
   fingerprint: '8B:89:16:C4:99:87:D2:13:1A:64:94:36:38:A5:32:01:F0:95:3B:53',
@@ -1033,6 +1040,78 @@ Deno.test("curve25519 generate valid private jwk", function () {
   assert(privateKey.d);
 });
 
+Deno.test("createPublicKey from Ed25519 certificate PEM", function () {
+  const ed25519Cert = "-----BEGIN CERTIFICATE-----\n" +
+    "MIIBoTCCAVOgAwIBAgIUde5G4y+mtbb0eRISc7vnINRbSXkwBQYDK2VwMEUxCzAJ\n" +
+    "BgNVBAYTAkNaMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5l\n" +
+    "dCBXaWRnaXRzIFB0eSBMdGQwIBcNMjIxMDExMTIyMTUzWhgPMjEyMjA5MTcxMjIx\n" +
+    "NTNaMEUxCzAJBgNVBAYTAkNaMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQK\n" +
+    "DBhJbnRlcm5ldCBXaWRnaXRzIFB0eSBMdGQwKjAFBgMrZXADIQCUFn0ZKG9tAS3L\n" +
+    "Joaz7Q13hq6sfsRGrpQ4i9cZvn+1cKNTMFEwHQYDVR0OBBYEFAATzoAtBcYTcOdY\n" +
+    "jkcQqsWXipnSMB8GA1UdIwQYMBaAFAATzoAtBcYTcOdYjkcQqsWXipnSMA8GA1Ud\n" +
+    "EwEB/wQFMAMBAf8wBQYDK2VwA0EApfw+9jSO0x0IorDfdr5ZVGRBVgrfrd9XhxqQ\n" +
+    "Krphj6cA4Ls9aMYAHf5w+OW9D/t3a9p6mYm78AKIdBsPEtT1AQ==\n" +
+    "-----END CERTIFICATE-----\n";
+
+  const publicKey = createPublicKey(ed25519Cert);
+  assertEquals(publicKey.type, "public");
+  assertEquals(publicKey.asymmetricKeyType, "ed25519");
+});
+
+Deno.test("KeyObject.prototype.equals secret keys", function () {
+  const key1 = createSecretKey(Buffer.from("secret"));
+  const key2 = createSecretKey(Buffer.from("secret"));
+  const key3 = createSecretKey(Buffer.from("other"));
+
+  assert(key1.equals(key1));
+  assert(key1.equals(key2));
+  assert(!key1.equals(key3));
+});
+
+Deno.test("KeyObject.prototype.equals empty secret keys", function () {
+  const key1 = createSecretKey(Buffer.alloc(0));
+  const key2 = createSecretKey(Buffer.alloc(0));
+
+  assert(key1.equals(key2));
+});
+
+Deno.test("KeyObject.prototype.equals asymmetric keys", function () {
+  const { publicKey: pub1, privateKey: priv1 } = generateKeyPairSync(
+    "ed25519",
+  );
+  const { publicKey: pub2, privateKey: priv2 } = generateKeyPairSync(
+    "ed25519",
+  );
+
+  // Self-equality
+  assert(pub1.equals(pub1));
+  assert(priv1.equals(priv1));
+
+  // Same key type, different keys
+  assert(!pub1.equals(pub2));
+  assert(!priv1.equals(priv2));
+
+  // Cross-type: public vs private returns false
+  assert(!pub1.equals(priv1 as any));
+});
+
+Deno.test("KeyObject.prototype.equals RSA keys", function () {
+  const key1 = createPublicKey(rsaPublicKey);
+  const key2 = createPublicKey(rsaPublicKey);
+
+  assert(key1.equals(key2));
+});
+
+Deno.test("KeyObject.prototype.equals invalid arg", function () {
+  const key = createSecretKey(Buffer.from("secret"));
+
+  assertThrows(
+    () => key.equals("not a key" as any),
+    TypeError,
+    "otherKeyObject",
+  );
+});
+
 Deno.test("generateKeyPairSync ec secp256k1", () => {
   const { publicKey, privateKey } = generateKeyPairSync("ec", {
     namedCurve: "secp256k1",
@@ -1117,4 +1196,126 @@ Deno.test("generateKeyPair async ec secp256k1", async () => {
   const data = Buffer.from("async test");
   const signature = sign("sha256", data, privateKey);
   assert(verify("sha256", data, publicKey, signature));
+});
+
+// https://github.com/denoland/deno/issues/22920
+Deno.test("EC private key SEC1 round-trip for all curves", () => {
+  for (const namedCurve of ["P-224", "P-256", "P-384", "secp256k1"]) {
+    const { privateKey } = generateKeyPairSync("ec", { namedCurve });
+
+    // Export as SEC1 PEM and reimport
+    const pem = privateKey.export({ type: "sec1", format: "pem" });
+    const fromPem = createPrivateKey(pem);
+    assertEquals(fromPem.type, "private");
+    assertEquals(fromPem.asymmetricKeyType, "ec");
+
+    // Export as SEC1 DER and reimport
+    const der = privateKey.export({ type: "sec1", format: "der" });
+    const fromDer = createPrivateKey({
+      key: Buffer.from(der),
+      format: "der",
+      type: "sec1",
+    });
+    assertEquals(fromDer.type, "private");
+    assertEquals(fromDer.asymmetricKeyType, "ec");
+
+    // Verify the reimported key can sign/verify
+    const data = Buffer.from("sec1 round-trip test");
+    const sig = sign("sha256", data, fromPem);
+    assert(
+      verify("sha256", data, privateKey, sig),
+      `sign/verify failed for ${namedCurve}`,
+    );
+  }
+});
+
+// --- CryptoKey input tests ---
+
+const rsaCryptoKeyPair = await crypto.subtle.generateKey(
+  {
+    name: "RSASSA-PKCS1-v1_5",
+    modulusLength: 2048,
+    publicExponent: new Uint8Array([1, 0, 1]),
+    hash: "SHA-256",
+  },
+  true,
+  ["sign", "verify"],
+);
+
+const ecCryptoKeyPair = await crypto.subtle.generateKey(
+  { name: "ECDSA", namedCurve: "P-256" },
+  true,
+  ["sign", "verify"],
+);
+
+const hmacCryptoKey = await crypto.subtle.generateKey(
+  { name: "HMAC", hash: "SHA-256", length: 256 },
+  true,
+  ["sign", "verify"],
+);
+
+Deno.test("createPublicKey from RSA CryptoKey (public)", function () {
+  const key = createPublicKey(rsaCryptoKeyPair.publicKey as any);
+  assertEquals(key.type, "public");
+  assertEquals(key.asymmetricKeyType, "rsa");
+});
+
+Deno.test("createPublicKey from RSA CryptoKey (private derives public)", function () {
+  const key = createPublicKey(rsaCryptoKeyPair.privateKey as any);
+  assertEquals(key.type, "public");
+  assertEquals(key.asymmetricKeyType, "rsa");
+});
+
+Deno.test("createPrivateKey from RSA CryptoKey direct", function () {
+  const key = createPrivateKey(rsaCryptoKeyPair.privateKey as any);
+  assertEquals(key.type, "private");
+  assertEquals(key.asymmetricKeyType, "rsa");
+});
+
+Deno.test("createPrivateKey from RSA CryptoKey via { key }", function () {
+  const key = createPrivateKey({ key: rsaCryptoKeyPair.privateKey as any });
+  assertEquals(key.type, "private");
+  assertEquals(key.asymmetricKeyType, "rsa");
+});
+
+Deno.test("createPublicKey from RSA CryptoKey round-trips to PEM", function () {
+  const key = createPublicKey(rsaCryptoKeyPair.publicKey as any);
+  const pem = key.export({ type: "spki", format: "pem" }) as string;
+  assert(pem.startsWith("-----BEGIN PUBLIC KEY-----"));
+  assert(pem.trimEnd().endsWith("-----END PUBLIC KEY-----"));
+});
+
+Deno.test("createPublicKey from EC P-256 CryptoKey", function () {
+  const key = createPublicKey(ecCryptoKeyPair.publicKey as any);
+  assertEquals(key.type, "public");
+  assertEquals(key.asymmetricKeyType, "ec");
+  assertEquals(key.asymmetricKeyDetails?.namedCurve, "prime256v1");
+});
+
+Deno.test("createPrivateKey from EC P-256 CryptoKey", function () {
+  const key = createPrivateKey(ecCryptoKeyPair.privateKey as any);
+  assertEquals(key.type, "private");
+  assertEquals(key.asymmetricKeyType, "ec");
+  assertEquals(key.asymmetricKeyDetails?.namedCurve, "prime256v1");
+});
+
+Deno.test("createSecretKey from HMAC CryptoKey", function () {
+  const key = createSecretKey(hmacCryptoKey as any);
+  assertEquals(key.type, "secret");
+  assertEquals(key.symmetricKeySize, 32);
+});
+
+Deno.test("createSecretKey rejects asymmetric CryptoKey", function () {
+  assertThrows(
+    () => createSecretKey(rsaCryptoKeyPair.publicKey as any),
+    TypeError,
+    "secret",
+  );
+});
+
+Deno.test("createPrivateKey rejects public CryptoKey", function () {
+  assertThrows(
+    () => createPrivateKey(rsaCryptoKeyPair.publicKey as any),
+    TypeError,
+  );
 });

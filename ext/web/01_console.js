@@ -2,7 +2,8 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, internals, primordials } from "ext:core/mod.js";
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
 const {
   isAnyArrayBuffer,
   isArgumentsObject,
@@ -28,12 +29,19 @@ const {
   isWeakMap,
   isWeakSet,
 } = core;
-import {
+const {
   op_get_constructor_name,
   op_get_non_index_property_names,
+  op_now,
   op_preview_entries,
-} from "ext:core/ops";
-import * as ops from "ext:core/ops";
+} = core.ops;
+let _URLPrototype;
+function getURLPrototype() {
+  if (!_URLPrototype) {
+    _URLPrototype = core.loadExtScript("ext:deno_web/00_url.js").URLPrototype;
+  }
+  return _URLPrototype;
+}
 const {
   AggregateError,
   AggregateErrorPrototype,
@@ -71,6 +79,7 @@ const {
   DatePrototype,
   DatePrototypeGetTime,
   DatePrototypeToISOString,
+  DatePrototypeToString,
   Error,
   ErrorCaptureStackTrace,
   ErrorPrototype,
@@ -193,6 +202,7 @@ const {
   Uint32Array,
   WeakMap,
   WeakMapPrototype,
+  JSONStringify,
   WeakSet,
   WeakSetPrototype,
 } = primordials;
@@ -210,11 +220,11 @@ const lazyLoadModule = core.createLazyLoader(
 );
 
 let currentTime = DateNow;
-if (ops.op_now) {
+if (op_now) {
   const hrU8 = new Uint8Array(8);
   const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
   currentTime = function opNow() {
-    ops.op_now(hrU8);
+    op_now(hrU8);
     return (hr[0] * 1000 + hr[1] / 1e6);
   };
 }
@@ -245,6 +255,34 @@ class AssertionError extends Error {
 function assert(cond, msg = "Assertion failed") {
   if (!cond) {
     throw new AssertionError(msg);
+  }
+}
+
+// Attempt to JSON.stringify, returning "[Circular]" only for circular
+// reference errors (matching Node.js behavior).
+const firstErrorLine = (error) =>
+  StringPrototypeSplit(error.message, "\n", 1)[0];
+let CIRCULAR_ERROR_MESSAGE;
+function tryStringify(arg) {
+  try {
+    return JSONStringify(arg);
+  } catch (err) {
+    if (!CIRCULAR_ERROR_MESSAGE) {
+      try {
+        const a = {};
+        a.a = a;
+        JSONStringify(a);
+      } catch (circularError) {
+        CIRCULAR_ERROR_MESSAGE = firstErrorLine(circularError);
+      }
+    }
+    if (
+      err.name === "TypeError" &&
+      firstErrorLine(err) === CIRCULAR_ERROR_MESSAGE
+    ) {
+      return "[Circular]";
+    }
+    throw err;
   }
 }
 
@@ -517,23 +555,34 @@ function formatValue(
 
   // Provide a hook for user-specified inspect functions.
   // Check that value is an object with an inspect function on it.
+  // For Proxy objects, look up custom inspect symbols on the unwrapped
+  // target (via core.getProxyDetails) to avoid triggering the proxy's
+  // get/has traps which may cause side effects (e.g. grammy API proxies
+  // return functions for any property access). This matches Node.js
+  // behavior. The call itself still uses `value` (the proxy) as `this`.
   if (ctx.customInspect) {
+    const inspectTarget = proxyDetails ? proxyDetails[0] : value;
     if (
-      ReflectHas(value, customInspect) &&
-      typeof value[customInspect] === "function"
+      ReflectHas(inspectTarget, customInspect) &&
+      typeof inspectTarget[customInspect] === "function"
     ) {
       return String(value[customInspect](inspect, ctx));
     } else if (
-      ReflectHas(value, privateCustomInspect) &&
-      typeof value[privateCustomInspect] === "function"
+      ReflectHas(inspectTarget, privateCustomInspect) &&
+      typeof inspectTarget[privateCustomInspect] === "function"
     ) {
       // TODO(nayeemrmn): `inspect` is passed as an argument because custom
       // inspect implementations in `extensions` need it, but may not have access
       // to the `Deno` namespace in web workers. Remove when the `Deno`
       // namespace is always enabled.
       return String(value[privateCustomInspect](inspect, ctx));
-    } else if (ReflectHas(value, nodeCustomInspectSymbol)) {
-      const maybeCustom = value[nodeCustomInspectSymbol];
+    } else {
+      let maybeCustom;
+      try {
+        maybeCustom = inspectTarget[nodeCustomInspectSymbol];
+      } catch {
+        // ignore
+      }
       if (
         typeof maybeCustom === "function" &&
         // Filter out the util module, its inspect function is special.
@@ -683,7 +732,11 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
 
   let tag;
   if (!proxyDetails) {
-    tag = value[SymbolToStringTag];
+    try {
+      tag = value[SymbolToStringTag];
+    } catch {
+      // Symbol.toStringTag getter may throw (e.g. circular JSON.stringify)
+    }
   }
   // Only list the tag in case it's non-enumerable / not an own property.
   // Otherwise we'd print this twice.
@@ -847,14 +900,16 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         (proxyDetails === null && isDate(value)) ||
         (proxyDetails !== null && isDate(proxyDetails[0]))
       ) {
-        const date = proxyDetails?.[0] ?? value;
-        if (NumberIsNaN(DatePrototypeGetTime(date))) {
-          return ctx.stylize("Invalid Date", "date");
-        } else {
-          base = DatePrototypeToISOString(date);
-          if (keys.length === 0 && protoProps === undefined) {
-            return ctx.stylize(base, "date");
-          }
+        value = proxyDetails?.[0] ?? value;
+        base = NumberIsNaN(DatePrototypeGetTime(value))
+          ? DatePrototypeToString(value)
+          : DatePrototypeToISOString(value);
+        const prefix = getPrefix(constructor, tag, "Date");
+        if (prefix !== "Date ") {
+          base = `${prefix}${base}`;
+        }
+        if (keys.length === 0 && protoProps === undefined) {
+          return ctx.stylize(base, "date");
         }
       } else if (
         proxyDetails === null &&
@@ -966,6 +1021,14 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         formatter = FunctionPrototypeBind(formatNamespaceObject, null, keys);
       } else if (isBoxedPrimitive(value)) {
         base = getBoxedBase(value, ctx, keys, constructor, tag);
+        if (keys.length === 0 && protoProps === undefined) {
+          return base;
+        }
+      } else if (
+        ObjectPrototypeIsPrototypeOf(getURLPrototype(), value) &&
+        !(recurseTimes > ctx.depth && ctx.depth !== null)
+      ) {
+        base = value.href;
         if (keys.length === 0 && protoProps === undefined) {
           return base;
         }
@@ -2032,15 +2095,15 @@ function formatError(err, constructor, tag, ctx, keys) {
 }
 
 const hexSliceLookupTable = function () {
-  const alphabet = "0123456789abcdef";
-  const table = [];
-  for (let i = 0; i < 16; ++i) {
-    const i16 = i * 16;
-    for (let j = 0; j < 16; ++j) {
-      table[i16 + j] = alphabet[i] + alphabet[j];
-    }
+const alphabet = "0123456789abcdef";
+const table = [];
+for (let i = 0; i < 16; ++i) {
+  const i16 = i * 16;
+  for (let j = 0; j < 16; ++j) {
+    table[i16 + j] = alphabet[i] + alphabet[j];
   }
-  return table;
+}
+return table;
 }();
 
 function hexSlice(buf, start, end) {
@@ -2655,14 +2718,15 @@ function formatSetIterInner(
 // Matches all ansi escape code sequences in a string
 const ansiPattern = "[\\u001B\\u009B][[\\]()#;?]*" +
   "(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*" +
-  "|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)" +
-  "|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))";
+  "|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)" +
+  "?(?:\\u0007|\\u001B\\u005C|\\u009C))" +
+  "|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]))";
 const ansi = new SafeRegExp(ansiPattern, "g");
 
 /**
  * Returns the number of columns required to display the given string.
  */
-export function getStringWidth(str, removeControlChars = true) {
+function getStringWidth(str, removeControlChars = true) {
   let width = 0;
 
   if (removeControlChars) {
@@ -2696,7 +2760,7 @@ const isZeroWidthCodePoint = (code) => {
 /**
  * Remove all VT control characters. Use to estimate displayed string width.
  */
-export function stripVTControlCharacters(str) {
+function stripVTControlCharacters(str) {
   return StringPrototypeReplace(str, ansi, "");
 }
 
@@ -3523,6 +3587,9 @@ function inspectArgs(args, inspectOptions = { __proto__: null }) {
             } else {
               formattedArg = `${NumberParseFloat(value)}`;
             }
+          } else if (char == "j") {
+            // Format as JSON.
+            formattedArg = tryStringify(args[a++]);
           } else if (ArrayPrototypeIncludes(["O", "o"], char)) {
             // Format as an object.
             formattedArg = formatValue(ctx, args[a++], 0);
@@ -3595,8 +3662,6 @@ function createStylizeWithColor(styles, colors) {
   };
 }
 
-const countMap = new SafeMap();
-const timerMap = new SafeMap();
 const isConsoleInstance = Symbol("isConsoleInstance");
 
 /** @param noColor {boolean} */
@@ -3610,6 +3675,8 @@ function getConsoleInspectOptions(noColor) {
 
 class Console {
   #printFunc = null;
+  #countMap = new SafeMap();
+  #timerMap = new SafeMap();
   [isConsoleInstance] = false;
 
   constructor(printFunc) {
@@ -3674,7 +3741,11 @@ class Console {
     );
   };
 
-  dirxml = this.dir;
+  // Per https://console.spec.whatwg.org/#dirxml, dirxml uses the log
+  // printer (not dir). Node also aliases console.dirxml to log (see
+  // lib/internal/console/constructor.js). Use a fresh arrow so the
+  // method's .name is "dirxml" rather than "dir".
+  dirxml = (...args) => this.log(...new SafeArrayIterator(args));
 
   warn = (...args) => {
     this.#printFunc(
@@ -3722,23 +3793,26 @@ class Console {
   count = (label = "default") => {
     label = String(label);
 
-    if (MapPrototypeHas(countMap, label)) {
-      const current = MapPrototypeGet(countMap, label) || 0;
-      MapPrototypeSet(countMap, label, current + 1);
+    if (MapPrototypeHas(this.#countMap, label)) {
+      const current = MapPrototypeGet(this.#countMap, label) || 0;
+      MapPrototypeSet(this.#countMap, label, current + 1);
     } else {
-      MapPrototypeSet(countMap, label, 1);
+      MapPrototypeSet(this.#countMap, label, 1);
     }
 
-    this.info(`${label}: ${MapPrototypeGet(countMap, label)}`);
+    this.#printFunc(
+      `${label}: ${MapPrototypeGet(this.#countMap, label)}\n`,
+      1,
+    );
   };
 
   countReset = (label = "default") => {
     label = String(label);
 
-    if (MapPrototypeHas(countMap, label)) {
-      MapPrototypeSet(countMap, label, 0);
+    if (MapPrototypeHas(this.#countMap, label)) {
+      MapPrototypeSet(this.#countMap, label, 0);
     } else {
-      this.warn(`Count for '${label}' does not exist`);
+      this.#printFunc(`Count for '${label}' does not exist\n`, 2);
     }
   };
 
@@ -3759,6 +3833,7 @@ class Console {
         ...getConsoleInspectOptions(noColorStdout()),
         depth: 1,
         compact: true,
+        breakLength: Infinity,
       });
     const toTable = (header, body) => this.log(cliTable(header, body));
 
@@ -3847,23 +3922,23 @@ class Console {
   time = (label = "default") => {
     label = String(label);
 
-    if (MapPrototypeHas(timerMap, label)) {
-      this.warn(`Timer '${label}' already exists`);
+    if (MapPrototypeHas(this.#timerMap, label)) {
+      this.#printFunc(`Timer '${label}' already exists\n`, 2);
       return;
     }
 
-    MapPrototypeSet(timerMap, label, currentTime());
+    MapPrototypeSet(this.#timerMap, label, currentTime());
   };
 
   timeLog = (label = "default", ...args) => {
     label = String(label);
 
-    if (!MapPrototypeHas(timerMap, label)) {
-      this.warn(`Timer '${label}' does not exist`);
+    if (!MapPrototypeHas(this.#timerMap, label)) {
+      this.#printFunc(`Timer '${label}' does not exist\n`, 2);
       return;
     }
 
-    const startTime = MapPrototypeGet(timerMap, label);
+    const startTime = MapPrototypeGet(this.#timerMap, label);
     let duration = currentTime() - startTime;
     if (duration < 1) {
       duration = NumberPrototypeToFixed(duration, 3);
@@ -3875,19 +3950,28 @@ class Console {
       duration = NumberPrototypeToFixed(duration, 0);
     }
 
-    this.info(`${label}: ${duration}ms`, ...new SafeArrayIterator(args));
+    this.#printFunc(
+      inspectArgs(
+        [`${label}: ${duration}ms`, ...new SafeArrayIterator(args)],
+        {
+          ...getConsoleInspectOptions(noColorStdout()),
+          indentLevel: this.indentLevel,
+        },
+      ) + "\n",
+      1,
+    );
   };
 
   timeEnd = (label = "default") => {
     label = String(label);
 
-    if (!MapPrototypeHas(timerMap, label)) {
-      this.warn(`Timer '${label}' does not exist`);
+    if (!MapPrototypeHas(this.#timerMap, label)) {
+      this.#printFunc(`Timer '${label}' does not exist\n`, 2);
       return;
     }
 
-    const startTime = MapPrototypeGet(timerMap, label);
-    MapPrototypeDelete(timerMap, label);
+    const startTime = MapPrototypeGet(this.#timerMap, label);
+    MapPrototypeDelete(this.#timerMap, label);
     let duration = currentTime() - startTime;
     if (duration < 1) {
       duration = NumberPrototypeToFixed(duration, 3);
@@ -3899,7 +3983,7 @@ class Console {
       duration = NumberPrototypeToFixed(duration, 0);
     }
 
-    this.info(`${label}: ${duration}ms`);
+    this.#printFunc(`${label}: ${duration}ms\n`, 1);
   };
 
   group = (...label) => {
@@ -4042,7 +4126,7 @@ internals.inspectArgs = inspectArgs;
 internals.parseCss = parseCss;
 internals.parseCssColor = parseCssColor;
 
-export {
+return {
   colors,
   Console,
   createFilteredInspectProxy,
@@ -4055,10 +4139,13 @@ export {
   getConsoleInspectOptions,
   getDefaultInspectOptions,
   getStderrNoColor,
+  getStringWidth,
   getStdoutNoColor,
   inspect,
   inspectArgs,
   quoteString,
   setNoColorFns,
+  stripVTControlCharacters,
   styles,
 };
+})();

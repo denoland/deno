@@ -107,6 +107,33 @@ Deno.test("[node/wasi] - WASI constructor with args and env", () => {
   assert(wasi);
 });
 
+Deno.test("[node/wasi] - WASI constructor coerces args, env, and preopens", () => {
+  const wasi = new WASI({
+    version: "preview1",
+    args: [123, true] as any,
+    env: { FOO: 1, BAR: false } as any,
+    preopens: {
+      "/sandbox": { toString: () => Deno.cwd() },
+    } as any,
+  });
+  const module = new WebAssembly.Module(MEMONLY_WASM);
+  const instance = new WebAssembly.Instance(module, {});
+  wasi.initialize(instance);
+
+  const memory = new Uint8Array(
+    (instance.exports.memory as WebAssembly.Memory).buffer,
+  );
+  const view = new DataView(memory.buffer);
+
+  assertEquals(wasi.wasiImport.args_sizes_get(0, 4), 0);
+  assertEquals(view.getUint32(0, true), 2);
+  assertEquals(view.getUint32(4, true), "123\0true\0".length);
+
+  assertEquals(wasi.wasiImport.environ_sizes_get(8, 12), 0);
+  assertEquals(view.getUint32(8, true), 2);
+  assertEquals(view.getUint32(12, true), "FOO=1\0BAR=false\0".length);
+});
+
 Deno.test("[node/wasi] - WASI constructor with preopens", () => {
   const wasi = new WASI({
     version: "preview1",

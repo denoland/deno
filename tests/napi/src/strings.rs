@@ -1,5 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::ffi::c_char;
+use std::ffi::c_void;
+
 use napi_sys::ValueType::napi_string;
 use napi_sys::*;
 
@@ -71,11 +74,357 @@ extern "C" fn test_utf8_roundtrip(
   result
 }
 
+extern "C" fn test_property_key_latin1(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (_args, argc, _) = napi_get_callback_info!(env, info, 0);
+  assert_eq!(argc, 0);
+
+  // Create a property key from latin1 string "hello"
+  let latin1_str = b"hello\0";
+  let mut key: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(node_api_create_property_key_latin1(
+    env,
+    latin1_str.as_ptr() as *const c_char,
+    5,
+    &mut key,
+  ));
+
+  // Create an object and set a property using the key
+  let mut obj: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(napi_create_object(env, &mut obj));
+
+  let mut value: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(napi_create_int32(env, 42, &mut value));
+  assert_napi_ok!(napi_set_property(env, obj, key, value));
+
+  // Verify the property can be retrieved using a regular string key
+  let mut key2: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    b"hello\0".as_ptr() as *const c_char,
+    5,
+    &mut key2,
+  ));
+
+  let mut result: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(napi_get_property(env, obj, key2, &mut result));
+
+  result
+}
+
+extern "C" fn test_property_key_utf8(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (_args, argc, _) = napi_get_callback_info!(env, info, 0);
+  assert_eq!(argc, 0);
+
+  // Create a property key from utf8 string "hello"
+  let utf8_str = b"hello\0";
+  let mut key: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(node_api_create_property_key_utf8(
+    env,
+    utf8_str.as_ptr() as *const c_char,
+    5,
+    &mut key,
+  ));
+
+  // Create an object and set a property using the key
+  let mut obj: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(napi_create_object(env, &mut obj));
+
+  let mut value: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(napi_create_int32(env, 42, &mut value));
+  assert_napi_ok!(napi_set_property(env, obj, key, value));
+
+  // Verify the property can be retrieved using a regular string key
+  let mut key2: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    b"hello\0".as_ptr() as *const c_char,
+    5,
+    &mut key2,
+  ));
+
+  let mut result: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(napi_get_property(env, obj, key2, &mut result));
+
+  result
+}
+
+extern "C" fn test_property_key_utf16(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (_args, argc, _) = napi_get_callback_info!(env, info, 0);
+  assert_eq!(argc, 0);
+
+  // Create a property key from utf16 string "hello"
+  let utf16_str: [u16; 6] = [
+    'h' as u16, 'e' as u16, 'l' as u16, 'l' as u16, 'o' as u16, 0,
+  ];
+  let mut key: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(node_api_create_property_key_utf16(
+    env,
+    utf16_str.as_ptr(),
+    5,
+    &mut key,
+  ));
+
+  // Create an object and set a property using the key
+  let mut obj: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(napi_create_object(env, &mut obj));
+
+  let mut value: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(napi_create_int32(env, 42, &mut value));
+  assert_napi_ok!(napi_set_property(env, obj, key, value));
+
+  // Verify the property can be retrieved using a regular string key
+  let mut key2: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    b"hello\0".as_ptr() as *const c_char,
+    5,
+    &mut key2,
+  ));
+
+  let mut result: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(napi_get_property(env, obj, key2, &mut result));
+
+  result
+}
+
+extern "C" fn test_latin1_roundtrip(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  // Get length
+  let mut len: usize = 0;
+  assert_napi_ok!(napi_get_value_string_latin1(
+    env,
+    args[0],
+    std::ptr::null_mut(),
+    0,
+    &mut len
+  ));
+
+  // Get string content
+  let mut buf: Vec<u8> = vec![0; len + 1];
+  let mut copied: usize = 0;
+  assert_napi_ok!(napi_get_value_string_latin1(
+    env,
+    args[0],
+    buf.as_mut_ptr() as *mut c_char,
+    buf.len(),
+    &mut copied
+  ));
+  assert_eq!(copied, len);
+
+  // Create string from latin1 bytes
+  let mut result: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(napi_create_string_latin1(
+    env,
+    buf.as_ptr() as *const c_char,
+    copied,
+    &mut result
+  ));
+
+  result
+}
+
+extern "C" fn test_utf16_roundtrip(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  // Get length
+  let mut len: usize = 0;
+  assert_napi_ok!(napi_get_value_string_utf16(
+    env,
+    args[0],
+    std::ptr::null_mut(),
+    0,
+    &mut len
+  ));
+
+  // Get string content
+  let mut buf: Vec<u16> = vec![0; len + 1];
+  let mut copied: usize = 0;
+  assert_napi_ok!(napi_get_value_string_utf16(
+    env,
+    args[0],
+    buf.as_mut_ptr(),
+    buf.len(),
+    &mut copied
+  ));
+  assert_eq!(copied, len);
+
+  // Create string from utf16
+  let mut result: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf16(
+    env,
+    buf.as_ptr(),
+    copied,
+    &mut result
+  ));
+
+  result
+}
+
+// node_api_create_external_string_latin1 is declared in napi_sys
+
+/// Release a latin1 buffer allocated via Vec<u8>.
+unsafe extern "C" fn finalize_latin1(
+  _env: napi_env,
+  data: *mut c_void,
+  hint: *mut c_void,
+) {
+  let len = hint as usize;
+  unsafe { drop(Vec::from_raw_parts(data as *mut u8, len, len)) };
+}
+
+/// Test that node_api_create_external_string_latin1 creates a string
+/// and reports whether the data was copied.
+extern "C" fn test_external_latin1(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  // Allocate a buffer that the external string will reference
+  let data = b"hello latin1".to_vec();
+  let ptr = data.as_ptr();
+  let len = data.len();
+  std::mem::forget(data);
+
+  let mut result: napi_value = std::ptr::null_mut();
+  let mut copied = true; // Initialize to see if it changes
+  let status = unsafe {
+    node_api_create_external_string_latin1(
+      env,
+      ptr as *const c_char,
+      len,
+      Some(finalize_latin1),
+      len as *mut c_void, // pass length as hint for deallocation
+      &mut result,
+      &mut copied,
+    )
+  };
+  assert_eq!(status, 0); // napi_ok
+
+  // Read back the string to verify content
+  let mut buf: Vec<u8> = vec![0; 64];
+  let mut out_len: usize = 0;
+  assert_napi_ok!(napi_get_value_string_latin1(
+    env,
+    result,
+    buf.as_mut_ptr() as *mut c_char,
+    buf.len(),
+    &mut out_len
+  ));
+  assert_eq!(&buf[..out_len], b"hello latin1");
+
+  if copied {
+    // V8 copied the data, so we still own the buffer and must free it.
+    unsafe {
+      drop(Vec::from_raw_parts(ptr as *mut u8, len, len));
+    }
+  }
+  // If !copied (zero-copy), V8 owns the buffer and will call
+  // finalize_latin1 when the string is garbage collected.
+
+  let mut ret: napi_value = std::ptr::null_mut();
+  // Return whether the string was copied (false = zero-copy, true = copied)
+  assert_napi_ok!(napi_get_boolean(env, !copied, &mut ret));
+  ret
+}
+
+/// Release a UTF-16 buffer allocated via Vec<u16>.
+unsafe extern "C" fn finalize_utf16(
+  _env: napi_env,
+  data: *mut c_void,
+  hint: *mut c_void,
+) {
+  let len = hint as usize;
+  unsafe { drop(Vec::from_raw_parts(data as *mut u16, len, len)) };
+}
+
+/// Test that node_api_create_external_string_utf16 creates a string
+/// and reports whether the data was copied.
+extern "C" fn test_external_utf16(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  // Allocate a UTF-16 buffer: "hello utf16"
+  let data: Vec<u16> = "hello utf16".encode_utf16().collect();
+  let ptr = data.as_ptr();
+  let len = data.len();
+  std::mem::forget(data);
+
+  let mut result: napi_value = std::ptr::null_mut();
+  let mut copied = true; // Initialize to see if it changes
+  let status = unsafe {
+    node_api_create_external_string_utf16(
+      env,
+      ptr,
+      len,
+      Some(finalize_utf16),
+      len as *mut c_void, // pass length as hint for deallocation
+      &mut result,
+      &mut copied,
+    )
+  };
+  assert_eq!(status, 0); // napi_ok
+
+  // Read back the string to verify content
+  let mut buf: Vec<u16> = vec![0; 64];
+  let mut out_len: usize = 0;
+  assert_napi_ok!(napi_get_value_string_utf16(
+    env,
+    result,
+    buf.as_mut_ptr(),
+    buf.len(),
+    &mut out_len
+  ));
+  let expected: Vec<u16> = "hello utf16".encode_utf16().collect();
+  assert_eq!(&buf[..out_len], &expected[..]);
+
+  if copied {
+    // V8 copied the data, so we still own the buffer and must free it.
+    unsafe {
+      drop(Vec::from_raw_parts(ptr as *mut u16, len, len));
+    }
+  }
+  // If !copied (zero-copy), V8 owns the buffer and will call
+  // finalize_utf16 when the string is garbage collected.
+
+  let mut ret: napi_value = std::ptr::null_mut();
+  // Return whether the string was copied (false = zero-copy, true = copied)
+  assert_napi_ok!(napi_get_boolean(env, !copied, &mut ret));
+  ret
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_utf8", test_utf8),
     napi_new_property!(env, "test_utf16", test_utf16),
     napi_new_property!(env, "test_utf8_roundtrip", test_utf8_roundtrip),
+    napi_new_property!(
+      env,
+      "test_property_key_latin1",
+      test_property_key_latin1
+    ),
+    napi_new_property!(env, "test_property_key_utf8", test_property_key_utf8),
+    napi_new_property!(env, "test_property_key_utf16", test_property_key_utf16),
+    napi_new_property!(env, "test_latin1_roundtrip", test_latin1_roundtrip),
+    napi_new_property!(env, "test_utf16_roundtrip", test_utf16_roundtrip),
+    napi_new_property!(env, "test_external_latin1", test_external_latin1),
+    napi_new_property!(env, "test_external_utf16", test_external_utf16),
   ];
 
   assert_napi_ok!(napi_define_properties(

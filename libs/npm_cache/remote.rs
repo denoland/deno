@@ -2,12 +2,14 @@
 
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
-use deno_npm::npm_rc::RegistryConfig;
+use deno_npmrc::RegistryConfig;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum AuthHeaderForNpmRegistryError {
   #[class(type)]
-  #[error("Both the username and password must be provided for basic auth")]
+  #[error(
+    "Both the username / email and password must be provided for basic auth"
+  )]
   Both,
   #[class(type)]
   #[error("The password in npmrc is an invalid base64 string: {0}")]
@@ -26,17 +28,16 @@ pub fn maybe_auth_header_value_for_npm_registry(
     return Ok(Some(format!("Basic {}", auth)));
   }
 
-  let (username, password) = (
-    registry_config.username.as_ref(),
-    registry_config.password.as_ref(),
-  );
-  if (username.is_some() && password.is_none())
-    || (username.is_none() && password.is_some())
-  {
+  let username_or_email = registry_config
+    .username
+    .as_ref()
+    .or(registry_config.email.as_ref());
+  let password = registry_config.password.as_ref();
+  if username_or_email.is_some() != password.is_some() {
     return Err(AuthHeaderForNpmRegistryError::Both);
   }
 
-  if let Some(username) = username
+  if let Some(username) = username_or_email
     && let Some(password) = password
   {
     // The npm client does some double encoding when generating the
