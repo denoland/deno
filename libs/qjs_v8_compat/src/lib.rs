@@ -757,6 +757,35 @@ pub mod v8 {
   pub struct IdleTask;
   /// Stub for v8::WasmModuleObject. QuickJS has no WASM.
   pub struct WasmModuleObject;
+  /// Stub for `v8::WasmStreaming<const FOR_ASYNC_COMPILE: bool>`.
+  /// QuickJS has no WASM streaming compile.
+  pub struct WasmStreaming<const FOR_ASYNC_COMPILE: bool = false>;
+  /// Stub for `v8::FunctionBuilder<T>` — used to construct
+  /// FunctionTemplates with various typed wrappers in the deno_core
+  /// snapshot/init code. The phantom generic is the v8 type the
+  /// builder produces.
+  pub struct FunctionBuilder<T>(core::marker::PhantomData<T>);
+  impl<T> FunctionBuilder<T> {
+    pub fn new(_callback: super::FunctionCallback) -> Self {
+      Self(core::marker::PhantomData)
+    }
+    pub fn data<'s>(self, _data: super::Local<'s, super::Value>) -> Self {
+      self
+    }
+    pub fn length(self, _length: i32) -> Self {
+      self
+    }
+    pub fn side_effect_type(self, _t: super::SideEffectType) -> Self {
+      self
+    }
+    pub fn build<'s>(
+      self,
+      scope: &mut super::HandleScope<'s>,
+    ) -> Option<super::Local<'s, super::FunctionTemplate>> {
+      let _ = scope;
+      None
+    }
+  }
   pub type NearHeapLimitCallback = unsafe extern "C" fn(
     data: *mut core::ffi::c_void,
     current_heap_limit: usize,

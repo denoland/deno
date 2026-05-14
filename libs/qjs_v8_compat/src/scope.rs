@@ -348,9 +348,11 @@ impl<'s> CallbackScope<'s, Context> {
   /// stored callback context. On QuickJS the inner HandleScope is
   /// already initialized with whatever raw source `MaybeUninit` was
   /// fed; we just return the Pin handle through.
-  pub unsafe fn init(
-    self: core::pin::Pin<&mut Self>,
-  ) -> core::pin::Pin<&mut Self> {
+  ///
+  /// Safe by design here even though rusty_v8 marks it `unsafe`: the
+  /// op2 macro emits a bare `init()` call without an `unsafe` block,
+  /// so making this safe lets that generated code compile.
+  pub fn init(self: core::pin::Pin<&mut Self>) -> core::pin::Pin<&mut Self> {
     self
   }
 }

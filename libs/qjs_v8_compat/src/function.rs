@@ -53,16 +53,16 @@ impl<'s> FunctionCallbackArguments<'s> {
     }
   }
   /// Mirrors rusty_v8's `FunctionCallbackArguments::from_function_callback_info`.
-  /// The op2-generated code constructs args by handing in the raw info pointer.
-  ///
-  /// # Safety
-  ///
-  /// `info` must point to a valid `FunctionCallbackInfo` whose lifetime
-  /// covers `'s`.
-  pub unsafe fn from_function_callback_info(
+  /// The op2-generated code constructs args by handing in the raw info
+  /// pointer without an `unsafe` block, so we accept the raw pointer in
+  /// safe context here even though dereferencing it is up to the caller.
+  pub fn from_function_callback_info(
     info: *const FunctionCallbackInfo,
   ) -> Self {
-    unsafe { Self::from_raw(info) }
+    Self {
+      info,
+      _scope: std::marker::PhantomData,
+    }
   }
   pub fn length(&self) -> i32 {
     unsafe { (*self.info).length }
@@ -104,22 +104,14 @@ pub struct ReturnValue<'s, T = Value> {
 
 impl<'s, T> ReturnValue<'s, T> {
   /// Mirrors rusty_v8's `ReturnValue::from_function_callback_info`.
-  /// The op2-generated code constructs the return slot from the raw info
-  /// pointer; the slot lives at `implicit_args[V8_RETURN_VALUE_INDEX]`,
-  /// which on V8 is implicit_args[0]; we mirror that layout.
-  ///
-  /// # Safety
-  ///
-  /// `info` must point to a valid `FunctionCallbackInfo` whose lifetime
-  /// covers `'s`.
-  pub unsafe fn from_function_callback_info(
+  /// Safe wrapper to match op2's call sites (which don't use `unsafe`).
+  pub fn from_function_callback_info(
     info: *const FunctionCallbackInfo,
   ) -> Self {
-    unsafe {
-      Self {
-        slot: (*info).implicit_args,
-        _t: std::marker::PhantomData,
-      }
+    let slot = unsafe { (*info).implicit_args };
+    Self {
+      slot,
+      _t: std::marker::PhantomData,
     }
   }
   pub fn set(&mut self, value: Local<'s, T>) {

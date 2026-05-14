@@ -339,6 +339,63 @@ impl ValueType for crate::promise::Promise {
 // ----- Value methods ----------------------------------------------------
 
 impl<'s> Local<'s, Value> {
+  /// Mirror of `v8::Value::to_string` — coerces any value to its
+  /// JavaScript-string representation. Returns Some on success.
+  pub fn to_string(
+    &self,
+    scope: &mut HandleScope<'s>,
+  ) -> Option<Local<'s, crate::primitives::String>> {
+    let s = crate::sys::to_string_lossy(scope.ctx(), self.raw)?;
+    crate::primitives::String::new(scope, &s)
+  }
+  /// Mirror of `v8::Value::to_object`.
+  pub fn to_object(
+    &self,
+    _scope: &mut HandleScope<'s>,
+  ) -> Option<Local<'s, crate::object::Object>> {
+    if crate::sys::jsv_is_object(&self.raw) {
+      Some(Local::from_raw(self.raw))
+    } else {
+      None
+    }
+  }
+  /// Mirror of `v8::Value::to_integer`.
+  pub fn to_integer(
+    &self,
+    _scope: &mut HandleScope<'s>,
+  ) -> Option<Local<'s, crate::primitives::Integer>> {
+    if crate::sys::jsv_is_int(&self.raw) {
+      Some(Local::from_raw(self.raw))
+    } else {
+      None
+    }
+  }
+  pub fn to_uint32(
+    &self,
+    _scope: &mut HandleScope<'s>,
+  ) -> Option<Local<'s, crate::primitives::Integer>> {
+    self.to_integer(_scope)
+  }
+  pub fn to_int32(
+    &self,
+    _scope: &mut HandleScope<'s>,
+  ) -> Option<Local<'s, crate::primitives::Integer>> {
+    self.to_integer(_scope)
+  }
+  pub fn to_number(
+    &self,
+    _scope: &mut HandleScope<'s>,
+  ) -> Option<Local<'s, crate::primitives::Number>> {
+    if crate::sys::jsv_is_number(&self.raw) {
+      Some(Local::from_raw(self.raw))
+    } else {
+      None
+    }
+  }
+}
+
+// Existing method block (unchanged)
+impl<'s> Local<'s, Value> {
   pub fn is_undefined(&self) -> bool {
     sys::jsv_is_undefined(&self.raw)
   }
