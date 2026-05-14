@@ -637,13 +637,20 @@ impl ModuleMap {
       Vec::with_capacity(len as usize + 1);
     let mut export_values: Vec<v8::Local<v8::Value>> =
       Vec::with_capacity(len as usize + 1);
+    // If the IIFE returns `{ default: <ns>, ...named }`, treat the inner
+    // `default` as the ESM default export. This mirrors the manual
+    // `export default mod.default` pattern used by the old `*_esm.ts`
+    // wrappers and Node's behavior for builtins whose `module.exports`
+    // includes a `default` property. Otherwise fall back to the entire
+    // exports object as the default (matches `module.exports = { ... }`
+    // shape).
+    let mut default_value: v8::Local<v8::Value> = exports_obj.into();
     for i in 0..len {
       let key_val = property_names.get_index(scope, i).unwrap();
       let key_str = key_val.to_string(scope).unwrap();
       let value = exports_obj.get(scope, key_val).unwrap();
-      // Don't double-bind "default": it always points at the whole
-      // exports object below, regardless of any "default" own property.
       if key_str.to_rust_string_lossy(scope) == "default" {
+        default_value = value;
         continue;
       }
       export_names.push(key_str);
@@ -651,7 +658,7 @@ impl ModuleMap {
     }
     let default_str = v8::String::new(scope, "default").unwrap();
     export_names.push(default_str);
-    export_values.push(exports_obj.into());
+    export_values.push(default_value);
 
     let module = v8::Module::create_synthetic_module(
       scope,
@@ -685,6 +692,19 @@ impl ModuleMap {
 
     // Synthetic modules have no imports so their instantation must never fail.
     self.instantiate_module(scope, id).unwrap();
+    // Eagerly evaluate so the `synthetic_module_evaluation_steps` callback
+    // fires now (which sets the exports from the staged store) instead of
+    // at first read. Important during snapshot creation: V8 needs the
+    // module in `Evaluated` state with its exports populated before the
+    // snapshot is serialized; otherwise consumers that look up the
+    // module's namespace at snapshot-finalize time hit
+    // "GetModuleNamespace must be used on an instantiated module" or get
+    // unbound exports. Evaluation is synchronous for synthetic modules.
+    {
+      let handle = self.get_handle(id).unwrap();
+      let local = v8::Local::new(scope, handle);
+      let _ = local.evaluate(scope);
+    }
 
     id
   }
