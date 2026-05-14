@@ -44,29 +44,10 @@ impl<'r, T: ?Sized> std::ops::DerefMut for PinnedRef<'r, T> {
   }
 }
 
-/// Heap stats stubs used by ext/telemetry.
-#[derive(Default)]
-pub struct HeapStatistics {
-  _p: (),
-}
-impl HeapStatistics {
-  pub fn new() -> Self { Self::default() }
-  pub fn total_heap_size(&self) -> usize { 0 }
-  pub fn total_heap_size_executable(&self) -> usize { 0 }
-  pub fn total_physical_size(&self) -> usize { 0 }
-  pub fn total_available_size(&self) -> usize { 0 }
-  pub fn used_heap_size(&self) -> usize { 0 }
-  pub fn heap_size_limit(&self) -> usize { 0 }
-  pub fn malloced_memory(&self) -> usize { 0 }
-  pub fn peak_malloced_memory(&self) -> usize { 0 }
-  pub fn does_zap_garbage(&self) -> bool { false }
-  pub fn number_of_native_contexts(&self) -> usize { 0 }
-  pub fn number_of_detached_contexts(&self) -> usize { 0 }
-  pub fn external_memory(&self) -> usize { 0 }
-  pub fn used_global_handles_size(&self) -> usize { 0 }
-  pub fn total_global_handles_size(&self) -> usize { 0 }
-  pub fn total_heap_size_executable_size(&self) -> usize { 0 }
-}
+/// Heap stats stubs used by ext/telemetry. The canonical type lives
+/// in `crate::isolate::HeapStatistics`; re-export so call sites that
+/// use either path resolve.
+pub use crate::isolate::HeapStatistics;
 
 #[derive(Default)]
 pub struct HeapSpaceStatistics {
@@ -74,7 +55,9 @@ pub struct HeapSpaceStatistics {
 }
 impl HeapSpaceStatistics {
   pub fn new() -> Self { Self::default() }
-  pub fn space_name(&self) -> &'static str { "" }
+  pub fn space_name(&self) -> &'static std::ffi::CStr {
+    c""
+  }
   pub fn space_size(&self) -> usize { 0 }
   pub fn space_used_size(&self) -> usize { 0 }
   pub fn space_available_size(&self) -> usize { 0 }
@@ -331,10 +314,9 @@ impl<'s, C> HandleScope<'s, C> {
   }
   pub fn get_heap_space_statistics(
     &mut self,
-    _stats: &mut HeapSpaceStatistics,
     _index: usize,
-  ) -> bool {
-    false
+  ) -> Option<HeapSpaceStatistics> {
+    None
   }
   pub fn get_number_of_data_slots(&mut self) -> u32 {
     8

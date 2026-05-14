@@ -347,6 +347,13 @@ impl Isolate {
   pub fn raw_isolate_ptr(&mut self) -> *mut Self {
     self as *mut Self
   }
+  /// Mirror of OwnedIsolate's as_raw_isolate_ptr — ext/http calls it
+  /// through &mut Isolate.
+  pub fn as_raw_isolate_ptr(&self) -> UnsafeRawIsolatePtr {
+    let p = self as *const Self as *mut Isolate;
+    set_current_isolate_ptr(p);
+    UnsafeRawIsolatePtr(p as *mut c_void)
+  }
   pub fn perform_microtask_checkpoint(&mut self) {
     self.0.perform_microtask_checkpoint()
   }
@@ -359,6 +366,13 @@ impl Isolate {
   pub fn cancel_terminate_execution(&mut self) {}
   pub fn terminate_execution(&mut self) -> bool {
     false
+  }
+  /// `Isolate::date_time_configuration_change_notification` —
+  /// notifies V8 that timezone/locale has changed. No-op on QuickJS.
+  pub fn date_time_configuration_change_notification(
+    &mut self,
+    _detection: crate::v8::TimeZoneDetection,
+  ) {
   }
   pub fn is_execution_terminating(&mut self) -> bool {
     false
@@ -381,6 +395,18 @@ impl Isolate {
     let _ = sys::throw(ctx, raw);
     crate::value::Local::from_raw(sys::jsv_undefined())
   }
+  /// `Isolate::get_slot<T>()` — v8's per-isolate keyed-by-type
+  /// storage. Returns None: we don't store per-isolate slots.
+  pub fn get_slot<T: 'static>(&self) -> Option<&T> {
+    None
+  }
+  pub fn set_slot<T: 'static>(&mut self, _v: T) -> bool {
+    false
+  }
+  pub fn remove_slot<T: 'static>(&mut self) -> Option<T> {
+    None
+  }
+
   pub fn get_data(&self, slot: u32) -> *mut c_void {
     let s = self.state();
     s.data_slots

@@ -301,12 +301,14 @@ impl<'s> Local<'s, Array> {
       value.raw(),
     ))
   }
-  /// Mirror of `v8::Array::get_index`.
-  pub fn get_index(
+  /// Mirror of `v8::Array::get_index`. Lifetime decoupled from
+  /// receiver per rusty_v8 (the returned Local is owned by `scope`,
+  /// not by the array).
+  pub fn get_index<'sc>(
     &self,
-    scope: &mut HandleScope<'s>,
+    scope: &mut HandleScope<'sc>,
     index: u32,
-  ) -> Option<Local<'s, Value>> {
+  ) -> Option<Local<'sc, Value>> {
     let raw = sys::get_indexed(scope.ctx(), self.raw(), index);
     if sys::jsv_is_exception(&raw) {
       return None;

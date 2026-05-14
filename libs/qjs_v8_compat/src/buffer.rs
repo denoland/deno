@@ -37,6 +37,18 @@ macro_rules! typed_array_new_stub {
 }
 typed_array_new_stub!(Uint32Array, Float32Array, Float64Array);
 
+impl<'s> Local<'s, Uint8Array> {
+  pub fn byte_length(&self) -> usize {
+    0
+  }
+  pub fn data(&self) -> *mut u8 {
+    core::ptr::null_mut()
+  }
+  pub fn byte_offset(&self) -> usize {
+    0
+  }
+}
+
 pub const TYPED_ARRAY_MAX_SIZE_IN_HEAP: usize = 64;
 
 /// QuickJS-side BackingStore.

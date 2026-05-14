@@ -112,6 +112,12 @@ pub use crate::v8::V8;
 pub use crate::v8::WasmModuleObject;
 pub use crate::v8::WasmStreaming;
 pub use crate::v8::WriteFlags;
+pub use crate::v8::TimeZoneDetection;
+pub use crate::v8::GCType;
+pub use crate::v8::GCCallbackFlags;
+pub use crate::v8::GCCallback;
+pub use crate::v8::ValueView;
+pub use crate::v8::ValueViewData;
 pub use crate::v8::cppgc;
 pub use crate::v8::data;
 pub use crate::v8::fast_api;
@@ -1134,6 +1140,13 @@ pub mod v8 {
 
   // GC callback stubs used by ext/telemetry.
   #[derive(Copy, Clone, Default)]
+  pub enum TimeZoneDetection {
+    #[default]
+    Skip,
+    Redetect,
+  }
+
+  #[derive(Copy, Clone, Default, PartialEq, Eq)]
   pub struct GCType(pub u32);
   impl GCType {
     pub const ALL: Self = Self(0xff);
@@ -1141,24 +1154,51 @@ pub mod v8 {
     pub const MARK_SWEEP_COMPACT: Self = Self(2);
     pub const INCREMENTAL_MARKING: Self = Self(4);
     pub const PROCESS_WEAK_CALLBACKS: Self = Self(8);
+    pub const MINOR_MARK_SWEEP: Self = Self(16);
+    // V8 SCREAMING_SNAKE alternates that ext/telemetry uses.
+    #[allow(non_upper_case_globals)]
+    pub const kGCTypeAll: Self = Self::ALL;
+    #[allow(non_upper_case_globals)]
+    pub const kGCTypeScavenge: Self = Self::SCAVENGE;
+    #[allow(non_upper_case_globals)]
+    pub const kGCTypeMarkSweepCompact: Self = Self::MARK_SWEEP_COMPACT;
+    #[allow(non_upper_case_globals)]
+    pub const kGCTypeIncrementalMarking: Self = Self::INCREMENTAL_MARKING;
+    #[allow(non_upper_case_globals)]
+    pub const kGCTypeProcessWeakCallbacks: Self = Self::PROCESS_WEAK_CALLBACKS;
+    #[allow(non_upper_case_globals)]
+    pub const kGCTypeMinorMarkSweep: Self = Self::MINOR_MARK_SWEEP;
+  }
+  impl core::ops::BitOr for GCType {
+    type Output = Self;
+    fn bitor(self, other: Self) -> Self { Self(self.0 | other.0) }
+  }
+  impl core::ops::BitOrAssign for GCType {
+    fn bitor_assign(&mut self, other: Self) { self.0 |= other.0; }
   }
   #[derive(Copy, Clone, Default)]
   pub struct GCCallbackFlags(pub u32);
 
-  pub type GCCallback = fn(&mut crate::isolate::Isolate, GCType, GCCallbackFlags);
+  pub type GCCallback = unsafe extern "C" fn(
+    crate::isolate::UnsafeRawIsolatePtr,
+    GCType,
+    GCCallbackFlags,
+    *mut core::ffi::c_void,
+  );
 
   // String content viewer stubs — used by ext/telemetry to read raw
   // string contents without materializing a Rust String.
   pub struct ValueView<'s> {
     _p: core::marker::PhantomData<&'s ()>,
   }
-  pub struct ValueViewData<'a> {
-    _p: core::marker::PhantomData<&'a ()>,
+  pub enum ValueViewData<'a> {
+    OneByte(&'a [u8]),
+    TwoByte(&'a [u16]),
   }
   impl<'s> ValueView<'s> {
-    pub fn new<'a>(
-      _scope: &mut crate::scope::HandleScope<'a>,
-      _s: crate::value::Local<'a, crate::primitives::String>,
+    pub fn new<S>(
+      _scope: &mut S,
+      _s: crate::value::Local<'_, crate::primitives::String>,
     ) -> Self {
       Self { _p: core::marker::PhantomData }
     }
@@ -1166,18 +1206,7 @@ pub mod v8 {
       0
     }
     pub fn data(&self) -> ValueViewData<'_> {
-      ValueViewData { _p: core::marker::PhantomData }
-    }
-  }
-  impl<'a> ValueViewData<'a> {
-    pub fn is_one_byte(&self) -> bool {
-      true
-    }
-    pub fn one_byte_data(&self) -> &[u8] {
-      &[]
-    }
-    pub fn two_byte_data(&self) -> &[u16] {
-      &[]
+      ValueViewData::OneByte(&[])
     }
   }
 
