@@ -34,10 +34,12 @@ function validateCipherList(ciphers: string): void {
   let hasValidEntry = false;
   for (const entry of entries) {
     if (entry === "") continue;
-    if (CIPHER_NAME_RE.test(entry)) {
-      hasValidEntry = true;
-      break;
+    if (!CIPHER_NAME_RE.test(entry)) {
+      const err = new Error(`no cipher match: ${entry}`) as any;
+      err.code = "ERR_SSL_NO_CIPHER_MATCH";
+      throw err;
     }
+    hasValidEntry = true;
   }
   if (!hasValidEntry) {
     const err = new Error("no cipher match") as any;

@@ -760,7 +760,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   resetSocketTimeout(server, socket, state);
 
   if (req.upgrade) {
-    req.upgrade = req.method === "CONNECT" || true;
+    req.upgrade = req.method === "CONNECT" || req.upgrade;
     if (req.upgrade) return 0;
   }
 
