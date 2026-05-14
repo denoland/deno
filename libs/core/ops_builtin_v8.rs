@@ -816,7 +816,7 @@ pub fn op_serialize<'s, 'i>(
     host_object_brand,
     deserializers: None,
   });
-  let value_serializer = v8::ValueSerializer::new(scope, serialize_deserialize);
+  let mut value_serializer = v8::ValueSerializer::new(scope, serialize_deserialize);
   value_serializer.write_header();
 
   if let Some(transferred_array_buffers) = transferred_array_buffers {
@@ -908,7 +908,7 @@ pub fn op_deserialize<'s, 'i>(
     host_object_brand: None,
     deserializers,
   });
-  let value_deserializer =
+  let mut value_deserializer =
     v8::ValueDeserializer::new(scope, serialize_deserialize, &zero_copy);
   let parsed_header = value_deserializer
     .read_header(scope.get_current_context())
@@ -974,7 +974,7 @@ pub fn op_structured_clone<'s, 'i>(
     host_object_brand,
     deserializers: None,
   });
-  let value_serializer = v8::ValueSerializer::new(scope, serialize_deserialize);
+  let mut value_serializer = v8::ValueSerializer::new(scope, serialize_deserialize);
   value_serializer.write_header();
 
   v8::tc_scope!(let scope, scope);
@@ -1000,7 +1000,7 @@ pub fn op_structured_clone<'s, 'i>(
     host_object_brand,
     deserializers,
   });
-  let value_deserializer =
+  let mut value_deserializer =
     v8::ValueDeserializer::new(scope, serialize_deserialize, &vector);
   let parsed_header = value_deserializer
     .read_header(scope.get_current_context())
