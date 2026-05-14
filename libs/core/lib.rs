@@ -90,6 +90,32 @@ pub use url;
 #[cfg(not(feature = "quickjs"))]
 pub use v8;
 
+/// Engine-portable replacement for the `transmute(NonNull<T>.as_ptr())` →
+/// `Local<T>` pattern used by extensions like deno_node_sqlite to
+/// convert a stored `Global::into_raw()` pointer back into a Local in
+/// callback contexts where no scope exists yet.
+///
+/// On rusty_v8 (the default `v8-engine` feature) `Local<T>` and
+/// `NonNull<T>` are layout-identical so this is a `transmute`. On
+/// QuickJS `Local<T>` is wider, so we route through
+/// `Local::from_non_null` which reads the heap-allocated JSValue.
+///
+/// # Safety
+/// `ptr` must come from a previous `Global::into_raw` of the same T.
+#[inline(always)]
+pub unsafe fn local_from_global_ptr<T>(
+  ptr: std::ptr::NonNull<T>,
+) -> v8::Local<'static, T> {
+  #[cfg(feature = "quickjs")]
+  {
+    unsafe { v8::Local::<T>::from_non_null(ptr) }
+  }
+  #[cfg(not(feature = "quickjs"))]
+  {
+    unsafe { std::mem::transmute(ptr.as_ptr()) }
+  }
+}
+
 pub use crate::async_cancel::CancelFuture;
 pub use crate::async_cancel::CancelHandle;
 pub use crate::async_cancel::CancelTryFuture;

@@ -374,6 +374,21 @@ impl<'s, T> Local<'s, T> {
     Self::from_raw(raw)
   }
 
+  /// Mirror of rusty_v8's crate-private `Local::from_non_null`. Reads
+  /// the heap-allocated JSValue produced by `Global::into_raw` and
+  /// returns a Local that aliases the same handle. Does NOT free the
+  /// allocation — the original Global pointer continues to own the
+  /// JSValue. Lifetime is `'static` because we don't have a scope at
+  /// the call site (callbacks reconstructing from a stored NonNull).
+  ///
+  /// # Safety
+  /// `ptr` must come from a previous `Global::into_raw` of T.
+  pub unsafe fn from_non_null(ptr: std::ptr::NonNull<T>) -> Local<'static, T> {
+    let raw_ptr = ptr.as_ptr() as *mut sys::JSValue;
+    let raw_value = unsafe { *raw_ptr };
+    Local::from_raw(raw_value)
+  }
+
   /// Reinterpret a Local as another type without runtime checks. Mirrors
   /// rusty_v8's `Local::<T>::cast_unchecked(other) -> Local<T>` —
   /// associated function (NOT a self method) that takes any
@@ -684,32 +699,11 @@ impl<'s, 'a, T> ToLocal<'s, T> for Local<'a, T> {
   }
 }
 
-// Specific ToLocal<Value> impls for the marker types most commonly
-// passed to Local::new where the destination type is Local<Value>.
-// The general `ToLocal<T> for Local<'a, T>` blanket above prevents a
-// catch-all `ToLocal<Value> for Local<'a, T>` impl.
-macro_rules! to_local_value_for {
-  ($($ty:ty),* $(,)?) => { $(
-    impl<'s, 'a> ToLocal<'s, Value> for Local<'a, $ty> {
-      fn to_local(self, _scope: &mut HandleScope<'s>) -> Local<'s, Value> {
-        Local::from_raw(self.raw)
-      }
-    }
-  )* };
-}
-to_local_value_for!(
-  crate::object::Object,
-  crate::object::Array,
-  crate::primitives::String,
-  crate::primitives::Symbol,
-  crate::primitives::Integer,
-  crate::primitives::Number,
-  crate::primitives::Boolean,
-  crate::primitives::BigInt,
-  crate::function::Function,
-  crate::module::Module,
-  crate::promise::Promise,
-);
+// (Removed `to_local_value_for!` — caused inference ambiguity at
+// callsites like `let info = v8::Local::new(scope, info)` where
+// `info: Local<Object>` could pick T=Object or T=Value. Real rusty_v8
+// doesn't have implicit upcasts in `Local::new`; callers pass `.into()`
+// at the use site.)
 // (Removed to_local_value_for_global! — caused inference ambiguity at
 // callsites like `let m = v8::Local::new(scope, &handle)` where the
 // caller relies on T being unified with the Global's T.)
@@ -757,6 +751,8 @@ macro_rules! upcasts_to_value {
 upcasts_to_value!(
   crate::primitives::String,
   crate::primitives::Integer,
+  crate::v8::Int32,
+  crate::v8::Uint32,
   crate::primitives::Number,
   crate::primitives::Boolean,
   crate::primitives::BigInt,
@@ -1304,6 +1300,223 @@ impl<T> TracedReference<T> {
   }
 }
 
+/// Trait for "anything Global::new can take as a scope reference" —
+/// covers shared `&HandleScope`, mutable `&mut HandleScope`,
+/// `&PinScope`, `&mut PinScope`, `&mut Isolate`, `&&mut Isolate`,
+/// `Pin<&mut ...>`, etc. Real rusty_v8 requires `&PinScope<'s,'i,()>`;
+/// we accept the broader set so legacy callers still compile.
+/// Universal trait for "anything Global::new accepts as scope". Takes
+/// `self` (typically a &mut or &) so the impl can choose to reborrow
+/// internally without consuming the underlying scope value.
+pub trait GlobalNewScopeRef {
+  fn scope_ctx_ref(self) -> sys::Context;
+}
+// Reborrow specialization: the most common case at callsites is
+// `Global::new(scope, x)` where `scope: &mut Foo`. We reborrow inside
+// so the original `&mut Foo` stays usable after the call.
+impl<'a, S: GlobalNewScopeRefByMut + ?Sized> GlobalNewScopeRef for &'a mut S {
+  fn scope_ctx_ref(self) -> sys::Context {
+    self.scope_ctx_by_mut()
+  }
+}
+impl<'a, S: GlobalNewScopeRefByShared + ?Sized> GlobalNewScopeRef for &'a S {
+  fn scope_ctx_ref(self) -> sys::Context {
+    self.scope_ctx_by_shared()
+  }
+}
+pub trait GlobalNewScopeRefByMut {
+  fn scope_ctx_by_mut(&mut self) -> sys::Context;
+}
+pub trait GlobalNewScopeRefByShared {
+  fn scope_ctx_by_shared(&self) -> sys::Context;
+}
+impl<'s, C> GlobalNewScopeRefByMut for HandleScope<'s, C> {
+  fn scope_ctx_by_mut(&mut self) -> sys::Context { HandleScope::ctx(self) }
+}
+impl<'s, 'i, C> GlobalNewScopeRefByMut for crate::scope::PinScope<'s, 'i, C> {
+  fn scope_ctx_by_mut(&mut self) -> sys::Context { HandleScope::ctx(&**self) }
+}
+impl<'s, C> GlobalNewScopeRefByShared for HandleScope<'s, C> {
+  fn scope_ctx_by_shared(&self) -> sys::Context { HandleScope::ctx(self) }
+}
+impl<'s, 'i, C> GlobalNewScopeRefByShared for crate::scope::PinScope<'s, 'i, C> {
+  fn scope_ctx_by_shared(&self) -> sys::Context { HandleScope::ctx(&**self) }
+}
+impl GlobalNewScopeRefByMut for crate::isolate::Isolate {
+  fn scope_ctx_by_mut(&mut self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    self.default_ctx()
+  }
+}
+impl GlobalNewScopeRefByMut for crate::isolate::OwnedIsolate {
+  fn scope_ctx_by_mut(&mut self) -> sys::Context { self.default_ctx() }
+}
+impl<'p, C> GlobalNewScopeRefByMut for crate::exception::TryCatch<'p, HandleScope<'p, C>> {
+  fn scope_ctx_by_mut(&mut self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    self.default_ctx()
+  }
+}
+impl<'s, C> GlobalNewScopeRefByMut for crate::scope::CallbackScope<'s, C> {
+  fn scope_ctx_by_mut(&mut self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    self.default_ctx()
+  }
+}
+impl<'p, S> GlobalNewScopeRefByMut for crate::context::ContextScope<'p, S>
+where
+  crate::context::ContextScope<'p, S>: crate::scope::HandleScopeSource,
+{
+  fn scope_ctx_by_mut(&mut self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    self.default_ctx()
+  }
+}
+// Pin<&mut Foo> support so callsites passing pinned scopes type-check.
+impl<P: GlobalNewScopeRefByMut> GlobalNewScopeRefByMut for std::pin::Pin<&mut P> {
+  fn scope_ctx_by_mut(&mut self) -> sys::Context {
+    unsafe { self.as_mut().get_unchecked_mut().scope_ctx_by_mut() }
+  }
+}
+// Special: `&&mut Isolate` shows up in stream_wrap.rs.
+impl<'b> GlobalNewScopeRefByShared for &'b mut crate::isolate::Isolate {
+  fn scope_ctx_by_shared(&self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    let r: &mut crate::isolate::Isolate = unsafe {
+      &mut *(*self as *const _ as *mut crate::isolate::Isolate)
+    };
+    r.default_ctx()
+  }
+}
+
+/// Original by-value GlobalNewScope kept (no callers; can be removed).
+pub trait GlobalNewScopeMut {
+  fn scope_ctx_mut(&mut self) -> sys::Context;
+}
+impl<S: GlobalNewScopeMut + ?Sized> GlobalNewScopeMut for &mut S {
+  fn scope_ctx_mut(&mut self) -> sys::Context {
+    (**self).scope_ctx_mut()
+  }
+}
+impl<'s, C> GlobalNewScopeMut for HandleScope<'s, C> {
+  fn scope_ctx_mut(&mut self) -> sys::Context { HandleScope::ctx(self) }
+}
+impl<'s, 'i, C> GlobalNewScopeMut for crate::scope::PinScope<'s, 'i, C> {
+  fn scope_ctx_mut(&mut self) -> sys::Context { HandleScope::ctx(&**self) }
+}
+impl GlobalNewScopeMut for crate::isolate::Isolate {
+  fn scope_ctx_mut(&mut self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    self.default_ctx()
+  }
+}
+impl GlobalNewScopeMut for crate::isolate::OwnedIsolate {
+  fn scope_ctx_mut(&mut self) -> sys::Context { self.default_ctx() }
+}
+impl<'p, C> GlobalNewScopeMut for crate::exception::TryCatch<'p, HandleScope<'p, C>> {
+  fn scope_ctx_mut(&mut self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    self.default_ctx()
+  }
+}
+impl<'s, C> GlobalNewScopeMut for crate::scope::CallbackScope<'s, C> {
+  fn scope_ctx_mut(&mut self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    self.default_ctx()
+  }
+}
+impl<'p, S> GlobalNewScopeMut for crate::context::ContextScope<'p, S>
+where
+  crate::context::ContextScope<'p, S>: crate::scope::HandleScopeSource,
+{
+  fn scope_ctx_mut(&mut self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    self.default_ctx()
+  }
+}
+impl<P: GlobalNewScopeMut> GlobalNewScopeMut for std::pin::Pin<&mut P> {
+  fn scope_ctx_mut(&mut self) -> sys::Context {
+    unsafe { self.as_mut().get_unchecked_mut().scope_ctx_mut() }
+  }
+}
+
+/// Original by-value GlobalNewScope kept for `&Scope` shared
+/// references (real v8 takes `Global::new(&PinScope, _)`).
+pub trait GlobalNewScope {
+  fn scope_ctx_into(self) -> sys::Context;
+}
+impl<'a, 's, C> GlobalNewScope for &'a mut HandleScope<'s, C> {
+  fn scope_ctx_into(self) -> sys::Context { HandleScope::ctx(self) }
+}
+impl<'a, 's, C> GlobalNewScope for &'a HandleScope<'s, C> {
+  fn scope_ctx_into(self) -> sys::Context { HandleScope::ctx(self) }
+}
+impl<'a, 's, 'i, C> GlobalNewScope for &'a mut crate::scope::PinScope<'s, 'i, C> {
+  fn scope_ctx_into(self) -> sys::Context { HandleScope::ctx(&**self) }
+}
+impl<'a, 's, 'i, C> GlobalNewScope for &'a crate::scope::PinScope<'s, 'i, C> {
+  fn scope_ctx_into(self) -> sys::Context { HandleScope::ctx(&**self) }
+}
+impl<'a> GlobalNewScope for &'a mut crate::isolate::Isolate {
+  fn scope_ctx_into(self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    self.default_ctx()
+  }
+}
+impl<'a, 'b> GlobalNewScope for &'a &'b mut crate::isolate::Isolate {
+  fn scope_ctx_into(self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    let r: &mut crate::isolate::Isolate = unsafe {
+      &mut *(*self as *const _ as *mut crate::isolate::Isolate)
+    };
+    r.default_ctx()
+  }
+}
+impl<'a> GlobalNewScope for &'a mut crate::isolate::OwnedIsolate {
+  fn scope_ctx_into(self) -> sys::Context { self.default_ctx() }
+}
+impl<'a, 'p, C> GlobalNewScope
+  for &'a mut crate::exception::TryCatch<'p, HandleScope<'p, C>>
+{
+  fn scope_ctx_into(self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    self.default_ctx()
+  }
+}
+impl<'a, 's, C> GlobalNewScope for &'a mut crate::scope::CallbackScope<'s, C> {
+  fn scope_ctx_into(self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    self.default_ctx()
+  }
+}
+impl<'a, 'p, S> GlobalNewScope for &'a mut crate::context::ContextScope<'p, S>
+where
+  crate::context::ContextScope<'p, S>: crate::scope::HandleScopeSource,
+{
+  fn scope_ctx_into(self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    self.default_ctx()
+  }
+}
+// For Pin<&mut HandleScope> / Pin<&mut PinScope>: take by value too.
+impl<'a, P> GlobalNewScope for std::pin::Pin<&'a mut P>
+where
+  P: GlobalNewScopePinned,
+{
+  fn scope_ctx_into(mut self) -> sys::Context {
+    unsafe { self.as_mut().get_unchecked_mut().ctx_pinned() }
+  }
+}
+pub trait GlobalNewScopePinned {
+  fn ctx_pinned(&mut self) -> sys::Context;
+}
+impl<'s, C> GlobalNewScopePinned for HandleScope<'s, C> {
+  fn ctx_pinned(&mut self) -> sys::Context { HandleScope::ctx(self) }
+}
+impl<'s, 'i, C> GlobalNewScopePinned for crate::scope::PinScope<'s, 'i, C> {
+  fn ctx_pinned(&mut self) -> sys::Context { HandleScope::ctx(&**self) }
+}
+
 pub struct Global<T> {
   pub(crate) raw: sys::JSValue,
   ctx: Option<sys::Context>,
@@ -1337,11 +1550,15 @@ impl<T> Eq for Global<T> {}
 impl Global<crate::function::Function> {
   pub fn call<'s, S>(
     &self,
-    _scope: &mut S,
-    _recv: Local<'s, Value>,
-    _args: &[Local<'s, Value>],
-  ) -> Option<Local<'s, Value>> {
-    None
+    scope: &mut S,
+    recv: Local<'s, Value>,
+    args: &[Local<'s, Value>],
+  ) -> Option<Local<'s, Value>>
+  where
+    S: crate::scope::HandleScopeSource,
+  {
+    let local: Local<'s, crate::function::Function> = Local::from_raw(self.raw);
+    Local::<crate::function::Function>::call(&local, scope, recv, args)
   }
 }
 impl Global<crate::promise::PromiseResolver> {
@@ -1375,11 +1592,11 @@ impl<T> Clone for Global<T> {
 }
 
 impl<T> Global<T> {
-  pub fn new<'sc, 'lo>(
-    scope: &mut HandleScope<'sc>,
+  pub fn new<'lo, S: GlobalNewScopeRefByMut + ?Sized>(
+    scope: &mut S,
     local: Local<'lo, T>,
   ) -> Self {
-    let ctx = scope.ctx();
+    let ctx = scope.scope_ctx_by_mut();
     sys::dup_value(ctx, local.raw);
     Self {
       raw: local.raw,
@@ -1397,11 +1614,23 @@ impl<T> Global<T> {
     scope.track_owned(self.raw);
     Local::from_raw(self.raw)
   }
-  pub fn from_raw<C, R>(ctx: C, raw: R) -> Self {
-    let _ = ctx;
-    let _ = raw;
+  /// Mirror of rusty_v8's `Global::from_raw(isolate, raw)` — the inverse
+  /// of `into_raw`. Takes ownership of the heap-allocated JSValue
+  /// produced by `into_raw` and reconstructs the `Global<T>`. Mirrors
+  /// the convention that the raw pointer "owns" a refcount which is
+  /// consumed by this call.
+  ///
+  /// # Safety
+  /// `raw` must come from a previous `Global::into_raw` of the same T.
+  pub unsafe fn from_raw(
+    _isolate: &mut crate::isolate::Isolate,
+    raw: std::ptr::NonNull<T>,
+  ) -> Self {
+    let raw_ptr = raw.as_ptr() as *mut sys::JSValue;
+    let boxed = unsafe { Box::from_raw(raw_ptr) };
+    let raw_value = *boxed;
     Self {
-      raw: sys::jsv_undefined(),
+      raw: raw_value,
       ctx: None,
       _t: PhantomData,
     }
@@ -1415,7 +1644,40 @@ impl<T> Global<T> {
       _t: PhantomData,
     }
   }
-  pub fn into_raw(self) -> sys::JSValue {
+  /// Mirror of rusty_v8's `Global::into_raw(self) -> NonNull<T>`.
+  /// Real v8 returns the underlying tagged-pointer handle; we instead
+  /// heap-allocate the JSValue so the returned pointer is the same
+  /// 8-byte width that callers (e.g. deno_node_sqlite) expect when they
+  /// store `NonNull<v8::T>` in their data structs and later transmute
+  /// back to a Local. The corresponding decode is
+  /// `Local::from_raw_global_ptr`.
+  pub fn into_raw(self) -> std::ptr::NonNull<T> {
+    let boxed = Box::new(self.raw);
+    let ptr = Box::into_raw(boxed) as *mut T;
+    core::mem::forget(self);
+    unsafe { std::ptr::NonNull::new_unchecked(ptr) }
+  }
+  /// Read a JSValue from a `NonNull<T>` produced by `into_raw` without
+  /// freeing the heap allocation. Useful when the caller wants a
+  /// short-lived Local that aliases the same handle still owned by the
+  /// raw pointer.
+  ///
+  /// # Safety
+  /// `ptr` must come from a previous `Global::into_raw` of the same T.
+  pub unsafe fn local_from_raw_borrow<'s>(
+    scope: &mut HandleScope<'s>,
+    ptr: std::ptr::NonNull<T>,
+  ) -> Local<'s, T> {
+    let raw_ptr = ptr.as_ptr() as *mut sys::JSValue;
+    let raw_value = unsafe { *raw_ptr };
+    sys::dup_value(scope.ctx(), raw_value);
+    scope.track_owned(raw_value);
+    Local::from_raw(raw_value)
+  }
+  /// Legacy raw accessor for when callers want the raw JSValue directly
+  /// rather than a heap-roundtrip. Useful for the qjs_v8_compat internal
+  /// machinery only.
+  pub(crate) fn into_raw_value(self) -> sys::JSValue {
     let r = self.raw;
     core::mem::forget(self);
     r
@@ -1496,12 +1758,28 @@ pub type Eternal<T> = Global<T>;
 pub struct Weak<T> {
   _t: PhantomData<T>,
 }
+impl<T> Clone for Weak<T> {
+  fn clone(&self) -> Self {
+    Self { _t: PhantomData }
+  }
+}
+impl<T> std::fmt::Debug for Weak<T> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "Weak<…>")
+  }
+}
 impl<T> Weak<T> {
   pub fn new<'s>(_scope: &mut HandleScope<'s>, _local: Local<'s, T>) -> Self {
     Self { _t: PhantomData }
   }
   pub fn is_empty(&self) -> bool {
     true
+  }
+  pub fn to_local<'s>(
+    &self,
+    _scope: &mut HandleScope<'s>,
+  ) -> Option<Local<'s, T>> {
+    None
   }
 }
 

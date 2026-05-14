@@ -424,7 +424,7 @@ pub unsafe fn to_slice_buffer(
     };
     let len = buf.byte_length();
     let slice = if len > 0 {
-      let ptr = buf.data();
+      let ptr = buf.data().ok_or("ArrayBuffer has null data")?;
       std::slice::from_raw_parts_mut(ptr.as_ptr() as _, len)
     } else {
       &mut []
@@ -447,13 +447,17 @@ pub unsafe fn to_slice_buffer_any(
       if let Ok(buf) = v8::Local::<v8::ArrayBufferView>::try_from(input) {
         (buf.data(), buf.byte_length())
       } else if let Ok(buf) = v8::Local::<v8::ArrayBuffer>::try_from(input) {
-        (buf.data(), buf.byte_length())
+        let p = buf
+          .data()
+          .map(|n| n.as_ptr())
+          .unwrap_or(core::ptr::null_mut());
+        (p, buf.byte_length())
       } else {
         return Err("expected ArrayBuffer or ArrayBufferView");
       }
     };
     let slice = if len > 0 {
-      std::slice::from_raw_parts_mut(data.as_ptr() as _, len)
+      std::slice::from_raw_parts_mut(data as _, len)
     } else {
       &mut []
     };

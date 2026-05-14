@@ -60,6 +60,23 @@ impl Object {
     scope.track_owned(raw);
     (Some(Local::from_raw(raw)), false)
   }
+  pub fn set_integrity_level<S>(
+    &self,
+    _scope: &mut S,
+    _level: crate::v8::IntegrityLevel,
+  ) -> Option<bool> {
+    Some(true)
+  }
+}
+
+impl<'s> Local<'s, Object> {
+  pub fn set_integrity_level<S>(
+    &self,
+    _scope: &mut S,
+    _level: crate::v8::IntegrityLevel,
+  ) -> Option<bool> {
+    Some(true)
+  }
 }
 
 impl<'s> Local<'s, Object> {
@@ -492,10 +509,17 @@ pub(crate) mod bitflags {
 }
 
 // Intercepted result enum for property interceptors.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
 pub enum Intercepted {
   Yes,
   No,
+}
+impl Intercepted {
+  #[allow(non_upper_case_globals)]
+  pub const kYes: Self = Self::Yes;
+  #[allow(non_upper_case_globals)]
+  pub const kNo: Self = Self::No;
 }
 
 pub struct NamedPropertyHandlerConfiguration;

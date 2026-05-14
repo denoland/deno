@@ -459,6 +459,7 @@ impl UnsafeRawIsolatePtr {
   pub const fn null() -> Self {
     Self(std::ptr::null_mut())
   }
+  pub fn is_null(&self) -> bool { self.0.is_null() }
 }
 
 impl From<*mut Isolate> for UnsafeRawIsolatePtr {

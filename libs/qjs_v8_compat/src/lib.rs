@@ -113,6 +113,29 @@ pub use crate::v8::WasmModuleObject;
 pub use crate::v8::WasmStreaming;
 pub use crate::v8::WriteFlags;
 pub use crate::v8::TimeZoneDetection;
+pub use crate::v8::Set;
+pub use crate::v8::IntegrityLevel;
+pub use crate::v8::Float16Array;
+pub use crate::v8::MicrotaskQueue;
+pub use crate::v8::MicrotasksPolicy;
+pub use crate::v8::MicrotaskQueueIntoRaw;
+pub use crate::v8::IndexedPropertyHandlerConfiguration;
+pub use crate::v8::IndexedPropertyGetterCallback;
+pub use crate::v8::IndexedPropertySetterCallback;
+pub use crate::v8::IndexedPropertyQueryCallback;
+pub use crate::v8::IndexedPropertyDeleterCallback;
+pub use crate::v8::IndexedPropertyEnumeratorCallback;
+pub use crate::v8::IndexedPropertyDefinerCallback;
+pub use crate::v8::IndexedPropertyDescriptorCallback;
+pub use crate::v8::NamedPropertyGetterCallback;
+pub use crate::v8::NamedPropertySetterCallback;
+pub use crate::v8::NamedPropertyQueryCallback;
+pub use crate::v8::NamedPropertyDeleterCallback;
+pub use crate::v8::NamedPropertyEnumeratorCallback;
+pub use crate::v8::NamedPropertyDefinerCallback;
+pub use crate::v8::NamedPropertyDescriptorCallback;
+pub use crate::v8::PropertyHandlerFlags;
+pub use crate::v8::Handle;
 /// Mirror of `v8::VERSION_STRING` — what we report. Used by some
 /// Node.js compatibility code (deno_inspector_server) to identify
 /// the engine.
@@ -176,6 +199,10 @@ macro_rules! tc_scope {
 /// accept the keyword and discard it.
 #[macro_export]
 macro_rules! callback_scope {
+  (unsafe let $name:ident, $raw:expr) => {
+    let mut __cb_inner = unsafe { $crate::CallbackScope::new($raw) };
+    let $name = &mut __cb_inner;
+  };
   (unsafe $name:ident, $raw:expr) => {
     let mut __cb_inner = unsafe { $crate::CallbackScope::new($raw) };
     let $name = &mut __cb_inner;
@@ -859,6 +886,22 @@ pub mod v8 {
       let raw = crate::sys::new_object(scope.default_ctx());
       Some(super::Local::from_raw(raw))
     }
+    /// Mirror of `v8::script_compiler::cached_data_version_tag`. Real
+    /// V8 returns a build-stable tag derived from the version + flags.
+    /// QuickJS doesn't use this — return a constant.
+    pub fn cached_data_version_tag() -> u32 {
+      0
+    }
+    /// Mirror of `v8::script_compiler::compile_unbound_script`. Returns
+    /// a stub UnboundScript (just a Script under the hood).
+    pub fn compile_unbound_script<'s, S, O, N>(
+      _scope: &mut S,
+      _source: &mut Source,
+      _options: O,
+      _no_cache_reason: N,
+    ) -> Option<Local<'s, Script>> {
+      None
+    }
     pub enum NoCacheReason {
       NoReason,
       BecauseCachingDisabled,
@@ -893,12 +936,12 @@ pub mod v8 {
   }
 
   pub fn undefined<'s, 'i>(
-    _scope: &mut crate::scope::PinScope<'s, 'i>,
+    _scope: &crate::scope::PinScope<'s, 'i>,
   ) -> crate::value::Local<'s, crate::value::Primitive> {
     crate::value::Local::from_raw(crate::sys::jsv_undefined())
   }
   pub fn null<'s, 'i>(
-    _scope: &mut crate::scope::PinScope<'s, 'i>,
+    _scope: &crate::scope::PinScope<'s, 'i>,
   ) -> crate::value::Local<'s, crate::value::Primitive> {
     crate::value::Local::from_raw(crate::sys::jsv_null())
   }
@@ -1122,6 +1165,26 @@ pub mod v8 {
           crate::value::Local::from_raw(crate::value::Local::raw(&v))
         }
       }
+      impl<'s> crate::value::Local<'s, $name> {
+        pub fn set_index<S, V>(
+          &self,
+          _scope: &mut S,
+          _index: u32,
+          _value: V,
+        ) -> Option<bool>
+        where S: crate::scope::HandleScopeSource { Some(true) }
+        pub fn byte_length(&self) -> usize { 0 }
+        pub fn byte_offset(&self) -> usize { 0 }
+        pub fn length(&self) -> usize { 0 }
+        pub fn data(&self) -> *mut core::ffi::c_void { core::ptr::null_mut() }
+        pub fn buffer<'sc, S>(
+          &self,
+          _scope: &mut S,
+        ) -> Option<crate::value::Local<'sc, crate::buffer::ArrayBuffer>>
+        where S: crate::scope::HandleScopeSource {
+          Some(crate::value::Local::from_raw(crate::sys::jsv_undefined()))
+        }
+      }
     )* }
   }
   typed_array_stub!(
@@ -1148,6 +1211,375 @@ pub mod v8 {
     #[default]
     Skip,
     Redetect,
+  }
+
+  /// Big bag of stubs added for deno_node compile compatibility. Each
+  /// returns the most permissive default (None / 0 / false / Self) so
+  /// deno_node code paths fail gracefully at runtime if exercised.
+
+  /// MAX_LENGTH on String mirrors V8's max string length constant.
+  impl crate::primitives::String {
+    pub const MAX_LENGTH: usize = (1 << 28) - 16;
+  }
+
+  // PropertyDescriptor (v8::PropertyDescriptor) — opaque builder.
+  pub struct PropertyDescriptor {
+    inner: PropertyDescriptorInner,
+  }
+  #[derive(Default)]
+  struct PropertyDescriptorInner {
+    value: Option<crate::value::Local<'static, crate::value::Value>>,
+    get: Option<crate::value::Local<'static, crate::value::Value>>,
+    set: Option<crate::value::Local<'static, crate::value::Value>>,
+    writable: bool,
+    enumerable: bool,
+    configurable: bool,
+    has_value: bool,
+    has_writable: bool,
+    has_get: bool,
+    has_set: bool,
+    has_enumerable: bool,
+    has_configurable: bool,
+  }
+  impl PropertyDescriptor {
+    pub fn new() -> Self { Self { inner: Default::default() } }
+    pub fn new_from_value<'s>(_value: crate::value::Local<'s, crate::value::Value>) -> Self {
+      Self { inner: Default::default() }
+    }
+    pub fn new_from_value_writable<'s>(
+      _value: crate::value::Local<'s, crate::value::Value>,
+      _writable: bool,
+    ) -> Self {
+      Self { inner: Default::default() }
+    }
+    pub fn new_from_get_set<'s>(
+      _get: crate::value::Local<'s, crate::value::Value>,
+      _set: crate::value::Local<'s, crate::value::Value>,
+    ) -> Self {
+      Self { inner: Default::default() }
+    }
+    pub fn value(&self) -> crate::value::Local<'_, crate::value::Value> {
+      crate::value::Local::from_raw(crate::sys::jsv_undefined())
+    }
+    pub fn get(&self) -> crate::value::Local<'_, crate::value::Value> {
+      crate::value::Local::from_raw(crate::sys::jsv_undefined())
+    }
+    pub fn set(&self) -> crate::value::Local<'_, crate::value::Value> {
+      crate::value::Local::from_raw(crate::sys::jsv_undefined())
+    }
+    pub fn writable(&self) -> bool { self.inner.writable }
+    pub fn enumerable(&self) -> bool { self.inner.enumerable }
+    pub fn configurable(&self) -> bool { self.inner.configurable }
+    pub fn has_value(&self) -> bool { self.inner.has_value }
+    pub fn has_writable(&self) -> bool { self.inner.has_writable }
+    pub fn has_get(&self) -> bool { self.inner.has_get }
+    pub fn has_set(&self) -> bool { self.inner.has_set }
+    pub fn has_enumerable(&self) -> bool { self.inner.has_enumerable }
+    pub fn has_configurable(&self) -> bool { self.inner.has_configurable }
+    pub fn set_configurable(&mut self, v: bool) { self.inner.configurable = v; self.inner.has_configurable = true; }
+    pub fn set_enumerable(&mut self, v: bool) { self.inner.enumerable = v; self.inner.has_enumerable = true; }
+  }
+
+  /// PropertyAttribute helpers.
+  impl crate::object::PropertyAttribute {
+    pub fn is_dont_delete(&self) -> bool { false }
+    pub fn is_read_only(&self) -> bool { false }
+    pub fn is_dont_enum(&self) -> bool { false }
+    pub fn as_u32(&self) -> u32 { 0 }
+  }
+
+
+  /// MicrotaskQueue methods used by deno_node/vm.rs.
+  impl MicrotaskQueue {
+    pub fn perform_checkpoint_inst(&self) {}
+  }
+  // perform_checkpoint as static method already defined above; deno_node
+  // uses it as `mq.perform_checkpoint(scope)` though, so add an inherent.
+  pub trait MicrotaskQueueExt {
+    fn perform_checkpoint<S>(&self, _scope: &mut S);
+  }
+  impl MicrotaskQueueExt for MicrotaskQueue {
+    fn perform_checkpoint<S>(&self, _scope: &mut S) {}
+  }
+
+  /// WriteFlags::default helper.
+  impl crate::v8::WriteFlags {
+    pub fn default() -> Self { Self::empty() }
+  }
+
+  /// EscapableHandleScope::init stub.
+  impl<'s, 'l, C> crate::scope::EscapableHandleScope<'s, 'l, C> {
+    pub fn init(self: std::pin::Pin<&mut Self>) {}
+  }
+
+  /// Object additional methods.
+  impl<'s> crate::value::Local<'s, crate::object::Object> {
+    pub fn define_property<'sc, S>(
+      &self,
+      _scope: &mut S,
+      _key: crate::value::Local<'_, crate::value::Value>,
+      _descriptor: &PropertyDescriptor,
+    ) -> Option<bool>
+    where S: crate::scope::HandleScopeSource { Some(true) }
+    pub fn delete_index<S>(
+      &self,
+      _scope: &mut S,
+      _index: u32,
+    ) -> Option<bool>
+    where S: crate::scope::HandleScopeSource { Some(true) }
+    pub fn get_creation_context<'sc, S>(
+      &self,
+      _scope: &mut S,
+    ) -> Option<crate::value::Local<'sc, crate::context::Context>>
+    where S: crate::scope::HandleScopeSource {
+      Some(crate::value::Local::from_raw(crate::sys::jsv_undefined()))
+    }
+    pub fn get_own_property_descriptor<'sc, S>(
+      &self,
+      _scope: &mut S,
+      _key: crate::value::Local<'_, crate::value::Value>,
+    ) -> Option<crate::value::Local<'sc, crate::value::Value>>
+    where S: crate::scope::HandleScopeSource {
+      Some(crate::value::Local::from_raw(crate::sys::jsv_undefined()))
+    }
+    pub fn get_property_attributes<'sc, S>(
+      &self,
+      _scope: &mut S,
+      _key: crate::value::Local<'_, crate::value::Value>,
+    ) -> Option<crate::object::PropertyAttribute>
+    where S: crate::scope::HandleScopeSource {
+      Some(crate::object::PropertyAttribute::NONE)
+    }
+    pub fn get_real_named_property<'sc, S>(
+      &self,
+      _scope: &mut S,
+      _key: crate::value::Local<'_, crate::primitives::String>,
+    ) -> Option<crate::value::Local<'sc, crate::value::Value>>
+    where S: crate::scope::HandleScopeSource {
+      Some(crate::value::Local::from_raw(crate::sys::jsv_undefined()))
+    }
+    pub fn get_real_named_property_attributes<S>(
+      &self,
+      _scope: &mut S,
+      _key: crate::value::Local<'_, crate::primitives::String>,
+    ) -> Option<crate::object::PropertyAttribute>
+    where S: crate::scope::HandleScopeSource {
+      Some(crate::object::PropertyAttribute::NONE)
+    }
+    pub fn has_real_named_property<S>(
+      &self,
+      _scope: &mut S,
+      _key: crate::value::Local<'_, crate::primitives::String>,
+    ) -> Option<bool>
+    where S: crate::scope::HandleScopeSource { Some(false) }
+  }
+
+  /// Context additional methods.
+  impl<'s> crate::value::Local<'s, crate::context::Context> {
+    pub fn clear_all_slots(&self) {}
+    pub fn get_slot<T: 'static>(&self) -> Option<&T> { None }
+    pub fn set_slot<T: 'static>(&self, _value: T) {}
+    pub fn get_security_token<'sc, S>(
+      &self,
+      _scope: &mut S,
+    ) -> crate::value::Local<'sc, crate::value::Value>
+    where S: crate::scope::HandleScopeSource {
+      crate::value::Local::from_raw(crate::sys::jsv_undefined())
+    }
+    pub fn set_security_token<S>(
+      &self,
+      _scope: &mut S,
+      _token: crate::value::Local<'_, crate::value::Value>,
+    ) where S: crate::scope::HandleScopeSource {}
+    pub fn set_allow_generation_from_strings(&self, _allow: bool) {}
+  }
+
+  /// Script additional methods.
+  impl<'s> crate::value::Local<'s, crate::script::Script> {
+    pub fn create_code_cache(&self) -> Option<Box<crate::external::CachedData>> {
+      None
+    }
+  }
+
+  /// Stub UnboundScript type.
+  pub struct UnboundScript;
+  impl<'s> crate::value::Local<'s, UnboundScript> {
+    pub fn bind_to_current_context<'sc, S>(
+      &self,
+      _scope: &mut S,
+    ) -> crate::value::Local<'sc, crate::script::Script>
+    where S: crate::scope::HandleScopeSource {
+      crate::value::Local::from_raw(crate::sys::jsv_undefined())
+    }
+    pub fn get_source_mapping_url<'sc, S>(
+      &self,
+      _scope: &mut S,
+    ) -> crate::value::Local<'sc, crate::value::Value>
+    where S: crate::scope::HandleScopeSource {
+      crate::value::Local::from_raw(crate::sys::jsv_undefined())
+    }
+  }
+
+  /// HeapStatistics extras.
+  impl crate::isolate::HeapStatistics {
+    pub fn does_zap_garbage(&self) -> bool { false }
+    pub fn number_of_native_contexts(&self) -> usize { 0 }
+    pub fn number_of_detached_contexts(&self) -> usize { 0 }
+    pub fn total_allocated_bytes(&self) -> usize { 0 }
+    pub fn total_global_handles_size(&self) -> usize { 0 }
+    pub fn used_global_handles_size(&self) -> usize { 0 }
+    pub fn total_heap_size_executable(&self) -> usize { 0 }
+  }
+
+  /// Float16Array — same layout / methods as the other
+  #[derive(Copy, Clone)]
+  #[repr(transparent)]
+  pub struct Float16Array {
+    pub(crate) raw: crate::sys::JSValue,
+  }
+  impl Float16Array {
+    pub fn new<'s, S>(
+      _scope: &mut S,
+      _buffer: crate::value::Local<'s, crate::buffer::ArrayBuffer>,
+      _byte_offset: usize,
+      _length: usize,
+    ) -> Option<crate::value::Local<'s, Float16Array>> {
+      Some(crate::value::Local::from_raw(crate::sys::jsv_undefined()))
+    }
+  }
+  impl<'s> crate::value::Local<'s, Float16Array> {
+    pub fn byte_length(&self) -> usize { 0 }
+    pub fn byte_offset(&self) -> usize { 0 }
+    pub fn length(&self) -> usize { 0 }
+    pub fn data(&self) -> *mut core::ffi::c_void { core::ptr::null_mut() }
+  }
+  impl<'s> From<crate::value::Local<'s, Float16Array>>
+    for crate::value::Local<'s, crate::value::Value>
+  {
+    fn from(v: crate::value::Local<'s, Float16Array>) -> Self {
+      crate::value::Local::from_raw(v.raw())
+    }
+  }
+
+  /// Mirror of `v8::MicrotaskQueue`. Real v8 lets a context have its
+  /// own microtask queue. QuickJS-ng has a single per-runtime queue;
+  /// we expose the type as an opaque marker.
+  pub struct MicrotaskQueue;
+  impl MicrotaskQueue {
+    pub fn new<'s, S>(
+      _scope: &mut S,
+      _policy: MicrotasksPolicy,
+    ) -> Box<MicrotaskQueue> {
+      Box::new(MicrotaskQueue)
+    }
+    pub fn perform_checkpoint<'s, S>(_scope: &mut S) {}
+  }
+  // For deno_node which uses `MicrotaskQueue::new(scope, policy).into_raw()`
+  pub trait MicrotaskQueueIntoRaw { fn into_raw(self) -> *mut MicrotaskQueue; }
+  impl MicrotaskQueueIntoRaw for Box<MicrotaskQueue> {
+    fn into_raw(self) -> *mut MicrotaskQueue { Box::into_raw(self) }
+  }
+  /// Re-export of MicrotasksPolicy from isolate.rs.
+  pub use crate::isolate::MicrotasksPolicy;
+
+  /// Mirror of `v8::IndexedPropertyHandlerConfiguration`. Builder for
+  /// indexed property interceptors. We expose builder methods that
+  /// no-op but return self so chains compile.
+  #[derive(Default)]
+  pub struct IndexedPropertyHandlerConfiguration;
+  impl IndexedPropertyHandlerConfiguration {
+    pub fn new() -> Self { Self }
+    pub fn getter<F>(self, _f: F) -> Self { self }
+    pub fn getter_raw<F>(self, _f: F) -> Self { self }
+    pub fn setter<F>(self, _f: F) -> Self { self }
+    pub fn setter_raw<F>(self, _f: F) -> Self { self }
+    pub fn query<F>(self, _f: F) -> Self { self }
+    pub fn query_raw<F>(self, _f: F) -> Self { self }
+    pub fn deleter<F>(self, _f: F) -> Self { self }
+    pub fn deleter_raw<F>(self, _f: F) -> Self { self }
+    pub fn enumerator<F>(self, _f: F) -> Self { self }
+    pub fn enumerator_raw<F>(self, _f: F) -> Self { self }
+    pub fn definer<F>(self, _f: F) -> Self { self }
+    pub fn definer_raw<F>(self, _f: F) -> Self { self }
+    pub fn descriptor<F>(self, _f: F) -> Self { self }
+    pub fn descriptor_raw<F>(self, _f: F) -> Self { self }
+    pub fn flags(self, _f: PropertyHandlerFlags) -> Self { self }
+  }
+
+  /// Indexed/Named property callback type aliases. Real V8 declares
+  /// these as `unsafe extern "C" fn(...)` matching the V8 API. We expose
+  /// loose function pointer types for compile-only.
+  pub type IndexedPropertyGetterCallback = *const ();
+  pub type IndexedPropertySetterCallback = *const ();
+  pub type IndexedPropertyQueryCallback = *const ();
+  pub type IndexedPropertyDeleterCallback = *const ();
+  pub type IndexedPropertyEnumeratorCallback = *const ();
+  pub type IndexedPropertyDefinerCallback = *const ();
+  pub type IndexedPropertyDescriptorCallback = *const ();
+  pub type NamedPropertyGetterCallback = *const ();
+  pub type NamedPropertySetterCallback = *const ();
+  pub type NamedPropertyQueryCallback = *const ();
+  pub type NamedPropertyDeleterCallback = *const ();
+  pub type NamedPropertyEnumeratorCallback = *const ();
+  pub type NamedPropertyDefinerCallback = *const ();
+  pub type NamedPropertyDescriptorCallback = *const ();
+  pub use crate::object::PropertyHandlerFlags;
+  /// Mirror of `v8::Handle` — trait describing types that have an
+  /// underlying handle-data. Real rusty_v8 uses it as the bound on
+  /// `Local::new` / `Global::new`. We expose an empty trait whose only
+  /// purpose is to satisfy `where v8::Global<T>: v8::Handle<Data = T>`
+  /// bounds.
+  pub trait Handle {
+    type Data;
+  }
+  impl<T> Handle for crate::value::Global<T> {
+    type Data = T;
+  }
+  impl<'s, T> Handle for crate::value::Local<'s, T> {
+    type Data = T;
+  }
+
+  /// Stub for v8::Set (the JS Set class). Transparent wrapper around
+  /// a JSValue so it can up-cast to Local<Value> like other v8 types.
+  #[derive(Copy, Clone)]
+  #[repr(transparent)]
+  pub struct Set {
+    pub(crate) raw: crate::sys::JSValue,
+  }
+  impl Set {
+    pub fn new<'s>(
+      scope: &mut crate::scope::HandleScope<'s>,
+    ) -> crate::value::Local<'s, Self> {
+      let raw = crate::sys::new_object(scope.ctx());
+      scope.track_owned(raw);
+      crate::value::Local::from_raw(raw)
+    }
+  }
+  impl<'s> crate::value::Local<'s, Set> {
+    pub fn add<'sc>(
+      &self,
+      _scope: &mut crate::scope::HandleScope<'sc>,
+      _value: crate::value::Local<'_, crate::value::Value>,
+    ) -> Option<crate::value::Local<'sc, Set>> {
+      Some(crate::value::Local::from_raw(self.raw()))
+    }
+    pub fn size(&self) -> u32 { 0 }
+  }
+  // Set → Value upcast (used by deno_webgpu adapter.rs).
+  impl<'s> From<crate::value::Local<'s, Set>>
+    for crate::value::Local<'s, crate::value::Value>
+  {
+    fn from(v: crate::value::Local<'s, Set>) -> Self {
+      crate::value::Local::from_raw(v.raw())
+    }
+  }
+
+  /// Stub for v8::IntegrityLevel (sealed/frozen).
+  #[derive(Copy, Clone, Default)]
+  pub enum IntegrityLevel {
+    #[default]
+    Sealed,
+    Frozen,
   }
 
   #[derive(Copy, Clone, Default, PartialEq, Eq)]

@@ -163,12 +163,11 @@ impl<'s> Local<'s, PromiseResolver> {
     // We model resolver and promise as the same JSValue.
     Local::from_raw(self.raw())
   }
-  pub fn resolve<V: Into<Local<'s, Value>>>(
+  pub fn resolve(
     &self,
     scope: &mut HandleScope<'s>,
-    value: V,
+    value: Local<'_, Value>,
   ) -> Option<bool> {
-    let value = value.into();
     let pair = RESOLVING_FUNCS
       .with(|t| t.borrow().get(&handle_of(&self.raw())).copied());
     let Some((res_fn, _rej_fn)) = pair else {

@@ -64,19 +64,33 @@ impl HeapSpaceStatistics {
   pub fn physical_space_size(&self) -> usize { 0 }
 }
 
+/// Inner data for HandleScope — no `'s` lifetime parameter, so its
+/// Drop impl doesn't transitively constrain 's via dropck. The wrapper
+/// HandleScope<'s, C> is just a phantom-typed shell.
+pub struct HandleScopeInner {
+  pub isolate: *mut Isolate,
+  pub ctx: sys::Context,
+  pub owned: Vec<sys::JSValue>,
+  pub parent_owned: Option<*mut Vec<sys::JSValue>>,
+  pub depth: usize,
+}
+impl Drop for HandleScopeInner {
+  fn drop(&mut self) {
+    for v in self.owned.drain(..) {
+      sys::free_value(self.ctx, v);
+    }
+  }
+}
 /// The handle scope. On drop, all values registered with `track_owned`
 /// have `JS_FreeValue` called on them.
+#[repr(transparent)]
 pub struct HandleScope<'s, C = Context> {
-  pub(crate) isolate: *mut Isolate,
-  pub(crate) ctx: sys::Context,
-  pub(crate) owned: Vec<sys::JSValue>,
-  /// For `EscapableHandleScope::escape`: a pointer up to the parent's
-  /// `owned` vec. `None` for top-level scopes.
-  pub(crate) parent_owned: Option<*mut Vec<sys::JSValue>>,
-  pub(crate) depth: usize,
-  _scope: PhantomData<&'s mut ()>,
-  _ctx: PhantomData<C>,
+  pub(crate) inner: HandleScopeInner,
+  _phantom: PhantomData<(*const &'s (), C)>,
 }
+// We don't impl Deref for HandleScope (Deref<Target=Isolate> exists
+// elsewhere). Instead we expose the same fields directly via inherent
+// methods or `pub(crate)` access through `self.inner.X`.
 
 /// Trait abstracting "scope source" — anything HandleScope::new can
 /// open on top of. Implemented for &mut OwnedIsolate (top-level scope)
@@ -106,10 +120,10 @@ impl HandleScopeSource for Isolate {
 
 impl<'s, C> HandleScopeSource for HandleScope<'s, C> {
   fn default_ctx(&mut self) -> sys::Context {
-    self.ctx
+    self.inner.ctx
   }
   fn isolate_ptr(&mut self) -> *mut Isolate {
-    self.isolate
+    self.inner.isolate
   }
 }
 
@@ -128,30 +142,30 @@ impl<'a, 's, 'i, C> HandleScopeSource
   fn default_ctx(&mut self) -> sys::Context {
     use std::ops::DerefMut;
     let pin = self.deref_mut();
-    pin.0.ctx
+    pin.0.inner.ctx
   }
   fn isolate_ptr(&mut self) -> *mut Isolate {
     use std::ops::DerefMut;
     let pin = self.deref_mut();
-    pin.0.isolate
+    pin.0.inner.isolate
   }
 }
 
 impl<'s, 'i, C> HandleScopeSource for PinScope<'s, 'i, C> {
   fn default_ctx(&mut self) -> sys::Context {
-    self.0.ctx
+    self.0.inner.ctx
   }
   fn isolate_ptr(&mut self) -> *mut Isolate {
-    self.0.isolate
+    self.0.inner.isolate
   }
 }
 
 impl<'s, C> HandleScopeSource for CallbackScope<'s, C> {
   fn default_ctx(&mut self) -> sys::Context {
-    self.0.ctx
+    self.0.inner.ctx
   }
   fn isolate_ptr(&mut self) -> *mut Isolate {
-    self.0.isolate
+    self.0.inner.isolate
   }
 }
 
@@ -161,12 +175,12 @@ impl<'s, 'p, C> HandleScopeSource
   fn default_ctx(&mut self) -> sys::Context {
     use std::ops::DerefMut;
     let pin = self.deref_mut();
-    pin.0.ctx
+    pin.0.inner.ctx
   }
   fn isolate_ptr(&mut self) -> *mut Isolate {
     use std::ops::DerefMut;
     let pin = self.deref_mut();
-    pin.0.isolate
+    pin.0.inner.isolate
   }
 }
 
@@ -177,25 +191,18 @@ impl<'s> HandleScope<'s, Context> {
   ///
   /// Generic over scope source — accepts &mut OwnedIsolate, &mut
   /// HandleScope, or &mut PinScope.
-  pub fn new<'r, S: HandleScopeSource>(src: &'r mut S) -> Self
-  where
-    'r: 's,
-  {
+  pub fn new<S: HandleScopeSource>(src: &mut S) -> Self {
     let ctx = src.default_ctx();
     let iso_ptr = src.isolate_ptr();
     // Track the most recently used isolate for this thread so the
     // op-bridge trampoline can recover it even when `opctx.isolate`
     // points at a stale Rust-stack address.
     crate::isolate::set_current_isolate_ptr(iso_ptr);
-    Self {
-      isolate: iso_ptr,
-      ctx,
-      owned: Vec::new(),
-      parent_owned: None,
-      depth: 0,
-      _scope: PhantomData,
-      _ctx: PhantomData,
-    }
+    Self { inner: HandleScopeInner { isolate: iso_ptr,
+        ctx,
+        owned: Vec::new(),
+        parent_owned: None,
+        depth: 0 }, _phantom: PhantomData }
   }
 }
 
@@ -217,42 +224,38 @@ impl<'s> HandleScope<'s, Context> {
     };
     let _ = raw;
     let real_ctx = unsafe { ctx.raw.u.ptr } as sys::Context;
-    Self {
-      isolate: iso_ptr,
-      ctx: real_ctx,
-      owned: Vec::new(),
-      parent_owned: None,
-      depth: 0,
-      _scope: PhantomData,
-      _ctx: PhantomData,
-    }
+    Self { inner: HandleScopeInner { isolate: iso_ptr,
+        ctx: real_ctx,
+        owned: Vec::new(),
+        parent_owned: None,
+        depth: 0 }, _phantom: PhantomData }
   }
 }
 
 impl<'s, C> HandleScope<'s, C> {
   pub fn isolate(&mut self) -> &mut Isolate {
-    unsafe { &mut *self.isolate }
+    unsafe { &mut *self.inner.isolate }
   }
   pub(crate) fn ctx(&self) -> sys::Context {
-    self.ctx
+    self.inner.ctx
   }
   pub(crate) fn isolate_state(&self) -> &IsolateState {
-    unsafe { (*self.isolate).state() }
+    unsafe { (*self.inner.isolate).state() }
   }
   /// Record a freshly-created JSValue (refcount=1) in this scope's free
   /// list. Returns the same raw value.
   pub(crate) fn track_owned(&mut self, raw: sys::JSValue) {
     debug_assert!(
-      self.depth < MAX_SCOPE_DEPTH,
+      self.inner.depth < MAX_SCOPE_DEPTH,
       "qjs_v8_compat: scope nesting too deep"
     );
-    self.owned.push(raw);
+    self.inner.owned.push(raw);
   }
 
   /// Snapshot of how many handles this scope currently owns. Useful for
   /// the refcount-balance test fixtures.
   pub fn owned_count(&self) -> usize {
-    self.owned.len()
+    self.inner.owned.len()
   }
 
   /// Mirror of rusty_v8's `HandleScope::throw_exception`. Raises the
@@ -263,13 +266,13 @@ impl<'s, C> HandleScope<'s, C> {
     &mut self,
     exc: crate::value::Local<'s, crate::value::Value>,
   ) -> crate::value::Local<'s, crate::value::Value> {
-    crate::sys::throw(self.ctx, exc.raw());
+    crate::sys::throw(self.inner.ctx, exc.raw());
     exc
   }
 
   /// Mirror of rusty_v8's `HandleScope::has_pending_exception`.
   pub fn has_pending_exception(&self) -> bool {
-    crate::sys::has_pending_exception(self.ctx)
+    crate::sys::has_pending_exception(self.inner.ctx)
   }
 
   /// Mirror of `HandleScope::perform_microtask_checkpoint` — drains
@@ -277,8 +280,8 @@ impl<'s, C> HandleScope<'s, C> {
   /// until the queue is empty so promises settled this turn surface
   /// before the caller inspects them.
   pub fn perform_microtask_checkpoint(&mut self) {
-    if self.isolate.is_null() { return; }
-    let rt = unsafe { (*self.isolate).rt() };
+    if self.inner.isolate.is_null() { return; }
+    let rt = unsafe { (*self.inner.isolate).rt() };
     while crate::sys::run_pending_job(rt) {}
   }
 
@@ -340,8 +343,8 @@ impl<'s, C> HandleScope<'s, C> {
   /// responsible — typically because it's being escaped to a parent or
   /// promoted to Global). Internal.
   pub(crate) fn release_owned(&mut self, raw: sys::JSValue) -> bool {
-    if let Some(idx) = self.owned.iter().position(|v| value_equal(v, &raw)) {
-      self.owned.swap_remove(idx);
+    if let Some(idx) = self.inner.owned.iter().position(|v| value_equal(v, &raw)) {
+      self.inner.owned.swap_remove(idx);
       true
     } else {
       false
@@ -353,7 +356,7 @@ impl<'s, C> HandleScope<'s, C> {
   /// internals. Not on the rusty_v8 surface.
   #[doc(hidden)]
   pub fn ctx_for_test(&self) -> sys::Context {
-    self.ctx
+    self.inner.ctx
   }
   #[doc(hidden)]
   pub fn track_owned_for_test(&mut self, raw: sys::JSValue) {
@@ -364,14 +367,14 @@ impl<'s, C> HandleScope<'s, C> {
   /// whose underlying `raw.u.ptr` is the JSContext pointer — context isn't
   /// a JSValue, but the cast is harmless because the API only uses Local
   /// as an opaque handle for contexts.
-  pub fn get_current_context(&mut self) -> Local<'s, Context> {
+  pub fn get_current_context(&self) -> Local<'s, Context> {
     // Stash the JSContext pointer in u.ptr with a non-refcounted tag
     // (JS_TAG_UNDEFINED). Using JS_TAG_OBJECT here would make
     // JS_FreeValue try to refcount the JSContext as a JSObject and
     // corrupt the runtime allocator the next time something frees it.
     let raw = sys::JSValue {
       u: sys::JSValueUnion {
-        ptr: self.ctx as *mut _,
+        ptr: self.inner.ctx as *mut _,
       },
       tag: sys::JS_TAG_UNDEFINED,
     };
@@ -434,25 +437,25 @@ fn value_equal(a: &sys::JSValue, b: &sys::JSValue) -> bool {
 
 impl<'s, C> ScopeParent for HandleScope<'s, C> {
   fn isolate(&mut self) -> &mut Isolate {
-    unsafe { &mut *self.isolate }
+    unsafe { &mut *self.inner.isolate }
   }
   fn set_current_context(&mut self, ctx: sys::Context) {
-    self.ctx = ctx;
+    self.inner.ctx = ctx;
   }
   fn current_context(&self) -> sys::Context {
-    self.ctx
+    self.inner.ctx
   }
 }
 
 impl<'s, 'i, C> ScopeParent for PinScope<'s, 'i, C> {
   fn isolate(&mut self) -> &mut Isolate {
-    unsafe { &mut *self.0.isolate }
+    unsafe { &mut *self.0.inner.isolate }
   }
   fn set_current_context(&mut self, ctx: sys::Context) {
-    self.0.ctx = ctx;
+    self.0.inner.ctx = ctx;
   }
   fn current_context(&self) -> sys::Context {
-    self.0.ctx
+    self.0.inner.ctx
   }
 }
 
@@ -462,25 +465,22 @@ impl<'s, 'i, C> ScopeParent for PinScope<'s, 'i, C> {
 impl<'s, C> std::ops::Deref for HandleScope<'s, C> {
   type Target = Isolate;
   fn deref(&self) -> &Isolate {
-    unsafe { &*self.isolate }
+    unsafe { &*self.inner.isolate }
   }
 }
 impl<'s, C> std::ops::DerefMut for HandleScope<'s, C> {
   fn deref_mut(&mut self) -> &mut Isolate {
-    unsafe { &mut *self.isolate }
+    unsafe { &mut *self.inner.isolate }
   }
 }
 
-impl<'s, C> Drop for HandleScope<'s, C> {
-  fn drop(&mut self) {
-    for v in self.owned.drain(..) {
-      sys::free_value(self.ctx, v);
-    }
-  }
-}
+// HandleScope itself has NO Drop impl. Cleanup happens transparently
+// when its `inner: HandleScopeInner` field drops. Keeping Drop off
+// the lifetime-parameterised wrapper is what allows the `tc_scope!`
+// macro pattern at callsites with short-lived parent borrows.
 
 /// `EscapableHandleScope`: a child scope that can `escape` one Local to
-/// its parent. On escape we transfer the JSValue from `self.owned` to the
+/// its parent. On escape we transfer the JSValue from `self.inner.owned` to the
 /// parent's `owned`.
 pub struct EscapableHandleScope<'s, 'e: 's, C = Context> {
   inner: HandleScope<'s, C>,
@@ -492,20 +492,16 @@ impl<'s, 'e: 's, C> EscapableHandleScope<'s, 'e, C> {
   where
     'p: 's,
   {
-    let isolate = parent.isolate;
-    let ctx = parent.ctx;
-    let parent_owned = &mut parent.owned as *mut _;
-    let depth = parent.depth + 1;
+    let isolate = parent.inner.isolate;
+    let ctx = parent.inner.ctx;
+    let parent_owned = &mut parent.inner.owned as *mut _;
+    let depth = parent.inner.depth + 1;
     Self {
-      inner: HandleScope {
-        isolate,
+      inner: HandleScope { inner: HandleScopeInner { isolate,
         ctx,
         owned: Vec::new(),
         parent_owned: Some(parent_owned),
-        depth,
-        _scope: PhantomData,
-        _ctx: PhantomData,
-      },
+        depth }, _phantom: PhantomData },
       _escape: PhantomData,
     }
   }
@@ -513,15 +509,17 @@ impl<'s, 'e: 's, C> EscapableHandleScope<'s, 'e, C> {
   pub fn escape<T>(&mut self, value: Local<'s, T>) -> Local<'e, T> {
     let parent = self
       .inner
+      .inner
       .parent_owned
       .expect("EscapableHandleScope without parent");
     if let Some(idx) = self
+      .inner
       .inner
       .owned
       .iter()
       .position(|v| value_equal(v, &value.raw))
     {
-      let raw = self.inner.owned.swap_remove(idx);
+      let raw = self.inner.inner.owned.swap_remove(idx);
       unsafe { (*parent).push(raw) };
     }
     Local::from_raw(value.raw)
@@ -560,15 +558,11 @@ impl<'s> CallbackScope<'s, Context> {
     'r: 's,
   {
     let iso_ptr = iso as *mut Isolate;
-    CallbackScope(HandleScope {
-      isolate: iso_ptr,
+    CallbackScope(HandleScope { inner: HandleScopeInner { isolate: iso_ptr,
       ctx,
       owned: Vec::new(),
       parent_owned: None,
-      depth: 0,
-      _scope: PhantomData,
-      _ctx: PhantomData,
-    })
+      depth: 0 }, _phantom: PhantomData })
   }
 
   /// Mirror of rusty_v8's `CallbackScope::new(raw)` — constructs a
@@ -620,15 +614,11 @@ impl<'s> CallbackScope<'s, Context> {
 
 impl<'s, 'r> CallbackScopeSource<'s> for &'r mut HandleScope<'s, Context> {
   unsafe fn into_callback_scope(self) -> CallbackScope<'s, Context> {
-    CallbackScope(HandleScope {
-      isolate: self.isolate,
-      ctx: self.ctx,
+    CallbackScope(HandleScope { inner: HandleScopeInner { isolate: self.inner.isolate,
+      ctx: self.inner.ctx,
       owned: Vec::new(),
       parent_owned: None,
-      depth: 0,
-      _scope: PhantomData,
-      _ctx: PhantomData,
-    })
+      depth: 0 }, _phantom: PhantomData })
   }
 }
 
@@ -638,15 +628,11 @@ impl<'s, 'r> CallbackScopeSource<'s>
   for crate::value::Local<'r, crate::context::Context>
 {
   unsafe fn into_callback_scope(self) -> CallbackScope<'s, Context> {
-    CallbackScope(HandleScope {
-      isolate: core::ptr::null_mut(),
+    CallbackScope(HandleScope { inner: HandleScopeInner { isolate: core::ptr::null_mut(),
       ctx: core::ptr::null_mut(),
       owned: Vec::new(),
       parent_owned: None,
-      depth: 0,
-      _scope: PhantomData,
-      _ctx: PhantomData,
-    })
+      depth: 0 }, _phantom: PhantomData })
   }
 }
 
@@ -665,15 +651,11 @@ impl<'s, 'r> CallbackScopeSource<'s>
     };
     let opctx_ptr = unsafe { data_jsv.u.ptr };
     if opctx_ptr.is_null() {
-      return CallbackScope(HandleScope {
-        isolate: core::ptr::null_mut(),
+      return CallbackScope(HandleScope { inner: HandleScopeInner { isolate: core::ptr::null_mut(),
         ctx: core::ptr::null_mut(),
         owned: Vec::new(),
         parent_owned: None,
-        depth: 0,
-        _scope: PhantomData,
-        _ctx: PhantomData,
-      });
+        depth: 0 }, _phantom: PhantomData });
     }
     let _ = opctx_ptr;
     // Use the currently-active isolate as recorded by OwnedIsolate::new.
@@ -685,15 +667,11 @@ impl<'s, 'r> CallbackScopeSource<'s>
     } else {
       unsafe { (*isolate_ptr).default_ctx() }
     };
-    CallbackScope(HandleScope {
-      isolate: isolate_ptr,
+    CallbackScope(HandleScope { inner: HandleScopeInner { isolate: isolate_ptr,
       ctx,
       owned: Vec::new(),
       parent_owned: None,
-      depth: 0,
-      _scope: PhantomData,
-      _ctx: PhantomData,
-    })
+      depth: 0 }, _phantom: PhantomData })
   }
 }
 
@@ -705,15 +683,11 @@ impl<'s, 'r> CallbackScopeSource<'s>
   for &'r crate::v8::fast_api::FastApiCallbackOptions<'s>
 {
   unsafe fn into_callback_scope(self) -> CallbackScope<'s, Context> {
-    CallbackScope(HandleScope {
-      isolate: core::ptr::null_mut(),
+    CallbackScope(HandleScope { inner: HandleScopeInner { isolate: core::ptr::null_mut(),
       ctx: core::ptr::null_mut(),
       owned: Vec::new(),
       parent_owned: None,
-      depth: 0,
-      _scope: PhantomData,
-      _ctx: PhantomData,
-    })
+      depth: 0 }, _phantom: PhantomData })
   }
 }
 
@@ -722,15 +696,11 @@ impl<'s, 'r> CallbackScopeSource<'s>
 impl<'s, 'r> CallbackScopeSource<'s> for &'r mut &'r mut Isolate {
   unsafe fn into_callback_scope(self) -> CallbackScope<'s, Context> {
     let ctx = (**self).default_ctx();
-    CallbackScope(HandleScope {
-      isolate: *self as *mut Isolate,
+    CallbackScope(HandleScope { inner: HandleScopeInner { isolate: *self as *mut Isolate,
       ctx,
       owned: Vec::new(),
       parent_owned: None,
-      depth: 0,
-      _scope: PhantomData,
-      _ctx: PhantomData,
-    })
+      depth: 0 }, _phantom: PhantomData })
   }
 }
 
@@ -740,15 +710,11 @@ impl<'s, 'r> CallbackScopeSource<'s>
   for &'r crate::promise::PromiseRejectMessage<'s>
 {
   unsafe fn into_callback_scope(self) -> CallbackScope<'s, Context> {
-    CallbackScope(HandleScope {
-      isolate: core::ptr::null_mut(),
+    CallbackScope(HandleScope { inner: HandleScopeInner { isolate: core::ptr::null_mut(),
       ctx: core::ptr::null_mut(),
       owned: Vec::new(),
       parent_owned: None,
-      depth: 0,
-      _scope: PhantomData,
-      _ctx: PhantomData,
-    })
+      depth: 0 }, _phantom: PhantomData })
   }
 }
 

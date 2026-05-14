@@ -37,19 +37,62 @@ macro_rules! typed_array_new_stub {
 }
 typed_array_new_stub!(Uint32Array, Float32Array, Float64Array);
 
-impl<'s> Local<'s, Uint8Array> {
-  pub fn byte_length(&self) -> usize {
-    0
-  }
-  pub fn data(&self) -> *mut u8 {
-    core::ptr::null_mut()
-  }
-  pub fn byte_offset(&self) -> usize {
-    0
-  }
+/// Common ArrayBufferView-style methods used across typed arrays.
+macro_rules! typed_array_view_methods {
+  ($($name:ty),* $(,)?) => { $(
+    impl<'s> Local<'s, $name> {
+      pub fn byte_length(&self) -> usize {
+        0
+      }
+      pub fn byte_offset(&self) -> usize {
+        0
+      }
+      pub fn length(&self) -> usize {
+        0
+      }
+      pub fn data(&self) -> *mut core::ffi::c_void {
+        core::ptr::null_mut()
+      }
+      pub fn copy_contents(&self, _dest: &mut [u8]) -> usize { 0 }
+      pub fn get_contents<'a>(&self, _storage: &'a mut [u8]) -> &'a mut [u8] {
+        &mut []
+      }
+      pub fn set_index<S, V>(
+        &self,
+        _scope: &mut S,
+        _index: u32,
+        _value: V,
+      ) -> Option<bool>
+      where S: crate::scope::HandleScopeSource { Some(true) }
+      pub fn buffer<'sc, S>(
+        &self,
+        scope: &mut S,
+      ) -> Option<Local<'sc, ArrayBuffer>>
+      where
+        S: crate::scope::HandleScopeSource,
+      {
+        let raw = sys::new_object(scope.default_ctx());
+        Some(Local::from_raw(raw))
+      }
+    }
+  )* }
 }
+typed_array_view_methods!(
+  Uint8Array,
+  Uint32Array,
+  Float32Array,
+  Float64Array,
+  TypedArray,
+);
 
 pub const TYPED_ARRAY_MAX_SIZE_IN_HEAP: usize = 64;
+
+/// Mirror of v8::BackingStoreDeleterCallback.
+pub type BackingStoreDeleterCallback = unsafe extern "C" fn(
+  data: *mut core::ffi::c_void,
+  byte_length: usize,
+  deleter_data: *mut core::ffi::c_void,
+);
 
 /// QuickJS-side BackingStore.
 pub struct BackingStore {
@@ -151,11 +194,7 @@ impl ArrayBuffer {
   pub unsafe fn new_backing_store_from_ptr(
     data: *mut core::ffi::c_void,
     byte_length: usize,
-    _deleter_callback: extern "C" fn(
-      *mut core::ffi::c_void,
-      usize,
-      *mut core::ffi::c_void,
-    ),
+    _deleter_callback: BackingStoreDeleterCallback,
     _deleter_data: *mut core::ffi::c_void,
   ) -> Box<BackingStore> {
     let slice =
@@ -173,11 +212,34 @@ impl<'s> Local<'s, ArrayBuffer> {
   pub fn get_backing_store(&self) -> std::sync::Arc<BackingStore> {
     std::sync::Arc::new(BackingStore { data: Box::new([]) })
   }
-  pub fn data(&self) -> std::ptr::NonNull<core::ffi::c_void> {
-    std::ptr::NonNull::dangling()
+  pub fn data(&self) -> Option<std::ptr::NonNull<core::ffi::c_void>> {
+    Some(std::ptr::NonNull::dangling())
   }
   pub fn was_detached(&self) -> bool {
     false
+  }
+}
+
+impl crate::value::Global<ArrayBuffer> {
+  /// Mirror of `&ArrayBuffer::detach(key)` once Global is opened. Real
+  /// rusty_v8's `Global::open` returns `&T`, so callers can invoke
+  /// inherent methods on T directly. Our `Global::open` returns
+  /// `&Global<T>`, so we expose detach on Global<ArrayBuffer> with the
+  /// same 1-arg signature.
+  pub fn detach(
+    &self,
+    _key: Option<Local<'_, crate::value::Value>>,
+  ) -> Option<bool> {
+    Some(true)
+  }
+}
+
+impl<'s, T> Local<'s, T> {
+  pub fn to_object_or_self<'sc>(
+    self,
+    _scope: &mut HandleScope<'sc>,
+  ) -> Local<'sc, crate::object::Object> {
+    Local::from_raw(self.raw)
   }
 }
 
@@ -240,9 +302,31 @@ impl<'s> Local<'s, ArrayBufferView> {
   pub fn byte_length(&self) -> usize {
     0
   }
-  pub fn data(&self) -> std::ptr::NonNull<core::ffi::c_void> {
-    std::ptr::NonNull::dangling()
+  pub fn data(&self) -> *mut core::ffi::c_void {
+    core::ptr::null_mut()
   }
+  pub fn copy_contents(&self, _dest: &mut [u8]) -> usize { 0 }
+  pub fn get_contents<'a>(&self, _storage: &'a mut [u8]) -> &'a mut [u8] {
+    &mut []
+  }
+  pub fn get<S>(&self, _scope: &mut S, _index: u32) -> Option<Local<'s, crate::value::Value>>
+  where S: crate::scope::HandleScopeSource {
+    Some(Local::from_raw(sys::jsv_undefined()))
+  }
+  pub fn has_buffer(&self) -> bool { false }
+  pub fn is_int8_array(&self) -> bool { false }
+  pub fn is_uint8_array(&self) -> bool { false }
+  pub fn is_uint8_clamped_array(&self) -> bool { false }
+  pub fn is_int16_array(&self) -> bool { false }
+  pub fn is_uint16_array(&self) -> bool { false }
+  pub fn is_int32_array(&self) -> bool { false }
+  pub fn is_uint32_array(&self) -> bool { false }
+  pub fn is_float16_array(&self) -> bool { false }
+  pub fn is_float32_array(&self) -> bool { false }
+  pub fn is_float64_array(&self) -> bool { false }
+  pub fn is_big_int64_array(&self) -> bool { false }
+  pub fn is_big_uint64_array(&self) -> bool { false }
+  pub fn is_data_view(&self) -> bool { false }
   pub fn get_backing_store(&self) -> std::sync::Arc<BackingStore> {
     std::sync::Arc::new(BackingStore { data: Box::new([]) })
   }

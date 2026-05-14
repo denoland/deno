@@ -282,6 +282,7 @@ impl<'s> Local<'s, Function> {
   }
 }
 
+
 /// No-op trampoline for `Function::new` calls (where we don't have a
 /// real V8 callback to bridge — currently used for `call_console` and
 /// stub builtins like our console methods). Returns an empty object so
