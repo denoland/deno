@@ -358,6 +358,34 @@ impl<'s> LocalNewScope<'s> for &mut HandleScope<'s> {
     self
   }
 }
+impl<'s, 'p, C> LocalNewScope<'s>
+  for crate::exception::TryCatch<'p, HandleScope<'s, C>>
+{
+  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+    use std::ops::DerefMut;
+    let hs: &mut HandleScope<'s, C> = self.deref_mut();
+    // SAFETY: HandleScope<'s, C> and HandleScope<'s> share layout when
+    // C is the unit Context.
+    unsafe { &mut *(hs as *mut HandleScope<'s, C> as *mut HandleScope<'s>) }
+  }
+}
+impl<'s, 'p, C> LocalNewScope<'s>
+  for &mut crate::exception::TryCatch<'p, HandleScope<'s, C>>
+{
+  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+    use std::ops::DerefMut;
+    let hs: &mut HandleScope<'s, C> = (**self).deref_mut();
+    unsafe { &mut *(hs as *mut HandleScope<'s, C> as *mut HandleScope<'s>) }
+  }
+}
+impl<'s, C> LocalNewScope<'s> for crate::scope::CallbackScope<'s, C> {
+  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+    use std::ops::DerefMut;
+    let pin: &mut crate::scope::PinScope<'s, 's, C> = self.deref_mut();
+    let hs: &mut HandleScope<'s, C> = pin.deref_mut();
+    unsafe { &mut *(hs as *mut HandleScope<'s, C> as *mut HandleScope<'s>) }
+  }
+}
 
 // Generic Local::<T>::new(scope, handle) — `scope` accepts
 // HandleScope by value (the macro binding) plus the usual reference
