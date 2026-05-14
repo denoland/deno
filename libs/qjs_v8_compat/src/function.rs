@@ -157,9 +157,12 @@ pub struct ReturnValue<'s, T = Value> {
   _t: std::marker::PhantomData<&'s T>,
 }
 
-impl<'s, T> ReturnValue<'s, T> {
+impl<'s> ReturnValue<'s, Value> {
   /// Mirrors rusty_v8's `ReturnValue::from_function_callback_info`.
   /// Safe wrapper to match op2's call sites (which don't use `unsafe`).
+  /// Confined to `T = Value` (the default) so call sites that don't
+  /// otherwise constrain `T` get a concrete type rather than triggering
+  /// `cannot infer type` from the inherent default.
   pub fn from_function_callback_info(
     info: *const FunctionCallbackInfo,
   ) -> Self {
@@ -169,6 +172,9 @@ impl<'s, T> ReturnValue<'s, T> {
       _t: std::marker::PhantomData,
     }
   }
+}
+
+impl<'s, T> ReturnValue<'s, T> {
   pub fn set<'a>(&mut self, value: Local<'a, T>) {
     unsafe { *self.slot = value.raw() }
   }
