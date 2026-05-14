@@ -256,3 +256,12 @@ impl std::fmt::Display for DataError {
   }
 }
 impl std::error::Error for DataError {}
+
+impl From<core::convert::Infallible> for DataError {
+  fn from(_: core::convert::Infallible) -> Self {
+    Self::BadType {
+      actual: "infallible",
+      expected: "infallible",
+    }
+  }
+}

@@ -326,9 +326,9 @@ impl IsolateHandle {
     // TODO: wire JS_RequestInterrupt
     false
   }
-  pub fn request_interrupt<F: FnOnce(&mut Isolate, *mut c_void)>(
+  pub fn request_interrupt(
     &self,
-    _cb: F,
+    _cb: unsafe extern "C" fn(UnsafeRawIsolatePtr, *mut c_void),
     _data: *mut c_void,
   ) {
   }

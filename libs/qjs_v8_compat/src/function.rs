@@ -11,8 +11,16 @@ use crate::value::Value;
 crate::value_type!(Function);
 
 impl Function {
-  /// Mirror of `v8::Function::builder(callback)`.
-  pub fn builder(
+  /// Mirror of `v8::Function::builder(callback)`. Generic over any
+  /// callable that satisfies `MapFnTo<FunctionCallback>` — accepts
+  /// closures with the op2 (scope, args, rv) shape.
+  pub fn builder<F>(callback: F) -> crate::v8::FunctionBuilder<Function>
+  where
+    F: MapFnTo<FunctionCallback>,
+  {
+    crate::v8::FunctionBuilder::<Function>::new(callback.map_fn_to())
+  }
+  pub fn builder_raw(
     callback: FunctionCallback,
   ) -> crate::v8::FunctionBuilder<Function> {
     crate::v8::FunctionBuilder::<Function>::new(callback)

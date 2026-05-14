@@ -396,10 +396,13 @@ pub mod v8 {
       }
     }
 
+    #[derive(Copy, Clone)]
     pub struct CFunction {
       _addr: *const core::ffi::c_void,
       _info: *const CFunctionInfo,
     }
+    unsafe impl Send for CFunction {}
+    unsafe impl Sync for CFunction {}
 
     impl CFunction {
       pub const fn new(
@@ -574,7 +577,7 @@ pub mod v8 {
     }
     pub struct V8StackTrace;
     impl V8InspectorClient {
-      pub fn new<C: V8InspectorClientImpl>(_client: C) -> Self {
+      pub fn new<C>(_client: C) -> Self {
         Self
       }
     }
@@ -1075,7 +1078,7 @@ pub mod v8 {
     pub fn build<'s, S: crate::scope::HandleScopeSource>(
       self,
       scope: &mut S,
-    ) -> Option<super::Local<'s, super::FunctionTemplate>> {
+    ) -> Option<super::Local<'s, T>> {
       let _ = scope;
       None
     }
@@ -1083,7 +1086,7 @@ pub mod v8 {
       self,
       scope: &mut S,
       _fast_function: &'static crate::v8::fast_api::CFunction,
-    ) -> Option<super::Local<'s, super::FunctionTemplate>> {
+    ) -> Option<super::Local<'s, T>> {
       self.build(scope)
     }
   }

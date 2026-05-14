@@ -484,11 +484,11 @@ impl<'s, T> Local<'s, T> {
     }
   }
 
-  /// Mirror of rusty_v8's `Local::try_cast` — fallible variant. We
-  /// always succeed here because the underlying JSValue is uniform;
-  /// downstream code that needs a runtime tag check should call
-  /// `Value::is_*` predicates explicitly.
-  pub fn try_cast<U>(self) -> Result<Local<'s, U>, std::convert::Infallible> {
+  /// Mirror of rusty_v8's `Local::try_cast` — fallible variant. Returns
+  /// `DataError` on type mismatch; we never fail here because the
+  /// underlying JSValue is uniform. The error type matches rusty_v8's
+  /// public signature so deno_core's `?` propagation works.
+  pub fn try_cast<U>(self) -> Result<Local<'s, U>, crate::exception::DataError> {
     Ok(Local::from_raw(self.raw))
   }
 }
@@ -753,6 +753,20 @@ impl<'s> From<Local<'s, crate::object::Object>>
 // (`TryFrom` derives from `From` automatically via std's blanket impl.)
 
 // Common From<String> -> Name etc.
+impl<'s> From<Local<'s, crate::template::FunctionTemplate>>
+  for Local<'s, Data>
+{
+  fn from(other: Local<'s, crate::template::FunctionTemplate>) -> Self {
+    Local::from_raw(other.raw)
+  }
+}
+impl<'s> From<Local<'s, crate::template::ObjectTemplate>>
+  for Local<'s, Data>
+{
+  fn from(other: Local<'s, crate::template::ObjectTemplate>) -> Self {
+    Local::from_raw(other.raw)
+  }
+}
 impl<'s> From<Local<'s, crate::primitives::String>> for Local<'s, Name> {
   fn from(v: Local<'s, crate::primitives::String>) -> Local<'s, Name> {
     Local::from_raw(v.raw)
@@ -1121,6 +1135,12 @@ pub struct Global<T> {
 }
 
 unsafe impl<T> Send for Global<T> {}
+
+impl<T> std::fmt::Debug for Global<T> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "Global<{}>", std::any::type_name::<T>())
+  }
+}
 
 impl<T> std::hash::Hash for Global<T> {
   fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
