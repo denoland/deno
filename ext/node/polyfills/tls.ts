@@ -40,6 +40,7 @@ const {
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
   DataViewPrototypeGetByteOffset,
+  Error,
   ObjectKeys,
   ObjectFreeze,
   Proxy,

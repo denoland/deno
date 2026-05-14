@@ -51,14 +51,20 @@ const defaultExport = {
   CLIENT_RENEG_LIMIT,
   CLIENT_RENEG_WINDOW,
 };
-ObjectDefineProperty(defaultExport as any, "DEFAULT_MAX_VERSION", {
+const defaultExportWithAccessors = defaultExport as typeof defaultExport & {
+  DEFAULT_MAX_VERSION: string;
+  DEFAULT_MIN_VERSION: string;
+  rootCertificates: typeof rootCertificates;
+};
+
+ObjectDefineProperty(defaultExportWithAccessors, "DEFAULT_MAX_VERSION", {
   __proto__: null,
   configurable: true,
   enumerable: true,
   get: () => defaultMaxVersionOverride ?? mod.DEFAULT_MAX_VERSION,
   set: (value) => defaultMaxVersionOverride = value,
 });
-ObjectDefineProperty(defaultExport as any, "DEFAULT_MIN_VERSION", {
+ObjectDefineProperty(defaultExportWithAccessors, "DEFAULT_MIN_VERSION", {
   __proto__: null,
   configurable: true,
   enumerable: true,
@@ -67,8 +73,7 @@ ObjectDefineProperty(defaultExport as any, "DEFAULT_MIN_VERSION", {
 });
 // Make rootCertificates non-writable so `tls.rootCertificates = X` throws
 // TypeError in strict mode (matches Node.js behavior).
-// deno-lint-ignore no-explicit-any
-ObjectDefineProperty(defaultExport as any, "rootCertificates", {
+ObjectDefineProperty(defaultExportWithAccessors, "rootCertificates", {
   __proto__: null,
   configurable: false,
   enumerable: true,
