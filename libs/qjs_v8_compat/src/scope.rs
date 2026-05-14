@@ -442,12 +442,26 @@ impl<'s, C> std::ops::DerefMut for CallbackScope<'s, C> {
 /// Mirror of rusty_v8's two-lifetime `PinScope<'s, 'i>`. Both lifetimes
 /// collapse to one on QuickJS — we don't enforce the pinning hygiene
 /// rusty_v8 uses, but the call-site signatures must accept both args.
-/// We use the second lifetime as a PhantomData carrier so it's not
-/// "unused" per the type alias rules.
-pub struct PinScope<'s, 'i, C = Context>(
+/// We model PinScope as a transparent wrapper around HandleScope so
+/// borrow-check sees `&mut PinScope` and `&mut HandleScope` as
+/// freely interconvertible at the variance level.
+#[repr(transparent)]
+pub struct PinScope<'s, 'i: 's, C = Context>(
   pub(crate) HandleScope<'s, C>,
   PhantomData<&'i ()>,
 );
+
+// Allow `&mut HandleScope` to be used everywhere `&mut PinScope`
+// is required and vice versa. The transparent layout makes the
+// reinterpret safe.
+impl<'s, 'i: 's, C> PinScope<'s, 'i, C> {
+  /// Construct a PinScope wrapping an existing HandleScope.
+  pub fn from_handle_scope_mut<'r>(
+    hs: &'r mut HandleScope<'s, C>,
+  ) -> &'r mut PinScope<'s, 'i, C> {
+    unsafe { &mut *(hs as *mut HandleScope<'s, C> as *mut Self) }
+  }
+}
 impl<'s, 'i, C> std::ops::Deref for PinScope<'s, 'i, C> {
   type Target = HandleScope<'s, C>;
   fn deref(&self) -> &HandleScope<'s, C> {
