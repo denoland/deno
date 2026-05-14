@@ -112,6 +112,7 @@ pub use crate::v8::WriteFlags;
 // And the sub-namespaces — these have to be explicit `pub use` because
 // glob re-export doesn't include modules.
 pub use crate::v8::cppgc;
+pub use crate::v8::data;
 pub use crate::v8::fast_api;
 pub use crate::v8::icu;
 pub use crate::v8::inspector;
@@ -684,6 +685,31 @@ pub mod v8 {
     pub fn utf8_length_from_utf16(_input: &[u16]) -> usize {
       0
     }
+  }
+
+  /// Mirrors rusty_v8's `data` submodule that re-organizes the typed
+  /// array zoo + a few base types. deno_core uses paths like
+  /// `v8::data::Uint8Array` and `v8::data::Boolean`.
+  pub mod data {
+    pub use super::ArrayBufferView;
+    pub use super::BigInt64Array;
+    pub use super::BigUint64Array;
+    pub use super::DataView;
+    pub use super::Float32Array;
+    pub use super::Float64Array;
+    pub use super::Int8Array;
+    pub use super::Int16Array;
+    pub use super::Int32;
+    pub use super::Int32Array;
+    pub use super::Uint8ClampedArray;
+    pub use super::Uint16Array;
+    pub use super::Uint32;
+    pub use super::Uint32Array;
+    pub use crate::buffer::Uint8Array;
+    pub use crate::primitives::Boolean;
+    pub use crate::primitives::Integer;
+    pub use crate::primitives::Number;
+    pub use crate::value::Value;
   }
 
   /// Stub trait for `v8::PlatformImpl`. deno_core implements this on
