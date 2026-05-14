@@ -1115,8 +1115,8 @@ pub mod v8 {
   /// rusty_v8 call chain `new_custom_platform(...).make_shared()`.
   pub struct Platform;
   impl Platform {
-    pub fn make_shared(self) -> std::rc::Rc<Self> {
-      std::rc::Rc::new(self)
+    pub fn make_shared(self) -> std::sync::Arc<Self> {
+      std::sync::Arc::new(self)
     }
   }
 }

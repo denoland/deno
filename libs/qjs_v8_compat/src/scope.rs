@@ -706,7 +706,7 @@ impl<'s, 'i, C> std::ops::DerefMut for PinScope<'s, 'i, C> {
 /// `Pin<&'i mut CallbackScope<'s>>` — that's how rusty_v8 spells the
 /// pin-rooted callback scope handle, and it's what op2-generated code
 /// expects to pass around.
-pub type PinCallbackScope<'s, 'i> = core::pin::Pin<&'i mut CallbackScope<'s>>;
+pub type PinCallbackScope<'s, 'i> = CallbackScope<'s>;
 
 // ContextScope already lives in `crate::context`; add the
 // LocalNewScope impl here so the trait reaches it.
