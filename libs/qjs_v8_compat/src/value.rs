@@ -1446,8 +1446,18 @@ impl<'s> Local<'s, Value> {
   pub fn uint32_value(&self, scope: &mut HandleScope<'s>) -> Option<u32> {
     self.int32_value(scope).map(|v| v as u32)
   }
-  pub fn integer_value(&self, scope: &mut HandleScope<'s>) -> Option<i64> {
-    self.number_value(scope).map(|v| v as i64)
+  pub fn integer_value<S>(&self, scope: &mut S) -> Option<i64>
+  where
+    S: crate::scope::HandleScopeSource + ?Sized,
+  {
+    let _ = scope;
+    if sys::jsv_is_int(&self.raw) {
+      Some(unsafe { self.raw.u.int32 as i64 })
+    } else if sys::jsv_is_number(&self.raw) {
+      Some(unsafe { self.raw.u.float64 as i64 })
+    } else {
+      None
+    }
   }
   pub fn to_rust_string_lossy(&self, scope: &mut HandleScope<'s>) -> String {
     sys::to_string_lossy(scope.ctx(), self.raw).unwrap_or_default()
@@ -1485,13 +1495,27 @@ impl<T> TracedReference<T> {
   pub fn empty() -> Self {
     Self { inner: Global::empty() }
   }
-  pub fn new<'s>(scope: &mut HandleScope<'s>, value: Local<'s, T>) -> Self {
-    Self { inner: Global::new(scope, value) }
+  pub fn new<S>(scope: &S, value: Local<'_, T>) -> Self
+  where
+    S: GlobalScope + ?Sized,
+  {
+    let ctx = scope.scope_ctx_shared();
+    sys::dup_value(ctx, value.raw);
+    Self {
+      inner: Global {
+        raw: value.raw,
+        ctx: Some(ctx),
+        _t: PhantomData,
+      },
+    }
   }
-  pub fn get<'s>(&self, scope: &mut HandleScope<'s>) -> Option<Local<'s, T>> {
-    self.inner.get(scope)
+  pub fn get<'s, S>(&self, _scope: &S) -> Option<Local<'s, T>>
+  where
+    S: GlobalScope + ?Sized,
+  {
+    Some(Local::from_raw(self.inner.raw))
   }
-  pub fn reset(&mut self, _scope: &mut HandleScope) {
+  pub fn reset<S: ?Sized>(&mut self, _scope: &S) {
     self.inner = Global::empty();
   }
 }

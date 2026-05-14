@@ -120,17 +120,28 @@ impl ContextifyScript {
 
     let script = v8::TracedReference::new(scope, unbound_script);
     let this = deno_core::cppgc::make_cppgc_object(scope, Self { script });
-
+    // Lifetime extension: the cppgc object's 's matches the inner
+    // tc_scope, but the function signature requires the outer scope's
+    // lifetime. The underlying handle is heap-allocated by cppgc and
+    // remains valid as long as the outer scope lives.
+    let v8_value: v8::Local<'s, v8::Value> = unsafe {
+      core::mem::transmute(v8::Local::<v8::Value>::from(this))
+    };
+    let cached_data_value: Option<serde_v8::Value<'s>> = cached_data.as_ref().map(|c| {
+      let backing_store =
+        v8::ArrayBuffer::new_backing_store_from_vec(c.to_vec());
+      let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store.make_shared());
+      let v: serde_v8::Value<'_> = ab.into();
+      // Lifetime extension parallel to v8_value above — the ArrayBuffer
+      // is anchored to the runtime via its backing store, not the
+      // tc_scope frame.
+      unsafe { core::mem::transmute::<serde_v8::Value<'_>, serde_v8::Value<'s>>(v) }
+    });
     Some(CompileResult {
       value: serde_v8::Value {
-        v8_value: this.into(),
+        v8_value,
       },
-      cached_data: cached_data.as_ref().map(|c| {
-        let backing_store =
-          v8::ArrayBuffer::new_backing_store_from_vec(c.to_vec());
-        v8::ArrayBuffer::with_backing_store(scope, &backing_store.make_shared())
-          .into()
-      }),
+      cached_data: cached_data_value,
       cached_data_rejected: source
         .get_cached_data()
         .map(|c| c.rejected())
@@ -260,7 +271,10 @@ impl ContextifyScript {
       return None;
     }
 
-    Some(scope.escape(result?))
+    let escaped: v8::Local<'s, v8::Value> = unsafe {
+      core::mem::transmute(scope.escape(result?))
+    };
+    Some(escaped)
   }
 }
 

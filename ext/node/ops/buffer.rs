@@ -185,7 +185,8 @@ pub fn op_node_decode_utf8<'a>(
   start: v8::Local<v8::Value>,
   end: v8::Local<v8::Value>,
 ) -> Result<v8::Local<'a, v8::String>, JsErrorBox> {
-  let buf = buf.get_contents(&mut [0; v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP]);
+  let mut storage = [0; v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
+  let buf = buf.get_contents(&mut storage);
 
   let start =
     parse_array_index(scope, start, 0).map_err(JsErrorBox::from_err)?;

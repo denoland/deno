@@ -81,6 +81,73 @@ impl Drop for HandleScopeInner {
     }
   }
 }
+/// Helper for `tc_scope!` macro: take a parent scope reference and
+/// return `&mut HandleScope<'p>` aliasing it. Implemented for the
+/// common scope shapes; the trait method preserves the parent's `'p`
+/// lifetime so Locals created via the resulting TryCatch inherit the
+/// parent's lifetime (matching real v8).
+pub trait TcScopeParent<'p, C = Context> {
+  fn tc_scope_handle_ref(&mut self) -> &mut HandleScope<'p, C>;
+}
+impl<'p, C> TcScopeParent<'p, C> for HandleScope<'p, C> {
+  fn tc_scope_handle_ref(&mut self) -> &mut HandleScope<'p, C> { self }
+}
+impl<'p, 'i, C> TcScopeParent<'p, C> for PinScope<'p, 'i, C> {
+  fn tc_scope_handle_ref(&mut self) -> &mut HandleScope<'p, C> {
+    use std::ops::DerefMut;
+    self.deref_mut()
+  }
+}
+impl<'p, C> TcScopeParent<'p, C> for CallbackScope<'p, C> {
+  fn tc_scope_handle_ref(&mut self) -> &mut HandleScope<'p, C> {
+    &mut self.0
+  }
+}
+impl<'a, 'p, C> TcScopeParent<'p, C>
+  for crate::exception::TryCatch<'a, HandleScope<'p, C>>
+{
+  fn tc_scope_handle_ref(&mut self) -> &mut HandleScope<'p, C> {
+    use std::ops::DerefMut;
+    let pin: &mut PinScope<'p, '_, C> = self.deref_mut();
+    pin.deref_mut()
+  }
+}
+impl<'a, 'p, 'i, C> TcScopeParent<'p, C>
+  for crate::context::ContextScope<'a, PinScope<'p, 'i, C>>
+where
+  'p: 'i,
+  'i: 'p,
+{
+  fn tc_scope_handle_ref(&mut self) -> &mut HandleScope<'p, C> {
+    let ptr = self as *mut Self as *mut HandleScope<'p, C>;
+    unsafe { &mut *ptr }
+  }
+}
+impl<'a, 'p, C> TcScopeParent<'p, C>
+  for crate::context::ContextScope<'a, HandleScope<'p, C>>
+{
+  fn tc_scope_handle_ref(&mut self) -> &mut HandleScope<'p, C> {
+    let ptr = self as *mut Self as *mut HandleScope<'p, C>;
+    unsafe { &mut *ptr }
+  }
+}
+impl<'a, 'p, C> TcScopeParent<'p, C>
+  for crate::context::ContextScope<'a, crate::scope::CallbackScope<'p, C>>
+{
+  fn tc_scope_handle_ref(&mut self) -> &mut HandleScope<'p, C> {
+    let ptr = self as *mut Self as *mut HandleScope<'p, C>;
+    unsafe { &mut *ptr }
+  }
+}
+pub fn tc_scope_handle_ref<'a, 'p, S, C>(
+  scope: &'a mut S,
+) -> &'a mut HandleScope<'p, C>
+where
+  S: TcScopeParent<'p, C> + ?Sized,
+{
+  scope.tc_scope_handle_ref()
+}
+
 /// The handle scope. On drop, all values registered with `track_owned`
 /// have `JS_FreeValue` called on them.
 #[repr(transparent)]
@@ -263,7 +330,7 @@ impl<'s> HandleScope<'s, Context> {
   ///
   /// Generic over scope source — accepts &mut OwnedIsolate, &mut
   /// HandleScope, or &mut PinScope.
-  pub fn new<S: HandleScopeSource>(src: &mut S) -> Self {
+  pub fn new<S: HandleScopeSource + ?Sized>(src: &mut S) -> Self {
     let ctx = src.default_ctx();
     let iso_ptr = src.isolate_ptr();
     // Track the most recently used isolate for this thread so the
