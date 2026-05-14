@@ -381,6 +381,15 @@ pub mod v8 {
       CallbackOptions,
     }
 
+    impl Type {
+      /// Mirror of rusty_v8's `Type::as_info()` — returns a CTypeInfo
+      /// describing this type with default flags. The op2 macro uses
+      /// this to build CFunctionInfo descriptors.
+      pub const fn as_info(self) -> CTypeInfo {
+        CTypeInfo::new(self, SequenceType::Scalar, Flags::NONE)
+      }
+    }
+
     #[repr(u8)]
     #[derive(Copy, Clone, Eq, PartialEq)]
     pub enum SequenceType {

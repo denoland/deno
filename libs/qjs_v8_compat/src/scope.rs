@@ -356,6 +356,26 @@ impl<'s, 'r> CallbackScopeSource<'s>
   }
 }
 
+// FastApiCallbackOptions is what fast-API callbacks receive in V8;
+// op2-generated code constructs a CallbackScope from it. On QuickJS the
+// fast path is dead code (no JIT) but the construction must still
+// type-check.
+impl<'s, 'r> CallbackScopeSource<'s>
+  for &'r crate::v8::fast_api::FastApiCallbackOptions<'s>
+{
+  unsafe fn into_callback_scope(self) -> CallbackScope<'s, Context> {
+    CallbackScope(HandleScope {
+      isolate: core::ptr::null_mut(),
+      ctx: core::ptr::null_mut(),
+      owned: Vec::new(),
+      parent_owned: None,
+      depth: 0,
+      _scope: PhantomData,
+      _ctx: PhantomData,
+    })
+  }
+}
+
 impl<'s, C> std::ops::Deref for CallbackScope<'s, C> {
   type Target = HandleScope<'s, C>;
   fn deref(&self) -> &Self::Target {

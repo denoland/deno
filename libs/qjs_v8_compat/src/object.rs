@@ -127,6 +127,36 @@ impl Array {
     Local::from_raw(raw)
   }
 }
+
+impl<'s> Local<'s, Array> {
+  /// Mirror of `v8::Array::set_index` — store `value` at integer index.
+  pub fn set_index(
+    &self,
+    scope: &mut HandleScope<'s>,
+    index: u32,
+    value: Local<'s, Value>,
+  ) -> Option<bool> {
+    Some(sys::set_indexed(
+      scope.ctx(),
+      self.raw(),
+      index,
+      value.raw(),
+    ))
+  }
+  /// Mirror of `v8::Array::get_index`.
+  pub fn get_index(
+    &self,
+    scope: &mut HandleScope<'s>,
+    index: u32,
+  ) -> Option<Local<'s, Value>> {
+    let raw = sys::get_indexed(scope.ctx(), self.raw(), index);
+    if sys::jsv_is_exception(&raw) {
+      return None;
+    }
+    scope.track_owned(raw);
+    Some(Local::from_raw(raw))
+  }
+}
 impl<'s> Local<'s, Array> {
   pub fn length(&self) -> u32 {
     0

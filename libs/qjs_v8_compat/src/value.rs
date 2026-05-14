@@ -252,6 +252,90 @@ impl ValueType for Name {
   }
 }
 
+// ValueType impls for the rest of the v8 type lattice. These let
+// generic code that bounds on ValueType (notably the `Local::cast`
+// helpers) accept any of the major derived types.
+impl ValueType for crate::object::Object {
+  fn is(raw: &sys::JSValue) -> bool {
+    sys::jsv_is_object(raw)
+  }
+}
+impl ValueType for crate::object::Array {
+  fn is(raw: &sys::JSValue) -> bool {
+    sys::jsv_is_object(raw)
+  }
+}
+impl ValueType for crate::object::Map {
+  fn is(raw: &sys::JSValue) -> bool {
+    sys::jsv_is_object(raw)
+  }
+}
+impl ValueType for crate::object::Proxy {
+  fn is(raw: &sys::JSValue) -> bool {
+    sys::jsv_is_object(raw)
+  }
+}
+impl ValueType for crate::function::Function {
+  fn is(raw: &sys::JSValue) -> bool {
+    sys::jsv_is_object(raw)
+  }
+}
+impl ValueType for crate::buffer::ArrayBuffer {
+  fn is(raw: &sys::JSValue) -> bool {
+    sys::jsv_is_object(raw)
+  }
+}
+impl ValueType for crate::buffer::ArrayBufferView {
+  fn is(raw: &sys::JSValue) -> bool {
+    sys::jsv_is_object(raw)
+  }
+}
+impl ValueType for crate::buffer::SharedArrayBuffer {
+  fn is(raw: &sys::JSValue) -> bool {
+    sys::jsv_is_object(raw)
+  }
+}
+impl ValueType for crate::external::External {
+  fn is(raw: &sys::JSValue) -> bool {
+    sys::jsv_is_object(raw)
+  }
+}
+impl ValueType for crate::primitives::String {
+  fn is(raw: &sys::JSValue) -> bool {
+    sys::jsv_is_string(raw)
+  }
+}
+impl ValueType for crate::primitives::Integer {
+  fn is(raw: &sys::JSValue) -> bool {
+    sys::jsv_is_int(raw)
+  }
+}
+impl ValueType for crate::primitives::Number {
+  fn is(raw: &sys::JSValue) -> bool {
+    sys::jsv_is_number(raw)
+  }
+}
+impl ValueType for crate::primitives::Boolean {
+  fn is(raw: &sys::JSValue) -> bool {
+    sys::jsv_is_bool(raw)
+  }
+}
+impl ValueType for crate::primitives::Symbol {
+  fn is(raw: &sys::JSValue) -> bool {
+    sys::jsv_is_symbol(raw)
+  }
+}
+impl ValueType for crate::primitives::BigInt {
+  fn is(raw: &sys::JSValue) -> bool {
+    sys::jsv_is_bigint(raw)
+  }
+}
+impl ValueType for crate::promise::Promise {
+  fn is(raw: &sys::JSValue) -> bool {
+    sys::jsv_is_object(raw)
+  }
+}
+
 // ----- Value methods ----------------------------------------------------
 
 impl<'s> Local<'s, Value> {
