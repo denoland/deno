@@ -184,10 +184,12 @@ macro_rules! callback_scope {
 #[macro_export]
 macro_rules! isolate_scope {
   (let $name:ident, $isolate:expr) => {
-    let mut $name = $crate::HandleScope::new($isolate);
+    let mut __iso_inner = $crate::HandleScope::new($isolate);
+    let $name = $crate::scope::PinScope::from_handle_scope_mut(&mut __iso_inner);
   };
   ($name:ident, $isolate:expr) => {
-    let mut $name = $crate::HandleScope::new($isolate);
+    let mut __iso_inner = $crate::HandleScope::new($isolate);
+    let $name = $crate::scope::PinScope::from_handle_scope_mut(&mut __iso_inner);
   };
 }
 
@@ -197,10 +199,12 @@ macro_rules! isolate_scope {
 #[macro_export]
 macro_rules! scope_with_context {
   (let $name:ident, $parent:expr, $_ctx:expr $(,)?) => {
-    let mut $name = $crate::HandleScope::new($parent);
+    let mut __swc_inner = $crate::HandleScope::new($parent);
+    let $name = $crate::scope::PinScope::from_handle_scope_mut(&mut __swc_inner);
   };
   ($name:ident, $parent:expr, $_ctx:expr $(,)?) => {
-    let mut $name = $crate::HandleScope::new($parent);
+    let mut __swc_inner = $crate::HandleScope::new($parent);
+    let $name = $crate::scope::PinScope::from_handle_scope_mut(&mut __swc_inner);
   };
 }
 
@@ -210,10 +214,12 @@ macro_rules! scope_with_context {
 #[macro_export]
 macro_rules! escapable_handle_scope {
   (let $name:ident, $parent:expr) => {
-    let mut $name = $crate::EscapableHandleScope::new($parent);
+    let mut __esc_inner = $crate::EscapableHandleScope::new($parent);
+    let $name = &mut __esc_inner;
   };
   ($name:ident, $parent:expr) => {
-    let mut $name = $crate::EscapableHandleScope::new($parent);
+    let mut __esc_inner = $crate::EscapableHandleScope::new($parent);
+    let $name = &mut __esc_inner;
   };
 }
 
@@ -222,14 +228,16 @@ macro_rules! escapable_handle_scope {
 #[macro_export]
 macro_rules! context_scope {
   (let $name:ident, $parent:expr) => {
-    let mut $name = $crate::HandleScope::new($parent);
+    let mut __cs_inner = $crate::HandleScope::new($parent);
+    let $name = $crate::scope::PinScope::from_handle_scope_mut(&mut __cs_inner);
   };
   ($name:ident, $parent:expr) => {
-    let mut $name = $crate::HandleScope::new($parent);
+    let mut __cs_inner = $crate::HandleScope::new($parent);
+    let $name = $crate::scope::PinScope::from_handle_scope_mut(&mut __cs_inner);
   };
   ($name:ident, $this:expr, $isolate:expr) => {
     let mut __cs_inner = $crate::HandleScope::new($isolate);
-    let $name = &mut __cs_inner;
+    let $name = $crate::scope::PinScope::from_handle_scope_mut(&mut __cs_inner);
   };
 }
 

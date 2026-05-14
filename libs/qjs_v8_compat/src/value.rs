@@ -1170,17 +1170,17 @@ impl Global<crate::function::Function> {
   }
 }
 impl Global<crate::promise::PromiseResolver> {
-  pub fn resolve<'s, S>(
+  pub fn resolve<'s, S, V: Into<Local<'s, Value>>>(
     &self,
     _scope: &mut S,
-    _value: Local<'s, Value>,
+    _value: V,
   ) -> Option<bool> {
     None
   }
-  pub fn reject<'s, S>(
+  pub fn reject<'s, S, V: Into<Local<'s, Value>>>(
     &self,
     _scope: &mut S,
-    _value: Local<'s, Value>,
+    _value: V,
   ) -> Option<bool> {
     None
   }
