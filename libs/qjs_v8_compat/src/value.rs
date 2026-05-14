@@ -1078,11 +1078,36 @@ impl<'s> From<Local<'s, crate::buffer::WasmModuleObject>>
     Local::from_raw(other.raw)
   }
 }
+impl<'s> Local<'s, Name> {
+  pub fn is_symbol(&self) -> bool {
+    sys::jsv_is_symbol(&self.raw)
+  }
+  pub fn is_string(&self) -> bool {
+    sys::jsv_is_string(&self.raw)
+  }
+}
+
 impl<'s> From<Local<'s, crate::primitives::String>> for Local<'s, Name> {
   fn from(v: Local<'s, crate::primitives::String>) -> Local<'s, Name> {
     Local::from_raw(v.raw)
   }
 }
+// Primitives upcast to Primitive marker.
+macro_rules! local_to_primitive {
+  ($($ty:ty),* $(,)?) => { $(
+    impl<'s> From<Local<'s, $ty>> for Local<'s, crate::value::Primitive> {
+      fn from(v: Local<'s, $ty>) -> Self { Local::from_raw(v.raw) }
+    }
+  )* };
+}
+local_to_primitive!(
+  crate::primitives::Boolean,
+  crate::primitives::Number,
+  crate::primitives::Integer,
+  crate::primitives::String,
+  crate::primitives::Symbol,
+  crate::primitives::BigInt,
+);
 impl<'s> From<Local<'s, crate::primitives::Symbol>> for Local<'s, Name> {
   fn from(v: Local<'s, crate::primitives::Symbol>) -> Local<'s, Name> {
     Local::from_raw(v.raw)

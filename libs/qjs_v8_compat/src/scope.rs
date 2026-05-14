@@ -222,6 +222,16 @@ impl<'s, 'i, C> HandleScopeSource for PinScope<'s, 'i, C> {
   }
 }
 
+// CallbackScope<'s, C> as a ScopeParent — needed by ContextScope::new
+// callsites in ext/node/ops/inspector.rs.
+impl<'s, C> crate::context::ScopeParent for CallbackScope<'s, C> {
+  fn isolate(&mut self) -> &mut Isolate {
+    unsafe { &mut *self.0.inner.isolate }
+  }
+  fn current_context(&self) -> sys::Context { self.0.inner.ctx }
+  fn set_current_context(&mut self, _ctx: sys::Context) {}
+}
+
 impl<'s, C> HandleScopeSource for CallbackScope<'s, C> {
   fn default_ctx(&mut self) -> sys::Context {
     self.0.inner.ctx

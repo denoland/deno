@@ -102,6 +102,15 @@ pub struct BackingStore {
 /// that provides `.len()` and other accessors directly.
 pub type SharedRef<T> = std::sync::Arc<T>;
 
+// Real v8's BackingStore exposes a `[Cell<u8>]` view. Mirror that so
+// `store.get_backing_store()[i].set(byte)` patterns compile.
+impl std::ops::Index<usize> for BackingStore {
+  type Output = std::cell::Cell<u8>;
+  fn index(&self, i: usize) -> &std::cell::Cell<u8> {
+    let p = self.data.as_ptr() as *const std::cell::Cell<u8>;
+    unsafe { &*p.add(i) }
+  }
+}
 impl BackingStore {
   pub fn data(&self) -> Option<core::ptr::NonNull<u8>> {
     core::ptr::NonNull::new(self.data.as_ptr() as *mut u8)
@@ -290,11 +299,11 @@ impl DataView {
     _buffer: Local<'b, ArrayBuffer>,
     _byte_offset: usize,
     _byte_length: usize,
-  ) -> Option<Local<'s, DataView>> {
+  ) -> Local<'s, DataView> {
     let scope = scope.as_mut_handle_scope_ref();
     let raw = sys::new_object(scope.ctx());
     scope.track_owned(raw);
-    Some(Local::from_raw(raw))
+    Local::from_raw(raw)
   }
 }
 
@@ -327,7 +336,11 @@ impl<'s> Local<'s, ArrayBufferView> {
   pub fn get_contents<'a>(&self, _storage: &'a mut [u8]) -> &'a mut [u8] {
     &mut []
   }
-  pub fn get<S>(&self, _scope: &mut S, _index: u32) -> Option<Local<'s, crate::value::Value>>
+  pub fn get<S>(
+    &self,
+    _scope: &mut S,
+    _key: Local<'_, crate::value::Value>,
+  ) -> Option<Local<'s, crate::value::Value>>
   where S: crate::scope::HandleScopeSource {
     Some(Local::from_raw(sys::jsv_undefined()))
   }
@@ -345,8 +358,8 @@ impl<'s> Local<'s, ArrayBufferView> {
   pub fn is_big_int64_array(&self) -> bool { false }
   pub fn is_big_uint64_array(&self) -> bool { false }
   pub fn is_data_view(&self) -> bool { false }
-  pub fn get_backing_store(&self) -> std::sync::Arc<BackingStore> {
-    std::sync::Arc::new(BackingStore { data: Box::new([]) })
+  pub fn get_backing_store(&self) -> Option<std::sync::Arc<BackingStore>> {
+    Some(std::sync::Arc::new(BackingStore { data: Box::new([]) }))
   }
   pub fn get_contents_raw_parts<S>(
     &self,

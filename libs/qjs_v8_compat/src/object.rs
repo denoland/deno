@@ -537,7 +537,26 @@ impl Intercepted {
   pub const kNo: Self = Self::No;
 }
 
+#[derive(Default)]
 pub struct NamedPropertyHandlerConfiguration;
+impl NamedPropertyHandlerConfiguration {
+  pub fn new() -> Self { Self }
+  pub fn getter<F>(self, _f: F) -> Self { self }
+  pub fn getter_raw<F>(self, _f: F) -> Self { self }
+  pub fn setter<F>(self, _f: F) -> Self { self }
+  pub fn setter_raw<F>(self, _f: F) -> Self { self }
+  pub fn query<F>(self, _f: F) -> Self { self }
+  pub fn query_raw<F>(self, _f: F) -> Self { self }
+  pub fn deleter<F>(self, _f: F) -> Self { self }
+  pub fn deleter_raw<F>(self, _f: F) -> Self { self }
+  pub fn enumerator<F>(self, _f: F) -> Self { self }
+  pub fn enumerator_raw<F>(self, _f: F) -> Self { self }
+  pub fn definer<F>(self, _f: F) -> Self { self }
+  pub fn definer_raw<F>(self, _f: F) -> Self { self }
+  pub fn descriptor<F>(self, _f: F) -> Self { self }
+  pub fn descriptor_raw<F>(self, _f: F) -> Self { self }
+  pub fn flags(self, _f: PropertyHandlerFlags) -> Self { self }
+}
 
 // PropertyCallbackArguments — used inside getters/setters.
 pub struct PropertyCallbackArguments<'s> {
@@ -550,4 +569,5 @@ impl<'s> PropertyCallbackArguments<'s> {
   pub fn holder(&self) -> Local<'s, Object> {
     self.this()
   }
+  pub fn should_throw_on_error(&self) -> bool { false }
 }

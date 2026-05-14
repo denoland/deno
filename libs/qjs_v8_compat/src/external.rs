@@ -184,6 +184,11 @@ pub trait ValueDeserializerHelper {
 }
 
 pub struct ValueSerializer<'s> {
+  // The boxed Impl is tied to the serializer's lifetime parameter 's
+  // (real v8 ties it to the same 'a). For callers declaring the field
+  // as `ValueSerializer<'static>`, they need to pass an Impl that is
+  // also 'static (i.e., does not borrow scope-local state). Other
+  // callers tie 's to their scope's 's for shorter-lived state.
   _impl: Box<dyn ValueSerializerImpl + 's>,
   _scope: std::marker::PhantomData<&'s ()>,
   buffer: Vec<u8>,

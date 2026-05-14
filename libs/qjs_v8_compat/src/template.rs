@@ -174,4 +174,9 @@ impl<'s> Local<'s, ObjectTemplate> {
     _config: crate::object::NamedPropertyHandlerConfiguration,
   ) {
   }
+  pub fn set_indexed_property_handler(
+    &self,
+    _config: crate::v8::IndexedPropertyHandlerConfiguration,
+  ) {
+  }
 }

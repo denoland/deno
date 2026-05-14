@@ -1322,8 +1322,9 @@ pub mod v8 {
     where F: FnMut(&[u8]) -> usize {}
     pub fn get_heap_code_and_metadata_statistics(
       &mut self,
-      _stats: &mut HeapCodeStatistics,
-    ) {}
+    ) -> Option<HeapCodeStatistics> {
+      None
+    }
     pub fn set_allow_wasm_code_generation_callback<F>(&mut self, _cb: F) {}
   }
   pub struct HeapCodeStatistics;
@@ -1718,6 +1719,25 @@ pub mod v8 {
   impl Uint32 {
     pub fn value(&self) -> u32 {
       0
+    }
+  }
+  impl<'s> From<crate::value::Local<'s, crate::primitives::Integer>>
+    for crate::value::Local<'s, Uint32>
+  {
+    fn from(v: crate::value::Local<'s, crate::primitives::Integer>) -> Self {
+      crate::value::Local::from_raw(v.raw())
+    }
+  }
+  // (TryFrom auto-derived from From above via blanket `impl<T,U> TryFrom<U> for T where U: Into<T>`)
+  impl<'s> crate::value::Local<'s, Uint32> {
+    pub fn value(&self) -> u32 {
+      crate::sys::jsv_is_int(&self.raw())
+        .then(|| unsafe { self.raw().u.int32 as u32 })
+        .unwrap_or(0)
+    }
+    pub fn to_string<'sc, S>(&self, _scope: &mut S) -> Option<crate::value::Local<'sc, crate::primitives::String>>
+    where S: crate::scope::HandleScopeSource {
+      Some(crate::value::Local::from_raw(crate::sys::jsv_undefined()))
     }
   }
   pub struct Task;
