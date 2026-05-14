@@ -71,10 +71,11 @@ impl<'s> Local<'s, Module> {
   pub fn get_exception(&self) -> Local<'s, Value> {
     Local::from_raw(sys::jsv_undefined())
   }
-  pub fn instantiate_module2<S>(
+  pub fn instantiate_module2<S, F>(
     &self,
     scope: S,
     cb: ModuleResolveCallback,
+    _src_cb: F,
   ) -> Option<bool> {
     self.instantiate_module(scope, cb)
   }
@@ -91,8 +92,9 @@ impl<'s> Local<'s, Module> {
   ) -> Local<'s, Object> {
     Local::from_raw(sys::jsv_undefined())
   }
-  pub fn get_unbound_module_script(
+  pub fn get_unbound_module_script<S>(
     &self,
+    _scope: &mut S,
   ) -> Local<'s, crate::script::UnboundModuleScript> {
     Local::from_raw(sys::jsv_undefined())
   }
@@ -154,12 +156,12 @@ impl<'s> Local<'s, FixedArray> {
   pub fn length(&self) -> i32 {
     0
   }
-  pub fn get(
+  pub fn get<S>(
     &self,
-    _scope: &mut HandleScope<'s>,
+    _scope: &mut S,
     _index: i32,
-  ) -> Local<'s, Value> {
-    Local::from_raw(sys::jsv_undefined())
+  ) -> Option<Local<'s, Value>> {
+    Some(Local::from_raw(sys::jsv_undefined()))
   }
 }
 

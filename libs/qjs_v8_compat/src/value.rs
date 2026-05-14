@@ -1014,7 +1014,7 @@ impl<'s> Local<'s, Value> {
   ) -> Option<Local<'sc, crate::primitives::BigInt>> {
     None
   }
-  pub fn unwrap<'sc, T>(
+  pub fn unwrap_external<'sc, T>(
     &self,
     _scope: &mut HandleScope<'sc>,
   ) -> Option<*mut T> {

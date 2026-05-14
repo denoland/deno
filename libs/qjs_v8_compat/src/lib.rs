@@ -547,12 +547,7 @@ pub mod v8 {
       ) -> std::boxed::Box<V8InspectorSession> {
         std::boxed::Box::new(V8InspectorSession)
       }
-      pub fn context_destroyed(
-        &self,
-        _isolate: &mut crate::isolate::Isolate,
-        _context_group_id: i32,
-      ) {
-      }
+      pub fn context_destroyed<C>(&self, _context: C) {}
       pub fn create_stack_trace(
         &self,
         _stack_trace: crate::value::Local<'_, crate::value::StackTrace>,
@@ -561,7 +556,6 @@ pub mod v8 {
       }
       pub fn exception_thrown(
         &self,
-        _isolate: &mut crate::isolate::Isolate,
         _context: crate::value::Local<'_, crate::context::Context>,
         _message: StringView<'_>,
         _exception: crate::value::Local<'_, crate::value::Value>,
@@ -798,8 +792,6 @@ pub mod v8 {
     pub fn compile_module<'s>(
       _scope: &mut HandleScope<'s>,
       _source: Source,
-      _options: CompileOptions,
-      _no_cache_reason: NoCacheReason,
     ) -> Option<Local<'s, Module>> {
       None
     }
