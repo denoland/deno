@@ -65,23 +65,23 @@ unsafe impl Sync for ExternalReference {}
 // SharedArrayBuffer for SAB). `has_custom_host_object` takes an Isolate
 // reference.
 pub trait ValueSerializerImpl {
-  fn write_host_object<'s>(
+  fn write_host_object<'s, 'i>(
     &self,
-    _scope: &mut HandleScope<'s>,
+    _scope: &mut crate::scope::PinScope<'s, 'i>,
     _object: Local<'s, crate::object::Object>,
     _value_serializer: &dyn ValueSerializerHelper,
   ) -> Option<bool> {
     Some(false)
   }
-  fn throw_data_clone_error<'s>(
+  fn throw_data_clone_error<'s, 'i>(
     &self,
-    _scope: &mut HandleScope<'s>,
+    _scope: &mut crate::scope::PinScope<'s, 'i>,
     _message: Local<'s, crate::primitives::String>,
   ) {
   }
-  fn is_host_object<'s>(
+  fn is_host_object<'s, 'i>(
     &self,
-    _scope: &mut HandleScope<'s>,
+    _scope: &mut crate::scope::PinScope<'s, 'i>,
     _object: Local<'s, crate::object::Object>,
   ) -> Option<bool> {
     Some(false)
@@ -89,16 +89,16 @@ pub trait ValueSerializerImpl {
   fn has_custom_host_object(&self, _isolate: &crate::isolate::Isolate) -> bool {
     false
   }
-  fn get_shared_array_buffer_id<'s>(
+  fn get_shared_array_buffer_id<'s, 'i>(
     &self,
-    _scope: &mut HandleScope<'s>,
+    _scope: &mut crate::scope::PinScope<'s, 'i>,
     _shared_array_buffer: Local<'s, crate::buffer::SharedArrayBuffer>,
   ) -> Option<u32> {
     None
   }
-  fn get_wasm_module_transfer_id<'s>(
+  fn get_wasm_module_transfer_id<'s, 'i>(
     &self,
-    _scope: &mut HandleScope<'s>,
+    _scope: &mut crate::scope::PinScope<'s, 'i>,
     _module: Local<'s, crate::v8::WasmModuleObject>,
   ) -> Option<u32> {
     None
@@ -140,23 +140,23 @@ impl<'s, I: ValueSerializerImpl> ValueSerializer<'s, I> {
 }
 
 pub trait ValueDeserializerImpl {
-  fn read_host_object<'s>(
+  fn read_host_object<'s, 'i>(
     &self,
-    _scope: &mut HandleScope<'s>,
+    _scope: &mut crate::scope::PinScope<'s, 'i>,
     _value_deserializer: &dyn ValueDeserializerHelper,
   ) -> Option<Local<'s, crate::object::Object>> {
     None
   }
-  fn get_shared_array_buffer_from_id<'s>(
+  fn get_shared_array_buffer_from_id<'s, 'i>(
     &self,
-    _scope: &mut HandleScope<'s>,
+    _scope: &mut crate::scope::PinScope<'s, 'i>,
     _transfer_id: u32,
   ) -> Option<Local<'s, crate::buffer::SharedArrayBuffer>> {
     None
   }
-  fn get_wasm_module_from_id<'s>(
+  fn get_wasm_module_from_id<'s, 'i>(
     &self,
-    _scope: &mut HandleScope<'s>,
+    _scope: &mut crate::scope::PinScope<'s, 'i>,
     _clone_id: u32,
   ) -> Option<Local<'s, crate::v8::WasmModuleObject>> {
     None
