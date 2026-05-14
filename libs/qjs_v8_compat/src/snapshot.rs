@@ -62,6 +62,17 @@ impl From<&[u8]> for StartupData {
     Self { data: b.to_vec() }
   }
 }
+impl AsRef<[u8]> for StartupData {
+  fn as_ref(&self) -> &[u8] {
+    &self.data
+  }
+}
+impl std::ops::Deref for StartupData {
+  type Target = [u8];
+  fn deref(&self) -> &[u8] {
+    &self.data
+  }
+}
 impl StartupData {
   pub fn is_empty(&self) -> bool {
     self.data.is_empty()

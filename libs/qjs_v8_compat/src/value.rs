@@ -1351,8 +1351,8 @@ impl<T> Global<T> {
       _t: PhantomData,
     }
   }
-  pub fn get<'sc>(&self, scope: &mut HandleScope<'sc>) -> Local<'sc, T> {
-    self.to_local(scope)
+  pub fn get<'sc>(&self, scope: &mut HandleScope<'sc>) -> Option<Local<'sc, T>> {
+    Some(self.to_local(scope))
   }
   pub fn set<S, V>(&self, _scope: &mut S, _value: V) {}
 }

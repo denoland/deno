@@ -143,8 +143,8 @@ impl<'s> Local<'s, ArrayBuffer> {
   pub fn get_backing_store(&self) -> std::sync::Arc<BackingStore> {
     std::sync::Arc::new(BackingStore { data: Box::new([]) })
   }
-  pub fn data(&self) -> *mut core::ffi::c_void {
-    core::ptr::null_mut()
+  pub fn data(&self) -> Option<std::ptr::NonNull<core::ffi::c_void>> {
+    None
   }
   pub fn was_detached(&self) -> bool {
     false
@@ -210,8 +210,8 @@ impl<'s> Local<'s, ArrayBufferView> {
   pub fn byte_length(&self) -> usize {
     0
   }
-  pub fn data(&self) -> *mut core::ffi::c_void {
-    core::ptr::null_mut()
+  pub fn data(&self) -> Option<std::ptr::NonNull<core::ffi::c_void>> {
+    None
   }
   pub fn get_backing_store(&self) -> std::sync::Arc<BackingStore> {
     std::sync::Arc::new(BackingStore { data: Box::new([]) })
