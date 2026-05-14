@@ -180,7 +180,15 @@ impl OwnedIsolate {
     unsafe { &mut *(self as *mut OwnedIsolate as *mut Isolate) }
   }
   pub fn as_raw_isolate_ptr(&self) -> UnsafeRawIsolatePtr {
-    UnsafeRawIsolatePtr(self.rt as *mut c_void)
+    // Hand back a pointer to the OwnedIsolate itself (which is what
+    // `Isolate` wraps via #[repr(transparent)]-equivalent layout). The
+    // op2 macro's slow_function_impl calls
+    // `Isolate::from_raw_isolate_ptr(opctx.isolate)` and then derefs
+    // it as `&mut Isolate` — that needs to land back on this struct,
+    // not on the JSRuntime pointer (returning self.rt would have the
+    // op-side cast read garbage Isolate fields off the JSRuntime, then
+    // segfault).
+    UnsafeRawIsolatePtr(self as *const Self as *mut c_void)
   }
   pub fn as_mut(&mut self) -> &mut Isolate {
     self.as_isolate()
