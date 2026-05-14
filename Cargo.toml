@@ -146,6 +146,7 @@ deno_cache_dir = { version = "0.39.0", path = "./libs/cache_dir" }
 deno_config = { version = "0.97.0", features = ["workspace"], path = "./libs/config" }
 deno_core = { version = "0.400.0", path = "./libs/core" }
 deno_core_testing = { path = "./libs/core_testing" }
+qjs_v8_compat = { version = "0.1.0", path = "./libs/qjs_v8_compat" }
 deno_crypto_provider = { version = "0.41.0", path = "./libs/crypto" }
 deno_dotenv = { version = "0.16.0", path = "./libs/dotenv" }
 deno_features = { version = "0.44.0", path = "./runtime/features" }

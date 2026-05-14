@@ -2186,6 +2186,7 @@ dependencies = [
  "percent-encoding",
  "pin-project",
  "pretty_assertions",
+ "qjs_v8_compat",
  "rstest",
  "serde",
  "serde_json",

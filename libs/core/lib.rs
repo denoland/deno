@@ -74,7 +74,24 @@ pub use serde_v8::U16String;
 pub use sourcemap;
 pub use thiserror;
 pub use url;
+
+// Engine selector: by default, re-export the rusty_v8 crate so that
+// `deno_core::v8::*` resolves to V8. With `--features quickjs`, re-export
+// the QuickJS-ng-backed compat layer's `v8` module so consumers see the
+// same shape of types but backed by QuickJS-ng.
+//
+// NOTE: this only switches the *public* re-export. Internal `use v8::*`
+// statements throughout deno_core still resolve to the unconditional
+// `v8` crate dep above. The full internal switch (gating each
+// `use v8::*` site) lands in follow-up commits; it would be the bulk of
+// the integration work because deno_core has ~2200 v8::* references
+// across 44 files. This commit makes the cargo + public-surface wiring
+// real so downstream consumers can begin building against the QuickJS
+// engine without a separate fork.
+#[cfg(not(feature = "quickjs"))]
 pub use v8;
+#[cfg(feature = "quickjs")]
+pub use qjs_v8_compat::v8;
 
 pub use crate::async_cancel::CancelFuture;
 pub use crate::async_cancel::CancelHandle;

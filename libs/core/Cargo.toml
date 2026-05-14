@@ -24,6 +24,14 @@ unsafe_runtime_options = []
 unsafe_use_unprotected_platform = []
 snapshot_flags_eager_parse = []
 uv_compat_export = []
+# Engine selection. Default is V8 (the unconditional `v8` dep below). Turning
+# this on swaps in the QuickJS-ng-backed compat layer for the `pub use v8`
+# re-export so consumers of `deno_core::v8::...` see QuickJS shapes. The full
+# internal switch (every `use v8::*` in deno_core's source) lands across
+# follow-up commits — this commit puts the cargo wiring + the public
+# re-export selector in place so subsequent work can swap callers
+# incrementally without touching this file again.
+quickjs = ["dep:qjs_v8_compat"]
 
 [dependencies]
 anyhow.workspace = true
@@ -58,6 +66,7 @@ thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
 v8.workspace = true
+qjs_v8_compat = { workspace = true, optional = true }
 wasm_dep_analyzer = "0.4.0"
 
 [target.'cfg(windows)'.dependencies]
