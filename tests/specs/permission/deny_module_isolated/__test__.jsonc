@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "isolated_helper_has_no_deno": {
+      "args": "run --allow-read --deny-module-isolated=./helper.js main.js",
+      "output": "expected.out"
+    },
+    "rejects_non_file_specifier": {
+      "args": "run --deny-module-isolated=https://example.com/x.js main.js",
+      "output": "rejects_http.out",
+      "exitCode": 1
+    }
+  }
+}

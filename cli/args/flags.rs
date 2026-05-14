@@ -1032,6 +1032,7 @@ pub struct PermissionFlags {
   pub allow_import: Option<Vec<String>>,
   pub deny_import: Option<Vec<String>>,
   pub deny_module: Option<Vec<String>>,
+  pub deny_module_isolated: Option<Vec<String>>,
 }
 
 impl PermissionFlags {
@@ -1056,6 +1057,7 @@ impl PermissionFlags {
       || self.allow_import.is_some()
       || self.deny_import.is_some()
       || self.deny_module.is_some()
+      || self.deny_module_isolated.is_some()
   }
 }
 
@@ -5475,6 +5477,15 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
       }
       arg
     })
+    .arg({
+      let mut arg = deny_module_isolated_arg().hide(true);
+      if let Some(requires) = requires
+        && requires != "global"
+      {
+        arg = arg.requires(requires)
+      }
+      arg
+    })
 }
 
 fn allow_all_arg() -> Arg {
@@ -5579,6 +5590,18 @@ fn deny_module_arg() -> Arg {
   .value_name("MODULE:PERMS")
   .help(cstr!(
     "Deny specific runtime permissions to a single module on the call stack. Format is <p(245)>\"<<MODULE>:<<PERM,PERM,...>\"</> where <<MODULE> may be <p(245)>npm:<<name></>, <p(245)>jsr:<<scope>/<<name></>, or any substring of the script URL. Permissions are one of <p(245)>read,write,net,env,sys,run,ffi,import</> or <p(245)>all</>. May be repeated. Example: <p(245)>--deny-module=\"npm:chalk:all\"</>"
+  ))
+}
+
+fn deny_module_isolated_arg() -> Arg {
+  Arg::new("deny-module-isolated")
+  .long("deny-module-isolated")
+  .num_args(1..)
+  .action(ArgAction::Append)
+  .require_equals(true)
+  .value_name("MODULE_URL")
+  .help(cstr!(
+    "Load <<MODULE_URL> into its own v8::Context with no `Deno` binding. The module's exports are bridged into the main realm via a synthetic-module membrane, but its code has no closure path to ops. Foolproof denial — not bypassable via stack laundering. Specifier must be an absolute file: URL. May be repeated. Example: <p(245)>--deny-module-isolated=\"file:///app/helper.js\"</>"
   ))
 }
 
@@ -8263,6 +8286,7 @@ fn permission_args_parse(
 
   allow_and_deny_import_parse(flags, matches)?;
   deny_module_parse(flags, matches)?;
+  deny_module_isolated_parse(flags, matches)?;
 
   if matches.get_flag("no-prompt") {
     flags.permissions.no_prompt = true;
@@ -8291,6 +8315,36 @@ fn deny_module_parse(
         }
       }
       flags.permissions.deny_module = Some(items);
+    }
+  }
+  Ok(())
+}
+
+fn deny_module_isolated_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  if let Some(items) = matches.remove_many::<String>("deny-module-isolated") {
+    let items: Vec<String> = items.collect();
+    if !items.is_empty() {
+      // Accept absolute file: URLs or relative paths (resolved against cwd
+      // at runtime). Anything else (npm:, jsr:, http:, ...) is currently
+      // unsupported — we have no way to fetch the source synchronously
+      // outside the module loader for non-file specifiers in this first
+      // cut.
+      for raw in &items {
+        if let Ok(url) = deno_core::url::Url::parse(raw)
+          && url.scheme() != "file"
+        {
+          return Err(clap::Error::raw(
+            clap::error::ErrorKind::InvalidValue,
+            format!(
+              "--deny-module-isolated: only file: URLs and local paths are supported in this prototype, got '{raw}'\n"
+            ),
+          ));
+        }
+      }
+      flags.permissions.deny_module_isolated = Some(items);
     }
   }
   Ok(())

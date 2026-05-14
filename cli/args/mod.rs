@@ -1840,6 +1840,7 @@ fn flags_to_permissions_options(
       &identity,
     ),
     deny_module: flags.deny_module.clone(),
+    deny_module_isolated: flags.deny_module_isolated.clone(),
     prompt: !resolve_no_prompt(flags),
   })
 }
@@ -2113,6 +2114,7 @@ mod test {
           allow_import: Some(vec!["jsr.io".to_string()]),
           deny_import: Some(vec!["example.com".to_string()]),
           deny_module: None,
+          deny_module_isolated: None,
           prompt: true
         }
       );
@@ -2176,6 +2178,7 @@ mod test {
           allow_import: Some(vec![]),
           deny_import: None,
           deny_module: None,
+          deny_module_isolated: None,
           prompt: true
         }
       );

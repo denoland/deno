@@ -76,6 +76,7 @@ use crate::modules::ModuleId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
 use crate::modules::ModuleName;
+use crate::modules::ModuleType;
 use crate::modules::RequestedModuleType;
 use crate::modules::ValidateImportAttributesCb;
 use crate::modules::script_origin;
@@ -473,6 +474,12 @@ pub struct JsRuntimeState {
   /// is pending but V8 reports no stalled top-level await. Used to detect
   /// deadlocks and avoid spinning the event loop indefinitely.
   tla_stall_retries: Cell<u32>,
+  /// Sibling `v8::Context`s created by
+  /// [`JsRuntime::install_isolated_module`]. Their lifetime must outlive
+  /// the bridge `v8::Global`s pointing at their module namespaces, so we
+  /// hold them on the runtime state for as long as the main realm is
+  /// alive.
+  pub(crate) isolated_realms: RefCell<Vec<v8::Global<v8::Context>>>,
 }
 
 #[derive(Default)]
@@ -805,6 +812,7 @@ impl JsRuntime {
       callsite_prototype: None.into(),
       lazy_extensions,
       tla_stall_retries: Cell::new(0),
+      isolated_realms: RefCell::new(Vec::new()),
     });
 
     // ...now we're moving on to ops; set them up, create `OpCtx` for each op
@@ -1868,6 +1876,127 @@ impl JsRuntime {
       name.into_module_name(),
       source_code.into_module_code(),
     )
+  }
+
+  /// Install an ES module under `specifier` in the main realm's
+  /// `ModuleMap`, but compile, instantiate, and evaluate its body in a
+  /// freshly-created sibling `v8::Context` with no embedder bindings
+  /// (no `Deno`, no `Deno.core`, no ops). The module's *exports* are
+  /// exposed to the main realm through a synthetic-module bridge.
+  ///
+  /// This is the foundation for the foolproof per-module-permissions
+  /// design tracked in <https://github.com/denoland/orchid/issues/64>:
+  /// a denied module loaded this way has no closure path to the
+  /// unwrapped op functions, because its `globalThis` is a separate
+  /// object from the trusted realm's.
+  ///
+  /// After this call returns, any module subsequently loaded into the
+  /// main realm that does `import "<specifier>"` will resolve to the
+  /// bridge, and the trusted side sees the foreign realm's exports as
+  /// regular live bindings.
+  ///
+  /// Limitations:
+  ///
+  /// * The isolated module's static imports must all resolve to other
+  ///   modules already in *its* (sibling) realm — there is no automatic
+  ///   recursive bridge for them. For the typical leaf-package case
+  ///   ("deny all permissions to npm chalk") the module is a closed
+  ///   subtree, which is the supported shape.
+  /// * The isolated module is evaluated synchronously here; top-level
+  ///   await in the isolated body is not yet supported via this
+  ///   high-level wrapper.
+  pub fn install_isolated_module(
+    &mut self,
+    specifier: impl IntoModuleName,
+    source: impl IntoModuleCodeString,
+  ) -> Result<ModuleId, Box<JsError>> {
+    use std::collections::HashMap;
+
+    let main_context = self.main_context();
+    let specifier_name = specifier.into_module_name();
+    let source_code = source.into_module_code();
+    let module_map = self.inner.main_realm.0.module_map();
+    let state = self.inner.state.clone();
+
+    let isolate = self.v8_isolate();
+    v8::scope!(let scope, isolate);
+    let main_context_local = v8::Local::new(scope, &main_context);
+    let scope = &mut v8::ContextScope::new(scope, main_context_local);
+
+    let sibling = crate::create_sibling_context(scope);
+    let sibling_global = v8::Global::new(scope, sibling);
+
+    let isolated_module = crate::compile_module_in(
+      scope,
+      sibling,
+      specifier_name.as_str(),
+      source_code.as_str(),
+    )
+    .map_err(|exc| {
+      let exception = v8::Local::new(scope, exc);
+      crate::error::JsError::from_v8_exception(scope, exception)
+    })?;
+
+    crate::instantiate_module_in(
+      scope,
+      sibling,
+      &isolated_module,
+      HashMap::new(),
+    )
+    .map_err(|exc| {
+      let exception = v8::Local::new(scope, exc);
+      crate::error::JsError::from_v8_exception(scope, exception)
+    })?;
+
+    crate::evaluate_module_in(scope, sibling, &isolated_module).map_err(
+      |exc| {
+        let exception = v8::Local::new(scope, exc);
+        crate::error::JsError::from_v8_exception(scope, exception)
+      },
+    )?;
+
+    let namespace =
+      crate::module_namespace_in(scope, sibling, &isolated_module);
+    let bridge_global = crate::create_module_namespace_bridge(
+      scope,
+      main_context_local,
+      specifier_name.as_str(),
+      sibling,
+      &namespace,
+    );
+
+    let id = module_map.data.borrow_mut().create_module_info(
+      specifier_name,
+      ModuleType::JavaScript,
+      bridge_global.clone(),
+      false,
+      vec![],
+    );
+
+    // Instantiate the bridge synthetic module — it has no static
+    // imports, so this always succeeds.
+    {
+      let bridge_local = v8::Local::new(scope, &bridge_global);
+      v8::tc_scope!(let tc_scope, scope);
+      let ok = bridge_local
+        .instantiate_module(tc_scope, |_, _, _, _| None)
+        .unwrap_or(false);
+      if !ok {
+        let msg = "synthetic bridge failed to instantiate";
+        let exception_str = v8::String::new(tc_scope, msg).unwrap();
+        let exception = v8::Exception::error(tc_scope, exception_str);
+        return Err(crate::error::JsError::from_v8_exception(
+          tc_scope, exception,
+        ));
+      }
+    }
+
+    // Keep the sibling realm alive for the lifetime of the runtime.
+    // The bridge `v8::Global`s reference values living in this context;
+    // letting it die would break export lookups.
+    state.isolated_realms.borrow_mut().push(sibling_global);
+
+    Ok(id)
   }
 
   /// Call a function and return a future resolving with the return value of the

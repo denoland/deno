@@ -3528,6 +3528,11 @@ pub struct PermissionsOptions {
   /// Per-module permission denials. Each entry is `<pattern>:<kinds>` and
   /// is parsed via [`ModuleDenyRule::parse`].
   pub deny_module: Option<Vec<String>>,
+  /// Modules to load into their own `v8::Context` with no `Deno` binding.
+  /// Each entry is a fully-qualified module specifier (typically a
+  /// `file:` URL). Foolproof denial via realm isolation, plumbed in via
+  /// [`deno_core::JsRuntime::install_isolated_module`].
+  pub deny_module_isolated: Option<Vec<String>>,
   pub prompt: bool,
 }
 
@@ -3931,6 +3936,11 @@ pub struct PermissionsContainer {
   descriptor_parser: Arc<dyn PermissionDescriptorParser>,
   inner: Arc<Mutex<Permissions>>,
   module_deny_rules: Arc<Vec<ModuleDenyRule>>,
+  /// Module specifiers (typically `file:` URLs) to load into their own
+  /// `v8::Context` via
+  /// [`deno_core::JsRuntime::install_isolated_module`]. Foolproof
+  /// realm-level denial; complements the stack-based [`Self::module_deny_rules`].
+  module_isolated_specifiers: Arc<Vec<String>>,
 }
 
 impl PermissionsContainer {
@@ -3950,6 +3960,7 @@ impl PermissionsContainer {
       descriptor_parser,
       inner: Arc::new(Mutex::new(perms)),
       module_deny_rules: Arc::new(module_deny_rules),
+      module_isolated_specifiers: Arc::new(Vec::new()),
     }
   }
 
@@ -3958,7 +3969,12 @@ impl PermissionsContainer {
       descriptor_parser: self.descriptor_parser.clone(),
       inner: Arc::new(Mutex::new(self.inner.lock().clone())),
       module_deny_rules: self.module_deny_rules.clone(),
+      module_isolated_specifiers: self.module_isolated_specifiers.clone(),
     }
+  }
+
+  pub fn module_isolated_specifiers(&self) -> &Arc<Vec<String>> {
+    &self.module_isolated_specifiers
   }
 
   pub fn allow_all(
@@ -3975,11 +3991,14 @@ impl PermissionsContainer {
   ) -> Result<Self, PermissionsFromOptionsError> {
     let perms = Permissions::from_options(descriptor_parser.as_ref(), opts)?;
     let module_deny_rules = Permissions::parse_module_deny_rules(opts)?;
-    Ok(Self::new_with_module_deny(
+    let module_isolated_specifiers =
+      opts.deny_module_isolated.clone().unwrap_or_default();
+    Ok(Self {
       descriptor_parser,
-      perms,
-      module_deny_rules,
-    ))
+      inner: Arc::new(Mutex::new(perms)),
+      module_deny_rules: Arc::new(module_deny_rules),
+      module_isolated_specifiers: Arc::new(module_isolated_specifiers),
+    })
   }
 
   /// True when at least one `--deny-module` rule is active. Used by the
@@ -4103,6 +4122,7 @@ impl PermissionsContainer {
       descriptor_parser: self.descriptor_parser.clone(),
       inner: Arc::new(Mutex::new(worker_perms)),
       module_deny_rules: self.module_deny_rules.clone(),
+      module_isolated_specifiers: self.module_isolated_specifiers.clone(),
     })
   }
 

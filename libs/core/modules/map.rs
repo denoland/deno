@@ -244,7 +244,7 @@ pub(crate) struct ModuleMap {
   evaluating_top_level: Cell<bool>,
   code_cache_ready_futs: TrackedFutures<Pin<Box<CodeCacheReadyFuture>>>,
   module_waker: AtomicWaker,
-  data: RefCell<ModuleMapData>,
+  pub(crate) data: RefCell<ModuleMapData>,
   will_snapshot: bool,
 
   /// A counter used to delay our dynamic import deadlock detection by one spin
