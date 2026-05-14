@@ -49,6 +49,7 @@ use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::sys::CliSys;
+use crate::tools::fmt_editorconfig::EditorConfigCache;
 use crate::util;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
@@ -233,6 +234,7 @@ async fn format_files(
   } else {
     Box::new(RealFormatter::default())
   };
+  let editorconfig_cache = Arc::new(EditorConfigCache::new());
   for paths_with_options in paths_with_options_batches {
     log::debug!(
       "Formatting {} file(s) in {}",
@@ -252,6 +254,7 @@ async fn format_files(
         fmt_options.options,
         fmt_options.unstable,
         incremental_cache.clone(),
+        editorconfig_cache.clone(),
         cli_options.ext_flag().clone(),
       )
       .await?;
@@ -916,10 +919,28 @@ trait Formatter {
     fmt_options: FmtOptionsConfig,
     unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
+    editorconfig_cache: Arc<EditorConfigCache>,
     ext: Option<String>,
   ) -> Result<(), AnyError>;
 
   fn finish(&self) -> Result<(), AnyError>;
+}
+
+/// Returns a per-file [`FmtOptionsConfig`], merging values from
+/// `.editorconfig` (lowest priority) under the resolved `base` config
+/// (which already incorporates `deno.json` plus CLI flags).
+fn resolve_per_file_options(
+  base: &FmtOptionsConfig,
+  editorconfig_cache: &EditorConfigCache,
+  file_path: &Path,
+) -> FmtOptionsConfig {
+  let props = editorconfig_cache.resolve(file_path);
+  if props.is_empty() {
+    return base.clone();
+  }
+  let mut cfg = base.clone();
+  props.apply_to(&mut cfg);
+  cfg
 }
 
 struct CheckFormatter {
@@ -950,6 +971,7 @@ impl Formatter for CheckFormatter {
     fmt_options: FmtOptionsConfig,
     unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
+    editorconfig_cache: Arc<EditorConfigCache>,
     ext: Option<String>,
   ) -> Result<(), AnyError> {
     // prevent threads outputting at the same time
@@ -977,10 +999,16 @@ impl Formatter for CheckFormatter {
           return Ok(());
         }
 
+        let per_file_options = resolve_per_file_options(
+          &fmt_options,
+          &editorconfig_cache,
+          &file_path,
+        );
+
         match format_file(
           &file_path,
           &file,
-          &fmt_options,
+          &per_file_options,
           &unstable_options,
           ext.clone(),
         ) {
@@ -1071,6 +1099,7 @@ impl Formatter for RealFormatter {
     fmt_options: FmtOptionsConfig,
     unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
+    editorconfig_cache: Arc<EditorConfigCache>,
     ext: Option<String>,
   ) -> Result<(), AnyError> {
     let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
@@ -1090,11 +1119,17 @@ impl Formatter for RealFormatter {
           return Ok(());
         }
 
+        let per_file_options = resolve_per_file_options(
+          &fmt_options,
+          &editorconfig_cache,
+          &file_path,
+        );
+
         match format_ensure_stable(&file_path, &file, |file_path, file| {
           format_file(
             file_path,
             file,
-            &fmt_options,
+            &per_file_options,
             &unstable_options,
             ext.clone(),
           )
