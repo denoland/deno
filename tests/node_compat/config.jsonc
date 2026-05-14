@@ -40,6 +40,14 @@
     "es-module/test-esm-loader-cache-clearing.js": {},
     "es-module/test-esm-loader-dependency.mjs": {},
     "es-module/test-esm-loader-event-loop.mjs": {},
+    "es-module/test-esm-loader-modulemap.js": {
+      "ignore": true,
+      "reason": "Requires Node-internal module 'internal/modules/esm/loader' which Deno does not expose"
+    },
+    "es-module/test-esm-loader-search.js": {
+      "ignore": true,
+      "reason": "Requires Node-internal module 'internal/modules/esm/resolve' which Deno does not expose"
+    },
     "es-module/test-esm-nowarn-exports.mjs": {},
     "es-module/test-esm-path-posix.mjs": {},
     "es-module/test-esm-path-win32.mjs": {},
