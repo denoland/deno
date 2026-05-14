@@ -1285,11 +1285,10 @@ impl<T> Clone for Global<T> {
 }
 
 impl<T> Global<T> {
-  pub fn new<'sc, 'lo, L: Into<Local<'lo, T>>>(
+  pub fn new<'sc, 'lo>(
     scope: &mut HandleScope<'sc>,
-    local: L,
+    local: Local<'lo, T>,
   ) -> Self {
-    let local = local.into();
     let ctx = scope.ctx();
     sys::dup_value(ctx, local.raw);
     Self {
