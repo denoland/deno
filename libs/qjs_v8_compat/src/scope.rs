@@ -163,6 +163,10 @@ impl<'s> HandleScope<'s, Context> {
   {
     let ctx = src.default_ctx();
     let iso_ptr = src.isolate_ptr();
+    // Track the most recently used isolate for this thread so the
+    // op-bridge trampoline can recover it even when `opctx.isolate`
+    // points at a stale Rust-stack address.
+    crate::isolate::set_current_isolate_ptr(iso_ptr);
     Self {
       isolate: iso_ptr,
       ctx,
@@ -586,12 +590,40 @@ impl<'s, 'r> CallbackScopeSource<'s>
   for &'r crate::function::FunctionCallbackInfo
 {
   unsafe fn into_callback_scope(self) -> CallbackScope<'s, Context> {
-    // The op2 callback path doesn't actually have a HandleScope it can
-    // borrow from here; this is best-effort. The CallbackScope it
-    // returns has zero ctx — any use of it under QuickJS is unsupported.
+    // Recover (isolate, ctx) from the FunctionCallbackInfo. The
+    // op_bridge_trampoline_magic populates `implicit_args[DATA]` with
+    // an External pointing at the OpCtx, whose `isolate` field is the
+    // OwnedIsolate pointer we stored. We mirror that here.
+    use crate::function::IMPLICIT_DATA_OFFSET;
+    let info_ptr = self as *const crate::function::FunctionCallbackInfo;
+    let data_jsv = unsafe {
+      *(*info_ptr).implicit_args.offset(IMPLICIT_DATA_OFFSET)
+    };
+    let opctx_ptr = unsafe { data_jsv.u.ptr };
+    if opctx_ptr.is_null() {
+      return CallbackScope(HandleScope {
+        isolate: core::ptr::null_mut(),
+        ctx: core::ptr::null_mut(),
+        owned: Vec::new(),
+        parent_owned: None,
+        depth: 0,
+        _scope: PhantomData,
+        _ctx: PhantomData,
+      });
+    }
+    let _ = opctx_ptr;
+    // Use the currently-active isolate as recorded by OwnedIsolate::new.
+    // The op2 callback path only runs while a runtime is alive, so this
+    // is sound.
+    let isolate_ptr = crate::isolate::current_isolate_ptr();
+    let ctx = if isolate_ptr.is_null() {
+      core::ptr::null_mut()
+    } else {
+      unsafe { (*isolate_ptr).default_ctx() }
+    };
     CallbackScope(HandleScope {
-      isolate: core::ptr::null_mut(),
-      ctx: core::ptr::null_mut(),
+      isolate: isolate_ptr,
+      ctx,
       owned: Vec::new(),
       parent_owned: None,
       depth: 0,

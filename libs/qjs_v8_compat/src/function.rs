@@ -348,6 +348,10 @@ pub(crate) unsafe extern "C" fn op_bridge_trampoline_magic(
   let Some((_slow_fn, _opctx_ptr)) = lookup_op_dispatch(magic) else {
     return unsafe { crate::ffi::JS_NewObject(ctx) };
   };
+  // First-arg-stderr fallback while V8 callback ABI bridge is being
+  // diagnosed (slow_fn dispatch crashes inside CallbackScope ops in
+  // op2-emitted code; root cause is the OwnedIsolate address moving
+  // between as_raw_isolate_ptr() time and the slow_fn call).
   let _ = this_val;
   if argc > 0 && !argv.is_null() {
     let first = unsafe { *argv };

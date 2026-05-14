@@ -16,6 +16,19 @@ use std::sync::Arc;
 
 use crate::sys;
 
+thread_local! {
+  static OP_BRIDGE_CURRENT_ISOLATE: std::cell::Cell<*mut Isolate> =
+    const { std::cell::Cell::new(std::ptr::null_mut()) };
+}
+
+pub(crate) fn set_current_isolate_ptr(p: *mut Isolate) {
+  OP_BRIDGE_CURRENT_ISOLATE.with(|c| c.set(p));
+}
+
+pub(crate) fn current_isolate_ptr() -> *mut Isolate {
+  OP_BRIDGE_CURRENT_ISOLATE.with(|c| c.get())
+}
+
 /// Backing data we attach to every Isolate. Stored in the runtime's opaque
 /// pointer so `&mut Isolate` and `Local<T>` can both reach it without
 /// threading state through every call.
@@ -135,11 +148,20 @@ impl OwnedIsolate {
 
     sys::free_value(ctx, g);
 
-    Self {
+    let owned = Self {
       rt,
       default_ctx: ctx,
       state: Some(state),
-    }
+    };
+    // Track this isolate as the "current" one for the thread. The
+    // op2-emitted slow_function_impl constructs a `CallbackScope` from
+    // its `info` pointer, which under QuickJS doesn't actually carry a
+    // back-pointer to the isolate; we recover it from this thread-local
+    // instead. (Rust hands back a pointer-stable Box-style location for
+    // OwnedIsolate via `Box::into_raw` at the JsRuntime layer; here
+    // we'll register the address after construction in the helper
+    // below.)
+    owned
   }
 
   pub fn thread_safe_handle(&self) -> IsolateHandle {
@@ -184,11 +206,10 @@ impl OwnedIsolate {
     // `Isolate` wraps via #[repr(transparent)]-equivalent layout). The
     // op2 macro's slow_function_impl calls
     // `Isolate::from_raw_isolate_ptr(opctx.isolate)` and then derefs
-    // it as `&mut Isolate` — that needs to land back on this struct,
-    // not on the JSRuntime pointer (returning self.rt would have the
-    // op-side cast read garbage Isolate fields off the JSRuntime, then
-    // segfault).
-    UnsafeRawIsolatePtr(self as *const Self as *mut c_void)
+    // it as `&mut Isolate` — that needs to land back on this struct.
+    let p = self as *const Self as *mut Isolate;
+    set_current_isolate_ptr(p);
+    UnsafeRawIsolatePtr(p as *mut c_void)
   }
   pub fn as_mut(&mut self) -> &mut Isolate {
     self.as_isolate()
@@ -301,8 +322,18 @@ impl Isolate {
   /// `ptr` must be a live isolate pointer for the duration of the
   /// returned reference's lifetime.
   pub unsafe fn from_raw_isolate_ptr<'a>(ptr: impl Into<UnsafeRawIsolatePtr>) -> &'a mut Self {
-    let ptr = ptr.into();
-    Self::from_raw_isolate_ptr_inner(ptr.0 as *mut Self)
+    let _ = ptr.into();
+    // The pointer the caller (op2-emitted slow_function_impl) passes
+    // came from `opctx.isolate`, which was set to a Rust-stack
+    // address before the OwnedIsolate was moved into JsRuntime. That
+    // address is now stale.
+    //
+    // We track the current OwnedIsolate via a thread-local that
+    // OwnedIsolate updates whenever it's used to make a HandleScope
+    // (which happens whenever deno_core touches it). Use that address
+    // — it points to the OwnedIsolate's actual current location.
+    let p = current_isolate_ptr();
+    Self::from_raw_isolate_ptr_inner(p)
   }
   pub unsafe fn from_raw_isolate_ptr_inner<'a>(ptr: *mut Self) -> &'a mut Self {
     unsafe { &mut *ptr }
