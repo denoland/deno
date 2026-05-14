@@ -1124,9 +1124,25 @@ pub fn open_options_for_checked_path(
   #[cfg(windows)]
   {
     _ = path; // not used on windows
-    // allow opening directories
     use std::os::windows::fs::OpenOptionsExt;
     opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
+
+    // On Windows, opening with append mode sets FILE_APPEND_DATA as the
+    // access mode. However, LockFileEx requires GENERIC_READ or GENERIC_WRITE.
+    // Add FILE_READ_DATA to the access mask to allow file locking on
+    // append-only handles. This does not change the append-only semantics
+    // since FILE_APPEND_DATA still restricts writes to appending only.
+    if options.append {
+      let mut access = winapi::um::winnt::FILE_APPEND_DATA;
+      if options.read {
+        access |= winapi::um::winnt::GENERIC_READ;
+      }
+      if options.write {
+        access |= winapi::um::winnt::GENERIC_WRITE;
+      }
+      access |= winapi::um::winnt::FILE_READ_DATA;
+      opts.access_mode(access);
+    }
   }
 
   #[cfg(unix)]
