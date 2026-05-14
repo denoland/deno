@@ -46,14 +46,14 @@ impl External {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union ExternalReference {
-  pub function: *const c_void,
+  pub function: crate::function::FunctionCallback,
   pub pointer: *const c_void,
-  pub type_info: *const c_void,
-  pub api_function: *const c_void,
+  pub type_info: *const crate::v8::fast_api::CFunctionInfo,
+  pub api_function: crate::function::FunctionCallback,
 }
 impl ExternalReference {
-  pub const fn new(function: *mut c_void) -> Self {
-    Self { function }
+  pub const fn new(pointer: *mut c_void) -> Self {
+    Self { pointer: pointer as *const c_void }
   }
 }
 unsafe impl Send for ExternalReference {}
