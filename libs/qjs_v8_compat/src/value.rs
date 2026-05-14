@@ -93,6 +93,14 @@ impl<'s, T> Local<'s, T> {
       None
     }
   }
+
+  /// Mirror of rusty_v8's `Local::try_cast` — same as `cast` but
+  /// returns a `Result<_, _>` so deno_core's `?` propagation works.
+  pub fn try_cast<U: ValueType>(
+    self,
+  ) -> Result<Local<'s, U>, std::convert::Infallible> {
+    Ok(Local::from_raw(self.raw))
+  }
 }
 
 // ----- Upcasts ----------------------------------------------------------

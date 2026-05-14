@@ -119,6 +119,34 @@ impl<'s, C> HandleScope<'s, C> {
     self.owned.len()
   }
 
+  /// Mirror of rusty_v8's `HandleScope::throw_exception`. Raises the
+  /// given value as an exception in the current context. Returns a
+  /// `Local<Value>` that wraps the thrown value (in V8 the return is
+  /// the exception itself).
+  pub fn throw_exception(
+    &mut self,
+    exc: crate::value::Local<'s, crate::value::Value>,
+  ) -> crate::value::Local<'s, crate::value::Value> {
+    crate::sys::throw(self.ctx, exc.raw());
+    exc
+  }
+
+  /// Mirror of rusty_v8's `HandleScope::has_pending_exception`.
+  pub fn has_pending_exception(&self) -> bool {
+    crate::sys::has_pending_exception(self.ctx)
+  }
+
+  /// Mirror of rusty_v8's `HandleScope::escape` — used by EscapableHandleScope
+  /// to extend a handle to the parent scope's lifetime. On QuickJS we
+  /// just pass through: the parent scope owns the same arena so the
+  /// handle is already valid for the parent's lifetime.
+  pub fn escape<T>(
+    &mut self,
+    v: crate::value::Local<'_, T>,
+  ) -> crate::value::Local<'s, T> {
+    crate::value::Local::from_raw(v.raw())
+  }
+
   /// Drop responsibility for `raw` from this scope (the caller is now
   /// responsible — typically because it's being escaped to a parent or
   /// promoted to Global). Internal.
@@ -261,6 +289,64 @@ impl<'s> CallbackScope<'s, Context> {
     CallbackScope(HandleScope {
       isolate: iso_ptr,
       ctx,
+      owned: Vec::new(),
+      parent_owned: None,
+      depth: 0,
+      _scope: PhantomData,
+      _ctx: PhantomData,
+    })
+  }
+
+  /// Mirror of rusty_v8's `CallbackScope::new(raw)` — constructs a
+  /// CallbackScope from any opaque "scope-like" handle V8 passes to a
+  /// callback. On the QuickJS backend this just forwards into the
+  /// underlying scope; safety depends on the caller having a valid
+  /// raw pointer.
+  ///
+  /// # Safety
+  ///
+  /// `raw` must be a live HandleScope-shaped pointer for the
+  /// duration of `'s`.
+  pub unsafe fn new<R>(raw: R) -> Self
+  where
+    R: CallbackScopeSource<'s>,
+  {
+    raw.into_callback_scope()
+  }
+}
+
+/// Helper trait that `CallbackScope::new` accepts. Implemented for the
+/// raw pointer types V8's various callbacks deliver — on QuickJS we
+/// have just one (HandleScope), but the trait shape mirrors what
+/// rusty_v8 does so deno_core's call sites work without edits.
+pub trait CallbackScopeSource<'s>: Sized {
+  unsafe fn into_callback_scope(self) -> CallbackScope<'s, Context>;
+}
+
+impl<'s, 'r> CallbackScopeSource<'s> for &'r mut HandleScope<'s, Context> {
+  unsafe fn into_callback_scope(self) -> CallbackScope<'s, Context> {
+    CallbackScope(HandleScope {
+      isolate: self.isolate,
+      ctx: self.ctx,
+      owned: Vec::new(),
+      parent_owned: None,
+      depth: 0,
+      _scope: PhantomData,
+      _ctx: PhantomData,
+    })
+  }
+}
+
+impl<'s, 'r> CallbackScopeSource<'s>
+  for &'r crate::function::FunctionCallbackInfo
+{
+  unsafe fn into_callback_scope(self) -> CallbackScope<'s, Context> {
+    // The op2 callback path doesn't actually have a HandleScope it can
+    // borrow from here; this is best-effort. The CallbackScope it
+    // returns has zero ctx — any use of it under QuickJS is unsupported.
+    CallbackScope(HandleScope {
+      isolate: core::ptr::null_mut(),
+      ctx: core::ptr::null_mut(),
       owned: Vec::new(),
       parent_owned: None,
       depth: 0,
