@@ -36,6 +36,12 @@ impl BackingStore {
   pub fn as_slice(&self) -> &[u8] {
     &self.data
   }
+  /// Mirror of rusty_v8's `Box<BackingStore>::make_shared` — uses the
+  /// `self: Box<Self>` receiver trick. Converts an exclusively-owned
+  /// BackingStore into a refcounted Arc.
+  pub fn make_shared(self: Box<Self>) -> std::sync::Arc<BackingStore> {
+    std::sync::Arc::from(self)
+  }
 }
 
 impl ArrayBuffer {

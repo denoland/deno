@@ -331,6 +331,24 @@ pub trait CallbackScopeSource<'s>: Sized {
   unsafe fn into_callback_scope(self) -> CallbackScope<'s, Context>;
 }
 
+impl<'s> CallbackScope<'s, Context> {
+  /// Mirror of rusty_v8's pin-init pattern: op2-generated code does
+  /// `let scope = std::mem::MaybeUninit::<v8::CallbackScope>::uninit();`
+  /// then `Pin::new(&mut scope).init(raw)`. We accept the same shape
+  /// and just overwrite the inner HandleScope with one constructed
+  /// from the raw source.
+  pub unsafe fn init<R>(self: core::pin::Pin<&mut Self>, raw: R)
+  where
+    R: CallbackScopeSource<'s>,
+  {
+    let cs = unsafe { raw.into_callback_scope() };
+    // Pin::get_unchecked_mut: we don't move the scope, only overwrite
+    // its fields in place.
+    let dst = unsafe { self.get_unchecked_mut() };
+    dst.0 = cs.0;
+  }
+}
+
 impl<'s, 'r> CallbackScopeSource<'s> for &'r mut HandleScope<'s, Context> {
   unsafe fn into_callback_scope(self) -> CallbackScope<'s, Context> {
     CallbackScope(HandleScope {
