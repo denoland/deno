@@ -38,15 +38,16 @@ impl<'s> Local<'s, Module> {
   pub fn get_module_namespace(&self) -> Local<'s, Object> {
     Local::from_raw(sys::jsv_undefined())
   }
-  pub fn evaluate(
-    &self,
-    _scope: &mut HandleScope<'s>,
-  ) -> Option<Local<'s, Value>> {
+  pub fn evaluate<S>(&self, _scope: S) -> Option<Local<'s, Value>>
+  where
+    S: Sized,
+  {
+    let _ = _scope;
     None
   }
-  pub fn instantiate_module(
+  pub fn instantiate_module<S>(
     &self,
-    _scope: &mut HandleScope<'s>,
+    _scope: S,
     _cb: ModuleResolveCallback,
   ) -> Option<bool> {
     Some(true)

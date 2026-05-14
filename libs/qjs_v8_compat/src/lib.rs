@@ -211,7 +211,8 @@ macro_rules! escapable_handle_scope {
   };
 }
 
-/// Mirror of `v8::context_scope!(let name, parent)`.
+/// Mirror of `v8::context_scope!(let name, parent)` and the
+/// `(name, this, isolate)` 3-arg form deno_core's jsrealm macros use.
 #[macro_export]
 macro_rules! context_scope {
   (let $name:ident, $parent:expr) => {
@@ -219,6 +220,10 @@ macro_rules! context_scope {
   };
   ($name:ident, $parent:expr) => {
     let mut $name = $crate::HandleScope::new($parent);
+  };
+  ($name:ident, $this:expr, $isolate:expr) => {
+    let mut __cs_inner = $crate::HandleScope::new($isolate);
+    let $name = &mut __cs_inner;
   };
 }
 
