@@ -872,29 +872,10 @@ fn rustls_error_to_node_error(
       format!("{e} (wrong version number)"),
       "ERR_SSL_WRONG_VERSION_NUMBER".to_string(),
     ),
-    E::InvalidCertificate(cert_err) => {
-      let reason = format!("{cert_err}");
-      // Map common rustls certificate errors to OpenSSL error codes
-      let code = if reason.contains("UnknownIssuer") {
-        "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
-      } else if reason.contains("NotValidYet") {
-        "CERT_NOT_YET_VALID"
-      } else if reason.contains("Expired") {
-        "CERT_HAS_EXPIRED"
-      } else if reason.contains("NotValidForName") {
-        "ERR_TLS_CERT_ALTNAME_INVALID"
-      } else if reason.contains("CaUsedAsEndEntity")
-        || reason.contains("IssuerNotCrlSigner")
-        || reason.contains("InvalidPurpose")
-      {
-        "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
-      } else if reason.contains("SelfSigned") {
-        "DEPTH_ZERO_SELF_SIGNED_CERT"
-      } else {
-        "ERR_SSL_SSLV3_ALERT_CERTIFICATE_UNKNOWN"
-      };
-      (format!("{e}"), format!("ERR_SSL_{code}"))
-    }
+    E::InvalidCertificate(cert_err) => (
+      format!("{e}"),
+      cert_error_to_node_code(cert_err).to_string(),
+    ),
     E::NoCertificatesPresented => (
       format!("{e}"),
       "ERR_SSL_PEER_DID_NOT_RETURN_A_CERTIFICATE".to_string(),
@@ -3100,6 +3081,11 @@ fn store_verify_error(fallback: &VerifyErrorStore, code: String) {
 struct NodeServerCertVerifier {
   inner: Arc<rustls::client::WebPkiServerVerifier>,
   verify_error: VerifyErrorStore,
+  /// True for an explicit `ca: []`. rustls/webpki cannot build its verifier
+  /// with no roots, so `inner` uses fallback roots only to classify
+  /// certificate-specific failures. Otherwise-valid chains are still recorded
+  /// as unauthorized below.
+  empty_explicit_ca: bool,
   /// Raw DER bytes of every root certificate so we can check whether a
   /// `CaUsedAsEndEntity` cert is actually trusted.
   root_cert_ders: Vec<Vec<u8>>,
@@ -3286,6 +3272,7 @@ fn verify_chain_structure(
 
   // Walk the chain from end entity upward.
   let mut current_issuer = ee.0;
+  let end_entity_subject = ee.1;
 
   // Limit iterations to prevent cycles.
   for _ in 0..(intermediates.len() + 2) {
@@ -3308,13 +3295,12 @@ fn verify_chain_structure(
   }
 
   // Chain doesn't reach a trusted root.
-  if root_cert_ders.is_empty() {
-    // No explicit CA was provided (only system/default roots which
-    // didn't match). OpenSSL reports this as "unable to get local
-    // issuer certificate".
-    Err("UNABLE_TO_GET_ISSUER_CERT_LOCALLY")
-  } else {
+  if current_issuer == end_entity_subject {
+    Err("DEPTH_ZERO_SELF_SIGNED_CERT")
+  } else if intermediates.is_empty() {
     Err("UNABLE_TO_VERIFY_LEAF_SIGNATURE")
+  } else {
+    Err("UNABLE_TO_GET_ISSUER_CERT_LOCALLY")
   }
 }
 
@@ -3361,7 +3347,21 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
       ocsp,
       now,
     ) {
-      Ok(v) => Ok(v),
+      Ok(v) => {
+        if self.empty_explicit_ca {
+          let code = verify_chain_structure(
+            end_entity.as_ref(),
+            intermediates,
+            &self.root_cert_ders,
+          )
+          .err()
+          .unwrap_or("UNABLE_TO_VERIFY_LEAF_SIGNATURE");
+          store_verify_error(&self.verify_error, code.to_string());
+          Ok(rustls::client::danger::ServerCertVerified::assertion())
+        } else {
+          Ok(v)
+        }
+      }
       Err(rustls::Error::InvalidCertificate(ref cert_error)) => {
         // Server-name checks are handled by JS (checkServerIdentity).
         if matches!(
@@ -3408,6 +3408,17 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
               );
             }
           }
+        }
+        if matches!(cert_error, rustls::CertificateError::UnknownIssuer) {
+          let code = verify_chain_structure(
+            end_entity.as_ref(),
+            intermediates,
+            &self.root_cert_ders,
+          )
+          .err()
+          .unwrap_or("UNABLE_TO_VERIFY_LEAF_SIGNATURE");
+          store_verify_error(&self.verify_error, code.to_string());
+          return Ok(rustls::client::danger::ServerCertVerified::assertion());
         }
         if let rustls::CertificateError::Other(other) = cert_error
           && let Some(webpki_err) = other.0.downcast_ref::<webpki::Error>()
@@ -3524,6 +3535,7 @@ fn build_client_config(
 
   let _reject_unauthorized =
     get_js_bool(scope, context, "rejectUnauthorized", true);
+  let use_default_ca = get_js_bool(scope, context, "useDefaultCA", true);
   let protocol_versions = match get_protocol_versions(scope, context) {
     ProtocolVersionSelection::Default => {
       &[&rustls::version::TLS13, &rustls::version::TLS12][..]
@@ -3560,17 +3572,18 @@ fn build_client_config(
     .flatten();
 
   // Use custom CA certs from setDefaultCACertificates() only when the
-  // SecureContext doesn't provide its own CA. This matches Node.js
-  // behavior where explicit `ca` in options takes precedence.
-  if ca_certs.is_empty()
+  // SecureContext is on the default CA path. Explicit `ca` replaces the
+  // root store, while context.addCACert() extends whatever default CA store
+  // is active.
+  if use_default_ca
     && let Some(node_tls_state) = op_state.try_borrow::<NodeTlsState>()
     && let Some(custom_ca_certs) = &node_tls_state.custom_ca_certs
   {
     root_cert_store = Some(rustls::RootCertStore::empty());
-    ca_certs = custom_ca_certs
-      .iter()
-      .map(|cert| cert.clone().into_bytes())
-      .collect();
+    ca_certs
+      .extend(custom_ca_certs.iter().map(|cert| cert.clone().into_bytes()));
+  } else if !use_default_ca {
+    root_cert_store = Some(rustls::RootCertStore::empty());
   }
 
   // Build client key/cert if provided
@@ -3602,6 +3615,7 @@ fn build_client_config(
   // every TLS connection without explicit CA options to fail verification.
   let mut root_cert_store =
     root_cert_store.unwrap_or_else(deno_tls::create_default_root_cert_store);
+  let empty_explicit_ca = !use_default_ca && ca_certs.is_empty();
 
   // Collect raw DER bytes of root certs so NodeServerCertVerifier can
   // check CaUsedAsEndEntity certs against the trust store.
@@ -3637,6 +3651,7 @@ fn build_client_config(
   // same `Arc`s and session resumption is allowed to proceed (rustls keys
   // its `compatible_config` check on `Arc::downgrade(&verifier)` identity).
   let is_default_path = ca_certs.is_empty()
+    && use_default_ca
     && op_state
       .try_borrow::<NodeTlsState>()
       .is_none_or(|s| s.custom_ca_certs.is_none())
@@ -3713,6 +3728,7 @@ fn build_client_config(
             Arc::new(NodeServerCertVerifier {
               inner,
               verify_error: store.clone(),
+              empty_explicit_ca: false,
               root_cert_ders,
             });
           state.cached_default_verifier = Some((v.clone(), store.clone()));
@@ -3723,14 +3739,21 @@ fn build_client_config(
     }
   } else {
     let store: VerifyErrorStore = Default::default();
-    let verifier_result =
-      rustls::client::WebPkiServerVerifier::builder(Arc::new(root_cert_store))
-        .build();
+    let verifier_root_store = if empty_explicit_ca {
+      deno_tls::create_default_root_cert_store()
+    } else {
+      root_cert_store.clone()
+    };
+    let verifier_result = rustls::client::WebPkiServerVerifier::builder(
+      Arc::new(verifier_root_store),
+    )
+    .build();
     let v: Option<Arc<dyn rustls::client::danger::ServerCertVerifier>> =
       verifier_result.ok().map(|inner| {
         Arc::new(NodeServerCertVerifier {
           inner,
           verify_error: store.clone(),
+          empty_explicit_ca,
           root_cert_ders,
         }) as Arc<dyn rustls::client::danger::ServerCertVerifier>
       });

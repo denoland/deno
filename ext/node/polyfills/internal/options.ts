@@ -31,7 +31,6 @@ const {
   StringPrototypeStartsWith,
 } = primordials;
 
-let optionsMap: Map<string, { value: string }>;
 const dummyOptions = new SafeMap<string, { value: string }>();
 
 function getOptionsFromBinding() {
@@ -40,11 +39,7 @@ function getOptionsFromBinding() {
     return dummyOptions;
   }
 
-  if (!optionsMap) {
-    ({ options: optionsMap } = getOptions());
-  }
-
-  return optionsMap;
+  return getOptions().options;
 }
 
 function getOptionValue(optionName: string) {

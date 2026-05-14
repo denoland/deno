@@ -2,10 +2,16 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = globalThis.__bootstrap;
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
 const { convertALPNProtocols } = core.loadExtScript(
   "ext:deno_node/internal/tls_common.js",
+);
+const { X509Certificate } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/x509.ts",
 );
 const {
   op_get_env_no_permission_check,
@@ -50,6 +56,9 @@ const {
   StringPrototypeSplit,
   StringPrototypeTrim,
   StringPrototypeToLowerCase,
+  SafeSet,
+  SetPrototypeAdd,
+  SetPrototypeHas,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
@@ -217,13 +226,139 @@ const rootCertificates = new Proxy([] as string[], {
 });
 
 const DEFAULT_ECDH_CURVE = "auto";
-const DEFAULT_MAX_VERSION = "TLSv1.3";
-const DEFAULT_MIN_VERSION = "TLSv1.2";
 const CLIENT_RENEG_LIMIT = 3;
 const CLIENT_RENEG_WINDOW = 600;
 
 class CryptoStream {}
 class SecurePair {}
+
+function getDefaultMaxVersion(): string {
+  if (getOptionValue("--tls-max-v1.3")) return "TLSv1.3";
+  if (getOptionValue("--tls-max-v1.2")) return "TLSv1.2";
+  return "TLSv1.3";
+}
+
+function getDefaultMinVersion(): string {
+  if (getOptionValue("--tls-min-v1.0")) return "TLSv1";
+  if (getOptionValue("--tls-min-v1.1")) return "TLSv1.1";
+  if (getOptionValue("--tls-min-v1.2")) return "TLSv1.2";
+  if (getOptionValue("--tls-min-v1.3")) return "TLSv1.3";
+  return "TLSv1.2";
+}
+
+let hasDefaultCACertificatesOverride = false;
+
+function hasStore(store: string): boolean {
+  const storesValue = op_get_env_no_permission_check("DENO_TLS_CA_STORE");
+  if (storesValue == null) {
+    return false;
+  }
+  const stores = StringPrototypeSplit(storesValue, ",");
+  for (let i = 0; i < stores.length; i++) {
+    if (StringPrototypeTrim(stores[i]) === store) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasRuntimeNodeOption(flag: string): boolean {
+  if (hasExecArgvFlag(flag)) {
+    return true;
+  }
+  if (isNodeWorkerThread()) {
+    return false;
+  }
+  const nodeOptions = globalThis.process?.env?.NODE_OPTIONS ??
+    op_get_env_no_permission_check("NODE_OPTIONS") ??
+    "";
+  return ArrayPrototypeIncludes(StringPrototypeSplit(nodeOptions, " "), flag);
+}
+
+function hasExecArgvFlag(flag: string): boolean {
+  const execArgv = globalThis.process?.execArgv;
+  return ArrayIsArray(execArgv) && ArrayPrototypeIncludes(execArgv, flag);
+}
+
+function isNodeWorkerThread(): boolean {
+  if (internals.__isWorkerThread) {
+    return true;
+  }
+  try {
+    return core.loadExtScript("ext:deno_node/worker_threads.ts")
+      .isMainThread === false;
+  } catch {
+    return false;
+  }
+}
+
+function getDefaultUsesSystemCertificates(): boolean {
+  if (hasExecArgvFlag("--no-use-system-ca")) {
+    return false;
+  }
+  if (hasExecArgvFlag("--use-system-ca")) {
+    return true;
+  }
+  if (
+    globalThis.process?.env?.NODE_USE_SYSTEM_CA === "1" ||
+    op_get_env_no_permission_check("NODE_USE_SYSTEM_CA") === "1"
+  ) {
+    return true;
+  }
+  if (hasRuntimeNodeOption("--no-use-system-ca")) {
+    return false;
+  }
+  if (hasRuntimeNodeOption("--use-system-ca")) {
+    return true;
+  }
+  const useSystemCaOption = getOptionValue("--use-system-ca");
+  if (useSystemCaOption !== undefined) {
+    return !!useSystemCaOption;
+  }
+  if (hasStore("system")) {
+    return true;
+  }
+  return false;
+}
+
+function getDefaultUsesBundledCertificates(): boolean {
+  const storesValue = op_get_env_no_permission_check("DENO_TLS_CA_STORE");
+  if (storesValue != null) {
+    return hasStore("mozilla");
+  }
+  if (getOptionValue("--use-openssl-ca")) {
+    return false;
+  }
+  const useBundledCaOption = getOptionValue("--use-bundled-ca");
+  return useBundledCaOption !== false;
+}
+
+function makeNodeCryptoError(code: string, message: string) {
+  const err = new Error(message);
+  (err as Error & { code?: string }).code = code;
+  return err;
+}
+
+function validateDefaultCACertificates(certs: string[]) {
+  let validCount = 0;
+  for (let i = 0; i < certs.length; i++) {
+    try {
+      new X509Certificate(certs[i]);
+      validCount++;
+    } catch {
+      if (validCount === 0) {
+        throw makeNodeCryptoError(
+          "ERR_CRYPTO_OPERATION_FAILED",
+          "No valid certificates found in the provided array",
+        );
+      }
+      throw makeNodeCryptoError(
+        "ERR_OSSL_PEM_ASN1_LIB",
+        "error:0680009B:asn1 encoding routines::too long",
+      );
+    }
+  }
+}
 
 function setDefaultCACertificates(
   certs: (string | ArrayBufferView)[],
@@ -233,12 +368,14 @@ function setDefaultCACertificates(
   }
 
   const normalized: string[] = [];
+  const seen = new SafeSet();
   for (let i = 0; i < certs.length; ++i) {
     const cert = certs[i];
+    let normalizedCert;
     if (typeof cert === "string") {
-      ArrayPrototypePush(normalized, cert);
+      normalizedCert = cert;
     } else if (isArrayBufferView(cert)) {
-      ArrayPrototypePush(normalized, arrayBufferViewToString(cert));
+      normalizedCert = arrayBufferViewToString(cert);
     } else {
       throw new ERR_INVALID_ARG_TYPE(
         `certs[${i}]`,
@@ -246,9 +383,15 @@ function setDefaultCACertificates(
         cert,
       );
     }
+    if (!SetPrototypeHas(seen, normalizedCert)) {
+      SetPrototypeAdd(seen, normalizedCert);
+      ArrayPrototypePush(normalized, normalizedCert);
+    }
   }
 
+  validateDefaultCACertificates(normalized);
   op_set_default_ca_certificates(normalized);
+  hasDefaultCACertificatesOverride = true;
 
   // The bundled root certificates (`rootCertificates` proxy /
   // `lazyRootCertificates`) come from the webpki Mozilla bundle and don't
@@ -274,7 +417,27 @@ function getCACertificates(type: string = "default"): string[] {
   }
 
   let certs: string[];
-  if (type === "bundled") {
+  if (type === "default" && !hasDefaultCACertificatesOverride) {
+    certs = [];
+    if (getDefaultUsesBundledCertificates()) {
+      ArrayPrototypeForEach(
+        getCACertificates("bundled"),
+        (cert) => ArrayPrototypePush(certs, cert),
+      );
+    }
+    if (getDefaultUsesSystemCertificates()) {
+      ArrayPrototypeForEach(
+        getCACertificates("system"),
+        (cert) => ArrayPrototypePush(certs, cert),
+      );
+    }
+    ArrayPrototypeForEach(
+      getCACertificates("extra"),
+      (cert) => ArrayPrototypePush(certs, cert),
+    );
+    ObjectFreeze(certs);
+    emitDefaultCertificatesDebug();
+  } else if (type === "bundled") {
     certs = rootCertificates;
   } else {
     certs = ObjectFreeze(op_node_get_ca_certificates(type)) as string[];
@@ -300,8 +463,12 @@ return {
   createSecurePair,
   rootCertificates,
   DEFAULT_ECDH_CURVE,
-  DEFAULT_MAX_VERSION,
-  DEFAULT_MIN_VERSION,
+  get DEFAULT_MAX_VERSION() {
+    return getDefaultMaxVersion();
+  },
+  get DEFAULT_MIN_VERSION() {
+    return getDefaultMinVersion();
+  },
   CLIENT_RENEG_LIMIT,
   CLIENT_RENEG_WINDOW,
 };
