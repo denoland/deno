@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use deno_config::deno_json::FmtOptionsConfig;
@@ -93,15 +94,21 @@ impl EditorConfigProperties {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct ParsedFile {
   root: bool,
   sections: Vec<Section>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct Section {
-  pattern: String,
+  /// Anchored regex compiled from the section's glob pattern,
+  /// matched against the slash-separated path relative to the
+  /// `.editorconfig` directory. `None` if the pattern was empty or
+  /// failed to compile (in which case the section is inert). Patterns
+  /// without a `/` match the basename in any subdirectory; this is
+  /// encoded by a `(?:.*/)?` prefix in the compiled regex.
+  regex: Option<Regex>,
   properties: SectionProperties,
 }
 
@@ -114,10 +121,24 @@ struct SectionProperties {
   end_of_line: Option<EndOfLine>,
 }
 
-/// Cache of parsed `.editorconfig` files, keyed by absolute path.
+/// One entry in a resolved `.editorconfig` chain — a parsed file and
+/// the directory it lives in (needed to compute the path relative to
+/// the `.editorconfig` for pattern matching).
+#[derive(Debug)]
+struct ChainEntry {
+  dir: PathBuf,
+  file: Arc<ParsedFile>,
+}
+
+/// Cache of parsed `.editorconfig` files, keyed by the absolute path
+/// of the directory the file lives in. The cache also memoizes the
+/// resolved chain (outermost → innermost) for each starting directory
+/// so that the directory walk runs once per unique directory rather
+/// than once per file.
 #[derive(Debug, Default)]
 pub struct EditorConfigCache {
-  files: Mutex<HashMap<PathBuf, Option<ParsedFile>>>,
+  files: Mutex<HashMap<PathBuf, Option<Arc<ParsedFile>>>>,
+  chains: Mutex<HashMap<PathBuf, Arc<Vec<ChainEntry>>>>,
 }
 
 impl EditorConfigCache {
@@ -132,31 +153,23 @@ impl EditorConfigCache {
       Ok(p) => p,
       Err(_) => file_path.to_path_buf(),
     };
-
-    // Walk up from the file's directory, collecting .editorconfig files.
-    // Stop when we hit one with `root = true`.
-    let mut configs: Vec<(PathBuf, ParsedFile)> = Vec::new();
-    let start = abs_path.parent().unwrap_or(&abs_path);
-    let mut cur: Option<&Path> = Some(start);
-    while let Some(dir) = cur {
-      let ec_path = dir.join(".editorconfig");
-      if let Some(parsed) = self.read_and_parse(&ec_path) {
-        let is_root = parsed.root;
-        configs.push((dir.to_path_buf(), parsed));
-        if is_root {
-          break;
-        }
-      }
-      cur = dir.parent();
+    let start = abs_path.parent().unwrap_or(&abs_path).to_path_buf();
+    let chain = self.resolve_chain(&start);
+    if chain.is_empty() {
+      return EditorConfigProperties::default();
     }
 
-    // Apply from outermost to innermost so nearer files override farther ones.
-    configs.reverse();
-
     let mut out = EditorConfigProperties::default();
-    for (dir, parsed) in configs {
-      for section in &parsed.sections {
-        if pattern_matches(&section.pattern, &dir, &abs_path) {
+    for entry in chain.iter() {
+      // Compute the file path relative to this .editorconfig's dir.
+      let Ok(rel) = abs_path.strip_prefix(&entry.dir) else {
+        continue;
+      };
+      let rel = path_to_forward_slash(rel);
+      for section in &entry.file.sections {
+        if let Some(re) = &section.regex
+          && re.is_match(&rel)
+        {
           merge_section(&mut out, &section.properties);
         }
       }
@@ -164,14 +177,50 @@ impl EditorConfigCache {
     out
   }
 
-  fn read_and_parse(&self, path: &Path) -> Option<ParsedFile> {
+  /// Resolve the (outermost → innermost) chain of `.editorconfig`
+  /// files that apply to anything in `dir`. Result is cached per dir,
+  /// so files in the same directory share the same walk.
+  fn resolve_chain(&self, dir: &Path) -> Arc<Vec<ChainEntry>> {
+    if let Some(c) = self.chains.lock().unwrap().get(dir) {
+      return c.clone();
+    }
+    let mut entries: Vec<ChainEntry> = Vec::new();
+    let mut cur: Option<&Path> = Some(dir);
+    while let Some(d) = cur {
+      let ec_path = d.join(".editorconfig");
+      if let Some(parsed) = self.read_and_parse(&ec_path) {
+        let is_root = parsed.root;
+        entries.push(ChainEntry {
+          dir: d.to_path_buf(),
+          file: parsed,
+        });
+        if is_root {
+          break;
+        }
+      }
+      cur = d.parent();
+    }
+    // Apply outermost first so nearer files override farther ones.
+    entries.reverse();
+    let arc = Arc::new(entries);
+    self
+      .chains
+      .lock()
+      .unwrap()
+      .insert(dir.to_path_buf(), arc.clone());
+    arc
+  }
+
+  fn read_and_parse(&self, path: &Path) -> Option<Arc<ParsedFile>> {
     {
       let files = self.files.lock().unwrap();
       if let Some(cached) = files.get(path) {
         return cached.clone();
       }
     }
-    let parsed = std::fs::read_to_string(path).ok().map(|s| parse(&s));
+    let parsed = std::fs::read_to_string(path)
+      .ok()
+      .map(|s| Arc::new(parse(&s)));
     let mut files = self.files.lock().unwrap();
     files.insert(path.to_path_buf(), parsed.clone());
     parsed
@@ -212,8 +261,9 @@ fn parse(contents: &str) -> ParsedFile {
       if let Some(prev) = current.take() {
         sections.push(prev);
       }
+      let regex = compile_glob_regex(pattern);
       current = Some(Section {
-        pattern: pattern.to_string(),
+        regex,
         properties: SectionProperties::default(),
       });
       continue;
@@ -292,23 +342,20 @@ fn strip_comment(s: &str) -> &str {
   s
 }
 
-/// Check whether `pattern` from `.editorconfig` in `config_dir` matches
-/// `file_path`. `file_path` must be inside `config_dir` or one of its
-/// descendants for any match to occur.
-fn pattern_matches(pattern: &str, config_dir: &Path, file_path: &Path) -> bool {
-  let Ok(rel) = file_path.strip_prefix(config_dir) else {
-    return false;
-  };
-  let rel = path_to_forward_slash(rel);
-
-  // Spec: if the pattern contains a path separator, it is matched
-  // relative to the .editorconfig directory. Otherwise it matches
-  // the basename in any subdirectory.
-  let pattern_has_slash = pattern.contains('/');
-  let pattern_re = glob_to_regex(pattern, !pattern_has_slash);
-  Regex::new(&pattern_re)
-    .map(|re| re.is_match(&rel))
-    .unwrap_or(false)
+/// Compile a `.editorconfig` section glob pattern to a regex anchored
+/// against the slash-separated relative path of a file. Returns `None`
+/// if the pattern is empty or fails to compile (the section then has
+/// no effect).
+fn compile_glob_regex(pattern: &str) -> Option<Regex> {
+  if pattern.is_empty() {
+    return None;
+  }
+  // If the pattern doesn't contain a path separator it matches the
+  // basename in any subdirectory; otherwise it's anchored at the
+  // `.editorconfig` directory.
+  let match_any_dir = !pattern.contains('/');
+  let pattern_re = glob_to_regex(pattern, match_any_dir);
+  Regex::new(&pattern_re).ok()
 }
 
 fn path_to_forward_slash(p: &Path) -> String {
@@ -534,13 +581,17 @@ indent_size = 4
     );
     assert!(f.root);
     assert_eq!(f.sections.len(), 2);
-    assert_eq!(f.sections[0].pattern, "*");
+    let s0_re = f.sections[0].regex.as_ref().unwrap();
+    assert!(s0_re.is_match("foo.ts"));
+    assert!(s0_re.is_match("a/b/foo.ts"));
     assert_eq!(
       f.sections[0].properties.indent_style,
       Some(IndentStyle::Space)
     );
     assert_eq!(f.sections[0].properties.indent_size, Some(2));
-    assert_eq!(f.sections[1].pattern, "*.py");
+    let s1_re = f.sections[1].regex.as_ref().unwrap();
+    assert!(s1_re.is_match("a.py"));
+    assert!(!s1_re.is_match("a.ts"));
     assert_eq!(f.sections[1].properties.indent_size, Some(4));
   }
 
