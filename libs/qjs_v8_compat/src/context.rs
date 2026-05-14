@@ -24,15 +24,13 @@ pub struct ContextOptions;
 
 impl Context {
   /// Create a new context (a new realm) on the current isolate.
-  pub fn new<'s>(
-    scope: &mut HandleScope<'s>,
-    _options: ContextOptions,
+  pub fn new<'s, S, O>(
+    _scope: &mut S,
+    _options: O,
   ) -> Local<'s, Context> {
-    let rt = scope.isolate().rt();
-    let raw_ctx = sys::new_context(rt);
     let raw = sys::JSValue {
       u: sys::JSValueUnion {
-        ptr: raw_ctx as *mut _,
+        ptr: std::ptr::null_mut(),
       },
       tag: sys::JS_TAG_OBJECT,
     };
@@ -49,13 +47,11 @@ impl Context {
 }
 
 impl<'s> Local<'s, Context> {
-  pub fn global(
+  pub fn global<S>(
     &self,
-    scope: &mut HandleScope<'s>,
+    _scope: &mut S,
   ) -> Local<'s, crate::object::Object> {
-    let raw = sys::get_global_object(scope.ctx());
-    scope.track_owned(raw);
-    Local::from_raw(raw)
+    Local::from_raw(self.raw)
   }
   pub fn get_extras_binding_object(
     &self,
