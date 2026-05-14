@@ -1290,6 +1290,7 @@ const kAckStatusError = 1;
 let threadMessageRid: number | undefined;
 let workerMessageListenerCount = 0;
 let nextThreadMessageId = 1;
+let crossThreadSetUp = false;
 const pendingThreadMessages = new SafeMap<
   number,
   {
@@ -1386,27 +1387,21 @@ async function pollCrossThreadMessages() {
   }
 }
 
+// Eagerly observe listener add/remove for `workerMessage` so the count
+// is always in sync. Actual registration of the cross-thread resource
+// is deferred to `ensureCrossThreadMessaging` so threads that never
+// touch `postMessageToThread` don't carry an extra entry in
+// `core.resources()` (which several finalization tests assert on).
 function setupCrossThreadMessaging() {
-  if (threadMessageRid !== undefined) return;
-  threadMessageRid = op_node_worker_thread_register(threadId);
-
-  // Account for any `workerMessage` listeners already on `process` when
-  // we wire ourselves up: `newListener` only fires for additions made
-  // after this point.
   workerMessageListenerCount = process.listenerCount?.("workerMessage") ?? 0;
   if (workerMessageListenerCount > 0) {
-    op_node_worker_thread_set_listener_count(
-      threadId,
-      workerMessageListenerCount,
-    );
+    ensureCrossThreadMessaging();
   }
 
-  // Track `workerMessage` listeners so the Rust side knows whether to
-  // accept inbound posts. `newListener` / `removeListener` fire on every
-  // `on` / `off` for any event, so we filter on event name.
   process.on("newListener", (eventName: string) => {
     if (eventName === "workerMessage") {
       workerMessageListenerCount++;
+      ensureCrossThreadMessaging();
       op_node_worker_thread_set_listener_count(
         threadId,
         workerMessageListenerCount,
@@ -1415,16 +1410,29 @@ function setupCrossThreadMessaging() {
   });
   process.on("removeListener", (eventName: string) => {
     if (eventName === "workerMessage") {
-      // EventEmitter only fires removeListener for actually-registered
-      // listeners, so this stays in sync with newListener.
       if (workerMessageListenerCount > 0) workerMessageListenerCount--;
-      op_node_worker_thread_set_listener_count(
-        threadId,
-        workerMessageListenerCount,
-      );
+      if (crossThreadSetUp) {
+        op_node_worker_thread_set_listener_count(
+          threadId,
+          workerMessageListenerCount,
+        );
+      }
     }
   });
+}
 
+function ensureCrossThreadMessaging() {
+  if (crossThreadSetUp) return;
+  crossThreadSetUp = true;
+  threadMessageRid = op_node_worker_thread_register(threadId);
+  // Sync any listener count observed via `newListener` before the
+  // registry slot existed.
+  if (workerMessageListenerCount > 0) {
+    op_node_worker_thread_set_listener_count(
+      threadId,
+      workerMessageListenerCount,
+    );
+  }
   // The poll loop runs forever; the underlying receive op resolves to
   // null when the channel is torn down, ending the loop cleanly.
   pollCrossThreadMessages();
@@ -1465,6 +1473,10 @@ function postMessageToThread(
   } catch (err) {
     return PromiseReject(err);
   }
+
+  // Senders also need to be registered so the destination's ack can
+  // find them. Cheap no-op after the first call.
+  ensureCrossThreadMessaging();
 
   const id = nextThreadMessageId++;
   let data;
