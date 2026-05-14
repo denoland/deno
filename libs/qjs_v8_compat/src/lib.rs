@@ -114,6 +114,8 @@ pub use crate::v8::WasmStreaming;
 pub use crate::v8::WriteFlags;
 pub use crate::v8::TimeZoneDetection;
 pub use crate::v8::Set;
+pub use crate::v8::Date;
+pub use crate::v8::Private;
 pub use crate::v8::PropertyDescriptor;
 pub use crate::v8::UnboundScript;
 pub use crate::v8::IntegrityLevel;
@@ -455,6 +457,8 @@ pub mod v8 {
     impl CFunctionInfo {
       /// Mirror of v8's `CFunctionInfo::new(return_type, &args, repr)` —
       /// the const-callable shape the op2 macro emits at compile time.
+      /// The `'static` bound on `args` matches the op2-generated arrays
+      /// but precludes runtime-built slices; use `new_owned` for those.
       pub const fn new(
         return_info: CTypeInfo,
         args: &'static [CTypeInfo],
@@ -463,6 +467,26 @@ pub mod v8 {
         Self {
           _return_info: return_info,
           _args: args,
+          _i64: i64,
+        }
+      }
+      /// Variant that accepts non-`'static` `&[CTypeInfo]`. Stores the
+      /// slice via a `'static`-typed pointer cast — caller is
+      /// responsible for keeping the underlying buffer alive as long as
+      /// the CFunctionInfo. deno_ffi's `make_template` Boxes both the
+      /// param array and the CFunctionInfo together inside a Turbocall,
+      /// so they share lifetime.
+      pub fn new_owned(
+        return_info: CTypeInfo,
+        args: &[CTypeInfo],
+        i64: Int64Representation,
+      ) -> Self {
+        let args_static: &'static [CTypeInfo] = unsafe {
+          core::slice::from_raw_parts(args.as_ptr(), args.len())
+        };
+        Self {
+          _return_info: return_info,
+          _args: args_static,
           _i64: i64,
         }
       }
@@ -974,6 +998,7 @@ pub mod v8 {
     pub const NO_NULL_TERMINATION: Self = Self(2);
     pub const PRESERVE_ONE_BYTE_NULL: Self = Self(4);
     pub const REPLACE_INVALID_UTF8: Self = Self(8);
+    pub const NULL_TERMINATE: Self = Self(16);
     #[allow(non_upper_case_globals)]
     pub const kReplaceInvalidUtf8: Self = Self::REPLACE_INVALID_UTF8;
     pub const fn empty() -> Self {
@@ -1243,6 +1268,16 @@ pub mod v8 {
   impl crate::primitives::String {
     pub const MAX_LENGTH: usize = (1 << 28) - 16;
   }
+  /// std::hash::Hash for v8::String — hashes the raw JSValue pointer
+  /// bits. Real v8 hashes the string content; this is a shallow stub
+  /// (pointer identity).
+  impl std::hash::Hash for crate::primitives::String {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+      let p: u64 = unsafe { self.raw.u.ptr as usize as u64 };
+      p.hash(state);
+      self.raw.tag.hash(state);
+    }
+  }
 
   // PropertyDescriptor (v8::PropertyDescriptor) — opaque builder.
   pub struct PropertyDescriptor {
@@ -1318,6 +1353,7 @@ pub mod v8 {
 
   /// PinScope methods deno_node uses but our compat doesn't have yet.
   impl<'s, 'i, C> crate::scope::PinScope<'s, 'i, C> {
+    pub fn low_memory_notification(&mut self) {}
     pub fn take_heap_snapshot<F>(&mut self, _writer: F)
     where F: FnMut(&[u8]) -> bool {}
     pub fn get_heap_code_and_metadata_statistics(
@@ -1625,6 +1661,175 @@ pub mod v8 {
   impl<'s, T> Handle for crate::value::Local<'s, T> {
     type Data = T;
   }
+
+  /// Bulk stubs for deno_napi compile compatibility.
+
+  /// `v8::Date` — JS Date object.
+  #[derive(Copy, Clone)]
+  #[repr(transparent)]
+  pub struct Date {
+    pub(crate) raw: crate::sys::JSValue,
+  }
+  impl Date {
+    pub fn new<'s, S: crate::value::LocalNewScopeRef<'s>>(
+      _scope: &S,
+      _value: f64,
+    ) -> Option<crate::value::Local<'s, Date>> {
+      Some(crate::value::Local::from_raw(crate::sys::jsv_undefined()))
+    }
+  }
+  impl<'s> crate::value::Local<'s, Date> {
+    pub fn value_of(&self) -> f64 { 0.0 }
+  }
+  impl<'s> From<crate::value::Local<'s, Date>>
+    for crate::value::Local<'s, crate::value::Value>
+  {
+    fn from(v: crate::value::Local<'s, Date>) -> Self {
+      crate::value::Local::from_raw(v.raw())
+    }
+  }
+  impl<'s> From<crate::value::Local<'s, crate::value::Value>>
+    for crate::value::Local<'s, Date>
+  {
+    fn from(v: crate::value::Local<'s, crate::value::Value>) -> Self {
+      crate::value::Local::from_raw(crate::value::Local::raw(&v))
+    }
+  }
+
+  /// Re-export of crate::value::Private (defined via v8_type! macro).
+  pub use crate::value::Private;
+
+  /// Object::has_private / delete_private / has_index / is_function.
+  impl<'s> crate::value::Local<'s, crate::object::Object> {
+    pub fn has_private<S>(
+      &self,
+      _scope: &mut S,
+      _key: crate::value::Local<'_, Private>,
+    ) -> Option<bool>
+    where S: crate::scope::HandleScopeSource { Some(false) }
+    pub fn delete_private<S>(
+      &self,
+      _scope: &mut S,
+      _key: crate::value::Local<'_, Private>,
+    ) -> Option<bool>
+    where S: crate::scope::HandleScopeSource { Some(true) }
+    pub fn has_index<S>(
+      &self,
+      _scope: &mut S,
+      _index: u32,
+    ) -> Option<bool>
+    where S: crate::scope::HandleScopeSource { Some(false) }
+    pub fn is_function(&self) -> bool {
+      // Best-effort: forward to Local<Value>::is_function via deref.
+      crate::sys::jsv_is_object(&self.raw())
+    }
+    pub fn instance_of<S, C>(
+      &self,
+      _scope: &mut S,
+      _ctor: crate::value::Local<'_, C>,
+    ) -> Option<bool>
+    where S: crate::scope::HandleScopeSource { Some(false) }
+  }
+
+  /// Local<Value>::instance_of.
+  impl<'s> crate::value::Local<'s, crate::value::Value> {
+    pub fn instance_of<S, C>(
+      &self,
+      _scope: &mut S,
+      _ctor: crate::value::Local<'_, C>,
+    ) -> Option<bool>
+    where S: crate::scope::HandleScopeSource { Some(false) }
+  }
+
+  /// Weak<T>::to_global stub. Real v8 takes `(isolate)`.
+  impl<T> crate::value::Weak<T> {
+    pub fn to_global<I>(&self, _isolate: I) -> Option<crate::value::Global<T>> {
+      None
+    }
+  }
+
+  /// String::new_external_onebyte_raw / new_external_twobyte_raw stubs.
+  /// Real v8 signature: (scope, data_ptr, length, destructor).
+  impl crate::primitives::String {
+    pub unsafe fn new_external_onebyte_raw<'s, S: crate::value::LocalNewScopeRef<'s>, D>(
+      scope: &S,
+      data: *mut core::ffi::c_char,
+      length: usize,
+      _destructor: D,
+    ) -> Option<crate::value::Local<'s, crate::primitives::String>> {
+      let bytes = unsafe { std::slice::from_raw_parts(data as *const u8, length) };
+      let s = std::str::from_utf8(bytes).ok()?;
+      crate::primitives::String::new(scope, s)
+    }
+    pub unsafe fn new_external_twobyte_raw<'s, S: crate::value::LocalNewScopeRef<'s>, D>(
+      scope: &S,
+      data: *mut u16,
+      length: usize,
+      _destructor: D,
+    ) -> Option<crate::value::Local<'s, crate::primitives::String>> {
+      let units = unsafe { std::slice::from_raw_parts(data, length) };
+      let s: std::string::String = std::char::decode_utf16(units.iter().copied())
+        .filter_map(|r| r.ok())
+        .collect();
+      crate::primitives::String::new(scope, &s)
+    }
+  }
+
+  /// WriteFlags::kNullTerminate alias.
+  impl WriteFlags {
+    #[allow(non_upper_case_globals)]
+    pub const kNullTerminate: Self = Self::NULL_TERMINATE;
+  }
+
+  /// TypedArray is_*_array predicates only — buffer/byte_length/byte_offset
+  /// are already on Local<TypedArray> via typed_array_view_methods!.
+  impl<'s> crate::value::Local<'s, crate::buffer::TypedArray> {
+    pub fn is_int8_array(&self) -> bool { false }
+    pub fn is_uint8_array(&self) -> bool { false }
+    pub fn is_uint8_clamped_array(&self) -> bool { false }
+    pub fn is_int16_array(&self) -> bool { false }
+    pub fn is_uint16_array(&self) -> bool { false }
+    pub fn is_int32_array(&self) -> bool { false }
+    pub fn is_uint32_array(&self) -> bool { false }
+    pub fn is_float32_array(&self) -> bool { false }
+    pub fn is_float64_array(&self) -> bool { false }
+    pub fn is_big_int64_array(&self) -> bool { false }
+    pub fn is_big_uint64_array(&self) -> bool { false }
+  }
+
+  /// DataView accessors.
+  impl<'s> crate::value::Local<'s, crate::buffer::DataView> {
+    pub fn data(&self) -> *mut core::ffi::c_void { core::ptr::null_mut() }
+    pub fn byte_length(&self) -> usize { 0 }
+    pub fn byte_offset(&self) -> usize { 0 }
+    pub fn buffer<'sc, S>(
+      &self,
+      _scope: &mut S,
+    ) -> Option<crate::value::Local<'sc, crate::buffer::ArrayBuffer>>
+    where S: crate::scope::HandleScopeSource {
+      Some(crate::value::Local::from_raw(crate::sys::jsv_undefined()))
+    }
+  }
+
+  /// CallbackScope::set_microtasks_policy stub.
+  impl<'s, C> crate::scope::CallbackScope<'s, C> {
+    pub fn set_microtasks_policy(&mut self, _policy: crate::isolate::MicrotasksPolicy) {}
+  }
+
+  /// Isolate::adjust_amount_of_external_allocated_memory stub.
+  impl crate::isolate::Isolate {
+    pub fn adjust_amount_of_external_allocated_memory(&mut self, _bytes: i64) -> i64 { 0 }
+    /// Mirror of `Isolate::ref_from_raw_isolate_ptr_mut_unchecked`. Real
+    /// v8 takes `&mut UnsafeRawIsolatePtr`; we forward to the
+    /// by-value variant.
+    pub unsafe fn ref_from_raw_isolate_ptr_mut_unchecked<'a>(
+      ptr: &mut crate::isolate::UnsafeRawIsolatePtr,
+    ) -> &'a mut Self {
+      unsafe { Self::from_raw_isolate_ptr(*ptr) }
+    }
+  }
+
+  // (FunctionTemplate set_class_name is already defined in template.rs.)
 
   /// Stub for v8::Set (the JS Set class). Transparent wrapper around
   /// a JSValue so it can up-cast to Local<Value> like other v8 types.

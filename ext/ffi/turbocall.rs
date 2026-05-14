@@ -368,7 +368,7 @@ pub(crate) fn make_template(sym: &Symbol, trampoline: Trampoline) -> Turbocall {
     (&sym.result_type).into()
   };
 
-  let c_function_info = Box::new(fast_api::CFunctionInfo::new(
+  let c_function_info = Box::new(fast_api::CFunctionInfo::new_owned(
     ret,
     &param_info,
     fast_api::Int64Representation::BigInt,

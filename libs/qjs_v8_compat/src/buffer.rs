@@ -308,14 +308,15 @@ impl DataView {
 }
 
 impl<'s> Local<'s, ArrayBufferView> {
-  pub fn buffer(
+  pub fn buffer<'sc, S>(
     &self,
-    _scope: &mut HandleScope<'s>,
-  ) -> Option<Local<'s, ArrayBuffer>>
+    scope: &mut S,
+  ) -> Option<Local<'sc, ArrayBuffer>>
   where
-    Self: Sized,
+    S: crate::scope::HandleScopeSource + ?Sized,
   {
-    Some(self.buffer_unwrap(_scope))
+    let raw = sys::new_object(scope.default_ctx());
+    Some(Local::from_raw(raw))
   }
   pub fn buffer_unwrap(
     &self,

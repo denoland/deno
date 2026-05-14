@@ -345,6 +345,30 @@ impl<'s> Local<'s, Number> {
       _ => f64::NAN,
     }
   }
+  pub fn integer_value<S>(&self, _scope: &mut S) -> Option<i64>
+  where
+    S: crate::scope::HandleScopeSource + ?Sized,
+  {
+    Some(self.value() as i64)
+  }
+  pub fn uint32_value<S>(&self, _scope: &mut S) -> Option<u32>
+  where
+    S: crate::scope::HandleScopeSource + ?Sized,
+  {
+    Some(self.value() as u32)
+  }
+  pub fn int32_value<S>(&self, _scope: &mut S) -> Option<i32>
+  where
+    S: crate::scope::HandleScopeSource + ?Sized,
+  {
+    Some(self.value() as i32)
+  }
+  pub fn number_value<S>(&self, _scope: &mut S) -> Option<f64>
+  where
+    S: crate::scope::HandleScopeSource + ?Sized,
+  {
+    Some(self.value())
+  }
   /// `v8::Number::to_string(scope)` — coerce to v8::String.
   pub fn to_string<'sc>(
     &self,
@@ -412,9 +436,16 @@ impl Symbol {
     scope: &mut HandleScope<'s>,
     _key: Local<'s, String>,
   ) -> Local<'s, Symbol> {
-    Self::new(scope)
+    Self::new_inner(scope)
   }
-  pub fn new<'s>(scope: &mut HandleScope<'s>) -> Local<'s, Symbol> {
+  /// Mirror of `v8::Symbol::new(scope, description)`.
+  pub fn new<'s>(
+    scope: &mut HandleScope<'s>,
+    _description: Option<Local<'_, String>>,
+  ) -> Local<'s, Symbol> {
+    Self::new_inner(scope)
+  }
+  fn new_inner<'s>(scope: &mut HandleScope<'s>) -> Local<'s, Symbol> {
     // QJS-DIVERGE: real path is JS_NewSymbol(ctx, NULL, false). Mocked.
     let raw = sys::JSValue {
       u: sys::JSValueUnion { int32: 0 },
@@ -427,7 +458,7 @@ impl Symbol {
     scope: &mut HandleScope<'s>,
     _desc: Local<'s, String>,
   ) -> Local<'s, Symbol> {
-    Self::new(scope)
+    Self::new_inner(scope)
   }
   pub fn get_iterator<'s, S>(_scope: &mut S) -> Local<'s, Symbol> {
     Local::from_raw(sys::JSValue {

@@ -292,7 +292,7 @@ fn make_sync_fn<'s>(
   let c_function = turbocall.as_ref().map(|turbocall| {
     v8::fast_api::CFunction::new(
       turbocall.trampoline.ptr(),
-      &turbocall.c_function_info,
+      &*turbocall.c_function_info as *const _,
     )
   });
 
@@ -306,7 +306,7 @@ fn make_sync_fn<'s>(
   } else {
     builder.build(scope)
   };
-  func.get_function(scope).unwrap()
+  func.unwrap().get_function(scope).unwrap()
 }
 
 fn sync_fn_impl<'s>(

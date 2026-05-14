@@ -36,6 +36,16 @@ v8_type!(
   Value, Data, Primitive, Name, Private, Message, StackTrace, StackFrame,
 );
 
+impl Private {
+  pub fn new<'s, S>(
+    _scope: &S,
+    _name: Option<Local<'_, crate::primitives::String>>,
+  ) -> Local<'s, Private> {
+    Local::from_raw(crate::sys::jsv_undefined())
+  }
+  // for_api defined in object.rs alongside other Private accessors.
+}
+
 impl<'s> Local<'s, Message> {
   pub fn get<'sc>(
     &self,
@@ -2139,6 +2149,19 @@ impl<T> std::fmt::Debug for Weak<T> {
 }
 impl<T> Weak<T> {
   pub fn new<'a, 'b, S>(_scope: &mut S, _local: Local<'a, T>) -> Self {
+    Self { _t: PhantomData }
+  }
+  /// Constructor stub for the napi finalizer path. Real V8 takes
+  /// `(isolate, value, finalizer)` where finalizer is a closure.
+  /// We discard all three since QuickJS doesn't track weak refs.
+  pub fn with_finalizer<I, V, F>(_isolate: I, _value: V, _finalizer: F) -> Self {
+    Self { _t: PhantomData }
+  }
+  /// Internal helper for weak-finalizer construction from outside.
+  pub fn stub_for_finalizer() -> Self {
+    Self { _t: PhantomData }
+  }
+  pub fn empty() -> Self {
     Self { _t: PhantomData }
   }
   pub fn is_empty(&self) -> bool {

@@ -551,13 +551,11 @@ impl Env {
   }
 
   pub fn context<'s>(&'s self) -> v8::Local<'s, v8::Context> {
-    // SAFETY: `v8::Local` is always non-null pointer; the `PinScope<'_, '_>` is
-    // already on the stack, but we don't have access to it.
-    unsafe {
-      std::mem::transmute::<NonNull<v8::Context>, v8::Local<v8::Context>>(
-        self.context,
-      )
-    }
+    // SAFETY: `self.context` is a heap pointer produced by
+    // `Global::into_raw()`; reading the JSValue back via `from_non_null`
+    // lets us reconstruct a Local without taking ownership of the
+    // underlying Global slot.
+    unsafe { v8::Local::<v8::Context>::from_non_null(self.context) }
   }
 
   pub fn threadsafe_function_ref(&mut self) {
