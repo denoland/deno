@@ -64,8 +64,8 @@ impl String {
     let s = std::str::from_utf8(bytes).ok()?;
     Self::new(scope, s)
   }
-  pub fn new_external_onebyte_static<'s>(
-    scope: &mut HandleScope<'s>,
+  pub fn new_external_onebyte_static<'s, S: crate::value::LocalNewScopeRef<'s>>(
+    scope: &S,
     bytes: &'static [u8],
   ) -> Option<Local<'s, String>> {
     let s = std::str::from_utf8(bytes).ok()?;
@@ -93,8 +93,8 @@ impl String {
     let s = std::string::String::from_utf16_lossy(units);
     Self::new(scope, &s)
   }
-  pub fn new_from_onebyte_const<'s>(
-    scope: &mut HandleScope<'s>,
+  pub fn new_from_onebyte_const<'s, S: crate::value::LocalNewScopeRef<'s>>(
+    scope: &S,
     bytes: &'static OneByteConst,
   ) -> Option<Local<'s, String>> {
     let s = std::str::from_utf8(bytes._data).ok()?;

@@ -25,59 +25,71 @@ use crate::value::Value;
 /// QuickJS's pending-exception slot to fill.
 pub struct Exception;
 
-fn new_error<'s>(
-  scope: &mut HandleScope<'s>,
+fn new_error<'s, S>(
+  scope: &mut S,
   name: &str,
-  message: Local<'s, crate::primitives::String>,
-) -> Local<'s, Value> {
-  let raw = sys::new_object(scope.ctx());
-  scope.track_owned(raw);
+  message: Local<'_, crate::primitives::String>,
+) -> Local<'s, Value>
+where
+  S: crate::scope::HandleScopeSource + ?Sized,
+{
+  let ctx = scope.default_ctx();
+  let raw = sys::new_object(ctx);
   let obj_local: Local<'s, crate::object::Object> = Local::from_raw(raw);
 
-  // Set name + message via the string-keyed wrapper. Take fresh string
-  // refcounts so the obj owns them.
-  let name_s = sys::new_string(scope.ctx(), name);
-  scope.track_owned(name_s);
-  let name_val: Local<'s, Value> = Local::from_raw(name_s);
-  let _ = obj_local.set_str(scope, "name", name_val);
-
-  let msg_val: Local<'s, Value> = Local::from_raw(message.raw());
-  // The string was already in the scope's owned vec — set_str will release
-  // it from there and transfer to the property slot.
-  let _ = obj_local.set_str(scope, "message", msg_val);
+  // Set name + message directly via JS_SetPropertyStr on ctx so we
+  // don't need scope.track_owned (which is HandleScope-specific).
+  let name_s = sys::new_string(ctx, name);
+  let _ = sys::set_property_str(ctx, raw, "name", name_s);
+  let _ = sys::set_property_str(ctx, raw, "message", message.raw());
 
   Local::from_raw(raw)
 }
 
 impl Exception {
-  pub fn error<'s>(
-    scope: &mut HandleScope<'s>,
-    message: Local<'s, crate::primitives::String>,
-  ) -> Local<'s, Value> {
+  pub fn error<'s, S>(
+    scope: &mut S,
+    message: Local<'_, crate::primitives::String>,
+  ) -> Local<'s, Value>
+  where
+    S: crate::scope::HandleScopeSource + ?Sized,
+  {
     new_error(scope, "Error", message)
   }
-  pub fn type_error<'s>(
-    scope: &mut HandleScope<'s>,
-    message: Local<'s, crate::primitives::String>,
-  ) -> Local<'s, Value> {
+  pub fn type_error<'s, S>(
+    scope: &mut S,
+    message: Local<'_, crate::primitives::String>,
+  ) -> Local<'s, Value>
+  where
+    S: crate::scope::HandleScopeSource + ?Sized,
+  {
     new_error(scope, "TypeError", message)
   }
-  pub fn range_error<'s>(
-    scope: &mut HandleScope<'s>,
-    message: Local<'s, crate::primitives::String>,
-  ) -> Local<'s, Value> {
+  pub fn range_error<'s, S>(
+    scope: &mut S,
+    message: Local<'_, crate::primitives::String>,
+  ) -> Local<'s, Value>
+  where
+    S: crate::scope::HandleScopeSource + ?Sized,
+  {
     new_error(scope, "RangeError", message)
   }
-  pub fn syntax_error<'s>(
-    scope: &mut HandleScope<'s>,
-    message: Local<'s, crate::primitives::String>,
-  ) -> Local<'s, Value> {
+  pub fn syntax_error<'s, S>(
+    scope: &mut S,
+    message: Local<'_, crate::primitives::String>,
+  ) -> Local<'s, Value>
+  where
+    S: crate::scope::HandleScopeSource + ?Sized,
+  {
     new_error(scope, "SyntaxError", message)
   }
-  pub fn reference_error<'s>(
-    scope: &mut HandleScope<'s>,
-    message: Local<'s, crate::primitives::String>,
-  ) -> Local<'s, Value> {
+  pub fn reference_error<'s, S>(
+    scope: &mut S,
+    message: Local<'_, crate::primitives::String>,
+  ) -> Local<'s, Value>
+  where
+    S: crate::scope::HandleScopeSource + ?Sized,
+  {
     new_error(scope, "ReferenceError", message)
   }
 }

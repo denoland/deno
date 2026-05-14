@@ -194,6 +194,11 @@ impl OwnedIsolate {
   pub(crate) fn default_ctx(&self) -> sys::Context {
     self.default_ctx
   }
+  /// Public shared-borrow accessor used by Global::new's GlobalScope
+  /// trait — equivalent to default_ctx but pub.
+  pub fn default_ctx_shared(&self) -> sys::Context {
+    self.default_ctx
+  }
 
   /// View this isolate as `&mut Isolate`. Mirrors V8's `*mut Isolate` deref.
   pub fn as_isolate(&mut self) -> &mut Isolate {
@@ -361,6 +366,10 @@ impl Isolate {
     self.0.rt
   }
   pub(crate) fn default_ctx(&self) -> sys::Context {
+    self.0.default_ctx
+  }
+  /// Public shared-borrow accessor for GlobalScope.
+  pub fn default_ctx_shared(&self) -> sys::Context {
     self.0.default_ctx
   }
   pub fn cancel_terminate_execution(&mut self) {}

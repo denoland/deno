@@ -119,6 +119,7 @@ pub use crate::v8::UnboundScript;
 pub use crate::v8::IntegrityLevel;
 pub use crate::v8::Float16Array;
 pub use crate::v8::MicrotaskQueue;
+pub use crate::v8::MicrotaskQueueOwned;
 pub use crate::v8::MicrotasksPolicy;
 pub use crate::v8::MicrotaskQueueIntoRaw;
 pub use crate::v8::IndexedPropertyHandlerConfiguration;
@@ -901,7 +902,7 @@ pub mod v8 {
       _source: &mut Source,
       _options: O,
       _no_cache_reason: N,
-    ) -> Option<Local<'s, Script>> {
+    ) -> Option<Local<'s, super::UnboundScript>> {
       None
     }
     pub enum NoCacheReason {
@@ -1167,6 +1168,16 @@ pub mod v8 {
           crate::value::Local::from_raw(crate::value::Local::raw(&v))
         }
       }
+      impl<'s> TryFrom<crate::value::Local<'s, crate::value::Value>>
+        for crate::value::Local<'s, $name>
+      {
+        type Error = crate::exception::DataError;
+        fn try_from(
+          v: crate::value::Local<'s, crate::value::Value>,
+        ) -> Result<Self, Self::Error> {
+          Ok(crate::value::Local::from_raw(crate::value::Local::raw(&v)))
+        }
+      }
       impl<'s> crate::value::Local<'s, $name> {
         pub fn set_index<S, V>(
           &self,
@@ -1291,19 +1302,6 @@ pub mod v8 {
   }
 
 
-  /// MicrotaskQueue methods used by deno_node/vm.rs.
-  impl MicrotaskQueue {
-    pub fn perform_checkpoint_inst(&self) {}
-  }
-  // perform_checkpoint as static method already defined above; deno_node
-  // uses it as `mq.perform_checkpoint(scope)` though, so add an inherent.
-  pub trait MicrotaskQueueExt {
-    fn perform_checkpoint<S>(&self, _scope: &mut S);
-  }
-  impl MicrotaskQueueExt for MicrotaskQueue {
-    fn perform_checkpoint<S>(&self, _scope: &mut S) {}
-  }
-
   /// WriteFlags::default helper.
   impl crate::v8::WriteFlags {
     pub fn default() -> Self { Self::empty() }
@@ -1322,10 +1320,10 @@ pub mod v8 {
 
   /// Object additional methods.
   impl<'s> crate::value::Local<'s, crate::object::Object> {
-    pub fn define_property<'sc, S>(
+    pub fn define_property<'sc, K, S>(
       &self,
       _scope: &mut S,
-      _key: crate::value::Local<'_, crate::value::Value>,
+      _key: crate::value::Local<'_, K>,
       _descriptor: &PropertyDescriptor,
     ) -> Option<bool>
     where S: crate::scope::HandleScopeSource { Some(true) }
@@ -1342,18 +1340,18 @@ pub mod v8 {
     where S: crate::scope::HandleScopeSource {
       Some(crate::value::Local::from_raw(crate::sys::jsv_undefined()))
     }
-    pub fn get_own_property_descriptor<'sc, S>(
+    pub fn get_own_property_descriptor<'sc, K, S>(
       &self,
       _scope: &mut S,
-      _key: crate::value::Local<'_, crate::value::Value>,
+      _key: crate::value::Local<'_, K>,
     ) -> Option<crate::value::Local<'sc, crate::value::Value>>
     where S: crate::scope::HandleScopeSource {
       Some(crate::value::Local::from_raw(crate::sys::jsv_undefined()))
     }
-    pub fn get_property_attributes<'sc, S>(
+    pub fn get_property_attributes<'sc, K, S>(
       &self,
       _scope: &mut S,
-      _key: crate::value::Local<'_, crate::value::Value>,
+      _key: crate::value::Local<'_, K>,
     ) -> Option<crate::object::PropertyAttribute>
     where S: crate::scope::HandleScopeSource {
       Some(crate::object::PropertyAttribute::NONE)
@@ -1361,7 +1359,7 @@ pub mod v8 {
     pub fn get_real_named_property<'sc, S>(
       &self,
       _scope: &mut S,
-      _key: crate::value::Local<'_, crate::primitives::String>,
+      _key: crate::value::Local<'_, crate::value::Name>,
     ) -> Option<crate::value::Local<'sc, crate::value::Value>>
     where S: crate::scope::HandleScopeSource {
       Some(crate::value::Local::from_raw(crate::sys::jsv_undefined()))
@@ -1369,7 +1367,7 @@ pub mod v8 {
     pub fn get_real_named_property_attributes<S>(
       &self,
       _scope: &mut S,
-      _key: crate::value::Local<'_, crate::primitives::String>,
+      _key: crate::value::Local<'_, crate::value::Name>,
     ) -> Option<crate::object::PropertyAttribute>
     where S: crate::scope::HandleScopeSource {
       Some(crate::object::PropertyAttribute::NONE)
@@ -1377,7 +1375,7 @@ pub mod v8 {
     pub fn has_real_named_property<S>(
       &self,
       _scope: &mut S,
-      _key: crate::value::Local<'_, crate::primitives::String>,
+      _key: crate::value::Local<'_, crate::value::Name>,
     ) -> Option<bool>
     where S: crate::scope::HandleScopeSource { Some(false) }
   }
@@ -1426,6 +1424,9 @@ pub mod v8 {
     where S: crate::scope::HandleScopeSource {
       crate::value::Local::from_raw(crate::sys::jsv_undefined())
     }
+    pub fn create_code_cache(&self) -> Option<Box<crate::external::CachedData>> {
+      None
+    }
   }
 
   /// HeapStatistics extras.
@@ -1471,18 +1472,26 @@ pub mod v8 {
 
   /// Mirror of `v8::MicrotaskQueue`. Real v8 lets a context have its
   /// own microtask queue. QuickJS-ng has a single per-runtime queue;
-  /// we expose the type as an opaque marker.
+  /// we expose the type as an opaque marker. Returned wrapped in a
+  /// `MicrotaskQueueOwned` shim so callers can chain `.into_raw()`
+  /// (rusty_v8 returns `UniquePtr<MicrotaskQueue>` with the same
+  /// method).
   pub struct MicrotaskQueue;
   impl MicrotaskQueue {
     pub fn new<'s, S>(
       _scope: &mut S,
       _policy: MicrotasksPolicy,
-    ) -> Box<MicrotaskQueue> {
-      Box::new(MicrotaskQueue)
+    ) -> MicrotaskQueueOwned {
+      MicrotaskQueueOwned(Box::new(MicrotaskQueue))
     }
-    pub fn perform_checkpoint<'s, S>(_scope: &mut S) {}
+    pub fn perform_checkpoint<S>(&self, _scope: &mut S) {}
   }
-  // For deno_node which uses `MicrotaskQueue::new(scope, policy).into_raw()`
+  /// Wrapper mirroring rusty_v8's `UniquePtr<MicrotaskQueue>` — exposes
+  /// `into_raw() -> *mut MicrotaskQueue` for ext/node/vm.rs's pattern.
+  pub struct MicrotaskQueueOwned(pub Box<MicrotaskQueue>);
+  impl MicrotaskQueueOwned {
+    pub fn into_raw(self) -> *mut MicrotaskQueue { Box::into_raw(self.0) }
+  }
   pub trait MicrotaskQueueIntoRaw { fn into_raw(self) -> *mut MicrotaskQueue; }
   impl MicrotaskQueueIntoRaw for Box<MicrotaskQueue> {
     fn into_raw(self) -> *mut MicrotaskQueue { Box::into_raw(self) }

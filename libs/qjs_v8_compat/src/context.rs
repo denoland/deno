@@ -23,7 +23,7 @@ pub struct Context {
 pub struct ContextOptions<'s> {
   pub global_template: Option<Local<'s, crate::template::ObjectTemplate>>,
   pub global_object: Option<Local<'s, crate::object::Object>>,
-  pub microtask_queue: Option<Local<'s, crate::value::Value>>,
+  pub microtask_queue: Option<*mut crate::v8::MicrotaskQueue>,
   pub _phantom: std::marker::PhantomData<&'s ()>,
 }
 

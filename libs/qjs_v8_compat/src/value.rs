@@ -924,6 +924,23 @@ upcasts_to_view!(
   crate::buffer::Float64Array,
 );
 
+// Uint8Array → Object up-cast (deno_node IPC uses it).
+impl<'s> From<Local<'s, crate::buffer::Uint8Array>>
+  for Local<'s, crate::object::Object>
+{
+  fn from(v: Local<'s, crate::buffer::Uint8Array>) -> Self {
+    Local::from_raw(v.raw)
+  }
+}
+// Same for the other typed-arrays that have JSValue carriers.
+impl<'s> From<Local<'s, crate::buffer::Uint32Array>>
+  for Local<'s, crate::object::Object>
+{
+  fn from(v: Local<'s, crate::buffer::Uint32Array>) -> Self {
+    Local::from_raw(v.raw)
+  }
+}
+
 // Re-open the original list so the trailing `);` from the upstream
 // invocation still closes a valid expansion.
 upcasts_to_value!(
@@ -1517,6 +1534,58 @@ impl<'a, S: GlobalNewScopeRefByShared + ?Sized> GlobalNewScopeRef for &'a S {
     self.scope_ctx_by_shared()
   }
 }
+/// Universal scope trait used by Global::new — implemented broadly so
+/// `Global::new(scope_or_isolate, x)` works for every scope shape and
+/// for `&Isolate` / `&&mut Isolate`. Take `&self` (shared) so callers
+/// passing `&mut Foo` are auto-coerced via `&*foo` and the original
+/// mutable binding remains usable.
+pub trait GlobalScope {
+  fn scope_ctx_shared(&self) -> sys::Context;
+}
+impl<'s, C> GlobalScope for HandleScope<'s, C> {
+  fn scope_ctx_shared(&self) -> sys::Context { HandleScope::ctx(self) }
+}
+impl<'s, 'i, C> GlobalScope for crate::scope::PinScope<'s, 'i, C> {
+  fn scope_ctx_shared(&self) -> sys::Context { HandleScope::ctx(&**self) }
+}
+impl GlobalScope for crate::isolate::Isolate {
+  fn scope_ctx_shared(&self) -> sys::Context {
+    self.default_ctx_shared()
+  }
+}
+impl GlobalScope for crate::isolate::OwnedIsolate {
+  fn scope_ctx_shared(&self) -> sys::Context {
+    self.default_ctx_shared()
+  }
+}
+impl<'p, C> GlobalScope for crate::exception::TryCatch<'p, HandleScope<'p, C>> {
+  fn scope_ctx_shared(&self) -> sys::Context {
+    use std::ops::Deref;
+    let pin: &crate::scope::PinScope<'p, 'p, C> = self.deref();
+    pin.0.inner.ctx
+  }
+}
+impl<'s, C> GlobalScope for crate::scope::CallbackScope<'s, C> {
+  fn scope_ctx_shared(&self) -> sys::Context {
+    self.0.inner.ctx
+  }
+}
+impl<'p, S> GlobalScope for crate::context::ContextScope<'p, S>
+where
+  S: GlobalScope,
+{
+  fn scope_ctx_shared(&self) -> sys::Context {
+    use std::ops::Deref;
+    self.deref().scope_ctx_shared()
+  }
+}
+impl<P: GlobalScope + Unpin> GlobalScope for std::pin::Pin<&mut P> {
+  fn scope_ctx_shared(&self) -> sys::Context {
+    use std::ops::Deref;
+    self.deref().scope_ctx_shared()
+  }
+}
+
 pub trait GlobalNewScopeRefByMut {
   fn scope_ctx_by_mut(&mut self) -> sys::Context;
 }
@@ -1785,15 +1854,17 @@ impl<T> Clone for Global<T> {
 }
 
 impl<T> Global<T> {
-  /// `Global::new(scope, local)` — accepts any scope reference shape:
-  /// HandleScope, PinScope, TryCatch, CallbackScope, ContextScope,
-  /// Pin<&mut ...>, &Isolate, &mut Isolate, &&mut Isolate. Reborrows
-  /// internally so the caller's scope binding stays usable.
-  pub fn new<'lo, S>(scope: &mut S, local: Local<'lo, T>) -> Self
+  /// `Global::new(scope, local)` — mirrors real v8's
+  /// `Global::new(&Isolate, handle)` shape but accepts any scope-like
+  /// type via `GlobalScope`. Takes a *shared* borrow so callers passing
+  /// `&mut Foo` (Rust auto-reborrows to `&Foo`) keep their mutable
+  /// binding usable across the call. Also accepts `&Isolate`,
+  /// `&&mut Isolate`, `&PinScope`, `&HandleScope`, etc.
+  pub fn new<'lo, S>(scope: &S, local: Local<'lo, T>) -> Self
   where
-    S: GlobalNewScopeRefByMut + ?Sized,
+    S: GlobalScope + ?Sized,
   {
-    let ctx = scope.scope_ctx_by_mut();
+    let ctx = scope.scope_ctx_shared();
     sys::dup_value(ctx, local.raw);
     Self {
       raw: local.raw,

@@ -563,8 +563,8 @@ pub enum ContextInitMode {
   UseSnapshot,
 }
 
-pub fn create_v8_context<'a>(
-  scope: &mut v8::PinScope<'a, '_, ()>,
+pub fn create_v8_context<'a, C: Unpin>(
+  scope: &mut v8::PinScope<'a, '_, C>,
   object_template: v8::Local<v8::ObjectTemplate>,
   mode: ContextInitMode,
   microtask_queue: *mut v8::MicrotaskQueue,
@@ -607,8 +607,8 @@ pub fn create_v8_context<'a>(
 #[derive(Debug, Clone)]
 struct SlotContextifyGlobalTemplate(v8::Global<v8::ObjectTemplate>);
 
-pub fn init_global_template<'a>(
-  scope: &mut v8::PinScope<'a, '_, ()>,
+pub fn init_global_template<'a, C: Unpin>(
+  scope: &mut v8::PinScope<'a, '_, C>,
   mode: ContextInitMode,
 ) -> v8::Local<'a, v8::ObjectTemplate> {
   let maybe_object_template_slot =
@@ -656,8 +656,8 @@ thread_local! {
   pub static INDEXED_QUERY_MAP_FN: v8::IndexedPropertyQueryCallback = indexed_property_query.map_fn_to();
 }
 
-pub fn init_global_template_inner<'a, 'b, 'i>(
-  scope: &'b mut v8::PinScope<'a, 'i, ()>,
+pub fn init_global_template_inner<'a, 'b, 'i, C: Unpin>(
+  scope: &'b mut v8::PinScope<'a, 'i, C>,
 ) -> v8::Local<'a, v8::ObjectTemplate> {
   let scope = std::pin::pin!(v8::EscapableHandleScope::new(scope));
   let scope = &mut scope.init();

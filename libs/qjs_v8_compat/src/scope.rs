@@ -175,6 +175,44 @@ impl<'a, 's, 'i, C> HandleScopeSource
   }
 }
 
+impl<'a, 's, C> HandleScopeSource
+  for crate::context::ContextScope<'a, HandleScope<'s, C>>
+{
+  fn default_ctx(&mut self) -> sys::Context {
+    use std::ops::DerefMut;
+    let pin = self.deref_mut();
+    pin.0.inner.ctx
+  }
+  fn isolate_ptr(&mut self) -> *mut Isolate {
+    use std::ops::DerefMut;
+    let pin = self.deref_mut();
+    pin.0.inner.isolate
+  }
+}
+
+impl<'a, 's, C> HandleScopeSource
+  for crate::context::ContextScope<'a, CallbackScope<'s, C>>
+{
+  fn default_ctx(&mut self) -> sys::Context {
+    // ContextScope<'a, CallbackScope<'s,C>> derefs to PinScope; use
+    // raw access to the parent CallbackScope's underlying HandleScope.
+    let cs_ptr = self as *const _ as *const crate::context::ContextScope<
+      'a, CallbackScope<'s, C>>;
+    unsafe {
+      let cs = &*(cs_ptr as *const u8 as *const crate::scope::CallbackScope<'s, C>);
+      cs.0.inner.ctx
+    }
+  }
+  fn isolate_ptr(&mut self) -> *mut Isolate {
+    let cs_ptr = self as *const _ as *const crate::context::ContextScope<
+      'a, CallbackScope<'s, C>>;
+    unsafe {
+      let cs = &*(cs_ptr as *const u8 as *const crate::scope::CallbackScope<'s, C>);
+      cs.0.inner.isolate
+    }
+  }
+}
+
 impl<'s, 'i, C> HandleScopeSource for PinScope<'s, 'i, C> {
   fn default_ctx(&mut self) -> sys::Context {
     self.0.inner.ctx

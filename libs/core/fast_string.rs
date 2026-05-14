@@ -47,9 +47,9 @@ impl FastStaticString {
     v8::String::create_external_onebyte_const(s)
   }
 
-  pub fn v8_string<'s, 'i>(
+  pub fn v8_string<'s, S: v8::value::LocalNewScopeRef<'s>>(
     &self,
-    scope: &mut v8::PinScope<'s, 'i>,
+    scope: &S,
   ) -> Result<v8::Local<'s, v8::String>, FastStringV8AllocationError> {
     FastString::from(*self).v8_string(scope)
   }
@@ -298,9 +298,9 @@ impl FastString {
 
   /// Create a v8 string from this [`FastString`]. If the string is static and contains only ASCII characters,
   /// an external one-byte static is created.
-  pub fn v8_string<'a, 'i>(
+  pub fn v8_string<'a, S: v8::value::LocalNewScopeRef<'a>>(
     &self,
-    scope: &mut v8::PinScope<'a, 'i>,
+    scope: &S,
   ) -> Result<v8::Local<'a, v8::String>, FastStringV8AllocationError> {
     match self.inner {
       FastStringInner::StaticAscii(s) => {
