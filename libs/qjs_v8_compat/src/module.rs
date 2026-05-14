@@ -71,6 +71,62 @@ impl<'s> Local<'s, Module> {
   pub fn get_exception(&self) -> Local<'s, Value> {
     Local::from_raw(sys::jsv_undefined())
   }
+  pub fn instantiate_module2<S>(
+    &self,
+    scope: S,
+    cb: ModuleResolveCallback,
+  ) -> Option<bool> {
+    self.instantiate_module(scope, cb)
+  }
+  pub fn evaluate_for_import_defer<S>(
+    &self,
+    _scope: S,
+  ) -> Option<Local<'s, Value>> {
+    None
+  }
+  pub fn get_module_namespace_with_phase<S>(
+    &self,
+    _scope: S,
+    _phase: ModuleImportPhase,
+  ) -> Local<'s, Object> {
+    Local::from_raw(sys::jsv_undefined())
+  }
+  pub fn get_unbound_module_script(
+    &self,
+  ) -> Local<'s, crate::script::UnboundModuleScript> {
+    Local::from_raw(sys::jsv_undefined())
+  }
+  pub fn get_stalled_top_level_await_message<S>(
+    &self,
+    _scope: S,
+  ) -> Vec<(Local<'s, Module>, Local<'s, crate::value::Message>)> {
+    Vec::new()
+  }
+  pub fn set_synthetic_module_export<S>(
+    &self,
+    _scope: S,
+    _export_name: Local<'_, crate::primitives::String>,
+    _value: Local<'_, Value>,
+  ) -> Option<bool> {
+    Some(true)
+  }
+  pub fn is_graph_async(&self) -> bool {
+    false
+  }
+  pub fn is_synthetic_module(&self) -> bool {
+    false
+  }
+}
+
+impl Module {
+  pub fn create_synthetic_module<'s, S>(
+    _scope: &mut S,
+    _module_name: Local<'_, crate::primitives::String>,
+    _export_names: &[Local<'_, crate::primitives::String>],
+    _evaluation_steps: SyntheticModuleEvaluationSteps,
+  ) -> Local<'s, Module> {
+    Local::from_raw(sys::jsv_undefined())
+  }
 }
 
 impl<'s> Local<'s, ModuleRequest> {
@@ -82,6 +138,15 @@ impl<'s> Local<'s, ModuleRequest> {
   }
   pub fn get_import_assertions(&self) -> Local<'s, FixedArray> {
     Local::from_raw(sys::jsv_undefined())
+  }
+  pub fn get_import_attributes(&self) -> Local<'s, FixedArray> {
+    Local::from_raw(sys::jsv_undefined())
+  }
+  pub fn get_phase(&self) -> ModuleImportPhase {
+    ModuleImportPhase::Evaluation
+  }
+  pub fn get_source_offset(&self) -> i32 {
+    0
   }
 }
 

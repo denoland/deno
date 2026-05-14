@@ -87,7 +87,94 @@ impl Value {
   pub fn is_uint8_array(&self) -> bool {
     false
   }
+  pub fn is_int8_array(&self) -> bool {
+    false
+  }
+  pub fn is_int16_array(&self) -> bool {
+    false
+  }
+  pub fn is_int32_array(&self) -> bool {
+    false
+  }
+  pub fn is_uint16_array(&self) -> bool {
+    false
+  }
+  pub fn is_uint32_array(&self) -> bool {
+    false
+  }
+  pub fn is_big_int64_array(&self) -> bool {
+    false
+  }
+  pub fn is_big_uint64_array(&self) -> bool {
+    false
+  }
   pub fn is_typed_array(&self) -> bool {
+    false
+  }
+  pub fn is_arguments_object(&self) -> bool {
+    false
+  }
+  pub fn is_async_function(&self) -> bool {
+    false
+  }
+  pub fn is_big_int_object(&self) -> bool {
+    false
+  }
+  pub fn is_boolean_object(&self) -> bool {
+    false
+  }
+  pub fn is_data_view(&self) -> bool {
+    false
+  }
+  pub fn is_date(&self) -> bool {
+    false
+  }
+  pub fn is_external(&self) -> bool {
+    false
+  }
+  pub fn is_generator_function(&self) -> bool {
+    false
+  }
+  pub fn is_generator_object(&self) -> bool {
+    false
+  }
+  pub fn is_map(&self) -> bool {
+    false
+  }
+  pub fn is_map_iterator(&self) -> bool {
+    false
+  }
+  pub fn is_module_namespace_object(&self) -> bool {
+    false
+  }
+  pub fn is_native_error(&self) -> bool {
+    false
+  }
+  pub fn is_number_object(&self) -> bool {
+    false
+  }
+  pub fn is_proxy(&self) -> bool {
+    false
+  }
+  pub fn is_reg_exp(&self) -> bool {
+    false
+  }
+  pub fn is_set(&self) -> bool {
+    false
+  }
+  pub fn is_set_iterator(&self) -> bool {
+    false
+  }
+  pub fn is_shared_array_buffer(&self) -> bool {
+    false
+  }
+  pub fn is_symbol_object(&self) -> bool {
+    false
+  }
+  pub fn is_weak_map(&self) -> bool {
+    false
+  }
+  pub fn is_weak_set(&self) -> bool {
     false
   }
   pub fn type_repr(&self) -> &'static str {
@@ -996,6 +1083,69 @@ impl<T> Global<T> {
     let r = self.raw;
     core::mem::forget(self);
     r
+  }
+  pub fn empty() -> Self {
+    Self {
+      raw: sys::jsv_undefined(),
+      ctx: None,
+      _t: PhantomData,
+    }
+  }
+  pub fn get<'sc>(&self, scope: &mut HandleScope<'sc>) -> Local<'sc, T> {
+    self.to_local(scope)
+  }
+  pub fn set(&self, _value: Local<'_, T>) {}
+}
+
+impl Global<crate::primitives::String> {
+  pub fn get_string<'s>(
+    &self,
+    scope: &mut HandleScope<'s>,
+  ) -> Local<'s, crate::primitives::String> {
+    self.to_local(scope)
+  }
+}
+
+impl Global<crate::module::Module> {
+  pub fn get_status(&self) -> crate::module::ModuleStatus {
+    crate::module::ModuleStatus::Uninstantiated
+  }
+  pub fn get_exception<'s>(
+    &self,
+    scope: &mut HandleScope<'s>,
+  ) -> Local<'s, Value> {
+    self.to_local(scope).get_exception()
+  }
+  pub fn get_module_namespace<'s>(
+    &self,
+    scope: &mut HandleScope<'s>,
+  ) -> Local<'s, crate::object::Object> {
+    self.to_local(scope).get_module_namespace()
+  }
+}
+
+impl Global<crate::promise::Promise> {
+  pub fn state(&self) -> crate::promise::PromiseState {
+    crate::promise::PromiseState::Pending
+  }
+  pub fn result<'s>(&self, scope: &mut HandleScope<'s>) -> Local<'s, Value> {
+    self.to_local(scope).result(scope)
+  }
+}
+
+impl Global<crate::context::Context> {
+  pub fn clear_all_slots(&self) {}
+  pub fn get_aligned_pointer_from_embedder_data(
+    &self,
+    _index: i32,
+  ) -> *mut std::ffi::c_void {
+    std::ptr::null_mut()
+  }
+  pub fn set_aligned_pointer_in_embedder_data(
+    &self,
+    _index: i32,
+    _value: *mut std::ffi::c_void,
+  ) {
   }
 }
 

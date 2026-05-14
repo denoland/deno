@@ -177,11 +177,27 @@ impl<'s> Local<'s, Function> {
   ) -> Option<Local<'s, Value>> {
     None
   }
-  pub fn new_instance(
+  pub fn new_instance<S>(
     &self,
-    _scope: &mut HandleScope<'s>,
+    _scope: &mut S,
     _args: &[Local<'s, Value>],
   ) -> Option<Local<'s, Object>> {
+    None
+  }
+  pub fn set_name(&self, _name: Local<'_, crate::primitives::String>) {}
+  pub fn create_code_cache(&self) -> Option<Box<crate::external::CachedData>> {
+    None
+  }
+}
+
+impl Function {
+  pub fn new<'s, S, F>(
+    _scope: &mut S,
+    _callback: F,
+  ) -> Option<Local<'s, Function>>
+  where
+    F: crate::function::MapFnTo<crate::function::FunctionCallback>,
+  {
     None
   }
 }

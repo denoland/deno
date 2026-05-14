@@ -9,6 +9,8 @@ use crate::value::Local;
 use crate::value::Value;
 
 crate::value_type!(Script);
+crate::value_type!(UnboundScript);
+crate::value_type!(UnboundModuleScript);
 
 /// V8 carries a `ScriptOrigin` for source maps, filename, line offsets.
 pub struct ScriptOrigin<'s> {

@@ -163,6 +163,79 @@ impl<'s> Local<'s, Object> {
     }
     ok
   }
+  pub fn create_data_property<'sc, 'k>(
+    &self,
+    scope: &mut HandleScope<'sc>,
+    key: Local<'k, crate::value::Name>,
+    value: Local<'_, Value>,
+  ) -> Option<bool> {
+    let key_s = sys::to_string_lossy(scope.ctx(), key.raw())?;
+    Some(sys::set_property_str(scope.ctx(), self.raw(), &key_s, value.raw()))
+  }
+  pub fn get_constructor_name(&self) -> Local<'s, crate::primitives::String> {
+    Local::from_raw(self.raw())
+  }
+  pub fn get_prototype<S>(&self, _scope: &mut S) -> Option<Local<'s, Value>> {
+    None
+  }
+  pub fn set_prototype<S>(
+    &self,
+    _scope: &mut S,
+    _prototype: Local<'_, Value>,
+  ) -> Option<bool> {
+    Some(true)
+  }
+  pub fn get_property_names<S>(
+    &self,
+    _scope: &mut S,
+    _args: crate::object::GetPropertyNamesArgs,
+  ) -> Option<Local<'s, crate::object::Array>> {
+    None
+  }
+  pub fn get_aligned_pointer_from_embedder_data(
+    &self,
+    _index: i32,
+  ) -> *mut std::ffi::c_void {
+    std::ptr::null_mut()
+  }
+  pub fn set_aligned_pointer_in_embedder_data(
+    &self,
+    _index: i32,
+    _value: *mut std::ffi::c_void,
+  ) {
+  }
+  pub fn get_private<S>(
+    &self,
+    _scope: &mut S,
+    _key: Local<'_, Private>,
+  ) -> Option<Local<'s, Value>> {
+    None
+  }
+  pub fn set_private<S>(
+    &self,
+    _scope: &mut S,
+    _key: Local<'_, Private>,
+    _value: Local<'_, Value>,
+  ) -> Option<bool> {
+    Some(true)
+  }
+  pub fn is_api_wrapper(&self) -> bool {
+    false
+  }
+  pub fn wrap<T>(&self, _scope: &mut crate::scope::HandleScope, _data: T) {}
+  pub fn unwrap<T>(&self, _scope: &mut crate::scope::HandleScope) -> Option<T> {
+    None
+  }
+}
+
+crate::value_type!(Private);
+impl Private {
+  pub fn for_api<'s>(
+    _scope: &mut crate::scope::HandleScope<'s>,
+    _name: Option<Local<'_, crate::primitives::String>>,
+  ) -> Local<'s, Private> {
+    Local::from_raw(crate::sys::jsv_undefined())
+  }
 }
 
 impl Array {
@@ -214,6 +287,28 @@ impl<'s> Local<'s, Array> {
     }
     scope.track_owned(raw);
     Some(Local::from_raw(raw))
+  }
+  /// Mirror of `v8::Array::get`.
+  pub fn get<'sc>(
+    &self,
+    scope: &mut HandleScope<'sc>,
+    index: u32,
+  ) -> Option<Local<'sc, Value>> {
+    let raw = sys::get_indexed(scope.ctx(), self.raw(), index);
+    if sys::jsv_is_exception(&raw) {
+      return None;
+    }
+    scope.track_owned(raw);
+    Some(Local::from_raw(raw))
+  }
+  /// Mirror of `v8::Array::set`.
+  pub fn set<'sc>(
+    &self,
+    scope: &mut HandleScope<'sc>,
+    index: u32,
+    value: Local<'_, Value>,
+  ) -> Option<bool> {
+    Some(sys::set_indexed(scope.ctx(), self.raw(), index, value.raw()))
   }
 }
 impl<'s> Local<'s, Array> {

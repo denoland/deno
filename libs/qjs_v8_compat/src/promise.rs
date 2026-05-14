@@ -186,6 +186,22 @@ impl<'s> Local<'s, Promise> {
   pub fn has_handler(&self) -> bool {
     false
   }
+  pub fn then2<S>(
+    &self,
+    _scope: &mut S,
+    _on_fulfilled: Local<'_, crate::function::Function>,
+    _on_rejected: Local<'_, crate::function::Function>,
+  ) -> Option<Local<'s, Promise>> {
+    None
+  }
+  pub fn catch<S>(
+    &self,
+    _scope: &mut S,
+    _on_rejected: Local<'_, crate::function::Function>,
+  ) -> Option<Local<'s, Promise>> {
+    None
+  }
+  pub fn mark_as_handled(&self) {}
 }
 
 /// Drop the per-promise resolving funcs when the runtime tears down. Tests
