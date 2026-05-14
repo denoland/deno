@@ -60,6 +60,35 @@ test("clearTimeout works when only setTimeout is requested", () => {
   mock.timers.reset();
 });
 
+test("timer handle coerces to numeric id", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  let fired = false;
+  const id = setTimeout(() => {
+    fired = true;
+  }, 100);
+  assert.strictEqual(typeof +id, "number");
+  clearTimeout(+id);
+  mock.timers.tick(100);
+  assert.strictEqual(fired, false);
+  mock.timers.reset();
+});
+
+test("timeout handle refresh restarts fired timeout", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  let count = 0;
+  const id = setTimeout(() => {
+    count++;
+  }, 100);
+  mock.timers.tick(100);
+  assert.strictEqual(count, 1);
+  id.refresh();
+  mock.timers.tick(99);
+  assert.strictEqual(count, 1);
+  mock.timers.tick(1);
+  assert.strictEqual(count, 2);
+  mock.timers.reset();
+});
+
 test("setImmediate fires on tick", () => {
   mock.timers.enable({ apis: ["setImmediate"] });
   let fired = false;

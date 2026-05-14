@@ -39,6 +39,7 @@ const {
   Symbol,
   SymbolDispose,
   SymbolFor,
+  SymbolToPrimitive,
   TypeError,
 } = primordials;
 
@@ -976,10 +977,12 @@ const SUPPORTED_APIS = [
 
 class MockTimersHandle {
   #id;
+  #timer;
   #timers;
   #refed;
-  constructor(id, timers, refed) {
-    this.#id = id;
+  constructor(timer, timers, refed) {
+    this.#id = timer.id;
+    this.#timer = timer;
     this.#timers = timers;
     this.#refed = refed;
   }
@@ -995,11 +998,14 @@ class MockTimersHandle {
     return this.#refed;
   }
   refresh() {
-    const timer = MapPrototypeGet(this.#timers._timers, this.#id);
-    if (timer && !timer.interval) {
-      timer.fireAt = this.#timers._now + timer.delay;
+    if (this.#timer && !this.#timer.interval) {
+      this.#timer.fireAt = this.#timers._now + this.#timer.delay;
+      MapPrototypeSet(this.#timers._timers, this.#id, this.#timer);
     }
     return this;
+  }
+  [SymbolToPrimitive]() {
+    return this.#id;
   }
   [SymbolFor("Deno.customInspect")]() {
     return `MockTimer { id: ${this.#id} }`;
@@ -1192,7 +1198,7 @@ class MockTimers {
       immediate,
     };
     MapPrototypeSet(this._timers, id, timer);
-    return new MockTimersHandle(id, this, true);
+    return new MockTimersHandle(timer, this, true);
   }
 
   _setInterval(callback, delay, args) {
@@ -1212,7 +1218,7 @@ class MockTimers {
       immediate: false,
     };
     MapPrototypeSet(this._timers, id, timer);
-    return new MockTimersHandle(id, this, true);
+    return new MockTimersHandle(timer, this, true);
   }
 
   _clearTimer(handle) {
