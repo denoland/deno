@@ -76,10 +76,23 @@ fn build_vendored() {
 
   let main_src = vendor.join("quickjs.c");
   if !main_src.exists() {
+    // Surface as a `cargo:warning` + an emitted error rather than panicking
+    // so the message reaches CI logs cleanly (panic in build.rs prints a
+    // less-useful backtrace). The user almost certainly forgot to init the
+    // submodule. Override paths still let them build against a prebuilt
+    // tree without the submodule.
+    println!(
+      "cargo:warning=qjs_v8_compat: vendored QuickJS-ng not found at {}",
+      vendor.display()
+    );
+    println!(
+      "cargo:warning=qjs_v8_compat: run `git submodule update --init libs/qjs_v8_compat/vendor/quickjs-ng` to fetch it"
+    );
+    println!(
+      "cargo:warning=qjs_v8_compat: or set QUICKJS_NG_LIB_DIR / QUICKJS_NG_DIR to point to a prebuilt tree"
+    );
     panic!(
-      "qjs_v8_compat: vendored QuickJS-ng not found at {}; \
-       run `git submodule update --init libs/qjs_v8_compat/vendor/quickjs-ng` \
-       or set QUICKJS_NG_LIB_DIR / QUICKJS_NG_DIR to point to a prebuilt tree",
+      "qjs_v8_compat: vendored QuickJS-ng submodule missing at {}",
       vendor.display()
     );
   }

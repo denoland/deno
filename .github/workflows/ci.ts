@@ -280,6 +280,9 @@ const cloneSubmodule = (path: string) =>
     run: `git submodule update --init --recursive --depth=1 -- ${path}`,
   });
 const cloneStdSubmoduleStep = cloneSubmodule("./tests/util/std");
+const cloneQuickjsSubmoduleStep = cloneSubmodule(
+  "./libs/qjs_v8_compat/vendor/quickjs-ng",
+);
 const installDenoStep = step({
   name: "Install Deno",
   uses: "denoland/setup-deno@v2",
@@ -468,6 +471,7 @@ function getOsSpecificSteps({
   const installLldStep = step
     .dependsOn(
       cloneStdSubmoduleStep,
+          cloneQuickjsSubmoduleStep,
       installDenoStep,
       setupPrebuiltMacStep,
     )({
@@ -1025,6 +1029,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         return step.if(buildItem.skip.not())(
           cloneRepoStep,
           cloneStdSubmoduleStep,
+          cloneQuickjsSubmoduleStep,
           // ensure this happens right after cloning
           tarSourcePublishStep.if(shouldPublishCondition),
           {
@@ -1119,6 +1124,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           cloneSubmodule("./tests/node_compat/runner/suite")
             .if(testCrateNameExpr.equals("node_compat")),
           cloneStdSubmoduleStep,
+          cloneQuickjsSubmoduleStep,
           restoreCacheStep,
           installNodeStep,
           installRustStep,
@@ -1326,6 +1332,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         steps: step.if(isNotTag.and(buildItem.skip.not()))(
           cloneRepoStep,
           cloneStdSubmoduleStep,
+          cloneQuickjsSubmoduleStep,
           cloneSubmodule("./tests/wpt/suite"),
           buildCacheSteps.restoreCacheStep,
           installDenoStep,
@@ -1441,6 +1448,7 @@ const benchJob = job(
         installRustStep,
         cloneSubmodule("./tests/bench/testdata/lsp_benchdata"),
         cloneStdSubmoduleStep,
+          cloneQuickjsSubmoduleStep,
         step(sysRootConfig),
         installDenoStep,
         {
@@ -1531,6 +1539,7 @@ const lintJob = job("lint", {
     return step(
       cloneRepoStep,
       cloneStdSubmoduleStep,
+          cloneQuickjsSubmoduleStep,
       restoreCacheStep,
       installRustStep,
       installDenoStep,
