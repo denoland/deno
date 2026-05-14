@@ -214,6 +214,23 @@ impl<'s, T> ReturnValue<'s, T> {
 }
 
 impl<'s> Local<'s, Function> {
+  /// Mirror of property access on a function (Function is an Object).
+  /// Forwards to JS_GetPropertyStr.
+  pub fn get<'sc>(
+    &self,
+    scope: &mut crate::scope::HandleScope<'sc>,
+    key: Local<'_, Value>,
+  ) -> Option<Local<'sc, Value>> {
+    let key_s = sys::to_string_lossy(scope.ctx(), key.raw())?;
+    let raw = sys::get_property_str(scope.ctx(), self.raw(), &key_s);
+    if sys::jsv_is_exception(&raw) {
+      return None;
+    }
+    if !sys::jsv_is_undefined(&raw) {
+      scope.track_owned(raw);
+    }
+    Some(Local::from_raw(raw))
+  }
   pub fn call<S>(
     &self,
     scope: &mut S,
