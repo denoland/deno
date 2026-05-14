@@ -1052,9 +1052,9 @@ impl<'s> Local<'s, Value> {
     let s = crate::sys::to_string_lossy(scope.ctx(), self.raw)?;
     crate::primitives::String::new(scope, &s)
   }
-  pub fn to_object<'sc>(
+  pub fn to_object<'sc, S>(
     &self,
-    _scope: &mut HandleScope<'sc>,
+    _scope: &mut S,
   ) -> Option<Local<'sc, crate::object::Object>> {
     if crate::sys::jsv_is_object(&self.raw) {
       Some(Local::from_raw(self.raw))

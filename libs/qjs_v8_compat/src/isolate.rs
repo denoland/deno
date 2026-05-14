@@ -100,7 +100,10 @@ impl OwnedIsolate {
     IsolateHandle { rt: self.rt }
   }
 
-  pub fn set_promise_reject_callback(&mut self, cb: PromiseRejectCallback) {
+  pub fn set_promise_reject_callback<C>(&mut self, _cb: C) {
+    let _: PromiseRejectCallback = |_msg| {};
+  }
+  pub fn set_promise_reject_callback_inner(&mut self, cb: PromiseRejectCallback) {
     self.state.as_mut().unwrap().promise_reject_cb = Some(cb);
   }
 

@@ -868,7 +868,7 @@ pub mod v8 {
 
   pub struct V8;
   impl V8 {
-    pub fn initialize_platform(_p: std::rc::Rc<()>) {}
+    pub fn initialize_platform<P>(_p: P) {}
     pub fn initialize() {}
     pub fn dispose() -> bool {
       true
