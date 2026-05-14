@@ -31,8 +31,8 @@ pub struct BackingStore {
 pub type SharedRef<T> = std::sync::Arc<T>;
 
 impl BackingStore {
-  pub fn data(&self) -> *mut u8 {
-    self.data.as_ptr() as *mut u8
+  pub fn data(&self) -> Option<core::ptr::NonNull<u8>> {
+    core::ptr::NonNull::new(self.data.as_ptr() as *mut u8)
   }
   pub fn byte_length(&self) -> usize {
     self.data.len()
@@ -82,8 +82,8 @@ impl ArrayBuffer {
   ) -> Local<'s, ArrayBuffer> {
     Self::new(scope, 0)
   }
-  pub fn new_backing_store(
-    _scope: &mut crate::isolate::Isolate,
+  pub fn new_backing_store<S>(
+    _scope: &mut S,
     byte_length: usize,
   ) -> Box<BackingStore> {
     Box::new(BackingStore {
@@ -143,7 +143,19 @@ impl Uint8Array {
 }
 
 impl<'s> Local<'s, ArrayBufferView> {
-  pub fn buffer(&self, _scope: &mut HandleScope<'s>) -> Local<'s, ArrayBuffer> {
+  pub fn buffer(
+    &self,
+    _scope: &mut HandleScope<'s>,
+  ) -> Option<Local<'s, ArrayBuffer>>
+  where
+    Self: Sized,
+  {
+    Some(self.buffer_unwrap(_scope))
+  }
+  pub fn buffer_unwrap(
+    &self,
+    _scope: &mut HandleScope<'s>,
+  ) -> Local<'s, ArrayBuffer> {
     Local::from_raw(sys::jsv_undefined())
   }
   pub fn byte_offset(&self) -> usize {

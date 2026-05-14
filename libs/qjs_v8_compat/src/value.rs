@@ -101,10 +101,11 @@ impl<'s, T> Local<'s, T> {
   pub fn word_count(&self) -> usize {
     0
   }
-  /// Mirror of `Local::to_words_array`. Returns the requested words
-  /// (always zero on QuickJS placeholder).
-  pub fn to_words_array(&self, _sign_bit: &mut i32, _words: &mut [u64]) -> i32 {
-    0
+  /// Mirror of `Local<BigInt>::to_words_array(words)` — returns
+  /// `(sign_bit, written_words_slice)`. Stub: zero words. The first
+  /// element is `bool` (negative iff true) per rusty_v8.
+  pub fn to_words_array<'a>(&self, words: &'a mut [u64]) -> (bool, &'a [u64]) {
+    (false, &words[..0])
   }
   /// Mirror of `Local::is_string_object` — true iff this is a wrapper
   /// String object (boxed via `new String()`). Always false in our
@@ -129,13 +130,14 @@ impl<'s, T> Local<'s, T> {
   pub fn detach(&self, _key: Option<Local<'s, Value>>) -> Option<bool> {
     Some(false)
   }
-  /// Mirror of `Local::as_array` — try downcast.
-  pub fn as_array(&self) -> Option<Local<'s, crate::object::Array>> {
-    if sys::jsv_is_object(&self.raw) {
-      Some(Local::from_raw(self.raw))
-    } else {
-      None
-    }
+  /// Mirror of `Local::as_array(scope)` — convert a Map-like value to
+  /// an Array of [k, v, k, v, ...] pairs. Stub: returns the value
+  /// reinterpreted as Array (no actual flattening).
+  pub fn as_array<S: ScopeLike<'s>>(
+    &self,
+    _scope: &mut S,
+  ) -> Local<'s, crate::object::Array> {
+    Local::from_raw(self.raw)
   }
   /// Mirror of `Local::contains_only_onebyte`. Approximate.
   pub fn contains_only_onebyte(&self) -> bool {
@@ -155,7 +157,7 @@ impl<'s, T> Local<'s, T> {
     _scope: &mut HandleScope<'s>,
     _offset: u32,
     _dest: &mut [u16],
-    _flags: u32,
+    _flags: crate::v8::WriteFlags,
   ) {
   }
   /// Mirror of `Local<String>::write_one_byte_v2`.
@@ -164,17 +166,19 @@ impl<'s, T> Local<'s, T> {
     _scope: &mut HandleScope<'s>,
     _offset: u32,
     _dest: &mut [u8],
-    _flags: u32,
+    _flags: crate::v8::WriteFlags,
   ) {
   }
-  /// Mirror of `Local::write_utf8_uninit_v2`. Writes the UTF-8 form
-  /// of the underlying string into `dest`; returns the number of
-  /// bytes written.
+  /// Mirror of `Local::write_utf8_uninit_v2(scope, dest, flags, nchars)`
+  /// — Writes the UTF-8 form of the underlying string into `dest`;
+  /// returns the number of bytes written. The optional `nchars` out
+  /// param receives the number of UTF-16 code units consumed.
   pub fn write_utf8_uninit_v2(
     &self,
     _scope: &mut HandleScope<'s>,
     _dest: &mut [std::mem::MaybeUninit<u8>],
-    _flags: u32,
+    _flags: crate::v8::WriteFlags,
+    _nchars: Option<&mut usize>,
   ) -> usize {
     0
   }

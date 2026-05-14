@@ -427,15 +427,15 @@ impl<'a, 'b, 'c, 'i> ser::Serializer for Serializer<'a, 'b, 'c, 'i> {
   }
 
   fn serialize_i32(self, v: i32) -> JsResult<'a> {
-    Ok(v8::Integer::new(&self.scope.borrow(), v).into())
+    Ok(v8::Integer::new(&mut *self.scope.borrow_mut(), v).into())
   }
 
   fn serialize_u32(self, v: u32) -> JsResult<'a> {
-    Ok(v8::Integer::new_from_unsigned(&self.scope.borrow(), v).into())
+    Ok(v8::Integer::new_from_unsigned(&mut *self.scope.borrow_mut(), v).into())
   }
 
   fn serialize_i64(self, v: i64) -> JsResult<'a> {
-    let s = &self.scope.borrow();
+    let s = &mut *self.scope.borrow_mut();
     // If i64 can fit in max safe integer bounds then serialize as v8::Number
     // otherwise serialize as v8::BigInt
     if (MIN_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&v) {
@@ -446,7 +446,7 @@ impl<'a, 'b, 'c, 'i> ser::Serializer for Serializer<'a, 'b, 'c, 'i> {
   }
 
   fn serialize_u64(self, v: u64) -> JsResult<'a> {
-    let s = &self.scope.borrow();
+    let s = &mut *self.scope.borrow_mut();
     // If u64 can fit in max safe integer bounds then serialize as v8::Number
     // otherwise serialize as v8::BigInt
     if v <= (MAX_SAFE_INTEGER as u64) {
@@ -457,12 +457,12 @@ impl<'a, 'b, 'c, 'i> ser::Serializer for Serializer<'a, 'b, 'c, 'i> {
   }
 
   fn serialize_f64(self, v: f64) -> JsResult<'a> {
-    let scope = &*self.scope.borrow();
+    let scope = &mut *self.scope.borrow_mut();
     Ok(v8::Number::new(scope, v).into())
   }
 
   fn serialize_bool(self, v: bool) -> JsResult<'a> {
-    Ok(v8::Boolean::new(&*self.scope.borrow(), v).into())
+    Ok(v8::Boolean::new(&mut *self.scope.borrow_mut(), v).into())
   }
 
   fn serialize_char(self, v: char) -> JsResult<'a> {
@@ -487,7 +487,7 @@ impl<'a, 'b, 'c, 'i> ser::Serializer for Serializer<'a, 'b, 'c, 'i> {
   }
 
   fn serialize_none(self) -> JsResult<'a> {
-    Ok(v8::null(&*self.scope.borrow()).into())
+    Ok(v8::null(&mut *self.scope.borrow_mut()).into())
   }
 
   fn serialize_some<T: ?Sized + Serialize>(self, value: &T) -> JsResult<'a> {
@@ -495,11 +495,11 @@ impl<'a, 'b, 'c, 'i> ser::Serializer for Serializer<'a, 'b, 'c, 'i> {
   }
 
   fn serialize_unit(self) -> JsResult<'a> {
-    Ok(v8::null(&*self.scope.borrow()).into())
+    Ok(v8::null(&mut *self.scope.borrow_mut()).into())
   }
 
   fn serialize_unit_struct(self, _name: &'static str) -> JsResult<'a> {
-    Ok(v8::null(&*self.scope.borrow()).into())
+    Ok(v8::null(&mut *self.scope.borrow_mut()).into())
   }
 
   /// For compatibility with serde-json, serialises unit variants as "Variant" strings.
@@ -509,7 +509,7 @@ impl<'a, 'b, 'c, 'i> ser::Serializer for Serializer<'a, 'b, 'c, 'i> {
     _variant_index: u32,
     variant: &'static str,
   ) -> JsResult<'a> {
-    Ok(v8_struct_key(&self.scope.borrow(), variant).into())
+    Ok(v8_struct_key(&mut *self.scope.borrow_mut(), variant).into())
   }
 
   fn serialize_newtype_struct<T: ?Sized + Serialize>(

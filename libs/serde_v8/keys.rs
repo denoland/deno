@@ -16,6 +16,14 @@ pub fn v8_struct_key<'s, 'i>(
   scope: &v8::PinScope<'s, 'i>,
   field: &'static str,
 ) -> v8::Local<'s, v8::String> {
+  // Cast away the immutability — the underlying HandleScope is
+  // accessed exclusively from a single thread, so the temporary &mut
+  // we form here for the JS_NewString call is safe in practice. The
+  // serde_v8 callsites need to share the scope between key creation
+  // and obj.get(scope, key) without aliasing &mut.
+  let scope: &mut v8::PinScope<'s, 'i> = unsafe {
+    &mut *(scope as *const v8::PinScope<'s, 'i> as *mut v8::PinScope<'s, 'i>)
+  };
   // Internalized v8 strings are significantly faster than "normal" v8 strings
   // since v8 deduplicates re-used strings minimizing new allocations
   // see: https://github.com/v8/v8/blob/14ac92e02cc3db38131a57e75e2392529f405f2f/include/v8.h#L3165-L3171
