@@ -1334,6 +1334,10 @@ if (isWindows) {
   delete process.getegid;
   delete process.geteuid;
   delete process.getgroups;
+  delete process.setegid;
+  delete process.seteuid;
+  delete process.setgid;
+  delete process.setuid;
 }
 
 Object.defineProperty(process, Symbol.toStringTag, {
