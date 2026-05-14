@@ -120,6 +120,7 @@ pub use crate::v8::IntegrityLevel;
 pub use crate::v8::Float16Array;
 pub use crate::v8::MicrotaskQueue;
 pub use crate::v8::MicrotaskQueueOwned;
+pub use crate::v8::HeapCodeStatistics;
 pub use crate::v8::MicrotasksPolicy;
 pub use crate::v8::MicrotaskQueueIntoRaw;
 pub use crate::v8::IndexedPropertyHandlerConfiguration;
@@ -1168,6 +1169,15 @@ pub mod v8 {
           crate::value::Local::from_raw(crate::value::Local::raw(&v))
         }
       }
+      impl<'s> From<crate::value::Local<'s, $name>>
+        for crate::value::Local<'s, crate::object::Object>
+      {
+        fn from(
+          v: crate::value::Local<'s, $name>,
+        ) -> crate::value::Local<'s, crate::object::Object> {
+          crate::value::Local::from_raw(crate::value::Local::raw(&v))
+        }
+      }
       impl<'s> TryFrom<crate::value::Local<'s, crate::value::Value>>
         for crate::value::Local<'s, $name>
       {
@@ -1179,13 +1189,12 @@ pub mod v8 {
         }
       }
       impl<'s> crate::value::Local<'s, $name> {
-        pub fn set_index<S, V>(
+        pub fn set_index<S>(
           &self,
-          _scope: &mut S,
+          _scope: &S,
           _index: u32,
-          _value: V,
-        ) -> Option<bool>
-        where S: crate::scope::HandleScopeSource { Some(true) }
+          _value: crate::value::Local<'_, crate::value::Value>,
+        ) -> Option<bool> { Some(true) }
         pub fn byte_length(&self) -> usize { 0 }
         pub fn byte_offset(&self) -> usize { 0 }
         pub fn length(&self) -> usize { 0 }
@@ -1307,6 +1316,40 @@ pub mod v8 {
     pub fn default() -> Self { Self::empty() }
   }
 
+  /// PinScope methods deno_node uses but our compat doesn't have yet.
+  impl<'s, 'i, C> crate::scope::PinScope<'s, 'i, C> {
+    pub fn take_heap_snapshot<F>(&mut self, _writer: F)
+    where F: FnMut(&[u8]) -> usize {}
+    pub fn get_heap_code_and_metadata_statistics(
+      &mut self,
+      _stats: &mut HeapCodeStatistics,
+    ) {}
+    pub fn set_allow_wasm_code_generation_callback<F>(&mut self, _cb: F) {}
+  }
+  pub struct HeapCodeStatistics;
+  impl HeapCodeStatistics {
+    pub fn new() -> Self { Self }
+    pub fn code_and_metadata_size(&self) -> usize { 0 }
+    pub fn bytecode_and_metadata_size(&self) -> usize { 0 }
+    pub fn external_script_source_size(&self) -> usize { 0 }
+    pub fn cpu_profiler_metadata_size(&self) -> usize { 0 }
+  }
+  impl Default for HeapCodeStatistics {
+    fn default() -> Self { Self }
+  }
+
+  /// AllowJavascriptExecutionScope LocalNewScopeRef — derives via inner.
+  impl<'a, 's, P> crate::value::LocalNewScopeRef<'s>
+    for crate::context::AllowJavascriptExecutionScope<'a, P>
+  where
+    P: crate::value::LocalNewScopeRef<'s>,
+  {
+    fn as_mut_handle_scope_ref(&self) -> &mut crate::scope::HandleScope<'s> {
+      let p_ptr = self as *const _ as *const u8 as *const P;
+      unsafe { (*p_ptr).as_mut_handle_scope_ref() }
+    }
+  }
+
   /// EscapableHandleScope::init stub matching CallbackScope::init —
   /// returns the same Pin so the chained `&mut scope_storage.init()`
   /// pattern in op2-generated code resolves to `&mut Pin<&mut EHS>`.
@@ -1392,11 +1435,11 @@ pub mod v8 {
     where S: crate::scope::HandleScopeSource {
       crate::value::Local::from_raw(crate::sys::jsv_undefined())
     }
-    pub fn set_security_token<S>(
+    /// Mirror of v8's `Context::set_security_token(token)` — single arg.
+    pub fn set_security_token(
       &self,
-      _scope: &mut S,
       _token: crate::value::Local<'_, crate::value::Value>,
-    ) where S: crate::scope::HandleScopeSource {}
+    ) {}
     pub fn set_allow_generation_from_strings(&self, _allow: bool) {}
   }
 
@@ -1523,23 +1566,24 @@ pub mod v8 {
     pub fn flags(self, _f: PropertyHandlerFlags) -> Self { self }
   }
 
-  /// Indexed/Named property callback type aliases. Real V8 declares
-  /// these as `unsafe extern "C" fn(...)` matching the V8 API. We expose
-  /// loose function pointer types for compile-only.
-  pub type IndexedPropertyGetterCallback = *const ();
-  pub type IndexedPropertySetterCallback = *const ();
-  pub type IndexedPropertyQueryCallback = *const ();
-  pub type IndexedPropertyDeleterCallback = *const ();
-  pub type IndexedPropertyEnumeratorCallback = *const ();
-  pub type IndexedPropertyDefinerCallback = *const ();
-  pub type IndexedPropertyDescriptorCallback = *const ();
-  pub type NamedPropertyGetterCallback = *const ();
-  pub type NamedPropertySetterCallback = *const ();
-  pub type NamedPropertyQueryCallback = *const ();
-  pub type NamedPropertyDeleterCallback = *const ();
-  pub type NamedPropertyEnumeratorCallback = *const ();
-  pub type NamedPropertyDefinerCallback = *const ();
-  pub type NamedPropertyDescriptorCallback = *const ();
+  /// Indexed/Named property callback type aliases. We expose them as
+  /// `*const c_void` to match the field type in `ExternalReference`,
+  /// since deno_node code stores them in that union without further
+  /// type checking. Real v8 has more specific fn signatures.
+  pub type IndexedPropertyGetterCallback = *const core::ffi::c_void;
+  pub type IndexedPropertySetterCallback = *const core::ffi::c_void;
+  pub type IndexedPropertyQueryCallback = *const core::ffi::c_void;
+  pub type IndexedPropertyDeleterCallback = *const core::ffi::c_void;
+  pub type IndexedPropertyEnumeratorCallback = *const core::ffi::c_void;
+  pub type IndexedPropertyDefinerCallback = *const core::ffi::c_void;
+  pub type IndexedPropertyDescriptorCallback = *const core::ffi::c_void;
+  pub type NamedPropertyGetterCallback = *const core::ffi::c_void;
+  pub type NamedPropertySetterCallback = *const core::ffi::c_void;
+  pub type NamedPropertyQueryCallback = *const core::ffi::c_void;
+  pub type NamedPropertyDeleterCallback = *const core::ffi::c_void;
+  pub type NamedPropertyEnumeratorCallback = *const core::ffi::c_void;
+  pub type NamedPropertyDefinerCallback = *const core::ffi::c_void;
+  pub type NamedPropertyDescriptorCallback = *const core::ffi::c_void;
   pub use crate::object::PropertyHandlerFlags;
   /// Mirror of `v8::Handle` — trait describing types that have an
   /// underlying handle-data. Real rusty_v8 uses it as the bound on

@@ -332,6 +332,28 @@ impl<'s, T> PartialEq for Local<'s, T> {
   }
 }
 impl<'s, T> Eq for Local<'s, T> {}
+// Cross-type Local comparison: `Local<Value> == Local<Object>` should
+// work by handle identity. We provide impls for the specific T/U
+// combinations deno_node compares.
+macro_rules! local_cross_eq {
+  ($($t:ty => $u:ty),* $(,)?) => { $(
+    impl<'s, 't> PartialEq<Local<'t, $u>> for Local<'s, $t> {
+      fn eq(&self, other: &Local<'t, $u>) -> bool {
+        let a: usize = unsafe { self.raw.u.ptr as usize };
+        let b: usize = unsafe { other.raw.u.ptr as usize };
+        a == b && self.raw.tag == other.raw.tag
+      }
+    }
+  )* };
+}
+local_cross_eq!(
+  Value => crate::object::Object,
+  crate::object::Object => Value,
+  Value => crate::function::Function,
+  crate::function::Function => Value,
+  Value => crate::primitives::String,
+  crate::primitives::String => Value,
+);
 
 // Local derefs to the marker type T so callers can do `local.method()`
 // where method is defined on T (rusty_v8's pattern). The marker type
@@ -924,22 +946,29 @@ upcasts_to_view!(
   crate::buffer::Float64Array,
 );
 
-// Uint8Array → Object up-cast (deno_node IPC uses it).
-impl<'s> From<Local<'s, crate::buffer::Uint8Array>>
-  for Local<'s, crate::object::Object>
-{
-  fn from(v: Local<'s, crate::buffer::Uint8Array>) -> Self {
-    Local::from_raw(v.raw)
-  }
+// Up-casts: typed arrays / various marker types → Local<Object>.
+macro_rules! local_to_object {
+  ($($ty:ty),* $(,)?) => { $(
+    impl<'s> From<Local<'s, $ty>> for Local<'s, crate::object::Object> {
+      fn from(v: Local<'s, $ty>) -> Self { Local::from_raw(v.raw) }
+    }
+  )* };
 }
-// Same for the other typed-arrays that have JSValue carriers.
-impl<'s> From<Local<'s, crate::buffer::Uint32Array>>
-  for Local<'s, crate::object::Object>
-{
-  fn from(v: Local<'s, crate::buffer::Uint32Array>) -> Self {
-    Local::from_raw(v.raw)
-  }
-}
+local_to_object!(
+  crate::buffer::Uint8Array,
+  crate::buffer::Uint32Array,
+  crate::buffer::Float32Array,
+  crate::buffer::Float64Array,
+  crate::buffer::DataView,
+  crate::buffer::ArrayBuffer,
+  crate::buffer::ArrayBufferView,
+  crate::buffer::SharedArrayBuffer,
+  crate::buffer::TypedArray,
+  crate::function::Function,
+  crate::object::Map,
+  crate::object::Proxy,
+);
+// (Array → Object already covered by an existing impl elsewhere.)
 
 // Re-open the original list so the trailing `);` from the upstream
 // invocation still closes a valid expansion.
@@ -1585,6 +1614,16 @@ impl<P: GlobalScope + Unpin> GlobalScope for std::pin::Pin<&mut P> {
     self.deref().scope_ctx_shared()
   }
 }
+impl<S: GlobalScope + ?Sized> GlobalScope for &S {
+  fn scope_ctx_shared(&self) -> sys::Context {
+    (**self).scope_ctx_shared()
+  }
+}
+impl<S: GlobalScope + ?Sized> GlobalScope for &mut S {
+  fn scope_ctx_shared(&self) -> sys::Context {
+    (**self).scope_ctx_shared()
+  }
+}
 
 pub trait GlobalNewScopeRefByMut {
   fn scope_ctx_by_mut(&mut self) -> sys::Context;
@@ -2050,7 +2089,7 @@ impl<T> std::fmt::Debug for Weak<T> {
   }
 }
 impl<T> Weak<T> {
-  pub fn new<'s>(_scope: &mut HandleScope<'s>, _local: Local<'s, T>) -> Self {
+  pub fn new<'a, 'b, S>(_scope: &mut S, _local: Local<'a, T>) -> Self {
     Self { _t: PhantomData }
   }
   pub fn is_empty(&self) -> bool {

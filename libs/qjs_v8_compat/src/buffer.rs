@@ -57,13 +57,12 @@ macro_rules! typed_array_view_methods {
       pub fn get_contents<'a>(&self, _storage: &'a mut [u8]) -> &'a mut [u8] {
         &mut []
       }
-      pub fn set_index<S, V>(
+      pub fn set_index<S>(
         &self,
-        _scope: &mut S,
+        _scope: &S,
         _index: u32,
-        _value: V,
-      ) -> Option<bool>
-      where S: crate::scope::HandleScopeSource { Some(true) }
+        _value: crate::value::Local<'_, crate::value::Value>,
+      ) -> Option<bool> { Some(true) }
       pub fn buffer<'sc, S>(
         &self,
         scope: &mut S,
@@ -219,6 +218,9 @@ impl<'s> Local<'s, ArrayBuffer> {
   pub fn was_detached(&self) -> bool {
     false
   }
+  /// Mirror of `v8::ArrayBuffer::set_detach_key(key)`. Sets the key
+  /// required to call `.detach()` later. No-op on QuickJS.
+  pub fn set_detach_key(&self, _key: Local<'_, crate::value::Value>) {}
 }
 
 impl crate::value::Global<ArrayBuffer> {
@@ -275,6 +277,20 @@ impl Uint8Array {
     _offset: usize,
     _length: usize,
   ) -> Option<Local<'s, Uint8Array>> {
+    let scope = scope.as_mut_handle_scope_ref();
+    let raw = sys::new_object(scope.ctx());
+    scope.track_owned(raw);
+    Some(Local::from_raw(raw))
+  }
+}
+
+impl DataView {
+  pub fn new<'s, 'b, S: crate::value::LocalNewScopeRef<'s>>(
+    scope: &S,
+    _buffer: Local<'b, ArrayBuffer>,
+    _byte_offset: usize,
+    _byte_length: usize,
+  ) -> Option<Local<'s, DataView>> {
     let scope = scope.as_mut_handle_scope_ref();
     let raw = sys::new_object(scope.ctx());
     scope.track_owned(raw);

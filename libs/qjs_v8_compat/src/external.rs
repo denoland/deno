@@ -132,6 +132,10 @@ pub trait ValueSerializerImpl {
 /// write callbacks so they can recurse into the serializer state.
 pub trait ValueSerializerHelper {
   fn write_uint32(&self, _value: u32) {}
+  fn write_uint64(&self, _value: u64) {}
+  fn write_double(&self, _value: f64) {}
+  fn write_raw_bytes(&self, _bytes: &[u8]) {}
+  fn write_header(&self) {}
   fn write_value<'s>(
     &self,
     _ctx: Local<'s, crate::context::Context>,
@@ -139,6 +143,11 @@ pub trait ValueSerializerHelper {
   ) -> Option<bool> {
     Some(true)
   }
+  fn transfer_array_buffer<'s>(
+    &self,
+    _id: u32,
+    _array_buffer: Local<'s, crate::buffer::ArrayBuffer>,
+  ) {}
 }
 
 /// Mirror of rusty_v8's `ValueDeserializerHelper`.
@@ -146,41 +155,71 @@ pub trait ValueDeserializerHelper {
   fn read_uint32(&self, _value: &mut u32) -> bool {
     false
   }
+  fn read_uint64(&self, _value: &mut u64) -> bool {
+    false
+  }
+  fn read_double(&self, _value: &mut f64) -> bool {
+    false
+  }
+  fn read_raw_bytes(&self, _length: usize) -> Option<&[u8]> {
+    None
+  }
+  fn get_wire_format_version(&self) -> u32 { 0 }
   fn read_value<'s>(
     &self,
     _ctx: Local<'s, crate::context::Context>,
   ) -> Option<Local<'s, crate::value::Value>> {
     None
   }
+  fn transfer_array_buffer<'s>(
+    &self,
+    _id: u32,
+    _array_buffer: Local<'s, crate::buffer::ArrayBuffer>,
+  ) {}
+  fn transfer_shared_array_buffer<'s>(
+    &self,
+    _id: u32,
+    _shared_array_buffer: Local<'s, crate::buffer::SharedArrayBuffer>,
+  ) {}
 }
 
-pub struct ValueSerializer<'s, I> {
-  _impl: I,
+pub struct ValueSerializer<'s> {
+  _impl: Box<dyn ValueSerializerImpl + 's>,
   _scope: std::marker::PhantomData<&'s ()>,
   buffer: Vec<u8>,
 }
-impl<I: ValueSerializerImpl> ValueSerializerImpl for Box<I> {}
-impl<'s, I> ValueSerializer<'s, I> {
-  pub fn new(_scope: &mut HandleScope<'s>, impl_: I) -> Self {
+impl<I: ValueSerializerImpl + ?Sized> ValueSerializerImpl for Box<I> {}
+impl<'s> ValueSerializer<'s> {
+  pub fn new<I>(_scope: &mut HandleScope<'s>, impl_: I) -> Self
+  where
+    I: ValueSerializerImpl + 's,
+  {
     Self {
-      _impl: impl_,
+      _impl: Box::new(impl_),
       _scope: std::marker::PhantomData,
       buffer: Vec::new(),
     }
   }
-  pub fn write_header(&mut self) {}
+  pub fn write_header(&self) {}
   pub fn write_value<S>(
-    &mut self,
+    &self,
     _scope_or_ctx: S,
     _value: Local<'s, crate::value::Value>,
   ) -> Option<bool> {
     Some(true)
   }
+  pub fn write_double(&self, _v: f64) {}
+  pub fn write_uint32(&self, _v: u32) {}
+  pub fn write_uint64(&self, _v: u64) {}
+  pub fn write_int32(&self, _v: i32) {}
+  pub fn write_int64(&self, _v: i64) {}
+  pub fn write_raw_bytes(&self, _bytes: &[u8]) {}
+  pub fn set_treat_array_buffer_views_as_host_objects(&self, _v: bool) {}
   pub fn release(self) -> Vec<u8> {
     self.buffer
   }
   pub fn transfer_array_buffer(
-    &mut self,
+    &self,
     _id: u32,
     _array_buffer: Local<'_, crate::buffer::ArrayBuffer>,
   ) {
@@ -211,33 +250,49 @@ pub trait ValueDeserializerImpl {
   }
 }
 
-pub struct ValueDeserializer<'s, I> {
-  _impl: I,
+pub struct ValueDeserializer<'s> {
+  _impl: Box<dyn ValueDeserializerImpl + 's>,
   _scope: std::marker::PhantomData<&'s ()>,
   data: Vec<u8>,
 }
-impl<I: ValueDeserializerImpl> ValueDeserializerImpl for Box<I> {}
-impl<'s, I> ValueDeserializer<'s, I> {
-  pub fn new(_scope: &mut HandleScope<'s>, impl_: I, data: &[u8]) -> Self {
+impl<I: ValueDeserializerImpl + ?Sized> ValueDeserializerImpl for Box<I> {}
+impl<'s> ValueDeserializer<'s> {
+  pub fn new<I>(_scope: &mut HandleScope<'s>, impl_: I, data: &[u8]) -> Self
+  where
+    I: ValueDeserializerImpl + 's,
+  {
     Self {
-      _impl: impl_,
+      _impl: Box::new(impl_),
       _scope: std::marker::PhantomData,
       data: data.to_vec(),
     }
   }
-  pub fn read_header<C>(&mut self, _ctx: C) -> Option<bool> {
+  pub fn read_header<C>(&self, _ctx: C) -> Option<bool> {
     Some(true)
   }
   pub fn read_value<S>(
-    &mut self,
+    &self,
     _scope_or_ctx: S,
   ) -> Option<Local<'s, crate::value::Value>> {
     None
   }
+  pub fn read_double(&self, _out: &mut f64) -> bool { false }
+  pub fn read_uint32(&self, _out: &mut u32) -> bool { false }
+  pub fn read_uint64(&self, _out: &mut u64) -> bool { false }
+  pub fn read_int32(&self, _out: &mut i32) -> bool { false }
+  pub fn read_int64(&self, _out: &mut i64) -> bool { false }
+  pub fn read_raw_bytes(&self, _length: usize) -> Option<&[u8]> { None }
+  pub fn get_wire_format_version(&self) -> u32 { 0 }
   pub fn transfer_array_buffer(
-    &mut self,
+    &self,
     _id: u32,
     _array_buffer: Local<'_, crate::buffer::ArrayBuffer>,
+  ) {
+  }
+  pub fn transfer_shared_array_buffer(
+    &self,
+    _id: u32,
+    _shared_array_buffer: Local<'_, crate::buffer::SharedArrayBuffer>,
   ) {
   }
 }

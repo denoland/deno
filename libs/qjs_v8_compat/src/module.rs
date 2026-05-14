@@ -71,7 +71,7 @@ impl<'s> Local<'s, Module> {
   pub fn get_module_requests(&self) -> Local<'s, FixedArray> {
     Local::from_raw(sys::jsv_undefined())
   }
-  pub fn get_module_namespace(&self) -> Local<'s, Object> {
+  pub fn get_module_namespace(&self) -> Local<'s, Value> {
     Local::from_raw(sys::jsv_undefined())
   }
   pub fn evaluate<S>(&self, scope: &mut S) -> Option<Local<'s, Value>>
@@ -116,8 +116,9 @@ impl<'s> Local<'s, Module> {
   ) -> Option<bool> {
     Some(true)
   }
-  pub fn get_identity_hash(&self) -> i32 {
-    0
+  pub fn get_identity_hash(&self) -> std::num::NonZeroI32 {
+    // Real v8 guarantees a non-zero hash; placeholder.
+    std::num::NonZeroI32::new(1).unwrap()
   }
   pub fn script_id(&self) -> i32 {
     0

@@ -135,14 +135,19 @@ impl<'s> Local<'s, Object> {
     scope.track_owned(raw);
     Some(Local::from_raw(raw))
   }
-  pub fn set<'a>(
+  pub fn set<'a, S>(
     &self,
-    scope: &mut HandleScope<'s>,
+    scope: &S,
     key: Local<'a, Value>,
-    value: Local<'s, Value>,
-  ) -> Option<bool> {
-    let key_s = sys::to_string_lossy(scope.ctx(), key.raw())?;
-    Some(self.set_str(scope, &key_s, value))
+    value: Local<'_, Value>,
+  ) -> Option<bool>
+  where
+    S: crate::value::GlobalScope + ?Sized,
+  {
+    let ctx = scope.scope_ctx_shared();
+    let key_s = sys::to_string_lossy(ctx, key.raw())?;
+    let ok = sys::set_property_str(ctx, self.raw(), &key_s, value.raw());
+    Some(ok)
   }
   /// Direct string-keyed set. Ownership of `value`'s refcount transfers to
   /// the property slot; we forget the scope's tracking of it.
@@ -442,6 +447,7 @@ pub enum KeyConversionMode {
   #[default]
   ConvertToString,
   KeepNumbers,
+  NoNumbers,
 }
 #[derive(Copy, Clone, Default)]
 pub enum IndexFilter {

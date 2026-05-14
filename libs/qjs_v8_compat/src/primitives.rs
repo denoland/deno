@@ -284,10 +284,10 @@ impl AsRef<[u8]> for OneByteConst {
 // generic `Local::<T>::new(scope, &Global<T>)` impl in value.rs.
 
 impl Integer {
-  pub fn new<'s, S: crate::value::LocalNewScopeRef<'s>>(_scope: &S, v: i32) -> Local<'s, Integer> {
+  pub fn new<'s, S>(_scope: &S, v: i32) -> Local<'s, Integer> {
     Local::from_raw(sys::jsv_int32(v))
   }
-  pub fn new_from_unsigned<'s, S: crate::value::LocalNewScopeRef<'s>>(
+  pub fn new_from_unsigned<'s, S>(
     _scope: &S,
     v: u32,
   ) -> Local<'s, Integer> {
@@ -327,7 +327,7 @@ impl Number {
 }
 
 impl Number {
-  pub fn new<'s>(_scope: &mut HandleScope<'s>, v: f64) -> Local<'s, Number> {
+  pub fn new<'s, S: crate::value::LocalNewScopeRef<'s>>(_scope: &S, v: f64) -> Local<'s, Number> {
     Local::from_raw(sys::jsv_float64(v))
   }
   /// Mirror of `v8::Number::value`. ZST markers can't store the value;
@@ -356,7 +356,7 @@ impl<'s> Local<'s, Number> {
 }
 
 impl Boolean {
-  pub fn new<'s>(_scope: &mut HandleScope<'s>, v: bool) -> Local<'s, Boolean> {
+  pub fn new<'s, S: crate::value::LocalNewScopeRef<'s>>(_scope: &S, v: bool) -> Local<'s, Boolean> {
     Local::from_raw(sys::jsv_bool(v))
   }
 }

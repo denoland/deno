@@ -67,6 +67,18 @@ where
 // FunctionCallback is `unsafe extern "C" fn(*const FunctionCallbackInfo)`.
 unsafe extern "C" fn map_fn_to_stub(_info: *const FunctionCallbackInfo) {}
 
+// MapFnTo for the various property-callback aliases. All are
+// `*const c_void`, so a single impl for any function-to-c_void covers
+// the whole set.
+impl<F> MapFnTo<*const core::ffi::c_void> for F
+where
+  F: MapFnToHelper,
+{
+  fn map_fn_to(self) -> *const core::ffi::c_void {
+    core::ptr::null()
+  }
+}
+
 impl<F> MapFnTo<FunctionCallback> for F
 where
   F: MapFnToHelper,
