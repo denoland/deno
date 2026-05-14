@@ -246,7 +246,12 @@ impl Isolate {
   ///
   /// `ptr` must be a live isolate pointer for the duration of the
   /// returned reference's lifetime.
-  pub unsafe fn from_raw_isolate_ptr<'a>(ptr: *mut Self) -> &'a mut Self {
+  pub unsafe fn from_raw_isolate_ptr<'a>(ptr: impl Into<UnsafeRawIsolatePtr>) -> &'a mut Self {
+    let ptr = ptr.into();
+    let _ = ptr;
+    Self::from_raw_isolate_ptr_inner(std::ptr::null_mut())
+  }
+  pub unsafe fn from_raw_isolate_ptr_inner<'a>(ptr: *mut Self) -> &'a mut Self {
     unsafe { &mut *ptr }
   }
   pub fn raw_isolate_ptr(&mut self) -> *mut Self {
@@ -337,6 +342,17 @@ impl IsolateHandle {
 impl UnsafeRawIsolatePtr {
   pub const fn null() -> Self {
     Self(std::ptr::null_mut())
+  }
+}
+
+impl From<*mut Isolate> for UnsafeRawIsolatePtr {
+  fn from(p: *mut Isolate) -> Self {
+    Self(p as *mut c_void)
+  }
+}
+impl From<UnsafeRawIsolatePtr> for *mut Isolate {
+  fn from(p: UnsafeRawIsolatePtr) -> Self {
+    p.0 as *mut Isolate
   }
 }
 

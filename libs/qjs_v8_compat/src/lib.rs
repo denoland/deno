@@ -167,13 +167,16 @@ macro_rules! tc_scope {
 #[macro_export]
 macro_rules! callback_scope {
   (unsafe $name:ident, $raw:expr) => {
-    let mut $name = $crate::CallbackScope::new($raw);
+    let mut __cb_inner = unsafe { $crate::CallbackScope::new($raw) };
+    let $name = &mut __cb_inner;
   };
   (let $name:ident, $raw:expr) => {
-    let mut $name = $crate::CallbackScope::new($raw);
+    let mut __cb_inner = unsafe { $crate::CallbackScope::new($raw) };
+    let $name = &mut __cb_inner;
   };
   ($name:ident, $raw:expr) => {
-    let mut $name = $crate::CallbackScope::new($raw);
+    let mut __cb_inner = unsafe { $crate::CallbackScope::new($raw) };
+    let $name = &mut __cb_inner;
   };
 }
 
@@ -525,11 +528,11 @@ pub mod v8 {
     pub struct StringBuffer;
 
     impl V8Inspector {
-      pub fn create<C: V8InspectorClientImpl>(
-        _isolate: *mut crate::isolate::Isolate,
+      pub fn create<C, P>(
+        _isolate: P,
         _client: std::boxed::Box<C>,
-      ) -> std::rc::Rc<V8Inspector> {
-        std::rc::Rc::new(V8Inspector)
+      ) -> V8Inspector {
+        V8Inspector
       }
       pub fn context_created(
         &self,
@@ -539,19 +542,19 @@ pub mod v8 {
         _aux_data: StringView<'_>,
       ) {
       }
-      pub fn connect<C: ChannelImpl>(
+      pub fn connect<C>(
         &self,
         _context_group_id: i32,
         _channel: std::boxed::Box<C>,
         _state: StringView<'_>,
         _trust: V8InspectorClientTrustLevel,
-      ) -> std::boxed::Box<V8InspectorSession> {
-        std::boxed::Box::new(V8InspectorSession)
+      ) -> V8InspectorSession {
+        V8InspectorSession
       }
       pub fn context_destroyed<C>(&self, _context: C) {}
       pub fn create_stack_trace(
         &self,
-        _stack_trace: crate::value::Local<'_, crate::value::StackTrace>,
+        _stack_trace: Option<crate::value::Local<'_, crate::value::StackTrace>>,
       ) -> std::boxed::Box<V8StackTrace> {
         std::boxed::Box::new(V8StackTrace)
       }
@@ -867,7 +870,9 @@ pub mod v8 {
     }
     pub fn dispose_platform() {}
     pub fn set_flags_from_string(_s: &str) {}
-    pub fn set_flags_from_command_line(args: Vec<String>) -> Vec<String> {
+    pub fn set_flags_from_command_line<S: Into<String> + Clone>(
+      args: Vec<S>,
+    ) -> Vec<S> {
       args
     }
   }
