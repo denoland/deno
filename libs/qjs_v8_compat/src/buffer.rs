@@ -130,9 +130,9 @@ impl SharedArrayBuffer {
 }
 
 impl Uint8Array {
-  pub fn new<'s>(
+  pub fn new<'s, 'b>(
     scope: &mut HandleScope<'s>,
-    _buffer: Local<'s, ArrayBuffer>,
+    _buffer: Local<'b, ArrayBuffer>,
     _offset: usize,
     _length: usize,
   ) -> Option<Local<'s, Uint8Array>> {

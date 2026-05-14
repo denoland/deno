@@ -89,7 +89,7 @@ impl<'s> Local<'s, String> {
     // UTF-16 code units. Refined later.
     0
   }
-  pub fn utf8_length(&self, _scope: &mut HandleScope<'s>) -> usize {
+  pub fn utf8_length<'sc>(&self, _scope: &mut HandleScope<'sc>) -> usize {
     0
   }
   pub fn to_rust_string_lossy(

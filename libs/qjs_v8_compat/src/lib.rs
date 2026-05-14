@@ -800,9 +800,9 @@ pub mod v8 {
       }
       impl $name {
         /// Mirror of `v8::TypedArray::new(scope, buf, offset, length)`.
-        pub fn new<'s>(
+        pub fn new<'s, 'b>(
           scope: &mut crate::scope::HandleScope<'s>,
-          _buf: crate::value::Local<'s, crate::buffer::ArrayBuffer>,
+          _buf: crate::value::Local<'b, crate::buffer::ArrayBuffer>,
           _offset: usize,
           _length: usize,
         ) -> Option<crate::value::Local<'s, $name>> {

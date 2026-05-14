@@ -462,15 +462,13 @@ struct MapObjectAccess<'a, 's, 'i> {
 
 // Unsafe lifetime-extension helper for the variance trap that
 // `&'a mut PinScope<'s, 'i>` falls into when stored across method
-// calls. Locally extends the borrow's outer lifetime to 's so the
-// returned Local<'s, _> can be assigned into 'a-bound fields. Safe
-// in practice because the underlying scope outlives both 'a and 's.
-unsafe fn extend_scope<'a, 's, 'i>(
-  scope: &'a mut v8::PinScope<'s, 'i>,
-) -> &'s mut v8::PinScope<'s, 'i> {
-  unsafe {
-    &mut *(scope as *mut v8::PinScope<'s, 'i>)
-  }
+// calls. Erases ALL input lifetimes via raw pointer round-trip so the
+// borrow checker can't tie them to outer constraints. Safe in
+// practice because the underlying scope outlives both 'a and 's.
+unsafe fn extend_scope<'r, 's, 'i>(
+  scope: *mut v8::PinScope<'_, '_>,
+) -> &'r mut v8::PinScope<'s, 'i> {
+  unsafe { &mut *(scope as *mut v8::PinScope<'s, 'i>) }
 }
 
 impl<'a, 's, 'i> MapObjectAccess<'a, 's, 'i> {
@@ -552,9 +550,11 @@ impl<'de> de::MapAccess<'de> for MapPairsAccess<'_, '_, '_> {
     seed: K,
   ) -> Result<Option<K::Value>> {
     if self.pos < self.len {
-      let v8_key = self.obj.get_index(self.scope, self.pos).unwrap();
+      let scope = unsafe { extend_scope(self.scope as *mut _ as *mut _) };
+      let v8_key = self.obj.get_index(scope, self.pos).unwrap();
       self.pos += 1;
-      let mut deserializer = Deserializer::new(self.scope, v8_key, None);
+      let scope = unsafe { extend_scope(self.scope as *mut _ as *mut _) };
+      let mut deserializer = Deserializer::new(scope, v8_key, None);
       let k = seed.deserialize(&mut deserializer)?;
       Ok(Some(k))
     } else {
@@ -567,9 +567,11 @@ impl<'de> de::MapAccess<'de> for MapPairsAccess<'_, '_, '_> {
     seed: V,
   ) -> Result<V::Value> {
     debug_assert!(self.pos < self.len);
-    let v8_val = self.obj.get_index(self.scope, self.pos).unwrap();
+    let scope = unsafe { extend_scope(self.scope as *mut _ as *mut _) };
+    let v8_val = self.obj.get_index(scope, self.pos).unwrap();
     self.pos += 1;
-    let mut deserializer = Deserializer::new(self.scope, v8_val, None);
+    let scope = unsafe { extend_scope(self.scope as *mut _ as *mut _) };
+    let mut deserializer = Deserializer::new(scope, v8_val, None);
     seed.deserialize(&mut deserializer)
   }
 

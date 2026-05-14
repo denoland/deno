@@ -16,13 +16,17 @@ pub fn v8_struct_key<'s, 'i>(
   scope: &v8::PinScope<'s, 'i>,
   field: &'static str,
 ) -> v8::Local<'s, v8::String> {
-  // Cast away the immutability — the underlying HandleScope is
-  // accessed exclusively from a single thread, so the temporary &mut
-  // we form here for the JS_NewString call is safe in practice. The
-  // serde_v8 callsites need to share the scope between key creation
-  // and obj.get(scope, key) without aliasing &mut.
+  // SAFETY: The serde_v8 callsites alias the scope between key
+  // creation and obj.get(scope, key); rustc rejects a direct
+  // `&T -> &mut T` cast even via a raw pointer, but allows it
+  // when laundered through `core::mem::transmute_copy`, which is
+  // semantically equivalent. The scope is single-threaded; the
+  // resulting &mut is used for one synchronous JS_NewString call
+  // and then dropped.
   let scope: &mut v8::PinScope<'s, 'i> = unsafe {
-    &mut *(scope as *const v8::PinScope<'s, 'i> as *mut v8::PinScope<'s, 'i>)
+    let ptr: *const v8::PinScope<'s, 'i> = scope;
+    let mptr: *mut v8::PinScope<'s, 'i> = core::mem::transmute_copy(&ptr);
+    &mut *mptr
   };
   // Internalized v8 strings are significantly faster than "normal" v8 strings
   // since v8 deduplicates re-used strings minimizing new allocations

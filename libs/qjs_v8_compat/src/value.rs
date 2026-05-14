@@ -43,6 +43,19 @@ impl<'s, T> Clone for Local<'s, T> {
   }
 }
 
+// Local derefs to the marker type T so callers can do `local.method()`
+// where method is defined on T (rusty_v8's pattern). The marker type
+// is zero-sized, so we cast our raw to a reference at any layout.
+impl<'s, T> std::ops::Deref for Local<'s, T> {
+  type Target = T;
+  fn deref(&self) -> &T {
+    // SAFETY: T is a zero-sized marker type (`pub struct T { _private: () }`).
+    // Any pointer is a valid reference for a ZST since there's no memory
+    // to dereference.
+    unsafe { &*(self as *const Self as *const T) }
+  }
+}
+
 impl<'s, T> Local<'s, T> {
   pub(crate) fn from_raw(raw: sys::JSValue) -> Self {
     Self {
@@ -156,30 +169,25 @@ impl<'s, T> Local<'s, T> {
     None
   }
   /// Mirror of `Local<String>::write_v2` (UTF-16 byte writer). Stub.
-  pub fn write_v2(
+  pub fn write_v2<'sc>(
     &self,
-    _scope: &mut HandleScope<'s>,
+    _scope: &mut HandleScope<'sc>,
     _offset: u32,
     _dest: &mut [u16],
     _flags: crate::v8::WriteFlags,
   ) {
   }
-  /// Mirror of `Local<String>::write_one_byte_v2`.
-  pub fn write_one_byte_v2(
+  pub fn write_one_byte_v2<'sc>(
     &self,
-    _scope: &mut HandleScope<'s>,
+    _scope: &mut HandleScope<'sc>,
     _offset: u32,
     _dest: &mut [u8],
     _flags: crate::v8::WriteFlags,
   ) {
   }
-  /// Mirror of `Local::write_utf8_uninit_v2(scope, dest, flags, nchars)`
-  /// — Writes the UTF-8 form of the underlying string into `dest`;
-  /// returns the number of bytes written. The optional `nchars` out
-  /// param receives the number of UTF-16 code units consumed.
-  pub fn write_utf8_uninit_v2(
+  pub fn write_utf8_uninit_v2<'sc>(
     &self,
-    _scope: &mut HandleScope<'s>,
+    _scope: &mut HandleScope<'sc>,
     _dest: &mut [std::mem::MaybeUninit<u8>],
     _flags: crate::v8::WriteFlags,
     _nchars: Option<&mut usize>,
@@ -568,51 +576,50 @@ impl ValueType for crate::promise::Promise {
 impl<'s> Local<'s, Value> {
   /// Mirror of `v8::Value::to_string` — coerces any value to its
   /// JavaScript-string representation. Returns Some on success.
-  pub fn to_string(
+  /// Result lifetime decoupled from receiver per rusty_v8.
+  pub fn to_string<'sc>(
     &self,
-    scope: &mut HandleScope<'s>,
-  ) -> Option<Local<'s, crate::primitives::String>> {
+    scope: &mut HandleScope<'sc>,
+  ) -> Option<Local<'sc, crate::primitives::String>> {
     let s = crate::sys::to_string_lossy(scope.ctx(), self.raw)?;
     crate::primitives::String::new(scope, &s)
   }
-  /// Mirror of `v8::Value::to_object`.
-  pub fn to_object(
+  pub fn to_object<'sc>(
     &self,
-    _scope: &mut HandleScope<'s>,
-  ) -> Option<Local<'s, crate::object::Object>> {
+    _scope: &mut HandleScope<'sc>,
+  ) -> Option<Local<'sc, crate::object::Object>> {
     if crate::sys::jsv_is_object(&self.raw) {
       Some(Local::from_raw(self.raw))
     } else {
       None
     }
   }
-  /// Mirror of `v8::Value::to_integer`.
-  pub fn to_integer(
+  pub fn to_integer<'sc>(
     &self,
-    _scope: &mut HandleScope<'s>,
-  ) -> Option<Local<'s, crate::primitives::Integer>> {
+    _scope: &mut HandleScope<'sc>,
+  ) -> Option<Local<'sc, crate::primitives::Integer>> {
     if crate::sys::jsv_is_int(&self.raw) {
       Some(Local::from_raw(self.raw))
     } else {
       None
     }
   }
-  pub fn to_uint32(
+  pub fn to_uint32<'sc>(
     &self,
-    _scope: &mut HandleScope<'s>,
-  ) -> Option<Local<'s, crate::primitives::Integer>> {
+    _scope: &mut HandleScope<'sc>,
+  ) -> Option<Local<'sc, crate::primitives::Integer>> {
     self.to_integer(_scope)
   }
-  pub fn to_int32(
+  pub fn to_int32<'sc>(
     &self,
-    _scope: &mut HandleScope<'s>,
-  ) -> Option<Local<'s, crate::primitives::Integer>> {
+    _scope: &mut HandleScope<'sc>,
+  ) -> Option<Local<'sc, crate::primitives::Integer>> {
     self.to_integer(_scope)
   }
-  pub fn to_number(
+  pub fn to_number<'sc>(
     &self,
-    _scope: &mut HandleScope<'s>,
-  ) -> Option<Local<'s, crate::primitives::Number>> {
+    _scope: &mut HandleScope<'sc>,
+  ) -> Option<Local<'sc, crate::primitives::Number>> {
     if crate::sys::jsv_is_number(&self.raw) {
       Some(Local::from_raw(self.raw))
     } else {
@@ -745,7 +752,10 @@ impl<T> Clone for Global<T> {
 }
 
 impl<T> Global<T> {
-  pub fn new<'s>(scope: &mut HandleScope<'s>, local: Local<'s, T>) -> Self {
+  pub fn new<'sc, 'lo>(
+    scope: &mut HandleScope<'sc>,
+    local: Local<'lo, T>,
+  ) -> Self {
     let ctx = scope.ctx();
     sys::dup_value(ctx, local.raw);
     Self {

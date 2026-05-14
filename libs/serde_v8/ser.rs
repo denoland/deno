@@ -470,7 +470,7 @@ impl<'a, 'b, 'c, 'i> ser::Serializer for Serializer<'a, 'b, 'c, 'i> {
   }
 
   fn serialize_str(self, v: &str) -> JsResult<'a> {
-    let maybe_str = v8::String::new(*self.scope.borrow(), v);
+    let maybe_str = v8::String::new(&mut **self.scope.borrow_mut(), v);
 
     // v8 string can return 'None' if buffer length > kMaxLength.
     if let Some(str) = maybe_str {

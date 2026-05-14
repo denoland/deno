@@ -36,16 +36,34 @@ impl Object {
 }
 
 impl<'s> Local<'s, Object> {
-  /// V8 signature: `(scope, key: Local<Value>) -> Option<Local<Value>>`.
-  /// We route through `JS_GetPropertyStr` after converting the key to a
-  /// Rust string. If the key isn't string-coercible we return None.
-  pub fn get<'a>(
+  /// V8 signature: `(scope, key) -> Option<Local<'s, Value>>`. The
+  /// result's lifetime comes from the scope, not the receiver — that's
+  /// rusty_v8's pattern, and serde_v8 relies on it (`self.obj` may have
+  /// a shorter receiver lifetime than the scope's `'s`, but the
+  /// returned Local must be assignable into a `'s`-bound field).
+  pub fn get<'sc, 'k>(
     &self,
-    scope: &mut HandleScope<'s>,
-    key: Local<'a, Value>,
-  ) -> Option<Local<'s, Value>> {
+    scope: &mut HandleScope<'sc>,
+    key: Local<'k, Value>,
+  ) -> Option<Local<'sc, Value>> {
     let key_s = sys::to_string_lossy(scope.ctx(), key.raw())?;
-    self.get_str(scope, &key_s)
+    Self::get_str_owned(scope, self.raw(), &key_s)
+  }
+  /// Static helper for the lifetime-decoupled get_str path.
+  fn get_str_owned<'sc>(
+    scope: &mut HandleScope<'sc>,
+    raw_obj: sys::JSValue,
+    key: &str,
+  ) -> Option<Local<'sc, Value>> {
+    let raw = sys::get_property_str(scope.ctx(), raw_obj, key);
+    if sys::jsv_is_exception(&raw) {
+      return None;
+    }
+    if sys::jsv_is_undefined(&raw) {
+      return Some(Local::from_raw(raw));
+    }
+    scope.track_owned(raw);
+    Some(Local::from_raw(raw))
   }
   /// Direct string-keyed get — used by ops bridge and serde_v8.
   pub fn get_str(
@@ -108,11 +126,12 @@ impl<'s> Local<'s, Object> {
     Some(sys::delete_property_str(scope.ctx(), self.raw(), &key_s))
   }
   /// Indexed get for typed-array-like access. Returns None on exception.
-  pub fn get_index(
+  /// Result lifetime decoupled from receiver per rusty_v8.
+  pub fn get_index<'sc>(
     &self,
-    scope: &mut HandleScope<'s>,
+    scope: &mut HandleScope<'sc>,
     idx: u32,
-  ) -> Option<Local<'s, Value>> {
+  ) -> Option<Local<'sc, Value>> {
     let raw = sys::get_indexed(scope.ctx(), self.raw(), idx);
     if sys::jsv_is_exception(&raw) {
       return None;
@@ -122,11 +141,11 @@ impl<'s> Local<'s, Object> {
     }
     Some(Local::from_raw(raw))
   }
-  pub fn set_index(
+  pub fn set_index<'sc, 'v>(
     &self,
-    scope: &mut HandleScope<'s>,
+    scope: &mut HandleScope<'sc>,
     idx: u32,
-    value: Local<'s, Value>,
+    value: Local<'v, Value>,
   ) -> bool {
     let was_tracked = scope.release_owned(value.raw());
     let ok = sys::set_indexed(scope.ctx(), self.raw(), idx, value.raw());
