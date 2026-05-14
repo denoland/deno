@@ -883,7 +883,10 @@ pub mod v8 {
   /// builder produces.
   pub struct FunctionBuilder<T>(core::marker::PhantomData<T>);
   impl<T> FunctionBuilder<T> {
-    pub fn new(_callback: super::FunctionCallback) -> Self {
+    pub fn new<F>(_callback: F) -> Self
+    where
+      F: crate::function::MapFnTo<super::FunctionCallback>,
+    {
       Self(core::marker::PhantomData)
     }
     pub fn data<'s>(self, _data: super::Local<'s, super::Value>) -> Self {
@@ -895,9 +898,9 @@ pub mod v8 {
     pub fn side_effect_type(self, _t: super::SideEffectType) -> Self {
       self
     }
-    pub fn build<'s>(
+    pub fn build<'s, S: crate::scope::HandleScopeSource>(
       self,
-      scope: &mut super::HandleScope<'s>,
+      scope: &mut S,
     ) -> Option<super::Local<'s, super::FunctionTemplate>> {
       let _ = scope;
       None

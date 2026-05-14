@@ -93,6 +93,29 @@ impl<'s, 'i, C> HandleScopeSource for PinScope<'s, 'i, C> {
   }
 }
 
+impl<'s, C> HandleScopeSource for CallbackScope<'s, C> {
+  fn default_ctx(&mut self) -> sys::Context {
+    self.0.ctx
+  }
+  fn isolate_ptr(&mut self) -> *mut Isolate {
+    self.0.isolate
+  }
+}
+
+impl<'s, S> HandleScopeSource for crate::exception::TryCatch<'s, S>
+where
+  S: HandleScopeSource,
+{
+  fn default_ctx(&mut self) -> sys::Context {
+    use std::ops::DerefMut;
+    self.deref_mut().default_ctx()
+  }
+  fn isolate_ptr(&mut self) -> *mut Isolate {
+    use std::ops::DerefMut;
+    self.deref_mut().isolate_ptr()
+  }
+}
+
 impl<'s> HandleScope<'s, Context> {
   /// `v8::HandleScope::new(isolate)` — opens a scope on the isolate's
   /// default context. Mirrors rusty_v8's no-context constructor; on our
@@ -536,25 +559,11 @@ impl<'s, 'i, C> std::ops::DerefMut for PinScope<'s, 'i, C> {
   }
 }
 
-#[repr(transparent)]
-pub struct PinCallbackScope<'s, 'i: 's, C = Context>(
-  pub(crate) CallbackScope<'s, C>,
-  PhantomData<&'i ()>,
-);
-// PinCallbackScope derefs to PinScope so deno_core's
-// `to_v8_error(scope, err)` (which expects &mut PinScope) accepts a
-// &mut PinCallbackScope.
-impl<'s, 'i: 's, C> std::ops::Deref for PinCallbackScope<'s, 'i, C> {
-  type Target = PinScope<'s, 'i, C>;
-  fn deref(&self) -> &PinScope<'s, 'i, C> {
-    unsafe { &*(self as *const Self as *const PinScope<'s, 'i, C>) }
-  }
-}
-impl<'s, 'i: 's, C> std::ops::DerefMut for PinCallbackScope<'s, 'i, C> {
-  fn deref_mut(&mut self) -> &mut PinScope<'s, 'i, C> {
-    unsafe { &mut *(self as *mut Self as *mut PinScope<'s, 'i, C>) }
-  }
-}
+/// `PinCallbackScope<'s, 'i>` is a type alias for
+/// `Pin<&'i mut CallbackScope<'s>>` — that's how rusty_v8 spells the
+/// pin-rooted callback scope handle, and it's what op2-generated code
+/// expects to pass around.
+pub type PinCallbackScope<'s, 'i> = core::pin::Pin<&'i mut CallbackScope<'s>>;
 
 // v8::scope free fn — used by deno_core's scope macro.
 pub fn scope<'s, 'r>(iso: &'r mut OwnedIsolate) -> HandleScope<'s, Context>
