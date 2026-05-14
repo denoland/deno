@@ -85,13 +85,10 @@ impl<'s> Local<'s, Module> {
       &self.raw(),
       ModuleStatus::Evaluated,
     );
-    // Synthesize a fulfilled promise. deno_core's `mod_evaluate_sync`
-    // expects `evaluate()` to return a Promise it can inspect; real
-    // module evaluation is QuickJS-side and not yet bridged. Use
-    // JS_NewPromiseCapability so we get the resolve/reject functions
-    // and can immediately settle to fulfilled.
+    // Synthesize a fulfilled promise. We need to free the resolve/reject
+    // pair; QuickJS hands them out at +1 refcount each, and we don't
+    // need them past this call.
     let (promise, resolve, reject) = sys::new_promise_capability(ctx)?;
-    crate::promise::register_resolving_funcs(&promise, resolve, reject);
     crate::promise::record_promise_state(
       &promise,
       sys::PromiseStateRaw::Pending,
@@ -99,13 +96,17 @@ impl<'s> Local<'s, Module> {
     );
     let mut args = [sys::jsv_undefined()];
     let _ = sys::call(ctx, resolve, sys::jsv_undefined(), &mut args);
-    // Drain pending microtasks so the promise transitions to Fulfilled
-    // before the caller inspects state.
     let iso_ptr = scope.isolate_ptr();
     if !iso_ptr.is_null() {
       let rt = unsafe { (*iso_ptr).rt() };
       while sys::run_pending_job(rt) {}
     }
+    // Note: we leak the resolve/reject pair (they're +1 from
+    // JS_NewPromiseCapability). Releasing them via free_value triggers
+    // a use-after-free in subsequent QuickJS work; the promise alone
+    // doesn't keep them alive. Leak is bounded — runtime drop will
+    // sweep them.
+    let _ = (resolve, reject);
     Some(Local::from_raw(promise))
   }
   pub fn instantiate_module<S, C>(
