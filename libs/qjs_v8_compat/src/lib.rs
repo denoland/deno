@@ -114,6 +114,8 @@ pub use crate::v8::WasmStreaming;
 pub use crate::v8::WriteFlags;
 pub use crate::v8::TimeZoneDetection;
 pub use crate::v8::Set;
+pub use crate::v8::PropertyDescriptor;
+pub use crate::v8::UnboundScript;
 pub use crate::v8::IntegrityLevel;
 pub use crate::v8::Float16Array;
 pub use crate::v8::MicrotaskQueue;
@@ -1307,9 +1309,15 @@ pub mod v8 {
     pub fn default() -> Self { Self::empty() }
   }
 
-  /// EscapableHandleScope::init stub.
+  /// EscapableHandleScope::init stub matching CallbackScope::init —
+  /// returns the same Pin so the chained `&mut scope_storage.init()`
+  /// pattern in op2-generated code resolves to `&mut Pin<&mut EHS>`.
   impl<'s, 'l, C> crate::scope::EscapableHandleScope<'s, 'l, C> {
-    pub fn init(self: std::pin::Pin<&mut Self>) {}
+    pub fn init(
+      self: std::pin::Pin<&mut Self>,
+    ) -> std::pin::Pin<&mut Self> {
+      self
+    }
   }
 
   /// Object additional methods.

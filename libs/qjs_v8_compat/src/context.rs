@@ -266,17 +266,6 @@ where
   }
 }
 
-impl<'a, P> crate::scope::HandleScopeSource
-  for core::pin::Pin<&mut AllowJavascriptExecutionScope<'a, P>>
-where
-  P: crate::scope::HandleScopeSource,
-{
-  fn default_ctx(&mut self) -> crate::sys::Context {
-    let inner: &mut AllowJavascriptExecutionScope<'a, P> = &mut *self.as_mut();
-    inner.default_ctx()
-  }
-  fn isolate_ptr(&mut self) -> *mut crate::isolate::Isolate {
-    let inner: &mut AllowJavascriptExecutionScope<'a, P> = &mut *self.as_mut();
-    inner.isolate_ptr()
-  }
-}
+// (Removed redundant Pin<&mut AllowJavascriptExecutionScope> impl —
+// the blanket `Pin<&mut P> for any P: HandleScopeSource + Unpin` in
+// scope.rs covers it.)

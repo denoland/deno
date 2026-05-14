@@ -127,12 +127,36 @@ impl<'s, C> HandleScopeSource for HandleScope<'s, C> {
   }
 }
 
+impl<'s, 'e: 's, C> HandleScopeSource for EscapableHandleScope<'s, 'e, C> {
+  fn default_ctx(&mut self) -> sys::Context {
+    use std::ops::DerefMut;
+    self.deref_mut().default_ctx()
+  }
+  fn isolate_ptr(&mut self) -> *mut Isolate {
+    use std::ops::DerefMut;
+    self.deref_mut().isolate_ptr()
+  }
+}
+
 impl<S: HandleScopeSource + ?Sized> HandleScopeSource for &mut S {
   fn default_ctx(&mut self) -> sys::Context {
     (**self).default_ctx()
   }
   fn isolate_ptr(&mut self) -> *mut Isolate {
     (**self).isolate_ptr()
+  }
+}
+
+impl<P: HandleScopeSource + Unpin + ?Sized> HandleScopeSource
+  for std::pin::Pin<&mut P>
+{
+  fn default_ctx(&mut self) -> sys::Context {
+    use std::ops::DerefMut;
+    DerefMut::deref_mut(self).default_ctx()
+  }
+  fn isolate_ptr(&mut self) -> *mut Isolate {
+    use std::ops::DerefMut;
+    DerefMut::deref_mut(self).isolate_ptr()
   }
 }
 

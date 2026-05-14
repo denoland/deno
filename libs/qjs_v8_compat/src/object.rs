@@ -86,13 +86,21 @@ impl<'s> Local<'s, Object> {
   /// rusty_v8's pattern, and serde_v8 relies on it (`self.obj` may have
   /// a shorter receiver lifetime than the scope's `'s`, but the
   /// returned Local must be assignable into a `'s`-bound field).
-  pub fn get<'sc, 'k>(
+  pub fn get<'sc, 'k, S>(
     &self,
-    scope: &mut HandleScope<'sc>,
+    scope: &mut S,
     key: Local<'k, Value>,
-  ) -> Option<Local<'sc, Value>> {
-    let key_s = sys::to_string_lossy(scope.ctx(), key.raw())?;
-    Self::get_str_owned(scope, self.raw(), &key_s)
+  ) -> Option<Local<'sc, Value>>
+  where
+    S: crate::scope::HandleScopeSource + ?Sized,
+  {
+    let ctx = scope.default_ctx();
+    let key_s = sys::to_string_lossy(ctx, key.raw())?;
+    let raw = sys::get_property_str(ctx, self.raw(), &key_s);
+    if sys::jsv_is_exception(&raw) {
+      return None;
+    }
+    Some(Local::from_raw(raw))
   }
   /// Static helper for the lifetime-decoupled get_str path.
   fn get_str_owned<'sc>(

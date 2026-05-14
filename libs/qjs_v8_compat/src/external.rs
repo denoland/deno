@@ -52,6 +52,21 @@ pub union ExternalReference {
   pub pointer: *const c_void,
   pub type_info: *const crate::v8::fast_api::CFunctionInfo,
   pub api_function: crate::function::FunctionCallback,
+  pub named_query: *const c_void,
+  pub named_getter: *const c_void,
+  pub named_setter: *const c_void,
+  pub named_deleter: *const c_void,
+  pub named_definer: *const c_void,
+  pub named_descriptor: *const c_void,
+  pub named_enumerator: *const c_void,
+  pub indexed_query: *const c_void,
+  pub indexed_getter: *const c_void,
+  pub indexed_setter: *const c_void,
+  pub indexed_deleter: *const c_void,
+  pub indexed_definer: *const c_void,
+  pub indexed_descriptor: *const c_void,
+  pub indexed_enumerator: *const c_void,
+  pub enumerator: *const c_void,
 }
 impl ExternalReference {
   pub const fn new(pointer: *mut c_void) -> Self {
