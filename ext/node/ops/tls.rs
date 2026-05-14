@@ -133,6 +133,16 @@ fn parse_extra_ca_certs(sys: &(impl EnvVar + FsRead)) -> Vec<String> {
     .collect()
 }
 
+fn load_system_ca_certificates() -> Result<Vec<String>, CaCertificatesError> {
+  let mut certs = load_native_certs()
+    .map_err(|err| CaCertificatesError::Other(err.to_string()))?
+    .into_iter()
+    .map(|cert| cert_der_to_pem(&cert.0))
+    .collect::<Vec<_>>();
+  certs.sort_unstable();
+  Ok(certs)
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CaCertificatesError {
   #[class(type)]
@@ -173,14 +183,7 @@ pub fn op_node_get_ca_certificates<TSys: ExtNodeSys + 'static>(
         .map(|cert| cert_der_to_pem(cert))
         .collect(),
     ),
-    "system" => load_native_certs()
-      .map(|roots| {
-        roots
-          .into_iter()
-          .map(|cert| cert_der_to_pem(&cert.0))
-          .collect()
-      })
-      .map_err(|err| CaCertificatesError::Other(err.to_string())),
+    "system" => load_system_ca_certificates(),
     "extra" => Ok(parse_extra_ca_certs(sys)),
     "default" => {
       let mut certs = Vec::new();
@@ -201,12 +204,7 @@ pub fn op_node_get_ca_certificates<TSys: ExtNodeSys + 'static>(
         );
       }
       if stores.contains(&"system") {
-        certs.extend(
-          load_native_certs()
-            .map_err(|err| CaCertificatesError::Other(err.to_string()))?
-            .into_iter()
-            .map(|cert| cert_der_to_pem(&cert.0)),
-        );
+        certs.extend(load_system_ca_certificates()?);
       }
       certs.extend(parse_extra_ca_certs(sys));
       Ok(certs)
