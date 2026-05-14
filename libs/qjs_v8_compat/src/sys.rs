@@ -142,11 +142,19 @@ mod backend {
     unsafe { ffi::JS_GetGlobalObject(ctx) }
   }
   pub fn eval(ctx: Context, src: &str, filename: &str, flags: i32) -> JSValue {
+    // QuickJS-ng's JS_Eval contract: "input must be zero terminated i.e.
+    // input[input_len] = '\0'". A Rust `&str.as_ptr()` is NOT
+    // zero-terminated, so the parser reads past the end into garbage
+    // and surfaces bogus syntax errors. Copy into a CString.
+    let src_c = match std::ffi::CString::new(src) {
+      Ok(s) => s,
+      Err(_) => return jsv_undefined(), // src contains interior NUL
+    };
     let fname = std::ffi::CString::new(filename).unwrap();
     unsafe {
       ffi::JS_Eval(
         ctx,
-        src.as_ptr() as *const c_char,
+        src_c.as_ptr(),
         src.len(),
         fname.as_ptr(),
         flags,

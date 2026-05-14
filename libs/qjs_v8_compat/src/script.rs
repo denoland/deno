@@ -73,6 +73,12 @@ impl Script {
       crate::ffi::JS_EVAL_TYPE_GLOBAL | crate::ffi::JS_EVAL_FLAG_COMPILE_ONLY,
     );
     if sys::jsv_is_exception(&raw) {
+      if let Some(exc) = sys::take_pending_exception(scope.ctx()) {
+        if let Some(s) = sys::to_string_lossy(scope.ctx(), exc) {
+          eprintln!("[qjs]   compile exception: {}", s);
+        }
+        sys::free_value(scope.ctx(), exc);
+      }
       return None;
     }
     scope.track_owned(raw);
@@ -83,7 +89,11 @@ impl Script {
 impl<'s> Local<'s, Script> {
   pub fn run(&self, scope: &mut HandleScope<'s>) -> Option<Local<'s, Value>> {
     // The compile path used JS_EVAL_FLAG_COMPILE_ONLY, so `self` carries
-    // the resulting bytecode function. JS_EvalFunction executes it.
+    // the resulting bytecode function. JS_EvalFunction executes it AND
+    // takes ownership of the bytecode value (frees it). We therefore
+    // release the script's tracked refcount from the scope so the scope
+    // doesn't double-free at drop.
+    let _ = scope.release_owned(self.raw());
     let raw = sys::eval_function(scope.ctx(), self.raw());
     if sys::jsv_is_exception(&raw) {
       if let Some(exc) = sys::take_pending_exception(scope.ctx()) {
