@@ -91,6 +91,9 @@ type PendingFinalizeFuture = dyn Future<
 >;
 
 type CodeCacheReadyFuture = dyn Future<Output = ()>;
+type PendingModuleResolveFuture =
+  dyn Future<Output = Result<ModuleSpecifier, ModuleLoaderError>>;
+type PendingModuleResolve = (usize, Pin<Box<PendingModuleResolveFuture>>);
 
 struct ModEvaluate {
   module_map: Rc<ModuleMap>,
@@ -299,10 +302,7 @@ pub(crate) struct PendingModule {
   pub requests: Vec<ModuleRequest>,
   /// `(index_into_requests, future)` -- the future resolves to the real
   /// `ModuleSpecifier` for `requests[index]`.
-  pub pending_resolves: Vec<(
-    usize,
-    Pin<Box<dyn Future<Output = Result<ModuleSpecifier, ModuleLoaderError>>>>,
-  )>,
+  pub pending_resolves: Vec<PendingModuleResolve>,
 }
 
 /// Outcome of compiling a module's source. `Ready` is the fast path -- every
@@ -1052,10 +1052,7 @@ impl ModuleMap {
     let module_requests = module.get_module_requests();
     let requests_len = module_requests.length();
     let mut requests = Vec::with_capacity(requests_len);
-    let mut pending_resolves: Vec<(
-      usize,
-      Pin<Box<dyn Future<Output = Result<ModuleSpecifier, ModuleLoaderError>>>>,
-    )> = Vec::new();
+    let mut pending_resolves: Vec<PendingModuleResolve> = Vec::new();
     for i in 0..module_requests.length() {
       let module_request = v8::Local::<v8::ModuleRequest>::try_from(
         module_requests.get(tc_scope, i).unwrap(),
@@ -2304,9 +2301,9 @@ impl ModuleMap {
         // Drain finalizes both before and after the dyn-imports step:
         // - before: pick up futures that became ready since the last tick;
         // - after: handle futures pushed by this tick's `drain_dyn_imports`.
-        let mut finalized_any = self.drain_module_finalizes(cx, scope)?;
+        let mut finalized_any = self.drain_module_finalizes(cx, scope);
         self.drain_dyn_imports(cx, scope)?;
-        finalized_any |= self.drain_module_finalizes(cx, scope)?;
+        finalized_any |= self.drain_module_finalizes(cx, scope);
         self.drain_code_cache_ready(cx);
 
         if self.evaluate_dyn_imports(scope) || finalized_any {
@@ -2333,9 +2330,9 @@ impl ModuleMap {
     &self,
     cx: &mut Context,
     scope: &mut v8::PinScope,
-  ) -> Result<bool, CoreError> {
+  ) -> bool {
     if !self.pending_module_finalizes.is_pending() {
-      return Ok(false);
+      return false;
     }
 
     let mut finalized_any = false;
@@ -2363,7 +2360,7 @@ impl ModuleMap {
         }
       }
     }
-    Ok(finalized_any)
+    finalized_any
   }
 
   /// Drain all ready preparing-dynamic-import futures, moving successful
@@ -2432,7 +2429,7 @@ impl ModuleMap {
               // on the next event loop tick.
               let module_map = load.module_map_rc.clone();
               let fut = async move {
-                let result = module_map.finalize_pending_module(pending).await;
+                let result = module_map.finalize_pending_module(*pending).await;
                 (load, reference, code, result)
               };
               self.pending_module_finalizes.push(fut.boxed_local());

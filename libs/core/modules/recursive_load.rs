@@ -393,7 +393,7 @@ impl RecursiveModuleLoad {
       }
       NewModuleResult::Pending(pending) => {
         Ok(RegisterOutcome::PendingFinalize {
-          pending,
+          pending: Box::new(pending),
           reference: module_request.reference.clone(),
           code: Some(code),
         })
@@ -598,10 +598,10 @@ impl RecursiveModuleLoad {
         } => {
           let module_map = self.module_map_rc.clone();
           let module_id = module_map
-            .finalize_pending_module(pending)
+            .finalize_pending_module(*pending)
             .await
             .map_err(|e| match e {
-              ModuleError::Core(core) => CoreError::from(core),
+              ModuleError::Core(core) => core,
               // Concrete / Exception variants shouldn't surface from the
               // finalize step (the only failure mode here is the resolve
               // hook erroring), but map them defensively.
@@ -657,7 +657,7 @@ pub(crate) enum RegisterOutcome {
   /// `ModuleMap::finalize_pending_module(pending)` and then calls the
   /// `on_finalize` continuation with the resulting [`ModuleId`].
   PendingFinalize {
-    pending: PendingModule,
+    pending: Box<PendingModule>,
     reference: ModuleReference,
     code: Option<ModuleSourceCode>,
   },
