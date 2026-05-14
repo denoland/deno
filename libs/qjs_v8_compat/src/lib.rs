@@ -324,8 +324,11 @@ pub mod v8 {
         unsafe { &*p }
       }
     }
+    pub trait Traceable {}
+    impl<T> Traceable for Member<T> {}
+    impl<T> Traceable for crate::value::TracedReference<T> {}
     impl Visitor {
-      pub fn trace<T>(&mut self, _member: &Member<T>) {}
+      pub fn trace<T: Traceable>(&mut self, _t: &T) {}
     }
 
     pub fn initalize_process() {}
@@ -936,6 +939,70 @@ pub mod v8 {
     pub fn utf8_length_from_utf16(_input: &[u16]) -> usize {
       0
     }
+
+    // Base64 encode/decode shims used by ext/web. We don't implement
+    // them properly here (returns 0 / empty) — full base64 lives in
+    // `base64` crate or our own impl in a follow-up.
+    #[repr(u32)]
+    #[derive(Copy, Clone, Default)]
+    pub enum Base64Options {
+      #[default]
+      Default = 0,
+      Url = 1,
+    }
+
+    #[repr(u32)]
+    #[derive(Copy, Clone, Default)]
+    pub enum LastChunkHandling {
+      #[default]
+      Loose = 0,
+      Strict = 1,
+      StopBeforePartial = 2,
+    }
+
+    /// Result of `base64_to_binary` — mirrors rusty_v8's struct shape
+    /// (it doesn't return `Result`; the error is signaled by
+    /// `is_ok() == false` on the struct itself).
+    pub struct Base64Result {
+      pub count: usize,
+      pub written: usize,
+      ok: bool,
+    }
+    impl Base64Result {
+      pub fn is_ok(&self) -> bool {
+        self.ok
+      }
+    }
+
+    pub fn base64_to_binary(
+      input: &[u8],
+      output: &mut [u8],
+      _options: Base64Options,
+      _last: LastChunkHandling,
+    ) -> Base64Result {
+      let _ = (input, output);
+      Base64Result { count: 0, written: 0, ok: false }
+    }
+
+    pub fn maximal_binary_length_from_base64(input: &[u8]) -> usize {
+      input.len() * 3 / 4
+    }
+
+    pub fn base64_length_from_binary(
+      input_len: usize,
+      _options: Base64Options,
+    ) -> usize {
+      ((input_len + 2) / 3) * 4
+    }
+
+    pub fn binary_to_base64(
+      input: &[u8],
+      output: &mut [u8],
+      _options: Base64Options,
+    ) -> usize {
+      let _ = (input, output);
+      0
+    }
   }
 
   /// Mirrors rusty_v8's `data` submodule that re-organizes the typed
@@ -1043,13 +1110,17 @@ pub mod v8 {
     Int16Array,
     Uint16Array,
     Int32Array,
-    Uint32Array,
     BigInt64Array,
     BigUint64Array,
-    Float32Array,
-    Float64Array,
-    DataView,
   );
+  // For the typed arrays ext/web actually performs upcasts on
+  // (Uint32Array, Float32Array, Float64Array, DataView), re-export
+  // the buffer-side types — those carry a real JSValue and have
+  // `From<Local<...>> for Local<ArrayBufferView>` impls.
+  pub use crate::buffer::DataView;
+  pub use crate::buffer::Float32Array;
+  pub use crate::buffer::Float64Array;
+  pub use crate::buffer::Uint32Array;
 
   // Other oddballs deno_core references by name.
   pub struct Int32;

@@ -771,7 +771,41 @@ upcasts_to_value!(
   crate::buffer::ArrayBufferView,
   crate::buffer::SharedArrayBuffer,
   crate::buffer::Uint8Array,
+  crate::buffer::Uint32Array,
+  crate::buffer::Float32Array,
+  crate::buffer::Float64Array,
+  crate::buffer::TypedArray,
+  crate::buffer::DataView,
   // External handled separately below — needs From not TryFrom
+);
+
+// Typed-array (Float32Array, etc.) → ArrayBufferView upcast: real v8
+// has TypedArray as a subclass of ArrayBufferView. We mirror the
+// From impl with a same-raw-bits cast.
+macro_rules! upcasts_to_view {
+  ($($name:ty),* $(,)?) => { $(
+    impl<'s> From<Local<'s, $name>> for Local<'s, crate::buffer::ArrayBufferView> {
+      fn from(v: Local<'s, $name>) -> Local<'s, crate::buffer::ArrayBufferView> {
+        Local::from_raw(v.raw)
+      }
+    }
+    impl<'s> From<Local<'s, $name>> for Local<'s, crate::buffer::TypedArray> {
+      fn from(v: Local<'s, $name>) -> Local<'s, crate::buffer::TypedArray> {
+        Local::from_raw(v.raw)
+      }
+    }
+  )* }
+}
+
+upcasts_to_view!(
+  crate::buffer::Uint32Array,
+  crate::buffer::Float32Array,
+  crate::buffer::Float64Array,
+);
+
+// Re-open the original list so the trailing `);` from the upstream
+// invocation still closes a valid expansion.
+upcasts_to_value!(
   crate::module::Module,
   crate::module::ModuleRequest,
   crate::module::FixedArray,

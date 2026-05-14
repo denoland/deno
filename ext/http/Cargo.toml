@@ -11,6 +11,8 @@ repository.workspace = true
 description = "HTTP server implementation for Deno"
 
 [features]
+quickjs = ["deno_core/quickjs", "qjs_v8_compat/link_quickjs"]
+v8-engine = ["deno_core/v8-engine"]
 default = ["default_property_extractor"]
 "__http_tracing" = []
 default_property_extractor = []
@@ -31,6 +33,7 @@ brotli.workspace = true
 bytes.workspace = true
 cache_control.workspace = true
 deno_core.workspace = true
+qjs_v8_compat = { workspace = true, optional = true }
 deno_error.workspace = true
 deno_fetch.workspace = true
 deno_net.workspace = true

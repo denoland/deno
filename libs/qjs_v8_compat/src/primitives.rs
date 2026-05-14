@@ -69,6 +69,16 @@ impl String {
     let s = std::str::from_utf8(bytes).ok()?;
     Self::new(scope, s)
   }
+  /// Mirror of `v8::String::new_external_onebyte` — same shape but
+  /// accepts a non-static buffer. We just clone since we can't safely
+  /// retain an `&[u8]` without lifetime through into Local.
+  pub fn new_external_onebyte<'s>(
+    scope: &mut HandleScope<'s>,
+    bytes: Box<[u8]>,
+  ) -> Option<Local<'s, String>> {
+    let s = std::str::from_utf8(&bytes).ok()?;
+    Self::new(scope, s)
+  }
   pub fn empty<'s>(scope: &mut HandleScope<'s>) -> Local<'s, String> {
     Self::new(scope, "").unwrap()
   }
@@ -196,6 +206,20 @@ impl<'s> Local<'s, String> {
     buf.append_str(&s);
     (s.len(), s.len())
   }
+  /// `v8::String::write_utf8_v2` — same shape as write_utf8_into but
+  /// writes into raw bytes and returns nwritten.
+  pub fn write_utf8_v2<'sc>(
+    &self,
+    scope: &mut HandleScope<'sc>,
+    buf: &mut [u8],
+    _flags: crate::v8::WriteFlags,
+    _is_nul_terminated: Option<&mut usize>,
+  ) -> usize {
+    let s = sys::to_string_lossy(scope.ctx(), self.raw).unwrap_or_default();
+    let n = s.len().min(buf.len());
+    buf[..n].copy_from_slice(&s.as_bytes()[..n]);
+    n
+  }
 }
 
 /// Trait abstracting over the buffer types deno_core hands to
@@ -318,6 +342,14 @@ impl<'s> Local<'s, Number> {
       sys::JS_TAG_FLOAT64 => unsafe { self.raw.u.float64 },
       _ => f64::NAN,
     }
+  }
+  /// `v8::Number::to_string(scope)` — coerce to v8::String.
+  pub fn to_string<'sc>(
+    &self,
+    scope: &mut HandleScope<'sc>,
+  ) -> Option<Local<'sc, String>> {
+    let s = self.value().to_string();
+    String::new(scope, &s)
   }
 }
 

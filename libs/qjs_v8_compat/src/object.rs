@@ -47,6 +47,21 @@ impl Object {
   }
 }
 
+impl Object {
+  /// Mirror of `v8::Object::preview_entries` for Map/Set internal
+  /// preview, called on the `&v8::Object` marker. Returns
+  /// `(entries_array, is_key_value)`. Stub: empty array,
+  /// not key-value.
+  pub fn preview_entries<'sc>(
+    &self,
+    scope: &mut HandleScope<'sc>,
+  ) -> (Option<Local<'sc, Array>>, bool) {
+    let raw = sys::new_array(scope.ctx());
+    scope.track_owned(raw);
+    (Some(Local::from_raw(raw)), false)
+  }
+}
+
 impl<'s> Local<'s, Object> {
   /// V8 signature: `(scope, key) -> Option<Local<'s, Value>>`. The
   /// result's lifetime comes from the scope, not the receiver — that's

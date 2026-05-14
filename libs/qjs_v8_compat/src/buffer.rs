@@ -19,6 +19,24 @@ crate::value_type!(
   DataView,
 );
 
+macro_rules! typed_array_new_stub {
+  ($($name:ident),* $(,)?) => { $(
+    impl $name {
+      pub fn new<'s, 'b>(
+        scope: &mut HandleScope<'s>,
+        _buf: Local<'b, ArrayBuffer>,
+        _offset: usize,
+        _length: usize,
+      ) -> Option<Local<'s, $name>> {
+        let raw = sys::new_object(scope.ctx());
+        scope.track_owned(raw);
+        Some(Local::from_raw(raw))
+      }
+    }
+  )* }
+}
+typed_array_new_stub!(Uint32Array, Float32Array, Float64Array);
+
 pub const TYPED_ARRAY_MAX_SIZE_IN_HEAP: usize = 64;
 
 /// QuickJS-side BackingStore.

@@ -13,8 +13,15 @@ description = "WebIDL implementation for Deno"
 [lib]
 path = "lib.rs"
 
+
+[features]
+default = ["v8-engine"]
+v8-engine = ["deno_core/v8-engine"]
+quickjs = ["deno_core/quickjs", "qjs_v8_compat/link_quickjs"]
+
 [dependencies]
 deno_core.workspace = true
+qjs_v8_compat = { workspace = true, optional = true }
 
 [dev-dependencies]
 deno_bench_util.workspace = true

@@ -20,6 +20,7 @@ wgpu-core = { workspace = true, features = ["raw-window-handle", "trace", "repla
 wgpu-types = { workspace = true, features = ["serde", "std"] }
 
 deno_core.workspace = true
+qjs_v8_compat = { workspace = true, optional = true }
 deno_error.workspace = true
 serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["full"] }
