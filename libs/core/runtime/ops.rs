@@ -448,7 +448,7 @@ pub unsafe fn to_slice_buffer_any(
   unsafe {
     let (data, len) = {
       if let Ok(buf) = v8::Local::<v8::ArrayBufferView>::try_from(input) {
-        (NonNull::new(buf.data()), buf.byte_length())
+        (buf.data(), buf.byte_length())
       } else if let Ok(buf) = v8::Local::<v8::ArrayBuffer>::try_from(input) {
         (buf.data(), buf.byte_length())
       } else {
