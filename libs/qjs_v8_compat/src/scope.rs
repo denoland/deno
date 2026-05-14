@@ -288,6 +288,21 @@ impl<'s, C> ScopeParent for HandleScope<'s, C> {
   }
 }
 
+// HandleScope derefs to Isolate so the deref chain
+// PinScope -> HandleScope -> Isolate makes Isolate methods reachable
+// from a `&mut PinScope` reference.
+impl<'s, C> std::ops::Deref for HandleScope<'s, C> {
+  type Target = Isolate;
+  fn deref(&self) -> &Isolate {
+    unsafe { &*self.isolate }
+  }
+}
+impl<'s, C> std::ops::DerefMut for HandleScope<'s, C> {
+  fn deref_mut(&mut self) -> &mut Isolate {
+    unsafe { &mut *self.isolate }
+  }
+}
+
 impl<'s, C> Drop for HandleScope<'s, C> {
   fn drop(&mut self) {
     for v in self.owned.drain(..) {
