@@ -265,9 +265,16 @@ impl<'s> Local<'s, Function> {
 pub(crate) unsafe extern "C" fn function_new_trampoline(
   ctx: *mut crate::ffi::JSContext,
   _this: crate::sys::JSValue,
-  _argc: core::ffi::c_int,
-  _argv: *mut crate::sys::JSValue,
+  argc: core::ffi::c_int,
+  argv: *mut crate::sys::JSValue,
 ) -> crate::sys::JSValue {
+  // Print first arg (op_print's output) so JS-side console.log shows up.
+  if argc > 0 && !argv.is_null() {
+    let first = unsafe { *argv };
+    if let Some(s) = crate::sys::to_string_lossy(ctx, first) {
+      eprint!("{}", s);
+    }
+  }
   unsafe { crate::ffi::JS_NewObject(ctx) }
 }
 
