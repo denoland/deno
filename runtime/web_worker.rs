@@ -269,6 +269,7 @@ pub struct SendableWebWorkerHandle {
   receiver: mpsc::Receiver<WorkerControlEvent>,
   termination_signal: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
+  pub event_loop_metrics: Arc<deno_core::EventLoopMetrics>,
 }
 
 impl From<SendableWebWorkerHandle> for WebWorkerHandle {
@@ -351,6 +352,7 @@ fn create_handles(
     port: worker_port,
     termination_signal,
     terminate_waker,
+    event_loop_metrics: Arc::new(deno_core::EventLoopMetrics::default()),
   };
   (internal_handle, external_handle)
 }
@@ -695,10 +697,14 @@ impl WebWorker {
 
     let (internal_handle, external_handle) = {
       let handle = js_runtime.v8_isolate().thread_safe_handle();
-      let (internal_handle, external_handle) =
+      let (internal_handle, mut external_handle) =
         create_handles(handle, options.name.clone(), options.worker_type);
       let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
+      // Share event loop metrics with the parent so it can read worker ELU.
+      external_handle.event_loop_metrics = op_state
+        .borrow::<Arc<deno_core::EventLoopMetrics>>()
+        .clone();
       op_state.put(internal_handle.clone());
       (internal_handle, external_handle)
     };

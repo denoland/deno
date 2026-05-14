@@ -469,6 +469,7 @@ pub struct JsRuntimeState {
   inspector: RefCell<Option<Rc<JsRuntimeInspector>>>,
   has_inspector: Cell<bool>,
   lazy_extensions: Vec<&'static str>,
+  pub(crate) event_loop_metrics: Arc<crate::EventLoopMetrics>,
   /// Counter for consecutive event loop iterations where module evaluation
   /// is pending but V8 reports no stalled top-level await. Used to detect
   /// deadlocks and avoid spinning the event loop indefinitely.
@@ -730,6 +731,8 @@ impl JsRuntime {
 
     // First let's create an `OpState` and contribute to it from extensions...
     let mut op_state = OpState::new(options.maybe_op_stack_trace_callback);
+    let event_loop_metrics = Arc::new(crate::EventLoopMetrics::default());
+    op_state.put(event_loop_metrics.clone());
     let unrefed_ops = op_state.unrefed_ops.clone();
 
     let lazy_extensions =
@@ -804,6 +807,7 @@ impl JsRuntime {
       function_templates: Default::default(),
       callsite_prototype: None.into(),
       lazy_extensions,
+      event_loop_metrics,
       tla_stall_retries: Cell::new(0),
     });
 
@@ -2245,6 +2249,7 @@ impl JsRuntime {
   ) -> Poll<Result<(), CoreError>> {
     let has_inspector = self.inner.state.has_inspector.get();
     self.inner.state.waker.register(cx.waker());
+    self.inner.state.event_loop_metrics.record_tick_start();
 
     // Pre-phase: Inspector + drain foreground tasks + microtask checkpoint
     if has_inspector {
@@ -2463,6 +2468,7 @@ impl JsRuntime {
 
         if poll_options.wait_for_inspector && sessions_state.has_active {
           if sessions_state.has_blocking {
+            self.inner.state.event_loop_metrics.record_tick_idle();
             return Poll::Pending;
           }
 
@@ -2470,6 +2476,7 @@ impl JsRuntime {
             let context = self.main_context();
             inspector.context_destroyed(scope, context);
             self.wait_for_inspector_disconnect();
+            self.inner.state.event_loop_metrics.record_tick_idle();
             return Poll::Pending;
           }
         }
@@ -2606,6 +2613,7 @@ impl JsRuntime {
       }
     }
 
+    self.inner.state.event_loop_metrics.record_tick_idle();
     Poll::Pending
   }
 }

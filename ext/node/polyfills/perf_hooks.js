@@ -11,7 +11,7 @@ const {
   PerformanceObserver: WebPerformanceObserver,
   PerformanceObserverEntryList,
 } = core.loadExtScript("ext:deno_web/15_performance.js");
-const { EldHistogram } = core.ops;
+const { EldHistogram, op_node_event_loop_metrics } = core.ops;
 const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -153,14 +153,87 @@ function enqueueNodePerformanceEntry(entry) {
   }
 }
 
-const eventLoopUtilization = () => {
-  // TODO(@marvinhagemeister): Return actual non-stubbed values
-  return { idle: 0, active: 0, utilization: 0 };
-};
+const eluBuf = new Float64Array(3);
+const eluU8 = new Uint8Array(eluBuf.buffer);
+
+function eventLoopUtilization(util1, util2) {
+  if (util2) {
+    const idle = util1.idle - util2.idle;
+    const active = util1.active - util2.active;
+    return { idle, active, utilization: active / (idle + active) };
+  }
+
+  op_node_event_loop_metrics(eluU8);
+  const idle = eluBuf[1];
+  const active = eluBuf[2];
+
+  if (!util1) {
+    return { idle, active, utilization: active / (idle + active) };
+  }
+
+  const idleDelta = idle - util1.idle;
+  const activeDelta = active - util1.active;
+  return {
+    idle: idleDelta,
+    active: activeDelta,
+    utilization: activeDelta / (idleDelta + activeDelta),
+  };
+}
 
 performance.eventLoopUtilization = eventLoopUtilization;
 
-performance.nodeTiming = {};
+performance.nodeTiming = {
+  get name() {
+    return "node";
+  },
+  get entryType() {
+    return "node";
+  },
+  get startTime() {
+    return 0;
+  },
+  get duration() {
+    return performance.now();
+  },
+  get nodeStart() {
+    return 0;
+  },
+  get v8Start() {
+    return 0;
+  },
+  get environment() {
+    return 0;
+  },
+  get loopStart() {
+    op_node_event_loop_metrics(eluU8);
+    return eluBuf[0];
+  },
+  get loopExit() {
+    return -1;
+  },
+  get bootstrapComplete() {
+    return 0;
+  },
+  get idleTime() {
+    op_node_event_loop_metrics(eluU8);
+    return eluBuf[1];
+  },
+  toJSON() {
+    return {
+      name: this.name,
+      entryType: this.entryType,
+      startTime: this.startTime,
+      duration: this.duration,
+      nodeStart: this.nodeStart,
+      v8Start: this.v8Start,
+      environment: this.environment,
+      loopStart: this.loopStart,
+      loopExit: this.loopExit,
+      bootstrapComplete: this.bootstrapComplete,
+      idleTime: this.idleTime,
+    };
+  },
+};
 
 const timerify = (fn, options = {}) => {
   if (typeof fn !== "function") {

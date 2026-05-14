@@ -2,8 +2,11 @@
 
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::sync::Arc;
 
+use deno_core::EventLoopMetrics;
 use deno_core::GarbageCollected;
+use deno_core::OpState;
 use deno_core::op2;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -146,4 +149,15 @@ impl EldHistogram {
   fn stddev(&self) -> f64 {
     self.eld.borrow().stdev()
   }
+}
+
+/// Returns event loop timing metrics as three f64 LE values in a 24-byte
+/// buffer: [loop_start_ms, idle_time_ms, active_ms].
+#[op2(fast)]
+pub fn op_node_event_loop_metrics(state: &OpState, #[buffer] out: &mut [u8]) {
+  let metrics = state.borrow::<Arc<EventLoopMetrics>>();
+  let (loop_start, idle, active) = metrics.read();
+  out[..8].copy_from_slice(&loop_start.to_ne_bytes());
+  out[8..16].copy_from_slice(&idle.to_ne_bytes());
+  out[16..24].copy_from_slice(&active.to_ne_bytes());
 }

@@ -76,6 +76,7 @@ pub struct WorkerThread {
   worker_handle: WebWorkerHandle,
   cancel_handle: Rc<CancelHandle>,
   cpu_thread_handle: Arc<AtomicU64>,
+  event_loop_metrics: Arc<deno_core::EventLoopMetrics>,
 
   // A WorkerThread that hasn't been explicitly terminated can only be removed
   // from the WorkersTable once close messages have been received for both the
@@ -112,6 +113,7 @@ deno_core::extension!(
     op_host_recv_message_sync,
     op_host_get_worker_cpu_usage,
     op_current_thread_cpu_usage,
+    op_host_get_worker_event_loop_metrics,
   ],
   options = {
     create_web_worker_cb: Arc<CreateWebWorkerCb>,
@@ -296,11 +298,13 @@ fn op_create_worker(
       "Worker thread terminated unexpectedly before initialization completed",
     )
   })?;
+  let worker_event_loop_metrics = worker_handle.event_loop_metrics.clone();
 
   let worker_thread = WorkerThread {
     worker_handle: worker_handle.into(),
     cancel_handle: CancelHandle::new_rc(),
     cpu_thread_handle,
+    event_loop_metrics: worker_event_loop_metrics,
     ctrl_closed: false,
     message_closed: false,
   };
@@ -526,6 +530,25 @@ fn op_current_thread_cpu_usage(#[buffer] out: &mut [f64]) {
   let (user, system) = get_thread_cpu_usage_by_handle(handle);
   out[0] = user;
   out[1] = system;
+}
+
+/// Returns event loop metrics for a worker as three f64 LE values in a
+/// 24-byte buffer: [loop_start_ms, idle_time_ms, active_ms].
+/// Returns zeros if worker not found.
+#[op2]
+pub fn op_host_get_worker_event_loop_metrics(
+  state: &mut OpState,
+  #[serde] id: WorkerId,
+  #[buffer] out: &mut [u8],
+) {
+  if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
+    let (loop_start, idle, active) = worker_thread.event_loop_metrics.read();
+    out[..8].copy_from_slice(&loop_start.to_ne_bytes());
+    out[8..16].copy_from_slice(&idle.to_ne_bytes());
+    out[16..24].copy_from_slice(&active.to_ne_bytes());
+    return;
+  }
+  out[..24].fill(0);
 }
 
 #[cfg(target_os = "macos")]
