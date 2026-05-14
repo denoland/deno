@@ -2,7 +2,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 
 const { internalRidSymbol } = core;
 const {
@@ -46,32 +47,35 @@ const {
   Uint8Array,
 } = primordials;
 
-import {
-  Http2Session as InternalHttp2Session,
+const {
+  Http2Session: InternalHttp2Session,
   op_http2_callbacks,
-} from "ext:core/ops";
+} = core.ops;
 const { enqueueNodePerformanceEntry } = core.loadExtScript(
   "ext:deno_node/perf_hooks.js",
 );
 const { performance: webPerformance } = core.loadExtScript(
   "ext:deno_web/15_performance.js",
 );
-import net from "node:net";
+const lazyNet = core.createLazyLoader("node:net");
+const net = lazyNet().default;
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
-import http from "node:http";
+const lazyHttp = core.createLazyLoader("node:http");
+const http = lazyHttp().default;
 const { AsyncResource } = core.loadExtScript("ext:deno_node/async_hooks.ts");
-import {
-  _connectionListener as httpConnectionListener,
+const {
+  _connectionListener: httpConnectionListener,
   httpServerPreClose,
   kIncomingMessage,
   kServerResponse,
-  Server as HttpServer,
+  Server: HttpServer,
   setupConnectionsTracking,
   STATUS_CODES,
   storeHTTPOptions,
-} from "node:_http_server";
-import { Duplex } from "node:stream";
-import tls from "node:tls";
+} = core.createLazyLoader("node:_http_server")();
+const { Duplex } = core.createLazyLoader("node:stream")();
+const lazyTls = core.createLazyLoader("node:tls");
+const tls = lazyTls().default;
 const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 const dc = core.loadExtScript("ext:deno_node/diagnostics_channel.js").default;
 const { utcDate } = core.loadExtScript("ext:deno_node/internal/http.ts");
@@ -90,17 +94,24 @@ const {
   symbols,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { async_id_symbol } = symbols;
-import { kTimeout } from "ext:deno_node/internal/timers.mjs";
+const { kTimeout } = core.loadExtScript(
+  "ext:deno_node/internal/timers.mjs",
+);
 // Use node:timers' setTimeout/clearTimeout so the returned Timeout object
 // supports unref() -- globalThis.setTimeout returns a plain number.
-import { clearTimeout, setTimeout } from "node:timers";
+const lazyTimers = core.createLazyLoader("node:timers");
+const { clearTimeout, setTimeout } = lazyTimers();
 const { addAbortListener } = core.loadExtScript(
   "ext:deno_node/internal/events/abort_listener.mjs",
 );
-export { addAbortListener };
-import fs from "node:fs";
-import { FileHandle as FsFileHandle } from "ext:deno_node/internal/fs/handle.ts";
-import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
+const lazyFs = core.createLazyLoader("node:fs");
+const fs = lazyFs().default;
+const { FileHandle: FsFileHandle } = core.createLazyLoader(
+  "ext:deno_node/internal/fs/handle.ts",
+)();
+const { JSStreamSocket } = core.loadExtScript(
+  "ext:deno_node/internal/js_stream_socket.js",
+);
 const { format, inspect } = core.loadExtScript("ext:deno_node/util.ts");
 const {
   isUint32,
@@ -167,7 +178,7 @@ const {
   ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
   hideStackFrames,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import {
+const {
   kAfterAsyncWrite,
   kBoundSession,
   kHandle,
@@ -178,8 +189,8 @@ import {
   setStreamTimeout,
   writeGeneric,
   writevGeneric,
-} from "ext:deno_node/internal/stream_base_commons.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/stream_base_commons.ts");
+const {
   assertIsArray,
   assertIsObject,
   assertValidPseudoHeader,
@@ -209,15 +220,15 @@ import {
   toHeaderObject,
   updateOptionsBuffer,
   updateSettingsBuffer,
-} from "ext:deno_node/internal/http2/util.ts";
+} = core.loadExtScript("ext:deno_node/internal/http2/util.ts");
 const { ownerSymbol: owner_symbol } = core.loadExtScript(
   "ext:deno_node/internal_binding/symbols.ts",
 );
-import {
+const {
   Http2ServerRequest,
   Http2ServerResponse,
   onServerStream,
-} from "ext:deno_node/internal/http2/compat.js";
+} = core.loadExtScript("ext:deno_node/internal/http2/compat.js");
 const onClientStreamCreatedChannel = dc.channel("http2.client.stream.created");
 const onClientStreamStartChannel = dc.channel("http2.client.stream.start");
 const onClientStreamErrorChannel = dc.channel("http2.client.stream.error");
@@ -232,7 +243,8 @@ const onServerStreamCloseChannel = dc.channel("http2.server.stream.close");
 const { debuglog } = core.loadExtScript(
   "ext:deno_node/internal/util/debuglog.ts",
 );
-import console from "node:console";
+const lazyConsole = core.createLazyLoader("node:console");
+const console = lazyConsole().default;
 let debug = debuglog("http2", (fn) => {
   debug = fn;
 });
@@ -379,7 +391,6 @@ function flushDeferredHttp2Writes(session) {
 }
 
 // HTTP2 Constants
-const MAX_ADDITIONAL_SETTINGS = 10;
 
 const constants = core.loadExtScript(
   "ext:deno_node/internal/http2/constants.ts",
@@ -5165,7 +5176,8 @@ function performServerHandshake(socket, options = {}) {
   return new ServerHttp2Session(options, socket, undefined);
 }
 
-export {
+return {
+  addAbortListener,
   ClientHttp2Session,
   connect,
   constants,
@@ -5182,17 +5194,4 @@ export {
   sensitiveHeaders,
   ServerHttp2Session,
 };
-
-export default {
-  constants,
-  connect,
-  createServer,
-  createSecureServer,
-  getDefaultSettings,
-  getPackedSettings,
-  getUnpackedSettings,
-  Http2ServerRequest,
-  Http2ServerResponse,
-  performServerHandshake,
-  sensitiveHeaders,
-};
+})();

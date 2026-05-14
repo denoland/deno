@@ -6,7 +6,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const { kEmptyObject } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
@@ -16,7 +17,7 @@ const { FunctionPrototypeCall, ObjectSetPrototypeOf, ReflectApply } =
   primordials;
 
 // Common Worker implementation shared between cluster primary and worker.
-export function Worker(this: any, options?: any) {
+function Worker(this: any, options?: any) {
   if (!(this instanceof Worker)) {
     return new (Worker as any)(options);
   }
@@ -64,4 +65,5 @@ ObjectSetPrototypeOf(Worker, EventEmitter);
   return this.process.connected;
 };
 
-export default Worker;
+return { Worker, default: Worker };
+})();

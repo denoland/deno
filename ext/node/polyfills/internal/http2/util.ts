@@ -4,7 +4,8 @@
 
 "use strict";
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   ArrayIsArray,
   ArrayPrototypeConcat,
@@ -25,8 +26,9 @@ const {
   Symbol,
 } = primordials;
 
-import { op_http2_error_string, op_http2_http_state } from "ext:core/ops";
-import { _checkIsHttpToken as checkIsHttpToken } from "node:_http_common";
+const { op_http2_error_string, op_http2_http_state } = core.ops;
+const lazyHttpCommon = core.createLazyLoader("node:_http_common");
+const lazyProcess = core.createLazyLoader("node:process");
 const { codes, hideStackFrames } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -507,7 +509,7 @@ function updateSettingsBuffer(settings) {
       settings.maxHeaderSize !== undefined &&
       (settings.maxHeaderSize !== settings.maxHeaderListSize)
     ) {
-      process.emitWarning(
+      lazyProcess().default.emitWarning(
         "settings.maxHeaderSize overwrite settings.maxHeaderListSize",
       );
       settingsBuffer[IDX_SETTINGS_MAX_HEADER_LIST_SIZE] =
@@ -788,6 +790,7 @@ function buildNgHeaderString(
   assertValuePseudoHeader = assertValidPseudoHeader,
   strictSingleValueFields?,
 ) {
+  const checkIsHttpToken = lazyHttpCommon()._checkIsHttpToken;
   let headers = "";
   let pseudoHeaders = "";
   let count = 0;
@@ -1022,41 +1025,10 @@ function getAuthority(headers) {
     return headers[HTTP2_HEADER_HOST];
   }
 }
-export {
-  assertIsArray,
-  assertIsObject,
-  assertValidPseudoHeader,
-  assertValidPseudoHeaderResponse,
-  assertValidPseudoHeaderTrailer,
-  assertWithinRange,
-  buildNgHeaderString,
-  getAuthority,
-  getDefaultSettings,
-  getSessionState,
-  getSettings,
-  getStreamState,
-  isPayloadMeaningless,
-  kAuthority,
-  kProtocol,
-  kProxySocket,
-  kRequest,
-  kSensitiveHeaders,
-  kSocket,
-  kStrictSingleValueFields,
-  MAX_ADDITIONAL_SETTINGS,
-  NghttpError,
-  prepareRequestHeadersArray,
-  prepareRequestHeadersObject,
-  remoteCustomSettingsToBuffer,
-  sessionName,
-  toHeaderObject,
-  updateOptionsBuffer,
-  updateSettingsBuffer,
-};
 
-export default {
-  assertIsObject,
+return {
   assertIsArray,
+  assertIsObject,
   assertValidPseudoHeader,
   assertValidPseudoHeaderResponse,
   assertValidPseudoHeaderTrailer,
@@ -1069,12 +1041,12 @@ export default {
   getStreamState,
   isPayloadMeaningless,
   kAuthority,
-  kSensitiveHeaders,
-  kSocket,
-  kStrictSingleValueFields,
   kProtocol,
   kProxySocket,
   kRequest,
+  kSensitiveHeaders,
+  kSocket,
+  kStrictSingleValueFields,
   MAX_ADDITIONAL_SETTINGS,
   NghttpError,
   prepareRequestHeadersArray,
@@ -1084,4 +1056,36 @@ export default {
   toHeaderObject,
   updateOptionsBuffer,
   updateSettingsBuffer,
+  default: {
+    assertIsObject,
+    assertIsArray,
+    assertValidPseudoHeader,
+    assertValidPseudoHeaderResponse,
+    assertValidPseudoHeaderTrailer,
+    assertWithinRange,
+    buildNgHeaderString,
+    getAuthority,
+    getDefaultSettings,
+    getSessionState,
+    getSettings,
+    getStreamState,
+    isPayloadMeaningless,
+    kAuthority,
+    kSensitiveHeaders,
+    kSocket,
+    kStrictSingleValueFields,
+    kProtocol,
+    kProxySocket,
+    kRequest,
+    MAX_ADDITIONAL_SETTINGS,
+    NghttpError,
+    prepareRequestHeadersArray,
+    prepareRequestHeadersObject,
+    remoteCustomSettingsToBuffer,
+    sessionName,
+    toHeaderObject,
+    updateOptionsBuffer,
+    updateSettingsBuffer,
+  },
 };
+})();

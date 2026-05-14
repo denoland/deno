@@ -17,7 +17,6 @@ use deno_core::op2;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use deno_features::FeatureChecker;
-pub use handler_impl::CronHandleImpl;
 pub use handler_impl::CronHandlerImpl;
 pub use socket::SocketCronHandle;
 pub use socket::SocketCronHandler;
@@ -27,25 +26,24 @@ pub use crate::interface::*;
 pub const UNSTABLE_FEATURE_NAME: &str = "cron";
 
 deno_core::extension!(deno_cron,
-  parameters = [ C: CronHandler ],
   ops = [
-    op_cron_create<C>,
-    op_cron_next<C>,
+    op_cron_create,
+    op_cron_next,
   ],
   lazy_loaded_js = [ "01_cron.ts" ],
   options = {
-    cron_handler: C,
+    cron_handler: Box<dyn CronHandler>,
   },
   state = |state, options| {
-    state.put(Rc::new(options.cron_handler));
+    state.put::<Rc<dyn CronHandler>>(Rc::from(options.cron_handler));
   }
 );
 
-struct CronResource<EH: CronHandle + 'static> {
-  handle: Rc<EH>,
+struct CronResource {
+  handle: Rc<dyn CronHandle>,
 }
 
-impl<EH: CronHandle + 'static> Resource for CronResource<EH> {
+impl Resource for CronResource {
   fn name(&self) -> Cow<'_, str> {
     "cron".into()
   }
@@ -96,21 +94,18 @@ pub enum CronError {
 
 #[op2]
 #[smi]
-fn op_cron_create<C>(
+fn op_cron_create(
   state: Rc<RefCell<OpState>>,
   #[string] name: String,
   #[string] cron_schedule: String,
   #[scoped] backoff_schedule: Option<Vec<u32>>,
-) -> Result<ResourceId, CronError>
-where
-  C: CronHandler + 'static,
-{
+) -> Result<ResourceId, CronError> {
   let cron_handler = {
     let state = state.borrow();
     state
       .borrow::<Arc<FeatureChecker>>()
       .check_or_exit(UNSTABLE_FEATURE_NAME, "Deno.cron");
-    state.borrow::<Rc<C>>().clone()
+    state.borrow::<Rc<dyn CronHandler>>().clone()
   };
 
   validate_cron_name(&name)?;
@@ -123,26 +118,21 @@ where
 
   let handle_rid = {
     let mut state = state.borrow_mut();
-    state.resource_table.add(CronResource {
-      handle: Rc::new(handle),
-    })
+    state.resource_table.add(CronResource { handle })
   };
   Ok(handle_rid)
 }
 
 #[op2]
 #[serde]
-async fn op_cron_next<C>(
+async fn op_cron_next(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   prev_success: bool,
-) -> Result<CronNextResult, CronError>
-where
-  C: CronHandler + 'static,
-{
-  let cron_handler = {
+) -> Result<CronNextResult, CronError> {
+  let cron_handle = {
     let state = state.borrow();
-    let resource = match state.resource_table.get::<CronResource<C::EH>>(rid) {
+    let resource = match state.resource_table.get::<CronResource>(rid) {
       Ok(resource) => resource,
       Err(err) => {
         if err.get_class() == "BadResource" {
@@ -158,7 +148,7 @@ where
     resource.handle.clone()
   };
 
-  cron_handler.next(prev_success).await
+  cron_handle.next(prev_success).await
 }
 
 fn validate_cron_name(name: &str) -> Result<(), CronError> {

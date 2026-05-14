@@ -15,7 +15,7 @@ import {
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import { op_fs_read_dir_async, op_fs_read_dir_sync } from "ext:core/ops";
-import { join, relative } from "node:path";
+const lazyPath = core.createLazyLoader("node:path");
 
 type readDirOptions = {
   encoding?: string;
@@ -95,16 +95,19 @@ export function readdir(
         for (let i = 0; i < entries.length; i++) {
           const entry = entries[i];
           if (options?.recursive && entry.isDirectory) {
-            dirs.push(join(current, entry.name));
+            dirs.push(lazyPath().join(current, entry.name));
           }
 
           if (options?.withFileTypes) {
             entry.parentPath = current;
-            result.push(direntFromDeno(entry));
+            result.push(applyDirentEncoding(
+              direntFromDeno(entry),
+              options?.encoding,
+            ));
           } else {
             let name = entry.name;
             if (options?.recursive) {
-              name = relative(path, join(current, name));
+              name = lazyPath().relative(path, lazyPath().join(current, name));
             }
             result.push(decode(name, options?.encoding));
           }
@@ -122,6 +125,17 @@ export function readdir(
 
     callback(null, result);
   })();
+}
+
+function applyDirentEncoding(dirent: Dirent, encoding?: string): Dirent {
+  if (!encoding || encoding === "utf8" || encoding === "utf-8") {
+    return dirent;
+  }
+  dirent.name = decode(dirent.name as string, encoding);
+  if (typeof dirent.parentPath === "string") {
+    dirent.parentPath = decode(dirent.parentPath, encoding);
+  }
+  return dirent;
 }
 
 function decode(str: string, encoding?: string): string | Buffer {
@@ -174,16 +188,19 @@ export function readdirSync(
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
         if (options?.recursive && entry.isDirectory) {
-          dirs.push(join(current, entry.name));
+          dirs.push(lazyPath().join(current, entry.name));
         }
 
         if (options?.withFileTypes) {
           entry.parentPath = current;
-          result.push(direntFromDeno(entry));
+          result.push(applyDirentEncoding(
+            direntFromDeno(entry),
+            options?.encoding,
+          ));
         } else {
           let name = entry.name;
           if (options?.recursive) {
-            name = relative(path, join(current, name));
+            name = lazyPath().relative(path, lazyPath().join(current, name));
           }
           result.push(decode(name, options?.encoding));
         }

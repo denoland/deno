@@ -43,7 +43,7 @@ const {
   validateObject,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { emitWarning } from "node:process";
+const lazyProcess = core.createLazyLoader("node:process");
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const {
   Event: WebEvent,
@@ -530,7 +530,7 @@ class EventTarget extends WebEventTarget {
       w.target = this;
       w.type = type;
       w.count = size;
-      emitWarning(w);
+      lazyProcess().default.emitWarning(w);
     }
   }
   [kRemoveListener](_size, _type, _listener, _capture) {}
@@ -584,7 +584,7 @@ class EventTarget extends WebEventTarget {
       w.name = "AddEventListenerArgumentTypeWarning";
       w.target = this;
       w.type = type;
-      emitWarning(w);
+      lazyProcess().default.emitWarning(w);
       return;
     }
     type = String(type);

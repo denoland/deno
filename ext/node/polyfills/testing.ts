@@ -3,6 +3,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
+"use strict";
 const { core, primordials } = globalThis.__bootstrap;
 const {
   ArrayPrototypeForEach,
@@ -20,7 +21,9 @@ const {
   ObjectPrototypeIsPrototypeOf,
   Promise,
   PromisePrototypeThen,
+  PromiseResolve,
   ReflectApply,
+  ReflectConstruct,
   SafeArrayIterator,
   SafeMap,
   String,
@@ -327,35 +330,98 @@ class NodeTestContext {
 
 let currentSuite = null;
 
+const rootBeforeHooks = [];
+const rootAfterHooks = [];
+const rootBeforeEachHooks = [];
+const rootAfterEachHooks = [];
+let rootBeforeRan = false;
+
+async function runRootBeforeOnce() {
+  if (rootBeforeRan) return;
+  rootBeforeRan = true;
+  if (rootBeforeHooks.length === 0) return;
+  const rootCtx = { name: "<root>", fullName: "<root>" };
+  for (const hook of new SafeArrayIterator(rootBeforeHooks)) {
+    await hook(rootCtx);
+  }
+}
+
+async function runRootAfterIfDone() {
+  if (activeNodeTests !== 0) return;
+  if (rootAfterHooks.length === 0) return;
+  const rootCtx = { name: "<root>", fullName: "<root>" };
+  // Snapshot and clear so we only run once even if more tests get queued.
+  const hooks = ArrayPrototypeSplice(rootAfterHooks, 0, rootAfterHooks.length);
+  for (const hook of new SafeArrayIterator(hooks)) {
+    try {
+      await hook(rootCtx);
+    } catch { /* ignore */ }
+  }
+}
+
 class TestSuite {
   #denoTestContext;
+  nodeTestContext;
   entries = [];
   beforeAllHooks = [];
   afterAllHooks = [];
   beforeEachHooks = [];
   afterEachHooks = [];
 
-  constructor(t) {
+  constructor(t, nodeTestContext) {
     this.#denoTestContext = t;
+    this.nodeTestContext = nodeTestContext;
   }
 
   addTest(name, options, fn, overrides) {
     const prepared = prepareOptions(name, options, fn, overrides);
     const beforeEach = this.beforeEachHooks;
     const afterEach = this.afterEachHooks;
+    const suiteNodeContext = this.nodeTestContext;
     ArrayPrototypePush(this.entries, {
       name: prepared.name,
       fn: async (denoTestContext) => {
         const newNodeTextContext = new NodeTestContext(
           denoTestContext,
-          undefined,
+          suiteNodeContext,
           prepared.name,
         );
         try {
           for (const hook of new SafeArrayIterator(beforeEach)) {
-            await hook();
+            await hook(newNodeTextContext);
           }
-          const result = await prepared.fn(newNodeTextContext);
+          let result;
+          if (prepared.fn.length >= 2) {
+            // Node-style callback API: fn(t, done) - wait for `done()` (or
+            // promise rejection) before treating the test as complete.
+            await new Promise((testResolve, testReject) => {
+              pendingCallbackReject = testReject;
+              const done = (err) => {
+                pendingCallbackReject = null;
+                if (err) testReject(err);
+                else testResolve(undefined);
+              };
+              try {
+                const r = ReflectApply(prepared.fn, newNodeTextContext, [
+                  newNodeTextContext,
+                  done,
+                ]);
+                if (
+                  r !== null && r !== undefined && typeof r.then === "function"
+                ) {
+                  PromisePrototypeThen(r, undefined, (err) => {
+                    pendingCallbackReject = null;
+                    testReject(err);
+                  });
+                }
+              } catch (err) {
+                pendingCallbackReject = null;
+                testReject(err);
+              }
+            });
+          } else {
+            result = await prepared.fn(newNodeTextContext);
+          }
           newNodeTextContext._checkPlan();
           return result;
         } catch (err) {
@@ -366,7 +432,9 @@ class TestSuite {
           }
         } finally {
           for (const hook of new SafeArrayIterator(afterEach)) {
-            await hook();
+            try {
+              await hook(newNodeTextContext);
+            } catch { /* ignore */ }
           }
         }
       },
@@ -377,9 +445,10 @@ class TestSuite {
   addSuite(name, options, fn, overrides) {
     const prepared = prepareOptions(name, options, fn, overrides);
     const { promise, resolve } = Promise.withResolvers();
+    const parentSuiteContext = this.nodeTestContext;
     ArrayPrototypePush(this.entries, {
       name: prepared.name,
-      fn: wrapSuiteFn(prepared.fn, resolve),
+      fn: wrapSuiteFn(prepared.fn, resolve, prepared.name, parentSuiteContext),
       ignore: !!prepared.options.todo || !!prepared.options.skip,
     });
     return promise;
@@ -429,7 +498,13 @@ function prepareOptions(name, options, fn, overrides) {
 function wrapTestFn(fn, resolve, name) {
   return async function (t) {
     const nodeTestContext = new NodeTestContext(t, undefined, name);
+    let beforeEachOk = false;
     try {
+      await runRootBeforeOnce();
+      for (const hook of new SafeArrayIterator(rootBeforeEachHooks)) {
+        await hook(nodeTestContext);
+      }
+      beforeEachOk = true;
       if (fn.length >= 2) {
         await new Promise((testResolve, testReject) => {
           pendingCallbackReject = testReject;
@@ -469,7 +544,15 @@ function wrapTestFn(fn, resolve, name) {
         throw sanitizeThrowValue(err);
       }
     } finally {
+      if (beforeEachOk) {
+        for (const hook of new SafeArrayIterator(rootAfterEachHooks)) {
+          try {
+            await hook(nodeTestContext);
+          } catch { /* swallow to match node behavior on hook error */ }
+        }
+      }
       activeNodeTests--;
+      await runRootAfterIfDone();
       resolve();
     }
   };
@@ -480,11 +563,9 @@ function prepareDenoTest(name, options, fn, overrides) {
 
   activeNodeTests++;
 
-  const { promise, resolve } = Promise.withResolvers();
-
   const denoTestOptions = {
     name: prepared.name,
-    fn: wrapTestFn(prepared.fn, resolve, prepared.name),
+    fn: wrapTestFn(prepared.fn, noop, prepared.name),
     only: prepared.options.only,
     ignore: !!prepared.options.todo || !!prepared.options.skip,
     sanitizeOnly: false,
@@ -493,15 +574,25 @@ function prepareDenoTest(name, options, fn, overrides) {
     sanitizeResources: false,
   };
   Deno.test(denoTestOptions);
-  return promise;
+  // Node resolves the returned promise on test completion, but the
+  // Deno runner only executes registered tests after the module
+  // finishes evaluating, so top-level `await test(...)` deadlocks.
+  // Resolve immediately to unblock; the test still runs and is
+  // reported normally. Trade-off: code that awaits `test()` for
+  // sequencing (`await test('a'); await test('b')`) sees them run
+  // out of order.
+  return PromiseResolve();
 }
 
-function wrapSuiteFn(fn, resolve) {
+function wrapSuiteFn(fn, resolve, name, parentNodeContext) {
   return async function (t) {
+    const isTopLevel = parentNodeContext === undefined;
+    if (isTopLevel) await runRootBeforeOnce();
+    const suiteNodeContext = new NodeTestContext(t, parentNodeContext, name);
     const prevSuite = currentSuite;
-    const suite = currentSuite = new TestSuite(t);
+    const suite = currentSuite = new TestSuite(t, suiteNodeContext);
     try {
-      fn();
+      fn(suiteNodeContext);
     } finally {
       currentSuite = prevSuite;
     }
@@ -516,7 +607,10 @@ function wrapSuiteFn(fn, resolve) {
           await hook();
         }
       } finally {
-        activeNodeTests--;
+        if (isTopLevel) {
+          activeNodeTests--;
+          await runRootAfterIfDone();
+        }
         resolve();
       }
     }
@@ -528,11 +622,9 @@ function prepareDenoTestForSuite(name, options, fn, overrides) {
 
   activeNodeTests++;
 
-  const { promise, resolve } = Promise.withResolvers();
-
   const denoTestOptions = {
     name: prepared.name,
-    fn: wrapSuiteFn(prepared.fn, resolve),
+    fn: wrapSuiteFn(prepared.fn, noop, prepared.name, undefined),
     only: prepared.options.only,
     ignore: !!prepared.options.todo || !!prepared.options.skip,
     sanitizeOnly: false,
@@ -541,7 +633,9 @@ function prepareDenoTestForSuite(name, options, fn, overrides) {
     sanitizeResources: false,
   };
   Deno.test(denoTestOptions);
-  return promise;
+  // See `prepareDenoTest` for the Node-divergence trade-off; top-level
+  // `await suite(...)` would deadlock if we waited for completion.
+  return PromiseResolve();
 }
 
 function test(name, options, fn, overrides) {
@@ -593,7 +687,7 @@ function before(fn, _options) {
     ArrayPrototypePush(currentSuite.beforeAllHooks, fn);
     return;
   }
-  notImplemented("test.before (module-level, outside suite)");
+  ArrayPrototypePush(rootBeforeHooks, fn);
 }
 
 function after(fn, _options) {
@@ -604,7 +698,7 @@ function after(fn, _options) {
     ArrayPrototypePush(currentSuite.afterAllHooks, fn);
     return;
   }
-  notImplemented("test.after (module-level, outside suite)");
+  ArrayPrototypePush(rootAfterHooks, fn);
 }
 
 function beforeEach(fn, _options) {
@@ -615,7 +709,7 @@ function beforeEach(fn, _options) {
     ArrayPrototypePush(currentSuite.beforeEachHooks, fn);
     return;
   }
-  notImplemented("test.beforeEach (module-level, outside suite)");
+  ArrayPrototypePush(rootBeforeEachHooks, fn);
 }
 
 function afterEach(fn, _options) {
@@ -626,12 +720,16 @@ function afterEach(fn, _options) {
     ArrayPrototypePush(currentSuite.afterEachHooks, fn);
     return;
   }
-  notImplemented("test.afterEach (module-level, outside suite)");
+  ArrayPrototypePush(rootAfterEachHooks, fn);
 }
 
 test.it = test;
 test.describe = suite;
 test.suite = suite;
+test.before = before;
+test.after = after;
+test.beforeEach = beforeEach;
+test.afterEach = afterEach;
 
 const activeMocks = [];
 
@@ -679,23 +777,26 @@ class MockFunctionContext {
       this.#restore();
       this.#restore = undefined;
     }
+    this._restored = true;
     const idx = ArrayPrototypeIndexOf(activeMocks, this);
     if (idx !== -1) {
       ArrayPrototypeSplice(activeMocks, idx, 1);
     }
   }
 
-  _recordCall(thisArg, args, result, error) {
+  _recordCall(thisArg, args, result, error, target) {
     ArrayPrototypePush(this.#calls, {
       arguments: args,
       error,
       result,
       stack: new Error(),
+      target,
       this: thisArg,
     });
   }
 
   _shouldMock() {
+    if (this._restored) return false;
     if (this.#times === undefined) return true;
     return this.#calls.length < this.#times;
   }
@@ -717,6 +818,11 @@ class MockFunctionContext {
 
 function createMockFunction(original, implementation, ctx) {
   const mockFn = function (...args) {
+    const newTarget = new.target;
+    const isCtor = newTarget !== undefined;
+    // The IIFE wrapping this module is sloppy, so a plain call leaks
+    // globalThis as `this`. Match strict-mode/Node semantics.
+    const thisArg = !isCtor && this === globalThis ? undefined : this;
     const impl = ctx._shouldMock()
       ? (ctx._nextImpl() ?? implementation ?? original)
       : original;
@@ -724,15 +830,35 @@ function createMockFunction(original, implementation, ctx) {
     let result;
     let error;
 
+    // If called directly (not via subclass), use the original constructor
+    // so the produced instance has its prototype, and so call.target reports
+    // the user's class (not the mock wrapper).
+    const ctorTarget = isCtor && newTarget === mockFn ? impl : newTarget;
     try {
-      result = impl ? ReflectApply(impl, this, args) : undefined;
+      if (isCtor) {
+        result = impl ? ReflectConstruct(impl, args, ctorTarget) : undefined;
+      } else {
+        result = impl ? ReflectApply(impl, thisArg, args) : undefined;
+      }
     } catch (e) {
       error = e;
-      ctx._recordCall(this, args, undefined, error);
+      ctx._recordCall(
+        isCtor ? thisArg : thisArg,
+        args,
+        undefined,
+        error,
+        ctorTarget,
+      );
       throw e;
     }
 
-    ctx._recordCall(this, args, result);
+    ctx._recordCall(
+      isCtor ? result : thisArg,
+      args,
+      result,
+      undefined,
+      ctorTarget,
+    );
     return result;
   };
 
@@ -907,6 +1033,11 @@ const mock = {
 
 test.test = test;
 test.mock = mock;
+test.before = before;
+test.after = after;
+test.beforeEach = beforeEach;
+test.afterEach = afterEach;
+test.run = run;
 
 return {
   run,

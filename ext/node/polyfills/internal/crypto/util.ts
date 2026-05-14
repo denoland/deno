@@ -4,7 +4,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
+(function () {
+const { core } = globalThis.__bootstrap;
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
@@ -28,7 +29,7 @@ const {
   kKeyObject,
 } = core.loadExtScript("ext:deno_node/internal/crypto/constants.ts");
 
-export type EllipticCurve = {
+type EllipticCurve = {
   name: string;
   ephemeral: boolean;
   privateKeySize: number;
@@ -37,7 +38,7 @@ export type EllipticCurve = {
   sharedSecretSize: number;
 };
 
-export const ellipticCurves: Array<EllipticCurve> = [
+const ellipticCurves: Array<EllipticCurve> = [
   {
     name: "secp256k1",
     privateKeySize: 32,
@@ -265,31 +266,32 @@ cipherInfoByName.set("aes192", cipherInfoByName.get("aes-192-cbc")!);
 cipherInfoByName.set("aes256", cipherInfoByName.get("aes-256-cbc")!);
 
 // Ciphers actually supported by the runtime (subset of cipherInfoTable).
+// Must be kept in sorted (lexicographic) order - Node.js validates this.
 const supportedCiphers = [
-  "aes-128-ecb",
   "aes-128-cbc",
-  "aes-192-ecb",
-  "aes-256-ecb",
-  "aes-256-cbc",
-  "aes-128-gcm",
-  "aes-256-gcm",
   "aes-128-ctr",
+  "aes-128-ecb",
+  "aes-128-gcm",
   "aes-192-ctr",
+  "aes-192-ecb",
+  "aes-256-cbc",
   "aes-256-ctr",
-  "des-ede3-cbc",
+  "aes-256-ecb",
+  "aes-256-gcm",
   "aes128",
-  "aes256",
-  "chacha20-poly1305",
   "aes128-wrap",
   "aes192-wrap",
+  "aes256",
   "aes256-wrap",
+  "chacha20-poly1305",
+  "des-ede3-cbc",
   "id-aes128-wrap-pad",
   "id-aes192-wrap-pad",
   "id-aes256-wrap-pad",
 ];
 
-export function getCiphers(): string[] {
-  return supportedCiphers;
+function getCiphers(): string[] {
+  return supportedCiphers.slice();
 }
 
 const hashBlockSizes: Record<string, number> = {
@@ -311,7 +313,7 @@ const hashBlockSizes: Record<string, number> = {
   blake2s256: 64,
 };
 
-export function getHashBlockSize(algorithm: string): number {
+function getHashBlockSize(algorithm: string): number {
   const blockSize = hashBlockSizes[algorithm];
   if (blockSize === undefined) {
     throw new ERR_CRYPTO_INVALID_DIGEST(algorithm);
@@ -319,7 +321,7 @@ export function getHashBlockSize(algorithm: string): number {
   return blockSize;
 }
 
-export function getCipherInfo(
+function getCipherInfo(
   nameOrNid: string | number,
   options?: { keyLength?: number; ivLength?: number },
 ) {
@@ -372,18 +374,18 @@ export function getCipherInfo(
 
 let defaultEncoding = "buffer";
 
-export function setDefaultEncoding(val: string) {
+function setDefaultEncoding(val: string) {
   defaultEncoding = val;
 }
 
-export function getDefaultEncoding(): string {
+function getDefaultEncoding(): string {
   return defaultEncoding;
 }
 
 // This is here because many functions accepted binary strings without
 // any explicit encoding in older versions of node, and we don't want
 // to break them unnecessarily.
-export function toBuf(val: string | Buffer, encoding?: string): Buffer {
+function toBuf(val: string | Buffer, encoding?: string): Buffer {
   if (typeof val === "string") {
     if (encoding === "buffer") {
       encoding = "utf8";
@@ -395,7 +397,7 @@ export function toBuf(val: string | Buffer, encoding?: string): Buffer {
   return val;
 }
 
-export const validateByteSource = hideStackFrames((val, name) => {
+const validateByteSource = hideStackFrames((val, name) => {
   val = toBuf(val);
 
   if (isAnyArrayBuffer(val) || isArrayBufferView(val)) {
@@ -413,41 +415,40 @@ export const validateByteSource = hideStackFrames((val, name) => {
 // Notably this drops `secp256r1` because it is just another name for
 // `prime256v1` and exposing both confuses callers that probe for an
 // unsupported curve by exclusion (e.g. crypto tests).
+// Must be kept in sorted (lexicographic) order - Node.js validates this.
 const curveNames: readonly string[] = [
-  "secp521r1",
-  "secp384r1",
   "prime256v1",
-  "secp256k1",
   "secp224r1",
+  "secp256k1",
+  "secp384r1",
+  "secp521r1",
 ];
-export function getCurves(): readonly string[] {
-  return curveNames;
+function getCurves(): string[] {
+  return curveNames.slice();
 }
 
-export interface SecureHeapUsage {
+interface SecureHeapUsage {
   total: number;
   min: number;
   used: number;
   utilization: number;
 }
 
-export function secureHeapUsed(): SecureHeapUsage {
+function secureHeapUsed(): SecureHeapUsage {
   notImplemented("crypto.secureHeapUsed");
 }
 
-export function setEngine(_engine: string, _flags: typeof constants) {
+function setEngine(_engine: string, _flags: typeof constants) {
   notImplemented("crypto.setEngine");
 }
 
-export function getOpenSSLSecLevel(): number {
+function getOpenSSLSecLevel(): number {
   return 5; // highest sec level, used in tests.
 }
 
 const kAesKeyLengths = [128, 192, 256];
 
-export { kAesKeyLengths, kHandle, kKeyObject };
-
-export default {
+const _defaultExport = {
   getDefaultEncoding,
   setDefaultEncoding,
   getCiphers,
@@ -463,3 +464,23 @@ export default {
   kKeyObject,
   kAesKeyLengths,
 };
+
+return {
+  ellipticCurves,
+  getCiphers,
+  getHashBlockSize,
+  getCipherInfo,
+  setDefaultEncoding,
+  getDefaultEncoding,
+  toBuf,
+  validateByteSource,
+  getCurves,
+  secureHeapUsed,
+  setEngine,
+  getOpenSSLSecLevel,
+  kAesKeyLengths,
+  kHandle,
+  kKeyObject,
+  default: _defaultExport,
+};
+})();

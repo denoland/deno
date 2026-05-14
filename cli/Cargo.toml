@@ -44,8 +44,8 @@ lsp-tracing = ["dep:tracing", "dep:tracing-subscriber", "dep:tracing-opentelemet
 panic-trace = ["deno_panic"]
 
 [build-dependencies]
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_runtime = { workspace = true }
+deno_core = { workspace = true }
 lazy-regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -62,7 +62,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_bundle_runtime.workspace = true
 deno_cache_dir = { workspace = true, features = ["sync"] }
 deno_config = { workspace = true, features = ["sync", "workspace"] }
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_core.workspace = true
 deno_doc = { workspace = true, features = ["rust", "comrak"] }
 deno_error.workspace = true
 deno_graph = { workspace = true, features = ["fast_check"] }
@@ -78,7 +78,7 @@ deno_package_json = { workspace = true, features = ["sync"] }
 deno_panic = { version = "0.2.0", optional = true }
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["deno_ast", "graph", "sync"] }
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_runtime.workspace = true
 deno_semver.workspace = true
 deno_signals.workspace = true
 deno_snapshots.workspace = true
@@ -204,7 +204,7 @@ tokio-vsock.workspace = true
 [dev-dependencies]
 # unsafe_use_unprotected_platform is a workaround for a segfault that may occur
 # when running multiple v8 tests on different threads
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting", "unsafe_use_unprotected_platform"] }
+deno_core = { workspace = true, features = ["unsafe_use_unprotected_platform"] }
 pretty_assertions.workspace = true
 sys_traits = { workspace = true, features = ["memory"] }
 test_util.workspace = true

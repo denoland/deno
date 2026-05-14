@@ -2,28 +2,29 @@
 // Ported mostly from https://github.com/browserify/path-browserify/
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core } from "ext:core/mod.js";
+(function () {
+const { core } = globalThis.__bootstrap;
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
-import _win32 from "ext:deno_node/path/_win32.ts";
-import _posix from "ext:deno_node/path/_posix.ts";
+const _win32 = core.loadExtScript("ext:deno_node/path/_win32.ts").default;
+const _posix = core.loadExtScript("ext:deno_node/path/_posix.ts").default;
 
-export const win32 = {
+const win32 = {
   ..._win32,
-  win32: null as unknown as typeof _win32,
-  posix: null as unknown as typeof _posix,
+  win32: null,
+  posix: null,
 };
 
-export const posix = {
+const posix = {
   ..._posix,
-  win32: null as unknown as typeof _win32,
-  posix: null as unknown as typeof _posix,
+  win32: null,
+  posix: null,
 };
 
 posix.win32 = win32.win32 = win32;
 posix.posix = win32.posix = posix;
 
 const path = isWindows ? win32 : posix;
-export const {
+const {
   basename,
   delimiter,
   dirname,
@@ -40,7 +41,27 @@ export const {
   _makeLong,
   matchesGlob,
 } = path;
-export default path;
 const { common } = core.loadExtScript("ext:deno_node/path/common.ts");
-export { common };
-// _interface.ts only exports TypeScript types, no runtime re-export needed
+
+return {
+  win32,
+  posix,
+  basename,
+  delimiter,
+  dirname,
+  extname,
+  format,
+  isAbsolute,
+  join,
+  normalize,
+  parse,
+  relative,
+  resolve,
+  sep,
+  toNamespacedPath,
+  _makeLong,
+  matchesGlob,
+  common,
+  default: path,
+};
+})();

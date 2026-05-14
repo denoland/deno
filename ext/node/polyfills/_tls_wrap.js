@@ -6,7 +6,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
+(function () {
+const { core } = globalThis.__bootstrap;
 const {
   ArrayIsArray,
   ObjectAssign,
@@ -15,13 +16,17 @@ const {
 const assert = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );
-import * as net from "node:net";
-import {
+const net = core.createLazyLoader("node:net")().default;
+const {
   createSecureContext,
   translatePeerCertificate,
-} from "node:_tls_common";
-import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
-import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
+} = core.loadExtScript("ext:deno_node/_tls_common.ts");
+const { JSStreamSocket } = core.loadExtScript(
+  "ext:deno_node/internal/js_stream_socket.js",
+);
+const { convertALPNProtocols } = core.loadExtScript(
+  "ext:deno_node/internal/tls_common.js",
+);
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   connResetException,
@@ -40,7 +45,9 @@ const {
   constants: TCPConstants,
   TCP,
 } = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
-import { kMaybeDestroy } from "ext:deno_node/internal/stream_base_commons.ts";
+const { kMaybeDestroy } = core.loadExtScript(
+  "ext:deno_node/internal/stream_base_commons.ts",
+);
 const { kReinitializeHandle } = core.loadExtScript(
   "ext:deno_node/internal/net.ts",
 );
@@ -59,14 +66,16 @@ const {
 const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
-import { op_tls_canonicalize_ipv4_address } from "ext:core/ops";
+const { op_tls_canonicalize_ipv4_address } = core.ops;
 const { default: tlsWrap } = core.loadExtScript(
   "ext:deno_node/internal_binding/tls_wrap.ts",
 );
 const { ownerSymbol } = core.loadExtScript(
   "ext:deno_node/internal_binding/symbols.ts",
 );
-import { X509Certificate } from "ext:deno_node/internal/crypto/x509.ts";
+const { X509Certificate } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/x509.ts",
+);
 
 const kConnectOptions = Symbol("connect-options");
 const kHandshakeTimer = Symbol("handshake-timer");
@@ -1554,7 +1563,7 @@ const DEFAULT_CIPHERS = [
   "ECDHE-RSA-CHACHA20-POLY1305",
 ].join(":");
 
-export {
+return {
   checkServerIdentity,
   connect,
   createServer,
@@ -1562,14 +1571,14 @@ export {
   Server,
   TLSSocket,
   unfqdn,
+  default: {
+    TLSSocket,
+    connect,
+    createServer,
+    checkServerIdentity,
+    DEFAULT_CIPHERS,
+    Server,
+    unfqdn,
+  },
 };
-
-export default {
-  TLSSocket,
-  connect,
-  createServer,
-  checkServerIdentity,
-  DEFAULT_CIPHERS,
-  Server,
-  unfqdn,
-};
+})();

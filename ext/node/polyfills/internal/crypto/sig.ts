@@ -2,15 +2,16 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file prefer-primordials no-explicit-any
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 
 const {
   SymbolSpecies,
 } = primordials;
 
-import {
+const {
   op_node_create_private_key,
   op_node_create_public_key,
   op_node_derive_public_key_from_private_key,
@@ -22,31 +23,27 @@ import {
   op_node_verify,
   op_node_verify_ed25519,
   op_node_verify_ed448,
-} from "ext:core/ops";
+} = core.ops;
 
 const {
   validateFunction,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-import type { WritableOptions } from "ext:deno_node/_stream.d.ts";
-import Writable from "node:_stream_writable";
-import type {
-  BinaryLike,
-  BinaryToTextEncoding,
-  Encoding,
-  PrivateKeyInput,
-  PublicKeyInput,
-} from "ext:deno_node/internal/crypto/types.ts";
-import {
+
+const lazyWritable = core.createLazyLoader("node:_stream_writable");
+
+const {
   kConsumePrivate,
   kConsumePublic,
   KeyObject,
   prepareAsymmetricKey,
   PrivateKeyObject,
   PublicKeyObject,
-} from "ext:deno_node/internal/crypto/keys.ts";
-import { createHash } from "ext:deno_node/internal/crypto/hash.ts";
+} = core.loadExtScript("ext:deno_node/internal/crypto/keys.ts");
+const { createHash } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/hash.ts",
+);
 const {
   ERR_CRYPTO_SIGN_KEY_REQUIRED,
   ERR_INVALID_ARG_TYPE,
@@ -54,25 +51,6 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const FastBuffer = Buffer[SymbolSpecies];
-
-export type DSAEncoding = "der" | "ieee-p1363";
-
-export interface SigningOptions {
-  padding?: number | undefined;
-  saltLength?: number | undefined;
-  dsaEncoding?: DSAEncoding | undefined;
-}
-
-export interface SignPrivateKeyInput extends PrivateKeyInput, SigningOptions {}
-
-export interface SignKeyObjectInput extends SigningOptions {
-  key: KeyObject;
-}
-export interface VerifyPublicKeyInput extends PublicKeyInput, SigningOptions {}
-
-export interface VerifyKeyObjectInput extends SigningOptions {
-  key: KeyObject;
-}
 
 function getPadding(options) {
   return getIntOption("padding", options);
@@ -126,16 +104,22 @@ function isPrivateKeyPem(data: ArrayBuffer | ArrayBufferView): boolean {
   return prefix.includes("PRIVATE KEY");
 }
 
-export type KeyLike = string | Buffer | KeyObject;
+let Writable;
+function getWritable() {
+  if (!Writable) Writable = lazyWritable().default;
+  return Writable;
+}
 
-export class SignImpl extends Writable {
-  hash: Hash;
+class SignImpl {
+  hash: any;
   #digestType: string;
 
-  constructor(algorithm: string, _options?: WritableOptions) {
+  constructor(algorithm: string, _options?: any) {
     validateString(algorithm, "algorithm");
 
-    super({
+    ensureSignProtoSetup();
+    const W = getWritable();
+    W.call(this, {
       write(chunk, enc, callback) {
         this.update(chunk, enc);
         callback();
@@ -153,9 +137,8 @@ export class SignImpl extends Writable {
   }
 
   sign(
-    // deno-lint-ignore no-explicit-any
     privateKey: any,
-    encoding?: BinaryToTextEncoding,
+    encoding?: any,
   ): Buffer | string {
     if (!privateKey) {
       throw new ERR_CRYPTO_SIGN_KEY_REQUIRED();
@@ -189,40 +172,68 @@ export class SignImpl extends Writable {
         throw err;
       }
     }
-    const ret = Buffer.from(op_node_sign(
-      handle,
-      this.hash.digest(),
-      this.#digestType,
-      pssSaltLength,
-      rsaPadding,
-      dsaSigEnc,
-    ));
+    let ret;
+    try {
+      ret = Buffer.from(op_node_sign(
+        handle,
+        this.hash.digest(),
+        this.#digestType,
+        pssSaltLength,
+        rsaPadding,
+        dsaSigEnc,
+      ));
+    } catch (err) {
+      // Decorate RSA sign errors with OpenSSL-compatible properties.
+      if (
+        err && typeof err === "object" &&
+        "message" in err && typeof err.message === "string" &&
+        err.message.includes("rsa routines") &&
+        !("library" in err)
+      ) {
+        (err as Record<string, unknown>).library = "rsa routines";
+      }
+      throw err;
+    }
     return encoding && encoding !== "buffer" ? ret.toString(encoding) : ret;
   }
 
   update(
-    data: BinaryLike | string,
-    encoding?: Encoding,
+    data: any,
+    encoding?: any,
   ): this {
     this.hash.update(data, encoding);
     return this;
   }
 }
 
-export function Sign(algorithm: string, options?: WritableOptions) {
+function Sign(algorithm: string, options?: any) {
   return new SignImpl(algorithm, options);
+}
+
+// Defer prototype setup
+let _signProtoSetup = false;
+function ensureSignProtoSetup() {
+  if (_signProtoSetup) return;
+  _signProtoSetup = true;
+  const W = getWritable();
+  Object.setPrototypeOf(SignImpl.prototype, W.prototype);
+  Object.setPrototypeOf(SignImpl, W);
+  Object.setPrototypeOf(VerifyImpl.prototype, W.prototype);
+  Object.setPrototypeOf(VerifyImpl, W);
 }
 
 Sign.prototype = SignImpl.prototype;
 
-export class VerifyImpl extends Writable {
-  hash: Hash;
+class VerifyImpl {
+  hash: any;
   #digestType: string;
 
-  constructor(algorithm: string, _options?: WritableOptions) {
+  constructor(algorithm: string, _options?: any) {
     validateString(algorithm, "algorithm");
 
-    super({
+    ensureSignProtoSetup();
+    const W = getWritable();
+    W.call(this, {
       write(chunk, enc, callback) {
         this.update(chunk, enc);
         callback();
@@ -239,16 +250,15 @@ export class VerifyImpl extends Writable {
     }
   }
 
-  update(data: BinaryLike, encoding?: string): this {
+  update(data: any, encoding?: string): this {
     this.hash.update(data, encoding);
     return this;
   }
 
   verify(
-    // deno-lint-ignore no-explicit-any
     publicKey: any,
-    signature: BinaryLike,
-    encoding?: BinaryToTextEncoding,
+    signature: any,
+    encoding?: any,
   ): boolean {
     if (
       typeof signature !== "string" &&
@@ -305,16 +315,16 @@ export class VerifyImpl extends Writable {
   }
 }
 
-export function Verify(algorithm: string, options?: WritableOptions) {
+function Verify(algorithm: string, options?: any) {
   return new VerifyImpl(algorithm, options);
 }
 
 Verify.prototype = VerifyImpl.prototype;
 
-export function signOneShot(
+function signOneShot(
   algorithm: string | null | undefined,
   data: ArrayBufferView,
-  key: KeyLike | SignKeyObjectInput | SignPrivateKeyInput,
+  key: any,
   callback?: (error: Error | null, data: Buffer) => void,
 ): Buffer | void {
   if (algorithm != null) {
@@ -422,11 +432,11 @@ export function signOneShot(
   }
 }
 
-export function verifyOneShot(
+function verifyOneShot(
   algorithm: string | null | undefined,
-  data: BinaryLike,
-  key: KeyLike | VerifyKeyObjectInput | VerifyPublicKeyInput,
-  signature: BinaryLike,
+  data: any,
+  key: any,
+  signature: any,
   callback?: (error: Error | null, result: boolean) => void,
 ): boolean | void {
   if (algorithm != null) {
@@ -515,7 +525,6 @@ export function verifyOneShot(
     } else {
       let digest = algorithm;
       if (digest == null) {
-        // RSA-PSS keys encode their hash algorithm in the key parameters
         if (keyType === "rsa-pss") {
           const details = op_node_get_asymmetric_key_details(handle);
           if (details.hashAlgorithm) {
@@ -549,9 +558,18 @@ export function verifyOneShot(
   }
 }
 
-export default {
+return {
   signOneShot,
   verifyOneShot,
   Sign,
   Verify,
+  SignImpl,
+  VerifyImpl,
+  default: {
+    signOneShot,
+    verifyOneShot,
+    Sign,
+    Verify,
+  },
 };
+})();

@@ -17,6 +17,12 @@ struct PendingResolve {
   id: u32,
   specifier: String,
   referrer: String,
+  /// Pre-computed default-resolved URL. The hook worker's `defaultResolve`
+  /// returns this so that user hooks calling `next()` get Deno's actual
+  /// resolution (import map, jsr, etc.) instead of a naive `new URL(spec,
+  /// parentURL)`. `None` means Deno's default resolver failed -- in that
+  /// case `defaultResolve` falls back to URL parsing.
+  default_url: Option<String>,
 }
 
 /// A pending load request from the Rust module loader to JS hooks.
@@ -49,6 +55,12 @@ pub struct LoaderHookRegistry {
   /// don't exist on disk.
   pub hook_intercepted_specifiers: Rc<RefCell<HashSet<String>>>,
 
+  /// Cache of resolve results (key: "specifier\0referrer" → resolved URL).
+  /// Populated during the async load phase so that V8's synchronous module
+  /// instantiation callback can look up previously-resolved specifiers
+  /// without going through the async hook bridge.
+  pub resolve_cache: Rc<RefCell<HashMap<String, String>>>,
+
   pending_resolves: Rc<RefCell<VecDeque<PendingResolve>>>,
   resolve_waker: Rc<RefCell<Option<Waker>>>,
   resolve_senders: Rc<RefCell<HashMap<u32, ResolveSender>>>,
@@ -71,10 +83,13 @@ impl LoaderHookRegistry {
 
   /// Push a resolve request and return a receiver for the response.
   /// `Ok(Some(url))` = hook resolved, `Ok(None)` = fallthrough to default.
+  /// `default_url` is the pre-computed Deno default-resolved URL, passed to
+  /// the hook chain so that `defaultResolve()` returns the correct value.
   pub fn push_resolve(
     &self,
     specifier: String,
     referrer: String,
+    default_url: Option<String>,
   ) -> deno_core::futures::channel::oneshot::Receiver<
     Result<Option<String>, String>,
   > {
@@ -88,6 +103,7 @@ impl LoaderHookRegistry {
         id,
         specifier,
         referrer,
+        default_url,
       });
     if let Some(waker) = self.resolve_waker.borrow_mut().take() {
       waker.wake();
@@ -146,13 +162,14 @@ pub fn op_module_hooks_register(
   registry.load_active.set(has_load);
 }
 
-/// Poll for a pending resolve request. Returns `[id, specifier, referrer]`
-/// or null if the registry is shut down.
+/// Poll for a pending resolve request. Returns
+/// `[id, specifier, referrer, default_url]` or null if the registry is shut
+/// down.
 #[op2]
 #[serde]
 pub async fn op_module_hooks_poll_resolve(
   state: Rc<RefCell<OpState>>,
-) -> Result<Option<(u32, String, String)>, JsErrorBox> {
+) -> Result<Option<(u32, String, String, Option<String>)>, JsErrorBox> {
   let registry = state.borrow().borrow::<LoaderHookRegistry>().clone();
 
   std::future::poll_fn(|cx| {
@@ -161,6 +178,7 @@ pub async fn op_module_hooks_poll_resolve(
         req.id,
         req.specifier,
         req.referrer,
+        req.default_url,
       ))));
     }
     *registry.resolve_waker.borrow_mut() = Some(cx.waker().clone());

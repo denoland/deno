@@ -617,6 +617,7 @@ function spawnInner(command, {
   env = { __proto__: null },
   uid = undefined,
   gid = undefined,
+  signal = undefined,
   stdin = "null",
   stdout = "piped",
   stderr = "piped",
@@ -655,29 +656,50 @@ function spawnInner(command, {
   const stdoutRid = child.stdoutRid;
   const stderrRid = child.stderrRid;
 
+  let onAbort = null;
+  if (signal !== undefined) {
+    onAbort = () => {
+      try {
+        op_spawn_kill(child.rid, "SIGTERM");
+      } catch {
+        // Ignore the error for https://github.com/denoland/deno/issues/27112
+      }
+    };
+    if (signal.aborted) {
+      onAbort();
+    } else {
+      signal[abortSignal.add](onAbort);
+    }
+  }
+
   return PromisePrototypeThen(
     SafePromiseAll([
       op_spawn_wait(child.rid),
       stdoutRid != null ? readAllRid(stdoutRid) : null,
       stderrRid != null ? readAllRid(stderrRid) : null,
     ]),
-    ({ 0: status, 1: stdout, 2: stderr }) => ({
-      success: status.success,
-      code: status.code,
-      signal: status.signal,
-      get stdout() {
-        if (stdout == null) {
-          throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
-        }
-        return stdout;
-      },
-      get stderr() {
-        if (stderr == null) {
-          throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
-        }
-        return stderr;
-      },
-    }),
+    ({ 0: status, 1: stdout, 2: stderr }) => {
+      if (onAbort !== null) {
+        signal[abortSignal.remove](onAbort);
+      }
+      return {
+        success: status.success,
+        code: status.code,
+        signal: status.signal,
+        get stdout() {
+          if (stdout == null) {
+            throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
+          }
+          return stdout;
+        },
+        get stderr() {
+          if (stderr == null) {
+            throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
+          }
+          return stderr;
+        },
+      };
+    },
   );
 }
 

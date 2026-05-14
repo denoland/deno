@@ -27,8 +27,15 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
+(function () {
+const { core } = globalThis.__bootstrap;
+const {
+  op_dns_resolve,
+  op_net_get_ips_from_perm_token,
+  op_net_get_system_dns_servers,
+  op_node_getaddrinfo,
+  op_node_getnameinfo,
+} = core.ops;
 const { isIPv4, isIPv6 } = core.loadExtScript("ext:deno_node/internal/net.ts");
 const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 const {
@@ -39,24 +46,24 @@ const { ares_strerror } = core.loadExtScript(
   "ext:deno_node/internal_binding/ares.ts",
 );
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
-import {
-  op_dns_resolve,
-  op_net_get_ips_from_perm_token,
-  op_net_get_system_dns_servers,
-  op_node_getaddrinfo,
-  op_node_getnameinfo,
-} from "ext:core/ops";
 
 interface LookupAddress {
   address: string;
   family: number;
 }
 
-export const DNS_ORDER_VERBATIM = 0;
-export const DNS_ORDER_IPV4_FIRST = 1;
-export const DNS_ORDER_IPV6_FIRST = 2;
+interface ErrnoException extends Error {
+  errno?: number;
+  code?: string;
+  path?: string;
+  syscall?: string;
+}
 
-export class GetAddrInfoReqWrap extends AsyncWrap {
+const DNS_ORDER_VERBATIM = 0;
+const DNS_ORDER_IPV4_FIRST = 1;
+const DNS_ORDER_IPV6_FIRST = 2;
+
+class GetAddrInfoReqWrap extends AsyncWrap {
   family!: number;
   hostname!: string;
   port: number | undefined;
@@ -79,7 +86,7 @@ export class GetAddrInfoReqWrap extends AsyncWrap {
   }
 }
 
-export function getaddrinfo(
+function getaddrinfo(
   req: GetAddrInfoReqWrap,
   hostname: string,
   family: number,
@@ -146,7 +153,7 @@ export function getaddrinfo(
   return 0;
 }
 
-export class GetNameInfoReqWrap extends AsyncWrap {
+class GetNameInfoReqWrap extends AsyncWrap {
   address!: string;
   port!: number;
 
@@ -168,7 +175,7 @@ export class GetNameInfoReqWrap extends AsyncWrap {
   }
 }
 
-export function getnameinfo(
+function getnameinfo(
   req: GetNameInfoReqWrap,
   address: string,
   port: number,
@@ -184,7 +191,7 @@ export function getnameinfo(
   return 0;
 }
 
-export class QueryReqWrap extends AsyncWrap {
+class QueryReqWrap extends AsyncWrap {
   bindingName!: string;
   hostname!: string;
   ttl!: boolean;
@@ -209,7 +216,7 @@ export class QueryReqWrap extends AsyncWrap {
   }
 }
 
-export interface ChannelWrapQuery {
+interface ChannelWrapQuery {
   queryAny(req: QueryReqWrap, name: string): number;
   queryA(req: QueryReqWrap, name: string): number;
   queryAaaa(req: QueryReqWrap, name: string): number;
@@ -240,7 +247,7 @@ function getSystemDnsServers(): [string, number][] {
   return systemDnsServers;
 }
 
-export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
+class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   #servers: [string, number][] | null = null;
   #timeout: number;
   #tries: number;
@@ -772,20 +779,33 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 const DNS_ESETSRVPENDING = -1000;
 const EMSG_ESETSRVPENDING = "There are pending queries.";
 
-export function strerror(code: number) {
+function strerror(code: number) {
   return code === DNS_ESETSRVPENDING
     ? EMSG_ESETSRVPENDING
     : ares_strerror(code);
 }
 
-export default {
+return {
   DNS_ORDER_VERBATIM,
   DNS_ORDER_IPV4_FIRST,
   DNS_ORDER_IPV6_FIRST,
   GetAddrInfoReqWrap,
   getaddrinfo,
+  GetNameInfoReqWrap,
   getnameinfo,
   QueryReqWrap,
   ChannelWrap,
   strerror,
+  default: {
+    DNS_ORDER_VERBATIM,
+    DNS_ORDER_IPV4_FIRST,
+    DNS_ORDER_IPV6_FIRST,
+    GetAddrInfoReqWrap,
+    getaddrinfo,
+    getnameinfo,
+    QueryReqWrap,
+    ChannelWrap,
+    strerror,
+  },
 };
+})();
