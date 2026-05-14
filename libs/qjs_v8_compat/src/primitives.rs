@@ -198,6 +198,11 @@ impl WriteUtf8Buf for std::string::String {
     self.push_str(s);
   }
 }
+impl<T: WriteUtf8Buf + ?Sized> WriteUtf8Buf for std::cell::RefMut<'_, T> {
+  fn append_str(&mut self, s: &str) {
+    (**self).append_str(s);
+  }
+}
 impl WriteUtf8Buf for Vec<u8> {
   fn append_str(&mut self, s: &str) {
     self.extend_from_slice(s.as_bytes());

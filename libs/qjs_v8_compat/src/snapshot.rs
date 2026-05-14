@@ -47,6 +47,16 @@ pub struct StartupData {
 const QJSC_MAGIC: &[u8; 4] = b"QJSC";
 const QJSC_VERSION: u32 = 1;
 
+impl From<Box<[u8]>> for StartupData {
+  fn from(b: Box<[u8]>) -> Self {
+    Self { data: b.into_vec() }
+  }
+}
+impl From<Vec<u8>> for StartupData {
+  fn from(b: Vec<u8>) -> Self {
+    Self { data: b }
+  }
+}
 impl StartupData {
   pub fn is_empty(&self) -> bool {
     self.data.is_empty()

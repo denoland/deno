@@ -102,6 +102,21 @@ impl<S: HandleScopeSource + ?Sized> HandleScopeSource for &mut S {
   }
 }
 
+impl<'a, 's, 'i, C> HandleScopeSource
+  for crate::context::ContextScope<'a, PinScope<'s, 'i, C>>
+{
+  fn default_ctx(&mut self) -> sys::Context {
+    use std::ops::DerefMut;
+    let pin = self.deref_mut();
+    pin.0.ctx
+  }
+  fn isolate_ptr(&mut self) -> *mut Isolate {
+    use std::ops::DerefMut;
+    let pin = self.deref_mut();
+    pin.0.isolate
+  }
+}
+
 impl<'s, 'i, C> HandleScopeSource for PinScope<'s, 'i, C> {
   fn default_ctx(&mut self) -> sys::Context {
     self.0.ctx
@@ -592,6 +607,41 @@ impl<'s, 'r> CallbackScopeSource<'s>
 // type-check.
 impl<'s, 'r> CallbackScopeSource<'s>
   for &'r crate::v8::fast_api::FastApiCallbackOptions<'s>
+{
+  unsafe fn into_callback_scope(self) -> CallbackScope<'s, Context> {
+    CallbackScope(HandleScope {
+      isolate: core::ptr::null_mut(),
+      ctx: core::ptr::null_mut(),
+      owned: Vec::new(),
+      parent_owned: None,
+      depth: 0,
+      _scope: PhantomData,
+      _ctx: PhantomData,
+    })
+  }
+}
+
+// `&mut Isolate` is what deno_core's inspector code passes to
+// `callback_scope!(unsafe scope, isolate)`.
+impl<'s, 'r> CallbackScopeSource<'s> for &'r mut &'r mut Isolate {
+  unsafe fn into_callback_scope(self) -> CallbackScope<'s, Context> {
+    let ctx = (**self).default_ctx();
+    CallbackScope(HandleScope {
+      isolate: *self as *mut Isolate,
+      ctx,
+      owned: Vec::new(),
+      parent_owned: None,
+      depth: 0,
+      _scope: PhantomData,
+      _ctx: PhantomData,
+    })
+  }
+}
+
+// PromiseRejectMessage is passed to host promise rejection callbacks
+// where deno_core wraps `&message` in a callback_scope.
+impl<'s, 'r> CallbackScopeSource<'s>
+  for &'r crate::promise::PromiseRejectMessage<'s>
 {
   unsafe fn into_callback_scope(self) -> CallbackScope<'s, Context> {
     CallbackScope(HandleScope {

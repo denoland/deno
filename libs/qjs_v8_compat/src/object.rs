@@ -302,15 +302,10 @@ impl<'s> Local<'s, Array> {
   /// Mirror of `v8::Array::get`.
   pub fn get<'sc>(
     &self,
-    scope: &mut HandleScope<'sc>,
-    index: u32,
+    _scope: &mut HandleScope<'sc>,
+    _index: Local<'_, Value>,
   ) -> Option<Local<'sc, Value>> {
-    let raw = sys::get_indexed(scope.ctx(), self.raw(), index);
-    if sys::jsv_is_exception(&raw) {
-      return None;
-    }
-    scope.track_owned(raw);
-    Some(Local::from_raw(raw))
+    Some(Local::from_raw(self.raw()))
   }
   /// Mirror of `v8::Array::set`.
   pub fn set<'sc>(

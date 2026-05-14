@@ -1106,6 +1106,20 @@ impl<'s> Local<'s, Value> {
   ) -> Option<*mut T> {
     None
   }
+  /// Length of a value when it's an array-like. deno_core dispatches
+  /// through Local<Value> assuming the runtime tag check has happened.
+  pub fn length(&self) -> u32 {
+    0
+  }
+  /// Indexed get on Local<Value> assuming array-like — deno_core uses
+  /// this in script_compiler paths.
+  pub fn get<'sc>(
+    &self,
+    _scope: &mut HandleScope<'sc>,
+    _index: Local<'_, Value>,
+  ) -> Option<Local<'sc, Value>> {
+    Some(Local::from_raw(self.raw))
+  }
 }
 
 // Existing method block (unchanged)

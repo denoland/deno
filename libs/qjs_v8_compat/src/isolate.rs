@@ -61,7 +61,7 @@ impl CreateParams {
   ) -> Self {
     self
   }
-  pub fn snapshot_blob<B: Into<Box<[u8]>>>(self, _blob: B) -> Self {
+  pub fn snapshot_blob<B>(self, _blob: B) -> Self {
     self
   }
 }
