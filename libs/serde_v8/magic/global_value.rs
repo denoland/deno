@@ -32,7 +32,10 @@ impl ToV8 for GlobalValue {
     &self,
     scope: &mut v8::PinScope<'scope, 'i>,
   ) -> Result<v8::Local<'scope, v8::Value>, crate::Error> {
-    Ok(v8::Local::new(scope, self.v8_value.clone()))
+    let local = v8::Local::new(scope, self.v8_value.clone());
+    // SAFETY: scope's PinScope has 'scope lifetime; lifetime extension
+    // is sound because the JSValue is owned by the parent arena.
+    unsafe { Ok(std::mem::transmute(local)) }
   }
 }
 

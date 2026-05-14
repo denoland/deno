@@ -126,9 +126,9 @@ impl ExceptionState {
   pub fn track_promise_rejection<'s, 'i>(
     &self,
     scope: &mut v8::PinScope<'s, 'i>,
-    promise: v8::Local<v8::Promise>,
+    promise: v8::Local<'s, v8::Promise>,
     event: v8::PromiseRejectEvent,
-    rejection_value: Option<v8::Local<v8::Value>>,
+    rejection_value: Option<v8::Local<'s, v8::Value>>,
   ) {
     use v8::PromiseRejectEvent::*;
     let promise_global = v8::Global::new(scope, promise);
@@ -159,6 +159,7 @@ impl ExceptionState {
           // "rejectionhandled" event if anyone cares.
           if self.js_handled_promise_rejection_cb.borrow().is_some() {
             let error = promise.result(scope);
+            let error: v8::Local<v8::Value> = unsafe { core::mem::transmute(error) };
             let error_global = v8::Global::new(scope, error);
             self
               .pending_handled_promise_rejections

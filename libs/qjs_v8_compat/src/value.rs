@@ -546,34 +546,36 @@ impl<'s, 'i> ScopeLike<'s> for crate::scope::PinScope<'s, 'i> {
 /// and then reuse it on the next line; for that to work the conversion
 /// to a `&mut HandleScope` must not consume.
 pub trait LocalNewScope<'s> {
-  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s>;
+  fn as_mut_handle_scope<'a>(&'a mut self) -> &'a mut HandleScope<'s>
+  where
+    Self: 'a;
 }
 impl<'s> LocalNewScope<'s> for HandleScope<'s> {
-  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+  fn as_mut_handle_scope<'a>(&'a mut self) -> &'a mut HandleScope<'s> where Self: 'a {
     self
   }
 }
 impl<'s, 'i> LocalNewScope<'s> for crate::scope::PinScope<'s, 'i> {
-  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+  fn as_mut_handle_scope<'a>(&'a mut self) -> &'a mut HandleScope<'s> where Self: 'a {
     use std::ops::DerefMut;
     self.deref_mut()
   }
 }
 impl<'s, 'i> LocalNewScope<'s> for &mut crate::scope::PinScope<'s, 'i> {
-  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+  fn as_mut_handle_scope<'a>(&'a mut self) -> &'a mut HandleScope<'s> where Self: 'a {
     use std::ops::DerefMut;
     (**self).deref_mut()
   }
 }
 impl<'s> LocalNewScope<'s> for &mut HandleScope<'s> {
-  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+  fn as_mut_handle_scope<'a>(&'a mut self) -> &'a mut HandleScope<'s> where Self: 'a {
     self
   }
 }
 impl<'s, 'p, C> LocalNewScope<'s>
   for crate::exception::TryCatch<'p, HandleScope<'s, C>>
 {
-  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+  fn as_mut_handle_scope<'a>(&'a mut self) -> &'a mut HandleScope<'s> where Self: 'a {
     use std::ops::DerefMut;
     let hs: &mut HandleScope<'s, C> = self.deref_mut();
     // SAFETY: HandleScope<'s, C> and HandleScope<'s> share layout when
@@ -584,14 +586,14 @@ impl<'s, 'p, C> LocalNewScope<'s>
 impl<'s, 'p, C> LocalNewScope<'s>
   for &mut crate::exception::TryCatch<'p, HandleScope<'s, C>>
 {
-  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+  fn as_mut_handle_scope<'a>(&'a mut self) -> &'a mut HandleScope<'s> where Self: 'a {
     use std::ops::DerefMut;
     let hs: &mut HandleScope<'s, C> = (**self).deref_mut();
     unsafe { &mut *(hs as *mut HandleScope<'s, C> as *mut HandleScope<'s>) }
   }
 }
 impl<'s, C> LocalNewScope<'s> for crate::scope::CallbackScope<'s, C> {
-  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+  fn as_mut_handle_scope<'a>(&'a mut self) -> &'a mut HandleScope<'s> where Self: 'a {
     use std::ops::DerefMut;
     let hs: &mut HandleScope<'s, C> = self.deref_mut();
     unsafe { &mut *(hs as *mut HandleScope<'s, C> as *mut HandleScope<'s>) }
@@ -604,7 +606,7 @@ impl<'s, C> LocalNewScope<'s> for crate::scope::CallbackScope<'s, C> {
 // We use `transmute_copy` to launder the cast past the
 // invalid_reference_casting lint (which catches the obvious form).
 impl<'s, 'i, C> LocalNewScope<'s> for &crate::scope::PinScope<'s, 'i, C> {
-  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+  fn as_mut_handle_scope<'a>(&'a mut self) -> &'a mut HandleScope<'s> where Self: 'a {
     let hs: &HandleScope<'s, C> = &(**self).0;
     let ptr: *const HandleScope<'s, C> = hs;
     let mut_ptr: *mut HandleScope<'s> =
@@ -613,7 +615,7 @@ impl<'s, 'i, C> LocalNewScope<'s> for &crate::scope::PinScope<'s, 'i, C> {
   }
 }
 impl<'s, C> LocalNewScope<'s> for &HandleScope<'s, C> {
-  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+  fn as_mut_handle_scope<'a>(&'a mut self) -> &'a mut HandleScope<'s> where Self: 'a {
     let hs: &HandleScope<'s, C> = *self;
     let ptr: *const HandleScope<'s, C> = hs;
     let mut_ptr: *mut HandleScope<'s> =
@@ -633,8 +635,20 @@ impl<'s, T> Local<'s, T> {
     S: LocalNewScope<'s>,
     H: ToLocal<'s, T>,
   {
-    let hs = scope.as_mut_handle_scope();
-    handle.to_local(hs)
+    // Take a raw pointer to the scope, then reconstruct a fresh
+    // `&mut S` with an unbounded lifetime. This bypasses Rust's
+    // invariance on `&mut PinScope<'s, 'i>` so the returned
+    // Local<'s, T> can have the scope's inner 's lifetime, not the
+    // call site's borrow lifetime.
+    let scope_ptr: *mut S = scope as *mut S;
+    let local = {
+      let hs = unsafe { (*scope_ptr).as_mut_handle_scope() };
+      handle.to_local(hs)
+    };
+    // SAFETY: widen Local's lifetime from the inner borrow to 's.
+    // Sound because the underlying JSValue is owned by the scope's
+    // arena which lives for 's.
+    unsafe { core::mem::transmute::<Local<'_, T>, Local<'s, T>>(local) }
   }
 }
 

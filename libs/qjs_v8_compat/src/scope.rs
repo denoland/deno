@@ -709,21 +709,27 @@ pub type PinCallbackScope<'s, 'i> = CallbackScope<'s>;
 
 // ContextScope already lives in `crate::context`; add the
 // LocalNewScope impl here so the trait reaches it.
-impl<'a, 's, C> crate::value::LocalNewScope<'s>
-  for crate::context::ContextScope<'a, HandleScope<'s, C>>
+impl<'cs, 's, C> crate::value::LocalNewScope<'s>
+  for crate::context::ContextScope<'cs, HandleScope<'s, C>>
 where
   HandleScope<'s, C>: crate::value::LocalNewScope<'s>,
 {
-  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+  fn as_mut_handle_scope<'a>(&'a mut self) -> &'a mut HandleScope<'s>
+  where
+    Self: 'a,
+  {
     use std::ops::DerefMut;
     let hs: &mut HandleScope<'s, C> = self.deref_mut();
     unsafe { &mut *(hs as *mut HandleScope<'s, C> as *mut HandleScope<'s>) }
   }
 }
-impl<'a, 's, 'i, C> crate::value::LocalNewScope<'s>
-  for crate::context::ContextScope<'a, PinScope<'s, 'i, C>>
+impl<'cs, 's, 'i, C> crate::value::LocalNewScope<'s>
+  for crate::context::ContextScope<'cs, PinScope<'s, 'i, C>>
 {
-  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+  fn as_mut_handle_scope<'a>(&'a mut self) -> &'a mut HandleScope<'s>
+  where
+    Self: 'a,
+  {
     use std::ops::DerefMut;
     let pin: &mut PinScope<'s, 'i, C> = self.deref_mut();
     let hs: &mut HandleScope<'s, C> = pin.deref_mut();

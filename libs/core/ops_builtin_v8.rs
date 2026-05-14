@@ -950,7 +950,7 @@ pub fn op_deserialize<'s, 'i>(
 
   let value = value_deserializer.read_value(scope.get_current_context());
   match value {
-    Some(deserialized) => Ok(deserialized),
+    Some(deserialized) => Ok(unsafe { std::mem::transmute(deserialized) }),
     None => Err(JsErrorBox::range_error("could not deserialize value")),
   }
 }
@@ -1011,7 +1011,7 @@ pub fn op_structured_clone<'s, 'i>(
 
   let value = value_deserializer.read_value(scope.get_current_context());
   match value {
-    Some(deserialized) => Ok(deserialized),
+    Some(deserialized) => Ok(unsafe { std::mem::transmute(deserialized) }),
     None => Err(JsErrorBox::range_error("could not deserialize value")),
   }
 }
