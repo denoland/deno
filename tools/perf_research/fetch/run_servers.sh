@@ -81,6 +81,7 @@ run_runtime() {
   run_wrk "${name}_hello"      "http://127.0.0.1:${port}/hello"
   run_wrk "${name}_headers"    "http://127.0.0.1:${port}/headers"
   run_wrk "${name}_echo_small" "http://127.0.0.1:${port}/echo" POST '{"a":1,"b":2,"c":[1,2,3]}'
+  run_wrk "${name}_bigbody"    "http://127.0.0.1:${port}/bigbody"
 
   kill $pid 2>/dev/null || true
   wait 2>/dev/null || true

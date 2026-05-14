@@ -33,6 +33,14 @@ Deno.serve({ port, onListen: () => {} }, async (req) => {
       for (const _h of req.headers) count++;
       return new Response(`${count}`);
     }
+    case "/bigbody": {
+      // 1 MB ASCII body. Server allocates a fresh buffer each request to
+      // exercise the response body construction path.
+      const buf = new Uint8Array(1 << 20).fill(0x41);
+      return new Response(buf, {
+        headers: { "content-type": "application/octet-stream" },
+      });
+    }
     default:
       return new Response("not found", { status: 404 });
   }

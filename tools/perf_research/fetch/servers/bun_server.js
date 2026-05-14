@@ -34,6 +34,12 @@ Bun.serve({
         for (const _h of req.headers) count++;
         return new Response(`${count}`);
       }
+      case "/bigbody": {
+        const buf = new Uint8Array(1 << 20).fill(0x41);
+        return new Response(buf, {
+          headers: { "content-type": "application/octet-stream" },
+        });
+      }
       default:
         return new Response("not found", { status: 404 });
     }

@@ -37,6 +37,12 @@ const server = http.createServer(async (req, res) => {
       res.end(`${count}`);
       return;
     }
+    case "/bigbody": {
+      const buf = Buffer.alloc(1 << 20, 0x41);
+      res.setHeader("content-type", "application/octet-stream");
+      res.end(buf);
+      return;
+    }
     default:
       res.statusCode = 404;
       res.end("not found");
