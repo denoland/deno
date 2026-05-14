@@ -745,7 +745,8 @@ fn op_import_sync<'s, 'i>(
     };
     Ok(v8::Local::new(scope, module.get_module_namespace()))
   } else {
-    Ok(v8::Local::new(scope, namespace).into())
+    let local: v8::Local<v8::Object> = v8::Local::new(scope, namespace);
+    Ok(local.into())
   }
 }
 
@@ -803,6 +804,7 @@ fn op_import_sync_with_source<'s, 'i>(
     };
     Ok(v8::Local::new(scope, module.get_module_namespace()))
   } else {
-    Ok(v8::Local::new(scope, namespace).into())
+    let local: v8::Local<v8::Object> = v8::Local::new(scope, namespace);
+    Ok(local.into())
   }
 }

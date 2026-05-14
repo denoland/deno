@@ -1074,7 +1074,7 @@ impl ModuleMap {
       v8::NewStringType::Normal,
     )
     .unwrap();
-    let source_str_local = v8::Local::new(scope, source_str);
+    let source_str_local: v8::Local<v8::String> = v8::Local::new(scope, source_str);
     let source_value_local = v8::Local::<v8::Value>::from(source_str_local);
     let exports = vec![(ascii_str!("default"), source_value_local)];
     Ok(self.new_synthetic_module(scope, name, ModuleType::Text, exports))
@@ -1900,7 +1900,8 @@ impl ModuleMap {
         }
         v8::PromiseState::Rejected => {
           resolved_any = true;
-          let exception = v8::Global::new(scope, promise.result(scope));
+          let result = promise.result(scope);
+          let exception = v8::Global::new(scope, result);
           self.dynamic_import_reject(scope, eval.load_id, exception.clone());
           self.reject_tla_waiters(scope, eval.module_id, exception);
         }
@@ -2252,10 +2253,11 @@ impl ModuleMap {
                 "Root module reference had to have been resolved to get here.",
               );
               let key = ModuleSourceKey::from_reference(module_reference);
-              let source = {
+              let source: v8::Local<v8::Value> = {
                 let data = self.data.borrow();
                 let source = data.sources.get(&key).expect("Source had to have been inserted successfully, or recursion would error.").as_ref();
-                v8::Local::new(scope, source).into()
+                let local: v8::Local<v8::Object> = v8::Local::new(scope, source);
+                local.into()
               };
               let resolver = state.resolver.open(scope);
               resolver.resolve(scope, source).unwrap();
@@ -2755,7 +2757,8 @@ pub(crate) fn synthetic_module_evaluation_steps<'s>(
   // This promise is resolved immediately.
   let resolver = v8::PromiseResolver::new(tc_scope).unwrap();
   let undefined = v8::undefined(tc_scope);
-  resolver.resolve(tc_scope, undefined.into());
+  let undef_value: v8::Local<v8::Value> = undefined.into();
+  resolver.resolve(tc_scope, undef_value);
   Some(resolver.get_promise(tc_scope).into())
 }
 

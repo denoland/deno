@@ -321,12 +321,11 @@ impl<'s, C> HandleScope<'s, C> {
   pub fn remove_slot<T: 'static>(&mut self) -> Option<T> {
     None
   }
-  pub fn add_context_data<T, D>(
+  pub fn add_context_data<D>(
     &mut self,
     _context: crate::value::Local<'_, crate::context::Context>,
     _data: D,
   ) -> usize {
-    let _ = std::marker::PhantomData::<T>;
     0
   }
   pub fn set_continuation_preserved_embedder_data(

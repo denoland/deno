@@ -453,11 +453,7 @@ pub unsafe fn to_slice_buffer_any(
       }
     };
     let slice = if len > 0 {
-      if let Some(ptr) = data {
-        std::slice::from_raw_parts_mut(ptr.as_ptr() as _, len)
-      } else {
-        &mut []
-      }
+      std::slice::from_raw_parts_mut(data.as_ptr() as _, len)
     } else {
       &mut []
     };

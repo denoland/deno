@@ -296,7 +296,7 @@ impl JsRealmInner {
         let data = (*loop_ptr).data;
         if !data.is_null() {
           let raw = std::ptr::NonNull::new_unchecked(data as *mut v8::Context);
-          let _global = v8::Global::from_raw(&mut isolate, raw);
+          let _global = v8::Global::<v8::Context>::from_raw(&mut isolate, raw);
           (*loop_ptr).data = std::ptr::null_mut();
         }
       }
