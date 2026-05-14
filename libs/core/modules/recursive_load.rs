@@ -505,6 +505,25 @@ impl RecursiveModuleLoad {
                     .resolve_async(raw, &referrer_str, kind)
                     .await
                     .map_err(|e| JsErrorBox::generic(e.to_string()))?;
+                  // The async resolver may map the raw specifier to a URL
+                  // that's already registered in the module map (e.g. a
+                  // bare `"path"` from an npm package resolving to
+                  // `node:path`, which was lazy-loaded earlier). In that
+                  // case the load step would try `take_lazy_esm_source`,
+                  // miss because the source was already consumed, and fall
+                  // through to `loader.load(node:path)` which doesn't
+                  // recognize the scheme. Short-circuit here so
+                  // `register_and_recurse_inner` later picks up the
+                  // existing module id via `get_id`.
+                  if module_map_rc
+                    .get_id(resolved.as_str(), &request.reference.requested_module_type)
+                    .is_some()
+                  {
+                    visited_as_alias
+                      .borrow_mut()
+                      .insert(resolved.as_str().to_string());
+                    return Ok(None);
+                  }
                   let mut resolved_request = request;
                   resolved_request.reference.specifier = resolved.clone();
                   resolved_request.needs_resolve = false;
