@@ -51,10 +51,13 @@ impl<'s> FunctionBuilder<'s> {
 }
 
 impl FunctionTemplate {
-  pub fn new<'s>(
+  pub fn new<'s, F>(
     scope: &mut HandleScope<'s>,
-    _callback: FunctionCallback,
-  ) -> Local<'s, FunctionTemplate> {
+    _callback: F,
+  ) -> Local<'s, FunctionTemplate>
+  where
+    F: crate::function::MapFnTo<FunctionCallback>,
+  {
     let raw = sys::new_object(scope.ctx());
     scope.track_owned(raw);
     Local::from_raw(raw)

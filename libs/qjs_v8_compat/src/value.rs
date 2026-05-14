@@ -151,15 +151,18 @@ impl<'s, T> Local<'s, T> {
   }
 
   /// Reinterpret a Local as another type without runtime checks. Mirrors
-  /// rusty_v8's `Local::cast_unchecked`.
+  /// rusty_v8's `Local::<T>::cast_unchecked(other) -> Local<T>` —
+  /// associated function (NOT a self method) that takes any
+  /// `Local<U>` and returns `Local<T>`. The op2 macro emits this
+  /// shape: `Local::<External>::cast_unchecked(some_local_value)`.
   ///
   /// # Safety
   ///
   /// The caller must guarantee that the underlying JSValue actually has
-  /// the type `U`. Misuse will produce undefined behavior at the C-API
-  /// level when `U`-typed methods are subsequently invoked on it.
-  pub unsafe fn cast_unchecked<U>(self) -> Local<'s, U> {
-    Local::from_raw(self.raw)
+  /// the type `T`. Misuse will produce undefined behavior at the C-API
+  /// level when `T`-typed methods are subsequently invoked on it.
+  pub unsafe fn cast_unchecked<U>(other: Local<'s, U>) -> Self {
+    Local::from_raw(other.raw)
   }
 
   /// Mirror of rusty_v8's `Local::cast` — infallible reinterpret. The
@@ -418,7 +421,7 @@ upcasts_to_value!(
   crate::buffer::ArrayBufferView,
   crate::buffer::SharedArrayBuffer,
   crate::buffer::Uint8Array,
-  crate::external::External,
+  // External handled separately below — needs From not TryFrom
   crate::module::Module,
   crate::script::Script,
   crate::promise::Promise,
@@ -427,6 +430,14 @@ upcasts_to_value!(
   crate::template::ObjectTemplate,
 );
 
+// External: needs From<Local<Value>> (op2 macro generates implicit
+// downcast). The reverse upcast is given separately.
+impl<'s> From<Local<'s, crate::external::External>> for Local<'s, Value> {
+  fn from(v: Local<'s, crate::external::External>) -> Local<'s, Value> {
+    Local::from_raw(v.raw)
+  }
+}
+
 // Array -> Object — Array is a subclass of Object in v8.
 impl<'s> From<Local<'s, crate::object::Array>>
   for Local<'s, crate::object::Object>
@@ -434,6 +445,15 @@ impl<'s> From<Local<'s, crate::object::Array>>
   fn from(
     v: Local<'s, crate::object::Array>,
   ) -> Local<'s, crate::object::Object> {
+    Local::from_raw(v.raw)
+  }
+}
+
+// op2-macro generated code does implicit Local<Value> -> Local<External>
+// without a TryFrom `?`. Add direct From for the most-used downcast.
+// Avoid generic blanket impls (would conflict with identity From).
+impl<'s> From<Local<'s, Value>> for Local<'s, crate::external::External> {
+  fn from(v: Local<'s, Value>) -> Local<'s, crate::external::External> {
     Local::from_raw(v.raw)
   }
 }

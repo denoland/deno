@@ -26,7 +26,11 @@ pub type FunctionCallback = unsafe extern "C" fn(*const FunctionCallbackInfo);
 pub type PropertyCallback = unsafe extern "C" fn();
 
 /// Adapter trait V8 uses to convert various function pointer flavors to
-/// `FunctionCallback`. We mirror it.
+/// `FunctionCallback`. We mirror it. Implemented for FunctionCallback
+/// itself and for Rust function pointers with the op2-generated shape;
+/// the conversion is type-only (we never actually invoke the trampoline
+/// — QuickJS doesn't dispatch via v8's C ABI), so the convert just
+/// returns a stub.
 pub trait MapFnTo<T> {
   fn map_fn_to(self) -> T;
 }
@@ -34,6 +38,24 @@ pub trait MapFnTo<T> {
 impl MapFnTo<FunctionCallback> for FunctionCallback {
   fn map_fn_to(self) -> FunctionCallback {
     self
+  }
+}
+
+// Op2-generated callback shapes:
+// `fn(&mut PinScope, FunctionCallbackArguments, ReturnValue)`
+// FunctionCallback is `unsafe extern "C" fn(*const FunctionCallbackInfo)`.
+unsafe extern "C" fn map_fn_to_stub(_info: *const FunctionCallbackInfo) {}
+
+impl<F> MapFnTo<FunctionCallback> for F
+where
+  F: Fn(
+    &mut crate::scope::PinScope<'_, '_>,
+    FunctionCallbackArguments<'_>,
+    ReturnValue<'_>,
+  ),
+{
+  fn map_fn_to(self) -> FunctionCallback {
+    map_fn_to_stub
   }
 }
 

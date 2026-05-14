@@ -58,16 +58,54 @@ pub struct HandleScope<'s, C = Context> {
   _ctx: PhantomData<C>,
 }
 
+/// Trait abstracting "scope source" — anything HandleScope::new can
+/// open on top of. Implemented for &mut OwnedIsolate (top-level scope)
+/// and &mut PinScope / &mut HandleScope (nested scope).
+pub trait HandleScopeSource {
+  fn default_ctx(&mut self) -> sys::Context;
+  fn isolate_ptr(&mut self) -> *mut Isolate;
+}
+
+impl HandleScopeSource for OwnedIsolate {
+  fn default_ctx(&mut self) -> sys::Context {
+    OwnedIsolate::default_ctx(self)
+  }
+  fn isolate_ptr(&mut self) -> *mut Isolate {
+    self.as_isolate() as *mut Isolate
+  }
+}
+
+impl<'s, C> HandleScopeSource for HandleScope<'s, C> {
+  fn default_ctx(&mut self) -> sys::Context {
+    self.ctx
+  }
+  fn isolate_ptr(&mut self) -> *mut Isolate {
+    self.isolate
+  }
+}
+
+impl<'s, 'i, C> HandleScopeSource for PinScope<'s, 'i, C> {
+  fn default_ctx(&mut self) -> sys::Context {
+    self.0.ctx
+  }
+  fn isolate_ptr(&mut self) -> *mut Isolate {
+    self.0.isolate
+  }
+}
+
 impl<'s> HandleScope<'s, Context> {
   /// `v8::HandleScope::new(isolate)` — opens a scope on the isolate's
   /// default context. Mirrors rusty_v8's no-context constructor; on our
   /// side the isolate always has a default JSContext attached.
-  pub fn new<'r>(iso: &'r mut OwnedIsolate) -> Self
+  ///
+  /// Generic over scope source — accepts &mut OwnedIsolate, &mut
+  /// HandleScope, or &mut PinScope.
+  pub fn new<'r, S: HandleScopeSource>(src: &'r mut S) -> Self
   where
     'r: 's,
   {
-    let ctx = iso.default_ctx();
-    let iso_ptr = iso.as_isolate() as *mut Isolate;
+    let ctx = src.default_ctx();
+    let iso_ptr = src.isolate_ptr();
     Self {
       isolate: iso_ptr,
       ctx,
