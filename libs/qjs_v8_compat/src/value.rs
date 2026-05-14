@@ -662,6 +662,53 @@ impl<'s, 'a, T> ToLocal<'s, T> for Local<'a, T> {
   }
 }
 
+// Specific ToLocal<Value> impls for the marker types most commonly
+// passed to Local::new where the destination type is Local<Value>.
+// The general `ToLocal<T> for Local<'a, T>` blanket above prevents a
+// catch-all `ToLocal<Value> for Local<'a, T>` impl.
+macro_rules! to_local_value_for {
+  ($($ty:ty),* $(,)?) => { $(
+    impl<'s, 'a> ToLocal<'s, Value> for Local<'a, $ty> {
+      fn to_local(self, _scope: &mut HandleScope<'s>) -> Local<'s, Value> {
+        Local::from_raw(self.raw)
+      }
+    }
+  )* };
+}
+to_local_value_for!(
+  crate::object::Object,
+  crate::object::Array,
+  crate::primitives::String,
+  crate::primitives::Symbol,
+  crate::primitives::Integer,
+  crate::primitives::Number,
+  crate::primitives::Boolean,
+  crate::primitives::BigInt,
+  crate::function::Function,
+  crate::module::Module,
+  crate::promise::Promise,
+);
+// Same shape for Global<T> — `Local::new(scope, &Global<Object>)`
+// where dest is `Local<Value>`.
+macro_rules! to_local_value_for_global {
+  ($($ty:ty),* $(,)?) => { $(
+    impl<'s> ToLocal<'s, Value> for &Global<$ty> {
+      fn to_local(self, scope: &mut HandleScope<'s>) -> Local<'s, Value> {
+        let l = Global::to_local(self, scope);
+        Local::from_raw(l.raw)
+      }
+    }
+  )* };
+}
+to_local_value_for_global!(
+  crate::object::Object,
+  crate::object::Array,
+  crate::primitives::String,
+  crate::primitives::Symbol,
+  crate::function::Function,
+  crate::module::Module,
+);
+
 // ----- Upcasts ----------------------------------------------------------
 // `Local<T> -> Local<U>` where T derives from U in the V8 type lattice.
 

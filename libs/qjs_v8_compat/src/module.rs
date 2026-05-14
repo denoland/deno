@@ -55,10 +55,10 @@ impl<'s> Local<'s, Module> {
     let _ = _scope;
     None
   }
-  pub fn instantiate_module<S>(
+  pub fn instantiate_module<S, C>(
     &self,
     _scope: S,
-    _cb: ModuleResolveCallback,
+    _cb: C,
   ) -> Option<bool> {
     Some(true)
   }
@@ -71,10 +71,10 @@ impl<'s> Local<'s, Module> {
   pub fn get_exception(&self) -> Local<'s, Value> {
     Local::from_raw(sys::jsv_undefined())
   }
-  pub fn instantiate_module2<S, F>(
+  pub fn instantiate_module2<S, C, F>(
     &self,
     scope: S,
-    cb: ModuleResolveCallback,
+    cb: C,
     _src_cb: F,
   ) -> Option<bool> {
     self.instantiate_module(scope, cb)
@@ -120,11 +120,11 @@ impl<'s> Local<'s, Module> {
 }
 
 impl Module {
-  pub fn create_synthetic_module<'s, S>(
+  pub fn create_synthetic_module<'s, S, N, E>(
     _scope: &mut S,
-    _module_name: Local<'_, crate::primitives::String>,
+    _module_name: N,
     _export_names: &[Local<'_, crate::primitives::String>],
-    _evaluation_steps: SyntheticModuleEvaluationSteps,
+    _evaluation_steps: E,
   ) -> Local<'s, Module> {
     Local::from_raw(sys::jsv_undefined())
   }

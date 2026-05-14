@@ -790,11 +790,11 @@ pub mod v8 {
     /// `JS_Eval` directly; this entry point exists to satisfy
     /// generic-snapshot code that pre-compiles via the script_compiler
     /// API on V8. Returns `None` on QuickJS.
-    pub fn compile<'s>(
-      _scope: &mut HandleScope<'s>,
-      _source: Source,
-      _options: CompileOptions,
-      _no_cache_reason: NoCacheReason,
+    pub fn compile<'s, S, O, N>(
+      _scope: &mut S,
+      _source: &mut Source,
+      _options: O,
+      _no_cache_reason: N,
     ) -> Option<Local<'s, Script>> {
       None
     }
@@ -804,13 +804,13 @@ pub mod v8 {
     ) -> Option<Local<'s, Module>> {
       None
     }
-    pub fn compile_function<'s>(
-      _scope: &mut HandleScope<'s>,
-      _source: Source,
+    pub fn compile_function<'s, S, O, N>(
+      _scope: &mut S,
+      _source: &mut Source,
       _arguments: &[Local<'s, super::String>],
       _context_extensions: &[Local<'s, super::Object>],
-      _options: CompileOptions,
-      _no_cache_reason: NoCacheReason,
+      _options: O,
+      _no_cache_reason: N,
     ) -> Option<Local<'s, Function>> {
       None
     }

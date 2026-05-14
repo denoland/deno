@@ -152,9 +152,9 @@ impl<'s, I> ValueSerializer<'s, I> {
     }
   }
   pub fn write_header(&mut self) {}
-  pub fn write_value(
+  pub fn write_value<S>(
     &mut self,
-    _scope: &mut HandleScope<'s>,
+    _scope_or_ctx: S,
     _value: Local<'s, crate::value::Value>,
   ) -> Option<bool> {
     Some(true)
@@ -211,9 +211,9 @@ impl<'s, I> ValueDeserializer<'s, I> {
   pub fn read_header(&mut self) -> Option<bool> {
     Some(true)
   }
-  pub fn read_value(
+  pub fn read_value<S>(
     &mut self,
-    _scope: &mut HandleScope<'s>,
+    _scope_or_ctx: S,
   ) -> Option<Local<'s, crate::value::Value>> {
     None
   }
