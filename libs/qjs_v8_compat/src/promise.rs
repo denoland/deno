@@ -56,8 +56,8 @@ impl<'a> PromiseRejectMessage<'a> {
   pub fn get_promise(&self) -> Local<'a, Promise> {
     self.promise
   }
-  pub fn get_value(&self) -> Local<'a, Value> {
-    self.value
+  pub fn get_value(&self) -> Option<Local<'a, Value>> {
+    Some(self.value)
   }
 }
 

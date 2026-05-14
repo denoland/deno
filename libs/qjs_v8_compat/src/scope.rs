@@ -93,6 +93,15 @@ impl<'s, C> HandleScopeSource for HandleScope<'s, C> {
   }
 }
 
+impl<S: HandleScopeSource + ?Sized> HandleScopeSource for &mut S {
+  fn default_ctx(&mut self) -> sys::Context {
+    (**self).default_ctx()
+  }
+  fn isolate_ptr(&mut self) -> *mut Isolate {
+    (**self).isolate_ptr()
+  }
+}
+
 impl<'s, 'i, C> HandleScopeSource for PinScope<'s, 'i, C> {
   fn default_ctx(&mut self) -> sys::Context {
     self.0.ctx

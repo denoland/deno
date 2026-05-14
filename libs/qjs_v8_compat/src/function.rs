@@ -188,9 +188,9 @@ impl<'s, T> ReturnValue<'s, T> {
 }
 
 impl<'s> Local<'s, Function> {
-  pub fn call(
+  pub fn call<S>(
     &self,
-    _scope: &mut HandleScope<'s>,
+    _scope: &mut S,
     _recv: Local<'s, Value>,
     _args: &[Local<'s, Value>],
   ) -> Option<Local<'s, Value>> {

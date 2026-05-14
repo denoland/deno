@@ -42,7 +42,7 @@ pub(crate) fn cppgc_template_constructor(
 }
 
 pub(crate) fn make_cppgc_template<'s, 'i>(
-  scope: &mut v8::PinScope<'s, 'i, ()>,
+  scope: &mut v8::PinScope<'s, 'i>,
 ) -> v8::Local<'s, v8::FunctionTemplate> {
   v8::FunctionTemplate::new(scope, cppgc_template_constructor)
 }

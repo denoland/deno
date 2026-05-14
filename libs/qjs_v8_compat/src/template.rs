@@ -155,11 +155,11 @@ impl<'s> Local<'s, ObjectTemplate> {
   pub fn new_instance<S>(&self, _scope: &S) -> Option<Local<'s, Object>> {
     None
   }
-  pub fn set_accessor_property(
+  pub fn set_accessor_property<G, S>(
     &self,
     _key: Local<'_, crate::value::Name>,
-    _getter: Option<Local<'_, FunctionTemplate>>,
-    _setter: Option<Local<'_, FunctionTemplate>>,
+    _getter: G,
+    _setter: S,
     _attr: crate::object::PropertyAttribute,
   ) {
   }

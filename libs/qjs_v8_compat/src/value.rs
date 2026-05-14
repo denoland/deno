@@ -1308,7 +1308,18 @@ impl<T> Global<T> {
     scope.track_owned(self.raw);
     Local::from_raw(self.raw)
   }
-  pub fn from_raw(ctx: sys::Context, raw: sys::JSValue) -> Self {
+  pub fn from_raw<C, R>(ctx: C, raw: R) -> Self {
+    let _ = ctx;
+    let _ = raw;
+    Self {
+      raw: sys::jsv_undefined(),
+      ctx: None,
+      _t: PhantomData,
+    }
+  }
+  /// Internal-only constructor used by qjs_v8_compat itself when it has
+  /// the real (Context, JSValue) pair.
+  pub fn from_raw_internal(ctx: sys::Context, raw: sys::JSValue) -> Self {
     Self {
       raw,
       ctx: Some(ctx),
