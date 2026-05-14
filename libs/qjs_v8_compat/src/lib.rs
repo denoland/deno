@@ -91,6 +91,7 @@ pub use crate::v8::BigUint64Array;
 pub use crate::v8::DataView;
 pub use crate::v8::Float32Array;
 pub use crate::v8::Float64Array;
+pub use crate::v8::FunctionBuilder;
 pub use crate::v8::IdleTask;
 pub use crate::v8::Int8Array;
 pub use crate::v8::Int16Array;
@@ -106,6 +107,7 @@ pub use crate::v8::Uint32Array;
 pub use crate::v8::UniquePtr;
 pub use crate::v8::V8;
 pub use crate::v8::WasmModuleObject;
+pub use crate::v8::WasmStreaming;
 pub use crate::v8::WriteFlags;
 // And the sub-namespaces — these have to be explicit `pub use` because
 // glob re-export doesn't include modules.

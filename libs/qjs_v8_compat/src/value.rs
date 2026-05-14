@@ -89,6 +89,26 @@ impl<'s, T> Local<'s, T> {
     Local::from_raw(self.raw)
   }
 
+  /// Mirror of rusty_v8's `Local::type_repr` — debug-style name of the
+  /// underlying JS type. Used by deno_core's DataError construction.
+  pub fn type_repr(&self) -> &'static str {
+    match self.raw.tag {
+      sys::JS_TAG_OBJECT => "object",
+      sys::JS_TAG_STRING => "string",
+      sys::JS_TAG_INT => "int",
+      sys::JS_TAG_FLOAT64 => "float",
+      sys::JS_TAG_BOOL => "boolean",
+      sys::JS_TAG_NULL => "null",
+      sys::JS_TAG_UNDEFINED => "undefined",
+      sys::JS_TAG_SYMBOL => "symbol",
+      sys::JS_TAG_BIG_INT => "bigint",
+      crate::ffi::JS_TAG_FUNCTION_BYTECODE => "function",
+      crate::ffi::JS_TAG_MODULE => "module",
+      sys::JS_TAG_EXCEPTION => "exception",
+      _ => "unknown",
+    }
+  }
+
   /// Mirror of rusty_v8's `Local::try_cast` — fallible variant. We
   /// always succeed here because the underlying JSValue is uniform;
   /// downstream code that needs a runtime tag check should call
