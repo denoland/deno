@@ -231,6 +231,7 @@ pub mod tc_scope {
 /// and `NoData` variants. We mirror that exactly so deno_core's
 /// `DataError::BadType { ... }` construction compiles.
 #[derive(Debug)]
+#[derive(Copy, Clone)]
 pub enum DataError {
   BadType {
     actual: &'static str,

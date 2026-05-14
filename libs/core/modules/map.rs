@@ -2319,10 +2319,9 @@ impl ModuleMap {
       v8::ModuleStatus::Instantiated | v8::ModuleStatus::Evaluated
     ));
 
-    let module_namespace: v8::Local<v8::Object> =
-      v8::Local::try_from(module.get_module_namespace())?;
+    let module_namespace: v8::Local<v8::Object> = module.get_module_namespace();
 
-    Ok(v8::Global::new(scope, module_namespace))
+    Ok(v8::Global::new(scope, module_namespace.into()))
   }
 
   fn get_stalled_top_level_await_message_for_module(

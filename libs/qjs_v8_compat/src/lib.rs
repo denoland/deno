@@ -314,12 +314,12 @@ pub mod v8 {
         None
       }
     }
-    impl<T: 'static> UnsafePtr<T> {
+    impl<T> UnsafePtr<T> {
       /// SAFETY: caller guarantees the pointer is still valid.
-      /// Stub — returns a reference to a leaked default T (cppgc isn't
+      /// Stub — returns a reference to a dangling pointer (cppgc isn't
       /// wired up on the QuickJS backend, so this is unreachable in
       /// practice).
-      pub unsafe fn as_ref(&self) -> &T {
+      pub unsafe fn as_ref<'a>(&'a self) -> &'a T {
         let p: *const T = core::ptr::dangling();
         unsafe { &*p }
       }
