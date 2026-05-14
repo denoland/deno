@@ -345,21 +345,37 @@ pub(crate) unsafe extern "C" fn op_bridge_trampoline_magic(
   argv: *mut crate::sys::JSValue,
   magic: core::ffi::c_int,
 ) -> crate::sys::JSValue {
-  let Some((_slow_fn, _opctx_ptr)) = lookup_op_dispatch(magic) else {
+  let Some((slow_fn, opctx_ptr)) = lookup_op_dispatch(magic) else {
     return unsafe { crate::ffi::JS_NewObject(ctx) };
   };
-  // First-arg-stderr fallback while V8 callback ABI bridge is being
-  // diagnosed (slow_fn dispatch crashes inside CallbackScope ops in
-  // op2-emitted code; root cause is the OwnedIsolate address moving
-  // between as_raw_isolate_ptr() time and the slow_fn call).
-  let _ = this_val;
-  if argc > 0 && !argv.is_null() {
-    let first = unsafe { *argv };
-    if let Some(s) = crate::sys::to_string_lossy(ctx, first) {
-      eprint!("{}", s);
-    }
+  if opctx_ptr.is_null() {
+    return unsafe { crate::ffi::JS_NewObject(ctx) };
   }
-  unsafe { crate::ffi::JS_NewObject(ctx) }
+  let mut implicit: [crate::sys::JSValue; IMPLICIT_LEN] = [
+    this_val,
+    crate::sys::JSValue {
+      u: crate::sys::JSValueUnion { ptr: opctx_ptr },
+      tag: crate::sys::JS_TAG_UNDEFINED,
+    },
+    crate::sys::jsv_undefined(),
+  ];
+  let info = FunctionCallbackInfo {
+    implicit_args: implicit.as_mut_ptr(),
+    values: argv,
+    length: argc,
+  };
+  // For magic=20 (likely op_print): inspect args[0] before dispatch.
+  if magic == 20 && argc > 0 {
+    let first = unsafe { *argv };
+    let is_str = crate::sys::jsv_is_string(&first);
+    let s = crate::sys::to_string_lossy(ctx, first);
+    eprintln!("[bridge] magic=20 args[0].tag={} is_string={} val={:?}", first.tag, is_str, s);
+  }
+  unsafe { slow_fn(&info as *const _) };
+  use std::io::Write as _;
+  let _ = std::io::stdout().flush();
+  let rv = implicit[IMPLICIT_RV_OFFSET as usize];
+  rv
 }
 
 impl Function {

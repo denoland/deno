@@ -305,11 +305,15 @@ impl<'s, C> HandleScope<'s, C> {
   /// a JSValue, but the cast is harmless because the API only uses Local
   /// as an opaque handle for contexts.
   pub fn get_current_context(&mut self) -> Local<'s, Context> {
+    // Stash the JSContext pointer in u.ptr with a non-refcounted tag
+    // (JS_TAG_UNDEFINED). Using JS_TAG_OBJECT here would make
+    // JS_FreeValue try to refcount the JSContext as a JSObject and
+    // corrupt the runtime allocator the next time something frees it.
     let raw = sys::JSValue {
       u: sys::JSValueUnion {
         ptr: self.ctx as *mut _,
       },
-      tag: sys::JS_TAG_OBJECT,
+      tag: sys::JS_TAG_UNDEFINED,
     };
     Local::from_raw(raw)
   }

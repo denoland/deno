@@ -116,17 +116,28 @@ impl String {
   }
   pub fn write_utf8_into<'sc, S, B: WriteUtf8Buf>(
     &self,
-    _scope: &mut S,
-    _buf: &mut B,
-  ) -> (usize, usize) {
-    (0, 0)
+    scope: &mut S,
+    buf: &mut B,
+  ) -> (usize, usize)
+  where
+    S: crate::scope::HandleScopeSource,
+  {
+    let s = sys::to_string_lossy(scope.default_ctx(), self.raw)
+      .unwrap_or_default();
+    buf.append_str(&s);
+    (s.len(), s.len())
   }
   pub fn to_rust_cow_lossy<'sc, 'b, S>(
     &self,
-    _scope: &mut S,
+    scope: &mut S,
     _buf: &'b mut [std::mem::MaybeUninit<u8>],
-  ) -> std::borrow::Cow<'b, str> {
-    std::borrow::Cow::Borrowed("")
+  ) -> std::borrow::Cow<'b, str>
+  where
+    S: crate::scope::HandleScopeSource,
+  {
+    let s = sys::to_string_lossy(scope.default_ctx(), self.raw)
+      .unwrap_or_default();
+    std::borrow::Cow::Owned(s)
   }
 }
 
@@ -418,8 +429,19 @@ impl Primitive {
 macro_rules! value_type {
   ($($name:ident),* $(,)?) => {
     $(
+      // Each v8 type marker carries the JSValue raw (same first
+      // field as `Local<T>`) so methods on `&v8::Foo` (via
+      // `Local<Foo>::deref()` casting through us) can read tag/u
+      // and answer queries like `is_string()` accurately. Without
+      // this they were ZSTs and every predicate returned false,
+      // which broke op2-emitted code that does
+      // `arg0.is_string()` on a `&v8::Value` borrowed from
+      // `Local<Value>::deref()`.
       #[derive(Copy, Clone)]
-      pub struct $name { _private: () }
+      #[repr(transparent)]
+      pub struct $name {
+        pub(crate) raw: $crate::sys::JSValue,
+      }
     )*
   };
 }

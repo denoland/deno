@@ -19,8 +19,15 @@ use crate::sys;
 macro_rules! v8_type {
   ($($name:ident),* $(,)?) => {
     $(
+      // Carry the JSValue raw (same first field as Local<T>) so
+      // methods on `&v8::Foo` borrowed via Local::deref can read
+      // the actual tag — needed for is_string/is_number etc. that
+      // op2-emitted code calls on `&v8::Value`.
       #[derive(Copy, Clone)]
-      pub struct $name { _private: () }
+      #[repr(transparent)]
+      pub struct $name {
+        pub(crate) raw: crate::sys::JSValue,
+      }
     )*
   };
 }
@@ -142,54 +149,55 @@ impl<'s> Local<'s, crate::object::Proxy> {
   }
 }
 
-// Methods on Value the marker — deno_core occasionally dispatches
-// directly through `&v8::Value`. The marker is ZST so these can't
-// inspect the underlying tag; returns conservative defaults.
+// Methods on Value the marker — deno_core dispatches through
+// `&v8::Value` (auto-deref'd from Local<Value>). The marker now
+// carries the JSValue (via #[repr(transparent)] in `value_type!`)
+// so these inspect the actual underlying tag.
 impl Value {
   pub fn is_number(&self) -> bool {
-    false
+    sys::jsv_is_number(&self.raw)
   }
   pub fn is_big_int(&self) -> bool {
-    false
+    sys::jsv_is_bigint(&self.raw)
   }
   pub fn is_uint32(&self) -> bool {
-    false
+    sys::jsv_is_int(&self.raw) && unsafe { self.raw.u.int32 >= 0 }
   }
   pub fn is_int32(&self) -> bool {
-    false
+    sys::jsv_is_int(&self.raw)
   }
   pub fn is_string(&self) -> bool {
-    false
+    sys::jsv_is_string(&self.raw)
   }
   pub fn is_string_object(&self) -> bool {
     false
   }
   pub fn is_object(&self) -> bool {
-    false
+    sys::jsv_is_object(&self.raw)
   }
   pub fn is_array(&self) -> bool {
-    false
+    sys::jsv_is_object(&self.raw)
   }
   pub fn is_function(&self) -> bool {
-    false
+    sys::jsv_is_object(&self.raw)
   }
   pub fn is_promise(&self) -> bool {
-    false
+    sys::jsv_is_object(&self.raw)
   }
   pub fn is_undefined(&self) -> bool {
-    false
+    sys::jsv_is_undefined(&self.raw)
   }
   pub fn is_null(&self) -> bool {
-    false
+    sys::jsv_is_null(&self.raw)
   }
   pub fn is_null_or_undefined(&self) -> bool {
-    false
+    sys::jsv_is_null(&self.raw) || sys::jsv_is_undefined(&self.raw)
   }
   pub fn is_true(&self) -> bool {
-    false
+    sys::jsv_is_bool(&self.raw) && unsafe { self.raw.u.int32 != 0 }
   }
   pub fn is_false(&self) -> bool {
-    false
+    sys::jsv_is_bool(&self.raw) && unsafe { self.raw.u.int32 == 0 }
   }
   pub fn is_array_buffer(&self) -> bool {
     false
