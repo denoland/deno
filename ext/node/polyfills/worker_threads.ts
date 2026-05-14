@@ -79,6 +79,7 @@ const {
   FunctionPrototypeCall,
   NumberIsFinite,
   NumberIsNaN,
+  ObjectAssign,
   ObjectCreate,
   ObjectDefineProperty,
   ObjectHasOwn,
@@ -872,6 +873,15 @@ let threadId = 0;
 let workerData: unknown = null;
 let environmentData = new SafeMap();
 
+// Forward-declared so `__initWorkerThreads` can sync the post-init values
+// of `parentPort`/`threadId`/etc. onto it as data properties. The tail of
+// this IIFE fills in the rest (classes, helper functions, initial values
+// for the mutable fields) and returns this object as the polyfill's
+// exports. Synthetic ESM `import` snapshots these properties at first
+// import - which is post-bootstrap - so consumers see the post-init
+// values. CJS `require("worker_threads")` reads the same object.
+const exportsObj: Record<string, unknown> = {};
+
 // Like https://github.com/nodejs/node/blob/48655e17e1d84ba5021d7a94b4b88823f7c9c6cf/lib/internal/event_target.js#L611
 interface NodeEventTarget extends
   Pick<
@@ -1269,9 +1279,16 @@ internals.__initWorkerThreads = (
   // `postMessageToThread` calls.
   setupCrossThreadMessaging();
 
-  // Refresh the `node:worker_threads` ESM wrapper's `let` bindings so
-  // ESM live bindings (e.g. `import { isMainThread }`) see post-init values.
-  internals.__refreshWorkerThreadsWrapper?.();
+  // Sync the post-init values of the module-local lets onto the exports
+  // object so first-import snapshots (via the synthetic ESM dispatch) and
+  // `require("worker_threads")` reads both see the bootstrap-resolved
+  // values rather than the initial placeholders.
+  exportsObj.parentPort = parentPort;
+  exportsObj.threadId = threadId;
+  exportsObj.workerData = workerData;
+  exportsObj.isMainThread = isMainThread;
+  exportsObj.resourceLimits = resourceLimits;
+  exportsObj.threadName = threadName;
 };
 
 function getEnvironmentData(key: unknown) {
@@ -1764,29 +1781,21 @@ class BroadcastChannel extends WebBroadcastChannel {
   }
 }
 
-return {
+ObjectAssign(exportsObj, {
   BroadcastChannel,
   MessagePort,
   MessageChannel: NodeMessageChannel,
   Worker: NodeWorker,
-  get parentPort() {
-    return parentPort;
-  },
-  get threadId() {
-    return threadId;
-  },
-  get workerData() {
-    return workerData;
-  },
-  get isMainThread() {
-    return isMainThread;
-  },
-  get resourceLimits() {
-    return resourceLimits;
-  },
-  get threadName() {
-    return threadName;
-  },
+  // Initial placeholders for fields that `__initWorkerThreads` overwrites
+  // at bootstrap. Listed here so they appear as own enumerable string-keyed
+  // properties of the exports object - the synthetic ESM dispatch derives
+  // its export names from `Object.keys` of this object.
+  parentPort: null,
+  threadId: 0,
+  workerData: null,
+  isMainThread: true,
+  resourceLimits: undefined,
+  threadName: "",
   markAsUntransferable,
   moveMessagePortToContext,
   postMessageToThread,
@@ -1794,5 +1803,6 @@ return {
   getEnvironmentData,
   setEnvironmentData,
   SHARE_ENV,
-};
+});
+return exportsObj;
 })();
