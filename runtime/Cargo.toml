@@ -12,6 +12,26 @@ description = "Provides the deno runtime library"
 [features]
 # "fake" feature that allows to generate docs on docs.rs
 docsrs = []
+# Engine selection (mirrors what each ext/* crate exposes).
+default = ["v8-engine"]
+v8-engine = [
+  "deno_core/v8-engine",
+  "deno_web/v8-engine",
+  "deno_io/v8-engine",
+  "deno_net/v8-engine",
+  "deno_fetch/v8-engine",
+  "deno_http/v8-engine",
+  "deno_tls/v8-engine",
+]
+quickjs = [
+  "deno_core/quickjs",
+  "deno_web/quickjs",
+  "deno_io/quickjs",
+  "deno_net/quickjs",
+  "deno_fetch/quickjs",
+  "deno_http/quickjs",
+  "deno_tls/quickjs",
+]
 # A feature that allows excluding `./js/99_main.js` from the exported extension.
 exclude_runtime_main_js = []
 # A dev feature to disable creation and loading of snapshots in favor of
