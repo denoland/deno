@@ -342,19 +342,16 @@ impl<'s> CallbackScope<'s, Context> {
   /// then `Pin::new(&mut scope).init(raw)`. We accept the same shape
   /// and just overwrite the inner HandleScope with one constructed
   /// from the raw source.
-  pub unsafe fn init<R>(
+  /// Mirror of rusty_v8's pin-init pattern. The op2 macro generates
+  /// `Pin::new(&mut scope).init()` (no args) — V8's
+  /// `CallbackScope::init` resolves its scope source by inspecting the
+  /// stored callback context. On QuickJS the inner HandleScope is
+  /// already initialized with whatever raw source `MaybeUninit` was
+  /// fed; we just return the Pin handle through.
+  pub unsafe fn init(
     self: core::pin::Pin<&mut Self>,
-    raw: R,
-  ) -> core::pin::Pin<&mut Self>
-  where
-    R: CallbackScopeSource<'s>,
-  {
-    let cs = unsafe { raw.into_callback_scope() };
-    // Pin::get_unchecked_mut: we don't move the scope, only overwrite
-    // its fields in place.
-    let dst = unsafe { self.get_unchecked_mut() };
-    dst.0 = cs.0;
-    unsafe { core::pin::Pin::new_unchecked(dst) }
+  ) -> core::pin::Pin<&mut Self> {
+    self
   }
 }
 
