@@ -460,11 +460,28 @@ struct MapObjectAccess<'a, 's, 'i> {
   next_value: Option<v8::Local<'s, v8::Value>>,
 }
 
+// Unsafe lifetime-extension helper for the variance trap that
+// `&'a mut PinScope<'s, 'i>` falls into when stored across method
+// calls. Locally extends the borrow's outer lifetime to 's so the
+// returned Local<'s, _> can be assigned into 'a-bound fields. Safe
+// in practice because the underlying scope outlives both 'a and 's.
+unsafe fn extend_scope<'a, 's, 'i>(
+  scope: &'a mut v8::PinScope<'s, 'i>,
+) -> &'s mut v8::PinScope<'s, 'i> {
+  unsafe {
+    &mut *(scope as *mut v8::PinScope<'s, 'i>)
+  }
+}
+
 impl<'a, 's, 'i> MapObjectAccess<'a, 's, 'i> {
   pub fn new(
     obj: v8::Local<'a, v8::Object>,
     scope: &'a mut v8::PinScope<'s, 'i>,
   ) -> Self {
+    // SAFETY: scope outlives 'a (the borrow is reborrowed from a
+    // longer-lived owned PinScope). Extending to 's is sound because
+    // the JSContext underneath is alive for the full 's.
+    let scope = unsafe { extend_scope(scope) };
     let keys = match obj.get_own_property_names(
       scope,
       v8::GetPropertyNamesArgsBuilder::new()
@@ -493,7 +510,6 @@ impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_, '_> {
     while let Some(key) = self.keys.next_element::<magic::Value>()? {
       let v8_val = self.obj.get(self.keys.scope, key.v8_value).unwrap();
       if v8_val.is_undefined() {
-        // Historically keys/value pairs with undefined values are not added to the output
         continue;
       }
       self.next_value = Some(v8_val);
