@@ -171,10 +171,8 @@ impl RecursiveModuleLoad {
       .as_ref()
       .and_then(|r| r.as_ref().ok())
       .and_then(|spec| {
-        module_map_rc.get_id(
-          spec.as_str(),
-          Self::requested_module_type_from_init(&init),
-        )
+        module_map_rc
+          .get_id(spec.as_str(), Self::requested_module_type_from_init(&init))
       });
     Self {
       id,
@@ -204,9 +202,7 @@ impl RecursiveModuleLoad {
     self.root_module_reference.as_ref()
   }
 
-  fn requested_module_type_from_init(
-    init: &LoadInit,
-  ) -> &RequestedModuleType {
+  fn requested_module_type_from_init(init: &LoadInit) -> &RequestedModuleType {
     match init {
       LoadInit::DynamicImport(_, _, module_type, _) => module_type,
       _ => &RequestedModuleType::None,
@@ -734,9 +730,7 @@ impl Stream for RecursiveModuleLoad {
         match resolve_fut.poll_unpin(cx) {
           Poll::Ready(Ok(module_specifier)) => {
             inner.pending_root_resolve = None;
-            inner.set_root_module_id_from_resolved_specifier(
-              &module_specifier,
-            );
+            inner.set_root_module_id_from_resolved_specifier(&module_specifier);
             Self::init_with_resolved_root(inner, module_specifier, cx)
           }
           Poll::Ready(Err(error)) => {
