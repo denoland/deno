@@ -20,13 +20,18 @@ pub struct Context {
 }
 
 #[derive(Default)]
-pub struct ContextOptions;
+pub struct ContextOptions<'s> {
+  pub global_template: Option<Local<'s, crate::template::ObjectTemplate>>,
+  pub global_object: Option<Local<'s, crate::object::Object>>,
+  pub microtask_queue: Option<Local<'s, crate::value::Value>>,
+  pub _phantom: std::marker::PhantomData<&'s ()>,
+}
 
 impl Context {
   /// Create a new context (a new realm) on the current isolate.
-  pub fn new<'s, S, O>(
+  pub fn new<'s, S>(
     _scope: &mut S,
-    _options: O,
+    _options: ContextOptions<'s>,
   ) -> Local<'s, Context> {
     let raw = sys::JSValue {
       u: sys::JSValueUnion {
@@ -80,10 +85,10 @@ impl<'s> Local<'s, Context> {
 }
 
 impl Context {
-  pub fn from_snapshot<'s, S, X>(
+  pub fn from_snapshot<'s, S>(
     _scope: &mut S,
     _index: usize,
-    _extras: X,
+    _extras: ContextOptions<'s>,
   ) -> Option<Local<'s, Context>> {
     None
   }

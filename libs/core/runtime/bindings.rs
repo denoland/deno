@@ -607,9 +607,9 @@ pub(crate) fn op_ctx_template<'s, 'i>(
       .length(op_ctx.decl.arg_count as i32);
 
   let template = if let Some(fast_function) = fast_fn {
-    builder.build_fast(scope, &[fast_function])
+    builder.build_fast(scope, &[fast_function]).unwrap()
   } else {
-    builder.build(scope)
+    builder.build(scope).unwrap()
   };
   template.set_class_name(op_ctx.decl.name_fast.v8_string(scope).unwrap());
 
