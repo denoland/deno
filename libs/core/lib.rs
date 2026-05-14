@@ -10,6 +10,15 @@
   reason = "TODO: add safety comments"
 )]
 
+// Engine alias: with `--features quickjs`, the QuickJS-ng-backed compat
+// crate becomes the source of truth for the `v8` crate name throughout
+// deno_core. Internal `use v8::*` sites resolve here, so the shape of
+// types deno_core operates on stays consistent with what the public
+// `pub use deno_core::v8` re-export hands to consumers. The default
+// build keeps the rusty_v8 crate as `v8` via the `v8-engine` feature.
+#[cfg(feature = "quickjs")]
+extern crate qjs_v8_compat as v8;
+
 pub mod arena;
 mod async_cancel;
 mod async_cell;
@@ -62,8 +71,6 @@ pub use deno_path_util::specifier_has_uri_scheme;
 pub use deno_unsync as unsync;
 pub use futures;
 pub use parking_lot;
-#[cfg(feature = "quickjs")]
-pub use qjs_v8_compat::v8;
 pub use serde;
 pub use serde_json;
 pub use serde_v8;
@@ -76,19 +83,12 @@ pub use serde_v8::U16String;
 pub use sourcemap;
 pub use thiserror;
 pub use url;
-// Engine selector: by default, re-export the rusty_v8 crate so that
-// `deno_core::v8::*` resolves to V8. With `--features quickjs`, re-export
-// the QuickJS-ng-backed compat layer's `v8` module so consumers see the
-// same shape of types but backed by QuickJS-ng.
-//
-// NOTE: this only switches the *public* re-export. Internal `use v8::*`
-// statements throughout deno_core still resolve to the unconditional
-// `v8` crate dep above. The full internal switch (gating each
-// `use v8::*` site) lands in follow-up commits; it would be the bulk of
-// the integration work because deno_core has ~2200 v8::* references
-// across 44 files. This commit makes the cargo + public-surface wiring
-// real so downstream consumers can begin building against the QuickJS
-// engine without a separate fork.
+// Engine re-export. With `v8-engine` (the default), `v8` here is the
+// rusty_v8 crate. With `quickjs`, `v8` is already in scope from the
+// `extern crate qjs_v8_compat as v8` at the top of this file, and
+// `extern crate` aliases automatically count as a `pub use` for the
+// purposes of name resolution from outside the crate — so we only
+// need the explicit re-export under v8-engine.
 #[cfg(not(feature = "quickjs"))]
 pub use v8;
 

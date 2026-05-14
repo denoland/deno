@@ -63,6 +63,158 @@ pub mod value;
 // The big idea: deno_core does `use v8` and expects rusty_v8's surface.
 // This module re-exports everything under that name so deno_core can pick
 // us with a feature flag and otherwise be unchanged.
+// Also re-export the v8-shaped surface at the crate root so deno_core can
+// alias the whole crate as `v8` (`extern crate qjs_v8_compat as v8;`) and
+// have `use v8::Local;` resolve correctly. Without this, only the `v8`
+// submodule path works, which forces every internal `use v8::*` site in
+// deno_core to be touched.
+pub use crate::buffer::*;
+pub use crate::context::*;
+pub use crate::exception::*;
+pub use crate::external::*;
+pub use crate::function::*;
+pub use crate::isolate::*;
+pub use crate::module::*;
+pub use crate::object::*;
+pub use crate::primitives::*;
+pub use crate::promise::*;
+pub use crate::scope::*;
+pub use crate::script::*;
+pub use crate::snapshot::*;
+pub use crate::template::*;
+// Typed-array, V8 init, and oddball type stubs that op2 + ext/* crates
+// reference by name. They live inside the v8 submodule for
+// `qjs_v8_compat::v8::Int8Array` callers and are re-exported at the
+// crate root for `extern crate qjs_v8_compat as v8;` callers.
+pub use crate::v8::BigInt64Array;
+pub use crate::v8::BigUint64Array;
+pub use crate::v8::DataView;
+pub use crate::v8::Float32Array;
+pub use crate::v8::Float64Array;
+pub use crate::v8::IdleTask;
+pub use crate::v8::Int8Array;
+pub use crate::v8::Int16Array;
+pub use crate::v8::Int32;
+pub use crate::v8::Int32Array;
+pub use crate::v8::NearHeapLimitCallback;
+pub use crate::v8::Task;
+pub use crate::v8::Uint8ClampedArray;
+pub use crate::v8::Uint16Array;
+pub use crate::v8::Uint32;
+pub use crate::v8::Uint32Array;
+pub use crate::v8::V8;
+pub use crate::v8::WriteFlags;
+// And the sub-namespaces — these have to be explicit `pub use` because
+// glob re-export doesn't include modules.
+pub use crate::v8::cppgc;
+pub use crate::v8::fast_api;
+pub use crate::v8::icu;
+pub use crate::v8::inspector;
+pub use crate::v8::json;
+pub use crate::v8::latin1_to_utf8;
+pub use crate::v8::new_custom_platform;
+pub use crate::v8::null;
+pub use crate::v8::script_compiler;
+pub use crate::v8::simdutf;
+pub use crate::v8::undefined;
+pub use crate::value::*;
+
+/// Mirror of `v8::scope!(let name, parent)` — the rusty_v8 declarative
+/// macro that elides a handle-scope rooted on `parent` into the local
+/// binding. On the QuickJS backend this just creates a `HandleScope`
+/// directly; the lifetime hygiene the macro provides on V8 isn't
+/// enforceable here, but the call-site syntax is preserved so
+/// deno_core's source compiles unchanged.
+#[macro_export]
+macro_rules! scope {
+  (let $name:ident, $parent:expr) => {
+    let mut $name = $crate::HandleScope::new($parent);
+  };
+  ($name:ident, $parent:expr) => {
+    let mut $name = $crate::HandleScope::new($parent);
+  };
+}
+
+/// Mirror of `v8::tc_scope!(let name, parent)`. Creates a
+/// `TryCatch`-wrapped HandleScope.
+#[macro_export]
+macro_rules! tc_scope {
+  (let $name:ident, $parent:expr) => {
+    let mut __tc_inner = $crate::HandleScope::new($parent);
+    let mut $name = $crate::TryCatch::new(&mut __tc_inner);
+  };
+  ($name:ident, $parent:expr) => {
+    let mut __tc_inner = $crate::HandleScope::new($parent);
+    let mut $name = $crate::TryCatch::new(&mut __tc_inner);
+  };
+}
+
+/// Mirror of `v8::callback_scope!(unsafe name, raw)` (and the
+/// `let`/bare variants). The `unsafe` token mirrors rusty_v8's macro,
+/// which marks the call site as constructing a CallbackScope from a raw
+/// pointer V8 hands the host — same shape on the QuickJS side, so we
+/// accept the keyword and discard it.
+#[macro_export]
+macro_rules! callback_scope {
+  (unsafe $name:ident, $raw:expr) => {
+    let mut $name = $crate::CallbackScope::new($raw);
+  };
+  (let $name:ident, $raw:expr) => {
+    let mut $name = $crate::CallbackScope::new($raw);
+  };
+  ($name:ident, $raw:expr) => {
+    let mut $name = $crate::CallbackScope::new($raw);
+  };
+}
+
+/// Mirror of `v8::isolate_scope!(let name, isolate)`.
+#[macro_export]
+macro_rules! isolate_scope {
+  (let $name:ident, $isolate:expr) => {
+    let mut $name = $crate::HandleScope::new($isolate);
+  };
+  ($name:ident, $isolate:expr) => {
+    let mut $name = $crate::HandleScope::new($isolate);
+  };
+}
+
+/// Mirror of `v8::scope_with_context!(let name, isolate, context)`.
+/// On QuickJS we only have one context per JSContext, so the explicit
+/// context parameter is accepted and ignored. Trailing commas allowed.
+#[macro_export]
+macro_rules! scope_with_context {
+  (let $name:ident, $parent:expr, $_ctx:expr $(,)?) => {
+    let mut $name = $crate::HandleScope::new($parent);
+  };
+  ($name:ident, $parent:expr, $_ctx:expr $(,)?) => {
+    let mut $name = $crate::HandleScope::new($parent);
+  };
+}
+
+/// Mirror of `v8::escapable_handle_scope!(let name, parent)`. On the
+/// QuickJS backend we don't enforce the escape semantics statically;
+/// the macro just creates an `EscapableHandleScope`.
+#[macro_export]
+macro_rules! escapable_handle_scope {
+  (let $name:ident, $parent:expr) => {
+    let mut $name = $crate::EscapableHandleScope::new($parent);
+  };
+  ($name:ident, $parent:expr) => {
+    let mut $name = $crate::EscapableHandleScope::new($parent);
+  };
+}
+
+/// Mirror of `v8::context_scope!(let name, parent)`.
+#[macro_export]
+macro_rules! context_scope {
+  (let $name:ident, $parent:expr) => {
+    let mut $name = $crate::HandleScope::new($parent);
+  };
+  ($name:ident, $parent:expr) => {
+    let mut $name = $crate::HandleScope::new($parent);
+  };
+}
+
 pub mod v8 {
   pub use crate::buffer::*;
   pub use crate::context::*;
@@ -85,9 +237,37 @@ pub mod v8 {
     //! Stub — QuickJS has no cppgc equivalent. QJS-DIVERGE: cppgc has no
     //! analog. We expose empty types so generic code compiles; using any
     //! of them at runtime is unsupported.
-    pub struct GarbageCollected;
+
+    /// Marker trait — same shape as rusty_v8's `cppgc::GarbageCollected`.
+    /// On QuickJS no specialized GC tracing happens; the JSRuntime's
+    /// refcount is the only mechanism. The two methods mirror rusty_v8's
+    /// trait surface; deno_core's bindings call `trace`/`get_name` which
+    /// have no-op effect under refcounting.
+    pub trait GarbageCollected {
+      fn trace(&self, _visitor: &Visitor) {}
+      fn get_name(&self) -> &'static core::ffi::CStr {
+        c"qjs::GarbageCollected"
+      }
+    }
+
+    /// Trait stub for `cppgc::Traced`.
+    pub trait Traced {
+      fn trace(&self, _visitor: &Visitor) {}
+    }
+
+    /// Stub for `cppgc::make_garbage_collected`. On V8 this allocates a
+    /// `Member<T>` in the cppgc heap; on QuickJS we just box the value.
+    pub fn make_garbage_collected<T: 'static>(value: T) -> Box<T> {
+      Box::new(value)
+    }
+
     pub struct Member<T>(core::marker::PhantomData<T>);
     pub struct Ptr<T>(core::marker::PhantomData<T>);
+    pub struct Persistent<T>(core::marker::PhantomData<T>);
+    pub struct GcCell<T>(core::marker::PhantomData<T>);
+    pub struct UnsafePtr<T>(core::marker::PhantomData<T>);
+    pub struct Visitor;
+
     pub fn initalize_process() {}
     pub fn shutdown_process() {}
   }
@@ -234,15 +414,41 @@ pub mod v8 {
       Number,
       BigInt,
     }
+
+    /// Mirror of v8's `fast_api::FastApiOneByteString`. The op2 macro
+    /// generates fast-call signatures that name this; the slow-path
+    /// dispatcher fires instead under QuickJS, so this is a shape stub.
+    #[repr(C)]
+    pub struct FastApiOneByteString {
+      pub data: *const u8,
+      pub length: u32,
+    }
   }
 
   pub mod inspector {
     //! Stub — QuickJS has no CDP inspector. The QuickJS backend ships with
     //! the inspector disabled; debugger features are not available.
     pub struct V8Inspector;
+    pub struct V8InspectorClient;
     pub struct V8InspectorClientBase;
     pub struct V8InspectorSession;
     pub struct ChannelBase;
+    pub struct Channel;
+    pub struct StringView<'s>(core::marker::PhantomData<&'s ()>);
+    pub struct StringBuffer;
+    #[derive(Copy, Clone, Eq, PartialEq)]
+    pub enum V8InspectorClientTrustLevel {
+      Untrusted,
+      FullyTrusted,
+    }
+
+    /// Stub trait for `inspector::V8InspectorClientImpl`. On QuickJS the
+    /// inspector path is never taken; deno_core's session bookkeeping
+    /// implements this trait but the methods are unreachable at runtime.
+    pub trait V8InspectorClientImpl {}
+
+    /// Stub trait for `inspector::ChannelImpl`.
+    pub trait ChannelImpl {}
   }
 
   pub mod icu {
@@ -252,6 +458,9 @@ pub mod v8 {
       Ok(())
     }
     pub fn set_common_data_73(_data: &[u8]) -> Result<(), ()> {
+      Ok(())
+    }
+    pub fn set_common_data_77(_data: &[u8]) -> Result<(), ()> {
       Ok(())
     }
   }
@@ -283,12 +492,73 @@ pub mod v8 {
     //! CachedData. Module compilation goes through JS_Eval with
     //! JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY.
     pub use crate::external::CachedData;
+    use crate::function::Function;
+    use crate::module::Module;
+    use crate::scope::HandleScope;
+    use crate::script::Script;
+    use crate::value::Local;
 
     pub struct Source;
     pub enum CompileOptions {
       NoCompileOptions,
       ConsumeCodeCache,
       EagerCompile,
+    }
+
+    /// Stub for `script_compiler::compile`. Real eval flows go through
+    /// `JS_Eval` directly; this entry point exists to satisfy
+    /// generic-snapshot code that pre-compiles via the script_compiler
+    /// API on V8. Returns `None` on QuickJS.
+    pub fn compile<'s>(
+      _scope: &mut HandleScope<'s>,
+      _source: Source,
+      _options: CompileOptions,
+      _no_cache_reason: NoCacheReason,
+    ) -> Option<Local<'s, Script>> {
+      None
+    }
+    pub fn compile_module<'s>(
+      _scope: &mut HandleScope<'s>,
+      _source: Source,
+      _options: CompileOptions,
+      _no_cache_reason: NoCacheReason,
+    ) -> Option<Local<'s, Module>> {
+      None
+    }
+    pub fn compile_function<'s>(
+      _scope: &mut HandleScope<'s>,
+      _source: Source,
+      _arguments: &[Local<'s, super::String>],
+      _context_extensions: &[Local<'s, super::Object>],
+      _options: CompileOptions,
+      _no_cache_reason: NoCacheReason,
+    ) -> Option<Local<'s, Function>> {
+      None
+    }
+    pub fn compile_module2<'s>(
+      _scope: &mut HandleScope<'s>,
+      _source: Source,
+      _options: CompileOptions,
+      _no_cache_reason: NoCacheReason,
+    ) -> Option<Local<'s, Module>> {
+      None
+    }
+    pub enum NoCacheReason {
+      NoReason,
+      BecauseCachingDisabled,
+      BecauseNoResource,
+      BecauseInlineScript,
+      BecauseModule,
+      BecauseStreamingSource,
+      BecauseInspector,
+      BecauseScriptTooSmall,
+      BecauseCacheTooCold,
+      BecauseV8Extension,
+      BecauseExtensionModule,
+      BecausePacScript,
+      BecauseInDocumentWrite,
+      BecauseResourceWithNoCacheHandler,
+      BecauseDeferredProduceCodeCache,
     }
   }
 
@@ -329,6 +599,82 @@ pub mod v8 {
     pub fn set_flags_from_command_line(args: Vec<String>) -> Vec<String> {
       args
     }
+  }
+
+  pub struct WriteFlags;
+
+  /// Stub for `v8::latin1_to_utf8`. The real API converts a latin1
+  /// buffer to UTF-8 in-place; we never call this on QuickJS, so the
+  /// fn-pointer existence is what matters.
+  pub fn latin1_to_utf8(_input: &[u8], _output: &mut [u8]) -> usize {
+    0
+  }
+
+  /// Stub for `v8::simdutf` — rusty_v8 has it as a sub-namespace for
+  /// SIMD UTF-8 helpers. Inert under QuickJS.
+  pub mod simdutf {
+    pub fn validate_utf8(input: &[u8]) -> bool {
+      core::str::from_utf8(input).is_ok()
+    }
+    pub fn validate_ascii(input: &[u8]) -> bool {
+      input.is_ascii()
+    }
+    pub fn utf8_length_from_utf16(_input: &[u16]) -> usize {
+      0
+    }
+  }
+
+  /// Stub trait for `v8::PlatformImpl`. deno_core defines a custom
+  /// platform implementation in some test paths; under QuickJS the
+  /// platform abstraction is unused.
+  pub trait PlatformImpl {}
+
+  // Typed-array stubs. QuickJS-ng has typed arrays under the hood (they're
+  // ordinary JSObjects of class TypedArray) but we don't yet expose
+  // distinct Local<Int8Array>-style wrappers. The op2 macro and various
+  // ext/* crates reference these names by type alone — we mirror the
+  // shape so generic code compiles. Runtime use through these types is
+  // not yet supported.
+  macro_rules! typed_array_stub {
+    ($($name:ident),* $(,)?) => { $(
+      pub struct $name;
+      impl crate::value::ValueType for $name {
+        fn is(_raw: &crate::sys::JSValue) -> bool { false }
+      }
+    )* }
+  }
+  typed_array_stub!(
+    Int8Array,
+    Uint8ClampedArray,
+    Int16Array,
+    Uint16Array,
+    Int32Array,
+    Uint32Array,
+    BigInt64Array,
+    BigUint64Array,
+    Float32Array,
+    Float64Array,
+    DataView,
+  );
+
+  // Other oddballs deno_core references by name.
+  pub struct Int32;
+  pub struct Uint32;
+  pub struct Task;
+  pub struct IdleTask;
+  pub type NearHeapLimitCallback = unsafe extern "C" fn(
+    data: *mut core::ffi::c_void,
+    current_heap_limit: usize,
+    initial_heap_limit: usize,
+  ) -> usize;
+
+  /// Stub for `v8::new_custom_platform` — used for snapshot/test
+  /// platforms. QuickJS has no platform abstraction; returns a unit Rc.
+  pub fn new_custom_platform(
+    _thread_pool_size: u32,
+    _idle_task_support: bool,
+  ) -> std::rc::Rc<()> {
+    std::rc::Rc::new(())
   }
 }
 

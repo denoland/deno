@@ -282,8 +282,13 @@ impl<'s, C> std::ops::DerefMut for CallbackScope<'s, C> {
   }
 }
 
-pub type PinScope<'s, C = Context> = HandleScope<'s, C>;
-pub type PinCallbackScope<'s, C = Context> = CallbackScope<'s, C>;
+/// Mirror of rusty_v8's two-lifetime `PinScope<'s, 'i>`. Both lifetimes
+/// collapse to one on QuickJS — we don't enforce the pinning hygiene
+/// rusty_v8 uses, but the call-site signatures must accept both args.
+/// Rust doesn't support defaulting lifetime params on type aliases, so
+/// we just take them all and ignore the ones we don't use.
+pub type PinScope<'s, 'i, C = Context> = HandleScope<'s, C>;
+pub type PinCallbackScope<'s, 'i, C = Context> = CallbackScope<'s, C>;
 
 // v8::scope free fn — used by deno_core's scope macro.
 pub fn scope<'s, 'r>(iso: &'r mut OwnedIsolate) -> HandleScope<'s, Context>

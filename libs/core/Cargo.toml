@@ -14,7 +14,12 @@ description = "A modern JavaScript/TypeScript runtime built with V8, Rust, and T
 path = "lib.rs"
 
 [features]
-default = ["include_icu_data", "v8_use_custom_libcxx", "reactor-tokio"]
+default = [
+  "include_icu_data",
+  "v8_use_custom_libcxx",
+  "reactor-tokio",
+  "v8-engine",
+]
 reactor-tokio = []
 include_icu_data = ["deno_core_icudata"]
 v8_use_custom_libcxx = ["v8/use_custom_libcxx"]
@@ -24,13 +29,13 @@ unsafe_runtime_options = []
 unsafe_use_unprotected_platform = []
 snapshot_flags_eager_parse = []
 uv_compat_export = []
-# Engine selection. Default is V8 (the unconditional `v8` dep below). Turning
-# this on swaps in the QuickJS-ng-backed compat layer for the `pub use v8`
-# re-export so consumers of `deno_core::v8::...` see QuickJS shapes. The full
-# internal switch (every `use v8::*` in deno_core's source) lands across
-# follow-up commits — this commit puts the cargo wiring + the public
-# re-export selector in place so subsequent work can swap callers
-# incrementally without touching this file again.
+# Engine selection — exactly one of `v8-engine` or `quickjs` should be
+# enabled. The `v8-engine` feature pulls in the rusty_v8 crate and is the
+# historical default; `quickjs` swaps to the QuickJS-ng-backed compat
+# layer. Internally, deno_core's source `use v8::*` resolves to whichever
+# crate is aliased as `v8` in lib.rs (see the `extern crate ... as v8`
+# block there).
+v8-engine = ["dep:v8"]
 quickjs = ["dep:qjs_v8_compat"]
 
 [dependencies]
@@ -66,7 +71,7 @@ sys_traits = { workspace = true, features = ["real"] }
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
-v8.workspace = true
+v8 = { workspace = true, optional = true }
 wasm_dep_analyzer = "0.4.0"
 
 [target.'cfg(windows)'.dependencies]
