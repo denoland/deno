@@ -15,6 +15,7 @@ use ed25519_dalek::pkcs8::BitStringRef;
 use elliptic_curve::JwkEcKey;
 use num_bigint::BigInt;
 use num_traits::FromPrimitive as _;
+use p12::PFX as Pkcs12;
 use pkcs8::DecodePrivateKey as _;
 use pkcs8::Document;
 use pkcs8::EncodePrivateKey as _;
@@ -634,6 +635,10 @@ pub enum AsymmetricPrivateKeyError {
   #[error("error:1E08010C:DECODER routines::unsupported")]
   InvalidPemPrivateKey,
   #[class(generic)]
+  #[property("code" = "ERR_OSSL_EVP_BAD_DECRYPT")]
+  #[error("error:1C800064:Provider routines::bad decrypt")]
+  BadDecrypt,
+  #[class(generic)]
   #[property("code" = "ERR_OSSL_CRYPTO_INTERRUPTED_OR_CANCELLED")]
   #[error("error:07880109:common libcrypto routines::interrupted or cancelled")]
   EncryptedPrivateKeyRequiresPassphraseToDecrypt,
@@ -844,6 +849,45 @@ fn ec_private_key_from_named_curve_and_sec1_der(
   }
 }
 
+fn normalize_pem_line_width(pem: &str) -> Cow<'_, str> {
+  let mut needs_reformat = false;
+  let mut header = "";
+  let mut footer = "";
+  let mut base64_body = String::new();
+  let mut in_body = false;
+
+  for line in pem.lines() {
+    if line.starts_with("-----BEGIN ") {
+      header = line;
+      in_body = true;
+    } else if line.starts_with("-----END ") {
+      footer = line;
+      in_body = false;
+    } else if in_body {
+      let trimmed = line.trim();
+      if trimmed.len() > 64 {
+        needs_reformat = true;
+      }
+      base64_body.push_str(trimmed);
+    }
+  }
+
+  if !needs_reformat || header.is_empty() || footer.is_empty() {
+    return Cow::Borrowed(pem);
+  }
+
+  let mut result = String::with_capacity(pem.len() + 10);
+  result.push_str(header);
+  result.push('\n');
+  for chunk in base64_body.as_bytes().chunks(64) {
+    result.push_str(std::str::from_utf8(chunk).unwrap_or(""));
+    result.push('\n');
+  }
+  result.push_str(footer);
+  result.push('\n');
+  Cow::Owned(result)
+}
+
 impl KeyObjectHandle {
   pub fn new_asymmetric_private_key_from_js(
     key: &[u8],
@@ -871,6 +915,12 @@ impl KeyObjectHandle {
               .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?,
             "PRIVATE KEY" => SecretDocument::from_pkcs8_der(&decrypted)
               .map_err(|_| AsymmetricPrivateKeyError::InvalidPkcs8PrivateKey)?,
+            "DSA PRIVATE KEY" => {
+              let private_key = parse_traditional_dsa_private_key(&decrypted)?;
+              return Ok(KeyObjectHandle::AsymmetricPrivate(
+                AsymmetricPrivateKey::Dsa(private_key),
+              ));
+            }
             _ => {
               return Err(AsymmetricPrivateKeyError::UnsupportedPemLabel(
                 label.to_string(),
@@ -889,7 +939,8 @@ impl KeyObjectHandle {
               );
             }
             Err(_) => {
-              let (label, doc) = SecretDocument::from_pem(pem)
+              let normalized = normalize_pem_line_width(pem);
+              let (label, doc) = SecretDocument::from_pem(&normalized)
                 .map_err(|_| AsymmetricPrivateKeyError::InvalidPemPrivateKey)?;
               match label {
                 PrivateKeyInfo::PEM_LABEL => doc,
@@ -912,7 +963,10 @@ impl KeyObjectHandle {
             }
           }
         } else {
-          let (label, doc) = SecretDocument::from_pem(pem)
+          // Skip EC PARAMETERS block if present (legacy EC key format includes both)
+          let pem = skip_ec_parameters_block(pem);
+          let normalized = normalize_pem_line_width(pem);
+          let (label, doc) = SecretDocument::from_pem(&normalized)
             .map_err(|_| AsymmetricPrivateKeyError::InvalidPemPrivateKey)?;
 
           match label {
@@ -921,7 +975,8 @@ impl KeyObjectHandle {
             }
             PrivateKeyInfo::PEM_LABEL => doc,
             rsa::pkcs1::RsaPrivateKey::PEM_LABEL => {
-              SecretDocument::from_pkcs1_der(doc.as_bytes()).map_err(|_| {
+              let pkcs1_der = doc.as_bytes();
+              SecretDocument::from_pkcs1_der(pkcs1_der).map_err(|_| {
                 AsymmetricPrivateKeyError::InvalidPkcs1PrivateKey
               })?
             }
@@ -1004,7 +1059,8 @@ impl KeyObjectHandle {
       }
     };
 
-    let pk_info = PrivateKeyInfo::try_from(document.as_bytes())
+    let document_bytes = document.as_bytes();
+    let pk_info = PrivateKeyInfo::try_from(document_bytes)
       .map_err(|_| AsymmetricPrivateKeyError::InvalidPrivateKey)?;
 
     let alg = pk_info.algorithm.oid;
@@ -1635,6 +1691,22 @@ pub enum RsaPssParamsParseError {
 ///   priv_key INTEGER
 /// }
 /// ```
+/// Skips the EC PARAMETERS PEM block if present at the start.
+/// Legacy EC key files sometimes include an EC PARAMETERS block before the
+/// actual EC PRIVATE KEY block; `SecretDocument::from_pem` reads only the
+/// first block, so we need to skip it.
+fn skip_ec_parameters_block(pem: &str) -> &str {
+  const BEGIN_EC_PARAMS: &str = "-----BEGIN EC PARAMETERS-----";
+  const END_EC_PARAMS: &str = "-----END EC PARAMETERS-----";
+  let trimmed = pem.trim_start();
+  if trimmed.starts_with(BEGIN_EC_PARAMS)
+    && let Some(pos) = trimmed.find(END_EC_PARAMS)
+  {
+    return trimmed[pos + END_EC_PARAMS.len()..].trim_start();
+  }
+  trimmed
+}
+
 fn parse_traditional_dsa_private_key(
   der: &[u8],
 ) -> Result<dsa::SigningKey, AsymmetricPrivateKeyError> {
@@ -3490,9 +3562,12 @@ fn parse_legacy_encrypted_pem<'a>(
   salt.copy_from_slice(&iv[..8]);
   let key = evp_bytes_to_key(passphrase, &salt, key_len);
 
+  // Decryption failure here most commonly means wrong passphrase; map to
+  // the OpenSSL-compatible "bad decrypt" error so Node.js tests that check
+  // the error message work correctly.
   let decrypted =
     decrypt_legacy_pem_data(cipher_name, &key, &iv, &encrypted_data)
-      .map_err(|_| AsymmetricPrivateKeyError::InvalidEncryptedPemPrivateKey)?;
+      .map_err(|_| AsymmetricPrivateKeyError::BadDecrypt)?;
 
   Ok(Some((label, decrypted)))
 }
@@ -3992,4 +4067,54 @@ pub fn op_node_derive_public_key_from_private_key(
   Ok(KeyObjectHandle::AsymmetricPublic(
     private_key.to_public_key(),
   ))
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum PfxValidationError {
+  #[class(generic)]
+  #[error("not enough data")]
+  NotEnoughData,
+  #[class(generic)]
+  #[error("mac verify failure")]
+  MacVerifyFailure,
+}
+
+#[op2]
+pub fn op_node_validate_pfx(
+  #[buffer] pfx: &[u8],
+  #[string] passphrase: Option<String>,
+) -> Result<(), PfxValidationError> {
+  let parsed =
+    Pkcs12::parse(pfx).map_err(|_| PfxValidationError::NotEnoughData)?;
+  let password = passphrase.as_deref().unwrap_or("");
+  if !parsed.verify_mac(password) {
+    return Err(PfxValidationError::MacVerifyFailure);
+  }
+  Ok(())
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum CrlValidationError {
+  #[class(generic)]
+  #[error("Failed to parse CRL")]
+  ParseFailed,
+}
+
+#[op2(fast)]
+pub fn op_node_validate_crl(
+  #[buffer] crl: &[u8],
+) -> Result<(), CrlValidationError> {
+  if crl.starts_with(b"-----") {
+    match x509_parser::pem::parse_x509_pem(crl) {
+      Ok((_, pem)) => {
+        x509_parser::parse_x509_crl(&pem.contents)
+          .map_err(|_| CrlValidationError::ParseFailed)?;
+      }
+      Err(_) => return Err(CrlValidationError::ParseFailed),
+    }
+  } else {
+    x509_parser::parse_x509_crl(crl)
+      .map_err(|_| CrlValidationError::ParseFailed)?;
+  }
+  Ok(())
 }

@@ -3,10 +3,9 @@
 
 // deno-lint-ignore-file prefer-primordials
 
-import process from "node:process";
-import { EventEmitter } from "node:events";
-import { primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const {
   op_get_extras_binding_object,
   op_inspector_close,
   op_inspector_connect,
@@ -17,15 +16,18 @@ import {
   op_inspector_open,
   op_inspector_url,
   op_inspector_wait,
-} from "ext:core/ops";
-import {
+} = core.ops;
+const lazyProcess = core.createLazyLoader("node:process");
+const lazyWorkerThreads = core.createLazyLoader("node:worker_threads");
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+const {
   isUint32,
   validateFunction,
   validateInt32,
   validateObject,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   ERR_INSPECTOR_ALREADY_ACTIVATED,
   ERR_INSPECTOR_ALREADY_CONNECTED,
   ERR_INSPECTOR_CLOSED,
@@ -33,8 +35,9 @@ import {
   ERR_INSPECTOR_NOT_ACTIVE,
   ERR_INSPECTOR_NOT_CONNECTED,
   ERR_INSPECTOR_NOT_WORKER,
-} from "ext:deno_node/internal/errors.ts";
-import { isMainThread } from "node:worker_threads";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+
+const process = lazyProcess().default;
 
 function isLoopback(host) {
   const hostLower = host.toLowerCase();
@@ -75,7 +78,7 @@ class Session extends EventEmitter {
   }
 
   connectToMainThread() {
-    if (isMainThread) {
+    if (lazyWorkerThreads().isMainThread) {
       throw new ERR_INSPECTOR_NOT_WORKER();
     }
     if (this.#connection) {
@@ -276,11 +279,11 @@ const DOMStorage = {
     broadcastToFrontend("DOMStorage.registerStorage", params),
 };
 
-const console = op_get_extras_binding_object().console;
+const inspectorConsole = op_get_extras_binding_object().console;
 
-export {
+return {
   close,
-  console,
+  console: inspectorConsole,
   DOMStorage,
   Network,
   open,
@@ -288,14 +291,4 @@ export {
   url,
   waitForDebugger,
 };
-
-export default {
-  open,
-  close,
-  url,
-  waitForDebugger,
-  console,
-  Session,
-  Network,
-  DOMStorage,
-};
+})();

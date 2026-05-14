@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
 const { core, internals, primordials } = globalThis.__bootstrap;
@@ -1939,7 +1938,9 @@ const otelState = {
   TRACING_ENABLED: false,
   METRICS_ENABLED: false,
   PROPAGATORS: [] as TextMapPropagator[],
-  getOtelSpan: undefined as ((span: object) => OtelSpan | null | undefined) | undefined,
+  getOtelSpan: undefined as
+    | ((span: object) => OtelSpan | null | undefined)
+    | undefined,
 };
 
 // Keep module-level variables in sync with otelState for internal use
@@ -1968,4 +1969,4 @@ return {
   bootstrap: wrappedBootstrap,
   telemetry,
 };
-})()
+})();

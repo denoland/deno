@@ -852,6 +852,13 @@ declare namespace Deno {
      *
      * @default {"inherit"} */
     permissions?: PermissionOptions;
+    /** Maximum duration in milliseconds that the test is allowed to run
+     * before being marked as a failed test. Both asynchronous hangs and
+     * synchronous hot loops are caught.
+     *
+     * If unset or `0`, the test runs without a deadline.
+     */
+    timeout?: number;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -5349,14 +5356,14 @@ declare namespace Deno {
    *
    * @category Runtime
    */
-  export function refTimer(id: number): void;
+  export function refTimer(id: number | NodeJS.Timeout): void;
 
   /**
    * Make the timer of the given `id` not block the event loop from finishing.
    *
    * @category Runtime
    */
-  export function unrefTimer(id: number): void;
+  export function unrefTimer(id: number | NodeJS.Timeout): void;
 
   /**
    * Returns the user id of the process on POSIX platforms. Returns null on Windows.

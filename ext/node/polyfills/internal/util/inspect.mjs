@@ -20,7 +20,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   ArrayIsArray,
   ArrayPrototypeFilter,
@@ -53,13 +54,13 @@ const {
   StringPrototypeSplit,
   SymbolFor,
 } = primordials;
-import {
+const {
   validateBoolean,
   validateObject,
   validateOneOf,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import { codes } from "ext:deno_node/internal/error_codes.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
 const {
   colors,
   createStylizeWithColor,
@@ -207,7 +208,7 @@ const inspectDefaultOptions = {
  * in the best way possible given the different types.
  */
 /* Legacy: value, showHidden, depth, colors */
-export function inspect(value, opts) {
+function inspect(value, opts) {
   // Default options
   const ctx = {
     budget: {},
@@ -294,7 +295,7 @@ const reEmojiPresentation = new SafeRegExp("^\\p{Emoji_Presentation}$", "u");
 /**
  * Returns the number of columns required to display the given string.
  */
-export function getStringWidth(str, removeControlChars = true) {
+function getStringWidth(str, removeControlChars = true) {
   let width = 0;
 
   if (removeControlChars) {
@@ -443,11 +444,11 @@ function tryStringify(arg) {
   }
 }
 
-export function format(...args) {
+function format(...args) {
   return formatWithOptionsInternal(undefined, args);
 }
 
-export function formatWithOptions(inspectOptions, ...args) {
+function formatWithOptions(inspectOptions, ...args) {
   if (typeof inspectOptions !== "object" || inspectOptions === null) {
     throw new codes.ERR_INVALID_ARG_TYPE(
       "inspectOptions",
@@ -609,7 +610,7 @@ function formatWithOptionsInternal(inspectOptions, args) {
 /**
  * Remove all VT control characters. Use to estimate displayed string width.
  */
-export function stripVTControlCharacters(str) {
+function stripVTControlCharacters(str) {
   validateString(str, "str");
 
   return StringPrototypeReplace(str, ansi, "");
@@ -621,7 +622,7 @@ export function stripVTControlCharacters(str) {
 // `text` are rewritten so subsequent text keeps the outer style ("dim" and
 // "bold" share close 22, so those close sequences are kept and the outer
 // style is re-opened immediately afterward).
-const kStyleTextEscape = "[";
+const kStyleTextEscape = "\x1b[";
 const kStyleTextEscapeEnd = "m";
 const kStyleTextDimCode = 2;
 const kStyleTextBoldCode = 1;
@@ -649,7 +650,7 @@ function replaceCloseCode(str, closeSeq, openSeq, keepClose) {
   return result + StringPrototypeSlice(str, lastIndex);
 }
 
-export function styleText(format, text, options) {
+function styleText(format, text, options) {
   validateString(text, "text");
   if (options !== undefined) {
     validateObject(options, "options");
@@ -710,11 +711,20 @@ export function styleText(format, text, options) {
   return `${openCodes}${processedText}${closeCodes}`;
 }
 
-export default {
+return {
   format,
   getStringWidth,
   inspect,
   stripVTControlCharacters,
   formatWithOptions,
   styleText,
+  default: {
+    format,
+    getStringWidth,
+    inspect,
+    stripVTControlCharacters,
+    formatWithOptions,
+    styleText,
+  },
 };
+})();

@@ -52,10 +52,12 @@ const {
 const {
   isNativeError,
 } = core;
-import { registerDeclarativeServer } from "ext:deno_http/00_serve.ts";
+const { registerDeclarativeServer } = core.loadExtScript(
+  "ext:deno_http/00_serve.ts",
+);
 const event = core.loadExtScript("ext:deno_web/02_event.js");
 const location = core.loadExtScript("ext:deno_web/12_location.js");
-import * as version from "ext:runtime/01_version.ts";
+const version = core.loadExtScript("ext:runtime/01_version.ts");
 const os = core.loadExtScript("ext:deno_os/30_os.js");
 const {
   getConsoleInspectOptions,
@@ -74,7 +76,7 @@ import {
   denoNsUnstableById,
   unstableIds,
 } from "ext:runtime/90_deno_ns.js";
-import { errors } from "ext:runtime/01_errors.js";
+const { errors } = core.loadExtScript("ext:runtime/01_errors.js");
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const {
   DOMException,

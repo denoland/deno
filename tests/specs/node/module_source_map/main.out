@@ -1,0 +1,9 @@
+PASS: constructor validation
+PASS: basic source map V3
+PASS: findOrigin
+PASS: malformed mappings
+PASS: index source map V3
+PASS: VLQ known decodings
+PASS: sorted columns with negative offsets
+
+All tests passed!

@@ -36,8 +36,8 @@ const {
 } = primordials;
 
 import net from "node:net";
-import { Buffer } from "node:buffer";
-import { ok as assert } from "node:assert";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { ok: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
   chunkExpression,
@@ -56,30 +56,41 @@ import {
   validateHeaderName,
   validateHeaderValue,
 } from "node:_http_outgoing";
-import { kNeedDrain, kOutHeaders } from "ext:deno_node/internal/http.ts";
+const { kNeedDrain, kOutHeaders } = core.loadExtScript(
+  "ext:deno_node/internal/http.ts",
+);
 import { IncomingMessage } from "node:_http_incoming";
-import {
+const {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
   ERR_HTTP_SOCKET_ASSIGNED,
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CHAR,
   ERR_OUT_OF_RANGE,
-} from "ext:deno_node/internal/errors.ts";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const {
   validateBoolean,
   validateInteger,
   validateLinkHeaderValue,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { enqueueNodePerformanceEntry } = core.loadExtScript(
+  "ext:deno_node/perf_hooks.js",
+);
 const {
   otelState,
   builtinTracer,
   ContextManager,
   telemetry,
 } = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
+const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
+
+const onServerRequestStartChannel = channel("http.server.request.start");
+const onServerResponseCreatedChannel = channel("http.server.response.created");
+const onServerResponseFinishChannel = channel("http.server.response.finish");
 
 const kServerResponse = Symbol("ServerResponse");
 const kConnectionsKey = Symbol("http.server.connections");
@@ -89,6 +100,7 @@ const kConnectionsCheckingInterval = Symbol(
 const kOtelSpan = Symbol("kOtelSpan");
 const kOtelStartTime = Symbol("kOtelStartTime");
 const kOtelReqBodySize = Symbol("kOtelReqBodySize");
+const kPerfStartTime = Symbol("kPerfStartTime");
 
 // OTel server metrics - lazy initialized
 let otelMetrics = null;
@@ -197,7 +209,9 @@ class ConnectionsList {
 }
 
 function onRequestTimeout(socket) {
-  socketOnError.call(socket, new Error("ERR_HTTP_REQUEST_TIMEOUT"));
+  const err = new Error("ERR_HTTP_REQUEST_TIMEOUT");
+  err.code = "ERR_HTTP_REQUEST_TIMEOUT";
+  socketOnError.call(socket, err);
 }
 
 const STATUS_CODES = {
@@ -283,6 +297,13 @@ function ServerResponse(req, options) {
       req.headers?.te,
     );
     this.shouldKeepAlive = false;
+  }
+
+  if (onServerResponseCreatedChannel.hasSubscribers) {
+    onServerResponseCreatedChannel.publish({
+      request: req,
+      response: this,
+    });
   }
 }
 ObjectSetPrototypeOf(ServerResponse.prototype, OutgoingMessage.prototype);
@@ -413,11 +434,7 @@ ServerResponse.prototype.writeHead = function writeHead(
     // Slow-case: progressive API and header fields are passed.
     if (ArrayIsArray(obj)) {
       if (obj.length % 2 !== 0) {
-        throw new ERR_INVALID_ARG_TYPE(
-          "headers",
-          "Array with even length",
-          obj,
-        );
+        throw new ERR_INVALID_ARG_VALUE("headers", obj);
       }
       for (let n = 0; n < obj.length; n += 2) {
         const k = obj[n + 0];
@@ -687,6 +704,8 @@ const badRequestResponse =
   "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n";
 const requestHeaderFieldsTooLargeResponse =
   "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n";
+const requestTimeoutResponse =
+  "HTTP/1.1 408 Request Timeout\r\nConnection: close\r\n\r\n";
 
 function socketOnError(e) {
   // Ignore further errors
@@ -708,6 +727,9 @@ function socketOnError(e) {
       switch (e.code) {
         case "HPE_HEADER_OVERFLOW":
           response = requestHeaderFieldsTooLargeResponse;
+          break;
+        case "ERR_HTTP_REQUEST_TIMEOUT":
+          response = requestTimeoutResponse;
           break;
         default:
           response = badRequestResponse;
@@ -743,6 +765,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   }
 
   state.incoming.push(req);
+  req[kPerfStartTime] = performance.now();
 
   if (!socket._paused) {
     const ws = socket._writableState;
@@ -756,6 +779,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
 
   const res = new server[kServerResponse](req, {
     rejectNonStandardBodyWrites: server.rejectNonStandardBodyWrites,
+    highWaterMark: server.highWaterMark,
   });
   res._keepAliveTimeout = server.keepAliveTimeout;
   res._maxRequestsPerSocket = server.maxRequestsPerSocket;
@@ -813,6 +837,15 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
     "finish",
     resOnFinish.bind(undefined, req, res, socket, state, server),
   );
+
+  if (onServerRequestStartChannel.hasSubscribers) {
+    onServerRequestStartChannel.publish({
+      request: req,
+      response: res,
+      socket,
+      server,
+    });
+  }
 
   let handled = false;
 
@@ -872,6 +905,15 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
 }
 
 function resOnFinish(req, res, socket, state, server) {
+  if (onServerResponseFinishChannel.hasSubscribers) {
+    onServerResponseFinishChannel.publish({
+      request: req,
+      response: res,
+      socket,
+      server,
+    });
+  }
+
   assert(state.incoming.length === 0 || state.incoming[0] === req);
 
   // End OTel server span
@@ -884,6 +926,30 @@ function resOnFinish(req, res, socket, state, server) {
     }
     span.end();
     res[kOtelSpan] = null;
+  }
+
+  // Emit HttpRequest perf entry
+  const perfStartTime = req[kPerfStartTime];
+  if (perfStartTime !== undefined) {
+    enqueueNodePerformanceEntry({
+      name: "HttpRequest",
+      entryType: "http",
+      startTime: perfStartTime,
+      duration: performance.now() - perfStartTime,
+      detail: {
+        req: {
+          method: req.method,
+          url: req.url || "/",
+          headers: req.headers,
+        },
+        res: {
+          statusCode: res.statusCode,
+          statusMessage: res.statusMessage ||
+            STATUS_CODES[res.statusCode] || "",
+          headers: res.getHeaders(),
+        },
+      },
+    });
   }
 
   // Record OTel server metrics
@@ -1056,6 +1122,12 @@ function storeHTTPOptions(options) {
   this[kIncomingMessage] = options.IncomingMessage || IncomingMessage;
   this[kServerResponse] = options.ServerResponse || ServerResponse;
 
+  const highWaterMark = options.highWaterMark;
+  if (highWaterMark !== undefined) {
+    validateInteger(highWaterMark, "options.highWaterMark", 1);
+  }
+  this.highWaterMark = highWaterMark;
+
   const maxHeaderSize = options.maxHeaderSize;
   if (maxHeaderSize !== undefined) {
     validateInteger(maxHeaderSize, "maxHeaderSize", 0);
@@ -1101,6 +1173,18 @@ function storeHTTPOptions(options) {
     this.keepAliveTimeout = keepAliveTimeout;
   } else {
     this.keepAliveTimeout = 5_000;
+  }
+
+  const connectionsCheckingInterval = options.connectionsCheckingInterval;
+  if (connectionsCheckingInterval !== undefined) {
+    validateInteger(
+      connectionsCheckingInterval,
+      "connectionsCheckingInterval",
+      1,
+    );
+    this.connectionsCheckingInterval = connectionsCheckingInterval;
+  } else {
+    this.connectionsCheckingInterval = 30_000;
   }
 
   const requireHostHeader = options.requireHostHeader;

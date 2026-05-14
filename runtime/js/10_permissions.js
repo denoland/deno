@@ -1,11 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const {
   op_query_permission,
   op_request_permission,
   op_revoke_permission,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,
@@ -304,4 +305,5 @@ function serializePermissions(permissions) {
   return permissions;
 }
 
-export { Permissions, permissions, PermissionStatus, serializePermissions };
+return { Permissions, permissions, PermissionStatus, serializePermissions };
+})();

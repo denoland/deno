@@ -382,6 +382,7 @@ impl<
               maybe_node_modules_path: workspace_factory
                 .node_modules_dir_path()?
                 .map(|p| p.to_path_buf()),
+              linker_mode: workspace_factory.node_modules_linker_mode()?,
               lifecycle_scripts: self.lifecycle_scripts_config()?.clone(),
               system_info: self.resolver_factory.npm_system_info().clone(),
               workspace_link_packages: workspace_npm_link_packages.clone(),

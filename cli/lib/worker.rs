@@ -61,6 +61,8 @@ use crate::util::checksum;
 pub struct CreateModuleLoaderResult {
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_require_loader: Rc<dyn NodeRequireLoader>,
+  pub hook_registry:
+    Option<deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry>,
 }
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -267,6 +269,10 @@ pub struct LibMainWorkerOptions {
   pub node_ipc_init: Option<(i64, ChildIpcSerialization)>,
   pub no_legacy_abort: bool,
   pub startup_snapshot: Option<&'static [u8]>,
+  /// Residual `lazy_loaded_js` sources from the snapshot build script.
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  /// Residual `lazy_loaded_esm` sources from the snapshot build script.
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
   pub maybe_initial_cwd: Option<Url>,
@@ -337,6 +343,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       let CreateModuleLoaderResult {
         module_loader,
         node_require_loader,
+        hook_registry: _, // web workers don't support hooks yet
       } = shared.module_loader_factory.create_for_worker(
         args.parent_permissions.clone(),
         args.permissions.clone(),
@@ -469,6 +476,8 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         },
         extensions: vec![],
         startup_snapshot: shared.options.startup_snapshot,
+        residual_lazy_js_sources: shared.options.residual_lazy_js_sources,
+        residual_lazy_esm_sources: shared.options.residual_lazy_esm_sources,
         create_params,
         unsafely_ignore_certificate_errors: shared
           .options
@@ -584,12 +593,14 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     mode: WorkerExecutionMode,
     permissions: PermissionsContainer,
     main_module: Url,
+    experimental_loaders: Vec<Url>,
     preload_modules: Vec<Url>,
     require_modules: Vec<Url>,
   ) -> Result<LibMainWorker, CoreError> {
     self.create_custom_worker(
       mode,
       main_module,
+      experimental_loaders,
       preload_modules,
       require_modules,
       permissions,
@@ -604,6 +615,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     &self,
     mode: WorkerExecutionMode,
     main_module: Url,
+    experimental_loaders: Vec<Url>,
     preload_modules: Vec<Url>,
     require_modules: Vec<Url>,
     permissions: PermissionsContainer,
@@ -615,6 +627,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let CreateModuleLoaderResult {
       module_loader,
       node_require_loader,
+      hook_registry,
     } = shared
       .module_loader_factory
       .create_for_main(permissions.clone());
@@ -702,6 +715,8 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       },
       extensions: custom_extensions,
       startup_snapshot: shared.options.startup_snapshot,
+      residual_lazy_js_sources: shared.options.residual_lazy_js_sources,
+      residual_lazy_esm_sources: shared.options.residual_lazy_esm_sources,
       create_params: create_isolate_create_params(&shared.sys),
       unsafely_ignore_certificate_errors: shared
         .options
@@ -728,6 +743,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       MainWorker::bootstrap_from_options(&main_module, services, options);
     worker.setup_memory_trim_handler();
 
+    // Wire module hook registry into OpState so JS ops share it with the loader
+    if let Some(registry) = hook_registry {
+      worker.js_runtime.op_state().borrow_mut().put(registry);
+    }
+
     // Store the main inspector session sender for worker debugging
     let inspector = worker.js_runtime.inspector();
     let session_tx = inspector.get_session_sender();
@@ -735,6 +755,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
 
     Ok(LibMainWorker {
       main_module,
+      experimental_loaders,
       preload_modules,
       require_modules,
       worker,
@@ -826,6 +847,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
 
 pub struct LibMainWorker {
   main_module: Url,
+  experimental_loaders: Vec<Url>,
   preload_modules: Vec<Url>,
   require_modules: Vec<Url>,
   worker: MainWorker,
@@ -918,6 +940,33 @@ impl LibMainWorker {
     Ok(())
   }
 
+  pub async fn execute_experimental_loaders(
+    &mut self,
+  ) -> Result<(), CoreError> {
+    if self.experimental_loaders.is_empty() {
+      return Ok(());
+    }
+    // Build a JS array of loader URLs using JSON serialization
+    // for robust escaping of special characters in URLs.
+    let urls_json: Vec<String> = self
+      .experimental_loaders
+      .iter()
+      .map(|u| serde_json::to_string(u.as_str()).unwrap())
+      .collect();
+    let script = format!(
+      r#"(async () => {{
+        const {{ _registerCliLoaders }} = await import("node:module");
+        await _registerCliLoaders([{}]);
+      }})()"#,
+      urls_json.join(",")
+    );
+    self
+      .worker
+      .execute_script("experimental-loader-setup", script.into())?;
+    self.worker.run_event_loop(false).await?;
+    Ok(())
+  }
+
   pub async fn execute_preload_modules(&mut self) -> Result<(), CoreError> {
     for preload_module_url in self.preload_modules.iter() {
       let id = self.worker.preload_side_module(preload_module_url).await?;
@@ -936,6 +985,9 @@ impl LibMainWorker {
 
   pub async fn run(&mut self) -> Result<i32, CoreError> {
     log::debug!("main_module {}", self.main_module);
+
+    // Register experimental loader hooks before anything else
+    self.execute_experimental_loaders().await?;
 
     // Run preload modules first if they were defined
     self.execute_preload_modules().await?;

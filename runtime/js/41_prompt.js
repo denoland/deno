@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { core, primordials } from "ext:core/mod.js";
-import { op_read_line_prompt } from "ext:core/ops";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { op_read_line_prompt } = core.ops;
 const { ArrayPrototypePush, StringPrototypeCharCodeAt, Uint8Array } =
   primordials;
 
@@ -69,4 +70,5 @@ function readLineFromStdinSync() {
   return core.decode(new Uint8Array(buf));
 }
 
-export { alert, confirm, prompt };
+return { alert, confirm, prompt };
+})();

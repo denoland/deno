@@ -22,6 +22,7 @@ import { retry } from "@std/async/retry";
 
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
+import { setImmediate } from "node:timers";
 import { execCode } from "../unit/test_util.ts";
 
 // Destroy idle keep-alive sockets before each test so that sequential
@@ -720,6 +721,49 @@ Deno.test("[node/http] ServerResponse _implicitHeader", async () => {
 
   await promise;
 });
+
+// https://github.com/denoland/deno/issues/34002
+Deno.test(
+  "[node/http] ServerResponse does not emit 'finish' after client abort",
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    let client: http.ClientRequest;
+    let finishEmitted = false;
+    let closeEmitted = false;
+
+    const server = http.createServer((_req, res) => {
+      res.on("finish", () => {
+        finishEmitted = true;
+      });
+      res.on("close", () => {
+        closeEmitted = true;
+      });
+
+      client.abort();
+
+      setImmediate(() => {
+        setImmediate(() => {
+          res.end("ok");
+          setImmediate(() => {
+            server.close(() => {
+              assertEquals(finishEmitted, false);
+              assertEquals(closeEmitted, true);
+              resolve();
+            });
+          });
+        });
+      });
+    });
+
+    server.listen(0, () => {
+      const { port } = server.address() as { port: number };
+      client = http.get(`http://127.0.0.1:${port}`);
+      client.on("error", () => {});
+    });
+
+    await promise;
+  },
+);
 
 // https://github.com/denoland/deno/issues/21509
 Deno.test("[node/http] ServerResponse flushHeaders", async () => {
@@ -1474,7 +1518,7 @@ Deno.test("[node/http] server closeIdleConnections shutdown", async () => {
 });
 
 Deno.test("[node/http] client closing a streaming response doesn't terminate server", async () => {
-  let interval: number;
+  let interval: NodeJS.Timeout;
   const server = http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/plain" });
     interval = setInterval(() => {
@@ -1523,7 +1567,7 @@ Deno.test("[node/http] client closing a streaming response doesn't terminate ser
 });
 
 Deno.test("[node/http] client closing a streaming request doesn't terminate server", async () => {
-  let interval: number;
+  let interval: NodeJS.Timeout;
   let uploadedData = "";
   let requestError: Error | null = null;
   const deferred1 = Promise.withResolvers<void>();
@@ -2777,7 +2821,7 @@ Deno.test(
     server.listen(0, async () => {
       try {
         const port = (server.address() as AddressInfo).port;
-        const pendingTimers = new Set<ReturnType<typeof setTimeout>>();
+        const pendingTimers = new Set<NodeJS.Timeout>();
         const res = await fetch(`http://127.0.0.1:${port}/`, {
           method: "POST",
           duplex: "half",

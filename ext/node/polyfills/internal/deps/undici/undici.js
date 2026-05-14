@@ -1,7 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-
-import { core, internals, primordials } from "ext:core/mod.js";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 const { TextDecoder } = core.loadExtScript(
   "ext:deno_web/08_text_encoding.js",
 );
@@ -67,18 +69,20 @@ function setGlobalDispatcher(dispatcher) {
 
 const EnvHttpProxyAgent = Agent;
 
-export {
+const _defaultExport = {
+  Agent,
+  EnvHttpProxyAgent,
+  getGlobalDispatcher,
+  setGlobalDispatcher,
+};
+
+return {
   Agent,
   EnvHttpProxyAgent,
   getGlobalDispatcher,
   kDispatcherOptions,
   kGlobalDispatcher,
   setGlobalDispatcher,
+  default: _defaultExport,
 };
-
-export default {
-  Agent,
-  EnvHttpProxyAgent,
-  getGlobalDispatcher,
-  setGlobalDispatcher,
-};
+})();

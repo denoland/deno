@@ -1,9 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { core, internals, primordials } from "ext:core/mod.js";
-import {
+
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
+const {
   op_http_websocket_accept_header,
   op_http_ws_create_from_stream_resource,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
@@ -297,4 +299,5 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 internals.buildCaseInsensitiveCommaValueFinder =
   buildCaseInsensitiveCommaValueFinder;
 
-export { _ws, upgradeWebSocket };
+return { _ws, upgradeWebSocket };
+})();
