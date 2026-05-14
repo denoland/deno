@@ -6,7 +6,7 @@
 #
 # Requires: ./target/release/deno, node, bun, wrk on PATH.
 
-set -euo pipefail
+set -uo pipefail
 cd "$(dirname "$0")"
 
 DENO_BIN="${DENO_BIN:-../../../target/release/deno}"
@@ -28,12 +28,12 @@ versions() {
 versions > versions.txt
 cat versions.txt
 
-start_server() {
-  local cmd=$1
-  local logfile=$2
-  bash -c "$cmd" > "$logfile" 2>&1 &
-  echo $!
-}
+# pre-cleanup any lingering listeners
+for p in 8080 8081 8082; do
+  pid=$(ss -lntp 2>/dev/null | awk -v port=":$p" '$4 ~ port {sub(/.*pid=/,""); sub(/,.*/,""); print}')
+  if [ -n "$pid" ]; then kill -9 "$pid" 2>/dev/null || true; fi
+done
+sleep 1
 
 wait_port() {
   local port=$1
@@ -48,44 +48,50 @@ wait_port() {
   return 1
 }
 
-run_wrk() {
-  local label=$1 url=$2 method=${3:-GET} body=${4:-}
-  local extra=""
-  if [ "$method" = "POST" ]; then
-    extra="-s post.lua"
-    cat > post.lua <<EOF
+# Lua script for POST. wrk substitutes %BODY% via shell.
+cat > post.lua <<'EOF'
 wrk.method = "POST"
-wrk.body   = "$body"
 wrk.headers["Content-Type"] = "application/json"
+wrk.body = '{"a":1,"b":2,"c":[1,2,3]}'
 EOF
-  fi
+
+run_wrk() {
+  local label=$1 url=$2 method=${3:-GET}
+  local extra=""
+  if [ "$method" = "POST" ]; then extra="-s post.lua"; fi
   echo "==> $label  $method $url"
   out=$(wrk -t$THREADS -c$CONNS -d${DURATION}s --latency $extra "$url" 2>&1 || true)
   echo "$out"
   rps=$(echo "$out" | awk '/Requests\/sec/ {print $2}')
-  lat_avg=$(echo "$out" | awk '/^    Latency/ {print $2}')
-  lat_p99=$(echo "$out" | awk '/99%/ {print $2}')
-  printf '{"label":"%s","method":"%s","url":"%s","rps":"%s","lat_avg":"%s","lat_p99":"%s"}\n' \
-    "$label" "$method" "$url" "$rps" "$lat_avg" "$lat_p99" >> "$OUT"
+  lat_avg=$(echo "$out" | awk '/^    Latency/ {print $2; exit}')
+  # Latency p99 lives in a Latency Distribution block; grab the FIRST 99% match
+  lat_p99=$(echo "$out" | awk '/Latency Distribution/{f=1; next} f && /99%/ {print $2; exit}')
+  non2xx=$(echo "$out" | awk '/Non-2xx or 3xx/ {print $5; exit}')
+  printf '{"label":"%s","method":"%s","url":"%s","rps":"%s","lat_avg":"%s","lat_p99":"%s","non2xx":"%s"}\n' \
+    "$label" "$method" "$url" "$rps" "$lat_avg" "$lat_p99" "${non2xx:-0}" >> "$OUT"
 }
 
 run_runtime() {
   local name=$1 port=$2 cmd=$3
   local logfile="server_${name}.log"
   echo "===== $name on port $port ====="
-  pid=$(start_server "$cmd" "$logfile")
-  trap "kill $pid 2>/dev/null || true" EXIT
-  wait_port "$port" || { kill $pid; return; }
+  bash -c "exec $cmd" > "$logfile" 2>&1 &
+  local pid=$!
+  if ! wait_port "$port"; then
+    echo "server failed; log:" && cat "$logfile" | head -20
+    kill -9 "$pid" 2>/dev/null || true
+    return
+  fi
   sleep 1
 
   run_wrk "${name}_hello"      "http://127.0.0.1:${port}/hello"
   run_wrk "${name}_headers"    "http://127.0.0.1:${port}/headers"
-  run_wrk "${name}_echo_small" "http://127.0.0.1:${port}/echo" POST '{"a":1,"b":2,"c":[1,2,3]}'
+  run_wrk "${name}_echo_small" "http://127.0.0.1:${port}/echo" POST
   run_wrk "${name}_bigbody"    "http://127.0.0.1:${port}/bigbody"
 
-  kill $pid 2>/dev/null || true
-  wait 2>/dev/null || true
-  trap - EXIT
+  kill -9 "$pid" 2>/dev/null || true
+  # Give the kernel time to release the port
+  sleep 2
 }
 
 run_runtime deno 8080 "$DENO_BIN run -A --no-prompt servers/deno_server.js --port=8080"

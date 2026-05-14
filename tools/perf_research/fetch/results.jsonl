@@ -1,0 +1,12 @@
+{"label":"deno_hello","method":"GET","url":"http://127.0.0.1:8080/hello","rps":"39775.16","lat_avg":"1.63ms","lat_p99":"4.33ms","non2xx":"0"}
+{"label":"deno_headers","method":"GET","url":"http://127.0.0.1:8080/headers","rps":"33803.13","lat_avg":"1.91ms","lat_p99":"4.03ms","non2xx":"0"}
+{"label":"deno_echo_small","method":"POST","url":"http://127.0.0.1:8080/echo","rps":"30408.38","lat_avg":"2.10ms","lat_p99":"3.40ms","non2xx":"0"}
+{"label":"deno_bigbody","method":"GET","url":"http://127.0.0.1:8080/bigbody","rps":"1246.27","lat_avg":"51.21ms","lat_p99":"80.21ms","non2xx":"0"}
+{"label":"node_hello","method":"GET","url":"http://127.0.0.1:8081/hello","rps":"32225.68","lat_avg":"2.27ms","lat_p99":"4.67ms","non2xx":"0"}
+{"label":"node_headers","method":"GET","url":"http://127.0.0.1:8081/headers","rps":"37094.63","lat_avg":"1.75ms","lat_p99":"3.23ms","non2xx":"0"}
+{"label":"node_echo_small","method":"POST","url":"http://127.0.0.1:8081/echo","rps":"18456.21","lat_avg":"3.46ms","lat_p99":"5.50ms","non2xx":"0"}
+{"label":"node_bigbody","method":"GET","url":"http://127.0.0.1:8081/bigbody","rps":"2435.40","lat_avg":"32.72ms","lat_p99":"335.22ms","non2xx":"0"}
+{"label":"bun_hello","method":"GET","url":"http://127.0.0.1:8082/hello","rps":"69190.38","lat_avg":"0.94ms","lat_p99":"2.16ms","non2xx":"0"}
+{"label":"bun_headers","method":"GET","url":"http://127.0.0.1:8082/headers","rps":"55933.44","lat_avg":"1.14ms","lat_p99":"2.30ms","non2xx":"0"}
+{"label":"bun_echo_small","method":"POST","url":"http://127.0.0.1:8082/echo","rps":"51143.70","lat_avg":"1.26ms","lat_p99":"2.55ms","non2xx":"0"}
+{"label":"bun_bigbody","method":"GET","url":"http://127.0.0.1:8082/bigbody","rps":"1081.59","lat_avg":"58.86ms","lat_p99":"108.30ms","non2xx":"0"}

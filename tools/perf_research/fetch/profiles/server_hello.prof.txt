@@ -1,0 +1,134 @@
+Testing v8 version different from logging version
+(node:75388) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+Statistical profiling result from /tmp/prof_server/v8.log, (2619 ticks, 284 unaccounted, 0 excluded).
+ [Shared libraries]:
+   ticks  total  nonlib   name
+   1371   52.3%          /var/agent-loop/repo/target/release/deno
+    109    4.2%          /usr/lib/x86_64-linux-gnu/libc.so.6
+ [JavaScript]:
+   ticks  total  nonlib   name
+     98    3.7%    8.6%  JS: *<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+     57    2.2%    5.0%  Builtin: KeyedStoreIC
+     48    1.8%    4.2%  Builtin: LoadIC
+     45    1.7%    4.0%  Builtin: CreateTypedArray
+     41    1.6%    3.6%  Builtin: CreateShallowObjectLiteral
+     37    1.4%    3.2%  Builtin: RunMicrotasks
+     35    1.3%    3.1%  Builtin: GetProperty
+     34    1.3%    3.0%  Builtin: TypedArrayPrototypeSlice
+     33    1.3%    2.9%  Builtin: ObjectPrototypeIsPrototypeOf
+     30    1.1%    2.6%  Builtin: LoadICTrampoline
+     22    0.8%    1.9%  Builtin: JSConstructStubGeneric
+     20    0.8%    1.8%  Builtin: AsyncFunctionAwait
+     18    0.7%    1.6%  Builtin: ObjectPrototypeHasOwnProperty
+     17    0.6%    1.5%  Builtin: ResolvePromise
+     17    0.6%    1.5%  Builtin: PerformPromiseThen
+     17    0.6%    1.5%  Builtin: KeyedLoadIC
+     17    0.6%    1.5%  Builtin: EnqueueMicrotask
+     14    0.5%    1.2%  Builtin: KeyedLoadIC_PolymorphicName
+     14    0.5%    1.2%  Builtin: CallApiCallbackOptimizedNoProfiling
+     12    0.5%    1.1%  Builtin: Construct
+     11    0.4%    1.0%  JS: *get ext:deno_fetch/22_body.js:290:10
+     11    0.4%    1.0%  Builtin: ForInEnumerate
+     10    0.4%    0.9%  Builtin: ObjectHasOwn
+     10    0.4%    0.9%  Builtin: GrowFastSmiOrObjectElements
+      8    0.3%    0.7%  Builtin: FastNewObject
+      8    0.3%    0.7%  Builtin: CallFunction_ReceiverIsAny
+      7    0.3%    0.6%  Builtin: ResumeGeneratorTrampoline
+      7    0.3%    0.6%  Builtin: PromisePrototypeThen
+      7    0.3%    0.6%  Builtin: FulfillPromise
+      6    0.2%    0.5%  Builtin: StringToLowerCaseIntl
+      6    0.2%    0.5%  Builtin: JSRunMicrotasksEntry
+      6    0.2%    0.5%  Builtin: ConstructFunction
+      6    0.2%    0.5%  Builtin: ArrayBufferConstructor
+      5    0.2%    0.4%  Builtin: StringSubstring
+      5    0.2%    0.4%  Builtin: JSEntry
+      4    0.2%    0.4%  Builtin: StringAdd_CheckNone
+      4    0.2%    0.4%  Builtin: KeyedStoreICTrampoline
+      3    0.1%    0.3%  Builtin: StringEqual
+      3    0.1%    0.3%  Builtin: CallFunction_ReceiverIsNullOrUndefined
+      3    0.1%    0.3%  Builtin: AsyncFunctionAwaitResolveClosure
+      3    0.1%    0.3%  Builtin: AdaptorWithBuiltinExitFrame1
+      2    0.1%    0.2%  JS: +get ext:deno_fetch/22_body.js:290:10
+      2    0.1%    0.2%  JS: +<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+      2    0.1%    0.2%  Builtin: Typeof
+      2    0.1%    0.2%  Builtin: TypedArrayPrototypeByteLength
+      2    0.1%    0.2%  Builtin: StringPrototypeSlice
+      2    0.1%    0.2%  Builtin: PromiseFulfillReactionJob
+      2    0.1%    0.2%  Builtin: LoadICGenericBaseline
+      2    0.1%    0.2%  Builtin: JSBuiltinsConstructStub
+      2    0.1%    0.2%  Builtin: ForInFilter
+      2    0.1%    0.2%  Builtin: Call_ReceiverIsNullOrUndefined
+      1    0.0%    0.1%  JS: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/servers/deno_server.js:10:42
+      1    0.0%    0.1%  Builtin: ToBooleanForBaselineJump
+      1    0.0%    0.1%  Builtin: StringPrototypeCharCodeAt
+      1    0.0%    0.1%  Builtin: KeyedLoadICTrampoline
+      1    0.0%    0.1%  Builtin: FunctionPrototypeCall
+      1    0.0%    0.1%  Builtin: ForInPrepare
+      1    0.0%    0.1%  Builtin: Call_ReceiverIsAny
+      1    0.0%    0.1%  Builtin: CallFunction_ReceiverIsNotNullOrUndefined
+      1    0.0%    0.1%  Builtin: AsyncFunctionEnter
+ [C++]:
+   ticks  total  nonlib   name
+     28    1.1%    2.5%  __libc_malloc@@GLIBC_2.2.5
+     15    0.6%    1.3%  __libc_free@@GLIBC_2.2.5
+     11    0.4%    1.0%  syscall@@GLIBC_2.2.5
+      7    0.3%    0.6%  __libc_calloc@@GLIBC_2.2.5
+      3    0.1%    0.3%  clock_nanosleep@GLIBC_2.2.5
+      1    0.0%    0.1%  __read_nocancel@@GLIBC_PRIVATE
+      1    0.0%    0.1%  __mmap@@GLIBC_PRIVATE
+      1    0.0%    0.1%  __madvise@@GLIBC_PRIVATE
+ [Summary]:
+   ticks  total  nonlib   name
+    788   30.1%   69.2%  JavaScript
+     67    2.6%    5.9%  C++
+     43    1.6%    3.8%  GC
+   1480   56.5%          Shared libraries
+    284   10.8%          Unaccounted
+ [C++ entry points]:
+   ticks    cpp   total   name
+     26   49.1%    1.0%  __libc_malloc@@GLIBC_2.2.5
+     15   28.3%    0.6%  __libc_free@@GLIBC_2.2.5
+      7   13.2%    0.3%  __libc_calloc@@GLIBC_2.2.5
+      3    5.7%    0.1%  clock_nanosleep@GLIBC_2.2.5
+      2    3.8%    0.1%  syscall@@GLIBC_2.2.5
+ [Bottom up (heavy) profile]:
+  Note: percentage shows a share of a particular caller in the total
+  amount of its parent calls.
+  Callers occupying less than 1.0% are not shown.
+   ticks parent  name
+   1371   52.3%  /var/agent-loop/repo/target/release/deno
+    370   27.0%    /var/agent-loop/repo/target/release/deno
+    203   54.9%      Builtin: TypedArrayPrototypeSlice
+    161   11.7%    Builtin: AsyncFunctionAwaitResolveClosure
+    284   10.8%  UNKNOWN
+     34   12.0%    Builtin: AsyncFunctionAwaitResolveClosure
+      3    1.1%    JS: ^<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/servers/deno_server.js:10:42
+    109    4.2%  /usr/lib/x86_64-linux-gnu/libc.so.6
+     30   27.5%    /var/agent-loop/repo/target/release/deno
+     29   96.7%      Builtin: TypedArrayPrototypeSlice
+      3    2.8%    Builtin: TypedArrayPrototypeSlice
+      1   33.3%      JS: ^<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/servers/deno_server.js:10:42
+      3    2.8%    Builtin: AsyncFunctionAwaitResolveClosure
+     98    3.7%  JS: *<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+     57    2.2%  Builtin: KeyedStoreIC
+     25   43.9%    JS: *<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+      1    1.8%    JS: ^<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/servers/deno_server.js:10:42
+      1    1.8%    JS: +<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+     48    1.8%  Builtin: LoadIC
+     45    1.7%  Builtin: CreateTypedArray
+     45  100.0%    Builtin: TypedArrayPrototypeSlice
+     41    1.6%  Builtin: CreateShallowObjectLiteral
+      4    9.8%    JS: *<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+      1    2.4%    JS: +<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+     37    1.4%  Builtin: RunMicrotasks
+     35    1.3%  Builtin: GetProperty
+     34    1.3%  Builtin: TypedArrayPrototypeSlice
+      1    2.9%    JS: ^<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/servers/deno_server.js:10:42
+     33    1.3%  Builtin: ObjectPrototypeIsPrototypeOf
+      1    3.0%    Builtin: AsyncFunctionAwaitResolveClosure
+     30    1.1%  Builtin: LoadICTrampoline
+     28    1.1%  __libc_malloc@@GLIBC_2.2.5
+     10   35.7%    /var/agent-loop/repo/target/release/deno
+     10  100.0%      Builtin: TypedArrayPrototypeSlice
+      1    3.6%    Builtin: AsyncFunctionAwaitResolveClosure

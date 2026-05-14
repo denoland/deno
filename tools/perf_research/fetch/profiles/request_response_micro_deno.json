@@ -1,0 +1,7 @@
+{"name":"response_construct_string","ms":"25.30","ns_per_op":"126.5"}
+{"name":"response_construct_u8","ms":"213.78","ns_per_op":"1068.9"}
+{"name":"response_construct_with_headers","ms":"113.71","ns_per_op":"568.6"}
+{"name":"response_construct_reused_headers","ms":"277.05","ns_per_op":"1385.2"}
+{"name":"request_construct","ms":"728.00","ns_per_op":"3640.0"}
+{"name":"response_text_smallish","ms":"81.27","ns_per_op":"1625.5"}
+{"name":"response_json_smallish","ms":"196.90","ns_per_op":"3937.9"}

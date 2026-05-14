@@ -1,0 +1,9 @@
+{"name":"headers_construct_obj","ms":"4244.71","ns_per_op":"4244.7"}
+{"name":"headers_construct_arr","ms":"4127.76","ns_per_op":"4127.8"}
+{"name":"headers_get_hit","ms":"303.21","ns_per_op":"303.2"}
+{"name":"headers_get_miss","ms":"257.10","ns_per_op":"257.1"}
+{"name":"headers_set_fresh","ms":"178.96","ns_per_op":"179.0"}
+{"name":"headers_append_fresh","ms":"230.50","ns_per_op":"230.5"}
+{"name":"headers_iter","ms":"28995.66","ns_per_op":"28995.7"}
+{"name":"headers_has_hit","ms":"141.06","ns_per_op":"141.1"}
+{"name":"headers_has_miss","ms":"244.65","ns_per_op":"244.7"}

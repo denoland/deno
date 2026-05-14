@@ -1,0 +1,164 @@
+Testing v8 version different from logging version
+Statistical profiling result from /tmp/prof_test/v8.log, (34551 ticks, 6097 unaccounted, 0 excluded).
+ [Shared libraries]:
+   ticks  total  nonlib   name
+   9582   27.7%          /var/agent-loop/repo/target/release/deno
+    241    0.7%          /usr/lib/x86_64-linux-gnu/libc.so.6
+      9    0.0%          [vdso]
+ [JavaScript]:
+   ticks  total  nonlib   name
+   3068    8.9%   12.4%  Builtin: StringToLowerCaseIntl
+   3047    8.8%   12.3%  Builtin: ArrayTimSort
+   1913    5.5%    7.7%  JS: *<anonymous> ext:deno_fetch/20_headers.js:272:7
+   1808    5.2%    7.3%  Builtin: StringLessThan
+   1581    4.6%    6.4%  Builtin: KeyedStoreIC_Megamorphic
+   1356    3.9%    5.5%  Builtin: KeyedLoadIC_Megamorphic
+    962    2.8%    3.9%  JS: *<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+    607    1.8%    2.5%  Builtin: CallFunction_ReceiverIsNullOrUndefined
+    452    1.3%    1.8%  Builtin: SortCompareUserFn
+    434    1.3%    1.8%  JS: *<anonymous> ext:deno_webidl/00_webidl.js:932:19
+    298    0.9%    1.2%  Builtin: Store_FastObjectElements_0
+    282    0.8%    1.1%  Builtin: Call_ReceiverIsNullOrUndefined
+    279    0.8%    1.1%  Builtin: Load_FastObjectElements_0
+    278    0.8%    1.1%  Builtin: CreateShallowObjectLiteral
+    272    0.8%    1.1%  Builtin: ArrayIteratorPrototypeNext
+    268    0.8%    1.1%  Builtin: LoadIC
+    233    0.7%    0.9%  Builtin: ArrayPrototypeSort
+    227    0.7%    0.9%  Builtin: GrowFastSmiOrObjectElements
+    174    0.5%    0.7%  Builtin: ObjectPrototypeHasOwnProperty
+    150    0.4%    0.6%  Builtin: RecordWriteSaveFP
+    146    0.4%    0.6%  Builtin: StringEqual
+    126    0.4%    0.5%  Builtin: StringAdd_CheckNone
+     68    0.2%    0.3%  Builtin: ForInFilter
+     64    0.2%    0.3%  Builtin: CEntry_Return1_ArgvOnStack_NoBuiltinExit
+     49    0.1%    0.2%  Builtin: LoadICTrampoline
+     43    0.1%    0.2%  Builtin: ObjectHasOwn
+     38    0.1%    0.2%  Builtin: NumberToString
+     24    0.1%    0.1%  Builtin: ToString
+     24    0.1%    0.1%  Builtin: ArrayPrototypePush
+     23    0.1%    0.1%  Builtin: KeyedStoreICTrampoline_Megamorphic
+     21    0.1%    0.1%  Builtin: ToObject
+     17    0.0%    0.1%  Builtin: ArrayPrototypeJoinImpl
+     15    0.0%    0.1%  Builtin: JSConstructStubGeneric
+     13    0.0%    0.1%  Builtin: ForInEnumerate
+      9    0.0%    0.0%  JS: *entries ext:deno_webidl/00_webidl.js:1275:19
+      8    0.0%    0.0%  Builtin: Typeof
+      8    0.0%    0.0%  Builtin: CanUseSameAccessor_FastObjectElements_0
+      6    0.0%    0.0%  Builtin: CreateObjectFromSlowBoilerplateHelper
+      5    0.0%    0.0%  Builtin: DefineNamedOwnIC
+      5    0.0%    0.0%  Builtin: CallFunction_ReceiverIsAny
+      5    0.0%    0.0%  Builtin: ArrayPrototypeJoin
+      4    0.0%    0.0%  Builtin: AllocateInYoungGeneration
+      3    0.0%    0.0%  JS: *next ext:deno_webidl/00_webidl.js:1235:9
+      3    0.0%    0.0%  Builtin: StringPrototypeCharCodeAt
+      3    0.0%    0.0%  Builtin: LoadIC_FunctionPrototype
+      3    0.0%    0.0%  Builtin: FastNewObject
+      2    0.0%    0.0%  Builtin: CreateObjectFromSlowBoilerplate
+      1    0.0%    0.0%  JS: +<anonymous> ext:deno_webidl/00_webidl.js:932:19
+      1    0.0%    0.0%  JS: +<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+      1    0.0%    0.0%  JS: +<anonymous> ext:deno_fetch/20_headers.js:272:7
+      1    0.0%    0.0%  Builtin: StringPrototypeToLowerCaseIntl
+      1    0.0%    0.0%  Builtin: ObjectCreate
+      1    0.0%    0.0%  Builtin: LoadIC_NoFeedback
+      1    0.0%    0.0%  Builtin: LoadICGenericBaseline
+      1    0.0%    0.0%  Builtin: FunctionPrototypeCall
+      1    0.0%    0.0%  Builtin: Equal_Baseline
+      1    0.0%    0.0%  Builtin: Call_ReceiverIsNotNullOrUndefined
+      1    0.0%    0.0%  Builtin: CallBoundFunction
+      1    0.0%    0.0%  Builtin: CEntry_Return1_ArgvOnStack_BuiltinExit
+ [C++]:
+   ticks  total  nonlib   name
+    128    0.4%    0.5%  syscall@@GLIBC_2.2.5
+     22    0.1%    0.1%  __getpid@@GLIBC_2.2.5
+     15    0.0%    0.1%  __libc_malloc@@GLIBC_2.2.5
+      4    0.0%    0.0%  __lll_lock_wait_private@@GLIBC_PRIVATE
+      3    0.0%    0.0%  __lll_lock_wake_private@@GLIBC_PRIVATE
+      3    0.0%    0.0%  __libc_free@@GLIBC_2.2.5
+      3    0.0%    0.0%  __exp2_finite@GLIBC_2.15
+      2    0.0%    0.0%  __clock_gettime@@GLIBC_PRIVATE
+      1    0.0%    0.0%  malloc_usable_size@@GLIBC_2.2.5
+      1    0.0%    0.0%  __pthread_mutex_unlock@GLIBC_2.2.5
+      1    0.0%    0.0%  __pthread_mutex_lock@GLIBC_2.2.5
+      1    0.0%    0.0%  __munmap@@GLIBC_PRIVATE
+      1    0.0%    0.0%  __mmap@@GLIBC_PRIVATE
+      1    0.0%    0.0%  _IO_default_xsputn@@GLIBC_2.2.5
+ [Summary]:
+   ticks  total  nonlib   name
+  18436   53.4%   74.6%  JavaScript
+    186    0.5%    0.8%  C++
+    807    2.3%    3.3%  GC
+   9832   28.5%          Shared libraries
+   6097   17.6%          Unaccounted
+ [C++ entry points]:
+   ticks    cpp   total   name
+      3   37.5%    0.0%  __libc_malloc@@GLIBC_2.2.5
+      1   12.5%    0.0%  syscall@@GLIBC_2.2.5
+      1   12.5%    0.0%  __pthread_mutex_unlock@GLIBC_2.2.5
+      1   12.5%    0.0%  __pthread_mutex_lock@GLIBC_2.2.5
+      1   12.5%    0.0%  __libc_free@@GLIBC_2.2.5
+      1   12.5%    0.0%  __clock_gettime@@GLIBC_PRIVATE
+ [Bottom up (heavy) profile]:
+  Note: percentage shows a share of a particular caller in the total
+  amount of its parent calls.
+  Callers occupying less than 1.0% are not shown.
+   ticks parent  name
+   9582   27.7%  /var/agent-loop/repo/target/release/deno
+   4963   51.8%    Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+   4963  100.0%      Builtin: GeneratorPrototypeNext
+   4026   42.0%    /var/agent-loop/repo/target/release/deno
+   3342   83.0%      Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+   3342  100.0%        Builtin: GeneratorPrototypeNext
+    371    9.2%      JS: *entries ext:deno_webidl/00_webidl.js:1275:19
+    371  100.0%        Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+    371  100.0%          Builtin: GeneratorPrototypeNext
+    265    6.6%      JS: *<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+    265  100.0%        Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+    265  100.0%          Builtin: GeneratorPrototypeNext
+   6097   17.6%  UNKNOWN
+   5345   87.7%    Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+   5345  100.0%      Builtin: GeneratorPrototypeNext
+    702   11.5%    JS: *<anonymous> ext:deno_webidl/00_webidl.js:932:19
+    695   99.0%      Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+    695  100.0%        Builtin: GeneratorPrototypeNext
+   3068    8.9%  Builtin: StringToLowerCaseIntl
+   3059   99.7%    Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+   3059  100.0%      Builtin: GeneratorPrototypeNext
+   3047    8.8%  Builtin: ArrayTimSort
+   2963   97.2%    Builtin: ArrayPrototypeSort
+   2958   99.8%      Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+   2958  100.0%        Builtin: GeneratorPrototypeNext
+     84    2.8%    Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+     84  100.0%      Builtin: GeneratorPrototypeNext
+   1913    5.5%  JS: *<anonymous> ext:deno_fetch/20_headers.js:272:7
+   1896   99.1%    Builtin: ArrayPrototypeSort
+   1893   99.8%      Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+   1893  100.0%        Builtin: GeneratorPrototypeNext
+   1808    5.2%  Builtin: StringLessThan
+   1808  100.0%    Builtin: ArrayPrototypeSort
+   1805   99.8%      Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+   1805  100.0%        Builtin: GeneratorPrototypeNext
+   1581    4.6%  Builtin: KeyedStoreIC_Megamorphic
+   1437   90.9%    Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+   1437  100.0%      Builtin: GeneratorPrototypeNext
+    141    8.9%    JS: *<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+    141  100.0%      Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+    141  100.0%        Builtin: GeneratorPrototypeNext
+   1356    3.9%  Builtin: KeyedLoadIC_Megamorphic
+   1350   99.6%    Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+   1350  100.0%      Builtin: GeneratorPrototypeNext
+    962    2.8%  JS: *<anonymous> ext:deno_webidl/00_webidl.js:1101:10
+    962  100.0%    Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+    962  100.0%      Builtin: GeneratorPrototypeNext
+    607    1.8%  Builtin: CallFunction_ReceiverIsNullOrUndefined
+    533   87.8%    Builtin: ArrayPrototypeSort
+    532   99.8%      Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+    532  100.0%        Builtin: GeneratorPrototypeNext
+     71   11.7%    Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+     71  100.0%      Builtin: GeneratorPrototypeNext
+    452    1.3%  Builtin: SortCompareUserFn
+    451   99.8%    Builtin: ArrayPrototypeSort
+    449   99.6%      Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+    449  100.0%        Builtin: GeneratorPrototypeNext
+    434    1.3%  JS: *<anonymous> ext:deno_webidl/00_webidl.js:932:19
+    430   99.1%    Script: ~<anonymous> file:///var/agent-loop/repo/tools/perf_research/fetch/micro/headers_micro.js:1:1
+    430  100.0%      Builtin: GeneratorPrototypeNext
