@@ -387,16 +387,19 @@ impl<'s, C> LocalNewScope<'s> for crate::scope::CallbackScope<'s, C> {
   }
 }
 
-// Generic Local::<T>::new(scope, handle) — `scope` accepts
-// HandleScope by value (the macro binding) plus the usual reference
-// shapes via the LocalNewScope trait.
+// Generic Local::<T>::new(scope, handle). Takes scope as &mut S so
+// callsites passing a `&mut PinScope` (or similar) auto-reborrow
+// instead of moving the outer ref. The trait is impl'd on bare types
+// (PinScope, HandleScope, TryCatch, CallbackScope) — Rust unifies
+// the &mut S parameter with the caller's reference type.
 impl<'s, T> Local<'s, T> {
-  pub fn new<S, H>(mut scope: S, handle: H) -> Local<'s, T>
+  pub fn new<S, H>(scope: &mut S, handle: H) -> Local<'s, T>
   where
     S: LocalNewScope<'s>,
     H: ToLocal<'s, T>,
   {
-    handle.to_local(scope.as_mut_handle_scope())
+    let hs = scope.as_mut_handle_scope();
+    handle.to_local(hs)
   }
 }
 
