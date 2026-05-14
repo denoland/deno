@@ -1427,9 +1427,17 @@ fn op_spawn_sync(
   // When timeout or maxBuffer is specified on Unix, create a new process
   // group so we can kill the entire tree (shell + children), not just the
   // shell. Otherwise a shell-wrapped child that exceeds the limit would
-  // outlive the kill signal.
+  // outlive the kill signal. maxBuffer only matters when at least one of
+  // stdout/stderr is piped — without a pipe there's nothing to overflow,
+  // and Node.js's spawnSync default `maxBuffer` (1 MiB) means we'd otherwise
+  // move every spawnSync child into its own process group. That breaks TTY
+  // operations like `setRawMode` from inherited stdio (the kernel raises
+  // SIGTTOU on a background-group `tcsetattr`, stopping the child and
+  // hanging the parent).
   #[cfg(unix)]
-  if timeout.is_some_and(|t| t > 0) || max_buffer.is_some() {
+  if timeout.is_some_and(|t| t > 0)
+    || (max_buffer.is_some() && (stdout || stderr))
+  {
     command.process_group(0);
   }
 
