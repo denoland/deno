@@ -86,7 +86,7 @@ impl Drop for HandleScopeInner {
 #[repr(transparent)]
 pub struct HandleScope<'s, C = Context> {
   pub(crate) inner: HandleScopeInner,
-  _phantom: PhantomData<(*const &'s (), C)>,
+  pub(crate) _phantom: PhantomData<(*const &'s (), C)>,
 }
 // We don't impl Deref for HandleScope (Deref<Target=Isolate> exists
 // elsewhere). Instead we expose the same fields directly via inherent

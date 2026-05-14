@@ -647,25 +647,150 @@ impl<'s, C> LocalNewScope<'s> for &HandleScope<'s, C> {
   }
 }
 
+/// Like `LocalNewScope<'s>` but for shared `&S` callers — `Local::new`
+/// in real v8 takes `&PinScope`, so we accept the same shape.
+pub trait LocalNewScopeRef<'s> {
+  fn as_mut_handle_scope_ref(&self) -> &mut HandleScope<'s>;
+}
+impl<'s, S: LocalNewScopeRef<'s> + ?Sized> LocalNewScopeRef<'s> for &mut S {
+  fn as_mut_handle_scope_ref(&self) -> &mut HandleScope<'s> {
+    (**self).as_mut_handle_scope_ref()
+  }
+}
+impl<'s, S: LocalNewScopeRef<'s> + ?Sized> LocalNewScopeRef<'s> for &S {
+  fn as_mut_handle_scope_ref(&self) -> &mut HandleScope<'s> {
+    (**self).as_mut_handle_scope_ref()
+  }
+}
+impl<'s, C> LocalNewScopeRef<'s> for HandleScope<'s, C> {
+  fn as_mut_handle_scope_ref(&self) -> &mut HandleScope<'s> {
+    let ptr: *const HandleScope<'s, C> = self;
+    let mut_ptr: *mut HandleScope<'s> =
+      unsafe { core::mem::transmute_copy(&ptr) };
+    unsafe { &mut *mut_ptr }
+  }
+}
+impl<'s, 'i, C> LocalNewScopeRef<'s> for crate::scope::PinScope<'s, 'i, C> {
+  fn as_mut_handle_scope_ref(&self) -> &mut HandleScope<'s> {
+    let ptr: *const HandleScope<'s, C> = &self.0;
+    let mut_ptr: *mut HandleScope<'s> =
+      unsafe { core::mem::transmute_copy(&ptr) };
+    unsafe { &mut *mut_ptr }
+  }
+}
+impl<'s, 'p, C> LocalNewScopeRef<'s>
+  for crate::exception::TryCatch<'p, HandleScope<'s, C>>
+where
+  'p: 's,
+{
+  fn as_mut_handle_scope_ref(&self) -> &mut HandleScope<'s> {
+    use std::ops::Deref;
+    let pin = self.deref();
+    let ptr: *const crate::scope::PinScope<'s, 'p, C> = pin;
+    let mut_ptr: *mut HandleScope<'s> =
+      unsafe { core::mem::transmute_copy(&ptr) };
+    unsafe { &mut *mut_ptr }
+  }
+}
+impl<'s, C> LocalNewScopeRef<'s> for crate::scope::CallbackScope<'s, C> {
+  fn as_mut_handle_scope_ref(&self) -> &mut HandleScope<'s> {
+    let ptr: *const HandleScope<'s, C> = &self.0;
+    let mut_ptr: *mut HandleScope<'s> =
+      unsafe { core::mem::transmute_copy(&ptr) };
+    unsafe { &mut *mut_ptr }
+  }
+}
+impl<'s, 'a, C> LocalNewScopeRef<'s>
+  for crate::context::ContextScope<'a, HandleScope<'s, C>>
+{
+  fn as_mut_handle_scope_ref(&self) -> &mut HandleScope<'s> {
+    use std::ops::Deref;
+    let pin: &crate::scope::PinScope<'s, 's, C> = self.deref();
+    pin.as_mut_handle_scope_ref()
+  }
+}
+impl<'s, 'i, 'a, C> LocalNewScopeRef<'s>
+  for crate::context::ContextScope<'a, crate::scope::PinScope<'s, 'i, C>>
+{
+  fn as_mut_handle_scope_ref(&self) -> &mut HandleScope<'s> {
+    // ContextScope.parent is &mut PinScope<'s, 'i, C>; reach in via
+    // raw-pointer cast to avoid the &mut requirement on self.
+    let ptr: *const crate::context::ContextScope<'a, crate::scope::PinScope<'s, 'i, C>> = self;
+    let mut_ptr: *mut HandleScope<'s> =
+      unsafe { core::mem::transmute_copy(&ptr) };
+    unsafe { &mut *mut_ptr }
+  }
+}
+impl<'s, P> LocalNewScopeRef<'s> for std::pin::Pin<&mut P>
+where
+  P: LocalNewScopeRef<'s>,
+{
+  fn as_mut_handle_scope_ref(&self) -> &mut HandleScope<'s> {
+    P::as_mut_handle_scope_ref(self)
+  }
+}
+impl<'s, 'e, C> LocalNewScopeRef<'s>
+  for crate::scope::EscapableHandleScope<'s, 'e, C>
+where
+  'e: 's,
+{
+  fn as_mut_handle_scope_ref(&self) -> &mut HandleScope<'s> {
+    use std::ops::Deref;
+    let hs: &HandleScope<'s, C> = self.deref();
+    let ptr: *const HandleScope<'s, C> = hs;
+    let mut_ptr: *mut HandleScope<'s> =
+      unsafe { core::mem::transmute_copy(&ptr) };
+    unsafe { &mut *mut_ptr }
+  }
+}
+impl<'s> LocalNewScopeRef<'s> for crate::isolate::Isolate {
+  fn as_mut_handle_scope_ref(&self) -> &mut HandleScope<'s> {
+    // Synthesize an ephemeral HandleScope handle pointing at the
+    // isolate's default context. We Box::leak it so the returned
+    // reference is valid (caller never frees). For a stub use case
+    // this is acceptable.
+    let ptr = self as *const _ as *mut crate::isolate::Isolate;
+    let ctx = unsafe {
+      use crate::scope::HandleScopeSource;
+      (*ptr).default_ctx()
+    };
+    let hs = Box::new(HandleScope {
+      inner: crate::scope::HandleScopeInner {
+        isolate: ptr,
+        ctx,
+        owned: Vec::new(),
+        parent_owned: None,
+        depth: 0,
+      },
+      _phantom: std::marker::PhantomData,
+    });
+    Box::leak(hs)
+  }
+}
+
 // Generic Local::<T>::new(scope, handle). Takes scope as &mut S so
 // callsites passing a `&mut PinScope` (or similar) auto-reborrow
 // instead of moving the outer ref. The trait is impl'd on bare types
 // (PinScope, HandleScope, TryCatch, CallbackScope) — Rust unifies
 // the &mut S parameter with the caller's reference type.
 impl<'s, T> Local<'s, T> {
-  pub fn new<S, H>(scope: &mut S, handle: H) -> Local<'s, T>
+  pub fn new<S, H>(scope: &S, handle: H) -> Local<'s, T>
   where
-    S: LocalNewScope<'s>,
+    S: LocalNewScopeRef<'s> + ?Sized,
     H: ToLocal<'s, T>,
   {
     // Take a raw pointer to the scope, then reconstruct a fresh
     // `&mut S` with an unbounded lifetime. This bypasses Rust's
     // invariance on `&mut PinScope<'s, 'i>` so the returned
     // Local<'s, T> can have the scope's inner 's lifetime, not the
-    // call site's borrow lifetime.
-    let scope_ptr: *mut S = scope as *mut S;
+    // call site's borrow lifetime. Real v8's Local::new takes &Scope
+    // (shared), so we accept &S and cast internally — the underlying
+    // operation (handle.to_local) only writes to the scope's owned
+    // vec which is contention-free at QuickJS's single-threaded
+    // execution model.
+    let scope_ptr: *mut S = (scope as *const S) as *mut S;
     let local = {
-      let hs = unsafe { (*scope_ptr).as_mut_handle_scope() };
+      let hs = unsafe { (*scope_ptr).as_mut_handle_scope_ref() };
       handle.to_local(hs)
     };
     // SAFETY: widen Local's lifetime from the inner borrow to 's.
@@ -1305,6 +1430,74 @@ impl<T> TracedReference<T> {
 /// `&PinScope`, `&mut PinScope`, `&mut Isolate`, `&&mut Isolate`,
 /// `Pin<&mut ...>`, etc. Real rusty_v8 requires `&PinScope<'s,'i,()>`;
 /// we accept the broader set so legacy callers still compile.
+/// Real catch-all trait: takes `self` so any reference flavor can be
+/// passed (mutable, shared, double-ref &&mut). Each impl below picks
+/// its own access path. This is the trait Global::new actually uses.
+pub trait GlobalNewScopeAny {
+  fn scope_ctx_any(self) -> sys::Context;
+}
+impl<'a, 's, C> GlobalNewScopeAny for &'a mut HandleScope<'s, C> {
+  fn scope_ctx_any(self) -> sys::Context { HandleScope::ctx(self) }
+}
+impl<'a, 's, C> GlobalNewScopeAny for &'a HandleScope<'s, C> {
+  fn scope_ctx_any(self) -> sys::Context { HandleScope::ctx(self) }
+}
+impl<'a, 's, 'i, C> GlobalNewScopeAny for &'a mut crate::scope::PinScope<'s, 'i, C> {
+  fn scope_ctx_any(self) -> sys::Context { HandleScope::ctx(&**self) }
+}
+impl<'a, 's, 'i, C> GlobalNewScopeAny for &'a crate::scope::PinScope<'s, 'i, C> {
+  fn scope_ctx_any(self) -> sys::Context { HandleScope::ctx(&**self) }
+}
+impl<'a> GlobalNewScopeAny for &'a mut crate::isolate::Isolate {
+  fn scope_ctx_any(self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    self.default_ctx()
+  }
+}
+impl<'a, 'b> GlobalNewScopeAny for &'a &'b mut crate::isolate::Isolate {
+  fn scope_ctx_any(self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    let r: &mut crate::isolate::Isolate = unsafe {
+      &mut *(*self as *const _ as *mut crate::isolate::Isolate)
+    };
+    r.default_ctx()
+  }
+}
+impl<'a> GlobalNewScopeAny for &'a mut crate::isolate::OwnedIsolate {
+  fn scope_ctx_any(self) -> sys::Context { self.default_ctx() }
+}
+impl<'a, 'p, C> GlobalNewScopeAny
+  for &'a mut crate::exception::TryCatch<'p, HandleScope<'p, C>>
+{
+  fn scope_ctx_any(self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    self.default_ctx()
+  }
+}
+impl<'a, 's, C> GlobalNewScopeAny for &'a mut crate::scope::CallbackScope<'s, C> {
+  fn scope_ctx_any(self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    self.default_ctx()
+  }
+}
+impl<'a, 'p, S> GlobalNewScopeAny for &'a mut crate::context::ContextScope<'p, S>
+where
+  crate::context::ContextScope<'p, S>: crate::scope::HandleScopeSource,
+{
+  fn scope_ctx_any(self) -> sys::Context {
+    use crate::scope::HandleScopeSource;
+    self.default_ctx()
+  }
+}
+impl<'a, P> GlobalNewScopeAny for std::pin::Pin<&'a mut P>
+where
+  P: GlobalNewScopePinned,
+{
+  fn scope_ctx_any(mut self) -> sys::Context {
+    unsafe { self.as_mut().get_unchecked_mut().ctx_pinned() }
+  }
+}
+
 /// Universal trait for "anything Global::new accepts as scope". Takes
 /// `self` (typically a &mut or &) so the impl can choose to reborrow
 /// internally without consuming the underlying scope value.
@@ -1592,11 +1785,28 @@ impl<T> Clone for Global<T> {
 }
 
 impl<T> Global<T> {
-  pub fn new<'lo, S: GlobalNewScopeRefByMut + ?Sized>(
-    scope: &mut S,
-    local: Local<'lo, T>,
-  ) -> Self {
+  /// `Global::new(scope, local)` — accepts any scope reference shape:
+  /// HandleScope, PinScope, TryCatch, CallbackScope, ContextScope,
+  /// Pin<&mut ...>, &Isolate, &mut Isolate, &&mut Isolate. Reborrows
+  /// internally so the caller's scope binding stays usable.
+  pub fn new<'lo, S>(scope: &mut S, local: Local<'lo, T>) -> Self
+  where
+    S: GlobalNewScopeRefByMut + ?Sized,
+  {
     let ctx = scope.scope_ctx_by_mut();
+    sys::dup_value(ctx, local.raw);
+    Self {
+      raw: local.raw,
+      ctx: Some(ctx),
+      _t: PhantomData,
+    }
+  }
+  /// Variant for shared `&Scope` callers — real v8 takes `&PinScope`.
+  pub fn new_ref<'lo, S>(scope: &S, local: Local<'lo, T>) -> Self
+  where
+    S: GlobalNewScopeRefByShared + ?Sized,
+  {
+    let ctx = scope.scope_ctx_by_shared();
     sys::dup_value(ctx, local.raw);
     Self {
       raw: local.raw,

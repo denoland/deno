@@ -22,9 +22,10 @@ impl Object {
   ) -> Option<crate::v8::cppgc::UnsafePtr<T>> {
     None
   }
-  pub fn new<'s>(scope: &mut HandleScope<'s>) -> Local<'s, Object> {
-    let raw = sys::new_object(scope.ctx());
-    scope.track_owned(raw);
+  pub fn new<'s, S: crate::value::LocalNewScopeRef<'s>>(scope: &S) -> Local<'s, Object> {
+    let hs = scope.as_mut_handle_scope_ref();
+    let raw = sys::new_object(hs.ctx());
+    hs.track_owned(raw);
     Local::from_raw(raw)
   }
   /// Mirror of `v8::Object::with_prototype_and_properties` — the

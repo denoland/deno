@@ -137,10 +137,11 @@ impl BackingStore {
 }
 
 impl ArrayBuffer {
-  pub fn new<'s>(
-    scope: &mut HandleScope<'s>,
+  pub fn new<'s, S: crate::value::LocalNewScopeRef<'s>>(
+    scope: &S,
     byte_length: usize,
   ) -> Local<'s, ArrayBuffer> {
+    let scope = scope.as_mut_handle_scope_ref();
     // QJS-DIVERGE: real impl routes through JS_NewArrayBuffer; mock allocates
     // an object placeholder.
     let _ = byte_length;
@@ -268,12 +269,13 @@ impl<'s> Local<'s, SharedArrayBuffer> {
 }
 
 impl Uint8Array {
-  pub fn new<'s, 'b>(
-    scope: &mut HandleScope<'s>,
+  pub fn new<'s, 'b, S: crate::value::LocalNewScopeRef<'s>>(
+    scope: &S,
     _buffer: Local<'b, ArrayBuffer>,
     _offset: usize,
     _length: usize,
   ) -> Option<Local<'s, Uint8Array>> {
+    let scope = scope.as_mut_handle_scope_ref();
     let raw = sys::new_object(scope.ctx());
     scope.track_owned(raw);
     Some(Local::from_raw(raw))

@@ -33,10 +33,11 @@ pub enum NewStringType {
 // `Local::<T>::new(scope, &Global<T>)` impl in value.rs would otherwise
 // duplicate-define `Local<'s, String>::new`.
 impl String {
-  pub fn new<'s>(
-    scope: &mut HandleScope<'s>,
+  pub fn new<'s, S: crate::value::LocalNewScopeRef<'s>>(
+    scope: &S,
     s: &str,
   ) -> Option<Local<'s, String>> {
+    let scope = scope.as_mut_handle_scope_ref();
     let raw = sys::new_string(scope.ctx(), s);
     if sys::jsv_is_exception(&raw) {
       return None;
@@ -44,11 +45,12 @@ impl String {
     scope.track_owned(raw);
     Some(Local::from_raw(raw))
   }
-  pub fn new_from_utf8<'s>(
-    scope: &mut HandleScope<'s>,
+  pub fn new_from_utf8<'s, S: crate::value::LocalNewScopeRef<'s>>(
+    scope: &S,
     bytes: &[u8],
     ty: NewStringType,
   ) -> Option<Local<'s, String>> {
+    let scope = scope.as_mut_handle_scope_ref();
     let _ = ty;
     std::str::from_utf8(bytes)
       .ok()
@@ -282,11 +284,11 @@ impl AsRef<[u8]> for OneByteConst {
 // generic `Local::<T>::new(scope, &Global<T>)` impl in value.rs.
 
 impl Integer {
-  pub fn new<'s>(_scope: &mut HandleScope<'s>, v: i32) -> Local<'s, Integer> {
+  pub fn new<'s, S: crate::value::LocalNewScopeRef<'s>>(_scope: &S, v: i32) -> Local<'s, Integer> {
     Local::from_raw(sys::jsv_int32(v))
   }
-  pub fn new_from_unsigned<'s>(
-    _scope: &mut HandleScope<'s>,
+  pub fn new_from_unsigned<'s, S: crate::value::LocalNewScopeRef<'s>>(
+    _scope: &S,
     v: u32,
   ) -> Local<'s, Integer> {
     if v <= i32::MAX as u32 {
