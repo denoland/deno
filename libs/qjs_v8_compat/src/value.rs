@@ -120,6 +120,101 @@ upcast_to!(Primitive => Value);
 upcast_to!(Name => Value);
 upcast_to!(Name => Primitive);
 
+// Mirror of rusty_v8's `From<Local<X>> for Local<Y>` upcasts. The full
+// v8 type lattice is large; we generate the most common conversions
+// deno_core relies on. The downcasts go through `cast`/`try_cast`.
+//
+// Every entry here is a type-only conversion (no runtime check) — the
+// JSValue tag is preserved.
+macro_rules! upcasts_to_value {
+  ($($name:ty),* $(,)?) => { $(
+    impl<'s> From<Local<'s, $name>> for Local<'s, Value> {
+      fn from(v: Local<'s, $name>) -> Local<'s, Value> {
+        Local::from_raw(v.raw)
+      }
+    }
+    impl<'s> TryFrom<Local<'s, Value>> for Local<'s, $name> {
+      type Error = std::convert::Infallible;
+      fn try_from(v: Local<'s, Value>) -> Result<Local<'s, $name>, Self::Error> {
+        Ok(Local::from_raw(v.raw))
+      }
+    }
+  )* }
+}
+
+upcasts_to_value!(
+  crate::primitives::String,
+  crate::primitives::Integer,
+  crate::primitives::Number,
+  crate::primitives::Boolean,
+  crate::primitives::BigInt,
+  crate::primitives::Symbol,
+  crate::primitives::PrimitiveArray,
+  crate::object::Object,
+  crate::object::Array,
+  crate::object::Map,
+  crate::object::Proxy,
+  crate::function::Function,
+  crate::buffer::ArrayBuffer,
+  crate::buffer::ArrayBufferView,
+  crate::buffer::SharedArrayBuffer,
+  crate::buffer::Uint8Array,
+  crate::external::External,
+  crate::module::Module,
+  crate::script::Script,
+  crate::promise::Promise,
+  crate::promise::PromiseResolver,
+  crate::template::FunctionTemplate,
+  crate::template::ObjectTemplate,
+);
+
+// Common From<String> -> Name etc.
+impl<'s> From<Local<'s, crate::primitives::String>> for Local<'s, Name> {
+  fn from(v: Local<'s, crate::primitives::String>) -> Local<'s, Name> {
+    Local::from_raw(v.raw)
+  }
+}
+impl<'s> From<Local<'s, crate::primitives::Symbol>> for Local<'s, Name> {
+  fn from(v: Local<'s, crate::primitives::Symbol>) -> Local<'s, Name> {
+    Local::from_raw(v.raw)
+  }
+}
+
+// `Data` is the root of v8's data hierarchy (above Value). It's already
+// declared via the value_type! macro at the top of this file; just wire
+// up the upcast.
+upcast_to!(Value => Data);
+
+// Convenience: TryFrom<Local<Data>> for the common derived types.
+macro_rules! tryfrom_data {
+  ($($name:ty),* $(,)?) => { $(
+    impl<'s> TryFrom<Local<'s, Data>> for Local<'s, $name> {
+      type Error = std::convert::Infallible;
+      fn try_from(v: Local<'s, Data>) -> Result<Local<'s, $name>, Self::Error> {
+        Ok(Local::from_raw(v.raw))
+      }
+    }
+  )* }
+}
+tryfrom_data!(
+  Value,
+  crate::template::FunctionTemplate,
+  crate::template::ObjectTemplate,
+  crate::module::Module,
+  crate::primitives::String,
+);
+
+// Uint8Array is a subclass of ArrayBufferView in V8.
+impl<'s> From<Local<'s, crate::buffer::Uint8Array>>
+  for Local<'s, crate::buffer::ArrayBufferView>
+{
+  fn from(
+    v: Local<'s, crate::buffer::Uint8Array>,
+  ) -> Local<'s, crate::buffer::ArrayBufferView> {
+    Local::from_raw(v.raw)
+  }
+}
+
 /// Type discrimination — every concrete JS type implements this.
 pub trait ValueType {
   fn is(raw: &sys::JSValue) -> bool;
