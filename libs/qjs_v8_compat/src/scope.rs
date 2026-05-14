@@ -589,6 +589,20 @@ impl<'s, 'i, C> std::ops::DerefMut for PinScope<'s, 'i, C> {
 /// expects to pass around.
 pub type PinCallbackScope<'s, 'i> = core::pin::Pin<&'i mut CallbackScope<'s>>;
 
+// ContextScope already lives in `crate::context`; add the
+// LocalNewScope impl here so the trait reaches it.
+impl<'a, 's, C> crate::value::LocalNewScope<'s>
+  for crate::context::ContextScope<'a, HandleScope<'s, C>>
+where
+  HandleScope<'s, C>: crate::value::LocalNewScope<'s>,
+{
+  fn as_mut_handle_scope(&mut self) -> &mut HandleScope<'s> {
+    use std::ops::DerefMut;
+    let hs: &mut HandleScope<'s, C> = self.deref_mut();
+    unsafe { &mut *(hs as *mut HandleScope<'s, C> as *mut HandleScope<'s>) }
+  }
+}
+
 // v8::scope free fn — used by deno_core's scope macro.
 pub fn scope<'s, 'r>(iso: &'r mut OwnedIsolate) -> HandleScope<'s, Context>
 where
