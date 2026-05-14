@@ -75,6 +75,15 @@ impl HandleScopeSource for OwnedIsolate {
   }
 }
 
+impl HandleScopeSource for Isolate {
+  fn default_ctx(&mut self) -> sys::Context {
+    Isolate::default_ctx(self)
+  }
+  fn isolate_ptr(&mut self) -> *mut Isolate {
+    self as *mut Isolate
+  }
+}
+
 impl<'s, C> HandleScopeSource for HandleScope<'s, C> {
   fn default_ctx(&mut self) -> sys::Context {
     self.ctx

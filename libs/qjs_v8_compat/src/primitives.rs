@@ -85,9 +85,15 @@ impl String {
 
 impl<'s> Local<'s, String> {
   pub fn length(&self) -> usize {
-    // Returning byte length of the UTF-8 form is an approximation; V8 uses
-    // UTF-16 code units. Refined later.
     0
+  }
+  pub fn to_rust_cow_lossy<'sc, 'b>(
+    &self,
+    scope: &mut HandleScope<'sc>,
+    _buf: &'b mut [std::mem::MaybeUninit<u8>],
+  ) -> std::borrow::Cow<'b, str> {
+    let s = sys::to_string_lossy(scope.ctx(), self.raw).unwrap_or_default();
+    std::borrow::Cow::Owned(s)
   }
   pub fn utf8_length<'sc>(&self, _scope: &mut HandleScope<'sc>) -> usize {
     0
@@ -201,6 +207,13 @@ impl BigInt {
     v: u64,
   ) -> Local<'s, BigInt> {
     Self::new_from_i64(scope, v as i64)
+  }
+  /// Mirror of `BigInt::u64_value` on the marker type. Stub.
+  pub fn u64_value(&self) -> (u64, bool) {
+    (0, false)
+  }
+  pub fn i64_value(&self) -> (i64, bool) {
+    (0, false)
   }
   pub fn new_from_i64<'s>(
     scope: &mut HandleScope<'s>,

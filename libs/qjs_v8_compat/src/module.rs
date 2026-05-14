@@ -27,6 +27,16 @@ pub enum ModuleImportPhase {
   Evaluation,
   Source,
 }
+impl ModuleImportPhase {
+  // rusty_v8 spelling of the variants — provide as associated consts
+  // so deno_core's `v8::ModuleImportPhase::kEvaluation` resolves.
+  #[allow(non_upper_case_globals)]
+  pub const kEvaluation: Self = Self::Evaluation;
+  #[allow(non_upper_case_globals)]
+  pub const kDefer: Self = Self::Source;
+  #[allow(non_upper_case_globals)]
+  pub const kSource: Self = Self::Source;
+}
 
 impl<'s> Local<'s, Module> {
   pub fn get_status(&self) -> ModuleStatus {

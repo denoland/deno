@@ -596,6 +596,9 @@ pub mod v8 {
       ) -> Self {
         Self
       }
+      pub fn get_cached_data(&self) -> Option<&CachedData> {
+        None
+      }
     }
     impl CachedData {
       pub fn new(_data: &[u8]) -> Self {
