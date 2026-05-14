@@ -2631,7 +2631,7 @@ fn find_and_report_stalled_level_await_in_any_realm(
 }
 
 fn create_context<'s, 'i>(
-  scope: &mut v8::PinScope<'s, 'i, ()>,
+  scope: &mut v8::PinScope<'s, 'i>,
   global_template_middlewares: &[GlobalTemplateMiddlewareFn],
   global_object_middlewares: &[GlobalObjectMiddlewareFn],
   has_snapshot: bool,
@@ -2816,7 +2816,7 @@ pub(crate) struct EventLoopPendingState {
 impl EventLoopPendingState {
   /// Collect event loop state from all the sub-states.
   pub fn new(
-    scope: &mut v8::PinScope<()>,
+    scope: &mut v8::PinScope,
     state: &ContextState,
     modules: &ModuleMap,
   ) -> Self {

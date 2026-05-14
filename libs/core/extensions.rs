@@ -194,7 +194,7 @@ pub trait Op {
 }
 pub type GlobalTemplateMiddlewareFn =
   for<'s, 'i> fn(
-    &mut v8::PinScope<'s, 'i, ()>,
+    &mut v8::PinScope<'s, 'i>,
     v8::Local<'s, v8::ObjectTemplate>,
   ) -> v8::Local<'s, v8::ObjectTemplate>;
 pub type GlobalObjectMiddlewareFn =

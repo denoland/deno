@@ -331,7 +331,7 @@ impl<'snapshot> SerializableSnapshotSidecarData<'snapshot> {
 /// Given the sidecar data and a scope to extract data from, reconstructs the
 /// `SnapshottedData` and `SnapshotLoadDataStore`.
 pub(crate) fn load_snapshotted_data_from_snapshot<'snapshot>(
-  scope: &mut v8::PinScope<()>,
+  scope: &mut v8::PinScope,
   context: v8::Local<v8::Context>,
   raw_data: SerializableSnapshotSidecarData<'snapshot>,
 ) -> (SnapshottedData<'snapshot>, SnapshotLoadDataStore) {
