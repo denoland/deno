@@ -2420,9 +2420,12 @@ impl ModuleMap {
       v8::ModuleStatus::Instantiated | v8::ModuleStatus::Evaluated
     ));
 
-    let module_namespace: v8::Local<v8::Object> = module.get_module_namespace();
+    // Module is Instantiated/Evaluated (asserted above), so the namespace
+    // is always an Object — engine-portable downcast via `cast`.
+    let module_namespace: v8::Local<v8::Object> =
+      module.get_module_namespace().cast();
 
-    Ok(v8::Global::new(scope, module_namespace.into()))
+    Ok(v8::Global::new(scope, module_namespace))
   }
 
   fn get_stalled_top_level_await_message_for_module(
@@ -2547,7 +2550,7 @@ impl ModuleMap {
 
     let mod_ns = module_local.get_module_namespace();
 
-    Ok(v8::Global::new(scope, mod_ns.into()))
+    Ok(v8::Global::new(scope, mod_ns))
   }
 
   /// Check if a lazy-loaded ESM module is known to exist for the given
@@ -2587,6 +2590,7 @@ impl ModuleMap {
     // qjs_v8_compat shim path: register the source by name so QuickJS's
     // module loader can resolve `import x from "<specifier>"` mid-eval.
     // No-op for the real V8 build.
+    #[cfg(feature = "quickjs")]
     v8::module::register_lazy_module_source(specifier.as_str(), code.as_str());
     let data = self.data.borrow_mut();
     data
@@ -2686,8 +2690,13 @@ impl ModuleMap {
         // state. Skip the re-eval; namespace bindings remain in TDZ if
         // accessed before the body finishes, which matches V8 semantics
         // for cyclic imports.
+        #[cfg(feature = "quickjs")]
+        let bytecode_consumed =
+          v8::module::esm_bytecode_consumed_for(handle_local);
+        #[cfg(not(feature = "quickjs"))]
+        let bytecode_consumed = false;
         if handle_local.get_status() == v8::ModuleStatus::Instantiated
-          && !v8::module::esm_bytecode_consumed_for(handle_local)
+          && !bytecode_consumed
         {
           let value = handle_local.evaluate(scope).unwrap();
           if !self.evaluating_top_level.get() {
@@ -2703,7 +2712,7 @@ impl ModuleMap {
           }
         }
         let module =
-          v8::Global::new(scope, handle_local.get_module_namespace().into());
+          v8::Global::new(scope, handle_local.get_module_namespace());
         return Ok(module);
       }
     }

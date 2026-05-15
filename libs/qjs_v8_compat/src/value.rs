@@ -1631,6 +1631,28 @@ impl<'a, S: GlobalNewScopeRefByShared + ?Sized> GlobalNewScopeRef for &'a S {
 pub trait GlobalScope {
   fn scope_ctx_shared(&self) -> sys::Context;
 }
+
+/// Mirror of rusty_v8's `Handle` trait — accepted by `Global::new` so
+/// callers can pass either `Local<T>` or another `Global<T>` and get
+/// back a fresh `Global<T>` with its own refcount.
+pub trait GlobalNewHandle<T> {
+  fn into_raw_jsvalue(self) -> sys::JSValue;
+}
+impl<'s, T> GlobalNewHandle<T> for Local<'s, T> {
+  fn into_raw_jsvalue(self) -> sys::JSValue {
+    self.raw
+  }
+}
+impl<T> GlobalNewHandle<T> for Global<T> {
+  fn into_raw_jsvalue(self) -> sys::JSValue {
+    self.raw
+  }
+}
+impl<'a, T> GlobalNewHandle<T> for &'a Global<T> {
+  fn into_raw_jsvalue(self) -> sys::JSValue {
+    self.raw
+  }
+}
 impl<'s, C> GlobalScope for HandleScope<'s, C> {
   fn scope_ctx_shared(&self) -> sys::Context { HandleScope::ctx(self) }
 }
@@ -1963,20 +1985,23 @@ impl<T> Clone for Global<T> {
 }
 
 impl<T> Global<T> {
-  /// `Global::new(scope, local)` — mirrors real v8's
-  /// `Global::new(&Isolate, handle)` shape but accepts any scope-like
+  /// `Global::new(scope, handle)` — mirrors real v8's
+  /// `Global::new(&Isolate, handle)` shape. Accepts any scope-like
   /// type via `GlobalScope`. Takes a *shared* borrow so callers passing
   /// `&mut Foo` (Rust auto-reborrows to `&Foo`) keep their mutable
-  /// binding usable across the call. Also accepts `&Isolate`,
-  /// `&&mut Isolate`, `&PinScope`, `&HandleScope`, etc.
-  pub fn new<'lo, S>(scope: &S, local: Local<'lo, T>) -> Self
+  /// binding usable across the call. The `handle` may be a
+  /// `Local<T>` or another `Global<T>`, mirroring rusty_v8's `Handle`
+  /// convention.
+  pub fn new<S, H>(scope: &S, handle: H) -> Self
   where
     S: GlobalScope + ?Sized,
+    H: GlobalNewHandle<T>,
   {
     let ctx = scope.scope_ctx_shared();
-    sys::dup_value(ctx, local.raw);
+    let raw = handle.into_raw_jsvalue();
+    sys::dup_value(ctx, raw);
     Self {
-      raw: local.raw,
+      raw,
       ctx: Some(ctx),
       _t: PhantomData,
     }

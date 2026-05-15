@@ -192,9 +192,16 @@ pub trait Op {
   const NAME: &'static str;
   const DECL: OpDecl;
 }
+#[cfg(feature = "quickjs")]
 pub type GlobalTemplateMiddlewareFn =
   for<'s, 'i> fn(
     &mut v8::PinScope<'s, 'i>,
+    v8::Local<'s, v8::ObjectTemplate>,
+  ) -> v8::Local<'s, v8::ObjectTemplate>;
+#[cfg(not(feature = "quickjs"))]
+pub type GlobalTemplateMiddlewareFn =
+  for<'s, 'i> fn(
+    &mut v8::PinScope<'s, 'i, ()>,
     v8::Local<'s, v8::ObjectTemplate>,
   ) -> v8::Local<'s, v8::ObjectTemplate>;
 pub type GlobalObjectMiddlewareFn =

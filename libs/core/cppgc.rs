@@ -41,8 +41,16 @@ pub(crate) fn cppgc_template_constructor(
 ) {
 }
 
+#[cfg(feature = "quickjs")]
 pub(crate) fn make_cppgc_template<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
+) -> v8::Local<'s, v8::FunctionTemplate> {
+  v8::FunctionTemplate::new(scope, cppgc_template_constructor)
+}
+
+#[cfg(not(feature = "quickjs"))]
+pub(crate) fn make_cppgc_template<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i, ()>,
 ) -> v8::Local<'s, v8::FunctionTemplate> {
   v8::FunctionTemplate::new(scope, cppgc_template_constructor)
 }
@@ -262,7 +270,7 @@ impl<T: GarbageCollected> std::ops::Deref for Member<T> {
   }
 }
 
-unsafe impl<T: GarbageCollected> v8::cppgc::Traced for Member<T> {
+impl<T: GarbageCollected> v8::cppgc::Traced for Member<T> {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     visitor.trace(&self.inner);
   }

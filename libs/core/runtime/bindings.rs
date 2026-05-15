@@ -537,7 +537,7 @@ fn op_ctx_template_or_accessor<'s, 'i>(
       let tmpl = v8::FunctionTemplate::builder_raw(getter_raw)
         .data(external.into())
         .build(scope);
-      let op_fn = tmpl.unwrap().get_function(scope).unwrap();
+      let op_fn = tmpl.get_function(scope).unwrap();
       let method_name = format!("get {}", op_ctx.decl.name_fast);
       let method_name = v8::String::new(scope, method_name.as_str()).unwrap();
       op_fn.set_name(method_name);
@@ -558,7 +558,7 @@ fn op_ctx_template_or_accessor<'s, 'i>(
         .data(external.into())
         .length(1)
         .build(scope);
-      let op_fn = tmpl.unwrap().get_function(scope).unwrap();
+      let op_fn = tmpl.get_function(scope).unwrap();
       let method_name = format!("set {}", op_ctx.decl.name_fast);
       let method_name = v8::String::new(scope, method_name.as_str()).unwrap();
       op_fn.set_name(method_name);
@@ -607,9 +607,9 @@ pub(crate) fn op_ctx_template<'s, 'i>(
       .length(op_ctx.decl.arg_count as i32);
 
   let template = if let Some(fast_function) = fast_fn {
-    builder.build_fast(scope, &[fast_function]).unwrap()
+    builder.build_fast(scope, &[fast_function])
   } else {
-    builder.build(scope).unwrap()
+    builder.build(scope)
   };
   template.set_class_name(op_ctx.decl.name_fast.v8_string(scope).unwrap());
 

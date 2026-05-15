@@ -1431,6 +1431,7 @@ impl JsRuntime {
       // JS_Eval(MODULE | COMPILE_ONLY) for an importer can recursively
       // resolve `import x from "<sibling-esm>"` via JS_SetModuleLoaderFunc.
       // No-op on real V8.
+      #[cfg(feature = "quickjs")]
       v8::module::register_lazy_module_source(
         &esm.specifier,
         AsRef::<str>::as_ref(&esm.code),
@@ -2642,8 +2643,13 @@ fn find_and_report_stalled_level_await_in_any_realm(
   None
 }
 
+#[cfg(feature = "quickjs")]
+type CreateContextScope<'s, 'i> = v8::PinScope<'s, 'i>;
+#[cfg(not(feature = "quickjs"))]
+type CreateContextScope<'s, 'i> = v8::PinScope<'s, 'i, ()>;
+
 fn create_context<'s, 'i>(
-  scope: &mut v8::PinScope<'s, 'i>,
+  scope: &mut CreateContextScope<'s, 'i>,
   global_template_middlewares: &[GlobalTemplateMiddlewareFn],
   global_object_middlewares: &[GlobalObjectMiddlewareFn],
   has_snapshot: bool,

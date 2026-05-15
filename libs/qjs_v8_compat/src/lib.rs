@@ -319,9 +319,9 @@ pub mod v8 {
       }
     }
 
-    /// Trait stub for `cppgc::Traced`. Mirror of rusty_v8 — marked
-    /// unsafe to match the upstream impl signature.
-    pub unsafe trait Traced {
+    /// Trait stub for `cppgc::Traced`. Mirror of rusty_v8 — note that
+    /// rusty_v8's `Traced` is a safe trait, so this matches.
+    pub trait Traced {
       fn trace(&self, _visitor: &mut Visitor) {}
     }
 
@@ -2110,10 +2110,14 @@ pub mod v8 {
     pub fn side_effect_type(self, _t: super::SideEffectType) -> Self {
       self
     }
-    pub fn build<'s, S: crate::scope::HandleScopeSource>(
+    /// Internal builder shared by the engine-shape-matching `build`
+    /// impls below. Returns the raw `Local<T>` — the public `build`
+    /// methods wrap this to match rusty_v8's per-T return shape
+    /// (`Local<FunctionTemplate>` direct vs `Option<Local<Function>>`).
+    fn build_inner<'s, S: crate::scope::HandleScopeSource>(
       self,
       scope: &mut S,
-    ) -> Option<super::Local<'s, T>> {
+    ) -> super::Local<'s, T> {
       let ctx = scope.default_ctx();
       // QuickJS-ng's JS_NewCFunction stores length in a smallish
       // bitfield (16 bits). Clamp.
@@ -2157,14 +2161,7 @@ pub mod v8 {
           )
         }
       };
-      Some(super::Local::from_raw(raw))
-    }
-    pub fn build_fast<'s, S: crate::scope::HandleScopeSource, F>(
-      self,
-      scope: &mut S,
-      _fast_function: F,
-    ) -> Option<super::Local<'s, T>> {
-      self.build(scope)
+      super::Local::from_raw(raw)
     }
     pub fn constructor_behavior(
       self,
@@ -2173,6 +2170,41 @@ pub mod v8 {
       self
     }
   }
+
+  // Per-T `build` shapes mirror rusty_v8: FunctionTemplate's builder
+  // returns `Local<FunctionTemplate>` directly, while Function's builder
+  // returns `Option<Local<Function>>` (Some on success).
+  impl FunctionBuilder<super::FunctionTemplate> {
+    pub fn build<'s, S: crate::scope::HandleScopeSource>(
+      self,
+      scope: &mut S,
+    ) -> super::Local<'s, super::FunctionTemplate> {
+      self.build_inner(scope)
+    }
+    pub fn build_fast<'s, S: crate::scope::HandleScopeSource, F>(
+      self,
+      scope: &mut S,
+      _fast_function: F,
+    ) -> super::Local<'s, super::FunctionTemplate> {
+      self.build_inner(scope)
+    }
+  }
+  impl FunctionBuilder<super::Function> {
+    pub fn build<'s, S: crate::scope::HandleScopeSource>(
+      self,
+      scope: &mut S,
+    ) -> Option<super::Local<'s, super::Function>> {
+      Some(self.build_inner(scope))
+    }
+    pub fn build_fast<'s, S: crate::scope::HandleScopeSource, F>(
+      self,
+      scope: &mut S,
+      _fast_function: F,
+    ) -> Option<super::Local<'s, super::Function>> {
+      Some(self.build_inner(scope))
+    }
+  }
+
   pub type NearHeapLimitCallback = unsafe extern "C" fn(
     data: *mut core::ffi::c_void,
     current_heap_limit: usize,
