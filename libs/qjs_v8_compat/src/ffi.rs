@@ -531,6 +531,8 @@ unsafe extern "C" {
 
 pub const JS_CFUNC_GENERIC: c_int = 0;
 pub const JS_CFUNC_GENERIC_MAGIC: c_int = 1;
+pub const JS_CFUNC_CONSTRUCTOR: c_int = 2;
+pub const JS_CFUNC_CONSTRUCTOR_OR_FUNC: c_int = 4;
 
 /// Equivalent of the inline `JS_NewCFunction` in `quickjs.h`:
 /// `JS_NewCFunction2(ctx, func, name, length, JS_CFUNC_generic, 0)`.

@@ -286,6 +286,36 @@ impl<'s> Local<'s, Module> {
     Local::from_raw(sys::jsv_undefined())
   }
   pub fn get_module_namespace(&self) -> Local<'s, Value> {
+    let raw = self.raw();
+    let ctx = crate::isolate::current_default_ctx();
+    // Synthetic modules: defs were registered via JS_NewCModule.
+    if let Some(m) = lookup_synthetic_module_def(&raw) {
+      if !ctx.is_null() {
+        let ns = unsafe { crate::ffi::JS_GetModuleNamespace(ctx, m) };
+        if !sys::jsv_is_exception(&ns) {
+          return Local::from_raw(ns);
+        }
+      }
+    }
+    // Real ESM modules compiled via JS_Eval(MODULE | COMPILE_ONLY)
+    // carry the JSModuleDef* in the raw JSValue payload (tag = JS_TAG_MODULE).
+    if raw.tag == crate::ffi::JS_TAG_MODULE {
+      if !ctx.is_null() {
+        let m = unsafe { raw.u.ptr } as *mut crate::ffi::JSModuleDef;
+        let ns = unsafe { crate::ffi::JS_GetModuleNamespace(ctx, m) };
+        if !sys::jsv_is_exception(&ns) {
+          return Local::from_raw(ns);
+        }
+      }
+    }
+    // Fallback: return an empty object so callers like deno_node's
+    // `process ??= lazyLoadProcess()` don't get `undefined` and crash on
+    // `process.noDeprecation`. This is a stub that loses the real
+    // bindings, but keeps the module-init chain alive.
+    if !ctx.is_null() {
+      let obj = sys::new_object(ctx);
+      return Local::from_raw(obj);
+    }
     Local::from_raw(sys::jsv_undefined())
   }
   pub fn evaluate<S>(&self, scope: &mut S) -> Option<Local<'s, Value>>
@@ -316,6 +346,16 @@ impl<'s> Local<'s, Module> {
           let prom_val = unsafe { crate::ffi::JS_PromiseResult(ctx, result) };
           if let Some(s) = sys::to_string_lossy(ctx, prom_val) {
             eprintln!("[qjs] module {fname} top-level rejection: {s}");
+          }
+          // Try to print stack trace from the error object
+          unsafe {
+            let stack_val = crate::ffi::JS_GetPropertyStr(ctx, prom_val, c"stack".as_ptr());
+            if !sys::jsv_is_undefined(&stack_val) && !sys::jsv_is_exception(&stack_val) {
+              if let Some(s) = sys::to_string_lossy(ctx, stack_val) {
+                eprintln!("[qjs] stack:\n{s}");
+              }
+            }
+            sys::free_value(ctx, stack_val);
           }
           sys::free_value(ctx, prom_val);
         } else if state == 0 {

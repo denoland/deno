@@ -12,6 +12,25 @@ crate::value_type!(Script);
 crate::value_type!(UnboundScript);
 crate::value_type!(UnboundModuleScript);
 
+thread_local! {
+  static SCRIPT_FILENAMES: std::cell::RefCell<std::collections::HashMap<usize, String>> =
+    std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+fn raw_addr(v: &sys::JSValue) -> usize {
+  unsafe { v.u.ptr as usize }
+}
+
+fn record_script_filename(v: &sys::JSValue, filename: String) {
+  SCRIPT_FILENAMES.with(|t| {
+    t.borrow_mut().insert(raw_addr(v), filename);
+  });
+}
+
+fn lookup_script_filename(v: &sys::JSValue) -> Option<String> {
+  SCRIPT_FILENAMES.with(|t| t.borrow().get(&raw_addr(v)).cloned())
+}
+
 impl<'s> Local<'s, UnboundModuleScript> {
   pub fn get_source_mapping_url<'sc>(
     &self,
@@ -92,6 +111,7 @@ impl Script {
       return None;
     }
     scope.track_owned(raw);
+    record_script_filename(&raw, filename);
     Some(Local::from_raw(raw))
   }
 }
@@ -104,6 +124,8 @@ impl<'s> Local<'s, Script> {
     // release the script's tracked refcount from the scope so the scope
     // doesn't double-free at drop.
     let _ = scope.release_owned(self.raw());
+    let script_filename = lookup_script_filename(&self.raw())
+      .unwrap_or_else(|| "<unknown>".into());
     let raw = sys::eval_function(scope.ctx(), self.raw());
     if sys::jsv_is_exception(&raw) {
       // Leave the pending exception in the runtime so an enclosing
@@ -115,7 +137,7 @@ impl<'s> Local<'s, Script> {
       };
       if !sys::jsv_is_null(&exc_val) && !sys::jsv_is_undefined(&exc_val) {
         if let Some(s) = sys::to_string_lossy(scope.ctx(), exc_val) {
-          eprintln!("[qjs] Script::run exception: {}", s);
+          eprintln!("[qjs] Script::run exception in {}: {}", script_filename, s);
         }
         // Print stack property
         let stack_key = std::ffi::CString::new("stack").unwrap();

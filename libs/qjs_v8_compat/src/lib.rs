@@ -901,9 +901,6 @@ pub mod v8 {
       scope: &mut HandleScope<'s>,
       source: &mut Source,
     ) -> Option<Local<'s, Module>> {
-      // Allocate a placeholder Module handle, then stash the source
-      // string + filename in a per-handle table so `Module::evaluate`
-      // can hand the body off to QuickJS at the right moment.
       let ctx = scope.ctx();
       let raw = crate::sys::new_object(ctx);
       crate::module::record_module_status(

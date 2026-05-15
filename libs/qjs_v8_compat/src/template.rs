@@ -74,6 +74,30 @@ impl<'s> FunctionBuilder<'s> {
   }
 }
 
+// No-op constructor for stub function templates. JS sees this as a
+// callable constructor — `class X extends Foo` and `new Foo()` both work.
+// When invoked as `new`, returns a fresh object with the function's
+// prototype as its [[Prototype]]; when invoked as plain call, returns
+// undefined.
+unsafe extern "C" fn ft_stub_ctor(
+  ctx: *mut crate::ffi::JSContext,
+  this_val: sys::JSValue,
+  _argc: core::ffi::c_int,
+  _argv: *mut sys::JSValue,
+) -> sys::JSValue {
+  // For `class X extends Foo` super calls, QuickJS passes `new.target`
+  // via this_val handling. If this_val is undefined, treat as
+  // plain call. Otherwise treat as a constructor invocation —
+  // return `this_val` (the freshly created instance) so the derived
+  // class's constructor sees a valid `this`.
+  if sys::jsv_is_undefined(&this_val) {
+    sys::jsv_undefined()
+  } else {
+    sys::dup_value(ctx, this_val);
+    this_val
+  }
+}
+
 impl FunctionTemplate {
   pub fn new<'s, S, F>(
     scope: &mut S,
@@ -83,7 +107,24 @@ impl FunctionTemplate {
     F: crate::function::MapFnTo<FunctionCallback>,
     S: crate::scope::HandleScopeSource,
   {
-    let raw = sys::new_object(scope.default_ctx());
+    let ctx = scope.default_ctx();
+    let raw = unsafe {
+      crate::ffi::JS_NewCFunction2(
+        ctx,
+        ft_stub_ctor,
+        core::ptr::null(),
+        0,
+        crate::ffi::JS_CFUNC_CONSTRUCTOR_OR_FUNC,
+        0,
+      )
+    };
+    // Give it a prototype object so `class X extends F` works — QuickJS
+    // requires `F.prototype` to be an object or null.
+    unsafe {
+      let proto = sys::new_object(ctx);
+      let key = c"prototype".as_ptr();
+      crate::ffi::JS_SetPropertyStr(ctx, raw, key, proto);
+    }
     Local::from_raw(raw)
   }
   pub fn builder<F>(
