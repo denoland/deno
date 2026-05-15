@@ -3498,6 +3498,8 @@
     "parallel/test-tls-client-abort2.js": {},
     "parallel/test-tls-client-auth.js": {},
     "parallel/test-tls-client-renegotiation-limit.js": {},
+    "parallel/test-tls-client-resume.js": {},
+    "parallel/test-tls-client-resume-12.js": {},
     "parallel/test-tls-clientcertengine-invalid-arg-type.js": {},
     "parallel/test-tls-close-event-after-write.js": {},
     "parallel/test-tls-close-notify.js": {},

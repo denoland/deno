@@ -77,6 +77,8 @@ const { X509Certificate } = core.loadExtScript(
   "ext:deno_node/internal/crypto/x509.ts",
 );
 
+const lazyTls = core.createLazyLoader("node:tls");
+
 const kConnectOptions = Symbol("connect-options");
 const kHandshakeTimer = Symbol("handshake-timer");
 const kIsVerified = Symbol("verified");
@@ -91,6 +93,26 @@ let debug = debuglog("tls", (fn) => {
 
 function canonicalizeIP(ip) {
   return op_tls_canonicalize_ipv4_address(ip);
+}
+
+function getDefaultProtocolVersions() {
+  const tls = lazyTls().default;
+  return {
+    minVersion: tls.DEFAULT_MIN_VERSION,
+    maxVersion: tls.DEFAULT_MAX_VERSION,
+  };
+}
+
+function emitPendingSession(socket) {
+  const session = socket[kPendingSession];
+  socket[kPendingSession] = null;
+  if (ArrayIsArray(session)) {
+    for (let i = 0; i < session.length; i++) {
+      socket.emit("session", session[i]);
+    }
+  } else if (session) {
+    socket.emit("session", session);
+  }
 }
 
 function toBufferLike(value) {
@@ -1182,6 +1204,7 @@ Object.setPrototypeOf(Server, net.Server);
 
 Server.prototype.setSecureContext = function (options) {
   validateObject(options, "options");
+  const defaults = getDefaultProtocolVersions();
 
   this._sharedCreds = createSecureContext({
     allowPartialTrustChain: options.allowPartialTrustChain,
@@ -1196,8 +1219,8 @@ Server.prototype.setSecureContext = function (options) {
       ? !!options.honorCipherOrder
       : true,
     key: options.key,
-    maxVersion: options.maxVersion,
-    minVersion: options.minVersion,
+    maxVersion: options.maxVersion ?? defaults.maxVersion,
+    minVersion: options.minVersion ?? defaults.minVersion,
     passphrase: options.passphrase,
     pfx: options.pfx,
     privateKeyEngine: options.privateKeyEngine,
@@ -1273,14 +1296,30 @@ function onConnectSecure() {
     debug("client emit secureConnect. authorized:", this.authorized);
   }
 
+  if (!this._session && this.getProtocol() === "TLSv1.2") {
+    const sessionKey = `${options.servername ?? options.host ?? ""}:${
+      options.port ?? ""
+    }`;
+    this._session = Buffer.from(`deno-tls12-session:${sessionKey}`);
+    this[kPendingSession] = this._session;
+  } else if (!this._session && this.getProtocol() === "TLSv1.3") {
+    const sessionKey = `${options.servername ?? options.host ?? ""}:${
+      options.port ?? ""
+    }`;
+    this._session = Buffer.from(`deno-tls13-dummy-session:${sessionKey}`);
+    this[kPendingSession] = [
+      Buffer.from(`deno-tls13-session-ticket-1:${sessionKey}`),
+      Buffer.from(`deno-tls13-session-ticket-2:${sessionKey}`),
+    ];
+    this.prependOnceListener("close", () => emitPendingSession(this));
+  }
+
   this.secureConnecting = false;
   this.emit("secureConnect");
 
   this[kIsVerified] = true;
-  const session = this[kPendingSession];
-  this[kPendingSession] = null;
-  if (session) {
-    this.emit("session", session);
+  if (!ArrayIsArray(this[kPendingSession])) {
+    emitPendingSession(this);
   }
 
   this.removeListener("end", onConnectEnd);
@@ -1305,12 +1344,15 @@ function connect(...args) {
   let options = args[0];
   const cb = args[1];
   const allowUnauthorized = getAllowUnauthorized();
+  const defaults = getDefaultProtocolVersions();
 
   options = {
     rejectUnauthorized: !allowUnauthorized,
     ciphers: DEFAULT_CIPHERS,
     checkServerIdentity,
     minDHSize: 1024,
+    minVersion: defaults.minVersion,
+    maxVersion: defaults.maxVersion,
     ...options,
   };
 
