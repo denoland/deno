@@ -846,20 +846,28 @@ pub mod v8 {
     use crate::script::Script;
     use crate::value::Local;
 
-    pub struct Source;
+    /// Stores the JS source string and origin (URL) so `compile_module`
+    /// can hand the body off to QuickJS at evaluation time.
+    pub struct Source {
+      pub(crate) source: crate::sys::JSValue,
+      pub(crate) name: Option<crate::sys::JSValue>,
+    }
     impl Source {
       pub fn new<'s>(
-        _source_string: crate::value::Local<'s, crate::primitives::String>,
-        _origin: Option<&crate::script::ScriptOrigin<'s>>,
+        source_string: crate::value::Local<'s, crate::primitives::String>,
+        origin: Option<&crate::script::ScriptOrigin<'s>>,
       ) -> Self {
-        Self
+        Self {
+          source: source_string.raw(),
+          name: origin.and_then(|o| o.resource_name_raw()),
+        }
       }
       pub fn new_with_cached_data<'s>(
-        _source_string: crate::value::Local<'s, crate::primitives::String>,
-        _origin: Option<&crate::script::ScriptOrigin<'s>>,
+        source_string: crate::value::Local<'s, crate::primitives::String>,
+        origin: Option<&crate::script::ScriptOrigin<'s>>,
         _cached_data: CachedData,
       ) -> Self {
-        Self
+        Self::new(source_string, origin)
       }
       pub fn get_cached_data(&self) -> Option<&CachedData> {
         None
@@ -891,18 +899,24 @@ pub mod v8 {
     }
     pub fn compile_module<'s>(
       scope: &mut HandleScope<'s>,
-      _source: &mut Source,
+      source: &mut Source,
     ) -> Option<Local<'s, Module>> {
-      // Stub: return a placeholder Module handle. Real V8 module
-      // compilation isn't bridged to QuickJS-ng modules yet; deno_core
-      // will then call instantiate_module / evaluate which we also stub.
-      // Record the freshly-compiled module so the global "all-modules-
-      // evaluated" sweep at the end of bootstrap can mark it Evaluated.
-      let raw = crate::sys::new_object(scope.ctx());
+      // Allocate a placeholder Module handle, then stash the source
+      // string + filename in a per-handle table so `Module::evaluate`
+      // can hand the body off to QuickJS at the right moment.
+      let ctx = scope.ctx();
+      let raw = crate::sys::new_object(ctx);
       crate::module::record_module_status(
         &raw,
         crate::v8::ModuleStatus::Uninstantiated,
       );
+      let src = crate::sys::to_string_lossy(ctx, source.source);
+      let filename = source
+        .name
+        .and_then(|v| crate::sys::to_string_lossy(ctx, v));
+      if let Some(src) = src {
+        crate::module::record_module_source(&raw, src, filename);
+      }
       Some(super::Local::from_raw(raw))
     }
     pub fn compile_function<'s, S, O, N>(
@@ -917,18 +931,26 @@ pub mod v8 {
     }
     pub fn compile_module2<'s, S, O, N>(
       scope: &mut S,
-      _source: &mut Source,
+      source: &mut Source,
       _options: O,
       _no_cache_reason: N,
     ) -> Option<Local<'s, Module>>
     where
       S: crate::scope::HandleScopeSource,
     {
-      let raw = crate::sys::new_object(scope.default_ctx());
+      let ctx = scope.default_ctx();
+      let raw = crate::sys::new_object(ctx);
       crate::module::record_module_status(
         &raw,
         crate::v8::ModuleStatus::Uninstantiated,
       );
+      let src = crate::sys::to_string_lossy(ctx, source.source);
+      let filename = source
+        .name
+        .and_then(|v| crate::sys::to_string_lossy(ctx, v));
+      if let Some(src) = src {
+        crate::module::record_module_source(&raw, src, filename);
+      }
       Some(super::Local::from_raw(raw))
     }
     /// Mirror of `v8::script_compiler::cached_data_version_tag`. Real

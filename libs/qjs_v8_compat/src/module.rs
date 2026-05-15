@@ -29,11 +29,94 @@ thread_local! {
     std::collections::HashMap<u64, ModuleStatus>,
   > = std::cell::RefCell::new(std::collections::HashMap::new());
 
+  /// Source code stashed by `compile_module` so `Module::evaluate` can
+  /// hand it off to QuickJS at evaluation time. Keyed by raw module
+  /// handle. `(source, filename)`.
+  static MODULE_SOURCES: std::cell::RefCell<
+    std::collections::HashMap<u64, (String, Option<String>)>,
+  > = std::cell::RefCell::new(std::collections::HashMap::new());
+
+  /// Source code keyed by module specifier (URL/import name). Populated
+  /// alongside MODULE_SOURCES so QuickJS's module loader callback can
+  /// resolve `import x from "ext:core/ops"` etc.
+  static MODULE_SOURCES_BY_NAME: std::cell::RefCell<
+    std::collections::HashMap<String, String>,
+  > = std::cell::RefCell::new(std::collections::HashMap::new());
+
   /// Set to true after the first `evaluate()` call. Once entry-point
   /// evaluation runs, we treat any other module as Evaluated by default
   /// (QuickJS evaluates imported modules transitively, so they would
   /// have been touched).
   static AFTER_FIRST_EVAL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+pub(crate) fn record_module_source(
+  v: &sys::JSValue,
+  source: String,
+  filename: Option<String>,
+) {
+  if let Some(name) = filename.as_ref() {
+    MODULE_SOURCES_BY_NAME.with(|t| {
+      t.borrow_mut().insert(name.clone(), source.clone());
+    });
+  }
+  MODULE_SOURCES.with(|t| {
+    t.borrow_mut()
+      .insert(module_handle_of(v), (source, filename));
+  });
+}
+
+pub(crate) fn lookup_module_source(
+  v: &sys::JSValue,
+) -> Option<(String, Option<String>)> {
+  MODULE_SOURCES.with(|t| t.borrow().get(&module_handle_of(v)).cloned())
+}
+
+pub(crate) fn lookup_module_source_by_name(name: &str) -> Option<String> {
+  MODULE_SOURCES_BY_NAME.with(|t| t.borrow().get(name).cloned())
+}
+
+/// Module loader callback registered with QuickJS via
+/// `JS_SetModuleLoaderFunc`. Looks up the source we stashed in
+/// `compile_module` (keyed by URL) and hands it to QuickJS as a fresh
+/// module via `JS_Eval(JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY)`.
+pub(crate) unsafe extern "C" fn module_loader_callback(
+  ctx: *mut crate::ffi::JSContext,
+  module_name: *const std::os::raw::c_char,
+  _opaque: *mut std::os::raw::c_void,
+) -> *mut crate::ffi::JSModuleDef {
+  let name = match unsafe { std::ffi::CStr::from_ptr(module_name) }.to_str() {
+    Ok(s) => s,
+    Err(_) => return core::ptr::null_mut(),
+  };
+  let Some(source) = lookup_module_source_by_name(name) else {
+    eprintln!("[qjs] module loader: no source for {name}");
+    return core::ptr::null_mut();
+  };
+  let src_c = match std::ffi::CString::new(source) {
+    Ok(s) => s,
+    Err(_) => return core::ptr::null_mut(),
+  };
+  let name_c = match std::ffi::CString::new(name) {
+    Ok(s) => s,
+    Err(_) => return core::ptr::null_mut(),
+  };
+  let result = unsafe {
+    crate::ffi::JS_Eval(
+      ctx,
+      src_c.as_ptr(),
+      src_c.as_bytes().len(),
+      name_c.as_ptr(),
+      crate::ffi::JS_EVAL_TYPE_MODULE | crate::ffi::JS_EVAL_FLAG_COMPILE_ONLY,
+    )
+  };
+  if sys::jsv_is_exception(&result) {
+    return core::ptr::null_mut();
+  }
+  // The compiled module's payload (u.ptr) is the JSModuleDef pointer.
+  let m = unsafe { result.u.ptr } as *mut crate::ffi::JSModuleDef;
+  // Don't free `result` — JSModuleDef ownership is transferred to QuickJS.
+  m
 }
 
 fn module_handle_of(v: &sys::JSValue) -> u64 {
@@ -104,6 +187,30 @@ impl<'s> Local<'s, Module> {
     S: crate::scope::HandleScopeSource,
   {
     let ctx = scope.default_ctx();
+    // If we have stashed source for this module, run it through QuickJS
+    // as a module. JS_Eval with JS_EVAL_TYPE_MODULE will resolve and
+    // evaluate the import graph transitively.
+    if let Some((src, filename)) =
+      crate::module::lookup_module_source(&self.raw())
+    {
+      let fname = filename.unwrap_or_else(|| "<module>".to_string());
+      let result = sys::eval(
+        ctx,
+        &src,
+        &fname,
+        crate::ffi::JS_EVAL_TYPE_MODULE,
+      );
+      if sys::jsv_is_exception(&result) {
+        if let Some(exc) = sys::take_pending_exception(ctx) {
+          if let Some(s) = sys::to_string_lossy(ctx, exc) {
+            eprintln!("[qjs] Module::evaluate exception in {fname}: {s}");
+          }
+          sys::free_value(ctx, exc);
+        }
+      } else if !sys::jsv_is_undefined(&result) {
+        sys::free_value(ctx, result);
+      }
+    }
     // Mirror the v8 Module lifecycle in our thread-local table: callers
     // (deno_core) assert get_status() == Evaluated after this returns.
     // Also sweep all known modules to Evaluated — QuickJS evaluates

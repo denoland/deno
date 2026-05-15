@@ -29,13 +29,14 @@ impl<'s> Local<'s, UnboundModuleScript> {
 /// V8 carries a `ScriptOrigin` for source maps, filename, line offsets.
 pub struct ScriptOrigin<'s> {
   filename: Option<String>,
+  resource_name_raw: Option<sys::JSValue>,
   _scope: std::marker::PhantomData<&'s ()>,
 }
 
 impl<'s> ScriptOrigin<'s> {
   pub fn new<S>(
-    _scope: &mut S,
-    _resource_name: Local<'s, Value>,
+    scope: &mut S,
+    resource_name: Local<'s, Value>,
     _resource_line_offset: i32,
     _resource_column_offset: i32,
     _resource_is_shared_cross_origin: bool,
@@ -45,14 +46,23 @@ impl<'s> ScriptOrigin<'s> {
     _is_wasm: bool,
     _is_module: bool,
     _host_defined_options: Option<Local<'s, crate::value::Data>>,
-  ) -> Self {
+  ) -> Self
+  where
+    S: crate::scope::HandleScopeSource,
+  {
+    let ctx = scope.default_ctx();
+    let filename = sys::to_string_lossy(ctx, resource_name.raw());
     Self {
-      filename: None,
+      filename,
+      resource_name_raw: Some(resource_name.raw()),
       _scope: std::marker::PhantomData,
     }
   }
   pub fn filename(&self) -> Option<&str> {
     self.filename.as_deref()
+  }
+  pub(crate) fn resource_name_raw(&self) -> Option<sys::JSValue> {
+    self.resource_name_raw
   }
 }
 

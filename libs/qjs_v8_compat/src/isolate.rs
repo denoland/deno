@@ -113,6 +113,15 @@ impl OwnedIsolate {
     // by passing 0.
     unsafe {
       crate::ffi::JS_SetMaxStackSize(rt, 8 * 1024 * 1024);
+      // Install a module loader so QuickJS can resolve `import x from
+      // "ext:core/ops"` etc by looking up the source we stashed in
+      // compile_module2 keyed by URL.
+      crate::ffi::JS_SetModuleLoaderFunc(
+        rt,
+        None,
+        Some(crate::module::module_loader_callback),
+        core::ptr::null_mut(),
+      );
     }
     let ctx = sys::new_context(rt);
     let mut state = Box::new(IsolateState::new());
