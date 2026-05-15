@@ -3335,6 +3335,9 @@
     "parallel/test-stream-unpipe-event.js": {},
     "parallel/test-stream-unshift-empty-chunk.js": {},
     "parallel/test-stream-unshift-read-race.js": {},
+    "parallel/test-stream-wrap-drain.js": {},
+    "parallel/test-stream-wrap-encoding.js": {},
+    "parallel/test-stream-wrap.js": {},
     "parallel/test-stream-writable-aborted.js": {},
     "parallel/test-stream-writable-change-default-encoding.js": {},
     "parallel/test-stream-writable-clear-buffer.js": {},
@@ -3574,6 +3577,7 @@
     "parallel/test-tls-socket-close.js": {},
     "parallel/test-tls-socket-constructor-alpn-options-parsing.js": {},
     "parallel/test-tls-socket-destroy.js": {},
+    "parallel/test-tls-streamwrap-buffersize.js": {},
     "parallel/test-tls-writewrap-leak.js": {},
     "parallel/test-tls-timeout-server-2.js": {},
     "parallel/test-tls-tlswrap-segfault-2.js": {},
@@ -3586,6 +3590,10 @@
     "parallel/test-tls-wrap-event-emmiter.js": {},
     "parallel/test-tls-wrap-timeout.js": {},
     "parallel/test-tls-zero-clear-in.js": {},
+    "parallel/test-wrap-js-stream-destroy.js": {},
+    "parallel/test-wrap-js-stream-duplex.js": {},
+    "parallel/test-wrap-js-stream-exceptions.js": {},
+    "parallel/test-wrap-js-stream-read-stop.js": {},
     "parallel/test-trace-events-api.js": {
       "ignore": true,
       "reason": "Deno's node:trace_events polyfill is a stub (createTracing returns an object without .enable/.disable, getEnabledCategories returns \"\" instead of undefined). These tests were silently skipping via try/catch(require('trace_events')) until that lookup was fixed."

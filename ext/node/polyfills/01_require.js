@@ -215,6 +215,9 @@ const internalStreamsState =
 const internalSocketAddress = core.loadExtScript(
   "ext:deno_node/internal/socketaddress.js",
 );
+const internalJsStreamSocket = core.loadExtScript(
+  "ext:deno_node/internal/js_stream_socket.js",
+).default;
 const internalTestBinding = core.loadExtScript(
   "ext:deno_node/internal/test/binding.ts",
 );
@@ -346,6 +349,7 @@ function setupBuiltinModules() {
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
     "internal/streams/state": internalStreamsState,
     "internal/socketaddress": internalSocketAddress,
+    "internal/js_stream_socket": internalJsStreamSocket,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
     "internal/url": internalUrl,
