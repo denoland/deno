@@ -176,7 +176,10 @@ fn apply_local_patches(vendor: &Path) {
       std::fs::read_to_string(vendor.join("quickjs.c"))
         .map(|s| s.contains("qjs_v8_compat patch"))
         .unwrap_or(false);
-    if marker.exists() && already_applied {
+    if already_applied {
+      // Marker missing but content shows patch is in (e.g. someone ran
+      // `git apply` manually). Refresh the marker, skip the apply.
+      let _ = std::fs::write(&marker, "");
       continue;
     }
     let output = Command::new("git")
