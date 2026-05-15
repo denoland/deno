@@ -104,12 +104,6 @@ impl<'s> Local<'s, Script> {
     // release the script's tracked refcount from the scope so the scope
     // doesn't double-free at drop.
     let _ = scope.release_owned(self.raw());
-    // Clear any stale pending exception left from a previous failed
-    // call; QuickJS aborts JS_EvalFunction immediately if there's one
-    // queued.
-    if let Some(stale) = sys::take_pending_exception(scope.ctx()) {
-      sys::free_value(scope.ctx(), stale);
-    }
     let raw = sys::eval_function(scope.ctx(), self.raw());
     if sys::jsv_is_exception(&raw) {
       // Leave the pending exception in the runtime so an enclosing

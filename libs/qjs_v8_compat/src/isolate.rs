@@ -29,6 +29,18 @@ pub(crate) fn current_isolate_ptr() -> *mut Isolate {
   OP_BRIDGE_CURRENT_ISOLATE.with(|c| c.get())
 }
 
+/// Best-effort access to the current default context — used by
+/// helpers like `ReturnValue::set` that need a JSContext for refcount
+/// management but don't have a scope on hand. Returns NULL if no
+/// isolate is registered.
+pub(crate) fn current_default_ctx() -> sys::Context {
+  let p = current_isolate_ptr();
+  if p.is_null() {
+    return std::ptr::null_mut();
+  }
+  unsafe { (*p).default_ctx() }
+}
+
 /// Backing data we attach to every Isolate. Stored in the runtime's opaque
 /// pointer so `&mut Isolate` and `Local<T>` can both reach it without
 /// threading state through every call.

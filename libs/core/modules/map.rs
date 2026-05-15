@@ -2695,9 +2695,16 @@ impl ModuleMap {
         return Err(CoreErrorKind::Js(err).into_box());
       }
     };
+    eprintln!("[load_ext_script] {} script.run BEGIN", specifier);
     let result = match script.run(tc_scope) {
-      Some(value) => v8::Global::new(tc_scope, value),
+      Some(value) => {
+        eprintln!("[load_ext_script] {} script.run OK, making Global", specifier);
+        let g = v8::Global::new(tc_scope, value);
+        eprintln!("[load_ext_script] {} Global made", specifier);
+        g
+      },
       None => {
+        eprintln!("[load_ext_script] {} script.run None", specifier);
         assert!(tc_scope.has_caught());
         let exception = tc_scope.exception().unwrap();
         let err = JsError::from_v8_exception(tc_scope, exception);

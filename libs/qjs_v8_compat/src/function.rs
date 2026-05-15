@@ -196,7 +196,18 @@ impl<'s> ReturnValue<'s, Value> {
 
 impl<'s, T> ReturnValue<'s, T> {
   pub fn set<'a>(&mut self, value: Local<'a, T>) {
-    unsafe { *self.slot = value.raw() }
+    // The op trampoline reads this slot and returns it to JS, which
+    // then uses the value past the op call. The Local was tracked by
+    // some Rust scope that will free it when it drops; without a dup
+    // here, JS sees a freed object pointer (typeof works since the
+    // tag byte is intact, but property access crashes). Dup so the
+    // JS-held copy survives.
+    let raw = value.raw();
+    let ctx = crate::isolate::current_default_ctx();
+    if !ctx.is_null() {
+      sys::dup_value(ctx, raw);
+    }
+    unsafe { *self.slot = raw }
   }
   pub fn set_undefined(&mut self) {
     unsafe { *self.slot = sys::jsv_undefined() }
