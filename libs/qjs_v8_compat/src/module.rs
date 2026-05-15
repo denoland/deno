@@ -48,6 +48,77 @@ thread_local! {
   /// (QuickJS evaluates imported modules transitively, so they would
   /// have been touched).
   static AFTER_FIRST_EVAL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+
+  /// Synthetic module exports keyed by JSModuleDef pointer (as usize).
+  /// Populated by `Local<Module>::set_synthetic_module_export`; consumed
+  /// by `synthetic_module_init_callback` when QuickJS calls the
+  /// init_func to actually populate the module.
+  static SYNTHETIC_MODULE_EXPORTS: std::cell::RefCell<
+    std::collections::HashMap<usize, Vec<(String, sys::JSValue)>>,
+  > = std::cell::RefCell::new(std::collections::HashMap::new());
+
+  /// JSModuleDef pointers for synthetic modules keyed by Module raw
+  /// handle (the placeholder JSValue we hand back from
+  /// create_synthetic_module). Lets `set_synthetic_module_export`
+  /// recover the JSModuleDef given just the Module handle.
+  static SYNTHETIC_MODULE_DEFS: std::cell::RefCell<
+    std::collections::HashMap<u64, usize>,
+  > = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+pub(crate) fn record_synthetic_module_def(
+  handle: &sys::JSValue,
+  m: *mut crate::ffi::JSModuleDef,
+) {
+  SYNTHETIC_MODULE_DEFS.with(|t| {
+    t.borrow_mut().insert(module_handle_of(handle), m as usize);
+  });
+}
+
+pub(crate) fn lookup_synthetic_module_def(
+  handle: &sys::JSValue,
+) -> Option<*mut crate::ffi::JSModuleDef> {
+  SYNTHETIC_MODULE_DEFS.with(|t| {
+    t.borrow()
+      .get(&module_handle_of(handle))
+      .copied()
+      .map(|p| p as *mut crate::ffi::JSModuleDef)
+  })
+}
+
+pub(crate) fn record_synthetic_export(
+  m: *mut crate::ffi::JSModuleDef,
+  name: String,
+  value: sys::JSValue,
+) {
+  SYNTHETIC_MODULE_EXPORTS.with(|t| {
+    t.borrow_mut()
+      .entry(m as usize)
+      .or_default()
+      .push((name, value));
+  });
+}
+
+/// Init callback for synthetic modules. QuickJS calls this when the
+/// module is first imported — we read the stashed (name, value) list
+/// for this JSModuleDef and call JS_SetModuleExport for each.
+pub(crate) unsafe extern "C" fn synthetic_module_init_callback(
+  ctx: *mut crate::ffi::JSContext,
+  m: *mut crate::ffi::JSModuleDef,
+) -> std::os::raw::c_int {
+  let exports = SYNTHETIC_MODULE_EXPORTS.with(|t| {
+    t.borrow_mut().remove(&(m as usize)).unwrap_or_default()
+  });
+  for (name, value) in exports {
+    let Ok(name_c) = std::ffi::CString::new(name) else {
+      continue;
+    };
+    unsafe {
+      let dup = crate::ffi::JS_DupValue(ctx, value);
+      crate::ffi::JS_SetModuleExport(ctx, m, name_c.as_ptr(), dup);
+    }
+  }
+  0
 }
 
 pub(crate) fn record_module_source(
@@ -74,6 +145,15 @@ pub(crate) fn lookup_module_source(
 
 pub(crate) fn lookup_module_source_by_name(name: &str) -> Option<String> {
   MODULE_SOURCES_BY_NAME.with(|t| t.borrow().get(name).cloned())
+}
+
+/// Public hook for deno_core's lazy-loaded module store to register
+/// sources by name so QuickJS's module loader can resolve them when
+/// evaluating an importing module.
+pub fn register_lazy_module_source(name: &str, source: &str) {
+  MODULE_SOURCES_BY_NAME.with(|t| {
+    t.borrow_mut().insert(name.to_string(), source.to_string());
+  });
 }
 
 /// Module loader callback registered with QuickJS via
@@ -301,11 +381,22 @@ impl<'s> Local<'s, Module> {
   }
   pub fn set_synthetic_module_export<S>(
     &self,
-    _scope: &mut S,
-    _export_name: Local<'_, crate::primitives::String>,
-    _value: Local<'_, Value>,
-  ) -> Option<bool> {
-    Some(true)
+    scope: &mut S,
+    export_name: Local<'_, crate::primitives::String>,
+    value: Local<'_, Value>,
+  ) -> Option<bool>
+  where
+    S: crate::scope::HandleScopeSource,
+  {
+    let m = crate::module::lookup_synthetic_module_def(&self.raw())?;
+    let ctx = scope.default_ctx();
+    let name_str = sys::to_string_lossy(ctx, export_name.raw())?;
+    let name_c = std::ffi::CString::new(name_str.clone()).ok()?;
+    unsafe {
+      let dup = crate::ffi::JS_DupValue(ctx, value.raw());
+      let r = crate::ffi::JS_SetModuleExport(ctx, m, name_c.as_ptr(), dup);
+      Some(r >= 0)
+    }
   }
   pub fn is_graph_async(&self) -> bool {
     false
@@ -316,13 +407,51 @@ impl<'s> Local<'s, Module> {
 }
 
 impl Module {
-  pub fn create_synthetic_module<'s, S, N, E>(
-    _scope: &mut S,
-    _module_name: N,
-    _export_names: &[Local<'_, crate::primitives::String>],
+  pub fn create_synthetic_module<'s, S, E>(
+    scope: &mut S,
+    module_name: Local<'_, crate::primitives::String>,
+    export_names: &[Local<'_, crate::primitives::String>],
     _evaluation_steps: E,
-  ) -> Local<'s, Module> {
-    Local::from_raw(sys::jsv_undefined())
+  ) -> Local<'s, Module>
+  where
+    S: crate::scope::HandleScopeSource,
+  {
+    let ctx = scope.default_ctx();
+    let name_str = sys::to_string_lossy(ctx, module_name.raw())
+      .unwrap_or_else(|| "<synthetic>".to_string());
+    let name_c = match std::ffi::CString::new(name_str.clone()) {
+      Ok(s) => s,
+      Err(_) => {
+        return Local::from_raw(sys::jsv_undefined());
+      }
+    };
+    let m = unsafe {
+      crate::ffi::JS_NewCModule(
+        ctx,
+        name_c.as_ptr(),
+        Some(crate::module::synthetic_module_init_callback),
+      )
+    };
+    if m.is_null() {
+      return Local::from_raw(sys::jsv_undefined());
+    }
+    for export_name in export_names {
+      if let Some(s) = sys::to_string_lossy(ctx, export_name.raw()) {
+        if let Ok(c) = std::ffi::CString::new(s) {
+          unsafe {
+            crate::ffi::JS_AddModuleExport(ctx, m, c.as_ptr());
+          }
+        }
+      }
+    }
+    // Build a placeholder JSValue to hand back as the Module handle.
+    // Stash a pointer to the JSModuleDef so set_synthetic_module_export
+    // can recover it. Mark the module Instantiated immediately —
+    // synthetic modules don't go through compile_module.
+    let raw = sys::new_object(ctx);
+    crate::module::record_synthetic_module_def(&raw, m);
+    crate::module::record_module_status(&raw, ModuleStatus::Instantiated);
+    Local::from_raw(raw)
   }
 }
 

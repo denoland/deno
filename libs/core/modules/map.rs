@@ -2488,6 +2488,10 @@ impl ModuleMap {
     specifier: ModuleName,
     code: ModuleCodeString,
   ) {
+    // qjs_v8_compat shim path: register the source by name so QuickJS's
+    // module loader can resolve `import x from "<specifier>"` mid-eval.
+    // No-op for the real V8 build.
+    v8::module::register_lazy_module_source(specifier.as_str(), code.as_str());
     let data = self.data.borrow_mut();
     data
       .known_lazy_esm

@@ -225,6 +225,10 @@ pub type JSCFunctionData = unsafe extern "C" fn(
   func_data: *mut JSValue,
 ) -> JSValue;
 
+pub type JSModuleInitFunc = unsafe extern "C" fn(
+  ctx: *mut JSContext,
+  m: *mut JSModuleDef,
+) -> c_int;
 pub type JSModuleNormalizeFunc = unsafe extern "C" fn(
   ctx: *mut JSContext,
   module_base_name: *const c_char,
@@ -447,6 +451,22 @@ unsafe extern "C" {
     ctx: *mut JSContext,
     m: *mut JSModuleDef,
   ) -> JSValue;
+  pub fn JS_NewCModule(
+    ctx: *mut JSContext,
+    name_str: *const c_char,
+    func: Option<JSModuleInitFunc>,
+  ) -> *mut JSModuleDef;
+  pub fn JS_AddModuleExport(
+    ctx: *mut JSContext,
+    m: *mut JSModuleDef,
+    name_str: *const c_char,
+  ) -> c_int;
+  pub fn JS_SetModuleExport(
+    ctx: *mut JSContext,
+    m: *mut JSModuleDef,
+    export_name: *const c_char,
+    val: JSValue,
+  ) -> c_int;
 
   // Exception handling.
   pub fn JS_Throw(ctx: *mut JSContext, obj: JSValue) -> JSValue;
