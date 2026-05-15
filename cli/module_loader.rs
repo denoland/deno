@@ -1094,6 +1094,9 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     let maybe_referrer = maybe_referrer.cloned();
 
     // When load hooks are active, delegate to JS hooks first.
+    // The hook function itself is synchronous, but this load path has no V8
+    // scope. The async bridge lets the JS event loop run the hook; blocking
+    // here waiting for JS would deadlock the same runtime.
     // Skip the hook bridge for CJS modules — they go through the
     // default loader which invokes the sync load hook chain
     // (executeLoadHookChain) in Module._load. Going through both
