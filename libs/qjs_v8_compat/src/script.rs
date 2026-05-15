@@ -77,11 +77,6 @@ impl Script {
       .and_then(|o| o.filename().map(str::to_owned))
       .unwrap_or_else(|| "<anonymous>".into());
     eprintln!("[qjs] compile: {filename}");
-    if filename.contains("errors.ts") {
-      // Show first 30 lines
-      let preview: String = src.lines().take(30).collect::<Vec<_>>().join("\n");
-      eprintln!("[qjs] errors.ts first 30 lines:\n{preview}");
-    }
     let raw = sys::eval(
       scope.ctx(),
       &src,
@@ -110,6 +105,12 @@ impl<'s> Local<'s, Script> {
     // release the script's tracked refcount from the scope so the scope
     // doesn't double-free at drop.
     let _ = scope.release_owned(self.raw());
+    // Clear any stale pending exception left from a previous failed
+    // call; QuickJS aborts JS_EvalFunction immediately if there's one
+    // queued.
+    if let Some(stale) = sys::take_pending_exception(scope.ctx()) {
+      sys::free_value(scope.ctx(), stale);
+    }
     let raw = sys::eval_function(scope.ctx(), self.raw());
     if sys::jsv_is_exception(&raw) {
       eprintln!("[qjs] script failed");
