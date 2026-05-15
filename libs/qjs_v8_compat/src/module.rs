@@ -318,6 +318,8 @@ impl<'s> Local<'s, Module> {
             eprintln!("[qjs] module {fname} top-level rejection: {s}");
           }
           sys::free_value(ctx, prom_val);
+        } else if state == 0 {
+          eprintln!("[qjs] module {fname} STILL PENDING (instantiation didn't fully resolve)");
         }
       }
       // Drain microtasks that might be pending from the module's eval.
