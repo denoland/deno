@@ -9202,7 +9202,6 @@ fn lsp_completions_node_specifier() {
       "node:string_decoder",
       "node:sys",
       "node:test",
-      "node:test/reporters",
       "node:timers",
       "node:timers/promises",
       "node:tls",

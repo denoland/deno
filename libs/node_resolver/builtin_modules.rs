@@ -77,7 +77,6 @@ pub static DENO_SUPPORTED_BUILTIN_NODE_MODULES: &[&str] = &[
   "string_decoder",
   "sys",
   "test",
-  "test/reporters",
   "timers",
   "timers/promises",
   "tls",
