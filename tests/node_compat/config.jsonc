@@ -1826,6 +1826,8 @@
     "parallel/test-http-upgrade-client.js": {},
     "parallel/test-http-upgrade-client2.js": {},
     "parallel/test-http-upgrade-reconsume-stream.js": {},
+    "parallel/test-http-upgrade-server-callback.js": {},
+    "parallel/test-http-upgrade-server.js": {},
     "parallel/test-http-url.parse-auth-with-header-in-request.js": {},
     "parallel/test-http-url.parse-auth.js": {},
     "parallel/test-http-url.parse-basic.js": {},
