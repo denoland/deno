@@ -160,6 +160,30 @@ pub(crate) fn mark_all_esm_bytecode_consumed() {
 thread_local! {
   static ESM_BYTECODE_CONSUMED: std::cell::RefCell<std::collections::HashSet<u64>> =
     std::cell::RefCell::new(std::collections::HashSet::new());
+
+  /// Modules whose Module::evaluate call is currently in progress.
+  /// Used to detect re-entrant evaluate (e.g. lazy_load_esm_module
+  /// triggered from inside the body of the same module via a
+  /// transitive deprecate-style cycle) and skip the inner call so
+  /// JS_EvalFunction isn't called twice on the same bytecode.
+  static EVAL_IN_FLIGHT: std::cell::RefCell<std::collections::HashSet<u64>> =
+    std::cell::RefCell::new(std::collections::HashSet::new());
+}
+
+pub(crate) fn eval_in_flight(handle: &sys::JSValue) -> bool {
+  EVAL_IN_FLIGHT.with(|t| t.borrow().contains(&module_handle_of(handle)))
+}
+
+pub(crate) fn enter_eval(handle: &sys::JSValue) {
+  EVAL_IN_FLIGHT.with(|t| {
+    t.borrow_mut().insert(module_handle_of(handle));
+  });
+}
+
+pub(crate) fn leave_eval(handle: &sys::JSValue) {
+  EVAL_IN_FLIGHT.with(|t| {
+    t.borrow_mut().remove(&module_handle_of(handle));
+  });
 }
 
 pub(crate) fn record_synthetic_module_def(
@@ -426,6 +450,7 @@ impl<'s> Local<'s, Module> {
     if crate::module::lookup_module_status(&raw)
       == Some(ModuleStatus::Evaluated)
       || crate::module::esm_bytecode_consumed(&raw)
+      || crate::module::eval_in_flight(&raw)
     {
       // Make sure deno_core's post-evaluate status assertion sees us
       // as Evaluated even if we got here via the "consumed" path
@@ -460,8 +485,10 @@ impl<'s> Local<'s, Module> {
       // even if the body hasn't fully run yet.
       crate::module::record_module_status(&raw, ModuleStatus::Evaluated);
       crate::module::mark_esm_bytecode_consumed(&raw);
+      crate::module::enter_eval(&raw);
       sys::dup_value(ctx, bytecode);
       let result = sys::eval_function(ctx, bytecode);
+      crate::module::leave_eval(&raw);
       // QuickJS evaluates statically-imported modules transitively
       // during JS_EvalFunction. Mark every ESM module-def we know
       // about as bytecode-consumed so subsequent
