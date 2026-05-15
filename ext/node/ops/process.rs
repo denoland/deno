@@ -90,7 +90,7 @@ unsafe fn compute_argv_info(
 ) -> ArgvInfo {
   // SAFETY: argv is valid and has argc entries (guaranteed by caller).
   unsafe {
-    let start = *argv as *mut u8;
+    let start = *argv as *mut _;
     let last_arg = *argv.add(argc - 1);
     let last_arg_len = libc::strlen(last_arg);
     let end = last_arg.add(last_arg_len + 1) as *const u8;

@@ -6,7 +6,8 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   isArrayBuffer,
   isDataView,
@@ -47,6 +48,7 @@ const {
   ObjectCreate,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectFreeze,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetOwnPropertyDescriptors,
   ObjectGetPrototypeOf,
@@ -89,6 +91,12 @@ const {
   Uint8Array,
   Uint8ClampedArray,
 } = primordials;
+
+// Shared empty options object used as the default for `opts` parameters in
+// converter functions, so callers that omit `opts` (the common case) don't
+// allocate a fresh `{ __proto__: null }` on every call. Converters only read
+// from `opts` -- never mutate -- so a shared frozen object is safe.
+const EMPTY_OPTS = ObjectFreeze({ __proto__: null });
 
 function makeException(ErrorType, message, prefix, context) {
   return new ErrorType(
@@ -399,18 +407,17 @@ converters["unrestricted double?"] = createNullableConverter(
   converters["unrestricted double"],
 );
 
-converters.DOMString = function (V, prefix, context, opts) {
+converters.DOMString = function (V, _prefix, _context, opts) {
   if (typeof V === "string") {
     return V;
   } else if (V === null && opts && opts.treatNullAsEmptyString) {
     return "";
   } else if (typeof V === "symbol") {
-    throw makeException(
-      TypeError,
-      "is a symbol, which cannot be converted to a string",
-      prefix,
-      context,
-    );
+    // V8's `String(sym)` returns the symbol description rather than throwing,
+    // so we throw explicitly to match Node and other WHATWG-conformant
+    // runtimes, which use V8's native "Cannot convert a Symbol value to a
+    // string" message (raised by ToPrimitive on Symbols).
+    throw new TypeError("Cannot convert a Symbol value to a string");
   }
 
   return String(V);
@@ -477,7 +484,7 @@ converters.ArrayBuffer = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = { __proto__: null },
+  opts = EMPTY_OPTS,
 ) => {
   if (!isArrayBuffer(V)) {
     if (opts.allowShared && !isSharedArrayBuffer(V)) {
@@ -503,7 +510,7 @@ converters.DataView = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = { __proto__: null },
+  opts = EMPTY_OPTS,
 ) => {
   if (!isDataView(V)) {
     throw makeException(
@@ -552,7 +559,7 @@ ArrayPrototypeForEach(
       V,
       prefix = undefined,
       context = undefined,
-      opts = { __proto__: null },
+      opts = EMPTY_OPTS,
     ) => {
       if (TypedArrayPrototypeGetSymbolToStringTag(V) !== name) {
         throw makeException(
@@ -585,7 +592,7 @@ converters.ArrayBufferView = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = { __proto__: null },
+  opts = EMPTY_OPTS,
 ) => {
   if (!ArrayBufferIsView(V)) {
     throw makeException(
@@ -617,7 +624,7 @@ converters.BufferSource = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = { __proto__: null },
+  opts = EMPTY_OPTS,
 ) => {
   if (ArrayBufferIsView(V)) {
     let buffer;
@@ -675,6 +682,9 @@ converters["UVString?"] = createNullableConverter(
 converters["sequence<double>"] = createSequenceConverter(
   converters.double,
 );
+converters["sequence<unrestricted double>"] = createSequenceConverter(
+  converters["unrestricted double"],
+);
 converters["sequence<object>"] = createSequenceConverter(
   converters.object,
 );
@@ -706,8 +716,31 @@ converters["sequence<DOMString>"] = createSequenceConverter(
   converters.DOMString,
 );
 
-function requiredArguments(length, required, prefix) {
+function requiredArguments(length, required, prefix, argNames) {
   if (length < required) {
+    if (argNames !== undefined) {
+      // Node-compatible error: ERR_MISSING_ARGS with a message that names the
+      // required arguments, e.g. `The "name" and "value" arguments must be
+      // specified`.
+      let formatted;
+      const n = argNames.length;
+      if (n === 1) {
+        formatted = `"${argNames[0]}"`;
+      } else if (n === 2) {
+        formatted = `"${argNames[0]}" and "${argNames[1]}"`;
+      } else {
+        let joined = "";
+        for (let i = 0; i < n - 1; i++) {
+          joined += `"${argNames[i]}", `;
+        }
+        formatted = `${joined}and "${argNames[n - 1]}"`;
+      }
+      const err = new TypeError(
+        `The ${formatted} argument${n === 1 ? "" : "s"} must be specified`,
+      );
+      err.code = "ERR_MISSING_ARGS";
+      throw err;
+    }
     const errMsg = `${prefix ? prefix + ": " : ""}${required} argument${
       required === 1 ? "" : "s"
     } required, but only ${length} present`;
@@ -736,19 +769,35 @@ function createDictionaryConverter(name, ...dictionaries) {
   });
 
   const defaultValues = { __proto__: null };
+  // Parallel arrays of pre-resolved primitive defaults so that the
+  // `V === undefined || V === null` fast path can skip the spec-shaped
+  // `ObjectAssign(dict, defaultValues)` -- which has to walk enumerable
+  // own properties and invoke any getter on each call -- and instead just
+  // iterate two flat arrays. A null `nonPrimitiveDefaults` means every
+  // dict member with a default has a primitive default (the common shape
+  // for almost every WebIDL dictionary in this codebase), which lets us
+  // skip the `defaultValues` getter machinery entirely on undefined input.
+  const primitiveDefaultKeys = [];
+  const primitiveDefaultValues = [];
+  let nonPrimitiveDefaults = null;
   for (let i = 0; i < allMembers.length; ++i) {
     const member = allMembers[i];
     if (ReflectHas(member, "defaultValue")) {
       const idlMemberValue = member.defaultValue;
       const imvType = typeof idlMemberValue;
-      // Copy by value types can be directly assigned, copy by reference types
-      // need to be re-created for each allocation.
+      // Copy by value types (including null) can be directly assigned. Copy
+      // by reference types need a fresh instance per call, so they go on the
+      // ObjectAssign-via-getter slow path below.
       if (
+        idlMemberValue === null ||
         imvType === "number" || imvType === "boolean" ||
         imvType === "string" || imvType === "bigint" ||
         imvType === "undefined"
       ) {
-        defaultValues[member.key] = member.converter(idlMemberValue, {});
+        const v = member.converter(idlMemberValue, {});
+        defaultValues[member.key] = v;
+        ArrayPrototypePush(primitiveDefaultKeys, member.key);
+        ArrayPrototypePush(primitiveDefaultValues, v);
       } else {
         ObjectDefineProperty(defaultValues, member.key, {
           __proto__: null,
@@ -757,6 +806,8 @@ function createDictionaryConverter(name, ...dictionaries) {
           },
           enumerable: true,
         });
+        if (nonPrimitiveDefaults === null) nonPrimitiveDefaults = [];
+        ArrayPrototypePush(nonPrimitiveDefaults, member.key);
       }
     }
   }
@@ -778,7 +829,18 @@ function createDictionaryConverter(name, ...dictionaries) {
         );
       }
       const idlDict = { __proto__: null };
-      ObjectAssign(idlDict, defaultValues);
+      // Fast path: copy primitive defaults via explicit loop (faster than
+      // ObjectAssign over a __proto__: null source). For non-primitive
+      // defaults the getter on `defaultValues` still needs to fire to
+      // re-create the by-reference value, so fall back through ObjectAssign
+      // when any are present.
+      if (nonPrimitiveDefaults === null) {
+        for (let i = 0; i < primitiveDefaultKeys.length; ++i) {
+          idlDict[primitiveDefaultKeys[i]] = primitiveDefaultValues[i];
+        }
+      } else {
+        ObjectAssign(idlDict, defaultValues);
+      }
       return idlDict;
     }
 
@@ -831,7 +893,7 @@ function createEnumConverter(name, values) {
     V,
     prefix = undefined,
     _context = undefined,
-    _opts = { __proto__: null },
+    _opts = EMPTY_OPTS,
   ) {
     const S = String(V);
 
@@ -852,7 +914,7 @@ function createNullableConverter(converter) {
     V,
     prefix = undefined,
     context = undefined,
-    opts = { __proto__: null },
+    opts = EMPTY_OPTS,
   ) => {
     // FIXME: If Type(V) is not Object, and the conversion to an IDL value is
     // being performed due to V being assigned to an attribute whose type is a
@@ -871,7 +933,7 @@ function createSequenceConverter(converter) {
     V,
     prefix = undefined,
     context = undefined,
-    opts = { __proto__: null },
+    opts = EMPTY_OPTS,
   ) {
     if (type(V) !== "Object") {
       throw makeException(
@@ -931,7 +993,7 @@ function createAsyncIterableConverter(converter) {
     V,
     prefix = undefined,
     context = undefined,
-    opts = { __proto__: null },
+    opts = EMPTY_OPTS,
   ) {
     if (type(V) !== "Object") {
       throw makeException(
@@ -1127,16 +1189,27 @@ function createBranded(Type) {
   return t;
 }
 
-function assertBranded(self, prototype) {
+function assertBranded(self, prototype, interfaceName) {
   if (
     !ObjectPrototypeIsPrototypeOf(prototype, self) || self[brand] !== brand
   ) {
-    throw new TypeError("Illegal invocation");
+    const message = interfaceName === undefined
+      ? "Illegal invocation"
+      : `Value of "this" must be of type ${interfaceName}`;
+    const err = new TypeError(message);
+    err.code = "ERR_INVALID_THIS";
+    throw err;
   }
 }
 
 function illegalConstructor() {
-  throw new TypeError("Illegal constructor");
+  const err = new TypeError("Illegal constructor");
+  // Match Node's convention of attaching `code: 'ERR_ILLEGAL_CONSTRUCTOR'`
+  // to TypeErrors thrown when end-user code attempts to construct a Web
+  // Platform interface that disallows direct construction (parallel to
+  // the `ERR_INVALID_THIS` code on `assertBranded` failures).
+  err.code = "ERR_ILLEGAL_CONSTRUCTOR";
+  throw err;
 }
 
 function define(target, source) {
@@ -1200,7 +1273,7 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
   }
 
   function entries() {
-    assertBranded(this, prototype.prototype);
+    assertBranded(this, prototype.prototype, name);
     return createDefaultIterator(this, "key+value");
   }
 
@@ -1219,7 +1292,7 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
     },
     keys: {
       value: function keys() {
-        assertBranded(this, prototype.prototype);
+        assertBranded(this, prototype.prototype, name);
         return createDefaultIterator(this, "key");
       },
       writable: true,
@@ -1228,7 +1301,7 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
     },
     values: {
       value: function values() {
-        assertBranded(this, prototype.prototype);
+        assertBranded(this, prototype.prototype, name);
         return createDefaultIterator(this, "value");
       },
       writable: true,
@@ -1237,7 +1310,7 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
     },
     forEach: {
       value: function forEach(idlCallback, thisArg = undefined) {
-        assertBranded(this, prototype.prototype);
+        assertBranded(this, prototype.prototype, name);
         const prefix = `Failed to execute 'forEach' on '${name}'`;
         requiredArguments(arguments.length, 1, { prefix });
         idlCallback = converters["Function"](idlCallback, {
@@ -1405,7 +1478,7 @@ function setlikeObjectWrap(objPrototype, readonly) {
   }
 }
 
-export {
+return {
   assertBranded,
   AsyncIterable,
   brand,
@@ -1430,3 +1503,4 @@ export {
   setlikeObjectWrap,
   type,
 };
+})();

@@ -27,10 +27,11 @@
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
+(function () {
+const { core } = globalThis.__bootstrap;
+const { AsyncWrap, op_node_new_async_id } = core.ops;
 
-import { AsyncWrap, op_node_new_async_id } from "ext:core/ops";
-
-export function registerDestroyHook(
+function registerDestroyHook(
   // deno-lint-ignore no-explicit-any
   _target: any,
   _asyncId: number,
@@ -39,7 +40,7 @@ export function registerDestroyHook(
   // TODO(kt3k): implement actual procedures
 }
 
-export enum constants {
+enum constants {
   kInit,
   kBefore,
   kAfter,
@@ -57,14 +58,12 @@ export enum constants {
 
 const asyncHookFields = new Uint32Array(Object.keys(constants).length);
 
-export { asyncHookFields as async_hook_fields };
-
 // Increment the internal id counter and return the value.
-export function newAsyncId() {
+function newAsyncId() {
   return op_node_new_async_id();
 }
 
-export enum UidFields {
+enum UidFields {
   kExecutionAsyncId,
   kTriggerAsyncId,
   kDefaultTriggerAsyncId,
@@ -79,9 +78,7 @@ const asyncIdFields = new Float64Array(Object.keys(UidFields).length);
 // context which is different from a default context.
 asyncIdFields[UidFields.kDefaultTriggerAsyncId] = -1;
 
-export { asyncIdFields };
-
-export enum providerType {
+enum providerType {
   NONE,
   DIRHANDLE,
   DNSCHANNEL,
@@ -127,4 +124,14 @@ export enum providerType {
   ZLIB,
 }
 
-export { AsyncWrap };
+return {
+  async_hook_fields: asyncHookFields,
+  asyncIdFields,
+  AsyncWrap,
+  registerDestroyHook,
+  newAsyncId,
+  constants,
+  UidFields,
+  providerType,
+};
+})();

@@ -27,23 +27,55 @@ enum CertificateSources {
   Pem(pem::Pem),
 }
 
+/// A certificate field value that may have one or multiple values.
+/// Serializes as a plain string when there is exactly one value,
+/// or as an array of strings when there are multiple (matching Node.js behavior).
+#[derive(Default, Debug, PartialEq, Eq)]
+struct StringOrArray(Vec<String>);
+
+impl StringOrArray {
+  fn is_empty(&self) -> bool {
+    self.0.is_empty()
+  }
+
+  fn push(&mut self, value: String) {
+    self.0.push(value);
+  }
+}
+
+impl serde::Serialize for StringOrArray {
+  fn serialize<S: serde::Serializer>(
+    &self,
+    serializer: S,
+  ) -> Result<S::Ok, S::Error> {
+    if self.0.len() == 1 {
+      serializer.serialize_str(&self.0[0])
+    } else {
+      self.0.serialize(serializer)
+    }
+  }
+}
+
 #[derive(serde::Serialize, Default)]
 #[serde(rename_all = "UPPERCASE")]
 struct SubjectOrIssuer {
-  #[serde(skip_serializing_if = "Option::is_none")]
-  c: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  st: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  l: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  o: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  ou: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  cn: Option<String>,
-  #[serde(rename = "emailAddress", skip_serializing_if = "Option::is_none")]
-  email_address: Option<String>,
+  #[serde(skip_serializing_if = "StringOrArray::is_empty")]
+  c: StringOrArray,
+  #[serde(skip_serializing_if = "StringOrArray::is_empty")]
+  st: StringOrArray,
+  #[serde(skip_serializing_if = "StringOrArray::is_empty")]
+  l: StringOrArray,
+  #[serde(skip_serializing_if = "StringOrArray::is_empty")]
+  o: StringOrArray,
+  #[serde(skip_serializing_if = "StringOrArray::is_empty")]
+  ou: StringOrArray,
+  #[serde(skip_serializing_if = "StringOrArray::is_empty")]
+  cn: StringOrArray,
+  #[serde(
+    rename = "emailAddress",
+    skip_serializing_if = "StringOrArray::is_empty"
+  )]
+  email_address: StringOrArray,
 }
 
 #[derive(serde::Serialize)]
@@ -381,25 +413,25 @@ fn extract_subject_or_issuer(name: &X509Name) -> SubjectOrIssuer {
       {
         match attr.attr_type() {
           oid if oid == &x509_parser::oid_registry::OID_X509_COUNTRY_NAME => {
-            result.c = Some(value_str);
+            result.c.push(value_str);
           }
           oid if oid == &x509_parser::oid_registry::OID_X509_STATE_OR_PROVINCE_NAME => {
-            result.st = Some(value_str);
+            result.st.push(value_str);
           }
           oid if oid == &x509_parser::oid_registry::OID_X509_LOCALITY_NAME => {
-            result.l = Some(value_str);
+            result.l.push(value_str);
           }
           oid if oid == &x509_parser::oid_registry::OID_X509_ORGANIZATION_NAME => {
-            result.o = Some(value_str);
+            result.o.push(value_str);
           }
           oid if oid == &x509_parser::oid_registry::OID_X509_ORGANIZATIONAL_UNIT => {
-            result.ou = Some(value_str);
+            result.ou.push(value_str);
           }
           oid if oid == &x509_parser::oid_registry::OID_X509_COMMON_NAME => {
-            result.cn = Some(value_str);
+            result.cn.push(value_str);
           }
           oid if oid == &x509_parser::oid_registry::OID_PKCS9_EMAIL_ADDRESS => {
-            result.email_address = Some(value_str);
+            result.email_address.push(value_str);
           }
           _ => {}
         }
@@ -585,25 +617,27 @@ fn extract_key_info(spki: &x509_parser::x509::SubjectPublicKeyInfo) -> KeyInfo {
         const ID_SECP384R1: &[u8] = &oid!(raw 1.3.132.0.34);
         const ID_SECP521R1: &[u8] = &oid!(raw 1.3.132.0.35);
 
+        // Use OpenSSL short names for asn1Curve and NIST names for
+        // nistCurve to match Node.js behavior.
         match curve_oid.as_bytes() {
           ID_SECP224R1 => {
-            asn1_curve = Some("1.3.132.0.33".to_string());
-            nist_curve = Some("secp224r1".to_string());
+            asn1_curve = Some("secp224r1".to_string());
+            nist_curve = Some("P-224".to_string());
             bits = Some(224);
           }
           ID_SECP256R1 => {
-            asn1_curve = Some("1.2.840.10045.3.1.7".to_string());
-            nist_curve = Some("secp256r1".to_string());
+            asn1_curve = Some("prime256v1".to_string());
+            nist_curve = Some("P-256".to_string());
             bits = Some(256);
           }
           ID_SECP384R1 => {
-            asn1_curve = Some("1.3.132.0.34".to_string());
-            nist_curve = Some("secp384r1".to_string());
+            asn1_curve = Some("secp384r1".to_string());
+            nist_curve = Some("P-384".to_string());
             bits = Some(384);
           }
           ID_SECP521R1 => {
-            asn1_curve = Some("1.3.132.0.35".to_string());
-            nist_curve = Some("secp521r1".to_string());
+            asn1_curve = Some("secp521r1".to_string());
+            nist_curve = Some("P-521".to_string());
             bits = Some(521);
           }
           _ => {
@@ -1326,11 +1360,11 @@ r6C3V5F4Z9y8o8i9E4j5V8O5Q7Y8Z4W8n7R8B8l8H8L4P4F8r8c8A4v3O4g8L8S6
 
     let result = extract_subject_or_issuer(cert_inner.subject());
 
-    assert_eq!(result.cn, Some("CN".to_string()));
-    assert_eq!(result.c, None);
-    assert_eq!(result.st, None);
-    assert_eq!(result.l, None);
-    assert_eq!(result.o, None);
-    assert_eq!(result.ou, None);
+    assert_eq!(result.cn, StringOrArray(vec!["CN".to_string()]));
+    assert!(result.c.is_empty());
+    assert!(result.st.is_empty());
+    assert!(result.l.is_empty());
+    assert!(result.o.is_empty());
+    assert!(result.ou.is_empty());
   }
 }

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_npmrc"
-version = "0.1.0"
+version = "0.8.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -22,3 +22,4 @@ url.workspace = true
 
 [dev-dependencies]
 pretty_assertions.workspace = true
+sys_traits = { workspace = true, features = ["memory"] }

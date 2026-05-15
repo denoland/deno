@@ -389,6 +389,12 @@ pub struct WebWorkerOptions {
   pub bootstrap: BootstrapOptions,
   pub extensions: Vec<Extension>,
   pub startup_snapshot: Option<&'static [u8]>,
+  /// `(specifier, source)` pairs for `lazy_loaded_js` files not consumed
+  /// during snapshot creation; emitted by the snapshot build script.
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  /// `(specifier, source)` pairs for `lazy_loaded_esm` files not consumed
+  /// during snapshot creation; emitted by the snapshot build script.
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   /// Optional isolate creation parameters, such as heap limits.
   pub create_params: Option<v8::CreateParams>,
@@ -525,10 +531,12 @@ impl WebWorker {
       deno_web::deno_web::init(
         services.blob_store,
         Some(options.main_module.clone()),
+        Default::default(),
         services.broadcast_channel,
       ),
       deno_webgpu::deno_webgpu::init(),
       deno_image::deno_image::init(),
+      deno_canvas::deno_canvas::init(),
       deno_fetch::deno_fetch::init(deno_fetch::Options {
         user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store_provider: services.root_cert_store_provider.clone(),
@@ -549,7 +557,7 @@ impl WebWorker {
       ),
       deno_tls::deno_tls::init(),
       deno_kv::deno_kv::init(
-        MultiBackendDbHandler::remote_or_sqlite(
+        Box::new(MultiBackendDbHandler::remote_or_sqlite(
           None,
           options.seed,
           deno_kv::remote::HttpOptions {
@@ -561,10 +569,10 @@ impl WebWorker {
             client_cert_chain_and_key: TlsKeys::Null,
             proxy: None,
           },
-        ),
+        )),
         deno_kv::KvConfig::builder().build(),
       ),
-      deno_cron::deno_cron::init(CronHandlerImpl::create_from_env()),
+      deno_cron::deno_cron::init(Box::new(CronHandlerImpl::create_from_env())),
       deno_napi::deno_napi::init(services.deno_rt_native_addon_loader.clone()),
       deno_http::deno_http::init(deno_http::Options {
         no_legacy_abort: options.bootstrap.no_legacy_abort,
@@ -600,14 +608,6 @@ impl WebWorker {
       ops::web_worker::deno_web_worker::init(),
     ];
 
-    #[cfg(feature = "hmr")]
-    const {
-      assert!(
-        cfg!(not(feature = "only_snapshotted_js_sources")),
-        "'hmr' is incompatible with 'only_snapshotted_js_sources'."
-      );
-    }
-
     for extension in &mut extensions {
       if options.startup_snapshot.is_some() {
         extension.js_files = std::borrow::Cow::Borrowed(&[]);
@@ -618,15 +618,14 @@ impl WebWorker {
 
     extensions.extend(std::mem::take(&mut options.extensions));
 
-    #[cfg(feature = "only_snapshotted_js_sources")]
-    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
-
     // Get our op metrics
     let op_metrics_factory_fn = create_op_metrics(options.trace_ops);
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(services.module_loader),
       startup_snapshot: options.startup_snapshot,
+      residual_lazy_js_sources: options.residual_lazy_js_sources,
+      residual_lazy_esm_sources: options.residual_lazy_esm_sources,
       create_params: options.create_params,
       shared_array_buffer_store: services.shared_array_buffer_store,
       compiled_wasm_module_store: services.compiled_wasm_module_store,

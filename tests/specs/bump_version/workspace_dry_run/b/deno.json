@@ -1,0 +1,5 @@
+{
+  "name": "@y/b",
+  "version": "2.5.1",
+  "exports": "./mod.ts"
+}

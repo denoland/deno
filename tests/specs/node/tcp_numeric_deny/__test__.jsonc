@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "numeric_aliases": {
+      "if": "unix",
+      "args": "run --allow-net --deny-net=127.0.0.0/8 main.mjs",
+      "output": "main.out"
+    },
+    "literal_only": {
+      "if": "windows",
+      "args": "run --allow-net --deny-net=127.0.0.0/8 main_literal.mjs",
+      "output": "main_literal.out"
+    }
+  }
+}

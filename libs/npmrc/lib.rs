@@ -51,17 +51,21 @@ pub struct NpmRc {
   pub registry: Option<String>,
   pub scope_registries: HashMap<String, String>,
   pub registry_configs: HashMap<String, Arc<RegistryConfig>>,
+  /// `min-release-age` value in days. See
+  /// https://docs.npmjs.com/cli/v11/using-npm/config#min-release-age
+  pub min_release_age_days: Option<u64>,
 }
 
 impl NpmRc {
   pub fn parse(
+    sys: &impl EnvVar,
     input: &str,
-    get_env_var: &impl Fn(&str) -> Option<String>,
   ) -> Result<Self, NpmRcParseError> {
     let kv_or_sections = ini::parse_ini(input)?;
     let mut registry = None;
     let mut scope_registries: HashMap<String, String> = HashMap::new();
     let mut registry_configs: HashMap<String, RegistryConfig> = HashMap::new();
+    let mut min_release_age_days: Option<u64> = None;
 
     for kv_or_section in kv_or_sections {
       match kv_or_section {
@@ -72,13 +76,13 @@ impl NpmRc {
                 if right == "registry"
                   && let Value::String(text) = &kv.value
                 {
-                  let value = expand_vars(text, get_env_var);
+                  let value = expand_vars(text, sys);
                   scope_registries.insert(scope.to_string(), value);
                 }
               } else if let Some(host_and_path) = left.strip_prefix("//")
                 && let Value::String(text) = &kv.value
               {
-                let value = expand_vars(text, get_env_var);
+                let value = expand_vars(text, sys);
                 let config = registry_configs
                   .entry(host_and_path.to_string())
                   .or_default();
@@ -110,8 +114,24 @@ impl NpmRc {
             } else if key == "registry"
               && let Value::String(text) = &kv.value
             {
-              let value = expand_vars(text, get_env_var);
+              let value = expand_vars(text, sys);
               registry = Some(value);
+            } else if key == "min-release-age" {
+              // npm interprets the value as a number of days. Ignore values
+              // that can't be parsed rather than erroring (npm is lenient
+              // about unknown/invalid config values).
+              match &kv.value {
+                Value::Number(n) if *n >= 0 => {
+                  min_release_age_days = Some(*n as u64);
+                }
+                Value::String(text) => {
+                  let value = expand_vars(text, sys);
+                  if let Ok(days) = value.trim().parse::<u64>() {
+                    min_release_age_days = Some(days);
+                  }
+                }
+                _ => {}
+              }
             }
           }
         }
@@ -128,6 +148,7 @@ impl NpmRc {
         .into_iter()
         .map(|(k, v)| (k, Arc::new(v)))
         .collect(),
+      min_release_age_days,
     })
   }
 
@@ -163,6 +184,7 @@ impl NpmRc {
       },
       scopes,
       registry_configs: self.registry_configs.clone(),
+      min_release_age_days: self.min_release_age_days,
     })
   }
 
@@ -234,6 +256,9 @@ pub struct ResolvedNpmRc {
   pub default_config: RegistryConfigWithUrl,
   pub scopes: HashMap<String, RegistryConfigWithUrl>,
   pub registry_configs: HashMap<String, Arc<RegistryConfig>>,
+  /// `min-release-age` value in days. See
+  /// https://docs.npmjs.com/cli/v11/using-npm/config#min-release-age
+  pub min_release_age_days: Option<u64>,
 }
 
 impl ResolvedNpmRc {
@@ -294,17 +319,14 @@ impl ResolvedNpmRc {
   }
 }
 
-fn expand_vars(
-  input: &str,
-  get_env_var: &impl Fn(&str) -> Option<String>,
-) -> String {
+fn expand_vars(input: &str, sys: &impl EnvVar) -> String {
   fn escaped_char(input: &str) -> ParseResult<'_, char> {
     preceded(ch('\\'), next_char)(input)
   }
 
   fn env_var(input: &str) -> ParseResult<'_, &str> {
     let (input, _) = tag("${")(input)?;
-    let (input, var_name) = take_while(|c| c != '}')(input)?;
+    let (input, var_name) = take_while_byte(|b| b != b'}')(input)?;
     if var_name.chars().any(|c| matches!(c, '$' | '{' | '\\')) {
       return ParseError::backtrace();
     }
@@ -315,7 +337,7 @@ fn expand_vars(
   let (input, results) = many0(or3(
     map(escaped_char, |c| c.to_string()),
     map(env_var, |var_name| {
-      if let Some(var_value) = get_env_var(var_name) {
+      if let Ok(var_value) = sys.env_var(var_name) {
         var_value
       } else {
         format!("${{{}}}", var_name)
@@ -391,6 +413,8 @@ impl NpmRegistryUrl {
 #[cfg(test)]
 mod test {
   use pretty_assertions::assert_eq;
+  use sys_traits::EnvSetVar;
+  use sys_traits::impls::InMemorySys;
 
   use super::*;
 
@@ -398,6 +422,7 @@ mod test {
   fn test_parse_basic() {
     // https://docs.npmjs.com/cli/v10/configuring-npm/npmrc#auth-related-configuration
     let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
       r#"
 @myorg:registry=https://example.com/myorg
 @another:registry=https://example.com/another
@@ -421,7 +446,6 @@ mod test {
 //yet.another.com/yet_another/:_authToken=MYTOKEN3
 registry=https://registry.npmjs.org/
 "#,
-      &|_| None,
     )
     .unwrap();
     assert_eq!(
@@ -484,7 +508,8 @@ registry=https://registry.npmjs.org/
               ..Default::default()
             })
           ),
-        ])
+        ]),
+        min_release_age_days: None,
       }
     );
 
@@ -546,6 +571,7 @@ registry=https://registry.npmjs.org/
           ),
         ]),
         registry_configs: npm_rc.registry_configs.clone(),
+        min_release_age_days: None,
       }
     );
 
@@ -692,7 +718,10 @@ registry=https://registry.npmjs.org/
 
   #[test]
   fn test_parse_env_vars() {
+    let sys = InMemorySys::default();
+    sys.env_set_var("VAR_FOUND", "SOME_VALUE");
     let npm_rc = NpmRc::parse(
+      &sys,
       r#"
 @myorg:registry=${VAR_FOUND}
 @another:registry=${VAR_NOT_FOUND}
@@ -700,10 +729,6 @@ registry=https://registry.npmjs.org/
 //registry.npmjs.org/:_authToken=${VAR_FOUND}
 registry=${VAR_FOUND}
 "#,
-      &|var_name| match var_name {
-        "VAR_FOUND" => Some("SOME_VALUE".to_string()),
-        _ => None,
-      },
     )
     .unwrap();
     assert_eq!(
@@ -721,65 +746,67 @@ registry=${VAR_FOUND}
             auth_token: Some("SOME_VALUE".to_string()),
             ..Default::default()
           })
-        ),])
+        ),]),
+        min_release_age_days: None,
       }
     )
   }
 
   #[test]
   fn test_expand_vars() {
-    assert_eq!(
-      expand_vars("test${VAR}test", &|var_name| {
-        match var_name {
-          "VAR" => Some("VALUE".to_string()),
-          _ => None,
-        }
-      }),
-      "testVALUEtest"
-    );
-    assert_eq!(
-      expand_vars("${A}${B}${C}", &|var_name| {
-        match var_name {
-          "A" => Some("1".to_string()),
-          "B" => Some("2".to_string()),
-          "C" => Some("3".to_string()),
-          _ => None,
-        }
-      }),
-      "123"
-    );
-    assert_eq!(
-      expand_vars("test\\${VAR}test", &|var_name| {
-        match var_name {
-          "VAR" => Some("VALUE".to_string()),
-          _ => None,
-        }
-      }),
-      "test${VAR}test"
-    );
-    assert_eq!(
-      // npm ignores values with $ in them
-      expand_vars("test${VA$R}test", &|_| {
-        unreachable!();
-      }),
-      "test${VA$R}test"
-    );
-    assert_eq!(
-      // npm ignores values with { in them
-      expand_vars("test${VA{R}test", &|_| {
-        unreachable!();
-      }),
-      "test${VA{R}test"
-    );
+    let sys = InMemorySys::default();
+    sys.env_set_var("VAR", "VALUE");
+    assert_eq!(expand_vars("test${VAR}test", &sys), "testVALUEtest");
+
+    let sys = InMemorySys::default();
+    sys.env_set_var("A", "1");
+    sys.env_set_var("B", "2");
+    sys.env_set_var("C", "3");
+    assert_eq!(expand_vars("${A}${B}${C}", &sys), "123");
+
+    let sys = InMemorySys::default();
+    sys.env_set_var("VAR", "VALUE");
+    assert_eq!(expand_vars("test\\${VAR}test", &sys), "test${VAR}test");
+
+    let sys = InMemorySys::default();
+    // npm ignores values with $ in them
+    assert_eq!(expand_vars("test${VA$R}test", &sys), "test${VA$R}test");
+
+    // npm ignores values with { in them
+    assert_eq!(expand_vars("test${VA{R}test", &sys), "test${VA{R}test");
+  }
+
+  #[test]
+  fn test_parse_min_release_age() {
+    let sys = InMemorySys::default();
+    let npm_rc = NpmRc::parse(&sys, "min-release-age=30").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, Some(30));
+    let resolved = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+    assert_eq!(resolved.min_release_age_days, Some(30));
+
+    // not set
+    let npm_rc = NpmRc::parse(&sys, "").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, None);
+
+    // invalid value is ignored
+    let npm_rc = NpmRc::parse(&sys, "min-release-age=invalid").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, None);
+
+    // env var expansion
+    sys.env_set_var("MIN_AGE", "7");
+    let npm_rc = NpmRc::parse(&sys, "min-release-age=${MIN_AGE}").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, Some(7));
   }
 
   #[test]
   fn test_scope_registry_url_only() {
     let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
       r#"
 @example:registry=https://example.com/
 "#,
-      &|_| None,
     )
     .unwrap();
     let npm_rc = npm_rc
@@ -802,6 +829,7 @@ registry=${VAR_FOUND}
   #[test]
   fn test_scope_with_auth() {
     let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
       r#"
 @example:registry=https://example.com/foo
 @example2:registry=https://example2.com/
@@ -809,7 +837,6 @@ registry=${VAR_FOUND}
 ; This one is borked - the URL must match registry URL exactly
 //example.com2/example/:_authToken=MY_AUTH_TOKEN2
 "#,
-      &|_| None,
     )
     .unwrap();
     let npm_rc = npm_rc
@@ -843,10 +870,10 @@ registry=${VAR_FOUND}
     // set to the default registry like this and so we want to ensure it's
     // still used and not overwritten
     let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
       r#"
 @jsr:registry=https://registry.npmjs.org/
 "#,
-      &|_| None,
     )
     .unwrap();
     let npm_rc = npm_rc
@@ -862,9 +889,11 @@ registry=${VAR_FOUND}
   #[test]
   fn test_npm_config_registry_overrides_npmrc() {
     // NPM_CONFIG_REGISTRY should override the registry in .npmrc files
-    let npm_rc =
-      NpmRc::parse("registry=http://wrong.registry.example.com/", &|_| None)
-        .unwrap();
+    let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
+      "registry=http://wrong.registry.example.com/",
+    )
+    .unwrap();
 
     // This simulates what npm_registry_url() would return when NPM_CONFIG_REGISTRY is set
     let env_registry_url =
@@ -886,9 +915,11 @@ registry=${VAR_FOUND}
   #[test]
   fn test_npmrc_registry_used_when_no_env_var() {
     // When NPM_CONFIG_REGISTRY is not set, should use .npmrc registry
-    let npm_rc =
-      NpmRc::parse("registry=http://npmrc.registry.example.com/", &|_| None)
-        .unwrap();
+    let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
+      "registry=http://npmrc.registry.example.com/",
+    )
+    .unwrap();
 
     let resolved = npm_rc
       .as_resolved(&NpmRegistryUrl {

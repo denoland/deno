@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@mapped/foo": "./foo.ts"
+  }
+}

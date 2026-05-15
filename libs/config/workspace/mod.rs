@@ -57,6 +57,8 @@ use crate::deno_json::LintRulesConfig;
 use crate::deno_json::MinimumDependencyAgeConfig;
 use crate::deno_json::NodeModulesDirMode;
 use crate::deno_json::NodeModulesDirParseError;
+use crate::deno_json::NodeModulesLinkerMode;
+use crate::deno_json::NodeModulesLinkerParseError;
 use crate::deno_json::PermissionsConfig;
 use crate::deno_json::PermissionsObjectWithBase;
 use crate::deno_json::PublishConfig;
@@ -185,6 +187,10 @@ pub enum WorkspaceDiagnosticKind {
     "\"minimumDependencyAge.exclude\" entry \"{entry}\" missing jsr: or npm: prefix."
   )]
   MinimumDependencyAgeExcludeMissingPrefix { entry: String },
+  #[error(
+    "Invalid version requirement '{version_req}' for catalog entry '{name}'."
+  )]
+  InvalidCatalogVersionReq { name: String, version_req: String },
 }
 
 #[derive(Debug, Error, JsError, Clone, PartialEq, Eq)]
@@ -447,6 +453,7 @@ pub struct Workspace {
   config_folders: IndexMap<UrlRc, FolderConfigs>,
   links: BTreeMap<UrlRc, FolderConfigs>,
   pub(crate) vendor_dir: Option<PathBuf>,
+  catalogs: IndexMap<String, IndexMap<String, String>>,
   cached: WorkspaceCachedValues,
 }
 
@@ -458,6 +465,40 @@ impl Workspace {
     vendor_dir: Option<PathBuf>,
   ) -> Self {
     let root_dir_url = new_rc(root.folder_url());
+
+    // Load catalogs: prefer package.json, fall back to deno.json
+    let catalogs = {
+      let from_pkg_json = root.pkg_json().and_then(|pj| {
+        let has_catalog = pj.catalog.is_some();
+        let has_catalogs = pj.catalogs.is_some();
+        if !has_catalog && !has_catalogs {
+          return None;
+        }
+        let mut result: IndexMap<String, IndexMap<String, String>> =
+          IndexMap::new();
+        if let Some(c) = &pj.catalog {
+          result.insert("default".to_string(), c.clone());
+        }
+        if let Some(cs) = &pj.catalogs {
+          result.extend(cs.clone());
+        }
+        Some(result)
+      });
+      from_pkg_json.unwrap_or_else(|| {
+        let mut result: IndexMap<String, IndexMap<String, String>> =
+          IndexMap::new();
+        if let Some(dj) = root.deno_json() {
+          if let Some(c) = dj.catalog() {
+            result.insert("default".to_string(), c.clone());
+          }
+          if let Some(cs) = dj.catalogs() {
+            result.extend(cs.clone());
+          }
+        }
+        result
+      })
+    };
+
     let mut config_folders = IndexMap::with_capacity(members.len() + 1);
     config_folders.insert(
       root_dir_url.clone(),
@@ -476,6 +517,7 @@ impl Workspace {
         .map(|(url, folder)| (url, FolderConfigs::from_config_folder(folder)))
         .collect(),
       vendor_dir,
+      catalogs,
       cached: Default::default(),
     }
   }
@@ -494,6 +536,10 @@ impl Workspace {
 
   pub fn root_folder_configs(&self) -> &FolderConfigs {
     self.config_folders.get(&self.root_dir_url).unwrap()
+  }
+
+  pub fn catalogs(&self) -> &IndexMap<String, IndexMap<String, String>> {
+    &self.catalogs
   }
 
   pub fn root_deno_json(&self) -> Option<&ConfigFileRc> {
@@ -654,6 +700,7 @@ impl Workspace {
       }
     }
 
+    let catalogs = &self.catalogs;
     let mut folders = Vec::with_capacity(self.config_folders.len());
     for (index, (dir_url, folder)) in self.config_folders.iter().enumerate() {
       folders.push(Folder {
@@ -726,6 +773,22 @@ impl Workspace {
                         },
                       }))
                     }
+                    PackageJsonDepValue::Catalog(catalog_name) => catalogs
+                      .get(catalog_name.as_str())
+                      .and_then(|catalog| catalog.get(k.as_str()))
+                      .and_then(|version_req_str| {
+                        VersionReq::parse_from_npm(version_req_str).ok().map(
+                          |version_req| {
+                            Dep::Req(JsrDepPackageReq {
+                              kind: PackageKind::Npm,
+                              req: PackageReq {
+                                name: k.clone(),
+                                version_req,
+                              },
+                            })
+                          },
+                        )
+                      }),
                   })
               })
               .into_iter()
@@ -1090,6 +1153,18 @@ impl Workspace {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("nodeModulesDir"),
         });
       }
+      if member_config.json.catalog.is_some() {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: member_config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("catalog"),
+        });
+      }
+      if member_config.json.catalogs.is_some() {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: member_config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("catalogs"),
+        });
+      }
       if member_config.json.links.is_some() {
         diagnostics.push(WorkspaceDiagnostic {
           config_url: member_config.specifier.clone(),
@@ -1209,6 +1284,34 @@ impl Workspace {
           }
         }
       }
+      if let Some(catalog) = &config.json.catalog {
+        for (name, version_req) in catalog {
+          if VersionReq::parse_from_npm(version_req).is_err() {
+            diagnostics.push(WorkspaceDiagnostic {
+              config_url: config.specifier.clone(),
+              kind: WorkspaceDiagnosticKind::InvalidCatalogVersionReq {
+                name: name.clone(),
+                version_req: version_req.clone(),
+              },
+            });
+          }
+        }
+      }
+      if let Some(catalogs) = &config.json.catalogs {
+        for catalog in catalogs.values() {
+          for (name, version_req) in catalog {
+            if VersionReq::parse_from_npm(version_req).is_err() {
+              diagnostics.push(WorkspaceDiagnostic {
+                config_url: config.specifier.clone(),
+                kind: WorkspaceDiagnosticKind::InvalidCatalogVersionReq {
+                  name: name.clone(),
+                  version_req: version_req.clone(),
+                },
+              });
+            }
+          }
+        }
+      }
     }
 
     let mut diagnostics = Vec::new();
@@ -1225,14 +1328,25 @@ impl Workspace {
 
         check_all_configs(config, &mut diagnostics);
       }
-      if !is_root
-        && let Some(pkg_json) = &folder.pkg_json
-        && pkg_json.overrides.is_some()
-      {
-        diagnostics.push(WorkspaceDiagnostic {
-          config_url: pkg_json.specifier(),
-          kind: WorkspaceDiagnosticKind::PkgJsonRootOnlyOption("overrides"),
-        });
+      if !is_root && let Some(pkg_json) = &folder.pkg_json {
+        if pkg_json.overrides.is_some() {
+          diagnostics.push(WorkspaceDiagnostic {
+            config_url: pkg_json.specifier(),
+            kind: WorkspaceDiagnosticKind::PkgJsonRootOnlyOption("overrides"),
+          });
+        }
+        if pkg_json.catalog.is_some() {
+          diagnostics.push(WorkspaceDiagnostic {
+            config_url: pkg_json.specifier(),
+            kind: WorkspaceDiagnosticKind::PkgJsonRootOnlyOption("catalog"),
+          });
+        }
+        if pkg_json.catalogs.is_some() {
+          diagnostics.push(WorkspaceDiagnostic {
+            config_url: pkg_json.specifier(),
+            kind: WorkspaceDiagnosticKind::PkgJsonRootOnlyOption("catalogs"),
+          });
+        }
       }
     }
 
@@ -1420,6 +1534,10 @@ impl Workspace {
       for folder_url in matched_folder_urls {
         let entry = results.entry((*folder_url).clone());
         let folder_path = url_to_file_path(folder_url).unwrap();
+        let scoped_include = pattern
+          .include
+          .as_ref()
+          .map(|i| scope_include_to_folder(i, &folder_path));
         match entry {
           indexmap::map::Entry::Occupied(entry) => {
             let entry = entry.into_mut();
@@ -1431,7 +1549,7 @@ impl Workspace {
             }
             match &mut entry.include {
               Some(set) => {
-                if let Some(includes) = &pattern.include {
+                if let Some(includes) = &scoped_include {
                   for include in includes.inner() {
                     if !set.inner().contains(include) {
                       set.push(include.clone())
@@ -1440,7 +1558,7 @@ impl Workspace {
                 }
               }
               None => {
-                entry.include.clone_from(&pattern.include);
+                entry.include = scoped_include;
               }
             }
           }
@@ -1451,7 +1569,7 @@ impl Workspace {
               } else {
                 folder_path.clone()
               },
-              include: pattern.include.clone(),
+              include: scoped_include,
               exclude: pattern.exclude.clone(),
             });
           }
@@ -1517,6 +1635,22 @@ impl Workspace {
       .map(|v| {
         serde_json::from_value::<NodeModulesDirMode>(v.clone())
           .map_err(|err| NodeModulesDirParseError { source: err })
+      })
+      .transpose()
+  }
+
+  pub fn node_modules_linker(
+    &self,
+  ) -> Result<
+    Option<NodeModulesLinkerMode>,
+    deno_json::NodeModulesLinkerParseError,
+  > {
+    self
+      .root_deno_json()
+      .and_then(|c| c.json.node_modules_linker.as_ref())
+      .map(|v| {
+        serde_json::from_value::<NodeModulesLinkerMode>(v.clone())
+          .map_err(|err| NodeModulesLinkerParseError { source: err })
       })
       .transpose()
   }
@@ -1628,6 +1762,7 @@ impl WorkspaceDirectory {
         VendorEnablement::Enable { cwd } => Some(cwd.join("vendor")),
         VendorEnablement::Disable => None,
       },
+      catalogs: IndexMap::new(),
       cached: Default::default(),
     });
     workspace.resolve_member_dir(&opts.root_dir)
@@ -1712,6 +1847,7 @@ impl WorkspaceDirectory {
           root_dir_url: start_dir.clone(),
           links: BTreeMap::new(),
           vendor_dir,
+          catalogs: IndexMap::new(),
           cached: Default::default(),
         });
         workspace.resolve_member_dir(&start_dir)
@@ -2180,9 +2316,15 @@ impl WorkspaceDirectory {
     };
     let root_config = match &self.deno_json.root {
       Some(root) => root.to_compile_config(permissions)?,
-      None => Default::default(),
+      None => return Ok(member_config),
     };
+    let mut include = root_config.include;
+    include.extend(member_config.include);
+    let mut exclude = root_config.exclude;
+    exclude.extend(member_config.exclude);
     Ok(CompileConfig {
+      include,
+      exclude,
       permissions: match (root_config.permissions, member_config.permissions) {
         (_, Some(m)) => Some(m),
         (Some(r), _) => Some(r),
@@ -2417,7 +2559,6 @@ impl WorkspaceDirectory {
     };
     self.exclude_includes_with_member_for_base_for_root(&mut config.files);
     combine_files_config_with_cli_args(&mut config.files, cli_args);
-    self.append_workspace_members_to_exclude(&mut config.files);
     Ok(Some(config))
   }
 
@@ -2657,6 +2798,30 @@ fn combine_patterns(
     },
     base: member_patterns.base,
   }
+}
+
+/// Restrict a CLI-supplied include set to a single workspace folder.
+///
+/// `split_by_base` uses each include path as the walk root, so an include path
+/// that's a proper parent of the member's folder (e.g. `Path(cwd)` for member
+/// `cwd/member-a`) would cause every member to traverse the entire workspace.
+/// Clamp such paths down to the member's folder so each member only walks its
+/// own subtree.
+fn scope_include_to_folder(
+  include: &PathOrPatternSet,
+  folder_path: &Path,
+) -> PathOrPatternSet {
+  let scoped = include
+    .inner()
+    .iter()
+    .map(|p| match p {
+      PathOrPattern::Path(path) if folder_path.starts_with(path) => {
+        PathOrPattern::Path(folder_path.to_path_buf())
+      }
+      _ => p.clone(),
+    })
+    .collect::<Vec<_>>();
+  PathOrPatternSet::new(scoped)
 }
 
 fn combine_files_config_with_cli_args(
@@ -5895,6 +6060,72 @@ pub mod test {
     });
   }
 
+  // Regression test for https://github.com/denoland/deno/issues/30915 — running
+  // `deno fmt .` (or `deno lint .`) from the workspace root must not cause each
+  // member to walk the whole workspace.
+  #[test]
+  fn test_resolve_config_for_members_cli_include_workspace_root() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": ["./member-a", "./member-b"],
+      }),
+    );
+    sys.fs_insert_json(root_dir().join("member-a/deno.json"), json!({}));
+    sys.fs_insert_json(root_dir().join("member-b/deno.json"), json!({}));
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
+    // Simulate CLI args from `deno fmt .` — base + include both pointing at the
+    // workspace root.
+    let cli_args = FilePatterns {
+      base: root_dir(),
+      include: Some(PathOrPatternSet::new(vec![PathOrPattern::Path(
+        root_dir(),
+      )])),
+      exclude: Default::default(),
+    };
+    let config_for_members = workspace_dir
+      .workspace
+      .resolve_fmt_config_for_members(&cli_args)
+      .unwrap();
+    let file_patterns = config_for_members
+      .into_iter()
+      .map(|(_ctx, config)| config.files)
+      .collect::<Vec<_>>();
+    assert_eq!(
+      file_patterns,
+      vec![
+        // Root walks from the workspace root, but excludes the member dirs.
+        FilePatterns {
+          base: root_dir(),
+          include: Some(PathOrPatternSet::new(vec![PathOrPattern::Path(
+            root_dir()
+          )])),
+          exclude: PathOrPatternSet::new(vec![
+            PathOrPattern::Path(root_dir().join("member-a")),
+            PathOrPattern::Path(root_dir().join("member-b")),
+          ]),
+        },
+        // Each member's include is clamped to the member's own directory so
+        // that file collection walks only that subtree.
+        FilePatterns {
+          base: root_dir().join("member-a"),
+          include: Some(PathOrPatternSet::new(vec![PathOrPattern::Path(
+            root_dir().join("member-a")
+          )])),
+          exclude: Default::default(),
+        },
+        FilePatterns {
+          base: root_dir().join("member-b"),
+          include: Some(PathOrPatternSet::new(vec![PathOrPattern::Path(
+            root_dir().join("member-b")
+          )])),
+          exclude: Default::default(),
+        },
+      ]
+    );
+  }
+
   #[test]
   fn test_resolve_config_for_members_excluded_member() {
     let sys = InMemorySys::default();
@@ -6551,5 +6782,260 @@ pub mod test {
         .to_string()
         .trim_end_matches('/'),
     )
+  }
+
+  // --- Deploy config tests ---
+
+  #[test]
+  fn test_deploy_config_in_root_does_not_exclude_members() {
+    // Regression test: when deploy config is in the workspace root and the
+    // user runs `deno deploy` from the root, workspace member directories
+    // should NOT be excluded from the file patterns.
+    let sys = InMemorySys::default();
+    let root_config = root_dir().join("deno.json");
+    sys.fs_insert_json(
+      root_config.clone(),
+      json!({
+        "workspace": ["./packages/backend", "./packages/types"],
+        "deploy": {
+          "org": "myorg",
+          "app": "myapp"
+        }
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/backend/deno.json"),
+      json!({
+        "version": "0.1.0",
+        "exclude": ["coverage/"]
+      }),
+    );
+    sys.fs_insert(
+      root_dir().join("packages/backend/main.ts"),
+      "Deno.serve(() => new Response('hello'));",
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/types/deno.json"),
+      json!({
+        "name": "@myapp/types",
+        "exports": "./mod.ts"
+      }),
+    );
+    sys.fs_insert(
+      root_dir().join("packages/types/mod.ts"),
+      "export type Foo = string;",
+    );
+
+    // Discover from workspace root
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
+    let deploy_config = workspace_dir
+      .to_deploy_config(FilePatterns::new_with_base(workspace_dir.dir_path()))
+      .unwrap();
+
+    assert!(deploy_config.is_some(), "deploy config should be resolved");
+    let deploy_config = deploy_config.unwrap();
+    assert_eq!(deploy_config.org, "myorg");
+    assert_eq!(deploy_config.app, Some("myapp".to_string()));
+
+    // The critical check: workspace member paths must NOT be excluded
+    let backend_dir = root_dir().join("packages/backend");
+    let types_dir = root_dir().join("packages/types");
+    assert!(
+      deploy_config
+        .files
+        .matches_path(&backend_dir, PathKind::Directory),
+      "packages/backend should not be excluded from deploy files"
+    );
+    assert!(
+      deploy_config
+        .files
+        .matches_path(&types_dir, PathKind::Directory),
+      "packages/types should not be excluded from deploy files"
+    );
+    assert!(
+      deploy_config.files.matches_path(
+        &root_dir().join("packages/backend/main.ts"),
+        PathKind::File,
+      ),
+      "packages/backend/main.ts should be included in deploy files"
+    );
+  }
+
+  #[test]
+  fn test_deploy_config_in_both_root_and_member() {
+    // When both root and member have deploy configs, running from the
+    // member directory should resolve the deploy config and not exclude
+    // member files.
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": ["./member"],
+        "deploy": {
+          "org": "rootorg"
+        }
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("member/deno.json"),
+      json!({
+        "deploy": {
+          "org": "myorg",
+          "app": "myapp"
+        }
+      }),
+    );
+    sys.fs_insert(
+      root_dir().join("member/main.ts"),
+      "Deno.serve(() => new Response('hello'));",
+    );
+
+    let workspace_dir =
+      workspace_at_start_dir(&sys, &root_dir().join("member"));
+    let deploy_config = workspace_dir
+      .to_deploy_config(FilePatterns::new_with_base(workspace_dir.dir_path()))
+      .unwrap();
+
+    assert!(deploy_config.is_some(), "deploy config should be resolved");
+    let deploy_config = deploy_config.unwrap();
+    // Member's org takes precedence over root's
+    assert_eq!(deploy_config.org, "myorg");
+
+    // Member's own files must match
+    assert!(
+      deploy_config
+        .files
+        .matches_path(&root_dir().join("member/main.ts"), PathKind::File,),
+      "member/main.ts should be included"
+    );
+  }
+
+  #[test]
+  fn test_deploy_config_root_only_no_member_deploy() {
+    // deploy:{org,app} in root, NO deploy in any member.
+    // When running from root, to_deploy_config should return Some.
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": [
+          "./packages/backend",
+          "./packages/types",
+          "./packages/schema"
+        ],
+        "deploy": {
+          "org": "sfdevtools",
+          "app": "prod"
+        }
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/backend/deno.json"),
+      json!({ "version": "0.1.0" }),
+    );
+    sys.fs_insert(
+      root_dir().join("packages/backend/main.ts"),
+      "Deno.serve(() => new Response('hello'));",
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/types/deno.json"),
+      json!({ "name": "@myapp/types", "exports": "./mod.ts" }),
+    );
+    sys.fs_insert(
+      root_dir().join("packages/types/mod.ts"),
+      "export type Foo = string;",
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/schema/deno.json"),
+      json!({ "name": "@myapp/schema", "exports": "./mod.ts" }),
+    );
+    sys.fs_insert(
+      root_dir().join("packages/schema/mod.ts"),
+      "export const VERSION = 1;",
+    );
+
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
+    let deploy_config = workspace_dir
+      .to_deploy_config(FilePatterns::new_with_base(workspace_dir.dir_path()))
+      .unwrap();
+
+    assert!(
+      deploy_config.is_some(),
+      "deploy config should be resolved when only root has deploy field"
+    );
+    let deploy_config = deploy_config.unwrap();
+    assert_eq!(deploy_config.org, "sfdevtools");
+
+    // All workspace member directories must be accessible
+    for member in &["packages/backend", "packages/types", "packages/schema"] {
+      let member_dir = root_dir().join(member);
+      assert!(
+        deploy_config
+          .files
+          .matches_path(&member_dir, PathKind::Directory),
+        "{member} should not be excluded from deploy files"
+      );
+    }
+    // Entrypoint must be accessible
+    assert!(
+      deploy_config.files.matches_path(
+        &root_dir().join("packages/backend/main.ts"),
+        PathKind::File,
+      ),
+      "packages/backend/main.ts must be included"
+    );
+  }
+
+  #[test]
+  fn test_deploy_config_with_exclude() {
+    // Deploy config with explicit exclude should respect it but not
+    // additionally exclude workspace members.
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": ["./packages/backend", "./packages/types"],
+        "exclude": ["docs/"],
+        "deploy": {
+          "org": "myorg",
+          "app": "myapp"
+        }
+      }),
+    );
+    sys
+      .fs_insert_json(root_dir().join("packages/backend/deno.json"), json!({}));
+    sys.fs_insert(
+      root_dir().join("packages/backend/main.ts"),
+      "Deno.serve(() => new Response('hello'));",
+    );
+    sys.fs_insert_json(root_dir().join("packages/types/deno.json"), json!({}));
+    sys.fs_insert(
+      root_dir().join("packages/types/mod.ts"),
+      "export type Foo = string;",
+    );
+
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
+    let deploy_config = workspace_dir
+      .to_deploy_config(FilePatterns::new_with_base(workspace_dir.dir_path()))
+      .unwrap();
+
+    assert!(deploy_config.is_some());
+    let deploy_config = deploy_config.unwrap();
+
+    // Workspace members should NOT be excluded
+    assert!(
+      deploy_config.files.matches_path(
+        &root_dir().join("packages/backend/main.ts"),
+        PathKind::File,
+      ),
+      "workspace member files should not be excluded"
+    );
+    // docs/ should be excluded (from top-level exclude)
+    assert!(
+      !deploy_config
+        .files
+        .matches_path(&root_dir().join("docs/readme.md"), PathKind::File),
+      "docs/ should be excluded"
+    );
   }
 }

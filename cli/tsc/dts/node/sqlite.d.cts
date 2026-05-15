@@ -366,11 +366,41 @@ declare module "node:sqlite" {
          */
         applyChangeset(changeset: Uint8Array, options?: ApplyChangesetOptions): boolean;
         /**
+         * Serializes a database into a `Uint8Array`. The serialized data can later be
+         * passed to {@link DatabaseSync.deserialize} to reconstruct the database.
+         * This method is a wrapper around [`sqlite3_serialize()`](https://www.sqlite.org/c3ref/serialize.html).
+         * @param dbName Name of the database to serialize. Defaults to `'main'`.
+         * @since v22.15.0
+         */
+        serialize(dbName?: string): Uint8Array;
+        /**
+         * Deserializes a database from a `Uint8Array`. Replaces the contents of the
+         * named database with the contents of the buffer. This method is a wrapper
+         * around [`sqlite3_deserialize()`](https://www.sqlite.org/c3ref/deserialize.html).
+         * @param serialized The serialized database to deserialize.
+         * @param options Options controlling deserialization.
+         * @since v22.15.0
+         */
+        deserialize(
+            serialized: NodeJS.TypedArray | DataView,
+            options?: DeserializeOptions,
+        ): void;
+        /**
          * Closes the database connection. If the database connection is already closed
          * then this is a no-op.
          * @since v22.15.0
          */
         [Symbol.dispose](): void;
+    }
+    interface DeserializeOptions {
+        /**
+         * Name of the database to deserialize into. **Default:** `'main'`.
+         */
+        dbName?: string | undefined;
+        /**
+         * If `true`, the deserialized database is opened in read-only mode. **Default:** `false`.
+         */
+        readOnly?: boolean | undefined;
     }
     /**
      * @since v22.12.0

@@ -186,7 +186,24 @@ pub fn op_lazy_load_esm(
   #[string] module_specifier: String,
 ) -> Result<v8::Global<v8::Value>, CoreError> {
   let module_map_rc = JsRealm::module_map_from(scope);
+  // `synthetic_esm` registrations don't live in `lazy_esm_sources`, so
+  // route them through their own sync-load path. `createLazyLoader` calls
+  // this op from JS land for builtins it wants to keep deferred (e.g.
+  // `node:worker_threads.ts` uses `createLazyLoader("node:url")`).
+  if module_map_rc.has_synthetic_esm_module(&module_specifier) {
+    return module_map_rc
+      .lazy_load_synthetic_esm_module(scope, &module_specifier);
+  }
   module_map_rc.lazy_load_esm_module(scope, &module_specifier)
+}
+
+#[op2(reentrant)]
+pub fn op_load_ext_script(
+  scope: &mut v8::PinScope,
+  #[string] specifier: String,
+) -> Result<v8::Global<v8::Value>, CoreError> {
+  let module_map_rc = JsRealm::module_map_from(scope);
+  module_map_rc.load_ext_script(scope, &specifier)
 }
 
 // We run in a `nofast` op here so we don't get put into a `DisallowJavascriptExecutionScope` and we're
@@ -526,15 +543,32 @@ pub fn op_decode<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   #[buffer] zero_copy: &[u8],
 ) -> Result<v8::Local<'s, v8::String>, JsErrorBox> {
-  let buf = &zero_copy;
+  // ASCII fast path. Pure ASCII inputs (the dominant real-world case for
+  // Response.text(), File.text(), FormData parsing, prompt() input, etc.)
+  // are valid UTF-8 with no BOM, so we can short-circuit straight to
+  // `new_from_one_byte` and skip both the 3-byte BOM check and V8's internal
+  // UTF-8 validation pass. `simdutf::validate_ascii` is a SIMD high-bit scan
+  // (~1 ns per 64 bytes); on non-ASCII inputs it bails at the first non-ASCII
+  // byte and falls through to the existing UTF-8 path.
+  if v8::simdutf::validate_ascii(zero_copy) {
+    return v8::String::new_from_one_byte(
+      scope,
+      zero_copy,
+      v8::NewStringType::Normal,
+    )
+    .ok_or_else(|| JsErrorBox::range_error("string too long"));
+  }
 
   // Strip BOM
-  let buf =
-    if buf.len() >= 3 && buf[0] == 0xef && buf[1] == 0xbb && buf[2] == 0xbf {
-      &buf[3..]
-    } else {
-      buf
-    };
+  let buf = if zero_copy.len() >= 3
+    && zero_copy[0] == 0xef
+    && zero_copy[1] == 0xbb
+    && zero_copy[2] == 0xbf
+  {
+    &zero_copy[3..]
+  } else {
+    zero_copy
+  };
 
   // If `String::new_from_utf8()` returns `None`, this means that the
   // length of the decoded string would be longer than what V8 can
@@ -929,7 +963,8 @@ pub fn op_deserialize<'s, 'i>(
 }
 
 // Specialized op for `structuredClone` API called with no `options` argument.
-#[op2]
+// May be reentrant when host object brand functions call ops (e.g. Blob clone).
+#[op2(reentrant)]
 pub fn op_structured_clone<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   value: v8::Local<'s, v8::Value>,
