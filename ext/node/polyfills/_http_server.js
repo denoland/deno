@@ -576,6 +576,9 @@ function onParserExecute(server, socket, parser, state, ret, d) {
   if (d !== undefined && !Buffer.isBuffer(d)) {
     d = Buffer.from(d.buffer, d.byteOffset, d.byteLength);
   }
+  if (d !== undefined) {
+    parser._lastRawPacket = d;
+  }
   onParserExecuteCommon(server, socket, parser, state, ret, d);
 }
 
@@ -606,7 +609,7 @@ function socketOnEnd(server, socket, parser, state) {
   const ret = parser.finish();
 
   if (ret instanceof Error) {
-    prepareError(ret, parser);
+    prepareError(ret, parser, parser._lastRawPacket);
     socketOnError.call(socket, ret);
     return;
   }
@@ -626,6 +629,7 @@ function socketOnEnd(server, socket, parser, state) {
 function socketOnData(server, socket, parser, state, d) {
   assert(googLength(d));
 
+  parser._lastRawPacket = d;
   const ret = parser.execute(d);
 
   onParserExecuteCommon(server, socket, parser, state, ret, d);
@@ -788,6 +792,10 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   res.shouldKeepAlive = keepAlive;
   res[kUniqueHeaders] = server[kUniqueHeaders];
 
+  if (server.optimizeEmptyRequests && isRequestKnownEmpty(req)) {
+    req._dumpAndCloseReadable();
+  }
+
   // Start OTel server span and metrics
   if (otelState.TRACING_ENABLED) {
     // Extract trace context from incoming request headers
@@ -902,6 +910,12 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   }
 
   return 0;
+}
+
+function isRequestKnownEmpty(req) {
+  if (req.method === "HEAD") return true;
+  return req.headers["content-length"] === undefined &&
+    req.headers["transfer-encoding"] === undefined;
 }
 
 function resOnFinish(req, res, socket, state, server) {
@@ -1139,6 +1153,15 @@ function storeHTTPOptions(options) {
     validateBoolean(insecureHTTPParser, "options.insecureHTTPParser");
   }
   this.insecureHTTPParser = insecureHTTPParser;
+
+  const optimizeEmptyRequests = options.optimizeEmptyRequests;
+  if (optimizeEmptyRequests !== undefined) {
+    validateBoolean(
+      optimizeEmptyRequests,
+      "options.optimizeEmptyRequests",
+    );
+  }
+  this.optimizeEmptyRequests = optimizeEmptyRequests;
 
   const requestTimeout = options.requestTimeout;
   if (requestTimeout !== undefined) {

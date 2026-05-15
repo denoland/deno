@@ -882,13 +882,13 @@ unsafe fn consume_read_callback(
     };
     // When the parser signals upgrade/CONNECT, the JS
     // `onParserExecuteCommon` upgrade branch computes
-    // `bodyHead = d.slice(bytesParsed)`. In the non-consume path `d`
-    // is the buffer JS passed into `parser.execute(d)`; here we
-    // don't have that — pass the current read buffer as a Uint8Array
-    // second argument so the JS side can slice it. For non-upgrade
-    // requests we leave the 2nd arg off (avoids the per-request
-    // allocation of a JS view).
-    if !is_error && inner.parser.upgrade != 0 {
+    // `bodyHead = d.slice(bytesParsed)`. Parse errors also need the raw
+    // packet so JS can recover llhttp errors collapsed to HPE_ERROR. In the
+    // non-consume path `d` is the buffer JS passed into `parser.execute(d)`;
+    // here we don't have that — pass the current read buffer as a Uint8Array.
+    // For ordinary non-upgrade requests we leave the 2nd arg off to avoid the
+    // per-request allocation of a JS view.
+    if is_error || inner.parser.upgrade != 0 {
       let byte_len = data.len();
       let ab = v8::ArrayBuffer::new(scope, byte_len);
       if byte_len > 0 {
