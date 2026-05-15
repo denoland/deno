@@ -1517,9 +1517,8 @@ impl ModuleMap {
 
     // Fast path for lazy-loaded ESM: load synchronously and resolve
     // immediately, avoiding the async RecursiveModuleLoad path entirely.
-    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
-      && phase == ModuleImportPhase::Evaluation
-      && let Ok(module_specifier) = resolve_result
+    if phase == ModuleImportPhase::Evaluation
+      && let Ok(module_specifier) = &resolve_response
       && self.has_lazy_esm_source(module_specifier.as_str())
     {
       match self.lazy_load_esm_module(scope, module_specifier.as_str()) {
@@ -1542,9 +1541,8 @@ impl ModuleMap {
     // Fast path for `synthetic_esm`-registered modules: build the
     // synthetic module synchronously and resolve immediately, same
     // pattern as the lazy ESM fast path above.
-    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
-      && phase == ModuleImportPhase::Evaluation
-      && let Ok(module_specifier) = resolve_result
+    if phase == ModuleImportPhase::Evaluation
+      && let Ok(module_specifier) = &resolve_response
       && self.has_synthetic_esm_module(module_specifier.as_str())
     {
       match self
