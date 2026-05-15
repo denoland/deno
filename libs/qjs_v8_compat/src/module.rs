@@ -143,6 +143,20 @@ pub(crate) fn esm_bytecode_consumed(handle: &sys::JSValue) -> bool {
   ESM_BYTECODE_CONSUMED.with(|t| t.borrow().contains(&module_handle_of(handle)))
 }
 
+/// Mark every ESM module-def we've recorded as bytecode-consumed.
+/// QuickJS evaluates statically-imported modules transitively during
+/// the entry-point's JS_EvalFunction, so once that completes we know
+/// every transitively-imported module body has run.
+pub(crate) fn mark_all_esm_bytecode_consumed() {
+  let handles: Vec<u64> = ESM_MODULE_DEFS.with(|t| t.borrow().keys().copied().collect());
+  ESM_BYTECODE_CONSUMED.with(|t| {
+    let mut t = t.borrow_mut();
+    for h in handles {
+      t.insert(h);
+    }
+  });
+}
+
 thread_local! {
   static ESM_BYTECODE_CONSUMED: std::cell::RefCell<std::collections::HashSet<u64>> =
     std::cell::RefCell::new(std::collections::HashSet::new());
@@ -404,7 +418,17 @@ impl<'s> Local<'s, Module> {
       == Some(ModuleStatus::Evaluated)
       || crate::module::esm_bytecode_consumed(&raw)
     {
+      // Make sure deno_core's post-evaluate status assertion sees us
+      // as Evaluated even if we got here via the "consumed" path
+      // (i.e., the module was transitively evaluated by QuickJS and
+      // we never set status ourselves).
+      crate::module::record_module_status(&raw, ModuleStatus::Evaluated);
       let (promise, resolve, reject) = sys::new_promise_capability(ctx)?;
+      crate::promise::record_promise_state(
+        &promise,
+        sys::PromiseStateRaw::Pending,
+        ctx,
+      );
       let mut args = [sys::jsv_undefined()];
       let _ = sys::call(ctx, resolve, sys::jsv_undefined(), &mut args);
       let iso_ptr = scope.isolate_ptr();
@@ -426,8 +450,15 @@ impl<'s> Local<'s, Module> {
       // a rejection). The status is correct enough for cycle handling
       // even if the body hasn't fully run yet.
       crate::module::record_module_status(&raw, ModuleStatus::Evaluated);
+      crate::module::mark_esm_bytecode_consumed(&raw);
       sys::dup_value(ctx, bytecode);
       let result = sys::eval_function(ctx, bytecode);
+      // QuickJS evaluates statically-imported modules transitively
+      // during JS_EvalFunction. Mark every ESM module-def we know
+      // about as bytecode-consumed so subsequent
+      // lazy_load_esm_module calls don't trigger redundant
+      // re-evaluation via Module::evaluate.
+      crate::module::mark_all_esm_bytecode_consumed();
       let result_holder = result;
       let result = result_holder;
       let _ = (); // formatter
