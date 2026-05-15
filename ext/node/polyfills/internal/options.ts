@@ -33,9 +33,13 @@ const {
 
 const dummyOptions = new SafeMap<string, { value: string | boolean }>();
 
+function isWarmupPhase() {
+  return !Deno.build;
+}
+
 function getOptionsFromBinding() {
   // If Deno.build is not defined, this is in warmup phase.
-  if (!Deno.build) {
+  if (isWarmupPhase()) {
     return dummyOptions;
   }
 
@@ -47,7 +51,7 @@ function getOptionValue(optionName: string) {
 }
 
 function getExecArgvOptionValue(optionName: string) {
-  if (!Deno.build) {
+  if (isWarmupPhase()) {
     return undefined;
   }
   return getOptionValueFromMap(getExecArgvOptions().options, optionName);
