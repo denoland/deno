@@ -253,7 +253,7 @@ Agent.prototype.createConnection = function createConnection(
   ...args: any[]
 ) {
   let options = args[0];
-  let cb = typeof args[args.length - 1] === "function"
+  const cb = typeof args[args.length - 1] === "function"
     ? args[args.length - 1]
     : undefined;
 
