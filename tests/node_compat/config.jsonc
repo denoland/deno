@@ -3503,6 +3503,10 @@
     "parallel/test-tls-close-notify.js": {},
     "parallel/test-tls-connect-address-family.js": {},
     "parallel/test-tls-connect-hwm-option.js": {},
+    "parallel/test-tls-connect-keepalive-nodelay.js": {
+      "ignore": true,
+      "reason": "Requires Node's internal/net module, which Deno does not implement."
+    },
     "parallel/test-tls-connect-no-host.js": {},
     "parallel/test-tls-connect-pipe.js": {},
     "parallel/test-tls-connect-secure-context.js": {},

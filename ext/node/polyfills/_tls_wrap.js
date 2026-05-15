@@ -453,7 +453,11 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
 
   // Set ownerSymbol on the parent handle so that connect callbacks
   // (which receive the TCP handle, not the TLSWrap) can find the socket.
-  handle[ownerSymbol] = this;
+  // If we are wrapping a still-connecting net.Socket, keep the raw socket as
+  // owner until its pending connect event has fired.
+  if (!(wrap instanceof net.Socket && wrap.connecting)) {
+    handle[ownerSymbol] = this;
+  }
 
   // Proxy methods from the parent TCP handle that callers expect on _handle.
   // In Node, TLSWrap is a StreamBase that delegates these to the underlying
@@ -700,6 +704,10 @@ TLSSocket.prototype._init = function (socket, wrap) {
 
     this.connecting = socket.connecting || !socket._handle;
     socket.once("connect", () => {
+      if (this.destroyed) {
+        return;
+      }
+
       this.connecting = false;
       // If the original socket created its own TCP handle during
       // connect() (because it had no handle when we wrapped it),
@@ -707,6 +715,7 @@ TLSSocket.prototype._init = function (socket, wrap) {
       if (ssl && socket._handle) {
         const nativeHandle = socket._handle;
         ssl.attach(nativeHandle);
+        nativeHandle[ownerSymbol] = this;
       }
       this.emit("connect");
     });
