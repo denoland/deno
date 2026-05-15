@@ -111,6 +111,31 @@ mod backend {
     unsafe { ffi::JS_NewArray(ctx) }
   }
 
+  /// Ensure the given function/object value has a `.prototype` set to a
+  /// fresh object. QuickJS C functions don't auto-populate `.prototype`
+  /// (only bytecode functions do), but real V8 FunctionTemplate-built
+  /// constructors do — so deno_core's `setUpAsyncStub` (which writes
+  /// `maybeProto.prototype[opName] = fn`) needs us to fake it.
+  pub fn ensure_function_prototype(ctx: Context, func: JSValue) {
+    if func.tag != JS_TAG_OBJECT {
+      return;
+    }
+    let key = std::ffi::CString::new("prototype").unwrap();
+    unsafe {
+      let existing = ffi::JS_GetPropertyStr(ctx, func, key.as_ptr());
+      let is_undefined = existing.tag == ffi::JS_TAG_UNDEFINED;
+      if !is_undefined {
+        ffi::JS_FreeValue(ctx, existing);
+        return;
+      }
+      let proto = ffi::JS_NewObject(ctx);
+      if proto.tag != JS_TAG_OBJECT {
+        return;
+      }
+      ffi::JS_SetPropertyStr(ctx, func, key.as_ptr(), proto);
+    }
+  }
+
   pub fn to_bool(ctx: Context, v: JSValue) -> bool {
     unsafe { ffi::JS_ToBool(ctx, v) != 0 }
   }

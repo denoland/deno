@@ -745,12 +745,13 @@ impl<'s, 'i, 'a, C> LocalNewScopeRef<'s>
   for crate::context::ContextScope<'a, crate::scope::PinScope<'s, 'i, C>>
 {
   fn as_mut_handle_scope_ref(&self) -> &mut HandleScope<'s> {
-    // ContextScope.parent is &mut PinScope<'s, 'i, C>; reach in via
-    // raw-pointer cast to avoid the &mut requirement on self.
-    let ptr: *const crate::context::ContextScope<'a, crate::scope::PinScope<'s, 'i, C>> = self;
-    let mut_ptr: *mut HandleScope<'s> =
-      unsafe { core::mem::transmute_copy(&ptr) };
-    unsafe { &mut *mut_ptr }
+    // Dereference into ContextScope's parent (the PinScope) and reuse
+    // its impl. The previous version cast `*ContextScope -> *HandleScope`
+    // directly, which read ContextScope's `parent: &mut P` field as the
+    // HandleScope's `isolate` pointer and produced garbage `depth`.
+    use std::ops::Deref;
+    let pin: &crate::scope::PinScope<'s, 'i, C> = self.deref();
+    pin.as_mut_handle_scope_ref()
   }
 }
 impl<'s, P> LocalNewScopeRef<'s> for std::pin::Pin<&mut P>

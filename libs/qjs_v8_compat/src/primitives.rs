@@ -445,13 +445,15 @@ impl Symbol {
   ) -> Local<'s, Symbol> {
     Self::new_inner(scope)
   }
-  fn new_inner<'s>(scope: &mut HandleScope<'s>) -> Local<'s, Symbol> {
+  fn new_inner<'s>(_scope: &mut HandleScope<'s>) -> Local<'s, Symbol> {
     // QJS-DIVERGE: real path is JS_NewSymbol(ctx, NULL, false). Mocked.
+    // Do NOT track_owned — this is a fake JSValue with a NULL pointer
+    // payload, and JS_FreeValue would dereference it on scope drop and
+    // corrupt the runtime atom table.
     let raw = sys::JSValue {
       u: sys::JSValueUnion { int32: 0 },
       tag: sys::JS_TAG_SYMBOL,
     };
-    scope.track_owned(raw);
     Local::from_raw(raw)
   }
   pub fn for_<'s>(

@@ -107,6 +107,13 @@ unsafe impl Send for OwnedIsolate {}
 impl OwnedIsolate {
   pub fn new(_params: CreateParams) -> Self {
     let rt = sys::new_runtime();
+    // QuickJS-ng's default stack size is 256KB, way too small for
+    // deno's bootstrap which recurses deeply through op trampolines
+    // and JS-level setup. Bump to 8MB. Also disable to allow unlimited
+    // by passing 0.
+    unsafe {
+      crate::ffi::JS_SetMaxStackSize(rt, 8 * 1024 * 1024);
+    }
     let ctx = sys::new_context(rt);
     let mut state = Box::new(IsolateState::new());
     let state_ptr: *mut IsolateState = state.as_mut();

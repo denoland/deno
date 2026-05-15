@@ -990,8 +990,12 @@ pub mod v8 {
     }
     pub fn dispose_platform() {}
     pub fn set_flags_from_string(_s: &str) {}
+    /// Real v8 returns the args V8 didn't recognize. We accept all
+    /// flags silently (QuickJS doesn't have V8-style flags), so
+    /// return only the first arg (the binary name) which the deno
+    /// caller skips.
     pub fn set_flags_from_command_line<S>(args: Vec<S>) -> Vec<S> {
-      args
+      args.into_iter().take(1).collect()
     }
     pub fn set_fatal_error_handler<F>(_handler: F) {}
   }
