@@ -258,15 +258,15 @@ const timersPromises = core.loadExtScript(
 );
 import tls from "node:tls";
 const traceEvents = core.loadExtScript("ext:deno_node/trace_events.ts").default;
-const tty = core.loadExtScript("ext:deno_node/tty.js");
+import tty from "node:tty";
 const url = core.loadExtScript("ext:deno_node/url.ts");
 const utilTypes = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 const util = core.loadExtScript("ext:deno_node/util.ts");
-const v8 = core.loadExtScript("ext:deno_node/v8.ts").default;
+const v8 = core.loadExtScript("ext:deno_node/v8.ts");
 const vm = core.loadExtScript("ext:deno_node/vm.js").default;
 const workerThreads = core.loadExtScript(
   "ext:deno_node/worker_threads.ts",
-).default;
+);
 const wasi = core.loadExtScript("ext:deno_node/wasi.ts").default;
 const zlib = core.loadExtScript("ext:deno_node/zlib.js");
 
@@ -1398,11 +1398,28 @@ function loadCjs(module, filename) {
   module._compile(content, filename, "commonjs");
 }
 
+function _throwRequireAsyncModule(specifier, module) {
+  const parent = module?.parent?.filename ?? "<unknown>";
+  throw new internalErrors.ERR_REQUIRE_ASYNC_MODULE(specifier, parent);
+}
+
 function loadESMFromCJS(module, filename, code) {
-  const namespace = op_import_sync(
-    url.pathToFileURL(filename).toString(),
-    code,
-  );
+  const specifier = url.pathToFileURL(filename).toString();
+  let namespace;
+  try {
+    namespace = op_import_sync(specifier, code);
+  } catch (e) {
+    if (
+      e instanceof Error &&
+      StringPrototypeIncludes(
+        e.message,
+        "Top-level await is not allowed in synchronous evaluation",
+      )
+    ) {
+      _throwRequireAsyncModule(specifier, module);
+    }
+    throw e;
+  }
   if (ObjectHasOwn(namespace, "module.exports")) {
     module.exports = namespace["module.exports"];
   } else {
