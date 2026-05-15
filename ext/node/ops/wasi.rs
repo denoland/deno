@@ -2,7 +2,10 @@
 
 // WASI requires direct filesystem access for host operations.
 // The FileSystem trait doesn't provide the low-level primitives needed here.
-#![allow(clippy::disallowed_methods)]
+#![allow(
+  clippy::disallowed_methods,
+  reason = "WASI needs direct host filesystem access instead of the FileSystem trait"
+)]
 
 use std::borrow::Cow;
 use std::cell::RefCell;

@@ -6,6 +6,8 @@
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
 const { WasiContext } = core.ops;
+const { statSync } = core.loadExtScript("ext:deno_node/fs.ts");
+const { exit } = core.loadExtScript("ext:deno_os/30_os.js");
 const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
@@ -162,7 +164,7 @@ class WASI {
       for (const [virtualPath, realPath] of ObjectEntries(options.preopens)) {
         const realPathString = String(realPath);
         try {
-          Deno.statSync(realPathString);
+          statSync(realPathString);
         } catch {
           throw new UVWASIError(
             "UVWASI_ENOENT",
@@ -250,7 +252,7 @@ class WASI {
         if (self.#returnOnExit) {
           throw new WASIProcExit(exitCode);
         }
-        Deno.exit(exitCode);
+        exit(exitCode);
       },
       proc_raise(sig: number) {
         return ctx.procRaise(sig);
