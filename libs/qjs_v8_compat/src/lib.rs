@@ -896,7 +896,13 @@ pub mod v8 {
       // Stub: return a placeholder Module handle. Real V8 module
       // compilation isn't bridged to QuickJS-ng modules yet; deno_core
       // will then call instantiate_module / evaluate which we also stub.
+      // Record the freshly-compiled module so the global "all-modules-
+      // evaluated" sweep at the end of bootstrap can mark it Evaluated.
       let raw = crate::sys::new_object(scope.ctx());
+      crate::module::record_module_status(
+        &raw,
+        crate::v8::ModuleStatus::Uninstantiated,
+      );
       Some(super::Local::from_raw(raw))
     }
     pub fn compile_function<'s, S, O, N>(
@@ -919,6 +925,10 @@ pub mod v8 {
       S: crate::scope::HandleScopeSource,
     {
       let raw = crate::sys::new_object(scope.default_ctx());
+      crate::module::record_module_status(
+        &raw,
+        crate::v8::ModuleStatus::Uninstantiated,
+      );
       Some(super::Local::from_raw(raw))
     }
     /// Mirror of `v8::script_compiler::cached_data_version_tag`. Real

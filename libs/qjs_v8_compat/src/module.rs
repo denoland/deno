@@ -28,6 +28,12 @@ thread_local! {
   static MODULE_STATUS: std::cell::RefCell<
     std::collections::HashMap<u64, ModuleStatus>,
   > = std::cell::RefCell::new(std::collections::HashMap::new());
+
+  /// Set to true after the first `evaluate()` call. Once entry-point
+  /// evaluation runs, we treat any other module as Evaluated by default
+  /// (QuickJS evaluates imported modules transitively, so they would
+  /// have been touched).
+  static AFTER_FIRST_EVAL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 fn module_handle_of(v: &sys::JSValue) -> u64 {
@@ -42,6 +48,23 @@ pub(crate) fn record_module_status(v: &sys::JSValue, s: ModuleStatus) {
 
 pub(crate) fn lookup_module_status(v: &sys::JSValue) -> Option<ModuleStatus> {
   MODULE_STATUS.with(|t| t.borrow().get(&module_handle_of(v)).copied())
+}
+
+/// Mark every module currently in the status table as Evaluated, and
+/// flip the AFTER_FIRST_EVAL flag so any unseen handles also report
+/// Evaluated. Called from `Module::evaluate` because QuickJS evaluates
+/// imported modules transitively at evaluation time.
+pub(crate) fn mark_all_modules_evaluated() {
+  MODULE_STATUS.with(|t| {
+    for s in t.borrow_mut().values_mut() {
+      *s = ModuleStatus::Evaluated;
+    }
+  });
+  AFTER_FIRST_EVAL.with(|f| f.set(true));
+}
+
+pub(crate) fn after_first_eval() -> bool {
+  AFTER_FIRST_EVAL.with(|f| f.get())
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -62,9 +85,11 @@ impl ModuleImportPhase {
 
 impl<'s> Local<'s, Module> {
   pub fn get_status(&self) -> ModuleStatus {
-    // Track per-module lifecycle in a thread-local table. evaluate()
-    // marks the module Evaluated; everything else defaults to
-    // Instantiated so deno_core's pre-evaluate assertion passes.
+    // Per-module lifecycle table. compile_module records Uninstantiated;
+    // instantiate_module marks Instantiated; evaluate marks Evaluated
+    // (and sweeps all known modules — QuickJS evaluates imports
+    // transitively). Unseen handles report Instantiated to satisfy
+    // deno_core's pre-evaluate assertion.
     crate::module::lookup_module_status(&self.raw())
       .unwrap_or(ModuleStatus::Instantiated)
   }
@@ -81,10 +106,15 @@ impl<'s> Local<'s, Module> {
     let ctx = scope.default_ctx();
     // Mirror the v8 Module lifecycle in our thread-local table: callers
     // (deno_core) assert get_status() == Evaluated after this returns.
+    // Also sweep all known modules to Evaluated — QuickJS evaluates
+    // imported modules transitively at evaluation time, so deno_core's
+    // post-evaluation `check_all_modules_evaluated` should see them
+    // all as evaluated.
     crate::module::record_module_status(
       &self.raw(),
       ModuleStatus::Evaluated,
     );
+    crate::module::mark_all_modules_evaluated();
     // Synthesize a fulfilled promise. We need to free the resolve/reject
     // pair; QuickJS hands them out at +1 refcount each, and we don't
     // need them past this call.
@@ -114,6 +144,10 @@ impl<'s> Local<'s, Module> {
     _scope: &mut S,
     _cb: C,
   ) -> Option<bool> {
+    crate::module::record_module_status(
+      &self.raw(),
+      ModuleStatus::Instantiated,
+    );
     Some(true)
   }
   pub fn get_identity_hash(&self) -> std::num::NonZeroI32 {
