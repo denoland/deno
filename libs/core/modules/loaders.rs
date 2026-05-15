@@ -113,8 +113,11 @@ pub trait ModuleLoader {
     options: ModuleLoadOptions,
   ) -> ModuleLoadResponse;
 
-  /// Whether synthetic ESM modules should go through `load()` instead of being
-  /// instantiated directly by the module map.
+  /// Whether modules from the extension `synthetic_esm` registry should go
+  /// through `load()` instead of being instantiated directly by the module map.
+  ///
+  /// These are not V8 synthetic modules. They are ESM facades backed by an
+  /// already-evaluated extension script exports object.
   fn should_load_synthetic_esm(&self, _specifier: &str) -> bool {
     false
   }
