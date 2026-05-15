@@ -75,6 +75,36 @@ thread_local! {
   static SYNTHETIC_MODULE_DEFS: std::cell::RefCell<
     std::collections::HashMap<u64, usize>,
   > = std::cell::RefCell::new(std::collections::HashMap::new());
+
+  /// JSModuleDef pointers for ESM modules whose source we've actually
+  /// pre-compiled via JS_Eval(MODULE | COMPILE_ONLY). Lets
+  /// `get_module_namespace` return the real namespace and
+  /// `Module::evaluate` use JS_EvalFunction on the bytecode.
+  /// Keyed by our placeholder JSValue handle.
+  static ESM_MODULE_DEFS: std::cell::RefCell<
+    std::collections::HashMap<u64, (usize, sys::JSValue)>,
+  > = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+pub(crate) fn record_esm_module_def(
+  handle: &sys::JSValue,
+  m: *mut crate::ffi::JSModuleDef,
+  bytecode: sys::JSValue,
+) {
+  ESM_MODULE_DEFS.with(|t| {
+    t.borrow_mut()
+      .insert(module_handle_of(handle), (m as usize, bytecode));
+  });
+}
+
+pub(crate) fn lookup_esm_module_def(
+  handle: &sys::JSValue,
+) -> Option<(*mut crate::ffi::JSModuleDef, sys::JSValue)> {
+  ESM_MODULE_DEFS.with(|t| {
+    t.borrow()
+      .get(&module_handle_of(handle))
+      .map(|(m, bc)| (*m as *mut crate::ffi::JSModuleDef, *bc))
+  })
 }
 
 pub(crate) fn record_synthetic_module_def(
@@ -297,21 +327,18 @@ impl<'s> Local<'s, Module> {
         }
       }
     }
-    // Real ESM modules compiled via JS_Eval(MODULE | COMPILE_ONLY)
-    // carry the JSModuleDef* in the raw JSValue payload (tag = JS_TAG_MODULE).
-    if raw.tag == crate::ffi::JS_TAG_MODULE {
+    // ESM modules pre-compiled via JS_Eval(MODULE | COMPILE_ONLY) in
+    // compile_module2 — JSModuleDef* recorded in ESM_MODULE_DEFS.
+    if let Some((m, _bc)) = lookup_esm_module_def(&raw) {
       if !ctx.is_null() {
-        let m = unsafe { raw.u.ptr } as *mut crate::ffi::JSModuleDef;
         let ns = unsafe { crate::ffi::JS_GetModuleNamespace(ctx, m) };
         if !sys::jsv_is_exception(&ns) {
           return Local::from_raw(ns);
         }
       }
     }
-    // Fallback: return an empty object so callers like deno_node's
-    // `process ??= lazyLoadProcess()` don't get `undefined` and crash on
-    // `process.noDeprecation`. This is a stub that loses the real
-    // bindings, but keeps the module-init chain alive.
+    // Fallback: empty object so destructure-like patterns on the
+    // namespace don't crash. Real bindings unavailable.
     if !ctx.is_null() {
       let obj = sys::new_object(ctx);
       return Local::from_raw(obj);
@@ -323,9 +350,82 @@ impl<'s> Local<'s, Module> {
     S: crate::scope::HandleScopeSource,
   {
     let ctx = scope.default_ctx();
-    // If we have stashed source for this module, run it through QuickJS
-    // as a module. JS_Eval with JS_EVAL_TYPE_MODULE will resolve and
-    // evaluate the import graph transitively.
+    // Prefer pre-compiled bytecode (from compile_module2's COMPILE_ONLY
+    // path) if available — JS_EvalFunction takes ownership of and frees
+    // the bytecode JSValue, so we dup before handing it over and clear
+    // the recording.
+    let raw = self.raw();
+    let pre = crate::module::lookup_esm_module_def(&raw);
+    if let Some((_m, bytecode)) = pre {
+      let fname = crate::module::lookup_module_source(&raw)
+        .and_then(|(_, f)| f)
+        .unwrap_or_else(|| "<module>".to_string());
+      sys::dup_value(ctx, bytecode);
+      let result = sys::eval_function(ctx, bytecode);
+      let result_holder = result;
+      let result = result_holder;
+      let _ = (); // formatter
+      let fname_ref = &fname;
+      // (Falls into the existing post-eval handling block below.)
+      // Inline the post-eval logic here:
+      if !sys::jsv_is_exception(&result) && result.tag == sys::JS_TAG_OBJECT {
+        let state = unsafe { crate::ffi::JS_PromiseState(ctx, result) };
+        if state == 2 {
+          let prom_val = unsafe { crate::ffi::JS_PromiseResult(ctx, result) };
+          if let Some(s) = sys::to_string_lossy(ctx, prom_val) {
+            eprintln!("[qjs] module {fname_ref} top-level rejection: {s}");
+          }
+          unsafe {
+            let stack_val = crate::ffi::JS_GetPropertyStr(
+              ctx,
+              prom_val,
+              c"stack".as_ptr(),
+            );
+            if !sys::jsv_is_undefined(&stack_val)
+              && !sys::jsv_is_exception(&stack_val)
+            {
+              if let Some(s) = sys::to_string_lossy(ctx, stack_val) {
+                eprintln!("[qjs] stack:\n{s}");
+              }
+            }
+            sys::free_value(ctx, stack_val);
+          }
+          sys::free_value(ctx, prom_val);
+        }
+      }
+      let iso_ptr = scope.isolate_ptr();
+      if !iso_ptr.is_null() {
+        let rt = unsafe { (*iso_ptr).rt() };
+        while sys::run_pending_job(rt) {}
+      }
+      if sys::jsv_is_exception(&result) {
+        if let Some(exc) = sys::take_pending_exception(ctx) {
+          if let Some(s) = sys::to_string_lossy(ctx, exc) {
+            eprintln!("[qjs] Module::evaluate exception in {fname_ref}: {s}");
+          }
+          sys::free_value(ctx, exc);
+        }
+      } else if !sys::jsv_is_undefined(&result) {
+        sys::free_value(ctx, result);
+      }
+      crate::module::record_module_status(&raw, ModuleStatus::Evaluated);
+      let (promise, resolve, reject) = sys::new_promise_capability(ctx)?;
+      crate::promise::record_promise_state(
+        &promise,
+        sys::PromiseStateRaw::Pending,
+        ctx,
+      );
+      let mut args = [sys::jsv_undefined()];
+      let _ = sys::call(ctx, resolve, sys::jsv_undefined(), &mut args);
+      let iso_ptr = scope.isolate_ptr();
+      if !iso_ptr.is_null() {
+        let rt = unsafe { (*iso_ptr).rt() };
+        while sys::run_pending_job(rt) {}
+      }
+      let _ = (resolve, reject);
+      return Some(Local::from_raw(promise));
+    }
+    // Legacy path: stashed source string, no precompile available.
     if let Some((src, filename)) = crate::module::lookup_module_source(&self.raw())
     {
       let fname = filename.unwrap_or_else(|| "<module>".to_string());

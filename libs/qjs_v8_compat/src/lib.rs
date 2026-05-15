@@ -911,8 +911,27 @@ pub mod v8 {
       let filename = source
         .name
         .and_then(|v| crate::sys::to_string_lossy(ctx, v));
-      if let Some(src) = src {
-        crate::module::record_module_source(&raw, src, filename);
+      if let Some(src) = src.as_ref() {
+        crate::module::record_module_source(
+          &raw,
+          src.clone(),
+          filename.clone(),
+        );
+        let fname = filename.clone().unwrap_or_else(|| "<module>".into());
+        let bytecode = crate::sys::eval(
+          ctx,
+          src,
+          &fname,
+          crate::ffi::JS_EVAL_TYPE_MODULE | crate::ffi::JS_EVAL_FLAG_COMPILE_ONLY,
+        );
+        if !crate::sys::jsv_is_exception(&bytecode)
+          && bytecode.tag == crate::ffi::JS_TAG_MODULE
+        {
+          let m = unsafe { bytecode.u.ptr } as *mut crate::ffi::JSModuleDef;
+          crate::module::record_esm_module_def(&raw, m, bytecode);
+        } else if crate::sys::jsv_is_exception(&bytecode) {
+          let _ = crate::sys::take_pending_exception(ctx);
+        }
       }
       Some(super::Local::from_raw(raw))
     }
@@ -945,8 +964,31 @@ pub mod v8 {
       let filename = source
         .name
         .and_then(|v| crate::sys::to_string_lossy(ctx, v));
-      if let Some(src) = src {
-        crate::module::record_module_source(&raw, src, filename);
+      if let Some(src) = src.as_ref() {
+        crate::module::record_module_source(
+          &raw,
+          src.clone(),
+          filename.clone(),
+        );
+        // Try to pre-compile via JS_Eval(MODULE | COMPILE_ONLY) so we
+        // can recover a real JSModuleDef for `get_module_namespace`.
+        // If imports can't be resolved here, we silently fall through to
+        // the legacy source-stash path used by `Module::evaluate`.
+        let fname = filename.clone().unwrap_or_else(|| "<module>".into());
+        let bytecode = crate::sys::eval(
+          ctx,
+          src,
+          &fname,
+          crate::ffi::JS_EVAL_TYPE_MODULE | crate::ffi::JS_EVAL_FLAG_COMPILE_ONLY,
+        );
+        if !crate::sys::jsv_is_exception(&bytecode)
+          && bytecode.tag == crate::ffi::JS_TAG_MODULE
+        {
+          let m = unsafe { bytecode.u.ptr } as *mut crate::ffi::JSModuleDef;
+          crate::module::record_esm_module_def(&raw, m, bytecode);
+        } else if crate::sys::jsv_is_exception(&bytecode) {
+          let _ = crate::sys::take_pending_exception(ctx);
+        }
       }
       Some(super::Local::from_raw(raw))
     }

@@ -1419,6 +1419,15 @@ impl JsRuntime {
     let mut modules = Vec::with_capacity(loaded_sources.esm.len());
     let mut sources = Vec::with_capacity(loaded_sources.esm.len());
     for esm in loaded_sources.esm {
+      // qjs_v8_compat shim: register the ESM source by name with our
+      // module-loader callback BEFORE side-module-loading kicks off, so
+      // JS_Eval(MODULE | COMPILE_ONLY) for an importer can recursively
+      // resolve `import x from "<sibling-esm>"` via JS_SetModuleLoaderFunc.
+      // No-op on real V8.
+      v8::module::register_lazy_module_source(
+        &esm.specifier,
+        AsRef::<str>::as_ref(&esm.code),
+      );
       modules.push(ModuleSpecifier::parse(&esm.specifier).unwrap());
       sources.push((esm.specifier, esm.code));
     }
