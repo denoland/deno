@@ -465,9 +465,9 @@ impl RecursiveModuleLoad {
                     &request.reference.specifier,
                     None,
                   ))
-                } else if module_map_rc
-                  .has_synthetic_esm_module(request.reference.specifier.as_str())
-                {
+                } else if module_map_rc.has_synthetic_esm_module(
+                  request.reference.specifier.as_str(),
+                ) {
                   // Sentinel source. `register_and_recurse` detects the
                   // synthetic_esm specifier and constructs the module from
                   // its backing script's cached exports object instead of
