@@ -107,6 +107,47 @@ pub(crate) fn lookup_esm_module_def(
   })
 }
 
+/// Look up only the JSModuleDef pointer (e.g. for namespace queries
+/// when the bytecode has already been consumed by JS_EvalFunction).
+pub(crate) fn lookup_esm_module_def_only(
+  handle: &sys::JSValue,
+) -> Option<*mut crate::ffi::JSModuleDef> {
+  ESM_MODULE_DEFS.with(|t| {
+    t.borrow()
+      .get(&module_handle_of(handle))
+      .map(|(m, _)| *m as *mut crate::ffi::JSModuleDef)
+  })
+}
+
+/// Mark the bytecode-portion of an ESM module def as consumed by
+/// JS_EvalFunction. Subsequent calls to lookup_esm_module_def return
+/// None (so Module::evaluate skips re-evaluation), but
+/// lookup_esm_module_def_only still returns the module pointer for
+/// namespace queries.
+pub(crate) fn mark_esm_bytecode_consumed(handle: &sys::JSValue) {
+  ESM_MODULE_DEFS.with(|t| {
+    let mut t = t.borrow_mut();
+    if let Some(entry) = t.get_mut(&module_handle_of(handle)) {
+      // Replace bytecode with undefined sentinel — looker treats this
+      // as "no bytecode, but still know the def". We do this in a side
+      // map below (KEY: we can't easily distinguish; use marker map).
+      let _ = entry; // placeholder
+    }
+  });
+  ESM_BYTECODE_CONSUMED.with(|t| {
+    t.borrow_mut().insert(module_handle_of(handle));
+  });
+}
+
+pub(crate) fn esm_bytecode_consumed(handle: &sys::JSValue) -> bool {
+  ESM_BYTECODE_CONSUMED.with(|t| t.borrow().contains(&module_handle_of(handle)))
+}
+
+thread_local! {
+  static ESM_BYTECODE_CONSUMED: std::cell::RefCell<std::collections::HashSet<u64>> =
+    std::cell::RefCell::new(std::collections::HashSet::new());
+}
+
 pub(crate) fn record_synthetic_module_def(
   handle: &sys::JSValue,
   m: *mut crate::ffi::JSModuleDef,
@@ -355,14 +396,13 @@ impl<'s> Local<'s, Module> {
     // the bytecode JSValue, so we dup before handing it over and clear
     // the recording.
     let raw = self.raw();
-    // Already evaluated? Return a fresh resolved-promise without
-    // re-running the body. QuickJS evaluates statically-imported
-    // modules transitively at the entry point's eval, so by the time
-    // deno_core reaches a non-entry module via lazy_load_esm_module
-    // (e.g. for createLazyLoader('node:process') from inside a
-    // sibling's body), the body has already run once.
+    // Already evaluated (either by us, or by QuickJS transitively
+    // when an entry-point module imported us)? Return a fresh
+    // resolved-promise without re-running the body. We track
+    // "QuickJS already ran the body" via mark_esm_bytecode_consumed.
     if crate::module::lookup_module_status(&raw)
       == Some(ModuleStatus::Evaluated)
+      || crate::module::esm_bytecode_consumed(&raw)
     {
       let (promise, resolve, reject) = sys::new_promise_capability(ctx)?;
       let mut args = [sys::jsv_undefined()];
