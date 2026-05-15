@@ -1,5 +1,5 @@
 diff --git a/quickjs.c b/quickjs.c
-index 0a3abac..e7e2e67 100644
+index 0a3abac..b6091f2 100644
 --- a/quickjs.c
 +++ b/quickjs.c
 @@ -6115,6 +6115,11 @@ static int js_method_set_properties(JSContext *ctx, JSValue func_obj,
@@ -32,3 +32,19 @@ index 0a3abac..e7e2e67 100644
      return func_obj;
  }
  
+@@ -30051,6 +30067,7 @@ static int js_inner_module_linking(JSContext *ctx, JSModuleDef *m,
+ 
+     if (m->status == JS_MODULE_STATUS_LINKING ||
+         m->status == JS_MODULE_STATUS_LINKED ||
++        m->status == JS_MODULE_STATUS_EVALUATING ||
+         m->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
+         m->status == JS_MODULE_STATUS_EVALUATED)
+         return index;
+@@ -30072,6 +30089,7 @@ static int js_inner_module_linking(JSContext *ctx, JSModuleDef *m,
+             goto fail;
+         assert(m1->status == JS_MODULE_STATUS_LINKING ||
+                m1->status == JS_MODULE_STATUS_LINKED ||
++               m1->status == JS_MODULE_STATUS_EVALUATING ||
+                m1->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
+                m1->status == JS_MODULE_STATUS_EVALUATED);
+         if (m1->status == JS_MODULE_STATUS_LINKING) {
