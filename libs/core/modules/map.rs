@@ -2530,7 +2530,19 @@ impl ModuleMap {
         // evaluating earlier in DFS post-order. Returning the namespace
         // before evaluation leaves `export const` bindings in the temporal
         // dead zone, so trigger evaluation here.
-        if handle_local.get_status() == v8::ModuleStatus::Instantiated {
+        //
+        // qjs_v8_compat shim: under QuickJS, statically-imported modules
+        // are evaluated eagerly during the entry's JS_EvalFunction. If
+        // we're CURRENTLY inside that JS_EvalFunction (recursive lazy
+        // load fires from within an entry's body), forcing another
+        // handle_local.evaluate() would call JS_EvalFunction on the same
+        // bytecode twice — corrupting refcount + observing partial
+        // state. Skip the re-eval; namespace bindings remain in TDZ if
+        // accessed before the body finishes, which matches V8 semantics
+        // for cyclic imports.
+        if handle_local.get_status() == v8::ModuleStatus::Instantiated
+          && !v8::module::esm_bytecode_consumed_for(handle_local)
+        {
           let value = handle_local.evaluate(scope).unwrap();
           if !self.evaluating_top_level.get() {
             scope.perform_microtask_checkpoint();

@@ -252,6 +252,15 @@ pub fn register_lazy_module_source(name: &str, source: &str) {
   });
 }
 
+/// Public hook for deno_core's lazy_load_esm_module path to skip a
+/// redundant Module::evaluate when QuickJS has already evaluated the
+/// module transitively or when re-eval would corrupt bytecode refcount.
+pub fn esm_bytecode_consumed_for<'s>(
+  module: crate::value::Local<'s, Module>,
+) -> bool {
+  esm_bytecode_consumed(&module.raw())
+}
+
 /// Module loader callback registered with QuickJS via
 /// `JS_SetModuleLoaderFunc`. Looks up the source we stashed in
 /// `compile_module` (keyed by URL) and hands it to QuickJS as a fresh
