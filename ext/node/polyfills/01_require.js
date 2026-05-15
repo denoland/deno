@@ -1010,6 +1010,10 @@ Module._load = function (request, parent, isMain) {
     throw err;
   }
 
+  if (isMain && parent === null) {
+    core.processTicksAndRejections();
+  }
+
   return module.exports;
 };
 
