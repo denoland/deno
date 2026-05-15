@@ -3491,6 +3491,11 @@
     "parallel/test-tls-basic-validations.js": {},
     "parallel/test-tls-buffersize.js": {},
     "parallel/test-tls-ca-concat.js": {},
+    "parallel/test-tls-canonical-ip.js": {
+      "ignore": true,
+      "reason": "Requires internalBinding('cares_wrap').canonicalizeIP, which is not implemented in Deno"
+    },
+    "parallel/test-tls-cert-chains-concat.js": {},
     "parallel/test-tls-cert-ext-encoding.js": {},
     "parallel/test-tls-cert-regression.js": {},
     "parallel/test-tls-check-server-identity.js": {},

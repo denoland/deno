@@ -116,6 +116,12 @@ function getContextCertValue(socket) {
   return toBufferLike(cert);
 }
 
+function getContextCAValue(socket) {
+  const context = socket._tlsOptions?.secureContext?.context ??
+    socket._tlsOptions?.secureContext;
+  return context?.ca ?? socket._tlsOptions?.ca;
+}
+
 function setIssuerCertificate(cert, issuer) {
   if (issuer) {
     Object.defineProperty(cert, "issuerCertificate", {
@@ -129,28 +135,80 @@ function setIssuerCertificate(cert, issuer) {
   return cert;
 }
 
+function splitPEMCertificates(value) {
+  const str = typeof value === "string" ? value : String(value);
+  return str.match(
+    /-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g,
+  ) ?? [];
+}
+
+function toLegacyCACertificates(ca) {
+  if (!ca) {
+    return [];
+  }
+  const values = ArrayIsArray(ca) ? ca : [ca];
+  const certs = [];
+  for (const value of values) {
+    if (typeof value === "string") {
+      for (const pem of splitPEMCertificates(value)) {
+        certs.push(new X509Certificate(pem).toLegacyObject());
+      }
+    } else {
+      const input = toBufferLike(value) ?? value;
+      certs.push(new X509Certificate(input).toLegacyObject());
+    }
+  }
+  return certs;
+}
+
+function sameDistinguishedName(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function completePeerCertificateChainFromCA(lastCert, ca) {
+  const caCerts = toLegacyCACertificates(ca);
+  let current = lastCert;
+  for (;;) {
+    if (
+      !current?.issuer || sameDistinguishedName(current.subject, current.issuer)
+    ) {
+      return current;
+    }
+    const issuer = caCerts.find((cert) =>
+      sameDistinguishedName(cert.subject, current.issuer)
+    );
+    if (!issuer) {
+      return current;
+    }
+    current.issuerCertificate = issuer;
+    current = issuer;
+  }
+}
+
 function getPeerCertificateChain(handle) {
   return handle?.getPeerCertificateChain?.()?.certificates ?? null;
 }
 
-function buildPeerLegacyCertificate(handle) {
+function buildPeerLegacyCertificate(socket) {
+  const handle = socket._handle;
   const cert = handle?.getPeerCertificate?.(true);
   if (!cert) {
     return {};
   }
 
   const chain = getPeerCertificateChain(handle);
-  if (chain?.length > 1) {
+  if (chain?.length) {
     let current = cert;
     for (let i = 1; i < chain.length; i++) {
       const issuer = new X509Certificate(chain[i]).toLegacyObject();
       current.issuerCertificate = issuer;
       current = issuer;
     }
+    current = completePeerCertificateChainFromCA(current, getContextCAValue(socket));
     // Self-signed root: issuerCertificate points to itself (matches Node.js)
     if (
       current.subject && current.issuer &&
-      JSON.stringify(current.subject) === JSON.stringify(current.issuer)
+      sameDistinguishedName(current.subject, current.issuer)
     ) {
       current.issuerCertificate = current;
     }
@@ -888,7 +946,7 @@ TLSSocket.prototype.getPeerCertificate = function (detailed) {
     const cert = this._handle.getPeerCertificate(false);
     return translatePeerCertificate(cert) || {};
   }
-  return buildPeerLegacyCertificate(this._handle);
+  return buildPeerLegacyCertificate(this);
 };
 
 TLSSocket.prototype.getCertificate = function () {
