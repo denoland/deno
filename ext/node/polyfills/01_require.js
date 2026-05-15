@@ -65,6 +65,8 @@ const {
   SafeArrayIterator,
   SafeMap,
   SafeSet,
+  SetPrototypeAdd,
+  SetPrototypeDelete,
   SafeWeakMap,
   SetPrototypeHas,
   String,
@@ -452,6 +454,7 @@ let patched = false;
 
 // module.registerHooks() infrastructure
 const hookEntries = [];
+const cjsHookResolvedFilenames = new SafeSet();
 let insideResolveHook = false;
 let insideLoadHook = false;
 let utf8Decoder;
@@ -1276,6 +1279,18 @@ Module._load = function (request, parent, isMain) {
   }
 
   const filename = Module._resolveFilename(request, parent, isMain);
+  const cachedModule = Module._cache[filename];
+  if (
+    cachedModule !== undefined &&
+    !StringPrototypeStartsWith(filename, "node:")
+  ) {
+    updateChildren(parent, cachedModule, true);
+    if (!cachedModule.loaded) {
+      return getExportsForCircularRequire(cachedModule);
+    }
+    return cachedModule.exports;
+  }
+
   const isBuiltinFilename = StringPrototypeStartsWith(filename, "node:") ||
     nativeModuleCanBeRequiredByUsers(filename);
   if (isBuiltinFilename) {
@@ -1322,8 +1337,10 @@ Module._load = function (request, parent, isMain) {
             mod._compile(source, builtinFilename, "commonjs");
           } else if (result.format === "json") {
             mod.exports = JSONParse(stripBOM(source));
+          } else if (result.format === "module") {
+            loadESMFromCJS(mod, builtinFilename, source, true);
           } else {
-            mod._compile(source, builtinFilename);
+            mod._compile(source, builtinFilename, undefined, true);
           }
           mod.loaded = true;
           return mod.exports;
@@ -1352,7 +1369,6 @@ Module._load = function (request, parent, isMain) {
     return module.exports;
   }
 
-  const cachedModule = Module._cache[filename];
   if (cachedModule !== undefined) {
     updateChildren(parent, cachedModule, true);
     if (!cachedModule.loaded) {
@@ -1486,15 +1502,19 @@ Module._resolveFilename = function (
       }
       if (StringPrototypeStartsWith(result.url, "file://")) {
         try {
-          return url.fileURLToPath(result.url);
+          const filename = url.fileURLToPath(result.url);
+          SetPrototypeAdd(cjsHookResolvedFilenames, filename);
+          return filename;
         } catch {
           // Virtual file:// URLs may not have valid OS paths (e.g.
           // file:///virtual.js on Windows). Return the URL as-is and
           // let the load hook handle it.
+          SetPrototypeAdd(cjsHookResolvedFilenames, result.url);
           return result.url;
         }
       }
       // node: and other schemes returned as-is
+      SetPrototypeAdd(cjsHookResolvedFilenames, result.url);
       return result.url;
     }
   }
@@ -1744,7 +1764,7 @@ Module.prototype.load = function (filename) {
         const format = result.format;
         const source = loadHookSourceToString(result.source);
         if (format === "module") {
-          loadESMFromCJS(this, this.filename, source);
+          loadESMFromCJS(this, this.filename, source, true);
         } else if (format === "commonjs") {
           this._compile(source, this.filename, "commonjs");
         } else if (format === "json") {
@@ -1756,7 +1776,7 @@ Module.prototype.load = function (filename) {
           }
         } else {
           // Default to CJS when format is unspecified
-          this._compile(source, this.filename);
+          this._compile(source, this.filename, undefined, true);
         }
         this.loaded = true;
         return;
@@ -1894,9 +1914,16 @@ function wrapSafe(
   return f;
 }
 
-Module.prototype._compile = function (content, filename, format) {
+Module.prototype._compile = function (
+  content,
+  filename,
+  format,
+  sourceFromHook = false,
+) {
+  const useSourceImport = sourceFromHook ||
+    SetPrototypeDelete(cjsHookResolvedFilenames, filename);
   if (format === "module") {
-    return loadESMFromCJS(this, filename, content);
+    return loadESMFromCJS(this, filename, content, useSourceImport);
   }
 
   let compiledWrapper;
@@ -1907,7 +1934,7 @@ Module.prototype._compile = function (content, filename, format) {
       format !== "commonjs" && err instanceof SyntaxError &&
       (op_require_can_parse_as_esm(content) || isEsmSyntaxError(err))
     ) {
-      return loadESMFromCJS(this, filename, content);
+      return loadESMFromCJS(this, filename, content, useSourceImport);
     }
     throw err;
   }
@@ -1978,13 +2005,13 @@ function _throwRequireAsyncModule(specifier, module) {
   throw new internalErrors.ERR_REQUIRE_ASYNC_MODULE(specifier, parent);
 }
 
-function loadESMFromCJS(module, filename, code) {
+function loadESMFromCJS(module, filename, code, sourceFromHook = false) {
   const specifier = url.pathToFileURL(filename).toString();
   let namespace;
   try {
-    namespace = code === undefined
-      ? op_import_sync(specifier)
-      : op_import_sync_with_source(specifier, code);
+    namespace = sourceFromHook && code !== undefined
+      ? op_import_sync_with_source(specifier, code)
+      : op_import_sync(specifier);
   } catch (e) {
     if (
       e instanceof Error &&
