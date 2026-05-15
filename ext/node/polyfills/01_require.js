@@ -957,32 +957,57 @@ Module._load = function (request, parent, isMain) {
 
   let threw = true;
   try {
-    module.load(filename);
-    threw = false;
-  } finally {
-    if (threw) {
-      delete Module._cache[filename];
-      if (parent !== undefined) {
-        delete relativeResolveCache[relResolveCacheIdentifier];
-        const children = parent?.children;
-        if (ArrayIsArray(children)) {
-          const index = ArrayPrototypeIndexOf(children, module);
-          if (index !== -1) {
-            ArrayPrototypeSplice(children, index, 1);
+    try {
+      module.load(filename);
+      threw = false;
+    } finally {
+      if (threw) {
+        delete Module._cache[filename];
+        if (parent !== undefined) {
+          delete relativeResolveCache[relResolveCacheIdentifier];
+          const children = parent?.children;
+          if (ArrayIsArray(children)) {
+            const index = ArrayPrototypeIndexOf(children, module);
+            if (index !== -1) {
+              ArrayPrototypeSplice(children, index, 1);
+            }
           }
         }
+      } else if (
+        module.exports &&
+        // Skip Proxy module.exports so the cleanup pass after a circular
+        // require doesn't invoke user-visible getPrototypeOf traps. Matches
+        // Node's lib/internal/modules/cjs/loader.js behavior.
+        !core.isProxy(module.exports) &&
+        ObjectGetPrototypeOf(module.exports) ===
+          CircularRequirePrototypeWarningProxy
+      ) {
+        ObjectSetPrototypeOf(module.exports, ObjectPrototype);
       }
-    } else if (
-      module.exports &&
-      // Skip Proxy module.exports so the cleanup pass after a circular
-      // require doesn't invoke user-visible getPrototypeOf traps. Matches
-      // Node's lib/internal/modules/cjs/loader.js behavior.
-      !core.isProxy(module.exports) &&
-      ObjectGetPrototypeOf(module.exports) ===
-        CircularRequirePrototypeWarningProxy
-    ) {
-      ObjectSetPrototypeOf(module.exports, ObjectPrototype);
     }
+  } catch (err) {
+    // For a top-level CommonJS throw in the entry module, fire
+    // 'uncaughtExceptionMonitor' and 'uncaughtException' synchronously with
+    // origin === 'uncaughtException', matching Node.js semantics.
+    //
+    // Without this, the throw bubbles up to the ESM wrapper that loads the
+    // main CJS module, becomes a module evaluation rejection, and is routed
+    // through Deno's unhandled-rejection path.
+    if (
+      isMain &&
+      parent === null &&
+      typeof process !== "undefined" &&
+      typeof process._fatalException === "function"
+    ) {
+      if (process._fatalException(err)) {
+        return module.exports;
+      }
+      if (err !== null && typeof err === "object") {
+        const set = internals._dispatchedFatalErrors;
+        if (set !== undefined) set.add(err);
+      }
+    }
+    throw err;
   }
 
   return module.exports;
