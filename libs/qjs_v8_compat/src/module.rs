@@ -49,6 +49,17 @@ thread_local! {
   /// have been touched).
   static AFTER_FIRST_EVAL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 
+  /// JSModuleDef pointers we've previously handed back from the
+  /// module loader, keyed by module name. Lets us return the same
+  /// JSModuleDef on a second import of the same name (QuickJS's
+  /// JS_Eval doesn't dedupe module-type evals against existing
+  /// loaded modules; without this cache we'd compile each module
+  /// twice on cyclic imports and trip the resolver's
+  /// "circular reference" check).
+  static MODULE_DEF_CACHE: std::cell::RefCell<
+    std::collections::HashMap<String, usize>,
+  > = std::cell::RefCell::new(std::collections::HashMap::new());
+
   /// Synthetic module exports keyed by JSModuleDef pointer (as usize).
   /// Populated by `Local<Module>::set_synthetic_module_export`; consumed
   /// by `synthetic_module_init_callback` when QuickJS calls the
@@ -169,6 +180,13 @@ pub(crate) unsafe extern "C" fn module_loader_callback(
     Ok(s) => s,
     Err(_) => return core::ptr::null_mut(),
   };
+  // Return the previously-compiled module if we've seen this name —
+  // otherwise QuickJS gets two distinct JSModuleDef for the same
+  // import name on cyclic graphs and trips its circular check.
+  if let Some(cached) = MODULE_DEF_CACHE.with(|c| c.borrow().get(name).copied())
+  {
+    return cached as *mut crate::ffi::JSModuleDef;
+  }
   let Some(source) = lookup_module_source_by_name(name) else {
     eprintln!("[qjs] module loader: no source for {name}");
     return core::ptr::null_mut();
@@ -201,6 +219,10 @@ pub(crate) unsafe extern "C" fn module_loader_callback(
   }
   // The compiled module's payload (u.ptr) is the JSModuleDef pointer.
   let m = unsafe { result.u.ptr } as *mut crate::ffi::JSModuleDef;
+  // Cache so subsequent imports of the same name reuse the same module.
+  MODULE_DEF_CACHE.with(|c| {
+    c.borrow_mut().insert(name.to_string(), m as usize);
+  });
   // Don't free `result` — JSModuleDef ownership is transferred to QuickJS.
   m
 }
