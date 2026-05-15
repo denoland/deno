@@ -1135,6 +1135,16 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               &specifier,
               None,
             )),
+            Ok((None, Some(format)))
+              if format == "builtin" && specifier.scheme() == "node" =>
+            {
+              Ok(deno_core::ModuleSource::new(
+                deno_core::ModuleType::JavaScript,
+                deno_core::ModuleSourceCode::String("".to_string().into()),
+                &specifier,
+                None,
+              ))
+            }
             Ok((None, _)) => {
               // Fallthrough: hooks didn't intercept, use default
               inner
@@ -1187,6 +1197,10 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       }
       .boxed_local(),
     )
+  }
+
+  fn should_load_synthetic_esm(&self, specifier: &str) -> bool {
+    self.0.hook_registry.load_active.get() && specifier.starts_with("node:")
   }
 
   fn prepare_load(

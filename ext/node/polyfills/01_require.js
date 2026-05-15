@@ -779,10 +779,10 @@ function _startEsmLoadLoop() {
       };
       try {
         const result = executeEsmLoadHookChain(fileUrl, context);
-        if (result !== null && result.source != null) {
-          const source = typeof result.source === "string"
-            ? result.source
-            : new TextDecoder().decode(result.source);
+        if (result?.format === "builtin") {
+          op_module_hooks_respond_load(id, null, "builtin", null);
+        } else if (result !== null && result.source != null) {
+          const source = loadHookSourceToString(result.source);
           const format = result.format || null;
           op_module_hooks_respond_load(id, source, format, null);
         } else {

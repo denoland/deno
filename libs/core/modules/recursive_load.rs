@@ -294,6 +294,9 @@ impl RecursiveModuleLoad {
       || self
         .module_map_rc
         .has_synthetic_esm_module(module_specifier.as_str())
+        && !self
+          .loader
+          .should_load_synthetic_esm(module_specifier.as_str())
     {
       return Ok(());
     }
@@ -551,6 +554,8 @@ impl RecursiveModuleLoad {
                   ))
                 } else if module_map_rc
                   .has_synthetic_esm_module(resolved_specifier.as_str())
+                  && !loader
+                    .should_load_synthetic_esm(resolved_specifier.as_str())
                 {
                   // Sentinel source. `register_and_recurse` detects the
                   // synthetic_esm specifier and constructs the module from
@@ -727,6 +732,27 @@ impl RecursiveModuleLoad {
       }
       // Internally re-poll using the new state to avoid spinning the event loop again.
       return Pin::new(inner).poll_next(cx);
+    } else if inner
+      .module_map_rc
+      .has_synthetic_esm_module(module_specifier.as_str())
+      && !inner
+        .loader
+        .should_load_synthetic_esm(module_specifier.as_str())
+    {
+      let module_request = module_request.clone();
+      let module_specifier = module_specifier.clone();
+      async move {
+        Ok(Some((
+          module_request,
+          ModuleSource::new(
+            crate::ModuleType::JavaScript,
+            ModuleSourceCode::String("".to_string().into()),
+            &module_specifier,
+            None,
+          ),
+        )))
+      }
+      .boxed_local()
     } else {
       let loader = inner.loader.clone();
       let is_dynamic_import = inner.is_dynamic_import();

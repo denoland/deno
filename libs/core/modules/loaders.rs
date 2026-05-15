@@ -128,6 +128,12 @@ pub trait ModuleLoader {
     options: ModuleLoadOptions,
   ) -> ModuleLoadResponse;
 
+  /// Whether synthetic ESM modules should go through `load()` instead of being
+  /// instantiated directly by the module map.
+  fn should_load_synthetic_esm(&self, _specifier: &str) -> bool {
+    false
+  }
+
   /// This hook can be used by implementors to do some preparation
   /// work before starting loading of modules.
   ///

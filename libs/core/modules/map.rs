@@ -1740,6 +1740,10 @@ impl ModuleMap {
       && phase == ModuleImportPhase::Evaluation
       && let Ok(module_specifier) = resolve_result
       && self.has_synthetic_esm_module(module_specifier.as_str())
+      && !self
+        .loader
+        .borrow()
+        .should_load_synthetic_esm(module_specifier.as_str())
     {
       match self
         .lazy_load_synthetic_esm_module(scope, module_specifier.as_str())
