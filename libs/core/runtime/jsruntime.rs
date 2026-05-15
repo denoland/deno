@@ -1464,7 +1464,6 @@ impl JsRuntime {
 
     // ...then execute all entry points
     for specifier in loaded_sources.esm_entry_points {
-      eprintln!("[init-ext] entry: {}", specifier);
       let Some(mod_id) =
         module_map.get_id(&specifier, RequestedModuleType::None)
       else {
@@ -1475,12 +1474,9 @@ impl JsRuntime {
 
       let isolate = self.v8_isolate();
       jsrealm::context_scope!(scope, realm, isolate);
-      eprintln!("[init-ext] mod_evaluate_sync({})", specifier);
       module_map.mod_evaluate_sync(scope, mod_id)?;
-      eprintln!("[init-ext] mod_evaluate_sync done");
       let mut cx = Context::from_waker(Waker::noop());
       let _ = module_map.poll_progress(&mut cx, scope);
-      eprintln!("[init-ext] poll_progress done");
     }
 
     // qjs_v8_compat: skip the all-modules-evaluated check. Our shim's
@@ -1489,9 +1485,7 @@ impl JsRuntime {
 
     let module_map = realm.0.module_map();
     *module_map.loader.borrow_mut() = loader;
-    eprintln!("[init-ext] >>> ext_loader.finalize");
     ext_loader.finalize()?;
-    eprintln!("[init-ext] <<< done");
 
     Ok(())
   }

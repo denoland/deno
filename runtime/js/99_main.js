@@ -1,8 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-globalThis.__99_main_started__ = true;
-Deno?.core?.print?.("[99_main] TOP\n", true);
-
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 

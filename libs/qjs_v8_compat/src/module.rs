@@ -296,25 +296,36 @@ impl<'s> Local<'s, Module> {
     // If we have stashed source for this module, run it through QuickJS
     // as a module. JS_Eval with JS_EVAL_TYPE_MODULE will resolve and
     // evaluate the import graph transitively.
-    if let Some((src, filename)) =
-      crate::module::lookup_module_source(&self.raw())
+    if let Some((src, filename)) = crate::module::lookup_module_source(&self.raw())
     {
       let fname = filename.unwrap_or_else(|| "<module>".to_string());
-      eprintln!("[Module::evaluate] running {fname}");
       let result = sys::eval(
         ctx,
         &src,
         &fname,
         crate::ffi::JS_EVAL_TYPE_MODULE,
       );
-      eprintln!("[Module::evaluate] {fname} done is_exc={}", sys::jsv_is_exception(&result));
+      // The result of JS_Eval(JS_EVAL_TYPE_MODULE) is the module's
+      // top-level promise. If it's rejected, surface the rejection
+      // reason as the visible failure mode (otherwise it's silently
+      // dropped, and downstream consumers see broken state instead of
+      // a useful error).
+      if !sys::jsv_is_exception(&result) && result.tag == sys::JS_TAG_OBJECT {
+        let state = unsafe { crate::ffi::JS_PromiseState(ctx, result) };
+        if state == 2 {
+          let prom_val = unsafe { crate::ffi::JS_PromiseResult(ctx, result) };
+          if let Some(s) = sys::to_string_lossy(ctx, prom_val) {
+            eprintln!("[qjs] module {fname} top-level rejection: {s}");
+          }
+          sys::free_value(ctx, prom_val);
+        }
+      }
       // Drain microtasks that might be pending from the module's eval.
       let iso_ptr = scope.isolate_ptr();
       if !iso_ptr.is_null() {
         let rt = unsafe { (*iso_ptr).rt() };
         while sys::run_pending_job(rt) {}
       }
-      eprintln!("[Module::evaluate] {fname} jobs drained");
       if sys::jsv_is_exception(&result) {
         if let Some(exc) = sys::take_pending_exception(ctx) {
           if let Some(s) = sys::to_string_lossy(ctx, exc) {
