@@ -23,12 +23,15 @@ const {
   ArrayPrototypePush,
   ArrayPrototypePop,
   ArrayPrototypeSlice,
+  ArrayPrototypeForEach,
   ArrayPrototypeSplice,
   Error,
   ErrorPrototype,
   ErrorCaptureStackTrace,
   JSONStringify,
   MapPrototypeGet,
+  MapPrototypeSet,
+  SafeMap,
   MathAbs,
   NumberIsInteger,
   ObjectAssign,
@@ -620,6 +623,71 @@ function makeSystemErrorWithCode(key: string, msgPrfix: string) {
       super(key, ctx, msgPrfix);
     }
   };
+}
+
+// `SystemError` alias used by `--expose-internals` consumers (e.g. Node's
+// own test suite) that import `internal/errors`.
+const SystemError = NodeSystemError;
+
+// Mirror of Node's `messages` map: associates an error code with its message
+// template (string or function). Populated by `E()` and read by
+// `makeNodeErrorWithCode()`.
+// deno-lint-ignore no-explicit-any
+const messages = new SafeMap<string, string | ((...args: any[]) => string)>();
+
+// Builds a class that extends a non-system Error base (Error, TypeError, etc.)
+// so that `E()` can register codes whose parent isn't `SystemError`.
+// Mirrors Node's `makeNodeErrorWithCode(Base, key)`.
+function makeNodeErrorWithCode(Base: typeof Error, key: string) {
+  return class NodeErrorWithCode extends Base {
+    // deno-lint-ignore no-explicit-any
+    constructor(...args: any[]) {
+      const template = MapPrototypeGet(messages, key);
+      super(
+        typeof template === "function"
+          // deno-lint-ignore no-explicit-any
+          ? (template as (...a: any[]) => string)(
+            ...new SafeArrayIterator(args),
+          )
+          : template as string,
+      );
+      this.code = key;
+      this[kIsNodeError] = true;
+      this.toString = function () {
+        return `${this.name} [${this.code}]: ${this.message}`;
+      };
+    }
+  };
+}
+
+// Mirrors Node's `lib/internal/errors.js`'s `E(sym, val, def, ...otherClasses)`
+// helper: registers a new error class on `codes[sym]`. When `def` is
+// `SystemError`, the class extends `NodeSystemError` and treats `val` as the
+// message prefix (matching Node's `makeSystemErrorWithCode`). Otherwise the
+// class extends `def` (Error/TypeError/RangeError/...) and uses `val` as the
+// message template.
+function E(
+  sym: string,
+  // deno-lint-ignore no-explicit-any
+  val: string | ((...args: any[]) => string),
+  // deno-lint-ignore no-explicit-any
+  def: any,
+  // deno-lint-ignore no-explicit-any
+  ...otherClasses: any[]
+) {
+  MapPrototypeSet(messages, sym, val);
+  let cls;
+  if (def === SystemError) {
+    cls = makeSystemErrorWithCode(sym, val as string);
+  } else {
+    cls = makeNodeErrorWithCode(def, sym);
+  }
+  if (otherClasses.length !== 0) {
+    ArrayPrototypeForEach(otherClasses, (clazz) => {
+      cls[clazz.name] = makeNodeErrorWithCode(clazz, sym);
+    });
+  }
+  codes[sym] = cls;
 }
 
 const ERR_FS_CP_DIR_TO_NON_DIR = makeSystemErrorWithCode(
@@ -3498,6 +3566,7 @@ return {
   ERR_CRYPTO_UNKNOWN_CIPHER,
   ERR_CRYPTO_INVALID_KEYLEN,
   ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS,
+  E,
   NodeError,
   NodeErrorAbstraction,
   NodeRangeError,
@@ -3505,6 +3574,7 @@ return {
   NodeTypeError,
   NodeURIError,
   NodeAggregateError,
+  SystemError,
   aggregateTwoErrors,
   codes,
   connResetException,
@@ -3797,12 +3867,14 @@ return {
     ERR_WORKER_UNSUPPORTED_EXTENSION,
     ERR_WORKER_UNSUPPORTED_OPERATION,
     ERR_ZLIB_INITIALIZATION_FAILED,
+    E,
     NodeError,
     NodeErrorAbstraction,
     NodeRangeError,
     NodeSyntaxError,
     NodeTypeError,
     NodeURIError,
+    SystemError,
     aggregateTwoErrors,
     codes,
     connResetException,
