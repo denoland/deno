@@ -162,23 +162,6 @@ impl std::fmt::Debug for EmbeddedModuleLoader {
 }
 
 impl EmbeddedModuleLoader {
-  /// Check if a specifier refers to an external file (not embedded in binary).
-  /// Used to decide whether file:// URLs should go through the resolve hook
-  /// bridge (which awaits pending hook module loads).
-  fn is_external_file_specifier(&self, specifier: &str) -> bool {
-    if !specifier.starts_with("file://") {
-      return false;
-    }
-    let Ok(url) = Url::parse(specifier) else {
-      return false;
-    };
-    let Ok(path) = deno_path_util::url_to_file_path(&url) else {
-      return false;
-    };
-    // If the file is NOT in the VFS, it's external
-    self.shared.vfs.file_entry(&path).is_err()
-  }
-
   fn resolve_inner(
     &self,
     raw_specifier: &str,
