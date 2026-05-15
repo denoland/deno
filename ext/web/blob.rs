@@ -243,7 +243,6 @@ pub fn op_blob_remove_part(state: &mut OpState, #[serde] id: Uuid) {
 }
 
 #[op2]
-#[serde]
 pub fn op_blob_clone_part(
   state: &mut OpState,
   #[serde] id: Uuid,
