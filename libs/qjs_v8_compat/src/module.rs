@@ -360,6 +360,12 @@ impl<'s> Local<'s, Module> {
       let fname = crate::module::lookup_module_source(&raw)
         .and_then(|(_, f)| f)
         .unwrap_or_else(|| "<module>".to_string());
+      // Mark Evaluated up-front so a recursive lazy_load_esm_module
+      // call from inside our own body's evaluation skips the re-eval
+      // path (which would observe partial state and erroneously report
+      // a rejection). The status is correct enough for cycle handling
+      // even if the body hasn't fully run yet.
+      crate::module::record_module_status(&raw, ModuleStatus::Evaluated);
       sys::dup_value(ctx, bytecode);
       let result = sys::eval_function(ctx, bytecode);
       let result_holder = result;
