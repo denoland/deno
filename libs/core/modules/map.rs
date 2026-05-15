@@ -40,7 +40,6 @@ use crate::FastStaticString;
 use crate::JsRuntime;
 use crate::ModuleCodeBytes;
 use crate::ModuleLoadResponse;
-use crate::ModuleResolveResponse;
 use crate::ModuleSource;
 use crate::ModuleSourceCode;
 use crate::ModuleSpecifier;
@@ -985,49 +984,23 @@ impl ModuleMap {
       } else {
         ResolutionKind::Import
       };
-      let resolve_response =
-        self.resolve(&import_specifier, name.as_ref(), resolve_kind);
-      let (module_specifier, needs_resolve) = match resolve_response {
-        ModuleResolveResponse::Sync(Ok(s)) => (s, false),
-        ModuleResolveResponse::Sync(Err(e)) => {
-          // Fall back to lazy ESM sources for bare internal specifiers (e.g.
-          // `node:_http_common` from `node:_http_outgoing`) that the
-          // user-facing loader doesn't know about. If the specifier matches
-          // a registered lazy ESM entry, use it verbatim.
-          if self.has_lazy_esm_source(&import_specifier)
-            && let Ok(parsed) = ModuleSpecifier::parse(&import_specifier)
-          {
-            (parsed, false)
-          } else {
-            return Err(ModuleError::Core(e.into()));
-          }
-        }
-        ModuleResolveResponse::Async(_) => {
-          // Async resolution for child imports is deferred to
-          // RecursiveModuleLoad. Use the raw specifier as a best-effort
-          // parse for now.
-          let specifier = match ModuleSpecifier::parse(&import_specifier) {
-            Ok(s) => s,
-            Err(_) => {
-              // Try resolving as relative URL with the module name as base
-              match ModuleSpecifier::parse(name.as_ref())
-                .and_then(|base| base.join(&import_specifier))
-              {
-                Ok(s) => s,
-                Err(e) => {
-                  return Err(ModuleError::Core(
-                    JsErrorBox::type_error(format!(
-                      "Cannot resolve module \"{import_specifier}\": {e}"
-                    ))
-                    .into(),
-                  ));
-                }
-              }
+      let module_specifier =
+        match self.resolve(&import_specifier, name.as_ref(), resolve_kind) {
+          Ok(s) => s,
+          Err(e) => {
+            // Fall back to lazy ESM sources for bare internal specifiers (e.g.
+            // `node:_http_common` from `node:_http_outgoing`) that the
+            // user-facing loader doesn't know about. If the specifier matches
+            // a registered lazy ESM entry, use it verbatim.
+            if self.has_lazy_esm_source(&import_specifier)
+              && let Ok(parsed) = ModuleSpecifier::parse(&import_specifier)
+            {
+              parsed
+            } else {
+              return Err(ModuleError::Core(e));
             }
-          };
-          (specifier, true)
-        }
-      };
+          }
+        };
       let requested_module_type =
         get_requested_module_type_from_attributes(&attributes);
       let referrer_source_offset = if let ModuleType::Wasm = module_type {
@@ -1056,7 +1029,6 @@ impl ModuleMap {
           v8::ModuleImportPhase::kSource => ModuleImportPhase::Source,
           v8::ModuleImportPhase::kDefer => ModuleImportPhase::Defer,
         },
-        needs_resolve,
       };
       requests.push(request);
     }
@@ -1381,16 +1353,13 @@ impl ModuleMap {
 
   /// Resolve provided module. This function calls out to `loader.resolve`,
   /// but applies some additional checks that disallow resolving/importing
-  /// certain modules (eg. `ext:` or `node:` modules).
-  ///
-  /// Returns a `ModuleResolveResponse` which may be sync or async depending
-  /// on the loader implementation.
+  /// certain modules (eg. `ext:` or `node:` modules)
   pub fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
-  ) -> ModuleResolveResponse {
+  ) -> Result<ModuleSpecifier, CoreError> {
     if specifier.starts_with("ext:")
       && !referrer.starts_with("ext:")
       && !referrer.starts_with("node:")
@@ -1407,44 +1376,14 @@ impl ModuleMap {
         "Importing ext: modules is only allowed from ext: and node: modules. Tried to import {} from {}",
         specifier, referrer
       );
-      return ModuleResolveResponse::Sync(Err(JsErrorBox::type_error(msg)));
+      return Err(JsErrorBox::type_error(msg).into());
     }
 
-    self.loader.borrow().resolve(specifier, referrer, kind)
-  }
-
-  /// Synchronously resolve a module. This calls `resolve()` and unwraps the
-  /// sync result. Panics if the loader returns an async response.
-  ///
-  /// This is used in the V8 `module_resolve_callback` path, where by
-  /// instantiation time all modules are already resolved.
-  pub fn resolve_sync(
-    &self,
-    specifier: &str,
-    referrer: &str,
-    kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, CoreError> {
-    match self.resolve(specifier, referrer, kind) {
-      ModuleResolveResponse::Sync(result) => result.map_err(|e| e.into()),
-      ModuleResolveResponse::Async(_) => {
-        panic!(
-          "Cannot synchronously resolve an async ModuleResolveResponse during module instantiation"
-        )
-      }
-    }
-  }
-
-  /// Asynchronously resolve a module. Handles both sync and async responses.
-  pub async fn resolve_async(
-    &self,
-    specifier: &str,
-    referrer: &str,
-    kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, CoreError> {
-    match self.resolve(specifier, referrer, kind) {
-      ModuleResolveResponse::Sync(result) => result.map_err(|e| e.into()),
-      ModuleResolveResponse::Async(fut) => fut.await.map_err(|e| e.into()),
-    }
+    self
+      .loader
+      .borrow()
+      .resolve(specifier, referrer, kind)
+      .map_err(|e| e.into())
   }
 
   /// Called by `module_resolve_callback` during module instantiation.
@@ -1473,7 +1412,7 @@ impl ModuleMap {
     }
 
     let resolved_specifier =
-      match self.resolve_sync(specifier, referrer, ResolutionKind::Import) {
+      match self.resolve(specifier, referrer, ResolutionKind::Import) {
         Ok(s) => s,
         Err(e) => {
           // Fall back to lazy ESM sources for bare internal specifiers like
@@ -1559,14 +1498,11 @@ impl ModuleMap {
     resolver_handle: v8::Global<v8::PromiseResolver>,
     cped_handle: v8::Global<v8::Value>,
   ) -> bool {
-    let resolve_response =
+    let resolve_result =
       self.resolve(&specifier, &referrer, ResolutionKind::DynamicImport);
 
-    // Fast path: if resolution is synchronous and module is already loaded,
-    // we can resolve the import immediately without async work.
-    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
-      && phase == ModuleImportPhase::Evaluation
-      && let Ok(module_specifier) = resolve_result
+    if phase == ModuleImportPhase::Evaluation
+      && let Ok(module_specifier) = &resolve_result
       && let Some(id) = self
         .data
         .borrow()
@@ -1609,9 +1545,8 @@ impl ModuleMap {
 
     // Fast path for lazy-loaded ESM: load synchronously and resolve
     // immediately, avoiding the async RecursiveModuleLoad path entirely.
-    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
-      && phase == ModuleImportPhase::Evaluation
-      && let Ok(module_specifier) = resolve_result
+    if phase == ModuleImportPhase::Evaluation
+      && let Ok(module_specifier) = &resolve_result
       && self.has_lazy_esm_source(module_specifier.as_str())
     {
       match self.lazy_load_esm_module(scope, module_specifier.as_str()) {
@@ -1634,9 +1569,8 @@ impl ModuleMap {
     // Fast path for `synthetic_esm`-registered modules: build the
     // synthetic module synchronously and resolve immediately, same
     // pattern as the lazy ESM fast path above.
-    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
-      && phase == ModuleImportPhase::Evaluation
-      && let Ok(module_specifier) = resolve_result
+    if phase == ModuleImportPhase::Evaluation
+      && let Ok(module_specifier) = &resolve_result
       && self.has_synthetic_esm_module(module_specifier.as_str())
     {
       match self
@@ -1676,11 +1610,14 @@ impl ModuleMap {
     );
 
     let load_id = load.id();
-    let fut = async move {
-      let mut load = load;
-      (load_id, load.prepare().await.map(|()| load))
-    }
-    .boxed_local();
+    let fut = match resolve_result {
+      Ok(_) => async move {
+        let mut load = load;
+        (load_id, load.prepare().await.map(|()| load))
+      }
+      .boxed_local(),
+      Err(error) => async move { (load_id, Err(error)) }.boxed_local(),
+    };
 
     self.preparing_dynamic_imports.push(fut);
 
@@ -1746,8 +1683,6 @@ impl ModuleMap {
       return Either::Right(receiver);
     };
     self.evaluating_top_level.set(false);
-
-    let is_graph_async = module.is_graph_async();
 
     self.pending_mod_evaluation.set(true);
 
@@ -1870,21 +1805,17 @@ impl ModuleMap {
         }
       }
 
-      // Under Explicit microtask policy, guard this checkpoint so that
-      // nextTick callbacks can run before promise microtasks queued during
-      // module evaluation (e.g., Promise.resolve().then(...)).
+      // Under Explicit microtask policy, run the module-evaluation
+      // checkpoint here. This matches Node's ESM ordering: Promise and
+      // queueMicrotask jobs queued during top-level module evaluation run
+      // before process.nextTick callbacks queued in the same evaluation.
       //
-      // However, for async module graphs (with TLA), this checkpoint is
-      // critical for draining TLA resume microtasks that V8 enqueued
-      // during module.evaluate(). If skipped, the evaluation promise may
-      // never resolve because V8's internal async module evaluation state
-      // machine relies on these microtasks being processed. The nextTick
-      // ordering concern does not apply to V8-internal TLA resolution.
-      if is_graph_async
-        || !JsRealm::state_from_scope(tc_scope).has_tick_scheduled()
-      {
-        tc_scope.perform_microtask_checkpoint();
-      }
+      // For async module graphs (with TLA), this checkpoint is also critical
+      // for draining V8-internal TLA resume microtasks. If skipped, the
+      // evaluation promise may never resolve because V8's internal async
+      // module evaluation state machine relies on these microtasks being
+      // processed.
+      tc_scope.perform_microtask_checkpoint();
     }
 
     Either::Right(receiver)

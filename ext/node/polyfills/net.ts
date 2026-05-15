@@ -1621,8 +1621,7 @@ Object.defineProperty(Socket.prototype, "bufferSize", {
     if (this._handle) {
       return this.writableLength;
     }
-
-    return 0;
+    return undefined;
   },
 });
 

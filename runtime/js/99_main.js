@@ -468,9 +468,10 @@ function runtimeStart(
   tsVersion,
   target,
 ) {
-  core.setWasmStreamingCallback((source, rid) =>
-    lazyFetchMod().handleWasmStreaming(source, rid)
-  );
+  core.setWasmStreamingCallback(function wasmStreamingCallback(source, rid) {
+    const handleWasmStreaming = lazyFetchMod().handleWasmStreaming;
+    return handleWasmStreaming(source, rid);
+  });
   core.setReportExceptionCallback(event.reportException);
   op_set_format_exception_callback(formatException);
   version.setVersions(

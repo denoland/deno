@@ -229,11 +229,26 @@ function getParts(blob, bag = []) {
 const _type = Symbol("Type");
 const _size = Symbol("Size");
 const _parts = Symbol("Parts");
+const _fileBacked = Symbol("FileBacked");
+
+/** @param {(BlobReference | Blob)[]} parts */
+function hasFileBackedPart(parts) {
+  for (let i = 0; i < parts.length; ++i) {
+    const part = parts[i];
+    if (
+      ObjectPrototypeIsPrototypeOf(BlobPrototype, part) && part[_fileBacked]
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
 
 class Blob {
   [_type] = "";
   [_size] = 0;
   [_parts];
+  [_fileBacked] = false;
 
   /**
    * @param {BlobPart[]} blobParts
@@ -262,6 +277,7 @@ class Blob {
     this[_parts] = parts;
     this[_size] = size;
     this[_type] = normalizeType(options.type);
+    this[_fileBacked] = hasFileBackedPart(parts);
   }
 
   /** @returns {number} */
@@ -371,6 +387,7 @@ class Blob {
     const blob = new Blob([], { type: relativeContentType });
     blob[_parts] = blobParts;
     blob[_size] = span;
+    blob[_fileBacked] = this[_fileBacked];
     return blob;
   }
 
@@ -695,6 +712,9 @@ function getPartRefs(blob, bag = []) {
  * @returns {{ uuid: string, size: number }[]}
  */
 function cloneBlobParts(blob) {
+  if (blob[_fileBacked]) {
+    throw new TypeError("Invalid state: File-backed Blobs are not cloneable");
+  }
   const refs = getPartRefs(blob);
   const cloned = [];
   for (let i = 0; i < refs.length; ++i) {
@@ -730,6 +750,18 @@ core.registerCloneableResource("Blob", (data) => {
   blob[_parts] = parts;
   return blob;
 });
+
+/**
+ * Mark a Blob as backed by file storage. File-backed Blobs are intentionally
+ * rejected by the structured clone serializer, matching Node's behavior.
+ * @param {Blob} blob
+ * @returns {Blob}
+ */
+function markFileBackedBlob(blob) {
+  webidl.assertBranded(blob, BlobPrototype);
+  blob[_fileBacked] = true;
+  return blob;
+}
 
 ObjectDefineProperty(File.prototype, core.hostObjectBrand, {
   __proto__: null,
@@ -845,5 +877,6 @@ return {
   FilePrototype,
   getParts,
   isBlob,
+  markFileBackedBlob,
 };
 })();
