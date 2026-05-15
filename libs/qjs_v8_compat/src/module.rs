@@ -308,6 +308,13 @@ impl<'s> Local<'s, Module> {
         crate::ffi::JS_EVAL_TYPE_MODULE,
       );
       eprintln!("[Module::evaluate] {fname} done is_exc={}", sys::jsv_is_exception(&result));
+      // Drain microtasks that might be pending from the module's eval.
+      let iso_ptr = scope.isolate_ptr();
+      if !iso_ptr.is_null() {
+        let rt = unsafe { (*iso_ptr).rt() };
+        while sys::run_pending_job(rt) {}
+      }
+      eprintln!("[Module::evaluate] {fname} jobs drained");
       if sys::jsv_is_exception(&result) {
         if let Some(exc) = sys::take_pending_exception(ctx) {
           if let Some(s) = sys::to_string_lossy(ctx, exc) {
