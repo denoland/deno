@@ -1384,7 +1384,11 @@ impl DatabaseSync {
       ));
     }
 
-    set_db_config(db, SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION, allow);
+    assert!(set_db_config(
+      db,
+      SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
+      allow
+    ));
     self.enable_load_extension.set(allow);
 
     Ok(())
