@@ -456,6 +456,7 @@ unsafe extern "C" {
     name_str: *const c_char,
     func: Option<JSModuleInitFunc>,
   ) -> *mut JSModuleDef;
+  pub fn JS_GetPrototype(ctx: *mut JSContext, val: JSValue) -> JSValue;
   pub fn JS_AddModuleExport(
     ctx: *mut JSContext,
     m: *mut JSModuleDef,

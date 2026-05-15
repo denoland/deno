@@ -1,8 +1,9 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
-import stream from "node:stream";
+import { core, primordials } from "ext:core/mod.js";
+// qjs_v8_compat: avoid the node:stream cycle.
+const stream = core.loadExtScript("ext:deno_node/stream.ts");
 // LazyTransform is a special type of Transform stream that is lazily loaded.
 // This is used for performance with bi-API-ship: when two APIs are available
 // for the stream, one conventional and one non-conventional.

@@ -106,23 +106,10 @@ impl<'s> Local<'s, Script> {
     let _ = scope.release_owned(self.raw());
     let raw = sys::eval_function(scope.ctx(), self.raw());
     if sys::jsv_is_exception(&raw) {
-      if let Some(exc) = sys::take_pending_exception(scope.ctx()) {
-        if let Some(s) = sys::to_string_lossy(scope.ctx(), exc) {
-          eprintln!("[qjs] Script::run exception: {}", s);
-        }
-        // Get stack property for more info
-        let stack_key = std::ffi::CString::new("stack").unwrap();
-        let stack_val = unsafe {
-          crate::ffi::JS_GetPropertyStr(scope.ctx(), exc, stack_key.as_ptr())
-        };
-        if !sys::jsv_is_undefined(&stack_val) {
-          if let Some(s) = sys::to_string_lossy(scope.ctx(), stack_val) {
-            eprintln!("[qjs]   stack: {}", s);
-          }
-        }
-        sys::free_value(scope.ctx(), stack_val);
-        sys::free_value(scope.ctx(), exc);
-      }
+      // Leave the pending exception in the runtime so an enclosing
+      // TryCatch (if any) can pick it up via `has_caught()`. Real V8's
+      // Script::run does the same — the caller is responsible for
+      // querying the exception state.
       return None;
     }
     scope.track_owned(raw);

@@ -233,8 +233,16 @@ impl<'s> Local<'s, Object> {
   pub fn get_constructor_name(&self) -> Local<'s, crate::primitives::String> {
     Local::from_raw(self.raw())
   }
-  pub fn get_prototype<S>(&self, _scope: &mut S) -> Option<Local<'s, Value>> {
-    None
+  pub fn get_prototype<S>(&self, scope: &mut S) -> Option<Local<'s, Value>>
+  where
+    S: crate::scope::HandleScopeSource,
+  {
+    let ctx = scope.default_ctx();
+    let proto = unsafe { crate::ffi::JS_GetPrototype(ctx, self.raw()) };
+    if sys::jsv_is_exception(&proto) || sys::jsv_is_undefined(&proto) {
+      return None;
+    }
+    Some(Local::from_raw(proto))
   }
   pub fn set_prototype<S>(
     &self,

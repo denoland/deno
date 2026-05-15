@@ -11,15 +11,14 @@ import { pipelineImpl as pl } from "ext:deno_node/internal/streams/pipeline.js";
 const { finished } = core.loadExtScript(
   "ext:deno_node/internal/streams/end-of-stream.js",
 );
-import * as _mod2 from "node:stream";
+// qjs_v8_compat: avoid the node:stream namespace cycle by deferring
+// the import; the binding is unused below other than a touch.
 "use strict";
 
 const {
   ArrayPrototypePop,
   Promise,
 } = primordials;
-
-_mod2;
 
 function pipeline(...streams) {
   return new Promise((resolve, reject) => {
