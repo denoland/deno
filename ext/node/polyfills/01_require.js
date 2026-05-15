@@ -6,6 +6,7 @@ import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_fs_cwd,
   op_import_sync,
+  op_import_sync_with_source,
   op_module_hooks_poll_load,
   op_module_hooks_poll_resolve,
   op_module_hooks_register,
@@ -583,10 +584,41 @@ function executeLoadHookChain(fileUrl, context) {
         result?.shortCircuit,
       );
     }
+    if (
+      result?.shortCircuit &&
+      !isValidLoadHookSource(result?.source, result?.format)
+    ) {
+      const err = new TypeError(
+        'Expected a string, an ArrayBuffer, or a TypedArray to be returned for the "source" from the "load" hook',
+      );
+      err.code = "ERR_INVALID_RETURN_PROPERTY_VALUE";
+      throw err;
+    }
     return result;
   }
 
   return nextLoad(fileUrl, context);
+}
+
+function isValidLoadHookSource(source, format) {
+  if (source === null) {
+    return format === "builtin";
+  }
+  return typeof source === "string" ||
+    core.isAnyArrayBuffer(source) ||
+    core.isArrayBufferView(source);
+}
+
+function loadHookSourceToString(source) {
+  if (typeof source === "string") {
+    return source;
+  }
+  if (core.isAnyArrayBuffer(source)) {
+    return (utf8Decoder ??= new TextDecoder()).decode(new Uint8Array(source));
+  }
+  return (utf8Decoder ??= new TextDecoder()).decode(
+    new Uint8Array(source.buffer, source.byteOffset, source.byteLength),
+  );
 }
 
 // ESM resolve hook chain: runs hooks in LIFO order.
@@ -1693,34 +1725,20 @@ Module.prototype.load = function (filename) {
       }
       if (result != null && result.source != null) {
         const format = result.format;
+        const source = loadHookSourceToString(result.source);
         if (format === "module") {
-          loadESMFromCJS(this, this.filename, result.source);
+          loadESMFromCJS(this, this.filename, source);
         } else if (format === "commonjs") {
-          this._compile(
-            typeof result.source === "string"
-              ? result.source
-              : (utf8Decoder ??= new TextDecoder()).decode(result.source),
-            this.filename,
-            "commonjs",
-          );
+          this._compile(source, this.filename, "commonjs");
         } else if (format === "json") {
           try {
-            this.exports = JSONParse(
-              stripBOM(
-                typeof result.source === "string"
-                  ? result.source
-                  : (utf8Decoder ??= new TextDecoder()).decode(result.source),
-              ),
-            );
+            this.exports = JSONParse(stripBOM(source));
           } catch (err) {
             err.message = this.filename + ": " + err.message;
             throw err;
           }
         } else {
           // Default to CJS when format is unspecified
-          const source = typeof result.source === "string"
-            ? result.source
-            : (utf8Decoder ??= new TextDecoder()).decode(result.source);
           this._compile(source, this.filename);
         }
         this.loaded = true;
@@ -1870,7 +1888,7 @@ Module.prototype._compile = function (content, filename, format) {
   } catch (err) {
     if (
       format !== "commonjs" && err instanceof SyntaxError &&
-      op_require_can_parse_as_esm(content)
+      (op_require_can_parse_as_esm(content) || isEsmSyntaxError(err))
     ) {
       return loadESMFromCJS(this, filename, content);
     }
@@ -1947,7 +1965,9 @@ function loadESMFromCJS(module, filename, code) {
   const specifier = url.pathToFileURL(filename).toString();
   let namespace;
   try {
-    namespace = op_import_sync(specifier, code);
+    namespace = code === undefined
+      ? op_import_sync(specifier)
+      : op_import_sync_with_source(specifier, code);
   } catch (e) {
     if (
       e instanceof Error &&
