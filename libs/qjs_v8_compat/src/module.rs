@@ -191,6 +191,12 @@ pub(crate) unsafe extern "C" fn module_loader_callback(
     )
   };
   if sys::jsv_is_exception(&result) {
+    if let Some(exc) = sys::take_pending_exception(ctx) {
+      if let Some(s) = sys::to_string_lossy(ctx, exc) {
+        eprintln!("[qjs] module loader: parse failed for {name}: {s}");
+      }
+      sys::free_value(ctx, exc);
+    }
     return core::ptr::null_mut();
   }
   // The compiled module's payload (u.ptr) is the JSModuleDef pointer.

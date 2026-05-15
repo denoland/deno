@@ -24,6 +24,10 @@ v8-engine = [
   "deno_tls/v8-engine",
 ]
 quickjs = [
+  # Pull in the swc-based extension transpiler so deno_node's .ts
+  # polyfills are converted to JS before being handed to QuickJS,
+  # which has no TypeScript support.
+  "transpile",
   "deno_core/quickjs",
   "deno_web/quickjs",
   "deno_io/quickjs",
