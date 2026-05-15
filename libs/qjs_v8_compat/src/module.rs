@@ -282,7 +282,7 @@ pub fn register_lazy_module_source(name: &str, source: &str) {
 pub fn esm_bytecode_consumed_for<'s>(
   module: crate::value::Local<'s, Module>,
 ) -> bool {
-  esm_bytecode_consumed(&module.raw())
+  esm_bytecode_consumed(&module.raw()) || eval_in_flight(&module.raw())
 }
 
 /// Module loader callback registered with QuickJS via
