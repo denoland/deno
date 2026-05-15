@@ -73,7 +73,6 @@ use deno_runtime::code_cache::CodeCache;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::create_host_defined_options;
-use deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -150,7 +149,6 @@ impl SharedModuleLoaderState {
 #[derive(Clone)]
 struct EmbeddedModuleLoader {
   shared: Arc<SharedModuleLoaderState>,
-  hook_registry: LoaderHookRegistry,
   sys: DenoRtSys,
 }
 
@@ -160,25 +158,8 @@ impl std::fmt::Debug for EmbeddedModuleLoader {
   }
 }
 
-impl EmbeddedModuleLoader {
-  /// Check if a specifier refers to an external file (not embedded in binary).
-  /// Used to decide whether file:// URLs should go through the resolve hook
-  /// bridge (which awaits pending hook module loads).
-  fn is_external_file_specifier(&self, specifier: &str) -> bool {
-    if !specifier.starts_with("file://") {
-      return false;
-    }
-    let Ok(url) = Url::parse(specifier) else {
-      return false;
-    };
-    let Ok(path) = deno_path_util::url_to_file_path(&url) else {
-      return false;
-    };
-    // If the file is NOT in the VFS, it's external
-    self.shared.vfs.file_entry(&path).is_err()
-  }
-
-  fn resolve_inner(
+impl ModuleLoader for EmbeddedModuleLoader {
+  fn resolve(
     &self,
     raw_specifier: &str,
     referrer: &str,
@@ -412,164 +393,6 @@ impl EmbeddedModuleLoader {
     }
   }
 
-  /// Load a module using the default embedded/filesystem logic.
-  /// Used as the fallthrough path when hooks don't intercept.
-  fn load_inner(
-    &self,
-    original_specifier: &Url,
-    requested_module_type: &RequestedModuleType,
-  ) -> Result<deno_core::ModuleSource, ModuleLoaderError> {
-    if self.shared.node_resolver.in_npm_package(original_specifier) {
-      // npm packages require async loading via node_code_translator,
-      // but in the hook fallthrough we're already in an async context
-      // handled by the caller. For simplicity, return not found here
-      // since npm modules should not typically go through hooks.
-      return Err(JsErrorBox::type_error(format!(
-        "Module not found: {}",
-        original_specifier
-      )));
-    }
-
-    match self.shared.modules.read(original_specifier) {
-      Ok(Some(module)) => {
-        match requested_module_type {
-          RequestedModuleType::Text | RequestedModuleType::Bytes => {
-            let module_source = DenoCompileModuleSource::Bytes(module.data);
-            return Ok(deno_core::ModuleSource::new_with_redirect(
-              match requested_module_type {
-                RequestedModuleType::Text => ModuleType::Text,
-                RequestedModuleType::Bytes => ModuleType::Bytes,
-                _ => unreachable!(),
-              },
-              match requested_module_type {
-                RequestedModuleType::Text => module_source.into_for_v8(),
-                RequestedModuleType::Bytes => {
-                  ModuleSourceCode::Bytes(module_source.into_bytes_for_v8())
-                }
-                _ => unreachable!(),
-              },
-              original_specifier,
-              module.specifier,
-              None,
-            ));
-          }
-          RequestedModuleType::Other(_)
-          | RequestedModuleType::None
-          | RequestedModuleType::Json => {
-            // ignore
-          }
-        }
-
-        let media_type = module.media_type;
-        let (module_specifier, module_type, module_source) =
-          module.into_parts();
-        let is_maybe_cjs = self
-          .shared
-          .cjs_tracker
-          .is_maybe_cjs(original_specifier, media_type)
-          .map_err(|e| JsErrorBox::type_error(format!("{:?}", e)))?;
-        if is_maybe_cjs {
-          // CJS translation requires async; return as-is and let V8 handle
-          // This path is unlikely in the hook fallthrough since hooks handle
-          // the transformation themselves.
-          let module_source = module_source.into_for_v8();
-          let code_cache_entry = self
-            .shared
-            .get_code_cache(module_specifier, module_source.as_bytes());
-          Ok(deno_core::ModuleSource::new_with_redirect(
-            module_type,
-            module_source,
-            original_specifier,
-            module_specifier,
-            code_cache_entry,
-          ))
-        } else {
-          let module_source = module_source.into_for_v8();
-          let code_cache_entry = self
-            .shared
-            .get_code_cache(module_specifier, module_source.as_bytes());
-          Ok(deno_core::ModuleSource::new_with_redirect(
-            module_type,
-            module_source,
-            original_specifier,
-            module_specifier,
-            code_cache_entry,
-          ))
-        }
-      }
-      Ok(None) => Err(JsErrorBox::type_error(format!(
-        "Module not found: {}",
-        original_specifier
-      ))),
-      Err(err) => Err(JsErrorBox::type_error(format!("{:?}", err))),
-    }
-  }
-}
-
-impl ModuleLoader for EmbeddedModuleLoader {
-  fn resolve(
-    &self,
-    raw_specifier: &str,
-    referrer: &str,
-    kind: ResolutionKind,
-  ) -> deno_core::ModuleResolveResponse {
-    // Route through resolve hooks when active. For file:// URLs that are
-    // already resolved, we normally skip the bridge. However, if the file
-    // is NOT embedded in the binary, we still route through the bridge so
-    // that the resolve loop's pendingHookLoads wait ensures hook modules
-    // are loaded before proceeding to load().
-    let should_use_resolve_hooks = self.hook_registry.resolve_active.get()
-      && (!is_already_resolved_specifier(raw_specifier)
-        || self.is_external_file_specifier(raw_specifier));
-    if should_use_resolve_hooks {
-      // Pre-compute the default-resolved URL so the hook chain's
-      // `defaultResolve()` returns Deno's actual resolution rather than a
-      // naive `new URL(spec, parentURL)`.
-      let default_url = self
-        .resolve_inner(raw_specifier, referrer, kind)
-        .ok()
-        .map(|u| u.to_string());
-      let receiver = self.hook_registry.push_resolve(
-        raw_specifier.to_string(),
-        referrer.to_string(),
-        default_url,
-      );
-      let this = self.clone();
-      let raw_specifier = raw_specifier.to_string();
-      let referrer = referrer.to_string();
-      return deno_core::ModuleResolveResponse::Async(
-        async move {
-          let hook_result = match receiver.await {
-            Ok(r) => r,
-            Err(_) => {
-              return Err(JsErrorBox::generic("module resolve hook cancelled"));
-            }
-          };
-          match hook_result {
-            Ok(Some(url)) => {
-              let parsed = Url::parse(&url).map_err(JsErrorBox::from_err)?;
-              this
-                .hook_registry
-                .hook_intercepted_specifiers
-                .borrow_mut()
-                .insert(parsed.to_string());
-              Ok(parsed)
-            }
-            Ok(None) => this.resolve_inner(&raw_specifier, &referrer, kind),
-            Err(err) => Err(JsErrorBox::generic(err)),
-          }
-        }
-        .boxed_local(),
-      );
-    }
-
-    deno_core::ModuleResolveResponse::Sync(self.resolve_inner(
-      raw_specifier,
-      referrer,
-      kind,
-    ))
-  }
-
   fn get_host_defined_options<'s>(
     &self,
     scope: &mut deno_core::v8::PinScope<'s, '_>,
@@ -609,62 +432,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
           None,
         ),
       ));
-    }
-
-    // When load hooks are active, delegate to JS hooks first.
-    // Only route through hooks for files that are NOT embedded in the binary
-    // (i.e., external files that may need transformation like TS stripping).
-    // Embedded files load directly from VFS without needing hooks.
-    let is_embedded = if original_specifier.scheme() == "file" {
-      deno_path_util::url_to_file_path(original_specifier)
-        .map(|path| self.shared.vfs.file_entry(&path).is_ok())
-        .unwrap_or(false)
-    } else {
-      // Remote modules in the binary are always embedded
-      self
-        .shared
-        .modules
-        .resolve_specifier(original_specifier)
-        .ok()
-        .flatten()
-        .is_some()
-    };
-    if self.hook_registry.load_active.get()
-      && !options.is_synchronous
-      && !is_embedded
-    {
-      let receiver =
-        self.hook_registry.push_load(original_specifier.to_string());
-      let this = self.clone();
-      let specifier = original_specifier.clone();
-      let requested_module_type = options.requested_module_type.clone();
-      return deno_core::ModuleLoadResponse::Async(
-        async move {
-          let hook_result = match receiver.await {
-            Ok(r) => r,
-            Err(_) => {
-              return Err(JsErrorBox::generic("module load hook cancelled"));
-            }
-          };
-          match hook_result {
-            Ok((Some(source), _format)) => {
-              // Hook provided transformed source
-              Ok(deno_core::ModuleSource::new(
-                deno_core::ModuleType::JavaScript,
-                ModuleSourceCode::String(source.into()),
-                &specifier,
-                None,
-              ))
-            }
-            Ok((None, _)) => {
-              // Fallthrough: hooks didn't intercept, use default loading
-              this.load_inner(&specifier, &requested_module_type)
-            }
-            Err(err) => Err(JsErrorBox::generic(err)),
-          }
-        }
-        .boxed_local(),
-      );
     }
 
     if self.shared.node_resolver.in_npm_package(original_specifier) {
@@ -950,16 +717,13 @@ struct StandaloneModuleLoaderFactory {
 
 impl StandaloneModuleLoaderFactory {
   pub fn create_result(&self) -> CreateModuleLoaderResult {
-    let hook_registry = LoaderHookRegistry::default();
     let loader = Rc::new(EmbeddedModuleLoader {
       shared: self.shared.clone(),
-      hook_registry: hook_registry.clone(),
       sys: self.sys.clone(),
     });
     CreateModuleLoaderResult {
       module_loader: loader.clone(),
       node_require_loader: loader,
-      hook_registry: Some(hook_registry),
     }
   }
 }
@@ -979,15 +743,6 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
   ) -> CreateModuleLoaderResult {
     self.create_result()
   }
-}
-
-fn is_already_resolved_specifier(specifier: &str) -> bool {
-  specifier.starts_with("file://")
-    || specifier.starts_with("http://")
-    || specifier.starts_with("https://")
-    || specifier.starts_with("data:")
-    || specifier.starts_with("blob:")
-    || specifier.starts_with("node:")
 }
 
 struct StandaloneRootCertStoreProvider {
@@ -1409,7 +1164,6 @@ pub async fn run(
     WorkerExecutionMode::Run,
     permissions,
     main_module,
-    vec![], // no experimental loaders in standalone binaries
     preload_modules,
     require_modules,
   )?;

@@ -1306,10 +1306,10 @@ async fn run_tests_for_worker_inner(
 
     // Close idle Node.js HTTP Agent connections to prevent cross-test
     // pollution and false positive resource leak detection from pooled
-    // keepAlive connections.
+    // keepAlive connections. Defined in ext/node/polyfills/01_require.js.
     _ = worker.js_runtime.execute_script(
       located_script_name!(),
-      "Deno[Deno.internal].node?.closeIdleConnections?.()",
+      "Deno[Deno.internal].closeIdleConnections?.()",
     );
 
     // Await activity stabilization

@@ -186,6 +186,14 @@ pub fn op_lazy_load_esm(
   #[string] module_specifier: String,
 ) -> Result<v8::Global<v8::Value>, CoreError> {
   let module_map_rc = JsRealm::module_map_from(scope);
+  // `synthetic_esm` registrations don't live in `lazy_esm_sources`, so
+  // route them through their own sync-load path. `createLazyLoader` calls
+  // this op from JS land for builtins it wants to keep deferred (e.g.
+  // `node:worker_threads.ts` uses `createLazyLoader("node:url")`).
+  if module_map_rc.has_synthetic_esm_module(&module_specifier) {
+    return module_map_rc
+      .lazy_load_synthetic_esm_module(scope, &module_specifier);
+  }
   module_map_rc.lazy_load_esm_module(scope, &module_specifier)
 }
 

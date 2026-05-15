@@ -1095,6 +1095,43 @@ async fn test_watch_basic() {
 }
 
 #[test(flaky)]
+async fn test_watch_external_watch_files() {
+  let t = TempDir::new();
+
+  let test_file = t.path().join("test_file.ts");
+  test_file.write("Deno.test('hello', () => {});");
+
+  let external_file = t.path().join("external_file.txt");
+  external_file.write("Hello world");
+
+  let mut watch_arg = "--watch=".to_owned();
+  let external_file_str = external_file.to_string();
+  watch_arg.push_str(&external_file_str);
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("test")
+    .arg(watch_arg)
+    .arg("-L")
+    .arg("debug")
+    .arg(&test_file)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_for_watcher("external_file.txt", &mut stderr_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  // Change content of the external file — should trigger a re-run
+  external_file.write("Hello world2");
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[test(flaky)]
 async fn test_watch_doc() {
   let t = TempDir::new();
 

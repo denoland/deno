@@ -1410,6 +1410,13 @@ impl JsRuntime {
       module_map.add_lazy_loaded_script_source(source.specifier, source.code);
     }
 
+    // Register `synthetic_esm` mappings so imports of the declared module
+    // specifiers resolve via the synthetic-module dispatch in
+    // `resolve_callback` instead of going through normal ESM loading.
+    for (module_spec, backing_spec) in loaded_sources.synthetic_esm {
+      module_map.add_synthetic_esm_module(module_spec, backing_spec);
+    }
+
     // Temporarily override the loader of the `ModuleMap` so we can load
     // extension code.
 

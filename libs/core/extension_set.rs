@@ -239,6 +239,12 @@ pub struct LoadedSources {
   pub esm: Vec<LoadedSource>,
   pub lazy_esm: Vec<LoadedSource>,
   pub lazy_js: Vec<LoadedSource>,
+  /// `(module_specifier, backing_script_specifier)` pairs collected from
+  /// each extension's `synthetic_esm_modules`. Registered into the
+  /// `ModuleMap` at runtime init so imports of `module_specifier` resolve
+  /// to a synthetic ESM module derived from the IIFE exports of
+  /// `backing_script_specifier`.
+  pub synthetic_esm: Vec<(ModuleName, ModuleName)>,
   pub esm_entry_points: Vec<FastString>,
 }
 
@@ -371,6 +377,13 @@ pub fn into_sources_and_source_maps(
         code,
         maybe_source_map,
       });
+    }
+
+    for (module_spec, backing_spec) in &*extension.synthetic_esm_modules {
+      sources.synthetic_esm.push((
+        ModuleName::from_static(module_spec),
+        ModuleName::from_static(backing_spec),
+      ));
     }
 
     if snapshotted {
