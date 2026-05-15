@@ -1276,9 +1276,14 @@ Module._load = function (request, parent, isMain) {
   }
 
   const filename = Module._resolveFilename(request, parent, isMain);
-  if (StringPrototypeStartsWith(filename, "node:")) {
+  const isBuiltinFilename = StringPrototypeStartsWith(filename, "node:") ||
+    nativeModuleCanBeRequiredByUsers(filename);
+  if (isBuiltinFilename) {
+    const builtinFilename = StringPrototypeStartsWith(filename, "node:")
+      ? filename
+      : "node:" + filename;
     // Slice 'node:' prefix
-    const id = StringPrototypeSlice(filename, 5);
+    const id = StringPrototypeSlice(builtinFilename, 5);
 
     // Run load hooks for builtins if registered
     if (hookEntries.length > 0 && !insideLoadHook) {
@@ -1298,7 +1303,7 @@ Module._load = function (request, parent, isMain) {
         insideLoadHook = true;
         let result;
         try {
-          result = executeLoadHookChain(filename, context);
+          result = executeLoadHookChain(builtinFilename, context);
         } finally {
           insideLoadHook = false;
         }
@@ -1310,19 +1315,28 @@ Module._load = function (request, parent, isMain) {
           result != null && result.format &&
           result.format !== "builtin" && result.source != null
         ) {
-          const mod = new Module(filename, parent);
-          Module._cache[filename] = mod;
-          const source = typeof result.source === "string"
-            ? result.source
-            : (utf8Decoder ??= new TextDecoder()).decode(result.source);
+          const mod = new Module(builtinFilename, parent);
+          Module._cache[builtinFilename] = mod;
+          const source = loadHookSourceToString(result.source);
           if (result.format === "commonjs") {
-            mod._compile(source, filename, "commonjs");
+            mod._compile(source, builtinFilename, "commonjs");
           } else if (result.format === "json") {
             mod.exports = JSONParse(stripBOM(source));
           } else {
-            mod._compile(source, filename);
+            mod._compile(source, builtinFilename);
           }
           mod.loaded = true;
+          return mod.exports;
+        }
+        if (result?.format === "builtin") {
+          const module = loadNativeModule(id, id);
+          if (module) {
+            return module.exports;
+          }
+          const mod = new Module(builtinFilename, parent);
+          mod.exports = {};
+          mod.loaded = true;
+          Module._cache[builtinFilename] = mod;
           return mod.exports;
         }
       }
@@ -1347,7 +1361,7 @@ Module._load = function (request, parent, isMain) {
     return cachedModule.exports;
   }
 
-  const mod = loadNativeModule(filename, request);
+  const mod = loadNativeModule(filename, filename);
   if (
     mod
   ) {
@@ -1492,6 +1506,9 @@ Module._resolveFilename = function (
   if (StringPrototypeStartsWith(request, "node:")) {
     const id = StringPrototypeSlice(request, 5);
     if (nativeModuleExports[id]) {
+      return request;
+    }
+    if (hookEntries.length > 0 && !insideResolveHook) {
       return request;
     }
     const err = new Error(`Cannot find module '${request}'`);
