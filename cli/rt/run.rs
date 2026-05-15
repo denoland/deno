@@ -522,18 +522,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
       && (!is_already_resolved_specifier(raw_specifier)
         || self.is_external_file_specifier(raw_specifier));
     if should_use_resolve_hooks {
-      // Pre-compute the default-resolved URL so the hook chain's
-      // `defaultResolve()` returns Deno's actual resolution rather than a
-      // naive `new URL(spec, parentURL)`.
-      let default_url = self
-        .resolve_inner(raw_specifier, referrer, kind)
-        .ok()
-        .map(|u| u.to_string());
-      let receiver = self.hook_registry.push_resolve(
-        raw_specifier.to_string(),
-        referrer.to_string(),
-        default_url,
-      );
+      let receiver = self
+        .hook_registry
+        .push_resolve(raw_specifier.to_string(), referrer.to_string());
       let this = self.clone();
       let raw_specifier = raw_specifier.to_string();
       let referrer = referrer.to_string();
@@ -546,15 +537,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             }
           };
           match hook_result {
-            Ok(Some(url)) => {
-              let parsed = Url::parse(&url).map_err(JsErrorBox::from_err)?;
-              this
-                .hook_registry
-                .hook_intercepted_specifiers
-                .borrow_mut()
-                .insert(parsed.to_string());
-              Ok(parsed)
-            }
+            Ok(Some(url)) => Url::parse(&url).map_err(JsErrorBox::from_err),
             Ok(None) => this.resolve_inner(&raw_specifier, &referrer, kind),
             Err(err) => Err(JsErrorBox::generic(err)),
           }
@@ -1409,7 +1392,6 @@ pub async fn run(
     WorkerExecutionMode::Run,
     permissions,
     main_module,
-    vec![], // no experimental loaders in standalone binaries
     preload_modules,
     require_modules,
   )?;
