@@ -76,7 +76,6 @@ impl Script {
     let filename = origin
       .and_then(|o| o.filename().map(str::to_owned))
       .unwrap_or_else(|| "<anonymous>".into());
-    eprintln!("[qjs] compile: {filename}");
     let raw = sys::eval(
       scope.ctx(),
       &src,
@@ -113,7 +112,6 @@ impl<'s> Local<'s, Script> {
     }
     let raw = sys::eval_function(scope.ctx(), self.raw());
     if sys::jsv_is_exception(&raw) {
-      eprintln!("[qjs] script failed");
       // Leave the pending exception in the runtime so an enclosing
       // TryCatch (if any) can pick it up via `has_caught()`.
       // Diag: peek the exception (without taking) so silent failures
