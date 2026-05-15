@@ -1635,7 +1635,9 @@ impl<'s, C> GlobalScope for HandleScope<'s, C> {
   fn scope_ctx_shared(&self) -> sys::Context { HandleScope::ctx(self) }
 }
 impl<'s, 'i, C> GlobalScope for crate::scope::PinScope<'s, 'i, C> {
-  fn scope_ctx_shared(&self) -> sys::Context { HandleScope::ctx(&**self) }
+  fn scope_ctx_shared(&self) -> sys::Context {
+    HandleScope::ctx(&**self)
+  }
 }
 impl GlobalScope for crate::isolate::Isolate {
   fn scope_ctx_shared(&self) -> sys::Context {
@@ -1659,13 +1661,21 @@ impl<'s, C> GlobalScope for crate::scope::CallbackScope<'s, C> {
     self.0.inner.ctx
   }
 }
-impl<'p, S> GlobalScope for crate::context::ContextScope<'p, S>
-where
-  S: GlobalScope,
+impl<'p, 's, 'i, C> GlobalScope
+  for crate::context::ContextScope<'p, crate::scope::PinScope<'s, 'i, C>>
 {
   fn scope_ctx_shared(&self) -> sys::Context {
-    use std::ops::Deref;
-    self.deref().scope_ctx_shared()
+    let inner: &crate::scope::PinScope<'s, 'i, C> =
+      std::ops::Deref::deref(self);
+    inner.scope_ctx_shared()
+  }
+}
+impl<'p, 's, C> GlobalScope
+  for crate::context::ContextScope<'p, HandleScope<'s, C>>
+{
+  fn scope_ctx_shared(&self) -> sys::Context {
+    let inner: &HandleScope<'s, C> = std::ops::Deref::deref(self);
+    inner.scope_ctx_shared()
   }
 }
 impl<P: GlobalScope + Unpin> GlobalScope for std::pin::Pin<&mut P> {
