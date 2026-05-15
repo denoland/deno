@@ -76,6 +76,12 @@ impl Script {
     let filename = origin
       .and_then(|o| o.filename().map(str::to_owned))
       .unwrap_or_else(|| "<anonymous>".into());
+    eprintln!("[qjs] compile: {filename}");
+    if filename.contains("errors.ts") {
+      // Show first 30 lines
+      let preview: String = src.lines().take(30).collect::<Vec<_>>().join("\n");
+      eprintln!("[qjs] errors.ts first 30 lines:\n{preview}");
+    }
     let raw = sys::eval(
       scope.ctx(),
       &src,
@@ -106,10 +112,32 @@ impl<'s> Local<'s, Script> {
     let _ = scope.release_owned(self.raw());
     let raw = sys::eval_function(scope.ctx(), self.raw());
     if sys::jsv_is_exception(&raw) {
+      eprintln!("[qjs] script failed");
       // Leave the pending exception in the runtime so an enclosing
-      // TryCatch (if any) can pick it up via `has_caught()`. Real V8's
-      // Script::run does the same — the caller is responsible for
-      // querying the exception state.
+      // TryCatch (if any) can pick it up via `has_caught()`.
+      // Diag: peek the exception (without taking) so silent failures
+      // are visible during bootstrap. Print but DON'T drain.
+      let exc_val = unsafe {
+        crate::ffi::JS_GetException(scope.ctx())
+      };
+      if !sys::jsv_is_null(&exc_val) && !sys::jsv_is_undefined(&exc_val) {
+        if let Some(s) = sys::to_string_lossy(scope.ctx(), exc_val) {
+          eprintln!("[qjs] Script::run exception: {}", s);
+        }
+        // Print stack property
+        let stack_key = std::ffi::CString::new("stack").unwrap();
+        let stack_val = unsafe {
+          crate::ffi::JS_GetPropertyStr(scope.ctx(), exc_val, stack_key.as_ptr())
+        };
+        if !sys::jsv_is_undefined(&stack_val) {
+          if let Some(s) = sys::to_string_lossy(scope.ctx(), stack_val) {
+            eprintln!("[qjs]   stack:\n{}", s);
+          }
+        }
+        sys::free_value(scope.ctx(), stack_val);
+        // Re-throw so the caller's TryCatch sees it.
+        unsafe { crate::ffi::JS_Throw(scope.ctx(), exc_val) };
+      }
       return None;
     }
     scope.track_owned(raw);

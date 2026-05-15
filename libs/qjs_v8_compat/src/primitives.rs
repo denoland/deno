@@ -240,6 +240,11 @@ impl WriteUtf8Buf for [std::mem::MaybeUninit<u8>] {
 }
 impl WriteUtf8Buf for std::string::String {
   fn append_str(&mut self, s: &str) {
+    // Real V8's write_utf8_into overwrites the buffer. deno_core
+    // reuses a thread-local String across calls without clearing it,
+    // so an append-only impl bleeds previous strings into the next
+    // call. Clear first to match real V8 semantics.
+    self.clear();
     self.push_str(s);
   }
 }
