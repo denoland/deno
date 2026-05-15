@@ -456,6 +456,7 @@ let insideLoadHook = false;
 let utf8Decoder;
 let esmResolveLoopRunning = false;
 let esmLoadLoopRunning = false;
+const requireResolveOptionsMarker = Symbol("require.resolve");
 
 function executeResolveHookChain(specifier, context, parent, isMain, options) {
   // Collect resolve hooks from hookEntries in LIFO order
@@ -1431,7 +1432,10 @@ Module._resolveFilename = function (
       options,
     );
     if (result != null && result.url != null) {
-      if (StringPrototypeStartsWith(result.url, "node:")) {
+      if (
+        options?.[requireResolveOptionsMarker] &&
+        StringPrototypeStartsWith(result.url, "node:")
+      ) {
         return StringPrototypeSlice(result.url, 5);
       }
       if (StringPrototypeStartsWith(result.url, "file://")) {
@@ -2027,6 +2031,8 @@ function makeRequireFunction(mod) {
   };
 
   function resolve(request, options) {
+    options = options == null ? {} : { __proto__: null, ...options };
+    options[requireResolveOptionsMarker] = true;
     return Module._resolveFilename(request, mod, false, options);
   }
 
