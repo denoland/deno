@@ -457,7 +457,7 @@ let utf8Decoder;
 let esmResolveLoopRunning = false;
 let esmLoadLoopRunning = false;
 
-function executeResolveHookChain(specifier, context, parent, isMain) {
+function executeResolveHookChain(specifier, context, parent, isMain, options) {
   // Collect resolve hooks from hookEntries in LIFO order
   const resolveHooks = [];
   for (let i = hookEntries.length - 1; i >= 0; i--) {
@@ -488,7 +488,12 @@ function executeResolveHookChain(specifier, context, parent, isMain) {
         if (nativeModuleCanBeRequiredByUsers(spec)) {
           return { url: "node:" + spec, shortCircuit: true };
         }
-        const resolved = Module._resolveFilename(spec, parent, isMain);
+        const resolved = Module._resolveFilename(
+          spec,
+          parent,
+          isMain,
+          options,
+        );
         let resolvedUrl;
         if (StringPrototypeStartsWith(resolved, "node:")) {
           resolvedUrl = resolved;
@@ -514,6 +519,13 @@ function executeResolveHookChain(specifier, context, parent, isMain) {
         "shortCircuit",
         result?.shortCircuit,
       );
+    }
+    if (result?.shortCircuit && typeof result?.url !== "string") {
+      const err = new TypeError(
+        'Expected a URL string to be returned for the "url" from the "resolve" hook',
+      );
+      err.code = "ERR_INVALID_RETURN_PROPERTY_VALUE";
+      throw err;
     }
     return result;
   }
@@ -1411,8 +1423,17 @@ Module._resolveFilename = function (
       importAttributes: { __proto__: null },
       parentURL,
     };
-    const result = executeResolveHookChain(request, context, parent, isMain);
+    const result = executeResolveHookChain(
+      request,
+      context,
+      parent,
+      isMain,
+      options,
+    );
     if (result != null && result.url != null) {
+      if (StringPrototypeStartsWith(result.url, "node:")) {
+        return StringPrototypeSlice(result.url, 5);
+      }
       if (StringPrototypeStartsWith(result.url, "file://")) {
         try {
           return url.fileURLToPath(result.url);
