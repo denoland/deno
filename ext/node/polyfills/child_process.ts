@@ -191,13 +191,13 @@ function fork(
         options.env = { ...process.env, NODE_OPTIONS: nodeOptionsStr };
       }
     }
-    if (result.ca_stores?.length) {
+    if (result.caStores?.length) {
       options.env = {
         ...(options.env ?? process.env),
-        DENO_TLS_CA_STORE: result.ca_stores.join(","),
+        DENO_TLS_CA_STORE: result.caStores.join(","),
       };
     }
-    if (result.use_openssl_ca) {
+    if (result.useOpensslCa) {
       options.env = {
         ...(options.env ?? process.env),
         DENO_NODE_USE_OPENSSL_CA: "1",
