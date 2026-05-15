@@ -1396,7 +1396,7 @@ fn new_workspace_factory_options(
   flags: &Flags,
 ) -> deno_resolver::factory::WorkspaceFactoryOptions {
   deno_resolver::factory::WorkspaceFactoryOptions {
-    discover_jsr_config: true,
+    discover_jsr_config: matches!(flags.subcommand, DenoSubcommand::Publish(_)),
     config_discovery: match &flags.config_flag {
       ConfigFlag::Discover => {
         if let Some(start_paths) = flags.config_path_args(initial_cwd) {
