@@ -1004,6 +1004,25 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     kind: deno_core::ResolutionKind,
   ) -> deno_core::ModuleResolveResponse {
     if self.0.hook_registry.resolve_active.get() {
+      if specifier == "node:module"
+        && let Ok(referrer) = ModuleSpecifier::parse(referrer)
+      {
+        let media_type = deno_media_type::MediaType::from_specifier(&referrer);
+        if self
+          .0
+          .shared
+          .cjs_tracker
+          .is_maybe_cjs(&referrer, media_type)
+          .unwrap_or(false)
+        {
+          return deno_core::ModuleResolveResponse::Sync(self.0.inner_resolve(
+            specifier,
+            referrer.as_str(),
+            kind,
+            false,
+          ));
+        }
+      }
       let receiver = self
         .0
         .hook_registry

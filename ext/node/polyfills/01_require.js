@@ -1395,7 +1395,14 @@ Module._resolveFilename = function (
   }
 
   // Run resolve hooks if registered (and not already inside a hook)
-  if (hookEntries.length > 0 && !insideResolveHook) {
+  if (
+    hookEntries.length > 0 && !insideResolveHook &&
+    // Dynamic import of CJS goes through an internal self-require to execute
+    // the CommonJS module. That is not a user resolve operation and Node's
+    // registerHooks tests expect only the original import specifier to be
+    // observable.
+    request !== parent?.filename
+  ) {
     const parentURL = parent?.filename
       ? url.pathToFileURL(parent.filename).href
       : undefined;
