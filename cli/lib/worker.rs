@@ -61,8 +61,6 @@ use crate::util::checksum;
 pub struct CreateModuleLoaderResult {
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_require_loader: Rc<dyn NodeRequireLoader>,
-  pub hook_registry:
-    Option<deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry>,
 }
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -343,7 +341,6 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       let CreateModuleLoaderResult {
         module_loader,
         node_require_loader,
-        hook_registry: _, // web workers don't support hooks yet
       } = shared.module_loader_factory.create_for_worker(
         args.parent_permissions.clone(),
         args.permissions.clone(),
@@ -624,7 +621,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let CreateModuleLoaderResult {
       module_loader,
       node_require_loader,
-      hook_registry,
     } = shared
       .module_loader_factory
       .create_for_main(permissions.clone());
@@ -739,11 +735,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let mut worker =
       MainWorker::bootstrap_from_options(&main_module, services, options);
     worker.setup_memory_trim_handler();
-
-    // Wire module hook registry into OpState so JS ops share it with the loader
-    if let Some(registry) = hook_registry {
-      worker.js_runtime.op_state().borrow_mut().put(registry);
-    }
 
     // Store the main inspector session sender for worker debugging
     let inspector = worker.js_runtime.inspector();
