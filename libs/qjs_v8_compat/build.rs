@@ -99,6 +99,11 @@ fn build_vendored() {
 
   println!("cargo:rerun-if-changed={}", vendor.display());
 
+  // Apply our cyclic-export TDZ + cfunc auto-prototype patches to the
+  // vendored QuickJS-ng tree. Idempotent: skips if a marker file shows
+  // we already applied this exact patch set.
+  apply_local_patches(&vendor);
+
   let mut build = cc::Build::new();
   build
     .file(vendor.join("quickjs.c"))
@@ -132,4 +137,64 @@ fn build_vendored() {
   }
 
   let _ = Path::new(""); // silence unused-import warning when target gating excludes a path
+}
+
+/// Apply the patches under `patches/` to the QuickJS-ng vendor tree,
+/// in numeric order. We use `git apply` from the vendor's own git,
+/// keyed by a marker file so re-runs are no-ops. The submodule's
+/// upstream commit is unmodified; the patches live as a series in
+/// the parent repo so they can be reviewed without a fork-of-a-fork.
+fn apply_local_patches(vendor: &Path) {
+  use std::process::Command;
+  let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+  let patches_dir = manifest_dir.join("patches");
+  if !patches_dir.is_dir() {
+    return;
+  }
+  let mut patches: Vec<PathBuf> = std::fs::read_dir(&patches_dir)
+    .unwrap()
+    .filter_map(|e| e.ok())
+    .map(|e| e.path())
+    .filter(|p| {
+      p.file_name()
+        .and_then(|n| n.to_str())
+        .map_or(false, |n| n.ends_with(".patch"))
+    })
+    .collect();
+  patches.sort();
+  let marker_dir =
+    PathBuf::from(env::var("OUT_DIR").unwrap()).join("patch-state");
+  let _ = std::fs::create_dir_all(&marker_dir);
+  for p in patches {
+    println!("cargo:rerun-if-changed={}", p.display());
+    // Marker per (patch, vendor-content). If quickjs.c lacks our patch
+    // marker the apply must run regardless of the OUT_DIR marker — that
+    // happens after a `git checkout` reverts the vendor tree.
+    let marker = marker_dir
+      .join(p.file_name().unwrap().to_string_lossy().to_string());
+    let already_applied =
+      std::fs::read_to_string(vendor.join("quickjs.c"))
+        .map(|s| s.contains("qjs_v8_compat patch"))
+        .unwrap_or(false);
+    if marker.exists() && already_applied {
+      continue;
+    }
+    let output = Command::new("git")
+      .current_dir(vendor)
+      .arg("apply")
+      .arg(&p)
+      .output();
+    match output {
+      Ok(o) if o.status.success() => {
+        let _ = std::fs::write(&marker, "");
+      }
+      Ok(o) => panic!(
+        "git apply failed for {}: status {}\nstderr: {}",
+        p.display(),
+        o.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&o.stderr)
+      ),
+      Err(e) => panic!("failed to invoke git apply for {}: {}", p.display(), e),
+    }
+  }
 }
