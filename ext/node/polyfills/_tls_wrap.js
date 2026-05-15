@@ -453,9 +453,9 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
 
   // Set ownerSymbol on the parent handle so that connect callbacks
   // (which receive the TCP handle, not the TLSWrap) can find the socket.
-  // If we are wrapping a still-connecting net.Socket, keep the raw socket as
-  // owner until its pending connect event has fired.
-  if (!(wrap instanceof net.Socket && wrap.connecting)) {
+  // If we are wrapping a net.Socket that still needs to emit its connect
+  // event, keep the raw socket as owner until that event has fired.
+  if (!(wrap instanceof net.Socket && !wrap.remoteAddress)) {
     handle[ownerSymbol] = this;
   }
 
@@ -712,12 +712,19 @@ TLSSocket.prototype._init = function (socket, wrap) {
       // If the original socket created its own TCP handle during
       // connect() (because it had no handle when we wrapped it),
       // re-attach the TLS wrap to the socket's actual TCP handle.
-      if (ssl && socket._handle) {
+      if (ssl && socket._handle && ssl._nativeTcpHandle !== socket._handle) {
         const nativeHandle = socket._handle;
-        ssl.attach(nativeHandle);
+        ssl._attachNativeHandle(nativeHandle);
         nativeHandle[ownerSymbol] = this;
+      } else if (ssl && socket._handle) {
+        socket._handle[ownerSymbol] = this;
+        ssl._installNativeOnread?.(socket._handle);
       }
-      this.emit("connect");
+      nextTick(() => {
+        if (!this.destroyed) {
+          this.emit("connect");
+        }
+      });
     });
   }
 
