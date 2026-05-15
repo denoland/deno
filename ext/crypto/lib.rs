@@ -412,6 +412,7 @@ pub async fn op_crypto_sign_key(
               CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
               CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
               CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+              _ => return Err(CryptoError::UnsupportedAlgorithm),
             };
             // P-521 field size is 66 bytes; bits2field requires at least
             // half that (33 bytes). Left-pad shorter hashes to meet the
@@ -621,6 +622,7 @@ pub async fn op_crypto_verify_key(
                   CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
                   CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
                   CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+                  _ => return Err(CryptoError::UnsupportedAlgorithm),
                 };
                 // P-521 field size is 66 bytes; bits2field requires at least
                 // half that (33 bytes). Left-pad shorter hashes to meet the
