@@ -40,7 +40,6 @@ use crate::FastStaticString;
 use crate::JsRuntime;
 use crate::ModuleCodeBytes;
 use crate::ModuleLoadResponse;
-use crate::ModuleResolveResponse;
 use crate::ModuleSource;
 use crate::ModuleSourceCode;
 use crate::ModuleSpecifier;
@@ -637,13 +636,20 @@ impl ModuleMap {
       Vec::with_capacity(len as usize + 1);
     let mut export_values: Vec<v8::Local<v8::Value>> =
       Vec::with_capacity(len as usize + 1);
+    // If the IIFE returns `{ default: <ns>, ...named }`, treat the inner
+    // `default` as the ESM default export. This mirrors the manual
+    // `export default mod.default` pattern used by the old `*_esm.ts`
+    // wrappers and Node's behavior for builtins whose `module.exports`
+    // includes a `default` property. Otherwise fall back to the entire
+    // exports object as the default (matches `module.exports = { ... }`
+    // shape).
+    let mut default_value: v8::Local<v8::Value> = exports_obj.into();
     for i in 0..len {
       let key_val = property_names.get_index(scope, i).unwrap();
       let key_str = key_val.to_string(scope).unwrap();
       let value = exports_obj.get(scope, key_val).unwrap();
-      // Don't double-bind "default": it always points at the whole
-      // exports object below, regardless of any "default" own property.
       if key_str.to_rust_string_lossy(scope) == "default" {
+        default_value = value;
         continue;
       }
       export_names.push(key_str);
@@ -651,7 +657,7 @@ impl ModuleMap {
     }
     let default_str = v8::String::new(scope, "default").unwrap();
     export_names.push(default_str);
-    export_values.push(exports_obj.into());
+    export_values.push(default_value);
 
     let module = v8::Module::create_synthetic_module(
       scope,
@@ -685,6 +691,19 @@ impl ModuleMap {
 
     // Synthetic modules have no imports so their instantation must never fail.
     self.instantiate_module(scope, id).unwrap();
+    // Eagerly evaluate so the `synthetic_module_evaluation_steps` callback
+    // fires now (which sets the exports from the staged store) instead of
+    // at first read. Important during snapshot creation: V8 needs the
+    // module in `Evaluated` state with its exports populated before the
+    // snapshot is serialized; otherwise consumers that look up the
+    // module's namespace at snapshot-finalize time hit
+    // "GetModuleNamespace must be used on an instantiated module" or get
+    // unbound exports. Evaluation is synchronous for synthetic modules.
+    {
+      let handle = self.get_handle(id).unwrap();
+      let local = v8::Local::new(scope, handle);
+      let _ = local.evaluate(scope);
+    }
 
     id
   }
@@ -960,43 +979,17 @@ impl ModuleMap {
         return Err(ModuleError::Exception(exception));
       }
 
-      let resolve_kind = if is_dynamic_import {
-        ResolutionKind::DynamicImport
-      } else {
-        ResolutionKind::Import
-      };
-      let resolve_response =
-        self.resolve(&import_specifier, name.as_ref(), resolve_kind);
-      let (module_specifier, needs_resolve) = match resolve_response {
-        ModuleResolveResponse::Sync(Ok(s)) => (s, false),
-        ModuleResolveResponse::Sync(Err(e)) => {
-          return Err(ModuleError::Core(e.into()));
-        }
-        ModuleResolveResponse::Async(_) => {
-          // Async resolution for child imports is deferred to
-          // RecursiveModuleLoad. Use the raw specifier as a best-effort
-          // parse for now.
-          let specifier = match ModuleSpecifier::parse(&import_specifier) {
-            Ok(s) => s,
-            Err(_) => {
-              // Try resolving as relative URL with the module name as base
-              match ModuleSpecifier::parse(name.as_ref())
-                .and_then(|base| base.join(&import_specifier))
-              {
-                Ok(s) => s,
-                Err(e) => {
-                  return Err(ModuleError::Core(
-                    JsErrorBox::type_error(format!(
-                      "Cannot resolve module \"{import_specifier}\": {e}"
-                    ))
-                    .into(),
-                  ));
-                }
-              }
-            }
-          };
-          (specifier, true)
-        }
+      let module_specifier = match self.resolve(
+        &import_specifier,
+        name.as_ref(),
+        if is_dynamic_import {
+          ResolutionKind::DynamicImport
+        } else {
+          ResolutionKind::Import
+        },
+      ) {
+        Ok(s) => s,
+        Err(e) => return Err(ModuleError::Core(e)),
       };
       let requested_module_type =
         get_requested_module_type_from_attributes(&attributes);
@@ -1020,7 +1013,6 @@ impl ModuleMap {
           v8::ModuleImportPhase::kSource => ModuleImportPhase::Source,
           v8::ModuleImportPhase::kDefer => ModuleImportPhase::Defer,
         },
-        needs_resolve,
       };
       requests.push(request);
     }
@@ -1345,16 +1337,13 @@ impl ModuleMap {
 
   /// Resolve provided module. This function calls out to `loader.resolve`,
   /// but applies some additional checks that disallow resolving/importing
-  /// certain modules (eg. `ext:` or `node:` modules).
-  ///
-  /// Returns a `ModuleResolveResponse` which may be sync or async depending
-  /// on the loader implementation.
+  /// certain modules (eg. `ext:` or `node:` modules)
   pub fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
-  ) -> ModuleResolveResponse {
+  ) -> Result<ModuleSpecifier, CoreError> {
     if specifier.starts_with("ext:")
       && !referrer.starts_with("ext:")
       && !referrer.starts_with("node:")
@@ -1371,44 +1360,14 @@ impl ModuleMap {
         "Importing ext: modules is only allowed from ext: and node: modules. Tried to import {} from {}",
         specifier, referrer
       );
-      return ModuleResolveResponse::Sync(Err(JsErrorBox::type_error(msg)));
+      return Err(JsErrorBox::type_error(msg).into());
     }
 
-    self.loader.borrow().resolve(specifier, referrer, kind)
-  }
-
-  /// Synchronously resolve a module. This calls `resolve()` and unwraps the
-  /// sync result. Panics if the loader returns an async response.
-  ///
-  /// This is used in the V8 `module_resolve_callback` path, where by
-  /// instantiation time all modules are already resolved.
-  pub fn resolve_sync(
-    &self,
-    specifier: &str,
-    referrer: &str,
-    kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, CoreError> {
-    match self.resolve(specifier, referrer, kind) {
-      ModuleResolveResponse::Sync(result) => result.map_err(|e| e.into()),
-      ModuleResolveResponse::Async(_) => {
-        panic!(
-          "Cannot synchronously resolve an async ModuleResolveResponse during module instantiation"
-        )
-      }
-    }
-  }
-
-  /// Asynchronously resolve a module. Handles both sync and async responses.
-  pub async fn resolve_async(
-    &self,
-    specifier: &str,
-    referrer: &str,
-    kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, CoreError> {
-    match self.resolve(specifier, referrer, kind) {
-      ModuleResolveResponse::Sync(result) => result.map_err(|e| e.into()),
-      ModuleResolveResponse::Async(fut) => fut.await.map_err(|e| e.into()),
-    }
+    self
+      .loader
+      .borrow()
+      .resolve(specifier, referrer, kind)
+      .map_err(|e| e.into())
   }
 
   /// Called by `module_resolve_callback` during module instantiation.
@@ -1419,8 +1378,25 @@ impl ModuleMap {
     referrer: &str,
     import_attributes: HashMap<String, String>,
   ) -> Option<v8::Local<'s, v8::Module>> {
+    // Synthetic ESM dispatch first, by raw specifier. The active loader
+    // may not know about the spec (e.g. `LazyEsmModuleLoader` only
+    // resolves `lazy_loaded_esm` entries), so checking before
+    // `resolve_sync` ensures the synthetic dispatch wins over a loader
+    // "cannot resolve" error. `node:foo` specifiers are their own
+    // canonical form, so no further resolution is needed.
+    if self.has_synthetic_esm_module(specifier) {
+      if let Some(id) = self.get_id(specifier, &RequestedModuleType::None)
+        && let Some(handle) = self.get_handle(id)
+      {
+        return Some(v8::Local::new(scope, handle));
+      }
+      if let Some(module) = self.try_resolve_synthetic_esm(scope, specifier) {
+        return Some(module);
+      }
+    }
+
     let resolved_specifier =
-      match self.resolve_sync(specifier, referrer, ResolutionKind::Import) {
+      match self.resolve(specifier, referrer, ResolutionKind::Import) {
         Ok(s) => s,
         Err(e) => {
           crate::error::throw_js_error_class(scope, &e);
@@ -1437,9 +1413,9 @@ impl ModuleMap {
       return Some(v8::Local::new(scope, handle));
     }
 
-    // Synthetic ESM dispatch: if the specifier was registered via
-    // `synthetic_esm`, build a synthetic module from the IIFE exports of
-    // its backing script.
+    // Synthetic ESM dispatch (post-resolve): in case the loader returned
+    // a redirected/normalized form, also check here. Most callers hit
+    // the pre-resolve branch above.
     if let Some(module) =
       self.try_resolve_synthetic_esm(scope, resolved_specifier.as_str())
     {
@@ -1494,14 +1470,11 @@ impl ModuleMap {
     resolver_handle: v8::Global<v8::PromiseResolver>,
     cped_handle: v8::Global<v8::Value>,
   ) -> bool {
-    let resolve_response =
+    let resolve_result =
       self.resolve(&specifier, &referrer, ResolutionKind::DynamicImport);
 
-    // Fast path: if resolution is synchronous and module is already loaded,
-    // we can resolve the import immediately without async work.
-    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
-      && phase == ModuleImportPhase::Evaluation
-      && let Ok(module_specifier) = resolve_result
+    if phase == ModuleImportPhase::Evaluation
+      && let Ok(module_specifier) = &resolve_result
       && let Some(id) = self
         .data
         .borrow()
@@ -1544,9 +1517,8 @@ impl ModuleMap {
 
     // Fast path for lazy-loaded ESM: load synchronously and resolve
     // immediately, avoiding the async RecursiveModuleLoad path entirely.
-    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
-      && phase == ModuleImportPhase::Evaluation
-      && let Ok(module_specifier) = resolve_result
+    if phase == ModuleImportPhase::Evaluation
+      && let Ok(module_specifier) = &resolve_result
       && self.has_lazy_esm_source(module_specifier.as_str())
     {
       match self.lazy_load_esm_module(scope, module_specifier.as_str()) {
@@ -1569,9 +1541,8 @@ impl ModuleMap {
     // Fast path for `synthetic_esm`-registered modules: build the
     // synthetic module synchronously and resolve immediately, same
     // pattern as the lazy ESM fast path above.
-    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
-      && phase == ModuleImportPhase::Evaluation
-      && let Ok(module_specifier) = resolve_result
+    if phase == ModuleImportPhase::Evaluation
+      && let Ok(module_specifier) = &resolve_result
       && self.has_synthetic_esm_module(module_specifier.as_str())
     {
       match self
@@ -1611,11 +1582,14 @@ impl ModuleMap {
     );
 
     let load_id = load.id();
-    let fut = async move {
-      let mut load = load;
-      (load_id, load.prepare().await.map(|()| load))
-    }
-    .boxed_local();
+    let fut = match resolve_result {
+      Ok(_) => async move {
+        let mut load = load;
+        (load_id, load.prepare().await.map(|()| load))
+      }
+      .boxed_local(),
+      Err(error) => async move { (load_id, Err(error)) }.boxed_local(),
+    };
 
     self.preparing_dynamic_imports.push(fut);
 

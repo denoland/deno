@@ -13,8 +13,8 @@ type _TestHasProcessGlobal = AssertTrue<
 type _TestProcessGlobalVersion = AssertTrue<
   typeof process.versions.node extends string ? true : false
 >;
-type _TestNoBufferGlogal = AssertTrue<
-  typeof globalThis extends { Buffer: any } ? false : true
+type _TestHasBufferGlobal = AssertTrue<
+  typeof globalThis extends { Buffer: any } ? true : false
 >;
 type _TestHasNodeJsGlobal = NodeJS.Architecture;
 
