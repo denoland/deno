@@ -180,13 +180,11 @@ pub(crate) unsafe extern "C" fn module_loader_callback(
     Ok(s) => s,
     Err(_) => return core::ptr::null_mut(),
   };
-  // Return the previously-compiled module if we've seen this name —
-  // otherwise QuickJS gets two distinct JSModuleDef for the same
-  // import name on cyclic graphs and trips its circular check.
-  if let Some(cached) = MODULE_DEF_CACHE.with(|c| c.borrow().get(name).copied())
-  {
-    return cached as *mut crate::ffi::JSModuleDef;
-  }
+  // Note: we don't cache here — QuickJS itself dedupes registered
+  // modules by name via its loaded-module list, and re-issuing the
+  // cached JSModuleDef confuses the linker (the cached module may
+  // already be in LINKING/EVALUATED state, tripping the
+  // `m->status == JS_MODULE_STATUS_UNLINKED` assertion at link time).
   let Some(source) = lookup_module_source_by_name(name) else {
     eprintln!("[qjs] module loader: no source for {name}");
     return core::ptr::null_mut();
