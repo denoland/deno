@@ -1760,12 +1760,13 @@ impl ModuleMap {
       }
     }
 
-    let load = RecursiveModuleLoad::dynamic_import(
+    let load = RecursiveModuleLoad::dynamic_import_with_resolve(
       specifier,
       referrer,
       requested_module_type,
       phase,
       self.clone(),
+      resolve_response,
     );
 
     self.dynamic_import_map.borrow_mut().insert(

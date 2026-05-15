@@ -137,16 +137,15 @@ impl RecursiveModuleLoad {
     Ok(load)
   }
 
-  /// Starts a new asynchronous load of the module graph for given specifier
-  /// that was imported using `import()`.
-  pub(crate) fn dynamic_import(
+  pub(crate) fn dynamic_import_with_resolve(
     specifier: String,
     referrer: String,
     requested_module_type: RequestedModuleType,
     phase: ModuleImportPhase,
     module_map_rc: Rc<ModuleMap>,
+    resolve_response: ModuleResolveResponse,
   ) -> Self {
-    Self::new(
+    Self::new_with_resolve(
       LoadInit::DynamicImport(
         specifier,
         referrer,
@@ -154,15 +153,24 @@ impl RecursiveModuleLoad {
         phase,
       ),
       module_map_rc,
+      resolve_response,
     )
   }
 
   fn new(init: LoadInit, module_map_rc: Rc<ModuleMap>) -> Self {
-    let id = module_map_rc.next_load_id();
-    let loader = module_map_rc.loader.borrow().clone();
     // Resolve the root specifier eagerly. For sync resolution, cache the
     // result. For async, store the future for later resolution.
     let resolve_response = Self::resolve_root_from_init(&init, &module_map_rc);
+    Self::new_with_resolve(init, module_map_rc, resolve_response)
+  }
+
+  fn new_with_resolve(
+    init: LoadInit,
+    module_map_rc: Rc<ModuleMap>,
+    resolve_response: ModuleResolveResponse,
+  ) -> Self {
+    let id = module_map_rc.next_load_id();
+    let loader = module_map_rc.loader.borrow().clone();
     let (resolved_specifier, pending_root_resolve) = match resolve_response {
       ModuleResolveResponse::Sync(result) => {
         (Some(result.map_err(CoreError::from)), None)
