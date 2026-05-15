@@ -512,45 +512,36 @@ impl ModuleLoader for EmbeddedModuleLoader {
     raw_specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
-  ) -> deno_core::ModuleResolveResponse {
-    // Route through resolve hooks when active. For file:// URLs that are
-    // already resolved, we normally skip the bridge. However, if the file
-    // is NOT embedded in the binary, we still route through the bridge so
-    // that the resolve loop's pendingHookLoads wait ensures hook modules
-    // are loaded before proceeding to load().
-    let should_use_resolve_hooks = self.hook_registry.resolve_active.get()
-      && (!is_already_resolved_specifier(raw_specifier)
-        || self.is_external_file_specifier(raw_specifier));
-    if should_use_resolve_hooks {
-      let receiver = self
-        .hook_registry
-        .push_resolve(raw_specifier.to_string(), referrer.to_string());
-      let this = self.clone();
-      let raw_specifier = raw_specifier.to_string();
-      let referrer = referrer.to_string();
-      return deno_core::ModuleResolveResponse::Async(
-        async move {
-          let hook_result = match receiver.await {
-            Ok(r) => r,
-            Err(_) => {
-              return Err(JsErrorBox::generic("module resolve hook cancelled"));
-            }
-          };
-          match hook_result {
-            Ok(Some(url)) => Url::parse(&url).map_err(JsErrorBox::from_err),
-            Ok(None) => this.resolve_inner(&raw_specifier, &referrer, kind),
-            Err(err) => Err(JsErrorBox::generic(err)),
-          }
-        }
-        .boxed_local(),
-      );
-    }
+  ) -> Result<ModuleSpecifier, JsErrorBox> {
+    self.resolve_inner(raw_specifier, referrer, kind)
+  }
 
-    deno_core::ModuleResolveResponse::Sync(self.resolve_inner(
-      raw_specifier,
-      referrer,
-      kind,
-    ))
+  fn resolve_with_scope(
+    &self,
+    scope: &mut deno_core::v8::PinScope,
+    raw_specifier: &str,
+    referrer: &str,
+    kind: ResolutionKind,
+  ) -> Result<ModuleSpecifier, JsErrorBox> {
+    if raw_specifier == "node:module"
+      && let Ok(referrer) = Url::parse(referrer)
+      && self.shared.cjs_tracker.get_referrer_kind(&referrer)
+        == ResolutionMode::Require
+    {
+      return self.resolve_inner(raw_specifier, referrer.as_str(), kind);
+    }
+    if raw_specifier == "node:module"
+      && let Ok(referrer) = Url::parse(referrer)
+      && self.is_maybe_cjs(&referrer).unwrap_or(false)
+    {
+      return self.resolve_inner(raw_specifier, referrer.as_str(), kind);
+    }
+    if let Some(url) =
+      self.hook_registry.resolve(scope, raw_specifier, referrer)?
+    {
+      return ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err);
+    }
+    self.resolve_inner(raw_specifier, referrer, kind)
   }
 
   fn get_host_defined_options<'s>(

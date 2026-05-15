@@ -56,7 +56,6 @@ use crate::modules::ModuleId;
 use crate::modules::ModuleImportPhase;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
-use crate::modules::ModuleLoaderError;
 use crate::modules::ModuleName;
 use crate::modules::ModuleReference;
 use crate::modules::ModuleRequest;
@@ -78,22 +77,7 @@ const DATA_PREFIX: &str = "data:";
 type PrepareLoadFuture =
   dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, CoreError>)>;
 
-/// Output of a pending finalize future driven by `drain_module_finalizes`.
-/// `load` is the dynamic-import `RecursiveModuleLoad` to resume, plus the
-/// data needed to register the now-resolved module and recurse.
-type PendingFinalizeFuture = dyn Future<
-  Output = (
-    RecursiveModuleLoad,
-    ModuleReference,
-    Option<ModuleSourceCode>,
-    Result<ModuleId, ModuleError>,
-  ),
->;
-
 type CodeCacheReadyFuture = dyn Future<Output = ()>;
-type PendingModuleResolveFuture =
-  dyn Future<Output = Result<ModuleSpecifier, ModuleLoaderError>>;
-type PendingModuleResolve = (usize, Pin<Box<PendingModuleResolveFuture>>);
 
 struct ModEvaluate {
   module_map: Rc<ModuleMap>,
@@ -134,15 +118,6 @@ fn strip_bom(source_code: &[u8]) -> &[u8] {
   } else {
     source_code
   }
-}
-
-/// Placeholder `ModuleSpecifier` written into a [`ModuleRequest`] when the
-/// loader returned `ModuleResolveResponse::Async`. The value is overwritten
-/// by [`ModuleMap::finalize_pending_module`] before the request becomes
-/// observable outside `new_module_from_js_source_with_pending`.
-fn async_resolve_placeholder() -> ModuleSpecifier {
-  ModuleSpecifier::parse("data:,deno-async-resolve-placeholder")
-    .expect("static placeholder URL must parse")
 }
 
 /// A `FuturesUnordered` paired with a `Cell<bool>` flag that tracks whether
@@ -260,11 +235,6 @@ pub(crate) struct ModuleMap {
   dynamic_import_map: RefCell<HashMap<ModuleLoadId, DynImportState>>,
   preparing_dynamic_imports: TrackedFutures<Pin<Box<PrepareLoadFuture>>>,
   pending_dynamic_imports: TrackedFutures<StreamFuture<RecursiveModuleLoad>>,
-  /// Pending finalize-after-async-resolve work from `drain_dyn_imports`.
-  /// Set when `register_and_recurse` returns `PendingFinalize` for a module
-  /// loaded via dynamic import: we can't `.await` while holding the V8 scope,
-  /// so we stash the future here and let the next event-loop tick drain it.
-  pending_module_finalizes: TrackedFutures<Pin<Box<PendingFinalizeFuture>>>,
   pending_dyn_mod_evaluations: TrackedVec<DynImportModEvaluate>,
   pending_tla_waiters:
     RefCell<HashMap<ModuleId, Vec<v8::Global<v8::PromiseResolver>>>>,
@@ -287,47 +257,15 @@ pub(crate) struct ModuleMap {
   pub(crate) import_sync_eval_stack: RefCell<Vec<ModuleId>>,
 }
 
-/// Captures a module that V8 has already compiled but cannot be registered in
-/// the module map yet because at least one of its imports needs an async
-/// resolve (e.g. a `module.register()` user hook). The caller awaits
-/// `pending_resolves`, patches each affected entry in `requests`, then calls
-/// [`ModuleMap::finalize_pending_module`] to register.
-pub(crate) struct PendingModule {
-  pub name: ModuleName,
-  pub module_type: ModuleType,
-  pub handle: v8::Global<v8::Module>,
-  pub main: bool,
-  /// Fully-populated except at the indices listed in `pending_resolves`,
-  /// where `reference.specifier` is a throwaway placeholder.
-  pub requests: Vec<ModuleRequest>,
-  /// `(index_into_requests, future)` -- the future resolves to the real
-  /// `ModuleSpecifier` for `requests[index]`.
-  pub pending_resolves: Vec<PendingModuleResolve>,
-}
-
-/// Outcome of compiling a module's source. `Ready` is the fast path -- every
-/// import resolved synchronously, the module is already registered. `Pending`
-/// means the compile succeeded but at least one child import needs an async
-/// resolve before [`ModuleMap::finalize_pending_module`] can register it.
+/// Outcome of compiling a module's source.
 pub(crate) enum NewModuleResult {
   Ready(ModuleId),
-  Pending(PendingModule),
 }
 
 impl NewModuleResult {
-  /// Used by sync call sites (V8 `module_resolve_callback`, lazy-ESM dispatch,
-  /// op handlers) that don't drive an async loop. Errors if the module's
-  /// imports required async resolution -- in practice these paths only load
-  /// modules whose imports are builtins / synthetic ESM, so this never fires.
   fn into_ready(self) -> Result<ModuleId, ModuleError> {
     match self {
       NewModuleResult::Ready(id) => Ok(id),
-      NewModuleResult::Pending(_) => Err(ModuleError::Core(
-        JsErrorBox::generic(
-          "module loader returned async resolve in a synchronous context",
-        )
-        .into(),
-      )),
     }
   }
 }
@@ -402,7 +340,6 @@ impl ModuleMap {
       dynamic_import_map: Default::default(),
       preparing_dynamic_imports: Default::default(),
       pending_dynamic_imports: Default::default(),
-      pending_module_finalizes: Default::default(),
       pending_dyn_mod_evaluations: Default::default(),
       pending_tla_waiters: Default::default(),
       pending_mod_evaluation: Default::default(),
@@ -574,18 +511,17 @@ impl ModuleMap {
             (None, module_url_found)
           };
 
-        match self.new_module_from_js_source_with_pending(
-          scope,
-          main,
-          ModuleType::JavaScript,
-          module_url_found,
-          code,
-          dynamic,
-          code_cache_info,
-        )? {
-          NewModuleResult::Ready(id) => id,
-          pending @ NewModuleResult::Pending(_) => return Ok(pending),
-        }
+        self
+          .new_module_from_js_source_with_pending(
+            scope,
+            main,
+            ModuleType::JavaScript,
+            module_url_found,
+            code,
+            dynamic,
+            code_cache_info,
+          )?
+          .into_ready()?
       }
       ModuleType::Wasm => {
         self.new_wasm_module(scope, module_url_found, code, dynamic)?
@@ -680,18 +616,17 @@ impl ModuleMap {
               (None, url2)
             };
 
-            match self.new_module_from_js_source_with_pending(
-              scope,
-              main,
-              ModuleType::Other(module_type.clone()),
-              url2,
-              computed_src,
-              dynamic,
-              code_cache_info,
-            )? {
-              NewModuleResult::Ready(id) => id,
-              pending @ NewModuleResult::Pending(_) => return Ok(pending),
-            }
+            self
+              .new_module_from_js_source_with_pending(
+                scope,
+                main,
+                ModuleType::Other(module_type.clone()),
+                url2,
+                computed_src,
+                dynamic,
+                code_cache_info,
+              )?
+              .into_ready()?
           }
         }
       }
@@ -896,10 +831,7 @@ impl ModuleMap {
   ///
   /// Returns an ID of newly created module.
   ///
-  /// Sync call sites can use this directly; if any child import requires async
-  /// resolve it will error. Async callers should use
-  /// [`new_module_from_js_source_with_pending`] and finalize via
-  /// [`finalize_pending_module`].
+  /// Sync call sites can use this directly.
   #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub(crate) fn new_module_from_js_source(
     &self,
@@ -924,9 +856,7 @@ impl ModuleMap {
       .into_ready()
   }
 
-  /// Same as [`new_module_from_js_source`] but returns [`NewModuleResult`] so
-  /// the caller can drive any async child-import resolves and finalize via
-  /// [`finalize_pending_module`].
+  /// Same as [`new_module_from_js_source`] but returns [`NewModuleResult`].
   #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub(crate) fn new_module_from_js_source_with_pending(
     &self,
@@ -1072,7 +1002,6 @@ impl ModuleMap {
     let module_requests = module.get_module_requests();
     let requests_len = module_requests.length();
     let mut requests = Vec::with_capacity(requests_len);
-    let mut pending_resolves: Vec<PendingModuleResolve> = Vec::new();
     for i in 0..module_requests.length() {
       let module_request = v8::Local::<v8::ModuleRequest>::try_from(
         module_requests.get(tc_scope, i).unwrap(),
@@ -1114,22 +1043,14 @@ impl ModuleMap {
       } else {
         ResolutionKind::Import
       };
-      let resolve_response =
-        self.resolve(&import_specifier, name.as_ref(), resolve_kind);
-      let module_specifier = match resolve_response {
-        ModuleResolveResponse::Sync(Ok(s)) => s,
-        ModuleResolveResponse::Sync(Err(e)) => {
-          return Err(ModuleError::Core(e.into()));
-        }
-        ModuleResolveResponse::Async(fut) => {
-          // Stash the future; the caller awaits it before finalizing the
-          // module. The placeholder URL stored in this request is never
-          // observed outside this code path -- `finalize_pending_module`
-          // overwrites it once the future completes.
-          pending_resolves.push((requests.len(), fut));
-          async_resolve_placeholder()
-        }
-      };
+      let module_specifier = self
+        .resolve_with_scope(
+          tc_scope,
+          &import_specifier,
+          name.as_ref(),
+          resolve_kind,
+        )
+        .map_err(|e| ModuleError::Core(e.into()))?;
       let requested_module_type =
         get_requested_module_type_from_attributes(&attributes);
       let referrer_source_offset = if let ModuleType::Wasm = module_type {
@@ -1157,47 +1078,14 @@ impl ModuleMap {
     }
 
     let handle = v8::Global::<v8::Module>::new(tc_scope, module);
-    if pending_resolves.is_empty() {
-      let id = self.data.borrow_mut().create_module_info(
-        name,
-        module_type,
-        handle,
-        main,
-        requests,
-      );
-      return Ok(NewModuleResult::Ready(id));
-    }
-
-    Ok(NewModuleResult::Pending(PendingModule {
+    let id = self.data.borrow_mut().create_module_info(
       name,
       module_type,
       handle,
       main,
       requests,
-      pending_resolves,
-    }))
-  }
-
-  /// Await every pending async resolve on `pending`, patch the corresponding
-  /// entries in `pending.requests`, and register the module.
-  pub(crate) async fn finalize_pending_module(
-    &self,
-    mut pending: PendingModule,
-  ) -> Result<ModuleId, ModuleError> {
-    for (idx, fut) in pending.pending_resolves {
-      let resolved = fut.await.map_err(|e| {
-        ModuleError::Core(JsErrorBox::generic(e.to_string()).into())
-      })?;
-      pending.requests[idx].reference.specifier = resolved;
-    }
-    let id = self.data.borrow_mut().create_module_info(
-      pending.name,
-      pending.module_type,
-      pending.handle,
-      pending.main,
-      pending.requests,
     );
-    Ok(id)
+    Ok(NewModuleResult::Ready(id))
   }
 
   pub(crate) fn new_wasm_module_source(
@@ -1432,11 +1320,30 @@ impl ModuleMap {
       import_attributes,
       ImportAttributesKind::StaticImport,
     );
+    let requested_module_type =
+      get_requested_module_type_from_attributes(&attributes);
+    let pre_resolved_specifier = {
+      let module_map_data = module_map.data.borrow();
+      let referrer_info = module_map_data
+        .get_info_by_module(&referrer_global)
+        .expect("ModuleInfo not found");
+      referrer_info
+        .requests
+        .iter()
+        .find(|r| {
+          r.specifier_key
+            .as_ref()
+            .is_some_and(|s| s == &specifier_str)
+            && r.reference.requested_module_type == requested_module_type
+        })
+        .map(|r| r.reference.specifier.clone())
+    };
     let maybe_module = module_map.resolve_callback(
       scope,
       &specifier_str,
       &referrer_name,
       attributes,
+      pre_resolved_specifier,
     );
     if let Some(module) = maybe_module {
       return Some(module);
@@ -1510,8 +1417,6 @@ impl ModuleMap {
   /// but applies some additional checks that disallow resolving/importing
   /// certain modules (eg. `ext:` or `node:` modules).
   ///
-  /// Returns a `ModuleResolveResponse` which may be sync or async depending
-  /// on the loader implementation.
   pub fn resolve(
     &self,
     specifier: &str,
@@ -1534,31 +1439,42 @@ impl ModuleMap {
         "Importing ext: modules is only allowed from ext: and node: modules. Tried to import {} from {}",
         specifier, referrer
       );
-      return ModuleResolveResponse::Sync(Err(JsErrorBox::type_error(msg)));
+      return Err(JsErrorBox::type_error(msg));
     }
 
     self.loader.borrow().resolve(specifier, referrer, kind)
   }
 
-  /// Synchronously resolve a module. This calls `resolve()` and unwraps the
-  /// sync result. Panics if the loader returns an async response.
-  ///
-  /// This is used in the V8 `module_resolve_callback` path, where by
-  /// instantiation time all modules are already resolved.
-  pub fn resolve_sync(
+  pub fn resolve_with_scope(
     &self,
+    scope: &mut v8::PinScope,
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, CoreError> {
-    match self.resolve(specifier, referrer, kind) {
-      ModuleResolveResponse::Sync(result) => result.map_err(|e| e.into()),
-      ModuleResolveResponse::Async(_) => {
-        panic!(
-          "Cannot synchronously resolve an async ModuleResolveResponse during module instantiation"
-        )
-      }
+  ) -> ModuleResolveResponse {
+    if specifier.starts_with("ext:")
+      && !referrer.starts_with("ext:")
+      && !referrer.starts_with("node:")
+      && !referrer.starts_with("checkin:")
+      && referrer != "."
+      && kind != ResolutionKind::MainModule
+    {
+      let referrer = if referrer.is_empty() {
+        "(no referrer)"
+      } else {
+        referrer
+      };
+      let msg = format!(
+        "Importing ext: modules is only allowed from ext: and node: modules. Tried to import {} from {}",
+        specifier, referrer
+      );
+      return Err(JsErrorBox::type_error(msg));
     }
+
+    self
+      .loader
+      .borrow()
+      .resolve_with_scope(scope, specifier, referrer, kind)
   }
 
   /// Called by `module_resolve_callback` during module instantiation.
@@ -1568,6 +1484,7 @@ impl ModuleMap {
     specifier: &str,
     referrer: &str,
     import_attributes: HashMap<String, String>,
+    pre_resolved_specifier: Option<ModuleSpecifier>,
   ) -> Option<v8::Local<'s, v8::Module>> {
     // Synthetic ESM dispatch first, by raw specifier. The active loader
     // may not know about the spec (e.g. `LazyEsmModuleLoader` only
@@ -1586,17 +1503,23 @@ impl ModuleMap {
       }
     }
 
-    let resolved_specifier =
-      match self.resolve_sync(specifier, referrer, ResolutionKind::Import) {
+    let module_type =
+      get_requested_module_type_from_attributes(&import_attributes);
+    let resolved_specifier = match pre_resolved_specifier {
+      Some(specifier) => specifier,
+      None => match self.resolve_with_scope(
+        scope,
+        specifier,
+        referrer,
+        ResolutionKind::Import,
+      ) {
         Ok(s) => s,
         Err(e) => {
           crate::error::throw_js_error_class(scope, &e);
           return None;
         }
-      };
-
-    let module_type =
-      get_requested_module_type_from_attributes(&import_attributes);
+      },
+    };
 
     if let Some(id) = self.get_id(resolved_specifier.as_str(), module_type)
       && let Some(handle) = self.get_handle(id)
@@ -1661,13 +1584,17 @@ impl ModuleMap {
     resolver_handle: v8::Global<v8::PromiseResolver>,
     cped_handle: v8::Global<v8::Value>,
   ) -> bool {
-    let resolve_response =
-      self.resolve(&specifier, &referrer, ResolutionKind::DynamicImport);
+    let resolve_response = self.resolve_with_scope(
+      scope,
+      &specifier,
+      &referrer,
+      ResolutionKind::DynamicImport,
+    );
 
-    // Fast path: if resolution is synchronous and module is already loaded,
-    // we can resolve the import immediately without async work.
-    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
-      && phase == ModuleImportPhase::Evaluation
+    // Fast path: if the module is already loaded, resolve the import
+    // immediately without async work.
+    if phase == ModuleImportPhase::Evaluation
+      && let ref resolve_result = resolve_response
       && let Ok(module_specifier) = resolve_result
       && let Some(id) = self
         .data
@@ -1711,8 +1638,8 @@ impl ModuleMap {
 
     // Fast path for lazy-loaded ESM: load synchronously and resolve
     // immediately, avoiding the async RecursiveModuleLoad path entirely.
-    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
-      && phase == ModuleImportPhase::Evaluation
+    if phase == ModuleImportPhase::Evaluation
+      && let ref resolve_result = resolve_response
       && let Ok(module_specifier) = resolve_result
       && self.has_lazy_esm_source(module_specifier.as_str())
     {
@@ -1736,8 +1663,8 @@ impl ModuleMap {
     // Fast path for `synthetic_esm`-registered modules: build the
     // synthetic module synchronously and resolve immediately, same
     // pattern as the lazy ESM fast path above.
-    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
-      && phase == ModuleImportPhase::Evaluation
+    if phase == ModuleImportPhase::Evaluation
+      && let ref resolve_result = resolve_response
       && let Ok(module_specifier) = resolve_result
       && self.has_synthetic_esm_module(module_specifier.as_str())
       && !self
@@ -1764,13 +1691,12 @@ impl ModuleMap {
       }
     }
 
-    let load = RecursiveModuleLoad::dynamic_import_with_resolve(
+    let load = RecursiveModuleLoad::new_dynamic_import(
       specifier,
       referrer,
       requested_module_type,
       phase,
       self.clone(),
-      resolve_response,
     );
 
     self.dynamic_import_map.borrow_mut().insert(
@@ -2340,19 +2266,10 @@ impl ModuleMap {
       has_evaluated = false;
       loop {
         self.drain_prepare_dyn_imports(cx, scope);
-        // Drain finalizes both before and after the dyn-imports step:
-        // - before: pick up futures that became ready since the last tick;
-        // - after: handle futures pushed by this tick's `drain_dyn_imports`.
-        let mut finalized_any = self.drain_module_finalizes(cx, scope);
         self.drain_dyn_imports(cx, scope)?;
-        finalized_any |= self.drain_module_finalizes(cx, scope);
         self.drain_code_cache_ready(cx);
 
-        if self.evaluate_dyn_imports(scope) || finalized_any {
-          // A finalized module's `register_and_recurse_inner` may have
-          // queued new child loads on the resumed `RecursiveModuleLoad`,
-          // and we just re-pushed the load onto `pending_dynamic_imports`.
-          // Re-enter the inner loop so we pick those up before yielding.
+        if self.evaluate_dyn_imports(scope) {
           has_evaluated = true;
         } else {
           break;
@@ -2361,48 +2278,6 @@ impl ModuleMap {
     }
 
     Ok(())
-  }
-
-  /// Drain pending finalize-after-async-resolve futures pushed by
-  /// `drain_dyn_imports`. Each ready future yields a fully-resolved module:
-  /// we re-enter scope (we have one), call `finalize_after_pending` to record
-  /// the module + recurse into its imports, and push the load back onto
-  /// `pending_dynamic_imports` so the dynamic-import flow continues.
-  fn drain_module_finalizes(
-    &self,
-    cx: &mut Context,
-    scope: &mut v8::PinScope,
-  ) -> bool {
-    if !self.pending_module_finalizes.is_pending() {
-      return false;
-    }
-
-    let mut finalized_any = false;
-    while let Poll::Ready(Some((mut load, reference, code, result))) =
-      self.pending_module_finalizes.poll_next_unpin(cx)
-    {
-      finalized_any = true;
-      let dyn_import_id = load.id();
-      match result {
-        Ok(module_id) => {
-          load.finalize_after_pending(module_id, &reference, code.as_ref());
-          self
-            .pending_dynamic_imports
-            .push(StreamExt::into_future(load));
-        }
-        Err(err) => {
-          let exception = match err {
-            ModuleError::Exception(e) => e,
-            ModuleError::Core(e) => e.to_v8_error(scope),
-            ModuleError::Concrete(e) => {
-              CoreErrorKind::Module(e).to_v8_error(scope)
-            }
-          };
-          self.dynamic_import_reject(scope, dyn_import_id, exception);
-        }
-      }
-    }
-    finalized_any
   }
 
   /// Drain all ready preparing-dynamic-import futures, moving successful
@@ -2460,21 +2335,6 @@ impl ModuleMap {
               self
                 .pending_dynamic_imports
                 .push(StreamExt::into_future(load));
-            }
-            Ok(RegisterOutcome::PendingFinalize {
-              pending,
-              reference,
-              code,
-            }) => {
-              // Async child resolves needed -- drop the scope, await the
-              // resolves, and pick the load back up in `drain_module_finalizes`
-              // on the next event loop tick.
-              let module_map = load.module_map_rc.clone();
-              let fut = async move {
-                let result = module_map.finalize_pending_module(*pending).await;
-                (load, reference, code, result)
-              };
-              self.pending_module_finalizes.push(fut.boxed_local());
             }
             Err(err) => {
               let exception = match err {

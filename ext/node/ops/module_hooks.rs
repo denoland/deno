@@ -9,14 +9,8 @@ use std::task::Waker;
 
 use deno_core::OpState;
 use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
-
-/// A pending resolve request from the Rust module loader to JS hooks.
-struct PendingResolve {
-  id: u32,
-  specifier: String,
-  referrer: String,
-}
 
 /// A pending load request from the Rust module loader to JS hooks.
 struct PendingLoad {
@@ -24,8 +18,6 @@ struct PendingLoad {
   url: String,
 }
 
-type ResolveSender =
-  deno_core::futures::channel::oneshot::Sender<Result<Option<String>, String>>;
 /// Load hook result: (source, format). Format is e.g. "commonjs", "module".
 type LoadResult = (Option<String>, Option<String>);
 type LoadSender =
@@ -33,19 +25,15 @@ type LoadSender =
 
 /// Shared hook registry between ops and the module loader.
 ///
-/// When hooks are active, the Rust module loader pushes requests into
-/// the pending queues and returns async futures. The JS side polls
-/// for requests via async ops, calls the user's hook functions, and
-/// sends responses back via sync ops.
+/// When load hooks are active, the Rust module loader pushes requests into
+/// the pending queue. The JS side polls for requests via an async op, calls
+/// the user's synchronous hook function, and sends the response back via a
+/// sync op.
 #[derive(Clone, Default)]
 pub struct LoaderHookRegistry {
-  pub resolve_active: Rc<Cell<bool>>,
+  resolve_callback: Rc<RefCell<Option<v8::Global<v8::Function>>>>,
   pub load_active: Rc<Cell<bool>>,
   next_id: Rc<Cell<u32>>,
-
-  pending_resolves: Rc<RefCell<VecDeque<PendingResolve>>>,
-  resolve_waker: Rc<RefCell<Option<Waker>>>,
-  resolve_senders: Rc<RefCell<HashMap<u32, ResolveSender>>>,
 
   pending_loads: Rc<RefCell<VecDeque<PendingLoad>>>,
   load_waker: Rc<RefCell<Option<Waker>>>,
@@ -63,30 +51,50 @@ impl LoaderHookRegistry {
     id
   }
 
-  /// Push a resolve request and return a receiver for the response.
-  /// `Ok(Some(url))` = hook resolved, `Ok(None)` = fallthrough to default.
-  pub fn push_resolve(
+  pub fn resolve(
     &self,
-    specifier: String,
-    referrer: String,
-  ) -> deno_core::futures::channel::oneshot::Receiver<
-    Result<Option<String>, String>,
-  > {
-    let id = self.next_id();
-    let (sender, receiver) = deno_core::futures::channel::oneshot::channel();
-    self.resolve_senders.borrow_mut().insert(id, sender);
-    self
-      .pending_resolves
-      .borrow_mut()
-      .push_back(PendingResolve {
-        id,
-        specifier,
-        referrer,
-      });
-    if let Some(waker) = self.resolve_waker.borrow_mut().take() {
-      waker.wake();
+    scope: &mut v8::PinScope,
+    specifier: &str,
+    referrer: &str,
+  ) -> Result<Option<String>, JsErrorBox> {
+    let callbacks = self.resolve_callback.borrow();
+    let Some(callback) = callbacks.as_ref() else {
+      return Ok(None);
+    };
+    let callback = v8::Local::new(scope, callback);
+    let recv = v8::undefined(scope).into();
+    let specifier = v8::String::new(scope, specifier)
+      .ok_or_else(|| JsErrorBox::generic("failed to allocate specifier"))?;
+    let referrer = v8::String::new(scope, referrer)
+      .ok_or_else(|| JsErrorBox::generic("failed to allocate referrer"))?;
+    let Some(result) =
+      callback.call(scope, recv, &[specifier.into(), referrer.into()])
+    else {
+      return Err(JsErrorBox::generic("module resolve hook failed"));
+    };
+    if result.is_null_or_undefined() {
+      return Ok(None);
     }
-    receiver
+    if result.is_string() {
+      let result = v8::Local::<v8::String>::try_from(result)
+        .map_err(|_| JsErrorBox::generic("module resolve hook failed"))?;
+      return Ok(Some(result.to_rust_string_lossy(scope)));
+    }
+    if let Ok(result) = v8::Local::<v8::Object>::try_from(result) {
+      let error_key = v8::String::new(scope, "error")
+        .ok_or_else(|| JsErrorBox::generic("failed to allocate error key"))?;
+      if let Some(error) = result.get(scope, error_key.into())
+        && !error.is_null_or_undefined()
+      {
+        let error = error
+          .to_string(scope)
+          .ok_or_else(|| JsErrorBox::generic("module resolve hook failed"))?;
+        return Err(JsErrorBox::generic(error.to_rust_string_lossy(scope)));
+      }
+    }
+    Err(JsErrorBox::generic(
+      "module resolve hook must return a string or null",
+    ))
   }
 
   /// Push a load request and return a receiver for the response.
@@ -129,57 +137,15 @@ impl LoaderHookRegistry {
 }
 
 /// Mark hooks as active. Called from JS when `registerHooks()` is invoked.
-#[op2(fast)]
+#[op2]
 pub fn op_module_hooks_register(
   state: &mut OpState,
-  has_resolve: bool,
+  #[scoped] resolve_callback: Option<v8::Global<v8::Function>>,
   has_load: bool,
 ) {
   let registry = state.borrow::<LoaderHookRegistry>().clone();
-  registry.resolve_active.set(has_resolve);
+  *registry.resolve_callback.borrow_mut() = resolve_callback;
   registry.load_active.set(has_load);
-}
-
-/// Poll for a pending resolve request. Returns `[id, specifier, referrer]`
-/// or null if the registry is shut down.
-#[op2]
-#[serde]
-pub async fn op_module_hooks_poll_resolve(
-  state: Rc<RefCell<OpState>>,
-) -> Result<Option<(u32, String, String)>, JsErrorBox> {
-  let registry = state.borrow().borrow::<LoaderHookRegistry>().clone();
-
-  std::future::poll_fn(|cx| {
-    if let Some(req) = registry.pending_resolves.borrow_mut().pop_front() {
-      return std::task::Poll::Ready(Ok(Some((
-        req.id,
-        req.specifier,
-        req.referrer,
-      ))));
-    }
-    *registry.resolve_waker.borrow_mut() = Some(cx.waker().clone());
-    std::task::Poll::Pending
-  })
-  .await
-}
-
-/// Respond to a resolve request. `url` is null for fallthrough to default.
-#[op2]
-pub fn op_module_hooks_respond_resolve(
-  state: &mut OpState,
-  id: u32,
-  #[string] url: Option<String>,
-  #[string] error: Option<String>,
-) {
-  let registry = state.borrow::<LoaderHookRegistry>().clone();
-  if let Some(sender) = registry.resolve_senders.borrow_mut().remove(&id) {
-    let result: Result<Option<String>, String> = if let Some(err) = error {
-      Err(err)
-    } else {
-      Ok(url) // None = fallthrough
-    };
-    let _ = sender.send(result);
-  }
 }
 
 /// Poll for a pending load request. Returns `[id, url]` or null.

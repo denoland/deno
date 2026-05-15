@@ -1003,60 +1003,47 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     referrer: &str,
     kind: deno_core::ResolutionKind,
   ) -> deno_core::ModuleResolveResponse {
-    if self.0.hook_registry.resolve_active.get() {
-      if specifier == "node:module"
-        && let Ok(referrer) = ModuleSpecifier::parse(referrer)
-      {
-        let media_type = deno_media_type::MediaType::from_specifier(&referrer);
-        if self
-          .0
-          .shared
-          .cjs_tracker
-          .is_maybe_cjs(&referrer, media_type)
-          .unwrap_or(false)
-        {
-          return deno_core::ModuleResolveResponse::Sync(self.0.inner_resolve(
-            specifier,
-            referrer.as_str(),
-            kind,
-            false,
-          ));
-        }
-      }
-      let receiver = self
-        .0
-        .hook_registry
-        .push_resolve(specifier.to_string(), referrer.to_string());
-      let inner = self.0.clone();
-      let specifier = specifier.to_string();
-      let referrer = referrer.to_string();
-      return deno_core::ModuleResolveResponse::Async(
-        async move {
-          let hook_result: Result<Option<String>, String> = match receiver.await
-          {
-            Ok(r) => r,
-            Err(_) => {
-              return Err(JsErrorBox::generic("module resolve hook cancelled"));
-            }
-          };
-          match hook_result {
-            Ok(Some(url)) => {
-              ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err)
-            }
-            Ok(None) => {
-              // Fallthrough: hooks didn't intercept, use default
-              inner.inner_resolve(&specifier, &referrer, kind, false)
-            }
-            Err(err) => Err(JsErrorBox::generic(err)),
-          }
-        }
-        .boxed_local(),
-      );
-    }
+    self.0.inner_resolve(specifier, referrer, kind, false)
+  }
 
-    deno_core::ModuleResolveResponse::Sync(
-      self.0.inner_resolve(specifier, referrer, kind, false),
-    )
+  fn resolve_with_scope(
+    &self,
+    scope: &mut deno_core::v8::PinScope,
+    specifier: &str,
+    referrer: &str,
+    kind: deno_core::ResolutionKind,
+  ) -> deno_core::ModuleResolveResponse {
+    if specifier == "node:module"
+      && let Ok(referrer) = ModuleSpecifier::parse(referrer)
+      && self.0.shared.cjs_tracker.get_referrer_kind(&referrer)
+        == ResolutionMode::Require
+    {
+      return self
+        .0
+        .inner_resolve(specifier, referrer.as_str(), kind, false);
+    }
+    if specifier == "node:module"
+      && let Ok(referrer) = ModuleSpecifier::parse(referrer)
+    {
+      let media_type = MediaType::from_specifier(&referrer);
+      if self
+        .0
+        .shared
+        .cjs_tracker
+        .is_maybe_cjs(&referrer, media_type)
+        .unwrap_or(false)
+      {
+        return self
+          .0
+          .inner_resolve(specifier, referrer.as_str(), kind, false);
+      }
+    }
+    if let Some(url) =
+      self.0.hook_registry.resolve(scope, specifier, referrer)?
+    {
+      return ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err);
+    }
+    self.0.inner_resolve(specifier, referrer, kind, false)
   }
 
   fn import_meta_resolve(
@@ -1223,9 +1210,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
     // When ESM hooks are active, skip graph preparation — hooked modules
     // may be virtual and can't be fetched by the module graph builder.
-    if self.0.hook_registry.resolve_active.get()
-      || self.0.hook_registry.load_active.get()
-    {
+    if self.0.hook_registry.load_active.get() {
       self.0.shared.has_js_execution_started_flag.raise();
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }

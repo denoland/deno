@@ -621,14 +621,6 @@ impl JsRealm {
             } => load
               .register_and_recurse(scope, request, source)
               .map_err(|e| e.into_error(scope, false, false)),
-            crate::modules::recursive_load::RegisterStep::Finalize {
-              module_id,
-              reference,
-              code,
-            } => {
-              load.finalize_after_pending(module_id, reference, code);
-              Ok(crate::modules::recursive_load::RegisterOutcome::Done)
-            }
           }
         })
         .await?;
@@ -682,14 +674,6 @@ impl JsRealm {
         } => load
           .register_and_recurse(scope, request, source)
           .map_err(|e| e.into_error(scope, false, false)),
-        crate::modules::recursive_load::RegisterStep::Finalize {
-          module_id,
-          reference,
-          code,
-        } => {
-          load.finalize_after_pending(module_id, reference, code);
-          Ok(crate::modules::recursive_load::RegisterOutcome::Done)
-        }
       }
     })
     .await?;

@@ -8,10 +8,8 @@ import {
   op_import_sync,
   op_import_sync_with_source,
   op_module_hooks_poll_load,
-  op_module_hooks_poll_resolve,
   op_module_hooks_register,
   op_module_hooks_respond_load,
-  op_module_hooks_respond_resolve,
   op_napi_open,
   op_require_as_file_path,
   op_require_break_on_next_statement,
@@ -458,7 +456,6 @@ const cjsHookResolvedFilenames = new SafeSet();
 let insideResolveHook = false;
 let insideLoadHook = false;
 let utf8Decoder;
-let esmResolveLoopRunning = false;
 let esmLoadLoopRunning = false;
 const requireResolveOptionsMarker = Symbol("require.resolve");
 
@@ -638,25 +635,18 @@ function executeEsmResolveHookChain(specifier, context) {
   let index = 0;
   let currentContext = context;
 
-  // nextResolve must NOT be async - sync hooks (from registerHooks)
-  // call it and use the return value directly, not as a Promise.
   function nextResolve(spec, ctx) {
     if (ctx !== undefined && ctx !== null) {
       currentContext = { ...currentContext, ...ctx };
     }
     if (index >= resolveHooks.length) {
-      // End of chain - resolve the specifier so hooks can inspect
-      // the resolved URL. Use URL resolution for relative specifiers,
-      // and _resolveFilename (with re-entry guard) for bare specifiers.
       if (StringPrototypeStartsWith(spec, "node:")) {
         return { url: spec, shortCircuit: true };
       }
       try {
-        // Relative or absolute URL - resolve against parentURL
         const resolved = new URL(spec, currentContext.parentURL).href;
         return { url: resolved, shortCircuit: true };
       } catch {
-        // Bare specifier - use Node resolution
         insideResolveHook = true;
         try {
           const defaultResolved = Module._resolveFilename(
@@ -693,6 +683,20 @@ function executeEsmResolveHookChain(specifier, context) {
   }
 
   return nextResolve(specifier, context);
+}
+
+function esmResolveHookCallback(specifier, referrer) {
+  const context = {
+    parentURL: referrer || undefined,
+    conditions: ["node", "import"],
+    importAttributes: { __proto__: null },
+  };
+  try {
+    const result = executeEsmResolveHookChain(specifier, context);
+    return result?.url ?? null;
+  } catch (e) {
+    return { error: String(e) };
+  }
 }
 
 // ESM load hook chain: runs hooks in LIFO order.
@@ -733,36 +737,6 @@ function executeEsmLoadHookChain(fileUrl, context) {
   }
 
   return nextLoad(fileUrl, context);
-}
-
-function _startEsmResolveLoop() {
-  if (esmResolveLoopRunning) return;
-  esmResolveLoopRunning = true;
-  (async () => {
-    while (true) {
-      const pollPromise = op_module_hooks_poll_resolve();
-      core.unrefOpPromise(pollPromise);
-      const req = await pollPromise;
-      if (req === null) break;
-      const [id, specifier, referrer] = req;
-      const context = {
-        parentURL: referrer || undefined,
-        conditions: ["node", "import"],
-        importAttributes: { __proto__: null },
-      };
-      try {
-        const result = executeEsmResolveHookChain(specifier, context);
-        if (result !== null && result.url != null) {
-          op_module_hooks_respond_resolve(id, result.url, null);
-        } else {
-          // Fallthrough: tell Rust to use default resolution
-          op_module_hooks_respond_resolve(id, null, null);
-        }
-      } catch (e) {
-        op_module_hooks_respond_resolve(id, null, String(e));
-      }
-    }
-  })();
 }
 
 function _startEsmLoadLoop() {
@@ -806,8 +780,7 @@ function _activateEsmHooks() {
     if (hookEntries[i].resolve !== null) hasResolve = true;
     if (hookEntries[i].load !== null) hasLoad = true;
   }
-  op_module_hooks_register(hasResolve, hasLoad);
-  if (hasResolve) _startEsmResolveLoop();
+  op_module_hooks_register(hasResolve ? esmResolveHookCallback : null, hasLoad);
   if (hasLoad) _startEsmLoadLoop();
 }
 

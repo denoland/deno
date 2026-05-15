@@ -170,8 +170,6 @@ deno_core::extension!(deno_node,
     ops::assert::op_node_get_first_expression,
 
     ops::module_hooks::op_module_hooks_register,
-    ops::module_hooks::op_module_hooks_poll_resolve,
-    ops::module_hooks::op_module_hooks_respond_resolve,
     ops::module_hooks::op_module_hooks_poll_load,
     ops::module_hooks::op_module_hooks_respond_load,
 
