@@ -18,6 +18,7 @@ use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoadResponse;
 use deno_core::ModuleLoader;
 use deno_core::ModuleName;
+use deno_core::ModuleResolveResponse;
 use deno_core::ModuleSource;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
@@ -57,8 +58,10 @@ impl ModuleLoader for TypescriptModuleLoader {
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
-    resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+  ) -> ModuleResolveResponse {
+    ModuleResolveResponse::Sync(
+      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
+    )
   }
 
   fn load(
