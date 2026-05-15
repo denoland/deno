@@ -7,8 +7,6 @@ export const {
   createHistogram,
   enqueueNodePerformanceEntry,
   eventLoopUtilization,
-  Histogram,
-  RecordableHistogram,
   monitorEventLoopDelay,
   performance,
   PerformanceEntry,

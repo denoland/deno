@@ -186,11 +186,7 @@ const timerify = (fn, options = {}) => {
   }
 
   if (options?.histogram !== undefined) {
-    if (
-      typeof options.histogram !== "object" ||
-      options.histogram === null ||
-      typeof options.histogram.record !== "function"
-    ) {
+    if (!(options.histogram instanceof RecordableHistogram)) {
       throw new ERR_INVALID_ARG_TYPE(
         "options.histogram",
         "RecordableHistogram",
@@ -245,41 +241,15 @@ performance.markResourceTiming = () => {};
 function monitorEventLoopDelay(options = {}) {
   const { resolution = 10 } = options;
 
-  const histogram = new EldHistogram(resolution);
-  histogram[Symbol.dispose] = function () {
-    this.disable();
-  };
-  Object.defineProperty(histogram, core.hostObjectBrand, {
-    value: () => ({
-      type: "EventLoopDelayHistogram",
-      count: histogram.count,
-      countBigInt: histogram.countBigInt,
-      min: histogram.min,
-      minBigInt: histogram.minBigInt,
-      max: histogram.max,
-      maxBigInt: histogram.maxBigInt,
-      mean: histogram.mean,
-      stddev: histogram.stddev,
-    }),
-    enumerable: false,
-    configurable: false,
-    writable: false,
-  });
-  return histogram;
+  return new EventLoopDelayHistogram(new EldHistogram(resolution));
 }
 
-core.registerCloneableResource("EventLoopDelayHistogram", (data) => ({
-  count: data.count,
-  countBigInt: data.countBigInt,
-  min: data.min,
-  minBigInt: data.minBigInt,
-  max: data.max,
-  maxBigInt: data.maxBigInt,
-  mean: data.mean,
-  stddev: data.stddev,
-}));
+core.registerCloneableResource("EventLoopDelayHistogram", snapshotHistogram);
 
 const NUMBER_MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
+const EMPTY_HISTOGRAM_MIN = 9223372036854776000;
+const EMPTY_HISTOGRAM_MIN_BIGINT = 9223372036854775807n;
+const BIGINT_MAX = 0x7FFFFFFFFFFFFFFFn;
 const _handle = Symbol("[[handle]]");
 const _cloneId = Symbol("[[cloneId]]");
 let nextHistogramCloneId = 1;
@@ -311,9 +281,11 @@ class Histogram {
     return this[_handle].countBigInt;
   }
   get min() {
+    if (this.max === 0) return EMPTY_HISTOGRAM_MIN;
     return this[_handle].min;
   }
   get minBigInt() {
+    if (this.max === 0) return EMPTY_HISTOGRAM_MIN_BIGINT;
     return BigInt(this[_handle].minBigInt);
   }
   get max() {
@@ -323,9 +295,11 @@ class Histogram {
     return BigInt(this[_handle].maxBigInt);
   }
   get mean() {
+    if (this.max === 0) return NaN;
     return this[_handle].mean;
   }
   get stddev() {
+    if (this.max === 0) return NaN;
     return this[_handle].stddev;
   }
   get exceeds() {
@@ -341,6 +315,19 @@ class Histogram {
       for (let i = 0; i < flat.length; i += 2) {
         out.set(flat[i], flat[i + 1]);
       }
+    } else if (this.count === 0) {
+      out.set(100, 0);
+    } else {
+      out.set(0, this.min);
+      for (
+        let percentile = 50;
+        percentile < 100;
+        percentile += (100 - percentile) / 2
+      ) {
+        out.set(percentile, this.percentile(percentile));
+        if (percentile > 99.999) break;
+      }
+      out.set(100, this.max);
     }
     return out;
   }
@@ -351,6 +338,19 @@ class Histogram {
       for (let i = 0; i < flat.length; i += 2) {
         out.set(flat[i], BigInt(flat[i + 1]));
       }
+    } else if (this.count === 0) {
+      out.set(100, 0n);
+    } else {
+      out.set(0, this.minBigInt);
+      for (
+        let percentile = 50;
+        percentile < 100;
+        percentile += (100 - percentile) / 2
+      ) {
+        out.set(percentile, this.percentileBigInt(percentile));
+        if (percentile > 99.999) break;
+      }
+      out.set(100, this.maxBigInt);
     }
     return out;
   }
@@ -374,6 +374,17 @@ class Histogram {
   }
   reset() {
     this[_handle].reset();
+  }
+  toJSON() {
+    return {
+      count: this.count,
+      min: this.min,
+      max: this.max,
+      mean: this.mean,
+      exceeds: this.exceeds,
+      stddev: this.stddev,
+      percentiles: Object.fromEntries(this.percentiles),
+    };
   }
   [customInspectSymbol](depth, options) {
     if (depth < 0) {
@@ -402,7 +413,7 @@ class RecordableHistogram extends Histogram {
 
   record(val) {
     if (typeof val === "bigint") {
-      if (val < 1n || val > 0xFFFFFFFFFFFFFFFFn) {
+      if (val < 1n || val > BIGINT_MAX) {
         throw new ERR_OUT_OF_RANGE("val", "a positive integer", val);
       }
       this[_handle].record(val);
@@ -442,6 +453,89 @@ class RecordableHistogram extends Histogram {
       id: getHistogramCloneId(this),
     };
   }
+}
+
+class EventLoopDelayHistogram extends Histogram {
+  constructor(handle) {
+    super(handle);
+  }
+
+  enable() {
+    return this[_handle].enable();
+  }
+
+  disable() {
+    return this[_handle].disable();
+  }
+
+  [Symbol.dispose]() {
+    this.disable();
+  }
+
+  [core.hostObjectBrand]() {
+    return {
+      type: "EventLoopDelayHistogram",
+      count: this.count,
+      countBigInt: this.countBigInt,
+      min: this.min,
+      minBigInt: this.minBigInt,
+      max: this.max,
+      maxBigInt: this.maxBigInt,
+      mean: this.mean,
+      exceeds: this.exceeds,
+      exceedsBigInt: this.exceedsBigInt,
+      stddev: this.stddev,
+      percentiles: Array.from(this.percentiles),
+      percentilesBigInt: Array.from(
+        this.percentilesBigInt,
+        ([key, value]) => [key, value.toString()],
+      ),
+    };
+  }
+}
+
+function snapshotHistogram(data) {
+  return new Histogram({
+    count: data.count,
+    countBigInt: data.countBigInt,
+    min: data.min,
+    minBigInt: data.minBigInt,
+    max: data.max,
+    maxBigInt: data.maxBigInt,
+    mean: data.mean,
+    exceeds: data.exceeds ?? 0,
+    exceedsBigInt: data.exceedsBigInt ?? 0n,
+    stddev: data.stddev,
+    percentiles: () => {
+      const out = [];
+      for (const [key, value] of data.percentiles ?? [[100, 0]]) {
+        out.push(key, value);
+      }
+      return out;
+    },
+    percentilesBigInt: () => {
+      const out = [];
+      for (const [key, value] of data.percentilesBigInt ?? [[100, "0"]]) {
+        out.push(key, value);
+      }
+      return out;
+    },
+    percentile: (p) => {
+      const entries = data.percentiles ?? [[100, 0]];
+      for (const [key, value] of entries) {
+        if (key >= p) return value;
+      }
+      return data.max;
+    },
+    percentileBigInt: (p) => {
+      const entries = data.percentilesBigInt ?? [[100, "0"]];
+      for (const [key, value] of entries) {
+        if (key >= p) return BigInt(value);
+      }
+      return BigInt(data.maxBigInt);
+    },
+    reset() {},
+  });
 }
 
 core.registerCloneableResource("RecordableHistogram", (data) => {
@@ -507,8 +601,6 @@ return {
     PerformanceEntry,
     monitorEventLoopDelay,
     createHistogram,
-    Histogram,
-    RecordableHistogram,
     eventLoopUtilization,
     timerify,
     constants,
@@ -517,8 +609,6 @@ return {
   createHistogram,
   enqueueNodePerformanceEntry,
   eventLoopUtilization,
-  Histogram,
-  RecordableHistogram,
   monitorEventLoopDelay,
   performance,
   PerformanceEntry,

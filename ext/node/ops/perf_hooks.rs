@@ -161,7 +161,9 @@ impl EldHistogram {
 // value overflows the histogram's `highest` bound).
 pub struct BaseHistogram {
   inner: RefCell<Histogram<u64>>,
+  highest: u64,
   exceeds: Cell<u64>,
+  added_out_of_range: Cell<u64>,
   prev_delta_ns: Cell<Option<u64>>,
 }
 
@@ -201,7 +203,9 @@ impl BaseHistogram {
       Histogram::<u64>::new_with_bounds(lowest, highest, figures as u8)?;
     Ok(BaseHistogram {
       inner: RefCell::new(inner),
+      highest,
       exceeds: Cell::new(0),
+      added_out_of_range: Cell::new(0),
       prev_delta_ns: Cell::new(None),
     })
   }
@@ -210,6 +214,10 @@ impl BaseHistogram {
   // `highest`, increments the `exceeds` counter instead of erroring.
   #[fast]
   fn record(&self, #[bigint] value: u64) {
+    if value > self.highest {
+      self.exceeds.set(self.exceeds.get().saturating_add(1));
+      return;
+    }
     let mut h = self.inner.borrow_mut();
     if h.record(value).is_err() {
       self.exceeds.set(self.exceeds.get().saturating_add(1));
@@ -223,6 +231,11 @@ impl BaseHistogram {
     let now = now_ns();
     if let Some(prev) = self.prev_delta_ns.get() {
       let delta = now.saturating_sub(prev);
+      if delta > self.highest {
+        self.exceeds.set(self.exceeds.get().saturating_add(1));
+        self.prev_delta_ns.set(Some(now));
+        return;
+      }
       let mut h = self.inner.borrow_mut();
       if h.record(delta).is_err() {
         self.exceeds.set(self.exceeds.get().saturating_add(1));
@@ -236,7 +249,18 @@ impl BaseHistogram {
   fn add(&self, #[cppgc] other: &BaseHistogram) {
     let other_h = other.inner.borrow();
     let mut h = self.inner.borrow_mut();
-    let _ = h.add(&*other_h);
+    let mut added_out_of_range = self.added_out_of_range.get();
+    for v in other_h.iter_recorded() {
+      if v.value_iterated_to() > self.highest
+        || h
+          .record_n(v.value_iterated_to(), v.count_at_value())
+          .is_err()
+      {
+        added_out_of_range =
+          added_out_of_range.saturating_add(v.count_at_value());
+      }
+    }
+    self.added_out_of_range.set(added_out_of_range);
     self
       .exceeds
       .set(self.exceeds.get().saturating_add(other.exceeds.get()));
@@ -246,6 +270,7 @@ impl BaseHistogram {
   fn reset(&self) {
     self.inner.borrow_mut().reset();
     self.exceeds.set(0);
+    self.added_out_of_range.set(0);
     self.prev_delta_ns.set(None);
   }
 
@@ -271,14 +296,28 @@ impl BaseHistogram {
   fn percentiles(&self) -> Vec<f64> {
     let h = self.inner.borrow();
     let mut out = Vec::new();
-    if !h.is_empty() {
+    if h.is_empty() {
+      out.push(100.0);
       out.push(0.0);
-      out.push(h.min() as f64);
+      return out;
     }
-    for v in h.iter_recorded() {
-      out.push(v.percentile());
-      out.push(v.value_iterated_to() as f64);
+    out.push(0.0);
+    out.push(h.min() as f64);
+    if h.len() > 1 {
+      let max = h.max();
+      let mut percentile = 50.0;
+      while percentile < 100.0 {
+        let value = h.value_at_percentile(percentile);
+        out.push(percentile);
+        out.push(value as f64);
+        if value >= max {
+          break;
+        }
+        percentile += (100.0 - percentile) / 2.0;
+      }
     }
+    out.push(100.0);
+    out.push(h.max() as f64);
     out
   }
 
@@ -288,27 +327,49 @@ impl BaseHistogram {
   fn percentiles_big_int(&self) -> Vec<f64> {
     let h = self.inner.borrow();
     let mut out = Vec::new();
-    if !h.is_empty() {
+    if h.is_empty() {
+      out.push(100.0);
       out.push(0.0);
-      out.push(h.min() as f64);
+      return out;
     }
-    for v in h.iter_recorded() {
-      out.push(v.percentile());
-      out.push(v.value_iterated_to() as f64);
+    out.push(0.0);
+    out.push(h.min() as f64);
+    if h.len() > 1 {
+      let max = h.max();
+      let mut percentile = 50.0;
+      while percentile < 100.0 {
+        let value = h.value_at_percentile(percentile);
+        out.push(percentile);
+        out.push(value as f64);
+        if value >= max {
+          break;
+        }
+        percentile += (100.0 - percentile) / 2.0;
+      }
     }
+    out.push(100.0);
+    out.push(h.max() as f64);
     out
   }
 
   #[getter]
   #[number]
   fn count(&self) -> u64 {
-    self.inner.borrow().len()
+    self
+      .inner
+      .borrow()
+      .len()
+      .saturating_add(self.added_out_of_range.get())
   }
 
   #[getter]
   #[bigint]
   fn count_big_int(&self) -> u64 {
-    self.inner.borrow().len()
+    self
+      .inner
+      .borrow()
+      .len()
+      .saturating_add(self.added_out_of_range.get())
   }
 
   #[getter]
