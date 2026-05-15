@@ -3522,7 +3522,7 @@ fn build_client_config(
   use deno_tls::TlsKeys;
   use deno_tls::TlsKeysHolder;
 
-  let _reject_unauthorized =
+  let reject_unauthorized =
     get_js_bool(scope, context, "rejectUnauthorized", true);
   let protocol_versions = match get_protocol_versions(scope, context) {
     ProtocolVersionSelection::Default => {
@@ -3694,12 +3694,23 @@ fn build_client_config(
   // Install NodeServerCertVerifier to store verification errors for
   // verifyError().  This verifier never aborts the handshake — it
   // matches Node/OpenSSL behaviour where cert errors are deferred.
+  //
+  // The verifier Arc participates in rustls's resumption compatibility
+  // check, so keep separate stable identities for strict verification and
+  // `rejectUnauthorized: false`. Otherwise a session first accepted with
+  // deferred cert errors can be resumed by a later strict connection without
+  // surfacing the original verification error.
   let (final_verify_error, verifier_arc): (
     VerifyErrorStore,
     Option<Arc<dyn rustls::client::danger::ServerCertVerifier>>,
   ) = if is_default_path {
     let state = op_state.borrow_mut::<NodeTlsState>();
-    if let Some((v, e)) = state.cached_default_verifier.clone() {
+    let cached_verifier = if reject_unauthorized {
+      &mut state.cached_default_verifier
+    } else {
+      &mut state.cached_insecure_verifier
+    };
+    if let Some((v, e)) = cached_verifier.clone() {
       (e, Some(v))
     } else {
       let verifier_result = rustls::client::WebPkiServerVerifier::builder(
@@ -3715,7 +3726,7 @@ fn build_client_config(
               verify_error: store.clone(),
               root_cert_ders,
             });
-          state.cached_default_verifier = Some((v.clone(), store.clone()));
+          *cached_verifier = Some((v.clone(), store.clone()));
           (store, Some(v))
         }
         Err(_) => (Default::default(), None),
@@ -3742,14 +3753,16 @@ fn build_client_config(
 
   // Install a stable "no client cert" resolver Arc on the default path so
   // rustls's `Arc::downgrade(&client_creds)` identity check keeps the
-  // resumed session compatible across `tls.connect()` calls.  Seed the
-  // cache from the freshly built config on first call, then unconditionally
-  // overwrite `config.client_auth_cert_resolver` from the cache so every
-  // connection (including the first) hands rustls the same Arc identity.
+  // resumed session compatible across `tls.connect()` calls. Keep this
+  // split by verification policy for the same reason as the verifier Arc.
   if is_default_path {
     let state = op_state.borrow_mut::<NodeTlsState>();
-    let resolver = state
-      .cached_no_client_auth
+    let cached_no_client_auth = if reject_unauthorized {
+      &mut state.cached_no_client_auth
+    } else {
+      &mut state.cached_insecure_no_client_auth
+    };
+    let resolver = cached_no_client_auth
       .get_or_insert_with(|| config.client_auth_cert_resolver.clone())
       .clone();
     config.client_auth_cert_resolver = resolver;

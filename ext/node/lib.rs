@@ -735,7 +735,9 @@ deno_core::extension!(deno_node,
       ),
       server_ticketer: None,
       cached_default_verifier: None,
+      cached_insecure_verifier: None,
       cached_no_client_auth: None,
+      cached_insecure_no_client_auth: None,
     });
   },
   customizer = |ext: &mut deno_core::Extension| {
