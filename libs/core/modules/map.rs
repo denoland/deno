@@ -263,9 +263,9 @@ pub(crate) enum NewModuleResult {
 }
 
 impl NewModuleResult {
-  fn into_ready(self) -> Result<ModuleId, ModuleError> {
+  fn into_ready(self) -> ModuleId {
     match self {
-      NewModuleResult::Ready(id) => Ok(id),
+      NewModuleResult::Ready(id) => id,
     }
   }
 }
@@ -440,9 +440,11 @@ impl ModuleMap {
     dynamic: bool,
     module_source: ModuleSource,
   ) -> Result<ModuleId, ModuleError> {
-    self
-      .new_module_with_pending(scope, main, dynamic, module_source)?
-      .into_ready()
+    Ok(
+      self
+        .new_module_with_pending(scope, main, dynamic, module_source)?
+        .into_ready(),
+    )
   }
 
   pub(crate) fn new_module_with_pending(
@@ -521,7 +523,7 @@ impl ModuleMap {
             dynamic,
             code_cache_info,
           )?
-          .into_ready()?
+          .into_ready()
       }
       ModuleType::Wasm => {
         self.new_wasm_module(scope, module_url_found, code, dynamic)?
@@ -626,7 +628,7 @@ impl ModuleMap {
                 dynamic,
                 code_cache_info,
               )?
-              .into_ready()?
+              .into_ready()
           }
         }
       }
@@ -843,17 +845,19 @@ impl ModuleMap {
     is_dynamic_import: bool,
     code_cache_info: Option<CodeCacheInfo>,
   ) -> Result<ModuleId, ModuleError> {
-    self
-      .new_module_from_js_source_with_pending(
-        scope,
-        main,
-        module_type,
-        name,
-        source,
-        is_dynamic_import,
-        code_cache_info,
-      )?
-      .into_ready()
+    Ok(
+      self
+        .new_module_from_js_source_with_pending(
+          scope,
+          main,
+          module_type,
+          name,
+          source,
+          is_dynamic_import,
+          code_cache_info,
+        )?
+        .into_ready(),
+    )
   }
 
   /// Same as [`new_module_from_js_source`] but returns [`NewModuleResult`].
