@@ -12,10 +12,16 @@ const {
   PerformanceObserverEntryList,
 } = core.loadExtScript("ext:deno_web/15_performance.js");
 const { EldHistogram, BaseHistogram } = core.ops;
-const { ERR_INVALID_ARG_TYPE, ERR_OUT_OF_RANGE } = core
+const { ERR_ILLEGAL_CONSTRUCTOR, ERR_INVALID_ARG_TYPE, ERR_OUT_OF_RANGE } = core
   .loadExtScript(
     "ext:deno_node/internal/errors.ts",
   );
+const { customInspectSymbol } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+const { inspect } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
 
 const constants = {
   NODE_PERFORMANCE_ENTRY_TYPE_NODE: 0,
@@ -163,6 +169,11 @@ performance.eventLoopUtilization = eventLoopUtilization;
 
 performance.nodeTiming = {};
 
+function recordTimerifyHistogram(histogram, start) {
+  const durationNs = Math.max(1, Math.round((performance.now() - start) * 1e6));
+  histogram.record(durationNs);
+}
+
 const timerify = (fn, options = {}) => {
   if (typeof fn !== "function") {
     throw new ERR_INVALID_ARG_TYPE("fn", "function", fn);
@@ -188,9 +199,31 @@ const timerify = (fn, options = {}) => {
     }
   }
 
+  const histogram = options?.histogram;
+
   function timerified(...args) {
     // TODO(bartlomieju): emit PerformanceEntry with entryType 'function'
-    return new.target ? new fn(...args) : fn.apply(this, args);
+    const start = histogram === undefined ? 0 : performance.now();
+    let result;
+    try {
+      result = new.target ? new fn(...args) : fn.apply(this, args);
+    } catch (err) {
+      if (histogram !== undefined) {
+        recordTimerifyHistogram(histogram, start);
+      }
+      throw err;
+    }
+    if (
+      histogram !== undefined && result !== null &&
+      (typeof result === "object" || typeof result === "function") &&
+      typeof result.then === "function"
+    ) {
+      return result.finally(() => recordTimerifyHistogram(histogram, start));
+    }
+    if (histogram !== undefined) {
+      recordTimerifyHistogram(histogram, start);
+    }
+    return result;
   }
 
   Object.defineProperty(timerified, "name", {
@@ -212,11 +245,53 @@ performance.markResourceTiming = () => {};
 function monitorEventLoopDelay(options = {}) {
   const { resolution = 10 } = options;
 
-  return new EldHistogram(resolution);
+  const histogram = new EldHistogram(resolution);
+  histogram[Symbol.dispose] = function () {
+    this.disable();
+  };
+  Object.defineProperty(histogram, core.hostObjectBrand, {
+    value: () => ({
+      type: "EventLoopDelayHistogram",
+      count: histogram.count,
+      countBigInt: histogram.countBigInt,
+      min: histogram.min,
+      minBigInt: histogram.minBigInt,
+      max: histogram.max,
+      maxBigInt: histogram.maxBigInt,
+      mean: histogram.mean,
+      stddev: histogram.stddev,
+    }),
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  return histogram;
 }
+
+core.registerCloneableResource("EventLoopDelayHistogram", (data) => ({
+  count: data.count,
+  countBigInt: data.countBigInt,
+  min: data.min,
+  minBigInt: data.minBigInt,
+  max: data.max,
+  maxBigInt: data.maxBigInt,
+  mean: data.mean,
+  stddev: data.stddev,
+}));
 
 const NUMBER_MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
 const _handle = Symbol("[[handle]]");
+const _cloneId = Symbol("[[cloneId]]");
+let nextHistogramCloneId = 1;
+const histogramCloneRegistry = new Map();
+
+function getHistogramCloneId(histogram) {
+  if (histogram[_cloneId] === undefined) {
+    histogram[_cloneId] = nextHistogramCloneId++;
+  }
+  histogramCloneRegistry.set(histogram[_cloneId], histogram[_handle]);
+  return histogram[_cloneId];
+}
 
 // Public, JS-side Histogram class - `instanceof` works against both
 // `monitorEventLoopDelay()` results and `createHistogram()` results.
@@ -224,7 +299,7 @@ class Histogram {
   constructor(handle) {
     // Intentionally not user-constructable.
     if (handle === undefined) {
-      throw new ERR_INVALID_ARG_TYPE("handle", "object", handle);
+      throw new ERR_ILLEGAL_CONSTRUCTOR();
     }
     this[_handle] = handle;
   }
@@ -300,11 +375,29 @@ class Histogram {
   reset() {
     this[_handle].reset();
   }
+  [customInspectSymbol](depth, options) {
+    if (depth < 0) {
+      return this;
+    }
+
+    return `Histogram ${
+      inspect({
+        min: this.min,
+        max: this.max,
+        mean: this.mean,
+        exceeds: this.exceeds,
+        stddev: this.stddev,
+        count: this.count,
+        percentiles: this.percentiles,
+      }, options)
+    }`;
+  }
 }
 
 class RecordableHistogram extends Histogram {
-  constructor(handle) {
+  constructor(handle, cloneId) {
     super(handle);
+    this[_cloneId] = cloneId;
   }
 
   record(val) {
@@ -318,8 +411,12 @@ class RecordableHistogram extends Histogram {
     if (typeof val !== "number" || !Number.isInteger(val)) {
       throw new ERR_INVALID_ARG_TYPE("val", ["integer", "bigint"], val);
     }
-    if (val < 1) {
-      throw new ERR_OUT_OF_RANGE("val", ">= 1", val);
+    if (val < 1 || val > NUMBER_MAX_SAFE_INTEGER) {
+      throw new ERR_OUT_OF_RANGE(
+        "val",
+        `>= 1 && <= ${NUMBER_MAX_SAFE_INTEGER}`,
+        val,
+      );
     }
     this[_handle].record(BigInt(val));
   }
@@ -338,7 +435,22 @@ class RecordableHistogram extends Histogram {
     }
     this[_handle].add(other[_handle]);
   }
+
+  [core.hostObjectBrand]() {
+    return {
+      type: "RecordableHistogram",
+      id: getHistogramCloneId(this),
+    };
+  }
 }
+
+core.registerCloneableResource("RecordableHistogram", (data) => {
+  const handle = histogramCloneRegistry.get(data.id);
+  if (handle === undefined) {
+    throw new Error("Unable to deserialize RecordableHistogram");
+  }
+  return new RecordableHistogram(handle, data.id);
+});
 
 function validateInteger(value, name, min, max) {
   if (typeof value === "bigint") {

@@ -7,6 +7,8 @@ use deno_core::GarbageCollected;
 use deno_core::op2;
 use hdrhistogram::Histogram;
 
+const EMPTY_HISTOGRAM_MIN: u64 = i64::MAX as u64;
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PerfHooksError {
   #[class(generic)]
@@ -269,6 +271,10 @@ impl BaseHistogram {
   fn percentiles(&self) -> Vec<f64> {
     let h = self.inner.borrow();
     let mut out = Vec::new();
+    if !h.is_empty() {
+      out.push(0.0);
+      out.push(h.min() as f64);
+    }
     for v in h.iter_recorded() {
       out.push(v.percentile());
       out.push(v.value_iterated_to() as f64);
@@ -282,6 +288,10 @@ impl BaseHistogram {
   fn percentiles_big_int(&self) -> Vec<f64> {
     let h = self.inner.borrow();
     let mut out = Vec::new();
+    if !h.is_empty() {
+      out.push(0.0);
+      out.push(h.min() as f64);
+    }
     for v in h.iter_recorded() {
       out.push(v.percentile());
       out.push(v.value_iterated_to() as f64);
@@ -304,13 +314,23 @@ impl BaseHistogram {
   #[getter]
   #[number]
   fn min(&self) -> u64 {
-    self.inner.borrow().min()
+    let h = self.inner.borrow();
+    if h.is_empty() {
+      EMPTY_HISTOGRAM_MIN
+    } else {
+      h.min()
+    }
   }
 
   #[getter]
   #[bigint]
   fn min_big_int(&self) -> u64 {
-    self.inner.borrow().min()
+    let h = self.inner.borrow();
+    if h.is_empty() {
+      EMPTY_HISTOGRAM_MIN
+    } else {
+      h.min()
+    }
   }
 
   #[getter]
@@ -327,12 +347,14 @@ impl BaseHistogram {
 
   #[getter]
   fn mean(&self) -> f64 {
-    self.inner.borrow().mean()
+    let h = self.inner.borrow();
+    if h.is_empty() { f64::NAN } else { h.mean() }
   }
 
   #[getter]
   fn stddev(&self) -> f64 {
-    self.inner.borrow().stdev()
+    let h = self.inner.borrow();
+    if h.is_empty() { f64::NAN } else { h.stdev() }
   }
 
   #[getter]
