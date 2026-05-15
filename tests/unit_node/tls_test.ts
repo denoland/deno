@@ -644,6 +644,17 @@ Deno.test("tls.setDefaultCACertificates accepts valid certificate array", () => 
   (tls as any).setDefaultCACertificates([rootCaCert]);
 });
 
+Deno.test("tls default options ignore runtime NODE_OPTIONS and execArgv mutations", async () => {
+  const [status, output] = await execCode(`
+    process.env.NODE_OPTIONS = "--tls-min-v1.0 --use-system-ca";
+    process.execArgv.push("--tls-min-v1.0", "--use-system-ca");
+    const tls = await import("node:tls");
+    console.log(tls.DEFAULT_MIN_VERSION);
+  `);
+  assertEquals(status, 0);
+  assertEquals(output.trim(), "TLSv1.2");
+});
+
 // https://github.com/denoland/deno/issues/31759
 // Server-side STARTTLS: new tls.TLSSocket(socket, { isServer: true }) must
 // auto-start the TLS handshake without requiring an explicit _start() call.

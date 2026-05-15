@@ -2,9 +2,9 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, primordials } = globalThis.__bootstrap;
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
-const { getOptionValue } = core.loadExtScript(
+const { getExecArgvOptionValue, getOptionValue } = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
 );
 const { convertALPNProtocols } = core.loadExtScript(
@@ -263,58 +263,23 @@ function hasStore(store: string): boolean {
   return false;
 }
 
-function hasRuntimeNodeOption(flag: string): boolean {
-  if (hasExecArgvFlag(flag)) {
-    return true;
-  }
-  if (isNodeWorkerThread()) {
-    return false;
-  }
-  const nodeOptions = globalThis.process?.env?.NODE_OPTIONS ??
-    op_get_env_no_permission_check("NODE_OPTIONS") ??
-    "";
-  return ArrayPrototypeIncludes(StringPrototypeSplit(nodeOptions, " "), flag);
-}
-
-function hasExecArgvFlag(flag: string): boolean {
-  const execArgv = globalThis.process?.execArgv;
-  return ArrayIsArray(execArgv) && ArrayPrototypeIncludes(execArgv, flag);
-}
-
-function isNodeWorkerThread(): boolean {
-  if (internals.__isWorkerThread) {
-    return true;
-  }
-  try {
-    return core.loadExtScript("ext:deno_node/worker_threads.ts")
-      .isMainThread === false;
-  } catch {
-    return false;
-  }
-}
-
 function getDefaultUsesSystemCertificates(): boolean {
-  if (hasExecArgvFlag("--no-use-system-ca")) {
-    return false;
+  const useSystemCaExecArgvOption = getExecArgvOptionValue("--use-system-ca");
+  if (useSystemCaExecArgvOption !== undefined) {
+    return !!useSystemCaExecArgvOption;
   }
-  if (hasExecArgvFlag("--use-system-ca")) {
-    return true;
-  }
+  const useSystemCaOption = getOptionValue("--use-system-ca");
   if (
     globalThis.process?.env?.NODE_USE_SYSTEM_CA === "1" ||
     op_get_env_no_permission_check("NODE_USE_SYSTEM_CA") === "1"
   ) {
     return true;
   }
-  if (hasRuntimeNodeOption("--no-use-system-ca")) {
-    return false;
-  }
-  if (hasRuntimeNodeOption("--use-system-ca")) {
+  if (useSystemCaOption === true) {
     return true;
   }
-  const useSystemCaOption = getOptionValue("--use-system-ca");
-  if (useSystemCaOption !== undefined) {
-    return !!useSystemCaOption;
+  if (useSystemCaOption === false) {
+    return false;
   }
   if (hasStore("system")) {
     return true;
