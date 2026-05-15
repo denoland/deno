@@ -760,7 +760,7 @@ function updateOutgoingData(socket, state, delta) {
 function parserOnIncoming(server, socket, state, req, keepAlive) {
   resetSocketTimeout(server, socket, state);
 
-  if (req.upgrade) {
+  if (req.upgrade && req.method !== "CONNECT") {
     if (
       server.shouldUpgradeCallback !== undefined &&
       !server.shouldUpgradeCallback(req)
