@@ -1,188 +1,373 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// NOTE(bartlomieju): unfortunately it appears that clippy is broken
-// and can't allow a single line ignore for `await_holding_lock`.
-#![allow(clippy::await_holding_lock, reason = "clippy bug")]
-
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Arc;
 
-use deno_core::OpState;
 use deno_core::error::AnyError;
 use deno_core::op2;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
+use deno_core::OpState;
 use deno_error::JsErrorBox;
-use jupyter_protocol::InputRequest;
-use jupyter_protocol::JupyterMessage;
-use jupyter_protocol::JupyterMessageContent;
-use jupyter_protocol::StreamContent;
-use jupyter_runtime::KernelIoPubConnection;
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
-use crate::tools::jupyter::server::StdinConnectionProxy;
+use crate::cdp;
 
-deno_core::extension!(deno_jupyter,
+// ------------------------------------------------------------------
+// Shared data types
+// ------------------------------------------------------------------
+
+/// Mirrors jupyter_protocol::StreamContent (stdout/stderr capture).
+#[derive(Debug, Clone)]
+pub struct StreamContent {
+  pub name: String,
+  pub text: String,
+}
+
+impl StreamContent {
+  pub fn stdout(text: &str) -> Self {
+    Self {
+      name: "stdout".into(),
+      text: text.into(),
+    }
+  }
+  pub fn stderr(text: &str) -> Self {
+    Self {
+      name: "stderr".into(),
+      text: text.into(),
+    }
+  }
+}
+
+/// An iopub message produced by the REPL thread to be published by the kernel.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct IopubMessage {
+  pub msg_type: String,
+  pub content: serde_json::Value,
+  pub metadata: serde_json::Value,
+  pub buffers: Vec<Vec<u8>>,
+}
+
+// ------------------------------------------------------------------
+// REPL request / response types (with embedded oneshot responders)
+// ------------------------------------------------------------------
+
+pub enum JupyterReplRequest {
+  Evaluate {
+    line: String,
+    resp_tx: oneshot::Sender<Option<serde_json::Value>>,
+  },
+  GetProperties {
+    object_id: String,
+    resp_tx: oneshot::Sender<Option<serde_json::Value>>,
+  },
+  GlobalLexicalScopeNames {
+    resp_tx: oneshot::Sender<serde_json::Value>,
+  },
+  CallFunctionOnArgs {
+    function_declaration: String,
+    args: Vec<cdp::RemoteObject>,
+    resp_tx: oneshot::Sender<Result<serde_json::Value, AnyError>>,
+  },
+  CallFunctionOn {
+    arg0: cdp::CallArgument,
+    arg1: cdp::CallArgument,
+    resp_tx: oneshot::Sender<Option<serde_json::Value>>,
+  },
+}
+
+// ------------------------------------------------------------------
+// State stored in op_state of the ZMQ kernel worker (main thread)
+// ------------------------------------------------------------------
+
+pub struct KernelReplSender {
+  pub tx: mpsc::UnboundedSender<JupyterReplRequest>,
+}
+
+pub struct KernelIopubReceiver {
+  pub rx: RefCell<mpsc::UnboundedReceiver<IopubMessage>>,
+}
+
+pub struct KernelIsolateHandle {
+  pub handle: deno_core::v8::IsolateHandle,
+}
+
+pub struct KernelConnectionInfo {
+  pub json: String,
+}
+
+// ------------------------------------------------------------------
+// State stored in op_state of the REPL worker (background thread)
+// ------------------------------------------------------------------
+
+pub struct ReplIopubSender {
+  pub tx: mpsc::UnboundedSender<IopubMessage>,
+}
+
+// ------------------------------------------------------------------
+// Extension declarations
+// ------------------------------------------------------------------
+
+deno_core::extension!(
+  deno_jupyter_kernel,
+  ops = [
+    op_jupyter_get_connection_info,
+    op_jupyter_repl_evaluate,
+    op_jupyter_repl_get_properties,
+    op_jupyter_repl_global_lexical_scope_names,
+    op_jupyter_repl_call_function_on_args,
+    op_jupyter_repl_call_function_on,
+    op_jupyter_repl_interrupt,
+    op_jupyter_repl_cancel_interrupt,
+    op_jupyter_recv_iopub,
+    op_jupyter_deno_version,
+    op_jupyter_typescript_version,
+  ],
+);
+
+deno_core::extension!(
+  deno_jupyter_repl,
   ops = [
     op_jupyter_broadcast,
-    op_jupyter_input,
     op_jupyter_create_png_from_texture,
     op_jupyter_get_buffer,
   ],
   options = {
-    sender: mpsc::UnboundedSender<StreamContent>,
+    sender: mpsc::UnboundedSender<IopubMessage>,
   },
   middleware = |op| match op.name {
     "op_print" => op_print(),
     _ => op,
   },
   state = |state, options| {
-    state.put(options.sender);
+    state.put(ReplIopubSender { tx: options.sender });
   },
 );
 
-deno_core::extension!(deno_jupyter_for_test,
+/// Variant used when running tests (no middleware so stdout/stderr pass through).
+deno_core::extension!(
+  deno_jupyter_repl_for_test,
   ops = [
     op_jupyter_broadcast,
-    op_jupyter_input,
     op_jupyter_create_png_from_texture,
     op_jupyter_get_buffer,
   ],
   options = {
-    sender: mpsc::UnboundedSender<StreamContent>,
+    sender: mpsc::UnboundedSender<IopubMessage>,
   },
   state = |state, options| {
-    state.put(options.sender);
+    state.put(ReplIopubSender { tx: options.sender });
   },
 );
 
+// Backward-compat alias used by cli/tools/test/mod.rs
+pub use deno_jupyter_repl_for_test as deno_jupyter_for_test;
+
+// ------------------------------------------------------------------
+// Kernel-side ops
+// ------------------------------------------------------------------
+
 #[op2]
 #[string]
-pub fn op_jupyter_input(
-  state: &mut OpState,
-  #[string] prompt: String,
-  is_password: bool,
-) -> Option<String> {
-  let (last_execution_request, stdin_connection_proxy) = {
-    (
-      state.borrow::<Arc<Mutex<Option<JupyterMessage>>>>().clone(),
-      state.borrow::<Arc<Mutex<StdinConnectionProxy>>>().clone(),
-    )
-  };
-
-  let maybe_last_request = last_execution_request.lock().clone();
-  if let Some(last_request) = maybe_last_request {
-    let JupyterMessageContent::ExecuteRequest(msg) = &last_request.content
-    else {
-      return None;
-    };
-
-    if !msg.allow_stdin {
-      return None;
-    }
-
-    let content = InputRequest {
-      prompt,
-      password: is_password,
-    };
-
-    let msg = JupyterMessage::new(content, Some(&last_request));
-
-    let Ok(()) = stdin_connection_proxy.lock().tx.send(msg) else {
-      return None;
-    };
-
-    // Need to spawn a separate thread here, because `blocking_recv()` can't
-    // be used from the Tokio runtime context.
-    let join_handle = std::thread::spawn(move || {
-      stdin_connection_proxy.lock().rx.blocking_recv()
-    });
-    let Ok(Some(response)) = join_handle.join() else {
-      return None;
-    };
-
-    let JupyterMessageContent::InputReply(msg) = response.content else {
-      return None;
-    };
-
-    return Some(msg.value);
-  }
-
-  None
+pub fn op_jupyter_get_connection_info(state: &mut OpState) -> String {
+  state.borrow::<KernelConnectionInfo>().json.clone()
 }
+
+#[op2]
+#[serde]
+pub async fn op_jupyter_repl_evaluate(
+  state: Rc<RefCell<OpState>>,
+  #[string] line: String,
+) -> Result<Option<serde_json::Value>, JsErrorBox> {
+  let (resp_tx, resp_rx) = oneshot::channel();
+  {
+    let s = state.borrow();
+    let sender = s.borrow::<KernelReplSender>();
+    sender
+      .tx
+      .send(JupyterReplRequest::Evaluate { line, resp_tx })
+      .map_err(|_| JsErrorBox::generic("repl thread gone"))?;
+  }
+  resp_rx
+    .await
+    .map_err(|_| JsErrorBox::generic("repl response channel closed"))
+}
+
+#[op2]
+#[serde]
+pub async fn op_jupyter_repl_get_properties(
+  state: Rc<RefCell<OpState>>,
+  #[string] object_id: String,
+) -> Result<Option<serde_json::Value>, JsErrorBox> {
+  let (resp_tx, resp_rx) = oneshot::channel();
+  {
+    let s = state.borrow();
+    s.borrow::<KernelReplSender>()
+      .tx
+      .send(JupyterReplRequest::GetProperties { object_id, resp_tx })
+      .map_err(|_| JsErrorBox::generic("repl thread gone"))?;
+  }
+  resp_rx
+    .await
+    .map_err(|_| JsErrorBox::generic("repl response channel closed"))
+}
+
+#[op2]
+#[serde]
+pub async fn op_jupyter_repl_global_lexical_scope_names(
+  state: Rc<RefCell<OpState>>,
+) -> Result<serde_json::Value, JsErrorBox> {
+  let (resp_tx, resp_rx) = oneshot::channel();
+  {
+    let s = state.borrow();
+    s.borrow::<KernelReplSender>()
+      .tx
+      .send(JupyterReplRequest::GlobalLexicalScopeNames { resp_tx })
+      .map_err(|_| JsErrorBox::generic("repl thread gone"))?;
+  }
+  resp_rx
+    .await
+    .map_err(|_| JsErrorBox::generic("repl response channel closed"))
+}
+
+#[op2]
+#[serde]
+pub async fn op_jupyter_repl_call_function_on_args(
+  state: Rc<RefCell<OpState>>,
+  #[string] function_declaration: String,
+  #[serde] args: Vec<cdp::RemoteObject>,
+) -> Result<serde_json::Value, JsErrorBox> {
+  let (resp_tx, resp_rx) = oneshot::channel();
+  {
+    let s = state.borrow();
+    s.borrow::<KernelReplSender>()
+      .tx
+      .send(JupyterReplRequest::CallFunctionOnArgs {
+        function_declaration,
+        args,
+        resp_tx,
+      })
+      .map_err(|_| JsErrorBox::generic("repl thread gone"))?;
+  }
+  resp_rx
+    .await
+    .map_err(|_| JsErrorBox::generic("repl response channel closed"))?
+    .map(Ok)
+    .unwrap_or(Err(JsErrorBox::generic("call_function_on_args failed")))
+}
+
+#[op2]
+#[serde]
+pub async fn op_jupyter_repl_call_function_on(
+  state: Rc<RefCell<OpState>>,
+  #[serde] arg0: cdp::CallArgument,
+  #[serde] arg1: cdp::CallArgument,
+) -> Result<Option<serde_json::Value>, JsErrorBox> {
+  let (resp_tx, resp_rx) = oneshot::channel();
+  {
+    let s = state.borrow();
+    s.borrow::<KernelReplSender>()
+      .tx
+      .send(JupyterReplRequest::CallFunctionOn {
+        arg0,
+        arg1,
+        resp_tx,
+      })
+      .map_err(|_| JsErrorBox::generic("repl thread gone"))?;
+  }
+  resp_rx
+    .await
+    .map_err(|_| JsErrorBox::generic("repl response channel closed"))
+}
+
+#[op2(fast)]
+pub fn op_jupyter_repl_interrupt(state: &mut OpState) {
+  state
+    .borrow::<KernelIsolateHandle>()
+    .handle
+    .terminate_execution();
+}
+
+#[op2(fast)]
+pub fn op_jupyter_repl_cancel_interrupt(state: &mut OpState) {
+  state
+    .borrow::<KernelIsolateHandle>()
+    .handle
+    .cancel_terminate_execution();
+}
+
+#[op2]
+#[serde]
+pub async fn op_jupyter_recv_iopub(
+  state: Rc<RefCell<OpState>>,
+) -> Result<Option<IopubMessage>, JsErrorBox> {
+  let rx_ref = {
+    let s = state.borrow();
+    // SAFETY: We only call this from one JS async context at a time.
+    let recv = s.borrow::<KernelIopubReceiver>();
+    // We need a pointer trick since we can't hold the borrow across await.
+    recv as *const KernelIopubReceiver as usize
+  };
+  // SAFETY: The KernelIopubReceiver lives as long as op_state.
+  let rx = unsafe { &*(rx_ref as *const KernelIopubReceiver) };
+  Ok(rx.rx.borrow_mut().recv().await)
+}
+
+#[op2]
+#[string]
+pub fn op_jupyter_deno_version(_state: &mut OpState) -> String {
+  deno_lib::version::DENO_VERSION_INFO.deno.to_string()
+}
+
+#[op2]
+#[string]
+pub fn op_jupyter_typescript_version(_state: &mut OpState) -> String {
+  deno_lib::version::DENO_VERSION_INFO.typescript.to_string()
+}
+
+// ------------------------------------------------------------------
+// REPL-side ops
+// ------------------------------------------------------------------
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum JupyterBroadcastError {
-  #[class(inherit)]
-  #[error(transparent)]
-  SerdeJson(serde_json::Error),
   #[class(generic)]
   #[error(transparent)]
-  ZeroMq(AnyError),
+  Send(#[from] mpsc::error::SendError<IopubMessage>),
 }
 
 #[op2]
-pub async fn op_jupyter_broadcast(
-  state: Rc<RefCell<OpState>>,
+pub fn op_jupyter_broadcast(
+  state: &mut OpState,
   #[string] message_type: String,
   #[serde] content: serde_json::Value,
   #[serde] metadata: serde_json::Value,
   #[serde] buffers: Vec<deno_core::JsBuffer>,
 ) -> Result<(), JupyterBroadcastError> {
-  let (iopub_connection, last_execution_request) = {
-    let s = state.borrow();
-
-    (
-      s.borrow::<Arc<Mutex<KernelIoPubConnection>>>().clone(),
-      s.borrow::<Arc<Mutex<Option<JupyterMessage>>>>().clone(),
-    )
-  };
-
-  let maybe_last_request = last_execution_request.lock().clone();
-  if let Some(last_request) = maybe_last_request {
-    let content = JupyterMessageContent::from_type_and_content(
-      &message_type,
-      content.clone(),
-    )
-    .map_err(|err| {
-      log::error!(
-          "Error deserializing content from jupyter.broadcast, message_type: {}:\n\n{}\n\n{}",
-          &message_type,
-          content,
-          err
-      );
-      JupyterBroadcastError::SerdeJson(err)
-    })?;
-
-    let jupyter_message = JupyterMessage::new(content, Some(&last_request))
-      .with_metadata(metadata)
-      .with_buffers(buffers.into_iter().map(|b| b.to_vec().into()).collect());
-
-    iopub_connection
-      .lock()
-      .send(jupyter_message)
-      .await
-      .map_err(|e| JupyterBroadcastError::ZeroMq(e.into()))?;
-  }
-
+  let sender = state.borrow::<ReplIopubSender>();
+  sender.tx.send(IopubMessage {
+    msg_type: message_type,
+    content,
+    metadata,
+    buffers: buffers.into_iter().map(|b| b.to_vec()).collect(),
+  })?;
   Ok(())
 }
 
 #[op2(fast)]
 pub fn op_print(state: &mut OpState, #[string] msg: &str, is_err: bool) {
-  let sender = state.borrow_mut::<mpsc::UnboundedSender<StreamContent>>();
-
-  if is_err {
-    if let Err(err) = sender.send(StreamContent::stderr(msg)) {
-      log::error!("Failed to send stderr message: {}", err);
-    }
-    return;
-  }
-
-  if let Err(err) = sender.send(StreamContent::stdout(msg)) {
-    log::error!("Failed to send stdout message: {}", err);
-  }
+  let sender = state.borrow::<ReplIopubSender>();
+  let msg_type = if is_err {
+    "stream_stderr"
+  } else {
+    "stream_stdout"
+  };
+  let _ = sender.tx.send(IopubMessage {
+    msg_type: msg_type.into(),
+    content: serde_json::json!({ "name": if is_err { "stderr" } else { "stdout" }, "text": msg }),
+    metadata: serde_json::Value::Object(Default::default()),
+    buffers: vec![],
+  });
 }
 
 #[op2]

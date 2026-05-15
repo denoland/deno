@@ -434,21 +434,22 @@ async function formatInner(obj, raw) {
 internals.jupyter = { formatInner };
 
 function enableJupyter() {
-  const { op_jupyter_broadcast, op_jupyter_input } = core.ops;
+  const { op_jupyter_broadcast } = core.ops;
 
   function input(
-    prompt,
-    password,
+    _prompt,
+    _password,
   ) {
-    return op_jupyter_input(prompt, password);
+    // stdin not yet implemented in the JS ZMQ kernel
+    return null;
   }
 
-  async function broadcast(
+  function broadcast(
     msgType,
     content,
     { metadata = { __proto__: null }, buffers = [] } = { __proto__: null },
   ) {
-    await op_jupyter_broadcast(msgType, content, metadata, buffers);
+    op_jupyter_broadcast(msgType, content, metadata, buffers);
   }
 
   async function broadcastResult(executionCount, result) {
