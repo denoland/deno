@@ -63,9 +63,9 @@ const {
   SafeArrayIterator,
   SafeMap,
   SafeSet,
-  SetPrototypeAdd,
   SetPrototypeDelete,
   SafeWeakMap,
+  SetPrototypeAdd,
   SetPrototypeHas,
   String,
   StringPrototypeCharCodeAt,
@@ -221,6 +221,9 @@ const internalStreamsState =
 const internalSocketAddress = core.loadExtScript(
   "ext:deno_node/internal/socketaddress.js",
 );
+const internalJsStreamSocket = core.loadExtScript(
+  "ext:deno_node/internal/js_stream_socket.js",
+).default;
 const internalTestBinding = core.loadExtScript(
   "ext:deno_node/internal/test/binding.ts",
 );
@@ -279,6 +282,9 @@ const workerThreads = core.loadExtScript(
 );
 const wasi = core.loadExtScript("ext:deno_node/wasi.ts").default;
 const zlib = core.loadExtScript("ext:deno_node/zlib.js");
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
 
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
@@ -352,6 +358,7 @@ function setupBuiltinModules() {
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
     "internal/streams/state": internalStreamsState,
     "internal/socketaddress": internalSocketAddress,
+    "internal/js_stream_socket": internalJsStreamSocket,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
     "internal/url": internalUrl,
@@ -1037,9 +1044,35 @@ function Module(id = "", parent) {
   updateChildren(parent, this, false);
   this.filename = null;
   this.loaded = false;
-  this.parent = parent;
   this.children = [];
 }
+
+let parentDeprecationEmitted = false;
+function emitParentDeprecation() {
+  if (parentDeprecationEmitted) return;
+  if (!getOptionValue("--pending-deprecation")) return;
+  parentDeprecationEmitted = true;
+  process.emitWarning(
+    "module.parent is deprecated due to accuracy issues. Please use " +
+      "require.main to find program entry point instead.",
+    "DeprecationWarning",
+    "DEP0144",
+  );
+}
+
+ObjectDefineProperty(Module.prototype, "parent", {
+  __proto__: null,
+  configurable: true,
+  enumerable: true,
+  get() {
+    emitParentDeprecation();
+    return moduleParentCache.get(this);
+  },
+  set(value) {
+    emitParentDeprecation();
+    moduleParentCache.set(this, value);
+  },
+});
 
 Module.builtinModules = builtinModules;
 
@@ -1332,6 +1365,7 @@ Module._load = function (request, parent, isMain) {
       }
     }
 
+    maybeEmitNativeModuleDeprecation(id);
     const module = loadNativeModule(id, id);
     if (!module) {
       // TODO:
@@ -1350,7 +1384,8 @@ Module._load = function (request, parent, isMain) {
     return cachedModule.exports;
   }
 
-  const mod = loadNativeModule(filename, filename);
+  maybeEmitNativeModuleDeprecation(filename);
+  const mod = loadNativeModule(filename, request);
   if (
     mod
   ) {
@@ -1974,7 +2009,10 @@ function loadCjs(module, filename) {
 }
 
 function _throwRequireAsyncModule(specifier, module) {
-  const parent = module?.parent?.filename ?? "<unknown>";
+  // Use moduleParentCache directly to avoid triggering the module.parent
+  // deprecation getter when --pending-deprecation is set.
+  const parentModule = module ? moduleParentCache.get(module) : undefined;
+  const parent = parentModule?.filename ?? "<unknown>";
   throw new internalErrors.ERR_REQUIRE_ASYNC_MODULE(specifier, parent);
 }
 
@@ -2204,19 +2242,59 @@ Module.Module = Module;
 
 nativeModuleExports.module = Module;
 
+// Modules that emit a deprecation warning the first time they are required via
+// the CJS loader (`require('_stream_readable')` etc.). Maps the module name to
+// [message, code]. Matches Node's `BuiltinModule#compileForPublicLoader` --
+// `process.getBuiltinModule()` does NOT trigger these warnings.
+const deprecatedNativeModules = ObjectCreate(null);
+deprecatedNativeModules._tls_common = [
+  "The _tls_common module is deprecated. Use `node:tls` instead.",
+  "DEP0192",
+];
+deprecatedNativeModules._tls_wrap = [
+  "The _tls_wrap module is deprecated. Use `node:tls` instead.",
+  "DEP0192",
+];
+deprecatedNativeModules._stream_duplex = [
+  "The _stream_duplex module is deprecated. Use `node:stream` instead.",
+  "DEP0193",
+];
+deprecatedNativeModules._stream_passthrough = [
+  "The _stream_passthrough module is deprecated. Use `node:stream` instead.",
+  "DEP0193",
+];
+deprecatedNativeModules._stream_readable = [
+  "The _stream_readable module is deprecated. Use `node:stream` instead.",
+  "DEP0193",
+];
+deprecatedNativeModules._stream_transform = [
+  "The _stream_transform module is deprecated. Use `node:stream` instead.",
+  "DEP0193",
+];
+deprecatedNativeModules._stream_writable = [
+  "The _stream_writable module is deprecated. Use `node:stream` instead.",
+  "DEP0193",
+];
+
+const emittedNativeModuleDeprecations = new SafeSet();
+function maybeEmitNativeModuleDeprecation(request) {
+  const deprecation = deprecatedNativeModules[request];
+  if (deprecation === undefined) return;
+  if (SetPrototypeHas(emittedNativeModuleDeprecations, request)) return;
+  SetPrototypeAdd(emittedNativeModuleDeprecations, request);
+  process.emitWarning(
+    deprecation[0],
+    "DeprecationWarning",
+    deprecation[1],
+  );
+}
+
 function loadNativeModule(_id, request) {
   if (nativeModulePolyfill.has(request)) {
     return nativeModulePolyfill.get(request);
   }
   const modExports = nativeModuleExports[request];
   if (modExports) {
-    if (request === "_tls_common") {
-      process.emitWarning(
-        "The _tls_common module is deprecated. Use `node:tls` instead.",
-        "DeprecationWarning",
-        "DEP0192",
-      );
-    }
     const nodeMod = new Module(request);
     nodeMod.exports = modExports;
     nodeMod.loaded = true;

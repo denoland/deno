@@ -200,6 +200,9 @@ const {
 const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
+const { Blob, markFileBackedBlob } = core.loadExtScript(
+  "ext:deno_web/09_file.js",
+);
 // Re-exported under both names for tests.
 const _toUnixTimestamp = toUnixTimestamp;
 
@@ -2360,7 +2363,7 @@ function openAsBlob(
   path = getValidatedPath(path);
   return PromisePrototypeThen(
     op_fs_read_file_async(path as string, undefined, 0),
-    (data: Uint8Array) => new Blob([data], { type }),
+    (data: Uint8Array) => markFileBackedBlob(new Blob([data], { type })),
   );
 }
 
