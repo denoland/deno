@@ -1701,6 +1701,7 @@ impl ModuleMap {
       requested_module_type,
       phase,
       self.clone(),
+      resolve_response,
     );
 
     self.dynamic_import_map.borrow_mut().insert(

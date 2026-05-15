@@ -134,8 +134,9 @@ impl RecursiveModuleLoad {
     requested_module_type: RequestedModuleType,
     phase: ModuleImportPhase,
     module_map_rc: Rc<ModuleMap>,
+    resolved_specifier: Result<ModuleSpecifier, ModuleLoaderError>,
   ) -> Self {
-    Self::new(
+    Self::new_with_resolved_specifier(
       LoadInit::DynamicImport(
         specifier,
         referrer,
@@ -143,11 +144,20 @@ impl RecursiveModuleLoad {
         phase,
       ),
       module_map_rc,
+      resolved_specifier,
     )
   }
 
   fn new(init: LoadInit, module_map_rc: Rc<ModuleMap>) -> Self {
     let resolve_response = Self::resolve_root_from_init(&init, &module_map_rc);
+    Self::new_with_resolved_specifier(init, module_map_rc, resolve_response)
+  }
+
+  fn new_with_resolved_specifier(
+    init: LoadInit,
+    module_map_rc: Rc<ModuleMap>,
+    resolve_response: Result<ModuleSpecifier, ModuleLoaderError>,
+  ) -> Self {
     let id = module_map_rc.next_load_id();
     let loader = module_map_rc.loader.borrow().clone();
     let resolved_specifier = Some(resolve_response.map_err(CoreError::from));
