@@ -2221,6 +2221,71 @@ Deno.test("crypto.subtle.importKey PKCS#8 with wrong algorithm does not panic", 
   );
 });
 
+// Regression test for https://github.com/denoland/deno/issues/33032
+// Importing a raw X25519 public key whose length is not 32 bytes
+// must throw a DataError DOMException, not panic.
+Deno.test(async function x25519ImportRawInvalidLength() {
+  await assertRejects(
+    () =>
+      crypto.subtle.importKey(
+        "raw",
+        new Uint8Array(0),
+        "X25519",
+        false,
+        [],
+      ),
+    DOMException,
+    "Invalid key data",
+  );
+
+  await assertRejects(
+    () =>
+      crypto.subtle.importKey(
+        "raw",
+        new Uint8Array(33),
+        "X25519",
+        false,
+        [],
+      ),
+    DOMException,
+    "Invalid key data",
+  );
+});
+
+// Importing a raw X448 public key whose length is not 56 bytes
+// must throw a DataError DOMException, not panic.
+Deno.test(async function x448ImportRawInvalidLength() {
+  await assertRejects(
+    () =>
+      crypto.subtle.importKey(
+        "raw",
+        new Uint8Array(0),
+        "X448",
+        false,
+        [],
+      ),
+    DOMException,
+    "Invalid key data",
+  );
+});
+
+// Importing a raw Ed25519 public key whose length is not 32 bytes
+// must throw a DataError DOMException, not panic.
+Deno.test(async function ed25519ImportRawInvalidLength() {
+  await assertRejects(
+    () =>
+      crypto.subtle.importKey(
+        "raw",
+        new Uint8Array(0),
+        "Ed25519",
+        false,
+        ["verify"],
+      ),
+    DOMException,
+    "Invalid key data",
+  );
+});
+
 // Regression test: end-user code cannot construct `Crypto`, `SubtleCrypto`,
 // or `CryptoKey` directly. Each must throw a `TypeError` with
 // `code: 'ERR_ILLEGAL_CONSTRUCTOR'`, matching Node and the upstream
