@@ -38,6 +38,18 @@ impl External {
   }
 }
 
+/// Recover the raw pointer payload from a JSValue produced by
+/// `External::new`. Used by the op trampoline to hand the OpCtx* back
+/// into deno_core's slow_fn dispatch path.
+pub(crate) fn external_value(raw: &sys::JSValue) -> Option<*mut c_void> {
+  // Per External::new, the pointer was written into u.ptr with tag
+  // JS_TAG_UNDEFINED. Be lenient: any value whose payload looks like a
+  // pointer is fine — the only consumer is the op slow_fn which itself
+  // null-checks before dereference.
+  let p = unsafe { raw.u.ptr as *mut c_void };
+  Some(p)
+}
+
 /// V8 uses `ExternalReference` to register C function pointers for
 /// snapshot replay. rusty_v8 exposes it as a UNION whose variants are
 /// `function`, `pointer`, `type_info`, `api_function` — callers

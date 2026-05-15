@@ -43,8 +43,38 @@ impl<'s> FunctionBuilder<'s> {
     self,
     scope: &mut HandleScope<'s>,
   ) -> Local<'s, FunctionTemplate> {
-    let _ = self.callback;
-    let raw = sys::new_object(scope.ctx());
+    let ctx = scope.ctx();
+    let raw = if let Some(slow_fn) = self.callback {
+      // Build a real JS function that trampolines into the deno_core
+      // op slow_fn. The slow_fn signature is
+      // `unsafe extern "C" fn(*const FunctionCallbackInfo)` — it reads
+      // args/data/this from the info and writes return into rv slot.
+      crate::function::build_op_function(
+        ctx,
+        slow_fn,
+        self.data,
+        self.length,
+      )
+    } else {
+      // No callback — fall back to a stub constructor (used by
+      // make_cppgc_template-style sites).
+      unsafe {
+        crate::ffi::JS_NewCFunction2(
+          ctx,
+          ft_stub_ctor,
+          core::ptr::null(),
+          self.length,
+          crate::ffi::JS_CFUNC_CONSTRUCTOR_OR_FUNC,
+          0,
+        )
+      }
+    };
+    // Give it a `prototype` slot for `class extends X` / cppgc inherit.
+    unsafe {
+      let proto = sys::new_object(ctx);
+      let key = c"prototype".as_ptr();
+      crate::ffi::JS_SetPropertyStr(ctx, raw, key, proto);
+    }
     scope.track_owned(raw);
     Local::from_raw(raw)
   }

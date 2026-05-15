@@ -355,6 +355,26 @@ impl<'s> Local<'s, Module> {
     // the bytecode JSValue, so we dup before handing it over and clear
     // the recording.
     let raw = self.raw();
+    // Already evaluated? Return a fresh resolved-promise without
+    // re-running the body. QuickJS evaluates statically-imported
+    // modules transitively at the entry point's eval, so by the time
+    // deno_core reaches a non-entry module via lazy_load_esm_module
+    // (e.g. for createLazyLoader('node:process') from inside a
+    // sibling's body), the body has already run once.
+    if crate::module::lookup_module_status(&raw)
+      == Some(ModuleStatus::Evaluated)
+    {
+      let (promise, resolve, reject) = sys::new_promise_capability(ctx)?;
+      let mut args = [sys::jsv_undefined()];
+      let _ = sys::call(ctx, resolve, sys::jsv_undefined(), &mut args);
+      let iso_ptr = scope.isolate_ptr();
+      if !iso_ptr.is_null() {
+        let rt = unsafe { (*iso_ptr).rt() };
+        while sys::run_pending_job(rt) {}
+      }
+      let _ = (resolve, reject);
+      return Some(Local::from_raw(promise));
+    }
     let pre = crate::module::lookup_esm_module_def(&raw);
     if let Some((_m, bytecode)) = pre {
       let fname = crate::module::lookup_module_source(&raw)

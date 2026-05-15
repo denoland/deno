@@ -370,6 +370,46 @@ pub(crate) fn register_op_dispatch(
   })
 }
 
+/// Build a real callable JS function that bridges into a deno_core
+/// op slow_fn. `data` carries the OpCtx External value the slow_fn
+/// reads via `args.data().value()`. We register (slow_fn, opctx_ptr)
+/// in a per-thread dispatch table keyed by an integer "magic" value
+/// and create a JS_CFUNC_generic_magic function so QuickJS passes
+/// that magic to our trampoline at call time.
+pub(crate) fn build_op_function(
+  ctx: *mut crate::ffi::JSContext,
+  slow_fn: super::FunctionCallback,
+  data: Option<crate::value::Local<'_, crate::value::Value>>,
+  length: i32,
+) -> crate::sys::JSValue {
+  let opctx_ptr = data
+    .and_then(|d| crate::external::external_value(&d.raw()))
+    .unwrap_or(core::ptr::null_mut());
+  let magic = register_op_dispatch(slow_fn, opctx_ptr);
+  unsafe {
+    crate::ffi::JS_NewCFunction2(
+      ctx,
+      // SAFETY: cproto = JS_CFUNC_generic_magic means QuickJS dispatches
+      // to a JSCFunctionMagic-typed pointer; transmute is the documented
+      // pattern (JS_NewCFunctionMagic in quickjs.h does the same trick).
+      core::mem::transmute::<
+        unsafe extern "C" fn(
+          *mut crate::ffi::JSContext,
+          crate::sys::JSValue,
+          core::ffi::c_int,
+          *mut crate::sys::JSValue,
+          core::ffi::c_int,
+        ) -> crate::sys::JSValue,
+        crate::ffi::JSCFunction,
+      >(op_bridge_trampoline_magic),
+      core::ptr::null(),
+      length,
+      crate::ffi::JS_CFUNC_GENERIC_MAGIC,
+      magic,
+    )
+  }
+}
+
 fn lookup_op_dispatch(
   idx: core::ffi::c_int,
 ) -> Option<(super::FunctionCallback, *mut std::ffi::c_void)> {
