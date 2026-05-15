@@ -1076,6 +1076,7 @@ function tlsConnectionListener(rawSocket) {
     ALPNCallback: this.ALPNCallback,
     SNICallback: sniCallback,
     pauseOnConnect: this.pauseOnConnect,
+    handshakeTimeout: this._handshakeTimeout,
   });
 
   // TLS init can fail synchronously (e.g. missing cert/key, unsupported

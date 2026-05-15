@@ -2099,6 +2099,7 @@
     "parallel/test-https-abortcontroller.js": {},
     "parallel/test-https-agent-abort-controller.js": {},
     "parallel/test-https-agent-constructor.js": {},
+    "parallel/test-https-agent-create-connection.js": {},
     "parallel/test-https-agent-getname.js": {},
     "parallel/test-https-agent-servername.js": {},
     "parallel/test-https-agent-sockets-leak.js": {},
@@ -2141,6 +2142,7 @@
       "ignore": true,
       "reason": "NODE_TLS_REJECT_UNAUTHORIZED=0 does not fully suppress cert verification errors"
     },
+    "parallel/test-https-timeout-server.js": {},
     "parallel/test-https-timeout-server-2.js": {},
     "parallel/test-https-timeout.js": {},
     "parallel/test-https-truncate.js": {},
