@@ -615,6 +615,29 @@ Deno.test(
 );
 
 Deno.test(
+  "[node/fs openAsBlob] structuredClone throws DataCloneError",
+  async () => {
+    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+    writeFileSync(filename, "content");
+
+    const blob = await openAsBlob(filename);
+    const err = assertThrows(
+      () => structuredClone(blob),
+      DOMException,
+      "Invalid state: File-backed Blobs are not cloneable",
+    );
+    assertEquals(err.name, "DataCloneError");
+
+    const sliceErr = assertThrows(
+      () => structuredClone(blob.slice(0, 1)),
+      DOMException,
+      "Invalid state: File-backed Blobs are not cloneable",
+    );
+    assertEquals(sliceErr.name, "DataCloneError");
+  },
+);
+
+Deno.test(
   "[node/fs openAsBlob] rejects for non-existent file",
   async () => {
     await assertRejects(

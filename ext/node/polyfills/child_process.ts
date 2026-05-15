@@ -6,49 +6,54 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { internals, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
+const {
   op_bootstrap_unstable_args,
   op_node_child_ipc_pipe,
   op_node_translate_cli_args,
-} from "ext:core/ops";
+} = core.ops;
 
-import {
+const {
   ChildProcess,
   ChildProcessOptions,
   normalizeSpawnArguments,
   setupChannel,
-  type SpawnOptions,
-  type SpawnSyncOptions,
-  type SpawnSyncResult,
   stdioStringToArray,
   validateNullByteNotInArg,
-} from "ext:deno_node/internal/child_process.ts";
-import internalChildProcess from "ext:deno_node/internal/child_process.ts";
-import {
+  default: internalChildProcess,
+} = core.loadExtScript("ext:deno_node/internal/child_process.ts");
+const {
   validateAbortSignal,
   validateFunction,
   validateInteger,
   validateNumber,
   validateObject,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   ERR_CHILD_PROCESS_IPC_REQUIRED,
   ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
   genericNodeError,
-} from "ext:deno_node/internal/errors.ts";
-import { getSystemErrorName, promisify } from "node:util";
-import process from "node:process";
-import { Buffer } from "node:buffer";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { getSystemErrorName, promisify } = core.loadExtScript(
+  "ext:deno_node/util.ts",
+);
+const lazyProcess = core.createLazyLoader("node:process");
+const process = lazyProcess().default;
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const {
   convertToValidSignal,
   kEmptyObject,
-} from "ext:deno_node/internal/util.mjs";
-import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
-import { kNeedsNpmProcessState } from "ext:deno_process/40_process.js";
+} = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { toPathIfFileURL } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
+const { kNeedsNpmProcessState } = core.loadExtScript(
+  "ext:deno_process/40_process.js",
+);
 
 const {
   ArrayIsArray,
@@ -71,7 +76,7 @@ type ForkOptions = ChildProcessOptions;
  * @param option
  * @returns
  */
-export function fork(
+function fork(
   modulePath: string | URL,
   _args?: string[],
   _options?: ForkOptions,
@@ -186,6 +191,20 @@ export function fork(
         options.env = { ...process.env, NODE_OPTIONS: nodeOptionsStr };
       }
     }
+    if (result.ca_stores?.length) {
+      options.env = {
+        ...(options.env ?? process.env),
+        DENO_TLS_CA_STORE: result.ca_stores.join(","),
+      };
+    }
+    if (result.use_openssl_ca) {
+      options.env = {
+        ...(options.env ?? process.env),
+        DENO_NODE_USE_OPENSSL_CA: "1",
+      };
+    } else if (options.env?.DENO_NODE_USE_OPENSSL_CA) {
+      delete options.env.DENO_NODE_USE_OPENSSL_CA;
+    }
   }
 
   if (typeof options.stdio === "string") {
@@ -210,18 +229,7 @@ export function fork(
   return spawn(options.execPath, args, options);
 }
 
-export function spawn(command: string): ChildProcess;
-export function spawn(command: string, options: SpawnOptions): ChildProcess;
-export function spawn(command: string, args: string[]): ChildProcess;
-export function spawn(
-  command: string,
-  args: string[],
-  options: SpawnOptions,
-): ChildProcess;
-/**
- * Spawns a child process using `command`.
- */
-export function spawn(
+function spawn(
   command: string,
   argsOrOptions?: string[] | SpawnOptions,
   maybeOptions?: SpawnOptions,
@@ -282,7 +290,7 @@ function sanitizeKillSignal(killSignal?: string | number) {
   }
 }
 
-export function spawnSync(
+function spawnSync(
   command: string,
   argsOrOptions?: string[] | SpawnSyncOptions,
   maybeOptions?: SpawnSyncOptions,
@@ -369,15 +377,7 @@ function normalizeExecArgs(
 /**
  * Spawns a shell executing the given command.
  */
-export function exec(command: string): ChildProcess;
-export function exec(command: string, options: ExecOptions): ChildProcess;
-export function exec(command: string, callback: ExecCallback): ChildProcess;
-export function exec(
-  command: string,
-  options: ExecOptions,
-  callback: ExecCallback,
-): ChildProcess;
-export function exec(
+function exec(
   command: string,
   optionsOrCallback?: ExecOptions | ExecCallback,
   maybeCallback?: ExecCallback,
@@ -449,30 +449,7 @@ type ExecFileCallback = (
   stdout?: string | Buffer,
   stderr?: string | Buffer,
 ) => void;
-export function execFile(file: string): ChildProcess;
-export function execFile(
-  file: string,
-  callback: ExecFileCallback,
-): ChildProcess;
-export function execFile(file: string, args: string[]): ChildProcess;
-export function execFile(
-  file: string,
-  args: string[],
-  callback: ExecFileCallback,
-): ChildProcess;
-export function execFile(file: string, options: ExecFileOptions): ChildProcess;
-export function execFile(
-  file: string,
-  options: ExecFileOptions,
-  callback: ExecFileCallback,
-): ChildProcess;
-export function execFile(
-  file: string,
-  args: string[],
-  options: ExecFileOptions,
-  callback: ExecFileCallback,
-): ChildProcess;
-export function execFile(
+function execFile(
   file: string,
   argsOrOptionsOrCallback?: string[] | ExecFileOptions | ExecFileCallback,
   optionsOrCallback?: ExecFileOptions | ExecFileCallback,
@@ -805,7 +782,7 @@ function checkExecSyncError(
   return err;
 }
 
-export function execSync(command: string, options: ExecSyncOptions) {
+function execSync(command: string, options: ExecSyncOptions) {
   const opts = normalizeExecArgs(command, options);
   const inheritStderr = !(opts.options as ExecSyncOptions).stdio;
 
@@ -876,18 +853,7 @@ function normalizeExecFileArgs(
   return { file, args, options, callback };
 }
 
-export function execFileSync(file: string): string | Buffer;
-export function execFileSync(file: string, args: string[]): string | Buffer;
-export function execFileSync(
-  file: string,
-  options: ExecFileSyncOptions,
-): string | Buffer;
-export function execFileSync(
-  file: string,
-  args: string[],
-  options: ExecFileSyncOptions,
-): string | Buffer;
-export function execFileSync(
+function execFileSync(
   file: string,
   args?: string[] | ExecFileSyncOptions,
   options?: ExecFileSyncOptions,
@@ -932,7 +898,7 @@ function setupChildProcessIpcChannel() {
 
 internals.__setupChildProcessIpcChannel = setupChildProcessIpcChannel;
 
-export default {
+return {
   fork,
   spawn,
   exec,
@@ -942,4 +908,4 @@ export default {
   ChildProcess,
   spawnSync,
 };
-export { ChildProcess };
+})();

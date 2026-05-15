@@ -471,6 +471,39 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { run: true, read: true } },
+  async function commandOutputAbort() {
+    const ac = new AbortController();
+    const command = new Deno.Command(Deno.execPath(), {
+      args: [
+        "eval",
+        "setTimeout(console.log, 1e8)",
+      ],
+      signal: ac.signal,
+      stdout: "null",
+      stderr: "null",
+    });
+    const start = performance.now();
+    queueMicrotask(() => ac.abort());
+    const output = await command.output();
+    const duration = performance.now() - start;
+    assert(
+      duration < 5000,
+      `Expected output() to be aborted promptly, but ran for ${
+        duration.toFixed(2)
+      }ms`,
+    );
+    assertEquals(output.success, false);
+    if (Deno.build.os === "windows") {
+      assertEquals(output.code, 1);
+      assertEquals(output.signal, null);
+    } else {
+      assertEquals(output.code, 143);
+    }
+  },
+);
+
+Deno.test(
   { permissions: { read: true, run: false } },
   async function commandPermissions() {
     await assertRejects(async () => {

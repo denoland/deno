@@ -448,6 +448,24 @@ impl WorkspaceMainModuleResolver {
               )?
               .into_url()?
           }
+          deno_package_json::PackageJsonDepValue::Catalog(catalog_name) => {
+            match self
+              .workspace_resolver
+              .resolve_catalog_dep(alias, catalog_name)
+            {
+              Some(req) => ModuleSpecifier::parse(&format!(
+                "npm:{}{}",
+                req,
+                sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+              ))?,
+              None => {
+                return Err(deno_core::anyhow::anyhow!(
+                  "Package '{}' not found in catalog",
+                  alias
+                ));
+              }
+            }
+          }
         }
       }
       deno_resolver::workspace::MappedResolution::PackageJsonImport {
@@ -1400,6 +1418,10 @@ impl CliOptions {
     | DenoSubcommand::Serve(ServeFlags {
       watch: Some(WatchFlagsWithPaths { paths, .. }),
       ..
+    })
+    | DenoSubcommand::Test(TestFlags {
+      watch: Some(WatchFlagsWithPaths { paths, .. }),
+      ..
     }) = &self.flags.subcommand
     {
       full_paths.extend(paths.iter().map(|path| self.initial_cwd.join(path)));
@@ -1568,6 +1590,7 @@ pub fn get_default_v8_flags() -> Vec<String> {
   vec![
     "--stack-size=1024".to_string(),
     "--inspector-live-edit".to_string(),
+    "--external-memory-max-reasonable-size=0".to_string(),
   ]
 }
 

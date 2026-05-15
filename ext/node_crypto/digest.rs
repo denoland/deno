@@ -151,7 +151,8 @@ macro_rules! match_fixed_digest_with_oid {
       | "sha1"
       | "sha1-2"
       | "sha1withrsaencryption"
-      | "ssl3-sha1" => {
+      | "ssl3-sha1"
+      | "dss1" => {
         $(let $hash_algorithm = Some(RsaPssHashAlgorithm::Sha1);)?
         $(type $type = ::sha1::Sha1;)?
         $body
@@ -344,6 +345,7 @@ impl Hash {
       "RSA-SM3",
       "blake2b512",
       "blake2s256",
+      "dss1",
       "id-rsassa-pkcs1-v1_5-with-sha3-224",
       "id-rsassa-pkcs1-v1_5-with-sha3-256",
       "id-rsassa-pkcs1-v1_5-with-sha3-384",
@@ -417,6 +419,7 @@ impl Hash {
       "ripemd160" => Some(20),
       "ripemd160WithRSA" => Some(20),
       "rmd160" => Some(20),
+      "dss1" => Some(20),
       "sha1" => Some(20),
       "sha1WithRSAEncryption" => Some(20),
       "sha224" => Some(28),

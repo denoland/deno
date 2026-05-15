@@ -345,14 +345,46 @@ impl std::fmt::Display for AddCommandName {
   }
 }
 
+fn create_package_json(
+  flags: &Arc<Flags>,
+  options: &CliOptions,
+) -> Result<CliFactory, AnyError> {
+  std::fs::write(options.initial_cwd().join("package.json"), "{}\n")
+    .context("Failed to create package.json file")?;
+  log::info!("Created package.json configuration file.");
+  let factory = CliFactory::from_flags(flags.clone());
+  Ok(factory)
+}
+
 fn load_configs(
   flags: &Arc<Flags>,
   has_jsr_specifiers: impl FnOnce() -> bool,
+  force_package_json: bool,
 ) -> Result<(CliFactory, Option<ConfigUpdater>, Option<ConfigUpdater>), AnyError>
 {
   let cli_factory = CliFactory::from_flags(flags.clone());
   let options = cli_factory.cli_options()?;
   let start_dir = &options.start_dir;
+
+  if force_package_json {
+    let npm_config = match start_dir.member_pkg_json() {
+      Some(pkg_json) => Some(ConfigUpdater::new(
+        ConfigKind::PackageJson,
+        pkg_json.path.clone(),
+      )?),
+      None => {
+        let pkg_json_path = options.initial_cwd().join("package.json");
+        let factory = create_package_json(flags, options)?;
+        return Ok((
+          factory,
+          Some(ConfigUpdater::new(ConfigKind::PackageJson, pkg_json_path)?),
+          None,
+        ));
+      }
+    };
+    return Ok((cli_factory, npm_config, None));
+  }
+
   let npm_config = match start_dir.member_pkg_json() {
     Some(pkg_json) => Some(ConfigUpdater::new(
       ConfigKind::PackageJson,
@@ -407,10 +439,12 @@ pub async fn add(
   cmd_name: AddCommandName,
 ) -> Result<(), AnyError> {
   let save_exact = add_flags.save_exact;
-  let (cli_factory, mut npm_config, mut deno_config) =
-    load_configs(&flags, || {
-      add_flags.packages.iter().any(|s| s.starts_with("jsr:"))
-    })?;
+  let force_package_json = add_flags.package_json;
+  let (cli_factory, mut npm_config, mut deno_config) = load_configs(
+    &flags,
+    || add_flags.packages.iter().any(|s| s.starts_with("jsr:")),
+    force_package_json,
+  )?;
 
   if let Some(deno) = &deno_config
     && deno.obj().get("importMap").is_some()
@@ -586,7 +620,11 @@ pub async fn add(
       selected_package.selected_version
     );
 
-    if selected_package.package_name.starts_with("npm:") && prefer_npm_config {
+    if force_package_json {
+      npm_config.as_mut().unwrap().add(selected_package, dev);
+    } else if selected_package.package_name.starts_with("npm:")
+      && prefer_npm_config
+    {
       if let Some(npm) = &mut npm_config {
         npm.add(selected_package, dev);
       } else {
@@ -901,9 +939,15 @@ pub async fn remove(
   flags: Arc<Flags>,
   remove_flags: RemoveFlags,
 ) -> Result<(), AnyError> {
-  let (_, npm_config, deno_config) = load_configs(&flags, || false)?;
+  let force_package_json = remove_flags.package_json;
+  let (_, npm_config, deno_config) =
+    load_configs(&flags, || false, force_package_json)?;
 
-  let mut configs = [npm_config, deno_config];
+  let mut configs = if force_package_json {
+    [npm_config, None]
+  } else {
+    [npm_config, deno_config]
+  };
 
   let mut removed_packages = vec![];
 

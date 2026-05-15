@@ -45,7 +45,7 @@ const {
   WritableStream,
   writableStreamForRid,
 } = core.loadExtScript("ext:deno_web/06_streams.js");
-import { loadTlsKeyPair } from "ext:deno_net/02_tls.js";
+const { loadTlsKeyPair } = core.loadExtScript("ext:deno_net/02_tls.js");
 const {
   BadResourcePrototype,
 } = core;

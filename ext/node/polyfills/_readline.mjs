@@ -24,22 +24,27 @@
 // deno-lint-ignore-file prefer-primordials
 // deno-lint-ignore-file camelcase
 
+import { core } from "ext:core/mod.js";
 import { op_get_env_no_permission_check } from "ext:core/ops";
 
-import {
+const {
   clearLine,
   clearScreenDown,
   cursorTo,
   moveCursor,
-} from "ext:deno_node/internal/readline/callbacks.mjs";
-import { emitKeypressEvents } from "ext:deno_node/internal/readline/emitKeypressEvents.mjs";
+} = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
+const { emitKeypressEvents } = core.loadExtScript(
+  "ext:deno_node/internal/readline/emitKeypressEvents.mjs",
+);
 import promises from "ext:deno_node/readline/promises.ts";
-import { validateAbortSignal } from "ext:deno_node/internal/validators.mjs";
-import { promisify } from "ext:deno_node/internal/util.mjs";
-import { AbortError } from "ext:deno_node/internal/errors.ts";
+const { validateAbortSignal } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { AbortError } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
-import {
-  Interface as _Interface,
+const {
+  Interface: _Interface,
   InterfaceConstructor,
   kAddHistory,
   kDecoder,
@@ -74,7 +79,7 @@ import {
   kWordLeft,
   kWordRight,
   kWriteToOutput,
-} from "ext:deno_node/internal/readline/interface.mjs";
+} = core.loadExtScript("ext:deno_node/internal/readline/interface.mjs");
 
 function Interface(input, output, completer, terminal) {
   if (!(this instanceof Interface)) {

@@ -4,8 +4,9 @@
 // Documentation liberally lifted from them too.
 // Thank you! We love Go! <3
 
-import { core, primordials } from "ext:core/mod.js";
-import { op_set_raw } from "ext:core/ops";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { op_set_raw } = core.ops;
 const {
   Uint8Array,
   ArrayPrototypePush,
@@ -247,7 +248,7 @@ const stdin = new Stdin();
 const stdout = new Stdout();
 const stderr = new Stderr();
 
-export {
+return {
   read,
   readAll,
   readAllSync,
@@ -266,3 +267,4 @@ export {
   write,
   writeSync,
 };
+})();

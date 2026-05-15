@@ -29,14 +29,17 @@ import {
   op_require_resolve_lookup_paths,
   op_require_stat,
   op_require_try_self,
+  op_stream_base_register_state,
 } from "ext:core/ops";
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
   ArrayPrototypeJoin,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeSlice,
+  ArrayPrototypeSort,
   ArrayPrototypeSplice,
   Error,
   JSONParse,
@@ -51,18 +54,22 @@ const {
   ObjectSetPrototypeOf,
   Proxy,
   ReflectSet,
+  RegExpPrototypeExec,
   RegExpPrototypeTest,
   SafeArrayIterator,
   SafeMap,
   SafeSet,
   SafeWeakMap,
+  SetPrototypeAdd,
   SetPrototypeHas,
   String,
   StringPrototypeCharCodeAt,
   StringPrototypeEndsWith,
   StringPrototypeIncludes,
   StringPrototypeIndexOf,
+  StringPrototypeLastIndexOf,
   StringPrototypeMatch,
+  StringPrototypeReplace,
   StringPrototypeSlice,
   StringPrototypeSplit,
   StringPrototypeStartsWith,
@@ -73,110 +80,206 @@ import _httpAgent from "node:_http_agent";
 import _httpCommon from "node:_http_common";
 import _httpOutgoing from "node:_http_outgoing";
 import _httpServer from "node:_http_server";
-import _streamDuplex from "node:_stream_duplex";
-import _streamPassthrough from "node:_stream_passthrough";
-import _streamReadable from "node:_stream_readable";
-import _streamTransform from "node:_stream_transform";
-import _streamWritable from "node:_stream_writable";
-import _tlsCommon from "node:_tls_common";
-import _tlsWrap from "node:_tls_wrap";
-import assert from "node:assert";
+const _streamDuplex = core.loadExtScript(
+  "ext:deno_node/internal/streams/duplex.js",
+).default;
+const _streamPassthrough = core.loadExtScript(
+  "ext:deno_node/internal/streams/passthrough.js",
+).default;
+const _streamReadable = core.loadExtScript(
+  "ext:deno_node/internal/streams/readable.js",
+).default;
+const _streamTransform = core.loadExtScript(
+  "ext:deno_node/internal/streams/transform.js",
+).default;
+const _streamWritable = core.loadExtScript(
+  "ext:deno_node/internal/streams/writable.js",
+).default;
+const _tlsCommon = core.loadExtScript(
+  "ext:deno_node/_tls_common.ts",
+).default;
+const _tlsWrap = core.loadExtScript(
+  "ext:deno_node/_tls_wrap.js",
+).default;
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import assertStrict from "node:assert/strict";
-import asyncHooks from "node:async_hooks";
-import {
-  emitAfter as internalAsyncHooksEmitAfter,
-  emitBefore as internalAsyncHooksEmitBefore,
-  emitDestroy as internalAsyncHooksEmitDestroy,
-  emitInit as internalAsyncHooksEmitInit,
-} from "ext:deno_node/internal/async_hooks.ts";
-import buffer from "node:buffer";
-import childProcess from "node:child_process";
-import cluster from "node:cluster";
+const asyncHooks = core.loadExtScript("ext:deno_node/async_hooks.ts").default;
+const {
+  emitAfter: internalAsyncHooksEmitAfter,
+  emitBefore: internalAsyncHooksEmitBefore,
+  emitDestroy: internalAsyncHooksEmitDestroy,
+  emitInit: internalAsyncHooksEmitInit,
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+const buffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs").default;
+const childProcess = core.loadExtScript("ext:deno_node/child_process.ts");
+const cluster = core.loadExtScript("ext:deno_node/cluster.ts").default;
 import console from "node:console";
-import constants from "node:constants";
-import crypto from "node:crypto";
-import dgram from "node:dgram";
-import diagnosticsChannel from "node:diagnostics_channel";
-import dns from "node:dns";
-import dnsPromises from "node:dns/promises";
-import domain from "node:domain";
-import events from "node:events";
-import fs from "node:fs";
-import fsPromises from "node:fs/promises";
-import http from "node:http";
-import http2 from "node:http2";
-import https from "node:https";
-import inspector from "node:inspector";
-import inspectorPromises from "node:inspector/promises";
-import internalAssertMyersDiff from "ext:deno_node/internal/assert/myers_diff.js";
-import internalCp from "ext:deno_node/internal/child_process.ts";
-import internalCryptoCertificate from "ext:deno_node/internal/crypto/certificate.ts";
-import internalCryptoCipher from "ext:deno_node/internal/crypto/cipher.ts";
-import internalCryptoDiffiehellman from "ext:deno_node/internal/crypto/diffiehellman.ts";
-import internalCryptoHash from "ext:deno_node/internal/crypto/hash.ts";
-import internalCryptoHkdf from "ext:deno_node/internal/crypto/hkdf.ts";
-import internalCryptoKeygen from "ext:deno_node/internal/crypto/keygen.ts";
-import internalCryptoKeys from "ext:deno_node/internal/crypto/keys.ts";
-import internalCryptoPbkdf2 from "ext:deno_node/internal/crypto/pbkdf2.ts";
-import internalCryptoRandom from "ext:deno_node/internal/crypto/random.ts";
-import internalCryptoScrypt from "ext:deno_node/internal/crypto/scrypt.ts";
-import internalCryptoSig from "ext:deno_node/internal/crypto/sig.ts";
-import internalCryptoUtil from "ext:deno_node/internal/crypto/util.ts";
-import internalCryptoX509 from "ext:deno_node/internal/crypto/x509.ts";
-import internalDgram from "ext:deno_node/internal/dgram.ts";
-import internalDnsPromises from "ext:deno_node/internal/dns/promises.ts";
-import internalBuffer from "ext:deno_node/internal/buffer.mjs";
-import internalErrors from "ext:deno_node/internal/errors.ts";
+const constants = core.loadExtScript("ext:deno_node/constants.ts").default;
+const crypto = core.loadExtScript("ext:deno_node/crypto.ts").default;
+const dgram = core.loadExtScript("ext:deno_node/dgram.ts").default;
+const diagnosticsChannel =
+  core.loadExtScript("ext:deno_node/diagnostics_channel.js").default;
+const dns = core.loadExtScript("ext:deno_node/dns.ts").default;
+const dnsPromises = core.loadExtScript(
+  "ext:deno_node/dns/promises.ts",
+).default;
+const domain = core.loadExtScript("ext:deno_node/domain.ts").default;
+const events = core.loadExtScript("ext:deno_node/_events.mjs").default;
+const fs = core.loadExtScript("ext:deno_node/fs.ts");
+const fsPromises = core.loadExtScript(
+  "ext:deno_node/fs/promises.ts",
+).fsPromises;
+const http = core.loadExtScript("ext:deno_node/http.ts");
+const http2 = core.loadExtScript("ext:deno_node/http2.ts");
+const https = core.loadExtScript("ext:deno_node/https.ts");
+const inspector = core.loadExtScript("ext:deno_node/inspector.js");
+const inspectorPromises = core.loadExtScript(
+  "ext:deno_node/inspector/promises.js",
+);
+const internalAssertMyersDiff = core.loadExtScript(
+  "ext:deno_node/internal/assert/myers_diff.js",
+);
+const internalCp = core.loadExtScript(
+  "ext:deno_node/internal/child_process.ts",
+).default;
+const internalCryptoCertificate = core.loadExtScript(
+  "ext:deno_node/internal/crypto/certificate.ts",
+).default;
+const internalCryptoCipher = core.loadExtScript(
+  "ext:deno_node/internal/crypto/cipher.ts",
+).default;
+const internalCryptoDiffiehellman = core.loadExtScript(
+  "ext:deno_node/internal/crypto/diffiehellman.ts",
+).default;
+const internalCryptoHash = core.loadExtScript(
+  "ext:deno_node/internal/crypto/hash.ts",
+).default;
+const internalCryptoHkdf = core.loadExtScript(
+  "ext:deno_node/internal/crypto/hkdf.ts",
+).default;
+const internalCryptoKeygen = core.loadExtScript(
+  "ext:deno_node/internal/crypto/keygen.ts",
+).default;
+const internalCryptoKeys = core.loadExtScript(
+  "ext:deno_node/internal/crypto/keys.ts",
+).default;
+const internalCryptoPbkdf2 = core.loadExtScript(
+  "ext:deno_node/internal/crypto/pbkdf2.ts",
+).default;
+const internalCryptoRandom = core.loadExtScript(
+  "ext:deno_node/internal/crypto/random.ts",
+).default;
+const internalCryptoScrypt = core.loadExtScript(
+  "ext:deno_node/internal/crypto/scrypt.ts",
+).default;
+const internalCryptoSig = core.loadExtScript(
+  "ext:deno_node/internal/crypto/sig.ts",
+).default;
+const internalCryptoUtil = core.loadExtScript(
+  "ext:deno_node/internal/crypto/util.ts",
+).default;
+const internalCryptoX509 = core.loadExtScript(
+  "ext:deno_node/internal/crypto/x509.ts",
+).default;
+const internalDgram = core.loadExtScript(
+  "ext:deno_node/internal/dgram.ts",
+).default;
+const internalUndici = core.loadExtScript(
+  "ext:deno_node/internal/deps/undici/undici.js",
+);
+const internalDnsPromises = core.loadExtScript(
+  "ext:deno_node/internal/dns/promises.ts",
+).default;
+const internalBuffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const internalErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
-import internalHttp from "ext:deno_node/internal/http.ts";
-import internalHttp2Core from "ext:deno_node/internal/http2/core.ts";
-import internalHttp2Util from "ext:deno_node/internal/http2/util.ts";
-import internalPriorityQueue from "ext:deno_node/internal/priority_queue.ts";
-import internalReadlineUtils from "ext:deno_node/internal/readline/utils.mjs";
-import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
+const internalHttp = core.loadExtScript("ext:deno_node/internal/http.ts");
+const internalHttp2Core = core.loadExtScript(
+  "ext:deno_node/internal/http2/core.ts",
+).default;
+const internalHttp2Util = core.loadExtScript(
+  "ext:deno_node/internal/http2/util.ts",
+).default;
+const internalPriorityQueue = core.loadExtScript(
+  "ext:deno_node/internal/priority_queue.ts",
+);
+const internalReadlineUtils = core.loadExtScript(
+  "ext:deno_node/internal/readline/utils.mjs",
+);
+const internalStreamsAddAbortSignal = core.loadExtScript(
+  "ext:deno_node/internal/streams/add-abort-signal.js",
+).default;
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
-import internalStreamsState from "ext:deno_node/internal/streams/state.js";
-import internalTestBinding from "ext:deno_node/internal/test/binding.ts";
-import internalTimers from "ext:deno_node/internal/timers.mjs";
-import internalUtil from "ext:deno_node/internal/util.mjs";
-import internalUtilDebuglog from "ext:deno_node/internal/util/debuglog.ts";
-import internalUtilInspect from "ext:deno_node/internal/util/inspect.mjs";
-import internalValidators from "ext:deno_node/internal/validators.mjs";
-import internalConsole from "ext:deno_node/internal/console/constructor.mjs";
-import net from "node:net";
-import os from "node:os";
+const internalStreamsState =
+  core.loadExtScript("ext:deno_node/internal/streams/state.js").default;
+const internalSocketAddress = core.loadExtScript(
+  "ext:deno_node/internal/socketaddress.js",
+);
+const internalJsStreamSocket = core.loadExtScript(
+  "ext:deno_node/internal/js_stream_socket.js",
+).default;
+const internalTestBinding = core.loadExtScript(
+  "ext:deno_node/internal/test/binding.ts",
+);
+const internalTimers = core.loadExtScript(
+  "ext:deno_node/internal/timers.mjs",
+);
+const internalUrl = core.loadExtScript("ext:deno_node/internal/url.ts");
+const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const internalUtilDebuglog = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
+const internalUtilInspect = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
+const internalValidators = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const internalConsole = core.loadExtScript(
+  "ext:deno_node/internal/console/constructor.mjs",
+).default;
+const net = core.loadExtScript("ext:deno_node/net.ts").default;
+const os = core.loadExtScript("ext:deno_node/os.ts").default;
 import pathPosix from "node:path/posix";
 import pathWin32 from "node:path/win32";
 import path from "node:path";
-import perfHooks from "node:perf_hooks";
-import punycode from "node:punycode";
+const perfHooks = core.loadExtScript("ext:deno_node/perf_hooks.js").default;
+const punycode = core.loadExtScript("ext:deno_node/punycode.ts").default;
 import process from "node:process";
-import querystring from "node:querystring";
+const querystring = core.loadExtScript("ext:deno_node/querystring.js").default;
 import readline from "node:readline";
 import readlinePromises from "node:readline/promises";
 import repl from "node:repl";
-import sqlite from "node:sqlite";
+import internalRepl from "ext:deno_node/internal/repl.ts";
+const sqlite = core.loadExtScript("ext:deno_node/sqlite.ts");
 import stream from "node:stream";
-import streamConsumers from "node:stream/consumers";
+const streamConsumers = core.loadExtScript("ext:deno_node/stream/consumers.js");
 import streamPromises from "node:stream/promises";
-import streamWeb from "node:stream/web";
-import stringDecoder from "node:string_decoder";
-import sys from "node:sys";
-import test from "node:test";
-import timers from "node:timers";
-import timersPromises from "node:timers/promises";
+const streamWeb = core.loadExtScript("ext:deno_node/stream/web.js");
+const stringDecoder =
+  core.loadExtScript("ext:deno_node/string_decoder.ts").default;
+const test = core.loadExtScript("ext:deno_node/testing.ts").default;
+const timers = core.loadExtScript("ext:deno_node/timers.ts");
+const timersPromises = core.loadExtScript(
+  "ext:deno_node/timers/promises.ts",
+);
 import tls from "node:tls";
-import traceEvents from "node:trace_events";
+const traceEvents = core.loadExtScript("ext:deno_node/trace_events.ts").default;
 import tty from "node:tty";
-import url from "node:url";
-import utilTypes from "node:util/types";
-import util from "node:util";
-import v8 from "node:v8";
-import vm from "node:vm";
-import workerThreads from "node:worker_threads";
-import wasi from "node:wasi";
-import zlib from "node:zlib";
+const url = core.loadExtScript("ext:deno_node/url.ts");
+const utilTypes = core.loadExtScript("ext:deno_node/internal/util/types.ts");
+const util = core.loadExtScript("ext:deno_node/util.ts");
+const v8 = core.loadExtScript("ext:deno_node/v8.ts");
+const vm = core.loadExtScript("ext:deno_node/vm.js").default;
+const workerThreads = core.loadExtScript(
+  "ext:deno_node/worker_threads.ts",
+);
+const wasi = core.loadExtScript("ext:deno_node/wasi.ts").default;
+const zlib = core.loadExtScript("ext:deno_node/zlib.js");
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
 
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
@@ -217,7 +320,7 @@ function setupBuiltinModules() {
     https,
     inspector,
     "inspector/promises": inspectorPromises,
-    "internal/assert/myers_diff": internalAssertMyersDiff,
+    "internal/assert/myers_diff": internalAssertMyersDiff.default,
     "internal/console/constructor": internalConsole,
     "internal/child_process": internalCp,
     "internal/crypto/certificate": internalCryptoCertificate,
@@ -234,22 +337,27 @@ function setupBuiltinModules() {
     "internal/crypto/util": internalCryptoUtil,
     "internal/crypto/x509": internalCryptoX509,
     "internal/dgram": internalDgram,
+    "internal/deps/undici/undici": internalUndici.default,
     "internal/dns/promises": internalDnsPromises,
-    "internal/buffer": internalBuffer,
+    "internal/buffer": internalBuffer.default,
     "internal/errors": internalErrors,
     "internal/event_target": internalEventTarget,
     "internal/fs/utils": internalFsUtils,
-    "internal/http": internalHttp,
+    "internal/http": internalHttp.default,
     "internal/http2/core": internalHttp2Core,
     "internal/http2/util": internalHttp2Util,
-    "internal/priority_queue": internalPriorityQueue,
-    "internal/readline/utils": internalReadlineUtils,
+    "internal/priority_queue": internalPriorityQueue.default,
+    "internal/readline/utils": internalReadlineUtils.default,
+    "internal/repl": internalRepl,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
     "internal/streams/state": internalStreamsState,
+    "internal/socketaddress": internalSocketAddress,
+    "internal/js_stream_socket": internalJsStreamSocket,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
-    "internal/util/debuglog": internalUtilDebuglog,
+    "internal/url": internalUrl,
+    "internal/util/debuglog": internalUtilDebuglog.default,
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
     "internal/validators": internalValidators,
@@ -280,7 +388,7 @@ function setupBuiltinModules() {
     "stream/promises": streamPromises,
     "stream/web": streamWeb,
     string_decoder: stringDecoder,
-    sys,
+    sys: util,
     test,
     timers,
     "timers/promises": timersPromises,
@@ -300,10 +408,8 @@ function setupBuiltinModules() {
   // via the `node:` scheme (see lib/internal/bootstrap/realm.js), so they
   // appear in `builtinModules` as `node:<name>` rather than `<name>`.
   const schemelessBlockList = new SafeSet([
-    "sea",
     "sqlite",
     "test",
-    "test/reporters",
   ]);
   for (const [name, moduleExports] of ObjectEntries(nodeModules)) {
     nativeModuleExports[name] = moduleExports;
@@ -346,131 +452,6 @@ let hasInspectBrk = false;
 let usesLocalNodeModulesDir = false;
 let patched = false;
 
-// module.registerHooks() infrastructure
-const hookEntries = [];
-let insideResolveHook = false;
-let insideLoadHook = false;
-let utf8Decoder;
-
-function executeResolveHookChain(specifier, context, parent, isMain) {
-  // Collect resolve hooks from hookEntries in LIFO order
-  const resolveHooks = [];
-  for (let i = hookEntries.length - 1; i >= 0; i--) {
-    if (hookEntries[i].resolve !== null) {
-      ArrayPrototypePush(resolveHooks, hookEntries[i].resolve);
-    }
-  }
-  if (resolveHooks.length === 0) return null;
-
-  let index = 0;
-  // Running context accumulates changes across the chain
-  let currentContext = context;
-
-  function nextResolve(spec, ctx) {
-    // If ctx provided, merge into running context
-    if (ctx !== undefined && ctx !== null) {
-      currentContext = { ...currentContext, ...ctx };
-    }
-
-    if (index >= resolveHooks.length) {
-      // Default resolve: use Module._resolveFilename
-      insideResolveHook = true;
-      try {
-        // Handle node: builtins
-        if (StringPrototypeStartsWith(spec, "node:")) {
-          return { url: spec, shortCircuit: true };
-        }
-        if (nativeModuleCanBeRequiredByUsers(spec)) {
-          return { url: "node:" + spec, shortCircuit: true };
-        }
-        const resolved = Module._resolveFilename(spec, parent, isMain);
-        let resolvedUrl;
-        if (StringPrototypeStartsWith(resolved, "node:")) {
-          resolvedUrl = resolved;
-        } else {
-          resolvedUrl = url.pathToFileURL(resolved).href;
-        }
-        return { url: resolvedUrl, shortCircuit: true };
-      } finally {
-        insideResolveHook = false;
-      }
-    }
-    const hook = resolveHooks[index++];
-    let nextCalled = false;
-    const wrappedNext = (s, c) => {
-      nextCalled = true;
-      return nextResolve(s, c);
-    };
-    const result = hook(spec, currentContext, wrappedNext);
-    if (!nextCalled && !result?.shortCircuit) {
-      throw new internalErrors.ERR_INVALID_RETURN_PROPERTY_VALUE(
-        "true",
-        "resolve",
-        "shortCircuit",
-        result?.shortCircuit,
-      );
-    }
-    return result;
-  }
-
-  return nextResolve(specifier, context);
-}
-
-function executeLoadHookChain(fileUrl, context) {
-  // Collect load hooks from hookEntries in LIFO order
-  const loadHooks = [];
-  for (let i = hookEntries.length - 1; i >= 0; i--) {
-    if (hookEntries[i].load !== null) {
-      ArrayPrototypePush(loadHooks, hookEntries[i].load);
-    }
-  }
-  if (loadHooks.length === 0) return null;
-
-  let index = 0;
-  let currentContext = context;
-
-  function nextLoad(loadUrl, ctx) {
-    if (ctx !== undefined && ctx !== null) {
-      currentContext = { ...currentContext, ...ctx };
-    }
-
-    if (index >= loadHooks.length) {
-      // Default load: read file from disk
-      // For builtins, return null source
-      if (StringPrototypeStartsWith(loadUrl, "node:")) {
-        return { source: null, format: "builtin", shortCircuit: true };
-      }
-      const filePath = StringPrototypeStartsWith(loadUrl, "file://")
-        ? url.fileURLToPath(loadUrl)
-        : loadUrl;
-      const source = op_require_read_file(filePath);
-      return {
-        source,
-        format: currentContext?.format ?? undefined,
-        shortCircuit: true,
-      };
-    }
-    const hook = loadHooks[index++];
-    let nextCalled = false;
-    const wrappedNext = (u, c) => {
-      nextCalled = true;
-      return nextLoad(u, c);
-    };
-    const result = hook(loadUrl, currentContext, wrappedNext);
-    if (!nextCalled && !result?.shortCircuit) {
-      throw new internalErrors.ERR_INVALID_RETURN_PROPERTY_VALUE(
-        "true",
-        "load",
-        "shortCircuit",
-        result?.shortCircuit,
-      );
-    }
-    return result;
-  }
-
-  return nextLoad(fileUrl, context);
-}
-
 function stat(filename) {
   if (statCache !== null) {
     const result = statCache.get(filename);
@@ -497,6 +478,38 @@ function updateChildren(parent, child, scan) {
   }
 }
 
+// Given a path inside a node_modules tree, find the package root by
+// locating the last "node_modules" path component and taking the next
+// segment (or two for scoped packages). Returns null if no node_modules
+// component is found.
+function findPackageRootFromNodeModules(filepath) {
+  // Find the last occurrence of /node_modules/ or \node_modules\ in the path
+  let nmIdx = -1;
+  let sep = "/";
+  const fwdIdx = StringPrototypeLastIndexOf(filepath, "/node_modules/");
+  const bwdIdx = StringPrototypeLastIndexOf(filepath, "\\node_modules\\");
+  if (fwdIdx !== -1 && fwdIdx > bwdIdx) {
+    nmIdx = fwdIdx;
+    sep = "/";
+  } else if (bwdIdx !== -1) {
+    nmIdx = bwdIdx;
+    sep = "\\";
+  }
+  if (nmIdx === -1) return null;
+
+  const afterNm = nmIdx + sep.length + "node_modules".length + sep.length;
+  const rest = StringPrototypeSlice(filepath, afterNm);
+  const parts = StringPrototypeSplit(rest, sep);
+  if (parts.length === 0 || parts[0] === "") return null;
+
+  if (StringPrototypeStartsWith(parts[0], "@") && parts.length > 1) {
+    // Scoped package: @scope/name
+    return StringPrototypeSlice(filepath, 0, afterNm) + parts[0] + sep +
+      parts[1];
+  }
+  return StringPrototypeSlice(filepath, 0, afterNm) + parts[0];
+}
+
 function tryFile(requestPath, _isMain) {
   const rc = stat(requestPath);
   if (rc !== 0) return;
@@ -518,12 +531,20 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
   }
 
   const filename = pathResolve(requestPath, pkg);
+
+  // Find the package root for the path traversal check. For nested
+  // package.json files inside node_modules (e.g. pkg/sub/package.json with
+  // "main": "../cjs/sub.js"), we allow resolving up to the package root
+  // (node_modules/pkg/) rather than restricting to the nested directory.
+  const packageRoot = findPackageRootFromNodeModules(requestPath) ??
+    requestPath;
+
   // Ensure the resolved main path doesn't escape the package directory
   // via path traversal (e.g. "main": "../../secret.json")
   if (
-    !StringPrototypeStartsWith(filename, requestPath + "/") &&
-    !StringPrototypeStartsWith(filename, requestPath + "\\") &&
-    filename !== requestPath
+    !StringPrototypeStartsWith(filename, packageRoot + "/") &&
+    !StringPrototypeStartsWith(filename, packageRoot + "\\") &&
+    filename !== packageRoot
   ) {
     const err = new Error(
       `Cannot find module '${filename}'. ` +
@@ -684,9 +705,35 @@ function Module(id = "", parent) {
   updateChildren(parent, this, false);
   this.filename = null;
   this.loaded = false;
-  this.parent = parent;
   this.children = [];
 }
+
+let parentDeprecationEmitted = false;
+function emitParentDeprecation() {
+  if (parentDeprecationEmitted) return;
+  if (!getOptionValue("--pending-deprecation")) return;
+  parentDeprecationEmitted = true;
+  process.emitWarning(
+    "module.parent is deprecated due to accuracy issues. Please use " +
+      "require.main to find program entry point instead.",
+    "DeprecationWarning",
+    "DEP0144",
+  );
+}
+
+ObjectDefineProperty(Module.prototype, "parent", {
+  __proto__: null,
+  configurable: true,
+  enumerable: true,
+  get() {
+    emitParentDeprecation();
+    return moduleParentCache.get(this);
+  },
+  set(value) {
+    emitParentDeprecation();
+    moduleParentCache.set(this, value);
+  },
+});
 
 Module.builtinModules = builtinModules;
 
@@ -903,54 +950,7 @@ Module._load = function (request, parent, isMain) {
     // Slice 'node:' prefix
     const id = StringPrototypeSlice(filename, 5);
 
-    // Run load hooks for builtins if registered
-    if (hookEntries.length > 0 && !insideLoadHook) {
-      let hasLoadHook = false;
-      for (let i = 0; i < hookEntries.length; i++) {
-        if (hookEntries[i].load !== null) {
-          hasLoadHook = true;
-          break;
-        }
-      }
-      if (hasLoadHook) {
-        const context = {
-          format: "builtin",
-          conditions: ["node", "require"],
-          importAttributes: { __proto__: null },
-        };
-        insideLoadHook = true;
-        let result;
-        try {
-          result = executeLoadHookChain(filename, context);
-        } finally {
-          insideLoadHook = false;
-        }
-        // If the hook changed the format away from "builtin", use the
-        // hook-provided source instead of loading the native module.
-        // This matches Node.js behavior where hooks can replace builtins
-        // by returning a different format (e.g. "commonjs").
-        if (
-          result != null && result.format &&
-          result.format !== "builtin" && result.source != null
-        ) {
-          const mod = new Module(filename, parent);
-          Module._cache[filename] = mod;
-          const source = typeof result.source === "string"
-            ? result.source
-            : (utf8Decoder ??= new TextDecoder()).decode(result.source);
-          if (result.format === "commonjs") {
-            mod._compile(source, filename, "commonjs");
-          } else if (result.format === "json") {
-            mod.exports = JSONParse(stripBOM(source));
-          } else {
-            mod._compile(source, filename);
-          }
-          mod.loaded = true;
-          return mod.exports;
-        }
-      }
-    }
-
+    maybeEmitNativeModuleDeprecation(id);
     const module = loadNativeModule(id, id);
     if (!module) {
       // TODO:
@@ -970,6 +970,7 @@ Module._load = function (request, parent, isMain) {
     return cachedModule.exports;
   }
 
+  maybeEmitNativeModuleDeprecation(filename);
   const mod = loadNativeModule(filename, request);
   if (
     mod
@@ -992,32 +993,57 @@ Module._load = function (request, parent, isMain) {
 
   let threw = true;
   try {
-    module.load(filename);
-    threw = false;
-  } finally {
-    if (threw) {
-      delete Module._cache[filename];
-      if (parent !== undefined) {
-        delete relativeResolveCache[relResolveCacheIdentifier];
-        const children = parent?.children;
-        if (ArrayIsArray(children)) {
-          const index = ArrayPrototypeIndexOf(children, module);
-          if (index !== -1) {
-            ArrayPrototypeSplice(children, index, 1);
+    try {
+      module.load(filename);
+      threw = false;
+    } finally {
+      if (threw) {
+        delete Module._cache[filename];
+        if (parent !== undefined) {
+          delete relativeResolveCache[relResolveCacheIdentifier];
+          const children = parent?.children;
+          if (ArrayIsArray(children)) {
+            const index = ArrayPrototypeIndexOf(children, module);
+            if (index !== -1) {
+              ArrayPrototypeSplice(children, index, 1);
+            }
           }
         }
+      } else if (
+        module.exports &&
+        // Skip Proxy module.exports so the cleanup pass after a circular
+        // require doesn't invoke user-visible getPrototypeOf traps. Matches
+        // Node's lib/internal/modules/cjs/loader.js behavior.
+        !core.isProxy(module.exports) &&
+        ObjectGetPrototypeOf(module.exports) ===
+          CircularRequirePrototypeWarningProxy
+      ) {
+        ObjectSetPrototypeOf(module.exports, ObjectPrototype);
       }
-    } else if (
-      module.exports &&
-      // Skip Proxy module.exports so the cleanup pass after a circular
-      // require doesn't invoke user-visible getPrototypeOf traps. Matches
-      // Node's lib/internal/modules/cjs/loader.js behavior.
-      !core.isProxy(module.exports) &&
-      ObjectGetPrototypeOf(module.exports) ===
-        CircularRequirePrototypeWarningProxy
-    ) {
-      ObjectSetPrototypeOf(module.exports, ObjectPrototype);
     }
+  } catch (err) {
+    // For a top-level CommonJS throw in the entry module, fire
+    // 'uncaughtExceptionMonitor' and 'uncaughtException' synchronously with
+    // origin === 'uncaughtException', matching Node.js semantics.
+    //
+    // Without this, the throw bubbles up to the ESM wrapper that loads the
+    // main CJS module, becomes a module evaluation rejection, and is routed
+    // through Deno's unhandled-rejection path.
+    if (
+      isMain &&
+      parent === null &&
+      typeof process !== "undefined" &&
+      typeof process._fatalException === "function"
+    ) {
+      if (process._fatalException(err)) {
+        return module.exports;
+      }
+      if (err !== null && typeof err === "object") {
+        const set = internals._dispatchedFatalErrors;
+        if (set !== undefined) set.add(err);
+      }
+    }
+    throw err;
   }
 
   return module.exports;
@@ -1035,33 +1061,6 @@ Module._resolveFilename = function (
       "string",
       request,
     );
-  }
-
-  // Run resolve hooks if registered (and not already inside a hook)
-  if (hookEntries.length > 0 && !insideResolveHook) {
-    const parentURL = parent?.filename
-      ? url.pathToFileURL(parent.filename).href
-      : undefined;
-    const context = {
-      conditions: ["node", "require"],
-      importAttributes: { __proto__: null },
-      parentURL,
-    };
-    const result = executeResolveHookChain(request, context, parent, isMain);
-    if (result != null && result.url != null) {
-      if (StringPrototypeStartsWith(result.url, "file://")) {
-        try {
-          return url.fileURLToPath(result.url);
-        } catch {
-          // Virtual file:// URLs may not have valid OS paths (e.g.
-          // file:///virtual.js on Windows). Return the URL as-is and
-          // let the load hook handle it.
-          return result.url;
-        }
-      }
-      // node: and other schemes returned as-is
-      return result.url;
-    }
   }
 
   if (nativeModuleCanBeRequiredByUsers(request)) {
@@ -1253,93 +1252,8 @@ Module.prototype.load = function (filename) {
 
   // Canonicalize the path so it's not pointing to the symlinked directory
   // in `node_modules` directory of the referrer.
-  // When load hooks are active, the file may not exist on disk (virtual
-  // modules), so we fall back to the original filename.
-  let hasLoadHooks = false;
-  if (hookEntries.length > 0 && !insideLoadHook) {
-    for (let i = 0; i < hookEntries.length; i++) {
-      if (hookEntries[i].load !== null) {
-        hasLoadHooks = true;
-        break;
-      }
-    }
-  }
-  if (hasLoadHooks) {
-    try {
-      this.filename = op_require_real_path(filename);
-    } catch {
-      this.filename = filename;
-    }
-  } else {
-    this.filename = op_require_real_path(filename);
-  }
+  this.filename = op_require_real_path(filename);
   this.paths = Module._nodeModulePaths(pathDirname(this.filename));
-
-  // Run load hooks if registered
-  if (hasLoadHooks) {
-    {
-      let fileUrl;
-      if (StringPrototypeStartsWith(this.filename, "node:")) {
-        fileUrl = this.filename;
-      } else if (
-        StringPrototypeStartsWith(this.filename, "file://") ||
-        StringPrototypeIncludes(this.filename, "://")
-      ) {
-        // Already a URL (e.g. from a resolve hook returning a virtual URL)
-        fileUrl = this.filename;
-      } else {
-        fileUrl = url.pathToFileURL(this.filename).href;
-      }
-      const context = {
-        format: undefined,
-        conditions: ["node", "require"],
-        importAttributes: { __proto__: null },
-      };
-      insideLoadHook = true;
-      let result;
-      try {
-        result = executeLoadHookChain(fileUrl, context);
-      } finally {
-        insideLoadHook = false;
-      }
-      if (result != null && result.source != null) {
-        const format = result.format;
-        if (format === "module") {
-          loadESMFromCJS(this, this.filename, result.source);
-        } else if (format === "commonjs") {
-          this._compile(
-            typeof result.source === "string"
-              ? result.source
-              : (utf8Decoder ??= new TextDecoder()).decode(result.source),
-            this.filename,
-            "commonjs",
-          );
-        } else if (format === "json") {
-          try {
-            this.exports = JSONParse(
-              stripBOM(
-                typeof result.source === "string"
-                  ? result.source
-                  : (utf8Decoder ??= new TextDecoder()).decode(result.source),
-              ),
-            );
-          } catch (err) {
-            err.message = this.filename + ": " + err.message;
-            throw err;
-          }
-        } else {
-          // Default to CJS when format is unspecified
-          const source = typeof result.source === "string"
-            ? result.source
-            : (utf8Decoder ??= new TextDecoder()).decode(result.source);
-          this._compile(source, this.filename);
-        }
-        this.loaded = true;
-        return;
-      }
-    }
-  }
-
   const extension = findLongestRegisteredExtension(filename);
   Module._extensions[extension](this, this.filename);
   this.loaded = true;
@@ -1549,11 +1463,31 @@ function loadCjs(module, filename) {
   module._compile(content, filename, "commonjs");
 }
 
+function _throwRequireAsyncModule(specifier, module) {
+  // Use moduleParentCache directly to avoid triggering the module.parent
+  // deprecation getter when --pending-deprecation is set.
+  const parentModule = module ? moduleParentCache.get(module) : undefined;
+  const parent = parentModule?.filename ?? "<unknown>";
+  throw new internalErrors.ERR_REQUIRE_ASYNC_MODULE(specifier, parent);
+}
+
 function loadESMFromCJS(module, filename, code) {
-  const namespace = op_import_sync(
-    url.pathToFileURL(filename).toString(),
-    code,
-  );
+  const specifier = url.pathToFileURL(filename).toString();
+  let namespace;
+  try {
+    namespace = op_import_sync(specifier, code);
+  } catch (e) {
+    if (
+      e instanceof Error &&
+      StringPrototypeIncludes(
+        e.message,
+        "Top-level await is not allowed in synchronous evaluation",
+      )
+    ) {
+      _throwRequireAsyncModule(specifier, module);
+    }
+    throw e;
+  }
   if (ObjectHasOwn(namespace, "module.exports")) {
     module.exports = namespace["module.exports"];
   } else {
@@ -1759,6 +1693,53 @@ Module.Module = Module;
 
 nativeModuleExports.module = Module;
 
+// Modules that emit a deprecation warning the first time they are required via
+// the CJS loader (`require('_stream_readable')` etc.). Maps the module name to
+// [message, code]. Matches Node's `BuiltinModule#compileForPublicLoader` --
+// `process.getBuiltinModule()` does NOT trigger these warnings.
+const deprecatedNativeModules = ObjectCreate(null);
+deprecatedNativeModules._tls_common = [
+  "The _tls_common module is deprecated. Use `node:tls` instead.",
+  "DEP0192",
+];
+deprecatedNativeModules._tls_wrap = [
+  "The _tls_wrap module is deprecated. Use `node:tls` instead.",
+  "DEP0192",
+];
+deprecatedNativeModules._stream_duplex = [
+  "The _stream_duplex module is deprecated. Use `node:stream` instead.",
+  "DEP0193",
+];
+deprecatedNativeModules._stream_passthrough = [
+  "The _stream_passthrough module is deprecated. Use `node:stream` instead.",
+  "DEP0193",
+];
+deprecatedNativeModules._stream_readable = [
+  "The _stream_readable module is deprecated. Use `node:stream` instead.",
+  "DEP0193",
+];
+deprecatedNativeModules._stream_transform = [
+  "The _stream_transform module is deprecated. Use `node:stream` instead.",
+  "DEP0193",
+];
+deprecatedNativeModules._stream_writable = [
+  "The _stream_writable module is deprecated. Use `node:stream` instead.",
+  "DEP0193",
+];
+
+const emittedNativeModuleDeprecations = new SafeSet();
+function maybeEmitNativeModuleDeprecation(request) {
+  const deprecation = deprecatedNativeModules[request];
+  if (deprecation === undefined) return;
+  if (SetPrototypeHas(emittedNativeModuleDeprecations, request)) return;
+  SetPrototypeAdd(emittedNativeModuleDeprecations, request);
+  process.emitWarning(
+    deprecation[0],
+    "DeprecationWarning",
+    deprecation[1],
+  );
+}
+
 function loadNativeModule(_id, request) {
   if (nativeModulePolyfill.has(request)) {
     return nativeModulePolyfill.get(request);
@@ -1806,63 +1787,590 @@ internals.requireImpl = {
   nativeModuleExports,
 };
 
+// VLQ Base64 decoding for source maps
+const BASE64_CHARS =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const BASE64_LOOKUP = new Int32Array(128);
+for (let i = 0; i < 128; i++) BASE64_LOOKUP[i] = -1;
+for (let i = 0; i < BASE64_CHARS.length; i++) {
+  BASE64_LOOKUP[StringPrototypeCharCodeAt(BASE64_CHARS, i)] = i;
+}
+
+const VLQ_BASE_SHIFT = 5;
+const VLQ_BASE = 1 << VLQ_BASE_SHIFT; // 32
+const VLQ_BASE_MASK = VLQ_BASE - 1; // 31
+const VLQ_CONTINUATION_BIT = VLQ_BASE; // 32
+
+/**
+ * Decode a single VLQ value from a string iterator.
+ * @param {string} str
+ * @param {{ pos: number }} iter
+ * @returns {number}
+ */
+function decodeVLQ(str, iter) {
+  let result = 0;
+  let shift = 0;
+  let digit;
+  do {
+    if (iter.pos >= str.length) {
+      return 0;
+    }
+    const charCode = StringPrototypeCharCodeAt(str, iter.pos++);
+    digit = BASE64_LOOKUP[charCode];
+    if (digit === -1) {
+      return 0;
+    }
+    result += (digit & VLQ_BASE_MASK) << shift;
+    shift += VLQ_BASE_SHIFT;
+  } while (digit & VLQ_CONTINUATION_BIT);
+
+  // The sign is encoded in the least significant bit
+  const negative = result & 1;
+  // Use unsigned right shift, so that the 32nd bit is properly shifted
+  // to the 31st, and the 32nd becomes unset.
+  result >>>= 1;
+  if (!negative) {
+    return result;
+  }
+  // We need to OR here to ensure the 32nd bit (the sign bit in an Int32) is
+  // always set for negative numbers. If `result` were 1, (meaning `negative`
+  // is true and all other bits were zeros), `result` would now be 0. But -0
+  // doesn't flip the 32nd bit as intended.
+  return -result | (1 << 31);
+}
+
+/**
+ * Parse VLQ-encoded source map mappings string into an array of mapping entries.
+ * @param {string} mappings
+ * @param {string[]} sources
+ * @param {string} sourceRoot
+ * @returns {Array<{generatedLine: number, generatedColumn: number, originalSource: string, originalLine: number, originalColumn: number, name?: string}>}
+ */
+function parseMappings(mappings, sources, names, sourceRoot) {
+  const entries = [];
+  if (!mappings) return entries;
+
+  let generatedLine = 0;
+  let previousGeneratedColumn = 0;
+  let previousOriginalLine = 0;
+  let previousOriginalColumn = 0;
+  let previousSource = 0;
+  let previousName = 0;
+  const iter = { pos: 0 };
+
+  while (iter.pos < mappings.length) {
+    const ch = mappings[iter.pos];
+    if (ch === ";") {
+      generatedLine++;
+      previousGeneratedColumn = 0;
+      iter.pos++;
+      continue;
+    }
+    if (ch === ",") {
+      iter.pos++;
+      continue;
+    }
+
+    // Decode segment: generatedColumn, [sourceIndex, originalLine, originalColumn, [nameIndex]]
+    const generatedColumn = previousGeneratedColumn + decodeVLQ(mappings, iter);
+    previousGeneratedColumn = generatedColumn;
+
+    // Check if there are more fields (source mapping)
+    if (iter.pos < mappings.length) {
+      const next = mappings[iter.pos];
+      if (next !== "," && next !== ";") {
+        const sourceIndex = previousSource + decodeVLQ(mappings, iter);
+        previousSource = sourceIndex;
+
+        const originalLine = previousOriginalLine +
+          decodeVLQ(mappings, iter);
+        previousOriginalLine = originalLine;
+
+        const originalColumn = previousOriginalColumn +
+          decodeVLQ(mappings, iter);
+        previousOriginalColumn = originalColumn;
+
+        let source = sources[sourceIndex] || "";
+        if (
+          sourceRoot && !StringPrototypeStartsWith(source, "/") &&
+          !RegExpPrototypeTest(/^\w+:\/\//, source)
+        ) {
+          source = sourceRoot + source;
+        }
+
+        let name;
+        // Check for optional name index
+        if (
+          iter.pos < mappings.length &&
+          mappings[iter.pos] !== "," &&
+          mappings[iter.pos] !== ";"
+        ) {
+          const nameIndex = previousName + decodeVLQ(mappings, iter);
+          previousName = nameIndex;
+          name = names ? names[nameIndex] : undefined;
+        }
+
+        ArrayPrototypePush(entries, {
+          generatedLine,
+          generatedColumn,
+          originalSource: source,
+          originalLine,
+          originalColumn,
+          name,
+        });
+      }
+    }
+
+    // Segments with only generated column (no source mapping) are skipped,
+    // matching Node.js behavior - only full mapping entries are included.
+  }
+
+  return entries;
+}
+
+/**
+ * Compare two source map entries for sorting/binary search.
+ */
+function compareEntries(a, b) {
+  if (a.generatedLine !== b.generatedLine) {
+    return a.generatedLine - b.generatedLine;
+  }
+  return a.generatedColumn - b.generatedColumn;
+}
+
+/**
+ * Binary search for the entry that contains the given generated position.
+ */
+function findEntryInMappings(entries, line, column) {
+  let low = 0;
+  let high = entries.length - 1;
+  let best = -1;
+
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const entry = entries[mid];
+    const cmp = entry.generatedLine - line ||
+      entry.generatedColumn - column;
+
+    if (cmp === 0) {
+      return entry;
+    } else if (cmp < 0) {
+      best = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  if (best >= 0) {
+    const entry = entries[best];
+    if (entry.generatedLine === line) {
+      return entry;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Deep clone an object (simple JSON-safe objects).
+ */
+function deepClone(obj) {
+  if (obj === null || typeof obj !== "object") return obj;
+  if (ArrayIsArray(obj)) return ArrayPrototypeMap(obj, deepClone);
+  const clone = {};
+  const keys = ObjectKeys(obj);
+  for (let i = 0; i < keys.length; i++) {
+    clone[keys[i]] = deepClone(obj[keys[i]]);
+  }
+  return clone;
+}
+
+/**
+ * SourceMap class implementing Node.js's module.SourceMap API.
+ * @see https://nodejs.org/api/module.html#class-modulesourcemap
+ */
+class SourceMap {
+  #payload;
+  #lineLengths;
+  #mappings;
+
+  /**
+   * @param {object} payload - Source Map V3 payload object
+   * @param {{ lineLengths?: number[] }} [options]
+   */
+  constructor(payload, options) {
+    if (
+      typeof payload !== "object" || payload === null ||
+      ArrayIsArray(payload)
+    ) {
+      let received;
+      if (payload === null) {
+        received = " Received null";
+      } else if (typeof payload === "object") {
+        const proto = ObjectGetPrototypeOf(payload);
+        const name = proto?.constructor?.name;
+        received = name
+          ? ` Received an instance of ${name}`
+          : ` Received ${typeof payload}`;
+      } else {
+        let inspected = String(payload);
+        if (inspected.length > 28) {
+          inspected = StringPrototypeSlice(inspected, 0, 25) + "...";
+        }
+        received = ` Received type ${typeof payload} (${inspected})`;
+      }
+      const err = new TypeError(
+        `The "payload" argument must be of type object.${received}`,
+      );
+      err.code = "ERR_INVALID_ARG_TYPE";
+      throw err;
+    }
+
+    this.#payload = deepClone(payload);
+    this.#lineLengths = options?.lineLengths
+      ? ArrayPrototypeSlice(options.lineLengths)
+      : undefined;
+
+    // Parse mappings - handle both regular and index source maps
+    this.#mappings = this.#parseMap(payload);
+    // Sort entries by generated position
+    ArrayPrototypeSort(this.#mappings, compareEntries);
+  }
+
+  /**
+   * Parse source map payload into mapping entries.
+   * Handles both regular source maps and index source maps (with sections).
+   */
+  #parseMap(payload) {
+    if (payload.sections) {
+      // Index Source Map V3
+      const entries = [];
+      const sections = payload.sections;
+      for (let i = 0; i < sections.length; i++) {
+        const section = sections[i];
+        const offset = section.offset || { line: 0, column: 0 };
+        const map = section.map;
+        const sectionEntries = parseMappings(
+          map.mappings,
+          map.sources || [],
+          map.names || [],
+          map.sourceRoot || "",
+        );
+        // Apply section offset
+        for (let j = 0; j < sectionEntries.length; j++) {
+          const entry = sectionEntries[j];
+          entry.generatedLine += offset.line;
+          if (entry.generatedLine === offset.line) {
+            entry.generatedColumn += offset.column;
+          }
+          ArrayPrototypePush(entries, entry);
+        }
+      }
+      // For index maps, flatten the sources and mappings into the payload clone
+      if (!this.#payload.sources) {
+        this.#payload.sources = [];
+      }
+      if (!this.#payload.mappings) {
+        this.#payload.mappings = payload.mappings || undefined;
+      }
+      return entries;
+    }
+
+    return parseMappings(
+      payload.mappings,
+      payload.sources || [],
+      payload.names || [],
+      payload.sourceRoot || "",
+    );
+  }
+
+  /**
+   * Getter for the payload used to construct the SourceMap instance.
+   * Returns a clone of the original payload.
+   */
+  get payload() {
+    return this.#payload;
+  }
+
+  /**
+   * Getter for line lengths, if provided in the constructor options.
+   */
+  get lineLengths() {
+    return this.#lineLengths;
+  }
+
+  /**
+   * Given a 0-indexed line offset and column offset in the generated source,
+   * returns an object representing the SourceMap range in the original file
+   * if found, or an empty object if not.
+   *
+   * @param {number} lineOffset - Zero-indexed line number in generated source
+   * @param {number} columnOffset - Zero-indexed column number in generated source
+   * @returns {{ generatedLine: number, generatedColumn: number, originalSource: string, originalLine: number, originalColumn: number } | {}}
+   */
+  findEntry(lineOffset, columnOffset) {
+    if (this.#mappings.length === 0) return {};
+    const entry = findEntryInMappings(this.#mappings, lineOffset, columnOffset);
+    if (!entry) return {};
+    return {
+      generatedLine: entry.generatedLine,
+      generatedColumn: entry.generatedColumn,
+      originalSource: entry.originalSource,
+      originalLine: entry.originalLine,
+      originalColumn: entry.originalColumn,
+    };
+  }
+
+  /**
+   * Given 1-indexed lineNumber and columnNumber from a call site in the generated
+   * source, find the corresponding call site location in the original source.
+   *
+   * @param {number} lineNumber - 1-indexed line number
+   * @param {number} columnNumber - 1-indexed column number
+   * @returns {{ name?: string, fileName: string, lineNumber: number, columnNumber: number } | {}}
+   */
+  findOrigin(lineNumber, columnNumber) {
+    const entry = this.findEntry(lineNumber - 1, columnNumber - 1);
+    if (
+      entry.originalSource === undefined ||
+      entry.originalLine === undefined ||
+      entry.originalColumn === undefined ||
+      entry.generatedLine === undefined ||
+      entry.generatedColumn === undefined
+    ) {
+      return {};
+    }
+    const lineOffset = lineNumber - entry.generatedLine;
+    const columnOffset = columnNumber - entry.generatedColumn;
+    const result = {
+      fileName: entry.originalSource,
+      lineNumber: entry.originalLine + lineOffset,
+      columnNumber: entry.originalColumn + columnOffset,
+    };
+    if (entry.name !== undefined) {
+      result.name = entry.name;
+    }
+    return result;
+  }
+}
+
+// Cache for findSourceMap: path -> SourceMap | null (null means checked but not found)
+const sourceMapCache = new SafeMap();
+
+// Regex to match //# sourceMappingURL=<url> or //@ sourceMappingURL=<url>
+const SOURCE_MAP_URL_RE =
+  /\/\/[#@]\s*sourceMappingURL\s*=\s*(\S+)\s*(?:\n|\r\n?)?$/;
+
+/**
+ * Extract the sourceMappingURL from the last non-empty line of content.
+ * @param {string} content
+ * @returns {string | null}
+ */
+function extractSourceMapUrl(content) {
+  // Search backwards from the end for the sourceMappingURL comment.
+  // The comment must appear in the last non-empty line.
+  const match = RegExpPrototypeExec(SOURCE_MAP_URL_RE, content);
+  return match ? match[1] : null;
+}
+
+/**
+ * Resolve a source map from a sourceMappingURL.
+ * Handles both inline data URIs and external file references.
+ * @param {string} url - The sourceMappingURL value
+ * @param {string} filePath - The path of the file containing the reference
+ * @returns {object | null} - Parsed source map payload or null
+ */
+function resolveSourceMapPayload(url, filePath) {
+  // Handle inline base64 data URIs
+  if (StringPrototypeStartsWith(url, "data:")) {
+    const dataUrlMatch = StringPrototypeMatch(
+      url,
+      /^data:application\/json;(?:charset=utf-?8;)?base64,(.+)$/,
+    );
+    if (dataUrlMatch) {
+      try {
+        const decoded = atob(dataUrlMatch[1]);
+        return JSONParse(decoded);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  // Handle external source map files
+  try {
+    let mapPath;
+    if (
+      StringPrototypeStartsWith(url, "/") ||
+      RegExpPrototypeTest(/^[a-zA-Z]:\\/, url)
+    ) {
+      // Absolute path
+      mapPath = url;
+    } else {
+      // Relative path - resolve against the source file's directory
+      const dir = op_require_path_dirname(filePath);
+      mapPath = op_require_path_resolve([dir, url]);
+    }
+    const mapContent = op_require_read_file(mapPath);
+    if (mapContent) {
+      return JSONParse(mapContent);
+    }
+  } catch {
+    // File not found or invalid JSON - return null
+  }
+  return null;
+}
+
 /**
  * @param {string} path
  * @returns {SourceMap | undefined}
  */
-export function findSourceMap(_path) {
-  // TODO(@marvinhagemeister): Stub implementation for now to unblock ava
-  return undefined;
+export function findSourceMap(path) {
+  // Normalize the path to avoid duplicate cache entries for equivalent paths
+  // (e.g. "/foo/bar.js" vs "/foo/./bar.js")
+  path = op_require_path_resolve([path]);
+
+  if (sourceMapCache.has(path)) {
+    const cached = sourceMapCache.get(path);
+    return cached === null ? undefined : cached;
+  }
+
+  try {
+    const content = op_require_read_file(path);
+    if (!content) {
+      sourceMapCache.set(path, null);
+      return undefined;
+    }
+
+    const url = extractSourceMapUrl(content);
+    if (!url) {
+      sourceMapCache.set(path, null);
+      return undefined;
+    }
+
+    const payload = resolveSourceMapPayload(url, path);
+    if (!payload) {
+      sourceMapCache.set(path, null);
+      return undefined;
+    }
+
+    // Compute lineLengths from the source file content
+    const lines = StringPrototypeSplit(
+      StringPrototypeReplace(content, /\n$/, ""),
+      "\n",
+    );
+    const lineLengths = [];
+    for (let i = 0; i < lines.length; i++) {
+      ArrayPrototypePush(lineLengths, lines[i].length);
+    }
+
+    const sourceMap = new SourceMap(payload, { lineLengths });
+    sourceMapCache.set(path, sourceMap);
+    return sourceMap;
+  } catch {
+    sourceMapCache.set(path, null);
+    return undefined;
+  }
 }
 
 Module.findSourceMap = findSourceMap;
+Module.SourceMap = SourceMap;
 
-/**
- * Register synchronous module loader hooks.
- * @param {{ resolve?: Function, load?: Function }} hooks
- * @returns {{ deregister: () => void }}
- */
-export function registerHooks(hooks) {
-  if (typeof hooks !== "object" || hooks === null) {
-    throw new internalErrors.ERR_INVALID_ARG_TYPE("hooks", "object", hooks);
-  }
-  const resolve = typeof hooks.resolve === "function" ? hooks.resolve : null;
-  const load = typeof hooks.load === "function" ? hooks.load : null;
-  if (resolve === null && load === null) {
-    throw new internalErrors.ERR_INVALID_ARG_VALUE(
-      "hooks",
-      hooks,
-      "must contain at least one of 'resolve' or 'load'",
+let initialized = false;
+
+function initialize(args) {
+  const {
+    usesLocalNodeModulesDir: usesLocalNodeModulesDirArg,
+    argv0,
+    runningOnMainThread,
+    workerId,
+    maybeWorkerMetadata,
+    nodeDebug,
+    nodeClusterUniqueId,
+    nodeClusterSchedPolicy,
+    warmup = false,
+    moduleSpecifier = null,
+  } = args;
+  if (!warmup) {
+    if (initialized) {
+      throw new Error("Node runtime already initialized");
+    }
+    initialized = true;
+    if (usesLocalNodeModulesDirArg) {
+      usesLocalNodeModulesDir = true;
+    }
+
+    internals.__bootstrapNodeProcess(
+      argv0,
+      Deno.args,
+      Deno.version,
+      nodeDebug ?? "",
+      false,
+      runningOnMainThread,
+    );
+    internals.__initWorkerThreads(
+      runningOnMainThread,
+      workerId,
+      maybeWorkerMetadata,
+      moduleSpecifier,
+    );
+    internals.__setupChildProcessIpcChannel();
+    if (nodeClusterUniqueId) {
+      core.loadExtScript("ext:deno_node/cluster.ts");
+      internals.__initCluster(nodeClusterUniqueId, nodeClusterSchedPolicy);
+    }
+    const { streamBaseState } = core.loadExtScript(
+      "ext:deno_node/internal_binding/stream_wrap.ts",
+    );
+    op_stream_base_register_state(streamBaseState);
+    nativeModuleExports["internal/console/constructor"].bindStreamsLazy(
+      nativeModuleExports["console"],
+      nativeModuleExports["process"],
+    );
+  } else {
+    internals.__bootstrapNodeProcess(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      true,
     );
   }
-  const entry = { resolve, load };
-  ArrayPrototypePush(hookEntries, entry);
-  return {
-    deregister() {
-      const idx = ArrayPrototypeIndexOf(hookEntries, entry);
-      if (idx !== -1) {
-        ArrayPrototypeSplice(hookEntries, idx, 1);
-      }
-    },
-  };
 }
 
-Module.registerHooks = registerHooks;
+globalThis.nodeBootstrap = initialize;
 
-/**
- * @param {string | URL} _specifier
- * @param {string | URL} _parentUrl
- * @param {{ parentURL: string | URL, data: any, transferList: any[] }} [_options]
- */
-export function register(_specifier, _parentUrl, _options) {
-  // TODO(@marvinhagemeister): Stub implementation for programs registering
-  // TypeScript loaders. We don't support registering loaders for file
-  // types that Deno itself doesn't support at the moment.
-
-  return undefined;
+function closeIdleConnections() {
+  try {
+    const http = nativeModuleExports["http"];
+    if (http?.globalAgent) {
+      http.globalAgent.destroy();
+    }
+  } catch {
+    // Ignore
+  }
+  try {
+    const https = nativeModuleExports["https"];
+    if (https?.globalAgent) {
+      https.globalAgent.destroy();
+    }
+  } catch {
+    // Ignore
+  }
 }
 
-export { builtinModules, createRequire, getBuiltinModule, isBuiltin, Module };
+internals.closeIdleConnections = closeIdleConnections;
+
+export {
+  builtinModules,
+  createRequire,
+  getBuiltinModule,
+  isBuiltin,
+  Module,
+  SourceMap,
+};
 export const _cache = Module._cache;
 export const _extensions = Module._extensions;
 export const _findPath = Module._findPath;

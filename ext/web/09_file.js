@@ -10,7 +10,6 @@
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
-// deno-fmt-ignore-file
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
 const {
@@ -20,6 +19,7 @@ const {
   isTypedArray,
 } = core;
 const {
+  op_blob_clone_part,
   op_blob_create_object_url,
   op_blob_create_part,
   op_blob_from_object_url,
@@ -41,6 +41,7 @@ const {
   DatePrototypeGetTime,
   MathMax,
   MathMin,
+  ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeTest,
   SafeFinalizationRegistry,
@@ -61,7 +62,9 @@ const {
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { ReadableStream } = core.loadExtScript("ext:deno_web/06_streams.js");
 const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
-const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
 
 // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
 // host os.
@@ -215,11 +218,26 @@ function getParts(blob, bag = []) {
 const _type = Symbol("Type");
 const _size = Symbol("Size");
 const _parts = Symbol("Parts");
+const _fileBacked = Symbol("FileBacked");
+
+/** @param {(BlobReference | Blob)[]} parts */
+function hasFileBackedPart(parts) {
+  for (let i = 0; i < parts.length; ++i) {
+    const part = parts[i];
+    if (
+      ObjectPrototypeIsPrototypeOf(BlobPrototype, part) && part[_fileBacked]
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
 
 class Blob {
   [_type] = "";
   [_size] = 0;
   [_parts];
+  [_fileBacked] = false;
 
   /**
    * @param {BlobPart[]} blobParts
@@ -248,6 +266,7 @@ class Blob {
     this[_parts] = parts;
     this[_size] = size;
     this[_type] = normalizeType(options.type);
+    this[_fileBacked] = hasFileBackedPart(parts);
   }
 
   /** @returns {number} */
@@ -357,6 +376,7 @@ class Blob {
     const blob = new Blob([], { type: relativeContentType });
     blob[_parts] = blobParts;
     blob[_size] = span;
+    blob[_fileBacked] = this[_fileBacked];
     return blob;
   }
 
@@ -657,6 +677,114 @@ class BlobReference {
 }
 
 /**
+ * Get all Parts as a flat array of BlobReference objects.
+ * @param {Blob} blob
+ * @param {BlobReference[]} bag
+ * @returns {BlobReference[]}
+ */
+function getPartRefs(blob, bag = []) {
+  const parts = blob[_parts];
+  for (let i = 0; i < parts.length; ++i) {
+    const part = parts[i];
+    if (ObjectPrototypeIsPrototypeOf(BlobPrototype, part)) {
+      getPartRefs(part, bag);
+    } else {
+      ArrayPrototypePush(bag, part);
+    }
+  }
+  return bag;
+}
+
+/**
+ * Clone blob part references in BlobStore and return serializable metadata.
+ * @param {Blob} blob
+ * @returns {{ uuid: string, size: number }[]}
+ */
+function cloneBlobParts(blob) {
+  if (blob[_fileBacked]) {
+    throw new TypeError("Invalid state: File-backed Blobs are not cloneable");
+  }
+  const refs = getPartRefs(blob);
+  const cloned = [];
+  for (let i = 0; i < refs.length; ++i) {
+    ArrayPrototypePush(cloned, op_blob_clone_part(refs[i]._id));
+  }
+  return cloned;
+}
+
+ObjectDefineProperty(Blob.prototype, core.hostObjectBrand, {
+  __proto__: null,
+  value: function () {
+    return {
+      type: "Blob",
+      mimeType: this[_type],
+      parts: cloneBlobParts(this),
+      size: this[_size],
+    };
+  },
+  enumerable: false,
+  configurable: false,
+  writable: false,
+});
+
+core.registerCloneableResource("Blob", (data) => {
+  const parts = [];
+  for (let i = 0; i < data.parts.length; ++i) {
+    const { uuid, size } = data.parts[i];
+    ArrayPrototypePush(parts, new BlobReference(uuid, size));
+  }
+  const blob = new Blob();
+  blob[_type] = data.mimeType;
+  blob[_size] = data.size;
+  blob[_parts] = parts;
+  return blob;
+});
+
+/**
+ * Mark a Blob as backed by file storage. File-backed Blobs are intentionally
+ * rejected by the structured clone serializer, matching Node's behavior.
+ * @param {Blob} blob
+ * @returns {Blob}
+ */
+function markFileBackedBlob(blob) {
+  webidl.assertBranded(blob, BlobPrototype);
+  blob[_fileBacked] = true;
+  return blob;
+}
+
+ObjectDefineProperty(File.prototype, core.hostObjectBrand, {
+  __proto__: null,
+  value: function () {
+    return {
+      type: "File",
+      mimeType: this[_type],
+      parts: cloneBlobParts(this),
+      size: this[_size],
+      name: this[_Name],
+      lastModified: this[_LastModified],
+    };
+  },
+  enumerable: false,
+  configurable: false,
+  writable: false,
+});
+
+core.registerCloneableResource("File", (data) => {
+  const parts = [];
+  for (let i = 0; i < data.parts.length; ++i) {
+    const { uuid, size } = data.parts[i];
+    ArrayPrototypePush(parts, new BlobReference(uuid, size));
+  }
+  const file = new File([], data.name, {
+    type: data.mimeType,
+    lastModified: data.lastModified,
+  });
+  file[_size] = data.size;
+  file[_parts] = parts;
+  return file;
+});
+
+/**
  * Construct a new Blob object from an object URL.
  *
  * This new object will not duplicate data in memory with the original Blob
@@ -738,5 +866,6 @@ return {
   FilePrototype,
   getParts,
   isBlob,
+  markFileBackedBlob,
 };
-})()
+})();

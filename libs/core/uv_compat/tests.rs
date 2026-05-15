@@ -2989,3 +2989,175 @@ async fn pipe_open_not_active_until_read_start() {
   })
   .await;
 }
+
+/// Regression test for https://github.com/denoland/deno/issues/33923.
+///
+/// On Windows, when all named-pipe instances are in use (e.g., Docker
+/// Desktop under load), `CreateFileW` returns `ERROR_PIPE_BUSY` (231).
+/// libuv handles this by transparently retrying via `WaitNamedPipeW` on
+/// a worker thread; node code (like `docker-modem`) relies on this. We
+/// must do the same — without it, the connection surfaces as
+/// `connect EINVAL` to JavaScript.
+#[cfg(windows)]
+#[tokio::test(flavor = "current_thread")]
+async fn pipe_connect_retries_on_error_pipe_busy() {
+  use tokio::net::windows::named_pipe::ClientOptions;
+  use tokio::net::windows::named_pipe::ServerOptions;
+  // Unique pipe name per test run.
+  let pipe_name =
+    format!(r"\\.\pipe\deno-uvcompat-busy-{}", std::process::id());
+
+  // Server with max_instances=1 -- only one client can be connected at
+  // a time. The first server instance must use first_pipe_instance(true).
+  let server = ServerOptions::new()
+    .first_pipe_instance(true)
+    .max_instances(1)
+    .create(&pipe_name)
+    .unwrap();
+
+  // Client 1 connects, consuming the only instance.
+  let _client1 = ClientOptions::new().open(&pipe_name).unwrap();
+  // Drive the server's ConnectNamedPipe so the pair is fully established.
+  server.connect().await.unwrap();
+
+  // Sanity: a second synchronous open MUST now return ERROR_PIPE_BUSY.
+  // (If this assertion fails, the test setup no longer triggers the
+  // condition we're trying to exercise.)
+  let busy_err = ClientOptions::new().open(&pipe_name).unwrap_err();
+  assert_eq!(
+    busy_err.raw_os_error(),
+    Some(231),
+    "expected ERROR_PIPE_BUSY, got {:?}",
+    busy_err
+  );
+
+  // Now exercise the retry helper. It should block in WaitNamedPipeW
+  // until we drop the existing server and create a fresh instance.
+  let pipe_name_clone = pipe_name.clone();
+  let join = tokio::task::spawn_blocking(move || {
+    pipe::wait_named_pipe_and_open(&pipe_name_clone)
+  });
+
+  // Give the worker a moment to actually enter WaitNamedPipeW. Without
+  // this the new server instance below could appear before the wait
+  // starts, masking whether the retry actually waits.
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  assert!(!join.is_finished(), "wait must block while pipe is busy");
+
+  // Free the instance: drop the original server, then create a new one.
+  drop(server);
+  let new_server = ServerOptions::new()
+    .first_pipe_instance(false)
+    .create(&pipe_name)
+    .unwrap();
+  // Drive the server side so the client's CreateFileW can complete.
+  let connect_fut = tokio::spawn(async move {
+    new_server.connect().await.unwrap();
+    new_server
+  });
+
+  // The retry helper must observe the new instance and succeed.
+  let result = tokio::time::timeout(std::time::Duration::from_secs(5), join)
+    .await
+    .expect("wait_named_pipe_and_open did not complete in time")
+    .expect("spawn_blocking join failed")
+    .expect("wait_named_pipe_and_open returned an error");
+
+  // Hand-off succeeded: result is a connected client.
+  drop(result);
+  let _ = connect_fut.await;
+}
+
+/// End-to-end check that `uv_pipe_connect` returns successfully (0 from
+/// the function, status=0 to the connect callback) even when the initial
+/// `ClientOptions::open()` fails with `ERROR_PIPE_BUSY`. Prior to the
+/// retry fix, this scenario surfaced as `UV_EINVAL` (the
+/// `connect EINVAL //./pipe/...` error from #33923).
+#[cfg(windows)]
+#[tokio::test(flavor = "current_thread")]
+async fn uv_pipe_connect_busy_then_succeeds() {
+  use std::sync::atomic::AtomicI32;
+  use std::sync::atomic::Ordering;
+
+  use tokio::net::windows::named_pipe::ClientOptions;
+  use tokio::net::windows::named_pipe::ServerOptions;
+
+  let pipe_name =
+    format!(r"\\.\pipe\deno-uvcompat-busy-cb-{}", std::process::id());
+
+  // Saturate the pipe so the synchronous open in uv_pipe_connect hits
+  // ERROR_PIPE_BUSY.
+  let server = ServerOptions::new()
+    .first_pipe_instance(true)
+    .max_instances(1)
+    .create(&pipe_name)
+    .unwrap();
+  let _client1 = ClientOptions::new().open(&pipe_name).unwrap();
+  server.connect().await.unwrap();
+
+  run_test(async |runtime, uv_loop| {
+    // Static result slot for the connect callback. The pointer is
+    // stable for the test's duration.
+    static RESULT: AtomicI32 = AtomicI32::new(i32::MIN);
+    RESULT.store(i32::MIN, Ordering::SeqCst);
+
+    unsafe extern "C" fn connect_cb(_req: *mut uv_connect_t, status: i32) {
+      RESULT.store(status, Ordering::SeqCst);
+    }
+
+    let mut pipe = pipe::new_pipe(false);
+    unsafe {
+      assert_ok(pipe::uv_pipe_init(uv_loop, &mut pipe, 0));
+    }
+
+    let mut req = new_connect();
+    let rc = unsafe {
+      pipe::uv_pipe_connect(&mut req, &mut pipe, &pipe_name, Some(connect_cb))
+    };
+    // The retry path returns 0 synchronously; the callback fires later.
+    assert_eq!(rc, 0, "uv_pipe_connect should defer, not fail with {rc}");
+    assert_eq!(
+      RESULT.load(Ordering::SeqCst),
+      i32::MIN,
+      "callback must not fire before the pipe is free"
+    );
+
+    // Free up the pipe and create a new server instance so the worker's
+    // WaitNamedPipeW returns.
+    drop(server);
+    let new_server = ServerOptions::new()
+      .first_pipe_instance(false)
+      .create(&pipe_name)
+      .unwrap();
+    // Drive the server side concurrently so the client's CreateFileW
+    // (issued from the retry worker) can complete.
+    let server_task = tokio::spawn(async move {
+      new_server.connect().await.unwrap();
+      new_server
+    });
+
+    // Tick the loop until the callback fires (with timeout).
+    let deadline =
+      std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while RESULT.load(Ordering::SeqCst) == i32::MIN {
+      if std::time::Instant::now() > deadline {
+        panic!("connect callback did not fire within timeout");
+      }
+      tick(runtime).await;
+      tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert_eq!(
+      RESULT.load(Ordering::SeqCst),
+      0,
+      "expected status=0, got {}",
+      RESULT.load(Ordering::SeqCst)
+    );
+
+    let _ = server_task.await;
+    unsafe {
+      uv_close(&mut pipe as *mut uv_pipe_t as *mut uv_handle_t, None);
+    }
+    tick(runtime).await;
+  })
+  .await;
+}

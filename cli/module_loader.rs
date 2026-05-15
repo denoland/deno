@@ -997,10 +997,8 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     specifier: &str,
     referrer: &str,
     kind: deno_core::ResolutionKind,
-  ) -> deno_core::ModuleResolveResponse {
-    deno_core::ModuleResolveResponse::Sync(
-      self.0.inner_resolve(specifier, referrer, kind, false),
-    )
+  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+    self.0.inner_resolve(specifier, referrer, kind, false)
   }
 
   fn import_meta_resolve(

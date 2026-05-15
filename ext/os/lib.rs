@@ -96,7 +96,7 @@ deno_core::extension!(
     ops::signal::op_signal_unbind,
     ops::signal::op_signal_poll,
   ],
-  esm = ["30_os.js", "40_signals.js"],
+  lazy_loaded_js = ["30_os.js", "40_signals.js"],
   options = {
     exit_code: Option<ExitCode>,
   },

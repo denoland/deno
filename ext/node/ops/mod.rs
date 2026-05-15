@@ -29,6 +29,7 @@ pub mod udp;
 pub mod util;
 pub mod v8;
 pub mod vm;
+pub mod wasi;
 pub mod winerror;
 pub mod worker_threads;
 pub mod zlib;

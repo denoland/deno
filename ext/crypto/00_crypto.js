@@ -1,18 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// @ts-check
-/// <reference path="../../core/internal.d.ts" />
-/// <reference path="../../core/lib.deno_core.d.ts" />
-/// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials, internals } = globalThis.__bootstrap;
 const {
   isArrayBuffer,
   isTypedArray,
   isDataView,
 } = core;
-import {
+const {
   op_crypto_base64url_decode,
   op_crypto_base64url_encode,
   op_crypto_decrypt,
@@ -49,7 +44,7 @@ import {
   op_crypto_verify_key,
   op_crypto_wrap_key,
   op_crypto_x25519_public_key,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
@@ -93,7 +88,7 @@ const { createFilteredInspectProxy } = core.loadExtScript(
   "ext:deno_web/01_console.js",
 );
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
-import { kKeyObject } from "ext:deno_node/internal/crypto/constants.ts";
+const { kKeyObject } = internals;
 
 const supportedNamedCurves = ["P-256", "P-384", "P-521"];
 const recognisedUsages = [
@@ -2211,6 +2206,10 @@ function importKeyX448(
         throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
+      if (TypedArrayPrototypeGetByteLength(keyData) !== 56) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+
       const handle = {};
       WeakMapPrototypeSet(KEY_STORE, handle, keyData);
 
@@ -2362,7 +2361,15 @@ function importKeyX448(
       // 9.
       if (jwk.d !== undefined) {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const privateKeyData = op_crypto_base64url_decode(jwk.d);
+        let privateKeyData;
+        try {
+          privateKeyData = op_crypto_base64url_decode(jwk.d);
+        } catch (_) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(privateKeyData) !== 56) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2380,7 +2387,15 @@ function importKeyX448(
         );
       } else {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const publicKeyData = op_crypto_base64url_decode(jwk.x);
+        let publicKeyData;
+        try {
+          publicKeyData = op_crypto_base64url_decode(jwk.x);
+        } catch (_) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(publicKeyData) !== 56) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
@@ -2419,6 +2434,10 @@ function importKeyEd25519(
         ) !== undefined
       ) {
         throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+
+      if (TypedArrayPrototypeGetByteLength(keyData) !== 32) {
+        throw new DOMException("Invalid key data", "DataError");
       }
 
       const handle = {};
@@ -2591,6 +2610,9 @@ function importKeyEd25519(
         } catch (_) {
           throw new DOMException("Invalid private key data", "DataError");
         }
+        if (TypedArrayPrototypeGetByteLength(privateKeyData) !== 32) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2612,6 +2634,9 @@ function importKeyEd25519(
         try {
           publicKeyData = op_crypto_base64url_decode(jwk.x);
         } catch (_) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(publicKeyData) !== 32) {
           throw new DOMException("Invalid public key data", "DataError");
         }
 
@@ -2647,6 +2672,10 @@ function importKeyX25519(
       // 1.
       if (keyUsages.length > 0) {
         throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+
+      if (TypedArrayPrototypeGetByteLength(keyData) !== 32) {
+        throw new DOMException("Invalid key data", "DataError");
       }
 
       const handle = {};
@@ -2800,7 +2829,15 @@ function importKeyX25519(
       // 9.
       if (jwk.d !== undefined) {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const privateKeyData = op_crypto_base64url_decode(jwk.d);
+        let privateKeyData;
+        try {
+          privateKeyData = op_crypto_base64url_decode(jwk.d);
+        } catch (_) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(privateKeyData) !== 32) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2818,7 +2855,15 @@ function importKeyX25519(
         );
       } else {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const publicKeyData = op_crypto_base64url_decode(jwk.x);
+        let publicKeyData;
+        try {
+          publicKeyData = op_crypto_base64url_decode(jwk.x);
+        } catch (_) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(publicKeyData) !== 32) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
@@ -6118,7 +6163,7 @@ function importCryptoKeySync(format, keyData, algorithm, extractable, usages) {
   }
 }
 
-export {
+return {
   Crypto,
   crypto,
   CryptoKey,
@@ -6126,3 +6171,4 @@ export {
   importCryptoKeySync,
   SubtleCrypto,
 };
+})();
