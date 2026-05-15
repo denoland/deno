@@ -363,5 +363,5 @@ webidl.converters["WorkerType"] = webidl.createEnumConverter("WorkerType", [
   "module",
 ]);
 
-return { Worker, privateWorkerRef };
+return { Worker };
 })();

@@ -612,24 +612,11 @@ impl JsRealm {
     let root_id =
       RecursiveModuleLoad::main(specifier.to_string(), module_map_rc.clone())
         .await?
-        .run_to_completion(|load, step| {
+        .run_to_completion(|load, request, source| {
           context_scope!(scope, self, isolate);
-          match step {
-            crate::modules::recursive_load::RegisterStep::Register {
-              request,
-              source,
-            } => load
-              .register_and_recurse(scope, request, source)
-              .map_err(|e| e.into_error(scope, false, false)),
-            crate::modules::recursive_load::RegisterStep::Finalize {
-              module_id,
-              reference,
-              code,
-            } => {
-              load.finalize_after_pending(module_id, reference, code);
-              Ok(crate::modules::recursive_load::RegisterOutcome::Done)
-            }
-          }
+          load
+            .register_and_recurse(scope, request, source)
+            .map_err(|e| e.into_error(scope, false, false))
         })
         .await?;
     context_scope!(scope, self, isolate);
@@ -673,24 +660,11 @@ impl JsRealm {
       None,
     )
     .await?
-    .run_to_completion(|load, step| {
+    .run_to_completion(|load, request, source| {
       context_scope!(scope, self, isolate);
-      match step {
-        crate::modules::recursive_load::RegisterStep::Register {
-          request,
-          source,
-        } => load
-          .register_and_recurse(scope, request, source)
-          .map_err(|e| e.into_error(scope, false, false)),
-        crate::modules::recursive_load::RegisterStep::Finalize {
-          module_id,
-          reference,
-          code,
-        } => {
-          load.finalize_after_pending(module_id, reference, code);
-          Ok(crate::modules::recursive_load::RegisterOutcome::Done)
-        }
-      }
+      load
+        .register_and_recurse(scope, request, source)
+        .map_err(|e| e.into_error(scope, false, false))
     })
     .await?;
     context_scope!(scope, self, isolate);

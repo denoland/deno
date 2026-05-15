@@ -70,7 +70,6 @@ builtin_ops! {
   op_encode_binary_string,
   op_is_terminal,
   op_import_sync,
-  op_import_sync_with_source,
   ops_builtin_types::op_is_any_array_buffer,
   ops_builtin_types::op_is_arguments_object,
   ops_builtin_types::op_is_array_buffer,
@@ -538,21 +537,10 @@ async fn do_load_job<'s, 'i>(
     code,
   )
   .await?
-  .run_to_completion(|load, step| match step {
-    crate::modules::recursive_load::RegisterStep::Register {
-      request,
-      source,
-    } => load
+  .run_to_completion(|load, request, source| {
+    load
       .register_and_recurse(scope, request, source)
-      .map_err(|e| e.into_error(scope, false, false)),
-    crate::modules::recursive_load::RegisterStep::Finalize {
-      module_id,
-      reference,
-      code,
-    } => {
-      load.finalize_after_pending(module_id, reference, code);
-      Ok(crate::modules::recursive_load::RegisterOutcome::Done)
-    }
+      .map_err(|e| e.into_error(scope, false, false))
   })
   .await?;
 
@@ -755,64 +743,6 @@ fn op_import_sync<'s, 'i>(
   let default = v8_static_strings::DEFAULT.v8_string(scope).unwrap();
   let es_module = v8_static_strings::ESMODULE.v8_string(scope).unwrap();
   // If the module has a default export and no __esModule export, wrap it.
-  if namespace.has_own_property(scope, default.into()) == Some(true)
-    && namespace.has_own_property(scope, es_module.into()) == Some(false)
-  {
-    let Some(module) = wrap_module(scope, module) else {
-      let exception = scope.exception().unwrap();
-      return exception_to_err_result(scope, exception, false, false)
-        .map_err(|e| CoreErrorKind::Js(e).into_box());
-    };
-    Ok(v8::Local::new(scope, module.get_module_namespace()))
-  } else {
-    Ok(v8::Local::new(scope, namespace).into())
-  }
-}
-
-/// Like `op_import_sync`, but when `code` is provided, compiles the source
-/// directly under the given specifier URL instead of going through the module
-/// loader. This ensures hook-provided source is used even if the module is
-/// already cached in the module map from a previous disk load.
-#[op2(reentrant)]
-fn op_import_sync_with_source<'s, 'i>(
-  scope: &mut v8::PinScope<'s, 'i>,
-  #[string] specifier: &str,
-  #[string] code: String,
-) -> Result<v8::Local<'s, v8::Value>, CoreError> {
-  let module_map_rc = JsRealm::module_map_from(scope);
-
-  let module_id = module_map_rc
-    .new_module_from_js_source(
-      scope,
-      false,
-      crate::modules::ModuleType::JavaScript,
-      crate::modules::ModuleName::from(specifier.to_string()),
-      crate::modules::ModuleCodeString::from(code),
-      false,
-      None,
-    )
-    .map_err(|e| e.into_error(scope, false, false))?;
-
-  module_map_rc
-    .instantiate_module(scope, module_id)
-    .map_err(|e| {
-      let exception = v8::Local::new(scope, e);
-      CoreErrorKind::Js(exception_to_err(scope, exception, false, false))
-        .into_box()
-    })?;
-
-  module_map_rc.mod_evaluate_sync(scope, module_id)?;
-
-  let module = module_map_rc
-    .get_module(scope, module_id)
-    .expect("Module must exist");
-
-  let namespace = module.get_module_namespace().cast::<v8::Object>();
-
-  v8::tc_scope!(let scope, scope);
-
-  let default = v8_static_strings::DEFAULT.v8_string(scope).unwrap();
-  let es_module = v8_static_strings::ESMODULE.v8_string(scope).unwrap();
   if namespace.has_own_property(scope, default.into()) == Some(true)
     && namespace.has_own_property(scope, es_module.into()) == Some(false)
   {

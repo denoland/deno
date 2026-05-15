@@ -77,6 +77,7 @@ deno_core::extension!(deno_web,
     op_encoding_new_decoder,
     op_encoding_decode,
     op_encoding_encode_into,
+    op_encoding_encode_into_fallback,
     op_blob_create_part,
     op_blob_slice_part,
     op_blob_read_part,
@@ -682,8 +683,46 @@ unsafe impl deno_core::GarbageCollected for TextDecoderResource {
   }
 }
 
+const ENCODE_INTO_PACKED_SENTINEL: f64 = -1.0;
+const ENCODE_INTO_MAX_PACKED_READ: usize = (1 << 21) - 1;
+const ENCODE_INTO_PACKED_MULTIPLIER: f64 = (1u64 << 32) as f64;
+
+#[inline]
+fn pack_encode_into_result(read: usize, written: usize) -> f64 {
+  debug_assert!(read <= ENCODE_INTO_MAX_PACKED_READ);
+  debug_assert!(written <= u32::MAX as usize);
+  (read as f64) * ENCODE_INTO_PACKED_MULTIPLIER + written as f64
+}
+
 #[op2(fast(op_encoding_encode_into_fast))]
 fn op_encoding_encode_into(
+  scope: &mut v8::PinScope<'_, '_>,
+  input: v8::Local<v8::Value>,
+  #[buffer] buffer: &mut [u8],
+) -> Result<f64, WebError> {
+  let s = v8::Local::<v8::String>::try_from(input)?;
+
+  if s.length() > ENCODE_INTO_MAX_PACKED_READ
+    && buffer.len() > ENCODE_INTO_MAX_PACKED_READ
+  {
+    return Ok(ENCODE_INTO_PACKED_SENTINEL);
+  }
+
+  let mut nchars = 0;
+  let len = s.write_utf8_v2(
+    scope,
+    buffer,
+    v8::WriteFlags::kReplaceInvalidUtf8,
+    Some(&mut nchars),
+  );
+
+  debug_assert!(nchars <= ENCODE_INTO_MAX_PACKED_READ);
+  debug_assert!(len <= u32::MAX as usize);
+  Ok(pack_encode_into_result(nchars, len))
+}
+
+#[op2(fast)]
+fn op_encoding_encode_into_fallback(
   scope: &mut v8::PinScope<'_, '_>,
   input: v8::Local<v8::Value>,
   #[buffer] buffer: &mut [u8],
@@ -707,8 +746,7 @@ fn op_encoding_encode_into(
 fn op_encoding_encode_into_fast(
   #[string] input: Cow<'_, str>,
   #[buffer] buffer: &mut [u8],
-  #[buffer] out_buf: &mut [u32],
-) {
+) -> f64 {
   // Since `input` is already UTF-8, we can simply find the last UTF-8 code
   // point boundary from input that fits in `buffer`, and copy the bytes up to
   // that point.
@@ -730,16 +768,21 @@ fn op_encoding_encode_into_fast(
     boundary
   };
 
-  buffer[..boundary].copy_from_slice(input[..boundary].as_bytes());
-
   // The `read` output parameter is measured in UTF-16 code units.
-  out_buf[0] = match input {
+  let read = match input {
     // Borrowed Cow strings are zero-copy views into the V8 heap.
     // Thus, they are guarantee to be SeqOneByteString.
-    Cow::Borrowed(v) => v[..boundary].len() as u32,
-    Cow::Owned(v) => v[..boundary].encode_utf16().count() as u32,
+    Cow::Borrowed(v) => v[..boundary].len(),
+    Cow::Owned(ref v) => v[..boundary].encode_utf16().count(),
   };
-  out_buf[1] = boundary as u32;
+
+  if read > ENCODE_INTO_MAX_PACKED_READ || boundary > u32::MAX as usize {
+    return ENCODE_INTO_PACKED_SENTINEL;
+  }
+
+  buffer[..boundary].copy_from_slice(input[..boundary].as_bytes());
+
+  pack_encode_into_result(read, boundary)
 }
 
 pub struct Location(pub Url);

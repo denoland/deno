@@ -1018,7 +1018,6 @@ pub struct Flags {
   pub permission_set: Option<String>,
   pub eszip: bool,
   pub node_conditions: Vec<String>,
-  pub experimental_loaders: Vec<String>,
   pub preload: Vec<String>,
   pub require: Vec<String>,
   pub tunnel: bool,
@@ -5591,7 +5590,6 @@ fn runtime_misc_args(app: Command) -> Command {
     .arg(enable_testing_features_arg())
     .arg(trace_ops_arg())
     .arg(eszip_arg())
-    .arg(experimental_loader_arg())
     .arg(preload_arg())
     .arg(require_arg())
 }
@@ -5798,17 +5796,6 @@ fn reload_arg() -> Arg {
     ))
     .value_hint(ValueHint::FilePath)
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
-}
-
-fn experimental_loader_arg() -> Arg {
-  Arg::new("experimental-loader")
-    .long("experimental-loader")
-    .alias("loader")
-    .value_name("MODULE")
-    .action(ArgAction::Append)
-    .help("Use the specified module as a custom loader (Node.js compat)")
-    .hide(true)
-    .value_hint(ValueHint::FilePath)
 }
 
 fn preload_arg() -> Arg {
@@ -8388,7 +8375,6 @@ fn runtime_args_parse(
   env_file_arg_parse(flags, matches);
   trace_ops_parse(flags, matches);
   eszip_arg_parse(flags, matches);
-  experimental_loader_arg_parse(flags, matches);
   preload_arg_parse(flags, matches);
   require_arg_parse(flags, matches);
   Ok(())
@@ -8437,12 +8423,6 @@ fn reload_arg_parse(
   }
 
   Ok(())
-}
-
-fn experimental_loader_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  if let Some(loaders) = matches.remove_many::<String>("experimental-loader") {
-    flags.experimental_loaders = loaders.collect();
-  }
 }
 
 fn preload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {

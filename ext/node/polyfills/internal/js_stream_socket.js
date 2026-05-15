@@ -17,11 +17,16 @@ const { codeMap, UV_ECANCELED } = core.loadExtScript(
   "ext:deno_node/internal_binding/uv.ts",
 );
 const {
+  kArrayBufferOffset,
   kBytesWritten,
   kLastWriteWasAsync,
+  kReadBytesOrError,
   streamBaseState,
 } = core.loadExtScript("ext:deno_node/internal_binding/stream_wrap.ts");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { ERR_STREAM_WRAP } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
 const kCurrentWriteRequest = Symbol("kCurrentWriteRequest");
 const kCurrentShutdownRequest = Symbol("kCurrentShutdownRequest");
@@ -126,9 +131,23 @@ class JSStreamSocket extends lazyNet().Socket {
       shutdown(req) {
         return handle[kOwner].doShutdown(req);
       },
-      // These are set by TLSWrap after attachJsStream()
-      readBuffer: null,
-      emitEOF: null,
+      // Default read path: forward bytes from the underlying Duplex into
+      // the wrapping Socket's readable side via the standard onread
+      // callback (set by net._initSocketHandle).
+      // TLSWrap.attachJsStream() overrides these to route data through
+      // the TLS engine instead.
+      readBuffer(chunk) {
+        if (!handle.onread) return;
+        const len = chunk.byteLength ?? chunk.length ?? 0;
+        if (len === 0) return;
+        streamBaseState[kArrayBufferOffset] = chunk.byteOffset ?? 0;
+        streamBaseState[kReadBytesOrError] = len;
+        handle.onread.call(handle, chunk, len);
+      },
+      emitEOF() {
+        if (!handle.onread) return;
+        handle.onread.call(handle, null, codeMap.get("EOF"));
+      },
       reading: false,
     };
 
@@ -142,7 +161,7 @@ class JSStreamSocket extends lazyNet().Socket {
         // Make sure that no further `data` events will happen.
         stream.pause();
         stream.removeListener("data", ondata);
-        this.emit("error", new Error("Stream is not in binary mode"));
+        this.emit("error", new ERR_STREAM_WRAP());
         return;
       }
 
@@ -288,6 +307,12 @@ class JSStreamSocket extends lazyNet().Socket {
     });
   }
 }
+
+// Node's lib/internal/js_stream_socket exports the class as the module
+// itself, with `StreamWrap` as a self-reference so destructuring works:
+//   const StreamWrap = require('internal/js_stream_socket');
+//   const { StreamWrap } = require('internal/js_stream_socket');
+JSStreamSocket.StreamWrap = JSStreamSocket;
 
 return { JSStreamSocket, kJSStreamHandle, kOwner, default: JSStreamSocket };
 })();

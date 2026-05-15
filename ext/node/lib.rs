@@ -169,12 +169,6 @@ deno_core::extension!(deno_node,
   ops = [
     ops::assert::op_node_get_first_expression,
 
-    ops::module_hooks::op_module_hooks_register,
-    ops::module_hooks::op_module_hooks_poll_resolve,
-    ops::module_hooks::op_module_hooks_respond_resolve,
-    ops::module_hooks::op_module_hooks_poll_load,
-    ops::module_hooks::op_module_hooks_respond_load,
-
     ops::blocklist::op_socket_address_parse,
     ops::blocklist::op_socket_address_get_serialization,
 
@@ -399,6 +393,7 @@ deno_core::extension!(deno_node,
     ops::perf_hooks::EldHistogram,
     ops::handle_wrap::AsyncWrap,
     ops::handle_wrap::HandleWrap,
+    ops::wasi::WasiContext,
     ops::stream_wrap::LibUvStreamWrap,
     ops::tty_wrap::TTY,
     ops::zlib::BrotliDecoder,
@@ -483,7 +478,6 @@ deno_core::extension!(deno_node,
     "node:stream/web" = "stream/web_esm.js",
     "node:string_decoder" = "string_decoder_esm.ts",
     "node:test" = "testing_esm.ts",
-    "node:test/reporters" = "test/reporters_esm.ts",
     "node:cluster" = "cluster_esm.ts",
     "node:console" = "console_esm.ts",
     "node:constants" = "constants_esm.ts",
@@ -699,7 +693,6 @@ deno_core::extension!(deno_node,
     "stream/web.js",
     "string_decoder.ts",
     "testing.ts",
-    "test/reporters.ts",
     "_fs/_fs_common.ts",
     "_fs/_fs_cp.ts",
     "_fs/_fs_fstat.ts",
@@ -722,7 +715,6 @@ deno_core::extension!(deno_node,
   },
   state = |state, options| {
     state.put(options.fs.clone());
-    state.put(ops::module_hooks::LoaderHookRegistry::default());
 
     if let Some(init) = &options.maybe_init {
       state.put(init.sys.clone());
