@@ -1,0 +1,40 @@
+From-qjs_v8_compat: cfunc auto-prototype
+---
+ quickjs.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/quickjs.c b/quickjs.c
+index 0a3abac..7d0f0b0 100644
+--- a/quickjs.c
++++ b/quickjs.c
+@@ -6115,6 +6115,11 @@ static int js_method_set_properties(JSContext *ctx, JSValue func_obj,
+     return 0;
+ }
+
++/* qjs_v8_compat: forward decl needed for the patch in JS_NewCFunction3. */
++static int JS_DefineAutoInitProperty(JSContext *ctx, JSValueConst this_obj,
++                                     JSAtom prop, JSAutoInitIDEnum id,
++                                     void *opaque, int flags);
++
+ /* Note: at least 'length' arguments will be readable in 'argv' */
+ /* `name` may be NULL, pure ASCII or UTF-8 encoded */
+ JSValue JS_NewCFunction3(JSContext *ctx, JSCFunction *func,
+@@ -6153,6 +6158,18 @@ JSValue JS_NewCFunction3(JSContext *ctx, JSCFunction *func,
+     }
+     js_function_set_properties(ctx, func_obj, name_atom, length);
+     JS_FreeAtom(ctx, name_atom);
++    /* qjs_v8_compat patch: JS_CFUNC_generic_magic is the cproto used by
++       our deno_core op trampoline (FunctionTemplate). Real V8's
++       FunctionTemplate-built constructors auto-receive `.prototype`,
++       and deno_core's setUpAsyncStub writes
++       `tmpl_fn.prototype[opName] = fn`. Lazily attach a prototype slot
++       (mirrors the bytecode-function path further below). */
++    if (cproto == JS_CFUNC_generic_magic) {
++        JS_SetConstructorBit(ctx, func_obj, true);
++        JS_DefineAutoInitProperty(ctx, func_obj, JS_ATOM_prototype,
++                                  JS_AUTOINIT_ID_PROTOTYPE, NULL,
++                                  JS_PROP_WRITABLE);
++    }
+     return func_obj;
+ }
+
