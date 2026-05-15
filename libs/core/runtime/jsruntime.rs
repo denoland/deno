@@ -1463,7 +1463,9 @@ impl JsRuntime {
     }
 
     // ...then execute all entry points
+    eprintln!("[init-ext] entry_points: {:?}", loaded_sources.esm_entry_points);
     for specifier in loaded_sources.esm_entry_points {
+      eprintln!("[init-ext] entry: {}", specifier);
       let Some(mod_id) =
         module_map.get_id(&specifier, RequestedModuleType::None)
       else {

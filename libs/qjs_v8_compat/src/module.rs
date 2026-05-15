@@ -300,12 +300,14 @@ impl<'s> Local<'s, Module> {
       crate::module::lookup_module_source(&self.raw())
     {
       let fname = filename.unwrap_or_else(|| "<module>".to_string());
+      eprintln!("[Module::evaluate] running {fname}");
       let result = sys::eval(
         ctx,
         &src,
         &fname,
         crate::ffi::JS_EVAL_TYPE_MODULE,
       );
+      eprintln!("[Module::evaluate] {fname} done is_exc={}", sys::jsv_is_exception(&result));
       if sys::jsv_is_exception(&result) {
         if let Some(exc) = sys::take_pending_exception(ctx) {
           if let Some(s) = sys::to_string_lossy(ctx, exc) {
@@ -327,7 +329,6 @@ impl<'s> Local<'s, Module> {
       &self.raw(),
       ModuleStatus::Evaluated,
     );
-    crate::module::mark_all_modules_evaluated();
     // Synthesize a fulfilled promise. We need to free the resolve/reject
     // pair; QuickJS hands them out at +1 refcount each, and we don't
     // need them past this call.
