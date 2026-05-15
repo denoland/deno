@@ -1,6 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import sqlite, { backup, DatabaseSync } from "node:sqlite";
-import { assert, assertEquals, assertThrows } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertStrictEquals,
+  assertThrows,
+} from "@std/assert";
 import * as nodeAssert from "node:assert";
 import { Buffer } from "node:buffer";
 import { writeFileSync } from "node:fs";
@@ -450,6 +455,145 @@ Deno.test("[node/sqlite] Database backup", async () => {
 
   Deno.removeSync(`${tempDir}/original.db`);
   Deno.removeSync(`${tempDir}/backup.db`);
+});
+
+Deno.test("[node/sqlite] DatabaseSync.serialize/deserialize round-trip", () => {
+  using src = new DatabaseSync(":memory:");
+  src.exec("CREATE TABLE t(id INTEGER PRIMARY KEY, name TEXT)");
+  const insert = src.prepare("INSERT INTO t (id, name) VALUES (?, ?)");
+  insert.run(1, "a");
+  insert.run(2, "b");
+  insert.run(3, "c");
+
+  const buf = src.serialize();
+  assert(buf instanceof Uint8Array);
+  assert(buf.length > 0);
+
+  using dst = new DatabaseSync(":memory:");
+  dst.deserialize(buf);
+  const rows = dst.prepare("SELECT id, name FROM t ORDER BY id").all();
+  assertEquals(rows, [
+    { id: 1, name: "a", __proto__: null },
+    { id: 2, name: "b", __proto__: null },
+    { id: 3, name: "c", __proto__: null },
+  ]);
+
+  // deserialize is writable by default
+  dst.exec("INSERT INTO t (id, name) VALUES (4, 'd')");
+  assertEquals(
+    dst.prepare("SELECT name FROM t WHERE id = 4").get(),
+    { name: "d", __proto__: null },
+  );
+});
+
+Deno.test("[node/sqlite] DatabaseSync.serialize with file-backed db", () => {
+  const dbPath = `${tempDir}/serialize_file.db`;
+  using src = new DatabaseSync(dbPath);
+  src.exec("CREATE TABLE t(value TEXT)");
+  src.prepare("INSERT INTO t VALUES (?)").run("hello");
+
+  const buf = src.serialize();
+  assert(buf instanceof Uint8Array);
+  assert(buf.length > 0);
+  // SQLite database files start with "SQLite format 3\0"
+  assertEquals(buf[0], 0x53);
+  assertEquals(buf[1], 0x51);
+  assertEquals(buf[2], 0x4c);
+
+  using dst = new DatabaseSync(":memory:");
+  dst.deserialize(buf);
+  assertEquals(
+    dst.prepare("SELECT value FROM t").get(),
+    { value: "hello", __proto__: null },
+  );
+
+  src.close();
+  Deno.removeSync(dbPath);
+});
+
+Deno.test("[node/sqlite] DatabaseSync.deserialize readOnly option", () => {
+  using src = new DatabaseSync(":memory:");
+  src.exec("CREATE TABLE t(value TEXT)");
+  src.prepare("INSERT INTO t VALUES (?)").run("read-only");
+  const buf = src.serialize();
+
+  using dst = new DatabaseSync(":memory:");
+  // @ts-ignore `readOnly` may not be in @types/node yet
+  dst.deserialize(buf, { readOnly: true });
+  assertEquals(
+    dst.prepare("SELECT value FROM t").get(),
+    { value: "read-only", __proto__: null },
+  );
+
+  assertThrows(
+    () => dst.exec("INSERT INTO t VALUES ('nope')"),
+    Error,
+  );
+});
+
+Deno.test("[node/sqlite] DatabaseSync.deserialize accepts Buffer", () => {
+  using src = new DatabaseSync(":memory:");
+  src.exec("CREATE TABLE t(value INTEGER)");
+  src.prepare("INSERT INTO t VALUES (?)").run(42);
+  const buf = Buffer.from(src.serialize());
+
+  using dst = new DatabaseSync(":memory:");
+  dst.deserialize(buf);
+  assertEquals(
+    dst.prepare("SELECT value FROM t").get(),
+    { value: 42, __proto__: null },
+  );
+});
+
+Deno.test("[node/sqlite] DatabaseSync.serialize/deserialize input validation", () => {
+  using db = new DatabaseSync(":memory:");
+
+  nodeAssert.throws(
+    // @ts-expect-error testing invalid input
+    () => db.serialize(123),
+    { code: "ERR_INVALID_ARG_TYPE" },
+  );
+
+  nodeAssert.throws(
+    // @ts-expect-error testing invalid input
+    () => db.deserialize("not a buffer"),
+    { code: "ERR_INVALID_ARG_TYPE" },
+  );
+
+  nodeAssert.throws(
+    // @ts-expect-error testing invalid input
+    () => db.deserialize(new Uint8Array([1, 2, 3]), 42),
+    { code: "ERR_INVALID_ARG_TYPE" },
+  );
+});
+
+Deno.test("[node/sqlite] DatabaseSync.serialize/deserialize after close", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE t(x INTEGER)");
+  db.close();
+
+  assertThrows(
+    () => db.serialize(),
+    Error,
+    "database is not open",
+  );
+
+  assertThrows(
+    () => db.deserialize(new Uint8Array(0)),
+    Error,
+    "database is not open",
+  );
+});
+
+Deno.test("[node/sqlite] DatabaseSync.deserialize corrupt header surfaces error on use", () => {
+  using db = new DatabaseSync(":memory:");
+  // sqlite3_deserialize accepts arbitrary bytes; the corruption only
+  // surfaces when the deserialized database is actually queried.
+  db.deserialize(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]));
+  assertThrows(
+    () => db.exec("CREATE TABLE t(x INTEGER)"),
+    Error,
+  );
 });
 
 Deno.test("[node/sqlite] calling StatementSync and Session methods after connection has closed", () => {
@@ -1066,4 +1210,212 @@ Deno.test("[node/sqlite] StatementSync alive while iterator", () => {
   for (const { id } of iter) {
     assertEquals(typeof id, "number");
   }
+});
+
+Deno.test("sql.run inserts data", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"bob"})`.changes,
+    1,
+  );
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"mac"})`.changes,
+    1,
+  );
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"alice"})`.changes,
+    1,
+  );
+
+  // @ts-expect-error count is a valid property
+  const count = db.prepare("SELECT COUNT(*) as count FROM foo").get().count;
+  assertStrictEquals(count, 3);
+});
+
+Deno.test("sql.get retrieves a single row", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"bob"})`.changes,
+    1,
+  );
+  const first = sql.get`SELECT * FROM foo ORDER BY id ASC`;
+  assert(first);
+  assertStrictEquals(first.text, "bob");
+  assertStrictEquals(first.id, 1);
+  assertStrictEquals(Object.getPrototypeOf(first), null);
+});
+
+Deno.test("sql.all retrieves all rows", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"bob"})`.changes,
+    1,
+  );
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"mac"})`.changes,
+    1,
+  );
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"alice"})`.changes,
+    1,
+  );
+
+  const all = sql.all`SELECT * FROM foo ORDER BY id ASC`;
+  assertStrictEquals(Array.isArray(all), true);
+  assertStrictEquals(all.length, 3);
+  for (const row of all) {
+    assertStrictEquals(Object.getPrototypeOf(row), null);
+  }
+  assertEquals((all as Array<{ text: string }>).map((r) => r.text), [
+    "bob",
+    "mac",
+    "alice",
+  ]);
+});
+
+Deno.test("sql.iterate retrieves rows via iterator", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"bob"})`.changes,
+    1,
+  );
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"mac"})`.changes,
+    1,
+  );
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"alice"})`.changes,
+    1,
+  );
+
+  const iter = sql.iterate`SELECT * FROM foo ORDER BY id ASC`;
+  const iterRows = [];
+  for (const row of iter) {
+    assert(row);
+    assertStrictEquals(Object.getPrototypeOf(row), null);
+    iterRows.push(row.text);
+  }
+  assertEquals(iterRows, ["bob", "mac", "alice"]);
+});
+
+Deno.test("queries with no results", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  const none = sql.get`SELECT * FROM foo WHERE text = ${"notfound"}`;
+  assertStrictEquals(none, undefined);
+
+  const empty = sql.all`SELECT * FROM foo WHERE text = ${"notfound"}`;
+  assertEquals(empty, []);
+
+  let count = 0;
+  // eslint-disable-next-line no-unused-vars
+  for (const _ of sql.iterate`SELECT * FROM foo WHERE text = ${"notfound"}`) {
+    count++;
+  }
+  assertStrictEquals(count, 0);
+});
+
+Deno.test("TagStore capacity, size, and clear", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  assertStrictEquals(sql.capacity, 10);
+  assertStrictEquals(sql.size, 0);
+
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"one"})`.changes,
+    1,
+  );
+  assertStrictEquals(sql.size, 1);
+
+  assert(sql.get`SELECT * FROM foo WHERE text = ${"one"}`);
+  assertStrictEquals(sql.size, 2);
+
+  // Using the same template string shouldn't increase the size
+  assertStrictEquals(
+    sql.get`SELECT * FROM foo WHERE text = ${"two"}`,
+    undefined,
+  );
+  assertStrictEquals(sql.size, 2);
+
+  assertStrictEquals(sql.all`SELECT * FROM foo`.length, 1);
+  assertStrictEquals(sql.size, 3);
+
+  sql.clear();
+  assertStrictEquals(sql.size, 0);
+  assertStrictEquals(sql.capacity, 10);
+});
+
+Deno.test("sql.db returns the associated DatabaseSync instance", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  assertStrictEquals(sql.db, db);
+});
+
+Deno.test("createTagStore throws error if database is not open", () => {
+  const db = new DatabaseSync(":memory:", { open: false });
+
+  assertThrows(
+    () => {
+      // @ts-expect-error createTagStore is a valid method
+      db.createTagStore(10);
+    },
+    Error,
+    "database is not open",
+  );
+});
+
+Deno.test("createTagStore: sql error messages are descriptive", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"test"})`.changes,
+    1,
+  );
+
+  assertThrows(
+    () => sql.get`SELECT nonexistent_column FROM foo`,
+    Error,
+    "no such column",
+  );
+
+  assertThrows(
+    () => sql.get`SELECT * FROM nonexistent_table`,
+    Error,
+    "no such table",
+  );
+});
+
+Deno.test("createTagStore uses default capacity when not specified", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore();
+  assertStrictEquals(sql.capacity, 1000);
 });

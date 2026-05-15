@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { core, primordials } from "ext:core/mod.js";
-import { op_console_size } from "ext:core/ops";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { op_console_size } = core.ops;
 const {
   Uint32Array,
 } = primordials;
@@ -21,4 +22,5 @@ function isatty(rid) {
   return isTerminal(rid);
 }
 
-export { consoleSize, isatty };
+return { consoleSize, isatty };
+})();

@@ -40,7 +40,7 @@ pub struct OidcTokenResponse {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishingTaskError {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "currently unused")]
   pub code: String,
   pub message: String,
 }
@@ -51,12 +51,6 @@ pub struct PublishingTask {
   pub id: String,
   pub status: String,
   pub error: Option<PublishingTaskError>,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Package {
-  pub latest_version: Option<String>,
 }
 
 #[derive(serde::Deserialize)]

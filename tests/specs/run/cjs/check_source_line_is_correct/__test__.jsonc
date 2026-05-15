@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read index.cjs",
+  "output": "main.out"
+}

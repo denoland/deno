@@ -1,0 +1,11 @@
+Salt length 20: 256
+Salt length 32: 256
+Salt length 64: 256
+All signatures are 256 bytes: true
+Verify salt 20: true
+Verify salt 32: true
+Verify salt 64: true
+Cross-verify (sig20, salt32): false
+One-shot sign length: 256
+One-shot verify: true
+ok

@@ -1,0 +1,136 @@
+{
+  "buffered-flag.any.html": false,
+  "buffered-flag.any.worker.html": false,
+  "case-sensitivity.any.html": true,
+  "case-sensitivity.any.worker.html": true,
+  "clear_all_marks.any.html": true,
+  "clear_all_marks.any.worker.html": true,
+  "clear_all_measures.any.html": true,
+  "clear_all_measures.any.worker.html": true,
+  "clear_non_existent_mark.any.html": true,
+  "clear_non_existent_mark.any.worker.html": true,
+  "clear_non_existent_measure.any.html": true,
+  "clear_non_existent_measure.any.worker.html": true,
+  "clear_one_mark.any.html": true,
+  "clear_one_mark.any.worker.html": true,
+  "clear_one_measure.any.html": true,
+  "clear_one_measure.any.worker.html": true,
+  "entry_type.any.html": true,
+  "entry_type.any.worker.html": true,
+  "idlharness.any.html": true,
+  "idlharness.any.worker.html": true,
+  "mark-entry-constructor.any.html": true,
+  "mark-entry-constructor.any.worker.html": true,
+  "mark-errors.any.html": true,
+  "mark-errors.any.worker.html": true,
+  "mark-l3.any.html": true,
+  "mark-l3.any.worker.html": true,
+  "mark-measure-return-objects.any.html": true,
+  "mark-measure-return-objects.any.worker.html": true,
+  "mark.any.html": true,
+  "mark.any.worker.html": true,
+  "measure-l3.any.html": true,
+  "measure-l3.any.worker.html": true,
+  "measure-with-dict.any.html": {
+    "expectedFailures": [
+      "measure entries' detail and start/end are customizable"
+    ]
+  },
+  "measure-with-dict.any.worker.html": {
+    "expectedFailures": [
+      "measure entries' detail and start/end are customizable"
+    ]
+  },
+  "measure_syntax_err.any.html": true,
+  "measure_syntax_err.any.worker.html": true,
+  "structured-serialize-detail.any.html": true,
+  "structured-serialize-detail.any.worker.html": true,
+  "supported-usertiming-types.any.html": true,
+  "supported-usertiming-types.any.worker.html": true,
+  "user_timing_exists.any.html": true,
+  "user_timing_exists.any.worker.html": true,
+  "invoke_with_timing_attributes.worker.html": true,
+  "performance-measure-invalid.worker.html": false,
+  "clearMarks.html": false,
+  "clearMeasures.html": false,
+  "invoke_with_timing_attributes.html": {
+    "expectedFailures": [
+      "performance.mark should throw if used with timing attribute navigationStart",
+      "performance.mark should throw if used with timing attribute unloadEventStart",
+      "performance.mark should throw if used with timing attribute unloadEventEnd",
+      "performance.mark should throw if used with timing attribute redirectStart",
+      "performance.mark should throw if used with timing attribute redirectEnd",
+      "performance.mark should throw if used with timing attribute fetchStart",
+      "performance.mark should throw if used with timing attribute domainLookupStart",
+      "performance.mark should throw if used with timing attribute domainLookupEnd",
+      "performance.mark should throw if used with timing attribute connectStart",
+      "performance.mark should throw if used with timing attribute connectEnd",
+      "performance.mark should throw if used with timing attribute secureConnectionStart",
+      "performance.mark should throw if used with timing attribute requestStart",
+      "performance.mark should throw if used with timing attribute responseStart",
+      "performance.mark should throw if used with timing attribute responseEnd",
+      "performance.mark should throw if used with timing attribute domLoading",
+      "performance.mark should throw if used with timing attribute domInteractive",
+      "performance.mark should throw if used with timing attribute domContentLoadedEventStart",
+      "performance.mark should throw if used with timing attribute domContentLoadedEventEnd",
+      "performance.mark should throw if used with timing attribute domComplete",
+      "performance.mark should throw if used with timing attribute loadEventStart",
+      "performance.mark should throw if used with timing attribute loadEventEnd"
+    ]
+  },
+  "invoke_without_parameter.html": true,
+  "mark-measure-feature-detection.html": true,
+  "mark.html": false,
+  "mark_exceptions.html": {
+    "expectedFailures": [
+      "window.performance.mark(\"navigationStart\") throws a SyntaxError exception.",
+      "window.performance.mark(\"unloadEventStart\") throws a SyntaxError exception.",
+      "window.performance.mark(\"unloadEventEnd\") throws a SyntaxError exception.",
+      "window.performance.mark(\"redirectStart\") throws a SyntaxError exception.",
+      "window.performance.mark(\"redirectEnd\") throws a SyntaxError exception.",
+      "window.performance.mark(\"fetchStart\") throws a SyntaxError exception.",
+      "window.performance.mark(\"domainLookupStart\") throws a SyntaxError exception.",
+      "window.performance.mark(\"domainLookupEnd\") throws a SyntaxError exception.",
+      "window.performance.mark(\"connectStart\") throws a SyntaxError exception.",
+      "window.performance.mark(\"connectEnd\") throws a SyntaxError exception.",
+      "window.performance.mark(\"secureConnectionStart\") throws a SyntaxError exception.",
+      "window.performance.mark(\"requestStart\") throws a SyntaxError exception.",
+      "window.performance.mark(\"responseStart\") throws a SyntaxError exception.",
+      "window.performance.mark(\"responseEnd\") throws a SyntaxError exception.",
+      "window.performance.mark(\"domLoading\") throws a SyntaxError exception.",
+      "window.performance.mark(\"domInteractive\") throws a SyntaxError exception.",
+      "window.performance.mark(\"domContentLoadedEventStart\") throws a SyntaxError exception.",
+      "window.performance.mark(\"domContentLoadedEventEnd\") throws a SyntaxError exception.",
+      "window.performance.mark(\"domComplete\") throws a SyntaxError exception.",
+      "window.performance.mark(\"loadEventStart\") throws a SyntaxError exception.",
+      "window.performance.mark(\"loadEventEnd\") throws a SyntaxError exception."
+    ]
+  },
+  "measure-exceptions.html": {
+    "expectedFailures": [
+      "Passing 'unloadEventStart' as a mark to measure API should cause error when the mark is empty.",
+      "Passing 'unloadEventEnd' as a mark to measure API should cause error when the mark is empty.",
+      "Passing 'redirectStart' as a mark to measure API should cause error when the mark is empty.",
+      "Passing 'redirectEnd' as a mark to measure API should cause error when the mark is empty.",
+      "Passing 'secureConnectionStart' as a mark to measure API should cause error when the mark is empty.",
+      "Passing 'domInteractive' as a mark to measure API should cause error when the mark is empty.",
+      "Passing 'domContentLoadedEventStart' as a mark to measure API should cause error when the mark is empty.",
+      "Passing 'domContentLoadedEventEnd' as a mark to measure API should cause error when the mark is empty.",
+      "Passing 'domComplete' as a mark to measure API should cause error when the mark is empty.",
+      "Passing 'loadEventStart' as a mark to measure API should cause error when the mark is empty.",
+      "Passing 'loadEventEnd' as a mark to measure API should cause error when the mark is empty."
+    ]
+  },
+  "measure.html": false,
+  "measure_associated_with_navigation_timing.html": false,
+  "measure_exception.html": {
+    "expectedFailures": [
+      "Invocation of performance.measure(\"Exception7\", \"redirectStart\") should throw INVALID_ACCESS_ERR Exception.",
+      "Invocation of performance.measure(\"Exception8\", {\"detail\": \"non-empty\"}) should throw TypeError Exception."
+    ]
+  },
+  "measure_exceptions_navigation_timing.html": false,
+  "measure_navigation_timing.html": false,
+  "measures.html": false,
+  "user-timing-tojson.html": true
+}

@@ -156,7 +156,7 @@ fn make_uv_mutex() -> *mut uv_mutex_t {
   mutex.cast()
 }
 
-#[allow(unused_unsafe)]
+#[allow(unused_unsafe, reason = "napi_sys safe fn in unsafe extern blocks")]
 extern "C" fn test_uv_async(
   env: napi_env,
   info: napi_callback_info,
@@ -200,8 +200,86 @@ extern "C" fn test_uv_async(
   ptr::null_mut()
 }
 
+/// Test that uv_async_init keeps the event loop alive without any other
+/// ref (no KeepAlive/threadsafe function). A worker thread fires
+/// uv_async_send after a short delay; the callback prints a message and
+/// closes the handle. Without proper ref-counting in uv_async_init/uv_close,
+/// the process would exit before the callback fires.
+unsafe extern "C" fn ref_callback(handle: *mut uv_async_t) {
+  unsafe {
+    let async_ = (*handle).data as *mut RefAsync;
+    let env = (*async_).env;
+    let mut js_cb = null_mut();
+    assert_napi_ok!(napi_get_reference_value(
+      env,
+      (*async_).callback,
+      &mut js_cb
+    ));
+    let mut global: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_global(env, &mut global));
+    let mut result: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_call_function(
+      env,
+      global,
+      js_cb,
+      0,
+      ptr::null(),
+      &mut result,
+    ));
+    assert_napi_ok!(napi_delete_reference(env, (*async_).callback));
+    let _ = Box::from_raw(async_);
+    uv_close(handle.cast(), Some(ref_close_cb));
+  }
+}
+
+unsafe extern "C" fn ref_close_cb(handle: *mut uv_handle_t) {
+  unsafe {
+    let _ = Box::from_raw(handle.cast::<uv_async_t>());
+  }
+}
+
+struct RefAsync {
+  env: napi_env,
+  callback: napi_ref,
+}
+
+#[allow(unused_unsafe, reason = "only unsafe on Windows")]
+extern "C" fn test_uv_async_ref(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let mut loop_ = null_mut();
+  assert_napi_ok!(napi_get_uv_event_loop(env, &mut loop_));
+  let uv_async = new_raw(MaybeUninit::<uv_async_t>::uninit());
+  let uv_async = uv_async.cast::<uv_async_t>();
+  let mut js_cb = null_mut();
+  assert_napi_ok!(napi_create_reference(env, args[0], 1, &mut js_cb));
+
+  let data = new_raw(RefAsync {
+    env,
+    callback: js_cb,
+  });
+  unsafe {
+    addr_of_mut!((*uv_async).data).write(data.cast());
+    assert_napi_ok!(uv_async_init(loop_.cast(), uv_async, Some(ref_callback)));
+    let uv_async = UvAsyncPtr(uv_async);
+    std::thread::spawn(move || {
+      std::thread::sleep(Duration::from_millis(50));
+      uv_async_send(uv_async);
+    });
+  }
+
+  ptr::null_mut()
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
-  let properties = &[napi_new_property!(env, "test_uv_async", test_uv_async)];
+  let properties = &[
+    napi_new_property!(env, "test_uv_async", test_uv_async),
+    napi_new_property!(env, "test_uv_async_ref", test_uv_async_ref),
+  ];
 
   assert_napi_ok!(napi_define_properties(
     env,

@@ -207,13 +207,23 @@ Deno.test(function addTest() {
     create_file(
       &dir,
       "main.ts",
-      r#"export function add(a: number, b: number): number {
-  return a + b;
+      r#"export function handler(req: Request): Response {
+  const url = new URL(req.url);
+
+  if (url.pathname === "/api") {
+    return Response.json({
+      message: "Hello, world!",
+      time: new Date().toISOString(),
+    });
+  }
+
+  return new Response("<h1>Welcome to Deno!</h1>", {
+    headers: { "content-type": "text/html" },
+  });
 }
 
-// Learn more at https://docs.deno.com/runtime/manual/examples/module_metadata#concepts
 if (import.meta.main) {
-  console.log("Add 2 + 3 =", add(2, 3));
+  Deno.serve(handler);
 }
 "#,
     )?;
@@ -221,10 +231,20 @@ if (import.meta.main) {
       &dir,
       "main_test.ts",
       r#"import { assertEquals } from "@std/assert";
-import { add } from "./main.ts";
+import { handler } from "./main.ts";
 
-Deno.test(function addTest() {
-  assertEquals(add(2, 3), 5);
+Deno.test("returns html on /", async () => {
+  const res = handler(new Request("http://localhost/"));
+  assertEquals(res.headers.get("content-type"), "text/html");
+  const body = await res.text();
+  assertEquals(body.includes("Welcome to Deno"), true);
+});
+
+Deno.test("returns json on /api", async () => {
+  const res = handler(new Request("http://localhost/api"));
+  const data = await res.json();
+  assertEquals(data.message, "Hello, world!");
+  assertEquals(typeof data.time, "string");
 });
 "#,
     )?;
@@ -234,7 +254,7 @@ Deno.test(function addTest() {
       "deno.json",
       &json!({
         "tasks": {
-          "dev": "deno run --watch main.ts"
+          "dev": "deno run --watch --allow-net main.ts"
         },
         "imports": {
           "@std/assert": "jsr:@std/assert@1"
@@ -285,12 +305,12 @@ Deno.test(function addTest() {
     info!("  {}", colors::gray("# Publish to JSR (dry run)"));
     info!("  deno publish --dry-run");
   } else {
-    info!("  {}", colors::gray("# Run the program"));
-    info!("  deno run main.ts");
+    info!("  {}", colors::gray("# Run the server"));
+    info!("  deno run --allow-net main.ts");
     info!("");
     info!(
       "  {}",
-      colors::gray("# Run the program and watch for file changes")
+      colors::gray("# Run the server and watch for file changes")
     );
     info!("  deno task dev");
     info!("");

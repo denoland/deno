@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "flamegraph": {
+      "steps": [
+        {
+          "args": "run --cpu-prof-dir=. --cpu-prof-flamegraph main.js",
+          "output": "main.out"
+        },
+        {
+          "args": "run --allow-read verify.js",
+          "output": "Valid flamegraph\n"
+        }
+      ]
+    }
+  }
+}

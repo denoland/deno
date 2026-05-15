@@ -91,7 +91,7 @@ pub fn op_restore_test_permissions(
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "op")]
 #[op2]
 fn op_register_test(
   state: &mut OpState,
@@ -106,6 +106,7 @@ fn op_register_test(
   #[smi] column_number: u32,
   #[buffer] ret_buf: &mut [u8],
   sanitize_only: bool,
+  #[smi] timeout_ms: u32,
 ) -> Result<(), JsErrorBox> {
   if ret_buf.len() != 4 {
     return Err(JsErrorBox::type_error(format!(
@@ -115,6 +116,11 @@ fn op_register_test(
   }
   let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
   let origin = state.borrow::<ModuleSpecifier>().to_string();
+  let timeout_ms = if timeout_ms == 0 {
+    None
+  } else {
+    Some(timeout_ms)
+  };
   let description = TestDescription {
     id,
     name,
@@ -129,6 +135,7 @@ fn op_register_test(
       line_number,
       column_number,
     },
+    timeout_ms,
   };
   state
     .borrow_mut::<TestContainer>()
@@ -156,7 +163,7 @@ fn op_test_get_origin(state: &mut OpState) -> String {
 
 #[op2(fast)]
 #[smi]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "op")]
 fn op_register_test_step(
   state: &mut OpState,
   #[string] name: String,

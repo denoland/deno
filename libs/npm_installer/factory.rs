@@ -7,6 +7,7 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
 use deno_npm_cache::NpmCacheSetting;
+use deno_npm_cache::NpmPackumentFormat;
 use deno_npm_cache::RegistryInfoProvider;
 use deno_npm_cache::TarballCache;
 use deno_resolver::factory::ResolverFactory;
@@ -53,6 +54,10 @@ pub struct NpmInstallerFactoryOptions {
   pub caching_strategy: NpmCachingStrategy,
   pub clean_on_install: bool,
   pub lifecycle_scripts_config: LifecycleScriptsConfig,
+  /// Only install production dependencies (excludes devDependencies).
+  pub production: bool,
+  /// Exclude @types/* packages from installation.
+  pub skip_types: bool,
   /// Resolves the npm resolution snapshot from the environment.
   pub resolve_npm_resolution_snapshot: ResolveNpmResolutionSnapshotFn,
 }
@@ -361,6 +366,8 @@ impl<
             npm_cache.clone(),
             Arc::new(NpmInstallDepsProvider::from_workspace(
               &workspace_factory.workspace_directory()?.workspace,
+              self.options.production,
+              self.options.skip_types,
             )),
             registry_info_provider.clone(),
             self.resolver_factory.npm_resolution().clone(),
@@ -375,6 +382,7 @@ impl<
               maybe_node_modules_path: workspace_factory
                 .node_modules_dir_path()?
                 .map(|p| p.to_path_buf()),
+              linker_mode: workspace_factory.node_modules_linker_mode()?,
               lifecycle_scripts: self.lifecycle_scripts_config()?.clone(),
               system_info: self.resolver_factory.npm_system_info().clone(),
               workspace_link_packages: workspace_npm_link_packages.clone(),
@@ -393,10 +401,22 @@ impl<
     anyhow::Error,
   > {
     self.registry_info_provider.get_or_try_init(|| {
+      let packument_format = if self
+        .resolver_factory
+        .minimum_dependency_age_config()
+        .ok()
+        .and_then(|c| c.age.as_ref().and_then(|d| d.into_option()))
+        .is_some()
+      {
+        NpmPackumentFormat::Full
+      } else {
+        NpmPackumentFormat::Abbreviated
+      };
       Ok(Arc::new(RegistryInfoProvider::new(
         self.npm_cache()?.clone(),
         self.http_client().clone(),
         self.workspace_factory().npmrc()?.clone(),
+        packument_format,
       )))
     })
   }

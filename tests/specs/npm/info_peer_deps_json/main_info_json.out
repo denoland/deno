@@ -22,7 +22,7 @@
               }
             }
           },
-          "npmPackage": "@denotest/peer-dep-test-child@1.0.0_@denotest+peer-dep-test-peer@1.0.0"
+          "npmPackage": "@denotest/peer-dep-test-child@1.0.0"
         },
         {
           "specifier": "npm:@denotest/peer-dep-test-child@2",
@@ -39,7 +39,7 @@
               }
             }
           },
-          "npmPackage": "@denotest/peer-dep-test-child@2.0.0_@denotest+peer-dep-test-peer@2.0.0"
+          "npmPackage": "@denotest/peer-dep-test-child@2.0.0"
         }
       ],
       "local": "[WILDCARD]main.ts",
@@ -50,12 +50,12 @@
     {
       "kind": "npm",
       "specifier": "npm:/@denotest/peer-dep-test-child@1.0.0",
-      "npmPackage": "@denotest/peer-dep-test-child@1.0.0_@denotest+peer-dep-test-peer@1.0.0"
+      "npmPackage": "@denotest/peer-dep-test-child@1.0.0"
     },
     {
       "kind": "npm",
       "specifier": "npm:/@denotest/peer-dep-test-child@2.0.0",
-      "npmPackage": "@denotest/peer-dep-test-child@2.0.0_@denotest+peer-dep-test-peer@2.0.0"
+      "npmPackage": "@denotest/peer-dep-test-child@2.0.0"
     }
   ],
   "redirects": {
@@ -63,7 +63,7 @@
     "npm:@denotest/peer-dep-test-child@2": "npm:/@denotest/peer-dep-test-child@2.0.0"
   },
   "npmPackages": {
-    "@denotest/peer-dep-test-child@1.0.0_@denotest+peer-dep-test-peer@1.0.0": {
+    "@denotest/peer-dep-test-child@1.0.0": {
       "name": "@denotest/peer-dep-test-child",
       "version": "1.0.0",
       "dependencies": [
@@ -72,7 +72,7 @@
       ],
       "registryUrl": "http://localhost:4260/"
     },
-    "@denotest/peer-dep-test-child@2.0.0_@denotest+peer-dep-test-peer@2.0.0": {
+    "@denotest/peer-dep-test-child@2.0.0": {
       "name": "@denotest/peer-dep-test-child",
       "version": "2.0.0",
       "dependencies": [

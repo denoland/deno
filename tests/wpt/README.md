@@ -1,128 +1,139 @@
-# Web Platform Test (WPT)
+# Web Platform Tests (WPT)
 
 Deno uses a custom test runner for Web Platform Tests. It can be found at
 `./tests/wpt/wpt.ts`, relative to the root of this codebase.
 
-## Running tests
+## Setup
 
-> If you are on Windows, or your system does not support hashbangs, prefix all
-> `./tests/wpt/wpt.ts` commands with
-> `deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run`.
-
-Before attempting to run WPT tests for the first time, please run the WPT setup.
-You must also run this command every time the `./test_util/wpt` submodule is
+Before attempting to run WPT tests for the first time, run the setup command.
+You must also run this command every time the `./tests/wpt/suite` submodule is
 updated:
 
 ```shell
 ./tests/wpt/wpt.ts setup
 ```
 
-To run all available web platform tests, run the following command:
+This will:
+
+- Check that Python 3.11 is available (required by the WPT test server)
+- Update the WPT manifest (`./tests/wpt/runner/manifest.json`)
+- Configure `/etc/hosts` with entries required by the WPT test server
+
+You can specify the following flags:
+
+- `--rebuild` — Rebuild the manifest from scratch instead of incrementally
+  updating. This can take up to 3 minutes.
+- `--auto-config` — Automatically configure `/etc/hosts` without prompting.
+
+## Running tests
+
+To run all web platform tests, use the `--all` flag:
 
 ```shell
-./tests/wpt/wpt.ts run
-
-# You can also filter which test files to run by specifying filters:
-./tests/wpt/wpt.ts run -- streams/piping/general hr-time
+./tests/wpt/wpt.ts run --all
 ```
 
-The test runner will run each web platform test and record its status (failed or
-ok). It will then compare this output to the expected output of each test as
-specified in the `./tests/wpt/runner/expectation.json` file. This file is a
-nested JSON structure that mirrors the `./tests/wpt/suite` directory. It
-describes for each test file, if it should pass as a whole (all tests pass,
-`true`), if it should fail as a whole (test runner encounters an exception
-outside of a test or all tests fail, `false`), or which tests it expects to fail
-(a string array of test case names).
-
-## Updating enabled tests or expectations
-
-You can update the `./tests/wpt/runner/expectation.json` file manually by
-changing the value of each of the test file entries in the JSON structure. The
-alternative and preferred option is to have the WPT runner run all, or a
-filtered subset of tests, and then automatically update the `expectation.json`
-file to match the current reality. You can do this with the `./wpt.ts update`
-command. Example:
+To run a specific subset, specify filters after `--`:
 
 ```shell
-./tests/wpt/wpt.ts update -- hr-time
+# Run all tests in a suite
+./tests/wpt/wpt.ts run -- fetch
+
+# Run tests in a subdirectory
+./tests/wpt/wpt.ts run -- streams/piping/general
+
+# Run a single test file
+./tests/wpt/wpt.ts run -- /WebCryptoAPI/getRandomValues.any.html
+
+# Run multiple filters
+./tests/wpt/wpt.ts run -- hr-time fetch/api/basic
 ```
 
-After running this command the `expectation.json` file will match the current
-output of all the tests that were run. This means that running `wpt.ts run`
-right after a `wpt.ts update` should always pass.
+Running `wpt.ts run` with neither `--all` nor filters will print usage help.
 
-## Subcommands
+Filters can start with `/` (absolute path match) or without (prefix match
+without the leading `/`).
 
-### `setup`
+Tests are run in parallel across CPU cores, partitioned by top-level directory.
 
-Validate that your environment is configured correctly, or help you configure
-it.
+### Flags
 
-This will check that the python3 (or `python.exe` on Windows) is actually
-Python 3.
+- `--all` — Run all tests (required if no filters are specified)
+- `--release` — Use `./target/release/deno` instead of `./target/debug/deno`
+- `--binary=<path>` — Use a specific Deno binary (skips `cargo build`)
+- `--quiet` — Only print failing test cases
+- `--json=<file>` — Write test results as JSON
+- `--wptreport=<file>` — Write results in the
+  [wptreport](https://github.com/nicedoc/wpt-report) format
+- `--inspect-brk` — Attach the V8 inspector to each test
+- `--no-ignore` — Run tests marked with `{"ignore": true}` in expectations
+- `--exit-zero` — Exit with code 0 even if there are failures
 
-You can specify the following flags to customize behaviour:
+## Updating expectations
 
-```console
---rebuild
-    Rebuild the manifest instead of downloading. This can take up to 3 minutes.
+The `update` command runs tests and overwrites the expectation files to match
+current results:
 
---auto-config
-    Automatically configure /etc/hosts if it is not configured (no prompt will be shown).
+```shell
+# Update all expectations
+./tests/wpt/wpt.ts update --all
+
+# Update expectations for specific suites
+./tests/wpt/wpt.ts update -- hr-time fetch
 ```
 
-### `run`
+Running `wpt.ts run` immediately after `wpt.ts update` should always pass.
 
-Run all tests like specified in `expectation.json`.
+The `update` command accepts the same flags as `run` (`--release`, `--binary`,
+`--quiet`, `--json`, `--no-ignore`, `--inspect-brk`).
 
-You can specify the following flags to customize behaviour:
+## Expectation file format
 
-```console
---release
-    Use the ./target/release/deno binary instead of ./target/debug/deno
+The expectations directory (`./tests/wpt/runner/expectations/`) contains one
+JSON file per test suite (e.g., `fetch.json`, `dom.json`, `WebCryptoAPI.json`).
+Each file is a nested JSON object that mirrors the WPT directory structure,
+following the directory tree down to individual test files.
 
---quiet
-    Disable printing of `ok` test cases.
+Leaf values describe what is expected for each test file:
 
---json=<file>
-    Output the test results as JSON to the file specified.
+| Value                                      | Meaning                                                               |
+| ------------------------------------------ | --------------------------------------------------------------------- |
+| `true`                                     | All subtests are expected to pass                                     |
+| `false`                                    | The entire test file is expected to fail (crash, harness error, etc.) |
+| `{"expectedFailures": ["name1", "name2"]}` | These specific subtests are expected to fail; all others should pass  |
+| `{"ignore": true}`                         | Skip this test entirely (override with `--no-ignore`)                 |
+
+Example:
+
+```jsonc
+{
+  "fetch": {
+    "api": {
+      "basic": {
+        "accept-header.any.html": true, // all subtests pass
+        "stream-response.any.html": false, // entire file fails
+        "request-headers.any.html": { // these 2 subtests fail
+          "expectedFailures": [
+            "Fetch with PUT with body",
+            "Fetch with POST with body"
+          ]
+        },
+        "mode-no-cors.sub.any.html": { // skipped
+          "ignore": true
+        }
+      }
+    }
+  }
+}
 ```
 
-You can also specify exactly which tests to run by specifying one of more
-filters after a `--`:
-
-```console
-./tests/wpt/wpt.ts run -- hr-time streams/piping/general
-```
-
-### `update`
-
-Update the `expectation.json` to match the current reality.
-
-You can specify the following flags to customize behaviour:
-
-```console
---release
-    Use the ./target/release/deno binary instead of ./target/debug/deno
-
---quiet
-    Disable printing of `ok` test cases.
-
---json=<file>
-    Output the test results as JSON to the file specified.
-```
-
-You can also specify exactly which tests to run by specifying one of more
-filters after a `--`:
-
-```console
-./tests/wpt/wpt.ts update -- hr-time streams/piping/general
-```
+When the `run` command finishes, it shows a git diff between the current
+expectation files and what the actual results would produce. This makes it easy
+to see regressions and improvements.
 
 ## FAQ
 
-### Upgrading the wpt submodule:
+### Upgrading the WPT submodule
 
 ```shell
 cd tests/wpt/suite
@@ -134,6 +145,6 @@ git add ./tests/wpt/suite
 
 All contributors will need to rerun `./tests/wpt/wpt.ts setup` after this.
 
-Since upgrading WPT usually requires updating the expectations to cover all
-sorts of upstream changes, it's best to do that as a separate PR, rather than as
-part of a PR that implements a fix or feature.
+Since upgrading WPT usually requires updating the expectations to cover upstream
+changes, it's best to do that as a separate PR rather than as part of a PR that
+implements a fix or feature.

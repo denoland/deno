@@ -13,7 +13,7 @@ use url::Url;
 use super::DiskCache;
 use super::DiskCacheSys;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type EmitCacheRc<TSys> = deno_maybe_sync::MaybeArc<EmitCache<TSys>>;
 
 #[sys_traits::auto_impl]

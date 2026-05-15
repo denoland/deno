@@ -78,7 +78,7 @@ pub enum ResolvedCjsAnalysis<'a> {
 #[sys_traits::auto_impl]
 pub trait CjsModuleExportAnalyzerSys: NodeResolverSys {}
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type CjsModuleExportAnalyzerRc<
   TCjsCodeAnalyzer,
   TInNpmPackageChecker,
@@ -195,7 +195,10 @@ impl<
     Ok(ResolvedCjsAnalysis::Cjs(all_exports))
   }
 
-  #[allow(clippy::needless_lifetimes)]
+  #[allow(
+    clippy::needless_lifetimes,
+    reason = "explicit lifetimes improve clarity"
+  )]
   async fn analyze_reexports<'a>(
     &'a self,
     entry_specifier: &url::Url,
@@ -422,7 +425,9 @@ impl<
       } else if let Some(main) =
         self.node_resolver.legacy_fallback_resolve(&package_json)
       {
-        return Ok(Some(UrlOrPath::Path(module_dir.join(main).clean())));
+        return self
+          .file_extension_probe(module_dir.join(main), referrer_path)
+          .map(|p| Some(UrlOrPath::Path(p)));
       } else {
         return Ok(Some(UrlOrPath::Path(module_dir.join("index.js").clean())));
       }
@@ -519,7 +524,7 @@ pub struct CjsAnalysisCouldNotLoadError {
 #[sys_traits::auto_impl]
 pub trait NodeCodeTranslatorSys: CjsModuleExportAnalyzerSys {}
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NodeCodeTranslatorRc<
   TCjsCodeAnalyzer,
   TInNpmPackageChecker,

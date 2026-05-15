@@ -6,14 +6,17 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const { ObjectPrototypeToString, SymbolSpecies } = primordials;
-import {
+const {
   op_v8_cached_data_version_tag,
+  op_v8_get_heap_code_statistics,
   op_v8_get_heap_statistics,
   op_v8_get_wire_format_version,
   op_v8_new_deserializer,
   op_v8_new_serializer,
+  op_v8_number_of_heap_spaces,
   op_v8_read_double,
   op_v8_read_header,
   op_v8_read_raw_bytes,
@@ -22,37 +25,78 @@ import {
   op_v8_read_value,
   op_v8_release_buffer,
   op_v8_set_treat_array_buffer_views_as_host_objects,
+  op_v8_take_heap_snapshot,
   op_v8_transfer_array_buffer,
   op_v8_transfer_array_buffer_de,
+  op_v8_update_heap_space_statistics,
   op_v8_write_double,
   op_v8_write_header,
   op_v8_write_raw_bytes,
   op_v8_write_uint32,
   op_v8_write_uint64,
   op_v8_write_value,
-} from "ext:core/ops";
+} = core.ops;
 
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const lazyFs = core.createLazyLoader("node:fs");
+const lazyStream = core.createLazyLoader("node:stream");
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const lazyFsUtils = core.createLazyLoader(
+  "ext:deno_node/internal/fs/utils.mjs",
+);
+const { validateObject } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
-export function cachedDataVersionTag() {
+function cachedDataVersionTag() {
   return op_v8_cached_data_version_tag();
 }
-export function getHeapCodeStatistics() {
-  notImplemented("v8.getHeapCodeStatistics");
+const heapCodeStatisticsBuffer = new Float64Array(4);
+
+function getHeapCodeStatistics() {
+  op_v8_get_heap_code_statistics(heapCodeStatisticsBuffer);
+  return {
+    code_and_metadata_size: heapCodeStatisticsBuffer[0],
+    bytecode_and_metadata_size: heapCodeStatisticsBuffer[1],
+    external_script_source_size: heapCodeStatisticsBuffer[2],
+    cpu_profiler_metadata_size: heapCodeStatisticsBuffer[3],
+  };
 }
-export function getHeapSnapshot() {
-  notImplemented("v8.getHeapSnapshot");
+function getHeapSnapshot(options?: Record<string, unknown>) {
+  if (options !== undefined) {
+    validateObject(options, "options");
+  }
+  const data = op_v8_take_heap_snapshot();
+  return lazyStream().Readable.from(Buffer.from(data));
 }
-export function getHeapSpaceStatistics() {
-  notImplemented("v8.getHeapSpaceStatistics");
+const heapSpaceStatisticsBuffer = new Float64Array(4);
+
+function getHeapSpaceStatistics() {
+  const numberOfHeapSpaces = op_v8_number_of_heap_spaces();
+  const heapSpaceStatistics = new Array(numberOfHeapSpaces);
+  for (let i = 0; i < numberOfHeapSpaces; i++) {
+    const spaceName = op_v8_update_heap_space_statistics(
+      heapSpaceStatisticsBuffer,
+      i,
+    );
+    heapSpaceStatistics[i] = {
+      space_name: spaceName,
+      space_size: heapSpaceStatisticsBuffer[0],
+      space_used_size: heapSpaceStatisticsBuffer[1],
+      space_available_size: heapSpaceStatisticsBuffer[2],
+      physical_space_size: heapSpaceStatisticsBuffer[3],
+    };
+  }
+  return heapSpaceStatistics;
 }
 
-const buffer = new Float64Array(14);
+const buffer = new Float64Array(15);
 
-export function getHeapStatistics() {
+function getHeapStatistics() {
   op_v8_get_heap_statistics(buffer);
 
   return {
@@ -70,10 +114,11 @@ export function getHeapStatistics() {
     total_global_handles_size: buffer[11],
     used_global_handles_size: buffer[12],
     external_memory: buffer[13],
+    total_allocated_bytes: buffer[14],
   };
 }
 
-export function setFlagsFromString() {
+function setFlagsFromString() {
   // NOTE(bartlomieju): From Node.js docs:
   // The v8.setFlagsFromString() method can be used to programmatically set V8
   // command-line flags. This method should be used with care. Changing settings
@@ -83,23 +128,53 @@ export function setFlagsFromString() {
   // Notice: "or it may simply do nothing". This is what we're gonna do,
   // this function will just be a no-op.
 }
-export function stopCoverage() {
+function stopCoverage() {
   notImplemented("v8.stopCoverage");
 }
-export function takeCoverage() {
+function takeCoverage() {
   notImplemented("v8.takeCoverage");
 }
-export function writeHeapSnapshot() {
-  notImplemented("v8.writeHeapSnapshot");
+
+let heapSnapshotCounter = 0;
+
+function writeHeapSnapshot(
+  filename?: string,
+  options?: Record<string, unknown>,
+) {
+  if (filename !== undefined) {
+    filename = lazyFsUtils().getValidatedPath(filename) as string;
+  } else {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+    const seconds = String(now.getSeconds()).padStart(2, "0");
+    const pid = globalThis.process?.pid ?? 0;
+    const thread = 0;
+    const seq = ++heapSnapshotCounter;
+    filename =
+      `Heap.${year}${month}${day}.${hours}${minutes}${seconds}.${pid}.${thread}.${
+        String(seq).padStart(3, "0")
+      }.heapsnapshot`;
+  }
+  if (options !== undefined) {
+    validateObject(options, "options");
+  }
+  const data = op_v8_take_heap_snapshot();
+  lazyFs().writeFileSync(filename, data);
+  return filename;
 }
+
 // deno-lint-ignore no-explicit-any
-export function serialize(value: any) {
+function serialize(value: any) {
   const ser = new DefaultSerializer();
   ser.writeHeader();
   ser.writeValue(value);
   return ser.releaseBuffer();
 }
-export function deserialize(buffer: Buffer | ArrayBufferView | DataView) {
+function deserialize(buffer: Buffer | ArrayBufferView | DataView) {
   if (!isArrayBufferView(buffer)) {
     throw new TypeError(
       "buffer must be a TypedArray or a DataView",
@@ -112,7 +187,7 @@ export function deserialize(buffer: Buffer | ArrayBufferView | DataView) {
 
 const kHandle = Symbol("kHandle");
 
-export class Serializer {
+class Serializer {
   [kHandle]: object;
   constructor() {
     this[kHandle] = op_v8_new_serializer(this);
@@ -163,7 +238,7 @@ export class Serializer {
   _getDataCloneError = Error;
 }
 
-export class Deserializer {
+class Deserializer {
   buffer: ArrayBufferView;
   [kHandle]: object;
   constructor(buffer: ArrayBufferView) {
@@ -230,7 +305,7 @@ function arrayBufferViewTypeToIndex(abView: ArrayBufferView) {
   if (type === "[object Float16Array]") return 13;
   return -1;
 }
-export class DefaultSerializer extends Serializer {
+class DefaultSerializer extends Serializer {
   constructor() {
     super();
     this._setTreatArrayBufferViewsAsHostObjects(true);
@@ -281,7 +356,7 @@ function arrayBufferViewIndexToType(index: number): any {
   return undefined;
 }
 
-export class DefaultDeserializer extends Deserializer {
+class DefaultDeserializer extends Deserializer {
   constructor(buffer: ArrayBufferView) {
     super(buffer);
   }
@@ -315,7 +390,7 @@ export class DefaultDeserializer extends Deserializer {
     );
   }
 }
-export default {
+return {
   cachedDataVersionTag,
   getHeapCodeStatistics,
   getHeapSnapshot,
@@ -332,3 +407,4 @@ export default {
   DefaultSerializer,
   DefaultDeserializer,
 };
+})();

@@ -15,15 +15,14 @@ interface Package {
 }
 
 const args = parseArgs(Deno.args, {
-  boolean: ["publish"],
+  boolean: ["publish", "publish-only"],
 });
 const packages: Package[] = [{
   zipFileName: "deno-x86_64-pc-windows-msvc.zip",
   os: "win32",
   cpu: "x64",
 }, {
-  // use x64_64 until there's an arm64 build
-  zipFileName: "deno-x86_64-pc-windows-msvc.zip",
+  zipFileName: "deno-aarch64-pc-windows-msvc.zip",
   os: "win32",
   cpu: "arm64",
 }, {
@@ -67,132 +66,96 @@ const version = resolveVersion();
 
 $.logStep(`Publishing ${version}...`);
 
-await $`rm -rf ${outputDir}`;
-await $`mkdir -p ${denoDir} ${scopeDir}`;
+if (!args["publish-only"]) {
+  await $`rm -rf ${outputDir}`;
+  await $`mkdir -p ${denoDir} ${scopeDir}`;
 
-// setup Deno packages
-{
-  $.logStep(`Setting up deno ${version}...`);
-  const pkgJson = {
-    "name": "deno",
-    "version": version,
-    "description": "A modern runtime for JavaScript and TypeScript.",
-    "bin": "bin.cjs",
-    "repository": {
-      "type": "git",
-      "url": "git+https://github.com/denoland/deno.git",
-    },
-    "keywords": [
-      "runtime",
-      "typescript",
-    ],
-    "author": "the Deno authors",
-    "license": "MIT",
-    "bugs": {
-      "url": "https://github.com/denoland/deno/issues",
-    },
-    "homepage": "https://deno.com",
-    // for yarn berry (https://github.com/dprint/dprint/issues/686)
-    "preferUnplugged": true,
-    "scripts": {
-      "postinstall": "node ./install.cjs",
-    },
-    optionalDependencies: packages
-      .map((pkg) => `@deno/${getPackageNameNoScope(pkg)}`)
-      .reduce((obj, pkgName) => ({ ...obj, [pkgName]: version }), {}),
-  };
-  currentDir.join("bin.cjs").copyFileToDirSync(denoDir);
-  currentDir.join("install_api.cjs").copyFileToDirSync(denoDir);
-  currentDir.join("install.cjs").copyFileToDirSync(denoDir);
-  denoDir.join("package.json").writeJsonPrettySync(pkgJson);
-  rootDir.join("LICENSE.md").copyFileSync(denoDir.join("LICENSE"));
-  denoDir.join("README.md").writeTextSync(markdownText);
-  // ensure the test files don't get published
-  denoDir.join(".npmignore").writeTextSync("deno\ndeno.exe\n");
-
-  // setup each binary package
-  for (const pkg of packages) {
-    const pkgName = getPackageNameNoScope(pkg);
-    $.logStep(`Setting up @deno/${pkgName}...`);
-    const pkgDir = scopeDir.join(pkgName);
-    const zipPath = pkgDir.join("output.zip");
-
-    await $`mkdir -p ${pkgDir}`;
-
-    // download and extract the zip file
-    const zipUrl =
-      `https://github.com/denoland/deno/releases/download/v${version}/${pkg.zipFileName}`;
-    await $.request(zipUrl).showProgress().pipeToPath(zipPath);
-    await decompress(zipPath.toString(), pkgDir.toString());
-    zipPath.removeSync();
-
-    // create the package.json and readme
-    pkgDir.join("README.md").writeTextSync(
-      `# @denoland/${pkgName}\n\n${pkgName} distribution of [Deno](https://deno.land).\n`,
-    );
-    pkgDir.join("package.json").writeJsonPrettySync({
-      "name": `@deno/${pkgName}`,
+  // setup Deno packages
+  {
+    $.logStep(`Setting up deno ${version}...`);
+    const pkgJson = {
+      "name": "deno",
       "version": version,
-      "description": `${pkgName} distribution of Deno`,
+      "description": "A modern runtime for JavaScript and TypeScript.",
+      "bin": "bin.cjs",
       "repository": {
         "type": "git",
         "url": "git+https://github.com/denoland/deno.git",
       },
-      // force yarn to unpack
-      "preferUnplugged": true,
-      "author": "David Sherret",
+      "keywords": [
+        "runtime",
+        "typescript",
+      ],
+      "author": "the Deno authors",
       "license": "MIT",
       "bugs": {
         "url": "https://github.com/denoland/deno/issues",
       },
-      "homepage": "https://deno.land",
-      "os": [pkg.os],
-      "cpu": [pkg.cpu],
-      libc: pkg.libc == null ? undefined : [pkg.libc],
-    });
-  }
-}
+      "homepage": "https://deno.com",
+      // for yarn berry (https://github.com/dprint/dprint/issues/686)
+      "preferUnplugged": true,
+      "scripts": {
+        "postinstall": "node ./install.cjs",
+      },
+      optionalDependencies: packages
+        .map((pkg) => `@deno/${getPackageNameNoScope(pkg)}`)
+        .reduce((obj, pkgName) => ({ ...obj, [pkgName]: version }), {}),
+    };
+    currentDir.join("bin.cjs").copyFileToDirSync(denoDir);
+    currentDir.join("install_api.cjs").copyFileToDirSync(denoDir);
+    currentDir.join("install.cjs").copyFileToDirSync(denoDir);
+    denoDir.join("package.json").writeJsonPrettySync(pkgJson);
+    rootDir.join("LICENSE.md").copyFileSync(denoDir.join("LICENSE"));
+    denoDir.join("README.md").writeTextSync(markdownText);
+    // ensure the test files don't get published
+    denoDir.join(".npmignore").writeTextSync("deno\ndeno.exe\n");
 
-// verify that the package is created correctly
-{
-  $.logStep("Verifying packages...");
-  const testPlatform = Deno.build.os == "windows"
-    ? (Deno.build.arch === "x86_64" ? "@deno/win32-x64" : "@deno/win32-arm64")
-    : Deno.build.os === "darwin"
-    ? (Deno.build.arch === "x86_64" ? "@deno/darwin-x64" : "@deno/darwin-arm64")
-    : "@deno/linux-x64-glibc";
-  outputDir.join("package.json").writeJsonPrettySync({
-    workspaces: [
-      "deno",
-      // There seems to be a bug with npm workspaces where this doesn't
-      // work, so for now make some assumptions and only include the package
-      // that works on the CI for the current operating system
-      // ...packages.map(p => `@deno/${getPackageNameNoScope(p)}`),
-      testPlatform,
-    ],
-  });
+    // setup each binary package
+    for (const pkg of packages) {
+      const pkgName = getPackageNameNoScope(pkg);
+      $.logStep(`Setting up @deno/${pkgName}...`);
+      const pkgDir = scopeDir.join(pkgName);
+      const zipPath = pkgDir.join("output.zip");
 
-  const denoExe = Deno.build.os === "windows" ? "deno.exe" : "deno";
-  await $`npm install`.cwd(denoDir);
+      await $`mkdir -p ${pkgDir}`;
 
-  // ensure the post-install script adds the executable to the deno package,
-  // which is necessary for faster caching and to ensure the vscode extension
-  // picks it up
-  if (!denoDir.join(denoExe).existsSync()) {
-    throw new Error("Deno executable did not exist after post install");
-  }
+      // download and extract the zip file
+      const zipUrl =
+        `https://github.com/denoland/deno/releases/download/v${version}/${pkg.zipFileName}`;
+      await $.request(zipUrl).showProgress().pipeToPath(zipPath);
+      await decompress(zipPath.toString(), pkgDir.toString());
+      zipPath.removeSync();
 
-  // run once after post install created deno, once with a simulated readonly file system, once creating the cache and once with
-  await $`node bin.cjs -v && rm ${denoExe} && DENO_SIMULATED_READONLY_FILE_SYSTEM=1 node bin.cjs -v && node bin.cjs -v && node bin.cjs -v`
-    .cwd(denoDir);
-
-  if (!denoDir.join(denoExe).existsSync()) {
-    throw new Error("Deno executable did not exist when lazily initialized");
+      // create the package.json and readme
+      pkgDir.join("README.md").writeTextSync(
+        `# @denoland/${pkgName}\n\n${pkgName} distribution of [Deno](https://deno.land).\n`,
+      );
+      pkgDir.join("package.json").writeJsonPrettySync({
+        "name": `@deno/${pkgName}`,
+        "version": version,
+        "description": `${pkgName} distribution of Deno`,
+        "repository": {
+          "type": "git",
+          "url": "git+https://github.com/denoland/deno.git",
+        },
+        // force yarn to unpack
+        "preferUnplugged": true,
+        "author": "David Sherret",
+        "license": "MIT",
+        "bugs": {
+          "url": "https://github.com/denoland/deno/issues",
+        },
+        "homepage": "https://deno.land",
+        "os": [pkg.os],
+        "cpu": [pkg.cpu],
+        libc: pkg.libc == null ? undefined : [pkg.libc],
+      });
+    }
   }
 }
 
 // publish if necessary
-if (args.publish) {
+if (args.publish || args["publish-only"]) {
   for (const pkg of packages) {
     const pkgName = getPackageNameNoScope(pkg);
     $.logStep(`Publishing @deno/${pkgName}...`);
@@ -201,6 +164,10 @@ if (args.publish) {
       continue;
     }
     const pkgDir = scopeDir.join(pkgName);
+    // ensure the binary is executable in the tarball
+    if (pkg.os !== "win32") {
+      await $`chmod +x ${pkgDir.join("deno")}`;
+    }
     await $`cd ${pkgDir} && npm publish --provenance --access public`;
   }
 

@@ -1,0 +1,5 @@
+{
+  "args": "test --quiet --unstable-net -A main.ts",
+  "output": "./main.out",
+  "exitCode": 0
+}

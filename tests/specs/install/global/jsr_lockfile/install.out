@@ -1,0 +1,6 @@
+Download http://127.0.0.1:4250/@denotest/echo-lockfile/meta.json
+Download http://127.0.0.1:4250/@denotest/echo-lockfile/1.0.0/deno.lock
+Download http://127.0.0.1:4250/@denotest/echo-lockfile/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/echo-lockfile/1.0.0/mod.ts
+✅ Successfully installed echo-lockfile
+[WILDCARD]

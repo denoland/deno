@@ -1,0 +1,204 @@
+{
+  "idlharness.any.html": true,
+  "idlharness.any.worker.html": true,
+  "piping": {
+    "abort.any.html": true,
+    "abort.any.worker.html": true,
+    "close-propagation-backward.any.html": true,
+    "close-propagation-backward.any.worker.html": true,
+    "close-propagation-forward.any.html": true,
+    "close-propagation-forward.any.worker.html": true,
+    "error-propagation-backward.any.html": true,
+    "error-propagation-backward.any.worker.html": true,
+    "error-propagation-forward.any.html": true,
+    "error-propagation-forward.any.worker.html": true,
+    "flow-control.any.html": true,
+    "flow-control.any.worker.html": true,
+    "general.any.html": true,
+    "general.any.worker.html": true,
+    "multiple-propagation.any.html": true,
+    "multiple-propagation.any.worker.html": true,
+    "pipe-through.any.html": true,
+    "pipe-through.any.worker.html": true,
+    "then-interception.any.html": true,
+    "then-interception.any.worker.html": true,
+    "throwing-options.any.html": true,
+    "throwing-options.any.worker.html": true,
+    "transform-streams.any.html": true,
+    "transform-streams.any.worker.html": true,
+    "general-addition.any.html": false,
+    "general-addition.any.worker.html": false
+  },
+  "queuing-strategies.any.html": true,
+  "queuing-strategies.any.worker.html": true,
+  "readable-byte-streams": {
+    "bad-buffers-and-views.any.html": true,
+    "bad-buffers-and-views.any.worker.html": true,
+    "construct-byob-request.any.html": true,
+    "construct-byob-request.any.worker.html": true,
+    "general.any.html": true,
+    "general.any.worker.html": true,
+    "non-transferable-buffers.any.html": true,
+    "non-transferable-buffers.any.worker.html": true,
+    "tee.any.html": true,
+    "tee.any.worker.html": true,
+    "respond-after-enqueue.any.html": true,
+    "respond-after-enqueue.any.worker.html": true,
+    "enqueue-with-detached-buffer.any.html": true,
+    "enqueue-with-detached-buffer.any.worker.html": true,
+    "read-min.any.html": true,
+    "read-min.any.worker.html": true,
+    "patched-global.any.html": false,
+    "patched-global.any.worker.html": false,
+    "templated.any.html": true,
+    "templated.any.worker.html": true
+  },
+  "readable-streams": {
+    "async-iterator.any.html": true,
+    "bad-strategies.any.html": true,
+    "bad-strategies.any.worker.html": true,
+    "bad-underlying-sources.any.html": true,
+    "bad-underlying-sources.any.worker.html": true,
+    "cancel.any.html": true,
+    "cancel.any.worker.html": true,
+    "constructor.any.html": true,
+    "constructor.any.worker.html": true,
+    "count-queuing-strategy-integration.any.html": true,
+    "count-queuing-strategy-integration.any.worker.html": true,
+    "default-reader.any.html": true,
+    "default-reader.any.worker.html": true,
+    "floating-point-total-queue-size.any.html": true,
+    "floating-point-total-queue-size.any.worker.html": true,
+    "garbage-collection.any.html": true,
+    "garbage-collection.any.worker.html": true,
+    "general.any.html": true,
+    "general.any.worker.html": true,
+    "patched-global.any.html": true,
+    "patched-global.any.worker.html": true,
+    "reentrant-strategies.any.html": true,
+    "reentrant-strategies.any.worker.html": true,
+    "tee.any.html": true,
+    "tee.any.worker.html": true,
+    "templated.any.html": true,
+    "templated.any.worker.html": true,
+    "async-iterator.any.worker.html": true,
+    "cross-realm-crash.window.html": false,
+    "owning-type-message-port.any.html": false,
+    "owning-type-message-port.any.worker.html": false,
+    "owning-type.any.html": false,
+    "owning-type.any.worker.html": false,
+    "from.any.html": {
+      "expectedFailures": [
+        "ReadableStream.from ignores a null @@asyncIterator",
+        "ReadableStream.from accepts a string"
+      ]
+    },
+    "from.any.worker.html": {
+      "expectedFailures": [
+        "ReadableStream.from ignores a null @@asyncIterator",
+        "ReadableStream.from accepts a string"
+      ]
+    },
+    "crashtests": {
+      "garbage-collection.any.html": true,
+      "garbage-collection.any.worker.html": true
+    },
+    "global.html": false,
+    "owning-type-video-frame.any.html": false,
+    "owning-type-video-frame.any.worker.html": false,
+    "read-task-handling.window.html": true
+  },
+  "transform-streams": {
+    "backpressure.any.html": true,
+    "backpressure.any.worker.html": true,
+    "errors.any.html": true,
+    "errors.any.worker.html": true,
+    "flush.any.html": true,
+    "flush.any.worker.html": true,
+    "general.any.html": true,
+    "general.any.worker.html": true,
+    "lipfuzz.any.html": true,
+    "lipfuzz.any.worker.html": true,
+    "patched-global.any.html": true,
+    "patched-global.any.worker.html": true,
+    "properties.any.html": true,
+    "properties.any.worker.html": true,
+    "reentrant-strategies.any.html": true,
+    "reentrant-strategies.any.worker.html": true,
+    "strategies.any.html": true,
+    "strategies.any.worker.html": true,
+    "terminate.any.html": true,
+    "terminate.any.worker.html": true,
+    "cancel.any.html": {
+      "expectedFailures": [
+        "readable.cancel() and a parallel writable.close() should reject if a transformer.cancel() calls controller.error()"
+      ]
+    },
+    "cancel.any.worker.html": {
+      "expectedFailures": [
+        "readable.cancel() and a parallel writable.close() should reject if a transformer.cancel() calls controller.error()"
+      ]
+    },
+    "invalid-realm.tentative.window.html": false
+  },
+  "writable-streams": {
+    "aborting.any.html": true,
+    "aborting.any.worker.html": true,
+    "bad-strategies.any.html": true,
+    "bad-strategies.any.worker.html": true,
+    "bad-underlying-sinks.any.html": true,
+    "bad-underlying-sinks.any.worker.html": true,
+    "byte-length-queuing-strategy.any.html": true,
+    "byte-length-queuing-strategy.any.worker.html": true,
+    "close.any.html": true,
+    "close.any.worker.html": true,
+    "constructor.any.html": true,
+    "constructor.any.worker.html": true,
+    "count-queuing-strategy.any.html": true,
+    "count-queuing-strategy.any.worker.html": true,
+    "error.any.html": true,
+    "error.any.worker.html": true,
+    "floating-point-total-queue-size.any.html": true,
+    "floating-point-total-queue-size.any.worker.html": true,
+    "general.any.html": true,
+    "general.any.worker.html": true,
+    "properties.any.html": true,
+    "properties.any.worker.html": true,
+    "reentrant-strategy.any.html": true,
+    "reentrant-strategy.any.worker.html": true,
+    "start.any.html": true,
+    "start.any.worker.html": true,
+    "write.any.html": true,
+    "write.any.worker.html": true,
+    "garbage-collection.any.html": true,
+    "garbage-collection.any.worker.html": true,
+    "crashtests": {
+      "garbage-collection.any.html": true,
+      "garbage-collection.any.worker.html": true
+    }
+  },
+  "queuing-strategies-size-function-per-global.window.html": false,
+  "transferable": {
+    "deserialize-error.window.html": false,
+    "transfer-with-messageport.window.html": true,
+    "readable-stream.html": {
+      "expectedFailures": [
+        "cancel should be propagated to the original",
+        "cancel should abort a pending read()"
+      ]
+    },
+    "reason.html": true,
+    "service-worker.https.html": false,
+    "shared-worker.html": false,
+    "transform-stream-members.any.html": true,
+    "transform-stream-members.any.worker.html": true,
+    "transform-stream.html": true,
+    "window.html": {
+      "expectedFailures": [
+        "transfer to and from an iframe should work"
+      ]
+    },
+    "worker.html": true,
+    "writable-stream.html": true
+  }
+}
