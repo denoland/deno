@@ -60,6 +60,7 @@ const {
   SafeMap,
   SafeSet,
   SafeWeakMap,
+  SetPrototypeAdd,
   SetPrototypeHas,
   String,
   StringPrototypeCharCodeAt,
@@ -945,6 +946,7 @@ Module._load = function (request, parent, isMain) {
     // Slice 'node:' prefix
     const id = StringPrototypeSlice(filename, 5);
 
+    maybeEmitNativeModuleDeprecation(id);
     const module = loadNativeModule(id, id);
     if (!module) {
       // TODO:
@@ -964,6 +966,7 @@ Module._load = function (request, parent, isMain) {
     return cachedModule.exports;
   }
 
+  maybeEmitNativeModuleDeprecation(filename);
   const mod = loadNativeModule(filename, request);
   if (
     mod
@@ -1687,9 +1690,9 @@ Module.Module = Module;
 nativeModuleExports.module = Module;
 
 // Modules that emit a deprecation warning the first time they are required via
-// the CJS loader. Maps the module name to [message, code]. These match the
-// deprecations Node.js emits from `BuiltinModule#compileForPublicLoader` and
-// related sites.
+// the CJS loader (`require('_stream_readable')` etc.). Maps the module name to
+// [message, code]. Matches Node's `BuiltinModule#compileForPublicLoader` --
+// `process.getBuiltinModule()` does NOT trigger these warnings.
 const deprecatedNativeModules = ObjectCreate(null);
 deprecatedNativeModules._tls_common = [
   "The _tls_common module is deprecated. Use `node:tls` instead.",
@@ -1720,20 +1723,25 @@ deprecatedNativeModules._stream_writable = [
   "DEP0193",
 ];
 
+const emittedNativeModuleDeprecations = new SafeSet();
+function maybeEmitNativeModuleDeprecation(request) {
+  const deprecation = deprecatedNativeModules[request];
+  if (deprecation === undefined) return;
+  if (SetPrototypeHas(emittedNativeModuleDeprecations, request)) return;
+  SetPrototypeAdd(emittedNativeModuleDeprecations, request);
+  process.emitWarning(
+    deprecation[0],
+    "DeprecationWarning",
+    deprecation[1],
+  );
+}
+
 function loadNativeModule(_id, request) {
   if (nativeModulePolyfill.has(request)) {
     return nativeModulePolyfill.get(request);
   }
   const modExports = nativeModuleExports[request];
   if (modExports) {
-    const deprecation = deprecatedNativeModules[request];
-    if (deprecation !== undefined) {
-      process.emitWarning(
-        deprecation[0],
-        "DeprecationWarning",
-        deprecation[1],
-      );
-    }
     const nodeMod = new Module(request);
     nodeMod.exports = modExports;
     nodeMod.loaded = true;
