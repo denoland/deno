@@ -146,9 +146,17 @@
     },
     "module-hooks/test-module-hooks-load-context-merged.js": {},
     "module-hooks/test-module-hooks-load-context-optional.js": {},
+    "module-hooks/test-module-hooks-load-async-and-sync.js": {
+      "ignore": true,
+      "reason": "Depends on deprecated module.register() loader hooks, which Deno intentionally does not implement"
+    },
     "module-hooks/test-module-hooks-load-short-circuit.js": {},
     "module-hooks/test-module-hooks-load-short-circuit-required-middle.js": {},
     "module-hooks/test-module-hooks-load-short-circuit-required-start.js": {},
+    "module-hooks/test-module-hooks-preload.js": {
+      "ignore": true,
+      "reason": "Depends on deprecated module.register() loader hooks, which Deno intentionally does not implement"
+    },
     "module-hooks/test-module-hooks-resolve-context-merged.js": {},
     "module-hooks/test-module-hooks-resolve-context-optional.js": {},
     "module-hooks/test-module-hooks-resolve-require-resolve-loaded-with-source.js": {
