@@ -8,11 +8,13 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::net::ToSocketAddrs;
+use std::rc::Rc;
 
 use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UvConnect;
@@ -343,9 +345,15 @@ impl TCPWrap {
   }
 
   #[fast]
-  fn open(&self, #[smi] fd: i32) -> i32 {
+  fn open(&self, state: &mut OpState, #[smi] fd: i32) -> i32 {
     if fd < 0 {
       return uv_compat::UV_EBADF;
+    }
+    {
+      let fd_table = state.borrow::<deno_io::FdTable>();
+      if fd_table.contains(fd) && !(0..=2).contains(&fd) {
+        return -libc::EEXIST;
+      }
     }
     let tcp = self.tcp_ptr();
     if tcp.is_null() {
@@ -375,10 +383,43 @@ impl TCPWrap {
       // is a no-op at the kernel level.
       #[cfg(unix)]
       if self.socket_type.get() == SocketType::Server {
-        return uv_compat::uv_tcp_open_listener(tcp, fd);
+        let ret = uv_compat::uv_tcp_open_listener(tcp, fd);
+        if ret == 0 {
+          state.borrow_mut::<deno_io::FdTable>().register_uv_owned(fd);
+          self.base.set_fd(fd);
+        }
+        return ret;
       }
-      uv_compat::uv_tcp_open(tcp, fd)
+      let ret = uv_compat::uv_tcp_open(tcp, fd);
+      if ret == 0 {
+        state.borrow_mut::<deno_io::FdTable>().register_uv_owned(fd);
+        self.base.set_fd(fd);
+      }
+      ret
     }
+  }
+
+  #[reentrant]
+  fn close(
+    &self,
+    op_state: Rc<RefCell<OpState>>,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[scoped] cb: Option<v8::Global<v8::Function>>,
+  ) -> Result<(), ResourceError> {
+    let fd = self.base.get_fd();
+    if fd >= 0 {
+      op_state
+        .borrow_mut()
+        .borrow_mut::<deno_io::FdTable>()
+        .remove(fd);
+      self.base.set_fd(-1);
+    }
+    self.base.clear_js_handle();
+    self
+      .base
+      .handle_wrap()
+      .close_handle(op_state, this, scope, cb)
   }
 
   #[fast]

@@ -1,7 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::rc::Rc;
+use std::sync::Mutex;
+#[cfg(unix)]
+use std::sync::Once;
+use std::sync::OnceLock;
 
 use crate::fs::File;
 
@@ -24,8 +29,90 @@ pub struct FdTable {
   entries: HashMap<i32, FdOwnership>,
 }
 
+static INTERNAL_FDS: OnceLock<Mutex<HashSet<i32>>> = OnceLock::new();
+#[cfg(unix)]
+static REGISTER_CURRENT_PROCESS_INTERNAL_FDS: Once = Once::new();
+
+/// Register a process-owned fd that must not be adopted by user fd APIs.
+pub fn register_internal_fd(fd: i32) {
+  INTERNAL_FDS
+    .get_or_init(Default::default)
+    .lock()
+    .unwrap()
+    .insert(fd);
+}
+
+/// Register fds that were already open in the current process before this
+/// table was created. These are Deno-owned implementation details, not
+/// user-inherited descriptors for Node fd adoption APIs.
+#[cfg(target_os = "linux")]
+fn register_current_process_internal_fds() {
+  REGISTER_CURRENT_PROCESS_INTERNAL_FDS
+    .call_once(register_current_process_internal_fds_inner);
+}
+
+#[cfg(target_os = "linux")]
+fn register_current_process_internal_fds_inner() {
+  register_current_process_internal_fds_from_dir("/proc/self/fd");
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn register_current_process_internal_fds() {
+  REGISTER_CURRENT_PROCESS_INTERNAL_FDS
+    .call_once(register_current_process_internal_fds_inner);
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn register_current_process_internal_fds_inner() {
+  register_current_process_internal_fds_from_dir("/dev/fd");
+}
+
+#[cfg(unix)]
+fn register_current_process_internal_fds_from_dir(path: &str) {
+  let Ok(path) = std::ffi::CString::new(path) else {
+    return;
+  };
+  // SAFETY: path is a valid nul-terminated string.
+  let dir = unsafe { libc::opendir(path.as_ptr()) };
+  if dir.is_null() {
+    return;
+  }
+  // SAFETY: dir is a valid directory stream until closed below.
+  let dir_fd = unsafe { libc::dirfd(dir) };
+
+  loop {
+    // SAFETY: dir is a valid directory stream. readdir returns null at
+    // end-of-directory or on error.
+    let entry = unsafe { libc::readdir(dir) };
+    if entry.is_null() {
+      break;
+    }
+    // SAFETY: d_name is nul-terminated by readdir.
+    let name = unsafe { std::ffi::CStr::from_ptr((*entry).d_name.as_ptr()) };
+    let Ok(name) = name.to_str() else {
+      continue;
+    };
+    let Ok(fd) = name.parse::<i32>() else {
+      continue;
+    };
+    if fd <= 2 || fd == dir_fd {
+      continue;
+    }
+    register_internal_fd(fd);
+  }
+
+  // SAFETY: dir was opened by opendir and is closed once here.
+  unsafe {
+    libc::closedir(dir);
+  }
+}
+
+#[cfg(not(unix))]
+fn register_current_process_internal_fds() {}
+
 impl FdTable {
   pub fn new() -> Self {
+    register_current_process_internal_fds();
     Self {
       entries: HashMap::new(),
     }
@@ -70,7 +157,12 @@ impl FdTable {
 
   /// Check if an fd is registered (either ownership type).
   pub fn contains(&self, fd: i32) -> bool {
-    self.entries.contains_key(&fd)
+    if self.entries.contains_key(&fd) {
+      return true;
+    }
+    INTERNAL_FDS
+      .get()
+      .is_some_and(|fds| fds.lock().unwrap().contains(&fd))
   }
 }
 

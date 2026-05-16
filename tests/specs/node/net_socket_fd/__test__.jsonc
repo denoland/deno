@@ -17,6 +17,11 @@
     "tcp_open": {
       "args": "run -A --unstable-ffi tcp_open.ts",
       "output": "tcp_open.out"
+    },
+    "signal_hook_fd_not_adopted": {
+      "if": "unix",
+      "args": "run -A signal_hook_fd_not_adopted.ts",
+      "output": "signal_hook_fd_not_adopted.out"
     }
   }
 }

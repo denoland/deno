@@ -3315,6 +3315,7 @@ name = "deno_signals"
 version = "0.38.0"
 dependencies = [
  "deno_error",
+ "deno_io",
  "libc",
  "signal-hook",
  "thiserror 2.0.12",
