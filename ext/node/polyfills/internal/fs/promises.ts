@@ -329,6 +329,11 @@ function writeFilePromise(
   const flag = opts.flag ?? "w";
   const mode = opts.mode ?? 0o666;
   return (async () => {
+    // Match the existing path-based behavior: surface the same `DOMException`
+    // that `signal.throwIfAborted()` produces (the fd-based fallback would
+    // throw Deno's `AbortError` instead). Inside the async IIFE so the throw
+    // becomes a promise rejection, not a sync throw.
+    if (opts.signal?.aborted) opts.signal.throwIfAborted();
     const fh = await openPromise(
       pathOrRid as string | Buffer | URL,
       flag,
@@ -386,6 +391,11 @@ function readFilePromise(
     typeof options === "string" ? { encoding: options } : (options ?? {});
   const flag = opts.flag ?? "r";
   return (async () => {
+    // Match the existing path-based behavior: surface the same `DOMException`
+    // that `signal.throwIfAborted()` produces (the fd-based fallback would
+    // throw Deno's `AbortError` instead). Inside the async IIFE so the throw
+    // becomes a promise rejection, not a sync throw.
+    if (opts.signal?.aborted) opts.signal.throwIfAborted();
     const fh = await openPromise(path as string | Buffer | URL, flag);
     return handleFdClose(fh.readFile(opts), () => fh.close()) as Promise<
       string | Buffer
