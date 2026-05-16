@@ -835,16 +835,18 @@ Deno.test({
     const tempFile = Deno.makeTempFileSync();
     try {
       const before = (process as any)._getActiveRequests().length;
-      const promises = Array.from({ length: 12 }, () =>
-        new Promise<number>((resolve, reject) => {
-          fs.open(tempFile, "r", (err, fd) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve(fd);
-            }
-          });
-        })
+      const promises = Array.from(
+        { length: 12 },
+        () =>
+          new Promise<number>((resolve, reject) => {
+            fs.open(tempFile, "r", (err, fd) => {
+              if (err) {
+                reject(err);
+              } else {
+                resolve(fd);
+              }
+            });
+          }),
       );
 
       assertEquals((process as any)._getActiveRequests().length, before + 12);
