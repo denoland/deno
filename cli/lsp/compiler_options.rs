@@ -4,7 +4,9 @@ use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use deno_ast::MediaType;
 use deno_config::deno_json::CompilerOptions;
+use deno_config::glob::WalkEntry;
 use deno_config::workspace::TsTypeLib;
 use deno_core::url::Url;
 use deno_resolver::deno_json::CompilerOptionsKey;
@@ -18,7 +20,9 @@ use crate::lsp::config::Config;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::LspResolver;
 use crate::sys::CliSys;
+use crate::util::fs::CollectSpecifiersOptions;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
+use crate::util::fs::collect_specifiers;
 
 #[derive(Debug, Clone)]
 pub struct LspCompilerOptionsData {
@@ -28,6 +32,7 @@ pub struct LspCompilerOptionsData {
   pub skip_lib_check: bool,
   pub jsx_import_source_config: Option<Arc<JsxImportSourceConfig>>,
   pub ts_config_files: Option<(Arc<Url>, Vec<TsConfigFile>)>,
+  pub ts_config_roots: Arc<Vec<Url>>,
   watched_files: HashSet<Arc<Url>>,
 }
 
@@ -63,9 +68,29 @@ impl LspCompilerOptionsResolver {
   }
 
   fn from_inner(inner: CompilerOptionsResolver) -> Self {
+    let ts_config_roots = inner
+      .ts_config_file_patterns()
+      .filter_map(|(key, file_patterns)| {
+        let roots = collect_specifiers(
+          CollectSpecifiersOptions {
+            file_patterns,
+            vendor_folder: None,
+            include_ignored_specified: true,
+          },
+          is_lsp_root_file,
+        )
+        .inspect_err(|err| {
+          lsp_warn!("Failed to collect tsconfig roots: {err:#}");
+        })
+        .ok()?;
+        Some((key, Arc::new(roots)))
+      })
+      .collect::<BTreeMap<_, _>>();
     let data = inner
       .entries()
       .map(|(k, d, f)| {
+        let ts_config_roots =
+          ts_config_roots.get(&k).cloned().unwrap_or_default();
         (
           k,
           LspCompilerOptionsData {
@@ -98,6 +123,7 @@ impl LspCompilerOptionsResolver {
               .flatten()
               .cloned(),
             ts_config_files: f.map(|(r, f)| (r.clone(), f.clone())),
+            ts_config_roots,
             watched_files: d
               .sources
               .iter()
@@ -157,4 +183,23 @@ impl LspCompilerOptionsResolver {
       .values()
       .any(|d| d.watched_files.contains(specifier))
   }
+}
+
+fn is_lsp_root_file(entry: WalkEntry) -> bool {
+  matches!(
+    MediaType::from_path(entry.path),
+    MediaType::JavaScript
+      | MediaType::Jsx
+      | MediaType::Mjs
+      | MediaType::Cjs
+      | MediaType::TypeScript
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Json
+      | MediaType::Jsonc
+      | MediaType::Tsx
+  )
 }
