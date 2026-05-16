@@ -8,6 +8,9 @@ import * as dns from "node:dns";
 import * as dnsPromises from "node:dns/promises";
 import util from "node:util";
 import console from "node:console";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 
 Deno.test("[node/net] close event emits after error event - when host is not found", async () => {
   const socket = net.createConnection(27009, "doesnotexist");
@@ -45,6 +48,18 @@ Deno.test("[node/net] close event emits after error event - when connection is r
 
   // `error` happens before `close`
   assertEquals(events, ["error", "close"]);
+});
+
+Deno.test("[node/net] Socket falls back when handle getAsyncId has wrong receiver", () => {
+  const { TCP } = require("internal/test/binding").internalBinding("tcp_wrap");
+  const socket = new net.Socket({
+    handle: {
+      getAsyncId: TCP.prototype.getAsyncId,
+    },
+    readable: false,
+  } as net.SocketConstructorOpts);
+
+  socket.destroy();
 });
 
 Deno.test("[node/net] the port is available immediately after close callback", async () => {
