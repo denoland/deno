@@ -24,6 +24,7 @@ const {
   ArrayPrototypeSort,
   ArrayPrototypeSplice,
   ObjectGetOwnPropertyDescriptor,
+  ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   ReflectOwnKeys,
   SafeArrayIterator,
@@ -192,21 +193,30 @@ class URLSearchParams {
         this[_list] = pairs;
         return;
       }
-      // Record<USVString, USVString>
-      const list = [];
-      const keys = ReflectOwnKeys(init);
-      for (let i = 0; i < keys.length; i++) {
-        const key = keys[i];
+      // Record<USVString, USVString>. We iterate own enumerable keys
+      // (including Symbol keys so USVString coercion throws on them, like
+      // Node does) and dedupe by the USVString-coerced name so that two keys
+      // collapsing to U+FFFD overwrite each other instead of appearing twice
+      // in the iterator output.
+      const result = { __proto__: null };
+      const allKeys = ReflectOwnKeys(init);
+      for (let i = 0; i < allKeys.length; i++) {
+        const key = allKeys[i];
         const desc = ObjectGetOwnPropertyDescriptor(init, key);
-        if (desc !== undefined && desc.enumerable) {
+        if (desc !== undefined && desc.enumerable === true) {
           const name = webidl.converters.USVString(key, undefined, undefined);
           const value = webidl.converters.USVString(
             init[key],
             undefined,
             undefined,
           );
-          ArrayPrototypePush(list, [name, value]);
+          result[name] = value;
         }
+      }
+      const list = [];
+      const resultKeys = ObjectKeys(result);
+      for (let i = 0; i < resultKeys.length; i++) {
+        ArrayPrototypePush(list, [resultKeys[i], result[resultKeys[i]]]);
       }
       this[_list] = list;
       return;
