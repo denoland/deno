@@ -24,6 +24,7 @@ use deno_runtime::coverage::CoverageCollector;
 use deno_runtime::cpu_prof_filename;
 use deno_runtime::cpu_profiler::CpuProfiler;
 use deno_runtime::deno_os::OpExitCallbacks;
+use deno_runtime::deno_os::OpExitInterceptor;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
@@ -197,14 +198,29 @@ impl CliMainWorker {
     struct FileWatcherModuleExecutor {
       inner: CliMainWorker,
       pending_unload: bool,
+      exit_interceptor: OpExitInterceptor,
     }
 
     impl FileWatcherModuleExecutor {
-      pub fn new(worker: CliMainWorker) -> FileWatcherModuleExecutor {
+      pub fn new(mut worker: CliMainWorker) -> FileWatcherModuleExecutor {
+        let handle =
+          worker.worker.js_runtime().v8_isolate().thread_safe_handle();
+        let exit_interceptor = OpExitInterceptor::new(handle);
+        worker
+          .worker
+          .js_runtime()
+          .op_state()
+          .borrow_mut()
+          .put(exit_interceptor.clone());
         FileWatcherModuleExecutor {
           inner: worker,
           pending_unload: false,
+          exit_interceptor,
         }
+      }
+
+      fn did_intercept_exit(&self) -> bool {
+        self.exit_interceptor.did_intercept()
       }
 
       /// Execute the given main module emitting load and unload events before and after execution
@@ -217,6 +233,9 @@ impl CliMainWorker {
         self.pending_unload = true;
         if let Err(e) = self.inner.execute_main_module().await {
           self.pending_unload = false;
+          if self.did_intercept_exit() {
+            return Ok(());
+          }
           return Err(e);
         }
         self.inner.worker.dispatch_load_event()?;
@@ -224,7 +243,12 @@ impl CliMainWorker {
         let result = loop {
           match self.inner.worker.run_event_loop(false).await {
             Ok(()) => {}
-            Err(error) => break Err(error),
+            Err(error) => {
+              if self.did_intercept_exit() {
+                break Ok(());
+              }
+              break Err(error);
+            }
           }
           let web_continue = self.inner.worker.dispatch_beforeunload_event()?;
           if !web_continue {
@@ -238,6 +262,10 @@ impl CliMainWorker {
         self.pending_unload = false;
 
         result?;
+
+        if self.did_intercept_exit() {
+          return Ok(());
+        }
 
         self.inner.worker.dispatch_unload_event()?;
         self.inner.worker.dispatch_process_exit_event()?;
