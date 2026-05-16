@@ -81,6 +81,23 @@ async fn test_file_fetcher_redirects() {
       FileOrRedirect::Redirect(_) => unreachable!(),
     }
   }
+
+  sys.fs_create_dir_all("/dir").unwrap();
+  let dir_url = Url::parse("file:///dir").unwrap();
+  let result = file_fetcher
+    .fetch_no_follow(&dir_url, FetchNoFollowOptions::default())
+    .await;
+  let err = result.unwrap_err();
+  assert_eq!(
+    err.to_string(),
+    "[ERR_UNSUPPORTED_DIR_IMPORT] Directory import 'file:///dir' is not supported resolving ES modules"
+  );
+  match err.into_kind() {
+    FetchNoFollowErrorKind::UnsupportedDirImport(err) => {
+      assert_eq!(err.url, dir_url);
+    }
+    err => unreachable!("{err:?}"),
+  }
 }
 
 #[tokio::test]

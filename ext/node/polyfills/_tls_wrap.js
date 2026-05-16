@@ -6,7 +6,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
+(function () {
+const { core } = globalThis.__bootstrap;
 const {
   ArrayIsArray,
   ObjectAssign,
@@ -15,11 +16,11 @@ const {
 const assert = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );
-import * as net from "node:net";
-import {
+const net = core.createLazyLoader("node:net")().default;
+const {
   createSecureContext,
   translatePeerCertificate,
-} from "node:_tls_common";
+} = core.loadExtScript("ext:deno_node/_tls_common.ts");
 const { JSStreamSocket } = core.loadExtScript(
   "ext:deno_node/internal/js_stream_socket.js",
 );
@@ -65,7 +66,7 @@ const {
 const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
-import { op_tls_canonicalize_ipv4_address } from "ext:core/ops";
+const { op_tls_canonicalize_ipv4_address } = core.ops;
 const { default: tlsWrap } = core.loadExtScript(
   "ext:deno_node/internal_binding/tls_wrap.ts",
 );
@@ -632,9 +633,19 @@ TLSSocket.prototype._init = function (socket, wrap) {
 
         const handleAlpn = (sniCtx) => {
           let selectedAlpn = null;
+          let keyCertCtx = null;
           if (alpnCb && alpnProtocols.length > 0) {
             const protocols = Array.from(alpnProtocols);
-            selectedAlpn = alpnCb({ servername, protocols });
+            const alpnThis = {
+              setKeyCert(keyCert) {
+                if (keyCert?.context) {
+                  keyCertCtx = keyCert;
+                } else {
+                  keyCertCtx = createSecureContext(keyCert);
+                }
+              },
+            };
+            selectedAlpn = alpnCb.call(alpnThis, { servername, protocols });
             if (selectedAlpn == null) {
               // Callback returned undefined/null -- reject ALPN.
               // Destroy the socket which sends a connection reset.
@@ -647,7 +658,7 @@ TLSSocket.prototype._init = function (socket, wrap) {
               return;
             }
           }
-          finish(sniCtx, selectedAlpn);
+          finish(keyCertCtx || sniCtx, selectedAlpn);
         };
 
         if (sniCb) {
@@ -739,8 +750,11 @@ TLSSocket.prototype.renegotiate = function (_options, callback) {
   return false;
 };
 
-TLSSocket.prototype.setMaxSendFragment = function setMaxSendFragment(_size) {
+TLSSocket.prototype.setMaxSendFragment = function setMaxSendFragment(size) {
   // Not applicable to rustls
+  validateInt32(size, "size");
+  if (size < 512 || size > 16384) return false;
+  this._maxSendFragment = size;
   return true;
 };
 
@@ -980,7 +994,16 @@ TLSSocket.prototype.getX509Certificate = function getX509Certificate() {
 
 function makeVerifyError(code) {
   if (!code) return null;
-  const err = new Error(code);
+  const message = {
+    CERT_HAS_EXPIRED: "certificate has expired",
+    CERT_NOT_YET_VALID: "certificate is not yet valid",
+    DEPTH_ZERO_SELF_SIGNED_CERT: "self-signed certificate",
+    SELF_SIGNED_CERT_IN_CHAIN: "self-signed certificate in certificate chain",
+    UNABLE_TO_GET_ISSUER_CERT: "unable to get issuer certificate",
+    UNABLE_TO_GET_ISSUER_CERT_LOCALLY: "unable to get local issuer certificate",
+    UNABLE_TO_VERIFY_LEAF_SIGNATURE: "unable to verify the first certificate",
+  }[code] ?? code;
+  const err = new Error(message);
   err.code = code;
   return err;
 }
@@ -1075,6 +1098,7 @@ function tlsConnectionListener(rawSocket) {
     ALPNCallback: this.ALPNCallback,
     SNICallback: sniCallback,
     pauseOnConnect: this.pauseOnConnect,
+    handshakeTimeout: this._handshakeTimeout,
   });
 
   // TLS init can fail synchronously (e.g. missing cert/key, unsupported
@@ -1149,6 +1173,13 @@ function Server(options, listener) {
       );
     }
   }
+  this._ticketKeys = options.ticketKeys == null
+    ? Buffer.alloc(48)
+    : Buffer.from(
+      options.ticketKeys.buffer,
+      options.ticketKeys.byteOffset,
+      options.ticketKeys.byteLength,
+    );
 
   this.setSecureContext(options);
 
@@ -1217,8 +1248,12 @@ Server.prototype.addContext = function (servername, context) {
   this._contexts.push([servername, context]);
 };
 
-Server.prototype.setTicketKeys = function (keys) {
-  if (!isArrayBufferView(keys) && !Buffer.isBuffer(keys)) {
+Server.prototype.getTicketKeys = function getTicketKeys() {
+  return Buffer.from(this._ticketKeys);
+};
+
+Server.prototype.setTicketKeys = function setTicketKeys(keys) {
+  if (!isArrayBufferView(keys)) {
     throw new ERR_INVALID_ARG_TYPE(
       "keys",
       ["Buffer", "TypedArray", "DataView"],
@@ -1234,7 +1269,7 @@ Server.prototype.setTicketKeys = function (keys) {
   // listeners actually rotate their session-ticket keys. Today this
   // only stores the bytes; new listeners pick them up through
   // options.ticketKeys.
-  this._ticketKeys = Buffer.from(keys);
+  this._ticketKeys = Buffer.from(keys.buffer, keys.byteOffset, keys.byteLength);
 };
 
 // ---------------------------------------------------------------------------
@@ -1320,6 +1355,9 @@ function normalizeConnectArgs(listArgs) {
 }
 
 function connect(...args) {
+  if (args.length === 0) {
+    createSecureContext({ ciphers: DEFAULT_CIPHERS });
+  }
   args = normalizeConnectArgs(args);
   let options = args[0];
   const cb = args[1];
@@ -1582,7 +1620,7 @@ const DEFAULT_CIPHERS = [
   "ECDHE-RSA-CHACHA20-POLY1305",
 ].join(":");
 
-export {
+return {
   checkServerIdentity,
   connect,
   createServer,
@@ -1590,14 +1628,14 @@ export {
   Server,
   TLSSocket,
   unfqdn,
+  default: {
+    TLSSocket,
+    connect,
+    createServer,
+    checkServerIdentity,
+    DEFAULT_CIPHERS,
+    Server,
+    unfqdn,
+  },
 };
-
-export default {
-  TLSSocket,
-  connect,
-  createServer,
-  checkServerIdentity,
-  DEFAULT_CIPHERS,
-  Server,
-  unfqdn,
-};
+})();

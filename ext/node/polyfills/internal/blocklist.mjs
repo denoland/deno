@@ -23,11 +23,14 @@ const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-const { customInspectSymbol } = core.loadExtScript(
+const { customInspectSymbol, kEmptyObject } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
 const { inspect } = core.loadExtScript(
   "ext:deno_node/internal/util/inspect.mjs",
+);
+const { isIP, isIPv6 } = core.loadExtScript(
+  "ext:deno_node/internal/net.ts",
 );
 
 const {
@@ -35,10 +38,14 @@ const {
   ArrayPrototypeUnshift,
   JSONParse,
   NumberParseInt,
+  ObjectDefineProperties,
   RegExpPrototypeExec,
   SafeArrayIterator,
   SafeRegExp,
+  StringPrototypeEndsWith,
   StringPrototypeIncludes,
+  StringPrototypeSlice,
+  StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
   Symbol,
 } = primordials;
@@ -285,7 +292,44 @@ const kDetail = Symbol("kDetail");
 
 class SocketAddress {
   static isSocketAddress(value) {
-    return value?.[kDetail] !== undefined;
+    if (value === null || typeof value !== "object") {
+      return false;
+    }
+    if (value[kDetail] !== undefined) {
+      return true;
+    }
+    // After a structured clone (e.g. postMessage), the symbol-keyed marker is
+    // lost. Fall back to a duck-type check on the cloned data shape.
+    return typeof value.address === "string" &&
+      typeof value.port === "number" &&
+      (value.family === "ipv4" || value.family === "ipv6") &&
+      typeof value.flowlabel === "number";
+  }
+
+  static parse(input) {
+    validateString(input, "input");
+    let url;
+    try {
+      url = new URL(`http://${input}`);
+    } catch {
+      return undefined;
+    }
+    const hostname = url.hostname;
+    const portStr = url.port;
+    const port = portStr === "" ? 0 : NumberParseInt(portStr, 10);
+    if (isIP(hostname) === 4) {
+      return new SocketAddress({ address: hostname, port });
+    }
+    if (
+      StringPrototypeStartsWith(hostname, "[") &&
+      StringPrototypeEndsWith(hostname, "]")
+    ) {
+      const addr = StringPrototypeSlice(hostname, 1, -1);
+      if (isIPv6(addr)) {
+        return new SocketAddress({ address: addr, family: "ipv6", port });
+      }
+    }
+    return undefined;
   }
 
   constructor(options = kEmptyObject) {
@@ -297,7 +341,7 @@ class SocketAddress {
       flowlabel = 0,
     } = options;
 
-    if (typeof family?.toLowerCase === "function") {
+    if (typeof family === "string") {
       // deno-lint-ignore prefer-primordials
       family = family.toLowerCase();
     }
@@ -314,12 +358,8 @@ class SocketAddress {
     validatePort(port, "options.port");
     validateUint32(flowlabel, "options.flowlabel", false);
 
-    this[kDetail] = {
-      address,
-      port,
-      family,
-      flowlabel,
-    };
+    let normalizedAddress = address;
+    let normalizedFamily = family;
     const useInput = op_socket_address_parse(
       address,
       port,
@@ -327,27 +367,50 @@ class SocketAddress {
     );
     if (!useInput) {
       const { 0: address_, 1: family_ } = op_socket_address_get_serialization();
-      this[kDetail].address = address_;
-      this[kDetail].family = family_;
+      normalizedAddress = address_;
+      normalizedFamily = family_;
     }
-  }
 
-  get address() {
-    return this[kDetail].address;
-  }
+    this[kDetail] = {
+      address: normalizedAddress,
+      port,
+      family: normalizedFamily,
+      flowlabel,
+    };
 
-  get port() {
-    return this[kDetail].port;
-  }
-
-  get family() {
-    return this[kDetail].family;
-  }
-
-  get flowlabel() {
-    // TODO(satyarohith): Implement this in Rust.
-    // The flow label can be changed internally.
-    return this[kDetail].flowlabel;
+    // Expose the data as own enumerable string-keyed properties so that the
+    // instance survives structured clone (e.g. postMessage): symbol-keyed
+    // properties are not preserved by HTML structured clone.
+    ObjectDefineProperties(this, {
+      address: {
+        __proto__: null,
+        value: normalizedAddress,
+        enumerable: true,
+        writable: false,
+        configurable: false,
+      },
+      port: {
+        __proto__: null,
+        value: port,
+        enumerable: true,
+        writable: false,
+        configurable: false,
+      },
+      family: {
+        __proto__: null,
+        value: normalizedFamily,
+        enumerable: true,
+        writable: false,
+        configurable: false,
+      },
+      flowlabel: {
+        __proto__: null,
+        value: flowlabel,
+        enumerable: true,
+        writable: false,
+        configurable: false,
+      },
+    });
   }
 
   toJSON() {

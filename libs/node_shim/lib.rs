@@ -3257,6 +3257,8 @@ pub fn translate_to_deno_args(
   let opts = &parsed_args.options;
   let env_opts = &opts.per_isolate.per_env;
 
+  add_tls_node_options(node_options, env_opts);
+
   // Check for system CA usage
   if opts.use_system_ca || opts.use_openssl_ca {
     result.use_system_ca = true;
@@ -3465,6 +3467,30 @@ pub fn translate_to_deno_args(
   result
 }
 
+fn add_tls_node_options(
+  node_options: &mut Vec<String>,
+  env_opts: &EnvironmentOptions,
+) {
+  if env_opts.tls_min_v1_0 {
+    node_options.push("--tls-min-v1.0".to_string());
+  }
+  if env_opts.tls_min_v1_1 {
+    node_options.push("--tls-min-v1.1".to_string());
+  }
+  if env_opts.tls_min_v1_2 {
+    node_options.push("--tls-min-v1.2".to_string());
+  }
+  if env_opts.tls_min_v1_3 {
+    node_options.push("--tls-min-v1.3".to_string());
+  }
+  if env_opts.tls_max_v1_2 {
+    node_options.push("--tls-max-v1.2".to_string());
+  }
+  if env_opts.tls_max_v1_3 {
+    node_options.push("--tls-max-v1.3".to_string());
+  }
+}
+
 fn add_common_flags(
   deno_args: &mut Vec<String>,
   parsed_args: &ParseResult,
@@ -3501,33 +3527,11 @@ fn add_common_flags(
     deno_args.push(format!("--v8-flags={}", parsed_args.v8_args.join(",")));
   }
 
-  // Add --import (ESM preloads)
-  for module in &env_opts.preload_esm_modules {
-    deno_args.push("--import".to_string());
-    deno_args.push(module.clone());
-  }
-
-  // Note: --require (CJS preloads) is not passed through yet because
-  // Deno's --require flag doesn't support bare package specifiers
-  // (e.g. `-r self_ref`). This needs package-aware resolution first.
-
   // Add conditions
   add_conditions(deno_args, env_opts);
 
   // Add inspector flags
   add_inspector_flags(deno_args, env_opts);
-
-  // Pass --experimental-loader through as a native Deno flag
-  add_loader_hooks(deno_args, env_opts);
-}
-
-fn add_loader_hooks(
-  deno_args: &mut Vec<String>,
-  env_opts: &EnvironmentOptions,
-) {
-  for loader_url in &env_opts.userland_loaders {
-    deno_args.push(format!("--experimental-loader={}", loader_url));
-  }
 }
 
 fn add_conditions(deno_args: &mut Vec<String>, env_opts: &EnvironmentOptions) {

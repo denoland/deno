@@ -21,7 +21,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
-const { getOptions } = core.loadExtScript(
+const { getExecArgvOptions, getOptions } = core.loadExtScript(
   "ext:deno_node/internal_binding/node_options.ts",
 );
 const {
@@ -31,25 +31,36 @@ const {
   StringPrototypeStartsWith,
 } = primordials;
 
-let optionsMap: Map<string, { value: string }>;
-const dummyOptions = new SafeMap<string, { value: string }>();
+const dummyOptions = new SafeMap<string, { value: string | boolean }>();
+
+function isWarmupPhase() {
+  return !Deno.build;
+}
 
 function getOptionsFromBinding() {
   // If Deno.build is not defined, this is in warmup phase.
-  if (!Deno.build) {
+  if (isWarmupPhase()) {
     return dummyOptions;
   }
 
-  if (!optionsMap) {
-    ({ options: optionsMap } = getOptions());
-  }
-
-  return optionsMap;
+  return getOptions().options;
 }
 
 function getOptionValue(optionName: string) {
-  const options = getOptionsFromBinding();
+  return getOptionValueFromMap(getOptionsFromBinding(), optionName);
+}
 
+function getExecArgvOptionValue(optionName: string) {
+  if (isWarmupPhase()) {
+    return undefined;
+  }
+  return getOptionValueFromMap(getExecArgvOptions().options, optionName);
+}
+
+function getOptionValueFromMap(
+  options: Map<string, { value: string | boolean }>,
+  optionName: string,
+) {
   if (StringPrototypeStartsWith(optionName, "--no-")) {
     const option = MapPrototypeGet(
       options,
@@ -63,6 +74,7 @@ function getOptionValue(optionName: string) {
 }
 
 return {
+  getExecArgvOptionValue,
   getOptionValue,
 };
 })();

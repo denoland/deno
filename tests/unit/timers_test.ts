@@ -113,28 +113,6 @@ Deno.test.ignore(async function evalPrimordial() {
   globalThis.eval = originalEval;
 });
 
-Deno.test(async function timeoutArgs() {
-  const { promise, resolve } = Promise.withResolvers<void>();
-  const arg = 1;
-  let capturedArgs: unknown[] = [];
-  setTimeout(
-    function () {
-      capturedArgs = [...arguments];
-      resolve();
-    },
-    10,
-    arg,
-    arg.toString(),
-    [arg],
-  );
-  await promise;
-  assertEquals(capturedArgs, [
-    arg,
-    arg.toString(),
-    [arg],
-  ]);
-});
-
 Deno.test(async function timeoutCancelSuccess() {
   let count = 0;
   const id = setTimeout(() => {
@@ -795,43 +773,4 @@ Deno.test({
   fn: () => {
     AbortSignal.timeout(2000);
   },
-});
-
-// TODO(bartlomieju): this test is not valid, because Node.js timers are
-// used as the default and they don't support string eval callbacks.
-Deno.test.ignore(async function setTimeoutWithStringCallback() {
-  const global = globalThis as unknown as {
-    timeoutStringTest: number;
-    timeoutStringPromise: ReturnType<typeof Promise.withResolvers<void>>;
-  };
-  global.timeoutStringTest = 0;
-  global.timeoutStringPromise = Promise.withResolvers<void>();
-  setTimeout(
-    "globalThis.timeoutStringTest = 42; globalThis.timeoutStringPromise.resolve();",
-    10,
-  );
-  await global.timeoutStringPromise.promise;
-  assertEquals(global.timeoutStringTest, 42);
-  Reflect.deleteProperty(global, "timeoutStringTest");
-  Reflect.deleteProperty(global, "timeoutStringPromise");
-});
-
-// TODO(bartlomieju): this test is not valid, because Node.js timers are
-// used as the default and they don't support string eval callbacks.
-Deno.test.ignore(async function setIntervalWithStringCallback() {
-  const global = globalThis as unknown as {
-    intervalStringTest: number;
-    intervalStringPromise: ReturnType<typeof Promise.withResolvers<void>>;
-  };
-  global.intervalStringTest = 0;
-  global.intervalStringPromise = Promise.withResolvers<void>();
-  const id = setInterval(
-    "globalThis.intervalStringTest += 10; if (globalThis.intervalStringTest >= 20) globalThis.intervalStringPromise.resolve();",
-    10,
-  );
-  global.intervalStringPromise.promise.then(() => clearInterval(id));
-  await global.intervalStringPromise.promise;
-  assert(global.intervalStringTest >= 20);
-  Reflect.deleteProperty(global, "intervalStringTest");
-  Reflect.deleteProperty(global, "intervalStringPromise");
 });

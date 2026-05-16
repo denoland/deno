@@ -51,6 +51,9 @@ pub struct NpmRc {
   pub registry: Option<String>,
   pub scope_registries: HashMap<String, String>,
   pub registry_configs: HashMap<String, Arc<RegistryConfig>>,
+  /// `min-release-age` value in days. See
+  /// https://docs.npmjs.com/cli/v11/using-npm/config#min-release-age
+  pub min_release_age_days: Option<u64>,
 }
 
 impl NpmRc {
@@ -62,6 +65,7 @@ impl NpmRc {
     let mut registry = None;
     let mut scope_registries: HashMap<String, String> = HashMap::new();
     let mut registry_configs: HashMap<String, RegistryConfig> = HashMap::new();
+    let mut min_release_age_days: Option<u64> = None;
 
     for kv_or_section in kv_or_sections {
       match kv_or_section {
@@ -112,6 +116,22 @@ impl NpmRc {
             {
               let value = expand_vars(text, sys);
               registry = Some(value);
+            } else if key == "min-release-age" {
+              // npm interprets the value as a number of days. Ignore values
+              // that can't be parsed rather than erroring (npm is lenient
+              // about unknown/invalid config values).
+              match &kv.value {
+                Value::Number(n) if *n >= 0 => {
+                  min_release_age_days = Some(*n as u64);
+                }
+                Value::String(text) => {
+                  let value = expand_vars(text, sys);
+                  if let Ok(days) = value.trim().parse::<u64>() {
+                    min_release_age_days = Some(days);
+                  }
+                }
+                _ => {}
+              }
             }
           }
         }
@@ -128,6 +148,7 @@ impl NpmRc {
         .into_iter()
         .map(|(k, v)| (k, Arc::new(v)))
         .collect(),
+      min_release_age_days,
     })
   }
 
@@ -163,6 +184,7 @@ impl NpmRc {
       },
       scopes,
       registry_configs: self.registry_configs.clone(),
+      min_release_age_days: self.min_release_age_days,
     })
   }
 
@@ -234,6 +256,9 @@ pub struct ResolvedNpmRc {
   pub default_config: RegistryConfigWithUrl,
   pub scopes: HashMap<String, RegistryConfigWithUrl>,
   pub registry_configs: HashMap<String, Arc<RegistryConfig>>,
+  /// `min-release-age` value in days. See
+  /// https://docs.npmjs.com/cli/v11/using-npm/config#min-release-age
+  pub min_release_age_days: Option<u64>,
 }
 
 impl ResolvedNpmRc {
@@ -483,7 +508,8 @@ registry=https://registry.npmjs.org/
               ..Default::default()
             })
           ),
-        ])
+        ]),
+        min_release_age_days: None,
       }
     );
 
@@ -545,6 +571,7 @@ registry=https://registry.npmjs.org/
           ),
         ]),
         registry_configs: npm_rc.registry_configs.clone(),
+        min_release_age_days: None,
       }
     );
 
@@ -719,7 +746,8 @@ registry=${VAR_FOUND}
             auth_token: Some("SOME_VALUE".to_string()),
             ..Default::default()
           })
-        ),])
+        ),]),
+        min_release_age_days: None,
       }
     )
   }
@@ -746,6 +774,30 @@ registry=${VAR_FOUND}
 
     // npm ignores values with { in them
     assert_eq!(expand_vars("test${VA{R}test", &sys), "test${VA{R}test");
+  }
+
+  #[test]
+  fn test_parse_min_release_age() {
+    let sys = InMemorySys::default();
+    let npm_rc = NpmRc::parse(&sys, "min-release-age=30").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, Some(30));
+    let resolved = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+    assert_eq!(resolved.min_release_age_days, Some(30));
+
+    // not set
+    let npm_rc = NpmRc::parse(&sys, "").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, None);
+
+    // invalid value is ignored
+    let npm_rc = NpmRc::parse(&sys, "min-release-age=invalid").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, None);
+
+    // env var expansion
+    sys.env_set_var("MIN_AGE", "7");
+    let npm_rc = NpmRc::parse(&sys, "min-release-age=${MIN_AGE}").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, Some(7));
   }
 
   #[test]

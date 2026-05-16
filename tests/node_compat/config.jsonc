@@ -67,21 +67,63 @@
     "es-module/test-import-preload-require-cycle.js": {},
     "es-module/test-loaders-hidden-from-users.js": {},
     "es-module/test-require-as-esm-interop.mjs": {},
+    "es-module/test-require-module.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
+    "es-module/test-require-module-cached-tla.js": {},
     "es-module/test-require-module-cycle-cjs-esm-esm.js": {},
     "es-module/test-require-module-defined-esmodule.js": {},
     "es-module/test-require-module-detect-entry-point-aou.js": {},
     "es-module/test-require-module-detect-entry-point.js": {},
     "es-module/test-require-module-dont-detect-cjs.js": {},
+    "es-module/test-require-module-dynamic-import-1.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
+    "es-module/test-require-module-dynamic-import-2.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
     "es-module/test-require-module-dynamic-import-3.js": {},
     "es-module/test-require-module-retry-import-evaluating.js": {},
     "es-module/test-require-module-dynamic-import-4.js": {},
+    "es-module/test-require-module-feature-detect.js": {
+      "ignore": true,
+      "reason": "Tests Node's process.features.require_module flag, which Deno does not expose."
+    },
+    "es-module/test-require-module-instantiated.mjs": {},
+    "es-module/test-require-module-preload.js": {
+      "ignore": true,
+      "reason": "Tests Node's --require / --import preload CLI flags, which Deno does not implement."
+    },
     "es-module/test-require-module-synchronous-rejection-handling.js": {},
+    "es-module/test-require-module-tla-execution.js": {},
     "es-module/test-require-module-tla-nested.js": {},
+    "es-module/test-require-module-tla-print-execution.js": {
+      "ignore": true,
+      "reason": "Requires Node's --experimental-print-required-tla CLI flag, which Deno does not implement."
+    },
     "es-module/test-require-module-tla-rejected.js": {},
     "es-module/test-require-module-tla-resolved.js": {},
+    "es-module/test-require-module-tla-retry-import.js": {},
+    "es-module/test-require-module-tla-retry-import-2.js": {},
+    "es-module/test-require-module-tla-retry-require.js": {},
     "es-module/test-require-module-tla-unresolved.js": {},
     "es-module/test-require-module-transpiled.js": {},
+    "es-module/test-require-module-twice.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
+    "es-module/test-require-module-warning.js": {
+      "ignore": true,
+      "reason": "Tests Node's --trace-require-module / ExperimentalWarning stderr emissions, which Deno does not emit."
+    },
     "es-module/test-require-module-with-detection.js": {},
+    "es-module/test-require-node-modules-warning.js": {
+      "ignore": true,
+      "reason": "Tests Node's --trace-require-module / ExperimentalWarning stderr emissions, which Deno does not emit."
+    },
     "es-module/test-typescript-commonjs.mjs": {},
     "es-module/test-typescript-eval.mjs": {},
     "es-module/test-typescript-module.mjs": {},
@@ -94,6 +136,7 @@
     "internet/test-dns-ipv6.js": {
       "windows": false
     },
+    "internet/test-tls-add-ca-cert.js": {},
     "internet/test-snapshot-dns-lookup.js": {
       "ignore": true,
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
@@ -102,46 +145,6 @@
       "ignore": true,
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
     },
-    "module-hooks/test-async-loader-hooks-globalpreload-no-warning-with-initialize.mjs": {},
-    "module-hooks/test-async-loader-hooks-never-settling-race-cjs.mjs": {
-      "ignore": true,
-      "reason": "Flaky timeout - never-settling hook detection not yet implemented"
-    },
-    "module-hooks/test-async-loader-hooks-never-settling-race-esm.mjs": {
-      "ignore": true,
-      "reason": "Flaky timeout in debug builds - never-settling hook detection not yet implemented"
-    },
-    "module-hooks/test-async-loader-hooks-no-leak-internals.mjs": {
-      "ignore": true,
-      "reason": "Deno provides import.meta.resolve in workers; test asserts typeof import.meta.resolve === 'undefined'"
-    },
-    "module-hooks/test-async-loader-hooks-with-worker-permission-allowed.mjs": {},
-    "module-hooks/test-module-hooks-load-buffers.js": {},
-    "module-hooks/test-module-hooks-load-context-merged-esm.mjs": {},
-    "module-hooks/test-module-hooks-load-context-merged.js": {},
-    "module-hooks/test-module-hooks-load-context-optional-esm.mjs": {},
-    "module-hooks/test-module-hooks-load-context-optional.js": {},
-    "module-hooks/test-module-hooks-load-import-cjs.js": {},
-    "module-hooks/test-module-hooks-load-mock.js": {},
-    "module-hooks/test-module-hooks-load-short-circuit-required-middle.js": {},
-    "module-hooks/test-module-hooks-load-short-circuit-required-start.js": {},
-    "module-hooks/test-module-hooks-load-short-circuit.js": {},
-    "module-hooks/test-module-hooks-load-url-change-require.js": {},
-    "module-hooks/test-module-hooks-resolve-builtin-builtin-require.js": {},
-    "module-hooks/test-module-hooks-resolve-builtin-on-disk-require-with-prefix.js": {},
-    "module-hooks/test-module-hooks-resolve-context-merged.js": {},
-    "module-hooks/test-module-hooks-resolve-context-optional.js": {},
-    "module-hooks/test-module-hooks-resolve-load-builtin-override-both-prefix.js": {},
-    "module-hooks/test-module-hooks-resolve-load-builtin-redirect-prefix.js": {},
-    "module-hooks/test-module-hooks-resolve-load-builtin-redirect.js": {},
-    "module-hooks/test-module-hooks-resolve-load-require-inline-typescript-override.js": {},
-    "module-hooks/test-module-hooks-resolve-load-require-inline-typescript.js": {},
-    "module-hooks/test-module-hooks-resolve-require-resolve-consistency.js": {},
-    "module-hooks/test-module-hooks-resolve-require-resolve-create-require.js": {},
-    "module-hooks/test-module-hooks-resolve-require-resolve-redirect.js": {},
-    "module-hooks/test-module-hooks-resolve-short-circuit-required-middle.js": {},
-    "module-hooks/test-module-hooks-resolve-short-circuit-required-start.js": {},
-    "module-hooks/test-module-hooks-resolve-short-circuit.js": {},
     "parallel/test-abort-controller-any-timeout.js": {},
     "parallel/test-abortcontroller-internal.js": {
       "ignore": true,
@@ -388,7 +391,10 @@
     "parallel/test-child-process-spawnsync.js": {},
     "parallel/test-child-process-stdin-ipc.js": {},
     "parallel/test-child-process-stdin.js": {},
-    "parallel/test-child-process-stdio-big-write-end.js": {},
+    "parallel/test-child-process-stdio-big-write-end.js": {
+      "windows": false,
+      "reason": "Passes on release Windows but times out at 10s on debug Windows. The dup'd parent-stdin pipe handle drops bulk writes off the overlapped fast path; release builds finish in time, debug builds (3-4x slower) do not. Tracked separately; the handle-leak fix this test gates on is the priority."
+    },
     "parallel/test-child-process-stdio-inherit.js": {},
     "parallel/test-child-process-stdio-merge-stdouts-into-cat.js": {},
     "parallel/test-child-process-stdio-overlapped.js": {},
@@ -1082,6 +1088,11 @@
     "parallel/test-error-format-list.js": {},
     "parallel/test-errors-aborterror.js": {},
     "parallel/test-errors-hide-stack-frames.js": {},
+    "parallel/test-errors-systemerror-stackTraceLimit-custom-setter.js": {},
+    "parallel/test-errors-systemerror-stackTraceLimit-deleted-and-Error-sealed.js": {},
+    "parallel/test-errors-systemerror-stackTraceLimit-deleted.js": {},
+    "parallel/test-errors-systemerror-stackTraceLimit-has-only-a-getter.js": {},
+    "parallel/test-errors-systemerror-stackTraceLimit-not-writable.js": {},
     "parallel/test-eslint-alphabetize-errors.js": {},
     "parallel/test-eslint-alphabetize-primordials.js": {},
     "parallel/test-eslint-async-iife-no-unused-result.js": {},
@@ -1383,6 +1394,7 @@
     "parallel/test-fs-readfilesync-pipe-large.js": {},
     "parallel/test-fs-readlink-type-check.js": {},
     "parallel/test-fs-readSync-optional-params.js": {},
+    "parallel/test-fs-readSync-position-validation.mjs": {},
     "parallel/test-fs-readv-promises.js": {},
     "parallel/test-fs-readv-promisify.js": {},
     "parallel/test-fs-readv-sync.js": {},
@@ -2088,6 +2100,7 @@
     "parallel/test-https-abortcontroller.js": {},
     "parallel/test-https-agent-abort-controller.js": {},
     "parallel/test-https-agent-constructor.js": {},
+    "parallel/test-https-agent-create-connection.js": {},
     "parallel/test-https-agent-getname.js": {},
     "parallel/test-https-agent-servername.js": {},
     "parallel/test-https-agent-sockets-leak.js": {},
@@ -2130,6 +2143,7 @@
       "ignore": true,
       "reason": "NODE_TLS_REJECT_UNAUTHORIZED=0 does not fully suppress cert verification errors"
     },
+    "parallel/test-https-timeout-server.js": {},
     "parallel/test-https-timeout-server-2.js": {},
     "parallel/test-https-timeout.js": {},
     "parallel/test-https-truncate.js": {},
@@ -2374,6 +2388,8 @@
     "parallel/test-module-main-extension-lookup.js": {},
     "parallel/test-module-multi-extensions.js": {},
     "parallel/test-module-nodemodulepaths.js": {},
+    "parallel/test-module-parent-deprecation.js": {},
+    "parallel/test-module-parent-setter-deprecation.js": {},
     "parallel/test-module-prototype-mutation.js": {},
     "parallel/test-module-readonly.js": {},
     "parallel/test-module-relative-lookup.js": {},
@@ -2578,6 +2594,10 @@
     "parallel/test-path-zero-length-strings.js": {},
     "parallel/test-path.js": {},
     "parallel/test-perf-gc-crash.js": {},
+    "parallel/test-perf-hooks-histogram.js": {},
+    "parallel/test-perf-hooks-histogram-fast-calls.js": {},
+    "parallel/test-perf-hooks-timerify-histogram-async.mjs": {},
+    "parallel/test-perf-hooks-timerify-histogram-sync.mjs": {},
     "parallel/test-performance-global.js": {},
     "parallel/test-performance-many-marks.js": {},
     "parallel/test-performance-measure.js": {},
@@ -2975,8 +2995,24 @@
     // "parallel/test-repl-top-level-await.js": {},
     "parallel/test-require-cache.js": {},
     "parallel/test-require-dot.js": {},
+    "parallel/test-require-empty-main.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
     "parallel/test-require-exceptions.js": {},
     "parallel/test-require-extension-over-directory.js": {},
+    "parallel/test-require-extensions-main.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
+    "parallel/test-require-extensions-same-filename-as-dir.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
+    "parallel/test-require-extensions-same-filename-as-dir-trailing-slash.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
     "parallel/test-require-invalid-main-no-exports.js": {},
     "parallel/test-require-invalid-package.js": {},
     "parallel/test-require-json.js": {},
@@ -2986,6 +3022,10 @@
     "parallel/test-require-resolve.js": {},
     "parallel/test-require-resolve-invalid-paths.js": {},
     "parallel/test-require-resolve-opts-paths-relative.js": {},
+    "parallel/test-require-unicode.js": {
+      "ignore": true,
+      "reason": "Test fixtures rely on Node's implicit CommonJS detection for .js files without a package.json; Deno defaults to ESM."
+    },
     "parallel/test-runner-aftereach-runtime-skip.js": {},
     "parallel/test-runner-aliases.js": {},
     "parallel/test-runner-cli-concurrency.js": {
@@ -3123,6 +3163,7 @@
     // "parallel/test-snapshot-console.js": {},
     // "parallel/test-snapshot-coverage.js": {},
     "parallel/test-socket-address.js": {},
+    "parallel/test-socketaddress.js": {},
     "parallel/test-socket-write-after-fin-error.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-source-map-enable.js": {},
@@ -3308,6 +3349,9 @@
     "parallel/test-stream-unpipe-event.js": {},
     "parallel/test-stream-unshift-empty-chunk.js": {},
     "parallel/test-stream-unshift-read-race.js": {},
+    "parallel/test-stream-wrap-drain.js": {},
+    "parallel/test-stream-wrap-encoding.js": {},
+    "parallel/test-stream-wrap.js": {},
     "parallel/test-stream-writable-aborted.js": {},
     "parallel/test-stream-writable-change-default-encoding.js": {},
     "parallel/test-stream-writable-clear-buffer.js": {},
@@ -3446,6 +3490,7 @@
     "parallel/test-timers-zero-timeout.js": {},
     "parallel/test-timers.js": {},
     "parallel/test-tls-add-context.js": {},
+    "parallel/test-tls-addca.js": {},
     "parallel/test-tls-alert.js": {},
     "parallel/test-tls-basic-validations.js": {},
     "parallel/test-tls-buffersize.js": {},
@@ -3461,6 +3506,7 @@
     "parallel/test-tls-close-event-after-write.js": {},
     "parallel/test-tls-close-notify.js": {},
     "parallel/test-tls-connect-address-family.js": {},
+    "parallel/test-tls-connect-hints-option.js": {},
     "parallel/test-tls-connect-hwm-option.js": {},
     "parallel/test-tls-connect-no-host.js": {},
     "parallel/test-tls-connect-pipe.js": {},
@@ -3480,6 +3526,7 @@
     "parallel/test-tls-empty-sni-context.js": {},
     "parallel/test-tls-enable-trace-cli.js": {},
     "parallel/test-tls-enable-trace.js": {},
+    "parallel/test-tls-error-stack.js": {},
     "parallel/test-tls-env-extra-ca-no-crypto.js": {},
     "parallel/test-tls-external-accessor.js": {},
     "parallel/test-tls-fast-writing.js": {},
@@ -3492,14 +3539,11 @@
     "parallel/test-tls-get-ca-certificates-extra-empty.js": {},
     "parallel/test-tls-get-ca-certificates-extra.js": {},
     "parallel/test-tls-get-ca-certificates-extra-subset.js": {},
-    "parallel/test-tls-get-ca-certificates-system.js": {
-      "ignore": true,
-      "reason": "Deno does not support --use-system-ca flag"
-    },
-    "parallel/test-tls-get-ca-certificates-system-without-flag.js": {
-      "ignore": true,
-      "reason": "Deno does not support --no-use-system-ca flag"
-    },
+    "parallel/test-tls-get-ca-certificates-node-use-system-ca.js": {},
+    "parallel/test-tls-get-ca-certificates-system.js": {},
+    "parallel/test-tls-get-ca-certificates-system-without-flag.js": {},
+    "parallel/test-tls-get-ca-certificates-worker-no-use-system-ca.js": {},
+    "parallel/test-tls-get-ca-certificates-worker-use-system-ca.js": {},
     "parallel/test-tls-getcertificate-x509.js": {},
     "parallel/test-tls-handshake-error.js": {},
     "parallel/test-tls-honorcipherorder.js": {},
@@ -3510,12 +3554,14 @@
     "parallel/test-tls-junk-closes-server.js": {},
     "parallel/test-tls-junk-server.js": {},
     "parallel/test-tls-keyengine-invalid-arg-type.js": {},
+    "parallel/test-tls-keyengine-unsupported.js": {},
     "parallel/test-tls-multiple-cas-as-string.js": {},
     "parallel/test-tls-net-connect-prefer-path.js": { "windows": false },
     "parallel/test-tls-net-socket-keepalive-12.js": {},
     "parallel/test-tls-net-socket-keepalive.js": {},
     "parallel/test-tls-no-cert-required.js": {},
     "parallel/test-tls-no-rsa-key.js": {},
+    "parallel/test-tls-no-sslv23.js": {},
     "parallel/test-tls-no-sslv3.js": {},
     "parallel/test-tls-off-thread-cert-loading-disabled.js": {},
     "parallel/test-tls-off-thread-cert-loading-system.js": {},
@@ -3534,10 +3580,19 @@
     "parallel/test-tls-root-certificates.js": {},
     "parallel/test-tls-server-connection-server.js": {},
     "parallel/test-tls-server-parent-constructor-options.js": {},
+    "parallel/test-tls-server-setkeycert.js": {},
     "parallel/test-tls-server-verify.js": {},
     "parallel/test-tls-session-cache.js": {},
     "parallel/test-tls-session-timeout-errors.js": {},
+    "parallel/test-tls-set-ciphers-error.js": {},
+    "parallel/test-tls-set-default-ca-certificates-array-buffer.js": {},
+    "parallel/test-tls-set-default-ca-certificates-basic.js": {},
+    "parallel/test-tls-set-default-ca-certificates-extra-override.js": {},
     "parallel/test-tls-set-default-ca-certificates-mixed-types.js": {},
+    "parallel/test-tls-set-default-ca-certificates-precedence-empty.js": {},
+    "parallel/test-tls-set-default-ca-certificates-recovery.js": {},
+    "parallel/test-tls-set-default-ca-certificates-reset-https-request.js": {},
+    "parallel/test-tls-set-secure-context.js": {},
     "parallel/test-tls-set-encoding.js": {},
     "parallel/test-tls-snicallback-error.js": {},
     "parallel/test-tls-sni-option.js": {},
@@ -3546,8 +3601,10 @@
     "parallel/test-tls-socket-close.js": {},
     "parallel/test-tls-socket-constructor-alpn-options-parsing.js": {},
     "parallel/test-tls-socket-destroy.js": {},
+    "parallel/test-tls-streamwrap-buffersize.js": {},
     "parallel/test-tls-writewrap-leak.js": {},
     "parallel/test-tls-timeout-server-2.js": {},
+    "parallel/test-tls-ticket-invalid-arg.js": {},
     "parallel/test-tls-tlswrap-segfault-2.js": {},
     "parallel/test-tls-transport-destroy-after-own-gc.js": {},
     "parallel/test-tls-use-after-free-regression.js": {},
@@ -3558,6 +3615,10 @@
     "parallel/test-tls-wrap-event-emmiter.js": {},
     "parallel/test-tls-wrap-timeout.js": {},
     "parallel/test-tls-zero-clear-in.js": {},
+    "parallel/test-wrap-js-stream-destroy.js": {},
+    "parallel/test-wrap-js-stream-duplex.js": {},
+    "parallel/test-wrap-js-stream-exceptions.js": {},
+    "parallel/test-wrap-js-stream-read-stop.js": {},
     "parallel/test-trace-events-api.js": {
       "ignore": true,
       "reason": "Deno's node:trace_events polyfill is a stub (createTracing returns an object without .enable/.disable, getEnabledCategories returns \"\" instead of undefined). These tests were silently skipping via try/catch(require('trace_events')) until that lookup was fixed."
@@ -3581,6 +3642,7 @@
       "ignore": true,
       "reason": "Deno's node:trace_events polyfill is a stub (createTracing returns an object without .enable/.disable, getEnabledCategories returns \"\" instead of undefined). These tests were silently skipping via try/catch(require('trace_events')) until that lookup was fixed."
     },
+    "parallel/test-trace-sigint-in-worker.js": {},
     "parallel/test-tty-stdin-end.js": {},
     "parallel/test-tty-stdin-pipe.js": {},
     "parallel/test-ttywrap-invalid-fd.js": {},
@@ -3599,6 +3661,7 @@
     "parallel/test-url-format-whatwg.js": {},
     "parallel/test-url-format.js": {},
     "parallel/test-url-invalid-file-url-path-input.js": {},
+    "parallel/test-url-is-url-internal.js": {},
     "parallel/test-url-parse-format.js": {},
     "parallel/test-url-parse-query.js": {},
     "parallel/test-url-pathtofileurl.js": {},
@@ -3632,6 +3695,7 @@
     "parallel/test-vm-access-process-env.js": {},
     "parallel/test-vm-api-handles-getter-errors.js": {},
     "parallel/test-vm-attributes-property-not-on-sandbox.js": {},
+    "parallel/test-vm-basic.js": {},
     "parallel/test-vm-codegen.js": {},
     "parallel/test-vm-context-async-script.js": {},
     "parallel/test-vm-context-property-forwarding.js": {},
@@ -3686,7 +3750,13 @@
     "parallel/test-vm-util-lazy-properties.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-warn-sigprof.js": {},
+    "parallel/test-warn-stream-duplex-deprecation.js": {},
+    "parallel/test-warn-stream-passthrough-deprecation.js": {},
+    "parallel/test-warn-stream-readable-deprecation.js": {},
+    "parallel/test-warn-stream-transform-deprecation.js": {},
+    "parallel/test-warn-stream-writable-deprecation.js": {},
     "parallel/test-warn-tls-common-deprecation.js": {},
+    "parallel/test-warn-tls-wrap-deprecation.js": {},
     "parallel/test-wasm.mjs": {},
     "parallel/test-weakref.js": {},
     "parallel/test-webcrypto-cryptokey-workers.js": {},
@@ -3745,6 +3815,7 @@
     "parallel/test-whatwg-url-custom-href-side-effect.js": {},
     "parallel/test-whatwg-url-custom-inspect.js": {},
     "parallel/test-whatwg-url-custom-parsing.js": {},
+    "parallel/test-whatwg-url-custom-searchparams-append.js": {},
     "parallel/test-whatwg-url-custom-searchparams-sort.js": {},
     "parallel/test-whatwg-url-custom-setters.js": {},
     "parallel/test-whatwg-url-custom-tostringtag.js": {},
@@ -3784,6 +3855,7 @@
     "parallel/test-worker-load-file-with-extension-other-than-js.js": {},
     "parallel/test-worker-memory.js": {},
     "parallel/test-worker-message-channel.js": {},
+    "parallel/test-worker-messaging-errors-invalid.js": {},
     "parallel/test-worker-message-channel-sharedarraybuffer.js": {},
     "parallel/test-worker-message-port-infinite-message-loop.js": {},
     "parallel/test-worker-message-port-multiple-sharedarraybuffers.js": {},
@@ -4153,6 +4225,10 @@
     // "sequential/test-watch-mode-inspect.mjs": {},
     // TODO(bartlomieju): this test is very flaky on CI, especially on Windows ARM
     // "sequential/test-worker-fshandles-open-close-on-termination.js": {},
-    "wasm-allocation/test-wasm-allocation.js": {}
+    "wasm-allocation/test-wasm-allocation.js": {},
+
+    "wasi/test-wasi-options-validation.js": {},
+    "wasi/test-wasi-start-validation.js": {},
+    "wasi/test-wasi-initialize-validation.js": {}
   }
 }

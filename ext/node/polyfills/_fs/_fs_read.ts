@@ -145,9 +145,10 @@ export function read(
     validatePosition(position, "position", length as number);
   }
 
-  // The op handles position seeking internally (pread for positioned reads).
-  // position=-1 means read from current position.
-  const readPos = position != null && position >= 0 ? Number(position) : -1;
+  // BigInt avoids precision loss for positions > 2^53. -1n means current pos.
+  const readPos = position != null && position >= 0
+    ? BigInt(position as number | bigint)
+    : -1n;
   op_node_fs_read_deferred(
     fd,
     arrayBufferViewToUint8Array(buffer).subarray(
@@ -235,9 +236,10 @@ export function readSync(
     validatePosition(position, "position", length);
   }
 
-  // The op handles position seeking internally (saves/restores file offset
-  // for positioned reads). position=-1 means read from current position.
-  const pos = position != null ? Number(position) : -1;
+  // BigInt avoids precision loss for positions > 2^53. -1n means current pos.
+  const pos = position != null && position >= 0
+    ? BigInt(position as number | bigint)
+    : -1n;
   try {
     const numberOfBytesRead = op_node_fs_read_sync(
       fd,

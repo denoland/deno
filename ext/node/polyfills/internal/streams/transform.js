@@ -1,18 +1,5 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
-
-import process from "node:process";
-import { core, primordials } from "ext:core/mod.js";
-const _mod1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import Duplex from "node:_stream_duplex";
-const { getHighWaterMark } = core.loadExtScript(
-  "ext:deno_node/internal/streams/state.js",
-);
-
-const {
-  ERR_METHOD_NOT_IMPLEMENTED,
-} = _mod1.codes;
-
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -76,7 +63,21 @@ const {
 // would be consumed, and then the rest would wait (un-transformed) until
 // the results of the previous transformed chunk were consumed.
 
-"use strict";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const lazyProcess = core.createLazyLoader("node:process");
+const process = lazyProcess().default;
+const _mod1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const Duplex = core.loadExtScript(
+  "ext:deno_node/internal/streams/duplex.js",
+).default;
+const { getHighWaterMark } = core.loadExtScript(
+  "ext:deno_node/internal/streams/state.js",
+);
+
+const {
+  ERR_METHOD_NOT_IMPLEMENTED,
+} = _mod1.codes;
 
 const {
   ObjectSetPrototypeOf,
@@ -216,5 +217,6 @@ Transform.prototype._read = function () {
     callback();
   }
 };
-export default Transform;
-export { Transform };
+
+return { default: Transform, Transform };
+})();

@@ -326,6 +326,7 @@ pub async fn op_crypto_sign_key(
             let signing_key = SigningKey::<Sha512>::new(private_key);
             signing_key.sign(data)
           }
+          _ => return Err(CryptoError::UnsupportedAlgorithm),
         }
         .to_vec()
       }
@@ -359,6 +360,7 @@ pub async fn op_crypto_sign_key(
             let hashed = Sha512::digest(data);
             signing_key.sign(Some(&mut rng), &private_key, &hashed)?
           }
+          _ => return Err(CryptoError::UnsupportedAlgorithm),
         }
         .to_vec()
       }
@@ -377,6 +379,7 @@ pub async fn op_crypto_sign_key(
               CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
               CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
               CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+              _ => return Err(CryptoError::UnsupportedAlgorithm),
             };
             // Sign the prehashed message, producing a raw r||s signature.
             let signature: P256Signature =
@@ -392,6 +395,7 @@ pub async fn op_crypto_sign_key(
               CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
               CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
               CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+              _ => return Err(CryptoError::UnsupportedAlgorithm),
             };
             let signature: P384Signature =
               signing_key.sign_prehash(&prehash)?;
@@ -408,6 +412,7 @@ pub async fn op_crypto_sign_key(
               CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
               CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
               CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+              _ => return Err(CryptoError::UnsupportedAlgorithm),
             };
             // P-521 field size is 66 bytes; bits2field requires at least
             // half that (33 bytes). Left-pad shorter hashes to meet the
@@ -488,6 +493,7 @@ pub async fn op_crypto_verify_key(
             let verifying_key = VerifyingKey::<Sha512>::new(public_key);
             verifying_key.verify(data, &signature).is_ok()
           }
+          _ => return Err(CryptoError::UnsupportedAlgorithm),
         }
       }
       Algorithm::RsaPss => {
@@ -520,6 +526,7 @@ pub async fn op_crypto_verify_key(
             let hashed = Sha512::digest(data);
             pss.verify(&public_key, &hashed, signature).is_ok()
           }
+          _ => return Err(CryptoError::UnsupportedAlgorithm),
         }
       }
       Algorithm::Hmac => {
@@ -555,6 +562,7 @@ pub async fn op_crypto_verify_key(
                   CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
                   CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
                   CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+                  _ => return Err(CryptoError::UnsupportedAlgorithm),
                 };
                 verifying_key.verify_prehash(&prehash, &signature).is_ok()
               }
@@ -583,6 +591,7 @@ pub async fn op_crypto_verify_key(
                   CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
                   CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
                   CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+                  _ => return Err(CryptoError::UnsupportedAlgorithm),
                 };
                 verifying_key.verify_prehash(&prehash, &signature).is_ok()
               }
@@ -613,6 +622,7 @@ pub async fn op_crypto_verify_key(
                   CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
                   CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
                   CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+                  _ => return Err(CryptoError::UnsupportedAlgorithm),
                 };
                 // P-521 field size is 66 bytes; bits2field requires at least
                 // half that (33 bytes). Left-pad shorter hashes to meet the
@@ -679,6 +689,7 @@ pub async fn op_crypto_derive_bits(
           CryptoHash::Sha256 => pbkdf2::PBKDF2_HMAC_SHA256,
           CryptoHash::Sha384 => pbkdf2::PBKDF2_HMAC_SHA384,
           CryptoHash::Sha512 => pbkdf2::PBKDF2_HMAC_SHA512,
+          _ => return Err(CryptoError::UnsupportedAlgorithm),
         };
 
         // This will never panic. We have already checked length earlier.
@@ -810,6 +821,7 @@ pub async fn op_crypto_derive_bits(
           CryptoHash::Sha256 => hkdf::HKDF_SHA256,
           CryptoHash::Sha384 => hkdf::HKDF_SHA384,
           CryptoHash::Sha512 => hkdf::HKDF_SHA512,
+          _ => return Err(CryptoError::UnsupportedAlgorithm),
         };
 
         let info = args.info.ok_or(CryptoError::MissingArgumentInfo)?;

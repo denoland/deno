@@ -7,6 +7,9 @@ import { core } from "ext:core/mod.js";
 const asyncWrap = core.loadExtScript(
   "ext:deno_node/internal_binding/async_wrap.ts",
 );
+const { default: blockList } = core.loadExtScript(
+  "ext:deno_node/internal_binding/block_list.ts",
+);
 const buffer = core.loadExtScript(
   "ext:deno_node/internal_binding/buffer.ts",
 );
@@ -73,6 +76,7 @@ for (const key of Object.keys(uvNamespace)) {
 
 const modules = {
   "async_wrap": asyncWrap,
+  "block_list": blockList,
   buffer,
   "cares_wrap": caresWrap,
   config: {},

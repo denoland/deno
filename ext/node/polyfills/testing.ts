@@ -21,6 +21,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   Promise,
   PromisePrototypeThen,
+  PromiseResolve,
   ReflectApply,
   ReflectConstruct,
   SafeArrayIterator,
@@ -562,11 +563,9 @@ function prepareDenoTest(name, options, fn, overrides) {
 
   activeNodeTests++;
 
-  const { promise, resolve } = Promise.withResolvers();
-
   const denoTestOptions = {
     name: prepared.name,
-    fn: wrapTestFn(prepared.fn, resolve, prepared.name),
+    fn: wrapTestFn(prepared.fn, noop, prepared.name),
     only: prepared.options.only,
     ignore: !!prepared.options.todo || !!prepared.options.skip,
     sanitizeOnly: false,
@@ -575,7 +574,14 @@ function prepareDenoTest(name, options, fn, overrides) {
     sanitizeResources: false,
   };
   Deno.test(denoTestOptions);
-  return promise;
+  // Node resolves the returned promise on test completion, but the
+  // Deno runner only executes registered tests after the module
+  // finishes evaluating, so top-level `await test(...)` deadlocks.
+  // Resolve immediately to unblock; the test still runs and is
+  // reported normally. Trade-off: code that awaits `test()` for
+  // sequencing (`await test('a'); await test('b')`) sees them run
+  // out of order.
+  return PromiseResolve();
 }
 
 function wrapSuiteFn(fn, resolve, name, parentNodeContext) {
@@ -616,11 +622,9 @@ function prepareDenoTestForSuite(name, options, fn, overrides) {
 
   activeNodeTests++;
 
-  const { promise, resolve } = Promise.withResolvers();
-
   const denoTestOptions = {
     name: prepared.name,
-    fn: wrapSuiteFn(prepared.fn, resolve, prepared.name, undefined),
+    fn: wrapSuiteFn(prepared.fn, noop, prepared.name, undefined),
     only: prepared.options.only,
     ignore: !!prepared.options.todo || !!prepared.options.skip,
     sanitizeOnly: false,
@@ -629,7 +633,9 @@ function prepareDenoTestForSuite(name, options, fn, overrides) {
     sanitizeResources: false,
   };
   Deno.test(denoTestOptions);
-  return promise;
+  // See `prepareDenoTest` for the Node-divergence trade-off; top-level
+  // `await suite(...)` would deadlock if we waited for completion.
+  return PromiseResolve();
 }
 
 function test(name, options, fn, overrides) {

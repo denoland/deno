@@ -1238,6 +1238,8 @@ impl CliFactory {
       otel_config: cli_options.otel_config(),
       no_legacy_abort: cli_options.no_legacy_abort(),
       startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
+      residual_lazy_js_sources: deno_snapshots::RESIDUAL_LAZY_JS,
+      residual_lazy_esm_sources: deno_snapshots::RESIDUAL_LAZY_ESM,
       enable_raw_imports: cli_options.unstable_raw_imports(),
       maybe_initial_cwd: Some(deno_path_util::url_from_directory_path(
         cli_options.initial_cwd(),
@@ -1275,7 +1277,6 @@ impl CliFactory {
     Ok(CliMainWorkerOptions {
       needs_test_modules: cli_options.sub_command().needs_test(),
       create_hmr_runner,
-      experimental_loaders: cli_options.experimental_loaders()?,
       maybe_coverage_dir,
       maybe_cpu_prof_config,
       default_npm_caching_strategy: cli_options.default_npm_caching_strategy(),
