@@ -994,6 +994,8 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   debug("connect: dns options", dnsOpts);
   self._host = host;
   const lookup = options.lookup || dnsLookup;
+  const getLookupDnsOpts = () =>
+    lookup === dnsLookup ? { ...dnsOpts, port } : dnsOpts;
 
   if (
     dnsOpts.family !== 4 &&
@@ -1011,7 +1013,7 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
         lookup,
         host,
         options,
-        dnsOpts,
+        getLookupDnsOpts(),
         port,
         localAddress,
         localPort,
@@ -1025,7 +1027,7 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   defaultTriggerAsyncIdScope(self[asyncIdSymbol], function () {
     lookup(
       host,
-      dnsOpts,
+      getLookupDnsOpts(),
       function emitLookup(
         err: ErrnoException | null,
         ip: string,
