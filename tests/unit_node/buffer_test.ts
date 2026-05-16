@@ -9,7 +9,7 @@ import {
 import { assertEquals, assertThrows } from "@std/assert";
 import { strictEqual } from "node:assert";
 
-const { MAX_STRING_LENGTH } = constants;
+const { MAX_LENGTH, MAX_STRING_LENGTH } = constants;
 
 Deno.test({
   name: "[node/buffer] alloc fails if size is not a number",
@@ -45,6 +45,40 @@ Deno.test({
   fn() {
     const buffer: Buffer = Buffer.alloc(0);
     assertEquals(buffer.length, 0, "Buffer size should be 0");
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] alloc rejects buffers at kMaxLength",
+  fn() {
+    assertEquals(MAX_LENGTH, 2 ** 32);
+    assertThrows(
+      () => Buffer.alloc(MAX_LENGTH),
+      RangeError,
+      "kMaxLength",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] constructor rejects huge numeric sizes",
+  fn() {
+    assertThrows(
+      () =>
+        (Buffer as unknown as (size: number) => Buffer)(
+          Number.MAX_SAFE_INTEGER,
+        ),
+      RangeError,
+      "kMaxLength",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] alloc still works below kMaxLength",
+  fn() {
+    const buffer = Buffer.alloc(1024);
+    assertEquals(buffer.length, 1024);
   },
 });
 
@@ -276,29 +310,6 @@ Deno.test({
       Buffer.concat([buffer3, buffer4], maxLength2).length,
       maxLength2,
     );
-  },
-});
-
-Deno.test({
-  name: "[node/buffer] Buffer.allocUnsafe does not truncate lengths > 2^32",
-  ignore: true, // requires >4GB of memory
-  fn() {
-    const size = 2 ** 32 + 5;
-    const buf = Buffer.allocUnsafe(size);
-    assertEquals(buf.length, size);
-  },
-});
-
-Deno.test({
-  name: "[node/buffer] Buffer concat does not truncate buffers larger than 4GB",
-  ignore: true, // requires >4GB of memory
-  fn() {
-    const size = 2 ** 32 + 5;
-    const largeBuffer = Buffer.alloc(size);
-    largeBuffer.fill(111);
-    const result = Buffer.concat([largeBuffer]);
-    assertEquals(result.length, size);
-    assertEquals(Array.from(result.subarray(0, 5)), [111, 111, 111, 111, 111]);
   },
 });
 

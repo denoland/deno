@@ -215,7 +215,11 @@
     "parallel/test-btoa-atob.js": {},
     "parallel/test-buffer-alloc-unsafe-is-initialized-with-zero-fill-flag.js": {},
     "parallel/test-buffer-alloc-unsafe-is-uninitialized.js": {},
-    "parallel/test-buffer-alloc.js": {},
+    "parallel/test-buffer-alloc.js": {
+      "exitCode": 1,
+      "output": "[WILDCARD]AssertionError: Missing expected exception.[WILDCARD]",
+      "reason": "Test asserts that Uint8Array cannot exceed buffer.kMaxLength. Deno clamps Buffer allocations at kMaxLength before V8 allocation, while V8 may still allow larger Uint8Arrays"
+    },
     "parallel/test-buffer-arraybuffer.js": {},
     "parallel/test-buffer-ascii.js": {},
     "parallel/test-buffer-backing-arraybuffer.js": {
@@ -273,7 +277,11 @@
     "parallel/test-buffer-slow.js": {},
     "parallel/test-buffer-swap.js": {},
     "parallel/test-buffer-tojson.js": {},
-    "parallel/test-buffer-tostring-4gb.js": {},
+    "parallel/test-buffer-tostring-4gb.js": {
+      "exitCode": 1,
+      "output": "[WILDCARD]RangeError: The value of \"size\" is out of range. It must be < kMaxLength[WILDCARD]",
+      "reason": "Deno rejects Buffer allocations at or above kMaxLength before V8 allocation, so this test cannot create a Buffer over 4 GiB"
+    },
     "parallel/test-buffer-tostring-range.js": {},
     "parallel/test-buffer-tostring-rangeerror.js": {},
     "parallel/test-buffer-tostring.js": {},

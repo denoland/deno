@@ -150,7 +150,7 @@ float32Array[0] = -1; // 0xBF800000
 // check this with `os.endianness()` because that is determined at compile time.
 const bigEndian = uInt8Float32Array[3] === 0;
 
-const kMaxLength = NumberMAX_SAFE_INTEGER;
+const kMaxLength = 2 ** 32;
 const kStringMaxLength = 536870888;
 const MAX_UINT32 = 2 ** 32;
 
@@ -235,10 +235,8 @@ ObjectDefineProperty(Buffer.prototype, "offset", {
 });
 
 function createBuffer(length) {
-  if (length > kMaxLength) {
-    throw new RangeError(
-      'The value "' + length + '" is invalid for option "size"',
-    );
+  if (length >= kMaxLength) {
+    throw new codes.ERR_OUT_OF_RANGE("size", getMaxLengthRange(), length);
   }
 
   return new FastBuffer(length);
@@ -406,7 +404,10 @@ Buffer.of = of;
  * @returns {asserts size is number}
  */
 function assertSize(size) {
-  validateNumber(size, "size", 0, kMaxLength);
+  validateNumber(size, "size", 0);
+  if (size >= kMaxLength) {
+    throw new codes.ERR_OUT_OF_RANGE("size", getMaxLengthRange(), size);
+  }
 }
 
 function _alloc(size, fill, encoding) {
@@ -523,12 +524,14 @@ function fromObject(obj) {
 
 function checked(length) {
   if (length >= kMaxLength) {
-    throw new RangeError(
-      "Attempt to allocate Buffer larger than maximum size: 0x" +
-        NumberPrototypeToString(kMaxLength, 16) + " bytes",
-    );
+    throw new codes.ERR_OUT_OF_RANGE("size", getMaxLengthRange(), length);
   }
   return MathTrunc(length);
+}
+
+function getMaxLengthRange() {
+  return "< kMaxLength (0x" + NumberPrototypeToString(kMaxLength, 16) +
+    " bytes)";
 }
 
 function SlowBuffer(length) {
@@ -587,7 +590,7 @@ Buffer.concat = function concat(list, length) {
       }
     }
   } else {
-    validateOffset(length, "length");
+    validateOffset(length, "length", 0, kMaxLength);
   }
 
   const buffer = _allocUnsafe(length);
