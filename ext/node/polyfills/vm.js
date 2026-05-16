@@ -40,6 +40,7 @@ const {
 const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_MODULE_LINK_MISMATCH,
   ERR_VM_MODULE_ALREADY_LINKED,
   ERR_VM_MODULE_DIFFERENT_CONTEXT,
   ERR_VM_MODULE_NOT_MODULE,
@@ -50,13 +51,17 @@ const {
   ArrayIsArray,
   ArrayPrototypeForEach,
   ArrayPrototypeIndexOf,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeSome,
+  JSONStringify,
+  ObjectAssign,
   ObjectFreeze,
-  ObjectPrototypeIsPrototypeOf,
+  ObjectPrototypeHasOwnProperty,
   PromisePrototypeThen,
   PromiseReject,
   PromiseResolve,
+  SafeMap,
   SafePromiseAll,
   Symbol,
 } = primordials;
@@ -453,7 +458,33 @@ const kWrap = Symbol("kWrap");
 const kContext = Symbol("kContext");
 const kLink = Symbol("kLink");
 const kLinkingStatus = Symbol("kLinkingStatus");
+const kModuleRequests = Symbol("kModuleRequests");
+const kDependencySpecifiers = Symbol("kDependencySpecifiers");
 let defaultModuleIdIndex = 0;
+
+function isModule(object) {
+  return typeof object === "object" && object !== null &&
+    ObjectPrototypeHasOwnProperty(object, kWrap);
+}
+
+function buildModuleRequests(wrap) {
+  const raw = op_vm_module_get_module_requests(wrap);
+  const out = [];
+  for (let i = 0; i < raw.length; i++) {
+    const r = raw[i];
+    const attrs = { __proto__: null };
+    // Object.assign on a null-proto target copies enumerable string keys.
+    ObjectAssign(attrs, r.attributes);
+    ObjectFreeze(attrs);
+    out[i] = ObjectFreeze({
+      __proto__: null,
+      specifier: r.specifier,
+      attributes: attrs,
+      phase: r.phase,
+    });
+  }
+  return ObjectFreeze(out);
+}
 
 class Module {
   constructor() {
@@ -514,30 +545,32 @@ class Module {
     });
   }
 
-  // TODO(divybot): cyclic imports not yet supported. Single-pass linking
-  // also makes instantiation order depend on linker resolution order: in a
-  // diamond (A imports B and C; B also imports C) C is instantiated when
-  // B's kLink finishes, so by the time A's instantiate runs, B and C are
-  // already instantiated. V8 tolerates re-instantiating an instantiated
-  // module as a no-op, but a Node-style two-phase resolve+instantiate
-  // would be needed for true cyclic-import support.
+  // TODO(divybot): cyclic imports via `link(linker)` not yet supported.
+  // Single-pass linking makes instantiation order depend on linker
+  // resolution order: in a diamond (A imports B and C; B also imports C)
+  // C is instantiated when B's kLink finishes, so by the time A's
+  // instantiate runs, B and C are already instantiated. V8 tolerates
+  // re-instantiating an instantiated module as a no-op, but a Node-style
+  // two-phase resolve+instantiate would be needed for true cyclic-import
+  // support. The newer `linkRequests` + `instantiate` API does support
+  // cycles since linking is decoupled from instantiation.
   async [kLink](linker) {
-    const requests = op_vm_module_get_module_requests(this[kWrap]);
+    const requests = this[kModuleRequests];
     const specifiers = [];
     const modules = [];
     const linkerPromises = [];
     for (let i = 0; i < requests.length; i++) {
-      const specifier = requests[i];
+      const { specifier, attributes } = requests[i];
       ArrayPrototypePush(specifiers, specifier);
       const p = PromiseResolve(
-        linker(specifier, this, { attributes: {} }),
+        linker(specifier, this, { attributes, assert: attributes }),
       );
       ArrayPrototypePush(linkerPromises, p);
     }
     const resolvedModules = await SafePromiseAll(linkerPromises);
     for (let i = 0; i < resolvedModules.length; i++) {
       const m = resolvedModules[i];
-      if (!ObjectPrototypeIsPrototypeOf(Module.prototype, m)) {
+      if (!isModule(m)) {
         throw new ERR_VM_MODULE_NOT_MODULE();
       }
       if (m.context !== this[kContext]) {
@@ -601,6 +634,70 @@ class SourceTextModule extends Module {
       columnOffset,
       context,
     );
+    this[kModuleRequests] = buildModuleRequests(this[kWrap]);
+    this[kDependencySpecifiers] = undefined;
+  }
+
+  get moduleRequests() {
+    return this[kModuleRequests];
+  }
+
+  get dependencySpecifiers() {
+    if (this[kDependencySpecifiers] === undefined) {
+      this[kDependencySpecifiers] = ObjectFreeze(
+        ArrayPrototypeMap(this[kModuleRequests], (r) => r.specifier),
+      );
+    }
+    return this[kDependencySpecifiers];
+  }
+
+  linkRequests(modules) {
+    if (this.status !== "unlinked") {
+      throw new ERR_VM_MODULE_STATUS("must be unlinked");
+    }
+    validateArray(modules, "modules");
+    const requests = this[kModuleRequests];
+    if (modules.length !== requests.length) {
+      throw new ERR_MODULE_LINK_MISMATCH(
+        `Expected ${requests.length} modules, got ${modules.length}`,
+      );
+    }
+    // Validate each provided module first (type + context), then check for
+    // cache-key collisions: two requests sharing (specifier, attributes)
+    // must map to the same module instance, matching Node's V8 binding
+    // behavior. We use this single pass to keep the error precedence
+    // identical to Node's tests.
+    const seen = new SafeMap();
+    const specifiers = [];
+    const wraps = [];
+    for (let i = 0; i < modules.length; i++) {
+      const m = modules[i];
+      if (!isModule(m)) {
+        throw new ERR_VM_MODULE_NOT_MODULE();
+      }
+      if (m.context !== this[kContext]) {
+        throw new ERR_VM_MODULE_DIFFERENT_CONTEXT();
+      }
+      const { specifier, attributes } = requests[i];
+      const key = `${specifier}\0${JSONStringify(attributes)}`;
+      if (seen.has(key)) {
+        if (seen.get(key) !== m) {
+          throw new ERR_MODULE_LINK_MISMATCH(
+            `Different modules linked to the same cache key '${specifier}'`,
+          );
+        }
+      } else {
+        seen.set(key, m);
+      }
+      ArrayPrototypePush(specifiers, specifier);
+      ArrayPrototypePush(wraps, m[kWrap]);
+    }
+
+    op_vm_module_link(this[kWrap], specifiers, wraps);
+  }
+
+  instantiate() {
+    op_vm_module_instantiate(this[kWrap]);
   }
 }
 

@@ -2556,6 +2556,21 @@ class ERR_VM_MODULE_NOT_MODULE extends NodeError {
     );
   }
 }
+class ERR_VM_MODULE_LINK_FAILURE extends NodeError {
+  // deno-lint-ignore no-explicit-any
+  constructor(message: string, cause?: any) {
+    super("ERR_VM_MODULE_LINK_FAILURE", message);
+    if (cause !== undefined) {
+      // deno-lint-ignore no-explicit-any
+      (this as any).cause = cause;
+    }
+  }
+}
+class ERR_MODULE_LINK_MISMATCH extends NodeTypeError {
+  constructor(x: string) {
+    super("ERR_MODULE_LINK_MISMATCH", x);
+  }
+}
 class ERR_VM_MODULE_STATUS extends NodeError {
   constructor(x: string) {
     super("ERR_VM_MODULE_STATUS", `Module status ${x}`);
@@ -3556,9 +3571,11 @@ return {
   ERR_VM_MODULE_ALREADY_LINKED,
   ERR_VM_MODULE_CANNOT_CREATE_CACHED_DATA,
   ERR_VM_MODULE_DIFFERENT_CONTEXT,
+  ERR_VM_MODULE_LINK_FAILURE,
   ERR_VM_MODULE_LINKING_ERRORED,
   ERR_VM_MODULE_NOT_MODULE,
   ERR_VM_MODULE_STATUS,
+  ERR_MODULE_LINK_MISMATCH,
   ERR_WASI_ALREADY_STARTED,
   ERR_WASI_NOT_STARTED,
   ERR_WORKER_INIT_FAILED,
@@ -3863,9 +3880,11 @@ return {
     ERR_VM_MODULE_ALREADY_LINKED,
     ERR_VM_MODULE_CANNOT_CREATE_CACHED_DATA,
     ERR_VM_MODULE_DIFFERENT_CONTEXT,
+    ERR_VM_MODULE_LINK_FAILURE,
     ERR_VM_MODULE_LINKING_ERRORED,
     ERR_VM_MODULE_NOT_MODULE,
     ERR_VM_MODULE_STATUS,
+    ERR_MODULE_LINK_MISMATCH,
     ERR_WASI_ALREADY_STARTED,
     ERR_WASI_NOT_STARTED,
     ERR_WORKER_INIT_FAILED,

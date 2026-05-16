@@ -194,6 +194,22 @@ const internalBuffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const internalErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
+// `internal/fs/promises.ts` evaluates `lazyFs()` at top-level, so triggering
+// its load during `setupBuiltinModules()` would re-enter the half-built
+// `node:fs` namespace. A Proxy defers evaluation until the first time the
+// requiring code reads a property; by then `node:fs` is fully initialized.
+const lazyInternalFsPromises = core.createLazyLoader(
+  "ext:deno_node/internal/fs/promises.ts",
+);
+let internalFsPromisesCache;
+const internalFsPromisesProxy = new Proxy(ObjectCreate(null), {
+  get(_target, prop) {
+    return (internalFsPromisesCache ??= lazyInternalFsPromises())[prop];
+  },
+  has(_target, prop) {
+    return prop in (internalFsPromisesCache ??= lazyInternalFsPromises());
+  },
+});
 const internalHttp = core.loadExtScript("ext:deno_node/internal/http.ts");
 const internalHttp2Core = core.loadExtScript(
   "ext:deno_node/internal/http2/core.ts",
@@ -278,9 +294,10 @@ const workerThreads = core.loadExtScript(
 );
 const wasi = core.loadExtScript("ext:deno_node/wasi.ts").default;
 const zlib = core.loadExtScript("ext:deno_node/zlib.js");
-const { getOptionValue } = core.loadExtScript(
+const internalOptions = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
 );
+const { getOptionValue } = internalOptions;
 
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
@@ -343,6 +360,7 @@ function setupBuiltinModules() {
     "internal/buffer": internalBuffer.default,
     "internal/errors": internalErrors,
     "internal/event_target": internalEventTarget,
+    "internal/fs/promises": internalFsPromisesProxy,
     "internal/fs/utils": internalFsUtils,
     "internal/http": internalHttp.default,
     "internal/http2/core": internalHttp2Core,
@@ -355,6 +373,7 @@ function setupBuiltinModules() {
     "internal/streams/state": internalStreamsState,
     "internal/socketaddress": internalSocketAddress,
     "internal/js_stream_socket": internalJsStreamSocket,
+    "internal/options": internalOptions,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
     "internal/tty": internalTty,
