@@ -592,19 +592,24 @@ Deno.test({
     port1.on("message", onMessage);
     port1.on("message", onMessage);
     port1.on("message", onMessage);
+    assertEquals(port1.listenerCount("message"), 1);
 
     const first = Promise.withResolvers<void>();
-    port1.on("message", () => first.resolve());
+    port1.once("message", () => first.resolve());
+    assertEquals(port1.listenerCount("message"), 2);
     port2.postMessage("hi");
     await first.promise;
     assertEquals(output, ["hi"]);
+    assertEquals(port1.listenerCount("message"), 1);
 
     port1.off("message", onMessage);
+    assertEquals(port1.listenerCount("message"), 0);
     const second = Promise.withResolvers<void>();
-    port1.on("message", () => second.resolve());
+    port1.once("message", () => second.resolve());
     port2.postMessage("again");
     await second.promise;
     assertEquals(output, ["hi"]);
+    assertEquals(port1.listenerCount("message"), 0);
 
     port1.close();
     port2.close();

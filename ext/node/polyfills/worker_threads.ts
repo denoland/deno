@@ -1715,6 +1715,12 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
     }
     return this;
   };
+  port.listenerCount = function (name) {
+    const map = portListeners[name as "message" | "messageerror" | "close"] as
+      | typeof portListeners.message
+      | undefined;
+    return map?.size ?? 0;
+  };
   port[nodeWorkerThreadCloseCb] = () => {
     port.dispatchEvent(new Event("close"));
   };
