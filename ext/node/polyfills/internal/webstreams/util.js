@@ -2,7 +2,8 @@
 
 // deno-lint-ignore-file
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   ArrayBufferPrototypeGetByteLength,
   ArrayBufferPrototypeSlice,
@@ -31,10 +32,10 @@ const assert = core.loadExtScript("ext:deno_node/internal/assert.mjs").default;
 
 const webStreams = core.loadExtScript("ext:deno_web/06_streams.js");
 
-export const kState = webStreams.kNodeWebStreamsState;
-export const kType = webStreams.kNodeWebStreamsType;
+const kState = webStreams.kNodeWebStreamsState;
+const kType = webStreams.kNodeWebStreamsType;
 
-export const AsyncIterator = {
+const AsyncIterator = {
   __proto__: Object.getPrototypeOf(
     Object.getPrototypeOf(Object.getPrototypeOf((async function* () {})())),
   ),
@@ -42,7 +43,7 @@ export const AsyncIterator = {
   return: undefined,
 };
 
-export function extractHighWaterMark(value, defaultHWM) {
+function extractHighWaterMark(value, defaultHWM) {
   if (value === undefined) return defaultHWM;
   value = +value;
   if (typeof value !== "number" || NumberIsNaN(value) || value < 0) {
@@ -54,13 +55,13 @@ export function extractHighWaterMark(value, defaultHWM) {
   return value;
 }
 
-export function extractSizeAlgorithm(size) {
+function extractSizeAlgorithm(size) {
   if (size === undefined) return () => 1;
   validateFunction(size, "strategy.size");
   return size;
 }
 
-export function customInspect(depth, options, name, data) {
+function customInspect(depth, options, name, data) {
   if (depth < 0) return this;
   const opts = {
     ...options,
@@ -69,19 +70,19 @@ export function customInspect(depth, options, name, data) {
   return `${name} ${inspect(data, opts)}`;
 }
 
-export function ArrayBufferViewGetBuffer(view) {
+function ArrayBufferViewGetBuffer(view) {
   return ReflectGet(view.constructor.prototype, "buffer", view);
 }
 
-export function ArrayBufferViewGetByteLength(view) {
+function ArrayBufferViewGetByteLength(view) {
   return ReflectGet(view.constructor.prototype, "byteLength", view);
 }
 
-export function ArrayBufferViewGetByteOffset(view) {
+function ArrayBufferViewGetByteOffset(view) {
   return ReflectGet(view.constructor.prototype, "byteOffset", view);
 }
 
-export function cloneAsUint8Array(view) {
+function cloneAsUint8Array(view) {
   const buffer = ArrayBufferViewGetBuffer(view);
   const byteOffset = ArrayBufferViewGetByteOffset(view);
   const byteLength = ArrayBufferViewGetByteLength(view);
@@ -90,7 +91,7 @@ export function cloneAsUint8Array(view) {
   );
 }
 
-export function canCopyArrayBuffer(
+function canCopyArrayBuffer(
   toBuffer,
   toIndex,
   fromBuffer,
@@ -102,18 +103,18 @@ export function canCopyArrayBuffer(
     fromIndex + count <= ArrayBufferPrototypeGetByteLength(fromBuffer);
 }
 
-export function copyArrayBuffer(src, srcOffset, dst, dstOffset, size) {
+function copyArrayBuffer(src, srcOffset, dst, dstOffset, size) {
   new Uint8Array(dst, dstOffset, size).set(
     new Uint8Array(src, srcOffset, size),
   );
 }
 
-export function isBrandCheck(brand) {
+function isBrandCheck(brand) {
   return (value) =>
     value != null && value[kState] !== undefined && value[kType] === brand;
 }
 
-export function dequeueValue(controller) {
+function dequeueValue(controller) {
   assert(controller[kState].queue !== undefined);
   assert(controller[kState].queueTotalSize !== undefined);
   assert(controller[kState].queue.length);
@@ -125,20 +126,20 @@ export function dequeueValue(controller) {
   return value;
 }
 
-export function resetQueue(controller) {
+function resetQueue(controller) {
   assert(controller[kState].queue !== undefined);
   assert(controller[kState].queueTotalSize !== undefined);
   controller[kState].queue.length = 0;
 }
 
-export function peekQueueValue(controller) {
+function peekQueueValue(controller) {
   assert(controller[kState].queue !== undefined);
   assert(controller[kState].queueTotalSize !== undefined);
   assert(controller[kState].queue.length);
   return controller[kState].queue[0].value;
 }
 
-export function enqueueValueWithSize(controller, value, size) {
+function enqueueValueWithSize(controller, value, size) {
   assert(controller[kState].queue !== undefined);
   assert(controller[kState].queueTotalSize !== undefined);
   size = +size;
@@ -154,16 +155,16 @@ export function enqueueValueWithSize(controller, value, size) {
   controller[kState].queueTotalSize += size;
 }
 
-export function isPromisePending(promise) {
+function isPromisePending(promise) {
   if (promise === undefined || !core.isPromise(promise)) return false;
   return core.getPromiseDetails(promise)[0] === 0;
 }
 
-export function setPromiseHandled(promise) {
+function setPromiseHandled(promise) {
   PromisePrototypeThen(promise, undefined, () => {});
 }
 
-export function createPromiseCallback(name, callback, thisArg, ...args) {
+function createPromiseCallback(name, callback, thisArg, ...args) {
   return (...extraArgs) => {
     try {
       return Promise.resolve(
@@ -175,28 +176,28 @@ export function createPromiseCallback(name, callback, thisArg, ...args) {
   };
 }
 
-export function invokePromiseCallback(callback, thisArg, ...args) {
+function invokePromiseCallback(callback, thisArg, ...args) {
   return Promise.resolve(FunctionPrototypeCall(callback, thisArg, ...args));
 }
 
-export function nonOpStart() {}
-export function nonOpPull() {
+function nonOpStart() {}
+function nonOpPull() {
   return Promise.resolve();
 }
-export function nonOpCancel() {
+function nonOpCancel() {
   return Promise.resolve();
 }
-export function nonOpWrite() {
+function nonOpWrite() {
   return Promise.resolve();
 }
-export function nonOpClose() {
+function nonOpClose() {
   return Promise.resolve();
 }
-export function nonOpFlush() {
+function nonOpFlush() {
   return Promise.resolve();
 }
 
-export function lazyTransfer() {
+function lazyTransfer() {
   return core.loadExtScript("ext:deno_node/internal/worker/js_transferable.js");
 }
 
@@ -223,7 +224,7 @@ function createAsyncFromSyncIterator(syncIteratorRecord) {
   };
 }
 
-export function getIterator(obj, kind = "sync", method) {
+function getIterator(obj, kind = "sync", method) {
   if (method === undefined) {
     if (kind === "async") {
       method = obj[SymbolAsyncIterator];
@@ -250,7 +251,7 @@ export function getIterator(obj, kind = "sync", method) {
   return { iterator, nextMethod: iterator.next, done: false };
 }
 
-export function iteratorNext(iteratorRecord, value) {
+function iteratorNext(iteratorRecord, value) {
   const result = value === undefined
     ? FunctionPrototypeCall(iteratorRecord.nextMethod, iteratorRecord.iterator)
     : FunctionPrototypeCall(
@@ -266,7 +267,7 @@ export function iteratorNext(iteratorRecord, value) {
   return result;
 }
 
-export default {
+return {
   ArrayBufferViewGetBuffer,
   ArrayBufferViewGetByteLength,
   ArrayBufferViewGetByteOffset,
@@ -297,3 +298,5 @@ export default {
   kType,
   kState,
 };
+
+})();

@@ -2,7 +2,8 @@
 
 // deno-lint-ignore-file
 
-import { core } from "ext:core/mod.js";
+(function () {
+const { core } = globalThis.__bootstrap;
 
 const webStreams = core.loadExtScript("ext:deno_web/06_streams.js");
 
@@ -11,13 +12,13 @@ const kCloneable = 1;
 const kTransferable = 2;
 const kDisallowCloneAndTransfer = 4;
 
-export const kClone = Symbol.for("nodejs.messaging.kClone");
-export const kDeserialize = Symbol.for("nodejs.messaging.kDeserialize");
-export const kTransfer = webStreams.kNodeMessagingTransfer ??
+const kClone = Symbol.for("nodejs.messaging.kClone");
+const kDeserialize = Symbol.for("nodejs.messaging.kDeserialize");
+const kTransfer = webStreams.kNodeMessagingTransfer ??
   Symbol.for("nodejs.messaging.kTransfer");
-export const kTransferList = Symbol.for("nodejs.messaging.kTransferList");
+const kTransferList = Symbol.for("nodejs.messaging.kTransferList");
 
-export function markTransferMode(obj, cloneable = false, transferable = false) {
+function markTransferMode(obj, cloneable = false, transferable = false) {
   if ((typeof obj !== "object" && typeof obj !== "function") || obj === null) {
     return;
   }
@@ -27,13 +28,13 @@ export function markTransferMode(obj, cloneable = false, transferable = false) {
   obj[transferMode] = mode;
 }
 
-export function setup() {}
+function setup() {}
 
-export function structuredClone(value, options) {
+function structuredClone(value, options) {
   return globalThis.structuredClone(value, options);
 }
 
-export default {
+return {
   markTransferMode,
   setup,
   structuredClone,
@@ -42,3 +43,5 @@ export default {
   kTransfer,
   kTransferList,
 };
+
+})();

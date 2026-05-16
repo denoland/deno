@@ -2,12 +2,13 @@
 
 // deno-lint-ignore-file
 
-import { core } from "ext:core/mod.js";
+(function () {
+const { core } = globalThis.__bootstrap;
 
 const webStreams = core.loadExtScript("ext:deno_web/06_streams.js");
 const streamWeb = core.loadExtScript("ext:deno_node/stream/web.js");
 
-export const {
+const {
   ReadableStream,
   ReadableStreamDefaultReader,
   ReadableStreamBYOBReader,
@@ -16,9 +17,9 @@ export const {
   ReadableStreamDefaultController,
 } = streamWeb;
 
-export const TransferredReadableStream = ReadableStream;
+const TransferredReadableStream = ReadableStream;
 
-export const {
+const {
   isReadableStream,
   isReadableByteStreamController,
   isReadableStreamBYOBRequest,
@@ -74,7 +75,7 @@ export const {
   createReadableByteStream,
 } = webStreams;
 
-export const readableStreamPipeTo = webStreams.readableStreamPipeTo ??
+const readableStreamPipeTo = webStreams.readableStreamPipeTo ??
   ((
     source,
     dest,
@@ -84,28 +85,28 @@ export const readableStreamPipeTo = webStreams.readableStreamPipeTo ??
     signal,
   ) =>
     source.pipeTo(dest, { preventClose, preventAbort, preventCancel, signal }));
-export const readableStreamTee = webStreams.readableStreamTee ??
+const readableStreamTee = webStreams.readableStreamTee ??
   ((stream) => stream.tee());
 
-export const readableStreamError = webStreams.errorReadableStream;
-export const readableStreamFulfillReadRequest = undefined;
-export const readableStreamFulfillReadIntoRequest = undefined;
-export const readableStreamAddReadRequest = undefined;
-export const readableStreamAddReadIntoRequest = undefined;
-export const readableStreamDefaultControllerCancelSteps = undefined;
-export const readableStreamDefaultControllerPullSteps = undefined;
-export const readableByteStreamControllerCancelSteps = undefined;
-export const readableByteStreamControllerPullSteps = undefined;
-export const setupReadableByteStreamController =
+const readableStreamError = webStreams.errorReadableStream;
+const readableStreamFulfillReadRequest = undefined;
+const readableStreamFulfillReadIntoRequest = undefined;
+const readableStreamAddReadRequest = undefined;
+const readableStreamAddReadIntoRequest = undefined;
+const readableStreamDefaultControllerCancelSteps = undefined;
+const readableStreamDefaultControllerPullSteps = undefined;
+const readableByteStreamControllerCancelSteps = undefined;
+const readableByteStreamControllerPullSteps = undefined;
+const setupReadableByteStreamController =
   setUpReadableByteStreamController;
-export const setupReadableByteStreamControllerFromSource =
+const setupReadableByteStreamControllerFromSource =
   setUpReadableByteStreamControllerFromSource;
-export const setupReadableStreamDefaultController =
+const setupReadableStreamDefaultController =
   setUpReadableStreamDefaultController;
-export const setupReadableStreamDefaultControllerFromSource =
+const setupReadableStreamDefaultControllerFromSource =
   setUpReadableStreamDefaultControllerFromSource;
-export const setupReadableStreamBYOBReader = setUpReadableStreamBYOBReader;
-export const setupReadableStreamDefaultReader =
+const setupReadableStreamBYOBReader = setUpReadableStreamBYOBReader;
+const setupReadableStreamDefaultReader =
   setUpReadableStreamDefaultReader;
 
 const exportsObject = {
@@ -180,4 +181,6 @@ const exportsObject = {
   createReadableByteStream,
 };
 
-export default exportsObject;
+return exportsObject;
+
+})();
