@@ -86,17 +86,14 @@ impl ConfigFolder {
   }
 
   pub fn has_workspace_members(&self) -> bool {
-    match self {
-      Self {
-        deno_json: Some(config),
-        ..
-      } => config.json.workspace.is_some(),
-      Self {
-        pkg_json: Some(pkg_json),
-        ..
-      } => pkg_json.workspaces.is_some(),
-      Self { .. } => false,
-    }
+    self
+      .deno_json
+      .as_ref()
+      .is_some_and(|config| config.json.workspace.is_some())
+      || self
+        .pkg_json
+        .as_ref()
+        .is_some_and(|pkg_json| pkg_json.workspaces.is_some())
   }
 
   pub fn deno_json(&self) -> Option<&ConfigFileRc> {
