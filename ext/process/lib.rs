@@ -63,6 +63,8 @@ use ipc::IpcJsonStreamResource;
 use ipc::IpcRefTracker;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "process";
+#[cfg(unix)]
+const DENO_EXTRA_STDIO_FDS_ENV_VAR: &str = "DENO_EXTRA_STDIO_FDS";
 
 /// Read CRT errno and map it to a Win32 error code for std::io::Error.
 ///
@@ -624,6 +626,7 @@ fn create_command(
   )]
   unsafe {
     let mut extra_pipe_fds = Vec::new();
+    let mut child_extra_stdio_fds = Vec::new();
     let mut fds_to_dup = Vec::new();
     let mut fds_to_close = Vec::new();
     let mut ipc_rid = None;
@@ -673,11 +676,13 @@ fn create_command(
           let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
           fds_to_dup.push((fd2, target_fd));
           fds_to_close.push(fd2);
+          child_extra_stdio_fds.push(target_fd);
           extra_pipe_fds.push(Some(fd1 as i64));
         }
         StdioOrFd::Fd(fd) => {
           // Dup the caller's fd onto the target fd slot in the child
           fds_to_dup.push((fd, target_fd));
+          child_extra_stdio_fds.push(target_fd);
           extra_pipe_fds.push(None);
         }
         _ => {
@@ -705,6 +710,19 @@ fn create_command(
         libc::setgroups(0, std::ptr::null());
         Ok(())
       });
+    }
+
+    if !child_extra_stdio_fds.is_empty() {
+      let mut value = String::new();
+      for (i, fd) in child_extra_stdio_fds.iter().enumerate() {
+        if i > 0 {
+          value.push(',');
+        }
+        value.push_str(&fd.to_string());
+      }
+      command.env(DENO_EXTRA_STDIO_FDS_ENV_VAR, value);
+    } else {
+      command.env_remove(DENO_EXTRA_STDIO_FDS_ENV_VAR);
     }
 
     Ok((command, ipc_rid, extra_pipe_fds, fds_to_close))
