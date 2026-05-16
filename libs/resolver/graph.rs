@@ -24,6 +24,7 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::UrlOrPath;
+use node_resolver::errors::NodeJsErrorCode;
 use node_resolver::errors::NodeJsErrorCoded;
 use url::Url;
 
@@ -170,6 +171,12 @@ pub struct ResolveWithGraphOptions {
   /// the loader can properly dynamic import and install npm packages
   /// when managed.
   pub maintain_npm_specifiers: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NpmTypesResolutionMode {
+  Strict,
+  FallbackToExecution,
 }
 
 pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
@@ -442,6 +449,7 @@ impl<
     cjs_tracker: &'a CjsTracker<TInNpmPackageChecker, TSys>,
     jsx_import_source_config_resolver: &'a JsxImportSourceConfigResolver,
     maybe_graph: Option<&'a deno_graph::ModuleGraph>,
+    npm_types_resolution_mode: NpmTypesResolutionMode,
   ) -> DenoGraphResolverAdapter<
     'a,
     TInNpmPackageChecker,
@@ -454,6 +462,7 @@ impl<
       resolver: self,
       jsx_import_source_config_resolver,
       maybe_graph,
+      npm_types_resolution_mode,
     }
   }
 }
@@ -474,6 +483,7 @@ pub struct DenoGraphResolverAdapter<
   >,
   jsx_import_source_config_resolver: &'a JsxImportSourceConfigResolver,
   maybe_graph: Option<&'a deno_graph::ModuleGraph>,
+  npm_types_resolution_mode: NpmTypesResolutionMode,
 }
 
 impl<
@@ -547,21 +557,18 @@ impl<
       });
     let node_resolution_kind =
       node_resolver::NodeResolutionKind::from_deno_graph(resolution_kind);
-    match self.maybe_graph {
-      Some(graph) => self
-        .resolver
-        .resolve_with_graph(
-          graph,
-          raw_specifier,
-          &referrer_range.specifier,
-          referrer_range.range.start,
-          ResolveWithGraphOptions {
-            mode: resolution_mode,
-            kind: node_resolution_kind,
-            maintain_npm_specifiers: false,
-          },
-        )
-        .map_err(|err| err.into_deno_graph_error()),
+    let resolve = |kind| match self.maybe_graph {
+      Some(graph) => self.resolver.resolve_with_graph(
+        graph,
+        raw_specifier,
+        &referrer_range.specifier,
+        referrer_range.range.start,
+        ResolveWithGraphOptions {
+          mode: resolution_mode,
+          kind,
+          maintain_npm_specifiers: false,
+        },
+      ),
       None => self
         .resolver
         .resolve(
@@ -569,9 +576,41 @@ impl<
           &referrer_range.specifier,
           referrer_range.range.start,
           resolution_mode,
-          node_resolution_kind,
+          kind,
         )
-        .map_err(|err| err.into_deno_graph_error()),
+        .map_err(|err| err.into()),
+    };
+
+    let result = resolve(node_resolution_kind);
+    if node_resolution_kind == node_resolver::NodeResolutionKind::Types
+      && self.npm_types_resolution_mode
+        == NpmTypesResolutionMode::FallbackToExecution
+      && result
+        .as_ref()
+        .is_err_and(|err| err.is_types_not_found_for_npm_resolution())
+    {
+      return resolve(node_resolver::NodeResolutionKind::Execution)
+        .map_err(|err| err.into_deno_graph_error());
+    }
+
+    result.map_err(|err| err.into_deno_graph_error())
+  }
+}
+
+impl ResolveWithGraphError {
+  fn is_types_not_found_for_npm_resolution(&self) -> bool {
+    match self.as_kind() {
+      ResolveWithGraphErrorKind::CouldNotResolveNpmReqRef(err) => {
+        err.source.code() == NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+      }
+      ResolveWithGraphErrorKind::ResolveNpmReqRef(err) => {
+        err.err.as_kind().maybe_code()
+          == Some(NodeJsErrorCode::ERR_TYPES_NOT_FOUND)
+      }
+      ResolveWithGraphErrorKind::Resolve(err) => {
+        err.maybe_node_code() == Some(NodeJsErrorCode::ERR_TYPES_NOT_FOUND)
+      }
+      _ => false,
     }
   }
 }
