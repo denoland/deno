@@ -42,6 +42,9 @@ const { Duplex } = core.createLazyLoader("node:stream")();
 const {
   asyncIdSymbol,
   defaultTriggerAsyncIdScope,
+  emitDestroy,
+  emitInit,
+  executionAsyncId,
   newAsyncId,
   ownerSymbol,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
@@ -274,6 +277,66 @@ function _getNewAsyncId(handle?: Handle): number {
   return !handle || typeof handle.getAsyncId !== "function"
     ? newAsyncId()
     : handle.getAsyncId();
+}
+
+const providerTypeNames = [
+  "NONE",
+  "DIRHANDLE",
+  "DNSCHANNEL",
+  "ELDHISTOGRAM",
+  "FILEHANDLE",
+  "FILEHANDLECLOSEREQ",
+  "FIXEDSIZEBLOBCOPY",
+  "FSEVENTWRAP",
+  "FSREQCALLBACK",
+  "FSREQPROMISE",
+  "GETADDRINFOREQWRAP",
+  "GETNAMEINFOREQWRAP",
+  "HEAPSNAPSHOT",
+  "HTTP2SESSION",
+  "HTTP2STREAM",
+  "HTTP2PING",
+  "HTTP2SETTINGS",
+  "HTTPINCOMINGMESSAGE",
+  "HTTPCLIENTREQUEST",
+  "JSSTREAM",
+  "JSUDPWRAP",
+  "MESSAGEPORT",
+  "PIPECONNECTWRAP",
+  "PIPESERVERWRAP",
+  "PIPEWRAP",
+  "PROCESSWRAP",
+  "PROMISE",
+  "QUERYWRAP",
+  "SHUTDOWNWRAP",
+  "SIGNALWRAP",
+  "STATWATCHER",
+  "STREAMPIPE",
+  "TCPCONNECTWRAP",
+  "TCPSERVERWRAP",
+  "TCPWRAP",
+  "TLSWRAP",
+  "TTYWRAP",
+  "UDPSENDWRAP",
+  "UDPWRAP",
+  "SIGINTWATCHDOG",
+  "WORKER",
+  "WORKERHEAPSNAPSHOT",
+  "WRITEWRAP",
+  "ZLIB",
+];
+
+function _emitHandleInit(handle: Handle, asyncId: number) {
+  if (typeof (handle as any).getProviderType !== "function") {
+    return;
+  }
+  const providerType = (handle as any).getProviderType();
+  emitInit(
+    asyncId,
+    providerTypeNames[providerType] || "UNKNOWN",
+    executionAsyncId(),
+    handle,
+  );
 }
 
 interface NormalizedArgs {
@@ -884,6 +947,7 @@ function _initSocketHandle(socket: Socket) {
     (socket._handle as any)[ownerSymbol] = socket;
     socket._handle.onread = onStreamRead;
     socket[asyncIdSymbol] = _getNewAsyncId(socket._handle);
+    _emitHandleInit(socket._handle, socket[asyncIdSymbol]);
 
     let userBuf = socket[kBuffer];
 
@@ -1364,6 +1428,7 @@ function Socket(options) {
   if (options.handle) {
     this._handle = options.handle;
     this[asyncIdSymbol] = _getNewAsyncId(this._handle);
+    _emitHandleInit(this._handle, this[asyncIdSymbol]);
   } else if (options.fd !== undefined) {
     const { fd } = options;
 
@@ -1381,6 +1446,7 @@ function Socket(options) {
     }
 
     this[asyncIdSymbol] = _getNewAsyncId(this._handle);
+    _emitHandleInit(this._handle, this[asyncIdSymbol]);
 
     if (
       (fd === 1 || fd === 2) &&
@@ -1874,6 +1940,9 @@ Socket.prototype._destroy = function (exception, cb) {
     cb(exception);
     handle.close(() => {
       handle.onread = _noop;
+      if (this[asyncIdSymbol] > 0) {
+        emitDestroy(this[asyncIdSymbol]);
+      }
 
       debug("emit close");
       this.emit("close", isException);
