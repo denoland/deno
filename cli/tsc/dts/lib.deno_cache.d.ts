@@ -63,6 +63,16 @@ interface Cache {
     request: RequestInfo | URL,
     options?: CacheQueryOptions,
   ): Promise<boolean>;
+  /**
+   * Return requests matching cached objects.
+   *
+   * How is the API different from browsers?
+   * 1. You cannot match cache objects using by relative paths.
+   */
+  keys(
+    request?: RequestInfo | URL,
+    options?: CacheQueryOptions,
+  ): Promise<readonly Request[]>;
 }
 
 /** @category Cache */

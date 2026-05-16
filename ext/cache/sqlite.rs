@@ -21,6 +21,8 @@ use tokio::io::AsyncWriteExt;
 
 use crate::CacheDeleteRequest;
 use crate::CacheError;
+use crate::CacheKeysRequest;
+use crate::CacheKeysResponse;
 use crate::CacheMatchRequest;
 use crate::CacheMatchResponseMeta;
 use crate::CachePutRequest;
@@ -365,6 +367,102 @@ impl SqliteBackedCache {
     }
   }
 
+  pub async fn keys(
+    &self,
+    request: CacheKeysRequest,
+  ) -> Result<Vec<CacheKeysResponse>, CacheError> {
+    let db = self.connection.clone();
+    spawn_blocking(move || {
+      let db = db.lock();
+      let mut stmt = if request.request_url.is_some() && !request.ignore_search
+      {
+        db.prepare(
+          "SELECT request_url, request_headers, response_headers
+             FROM request_response_list
+             WHERE cache_id = ?1 AND request_url = ?2
+             ORDER BY id",
+        )?
+      } else {
+        db.prepare(
+          "SELECT request_url, request_headers, response_headers
+             FROM request_response_list
+             WHERE cache_id = ?1
+             ORDER BY id",
+        )?
+      };
+
+      let mut keys = Vec::new();
+      if let Some(request_url) = &request.request_url
+        && !request.ignore_search
+      {
+        let rows = stmt.query_map((request.cache_id, request_url), |row| {
+          let request_url: String = row.get(0)?;
+          let request_headers: Vec<u8> = row.get(1)?;
+          let response_headers: Vec<u8> = row.get(2)?;
+          Ok((
+            request_url,
+            deserialize_headers(&request_headers),
+            deserialize_headers(&response_headers),
+          ))
+        })?;
+        for row in rows {
+          let (request_url, request_headers, response_headers) = row?;
+          if request.ignore_vary
+            || request_matches_vary(
+              &response_headers,
+              &request.request_headers,
+              &request_headers,
+            )
+          {
+            keys.push(CacheKeysResponse {
+              request_url,
+              request_headers,
+            });
+          }
+        }
+      } else {
+        let rows = stmt.query_map([request.cache_id], |row| {
+          let request_url: String = row.get(0)?;
+          let request_headers: Vec<u8> = row.get(1)?;
+          let response_headers: Vec<u8> = row.get(2)?;
+          Ok((
+            request_url,
+            deserialize_headers(&request_headers),
+            deserialize_headers(&response_headers),
+          ))
+        })?;
+        for row in rows {
+          let (cached_url, request_headers, response_headers) = row?;
+          let url_matches =
+            request.request_url.as_ref().is_none_or(|request_url| {
+              urls_match(
+                cached_url.as_str(),
+                request_url,
+                request.ignore_search,
+              )
+            });
+          if url_matches
+            && (request.request_url.is_none()
+              || request.ignore_vary
+              || request_matches_vary(
+                &response_headers,
+                &request.request_headers,
+                &request_headers,
+              ))
+          {
+            keys.push(CacheKeysResponse {
+              request_url: cached_url,
+              request_headers,
+            });
+          }
+        }
+      }
+
+      Ok::<Vec<CacheKeysResponse>, CacheError>(keys)
+    })
+    .await?
+  }
+
   pub async fn delete(
     &self,
     request: CacheDeleteRequest,
@@ -381,6 +479,40 @@ impl SqliteBackedCache {
     })
     .await?
   }
+}
+
+fn request_matches_vary(
+  response_headers: &[(ByteString, ByteString)],
+  query_request_headers: &[(ByteString, ByteString)],
+  cached_request_headers: &[(ByteString, ByteString)],
+) -> bool {
+  if let Some(vary_header) = get_header("vary", response_headers) {
+    vary_header_matches(
+      &vary_header,
+      query_request_headers,
+      cached_request_headers,
+    )
+  } else {
+    true
+  }
+}
+
+fn urls_match(
+  cached_url: &str,
+  request_url: &str,
+  ignore_search: bool,
+) -> bool {
+  if ignore_search {
+    strip_url_search(cached_url) == strip_url_search(request_url)
+  } else {
+    cached_url == request_url
+  }
+}
+
+fn strip_url_search(url: &str) -> &str {
+  url
+    .split_once('?')
+    .map_or(url, |(without_search, _)| without_search)
 }
 
 async fn insert_cache_asset(

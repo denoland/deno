@@ -49,6 +49,9 @@ pub enum CacheError {
   #[error("Cache deletion is not supported")]
   DeletionNotSupported,
   #[class(type)]
+  #[error("Cache keys are not supported")]
+  KeysNotSupported,
+  #[class(type)]
   #[error("Content-Encoding is not allowed in response headers")]
   ContentEncodingNotAllowed,
   #[class(generic)]
@@ -105,6 +108,7 @@ deno_core::extension!(deno_cache,
     op_cache_storage_keys,
     op_cache_put,
     op_cache_match,
+    op_cache_keys,
     op_cache_delete,
   ],
   lazy_loaded_js = [ "01_cache.js" ],
@@ -134,6 +138,23 @@ pub struct CachePutRequest {
 #[serde(rename_all = "camelCase")]
 pub struct CacheMatchRequest {
   pub cache_id: i64,
+  pub request_url: String,
+  pub request_headers: Vec<(ByteString, ByteString)>,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheKeysRequest {
+  pub cache_id: i64,
+  pub request_url: Option<String>,
+  pub request_headers: Vec<(ByteString, ByteString)>,
+  pub ignore_search: bool,
+  pub ignore_vary: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheKeysResponse {
   pub request_url: String,
   pub request_headers: Vec<(ByteString, ByteString)>,
 }
@@ -223,6 +244,16 @@ impl CacheImpl {
     match self {
       Self::Sqlite(cache) => cache.r#match(request).await,
       Self::Lsc(cache) => cache.r#match(request).await,
+    }
+  }
+
+  pub async fn keys(
+    &self,
+    request: CacheKeysRequest,
+  ) -> Result<Vec<CacheKeysResponse>, CacheError> {
+    match self {
+      Self::Sqlite(cache) => cache.keys(request).await,
+      Self::Lsc(cache) => cache.keys(request).await,
     }
   }
 
@@ -359,6 +390,16 @@ pub async fn op_cache_match(
     }
     None => Ok(None),
   }
+}
+
+#[op2]
+#[serde]
+pub async fn op_cache_keys(
+  state: Rc<RefCell<OpState>>,
+  #[serde] request: CacheKeysRequest,
+) -> Result<Vec<CacheKeysResponse>, CacheError> {
+  let cache = get_cache(&state)?;
+  cache.keys(request).await
 }
 
 #[op2]

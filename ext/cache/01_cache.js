@@ -4,6 +4,7 @@
 const { core, primordials } = globalThis.__bootstrap;
 const {
   op_cache_delete,
+  op_cache_keys,
   op_cache_match,
   op_cache_put,
   op_cache_storage_delete,
@@ -13,6 +14,7 @@ const {
 } = core.ops;
 const {
   ArrayPrototypePush,
+  ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
   StringPrototypeSplit,
   StringPrototypeTrim,
@@ -253,6 +255,65 @@ class Cache {
     });
   }
 
+  /** See https://w3c.github.io/ServiceWorker/#cache-keys */
+  async keys(request = undefined, options = undefined) {
+    webidl.assertBranded(this, CachePrototype);
+    const prefix = "Failed to execute 'keys' on 'Cache'";
+    if (request !== undefined) {
+      request = webidl.converters["RequestInfo_DOMString"](
+        request,
+        prefix,
+        "Argument 1",
+      );
+    }
+    options = webidl.converters["CacheQueryOptions"](
+      options,
+      prefix,
+      "Argument 2",
+    );
+
+    let r = null;
+    if (ObjectPrototypeIsPrototypeOf(RequestPrototype, request)) {
+      r = request;
+    } else if (
+      typeof request === "string" ||
+      ObjectPrototypeIsPrototypeOf(URLPrototype, request)
+    ) {
+      r = new Request(request);
+    }
+
+    let requestUrl = null;
+    let requestHeaders = [];
+    if (r !== null) {
+      if (r.method !== "GET" && !options.ignoreMethod) {
+        return ObjectFreeze([]);
+      }
+
+      const url = new URL(r.url);
+      url.hash = "";
+      // deno-lint-ignore prefer-primordials
+      requestUrl = url.toString();
+      requestHeaders = toInnerRequest(r).headerList;
+    }
+
+    const metas = await op_cache_keys({
+      cacheId: this[_id],
+      requestUrl,
+      requestHeaders,
+      ignoreSearch: options.ignoreSearch,
+      ignoreVary: options.ignoreVary,
+    });
+    const requests = [];
+    for (let i = 0; i < metas.length; ++i) {
+      const meta = metas[i];
+      ArrayPrototypePush(
+        requests,
+        new Request(meta.requestUrl, { headers: meta.requestHeaders }),
+      );
+    }
+    return ObjectFreeze(requests);
+  }
+
   /** See https://w3c.github.io/ServiceWorker/#cache-matchall
    *
    * Note: the function is private as we don't want to expose
@@ -328,6 +389,26 @@ class Cache {
 
 webidl.configureInterface(CacheStorage);
 webidl.configureInterface(Cache);
+webidl.converters["CacheQueryOptions"] = webidl.createDictionaryConverter(
+  "CacheQueryOptions",
+  [
+    {
+      key: "ignoreMethod",
+      defaultValue: false,
+      converter: webidl.converters["boolean"],
+    },
+    {
+      key: "ignoreSearch",
+      defaultValue: false,
+      converter: webidl.converters["boolean"],
+    },
+    {
+      key: "ignoreVary",
+      defaultValue: false,
+      converter: webidl.converters["boolean"],
+    },
+  ],
+);
 const CacheStoragePrototype = CacheStorage.prototype;
 const CachePrototype = Cache.prototype;
 

@@ -46,6 +46,74 @@ Deno.test(async function cacheStorageKeys() {
   assert(await caches.delete("keys-c"));
 });
 
+Deno.test(async function cacheKeys() {
+  const cacheName = "cache-keys";
+  await caches.delete(cacheName);
+  const cache = await caches.open(cacheName);
+
+  const empty = await cache.keys();
+  assert(Array.isArray(empty));
+  assert(Object.isFrozen(empty));
+  assertEquals(empty, []);
+
+  const reqA = new Request("https://example.com/cache-keys/a?x=1", {
+    headers: { "x-test": "a" },
+  });
+  const reqB = new Request("https://example.com/cache-keys/b?x=2");
+  await cache.put(reqA, new Response("a"));
+  await cache.put(reqB, new Response("b"));
+
+  const keys = await cache.keys();
+  assert(Object.isFrozen(keys));
+  assertEquals(keys.length, 2);
+  assert(keys[0] instanceof Request);
+  assert(keys[1] instanceof Request);
+  assertEquals(keys[0].url, reqA.url);
+  assertEquals(keys[0].method, "GET");
+  assertEquals(keys[0].headers.get("x-test"), "a");
+  assertEquals(keys[1].url, reqB.url);
+
+  const exact = await cache.keys("https://example.com/cache-keys/a?x=1");
+  assertEquals(exact.length, 1);
+  assertEquals(exact[0].url, reqA.url);
+
+  const ignoredSearch = await cache.keys(
+    "https://example.com/cache-keys/a?x=not-the-same",
+    { ignoreSearch: true },
+  );
+  assertEquals(ignoredSearch.length, 1);
+  assertEquals(ignoredSearch[0].url, reqA.url);
+
+  const headRequest = new Request("https://example.com/cache-keys/a?x=1", {
+    method: "HEAD",
+  });
+  assertEquals(await cache.keys(headRequest), []);
+  const ignoredMethod = await cache.keys(headRequest, { ignoreMethod: true });
+  assertEquals(ignoredMethod.length, 1);
+  assertEquals(ignoredMethod[0].url, reqA.url);
+
+  const varyReq = new Request("https://example.com/cache-keys/vary", {
+    headers: { "accept": "application/json" },
+  });
+  await cache.put(
+    varyReq,
+    new Response("vary", { headers: { "vary": "accept" } }),
+  );
+  assertEquals(
+    await cache.keys("https://example.com/cache-keys/vary"),
+    [],
+  );
+  assertEquals(
+    (await cache.keys("https://example.com/cache-keys/vary", {
+      ignoreVary: true,
+    })).length,
+    1,
+  );
+  assertEquals((await cache.keys(varyReq)).length, 1);
+
+  assert(await caches.delete(cacheName));
+});
+
 Deno.test(async function cacheApi() {
   const cacheName = "cache-v1";
   const cache = await caches.open(cacheName);
