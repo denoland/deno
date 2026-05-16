@@ -277,9 +277,10 @@ const workerThreads = core.loadExtScript(
 );
 const wasi = core.loadExtScript("ext:deno_node/wasi.ts").default;
 const zlib = core.loadExtScript("ext:deno_node/zlib.js");
-const { getOptionValue } = core.loadExtScript(
+const internalOptions = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
 );
+const { getOptionValue } = internalOptions;
 
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
@@ -354,6 +355,7 @@ function setupBuiltinModules() {
     "internal/streams/state": internalStreamsState,
     "internal/socketaddress": internalSocketAddress,
     "internal/js_stream_socket": internalJsStreamSocket,
+    "internal/options": internalOptions,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
     "internal/url": internalUrl,

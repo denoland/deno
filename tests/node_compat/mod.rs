@@ -501,6 +501,9 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
           "--pending-deprecation" => {
             node_options.push("--pending-deprecation".to_string());
           }
+          "--expose-internals" | "--expose_internals" => {
+            node_options.push("--expose-internals".to_string());
+          }
           "--tls-min-v1.0"
           | "--tls-min-v1.1"
           | "--tls-min-v1.2"
