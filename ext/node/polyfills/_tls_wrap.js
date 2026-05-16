@@ -637,9 +637,19 @@ TLSSocket.prototype._init = function (socket, wrap) {
 
         const handleAlpn = (sniCtx) => {
           let selectedAlpn = null;
+          let keyCertCtx = null;
           if (alpnCb && alpnProtocols.length > 0) {
             const protocols = Array.from(alpnProtocols);
-            selectedAlpn = alpnCb({ servername, protocols });
+            const alpnThis = {
+              setKeyCert(keyCert) {
+                if (keyCert?.context) {
+                  keyCertCtx = keyCert;
+                } else {
+                  keyCertCtx = createSecureContext(keyCert);
+                }
+              },
+            };
+            selectedAlpn = alpnCb.call(alpnThis, { servername, protocols });
             if (selectedAlpn == null) {
               // Callback returned undefined/null -- reject ALPN.
               // Destroy the socket which sends a connection reset.
@@ -652,7 +662,7 @@ TLSSocket.prototype._init = function (socket, wrap) {
               return;
             }
           }
-          finish(sniCtx, selectedAlpn);
+          finish(keyCertCtx || sniCtx, selectedAlpn);
         };
 
         if (sniCb) {
@@ -756,8 +766,11 @@ TLSSocket.prototype.renegotiate = function (_options, callback) {
   return false;
 };
 
-TLSSocket.prototype.setMaxSendFragment = function setMaxSendFragment(_size) {
+TLSSocket.prototype.setMaxSendFragment = function setMaxSendFragment(size) {
   // Not applicable to rustls
+  validateInt32(size, "size");
+  if (size < 512 || size > 16384) return false;
+  this._maxSendFragment = size;
   return true;
 };
 
@@ -997,7 +1010,16 @@ TLSSocket.prototype.getX509Certificate = function getX509Certificate() {
 
 function makeVerifyError(code) {
   if (!code) return null;
-  const err = new Error(code);
+  const message = {
+    CERT_HAS_EXPIRED: "certificate has expired",
+    CERT_NOT_YET_VALID: "certificate is not yet valid",
+    DEPTH_ZERO_SELF_SIGNED_CERT: "self-signed certificate",
+    SELF_SIGNED_CERT_IN_CHAIN: "self-signed certificate in certificate chain",
+    UNABLE_TO_GET_ISSUER_CERT: "unable to get issuer certificate",
+    UNABLE_TO_GET_ISSUER_CERT_LOCALLY: "unable to get local issuer certificate",
+    UNABLE_TO_VERIFY_LEAF_SIGNATURE: "unable to verify the first certificate",
+  }[code] ?? code;
+  const err = new Error(message);
   err.code = code;
   return err;
 }
@@ -1092,6 +1114,7 @@ function tlsConnectionListener(rawSocket) {
     ALPNCallback: this.ALPNCallback,
     SNICallback: sniCallback,
     pauseOnConnect: this.pauseOnConnect,
+    handshakeTimeout: this._handshakeTimeout,
   });
 
   // TLS init can fail synchronously (e.g. missing cert/key, unsupported
@@ -1166,6 +1189,13 @@ function Server(options, listener) {
       );
     }
   }
+  this._ticketKeys = options.ticketKeys == null
+    ? Buffer.alloc(48)
+    : Buffer.from(
+      options.ticketKeys.buffer,
+      options.ticketKeys.byteOffset,
+      options.ticketKeys.byteLength,
+    );
 
   this.setSecureContext(options);
 
@@ -1232,6 +1262,24 @@ Server.prototype.addContext = function (servername, context) {
     throw new ERR_TLS_REQUIRED_SERVER_NAME();
   }
   this._contexts.push([servername, context]);
+};
+
+Server.prototype.getTicketKeys = function getTicketKeys() {
+  return Buffer.from(this._ticketKeys);
+};
+
+Server.prototype.setTicketKeys = function setTicketKeys(keys) {
+  if (!isArrayBufferView(keys)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "keys",
+      ["Buffer", "TypedArray", "DataView"],
+      keys,
+    );
+  }
+  if (keys.byteLength !== 48) {
+    throw new Error("Session ticket keys must be a 48-byte buffer");
+  }
+  this._ticketKeys = Buffer.from(keys.buffer, keys.byteOffset, keys.byteLength);
 };
 
 // ---------------------------------------------------------------------------
@@ -1317,6 +1365,9 @@ function normalizeConnectArgs(listArgs) {
 }
 
 function connect(...args) {
+  if (args.length === 0) {
+    createSecureContext({ ciphers: DEFAULT_CIPHERS });
+  }
   args = normalizeConnectArgs(args);
   let options = args[0];
   const cb = args[1];

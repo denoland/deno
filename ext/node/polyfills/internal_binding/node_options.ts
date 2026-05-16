@@ -5,6 +5,8 @@ const {
   SafeMap,
   ArrayPrototypeForEach,
   ArrayPrototypePush,
+  ArrayPrototypeConcat,
+  ArrayPrototypeSlice,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
 } = primordials;
@@ -50,42 +52,126 @@ function splitNodeOptions(input: string): string[] {
 /** Gets the all options for Node.js
  * This function is expensive to execute. `getOptionValue` in `internal/options.ts`
  * should be used instead to get a specific option. */
-function getOptions() {
-  const options = new SafeMap([
+type OptionValue = { value: string | boolean };
+
+let optionsMap: Map<string, OptionValue> | undefined;
+let execArgvOptionsMap: Map<string, OptionValue> | undefined;
+let execArgvSnapshot: string[] | undefined;
+
+function setOptionSourceExecArgv(execArgv: string[]) {
+  execArgvSnapshot = ArrayPrototypeSlice(execArgv);
+  optionsMap = undefined;
+  execArgvOptionsMap = undefined;
+}
+
+function createDefaultOptions() {
+  return new SafeMap([
     ["--warnings", { value: true }],
     ["--pending-deprecation", { value: false }],
     ["--title", { value: "" }],
   ]);
+}
 
+function parseOption(options: Map<string, OptionValue>, arg: string) {
+  if (StringPrototypeStartsWith(arg, "--title=")) {
+    options.set("--title", { value: StringPrototypeSlice(arg, 8) });
+    return;
+  }
+  if (StringPrototypeStartsWith(arg, "--tls-cipher-list=")) {
+    options.set("--tls-cipher-list", {
+      value: StringPrototypeSlice(arg, "--tls-cipher-list=".length),
+    });
+    return;
+  }
+  switch (arg) {
+    case "--no-warnings":
+      options.set("--warnings", { value: false });
+      break;
+    case "--pending-deprecation":
+      options.set("--pending-deprecation", { value: true });
+      break;
+    case "--tls-min-v1.0":
+    case "--tls-min-v1.1":
+    case "--tls-min-v1.2":
+    case "--tls-min-v1.3":
+    case "--tls-max-v1.2":
+    case "--tls-max-v1.3":
+    case "--use-bundled-ca":
+    case "--use-openssl-ca":
+    case "--use-system-ca":
+      options.set(arg, { value: true });
+      break;
+    case "--no-tls-min-v1.0":
+      options.set("--tls-min-v1.0", { value: false });
+      break;
+    case "--no-tls-min-v1.1":
+      options.set("--tls-min-v1.1", { value: false });
+      break;
+    case "--no-tls-min-v1.2":
+      options.set("--tls-min-v1.2", { value: false });
+      break;
+    case "--no-tls-min-v1.3":
+      options.set("--tls-min-v1.3", { value: false });
+      break;
+    case "--no-tls-max-v1.2":
+      options.set("--tls-max-v1.2", { value: false });
+      break;
+    case "--no-tls-max-v1.3":
+      options.set("--tls-max-v1.3", { value: false });
+      break;
+    case "--no-use-bundled-ca":
+      options.set("--use-bundled-ca", { value: false });
+      break;
+    case "--no-use-openssl-ca":
+      options.set("--use-openssl-ca", { value: false });
+      break;
+    case "--no-use-system-ca":
+      options.set("--use-system-ca", { value: false });
+      break;
+    default:
+      if (StringPrototypeStartsWith(arg, "--dns-result-order=")) {
+        const value = StringPrototypeSlice(
+          arg,
+          "--dns-result-order=".length,
+        );
+        options.set("--dns-result-order", { value });
+      }
+      break;
+  }
+}
+
+function getExecArgv() {
+  return execArgvSnapshot ?? globalThis.process?.execArgv ?? [];
+}
+
+function getOptions() {
+  if (optionsMap) {
+    return { options: optionsMap };
+  }
+
+  const options = createDefaultOptions();
   const nodeOptions = Deno.env.get("NODE_OPTIONS");
-  const args = nodeOptions ? splitNodeOptions(nodeOptions) : [];
-  ArrayPrototypeForEach(args, (arg) => {
-    if (StringPrototypeStartsWith(arg, "--title=")) {
-      options.set("--title", { value: StringPrototypeSlice(arg, 8) });
-      return;
-    }
-    switch (arg) {
-      case "--no-warnings":
-        options.set("--warnings", { value: false });
-        break;
-      case "--pending-deprecation":
-        options.set("--pending-deprecation", { value: true });
-        break;
-      default:
-        if (StringPrototypeStartsWith(arg, "--dns-result-order=")) {
-          const value = StringPrototypeSlice(
-            arg,
-            "--dns-result-order=".length,
-          );
-          options.set("--dns-result-order", { value });
-        }
-        break;
-    }
-  });
+  const envArgs = nodeOptions ? splitNodeOptions(nodeOptions) : [];
+  const execArgv = getExecArgv();
+  const args = ArrayPrototypeConcat(envArgs, execArgv);
+  ArrayPrototypeForEach(args, (arg) => parseOption(options, arg));
+  optionsMap = options;
+  return { options };
+}
+
+function getExecArgvOptions() {
+  if (execArgvOptionsMap) {
+    return { options: execArgvOptionsMap };
+  }
+  const options = new SafeMap();
+  ArrayPrototypeForEach(getExecArgv(), (arg) => parseOption(options, arg));
+  execArgvOptionsMap = options;
   return { options };
 }
 
 return {
+  getExecArgvOptions,
   getOptions,
+  setOptionSourceExecArgv,
 };
 })();

@@ -501,6 +501,20 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
           "--pending-deprecation" => {
             node_options.push("--pending-deprecation".to_string());
           }
+          "--tls-min-v1.0"
+          | "--tls-min-v1.1"
+          | "--tls-min-v1.2"
+          | "--tls-min-v1.3"
+          | "--tls-max-v1.2"
+          | "--tls-max-v1.3"
+          | "--use-bundled-ca"
+          | "--no-use-bundled-ca"
+          | "--use-openssl-ca"
+          | "--no-use-openssl-ca"
+          | "--use-system-ca"
+          | "--no-use-system-ca" => {
+            node_options.push(flag.to_string());
+          }
           f if f.starts_with("--dns-result-order=") => {
             node_options.push(f.to_string());
           }

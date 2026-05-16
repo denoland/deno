@@ -994,8 +994,14 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   debug("connect: dns options", dnsOpts);
   self._host = host;
   const lookup = options.lookup || dnsLookup;
-  const getLookupDnsOpts = () =>
-    lookup === dnsLookup ? { ...dnsOpts, port } : dnsOpts;
+  const getLookupDnsOpts = () => {
+    const lookupOpts = options.lookup === undefined ? dnsOpts : {
+      family: dnsOpts.family,
+      hints: dnsOpts.hints,
+      all: dnsOpts.all,
+    };
+    return lookup === dnsLookup ? { ...lookupOpts, port } : lookupOpts;
+  };
 
   if (
     dnsOpts.family !== 4 &&
