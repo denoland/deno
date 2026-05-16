@@ -4211,6 +4211,9 @@
       "reason": "Node.js system CA certificate handling is not implemented in Deno"
     },
     "test-runner/test-output-arbitrary-output-colored.mjs": {},
+    "test-runner/test-output-assertion-color-tty.mjs": {},
+    "test-runner/test-output-coverage-width-80-color.mjs": {},
+    "test-runner/test-output-coverage-width-80-uncovered-lines-color.mjs": {},
     "test-runner/test-output-no-tests.mjs": {},
     "test-runner/test-output-output-cli.mjs": {
       "ignore": true,
