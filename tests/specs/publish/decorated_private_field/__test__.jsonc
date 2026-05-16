@@ -1,4 +1,5 @@
 {
+  "tempDir": true,
   "args": "publish --token 'sadfasdf' --dry-run",
   "output": "publish.out"
 }

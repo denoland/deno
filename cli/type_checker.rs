@@ -36,6 +36,7 @@ use crate::args::TypeCheckMode;
 use crate::cache::CacheDBHash;
 use crate::cache::Caches;
 use crate::cache::TypeCheckCache;
+use crate::fast_check::strip_decorators_arc;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::module_error_for_tsc_diagnostic;
@@ -1047,11 +1048,14 @@ impl<'a> GraphWalker<'a> {
           && let Some(hasher) = &mut self.maybe_hasher
         {
           hasher.write_str(module.specifier.as_str());
+          let source_text = module
+            .fast_check_module()
+            .map(|s| strip_decorators_arc(&s.source));
           hasher.write_str(
             // the fast check module will only be set when publishing
-            module
-              .fast_check_module()
-              .map(|s| s.source.as_ref())
+            source_text
+              .as_ref()
+              .map(|s| s.as_ref())
               .unwrap_or(&module.source.text),
           );
         }
