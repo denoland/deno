@@ -1328,11 +1328,20 @@
     "parallel/test-fs-operations-with-surrogate-pairs.js": {},
     "parallel/test-fs-options-immutable.js": {},
     "parallel/test-fs-promises-exists.js": {},
-    "parallel/test-fs-promises-file-handle-aggregate-errors.js": {},
+    "parallel/test-fs-promises-file-handle-aggregate-errors.js": {
+      "darwin": false,
+      "reason": "macOS branch exercises path-based lchmod which doesn't route through FileHandle yet"
+    },
     "parallel/test-fs-promises-file-handle-append-file.js": {},
     "parallel/test-fs-promises-file-handle-chmod.js": {},
-    "parallel/test-fs-promises-file-handle-close-errors.js": {},
-    "parallel/test-fs-promises-file-handle-op-errors.js": {},
+    "parallel/test-fs-promises-file-handle-close-errors.js": {
+      "darwin": false,
+      "reason": "macOS branch exercises path-based lchmod which doesn't route through FileHandle yet"
+    },
+    "parallel/test-fs-promises-file-handle-op-errors.js": {
+      "darwin": false,
+      "reason": "macOS branch exercises path-based lchmod which doesn't route through FileHandle yet"
+    },
     "parallel/test-fs-promises-file-handle-read.js": {},
     "parallel/test-fs-promises-file-handle-readFile.js": {},
     "parallel/test-fs-promises-file-handle-readLines.mjs": {},
