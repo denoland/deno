@@ -866,21 +866,13 @@ pub fn format_file(
         None
       }
     }
-    _ => {
-      let config = get_resolved_typescript_config(fmt_options);
-      dprint_plugin_typescript::format_text(
-        dprint_plugin_typescript::FormatTextOptions {
-          path: file_path,
-          extension: Some(&ext),
-          text: file.text.to_string(),
-          config: &config,
-          external_formatter: Some(&create_external_formatter_for_typescript(
-            unstable_options,
-            fmt_options,
-          )),
-        },
-      )?
-    }
+    _ => format_typescript_with_panic_recovery(
+      file_path,
+      &ext,
+      &file.text,
+      fmt_options,
+      unstable_options,
+    )?,
   };
 
   Ok(match maybe_result {
@@ -898,14 +890,69 @@ pub fn format_parsed_source(
   fmt_options: &FmtOptionsConfig,
   unstable_options: &UnstableFmtOptions,
 ) -> Result<Option<String>, AnyError> {
-  dprint_plugin_typescript::format_parsed_source(
-    parsed_source,
-    &get_resolved_typescript_config(fmt_options),
-    Some(&create_external_formatter_for_typescript(
-      unstable_options,
-      fmt_options,
-    )),
-  )
+  let config = get_resolved_typescript_config(fmt_options);
+  let external_formatter =
+    create_external_formatter_for_typescript(unstable_options, fmt_options);
+  match crate::catch_unwind_with_hook(std::panic::AssertUnwindSafe(|| {
+    dprint_plugin_typescript::format_parsed_source(
+      parsed_source,
+      &config,
+      Some(&external_formatter),
+    )
+  })) {
+    Ok(result) => result,
+    Err(payload) => {
+      log::warn!(
+        "Formatter panicked for '{}': {}, leaving unformatted",
+        parsed_source.specifier(),
+        panic_payload_message(&payload),
+      );
+      Ok(None)
+    }
+  }
+}
+
+fn format_typescript_with_panic_recovery(
+  file_path: &Path,
+  ext: &str,
+  text: &str,
+  fmt_options: &FmtOptionsConfig,
+  unstable_options: &UnstableFmtOptions,
+) -> Result<Option<String>, AnyError> {
+  let config = get_resolved_typescript_config(fmt_options);
+  let external_formatter =
+    create_external_formatter_for_typescript(unstable_options, fmt_options);
+  let file_path_owned = file_path.to_path_buf();
+  let text = text.to_string();
+  match crate::catch_unwind_with_hook(std::panic::AssertUnwindSafe(|| {
+    dprint_plugin_typescript::format_text(
+      dprint_plugin_typescript::FormatTextOptions {
+        path: &file_path_owned,
+        extension: Some(ext),
+        text,
+        config: &config,
+        external_formatter: Some(&external_formatter),
+      },
+    )
+  })) {
+    Ok(result) => result,
+    Err(payload) => {
+      log::warn!(
+        "Formatter panicked for '{}': {}, leaving unformatted",
+        file_path.display(),
+        panic_payload_message(&payload),
+      );
+      Ok(None)
+    }
+  }
+}
+
+fn panic_payload_message(payload: &Box<dyn std::any::Any + Send>) -> &str {
+  payload
+    .downcast_ref::<&str>()
+    .copied()
+    .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+    .unwrap_or("<non-string panic>")
 }
 
 #[async_trait]
@@ -2018,5 +2065,32 @@ mod test {
     .unwrap()
     .unwrap();
     assert_eq!(file_text, "let a = 1;\n",);
+  }
+
+  #[test]
+  fn test_html_tagged_template_multiline_comment_does_not_panic() {
+    // Regression test for https://github.com/denoland/deno/issues/32954
+    let result = format_file(
+      Path::new("test.ts"),
+      &FileContents {
+        had_bom: false,
+        text: r#"export default function panicRenderHTML() {
+  return html`
+    <form>
+        <!--<label
+          for="email"
+        >Email</label>-->
+      <input />
+    </form>
+  `;
+}
+"#
+        .into(),
+      },
+      &FmtOptionsConfig::default(),
+      &UnstableFmtOptions::default(),
+      None,
+    );
+    assert!(result.is_ok());
   }
 }
