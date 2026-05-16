@@ -4228,14 +4228,34 @@
       "reason": "Node.js system CA certificate handling is not implemented in Deno"
     },
     "test-runner/test-output-arbitrary-output-colored.mjs": {},
+    "test-runner/test-output-junit-reporter.mjs": {
+      "exitCode": 1,
+      "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
+    },
+    "test-runner/test-output-lcov-reporter.mjs": {
+      "exitCode": 1,
+      "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
+    },
     "test-runner/test-output-no-tests.mjs": {},
+    "test-runner/test-output-output.mjs": {
+      "exitCode": 1,
+      "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
+    },
     "test-runner/test-output-output-cli.mjs": {
       "ignore": true,
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
     },
+    "test-runner/test-output-spec-reporter.mjs": {
+      "exitCode": 1,
+      "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
+    },
     "test-runner/test-output-spec-reporter-cli.mjs": {
       "ignore": true,
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "test-runner/test-output-tap-reporter.mjs": {
+      "exitCode": 1,
+      "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
     },
     "test-runner/test-output-typescript-coverage.mjs": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
