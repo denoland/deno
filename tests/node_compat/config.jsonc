@@ -177,8 +177,11 @@
     "parallel/test-als-defaultvalue-original.js": {},
     "parallel/test-async-hooks-close-during-destroy.js": {},
     "parallel/test-async-hooks-constructor.js": {},
+    "parallel/test-async-hooks-destroy-on-gc.js": {},
+    "parallel/test-async-hooks-disable-gc-tracking.js": {},
     "parallel/test-async-hooks-enable-disable.js": {},
     "parallel/test-async-hooks-enabledhooksexits.js": {},
+    "parallel/test-async-hooks-prevent-double-destroy.js": {},
     "parallel/test-async-hooks-run-in-async-scope-caught-exception.js": {},
     "parallel/test-async-hooks-run-in-async-scope-this-arg.js": {},
     "parallel/test-async-hooks-stack-overflow-nested-async.js": {},
@@ -1329,8 +1332,21 @@
     "parallel/test-fs-operations-with-surrogate-pairs.js": {},
     "parallel/test-fs-options-immutable.js": {},
     "parallel/test-fs-promises-exists.js": {},
+    "parallel/test-fs-promises-file-handle-aggregate-errors.js": {
+      "darwin": false,
+      "reason": "macOS branch exercises path-based lchmod which doesn't route through FileHandle yet"
+    },
     "parallel/test-fs-promises-file-handle-append-file.js": {},
     "parallel/test-fs-promises-file-handle-chmod.js": {},
+    "parallel/test-fs-promises-file-handle-close-errors.js": {
+      "darwin": false,
+      "reason": "macOS branch exercises path-based lchmod which doesn't route through FileHandle yet"
+    },
+    "parallel/test-fs-promises-file-handle-op-errors.js": {
+      "darwin": false,
+      "reason": "macOS branch exercises path-based lchmod which doesn't route through FileHandle yet"
+    },
+    "parallel/test-fs-promises-file-handle-read.js": {},
     "parallel/test-fs-promises-file-handle-readFile.js": {},
     "parallel/test-fs-promises-file-handle-readLines.mjs": {},
     "parallel/test-fs-promises-file-handle-stat.js": {},
@@ -1708,6 +1724,7 @@
     "parallel/test-http-many-ended-pipelines.js": {},
     "parallel/test-http-max-header-size-per-stream.js": {},
     "parallel/test-http-max-headers-count.js": {},
+    "parallel/test-http-max-http-headers.js": {},
     "parallel/test-http-max-sockets.js": {},
     "parallel/test-http-methods.js": {},
     "parallel/test-http-missing-header-separator-cr.js": {},
@@ -1732,6 +1749,7 @@
     "parallel/test-http-outgoing-settimeout.js": {},
     "parallel/test-http-outgoing-writableFinished.js": {},
     "parallel/test-http-outgoing-write-types.js": {},
+    "parallel/test-http-parser-bad-ref.js": {},
     "parallel/test-http-parser-free.js": {},
     "parallel/test-http-parser-freed-before-upgrade.js": {},
     "parallel/test-http-parser-freed-during-execute.js": {},
@@ -2208,7 +2226,7 @@
     // TODO(bartlomieju): depends on `Network` CDP domain
     // "parallel/test-inspector-network-http.js": {},
     // "parallel/test-inspector-network-arbitrary-data.js": {},
-    // "parallel/test-inspector-emit-protocol-event.js": {},
+    "parallel/test-inspector-emit-protocol-event.js": {},
 
     "parallel/test-inspector-esm.js": {},
     "parallel/test-inspector-console.js": {},
@@ -2561,6 +2579,7 @@
       "reason": "Tests node --run CLI subcommand which is not implemented in Deno"
     },
     "parallel/test-nodeeventtarget.js": {},
+    "parallel/test-options-binding.js": {},
     "parallel/test-os-checked-function.js": {
       "darwin": false,
       "linux": false,
@@ -2854,6 +2873,9 @@
     "parallel/test-process-external-stdio-close.js": {},
     "parallel/test-process-features.js": {},
     "parallel/test-process-get-builtin.mjs": {},
+    "parallel/test-process-getactivehandles.js": {},
+    "parallel/test-process-getactiverequests.js": {},
+    "parallel/test-process-getactiveresources.js": {},
     "parallel/test-process-getgroups.js": {},
     "parallel/test-process-hrtime-bigint.js": {},
     "parallel/test-process-hrtime.js": {},
@@ -3724,6 +3746,11 @@
     "parallel/test-vm-is-context.js": {},
     "parallel/test-vm-low-stack-space.js": {},
     "parallel/test-vm-module-after-evaluate.js": {},
+    "parallel/test-vm-module-instantiate.js": {},
+    "parallel/test-vm-module-linkmodulerequests.js": {},
+    "parallel/test-vm-module-linkmodulerequests-circular.js": {},
+    "parallel/test-vm-module-linkmodulerequests-deep.js": {},
+    "parallel/test-vm-module-modulerequests.js": {},
     "parallel/test-vm-new-script-new-context.js": {},
     "parallel/test-vm-new-script-this-context.js": {},
     "parallel/test-vm-not-strict.js": {},
@@ -3817,10 +3844,24 @@
     "parallel/test-whatwg-url-custom-inspect.js": {},
     "parallel/test-whatwg-url-custom-parsing.js": {},
     "parallel/test-whatwg-url-custom-searchparams-append.js": {},
+    "parallel/test-whatwg-url-custom-searchparams-constructor.js": {},
+    "parallel/test-whatwg-url-custom-searchparams-delete.js": {},
+    "parallel/test-whatwg-url-custom-searchparams-entries.js": {},
+    "parallel/test-whatwg-url-custom-searchparams-foreach.js": {},
+    "parallel/test-whatwg-url-custom-searchparams-get.js": {},
+    "parallel/test-whatwg-url-custom-searchparams-getall.js": {},
+    "parallel/test-whatwg-url-custom-searchparams-has.js": {},
+    "parallel/test-whatwg-url-custom-searchparams-inspect.js": {},
+    "parallel/test-whatwg-url-custom-searchparams-keys.js": {},
+    "parallel/test-whatwg-url-custom-searchparams-set.js": {},
     "parallel/test-whatwg-url-custom-searchparams-sort.js": {},
+    "parallel/test-whatwg-url-custom-searchparams-stringifier.js": {},
+    "parallel/test-whatwg-url-custom-searchparams-values.js": {},
+    "parallel/test-whatwg-url-custom-searchparams.js": {},
     "parallel/test-whatwg-url-custom-setters.js": {},
     "parallel/test-whatwg-url-custom-tostringtag.js": {},
     "parallel/test-whatwg-url-override-hostname.js": {},
+    "parallel/test-whatwg-url-properties.js": {},
     // Note: Node.js BroadcastChannel message dispatch ordering differs from the Web spec ordering.
     // Deno follows the Web spec.
     "parallel/test-whatwg-writablestream-close.js": {},
@@ -4212,14 +4253,34 @@
       "reason": "Node.js system CA certificate handling is not implemented in Deno"
     },
     "test-runner/test-output-arbitrary-output-colored.mjs": {},
+    "test-runner/test-output-junit-reporter.mjs": {
+      "exitCode": 1,
+      "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
+    },
+    "test-runner/test-output-lcov-reporter.mjs": {
+      "exitCode": 1,
+      "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
+    },
     "test-runner/test-output-no-tests.mjs": {},
+    "test-runner/test-output-output.mjs": {
+      "exitCode": 1,
+      "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
+    },
     "test-runner/test-output-output-cli.mjs": {
       "ignore": true,
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
     },
+    "test-runner/test-output-spec-reporter.mjs": {
+      "exitCode": 1,
+      "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
+    },
     "test-runner/test-output-spec-reporter-cli.mjs": {
       "ignore": true,
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "test-runner/test-output-tap-reporter.mjs": {
+      "exitCode": 1,
+      "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
     },
     "test-runner/test-output-typescript-coverage.mjs": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before

@@ -205,6 +205,10 @@ const { Blob, markFileBackedBlob } = core.loadExtScript(
 );
 // Re-exported under both names for tests.
 const _toUnixTimestamp = toUnixTimestamp;
+const {
+  createFSReqCallback,
+  unregisterActiveRequest,
+} = core.loadExtScript("ext:deno_node/internal/process/active_resources.ts");
 
 const {
   ArrayBufferIsView,
@@ -2235,11 +2239,24 @@ function open(
   flags = stringToFlags(flags);
   callback = makeCallback(callback);
 
+  const request = createFSReqCallback();
+  let openPromise: Promise<number>;
+  try {
+    openPromise = op_node_open(path, flags, mode);
+  } catch (err) {
+    unregisterActiveRequest(request);
+    throw err;
+  }
   PromisePrototypeThen(
-    op_node_open(path, flags, mode),
-    (rid: number) => callback(null, rid),
-    (err: Error) =>
-      callback(denoErrorToNodeError(err, { syscall: "open", path })),
+    openPromise,
+    (rid: number) => {
+      unregisterActiveRequest(request);
+      callback(null, rid);
+    },
+    (err: Error) => {
+      unregisterActiveRequest(request);
+      callback(denoErrorToNodeError(err, { syscall: "open", path }));
+    },
   );
 }
 

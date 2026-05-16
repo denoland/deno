@@ -68,6 +68,7 @@ function createDefaultOptions() {
   return new SafeMap([
     ["--warnings", { value: true }],
     ["--pending-deprecation", { value: false }],
+    ["--expose-internals", { value: false }],
     ["--title", { value: "" }],
   ]);
 }
@@ -89,6 +90,10 @@ function parseOption(options: Map<string, OptionValue>, arg: string) {
       break;
     case "--pending-deprecation":
       options.set("--pending-deprecation", { value: true });
+      break;
+    case "--expose-internals":
+    case "--expose_internals":
+      options.set("--expose-internals", { value: true });
       break;
     case "--tls-min-v1.0":
     case "--tls-min-v1.1":

@@ -256,6 +256,27 @@ const Network = {
     broadcastToFrontend("Network.loadingFinished", params),
   loadingFailed: (params) =>
     broadcastToFrontend("Network.loadingFailed", params),
+  dataReceived: (params) => broadcastToFrontend("Network.dataReceived", params),
+  dataSent: (params) => broadcastToFrontend("Network.dataSent", params),
+  webSocketCreated: (params) =>
+    broadcastToFrontend("Network.webSocketCreated", params),
+  webSocketHandshakeResponseReceived: (params) =>
+    broadcastToFrontend("Network.webSocketHandshakeResponseReceived", params),
+  webSocketClosed: (params) =>
+    broadcastToFrontend("Network.webSocketClosed", params),
+};
+
+const DOMStorage = {
+  domStorageItemAdded: (params) =>
+    broadcastToFrontend("DOMStorage.domStorageItemAdded", params),
+  domStorageItemRemoved: (params) =>
+    broadcastToFrontend("DOMStorage.domStorageItemRemoved", params),
+  domStorageItemUpdated: (params) =>
+    broadcastToFrontend("DOMStorage.domStorageItemUpdated", params),
+  domStorageItemsCleared: (params) =>
+    broadcastToFrontend("DOMStorage.domStorageItemsCleared", params),
+  registerStorage: (params) =>
+    broadcastToFrontend("DOMStorage.registerStorage", params),
 };
 
 const inspectorConsole = op_get_extras_binding_object().console;
@@ -263,6 +284,7 @@ const inspectorConsole = op_get_extras_binding_object().console;
 return {
   close,
   console: inspectorConsole,
+  DOMStorage,
   Network,
   open,
   Session,
