@@ -122,6 +122,10 @@ type DuplexOptions = any;
 type BufferEncoding = any;
 type Abortable = any;
 const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
+const {
+  registerActiveHandle,
+  unregisterActiveHandle,
+} = core.loadExtScript("ext:deno_node/internal/process/active_resources.ts");
 // Lazily resolved at call sites via `lazyCluster()` to break the cluster
 // <-> net cycle. Only used inside `_listenInCluster()`.
 const lazyCluster = core.createLazyLoader("node:cluster");
@@ -2003,6 +2007,11 @@ Object.defineProperty(Socket.prototype, "_handle", {
     return this[kHandle];
   },
   set: function (v) {
+    if (this[kHandle] && !v) {
+      unregisterActiveHandle(this);
+    } else if (!this[kHandle] && v) {
+      registerActiveHandle(this);
+    }
     this[kHandle] = v;
   },
 });
@@ -2211,11 +2220,13 @@ function _listenInCluster(
     err = _checkBindError(err, port as number, handle as TCP);
     if (err) {
       const ex = uvExceptionWithHostPort(err, "bind", address, port);
+      unregisterActiveHandle(server);
       server.emit("error", ex);
       return;
     }
     if (server._handle) {
       server._handle.close();
+      unregisterActiveHandle(server);
     }
     server._handle = handle;
     server._listen2(address, port, addressType, backlog, fd, flags);
@@ -2435,6 +2446,7 @@ function _setupListenHandle(
   // In the case of a server sent via IPC, we don't need to do this.
   if (this._handle) {
     debug("setupListenHandle: have a handle already");
+    registerActiveHandle(this);
   } else {
     debug("setupListenHandle: create a handle");
 
@@ -2477,6 +2489,7 @@ function _setupListenHandle(
     }
 
     this._handle = rval;
+    registerActiveHandle(this);
   }
 
   this[asyncIdSymbol] = _getNewAsyncId(this._handle);
@@ -2501,6 +2514,7 @@ function _setupListenHandle(
     const ex = uvExceptionWithHostPort(err, "listen", address, port);
     this._handle.close();
     this._handle = null;
+    unregisterActiveHandle(this);
 
     defaultTriggerAsyncIdScope(
       this[asyncIdSymbol],
@@ -2815,6 +2829,7 @@ Server.prototype.close = function (cb?: (err?: Error) => void) {
   if (this._handle) {
     (this._handle as TCP).close();
     this._handle = null;
+    unregisterActiveHandle(this);
   }
 
   if (this._usingWorkers) {
