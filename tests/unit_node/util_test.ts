@@ -222,6 +222,21 @@ Deno.test("[util] aborted()", async () => {
   assertEquals(done, true);
 });
 
+Deno.test("[util] aborted() drops pending promise when resource is GCed", async () => {
+  const command = new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "--quiet",
+      "--v8-flags=--expose-gc",
+      "tests/unit_node/testdata/util_aborted_gc.ts",
+    ],
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const { code, stderr } = await command.output();
+  assertEquals(code, 0, new TextDecoder().decode(stderr));
+});
+
 Deno.test("[util] styleText()", () => {
   const redText = util.styleText("red", "error");
   assertEquals(redText, "\x1B[31merror\x1B[39m");

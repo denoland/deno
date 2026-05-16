@@ -22,7 +22,9 @@ const {
   ObjectSetPrototypeOf,
   ReflectApply,
   ReflectConstruct,
+  SafeFinalizationRegistry,
   SafeSet,
+  SafeWeakRef,
   SetPrototypeAdd,
   SetPrototypeHas,
   StringPrototypeIsWellFormed,
@@ -30,6 +32,7 @@ const {
   StringPrototypeToWellFormed,
   PromiseResolve,
   PromiseWithResolvers,
+  WeakRefPrototypeDeref,
 } = primordials;
 
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
@@ -78,6 +81,13 @@ const { validateOneOf } = core.loadExtScript(
 const { os: osConstants } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
+
+const abortedRegistry = new SafeFinalizationRegistry((heldValue) => {
+  const signal = WeakRefPrototypeDeref(heldValue.signal);
+  if (signal !== undefined) {
+    signal[abortSignal.remove](heldValue.algorithm);
+  }
+});
 
 let process;
 const lazyLoadProcess = core.createLazyLoader("node:process");
@@ -254,17 +264,33 @@ function deprecate(
 // deno-lint-ignore require-await
 async function aborted(
   signal,
-  _resource,
+  resource,
 ) {
   if (signal === undefined) {
     throw new ERR_INVALID_ARG_TYPE("signal", "AbortSignal", signal);
   }
   validateAbortSignal(signal, "signal");
+  validateObject(resource, "resource", {
+    allowArray: true,
+    allowFunction: true,
+  });
   if (signal.aborted) {
     return PromiseResolve();
   }
   const abortPromise = PromiseWithResolvers();
-  signal[abortSignal.add](abortPromise.resolve);
+  const resourceRef = new SafeWeakRef(resource);
+  const algorithm = () => {
+    abortedRegistry.unregister(algorithm);
+    if (WeakRefPrototypeDeref(resourceRef) !== undefined) {
+      abortPromise.resolve();
+    }
+  };
+  signal[abortSignal.add](algorithm);
+  abortedRegistry.register(resource, {
+    __proto__: null,
+    signal: new SafeWeakRef(signal),
+    algorithm,
+  }, algorithm);
   return abortPromise.promise;
 }
 
