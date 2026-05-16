@@ -1132,7 +1132,8 @@ mod tests {
 
   #[test]
   fn keeps_decorators_on_non_fast_check_output() {
-    let source: Arc<str> = "@Inject(\"jwt\")\n  readonly options?: any;\n".into();
+    let source: Arc<str> =
+      "@Inject(\"jwt\")\n  readonly options?: any;\n".into();
     let actual = strip_invalid_fast_check_decorators(source.clone());
     assert!(Arc::ptr_eq(&actual, &source));
   }
