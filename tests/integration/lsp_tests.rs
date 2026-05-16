@@ -14564,6 +14564,75 @@ Deno.test({
 }
 
 #[test(timeout = 300)]
+fn lsp_testing_api_env_file_from_testing_args() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  temp_dir.write("./deno.json", "{}");
+  temp_dir.write(
+    "./env.test.args.env",
+    "ORCH_LSP_TESTING_ARGS_ENV_FILE=loaded\n",
+  );
+  let file = temp_dir.source_file(
+    "test.ts",
+    r#"
+      Deno.test("env file from testing args", () => {
+        if (Deno.env.get("ORCH_LSP_TESTING_ARGS_ENV_FILE") !== "loaded") {
+          throw new Error("env file was not loaded");
+        }
+      });
+    "#,
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder
+      .set_testing_args(vec!["--allow-env", "--env-file=env.test.args.env"]);
+  });
+  client.did_open_file(&file);
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testModule");
+  let params: TestModuleNotificationParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.tests.len(), 1);
+  let test = params.tests.into_iter().next().unwrap();
+
+  let res = client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+  assert_eq!(res.enqueued.len(), 1);
+  assert_eq!(res.enqueued[0].ids, vec![test.id.clone()]);
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  assert_eq!(
+    notification,
+    Some(json!({
+      "id": 1,
+      "message": {
+        "type": "started",
+        "test": {
+          "textDocument": { "uri": file.uri() },
+          "id": test.id,
+        },
+      },
+    })),
+  );
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.message.typ, "passed");
+  assert!(params.message.data.contains_key("duration"));
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_testing_api_failure() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
