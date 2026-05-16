@@ -104,12 +104,15 @@ const _tlsWrap = core.loadExtScript(
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import assertStrict from "node:assert/strict";
 const asyncHooks = core.loadExtScript("ext:deno_node/async_hooks.ts").default;
+const internalAsyncHooks = core.loadExtScript(
+  "ext:deno_node/internal/async_hooks.ts",
+);
 const {
   emitAfter: internalAsyncHooksEmitAfter,
   emitBefore: internalAsyncHooksEmitBefore,
   emitDestroy: internalAsyncHooksEmitDestroy,
   emitInit: internalAsyncHooksEmitInit,
-} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+} = internalAsyncHooks;
 const buffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs").default;
 const childProcess = core.loadExtScript("ext:deno_node/child_process.ts");
 const cluster = core.loadExtScript("ext:deno_node/cluster.ts").default;
@@ -321,6 +324,7 @@ function setupBuiltinModules() {
     inspector,
     "inspector/promises": inspectorPromises,
     "internal/assert/myers_diff": internalAssertMyersDiff.default,
+    "internal/async_hooks": internalAsyncHooks,
     "internal/console/constructor": internalConsole,
     "internal/child_process": internalCp,
     "internal/crypto/certificate": internalCryptoCertificate,
