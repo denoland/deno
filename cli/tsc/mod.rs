@@ -14,6 +14,11 @@ use std::sync::LazyLock;
 use std::sync::OnceLock;
 
 use deno_ast::MediaType;
+use deno_ast::SourceRangedForSpanned as _;
+use deno_ast::swc::ast::Accessibility;
+use deno_ast::swc::ast::ClassProp;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitWith as _;
 use deno_core::ModuleSpecifier;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
@@ -1080,39 +1085,60 @@ pub trait LoadContent: AsRef<str> {
   fn from_arc_str(source: Arc<str>) -> Self;
 }
 
-fn strip_invalid_fast_check_decorators(source: Arc<str>) -> Arc<str> {
+fn sanitize_fast_check_source_for_tsc(source: Arc<str>) -> Arc<str> {
   if !source.contains('@') || !source.contains("declare private ") {
     return source;
   }
 
-  let mut decorator_start = None;
-  let mut changed = false;
-  let mut output = source.as_bytes().to_vec();
-  let mut offset = 0;
-  for line in source.split_inclusive('\n') {
-    let trimmed = line.trim_start();
-    if trimmed.starts_with('@') {
-      decorator_start.get_or_insert(offset);
-    } else if trimmed.starts_with("declare private ")
-      && let Some(start) = decorator_start.take()
-    {
-      for byte in output.iter_mut().take(offset).skip(start) {
-        if *byte != b'\n' && *byte != b'\r' {
-          *byte = b' ';
-        }
-      }
-      changed = true;
-    } else if !trimmed.is_empty() {
-      decorator_start = None;
-    }
-    offset += line.len();
+  struct InvalidDecoratorCollector {
+    ranges: Vec<deno_ast::SourceRange>,
   }
 
-  if changed {
-    String::from_utf8(output).unwrap().into()
-  } else {
-    source
+  impl Visit for InvalidDecoratorCollector {
+    fn visit_class_prop(&mut self, n: &ClassProp) {
+      if n.declare && n.accessibility == Some(Accessibility::Private) {
+        self.ranges
+          .extend(n.decorators.iter().map(|decorator| decorator.range()));
+      }
+      n.visit_children_with(self);
+    }
   }
+
+  let specifier =
+    ModuleSpecifier::parse("internal:///fast_check.ts").unwrap();
+  let parsed_source = match deno_ast::parse_module(deno_ast::ParseParams {
+    specifier,
+    text: source.clone(),
+    media_type: MediaType::TypeScript,
+    capture_tokens: false,
+    scope_analysis: false,
+    maybe_syntax: None,
+  }) {
+    Ok(parsed_source) => parsed_source,
+    Err(_) => return source,
+  };
+  let mut collector = InvalidDecoratorCollector { ranges: Vec::new() };
+  parsed_source.program_ref().visit_with(&mut collector);
+  if collector.ranges.is_empty() {
+    return source;
+  }
+
+  let start_pos = parsed_source.start_pos();
+  let text_changes = collector
+    .ranges
+    .into_iter()
+    .map(|range| {
+      let range = range.as_byte_range(start_pos);
+      deno_ast::TextChange {
+        new_text: source[range.clone()]
+          .chars()
+          .map(|c| if matches!(c, '\n' | '\r') { c } else { ' ' })
+          .collect(),
+        range,
+      }
+    })
+    .collect();
+  deno_ast::apply_text_changes(&source, text_changes).into()
 }
 
 #[cfg(test)]
@@ -1120,21 +1146,23 @@ mod tests {
   use super::*;
 
   #[test]
-  fn strips_fast_check_decorator_from_private_declare_field() {
+  fn sanitizes_fast_check_decorator_from_private_declare_field() {
     let source: Arc<str> =
-      "@Inject(\"jwt\")\n  declare private readonly options?: any;\n".into();
-    let actual = strip_invalid_fast_check_decorators(source);
+      "class Auth {\n  @Inject(\"jwt\")\n  declare private readonly options?: any;\n}\n"
+        .into();
+    let actual = sanitize_fast_check_source_for_tsc(source);
     assert_eq!(
       actual.as_ref(),
-      "              \n  declare private readonly options?: any;\n"
+      "class Auth {\n                \n  declare private readonly options?: any;\n}\n"
     );
   }
 
   #[test]
-  fn keeps_decorators_on_non_fast_check_output() {
+  fn keeps_valid_fast_check_decorators() {
     let source: Arc<str> =
-      "@Inject(\"jwt\")\n  readonly options?: any;\n".into();
-    let actual = strip_invalid_fast_check_decorators(source.clone());
+      "class Auth {\n  @Inject(\"jwt\")\n  readonly options?: any;\n}\n"
+        .into();
+    let actual = sanitize_fast_check_source_for_tsc(source.clone());
     assert!(Arc::ptr_eq(&actual, &source));
   }
 }
@@ -1242,7 +1270,7 @@ pub fn load_for_tsc<T: LoadContent, M: Mapper>(
             module
               .fast_check_module()
               .map(|m| {
-                T::from_arc_str(strip_invalid_fast_check_decorators(
+                T::from_arc_str(sanitize_fast_check_source_for_tsc(
                   m.source.clone(),
                 ))
               })
