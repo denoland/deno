@@ -236,6 +236,18 @@ const internalUtilInspect = core.loadExtScript(
 const internalValidators = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
+const internalWebstreamsAdapters = core.loadExtScript(
+  "ext:deno_node/internal/webstreams/adapters.js",
+);
+const internalWebstreamsReadableStream = core.loadExtScript(
+  "ext:deno_node/internal/webstreams/readablestream.js",
+);
+const internalWebstreamsUtil = core.loadExtScript(
+  "ext:deno_node/internal/webstreams/util.js",
+);
+const internalWorkerJsTransferable = core.loadExtScript(
+  "ext:deno_node/internal/worker/js_transferable.js",
+);
 const internalConsole = core.loadExtScript(
   "ext:deno_node/internal/console/constructor.mjs",
 ).default;
@@ -361,6 +373,10 @@ function setupBuiltinModules() {
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
     "internal/validators": internalValidators,
+    "internal/webstreams/adapters": internalWebstreamsAdapters,
+    "internal/webstreams/readablestream": internalWebstreamsReadableStream,
+    "internal/webstreams/util": internalWebstreamsUtil,
+    "internal/worker/js_transferable": internalWorkerJsTransferable,
     net,
     module: Module,
     os,
