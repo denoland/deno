@@ -46,6 +46,11 @@ import nodeAssert from "node:assert";
 
 const testDir = new URL(".", import.meta.url);
 
+const processWithActiveResources = process as typeof process & {
+  _getActiveHandles(): unknown[];
+  _getActiveRequests(): unknown[];
+};
+
 function getGroupNameFromSystem(gid: number): string {
   const stdout = execSync(`grep ":${gid}:" /etc/group`).toString();
   const groupInfo = stdout.trim().split(":")[0];
@@ -834,7 +839,7 @@ Deno.test({
   async fn() {
     const tempFile = Deno.makeTempFileSync();
     try {
-      const before = (process as any)._getActiveRequests().length;
+      const before = processWithActiveResources._getActiveRequests().length;
       const promises = Array.from(
         { length: 12 },
         () =>
@@ -849,13 +854,19 @@ Deno.test({
           }),
       );
 
-      assertEquals((process as any)._getActiveRequests().length, before + 12);
+      assertEquals(
+        processWithActiveResources._getActiveRequests().length,
+        before + 12,
+      );
 
       const fds = await Promise.all(promises);
       for (const fd of fds) {
         fs.closeSync(fd);
       }
-      assertEquals((process as any)._getActiveRequests().length, before);
+      assertEquals(
+        processWithActiveResources._getActiveRequests().length,
+        before,
+      );
     } finally {
       Deno.removeSync(tempFile);
     }
@@ -878,7 +889,7 @@ Deno.test({
     try {
       await Promise.all([once(clientSocket, "connect"), serverConnection]);
 
-      const handles = (process as any)._getActiveHandles();
+      const handles = processWithActiveResources._getActiveHandles();
       assert(handles.includes(server));
       assert(handles.includes(clientSocket));
       assert(acceptedSocket);
