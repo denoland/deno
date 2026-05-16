@@ -298,5 +298,4 @@ return {
   kType,
   kState,
 };
-
 })();

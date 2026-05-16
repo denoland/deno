@@ -97,8 +97,7 @@ const readableStreamDefaultControllerCancelSteps = undefined;
 const readableStreamDefaultControllerPullSteps = undefined;
 const readableByteStreamControllerCancelSteps = undefined;
 const readableByteStreamControllerPullSteps = undefined;
-const setupReadableByteStreamController =
-  setUpReadableByteStreamController;
+const setupReadableByteStreamController = setUpReadableByteStreamController;
 const setupReadableByteStreamControllerFromSource =
   setUpReadableByteStreamControllerFromSource;
 const setupReadableStreamDefaultController =
@@ -106,8 +105,7 @@ const setupReadableStreamDefaultController =
 const setupReadableStreamDefaultControllerFromSource =
   setUpReadableStreamDefaultControllerFromSource;
 const setupReadableStreamBYOBReader = setUpReadableStreamBYOBReader;
-const setupReadableStreamDefaultReader =
-  setUpReadableStreamDefaultReader;
+const setupReadableStreamDefaultReader = setUpReadableStreamDefaultReader;
 
 const exportsObject = {
   ReadableStream,
@@ -182,5 +180,4 @@ const exportsObject = {
 };
 
 return exportsObject;
-
 })();

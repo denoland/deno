@@ -737,5 +737,4 @@ return {
   newStreamDuplexFromReadableWritablePair,
   newReadableWritablePairFromDuplex,
 };
-
 })();

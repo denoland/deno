@@ -43,5 +43,4 @@ return {
   kTransfer,
   kTransferList,
 };
-
 })();
