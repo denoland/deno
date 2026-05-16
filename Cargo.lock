@@ -1109,7 +1109,7 @@ version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
- "unicode-width 0.2.2",
+ "unicode-width 0.1.13",
 ]
 
 [[package]]
@@ -1867,7 +1867,7 @@ dependencies = [
  "deno_doc",
  "deno_dotenv",
  "deno_error",
- "deno_graph",
+ "deno_graph 0.108.2 (git+https://github.com/denoland/deno_graph?rev=69d174a7a1d3428c88de91f400841b9714ae67d2)",
  "deno_lib",
  "deno_lint",
  "deno_lockfile",
@@ -2301,7 +2301,7 @@ dependencies = [
  "cfg-if",
  "comrak",
  "deno_ast",
- "deno_graph",
+ "deno_graph 0.108.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "deno_path_util",
  "deno_terminal",
  "handlebars",
@@ -2454,6 +2454,39 @@ dependencies = [
  "thiserror 2.0.12",
  "winapi",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "deno_graph"
+version = "0.108.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "abf8dde12e88c720eceb649d7aa38abb202840b5e780ee8b1bb12250f0668266"
+dependencies = [
+ "async-trait",
+ "boxed_error",
+ "capacity_builder",
+ "chrono",
+ "data-url",
+ "deno_ast",
+ "deno_error",
+ "deno_media_type",
+ "deno_path_util",
+ "deno_semver",
+ "deno_unsync",
+ "futures",
+ "indexmap 2.12.0",
+ "log",
+ "monch",
+ "once_cell",
+ "parking_lot",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sys_traits",
+ "thiserror 2.0.12",
+ "url",
+ "wasm_dep_analyzer",
 ]
 
 [[package]]
@@ -2980,7 +3013,7 @@ dependencies = [
  "chrono",
  "deno_config",
  "deno_error",
- "deno_graph",
+ "deno_graph 0.108.2 (git+https://github.com/denoland/deno_graph?rev=69d174a7a1d3428c88de91f400841b9714ae67d2)",
  "deno_lockfile",
  "deno_npm",
  "deno_npm_cache",
@@ -3187,7 +3220,7 @@ dependencies = [
  "deno_cache_dir",
  "deno_config",
  "deno_error",
- "deno_graph",
+ "deno_graph 0.108.2 (git+https://github.com/denoland/deno_graph?rev=69d174a7a1d3428c88de91f400841b9714ae67d2)",
  "deno_lockfile",
  "deno_maybe_sync",
  "deno_media_type",
@@ -4481,7 +4514,7 @@ dependencies = [
  "base64 0.21.7",
  "deno_ast",
  "deno_error",
- "deno_graph",
+ "deno_graph 0.108.2 (git+https://github.com/denoland/deno_graph?rev=69d174a7a1d3428c88de91f400841b9714ae67d2)",
  "deno_npm",
  "deno_semver",
  "futures",
@@ -7232,7 +7265,7 @@ dependencies = [
  "capacity_builder",
  "dashmap",
  "deno_error",
- "deno_graph",
+ "deno_graph 0.108.2 (git+https://github.com/denoland/deno_graph?rev=69d174a7a1d3428c88de91f400841b9714ae67d2)",
  "deno_maybe_sync",
  "deno_media_type",
  "deno_package_json",
