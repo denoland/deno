@@ -92,7 +92,7 @@ deno_ast = { version = "=0.53.2", features = ["transpiling"] }
 deno_core_icudata = "0.77.0"
 deno_doc = "=0.199.0"
 deno_error = "=0.7.1"
-deno_graph = { git = "https://github.com/denoland/deno_graph", rev = "3fd46774cc878798e666f2f6564f66de9db81175", default-features = false }
+deno_graph = { git = "https://github.com/denoland/deno_graph", rev = "69d174a7a1d3428c88de91f400841b9714ae67d2", default-features = false }
 deno_lint = "=0.84.1"
 deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"

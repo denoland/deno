@@ -2459,7 +2459,7 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.108.2"
-source = "git+https://github.com/denoland/deno_graph?rev=3fd46774cc878798e666f2f6564f66de9db81175#3fd46774cc878798e666f2f6564f66de9db81175"
+source = "git+https://github.com/denoland/deno_graph?rev=69d174a7a1d3428c88de91f400841b9714ae67d2#69d174a7a1d3428c88de91f400841b9714ae67d2"
 dependencies = [
  "async-trait",
  "boxed_error",
