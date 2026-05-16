@@ -1,0 +1,7 @@
+promise
+microtask
+tick
+tick from promise
+tick from microtask
+promise from tick
+microtask from tick

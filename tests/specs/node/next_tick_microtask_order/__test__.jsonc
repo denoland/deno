@@ -4,6 +4,10 @@
       "args": "run -A main.mjs",
       "output": "esm.out"
     },
+    "esm_nested": {
+      "args": "run -A nested.mjs",
+      "output": "nested.out"
+    },
     "cjs": {
       "args": "run -A main.cjs",
       "output": "cjs.out"
