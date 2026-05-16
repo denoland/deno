@@ -178,6 +178,7 @@
     "parallel/test-async-hooks-close-during-destroy.js": {},
     "parallel/test-async-hooks-constructor.js": {},
     "parallel/test-async-hooks-enable-disable.js": {},
+    "parallel/test-async-hooks-enabledhooksexits.js": {},
     "parallel/test-async-hooks-run-in-async-scope-caught-exception.js": {},
     "parallel/test-async-hooks-run-in-async-scope-this-arg.js": {},
     "parallel/test-async-hooks-stack-overflow-nested-async.js": {},
