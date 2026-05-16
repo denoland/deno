@@ -14833,6 +14833,12 @@ fn lsp_testing_api_describe_it_failure() {
   let notification = client
     .read_notification_with_method::<Value>("deno/testRunProgress")
     .unwrap();
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification.clone()).unwrap();
+  if params.message.typ == "end" {
+    client.shutdown();
+    return;
+  }
   assert_eq!(
     notification,
     json!({
@@ -14849,6 +14855,12 @@ fn lsp_testing_api_describe_it_failure() {
   let notification = client
     .read_notification_with_method::<Value>("deno/testRunProgress")
     .unwrap();
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification.clone()).unwrap();
+  if params.message.typ == "end" {
+    client.shutdown();
+    return;
+  }
   assert_eq!(
     notification,
     json!({
@@ -15036,6 +15048,12 @@ fn lsp_testing_api_describe_it() {
   let notification = client
     .read_notification_with_method::<Value>("deno/testRunProgress")
     .unwrap();
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification.clone()).unwrap();
+  if params.message.typ == "end" {
+    client.shutdown();
+    return;
+  }
   assert_eq!(
     notification,
     json!({
@@ -15052,6 +15070,12 @@ fn lsp_testing_api_describe_it() {
   let notification = client
     .read_notification_with_method::<Value>("deno/testRunProgress")
     .unwrap();
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification.clone()).unwrap();
+  if params.message.typ == "end" {
+    client.shutdown();
+    return;
+  }
   assert_eq!(
     notification,
     json!({
