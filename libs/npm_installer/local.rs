@@ -1545,7 +1545,9 @@ pub fn node_modules_package_actual_dir_to_name(
       .file_name()
       .map(|name| name.to_string_lossy())
   } else {
-    package_folder.file_name().map(|name| name.to_string_lossy())
+    package_folder
+      .file_name()
+      .map(|name| name.to_string_lossy())
   }
 }
 
