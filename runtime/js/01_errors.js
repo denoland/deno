@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const { BadResource, Interrupted, NotCapable } = core;
 const { Error } = primordials;
 
@@ -186,4 +187,5 @@ const errors = {
   NotCapable,
 };
 
-export { errors };
+return { errors };
+})();

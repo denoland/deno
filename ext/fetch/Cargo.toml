@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fetch"
-version = "0.270.0"
+version = "0.271.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -50,5 +50,12 @@ tower-service.workspace = true
 tokio-vsock.workspace = true
 
 [dev-dependencies]
+deno_bench_util.workspace = true
+deno_web.workspace = true
+deno_webidl.workspace = true
 fast-socks5.workspace = true
 rustls.workspace = true
+
+[[bench]]
+name = "body"
+harness = false

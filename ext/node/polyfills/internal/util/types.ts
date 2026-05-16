@@ -21,18 +21,18 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { primordials } from "ext:core/mod.js";
-import * as bindingTypes from "ext:deno_node/internal_binding/types.ts";
-export {
-  isCryptoKey,
-  isKeyObject,
-} from "ext:deno_node/internal/crypto/_keys.ts";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const bindingTypes = core.loadExtScript(
+  "ext:deno_node/internal_binding/types.ts",
+);
+const cryptoKeys = core.loadExtScript("ext:deno_node/internal/crypto/_keys.ts");
 const {
   ArrayBufferIsView,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
-export function isArrayBufferView(
+function isArrayBufferView(
   value: unknown,
 ): value is
   | DataView
@@ -50,57 +50,57 @@ export function isArrayBufferView(
   return ArrayBufferIsView(value);
 }
 
-export function isBigInt64Array(value: unknown): value is BigInt64Array {
+function isBigInt64Array(value: unknown): value is BigInt64Array {
   return TypedArrayPrototypeGetSymbolToStringTag(value) === "BigInt64Array";
 }
 
-export function isBigUint64Array(value: unknown): value is BigUint64Array {
+function isBigUint64Array(value: unknown): value is BigUint64Array {
   return TypedArrayPrototypeGetSymbolToStringTag(value) === "BigUint64Array";
 }
 
-export function isFloat16Array(value: unknown): value is Float16Array {
+function isFloat16Array(value: unknown): value is Float16Array {
   return TypedArrayPrototypeGetSymbolToStringTag(value) === "Float16Array";
 }
 
-export function isFloat32Array(value: unknown): value is Float32Array {
+function isFloat32Array(value: unknown): value is Float32Array {
   return TypedArrayPrototypeGetSymbolToStringTag(value) === "Float32Array";
 }
 
-export function isFloat64Array(value: unknown): value is Float64Array {
+function isFloat64Array(value: unknown): value is Float64Array {
   return TypedArrayPrototypeGetSymbolToStringTag(value) === "Float64Array";
 }
 
-export function isInt8Array(value: unknown): value is Int8Array {
+function isInt8Array(value: unknown): value is Int8Array {
   return TypedArrayPrototypeGetSymbolToStringTag(value) === "Int8Array";
 }
 
-export function isInt16Array(value: unknown): value is Int16Array {
+function isInt16Array(value: unknown): value is Int16Array {
   return TypedArrayPrototypeGetSymbolToStringTag(value) === "Int16Array";
 }
 
-export function isInt32Array(value: unknown): value is Int32Array {
+function isInt32Array(value: unknown): value is Int32Array {
   return TypedArrayPrototypeGetSymbolToStringTag(value) === "Int32Array";
 }
 
-export function isUint8Array(value: unknown): value is Uint8Array {
+function isUint8Array(value: unknown): value is Uint8Array {
   return TypedArrayPrototypeGetSymbolToStringTag(value) === "Uint8Array";
 }
 
-export function isUint8ClampedArray(
+function isUint8ClampedArray(
   value: unknown,
 ): value is Uint8ClampedArray {
   return TypedArrayPrototypeGetSymbolToStringTag(value) === "Uint8ClampedArray";
 }
 
-export function isUint16Array(value: unknown): value is Uint16Array {
+function isUint16Array(value: unknown): value is Uint16Array {
   return TypedArrayPrototypeGetSymbolToStringTag(value) === "Uint16Array";
 }
 
-export function isUint32Array(value: unknown): value is Uint32Array {
+function isUint32Array(value: unknown): value is Uint32Array {
   return TypedArrayPrototypeGetSymbolToStringTag(value) === "Uint32Array";
 }
 
-export const {
+const {
   // isExternal,
   isAnyArrayBuffer,
   isArgumentsObject,
@@ -130,3 +130,49 @@ export const {
   isWeakMap,
   isWeakSet,
 } = bindingTypes;
+
+return {
+  isCryptoKey: cryptoKeys.isCryptoKey,
+  isKeyObject: cryptoKeys.isKeyObject,
+  isArrayBufferView,
+  isBigInt64Array,
+  isBigUint64Array,
+  isFloat16Array,
+  isFloat32Array,
+  isFloat64Array,
+  isInt8Array,
+  isInt16Array,
+  isInt32Array,
+  isUint8Array,
+  isUint8ClampedArray,
+  isUint16Array,
+  isUint32Array,
+  isAnyArrayBuffer,
+  isArgumentsObject,
+  isArrayBuffer,
+  isAsyncFunction,
+  isBigIntObject,
+  isBooleanObject,
+  isBoxedPrimitive,
+  isDataView,
+  isDate,
+  isGeneratorFunction,
+  isGeneratorObject,
+  isMap,
+  isMapIterator,
+  isModuleNamespaceObject,
+  isNativeError,
+  isNumberObject,
+  isPromise,
+  isProxy,
+  isRegExp,
+  isSet,
+  isSetIterator,
+  isSharedArrayBuffer,
+  isStringObject,
+  isSymbolObject,
+  isTypedArray,
+  isWeakMap,
+  isWeakSet,
+};
+})();

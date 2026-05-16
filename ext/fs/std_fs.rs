@@ -106,7 +106,15 @@ impl FileSystem for RealFs {
     path: CheckedPathBuf,
     options: OpenOptions,
   ) -> FsResult<Rc<dyn File>> {
-    let std_file = open_with_checked_path(options, &path.as_checked_path())?;
+    // Open on the blocking pool: opening a FIFO with O_RDONLY (or O_WRONLY)
+    // blocks until the other end is opened, which would otherwise stall the
+    // runtime thread.
+    let std_file = spawn_blocking(move || {
+      open_with_checked_path(options, &path.as_checked_path())
+        .map(|f| (f, path))
+    })
+    .await??;
+    let (std_file, path) = std_file;
     Ok(Rc::new(StdFileResourceInner::file(
       std_file,
       Some(path.to_path_buf()),

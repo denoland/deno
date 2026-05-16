@@ -6,13 +6,8 @@ import {
   findSourceMap,
   isBuiltin,
   Module,
-  // @ts-ignore Our internal @types/node is at v18.16.19 which predates
-  // this change. Updating it is difficult due to different types in Node
-  // for `import.meta.filename` and `import.meta.dirname` that Deno
-  // provides.
-  register,
 } from "node:module";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import process from "node:process";
 import * as path from "node:path";
 
@@ -105,11 +100,6 @@ Deno.test("[node/module findSourceMap] is a function", () => {
   assertEquals(findSourceMap("foo"), undefined);
 });
 
-// https://github.com/denoland/deno/issues/24902
-Deno.test("[node/module register] is a function", () => {
-  assertEquals(register("foo"), undefined);
-});
-
 Deno.test("[node/module] overriding Module._compile is possible and Node globals work", () => {
   // @ts-ignore Not documented but available
   const originalCompile = Module.prototype._compile;
@@ -170,4 +160,30 @@ Deno.test("[node/module] overriding Module._compile is possible and Node globals
   assertEquals(exports.global, "object");
   // @ts-ignore Not documented but available
   Module.prototype._compile = originalCompile;
+});
+
+Deno.test("[node/module require] throws ERR_INVALID_ARG_TYPE for non-string id", () => {
+  const require = createRequire(import.meta.url);
+  const err = assertThrows(
+    // @ts-expect-error testing invalid input
+    () => require(123),
+    TypeError,
+  );
+  assertEquals(
+    (err as TypeError & { code?: string }).code,
+    "ERR_INVALID_ARG_TYPE",
+  );
+});
+
+Deno.test("[node/module require] throws ERR_INVALID_ARG_VALUE for empty string id", () => {
+  const require = createRequire(import.meta.url);
+  const err = assertThrows(
+    () => require(""),
+    TypeError,
+    "must be a non-empty string",
+  );
+  assertEquals(
+    (err as TypeError & { code?: string }).code,
+    "ERR_INVALID_ARG_VALUE",
+  );
 });

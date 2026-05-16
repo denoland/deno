@@ -1,0 +1,7 @@
+{
+  "name": "@scope/member",
+  "tasks": {
+    "dev": "echo 'member ran'"
+  },
+  "exports": {}
+}

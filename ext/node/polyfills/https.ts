@@ -4,32 +4,39 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
-import tls from "node:tls";
-import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
-import {
-  _connectionListener,
-  ClientRequest,
-  type ServerHandler,
-  ServerImpl as HttpServer,
-} from "node:http";
-import { ERR_INVALID_URL } from "ext:deno_node/internal/errors.ts";
-import {
+(function () {
+const { core } = globalThis.__bootstrap;
+const lazyTls = core.createLazyLoader("node:tls");
+const { urlToHttpOptions } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
+const lazyHttp = core.createLazyLoader("node:http");
+const { ERR_INVALID_URL } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const {
   httpServerPreClose,
   setupConnectionsTracking,
   storeHTTPOptions,
-} from "node:_http_server";
-import { Agent as HttpAgent } from "node:_http_agent";
-import { validateObject } from "ext:deno_node/internal/validators.mjs";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+} = core.createLazyLoader("node:_http_server")();
+const { Agent: HttpAgent } = core.createLazyLoader("node:_http_agent")();
+const { validateObject } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+
+const tls = lazyTls().default;
+const http = lazyHttp();
+const { _connectionListener, ClientRequest, ServerImpl: HttpServer } = http;
 
 // https.Server extends tls.Server (which extends net.Server).
 // Each accepted TCP connection is wrapped with TLS by tls.Server's
 // connectionListener, then the HTTP _connectionListener handles the
 // HTTP protocol on the decrypted stream. Matches Node.js architecture.
-export function Server(
+function Server(
   this: any,
   opts: any,
-  requestListener?: ServerHandler,
+  requestListener?: any,
 ) {
   if (!(this instanceof Server)) {
     return new (Server as any)(opts, requestListener);
@@ -93,199 +100,216 @@ Server.prototype[Symbol.asyncDispose] = async function (this: any) {
   });
 };
 
-export function createServer(
+function createServer(
   opts: any,
-  requestListener?: ServerHandler,
+  requestListener?: any,
 ) {
   return new (Server as any)(opts, requestListener);
 }
 
 /** Makes a GET request to an https server. */
-export function get(...args: any[]) {
+function get(...args: any[]) {
   const req = request(args[0], args[1], args[2]);
   req.end();
   return req;
 }
 
-export class Agent extends HttpAgent {
-  declare maxCachedSessions: number;
-  declare _sessionCache: { map: Record<string, any>; list: string[] };
-
-  constructor(options: any) {
-    options = { __proto__: null, ...options };
-    options.defaultPort ??= 443;
-    options.protocol ??= "https:";
-    super(options);
-
-    this.maxCachedSessions = this.options.maxCachedSessions;
-    if (this.maxCachedSessions === undefined) {
-      this.maxCachedSessions = 100;
-    }
-
-    this._sessionCache = {
-      map: {},
-      list: [],
-    };
+// Defined as a regular function (not a `class`) so that `https.Agent()` may be
+// invoked without `new`, matching Node:
+// https://github.com/nodejs/node/blob/main/lib/https.js
+function Agent(this: any, options: any) {
+  if (!(this instanceof Agent)) {
+    return new (Agent as any)(options);
   }
 
-  getName(options: any = {}) {
-    let name = super.getName(options);
+  options = { __proto__: null, ...options };
+  options.defaultPort ??= 443;
+  options.protocol ??= "https:";
+  HttpAgent.call(this, options);
 
-    name += ":";
-    if (options.ca) name += options.ca;
-
-    name += ":";
-    if (options.cert) name += options.cert;
-
-    name += ":";
-    if (options.clientCertEngine) name += options.clientCertEngine;
-
-    name += ":";
-    if (options.ciphers) name += options.ciphers;
-
-    name += ":";
-    if (options.key) name += options.key;
-
-    name += ":";
-    if (options.pfx) name += options.pfx;
-
-    name += ":";
-    if (options.rejectUnauthorized !== undefined) {
-      name += options.rejectUnauthorized;
-    }
-
-    name += ":";
-    if (options.servername && options.servername !== options.host) {
-      name += options.servername;
-    }
-
-    name += ":";
-    if (options.minVersion) name += options.minVersion;
-
-    name += ":";
-    if (options.maxVersion) name += options.maxVersion;
-
-    name += ":";
-    if (options.secureProtocol) name += options.secureProtocol;
-
-    name += ":";
-    if (options.crl) name += options.crl;
-
-    name += ":";
-    if (options.honorCipherOrder !== undefined) {
-      name += options.honorCipherOrder;
-    }
-
-    name += ":";
-    if (options.ecdhCurve) name += options.ecdhCurve;
-
-    name += ":";
-    if (options.dhparam) name += options.dhparam;
-
-    name += ":";
-    if (options.secureOptions !== undefined) name += options.secureOptions;
-
-    name += ":";
-    if (options.sessionIdContext) name += options.sessionIdContext;
-
-    name += ":";
-    if (options.sigalgs) name += JSON.stringify(options.sigalgs);
-
-    name += ":";
-    if (options.privateKeyIdentifier) name += options.privateKeyIdentifier;
-
-    name += ":";
-    if (options.privateKeyEngine) name += options.privateKeyEngine;
-
-    return name;
+  this.maxCachedSessions = this.options.maxCachedSessions;
+  if (this.maxCachedSessions === undefined) {
+    this.maxCachedSessions = 100;
   }
 
-  _getSession(key: string) {
-    return this._sessionCache.map[key];
-  }
-
-  _cacheSession(key: string, session: any) {
-    if (this.maxCachedSessions === 0) return;
-
-    if (this._sessionCache.map[key]) {
-      this._sessionCache.map[key] = session;
-      return;
-    }
-
-    if (this._sessionCache.list.length >= this.maxCachedSessions) {
-      const oldKey = this._sessionCache.list.shift()!;
-      delete this._sessionCache.map[oldKey];
-    }
-
-    this._sessionCache.list.push(key);
-    this._sessionCache.map[key] = session;
-  }
-
-  _evictSession(key: string) {
-    const index = this._sessionCache.list.indexOf(key);
-    if (index === -1) return;
-
-    this._sessionCache.list.splice(index, 1);
-    delete this._sessionCache.map[key];
-  }
-
-  createConnection(options: any, cb?: any) {
-    if (typeof options === "number") {
-      // createConnection(port, host, options) signature
-      const args = arguments;
-      const opts: any = {};
-      if (args[0] !== null && typeof args[0] === "object") {
-        Object.assign(opts, args[0]);
-      } else if (args[1] !== null && typeof args[1] === "object") {
-        Object.assign(opts, args[1]);
-      } else if (args[2] !== null && typeof args[2] === "object") {
-        Object.assign(opts, args[2]);
-      }
-      if (typeof args[0] === "number") opts.port = args[0];
-      if (typeof args[1] === "string") opts.host = args[1];
-      if (typeof args[args.length - 1] === "function") {
-        cb = args[args.length - 1];
-      }
-      options = opts;
-    }
-
-    // Look up cached TLS session for reuse
-    if (options._agentKey) {
-      const session = this._getSession(options._agentKey);
-      if (session) {
-        options = { session, ...options };
-      }
-    }
-
-    const socket = tls.connect(options as any);
-
-    // Cache session on new session event
-    if (options._agentKey) {
-      socket.on("session", (session: any) => {
-        this._cacheSession(options._agentKey, session);
-      });
-
-      socket.once("close", (err: any) => {
-        if (err) this._evictSession(options._agentKey);
-      });
-    }
-
-    if (cb) {
-      socket.once("secureConnect", cb);
-    }
-
-    return socket;
-  }
+  this._sessionCache = {
+    map: {},
+    list: [],
+  };
 }
+Object.setPrototypeOf(Agent.prototype, HttpAgent.prototype);
+Object.setPrototypeOf(Agent, HttpAgent);
 
-export const globalAgent = new Agent({
+Agent.prototype.getName = function getName(this: any, options: any = {}) {
+  let name = HttpAgent.prototype.getName.call(this, options);
+
+  name += ":";
+  if (options.ca) name += options.ca;
+
+  name += ":";
+  if (options.cert) name += options.cert;
+
+  name += ":";
+  if (options.clientCertEngine) name += options.clientCertEngine;
+
+  name += ":";
+  if (options.ciphers) name += options.ciphers;
+
+  name += ":";
+  if (options.key) name += options.key;
+
+  name += ":";
+  if (options.pfx) name += options.pfx;
+
+  name += ":";
+  if (options.rejectUnauthorized !== undefined) {
+    name += options.rejectUnauthorized;
+  }
+
+  name += ":";
+  if (options.servername && options.servername !== options.host) {
+    name += options.servername;
+  }
+
+  name += ":";
+  if (options.minVersion) name += options.minVersion;
+
+  name += ":";
+  if (options.maxVersion) name += options.maxVersion;
+
+  name += ":";
+  if (options.secureProtocol) name += options.secureProtocol;
+
+  name += ":";
+  if (options.crl) name += options.crl;
+
+  name += ":";
+  if (options.honorCipherOrder !== undefined) {
+    name += options.honorCipherOrder;
+  }
+
+  name += ":";
+  if (options.ecdhCurve) name += options.ecdhCurve;
+
+  name += ":";
+  if (options.dhparam) name += options.dhparam;
+
+  name += ":";
+  if (options.secureOptions !== undefined) name += options.secureOptions;
+
+  name += ":";
+  if (options.sessionIdContext) name += options.sessionIdContext;
+
+  name += ":";
+  if (options.sigalgs) name += JSON.stringify(options.sigalgs);
+
+  name += ":";
+  if (options.privateKeyIdentifier) name += options.privateKeyIdentifier;
+
+  name += ":";
+  if (options.privateKeyEngine) name += options.privateKeyEngine;
+
+  return name;
+};
+
+Agent.prototype._getSession = function _getSession(this: any, key: string) {
+  return this._sessionCache.map[key];
+};
+
+Agent.prototype._cacheSession = function _cacheSession(
+  this: any,
+  key: string,
+  session: any,
+) {
+  if (this.maxCachedSessions === 0) return;
+
+  if (this._sessionCache.map[key]) {
+    this._sessionCache.map[key] = session;
+    return;
+  }
+
+  if (this._sessionCache.list.length >= this.maxCachedSessions) {
+    const oldKey = this._sessionCache.list.shift()!;
+    delete this._sessionCache.map[oldKey];
+  }
+
+  this._sessionCache.list.push(key);
+  this._sessionCache.map[key] = session;
+};
+
+Agent.prototype._evictSession = function _evictSession(
+  this: any,
+  key: string,
+) {
+  const index = this._sessionCache.list.indexOf(key);
+  if (index === -1) return;
+
+  this._sessionCache.list.splice(index, 1);
+  delete this._sessionCache.map[key];
+};
+
+Agent.prototype.createConnection = function createConnection(
+  this: any,
+  ...args: any[]
+) {
+  let options = args[0];
+  const cb = typeof args[args.length - 1] === "function"
+    ? args[args.length - 1]
+    : undefined;
+
+  if (typeof args[0] === "number") {
+    // createConnection(port, host, options) signature
+    const opts: any = {};
+    for (let i = 1; i < args.length; i++) {
+      if (args[i] !== null && typeof args[i] === "object") {
+        Object.assign(opts, args[i]);
+      }
+    }
+    if (typeof args[0] === "number") opts.port = args[0];
+    if (typeof args[1] === "string") opts.host = args[1];
+    options = opts;
+  } else if (options !== null && typeof options === "object") {
+    options = { ...options };
+  } else {
+    options = {};
+  }
+
+  // Look up cached TLS session for reuse
+  if (options._agentKey) {
+    const session = this._getSession(options._agentKey);
+    if (session) {
+      options = { session, ...options };
+    }
+  }
+
+  const socket = tls.connect(options as any);
+
+  // Cache session on new session event
+  if (options._agentKey) {
+    socket.on("session", (session: any) => {
+      this._cacheSession(options._agentKey, session);
+    });
+
+    socket.once("close", (err: any) => {
+      if (err) this._evictSession(options._agentKey);
+    });
+  }
+
+  if (cb) {
+    socket.once("secureConnect", cb);
+  }
+
+  return socket;
+};
+
+const globalAgent = new (Agent as any)({
   keepAlive: true,
   scheduling: "lifo",
   timeout: 5000,
 });
 
 /** Makes a request to an https server. */
-export function request(...args: any[]) {
+function request(...args: any[]) {
   let options: any = {};
 
   if (typeof args[0] === "string") {
@@ -312,7 +336,7 @@ export function request(...args: any[]) {
   return new ClientRequest(args[0], args[1], args[2]);
 }
 
-export default {
+return {
   Agent,
   Server,
   createServer,
@@ -320,3 +344,4 @@ export default {
   globalAgent,
   request,
 };
+})();

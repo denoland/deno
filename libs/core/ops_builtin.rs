@@ -107,6 +107,7 @@ builtin_ops! {
   ops_builtin_v8::op_ref_op,
   ops_builtin_v8::op_unref_op,
   ops_builtin_v8::op_lazy_load_esm,
+  ops_builtin_v8::op_load_ext_script,
   ops_builtin_v8::op_run_microtasks,
   ops_builtin_v8::op_drain_pending_rejections,
   ops_builtin_v8::op_compile_function,
@@ -556,9 +557,10 @@ async fn do_load_job<'s, 'i>(
           exception_to_err(scope, exception, false, false)
         })?;
     }
-    v8::ModuleStatus::Instantiated
-    | v8::ModuleStatus::Instantiating
-    | v8::ModuleStatus::Evaluating => {
+    v8::ModuleStatus::Instantiated => {
+      // Already instantiated — caller (op_import_sync) will evaluate.
+    }
+    v8::ModuleStatus::Instantiating | v8::ModuleStatus::Evaluating => {
       return Err(
         JsErrorBox::generic(format!(
           "Cannot require() ES Module {specifier} in a cycle."
@@ -670,9 +672,33 @@ fn op_import_sync<'s, 'i>(
     code,
   ))?;
 
+  // Check for re-entrant require() cycle: if this module is already on
+  // the op_import_sync call stack, it means CJS code required an ESM
+  // that (transitively) requires the same ESM back.
+  if module_map_rc
+    .import_sync_eval_stack
+    .borrow()
+    .contains(&module_id)
+  {
+    return Err(
+      JsErrorBox::generic(format!(
+        "Cannot require() ES Module {specifier} in a cycle."
+      ))
+      .into(),
+    );
+  }
+
   let module = module_map_rc
     .get_module(scope, module_id)
     .expect("Module must exist");
+
+  // A module that was evaluated asynchronously (e.g. via `await import()`)
+  // and contains top-level await cannot be loaded via `require()`. Detect
+  // this regardless of current status so retries after async load still
+  // throw ERR_REQUIRE_ASYNC_MODULE.
+  if module.is_graph_async() {
+    return Err(CoreErrorKind::TLA.into_box());
+  }
 
   match module.get_status() {
     v8::ModuleStatus::Uninstantiated
@@ -686,7 +712,13 @@ fn op_import_sync<'s, 'i>(
       );
     }
     v8::ModuleStatus::Instantiated => {
-      module_map_rc.mod_evaluate_sync(scope, module_id)?;
+      module_map_rc
+        .import_sync_eval_stack
+        .borrow_mut()
+        .push(module_id);
+      let result = module_map_rc.mod_evaluate_sync(scope, module_id);
+      module_map_rc.import_sync_eval_stack.borrow_mut().pop();
+      result?;
     }
     v8::ModuleStatus::Evaluated => {
       // OK

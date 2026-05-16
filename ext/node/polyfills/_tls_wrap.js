@@ -6,51 +6,76 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-import {
+(function () {
+const { core } = globalThis.__bootstrap;
+const {
   ArrayIsArray,
   ObjectAssign,
   StringPrototypeReplace,
-} from "ext:deno_node/internal/primordials.mjs";
-import assert from "ext:deno_node/internal/assert.mjs";
-import * as net from "node:net";
-import {
+} = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
+const assert = core.loadExtScript(
+  "ext:deno_node/internal/assert.mjs",
+);
+const net = core.createLazyLoader("node:net")().default;
+const {
   createSecureContext,
   translatePeerCertificate,
-} from "node:_tls_common";
-import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
-import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
-import { Buffer } from "node:buffer";
-import {
+} = core.loadExtScript("ext:deno_node/_tls_common.ts");
+const { JSStreamSocket } = core.loadExtScript(
+  "ext:deno_node/internal/js_stream_socket.js",
+);
+const { convertALPNProtocols } = core.loadExtScript(
+  "ext:deno_node/internal/tls_common.js",
+);
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const {
   connResetException,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_TLS_ALPN_CALLBACK_INVALID_RESULT,
+  ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
   ERR_TLS_CERT_ALTNAME_INVALID,
   ERR_TLS_REQUIRED_SERVER_NAME,
-} from "ext:deno_node/internal/errors.ts";
-import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
-import {
-  constants as TCPConstants,
+  ERR_TLS_SNI_FROM_SERVER,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { debuglog } = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
+const {
+  constants: TCPConstants,
   TCP,
-} from "ext:deno_node/internal_binding/tcp_wrap.ts";
-import { kMaybeDestroy } from "ext:deno_node/internal/stream_base_commons.ts";
-import {
-  constants as PipeConstants,
+} = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
+const { kMaybeDestroy } = core.loadExtScript(
+  "ext:deno_node/internal/stream_base_commons.ts",
+);
+const { kReinitializeHandle } = core.loadExtScript(
+  "ext:deno_node/internal/net.ts",
+);
+const {
+  constants: PipeConstants,
   Pipe,
-} from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal_binding/pipe_wrap.ts");
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const {
   validateFunction,
   validateInt32,
   validateNumber,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { op_tls_canonicalize_ipv4_address } from "ext:core/ops";
-import tlsWrap from "ext:deno_node/internal_binding/tls_wrap.ts";
-import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
-import { X509Certificate } from "ext:deno_node/internal/crypto/x509.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const { op_tls_canonicalize_ipv4_address } = core.ops;
+const { default: tlsWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/tls_wrap.ts",
+);
+const { ownerSymbol } = core.loadExtScript(
+  "ext:deno_node/internal_binding/symbols.ts",
+);
+const { X509Certificate } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/x509.ts",
+);
 
 const kConnectOptions = Symbol("connect-options");
 const kHandshakeTimer = Symbol("handshake-timer");
@@ -121,6 +146,13 @@ function buildPeerLegacyCertificate(handle) {
       const issuer = new X509Certificate(chain[i]).toLegacyObject();
       current.issuerCertificate = issuer;
       current = issuer;
+    }
+    // Self-signed root: issuerCertificate points to itself (matches Node.js)
+    if (
+      current.subject && current.issuer &&
+      JSON.stringify(current.subject) === JSON.stringify(current.issuer)
+    ) {
+      current.issuerCertificate = current;
     }
   }
 
@@ -277,7 +309,61 @@ function TLSSocket(socket, opts) {
 Object.setPrototypeOf(TLSSocket.prototype, net.Socket.prototype);
 Object.setPrototypeOf(TLSSocket, net.Socket);
 
+// Override kReinitializeHandle so that Happy Eyeballs (autoSelectFamily)
+// re-creates the TLSWrap when falling back to a different address.
+// The base Socket version replaces _handle with a raw TCP handle, which
+// doesn't have TLS methods like start(). We need to re-wrap it.
+TLSSocket.prototype[kReinitializeHandle] = function (handle) {
+  const oldHandle = this._handle;
+  // Save callbacks from the old TLSWrap that were set up by _init() and
+  // _initSocketHandle(). These need to be restored on the new TLSWrap.
+  const savedOnread = oldHandle?.onread;
+  const savedOnhandshakedone = oldHandle?.onhandshakedone;
+  const savedOnhandshakestart = oldHandle?.onhandshakestart;
+  const savedOnerror = oldHandle?.onerror;
+
+  if (oldHandle) {
+    oldHandle.close();
+  }
+
+  // Re-wrap the new TCP handle with a TLSWrap. This creates the
+  // rustls config, attaches to the TCP handle, and sets up read
+  // interception + proxy methods (connect, bind, etc.).
+  const tlsHandle = this._wrapHandle(null, handle);
+
+  this._handle = tlsHandle;
+  this._handle[ownerSymbol] = this;
+  this.ssl = this._handle;
+  this[kRes] = tlsHandle;
+
+  // Restore callbacks on the new TLSWrap.
+  if (savedOnread) this._handle.onread = savedOnread;
+  if (savedOnhandshakedone) this._handle.onhandshakedone = savedOnhandshakedone;
+  if (savedOnhandshakestart) {
+    this._handle.onhandshakestart = savedOnhandshakestart;
+  }
+  if (savedOnerror) this._handle.onerror = savedOnerror;
+
+  // Re-apply verify mode and ALPN from TLS options.
+  const options = this._tlsOptions;
+  const requestCert = !!options.requestCert || !options.isServer;
+  const rejectUnauthorized = !!options.rejectUnauthorized;
+  if (requestCert || rejectUnauthorized) {
+    this._handle.setVerifyMode(requestCert, rejectUnauthorized);
+  }
+  if (options.ALPNProtocols) {
+    this._handle.setAlpnProtocols(options.ALPNProtocols);
+  }
+
+  this._undestroy();
+  this._sockname = undefined;
+};
+
 tlsWrap.TLSWrap.prototype.close = function close(cb) {
+  // Signal to Rust that this TLSWrap is being closed, so it won't
+  // send buffered application data after a failed identity check.
+  this.setClosing();
+
   let ssl;
   if (this._owner) {
     ssl = this._owner.ssl;
@@ -287,6 +373,7 @@ tlsWrap.TLSWrap.prototype.close = function close(cb) {
   // deno-lint-ignore no-this-alias
   const self = this;
   const done = () => {
+    self.cancelWrite();
     if (ssl) {
       ssl.destroySsl();
     }
@@ -301,7 +388,7 @@ tlsWrap.TLSWrap.prototype.close = function close(cb) {
 
   if (this._parentWrap) {
     if (this._parentWrap._handle === null) {
-      queueMicrotask(done);
+      nextTick(done);
       return;
     }
 
@@ -313,7 +400,7 @@ tlsWrap.TLSWrap.prototype.close = function close(cb) {
   }
 
   // Defer so callers can register "close" listeners after destroy().
-  queueMicrotask(done);
+  nextTick(done);
 };
 
 TLSSocket.prototype._wrapHandle = function (wrap, handle) {
@@ -438,7 +525,7 @@ function defineHandleReading(socket, handle) {
   });
 }
 
-TLSSocket.prototype._destroySsl = function _destroySsl() {
+TLSSocket.prototype._destroySSL = function _destroySSL() {
   if (!this.ssl) return;
   this.ssl.destroySsl();
   this.ssl = null;
@@ -484,6 +571,109 @@ TLSSocket.prototype._init = function (socket, wrap) {
       }
       owner._finishInit();
     };
+
+    // Enable Acceptor-based handshake when SNICallback or ALPNCallback
+    // is set so we can intercept the ClientHello and invoke the callbacks
+    // before completing the TLS handshake.
+    const sniCb = options.SNICallback;
+    const alpnCb = options.ALPNCallback;
+    if (sniCb || alpnCb) {
+      ssl.enableClientHelloCb();
+      ssl.onclienthello = function () {
+        const owner = this._owner;
+        if (!owner) return;
+        const handle = owner._handle;
+        if (!handle) return;
+
+        const servername = handle.getServername() || "";
+        const alpnProtocols = handle.getClientHelloAlpn();
+
+        const finish = (ctx, selectedAlpn) => {
+          if (owner.destroyed) return;
+          let context;
+          if (ctx) {
+            // ctx must be a SecureContext (has .context) or a raw context
+            // object with cert/key.  An empty object like {} is invalid --
+            // Node's C++ layer rejects it as "Invalid SNI context".
+            context = ctx.context;
+            if (!context) {
+              // ctx is not a valid SecureContext -- Node's C++ layer
+              // rejects this as "Invalid SNI context".  Destroy the
+              // underlying TCP socket so the client sees ECONNRESET,
+              // then destroy the TLS socket with an error which
+              // triggers the "tlsClientError" event via onSocketTLSError.
+              const rawSocket = owner._parent || handle._parentWrap;
+              if (rawSocket && typeof rawSocket.destroy === "function") {
+                rawSocket.destroy();
+              }
+              owner.destroy(new Error("Invalid SNI context"));
+              return;
+            }
+          } else {
+            context = owner._tlsOptions.secureContext?.context;
+          }
+          if (!context) {
+            owner.destroy(new Error("No SecureContext available"));
+            return;
+          }
+          // Merge server-level requestCert/rejectUnauthorized into the
+          // context so build_server_config picks them up.  The
+          // SecureContext's .context only has cert/key/ca/protocol
+          // options, not connection-level settings.
+          const mergedContext = {
+            ...context,
+            requestCert: owner._tlsOptions.requestCert === true,
+            rejectUnauthorized: owner._tlsOptions.rejectUnauthorized !== false,
+          };
+          handle.finishAccept(
+            mergedContext,
+            selectedAlpn != null ? String(selectedAlpn) : null,
+          );
+        };
+
+        const handleAlpn = (sniCtx) => {
+          let selectedAlpn = null;
+          let keyCertCtx = null;
+          if (alpnCb && alpnProtocols.length > 0) {
+            const protocols = Array.from(alpnProtocols);
+            const alpnThis = {
+              setKeyCert(keyCert) {
+                if (keyCert?.context) {
+                  keyCertCtx = keyCert;
+                } else {
+                  keyCertCtx = createSecureContext(keyCert);
+                }
+              },
+            };
+            selectedAlpn = alpnCb.call(alpnThis, { servername, protocols });
+            if (selectedAlpn == null) {
+              // Callback returned undefined/null -- reject ALPN.
+              // Destroy the socket which sends a connection reset.
+              owner.destroy();
+              return;
+            }
+            selectedAlpn = String(selectedAlpn);
+            if (!protocols.includes(selectedAlpn)) {
+              owner.destroy(new ERR_TLS_ALPN_CALLBACK_INVALID_RESULT());
+              return;
+            }
+          }
+          finish(keyCertCtx || sniCtx, selectedAlpn);
+        };
+
+        if (sniCb) {
+          sniCb(servername, (err, ctx) => {
+            if (err) {
+              owner.destroy(err);
+              return;
+            }
+            handleAlpn(ctx);
+          });
+        } else {
+          handleAlpn(null);
+        }
+      };
+    }
   } else {
     ssl.onhandshakestart = noop;
     ssl.onhandshakedone = onhandshakedone;
@@ -560,8 +750,11 @@ TLSSocket.prototype.renegotiate = function (_options, callback) {
   return false;
 };
 
-TLSSocket.prototype.setMaxSendFragment = function setMaxSendFragment(_size) {
+TLSSocket.prototype.setMaxSendFragment = function setMaxSendFragment(size) {
   // Not applicable to rustls
+  validateInt32(size, "size");
+  if (size < 512 || size > 16384) return false;
+  this._maxSendFragment = size;
   return true;
 };
 
@@ -595,7 +788,10 @@ TLSSocket.prototype._finishInit = function () {
     this._handle.getAlpnNegotiatedProtocol(alpnOut);
     this.alpnProtocol = alpnOut.alpnProtocol || false;
     if (this.servername === null) {
-      this.servername = this._handle.getServername?.() ?? null;
+      const sni = this._handle.getServername?.();
+      this.servername = (sni !== undefined && sni !== null && sni !== "")
+        ? sni
+        : (this._tlsOptions?.servername ?? null);
     }
   } catch (_e) {
     // getAlpnNegotiatedProtocol/getServername may not be available
@@ -665,14 +861,23 @@ TLSSocket.prototype._start = function () {
     tcpHandle.readStop();
     tcpHandle.readStart();
   }
+
+  // Kick-start the TLS readable side. During start(), the handshake cycle
+  // may have received and processed a close_notify (peer called end() before
+  // we set up event listeners). The decrypted EOF is buffered in pending_eof
+  // because inner.onread wasn't set yet. Call readStart() directly on the
+  // TLSWrap to install onread and flush any pending data/EOF.
+  if (this._handle) {
+    this._handle.readStart();
+  }
 };
 
 TLSSocket.prototype.setServername = function (name) {
   if (typeof name !== "string") {
-    throw new TypeError("Server name must be a string");
+    throw new ERR_INVALID_ARG_TYPE("name", "string", name);
   }
   if (this._tlsOptions?.isServer) {
-    throw new Error("Cannot set servername on a server socket");
+    throw new ERR_TLS_SNI_FROM_SERVER();
   }
   this._handle?.setServername(name);
 };
@@ -789,7 +994,16 @@ TLSSocket.prototype.getX509Certificate = function getX509Certificate() {
 
 function makeVerifyError(code) {
   if (!code) return null;
-  const err = new Error(code);
+  const message = {
+    CERT_HAS_EXPIRED: "certificate has expired",
+    CERT_NOT_YET_VALID: "certificate is not yet valid",
+    DEPTH_ZERO_SELF_SIGNED_CERT: "self-signed certificate",
+    SELF_SIGNED_CERT_IN_CHAIN: "self-signed certificate in certificate chain",
+    UNABLE_TO_GET_ISSUER_CERT: "unable to get issuer certificate",
+    UNABLE_TO_GET_ISSUER_CERT_LOCALLY: "unable to get local issuer certificate",
+    UNABLE_TO_VERIFY_LEAF_SIGNATURE: "unable to verify the first certificate",
+  }[code] ?? code;
+  const err = new Error(message);
   err.code = code;
   return err;
 }
@@ -835,8 +1049,45 @@ function onSocketClose(err) {
   }
 }
 
+// Match a servername against the [pattern, context] pairs from addContext().
+// Returns a SecureContext if found, null otherwise (use default).
+// Patterns can be exact ("a.example.com") or wildcard ("*.test.com").
+function matchContextByServername(contexts, servername) {
+  if (!servername || contexts.length === 0) return null;
+  const name = servername.toLowerCase();
+  for (let i = 0; i < contexts.length; i++) {
+    const [pattern, ctx] = contexts[i];
+    const pat = pattern.toLowerCase();
+    if (pat === name) {
+      return createSecureContext(ctx);
+    }
+    // Wildcard match: "*.test.com" matches "b.test.com" but not
+    // "a.b.test.com" (only one level).
+    if (pat.startsWith("*.")) {
+      const suffix = pat.slice(1); // ".test.com"
+      if (
+        name.endsWith(suffix) &&
+        name.indexOf(".") === name.length - suffix.length
+      ) {
+        return createSecureContext(ctx);
+      }
+    }
+  }
+  return null;
+}
+
 function tlsConnectionListener(rawSocket) {
   debug("net.Server.on(connection): new TLSSocket");
+  // When addContext() has been called but no explicit SNICallback is set,
+  // provide a default callback that matches servernames against _contexts.
+  // This mirrors Node's native OpenSSL SNI callback behavior.
+  let sniCallback = this._SNICallback;
+  if (!sniCallback && this._contexts.length > 0) {
+    const contexts = this._contexts;
+    sniCallback = (servername, cb) => {
+      cb(null, matchContextByServername(contexts, servername));
+    };
+  }
   const socket = new TLSSocket(rawSocket, {
     secureContext: this._sharedCreds,
     isServer: true,
@@ -844,8 +1095,10 @@ function tlsConnectionListener(rawSocket) {
     requestCert: this.requestCert,
     rejectUnauthorized: this.rejectUnauthorized,
     ALPNProtocols: this.ALPNProtocols,
-    SNICallback: this._SNICallback,
+    ALPNCallback: this.ALPNCallback,
+    SNICallback: sniCallback,
     pauseOnConnect: this.pauseOnConnect,
+    handshakeTimeout: this._handshakeTimeout,
   });
 
   // TLS init can fail synchronously (e.g. missing cert/key, unsupported
@@ -882,7 +1135,7 @@ function Server(options, listener) {
   } else if (options == null || typeof options === "object") {
     options ??= kEmptyObject;
   } else {
-    throw new TypeError("options must be an object");
+    throw new ERR_INVALID_ARG_TYPE("options", "object", options);
   }
 
   this._contexts = [];
@@ -890,6 +1143,9 @@ function Server(options, listener) {
   this.rejectUnauthorized = options.rejectUnauthorized !== false;
 
   if (options.ALPNProtocols) {
+    if (options.ALPNCallback) {
+      throw new ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS();
+    }
     convertALPNProtocols(options.ALPNProtocols, this);
   }
 
@@ -917,6 +1173,13 @@ function Server(options, listener) {
       );
     }
   }
+  this._ticketKeys = options.ticketKeys == null
+    ? Buffer.alloc(48)
+    : Buffer.from(
+      options.ticketKeys.buffer,
+      options.ticketKeys.byteOffset,
+      options.ticketKeys.byteLength,
+    );
 
   this.setSecureContext(options);
 
@@ -929,6 +1192,11 @@ function Server(options, listener) {
 
   if (this._SNICallback) {
     validateFunction(this._SNICallback, "options.SNICallback");
+  }
+
+  if (options.ALPNCallback) {
+    validateFunction(options.ALPNCallback, "options.ALPNCallback");
+    this.ALPNCallback = options.ALPNCallback;
   }
 
   // Constructor call
@@ -978,6 +1246,24 @@ Server.prototype.addContext = function (servername, context) {
     throw new ERR_TLS_REQUIRED_SERVER_NAME();
   }
   this._contexts.push([servername, context]);
+};
+
+Server.prototype.getTicketKeys = function getTicketKeys() {
+  return Buffer.from(this._ticketKeys);
+};
+
+Server.prototype.setTicketKeys = function setTicketKeys(keys) {
+  if (!isArrayBufferView(keys)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "keys",
+      ["Buffer", "TypedArray", "DataView"],
+      keys,
+    );
+  }
+  if (keys.byteLength !== 48) {
+    throw new Error("Session ticket keys must be a 48-byte buffer");
+  }
+  this._ticketKeys = Buffer.from(keys.buffer, keys.byteOffset, keys.byteLength);
 };
 
 // ---------------------------------------------------------------------------
@@ -1063,6 +1349,9 @@ function normalizeConnectArgs(listArgs) {
 }
 
 function connect(...args) {
+  if (args.length === 0) {
+    createSecureContext({ ciphers: DEFAULT_CIPHERS });
+  }
   args = normalizeConnectArgs(args);
   let options = args[0];
   const cb = args[1];
@@ -1325,7 +1614,7 @@ const DEFAULT_CIPHERS = [
   "ECDHE-RSA-CHACHA20-POLY1305",
 ].join(":");
 
-export {
+return {
   checkServerIdentity,
   connect,
   createServer,
@@ -1333,14 +1622,14 @@ export {
   Server,
   TLSSocket,
   unfqdn,
+  default: {
+    TLSSocket,
+    connect,
+    createServer,
+    checkServerIdentity,
+    DEFAULT_CIPHERS,
+    Server,
+    unfqdn,
+  },
 };
-
-export default {
-  TLSSocket,
-  connect,
-  createServer,
-  checkServerIdentity,
-  DEFAULT_CIPHERS,
-  Server,
-  unfqdn,
-};
+})();

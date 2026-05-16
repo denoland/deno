@@ -257,6 +257,8 @@ pub struct LibMainWorkerOptions {
   pub location: Option<Url>,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
+  pub node_cluster_unique_id: Option<String>,
+  pub node_cluster_sched_policy: Option<String>,
   pub otel_config: OtelConfig,
   pub origin_data_folder_path: Option<PathBuf>,
   pub seed: Option<u64>,
@@ -265,6 +267,10 @@ pub struct LibMainWorkerOptions {
   pub node_ipc_init: Option<(i64, ChildIpcSerialization)>,
   pub no_legacy_abort: bool,
   pub startup_snapshot: Option<&'static [u8]>,
+  /// Residual `lazy_loaded_js` sources from the snapshot build script.
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  /// Residual `lazy_loaded_esm` sources from the snapshot build script.
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
   pub maybe_initial_cwd: Option<Url>,
@@ -452,6 +458,11 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           has_node_modules_dir: shared.options.has_node_modules_dir,
           argv0: shared.options.argv0.clone(),
           node_debug: shared.options.node_debug.clone(),
+          node_cluster_unique_id: shared.options.node_cluster_unique_id.clone(),
+          node_cluster_sched_policy: shared
+            .options
+            .node_cluster_sched_policy
+            .clone(),
           node_ipc_init: None,
           mode: WorkerExecutionMode::Worker,
           serve_port: shared.options.serve_port,
@@ -462,6 +473,8 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         },
         extensions: vec![],
         startup_snapshot: shared.options.startup_snapshot,
+        residual_lazy_js_sources: shared.options.residual_lazy_js_sources,
+        residual_lazy_esm_sources: shared.options.residual_lazy_esm_sources,
         create_params,
         unsafely_ignore_certificate_errors: shared
           .options
@@ -680,6 +693,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
+        node_cluster_unique_id: shared.options.node_cluster_unique_id.clone(),
+        node_cluster_sched_policy: shared
+          .options
+          .node_cluster_sched_policy
+          .clone(),
         node_ipc_init: shared.options.node_ipc_init,
         mode,
         no_legacy_abort: shared.options.no_legacy_abort,
@@ -690,6 +708,8 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       },
       extensions: custom_extensions,
       startup_snapshot: shared.options.startup_snapshot,
+      residual_lazy_js_sources: shared.options.residual_lazy_js_sources,
+      residual_lazy_esm_sources: shared.options.residual_lazy_esm_sources,
       create_params: create_isolate_create_params(&shared.sys),
       unsafely_ignore_certificate_errors: shared
         .options

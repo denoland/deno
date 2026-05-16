@@ -102,11 +102,18 @@ pub async fn execute_script(
     let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
 
     let workspace = cli_options.workspace();
+    let root_dir_url = workspace.root_dir_url();
     for (folder_url, folder) in
       workspace.config_folders_sorted_by_dependencies()
     {
       if !task_flags.recursive
-        && !matches_package(folder, force_use_pkg_json, &package_regex)
+        && !matches_package(
+          folder,
+          folder_url,
+          force_use_pkg_json,
+          &package_regex,
+          folder_url == root_dir_url,
+        )
       {
         continue;
       }
@@ -220,6 +227,7 @@ pub async fn execute_script(
           },
           kill_signal,
           cli_options.argv(),
+          None,
         )
         .await;
     }
@@ -238,6 +246,72 @@ pub async fn execute_script(
   .await
 }
 
+#[derive(Clone, Copy)]
+struct ParallelInfo {
+  color_index: usize,
+  name_pad_width: usize,
+}
+
+/// For each task that could run concurrently with at least one other task,
+/// returns its sequential color index (0, 1, 2, …) so adjacent concurrent
+/// tasks always get distinct colors regardless of how `task.id` is allocated.
+///
+/// A task is "potentially concurrent" when at least one other task is neither
+/// a transitive dependency nor a transitive dependent — i.e. `run_tasks_in_parallel`
+/// could have both in flight at the same time.
+fn compute_concurrent_task_color_indices(
+  tasks: &[ResolvedTask],
+) -> HashMap<usize, usize> {
+  if tasks.len() <= 1 {
+    return HashMap::new();
+  }
+
+  // Build forward and reverse transitive dependency sets in a single pass.
+  // Tasks arrive in topological order, so each task's direct dependencies
+  // have already had their own trans_deps computed.
+  let mut trans_deps: HashMap<usize, HashSet<usize>> = HashMap::new();
+  let mut trans_dependents: HashMap<usize, HashSet<usize>> = HashMap::new();
+  for task in tasks {
+    let mut deps = HashSet::new();
+    for &dep_id in &task.dependencies {
+      deps.insert(dep_id);
+      if let Some(d) = trans_deps.get(&dep_id) {
+        deps.extend(d);
+      }
+    }
+    for &dep_id in &deps {
+      trans_dependents.entry(dep_id).or_default().insert(task.id);
+    }
+    trans_deps.insert(task.id, deps);
+  }
+
+  // Walk tasks in topological order (deterministic for a given graph) and
+  // assign sequential color indices only to tasks that are concurrent with
+  // at least one sibling. Stable across reruns for muscle memory.
+  let mut color_indices = HashMap::new();
+  let mut next_color = 0;
+  for task in tasks {
+    let dep_count = trans_deps[&task.id].len();
+    let dependent_count = trans_dependents.get(&task.id).map_or(0, |s| s.len());
+    if dep_count + dependent_count < tasks.len() - 1 {
+      color_indices.insert(task.id, next_color);
+      next_color += 1;
+    }
+  }
+  color_indices
+}
+
+fn colorize_task_prefix(label: &str, color_index: usize) -> String {
+  match color_index % 6 {
+    0 => colors::cyan(label).to_string(),
+    1 => colors::magenta(label).to_string(),
+    2 => colors::yellow(label).to_string(),
+    3 => colors::green(label).to_string(),
+    4 => colors::intense_blue(label).to_string(),
+    _ => colors::red(label).to_string(),
+  }
+}
+
 struct RunSingleOptions<'a> {
   task_name: &'a str,
   package_name: Option<&'a str>,
@@ -246,6 +320,7 @@ struct RunSingleOptions<'a> {
   custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
   kill_signal: KillSignal,
   argv: &'a [String],
+  parallel_info: Option<ParallelInfo>,
 }
 
 struct TaskRunner<'a> {
@@ -308,10 +383,24 @@ impl<'a> TaskRunner<'a> {
     kill_signal: &KillSignal,
     args: &[String],
   ) -> Result<i32, deno_core::anyhow::Error> {
+    let concurrent_task_color_indices = if self.task_flags.no_prefix {
+      HashMap::new()
+    } else {
+      compute_concurrent_task_color_indices(&tasks)
+    };
+    let max_task_name_len = tasks
+      .iter()
+      .filter(|t| concurrent_task_color_indices.contains_key(&t.id))
+      .map(|t| t.name.len())
+      .max()
+      .unwrap_or(0);
+
     struct PendingTasksContext<'a> {
       completed: HashSet<usize>,
       running: HashSet<usize>,
       tasks: &'a [ResolvedTask<'a>],
+      concurrent_task_color_indices: HashMap<usize, usize>,
+      max_task_name_len: usize,
     }
 
     impl<'a> PendingTasksContext<'a> {
@@ -359,6 +448,13 @@ impl<'a> TaskRunner<'a> {
 
           self.running.insert(task.id);
           let kill_signal = kill_signal.clone();
+          let parallel_info = self
+            .concurrent_task_color_indices
+            .get(&task.id)
+            .map(|&color_index| ParallelInfo {
+              color_index,
+              name_pad_width: self.max_task_name_len,
+            });
           return Some(
             async move {
               match task.task_or_script {
@@ -371,6 +467,7 @@ impl<'a> TaskRunner<'a> {
                       def,
                       kill_signal,
                       args,
+                      parallel_info,
                     )
                     .await
                 }
@@ -383,6 +480,7 @@ impl<'a> TaskRunner<'a> {
                       &details.tasks,
                       kill_signal,
                       args,
+                      parallel_info,
                     )
                     .await
                 }
@@ -400,6 +498,8 @@ impl<'a> TaskRunner<'a> {
       completed: HashSet::with_capacity(tasks.len()),
       running: HashSet::with_capacity(self.concurrency),
       tasks: &tasks,
+      concurrent_task_color_indices,
+      max_task_name_len,
     };
 
     let mut queue = futures_unordered::FuturesUnordered::new();
@@ -433,6 +533,10 @@ impl<'a> TaskRunner<'a> {
     Ok(0)
   }
 
+  #[allow(
+    clippy::too_many_arguments,
+    reason = "parallel_info was added to an already-large signature; refactoring into a struct is deferred"
+  )]
   pub async fn run_deno_task(
     &self,
     dir_url: &Url,
@@ -441,6 +545,7 @@ impl<'a> TaskRunner<'a> {
     definition: &TaskDefinition,
     kill_signal: KillSignal,
     argv: &'a [String],
+    parallel_info: Option<ParallelInfo>,
   ) -> Result<i32, deno_core::anyhow::Error> {
     let Some(command) = &definition.command else {
       self.output_task(
@@ -475,10 +580,15 @@ impl<'a> TaskRunner<'a> {
         custom_commands,
         kill_signal,
         argv,
+        parallel_info,
       })
       .await
   }
 
+  #[allow(
+    clippy::too_many_arguments,
+    reason = "parallel_info was added to an already-large signature; refactoring into a struct is deferred"
+  )]
   pub async fn run_npm_script(
     &self,
     dir_url: &Url,
@@ -487,6 +597,7 @@ impl<'a> TaskRunner<'a> {
     scripts: &IndexMap<String, String>,
     kill_signal: KillSignal,
     argv: &[String],
+    parallel_info: Option<ParallelInfo>,
   ) -> Result<i32, deno_core::anyhow::Error> {
     // ensure the npm packages are installed if using a managed resolver
     self.maybe_npm_install().await?;
@@ -520,6 +631,7 @@ impl<'a> TaskRunner<'a> {
             custom_commands: custom_commands.clone(),
             kill_signal: kill_signal.clone(),
             argv,
+            parallel_info,
           })
           .await?;
         if exit_code > 0 {
@@ -543,6 +655,7 @@ impl<'a> TaskRunner<'a> {
       custom_commands,
       kill_signal,
       argv,
+      parallel_info,
     } = opts;
 
     self.output_task(
@@ -551,22 +664,40 @@ impl<'a> TaskRunner<'a> {
       &task_runner::get_script_with_args(script, argv),
     );
 
-    Ok(
-      task_runner::run_task(task_runner::RunTaskOptions {
-        task_name,
-        script,
-        cwd,
-        env_vars: self.env_vars.clone(),
-        custom_commands,
-        init_cwd: self.cli_options.initial_cwd(),
-        argv,
-        root_node_modules_dir: self.npm_resolver.root_node_modules_path(),
-        stdio: None,
-        kill_signal,
-      })
-      .await?
-      .exit_code,
-    )
+    let (stdio, prefix_handles) = if let Some(info) = parallel_info {
+      // Right-align the entire `[name]` block so brackets line up across rows,
+      // putting the leading padding spaces *outside* the brackets.
+      let label = format!("[{}]", task_name);
+      let padded_label =
+        format!("{:>width$}", label, width = info.name_pad_width + 2);
+      let prefix =
+        format!("{} ", colorize_task_prefix(&padded_label, info.color_index));
+      let (io, handles) = task_runner::make_prefixed_task_io(prefix);
+      (Some(io), handles)
+    } else {
+      (None, vec![])
+    };
+
+    let exit_code = task_runner::run_task(task_runner::RunTaskOptions {
+      task_name,
+      script,
+      cwd,
+      env_vars: self.env_vars.clone(),
+      custom_commands,
+      init_cwd: self.cli_options.initial_cwd(),
+      argv,
+      root_node_modules_dir: self.npm_resolver.root_node_modules_path(),
+      stdio,
+      kill_signal,
+    })
+    .await?
+    .exit_code;
+
+    for handle in prefix_handles {
+      let _ = handle.await;
+    }
+
+    Ok(exit_code)
   }
 
   async fn maybe_npm_install(&self) -> Result<(), AnyError> {
@@ -707,8 +838,10 @@ fn sort_tasks_topo<'a>(
 
 fn matches_package(
   config: &FolderConfigs,
+  folder_url: &Url,
   force_use_pkg_json: bool,
   regex: &Regex,
+  is_workspace_root: bool,
 ) -> bool {
   if !force_use_pkg_json
     && let Some(deno_json) = &config.deno_json
@@ -725,7 +858,24 @@ fn matches_package(
     return true;
   }
 
+  // Fall back to matching the workspace member's directory name so that
+  // `deno task --filter <dir>` works when the package name diverges
+  // from the directory (#28620). Skip the workspace root so it is never
+  // accidentally selected by `--filter *`.
+  if !is_workspace_root
+    && let Some(dir_name) = workspace_folder_dir_name(folder_url)
+    && regex.is_match(dir_name)
+  {
+    return true;
+  }
+
   false
+}
+
+fn workspace_folder_dir_name(folder_url: &Url) -> Option<&str> {
+  let path = folder_url.path();
+  let trimmed = path.strip_suffix('/').unwrap_or(path);
+  trimmed.rsplit('/').next().filter(|s| !s.is_empty())
 }
 
 fn print_available_tasks_workspace(
@@ -736,10 +886,18 @@ fn print_available_tasks_workspace(
   recursive: bool,
 ) -> Result<(), AnyError> {
   let workspace = cli_options.workspace();
+  let root_dir_url = workspace.root_dir_url();
 
   let mut matched = false;
   for (folder_url, folder) in workspace.config_folders() {
-    if !recursive && !matches_package(folder, force_use_pkg_json, package_regex)
+    if !recursive
+      && !matches_package(
+        folder,
+        folder_url,
+        force_use_pkg_json,
+        package_regex,
+        folder_url == root_dir_url,
+      )
     {
       continue;
     }
@@ -790,13 +948,36 @@ pub struct AvailableTaskDescription {
 pub fn get_available_tasks_for_completion(
   flags: Arc<Flags>,
 ) -> Result<Vec<AvailableTaskDescription>, AnyError> {
+  let recursive = match &flags.subcommand {
+    crate::args::DenoSubcommand::Task(task_flags) => {
+      task_flags.recursive || task_flags.filter.is_some()
+    }
+    _ => false,
+  };
+
   let factory = crate::factory::CliFactory::from_flags(flags);
   let options = factory.cli_options()?;
 
-  let member_dir = &options.start_dir;
-  let tasks_config = member_dir.to_tasks_config()?;
-
-  get_available_tasks(member_dir, &tasks_config).map_err(AnyError::from)
+  if recursive {
+    let workspace = options.workspace();
+    let mut all_tasks = Vec::new();
+    let mut seen_task_names = HashSet::new();
+    for folder_url in workspace.config_folders().keys() {
+      let member_dir = workspace.resolve_member_dir(folder_url);
+      let tasks_config = member_dir.to_tasks_config()?;
+      let tasks = get_available_tasks(&member_dir, &tasks_config)?;
+      for task in tasks {
+        if seen_task_names.insert(task.name.clone()) {
+          all_tasks.push(task);
+        }
+      }
+    }
+    Ok(all_tasks)
+  } else {
+    let member_dir = &options.start_dir;
+    let tasks_config = member_dir.to_tasks_config()?;
+    get_available_tasks(member_dir, &tasks_config).map_err(AnyError::from)
+  }
 }
 
 fn get_available_tasks(

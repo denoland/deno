@@ -1,9 +1,9 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
-import EE from "node:events";
-"use strict";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { EventEmitter: EE } = core.loadExtScript("ext:deno_node/_events.mjs");
 
 const {
   ArrayIsArray,
@@ -129,6 +129,9 @@ function prependListener(emitter, event, fn) {
   }
 }
 
-const _defaultExport1 = { Stream, prependListener };
-export default _defaultExport1;
-export { prependListener, Stream };
+return {
+  Stream,
+  prependListener,
+  default: { Stream, prependListener },
+};
+})();

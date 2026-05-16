@@ -5,8 +5,12 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals, primordials } from "ext:core/mod.js";
-import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
-import { format } from "ext:deno_node/internal/util/inspect.mjs";
+const { initializeDebugEnv } = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
+const { format } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
 import {
   op_current_thread_cpu_usage,
   op_fs_umask,
@@ -24,18 +28,23 @@ import {
   op_process_abort,
 } from "ext:core/ops";
 
-import { EventEmitter } from "node:events";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 import Module, { getBuiltinModule } from "node:module";
-import { report } from "ext:deno_node/internal/process/report.ts";
-import { onWarning } from "ext:deno_node/internal/process/warning.ts";
-import {
+const { report } = core.loadExtScript(
+  "ext:deno_node/internal/process/report.ts",
+);
+const { onWarning } = core.loadExtScript(
+  "ext:deno_node/internal/process/warning.ts",
+);
+const {
   parseFileMode,
+  validateBoolean,
   validateNumber,
   validateObject,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   denoErrorToNodeError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE_RANGE,
@@ -45,21 +54,23 @@ import {
   ERR_WORKER_UNSUPPORTED_OPERATION,
   errnoException,
   NodeTypeError,
-} from "ext:deno_node/internal/errors.ts";
-import { getOptionValue } from "ext:deno_node/internal/options.ts";
-import assert from "node:assert";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import { join } from "node:path";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
-import {
-  arch as arch_,
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
+const {
+  arch: arch_,
   chdir,
   cwd,
   env,
-  nextTick as _nextTick,
+  nextTick: _nextTick,
   version,
   versions,
-} from "ext:deno_node/_process/process.ts";
-import { _exiting } from "ext:deno_node/_process/exiting.ts";
+} = core.loadExtScript("ext:deno_node/_process/process.ts");
+const { _exiting } = core.loadExtScript("ext:deno_node/_process/exiting.ts");
 export {
   _nextTick as nextTick,
   chdir,
@@ -73,11 +84,16 @@ import {
   createWritableStdioStream,
   initStdin,
 } from "ext:deno_node/_process/streams.mjs";
-import { WriteStream as TTYWriteStream } from "ext:deno_node/internal/tty.js";
-import { enableNextTick } from "ext:deno_node/_next_tick.ts";
-import { isAndroid, isWindows } from "ext:deno_node/_util/os.ts";
-import * as io from "ext:deno_io/12_io.js";
-import * as denoOs from "ext:deno_os/30_os.js";
+import {
+  addSigwinchListener,
+  WriteStream as TTYWriteStream,
+} from "ext:deno_node/internal/tty.js";
+const { enableNextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { isAndroid, isWindows } = core.loadExtScript(
+  "ext:deno_node/_util/os.ts",
+);
+const io = core.loadExtScript("ext:deno_io/12_io.js");
+const denoOs = core.loadExtScript("ext:deno_os/30_os.js");
 
 export let argv0 = "";
 
@@ -93,15 +109,26 @@ let stdin, stdout, stderr;
 export { stderr, stdin, stdout };
 
 import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
-import * as constants from "ext:deno_node/internal_binding/constants.ts";
-import * as uv from "ext:deno_node/internal_binding/uv.ts";
+const constants = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
+const uv = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
-import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
+const { buildAllowedFlags } = core.loadExtScript(
+  "ext:deno_node/internal/process/per_thread.mjs",
+);
 import type fsUtils from "ext:deno_node/internal/fs/utils.mjs";
+import type * as utilModule from "ext:deno_node/util.ts";
 
 let fsUtilsModule: typeof fsUtils;
 const lazyLoadFsUtils = core.createLazyLoader<typeof fsUtils>(
   "ext:deno_node/internal/fs/utils.mjs",
+);
+// Lazy-loaded to avoid a static circular import:
+//   process.ts -> util.ts -> internal/util/parse_args/parse_args.js
+//     -> "node:process" -> process.ts
+const lazyLoadUtil = core.createLazyLoader<typeof utilModule>(
+  "node:util",
 );
 
 const {
@@ -512,16 +539,27 @@ export { getegid, geteuid, getgid, getuid, setegid, seteuid, setgid, setuid };
 
 const ALLOWED_FLAGS = buildAllowedFlags();
 
+// Tracks error values for which the synchronous Module._load entry-module
+// path in 01_require.js has already invoked process._fatalException. When
+// the same error is later re-thrown and surfaces as a module-evaluation
+// rejection (via the ESM wrapper that loads the main CJS module), the
+// unhandled-rejection fallback below uses this set to skip emitting
+// 'uncaughtExceptionMonitor' / 'uncaughtException' a second time.
 // deno-lint-ignore no-explicit-any
-function uncaughtExceptionHandler(err: any, origin: string) {
+const _dispatchedFatalErrors = new WeakSet<any>();
+internals._dispatchedFatalErrors = _dispatchedFatalErrors;
+
+// deno-lint-ignore no-explicit-any
+function uncaughtExceptionHandler(err: any, origin: string): boolean {
   // The origin parameter can be 'unhandledRejection' or 'uncaughtException'
   // depending on how the uncaught exception was created. In Node.js,
   // exceptions thrown from the top level of a CommonJS module are reported as
   // 'uncaughtException', while exceptions thrown from the top level of an ESM
   // module are reported as 'unhandledRejection'. Deno does not have a true
-  // CommonJS implementation, so all exceptions thrown from the top level are
-  // reported as 'uncaughtException'.
-  process._fatalException(err, origin === "unhandledRejection");
+  // CommonJS implementation; sync throws in the entry CJS module are
+  // dispatched up-front via Module._load (see ext/node/polyfills/01_require.js)
+  // so this path only fires for real unhandled promise rejections.
+  return process._fatalException(err, origin === "unhandledRejection");
 }
 
 export let execPath: string = "";
@@ -554,6 +592,45 @@ Object.defineProperty(Process.prototype, "constructor", {
   enumerable: false,
   configurable: true,
 });
+
+// Maps original user listeners to wrapped versions that pass the signal name.
+// Node.js calls signal listeners with the signal name as the first argument,
+// but Deno.addSignalListener calls them with no arguments.
+type SignalListener = (...args: string[]) => void;
+const _signalListenerWrappers = new WeakMap<
+  SignalListener,
+  Map<string, SignalListener>
+>();
+
+function _wrapSignalListener(
+  event: string,
+  listener: SignalListener,
+): SignalListener {
+  let wrappersByEvent = _signalListenerWrappers.get(listener);
+  if (!wrappersByEvent) {
+    wrappersByEvent = new Map();
+    _signalListenerWrappers.set(listener, wrappersByEvent);
+  }
+  let wrapper = wrappersByEvent.get(event);
+  if (!wrapper) {
+    wrapper = () => listener(event);
+    wrappersByEvent.set(event, wrapper);
+  }
+  return wrapper;
+}
+
+function _unwrapSignalListener(
+  event: string,
+  listener: SignalListener,
+): SignalListener {
+  const wrappersByEvent = _signalListenerWrappers.get(listener);
+  if (!wrappersByEvent) return listener;
+  const wrapper = wrappersByEvent.get(event);
+  if (wrapper) {
+    wrappersByEvent.delete(event);
+  }
+  return wrapper ?? listener;
+}
 
 // Look up the actual registered listener for a signal event. When `once()` is
 // used, EventEmitter wraps the listener in a function with a `.listener`
@@ -600,7 +677,10 @@ Process.prototype.on = function (
       // TODO(#26331): Ignores all signals except SIGBREAK, SIGINT, and SIGWINCH on windows.
     } else {
       EventEmitter.prototype.on.call(this, event, listener);
-      Deno.addSignalListener(event as Deno.Signal, listener);
+      Deno.addSignalListener(
+        event as Deno.Signal,
+        _wrapSignalListener(event, listener),
+      );
     }
   } else {
     EventEmitter.prototype.on.call(this, event, listener);
@@ -631,9 +711,10 @@ Process.prototype.off = function (
       // to pass the wrapper (not the original) to Deno.removeSignalListener.
       const registered = _findSignalListener(this, event, listener);
       EventEmitter.prototype.off.call(this, event, listener);
+      const unwrapped = _unwrapSignalListener(event, registered ?? listener);
       Deno.removeSignalListener(
         event as Deno.Signal,
-        registered ?? listener,
+        unwrapped,
       );
     }
   } else {
@@ -665,7 +746,10 @@ Process.prototype.prependListener = function (
       // Ignores SIGBREAK if the platform is not windows.
     } else {
       EventEmitter.prototype.prependListener.call(this, event, listener);
-      Deno.addSignalListener(event as Deno.Signal, listener);
+      Deno.addSignalListener(
+        event as Deno.Signal,
+        _wrapSignalListener(event, listener),
+      );
     }
   } else {
     EventEmitter.prototype.prependListener.call(this, event, listener);
@@ -829,14 +913,32 @@ let _configCache: Record<string, unknown> | undefined;
 Object.defineProperty(process, "config", {
   get() {
     if (_configCache === undefined) {
+      // Internal escape hatch for the node_compat test runner: allows a
+      // single test to opt into the "externally-linked OpenSSL" branch of
+      // upstream Node test fixtures, where Deno's aws-lc-rs/BoringSSL
+      // backend matches that branch's expectations. Not for user code; the
+      // env var is reserved (DENO_INTERNAL_*) and undocumented.
+      let forceSharedOpenssl = false;
+      try {
+        forceSharedOpenssl =
+          Deno.env.get("DENO_INTERNAL_NODE_TEST_FORCE_SHARED_OPENSSL") === "1";
+      } catch {
+        // Permission denied or no env access; leave forceSharedOpenssl false.
+      }
       _configCache = Object.freeze({
         target_defaults: Object.freeze({
           default_configuration: "Release",
         }),
         variables: Object.freeze({
-          llvm_version: "0.0",
-          enable_lto: "false",
-          host_arch: arch,
+          // Match Node's lib/internal/process/per_thread.js process.config:
+          // `node_module_version` is an integer ABI version exposed for native
+          // addons. Mirror process.versions.modules so a single source of truth
+          // wins.
+          "node_module_version": Number(versions.modules),
+          "llvm_version": "0.0",
+          "enable_lto": "false",
+          "host_arch": arch,
+          ...(forceSharedOpenssl ? { "node_shared_openssl": 1 } : {}),
         }),
       });
     }
@@ -993,7 +1095,8 @@ Object.defineProperty(process, "platform", {
 });
 
 // https://nodejs.org/api/process.html#processsetsourcemapsenabledval
-process.setSourceMapsEnabled = (_val: boolean) => {
+process.setSourceMapsEnabled = (val: boolean) => {
+  validateBoolean(val, "val");
   // This is a no-op in Deno. Source maps are always enabled.
   // TODO(@satyarohith): support disabling source maps if needed.
 };
@@ -1205,6 +1308,7 @@ export const removeAllListeners = process.removeAllListeners;
 let unhandledRejectionListenerCount = 0;
 let rejectionHandledListenerCount = 0;
 let uncaughtExceptionListenerCount = 0;
+let uncaughtExceptionMonitorListenerCount = 0;
 let beforeExitListenerCount = 0;
 let exitListenerCount = 0;
 
@@ -1218,6 +1322,9 @@ process.on("newListener", (event: string) => {
       break;
     case "uncaughtException":
       uncaughtExceptionListenerCount++;
+      break;
+    case "uncaughtExceptionMonitor":
+      uncaughtExceptionMonitorListenerCount++;
       break;
     case "beforeExit":
       beforeExitListenerCount++;
@@ -1241,6 +1348,9 @@ process.on("removeListener", (event: string) => {
       break;
     case "uncaughtException":
       uncaughtExceptionListenerCount--;
+      break;
+    case "uncaughtExceptionMonitor":
+      uncaughtExceptionMonitorListenerCount--;
       break;
     case "beforeExit":
       beforeExitListenerCount--;
@@ -1296,6 +1406,7 @@ function synchronizeListeners() {
   if (
     unhandledRejectionListenerCount > 0 ||
     uncaughtExceptionListenerCount > 0 ||
+    uncaughtExceptionMonitorListenerCount > 0 ||
     _uncaughtExceptionCaptureFn !== null
   ) {
     internals.nodeProcessUnhandledRejectionCallback = (event) => {
@@ -1304,9 +1415,20 @@ function synchronizeListeners() {
         // an unhandled rejection occurs and there are no unhandledRejection
         // listeners.
 
-        event.preventDefault();
-
         let reason = event.reason;
+
+        // The synchronous Module._load path in 01_require.js already invoked
+        // process._fatalException for this error. Re-firing here would
+        // double-emit 'uncaughtExceptionMonitor' (and 'uncaughtException')
+        // for the same value. Skip and let Deno's default unhandled-rejection
+        // handling print the error and terminate the runtime.
+        if (
+          reason !== null && typeof reason === "object" &&
+          _dispatchedFatalErrors.has(reason)
+        ) {
+          return;
+        }
+
         // If the rejection reason is not an Error, wrap it in an
         // ERR_UNHANDLED_REJECTION error, matching Node.js behavior.
         if (!(reason instanceof Error)) {
@@ -1327,7 +1449,12 @@ function synchronizeListeners() {
           reason = err;
         }
 
-        uncaughtExceptionHandler(reason, "unhandledRejection");
+        // Only preventDefault if a registered handler (uncaughtException
+        // listener or capture callback) actually consumed the error.
+        // Otherwise we want the runtime to terminate normally.
+        if (uncaughtExceptionHandler(reason, "unhandledRejection")) {
+          event.preventDefault();
+        }
         return;
       }
 
@@ -1349,7 +1476,9 @@ function synchronizeListeners() {
   }
 
   if (
-    uncaughtExceptionListenerCount > 0 || _uncaughtExceptionCaptureFn !== null
+    uncaughtExceptionListenerCount > 0 ||
+    uncaughtExceptionMonitorListenerCount > 0 ||
+    _uncaughtExceptionCaptureFn !== null
   ) {
     globalThis.addEventListener("error", processOnError);
   } else {
@@ -1411,6 +1540,7 @@ internals.__bootstrapNodeProcess = function (
           nextTick(() => this.emit("close"));
         }
       };
+      addSigwinchListener(stdout);
     } else {
       stdout = process.stdout = createWritableStdioStream(
         io.stdout,
@@ -1432,6 +1562,7 @@ internals.__bootstrapNodeProcess = function (
           nextTick(() => this.emit("close"));
         }
       };
+      addSigwinchListener(stderr);
     } else {
       stderr = process.stderr = createWritableStdioStream(
         io.stderr,
@@ -1453,6 +1584,27 @@ internals.__bootstrapNodeProcess = function (
 
     if (getOptionValue("--warnings")) {
       process.on("warning", onWarning);
+    }
+
+    // Match Node's pre_execution.js: when --pending-deprecation is set, wrap
+    // `process.binding` with a DEP0111 warning, and wrap the `uv` binding's
+    // `errname` with DEP0119. See lib/internal/process/pre_execution.js and
+    // src/uv.cc (`ErrName`) in the upstream Node.js source.
+    if (getOptionValue("--pending-deprecation")) {
+      const { deprecate } = lazyLoadUtil();
+      const uvBinding = getBinding("uv");
+      uvBinding.errname = deprecate(
+        uvBinding.errname,
+        "Directly calling process.binding('uv').errname(<val>) is being " +
+          "deprecated. Please make sure to use util.getSystemErrorName() " +
+          "instead.",
+        "DEP0119",
+      );
+      process.binding = deprecate(
+        process.binding,
+        "process.binding() is deprecated. Please use public APIs instead.",
+        "DEP0111",
+      );
     }
 
     // Replace stdin if it is not a terminal

@@ -772,20 +772,14 @@ fn check_is_complete(code: &str) -> messaging::IsCompleteReply {
         }
       }
       '(' | '[' | '{' => stack.push(ch),
-      ')' => {
-        if stack.pop() != Some('(') {
-          return messaging::IsCompleteReply::invalid();
-        }
+      ')' if stack.pop() != Some('(') => {
+        return messaging::IsCompleteReply::invalid();
       }
-      ']' => {
-        if stack.pop() != Some('[') {
-          return messaging::IsCompleteReply::invalid();
-        }
+      ']' if stack.pop() != Some('[') => {
+        return messaging::IsCompleteReply::invalid();
       }
-      '}' => {
-        if stack.pop() != Some('{') {
-          return messaging::IsCompleteReply::invalid();
-        }
+      '}' if stack.pop() != Some('{') => {
+        return messaging::IsCompleteReply::invalid();
       }
       _ => {}
     }

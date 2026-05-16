@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "tests": {
+    "sync_top_level_cjs_throw": {
+      "args": "run --allow-read entry.cjs",
+      "output": "entry.out"
+    },
+    "monitor_origin_for_unhandled_rejection": {
+      "args": "run --allow-read rejection.cjs",
+      "output": "rejection.out"
+    }
+  }
+}

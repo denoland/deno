@@ -557,6 +557,24 @@
       "description": "The location of an import map to be used when resolving modules. If an import map is specified as an `--importmap` flag or using \"imports\" and \"scopes\" properties, they will override this value.",
       "type": "string"
     },
+    "catalog": {
+      "description": "A map of package names to version requirements for the default catalog, used with the catalog: protocol in workspace member package.json files.",
+      "type": "object",
+      "additionalProperties": {
+        "description": "The key is the npm package name, with a value that is the version requirement string.",
+        "type": "string"
+      }
+    },
+    "catalogs": {
+      "description": "Named catalogs mapping catalog names to package name/version requirement mappings, used with the catalog:<name> protocol.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    },
     "imports": {
       "description": "A map of specifiers to their remapped specifiers.",
       "type": "object",

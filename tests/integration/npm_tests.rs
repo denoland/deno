@@ -1369,7 +1369,7 @@ console.log(getKind());
     r#"import { expect } from "chai";
 
     const timeout = setTimeout(() => {}, 0);
-    expect(timeout).to.be.a("number");
+    expect(timeout).to.be.a("object");
     clearTimeout(timeout);"#,
   );
   test_context.new_command().args("run chai.ts").run();
@@ -1532,7 +1532,7 @@ fn byonm_npm_workspaces() {
 import { expect } from "chai";
 
 const timeout = setTimeout(() => {}, 0);
-expect(timeout).to.be.a("number");
+expect(timeout).to.be.a("object");
 clearTimeout(timeout);
 
 export function add(a, b) {
@@ -1631,7 +1631,7 @@ fn future_byonm_npm_workspaces() {
 import { expect } from "chai";
 
 const timeout = setTimeout(() => {}, 0);
-expect(timeout).to.be.a("number");
+expect(timeout).to.be.a("object");
 clearTimeout(timeout);
 
 export function add(a, b) {

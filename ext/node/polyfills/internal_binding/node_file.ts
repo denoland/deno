@@ -24,10 +24,9 @@
 // - https://github.com/nodejs/node/blob/master/src/node_file-inl.h
 // - https://github.com/nodejs/node/blob/master/src/node_file.cc
 // - https://github.com/nodejs/node/blob/master/src/node_file.h
-
-import type * as nodeAssert from "node:assert";
-import { op_node_fs_seek_sync, op_node_fs_write_sync } from "ext:core/ops";
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const { op_node_fs_seek_sync, op_node_fs_write_sync } = core.ops;
 
 let assert: typeof nodeAssert.default;
 const lazyLoadAssert = () => {
@@ -57,7 +56,7 @@ const {
  * @param position if integer, position to write at in the file. if null, write from the current position
  * @param context context object for passing error number
  */
-export function writeBuffer(
+function writeBuffer(
   fd: number,
   buffer: Uint8Array,
   offset: number,
@@ -102,3 +101,8 @@ function extractOsErrorNumberFromErrorMessage(e: unknown): number {
 
   return 255; // Unknown error
 }
+
+return {
+  writeBuffer,
+};
+})();

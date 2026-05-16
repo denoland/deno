@@ -1,9 +1,9 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
 import process from "node:process";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
-import {
+const {
   isDuplexNodeStream,
   isIterable,
   isNodeStream,
@@ -13,17 +13,22 @@ import {
   isWritable,
   isWritableNodeStream,
   isWritableStream,
-} from "ext:deno_node/internal/streams/utils.js";
+} = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 
-import eos from "ext:deno_node/internal/streams/end-of-stream.js";
-import imported1 from "ext:deno_node/internal/errors.ts";
-import { destroyer } from "ext:deno_node/internal/streams/destroy.js";
+const eos =
+  core.loadExtScript("ext:deno_node/internal/streams/end-of-stream.js").default;
+const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { destroyer } = core.loadExtScript(
+  "ext:deno_node/internal/streams/destroy.js",
+);
 import Duplex from "node:_stream_duplex";
 import Readable from "node:_stream_readable";
 import Writable from "node:_stream_writable";
 import from from "ext:deno_node/internal/streams/from.js";
-import { isBlob } from "ext:deno_web/09_file.js";
-import { AbortController } from "ext:deno_web/03_abort_signal.js";
+const { isBlob } = core.loadExtScript("ext:deno_web/09_file.js");
+const { AbortController } = core.loadExtScript(
+  "ext:deno_web/03_abort_signal.js",
+);
 
 const {
   AbortError,
@@ -238,18 +243,18 @@ function fromAsyncGen(fn) {
   const signal = ac.signal;
   const value = fn(
     async function* () {
-      while (true) {
-        const _promise = promise;
-        promise = null;
-        const { chunk, done, cb } = await _promise;
-        process.nextTick(cb);
-        if (done) return;
-        if (signal.aborted) {
-          throw new AbortError(undefined, { cause: signal.reason });
-        }
-        ({ promise, resolve } = PromiseWithResolvers());
-        yield chunk;
+    while (true) {
+      const _promise = promise;
+      promise = null;
+      const { chunk, done, cb } = await _promise;
+      process.nextTick(cb);
+      if (done) return;
+      if (signal.aborted) {
+        throw new AbortError(undefined, { cause: signal.reason });
       }
+      ({ promise, resolve } = PromiseWithResolvers());
+      yield chunk;
+    }
     }(),
     { signal },
   );

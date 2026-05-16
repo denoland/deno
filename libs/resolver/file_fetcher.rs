@@ -573,6 +573,7 @@ impl<
                 UrlToFilePath { .. }
                 | ReadingBlobUrl { .. }
                 | ReadingFile { .. }
+                | UnsupportedDirImport { .. }
                 | FetchingRemote { .. }
                 | ClientError { .. }
                 | NoRemote { .. }
