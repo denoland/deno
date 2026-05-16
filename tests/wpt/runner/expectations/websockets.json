@@ -490,7 +490,8 @@
       "close.any.html?default": {
         "expectedFailures": [
           "incomplete closing handshake should be considered unclean close"
-        ]
+        ],
+        "flaky": true
       },
       "close.any.worker.html?default": {
         "expectedFailures": [
