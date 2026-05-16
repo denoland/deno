@@ -3,9 +3,23 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const net = require("net");
 
+function getFdDir() {
+  for (const path of ["/proc/self/fd", "/dev/fd"]) {
+    try {
+      Deno.readDirSync(path).next();
+      return path;
+    } catch (error) {
+      if (!(error instanceof Deno.errors.NotFound)) {
+        throw error;
+      }
+    }
+  }
+  throw new Error("failed to locate an fd directory");
+}
+
 function snapshotFds() {
   const fds = new Set<number>();
-  for (const entry of Deno.readDirSync("/proc/self/fd")) {
+  for (const entry of Deno.readDirSync(getFdDir())) {
     const fd = Number(entry.name);
     if (Number.isInteger(fd)) {
       fds.add(fd);
