@@ -1,7 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::num::NonZeroI32;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
@@ -1503,10 +1505,17 @@ pub struct ContextifyModule {
   // while a `ContextifyModule` is still live.
   microtask_queue: *mut v8::MicrotaskQueue,
   identifier: String,
-  /// Map of import specifier -> resolved module wrapper.
+  /// Map of import specifier -> resolved ContextifyModule wrapper object.
   /// Populated by `op_vm_module_link` before instantiation, and consumed by
-  /// the resolve callback during `instantiate_module`.
-  resolutions: RefCell<HashMap<String, v8::TracedReference<v8::Module>>>,
+  /// the resolve callback during `instantiate_module`. Stored as the cppgc
+  /// wrapper object so we can unwrap to the resolved `ContextifyModule` and
+  /// recursively walk the link graph during instantiation.
+  resolutions: RefCell<HashMap<String, v8::TracedReference<v8::Object>>>,
+  /// Whether this module has been linked (either via `linkRequests` /
+  /// `op_vm_module_link`, or via the legacy `link()` callback flow). Used
+  /// to surface `ERR_VM_MODULE_LINK_FAILURE` when `instantiate()` is called
+  /// without first linking.
+  is_linked: Cell<bool>,
   /// If this is a synthetic module, the V8 identity hash used as the key in
   /// `SYNTHETIC_CALLBACKS`. Stored separately so `Drop` can clean up the
   /// registry entry without needing a v8 scope.
@@ -1600,6 +1609,7 @@ pub fn op_vm_module_create_source_text_module<'a>(
     microtask_queue,
     identifier,
     resolutions: RefCell::new(HashMap::new()),
+    is_linked: Cell::new(false),
     synthetic_identity_hash: None,
   })
 }
@@ -1669,6 +1679,9 @@ pub fn op_vm_module_create_synthetic_module<'a>(
     microtask_queue,
     identifier,
     resolutions: RefCell::new(HashMap::new()),
+    // Synthetic modules have no dependencies; they're considered linked
+    // from creation so `op_vm_module_instantiate` doesn't reject them.
+    is_linked: Cell::new(true),
     synthetic_identity_hash: Some(hash),
   })
 }
@@ -1773,24 +1786,91 @@ pub fn op_vm_module_link<'a>(
       return false;
     };
     let specifier_str = specifier.to_rust_string_lossy(scope);
-    let module_obj: v8::Local<v8::Object> = module_obj.try_into().unwrap();
-    let other = deno_core::cppgc::try_unwrap_cppgc_object::<ContextifyModule>(
-      scope,
-      module_obj.into(),
-    );
-    let Some(other) = other else {
+    let Ok(module_obj): Result<v8::Local<v8::Object>, _> =
+      module_obj.try_into()
+    else {
       let message =
         v8::String::new(scope, "expected ContextifyModule").unwrap();
       let exception = v8::Exception::error(scope, message);
       scope.throw_exception(exception);
       return false;
     };
-    resolutions.insert(
-      specifier_str,
-      v8::TracedReference::new(scope, other.module.get(scope).unwrap()),
+    let other = deno_core::cppgc::try_unwrap_cppgc_object::<ContextifyModule>(
+      scope,
+      module_obj.into(),
     );
+    if other.is_none() {
+      let message =
+        v8::String::new(scope, "expected ContextifyModule").unwrap();
+      let exception = v8::Exception::error(scope, message);
+      scope.throw_exception(exception);
+      return false;
+    }
+    resolutions
+      .insert(specifier_str, v8::TracedReference::new(scope, module_obj));
   }
+  this.is_linked.set(true);
   true
+}
+
+/// Recursively populates the `MODULE_RESOLUTIONS` and `MODULE_IDENTIFIERS`
+/// thread-locals for `cm` and every linked module reachable from it. The
+/// resolutions map is keyed by referrer identity hash so V8's
+/// resolve callback can look up the right module for each specifier.
+fn collect_link_graph<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  cm: &ContextifyModule,
+  visited: &mut HashSet<NonZeroI32>,
+) {
+  let module = match cm.module.get(scope) {
+    Some(m) => m,
+    None => return,
+  };
+  let hash = module.get_identity_hash();
+  if !visited.insert(hash) {
+    return;
+  }
+
+  MODULE_IDENTIFIERS.with(|r| {
+    r.borrow_mut().insert(hash, cm.identifier.clone());
+  });
+
+  if !cm.is_linked.get() {
+    return;
+  }
+
+  let mut specifier_to_module: HashMap<String, v8::Global<v8::Module>> =
+    HashMap::new();
+
+  // Snapshot the keys + targets into locals so we don't keep `resolutions`
+  // borrowed while we recurse into children.
+  let children: Vec<(String, v8::Local<v8::Object>)> = {
+    let resolutions = cm.resolutions.borrow();
+    let mut out = Vec::with_capacity(resolutions.len());
+    for (spec, tref) in resolutions.iter() {
+      if let Some(obj) = tref.get(scope) {
+        out.push((spec.clone(), obj));
+      }
+    }
+    out
+  };
+
+  for (spec, obj) in &children {
+    let Some(child) = deno_core::cppgc::try_unwrap_cppgc_object::<
+      ContextifyModule,
+    >(scope, (*obj).into()) else {
+      continue;
+    };
+    if let Some(child_module) = child.module.get(scope) {
+      specifier_to_module
+        .insert(spec.clone(), v8::Global::new(scope, child_module));
+    }
+    collect_link_graph(scope, &child, visited);
+  }
+
+  MODULE_RESOLUTIONS.with(|r| {
+    r.borrow_mut().insert(hash, specifier_to_module);
+  });
 }
 
 #[op2(fast, reentrant)]
@@ -1798,25 +1878,28 @@ pub fn op_vm_module_instantiate(
   scope: &mut v8::PinScope<'_, '_>,
   #[cppgc] this: &ContextifyModule,
 ) -> bool {
-  let context = this.context.get(scope).unwrap();
-  let module = this.module.get(scope).unwrap();
-  let referrer_hash = module.get_identity_hash();
-
-  // Build a map of specifier -> v8::Global<Module> usable from the resolve
-  // callback (which runs inside instantiate_module).
-  let mut specifier_to_module: HashMap<String, v8::Global<v8::Module>> =
-    HashMap::new();
-  {
-    let resolutions = this.resolutions.borrow();
-    for (sp, tref) in resolutions.iter() {
-      let Some(m) = tref.get(scope) else { continue };
-      specifier_to_module.insert(sp.clone(), v8::Global::new(scope, m));
-    }
+  // `linkRequests` (or the legacy `.link(linker)` flow) must run before
+  // instantiation. Match Node's behavior: surface this as
+  // ERR_VM_MODULE_LINK_FAILURE rather than letting V8 fail opaquely later.
+  if !this.is_linked.get() {
+    throw_link_failure(
+      scope,
+      &format!(
+        "request can not be resolved on module '{}' that is not linked",
+        this.identifier,
+      ),
+    );
+    return false;
   }
 
-  MODULE_RESOLUTIONS.with(|r| {
-    r.borrow_mut().insert(referrer_hash, specifier_to_module);
-  });
+  let context = this.context.get(scope).unwrap();
+  let module = this.module.get(scope).unwrap();
+
+  // Walk the link graph for this module and stash referrer-keyed
+  // resolutions + identifiers for use by the resolve callback. We track
+  // every hash we add so we can clear them afterwards.
+  let mut visited = HashSet::new();
+  collect_link_graph(scope, this, &mut visited);
 
   let scope = &mut v8::ContextScope::new(scope, context);
   v8::tc_scope!(scope, scope);
@@ -1824,7 +1907,16 @@ pub fn op_vm_module_instantiate(
   let result = module.instantiate_module(scope, module_resolve_callback);
 
   MODULE_RESOLUTIONS.with(|r| {
-    r.borrow_mut().remove(&referrer_hash);
+    let mut map = r.borrow_mut();
+    for h in &visited {
+      map.remove(h);
+    }
+  });
+  MODULE_IDENTIFIERS.with(|r| {
+    let mut map = r.borrow_mut();
+    for h in &visited {
+      map.remove(h);
+    }
   });
 
   if scope.has_caught() {
@@ -1840,6 +1932,25 @@ thread_local! {
   /// Populated only for the duration of an instantiate_module call.
   static MODULE_RESOLUTIONS: RefCell<HashMap<NonZeroI32, HashMap<String, v8::Global<v8::Module>>>> =
     RefCell::new(HashMap::new());
+  /// Map from module identity hash -> user-facing identifier. Populated for
+  /// the duration of an instantiate_module call so the resolve callback can
+  /// produce Node-compatible error messages that name the referring module.
+  static MODULE_IDENTIFIERS: RefCell<HashMap<NonZeroI32, String>> =
+    RefCell::new(HashMap::new());
+}
+
+fn throw_link_failure<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  message: &str,
+) -> Option<()> {
+  let msg = v8::String::new(scope, message)?;
+  let exception = v8::Exception::error(scope, msg);
+  let exception_obj: v8::Local<v8::Object> = exception.try_into().ok()?;
+  let code_key = v8::String::new(scope, "code")?;
+  let code_val = v8::String::new(scope, "ERR_VM_MODULE_LINK_FAILURE")?;
+  exception_obj.set(scope, code_key.into(), code_val.into())?;
+  scope.throw_exception(exception);
+  Some(())
 }
 
 fn module_resolve_callback<'s>(
@@ -1872,14 +1983,21 @@ fn module_resolve_callback<'s>(
     return Some(local);
   }
 
-  let message = v8::String::new(
-    scope,
-    &format!(
+  // Try to surface the referring module's identifier so the error message
+  // matches Node's: `request for 'X' can not be resolved on module 'ID'
+  // that is not linked`.
+  let identifier =
+    MODULE_IDENTIFIERS.with(|r| r.borrow().get(&referrer_hash).cloned());
+
+  let message = match identifier {
+    Some(id) => format!(
+      "request for '{specifier_str}' can not be resolved on module '{id}' that is not linked"
+    ),
+    None => format!(
       "Cannot find module '{specifier_str}' (linker did not provide it)"
     ),
-  )?;
-  let exception = v8::Exception::error(scope, message);
-  scope.throw_exception(exception);
+  };
+  throw_link_failure(scope, &message);
   None
 }
 
@@ -1962,12 +2080,19 @@ pub fn op_vm_module_get_exception<'a>(
   module.get_exception()
 }
 
+#[derive(serde::Serialize)]
+pub struct ModuleRequestInfo {
+  pub specifier: String,
+  pub attributes: HashMap<String, String>,
+  pub phase: &'static str,
+}
+
 #[op2]
 #[serde]
 pub fn op_vm_module_get_module_requests(
   scope: &mut v8::PinScope<'_, '_>,
   #[cppgc] this: &ContextifyModule,
-) -> Vec<String> {
+) -> Vec<ModuleRequestInfo> {
   let module = this.module.get(scope).unwrap();
   let requests = module.get_module_requests();
   let len = requests.length();
@@ -1977,8 +2102,39 @@ pub fn op_vm_module_get_module_requests(
       continue;
     };
     let req: v8::Local<v8::ModuleRequest> = req.cast();
-    let specifier = req.get_specifier();
-    out.push(specifier.to_rust_string_lossy(scope));
+    let specifier = req.get_specifier().to_rust_string_lossy(scope);
+    // Import attributes for static imports are encoded as (key, value,
+    // source_offset) triples in a FixedArray.
+    let attrs_array = req.get_import_attributes();
+    let attrs_len = attrs_array.length();
+    let mut attributes: HashMap<String, String> = HashMap::new();
+    if attrs_len.is_multiple_of(3) {
+      let count = attrs_len / 3;
+      for j in 0..count {
+        let Some(key) = attrs_array.get(scope, j * 3) else {
+          continue;
+        };
+        let Some(value) = attrs_array.get(scope, j * 3 + 1) else {
+          continue;
+        };
+        let key_val: v8::Local<v8::Value> = key.cast();
+        let value_val: v8::Local<v8::Value> = value.cast();
+        attributes.insert(
+          key_val.to_rust_string_lossy(scope),
+          value_val.to_rust_string_lossy(scope),
+        );
+      }
+    }
+    let phase = match req.get_phase() {
+      v8::ModuleImportPhase::kSource => "source",
+      v8::ModuleImportPhase::kDefer => "defer",
+      v8::ModuleImportPhase::kEvaluation => "evaluation",
+    };
+    out.push(ModuleRequestInfo {
+      specifier,
+      attributes,
+      phase,
+    });
   }
   out
 }
