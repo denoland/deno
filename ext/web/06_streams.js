@@ -7443,8 +7443,10 @@ function readableStreamDefaultControllerShouldCallPull(controller) {
   if (!controller[_started]) {
     return false;
   }
-  if (isReadableStreamLocked(stream) &&
-    readableStreamGetNumReadRequests(stream) > 0) {
+  if (
+    isReadableStreamLocked(stream) &&
+    readableStreamGetNumReadRequests(stream) > 0
+  ) {
     return true;
   }
   return readableStreamDefaultControllerGetDesiredSize(controller) > 0;

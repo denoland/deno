@@ -75,7 +75,14 @@ export const {
 } = webStreams;
 
 export const readableStreamPipeTo = webStreams.readableStreamPipeTo ??
-  ((source, dest, preventClose = false, preventAbort = false, preventCancel = false, signal) =>
+  ((
+    source,
+    dest,
+    preventClose = false,
+    preventAbort = false,
+    preventCancel = false,
+    signal,
+  ) =>
     source.pipeTo(dest, { preventClose, preventAbort, preventCancel, signal }));
 export const readableStreamTee = webStreams.readableStreamTee ??
   ((stream) => stream.tee());
@@ -98,7 +105,8 @@ export const setupReadableStreamDefaultController =
 export const setupReadableStreamDefaultControllerFromSource =
   setUpReadableStreamDefaultControllerFromSource;
 export const setupReadableStreamBYOBReader = setUpReadableStreamBYOBReader;
-export const setupReadableStreamDefaultReader = setUpReadableStreamDefaultReader;
+export const setupReadableStreamDefaultReader =
+  setUpReadableStreamDefaultReader;
 
 const exportsObject = {
   ReadableStream,

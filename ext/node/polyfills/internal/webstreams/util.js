@@ -90,14 +90,22 @@ export function cloneAsUint8Array(view) {
   );
 }
 
-export function canCopyArrayBuffer(toBuffer, toIndex, fromBuffer, fromIndex, count) {
+export function canCopyArrayBuffer(
+  toBuffer,
+  toIndex,
+  fromBuffer,
+  fromIndex,
+  count,
+) {
   return toBuffer !== fromBuffer &&
     toIndex + count <= ArrayBufferPrototypeGetByteLength(toBuffer) &&
     fromIndex + count <= ArrayBufferPrototypeGetByteLength(fromBuffer);
 }
 
 export function copyArrayBuffer(src, srcOffset, dst, dstOffset, size) {
-  new Uint8Array(dst, dstOffset, size).set(new Uint8Array(src, srcOffset, size));
+  new Uint8Array(dst, dstOffset, size).set(
+    new Uint8Array(src, srcOffset, size),
+  );
 }
 
 export function isBrandCheck(brand) {
@@ -208,7 +216,11 @@ function createAsyncFromSyncIterator(syncIteratorRecord) {
       return this;
     },
   };
-  return { iterator: asyncIterator, nextMethod: asyncIterator.next, done: false };
+  return {
+    iterator: asyncIterator,
+    nextMethod: asyncIterator.next,
+    done: false,
+  };
 }
 
 export function getIterator(obj, kind = "sync", method) {
@@ -220,7 +232,9 @@ export function getIterator(obj, kind = "sync", method) {
         if (syncMethod === undefined) {
           throw new ERR_ARG_NOT_ITERABLE(obj);
         }
-        return createAsyncFromSyncIterator(getIterator(obj, "sync", syncMethod));
+        return createAsyncFromSyncIterator(
+          getIterator(obj, "sync", syncMethod),
+        );
       }
     } else {
       method = obj[SymbolIterator];
@@ -245,7 +259,9 @@ export function iteratorNext(iteratorRecord, value) {
       value,
     );
   if (typeof result !== "object" || result === null) {
-    throw new ERR_INVALID_STATE("The iterator.next() method must return an object");
+    throw new ERR_INVALID_STATE(
+      "The iterator.next() method must return an object",
+    );
   }
   return result;
 }
