@@ -805,6 +805,86 @@ pub enum AsymmetricPublicKeyError {
   UnsupportedPrivateKeyOid,
 }
 
+fn rsa_public_key_from_pkcs1_der_lenient(
+  der: &[u8],
+) -> Result<RsaPublicKey, rsa::pkcs1::Error> {
+  match RsaPublicKey::from_pkcs1_der(der) {
+    Ok(key) => Ok(key),
+    Err(strict_err) => parse_lenient_rsa_public_key(der).ok_or(strict_err),
+  }
+}
+
+fn parse_lenient_rsa_public_key(der: &[u8]) -> Option<RsaPublicKey> {
+  let mut pos = 0;
+  let sequence_end = read_der_tag_and_len(der, &mut pos, 0x30)?;
+  if sequence_end != der.len() {
+    return None;
+  }
+
+  let n = read_lenient_positive_integer(der, &mut pos, sequence_end)?;
+  let e = read_lenient_positive_integer(der, &mut pos, sequence_end)?;
+  if pos != sequence_end {
+    return None;
+  }
+
+  RsaPublicKey::new(n, e).ok()
+}
+
+fn read_lenient_positive_integer(
+  der: &[u8],
+  pos: &mut usize,
+  limit: usize,
+) -> Option<rsa::BigUint> {
+  let end = read_der_tag_and_len(der, pos, 0x02)?;
+  if end > limit || end == *pos {
+    return None;
+  }
+
+  let payload = &der[*pos..end];
+  *pos = end;
+  let first_non_zero = payload
+    .iter()
+    .position(|&byte| byte != 0)
+    .unwrap_or(payload.len() - 1);
+  Some(rsa::BigUint::from_bytes_be(&payload[first_non_zero..]))
+}
+
+fn read_der_tag_and_len(der: &[u8], pos: &mut usize, tag: u8) -> Option<usize> {
+  if der.get(*pos) != Some(&tag) {
+    return None;
+  }
+  *pos += 1;
+
+  let len_byte = *der.get(*pos)?;
+  *pos += 1;
+
+  let len = if len_byte & 0x80 == 0 {
+    usize::from(len_byte)
+  } else {
+    let len_len = usize::from(len_byte & 0x7f);
+    if len_len == 0 || len_len > std::mem::size_of::<usize>() {
+      return None;
+    }
+
+    let len_bytes = der.get(*pos..pos.checked_add(len_len)?)?;
+    if len_bytes.first() == Some(&0) {
+      return None;
+    }
+
+    *pos += len_len;
+    let mut len = 0usize;
+    for &byte in len_bytes {
+      len = len.checked_shl(8)?.checked_add(usize::from(byte))?;
+    }
+    if len < 128 {
+      return None;
+    }
+    len
+  };
+
+  pos.checked_add(len).filter(|&end| end <= der.len())
+}
+
 /// Parse an EC private key from SEC1 DER bytes using the named curve OID.
 /// The curve OID is required — inferring from key length is unreliable
 /// (e.g. P-256 and secp256k1 both use 32-byte keys).
@@ -1542,14 +1622,14 @@ impl KeyObjectHandle {
 
     let public_key = match spki.algorithm.oid {
       RSA_ENCRYPTION_OID => {
-        let public_key = RsaPublicKey::from_pkcs1_der(
+        let public_key = rsa_public_key_from_pkcs1_der_lenient(
           spki.subject_public_key.as_bytes().unwrap(),
         )?;
         AsymmetricPublicKey::Rsa(public_key)
       }
       RSASSA_PSS_OID => {
         let details = parse_rsa_pss_params(spki.algorithm.parameters)?;
-        let public_key = RsaPublicKey::from_pkcs1_der(
+        let public_key = rsa_public_key_from_pkcs1_der_lenient(
           spki.subject_public_key.as_bytes().unwrap(),
         )?;
         AsymmetricPublicKey::RsaPss(RsaPssPublicKey {
