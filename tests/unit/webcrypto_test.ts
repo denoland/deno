@@ -8,6 +8,21 @@ import {
   assertThrows,
 } from "./test_util.ts";
 
+function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+function bufferToHex(buffer: ArrayBuffer): string {
+  return Array.from(
+    new Uint8Array(buffer),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 // https://github.com/denoland/deno/issues/11664
 Deno.test(async function testImportArrayBufferKey() {
   const subtle = globalThis.crypto.subtle;
@@ -2069,6 +2084,61 @@ Deno.test(async function p521Generate() {
 
   assert(key.privateKey instanceof CryptoKey);
   assert(key.publicKey instanceof CryptoKey);
+});
+
+// https://github.com/denoland/deno/issues/34044
+Deno.test(async function p521CompressedSpkiExportNormalizesPoint() {
+  const compressedSpki = hexToBytes(
+    "3058301006072a8648ce3d020106052b81040023034400030156f479f8df" +
+      "1e20a7ffc04ce420c3e154ae251996bee42f034b84d41b743f34e45f31" +
+      "1b813a9cdec8cda59bbbbd31d460b3292521e7c1b722e5667c03db2fae753f",
+  );
+  const uncompressedSpkiHex =
+    "30819b301006072a8648ce3d020106052b8104002303818600040156f479" +
+    "f8df1e20a7ffc04ce420c3e154ae251996bee42f034b84d41b743f34e45f" +
+    "311b813a9cdec8cda59bbbbd31d460b3292521e7c1b722e5667c03db2fae" +
+    "753f01501736cfe247394320d8e4afc2fd39b5a9331061b81e2241282b" +
+    "9e17891822b5b79e052f4597b59643fd39379c51bd5125c4f48bc3f025" +
+    "ce3cd36953286ccb38fb";
+  const algorithm = { name: "ECDSA", namedCurve: "P-521" } as const;
+
+  const compressedKey = await crypto.subtle.importKey(
+    "spki",
+    compressedSpki,
+    algorithm,
+    true,
+    ["verify"],
+  );
+  const compressedExport = await crypto.subtle.exportKey(
+    "spki",
+    compressedKey,
+  );
+  assertEquals(bufferToHex(compressedExport), uncompressedSpkiHex);
+
+  const uncompressedKey = await crypto.subtle.importKey(
+    "spki",
+    hexToBytes(uncompressedSpkiHex),
+    algorithm,
+    true,
+    ["verify"],
+  );
+  const uncompressedExport = await crypto.subtle.exportKey(
+    "spki",
+    uncompressedKey,
+  );
+  assertEquals(bufferToHex(uncompressedExport), uncompressedSpkiHex);
+
+  const jwk = await crypto.subtle.exportKey("jwk", compressedKey);
+  assertEquals(jwk.kty, "EC");
+  assertEquals(jwk.crv, "P-521");
+  assertEquals(
+    jwk.x,
+    "AVb0efjfHiCn_8BM5CDD4VSuJRmWvuQvA0uE1Bt0PzTkXzEbgTqc3sjNpZu7vTHUYLMpJSHnwbci5WZ8A9svrnU_",
+  );
+  assertEquals(
+    jwk.y,
+    "AVAXNs_iRzlDINjkr8L9ObWpMxBhuB4iQSgrnheJGCK1t54FL0WXtZZD_Tk3nFG9USXE9IvD8CXOPNNpUyhsyzj7",
+  );
 });
 
 Deno.test(async function x25519SharedSecret() {

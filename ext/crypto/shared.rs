@@ -171,11 +171,9 @@ impl V8RawKeyData {
     &self,
   ) -> Result<p521::EncodedPoint, SharedError> {
     match self {
-      V8RawKeyData::Public(data) => {
-        // public_key is a serialized EncodedPoint
-        p521::EncodedPoint::from_bytes(data)
-          .map_err(|_| SharedError::ExpectedValidPublicECKey)
-      }
+      V8RawKeyData::Public(data) => p521::PublicKey::from_sec1_bytes(data)
+        .map(|p| p.to_encoded_point(false))
+        .map_err(|_| SharedError::ExpectedValidPublicECKey),
       V8RawKeyData::Private(data) => {
         let signing_key = p521::SecretKey::from_pkcs8_der(data)
           .map_err(|_| SharedError::ExpectedValidPrivateECKey)?;
