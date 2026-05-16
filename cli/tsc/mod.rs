@@ -1080,65 +1080,6 @@ pub trait LoadContent: AsRef<str> {
   fn from_arc_str(source: Arc<str>) -> Self;
 }
 
-fn strip_invalid_fast_check_decorators(source: Arc<str>) -> Arc<str> {
-  if !source.contains('@') || !source.contains("declare private ") {
-    return source;
-  }
-
-  let mut decorator_start = None;
-  let mut changed = false;
-  let mut output = source.as_bytes().to_vec();
-  let mut offset = 0;
-  for line in source.split_inclusive('\n') {
-    let trimmed = line.trim_start();
-    if trimmed.starts_with('@') {
-      decorator_start.get_or_insert(offset);
-    } else if trimmed.starts_with("declare private ")
-      && let Some(start) = decorator_start.take()
-    {
-      for byte in output.iter_mut().take(offset).skip(start) {
-        if *byte != b'\n' && *byte != b'\r' {
-          *byte = b' ';
-        }
-      }
-      changed = true;
-    } else if !trimmed.is_empty() {
-      decorator_start = None;
-    }
-    offset += line.len();
-  }
-
-  if changed {
-    String::from_utf8(output).unwrap().into()
-  } else {
-    source
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn strips_fast_check_decorator_from_private_declare_field() {
-    let source: Arc<str> =
-      "@Inject(\"jwt\")\n  declare private readonly options?: any;\n".into();
-    let actual = strip_invalid_fast_check_decorators(source);
-    assert_eq!(
-      actual.as_ref(),
-      "              \n  declare private readonly options?: any;\n"
-    );
-  }
-
-  #[test]
-  fn keeps_decorators_on_non_fast_check_output() {
-    let source: Arc<str> =
-      "@Inject(\"jwt\")\n  readonly options?: any;\n".into();
-    let actual = strip_invalid_fast_check_decorators(source.clone());
-    assert!(Arc::ptr_eq(&actual, &source));
-  }
-}
-
 #[derive(Debug)]
 pub struct LoadResponse<T: LoadContent> {
   data: T,
@@ -1241,11 +1182,7 @@ pub fn load_for_tsc<T: LoadContent, M: Mapper>(
           Some(
             module
               .fast_check_module()
-              .map(|m| {
-                T::from_arc_str(strip_invalid_fast_check_decorators(
-                  m.source.clone(),
-                ))
-              })
+              .map(|m| T::from_arc_str(m.source.clone()))
               .unwrap_or(T::from_arc_str(module.source.text.clone())),
           )
         }
