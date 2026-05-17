@@ -3573,6 +3573,7 @@
     "parallel/test-tls-close-event-after-write.js": {},
     "parallel/test-tls-close-notify.js": {},
     "parallel/test-tls-connect-address-family.js": {},
+    "parallel/test-tls-connect-given-socket.js": {},
     "parallel/test-tls-connect-hints-option.js": {},
     "parallel/test-tls-connect-hwm-option.js": {},
     "parallel/test-tls-connect-keepalive-nodelay.js": {},
