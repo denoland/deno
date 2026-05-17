@@ -130,7 +130,18 @@ class BroadcastChannel extends EventTarget {
       throw new DOMException("Uncloneable value", "DataCloneError");
     }
 
-    const data = core.serialize(message);
+    const data = core.serialize(message, undefined, (err) => {
+      // Match the wording used by `MessagePort.postMessage` so node_compat
+      // tests that pattern-match on the error string see the same text
+      // regardless of which channel they used.
+      if (err === "Unsupported object type") {
+        throw new DOMException(
+          "Object that needs transfer was found in message but not listed in transferList",
+          "DataCloneError",
+        );
+      }
+      throw new DOMException(err, "DataCloneError");
+    });
 
     // Send to other listeners in this VM.
     dispatch(this, this[_name], new Uint8Array(data));

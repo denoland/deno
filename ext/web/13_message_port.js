@@ -503,6 +503,17 @@ function deserializeJsMessageData(messageData) {
  */
 const emptySerializedTransferables = ObjectFreeze([]);
 const serializeErrorCb = (err) => {
+  // V8 reports a generic "Unsupported object type" for host objects it
+  // doesn't know how to clone. The most common cause inside Node.js
+  // code is a `MessagePort` in the message but missing from the
+  // transfer list. Translate to the wording Node uses so tests that
+  // pattern-match on that exact string pass.
+  if (err === "Unsupported object type") {
+    throw new DOMException(
+      "Object that needs transfer was found in message but not listed in transferList",
+      "DataCloneError",
+    );
+  }
   throw new DOMException(err, "DataCloneError");
 };
 
