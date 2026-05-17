@@ -3684,6 +3684,7 @@
     "parallel/test-tls-socket-destroy.js": {},
     "parallel/test-tls-streamwrap-buffersize.js": {},
     "parallel/test-tls-writewrap-leak.js": {},
+    "parallel/test-tls-timeout-server.js": {},
     "parallel/test-tls-timeout-server-2.js": {},
     "parallel/test-tls-ticket-invalid-arg.js": {},
     "parallel/test-tls-tlswrap-segfault-2.js": {},
