@@ -416,6 +416,7 @@ deno_core::extension!(deno_node,
   esm_entry_point = "node:module",
   esm = [
     dir "polyfills",
+    "internal/compile_cache.js",
     "internal/streams/compose.js",
     "internal/streams/duplexpair.js",
     "internal/streams/lazy_transform.js",

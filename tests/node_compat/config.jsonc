@@ -570,10 +570,31 @@
     "parallel/test-common-expect-warning.js": {},
     "parallel/test-common-must-not-call.js": {},
     "parallel/test-common-must-not-mutate-object-deep.mjs": {},
+    "parallel/test-compile-cache-api-env.js": {},
+    "parallel/test-compile-cache-api-error.js": {},
+    "parallel/test-compile-cache-api-flush.js": {},
+    "parallel/test-compile-cache-api-options-portable-env.js": {},
     "parallel/test-compile-cache-api-permission.js": {
       "ignore": true,
       "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
     },
+    "parallel/test-compile-cache-api-portable.js": {},
+    "parallel/test-compile-cache-api-success.js": {},
+    "parallel/test-compile-cache-api-tmpdir.js": {},
+    "parallel/test-compile-cache-bad-syntax.js": {
+      "ignore": true,
+      "reason": "The .mjs subprocess fails through Deno's ESM entry loader, which does not route through node:module and so the COMPILE_CACHE debug trace cannot be emitted for that path"
+    },
+    "parallel/test-compile-cache-disable.js": {},
+    "parallel/test-compile-cache-dynamic-import.js": {
+      "ignore": true,
+      "reason": "Dynamic import() from CJS uses Deno's ESM module loader directly; the COMPILE_CACHE debug trace for the imported ESM module is not produced because the load bypasses node:module"
+    },
+    "parallel/test-compile-cache-esm.js": {
+      "ignore": true,
+      "reason": "ESM (.mjs) main entry is loaded by Deno's main module loader, which does not route through node:module and so cannot emit the COMPILE_CACHE debug trace expected by this test"
+    },
+    "parallel/test-compile-cache-existing-directory.js": {},
     "parallel/test-compile-cache-permission-allowed.js": {
       "ignore": true,
       "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
@@ -582,11 +603,18 @@
       "ignore": true,
       "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
     },
+    "parallel/test-compile-cache-portable.js": {},
+    "parallel/test-compile-cache-portable-esm.js": {
+      "ignore": true,
+      "reason": "ESM (.mjs) main entry is loaded by Deno's main module loader, which does not route through node:module and so cannot emit the COMPILE_CACHE debug trace expected by this test"
+    },
+    "parallel/test-compile-cache-success.js": {},
     "parallel/test-compile-cache-typescript-commonjs.js": {},
     "parallel/test-compile-cache-typescript-esm.js": {},
     "parallel/test-compile-cache-typescript-strip-miss.js": {},
     "parallel/test-compile-cache-typescript-strip-sourcemaps.js": {},
     "parallel/test-compile-cache-typescript-transform.js": {},
+    "parallel/test-compile-cache-updated-file.js": {},
     "parallel/test-console-assign-undefined.js": {},
     "parallel/test-console-async-write-error.js": {},
     "parallel/test-console-formatTime.js": {},
