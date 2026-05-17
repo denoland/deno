@@ -6,7 +6,7 @@
     },
     "inherit_stdio_does_not_hang": {
       "args": "run -A inherit.ts",
-      "output": "ok\n"
+      "output": "child done\nok\n"
     }
   }
 }
