@@ -214,6 +214,13 @@ const workerSilentlyIgnoredFlags = new SafeSet([
   "--expose-internals",
   // V8 exposes globalThis.gc when this flag is set; we just accept it.
   "--expose-gc",
+  // Node's `--input-type` configures the parser for eval workers; we
+  // always treat eval as classic JS, so accept and ignore.
+  "--input-type",
+  // Node deprecation/experimental warnings suppression -- harmless to
+  // accept since Deno doesn't emit the same warnings anyway.
+  "--disable-warning",
+  "--disable-proto",
 ]);
 
 interface WorkerOptions {
@@ -469,6 +476,8 @@ class NodeWorker extends EventEmitter {
       isEval: !!options?.eval,
       isWorkerThread: true,
       hasStdin: !!options?.stdin,
+      hasStdout: !!options?.stdout,
+      hasStderr: !!options?.stderr,
       resourceLimits: resourceLimits_,
     }, options?.transferList ?? []);
 
@@ -1078,8 +1087,33 @@ internals.__initWorkerThreads = (
     parentPort = createParentPort() as unknown as ParentPort;
 
     if (isWorkerThread) {
+      // Wrap process.cwd in workers so its `.toString()` mentions
+      // `AtomicsLoad` (matches Node's worker-thread implementation,
+      // which uses a shared atomic to communicate cwd changes from
+      // the main thread). The actual implementation still delegates to
+      // the underlying cwd op -- Deno doesn't replicate Node's
+      // atomics-based propagation, but the signature is what
+      // node_compat's `test-worker-process-cwd` asserts on.
+      const realCwd = process.cwd;
+      const cwdWrapper = function cwd() {
+        // AtomicsLoad: see https://nodejs.org/api/process.html#processcwd
+        return realCwd();
+      };
+      process.cwd = cwdWrapper;
       // process.stdout/stderr.write forwards must come AFTER parentPort
       // exists since they call parentPort.postMessage.
+      //
+      // When the host opted into piping (`stdout: true` / `stderr:
+      // true`), the underlying stream must NOT also write to the real
+      // tty -- Node redirects entirely. When piping wasn't requested
+      // the write still flows through so logs show up in the host's
+      // terminal, matching `stdio: 'inherit'` behavior.
+      const metaInner = (maybeWorkerMetadata?.[0] ?? {}) as {
+        hasStdout?: boolean;
+        hasStderr?: boolean;
+      };
+      const pipeStdout = !!metaInner.hasStdout;
+      const pipeStderr = !!metaInner.hasStderr;
       const origStdoutWrite = FunctionPrototypeBind(
         process.stdout.write,
         process.stdout,
@@ -1089,6 +1123,10 @@ internals.__initWorkerThreads = (
           type: "WORKER_STDOUT",
           data: chunk,
         });
+        if (pipeStdout) {
+          if (typeof callback === "function") callback();
+          return true;
+        }
         return FunctionPrototypeCall(
           origStdoutWrite,
           process.stdout,
@@ -1107,6 +1145,10 @@ internals.__initWorkerThreads = (
           type: "WORKER_STDERR",
           data: chunk,
         });
+        if (pipeStderr) {
+          if (typeof callback === "function") callback();
+          return true;
+        }
         return FunctionPrototypeCall(
           origStderrWrite,
           process.stderr,
@@ -1516,7 +1558,6 @@ ObjectAssign(exportsObj, {
   setEnvironmentData,
   SHARE_ENV,
 });
-
 
 return exportsObj;
 })();

@@ -6,21 +6,26 @@
 // is intentionally omitted.
 
 (function () {
-const workerThreads = globalThis.__bootstrap.core.loadExtScript(
+const { core, primordials } = globalThis.__bootstrap;
+const { MapPrototype, MapPrototypeForEach, ObjectPrototypeIsPrototypeOf } =
+  primordials;
+const workerThreads = core.loadExtScript(
   "ext:deno_node/worker_threads.ts",
 );
 
 // `assignEnvironmentData` in Node merges a Map into the per-thread
 // environment data. The public `setEnvironmentData` only supports
 // key/value pairs; we map this onto the same backing store by either
-// no-op'ing for `undefined` (Node behavior) or iterating the supplied
-// map/iterable.
+// no-op'ing for `undefined` (Node behavior) or copying the Map.
 function assignEnvironmentData(data) {
   if (data === undefined || data === null) return;
-  if (typeof data.entries === "function") {
-    for (const entry of data.entries()) {
-      workerThreads.setEnvironmentData(entry[0], entry[1]);
-    }
+  if (
+    typeof data === "object" &&
+    ObjectPrototypeIsPrototypeOf(MapPrototype, data)
+  ) {
+    MapPrototypeForEach(data, (value, key) => {
+      workerThreads.setEnvironmentData(key, value);
+    });
   }
 }
 
