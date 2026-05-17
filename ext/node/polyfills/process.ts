@@ -17,6 +17,8 @@ import {
   op_getegid,
   op_geteuid,
   op_getgroups,
+  op_inspector_close,
+  op_inspector_enabled,
   op_node_load_env_file,
   op_node_process_constrained_memory,
   op_node_process_kill,
@@ -916,6 +918,33 @@ Object.defineProperty(process, "debugPort", {
   configurable: true,
 });
 
+/**
+ * Undocumented but public Node API: stops the inspector / debugger session
+ * if one is running. No-op if no inspector is attached. See
+ * `lib/internal/inspector.js` in the Node source.
+ */
+process._debugEnd = function _debugEnd() {
+  if (op_inspector_enabled()) {
+    op_inspector_close();
+  }
+};
+
+/**
+ * Undocumented but public Node API: starts the inspector in another process by
+ * sending `SIGUSR1` to it. On the current process, this would (in Node) open
+ * the inspector; we don't yet support reopening the inspector from JS, so for
+ * `pid === process.pid` we no-op rather than throwing, matching the
+ * "safe when no inspector is active" contract callers rely on.
+ */
+process._debugProcess = function _debugProcess(pid) {
+  if (typeof pid !== "number") {
+    throw new ERR_INVALID_ARG_TYPE("pid", "number", pid);
+  }
+  if (pid !== process.pid) {
+    process.kill(pid, "SIGUSR1");
+  }
+};
+
 /** https://nodejs.org/api/process.html#process_process_chdir_directory */
 process.chdir = chdir;
 
@@ -1666,6 +1695,11 @@ internals.__bootstrapNodeProcess = function (
         },
         configurable: true,
       });
+
+      // Inspector control APIs are main-thread-only in Node; matches the
+      // assertions in parallel/test-worker-unsupported-things.js.
+      delete process._debugEnd;
+      delete process._debugProcess;
     }
 
     delete internals.__bootstrapNodeProcess;
