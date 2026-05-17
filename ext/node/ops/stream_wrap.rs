@@ -1795,6 +1795,7 @@ impl LibUvStreamWrap {
   /// state (for the encoded-strings concat buffer). Mirrors Node's
   /// `LibuvStreamWrap::DoWrite(req_wrap, bufs, count, ...)`
   /// (stream_wrap.cc:391) — no intermediate concat.
+  #[allow(clippy::too_many_arguments, reason = "matches libuv write state")]
   fn do_writev_async(
     &self,
     scope: &mut v8::PinScope,
