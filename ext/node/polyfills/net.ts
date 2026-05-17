@@ -995,12 +995,14 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   self._host = host;
   const lookup = options.lookup || dnsLookup;
   const getLookupDnsOpts = () => {
-    const lookupOpts = options.lookup === undefined ? dnsOpts : {
+    if (options.lookup === undefined) {
+      return { ...dnsOpts, port };
+    }
+    return {
       family: dnsOpts.family,
       hints: dnsOpts.hints,
       all: dnsOpts.all,
     };
-    return lookup === dnsLookup ? { ...lookupOpts, port } : lookupOpts;
   };
 
   if (
