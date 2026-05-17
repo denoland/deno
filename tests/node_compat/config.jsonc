@@ -529,7 +529,10 @@
     "parallel/test-cluster-rr-handle-keep-loop-alive.js": { "windows": false },
     "parallel/test-cluster-rr-handle-ref-unref.js": { "windows": false },
     "parallel/test-cluster-rr-ref.js": { "windows": false },
-    "parallel/test-cluster-send-deadlock.js": { "windows": false },
+    "parallel/test-cluster-send-deadlock.js": {
+      "ignore": true,
+      "reason": "Flaky: cluster IPC test timed out after 10000ms on main linux-aarch64 CI in runs 25868700017 and 25984988506."
+    },
     "parallel/test-cluster-send-socket-to-worker-http-server.js": {
       "windows": false
     },
