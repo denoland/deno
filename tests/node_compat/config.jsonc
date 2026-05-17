@@ -2235,7 +2235,7 @@
     // TODO(bartlomieju): depends on internal APIs from Node like `process.bindings()`
     // or `process._debugEnd`
     // "parallel/test-inspector-enabled.js": {},
-    // "parallel/test-inspector-debug-end.js": {},
+    "parallel/test-inspector-debug-end.js": {},
 
     "parallel/test-inspector-has-idle.js": {},
 
