@@ -2239,7 +2239,7 @@
 
     "parallel/test-inspector-esm.js": {},
     "parallel/test-inspector-console.js": {},
-    // "parallel/test-inspector-async-stack-traces-promise-then.js": {},
+    "parallel/test-inspector-async-stack-traces-promise-then.js": {},
     // "parallel/test-inspector-exception.js": {},
     // "parallel/test-inspector-async-hook-setup-at-inspect-brk.js": {},
     // "parallel/test-inspector-async-stack-traces-set-interval.js": {},
