@@ -2869,22 +2869,6 @@ class ERR_INVALID_URL extends NodeTypeError {
   }
 }
 
-class ERR_ACCESS_DENIED extends NodeError {
-  permission?: string;
-  resource?: string;
-  constructor(message: string, permission?: string, resource?: string) {
-    let formatted = `Access to this API has been restricted${
-      message ? `. ${message}` : ""
-    }`;
-    if (permission) {
-      formatted += `. Use --allow-${permission} to allow it.`;
-    }
-    super("ERR_ACCESS_DENIED", formatted);
-    if (permission) this.permission = permission;
-    if (resource) this.resource = resource;
-  }
-}
-
 class ERR_INVALID_URL_SCHEME extends NodeTypeError {
   constructor(expected: string | [string] | [string, string]) {
     expected = ArrayIsArray(expected) ? expected : [expected];
@@ -3322,7 +3306,6 @@ function displayJoin(dir: string, fileName: string) {
 
 return {
   AbortError,
-  ERR_ACCESS_DENIED,
   ERR_AMBIGUOUS_ARGUMENT,
   ERR_ARG_NOT_ITERABLE,
   ERR_ASSERTION,
@@ -3641,7 +3624,6 @@ return {
   uvExceptionWithHostPort,
   default: {
     AbortError,
-    ERR_ACCESS_DENIED,
     ERR_AMBIGUOUS_ARGUMENT,
     ERR_ARG_NOT_ITERABLE,
     ERR_ASSERTION,

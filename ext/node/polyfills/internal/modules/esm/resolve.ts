@@ -7,18 +7,16 @@ const {
   op_require_stat,
 } = core.ops;
 
-const { ObjectFreeze, ObjectPrototypeIsPrototypeOf } = primordials;
+const { ObjectFreeze } = primordials;
 
 const assert = core.loadExtScript("ext:deno_node/internal/assert.mjs");
 const {
-  ERR_ACCESS_DENIED,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_URL,
   ERR_MODULE_NOT_FOUND,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { isURL } = core.loadExtScript("ext:deno_node/internal/url.ts");
 const lazyUrl = core.createLazyLoader("node:url");
-const lazyPath = core.createLazyLoader("node:path");
 
 // Extensions tried during legacy main resolution. Mirrors Node's
 // `node_file.cc` `legacy_main_extensions` array.
@@ -42,27 +40,9 @@ const legacyMainExtensions = ObjectFreeze([
 const kResolvedByMainIndexNodeEnd = 7; // exclusive
 const kResolvedByPackageFallbackEnd = 10; // exclusive
 
-function fileExistsOrAccessDenied(path: string): boolean {
-  // op_require_stat returns 0 if file, 1 if directory, -1 if not found. When
-  // Deno's permission system denies the read, the op throws a NotCapable
-  // error which we translate to Node's ERR_ACCESS_DENIED with `resource` set
-  // to the namespaced path - matching what Node's permission-aware
-  // `legacyMainResolve` raises.
-  try {
-    return op_require_stat(path) === 0;
-  } catch (err) {
-    if (
-      ObjectPrototypeIsPrototypeOf(core.NotCapable.prototype, err)
-    ) {
-      const resource = lazyPath().toNamespacedPath(path);
-      throw new ERR_ACCESS_DENIED(
-        `FileSystemRead in "${path}"`,
-        "fs-read",
-        resource,
-      );
-    }
-    throw err;
-  }
+function fileExists(path: string): boolean {
+  // op_require_stat returns 0 if file, 1 if directory, -1 if not found.
+  return op_require_stat(path) === 0;
 }
 
 function pathResolve(...parts: string[]): string {
@@ -98,7 +78,7 @@ function legacyMainResolve(
     packageInitialFile = initialFilePath;
     for (let i = 0; i < kResolvedByMainIndexNodeEnd; i++) {
       const filePath = initialFilePath + legacyMainExtensions[i];
-      if (fileExistsOrAccessDenied(filePath)) {
+      if (fileExists(filePath)) {
         resolvedPath = filePath;
         break;
       }
@@ -116,7 +96,7 @@ function legacyMainResolve(
       i++
     ) {
       const filePath = initialFilePath + legacyMainExtensions[i];
-      if (fileExistsOrAccessDenied(filePath)) {
+      if (fileExists(filePath)) {
         resolvedPath = filePath;
         break;
       }

@@ -3327,11 +3327,7 @@ pub fn translate_to_deno_args(
       deno_args.push("node".to_string());
     }
     deno_args.push("eval".to_string());
-    // `deno eval` defaults to implicit allow-all. If Node's `--permission`
-    // model is requested, emit `--permission` + explicit `--allow-*` flags
-    // here. The eval subcommand skips its implicit `allow_all()` whenever
-    // any explicit permission flag is present, so the grant is honoured.
-    add_permission_flags(deno_args, env_opts, true);
+    // Note: deno eval has implicit permissions, so we don't add -A
 
     if options.add_unstable_flags {
       deno_args.push("--unstable-node-globals".to_string());
@@ -3440,12 +3436,7 @@ pub fn translate_to_deno_args(
     deno_args.push("node".to_string());
   }
   deno_args.push("run".to_string());
-  // Honour Node's `--permission` model: emit explicit `--allow-*` flags
-  // instead of the default implicit `-A`. When `--permission` was not
-  // supplied, fall back to `-A` to preserve existing behaviour.
-  if !add_permission_flags(deno_args, env_opts, false) {
-    deno_args.push("-A".to_string());
-  }
+  deno_args.push("-A".to_string());
 
   if options.add_unstable_flags {
     deno_args.push("--unstable-node-globals".to_string());
@@ -3549,49 +3540,6 @@ fn add_conditions(deno_args: &mut Vec<String>, env_opts: &EnvironmentOptions) {
       deno_args.push(format!("--conditions={}", condition));
     }
   }
-}
-
-/// Translate Node's `--permission` model flags into Deno's `--allow-*`
-/// equivalents. Returns `true` when `--permission` was supplied (so the
-/// caller should skip implicit `-A`).
-///
-/// `for_eval` selects between `--permission` (a Deno eval-only flag that
-/// suppresses the implicit `--allow-all`) and run's natural default of no
-/// permissions. The `--permission` flag is needed for eval because eval
-/// applies `allow_all` by default; for `run` we just omit `-A`.
-fn add_permission_flags(
-  deno_args: &mut Vec<String>,
-  env_opts: &EnvironmentOptions,
-  for_eval: bool,
-) -> bool {
-  if !env_opts.permission {
-    return false;
-  }
-  if for_eval {
-    // Opt out of `deno eval`'s implicit `--allow-all`.
-    deno_args.push("--permission".to_string());
-  }
-  for path in &env_opts.allow_fs_read {
-    deno_args.push(format!("--allow-read={}", path));
-  }
-  for path in &env_opts.allow_fs_write {
-    deno_args.push(format!("--allow-write={}", path));
-  }
-  if env_opts.allow_child_process {
-    deno_args.push("--allow-run".to_string());
-  }
-  for spec in &env_opts.allow_net {
-    if spec.is_empty() {
-      deno_args.push("--allow-net".to_string());
-    } else {
-      deno_args.push(format!("--allow-net={}", spec));
-    }
-  }
-  if env_opts.allow_worker_threads {
-    // Worker thread permission has no Deno equivalent; threads run with
-    // inherited permissions in Deno, so this is informational only.
-  }
-  true
 }
 
 fn add_inspector_flags(

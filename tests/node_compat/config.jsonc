@@ -16,7 +16,6 @@
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
     },
     "es-module/test-cjs-legacyMainResolve.js": {},
-    "es-module/test-cjs-legacyMainResolve-permission.js": {},
     "es-module/test-cjs-prototype-pollution.js": {},
     "es-module/test-esm-assert-strict.mjs": {},
     "es-module/test-esm-child-process-fork-main.mjs": {},

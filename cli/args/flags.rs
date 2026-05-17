@@ -3274,7 +3274,7 @@ This command has implicit access to all permissions.
   )
   .defer(|cmd| {
     cpu_prof_args(
-      permission_args(runtime_args(cmd, false, true, true), None)
+      runtime_args(cmd, false, true, true)
         .arg(check_arg(false))
         .arg(executable_ext_arg())
         .arg(
@@ -3283,17 +3283,6 @@ This command has implicit access to all permissions.
             .short('p')
             .help("print result to stdout")
             .action(ArgAction::SetTrue),
-        )
-        .arg(
-          Arg::new("permission")
-            .long("permission")
-            .help(
-              "Opt out of the implicit `--allow-all` granted to `deno eval` \
-              so explicit `--allow-*` / `--deny-*` flags are honoured. \
-              Matches the role of Node.js `--permission`.",
-            )
-            .action(ArgAction::SetTrue)
-            .hide(true),
         )
         .arg(
           Arg::new("code_arg")
@@ -7017,18 +7006,9 @@ fn eval_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
-  runtime_args_parse(flags, matches, true, true, false)?;
+  runtime_args_parse(flags, matches, false, true, false)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
-  // `deno eval` has historically been documented as having implicit access
-  // to all permissions. Preserve that for users who do not opt into the
-  // permission model. If any `--allow-*` / `--deny-*` flag, or the explicit
-  // `--permission` opt-in was supplied, skip the implicit allow-all so the
-  // explicit grant is honoured - matching what Node's `--permission` model
-  // expects.
-  let permission_mode = matches.get_flag("permission");
-  if !permission_mode && !flags.permissions.has_permission() {
-    flags.allow_all();
-  }
+  flags.allow_all();
 
   ext_arg_parse(flags, matches);
   flags.cpu_prof = cpu_prof_parse(matches);
