@@ -42,7 +42,6 @@ const {
 } = core.loadExtScript("ext:deno_web/02_event.js");
 const {
   deserializeJsMessageData,
-  MessagePortPrototype,
   serializeJsMessageData,
 } = core.loadExtScript("ext:deno_web/13_message_port.js");
 const { DOMException } = core.loadExtScript(
