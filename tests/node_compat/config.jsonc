@@ -4383,7 +4383,6 @@
       "windows": false,
       "darwin": false
     },
-    "es-module/test-esm-windows.js": {},
     "es-module/test-import-require-tla-twice.js": {},
     "es-module/test-require-module-conditional-exports.js": {},
     "es-module/test-vm-compile-function-leak.js": {},
@@ -4419,7 +4418,6 @@
     "module-hooks/test-async-loader-hooks-never-settling-race-esm.mjs": {},
     "module-hooks/test-async-loader-hooks-no-leak-internals.mjs": {},
     "module-hooks/test-async-loader-hooks-with-worker-permission-allowed.mjs": {},
-    "parallel/test-async-hooks-stack-overflow.js": { "darwin": false },
     "parallel/test-async-hooks-vm-gc.js": {},
     "parallel/test-async-local-storage-http-parser-leak.js": {},
     "parallel/test-asyncresource-bind.js": {},
@@ -4427,7 +4425,6 @@
       "windows": false
     },
     "parallel/test-child-process-exec-encoding.js": { "windows": false },
-    "parallel/test-child-process-fork-args.js": {},
     "parallel/test-child-process-fork-closed-channel-segfault.js": {
       "linux": false,
       "windows": false
@@ -4437,7 +4434,6 @@
       "linux": false,
       "darwin": false
     },
-    "parallel/test-child-process-send-utf8.js": {},
     "parallel/test-child-process-server-close.js": { "windows": false },
     "parallel/test-child-process-spawn-windows-batch-file.js": {
       "windows": false
@@ -4519,7 +4515,6 @@
     "parallel/test-fs-rmdir-throws-on-file.js": { "windows": false },
     "parallel/test-fs-stat-date.mjs": { "darwin": false },
     "parallel/test-fs-watch-close-when-destroyed.js": { "windows": false },
-    "parallel/test-fs-watch-recursive-add-file-to-new-folder.js": {},
     "parallel/test-fs-watch-recursive-add-file-with-url.js": {},
     "parallel/test-fs-watch-recursive-add-file.js": {},
     "parallel/test-fs-watch-recursive-assert-leaks.js": {},
@@ -4577,7 +4572,6 @@
     "parallel/test-http2-create-client-connect.js": {},
     "parallel/test-http2-dont-lose-data.js": {},
     "parallel/test-http2-exceeds-server-trailer-size.js": {},
-    "parallel/test-http2-forget-closed-streams.js": {},
     "parallel/test-http2-generic-streams.js": {},
     "parallel/test-http2-large-writes-session-memory-leak.js": {},
     "parallel/test-http2-max-concurrent-streams.js": {},
@@ -4709,7 +4703,6 @@
       "linux": false,
       "windows": false
     },
-    "parallel/test-tls-client-destroy-soon.js": { "darwin": false },
     "parallel/test-tls-client-resume-12.js": {},
     "parallel/test-tls-client-resume.js": {},
     "parallel/test-tls-client-verify.js": {},
@@ -4733,10 +4726,6 @@
     "parallel/test-tls-startcom-wosign-whitelist.js": {},
     "parallel/test-tls-starttls-server.js": {},
     "parallel/test-trace-events-net-abstract-socket.js": { "linux": false },
-    "parallel/test-util-inspect-long-running.js": {
-      "linux": false,
-      "windows": false
-    },
     "parallel/test-util-inspect-namespace.js": {},
     "parallel/test-util-sigint-watchdog.js": {
       "linux": false,
@@ -4874,7 +4863,6 @@
     "sequential/test-net-listen-shared-ports.js": { "windows": false },
     "sequential/test-net-reconnect-error.js": { "windows": false },
     "sequential/test-net-server-address.js": { "windows": false },
-    "sequential/test-net-server-listen-ipv6-link-local.js": {},
     "sequential/test-stream2-stderr-sync.js": {},
     "sequential/test-timers-block-eventloop.js": {},
     "sequential/test-timers-set-interval-excludes-callback-duration.js": {},
