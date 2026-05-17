@@ -7,6 +7,7 @@ import {
   op_fs_cwd,
   op_import_sync,
   op_import_sync_with_source,
+  op_module_default_resolve,
   op_module_hooks_poll_load,
   op_module_hooks_register,
   op_module_hooks_respond_load,
@@ -693,28 +694,25 @@ function executeEsmResolveHookChain(specifier, context) {
       if (StringPrototypeStartsWith(spec, "node:")) {
         return { url: spec, shortCircuit: true };
       }
+      insideResolveHook = true;
       try {
-        const resolved = new URL(spec, currentContext.parentURL).href;
+        const resolved = op_module_default_resolve(
+          spec,
+          currentContext.parentURL ?? "",
+        );
         return { url: resolved, shortCircuit: true };
       } catch {
-        insideResolveHook = true;
+        // Last-ditch fallback so hooks can still observe purely synthetic
+        // specifiers that Deno's resolver rejects (e.g. ad-hoc URLs invented
+        // by user code).
         try {
-          const defaultResolved = Module._resolveFilename(
-            spec,
-            null,
-            false,
-          );
-          const resolvedUrl =
-            StringPrototypeStartsWith(defaultResolved, "node:") ||
-              StringPrototypeStartsWith(defaultResolved, "file://")
-              ? defaultResolved
-              : url.pathToFileURL(defaultResolved).href;
-          return { url: resolvedUrl, shortCircuit: true };
+          const resolved = new URL(spec, currentContext.parentURL).href;
+          return { url: resolved, shortCircuit: true };
         } catch {
           return { url: null, shortCircuit: true };
-        } finally {
-          insideResolveHook = false;
         }
+      } finally {
+        insideResolveHook = false;
       }
     }
     const hook = resolveHooks[index++];

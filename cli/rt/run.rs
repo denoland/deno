@@ -921,6 +921,17 @@ impl StandaloneModuleLoaderFactory {
       hook_registry: hook_registry.clone(),
       sys: self.sys.clone(),
     });
+    {
+      let loader = loader.clone();
+      hook_registry.set_default_resolve(Rc::new(
+        move |specifier: &str, referrer: &str| {
+          loader
+            .resolve_inner(specifier, referrer, ResolutionKind::Import)
+            .map(|s| s.to_string())
+            .map_err(|e| JsErrorBox::generic(e.to_string()))
+        },
+      ));
+    }
     CreateModuleLoaderResult {
       module_loader: loader.clone(),
       node_require_loader: loader,

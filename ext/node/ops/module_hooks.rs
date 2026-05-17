@@ -23,6 +23,14 @@ type LoadResult = (Option<String>, Option<String>);
 type LoadSender =
   deno_core::futures::channel::oneshot::Sender<Result<LoadResult, String>>;
 
+/// Callback used to perform the default ESM resolution from JS hooks.
+/// Installed by the embedder so that the JS terminal `nextResolve` fallback
+/// can reach the real module loader (handling bare specifiers, package
+/// exports, import maps, npm/jsr, etc.) the same way an un-hooked import
+/// would.
+pub type DefaultResolveCb =
+  Rc<dyn Fn(&str, &str) -> Result<String, JsErrorBox>>;
+
 /// Shared hook registry between ops and the module loader.
 ///
 /// When load hooks are active, the Rust module loader pushes requests into
@@ -42,6 +50,7 @@ pub struct LoaderHookRegistry {
   load_id_keys: Rc<RefCell<HashMap<u32, String>>>,
   /// Piggybacking senders for duplicate load requests.
   load_waiters: Rc<RefCell<HashMap<String, Vec<LoadSender>>>>,
+  default_resolve: Rc<RefCell<Option<DefaultResolveCb>>>,
 }
 
 impl LoaderHookRegistry {
@@ -49,6 +58,30 @@ impl LoaderHookRegistry {
     let id = self.next_id.get();
     self.next_id.set(id + 1);
     id
+  }
+
+  /// Install the default-resolution callback used by the JS hook chain when
+  /// the terminal `nextResolve` is reached. The embedder is expected to
+  /// provide a function that performs the same resolution as a normal
+  /// (un-hooked) import.
+  pub fn set_default_resolve(&self, cb: DefaultResolveCb) {
+    *self.default_resolve.borrow_mut() = Some(cb);
+  }
+
+  /// Call the default-resolution callback. Used by
+  /// `op_module_default_resolve`.
+  pub fn default_resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+  ) -> Result<String, JsErrorBox> {
+    let cb = self.default_resolve.borrow().clone();
+    match cb {
+      Some(cb) => cb(specifier, referrer),
+      None => Err(JsErrorBox::generic(
+        "default module resolver is not available",
+      )),
+    }
   }
 
   pub fn resolve(
@@ -164,6 +197,21 @@ pub async fn op_module_hooks_poll_load(
     std::task::Poll::Pending
   })
   .await
+}
+
+/// Run the default module resolver. Used by the JS hook chain's terminal
+/// `nextResolve` so that hooks observing the default resolution see the real
+/// URL that Deno would have resolved (bare specifiers, package exports,
+/// import maps, npm/jsr, etc.) rather than a stub.
+#[op2]
+#[string]
+pub fn op_module_default_resolve(
+  state: &mut OpState,
+  #[string] specifier: &str,
+  #[string] referrer: &str,
+) -> Result<String, JsErrorBox> {
+  let registry = state.borrow::<LoaderHookRegistry>().clone();
+  registry.default_resolve(specifier, referrer)
 }
 
 /// Respond to a load request. `source` is null to delegate to default loading.

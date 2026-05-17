@@ -473,6 +473,22 @@ impl CliModuleLoaderFactory {
         loaded_files: Default::default(),
         hook_registry: hook_registry.clone(),
       })));
+    {
+      let inner = module_loader.0.clone();
+      hook_registry.set_default_resolve(Rc::new(
+        move |specifier: &str, referrer: &str| {
+          inner
+            .inner_resolve(
+              specifier,
+              referrer,
+              deno_core::ResolutionKind::Import,
+              false,
+            )
+            .map(|s| s.to_string())
+            .map_err(|e| JsErrorBox::generic(e.to_string()))
+        },
+      ));
+    }
     let node_require_loader = Rc::new(CliNodeRequireLoader {
       cjs_tracker: self.shared.cjs_tracker.clone(),
       emitter: self.shared.emitter.clone(),

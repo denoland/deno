@@ -172,6 +172,7 @@ deno_core::extension!(deno_node,
     ops::module_hooks::op_module_hooks_register,
     ops::module_hooks::op_module_hooks_poll_load,
     ops::module_hooks::op_module_hooks_respond_load,
+    ops::module_hooks::op_module_default_resolve,
 
     ops::blocklist::op_socket_address_parse,
     ops::blocklist::op_socket_address_get_serialization,
