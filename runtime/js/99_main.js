@@ -255,9 +255,15 @@ function dispatchWorkerMessage(data) {
   const msgEvent = new event.MessageEvent("message", {
     cancelable: false,
     data: message,
+    // Filter on the host-object brand rather than the Web MessagePort
+    // prototype: in a process that has loaded `node:worker_threads`,
+    // the transferable receive callback for "MessagePort" produces
+    // Node MessagePort instances that share the brand but not the
+    // prototype.
     ports: ArrayPrototypeFilter(
       transferables,
-      (t) => ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
+      (t) => t !== null && typeof t === "object" &&
+        t[core.hostObjectBrand] === "MessagePort",
     ),
   });
   event.setIsTrusted(msgEvent, true);

@@ -177,9 +177,13 @@ function dispatchPortMessageData(target, data) {
   }
   const event = new MessageEvent("message", {
     data: message,
+    // Match by host-object brand instead of prototype so Node-style
+    // MessagePort instances (installed by `node:worker_threads`'s
+    // transferable receive override) are surfaced in `ev.ports`.
     ports: ArrayPrototypeFilter(
       transferables,
-      (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
+      (t) => t !== null && typeof t === "object" &&
+        t[core.hostObjectBrand] === "MessagePort",
     ),
   });
   setIsTrusted(event, true);
