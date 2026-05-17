@@ -72,6 +72,103 @@ pub fn op_v8_take_heap_snapshot(scope: &mut v8::PinScope<'_, '_>) -> Vec<u8> {
   buf
 }
 
+// Walks the V8 heap snapshot and counts nodes that look like instances of a
+// class whose constructor name matches `ctor_name`. Used by `util.queryObjects`
+// / `v8.queryObjects` to implement `{ format: 'count' }` without exposing
+// `HeapProfiler::QueryObjects` (which the rusty_v8 crate does not bind).
+//
+// Limitation: matches by the immediate constructor name only, so instances of
+// subclasses of `ctor` won't be counted. This is sufficient for Node's leak
+// tests (which check direct instances of `Channel`, `SourceTextModule`, ...).
+#[op2(nofast)]
+#[smi]
+pub fn op_v8_query_objects_count(
+  scope: &mut v8::PinScope<'_, '_>,
+  #[string] ctor_name: &str,
+) -> u32 {
+  use deno_core::serde_json;
+  use deno_core::serde_json::Value;
+
+  let mut buf = Vec::new();
+  scope.take_heap_snapshot(|chunk| {
+    buf.extend_from_slice(chunk);
+    true
+  });
+  if buf.is_empty() {
+    return 0;
+  }
+
+  let snapshot: Value = match serde_json::from_slice(&buf) {
+    Ok(v) => v,
+    Err(_) => return 0,
+  };
+
+  let meta = match snapshot.get("snapshot").and_then(|s| s.get("meta")) {
+    Some(m) => m,
+    None => return 0,
+  };
+  let node_fields = match meta.get("node_fields").and_then(|f| f.as_array()) {
+    Some(a) => a,
+    None => return 0,
+  };
+  let node_field_count = node_fields.len();
+  if node_field_count == 0 {
+    return 0;
+  }
+  let type_field_index = node_fields.iter().position(|f| f == "type");
+  let name_field_index = node_fields.iter().position(|f| f == "name");
+  let (Some(type_field_index), Some(name_field_index)) =
+    (type_field_index, name_field_index)
+  else {
+    return 0;
+  };
+
+  // `node_types` is an array where the entry at `type_field_index` is the
+  // list of named type variants (the rest are scalars like "string"/"number").
+  let object_type_index = match meta
+    .get("node_types")
+    .and_then(|t| t.as_array())
+    .and_then(|t| t.get(type_field_index))
+    .and_then(|t| t.as_array())
+  {
+    Some(types) => match types.iter().position(|t| t == "object") {
+      Some(i) => i as u64,
+      None => return 0,
+    },
+    None => return 0,
+  };
+
+  let nodes = match snapshot.get("nodes").and_then(|n| n.as_array()) {
+    Some(a) => a,
+    None => return 0,
+  };
+  let strings = match snapshot.get("strings").and_then(|s| s.as_array()) {
+    Some(a) => a,
+    None => return 0,
+  };
+
+  let mut count: u32 = 0;
+  for chunk in nodes.chunks_exact(node_field_count) {
+    let Some(ty) = chunk[type_field_index].as_u64() else {
+      continue;
+    };
+    if ty != object_type_index {
+      continue;
+    }
+    let Some(name_idx) = chunk[name_field_index].as_u64() else {
+      continue;
+    };
+    let Some(name) = strings.get(name_idx as usize).and_then(|s| s.as_str())
+    else {
+      continue;
+    };
+    if name == ctor_name {
+      count = count.saturating_add(1);
+    }
+  }
+  count
+}
+
 #[op2(fast)]
 pub fn op_v8_get_heap_code_statistics(
   scope: &mut v8::PinScope<'_, '_>,

@@ -25,6 +25,7 @@ const {
   op_v8_read_value,
   op_v8_release_buffer,
   op_v8_set_treat_array_buffer_views_as_host_objects,
+  op_v8_query_objects_count,
   op_v8_take_heap_snapshot,
   op_v8_transfer_array_buffer,
   op_v8_transfer_array_buffer_de,
@@ -48,9 +49,10 @@ const { isArrayBufferView } = core.loadExtScript(
 const lazyFsUtils = core.createLazyLoader(
   "ext:deno_node/internal/fs/utils.mjs",
 );
-const { validateObject } = core.loadExtScript(
-  "ext:deno_node/internal/validators.mjs",
-);
+const { validateFunction, validateObject, validateOneOf } = core
+  .loadExtScript(
+    "ext:deno_node/internal/validators.mjs",
+  );
 
 function cachedDataVersionTag() {
   return op_v8_cached_data_version_tag();
@@ -165,6 +167,44 @@ function writeHeapSnapshot(
   const data = op_v8_take_heap_snapshot();
   lazyFs().writeFileSync(filename, data);
   return filename;
+}
+
+// https://nodejs.org/api/v8.html#v8queryobjectsctor-options
+//
+// Deno currently only supports `{ format: 'count' }`. Returning live instances
+// would require V8's `HeapProfiler::QueryObjects`, which isn't exposed in the
+// rusty_v8 bindings; the count form is what Node's leak tests rely on.
+function queryObjects(
+  ctor: { name?: string; prototype?: unknown },
+  options:
+    | { format?: "count" | "summary" }
+    | undefined = undefined,
+) {
+  validateFunction(ctor, "constructor");
+  if (options !== undefined) {
+    validateObject(options, "options");
+    if (options.format !== undefined) {
+      validateOneOf(options.format, "options.format", ["count", "summary"]);
+    }
+  }
+  const format = options?.format;
+
+  const name = typeof ctor.name === "string" ? ctor.name : "";
+  if (name === "") {
+    return format === "count" ? 0 : [];
+  }
+  const count = op_v8_query_objects_count(name);
+  if (format === "count") {
+    return count;
+  }
+  if (format === "summary") {
+    if (count === 0) return [];
+    return [`${count} instance(s) of ${name}`];
+  }
+  // Default format returns live object handles, which would require V8's
+  // `HeapProfiler::QueryObjects` (not exposed in rusty_v8). Returning an
+  // empty array keeps the signature sensible.
+  return [];
 }
 
 // deno-lint-ignore no-explicit-any
@@ -396,6 +436,7 @@ return {
   getHeapSnapshot,
   getHeapSpaceStatistics,
   getHeapStatistics,
+  queryObjects,
   setFlagsFromString,
   stopCoverage,
   takeCoverage,
