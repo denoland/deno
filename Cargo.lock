@@ -2161,6 +2161,7 @@ version = "0.400.0"
 dependencies = [
  "anyhow",
  "az",
+ "base64 0.22.1",
  "bencher",
  "bincode",
  "bit-set",

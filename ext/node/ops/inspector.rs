@@ -118,8 +118,15 @@ pub fn op_inspector_emit_protocol_event(
   let needs_initiator = event_name == "Network.requestWillBeSent"
     || event_name == "Network.webSocketCreated";
   let needs_has_post_data = event_name == "Network.requestWillBeSent";
+  let needs_capture = matches!(
+    event_name.as_str(),
+    "Network.requestWillBeSent"
+      | "Network.responseReceived"
+      | "Network.dataReceived"
+      | "Network.dataSent"
+  );
 
-  if !needs_initiator && !needs_has_post_data {
+  if !needs_initiator && !needs_has_post_data && !needs_capture {
     inspector.broadcast_to_sessions(&event_name, &params);
     return;
   }
@@ -145,6 +152,10 @@ pub fn op_inspector_emit_protocol_event(
     request
       .entry("hasPostData")
       .or_insert(serde_json::Value::Bool(false));
+  }
+
+  if needs_capture {
+    inspector.capture_network_event(&event_name, &parsed);
   }
 
   let augmented = serde_json::to_string(&parsed).unwrap();
