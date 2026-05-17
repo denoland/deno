@@ -14,6 +14,7 @@ export const {
   writeHeapSnapshot,
   serialize,
   deserialize,
+  GCProfiler,
   Serializer,
   Deserializer,
   DefaultSerializer,

@@ -8,7 +8,7 @@
 
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
-const { ObjectPrototypeToString, SymbolSpecies } = primordials;
+const { ObjectPrototypeToString, SymbolDispose, SymbolSpecies } = primordials;
 const {
   op_v8_cached_data_version_tag,
   op_v8_get_heap_code_statistics,
@@ -35,6 +35,9 @@ const {
   op_v8_write_uint32,
   op_v8_write_uint64,
   op_v8_write_value,
+  op_v8_gc_profiler_new,
+  op_v8_gc_profiler_start,
+  op_v8_gc_profiler_stop,
 } = core.ops;
 
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
@@ -356,6 +359,46 @@ function arrayBufferViewIndexToType(index: number): any {
   return undefined;
 }
 
+const kGCHandle = Symbol("kGCHandle");
+const kGCStartTime = Symbol("kGCStartTime");
+
+class GCProfiler {
+  [kGCHandle]: object | null = null;
+  [kGCStartTime]: number = 0;
+
+  start() {
+    if (this[kGCHandle] !== null) return;
+    const handle = op_v8_gc_profiler_new();
+    this[kGCStartTime] = Date.now();
+    op_v8_gc_profiler_start(handle);
+    this[kGCHandle] = handle;
+  }
+
+  stop() {
+    const handle = this[kGCHandle];
+    if (handle === null) return undefined;
+    this[kGCHandle] = null;
+    const endTime = Date.now();
+    const result = op_v8_gc_profiler_stop(handle);
+    if (result === null) return undefined;
+    return {
+      version: 1,
+      startTime: this[kGCStartTime],
+      endTime,
+      statistics: result.statistics,
+    };
+  }
+
+  [SymbolDispose]() {
+    const handle = this[kGCHandle];
+    if (handle === null) return undefined;
+    this[kGCHandle] = null;
+    // Ignore the report; dispose() must return undefined.
+    op_v8_gc_profiler_stop(handle);
+    return undefined;
+  }
+}
+
 class DefaultDeserializer extends Deserializer {
   constructor(buffer: ArrayBufferView) {
     super(buffer);
@@ -402,6 +445,7 @@ return {
   writeHeapSnapshot,
   serialize,
   deserialize,
+  GCProfiler,
   Serializer,
   Deserializer,
   DefaultSerializer,

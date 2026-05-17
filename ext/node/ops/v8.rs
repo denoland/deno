@@ -1,6 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ffi::c_void;
 use std::ptr::NonNull;
+use std::rc::Rc;
+use std::time::Instant;
 
 use deno_core::FastString;
 use deno_core::GarbageCollected;
@@ -464,4 +469,357 @@ pub fn op_v8_read_value<'s>(
   let context = scope.get_current_context();
   let val = deser.inner.read_value(context);
   val.unwrap_or_else(|| v8::null(scope).into())
+}
+
+// --- GCProfiler -----------------------------------------------------------
+//
+// Implements `v8.GCProfiler`, a thin per-instance recorder that hooks the
+// V8 GC prologue/epilogue callbacks. Each active profiler captures heap and
+// heap-space statistics on every GC and records the wall-clock cost.
+
+#[derive(Default)]
+struct GcProfilerRegistryInner {
+  next_id: u64,
+  // Profilers that have been started but not yet stopped.
+  profilers: HashMap<u64, GcProfilerState>,
+  callbacks_registered: bool,
+}
+
+struct GcProfilerRegistry {
+  inner: Rc<RefCell<GcProfilerRegistryInner>>,
+}
+
+struct GcProfilerState {
+  pending_before: Option<GcSnapshot>,
+  pending_start: Option<Instant>,
+  statistics: Vec<GcStat>,
+}
+
+#[derive(Clone)]
+struct GcSnapshot {
+  // total_heap_size, total_heap_size_executable, total_physical_size,
+  // total_available_size, used_heap_size, heap_size_limit,
+  // malloced_memory, peak_malloced_memory,
+  // total_global_handles_size, used_global_handles_size, external_memory.
+  heap: [f64; 11],
+  spaces: Vec<HeapSpaceSnapshot>,
+}
+
+#[derive(Clone)]
+struct HeapSpaceSnapshot {
+  name: String,
+  size: f64,
+  used_size: f64,
+  available_size: f64,
+  physical_size: f64,
+}
+
+struct GcStat {
+  gc_type: &'static str,
+  // Cost in nanoseconds (matches Node.js).
+  cost_ns: f64,
+  before: GcSnapshot,
+  after: GcSnapshot,
+}
+
+fn gc_type_name(gc_type: v8::GCType) -> &'static str {
+  // V8 callbacks may surface combined flags (e.g. kGCTypeIncrementalMarking |
+  // kGCTypeMarkSweepCompact). Pick the lowest-priority single bit so the
+  // returned label is stable and informative.
+  match gc_type {
+    v8::GCType::kGCTypeScavenge => "Scavenge",
+    v8::GCType::kGCTypeMinorMarkSweep => "MinorMarkSweep",
+    v8::GCType::kGCTypeMarkSweepCompact => "MarkSweepCompact",
+    v8::GCType::kGCTypeIncrementalMarking => "IncrementalMarking",
+    v8::GCType::kGCTypeProcessWeakCallbacks => "ProcessWeakCallbacks",
+    v8::GCType::kGCTypeAll => "All",
+    _ => "Unknown",
+  }
+}
+
+fn capture_snapshot(isolate: &mut v8::Isolate) -> GcSnapshot {
+  let h = isolate.get_heap_statistics();
+  let heap = [
+    h.total_heap_size() as f64,
+    h.total_heap_size_executable() as f64,
+    h.total_physical_size() as f64,
+    h.total_available_size() as f64,
+    h.used_heap_size() as f64,
+    h.heap_size_limit() as f64,
+    h.malloced_memory() as f64,
+    h.peak_malloced_memory() as f64,
+    h.total_global_handles_size() as f64,
+    h.used_global_handles_size() as f64,
+    h.external_memory() as f64,
+  ];
+  let nspaces = isolate.number_of_heap_spaces();
+  let mut spaces = Vec::with_capacity(nspaces);
+  for i in 0..nspaces {
+    if let Some(s) = isolate.get_heap_space_statistics(i) {
+      spaces.push(HeapSpaceSnapshot {
+        name: s.space_name().to_string_lossy().into_owned(),
+        size: s.space_size() as f64,
+        used_size: s.space_used_size() as f64,
+        available_size: s.space_available_size() as f64,
+        physical_size: s.physical_space_size() as f64,
+      });
+    }
+  }
+  GcSnapshot { heap, spaces }
+}
+
+fn registry_rc(
+  isolate: &v8::Isolate,
+) -> Option<Rc<RefCell<GcProfilerRegistryInner>>> {
+  isolate
+    .get_slot::<GcProfilerRegistry>()
+    .map(|r| r.inner.clone())
+}
+
+extern "C" fn gc_prologue_callback(
+  isolate: v8::UnsafeRawIsolatePtr,
+  _gc_type: v8::GCType,
+  _flags: v8::GCCallbackFlags,
+  _data: *mut c_void,
+) {
+  // SAFETY: V8 guarantees the isolate is valid during this callback.
+  let mut isolate =
+    unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate) };
+  let Some(rc) = registry_rc(&isolate) else {
+    return;
+  };
+  // Bail out fast if no profilers are active so we don't capture heap
+  // statistics on every GC unnecessarily.
+  if rc.borrow().profilers.is_empty() {
+    return;
+  }
+  let snapshot = capture_snapshot(&mut isolate);
+  let now = Instant::now();
+  let mut inner = rc.borrow_mut();
+  for state in inner.profilers.values_mut() {
+    state.pending_before = Some(snapshot.clone());
+    state.pending_start = Some(now);
+  }
+}
+
+extern "C" fn gc_epilogue_callback(
+  isolate: v8::UnsafeRawIsolatePtr,
+  gc_type: v8::GCType,
+  _flags: v8::GCCallbackFlags,
+  _data: *mut c_void,
+) {
+  // SAFETY: V8 guarantees the isolate is valid during this callback.
+  let mut isolate =
+    unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate) };
+  let Some(rc) = registry_rc(&isolate) else {
+    return;
+  };
+  if rc.borrow().profilers.is_empty() {
+    return;
+  }
+  let snapshot = capture_snapshot(&mut isolate);
+  let now = Instant::now();
+  let gc_type_str = gc_type_name(gc_type);
+  let mut inner = rc.borrow_mut();
+  for state in inner.profilers.values_mut() {
+    let (Some(before), Some(start)) =
+      (state.pending_before.take(), state.pending_start.take())
+    else {
+      continue;
+    };
+    let cost_ns = now.saturating_duration_since(start).as_nanos() as f64;
+    state.statistics.push(GcStat {
+      gc_type: gc_type_str,
+      cost_ns,
+      before,
+      after: snapshot.clone(),
+    });
+  }
+}
+
+fn ensure_registry(
+  scope: &mut v8::PinScope<'_, '_>,
+) -> Rc<RefCell<GcProfilerRegistryInner>> {
+  if let Some(existing) = scope.get_slot::<GcProfilerRegistry>() {
+    return existing.inner.clone();
+  }
+  let inner = Rc::new(RefCell::new(GcProfilerRegistryInner::default()));
+  scope.set_slot(GcProfilerRegistry {
+    inner: inner.clone(),
+  });
+  inner
+}
+
+fn ensure_callbacks_registered(
+  scope: &mut v8::PinScope<'_, '_>,
+  inner: &Rc<RefCell<GcProfilerRegistryInner>>,
+) {
+  if inner.borrow().callbacks_registered {
+    return;
+  }
+  scope.add_gc_prologue_callback(
+    gc_prologue_callback,
+    std::ptr::null_mut(),
+    v8::GCType::kGCTypeAll,
+  );
+  scope.add_gc_epilogue_callback(
+    gc_epilogue_callback,
+    std::ptr::null_mut(),
+    v8::GCType::kGCTypeAll,
+  );
+  inner.borrow_mut().callbacks_registered = true;
+}
+
+pub struct GcProfilerHandle {
+  id: std::cell::Cell<Option<u64>>,
+}
+
+// SAFETY: GcProfilerHandle has no traceable references.
+unsafe impl GarbageCollected for GcProfilerHandle {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GcProfilerHandle"
+  }
+}
+
+#[op2]
+#[cppgc]
+pub fn op_v8_gc_profiler_new() -> GcProfilerHandle {
+  GcProfilerHandle {
+    id: std::cell::Cell::new(None),
+  }
+}
+
+#[op2(fast)]
+pub fn op_v8_gc_profiler_start(
+  scope: &mut v8::PinScope<'_, '_>,
+  #[cppgc] handle: &GcProfilerHandle,
+) {
+  if handle.id.get().is_some() {
+    return;
+  }
+  let inner = ensure_registry(scope);
+  ensure_callbacks_registered(scope, &inner);
+  let id = {
+    let mut borrow = inner.borrow_mut();
+    let id = borrow.next_id;
+    borrow.next_id = borrow.next_id.wrapping_add(1);
+    borrow.profilers.insert(
+      id,
+      GcProfilerState {
+        pending_before: None,
+        pending_start: None,
+        statistics: Vec::new(),
+      },
+    );
+    id
+  };
+  handle.id.set(Some(id));
+}
+
+#[op2]
+pub fn op_v8_gc_profiler_stop<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  #[cppgc] handle: &GcProfilerHandle,
+) -> v8::Local<'s, v8::Value> {
+  let Some(id) = handle.id.take() else {
+    return v8::null(scope).into();
+  };
+  let Some(inner) = scope
+    .get_slot::<GcProfilerRegistry>()
+    .map(|r| r.inner.clone())
+  else {
+    return v8::null(scope).into();
+  };
+  let state = inner.borrow_mut().profilers.remove(&id);
+  let Some(state) = state else {
+    return v8::null(scope).into();
+  };
+  build_report(scope, &state.statistics).into()
+}
+
+const HEAP_KEYS: &[&str] = &[
+  "totalHeapSize",
+  "totalHeapSizeExecutable",
+  "totalPhysicalSize",
+  "totalAvailableSize",
+  "usedHeapSize",
+  "heapSizeLimit",
+  "mallocedMemory",
+  "peakMallocedMemory",
+  "totalGlobalHandlesSize",
+  "usedGlobalHandlesSize",
+  "externalMemory",
+];
+
+fn build_snapshot<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  snap: &GcSnapshot,
+) -> v8::Local<'s, v8::Object> {
+  let obj = v8::Object::new(scope);
+
+  let heap_stats = v8::Object::new(scope);
+  for (i, key) in HEAP_KEYS.iter().enumerate() {
+    let k = v8::String::new(scope, key).unwrap();
+    let v = v8::Number::new(scope, snap.heap[i]);
+    heap_stats.set(scope, k.into(), v.into());
+  }
+  let k = v8::String::new(scope, "heapStatistics").unwrap();
+  obj.set(scope, k.into(), heap_stats.into());
+
+  let spaces_array = v8::Array::new(scope, snap.spaces.len() as i32);
+  for (i, space) in snap.spaces.iter().enumerate() {
+    let space_obj = v8::Object::new(scope);
+    let k = v8::String::new(scope, "spaceName").unwrap();
+    let name = v8::String::new(scope, &space.name).unwrap();
+    space_obj.set(scope, k.into(), name.into());
+    for (name, value) in [
+      ("spaceSize", space.size),
+      ("spaceUsedSize", space.used_size),
+      ("spaceAvailableSize", space.available_size),
+      ("physicalSpaceSize", space.physical_size),
+    ] {
+      let k = v8::String::new(scope, name).unwrap();
+      let v = v8::Number::new(scope, value);
+      space_obj.set(scope, k.into(), v.into());
+    }
+    spaces_array.set_index(scope, i as u32, space_obj.into());
+  }
+  let k = v8::String::new(scope, "heapSpaceStatistics").unwrap();
+  obj.set(scope, k.into(), spaces_array.into());
+
+  obj
+}
+
+fn build_report<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  stats: &[GcStat],
+) -> v8::Local<'s, v8::Object> {
+  let arr = v8::Array::new(scope, stats.len() as i32);
+  for (i, stat) in stats.iter().enumerate() {
+    let entry = v8::Object::new(scope);
+
+    let k = v8::String::new(scope, "gcType").unwrap();
+    let v = v8::String::new(scope, stat.gc_type).unwrap();
+    entry.set(scope, k.into(), v.into());
+
+    let k = v8::String::new(scope, "cost").unwrap();
+    let v = v8::Number::new(scope, stat.cost_ns);
+    entry.set(scope, k.into(), v.into());
+
+    let before = build_snapshot(scope, &stat.before);
+    let k = v8::String::new(scope, "beforeGC").unwrap();
+    entry.set(scope, k.into(), before.into());
+
+    let after = build_snapshot(scope, &stat.after);
+    let k = v8::String::new(scope, "afterGC").unwrap();
+    entry.set(scope, k.into(), after.into());
+
+    arr.set_index(scope, i as u32, entry.into());
+  }
+  let wrapper = v8::Object::new(scope);
+  let k = v8::String::new(scope, "statistics").unwrap();
+  wrapper.set(scope, k.into(), arr.into());
+  wrapper
 }
