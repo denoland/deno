@@ -354,7 +354,9 @@ impl Drop for ContextifyContext {
 // The tag must be at least pointer-aligned because V8's
 // `SetAlignedPointerInEmbedderData` requires aligned values.
 #[repr(align(8))]
-struct ContextifyTag(u8);
+struct ContextifyTag(
+  #[allow(dead_code, reason = "only its address is used as a sentinel")] u8,
+);
 static CONTEXTIFY_TAG: ContextifyTag = ContextifyTag(0);
 const CONTEXTIFY_TAG_SLOT: i32 = 4;
 const CONTEXTIFY_CTX_SLOT: i32 = 3;
