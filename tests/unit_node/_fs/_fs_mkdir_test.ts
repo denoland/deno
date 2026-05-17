@@ -1,10 +1,27 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import * as path from "@std/path";
-import { assert } from "@std/assert";
+import { assert, assertThrows } from "@std/assert";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { existsSync, mkdir, mkdirSync } from "node:fs";
 
 const tmpDir = "./tmpdir";
+
+function assertNodePermissionError(
+  err: unknown,
+  syscall: string,
+  path?: string,
+) {
+  assert(err instanceof Error);
+  assert(!(err instanceof Deno.errors.NotCapable));
+
+  const nodeErr = err as NodeJS.ErrnoException;
+  assert(nodeErr.code === "EPERM");
+  assert(nodeErr.errno === -1);
+  assert(nodeErr.syscall === syscall);
+  if (path !== undefined) {
+    assert(nodeErr.path === path);
+  }
+}
 
 Deno.test({
   name: "[node/fs] mkdir",
@@ -26,6 +43,16 @@ Deno.test({
     mkdirSync(tmpDir);
     assert(existsSync(tmpDir));
     Deno.removeSync(tmpDir);
+  },
+});
+
+Deno.test({
+  name: "[node/fs] mkdirSync maps denied write permission to Node EPERM",
+  permissions: { write: false },
+  fn: () => {
+    const dir = path.join(Deno.cwd(), "_fs_mkdirSync_denied_write");
+    const err = assertThrows(() => mkdirSync(dir));
+    assertNodePermissionError(err, "mkdir", dir);
   },
 });
 

@@ -83,6 +83,7 @@ const { os: osConstants } = core.loadExtScript(
 const { hideStackFrames } = core.loadExtScript(
   "ext:deno_node/internal/hide_stack_frames.ts",
 );
+const DenoNotCapablePrototype = Deno.errors.NotCapable.prototype;
 
 // Lazy loader for getSystemErrorName to break circular dep with _utils.ts
 let _getSystemErrorName;
@@ -374,7 +375,7 @@ const handleDnsError = hideStackFrames(
       return dnsException(err?.uv_errcode, syscall, address);
     }
 
-    if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, err)) {
+    if (ObjectPrototypeIsPrototypeOf(DenoNotCapablePrototype, err)) {
       return dnsException(codeMap.get("EPERM")!, syscall, address);
     }
 
@@ -3055,12 +3056,24 @@ interface UvExceptionContext {
   path?: string;
   dest?: string;
 }
+
+function denoNotCapableErrorToNodeError(ctx: UvExceptionContext) {
+  return uvException({
+    errno: codeMap.get("EPERM")!,
+    ...ctx,
+  });
+}
+
 function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
   if (ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)) {
     return uvException({
       errno: UV_EBADF,
       ...ctx,
     });
+  }
+
+  if (ObjectPrototypeIsPrototypeOf(DenoNotCapablePrototype, e)) {
+    return denoNotCapableErrorToNodeError(ctx);
   }
 
   const errno = extractOsErrorNumberFromErrorMessage(e);
@@ -3084,6 +3097,10 @@ function denoWriteFileErrorToNodeError(
       errno: UV_EBADF,
       ...ctx,
     });
+  }
+
+  if (ObjectPrototypeIsPrototypeOf(DenoNotCapablePrototype, e)) {
+    return denoNotCapableErrorToNodeError(ctx);
   }
 
   let errno = extractOsErrorNumberFromErrorMessage(e);

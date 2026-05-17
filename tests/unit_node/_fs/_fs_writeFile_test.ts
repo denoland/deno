@@ -29,6 +29,23 @@ const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testDataDir = path.resolve(moduleDir, "testdata");
 const decoder = new TextDecoder("utf-8");
 
+function assertNodePermissionError(
+  err: unknown,
+  syscall: string,
+  path?: string,
+) {
+  assert(err instanceof Error);
+  assert(!(err instanceof Deno.errors.NotCapable));
+
+  const nodeErr = err as NodeJS.ErrnoException;
+  assertEquals(nodeErr.code, "EPERM");
+  assertEquals(nodeErr.errno, -1);
+  assertEquals(nodeErr.syscall, syscall);
+  if (path !== undefined) {
+    assertEquals(nodeErr.path, path);
+  }
+}
+
 Deno.test("Callback must be a function error", function fn() {
   assertThrows(
     () => {
@@ -85,6 +102,16 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
     Error,
     `The argument 'encoding' is invalid encoding. Received 'made-up-encoding'`,
   );
+});
+
+Deno.test({
+  name: "writeFileSync maps denied write permission to Node EPERM",
+  permissions: { write: false },
+  fn() {
+    const file = path.join(Deno.cwd(), "_fs_writeFileSync_denied_write.txt");
+    const err = assertThrows(() => writeFileSync(file, "hello world"));
+    assertNodePermissionError(err, "open", file);
+  },
 });
 
 Deno.test(
