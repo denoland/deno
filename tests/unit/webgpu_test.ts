@@ -256,6 +256,21 @@ Deno.test({
 
 Deno.test({
   ignore: isWsl || isCIWithoutGPU,
+}, async function webgpuRequestDeviceWithEmptyDescriptor() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+
+  const device = await adapter.requestDevice({
+    requiredFeatures: [],
+    requiredLimits: {},
+  });
+  assert(device);
+
+  device.destroy();
+});
+
+Deno.test({
+  ignore: isWsl || isCIWithoutGPU,
 }, async function webgpuNullWindowSurfaceThrows() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
