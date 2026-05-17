@@ -1,4 +1,5 @@
 #!/usr/bin/env -S deno run -A
+// deno-lint-ignore-file no-console
 // Watch CI on a PR, auto-remove failing node_compat tests from config.jsonc,
 // commit and push until green.
 //
@@ -50,7 +51,7 @@ async function getChecks(): Promise<Check[]> {
   });
 }
 
-async function getJobId(url: string): Promise<string | null> {
+function getJobId(url: string): string | null {
   const match = url?.match(/\/job\/(\d+)/);
   return match ? match[1] : null;
 }
@@ -74,7 +75,7 @@ async function getFailedTests(jobId: string): Promise<string[]> {
 }
 
 function removeFromConfig(test: string): boolean {
-  let content = Deno.readTextFileSync(CONFIG);
+  const content = Deno.readTextFileSync(CONFIG);
   const escaped = test.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // single-line entry
   let next = content.replace(
@@ -128,7 +129,7 @@ while (true) {
         );
         continue;
       }
-      const jobId = await getJobId(check.url);
+      const jobId = getJobId(check.url);
       if (!jobId) continue;
       const tests = await getFailedTests(jobId);
       for (const t of tests) {
