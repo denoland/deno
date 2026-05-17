@@ -913,6 +913,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
 }
 
 function isRequestKnownEmpty(req) {
+  if (req.method === "HEAD") return true;
   return req.headers["content-length"] === undefined &&
     req.headers["transfer-encoding"] === undefined;
 }
