@@ -3194,7 +3194,7 @@ pub fn wrap_eval_code(source_code: &str) -> String {
     process.getBuiltinModule("module").builtinModules
       .filter((m) => !/\/|crypto|process|_tls_common/.test(m))
       .forEach((m) => {{ globalThis[m] = process.getBuiltinModule(m); }}),
-    process.getBuiltinModule("vm").runInThisContext({})
+    process.getBuiltinModule("vm").runInThisContext({}, {{ filename: "[eval]" }})
   )"#,
     json_escaped
   )
@@ -3459,6 +3459,19 @@ pub fn translate_to_deno_args(
   // Handle --pending-deprecation (pass to NODE_OPTIONS)
   if env_opts.pending_deprecation {
     node_options.push("--pending-deprecation".to_string());
+  }
+
+  // Forward --require/--import modules to Deno's run subcommand so that
+  // child_process.spawnSync(process.execPath, ['-r', wrapper, main])
+  // (the pattern Node.js compat tests use) actually preloads the wrapper
+  // before evaluating the main script.
+  for module in &env_opts.preload_cjs_modules {
+    deno_args.push("--require".to_string());
+    deno_args.push(module.clone());
+  }
+  for module in &env_opts.preload_esm_modules {
+    deno_args.push("--import".to_string());
+    deno_args.push(module.clone());
   }
 
   // Add the script and remaining args
