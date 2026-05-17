@@ -4367,23 +4367,28 @@
     "abort/test-abort-fatal-error.js": {
       "linux": false,
       "darwin": false,
+      "reason": "expression evaluated to a falsy value",
       "reason": "expression evaluated to a falsy value"
     },
     "abort/test-abort-uncaught-exception.js": {
       "windows": false,
+      "reason": "Expected values to be strictly equal",
       "reason": "Expected values to be strictly equal"
     },
     "abort/test-process-abort-exitcode.js": {
       "windows": false,
+      "reason": "Expected values to be strictly equal",
       "reason": "Expected values to be strictly equal"
     },
     "abort/test-signal-handler.js": {
       "linux": false,
       "darwin": false,
+      "reason": "causeSegfault is not a function",
       "reason": "causeSegfault is not a function"
     },
     "abort/test-worker-abort-uncaught-exception.js": {
       "windows": false,
+      "reason": "Expected values to be strictly equal",
       "reason": "Expected values to be strictly equal"
     },
     "client-proxy/test-http-proxy-request-invalid-char-in-options.mjs": {},
@@ -4396,6 +4401,7 @@
     "es-module/test-esm-json.mjs": {},
     "es-module/test-esm-long-path-win.js": {
       "windows": false,
+      "reason": "Cannot find module",
       "reason": "Cannot find module"
     },
     "es-module/test-esm-namespace.mjs": {},
@@ -4408,16 +4414,19 @@
     "es-module/test-vm-synthetic-module-leak.js": {},
     "internet/test-dgram-broadcast-multi-process.js": {
       "darwin": false,
+      "reason": "Responses were not received within 5000 ms",
       "reason": "Responses were not received within 5000 ms"
     },
     "internet/test-dgram-connect.js": {},
     "internet/test-dgram-multicast-multi-process.js": {
       "darwin": false,
+      "reason": "Responses were not received within 5000 ms",
       "reason": "Responses were not received within 5000 ms"
     },
     "internet/test-dgram-multicast-set-interface-lo.js": {},
     "internet/test-dgram-multicast-ssm-multi-process.js": {
       "darwin": false,
+      "reason": "Responses were not received within 5000 ms",
       "reason": "Responses were not received within 5000 ms"
     },
     "internet/test-dns-any.js": {},
@@ -4432,6 +4441,7 @@
     "internet/test-http2-issue-32922.js": {},
     "internet/test-https-autoselectfamily-slow-timeout.js": {
       "linux": false,
+      "reason": "AggregateError",
       "reason": "AggregateError"
     },
     "internet/test-net-autoselectfamily-events-failure.js": {},
@@ -4439,6 +4449,7 @@
     "internet/test-net-autoselectfamily-timeout-close.js": {
       "windows": false,
       "darwin": false,
+      "reason": "times out",
       "reason": "times out"
     },
     "internet/test-net-connect-timeout.js": {},
@@ -4454,36 +4465,44 @@
     "parallel/test-asyncresource-bind.js": {},
     "parallel/test-child-process-exec-any-shells-windows.js": {
       "windows": false,
+      "reason": "Command failed",
       "reason": "Command failed"
     },
     "parallel/test-child-process-exec-encoding.js": {
       "windows": false,
+      "reason": "Command failed",
       "reason": "Command failed"
     },
     "parallel/test-child-process-fork-closed-channel-segfault.js": {
       "linux": false,
       "windows": false,
+      "reason": "times out",
       "reason": "times out"
     },
     "parallel/test-child-process-http-socket-leak.js": {
       "windows": false,
+      "reason": "Expected values to be strictly equal",
       "reason": "Expected values to be strictly equal"
     },
     "parallel/test-child-process-pipe-dataflow.js": {
       "linux": false,
       "darwin": false,
+      "reason": "times out",
       "reason": "times out"
     },
     "parallel/test-child-process-server-close.js": {
       "windows": false,
+      "reason": "times out",
       "reason": "times out"
     },
     "parallel/test-child-process-spawn-windows-batch-file.js": {
       "windows": false,
+      "reason": "'.' is not recognized as an internal or external command,",
       "reason": "'.' is not recognized as an internal or external command,"
     },
     "parallel/test-child-process-stdio-reuse-readable-stdio.js": {
       "darwin": false,
+      "reason": "Expected values to be strictly equal",
       "reason": "Expected values to be strictly equal"
     },
     "parallel/test-child-process-windows-hide.js": {},
@@ -4491,26 +4510,31 @@
     "parallel/test-cluster-dgram-1.js": {
       "linux": false,
       "darwin": false,
+      "reason": "times out",
       "reason": "times out"
     },
     "parallel/test-cluster-dgram-2.js": {
       "linux": false,
       "darwin": false,
+      "reason": "times out",
       "reason": "times out"
     },
     "parallel/test-cluster-dgram-bind-fd.js": {
       "linux": false,
       "darwin": false,
+      "reason": "times out",
       "reason": "times out"
     },
     "parallel/test-cluster-dgram-reuseport.js": {
       "linux": false,
       "darwin": false,
+      "reason": "times out",
       "reason": "times out"
     },
     "parallel/test-cluster-disconnect-unshared-udp.js": {
       "linux": false,
       "darwin": false,
+      "reason": "times out",
       "reason": "times out"
     },
     "parallel/test-cluster-http-pipe.js": {},
@@ -4523,30 +4547,36 @@
     "parallel/test-cwd-enoent-improved-message.js": {
       "linux": false,
       "darwin": false,
+      "reason": "error: Uncaught (in promise) AssertionError: Expected values to be strictly deep",
       "reason": "error: Uncaught (in promise) AssertionError: Expected values to be strictly deep"
     },
     "parallel/test-cwd-enoent-preload.js": {
       "linux": false,
       "darwin": false,
+      "reason": "Expected values to be strictly equal",
       "reason": "Expected values to be strictly equal"
     },
     "parallel/test-cwd-enoent.js": {
       "linux": false,
       "darwin": false,
+      "reason": "Expected values to be strictly equal",
       "reason": "Expected values to be strictly equal"
     },
     "parallel/test-debug-process.js": {
       "windows": false,
+      "reason": "Expected values to be strictly equal",
       "reason": "Expected values to be strictly equal"
     },
     "parallel/test-dgram-bind-fd-error.js": {
       "linux": false,
       "darwin": false,
+      "reason": "error: Uncaught AssertionError: Missing expected exception (Error).",
       "reason": "error: Uncaught AssertionError: Missing expected exception (Error)."
     },
     "parallel/test-dgram-bind-fd.js": {
       "linux": false,
       "darwin": false,
+      "reason": "Expected values to be strictly equal",
       "reason": "Expected values to be strictly equal"
     },
     "parallel/test-dgram-cluster-bind-error.js": {},
@@ -4555,6 +4585,7 @@
     "parallel/test-dgram-create-socket-handle-fd.js": {
       "linux": false,
       "darwin": false,
+      "reason": "Expected values to be strictly equal",
       "reason": "Expected values to be strictly equal"
     },
     "parallel/test-dgram-unref-in-cluster.js": {},
@@ -4571,6 +4602,7 @@
     "parallel/test-dummy-stdio.js": {
       "linux": false,
       "darwin": false,
+      "reason": "resetStdioForTesting is not a function",
       "reason": "resetStdioForTesting is not a function"
     },
     "parallel/test-errors-systemerror-frozen-intrinsics.js": {},
@@ -4589,30 +4621,39 @@
     "parallel/test-file-write-stream4.js": {},
     "parallel/test-fileurltopathbuffer.js": {
       "linux": false,
+      "reason": "fileURLToPathBuffer is not a function",
       "reason": "fileURLToPathBuffer is not a function"
     },
     "parallel/test-fs-read-position-validation.mjs": {},
     "parallel/test-fs-read-promises-position-validation.mjs": {},
     "parallel/test-fs-readdir-ucs2.js": {
       "linux": false,
+      "reason": "error: Uncaught (in promise) AssertionError: Expected values to be strictly deep",
       "reason": "error: Uncaught (in promise) AssertionError: Expected values to be strictly deep"
     },
     "parallel/test-fs-readfile-eof.js": {
       "linux": false,
       "darwin": false,
+      "reason": "Command failed",
       "reason": "Command failed"
     },
     "parallel/test-fs-realpath-on-substed-drive.js": {
       "windows": false,
+      "reason": "Expected values to be strictly equal",
       "reason": "Expected values to be strictly equal"
     },
-    "parallel/test-fs-rmdir-throws-on-file.js": { "windows": false },
+    "parallel/test-fs-rmdir-throws-on-file.js": {
+      "windows": false,
+      "reason": "error: Uncaught (in promise) AssertionError: Expected values to be strictly deep"
+    },
     "parallel/test-fs-stat-date.mjs": {
       "darwin": false,
+      "reason": "error: Uncaught (in promise) AssertionError: expected -40691 \u00b1 1.000000000000000",
       "reason": "error: Uncaught (in promise) AssertionError: expected -40691 \u00b1 1.000000000000000"
     },
     "parallel/test-fs-watch-close-when-destroyed.js": {
       "windows": false,
+      "reason": "times out",
       "reason": "times out"
     },
     "parallel/test-fs-watch-recursive-add-file-with-url.js": {},
@@ -4620,6 +4661,7 @@
     "parallel/test-fs-watch-recursive-assert-leaks.js": {},
     "parallel/test-fs-watch-recursive-symlink.js": {
       "linux": false,
+      "reason": "error: Uncaught (in promise) AssertionError: Received symlink-folder/tracking-fo",
       "reason": "error: Uncaught (in promise) AssertionError: Received symlink-folder/tracking-fo"
     },
     "parallel/test-fs-watch-recursive-sync-write.js": {},
@@ -4627,12 +4669,14 @@
     "parallel/test-fs-watchfile-bigint.js": {},
     "parallel/test-fs-write-file-sync.js": {
       "windows": false,
+      "reason": "Expected values to be strictly equal",
       "reason": "Expected values to be strictly equal"
     },
     "parallel/test-fs-write-reuse-callback.js": {},
     "parallel/test-fs-write-sigxfsz.js": {
       "linux": false,
       "darwin": false,
+      "reason": "expression evaluated to a falsy value",
       "reason": "expression evaluated to a falsy value"
     },
     "parallel/test-fs-write.js": {},
@@ -4644,6 +4688,7 @@
     "parallel/test-http-client-abort-keep-alive-queued-unix-socket.js": {},
     "parallel/test-http-client-keep-alive-release-before-finish.js": {
       "windows": false,
+      "reason": "error: Uncaught Error: read ECONNRESET",
       "reason": "error: Uncaught Error: read ECONNRESET"
     },
     "parallel/test-http-client-parse-error.js": {},
@@ -4652,6 +4697,7 @@
     "parallel/test-http-client-with-create-connection.js": {},
     "parallel/test-http-keep-alive-empty-line.mjs": {
       "windows": false,
+      "reason": "error: Uncaught Error: read ECONNRESET",
       "reason": "error: Uncaught Error: read ECONNRESET"
     },
     "parallel/test-http-localaddress.js": {},
@@ -4659,6 +4705,7 @@
     "parallel/test-http-pipeline-requests-connection-leak.js": {
       "linux": false,
       "darwin": false,
+      "reason": "error: Uncaught Error: read ECONNRESET",
       "reason": "error: Uncaught Error: read ECONNRESET"
     },
     "parallel/test-http-request-lookup-error-catchable.js": {},
@@ -4668,7 +4715,6 @@
     "parallel/test-http-server-headers-timeout-delayed-headers.js": {},
     "parallel/test-http-server-headers-timeout-interrupted-headers.js": {},
     "parallel/test-http-server-headers-timeout-pipelining.js": {},
-    "parallel/test-http-server-keepalive-req-gc.js": {},
     "parallel/test-http-server-multiple-client-error.js": {},
     "parallel/test-http-server-request-timeout-delayed-body.js": {},
     "parallel/test-http-server-request-timeout-delayed-headers.js": {},
@@ -4677,6 +4723,7 @@
     "parallel/test-http-set-timeout-server.js": {},
     "parallel/test-http-timeout-client-warning.js": {
       "windows": false,
+      "reason": "expression evaluated to a falsy value",
       "reason": "expression evaluated to a falsy value"
     },
     "parallel/test-http-upgrade-advertise.js": {},
@@ -4696,6 +4743,7 @@
     "parallel/test-http2-options-max-reserved-streams.js": {},
     "parallel/test-http2-pipe-named-pipe.js": {
       "windows": false,
+      "reason": "times out",
       "reason": "times out"
     },
     "parallel/test-http2-premature-close.js": {},
@@ -4723,6 +4771,7 @@
     "parallel/test-inspector-exit-worker-in-wait-for-connection.js": {
       "linux": false,
       "windows": false,
+      "reason": "times out",
       "reason": "times out"
     },
     "parallel/test-inspector-has-inspector-false.js": {},
@@ -4731,22 +4780,26 @@
     "parallel/test-listen-fd-cluster.js": {
       "linux": false,
       "darwin": false,
+      "reason": "Cluster listen fd test runner",
       "reason": "Cluster listen fd test runner"
     },
     "parallel/test-listen-fd-server.js": {
       "linux": false,
       "darwin": false,
+      "reason": "linux: server listening on 36155; darwin: server listening on 51593",
       "reason": "linux: server listening on 36155; darwin: server listening on 51593"
     },
     "parallel/test-module-builtin.js": {},
     "parallel/test-net-better-error-messages-path.js": {
       "windows": false,
+      "reason": "error: Uncaught AssertionError: Expected values to be strictly deep-equal:",
       "reason": "error: Uncaught AssertionError: Expected values to be strictly deep-equal:"
     },
     "parallel/test-net-connect-memleak.js": {},
     "parallel/test-net-connect-nodelay.js": {},
     "parallel/test-net-connect-options-path.js": {
       "windows": false,
+      "reason": "times out",
       "reason": "times out"
     },
     "parallel/test-net-listen-exclusive-random-ports.js": {},
@@ -5146,6 +5199,7 @@
     },
     "wasi/test-return-on-exit.js": {},
     "wasi/test-wasi-not-started.js": {},
-    "wasi/test-wasi-worker-terminate.js": {}
+    "wasi/test-wasi-worker-terminate.js": {},
+      "reason": "error: Uncaught TypeError: The argument 'options' is invalid. Received {"
   }
 }
