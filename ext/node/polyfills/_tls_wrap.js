@@ -981,26 +981,25 @@ TLSSocket.prototype.setServername = function (name) {
   this._handle?.setServername(name);
 };
 
-// Magic prefixes for the synthetic session buffers we emit from
-// onConnectSecure when rustls handles resumption internally. Detecting
-// these on setSession() lets isSessionReused() report true for code that
-// round-trips a session received from our own polyfill (e.g. node_compat
-// tests test-tls-client-resume*).
+// Format prefixes for the synthetic session buffers we emit from
+// onConnectSecure when rustls handles resumption internally. The encoded
+// payload is `${servername ?? host ?? ""}:${port ?? ""}` -- see the
+// matching emit sites in onConnectSecure.
 const SYNTHETIC_SESSION_PREFIXES = [
   "deno-tls12-session:",
-  "deno-tls13-session-ticket-",
+  "deno-tls13-session-ticket-1:",
+  "deno-tls13-session-ticket-2:",
   "deno-tls13-dummy-session:",
 ];
 
-function isSyntheticSession(buf) {
-  if (!buf) return false;
+function syntheticSessionMatches(buf, options) {
+  if (!buf || !options) return false;
+  const sessionKey = `${options.servername ?? options.host ?? ""}:${
+    options.port ?? ""
+  }`;
+  const text = buf.toString("latin1");
   for (const prefix of SYNTHETIC_SESSION_PREFIXES) {
-    if (
-      buf.length >= prefix.length &&
-      buf.subarray(0, prefix.length).toString("latin1") === prefix
-    ) {
-      return true;
-    }
+    if (text === prefix + sessionKey) return true;
   }
   return false;
 }
@@ -1011,11 +1010,16 @@ TLSSocket.prototype.setSession = function (_session) {
   }
   this._session = _session ? Buffer.from(_session) : null;
   // rustls drives session resumption itself; the buffer we hand back from
-  // getSession() is synthetic. If the caller is replaying one of those
-  // synthetic sessions, treat the next handshake as a resume so
-  // isSessionReused() matches Node's behaviour. Opaque buffers from other
-  // sources are left alone -- we can't actually resume them.
-  this._sessionReused = isSyntheticSession(this._session);
+  // getSession() is synthetic and encodes the host:port it was issued for.
+  // Only treat the next handshake as a resume when the caller is replaying
+  // a buffer that matches *this* connection's host:port -- otherwise
+  // accepting any deno-tls*-session prefix would let an attacker skip
+  // checkServerIdentity() in onConnectSecure by forging a session for a
+  // different name.
+  this._sessionReused = syntheticSessionMatches(
+    this._session,
+    this[kConnectOptions],
+  );
 };
 
 TLSSocket.prototype.getPeerCertificate = function (detailed) {
