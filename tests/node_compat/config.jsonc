@@ -182,6 +182,8 @@
     "parallel/test-async-hooks-disable-gc-tracking.js": {},
     "parallel/test-async-hooks-enable-disable.js": {},
     "parallel/test-async-hooks-enabledhooksexits.js": {},
+    "parallel/test-async-hooks-execution-async-resource-await.js": {},
+    "parallel/test-async-hooks-execution-async-resource.js": {},
     "parallel/test-async-hooks-http-agent-destroy.js": {},
     "parallel/test-async-hooks-http-agent.js": {},
     "parallel/test-async-hooks-prevent-double-destroy.js": {},
