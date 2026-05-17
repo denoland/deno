@@ -547,6 +547,7 @@ const UV_ENOMEM = codeMap.get("ENOMEM")!;
 const UV_ENOTSOCK = codeMap.get("ENOTSOCK")!;
 const UV_ETIMEDOUT = codeMap.get("ETIMEDOUT")!;
 const UV_UNKNOWN = codeMap.get("UNKNOWN")!;
+const UV_EOF = codeMap.get("EOF")!;
 
 function errname(errno: number): string {
   const err = errorMap.get(errno);
@@ -588,6 +589,7 @@ return {
   UV_ENOTSOCK,
   UV_ETIMEDOUT,
   UV_UNKNOWN,
+  UV_EOF,
   errname,
   getErrorMessage,
   getErrorMap,
