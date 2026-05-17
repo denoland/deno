@@ -4,6 +4,10 @@
       "args": "run -P=data-read main.ts",
       "output": "read.out"
     },
+    "merge_data_read_with_cli_allowlists": {
+      "args": "run -P=data-read --allow-read=./cli_data --allow-net=localhost:4545 merge.ts",
+      "output": "merge.out"
+    },
     "write": {
       "args": "run -P=data-write main.ts",
       "output": "write.out"

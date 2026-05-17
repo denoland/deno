@@ -1,7 +1,8 @@
 {
   "permissions": {
     "data-read": {
-      "read": ["./data"]
+      "read": ["./data"],
+      "net": ["example.com"]
     },
     "data-write": {
       "write": {

@@ -1636,7 +1636,24 @@ fn flags_to_permissions_options(
     if allow_all_flag {
       Some(vec![])
     } else if let Some(value) = value {
-      Some(value.clone())
+      if value.is_empty() {
+        Some(vec![])
+      } else if let Some(config) = config {
+        match config {
+          PermissionConfigValue::All => Some(vec![]),
+          PermissionConfigValue::Some(items) => {
+            let mut merged = items
+              .iter()
+              .map(|value| parse_config_value(value))
+              .collect::<Vec<_>>();
+            merged.extend(value.iter().cloned());
+            Some(merged)
+          }
+          PermissionConfigValue::None => Some(value.clone()),
+        }
+      } else {
+        Some(value.clone())
+      }
     } else if let Some(config) = config {
       match config {
         PermissionConfigValue::All => Some(vec![]),
@@ -2166,6 +2183,52 @@ mod test {
           deny_import: None,
           prompt: true
         }
+      );
+    }
+    {
+      let flags = PermissionFlags {
+        allow_net: Some(vec!["cli-net-allow".to_string()]),
+        allow_read: Some(vec!["./cli-read-allow".to_string()]),
+        ..Default::default()
+      };
+      let config = PermissionsObjectWithBase {
+        base: deno_path_util::url_from_file_path(&base_dir.join("deno.json"))
+          .unwrap(),
+        permissions: PermissionsObject {
+          read: AllowDenyIgnorePermissionConfig {
+            allow: Some(PermissionConfigValue::Some(vec![
+              "./config-read-allow".to_string(),
+            ])),
+            ..Default::default()
+          },
+          net: AllowDenyPermissionConfig {
+            allow: Some(PermissionConfigValue::Some(vec![
+              "config-net-allow".to_string(),
+            ])),
+            ..Default::default()
+          },
+          ..Default::default()
+        },
+      };
+      let permissions_options =
+        flags_to_permissions_options(&flags, Some(&config)).unwrap();
+      assert_eq!(
+        permissions_options.allow_read,
+        Some(vec![
+          base_dir
+            .join("config-read-allow")
+            .into_os_string()
+            .into_string()
+            .unwrap(),
+          "./cli-read-allow".to_string(),
+        ])
+      );
+      assert_eq!(
+        permissions_options.allow_net,
+        Some(vec![
+          "config-net-allow".to_string(),
+          "cli-net-allow".to_string(),
+        ])
       );
     }
   }
