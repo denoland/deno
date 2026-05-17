@@ -83,7 +83,6 @@ const { os: osConstants } = core.loadExtScript(
 const { hideStackFrames } = core.loadExtScript(
   "ext:deno_node/internal/hide_stack_frames.ts",
 );
-const DenoNotCapablePrototype = Deno.errors.NotCapable.prototype;
 
 // Lazy loader for getSystemErrorName to break circular dep with _utils.ts
 let _getSystemErrorName;
@@ -375,13 +374,17 @@ const handleDnsError = hideStackFrames(
       return dnsException(err?.uv_errcode, syscall, address);
     }
 
-    if (ObjectPrototypeIsPrototypeOf(DenoNotCapablePrototype, err)) {
+    if (isDenoNotCapableError(err)) {
       return dnsException(codeMap.get("EPERM")!, syscall, address);
     }
 
     return denoErrorToNodeError(err, { syscall });
   },
 );
+
+function isDenoNotCapableError(err: Error) {
+  return ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, err);
+}
 
 /**
  * @param code A libuv error number or a c-ares error code
@@ -3072,7 +3075,7 @@ function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
     });
   }
 
-  if (ObjectPrototypeIsPrototypeOf(DenoNotCapablePrototype, e)) {
+  if (isDenoNotCapableError(e)) {
     return denoNotCapableErrorToNodeError(ctx);
   }
 
@@ -3099,7 +3102,7 @@ function denoWriteFileErrorToNodeError(
     });
   }
 
-  if (ObjectPrototypeIsPrototypeOf(DenoNotCapablePrototype, e)) {
+  if (isDenoNotCapableError(e)) {
     return denoNotCapableErrorToNodeError(ctx);
   }
 
