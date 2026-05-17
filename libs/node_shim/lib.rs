@@ -3555,12 +3555,10 @@ fn add_conditions(deno_args: &mut Vec<String>, env_opts: &EnvironmentOptions) {
 /// equivalents. Returns `true` when `--permission` was supplied (so the
 /// caller should skip implicit `-A`).
 ///
-/// `for_eval` enables a `--no-prompt` emission because `deno eval` would
-/// otherwise apply implicit `--allow-all`. The eval subcommand interprets
-/// `--no-prompt` (or any explicit `--allow-*` flag) as "user opted into
-/// the permission model" and skips its implicit allow-all. For `deno run`
-/// permissions default to none, so we only need the explicit allow flags
-/// (and omitting `-A`).
+/// `for_eval` selects between `--permission` (a Deno eval-only flag that
+/// suppresses the implicit `--allow-all`) and run's natural default of no
+/// permissions. The `--permission` flag is needed for eval because eval
+/// applies `allow_all` by default; for `run` we just omit `-A`.
 fn add_permission_flags(
   deno_args: &mut Vec<String>,
   env_opts: &EnvironmentOptions,
@@ -3570,10 +3568,8 @@ fn add_permission_flags(
     return false;
   }
   if for_eval {
-    // Opt out of `deno eval`'s implicit `--allow-all` by enabling Deno's
-    // strict permission mode (`--no-prompt`). Without this, eval would
-    // grant every read regardless of the `--allow-fs-read=...` flags.
-    deno_args.push("--no-prompt".to_string());
+    // Opt out of `deno eval`'s implicit `--allow-all`.
+    deno_args.push("--permission".to_string());
   }
   for path in &env_opts.allow_fs_read {
     deno_args.push(format!("--allow-read={}", path));
@@ -3591,9 +3587,10 @@ fn add_permission_flags(
       deno_args.push(format!("--allow-net={}", spec));
     }
   }
-  // Worker thread permission has no Deno equivalent; threads run with
-  // inherited permissions in Deno, so `env_opts.allow_worker_threads` is
-  // intentionally unmapped.
+  if env_opts.allow_worker_threads {
+    // Worker thread permission has no Deno equivalent; threads run with
+    // inherited permissions in Deno, so this is informational only.
+  }
   true
 }
 
