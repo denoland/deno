@@ -152,6 +152,7 @@ fn v8_init(
     " --no-validate-asm",
     " --turbo_fast_api_calls",
     " --harmony-temporal",
+    " --harmony-shadow-realm",
     " --js-float16array",
     " --js-explicit-resource-management",
     " --js-source-phase-imports",
@@ -276,6 +277,9 @@ pub fn create_isolate(
   );
   isolate.set_host_import_module_with_phase_dynamically_callback(
     bindings::host_import_module_with_phase_dynamically_callback,
+  );
+  isolate.set_host_create_shadow_realm_context_callback(
+    bindings::host_create_shadow_realm_context_callback,
   );
   isolate.set_wasm_async_resolve_promise_callback(
     bindings::wasm_async_resolve_promise_callback,
