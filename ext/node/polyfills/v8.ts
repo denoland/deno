@@ -8,7 +8,13 @@
 
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
-const { ObjectPrototypeToString, SymbolDispose, SymbolSpecies } = primordials;
+const {
+  ArrayPrototypePush,
+  ObjectFreeze,
+  ObjectPrototypeToString,
+  SymbolDispose,
+  SymbolSpecies,
+} = primordials;
 const {
   op_v8_cached_data_version_tag,
   op_v8_get_heap_code_statistics,
@@ -439,6 +445,62 @@ class GCProfiler {
   }
 }
 
+// https://nodejs.org/api/v8.html#startup-snapshot-api
+//
+// Deno does not ship `--build-snapshot` / `--snapshot-blob` for users, so this
+// is an API-surface polyfill that lets modules calling `v8.startupSnapshot`
+// load without errors. `isBuildingSnapshot()` always returns false. The
+// serialize/deserialize callbacks are stored but never invoked because there
+// is no snapshot lifecycle. `setDeserializeMainFunction` invokes the callback
+// synchronously so scripts that register a deserialize main still run their
+// entry point in plain Deno runs.
+// deno-lint-ignore no-explicit-any
+type SnapshotCallback = (data: any) => unknown;
+const serializeCallbacks: { fn: SnapshotCallback; data: unknown }[] = [];
+const deserializeCallbacks: { fn: SnapshotCallback; data: unknown }[] = [];
+let deserializeMainCalled = false;
+
+function startupSnapshotSetDeserializeMainFunction(
+  fn: SnapshotCallback,
+  data?: unknown,
+) {
+  validateFunction(fn, "callback");
+  if (deserializeMainCalled) {
+    throw new Error(
+      "v8.startupSnapshot.setDeserializeMainFunction() can only be called once.",
+    );
+  }
+  deserializeMainCalled = true;
+  fn(data);
+}
+
+function startupSnapshotAddSerializeCallback(
+  fn: SnapshotCallback,
+  data?: unknown,
+) {
+  validateFunction(fn, "callback");
+  ArrayPrototypePush(serializeCallbacks, { fn, data });
+}
+
+function startupSnapshotAddDeserializeCallback(
+  fn: SnapshotCallback,
+  data?: unknown,
+) {
+  validateFunction(fn, "callback");
+  ArrayPrototypePush(deserializeCallbacks, { fn, data });
+}
+
+function startupSnapshotIsBuildingSnapshot() {
+  return false;
+}
+
+const startupSnapshot = ObjectFreeze({
+  setDeserializeMainFunction: startupSnapshotSetDeserializeMainFunction,
+  addSerializeCallback: startupSnapshotAddSerializeCallback,
+  addDeserializeCallback: startupSnapshotAddDeserializeCallback,
+  isBuildingSnapshot: startupSnapshotIsBuildingSnapshot,
+});
+
 class DefaultDeserializer extends Deserializer {
   constructor(buffer: ArrayBufferView) {
     super(buffer);
@@ -481,6 +543,7 @@ return {
   getHeapStatistics,
   queryObjects,
   setFlagsFromString,
+  startupSnapshot,
   stopCoverage,
   takeCoverage,
   writeHeapSnapshot,

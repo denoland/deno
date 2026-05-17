@@ -125,3 +125,37 @@ Deno.test({
     });
   },
 });
+
+Deno.test({
+  name: "startupSnapshot exposes the documented API surface",
+  fn() {
+    assertEquals(typeof v8.startupSnapshot, "object");
+    assertEquals(
+      typeof v8.startupSnapshot.setDeserializeMainFunction,
+      "function",
+    );
+    assertEquals(typeof v8.startupSnapshot.addSerializeCallback, "function");
+    assertEquals(typeof v8.startupSnapshot.addDeserializeCallback, "function");
+    assertEquals(typeof v8.startupSnapshot.isBuildingSnapshot, "function");
+    assertEquals(v8.startupSnapshot.isBuildingSnapshot(), false);
+  },
+});
+
+Deno.test({
+  name:
+    "startupSnapshot.addSerializeCallback and addDeserializeCallback accept callables",
+  fn() {
+    // Storing callbacks must not throw; Deno has no snapshot lifecycle so the
+    // callbacks are never invoked.
+    v8.startupSnapshot.addSerializeCallback(() => {});
+    v8.startupSnapshot.addDeserializeCallback(() => {});
+    assertThrows(() => {
+      // @ts-expect-error testing invalid input
+      v8.startupSnapshot.addSerializeCallback("not a function");
+    });
+    assertThrows(() => {
+      // @ts-expect-error testing invalid input
+      v8.startupSnapshot.addDeserializeCallback(123);
+    });
+  },
+});
