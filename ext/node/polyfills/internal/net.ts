@@ -102,9 +102,6 @@ function makeSyncWrite(fd) {
 }
 
 const kReinitializeHandle = Symbol("kReinitializeHandle");
-const kSetNoDelay = Symbol("kSetNoDelay");
-const kSetKeepAlive = Symbol("kSetKeepAlive");
-const kSetKeepAliveInitialDelay = Symbol("kSetKeepAliveInitialDelay");
 const normalizedArgsSymbol = Symbol("normalizedArgs");
 
 return {
@@ -114,9 +111,6 @@ return {
   getIPFamily,
   makeSyncWrite,
   kReinitializeHandle,
-  kSetKeepAlive,
-  kSetKeepAliveInitialDelay,
-  kSetNoDelay,
   normalizedArgsSymbol,
 };
 })();
