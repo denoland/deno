@@ -4500,11 +4500,198 @@
     "internet/test-net-connect-timeout.js": {},
     "internet/test-net-connect-unref.js": {},
     "internet/test-tls-autoselectfamily-servername.js": {},
-    "module-hooks/test-async-loader-hooks-globalpreload-no-warning-with-initialize.mjs": {},
-    "module-hooks/test-async-loader-hooks-never-settling-race-cjs.mjs": {},
-    "module-hooks/test-async-loader-hooks-never-settling-race-esm.mjs": {},
-    "module-hooks/test-async-loader-hooks-no-leak-internals.mjs": {},
-    "module-hooks/test-async-loader-hooks-with-worker-permission-allowed.mjs": {},
+    "module-hooks/test-async-loader-hooks-called-with-expected-args.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-called-with-register.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-globalpreload-no-warning-with-initialize.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-globalpreload-warning.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-initialize-in-sequence.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-initialize-invoke.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-initialize-never-settling.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-initialize-process-exit.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-initialize-rejecting.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-initialize-throw-null.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-mixed-opt-in.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-never-settling-import-meta-resolve.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-never-settling-load-cjs.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-never-settling-load-esm-no-warning.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-never-settling-load-esm-with-warning.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-never-settling-race-cjs.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-never-settling-race-esm.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-never-settling-resolve-cjs.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-never-settling-resolve-esm-no-warning.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-never-settling-resolve-esm-with-warning.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-no-leak-internals.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-process-exit-async.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-process-exit-sync.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-process-exit-top-level.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-register-with-cjs.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-register-with-import.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-register-with-ports.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-register-with-require.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-register-with-url-parenturl.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-remove-beforeexit-listener.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-require-resolve-default.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-require-resolve-opt-in.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-source-maps-cjs.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-throw-bigint.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-throw-boolean.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-throw-empty-object.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-throw-error.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-throw-function.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-throw-null.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-throw-number.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-throw-object.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-throw-string.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-throw-symbol.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-throw-undefined.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-use-hooks-require-esm.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-with-worker-permission-allowed.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-with-worker-permission-restricted.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
+    "module-hooks/test-async-loader-hooks-without-worker-permission.mjs": {
+      "ignore": true,
+      "reason": "Tests the deprecated `module.register()` async loader hooks API which Deno does not implement"
+    },
     "parallel/test-async-hooks-vm-gc.js": {},
     "parallel/test-async-local-storage-http-parser-leak.js": {},
     "parallel/test-asyncresource-bind.js": {},
