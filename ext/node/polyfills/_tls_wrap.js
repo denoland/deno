@@ -1311,7 +1311,11 @@ Object.setPrototypeOf(Server, net.Server);
 
 Server.prototype.setSecureContext = function (options) {
   validateObject(options, "options");
-  const defaults = getDefaultProtocolVersions();
+  const useVersionDefaults = !options.secureProtocol && !options.minVersion &&
+    !options.maxVersion;
+  const defaults = useVersionDefaults
+    ? getDefaultProtocolVersions()
+    : undefined;
 
   this._sharedCreds = createSecureContext({
     allowPartialTrustChain: options.allowPartialTrustChain,
@@ -1326,8 +1330,8 @@ Server.prototype.setSecureContext = function (options) {
       ? !!options.honorCipherOrder
       : true,
     key: options.key,
-    maxVersion: options.maxVersion ?? defaults.maxVersion,
-    minVersion: options.minVersion ?? defaults.minVersion,
+    maxVersion: options.maxVersion ?? defaults?.maxVersion,
+    minVersion: options.minVersion ?? defaults?.minVersion,
     passphrase: options.passphrase,
     pfx: options.pfx,
     privateKeyEngine: options.privateKeyEngine,
@@ -1472,17 +1476,20 @@ function connect(...args) {
   let options = args[0];
   const cb = args[1];
   const allowUnauthorized = getAllowUnauthorized();
-  const defaults = getDefaultProtocolVersions();
 
   options = {
     rejectUnauthorized: !allowUnauthorized,
     ciphers: DEFAULT_CIPHERS,
     checkServerIdentity,
     minDHSize: 1024,
-    minVersion: defaults.minVersion,
-    maxVersion: defaults.maxVersion,
     ...options,
   };
+
+  if (!options.secureProtocol && !options.minVersion && !options.maxVersion) {
+    const defaults = getDefaultProtocolVersions();
+    options.minVersion = defaults.minVersion;
+    options.maxVersion = defaults.maxVersion;
+  }
 
   if (!options.keepAlive) {
     options.singleUse = true;
