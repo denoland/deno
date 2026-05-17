@@ -10,6 +10,7 @@ export const {
   getHeapStatistics,
   queryObjects,
   setFlagsFromString,
+  startupSnapshot,
   stopCoverage,
   takeCoverage,
   writeHeapSnapshot,

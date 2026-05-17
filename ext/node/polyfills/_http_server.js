@@ -78,6 +78,10 @@ const {
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const {
+  enterAsyncResource,
+  exitAsyncResource,
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { enqueueNodePerformanceEntry } = core.loadExtScript(
   "ext:deno_node/perf_hooks.js",
 );
@@ -865,58 +869,69 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
     });
   }
 
-  let handled = false;
+  // Enter a new async-hooks resource scope for the duration of the request
+  // emission. Each request gets its own resource (the IncomingMessage), so
+  // executionAsyncResource() returns a per-request object that is preserved
+  // across timers, await transitions, etc. Without this, every request would
+  // share the top-level resource and concurrent requests would race on any
+  // state stashed there.
+  const prevAsyncResource = enterAsyncResource(req);
+  try {
+    let handled = false;
 
-  if (req.httpVersionMajor === 1 && req.httpVersionMinor === 1) {
-    if (
-      server.requireHostHeader !== false &&
-      req.headers.host === undefined
-    ) {
-      res.writeHead(400, ["Connection", "close"]);
-      res.end();
-      return 0;
-    }
-
-    const isRequestsLimitSet =
-      typeof server.maxRequestsPerSocket === "number" &&
-      server.maxRequestsPerSocket > 0;
-
-    if (isRequestsLimitSet) {
-      state.requestsCount++;
-      res.maxRequestsOnConnectionReached =
-        server.maxRequestsPerSocket <= state.requestsCount;
-    }
-
-    if (
-      isRequestsLimitSet &&
-      server.maxRequestsPerSocket < state.requestsCount
-    ) {
-      handled = true;
-      server.emit("dropRequest", req, socket);
-      res.writeHead(503);
-      res.end();
-    } else if (req.headers.expect !== undefined) {
-      handled = true;
-
-      if (continueExpression.test(req.headers.expect)) {
-        res._expect_continue = true;
-        if (server.listenerCount("checkContinue") > 0) {
-          server.emit("checkContinue", req, res);
-        } else {
-          res.writeContinue();
-          server.emit("request", req, res);
-        }
-      } else if (server.listenerCount("checkExpectation") > 0) {
-        server.emit("checkExpectation", req, res);
-      } else {
-        res.writeHead(417);
+    if (req.httpVersionMajor === 1 && req.httpVersionMinor === 1) {
+      if (
+        server.requireHostHeader !== false &&
+        req.headers.host === undefined
+      ) {
+        res.writeHead(400, ["Connection", "close"]);
         res.end();
+        return 0;
+      }
+
+      const isRequestsLimitSet =
+        typeof server.maxRequestsPerSocket === "number" &&
+        server.maxRequestsPerSocket > 0;
+
+      if (isRequestsLimitSet) {
+        state.requestsCount++;
+        res.maxRequestsOnConnectionReached =
+          server.maxRequestsPerSocket <= state.requestsCount;
+      }
+
+      if (
+        isRequestsLimitSet &&
+        server.maxRequestsPerSocket < state.requestsCount
+      ) {
+        handled = true;
+        server.emit("dropRequest", req, socket);
+        res.writeHead(503);
+        res.end();
+      } else if (req.headers.expect !== undefined) {
+        handled = true;
+
+        if (continueExpression.test(req.headers.expect)) {
+          res._expect_continue = true;
+          if (server.listenerCount("checkContinue") > 0) {
+            server.emit("checkContinue", req, res);
+          } else {
+            res.writeContinue();
+            server.emit("request", req, res);
+          }
+        } else if (server.listenerCount("checkExpectation") > 0) {
+          server.emit("checkExpectation", req, res);
+        } else {
+          res.writeHead(417);
+          res.end();
+        }
       }
     }
-  }
 
-  if (!handled) {
-    server.emit("request", req, res);
+    if (!handled) {
+      server.emit("request", req, res);
+    }
+  } finally {
+    exitAsyncResource(prevAsyncResource);
   }
 
   return 0;

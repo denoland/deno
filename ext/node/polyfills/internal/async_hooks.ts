@@ -23,6 +23,10 @@ const {
   FunctionPrototypeApply,
   Symbol,
 } = primordials;
+const {
+  AsyncVariable,
+  setAsyncContext,
+} = core;
 
 interface ActiveHooks {
   array: AsyncHook[];
@@ -78,6 +82,33 @@ const executionAsyncIdStack: number[] = [0];
 
 function executionAsyncId(): number {
   return executionAsyncIdStack[executionAsyncIdStack.length - 1] || 0;
+}
+
+// Per-async-context "current resource" tracked via the AsyncVariable
+// machinery (V8 ContinuationPreservedEmbedderData). This propagates across
+// promises and await transitions automatically. The top-level resource is a
+// shared singleton used before any specific resource has been entered.
+// deno-lint-ignore no-explicit-any
+const topLevelResource: any = { __proto__: null };
+// deno-lint-ignore no-explicit-any
+const executionResourceVariable: any = new AsyncVariable();
+
+// deno-lint-ignore no-explicit-any
+function executionAsyncResource(): any {
+  const r = executionResourceVariable.get();
+  return r === undefined ? topLevelResource : r;
+}
+
+// Enter a new "current resource" scope. The returned value is the previous
+// async context snapshot that must be restored by exitAsyncResource.
+// deno-lint-ignore no-explicit-any
+function enterAsyncResource(resource: any): any {
+  return executionResourceVariable.enter(resource);
+}
+
+// deno-lint-ignore no-explicit-any
+function exitAsyncResource(previousContext: any): void {
+  setAsyncContext(previousContext);
 }
 
 // Emit functions that work with the internal hook system
@@ -461,6 +492,9 @@ return {
   emitInit: emitInitNative,
   constants,
   executionAsyncId,
+  executionAsyncResource,
+  enterAsyncResource,
+  exitAsyncResource,
   emitBefore,
   emitAfter,
   emitDestroy,
