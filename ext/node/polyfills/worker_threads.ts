@@ -486,6 +486,12 @@ class NodeWorker extends EventEmitter {
       // Pass as source code for execute_script (sloppy mode).
       // `require` is already available from the Node worker bootstrap.
       // See: https://github.com/denoland/deno/issues/26739
+      //
+      // Wrap the user code in an immediately-invoked function so the
+      // user's top-level `let`/`const`/`function` declarations don't
+      // collide with our `__filename`/`__dirname`/`module`/`exports`
+      // bindings. Assignments to `module.exports` still propagate
+      // because `module` lives in the surrounding scope.
       sourceCode = `var __filename = ${
         // deno-lint-ignore prefer-primordials
         JSON.stringify(process.cwd() + "/[worker eval]")};\n` +
@@ -494,7 +500,9 @@ class NodeWorker extends EventEmitter {
           JSON.stringify(process.cwd())};\n` +
         `var module = { exports: {} };\n` +
         `var exports = module.exports;\n` +
-        code;
+        `(function() {\n` +
+        code +
+        `\n}).call(this);\n`;
       hasSourceCode = true;
       specifier = `data:text/javascript,`;
     } else if (
@@ -949,6 +957,13 @@ internals.__initWorkerThreads = (
   isMainThread = runningOnMainThread;
   internals.__isWorkerThread = !runningOnMainThread;
 
+  // Many Node tests reach for the global `MessageChannel` and
+  // `MessagePort` rather than destructuring them from `worker_threads`.
+  // Repoint the globals to the Node-flavoured class so user code sees
+  // the EventEmitter surface regardless of the import style.
+  globalThis.MessageChannel = MessageChannel;
+  globalThis.MessagePort = MessagePort;
+
   if (isMainThread) {
     resourceLimits = {};
   }
@@ -1017,6 +1032,14 @@ internals.__initWorkerThreads = (
           for (let i = 0; i < metadata.execArgv.length; i++) {
             if (metadata.execArgv[i] === "--trace-warnings") {
               process.traceProcessWarnings = true;
+            } else if (metadata.execArgv[i] === "--expose-gc") {
+              // V8's --expose-gc makes a `globalThis.gc()` available.
+              // Deno doesn't ship V8's GC bindings, so install a no-op
+              // shim -- enough for code that calls `gc()` to make
+              // progress, which is what most node_compat tests expect.
+              if (typeof globalThis.gc !== "function") {
+                globalThis.gc = () => {};
+              }
             }
           }
         }
@@ -1246,9 +1269,11 @@ async function pollCrossThreadMessages() {
     }
     // kMessageKindData - surface to user code as a `workerMessage` event
     // on `process`, then ack with whatever the listeners produced.
+    // Node's `process.on('workerMessage', (value, source) => ...)` gets
+    // the sender thread id as the second argument.
     let status = kAckStatusOk;
     try {
-      process.emit("workerMessage", envelope.payload);
+      process.emit("workerMessage", envelope.payload, envelope.sender);
     } catch {
       status = kAckStatusError;
     }
@@ -1393,12 +1418,11 @@ function postMessageToThread(
     if (timer !== undefined) clearTimeout(timer);
     return PromiseReject(err);
   }
-  // 0 = no such thread (fail fast). 1 = destination has no
-  // `workerMessage` listener -- we still wait so a timeout, if
-  // provided, surfaces as ERR_WORKER_MESSAGING_TIMEOUT rather than
-  // ERR_WORKER_MESSAGING_FAILED, matching Node where the sender
-  // cannot tell ahead of time whether the destination will respond.
-  if (result === 0) {
+  // 0 = no such thread (always fail fast: it'll never come back).
+  // 1 = destination has no `workerMessage` listener; with a timeout
+  // we wait so the caller observes ERR_WORKER_MESSAGING_TIMEOUT, but
+  // without a timeout we fail immediately rather than hang forever.
+  if (result === 0 || (result === 1 && timer === undefined)) {
     pendingThreadMessages.delete(id);
     if (timer !== undefined) clearTimeout(timer);
     return PromiseReject(new ERR_WORKER_MESSAGING_FAILED());
@@ -1493,13 +1517,6 @@ ObjectAssign(exportsObj, {
   SHARE_ENV,
 });
 
-// Node code (including tests) frequently uses the global `MessageChannel`
-// and `MessagePort` symbols rather than destructuring them from
-// `worker_threads`. Once this module loads we redirect the globals to the
-// Node-flavoured class so `new MessageChannel().port1.on('message', ...)`
-// works in either style.
-globalThis.MessageChannel = MessageChannel;
-globalThis.MessagePort = MessagePort;
 
 return exportsObj;
 })();

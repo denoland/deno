@@ -270,6 +270,12 @@ const internalWebstreamsUtil = core.loadExtScript(
 const internalWorkerJsTransferable = core.loadExtScript(
   "ext:deno_node/internal/worker/js_transferable.js",
 );
+const internalWorker = core.loadExtScript(
+  "ext:deno_node/internal/worker.ts",
+);
+const internalWorkerIo = core.loadExtScript(
+  "ext:deno_node/internal/worker/io.ts",
+);
 const internalConsole = core.loadExtScript(
   "ext:deno_node/internal/console/constructor.mjs",
 ).default;
@@ -405,6 +411,8 @@ function setupBuiltinModules() {
     "internal/webstreams/readablestream": internalWebstreamsReadableStream,
     "internal/webstreams/util": internalWebstreamsUtil,
     "internal/worker/js_transferable": internalWorkerJsTransferable,
+    "internal/worker": internalWorker,
+    "internal/worker/io": internalWorkerIo,
     net,
     module: Module,
     os,

@@ -392,6 +392,19 @@ class MessagePort extends _MessagePortBase {
     if (kind === "port") {
       const rid = this[kPortId];
       if (rid !== null) {
+        // Drain queued messages before tearing down the rid so that any
+        // messages already in flight at the moment of close still reach
+        // the listener (matches Node and is what
+        // test-worker-message-port-close-while-receiving asserts).
+        try {
+          while (true) {
+            const data = op_message_port_recv_message_sync(rid);
+            if (data === null) break;
+            dispatchIncoming(this, data);
+          }
+        } catch {
+          // Resource already torn down -- nothing more to drain.
+        }
         core.close(rid);
         this[kPortId] = null;
       }
@@ -782,6 +795,12 @@ function installListenerHooks(port: MessagePort) {
           () => drainPendingMessages(port),
         );
       }
+    } else if (name === "close") {
+      // A 'close' listener also needs the recv loop running so that the
+      // peer-disentangle signal (recv returns null) can be observed and
+      // fire the event. Don't ref the loop -- a sole 'close' listener
+      // should not keep the worker alive.
+      port.start();
     }
   });
   FunctionPrototypeCall(eeOn, port, "removeListener", (name: string) => {
@@ -966,6 +985,19 @@ core.registerTransferableResource(
   nodeMessagePortReceive,
 );
 
+// Subset of Node's `internal/worker/io.js` `messageTypes` enum. Only the
+// values reached for by `tests/node_compat` are listed; new entries can
+// be added as more tests are enabled. Numeric values intentionally match
+// the order in Node's source for the curious.
+const messageTypes = {
+  UP_AND_RUNNING: "upAndRunning",
+  COULD_NOT_SERIALIZE_ERROR: "couldNotSerializeError",
+  ERROR_MESSAGE: "errorMessage",
+  STDIO_PAYLOAD: "stdioPayload",
+  STDIO_WANTS_MORE_DATA: "stdioWantsMoreData",
+  LOAD_SCRIPT: "loadScript",
+};
+
 return {
   MessagePort: PublicMessagePort,
   MessagePortPrototype,
@@ -975,6 +1007,7 @@ return {
   markAsUntransferable,
   isMarkedAsUntransferable,
   markAsUncloneable,
+  messageTypes,
   kPortId,
   kTransportKind,
   kClosed,
