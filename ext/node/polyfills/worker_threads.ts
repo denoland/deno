@@ -644,7 +644,6 @@ class NodeWorker extends EventEmitter {
       switch (type) {
         case 1: { // TerminalError
           this.#status = "CLOSED";
-          this.#closeStdio();
           if (this.listenerCount("error") > 0) {
             const errMsg = data.errorMessage ?? data.message;
             const errName = data.name;
@@ -664,9 +663,11 @@ class NodeWorker extends EventEmitter {
             err.stack = undefined;
             this.emit("error", err);
           }
-          // Drain pending messages before emitting exit so that
-          // all 'message' events fire before 'exit' (Node.js behavior).
+          // Drain pending messages (including queued stdio chunks)
+          // BEFORE closing stdio, otherwise late WORKER_STDOUT messages
+          // would try to push() into an already-ended stream.
           await this.#messageLoopPromise;
+          this.#closeStdio();
           this.resourceLimits = {};
           if (!this.#exited) {
             this.#exited = true;
@@ -681,10 +682,11 @@ class NodeWorker extends EventEmitter {
         case 3: { // Close
           debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
-          this.#closeStdio();
-          // Drain pending messages before emitting exit so that
-          // all 'message' events fire before 'exit' (Node.js behavior).
+          // Drain pending messages (including queued stdio chunks)
+          // BEFORE closing stdio so all data still reaches the host
+          // stdout/stderr streams.
           await this.#messageLoopPromise;
+          this.#closeStdio();
           this.resourceLimits = {};
           if (!this.#exited) {
             this.#exited = true;
@@ -1114,6 +1116,32 @@ internals.__initWorkerThreads = (
       };
       const pipeStdout = !!metaInner.hasStdout;
       const pipeStderr = !!metaInner.hasStderr;
+
+      // Deno's globalThis.console is the Web Console implementation,
+      // which writes via `core.print` rather than `process.stdout.write`.
+      // That bypasses our pipe hook, so when the host requested piping we
+      // swap in Node's `Console` class -- whose methods funnel through
+      // `process.stdout.write` / `process.stderr.write`, which we've
+      // overridden below to post WORKER_STDOUT/WORKER_STDERR messages
+      // back to the parent.
+      if (pipeStdout || pipeStderr) {
+        try {
+          const nodeConsoleMod = core.loadExtScript(
+            "ext:deno_node/internal/console/constructor.mjs",
+          );
+          const NodeConsole = nodeConsoleMod.Console ??
+            nodeConsoleMod.default?.Console ?? nodeConsoleMod.default;
+          if (typeof NodeConsole === "function") {
+            globalThis.console = new NodeConsole({
+              stdout: process.stdout,
+              stderr: process.stderr,
+            });
+          }
+        } catch {
+          // Console constructor wiring missing -- leave the web console
+          // in place rather than crash the worker.
+        }
+      }
       const origStdoutWrite = FunctionPrototypeBind(
         process.stdout.write,
         process.stdout,
