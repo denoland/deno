@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "entrypoint": {
+      "args": "check --quiet foo.d.ts",
+      "output": "entrypoint.out",
+      "exitCode": 1
+    },
+    "skip_lib_check_dependency": {
+      "args": "check --quiet --config deno.json main.ts",
+      "output": ""
+    }
+  }
+}
