@@ -216,7 +216,10 @@ function buildPeerLegacyCertificate(socket) {
       current.issuerCertificate = issuer;
       current = issuer;
     }
-    current = completePeerCertificateChainFromCA(current, getContextCAValue(socket));
+    current = completePeerCertificateChainFromCA(
+      current,
+      getContextCAValue(socket),
+    );
     // Self-signed root: issuerCertificate points to itself (matches Node.js)
     if (
       current.subject && current.issuer &&
