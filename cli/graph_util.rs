@@ -816,11 +816,16 @@ impl ModuleGraphBuilder {
       JsxImportSourceConfigResolver::from_compiler_options_resolver(
         &self.compiler_options_resolver,
       )?;
+    let npm_types_resolution_mode = if self.analyze_npm_sources() {
+      NpmTypesResolutionMode::FallbackToExecution
+    } else {
+      NpmTypesResolutionMode::Strict
+    };
     let graph_resolver = self.resolver.as_graph_resolver(
       self.cjs_tracker.as_ref(),
       &jsx_import_source_config_resolver,
       None,
-      NpmTypesResolutionMode::Strict,
+      npm_types_resolution_mode,
     );
     let maybe_reporter = self.maybe_reporter.as_deref();
     let mut locker = self.lockfile.as_ref().map(|l| l.as_deno_graph_locker());
