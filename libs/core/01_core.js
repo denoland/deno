@@ -704,10 +704,10 @@
 
   const hostObjectBrand = SymbolFor("Deno.core.hostObject");
   const transferableResources = {};
+  // Last-writer-wins. Extensions are loaded in a fixed order, so a later
+  // extension (e.g. ext:deno_node) can intentionally take over a kind
+  // registered by an earlier one (e.g. ext:deno_web "MessagePort").
   const registerTransferableResource = (name, send, receive) => {
-    if (transferableResources[name]) {
-      throw new Error(`${name} is already registered`);
-    }
     transferableResources[name] = { send, receive };
   };
   const getTransferableResource = (name) => transferableResources[name];
