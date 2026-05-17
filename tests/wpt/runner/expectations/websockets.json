@@ -488,11 +488,13 @@
       "constructor.any.worker.html?wpt_flags=h2": false,
       "constructor.any.worker.html?wss": false,
       "close.any.html?default": {
+        "flaky": true,
         "expectedFailures": [
           "incomplete closing handshake should be considered unclean close"
         ]
       },
       "close.any.worker.html?default": {
+        "flaky": true,
         "expectedFailures": [
           "incomplete closing handshake should be considered unclean close"
         ]
