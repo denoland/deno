@@ -31,6 +31,7 @@ import { open as openPromise } from "node:fs/promises";
 import { join, parse } from "node:path";
 
 const tempDir = parse(Deno.makeTempFileSync()).dir;
+const epermErrno = Deno.build.os === "windows" ? -4048 : -1;
 
 function assertNodePermissionError(
   err: unknown,
@@ -42,7 +43,7 @@ function assertNodePermissionError(
 
   const nodeErr = err as NodeJS.ErrnoException;
   assertEquals(nodeErr.code, "EPERM");
-  assertEquals(nodeErr.errno, -1);
+  assertEquals(nodeErr.errno, epermErrno);
   assertEquals(nodeErr.syscall, syscall);
   if (path !== undefined) {
     assertEquals(nodeErr.path, path);

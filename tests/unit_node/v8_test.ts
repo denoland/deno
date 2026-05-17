@@ -2,6 +2,8 @@
 import * as v8 from "node:v8";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 
+const epermErrno = Deno.build.os === "windows" ? -4048 : -1;
+
 // https://github.com/nodejs/node/blob/a2bbe5ff216bc28f8dac1c36a8750025a93c3827/test/parallel/test-v8-version-tag.js#L6
 Deno.test({
   name: "cachedDataVersionTag success",
@@ -71,7 +73,7 @@ Deno.test({
 
     const nodeErr = err as NodeJS.ErrnoException;
     assertEquals(nodeErr.code, "EPERM");
-    assertEquals(nodeErr.errno, -1);
+    assertEquals(nodeErr.errno, epermErrno);
     assertEquals(nodeErr.syscall, "open");
     assertEquals(nodeErr.path, "test.heapsnapshot");
   },

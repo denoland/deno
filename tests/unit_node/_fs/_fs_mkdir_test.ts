@@ -5,6 +5,7 @@ import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { existsSync, mkdir, mkdirSync } from "node:fs";
 
 const tmpDir = "./tmpdir";
+const epermErrno = Deno.build.os === "windows" ? -4048 : -1;
 
 function assertNodePermissionError(
   err: unknown,
@@ -16,7 +17,7 @@ function assertNodePermissionError(
 
   const nodeErr = err as NodeJS.ErrnoException;
   assert(nodeErr.code === "EPERM");
-  assert(nodeErr.errno === -1);
+  assert(nodeErr.errno === epermErrno);
   assert(nodeErr.syscall === syscall);
   if (path !== undefined) {
     assert(nodeErr.path === path);

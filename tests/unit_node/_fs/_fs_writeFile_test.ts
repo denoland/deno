@@ -28,6 +28,7 @@ if (Deno.build.os === "windows") {
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testDataDir = path.resolve(moduleDir, "testdata");
 const decoder = new TextDecoder("utf-8");
+const epermErrno = Deno.build.os === "windows" ? -4048 : -1;
 
 function assertNodePermissionError(
   err: unknown,
@@ -39,7 +40,7 @@ function assertNodePermissionError(
 
   const nodeErr = err as NodeJS.ErrnoException;
   assertEquals(nodeErr.code, "EPERM");
-  assertEquals(nodeErr.errno, -1);
+  assertEquals(nodeErr.errno, epermErrno);
   assertEquals(nodeErr.syscall, syscall);
   if (path !== undefined) {
     assertEquals(nodeErr.path, path);
