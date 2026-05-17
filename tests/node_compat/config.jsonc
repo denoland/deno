@@ -64,7 +64,10 @@
     "es-module/test-esm-wasm-source-phase-dynamic.mjs": {},
     "es-module/test-esm-wasm-source-phase-no-execute.mjs": {},
     "es-module/test-esm-wasm-source-phase-static.mjs": {},
-    "es-module/test-import-preload-require-cycle.js": {},
+    "es-module/test-import-preload-require-cycle.js": {
+      "ignore": true,
+      "reason": "Preload fixture calls module.registerHooks(), which is not implemented yet in Deno (tracked in #34081). The test previously appeared to pass because --import was silently dropped by the node->deno CLI translator; once --import is forwarded properly the preload runs and trips on the missing API."
+    },
     "es-module/test-loaders-hidden-from-users.js": {},
     "es-module/test-require-as-esm-interop.mjs": {},
     "es-module/test-require-module.js": {
@@ -2856,7 +2859,10 @@
     "parallel/test-pipe-stream.js": {},
     "parallel/test-pipe-unref.js": {},
     "parallel/test-pipe-writev.js": {},
-    "parallel/test-preload-self-referential.js": {},
+    "parallel/test-preload-self-referential.js": {
+      "ignore": true,
+      "reason": "Test uses `-r self_ref` to preload a package by its own bare-specifier name, which Deno's --require does not resolve through Node module resolution. The test previously appeared to pass because --require was silently dropped by the node->deno CLI translator; once --require is forwarded properly the resolution failure surfaces."
+    },
     "parallel/test-preload-worker.js": {},
     "parallel/test-primordials-apply.js": {
       "ignore": true,
