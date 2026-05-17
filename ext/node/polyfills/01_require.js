@@ -784,6 +784,290 @@ Module._pathCache = ObjectCreate(null);
 let modulePaths = [];
 Module.globalPaths = modulePaths;
 
+// ---------------------------------------------------------------------------
+// Module customization hooks (`module.register` / `module.registerHooks`).
+//
+// This implements the Node.js loader/customization hooks API surface. The two
+// entry points are siblings:
+//
+//   * `register(specifier, parentURL, options)` - async API. In Node these
+//     hooks run inside a dedicated Worker so that they don't block the main
+//     loader. Deno runs them inline on the main thread; the public shape and
+//     ordering still match. `initialize(data)` is invoked synchronously after
+//     the hooks module is evaluated. The promise returned by `initialize` is
+//     awaited via the microtask queue but the call itself is fire-and-forget
+//     from `register()`'s point of view (matching Node 22+).
+//
+//   * `registerHooks({ load, resolve })` - sync API. Returns an object with
+//     `deregister()` to remove the hook from the chain.
+//
+// `registerHooks()` (sync) and `register()` (async) maintain separate chains.
+// In Node the async chain lives in a dedicated Worker so blocking the main
+// thread waiting on async hooks is implicit; in Deno we evaluate the hooks
+// module on the main thread but only fire the async chain for module loads
+// that can naturally `await` a hook (i.e. ESM `import`, not the synchronous
+// CJS path). The sync chain fires for both CJS and ESM main-thread paths.
+//
+// Each link is `{ resolve?, load?, deregistered? }`. Iteration runs from the
+// most-recently-registered link to the oldest, with `nextResolve`/`nextLoad`
+// advancing toward the default implementation.
+const syncHooksChain = { links: [] };
+const asyncHooksChain = { links: [] };
+
+function callNextHook(chain, kind, link, args) {
+  let idx = ArrayPrototypeIndexOf(chain.links, link) - 1;
+  while (idx >= 0) {
+    const candidate = chain.links[idx];
+    if (!candidate.deregistered && typeof candidate[kind] === "function") {
+      return invokeHook(chain, kind, candidate, args);
+    }
+    idx--;
+  }
+  if (kind === "resolve") {
+    return defaultResolve(args[0], args[1]);
+  }
+  return defaultLoad(args[0], args[1]);
+}
+
+function invokeHook(chain, kind, link, args) {
+  const next = (specifierOrUrl, context) => {
+    return callNextHook(chain, kind, link, [specifierOrUrl, context]);
+  };
+  return link[kind](args[0], args[1] ?? {}, next);
+}
+
+function runResolveChain(chain, specifier, context) {
+  for (let i = chain.links.length - 1; i >= 0; i--) {
+    const link = chain.links[i];
+    if (!link.deregistered && typeof link.resolve === "function") {
+      return invokeHook(chain, "resolve", link, [specifier, context]);
+    }
+  }
+  return defaultResolve(specifier, context);
+}
+
+function runLoadChain(chain, loadUrl, context) {
+  for (let i = chain.links.length - 1; i >= 0; i--) {
+    const link = chain.links[i];
+    if (!link.deregistered && typeof link.load === "function") {
+      return invokeHook(chain, "load", link, [loadUrl, context]);
+    }
+  }
+  return defaultLoad(loadUrl, context);
+}
+
+function defaultResolve(specifier, context) {
+  // For built-in `node:` specifiers, return as-is.
+  if (StringPrototypeStartsWith(specifier, "node:")) {
+    return { url: specifier, format: "builtin", shortCircuit: true };
+  }
+  // The default resolver in Deno's CJS environment goes through the existing
+  // Module._resolveFilename machinery. Callers that hit the hook path provide
+  // the resolved URL/filename themselves; this branch is a safety net.
+  return {
+    url: specifier,
+    format: null,
+    shortCircuit: true,
+    importAttributes: context?.importAttributes ?? {},
+  };
+}
+
+function defaultLoad(loadUrl, _context) {
+  if (StringPrototypeStartsWith(loadUrl, "node:")) {
+    return { format: "builtin", source: null, shortCircuit: true };
+  }
+  return { format: null, source: null, shortCircuit: true };
+}
+
+// State guarding re-entrancy when a hook itself triggers `require()`. Without
+// this, a `require()` inside a `load`/`resolve` hook would recurse into the
+// hook chain and stack-overflow on the very import the user is intercepting.
+let inHookCall = 0;
+function withHookGuard(fn) {
+  inHookCall++;
+  try {
+    return fn();
+  } finally {
+    inHookCall--;
+  }
+}
+
+function syncHooksActive() {
+  return syncHooksChain.links.length > 0 && inHookCall === 0;
+}
+
+// ----- public API -----------------------------------------------------------
+
+function validateString(value, name) {
+  if (typeof value !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(name, "string", value);
+  }
+}
+
+function validateFunction(value, name) {
+  if (typeof value !== "function") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(name, "Function", value);
+  }
+}
+
+function parentURLForRegister(options, parentURLArg) {
+  if (options && typeof options === "object" && "parentURL" in options) {
+    return options.parentURL;
+  }
+  if (typeof parentURLArg === "string") return parentURLArg;
+  if (parentURLArg instanceof URL) return parentURLArg.href;
+  // Per Node, default parent URL is `data:` (a non-file context).
+  return "data:";
+}
+
+/**
+ * Register an async module customization hooks module.
+ *
+ * `specifier` is loaded (resolved against `parentURL`) and any of its
+ * `initialize`, `resolve`, `load` exports are wired into the chain.
+ *
+ * @param {string | URL} specifier
+ * @param {string | URL | object} [parentURL]
+ * @param {{ data?: any, transferList?: any[], parentURL?: string }} [options]
+ * @returns {any} - the return value of `initialize`, if any.
+ */
+function register(specifier, parentURL, options) {
+  if (specifier === undefined || specifier === null) {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(
+      "specifier",
+      ["string", "URL"],
+      specifier,
+    );
+  }
+  // Allow `register(specifier, options)` with the options-object in slot 2.
+  if (
+    parentURL !== undefined &&
+    parentURL !== null &&
+    typeof parentURL === "object" &&
+    !(parentURL instanceof URL) &&
+    options === undefined
+  ) {
+    options = parentURL;
+    parentURL = undefined;
+  }
+  const specifierStr = specifier instanceof URL ? specifier.href : specifier;
+  validateString(specifierStr, "specifier");
+  const parent = parentURLForRegister(options, parentURL);
+
+  // Resolve the specifier against the parent URL.
+  let hooksUrl;
+  try {
+    hooksUrl = new URL(specifierStr, parent).href;
+  } catch {
+    // Bare specifiers - fall back to createRequire(parent).resolve.
+    let resolved;
+    try {
+      const req = createRequire(
+        parent === "data:" ? process.cwd() + "/" : parent,
+      );
+      resolved = req.resolve(specifierStr);
+    } catch {
+      throw new internalErrors.ERR_INVALID_ARG_VALUE(
+        "specifier",
+        specifierStr,
+        "could not be resolved",
+      );
+    }
+    hooksUrl = url.pathToFileURL(resolved).href;
+  }
+
+  // Load the hooks module synchronously so that we can register `resolve` /
+  // `load` before any subsequent imports run. In Node this happens in a
+  // Worker; here we evaluate it on the main thread via `op_import_sync`.
+  // Pre-read the source from disk for `file://` URLs so `op_import_sync`
+  // doesn't need to consult the module graph (the hooks module is typically
+  // not part of the pre-built graph).
+  let namespace;
+  let hookSource;
+  if (StringPrototypeStartsWith(hooksUrl, "file://")) {
+    try {
+      hookSource = op_require_read_file(url.fileURLToPath(hooksUrl));
+    } catch {
+      hookSource = undefined;
+    }
+  }
+  try {
+    namespace = hookSource !== undefined
+      ? op_import_sync(hooksUrl, hookSource)
+      : op_import_sync(hooksUrl);
+  } catch (e) {
+    throw e;
+  }
+
+  const link = {
+    resolve: typeof namespace?.resolve === "function"
+      ? namespace.resolve
+      : undefined,
+    load: typeof namespace?.load === "function" ? namespace.load : undefined,
+    deregistered: false,
+  };
+  ArrayPrototypePush(asyncHooksChain.links, link);
+
+  if (typeof namespace?.initialize === "function") {
+    const data = options?.data;
+    // Match Node: `initialize` is invoked once on registration. We invoke it
+    // eagerly and propagate any synchronous return value; if it returns a
+    // promise we let it run on the microtask queue (errors surface to the
+    // unhandled-rejection handler, as in Node).
+    return namespace.initialize(data);
+  }
+  return undefined;
+}
+
+/**
+ * Register a synchronous module customization hooks object.
+ *
+ * @param {{ resolve?: Function, load?: Function }} hooks
+ * @returns {{ deregister(): void }}
+ */
+function registerHooks(hooks) {
+  if (hooks === null || typeof hooks !== "object") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(
+      "hooks",
+      "object",
+      hooks,
+    );
+  }
+  if (hooks.resolve !== undefined) {
+    validateFunction(hooks.resolve, "hooks.resolve");
+  }
+  if (hooks.load !== undefined) {
+    validateFunction(hooks.load, "hooks.load");
+  }
+  const link = {
+    resolve: hooks.resolve,
+    load: hooks.load,
+    deregistered: false,
+  };
+  ArrayPrototypePush(syncHooksChain.links, link);
+  return {
+    deregister() {
+      link.deregistered = true;
+      // Compact: remove deregistered entries from the tail to keep iteration
+      // tight, but leave middle entries in place so indices stay stable for
+      // any in-flight chain walks.
+      while (
+        syncHooksChain.links.length > 0 &&
+        syncHooksChain.links[syncHooksChain.links.length - 1].deregistered
+      ) {
+        ArrayPrototypeSplice(
+          syncHooksChain.links,
+          syncHooksChain.links.length - 1,
+          1,
+        );
+      }
+    },
+  };
+}
+
+Module.register = register;
+Module.registerHooks = registerHooks;
+
 const CHAR_FORWARD_SLASH = 47;
 const TRAILING_SLASH_REGEX = /(?:^|\/)\.?\.$/;
 
@@ -1108,6 +1392,50 @@ Module._resolveFilename = function (
     );
   }
 
+  // Consult the customization-hooks chain. A resolve hook may rewrite the
+  // request, e.g. redirecting a bare specifier to a file URL.
+  if (syncHooksActive()) {
+    const parentURL = parent?.filename
+      ? url.pathToFileURL(parent.filename).href
+      : undefined;
+    let hookResult;
+    try {
+      hookResult = withHookGuard(() =>
+        runResolveChain(syncHooksChain, request, {
+          parentURL,
+          conditions: ["node", "require"],
+          importAttributes: {},
+        })
+      );
+    } catch (_err) {
+      hookResult = null;
+    }
+    if (
+      hookResult &&
+      typeof hookResult === "object" &&
+      typeof hookResult.url === "string" &&
+      hookResult.url !== request
+    ) {
+      const rewritten = hookResult.url;
+      if (StringPrototypeStartsWith(rewritten, "node:")) {
+        return rewritten;
+      }
+      if (StringPrototypeStartsWith(rewritten, "file://")) {
+        try {
+          return url.fileURLToPath(rewritten);
+        } catch {
+          // fall through to default resolver
+        }
+      } else if (
+        op_require_path_is_absolute(rewritten) ||
+        op_require_is_request_relative(rewritten)
+      ) {
+        // Pass through to default resolver but with the rewritten specifier.
+        request = rewritten;
+      }
+    }
+  }
+
   if (nativeModuleCanBeRequiredByUsers(request)) {
     return request;
   }
@@ -1296,9 +1624,64 @@ Module.prototype.load = function (filename) {
   }
 
   // Canonicalize the path so it's not pointing to the symlinked directory
-  // in `node_modules` directory of the referrer.
-  this.filename = op_require_real_path(filename);
+  // in `node_modules` directory of the referrer. When hooks are active the
+  // resolved filename may point at a synthetic file (created by a resolve
+  // hook redirecting to a non-existent path), so fall back to the original.
+  try {
+    this.filename = op_require_real_path(filename);
+  } catch (err) {
+    if (!syncHooksActive()) throw err;
+    this.filename = filename;
+  }
   this.paths = Module._nodeModulePaths(pathDirname(this.filename));
+
+  // Consult the customization-hooks chain for a `load` hook that wants to
+  // intercept this module. The hook may return its own source so we never
+  // hit disk; or it may return `{ source: null }` to defer to the default
+  // extension handler.
+  if (syncHooksActive()) {
+    const loadUrl = url.pathToFileURL(this.filename).href;
+    let hookResult;
+    try {
+      hookResult = withHookGuard(() =>
+        runLoadChain(syncHooksChain, loadUrl, {
+          format: null,
+          importAttributes: {},
+        })
+      );
+    } catch (_err) {
+      // If the hook chain itself throws, fall through to the default loader.
+      hookResult = null;
+    }
+    if (
+      hookResult &&
+      typeof hookResult === "object" &&
+      hookResult.source !== null &&
+      hookResult.source !== undefined
+    ) {
+      let source = hookResult.source;
+      if (source instanceof ArrayBuffer || ArrayBuffer.isView(source)) {
+        // Bring binary sources back to a string for the CJS compiler.
+        const view = source instanceof ArrayBuffer
+          ? new Uint8Array(source)
+          : new Uint8Array(
+            source.buffer,
+            source.byteOffset,
+            source.byteLength,
+          );
+        source = new TextDecoder().decode(view);
+      }
+      const format = hookResult.format;
+      let compileFormat;
+      if (format === "commonjs") compileFormat = "commonjs";
+      else if (format === "module") compileFormat = "module";
+      else compileFormat = undefined;
+      this._compile(source, this.filename, compileFormat);
+      this.loaded = true;
+      return;
+    }
+  }
+
   const extension = findLongestRegisteredExtension(filename);
   Module._extensions[extension](this, this.filename);
   this.loaded = true;
@@ -2414,6 +2797,8 @@ export {
   getBuiltinModule,
   isBuiltin,
   Module,
+  register,
+  registerHooks,
   SourceMap,
 };
 export const _cache = Module._cache;
