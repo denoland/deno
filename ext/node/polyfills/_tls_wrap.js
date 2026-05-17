@@ -999,7 +999,7 @@ TLSSocket.prototype.getSession = function getSession() {
   if (this._session) return this._session;
   // No 'session' event has been delivered yet, but a NewSessionTicket may
   // have been received and captured.  Return that so callers see the
-  // latest ticket bytes — matches Node's `SSL_get_session` behaviour where
+  // latest ticket bytes - matches Node's `SSL_get_session` behaviour where
   // the SSL_SESSION always reflects the latest server-sent state.
   const ticket = this._handle?.getTLSTicket?.();
   if (ticket && ticket.byteLength > 0) {
