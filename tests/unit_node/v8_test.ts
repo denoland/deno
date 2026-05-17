@@ -69,3 +69,59 @@ Deno.test({
     }, Deno.errors.NotCapable);
   },
 });
+
+Deno.test({
+  name: "queryObjects counts instances by constructor",
+  fn() {
+    class QueryObjectsTestFixture {}
+    const before = v8.queryObjects(QueryObjectsTestFixture, {
+      format: "count",
+    });
+    assertEquals(typeof before, "number");
+    const instances = [];
+    for (let i = 0; i < 50; i++) {
+      instances.push(new QueryObjectsTestFixture());
+    }
+    const after = v8.queryObjects(QueryObjectsTestFixture, {
+      format: "count",
+    });
+    assertEquals(after - before >= 50, true);
+
+    const summary = v8.queryObjects(QueryObjectsTestFixture, {
+      format: "summary",
+    });
+    assertEquals(Array.isArray(summary), true);
+    assertEquals((summary as string[]).length, 1);
+    assertEquals(
+      (summary as string[])[0].includes("QueryObjectsTestFixture"),
+      true,
+    );
+
+    // Keep the instances reachable until after the snapshot.
+    assertEquals(instances.length, 50);
+  },
+});
+
+Deno.test({
+  name: "queryObjects validates the constructor argument",
+  fn() {
+    assertThrows(() => {
+      // @ts-expect-error testing invalid input
+      v8.queryObjects("not a function");
+    });
+  },
+});
+
+Deno.test({
+  name: "queryObjects validates the format option",
+  fn() {
+    class Anything {}
+    assertThrows(() => {
+      v8.queryObjects(
+        Anything,
+        // @ts-expect-error testing invalid input
+        { format: "bogus" },
+      );
+    });
+  },
+});

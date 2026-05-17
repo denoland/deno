@@ -187,3 +187,64 @@ Deno.test("[node/module require] throws ERR_INVALID_ARG_VALUE for empty string i
     "ERR_INVALID_ARG_VALUE",
   );
 });
+
+Deno.test("[node/module Module._stat] default returns 0/1/<0 for file/dir/missing", async () => {
+  const tmpDir = await Deno.makeTempDir();
+  try {
+    const file = path.join(tmpDir, "exists.js");
+    const dir = path.join(tmpDir, "subdir");
+    const missing = path.join(tmpDir, "missing");
+    await Deno.writeTextFile(file, "module.exports = {};");
+    await Deno.mkdir(dir);
+
+    // @ts-ignore Not documented but available
+    assertEquals(Module._stat(file), 0);
+    // @ts-ignore Not documented but available
+    assertEquals(Module._stat(dir), 1);
+    // @ts-ignore Not documented but available
+    assert(Module._stat(missing) < 0);
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("[node/module Module._stat] override is honored by require resolution", async () => {
+  const tmpDir = await Deno.makeTempDir();
+  try {
+    const file = path.join(tmpDir, "patched-target.cjs");
+    await Deno.writeTextFile(file, "module.exports = { value: 42 };");
+
+    const require = createRequire(path.join(tmpDir, "noop.js"));
+
+    // @ts-ignore Not documented but available
+    const originalStat = Module._stat;
+
+    // Patch _stat to claim the file does not exist; the CJS loader uses
+    // the same internal stat that _stat delegates to, so require() must
+    // observe the override.
+    // @ts-ignore Not documented but available
+    Module._stat = (filename: string) => {
+      if (filename === file) return -2;
+      return originalStat(filename);
+    };
+
+    try {
+      const err = assertThrows(() => require(file));
+      assertEquals(
+        (err as Error & { code?: string }).code,
+        "MODULE_NOT_FOUND",
+      );
+    } finally {
+      // @ts-ignore Not documented but available
+      Module._stat = originalStat;
+    }
+
+    // After restoration the same require() call must succeed, proving the
+    // failure above was driven by the override and not the file going
+    // missing.
+    const mod = require(file);
+    assertEquals(mod.value, 42);
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
