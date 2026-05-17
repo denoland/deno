@@ -4480,10 +4480,6 @@
       "windows": false,
       "reason": "'.' is not recognized as an internal or external command,"
     },
-    "parallel/test-child-process-stdio-reuse-readable-stdio.js": {
-      "darwin": false,
-      "reason": "Expected values to be strictly equal"
-    },
     "parallel/test-child-process-windows-hide.js": {},
     "parallel/test-cluster-concurrent-disconnect.js": {},
     "parallel/test-cluster-dgram-1.js": {
