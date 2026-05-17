@@ -5,7 +5,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::num::NonZeroI32;
-use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -319,6 +318,7 @@ pub struct ContextifyContext {
   microtask_queue: *mut v8::MicrotaskQueue,
   context: v8::TracedReference<v8::Context>,
   sandbox: v8::TracedReference<v8::Object>,
+  allow_code_gen_wasm: bool,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -344,16 +344,25 @@ impl Drop for ContextifyContext {
   }
 }
 
-struct AllowCodeGenWasm(bool);
-
 extern "C" fn allow_wasm_code_gen(
   context: v8::Local<v8::Context>,
   _source: v8::Local<v8::String>,
 ) -> bool {
-  match context.get_slot::<AllowCodeGenWasm>() {
-    Some(b) => b.0,
-    None => true,
+  // Look up the ContextifyContext via embedder slot 3. Avoiding
+  // `Context::set_slot` here means the context does not need a v8::Context
+  // annex (with its own `Weak<Context>` self-reference) that survives until
+  // isolate teardown, which would otherwise use-after-free during the final
+  // GC because Rust-side `Weak::drop` skips `Reset` once `dispose_annex` has
+  // nulled the isolate pointer.
+  let context_ptr = context.get_aligned_pointer_from_embedder_data(3);
+  if context_ptr.is_null() {
+    return true;
   }
+  // SAFETY: When non-null, this pointer is the ContextifyContext stored in
+  // `attach`/`attach_vanilla`. The ContextifyContext outlives the v8::Context
+  // because it owns a TracedReference to it.
+  let ctx = unsafe { &*(context_ptr as *const ContextifyContext) };
+  ctx.allow_code_gen_wasm
 }
 
 impl ContextifyContext {
@@ -404,7 +413,6 @@ impl ContextifyContext {
 
     scope.set_allow_wasm_code_generation_callback(allow_wasm_code_gen);
     context.set_allow_generation_from_strings(allow_code_gen_strings);
-    context.set_slot(Rc::new(AllowCodeGenWasm(allow_code_gen_wasm)));
 
     let wrapper = {
       let context = v8::TracedReference::new(scope, context);
@@ -415,6 +423,7 @@ impl ContextifyContext {
           context,
           sandbox,
           microtask_queue,
+          allow_code_gen_wasm,
         },
       )
     };
@@ -430,6 +439,16 @@ impl ContextifyContext {
         &*ptr.unwrap() as *const ContextifyContext as _,
       );
     }
+
+    // Drop the v8::Context annex (created by `set_aligned_pointer_in_embedder_data`).
+    // The annex holds a `Weak<Context>` with a guaranteed finalizer. If left in
+    // place, the Weak is not reset before isolate teardown's final GC (because
+    // `dispose_annex` nulls the isolate pointer before running remaining
+    // finalizers, which causes `Weak::drop` to skip `v8__Global__Reset`), and
+    // V8's final GC then fires the weak callback on freed memory and panics.
+    // Dropping the annex here, while the isolate is still alive, ensures the
+    // Weak is reset cleanly through `Weak::drop`'s normal path.
+    context.clear_all_slots();
 
     let private_str =
       v8::String::new_from_onebyte_const(scope, &PRIVATE_SYMBOL_NAME);
@@ -494,7 +513,6 @@ impl ContextifyContext {
 
     scope.set_allow_wasm_code_generation_callback(allow_wasm_code_gen);
     context.set_allow_generation_from_strings(allow_code_gen_strings);
-    context.set_slot(Rc::new(AllowCodeGenWasm(allow_code_gen_wasm)));
 
     // For vanilla contexts, the sandbox IS the global proxy
     let sandbox_obj = context.global(scope);
@@ -508,6 +526,7 @@ impl ContextifyContext {
           context,
           sandbox,
           microtask_queue,
+          allow_code_gen_wasm,
         },
       )
     };
@@ -523,6 +542,9 @@ impl ContextifyContext {
         &*ptr.unwrap() as *const ContextifyContext as _,
       );
     }
+
+    // See `attach` for why we clear the annex here.
+    context.clear_all_slots();
 
     let private_str =
       v8::String::new_from_onebyte_const(scope, &PRIVATE_SYMBOL_NAME);
