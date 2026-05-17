@@ -805,6 +805,10 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
 /// realm route through the host realm's module map (Deno has a single
 /// module loader per isolate). The new realm gets fresh JS intrinsics
 /// from V8 as required by the spec.
+#[allow(
+  clippy::unnecessary_wraps,
+  reason = "signature required by v8 callback API"
+)]
 pub fn host_create_shadow_realm_context_callback<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
 ) -> Option<v8::Local<'s, v8::Context>> {
