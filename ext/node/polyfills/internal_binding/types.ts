@@ -23,13 +23,9 @@
 
 (function () {
 const { core } = globalThis.__bootstrap;
-const { op_node_is_external } = core.ops;
-
-function isExternal(value: unknown): boolean {
-  return op_node_is_external(value);
-}
 
 const {
+  // isExternal,
   isAnyArrayBuffer,
   isArgumentsObject,
   isArrayBuffer,
@@ -69,7 +65,6 @@ return {
   isBoxedPrimitive,
   isDataView,
   isDate,
-  isExternal,
   isGeneratorFunction,
   isGeneratorObject,
   isMap,

@@ -2393,7 +2393,10 @@
       "ignore": true,
       "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
     },
-    "parallel/test-js-stream-call-properties.js": {},
+    "parallel/test-js-stream-call-properties.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal C++ binding (internalBinding('js_stream').JSStream) which is not implemented in Deno"
+    },
     "parallel/test-kill-segfault-freebsd.js": {},
     "parallel/test-listen-fd-detached-inherit.js": {},
     "parallel/test-listen-fd-detached.js": {},
@@ -3771,7 +3774,10 @@
     "parallel/test-util-styletext.js": {},
     "parallel/test-util-text-decoder.js": {},
     "parallel/test-util-types-exists.js": {},
-    "parallel/test-util-types.js": {},
+    "parallel/test-util-types.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal C++ binding (internalBinding('js_stream').JSStream) which is not implemented in Deno"
+    },
     "parallel/test-util.js": {},
     "parallel/test-uv-binding-constant.js": {},
     "parallel/test-v8-collect-gc-profile.js": {},

@@ -54,9 +54,6 @@ const httpParser = core.loadExtScript(
 const http2Binding = core.loadExtScript(
   "ext:deno_node/internal_binding/http2.ts",
 );
-const jsStream = core.loadExtScript(
-  "ext:deno_node/internal_binding/js_stream.ts",
-);
 
 // Mutable shallow copy so callers can replace properties (e.g. wrap
 // `errname` with a deprecation warning when --pending-deprecation is set).
@@ -96,7 +93,7 @@ const modules = {
   "http2": http2Binding,
   icu: {},
   inspector: {},
-  "js_stream": jsStream,
+  "js_stream": {},
   messaging: {},
   "module_wrap": {},
   "native_module": {},
