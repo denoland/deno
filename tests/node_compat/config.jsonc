@@ -2436,6 +2436,7 @@
     "parallel/test-net-bytes-stats.js": {},
     "parallel/test-net-bytes-written-large.js": {},
     "parallel/test-net-can-reset-timeout.js": {},
+    "parallel/test-net-child-process-connect-reset.js": {},
     "parallel/test-net-client-bind-twice.js": {},
     "parallel/test-net-connect-abort-controller.js": {},
     "parallel/test-net-connect-after-destroy.js": {},
@@ -2482,6 +2483,7 @@
       "ignore": true,
       "reason": "Tests Node.js internal module (require('internal/net'))"
     },
+    "parallel/test-net-onread-static-buffer.js": {},
     "parallel/test-net-options-lookup.js": {},
     "parallel/test-net-pause-resume-connecting.js": {},
     "parallel/test-net-persistent-keepalive.js": {},
@@ -3593,6 +3595,7 @@
     "parallel/test-tls-off-thread-cert-loading-system.js": {},
     "parallel/test-tls-off-thread-cert-loading.js": {},
     "parallel/test-tls-on-empty-socket.js": {},
+    "parallel/test-tls-onread-static-buffer.js": {},
     "parallel/test-tls-options-boolean-check.js": {},
     "parallel/test-tls-over-http-tunnel.js": {},
     "parallel/test-tls-pause.js": {},

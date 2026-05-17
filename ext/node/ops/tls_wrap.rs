@@ -309,6 +309,126 @@ enum EncOutAction {
 // These do NOT borrow TLSWrapInner — they work entirely with EmitCtx + args.
 // ---------------------------------------------------------------------------
 
+/// Copy `data` through the user buffer registered on the TLSWrap
+/// (Node's `onread.buffer` option), chunking into `user_buffer.len`
+/// slices so the JS callback only ever sees up to that many bytes per
+/// invocation. The user buffer may be rotated by the JS callback (via
+/// `bufGen`), so it is re-read between chunks.
+///
+/// # Safety
+/// `inner_ptr` must be valid and live for the duration of the call.
+/// No `&` / `&mut` reference to `TLSWrapInner` may be held by the
+/// caller (JS callbacks can re-enter ops on the same object). All
+/// pointers in `ctx` must be valid.
+unsafe fn do_emit_read_through_user_buffer(
+  ctx: &EmitCtx,
+  inner_ptr: *mut TLSWrapInner,
+  onread: Option<&v8::Global<v8::Function>>,
+  state: Option<&v8::Global<v8::Int32Array>>,
+  data: &[u8],
+) {
+  let mut offset = 0;
+  while offset < data.len() {
+    // Re-read the user buffer pointer/length each iteration so a
+    // `bufGen`-driven rotation during the previous callback is honored.
+    let user_buf =
+      unsafe { (*inner_ptr).user_buffer.as_ref().map(|ub| (ub.ptr, ub.len)) };
+    let Some((ptr, len)) = user_buf else {
+      // User buffer was cleared mid-emit — fall back to the
+      // ArrayBuffer-allocating path for the remaining bytes so they
+      // still reach the consumer.
+      let remaining = &data[offset..];
+      unsafe {
+        do_emit_read(
+          ctx,
+          onread,
+          state,
+          remaining.len() as isize,
+          Some(remaining),
+        );
+      }
+      return;
+    };
+    if len == 0 {
+      // Zero-length buffer can't make progress; stop to avoid spinning.
+      return;
+    }
+    let chunk_len = std::cmp::min(data.len() - offset, len);
+    // SAFETY: `ptr` references at least `len >= chunk_len` writable
+    // bytes (the registered user buffer's backing store, held alive by
+    // its retained `Global<Uint8Array>`). `data[offset..offset+chunk_len]`
+    // is in-bounds. Source and destination are distinct allocations.
+    unsafe {
+      std::ptr::copy_nonoverlapping(
+        data[offset..offset + chunk_len].as_ptr(),
+        ptr,
+        chunk_len,
+      );
+    }
+    offset += chunk_len;
+    // SAFETY: caller upholds the EmitCtx invariants; we hand off to a
+    // free function that does not borrow TLSWrapInner.
+    unsafe {
+      do_emit_read_undefined_arg(ctx, onread, state, chunk_len as isize);
+    }
+  }
+}
+
+/// Variant of `do_emit_read` that signals the callback by passing
+/// `undefined` rather than wrapping bytes in a fresh ArrayBuffer.
+/// Used in the static-buffer path: `onStreamRead` reads the bytes via
+/// `stream[kBuffer]` (the same Uint8Array previously passed to
+/// `useUserBuffer`) and ignores the callback argument.
+///
+/// # Safety
+/// EmitCtx must contain valid pointers. No TLSWrapInner reference may be held by the caller.
+unsafe fn do_emit_read_undefined_arg(
+  ctx: &EmitCtx,
+  onread: Option<&v8::Global<v8::Function>>,
+  state: Option<&v8::Global<v8::Int32Array>>,
+  nread: isize,
+) {
+  let Some(state_global) = state else {
+    return;
+  };
+  unsafe {
+    let mut isolate = v8::Isolate::from_raw_isolate_ptr(ctx.isolate_ptr);
+    if ctx.loop_ptr.is_null() {
+      return;
+    }
+    let ctx_ptr = (*ctx.loop_ptr).data;
+    if ctx_ptr.is_null() {
+      return;
+    }
+    let context_global = clone_context_global(&mut isolate, ctx_ptr);
+
+    v8::scope!(let handle_scope, &mut isolate);
+    let context = v8::Local::new(handle_scope, context_global);
+    let scope = &mut v8::ContextScope::new(handle_scope, context);
+
+    let state_array: v8::Local<v8::Int32Array> =
+      v8::Local::new(scope, state_global);
+    state_array.set_index(
+      scope,
+      StreamBaseStateFields::ReadBytesOrError as u32,
+      v8::Integer::new(scope, nread as i32).into(),
+    );
+    state_array.set_index(
+      scope,
+      StreamBaseStateFields::ArrayBufferOffset as u32,
+      v8::Integer::new(scope, 0).into(),
+    );
+
+    let recv = v8::Local::new(scope, &ctx.js_handle);
+    let Some(onread) = onread else {
+      return;
+    };
+    let onread_fn = v8::Local::new(scope, onread);
+    let undef = v8::undefined(scope);
+    onread_fn.call(scope, recv.into(), &[undef.into()]);
+  }
+}
+
 /// Emit read data to JS via onread callback.
 ///
 /// # Safety
@@ -856,6 +976,12 @@ struct TLSWrapInner {
   accepted: Option<rustls::server::Accepted>,
   client_hello_servername: Option<String>,
   client_hello_alpn: Vec<Vec<u8>>,
+
+  /// User-supplied static read buffer (Node's `onread.buffer`).
+  /// When set, decrypted data is copied into this buffer rather than
+  /// emitted via a fresh ArrayBuffer; the JS callback receives the same
+  /// Uint8Array each time. Updated by `TLSWrap::useUserBuffer`.
+  user_buffer: Option<crate::ops::stream_wrap::UserBuffer>,
 }
 
 /// Convert a rustls error to a (message, code) pair that matches Node's
@@ -979,6 +1105,7 @@ impl TLSWrapInner {
       accepted: None,
       client_hello_servername: None,
       client_hello_alpn: Vec::new(),
+      user_buffer: None,
     }
   }
 
@@ -1397,13 +1524,23 @@ impl TLSWrapInner {
         } else if let Some(ctx) = extract_emit_ctx(ptr) {
           let onread = (*ptr).onread.clone();
           let state = (*ptr).stream_base_state.clone();
-          do_emit_read(
-            &ctx,
-            onread.as_ref(),
-            state.as_ref(),
-            result.data.len() as isize,
-            Some(&result.data),
-          );
+          if (*ptr).user_buffer.is_some() {
+            do_emit_read_through_user_buffer(
+              &ctx,
+              ptr,
+              onread.as_ref(),
+              state.as_ref(),
+              &result.data,
+            );
+          } else {
+            do_emit_read(
+              &ctx,
+              onread.as_ref(),
+              state.as_ref(),
+              result.data.len() as isize,
+              Some(&result.data),
+            );
+          }
         }
         if (*ptr).tls_conn.is_none() {
           return;
@@ -1569,13 +1706,23 @@ unsafe fn tls_read_interceptor_cb(
       {
         let onread = (*ptr).onread.clone();
         let state = (*ptr).stream_base_state.clone();
-        do_emit_read(
-          &ctx,
-          onread.as_ref(),
-          state.as_ref(),
-          result.data.len() as isize,
-          Some(&result.data),
-        );
+        if (*ptr).user_buffer.is_some() {
+          do_emit_read_through_user_buffer(
+            &ctx,
+            ptr,
+            onread.as_ref(),
+            state.as_ref(),
+            &result.data,
+          );
+        } else {
+          do_emit_read(
+            &ctx,
+            onread.as_ref(),
+            state.as_ref(),
+            result.data.len() as isize,
+            Some(&result.data),
+          );
+        }
       }
       if let Some(ctx) = extract_emit_ctx(ptr) {
         let onread = (*ptr).onread.clone();
@@ -1932,6 +2079,22 @@ impl TLSWrap {
     inner.onread = Some(v8::Global::new(scope, onread));
   }
 
+  /// Register a static read buffer for decrypted plaintext.
+  /// Overrides `LibUvStreamWrap::useUserBuffer` so the buffer is
+  /// associated with the TLS layer rather than the encrypted underlying
+  /// stream (Node's `onread.buffer` semantics).
+  #[fast]
+  #[rename("useUserBuffer")]
+  fn use_user_buffer_tls(
+    &self,
+    buffer: v8::Local<v8::Uint8Array>,
+    scope: &mut v8::PinScope,
+  ) {
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    inner.user_buffer =
+      crate::ops::stream_wrap::UserBuffer::from_view(scope, buffer);
+  }
+
   /// Start the TLS handshake.
   /// Creates the actual TLS connection from pending config, then begins
   /// the handshake. Mirrors Node's TLSWrap::Start().
@@ -2058,14 +2221,25 @@ impl TLSWrap {
       if !pending_data.is_empty() {
         let onread_clone = inner.onread.clone();
         let state = inner.stream_base_state.clone();
+        let has_user_buffer = inner.user_buffer.is_some();
         unsafe {
-          do_emit_read(
-            &ctx,
-            onread_clone.as_ref(),
-            state.as_ref(),
-            pending_data.len() as isize,
-            Some(&pending_data),
-          );
+          if has_user_buffer {
+            do_emit_read_through_user_buffer(
+              &ctx,
+              inner_ptr,
+              onread_clone.as_ref(),
+              state.as_ref(),
+              &pending_data,
+            );
+          } else {
+            do_emit_read(
+              &ctx,
+              onread_clone.as_ref(),
+              state.as_ref(),
+              pending_data.len() as isize,
+              Some(&pending_data),
+            );
+          }
         }
       }
       if pending_eof {
