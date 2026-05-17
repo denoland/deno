@@ -233,7 +233,7 @@ pub fn op_print(
   } else {
     libc::STDOUT_FILENO
   };
-  write_all_fd(fd, msg.as_bytes())
+  write_all_fd_blocking(fd, msg.as_bytes())
 }
 
 /// Builtin utility to print to stdout/stderr
@@ -249,6 +249,56 @@ pub fn op_print(
     Box::new(stdout())
   };
   write_and_flush_all(out, msg.as_bytes())
+}
+
+#[cfg(unix)]
+fn write_all_fd_blocking(
+  fd: libc::c_int,
+  msg: &[u8],
+) -> Result<(), std::io::Error> {
+  let _mode_guard = PrintFdModeGuard::set_blocking(fd)?;
+  write_all_fd(fd, msg)
+}
+
+#[cfg(unix)]
+struct PrintFdModeGuard {
+  fd: libc::c_int,
+  flags: libc::c_int,
+}
+
+#[cfg(unix)]
+impl PrintFdModeGuard {
+  fn set_blocking(fd: libc::c_int) -> Result<Self, std::io::Error> {
+    // SAFETY: `fcntl` with F_GETFL does not access memory and only reads fd
+    // status flags.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 {
+      return Err(Error::last_os_error());
+    }
+    if flags & libc::O_NONBLOCK == 0 {
+      return Ok(Self { fd: -1, flags });
+    }
+
+    // SAFETY: `fcntl` with F_SETFL updates fd status flags. No pointers are
+    // passed.
+    let r =
+      unsafe { libc::fcntl(fd, libc::F_SETFL, flags & !libc::O_NONBLOCK) };
+    if r < 0 {
+      return Err(Error::last_os_error());
+    }
+    Ok(Self { fd, flags })
+  }
+}
+
+#[cfg(unix)]
+impl Drop for PrintFdModeGuard {
+  fn drop(&mut self) {
+    if self.fd >= 0 {
+      // SAFETY: `fcntl` with F_SETFL updates fd status flags. No pointers are
+      // passed. There is no useful way to report this from Drop.
+      _ = unsafe { libc::fcntl(self.fd, libc::F_SETFL, self.flags) };
+    }
+  }
 }
 
 #[cfg(unix)]
@@ -270,37 +320,12 @@ fn write_all_fd(fd: libc::c_int, msg: &[u8]) -> Result<(), std::io::Error> {
 
     let err = Error::last_os_error();
     if is_retryable_print_error(&err) {
-      wait_fd_writable(fd)?;
       std::thread::yield_now();
       continue;
     }
     return Err(err);
   }
   Ok(())
-}
-
-#[cfg(unix)]
-fn wait_fd_writable(fd: libc::c_int) -> Result<(), std::io::Error> {
-  let mut poll_fd = libc::pollfd {
-    fd,
-    events: libc::POLLOUT,
-    revents: 0,
-  };
-  loop {
-    // SAFETY: `poll_fd` points to one valid `pollfd`.
-    let result = unsafe { libc::poll(&mut poll_fd, 1, -1) };
-    if result > 0 {
-      return Ok(());
-    }
-    if result == 0 {
-      continue;
-    }
-    let err = Error::last_os_error();
-    if is_retryable_print_error(&err) {
-      continue;
-    }
-    return Err(err);
-  }
 }
 
 #[cfg(any(not(unix), test))]
