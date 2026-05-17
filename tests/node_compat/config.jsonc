@@ -4755,7 +4755,6 @@
       "linux": false,
       "darwin": false
     },
-    "parallel/test-worker-http2-stream-terminate.js": {},
     "parallel/test-worker-init-failure.js": { "linux": false, "darwin": false },
     "parallel/test-worker-no-sab.js": {},
     "parallel/test-worker-onmessage-not-a-function.js": {},
