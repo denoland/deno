@@ -995,7 +995,7 @@ fn rustls_error_to_node_error(
     // Match Node's OpenSSL wording for record-layer decode failures so user
     // code that pattern-matches err.message keeps working.
     E::InvalidMessage(_) => (
-      format!("{e} (wrong version number)"),
+      format!("{e} (SSL routines:ssl3_get_record:wrong version number)"),
       "ERR_SSL_WRONG_VERSION_NUMBER".to_string(),
     ),
     E::InvalidCertificate(cert_err) => (
