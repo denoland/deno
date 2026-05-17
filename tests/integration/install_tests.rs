@@ -178,6 +178,49 @@ fn install_basic_global() {
 }
 
 #[test]
+fn install_global_from_task_with_relative_import_map() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "tasks": {
+    "install": "deno install -A --global --root ./root --import-map imports.json -n test main.ts"
+  }
+}
+"#,
+  );
+  temp_dir.write(
+    "imports.json",
+    r#"{
+  "imports": {
+    "@fixture": "./fixture.ts"
+  }
+}
+"#,
+  );
+  temp_dir.write("fixture.ts", "export const value = 1;\n");
+  temp_dir.write(
+    "main.ts",
+    "import { value } from \"@fixture\";\nconsole.log(value);\n",
+  );
+
+  let output = context.new_command().args("task install").run();
+
+  output.assert_exit_code(0);
+  let output_text = output.combined_output();
+  assert_contains!(output_text, "✅ Successfully installed test");
+  assert_not_contains!(output_text, ".test/imports.json");
+
+  let mut file_path = temp_dir.path().join("root/bin/test");
+  if cfg!(windows) {
+    file_path = file_path.with_extension("cmd");
+  }
+  assert!(file_path.exists());
+}
+
+#[test]
 fn install_custom_dir_env_var() {
   let context = TestContext::with_http_server();
   let temp_dir = context.temp_dir();
