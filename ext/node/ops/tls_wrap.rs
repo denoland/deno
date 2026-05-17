@@ -388,7 +388,7 @@ fn extract_ticket_from_debug<T: std::fmt::Debug + ?Sized>(
     end += 1;
   }
   let hex_len = end - start;
-  if hex_len == 0 || hex_len % 2 != 0 {
+  if hex_len == 0 || !hex_len.is_multiple_of(2) {
     return None;
   }
   let mut out = Vec::with_capacity(hex_len / 2);
