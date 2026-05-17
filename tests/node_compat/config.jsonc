@@ -3090,10 +3090,38 @@
     "parallel/test-set-incoming-message-header.js": {},
     "parallel/test-set-process-debug-port.js": {},
     "parallel/test-setproctitle.js": {},
-    "parallel/test-shadow-realm-gc-module.js": {},
-    "parallel/test-shadow-realm-import-value-resolve.js": {},
-    "parallel/test-shadow-realm-prepare-stack-trace.js": {},
-    "parallel/test-shadow-realm.js": {},
+    "parallel/test-shadow-realm-allowed-builtin-modules.js": {
+      "ignore": true,
+      "reason": "Deno does not expose `ShadowRealm` globally; the spec is still TC39 Stage 2.7"
+    },
+    "parallel/test-shadow-realm-gc-module.js": {
+      "ignore": true,
+      "reason": "Deno does not expose `ShadowRealm` globally; the spec is still TC39 Stage 2.7"
+    },
+    "parallel/test-shadow-realm-gc.js": {
+      "ignore": true,
+      "reason": "Deno does not expose `ShadowRealm` globally; the spec is still TC39 Stage 2.7"
+    },
+    "parallel/test-shadow-realm-globals.js": {
+      "ignore": true,
+      "reason": "Deno does not expose `ShadowRealm` globally; the spec is still TC39 Stage 2.7"
+    },
+    "parallel/test-shadow-realm-import-value-resolve.js": {
+      "ignore": true,
+      "reason": "Deno does not expose `ShadowRealm` globally; the spec is still TC39 Stage 2.7"
+    },
+    "parallel/test-shadow-realm-module.js": {
+      "ignore": true,
+      "reason": "Deno does not expose `ShadowRealm` globally; the spec is still TC39 Stage 2.7"
+    },
+    "parallel/test-shadow-realm-prepare-stack-trace.js": {
+      "ignore": true,
+      "reason": "Deno does not expose `ShadowRealm` globally; the spec is still TC39 Stage 2.7"
+    },
+    "parallel/test-shadow-realm.js": {
+      "ignore": true,
+      "reason": "Deno does not expose `ShadowRealm` globally; the spec is still TC39 Stage 2.7"
+    },
     "parallel/test-sigint-infinite-loop.js": {},
     "parallel/test-signal-handler-remove-on-exit.js": {},
     "parallel/test-signal-handler.js": {},

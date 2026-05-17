@@ -800,64 +800,6 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
   Some(promise_new)
 }
 
-/// Creates a fresh V8 Context for a `ShadowRealm` and wires up the
-/// embedder data slots so that dynamic `importValue` calls inside the
-/// realm route through the host realm's module map (Deno has a single
-/// module loader per isolate). The new realm gets fresh JS intrinsics
-/// from V8 as required by the spec.
-#[allow(
-  clippy::unnecessary_wraps,
-  reason = "signature required by v8 callback API"
-)]
-pub fn host_create_shadow_realm_context_callback<'s, 'i>(
-  scope: &mut v8::PinScope<'s, 'i>,
-) -> Option<v8::Local<'s, v8::Context>> {
-  // Resolve the initiator's slots before creating the new context, so we
-  // can copy the raw Rc pointers across without re-entering the scope.
-  let initiator = scope.get_current_context();
-  // SAFETY: the initiator context is the host realm context, whose embedder
-  // slots were populated at realm creation time and remain valid for the
-  // lifetime of the realm.
-  let (context_state_ptr, module_map_ptr) = unsafe {
-    let context_state = initiator
-      .get_aligned_pointer_from_embedder_data(crate::CONTEXT_STATE_SLOT_INDEX);
-    let module_map = initiator
-      .get_aligned_pointer_from_embedder_data(crate::MODULE_MAP_SLOT_INDEX);
-    // Bump the strong counts so the shared ContextState/ModuleMap outlive
-    // the shadow realm. We deliberately leak these refs: V8 does not give
-    // us a hook for shadow-realm context destruction, and they are tied
-    // to the host realm's lifetime anyway, so the leak is bounded.
-    if !context_state.is_null() {
-      std::rc::Rc::increment_strong_count(
-        context_state as *const crate::runtime::ContextState,
-      );
-    }
-    if !module_map.is_null() {
-      std::rc::Rc::increment_strong_count(module_map as *const ModuleMap);
-    }
-    (context_state, module_map)
-  };
-
-  let new_context = v8::Context::new(scope, Default::default());
-
-  // SAFETY: embedder slots 1 and 2 are reserved for ContextState/ModuleMap
-  // in deno_core. We point them at the same Rc instances used by the
-  // initiator so that ops referencing the current context (e.g. dynamic
-  // import) keep working inside the shadow realm.
-  unsafe {
-    new_context.set_aligned_pointer_in_embedder_data(
-      crate::CONTEXT_STATE_SLOT_INDEX,
-      context_state_ptr,
-    );
-    new_context.set_aligned_pointer_in_embedder_data(
-      crate::MODULE_MAP_SLOT_INDEX,
-      module_map_ptr,
-    );
-  }
-
-  Some(new_context)
-}
-
 pub extern "C" fn host_initialize_import_meta_object_callback(
   context: v8::Local<v8::Context>,
   module: v8::Local<v8::Module>,
