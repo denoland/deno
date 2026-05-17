@@ -36,6 +36,9 @@ const {
   isIPv4,
   isIPv6,
   kReinitializeHandle,
+  kSetKeepAlive,
+  kSetKeepAliveInitialDelay,
+  kSetNoDelay,
   normalizedArgsSymbol,
 } = core.loadExtScript("ext:deno_node/internal/net.ts");
 const { Duplex } = core.createLazyLoader("node:stream")();
@@ -157,9 +160,6 @@ let debug = debuglog("net", (fn) => {
 });
 
 const kLastWriteQueueSize = Symbol("lastWriteQueueSize");
-const kSetNoDelay = Symbol("kSetNoDelay");
-const kSetKeepAlive = Symbol("kSetKeepAlive");
-const kSetKeepAliveInitialDelay = Symbol("kSetKeepAliveInitialDelay");
 const kBytesRead = Symbol("kBytesRead");
 const kBytesWritten = Symbol("kBytesWritten");
 
@@ -1554,6 +1554,15 @@ Socket.prototype.connect = function (...args) {
       path,
     );
   } else {
+    if (options.keepAlive !== undefined) {
+      this.setKeepAlive(
+        !!options.keepAlive,
+        options.keepAliveInitialDelay,
+      );
+    }
+    if (options.noDelay !== undefined) {
+      this.setNoDelay(options.noDelay);
+    }
     _lookupAndConnect(this, options);
   }
 
@@ -1598,13 +1607,11 @@ Socket.prototype.setNoDelay = function (noDelay) {
 
   const newValue = noDelay === undefined ? true : !!noDelay;
 
-  if (
-    "setNoDelay" in this._handle &&
-    this._handle.setNoDelay &&
-    newValue !== this[kSetNoDelay]
-  ) {
+  if (newValue !== this[kSetNoDelay]) {
     this[kSetNoDelay] = newValue;
-    this._handle.setNoDelay(newValue);
+    if ("setNoDelay" in this._handle && this._handle.setNoDelay) {
+      this._handle.setNoDelay(newValue);
+    }
   }
 
   return this;
@@ -1621,14 +1628,14 @@ Socket.prototype.setKeepAlive = function (enable, initialDelay) {
   const newDelay = ~~(initialDelay / 1000);
 
   if (
-    "setKeepAlive" in this._handle &&
-    this._handle.setKeepAlive &&
-    (newEnable !== this[kSetKeepAlive] ||
-      newDelay !== this[kSetKeepAliveInitialDelay])
+    newEnable !== this[kSetKeepAlive] ||
+    newDelay !== this[kSetKeepAliveInitialDelay]
   ) {
     this[kSetKeepAlive] = newEnable;
     this[kSetKeepAliveInitialDelay] = newDelay;
-    this._handle.setKeepAlive(newEnable, newDelay);
+    if ("setKeepAlive" in this._handle && this._handle.setKeepAlive) {
+      this._handle.setKeepAlive(newEnable, newDelay);
+    }
   }
 
   return this;
