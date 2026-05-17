@@ -5199,7 +5199,6 @@
     },
     "wasi/test-return-on-exit.js": {},
     "wasi/test-wasi-not-started.js": {},
-    "wasi/test-wasi-worker-terminate.js": {},
-      "reason": "error: Uncaught TypeError: The argument 'options' is invalid. Received {"
+    "wasi/test-wasi-worker-terminate.js": {}
   }
 }
