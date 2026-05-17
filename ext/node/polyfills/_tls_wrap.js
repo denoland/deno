@@ -1299,6 +1299,18 @@ function Server(options, listener) {
 Object.setPrototypeOf(Server.prototype, net.Server.prototype);
 Object.setPrototypeOf(Server, net.Server);
 
+Server.prototype[Symbol.for("nodejs.rejection")] = function (
+  err,
+  event,
+  sock,
+) {
+  if (event === "secureConnection" || event === "connection") {
+    sock?.destroy(err);
+  } else {
+    this.emit("error", err);
+  }
+};
+
 Server.prototype.setSecureContext = function (options) {
   validateObject(options, "options");
 

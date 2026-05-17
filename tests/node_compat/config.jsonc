@@ -3656,6 +3656,7 @@
     "parallel/test-tls-request-timeout.js": {},
     "parallel/test-tls-reuse-host-from-socket.js": {},
     "parallel/test-tls-root-certificates.js": {},
+    "parallel/test-tls-server-capture-rejection.js": {},
     "parallel/test-tls-server-connection-server.js": {},
     "parallel/test-tls-server-failed-handshake-emits-clienterror.js": {},
     "parallel/test-tls-server-parent-constructor-options.js": {},
