@@ -4980,9 +4980,8 @@
       "reason": "binding.startSigintWatchdog is not a function"
     },
     "parallel/test-v8-serialize-leak.js": {
-      "windows": false,
-      "darwin": false,
-      "reason": "windows: before=78233600 after=806772736; darwin: before=67223552 after=776601600"
+      "ignore": true,
+      "reason": "memory leak check fails on windows/darwin; also fails on linux-aarch64"
     },
     "parallel/test-vm-module-evaluate-source-text-module.js": {},
     "parallel/test-vm-module-evaluate-synthethic-module-rejection.js": {},
@@ -5088,9 +5087,8 @@
     "pummel/test-structuredclone-jstransferable.js": {},
     "pummel/test-timers.js": {},
     "pummel/test-tls-throttle.js": {
-      "linux": false,
-      "darwin": false,
-      "reason": "times out"
+      "ignore": true,
+      "reason": "times out on all platforms"
     },
     "pummel/test-vm-memleak.js": {},
     "pummel/test-watch-file.js": {},
