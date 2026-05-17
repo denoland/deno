@@ -5082,6 +5082,7 @@
     },
     "sequential/test-child-process-pass-fd.js": {
       "windows": false,
+      "darwin": false,
       "reason": "times out"
     },
     "sequential/test-cluster-inspect-brk.js": {},
