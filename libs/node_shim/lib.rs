@@ -3257,6 +3257,8 @@ pub fn translate_to_deno_args(
   let opts = &parsed_args.options;
   let env_opts = &opts.per_isolate.per_env;
 
+  add_tls_node_options(node_options, env_opts);
+
   // Check for system CA usage
   if opts.use_system_ca || opts.use_openssl_ca {
     result.use_system_ca = true;
@@ -3463,6 +3465,30 @@ pub fn translate_to_deno_args(
   deno_args.extend(parsed_args.remaining_args);
 
   result
+}
+
+fn add_tls_node_options(
+  node_options: &mut Vec<String>,
+  env_opts: &EnvironmentOptions,
+) {
+  if env_opts.tls_min_v1_0 {
+    node_options.push("--tls-min-v1.0".to_string());
+  }
+  if env_opts.tls_min_v1_1 {
+    node_options.push("--tls-min-v1.1".to_string());
+  }
+  if env_opts.tls_min_v1_2 {
+    node_options.push("--tls-min-v1.2".to_string());
+  }
+  if env_opts.tls_min_v1_3 {
+    node_options.push("--tls-min-v1.3".to_string());
+  }
+  if env_opts.tls_max_v1_2 {
+    node_options.push("--tls-max-v1.2".to_string());
+  }
+  if env_opts.tls_max_v1_3 {
+    node_options.push("--tls-max-v1.3".to_string());
+  }
 }
 
 fn add_common_flags(

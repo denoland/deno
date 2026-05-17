@@ -12,6 +12,7 @@ use deno_core::JsRuntimeInspector;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::op2;
+use deno_core::serde_json;
 use deno_core::v8;
 use deno_inspector_server::InspectPublishUid;
 use deno_inspector_server::InspectorServerUrl;
@@ -99,12 +100,107 @@ pub fn op_inspector_wait(state: &OpState) -> bool {
   }
 }
 
-#[op2(fast)]
+#[op2(nofast, reentrant)]
 pub fn op_inspector_emit_protocol_event(
-  #[string] _event_name: String,
-  #[string] _params: String,
+  state: Rc<RefCell<OpState>>,
+  scope: &mut v8::PinScope<'_, '_>,
+  #[string] event_name: String,
+  #[string] params: String,
 ) {
-  // TODO: inspector channel & protocol notifications
+  let inspector = {
+    let state = state.borrow();
+    state.try_borrow::<Rc<JsRuntimeInspector>>().cloned()
+  };
+  let Some(inspector) = inspector else {
+    return;
+  };
+
+  let needs_initiator = event_name == "Network.requestWillBeSent"
+    || event_name == "Network.webSocketCreated";
+  let needs_has_post_data = event_name == "Network.requestWillBeSent";
+
+  if !needs_initiator && !needs_has_post_data {
+    inspector.broadcast_to_sessions(&event_name, &params);
+    return;
+  }
+
+  let Ok(mut parsed) = serde_json::from_str::<serde_json::Value>(&params)
+  else {
+    inspector.broadcast_to_sessions(&event_name, &params);
+    return;
+  };
+
+  if needs_initiator {
+    let initiator = capture_initiator(scope);
+    parsed
+      .as_object_mut()
+      .unwrap()
+      .insert("initiator".to_string(), initiator);
+  }
+
+  if needs_has_post_data
+    && let Some(request) =
+      parsed.get_mut("request").and_then(|r| r.as_object_mut())
+  {
+    request
+      .entry("hasPostData")
+      .or_insert(serde_json::Value::Bool(false));
+  }
+
+  let augmented = serde_json::to_string(&parsed).unwrap();
+  inspector.broadcast_to_sessions(&event_name, &augmented);
+}
+
+fn capture_initiator(scope: &mut v8::PinScope<'_, '_>) -> serde_json::Value {
+  let Some(stack_trace) = v8::StackTrace::current_stack_trace(scope, 10) else {
+    return serde_json::json!({ "type": "other" });
+  };
+
+  let frame_count = stack_trace.get_frame_count();
+  let mut call_frames = Vec::new();
+
+  for i in 0..frame_count {
+    let Some(frame) = stack_trace.get_frame(scope, i) else {
+      continue;
+    };
+    // Skip internal frames (ext:, node: prefixes)
+    if let Some(script_name) = frame.get_script_name(scope) {
+      let name = script_name.to_rust_string_lossy(scope);
+      if name.starts_with("ext:") || name.starts_with("node:") {
+        continue;
+      }
+    }
+
+    let function_name = frame
+      .get_function_name(scope)
+      .map(|n| n.to_rust_string_lossy(scope))
+      .unwrap_or_default();
+    let url = frame
+      .get_script_name(scope)
+      .map(|n| n.to_rust_string_lossy(scope))
+      .unwrap_or_default();
+    let line_number = frame.get_line_number().saturating_sub(1); // CDP uses 0-based
+    let column_number = frame.get_column().saturating_sub(1);
+
+    call_frames.push(serde_json::json!({
+      "functionName": function_name,
+      "scriptId": "",
+      "url": url,
+      "lineNumber": line_number,
+      "columnNumber": column_number,
+    }));
+  }
+
+  if call_frames.is_empty() {
+    serde_json::json!({ "type": "other" })
+  } else {
+    serde_json::json!({
+      "type": "script",
+      "stackTrace": {
+        "callFrames": call_frames,
+      },
+    })
+  }
 }
 
 struct JSInspectorSession {

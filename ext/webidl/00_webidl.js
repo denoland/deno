@@ -17,7 +17,10 @@ const {
 const {
   ArrayBufferIsView,
   ArrayPrototypeForEach,
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
+  ArrayPrototypeSlice,
   ArrayPrototypeSort,
   ArrayIteratorPrototype,
   BigInt,
@@ -1233,11 +1236,13 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
   });
   define(iteratorPrototype, {
     next() {
-      const internal = this && this[_iteratorInternal];
+      const internal = this == null ? undefined : this[_iteratorInternal];
       if (!internal) {
-        throw new TypeError(
-          `next() called on a value that is not a ${name} iterator object`,
+        const err = new TypeError(
+          `Value of "this" must be of type ${name}Iterator`,
         );
+        err.code = "ERR_INVALID_THIS";
+        throw err;
       }
       const { target, kind, index } = internal;
       const values = target[dataSymbol];
@@ -1261,6 +1266,30 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
       }
       return { value: result, done: false };
     },
+    // Node-compatible inspector output (e.g. `URLSearchParams Iterator { 'a',
+    // 'b' }`). Picked up by Deno's `util.inspect` via the privateCustomInspect
+    // path so `node:util.inspect` returns the same shape.
+    [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+      const internal = this == null ? undefined : this[_iteratorInternal];
+      const label = `${name} Iterator`;
+      if (!internal) return `${label} {}`;
+      const { target, kind, index } = internal;
+      const values = target[dataSymbol];
+      const remaining = ArrayPrototypeSlice(values, index);
+      const items = ArrayPrototypeMap(remaining, (pair) => {
+        if (kind === "key") return inspect(pair[keyKey], inspectOptions);
+        if (kind === "value") return inspect(pair[valueKey], inspectOptions);
+        return inspect([pair[keyKey], pair[valueKey]], inspectOptions);
+      });
+      if (items.length === 0) return `${label} {  }`;
+      const inlined = ArrayPrototypeJoin(items, ", ");
+      const breakLength = inspectOptions?.breakLength;
+      const oneLine = `${label} { ${inlined} }`;
+      if (typeof breakLength === "number" && oneLine.length > breakLength) {
+        return `${label} {\n  ${ArrayPrototypeJoin(items, ",\n  ")} }`;
+      }
+      return oneLine;
+    },
   });
   function createDefaultIterator(target, kind) {
     const iterator = ObjectCreate(iteratorPrototype);
@@ -1272,61 +1301,82 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
     return iterator;
   }
 
-  function entries() {
-    assertBranded(this, prototype.prototype, name);
-    return createDefaultIterator(this, "key+value");
-  }
+  // Use object method shorthand so that the resulting functions have no own
+  // `prototype` property, matching Node's URLSearchParams.prototype methods
+  // (Node uses class methods which behave the same way). Regular function
+  // declarations would expose a `prototype` property which causes
+  // `Object.hasOwn(value, "prototype")` checks in Node tests to fail.
+  const methods = {
+    entries() {
+      assertBranded(this, prototype.prototype, name);
+      return createDefaultIterator(this, "key+value");
+    },
+    keys() {
+      assertBranded(this, prototype.prototype, name);
+      return createDefaultIterator(this, "key");
+    },
+    values() {
+      assertBranded(this, prototype.prototype, name);
+      return createDefaultIterator(this, "value");
+    },
+    forEach(idlCallback, thisArg = undefined) {
+      assertBranded(this, prototype.prototype, name);
+      // Match Node: a missing/non-function callback throws
+      // `TypeError [ERR_INVALID_ARG_TYPE]` rather than a generic
+      // `ERR_MISSING_ARGS` / "Function failed to convert" error.
+      if (typeof idlCallback !== "function") {
+        const err = new TypeError(
+          `The "callback" argument must be of type function. Received ${
+            idlCallback === null
+              ? "null"
+              : idlCallback === undefined
+              ? "undefined"
+              : typeof idlCallback
+          }`,
+        );
+        err.code = "ERR_INVALID_ARG_TYPE";
+        throw err;
+      }
+      // Bind explicitly to `thisArg` (undefined by default). WebIDL forEach
+      // should pass through the caller-provided `this`, not default to
+      // `globalThis`, and Node's test suite asserts the callback's `this`
+      // is `undefined` when no `thisArg` is given.
+      idlCallback = FunctionPrototypeBind(idlCallback, thisArg);
+      const pairs = this[dataSymbol];
+      for (let i = 0; i < pairs.length; i++) {
+        const entry = pairs[i];
+        idlCallback(entry[valueKey], entry[keyKey], this);
+      }
+    },
+  };
 
   const properties = {
     entries: {
-      value: entries,
+      value: methods.entries,
       writable: true,
       enumerable: true,
       configurable: true,
     },
     [SymbolIterator]: {
-      value: entries,
+      value: methods.entries,
       writable: true,
       enumerable: false,
       configurable: true,
     },
     keys: {
-      value: function keys() {
-        assertBranded(this, prototype.prototype, name);
-        return createDefaultIterator(this, "key");
-      },
+      value: methods.keys,
       writable: true,
       enumerable: true,
       configurable: true,
     },
     values: {
-      value: function values() {
-        assertBranded(this, prototype.prototype, name);
-        return createDefaultIterator(this, "value");
-      },
+      value: methods.values,
       writable: true,
       enumerable: true,
       configurable: true,
     },
     forEach: {
-      value: function forEach(idlCallback, thisArg = undefined) {
-        assertBranded(this, prototype.prototype, name);
-        const prefix = `Failed to execute 'forEach' on '${name}'`;
-        requiredArguments(arguments.length, 1, { prefix });
-        idlCallback = converters["Function"](idlCallback, {
-          prefix,
-          context: "Argument 1",
-        });
-        idlCallback = FunctionPrototypeBind(
-          idlCallback,
-          thisArg ?? globalThis,
-        );
-        const pairs = this[dataSymbol];
-        for (let i = 0; i < pairs.length; i++) {
-          const entry = pairs[i];
-          idlCallback(entry[valueKey], entry[keyKey], this);
-        }
-      },
+      value: methods.forEach,
       writable: true,
       enumerable: true,
       configurable: true,

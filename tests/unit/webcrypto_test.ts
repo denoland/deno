@@ -2017,6 +2017,29 @@ Deno.test(async function testECspkiRoundTrip() {
   await crypto.subtle.importKey("spki", spki, alg, true, []);
 });
 
+// https://github.com/denoland/deno/issues/34044
+Deno.test(async function p521CompressedSpkiExportsUncompressed() {
+  // deno-fmt-ignore
+  const compressedSpki = new Uint8Array([
+    48, 88, 48, 16, 6, 7, 42, 134, 72, 206, 61, 2, 1, 6, 5, 43, 129, 4, 0, 35, 3, 68, 0, 3, 1, 86, 244, 121, 248, 223, 30, 32, 167, 255, 192, 76, 228, 32, 195, 225, 84, 174, 37, 25, 150, 190, 228, 47, 3, 75, 132, 212, 27, 116, 63, 52, 228, 95, 49, 27, 129, 58, 156, 222, 200, 205, 165, 155, 187, 189, 49, 212, 96, 179, 41, 37, 33, 231, 193, 183, 34, 229, 102, 124, 3, 219, 47, 174, 117, 63,
+  ]);
+
+  const key = await crypto.subtle.importKey(
+    "spki",
+    compressedSpki,
+    { name: "ECDSA", namedCurve: "P-521" },
+    true,
+    ["verify"],
+  );
+  const exported = new Uint8Array(await crypto.subtle.exportKey("spki", key));
+
+  // deno-fmt-ignore
+  const expected = new Uint8Array([
+    48, 129, 155, 48, 16, 6, 7, 42, 134, 72, 206, 61, 2, 1, 6, 5, 43, 129, 4, 0, 35, 3, 129, 134, 0, 4, 1, 86, 244, 121, 248, 223, 30, 32, 167, 255, 192, 76, 228, 32, 195, 225, 84, 174, 37, 25, 150, 190, 228, 47, 3, 75, 132, 212, 27, 116, 63, 52, 228, 95, 49, 27, 129, 58, 156, 222, 200, 205, 165, 155, 187, 189, 49, 212, 96, 179, 41, 37, 33, 231, 193, 183, 34, 229, 102, 124, 3, 219, 47, 174, 117, 63, 1, 80, 23, 54, 207, 226, 71, 57, 67, 32, 216, 228, 175, 194, 253, 57, 181, 169, 51, 16, 97, 184, 30, 34, 65, 40, 43, 158, 23, 137, 24, 34, 181, 183, 158, 5, 47, 69, 151, 181, 150, 67, 253, 57, 55, 156, 81, 189, 81, 37, 196, 244, 139, 195, 240, 37, 206, 60, 211, 105, 83, 40, 108, 203, 56, 251,
+  ]);
+  assertEquals(exported, expected);
+});
+
 Deno.test(async function testHmacJwkImport() {
   await crypto.subtle.importKey(
     "jwk",

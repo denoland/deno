@@ -144,8 +144,12 @@ const {
 
 // deno-lint-ignore camelcase
 const resource_symbol = Symbol("resource");
+// Alias to the same symbol used by `internal_binding/symbols.ts` so that
+// `socket[asyncIdSymbol]` (set in net.ts/dgram.ts) and
+// `socket[require('internal/async_hooks').symbols.async_id_symbol]`
+// (read by Node test fixtures) refer to the same slot on objects.
 // deno-lint-ignore camelcase
-const async_id_symbol = Symbol("trigger_async_id");
+const async_id_symbol = asyncIdSymbol;
 // deno-lint-ignore camelcase
 const trigger_async_id_symbol = Symbol("trigger_async_id");
 // deno-lint-ignore camelcase
@@ -333,7 +337,7 @@ function hasHooks(key: number) {
 }
 
 function enabledHooksExist() {
-  return hasHooks(kCheck);
+  return active_hooks.array.length > 0;
 }
 
 function hasAsyncIdStack() {
