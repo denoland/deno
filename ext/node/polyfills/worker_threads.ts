@@ -212,8 +212,6 @@ const workerSilentlyIgnoredFlags = new SafeSet([
   // Internal Node debug flag; Node tests pass it through unconditionally
   // when run with NODE_OPTIONS=--expose-internals.
   "--expose-internals",
-  // V8 exposes globalThis.gc when this flag is set; we just accept it.
-  "--expose-gc",
   // Node's `--input-type` configures the parser for eval workers; we
   // always treat eval as classic JS, so accept and ignore.
   "--input-type",
@@ -471,7 +469,10 @@ class NodeWorker extends EventEmitter {
       environmentData: environmentData,
       env: env_,
       argv: argv_,
-      execArgv: options?.execArgv ?? [],
+      // Node inherits the parent's execArgv when the worker doesn't
+      // specify one explicitly. This is what carries flags like
+      // `--expose-gc` and `--expose-internals` into the worker.
+      execArgv: options?.execArgv ?? (process.execArgv ?? []),
       name: this.#name,
       isEval: !!options?.eval,
       isWorkerThread: true,
@@ -1043,16 +1044,16 @@ internals.__initWorkerThreads = (
           for (let i = 0; i < metadata.execArgv.length; i++) {
             if (metadata.execArgv[i] === "--trace-warnings") {
               process.traceProcessWarnings = true;
-            } else if (metadata.execArgv[i] === "--expose-gc") {
-              // V8's --expose-gc makes a `globalThis.gc()` available.
-              // Deno doesn't ship V8's GC bindings, so install a no-op
-              // shim -- enough for code that calls `gc()` to make
-              // progress, which is what most node_compat tests expect.
-              if (typeof globalThis.gc !== "function") {
-                globalThis.gc = () => {};
-              }
             }
           }
+        }
+
+        // Install a no-op `globalThis.gc()` shim. V8's --expose-gc
+        // exposes it in Node; Deno doesn't ship those bindings but
+        // many Node tests call `gc()` unconditionally. The shim lets
+        // them proceed without `TypeError: gc is not a function`.
+        if (typeof globalThis.gc !== "function") {
+          globalThis.gc = () => {};
         }
 
         // Replace process.stdin with a Readable that receives
