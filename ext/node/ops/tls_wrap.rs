@@ -998,10 +998,19 @@ fn rustls_error_to_node_error(
       format!("{e} (wrong version number)"),
       "ERR_SSL_WRONG_VERSION_NUMBER".to_string(),
     ),
-    E::InvalidCertificate(cert_err) => (
-      format!("{e}"),
-      cert_error_to_node_code(cert_err).to_string(),
-    ),
+    E::InvalidCertificate(cert_err) => {
+      // Prefer the precise code recorded by NodeServerCertVerifier
+      // (e.g. UNABLE_TO_GET_ISSUER_CERT_LOCALLY from chain-structure analysis)
+      // over the generic mapping derived from the rustls CertificateError.
+      let recorded = CURRENT_VERIFY_ERROR
+        .with(|c| c.borrow().clone())
+        .and_then(|store| {
+          store.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        });
+      let code = recorded
+        .unwrap_or_else(|| cert_error_to_node_code(cert_err).to_string());
+      (format!("{e}"), code)
+    }
     E::NoCertificatesPresented => (
       format!("{e}"),
       "ERR_SSL_PEER_DID_NOT_RETURN_A_CERTIFICATE".to_string(),
@@ -3263,6 +3272,13 @@ struct NodeServerCertVerifier {
   /// Raw DER bytes of every root certificate so we can check whether a
   /// `CaUsedAsEndEntity` cert is actually trusted.
   root_cert_ders: Vec<Vec<u8>>,
+  /// When true (the `rejectUnauthorized: true` path), cert errors fail the
+  /// handshake at the rustls layer so rustls never caches a session that a
+  /// later strict connection could resume without re-running validation.
+  /// When false, errors are stored in `verify_error` and the JS layer chooses
+  /// whether to destroy based on `rejectUnauthorized`. Name-mismatch errors
+  /// are always deferred to JS `checkServerIdentity` regardless.
+  strict_verify: bool,
 }
 
 /// Map a rustls CipherSuite to (OpenSSL name, IANA name).
@@ -3505,6 +3521,27 @@ fn cert_error_to_node_code(err: &rustls::CertificateError) -> &'static str {
   }
 }
 
+impl NodeServerCertVerifier {
+  /// In strict mode (`rejectUnauthorized: true`), return Err so rustls
+  /// aborts the handshake before any session is cached. In lenient mode,
+  /// record the Node-style error code and let the handshake proceed so the
+  /// JS layer can surface it as `authorizationError`. In both cases the
+  /// precise code is stashed in `verify_error` so `rustls_error_to_node_error`
+  /// can surface it on the error path even when rustls aborts the handshake.
+  fn record_or_fail(
+    &self,
+    err: rustls::Error,
+    code: String,
+  ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+    store_verify_error(&self.verify_error, code);
+    if self.strict_verify {
+      Err(err)
+    } else {
+      Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+  }
+}
+
 impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
   fn verify_server_cert(
     &self,
@@ -3530,14 +3567,21 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
           )
           .err()
           .unwrap_or("UNABLE_TO_VERIFY_LEAF_SIGNATURE");
-          store_verify_error(&self.verify_error, code.to_string());
-          Ok(rustls::client::danger::ServerCertVerified::assertion())
+          self.record_or_fail(
+            rustls::Error::InvalidCertificate(
+              rustls::CertificateError::UnknownIssuer,
+            ),
+            code.to_string(),
+          )
         } else {
           Ok(v)
         }
       }
       Err(rustls::Error::InvalidCertificate(ref cert_error)) => {
-        // Server-name checks are handled by JS (checkServerIdentity).
+        // Server-name checks are always deferred to JS (checkServerIdentity)
+        // so that custom checkServerIdentity callbacks see a successful
+        // handshake. The JS layer still runs that check and destroys the
+        // connection if it fails.
         if matches!(
           cert_error,
           rustls::CertificateError::NotValidForName
@@ -3574,11 +3618,12 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
               );
             }
             Err(code) => {
-              // Chain is broken -- store the error and let the
-              // handshake proceed so JS can decide.
-              store_verify_error(&self.verify_error, code.to_string());
-              return Ok(
-                rustls::client::danger::ServerCertVerified::assertion(),
+              // Chain is broken -- in strict mode fail the handshake so
+              // rustls doesn't cache a resumable session; in lenient mode
+              // store the error for JS to surface as authorizationError.
+              return self.record_or_fail(
+                rustls::Error::InvalidCertificate(cert_error.clone()),
+                code.to_string(),
               );
             }
           }
@@ -3591,15 +3636,17 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
           )
           .err()
           .unwrap_or("UNABLE_TO_VERIFY_LEAF_SIGNATURE");
-          store_verify_error(&self.verify_error, code.to_string());
-          return Ok(rustls::client::danger::ServerCertVerified::assertion());
+          return self.record_or_fail(
+            rustls::Error::InvalidCertificate(cert_error.clone()),
+            code.to_string(),
+          );
         }
         if let rustls::CertificateError::Other(other) = cert_error
           && let Some(webpki_err) = other.0.downcast_ref::<webpki::Error>()
         {
           // CaUsedAsEndEntity is a webpki-specific check that OpenSSL
           // does not have. If the cert is actually in our root store,
-          // trust it silently. Otherwise store the error.
+          // trust it silently. Otherwise fall through.
           if matches!(webpki_err, webpki::Error::CaUsedAsEndEntity) {
             let ee_bytes: &[u8] = end_entity.as_ref();
             let is_trusted =
@@ -3611,12 +3658,14 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
             }
           }
         }
-        // Store the error for verifyError() and let the handshake
-        // proceed.  The JS layer will decide whether to tear down
-        // the connection based on `rejectUnauthorized`.
+        // In strict mode, fail the handshake so rustls won't cache the
+        // session; in lenient mode, store the error so JS can surface
+        // it as authorizationError without aborting.
         let code = cert_error_to_node_code(cert_error);
-        store_verify_error(&self.verify_error, code.to_string());
-        Ok(rustls::client::danger::ServerCertVerified::assertion())
+        self.record_or_fail(
+          rustls::Error::InvalidCertificate(cert_error.clone()),
+          code.to_string(),
+        )
       }
       Err(e) => Err(e),
     }
@@ -3873,11 +3922,19 @@ fn build_client_config(
     TlsKeys::Resolver(_) => return None,
   };
 
-  // Enable session resumption using the shared session store from NodeTlsState.
+  // Enable session resumption using the shared session store from
+  // NodeTlsState. Strict and `rejectUnauthorized: false` connections use
+  // separate caches so a session whose cert error was deferred in the
+  // first handshake cannot be picked up by a later strict connection
+  // (which would resume without re-running verification and bypass
+  // checkServerIdentity in JS).
   if let Some(node_tls_state) = op_state.try_borrow::<NodeTlsState>() {
-    config.resumption = rustls::client::Resumption::store(
-      node_tls_state.client_session_store.clone(),
-    );
+    let store = if reject_unauthorized {
+      node_tls_state.client_session_store.clone()
+    } else {
+      node_tls_state.client_session_store_insecure.clone()
+    };
+    config.resumption = rustls::client::Resumption::store(store);
   }
 
   // Install NodeServerCertVerifier to store verification errors for
@@ -3915,6 +3972,7 @@ fn build_client_config(
               verify_error: store.clone(),
               empty_explicit_ca: false,
               root_cert_ders,
+              strict_verify: reject_unauthorized,
             });
           *cached_verifier = Some((v.clone(), store.clone()));
           (store, Some(v))
@@ -3940,6 +3998,7 @@ fn build_client_config(
           verify_error: store.clone(),
           empty_explicit_ca,
           root_cert_ders,
+          strict_verify: reject_unauthorized,
         }) as Arc<dyn rustls::client::danger::ServerCertVerifier>
       });
     (store, v)
