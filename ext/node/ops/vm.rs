@@ -344,23 +344,44 @@ impl Drop for ContextifyContext {
   }
 }
 
+// A unique tag pointer used as a marker in embedder slot
+// `CONTEXTIFY_TAG_SLOT` to identify v8::Context instances created by
+// `ContextifyContext::attach` / `attach_vanilla`. The wasm code generation
+// callback runs for every context (it is an isolate-wide hook), and reads
+// embedder data from arbitrary contexts where the slots may contain
+// unrelated data — without a tag we cannot tell whether the value at
+// `CONTEXTIFY_CTX_SLOT` is a `ContextifyContext` pointer or random bytes.
+// The tag must be at least pointer-aligned because V8's
+// `SetAlignedPointerInEmbedderData` requires aligned values.
+#[repr(align(8))]
+struct ContextifyTag(u8);
+static CONTEXTIFY_TAG: ContextifyTag = ContextifyTag(0);
+const CONTEXTIFY_TAG_SLOT: i32 = 4;
+const CONTEXTIFY_CTX_SLOT: i32 = 3;
+
 extern "C" fn allow_wasm_code_gen(
   context: v8::Local<v8::Context>,
   _source: v8::Local<v8::String>,
 ) -> bool {
-  // Look up the ContextifyContext via embedder slot 3. Avoiding
-  // `Context::set_slot` here means the context does not need a v8::Context
-  // annex (with its own `Weak<Context>` self-reference) that survives until
-  // isolate teardown, which would otherwise use-after-free during the final
-  // GC because Rust-side `Weak::drop` skips `Reset` once `dispose_annex` has
-  // nulled the isolate pointer.
-  let context_ptr = context.get_aligned_pointer_from_embedder_data(3);
+  // Verify this is a contextified context by checking the tag slot. Reading
+  // raw embedder data from a non-contextified context (such as deno_core's
+  // main context) would otherwise return arbitrary bytes — V8 stores SMI-
+  // tagged values in unused slots, which are misaligned when interpreted as
+  // pointers.
+  let tag_ptr =
+    context.get_aligned_pointer_from_embedder_data(CONTEXTIFY_TAG_SLOT);
+  if tag_ptr != &raw const CONTEXTIFY_TAG as *mut _ {
+    return true;
+  }
+  let context_ptr =
+    context.get_aligned_pointer_from_embedder_data(CONTEXTIFY_CTX_SLOT);
   if context_ptr.is_null() {
     return true;
   }
-  // SAFETY: When non-null, this pointer is the ContextifyContext stored in
-  // `attach`/`attach_vanilla`. The ContextifyContext outlives the v8::Context
-  // because it owns a TracedReference to it.
+  // SAFETY: The tag match guarantees this slot was populated by
+  // `attach`/`attach_vanilla`, so it points at a valid ContextifyContext.
+  // The ContextifyContext outlives the v8::Context because it owns a
+  // TracedReference to it.
   let ctx = unsafe { &*(context_ptr as *const ContextifyContext) };
   ctx.allow_code_gen_wasm
 }
@@ -433,10 +454,17 @@ impl ContextifyContext {
     // SAFETY: We are storing a pointer to the ContextifyContext
     // in the embedder data of the v8::Context. The contextified wrapper
     // lives longer than the execution context, so this should be safe.
+    // The tag slot is set to a static sentinel so `allow_wasm_code_gen` —
+    // which runs for every context — can distinguish contextified contexts
+    // from non-contextified ones.
     unsafe {
       context.set_aligned_pointer_in_embedder_data(
-        3,
+        CONTEXTIFY_CTX_SLOT,
         &*ptr.unwrap() as *const ContextifyContext as _,
+      );
+      context.set_aligned_pointer_in_embedder_data(
+        CONTEXTIFY_TAG_SLOT,
+        &raw const CONTEXTIFY_TAG as *mut _,
       );
     }
 
@@ -536,10 +564,15 @@ impl ContextifyContext {
     // SAFETY: We are storing a pointer to the ContextifyContext
     // in the embedder data of the v8::Context. The contextified wrapper
     // lives longer than the execution context, so this should be safe.
+    // See `attach` for the tag slot.
     unsafe {
       context.set_aligned_pointer_in_embedder_data(
-        3,
+        CONTEXTIFY_CTX_SLOT,
         &*ptr.unwrap() as *const ContextifyContext as _,
+      );
+      context.set_aligned_pointer_in_embedder_data(
+        CONTEXTIFY_TAG_SLOT,
+        &raw const CONTEXTIFY_TAG as *mut _,
       );
     }
 
