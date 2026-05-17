@@ -314,7 +314,7 @@ impl Foo {
                     let msg = format!(
                         "{}: {} {} required, but only {} present",
                         "Failed to execute 'call' on 'Foo'", 1u8, "argument", args
-                        .length() - 0i32
+                        .length() - 0i32,
                     );
                     let msg = deno_core::v8::String::new(&mut scope, &msg).unwrap();
                     let exception = deno_core::v8::Exception::type_error(

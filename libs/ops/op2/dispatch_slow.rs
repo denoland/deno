@@ -291,7 +291,7 @@ pub(crate) fn with_required_check(
         #prefix,
         #required,
         #arguments_lit,
-        #fn_args.length() - #async_offset
+        #fn_args.length() - #async_offset,
       );
       let msg = deno_core::v8::String::new(&mut #scope, &msg).unwrap();
       let exception = deno_core::v8::Exception::type_error(&mut #scope, msg.into());
