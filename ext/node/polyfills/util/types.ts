@@ -26,6 +26,7 @@ export const {
   isBoxedPrimitive,
   isDataView,
   isDate,
+  isExternal,
   isGeneratorFunction,
   isGeneratorObject,
   isMap,

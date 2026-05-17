@@ -233,3 +233,21 @@ pub fn op_node_parse_env<'a>(
   });
   env_obj
 }
+
+// Creates a `v8::External` wrapping a null pointer. Node's
+// `process.binding('js_stream').JSStream` instances expose an
+// `_externalStream` property holding the native stream-handle pointer.
+// Deno doesn't have an underlying C++ stream object, so we return an
+// External over a null pointer purely so `util.types.isExternal(...)`
+// reports `true` for it (the only thing test fixtures actually probe).
+#[op2]
+pub fn op_node_make_external<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::External> {
+  v8::External::new(scope, std::ptr::null_mut())
+}
+
+#[op2(fast, no_side_effects)]
+pub fn op_node_is_external(value: &v8::Value) -> bool {
+  value.is_external()
+}

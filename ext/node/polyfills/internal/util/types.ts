@@ -101,7 +101,7 @@ function isUint32Array(value: unknown): value is Uint32Array {
 }
 
 const {
-  // isExternal,
+  isExternal,
   isAnyArrayBuffer,
   isArgumentsObject,
   isArrayBuffer,
@@ -156,6 +156,7 @@ return {
   isBoxedPrimitive,
   isDataView,
   isDate,
+  isExternal,
   isGeneratorFunction,
   isGeneratorObject,
   isMap,
