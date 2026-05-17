@@ -1002,6 +1002,10 @@ fn rustls_error_to_node_error(
       // Prefer the precise code recorded by NodeServerCertVerifier
       // (e.g. UNABLE_TO_GET_ISSUER_CERT_LOCALLY from chain-structure analysis)
       // over the generic mapping derived from the rustls CertificateError.
+      // Map the message text to the same wording that JS `makeVerifyError`
+      // produces, so callers that pattern-match on err.message keep working
+      // when the verifier aborts the handshake (strict mode) instead of
+      // deferring the error to JS.
       let recorded = CURRENT_VERIFY_ERROR
         .with(|c| c.borrow().clone())
         .and_then(|store| {
@@ -1009,7 +1013,10 @@ fn rustls_error_to_node_error(
         });
       let code = recorded
         .unwrap_or_else(|| cert_error_to_node_code(cert_err).to_string());
-      (format!("{e}"), code)
+      let msg = node_verify_error_message(&code)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("{e}"));
+      (msg, code)
     }
     E::NoCertificatesPresented => (
       format!("{e}"),
@@ -3495,6 +3502,28 @@ fn verify_chain_structure(
 }
 
 /// Map a rustls CertificateError to a Node/OpenSSL-style error code.
+/// Mirror of the JS-side `makeVerifyError` message table in `_tls_wrap.js`.
+/// Returns `None` when the code has no Node-style human message; callers
+/// fall back to the rustls error display.
+fn node_verify_error_message(code: &str) -> Option<&'static str> {
+  match code {
+    "CERT_HAS_EXPIRED" => Some("certificate has expired"),
+    "CERT_NOT_YET_VALID" => Some("certificate is not yet valid"),
+    "DEPTH_ZERO_SELF_SIGNED_CERT" => Some("self-signed certificate"),
+    "SELF_SIGNED_CERT_IN_CHAIN" => {
+      Some("self-signed certificate in certificate chain")
+    }
+    "UNABLE_TO_GET_ISSUER_CERT" => Some("unable to get issuer certificate"),
+    "UNABLE_TO_GET_ISSUER_CERT_LOCALLY" => {
+      Some("unable to get local issuer certificate")
+    }
+    "UNABLE_TO_VERIFY_LEAF_SIGNATURE" => {
+      Some("unable to verify the first certificate")
+    }
+    _ => None,
+  }
+}
+
 fn cert_error_to_node_code(err: &rustls::CertificateError) -> &'static str {
   use rustls::CertificateError as CE;
   match err {
