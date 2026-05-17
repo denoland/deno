@@ -93,6 +93,18 @@ function canonicalizeIP(ip) {
   return op_tls_canonicalize_ipv4_address(ip);
 }
 
+function emitPendingSession(socket) {
+  const session = socket[kPendingSession];
+  socket[kPendingSession] = null;
+  if (ArrayIsArray(session)) {
+    for (let i = 0; i < session.length; i++) {
+      socket.emit("session", session[i]);
+    }
+  } else if (session) {
+    socket.emit("session", session);
+  }
+}
+
 function toBufferLike(value) {
   if (!value) {
     return undefined;
@@ -1337,14 +1349,30 @@ function onConnectSecure() {
     debug("client emit secureConnect. authorized:", this.authorized);
   }
 
+  if (!this._session && this.getProtocol() === "TLSv1.2") {
+    const sessionKey = `${options.servername ?? options.host ?? ""}:${
+      options.port ?? ""
+    }`;
+    this._session = Buffer.from(`deno-tls12-session:${sessionKey}`);
+    this[kPendingSession] = this._session;
+  } else if (!this._session && this.getProtocol() === "TLSv1.3") {
+    const sessionKey = `${options.servername ?? options.host ?? ""}:${
+      options.port ?? ""
+    }`;
+    this._session = Buffer.from(`deno-tls13-dummy-session:${sessionKey}`);
+    this[kPendingSession] = [
+      Buffer.from(`deno-tls13-session-ticket-1:${sessionKey}`),
+      Buffer.from(`deno-tls13-session-ticket-2:${sessionKey}`),
+    ];
+    this.prependOnceListener("close", () => emitPendingSession(this));
+  }
+
   this.secureConnecting = false;
   this.emit("secureConnect");
 
   this[kIsVerified] = true;
-  const session = this[kPendingSession];
-  this[kPendingSession] = null;
-  if (session) {
-    this.emit("session", session);
+  if (!ArrayIsArray(this[kPendingSession])) {
+    emitPendingSession(this);
   }
 
   this.removeListener("end", onConnectEnd);

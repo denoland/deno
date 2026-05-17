@@ -72,6 +72,7 @@ const {
 const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const {
   validateBoolean,
+  validateFunction,
   validateInteger,
   validateLinkHeaderValue,
   validateObject,
@@ -759,6 +760,15 @@ function updateOutgoingData(socket, state, delta) {
 function parserOnIncoming(server, socket, state, req, keepAlive) {
   resetSocketTimeout(server, socket, state);
 
+  if (req.upgrade && req.method !== "CONNECT") {
+    if (
+      server.shouldUpgradeCallback !== undefined &&
+      !server.shouldUpgradeCallback(req)
+    ) {
+      req.upgrade = false;
+    }
+  }
+
   if (req.upgrade) {
     req.upgrade = req.method === "CONNECT" || true;
     if (req.upgrade) return 0;
@@ -1213,6 +1223,19 @@ function storeHTTPOptions(options) {
     this.rejectNonStandardBodyWrites = rejectNonStandardBodyWrites;
   } else {
     this.rejectNonStandardBodyWrites = false;
+  }
+
+  const shouldUpgradeCallback = options.shouldUpgradeCallback;
+  if (shouldUpgradeCallback !== undefined) {
+    validateFunction(
+      shouldUpgradeCallback,
+      "options.shouldUpgradeCallback",
+    );
+    this.shouldUpgradeCallback = shouldUpgradeCallback;
+  } else {
+    this.shouldUpgradeCallback = function () {
+      return this.listenerCount("upgrade") > 0;
+    };
   }
 }
 ObjectSetPrototypeOf(Server.prototype, net.Server.prototype);

@@ -65,16 +65,19 @@ pub(crate) struct NodeTlsState {
   /// per-server keys; this is a pragmatic simplification.
   pub(crate) server_ticketer:
     Option<Arc<dyn deno_tls::rustls::server::ProducesTickets>>,
-  /// Cached TLS-1.3 client cert verifier and the shared "no client cert"
-  /// resolver, used when a client connection is built without custom CA
+  /// Cached TLS-1.3 client cert verifiers and shared "no client cert"
+  /// resolvers, used when a client connection is built without custom CA
   /// certs or a client cert.  Reusing these `Arc`s across connections keeps
   /// rustls's session-resumption identity check (`Arc::downgrade(&verifier)`)
   /// stable, which is what allows `tls.TLSSocket#isSessionReused()` to
-  /// return true on subsequent connections.  Without identity stability the
-  /// cached session is dropped at handshake start and resumption never
-  /// succeeds.
+  /// return true on subsequent connections.  Keep strict and
+  /// `rejectUnauthorized: false` identities separate so a session accepted
+  /// with deferred cert errors is not resumed by a later strict connection.
   pub(crate) cached_default_verifier: Option<CachedClientVerifier>,
+  pub(crate) cached_insecure_verifier: Option<CachedClientVerifier>,
   pub(crate) cached_no_client_auth:
+    Option<Arc<dyn deno_tls::rustls::client::ResolvesClientCert>>,
+  pub(crate) cached_insecure_no_client_auth:
     Option<Arc<dyn deno_tls::rustls::client::ResolvesClientCert>>,
 }
 
@@ -222,6 +225,7 @@ pub fn op_set_default_ca_certificates(
     tls_state.custom_ca_certs = Some(certs);
     // Custom CA list changed; previously cached verifier no longer matches.
     tls_state.cached_default_verifier = None;
+    tls_state.cached_insecure_verifier = None;
   } else {
     state.put(NodeTlsState {
       custom_ca_certs: Some(certs),
@@ -230,7 +234,9 @@ pub fn op_set_default_ca_certificates(
       ),
       server_ticketer: None,
       cached_default_verifier: None,
+      cached_insecure_verifier: None,
       cached_no_client_auth: None,
+      cached_insecure_no_client_auth: None,
     });
   }
 }
