@@ -194,6 +194,224 @@ struct PeerCertificateChain {
 }
 
 // ---------------------------------------------------------------------------
+// Session ticket capture — extracts the latest NewSessionTicket bytes seen
+// by a per-connection `ClientSessionStore` wrapper so that
+// `TLSSocket.getTLSTicket()` can return them.
+//
+// rustls' `Tls12ClientSessionValue` / `Tls13ClientSessionValue` keep the
+// ticket field private (`pub(crate)`), and there is no public accessor.
+// We extract the bytes by parsing the derived `Debug` output: rustls' own
+// `PayloadU16: Debug` impl writes the ticket as a contiguous lowercase hex
+// run, prefixed by the field name `ticket: ` from the struct's derived
+// `Debug`.  Inelegant but stable across patch releases — the format string
+// is fixed by the derive macro and rustls is pinned to `=0.23.40`.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Default)]
+struct TicketCapture {
+  /// Ticket retrieved from the underlying store for resumption (set by
+  /// `take_tls13_ticket` / `tls12_session`).  Used as the connection's
+  /// "current ticket" when the handshake resumes successfully, so that
+  /// `TLSSocket.getTLSTicket()` returns the ticket that was used to resume
+  /// — matching OpenSSL's `SSL_SESSION_get0_ticket` behaviour for resumed
+  /// sessions.
+  take_ticket: Option<Vec<u8>>,
+  /// Most recent ticket inserted into the store from a server
+  /// `NewSessionTicket` (TLS 1.2 in-handshake or TLS 1.3 post-handshake).
+  insert_ticket: Option<Vec<u8>>,
+  /// The ticket value exposed via `TLSSocket.getTLSTicket()`.  Latched at
+  /// `handshake_done` to `take_ticket` for resumed connections or
+  /// `insert_ticket` for full handshakes; subsequent post-handshake
+  /// tickets overwrite it.
+  current_ticket: Option<Vec<u8>>,
+  /// True when a fresh `NewSessionTicket` arrived since the last time we
+  /// fired `onnewsession` to JS.
+  new_session_pending: bool,
+  /// Caller-supplied ticket bytes (from JS `setSession`).  When set, the
+  /// wrapper's `tls12_session` returns a clone of the matching value from
+  /// the global session registry instead of whatever the inner store
+  /// currently holds.  This is what makes
+  /// `tls.connect({ session: <prevSession> })` resume the *user-pinned*
+  /// session even after the shared store has been overwritten by
+  /// intervening connections — matching OpenSSL's
+  /// `SSL_set_session`/`SSL_get_session` behaviour.  TLS 1.3 cannot be
+  /// pinned this way because `Tls13ClientSessionValue` does not implement
+  /// `Clone` in rustls 0.23.40.
+  pinned_session_bytes: Option<Vec<u8>>,
+}
+
+/// Process-wide registry mapping serialized session ticket bytes to the
+/// rustls `Tls12ClientSessionValue` that produced them.  Populated each
+/// time `set_tls12_session` is called on a `TicketCapturingStore` so that
+/// later `TLSSocket.setSession(bytes)` calls can reconstitute the
+/// matching value (rustls' public API has no constructor for
+/// `Tls12ClientSessionValue` from raw bytes).
+type Tls12SessionRegistry = std::sync::Mutex<
+  std::collections::HashMap<Vec<u8>, rustls::client::Tls12ClientSessionValue>,
+>;
+
+fn tls12_session_registry() -> &'static Tls12SessionRegistry {
+  static REG: std::sync::OnceLock<Tls12SessionRegistry> =
+    std::sync::OnceLock::new();
+  REG.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+#[derive(Debug)]
+struct TicketCapturingStore {
+  inner: Arc<dyn rustls::client::ClientSessionStore>,
+  capture: Arc<std::sync::Mutex<TicketCapture>>,
+}
+
+impl rustls::client::ClientSessionStore for TicketCapturingStore {
+  fn set_kx_hint(
+    &self,
+    server_name: rustls::pki_types::ServerName<'static>,
+    group: rustls::NamedGroup,
+  ) {
+    self.inner.set_kx_hint(server_name, group);
+  }
+
+  fn kx_hint(
+    &self,
+    server_name: &rustls::pki_types::ServerName<'_>,
+  ) -> Option<rustls::NamedGroup> {
+    self.inner.kx_hint(server_name)
+  }
+
+  fn set_tls12_session(
+    &self,
+    server_name: rustls::pki_types::ServerName<'static>,
+    value: rustls::client::Tls12ClientSessionValue,
+  ) {
+    if let Some(ticket) = extract_ticket_from_debug(&value) {
+      // Register the value in the process-wide map so future `setSession`
+      // calls from JS can pin this session by its ticket bytes.
+      {
+        let mut reg = tls12_session_registry()
+          .lock()
+          .unwrap_or_else(|e| e.into_inner());
+        reg.insert(ticket.clone(), value.clone());
+      }
+      let mut cap = self.capture.lock().unwrap_or_else(|e| e.into_inner());
+      cap.insert_ticket = Some(ticket.clone());
+      cap.current_ticket = Some(ticket);
+      cap.new_session_pending = true;
+    }
+    self.inner.set_tls12_session(server_name, value);
+  }
+
+  fn tls12_session(
+    &self,
+    server_name: &rustls::pki_types::ServerName<'_>,
+  ) -> Option<rustls::client::Tls12ClientSessionValue> {
+    // Honour the per-connection pinned session bytes from
+    // `TLSSocket.setSession` — return a clone of the matching registered
+    // value so the user's preferred session is resumed even after the
+    // shared inner store has been overwritten by other connections.
+    let pinned = {
+      let cap = self.capture.lock().unwrap_or_else(|e| e.into_inner());
+      cap.pinned_session_bytes.clone()
+    };
+    if let Some(bytes) = pinned {
+      let reg = tls12_session_registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+      if let Some(value) = reg.get(&bytes) {
+        let cloned = value.clone();
+        let mut cap = self.capture.lock().unwrap_or_else(|e| e.into_inner());
+        cap.take_ticket = Some(bytes);
+        return Some(cloned);
+      }
+    }
+    let result = self.inner.tls12_session(server_name);
+    if let Some(ref value) = result
+      && let Some(ticket) = extract_ticket_from_debug(value)
+    {
+      let mut cap = self.capture.lock().unwrap_or_else(|e| e.into_inner());
+      cap.take_ticket = Some(ticket);
+    }
+    result
+  }
+
+  fn remove_tls12_session(
+    &self,
+    server_name: &rustls::pki_types::ServerName<'static>,
+  ) {
+    self.inner.remove_tls12_session(server_name);
+  }
+
+  fn insert_tls13_ticket(
+    &self,
+    server_name: rustls::pki_types::ServerName<'static>,
+    value: rustls::client::Tls13ClientSessionValue,
+  ) {
+    if let Some(ticket) = extract_ticket_from_debug(&value) {
+      let mut cap = self.capture.lock().unwrap_or_else(|e| e.into_inner());
+      cap.insert_ticket = Some(ticket.clone());
+      cap.current_ticket = Some(ticket);
+      cap.new_session_pending = true;
+    }
+    self.inner.insert_tls13_ticket(server_name, value);
+  }
+
+  fn take_tls13_ticket(
+    &self,
+    server_name: &rustls::pki_types::ServerName<'static>,
+  ) -> Option<rustls::client::Tls13ClientSessionValue> {
+    let result = self.inner.take_tls13_ticket(server_name);
+    if let Some(ref value) = result
+      && let Some(ticket) = extract_ticket_from_debug(value)
+    {
+      let mut cap = self.capture.lock().unwrap_or_else(|e| e.into_inner());
+      cap.take_ticket = Some(ticket);
+    }
+    result
+  }
+}
+
+/// Parse the derived `Debug` output of a `Tls12ClientSessionValue` /
+/// `Tls13ClientSessionValue` and pull out the `ticket: <hex>` field.
+///
+/// rustls' `PayloadU16: Debug` writes a contiguous lowercase hex run with
+/// no separators (see `rustls::msgs::base::hex`), and the surrounding
+/// derived `Debug` always writes the field name followed by `": "`.  Take
+/// the first such run after the literal `ticket: `.
+fn extract_ticket_from_debug<T: std::fmt::Debug + ?Sized>(
+  value: &T,
+) -> Option<Vec<u8>> {
+  let s = format!("{value:?}");
+  let needle = "ticket: ";
+  let start = s.find(needle)? + needle.len();
+  let bytes = s.as_bytes();
+  let mut end = start;
+  while end < bytes.len() && bytes[end].is_ascii_hexdigit() {
+    end += 1;
+  }
+  let hex_len = end - start;
+  if hex_len == 0 || hex_len % 2 != 0 {
+    return None;
+  }
+  let mut out = Vec::with_capacity(hex_len / 2);
+  let mut i = start;
+  while i < end {
+    let hi = hex_nibble(bytes[i])?;
+    let lo = hex_nibble(bytes[i + 1])?;
+    out.push((hi << 4) | lo);
+    i += 2;
+  }
+  Some(out)
+}
+
+fn hex_nibble(c: u8) -> Option<u8> {
+  match c {
+    b'0'..=b'9' => Some(c - b'0'),
+    b'a'..=b'f' => Some(c - b'a' + 10),
+    b'A'..=b'F' => Some(c - b'A' + 10),
+    _ => None,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Kind — client or server
 // ---------------------------------------------------------------------------
 
@@ -420,6 +638,53 @@ unsafe fn do_emit_error(ctx: &EmitCtx, error_msg: &str, error_code: &str) {
     {
       func.call(scope, this.into(), &[error]);
     }
+  }
+}
+
+/// Emit `onnewsession` to JS with the captured session ticket bytes.
+/// Called after `cycle()` detects that the per-connection ticket capture
+/// has a freshly-arrived `NewSessionTicket`.  Mirrors Node's
+/// `TLSWrap::NewSessionDoneCb`/`NewSessionCallback` path.
+///
+/// # Safety
+/// EmitCtx must contain valid pointers. No TLSWrapInner reference may be held by the caller.
+unsafe fn do_emit_new_session(ctx: &EmitCtx, session: &[u8]) {
+  unsafe {
+    let mut isolate = v8::Isolate::from_raw_isolate_ptr(ctx.isolate_ptr);
+
+    if ctx.loop_ptr.is_null() {
+      return;
+    }
+    let ctx_ptr = (*ctx.loop_ptr).data;
+    if ctx_ptr.is_null() {
+      return;
+    }
+    let context_global = clone_context_global(&mut isolate, ctx_ptr);
+
+    v8::scope!(let handle_scope, &mut isolate);
+    let context = v8::Local::new(handle_scope, context_global);
+    let scope = &mut v8::ContextScope::new(handle_scope, context);
+
+    let this = v8::Local::new(scope, &ctx.js_handle);
+    let key =
+      v8::String::new_external_onebyte_static(scope, b"onnewsession").unwrap();
+    let Some(val) = this.get(scope, key.into()) else {
+      return;
+    };
+    let Ok(func) = v8::Local::<v8::Function>::try_from(val) else {
+      return;
+    };
+
+    // Wrap the session bytes in an ArrayBuffer so JS can turn it into a
+    // Buffer without copying.
+    let len = session.len();
+    let store = v8::ArrayBuffer::new(scope, len);
+    let backing = store.get_backing_store();
+    for (i, byte) in session.iter().enumerate() {
+      backing[i].set(*byte);
+    }
+    let ab: v8::Local<v8::Value> = store.into();
+    func.call(scope, this.into(), &[ab]);
   }
 }
 
@@ -856,6 +1121,13 @@ struct TLSWrapInner {
   accepted: Option<rustls::server::Accepted>,
   client_hello_servername: Option<String>,
   client_hello_alpn: Vec<Vec<u8>>,
+
+  /// Per-connection ticket capture slot, populated by `TicketCapturingStore`
+  /// when rustls processes a `NewSessionTicket` (TLS 1.2 in-handshake or
+  /// TLS 1.3 post-handshake) or retrieves a ticket for resumption.  Only
+  /// set on client TLSWraps; `None` on server connections.  Read by
+  /// `get_tls_ticket()` op and used to fire `onnewsession` to JS.
+  ticket_capture: Option<Arc<std::sync::Mutex<TicketCapture>>>,
 }
 
 /// Convert a rustls error to a (message, code) pair that matches Node's
@@ -979,6 +1251,7 @@ impl TLSWrapInner {
       accepted: None,
       client_hello_servername: None,
       client_hello_alpn: Vec::new(),
+      ticket_capture: None,
     }
   }
 
@@ -1051,6 +1324,73 @@ impl TLSWrapInner {
         let enc_action2 = (*ptr).enc_out_collect();
         (*ptr).cycling = false;
         TLSWrapInner::do_enc_out_action(ptr, enc_action2);
+      }
+
+      // Fire `onnewsession` to JS when rustls has handed us a fresh
+      // `NewSessionTicket` since the last cycle.  This is the only place a
+      // TLS 1.3 ticket received post-handshake gets surfaced to JS, so it
+      // must run on every cycle (not just `handshake_done`).
+      TLSWrapInner::dispatch_pending_session(ptr);
+    }
+  }
+
+  /// Dispatch `onnewsession(session)` to JS if the per-connection ticket
+  /// capture flagged a fresh `NewSessionTicket` since the previous call.
+  /// Clears the flag whether or not the JS callback exists.
+  ///
+  /// # Safety
+  /// `ptr` must be a valid, non-null pointer to a live TLSWrapInner.
+  unsafe fn dispatch_pending_session(ptr: *mut TLSWrapInner) {
+    unsafe {
+      let session = {
+        let Some(ref capture) = (*ptr).ticket_capture else {
+          return;
+        };
+        let mut cap = capture.lock().unwrap_or_else(|e| e.into_inner());
+        if !cap.new_session_pending {
+          return;
+        }
+        cap.new_session_pending = false;
+        match cap.insert_ticket {
+          Some(ref t) if !t.is_empty() => t.clone(),
+          _ => return,
+        }
+      };
+      if let Some(ctx) = extract_emit_ctx(ptr) {
+        do_emit_new_session(&ctx, &session);
+      }
+    }
+  }
+
+  /// Latch the per-connection ticket capture's `current_ticket` based on
+  /// whether the handshake resumed an existing session.  Called from
+  /// `dispatch_clear_out_callbacks` immediately before firing
+  /// `onhandshakedone` so that the JS `secureConnect` callback observes
+  /// the resumption ticket on resumed connections rather than any
+  /// post-handshake ticket that may have already arrived in the same
+  /// rustls `process_new_packets` call (e.g. when the server flushes a
+  /// `NewSessionTicket` in the same TCP packet as `Finished`).
+  ///
+  /// # Safety
+  /// `ptr` must be a valid, non-null pointer to a live TLSWrapInner.
+  unsafe fn latch_current_ticket_at_handshake_done(ptr: *mut TLSWrapInner) {
+    unsafe {
+      let Some(ref capture) = (*ptr).ticket_capture else {
+        return;
+      };
+      let is_resumed = match (*ptr).tls_conn {
+        Some(ref conn) => {
+          matches!(conn.handshake_kind(), Some(rustls::HandshakeKind::Resumed))
+        }
+        None => false,
+      };
+      let mut cap = capture.lock().unwrap_or_else(|e| e.into_inner());
+      if is_resumed {
+        if let Some(ref t) = cap.take_ticket {
+          cap.current_ticket = Some(t.clone());
+        }
+      } else if let Some(ref t) = cap.insert_ticket {
+        cap.current_ticket = Some(t.clone());
       }
     }
   }
@@ -1366,6 +1706,7 @@ impl TLSWrapInner {
 
       if result.handshake_done {
         (*ptr).established = true;
+        TLSWrapInner::latch_current_ticket_at_handshake_done(ptr);
         if let Some(ctx) = extract_emit_ctx(ptr) {
           do_emit_handshake_done(&ctx);
         }
@@ -1842,7 +2183,16 @@ impl TLSWrap {
     };
 
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
-    let client_config = match build_client_config(scope, context, op_state) {
+    // Allocate the ticket capture slot before building the config so we can
+    // wrap the shared session store and observe NewSessionTickets for this
+    // specific connection.
+    let capture: Arc<std::sync::Mutex<TicketCapture>> = Arc::default();
+    let client_config = match build_client_config(
+      scope,
+      context,
+      op_state,
+      Some(capture.clone()),
+    ) {
       Some((c, _)) => c,
       None => return -1,
     };
@@ -1852,6 +2202,7 @@ impl TLSWrap {
     // connection even when the verifier `Arc` is cached process-wide.
     inner.pending_client_config = Some(Arc::new(client_config));
     inner.pending_server_name = server_name;
+    inner.ticket_capture = Some(capture);
     0
   }
 
@@ -2822,13 +3173,28 @@ impl TLSWrap {
   }
 
   /// Set the serialized TLS session for client resumption.
-  /// With the shared session store, rustls handles resumption automatically.
-  /// This is still needed to signal that a session was provided (so JS
-  /// can check isSessionReused after handshake).
+  ///
+  /// For TLS 1.2 we honour this fully: the bytes are stashed as the
+  /// per-connection pinned session and the wrapper's `tls12_session`
+  /// returns a clone of the matching `Tls12ClientSessionValue` from the
+  /// global registry, so the user's preferred session is resumed even
+  /// after the shared session store has been overwritten by other
+  /// connections.  For TLS 1.3 the bytes are kept for `getSession`
+  /// roundtripping, but resumption goes through the shared store —
+  /// rustls' `Tls13ClientSessionValue` is non-`Clone` in 0.23.40, so we
+  /// can't synthesise multiple copies from one captured value.
   #[fast]
-  fn set_session(&self, #[buffer] _session: &[u8]) {
+  fn set_session(&self, #[buffer] session: &[u8]) {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
     inner.session_was_set = true;
+    if let Some(ref capture) = inner.ticket_capture {
+      let mut cap = capture.lock().unwrap_or_else(|e| e.into_inner());
+      cap.pinned_session_bytes = if session.is_empty() {
+        None
+      } else {
+        Some(session.to_vec())
+      };
+    }
   }
 
   /// Check if the TLS session was resumed (reused from a previous connection).
@@ -2839,6 +3205,28 @@ impl TLSWrap {
       matches!(conn.handshake_kind(), Some(rustls::HandshakeKind::Resumed))
     } else {
       false
+    }
+  }
+
+  /// Return the most recent `NewSessionTicket` bytes observed for this
+  /// connection, or an empty buffer if none has been received yet. JS
+  /// translates the empty buffer back to `undefined` to match Node's
+  /// `tlsSocket.getTLSTicket()` contract.
+  #[buffer]
+  fn get_tls_ticket(&self) -> Box<[u8]> {
+    let inner = unsafe { &*self.inner.as_mut_ptr() };
+    let Some(ref capture) = inner.ticket_capture else {
+      return Box::new([]);
+    };
+    let cap = capture.lock().unwrap_or_else(|e| e.into_inner());
+    let ticket = cap
+      .current_ticket
+      .as_ref()
+      .or(cap.insert_ticket.as_ref())
+      .or(cap.take_ticket.as_ref());
+    match ticket {
+      Some(t) => t.clone().into_boxed_slice(),
+      None => Box::new([]),
     }
   }
 
@@ -3528,6 +3916,7 @@ fn build_client_config(
   scope: &mut v8::PinScope,
   context: v8::Local<v8::Object>,
   op_state: &mut OpState,
+  ticket_capture: Option<Arc<std::sync::Mutex<TicketCapture>>>,
 ) -> Option<(rustls::ClientConfig, VerifyErrorStore)> {
   use deno_net::DefaultTlsOptions;
   use deno_tls::TlsKeys;
@@ -3700,10 +4089,21 @@ fn build_client_config(
   };
 
   // Enable session resumption using the shared session store from NodeTlsState.
+  // When the caller supplies a `ticket_capture` slot, wrap the shared store in
+  // a `TicketCapturingStore` so this connection's ticket bytes can be exposed
+  // to JS via `TLSSocket.getTLSTicket()` without losing cross-connection
+  // resumption (which depends on the shared inner store).
   if let Some(node_tls_state) = op_state.try_borrow::<NodeTlsState>() {
-    config.resumption = rustls::client::Resumption::store(
-      node_tls_state.client_session_store.clone(),
-    );
+    let store: Arc<dyn rustls::client::ClientSessionStore> =
+      if let Some(capture) = ticket_capture {
+        Arc::new(TicketCapturingStore {
+          inner: node_tls_state.client_session_store.clone(),
+          capture,
+        })
+      } else {
+        node_tls_state.client_session_store.clone()
+      };
+    config.resumption = rustls::client::Resumption::store(store);
   }
 
   // Install NodeServerCertVerifier to store verification errors for
@@ -4237,6 +4637,11 @@ fn build_server_config(
   if let Some(t) = ticketer {
     server_config.ticketer = t;
   }
+  // Send exactly one NewSessionTicket per TLS 1.3 handshake to match Node's
+  // OpenSSL-backed default (Node calls `SSL_CTX_set_num_tickets(_, 1)`).
+  // rustls defaults to 2, which breaks upstream Node tests that depend on
+  // 'session' firing a known number of times.
+  server_config.send_tls13_tickets = 1;
   // Stateful TLS 1.2 session-ID resumption fallback.  TLS 1.3 uses the
   // ticketer above, so this only matters for TLS 1.2 peers.
   server_config.session_storage =

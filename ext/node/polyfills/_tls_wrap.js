@@ -169,6 +169,36 @@ function onhandshakedone() {
   if (owner) owner._finishInit();
 }
 
+// Called from Rust when a NewSessionTicket arrives.  Mirrors Node's
+// `onnewsession` callback in lib/_tls_wrap.js: stores the session bytes
+// on kPendingSession to be emitted after secureConnect, or fires the
+// 'session' event immediately if secureConnect already ran (TLS 1.3
+// post-handshake tickets).
+//
+// Suppress emission on resumed connections so the upstream
+// `parallel/test-tls-ticket` behaviour (4 'session' events for the 4 full
+// handshakes across 9 connections) is preserved on both TLS 1.2 and 1.3.
+// Node's OpenSSL only fires onnewsession for new sessions; rustls sends
+// fresh tickets after every TLS 1.3 handshake (including resumption), so
+// we filter at the JS layer.
+function onnewsession(sessionAb) {
+  const owner = this._owner;
+  if (!owner || owner.destroyed) return;
+  const session = Buffer.from(sessionAb);
+  if (session.length === 0) return;
+  // Always mirror getSession() so callers see the latest ticket bytes
+  // regardless of whether the 'session' event fires.
+  owner._session = session;
+  if (owner._secureEstablished && owner.isSessionReused?.()) {
+    return;
+  }
+  if (owner[kIsVerified]) {
+    owner.emit("session", session);
+  } else {
+    owner[kPendingSession] = session;
+  }
+}
+
 function onerror(err) {
   const owner = this._owner;
   if (!owner) return;
@@ -677,6 +707,7 @@ TLSSocket.prototype._init = function (socket, wrap) {
   } else {
     ssl.onhandshakestart = noop;
     ssl.onhandshakedone = onhandshakedone;
+    ssl.onnewsession = onnewsession;
 
     if (options.session) {
       ssl.setSession(options.session);
@@ -965,7 +996,28 @@ TLSSocket.prototype.getPeerFinished = function getPeerFinished() {
 };
 
 TLSSocket.prototype.getSession = function getSession() {
-  return this._session ?? null;
+  if (this._session) return this._session;
+  // No 'session' event has been delivered yet, but a NewSessionTicket may
+  // have been received and captured.  Return that so callers see the
+  // latest ticket bytes — matches Node's `SSL_get_session` behaviour where
+  // the SSL_SESSION always reflects the latest server-sent state.
+  const ticket = this._handle?.getTLSTicket?.();
+  if (ticket && ticket.byteLength > 0) {
+    this._session = Buffer.from(ticket);
+    return this._session;
+  }
+  return null;
+};
+
+// Returns the latest session ticket bytes received from the server
+// (NewSessionTicket message).  Returns `undefined` when no ticket has
+// been received, matching Node's `tlsSocket.getTLSTicket()` contract.
+TLSSocket.prototype.getTLSTicket = function getTLSTicket() {
+  const ticket = this._handle?.getTLSTicket?.();
+  if (!ticket || ticket.byteLength === 0) {
+    return undefined;
+  }
+  return Buffer.from(ticket);
 };
 
 TLSSocket.prototype.getPeerX509Certificate = function getPeerX509Certificate() {
