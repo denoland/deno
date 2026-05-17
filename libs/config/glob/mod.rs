@@ -605,6 +605,8 @@ pub struct GlobPatternParseError {
 pub struct GlobPattern {
   is_negated: bool,
   pattern: glob::Pattern,
+  base_path: PathBuf,
+  relative_pattern: glob::Pattern,
 }
 
 impl GlobPattern {
@@ -622,15 +624,26 @@ impl GlobPattern {
       Some(pattern) => (true, pattern),
       None => (false, pattern),
     };
-    let pattern = escape_brackets(pattern).replace('\\', "/");
-    let pattern =
-      glob::Pattern::new(&pattern).map_err(|source| GlobPatternParseError {
-        pattern: pattern.to_string(),
+    let pattern_text = escape_brackets(pattern).replace('\\', "/");
+    let (base_path, relative_pattern_text) = split_pattern_base(&pattern_text);
+    let pattern = glob::Pattern::new(&pattern_text).map_err(|source| {
+      GlobPatternParseError {
+        pattern: pattern_text.to_string(),
         source,
+      }
+    })?;
+    let relative_pattern =
+      glob::Pattern::new(&relative_pattern_text).map_err(|source| {
+        GlobPatternParseError {
+          pattern: relative_pattern_text,
+          source,
+        }
       })?;
     Ok(Self {
       is_negated,
       pattern,
+      base_path,
+      relative_pattern,
     })
   }
 
@@ -668,7 +681,20 @@ impl GlobPattern {
   }
 
   pub fn matches_path(&self, path: &Path) -> PathGlobMatch {
-    if self.pattern.matches_path_with(path, match_options()) {
+    let matched = if self.base_path.as_os_str().is_empty() {
+      self
+        .relative_pattern
+        .matches_path_with(path, match_options())
+    } else if let Ok(relative_path) = path.strip_prefix(&self.base_path) {
+      self
+        .relative_pattern
+        .matches_path_with(relative_path, match_options())
+    } else {
+      // Fall back to the original absolute pattern so case-insensitive
+      // filesystems keep matching even when the path casing differs.
+      self.pattern.matches_path_with(path, match_options())
+    };
+    if matched {
       if self.is_negated {
         PathGlobMatch::MatchedNegated
       } else {
@@ -680,14 +706,7 @@ impl GlobPattern {
   }
 
   pub fn base_path(&self) -> PathBuf {
-    let base_path = self
-      .pattern
-      .as_str()
-      .split('/')
-      .take_while(|c| !has_glob_chars(c))
-      .collect::<Vec<_>>()
-      .join(std::path::MAIN_SEPARATOR_STR);
-    PathBuf::from(base_path)
+    self.base_path.clone()
   }
 
   pub fn is_negated(&self) -> bool {
@@ -698,6 +717,8 @@ impl GlobPattern {
     Self {
       is_negated: !self.is_negated,
       pattern: self.pattern.clone(),
+      base_path: self.base_path.clone(),
+      relative_pattern: self.relative_pattern.clone(),
     }
   }
 }
@@ -717,6 +738,28 @@ fn has_url_prefix(pattern: &str) -> bool {
 fn has_glob_chars(pattern: &str) -> bool {
   // we don't support [ and ]
   pattern.chars().any(|c| matches!(c, '*' | '?'))
+}
+
+fn split_pattern_base(pattern: &str) -> (PathBuf, String) {
+  let mut found_glob = false;
+  let mut base_parts = Vec::new();
+  let mut relative_parts = Vec::new();
+  for part in pattern.split('/') {
+    if !found_glob && !has_glob_chars(part) {
+      base_parts.push(part);
+    } else {
+      found_glob = true;
+      relative_parts.push(part);
+    }
+  }
+
+  let base_path = if base_parts.len() == 1 && base_parts[0].is_empty() {
+    std::path::MAIN_SEPARATOR_STR.to_string()
+  } else {
+    base_parts.join(std::path::MAIN_SEPARATOR_STR)
+  };
+  let relative_pattern = relative_parts.join("/");
+  (PathBuf::from(base_path), relative_pattern)
 }
 
 fn escape_brackets(pattern: &str) -> String {
@@ -1397,6 +1440,12 @@ mod test {
     // leading dot slash
     {
       let pattern = PathOrPattern::from_relative(&dir, "./**/*.ts").unwrap();
+      match &pattern {
+        PathOrPattern::Pattern(pattern) => {
+          assert_eq!(pattern.base_path(), dir);
+        }
+        _ => unreachable!(),
+      }
       assert_eq!(
         pattern.matches_path(&dir.join("foo.ts")),
         PathGlobMatch::Matched
@@ -1413,10 +1462,20 @@ mod test {
         pattern.matches_path(&dir.join("dir/foo.js")),
         PathGlobMatch::NotMatched
       );
+      assert_eq!(
+        pattern.matches_path(&dir.parent().unwrap().join("sibling/foo.ts")),
+        PathGlobMatch::NotMatched
+      );
     }
     // no leading dot slash
     {
       let pattern = PathOrPattern::from_relative(&dir, "**/*.ts").unwrap();
+      match &pattern {
+        PathOrPattern::Pattern(pattern) => {
+          assert_eq!(pattern.base_path(), dir);
+        }
+        _ => unreachable!(),
+      }
       assert_eq!(
         pattern.matches_path(&dir.join("foo.ts")),
         PathGlobMatch::Matched
@@ -1538,6 +1597,13 @@ mod test {
           unreachable!()
         }
       }
+    }
+    {
+      let pattern = GlobPattern::new("ROOT/**/*.ts").unwrap();
+      assert_eq!(
+        pattern.matches_path(Path::new("root/foo.ts")),
+        PathGlobMatch::Matched
+      );
     }
   }
 
