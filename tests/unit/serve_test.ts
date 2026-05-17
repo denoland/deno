@@ -101,7 +101,7 @@ Deno.test(
   { permissions: { net: true } },
   async function httpServerKeepAliveTimeoutAdvertisedAndEnforced() {
     const listening = Promise.withResolvers<void>();
-    await using server = Deno.serve({
+    await using _server = Deno.serve({
       port: servePort,
       keepAliveTimeout: 1000,
       onListen: onListen(listening.resolve),
