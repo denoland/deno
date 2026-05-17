@@ -14,6 +14,7 @@ const {
   immediateRefCount,
 } = core;
 const {
+  ArrayPrototypePush,
   DateNow,
   FunctionPrototypeCall,
   MapPrototypeDelete,
@@ -24,6 +25,7 @@ const {
   ObjectDefineProperty,
   ReflectApply,
   SafeArrayIterator,
+  SafeMapIterator,
   SafeMap,
   Symbol,
   SymbolDispose,
@@ -73,6 +75,16 @@ const activeTimers = new SafeMap();
  */
 function getActiveTimer(id) {
   return MapPrototypeGet(activeTimers, id);
+}
+
+function getActiveResourcesInfo() {
+  const resources = [];
+  for (const { 1: timeout } of new SafeMapIterator(activeTimers)) {
+    if (timeout[kRefed]) {
+      ArrayPrototypePush(resources, "Timeout");
+    }
+  }
+  return resources;
 }
 
 let warnedNegativeNumber = false;
@@ -420,6 +432,7 @@ return {
   kTimeout,
   kRefed,
   getActiveTimer,
+  getActiveResourcesInfo,
   Timeout,
   getTimerDuration,
   setUnrefTimeout,

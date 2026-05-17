@@ -7,6 +7,7 @@ import { core, primordials } from "ext:core/mod.js";
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const lazyFs = core.createLazyLoader("node:fs");
 const lazyReadline = core.createLazyLoader("node:readline");
+const lazyBuffer = core.createLazyLoader("node:buffer");
 import { op_node_fs_close } from "ext:core/ops";
 import type {
   BinaryOptionsArgument,
@@ -137,15 +138,45 @@ export class FileHandle extends EventEmitter {
     length?: number,
     position?: number | null,
   ): Promise<ReadResult> {
-    return fsCall(
-      readPromise,
-      "read",
-      this,
-      bufferOrOpt,
-      offsetOrOpt,
-      length,
-      position,
-    );
+    // Normalize arguments to mirror Node's lib/internal/fs/promises.js
+    // FileHandle.read: when length/position are nullish in any of the three
+    // overload shapes, fall back to buffer-relative defaults rather than
+    // letting them reach fs.read() as `undefined`/`null` and get coerced
+    // to 0.
+    let buf: ArrayBufferView;
+    let offset: number;
+    if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, bufferOrOpt)) {
+      buf = bufferOrOpt as ArrayBufferView;
+      if (offsetOrOpt == null || typeof offsetOrOpt === "object") {
+        // fileHandle.read(buffer, options)
+        const opts = (offsetOrOpt ?? {}) as {
+          offset?: number;
+          length?: number;
+          position?: number | null;
+        };
+        offset = opts.offset ?? 0;
+        length = opts.length ?? buf.byteLength - offset;
+        position = opts.position ?? null;
+      } else {
+        // fileHandle.read(buffer, offset, length, position)
+        offset = offsetOrOpt as number;
+        if (length == null) length = buf.byteLength - offset;
+        if (position == null) position = null;
+      }
+    } else {
+      // fileHandle.read(options)
+      const opts = (bufferOrOpt ?? {}) as {
+        buffer?: ArrayBufferView;
+        offset?: number;
+        length?: number;
+        position?: number | null;
+      };
+      buf = opts.buffer ?? lazyBuffer().Buffer.alloc(16384);
+      offset = opts.offset ?? 0;
+      length = opts.length ?? buf.byteLength - offset;
+      position = opts.position ?? null;
+    }
+    return fsCall(readPromise, "read", this, buf, offset, length, position);
   }
 
   truncate(len?: number): Promise<void> {
@@ -209,7 +240,10 @@ export class FileHandle extends EventEmitter {
 
   [kUnref]() {
     this[kRefs]--;
-    if (this[kRefs] > 0 || this.fd === -1) {
+    // Use #rid (the backing storage) rather than `this.fd` so user code that
+    // overrides FileHandle.prototype.fd can't perturb internal close logic.
+    // Mirrors Node's lib/internal/fs/promises.js use of `this[kFd]` here.
+    if (this[kRefs] > 0 || this.#rid === -1) {
       return;
     }
 
@@ -223,7 +257,7 @@ export class FileHandle extends EventEmitter {
   #close(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        op_node_fs_close(this.fd);
+        op_node_fs_close(this.#rid);
         this.#rid = -1;
         resolve();
       } catch (err) {
@@ -233,7 +267,7 @@ export class FileHandle extends EventEmitter {
   }
 
   close(): Promise<void> {
-    if (this.fd === -1) {
+    if (this.#rid === -1) {
       return PromiseResolve();
     }
 

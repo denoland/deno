@@ -250,26 +250,28 @@ Agent.prototype._evictSession = function _evictSession(
 
 Agent.prototype.createConnection = function createConnection(
   this: any,
-  options: any,
-  cb?: any,
+  ...args: any[]
 ) {
-  if (typeof options === "number") {
+  let options = args[0];
+  const cb = typeof args[args.length - 1] === "function"
+    ? args[args.length - 1]
+    : undefined;
+
+  if (typeof args[0] === "number") {
     // createConnection(port, host, options) signature
-    const args = arguments;
     const opts: any = {};
-    if (args[0] !== null && typeof args[0] === "object") {
-      Object.assign(opts, args[0]);
-    } else if (args[1] !== null && typeof args[1] === "object") {
-      Object.assign(opts, args[1]);
-    } else if (args[2] !== null && typeof args[2] === "object") {
-      Object.assign(opts, args[2]);
+    for (let i = 1; i < args.length; i++) {
+      if (args[i] !== null && typeof args[i] === "object") {
+        Object.assign(opts, args[i]);
+      }
     }
     if (typeof args[0] === "number") opts.port = args[0];
     if (typeof args[1] === "string") opts.host = args[1];
-    if (typeof args[args.length - 1] === "function") {
-      cb = args[args.length - 1];
-    }
     options = opts;
+  } else if (options !== null && typeof options === "object") {
+    options = { ...options };
+  } else {
+    options = {};
   }
 
   // Look up cached TLS session for reuse

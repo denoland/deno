@@ -109,12 +109,15 @@ const _tlsWrap = core.loadExtScript(
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import assertStrict from "node:assert/strict";
 const asyncHooks = core.loadExtScript("ext:deno_node/async_hooks.ts").default;
+const internalAsyncHooks = core.loadExtScript(
+  "ext:deno_node/internal/async_hooks.ts",
+);
 const {
   emitAfter: internalAsyncHooksEmitAfter,
   emitBefore: internalAsyncHooksEmitBefore,
   emitDestroy: internalAsyncHooksEmitDestroy,
   emitInit: internalAsyncHooksEmitInit,
-} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+} = internalAsyncHooks;
 const buffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs").default;
 const childProcess = core.loadExtScript("ext:deno_node/child_process.ts");
 const cluster = core.loadExtScript("ext:deno_node/cluster.ts").default;
@@ -199,6 +202,22 @@ const internalBuffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const internalErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
+// `internal/fs/promises.ts` evaluates `lazyFs()` at top-level, so triggering
+// its load during `setupBuiltinModules()` would re-enter the half-built
+// `node:fs` namespace. A Proxy defers evaluation until the first time the
+// requiring code reads a property; by then `node:fs` is fully initialized.
+const lazyInternalFsPromises = core.createLazyLoader(
+  "ext:deno_node/internal/fs/promises.ts",
+);
+let internalFsPromisesCache;
+const internalFsPromisesProxy = new Proxy(ObjectCreate(null), {
+  get(_target, prop) {
+    return (internalFsPromisesCache ??= lazyInternalFsPromises())[prop];
+  },
+  has(_target, prop) {
+    return prop in (internalFsPromisesCache ??= lazyInternalFsPromises());
+  },
+});
 const internalHttp = core.loadExtScript("ext:deno_node/internal/http.ts");
 const internalHttp2Core = core.loadExtScript(
   "ext:deno_node/internal/http2/core.ts",
@@ -224,12 +243,14 @@ const internalSocketAddress = core.loadExtScript(
 const internalJsStreamSocket = core.loadExtScript(
   "ext:deno_node/internal/js_stream_socket.js",
 ).default;
+const internalNet = core.loadExtScript("ext:deno_node/internal/net.ts");
 const internalTestBinding = core.loadExtScript(
   "ext:deno_node/internal/test/binding.ts",
 );
 const internalTimers = core.loadExtScript(
   "ext:deno_node/internal/timers.mjs",
 );
+import * as internalTty from "ext:deno_node/internal/tty.js";
 const internalUrl = core.loadExtScript("ext:deno_node/internal/url.ts");
 const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const internalUtilDebuglog = core.loadExtScript(
@@ -240,6 +261,18 @@ const internalUtilInspect = core.loadExtScript(
 );
 const internalValidators = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
+);
+const internalWebstreamsAdapters = core.loadExtScript(
+  "ext:deno_node/internal/webstreams/adapters.js",
+);
+const internalWebstreamsReadableStream = core.loadExtScript(
+  "ext:deno_node/internal/webstreams/readablestream.js",
+);
+const internalWebstreamsUtil = core.loadExtScript(
+  "ext:deno_node/internal/webstreams/util.js",
+);
+const internalWorkerJsTransferable = core.loadExtScript(
+  "ext:deno_node/internal/worker/js_transferable.js",
 );
 const internalConsole = core.loadExtScript(
   "ext:deno_node/internal/console/constructor.mjs",
@@ -282,9 +315,10 @@ const workerThreads = core.loadExtScript(
 );
 const wasi = core.loadExtScript("ext:deno_node/wasi.ts").default;
 const zlib = core.loadExtScript("ext:deno_node/zlib.js");
-const { getOptionValue } = core.loadExtScript(
+const internalOptions = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
 );
+const { getOptionValue } = internalOptions;
 
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
@@ -326,6 +360,7 @@ function setupBuiltinModules() {
     inspector,
     "inspector/promises": inspectorPromises,
     "internal/assert/myers_diff": internalAssertMyersDiff.default,
+    "internal/async_hooks": internalAsyncHooks,
     "internal/console/constructor": internalConsole,
     "internal/child_process": internalCp,
     "internal/crypto/certificate": internalCryptoCertificate,
@@ -347,6 +382,7 @@ function setupBuiltinModules() {
     "internal/buffer": internalBuffer.default,
     "internal/errors": internalErrors,
     "internal/event_target": internalEventTarget,
+    "internal/fs/promises": internalFsPromisesProxy,
     "internal/fs/utils": internalFsUtils,
     "internal/http": internalHttp.default,
     "internal/http2/core": internalHttp2Core,
@@ -359,13 +395,20 @@ function setupBuiltinModules() {
     "internal/streams/state": internalStreamsState,
     "internal/socketaddress": internalSocketAddress,
     "internal/js_stream_socket": internalJsStreamSocket,
+    "internal/net": internalNet,
+    "internal/options": internalOptions,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
+    "internal/tty": internalTty,
     "internal/url": internalUrl,
     "internal/util/debuglog": internalUtilDebuglog.default,
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
     "internal/validators": internalValidators,
+    "internal/webstreams/adapters": internalWebstreamsAdapters,
+    "internal/webstreams/readablestream": internalWebstreamsReadableStream,
+    "internal/webstreams/util": internalWebstreamsUtil,
+    "internal/worker/js_transferable": internalWorkerJsTransferable,
     net,
     module: Module,
     os,
@@ -791,6 +834,8 @@ function _activateEsmHooks() {
   if (hasLoad) _startEsmLoadLoop();
 }
 
+let internalModuleStat = op_require_stat;
+
 function stat(filename) {
   if (statCache !== null) {
     const result = statCache.get(filename);
@@ -798,7 +843,7 @@ function stat(filename) {
       return result;
     }
   }
-  const result = op_require_stat(filename);
+  const result = internalModuleStat(filename);
   if (statCache !== null && result >= 0) {
     statCache.set(filename, result);
   }
@@ -1081,6 +1126,20 @@ Module._cache = ObjectCreate(null);
 Module._pathCache = ObjectCreate(null);
 let modulePaths = [];
 Module.globalPaths = modulePaths;
+
+ObjectDefineProperty(Module, "_stat", {
+  __proto__: null,
+  configurable: true,
+  get() {
+    return internalModuleStat;
+  },
+  set(value) {
+    internalUtil.emitExperimentalWarning("Module._stat");
+    internalModuleStat = value;
+    Module.stat = value;
+    return true;
+  },
+});
 
 const CHAR_FORWARD_SLASH = 47;
 const TRAILING_SLASH_REGEX = /(?:^|\/)\.?\.$/;
@@ -1458,6 +1517,10 @@ Module._load = function (request, parent, isMain) {
       }
     }
     throw err;
+  }
+
+  if (isMain && parent === null) {
+    core.processTicksAndRejections();
   }
 
   return module.exports;
@@ -2308,10 +2371,6 @@ function nativeModuleCanBeRequiredByUsers(request) {
   return !!nativeModuleExports[request];
 }
 
-function readPackageScope() {
-  throw new Error("not implemented");
-}
-
 /** @param specifier {string} */
 function packageSpecifierSubPath(specifier) {
   let parts = StringPrototypeSplit(specifier, "/");
@@ -2322,19 +2381,6 @@ function packageSpecifierSubPath(specifier) {
   }
   return ArrayPrototypeJoin(parts, "/");
 }
-
-// This is a temporary namespace, that will be removed when initializing
-// in `02_init.js`.
-internals.requireImpl = {
-  setUsesLocalNodeModulesDir() {
-    usesLocalNodeModulesDir = true;
-  },
-  setInspectBrk() {
-    hasInspectBrk = true;
-  },
-  Module,
-  nativeModuleExports,
-};
 
 // VLQ Base64 decoding for source maps
 const BASE64_CHARS =
@@ -2981,6 +3027,7 @@ export const _pathCache = Module._pathCache;
 export const _preloadModules = Module._preloadModules;
 export const _resolveFilename = Module._resolveFilename;
 export const _resolveLookupPaths = Module._resolveLookupPaths;
+export const _stat = Module._stat;
 export const globalPaths = Module.globalPaths;
 
 export default Module;

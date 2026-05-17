@@ -2802,6 +2802,7 @@ dependencies = [
  "deno_whoami",
  "errno 0.3.10",
  "h2 0.4.7",
+ "hdrhistogram",
  "http 1.4.0",
  "http-body-util",
  "hyper 1.6.0",

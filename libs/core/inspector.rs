@@ -810,6 +810,37 @@ impl JsRuntimeInspector {
     rx
   }
 
+  /// Broadcast a protocol event notification to all sessions that have the
+  /// given domain enabled. Used for custom domains like Network.
+  pub fn broadcast_to_sessions(&self, event_name: &str, params_json: &str) {
+    let domain = event_name.split('.').next().unwrap_or("");
+    let notification = json!({
+      "method": event_name,
+      "params": serde_json::from_str::<serde_json::Value>(params_json)
+        .unwrap_or_else(|_| json!({}))
+    })
+    .to_string();
+
+    let sessions = self.state.sessions.borrow();
+
+    // `sessions.local` contains all active sessions — both programmatic
+    // (created via create_local_session) and WebSocket-based (added during
+    // handshake). The `established` field only holds their pump futures.
+    for session in sessions.local.values() {
+      let enabled = match domain {
+        "Network" => session.state.network_enabled.get(),
+        "DOMStorage" => session.state.dom_storage_enabled.get(),
+        _ => false,
+      };
+      if enabled {
+        (session.state.send)(InspectorMsg {
+          kind: InspectorMsgKind::Notification,
+          content: notification.clone(),
+        });
+      }
+    }
+  }
+
   pub fn create_local_session(
     inspector: Rc<JsRuntimeInspector>,
     callback: InspectorSessionSend,
@@ -1014,6 +1045,47 @@ impl SessionContainer {
     message: String,
   ) {
     let session = self.local.get(&session_id).unwrap();
+
+    // Try custom domain dispatch before sending to V8
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&message)
+      && let Some(method) = parsed.get("method").and_then(|m| m.as_str())
+    {
+      let handled = match method {
+        "Network.enable" => {
+          session.state.network_enabled.set(true);
+          true
+        }
+        "Network.disable" => {
+          session.state.network_enabled.set(false);
+          true
+        }
+        "DOMStorage.enable" => {
+          session.state.dom_storage_enabled.set(true);
+          true
+        }
+        "DOMStorage.disable" => {
+          session.state.dom_storage_enabled.set(false);
+          true
+        }
+        _ => false,
+      };
+      if handled {
+        // Send success response if there's an id
+        if let Some(id) = parsed.get("id").cloned() {
+          let call_id = id.as_i64().unwrap_or(0) as i32;
+          (session.state.send)(InspectorMsg {
+            kind: InspectorMsgKind::Message(call_id),
+            content: json!({
+              "id": id,
+              "result": {}
+            })
+            .to_string(),
+          });
+        }
+        return;
+      }
+    }
+
     session.dispatch_message(message);
   }
 
@@ -1169,6 +1241,10 @@ struct InspectorSessionState {
   auto_attach_enabled: Rc<Cell<bool>>,
   // Track whether Target.setDiscoverTargets has been called (enables target discovery)
   discover_targets_enabled: Rc<Cell<bool>>,
+  // Track whether Network.enable has been called (per-session, not shared)
+  network_enabled: Cell<bool>,
+  // Track whether DOMStorage.enable has been called (per-session, not shared)
+  dom_storage_enabled: Cell<bool>,
   // Track whether NodeRuntime.enable has been called (per-session, not shared,
   // because one client disabling it should not affect another client's state)
   noderuntime_enabled: Cell<bool>,
@@ -1210,6 +1286,8 @@ impl InspectorSession {
       nodeworker_enabled,
       auto_attach_enabled,
       discover_targets_enabled,
+      network_enabled: Cell::new(false),
+      dom_storage_enabled: Cell::new(false),
       noderuntime_enabled: Cell::new(false),
       flags,
     };
@@ -1364,6 +1442,18 @@ async fn pump_inspector_session_messages(
     let msg_id = parsed.get("id").cloned();
 
     match method {
+      "Network.enable" => {
+        session.state.network_enabled.set(true);
+      }
+      "Network.disable" => {
+        session.state.network_enabled.set(false);
+      }
+      "DOMStorage.enable" => {
+        session.state.dom_storage_enabled.set(true);
+      }
+      "DOMStorage.disable" => {
+        session.state.dom_storage_enabled.set(false);
+      }
       "NodeRuntime.enable" => {
         session.state.noderuntime_enabled.set(true);
         // If the runtime is paused on start (--inspect-brk), emit

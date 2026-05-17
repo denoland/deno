@@ -1110,6 +1110,9 @@ internals.__initWorkerThreads = (
         // Set process.execArgv for worker threads.
         if (metadata.execArgv) {
           process.execArgv = metadata.execArgv;
+          core.loadExtScript(
+            "ext:deno_node/internal_binding/node_options.ts",
+          ).setOptionSourceExecArgv(metadata.execArgv);
           for (let i = 0; i < metadata.execArgv.length; i++) {
             if (metadata.execArgv[i] === "--trace-warnings") {
               process.traceProcessWarnings = true;
