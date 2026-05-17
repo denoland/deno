@@ -39,6 +39,7 @@ const {
 
 const {
   ArrayIsArray,
+  ArrayPrototypeIndexOf,
   ArrayPrototypePush,
   ArrayPrototypeSlice,
   FunctionPrototypeCall,
@@ -69,6 +70,7 @@ const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 const {
   deserializeJsMessageData,
   serializeJsMessageData,
+  kNotSerializable,
   MessagePortIdSymbol,
   MessagePortPrototype: WebMessagePortPrototype,
   unrefParentPort,
@@ -338,10 +340,21 @@ class MessagePort extends _MessagePortBase {
 
     // `markAsUncloneable` opts out a value from structured-clone (Node
     // ignores it for ArrayBuffers; only host objects are gated).
+    // `kNotSerializable` is the web-side marker that Node-private
+    // types (FileHandle, Response, ...) install on their prototypes;
+    // also reject here so callers see DataCloneError instead of a
+    // silent `{}` round-trip. Skip the check when the value is itself
+    // in the transfer list (transferring is not the same as cloning).
+    const transferred = transfer !== null &&
+      transfer.length > 0 &&
+      ArrayIsArray(transfer) &&
+      ArrayPrototypeIndexOf(transfer, message) !== -1;
     if (
+      !transferred &&
       message !== null && typeof message === "object" &&
       !isArrayBuffer(message) &&
-      (message as { [k: symbol]: unknown })[kNodeUncloneable] === true
+      ((message as { [k: symbol]: unknown })[kNodeUncloneable] === true ||
+        (message as { [k: symbol]: unknown })[kNotSerializable] === true)
     ) {
       throw new DOMException(
         "Cannot clone object of unsupported type.",

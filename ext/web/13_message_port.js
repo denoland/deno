@@ -232,7 +232,7 @@ class MessagePort extends EventTarget {
     // only -- nested host objects rely on V8's serializer to refuse.
     if (
       message !== null && typeof message === "object" &&
-      message[kNodeUncloneable] === true
+      (message[kNodeUncloneable] === true || message[kNotSerializable])
     ) {
       throw new DOMException(
         "Cannot clone object of unsupported type.",
@@ -700,6 +700,7 @@ function structuredClone(value, options) {
 
 return {
   deserializeJsMessageData,
+  kNotSerializable,
   markNotSerializable,
   MessageChannel,
   MessagePort,
