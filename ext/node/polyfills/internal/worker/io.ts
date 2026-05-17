@@ -43,6 +43,8 @@ const {
   ArrayPrototypeSlice,
   FunctionPrototypeCall,
   MapPrototypeForEach,
+  ObjectDefineProperty,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   PromiseResolve,
@@ -137,8 +139,11 @@ function isMarkedAsUntransferable(value: unknown): boolean {
   if (isArrayBuffer(value)) {
     return markedUntransferableBuffers.has(value);
   }
-  // deno-lint-ignore no-explicit-any
-  return (value as any)[kNodeUntransferable] === true;
+  // Node only treats own-properties as marked, so the mark doesn't
+  // propagate down a prototype chain.
+  return ObjectHasOwn(value, kNodeUntransferable) &&
+    // deno-lint-ignore no-explicit-any
+    (value as any)[kNodeUntransferable] === true;
 }
 
 function markAsUncloneable(value: unknown) {
@@ -272,17 +277,11 @@ function _emitWithEvent(
   return hadEE;
 }
 
+// Internal class. The public `MessagePort` (exported below) is a
+// function wrapper that throws on user-side construction. The factories
+// use `webidl.createBranded` which bypasses the constructor entirely,
+// so the body here is never executed in practice.
 class MessagePort extends _MessagePortBase {
-  constructor() {
-    super();
-    const err = new TypeError(
-      "MessagePort cannot be constructed -- use new MessageChannel() instead",
-    );
-    // deno-lint-ignore no-explicit-any
-    (err as any).code = "ERR_CONSTRUCT_CALL_INVALID";
-    throw err;
-  }
-
   // --- onmessage / onmessageerror property accessors -----------------
 
   get onmessage() {
@@ -314,8 +313,6 @@ class MessagePort extends _MessagePortBase {
     webidl.requiredArguments(arguments.length, 1, prefix);
 
     const kind = this[kTransportKind];
-    if (kind === "port" && this[kPortId] === null) return;
-    if (this[kClosed]) return;
 
     // Resolve the transfer list following Node's `postMessage` rules.
     // The second argument may be omitted, null, undefined, an array, any
@@ -330,6 +327,31 @@ class MessagePort extends _MessagePortBase {
       transfer = resolveTransferArg(transferOrOptions);
     }
 
+    // Validate the transfer list FIRST -- a closed source port still
+    // throws DataCloneError if its transfer list contains an invalid
+    // entry (detached MessagePort, duplicate buffer, source self, etc.).
+    // Only after validation passes do we silently drop the message on
+    // a closed/detached source.
+    if (transfer !== null && transfer.length > 0) {
+      validateTransferList(transfer, this);
+    }
+
+    // `markAsUncloneable` opts out a value from structured-clone (Node
+    // ignores it for ArrayBuffers; only host objects are gated).
+    if (
+      message !== null && typeof message === "object" &&
+      !isArrayBuffer(message) &&
+      (message as { [k: symbol]: unknown })[kNodeUncloneable] === true
+    ) {
+      throw new DOMException(
+        "Cannot clone object of unsupported type.",
+        "DataCloneError",
+      );
+    }
+
+    if (kind === "port" && this[kPortId] === null) return;
+    if (this[kClosed]) return;
+
     // Fast path: no transferables (most common case).
     if (transfer === null || transfer.length === 0) {
       const buf = core.serialize(message, undefined, dataCloneErrorCb);
@@ -341,7 +363,6 @@ class MessagePort extends _MessagePortBase {
       return;
     }
 
-    validateTransferList(transfer, this);
     const data = serializeJsMessageData(message, transfer);
     if (kind === "port") {
       op_message_port_post_message(this[kPortId]!, data);
@@ -710,6 +731,12 @@ function validateTransferList(transfer: unknown[], sourcePort: MessagePort) {
         );
       }
       seenBuffers.add(item);
+      if (markedUntransferableBuffers.has(item)) {
+        throw new DOMException(
+          "Value not transferable",
+          "DataCloneError",
+        );
+      }
     }
     if (
       item !== null && typeof item === "object" &&
@@ -827,7 +854,7 @@ function removeParentPortBridge(port: MessagePort) {
 
 // --- MessageChannel ----------------------------------------------------
 
-class MessageChannel {
+class _MessageChannelImpl {
   #port1: MessagePort;
   #port2: MessagePort;
 
@@ -844,6 +871,52 @@ class MessageChannel {
     return this.#port2;
   }
 }
+
+// Public `MessageChannel`: a function so that calling it without `new`
+// throws `ERR_CONSTRUCT_CALL_REQUIRED` (matching Node), while `new
+// MessageChannel()` constructs an _MessageChannelImpl. Prototype chain
+// is shared so `instanceof MessageChannel` still works.
+function MessageChannel(this: unknown): _MessageChannelImpl {
+  if (!new.target) {
+    const err = new TypeError(
+      "Class constructor MessageChannel cannot be invoked without 'new'",
+    );
+    // deno-lint-ignore no-explicit-any
+    (err as any).code = "ERR_CONSTRUCT_CALL_REQUIRED";
+    throw err;
+  }
+  return new _MessageChannelImpl();
+}
+MessageChannel.prototype = _MessageChannelImpl.prototype;
+ObjectDefineProperty(_MessageChannelImpl.prototype, "constructor", {
+  __proto__: null,
+  value: MessageChannel,
+  writable: true,
+  configurable: true,
+  enumerable: false,
+});
+
+// Public `MessagePort`: same trick -- the class is internal, the
+// exported binding is a function that throws ERR_CONSTRUCT_CALL_INVALID
+// whether or not `new` is used. `port instanceof MessagePort` and
+// `port.constructor === MessagePort` keep working because the function
+// shares the class's prototype.
+function PublicMessagePort(): never {
+  const err = new TypeError(
+    "MessagePort cannot be constructed -- use new MessageChannel() instead",
+  );
+  // deno-lint-ignore no-explicit-any
+  (err as any).code = "ERR_CONSTRUCT_CALL_INVALID";
+  throw err;
+}
+PublicMessagePort.prototype = MessagePort.prototype;
+ObjectDefineProperty(MessagePort.prototype, "constructor", {
+  __proto__: null,
+  value: PublicMessagePort,
+  writable: true,
+  configurable: true,
+  enumerable: false,
+});
 
 // --- receiveMessageOnPort ----------------------------------------------
 
@@ -894,7 +967,7 @@ core.registerTransferableResource(
 );
 
 return {
-  MessagePort,
+  MessagePort: PublicMessagePort,
   MessagePortPrototype,
   MessageChannel,
   createParentPort,

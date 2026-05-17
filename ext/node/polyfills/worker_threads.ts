@@ -209,6 +209,11 @@ const workerSilentlyIgnoredFlags = new SafeSet([
   "--cpu-prof-interval",
   "--cpu-prof-name",
   "--cpu-prof-dir",
+  // Internal Node debug flag; Node tests pass it through unconditionally
+  // when run with NODE_OPTIONS=--expose-internals.
+  "--expose-internals",
+  // V8 exposes globalThis.gc when this flag is set; we just accept it.
+  "--expose-gc",
 ]);
 
 interface WorkerOptions {
@@ -266,6 +271,21 @@ class NodeWorker extends EventEmitter {
 
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
+
+    // Validate filename arg type before anything else -- Node throws
+    // ERR_INVALID_ARG_TYPE with a specific message that several tests
+    // assert against.
+    if (
+      typeof specifier !== "string" &&
+      !(typeof specifier === "object" && specifier !== null &&
+        typeof (specifier as URL).protocol === "string")
+    ) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "filename",
+        ["string", "URL"],
+        specifier,
+      );
+    }
 
     if (options?.execArgv) {
       validateArray(options.execArgv, "options.execArgv");
@@ -1236,16 +1256,16 @@ async function pollCrossThreadMessages() {
   }
 }
 
-// Eagerly observe listener add/remove for `workerMessage` so the count
-// is always in sync. Actual registration of the cross-thread resource
-// is deferred to `ensureCrossThreadMessaging` so threads that never
-// touch `postMessageToThread` don't carry an extra entry in
-// `core.resources()` (which several finalization tests assert on).
+// Register the thread eagerly so that `postMessageToThread` from another
+// thread can reach us, even before any `workerMessage` listener exists.
+// Without this, the destination's `result === 0` ("no such thread")
+// would fire instead of a timeout, breaking
+// `test-worker-messaging-errors-timeout` which expects a
+// `ERR_WORKER_MESSAGING_TIMEOUT` rather than `_FAILED` when the worker
+// is alive but unresponsive.
 function setupCrossThreadMessaging() {
   workerMessageListenerCount = process.listenerCount?.("workerMessage") ?? 0;
-  if (workerMessageListenerCount > 0) {
-    ensureCrossThreadMessaging();
-  }
+  ensureCrossThreadMessaging();
 
   process.on("newListener", (eventName: string) => {
     if (eventName === "workerMessage") {
@@ -1373,8 +1393,12 @@ function postMessageToThread(
     if (timer !== undefined) clearTimeout(timer);
     return PromiseReject(err);
   }
-  // 0 = no such thread, 1 = destination has no `workerMessage` listener.
-  if (result === 0 || result === 1) {
+  // 0 = no such thread (fail fast). 1 = destination has no
+  // `workerMessage` listener -- we still wait so a timeout, if
+  // provided, surfaces as ERR_WORKER_MESSAGING_TIMEOUT rather than
+  // ERR_WORKER_MESSAGING_FAILED, matching Node where the sender
+  // cannot tell ahead of time whether the destination will respond.
+  if (result === 0) {
     pendingThreadMessages.delete(id);
     if (timer !== undefined) clearTimeout(timer);
     return PromiseReject(new ERR_WORKER_MESSAGING_FAILED());
@@ -1400,6 +1424,38 @@ function moveMessagePortToContext(port: unknown, _context: unknown) {
 }
 
 class BroadcastChannel extends WebBroadcastChannel {
+  #closed = false;
+  constructor(name?: unknown) {
+    if (arguments.length === 0) {
+      const err = new TypeError('The "name" argument must be specified');
+      // deno-lint-ignore no-explicit-any
+      (err as any).code = "ERR_MISSING_ARGS";
+      throw err;
+    }
+    // Use template-string coercion (Node's behavior): throws TypeError
+    // for Symbol values, unlike `String(sym)` which silently produces
+    // "Symbol(...)".
+    super(`${name}`);
+  }
+  postMessage(message: unknown) {
+    if (this.#closed) {
+      const err = new Error("BroadcastChannel is closed");
+      // deno-lint-ignore no-explicit-any
+      (err as any).code = "ERR_BROADCAST_CHANNEL_CLOSED";
+      throw err;
+    }
+    if (arguments.length === 0) {
+      const err = new TypeError('The "message" argument must be specified');
+      // deno-lint-ignore no-explicit-any
+      (err as any).code = "ERR_MISSING_ARGS";
+      throw err;
+    }
+    return super.postMessage(message);
+  }
+  close() {
+    this.#closed = true;
+    super.close();
+  }
   ref() {
     this[refBroadcastChannel](true);
     return this;
@@ -1436,5 +1492,14 @@ ObjectAssign(exportsObj, {
   setEnvironmentData,
   SHARE_ENV,
 });
+
+// Node code (including tests) frequently uses the global `MessageChannel`
+// and `MessagePort` symbols rather than destructuring them from
+// `worker_threads`. Once this module loads we redirect the globals to the
+// Node-flavoured class so `new MessageChannel().port1.on('message', ...)`
+// works in either style.
+globalThis.MessageChannel = MessageChannel;
+globalThis.MessagePort = MessagePort;
+
 return exportsObj;
 })();

@@ -126,6 +126,10 @@ const refMessagePort = Symbol("refMessagePort");
 /** It is used by 99_main.js and worker_threads to
  * unref/ref on the global message event handler count. */
 const unrefParentPort = Symbol("unrefParentPort");
+// Shared marker symbol with ext/node's `markAsUncloneable`. Lives in the
+// global Symbol registry so both extensions reference the same symbol
+// without needing a cross-extension import.
+const kNodeUncloneable = SymbolFor("nodejs.worker_threads.uncloneable");
 
 /**
  * @param {number} id
@@ -222,6 +226,19 @@ class MessagePort extends EventTarget {
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     if (this[_id] === null) return;
+    // Honour `markAsUncloneable` from node:worker_threads even when the
+    // user reaches into the global MessageChannel/MessagePort rather
+    // than the node-flavoured one. The marker is checked top-level
+    // only -- nested host objects rely on V8's serializer to refuse.
+    if (
+      message !== null && typeof message === "object" &&
+      message[kNodeUncloneable] === true
+    ) {
+      throw new DOMException(
+        "Cannot clone object of unsupported type.",
+        "DataCloneError",
+      );
+    }
     // Fast path: no transferables - serialize and send in one shot,
     // bypassing the JsMessageData serde overhead
     if (
