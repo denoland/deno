@@ -162,6 +162,54 @@ function markAsUncloneable(value: unknown) {
 // `Object.getOwnPropertyNames(MessagePort.prototype)` matches Node and
 // doesn't enumerate addEventListener/removeEventListener/dispatchEvent.
 class _MessagePortBase extends EventEmitter {
+  // Override EventEmitter.on/addListener to dedup by listener reference
+  // for `message` / `messageerror` / `close`. Deno has historically
+  // dedupped on these (regression test for #33373), and several Node
+  // worker patterns -- and the underlying recv loop's auto-ref
+  // bookkeeping -- assume that registering the same handler twice
+  // doesn't produce two deliveries. We keep these overrides on the
+  // base class so they don't leak into
+  // `Object.getOwnPropertyNames(MessagePort.prototype)`.
+  on(name: string, listener: unknown) {
+    if (isMessagePortEventName(name) && hasListener(this, name, listener)) {
+      return this;
+    }
+    return FunctionPrototypeCall(
+      EventEmitter.prototype.on,
+      this,
+      name,
+      listener,
+    );
+  }
+
+  addListener(name: string, listener: unknown) {
+    return this.on(name, listener);
+  }
+
+  once(name: string, listener: unknown) {
+    if (isMessagePortEventName(name) && hasListener(this, name, listener)) {
+      return this;
+    }
+    return FunctionPrototypeCall(
+      EventEmitter.prototype.once,
+      this,
+      name,
+      listener,
+    );
+  }
+
+  prependListener(name: string, listener: unknown) {
+    if (isMessagePortEventName(name) && hasListener(this, name, listener)) {
+      return this;
+    }
+    return FunctionPrototypeCall(
+      EventEmitter.prototype.prependListener,
+      this,
+      name,
+      listener,
+    );
+  }
+
   addEventListener(name: string, listener: unknown, _options?: unknown) {
     if (typeof listener !== "function" && !isEventHandlerObject(listener)) {
       return;
@@ -452,6 +500,27 @@ class MessagePort extends _MessagePortBase {
 }
 
 const MessagePortPrototype = MessagePort.prototype;
+
+function isMessagePortEventName(name: string): boolean {
+  return name === "message" || name === "messageerror" || name === "close";
+}
+
+// Does the port already have `listener` registered for `name` via the
+// EventEmitter side? Uses listenerCount + a manual scan so we don't
+// allocate when the count is zero.
+function hasListener(port: object, name: string, listener: unknown): boolean {
+  // deno-lint-ignore no-explicit-any
+  const eeListenerCount = (EventEmitter.prototype as any).listenerCount;
+  // deno-lint-ignore no-explicit-any
+  const eeListeners = (EventEmitter.prototype as any).listeners;
+  const count = FunctionPrototypeCall(eeListenerCount, port, name);
+  if (count === 0) return false;
+  const existing = FunctionPrototypeCall(eeListeners, port, name);
+  for (let i = 0; i < existing.length; i++) {
+    if (existing[i] === listener) return true;
+  }
+  return false;
+}
 
 function isEventHandlerObject(v: unknown): boolean {
   return typeof v === "object" && v !== null &&
@@ -798,22 +867,23 @@ function installListenerHooks(port: MessagePort) {
     if (name === "message" || name === "messageerror") {
       autoRefOnFirstMessageListener(port);
       if (name === "message") {
-        port.start();
-        // Deliver any messages that arrived while we had no consumer.
-        // Deferred to a microtask so the user's `.on()` call returns
-        // before listeners fire (matches Node, where the first message
-        // never delivers synchronously inside the same .on() call).
-        PromisePrototypeThen(
-          PromiseResolve(undefined),
-          () => drainPendingMessages(port),
-        );
+        // Defer the recv-loop start by a microtask so a synchronous
+        // `receiveMessageOnPort` call right after `.on('message', ...)`
+        // (the npm:piscina pattern, where the listener registration is
+        // immediately followed by an `Atomics.wait` loop that drains
+        // the port synchronously) gets first crack at any queued
+        // messages before the async loop pulls them.
+        PromisePrototypeThen(PromiseResolve(undefined), () => {
+          port.start();
+          drainPendingMessages(port);
+        });
       }
     } else if (name === "close") {
       // A 'close' listener also needs the recv loop running so that the
       // peer-disentangle signal (recv returns null) can be observed and
       // fire the event. Don't ref the loop -- a sole 'close' listener
       // should not keep the worker alive.
-      port.start();
+      PromisePrototypeThen(PromiseResolve(undefined), () => port.start());
     }
   });
   FunctionPrototypeCall(eeOn, port, "removeListener", (name: string) => {
