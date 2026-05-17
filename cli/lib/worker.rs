@@ -343,7 +343,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       let CreateModuleLoaderResult {
         module_loader,
         node_require_loader,
-        hook_registry: _, // web workers don't support hooks yet
+        hook_registry,
       } = shared.module_loader_factory.create_for_worker(
         args.parent_permissions.clone(),
         args.permissions.clone(),
@@ -514,6 +514,13 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       }
 
       worker.bootstrap(&bootstrap_options);
+
+      // Wire the module hook registry into OpState after bootstrap so
+      // `module.registerHooks()` in worker scripts shares state with the
+      // worker's module loader (same pattern as the main worker).
+      if let Some(registry) = hook_registry {
+        worker.js_runtime.op_state().borrow_mut().put(registry);
+      }
 
       // When resource limits are set, install a near-heap-limit callback
       // that terminates the worker's isolate gracefully instead of

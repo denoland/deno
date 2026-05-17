@@ -64,9 +64,9 @@ const {
   SafeArrayIterator,
   SafeMap,
   SafeSet,
-  SetPrototypeDelete,
   SafeWeakMap,
   SetPrototypeAdd,
+  SetPrototypeDelete,
   SetPrototypeHas,
   String,
   StringPrototypeCharCodeAt,
@@ -1362,6 +1362,19 @@ Module._load = function (request, parent, isMain) {
       : "node:" + filename;
     // Slice 'node:' prefix
     const id = StringPrototypeSlice(builtinFilename, 5);
+
+    // Hook-overridden builtins are cached under the `node:`-prefixed key.
+    // `require("util")` resolves to a bare name, so the early cache lookup
+    // above misses; check the prefixed key here so repeated requires reuse
+    // the same module instance instead of re-running the hook.
+    const cachedBuiltin = Module._cache[builtinFilename];
+    if (cachedBuiltin !== undefined) {
+      updateChildren(parent, cachedBuiltin, true);
+      if (!cachedBuiltin.loaded) {
+        return getExportsForCircularRequire(cachedBuiltin);
+      }
+      return cachedBuiltin.exports;
+    }
 
     // Run load hooks for builtins if registered
     if (hookEntries.length > 0 && !insideLoadHook) {
