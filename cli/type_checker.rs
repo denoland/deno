@@ -574,6 +574,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
     let TscRoots {
       roots: root_names,
       missing_diagnostics,
+      used_ts_expect_error_directives,
       maybe_check_hash,
     } = graph_walker.into_tsc_roots();
 
@@ -669,6 +670,9 @@ impl DiagnosticsByFolderRealIterator<'_> {
       self.should_include_diagnostic(self.options.type_check_mode, d)
     });
     response_diagnostics.apply_fast_check_source_maps(&self.graph);
+    response_diagnostics.retain(|d| {
+      !is_used_ts_expect_error_diagnostic(d, &used_ts_expect_error_directives)
+    });
     let mut diagnostics = missing_diagnostics.filter(|d| {
       if let Some(ambient_modules_regex) = &ambient_modules_regex
         && let Some(missing_specifier) = &d.missing_specifier
@@ -781,7 +785,19 @@ impl DiagnosticsByFolderRealIterator<'_> {
 struct TscRoots {
   roots: Vec<(ModuleSpecifier, MediaType)>,
   missing_diagnostics: tsc::Diagnostics,
+  used_ts_expect_error_directives: HashSet<TsDirective>,
   maybe_check_hash: Option<CacheDBHash>,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct TsDirective {
+  specifier: String,
+  line: u64,
+}
+
+enum TsSuppressionComment {
+  Ignore,
+  ExpectError(TsDirective),
 }
 
 struct GraphWalker<'a> {
@@ -796,6 +812,7 @@ struct GraphWalker<'a> {
   has_seen_node_builtin: bool,
   roots: Vec<(ModuleSpecifier, MediaType)>,
   missing_diagnostics: tsc::Diagnostics,
+  used_ts_expect_error_directives: HashSet<TsDirective>,
 }
 
 impl<'a> GraphWalker<'a> {
@@ -836,6 +853,7 @@ impl<'a> GraphWalker<'a> {
       has_seen_node_builtin: false,
       roots: Vec::with_capacity(graph.imports.len() + graph.specifiers_count()),
       missing_diagnostics: Default::default(),
+      used_ts_expect_error_directives: Default::default(),
     }
   }
 
@@ -892,8 +910,49 @@ impl<'a> GraphWalker<'a> {
     TscRoots {
       roots: self.roots,
       missing_diagnostics: self.missing_diagnostics,
+      used_ts_expect_error_directives: self.used_ts_expect_error_directives,
       maybe_check_hash: self.maybe_hasher.map(|h| CacheDBHash::new(h.finish())),
     }
+  }
+
+  fn source_text_for_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<&str> {
+    self
+      .graph
+      .try_get_prefer_types(specifier)
+      .ok()
+      .flatten()
+      .and_then(|m| m.js())
+      .map(|m| m.source.text.as_ref())
+  }
+
+  fn maybe_ts_suppression_comment(
+    &self,
+    range: &deno_graph::Range,
+  ) -> Option<TsSuppressionComment> {
+    maybe_ts_suppression_comment(
+      range.specifier.as_str(),
+      self.source_text_for_specifier(&range.specifier)?,
+      range.range.start.line,
+    )
+  }
+
+  fn push_missing_diagnostic(
+    &mut self,
+    diagnostic: tsc::Diagnostic,
+    maybe_range: Option<&deno_graph::Range>,
+  ) {
+    if let Some(range) = maybe_range
+      && let Some(comment) = self.maybe_ts_suppression_comment(range)
+    {
+      if let TsSuppressionComment::ExpectError(directive) = comment {
+        self.used_ts_expect_error_directives.insert(directive);
+      }
+      return;
+    }
+    self.missing_diagnostics.push(diagnostic);
   }
 
   fn resolve_pending(&mut self) {
@@ -905,16 +964,17 @@ impl<'a> GraphWalker<'a> {
           if !is_dynamic
             && let Some(err) = module_error_for_tsc_diagnostic(self.sys, err)
           {
-            self
-              .missing_diagnostics
-              .push(tsc::Diagnostic::from_missing_error(
+            self.push_missing_diagnostic(
+              tsc::Diagnostic::from_missing_error(
                 err.specifier.as_str(),
                 err.maybe_range,
                 maybe_additional_sloppy_imports_message(
                   self.sys,
                   err.specifier,
                 ),
-              ));
+              ),
+              err.maybe_range,
+            );
           }
           continue;
         }
@@ -990,7 +1050,10 @@ impl<'a> GraphWalker<'a> {
             && let Some(diagnostic) =
               tsc::Diagnostic::maybe_from_resolution_error(resolution_error)
           {
-            self.missing_diagnostics.push(diagnostic);
+            self.push_missing_diagnostic(
+              diagnostic,
+              Some(resolution_error.range()),
+            );
           }
         }
       }
@@ -1129,6 +1192,65 @@ impl<'a> GraphWalker<'a> {
       )
       .ok()?;
     resolved.into_url().ok()
+  }
+}
+
+fn is_used_ts_expect_error_diagnostic(
+  diagnostic: &tsc::Diagnostic,
+  used_ts_expect_error_directives: &HashSet<TsDirective>,
+) -> bool {
+  const TS_UNUSED_EXPECT_ERROR: u64 = 2578;
+  if diagnostic.code != TS_UNUSED_EXPECT_ERROR {
+    return false;
+  }
+  let Some(file_name) = &diagnostic.file_name else {
+    return false;
+  };
+  let Some(position) = diagnostic
+    .original_source_start
+    .as_ref()
+    .or(diagnostic.start.as_ref())
+  else {
+    return false;
+  };
+  used_ts_expect_error_directives.contains(&TsDirective {
+    specifier: file_name.to_string(),
+    line: position.line,
+  })
+}
+
+fn maybe_ts_suppression_comment(
+  specifier: &str,
+  source_text: &str,
+  diagnostic_line: usize,
+) -> Option<TsSuppressionComment> {
+  let lines = source_text.lines().collect::<Vec<_>>();
+  let mut line_index = diagnostic_line.checked_sub(1)?;
+  loop {
+    let line = lines.get(line_index)?.trim();
+    if let Some(directive) = line.strip_prefix("//").and_then(|line| {
+      line
+        .strip_prefix('/')
+        .unwrap_or(line)
+        .trim_start()
+        .strip_prefix('@')
+    }) {
+      if directive.starts_with("ts-ignore") {
+        return Some(TsSuppressionComment::Ignore);
+      }
+      if directive.starts_with("ts-expect-error") {
+        return Some(TsSuppressionComment::ExpectError(TsDirective {
+          specifier: specifier.to_string(),
+          line: line_index as u64,
+        }));
+      }
+    }
+
+    if !line.is_empty() && !line.starts_with("//") {
+      return None;
+    }
+
+    line_index = line_index.checked_sub(1)?;
   }
 }
 
