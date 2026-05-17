@@ -4450,7 +4450,6 @@
     "es-module/test-esm-namespace.mjs": {},
     "es-module/test-esm-symlink-main.js": {},
     "es-module/test-esm-syntax-error.mjs": {},
-    "es-module/test-import-require-tla-twice.js": {},
     "es-module/test-require-module-conditional-exports.js": {},
     "es-module/test-vm-compile-function-leak.js": {},
     "es-module/test-vm-contextified-script-leak.js": {},
