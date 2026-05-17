@@ -3285,17 +3285,6 @@ This command has implicit access to all permissions.
             .action(ArgAction::SetTrue),
         )
         .arg(
-          Arg::new("permission")
-            .long("permission")
-            .help(
-              "Opt out of the implicit `--allow-all` granted to `deno eval` \
-              so explicit `--allow-*` / `--deny-*` flags are honoured. \
-              Matches the role of Node.js `--permission`.",
-            )
-            .action(ArgAction::SetTrue)
-            .hide(true),
-        )
-        .arg(
           Arg::new("code_arg")
             .num_args(1..)
             .action(ArgAction::Append)
@@ -7021,12 +7010,10 @@ fn eval_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   // `deno eval` has historically been documented as having implicit access
   // to all permissions. Preserve that for users who do not opt into the
-  // permission model. If any `--allow-*` / `--deny-*` flag, or the explicit
-  // `--permission` opt-in was supplied, skip the implicit allow-all so the
-  // explicit grant is honoured - matching what Node's `--permission` model
-  // expects.
-  let permission_mode = matches.get_flag("permission");
-  if !permission_mode && !flags.permissions.has_permission() {
+  // permission model. If any `--allow-*` / `--deny-*` flag or `--no-prompt`
+  // was supplied, skip the implicit allow-all so the explicit choice is
+  // honoured - this is what Node's `--permission` translation relies on.
+  if !flags.permissions.no_prompt && !flags.permissions.has_permission() {
     flags.allow_all();
   }
 
