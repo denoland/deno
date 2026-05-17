@@ -3194,7 +3194,7 @@ pub fn wrap_eval_code(source_code: &str) -> String {
     process.getBuiltinModule("module").builtinModules
       .filter((m) => !/\/|crypto|process|_tls_common/.test(m))
       .forEach((m) => {{ globalThis[m] = process.getBuiltinModule(m); }}),
-    process.getBuiltinModule("vm").runInThisContext({})
+    process.getBuiltinModule("vm").runInThisContext({}, {{ filename: "[eval]" }})
   )"#,
     json_escaped
   )

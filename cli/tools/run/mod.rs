@@ -279,6 +279,11 @@ pub async fn eval_command(
   } else {
     eval_flags.code
   };
+  // Match Node's `[eval]` URL for `-e` scripts so inspector clients (and
+  // Node compat tests) see the same script URL. V8 honors the
+  // `//# sourceURL=` comment for both classic scripts and ES modules.
+  // Appended (not prepended) so user line numbers are preserved.
+  let source_code = format!("{source_code}\n//# sourceURL=[eval]\n");
 
   // Save a fake file into file fetcher cache
   // to allow module access by TS compiler.
