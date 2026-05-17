@@ -262,7 +262,8 @@ function dispatchWorkerMessage(data) {
     // prototype.
     ports: ArrayPrototypeFilter(
       transferables,
-      (t) => t !== null && typeof t === "object" &&
+      (t) =>
+        t !== null && typeof t === "object" &&
         t[core.hostObjectBrand] === "MessagePort",
     ),
   });

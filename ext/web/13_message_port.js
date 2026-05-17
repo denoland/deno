@@ -182,7 +182,8 @@ function dispatchPortMessageData(target, data) {
     // transferable receive override) are surfaced in `ev.ports`.
     ports: ArrayPrototypeFilter(
       transferables,
-      (t) => t !== null && typeof t === "object" &&
+      (t) =>
+        t !== null && typeof t === "object" &&
         t[core.hostObjectBrand] === "MessagePort",
     ),
   });

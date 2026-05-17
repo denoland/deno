@@ -267,7 +267,8 @@ class Worker extends EventTarget {
       // same brand).
       ports: ArrayPrototypeFilter(
         transferables,
-        (t) => t !== null && typeof t === "object" &&
+        (t) =>
+          t !== null && typeof t === "object" &&
           t[core.hostObjectBrand] === "MessagePort",
       ),
     });
