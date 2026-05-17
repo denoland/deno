@@ -1,0 +1,12 @@
+running 7 tests from ./test.js
+test.expectFailure is a function ... ok ([WILDLINE])
+sync expected failure ... ok ([WILDLINE])
+async expected failure option ... ok ([WILDLINE])
+matched expected failure ... ok ([WILDLINE])
+callback expected failure ... ok ([WILDLINE])
+unexpected pass fails the test ... FAILED ([WILDLINE])
+mismatched expected failure fails the test ... FAILED ([WILDLINE])
+[WILDCARD] ERRORS [WILDCARD] FAILURES [WILDCARD]
+FAILED | 5 passed | 2 failed ([WILDLINE])
+
+error: Test failed

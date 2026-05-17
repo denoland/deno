@@ -75,6 +75,7 @@ const { default: binding } = core.loadExtScript(
 const { validateOneOf } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
+const lazyV8 = core.createLazyLoader("node:v8");
 const { os: osConstants } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
@@ -344,6 +345,12 @@ function setTraceSigInt(enabled) {
   // facility, but the call should succeed so user code can opt in/out.
 }
 
+// https://nodejs.org/api/util.html#utilqueryobjectsconstructor-options
+// Mirrors `v8.queryObjects` - see ext/node/polyfills/v8.ts for the limitations.
+function queryObjects(ctor, options) {
+  return lazyV8().queryObjects(ctor, options);
+}
+
 function convertProcessSignalToExitCode(signalCode) {
   const { signals } = osConstants;
   validateOneOf(signalCode, "signalCode", ObjectKeys(signals));
@@ -375,6 +382,7 @@ return {
   aborted,
   getCallSites,
   parseEnv,
+  queryObjects,
   setTraceSigInt,
   convertProcessSignalToExitCode,
   getSystemErrorMessage,

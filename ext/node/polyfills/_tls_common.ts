@@ -7,10 +7,15 @@
 (function () {
 const { core } = globalThis.__bootstrap;
 const {
+  ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED,
   ERR_INVALID_ARG_TYPE,
+  ERR_TLS_INVALID_PROTOCOL_METHOD,
   ERR_TLS_INVALID_PROTOCOL_VERSION,
   ERR_TLS_PROTOCOL_VERSION_CONFLICT,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
 const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
@@ -27,14 +32,37 @@ const { createPrivateKey } = core.loadExtScript(
 // "AECDH-NULL-SHA", "@SECLEVEL=2". Meta-keywords like "ALL", "HIGH",
 // "DEFAULT" also match. We reject strings where no colon-separated entry
 // looks like a valid cipher name, which catches typos like "no-such-cipher".
-const CIPHER_NAME_RE = /^[!+\-@]?[A-Z0-9][A-Z0-9_=\-]*$/;
+const CIPHER_NAME_RE = /^[!+\-@]?[A-Z0-9][A-Z0-9_=\-]*(?:@[A-Z0-9_=\-]+)?$/;
+const CIPHER_META_NAMES = new Set([
+  "ALL",
+  "COMPLEMENTOFALL",
+  "COMPLEMENTOFDEFAULT",
+  "DEFAULT",
+  "FIPS",
+  "HIGH",
+  "LOW",
+  "MEDIUM",
+  "SUITEB128",
+  "SUITEB128ONLY",
+  "SUITEB192",
+]);
 
 function validateCipherList(ciphers: string): void {
   const entries = ciphers.split(":");
   let hasValidEntry = false;
   for (const entry of entries) {
     if (entry === "") continue;
-    if (CIPHER_NAME_RE.test(entry)) {
+    if (!CIPHER_NAME_RE.test(entry)) {
+      continue;
+    }
+    const normalized = entry.replace(/^[!+\-]/, "");
+    const name = normalized.split("@", 1)[0];
+    if (
+      normalized.startsWith("@SECLEVEL=") ||
+      CIPHER_META_NAMES.has(name) ||
+      name.startsWith("TLS_") ||
+      name.includes("-")
+    ) {
       hasValidEntry = true;
       break;
     }
@@ -214,23 +242,37 @@ function normalizeCertValue(
 function getProtocolRange(
   options: any,
 ): { minVersion: string; maxVersion: string } {
-  let minVersion = "TLSv1.2"; // Default per Node.js
-  let maxVersion = "TLSv1.3";
+  let minVersion = getDefaultMinVersion();
+  let maxVersion = getDefaultMaxVersion();
 
   if (options.secureProtocol) {
-    const range = kProtocolMap[options.secureProtocol];
-    if (!range) {
-      throw new ERR_TLS_INVALID_PROTOCOL_VERSION(
-        options.secureProtocol,
-        "secureProtocol",
-      );
-    }
-
-    // If secureProtocol is set, minVersion/maxVersion must not also be set
+    // If secureProtocol is set, minVersion/maxVersion must not also be set.
+    // Node raises this conflict before validating the protocol method string.
     if (options.minVersion || options.maxVersion) {
       throw new ERR_TLS_PROTOCOL_VERSION_CONFLICT(
         options.minVersion || options.maxVersion,
         "secureProtocol",
+      );
+    }
+
+    const range = kProtocolMap[options.secureProtocol];
+    if (!range) {
+      if (
+        options.secureProtocol === "SSLv2_method" ||
+        options.secureProtocol === "SSLv2_client_method" ||
+        options.secureProtocol === "SSLv2_server_method"
+      ) {
+        throw new ERR_TLS_INVALID_PROTOCOL_METHOD("SSLv2 methods disabled");
+      }
+      if (
+        options.secureProtocol === "SSLv3_method" ||
+        options.secureProtocol === "SSLv3_client_method" ||
+        options.secureProtocol === "SSLv3_server_method"
+      ) {
+        throw new ERR_TLS_INVALID_PROTOCOL_METHOD("SSLv3 methods disabled");
+      }
+      throw new ERR_TLS_INVALID_PROTOCOL_METHOD(
+        `Unknown method: ${options.secureProtocol}`,
       );
     }
 
@@ -257,6 +299,20 @@ function getProtocolRange(
   }
 
   return { minVersion, maxVersion };
+}
+
+function getDefaultMinVersion(): string {
+  if (getOptionValue("--tls-min-v1.0")) return "TLSv1";
+  if (getOptionValue("--tls-min-v1.1")) return "TLSv1.1";
+  if (getOptionValue("--tls-min-v1.2")) return "TLSv1.2";
+  if (getOptionValue("--tls-min-v1.3")) return "TLSv1.3";
+  return "TLSv1.2";
+}
+
+function getDefaultMaxVersion(): string {
+  if (getOptionValue("--tls-max-v1.3")) return "TLSv1.3";
+  if (getOptionValue("--tls-max-v1.2")) return "TLSv1.2";
+  return "TLSv1.3";
 }
 
 function isValidKeyCertValue(val: any): boolean {
@@ -314,6 +370,7 @@ const secureContextBrand = new WeakSet<object>();
 class SecureContext {
   context: {
     ca?: string | string[];
+    useDefaultCA?: boolean;
     cert?: string;
     key?: string;
     minVersion: string;
@@ -360,6 +417,12 @@ class SecureContext {
         "options.privateKeyIdentifier",
       );
     }
+    if (
+      options.privateKeyEngine != null &&
+      options.privateKeyIdentifier != null
+    ) {
+      throw new ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED();
+    }
     if (options.ecdhCurve != null) {
       validateString(options.ecdhCurve, "options.ecdhCurve");
     }
@@ -395,8 +458,10 @@ class SecureContext {
 
     const { minVersion, maxVersion } = getProtocolRange(options);
 
+    const useDefaultCA = !options.ca;
     this.context = {
-      ca: normalizeCertValue(options.ca),
+      ca: useDefaultCA ? undefined : normalizeCertValue(options.ca),
+      useDefaultCA,
       cert: toStringOrUndefined(options.cert),
       key: toStringOrUndefined(options.key),
       minVersion,
@@ -424,6 +489,26 @@ class SecureContext {
     ) {
       if (!secureContextBrand.has(this)) {
         throw new TypeError("Illegal invocation");
+      }
+    };
+    (this.context as any).addCACert = function addCACert(
+      this: any,
+      cert: any,
+    ) {
+      if (!secureContextBrand.has(this)) {
+        throw new TypeError("Illegal invocation");
+      }
+      validateKeyCertOption(cert, "cert", false);
+      const normalized = toStringOrUndefined(cert);
+      if (normalized === undefined) {
+        return;
+      }
+      if (this.ca === undefined) {
+        this.ca = normalized;
+      } else if (globalThis.Array.isArray(this.ca)) {
+        this.ca.push(normalized);
+      } else {
+        this.ca = [this.ca, normalized];
       }
     };
   }

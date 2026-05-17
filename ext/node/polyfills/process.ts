@@ -117,6 +117,13 @@ import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 const { buildAllowedFlags } = core.loadExtScript(
   "ext:deno_node/internal/process/per_thread.mjs",
 );
+const {
+  getActiveHandles,
+  getActiveRequests,
+} = core.loadExtScript("ext:deno_node/internal/process/active_resources.ts");
+const {
+  getActiveResourcesInfo: getTimerActiveResourcesInfo,
+} = core.loadExtScript("ext:deno_node/internal/timers.mjs");
 import type fsUtils from "ext:deno_node/internal/fs/utils.mjs";
 import type * as utilModule from "ext:deno_node/util.ts";
 
@@ -439,6 +446,10 @@ export function memoryUsage(): {
 memoryUsage.rss = function (): number {
   return memoryUsage().rss;
 };
+
+export function getActiveResourcesInfo(): string[] {
+  return getTimerActiveResourcesInfo();
+}
 
 export function availableMemory(): number {
   return Deno.systemMemoryInfo().available;
@@ -980,6 +991,10 @@ process.openStdin = () => {
 process._rawDebug = (...args: unknown[]) => {
   core.print(`${format(...args)}\n`, true);
 };
+
+process.getActiveResourcesInfo = getActiveResourcesInfo;
+process._getActiveRequests = getActiveRequests;
+process._getActiveHandles = getActiveHandles;
 
 // Undocumented Node API that is used by `signal-exit` which in turn
 // is used by `node-tap`. It was marked for removal a couple of years
