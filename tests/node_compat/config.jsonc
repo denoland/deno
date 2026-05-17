@@ -15,6 +15,14 @@
       "ignore": true,
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
     },
+    "es-module/test-cjs-legacyMainResolve.js": {
+      "ignore": true,
+      "reason": "Tests `node:internal/modules/esm/resolve.legacyMainResolve`, a private CJS resolver helper Deno does not expose"
+    },
+    "es-module/test-cjs-legacyMainResolve-permission.js": {
+      "ignore": true,
+      "reason": "Tests `node:internal/modules/esm/resolve.legacyMainResolve` against Node's `--permission` model; neither is supported in Deno"
+    },
     "es-module/test-cjs-prototype-pollution.js": {},
     "es-module/test-esm-assert-strict.mjs": {},
     "es-module/test-esm-child-process-fork-main.mjs": {},
