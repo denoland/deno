@@ -4791,10 +4791,6 @@
     "pummel/test-stream-pipe-multi.js": {},
     "pummel/test-structuredclone-jstransferable.js": {},
     "pummel/test-timers.js": {},
-    "pummel/test-tls-server-large-request.js": {
-      "linux": false,
-      "darwin": false
-    },
     "pummel/test-tls-throttle.js": { "linux": false, "darwin": false },
     "pummel/test-vm-memleak.js": {},
     "pummel/test-watch-file.js": {},
