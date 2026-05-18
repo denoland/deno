@@ -75,6 +75,37 @@ pub enum RootCertStoreLoadError {
   FailedNativeCerts(String),
 }
 
+/// Returns true if Node-compat options request the system trust store be
+/// included alongside Deno's defaults.  This is a Deno-side honouring of
+/// Node's `--use-system-ca` flag and `NODE_USE_SYSTEM_CA=1` env var so that
+/// scripts run under Deno that depend on Node's behaviour can reach hosts
+/// signed by CAs only present in the OS trust store.
+fn node_wants_system_ca(sys: &impl EnvVar) -> bool {
+  if let Ok(v) = sys.env_var("NODE_USE_SYSTEM_CA")
+    && v == "1"
+  {
+    return true;
+  }
+  if let Ok(opts) = sys.env_var("NODE_OPTIONS") {
+    // We don't need full quote-aware parsing here — `--use-system-ca` is a
+    // bare flag with no value, so a simple token search is enough.  Guard
+    // against `--no-use-system-ca` appearing later (the last occurrence
+    // wins, mirroring Node's own behaviour).
+    let mut use_ca = false;
+    for tok in opts.split_ascii_whitespace() {
+      match tok {
+        "--use-system-ca" | "--use_system_ca" => use_ca = true,
+        "--no-use-system-ca" | "--no-use_system_ca" => use_ca = false,
+        _ => {}
+      }
+    }
+    if use_ca {
+      return true;
+    }
+  }
+  false
+}
+
 fn load_pem_certs(
   path: &Path,
 ) -> Result<Vec<rustls::pki_types::CertificateDer<'static>>, std::io::Error> {
@@ -92,7 +123,7 @@ pub fn get_root_cert_store(
   maybe_ca_data: Option<CaData>,
 ) -> Result<RootCertStore, RootCertStoreLoadError> {
   let mut root_cert_store = RootCertStore::empty();
-  let ca_stores: Vec<String> = maybe_ca_stores
+  let mut ca_stores: Vec<String> = maybe_ca_stores
     .or_else(|| {
       let env_ca_store = sys.env_var("DENO_TLS_CA_STORE").ok()?;
       Some(
@@ -104,6 +135,16 @@ pub fn get_root_cert_store(
       )
     })
     .unwrap_or_else(|| vec!["mozilla".to_string()]);
+
+  // Node-compat: `NODE_USE_SYSTEM_CA=1` and `--use-system-ca` (passed via
+  // `NODE_OPTIONS`) should make the system trust store available to fetch
+  // and node:tls clients in addition to the bundled Mozilla roots, matching
+  // Node's behaviour.  We honour the flag here so the global root cert
+  // store picks up system CAs at startup; otherwise only node:tls's own
+  // per-connection logic would see it and `fetch()` would not.
+  if node_wants_system_ca(sys) && !ca_stores.iter().any(|s| s == "system") {
+    ca_stores.push("system".to_string());
+  }
 
   for store in ca_stores.iter() {
     match store.as_str() {

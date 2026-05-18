@@ -58,6 +58,7 @@ use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
+use deno_tls::RuntimeRootCertOverride;
 use deno_tls::SocketUse;
 use deno_tls::TlsKey;
 use deno_tls::TlsKeys;
@@ -300,29 +301,68 @@ pub struct FetchReturn {
   pub cancel_handle_rid: Option<ResourceId>,
 }
 
+/// Cached default fetch client.  Keyed on the `RuntimeRootCertOverride`
+/// version so a `tls.setDefaultCACertificates()` in JS forces the next
+/// `fetch()` to build a fresh client with the new trust roots.
+pub struct CachedClient {
+  pub client: Client,
+  pub override_version: u64,
+}
+
 pub fn get_or_create_client_from_state(
   state: &mut OpState,
 ) -> Result<Client, HttpClientCreateError> {
-  if let Some(client) = state.try_borrow::<Client>() {
-    Ok(client.clone())
-  } else {
-    let options = state.borrow::<Options>();
-    let client = create_client_from_options(options)?;
-    state.put::<Client>(client.clone());
-    Ok(client)
+  let override_version = state
+    .try_borrow::<RuntimeRootCertOverride>()
+    .map(|o| o.version())
+    .unwrap_or(0);
+
+  if let Some(cached) = state.try_borrow::<CachedClient>()
+    && cached.override_version == override_version
+  {
+    return Ok(cached.client.clone());
   }
+
+  let override_certs = state
+    .try_borrow::<RuntimeRootCertOverride>()
+    .and_then(|o| o.certs());
+  let options = state.borrow::<Options>();
+  let client = create_client_from_options(options, override_certs)?;
+  state.put::<CachedClient>(CachedClient {
+    client: client.clone(),
+    override_version,
+  });
+  Ok(client)
 }
 
 pub fn create_client_from_options(
   options: &Options,
+  override_certs: Option<Vec<String>>,
 ) -> Result<Client, HttpClientCreateError> {
+  // When a runtime override is active (via `tls.setDefaultCACertificates`),
+  // replace the default root cert store with an empty one and inject the
+  // overridden certs as `ca_certs`.  This matches Node's semantic where
+  // `setDefaultCACertificates([...])` is a full replacement, not an
+  // addition.
+  let (root_cert_store, ca_certs) = if let Some(certs) = override_certs {
+    (
+      Some(deno_tls::rustls::RootCertStore::empty()),
+      certs.into_iter().map(String::into_bytes).collect(),
+    )
+  } else {
+    (
+      options
+        .root_cert_store()
+        .map_err(HttpClientCreateError::RootCertStore)?,
+      vec![],
+    )
+  };
+
   create_http_client(
     &options.user_agent,
     CreateHttpClientOptions {
-      root_cert_store: options
-        .root_cert_store()
-        .map_err(HttpClientCreateError::RootCertStore)?,
-      ca_certs: vec![],
+      root_cert_store,
+      ca_certs,
       proxy: options.proxy.clone(),
       dns_resolver: options.resolver.clone(),
       unsafely_ignore_certificate_errors: options
@@ -602,9 +642,94 @@ pub struct FetchResponse {
   pub content_length: Option<u64>,
   /// This field is populated if some error occurred which needs to be
   /// reconstructed in the JS side to set the error _cause_.
-  /// In the tuple, the first element is an error message and the second one is
-  /// an error cause.
-  pub error: Option<(String, String)>,
+  ///
+  /// `(message, cause_message, cause_code)`:
+  ///   - `message`: the outer `TypeError` message.
+  ///   - `cause_message`: the message of the inner `cause` `Error`.
+  ///   - `cause_code`: optional Node/OpenSSL-style error code attached as
+  ///     `cause.code`.  Set for TLS certificate errors so Node-compat tests
+  ///     that read `err.cause.code` (e.g. `UNABLE_TO_VERIFY_LEAF_SIGNATURE`)
+  ///     see the value they expect.  Empty string means "no code".
+  pub error: Option<(String, String, String)>,
+}
+
+/// Walk an error chain looking for a `rustls::Error::InvalidCertificate(..)`
+/// and translate it into an OpenSSL-style error code that Node uses for the
+/// `.code` field of the `cause` Error on `fetch()` failures.  Returns
+/// `None` if no recognisable cert error is found in the chain.
+fn cert_error_code_from_chain(
+  err: &(dyn std::error::Error + 'static),
+) -> Option<&'static str> {
+  let mut current: Option<&(dyn std::error::Error + 'static)> = Some(err);
+  while let Some(e) = current {
+    if let Some(rustls_err) = e.downcast_ref::<deno_tls::rustls::Error>()
+      && let Some(code) = rustls_error_to_node_code(rustls_err)
+    {
+      return Some(code);
+    }
+    // rustls errors sometimes get wrapped in `io::Error::Other(Box<dyn
+    // Error>)` or hyper-util's connect error; the downcast fails there
+    // but the Display is preserved.  Pattern-match on the message of
+    // each link in the chain so we don't miss the cert error.
+    if let Some(code) = cert_error_code_from_message(&e.to_string()) {
+      return Some(code);
+    }
+    current = e.source();
+  }
+  None
+}
+
+fn rustls_error_to_node_code(
+  err: &deno_tls::rustls::Error,
+) -> Option<&'static str> {
+  use deno_tls::rustls::CertificateError as CE;
+  use deno_tls::rustls::Error as E;
+  match err {
+    E::InvalidCertificate(cert_err) => Some(match cert_err {
+      CE::UnknownIssuer => "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+      CE::NotValidYet => "CERT_NOT_YET_VALID",
+      CE::Expired => "CERT_HAS_EXPIRED",
+      CE::Revoked => "CERT_REVOKED",
+      CE::NotValidForName | CE::NotValidForNameContext { .. } => {
+        "ERR_TLS_CERT_ALTNAME_INVALID"
+      }
+      CE::InvalidPurpose => "INVALID_PURPOSE",
+      CE::Other(other) => {
+        let text = format!("{other}");
+        if text.contains("SelfSigned") || text.contains("CaUsedAsEndEntity") {
+          // Both rustls/webpki errors map to OpenSSL's
+          // DEPTH_ZERO_SELF_SIGNED_CERT.  `CaUsedAsEndEntity` is a
+          // webpki-only rule that OpenSSL doesn't have, but the closest
+          // Node equivalent is the same self-signed code.
+          "DEPTH_ZERO_SELF_SIGNED_CERT"
+        } else {
+          "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
+        }
+      }
+      _ => "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+    }),
+    _ => None,
+  }
+}
+
+fn cert_error_code_from_message(msg: &str) -> Option<&'static str> {
+  if msg.contains("invalid peer certificate") {
+    if msg.contains("UnknownIssuer") {
+      Some("UNABLE_TO_VERIFY_LEAF_SIGNATURE")
+    } else if msg.contains("Expired") {
+      Some("CERT_HAS_EXPIRED")
+    } else if msg.contains("NotValidYet") {
+      Some("CERT_NOT_YET_VALID")
+    } else if msg.contains("NotValidForName") {
+      Some("ERR_TLS_CERT_ALTNAME_INVALID")
+    } else if msg.contains("SelfSigned") {
+      Some("DEPTH_ZERO_SELF_SIGNED_CERT")
+    } else {
+      Some("UNABLE_TO_VERIFY_LEAF_SIGNATURE")
+    }
+  } else {
+    None
+  }
 }
 
 #[op2]
@@ -635,7 +760,26 @@ pub async fn op_fetch_send(
         && let Some(err_src) = std::error::Error::source(err_src)
       {
         return Ok(FetchResponse {
-          error: Some((err.to_string(), err_src.to_string())),
+          error: Some((err.to_string(), err_src.to_string(), String::new())),
+          ..Default::default()
+        });
+      }
+
+      // For TLS handshake / connect errors we want Node compat: callers
+      // expect `err.cause.code` to be set to one of the OpenSSL-style
+      // codes (`UNABLE_TO_VERIFY_LEAF_SIGNATURE`, ...).  Walk the error
+      // chain to find the rustls error and translate it.
+      if let FetchError::ClientSend(err_src) = &err
+        && let Some(code) = cert_error_code_from_chain(&err_src.source)
+      {
+        // Pick a cause message that mirrors Node's: a short human-readable
+        // string describing the cert error.  The code is what's tested
+        // against; the message is just informative.
+        let cause_message = std::error::Error::source(&err_src.source)
+          .map(|e| e.to_string())
+          .unwrap_or_else(|| code.to_string());
+        return Ok(FetchResponse {
+          error: Some((err.to_string(), cause_message, code.to_string())),
           ..Default::default()
         });
       }
@@ -998,6 +1142,10 @@ pub fn create_http_client(
       unsafely_disable_hostname_verification: false,
       cert_chain_and_key: options.client_cert_chain_and_key.into(),
       socket_use: deno_tls::SocketUse::Http,
+      // Node-compat: accept X.509v1 server certificates the same way
+      // OpenSSL/Node do, so fetch() can reach Node-test-suite fixtures
+      // (agent8/agent9) and other legacy peers without an opt-in flag.
+      tolerate_legacy_cert_versions: true,
     })
     .map_err(HttpClientCreateError::Tls)?;
 

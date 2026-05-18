@@ -839,6 +839,7 @@ mod hyper_client {
             unsafely_disable_hostname_verification: false,
             cert_chain_and_key: keys,
             socket_use: SocketUse::Http,
+            tolerate_legacy_cert_versions: false,
           })?;
         let mut http_connector = HttpConnector::new();
         http_connector.enforce_http(false);

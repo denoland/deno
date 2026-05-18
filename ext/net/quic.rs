@@ -603,6 +603,7 @@ pub(crate) fn op_quic_endpoint_connect(
       unsafely_disable_hostname_verification: false,
       cert_chain_and_key: key_pair.take(),
       socket_use: SocketUse::GeneralSsl,
+      tolerate_legacy_cert_versions: false,
     })?
   };
 

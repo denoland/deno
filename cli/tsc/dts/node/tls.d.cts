@@ -1146,6 +1146,21 @@ declare module "tls" {
      */
     function getCACertificates(type?: "default" | "system" | "bundled" | "extra"): string[];
     /**
+     * Sets the default CA certificates used by the Node.js TLS clients. The certificates from the
+     * given array replace the default CA certificates that the client uses, including the
+     * ones bundled with Node.js, the ones loaded from the system, the ones loaded via
+     * `NODE_EXTRA_CA_CERTS` and the ones already set via previous calls to this function.
+     * This affects the result of subsequent `tls.getCACertificates('default')` calls and
+     * any TLS clients created later, but does not affect existing connections or sockets.
+     *
+     * To restore the default behavior, call this function again with the result of
+     * `tls.getCACertificates('default')` before any override took effect, or restart the
+     * process.
+     * @since v22.15.0
+     * @param certs An array of PEM-encoded CA certificates.
+     */
+    function setDefaultCACertificates(certs: ReadonlyArray<string | ArrayBufferView>): void;
+    /**
      * Returns an array with the names of the supported TLS ciphers. The names are
      * lower-case for historical reasons, but must be uppercased to be used in
      * the `ciphers` option of `{@link createSecureContext}`.
