@@ -196,15 +196,15 @@ fn capture_initiator(scope: &mut v8::PinScope<'_, '_>) -> serde_json::Value {
       .get_script_name(scope)
       .map(|n| n.to_rust_string_lossy(scope))
       .map(|s| {
-        // CJS modules see `__filename` as a filesystem path; convert
-        // `file://` URLs back to paths so frame matching against
-        // `__filename` works.
-        if let Some(stripped) = s.strip_prefix("file://") {
-          // On Unix this is the path. On Windows it would be
-          // `/C:/foo`, so leave URL form there.
-          if cfg!(unix) {
-            return stripped.to_string();
-          }
+        // CJS code sees `__filename` as an OS filesystem path (with
+        // backslashes on Windows), not a `file://` URL. Convert here so
+        // that test frame lookups like
+        // `findFrameInInitiator(__filename, initiator)` match.
+        if s.starts_with("file://")
+          && let Ok(parsed) = ModuleSpecifier::parse(&s)
+          && let Ok(path) = parsed.to_file_path()
+        {
+          return path.to_string_lossy().into_owned();
         }
         s
       })
