@@ -39,6 +39,7 @@ const {
   op_crypto_sign_ed25519,
   op_crypto_sign_key,
   op_crypto_subtle_digest,
+  op_crypto_subtle_digest_sync,
   op_crypto_unwrap_key,
   op_crypto_verify_ed25519,
   op_crypto_verify_key,
@@ -579,10 +580,18 @@ class SubtleCrypto {
 
     algorithm = normalizeAlgorithm(algorithm, "digest");
 
-    const result = await op_crypto_subtle_digest(
-      algorithm.name,
-      data,
-    );
+    // SHA-2/SHA-3 hardware-accelerated throughput on commodity x86 is
+    // roughly 1 GB/s, so inputs up to ~64 KB finish in well under the
+    // ~30 us cost of dispatching an async op to tokio's blocking pool.
+    // For those, call the sync op and skip the async-op machinery
+    // entirely; only fall through to spawn_blocking for inputs large
+    // enough that the dispatch is amortized.
+    let result;
+    if (TypedArrayPrototypeGetByteLength(data) <= 64 * 1024) {
+      result = op_crypto_subtle_digest_sync(algorithm.name, data);
+    } else {
+      result = await op_crypto_subtle_digest(algorithm.name, data);
+    }
 
     return TypedArrayPrototypeGetBuffer(result);
   }
