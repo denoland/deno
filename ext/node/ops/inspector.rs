@@ -202,7 +202,7 @@ fn capture_initiator(scope: &mut v8::PinScope<'_, '_>) -> serde_json::Value {
         // `findFrameInInitiator(__filename, initiator)` match.
         if s.starts_with("file://")
           && let Ok(parsed) = ModuleSpecifier::parse(&s)
-          && let Ok(path) = parsed.to_file_path()
+          && let Ok(path) = deno_path_util::url_to_file_path(&parsed)
         {
           return path.to_string_lossy().into_owned();
         }

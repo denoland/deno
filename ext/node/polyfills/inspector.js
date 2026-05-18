@@ -319,6 +319,10 @@ internals.__inspectorNetwork = {
   loadingFailed: Network.loadingFailed,
   dataReceived: Network.dataReceived,
   dataSent: Network.dataSent,
+  webSocketCreated: Network.webSocketCreated,
+  webSocketHandshakeResponseReceived:
+    Network.webSocketHandshakeResponseReceived,
+  webSocketClosed: Network.webSocketClosed,
 };
 
 const DOMStorage = {
