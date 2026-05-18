@@ -12,6 +12,7 @@ import {
   op_module_hooks_register,
   op_module_hooks_respond_load,
   op_napi_open,
+  op_node_has_child_ipc_pipe,
   op_require_as_file_path,
   op_require_break_on_next_statement,
   op_require_can_parse_as_esm,
@@ -82,10 +83,10 @@ const {
   TypeError,
 } = primordials;
 
-import _httpAgent from "node:_http_agent";
-import _httpCommon from "node:_http_common";
-import _httpOutgoing from "node:_http_outgoing";
-import _httpServer from "node:_http_server";
+const _httpAgent = core.createLazyLoader("node:_http_agent");
+const _httpCommon = core.createLazyLoader("node:_http_common");
+const _httpOutgoing = core.createLazyLoader("node:_http_outgoing");
+const _httpServer = core.createLazyLoader("node:_http_server");
 const _streamDuplex = core.loadExtScript(
   "ext:deno_node/internal/streams/duplex.js",
 ).default;
@@ -101,14 +102,11 @@ const _streamTransform = core.loadExtScript(
 const _streamWritable = core.loadExtScript(
   "ext:deno_node/internal/streams/writable.js",
 ).default;
-const _tlsCommon = core.loadExtScript(
-  "ext:deno_node/_tls_common.ts",
-).default;
-const _tlsWrap = core.loadExtScript(
-  "ext:deno_node/_tls_wrap.js",
-).default;
+// _tls_common, _tls_wrap are lazy-loaded via `lazyNodeModules` below: their
+// scripts extend net.Socket at module body, which pulls node:net (and then
+// node:stream) into the snapshot.
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
-import assertStrict from "node:assert/strict";
+const assertStrict = core.createLazyLoader("node:assert/strict");
 const asyncHooks = core.loadExtScript("ext:deno_node/async_hooks.ts").default;
 const internalAsyncHooks = core.loadExtScript(
   "ext:deno_node/internal/async_hooks.ts",
@@ -120,12 +118,16 @@ const {
   emitInit: internalAsyncHooksEmitInit,
 } = internalAsyncHooks;
 const buffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs").default;
-const childProcess = core.loadExtScript("ext:deno_node/child_process.ts");
+// child_process, crypto, dgram are lazy-loaded via `lazyNodeModules` below.
+// Their scripts use `createLazyLoader(...)()` patterns to extend classes
+// from `node:stream`/`node:net`/etc. at module body time, which pulls the
+// whole stream/net subtree into the snapshot if loaded eagerly. cluster
+// stays eager because its body reads `NODE_CLUSTER_SCHED_POLICY` from env
+// at module evaluation time, which requires Deno env permission at runtime
+// but is freely granted at snapshot.
 const cluster = core.loadExtScript("ext:deno_node/cluster.ts").default;
 import console from "node:console";
 const constants = core.loadExtScript("ext:deno_node/constants.ts").default;
-const crypto = core.loadExtScript("ext:deno_node/crypto.ts").default;
-const dgram = core.loadExtScript("ext:deno_node/dgram.ts").default;
 const diagnosticsChannel =
   core.loadExtScript("ext:deno_node/diagnostics_channel.js").default;
 const dns = core.loadExtScript("ext:deno_node/dns.ts").default;
@@ -135,12 +137,14 @@ const dnsPromises = core.loadExtScript(
 const domain = core.loadExtScript("ext:deno_node/domain.ts").default;
 const events = core.loadExtScript("ext:deno_node/_events.mjs").default;
 const fs = core.loadExtScript("ext:deno_node/fs.ts");
-const fsPromises = core.loadExtScript(
-  "ext:deno_node/fs/promises.ts",
-).fsPromises;
-const http = core.loadExtScript("ext:deno_node/http.ts");
-const http2 = core.loadExtScript("ext:deno_node/http2.ts");
-const https = core.loadExtScript("ext:deno_node/https.ts");
+// fs/promises is lazy-loaded via `lazyNodeModules` below: its script body
+// does `createLazyLoader("node:fs")()` which loads `node:fs` (fs_esm.ts),
+// whose body in turn reads the lazy createReadStream/Utf8Stream getters
+// off `fs.ts` and pulls the whole internal/fs/streams + node:stream chain
+// into the snapshot.
+// http/http2/https are lazy-loaded via `lazyNodeModules` below: their script
+// bodies eagerly chain into the entire node:_http_* / node:net / node:stream
+// graph, so running them at snapshot time defeats lazifying _http_*.
 const inspector = core.loadExtScript("ext:deno_node/inspector.js");
 const inspectorPromises = core.loadExtScript(
   "ext:deno_node/inspector/promises.js",
@@ -148,15 +152,14 @@ const inspectorPromises = core.loadExtScript(
 const internalAssertMyersDiff = core.loadExtScript(
   "ext:deno_node/internal/assert/myers_diff.js",
 );
-const internalCp = core.loadExtScript(
-  "ext:deno_node/internal/child_process.ts",
-).default;
+// internal/child_process pulls deno_process/40_process.js -> 22_body
+// -> 06_streams (208 KB). Lazy-loaded via lazyNodeModules.
 const internalCryptoCertificate = core.loadExtScript(
   "ext:deno_node/internal/crypto/certificate.ts",
 ).default;
-const internalCryptoCipher = core.loadExtScript(
-  "ext:deno_node/internal/crypto/cipher.ts",
-).default;
+// internal/crypto/cipher is lazy-loaded via `lazyNodeModules` below: its
+// script does `createLazyLoader("node:stream")()` at body time to extend
+// `Transform`, which pulls the whole stream subtree into the snapshot.
 const internalCryptoDiffiehellman = core.loadExtScript(
   "ext:deno_node/internal/crypto/diffiehellman.ts",
 ).default;
@@ -202,8 +205,12 @@ const internalDnsPromises = core.loadExtScript(
 ).default;
 const internalBuffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const internalErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
-import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
+const internalEventTarget = core.createLazyLoader(
+  "ext:deno_node/internal/event_target.mjs",
+);
+const internalFsUtils = core.createLazyLoader(
+  "ext:deno_node/internal/fs/utils.mjs",
+);
 // `internal/fs/promises.ts` evaluates `lazyFs()` at top-level, so triggering
 // its load during `setupBuiltinModules()` would re-enter the half-built
 // `node:fs` namespace. A Proxy defers evaluation until the first time the
@@ -220,13 +227,11 @@ const internalFsPromisesProxy = new Proxy(ObjectCreate(null), {
     return prop in (internalFsPromisesCache ??= lazyInternalFsPromises());
   },
 });
-const internalHttp = core.loadExtScript("ext:deno_node/internal/http.ts");
-const internalHttp2Core = core.loadExtScript(
-  "ext:deno_node/internal/http2/core.ts",
-).default;
-const internalHttp2Util = core.loadExtScript(
-  "ext:deno_node/internal/http2/util.ts",
-).default;
+// internal/http, internal/http2/core, internal/http2/util are lazy-loaded
+// via `lazyNodeModules` below. Loading them eagerly here pulls the entire
+// http2 ESM chain (node:http2 -> http2.ts -> node:http -> http.ts -> the
+// node:_http_* graph) into the snapshot, defeating the http/_http_*
+// lazification we set up.
 const internalPriorityQueue = core.loadExtScript(
   "ext:deno_node/internal/priority_queue.ts",
 );
@@ -236,7 +241,9 @@ const internalReadlineUtils = core.loadExtScript(
 const internalStreamsAddAbortSignal = core.loadExtScript(
   "ext:deno_node/internal/streams/add-abort-signal.js",
 ).default;
-import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
+const internalStreamsLazyTransform = core.createLazyLoader(
+  "ext:deno_node/internal/streams/lazy_transform.js",
+);
 const internalStreamsState =
   core.loadExtScript("ext:deno_node/internal/streams/state.js").default;
 const internalSocketAddress = core.loadExtScript(
@@ -279,7 +286,10 @@ const internalWorkerJsTransferable = core.loadExtScript(
 const internalConsole = core.loadExtScript(
   "ext:deno_node/internal/console/constructor.mjs",
 ).default;
-const net = core.loadExtScript("ext:deno_node/net.ts").default;
+// net stays eager: internal/tty.js's TTYWriteStream extends net.Socket
+// inside its constructor, and process bootstrap creates a TTYWriteStream
+// for stdout/stderr whenever they're TTYs (every interactive run).
+import net from "node:net";
 const os = core.loadExtScript("ext:deno_node/os.ts").default;
 import pathPosix from "node:path/posix";
 import pathWin32 from "node:path/win32";
@@ -288,15 +298,23 @@ const perfHooks = core.loadExtScript("ext:deno_node/perf_hooks.js").default;
 const punycode = core.loadExtScript("ext:deno_node/punycode.ts").default;
 import process from "node:process";
 const querystring = core.loadExtScript("ext:deno_node/querystring.js").default;
-import readline from "node:readline";
-import readlinePromises from "node:readline/promises";
-import repl from "node:repl";
-import internalRepl from "ext:deno_node/internal/repl.ts";
+const readline = core.createLazyLoader("node:readline");
+const readlinePromises = core.createLazyLoader("node:readline/promises");
+const repl = core.createLazyLoader("node:repl");
+const internalRepl = core.createLazyLoader(
+  "ext:deno_node/internal/repl.ts",
+);
 const sqlite = core.loadExtScript("ext:deno_node/sqlite.ts");
+// node:stream and node:stream/promises are eager (`esm` in lib.rs): every
+// program pays their cost at startup via `__bootstrapNodeProcess` building
+// `process.stdout`/`stderr` via `new Writable(...)`, so having them in the
+// snapshot is a startup-time win. Static imports here ensure they end up
+// in v8's evaluation graph.
 import stream from "node:stream";
 const streamConsumers = core.loadExtScript("ext:deno_node/stream/consumers.js");
 import streamPromises from "node:stream/promises";
-const streamWeb = core.loadExtScript("ext:deno_node/stream/web.js");
+// stream/web pulls ext:deno_web/14_compression.js -> 06_streams (208 KB).
+// Only loaded when `require("node:stream/web")` happens.
 const stringDecoder =
   core.loadExtScript("ext:deno_node/string_decoder.ts").default;
 const test = core.loadExtScript("ext:deno_node/testing.ts").default;
@@ -304,7 +322,7 @@ const timers = core.loadExtScript("ext:deno_node/timers.ts");
 const timersPromises = core.loadExtScript(
   "ext:deno_node/timers/promises.ts",
 );
-import tls from "node:tls";
+const tls = core.createLazyLoader("node:tls");
 const traceEvents = core.loadExtScript("ext:deno_node/trace_events.ts").default;
 import tty from "node:tty";
 const url = core.loadExtScript("ext:deno_node/url.ts");
@@ -316,7 +334,9 @@ const workerThreads = core.loadExtScript(
   "ext:deno_node/worker_threads.ts",
 );
 const wasi = core.loadExtScript("ext:deno_node/wasi.ts").default;
-const zlib = core.loadExtScript("ext:deno_node/zlib.js");
+// zlib is lazy-loaded via `lazyNodeModules` below: zlib.js extends
+// `Transform` from `node:stream` at module body, so loading it eagerly
+// pulls the stream subtree into the snapshot.
 const internalOptions = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
 );
@@ -325,48 +345,98 @@ const { getOptionValue } = internalOptions;
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
 
+// Modules installed as lazy getters on `nativeModuleExports`. Each value is
+// a `() => exports` thunk that's only invoked the first time the require name
+// is accessed. Keeping these out of the eager `nodeModules` map means the
+// snapshot does not have to compile their bodies (and everything those
+// bodies transitively pull in via `loadExtScript`/`op_lazy_load_esm`).
+// Use `() => createLazyLoader("...")().default` for `lazy_loaded_esm` entries
+// and `() => loadExtScript("...")` for `lazy_loaded_js` entries.
+const lazyNodeModules = {
+  "_http_agent": () => _httpAgent().default,
+  "_http_common": () => _httpCommon().default,
+  "_http_outgoing": () => _httpOutgoing().default,
+  "_http_server": () => _httpServer().default,
+  "http": () => core.loadExtScript("ext:deno_node/http.ts"),
+  "http2": () => core.loadExtScript("ext:deno_node/http2.ts"),
+  "https": () => core.loadExtScript("ext:deno_node/https.ts"),
+  "internal/http": () =>
+    core.loadExtScript("ext:deno_node/internal/http.ts").default,
+  "internal/http2/core": () =>
+    core.loadExtScript("ext:deno_node/internal/http2/core.ts").default,
+  "internal/http2/util": () =>
+    core.loadExtScript("ext:deno_node/internal/http2/util.ts").default,
+  "internal/streams/lazy_transform": () =>
+    internalStreamsLazyTransform().default,
+  "child_process": () => core.loadExtScript("ext:deno_node/child_process.ts"),
+  "crypto": () => core.loadExtScript("ext:deno_node/crypto.ts").default,
+  "dgram": () => core.loadExtScript("ext:deno_node/dgram.ts").default,
+  "zlib": () => core.loadExtScript("ext:deno_node/zlib.js"),
+  "tls": () => tls().default,
+  "internal/crypto/cipher": () =>
+    core.loadExtScript("ext:deno_node/internal/crypto/cipher.ts").default,
+  "_tls_common": () =>
+    core.loadExtScript("ext:deno_node/_tls_common.ts").default,
+  "_tls_wrap": () => core.loadExtScript("ext:deno_node/_tls_wrap.js").default,
+  "repl": () => repl().default,
+  "internal/repl": () => internalRepl().default,
+  "fs/promises": () =>
+    core.loadExtScript("ext:deno_node/fs/promises.ts").fsPromises,
+  "assert/strict": () => assertStrict().default,
+  "internal/event_target": () => internalEventTarget().default,
+  "internal/fs/utils": () => internalFsUtils().default,
+  "readline": () => readline().default,
+  "readline/promises": () => readlinePromises().default,
+  "internal/child_process": () =>
+    core.loadExtScript("ext:deno_node/internal/child_process.ts").default,
+  "stream/web": () => core.loadExtScript("ext:deno_node/stream/web.js"),
+};
+
+function defineLazyNativeModule(name, loader) {
+  ObjectDefineProperty(nativeModuleExports, name, {
+    __proto__: null,
+    get() {
+      const value = loader();
+      ObjectDefineProperty(nativeModuleExports, name, {
+        __proto__: null,
+        value,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
+      return value;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+}
+
 // NOTE(bartlomieju): keep this list in sync with `ext/node/lib.rs`
 function setupBuiltinModules() {
   const nodeModules = {
-    "_http_agent": _httpAgent,
-    "_http_common": _httpCommon,
-    "_http_outgoing": _httpOutgoing,
-    "_http_server": _httpServer,
     "_stream_duplex": _streamDuplex,
     "_stream_passthrough": _streamPassthrough,
     "_stream_readable": _streamReadable,
     "_stream_transform": _streamTransform,
     "_stream_writable": _streamWritable,
-    "_tls_common": _tlsCommon,
-    "_tls_wrap": _tlsWrap,
     assert,
-    "assert/strict": assertStrict,
     "async_hooks": asyncHooks,
     buffer,
-    crypto,
+    cluster,
     console,
     constants,
-    child_process: childProcess,
-    cluster,
-    dgram,
     diagnostics_channel: diagnosticsChannel,
     dns,
     "dns/promises": dnsPromises,
     domain,
     events,
     fs,
-    "fs/promises": fsPromises,
-    http,
-    http2,
-    https,
     inspector,
     "inspector/promises": inspectorPromises,
     "internal/assert/myers_diff": internalAssertMyersDiff.default,
     "internal/async_hooks": internalAsyncHooks,
     "internal/console/constructor": internalConsole,
-    "internal/child_process": internalCp,
     "internal/crypto/certificate": internalCryptoCertificate,
-    "internal/crypto/cipher": internalCryptoCipher,
     "internal/crypto/diffiehellman": internalCryptoDiffiehellman,
     "internal/crypto/hash": internalCryptoHash,
     "internal/crypto/hkdf": internalCryptoHkdf,
@@ -383,17 +453,10 @@ function setupBuiltinModules() {
     "internal/dns/promises": internalDnsPromises,
     "internal/buffer": internalBuffer.default,
     "internal/errors": internalErrors,
-    "internal/event_target": internalEventTarget,
     "internal/fs/promises": internalFsPromisesProxy,
-    "internal/fs/utils": internalFsUtils,
-    "internal/http": internalHttp.default,
-    "internal/http2/core": internalHttp2Core,
-    "internal/http2/util": internalHttp2Util,
     "internal/priority_queue": internalPriorityQueue.default,
     "internal/readline/utils": internalReadlineUtils.default,
-    "internal/repl": internalRepl,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
-    "internal/streams/lazy_transform": internalStreamsLazyTransform,
     "internal/streams/state": internalStreamsState,
     "internal/socketaddress": internalSocketAddress,
     "internal/js_stream_socket": internalJsStreamSocket,
@@ -411,8 +474,8 @@ function setupBuiltinModules() {
     "internal/webstreams/readablestream": internalWebstreamsReadableStream,
     "internal/webstreams/util": internalWebstreamsUtil,
     "internal/worker/js_transferable": internalWorkerJsTransferable,
-    net,
     module: Module,
+    net,
     os,
     "path/posix": pathPosix,
     "path/win32": pathWin32,
@@ -429,20 +492,15 @@ function setupBuiltinModules() {
       return punycode;
     },
     querystring,
-    readline,
-    "readline/promises": readlinePromises,
-    repl,
     sqlite,
     stream,
     "stream/consumers": streamConsumers,
     "stream/promises": streamPromises,
-    "stream/web": streamWeb,
     string_decoder: stringDecoder,
     sys: util,
     test,
     timers,
     "timers/promises": timersPromises,
-    tls,
     trace_events: traceEvents,
     tty,
     url,
@@ -452,7 +510,6 @@ function setupBuiltinModules() {
     vm,
     wasi,
     worker_threads: workerThreads,
-    zlib,
   };
   // Match Node's schemelessBlockList: these modules can only be imported
   // via the `node:` scheme (see lib/internal/bootstrap/realm.js), so they
@@ -461,18 +518,25 @@ function setupBuiltinModules() {
     "sqlite",
     "test",
   ]);
-  for (const [name, moduleExports] of ObjectEntries(nodeModules)) {
-    nativeModuleExports[name] = moduleExports;
+  function registerName(name) {
     // `internal/*` modules are only exposed under --expose-internals, so
     // they aren't part of the public builtinModules list.
     if (StringPrototypeStartsWith(name, "internal/")) {
-      continue;
+      return;
     }
     if (SetPrototypeHas(schemelessBlockList, name)) {
       ArrayPrototypePush(builtinModules, `node:${name}`);
     } else {
       ArrayPrototypePush(builtinModules, name);
     }
+  }
+  for (const [name, moduleExports] of ObjectEntries(nodeModules)) {
+    nativeModuleExports[name] = moduleExports;
+    registerName(name);
+  }
+  for (const [name, loader] of ObjectEntries(lazyNodeModules)) {
+    defineLazyNativeModule(name, loader);
+    registerName(name);
   }
 }
 setupBuiltinModules();
@@ -1613,7 +1677,7 @@ Module._resolveFilename = function (
 
   if (StringPrototypeStartsWith(request, "node:")) {
     const id = StringPrototypeSlice(request, 5);
-    if (nativeModuleExports[id]) {
+    if (id in nativeModuleExports) {
       return request;
     }
     if (hookEntries.length > 0 && !insideResolveHook) {
@@ -2416,7 +2480,9 @@ function loadNativeModule(_id, request) {
 }
 
 function nativeModuleCanBeRequiredByUsers(request) {
-  return !!nativeModuleExports[request];
+  // `in` rather than bracket access avoids triggering the lazy getters
+  // installed by `defineLazyNativeModule`.
+  return request in nativeModuleExports;
 }
 
 /** @param specifier {string} */
@@ -3010,7 +3076,19 @@ function initialize(args) {
       maybeWorkerMetadata,
       moduleSpecifier,
     );
-    internals.__setupChildProcessIpcChannel();
+    // `child_process.ts` is in `lazy_loaded_js` (see ext/node/lib.rs), so its
+    // module body - which registers `internals.__setupChildProcessIpcChannel`
+    // - only runs once `loadExtScript` is called. Skip both when there is no
+    // IPC pipe configured: that path is hot for every `deno run`, and pulling
+    // child_process into the snapshot defeats the lazification. We use
+    // `op_node_has_child_ipc_pipe` (a peek-only check) instead of
+    // `op_node_child_ipc_pipe`, because the latter has the side effect of
+    // opening the channel resource and calling it here would make
+    // `setupChildProcessIpcChannel`'s own call fail with EEXIST.
+    if (op_node_has_child_ipc_pipe()) {
+      core.loadExtScript("ext:deno_node/child_process.ts");
+      internals.__setupChildProcessIpcChannel();
+    }
     if (nodeClusterUniqueId) {
       core.loadExtScript("ext:deno_node/cluster.ts");
       internals.__initCluster(nodeClusterUniqueId, nodeClusterSchedPolicy);
