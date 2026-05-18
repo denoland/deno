@@ -54,8 +54,8 @@ impl InspectorMsg {
 /// Maximum number of in-flight + completed requests kept for
 /// Network.getResponseBody/streamResourceContent. Older entries are evicted.
 const NETWORK_BUFFER_MAX_REQUESTS: usize = 32;
-/// Per-request body cap. Beyond this, additional chunks are dropped and
-/// the entry is marked truncated.
+/// Per-request body cap. Beyond this, additional chunks are silently dropped
+/// (matching Node's behavior in `RequestEntry::push_*_data_blob`).
 const NETWORK_BUFFER_MAX_BYTES_PER_REQUEST: usize = 10 * 1024 * 1024;
 
 #[derive(Debug, Default)]
@@ -74,7 +74,15 @@ struct NetworkDataEntry {
   /// Decoded response body bytes, concatenated across `Network.dataReceived`
   /// events.
   data: Vec<u8>,
-  truncated: bool,
+  /// `true` once the request body is fully sent: either no `hasPostData` was
+  /// declared, or `Network.dataSent` with `finished: true` arrived.
+  is_request_finished: bool,
+  /// `true` once `Network.loadingFinished` arrived for this request.
+  is_response_finished: bool,
+  /// `true` once `Network.streamResourceContent` was called for this request:
+  /// further `Network.dataReceived` events bypass the buffer and flow over the
+  /// wire instead, matching Node's `is_streaming` switch.
+  is_streaming: bool,
 }
 
 /// Bounded per-process buffer of request/response bodies, keyed by
@@ -98,119 +106,107 @@ impl NetworkDataBuffer {
     }
   }
 
-  fn touch(&mut self, request_id: &str) -> &mut NetworkDataEntry {
-    if !self.entries.contains_key(request_id) {
-      self.ensure_capacity();
-      self.order.push_back(request_id.to_string());
-      self
-        .entries
-        .insert(request_id.to_string(), NetworkDataEntry::default());
-    }
-    self.entries.get_mut(request_id).unwrap()
-  }
-
-  fn set_request_charset(&mut self, request_id: &str, charset: Option<String>) {
-    let entry = self.touch(request_id);
-    if charset.is_some() {
-      entry.request_charset = charset;
-    }
-  }
-
-  fn set_response_charset(
-    &mut self,
-    request_id: &str,
-    charset: Option<String>,
-  ) {
-    let entry = self.touch(request_id);
-    if charset.is_some() {
-      entry.response_charset = charset;
-    }
-  }
-
-  fn append_post_data(&mut self, request_id: &str, bytes: &[u8]) {
-    let entry = self.touch(request_id);
-    Self::extend_capped(&mut entry.post_data, &mut entry.truncated, bytes);
-  }
-
-  fn append_data(&mut self, request_id: &str, bytes: &[u8]) {
-    let entry = self.touch(request_id);
-    Self::extend_capped(&mut entry.data, &mut entry.truncated, bytes);
-  }
-
-  fn extend_capped(target: &mut Vec<u8>, truncated: &mut bool, bytes: &[u8]) {
-    if *truncated {
+  fn insert(&mut self, request_id: &str, entry: NetworkDataEntry) {
+    if self.entries.contains_key(request_id) {
       return;
     }
-    let remaining =
-      NETWORK_BUFFER_MAX_BYTES_PER_REQUEST.saturating_sub(target.len());
-    if bytes.len() > remaining {
-      target.extend_from_slice(&bytes[..remaining]);
-      *truncated = true;
-    } else {
-      target.extend_from_slice(bytes);
-    }
+    self.ensure_capacity();
+    self.order.push_back(request_id.to_string());
+    self.entries.insert(request_id.to_string(), entry);
   }
 
   fn get(&self, request_id: &str) -> Option<&NetworkDataEntry> {
     self.entries.get(request_id)
   }
+
+  fn get_mut(&mut self, request_id: &str) -> Option<&mut NetworkDataEntry> {
+    self.entries.get_mut(request_id)
+  }
+
+  fn erase(&mut self, request_id: &str) {
+    if self.entries.remove(request_id).is_some() {
+      self.order.retain(|id| id != request_id);
+    }
+  }
 }
 
+fn extend_capped(target: &mut Vec<u8>, bytes: &[u8]) {
+  let remaining =
+    NETWORK_BUFFER_MAX_BYTES_PER_REQUEST.saturating_sub(target.len());
+  let take = bytes.len().min(remaining);
+  target.extend_from_slice(&bytes[..take]);
+}
+
+/// Charset string matching Node's `request_charset == "utf-8"` check
+/// in `network_agent.cc`. Anything else is treated as binary.
 fn is_utf8_charset(charset: Option<&str>) -> bool {
-  charset
-    .map(|c| c.eq_ignore_ascii_case("utf-8") || c.eq_ignore_ascii_case("utf8"))
-    .unwrap_or(false)
+  charset == Some("utf-8")
 }
 
 fn encode_b64(bytes: &[u8]) -> String {
   base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes)
 }
 
-/// Build the CDP response for `Network.getResponseBody`. If the captured
-/// response had `charset: utf-8`, return the body as a decoded string and
-/// `base64Encoded: false`; otherwise return the raw bytes as base64.
+/// Build the CDP response for `Network.getResponseBody`. Matches Node's
+/// `NetworkAgent::getResponseBody`: rejects if the response hasn't finished,
+/// returns utf-8 as string or otherwise as base64, then erases the entry.
 fn build_get_response_body(
-  buf: &NetworkDataBuffer,
+  buf: &mut NetworkDataBuffer,
   request_id: &str,
 ) -> Result<serde_json::Value, &'static str> {
   let entry = buf.get(request_id).ok_or("Request not found")?;
-  if is_utf8_charset(entry.response_charset.as_deref())
+  if entry.is_streaming {
+    return Err("Response body of the request is been streamed");
+  }
+  if !entry.is_response_finished {
+    return Err("Response data is not finished yet");
+  }
+  let result = if is_utf8_charset(entry.response_charset.as_deref())
     && let Ok(s) = std::str::from_utf8(&entry.data)
   {
-    return Ok(json!({ "body": s, "base64Encoded": false }));
-  }
-  Ok(json!({
-    "body": encode_b64(&entry.data),
-    "base64Encoded": true,
-  }))
+    json!({ "body": s, "base64Encoded": false })
+  } else {
+    json!({
+      "body": encode_b64(&entry.data),
+      "base64Encoded": true,
+    })
+  };
+  buf.erase(request_id);
+  Ok(result)
 }
 
-/// Build the CDP response for `Network.streamResourceContent`. Returns the
-/// currently-buffered body as base64. (Node also keeps the stream open for
-/// future chunks, but our simpler implementation just returns what's buffered;
-/// the test's `Network.dataReceived` listener receives the rest.)
+/// Build the CDP response for `Network.streamResourceContent`. Matches Node's
+/// `NetworkAgent::streamResourceContent`: returns currently-buffered data,
+/// flips the entry to streaming mode (so subsequent `Network.dataReceived`
+/// events flow over the wire), drains the buffer, and erases the entry if the
+/// response already finished.
 fn build_stream_resource_content(
-  buf: &NetworkDataBuffer,
+  buf: &mut NetworkDataBuffer,
   request_id: &str,
 ) -> Result<serde_json::Value, &'static str> {
-  let entry = buf.get(request_id).ok_or("Request not found")?;
-  Ok(json!({ "bufferedData": encode_b64(&entry.data) }))
+  let entry = buf.get_mut(request_id).ok_or("Request not found")?;
+  entry.is_streaming = true;
+  let buffered = std::mem::take(&mut entry.data);
+  let is_response_finished = entry.is_response_finished;
+  if is_response_finished {
+    buf.erase(request_id);
+  }
+  Ok(json!({ "bufferedData": encode_b64(&buffered) }))
 }
 
-/// Build the CDP response for `Network.getRequestPostData`. Node only
-/// supports text bodies here — if the captured request had no `charset`
-/// (or one we don't treat as utf-8), reject so callers fall back to
-/// inspecting the raw `dataSent` events.
+/// Build the CDP response for `Network.getRequestPostData`. Matches Node's
+/// `NetworkAgent::getRequestPostData`: rejects if not yet finished, rejects
+/// binary bodies, otherwise returns the body as a utf-8 string.
 fn build_get_request_post_data(
   buf: &NetworkDataBuffer,
   request_id: &str,
 ) -> Result<serde_json::Value, &'static str> {
   let entry = buf.get(request_id).ok_or("Request not found")?;
-  if entry.post_data.is_empty() {
-    return Err("No post data available for the request");
+  if !entry.is_request_finished {
+    return Err("Request data is not finished yet");
   }
   if !is_utf8_charset(entry.request_charset.as_deref()) {
-    return Err("Binary request body is not supported");
+    return Err("Unable to serialize binary request body");
   }
   let s = std::str::from_utf8(&entry.post_data)
     .map_err(|_| "Request body is not valid UTF-8")?;
@@ -277,11 +273,13 @@ fn dispatch_custom_domain(
         .pointer("/params/requestId")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-      let buf = session.state.network_data.borrow();
+      let mut buf = session.state.network_data.borrow_mut();
       let result = match method {
-        "Network.getResponseBody" => build_get_response_body(&buf, request_id),
+        "Network.getResponseBody" => {
+          build_get_response_body(&mut buf, request_id)
+        }
         "Network.streamResourceContent" => {
-          build_stream_resource_content(&buf, request_id)
+          build_stream_resource_content(&mut buf, request_id)
         }
         _ => build_get_request_post_data(&buf, request_id),
       };
@@ -1065,14 +1063,20 @@ impl JsRuntimeInspector {
   /// `op_inspector_emit_protocol_event` so subsequent
   /// `Network.getResponseBody`/`streamResourceContent`/`getRequestPostData`
   /// CDP commands have something to return.
+  ///
+  /// Returns `true` if the event should still be broadcast to sessions, or
+  /// `false` if the event was fully consumed by the buffer. Matches Node's
+  /// `NetworkAgent`: `dataSent` is purely a capture event, and `dataReceived`
+  /// is only forwarded once `streamResourceContent` has flipped the entry
+  /// into streaming mode.
   pub fn capture_network_event(
     &self,
     event_name: &str,
     params: &serde_json::Value,
-  ) {
-    let request_id = match params.get("requestId").and_then(|v| v.as_str()) {
-      Some(id) => id,
-      None => return,
+  ) -> bool {
+    let Some(request_id) = params.get("requestId").and_then(|v| v.as_str())
+    else {
+      return true;
     };
 
     let mut buf = self.state.network_data.borrow_mut();
@@ -1082,44 +1086,87 @@ impl JsRuntimeInspector {
           .get("charset")
           .and_then(|v| v.as_str())
           .map(|s| s.to_string());
-        buf.set_request_charset(request_id, charset);
+        let has_post_data = params
+          .pointer("/request/hasPostData")
+          .and_then(|v| v.as_bool())
+          .unwrap_or(false);
+        let mut entry = NetworkDataEntry {
+          request_charset: charset,
+          is_request_finished: !has_post_data,
+          ..NetworkDataEntry::default()
+        };
         if let Some(post_data) =
           params.pointer("/request/postData").and_then(|v| v.as_str())
         {
-          buf.append_post_data(request_id, post_data.as_bytes());
-        } else {
-          // Still touch the entry so eviction order tracks it.
-          let _ = buf.touch(request_id);
+          extend_capped(&mut entry.post_data, post_data.as_bytes());
         }
+        buf.insert(request_id, entry);
+        true
       }
       "Network.responseReceived" => {
-        let charset = params
-          .pointer("/response/charset")
-          .and_then(|v| v.as_str())
-          .map(|s| s.to_string());
-        buf.set_response_charset(request_id, charset);
+        if let Some(entry) = buf.get_mut(request_id) {
+          entry.response_charset = params
+            .pointer("/response/charset")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        }
+        true
+      }
+      "Network.loadingFinished" => {
+        if let Some(entry) = buf.get_mut(request_id) {
+          entry.is_response_finished = true;
+          if entry.is_streaming {
+            buf.erase(request_id);
+          }
+        }
+        true
+      }
+      "Network.loadingFailed" => {
+        buf.erase(request_id);
+        true
       }
       "Network.dataReceived" => {
+        let Some(entry) = buf.get_mut(request_id) else {
+          // No tracked request — pass through to the wire.
+          return true;
+        };
+        if entry.is_streaming {
+          // Streaming mode: bypass the buffer and forward to sessions.
+          return true;
+        }
         if let Some(data_b64) = params.get("data").and_then(|v| v.as_str())
           && let Ok(bytes) = base64::Engine::decode(
             &base64::engine::general_purpose::STANDARD,
             data_b64,
           )
         {
-          buf.append_data(request_id, &bytes);
+          extend_capped(&mut entry.data, &bytes);
         }
+        false
       }
       "Network.dataSent" => {
+        let Some(entry) = buf.get_mut(request_id) else {
+          return false;
+        };
+        if params
+          .get("finished")
+          .and_then(|v| v.as_bool())
+          .unwrap_or(false)
+        {
+          entry.is_request_finished = true;
+          return false;
+        }
         if let Some(data_b64) = params.get("data").and_then(|v| v.as_str())
           && let Ok(bytes) = base64::Engine::decode(
             &base64::engine::general_purpose::STANDARD,
             data_b64,
           )
         {
-          buf.append_post_data(request_id, &bytes);
+          extend_capped(&mut entry.post_data, &bytes);
         }
+        false
       }
-      _ => {}
+      _ => true,
     }
   }
 
@@ -1740,48 +1787,24 @@ async fn pump_inspector_session_messages(
 
     let params = parsed.get("params").cloned();
     let msg_id = parsed.get("id").cloned();
-    // Body-fetch commands send their own response and skip the default
-    // `{result: {}}` send at the bottom of the loop.
-    let mut custom_response: Option<String> = None;
+
+    if let Some(outcome) = dispatch_custom_domain(method, &parsed, &session) {
+      if let Some(id) = msg_id {
+        let call_id = id.as_i64().unwrap_or(0) as i32;
+        let content = match outcome {
+          CustomDomainOutcome::Empty => make_cdp_ok_response(&id, json!({})),
+          CustomDomainOutcome::Result(v) => make_cdp_ok_response(&id, v),
+          CustomDomainOutcome::Error(msg) => make_cdp_error_response(&id, msg),
+        };
+        (session.state.send)(InspectorMsg {
+          kind: InspectorMsgKind::Message(call_id),
+          content,
+        });
+      }
+      continue;
+    }
 
     match method {
-      "Network.enable" => {
-        session.state.network_enabled.set(true);
-      }
-      "Network.disable" => {
-        session.state.network_enabled.set(false);
-      }
-      "DOMStorage.enable" => {
-        session.state.dom_storage_enabled.set(true);
-      }
-      "DOMStorage.disable" => {
-        session.state.dom_storage_enabled.set(false);
-      }
-      "Network.getResponseBody"
-      | "Network.streamResourceContent"
-      | "Network.getRequestPostData" => {
-        let request_id = params
-          .as_ref()
-          .and_then(|p| p.get("requestId"))
-          .and_then(|v| v.as_str())
-          .unwrap_or("");
-        let buf = session.state.network_data.borrow();
-        let result = match method {
-          "Network.getResponseBody" => {
-            build_get_response_body(&buf, request_id)
-          }
-          "Network.streamResourceContent" => {
-            build_stream_resource_content(&buf, request_id)
-          }
-          _ => build_get_request_post_data(&buf, request_id),
-        };
-        if let Some(id) = msg_id.as_ref() {
-          custom_response = Some(match result {
-            Ok(v) => make_cdp_ok_response(id, v),
-            Err(msg) => make_cdp_error_response(id, msg),
-          });
-        }
-      }
       "NodeRuntime.enable" => {
         session.state.noderuntime_enabled.set(true);
         // If the runtime is paused on start (--inspect-brk), emit
@@ -1876,19 +1899,17 @@ async fn pump_inspector_session_messages(
       }
     }
 
-    // Send response after handling the command.
+    // Send default `{result: {}}` ack for commands handled above
+    // that don't produce their own response payload.
     if let Some(id) = msg_id {
       let call_id = id.as_i64().unwrap_or(0) as i32;
-      let content = custom_response.unwrap_or_else(|| {
-        json!({
+      (session.state.send)(InspectorMsg {
+        kind: InspectorMsgKind::Message(call_id),
+        content: json!({
           "id": id,
           "result": {}
         })
-        .to_string()
-      });
-      (session.state.send)(InspectorMsg {
-        kind: InspectorMsgKind::Message(call_id),
-        content,
+        .to_string(),
       });
     }
   }

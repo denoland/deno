@@ -122,6 +122,8 @@ pub fn op_inspector_emit_protocol_event(
     event_name.as_str(),
     "Network.requestWillBeSent"
       | "Network.responseReceived"
+      | "Network.loadingFinished"
+      | "Network.loadingFailed"
       | "Network.dataReceived"
       | "Network.dataSent"
   );
@@ -154,12 +156,16 @@ pub fn op_inspector_emit_protocol_event(
       .or_insert(serde_json::Value::Bool(false));
   }
 
-  if needs_capture {
-    inspector.capture_network_event(&event_name, &parsed);
-  }
+  let should_broadcast = if needs_capture {
+    inspector.capture_network_event(&event_name, &parsed)
+  } else {
+    true
+  };
 
-  let augmented = serde_json::to_string(&parsed).unwrap();
-  inspector.broadcast_to_sessions(&event_name, &augmented);
+  if should_broadcast {
+    let augmented = serde_json::to_string(&parsed).unwrap();
+    inspector.broadcast_to_sessions(&event_name, &augmented);
+  }
 }
 
 fn capture_initiator(scope: &mut v8::PinScope<'_, '_>) -> serde_json::Value {

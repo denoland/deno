@@ -82,8 +82,9 @@ function encodeNetworkData(data) {
     const view = new Uint8Array(data);
     return op_base64_encode_from_buffer(view, 0, view.byteLength);
   }
-  // Unknown shape: leave as-is and let JSON.stringify handle it.
-  return data;
+  throw new TypeError(
+    "Expected data to be a string, Buffer, Uint8Array, or ArrayBuffer",
+  );
 }
 
 class Session extends EventEmitter {
