@@ -476,9 +476,10 @@ fn uses_node_test_module(source: &str) -> bool {
   source.contains("'node:test'") || source.contains("\"node:test\"")
 }
 
-fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
+fn parse_flags(source: &str) -> (Vec<String>, Vec<String>, Vec<String>) {
   let mut v8_flags = Vec::new();
   let mut node_options = Vec::new();
+  let mut deno_args = Vec::new();
 
   let re = Regex::new(r"^// Flags: (.+)$").unwrap();
   for line in source.lines() {
@@ -535,6 +536,34 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
           n if n.starts_with("--title=") => {
             node_options.push(flag.to_string());
           }
+          // Inspector tests opt in to the inspector via `--inspect=PORT`
+          // (commonly `--inspect=0` to pick a random port). Forward to
+          // Deno, normalizing the bare port form to `127.0.0.1:PORT` since
+          // Deno's CLI expects `host:port`.
+          n if n == "--inspect" || n.starts_with("--inspect=") => {
+            let mapped = if let Some(rest) = n.strip_prefix("--inspect=") {
+              if rest.is_empty() || rest.chars().all(|c| c.is_ascii_digit()) {
+                format!("--inspect=127.0.0.1:{}", rest)
+              } else {
+                format!("--inspect={}", rest)
+              }
+            } else {
+              "--inspect=127.0.0.1:0".to_string()
+            };
+            deno_args.push(mapped);
+            // The Node `--experimental-network-inspection` flag below
+            // enables `Network.*` instrumentation in Node; Deno wires it
+            // unconditionally when the inspector is active, but tests
+            // attached to a self-signed local HTTPS server typically rely
+            // on undici's `rejectUnauthorized: false` global dispatcher,
+            // which Deno's fetch doesn't honor. Disable cert validation
+            // here so the HTTPS branch of the test can complete.
+            deno_args.push("--unsafely-ignore-certificate-errors".to_string());
+          }
+          "--experimental-network-inspection" => {
+            // Deno emits Network.* events when the inspector is attached;
+            // no separate opt-in flag.
+          }
           _ => {}
         }
       }
@@ -542,7 +571,7 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
     }
   }
 
-  (v8_flags, node_options)
+  (v8_flags, node_options, deno_args)
 }
 
 fn truncate_output(output: &str, max_len: usize) -> String {
@@ -574,7 +603,7 @@ impl TestSetup {
 
     let source = full_test_path.read_to_string();
     let uses_node_test = uses_node_test_module(&source);
-    let (v8_flags, node_options) = parse_flags(&source);
+    let (v8_flags, node_options, extra_deno_args) = parse_flags(&source);
 
     let mut args: Vec<String> = if uses_node_test {
       TEST_ARGS.iter().map(|s| s.to_string()).collect()
@@ -584,6 +613,9 @@ impl TestSetup {
 
     if !v8_flags.is_empty() {
       args.push(format!("--v8-flags={}", v8_flags.join(",")));
+    }
+    for arg in &extra_deno_args {
+      args.push(arg.clone());
     }
     if cli_args.inspect_brk {
       args.push("--inspect-brk".to_string());

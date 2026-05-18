@@ -14,6 +14,7 @@ const {
   ArrayPrototypeSplice,
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
+  DateNow,
   Error,
   ObjectPrototypeIsPrototypeOf,
   Promise,
@@ -23,9 +24,14 @@ const {
   SafePromisePrototypeFinally,
   String,
   StringPrototypeEndsWith,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
   StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
+  StringPrototypeTrim,
   TypeError,
+  TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
@@ -78,6 +84,153 @@ const REDIRECT_SENSITIVE_HEADER_NAMES = [
   "proxy-authorization",
   "cookie",
 ];
+
+// ============================================================================
+// Inspector Network domain instrumentation (Chrome DevTools Protocol).
+//
+// When `node:inspector` has been loaded and `--inspect` is active, fetch()
+// emits `Network.requestWillBeSent` / `responseReceived` / `dataReceived` /
+// `loadingFinished` / `loadingFailed` events. The actual emitters and a
+// monotonic requestId generator are installed by `ext/node/polyfills/
+// inspector.js` onto `internals.__inspectorNetwork` so this layer doesn't
+// have to depend on ext/node.
+// ============================================================================
+
+function getInspectorNetwork() {
+  const ins = internals.__inspectorNetwork;
+  if (ins && ins.isEnabled()) return ins;
+  return null;
+}
+
+// Join repeated header values according to Chrome DevTools conventions:
+// cookies use `; `, set-cookie uses `\n`, everything else uses `, `.
+//
+// Response header names are typically lowercased on the wire by hyper, but
+// CDP / Node frontends conventionally key `Set-Cookie` with its canonical
+// case (the test suite asserts `headers['Set-Cookie']`). Apply a small
+// canonicalization for the names that conventionally carry case.
+function joinHeaderValuesForCdp(headerList, lowerCaseNames) {
+  const out = { __proto__: null };
+  for (let i = 0; i < headerList.length; i++) {
+    const rawName = headerList[i][0];
+    const value = String(headerList[i][1]);
+    const lower = byteLowerCase(rawName);
+    let name;
+    if (lowerCaseNames) {
+      name = lower;
+    } else if (lower === "set-cookie") {
+      name = "Set-Cookie";
+    } else {
+      name = rawName;
+    }
+    let separator;
+    if (lower === "cookie") {
+      separator = "; ";
+    } else if (lower === "set-cookie") {
+      separator = "\n";
+    } else {
+      separator = ", ";
+    }
+    if (out[name] === undefined) {
+      out[name] = value;
+    } else {
+      out[name] = out[name] + separator + value;
+    }
+  }
+  return out;
+}
+
+// Parse Content-Type into { mimeType, charset } for `response.mimeType` and
+// `response.charset` (and to decide whether `getResponseBody` returns the
+// body as a utf-8 string or base64).
+function parseContentTypeForCdp(headerList) {
+  let raw = null;
+  for (let i = 0; i < headerList.length; i++) {
+    if (byteLowerCase(headerList[i][0]) === "content-type") {
+      raw = String(headerList[i][1]);
+      break;
+    }
+  }
+  if (raw === null) return { mimeType: "", charset: "" };
+  const semi = StringPrototypeIndexOf(raw, ";");
+  const mimeType = semi === -1
+    ? StringPrototypeTrim(raw)
+    : StringPrototypeTrim(StringPrototypeSlice(raw, 0, semi));
+  let charset = "";
+  if (semi !== -1) {
+    const rest = StringPrototypeSlice(raw, semi + 1);
+    const parts = StringPrototypeSplit(rest, ";");
+    for (let i = 0; i < parts.length; i++) {
+      const p = StringPrototypeTrim(parts[i]);
+      if (
+        StringPrototypeStartsWith(StringPrototypeToLowerCase(p), "charset=")
+      ) {
+        charset = StringPrototypeTrim(StringPrototypeSlice(p, 8));
+        // Strip optional surrounding quotes.
+        if (
+          charset.length >= 2 && charset[0] === '"' &&
+          charset[charset.length - 1] === '"'
+        ) {
+          charset = StringPrototypeSlice(charset, 1, charset.length - 1);
+        }
+        break;
+      }
+    }
+  }
+  return { mimeType, charset };
+}
+
+// Run a background drain of the inspector branch of a tee'd response stream,
+// emitting `Network.dataReceived` per chunk and `Network.loadingFinished` /
+// `loadingFailed` when the stream ends. Errors from this drain are swallowed
+// so they can't surface as unhandled rejections to user code.
+function drainResponseForInspector(inspectorStream, requestId, ins) {
+  const reader = inspectorStream.getReader();
+  let totalLength = 0;
+  (async () => {
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          const len = TypedArrayPrototypeGetByteLength(value);
+          if (len > 0) {
+            totalLength += len;
+            ins.dataReceived({
+              requestId,
+              timestamp: DateNow() / 1000,
+              dataLength: len,
+              encodedDataLength: len,
+              data: value,
+            });
+          }
+        }
+      }
+      ins.loadingFinished({
+        requestId,
+        timestamp: DateNow() / 1000,
+        encodedDataLength: totalLength,
+      });
+    } catch (err) {
+      try {
+        ins.loadingFailed({
+          requestId,
+          timestamp: DateNow() / 1000,
+          type: "Fetch",
+          errorText: err && err.message ? String(err.message) : String(err),
+        });
+      } catch {
+        // ignore - inspector may have detached mid-drain
+      }
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {
+        // ignore
+      }
+    }
+  })();
+}
 
 /**
  * @param {number} rid
@@ -175,6 +328,78 @@ async function mainFetch(req, recursive, terminator) {
     reqRid,
   );
 
+  // ---- Inspector: Network.requestWillBeSent ------------------------------
+  // Only fires when `node:inspector` is loaded AND the inspector is currently
+  // attached, so the cost is one method call (`isEnabled()`) otherwise.
+  const inspectorNetwork = getInspectorNetwork();
+  let inspectorRequestId = null;
+  if (inspectorNetwork !== null && !recursive) {
+    inspectorRequestId = inspectorNetwork.nextRequestId();
+    const hasPostData = reqBody !== null;
+    let postDataText;
+    if (
+      hasPostData && TypedArrayPrototypeGetSymbolToStringTag(reqBody) ===
+        "Uint8Array"
+    ) {
+      try {
+        postDataText = core.decode(reqBody);
+      } catch {
+        postDataText = undefined;
+      }
+    }
+    const requestHeadersForCdp = joinHeaderValuesForCdp(
+      req.headerList,
+      /* lowerCaseNames */ true,
+    );
+    // The buffer's request_charset gates `Network.getRequestPostData`
+    // (utf-8 only). Prefer an explicit charset from Content-Type; fall
+    // back to utf-8 when we successfully decoded the body as a JS string,
+    // since fetch encodes string bodies as utf-8 over the wire.
+    let requestCharset;
+    for (let i = 0; i < req.headerList.length; i++) {
+      if (byteLowerCase(req.headerList[i][0]) === "content-type") {
+        requestCharset = parseContentTypeForCdp(req.headerList).charset ||
+          undefined;
+        break;
+      }
+    }
+    if (requestCharset === undefined && postDataText !== undefined) {
+      requestCharset = "utf-8";
+    }
+    try {
+      inspectorNetwork.requestWillBeSent({
+        requestId: inspectorRequestId,
+        timestamp: DateNow() / 1000,
+        wallTime: DateNow() / 1000,
+        type: "Fetch",
+        request: {
+          url: req.currentUrl(),
+          method: req.method,
+          headers: requestHeadersForCdp,
+          hasPostData,
+          postData: postDataText,
+        },
+        // initiator: filled in by `op_inspector_emit_protocol_event` using
+        // V8's current stack trace, so the user-code frame at the fetch()
+        // call site is preserved.
+        charset: requestCharset,
+      });
+      // We supplied the entire request body inline via `request.postData`,
+      // so flip the buffer's `is_request_finished` flag immediately - else
+      // `Network.getRequestPostData` would reject with "Request data is
+      // not finished yet". Streaming bodies (reqRid !== null) take the
+      // chunked `Network.dataSent` path instead and aren't covered here.
+      if (hasPostData) {
+        inspectorNetwork.dataSent({
+          requestId: inspectorRequestId,
+          finished: true,
+        });
+      }
+    } catch {
+      // never let inspector instrumentation break a real fetch
+    }
+  }
+
   function onAbort() {
     if (cancelHandleRid !== null) {
       core.tryClose(cancelHandleRid);
@@ -185,6 +410,18 @@ async function mainFetch(req, recursive, terminator) {
   try {
     resp = await opFetchSend(requestRid);
   } catch (err) {
+    if (inspectorRequestId !== null) {
+      try {
+        inspectorNetwork.loadingFailed({
+          requestId: inspectorRequestId,
+          timestamp: DateNow() / 1000,
+          type: "Fetch",
+          errorText: err && err.message ? String(err.message) : String(err),
+        });
+      } catch {
+        // ignore
+      }
+    }
     if (terminator.aborted) return abortedNetworkError();
     throw err;
   } finally {
@@ -194,6 +431,18 @@ async function mainFetch(req, recursive, terminator) {
   }
   // Re-throw any body errors
   if (resp.error !== null) {
+    if (inspectorRequestId !== null) {
+      try {
+        inspectorNetwork.loadingFailed({
+          requestId: inspectorRequestId,
+          timestamp: DateNow() / 1000,
+          type: "Fetch",
+          errorText: resp.error[0],
+        });
+      } catch {
+        // ignore
+      }
+    }
     const { 0: message, 1: cause } = resp.error;
     throw new TypeError(message, { cause: new Error(cause) });
   }
@@ -222,10 +471,50 @@ async function mainFetch(req, recursive, terminator) {
     },
     urlList: req.urlListProcessed,
   };
+
+  // ---- Inspector: Network.responseReceived -------------------------------
+  if (inspectorRequestId !== null) {
+    const { mimeType, charset } = parseContentTypeForCdp(resp.headers);
+    const responseHeadersForCdp = joinHeaderValuesForCdp(
+      resp.headers,
+      /* lowerCaseNames */ false,
+    );
+    try {
+      inspectorNetwork.responseReceived({
+        requestId: inspectorRequestId,
+        timestamp: DateNow() / 1000,
+        type: "Fetch",
+        response: {
+          url: resp.url || req.currentUrl(),
+          status: resp.status,
+          statusText: resp.statusText,
+          headers: responseHeadersForCdp,
+          mimeType,
+          charset,
+        },
+      });
+    } catch {
+      // ignore
+    }
+  }
+
   if (redirectStatus(resp.status)) {
     switch (req.redirectMode) {
       case "error":
         core.close(resp.responseRid);
+        if (inspectorRequestId !== null) {
+          try {
+            inspectorNetwork.loadingFailed({
+              requestId: inspectorRequestId,
+              timestamp: DateNow() / 1000,
+              type: "Fetch",
+              errorText:
+                "Encountered redirect while redirect mode is set to 'error'",
+            });
+          } catch {
+            // ignore
+          }
+        }
         return networkError(
           "Encountered redirect while redirect mode is set to 'error'",
         );
@@ -239,14 +528,51 @@ async function mainFetch(req, recursive, terminator) {
 
   if (nullBodyStatus(response.status)) {
     core.close(resp.responseRid);
+    if (inspectorRequestId !== null) {
+      try {
+        inspectorNetwork.loadingFinished({
+          requestId: inspectorRequestId,
+          timestamp: DateNow() / 1000,
+          encodedDataLength: 0,
+        });
+      } catch {
+        // ignore
+      }
+    }
   } else {
     if (req.method === "HEAD" || req.method === "CONNECT") {
       response.body = null;
       core.close(resp.responseRid);
+      if (inspectorRequestId !== null) {
+        try {
+          inspectorNetwork.loadingFinished({
+            requestId: inspectorRequestId,
+            timestamp: DateNow() / 1000,
+            encodedDataLength: 0,
+          });
+        } catch {
+          // ignore
+        }
+      }
     } else {
-      response.body = new InnerBody(
-        createResponseBodyStream(resp.responseRid, terminator),
-      );
+      let bodyStream = createResponseBodyStream(resp.responseRid, terminator);
+      // Tee the response body so the inspector can drain a copy in the
+      // background for `Network.dataReceived` + `loadingFinished` /
+      // `getResponseBody`, while the user still consumes the original.
+      if (inspectorRequestId !== null) {
+        try {
+          const tee = bodyStream.tee();
+          bodyStream = tee[0];
+          drainResponseForInspector(
+            tee[1],
+            inspectorRequestId,
+            inspectorNetwork,
+          );
+        } catch {
+          // tee failed; leave bodyStream untouched, no inspector data
+        }
+      }
+      response.body = new InnerBody(bodyStream);
     }
   }
 

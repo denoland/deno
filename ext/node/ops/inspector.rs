@@ -195,6 +195,19 @@ fn capture_initiator(scope: &mut v8::PinScope<'_, '_>) -> serde_json::Value {
     let url = frame
       .get_script_name(scope)
       .map(|n| n.to_rust_string_lossy(scope))
+      .map(|s| {
+        // CJS modules see `__filename` as a filesystem path; convert
+        // `file://` URLs back to paths so frame matching against
+        // `__filename` works.
+        if let Some(stripped) = s.strip_prefix("file://") {
+          // On Unix this is the path. On Windows it would be
+          // `/C:/foo`, so leave URL form there.
+          if cfg!(unix) {
+            return stripped.to_string();
+          }
+        }
+        s
+      })
       .unwrap_or_default();
     let line_number = frame.get_line_number().saturating_sub(1); // CDP uses 0-based
     let column_number = frame.get_column().saturating_sub(1);
@@ -208,16 +221,12 @@ fn capture_initiator(scope: &mut v8::PinScope<'_, '_>) -> serde_json::Value {
     }));
   }
 
-  if call_frames.is_empty() {
-    serde_json::json!({ "type": "other" })
-  } else {
-    serde_json::json!({
-      "type": "script",
-      "stackTrace": {
-        "callFrames": call_frames,
-      },
-    })
-  }
+  serde_json::json!({
+    "type": "script",
+    "stack": {
+      "callFrames": call_frames,
+    },
+  })
 }
 
 struct JSInspectorSession {
