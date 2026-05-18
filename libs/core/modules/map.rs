@@ -3083,9 +3083,19 @@ impl ModuleMap {
     // way the function we compile below returns the IIFE's exports object
     // — the same value the original `Script::run` produced as the script's
     // completion value.
-    let trimmed: &str = AsRef::<str>::as_ref(&source_str)
-      .trim_end_matches(|c: char| c.is_whitespace() || c == ';');
-    let wrapped_source = format!("return ({trimmed});");
+    let source_text: &str = AsRef::<str>::as_ref(&source_str);
+    // Some polyfills ship a leading `"use strict";` directive (transpiled
+    // from Node sources). A bare `"use strict";` is a statement, not an
+    // expression, so it can't sit inside `return ( ... )`. Skip past the
+    // leading prologue (comments + any directive prologue) and start the
+    // expression at the IIFE's opening `(function`.
+    let expr_start = strip_script_prologue(source_text).unwrap_or(source_text);
+    let trimmed: &str =
+      expr_start.trim_end_matches(|c: char| c.is_whitespace() || c == ';');
+    // We emit `"use strict";` at the head of the compile_function body so
+    // the IIFE we wrap still runs in strict mode (function bodies default
+    // to sloppy mode, unlike modules).
+    let wrapped_source = format!("\"use strict\"; return ({trimmed});");
     let name = v8::String::new(scope, specifier).unwrap();
     let origin = v8::ScriptOrigin::new(
       scope,
@@ -3174,6 +3184,47 @@ impl ModuleMap {
   /// it.
   pub(crate) fn set_captured_bootstrap(&self, value: v8::Global<v8::Value>) {
     *self.data.borrow().captured_bootstrap.borrow_mut() = Some(value);
+  }
+}
+
+/// Skip past a lazy-loaded script's leading prologue (line/block comments and
+/// directive prologue like `"use strict";`) and return a slice that starts at
+/// the IIFE's opening `(function`. Returns `None` if no such opener is found
+/// — callers fall back to using the original source unchanged.
+fn strip_script_prologue(source: &str) -> Option<&str> {
+  let mut rest = source;
+  loop {
+    let trimmed = rest.trim_start();
+    if let Some(after) = trimmed.strip_prefix("//") {
+      // Line comment — skip to end of line.
+      let nl = after.find('\n').map(|i| i + 1).unwrap_or(after.len());
+      rest = &after[nl..];
+      continue;
+    }
+    if let Some(after) = trimmed.strip_prefix("/*") {
+      // Block comment — skip to closing `*/`.
+      let end = after.find("*/").map(|i| i + 2).unwrap_or(after.len());
+      rest = &after[end..];
+      continue;
+    }
+    // Directive prologue: `"use strict";` or `'use strict';` (or any other
+    // string-literal directive). A directive is a string literal followed
+    // by a `;`/newline at the statement boundary.
+    if trimmed.starts_with('"') || trimmed.starts_with('\'') {
+      let quote = trimmed.as_bytes()[0];
+      let after_quote = &trimmed[1..];
+      if let Some(close) = after_quote.find(quote as char) {
+        let after_str = after_quote[close + 1..].trim_start();
+        if let Some(after_semi) = after_str.strip_prefix(';') {
+          rest = after_semi;
+          continue;
+        }
+      }
+    }
+    if trimmed.starts_with("(function") {
+      return Some(trimmed);
+    }
+    return None;
   }
 }
 
