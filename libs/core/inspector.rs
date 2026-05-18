@@ -147,19 +147,50 @@ fn encode_b64(bytes: &[u8]) -> String {
   base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes)
 }
 
+/// CDP error returned by the custom-domain handlers. The error code mirrors
+/// Node's `protocol::DispatchResponse` constants used in `network_agent.cc`:
+/// `InvalidParams` for caller-state issues (request not found, not finished,
+/// streaming), `ServerError` for the binary-request-body case that the
+/// protocol doesn't model.
+enum CdpError {
+  InvalidParams(&'static str),
+  ServerError(&'static str),
+}
+
+impl CdpError {
+  fn code(&self) -> i32 {
+    match self {
+      // Per JSON-RPC spec and Node's DispatchResponse::InvalidParams.
+      Self::InvalidParams(_) => -32602,
+      // Per Node's DispatchResponse::ServerError.
+      Self::ServerError(_) => -32000,
+    }
+  }
+
+  fn message(&self) -> &'static str {
+    match self {
+      Self::InvalidParams(m) | Self::ServerError(m) => m,
+    }
+  }
+}
+
 /// Build the CDP response for `Network.getResponseBody`. Matches Node's
 /// `NetworkAgent::getResponseBody`: rejects if the response hasn't finished,
 /// returns utf-8 as string or otherwise as base64, then erases the entry.
 fn build_get_response_body(
   buf: &mut NetworkDataBuffer,
   request_id: &str,
-) -> Result<serde_json::Value, &'static str> {
-  let entry = buf.get(request_id).ok_or("Request not found")?;
+) -> Result<serde_json::Value, CdpError> {
+  let entry = buf
+    .get(request_id)
+    .ok_or(CdpError::InvalidParams("Request not found"))?;
   if entry.is_streaming {
-    return Err("Response body of the request is been streamed");
+    return Err(CdpError::InvalidParams(
+      "Response body of the request is been streamed",
+    ));
   }
   if !entry.is_response_finished {
-    return Err("Response data is not finished yet");
+    return Err(CdpError::InvalidParams("Response data is not finished yet"));
   }
   let result = if is_utf8_charset(entry.response_charset.as_deref())
     && let Ok(s) = std::str::from_utf8(&entry.data)
@@ -183,8 +214,10 @@ fn build_get_response_body(
 fn build_stream_resource_content(
   buf: &mut NetworkDataBuffer,
   request_id: &str,
-) -> Result<serde_json::Value, &'static str> {
-  let entry = buf.get_mut(request_id).ok_or("Request not found")?;
+) -> Result<serde_json::Value, CdpError> {
+  let entry = buf
+    .get_mut(request_id)
+    .ok_or(CdpError::InvalidParams("Request not found"))?;
   entry.is_streaming = true;
   let buffered = std::mem::take(&mut entry.data);
   let is_response_finished = entry.is_response_finished;
@@ -200,25 +233,32 @@ fn build_stream_resource_content(
 fn build_get_request_post_data(
   buf: &NetworkDataBuffer,
   request_id: &str,
-) -> Result<serde_json::Value, &'static str> {
-  let entry = buf.get(request_id).ok_or("Request not found")?;
+) -> Result<serde_json::Value, CdpError> {
+  let entry = buf
+    .get(request_id)
+    .ok_or(CdpError::InvalidParams("Request not found"))?;
   if !entry.is_request_finished {
-    return Err("Request data is not finished yet");
+    return Err(CdpError::InvalidParams("Request data is not finished yet"));
   }
   if !is_utf8_charset(entry.request_charset.as_deref()) {
-    return Err("Unable to serialize binary request body");
+    // Node returns ServerError here, not InvalidParams: the protocol simply
+    // doesn't model binary post bodies, so this is a server-side limitation
+    // rather than a caller mistake.
+    return Err(CdpError::ServerError(
+      "Unable to serialize binary request body",
+    ));
   }
   let s = std::str::from_utf8(&entry.post_data)
-    .map_err(|_| "Request body is not valid UTF-8")?;
+    .map_err(|_| CdpError::ServerError("Request body is not valid UTF-8"))?;
   Ok(json!({ "postData": s }))
 }
 
-fn make_cdp_error_response(id: &serde_json::Value, message: &str) -> String {
+fn make_cdp_error_response(id: &serde_json::Value, error: &CdpError) -> String {
   json!({
     "id": id,
     "error": {
-      "code": -32602,
-      "message": message,
+      "code": error.code(),
+      "message": error.message(),
     }
   })
   .to_string()
@@ -238,7 +278,7 @@ fn make_cdp_ok_response(
 enum CustomDomainOutcome {
   Empty,
   Result(serde_json::Value),
-  Error(&'static str),
+  Error(CdpError),
 }
 
 /// Dispatch a CDP command to one of the custom domains we own
@@ -285,7 +325,7 @@ fn dispatch_custom_domain(
       };
       Some(match result {
         Ok(v) => CustomDomainOutcome::Result(v),
-        Err(msg) => CustomDomainOutcome::Error(msg),
+        Err(err) => CustomDomainOutcome::Error(err),
       })
     }
     _ => None,
@@ -1419,7 +1459,7 @@ impl SessionContainer {
         let content = match outcome {
           CustomDomainOutcome::Empty => make_cdp_ok_response(id, json!({})),
           CustomDomainOutcome::Result(v) => make_cdp_ok_response(id, v),
-          CustomDomainOutcome::Error(msg) => make_cdp_error_response(id, msg),
+          CustomDomainOutcome::Error(err) => make_cdp_error_response(id, &err),
         };
         (session.state.send)(InspectorMsg {
           kind: InspectorMsgKind::Message(call_id),
@@ -1794,7 +1834,7 @@ async fn pump_inspector_session_messages(
         let content = match outcome {
           CustomDomainOutcome::Empty => make_cdp_ok_response(&id, json!({})),
           CustomDomainOutcome::Result(v) => make_cdp_ok_response(&id, v),
-          CustomDomainOutcome::Error(msg) => make_cdp_error_response(&id, msg),
+          CustomDomainOutcome::Error(err) => make_cdp_error_response(&id, &err),
         };
         (session.state.send)(InspectorMsg {
           kind: InspectorMsgKind::Message(call_id),
