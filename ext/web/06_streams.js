@@ -7298,7 +7298,6 @@ internals.writableStreamForRid = writableStreamForRid;
   markNotSerializable(TransformStream.prototype);
 }
 
-
 const kNodeWebStreamsState = SymbolFor("nodejs.webstreams.kState");
 const kNodeWebStreamsType = SymbolFor("nodejs.webstreams.kType");
 const kNodeMessagingTransfer = SymbolFor("nodejs.messaging.kTransfer");
