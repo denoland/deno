@@ -54,7 +54,7 @@ const httpParser = core.loadExtScript(
 const http2Binding = core.loadExtScript(
   "ext:deno_node/internal_binding/http2.ts",
 );
-const { default: inspectorBinding } = core.loadExtScript(
+const inspectorBinding = core.loadExtScript(
   "ext:deno_node/internal_binding/inspector.ts",
 );
 
