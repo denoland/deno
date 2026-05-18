@@ -1,8 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
+use std::error::Error as StdError;
+use std::io::Error;
+use std::io::ErrorKind;
+#[cfg(any(not(unix), test))]
 use std::io::Write;
+#[cfg(not(unix))]
 use std::io::stderr;
+#[cfg(not(unix))]
 use std::io::stdout;
 use std::rc::Rc;
 
@@ -217,33 +223,184 @@ pub fn op_try_close(state: Rc<RefCell<OpState>>, #[smi] rid: ResourceId) {
 
 /// Builtin utility to print to stdout/stderr
 #[op2(fast)]
+#[cfg(unix)]
 pub fn op_print(
   #[string] msg: &str,
   is_err: bool,
 ) -> Result<(), std::io::Error> {
-  let mut out: Box<dyn Write> = if is_err {
+  let fd = if is_err {
+    libc::STDERR_FILENO
+  } else {
+    libc::STDOUT_FILENO
+  };
+  write_all_fd_blocking(fd, msg.as_bytes())
+}
+
+/// Builtin utility to print to stdout/stderr
+#[op2(fast)]
+#[cfg(not(unix))]
+pub fn op_print(
+  #[string] msg: &str,
+  is_err: bool,
+) -> Result<(), std::io::Error> {
+  let out: Box<dyn Write> = if is_err {
     Box::new(stderr())
   } else {
     Box::new(stdout())
   };
+  write_and_flush_all(out, msg.as_bytes())
+}
+
+#[cfg(unix)]
+fn write_all_fd_blocking(
+  fd: libc::c_int,
+  msg: &[u8],
+) -> Result<(), std::io::Error> {
+  let _mode_guard = PrintFdModeGuard::set_blocking(fd)?;
+  write_all_fd(fd, msg)
+}
+
+#[cfg(unix)]
+struct PrintFdModeGuard {
+  fd: libc::c_int,
+  flags: libc::c_int,
+}
+
+#[cfg(unix)]
+impl PrintFdModeGuard {
+  fn set_blocking(fd: libc::c_int) -> Result<Self, std::io::Error> {
+    // SAFETY: `fcntl` with F_GETFL does not access memory and only reads fd
+    // status flags.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 {
+      return Err(Error::last_os_error());
+    }
+    if flags & libc::O_NONBLOCK == 0 {
+      return Ok(Self { fd: -1, flags });
+    }
+
+    // SAFETY: `fcntl` with F_SETFL updates fd status flags. No pointers are
+    // passed.
+    let r =
+      unsafe { libc::fcntl(fd, libc::F_SETFL, flags & !libc::O_NONBLOCK) };
+    if r < 0 {
+      return Err(Error::last_os_error());
+    }
+    Ok(Self { fd, flags })
+  }
+}
+
+#[cfg(unix)]
+impl Drop for PrintFdModeGuard {
+  fn drop(&mut self) {
+    if self.fd >= 0 {
+      // SAFETY: `fcntl` with F_SETFL updates fd status flags. No pointers are
+      // passed. There is no useful way to report this from Drop.
+      _ = unsafe { libc::fcntl(self.fd, libc::F_SETFL, self.flags) };
+    }
+  }
+}
+
+#[cfg(unix)]
+fn write_all_fd(fd: libc::c_int, msg: &[u8]) -> Result<(), std::io::Error> {
+  let mut buf = msg;
+  while !buf.is_empty() {
+    // SAFETY: `buf` is valid for `buf.len()` bytes and `write` does not retain
+    // the pointer after returning.
+    let nwritten = unsafe {
+      libc::write(fd, buf.as_ptr().cast::<libc::c_void>(), buf.len())
+    };
+    if nwritten > 0 {
+      buf = &buf[nwritten as usize..];
+      continue;
+    }
+    if nwritten == 0 {
+      return Err(ErrorKind::WriteZero.into());
+    }
+
+    let err = Error::last_os_error();
+    if is_retryable_print_error(&err) {
+      std::thread::yield_now();
+      continue;
+    }
+    return Err(err);
+  }
+  Ok(())
+}
+
+#[cfg(any(not(unix), test))]
+fn write_and_flush_all<W: Write>(
+  mut out: W,
+  msg: &[u8],
+) -> Result<(), std::io::Error> {
   // Use a manual write loop instead of write_all because the fd may be
   // in non-blocking mode (e.g. when Node's process.stdout sets
   // O_NONBLOCK via uv_pipe_open/uv_tty_init). write_all does not
   // retry on WouldBlock.
-  let mut buf = msg.as_bytes();
+  let mut buf = msg;
   while !buf.is_empty() {
     match out.write(buf) {
+      Ok(0) => return Err(ErrorKind::WriteZero.into()),
       Ok(n) => buf = &buf[n..],
-      Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+      Err(e) if is_retryable_print_error(&e) => {
         std::thread::yield_now();
         continue;
       }
-      Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
       Err(e) => return Err(e),
     }
   }
-  out.flush().unwrap();
-  Ok(())
+  loop {
+    match out.flush() {
+      Ok(()) => return Ok(()),
+      Err(e) if is_retryable_print_error(&e) => {
+        std::thread::yield_now();
+        continue;
+      }
+      Err(e) => return Err(e),
+    }
+  }
+}
+
+fn is_retryable_print_error(e: &Error) -> bool {
+  matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::Interrupted)
+    || is_retryable_print_raw_os_error(e)
+    || is_retryable_print_inner_error(e)
+    || is_retryable_print_error_source(e)
+}
+
+#[cfg(unix)]
+fn is_retryable_print_raw_os_error(e: &Error) -> bool {
+  matches!(e.raw_os_error(), Some(libc::EAGAIN) | Some(libc::EINTR))
+}
+
+#[cfg(windows)]
+fn is_retryable_print_raw_os_error(_e: &Error) -> bool {
+  false
+}
+
+fn is_retryable_print_inner_error(e: &Error) -> bool {
+  if let Some(inner) = e.get_ref()
+    && let Some(io_err) = inner.downcast_ref::<Error>()
+  {
+    return is_retryable_print_error(io_err);
+  }
+  false
+}
+
+fn is_retryable_print_error_source(e: &Error) -> bool {
+  let mut source = e.source();
+  while let Some(err) = source {
+    if let Some(io_err) = err.downcast_ref::<Error>()
+      && (matches!(
+        io_err.kind(),
+        ErrorKind::WouldBlock | ErrorKind::Interrupted
+      ) || is_retryable_print_raw_os_error(io_err))
+    {
+      return true;
+    }
+    source = err.source();
+  }
+  false
 }
 
 pub struct WasmStreamingResource(pub(crate) RefCell<v8::WasmStreaming<false>>);
@@ -754,5 +911,173 @@ fn op_import_sync<'s, 'i>(
     Ok(v8::Local::new(scope, module.get_module_namespace()))
   } else {
     Ok(v8::Local::new(scope, namespace).into())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::collections::VecDeque;
+  use std::io::Error;
+  use std::io::ErrorKind;
+  use std::io::Result;
+  use std::io::Write;
+
+  #[cfg(all(unix, not(miri)))]
+  use super::write_all_fd;
+  use super::write_and_flush_all;
+
+  enum WriteAction {
+    Write(usize),
+    Error(ErrorKind),
+  }
+
+  struct RetryWriter {
+    write_actions: VecDeque<WriteAction>,
+    flush_actions: VecDeque<ErrorKind>,
+    output: Vec<u8>,
+  }
+
+  impl RetryWriter {
+    fn new(
+      write_actions: Vec<WriteAction>,
+      flush_actions: Vec<ErrorKind>,
+    ) -> Self {
+      Self {
+        write_actions: VecDeque::from(write_actions),
+        flush_actions: VecDeque::from(flush_actions),
+        output: Vec::new(),
+      }
+    }
+  }
+
+  impl Write for RetryWriter {
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+      match self.write_actions.pop_front() {
+        Some(WriteAction::Write(n)) => {
+          let n = n.min(buf.len());
+          self.output.extend_from_slice(&buf[..n]);
+          Ok(n)
+        }
+        Some(WriteAction::Error(kind)) => Err(Error::from(kind)),
+        None => {
+          self.output.extend_from_slice(buf);
+          Ok(buf.len())
+        }
+      }
+    }
+
+    fn flush(&mut self) -> Result<()> {
+      match self.flush_actions.pop_front() {
+        Some(kind) => Err(Error::from(kind)),
+        None => Ok(()),
+      }
+    }
+  }
+
+  #[test]
+  fn write_and_flush_all_retries_would_block_and_interrupted() {
+    let mut writer = RetryWriter::new(
+      vec![
+        WriteAction::Error(ErrorKind::WouldBlock),
+        WriteAction::Error(ErrorKind::Interrupted),
+        WriteAction::Write(2),
+      ],
+      vec![ErrorKind::WouldBlock, ErrorKind::Interrupted],
+    );
+
+    write_and_flush_all(&mut writer, b"hello").unwrap();
+
+    assert_eq!(writer.output, b"hello".to_vec());
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn retryable_print_error_handles_raw_os_errors() {
+    assert!(super::is_retryable_print_error(&Error::from_raw_os_error(
+      libc::EAGAIN
+    )));
+    assert!(super::is_retryable_print_error(&Error::from_raw_os_error(
+      libc::EINTR
+    )));
+    assert!(super::is_retryable_print_error(&Error::other(
+      Error::from_raw_os_error(libc::EAGAIN),
+    )));
+  }
+
+  #[cfg(all(unix, not(miri)))]
+  #[test]
+  fn write_all_fd_waits_for_nonblocking_pipe_capacity() {
+    let mut fds = [0; 2];
+    // SAFETY: `pipe` writes two file descriptors into `fds`.
+    assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+    let read_fd = fds[0];
+    let write_fd = fds[1];
+
+    // SAFETY: `fcntl` with F_GETFL does not access memory and only reads fd
+    // status flags.
+    let flags = unsafe { libc::fcntl(write_fd, libc::F_GETFL) };
+    assert!(flags >= 0);
+    // SAFETY: `fcntl` with F_SETFL updates fd status flags. No pointers are
+    // passed.
+    assert_eq!(
+      unsafe { libc::fcntl(write_fd, libc::F_SETFL, flags | libc::O_NONBLOCK) },
+      0
+    );
+
+    let chunk = [0u8; 4096];
+    loop {
+      // SAFETY: `chunk` is valid for `chunk.len()` bytes and `write` does not
+      // retain the pointer after returning.
+      let nwritten = unsafe {
+        libc::write(
+          write_fd,
+          chunk.as_ptr().cast::<libc::c_void>(),
+          chunk.len(),
+        )
+      };
+      if nwritten < 0 {
+        assert_eq!(Error::last_os_error().raw_os_error(), Some(libc::EAGAIN));
+        break;
+      }
+      assert!(nwritten > 0);
+    }
+
+    let reader = std::thread::spawn(move || {
+      std::thread::sleep(std::time::Duration::from_millis(50));
+      let mut buf = [0u8; 4096];
+      // SAFETY: `buf` is valid for `buf.len()` bytes and `read` does not retain
+      // the pointer after returning.
+      assert!(
+        unsafe {
+          libc::read(
+            read_fd,
+            buf.as_mut_ptr().cast::<libc::c_void>(),
+            buf.len(),
+          )
+        } > 0
+      );
+      std::thread::sleep(std::time::Duration::from_millis(50));
+      // SAFETY: `read_fd` is a valid fd created by `pipe`.
+      _ = unsafe { libc::close(read_fd) };
+    });
+
+    write_all_fd(write_fd, b"ok").unwrap();
+
+    // SAFETY: `fcntl` with F_GETFL does not access memory and only reads fd
+    // status flags.
+    let restored_flags = unsafe { libc::fcntl(write_fd, libc::F_GETFL) };
+    assert!(restored_flags & libc::O_NONBLOCK != 0);
+    // SAFETY: `write_fd` is a valid fd created by `pipe`.
+    _ = unsafe { libc::close(write_fd) };
+    reader.join().unwrap();
+  }
+
+  #[test]
+  fn write_and_flush_all_returns_write_zero() {
+    let mut writer = RetryWriter::new(vec![WriteAction::Write(0)], vec![]);
+
+    let err = write_and_flush_all(&mut writer, b"hello").unwrap_err();
+
+    assert_eq!(err.kind(), ErrorKind::WriteZero);
   }
 }

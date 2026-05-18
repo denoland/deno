@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "console_log_retries_nonblocking_stdout": {
+      "if": "linux",
+      "args": "run --quiet --allow-run --allow-read --allow-ffi runner.ts",
+      "output": "runner.out"
+    }
+  }
+}
