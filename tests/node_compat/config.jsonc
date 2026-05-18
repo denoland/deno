@@ -157,6 +157,28 @@
       "ignore": true,
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
     },
+    "module-hooks/test-module-hooks-load-context-merged.js": {},
+    "module-hooks/test-module-hooks-load-context-optional.js": {},
+    "module-hooks/test-module-hooks-load-async-and-sync.js": {
+      "ignore": true,
+      "reason": "Depends on deprecated module.register() loader hooks, which Deno intentionally does not implement"
+    },
+    "module-hooks/test-module-hooks-load-short-circuit.js": {},
+    "module-hooks/test-module-hooks-load-short-circuit-required-middle.js": {},
+    "module-hooks/test-module-hooks-load-short-circuit-required-start.js": {},
+    "module-hooks/test-module-hooks-preload.js": {
+      "ignore": true,
+      "reason": "Depends on deprecated module.register() loader hooks, which Deno intentionally does not implement"
+    },
+    "module-hooks/test-module-hooks-resolve-context-merged.js": {},
+    "module-hooks/test-module-hooks-resolve-context-optional.js": {},
+    "module-hooks/test-module-hooks-resolve-require-resolve-loaded-with-source.js": {
+      "ignore": true,
+      "reason": "Depends on deprecated module.register() loader hooks, which Deno intentionally does not implement"
+    },
+    "module-hooks/test-module-hooks-resolve-short-circuit.js": {},
+    "module-hooks/test-module-hooks-resolve-short-circuit-required-middle.js": {},
+    "module-hooks/test-module-hooks-resolve-short-circuit-required-start.js": {},
     "parallel/test-abort-controller-any-timeout.js": {},
     "parallel/test-abortcontroller-internal.js": {
       "ignore": true,
@@ -2254,9 +2276,7 @@
     // requires changes to `deno_core`.
     // "parallel/test-inspect-async-hook-setup-at-inspect.js": {},
 
-    // TODO(bartlomieju): depends on internal APIs from Node like `process.bindings()`
-    // or `process._debugEnd`
-    // "parallel/test-inspector-enabled.js": {},
+    "parallel/test-inspector-enabled.js": {},
     "parallel/test-inspector-debug-end.js": {},
 
     "parallel/test-inspector-has-idle.js": {},
@@ -2277,7 +2297,7 @@
     // "parallel/test-inspector-async-stack-traces-set-interval.js": {},
     // "parallel/test-inspector-scriptparsed-context.js": {},
     "parallel/test-inspector-break-e.js": {},
-    // "parallel/test-inspector-waiting-for-disconnect.js": {},
+    "parallel/test-inspector-waiting-for-disconnect.js": {},
     // "parallel/test-inspector-worker-target.js"
     // "parallel/test-inspector-debug-brk-flag.js": {},
     // "parallel/test-inspector-wait.mjs": {},
@@ -3624,6 +3644,8 @@
     "parallel/test-tls-client-reject.js": {},
     "parallel/test-tls-client-reject-12.js": {},
     "parallel/test-tls-client-renegotiation-limit.js": {},
+    "parallel/test-tls-client-resume.js": {},
+    "parallel/test-tls-client-resume-12.js": {},
     "parallel/test-tls-clientcertengine-invalid-arg-type.js": {},
     "parallel/test-tls-close-event-after-write.js": {},
     "parallel/test-tls-close-notify.js": {},
@@ -4964,6 +4986,8 @@
     "parallel/test-inspector-has-inspector-false.js": {},
     "parallel/test-inspector-ip-detection.js": {},
     "parallel/test-inspector-network-arbitrary-data.js": {},
+    "parallel/test-inspector-network-data-received.js": {},
+    "parallel/test-inspector-network-data-sent.js": {},
     "parallel/test-listen-fd-cluster.js": {
       "linux": false,
       "darwin": false,
