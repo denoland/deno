@@ -1,20 +1,53 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#[cfg(feature = "quickjs")]
+mod stubs;
+#[cfg(feature = "quickjs")]
+pub use stubs::DatabaseSync;
+#[cfg(feature = "quickjs")]
+pub use stubs::DatabaseSyncLimits;
+#[cfg(feature = "quickjs")]
+pub use stubs::SQLTagStore;
+#[cfg(feature = "quickjs")]
+pub use stubs::Session;
+#[cfg(feature = "quickjs")]
+pub use stubs::StatementSync;
+#[cfg(feature = "quickjs")]
+pub use stubs::deno_node_sqlite;
+#[cfg(feature = "quickjs")]
+pub use stubs::op_node_database_backup;
+
+#[cfg(not(feature = "quickjs"))]
 mod backup;
+#[cfg(not(feature = "quickjs"))]
 mod database;
+#[cfg(not(feature = "quickjs"))]
 mod lru_cache;
+#[cfg(not(feature = "quickjs"))]
 mod session;
+#[cfg(not(feature = "quickjs"))]
 mod sql_tag_store;
+#[cfg(not(feature = "quickjs"))]
 mod statement;
+// Validators module is referenced from the SqliteError enum below, so
+// keep it compiled even under quickjs (its types are pure Rust and have
+// no v8 dependency).
 mod validators;
 
+#[cfg(not(feature = "quickjs"))]
 pub use backup::op_node_database_backup;
+#[cfg(not(feature = "quickjs"))]
 pub use database::DatabaseSync;
+#[cfg(not(feature = "quickjs"))]
 pub use database::DatabaseSyncLimits;
+#[cfg(not(feature = "quickjs"))]
 pub use session::Session;
+#[cfg(not(feature = "quickjs"))]
 pub use sql_tag_store::SQLTagStore;
+#[cfg(not(feature = "quickjs"))]
 pub use statement::StatementSync;
 
+#[cfg(not(feature = "quickjs"))]
 deno_core::extension!(
   deno_node_sqlite,
   ops = [op_node_database_backup,],

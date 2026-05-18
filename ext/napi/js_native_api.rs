@@ -2647,7 +2647,7 @@ fn napi_get_value_string_utf16(
 #[napi_sym]
 fn napi_coerce_to_bool<'s>(
   env: &'s mut Env,
-  value: napi_value,
+  value: napi_value<'s>,
   result: *mut napi_value<'s>,
 ) -> napi_status {
   check_arg!(env, value);
@@ -3245,7 +3245,7 @@ fn napi_escape_handle<'s>(
 #[napi_sym]
 fn napi_new_instance<'s>(
   env: &'s mut Env,
-  constructor: napi_value,
+  constructor: napi_value<'s>,
   argc: usize,
   argv: *const napi_value,
   result: *mut napi_value<'s>,
@@ -3915,7 +3915,7 @@ fn napi_get_date_value(
 #[napi_sym]
 fn napi_run_script<'s>(
   env: &'s mut Env,
-  script: napi_value,
+  script: napi_value<'s>,
   result: *mut napi_value<'s>,
 ) -> napi_status {
   check_arg!(env, script);

@@ -10,6 +10,15 @@
   reason = "TODO: add safety comments"
 )]
 
+// Engine alias: with `--features quickjs`, the QuickJS-ng-backed compat
+// crate becomes the source of truth for the `v8` crate name throughout
+// deno_core. Internal `use v8::*` sites resolve here, so the shape of
+// types deno_core operates on stays consistent with what the public
+// `pub use deno_core::v8` re-export hands to consumers. The default
+// build keeps the rusty_v8 crate as `v8` via the `v8-engine` feature.
+#[cfg(feature = "quickjs")]
+pub extern crate qjs_v8_compat as v8;
+
 pub mod arena;
 mod async_cancel;
 mod async_cell;
@@ -74,7 +83,38 @@ pub use serde_v8::U16String;
 pub use sourcemap;
 pub use thiserror;
 pub use url;
+// Engine re-export. With `v8-engine` (the default), `v8` is the
+// rusty_v8 crate; we re-export it here. Under `quickjs`, the
+// `pub extern crate qjs_v8_compat as v8;` at the top of this file
+// already makes `deno_core::v8` resolve to `qjs_v8_compat`.
+#[cfg(not(feature = "quickjs"))]
 pub use v8;
+
+/// Engine-portable replacement for the `transmute(NonNull<T>.as_ptr())` →
+/// `Local<T>` pattern used by extensions like deno_node_sqlite to
+/// convert a stored `Global::into_raw()` pointer back into a Local in
+/// callback contexts where no scope exists yet.
+///
+/// On rusty_v8 (the default `v8-engine` feature) `Local<T>` and
+/// `NonNull<T>` are layout-identical so this is a `transmute`. On
+/// QuickJS `Local<T>` is wider, so we route through
+/// `Local::from_non_null` which reads the heap-allocated JSValue.
+///
+/// # Safety
+/// `ptr` must come from a previous `Global::into_raw` of the same T.
+#[inline(always)]
+pub unsafe fn local_from_global_ptr<T>(
+  ptr: std::ptr::NonNull<T>,
+) -> v8::Local<'static, T> {
+  #[cfg(feature = "quickjs")]
+  {
+    unsafe { v8::Local::<T>::from_non_null(ptr) }
+  }
+  #[cfg(not(feature = "quickjs"))]
+  {
+    unsafe { std::mem::transmute(ptr.as_ptr()) }
+  }
+}
 
 pub use crate::async_cancel::CancelFuture;
 pub use crate::async_cancel::CancelHandle;

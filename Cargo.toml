@@ -56,6 +56,7 @@ members = [
   "libs/ops",
   "libs/ops/compile_test_runner",
   "libs/package_json",
+  "libs/qjs_v8_compat",
   "libs/resolver",
   "libs/serde_v8",
   "libs/typescript_go_client",
@@ -168,7 +169,8 @@ eszip = { version = "0.125.0", path = "./libs/eszip" }
 napi_sym = { version = "0.177.0", path = "./ext/napi/sym" }
 node_resolver = { version = "0.85.0", path = "./libs/node_resolver" }
 node_shim = { version = "0.22.0", path = "libs/node_shim" }
-serde_v8 = { version = "0.309.0", path = "./libs/serde_v8" }
+qjs_v8_compat = { version = "0.1.0", path = "./libs/qjs_v8_compat" }
+serde_v8 = { version = "0.309.0", path = "./libs/serde_v8", default-features = false }
 test_macro = { path = "./tests/util/test_macro" }
 test_util = { path = "./tests/util/lib" }
 

@@ -90,7 +90,8 @@ impl ModEvaluate {
       let module = v8::Local::new(scope, self.module.take().unwrap());
       let ns = module.get_module_namespace();
       let recv = v8::undefined(scope).into();
-      let args = &[ns];
+      let ns_val: v8::Local<v8::Value> = ns.into();
+      let args = &[ns_val];
       for notify in std::mem::take(&mut self.notify).into_iter() {
         let notify = v8::Local::new(scope, notify);
         notify.call(scope, recv, args);
@@ -1152,7 +1153,7 @@ impl ModuleMap {
       v8::NewStringType::Normal,
     )
     .unwrap();
-    let source_str_local = v8::Local::new(scope, source_str);
+    let source_str_local: v8::Local<v8::String> = v8::Local::new(scope, source_str);
     let source_value_local = v8::Local::<v8::Value>::from(source_str_local);
     let exports = vec![(ascii_str!("default"), source_value_local)];
     Ok(self.new_synthetic_module(scope, name, ModuleType::Text, exports))
@@ -1723,7 +1724,9 @@ impl ModuleMap {
           sender.module_map.pending_mod_evaluation.set(false);
           sender.module_map.module_waker.wake();
           _ = sender.sender.take().unwrap().send(Ok(()));
-          scope.throw_exception(args.get(0));
+          let exc = args.get(0);
+          let exc: v8::Local<v8::Value> = unsafe { core::mem::transmute(exc) };
+          scope.throw_exception(exc);
         },
       )
       .data(evaluation.into())
@@ -1990,7 +1993,8 @@ impl ModuleMap {
         }
         v8::PromiseState::Rejected => {
           resolved_any = true;
-          let exception = v8::Global::new(scope, promise.result(scope));
+          let result = promise.result(scope);
+          let exception = v8::Global::new(scope, result);
           self.dynamic_import_reject(scope, eval.load_id, exception.clone());
           self.reject_tla_waiters(scope, eval.module_id, exception);
         }
@@ -2342,10 +2346,11 @@ impl ModuleMap {
                 "Root module reference had to have been resolved to get here.",
               );
               let key = ModuleSourceKey::from_reference(module_reference);
-              let source = {
+              let source: v8::Local<v8::Value> = {
                 let data = self.data.borrow();
                 let source = data.sources.get(&key).expect("Source had to have been inserted successfully, or recursion would error.").as_ref();
-                v8::Local::new(scope, source).into()
+                let local: v8::Local<v8::Object> = v8::Local::new(scope, source);
+                local.into()
               };
               let resolver = state.resolver.open(scope);
               resolver.resolve(scope, source).unwrap();
@@ -2371,7 +2376,7 @@ impl ModuleMap {
 
   pub(crate) fn get_module<'s, 'i>(
     &self,
-    scope: &v8::PinScope<'s, 'i>,
+    scope: &mut v8::PinScope<'s, 'i>,
     module_id: ModuleId,
   ) -> Option<v8::Local<'s, v8::Module>> {
     self
@@ -2409,8 +2414,10 @@ impl ModuleMap {
       v8::ModuleStatus::Instantiated | v8::ModuleStatus::Evaluated
     ));
 
+    // Module is Instantiated/Evaluated (asserted above), so the namespace
+    // is always an Object — engine-portable downcast via `cast`.
     let module_namespace: v8::Local<v8::Object> =
-      v8::Local::try_from(module.get_module_namespace())?;
+      module.get_module_namespace().cast();
 
     Ok(v8::Global::new(scope, module_namespace))
   }
@@ -2574,6 +2581,11 @@ impl ModuleMap {
     specifier: ModuleName,
     code: ModuleCodeString,
   ) {
+    // qjs_v8_compat shim path: register the source by name so QuickJS's
+    // module loader can resolve `import x from "<specifier>"` mid-eval.
+    // No-op for the real V8 build.
+    #[cfg(feature = "quickjs")]
+    v8::module::register_lazy_module_source(specifier.as_str(), code.as_str());
     let data = self.data.borrow_mut();
     data
       .known_lazy_esm
@@ -2662,7 +2674,24 @@ impl ModuleMap {
         // evaluating earlier in DFS post-order. Returning the namespace
         // before evaluation leaves `export const` bindings in the temporal
         // dead zone, so trigger evaluation here.
-        if handle_local.get_status() == v8::ModuleStatus::Instantiated {
+        //
+        // qjs_v8_compat shim: under QuickJS, statically-imported modules
+        // are evaluated eagerly during the entry's JS_EvalFunction. If
+        // we're CURRENTLY inside that JS_EvalFunction (recursive lazy
+        // load fires from within an entry's body), forcing another
+        // handle_local.evaluate() would call JS_EvalFunction on the same
+        // bytecode twice — corrupting refcount + observing partial
+        // state. Skip the re-eval; namespace bindings remain in TDZ if
+        // accessed before the body finishes, which matches V8 semantics
+        // for cyclic imports.
+        #[cfg(feature = "quickjs")]
+        let bytecode_consumed =
+          v8::module::esm_bytecode_consumed_for(handle_local);
+        #[cfg(not(feature = "quickjs"))]
+        let bytecode_consumed = false;
+        if handle_local.get_status() == v8::ModuleStatus::Instantiated
+          && !bytecode_consumed
+        {
           let value = handle_local.evaluate(scope).unwrap();
           if !self.evaluating_top_level.get() {
             scope.perform_microtask_checkpoint();
@@ -3005,8 +3034,14 @@ pub(crate) fn synthetic_module_evaluation_steps<'s>(
   // This promise is resolved immediately.
   let resolver = v8::PromiseResolver::new(tc_scope).unwrap();
   let undefined = v8::undefined(tc_scope);
-  resolver.resolve(tc_scope, undefined.into());
-  Some(resolver.get_promise(tc_scope).into())
+  let undef_value: v8::Local<v8::Value> = undefined.into();
+  resolver.resolve(tc_scope, undef_value);
+  let promise = resolver.get_promise(tc_scope);
+  // SAFETY: extending the lifetime back to the function's 's. The
+  // underlying JSValue is owned by the parent context's arena (via
+  // the promise resolver), not by the local callback_scope.
+  let promise: v8::Local<v8::Promise> = unsafe { core::mem::transmute(promise) };
+  Some(promise.into())
 }
 
 pub fn script_origin<'s, 'i>(

@@ -362,7 +362,7 @@ where
     Ok(buf) => {
       let buf: v8::Local<v8::ArrayBufferView> = buf.into();
       let Some(buffer) = buf.get_backing_store() else {
-        return Err("buffer missing");
+        return Err("missing backing store");
       };
       (buffer, buf.byte_offset(), buf.byte_length())
     }
@@ -391,11 +391,7 @@ where
       let Some(buffer) = buf.buffer(scope) else {
         return Err("buffer missing");
       };
-      let res = (
-        buffer.get_backing_store(),
-        buf.byte_offset(),
-        buf.byte_length(),
-      );
+      let res = (buffer.get_backing_store(), buf.byte_offset(), buf.byte_length());
       if !buffer.is_detachable() {
         return Err("invalid type; expected: detachable");
       }
@@ -426,11 +422,8 @@ pub unsafe fn to_slice_buffer(
     };
     let len = buf.byte_length();
     let slice = if len > 0 {
-      if let Some(ptr) = buf.data() {
-        std::slice::from_raw_parts_mut(ptr.as_ptr() as _, len)
-      } else {
-        &mut []
-      }
+      let ptr = buf.data().ok_or("ArrayBuffer has null data")?;
+      std::slice::from_raw_parts_mut(ptr.as_ptr() as _, len)
     } else {
       &mut []
     };
@@ -450,19 +443,19 @@ pub unsafe fn to_slice_buffer_any(
   unsafe {
     let (data, len) = {
       if let Ok(buf) = v8::Local::<v8::ArrayBufferView>::try_from(input) {
-        (NonNull::new(buf.data()), buf.byte_length())
-      } else if let Ok(buf) = v8::Local::<v8::ArrayBuffer>::try_from(input) {
         (buf.data(), buf.byte_length())
+      } else if let Ok(buf) = v8::Local::<v8::ArrayBuffer>::try_from(input) {
+        let p = buf
+          .data()
+          .map(|n| n.as_ptr())
+          .unwrap_or(core::ptr::null_mut());
+        (p, buf.byte_length())
       } else {
         return Err("expected ArrayBuffer or ArrayBufferView");
       }
     };
     let slice = if len > 0 {
-      if let Some(ptr) = data {
-        std::slice::from_raw_parts_mut(ptr.as_ptr() as _, len)
-      } else {
-        &mut []
-      }
+      std::slice::from_raw_parts_mut(data as _, len)
     } else {
       &mut []
     };
@@ -510,7 +503,7 @@ pub fn to_v8_slice_any(
     let offset = buf.byte_offset();
     let len = buf.byte_length();
     let Some(buf) = buf.get_backing_store() else {
-      return Err("buffer missing");
+      return Err("missing backing store");
     };
     return Ok(unsafe {
       serde_v8::V8Slice::<u8>::from_parts(buf, offset..offset + len)

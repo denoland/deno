@@ -13,9 +13,16 @@ description = "Image handling implementation for Deno"
 [lib]
 path = "lib.rs"
 
+
+[features]
+default = ["v8-engine"]
+v8-engine = ["deno_core/v8-engine"]
+quickjs = ["deno_core/quickjs", "qjs_v8_compat/link_quickjs"]
+
 [dependencies]
 bytemuck.workspace = true
 deno_core.workspace = true
+qjs_v8_compat = { workspace = true, optional = true }
 deno_error.workspace = true
 image = { workspace = true, features = ["png", "jpeg", "bmp", "ico", "webp", "gif"] }
 # NOTE: The qcms is a color space conversion crate which parses ICC profiles that used in Gecko,

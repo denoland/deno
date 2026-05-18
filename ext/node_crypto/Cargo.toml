@@ -12,6 +12,12 @@ description = "Node crypto compatibility for Deno"
 [lib]
 path = "lib.rs"
 
+
+[features]
+default = ["v8-engine"]
+v8-engine = ["deno_core/v8-engine"]
+quickjs = ["deno_core/quickjs", "qjs_v8_compat/link_quickjs"]
+
 [dependencies]
 aead-gcm-stream.workspace = true
 aes.workspace = true
@@ -24,6 +30,7 @@ const-oid.workspace = true
 ctr.workspace = true
 data-encoding.workspace = true
 deno_core.workspace = true
+qjs_v8_compat = { workspace = true, optional = true }
 deno_crypto_provider.workspace = true
 deno_error.workspace = true
 der = { workspace = true, features = ["derive"] }

@@ -684,9 +684,12 @@ impl v8::ValueSerializerImpl for SerializeDeserialize<'_> {
       }
     }
     if let Some(host_objects) = self.host_objects {
+      let host_objects: v8::Local<v8::Array> = unsafe { core::mem::transmute(host_objects) };
       for i in 0..host_objects.length() {
         let value = host_objects.get_index(scope, i).unwrap();
-        if value == object {
+        let value: v8::Local<v8::Value> = unsafe { core::mem::transmute(value) };
+        let object_val: v8::Local<v8::Value> = object.into();
+        if value == object_val {
           value_serializer.write_uint32(i);
           return Some(true);
         }
@@ -765,8 +768,10 @@ impl v8::ValueDeserializerImpl for SerializeDeserialize<'_> {
         return res.to_object(scope);
       }
     } else if let Some(host_objects) = self.host_objects {
+      let host_objects: v8::Local<v8::Array> = unsafe { core::mem::transmute(host_objects) };
       let maybe_value = host_objects.get_index(scope, i);
       if let Some(value) = maybe_value {
+        let value: v8::Local<v8::Value> = unsafe { core::mem::transmute(value) };
         return value.to_object(scope);
       }
     }
@@ -823,7 +828,7 @@ pub fn op_serialize<'s, 'i>(
     host_object_brand,
     deserializers: None,
   });
-  let value_serializer = v8::ValueSerializer::new(scope, serialize_deserialize);
+  let mut value_serializer = v8::ValueSerializer::new(scope, serialize_deserialize);
   value_serializer.write_header();
 
   if let Some(transferred_array_buffers) = transferred_array_buffers {
@@ -915,7 +920,7 @@ pub fn op_deserialize<'s, 'i>(
     host_object_brand: None,
     deserializers,
   });
-  let value_deserializer =
+  let mut value_deserializer =
     v8::ValueDeserializer::new(scope, serialize_deserialize, &zero_copy);
   let parsed_header = value_deserializer
     .read_header(scope.get_current_context())
@@ -957,7 +962,7 @@ pub fn op_deserialize<'s, 'i>(
 
   let value = value_deserializer.read_value(scope.get_current_context());
   match value {
-    Some(deserialized) => Ok(deserialized),
+    Some(deserialized) => Ok(unsafe { std::mem::transmute(deserialized) }),
     None => Err(JsErrorBox::range_error("could not deserialize value")),
   }
 }
@@ -981,7 +986,7 @@ pub fn op_structured_clone<'s, 'i>(
     host_object_brand,
     deserializers: None,
   });
-  let value_serializer = v8::ValueSerializer::new(scope, serialize_deserialize);
+  let mut value_serializer = v8::ValueSerializer::new(scope, serialize_deserialize);
   value_serializer.write_header();
 
   v8::tc_scope!(let scope, scope);
@@ -990,8 +995,9 @@ pub fn op_structured_clone<'s, 'i>(
   if scope.has_caught() || scope.has_terminated() {
     scope.rethrow();
     // Dummy value, this result will be discarded because an error was thrown.
-    let v = v8::undefined(scope);
-    return Ok(v.into());
+    let v: v8::Local<v8::Primitive> = v8::undefined(scope);
+    let v: v8::Local<'_, v8::Value> = v.into();
+    return Ok(unsafe { core::mem::transmute(v) });
   }
 
   if !matches!(ret, Some(true)) {
@@ -1007,7 +1013,7 @@ pub fn op_structured_clone<'s, 'i>(
     host_object_brand,
     deserializers,
   });
-  let value_deserializer =
+  let mut value_deserializer =
     v8::ValueDeserializer::new(scope, serialize_deserialize, &vector);
   let parsed_header = value_deserializer
     .read_header(scope.get_current_context())
@@ -1018,7 +1024,7 @@ pub fn op_structured_clone<'s, 'i>(
 
   let value = value_deserializer.read_value(scope.get_current_context());
   match value {
-    Some(deserialized) => Ok(deserialized),
+    Some(deserialized) => Ok(unsafe { std::mem::transmute(deserialized) }),
     None => Err(JsErrorBox::range_error("could not deserialize value")),
   }
 }
@@ -1224,29 +1230,29 @@ pub fn op_set_wasm_streaming_callback(
   }
   *context_state_rc.js_wasm_streaming_cb.borrow_mut() = Some(cb);
 
-  scope.set_wasm_streaming_callback(|scope, arg, wasm_streaming| {
-    let (cb_handle, streaming_rid) = {
+  scope.set_wasm_streaming_callback(|scope: &mut v8::PinScope, arg, wasm_streaming| {
+    let cb_handle = {
       let context_state_rc = JsRealm::state_from_scope(scope);
-      let cb_handle = context_state_rc
+      context_state_rc
         .js_wasm_streaming_cb
         .borrow()
         .as_ref()
         .unwrap()
-        .clone();
+        .clone()
+    };
+    let streaming_rid = {
       let state = JsRuntime::state_from(scope);
-      let streaming_rid = state
+      state
         .op_state
         .borrow_mut()
         .resource_table
-        .add(WasmStreamingResource(RefCell::new(wasm_streaming)));
-      (cb_handle, streaming_rid)
+        .add(WasmStreamingResource(RefCell::new(wasm_streaming)))
     };
 
     let undefined = v8::undefined(scope);
     let rid = serde_v8::to_v8(scope, streaming_rid).unwrap();
-    cb_handle
-      .open(scope)
-      .call(scope, undefined.into(), &[arg, rid]);
+    let func = cb_handle.open(scope);
+    func.call(scope, undefined.into(), &[arg, rid]);
   });
   Ok(())
 }

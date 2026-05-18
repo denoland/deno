@@ -14,6 +14,18 @@ description = "Node compatibility for Deno"
 path = "lib.rs"
 
 [features]
+quickjs = [
+  "deno_core/quickjs",
+  "qjs_v8_compat/link_quickjs",
+  "deno_node_sqlite/quickjs",
+  "deno_node_crypto/quickjs",
+  "deno_fetch/quickjs",
+  "deno_io/quickjs",
+  "deno_net/quickjs",
+  "deno_process/quickjs",
+  "deno_tls/quickjs",
+]
+v8-engine = ["deno_core/v8-engine"]
 sync_fs = ["deno_fs/sync_fs", "deno_package_json/sync", "node_resolver/sync"]
 
 [dependencies]
@@ -24,6 +36,7 @@ bytes.workspace = true
 data-encoding.workspace = true
 deno_ast.workspace = true
 deno_core.workspace = true
+qjs_v8_compat = { workspace = true, optional = true }
 deno_dotenv.workspace = true
 deno_error.workspace = true
 deno_fetch.workspace = true

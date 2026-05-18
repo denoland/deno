@@ -751,8 +751,12 @@ fn op_import_sync<'s, 'i>(
       return exception_to_err_result(scope, exception, false, false)
         .map_err(|e| CoreErrorKind::Js(e).into_box());
     };
-    Ok(v8::Local::new(scope, module.get_module_namespace()))
+    let ns_obj = module.get_module_namespace();
+    let ns: v8::Local<'s, v8::Object> = unsafe { core::mem::transmute(ns_obj) };
+    Ok(ns.into())
   } else {
-    Ok(v8::Local::new(scope, namespace).into())
+    let ns_obj: v8::Local<v8::Object> = v8::Local::new(scope, namespace);
+    let local: v8::Local<'s, v8::Object> = unsafe { core::mem::transmute(ns_obj) };
+    Ok(local.into())
   }
 }

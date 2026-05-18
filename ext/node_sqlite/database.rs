@@ -2127,7 +2127,7 @@ unsafe fn get_aggregate_data(
     let agg = &mut *agg_ptr;
     if !agg.initialized {
       let start_local: v8::Local<v8::Value> =
-        std::mem::transmute(custom_aggregate.start.as_ptr());
+        deno_core::local_from_global_ptr(custom_aggregate.start);
 
       let start_value = if start_local.is_function() {
         let start_fn: v8::Local<v8::Function> = start_local.try_into().unwrap();
@@ -2175,7 +2175,7 @@ unsafe fn custom_aggregate_step_base(
 
     let data = &*data_ptr;
     let context_local: v8::Local<v8::Context> =
-      std::mem::transmute(data.context.as_ptr());
+      deno_core::local_from_global_ptr(data.context);
 
     v8::callback_scope!(unsafe cb_scope, context_local);
     v8::scope!(scope, cb_scope);
@@ -2194,13 +2194,13 @@ unsafe fn custom_aggregate_step_base(
     let step_fn = match kind {
       AggregateStepKind::Step => {
         let step_fn: v8::Local<v8::Function> =
-          std::mem::transmute(data.step_fn.as_ptr());
+          deno_core::local_from_global_ptr(data.step_fn);
         step_fn
       }
       AggregateStepKind::Inverse => {
         if let Some(inverse_ptr) = data.inverse_fn {
           let inverse_fn: v8::Local<v8::Function> =
-            std::mem::transmute(inverse_ptr.as_ptr());
+            deno_core::local_from_global_ptr(inverse_ptr);
           inverse_fn
         } else {
           sqlite_result_error(ctx, "Internal error: inverse function not set");
@@ -2279,7 +2279,7 @@ unsafe fn custom_aggregate_value_base(
 
     let data = &*data_ptr;
     let context_local: v8::Local<v8::Context> =
-      std::mem::transmute(data.context.as_ptr());
+      deno_core::local_from_global_ptr(data.context);
 
     v8::callback_scope!(unsafe cb_scope, context_local);
     v8::scope!(scope, cb_scope);
@@ -2319,7 +2319,7 @@ unsafe fn custom_aggregate_value_base(
 
     let result = if let Some(result_fn_ptr) = data.final_fn {
       let result_fn: v8::Local<v8::Function> =
-        std::mem::transmute(result_fn_ptr.as_ptr());
+        deno_core::local_from_global_ptr(result_fn_ptr);
       let ret = result_fn
         .call(tc_scope, v8::null(tc_scope).into(), &[current_value])
         .unwrap_or_else(|| v8::undefined(tc_scope).into());
@@ -2390,7 +2390,7 @@ unsafe extern "C" fn custom_aggregate_xdestroy(data: *mut c_void) {
   unsafe {
     let data = Box::from_raw(data as *mut CustomAggregate);
     let context_local: v8::Local<v8::Context> =
-      std::mem::transmute(data.context.as_ptr());
+      deno_core::local_from_global_ptr(data.context);
 
     v8::callback_scope!(unsafe cb_scope, context_local);
     v8::scope!(scope, cb_scope);
@@ -2445,14 +2445,14 @@ unsafe extern "C" fn custom_function_handler(
 
     let data = &*data_ptr;
     let context_local: v8::Local<v8::Context> =
-      std::mem::transmute(data.context.as_ptr());
+      deno_core::local_from_global_ptr(data.context);
 
     v8::callback_scope!(unsafe cb_scope, context_local);
     v8::scope!(scope, cb_scope);
     v8::tc_scope!(tc_scope, scope);
 
     let function_local: v8::Local<v8::Function> =
-      std::mem::transmute(data.callback.as_ptr());
+      deno_core::local_from_global_ptr(data.callback);
 
     let argc_len = usize::try_from(argc).unwrap_or(0);
     let args_slice = if argc_len == 0 {
@@ -2698,7 +2698,7 @@ unsafe extern "C" fn authorizer_callback(
 
     let data = &*data_ptr;
     let context_local: v8::Local<v8::Context> =
-      std::mem::transmute(data.context.as_ptr());
+      deno_core::local_from_global_ptr(data.context);
 
     v8::callback_scope!(unsafe cb_scope, context_local);
     v8::scope!(scope, cb_scope);
@@ -2708,7 +2708,7 @@ unsafe extern "C" fn authorizer_callback(
       v8::tc_scope!(tc_scope, scope);
 
       let function_local: v8::Local<v8::Function> =
-        std::mem::transmute(data.callback.as_ptr());
+        deno_core::local_from_global_ptr(data.callback);
 
       let action_code_js = v8::Integer::new(tc_scope, action_code).into();
 
@@ -2782,7 +2782,7 @@ unsafe fn free_authorizer_data(data_ptr: *mut AuthorizerData) {
   unsafe {
     let data = Box::from_raw(data_ptr);
     let context_local: v8::Local<v8::Context> =
-      std::mem::transmute(data.context.as_ptr());
+      deno_core::local_from_global_ptr(data.context);
 
     v8::callback_scope!(unsafe cb_scope, context_local);
     v8::scope!(scope, cb_scope);

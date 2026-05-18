@@ -313,11 +313,15 @@ pub(crate) fn to_ranged_buffer<'scope, 'i>(
     let buffer = view.buffer(scope).ok_or(v8::DataError::NoData {
       expected: "view to have a buffer",
     })?;
-    let buffer = v8::Local::new(scope, buffer); // recreate handle to avoid lifetime issues
+    let buffer: v8::Local<v8::ArrayBuffer> = v8::Local::new(scope, buffer);
+    // SAFETY: lifetime extension to 'scope is sound — the JSValue is
+    // owned by scope's parent arena, not the inner scope's.
+    let buffer: v8::Local<'scope, v8::ArrayBuffer> = unsafe { std::mem::transmute(buffer) };
     return Ok((buffer, offset..offset + len));
   }
   let b: v8::Local<v8::ArrayBuffer> = value.try_into()?;
-  let b = v8::Local::new(scope, b); // recreate handle to avoid lifetime issues
+  let b: v8::Local<v8::ArrayBuffer> = v8::Local::new(scope, b);
+  let b: v8::Local<'scope, v8::ArrayBuffer> = unsafe { std::mem::transmute(b) };
   Ok((b, 0..b.byte_length()))
 }
 

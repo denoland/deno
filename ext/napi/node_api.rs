@@ -353,8 +353,8 @@ fn napi_async_destroy(
 fn napi_make_callback<'s>(
   env: &'s mut Env,
   async_context: napi_async_context,
-  recv: napi_value,
-  func: napi_value,
+  recv: napi_value<'s>,
+  func: napi_value<'s>,
   argc: usize,
   argv: *const napi_value<'s>,
   result: *mut napi_value<'s>,

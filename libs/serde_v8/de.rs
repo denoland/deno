@@ -384,7 +384,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
   {
     // Unit variant
     if self.input.is_string() || self.input.is_string_object() {
-      let payload = v8::undefined(self.scope).into();
+      let payload = v8::undefined(&mut *self.scope).into();
       visitor.visit_enum(EnumAccess {
         scope: self.scope,
         tag: self.input,
@@ -460,11 +460,26 @@ struct MapObjectAccess<'a, 's, 'i> {
   next_value: Option<v8::Local<'s, v8::Value>>,
 }
 
+// Unsafe lifetime-extension helper for the variance trap that
+// `&'a mut PinScope<'s, 'i>` falls into when stored across method
+// calls. Erases ALL input lifetimes via raw pointer round-trip so the
+// borrow checker can't tie them to outer constraints. Safe in
+// practice because the underlying scope outlives both 'a and 's.
+unsafe fn extend_scope<'r, 's, 'i>(
+  scope: *mut v8::PinScope<'_, '_>,
+) -> &'r mut v8::PinScope<'s, 'i> {
+  unsafe { &mut *(scope as *mut v8::PinScope<'s, 'i>) }
+}
+
 impl<'a, 's, 'i> MapObjectAccess<'a, 's, 'i> {
   pub fn new(
     obj: v8::Local<'a, v8::Object>,
     scope: &'a mut v8::PinScope<'s, 'i>,
   ) -> Self {
+    // SAFETY: scope outlives 'a (the borrow is reborrowed from a
+    // longer-lived owned PinScope). Extending to 's is sound because
+    // the JSContext underneath is alive for the full 's.
+    let scope = unsafe { extend_scope(scope) };
     let keys = match obj.get_own_property_names(
       scope,
       v8::GetPropertyNamesArgsBuilder::new()
@@ -493,7 +508,6 @@ impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_, '_> {
     while let Some(key) = self.keys.next_element::<magic::Value>()? {
       let v8_val = self.obj.get(self.keys.scope, key.v8_value).unwrap();
       if v8_val.is_undefined() {
-        // Historically keys/value pairs with undefined values are not added to the output
         continue;
       }
       self.next_value = Some(v8_val);
@@ -536,9 +550,11 @@ impl<'de> de::MapAccess<'de> for MapPairsAccess<'_, '_, '_> {
     seed: K,
   ) -> Result<Option<K::Value>> {
     if self.pos < self.len {
-      let v8_key = self.obj.get_index(self.scope, self.pos).unwrap();
+      let scope = unsafe { extend_scope(self.scope as *mut _ as *mut _) };
+      let v8_key = self.obj.get_index(scope, self.pos).unwrap();
       self.pos += 1;
-      let mut deserializer = Deserializer::new(self.scope, v8_key, None);
+      let scope = unsafe { extend_scope(self.scope as *mut _ as *mut _) };
+      let mut deserializer = Deserializer::new(scope, v8_key, None);
       let k = seed.deserialize(&mut deserializer)?;
       Ok(Some(k))
     } else {
@@ -551,9 +567,11 @@ impl<'de> de::MapAccess<'de> for MapPairsAccess<'_, '_, '_> {
     seed: V,
   ) -> Result<V::Value> {
     debug_assert!(self.pos < self.len);
-    let v8_val = self.obj.get_index(self.scope, self.pos).unwrap();
+    let scope = unsafe { extend_scope(self.scope as *mut _ as *mut _) };
+    let v8_val = self.obj.get_index(scope, self.pos).unwrap();
     self.pos += 1;
-    let mut deserializer = Deserializer::new(self.scope, v8_val, None);
+    let scope = unsafe { extend_scope(self.scope as *mut _ as *mut _) };
+    let mut deserializer = Deserializer::new(scope, v8_val, None);
     seed.deserialize(&mut deserializer)
   }
 

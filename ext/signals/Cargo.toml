@@ -13,6 +13,11 @@ description = "Signals for Deno"
 [lib]
 path = "lib.rs"
 
+[features]
+default = []
+quickjs = []
+v8-engine = []
+
 [dependencies]
 deno_error.workspace = true
 libc.workspace = true

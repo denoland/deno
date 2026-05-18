@@ -174,10 +174,9 @@ unsafe extern "C" fn deno_ffi_callback(
         // it somehow cannot change the values that the loop sees, even if they both
         // refer the same `let bool_value`.
         let context: NonNull<v8::Context> = info.context;
-        let context = std::mem::transmute::<
-          NonNull<v8::Context>,
-          v8::Local<v8::Context>,
-        >(context);
+        let context = unsafe {
+          v8::Local::<v8::Context>::from_non_null(context)
+        };
         v8::callback_scope!(unsafe cb_scope, context);
         v8::scope!(scope, cb_scope);
 
@@ -222,10 +221,9 @@ unsafe fn do_ffi_callback(
   )]
   unsafe {
     let callback: NonNull<v8::Function> = info.callback;
-    let func = std::mem::transmute::<
-      NonNull<v8::Function>,
-      v8::Local<v8::Function>,
-    >(callback);
+    let func = unsafe {
+      v8::Local::<v8::Function>::from_non_null(callback)
+    };
     let result = result as *mut c_void;
     let vals: &[*const c_void] =
       std::slice::from_raw_parts(args, info.parameters.len());

@@ -85,7 +85,8 @@ pub fn create_function_template<'s>(
     v8::External::new(scope, CallbackInfo::new_raw(env, cb, cb_info) as *mut _);
   let function = v8::FunctionTemplate::builder_raw(call_fn)
     .data(external.into())
-    .build(scope);
+    .build(scope)
+    .expect("FunctionTemplate::build returned None");
 
   if let Some(v8str) = name {
     function.set_class_name(v8str);

@@ -2075,6 +2075,7 @@ dependencies = [
  "hyper 1.6.0",
  "hyper-util",
  "log",
+ "qjs_v8_compat",
  "rusqlite",
  "serde",
  "sha2",
@@ -2124,6 +2125,7 @@ dependencies = [
  "deno_error",
  "deno_image",
  "deno_webgpu",
+ "qjs_v8_compat",
  "raw-window-handle",
  "thiserror 2.0.12",
 ]
@@ -2186,6 +2188,7 @@ dependencies = [
  "percent-encoding",
  "pin-project",
  "pretty_assertions",
+ "qjs_v8_compat",
  "rstest",
  "serde",
  "serde_json",
@@ -2237,6 +2240,7 @@ dependencies = [
  "deno_error",
  "deno_features",
  "once_cell",
+ "qjs_v8_compat",
  "saffron",
  "serde",
  "thiserror 2.0.12",
@@ -2269,6 +2273,7 @@ dependencies = [
  "p256",
  "p384",
  "p521",
+ "qjs_v8_compat",
  "rand 0.8.5",
  "rsa",
  "serde",
@@ -2393,6 +2398,7 @@ dependencies = [
  "hyper-util",
  "ipnet",
  "percent-encoding",
+ "qjs_v8_compat",
  "rustls",
  "rustls-webpki 0.102.8",
  "serde",
@@ -2423,6 +2429,7 @@ dependencies = [
  "log",
  "memmap2",
  "num-bigint",
+ "qjs_v8_compat",
  "serde",
  "serde-value",
  "serde_json",
@@ -2524,6 +2531,7 @@ dependencies = [
  "percent-encoding",
  "phf 0.11.2",
  "pin-project",
+ "qjs_v8_compat",
  "rand 0.8.5",
  "scopeguard",
  "serde",
@@ -2544,6 +2552,7 @@ dependencies = [
  "image",
  "lcms2",
  "num-traits",
+ "qjs_v8_compat",
  "thiserror 2.0.12",
 ]
 
@@ -2581,6 +2590,7 @@ dependencies = [
  "os_pipe",
  "parking_lot",
  "pin-project",
+ "qjs_v8_compat",
  "rand 0.8.5",
  "tokio",
  "uuid",
@@ -2613,6 +2623,7 @@ dependencies = [
  "http-body-util",
  "log",
  "num-bigint",
+ "qjs_v8_compat",
  "rand 0.8.5",
  "rusqlite",
  "serde",
@@ -2725,6 +2736,7 @@ dependencies = [
  "libuv-sys-lite",
  "log",
  "napi_sym",
+ "qjs_v8_compat",
  "thiserror 2.0.12",
  "windows-sys 0.59.0",
 ]
@@ -2758,6 +2770,7 @@ dependencies = [
  "libc",
  "log",
  "pin-project",
+ "qjs_v8_compat",
  "quinn",
  "rustls-tokio-stream",
  "serde",
@@ -2817,6 +2830,7 @@ dependencies = [
  "node_resolver",
  "node_shim",
  "once_cell",
+ "qjs_v8_compat",
  "rand 0.8.5",
  "rustls-tokio-stream",
  "rustls-webpki 0.103.13",
@@ -2877,6 +2891,7 @@ dependencies = [
  "p521",
  "pbkdf2",
  "pkcs8 0.10.2",
+ "qjs_v8_compat",
  "rand 0.8.5",
  "ripemd",
  "rsa",
@@ -2904,6 +2919,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_permissions",
+ "qjs_v8_compat",
  "rusqlite",
  "thiserror 2.0.12",
 ]
@@ -3066,6 +3082,7 @@ dependencies = [
  "netif",
  "ntapi",
  "once_cell",
+ "qjs_v8_compat",
  "serde",
  "thiserror 2.0.12",
  "tokio",
@@ -3161,6 +3178,7 @@ dependencies = [
  "memchr",
  "nix 0.30.1",
  "pin-project-lite",
+ "qjs_v8_compat",
  "rand 0.8.5",
  "serde",
  "simd-json",
@@ -3387,6 +3405,7 @@ dependencies = [
  "opentelemetry_sdk",
  "pin-project",
  "prost",
+ "qjs_v8_compat",
  "serde",
  "sys_traits",
  "thiserror 2.0.12",
@@ -3413,6 +3432,7 @@ dependencies = [
  "deno_error",
  "deno_native_certs",
  "log",
+ "qjs_v8_compat",
  "rustls",
  "rustls-pemfile",
  "rustls-tokio-stream",
@@ -3509,6 +3529,7 @@ dependencies = [
  "flate2",
  "futures",
  "nalgebra",
+ "qjs_v8_compat",
  "serde",
  "thiserror 2.0.12",
  "tokio",
@@ -3525,6 +3546,7 @@ dependencies = [
  "deno_image",
  "deno_unsync",
  "indexmap 2.12.0",
+ "qjs_v8_compat",
  "raw-window-handle",
  "serde",
  "serde_json",
@@ -3540,6 +3562,7 @@ version = "0.247.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
+ "qjs_v8_compat",
 ]
 
 [[package]]
@@ -3560,6 +3583,7 @@ dependencies = [
  "hyper 1.6.0",
  "hyper-util",
  "once_cell",
+ "qjs_v8_compat",
  "rustls-tokio-stream",
  "serde",
  "thiserror 2.0.12",
@@ -3572,6 +3596,7 @@ version = "0.242.0"
 dependencies = [
  "deno_core",
  "deno_error",
+ "qjs_v8_compat",
  "rusqlite",
  "thiserror 2.0.12",
 ]
@@ -8350,6 +8375,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "qjs_v8_compat"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "cc",
+ "http 1.4.0",
+ "http-body-util",
+ "hyper 1.6.0",
+ "hyper-util",
+ "tokio",
+]
+
+[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9488,6 +9526,7 @@ dependencies = [
  "bencher",
  "deno_error",
  "num-bigint",
+ "qjs_v8_compat",
  "serde",
  "serde_bytes",
  "serde_json",

@@ -12,6 +12,48 @@ description = "Provides the deno runtime library"
 [features]
 # "fake" feature that allows to generate docs on docs.rs
 docsrs = []
+# Engine selection (mirrors what each ext/* crate exposes).
+default = ["v8-engine"]
+v8-engine = [
+  "deno_core/v8-engine",
+  "deno_web/v8-engine",
+  "deno_io/v8-engine",
+  "deno_net/v8-engine",
+  "deno_fetch/v8-engine",
+  "deno_http/v8-engine",
+  "deno_tls/v8-engine",
+]
+quickjs = [
+  # Pull in the swc-based extension transpiler so deno_node's .ts
+  # polyfills are converted to JS before being handed to QuickJS,
+  # which has no TypeScript support.
+  "transpile",
+  "deno_core/quickjs",
+  "deno_web/quickjs",
+  "deno_io/quickjs",
+  "deno_net/quickjs",
+  "deno_fetch/quickjs",
+  "deno_http/quickjs",
+  "deno_tls/quickjs",
+  "deno_node/quickjs",
+  "deno_node_sqlite/quickjs",
+  "deno_node_crypto/quickjs",
+  "deno_napi/quickjs",
+  "deno_canvas/quickjs",
+  "deno_webgpu/quickjs",
+  "deno_ffi/quickjs",
+  "deno_kv/quickjs",
+  "deno_cron/quickjs",
+  "deno_crypto/quickjs",
+  "deno_webidl/quickjs",
+  "deno_websocket/quickjs",
+  "deno_webstorage/quickjs",
+  "deno_image/quickjs",
+  "deno_telemetry/quickjs",
+  "deno_signals/quickjs",
+  "deno_process/quickjs",
+  "deno_os/quickjs",
+]
 # A feature that allows excluding `./js/99_main.js` from the exported extension.
 exclude_runtime_main_js = []
 # A dev feature to disable creation and loading of snapshots in favor of

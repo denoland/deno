@@ -15,3 +15,6 @@
 	path = tests/bench/testdata/lsp_benchdata
 	url = https://github.com/denoland/deno_lsp_benchdata.git
 	shallow = true
+[submodule "libs/qjs_v8_compat/vendor/quickjs-ng"]
+	path = libs/qjs_v8_compat/vendor/quickjs-ng
+	url = https://github.com/quickjs-ng/quickjs.git

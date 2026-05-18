@@ -3,7 +3,13 @@
 
 import process from "node:process";
 import { core, primordials } from "ext:core/mod.js";
-import { Duplex } from "node:stream";
+// qjs_v8_compat: avoid the `node:stream` ESM cycle that QuickJS's
+// resolver can't handle. Pulled in lazily via core.loadExtScript at
+// the point of use.
+const _streamMod = core.loadExtScript(
+  "ext:deno_node/internal/streams/duplex.js",
+);
+const Duplex = _streamMod.default ?? _streamMod.Duplex;
 const assert = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );

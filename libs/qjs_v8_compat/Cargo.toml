@@ -1,0 +1,47 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+#
+# qjs_v8_compat: a rusty_v8-shaped compat layer over QuickJS-ng.
+#
+# Provides a `pub mod v8` re-export that mirrors rusty_v8's surface so
+# deno_core can swap engines at compile time. See README and ARCHITECTURE
+# in this crate.
+
+[package]
+name = "qjs_v8_compat"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "rusty_v8-shaped API surface backed by QuickJS-ng"
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+# Default: the safe wrapper compiles against the FFI declarations, but no C
+# library is linked. Tests that only exercise the pure-Rust logic (refcount
+# tracking, semantic round-trip) run without QuickJS present.
+default = []
+# Link against QuickJS-ng. Default behavior compiles the vendored
+# `vendor/quickjs-ng` submodule via the `cc` crate. Override with:
+#   QUICKJS_NG_LIB_DIR    — explicit directory containing libquickjs.{a,so}
+#   QUICKJS_NG_DIR        — path to a built quickjs-ng tree
+#   QUICKJS_NG_STATIC=1   — force `static` linkage when using LIB_DIR/DIR
+link_quickjs = []
+# Compile the cppgc and fast_api shim modules. They are no-ops on the
+# QuickJS backend; the flag exists so deno_core compiles unchanged.
+cppgc_shim = []
+
+[dependencies]
+
+[build-dependencies]
+cc = "1.0"
+
+[dev-dependencies]
+bytes = { workspace = true }
+http = { workspace = true }
+http-body-util = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+tokio = { workspace = true }

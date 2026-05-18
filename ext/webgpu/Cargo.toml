@@ -13,6 +13,11 @@ description = "WebGPU implementation for Deno"
 [lib]
 path = "lib.rs"
 
+[features]
+default = []
+quickjs = ["deno_core/quickjs", "qjs_v8_compat/link_quickjs"]
+v8-engine = ["deno_core/v8-engine"]
+
 # We make all dependencies conditional on not being wasm,
 # so the whole workspace can built as wasm.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -20,6 +25,7 @@ wgpu-core = { workspace = true, features = ["raw-window-handle", "trace", "repla
 wgpu-types = { workspace = true, features = ["serde", "std"] }
 
 deno_core.workspace = true
+qjs_v8_compat = { workspace = true, optional = true }
 deno_error.workspace = true
 serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["full"] }

@@ -1,0 +1,609 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+//
+// Isolate / OwnedIsolate.
+//
+// In V8 an `Isolate` owns the JS heap; in QuickJS the analogous object is
+// `JSRuntime`. A `Context` (V8 `Context` == QuickJS `JSContext`) lives inside
+// an Isolate/Runtime.
+//
+// We mirror rusty_v8's split between `Isolate` (a borrowed view) and
+// `OwnedIsolate` (the owning RAII handle).
+
+use core::ffi::c_void;
+use core::ptr::NonNull;
+use std::cell::RefCell;
+use std::sync::Arc;
+
+use crate::sys;
+
+thread_local! {
+  static OP_BRIDGE_CURRENT_ISOLATE: std::cell::Cell<*mut Isolate> =
+    const { std::cell::Cell::new(std::ptr::null_mut()) };
+}
+
+pub(crate) fn set_current_isolate_ptr(p: *mut Isolate) {
+  OP_BRIDGE_CURRENT_ISOLATE.with(|c| c.set(p));
+}
+
+pub(crate) fn current_isolate_ptr() -> *mut Isolate {
+  OP_BRIDGE_CURRENT_ISOLATE.with(|c| c.get())
+}
+
+/// Best-effort access to the current default context — used by
+/// helpers like `ReturnValue::set` that need a JSContext for refcount
+/// management but don't have a scope on hand. Returns NULL if no
+/// isolate is registered.
+pub(crate) fn current_default_ctx() -> sys::Context {
+  let p = current_isolate_ptr();
+  if p.is_null() {
+    return std::ptr::null_mut();
+  }
+  unsafe { (*p).default_ctx() }
+}
+
+/// Backing data we attach to every Isolate. Stored in the runtime's opaque
+/// pointer so `&mut Isolate` and `Local<T>` can both reach it without
+/// threading state through every call.
+pub(crate) struct IsolateState {
+  pub microtasks_policy: MicrotasksPolicy,
+  /// Promise-rejection hook (compat with v8::PromiseRejectCallback).
+  pub promise_reject_cb: Option<PromiseRejectCallback>,
+  /// Slot pointers (v8::Isolate::set_data / get_data).
+  pub data_slots: [*mut c_void; 8],
+}
+
+impl IsolateState {
+  fn new() -> Self {
+    Self {
+      microtasks_policy: MicrotasksPolicy::Auto,
+      promise_reject_cb: None,
+      data_slots: [core::ptr::null_mut(); 8],
+    }
+  }
+}
+
+#[derive(Default)]
+pub struct CreateParams {
+  pub heap_limits: Option<(usize, usize)>,
+}
+impl CreateParams {
+  pub fn heap_limits(mut self, initial: usize, max: usize) -> Self {
+    self.heap_limits = Some((initial, max));
+    self
+  }
+  pub fn array_buffer_allocator_shared<T>(self, _alloc: T) -> Self {
+    self
+  }
+  pub fn embedder_wrapper_type_info_offsets(self, _a: i32, _b: i32) -> Self {
+    self
+  }
+  pub fn allow_atomics_wait(self, _allow: bool) -> Self {
+    self
+  }
+  pub fn external_references<R>(self, _refs: R) -> Self {
+    self
+  }
+  pub fn snapshot_blob<B>(self, _blob: B) -> Self {
+    self
+  }
+  pub fn heap_limits_from_system_memory(self, _physical_memory: u64, _virtual_memory: u64) -> Self {
+    self
+  }
+  pub fn set_max_old_generation_size_in_bytes(self, _bytes: usize) -> Self { self }
+  pub fn set_max_young_generation_size_in_bytes(self, _bytes: usize) -> Self { self }
+  pub fn set_code_range_size_in_bytes(self, _bytes: usize) -> Self { self }
+  pub fn max_old_generation_size_in_bytes(&self) -> usize { 0 }
+  pub fn max_young_generation_size_in_bytes(&self) -> usize { 0 }
+  pub fn code_range_size_in_bytes(&self) -> usize { 0 }
+}
+
+pub enum MicrotasksPolicy {
+  Auto,
+  Explicit,
+  Scoped,
+}
+
+/// `OwnedIsolate` is the RAII wrapper around a runtime + default context. On
+/// drop, frees the context and runtime in that order. The compat layer
+/// stores backing state in a leaked `Box<IsolateState>` referenced via the
+/// runtime opaque pointer.
+pub struct OwnedIsolate {
+  rt: sys::Runtime,
+  default_ctx: sys::Context,
+  // Held alive for the lifetime of the runtime; freed in `Drop`.
+  state: Option<Box<IsolateState>>,
+}
+
+unsafe impl Send for OwnedIsolate {}
+
+impl OwnedIsolate {
+  pub fn new(_params: CreateParams) -> Self {
+    let rt = sys::new_runtime();
+    // QuickJS-ng's default stack size is 256KB, way too small for
+    // deno's bootstrap which recurses deeply through op trampolines
+    // and JS-level setup. Bump to 8MB. Also disable to allow unlimited
+    // by passing 0.
+    unsafe {
+      crate::ffi::JS_SetMaxStackSize(rt, 8 * 1024 * 1024);
+      // Install a module loader so QuickJS can resolve `import x from
+      // "ext:core/ops"` etc by looking up the source we stashed in
+      // compile_module2 keyed by URL.
+      crate::ffi::JS_SetModuleLoaderFunc(
+        rt,
+        None,
+        Some(crate::module::module_loader_callback),
+        core::ptr::null_mut(),
+      );
+    }
+    let ctx = sys::new_context(rt);
+    let mut state = Box::new(IsolateState::new());
+    let state_ptr: *mut IsolateState = state.as_mut();
+    sys::set_runtime_opaque(rt, state_ptr as *mut c_void);
+
+    // QuickJS-ng's default JS_NewContext doesn't install a global
+    // `console` object the way V8 does. deno_core's 01_core.js boot
+    // reads `globalThis.console`, then calls `Object.keys(consoleFromV8)`
+    // on it, which throws on undefined. Install a stub console with
+    // no-op methods so that path completes.
+    let g = sys::get_global_object(ctx);
+    let console_raw = sys::new_object(ctx);
+    for method in [
+      "log", "debug", "info", "warn", "error", "dir", "dirxml",
+      "table", "trace", "group", "groupCollapsed", "groupEnd",
+      "clear", "count", "countReset", "assert", "profile",
+      "profileEnd", "time", "timeLog", "timeEnd", "timeStamp",
+      "context",
+    ] {
+      let f = unsafe {
+        crate::ffi::JS_NewCFunction(
+          ctx,
+          crate::function::function_new_trampoline,
+          core::ptr::null(),
+          0,
+        )
+      };
+      sys::set_property_str(ctx, console_raw, method, f);
+    }
+    sys::set_property_str(ctx, g, "console", console_raw);
+
+    // Stub WebAssembly.{Instance,Module,Memory,Table} so deno_core's
+    // wasm_instance_fn lookup doesn't panic. Real WASM support would
+    // require bridging QuickJS's lack of WASM into something compatible.
+    let wasm_raw = sys::new_object(ctx);
+    for cls in ["Instance", "Module", "Memory", "Table"] {
+      let ctor = unsafe {
+        crate::ffi::JS_NewCFunction(
+          ctx,
+          crate::function::function_new_trampoline,
+          core::ptr::null(),
+          0,
+        )
+      };
+      sys::set_property_str(ctx, wasm_raw, cls, ctor);
+    }
+    sys::set_property_str(ctx, g, "WebAssembly", wasm_raw);
+
+    sys::free_value(ctx, g);
+
+    let owned = Self {
+      rt,
+      default_ctx: ctx,
+      state: Some(state),
+    };
+    // Track this isolate as the "current" one for the thread. The
+    // op2-emitted slow_function_impl constructs a `CallbackScope` from
+    // its `info` pointer, which under QuickJS doesn't actually carry a
+    // back-pointer to the isolate; we recover it from this thread-local
+    // instead. (Rust hands back a pointer-stable Box-style location for
+    // OwnedIsolate via `Box::into_raw` at the JsRuntime layer; here
+    // we'll register the address after construction in the helper
+    // below.)
+    owned
+  }
+
+  pub fn thread_safe_handle(&self) -> IsolateHandle {
+    IsolateHandle { rt: self.rt }
+  }
+
+  pub fn set_promise_reject_callback<C>(&mut self, _cb: C) {
+    let _: PromiseRejectCallback = |_msg| {};
+  }
+  pub fn set_promise_reject_callback_inner(&mut self, cb: PromiseRejectCallback) {
+    self.state.as_mut().unwrap().promise_reject_cb = Some(cb);
+  }
+
+  pub fn set_microtasks_policy(&mut self, policy: MicrotasksPolicy) {
+    self.state.as_mut().unwrap().microtasks_policy = policy;
+  }
+
+  /// V8 has `Isolate::perform_microtask_checkpoint`. On QuickJS this means
+  /// draining the pending job queue.
+  pub fn perform_microtask_checkpoint(&mut self) {
+    while sys::run_pending_job(self.rt) {}
+  }
+
+  /// Underlying runtime pointer. Used by scope-creation helpers; not part
+  /// of the public v8 surface.
+  pub(crate) fn rt(&self) -> sys::Runtime {
+    self.rt
+  }
+
+  pub(crate) fn default_ctx(&self) -> sys::Context {
+    self.default_ctx
+  }
+  /// Public shared-borrow accessor used by Global::new's GlobalScope
+  /// trait — equivalent to default_ctx but pub.
+  pub fn default_ctx_shared(&self) -> sys::Context {
+    self.default_ctx
+  }
+
+  /// View this isolate as `&mut Isolate`. Mirrors V8's `*mut Isolate` deref.
+  pub fn as_isolate(&mut self) -> &mut Isolate {
+    // SAFETY: Isolate is a transparent newtype around OwnedIsolate's
+    // internal pointer; we hand out a reborrow tied to self's lifetime.
+    unsafe { &mut *(self as *mut OwnedIsolate as *mut Isolate) }
+  }
+  pub fn as_raw_isolate_ptr(&self) -> UnsafeRawIsolatePtr {
+    // Hand back a pointer to the OwnedIsolate itself (which is what
+    // `Isolate` wraps via #[repr(transparent)]-equivalent layout). The
+    // op2 macro's slow_function_impl calls
+    // `Isolate::from_raw_isolate_ptr(opctx.isolate)` and then derefs
+    // it as `&mut Isolate` — that needs to land back on this struct.
+    let p = self as *const Self as *mut Isolate;
+    set_current_isolate_ptr(p);
+    UnsafeRawIsolatePtr(p as *mut c_void)
+  }
+  pub fn as_mut(&mut self) -> &mut Isolate {
+    self.as_isolate()
+  }
+  pub fn create_blob(
+    &mut self,
+    _function_code_handling: crate::function::FunctionCodeHandling,
+  ) -> Option<crate::snapshot::StartupData> {
+    None
+  }
+  pub fn add_near_heap_limit_callback(
+    &mut self,
+    _cb: NearHeapLimitCallback,
+    _data: *mut c_void,
+  ) {
+  }
+  pub fn remove_near_heap_limit_callback(
+    &mut self,
+    _cb: NearHeapLimitCallback,
+    _heap_limit: usize,
+  ) {
+  }
+  pub fn set_capture_stack_trace_for_uncaught_exceptions(
+    &mut self,
+    _capture: bool,
+    _frame_limit: i32,
+  ) {
+  }
+  pub fn set_host_import_module_dynamically_callback<F>(
+    &mut self,
+    _cb: F,
+  ) {
+  }
+  pub fn set_host_import_module_with_phase_dynamically_callback<F>(
+    &mut self,
+    _cb: F,
+  ) {
+  }
+  pub fn set_host_initialize_import_meta_object_callback<F>(
+    &mut self,
+    _cb: F,
+  ) {
+  }
+  pub fn set_prepare_stack_trace_callback<F>(&mut self, _cb: F) {}
+  pub fn set_wasm_async_resolve_promise_callback<F>(&mut self, _cb: F) {}
+}
+
+pub type NearHeapLimitCallback = unsafe extern "C" fn(
+  data: *mut c_void,
+  current_heap_limit: usize,
+  initial_heap_limit: usize,
+) -> usize;
+
+impl std::ops::Deref for OwnedIsolate {
+  type Target = Isolate;
+  fn deref(&self) -> &Isolate {
+    unsafe { &*(self as *const OwnedIsolate as *const Isolate) }
+  }
+}
+impl std::ops::DerefMut for OwnedIsolate {
+  fn deref_mut(&mut self) -> &mut Isolate {
+    unsafe { &mut *(self as *mut OwnedIsolate as *mut Isolate) }
+  }
+}
+
+impl Drop for OwnedIsolate {
+  fn drop(&mut self) {
+    sys::free_context(self.default_ctx);
+    sys::free_runtime(self.rt);
+    // state Box is dropped here.
+    drop(self.state.take());
+  }
+}
+
+/// Borrowed isolate. Functionally identical to `OwnedIsolate` in API surface
+/// (rusty_v8 expresses many operations as `&mut Isolate`), but holds no
+/// drop responsibility.
+#[repr(transparent)]
+pub struct Isolate(OwnedIsolate);
+
+impl Isolate {
+  pub fn new(params: CreateParams) -> OwnedIsolate {
+    OwnedIsolate::new(params)
+  }
+  pub fn snapshot_creator<R, P>(
+    _external_references: R,
+    _params: P,
+  ) -> OwnedIsolate {
+    OwnedIsolate::new(CreateParams::default())
+  }
+  pub fn snapshot_creator_from_existing_snapshot<B, R, P>(
+    _snapshot_blob: B,
+    _external_references: R,
+    _params: P,
+  ) -> OwnedIsolate {
+    OwnedIsolate::new(CreateParams::default())
+  }
+  pub fn enqueue_microtask(&mut self, _task: crate::value::Local<'_, crate::function::Function>) {}
+  pub fn get_cpp_heap(&mut self) -> Option<*mut c_void> {
+    None
+  }
+  pub fn thread_safe_handle(&self) -> IsolateHandle {
+    self.0.thread_safe_handle()
+  }
+  /// Mirror of rusty_v8's `Isolate::from_raw_isolate_ptr`. Reconstructs
+  /// an Isolate reference from an opaque pointer V8 hands callbacks.
+  ///
+  /// # Safety
+  ///
+  /// `ptr` must be a live isolate pointer for the duration of the
+  /// returned reference's lifetime.
+  pub unsafe fn from_raw_isolate_ptr<'a>(ptr: impl Into<UnsafeRawIsolatePtr>) -> &'a mut Self {
+    let _ = ptr.into();
+    // The pointer the caller (op2-emitted slow_function_impl) passes
+    // came from `opctx.isolate`, which was set to a Rust-stack
+    // address before the OwnedIsolate was moved into JsRuntime. That
+    // address is now stale.
+    //
+    // We track the current OwnedIsolate via a thread-local that
+    // OwnedIsolate updates whenever it's used to make a HandleScope
+    // (which happens whenever deno_core touches it). Use that address
+    // — it points to the OwnedIsolate's actual current location.
+    let p = current_isolate_ptr();
+    Self::from_raw_isolate_ptr_inner(p)
+  }
+  /// Alias for `from_raw_isolate_ptr` — ext/telemetry calls this name.
+  pub unsafe fn from_raw_isolate_ptr_unchecked<'a>(
+    ptr: impl Into<UnsafeRawIsolatePtr>,
+  ) -> &'a mut Self {
+    unsafe { Self::from_raw_isolate_ptr(ptr) }
+  }
+  pub unsafe fn from_raw_isolate_ptr_inner<'a>(ptr: *mut Self) -> &'a mut Self {
+    unsafe { &mut *ptr }
+  }
+  pub fn raw_isolate_ptr(&mut self) -> *mut Self {
+    self as *mut Self
+  }
+  /// Mirror of OwnedIsolate's as_raw_isolate_ptr — ext/http calls it
+  /// through &mut Isolate.
+  pub fn as_raw_isolate_ptr(&self) -> UnsafeRawIsolatePtr {
+    let p = self as *const Self as *mut Isolate;
+    set_current_isolate_ptr(p);
+    UnsafeRawIsolatePtr(p as *mut c_void)
+  }
+  pub fn perform_microtask_checkpoint(&mut self) {
+    self.0.perform_microtask_checkpoint()
+  }
+  pub(crate) fn rt(&self) -> sys::Runtime {
+    self.0.rt
+  }
+  pub(crate) fn default_ctx(&self) -> sys::Context {
+    self.0.default_ctx
+  }
+  /// Public shared-borrow accessor for GlobalScope.
+  pub fn default_ctx_shared(&self) -> sys::Context {
+    self.0.default_ctx
+  }
+  pub fn cancel_terminate_execution(&mut self) {}
+  pub fn terminate_execution(&mut self) -> bool {
+    false
+  }
+  /// `Isolate::date_time_configuration_change_notification` —
+  /// notifies V8 that timezone/locale has changed. No-op on QuickJS.
+  pub fn date_time_configuration_change_notification(
+    &mut self,
+    _detection: crate::v8::TimeZoneDetection,
+  ) {
+  }
+  pub fn is_execution_terminating(&mut self) -> bool {
+    false
+  }
+  pub fn enter(&mut self) {}
+  pub fn exit(&mut self) {}
+  /// Throw `value` into the active context. Mirrors V8's
+  /// `Isolate::ThrowException`. Returns `undefined` so the caller can
+  /// pass it straight through as the function return value.
+  ///
+  /// QuickJS's `JS_Throw` transfers one refcount to the runtime's
+  /// pending-exception slot; we `JS_DupValue` first so the caller's
+  /// `Local` stays valid (its scope still owns the original refcount).
+  pub fn throw_exception<'s>(
+    &self,
+    value: crate::value::Local<'s, crate::value::Value>,
+  ) -> crate::value::Local<'s, crate::value::Value> {
+    let ctx = self.0.default_ctx;
+    let raw = sys::dup_value(ctx, value.raw());
+    let _ = sys::throw(ctx, raw);
+    crate::value::Local::from_raw(sys::jsv_undefined())
+  }
+  /// `Isolate::get_slot<T>()` — v8's per-isolate keyed-by-type
+  /// storage. Returns None: we don't store per-isolate slots.
+  pub fn get_slot<T: 'static>(&self) -> Option<&T> {
+    None
+  }
+  pub fn set_slot<T: 'static>(&mut self, _v: T) -> bool {
+    false
+  }
+  pub fn remove_slot<T: 'static>(&mut self) -> Option<T> {
+    None
+  }
+
+  pub fn get_data(&self, slot: u32) -> *mut c_void {
+    let s = self.state();
+    s.data_slots
+      .get(slot as usize)
+      .copied()
+      .unwrap_or(core::ptr::null_mut())
+  }
+  pub fn set_data(&mut self, slot: u32, data: *mut c_void) {
+    let s = unsafe { self.state_mut() };
+    if let Some(p) = s.data_slots.get_mut(slot as usize) {
+      *p = data;
+    }
+  }
+  pub(crate) fn state(&self) -> &IsolateState {
+    let p = sys::get_runtime_opaque(self.0.rt) as *const IsolateState;
+    assert!(!p.is_null(), "OwnedIsolate state was nulled out");
+    unsafe { &*p }
+  }
+  pub(crate) unsafe fn state_mut(&mut self) -> &mut IsolateState {
+    let p = sys::get_runtime_opaque(self.0.rt) as *mut IsolateState;
+    assert!(!p.is_null(), "OwnedIsolate state was nulled out");
+    unsafe { &mut *p }
+  }
+}
+
+/// Send/Sync handle to an isolate that can be used to request termination
+/// from another thread. QuickJS has `JS_RequestInterrupt`; we wire it
+/// later. For now it's just a tagged pointer.
+#[derive(Clone)]
+pub struct IsolateHandle {
+  rt: sys::Runtime,
+}
+unsafe impl Send for IsolateHandle {}
+unsafe impl Sync for IsolateHandle {}
+
+impl IsolateHandle {
+  pub fn terminate_execution(&self) -> bool {
+    // TODO: wire JS_RequestInterrupt
+    false
+  }
+  pub fn request_interrupt(
+    &self,
+    _cb: unsafe extern "C" fn(UnsafeRawIsolatePtr, *mut c_void),
+    _data: *mut c_void,
+  ) {
+  }
+}
+
+impl UnsafeRawIsolatePtr {
+  pub const fn null() -> Self {
+    Self(std::ptr::null_mut())
+  }
+  pub fn is_null(&self) -> bool { self.0.is_null() }
+}
+
+impl From<*mut Isolate> for UnsafeRawIsolatePtr {
+  fn from(p: *mut Isolate) -> Self {
+    Self(p as *mut c_void)
+  }
+}
+impl From<UnsafeRawIsolatePtr> for *mut Isolate {
+  fn from(p: UnsafeRawIsolatePtr) -> Self {
+    p.0 as *mut Isolate
+  }
+}
+
+#[derive(Default, Copy, Clone, Debug)]
+pub struct HeapStatistics {
+  pub total_heap_size: usize,
+  pub total_heap_size_executable: usize,
+  pub total_physical_size: usize,
+  pub total_available_size: usize,
+  pub used_heap_size: usize,
+  pub heap_size_limit: usize,
+  pub malloced_memory: usize,
+  pub external_memory: usize,
+  pub peak_malloced_memory: usize,
+  pub does_zap_garbage: usize,
+  pub number_of_native_contexts: usize,
+  pub number_of_detached_contexts: usize,
+  pub total_global_handles_size: usize,
+  pub used_global_handles_size: usize,
+}
+
+impl HeapStatistics {
+  pub fn used_heap_size(&self) -> usize {
+    self.used_heap_size
+  }
+  pub fn external_memory(&self) -> usize {
+    self.external_memory
+  }
+  pub fn total_heap_size(&self) -> usize {
+    self.total_heap_size
+  }
+  pub fn total_physical_size(&self) -> usize {
+    self.total_physical_size
+  }
+  pub fn total_available_size(&self) -> usize {
+    self.total_available_size
+  }
+  pub fn heap_size_limit(&self) -> usize {
+    self.heap_size_limit
+  }
+  pub fn malloced_memory(&self) -> usize {
+    self.malloced_memory
+  }
+  pub fn peak_malloced_memory(&self) -> usize {
+    self.peak_malloced_memory
+  }
+}
+
+/// Marker for the unsafe raw isolate pointer that some op2 paths take. We
+/// stash the raw `JSContext*` so that the equivalent code can resume on the
+/// QuickJS side.
+#[derive(Copy, Clone)]
+pub struct UnsafeRawIsolatePtr(pub *mut c_void);
+unsafe impl Send for UnsafeRawIsolatePtr {}
+unsafe impl Sync for UnsafeRawIsolatePtr {}
+
+/// V8's promise-rejection callback signature is a `extern "C" fn` taking a
+/// `PromiseRejectMessage`. For the compat layer we use a thin Rust trait
+/// object so the QuickJS-side dispatcher can route without going through C.
+pub type PromiseRejectCallback =
+  fn(message: crate::promise::PromiseRejectMessage<'_>);
+
+// `Platform` is a Rust-side placeholder. Real V8 uses libplatform; QuickJS
+// has no equivalent and runs all work on the embedder's thread.
+pub use crate::v8::Platform;
+
+thread_local! {
+  /// rusty_v8 has implicit isolate context. We replicate the slot so code
+  /// that calls helpers without an explicit `&mut Isolate` (e.g. error
+  /// constructors) can still locate the runtime.
+  pub(crate) static CURRENT_ISOLATE: RefCell<Option<Arc<core::cell::Cell<*mut Isolate>>>>
+    = const { RefCell::new(None) };
+}
+
+pub(crate) fn enter_isolate(iso: &mut Isolate) -> IsolateGuard {
+  let cell = Arc::new(core::cell::Cell::new(iso as *mut Isolate));
+  CURRENT_ISOLATE.with(|c| *c.borrow_mut() = Some(cell.clone()));
+  IsolateGuard { _cell: cell }
+}
+
+pub(crate) struct IsolateGuard {
+  _cell: Arc<core::cell::Cell<*mut Isolate>>,
+}
+impl Drop for IsolateGuard {
+  fn drop(&mut self) {
+    CURRENT_ISOLATE.with(|c| *c.borrow_mut() = None);
+  }
+}
+
+/// Public NonNull pointer mirror used by deno_core's `JsRuntime` struct.
+pub type IsolatePtr = NonNull<Isolate>;

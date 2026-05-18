@@ -330,17 +330,23 @@ impl<'snapshot> SerializableSnapshotSidecarData<'snapshot> {
 
 /// Given the sidecar data and a scope to extract data from, reconstructs the
 /// `SnapshottedData` and `SnapshotLoadDataStore`.
+#[cfg(feature = "quickjs")]
+type LoadSnapshotScope<'s, 'i> = v8::PinScope<'s, 'i>;
+#[cfg(not(feature = "quickjs"))]
+type LoadSnapshotScope<'s, 'i> = v8::PinScope<'s, 'i, ()>;
+
 pub(crate) fn load_snapshotted_data_from_snapshot<'snapshot>(
-  scope: &mut v8::PinScope<()>,
+  scope: &mut LoadSnapshotScope,
   context: v8::Local<v8::Context>,
   raw_data: SerializableSnapshotSidecarData<'snapshot>,
 ) -> (SnapshottedData<'snapshot>, SnapshotLoadDataStore) {
   let scope = &mut v8::ContextScope::new(scope, context);
   let mut data = SnapshotLoadDataStore::default();
   for i in 0..raw_data.data_count {
-    let item = scope
+    let item: v8::Local<v8::Data> = scope
       .get_context_data_from_snapshot_once::<v8::Data>(i as usize)
       .unwrap();
+    let item: v8::Local<v8::Data> = unsafe { core::mem::transmute(item) };
     let item = v8::Global::new(scope, item);
     data.data.push(Some(item));
   }

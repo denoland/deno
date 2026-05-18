@@ -337,7 +337,7 @@ pub fn to_v8_error<'s, 'i>(
   let maybe_exception = cb.call(tc_scope, this, &args);
 
   match maybe_exception {
-    Some(exception) => exception,
+    Some(exception) => unsafe { std::mem::transmute(exception) },
     None => {
       // The JS error builder callback failed. This can happen when the
       // stack is exhausted (e.g. Maximum call stack size exceeded) and
@@ -346,7 +346,11 @@ pub fn to_v8_error<'s, 'i>(
       if tc_scope.has_caught() {
         tc_scope.reset();
       }
-      message.into()
+      let v: v8::Local<v8::Value> = message.into();
+      // SAFETY: tc_scope is a child of scope ('s); message's lifetime
+      // is sound to extend back to 's because the underlying JSValue
+      // is owned by scope's arena (not tc_scope's).
+      unsafe { std::mem::transmute(v) }
     }
   }
 }

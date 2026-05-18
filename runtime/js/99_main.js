@@ -1016,6 +1016,7 @@ delete internals.dispatchProcessExitEvent;
 const dispatchProcessBeforeExitEvent = internals.dispatchProcessBeforeExitEvent;
 delete internals.dispatchProcessBeforeExitEvent;
 
+core.print("[99_main] reached bootstrap assignment\n", true);
 globalThis.bootstrap = {
   mainRuntime: bootstrapMainRuntime,
   workerRuntime: bootstrapWorkerRuntime,
@@ -1025,6 +1026,7 @@ globalThis.bootstrap = {
   dispatchProcessExitEvent,
   dispatchProcessBeforeExitEvent,
 };
+core.print("[99_main] bootstrap installed\n", true);
 
 event.setEventTargetData(globalThis);
 event.saveGlobalThisReference(globalThis);
