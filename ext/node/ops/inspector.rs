@@ -168,6 +168,25 @@ pub fn op_inspector_emit_protocol_event(
   }
 }
 
+/// Convert a `file://` URL emitted by V8 (e.g. as a script name in a
+/// stack frame) into the OS filesystem path. CJS code sees `__filename`
+/// as such a path (with backslashes on Windows), so this lets test
+/// assertions like `findFrameInInitiator(__filename, initiator)` match.
+///
+/// Anything that isn't a `file://` URL is returned unchanged.
+fn file_url_to_os_path(s: String) -> String {
+  let Some(after_scheme) = s.strip_prefix("file://") else {
+    return s;
+  };
+  // file:///path/to/file -> /path/to/file (Unix)
+  // file:///C:/path -> C:\path             (Windows)
+  if sys_traits::impls::is_windows() {
+    after_scheme.trim_start_matches('/').replace('/', "\\")
+  } else {
+    after_scheme.to_string()
+  }
+}
+
 fn capture_initiator(scope: &mut v8::PinScope<'_, '_>) -> serde_json::Value {
   let Some(stack_trace) = v8::StackTrace::current_stack_trace(scope, 10) else {
     return serde_json::json!({ "type": "other" });
@@ -195,19 +214,7 @@ fn capture_initiator(scope: &mut v8::PinScope<'_, '_>) -> serde_json::Value {
     let url = frame
       .get_script_name(scope)
       .map(|n| n.to_rust_string_lossy(scope))
-      .map(|s| {
-        // CJS code sees `__filename` as an OS filesystem path (with
-        // backslashes on Windows), not a `file://` URL. Convert here so
-        // that test frame lookups like
-        // `findFrameInInitiator(__filename, initiator)` match.
-        if s.starts_with("file://")
-          && let Ok(parsed) = ModuleSpecifier::parse(&s)
-          && let Ok(path) = parsed.to_file_path()
-        {
-          return path.to_string_lossy().into_owned();
-        }
-        s
-      })
+      .map(file_url_to_os_path)
       .unwrap_or_default();
     let line_number = frame.get_line_number().saturating_sub(1); // CDP uses 0-based
     let column_number = frame.get_column().saturating_sub(1);
