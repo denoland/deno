@@ -205,6 +205,12 @@ function fork(
     } else if (options.env?.DENO_NODE_USE_OPENSSL_CA) {
       delete options.env.DENO_NODE_USE_OPENSSL_CA;
     }
+    if (result.trace_event_categories) {
+      options.env = {
+        ...(options.env ?? process.env),
+        DENO_NODE_TRACE_EVENT_CATEGORIES: result.trace_event_categories,
+      };
+    }
   }
 
   if (typeof options.stdio === "string") {
