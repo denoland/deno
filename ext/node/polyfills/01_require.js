@@ -1584,9 +1584,7 @@ Module._resolveFilename = function (
     request !== parent?.filename
   ) {
     const parentURL = parent?.[kSourceURL] ??
-      (parent?.filename
-        ? url.pathToFileURL(parent.filename).href
-        : undefined);
+      (parent?.filename ? url.pathToFileURL(parent.filename).href : undefined);
     const context = {
       conditions: ["node", "require"],
       importAttributes: { __proto__: null },
