@@ -4960,6 +4960,8 @@
     "parallel/test-inspector-has-inspector-false.js": {},
     "parallel/test-inspector-ip-detection.js": {},
     "parallel/test-inspector-network-arbitrary-data.js": {},
+    "parallel/test-inspector-network-data-received.js": {},
+    "parallel/test-inspector-network-data-sent.js": {},
     "parallel/test-listen-fd-cluster.js": {
       "linux": false,
       "darwin": false,
