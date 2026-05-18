@@ -1,0 +1,33 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "if": "unix",
+      "args": "compile -A --output server main.ts",
+      "output": "compile.out"
+    },
+    {
+      "if": "unix",
+      "commandName": "./server",
+      "args": [],
+      "envs": {
+        "DENO_SERVE_ADDRESS": "tcp:127.0.0.1:0"
+      },
+      "output": "main.out"
+    },
+    {
+      "if": "windows",
+      "args": "compile -A --output server.exe main.ts",
+      "output": "compile.out"
+    },
+    {
+      "if": "windows",
+      "commandName": "./server.exe",
+      "args": [],
+      "envs": {
+        "DENO_SERVE_ADDRESS": "tcp:127.0.0.1:0"
+      },
+      "output": "main.out"
+    }
+  ]
+}
