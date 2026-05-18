@@ -3,17 +3,8 @@
   "monotonic-clock.any.worker.html": true,
   "basic.any.html": true,
   "basic.any.worker.html": true,
-  "idlharness.any.html": {
-    "expectedFailures": [
-      "Window interface: attribute performance"
-    ]
-  },
-  "idlharness.any.worker.html": {
-    "expectedFailures": [
-      "WorkerGlobalScope interface: attribute performance",
-      "WorkerGlobalScope interface: self must inherit property \"performance\" with the proper type"
-    ]
-  },
+  "idlharness.any.html": true,
+  "idlharness.any.worker.html": true,
   "window-worker-timeOrigin.window.html": true,
   "clamped-time-origin-isolated.https.html": false,
   "clamped-time-origin.html": false,
