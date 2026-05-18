@@ -3092,9 +3092,10 @@ impl ModuleMap {
     let expr_start = strip_script_prologue(source_text).unwrap_or(source_text);
     let trimmed: &str =
       expr_start.trim_end_matches(|c: char| c.is_whitespace() || c == ';');
-    // We emit `"use strict";` at the head of the compile_function body so
-    // the IIFE we wrap still runs in strict mode (function bodies default
-    // to sloppy mode, unlike modules).
+    // Emit `"use strict";` at the head of the compile_function body so
+    // the IIFE still runs in strict mode (function bodies default to
+    // sloppy, unlike modules — and these polyfills were strict before
+    // being lazified, so we preserve that).
     let wrapped_source = format!("\"use strict\"; return ({trimmed});");
     let name = v8::String::new(scope, specifier).unwrap();
     let origin = v8::ScriptOrigin::new(
