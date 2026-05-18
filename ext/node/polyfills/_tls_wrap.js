@@ -1426,8 +1426,13 @@ function onConnectSecure() {
 
   let verifyError = makeVerifyError(this._handle.verifyError());
 
-  // Verify that server's identity matches its certificate's names
-  if (!verifyError && !this.isSessionReused()) {
+  // Verify that server's identity matches its certificate's names.
+  // Run this even on resumed sessions: rustls defers NotValidForName to
+  // the JS layer, so a name-mismatched handshake can succeed at the TLS
+  // layer (and have its session cached) before checkServerIdentity()
+  // destroys it. Re-running here ensures a later resumption of that
+  // session can't bypass the hostname check.
+  if (!verifyError) {
     const hostname = options.servername ||
       options.host ||
       options.socket?._host ||
