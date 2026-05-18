@@ -587,17 +587,21 @@ function autoUnrefIfIdle(port: MessagePort) {
 }
 
 function setRefed(port: MessagePort, ref: boolean) {
-  if (port[kRefed] === ref) return;
-  port[kRefed] = ref;
   const kind = port[kTransportKind];
   if (kind === "parent") {
-    // Mirror onto globalThis for hasMessageEventListener() in 99_main.js
-    // (which treats an unref'd parentPort like having no listeners).
+    // For the parent transport kRefed is *not* tracked in lockstep with
+    // the globalThis flag: bridge install on first listener doesn't flip
+    // kRefed, so user-driven ref()/unref() must always sync the flag,
+    // not bail on a no-op transition. Without this, parentPort.unref()
+    // becomes a no-op when called before any explicit ref().
+    port[kRefed] = ref;
     globalThis[unrefParentPort] = !ref;
     // deno-lint-ignore no-explicit-any
     (port as any)[unrefParentPort] = !ref;
     return;
   }
+  if (port[kRefed] === ref) return;
+  port[kRefed] = ref;
   const promise = port[kRecvPromise];
   if (promise) {
     if (ref) core.refOpPromise(promise);
