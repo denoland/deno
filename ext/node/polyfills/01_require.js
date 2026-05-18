@@ -774,12 +774,18 @@ function executeEsmLoadHookChain(fileUrl, context) {
         return { source: null, format: "builtin", shortCircuit: true };
       }
       if (StringPrototypeStartsWith(loadUrl, "file://")) {
-        const source = op_require_read_file(url.fileURLToPath(loadUrl));
-        return {
-          source,
-          format: currentContext?.format ?? undefined,
-          shortCircuit: true,
-        };
+        try {
+          const source = op_require_read_file(url.fileURLToPath(loadUrl));
+          return {
+            source,
+            format: currentContext?.format ?? undefined,
+            shortCircuit: true,
+          };
+        } catch {
+          // File isn't available synchronously (e.g. embedded in a compiled
+          // binary's eszip); fall through to Rust default loading.
+          return { source: null, shortCircuit: true };
+        }
       }
       // For other schemes (data:, http(s):, etc.) we cannot synchronously
       // produce source here; fall through to Rust default loading.
