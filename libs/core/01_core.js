@@ -196,6 +196,7 @@
       }
     }
     immediate[kRefed] = null;
+    emitDestroy(immediate.asyncId);
     immediate._onImmediate = null;
     immediateQueue.remove(immediate);
   }

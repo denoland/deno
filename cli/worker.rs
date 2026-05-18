@@ -116,6 +116,10 @@ impl CliMainWorker {
         let sessions_state = inspector.sessions_state();
         if sessions_state.has_nonblocking_wait_for_disconnect {
           inspector.broadcast_context_destroyed();
+          // Sessions that called NodeRuntime.notifyWhenWaitingForDisconnect
+          // get a dedicated notification before the wait loop, instead of
+          // the generic Runtime.executionContextDestroyed.
+          inspector.broadcast_waiting_for_disconnect();
           // Match Node.js message format that debugger clients rely on
           log::info!("Waiting for the debugger to disconnect...");
           inspector.wait_for_sessions_disconnect();

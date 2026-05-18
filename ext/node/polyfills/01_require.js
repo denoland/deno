@@ -60,6 +60,7 @@ const {
   SafeMap,
   SafeSet,
   SafeWeakMap,
+  SetPrototypeAdd,
   SetPrototypeHas,
   String,
   StringPrototypeCharCodeAt,
@@ -103,12 +104,15 @@ const _tlsWrap = core.loadExtScript(
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import assertStrict from "node:assert/strict";
 const asyncHooks = core.loadExtScript("ext:deno_node/async_hooks.ts").default;
+const internalAsyncHooks = core.loadExtScript(
+  "ext:deno_node/internal/async_hooks.ts",
+);
 const {
   emitAfter: internalAsyncHooksEmitAfter,
   emitBefore: internalAsyncHooksEmitBefore,
   emitDestroy: internalAsyncHooksEmitDestroy,
   emitInit: internalAsyncHooksEmitInit,
-} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+} = internalAsyncHooks;
 const buffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs").default;
 const childProcess = core.loadExtScript("ext:deno_node/child_process.ts");
 const cluster = core.loadExtScript("ext:deno_node/cluster.ts").default;
@@ -180,6 +184,7 @@ const internalCryptoUtil = core.loadExtScript(
 const internalCryptoX509 = core.loadExtScript(
   "ext:deno_node/internal/crypto/x509.ts",
 ).default;
+import * as internalCompileCache from "ext:deno_node/internal/compile_cache.js";
 const internalDgram = core.loadExtScript(
   "ext:deno_node/internal/dgram.ts",
 ).default;
@@ -193,6 +198,22 @@ const internalBuffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const internalErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
+// `internal/fs/promises.ts` evaluates `lazyFs()` at top-level, so triggering
+// its load during `setupBuiltinModules()` would re-enter the half-built
+// `node:fs` namespace. A Proxy defers evaluation until the first time the
+// requiring code reads a property; by then `node:fs` is fully initialized.
+const lazyInternalFsPromises = core.createLazyLoader(
+  "ext:deno_node/internal/fs/promises.ts",
+);
+let internalFsPromisesCache;
+const internalFsPromisesProxy = new Proxy(ObjectCreate(null), {
+  get(_target, prop) {
+    return (internalFsPromisesCache ??= lazyInternalFsPromises())[prop];
+  },
+  has(_target, prop) {
+    return prop in (internalFsPromisesCache ??= lazyInternalFsPromises());
+  },
+});
 const internalHttp = core.loadExtScript("ext:deno_node/internal/http.ts");
 const internalHttp2Core = core.loadExtScript(
   "ext:deno_node/internal/http2/core.ts",
@@ -215,12 +236,17 @@ const internalStreamsState =
 const internalSocketAddress = core.loadExtScript(
   "ext:deno_node/internal/socketaddress.js",
 );
+const internalJsStreamSocket = core.loadExtScript(
+  "ext:deno_node/internal/js_stream_socket.js",
+).default;
+const internalNet = core.loadExtScript("ext:deno_node/internal/net.ts");
 const internalTestBinding = core.loadExtScript(
   "ext:deno_node/internal/test/binding.ts",
 );
 const internalTimers = core.loadExtScript(
   "ext:deno_node/internal/timers.mjs",
 );
+import * as internalTty from "ext:deno_node/internal/tty.js";
 const internalUrl = core.loadExtScript("ext:deno_node/internal/url.ts");
 const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const internalUtilDebuglog = core.loadExtScript(
@@ -231,6 +257,18 @@ const internalUtilInspect = core.loadExtScript(
 );
 const internalValidators = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
+);
+const internalWebstreamsAdapters = core.loadExtScript(
+  "ext:deno_node/internal/webstreams/adapters.js",
+);
+const internalWebstreamsReadableStream = core.loadExtScript(
+  "ext:deno_node/internal/webstreams/readablestream.js",
+);
+const internalWebstreamsUtil = core.loadExtScript(
+  "ext:deno_node/internal/webstreams/util.js",
+);
+const internalWorkerJsTransferable = core.loadExtScript(
+  "ext:deno_node/internal/worker/js_transferable.js",
 );
 const internalConsole = core.loadExtScript(
   "ext:deno_node/internal/console/constructor.mjs",
@@ -273,6 +311,10 @@ const workerThreads = core.loadExtScript(
 );
 const wasi = core.loadExtScript("ext:deno_node/wasi.ts").default;
 const zlib = core.loadExtScript("ext:deno_node/zlib.js");
+const internalOptions = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
+const { getOptionValue } = internalOptions;
 
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
@@ -314,6 +356,7 @@ function setupBuiltinModules() {
     inspector,
     "inspector/promises": inspectorPromises,
     "internal/assert/myers_diff": internalAssertMyersDiff.default,
+    "internal/async_hooks": internalAsyncHooks,
     "internal/console/constructor": internalConsole,
     "internal/child_process": internalCp,
     "internal/crypto/certificate": internalCryptoCertificate,
@@ -335,6 +378,7 @@ function setupBuiltinModules() {
     "internal/buffer": internalBuffer.default,
     "internal/errors": internalErrors,
     "internal/event_target": internalEventTarget,
+    "internal/fs/promises": internalFsPromisesProxy,
     "internal/fs/utils": internalFsUtils,
     "internal/http": internalHttp.default,
     "internal/http2/core": internalHttp2Core,
@@ -346,13 +390,21 @@ function setupBuiltinModules() {
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
     "internal/streams/state": internalStreamsState,
     "internal/socketaddress": internalSocketAddress,
+    "internal/js_stream_socket": internalJsStreamSocket,
+    "internal/net": internalNet,
+    "internal/options": internalOptions,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
+    "internal/tty": internalTty,
     "internal/url": internalUrl,
     "internal/util/debuglog": internalUtilDebuglog.default,
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
     "internal/validators": internalValidators,
+    "internal/webstreams/adapters": internalWebstreamsAdapters,
+    "internal/webstreams/readablestream": internalWebstreamsReadableStream,
+    "internal/webstreams/util": internalWebstreamsUtil,
+    "internal/worker/js_transferable": internalWorkerJsTransferable,
     net,
     module: Module,
     os,
@@ -444,6 +496,8 @@ let hasInspectBrk = false;
 let usesLocalNodeModulesDir = false;
 let patched = false;
 
+let internalModuleStat = op_require_stat;
+
 function stat(filename) {
   if (statCache !== null) {
     const result = statCache.get(filename);
@@ -451,7 +505,7 @@ function stat(filename) {
       return result;
     }
   }
-  const result = op_require_stat(filename);
+  const result = internalModuleStat(filename);
   if (statCache !== null && result >= 0) {
     statCache.set(filename, result);
   }
@@ -697,17 +751,62 @@ function Module(id = "", parent) {
   updateChildren(parent, this, false);
   this.filename = null;
   this.loaded = false;
-  this.parent = parent;
   this.children = [];
 }
 
+let parentDeprecationEmitted = false;
+function emitParentDeprecation() {
+  if (parentDeprecationEmitted) return;
+  if (!getOptionValue("--pending-deprecation")) return;
+  parentDeprecationEmitted = true;
+  process.emitWarning(
+    "module.parent is deprecated due to accuracy issues. Please use " +
+      "require.main to find program entry point instead.",
+    "DeprecationWarning",
+    "DEP0144",
+  );
+}
+
+ObjectDefineProperty(Module.prototype, "parent", {
+  __proto__: null,
+  configurable: true,
+  enumerable: true,
+  get() {
+    emitParentDeprecation();
+    return moduleParentCache.get(this);
+  },
+  set(value) {
+    emitParentDeprecation();
+    moduleParentCache.set(this, value);
+  },
+});
+
 Module.builtinModules = builtinModules;
+
+Module.enableCompileCache = internalCompileCache.enableCompileCache;
+Module.flushCompileCache = internalCompileCache.flushCompileCache;
+Module.getCompileCacheDir = internalCompileCache.getCompileCacheDir;
+Module.constants = internalCompileCache.constants;
 
 Module._extensions = ObjectCreate(null);
 Module._cache = ObjectCreate(null);
 Module._pathCache = ObjectCreate(null);
 let modulePaths = [];
 Module.globalPaths = modulePaths;
+
+ObjectDefineProperty(Module, "_stat", {
+  __proto__: null,
+  configurable: true,
+  get() {
+    return internalModuleStat;
+  },
+  set(value) {
+    internalUtil.emitExperimentalWarning("Module._stat");
+    internalModuleStat = value;
+    Module.stat = value;
+    return true;
+  },
+});
 
 const CHAR_FORWARD_SLASH = 47;
 const TRAILING_SLASH_REGEX = /(?:^|\/)\.?\.$/;
@@ -916,6 +1015,7 @@ Module._load = function (request, parent, isMain) {
     // Slice 'node:' prefix
     const id = StringPrototypeSlice(filename, 5);
 
+    maybeEmitNativeModuleDeprecation(id);
     const module = loadNativeModule(id, id);
     if (!module) {
       // TODO:
@@ -935,6 +1035,7 @@ Module._load = function (request, parent, isMain) {
     return cachedModule.exports;
   }
 
+  maybeEmitNativeModuleDeprecation(filename);
   const mod = loadNativeModule(filename, request);
   if (
     mod
@@ -1008,6 +1109,10 @@ Module._load = function (request, parent, isMain) {
       }
     }
     throw err;
+  }
+
+  if (isMain && parent === null) {
+    core.processTicksAndRejections();
   }
 
   return module.exports;
@@ -1404,7 +1509,7 @@ Module._extensions[".js"] = function (module, filename) {
   ) {
     return loadMaybeCjs(module, filename);
   } else if (StringPrototypeEndsWith(filename, ".mts")) {
-    return loadESMFromCJS(module, filename);
+    return loadEsm(module, filename);
   } else if (StringPrototypeEndsWith(filename, ".cts")) {
     return loadCjs(module, filename);
   } else {
@@ -1413,22 +1518,56 @@ Module._extensions[".js"] = function (module, filename) {
 };
 
 Module._extensions[".cjs"] = loadCjs;
-Module._extensions[".mjs"] = loadESMFromCJS;
+Module._extensions[".mjs"] = loadEsm;
 Module._extensions[".wasm"] = loadESMFromCJS;
 
 function loadMaybeCjs(module, filename) {
   const content = op_require_read_file(filename);
   const format = op_require_is_maybe_cjs(filename) ? undefined : "module";
-  module._compile(content, filename, format);
+  internalCompileCache.onCompile(filename, content, format);
+  internalCompileCache.onPersist(filename);
+  try {
+    module._compile(content, filename, format);
+  } catch (e) {
+    internalCompileCache.onCompileError(filename, format);
+    throw e;
+  }
 }
 
 function loadCjs(module, filename) {
   const content = op_require_read_file(filename);
-  module._compile(content, filename, "commonjs");
+  internalCompileCache.onCompile(filename, content, "commonjs");
+  internalCompileCache.onPersist(filename);
+  try {
+    module._compile(content, filename, "commonjs");
+  } catch (e) {
+    internalCompileCache.onCompileError(filename, "commonjs");
+    throw e;
+  }
+}
+
+function loadEsm(module, filename) {
+  let content;
+  try {
+    content = op_require_read_file(filename);
+  } catch { /* missing or non-text file - let loadESMFromCJS handle errors */ }
+  if (typeof content === "string") {
+    internalCompileCache.onCompile(filename, content, "module");
+    internalCompileCache.onPersist(filename);
+  }
+  try {
+    loadESMFromCJS(module, filename, content);
+  } catch (e) {
+    internalCompileCache.onCompileError(filename, "module");
+    throw e;
+  }
 }
 
 function _throwRequireAsyncModule(specifier, module) {
-  const parent = module?.parent?.filename ?? "<unknown>";
+  // Use moduleParentCache directly to avoid triggering the module.parent
+  // deprecation getter when --pending-deprecation is set.
+  const parentModule = module ? moduleParentCache.get(module) : undefined;
+  const parent = parentModule?.filename ?? "<unknown>";
   throw new internalErrors.ERR_REQUIRE_ASYNC_MODULE(specifier, parent);
 }
 
@@ -1654,19 +1793,59 @@ Module.Module = Module;
 
 nativeModuleExports.module = Module;
 
+// Modules that emit a deprecation warning the first time they are required via
+// the CJS loader (`require('_stream_readable')` etc.). Maps the module name to
+// [message, code]. Matches Node's `BuiltinModule#compileForPublicLoader` --
+// `process.getBuiltinModule()` does NOT trigger these warnings.
+const deprecatedNativeModules = ObjectCreate(null);
+deprecatedNativeModules._tls_common = [
+  "The _tls_common module is deprecated. Use `node:tls` instead.",
+  "DEP0192",
+];
+deprecatedNativeModules._tls_wrap = [
+  "The _tls_wrap module is deprecated. Use `node:tls` instead.",
+  "DEP0192",
+];
+deprecatedNativeModules._stream_duplex = [
+  "The _stream_duplex module is deprecated. Use `node:stream` instead.",
+  "DEP0193",
+];
+deprecatedNativeModules._stream_passthrough = [
+  "The _stream_passthrough module is deprecated. Use `node:stream` instead.",
+  "DEP0193",
+];
+deprecatedNativeModules._stream_readable = [
+  "The _stream_readable module is deprecated. Use `node:stream` instead.",
+  "DEP0193",
+];
+deprecatedNativeModules._stream_transform = [
+  "The _stream_transform module is deprecated. Use `node:stream` instead.",
+  "DEP0193",
+];
+deprecatedNativeModules._stream_writable = [
+  "The _stream_writable module is deprecated. Use `node:stream` instead.",
+  "DEP0193",
+];
+
+const emittedNativeModuleDeprecations = new SafeSet();
+function maybeEmitNativeModuleDeprecation(request) {
+  const deprecation = deprecatedNativeModules[request];
+  if (deprecation === undefined) return;
+  if (SetPrototypeHas(emittedNativeModuleDeprecations, request)) return;
+  SetPrototypeAdd(emittedNativeModuleDeprecations, request);
+  process.emitWarning(
+    deprecation[0],
+    "DeprecationWarning",
+    deprecation[1],
+  );
+}
+
 function loadNativeModule(_id, request) {
   if (nativeModulePolyfill.has(request)) {
     return nativeModulePolyfill.get(request);
   }
   const modExports = nativeModuleExports[request];
   if (modExports) {
-    if (request === "_tls_common") {
-      process.emitWarning(
-        "The _tls_common module is deprecated. Use `node:tls` instead.",
-        "DeprecationWarning",
-        "DEP0192",
-      );
-    }
     const nodeMod = new Module(request);
     nodeMod.exports = modExports;
     nodeMod.loaded = true;
@@ -2284,10 +2463,19 @@ function closeIdleConnections() {
 
 internals.closeIdleConnections = closeIdleConnections;
 
+const enableCompileCache = internalCompileCache.enableCompileCache;
+const flushCompileCache = internalCompileCache.flushCompileCache;
+const getCompileCacheDir = internalCompileCache.getCompileCacheDir;
+const compileCacheConstants = internalCompileCache.constants;
+
 export {
   builtinModules,
+  compileCacheConstants as constants,
   createRequire,
+  enableCompileCache,
+  flushCompileCache,
   getBuiltinModule,
+  getCompileCacheDir,
   isBuiltin,
   Module,
   SourceMap,
@@ -2302,6 +2490,7 @@ export const _pathCache = Module._pathCache;
 export const _preloadModules = Module._preloadModules;
 export const _resolveFilename = Module._resolveFilename;
 export const _resolveLookupPaths = Module._resolveLookupPaths;
+export const _stat = Module._stat;
 export const globalPaths = Module.globalPaths;
 
 export default Module;

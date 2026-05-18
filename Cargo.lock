@@ -2161,6 +2161,7 @@ version = "0.400.0"
 dependencies = [
  "anyhow",
  "az",
+ "base64 0.22.1",
  "bencher",
  "bincode",
  "bit-set",
@@ -2802,6 +2803,7 @@ dependencies = [
  "deno_whoami",
  "errno 0.3.10",
  "h2 0.4.7",
+ "hdrhistogram",
  "http 1.4.0",
  "http-body-util",
  "hyper 1.6.0",

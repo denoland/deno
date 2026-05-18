@@ -2346,6 +2346,11 @@ class ERR_TLS_INVALID_PROTOCOL_VERSION extends NodeTypeError {
     );
   }
 }
+class ERR_TLS_INVALID_PROTOCOL_METHOD extends NodeTypeError {
+  constructor(message: string) {
+    super("ERR_TLS_INVALID_PROTOCOL_METHOD", message);
+  }
+}
 class ERR_TLS_PROTOCOL_VERSION_CONFLICT extends NodeTypeError {
   constructor(prevProtocol: string, protocol: string) {
     super(
@@ -2551,6 +2556,21 @@ class ERR_VM_MODULE_NOT_MODULE extends NodeError {
     );
   }
 }
+class ERR_VM_MODULE_LINK_FAILURE extends NodeError {
+  // deno-lint-ignore no-explicit-any
+  constructor(message: string, cause?: any) {
+    super("ERR_VM_MODULE_LINK_FAILURE", message);
+    if (cause !== undefined) {
+      // deno-lint-ignore no-explicit-any
+      (this as any).cause = cause;
+    }
+  }
+}
+class ERR_MODULE_LINK_MISMATCH extends NodeTypeError {
+  constructor(x: string) {
+    super("ERR_MODULE_LINK_MISMATCH", x);
+  }
+}
 class ERR_VM_MODULE_STATUS extends NodeError {
   constructor(x: string) {
     super("ERR_VM_MODULE_STATUS", `Module status ${x}`);
@@ -2559,6 +2579,11 @@ class ERR_VM_MODULE_STATUS extends NodeError {
 class ERR_WASI_ALREADY_STARTED extends NodeError {
   constructor() {
     super("ERR_WASI_ALREADY_STARTED", `WASI instance has already started`);
+  }
+}
+class ERR_WASI_NOT_STARTED extends NodeError {
+  constructor() {
+    super("ERR_WASI_NOT_STARTED", `wasi.start() has not been called`);
   }
 }
 class ERR_WORKER_INVALID_EXEC_ARGV extends NodeError {
@@ -3515,6 +3540,7 @@ return {
   ERR_TLS_DH_PARAM_SIZE,
   ERR_TLS_HANDSHAKE_TIMEOUT,
   ERR_TLS_INVALID_CONTEXT,
+  ERR_TLS_INVALID_PROTOCOL_METHOD,
   ERR_TLS_INVALID_PROTOCOL_VERSION,
   ERR_TLS_ALPN_CALLBACK_INVALID_RESULT,
   ERR_TLS_INVALID_STATE,
@@ -3545,10 +3571,13 @@ return {
   ERR_VM_MODULE_ALREADY_LINKED,
   ERR_VM_MODULE_CANNOT_CREATE_CACHED_DATA,
   ERR_VM_MODULE_DIFFERENT_CONTEXT,
+  ERR_VM_MODULE_LINK_FAILURE,
   ERR_VM_MODULE_LINKING_ERRORED,
   ERR_VM_MODULE_NOT_MODULE,
   ERR_VM_MODULE_STATUS,
+  ERR_MODULE_LINK_MISMATCH,
   ERR_WASI_ALREADY_STARTED,
+  ERR_WASI_NOT_STARTED,
   ERR_WORKER_INIT_FAILED,
   ERR_WORKER_INVALID_EXEC_ARGV,
   ERR_WORKER_MESSAGING_ERRORED,
@@ -3822,6 +3851,7 @@ return {
     ERR_TLS_DH_PARAM_SIZE,
     ERR_TLS_HANDSHAKE_TIMEOUT,
     ERR_TLS_INVALID_CONTEXT,
+    ERR_TLS_INVALID_PROTOCOL_METHOD,
     ERR_TLS_INVALID_PROTOCOL_VERSION,
     ERR_TLS_INVALID_STATE,
     ERR_TLS_PROTOCOL_VERSION_CONFLICT,
@@ -3850,10 +3880,13 @@ return {
     ERR_VM_MODULE_ALREADY_LINKED,
     ERR_VM_MODULE_CANNOT_CREATE_CACHED_DATA,
     ERR_VM_MODULE_DIFFERENT_CONTEXT,
+    ERR_VM_MODULE_LINK_FAILURE,
     ERR_VM_MODULE_LINKING_ERRORED,
     ERR_VM_MODULE_NOT_MODULE,
     ERR_VM_MODULE_STATUS,
+    ERR_MODULE_LINK_MISMATCH,
     ERR_WASI_ALREADY_STARTED,
+    ERR_WASI_NOT_STARTED,
     ERR_WORKER_INIT_FAILED,
     ERR_WORKER_INVALID_EXEC_ARGV,
     ERR_WORKER_MESSAGING_ERRORED,

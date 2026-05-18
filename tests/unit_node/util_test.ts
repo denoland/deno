@@ -222,6 +222,21 @@ Deno.test("[util] aborted()", async () => {
   assertEquals(done, true);
 });
 
+Deno.test("[util] aborted() drops pending promise when resource is GCed", async () => {
+  const command = new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "--quiet",
+      "--v8-flags=--expose-gc",
+      "tests/unit_node/testdata/util_aborted_gc.ts",
+    ],
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const { code, stderr } = await command.output();
+  assertEquals(code, 0, new TextDecoder().decode(stderr));
+});
+
 Deno.test("[util] styleText()", () => {
   const redText = util.styleText("red", "error");
   assertEquals(redText, "\x1B[31merror\x1B[39m");
@@ -242,6 +257,24 @@ Deno.test("[util] stripVTControlCharacters() removes OSC 8 hyperlinks", () => {
   const inputBel =
     "\x1b]8;;http://example.com\x07This is a link\x1b]8;;\x07 hello";
   assertEquals(util.stripVTControlCharacters(inputBel), "This is a link hello");
+});
+
+Deno.test("[util] queryObjects() counts instances", () => {
+  class UtilQueryObjectsFixture {}
+  // util.queryObjects is not declared on the bundled @types/node yet, but the
+  // runtime exposes it (mirroring v8.queryObjects).
+  // deno-lint-ignore no-explicit-any
+  const queryObjects = (util as any).queryObjects as (
+    ctor: unknown,
+    options?: { format?: "count" | "summary" },
+  ) => number | string[];
+  const before = queryObjects(UtilQueryObjectsFixture, { format: "count" });
+  const refs = [];
+  for (let i = 0; i < 25; i++) refs.push(new UtilQueryObjectsFixture());
+  const after = queryObjects(UtilQueryObjectsFixture, { format: "count" });
+  assertEquals(typeof before, "number");
+  assertEquals((after as number) - (before as number) >= 25, true);
+  assertEquals(refs.length, 25);
 });
 
 Deno.test("[util] parseEnv()", () => {

@@ -28,6 +28,7 @@ uv_compat_export = []
 [dependencies]
 anyhow.workspace = true
 az = "1.2.1"
+base64 = { workspace = true }
 bincode.workspace = true
 bit-set.workspace = true
 bit-vec.workspace = true

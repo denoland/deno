@@ -1236,30 +1236,6 @@
     ]
   },
   "import_export": {
-    "ec_importKey.https.any.html": {
-      "expectedFailures": [
-        "Good parameters: P-521 bits (spki, buffer(90, compressed), {name: ECDSA, namedCurve: P-521}, true, [verify])",
-        "Good parameters: P-521 bits (raw, buffer(67, compressed), {name: ECDSA, namedCurve: P-521}, true, [verify])",
-        "Good parameters: P-521 bits (spki, buffer(90, compressed), {name: ECDSA, namedCurve: P-521}, true, [])",
-        "Good parameters: P-521 bits (raw, buffer(67, compressed), {name: ECDSA, namedCurve: P-521}, true, [])",
-        "Good parameters: P-521 bits (spki, buffer(90, compressed), {name: ECDSA, namedCurve: P-521}, true, [verify, verify])",
-        "Good parameters: P-521 bits (raw, buffer(67, compressed), {name: ECDSA, namedCurve: P-521}, true, [verify, verify])",
-        "Good parameters: P-521 bits (spki, buffer(90, compressed), {name: ECDH, namedCurve: P-521}, true, [])",
-        "Good parameters: P-521 bits (raw, buffer(67, compressed), {name: ECDH, namedCurve: P-521}, true, [])"
-      ]
-    },
-    "ec_importKey.https.any.worker.html": {
-      "expectedFailures": [
-        "Good parameters: P-521 bits (spki, buffer(90, compressed), {name: ECDSA, namedCurve: P-521}, true, [verify])",
-        "Good parameters: P-521 bits (raw, buffer(67, compressed), {name: ECDSA, namedCurve: P-521}, true, [verify])",
-        "Good parameters: P-521 bits (spki, buffer(90, compressed), {name: ECDSA, namedCurve: P-521}, true, [])",
-        "Good parameters: P-521 bits (raw, buffer(67, compressed), {name: ECDSA, namedCurve: P-521}, true, [])",
-        "Good parameters: P-521 bits (spki, buffer(90, compressed), {name: ECDSA, namedCurve: P-521}, true, [verify, verify])",
-        "Good parameters: P-521 bits (raw, buffer(67, compressed), {name: ECDSA, namedCurve: P-521}, true, [verify, verify])",
-        "Good parameters: P-521 bits (spki, buffer(90, compressed), {name: ECDH, namedCurve: P-521}, true, [])",
-        "Good parameters: P-521 bits (raw, buffer(67, compressed), {name: ECDH, namedCurve: P-521}, true, [])"
-      ]
-    },
     "rsa_importKey.https.any.html": true,
     "rsa_importKey.https.any.worker.html": true,
     "symmetric_importKey.https.any.html": true,

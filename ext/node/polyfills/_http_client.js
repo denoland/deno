@@ -1013,6 +1013,9 @@ function listenSocketTimeout(req) {
 }
 
 ClientRequest.prototype.onSocket = function onSocket(socket, err) {
+  if (socket && !err && socket.destroyed && socket.errored) {
+    err = socket.errored;
+  }
   if (socket && !err) {
     socket._httpMessage = this;
     socket.on("error", socketErrorListener);

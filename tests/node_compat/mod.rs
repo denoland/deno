@@ -299,7 +299,6 @@ const IGNORED_TEST_DIRS: &[&str] = &[
   "tick-processor",
   "tools",
   "v8-updates",
-  "wasi",
   "wpt",
 ];
 
@@ -486,8 +485,16 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
     if let Some(captures) = re.captures(line) {
       let flags_str = captures.get(1).unwrap().as_str();
       for flag in flags_str.split_whitespace() {
-        match flag {
-          "--expose_externalize_string" => {
+        // V8 treats `--foo-bar` and `--foo_bar` as the same flag, and Node's
+        // test suite uses both spellings interchangeably. Normalize underscores
+        // to hyphens before matching so we don't have to enumerate both forms.
+        let normalized = if flag.starts_with("--") {
+          flag.replace('_', "-")
+        } else {
+          flag.to_string()
+        };
+        match normalized.as_str() {
+          "--expose-externalize-string" => {
             v8_flags.push("--expose-externalize-string".to_string());
           }
           "--expose-gc" => {
@@ -502,14 +509,31 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
           "--pending-deprecation" => {
             node_options.push("--pending-deprecation".to_string());
           }
-          f if f.starts_with("--dns-result-order=") => {
-            node_options.push(f.to_string());
+          "--expose-internals" | "--expose_internals" => {
+            node_options.push("--expose-internals".to_string());
+          }
+          "--tls-min-v1.0"
+          | "--tls-min-v1.1"
+          | "--tls-min-v1.2"
+          | "--tls-min-v1.3"
+          | "--tls-max-v1.2"
+          | "--tls-max-v1.3"
+          | "--use-bundled-ca"
+          | "--no-use-bundled-ca"
+          | "--use-openssl-ca"
+          | "--no-use-openssl-ca"
+          | "--use-system-ca"
+          | "--no-use-system-ca" => {
+            node_options.push(flag.to_string());
+          }
+          n if n.starts_with("--dns-result-order=") => {
+            node_options.push(flag.to_string());
           }
           "--allow-natives-syntax" => {
             v8_flags.push("--allow-natives-syntax".to_string());
           }
-          f if f.starts_with("--title=") => {
-            node_options.push(f.to_string());
+          n if n.starts_with("--title=") => {
+            node_options.push(flag.to_string());
           }
           _ => {}
         }
