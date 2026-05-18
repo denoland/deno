@@ -56,10 +56,10 @@ const APPEND_ARG_NAMES = ["name", "value"];
 // https://url.spec.whatwg.org/#urlencoded-serializing
 //
 // For each byte:
-//   0x20 (SP)                                 → "+"
+//   0x20 (SP)                                 -> "+"
 //   0x2A, 0x2D, 0x2E, 0x30-0x39, 0x41-0x5A,
-//   0x5F, 0x61-0x7A                           → that byte verbatim
-//   anything else                             → "%XX" (uppercase hex)
+//   0x5F, 0x61-0x7A                           -> that byte verbatim
+//   anything else                             -> "%XX" (uppercase hex)
 //
 // formEscape[i] holds the precomputed serialization of byte i; formEscapeSafe[i]
 // is 1 if byte i is in the verbatim set (no escape needed).
