@@ -129,31 +129,42 @@ function newInnerRequest(method, url, headerList, body, maybeBlob) {
 }
 
 /**
- * Resolve and cache the request's header list. The list is produced lazily
- * (by the `headerList` factory passed to `newInnerRequest`) because callers
- * often don't need it; once produced it's stored in `headerListInner`.
+ * Resolve and cache the request's header list. Fast path: the fetch-side
+ * plain-data InnerRequest produced by `newInnerRequest` / `cloneInnerRequest`
+ * (recognised by its `headerListFn` field) caches the result in
+ * `headerListInner`. Falls through to a `.headerList` accessor for the
+ * server-side InnerRequest class in `ext/http/00_serve.ts`, which has its
+ * own getter shape.
  *
  * @param {InnerRequest} request
  * @returns {[string, string][]}
  */
 function getHeaderList(request) {
-  if (request.headerListInner === null) {
-    try {
-      request.headerListInner = request.headerListFn();
-    } catch {
-      throw new TypeError("Cannot read headers: request closed");
+  if (request.headerListFn !== undefined) {
+    if (request.headerListInner === null) {
+      try {
+        request.headerListInner = request.headerListFn();
+      } catch {
+        throw new TypeError("Cannot read headers: request closed");
+      }
     }
+    return request.headerListInner;
   }
-  return request.headerListInner;
+  return request.headerList;
 }
 
 /**
- * Resolve and cache the original request URL (urlList[0]).
+ * Resolve and cache the original request URL (urlList[0]). Fast path: the
+ * fetch-side InnerRequest. Falls through to a `.url()` method on the
+ * server-side InnerRequest class.
  *
  * @param {InnerRequest} request
  * @returns {string}
  */
 function getRequestUrl(request) {
+  if (request.urlList === undefined) {
+    return request.url();
+  }
   if (request.urlListProcessed[0] === undefined) {
     try {
       request.urlListProcessed[0] = request.urlList[0]();
@@ -166,7 +177,11 @@ function getRequestUrl(request) {
 
 /**
  * Resolve and cache the request's current URL (the last entry in
- * `urlList`, which may be a redirect target).
+ * `urlList`, which may be a redirect target). Only callers inside
+ * ext/fetch (which always hold a fetch-side InnerRequest) reach this;
+ * if a server-side InnerRequest ever gets here, the lack of `urlList`
+ * will surface immediately rather than silently returning the wrong
+ * thing.
  *
  * @param {InnerRequest} request
  * @returns {string}
