@@ -1433,10 +1433,10 @@ function buildCommand(
     const result = op_node_translate_cli_args(args, scriptInNpmPackage, true);
     args = result.denoArgs;
     includeNpmProcessState = result.needsNpmProcessState;
-    if (result.ca_stores?.length) {
+    if (result.caStores?.length) {
       env.DENO_TLS_CA_STORE = result.caStores.join(",");
     }
-    if (result.use_openssl_ca) {
+    if (result.useOpensslCa) {
       env.DENO_NODE_USE_OPENSSL_CA = "1";
     } else {
       delete env.DENO_NODE_USE_OPENSSL_CA;
