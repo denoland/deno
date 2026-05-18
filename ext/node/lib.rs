@@ -169,6 +169,11 @@ deno_core::extension!(deno_node,
   ops = [
     ops::assert::op_node_get_first_expression,
 
+    ops::module_hooks::op_module_hooks_register,
+    ops::module_hooks::op_module_hooks_poll_load,
+    ops::module_hooks::op_module_hooks_respond_load,
+    ops::module_hooks::op_module_default_resolve,
+
     ops::blocklist::op_socket_address_parse,
     ops::blocklist::op_socket_address_get_serialization,
 
@@ -584,6 +589,7 @@ deno_core::extension!(deno_node,
     "internal_binding/http_parser.ts",
     "internal_binding/handle_wrap.ts",
     "internal_binding/http2.ts",
+    "internal_binding/inspector.js",
     "internal_binding/node_file.ts",
     "internal_binding/node_options.ts",
     "internal_binding/pipe_wrap.ts",
@@ -725,6 +731,7 @@ deno_core::extension!(deno_node,
   },
   state = |state, options| {
     state.put(options.fs.clone());
+    state.put(ops::module_hooks::LoaderHookRegistry::default());
 
     if let Some(init) = &options.maybe_init {
       state.put(init.sys.clone());
@@ -740,6 +747,9 @@ deno_core::extension!(deno_node,
     state.put(crate::ops::tls::NodeTlsState {
       custom_ca_certs: None,
       client_session_store: std::sync::Arc::new(
+        deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
+      ),
+      client_session_store_insecure: std::sync::Arc::new(
         deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
       ),
       server_ticketer: None,

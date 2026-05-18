@@ -55,7 +55,15 @@ use crate::ExtNodeSys;
 #[derive(Clone)]
 pub(crate) struct NodeTlsState {
   pub(crate) custom_ca_certs: Option<Vec<String>>,
+  /// Session cache for connections that fully verify the peer cert
+  /// (`rejectUnauthorized: true`, the default).
   pub(crate) client_session_store:
+    Arc<dyn deno_tls::rustls::client::ClientSessionStore>,
+  /// Separate session cache for connections that accept invalid certs
+  /// (`rejectUnauthorized: false`). Sessions cached here are never
+  /// offered to a later strict connection, so a deferred cert error in
+  /// the first handshake cannot be skipped by a resumed strict handshake.
+  pub(crate) client_session_store_insecure:
     Arc<dyn deno_tls::rustls::client::ClientSessionStore>,
   /// Process-shared TLS session ticketer used for every `node:tls` server
   /// config in this isolate.  Sharing the ticketer across servers in a
@@ -230,6 +238,9 @@ pub fn op_set_default_ca_certificates(
     state.put(NodeTlsState {
       custom_ca_certs: Some(certs),
       client_session_store: Arc::new(
+        deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
+      ),
+      client_session_store_insecure: Arc::new(
         deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
       ),
       server_ticketer: None,
