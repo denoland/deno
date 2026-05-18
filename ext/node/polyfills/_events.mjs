@@ -1275,7 +1275,6 @@ function getEventEmitterAsyncResource() {
     }
   };
 
-  EventEmitter.EventEmitterAsyncResource = _EventEmitterAsyncResource;
   return _EventEmitterAsyncResource;
 }
 
