@@ -35,8 +35,18 @@
   "decompression-uint8array-output.tentative.any.html": true,
   "decompression-uint8array-output.tentative.any.worker.html": true,
   "decompression-with-detach.tentative.window.html": true,
-  "idlharness.https.any.html": true,
-  "idlharness.https.any.worker.html": true,
+  "idlharness.https.any.html": {
+    "expectedFailures": [
+      "CompressionStream interface: existence and properties of interface object",
+      "DecompressionStream interface: existence and properties of interface object"
+    ]
+  },
+  "idlharness.https.any.worker.html": {
+    "expectedFailures": [
+      "CompressionStream interface: existence and properties of interface object",
+      "DecompressionStream interface: existence and properties of interface object"
+    ]
+  },
   "compression-constructor-error.tentative.any.html": true,
   "compression-constructor-error.tentative.any.worker.html": true,
   "compression-large-flush-output.any.html": true,
