@@ -127,6 +127,111 @@ Deno.test(async function cacheApi() {
   assertFalse(await caches.has(cacheName));
 });
 
+Deno.test(async function cacheKeys() {
+  const cacheName = "cache-keys";
+  await caches.delete(cacheName);
+  const cache = await caches.open(cacheName);
+
+  assertEquals(typeof cache.keys, "function");
+  assertEquals(await cache.keys(), []);
+
+  await cache.put(
+    new Request("https://example.com/a", {
+      headers: { "X-Test": "one" },
+    }),
+    new Response("a"),
+  );
+  await cache.put("https://example.com/b?x=1", new Response("b"));
+  await cache.put(
+    new Request("https://example.com/vary", {
+      headers: { "Accept": "application/json" },
+    }),
+    new Response("vary", {
+      headers: { "Vary": "Accept" },
+    }),
+  );
+
+  const all = await cache.keys();
+  assertEquals(all.length, 3);
+  assert(all[0] instanceof Request);
+  assertEquals(all.map((request) => request.url), [
+    "https://example.com/a",
+    "https://example.com/b?x=1",
+    "https://example.com/vary",
+  ]);
+  assertEquals(all[0].headers.get("x-test"), "one");
+
+  const explicitUndefined = await cache.keys(undefined);
+  assertEquals(explicitUndefined.map((request) => request.url), [
+    "https://example.com/a",
+    "https://example.com/b?x=1",
+    "https://example.com/vary",
+  ]);
+
+  const fragmentMatch = await cache.keys("https://example.com/a#frag");
+  assertEquals(fragmentMatch.map((request) => request.url), [
+    "https://example.com/a",
+  ]);
+  const urlMatch = await cache.keys(new URL("https://example.com/a"));
+  assertEquals(urlMatch.map((request) => request.url), [
+    "https://example.com/a",
+  ]);
+
+  assertEquals(await cache.keys("https://example.com/missing"), []);
+
+  const ignoreSearch = await cache.keys("https://example.com/b?x=2", {
+    ignoreSearch: true,
+  });
+  assertEquals(ignoreSearch.map((request) => request.url), [
+    "https://example.com/b?x=1",
+  ]);
+
+  const headRequest = new Request("https://example.com/a", {
+    method: "HEAD",
+  });
+  assertEquals(await cache.keys(headRequest), []);
+  const ignoreMethod = await cache.keys(headRequest, { ignoreMethod: true });
+  assertEquals(ignoreMethod.map((request) => request.url), [
+    "https://example.com/a",
+  ]);
+
+  assertEquals(await cache.keys("https://example.com/vary"), []);
+  assertEquals(
+    await cache.keys(
+      new Request("https://example.com/vary", {
+        headers: { "Accept": "text/html" },
+      }),
+    ),
+    [],
+  );
+  const varyMatch = await cache.keys(
+    new Request("https://example.com/vary", {
+      headers: { "Accept": "application/json" },
+    }),
+  );
+  assertEquals(varyMatch.map((request) => request.url), [
+    "https://example.com/vary",
+  ]);
+  const ignoreVary = await cache.keys("https://example.com/vary", {
+    ignoreVary: true,
+  });
+  assertEquals(ignoreVary.map((request) => request.url), [
+    "https://example.com/vary",
+  ]);
+
+  assert(await cache.delete("https://example.com/a"));
+  const afterDelete = await cache.keys();
+  assertEquals(afterDelete.map((request) => request.url), [
+    "https://example.com/b?x=1",
+    "https://example.com/vary",
+  ]);
+
+  assert(await caches.delete(cacheName));
+  const recreated = await caches.open(cacheName);
+  assertEquals(await recreated.keys(), []);
+  assert(await caches.delete(cacheName));
+});
+
 Deno.test(async function cacheStorageMatch() {
   const names = ["match-a", "match-b", "match-c"];
   for (const name of names) {

@@ -105,6 +105,7 @@ deno_core::extension!(deno_cache,
     op_cache_storage_keys,
     op_cache_put,
     op_cache_match,
+    op_cache_keys,
     op_cache_delete,
   ],
   lazy_loaded_js = [ "01_cache.js" ],
@@ -134,6 +135,29 @@ pub struct CachePutRequest {
 #[serde(rename_all = "camelCase")]
 pub struct CacheMatchRequest {
   pub cache_id: i64,
+  pub request_url: String,
+  pub request_headers: Vec<(ByteString, ByteString)>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheQueryOptions {
+  pub ignore_search: bool,
+  pub ignore_vary: bool,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheKeysRequest {
+  pub cache_id: i64,
+  pub request_url: Option<String>,
+  pub request_headers: Vec<(ByteString, ByteString)>,
+  pub options: CacheQueryOptions,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheKey {
   pub request_url: String,
   pub request_headers: Vec<(ByteString, ByteString)>,
 }
@@ -223,6 +247,16 @@ impl CacheImpl {
     match self {
       Self::Sqlite(cache) => cache.r#match(request).await,
       Self::Lsc(cache) => cache.r#match(request).await,
+    }
+  }
+
+  pub async fn keys(
+    &self,
+    request: CacheKeysRequest,
+  ) -> Result<Vec<CacheKey>, CacheError> {
+    match self {
+      Self::Sqlite(cache) => cache.keys(request).await,
+      Self::Lsc(cache) => cache.keys(request).await,
     }
   }
 
@@ -362,6 +396,16 @@ pub async fn op_cache_match(
 }
 
 #[op2]
+#[serde]
+pub async fn op_cache_keys(
+  state: Rc<RefCell<OpState>>,
+  #[serde] request: CacheKeysRequest,
+) -> Result<Vec<CacheKey>, CacheError> {
+  let cache = get_cache(&state)?;
+  cache.keys(request).await
+}
+
+#[op2]
 pub async fn op_cache_delete(
   state: Rc<RefCell<OpState>>,
   #[serde] request: CacheDeleteRequest,
@@ -405,6 +449,114 @@ pub fn vary_header_matches(
     }
   }
   true
+}
+
+pub fn cache_key_matches_request(
+  query_request_url: Option<&str>,
+  query_request_headers: &[(ByteString, ByteString)],
+  cached_request_url: &str,
+  cached_request_headers: &[(ByteString, ByteString)],
+  cached_response_headers: &[(ByteString, ByteString)],
+  options: &CacheQueryOptions,
+) -> bool {
+  let Some(query_request_url) = query_request_url else {
+    return true;
+  };
+
+  if !request_url_matches(
+    query_request_url,
+    cached_request_url,
+    options.ignore_search,
+  ) {
+    return false;
+  }
+
+  if !options.ignore_vary
+    && let Some(vary_header) = get_header("vary", cached_response_headers)
+    && !vary_header_matches(
+      &vary_header,
+      query_request_headers,
+      cached_request_headers,
+    )
+  {
+    return false;
+  }
+
+  true
+}
+
+fn request_url_matches(
+  query_request_url: &str,
+  cached_request_url: &str,
+  ignore_search: bool,
+) -> bool {
+  if !ignore_search {
+    return query_request_url == cached_request_url;
+  }
+
+  match (
+    strip_url_query(query_request_url),
+    strip_url_query(cached_request_url),
+  ) {
+    (Some(query_request_url), Some(cached_request_url)) => {
+      query_request_url == cached_request_url
+    }
+    _ => query_request_url == cached_request_url,
+  }
+}
+
+fn strip_url_query(url: &str) -> Option<String> {
+  let mut url = deno_core::url::Url::parse(url).ok()?;
+  url.set_query(None);
+  url.set_fragment(None);
+  Some(url.to_string())
+}
+
+#[test]
+fn test_request_url_matches_ignore_search() {
+  assert!(request_url_matches(
+    "https://deno.com/cache?query=1",
+    "https://deno.com/cache?query=2",
+    true,
+  ));
+  assert!(!request_url_matches(
+    "https://deno.com/cache?query=1",
+    "https://deno.com/cache?query=2",
+    false,
+  ));
+}
+
+#[test]
+fn test_cache_key_matches_request_vary() {
+  let query_request_headers =
+    vec![(ByteString::from("accept"), ByteString::from("text/html"))];
+  let cached_request_headers = vec![(
+    ByteString::from("accept"),
+    ByteString::from("application/json"),
+  )];
+  let cached_response_headers =
+    vec![(ByteString::from("vary"), ByteString::from("accept"))];
+  let options = CacheQueryOptions::default();
+  assert!(!cache_key_matches_request(
+    Some("https://deno.com/cache"),
+    &query_request_headers,
+    "https://deno.com/cache",
+    &cached_request_headers,
+    &cached_response_headers,
+    &options,
+  ));
+  let options = CacheQueryOptions {
+    ignore_vary: true,
+    ..Default::default()
+  };
+  assert!(cache_key_matches_request(
+    Some("https://deno.com/cache"),
+    &query_request_headers,
+    "https://deno.com/cache",
+    &cached_request_headers,
+    &cached_response_headers,
+    &options,
+  ));
 }
 
 #[test]
