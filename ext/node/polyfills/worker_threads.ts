@@ -1352,16 +1352,17 @@ async function pollCrossThreadMessages() {
   }
 }
 
-// Register the thread eagerly so that `postMessageToThread` from another
-// thread can reach us, even before any `workerMessage` listener exists.
-// Without this, the destination's `result === 0` ("no such thread")
-// would fire instead of a timeout, breaking
-// `test-worker-messaging-errors-timeout` which expects a
-// `ERR_WORKER_MESSAGING_TIMEOUT` rather than `_FAILED` when the worker
-// is alive but unresponsive.
+// Observe listener add/remove for `workerMessage`. Actual registration
+// of the cross-thread resource is deferred to `ensureCrossThreadMessaging`
+// so threads that never touch `postMessageToThread` don't carry an
+// extra entry in `core.resources()` -- holding an op resource open
+// prevents the runtime's "top-level await promise never resolved"
+// detection from firing.
 function setupCrossThreadMessaging() {
   workerMessageListenerCount = process.listenerCount?.("workerMessage") ?? 0;
-  ensureCrossThreadMessaging();
+  if (workerMessageListenerCount > 0) {
+    ensureCrossThreadMessaging();
+  }
 
   process.on("newListener", (eventName: string) => {
     if (eventName === "workerMessage") {
@@ -1489,13 +1490,14 @@ function postMessageToThread(
     if (timer !== undefined) clearTimeout(timer);
     return PromiseReject(err);
   }
-  // 0 = no such thread (always fail fast: it'll never come back).
-  // 1 = destination has no `workerMessage` listener; with a timeout
-  // we wait so the caller observes ERR_WORKER_MESSAGING_TIMEOUT, but
-  // without a timeout we fail immediately rather than hang forever.
-  if (result === 0 || (result === 1 && timer === undefined)) {
+  // 0 = no such thread, 1 = destination has no `workerMessage`
+  // listener. In both cases there's no chance of a reply; if a
+  // timeout was provided the caller wants
+  // ERR_WORKER_MESSAGING_TIMEOUT rather than
+  // ERR_WORKER_MESSAGING_FAILED, so let the timer fire. Without a
+  // timeout we fail immediately rather than hang forever.
+  if ((result === 0 || result === 1) && timer === undefined) {
     pendingThreadMessages.delete(id);
-    if (timer !== undefined) clearTimeout(timer);
     return PromiseReject(new ERR_WORKER_MESSAGING_FAILED());
   }
 
