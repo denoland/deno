@@ -13,7 +13,6 @@ const {
   op_url_parse_search_params,
   op_url_parse_with_base,
   op_url_reparse,
-  op_url_stringify_search_params,
 } = core.ops;
 const {
   ArrayFrom,
@@ -28,12 +27,15 @@ const {
   ObjectPrototypeIsPrototypeOf,
   ReflectOwnKeys,
   SafeArrayIterator,
+  StringFromCharCode,
+  StringPrototypeCharCodeAt,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
   Symbol,
   SymbolFor,
   SymbolIterator,
   TypeError,
+  Uint8Array,
   Uint32Array,
 } = primordials;
 
@@ -49,6 +51,101 @@ const _urlObject = Symbol("url object");
 // `ERR_MISSING_ARGS` messages from `webidl.requiredArguments`.
 const NAME_ARG_NAMES = ["name"];
 const APPEND_ARG_NAMES = ["name", "value"];
+
+// application/x-www-form-urlencoded byte serializer
+// https://url.spec.whatwg.org/#urlencoded-serializing
+//
+// For each byte:
+//   0x20 (SP)                                 → "+"
+//   0x2A, 0x2D, 0x2E, 0x30-0x39, 0x41-0x5A,
+//   0x5F, 0x61-0x7A                           → that byte verbatim
+//   anything else                             → "%XX" (uppercase hex)
+//
+// formEscape[i] holds the precomputed serialization of byte i; formEscapeSafe[i]
+// is 1 if byte i is in the verbatim set (no escape needed).
+const HEX_CHARS = "0123456789ABCDEF";
+const formEscape = new Array(256);
+const formEscapeSafe = new Uint8Array(256);
+for (let i = 0; i < 256; i++) {
+  if (
+    i === 0x2A ||
+    i === 0x2D ||
+    i === 0x2E ||
+    (i >= 0x30 && i <= 0x39) ||
+    (i >= 0x41 && i <= 0x5A) ||
+    i === 0x5F ||
+    (i >= 0x61 && i <= 0x7A)
+  ) {
+    formEscape[i] = StringFromCharCode(i);
+    formEscapeSafe[i] = 1;
+  } else if (i === 0x20) {
+    formEscape[i] = "+";
+  } else {
+    formEscape[i] = "%" + HEX_CHARS[i >> 4] + HEX_CHARS[i & 0xF];
+  }
+}
+
+/**
+ * Serializes a single string per the application/x-www-form-urlencoded byte
+ * serializer in https://url.spec.whatwg.org/#urlencoded-serializing.
+ *
+ * @param {string} input
+ * @returns {string}
+ */
+function urlencodedSerializeString(input) {
+  const len = input.length;
+  let needEscape = false;
+  let hasNonAscii = false;
+  for (let i = 0; i < len; i++) {
+    const c = StringPrototypeCharCodeAt(input, i);
+    if (c >= 0x80) {
+      hasNonAscii = true;
+      needEscape = true;
+      break;
+    }
+    if (!formEscapeSafe[c]) {
+      needEscape = true;
+    }
+  }
+  if (!needEscape) return input;
+
+  if (!hasNonAscii) {
+    let output = "";
+    for (let i = 0; i < len; i++) {
+      output += formEscape[StringPrototypeCharCodeAt(input, i)];
+    }
+    return output;
+  }
+
+  // `core.encode` UTF-8 encodes the string with U+FFFD substitution for any
+  // unpaired surrogates, matching what serde-v8 did on the way into the
+  // previous Rust op (and what `form_urlencoded::Serializer` then serialized).
+  const bytes = core.encode(input);
+  let output = "";
+  for (let i = 0; i < bytes.length; i++) {
+    output += formEscape[bytes[i]];
+  }
+  return output;
+}
+
+/**
+ * Serializes a list of name/value tuples per the application/x-www-form-urlencoded
+ * serializer in https://url.spec.whatwg.org/#urlencoded-serializing.
+ *
+ * @param {[string, string][]} list
+ * @returns {string}
+ */
+function urlencodedSerialize(list) {
+  let output = "";
+  for (let i = 0; i < list.length; i++) {
+    if (i > 0) output += "&";
+    const pair = list[i];
+    output += urlencodedSerializeString(pair[0]);
+    output += "=";
+    output += urlencodedSerializeString(pair[1]);
+  }
+  return output;
+}
 
 // WARNING: must match rust code's UrlSetter::*
 const SET_HASH = 0;
@@ -404,7 +501,7 @@ class URLSearchParams {
    */
   toString() {
     webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
-    return op_url_stringify_search_params(this[_list]);
+    return urlencodedSerialize(this[_list]);
   }
 
   get size() {
