@@ -1,5 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 (function () {
 const { core } = globalThis.__bootstrap;
 const { ERR_TRACE_EVENTS_CATEGORY_REQUIRED } = core.loadExtScript(
@@ -213,23 +216,35 @@ function writeTraceFile() {
   }
 }
 
+let _fsExports = null;
+function getFs() {
+  if (_fsExports !== null) return _fsExports;
+  try {
+    _fsExports = core.loadExtScript("ext:deno_node/fs.ts");
+  } catch {
+    _fsExports = {};
+  }
+  return _fsExports;
+}
+
 function writeMainTraceFile(pid) {
+  const fs = getFs();
   const allEvents = recordedEvents.slice();
   // Pull in any worker-thread slices written by this process before exit.
   let entries;
   try {
-    entries = Deno.readDirSync(".");
+    entries = fs.readdirSync(".");
   } catch {
     entries = [];
   }
   const prefix = `.deno_trace_events_${pid}_t`;
-  for (const entry of entries) {
-    if (!entry.isFile) continue;
-    if (!entry.name.startsWith(prefix) || !entry.name.endsWith(".json")) {
+  for (const entryName of entries) {
+    if (typeof entryName !== "string") continue;
+    if (!entryName.startsWith(prefix) || !entryName.endsWith(".json")) {
       continue;
     }
     try {
-      const text = Deno.readTextFileSync(entry.name);
+      const text = fs.readFileSync(entryName, "utf-8");
       const slice = JSON.parse(text);
       if (slice && Array.isArray(slice.traceEvents)) {
         for (const ev of slice.traceEvents) allEvents.push(ev);
@@ -238,7 +253,7 @@ function writeMainTraceFile(pid) {
       // Skip unreadable / partial slice files.
     }
     try {
-      Deno.removeSync(entry.name);
+      fs.unlinkSync(entryName);
     } catch {
       // Best-effort cleanup.
     }
@@ -251,10 +266,7 @@ function writeMainTraceFile(pid) {
     filename = `node_trace.${rotation}.log`;
   }
   try {
-    Deno.writeTextFileSync(
-      filename,
-      JSON.stringify({ traceEvents: allEvents }),
-    );
+    fs.writeFileSync(filename, JSON.stringify({ traceEvents: allEvents }));
   } catch {
     // Best-effort exit-time write.
   }
@@ -264,7 +276,7 @@ function writeWorkerSliceFile(pid) {
   if (recordedEvents.length === 0) return;
   const filename = workerSliceFilename(pid, getThreadId());
   try {
-    Deno.writeTextFileSync(
+    getFs().writeFileSync(
       filename,
       JSON.stringify({ traceEvents: recordedEvents }),
     );
@@ -275,7 +287,7 @@ function writeWorkerSliceFile(pid) {
 
 function existsSync(path) {
   try {
-    Deno.statSync(path);
+    getFs().statSync(path);
     return true;
   } catch {
     return false;
