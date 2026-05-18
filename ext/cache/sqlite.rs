@@ -349,6 +349,7 @@ impl SqliteBackedCache {
               .delete(CacheDeleteRequest {
                 cache_id: request.cache_id,
                 request_url: request.request_url,
+                trace_headers: Default::default(),
               })
               .await;
             return Ok(None);

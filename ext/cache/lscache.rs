@@ -156,7 +156,14 @@ impl LscBackend {
       body_rx.into_stream().map_ok(http_body::Frame::data),
     );
     let body = UnsyncBoxBody::new(body);
-    shard.put_object(&object_key, headers, body).await?;
+    let trace_headers = request_response
+      .trace_headers
+      .traceparent
+      .as_deref()
+      .map(|tp| (tp, request_response.trace_headers.tracestate.as_deref()));
+    shard
+      .put_object(&object_key, headers, body, trace_headers)
+      .await?;
     Ok(())
   }
 
@@ -183,7 +190,12 @@ impl LscBackend {
       cache_name.as_bytes(),
       request.request_url.as_bytes(),
     );
-    let Some(res) = shard.get_object(&object_key).await? else {
+    let trace_headers = request
+      .trace_headers
+      .traceparent
+      .as_deref()
+      .map(|tp| (tp, request.trace_headers.tracestate.as_deref()));
+    let Some(res) = shard.get_object(&object_key, trace_headers).await? else {
       return Ok(None);
     };
 
@@ -297,7 +309,14 @@ impl LscBackend {
           .as_bytes(),
       )?,
     );
-    shard.put_object_empty(&object_key, headers).await?;
+    let trace_headers = request
+      .trace_headers
+      .traceparent
+      .as_deref()
+      .map(|tp| (tp, request.trace_headers.tracestate.as_deref()));
+    shard
+      .put_object_empty(&object_key, headers, trace_headers)
+      .await?;
     Ok(true)
   }
 }

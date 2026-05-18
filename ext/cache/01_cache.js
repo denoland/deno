@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = globalThis.__bootstrap;
 const {
   op_cache_delete,
   op_cache_match,
@@ -14,6 +14,7 @@ const {
 const {
   ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
+  SafeArrayIterator,
   StringPrototypeSplit,
   StringPrototypeTrim,
   Symbol,
@@ -21,13 +22,30 @@ const {
   TypeError,
 } = primordials;
 
+function getTraceHeaders() {
+  const telemetry = internals.__telemetry;
+  if (!telemetry.TRACING_ENABLED) return { __proto__: null };
+  const headers = { __proto__: null };
+  const context = telemetry.ContextManager.active();
+  for (const propagator of new SafeArrayIterator(telemetry.PROPAGATORS)) {
+    propagator.inject(context, headers, {
+      set(carrier, key, value) {
+        carrier[key] = value;
+      },
+    });
+  }
+  return headers;
+}
+
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const {
   Request,
   RequestPrototype,
   toInnerRequest,
 } = core.loadExtScript("ext:deno_fetch/23_request.js");
-const { toInnerResponse } = core.loadExtScript("ext:deno_fetch/23_response.js");
+const { toInnerResponse } = core.loadExtScript(
+  "ext:deno_fetch/23_response.js",
+);
 const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 const { getHeader } = core.loadExtScript("ext:deno_fetch/20_headers.js");
 const {
@@ -44,7 +62,11 @@ class CacheStorage {
     webidl.assertBranded(this, CacheStoragePrototype);
     const prefix = "Failed to execute 'open' on 'CacheStorage'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
+    cacheName = webidl.converters["DOMString"](
+      cacheName,
+      prefix,
+      "Argument 1",
+    );
     const cacheId = await op_cache_storage_open(cacheName);
     const cache = webidl.createBranded(Cache);
     cache[_id] = cacheId;
@@ -55,7 +77,11 @@ class CacheStorage {
     webidl.assertBranded(this, CacheStoragePrototype);
     const prefix = "Failed to execute 'has' on 'CacheStorage'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
+    cacheName = webidl.converters["DOMString"](
+      cacheName,
+      prefix,
+      "Argument 1",
+    );
     return await op_cache_storage_has(cacheName);
   }
 
@@ -63,7 +89,11 @@ class CacheStorage {
     webidl.assertBranded(this, CacheStoragePrototype);
     const prefix = "Failed to execute 'delete' on 'CacheStorage'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
+    cacheName = webidl.converters["DOMString"](
+      cacheName,
+      prefix,
+      "Argument 1",
+    );
     return await op_cache_storage_delete(cacheName);
   }
 
@@ -191,6 +221,7 @@ class Cache {
 
     // Step 9-11.
     // Step 12-19: TODO(@satyarohith): do the insertion in background.
+    const putTraceHeaders = getTraceHeaders();
     await op_cache_put(
       {
         cacheId: this[_id],
@@ -201,6 +232,7 @@ class Cache {
         responseStatus: innerResponse.status,
         responseStatusText: innerResponse.statusMessage,
         responseRid: rid,
+        traceHeaders: putTraceHeaders,
       },
     );
   }
@@ -247,9 +279,11 @@ class Cache {
     ) {
       r = new Request(request);
     }
+    const deleteTraceHeaders = getTraceHeaders();
     return await op_cache_delete({
       cacheId: this[_id],
       requestUrl: r.url,
+      traceHeaders: deleteTraceHeaders,
     });
   }
 
@@ -291,12 +325,14 @@ class Cache {
       const url = new URL(r.url);
       url.hash = "";
       const innerRequest = toInnerRequest(r);
+      const matchTraceHeaders = getTraceHeaders();
       const matchResult = await op_cache_match(
         {
           cacheId: this[_id],
           // deno-lint-ignore prefer-primordials
           requestUrl: url.toString(),
           requestHeaders: innerRequest.headerList,
+          traceHeaders: matchTraceHeaders,
         },
       );
       if (matchResult) {
