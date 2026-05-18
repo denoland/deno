@@ -164,6 +164,9 @@
       "ignore": true,
       "reason": "Depends on deprecated module.register() loader hooks, which Deno intentionally does not implement"
     },
+    "module-hooks/test-module-hooks-load-builtin-override-commonjs.js": {},
+    "module-hooks/test-module-hooks-load-builtin-override-json.js": {},
+    "module-hooks/test-module-hooks-load-builtin-override-module.js": {},
     "module-hooks/test-module-hooks-load-esm.js": {},
     "module-hooks/test-module-hooks-load-esm-mock.js": {},
     "module-hooks/test-module-hooks-load-short-circuit.js": {},

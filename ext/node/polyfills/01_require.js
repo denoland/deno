@@ -1390,20 +1390,11 @@ Module._load = function (request, parent, isMain) {
     // Slice 'node:' prefix
     const id = StringPrototypeSlice(builtinFilename, 5);
 
-    // Hook-overridden builtins are cached under the `node:`-prefixed key.
-    // `require("util")` resolves to a bare name, so the early cache lookup
-    // above misses; check the prefixed key here so repeated requires reuse
-    // the same module instance instead of re-running the hook.
-    const cachedBuiltin = Module._cache[builtinFilename];
-    if (cachedBuiltin !== undefined) {
-      updateChildren(parent, cachedBuiltin, true);
-      if (!cachedBuiltin.loaded) {
-        return getExportsForCircularRequire(cachedBuiltin);
-      }
-      return cachedBuiltin.exports;
-    }
-
-    // Run load hooks for builtins if registered
+    // Run load hooks for builtins if registered. Node invokes the load hook
+    // chain on every require() of a builtin, so do this before the cache
+    // lookup; otherwise the second require would short-circuit and the hook
+    // wouldn't fire.
+    let builtinHookResult = null;
     if (hookEntries.length > 0 && !insideLoadHook) {
       let hasLoadHook = false;
       for (let i = 0; i < hookEntries.length; i++) {
@@ -1419,46 +1410,61 @@ Module._load = function (request, parent, isMain) {
           importAttributes: { __proto__: null },
         };
         insideLoadHook = true;
-        let result;
         try {
-          result = executeLoadHookChain(builtinFilename, context);
+          builtinHookResult = executeLoadHookChain(builtinFilename, context);
         } finally {
           insideLoadHook = false;
         }
-        // If the hook changed the format away from "builtin", use the
-        // hook-provided source instead of loading the native module.
-        // This matches Node.js behavior where hooks can replace builtins
-        // by returning a different format (e.g. "commonjs").
-        if (
-          result != null && result.format &&
-          result.format !== "builtin" && result.source != null
-        ) {
-          const mod = new Module(builtinFilename, parent);
-          Module._cache[builtinFilename] = mod;
-          const source = loadHookSourceToString(result.source);
-          if (result.format === "commonjs") {
-            mod._compile(source, builtinFilename, "commonjs");
-          } else if (result.format === "json") {
-            mod.exports = JSONParse(stripBOM(source));
-          } else if (result.format === "module") {
-            loadESMFromCJS(mod, builtinFilename, source, true);
-          } else {
-            mod._compile(source, builtinFilename, undefined, true);
-          }
-          mod.loaded = true;
-          return mod.exports;
+      }
+    }
+
+    // Hook-overridden builtins are cached under the `node:`-prefixed key.
+    // `require("util")` resolves to a bare name, so the early cache lookup
+    // above misses; check the prefixed key here so repeated requires reuse
+    // the same module instance.
+    const cachedBuiltin = Module._cache[builtinFilename];
+    if (cachedBuiltin !== undefined) {
+      updateChildren(parent, cachedBuiltin, true);
+      if (!cachedBuiltin.loaded) {
+        return getExportsForCircularRequire(cachedBuiltin);
+      }
+      return cachedBuiltin.exports;
+    }
+
+    if (builtinHookResult != null) {
+      const result = builtinHookResult;
+      // If the hook changed the format away from "builtin", use the
+      // hook-provided source instead of loading the native module.
+      // This matches Node.js behavior where hooks can replace builtins
+      // by returning a different format (e.g. "commonjs").
+      if (
+        result.format && result.format !== "builtin" && result.source != null
+      ) {
+        const mod = new Module(builtinFilename, parent);
+        Module._cache[builtinFilename] = mod;
+        const source = loadHookSourceToString(result.source);
+        if (result.format === "commonjs") {
+          mod._compile(source, builtinFilename, "commonjs");
+        } else if (result.format === "json") {
+          mod.exports = JSONParse(stripBOM(source));
+        } else if (result.format === "module") {
+          loadESMFromCJS(mod, builtinFilename, source, true);
+        } else {
+          mod._compile(source, builtinFilename, undefined, true);
         }
-        if (result?.format === "builtin") {
-          const module = loadNativeModule(id, id);
-          if (module) {
-            return module.exports;
-          }
-          const mod = new Module(builtinFilename, parent);
-          mod.exports = {};
-          mod.loaded = true;
-          Module._cache[builtinFilename] = mod;
-          return mod.exports;
+        mod.loaded = true;
+        return mod.exports;
+      }
+      if (result.format === "builtin") {
+        const module = loadNativeModule(id, id);
+        if (module) {
+          return module.exports;
         }
+        const mod = new Module(builtinFilename, parent);
+        mod.exports = {};
+        mod.loaded = true;
+        Module._cache[builtinFilename] = mod;
+        return mod.exports;
       }
     }
 
