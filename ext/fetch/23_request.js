@@ -6,7 +6,6 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
-  ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeExec,
   StringPrototypeStartsWith,
@@ -108,28 +107,17 @@ function newInnerRequest(method, url, headerList, body, maybeBlob) {
   ) {
     blobUrlEntry = blobFromObjectUrl(url);
   }
+  // Return a plain-data object so V8 can place this constructor's output on
+  // a stable hidden class. The old shape used accessor descriptors for
+  // `method`/`headerList` and method properties for `url`/`currentUrl`,
+  // which forced V8 into a dictionary-mode object and made each construction
+  // ~100x more expensive than necessary. Lazy resolution of the header list
+  // and url-list entries now lives in the helpers below
+  // (`getHeaderList`, `getRequestUrl`, `getRequestCurrentUrl`).
   return {
-    methodInner: method,
-    get method() {
-      return this.methodInner;
-    },
-    set method(value) {
-      this.methodInner = value;
-    },
+    method,
     headerListInner: null,
-    get headerList() {
-      if (this.headerListInner === null) {
-        try {
-          this.headerListInner = headerList();
-        } catch {
-          throw new TypeError("Cannot read headers: request closed");
-        }
-      }
-      return this.headerListInner;
-    },
-    set headerList(value) {
-      this.headerListInner = value;
-    },
+    headerListFn: headerList,
     body,
     redirectMode: "follow",
     redirectCount: 0,
@@ -137,28 +125,62 @@ function newInnerRequest(method, url, headerList, body, maybeBlob) {
     urlListProcessed: [],
     clientRid: null,
     blobUrlEntry,
-    url() {
-      if (this.urlListProcessed[0] === undefined) {
-        try {
-          this.urlListProcessed[0] = this.urlList[0]();
-        } catch {
-          throw new TypeError("cannot read url: request closed");
-        }
-      }
-      return this.urlListProcessed[0];
-    },
-    currentUrl() {
-      const currentIndex = this.urlList.length - 1;
-      if (this.urlListProcessed[currentIndex] === undefined) {
-        try {
-          this.urlListProcessed[currentIndex] = this.urlList[currentIndex]();
-        } catch {
-          throw new TypeError("Cannot read url: request closed");
-        }
-      }
-      return this.urlListProcessed[currentIndex];
-    },
   };
+}
+
+/**
+ * Resolve and cache the request's header list. The list is produced lazily
+ * (by the `headerList` factory passed to `newInnerRequest`) because callers
+ * often don't need it; once produced it's stored in `headerListInner`.
+ *
+ * @param {InnerRequest} request
+ * @returns {[string, string][]}
+ */
+function getHeaderList(request) {
+  if (request.headerListInner === null) {
+    try {
+      request.headerListInner = request.headerListFn();
+    } catch {
+      throw new TypeError("Cannot read headers: request closed");
+    }
+  }
+  return request.headerListInner;
+}
+
+/**
+ * Resolve and cache the original request URL (urlList[0]).
+ *
+ * @param {InnerRequest} request
+ * @returns {string}
+ */
+function getRequestUrl(request) {
+  if (request.urlListProcessed[0] === undefined) {
+    try {
+      request.urlListProcessed[0] = request.urlList[0]();
+    } catch {
+      throw new TypeError("cannot read url: request closed");
+    }
+  }
+  return request.urlListProcessed[0];
+}
+
+/**
+ * Resolve and cache the request's current URL (the last entry in
+ * `urlList`, which may be a redirect target).
+ *
+ * @param {InnerRequest} request
+ * @returns {string}
+ */
+function getRequestCurrentUrl(request) {
+  const currentIndex = request.urlList.length - 1;
+  if (request.urlListProcessed[currentIndex] === undefined) {
+    try {
+      request.urlListProcessed[currentIndex] = request.urlList[currentIndex]();
+    } catch {
+      throw new TypeError("Cannot read url: request closed");
+    }
+  }
+  return request.urlListProcessed[currentIndex];
 }
 
 /**
@@ -169,7 +191,7 @@ function newInnerRequest(method, url, headerList, body, maybeBlob) {
  */
 function cloneInnerRequest(request, skipBody = false) {
   const headerList = ArrayPrototypeMap(
-    request.headerList,
+    getHeaderList(request),
     (x) => [x[0], x[1]],
   );
 
@@ -178,37 +200,23 @@ function cloneInnerRequest(request, skipBody = false) {
     body = request.body.clone();
   }
 
+  // Eagerly resolve the URL since cloning means the lazy-source closure no
+  // longer fits (we'd need to capture `request` and risk holding the original
+  // alive). Once resolved, store under both `urlList` and `urlListProcessed`
+  // to keep the shape identical to `newInnerRequest`'s output -- same hidden
+  // class, same fast path.
+  const url = getRequestUrl(request);
   return {
     method: request.method,
-    headerList,
+    headerListInner: headerList,
+    headerListFn: null,
     body,
     redirectMode: request.redirectMode,
     redirectCount: request.redirectCount,
-    urlList: [() => request.url()],
-    urlListProcessed: [request.url()],
+    urlList: [() => url],
+    urlListProcessed: [url],
     clientRid: request.clientRid,
     blobUrlEntry: request.blobUrlEntry,
-    url() {
-      if (this.urlListProcessed[0] === undefined) {
-        try {
-          this.urlListProcessed[0] = this.urlList[0]();
-        } catch {
-          throw new TypeError("Cannot read url: request closed");
-        }
-      }
-      return this.urlListProcessed[0];
-    },
-    currentUrl() {
-      const currentIndex = this.urlList.length - 1;
-      if (this.urlListProcessed[currentIndex] === undefined) {
-        try {
-          this.urlListProcessed[currentIndex] = this.urlList[currentIndex]();
-        } catch {
-          throw new TypeError("Cannot read url: request closed");
-        }
-      }
-      return this.urlListProcessed[currentIndex];
-    },
   };
 }
 
@@ -331,7 +339,14 @@ class Request {
       prefix,
       "Argument 1",
     );
-    init = webidl.converters["RequestInit"](init, prefix, "Argument 2");
+    // The common `new Request(url)` shape doesn't need to walk the
+    // RequestInit dictionary converter -- short-circuit to a null-prototype
+    // empty object so the per-call dispatch overhead disappears.
+    if (init !== undefined) {
+      init = webidl.converters["RequestInit"](init, prefix, "Argument 2");
+    } else {
+      init = { __proto__: null };
+    }
 
     this[_brand] = _brand;
 
@@ -408,10 +423,18 @@ class Request {
     }
 
     // 31.
-    this[_headers] = headersFromHeaderList(request.headerList, "request");
+    this[_headers] = headersFromHeaderList(
+      getHeaderList(request),
+      "request",
+    );
 
-    // 33.
-    if (init.headers || ObjectKeys(init).length > 0) {
+    // 33. We only need to populate headers from `init` if `init` actually
+    // carries something that could influence the request shape; the common
+    // case (no `init` at all, or just `client`) skips this entirely.
+    if (
+      init.headers !== undefined || init.body !== undefined ||
+      init.method !== undefined
+    ) {
       const headerList = headerListFromHeaders(this[_headers]);
       const headers = init.headers ?? ArrayPrototypeSlice(
         headerList,
@@ -484,7 +507,7 @@ class Request {
       return this[_url];
     }
 
-    this[_url] = this[_request].url();
+    this[_url] = getRequestUrl(this[_request]);
     return this[_url];
   }
 
@@ -522,7 +545,7 @@ class Request {
     request[_signalCache] = clonedSignal;
     request[_getHeaders] = () =>
       headersFromHeaderList(
-        clonedReq.headerList,
+        getHeaderList(clonedReq),
         guardFromHeaders(this[_headers]),
       );
     return request;
@@ -611,7 +634,8 @@ function toInnerRequest(request) {
 function fromInnerRequest(inner, guard) {
   const request = new Request(_brand);
   request[_request] = inner;
-  request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);
+  request[_getHeaders] = () =>
+    headersFromHeaderList(getHeaderList(inner), guard);
   return request;
 }
 
@@ -637,6 +661,9 @@ internals.getCachedAbortSignal = getCachedAbortSignal;
 return {
   abortRequest,
   fromInnerRequest,
+  getHeaderList,
+  getRequestCurrentUrl,
+  getRequestUrl,
   newInnerRequest,
   processUrlList,
   Request,

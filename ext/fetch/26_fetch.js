@@ -41,9 +41,13 @@ const {
 const { extractBody, InnerBody } = core.loadExtScript(
   "ext:deno_fetch/22_body.js",
 );
-const { processUrlList, Request, toInnerRequest } = core.loadExtScript(
-  "ext:deno_fetch/23_request.js",
-);
+const {
+  getHeaderList,
+  getRequestCurrentUrl,
+  processUrlList,
+  Request,
+  toInnerRequest,
+} = core.loadExtScript("ext:deno_fetch/23_request.js");
 const {
   abortedNetworkError,
   fromInnerResponse,
@@ -167,8 +171,8 @@ async function mainFetch(req, recursive, terminator) {
 
   const { requestRid, cancelHandleRid } = op_fetch(
     req.method,
-    req.currentUrl(),
-    req.headerList,
+    getRequestCurrentUrl(req),
+    getHeaderList(req),
     req.clientRid,
     reqBody !== null || reqRid !== null,
     reqBody,
@@ -275,7 +279,7 @@ function httpRedirectFetch(request, response, terminator) {
     return response;
   }
 
-  const currentURL = new URL(request.currentUrl());
+  const currentURL = new URL(getRequestCurrentUrl(request));
   const locationURL = new URL(
     locationHeaders[0][1],
     response.url() ?? undefined,
@@ -308,14 +312,15 @@ function httpRedirectFetch(request, response, terminator) {
   ) {
     request.method = "GET";
     request.body = null;
-    for (let i = 0; i < request.headerList.length; i++) {
+    const headerList = getHeaderList(request);
+    for (let i = 0; i < headerList.length; i++) {
       if (
         ArrayPrototypeIncludes(
           REQUEST_BODY_HEADER_NAMES,
-          byteLowerCase(request.headerList[i][0]),
+          byteLowerCase(headerList[i][0]),
         )
       ) {
-        ArrayPrototypeSplice(request.headerList, i, 1);
+        ArrayPrototypeSplice(headerList, i, 1);
         i--;
       }
     }
@@ -329,14 +334,15 @@ function httpRedirectFetch(request, response, terminator) {
     (locationURL.host !== currentURL.host &&
       !isSubdomain(locationURL.host, currentURL.host))
   ) {
-    for (let i = 0; i < request.headerList.length; i++) {
+    const headerList = getHeaderList(request);
+    for (let i = 0; i < headerList.length; i++) {
       if (
         ArrayPrototypeIncludes(
           REDIRECT_SENSITIVE_HEADER_NAMES,
-          byteLowerCase(request.headerList[i][0]),
+          byteLowerCase(headerList[i][0]),
         )
       ) {
-        ArrayPrototypeSplice(request.headerList, i, 1);
+        ArrayPrototypeSplice(headerList, i, 1);
         i--;
       }
     }
@@ -416,11 +422,11 @@ function fetch(input, init = undefined) {
       requestObject.signal[abortSignal.add](onabort);
 
       if (!requestObject.headers.has("Accept")) {
-        ArrayPrototypePush(request.headerList, ["Accept", "*/*"]);
+        ArrayPrototypePush(getHeaderList(request), ["Accept", "*/*"]);
       }
 
       if (!requestObject.headers.has("Accept-Language")) {
-        ArrayPrototypePush(request.headerList, ["Accept-Language", "*"]);
+        ArrayPrototypePush(getHeaderList(request), ["Accept-Language", "*"]);
       }
 
       // 12.

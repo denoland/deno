@@ -59,3 +59,7 @@ rustls.workspace = true
 [[bench]]
 name = "body"
 harness = false
+
+[[bench]]
+name = "request"
+harness = false
