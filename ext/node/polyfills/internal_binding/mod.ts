@@ -55,7 +55,7 @@ const http2Binding = core.loadExtScript(
   "ext:deno_node/internal_binding/http2.ts",
 );
 const inspectorBinding = core.loadExtScript(
-  "ext:deno_node/internal_binding/inspector.ts",
+  "ext:deno_node/internal_binding/inspector.js",
 );
 
 // Mutable shallow copy so callers can replace properties (e.g. wrap

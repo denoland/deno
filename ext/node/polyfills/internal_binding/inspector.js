@@ -4,7 +4,7 @@
 const { core } = globalThis.__bootstrap;
 const { op_inspector_enabled } = core.ops;
 
-function isEnabled(): boolean {
+function isEnabled() {
   return op_inspector_enabled();
 }
 
