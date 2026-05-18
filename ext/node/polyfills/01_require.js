@@ -767,7 +767,21 @@ function executeEsmLoadHookChain(fileUrl, context) {
       currentContext = { ...currentContext, ...ctx };
     }
     if (index >= loadHooks.length) {
-      // End of chain - signal fallthrough to Rust default loading
+      // End of chain - perform default load so user hooks calling
+      // nextLoad() receive the actual source they can transform.
+      if (StringPrototypeStartsWith(loadUrl, "node:")) {
+        return { source: null, format: "builtin", shortCircuit: true };
+      }
+      if (StringPrototypeStartsWith(loadUrl, "file://")) {
+        const source = op_require_read_file(url.fileURLToPath(loadUrl));
+        return {
+          source,
+          format: currentContext?.format ?? undefined,
+          shortCircuit: true,
+        };
+      }
+      // For other schemes (data:, http(s):, etc.) we cannot synchronously
+      // produce source here; fall through to Rust default loading.
       return { source: null, shortCircuit: true };
     }
     const hook = loadHooks[index++];
