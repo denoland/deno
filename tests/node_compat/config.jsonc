@@ -4347,29 +4347,31 @@
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
     },
     "system-ca/test-native-intermediate-certs.mjs": {
-      "ignore": true,
-      "reason": "Node.js system CA certificate handling is not implemented in Deno"
+      "env": {
+        "SSL_CERT_FILE": "../system-ca-bundle.pem"
+      }
     },
     "system-ca/test-native-root-certs-env.mjs": {
-      "ignore": true,
-      "reason": "Node.js system CA certificate handling is not implemented in Deno"
+      "env": {
+        "SSL_CERT_FILE": "../system-ca-bundle.pem",
+        "NODE_USE_SYSTEM_CA": "1"
+      }
     },
     "system-ca/test-native-root-certs.mjs": {
-      "ignore": true,
-      "reason": "Node.js system CA certificate handling is not implemented in Deno"
+      "env": {
+        "SSL_CERT_FILE": "../system-ca-bundle.pem"
+      }
     },
     "system-ca/test-set-default-ca-certificates-append-system-ca.mjs": {
-      "ignore": true,
-      "reason": "Node.js system CA certificate handling is not implemented in Deno"
+      "env": {
+        "SSL_CERT_FILE": "../system-ca-bundle.pem"
+      }
     },
     "system-ca/test-set-default-ca-certificates-override-system.mjs": {
       "ignore": true,
-      "reason": "Node.js system CA certificate handling is not implemented in Deno"
+      "reason": "Expects err.cause.code === 'SELF_SIGNED_CERT_IN_CHAIN' for a chain-mode OpenSSL error that rustls/webpki reports as UnknownIssuer; matching Node's exact code here would require chain-building / AIA lookups that Deno's TLS stack does not perform"
     },
-    "system-ca/test-set-default-ca-certificates-system-combinations.js": {
-      "ignore": true,
-      "reason": "Node.js system CA certificate handling is not implemented in Deno"
-    },
+    "system-ca/test-set-default-ca-certificates-system-combinations.js": {},
     "test-runner/test-output-arbitrary-output-colored.mjs": {},
     "test-runner/test-output-assertion-color-tty.mjs": {},
     "test-runner/test-output-coverage-width-80-color.mjs": {},

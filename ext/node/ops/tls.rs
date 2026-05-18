@@ -35,6 +35,7 @@ use deno_node_crypto::x509::Certificate;
 use deno_node_crypto::x509::CertificateObject;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
+use deno_tls::RuntimeRootCertOverride;
 use deno_tls::SocketUse;
 use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsKeys;
@@ -221,14 +222,16 @@ pub fn op_set_default_ca_certificates(
   state: &mut OpState,
   #[serde] certs: Vec<String>,
 ) {
+  // 1. Update the node:tls-side NodeTlsState so subsequent `tls.connect()` calls
+  //    pick up the override.
   if let Some(tls_state) = state.try_borrow_mut::<NodeTlsState>() {
-    tls_state.custom_ca_certs = Some(certs);
+    tls_state.custom_ca_certs = Some(certs.clone());
     // Custom CA list changed; previously cached verifier no longer matches.
     tls_state.cached_default_verifier = None;
     tls_state.cached_insecure_verifier = None;
   } else {
     state.put(NodeTlsState {
-      custom_ca_certs: Some(certs),
+      custom_ca_certs: Some(certs.clone()),
       client_session_store: Arc::new(
         deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
       ),
@@ -239,6 +242,22 @@ pub fn op_set_default_ca_certificates(
       cached_insecure_no_client_auth: None,
     });
   }
+
+  // 2. Propagate to the shared `RuntimeRootCertOverride` so `fetch()` (and any
+  //    other consumer that reads it on each TLS connection) sees the new
+  //    trust roots, even though the deno_fetch `Client` is normally cached.
+  if let Some(override_) = state.try_borrow::<RuntimeRootCertOverride>() {
+    override_.set(certs);
+  } else {
+    let override_ = RuntimeRootCertOverride::default();
+    override_.set(certs);
+    state.put(override_);
+  }
+
+  // 3. Bust the cached fetch `Client` so the next `fetch()` rebuilds with the
+  //    new CA list.  The cache key includes the override version, so even if
+  //    we kept it the next get would miss; clearing it now keeps state lean.
+  state.try_take::<deno_fetch::CachedClient>();
 }
 
 #[op2]
@@ -740,6 +759,7 @@ pub fn op_node_tls_start(
     unsafely_disable_hostname_verification: false,
     cert_chain_and_key: tls_null.take(),
     socket_use: SocketUse::GeneralSsl,
+    tolerate_legacy_cert_versions: false,
   })?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {

@@ -1158,6 +1158,7 @@ async fn initialize_tunnel(
       unsafely_disable_hostname_verification: false,
       cert_chain_and_key: deno_runtime::deno_tls::TlsKeys::Null,
       socket_use: deno_runtime::deno_tls::SocketUse::GeneralSsl,
+      tolerate_legacy_cert_versions: false,
     },
   )?;
 

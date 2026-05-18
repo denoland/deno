@@ -375,6 +375,7 @@ pub fn op_tls_start(
     unsafely_disable_hostname_verification,
     cert_chain_and_key: key_pair.take(),
     socket_use: SocketUse::GeneralSsl,
+    tolerate_legacy_cert_versions: false,
   })?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
@@ -481,6 +482,7 @@ pub async fn op_net_connect_tls(
     unsafely_disable_hostname_verification,
     cert_chain_and_key: key_pair.take(),
     socket_use: SocketUse::GeneralSsl,
+    tolerate_legacy_cert_versions: false,
   })?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {

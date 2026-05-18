@@ -612,6 +612,50 @@ Deno.test("tls.getCACertificates throws on invalid type", () => {
   );
 });
 
+// Round-trip: `setDefaultCACertificates` writes the new default and
+// `getCACertificates('default')` returns it back.  Restores the original
+// list at the end so other tests in the suite still see the real defaults.
+Deno.test("tls.setDefaultCACertificates round-trips through getCACertificates", () => {
+  const originalDefaults = tls.getCACertificates("default");
+  const bundled = tls.getCACertificates("bundled");
+  const system = tls.getCACertificates("system");
+  try {
+    // Replace with a single cert.
+    const oneCert = bundled.slice(0, 1);
+    tls.setDefaultCACertificates(oneCert);
+    const after = tls.getCACertificates("default");
+    assertEquals(after.length, 1);
+    assertEquals(after[0], oneCert[0]);
+
+    // Empty list is allowed and clears the default.
+    tls.setDefaultCACertificates([]);
+    assertEquals(tls.getCACertificates("default").length, 0);
+
+    // 'system' and 'bundled' are not affected by the override.
+    const bundledAfter = tls.getCACertificates("bundled");
+    assertEquals(bundledAfter.length, bundled.length);
+    const systemAfter = tls.getCACertificates("system");
+    assertEquals(systemAfter.length, system.length);
+
+    // Restoring with the original bundle should also work (full list).
+    tls.setDefaultCACertificates(bundled);
+    const restored = tls.getCACertificates("default");
+    assertEquals(restored.length, bundled.length);
+  } finally {
+    tls.setDefaultCACertificates(originalDefaults);
+  }
+});
+
+Deno.test("tls.setDefaultCACertificates rejects non-array input", () => {
+  assertThrows(
+    () => {
+      // deno-lint-ignore no-explicit-any
+      (tls as any).setDefaultCACertificates("not an array");
+    },
+    TypeError,
+  );
+});
+
 Deno.test("tls.setDefaultCACertificates exists", () => {
   // deno-lint-ignore no-explicit-any
   assertEquals(typeof (tls as any).setDefaultCACertificates, "function");

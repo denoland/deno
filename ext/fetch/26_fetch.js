@@ -194,8 +194,14 @@ async function mainFetch(req, recursive, terminator) {
   }
   // Re-throw any body errors
   if (resp.error !== null) {
-    const { 0: message, 1: cause } = resp.error;
-    throw new TypeError(message, { cause: new Error(cause) });
+    const { 0: message, 1: cause, 2: causeCode } = resp.error;
+    const causeError = new Error(cause);
+    // Node-compat: when the underlying failure is a TLS certificate error,
+    // the Rust side sets `causeCode` to one of OpenSSL's error codes
+    // (e.g. `UNABLE_TO_VERIFY_LEAF_SIGNATURE`).  Node attaches that string
+    // as `err.cause.code`, so we do the same.
+    if (causeCode) causeError.code = causeCode;
+    throw new TypeError(message, { cause: causeError });
   }
   if (terminator.aborted) {
     // op_fetch_send resolved successfully, so the FetchResponseResource is already in
