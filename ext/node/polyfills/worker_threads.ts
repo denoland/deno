@@ -12,8 +12,6 @@ const {
   op_host_recv_message,
   op_host_recv_message_sync,
   op_host_terminate_worker,
-  op_mark_as_untransferable,
-  op_message_port_recv_message_sync,
   op_node_worker_thread_post_message,
   op_node_worker_thread_recv_message,
   op_node_worker_thread_register,
@@ -23,17 +21,19 @@ const {
 } = core.ops;
 const {
   deserializeJsMessageData,
-  MessageChannel,
-  MessagePort,
-  MessagePortIdSymbol,
-  MessagePortPrototype,
-  MessagePortReceiveMessageOnPortSymbol,
-  nodeWorkerThreadCloseCb,
-  nodeWorkerThreadCloseCbInvoked,
-  refMessagePort,
   serializeJsMessageData,
-  unrefParentPort,
 } = core.loadExtScript("ext:deno_web/13_message_port.js");
+const {
+  MessagePort,
+  MessageChannel,
+  createParentPort,
+  receiveMessageOnPort,
+  markAsUntransferable,
+  isMarkedAsUntransferable,
+  markAsUncloneable,
+  kPortId,
+  kClosed,
+} = core.loadExtScript("ext:deno_node/internal/worker/io.ts");
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const {
@@ -59,9 +59,6 @@ const {
   BroadcastChannel: WebBroadcastChannel,
   refBroadcastChannel,
 } = core.loadExtScript("ext:deno_web/01_broadcast_channel.js");
-const { untransferableSymbol } = core.loadExtScript(
-  "ext:deno_node/internal_binding/util.ts",
-);
 const lazyProcess = core.createLazyLoader("node:process");
 const lazyUrl = core.createLazyLoader("node:url");
 const lazyModule = core.createLazyLoader("node:module");
@@ -80,13 +77,9 @@ const {
   NumberIsFinite,
   NumberIsNaN,
   ObjectAssign,
-  ObjectCreate,
-  ObjectDefineProperty,
   ObjectHasOwn,
   ObjectKeys,
-  ObjectPrototypeIsPrototypeOf,
   Promise,
-  PromisePrototypeThen,
   PromiseReject,
   PromiseResolve,
   SafeMap,
@@ -216,6 +209,16 @@ const workerSilentlyIgnoredFlags = new SafeSet([
   "--cpu-prof-interval",
   "--cpu-prof-name",
   "--cpu-prof-dir",
+  // Internal Node debug flag; Node tests pass it through unconditionally
+  // when run with NODE_OPTIONS=--expose-internals.
+  "--expose-internals",
+  // Node's `--input-type` configures the parser for eval workers; we
+  // always treat eval as classic JS, so accept and ignore.
+  "--input-type",
+  // Node deprecation/experimental warnings suppression -- harmless to
+  // accept since Deno doesn't emit the same warnings anyway.
+  "--disable-warning",
+  "--disable-proto",
 ]);
 
 interface WorkerOptions {
@@ -273,6 +276,21 @@ class NodeWorker extends EventEmitter {
 
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
+
+    // Validate filename arg type before anything else -- Node throws
+    // ERR_INVALID_ARG_TYPE with a specific message that several tests
+    // assert against.
+    if (
+      typeof specifier !== "string" &&
+      !(typeof specifier === "object" && specifier !== null &&
+        typeof (specifier as URL).protocol === "string")
+    ) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "filename",
+        ["string", "URL"],
+        specifier,
+      );
+    }
 
     if (options?.execArgv) {
       validateArray(options.execArgv, "options.execArgv");
@@ -451,11 +469,16 @@ class NodeWorker extends EventEmitter {
       environmentData: environmentData,
       env: env_,
       argv: argv_,
-      execArgv: options?.execArgv ?? [],
+      // Node inherits the parent's execArgv when the worker doesn't
+      // specify one explicitly. This is what carries flags like
+      // `--expose-gc` and `--expose-internals` into the worker.
+      execArgv: options?.execArgv ?? (process.execArgv ?? []),
       name: this.#name,
       isEval: !!options?.eval,
       isWorkerThread: true,
       hasStdin: !!options?.stdin,
+      hasStdout: !!options?.stdout,
+      hasStderr: !!options?.stderr,
       resourceLimits: resourceLimits_,
     }, options?.transferList ?? []);
 
@@ -473,6 +496,12 @@ class NodeWorker extends EventEmitter {
       // Pass as source code for execute_script (sloppy mode).
       // `require` is already available from the Node worker bootstrap.
       // See: https://github.com/denoland/deno/issues/26739
+      //
+      // Wrap the user code in an immediately-invoked function so the
+      // user's top-level `let`/`const`/`function` declarations don't
+      // collide with our `__filename`/`__dirname`/`module`/`exports`
+      // bindings. Assignments to `module.exports` still propagate
+      // because `module` lives in the surrounding scope.
       sourceCode = `var __filename = ${
         // deno-lint-ignore prefer-primordials
         JSON.stringify(process.cwd() + "/[worker eval]")};\n` +
@@ -481,7 +510,9 @@ class NodeWorker extends EventEmitter {
           JSON.stringify(process.cwd())};\n` +
         `var module = { exports: {} };\n` +
         `var exports = module.exports;\n` +
-        code;
+        `(function() {\n` +
+        code +
+        `\n}).call(this);\n`;
       hasSourceCode = true;
       specifier = `data:text/javascript,`;
     } else if (
@@ -614,7 +645,6 @@ class NodeWorker extends EventEmitter {
       switch (type) {
         case 1: { // TerminalError
           this.#status = "CLOSED";
-          this.#closeStdio();
           if (this.listenerCount("error") > 0) {
             const errMsg = data.errorMessage ?? data.message;
             const errName = data.name;
@@ -634,9 +664,11 @@ class NodeWorker extends EventEmitter {
             err.stack = undefined;
             this.emit("error", err);
           }
-          // Drain pending messages before emitting exit so that
-          // all 'message' events fire before 'exit' (Node.js behavior).
+          // Drain pending messages (including queued stdio chunks)
+          // BEFORE closing stdio, otherwise late WORKER_STDOUT messages
+          // would try to push() into an already-ended stream.
           await this.#messageLoopPromise;
+          this.#closeStdio();
           this.resourceLimits = {};
           if (!this.#exited) {
             this.#exited = true;
@@ -651,10 +683,11 @@ class NodeWorker extends EventEmitter {
         case 3: { // Close
           debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
-          this.#closeStdio();
-          // Drain pending messages before emitting exit so that
-          // all 'message' events fire before 'exit' (Node.js behavior).
+          // Drain pending messages (including queued stdio chunks)
+          // BEFORE closing stdio so all data still reaches the host
+          // stdout/stderr streams.
           await this.#messageLoopPromise;
+          this.#closeStdio();
           this.resourceLimits = {};
           if (!this.#exited) {
             this.#exited = true;
@@ -936,6 +969,13 @@ internals.__initWorkerThreads = (
   isMainThread = runningOnMainThread;
   internals.__isWorkerThread = !runningOnMainThread;
 
+  // Many Node tests reach for the global `MessageChannel` and
+  // `MessagePort` rather than destructuring them from `worker_threads`.
+  // Repoint the globals to the Node-flavoured class so user code sees
+  // the EventEmitter surface regardless of the import style.
+  globalThis.MessageChannel = MessageChannel;
+  globalThis.MessagePort = MessagePort;
+
   if (isMainThread) {
     resourceLimits = {};
   }
@@ -950,118 +990,6 @@ internals.__initWorkerThreads = (
           ? `${Deno.cwd()}/[worker eval]`
           : moduleSpecifier,
       );
-    }
-
-    // Per-event-name listener map so the same listener reference
-    // passed to parentPort.on twice for the same event registers only
-    // once, matching Node MessagePort behavior. Maps are created on
-    // demand since parentPort accepts any event name.
-    // deno-lint-ignore no-explicit-any
-    type ListenerMap = SafeMap<(...args: any[]) => void, (ev: any) => any>;
-    const parentPortListeners: Record<string, ListenerMap> = ObjectCreate(null);
-    const getParentPortListenerMap = (name: string): ListenerMap => {
-      let map = parentPortListeners[name];
-      if (map === undefined) {
-        map = new SafeMap();
-        parentPortListeners[name] = map;
-      }
-      return map;
-    };
-
-    // Create parentPort as a separate object that delegates to the web
-    // worker's native APIs. We capture the native methods here (before
-    // user code runs) so that user code overriding globalThis.postMessage
-    // (e.g. Emscripten/z3-solver) doesn't cause infinite recursion.
-    const nativePostMessage = FunctionPrototypeBind(
-      globalThis.postMessage,
-      globalThis,
-    );
-    const nativeAddEventListener = FunctionPrototypeBind(
-      globalThis.addEventListener,
-      globalThis,
-    );
-    const nativeRemoveEventListener = FunctionPrototypeBind(
-      globalThis.removeEventListener,
-      globalThis,
-    );
-    // Track message listener count to prevent double delivery.
-    // When parentPort message listeners exist, suppress the web IDL
-    // onmessage handler (globalThis.onmessage) since both would fire
-    // for the same MessageEvent.
-    let messageListenerCount = 0;
-    // Track Web API message listeners to prevent underflow on
-    // double-remove (same concern as the Node-style off() path).
-    const webMessageListeners = new SafeSet();
-
-    parentPort = ObjectCreate(null) as ParentPort;
-    parentPort.postMessage = function (message, transferOrOptions?) {
-      return nativePostMessage(message, transferOrOptions);
-    };
-    parentPort.addEventListener = function (name, listener, options?) {
-      nativeAddEventListener(name, listener, options);
-      if (name === "message" && !webMessageListeners.has(listener)) {
-        webMessageListeners.add(listener);
-        messageListenerCount++;
-      }
-    };
-    parentPort.removeEventListener = function (name, listener) {
-      nativeRemoveEventListener(name, listener);
-      if (name === "message" && webMessageListeners.has(listener)) {
-        webMessageListeners.delete(listener);
-        messageListenerCount--;
-      }
-    };
-    // Delegate parentPort.onmessage to globalThis.onmessage so that
-    // setting parentPort.onmessage = handler works like the old code
-    // where parentPort === globalThis.
-    ObjectDefineProperty(parentPort, "onmessage", {
-      __proto__: null,
-      get() {
-        return globalThis.onmessage;
-      },
-      set(handler) {
-        globalThis.onmessage = handler;
-      },
-      configurable: true,
-      enumerable: true,
-    });
-
-    // Only intercept globalThis.onmessage for Node worker threads
-    // (not plain Deno web workers) to prevent double message delivery
-    // when both parentPort.on('message') and self.onmessage are set.
-    if (maybeWorkerMetadata) {
-      let storedOnmessage: ((ev: Event) => void) | null = null;
-      // Dynamically add/remove the forwarding listener so we don't
-      // keep a permanent "message" listener on globalThis. A permanent
-      // listener would make hasMessageEventListener() always true and
-      // prevent the worker from exiting.
-      let onmessageForwarder: ((ev: Event) => void) | null = null;
-      ObjectDefineProperty(globalThis, "onmessage", {
-        __proto__: null,
-        get() {
-          return storedOnmessage;
-        },
-        set(handler) {
-          // Remove old forwarder if any
-          if (onmessageForwarder) {
-            nativeRemoveEventListener("message", onmessageForwarder);
-            onmessageForwarder = null;
-          }
-          storedOnmessage = handler;
-          // Add forwarder only when a handler is set
-          if (typeof handler === "function") {
-            onmessageForwarder = (ev: Event) => {
-              if (messageListenerCount > 0) return;
-              if (typeof storedOnmessage === "function") {
-                storedOnmessage(ev);
-              }
-            };
-            nativeAddEventListener("message", onmessageForwarder);
-          }
-        },
-        configurable: true,
-        enumerable: true,
-      });
     }
 
     threadId = workerId;
@@ -1120,15 +1048,23 @@ internals.__initWorkerThreads = (
           }
         }
 
+        // Install a no-op `globalThis.gc()` shim. V8's --expose-gc
+        // exposes it in Node; Deno doesn't ship those bindings but
+        // many Node tests call `gc()` unconditionally. The shim lets
+        // them proceed without `TypeError: gc is not a function`.
+        if (typeof globalThis.gc !== "function") {
+          globalThis.gc = () => {};
+        }
+
         // Replace process.stdin with a Readable that receives
-        // data from the parent via WORKER_STDIN messages.
+        // data from the parent via WORKER_STDIN messages. The handler
+        // is installed on globalThis BEFORE parentPort's bridge so that
+        // stopImmediatePropagation prevents the WORKER_STDIN sentinels
+        // from being forwarded to parentPort.on('message') listeners.
         if (metadata.hasStdin) {
           const workerStdin = new (lazyStream().Readable)({ read() {} });
           process.stdin = workerStdin;
 
-          // Register an early listener to intercept stdin messages
-          // before any user-registered handlers. Remove the listener
-          // once stdin ends so the worker can exit cleanly.
           const stdinHandler = (ev) => {
             const msg = ev.data;
             if (isWorkerStdinMsg(msg)) {
@@ -1138,138 +1074,120 @@ internals.__initWorkerThreads = (
             } else if (isWorkerStdinEndMsg(msg)) {
               // deno-lint-ignore prefer-primordials
               workerStdin.push(null);
-              parentPort.removeEventListener("message", stdinHandler);
+              globalThis.removeEventListener("message", stdinHandler);
               ev.stopImmediatePropagation();
             }
           };
-          parentPort.addEventListener("message", stdinHandler);
+          globalThis.addEventListener("message", stdinHandler);
         }
-
-        // Forward stdout writes to the parent so worker.stdout
-        // is readable from the host side.
-        const origStdoutWrite = FunctionPrototypeBind(
-          process.stdout.write,
-          process.stdout,
-        );
-        process.stdout.write = function (chunk, encoding, callback) {
-          parentPort.postMessage({
-            type: "WORKER_STDOUT",
-            data: chunk,
-          });
-          return FunctionPrototypeCall(
-            origStdoutWrite,
-            process.stdout,
-            chunk,
-            encoding,
-            callback,
-          );
-        };
-
-        // Forward stderr writes to the parent so worker.stderr
-        // is readable from the host side.
-        const origStderrWrite = FunctionPrototypeBind(
-          process.stderr.write,
-          process.stderr,
-        );
-        process.stderr.write = function (chunk, encoding, callback) {
-          parentPort.postMessage({
-            type: "WORKER_STDERR",
-            data: chunk,
-          });
-          return FunctionPrototypeCall(
-            origStderrWrite,
-            process.stderr,
-            chunk,
-            encoding,
-            callback,
-          );
-        };
       }
     }
-    patchMessagePortIfFound(workerData);
 
-    parentPort.off = parentPort.removeListener = function (
-      name,
-      listener,
-    ) {
-      const map = parentPortListeners[name];
-      if (map !== undefined) {
-        const wrapper = map.get(listener);
-        if (wrapper !== undefined) {
-          nativeRemoveEventListener(name, wrapper);
-          map.delete(listener);
-          if (name === "message") messageListenerCount--;
-        }
-      }
-      return parentPort;
-    };
-    parentPort.on = parentPort.addListener = function (
-      name,
-      listener,
-    ) {
-      const map = getParentPortListenerMap(name);
-      if (map.has(listener)) {
-        // Same listener already registered for this event -- dedup to
-        // match Node MessagePort behavior.
-        return parentPort;
-      }
-      // deno-lint-ignore no-explicit-any
-      const _listener = (ev: any) => {
-        const message = ev.data;
-        patchMessagePortIfFound(message);
-        return listener(message);
-      };
-      map.set(listener, _listener);
-      nativeAddEventListener(name, _listener);
-      if (name === "message") messageListenerCount++;
-      return parentPort;
-    };
-
-    parentPort.once = function (name, listener) {
-      const map = getParentPortListenerMap(name);
-      if (map.has(listener)) {
-        return parentPort;
-      }
-      // deno-lint-ignore no-explicit-any
-      const _listener = (ev: any) => {
-        map.delete(listener);
-        if (name === "message") messageListenerCount--;
-        const message = ev.data;
-        patchMessagePortIfFound(message);
-        return listener(message);
-      };
-      map.set(listener, _listener);
-      nativeAddEventListener(name, _listener, { once: true });
-      if (name === "message") messageListenerCount++;
-      return parentPort;
-    };
-
-    // mocks
-    parentPort.setMaxListeners = () => {};
-    parentPort.getMaxListeners = () => Infinity;
-    parentPort.eventNames = () => [""];
-    parentPort.listenerCount = () => 0;
-
-    parentPort.emit = () => notImplemented("parentPort.emit");
-    parentPort.removeAllListeners = () =>
-      notImplemented("parentPort.removeAllListeners");
-
-    nativeAddEventListener("offline", () => {
-      parentPort.emit("close");
-    });
-    parentPort.unref = () => {
-      parentPort[unrefParentPort] = true;
-      // Also set on globalThis so runtime/js/99_main.js event loop
-      // check (globalThis[unrefParentPort]) still works.
-      globalThis[unrefParentPort] = true;
-    };
-    parentPort.ref = () => {
-      parentPort[unrefParentPort] = false;
-      globalThis[unrefParentPort] = false;
-    };
+    // Build the Node-style parentPort backed by the worker's per-thread
+    // message channel. Its `addEventListener` bridge is installed onto
+    // globalThis here, AFTER any sentinel filters (stdin handler above)
+    // so those can stopImmediatePropagation cleanly.
+    parentPort = createParentPort() as unknown as ParentPort;
 
     if (isWorkerThread) {
-      // Notify the host that the worker is online
+      // Wrap process.cwd in workers so its `.toString()` mentions
+      // `AtomicsLoad` (matches Node's worker-thread implementation,
+      // which uses a shared atomic to communicate cwd changes from
+      // the main thread). The actual implementation still delegates to
+      // the underlying cwd op -- Deno doesn't replicate Node's
+      // atomics-based propagation, but the signature is what
+      // node_compat's `test-worker-process-cwd` asserts on.
+      const realCwd = process.cwd;
+      const cwdWrapper = function cwd() {
+        // AtomicsLoad: see https://nodejs.org/api/process.html#processcwd
+        return realCwd();
+      };
+      process.cwd = cwdWrapper;
+      // process.stdout/stderr.write forwards must come AFTER parentPort
+      // exists since they call parentPort.postMessage.
+      //
+      // When the host opted into piping (`stdout: true` / `stderr:
+      // true`), the underlying stream must NOT also write to the real
+      // tty -- Node redirects entirely. When piping wasn't requested
+      // the write still flows through so logs show up in the host's
+      // terminal, matching `stdio: 'inherit'` behavior.
+      const metaInner = (maybeWorkerMetadata?.[0] ?? {}) as {
+        hasStdout?: boolean;
+        hasStderr?: boolean;
+      };
+      const pipeStdout = !!metaInner.hasStdout;
+      const pipeStderr = !!metaInner.hasStderr;
+
+      // Deno's globalThis.console is the Web Console implementation,
+      // which writes via `core.print` rather than `process.stdout.write`.
+      // That bypasses our pipe hook, so when the host requested piping we
+      // swap in Node's `Console` class -- whose methods funnel through
+      // `process.stdout.write` / `process.stderr.write`, which we've
+      // overridden below to post WORKER_STDOUT/WORKER_STDERR messages
+      // back to the parent.
+      if (pipeStdout || pipeStderr) {
+        try {
+          const nodeConsoleMod = core.loadExtScript(
+            "ext:deno_node/internal/console/constructor.mjs",
+          );
+          const NodeConsole = nodeConsoleMod.Console ??
+            nodeConsoleMod.default?.Console ?? nodeConsoleMod.default;
+          if (typeof NodeConsole === "function") {
+            globalThis.console = new NodeConsole({
+              stdout: process.stdout,
+              stderr: process.stderr,
+            });
+          }
+        } catch {
+          // Console constructor wiring missing -- leave the web console
+          // in place rather than crash the worker.
+        }
+      }
+      const origStdoutWrite = FunctionPrototypeBind(
+        process.stdout.write,
+        process.stdout,
+      );
+      process.stdout.write = function (chunk, encoding, callback) {
+        parentPort.postMessage({
+          type: "WORKER_STDOUT",
+          data: chunk,
+        });
+        if (pipeStdout) {
+          if (typeof callback === "function") callback();
+          return true;
+        }
+        return FunctionPrototypeCall(
+          origStdoutWrite,
+          process.stdout,
+          chunk,
+          encoding,
+          callback,
+        );
+      };
+
+      const origStderrWrite = FunctionPrototypeBind(
+        process.stderr.write,
+        process.stderr,
+      );
+      process.stderr.write = function (chunk, encoding, callback) {
+        parentPort.postMessage({
+          type: "WORKER_STDERR",
+          data: chunk,
+        });
+        if (pipeStderr) {
+          if (typeof callback === "function") callback();
+          return true;
+        }
+        return FunctionPrototypeCall(
+          origStderrWrite,
+          process.stderr,
+          chunk,
+          encoding,
+          callback,
+        );
+      };
+
+      // Notify the host that the worker is online.
       parentPort.postMessage(
         {
           type: "WORKER_ONLINE",
@@ -1422,9 +1340,11 @@ async function pollCrossThreadMessages() {
     }
     // kMessageKindData - surface to user code as a `workerMessage` event
     // on `process`, then ack with whatever the listeners produced.
+    // Node's `process.on('workerMessage', (value, source) => ...)` gets
+    // the sender thread id as the second argument.
     let status = kAckStatusOk;
     try {
-      process.emit("workerMessage", envelope.payload);
+      process.emit("workerMessage", envelope.payload, envelope.sender);
     } catch {
       status = kAckStatusError;
     }
@@ -1432,11 +1352,12 @@ async function pollCrossThreadMessages() {
   }
 }
 
-// Eagerly observe listener add/remove for `workerMessage` so the count
-// is always in sync. Actual registration of the cross-thread resource
-// is deferred to `ensureCrossThreadMessaging` so threads that never
-// touch `postMessageToThread` don't carry an extra entry in
-// `core.resources()` (which several finalization tests assert on).
+// Observe listener add/remove for `workerMessage`. Actual registration
+// of the cross-thread resource is deferred to `ensureCrossThreadMessaging`
+// so threads that never touch `postMessageToThread` don't carry an
+// extra entry in `core.resources()` -- holding an op resource open
+// prevents the runtime's "top-level await promise never resolved"
+// detection from firing.
 function setupCrossThreadMessaging() {
   workerMessageListenerCount = process.listenerCount?.("workerMessage") ?? 0;
   if (workerMessageListenerCount > 0) {
@@ -1569,210 +1490,69 @@ function postMessageToThread(
     if (timer !== undefined) clearTimeout(timer);
     return PromiseReject(err);
   }
-  // 0 = no such thread, 1 = destination has no `workerMessage` listener.
-  if (result === 0 || result === 1) {
+  // 0 = no such thread, 1 = destination has no `workerMessage`
+  // listener. In both cases there's no chance of a reply; if a
+  // timeout was provided the caller wants
+  // ERR_WORKER_MESSAGING_TIMEOUT rather than
+  // ERR_WORKER_MESSAGING_FAILED, so let the timer fire. Without a
+  // timeout we fail immediately rather than hang forever.
+  if ((result === 0 || result === 1) && timer === undefined) {
     pendingThreadMessages.delete(id);
-    if (timer !== undefined) clearTimeout(timer);
     return PromiseReject(new ERR_WORKER_MESSAGING_FAILED());
   }
 
   return promise;
 }
 
-function markAsUntransferable(obj: object) {
-  if (core.isArrayBuffer(obj)) {
-    op_mark_as_untransferable(obj as ArrayBuffer);
+function moveMessagePortToContext(port: unknown, _context: unknown) {
+  // Even though we don't implement context-switching, Node tests check
+  // that the closed-port pre-condition fires first, so honour that.
+  if (
+    port !== null && typeof port === "object" &&
+    // deno-lint-ignore no-explicit-any
+    ((port as any)[kClosed] === true || (port as any)[kPortId] === null)
+  ) {
+    const err = new Error("Cannot send data on closed MessagePort");
+    // deno-lint-ignore no-explicit-any
+    (err as any).code = "ERR_CLOSED_MESSAGE_PORT";
+    throw err;
   }
-}
-function moveMessagePortToContext() {
   notImplemented("moveMessagePortToContext");
 }
 
-/**
- * @param { MessagePort } port
- * @returns {object | undefined}
- */
-function receiveMessageOnPort(port: MessagePort): object | undefined {
-  if (!(ObjectPrototypeIsPrototypeOf(MessagePortPrototype, port))) {
-    const err = new TypeError(
-      'The "port" argument must be a MessagePort instance',
-    );
-    err["code"] = "ERR_INVALID_ARG_TYPE";
-    throw err;
-  }
-  port[MessagePortReceiveMessageOnPortSymbol] = true;
-  const data = op_message_port_recv_message_sync(port[MessagePortIdSymbol]);
-  if (data === null) return undefined;
-  const message = deserializeJsMessageData(data)[0];
-  patchMessagePortIfFound(message);
-  return { message };
-}
-
-class NodeMessageChannel {
-  port1: MessagePort;
-  port2: MessagePort;
-
-  constructor() {
-    const { port1, port2 } = new MessageChannel();
-    this.port1 = webMessagePortToNodeMessagePort(port1);
-    this.port2 = webMessagePortToNodeMessagePort(port2);
-
-    // When one port is closed, the paired port should also receive
-    // a 'close' event (matching Node.js behavior).
-    const origClose1 = FunctionPrototypeBind(port1.close, port1);
-    const origClose2 = FunctionPrototypeBind(port2.close, port2);
-
-    port1.close = () => {
-      origClose1();
-      if (!port2[nodeWorkerThreadCloseCbInvoked]) {
-        port2[nodeWorkerThreadCloseCbInvoked] = true;
-        port2.dispatchEvent(new Event("close"));
-      }
-    };
-    port2.close = () => {
-      origClose2();
-      if (!port1[nodeWorkerThreadCloseCbInvoked]) {
-        port1[nodeWorkerThreadCloseCbInvoked] = true;
-        port1.dispatchEvent(new Event("close"));
-      }
-    };
-  }
-}
-
-const nodePortListenersSymbol = Symbol("nodePortListeners");
-function webMessagePortToNodeMessagePort(port: MessagePort) {
-  // Patch idempotently: a port can be reached more than once through
-  // patchMessagePortIfFound (e.g. when included in a nested message
-  // payload). Re-patching would discard tracked listeners.
-  // deno-lint-ignore no-explicit-any
-  if ((port as any)[nodePortListenersSymbol]) return port;
-  // Track listeners per port and per event name so the same handler
-  // reference passed to `on` twice registers only once (Node parity),
-  // and `off` can locate the wrapper that was actually attached.
-  const portListeners = {
-    // deno-lint-ignore no-explicit-any
-    message: new SafeMap<(...args: any[]) => void, (ev: any) => any>(),
-    // deno-lint-ignore no-explicit-any
-    messageerror: new SafeMap<(...args: any[]) => void, (ev: any) => any>(),
-    // deno-lint-ignore no-explicit-any
-    close: new SafeMap<(...args: any[]) => void, (ev: any) => any>(),
-  };
-  ObjectDefineProperty(port, nodePortListenersSymbol, {
-    __proto__: null,
-    value: portListeners,
-    writable: false,
-    enumerable: false,
-    configurable: false,
-  });
-  port.on = port.addListener = function (this: MessagePort, name, listener) {
-    const map = portListeners[name as "message" | "messageerror" | "close"] as
-      | typeof portListeners.message
-      | undefined;
-    if (map === undefined) {
-      throw new Error(`Unknown event: "${name}"`);
-    }
-    if (map.has(listener)) {
-      // Same listener already registered for this event on this port --
-      // matches Node.js MessagePort, where repeated `.on('message', fn)`
-      // calls with the same reference do not produce duplicate
-      // deliveries.
-      return this;
-    }
-    // deno-lint-ignore no-explicit-any
-    const _listener = (ev: any) => {
-      patchMessagePortIfFound(ev.data);
-      listener(ev.data);
-    };
-    map.set(listener, _listener);
-    port.addEventListener(name, _listener);
-    if (name === "message") {
-      // Mirror the auto-start behavior of `port.onmessage = fn` so that
-      // Node code that does `port.on('message', ...)` without an explicit
-      // `port.start()` still receives messages. Deferred via a microtask
-      // so `receiveMessageOnPort` (sync) gets a chance to drain the
-      // queue first -- this is the same pattern the web MessagePort
-      // applies in its `message` event handler init, which `piscina`
-      // relies on.
-      PromisePrototypeThen(PromiseResolve(undefined), () => port.start());
-    }
-    return this;
-  };
-  port.off = port.removeListener = function (
-    this: MessagePort,
-    name,
-    listener,
-  ) {
-    const map = portListeners[name as "message" | "messageerror" | "close"] as
-      | typeof portListeners.message
-      | undefined;
-    if (map === undefined) {
-      throw new Error(`Unknown event: "${name}"`);
-    }
-    const wrapper = map.get(listener);
-    if (wrapper !== undefined) {
-      port.removeEventListener(name, wrapper);
-      map.delete(listener);
-    }
-    return this;
-  };
-  port[nodeWorkerThreadCloseCb] = () => {
-    port.dispatchEvent(new Event("close"));
-  };
-  port.unref = () => {
-    port[refMessagePort](false);
-  };
-  port.ref = () => {
-    port[refMessagePort](true);
-  };
-  const webPostMessage = port.postMessage;
-  port.postMessage = (message, transferList) => {
-    for (let i = 0; i < transferList?.length; i++) {
-      const item = transferList[i];
-      if (item[untransferableSymbol] === true) {
-        throw new DOMException("Value not transferable", "DataCloneError");
-      }
-    }
-
-    return FunctionPrototypeCall(
-      webPostMessage,
-      port,
-      message,
-      transferList,
-    );
-  };
-  port.once = (name: string | symbol, listener) => {
-    const fn = (event) => {
-      port.off(name, fn);
-      return listener(event);
-    };
-    port.on(name, fn);
-  };
-  return port;
-}
-
-// TODO(@marvinhagemeister): Recursively iterating over all message
-// properties seems slow.
-// Maybe there is a way we can patch the prototype of MessagePort _only_
-// inside worker_threads? For now correctness is more important than perf.
-// deno-lint-ignore no-explicit-any
-function patchMessagePortIfFound(data: any, seen = new SafeSet<any>()) {
-  if (data === null || typeof data !== "object" || seen.has(data)) {
-    return;
-  }
-  seen.add(data);
-
-  if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, data)) {
-    webMessagePortToNodeMessagePort(data);
-  } else {
-    for (const obj in data as Record<string, unknown>) {
-      if (ObjectHasOwn(data, obj)) {
-        patchMessagePortIfFound(data[obj], seen);
-      }
-    }
-  }
-}
-
 class BroadcastChannel extends WebBroadcastChannel {
+  #closed = false;
+  constructor(name?: unknown) {
+    if (arguments.length === 0) {
+      const err = new TypeError('The "name" argument must be specified');
+      // deno-lint-ignore no-explicit-any
+      (err as any).code = "ERR_MISSING_ARGS";
+      throw err;
+    }
+    // Use template-string coercion (Node's behavior): throws TypeError
+    // for Symbol values, unlike `String(sym)` which silently produces
+    // "Symbol(...)".
+    super(`${name}`);
+  }
+  postMessage(message: unknown) {
+    if (this.#closed) {
+      const err = new Error("BroadcastChannel is closed");
+      // deno-lint-ignore no-explicit-any
+      (err as any).code = "ERR_BROADCAST_CHANNEL_CLOSED";
+      throw err;
+    }
+    if (arguments.length === 0) {
+      const err = new TypeError('The "message" argument must be specified');
+      // deno-lint-ignore no-explicit-any
+      (err as any).code = "ERR_MISSING_ARGS";
+      throw err;
+    }
+    return super.postMessage(message);
+  }
+  close() {
+    this.#closed = true;
+    super.close();
+  }
   ref() {
     this[refBroadcastChannel](true);
     return this;
@@ -1787,7 +1567,7 @@ class BroadcastChannel extends WebBroadcastChannel {
 ObjectAssign(exportsObj, {
   BroadcastChannel,
   MessagePort,
-  MessageChannel: NodeMessageChannel,
+  MessageChannel,
   Worker: NodeWorker,
   // Initial placeholders for fields that `__initWorkerThreads` overwrites
   // at bootstrap. Listed here so they appear as own enumerable string-keyed
@@ -1800,6 +1580,8 @@ ObjectAssign(exportsObj, {
   resourceLimits: undefined,
   threadName: "",
   markAsUntransferable,
+  isMarkedAsUntransferable,
+  markAsUncloneable,
   moveMessagePortToContext,
   postMessageToThread,
   receiveMessageOnPort,
@@ -1807,5 +1589,6 @@ ObjectAssign(exportsObj, {
   setEnvironmentData,
   SHARE_ENV,
 });
+
 return exportsObj;
 })();

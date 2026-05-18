@@ -76,8 +76,6 @@ Object.defineProperty(globalThis, "AbortController", {
 | TextDecoderStream                | encoding.TextDecoderStream               | false      | true         | true      |
 | TextEncoderStream                | encoding.TextEncoderStream               | false      | true         | true      |
 | TransformStream                  | streams.TransformStream                  | false      | true         | true      |
-| MessageChannel                   | messagePort.MessageChannel               | false      | true         | true      |
-| MessagePort                      | messagePort.MessagePort                  | false      | true         | true      |
 | WritableStream                   | streams.WritableStream                   | false      | true         | true      |
 | WritableStreamDefaultWriter      | streams.WritableStreamDefaultWriter      |            |              |           |
 | WritableStreamDefaultController  | streams.WritableStreamDefaultController  |            |              |           |

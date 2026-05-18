@@ -599,6 +599,15 @@ async function fsCall<P, R, T extends FileHandleFn<P, R>>(
   }
 }
 
+// FileHandle has no structured-clone representation; Node throws
+// DataCloneError when one is passed to `postMessage` or `structuredClone`.
+// Mark the prototype so our serializer refuses it instead of silently
+// producing `{}`.
+const { markNotSerializable } = core.loadExtScript(
+  "ext:deno_web/13_message_port.js",
+);
+markNotSerializable(FileHandle.prototype);
+
 export default {
   FileHandle,
 };

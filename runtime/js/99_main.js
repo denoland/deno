@@ -228,12 +228,11 @@ let globalDispatchEvent;
 let closeOnIdle;
 
 function hasMessageEventListener() {
-  // the function name is kind of a misnomer, but we want to behave
-  // as if we have message event listeners if a node message port is explicitly
-  // refed (and the inverse as well)
-  return (event.listenerCount(globalThis, "message") > 0 &&
-    !globalThis[messagePort.unrefParentPort]) ||
-    messagePort.refedMessagePortsCount > 0;
+  // Worker stays alive while there's a globalThis "message" listener,
+  // unless node:worker_threads has explicitly unref'd parentPort -- in
+  // which case the bridge listener should not count.
+  return event.listenerCount(globalThis, "message") > 0 &&
+    !globalThis[messagePort.unrefParentPort];
 }
 
 function dispatchWorkerMessage(data) {
@@ -255,9 +254,16 @@ function dispatchWorkerMessage(data) {
   const msgEvent = new event.MessageEvent("message", {
     cancelable: false,
     data: message,
+    // Filter on the host-object brand rather than the Web MessagePort
+    // prototype: in a process that has loaded `node:worker_threads`,
+    // the transferable receive callback for "MessagePort" produces
+    // Node MessagePort instances that share the brand but not the
+    // prototype.
     ports: ArrayPrototypeFilter(
       transferables,
-      (t) => ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
+      (t) =>
+        t !== null && typeof t === "object" &&
+        t[core.hostObjectBrand] === "MessagePort",
     ),
   });
   event.setIsTrusted(msgEvent, true);

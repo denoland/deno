@@ -1273,8 +1273,14 @@ class MessageEvent extends Event {
       "Failed to construct 'MessageEvent'",
       "Argument 2 'ports'",
     );
-    this.origin = eventInitDict?.origin ?? "";
-    this.lastEventId = eventInitDict?.lastEventId ?? "";
+    // origin and lastEventId are USVString per spec, so non-string
+    // input (number, boolean, ...) gets coerced to a string. Node's
+    // `MessageEvent` matches this behavior; tests assert that passing
+    // `{ origin: 1 }` produces `origin === '1'`.
+    const origin = eventInitDict?.origin;
+    this.origin = origin === undefined ? "" : `${origin}`;
+    const lastEventId = eventInitDict?.lastEventId;
+    this.lastEventId = lastEventId === undefined ? "" : `${lastEventId}`;
     this.#source = eventInitDict?.source ?? null;
   }
 

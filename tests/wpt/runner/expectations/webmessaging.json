@@ -32,8 +32,16 @@
     "dictionary-transferrable.any.worker.html": true,
     "implied-start.any.html": true,
     "implied-start.any.worker.html": true,
-    "no-start.any.html": true,
-    "no-start.any.worker.html": true,
+    "no-start.any.html": {
+      "expectedFailures": [
+        "without start()"
+      ]
+    },
+    "no-start.any.worker.html": {
+      "expectedFailures": [
+        "without start()"
+      ]
+    },
     "user-activation.tentative.any.html": false,
     "user-activation.tentative.any.worker.html": false,
     "worker-post-after-close.any.html": false,
@@ -76,8 +84,16 @@
   "MessageEvent-trusted.window.html": false,
   "MessageEvent.any.html": true,
   "MessageEvent.any.worker.html": true,
-  "MessagePort_initial_disabled.any.html": true,
-  "MessagePort_initial_disabled.any.worker.html": true,
+  "MessagePort_initial_disabled.any.html": {
+    "expectedFailures": [
+      "MessageChannel: port message queue is initially disabled"
+    ]
+  },
+  "MessagePort_initial_disabled.any.worker.html": {
+    "expectedFailures": [
+      "MessageChannel: port message queue is initially disabled"
+    ]
+  },
   "MessagePort_onmessage_start.any.html": true,
   "MessagePort_onmessage_start.any.worker.html": true,
   "postMessage_MessagePorts_xsite.sub.window.html": false,

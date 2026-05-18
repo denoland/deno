@@ -42,7 +42,6 @@ const {
 } = core.loadExtScript("ext:deno_web/02_event.js");
 const {
   deserializeJsMessageData,
-  MessagePortPrototype,
   serializeJsMessageData,
 } = core.loadExtScript("ext:deno_web/13_message_port.js");
 const { DOMException } = core.loadExtScript(
@@ -260,9 +259,16 @@ class Worker extends EventTarget {
     const event = new MessageEvent("message", {
       cancelable: false,
       data: message,
+      // Match by host-object brand rather than the Web MessagePort
+      // prototype: when `node:worker_threads` is loaded it overrides
+      // the "MessagePort" transferable receive callback so deserialised
+      // ports are Node MessagePort instances (different prototype,
+      // same brand).
       ports: ArrayPrototypeFilter(
         transferables,
-        (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
+        (t) =>
+          t !== null && typeof t === "object" &&
+          t[core.hostObjectBrand] === "MessagePort",
       ),
     });
     setIsTrusted(event, true);

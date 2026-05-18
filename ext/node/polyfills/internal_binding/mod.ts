@@ -133,7 +133,17 @@ const modules = {
   util,
   uv,
   v8: {},
-  worker: {},
+  // `internalBinding('worker').getEnvMessagePort()` returns the
+  // worker's parent-facing MessagePort (what user code knows as
+  // `worker_threads.parentPort`). Several internals-only Node tests
+  // use this binding to drive shutdown / unserializable-error paths.
+  worker: {
+    getEnvMessagePort() {
+      return core.loadExtScript(
+        "ext:deno_node/worker_threads.ts",
+      ).parentPort;
+    },
+  },
   zlib: {},
 };
 

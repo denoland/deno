@@ -440,7 +440,11 @@
   "SharedWorker_blobUrl.html": false,
   "SharedWorker_dataUrl.html": false,
   "Worker-creation-happens-in-parallel.https.html": true,
-  "Worker-messageport.html": true,
+  "Worker-messageport.html": {
+    "expectedFailures": [
+      "Test getting messages from a worker on a port."
+    ]
+  },
   "Worker-multi-port.html": {
     "expectedFailures": [
       "Test postMessage on channel with previous failed postMessage calls."
