@@ -180,6 +180,28 @@ Deno.test({
   },
 });
 
+// https://github.com/denoland/deno/issues/34185
+Deno.test({
+  name:
+    "vm createContext/runInContext in a tight loop does not panic at teardown",
+  fn() {
+    // Each iteration creates a new contextified sandbox, compiles a script
+    // and runs it. Previously the per-context `Weak<Context>` registered by
+    // the v8 crate's `Context::set_slot` would survive into isolate teardown
+    // and panic in the final GC's first-pass weak callback because the
+    // backing `WeakData` had already been freed by `dispose_annex` without
+    // resetting the v8 Global. We need enough iterations to trigger the
+    // teardown GC's final weak-callback pass; 10000 is more than sufficient.
+    for (let i = 0; i < 10000; i++) {
+      const sandbox: Record<string, unknown> = {};
+      createContext(sandbox);
+      const s = new Script("x = 42");
+      s.runInContext(sandbox);
+      assertEquals(sandbox.x, 42);
+    }
+  },
+});
+
 // https://github.com/denoland/deno/issues/32921
 Deno.test({
   name: "vm in operator walks prototype chain of sandbox",

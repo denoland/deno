@@ -6,6 +6,11 @@ import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_fs_cwd,
   op_import_sync,
+  op_import_sync_with_source,
+  op_module_default_resolve,
+  op_module_hooks_poll_load,
+  op_module_hooks_register,
+  op_module_hooks_respond_load,
   op_napi_open,
   op_node_has_child_ipc_pipe,
   op_require_as_file_path,
@@ -62,6 +67,7 @@ const {
   SafeSet,
   SafeWeakMap,
   SetPrototypeAdd,
+  SetPrototypeDelete,
   SetPrototypeHas,
   String,
   StringPrototypeCharCodeAt,
@@ -102,12 +108,15 @@ const _streamWritable = core.loadExtScript(
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 const assertStrict = core.createLazyLoader("node:assert/strict");
 const asyncHooks = core.loadExtScript("ext:deno_node/async_hooks.ts").default;
+const internalAsyncHooks = core.loadExtScript(
+  "ext:deno_node/internal/async_hooks.ts",
+);
 const {
   emitAfter: internalAsyncHooksEmitAfter,
   emitBefore: internalAsyncHooksEmitBefore,
   emitDestroy: internalAsyncHooksEmitDestroy,
   emitInit: internalAsyncHooksEmitInit,
-} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+} = internalAsyncHooks;
 const buffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs").default;
 // child_process, crypto, dgram are lazy-loaded via `lazyNodeModules` below.
 // Their scripts use `createLazyLoader(...)()` patterns to extend classes
@@ -184,6 +193,7 @@ const internalCryptoUtil = core.loadExtScript(
 const internalCryptoX509 = core.loadExtScript(
   "ext:deno_node/internal/crypto/x509.ts",
 ).default;
+import * as internalCompileCache from "ext:deno_node/internal/compile_cache.js";
 const internalDgram = core.loadExtScript(
   "ext:deno_node/internal/dgram.ts",
 ).default;
@@ -201,6 +211,22 @@ const internalEventTarget = core.createLazyLoader(
 const internalFsUtils = core.createLazyLoader(
   "ext:deno_node/internal/fs/utils.mjs",
 );
+// `internal/fs/promises.ts` evaluates `lazyFs()` at top-level, so triggering
+// its load during `setupBuiltinModules()` would re-enter the half-built
+// `node:fs` namespace. A Proxy defers evaluation until the first time the
+// requiring code reads a property; by then `node:fs` is fully initialized.
+const lazyInternalFsPromises = core.createLazyLoader(
+  "ext:deno_node/internal/fs/promises.ts",
+);
+let internalFsPromisesCache;
+const internalFsPromisesProxy = new Proxy(ObjectCreate(null), {
+  get(_target, prop) {
+    return (internalFsPromisesCache ??= lazyInternalFsPromises())[prop];
+  },
+  has(_target, prop) {
+    return prop in (internalFsPromisesCache ??= lazyInternalFsPromises());
+  },
+});
 // internal/http, internal/http2/core, internal/http2/util are lazy-loaded
 // via `lazyNodeModules` below. Loading them eagerly here pulls the entire
 // http2 ESM chain (node:http2 -> http2.ts -> node:http -> http.ts -> the
@@ -226,12 +252,14 @@ const internalSocketAddress = core.loadExtScript(
 const internalJsStreamSocket = core.loadExtScript(
   "ext:deno_node/internal/js_stream_socket.js",
 ).default;
+const internalNet = core.loadExtScript("ext:deno_node/internal/net.ts");
 const internalTestBinding = core.loadExtScript(
   "ext:deno_node/internal/test/binding.ts",
 );
 const internalTimers = core.loadExtScript(
   "ext:deno_node/internal/timers.mjs",
 );
+import * as internalTty from "ext:deno_node/internal/tty.js";
 const internalUrl = core.loadExtScript("ext:deno_node/internal/url.ts");
 const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const internalUtilDebuglog = core.loadExtScript(
@@ -242,6 +270,18 @@ const internalUtilInspect = core.loadExtScript(
 );
 const internalValidators = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
+);
+const internalWebstreamsAdapters = core.loadExtScript(
+  "ext:deno_node/internal/webstreams/adapters.js",
+);
+const internalWebstreamsReadableStream = core.loadExtScript(
+  "ext:deno_node/internal/webstreams/readablestream.js",
+);
+const internalWebstreamsUtil = core.loadExtScript(
+  "ext:deno_node/internal/webstreams/util.js",
+);
+const internalWorkerJsTransferable = core.loadExtScript(
+  "ext:deno_node/internal/worker/js_transferable.js",
 );
 const internalConsole = core.loadExtScript(
   "ext:deno_node/internal/console/constructor.mjs",
@@ -297,9 +337,10 @@ const wasi = core.loadExtScript("ext:deno_node/wasi.ts").default;
 // zlib is lazy-loaded via `lazyNodeModules` below: zlib.js extends
 // `Transform` from `node:stream` at module body, so loading it eagerly
 // pulls the stream subtree into the snapshot.
-const { getOptionValue } = core.loadExtScript(
+const internalOptions = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
 );
+const { getOptionValue } = internalOptions;
 
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
@@ -393,6 +434,7 @@ function setupBuiltinModules() {
     inspector,
     "inspector/promises": inspectorPromises,
     "internal/assert/myers_diff": internalAssertMyersDiff.default,
+    "internal/async_hooks": internalAsyncHooks,
     "internal/console/constructor": internalConsole,
     "internal/crypto/certificate": internalCryptoCertificate,
     "internal/crypto/diffiehellman": internalCryptoDiffiehellman,
@@ -411,19 +453,27 @@ function setupBuiltinModules() {
     "internal/dns/promises": internalDnsPromises,
     "internal/buffer": internalBuffer.default,
     "internal/errors": internalErrors,
+    "internal/fs/promises": internalFsPromisesProxy,
     "internal/priority_queue": internalPriorityQueue.default,
     "internal/readline/utils": internalReadlineUtils.default,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/state": internalStreamsState,
     "internal/socketaddress": internalSocketAddress,
     "internal/js_stream_socket": internalJsStreamSocket,
+    "internal/net": internalNet,
+    "internal/options": internalOptions,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
+    "internal/tty": internalTty,
     "internal/url": internalUrl,
     "internal/util/debuglog": internalUtilDebuglog.default,
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
     "internal/validators": internalValidators,
+    "internal/webstreams/adapters": internalWebstreamsAdapters,
+    "internal/webstreams/readablestream": internalWebstreamsReadableStream,
+    "internal/webstreams/util": internalWebstreamsUtil,
+    "internal/worker/js_transferable": internalWorkerJsTransferable,
     module: Module,
     net,
     os,
@@ -516,6 +566,339 @@ let hasInspectBrk = false;
 let usesLocalNodeModulesDir = false;
 let patched = false;
 
+// module.registerHooks() infrastructure
+const hookEntries = [];
+const cjsHookResolvedFilenames = new SafeSet();
+let insideResolveHook = false;
+let insideLoadHook = false;
+let utf8Decoder;
+let esmLoadLoopRunning = false;
+const requireResolveOptionsMarker = Symbol("require.resolve");
+
+function executeResolveHookChain(specifier, context, parent, isMain, options) {
+  // Collect resolve hooks from hookEntries in LIFO order
+  const resolveHooks = [];
+  for (let i = hookEntries.length - 1; i >= 0; i--) {
+    if (hookEntries[i].resolve !== null) {
+      ArrayPrototypePush(resolveHooks, hookEntries[i].resolve);
+    }
+  }
+  if (resolveHooks.length === 0) return null;
+
+  let index = 0;
+  // Running context accumulates changes across the chain
+  let currentContext = context;
+
+  function nextResolve(spec, ctx) {
+    // If ctx provided, merge into running context
+    if (ctx !== undefined && ctx !== null) {
+      currentContext = { ...currentContext, ...ctx };
+    }
+
+    if (index >= resolveHooks.length) {
+      // Default resolve: use Module._resolveFilename
+      insideResolveHook = true;
+      try {
+        // Handle node: builtins
+        if (StringPrototypeStartsWith(spec, "node:")) {
+          return { url: spec, shortCircuit: true };
+        }
+        if (nativeModuleCanBeRequiredByUsers(spec)) {
+          return { url: "node:" + spec, shortCircuit: true };
+        }
+        const resolved = Module._resolveFilename(
+          spec,
+          parent,
+          isMain,
+          options,
+        );
+        let resolvedUrl;
+        if (StringPrototypeStartsWith(resolved, "node:")) {
+          resolvedUrl = resolved;
+        } else {
+          resolvedUrl = url.pathToFileURL(resolved).href;
+        }
+        return { url: resolvedUrl, shortCircuit: true };
+      } finally {
+        insideResolveHook = false;
+      }
+    }
+    const hook = resolveHooks[index++];
+    let nextCalled = false;
+    const wrappedNext = (s, c) => {
+      nextCalled = true;
+      return nextResolve(s, c);
+    };
+    const result = hook(spec, currentContext, wrappedNext);
+    if (!nextCalled && !result?.shortCircuit) {
+      throw new internalErrors.ERR_INVALID_RETURN_PROPERTY_VALUE(
+        "true",
+        "resolve",
+        "shortCircuit",
+        result?.shortCircuit,
+      );
+    }
+    if (result?.shortCircuit && typeof result?.url !== "string") {
+      const err = new TypeError(
+        'Expected a URL string to be returned for the "url" from the "resolve" hook',
+      );
+      err.code = "ERR_INVALID_RETURN_PROPERTY_VALUE";
+      throw err;
+    }
+    return result;
+  }
+
+  return nextResolve(specifier, context);
+}
+
+function executeLoadHookChain(fileUrl, context) {
+  // Collect load hooks from hookEntries in LIFO order
+  const loadHooks = [];
+  for (let i = hookEntries.length - 1; i >= 0; i--) {
+    if (hookEntries[i].load !== null) {
+      ArrayPrototypePush(loadHooks, hookEntries[i].load);
+    }
+  }
+  if (loadHooks.length === 0) return null;
+
+  let index = 0;
+  let currentContext = context;
+
+  function nextLoad(loadUrl, ctx) {
+    if (ctx !== undefined && ctx !== null) {
+      currentContext = { ...currentContext, ...ctx };
+    }
+
+    if (index >= loadHooks.length) {
+      // Default load: read file from disk
+      // For builtins, return null source
+      if (StringPrototypeStartsWith(loadUrl, "node:")) {
+        return { source: null, format: "builtin", shortCircuit: true };
+      }
+      const filePath = StringPrototypeStartsWith(loadUrl, "file://")
+        ? url.fileURLToPath(loadUrl)
+        : loadUrl;
+      const source = op_require_read_file(filePath);
+      return {
+        source,
+        format: currentContext?.format ?? undefined,
+        shortCircuit: true,
+      };
+    }
+    const hook = loadHooks[index++];
+    let nextCalled = false;
+    const wrappedNext = (u, c) => {
+      nextCalled = true;
+      return nextLoad(u, c);
+    };
+    const result = hook(loadUrl, currentContext, wrappedNext);
+    if (!nextCalled && !result?.shortCircuit) {
+      throw new internalErrors.ERR_INVALID_RETURN_PROPERTY_VALUE(
+        "true",
+        "load",
+        "shortCircuit",
+        result?.shortCircuit,
+      );
+    }
+    if (
+      result?.shortCircuit &&
+      !isValidLoadHookSource(result?.source, result?.format)
+    ) {
+      const err = new TypeError(
+        'Expected a string, an ArrayBuffer, or a TypedArray to be returned for the "source" from the "load" hook',
+      );
+      err.code = "ERR_INVALID_RETURN_PROPERTY_VALUE";
+      throw err;
+    }
+    return result;
+  }
+
+  return nextLoad(fileUrl, context);
+}
+
+function isValidLoadHookSource(source, format) {
+  if (source === null) {
+    return format === "builtin";
+  }
+  return typeof source === "string" ||
+    core.isAnyArrayBuffer(source) ||
+    core.isArrayBufferView(source);
+}
+
+function loadHookSourceToString(source) {
+  if (typeof source === "string") {
+    return source;
+  }
+  if (core.isAnyArrayBuffer(source)) {
+    return (utf8Decoder ??= new TextDecoder()).decode(new Uint8Array(source));
+  }
+  return (utf8Decoder ??= new TextDecoder()).decode(
+    new Uint8Array(source.buffer, source.byteOffset, source.byteLength),
+  );
+}
+
+// ESM resolve hook chain: runs hooks in LIFO order.
+// Returns { url } if hooks resolved, or null for fallthrough to default.
+function executeEsmResolveHookChain(specifier, context) {
+  const resolveHooks = [];
+  for (let i = hookEntries.length - 1; i >= 0; i--) {
+    if (hookEntries[i].resolve !== null) {
+      ArrayPrototypePush(resolveHooks, hookEntries[i].resolve);
+    }
+  }
+  if (resolveHooks.length === 0) return null;
+
+  let index = 0;
+  let currentContext = context;
+
+  function nextResolve(spec, ctx) {
+    if (ctx !== undefined && ctx !== null) {
+      currentContext = { ...currentContext, ...ctx };
+    }
+    if (index >= resolveHooks.length) {
+      if (StringPrototypeStartsWith(spec, "node:")) {
+        return { url: spec, shortCircuit: true };
+      }
+      insideResolveHook = true;
+      try {
+        const resolved = op_module_default_resolve(
+          spec,
+          currentContext.parentURL ?? "",
+        );
+        return { url: resolved, shortCircuit: true };
+      } catch {
+        // Last-ditch fallback so hooks can still observe purely synthetic
+        // specifiers that Deno's resolver rejects (e.g. ad-hoc URLs invented
+        // by user code).
+        try {
+          const resolved = new URL(spec, currentContext.parentURL).href;
+          return { url: resolved, shortCircuit: true };
+        } catch {
+          return { url: null, shortCircuit: true };
+        }
+      } finally {
+        insideResolveHook = false;
+      }
+    }
+    const hook = resolveHooks[index++];
+    let nextCalled = false;
+    const wrappedNext = (s, c) => {
+      nextCalled = true;
+      return nextResolve(s, c);
+    };
+    const result = hook(spec, currentContext, wrappedNext);
+    if (!nextCalled && !result?.shortCircuit) {
+      throw new TypeError(
+        "resolve hook must return { shortCircuit: true } or call nextResolve",
+      );
+    }
+    return result;
+  }
+
+  return nextResolve(specifier, context);
+}
+
+function esmResolveHookCallback(specifier, referrer) {
+  const context = {
+    parentURL: referrer || undefined,
+    conditions: ["node", "import"],
+    importAttributes: { __proto__: null },
+  };
+  try {
+    const result = executeEsmResolveHookChain(specifier, context);
+    return result?.url ?? null;
+  } catch (e) {
+    return { error: String(e) };
+  }
+}
+
+// ESM load hook chain: runs hooks in LIFO order.
+// Returns { source } if hooks provided source, or null for fallthrough.
+function executeEsmLoadHookChain(fileUrl, context) {
+  const loadHooks = [];
+  for (let i = hookEntries.length - 1; i >= 0; i--) {
+    if (hookEntries[i].load !== null) {
+      ArrayPrototypePush(loadHooks, hookEntries[i].load);
+    }
+  }
+  if (loadHooks.length === 0) return null;
+
+  let index = 0;
+  let currentContext = context;
+
+  function nextLoad(loadUrl, ctx) {
+    if (ctx !== undefined && ctx !== null) {
+      currentContext = { ...currentContext, ...ctx };
+    }
+    if (index >= loadHooks.length) {
+      // End of chain - signal fallthrough to Rust default loading
+      return { source: null, shortCircuit: true };
+    }
+    const hook = loadHooks[index++];
+    let nextCalled = false;
+    const wrappedNext = (u, c) => {
+      nextCalled = true;
+      return nextLoad(u, c);
+    };
+    const result = hook(loadUrl, currentContext, wrappedNext);
+    if (!nextCalled && !result?.shortCircuit) {
+      throw new TypeError(
+        "load hook must return { shortCircuit: true } or call nextLoad",
+      );
+    }
+    return result;
+  }
+
+  return nextLoad(fileUrl, context);
+}
+
+function _startEsmLoadLoop() {
+  if (esmLoadLoopRunning) return;
+  esmLoadLoopRunning = true;
+  (async () => {
+    while (true) {
+      const pollPromise = op_module_hooks_poll_load();
+      core.unrefOpPromise(pollPromise);
+      const req = await pollPromise;
+      if (req === null) break;
+      const [id, fileUrl] = req;
+      const context = {
+        format: undefined,
+        conditions: ["node", "import"],
+        importAttributes: { __proto__: null },
+      };
+      try {
+        const result = executeEsmLoadHookChain(fileUrl, context);
+        if (result?.format === "builtin") {
+          op_module_hooks_respond_load(id, null, "builtin", null);
+        } else if (result !== null && result.source != null) {
+          const source = loadHookSourceToString(result.source);
+          const format = result.format || null;
+          op_module_hooks_respond_load(id, source, format, null);
+        } else {
+          // Fallthrough: tell Rust to use default loading
+          op_module_hooks_respond_load(id, null, null, null);
+        }
+      } catch (e) {
+        op_module_hooks_respond_load(id, null, null, String(e));
+      }
+    }
+  })();
+}
+
+function _activateEsmHooks() {
+  let hasResolve = false;
+  let hasLoad = false;
+  for (let i = 0; i < hookEntries.length; i++) {
+    if (hookEntries[i].resolve !== null) hasResolve = true;
+    if (hookEntries[i].load !== null) hasLoad = true;
+  }
+  op_module_hooks_register(hasResolve ? esmResolveHookCallback : null, hasLoad);
+  if (hasLoad) _startEsmLoadLoop();
+}
+
+let internalModuleStat = op_require_stat;
+
 function stat(filename) {
   if (statCache !== null) {
     const result = statCache.get(filename);
@@ -523,7 +906,7 @@ function stat(filename) {
       return result;
     }
   }
-  const result = op_require_stat(filename);
+  const result = internalModuleStat(filename);
   if (statCache !== null && result >= 0) {
     statCache.set(filename, result);
   }
@@ -801,11 +1184,30 @@ ObjectDefineProperty(Module.prototype, "parent", {
 
 Module.builtinModules = builtinModules;
 
+Module.enableCompileCache = internalCompileCache.enableCompileCache;
+Module.flushCompileCache = internalCompileCache.flushCompileCache;
+Module.getCompileCacheDir = internalCompileCache.getCompileCacheDir;
+Module.constants = internalCompileCache.constants;
+
 Module._extensions = ObjectCreate(null);
 Module._cache = ObjectCreate(null);
 Module._pathCache = ObjectCreate(null);
 let modulePaths = [];
 Module.globalPaths = modulePaths;
+
+ObjectDefineProperty(Module, "_stat", {
+  __proto__: null,
+  configurable: true,
+  get() {
+    return internalModuleStat;
+  },
+  set(value) {
+    internalUtil.emitExperimentalWarning("Module._stat");
+    internalModuleStat = value;
+    Module.stat = value;
+    return true;
+  },
+});
 
 const CHAR_FORWARD_SLASH = 47;
 const TRAILING_SLASH_REGEX = /(?:^|\/)\.?\.$/;
@@ -1010,9 +1412,98 @@ Module._load = function (request, parent, isMain) {
   }
 
   const filename = Module._resolveFilename(request, parent, isMain);
-  if (StringPrototypeStartsWith(filename, "node:")) {
+  const cachedModule = Module._cache[filename];
+  if (
+    cachedModule !== undefined &&
+    !StringPrototypeStartsWith(filename, "node:")
+  ) {
+    updateChildren(parent, cachedModule, true);
+    if (!cachedModule.loaded) {
+      return getExportsForCircularRequire(cachedModule);
+    }
+    return cachedModule.exports;
+  }
+
+  const isBuiltinFilename = StringPrototypeStartsWith(filename, "node:") ||
+    nativeModuleCanBeRequiredByUsers(filename);
+  if (isBuiltinFilename) {
+    const builtinFilename = StringPrototypeStartsWith(filename, "node:")
+      ? filename
+      : "node:" + filename;
     // Slice 'node:' prefix
-    const id = StringPrototypeSlice(filename, 5);
+    const id = StringPrototypeSlice(builtinFilename, 5);
+
+    // Hook-overridden builtins are cached under the `node:`-prefixed key.
+    // `require("util")` resolves to a bare name, so the early cache lookup
+    // above misses; check the prefixed key here so repeated requires reuse
+    // the same module instance instead of re-running the hook.
+    const cachedBuiltin = Module._cache[builtinFilename];
+    if (cachedBuiltin !== undefined) {
+      updateChildren(parent, cachedBuiltin, true);
+      if (!cachedBuiltin.loaded) {
+        return getExportsForCircularRequire(cachedBuiltin);
+      }
+      return cachedBuiltin.exports;
+    }
+
+    // Run load hooks for builtins if registered
+    if (hookEntries.length > 0 && !insideLoadHook) {
+      let hasLoadHook = false;
+      for (let i = 0; i < hookEntries.length; i++) {
+        if (hookEntries[i].load !== null) {
+          hasLoadHook = true;
+          break;
+        }
+      }
+      if (hasLoadHook) {
+        const context = {
+          format: "builtin",
+          conditions: ["node", "require"],
+          importAttributes: { __proto__: null },
+        };
+        insideLoadHook = true;
+        let result;
+        try {
+          result = executeLoadHookChain(builtinFilename, context);
+        } finally {
+          insideLoadHook = false;
+        }
+        // If the hook changed the format away from "builtin", use the
+        // hook-provided source instead of loading the native module.
+        // This matches Node.js behavior where hooks can replace builtins
+        // by returning a different format (e.g. "commonjs").
+        if (
+          result != null && result.format &&
+          result.format !== "builtin" && result.source != null
+        ) {
+          const mod = new Module(builtinFilename, parent);
+          Module._cache[builtinFilename] = mod;
+          const source = loadHookSourceToString(result.source);
+          if (result.format === "commonjs") {
+            mod._compile(source, builtinFilename, "commonjs");
+          } else if (result.format === "json") {
+            mod.exports = JSONParse(stripBOM(source));
+          } else if (result.format === "module") {
+            loadESMFromCJS(mod, builtinFilename, source, true);
+          } else {
+            mod._compile(source, builtinFilename, undefined, true);
+          }
+          mod.loaded = true;
+          return mod.exports;
+        }
+        if (result?.format === "builtin") {
+          const module = loadNativeModule(id, id);
+          if (module) {
+            return module.exports;
+          }
+          const mod = new Module(builtinFilename, parent);
+          mod.exports = {};
+          mod.loaded = true;
+          Module._cache[builtinFilename] = mod;
+          return mod.exports;
+        }
+      }
+    }
 
     maybeEmitNativeModuleDeprecation(id);
     const module = loadNativeModule(id, id);
@@ -1025,7 +1516,6 @@ Module._load = function (request, parent, isMain) {
     return module.exports;
   }
 
-  const cachedModule = Module._cache[filename];
   if (cachedModule !== undefined) {
     updateChildren(parent, cachedModule, true);
     if (!cachedModule.loaded) {
@@ -1131,6 +1621,56 @@ Module._resolveFilename = function (
     );
   }
 
+  // Run resolve hooks if registered (and not already inside a hook)
+  if (
+    hookEntries.length > 0 && !insideResolveHook &&
+    // Dynamic import of CJS goes through an internal self-require to execute
+    // the CommonJS module. That is not a user resolve operation and Node's
+    // registerHooks tests expect only the original import specifier to be
+    // observable.
+    request !== parent?.filename
+  ) {
+    const parentURL = parent?.filename
+      ? url.pathToFileURL(parent.filename).href
+      : undefined;
+    const context = {
+      conditions: ["node", "require"],
+      importAttributes: { __proto__: null },
+      parentURL,
+    };
+    const result = executeResolveHookChain(
+      request,
+      context,
+      parent,
+      isMain,
+      options,
+    );
+    if (result != null && result.url != null) {
+      if (
+        options?.[requireResolveOptionsMarker] &&
+        StringPrototypeStartsWith(result.url, "node:")
+      ) {
+        return StringPrototypeSlice(result.url, 5);
+      }
+      if (StringPrototypeStartsWith(result.url, "file://")) {
+        try {
+          const filename = url.fileURLToPath(result.url);
+          SetPrototypeAdd(cjsHookResolvedFilenames, filename);
+          return filename;
+        } catch {
+          // Virtual file:// URLs may not have valid OS paths (e.g.
+          // file:///virtual.js on Windows). Return the URL as-is and
+          // let the load hook handle it.
+          SetPrototypeAdd(cjsHookResolvedFilenames, result.url);
+          return result.url;
+        }
+      }
+      // node: and other schemes returned as-is
+      SetPrototypeAdd(cjsHookResolvedFilenames, result.url);
+      return result.url;
+    }
+  }
+
   if (nativeModuleCanBeRequiredByUsers(request)) {
     return request;
   }
@@ -1138,6 +1678,9 @@ Module._resolveFilename = function (
   if (StringPrototypeStartsWith(request, "node:")) {
     const id = StringPrototypeSlice(request, 5);
     if (id in nativeModuleExports) {
+      return request;
+    }
+    if (hookEntries.length > 0 && !insideResolveHook) {
       return request;
     }
     const err = new Error(`Cannot find module '${request}'`);
@@ -1320,8 +1863,79 @@ Module.prototype.load = function (filename) {
 
   // Canonicalize the path so it's not pointing to the symlinked directory
   // in `node_modules` directory of the referrer.
-  this.filename = op_require_real_path(filename);
+  // When load hooks are active, the file may not exist on disk (virtual
+  // modules), so we fall back to the original filename.
+  let hasLoadHooks = false;
+  if (hookEntries.length > 0 && !insideLoadHook) {
+    for (let i = 0; i < hookEntries.length; i++) {
+      if (hookEntries[i].load !== null) {
+        hasLoadHooks = true;
+        break;
+      }
+    }
+  }
+  if (hasLoadHooks) {
+    try {
+      this.filename = op_require_real_path(filename);
+    } catch {
+      this.filename = filename;
+    }
+  } else {
+    this.filename = op_require_real_path(filename);
+  }
   this.paths = Module._nodeModulePaths(pathDirname(this.filename));
+
+  // Run load hooks if registered
+  if (hasLoadHooks) {
+    {
+      let fileUrl;
+      if (StringPrototypeStartsWith(this.filename, "node:")) {
+        fileUrl = this.filename;
+      } else if (
+        StringPrototypeStartsWith(this.filename, "file://") ||
+        StringPrototypeIncludes(this.filename, "://")
+      ) {
+        // Already a URL (e.g. from a resolve hook returning a virtual URL)
+        fileUrl = this.filename;
+      } else {
+        fileUrl = url.pathToFileURL(this.filename).href;
+      }
+      const context = {
+        format: undefined,
+        conditions: ["node", "require"],
+        importAttributes: { __proto__: null },
+      };
+      insideLoadHook = true;
+      let result;
+      try {
+        result = executeLoadHookChain(fileUrl, context);
+      } finally {
+        insideLoadHook = false;
+      }
+      if (result != null && result.source != null) {
+        const format = result.format;
+        const source = loadHookSourceToString(result.source);
+        if (format === "module") {
+          loadESMFromCJS(this, this.filename, source, true);
+        } else if (format === "commonjs") {
+          this._compile(source, this.filename, "commonjs");
+        } else if (format === "json") {
+          try {
+            this.exports = JSONParse(stripBOM(source));
+          } catch (err) {
+            err.message = this.filename + ": " + err.message;
+            throw err;
+          }
+        } else {
+          // Default to CJS when format is unspecified
+          this._compile(source, this.filename, undefined, true);
+        }
+        this.loaded = true;
+        return;
+      }
+    }
+  }
+
   const extension = findLongestRegisteredExtension(filename);
   Module._extensions[extension](this, this.filename);
   this.loaded = true;
@@ -1452,9 +2066,16 @@ function wrapSafe(
   return f;
 }
 
-Module.prototype._compile = function (content, filename, format) {
+Module.prototype._compile = function (
+  content,
+  filename,
+  format,
+  sourceFromHook = false,
+) {
+  const useSourceImport = sourceFromHook ||
+    SetPrototypeDelete(cjsHookResolvedFilenames, filename);
   if (format === "module") {
-    return loadESMFromCJS(this, filename, content);
+    return loadESMFromCJS(this, filename, content, useSourceImport);
   }
 
   let compiledWrapper;
@@ -1463,9 +2084,9 @@ Module.prototype._compile = function (content, filename, format) {
   } catch (err) {
     if (
       format !== "commonjs" && err instanceof SyntaxError &&
-      op_require_can_parse_as_esm(content)
+      (op_require_can_parse_as_esm(content) || isEsmSyntaxError(err))
     ) {
-      return loadESMFromCJS(this, filename, content);
+      return loadESMFromCJS(this, filename, content, useSourceImport);
     }
     throw err;
   }
@@ -1508,7 +2129,7 @@ Module._extensions[".js"] = function (module, filename) {
   ) {
     return loadMaybeCjs(module, filename);
   } else if (StringPrototypeEndsWith(filename, ".mts")) {
-    return loadESMFromCJS(module, filename);
+    return loadEsm(module, filename);
   } else if (StringPrototypeEndsWith(filename, ".cts")) {
     return loadCjs(module, filename);
   } else {
@@ -1517,18 +2138,49 @@ Module._extensions[".js"] = function (module, filename) {
 };
 
 Module._extensions[".cjs"] = loadCjs;
-Module._extensions[".mjs"] = loadESMFromCJS;
+Module._extensions[".mjs"] = loadEsm;
 Module._extensions[".wasm"] = loadESMFromCJS;
 
 function loadMaybeCjs(module, filename) {
   const content = op_require_read_file(filename);
   const format = op_require_is_maybe_cjs(filename) ? undefined : "module";
-  module._compile(content, filename, format);
+  internalCompileCache.onCompile(filename, content, format);
+  internalCompileCache.onPersist(filename);
+  try {
+    module._compile(content, filename, format);
+  } catch (e) {
+    internalCompileCache.onCompileError(filename, format);
+    throw e;
+  }
 }
 
 function loadCjs(module, filename) {
   const content = op_require_read_file(filename);
-  module._compile(content, filename, "commonjs");
+  internalCompileCache.onCompile(filename, content, "commonjs");
+  internalCompileCache.onPersist(filename);
+  try {
+    module._compile(content, filename, "commonjs");
+  } catch (e) {
+    internalCompileCache.onCompileError(filename, "commonjs");
+    throw e;
+  }
+}
+
+function loadEsm(module, filename) {
+  let content;
+  try {
+    content = op_require_read_file(filename);
+  } catch { /* missing or non-text file - let loadESMFromCJS handle errors */ }
+  if (typeof content === "string") {
+    internalCompileCache.onCompile(filename, content, "module");
+    internalCompileCache.onPersist(filename);
+  }
+  try {
+    loadESMFromCJS(module, filename, content);
+  } catch (e) {
+    internalCompileCache.onCompileError(filename, "module");
+    throw e;
+  }
 }
 
 function _throwRequireAsyncModule(specifier, module) {
@@ -1539,11 +2191,13 @@ function _throwRequireAsyncModule(specifier, module) {
   throw new internalErrors.ERR_REQUIRE_ASYNC_MODULE(specifier, parent);
 }
 
-function loadESMFromCJS(module, filename, code) {
+function loadESMFromCJS(module, filename, code, sourceFromHook = false) {
   const specifier = url.pathToFileURL(filename).toString();
   let namespace;
   try {
-    namespace = op_import_sync(specifier, code);
+    namespace = sourceFromHook && code !== undefined
+      ? op_import_sync_with_source(specifier, code)
+      : op_import_sync(specifier);
   } catch (e) {
     if (
       e instanceof Error &&
@@ -1627,6 +2281,8 @@ function makeRequireFunction(mod) {
   };
 
   function resolve(request, options) {
+    options = options == null ? {} : { __proto__: null, ...options };
+    options[requireResolveOptionsMarker] = true;
     return Module._resolveFilename(request, mod, false, options);
   }
 
@@ -1829,10 +2485,6 @@ function nativeModuleCanBeRequiredByUsers(request) {
   return request in nativeModuleExports;
 }
 
-function readPackageScope() {
-  throw new Error("not implemented");
-}
-
 /** @param specifier {string} */
 function packageSpecifierSubPath(specifier) {
   let parts = StringPrototypeSplit(specifier, "/");
@@ -1843,19 +2495,6 @@ function packageSpecifierSubPath(specifier) {
   }
   return ArrayPrototypeJoin(parts, "/");
 }
-
-// This is a temporary namespace, that will be removed when initializing
-// in `02_init.js`.
-internals.requireImpl = {
-  setUsesLocalNodeModulesDir() {
-    usesLocalNodeModulesDir = true;
-  },
-  setInspectBrk() {
-    hasInspectBrk = true;
-  },
-  Module,
-  nativeModuleExports,
-};
 
 // VLQ Base64 decoding for source maps
 const BASE64_CHARS =
@@ -2348,6 +2987,57 @@ export function findSourceMap(path) {
 Module.findSourceMap = findSourceMap;
 Module.SourceMap = SourceMap;
 
+/**
+ * @param {string | URL} _specifier
+ * @param {string | URL} _parentUrl
+ * @param {{ parentURL: string | URL, data: any, transferList: any[] }} [_options]
+ */
+export function register(_specifier, _parentUrl, _options) {
+  // TODO(@marvinhagemeister): Stub implementation for programs registering
+  // TypeScript loaders. We don't support registering loaders for file
+  // types that Deno itself doesn't support at the moment.
+
+  return undefined;
+}
+
+/**
+ * Register synchronous module loader hooks.
+ * @param {{ resolve?: Function, load?: Function }} hooks
+ * @returns {{ deregister: () => void }}
+ */
+export function registerHooks(hooks) {
+  if (typeof hooks !== "object" || hooks === null) {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("hooks", "object", hooks);
+  }
+  const resolve = typeof hooks.resolve === "function" ? hooks.resolve : null;
+  const load = typeof hooks.load === "function" ? hooks.load : null;
+  if (resolve === null && load === null) {
+    throw new internalErrors.ERR_INVALID_ARG_VALUE(
+      "hooks",
+      hooks,
+      "must contain at least one of 'resolve' or 'load'",
+    );
+  }
+  const entry = { resolve, load };
+  ArrayPrototypePush(hookEntries, entry);
+
+  // Activate ESM hooks in Rust module loader
+  _activateEsmHooks();
+
+  return {
+    deregister() {
+      const idx = ArrayPrototypeIndexOf(hookEntries, entry);
+      if (idx !== -1) {
+        ArrayPrototypeSplice(hookEntries, idx, 1);
+      }
+      // Update Rust-side active flags
+      _activateEsmHooks();
+    },
+  };
+}
+
+Module.registerHooks = registerHooks;
+
 let initialized = false;
 
 function initialize(args) {
@@ -2445,10 +3135,19 @@ function closeIdleConnections() {
 
 internals.closeIdleConnections = closeIdleConnections;
 
+const enableCompileCache = internalCompileCache.enableCompileCache;
+const flushCompileCache = internalCompileCache.flushCompileCache;
+const getCompileCacheDir = internalCompileCache.getCompileCacheDir;
+const compileCacheConstants = internalCompileCache.constants;
+
 export {
   builtinModules,
+  compileCacheConstants as constants,
   createRequire,
+  enableCompileCache,
+  flushCompileCache,
   getBuiltinModule,
+  getCompileCacheDir,
   isBuiltin,
   Module,
   SourceMap,
@@ -2463,6 +3162,7 @@ export const _pathCache = Module._pathCache;
 export const _preloadModules = Module._preloadModules;
 export const _resolveFilename = Module._resolveFilename;
 export const _resolveLookupPaths = Module._resolveLookupPaths;
+export const _stat = Module._stat;
 export const globalPaths = Module.globalPaths;
 
 export default Module;

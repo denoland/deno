@@ -541,11 +541,13 @@ const UV_EBADF = codeMap.get("EBADF")!;
 const UV_ECANCELED = codeMap.get("ECANCELED")!;
 const UV_EEXIST = codeMap.get("EEXIST");
 const UV_EINVAL = codeMap.get("EINVAL")!;
+const UV_ENETUNREACH = codeMap.get("ENETUNREACH")!;
 const UV_ENOENT = codeMap.get("ENOENT");
 const UV_ENOMEM = codeMap.get("ENOMEM")!;
 const UV_ENOTSOCK = codeMap.get("ENOTSOCK")!;
 const UV_ETIMEDOUT = codeMap.get("ETIMEDOUT")!;
 const UV_UNKNOWN = codeMap.get("UNKNOWN")!;
+const UV_EOF = codeMap.get("EOF")!;
 
 function errname(errno: number): string {
   const err = errorMap.get(errno);
@@ -581,11 +583,13 @@ return {
   UV_ECANCELED,
   UV_EEXIST,
   UV_EINVAL,
+  UV_ENETUNREACH,
   UV_ENOENT,
   UV_ENOMEM,
   UV_ENOTSOCK,
   UV_ETIMEDOUT,
   UV_UNKNOWN,
+  UV_EOF,
   errname,
   getErrorMessage,
   getErrorMap,

@@ -131,6 +131,8 @@ function buildAllowedFlags() {
     "--no-insecure-http-parser",
     "--use-openssl-ca",
     "--no-use-openssl-ca",
+    "--use-system-ca",
+    "--no-use-system-ca",
     "--tls-cipher-list",
     "--experimental-top-level-await",
     "--no-experimental-top-level-await",

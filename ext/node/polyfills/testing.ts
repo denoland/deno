@@ -16,6 +16,7 @@ const {
   MapPrototypeGet,
   MapPrototypeSet,
   ObjectDefineProperty,
+  ObjectPrototypeHasOwnProperty,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetPrototypeOf,
   ObjectPrototypeIsPrototypeOf,
@@ -125,6 +126,95 @@ function run() {
 function noop() {}
 
 const skippedSymbol = Symbol("skipped");
+
+function isThenable(value) {
+  return value !== null && value !== undefined &&
+    typeof value.then === "function";
+}
+
+function getExpectFailureMatch(expectFailure) {
+  if (
+    expectFailure !== null && typeof expectFailure === "object" &&
+    ObjectPrototypeHasOwnProperty(expectFailure, "match")
+  ) {
+    return expectFailure.match;
+  }
+  if (
+    expectFailure === true ||
+    typeof expectFailure === "string" ||
+    expectFailure === undefined
+  ) {
+    return undefined;
+  }
+  return expectFailure;
+}
+
+function assertExpectedFailure(err, expectFailure) {
+  const match = getExpectFailureMatch(expectFailure);
+  if (match !== undefined) {
+    assert.throws(() => {
+      throw err;
+    }, match);
+  }
+}
+
+async function runNodeTestFunction(fn, nodeTestContext) {
+  if (fn.length >= 2) {
+    // Node-style callback API: fn(t, done) - wait for `done()` (or promise
+    // rejection) before treating the test as complete.
+    await new Promise((testResolve, testReject) => {
+      pendingCallbackReject = testReject;
+      const done = (err) => {
+        pendingCallbackReject = null;
+        if (err) testReject(err);
+        else testResolve(undefined);
+      };
+      try {
+        const result = ReflectApply(fn, nodeTestContext, [
+          nodeTestContext,
+          done,
+        ]);
+        if (isThenable(result)) {
+          PromisePrototypeThen(result, undefined, (err) => {
+            pendingCallbackReject = null;
+            testReject(err);
+          });
+        }
+      } catch (err) {
+        pendingCallbackReject = null;
+        testReject(err);
+      }
+    });
+    return undefined;
+  }
+  return await ReflectApply(fn, nodeTestContext, [nodeTestContext]);
+}
+
+async function runPossiblyExpectingFailure(fn, nodeTestContext, options) {
+  if (
+    !options.expectFailure ||
+    options.skip ||
+    options.todo
+  ) {
+    const result = await runNodeTestFunction(fn, nodeTestContext);
+    nodeTestContext._checkPlan();
+    return result;
+  }
+
+  let failed = false;
+  try {
+    await runNodeTestFunction(fn, nodeTestContext);
+    nodeTestContext._checkPlan();
+  } catch (err) {
+    failed = true;
+    assertExpectedFailure(err, options.expectFailure);
+  }
+
+  if (!failed) {
+    throw new Error("test was expected to fail but passed");
+  }
+  return undefined;
+}
 
 class TestPlan {
   #expected;
@@ -270,8 +360,11 @@ class NodeTestContext {
             ) {
               await hook();
             }
-            await prepared.fn(newNodeTextContext);
-            newNodeTextContext._checkPlan();
+            await runPossiblyExpectingFailure(
+              prepared.fn,
+              newNodeTextContext,
+              prepared.options,
+            );
             await after();
           } catch (err) {
             if (!newNodeTextContext[skippedSymbol]) {
@@ -390,40 +483,11 @@ class TestSuite {
           for (const hook of new SafeArrayIterator(beforeEach)) {
             await hook(newNodeTextContext);
           }
-          let result;
-          if (prepared.fn.length >= 2) {
-            // Node-style callback API: fn(t, done) - wait for `done()` (or
-            // promise rejection) before treating the test as complete.
-            await new Promise((testResolve, testReject) => {
-              pendingCallbackReject = testReject;
-              const done = (err) => {
-                pendingCallbackReject = null;
-                if (err) testReject(err);
-                else testResolve(undefined);
-              };
-              try {
-                const r = ReflectApply(prepared.fn, newNodeTextContext, [
-                  newNodeTextContext,
-                  done,
-                ]);
-                if (
-                  r !== null && r !== undefined && typeof r.then === "function"
-                ) {
-                  PromisePrototypeThen(r, undefined, (err) => {
-                    pendingCallbackReject = null;
-                    testReject(err);
-                  });
-                }
-              } catch (err) {
-                pendingCallbackReject = null;
-                testReject(err);
-              }
-            });
-          } else {
-            result = await prepared.fn(newNodeTextContext);
-          }
-          newNodeTextContext._checkPlan();
-          return result;
+          return await runPossiblyExpectingFailure(
+            prepared.fn,
+            newNodeTextContext,
+            prepared.options,
+          );
         } catch (err) {
           if (newNodeTextContext[skippedSymbol]) {
             return undefined;
@@ -495,7 +559,7 @@ function prepareOptions(name, options, fn, overrides) {
   return { fn, options: finalOptions, name };
 }
 
-function wrapTestFn(fn, resolve, name) {
+function wrapTestFn(fn, resolve, name, options) {
   return async function (t) {
     const nodeTestContext = new NodeTestContext(t, undefined, name);
     let beforeEachOk = false;
@@ -505,40 +569,7 @@ function wrapTestFn(fn, resolve, name) {
         await hook(nodeTestContext);
       }
       beforeEachOk = true;
-      if (fn.length >= 2) {
-        await new Promise((testResolve, testReject) => {
-          pendingCallbackReject = testReject;
-          const done = (err) => {
-            pendingCallbackReject = null;
-            if (err) {
-              testReject(err);
-            } else {
-              testResolve(undefined);
-            }
-          };
-          try {
-            const result = ReflectApply(fn, nodeTestContext, [
-              nodeTestContext,
-              done,
-            ]);
-            if (
-              result !== null && result !== undefined &&
-              typeof result.then === "function"
-            ) {
-              PromisePrototypeThen(result, undefined, (err) => {
-                pendingCallbackReject = null;
-                testReject(err);
-              });
-            }
-          } catch (err) {
-            pendingCallbackReject = null;
-            testReject(err);
-          }
-        });
-      } else {
-        await ReflectApply(fn, nodeTestContext, [nodeTestContext]);
-      }
-      nodeTestContext._checkPlan();
+      await runPossiblyExpectingFailure(fn, nodeTestContext, options);
     } catch (err) {
       if (!nodeTestContext[skippedSymbol]) {
         throw sanitizeThrowValue(err);
@@ -565,7 +596,7 @@ function prepareDenoTest(name, options, fn, overrides) {
 
   const denoTestOptions = {
     name: prepared.name,
-    fn: wrapTestFn(prepared.fn, noop, prepared.name),
+    fn: wrapTestFn(prepared.fn, noop, prepared.name, prepared.options),
     only: prepared.options.only,
     ignore: !!prepared.options.todo || !!prepared.options.skip,
     sanitizeOnly: false,
@@ -656,6 +687,10 @@ test.todo = function todo(name, options, fn) {
 
 test.only = function only(name, options, fn) {
   return test(name, options, fn, { only: true });
+};
+
+test.expectFailure = function expectFailure(name, options, fn) {
+  return test(name, options, fn, { expectFailure: true });
 };
 
 function suite(name, options, fn, overrides) {

@@ -32,7 +32,14 @@ pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
     .iter()
     // surround all the additional arguments in double quotes
     // and sanitize any command substitution
-    .map(|a| format!("\"{}\"", a.replace('"', "\\\"").replace('$', "\\$")))
+    .map(|a| {
+      format!(
+        "\"{}\"",
+        a.replace('"', "\\\"")
+          .replace('$', "\\$")
+          .replace('`', "\\`")
+      )
+    })
     .collect::<Vec<_>>()
     .join(" ");
 

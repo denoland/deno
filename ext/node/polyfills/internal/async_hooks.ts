@@ -23,6 +23,10 @@ const {
   FunctionPrototypeApply,
   Symbol,
 } = primordials;
+const {
+  AsyncVariable,
+  setAsyncContext,
+} = core;
 
 interface ActiveHooks {
   array: AsyncHook[];
@@ -78,6 +82,33 @@ const executionAsyncIdStack: number[] = [0];
 
 function executionAsyncId(): number {
   return executionAsyncIdStack[executionAsyncIdStack.length - 1] || 0;
+}
+
+// Per-async-context "current resource" tracked via the AsyncVariable
+// machinery (V8 ContinuationPreservedEmbedderData). This propagates across
+// promises and await transitions automatically. The top-level resource is a
+// shared singleton used before any specific resource has been entered.
+// deno-lint-ignore no-explicit-any
+const topLevelResource: any = { __proto__: null };
+// deno-lint-ignore no-explicit-any
+const executionResourceVariable: any = new AsyncVariable();
+
+// deno-lint-ignore no-explicit-any
+function executionAsyncResource(): any {
+  const r = executionResourceVariable.get();
+  return r === undefined ? topLevelResource : r;
+}
+
+// Enter a new "current resource" scope. The returned value is the previous
+// async context snapshot that must be restored by exitAsyncResource.
+// deno-lint-ignore no-explicit-any
+function enterAsyncResource(resource: any): any {
+  return executionResourceVariable.enter(resource);
+}
+
+// deno-lint-ignore no-explicit-any
+function exitAsyncResource(previousContext: any): void {
+  setAsyncContext(previousContext);
 }
 
 // Emit functions that work with the internal hook system
@@ -144,8 +175,12 @@ const {
 
 // deno-lint-ignore camelcase
 const resource_symbol = Symbol("resource");
+// Alias to the same symbol used by `internal_binding/symbols.ts` so that
+// `socket[asyncIdSymbol]` (set in net.ts/dgram.ts) and
+// `socket[require('internal/async_hooks').symbols.async_id_symbol]`
+// (read by Node test fixtures) refer to the same slot on objects.
 // deno-lint-ignore camelcase
-const async_id_symbol = Symbol("trigger_async_id");
+const async_id_symbol = asyncIdSymbol;
 // deno-lint-ignore camelcase
 const trigger_async_id_symbol = Symbol("trigger_async_id");
 // deno-lint-ignore camelcase
@@ -333,7 +368,7 @@ function hasHooks(key: number) {
 }
 
 function enabledHooksExist() {
-  return hasHooks(kCheck);
+  return active_hooks.array.length > 0;
 }
 
 function hasAsyncIdStack() {
@@ -457,6 +492,9 @@ return {
   emitInit: emitInitNative,
   constants,
   executionAsyncId,
+  executionAsyncResource,
+  enterAsyncResource,
+  exitAsyncResource,
   emitBefore,
   emitAfter,
   emitDestroy,

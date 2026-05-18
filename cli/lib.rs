@@ -61,6 +61,8 @@ use util::fs::canonicalize_path;
 
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
+const UNSUPPORTED_DIR_IMPORT: &str =
+  "[ERR_UNSUPPORTED_DIR_IMPORT] Directory import";
 
 use self::util::draw_thread::DrawThread;
 use self::util::env::resolve_cwd;
@@ -533,6 +535,7 @@ async fn run_subcommand(
 fn should_fallback_on_run_error(script_err: &str) -> bool {
   if script_err.starts_with(MODULE_NOT_FOUND)
     || script_err.starts_with(UNSUPPORTED_SCHEME)
+    || script_err.starts_with(UNSUPPORTED_DIR_IMPORT)
   {
     return true;
   }

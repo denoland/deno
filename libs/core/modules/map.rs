@@ -40,6 +40,7 @@ use crate::FastStaticString;
 use crate::JsRuntime;
 use crate::ModuleCodeBytes;
 use crate::ModuleLoadResponse;
+use crate::ModuleResolveResponse;
 use crate::ModuleSource;
 use crate::ModuleSourceCode;
 use crate::ModuleSpecifier;
@@ -64,6 +65,7 @@ use crate::modules::get_requested_module_type_from_attributes;
 use crate::modules::module_map_data::ModuleSourceKey;
 use crate::modules::parse_import_attributes;
 use crate::modules::recursive_load::RecursiveModuleLoad;
+use crate::modules::recursive_load::RegisterOutcome;
 use crate::runtime::JsRealm;
 use crate::runtime::SnapshotLoadDataStore;
 use crate::runtime::SnapshotStoreDataStore;
@@ -255,6 +257,19 @@ pub(crate) struct ModuleMap {
   pub(crate) import_sync_eval_stack: RefCell<Vec<ModuleId>>,
 }
 
+/// Outcome of compiling a module's source.
+pub(crate) enum NewModuleResult {
+  Ready(ModuleId),
+}
+
+impl NewModuleResult {
+  fn into_ready(self) -> ModuleId {
+    match self {
+      NewModuleResult::Ready(id) => id,
+    }
+  }
+}
+
 impl ModuleMap {
   /// There is a circular Rc reference between the module map and the futures,
   /// so when destroying the module map we need to clear the pending futures.
@@ -417,6 +432,7 @@ impl ModuleMap {
     self.data.borrow().assert_module_map(modules);
   }
 
+  #[cfg(all(test, not(miri)))]
   pub(crate) fn new_module(
     &self,
     scope: &mut v8::PinScope,
@@ -424,6 +440,20 @@ impl ModuleMap {
     dynamic: bool,
     module_source: ModuleSource,
   ) -> Result<ModuleId, ModuleError> {
+    Ok(
+      self
+        .new_module_with_pending(scope, main, dynamic, module_source)?
+        .into_ready(),
+    )
+  }
+
+  pub(crate) fn new_module_with_pending(
+    &self,
+    scope: &mut v8::PinScope,
+    main: bool,
+    dynamic: bool,
+    module_source: ModuleSource,
+  ) -> Result<NewModuleResult, ModuleError> {
     let ModuleSource {
       code,
       module_type,
@@ -457,7 +487,7 @@ impl ModuleMap {
     let maybe_module_id = self.get_id(&module_url_found, requested_module_type);
 
     if let Some(module_id) = maybe_module_id {
-      return Ok(module_id);
+      return Ok(NewModuleResult::Ready(module_id));
     }
     let module_id = match module_type {
       ModuleType::JavaScript => {
@@ -483,15 +513,17 @@ impl ModuleMap {
             (None, module_url_found)
           };
 
-        self.new_module_from_js_source(
-          scope,
-          main,
-          ModuleType::JavaScript,
-          module_url_found,
-          code,
-          dynamic,
-          code_cache_info,
-        )?
+        self
+          .new_module_from_js_source_with_pending(
+            scope,
+            main,
+            ModuleType::JavaScript,
+            module_url_found,
+            code,
+            dynamic,
+            code_cache_info,
+          )?
+          .into_ready()
       }
       ModuleType::Wasm => {
         self.new_wasm_module(scope, module_url_found, code, dynamic)?
@@ -586,20 +618,22 @@ impl ModuleMap {
               (None, url2)
             };
 
-            self.new_module_from_js_source(
-              scope,
-              main,
-              ModuleType::Other(module_type.clone()),
-              url2,
-              computed_src,
-              dynamic,
-              code_cache_info,
-            )?
+            self
+              .new_module_from_js_source_with_pending(
+                scope,
+                main,
+                ModuleType::Other(module_type.clone()),
+                url2,
+                computed_src,
+                dynamic,
+                code_cache_info,
+              )?
+              .into_ready()
           }
         }
       }
     };
-    Ok(module_id)
+    Ok(NewModuleResult::Ready(module_id))
   }
 
   /// Creates a synthetic module whose exports mirror the own string-keyed
@@ -798,6 +832,8 @@ impl ModuleMap {
   /// and attached to associated [`ModuleInfo`].
   ///
   /// Returns an ID of newly created module.
+  ///
+  /// Sync call sites can use this directly.
   #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub(crate) fn new_module_from_js_source(
     &self,
@@ -807,8 +843,35 @@ impl ModuleMap {
     name: ModuleName,
     source: ModuleCodeString,
     is_dynamic_import: bool,
-    mut code_cache_info: Option<CodeCacheInfo>,
+    code_cache_info: Option<CodeCacheInfo>,
   ) -> Result<ModuleId, ModuleError> {
+    Ok(
+      self
+        .new_module_from_js_source_with_pending(
+          scope,
+          main,
+          module_type,
+          name,
+          source,
+          is_dynamic_import,
+          code_cache_info,
+        )?
+        .into_ready(),
+    )
+  }
+
+  /// Same as [`new_module_from_js_source`] but returns [`NewModuleResult`].
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
+  pub(crate) fn new_module_from_js_source_with_pending(
+    &self,
+    scope: &mut v8::PinScope,
+    main: bool,
+    module_type: ModuleType,
+    name: ModuleName,
+    source: ModuleCodeString,
+    is_dynamic_import: bool,
+    mut code_cache_info: Option<CodeCacheInfo>,
+  ) -> Result<NewModuleResult, ModuleError> {
     if main {
       let data = self.data.borrow();
       if let Some(main_module) = data.main_module_id {
@@ -984,23 +1047,27 @@ impl ModuleMap {
       } else {
         ResolutionKind::Import
       };
-      let module_specifier =
-        match self.resolve(&import_specifier, name.as_ref(), resolve_kind) {
-          Ok(s) => s,
-          Err(e) => {
-            // Fall back to lazy ESM sources for bare internal specifiers (e.g.
-            // `node:_http_common` from `node:_http_outgoing`) that the
-            // user-facing loader doesn't know about. If the specifier matches
-            // a registered lazy ESM entry, use it verbatim.
-            if self.has_lazy_esm_source(&import_specifier)
-              && let Ok(parsed) = ModuleSpecifier::parse(&import_specifier)
-            {
-              parsed
-            } else {
-              return Err(ModuleError::Core(e));
-            }
+      let module_specifier = match self.resolve_with_scope(
+        tc_scope,
+        &import_specifier,
+        name.as_ref(),
+        resolve_kind,
+      ) {
+        Ok(s) => s,
+        Err(e) => {
+          // Fall back to lazy ESM sources for bare internal specifiers (e.g.
+          // `node:_http_common` from `node:_http_outgoing`) that the
+          // user-facing loader doesn't know about. If the specifier matches
+          // a registered lazy ESM entry, use it verbatim.
+          if self.has_lazy_esm_source(&import_specifier)
+            && let Ok(parsed) = ModuleSpecifier::parse(&import_specifier)
+          {
+            parsed
+          } else {
+            return Err(ModuleError::Core(e.into()));
           }
-        };
+        }
+      };
       let requested_module_type =
         get_requested_module_type_from_attributes(&attributes);
       let referrer_source_offset = if let ModuleType::Wasm = module_type {
@@ -1041,8 +1108,7 @@ impl ModuleMap {
       main,
       requests,
     );
-
-    Ok(id)
+    Ok(NewModuleResult::Ready(id))
   }
 
   pub(crate) fn new_wasm_module_source(
@@ -1277,11 +1343,30 @@ impl ModuleMap {
       import_attributes,
       ImportAttributesKind::StaticImport,
     );
+    let requested_module_type =
+      get_requested_module_type_from_attributes(&attributes);
+    let pre_resolved_specifier = {
+      let module_map_data = module_map.data.borrow();
+      let referrer_info = module_map_data
+        .get_info_by_module(&referrer_global)
+        .expect("ModuleInfo not found");
+      referrer_info
+        .requests
+        .iter()
+        .find(|r| {
+          r.specifier_key
+            .as_ref()
+            .is_some_and(|s| s == &specifier_str)
+            && r.reference.requested_module_type == requested_module_type
+        })
+        .map(|r| r.reference.specifier.clone())
+    };
     let maybe_module = module_map.resolve_callback(
       scope,
       &specifier_str,
       &referrer_name,
       attributes,
+      pre_resolved_specifier,
     );
     if let Some(module) = maybe_module {
       return Some(module);
@@ -1353,13 +1438,14 @@ impl ModuleMap {
 
   /// Resolve provided module. This function calls out to `loader.resolve`,
   /// but applies some additional checks that disallow resolving/importing
-  /// certain modules (eg. `ext:` or `node:` modules)
+  /// certain modules (eg. `ext:` or `node:` modules).
+  ///
   pub fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, CoreError> {
+  ) -> ModuleResolveResponse {
     if specifier.starts_with("ext:")
       && !referrer.starts_with("ext:")
       && !referrer.starts_with("node:")
@@ -1376,14 +1462,42 @@ impl ModuleMap {
         "Importing ext: modules is only allowed from ext: and node: modules. Tried to import {} from {}",
         specifier, referrer
       );
-      return Err(JsErrorBox::type_error(msg).into());
+      return Err(JsErrorBox::type_error(msg));
+    }
+
+    self.loader.borrow().resolve(specifier, referrer, kind)
+  }
+
+  pub fn resolve_with_scope(
+    &self,
+    scope: &mut v8::PinScope,
+    specifier: &str,
+    referrer: &str,
+    kind: ResolutionKind,
+  ) -> ModuleResolveResponse {
+    if specifier.starts_with("ext:")
+      && !referrer.starts_with("ext:")
+      && !referrer.starts_with("node:")
+      && !referrer.starts_with("checkin:")
+      && referrer != "."
+      && kind != ResolutionKind::MainModule
+    {
+      let referrer = if referrer.is_empty() {
+        "(no referrer)"
+      } else {
+        referrer
+      };
+      let msg = format!(
+        "Importing ext: modules is only allowed from ext: and node: modules. Tried to import {} from {}",
+        specifier, referrer
+      );
+      return Err(JsErrorBox::type_error(msg));
     }
 
     self
       .loader
       .borrow()
-      .resolve(specifier, referrer, kind)
-      .map_err(|e| e.into())
+      .resolve_with_scope(scope, specifier, referrer, kind)
   }
 
   /// Called by `module_resolve_callback` during module instantiation.
@@ -1393,6 +1507,7 @@ impl ModuleMap {
     specifier: &str,
     referrer: &str,
     import_attributes: HashMap<String, String>,
+    pre_resolved_specifier: Option<ModuleSpecifier>,
   ) -> Option<v8::Local<'s, v8::Module>> {
     // Synthetic ESM dispatch first, by raw specifier. The active loader
     // may not know about the spec (e.g. `LazyEsmModuleLoader` only
@@ -1411,8 +1526,16 @@ impl ModuleMap {
       }
     }
 
-    let resolved_specifier =
-      match self.resolve(specifier, referrer, ResolutionKind::Import) {
+    let module_type =
+      get_requested_module_type_from_attributes(&import_attributes);
+    let resolved_specifier = match pre_resolved_specifier {
+      Some(specifier) => specifier,
+      None => match self.resolve_with_scope(
+        scope,
+        specifier,
+        referrer,
+        ResolutionKind::Import,
+      ) {
         Ok(s) => s,
         Err(e) => {
           // Fall back to lazy ESM sources for bare internal specifiers like
@@ -1430,10 +1553,8 @@ impl ModuleMap {
             return None;
           }
         }
-      };
-
-    let module_type =
-      get_requested_module_type_from_attributes(&import_attributes);
+      },
+    };
 
     if let Some(id) = self.get_id(resolved_specifier.as_str(), module_type)
       && let Some(handle) = self.get_handle(id)
@@ -1498,11 +1619,18 @@ impl ModuleMap {
     resolver_handle: v8::Global<v8::PromiseResolver>,
     cped_handle: v8::Global<v8::Value>,
   ) -> bool {
-    let resolve_result =
-      self.resolve(&specifier, &referrer, ResolutionKind::DynamicImport);
+    let resolve_response = self.resolve_with_scope(
+      scope,
+      &specifier,
+      &referrer,
+      ResolutionKind::DynamicImport,
+    );
 
+    // Fast path: if the module is already loaded, resolve the import
+    // immediately without async work.
     if phase == ModuleImportPhase::Evaluation
-      && let Ok(module_specifier) = &resolve_result
+      && let ref resolve_result = resolve_response
+      && let Ok(module_specifier) = resolve_result
       && let Some(id) = self
         .data
         .borrow()
@@ -1546,7 +1674,8 @@ impl ModuleMap {
     // Fast path for lazy-loaded ESM: load synchronously and resolve
     // immediately, avoiding the async RecursiveModuleLoad path entirely.
     if phase == ModuleImportPhase::Evaluation
-      && let Ok(module_specifier) = &resolve_result
+      && let ref resolve_result = resolve_response
+      && let Ok(module_specifier) = resolve_result
       && self.has_lazy_esm_source(module_specifier.as_str())
     {
       match self.lazy_load_esm_module(scope, module_specifier.as_str()) {
@@ -1570,8 +1699,13 @@ impl ModuleMap {
     // synthetic module synchronously and resolve immediately, same
     // pattern as the lazy ESM fast path above.
     if phase == ModuleImportPhase::Evaluation
-      && let Ok(module_specifier) = &resolve_result
+      && let ref resolve_result = resolve_response
+      && let Ok(module_specifier) = resolve_result
       && self.has_synthetic_esm_module(module_specifier.as_str())
+      && !self
+        .loader
+        .borrow()
+        .should_load_synthetic_esm(module_specifier.as_str())
     {
       match self
         .lazy_load_synthetic_esm_module(scope, module_specifier.as_str())
@@ -1592,12 +1726,13 @@ impl ModuleMap {
       }
     }
 
-    let load = RecursiveModuleLoad::dynamic_import(
+    let load = RecursiveModuleLoad::new_dynamic_import(
       specifier,
       referrer,
       requested_module_type,
       phase,
       self.clone(),
+      resolve_response,
     );
 
     self.dynamic_import_map.borrow_mut().insert(
@@ -1610,14 +1745,11 @@ impl ModuleMap {
     );
 
     let load_id = load.id();
-    let fut = match resolve_result {
-      Ok(_) => async move {
-        let mut load = load;
-        (load_id, load.prepare().await.map(|()| load))
-      }
-      .boxed_local(),
-      Err(error) => async move { (load_id, Err(error)) }.boxed_local(),
-    };
+    let fut = async move {
+      let mut load = load;
+      (load_id, load.prepare().await.map(|()| load))
+    }
+    .boxed_local();
 
     self.preparing_dynamic_imports.push(fut);
 
@@ -2228,7 +2360,7 @@ impl ModuleMap {
           // fetched. Create and register it, and if successful, poll for the
           // next recursive-load event related to this dynamic import.
           match load.register_and_recurse(scope, &request, info) {
-            Ok(()) => {
+            Ok(RegisterOutcome::Done) => {
               // Keep importing until it's fully drained
               self
                 .pending_dynamic_imports

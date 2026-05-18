@@ -173,7 +173,8 @@ impl V8RawKeyData {
     match self {
       V8RawKeyData::Public(data) => {
         // public_key is a serialized EncodedPoint
-        p521::EncodedPoint::from_bytes(data)
+        p521::PublicKey::from_sec1_bytes(data)
+          .map(|p| p.to_encoded_point(false))
           .map_err(|_| SharedError::ExpectedValidPublicECKey)
       }
       V8RawKeyData::Private(data) => {

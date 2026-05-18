@@ -11,6 +11,40 @@ const { kReadBytesOrError, streamBaseState } = core.loadExtScript(
 const kJSStreamHandle = Symbol.for("kJSStreamHandle");
 const kOwner = Symbol.for("kJSStreamOwner");
 
+function installNativeOnread(res: TLSWrap, nativeHandle: any) {
+  nativeHandle.onread = function (
+    buf: ArrayBuffer | Uint8Array | undefined,
+  ) {
+    const nread = streamBaseState[kReadBytesOrError];
+    if (nread > 0 && buf) {
+      // LibUvStreamWrap passes an ArrayBuffer; convert to Uint8Array for receive()
+      const data = buf instanceof ArrayBuffer
+        ? new Uint8Array(buf, 0, nread)
+        : buf.subarray(0, nread);
+      res.receive(data);
+    } else if (nread < 0) {
+      // EOF or error - stop native TCP reads and unref the handle.
+      // Without this, the libuv handle keeps a ref on the event loop
+      // and prevents process exit after the TLS connection ends.
+      nativeHandle.readStop();
+      nativeHandle.unref();
+      res.emitEof();
+    }
+  };
+}
+
+function attachNativeHandle(res: TLSWrap, nativeHandle: any) {
+  const attachResult = nativeHandle instanceof PipeWrap
+    ? res.attachPipe(nativeHandle)
+    : res.attach(nativeHandle);
+  if (attachResult !== 0) {
+    throw new Error(`TLS wrap attach failed: ${attachResult}`);
+  }
+
+  installNativeOnread(res, nativeHandle);
+  res._nativeTcpHandle = nativeHandle;
+}
+
 /**
  * Create a TLSWrap that intercepts an underlying stream handle.
  * Mirrors Node's `internalBinding('tls_wrap').wrap(handle, context, isServer)`.
@@ -53,6 +87,10 @@ function wrap(
   }
 
   const nativeHandle = handle;
+  res._attachNativeHandle = (nativeHandle: any) =>
+    attachNativeHandle(res, nativeHandle);
+  res._installNativeOnread = (nativeHandle: any) =>
+    installNativeOnread(res, nativeHandle);
 
   if (nativeHandle[kJSStreamHandle]) {
     // JS-backed stream (e.g. JSStreamSocket wrapping a Duplex).
@@ -125,39 +163,7 @@ function wrap(
     res._flushEncOut = flushEncOut;
   } else {
     // Native stream (TCP or Pipe handle).
-    // attach/attachPipe stores the stream pointer for encrypted writes.
-    const attachResult = nativeHandle instanceof PipeWrap
-      ? res.attachPipe(nativeHandle)
-      : res.attach(nativeHandle);
-    if (attachResult !== 0) {
-      throw new Error(`TLS wrap attach failed: ${attachResult}`);
-    }
-
-    // Read interception at the JS layer: intercept the TCPWrap's onread
-    // callback to forward encrypted data from the TCP stream to the TLSWrap
-    // via receive().
-    // Note: LibUvStreamWrap's read callback uses (buf) signature with nread
-    // in streamBaseState, matching onStreamRead in stream_base_commons.ts.
-    nativeHandle.onread = function (buf: ArrayBuffer | Uint8Array | undefined) {
-      const nread = streamBaseState[kReadBytesOrError];
-      if (nread > 0 && buf) {
-        // LibUvStreamWrap passes an ArrayBuffer; convert to Uint8Array for receive()
-        const data = buf instanceof ArrayBuffer
-          ? new Uint8Array(buf, 0, nread)
-          : buf.subarray(0, nread);
-        res.receive(data);
-      } else if (nread < 0) {
-        // EOF or error - stop native TCP reads and unref the handle.
-        // Without this, the libuv handle keeps a ref on the event loop
-        // and prevents process exit after the TLS connection ends.
-        nativeHandle.readStop();
-        nativeHandle.unref();
-        res.emitEof();
-      }
-    };
-
-    // Store the native handle so readStart/readStop can delegate to it.
-    res._nativeTcpHandle = nativeHandle;
+    attachNativeHandle(res, nativeHandle);
   }
 
   // Store the JS handle reference so Rust can call JS callbacks (onhandshakedone, etc.)

@@ -16,14 +16,17 @@ const {
   op_url_stringify_search_params,
 } = core.ops;
 const {
-  ArrayIsArray,
+  ArrayFrom,
+  ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeSome,
   ArrayPrototypeSort,
   ArrayPrototypeSplice,
+  ObjectGetOwnPropertyDescriptor,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  ReflectOwnKeys,
   SafeArrayIterator,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
@@ -117,48 +120,118 @@ class URLSearchParams {
   /**
    * @param {string | [string][] | Record<string, string>} init
    */
-  constructor(init = "") {
-    const prefix = "Failed to construct 'URL'";
-    init = webidl.converters
-      ["sequence<sequence<USVString>> or record<USVString, USVString> or USVString"](
-        init,
-        prefix,
-        "Argument 1",
-      );
+  constructor(init = undefined) {
     this[webidl.brand] = webidl.brand;
-    if (!init) {
-      // if there is no query string, return early
+    // Node treats `null` and `undefined` as a missing argument (empty params).
+    // The WHATWG spec would stringify them via the union conversion, but
+    // browsers actually never observe this case in practice; matching Node
+    // here unblocks node:url compat without affecting WPT.
+    if (init === null || init === undefined) {
       this[_list] = [];
       return;
     }
 
-    if (typeof init === "string") {
-      // Overload: USVString
-      // If init is a string and starts with U+003F (?),
-      // remove the first code point from init.
-      if (init[0] == "?") {
-        init = StringPrototypeSlice(init, 1);
-      }
-      this[_list] = op_url_parse_search_params(init);
-    } else if (ArrayIsArray(init)) {
-      // Overload: sequence<sequence<USVString>>
-      this[_list] = ArrayPrototypeMap(init, (pair, i) => {
-        if (pair.length !== 2) {
-          throw new TypeError(
-            `${prefix}: Item ${
-              i + 0
-            } in the parameter list does have length 2 exactly`,
-          );
+    if (typeof init === "object" || typeof init === "function") {
+      // Object overloads: either iterable of pairs or a record.
+      const method = init[SymbolIterator];
+      if (method !== undefined && method !== null) {
+        if (typeof method !== "function") {
+          const err = new TypeError("Query pairs must be iterable");
+          err.code = "ERR_ARG_NOT_ITERABLE";
+          throw err;
         }
-        return [pair[0], pair[1]];
-      });
-    } else {
-      // Overload: record<USVString, USVString>
-      this[_list] = ArrayPrototypeMap(
-        ObjectKeys(init),
-        (key) => [key, init[key]],
-      );
+        // Sequence<sequence<USVString>>
+        const pairs = [];
+        // deno-lint-ignore prefer-primordials
+        const iter = method.call(init);
+        if (iter == null || typeof iter.next !== "function") {
+          const err = new TypeError(
+            "Each query pair must be an iterable [name, value] tuple",
+          );
+          err.code = "ERR_INVALID_TUPLE";
+          throw err;
+        }
+        while (true) {
+          // deno-lint-ignore prefer-primordials
+          const res = iter.next();
+          if (res == null) {
+            const err = new TypeError(
+              "Each query pair must be an iterable [name, value] tuple",
+            );
+            err.code = "ERR_INVALID_TUPLE";
+            throw err;
+          }
+          if (res.done === true) break;
+          const pair = res.value;
+          if (
+            (typeof pair !== "object" && typeof pair !== "function") ||
+            pair === null ||
+            typeof pair[SymbolIterator] !== "function"
+          ) {
+            const err = new TypeError(
+              "Each query pair must be an iterable [name, value] tuple",
+            );
+            err.code = "ERR_INVALID_TUPLE";
+            throw err;
+          }
+          const entry = [];
+          for (const v of new SafeArrayIterator(ArrayFrom(pair))) {
+            ArrayPrototypePush(
+              entry,
+              webidl.converters.USVString(v, undefined, undefined),
+            );
+          }
+          if (entry.length !== 2) {
+            const err = new TypeError(
+              "Each query pair must be an iterable [name, value] tuple",
+            );
+            err.code = "ERR_INVALID_TUPLE";
+            throw err;
+          }
+          ArrayPrototypePush(pairs, entry);
+        }
+        this[_list] = pairs;
+        return;
+      }
+      // Record<USVString, USVString>. We iterate own enumerable keys
+      // (including Symbol keys so USVString coercion throws on them, like
+      // Node does) and dedupe by the USVString-coerced name so that two keys
+      // collapsing to U+FFFD overwrite each other instead of appearing twice
+      // in the iterator output.
+      const result = { __proto__: null };
+      const allKeys = ReflectOwnKeys(init);
+      for (let i = 0; i < allKeys.length; i++) {
+        const key = allKeys[i];
+        const desc = ObjectGetOwnPropertyDescriptor(init, key);
+        if (desc !== undefined && desc.enumerable === true) {
+          const name = webidl.converters.USVString(key, undefined, undefined);
+          const value = webidl.converters.USVString(
+            init[key],
+            undefined,
+            undefined,
+          );
+          result[name] = value;
+        }
+      }
+      const list = [];
+      const resultKeys = ObjectKeys(result);
+      for (let i = 0; i < resultKeys.length; i++) {
+        ArrayPrototypePush(list, [resultKeys[i], result[resultKeys[i]]]);
+      }
+      this[_list] = list;
+      return;
     }
+
+    // USVString overload.
+    let str = webidl.converters.USVString(init, undefined, undefined);
+    if (str.length === 0) {
+      this[_list] = [];
+      return;
+    }
+    if (str[0] === "?") {
+      str = StringPrototypeSlice(str, 1);
+    }
+    this[_list] = op_url_parse_search_params(str);
   }
 
   #updateUrlSearch() {
@@ -338,6 +411,42 @@ class URLSearchParams {
     webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     return this[_list].length;
   }
+
+  // Node exposes this as a method on URLSearchParams.prototype so that
+  // `Object.getOwnPropertyDescriptor(URLSearchParams.prototype,
+  // Symbol.for("nodejs.util.inspect.custom"))` is not undefined. We delegate
+  // to Deno's `privateCustomInspect` to preserve the Map-like formatting
+  // (`URLSearchParams { 'a' => 'b' }`) that node compat tests expect.
+  [SymbolFor("nodejs.util.inspect.custom")](_depth, inspectOptions, inspect) {
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
+    return this[SymbolFor("Deno.privateCustomInspect")](
+      inspect,
+      inspectOptions,
+    );
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
+    if (
+      typeof inspectOptions?.depth === "number" && inspectOptions.depth < 0
+    ) {
+      return "[Object]";
+    }
+    const entries = this[_list];
+    if (entries.length === 0) return "URLSearchParams {}";
+    const pairs = ArrayPrototypeMap(
+      entries,
+      (e) =>
+        `${inspect(e[0], inspectOptions)} => ${inspect(e[1], inspectOptions)}`,
+    );
+    const inlined = ArrayPrototypeJoin(pairs, ", ");
+    const breakLength = inspectOptions?.breakLength;
+    const oneLine = `URLSearchParams { ${inlined} }`;
+    if (typeof breakLength === "number" && oneLine.length > breakLength) {
+      return `URLSearchParams {\n  ${ArrayPrototypeJoin(pairs, ",\n  ")} }`;
+    }
+    return oneLine;
+  }
 }
 
 webidl.mixinPairIterable("URLSearchParams", URLSearchParams, _list, 0, 1);
@@ -486,6 +595,16 @@ class URL {
           "search",
         ],
       }),
+      inspectOptions,
+    );
+  }
+
+  // See URLSearchParams: Node exposes this as a method so that the descriptor
+  // lookup is not undefined. Deno's own inspector still prefers
+  // Deno.privateCustomInspect, so this is effectively the same code path.
+  [SymbolFor("nodejs.util.inspect.custom")](_depth, inspectOptions, inspect) {
+    return this[SymbolFor("Deno.privateCustomInspect")](
+      inspect,
       inspectOptions,
     );
   }

@@ -27,6 +27,9 @@ use crate::resolve_import;
 
 pub type ModuleLoaderError = JsErrorBox;
 
+/// Result of calling `ModuleLoader::resolve`.
+pub type ModuleResolveResponse = Result<ModuleSpecifier, ModuleLoaderError>;
+
 /// Result of calling `ModuleLoader::load`.
 pub enum ModuleLoadResponse {
   /// Source file is available synchronously - eg. embedder might have
@@ -71,9 +74,26 @@ pub trait ModuleLoader {
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError>;
+  ) -> ModuleResolveResponse;
+
+  /// Resolve with access to the current V8 scope.
+  ///
+  /// Most loaders should use the default implementation. Embedders that need
+  /// to synchronously call JavaScript during resolution, such as Node
+  /// `module.registerHooks()`, can override this method.
+  fn resolve_with_scope(
+    &self,
+    _scope: &mut v8::PinScope,
+    specifier: &str,
+    referrer: &str,
+    kind: ResolutionKind,
+  ) -> ModuleResolveResponse {
+    self.resolve(specifier, referrer, kind)
+  }
 
   /// Override to customize the behavior of `import.meta.resolve` resolution.
+  ///
+  /// The default implementation calls `self.resolve()`.
   fn import_meta_resolve(
     &self,
     specifier: &str,
@@ -92,6 +112,15 @@ pub trait ModuleLoader {
     maybe_referrer: Option<&ModuleLoadReferrer>,
     options: ModuleLoadOptions,
   ) -> ModuleLoadResponse;
+
+  /// Whether modules from the extension `synthetic_esm` registry should go
+  /// through `load()` instead of being instantiated directly by the module map.
+  ///
+  /// These are not V8 synthetic modules. They are ESM facades backed by an
+  /// already-evaluated extension script exports object.
+  fn should_load_synthetic_esm(&self, _specifier: &str) -> bool {
+    false
+  }
 
   /// This hook can be used by implementors to do some preparation
   /// work before starting loading of modules.
@@ -197,7 +226,7 @@ impl ModuleLoader for NoopModuleLoader {
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+  ) -> ModuleResolveResponse {
     resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
   }
 
@@ -269,14 +298,11 @@ impl ExtModuleLoader {
 
     Ok(())
   }
-}
 
-impl ModuleLoader for ExtModuleLoader {
-  fn resolve(
+  fn resolve_inner(
     &self,
     specifier: &str,
     referrer: &str,
-    _kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, ModuleLoaderError> {
     // If specifier is relative to an extension module, we need to do some special handling
     if specifier.starts_with("../")
@@ -297,6 +323,17 @@ impl ModuleLoader for ExtModuleLoader {
       .map_err(JsErrorBox::from_err);
     }
     resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+  }
+}
+
+impl ModuleLoader for ExtModuleLoader {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    _kind: ResolutionKind,
+  ) -> ModuleResolveResponse {
+    self.resolve_inner(specifier, referrer)
   }
 
   fn load(
@@ -372,7 +409,7 @@ impl ModuleLoader for LazyEsmModuleLoader {
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+  ) -> ModuleResolveResponse {
     resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
   }
 
@@ -434,7 +471,7 @@ impl ModuleLoader for FsModuleLoader {
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+  ) -> ModuleResolveResponse {
     resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
   }
 
@@ -533,7 +570,7 @@ impl ModuleLoader for StaticModuleLoader {
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+  ) -> ModuleResolveResponse {
     resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
   }
 
@@ -600,7 +637,7 @@ impl<L: ModuleLoader> ModuleLoader for TestingModuleLoader<L> {
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+  ) -> ModuleResolveResponse {
     self.resolve_count.set(self.resolve_count.get() + 1);
     self.loader.resolve(specifier, referrer, kind)
   }

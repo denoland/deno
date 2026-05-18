@@ -46,9 +46,8 @@ const lazyFrom = core.createLazyLoader(
   "ext:deno_node/internal/streams/from.js",
 );
 const _mod2 = core.loadExtScript("ext:deno_node/internal/util/debuglog.ts");
-const lazyWebStreamsAdapters = core.createLazyLoader(
-  "ext:deno_node/internal/webstreams/adapters.js",
-);
+const webStreamsAdaptersSpecifier =
+  "ext:deno_node/internal/webstreams/adapters.js";
 
 const {
   AbortError,
@@ -1838,7 +1837,7 @@ let webStreamsAdapters;
 // Lazy to avoid circular references
 function lazyWebStreams() {
   if (webStreamsAdapters === undefined) {
-    webStreamsAdapters = lazyWebStreamsAdapters();
+    webStreamsAdapters = core.loadExtScript(webStreamsAdaptersSpecifier);
   }
   return webStreamsAdapters;
 }

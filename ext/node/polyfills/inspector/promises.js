@@ -18,6 +18,7 @@ Session.prototype.post = promisify(inspector.Session.prototype.post);
 return {
   close: inspector.close,
   console: inspector.console,
+  DOMStorage: inspector.DOMStorage,
   Network: inspector.Network,
   open: inspector.open,
   Session,

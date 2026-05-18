@@ -1,6 +1,7 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { core } from "ext:core/mod.js";
+(function () {
+const { core } = globalThis.__bootstrap;
 const { destroy, destroyer } = core.loadExtScript(
   "ext:deno_node/internal/streams/destroy.js",
 );
@@ -27,6 +28,7 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const {
   AbortError,
+  ERR_INVALID_ARG_VALUE,
   ERR_INVALID_ARG_TYPE,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const lazyProcess = core.createLazyLoader("node:process");
@@ -41,7 +43,7 @@ function isReadableStream(object) {
   return object instanceof ReadableStream;
 }
 
-export function newStreamReadableFromReadableStream(
+function newStreamReadableFromReadableStream(
   readableStream,
   options = kEmptyObject,
 ) {
@@ -126,7 +128,7 @@ export function newStreamReadableFromReadableStream(
   return readable;
 }
 
-export function newStreamWritableFromWritableStream(
+function newStreamWritableFromWritableStream(
   writableStream,
   options = kEmptyObject,
 ) {
@@ -267,7 +269,7 @@ export function newStreamWritableFromWritableStream(
   return writable;
 }
 
-export function newStreamDuplexFromReadableWritablePair(
+function newStreamDuplexFromReadableWritablePair(
   pair,
   options = kEmptyObject,
 ) {
@@ -465,7 +467,7 @@ export function newStreamDuplexFromReadableWritablePair(
   return duplex;
 }
 
-export function newReadableStreamFromStreamReadable(
+function newReadableStreamFromStreamReadable(
   streamReadable,
   options = kEmptyObject,
 ) {
@@ -574,7 +576,7 @@ export function newReadableStreamFromStreamReadable(
   return new ReadableStream(underlyingSource, strategy);
 }
 
-export function newWritableStreamFromStreamWritable(streamWritable) {
+function newWritableStreamFromStreamWritable(streamWritable) {
   // Not using the internal/streams/utils isWritableNodeStream utility
   // here because it will return false if streamWritable is a Duplex
   // whose writable option is false. For a Duplex that is not writable,
@@ -680,7 +682,7 @@ export function newWritableStreamFromStreamWritable(streamWritable) {
   }, strategy);
 }
 
-export function newReadableWritablePairFromDuplex(
+function newReadableWritablePairFromDuplex(
   duplex,
   options = kEmptyObject,
 ) {
@@ -726,3 +728,13 @@ export function newReadableWritablePairFromDuplex(
 
   return { writable, readable };
 }
+
+return {
+  newReadableStreamFromStreamReadable,
+  newWritableStreamFromStreamWritable,
+  newStreamReadableFromReadableStream,
+  newStreamWritableFromWritableStream,
+  newStreamDuplexFromReadableWritablePair,
+  newReadableWritablePairFromDuplex,
+};
+})();

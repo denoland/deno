@@ -36,12 +36,18 @@ const {
   isIPv4,
   isIPv6,
   kReinitializeHandle,
+  kSetKeepAlive,
+  kSetKeepAliveInitialDelay,
+  kSetNoDelay,
   normalizedArgsSymbol,
 } = core.loadExtScript("ext:deno_node/internal/net.ts");
 const { Duplex } = core.createLazyLoader("node:stream")();
 const {
   asyncIdSymbol,
   defaultTriggerAsyncIdScope,
+  emitDestroy,
+  emitInit,
+  executionAsyncId,
   newAsyncId,
   ownerSymbol,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
@@ -122,6 +128,10 @@ type DuplexOptions = any;
 type BufferEncoding = any;
 type Abortable = any;
 const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
+const {
+  registerActiveHandle,
+  unregisterActiveHandle,
+} = core.loadExtScript("ext:deno_node/internal/process/active_resources.ts");
 // Lazily resolved at call sites via `lazyCluster()` to break the cluster
 // <-> net cycle. Only used inside `_listenInCluster()`.
 const lazyCluster = core.createLazyLoader("node:cluster");
@@ -150,9 +160,6 @@ let debug = debuglog("net", (fn) => {
 });
 
 const kLastWriteQueueSize = Symbol("lastWriteQueueSize");
-const kSetNoDelay = Symbol("kSetNoDelay");
-const kSetKeepAlive = Symbol("kSetKeepAlive");
-const kSetKeepAliveInitialDelay = Symbol("kSetKeepAliveInitialDelay");
 const kBytesRead = Symbol("kBytesRead");
 const kBytesWritten = Symbol("kBytesWritten");
 
@@ -270,6 +277,66 @@ function _getNewAsyncId(handle?: Handle): number {
   return !handle || typeof handle.getAsyncId !== "function"
     ? newAsyncId()
     : handle.getAsyncId();
+}
+
+const providerTypeNames = [
+  "NONE",
+  "DIRHANDLE",
+  "DNSCHANNEL",
+  "ELDHISTOGRAM",
+  "FILEHANDLE",
+  "FILEHANDLECLOSEREQ",
+  "FIXEDSIZEBLOBCOPY",
+  "FSEVENTWRAP",
+  "FSREQCALLBACK",
+  "FSREQPROMISE",
+  "GETADDRINFOREQWRAP",
+  "GETNAMEINFOREQWRAP",
+  "HEAPSNAPSHOT",
+  "HTTP2SESSION",
+  "HTTP2STREAM",
+  "HTTP2PING",
+  "HTTP2SETTINGS",
+  "HTTPINCOMINGMESSAGE",
+  "HTTPCLIENTREQUEST",
+  "JSSTREAM",
+  "JSUDPWRAP",
+  "MESSAGEPORT",
+  "PIPECONNECTWRAP",
+  "PIPESERVERWRAP",
+  "PIPEWRAP",
+  "PROCESSWRAP",
+  "PROMISE",
+  "QUERYWRAP",
+  "SHUTDOWNWRAP",
+  "SIGNALWRAP",
+  "STATWATCHER",
+  "STREAMPIPE",
+  "TCPCONNECTWRAP",
+  "TCPSERVERWRAP",
+  "TCPWRAP",
+  "TLSWRAP",
+  "TTYWRAP",
+  "UDPSENDWRAP",
+  "UDPWRAP",
+  "SIGINTWATCHDOG",
+  "WORKER",
+  "WORKERHEAPSNAPSHOT",
+  "WRITEWRAP",
+  "ZLIB",
+];
+
+function _emitHandleInit(handle: Handle, asyncId: number) {
+  if (typeof (handle as any).getProviderType !== "function") {
+    return;
+  }
+  const providerType = (handle as any).getProviderType();
+  emitInit(
+    asyncId,
+    providerTypeNames[providerType] || "UNKNOWN",
+    executionAsyncId(),
+    handle,
+  );
 }
 
 interface NormalizedArgs {
@@ -880,6 +947,7 @@ function _initSocketHandle(socket: Socket) {
     (socket._handle as any)[ownerSymbol] = socket;
     socket._handle.onread = onStreamRead;
     socket[asyncIdSymbol] = _getNewAsyncId(socket._handle);
+    _emitHandleInit(socket._handle, socket[asyncIdSymbol]);
 
     let userBuf = socket[kBuffer];
 
@@ -979,7 +1047,6 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
     family: options.family,
     hints: options.hints || 0,
     all: false,
-    port,
   };
 
   if (
@@ -995,6 +1062,16 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   debug("connect: dns options", dnsOpts);
   self._host = host;
   const lookup = options.lookup || dnsLookup;
+  const getLookupDnsOpts = () => {
+    if (options.lookup === undefined) {
+      return { ...dnsOpts, port };
+    }
+    return {
+      family: dnsOpts.family,
+      hints: dnsOpts.hints,
+      all: dnsOpts.all,
+    };
+  };
 
   if (
     dnsOpts.family !== 4 &&
@@ -1012,7 +1089,7 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
         lookup,
         host,
         options,
-        dnsOpts,
+        getLookupDnsOpts(),
         port,
         localAddress,
         localPort,
@@ -1026,7 +1103,7 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   defaultTriggerAsyncIdScope(self[asyncIdSymbol], function () {
     lookup(
       host,
-      dnsOpts,
+      getLookupDnsOpts(),
       function emitLookup(
         err: ErrnoException | null,
         ip: string,
@@ -1350,6 +1427,7 @@ function Socket(options) {
   if (options.handle) {
     this._handle = options.handle;
     this[asyncIdSymbol] = _getNewAsyncId(this._handle);
+    _emitHandleInit(this._handle, this[asyncIdSymbol]);
   } else if (options.fd !== undefined) {
     const { fd } = options;
 
@@ -1367,6 +1445,7 @@ function Socket(options) {
     }
 
     this[asyncIdSymbol] = _getNewAsyncId(this._handle);
+    _emitHandleInit(this._handle, this[asyncIdSymbol]);
 
     if (
       (fd === 1 || fd === 2) &&
@@ -1474,6 +1553,15 @@ Socket.prototype.connect = function (...args) {
       path,
     );
   } else {
+    if (options.keepAlive !== undefined) {
+      this.setKeepAlive(
+        !!options.keepAlive,
+        options.keepAliveInitialDelay,
+      );
+    }
+    if (options.noDelay !== undefined) {
+      this.setNoDelay(options.noDelay);
+    }
     _lookupAndConnect(this, options);
   }
 
@@ -1518,13 +1606,11 @@ Socket.prototype.setNoDelay = function (noDelay) {
 
   const newValue = noDelay === undefined ? true : !!noDelay;
 
-  if (
-    "setNoDelay" in this._handle &&
-    this._handle.setNoDelay &&
-    newValue !== this[kSetNoDelay]
-  ) {
+  if (newValue !== this[kSetNoDelay]) {
     this[kSetNoDelay] = newValue;
-    this._handle.setNoDelay(newValue);
+    if ("setNoDelay" in this._handle && this._handle.setNoDelay) {
+      this._handle.setNoDelay(newValue);
+    }
   }
 
   return this;
@@ -1541,14 +1627,14 @@ Socket.prototype.setKeepAlive = function (enable, initialDelay) {
   const newDelay = ~~(initialDelay / 1000);
 
   if (
-    "setKeepAlive" in this._handle &&
-    this._handle.setKeepAlive &&
-    (newEnable !== this[kSetKeepAlive] ||
-      newDelay !== this[kSetKeepAliveInitialDelay])
+    newEnable !== this[kSetKeepAlive] ||
+    newDelay !== this[kSetKeepAliveInitialDelay]
   ) {
     this[kSetKeepAlive] = newEnable;
     this[kSetKeepAliveInitialDelay] = newDelay;
-    this._handle.setKeepAlive(newEnable, newDelay);
+    if ("setKeepAlive" in this._handle && this._handle.setKeepAlive) {
+      this._handle.setKeepAlive(newEnable, newDelay);
+    }
   }
 
   return this;
@@ -1771,7 +1857,7 @@ Socket.prototype._unrefTimer = function () {
 };
 
 Socket.prototype._final = function (cb) {
-  if (this.pending) {
+  if (this.connecting) {
     debug("_final: not yet connected");
     return this.once("connect", () => this._final(cb));
   }
@@ -1860,6 +1946,9 @@ Socket.prototype._destroy = function (exception, cb) {
     cb(exception);
     handle.close(() => {
       handle.onread = _noop;
+      if (this[asyncIdSymbol] > 0) {
+        emitDestroy(this[asyncIdSymbol]);
+      }
 
       debug("emit close");
       this.emit("close", isException);
@@ -1993,6 +2082,11 @@ Object.defineProperty(Socket.prototype, "_handle", {
     return this[kHandle];
   },
   set: function (v) {
+    if (this[kHandle] && !v) {
+      unregisterActiveHandle(this);
+    } else if (!this[kHandle] && v) {
+      registerActiveHandle(this);
+    }
     this[kHandle] = v;
   },
 });
@@ -2201,11 +2295,13 @@ function _listenInCluster(
     err = _checkBindError(err, port as number, handle as TCP);
     if (err) {
       const ex = uvExceptionWithHostPort(err, "bind", address, port);
+      unregisterActiveHandle(server);
       server.emit("error", ex);
       return;
     }
     if (server._handle) {
       server._handle.close();
+      unregisterActiveHandle(server);
     }
     server._handle = handle;
     server._listen2(address, port, addressType, backlog, fd, flags);
@@ -2425,6 +2521,7 @@ function _setupListenHandle(
   // In the case of a server sent via IPC, we don't need to do this.
   if (this._handle) {
     debug("setupListenHandle: have a handle already");
+    registerActiveHandle(this);
   } else {
     debug("setupListenHandle: create a handle");
 
@@ -2467,6 +2564,7 @@ function _setupListenHandle(
     }
 
     this._handle = rval;
+    registerActiveHandle(this);
   }
 
   this[asyncIdSymbol] = _getNewAsyncId(this._handle);
@@ -2491,6 +2589,7 @@ function _setupListenHandle(
     const ex = uvExceptionWithHostPort(err, "listen", address, port);
     this._handle.close();
     this._handle = null;
+    unregisterActiveHandle(this);
 
     defaultTriggerAsyncIdScope(
       this[asyncIdSymbol],
@@ -2805,6 +2904,7 @@ Server.prototype.close = function (cb?: (err?: Error) => void) {
   if (this._handle) {
     (this._handle as TCP).close();
     this._handle = null;
+    unregisterActiveHandle(this);
   }
 
   if (this._usingWorkers) {
