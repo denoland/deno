@@ -117,6 +117,10 @@ defineLazyInternal(
 );
 // `ext:deno_fetch/23_request.js`.
 defineLazyInternal("getCachedAbortSignal", "ext:deno_fetch/23_request.js");
+// `ext:deno_process/40_process.js` (registers process internals at module body).
+defineLazyInternal("getExtraPipeRids", "ext:deno_process/40_process.js");
+defineLazyInternal("getIpcPipeRid", "ext:deno_process/40_process.js");
+defineLazyInternal("kExtraStdio", "ext:deno_process/40_process.js");
 
 // the out buffer for `cpuUsage` and `memoryUsage`
 const usageBuffer = new Float64Array(4);
