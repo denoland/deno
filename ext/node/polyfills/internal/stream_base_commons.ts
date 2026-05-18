@@ -208,8 +208,8 @@ function writevGeneric(
 
   const err = req.handle.writev(req, chunks, allBuffers);
 
-  // Retain chunks
-  if (err === 0) {
+  // Retain chunks while the native write is pending.
+  if (err === 0 && streamBaseState[kLastWriteWasAsync]) {
     req._chunks = chunks;
   }
 
