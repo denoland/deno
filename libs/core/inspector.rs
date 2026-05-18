@@ -683,12 +683,35 @@ impl JsRuntimeInspector {
   /// notify debuggers that the execution context is being torn down before
   /// calling `std::process::exit()`, which would skip the normal event-loop
   /// shutdown path where V8's `context_destroyed` is called.
+  ///
+  /// Sessions that opted into `NodeRuntime.notifyWhenWaitingForDisconnect`
+  /// are skipped here — they receive `NodeRuntime.waitingForDisconnect`
+  /// instead, via `broadcast_waiting_for_disconnect`.
   pub fn broadcast_context_destroyed(&self) {
     let sessions = self.state.sessions.borrow();
     for session in sessions.local.values() {
+      if session.state.notify_waiting_for_disconnect.get() {
+        continue;
+      }
       (session.state.send)(InspectorMsg::notification(json!({
         "method": "Runtime.executionContextDestroyed",
         "params": { "executionContextId": Self::CONTEXT_GROUP_ID }
+      })));
+    }
+  }
+
+  /// Emit `NodeRuntime.waitingForDisconnect` to every session that opted in
+  /// via `NodeRuntime.notifyWhenWaitingForDisconnect(enabled: true)`. Called
+  /// during the process-exit handler before blocking for disconnect, so
+  /// debugger clients can close cleanly instead of waiting for a TCP RST.
+  pub fn broadcast_waiting_for_disconnect(&self) {
+    let sessions = self.state.sessions.borrow();
+    for session in sessions.local.values() {
+      if !session.state.notify_waiting_for_disconnect.get() {
+        continue;
+      }
+      (session.state.send)(InspectorMsg::notification(json!({
+        "method": "NodeRuntime.waitingForDisconnect"
       })));
     }
   }
@@ -1248,6 +1271,12 @@ struct InspectorSessionState {
   // Track whether NodeRuntime.enable has been called (per-session, not shared,
   // because one client disabling it should not affect another client's state)
   noderuntime_enabled: Cell<bool>,
+  // Track whether NodeRuntime.notifyWhenWaitingForDisconnect has been called
+  // with `enabled: true`. When set, the runtime emits
+  // NodeRuntime.waitingForDisconnect (instead of
+  // Runtime.executionContextDestroyed) to this session at exit, and waits for
+  // the session to disconnect before terminating the process.
+  notify_waiting_for_disconnect: Cell<bool>,
   // Inspector flags (shared with JsRuntimeInspectorState) for checking waiting_for_session
   flags: Rc<RefCell<InspectorFlags>>,
 }
@@ -1289,6 +1318,7 @@ impl InspectorSession {
       network_enabled: Cell::new(false),
       dom_storage_enabled: Cell::new(false),
       noderuntime_enabled: Cell::new(false),
+      notify_waiting_for_disconnect: Cell::new(false),
       flags,
     };
 
@@ -1470,6 +1500,10 @@ async fn pump_inspector_session_messages(
       }
       "NodeRuntime.disable" => {
         session.state.noderuntime_enabled.set(false);
+      }
+      "NodeRuntime.notifyWhenWaitingForDisconnect" => {
+        let enabled = get_bool_param(&params, "enabled");
+        session.state.notify_waiting_for_disconnect.set(enabled);
       }
       "Runtime.runIfWaitingForDebugger" => {
         // Clear paused_on_start so wait_for_session_and_break_on_next_statement

@@ -2277,7 +2277,7 @@
     // "parallel/test-inspector-async-stack-traces-set-interval.js": {},
     // "parallel/test-inspector-scriptparsed-context.js": {},
     "parallel/test-inspector-break-e.js": {},
-    // "parallel/test-inspector-waiting-for-disconnect.js": {},
+    "parallel/test-inspector-waiting-for-disconnect.js": {},
     // "parallel/test-inspector-worker-target.js"
     // "parallel/test-inspector-debug-brk-flag.js": {},
     // "parallel/test-inspector-wait.mjs": {},
