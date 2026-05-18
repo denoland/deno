@@ -6,55 +6,28 @@
 /// <reference path="./internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
+// Transport-only module: ports / channels are exposed by
+// `node:worker_threads` (see ext/node/polyfills/internal/worker/io.ts),
+// which is responsible for the `globalThis.MessagePort` /
+// `globalThis.MessageChannel` constructors. This file owns the
+// underlying ops, the serialize/deserialize round-trip, and the
+// non-port pieces of `structuredClone`.
 (function () {
 const { core, primordials } = globalThis.__bootstrap;
 const {
-  op_message_port_create_entangled,
-  op_message_port_post_message,
-  op_message_port_post_message_raw,
-  op_message_port_recv_message,
-} = core.ops;
-const {
   ArrayBufferPrototypeGetByteLength,
-  ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
   ArrayPrototypePush,
   ObjectDefineProperty,
   ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
   Symbol,
-  PromiseResolve,
-  SafeArrayIterator,
   SymbolFor,
-  SymbolIterator,
   TypeError,
   TypeErrorPrototype,
 } = primordials;
-const {
-  InterruptedPrototype,
-  isArrayBuffer,
-} = core;
+const { isArrayBuffer } = core;
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-
-// Lazy-load createFilteredInspectProxy from console to avoid
-// circular dependency at load time. Only needed for custom inspect.
-let _createFilteredInspectProxy;
-function getCreateFilteredInspectProxy() {
-  if (!_createFilteredInspectProxy) {
-    _createFilteredInspectProxy = core.loadExtScript(
-      "ext:deno_web/01_console.js",
-    ).createFilteredInspectProxy;
-  }
-  return _createFilteredInspectProxy;
-}
-
-const {
-  defineEventHandler,
-  EventTarget,
-  MessageEvent,
-  setEventTargetData,
-  setIsTrusted,
-} = core.loadExtScript("ext:deno_web/02_event.js");
 
 const {
   ReadableStream,
@@ -64,368 +37,21 @@ const {
 
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
-// counter of how many message ports are actively refed
-// either due to the existence of "message" event listeners or
-// explicit calls to ref/unref (in the case of node message ports)
-let refedMessagePortsCount = 0;
+// Shared port-id symbol -- the Node MessagePort uses this slot directly
+// (imported as `kPortId`) so a transferred rid lands on the same field
+// regardless of which side allocated the wrapper.
+const MessagePortIdSymbol = Symbol("MessagePortId");
 
-class MessageChannel {
-  /** @type {MessagePort} */
-  #port1;
-  /** @type {MessagePort} */
-  #port2;
-
-  constructor() {
-    this[webidl.brand] = webidl.brand;
-    const { 0: port1Id, 1: port2Id } = opCreateEntangledMessagePort();
-    const port1 = createMessagePort(port1Id);
-    const port2 = createMessagePort(port2Id);
-    this.#port1 = port1;
-    this.#port2 = port2;
-  }
-
-  get port1() {
-    webidl.assertBranded(this, MessageChannelPrototype);
-    return this.#port1;
-  }
-
-  get port2() {
-    webidl.assertBranded(this, MessageChannelPrototype);
-    return this.#port2;
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      getCreateFilteredInspectProxy()({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(MessageChannelPrototype, this),
-        keys: [
-          "port1",
-          "port2",
-        ],
-      }),
-      inspectOptions,
-    );
-  }
-}
-
-webidl.configureInterface(MessageChannel);
-const MessageChannelPrototype = MessageChannel.prototype;
-
-const _id = Symbol("id");
-const MessagePortIdSymbol = _id;
-const MessagePortReceiveMessageOnPortSymbol = Symbol(
-  "MessagePortReceiveMessageOnPort",
-);
-const _enabled = Symbol("enabled");
-const _refed = Symbol("refed");
-const _messageEventListenerCount = Symbol("messageEventListenerCount");
-const nodeWorkerThreadCloseCb = Symbol("nodeWorkerThreadCloseCb");
-const nodeWorkerThreadCloseCbInvoked = Symbol("nodeWorkerThreadCloseCbInvoked");
-const refMessagePort = Symbol("refMessagePort");
-/** It is used by 99_main.js and worker_threads to
- * unref/ref on the global message event handler count. */
+// Used by 99_main.js and node:worker_threads to flip the "treat
+// parentPort listeners as if they were absent" bit on the worker's
+// globalThis, so `parentPort.unref()` can let the worker exit even
+// while message listeners stay registered.
 const unrefParentPort = Symbol("unrefParentPort");
-// Shared marker symbol with ext/node's `markAsUncloneable`. Lives in the
-// global Symbol registry so both extensions reference the same symbol
-// without needing a cross-extension import.
+
+// Shared marker symbol with ext/node's `markAsUncloneable`. Lives in
+// the global Symbol registry so both extensions reference the same
+// symbol without needing a cross-extension import.
 const kNodeUncloneable = SymbolFor("nodejs.worker_threads.uncloneable");
-
-/**
- * @param {number} id
- * @returns {MessagePort}
- */
-function createMessagePort(id) {
-  const port = webidl.createBranded(MessagePort);
-  port[core.hostObjectBrand] = "MessagePort";
-  setEventTargetData(port);
-  port[_id] = id;
-  port[_enabled] = false;
-  port[_messageEventListenerCount] = 0;
-  port[_refed] = false;
-  return port;
-}
-
-function nodeWorkerThreadMaybeInvokeCloseCb(port) {
-  if (
-    typeof port[nodeWorkerThreadCloseCb] == "function" &&
-    !port[nodeWorkerThreadCloseCbInvoked]
-  ) {
-    port[nodeWorkerThreadCloseCb]();
-    port[nodeWorkerThreadCloseCbInvoked] = true;
-  }
-}
-
-const _isRefed = Symbol("isRefed");
-const _dataPromise = Symbol("dataPromise");
-
-/**
- * Deserialize and dispatch a message on a target EventTarget.
- * @returns {boolean} false if dispatch failed with messageerror
- */
-function dispatchPortMessageData(target, data) {
-  let message, transferables;
-  try {
-    const v = deserializeJsMessageData(data);
-    message = v[0];
-    transferables = v[1];
-  } catch (err) {
-    const event = new MessageEvent("messageerror", { data: err });
-    setIsTrusted(event, true);
-    target.dispatchEvent(event);
-    return false;
-  }
-  const event = new MessageEvent("message", {
-    data: message,
-    // Match by host-object brand instead of prototype so Node-style
-    // MessagePort instances (installed by `node:worker_threads`'s
-    // transferable receive override) are surfaced in `ev.ports`.
-    ports: ArrayPrototypeFilter(
-      transferables,
-      (t) =>
-        t !== null && typeof t === "object" &&
-        t[core.hostObjectBrand] === "MessagePort",
-    ),
-  });
-  setIsTrusted(event, true);
-  target.dispatchEvent(event);
-  return true;
-}
-
-class MessagePort extends EventTarget {
-  /** @type {number | null} */
-  [_id] = null;
-  /** @type {boolean} */
-  [_enabled] = false;
-  [_refed] = false;
-  /** @type {Promise<any> | undefined} */
-  [_dataPromise] = undefined;
-  [_messageEventListenerCount] = 0;
-
-  constructor() {
-    super();
-    ObjectDefineProperty(this, MessagePortReceiveMessageOnPortSymbol, {
-      __proto__: null,
-      value: false,
-      enumerable: false,
-    });
-    ObjectDefineProperty(this, nodeWorkerThreadCloseCb, {
-      __proto__: null,
-      value: null,
-      enumerable: false,
-    });
-    ObjectDefineProperty(this, nodeWorkerThreadCloseCbInvoked, {
-      __proto__: null,
-      value: false,
-      enumerable: false,
-    });
-    webidl.illegalConstructor();
-  }
-
-  /**
-   * @param {any} message
-   * @param {object[] | StructuredSerializeOptions} transferOrOptions
-   */
-  postMessage(message, transferOrOptions = { __proto__: null }) {
-    webidl.assertBranded(this, MessagePortPrototype);
-    const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
-    if (this[_id] === null) return;
-    // Honour `markAsUncloneable` from node:worker_threads even when the
-    // user reaches into the global MessageChannel/MessagePort rather
-    // than the node-flavoured one. The marker is checked top-level
-    // only -- nested host objects rely on V8's serializer to refuse.
-    if (
-      message !== null && typeof message === "object" &&
-      (message[kNodeUncloneable] === true || message[kNotSerializable])
-    ) {
-      throw new DOMException(
-        "Cannot clone object of unsupported type.",
-        "DataCloneError",
-      );
-    }
-    // Fast path: no transferables - serialize and send in one shot,
-    // bypassing the JsMessageData serde overhead
-    if (
-      transferOrOptions === undefined ||
-      transferOrOptions === null ||
-      (arguments.length <= 1)
-    ) {
-      op_message_port_post_message_raw(
-        this[_id],
-        core.serialize(message, undefined, serializeErrorCb),
-      );
-      return;
-    }
-    message = webidl.converters.any(message);
-    let options;
-    if (
-      webidl.type(transferOrOptions) === "Object" &&
-      transferOrOptions !== undefined &&
-      transferOrOptions[SymbolIterator] !== undefined
-    ) {
-      const transfer = webidl.converters["sequence<object>"](
-        transferOrOptions,
-        prefix,
-        "Argument 2",
-      );
-      options = { transfer };
-    } else {
-      options = webidl.converters.StructuredSerializeOptions(
-        transferOrOptions,
-        prefix,
-        "Argument 2",
-      );
-    }
-    const { transfer } = options;
-    if (ArrayPrototypeIncludes(transfer, this)) {
-      throw new DOMException("Can not transfer self", "DataCloneError");
-    }
-    const data = serializeJsMessageData(message, transfer);
-    op_message_port_post_message(this[_id], data);
-  }
-
-  start() {
-    webidl.assertBranded(this, MessagePortPrototype);
-    if (this[_enabled]) return;
-    (async () => {
-      this[_enabled] = true;
-      while (true) {
-        if (this[_id] === null) break;
-        let data;
-        try {
-          this[_dataPromise] = op_message_port_recv_message(
-            this[_id],
-          );
-          if (
-            typeof this[nodeWorkerThreadCloseCb] === "function" &&
-            !this[_refed]
-          ) {
-            core.unrefOpPromise(this[_dataPromise]);
-          }
-          data = await this[_dataPromise];
-          this[_dataPromise] = undefined;
-        } catch (err) {
-          if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, err)) {
-            break;
-          }
-          nodeWorkerThreadMaybeInvokeCloseCb(this);
-          throw err;
-        }
-        if (data === null) {
-          nodeWorkerThreadMaybeInvokeCloseCb(this);
-          break;
-        }
-        if (!dispatchPortMessageData(this, data)) return;
-      }
-      this[_enabled] = false;
-    })();
-  }
-
-  [refMessagePort](ref) {
-    if (ref) {
-      if (!this[_refed]) {
-        refedMessagePortsCount++;
-        if (
-          this[_dataPromise]
-        ) {
-          core.refOpPromise(this[_dataPromise]);
-        }
-        this[_refed] = true;
-      }
-    } else if (!ref) {
-      if (this[_refed]) {
-        refedMessagePortsCount--;
-        if (
-          this[_dataPromise]
-        ) {
-          core.unrefOpPromise(this[_dataPromise]);
-        }
-        this[_refed] = false;
-      }
-    }
-  }
-
-  close() {
-    webidl.assertBranded(this, MessagePortPrototype);
-    if (this[_id] !== null) {
-      core.close(this[_id]);
-      this[_id] = null;
-      nodeWorkerThreadMaybeInvokeCloseCb(this);
-    }
-  }
-
-  removeEventListener(...args) {
-    if (args[0] == "message") {
-      if (--this[_messageEventListenerCount] === 0 && this[_refed]) {
-        refedMessagePortsCount--;
-        this[_refed] = false;
-      }
-    }
-    super.removeEventListener(...new SafeArrayIterator(args));
-  }
-
-  addEventListener(...args) {
-    if (args[0] == "message") {
-      if (++this[_messageEventListenerCount] === 1 && !this[_refed]) {
-        refedMessagePortsCount++;
-        this[_refed] = true;
-      }
-    }
-    super.addEventListener(...new SafeArrayIterator(args));
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      getCreateFilteredInspectProxy()({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(MessagePortPrototype, this),
-        keys: [
-          "onmessage",
-          "onmessageerror",
-        ],
-      }),
-      inspectOptions,
-    );
-  }
-}
-
-defineEventHandler(MessagePort.prototype, "message", function (self) {
-  if (self[nodeWorkerThreadCloseCb]) {
-    (async () => {
-      // delay `start()` until he end of this event loop turn, to give `receiveMessageOnPort`
-      // a chance to receive a message first. this is primarily to resolve an issue with
-      // a pattern used in `npm:piscina` that results in an indefinite hang
-      await PromiseResolve();
-      self.start();
-    })();
-  } else {
-    self.start();
-  }
-});
-defineEventHandler(MessagePort.prototype, "messageerror");
-
-webidl.configureInterface(MessagePort);
-const MessagePortPrototype = MessagePort.prototype;
-
-core.registerTransferableResource("MessagePort", (port) => {
-  const id = port[_id];
-  port[_id] = null;
-  if (id === null) {
-    throw new DOMException(
-      "Can not transfer disentangled message port",
-      "DataCloneError",
-    );
-  }
-  return id;
-}, (id) => createMessagePort(id));
-
-/**
- * @returns {[number, number]}
- */
-function opCreateEntangledMessagePort() {
-  return op_message_port_create_entangled();
-}
 
 /**
  * @param {messagePort.MessageData} messageData
@@ -705,17 +331,10 @@ function structuredClone(value, options) {
 
 return {
   deserializeJsMessageData,
+  kNodeUncloneable,
   kNotSerializable,
   markNotSerializable,
-  MessageChannel,
-  MessagePort,
   MessagePortIdSymbol,
-  MessagePortPrototype,
-  MessagePortReceiveMessageOnPortSymbol,
-  nodeWorkerThreadCloseCb,
-  nodeWorkerThreadCloseCbInvoked,
-  refedMessagePortsCount,
-  refMessagePort,
   serializeJsMessageData,
   structuredClone,
   unrefParentPort,

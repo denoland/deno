@@ -72,7 +72,6 @@ const {
   serializeJsMessageData,
   kNotSerializable,
   MessagePortIdSymbol,
-  MessagePortPrototype: WebMessagePortPrototype,
   unrefParentPort,
 } = core.loadExtScript("ext:deno_web/13_message_port.js");
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
@@ -680,8 +679,7 @@ function extractPorts(transferables: unknown[]): MessagePort[] {
     const t = transferables[i];
     if (
       t !== null && typeof t === "object" &&
-      (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t) ||
-        ObjectPrototypeIsPrototypeOf(WebMessagePortPrototype, t))
+      ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t)
     ) {
       ArrayPrototypePush(out, t as MessagePort);
     }
@@ -848,8 +846,7 @@ function validateTransferList(transfer: unknown[], sourcePort: MessagePort) {
 
 function isMessagePortLike(v: unknown): boolean {
   if (v === null || typeof v !== "object") return false;
-  return ObjectPrototypeIsPrototypeOf(MessagePortPrototype, v) ||
-    ObjectPrototypeIsPrototypeOf(WebMessagePortPrototype, v);
+  return ObjectPrototypeIsPrototypeOf(MessagePortPrototype, v);
 }
 
 // --- factories ----------------------------------------------------------

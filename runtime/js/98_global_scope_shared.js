@@ -147,8 +147,10 @@ const windowOrWorkerGlobalScope = {
     (ws) => ws.WebSocket,
     loadWebSocket,
   ),
-  MessageChannel: core.propNonEnumerable(messagePort.MessageChannel),
-  MessagePort: core.propNonEnumerable(messagePort.MessagePort),
+  // `MessageChannel` / `MessagePort` are installed by the Node bootstrap
+  // (`__initWorkerThreads` in ext/node/polyfills/worker_threads.ts).
+  // ext/web no longer ships a Web-flavoured class -- the Node MessagePort
+  // is the canonical implementation in Deno.
   Worker: core.propNonEnumerable(worker.Worker),
   WritableStream: core.propNonEnumerable(streams.WritableStream),
   WritableStreamDefaultWriter: core.propNonEnumerable(

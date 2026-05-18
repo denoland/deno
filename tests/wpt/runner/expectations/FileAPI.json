@@ -2,8 +2,16 @@
   "blob": {
     "Blob-array-buffer.any.html": true,
     "Blob-array-buffer.any.worker.html": true,
-    "Blob-constructor.any.html": true,
-    "Blob-constructor.any.worker.html": true,
+    "Blob-constructor.any.html": {
+      "expectedFailures": [
+        "Passing a FrozenArray as the blobParts array should work (FrozenArray<MessagePort>)."
+      ]
+    },
+    "Blob-constructor.any.worker.html": {
+      "expectedFailures": [
+        "Passing a FrozenArray as the blobParts array should work (FrozenArray<MessagePort>)."
+      ]
+    },
     "Blob-slice-overflow.any.html": true,
     "Blob-slice-overflow.any.worker.html": true,
     "Blob-slice.any.html": true,
