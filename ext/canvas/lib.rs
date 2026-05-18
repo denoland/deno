@@ -5,7 +5,7 @@ use deno_core::op2;
 use deno_core::v8;
 
 mod bitmaprenderer;
-mod byow;
+pub mod byow;
 mod canvas;
 
 deno_core::extension!(

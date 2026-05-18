@@ -146,6 +146,78 @@
         }
       }
     },
+    "desktop": {
+      "type": "object",
+      "description": "Configuration for `deno desktop`.",
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "object",
+          "description": "Application metadata.",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The application name."
+            },
+            "icons": {
+              "type": "object",
+              "description": "Platform-specific icon paths.",
+              "additionalProperties": false,
+              "properties": {
+                "macos": {
+                  "type": "string",
+                  "description": "Icon path for macOS (.icns or .png)."
+                },
+                "windows": {
+                  "type": "string",
+                  "description": "Icon path for Windows (.ico)."
+                },
+                "linux": {
+                  "type": "string",
+                  "description": "Icon path for Linux (.png)."
+                }
+              }
+            }
+          }
+        },
+        "backend": {
+          "type": "string",
+          "description": "WEF backend to use for the desktop app.",
+          "enum": ["webview", "cef", "servo"]
+        },
+        "output": {
+          "type": "object",
+          "description": "Platform-specific output paths.",
+          "additionalProperties": false,
+          "properties": {
+            "macos": {
+              "type": "string",
+              "description": "Output path for macOS (e.g. MyApp.app, MyApp.dmg)."
+            },
+            "windows": {
+              "type": "string",
+              "description": "Output path for Windows (e.g. MyApp.msi, MyApp.exe)."
+            },
+            "linux": {
+              "type": "string",
+              "description": "Output path for Linux (e.g. MyApp.AppImage, MyApp.deb)."
+            }
+          }
+        },
+        "release": {
+          "type": "object",
+          "description": "Release and auto-update configuration.",
+          "additionalProperties": false,
+          "properties": {
+            "baseUrl": {
+              "type": "string",
+              "description": "Base URL for auto-update release artifacts."
+            }
+          }
+        }
+      }
+    },
     "compilerOptions": {
       "type": "object",
       "description": "Instructs the TypeScript compiler how to compile .ts files.",

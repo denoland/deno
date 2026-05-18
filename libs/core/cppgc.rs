@@ -356,6 +356,32 @@ impl<T: GarbageCollected + 'static> SameObject<T> {
       .clone()
   }
 
+  /// Like [`SameObject::get`] but the initializer can fail. On error the
+  /// cache is left empty so a subsequent call can retry. Useful when the
+  /// underlying construction (e.g. wgpu surface, native handle lookup)
+  /// can legitimately fail and we want to bubble the error to JS instead
+  /// of panicking inside the closure.
+  pub fn try_get<F, E>(
+    &self,
+    scope: &mut v8::PinScope,
+    f: F,
+  ) -> Result<v8::Global<v8::Object>, E>
+  where
+    F: FnOnce(&mut v8::PinScope) -> Result<T, E>,
+  {
+    if let Some(obj) = self.cell.get() {
+      return Ok(obj.clone());
+    }
+    let v = f(scope)?;
+    let obj = make_cppgc_object(scope, v);
+    let global = v8::Global::new(scope, obj);
+    // `set` returns Err if a re-entrant call beat us to it; in that case
+    // we discard our freshly-built object and fall through to the now-
+    // populated cache. Either way `cell.get()` returns Some afterwards.
+    let _ = self.cell.set(global);
+    Ok(self.cell.get().unwrap().clone())
+  }
+
   pub fn set(
     &self,
     scope: &mut v8::PinScope,

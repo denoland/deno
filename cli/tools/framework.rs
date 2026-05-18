@@ -70,7 +70,7 @@ pub fn detect_framework(
   if let Some(deps) = read_package_deps(dir) {
     // Remix
     if deps.has("@remix-run/react") || deps.has_dev("@remix-run/dev") {
-      return Ok(Some(detect_remix()));
+      return Ok(Some(detect_remix(dir)));
     }
 
     // SolidStart
@@ -133,10 +133,17 @@ if (!Deno.env.get("NODE_CHANNEL_FD")) {{
 }}
 "#,
   );
+  // `next-server` serves files in `public/` at the URL root; without it
+  // shipped, every `<img src="/foo.png">` 404s. Optional in the project
+  // (some apps put nothing there), so only include when present.
+  let mut include_paths = vec![".next".into()];
+  if dir.join("public").is_dir() {
+    include_paths.push("public".into());
+  }
   Ok(FrameworkDetection {
     name: "Next.js",
     entrypoint_code: entrypoint,
-    include_paths: vec![".next".into()],
+    include_paths,
     build_command: Some(deno_task_build()),
   })
 }
@@ -160,6 +167,17 @@ fn detect_fresh(dir: &Path) -> FrameworkDetection {
       .map(|imports| imports.iter().any(|i| i.starts_with("@fresh/core")))
       .unwrap_or(false);
   if is_fresh2 {
+    // `_fresh/snapshot.js` records static assets as `filePath:
+    // "static/foo.png"` and `_fresh/server.js` constructs the
+    // ProdBuildCache with `root = path.join(import.meta.dirname, "..")`,
+    // so the runtime reads them via `<root>/static/...`. The `static/`
+    // directory must therefore land in the VFS alongside `_fresh/` or
+    // every image / font / video 404s. `static/` is conventional for
+    // Fresh; if it doesn't exist the include is a harmless no-op.
+    let mut include_paths = vec!["_fresh".into()];
+    if dir.join("static").is_dir() {
+      include_paths.push("static".into());
+    }
     FrameworkDetection {
       name: "Fresh",
       entrypoint_code: r#"// @ts-nocheck
@@ -167,7 +185,7 @@ const mod = await import("./_fresh/server.js");
 Deno.serve(mod.default.fetch);
 "#
       .into(),
-      include_paths: vec!["_fresh".into()],
+      include_paths,
       build_command: Some(vec![deno_exe(), "task".into(), "build".into()]),
     }
   } else {
@@ -181,12 +199,18 @@ Deno.serve(mod.default.fetch);
   }
 }
 
-fn detect_remix() -> FrameworkDetection {
+fn detect_remix(dir: &Path) -> FrameworkDetection {
+  // `remix-serve` serves files from `public/` at the URL root; ship it
+  // when present so static assets resolve.
+  let mut include_paths = vec!["build".into()];
+  if dir.join("public").is_dir() {
+    include_paths.push("public".into());
+  }
   FrameworkDetection {
     name: "Remix",
     entrypoint_code:
       "// @ts-nocheck\nimport \"./node_modules/.bin/remix-serve\";\n".into(),
-    include_paths: vec!["build".into()],
+    include_paths,
     build_command: Some(deno_task_build()),
   }
 }

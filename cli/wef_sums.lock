@@ -1,0 +1,31 @@
+# Pinned SHA-256 digests for WEF backend archives.
+#
+# This file is the trust anchor for `deno desktop` backend downloads. Each
+# entry pins the digest of an archive published at:
+#   https://github.com/littledivy/just-wef/releases/download/v<WEF_VERSION>/<file>
+# `WEF_VERSION` comes from the workspace `Cargo.lock` (the `just-wef` crate).
+# When that version bumps, regenerate this file from the upstream
+# `SHA256SUMS` and verify the digests against the release out-of-band before
+# committing — this is what removes the TOFU on the unsigned SHA256SUMS.
+#
+# Format: GNU `sha256sum` style, one `<hex>  <filename>` per line.
+# A `# version: vX.Y.Z` directive (optional) is matched against WEF_VERSION
+# at build time to guard against forgetting to refresh this file.
+#
+# version: v0.1.0
+
+f0be7f05fb9046751f007d6b2f1fe604313262cb894c4a92732ad1f5b177ae0f  wef-cef-aarch64-apple-darwin.tar.gz
+4ae1ba6df0020babe9f8b5133ad3892875a4fc14e9c13d281f4cc067d574bc86  wef-cef-aarch64-unknown-linux-gnu.tar.gz
+332ed51622228adfe9610c4054b612abfe69cc29b33a5038e6673495796f10d5  wef-cef-x86_64-apple-darwin.tar.gz
+3d1b662ffffb1ba94dba5829bf7963b8ec34c6ac144a5508b9d0115970ae3e8d  wef-cef-x86_64-unknown-linux-gnu.tar.gz
+c8d3b58e888145c57f79c9a05c3fd72bebaca65a7cd349e4dbf7e6a7863d42b0  wef-webview-aarch64-apple-darwin.tar.gz
+37eb159c1ef83ebb5fff63d0877f94aa3b75af89e27e95324caa97161d6dec1f  wef-webview-aarch64-unknown-linux-gnu.tar.gz
+396b40e34ed323f2ca031f009f41f813688bb64bc6647bc95519ccb77e30836c  wef-webview-x86_64-apple-darwin.tar.gz
+e8768e82bf8b6487b007061d7d8bb453a99995e5473a07357800723871b07a1a  wef-webview-x86_64-unknown-linux-gnu.tar.gz
+88acda82afd92244f0e2e7894f951b5ac71c0fd66011211add136605492ed4df  wef-winit-aarch64-apple-darwin.tar.gz
+1f8f62f59eeb96bb88e16c83793154b214416f055eaa754e1cfdae20ea0b0b4c  wef-winit-aarch64-unknown-linux-gnu.tar.gz
+4319cd19f07dcb3c261411e62138c293a76bfcfa29cd4909bf0fbc173a3d4cb5  wef-winit-x86_64-apple-darwin.tar.gz
+d59f751b9696c755ecb5bdb88926ada4d0fe33ace98e179379fafae4fa682bda  wef-winit-x86_64-unknown-linux-gnu.tar.gz
+914dfb0b7527c61535ef290231df586eeab751d559844b14d1d12cdbf7abe441  wef-cef-x86_64-pc-windows-msvc.zip
+c282171d67b290efac6631d1829760676ef2bb342e94081f10441a91015b7b5f  wef-webview-x86_64-pc-windows-msvc.zip
+38f62598a01391df8252ad1feea14eee28406de6b4adf29c7c8cf715ecf95202  wef-winit-x86_64-pc-windows-msvc.zip

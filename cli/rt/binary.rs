@@ -59,7 +59,17 @@ pub struct StandaloneData {
 pub fn extract_standalone(
   cli_args: Cow<[OsString]>,
 ) -> Result<StandaloneData, AnyError> {
-  let data = find_section()?;
+  extract_standalone_with_finder(cli_args, find_section)
+}
+
+/// Like `extract_standalone`, but allows providing a custom section finder.
+/// This is used by the desktop cdylib to search its own image rather than
+/// the main executable.
+pub fn extract_standalone_with_finder(
+  cli_args: Cow<[OsString]>,
+  section_finder: fn() -> Result<&'static [u8], AnyError>,
+) -> Result<StandaloneData, AnyError> {
+  let data = section_finder()?;
 
   // read metadata first to determine the root path
   let (mut metadata, remaining) = read_section_metadata(data)?;
