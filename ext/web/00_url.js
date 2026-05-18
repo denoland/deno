@@ -15,6 +15,7 @@ const {
   op_url_reparse,
 } = core.ops;
 const {
+  Array,
   ArrayFrom,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
