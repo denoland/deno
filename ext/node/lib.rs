@@ -743,6 +743,9 @@ deno_core::extension!(deno_node,
       client_session_store: std::sync::Arc::new(
         deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
       ),
+      client_session_store_insecure: std::sync::Arc::new(
+        deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
+      ),
       server_ticketer: None,
       cached_default_verifier: None,
       cached_insecure_verifier: None,
