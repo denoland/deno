@@ -48,6 +48,9 @@ pub struct TranslatedArgs {
   pub use_openssl_ca: bool,
   /// Whether the child process needs npm process state
   pub needs_npm_process_state: bool,
+  /// Comma-separated trace event categories from --trace-event-categories,
+  /// to be propagated via DENO_NODE_TRACE_EVENT_CATEGORIES.
+  pub trace_event_categories: Option<String>,
 }
 
 /// Translate parsed Node.js CLI arguments to Deno CLI arguments.
@@ -76,12 +79,19 @@ fn translate_to_deno_args(
     }
   };
 
+  let trace_event_categories = if result.trace_event_categories.is_empty() {
+    None
+  } else {
+    Some(result.trace_event_categories)
+  };
+
   TranslatedArgs {
     deno_args: result.deno_args,
     node_options: result.node_options,
     ca_stores,
     use_openssl_ca,
     needs_npm_process_state: script_in_npm_package,
+    trace_event_categories,
   }
 }
 
@@ -110,6 +120,7 @@ pub fn op_node_translate_cli_args(
       ca_stores: None,
       use_openssl_ca: false,
       needs_npm_process_state: script_in_npm_package,
+      trace_event_categories: None,
     });
   }
 

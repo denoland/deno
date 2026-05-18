@@ -1441,6 +1441,9 @@ function buildCommand(
     } else {
       delete env.DENO_NODE_USE_OPENSSL_CA;
     }
+    if (result.trace_event_categories) {
+      env.DENO_NODE_TRACE_EVENT_CATEGORIES = result.trace_event_categories;
+    }
 
     // Update NODE_OPTIONS if needed
     if (result.node_options.length > 0) {

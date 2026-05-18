@@ -5,6 +5,7 @@
 import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_fs_cwd,
+  op_get_env_no_permission_check,
   op_import_sync,
   op_import_sync_with_source,
   op_module_default_resolve,
@@ -3023,6 +3024,33 @@ function initialize(args) {
       nativeModuleExports["console"],
       nativeModuleExports["process"],
     );
+    // Pre-enable any trace event categories requested via the spawning
+    // process's --trace-event-categories flag (propagated as an env var by
+    // child_process). This must run in every isolate, including workers,
+    // so that node.async_hooks tracing covers worker threads too.
+    const traceCategoriesEnv = op_get_env_no_permission_check(
+      "DENO_NODE_TRACE_EVENT_CATEGORIES",
+    );
+    if (traceCategoriesEnv) {
+      const traceEvents = core.loadExtScript("ext:deno_node/trace_events.ts");
+      const categories = traceCategoriesEnv.split(",").filter((c) =>
+        c.length > 0
+      );
+      if (categories.length > 0) {
+        // Surface the flag through process.execArgv so test fixtures that
+        // probe it (e.g. node's test-trace-events-api) see the same shape
+        // they would in Node.
+        const proc = nativeModuleExports["process"];
+        if (proc && Array.isArray(proc.execArgv)) {
+          proc.execArgv.push("--trace-event-categories", traceCategoriesEnv);
+        }
+        try {
+          traceEvents.createTracing({ categories }).enable();
+        } catch {
+          // Invalid categories must not block startup.
+        }
+      }
+    }
   } else {
     internals.__bootstrapNodeProcess(
       undefined,
