@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   op_create_worker,
   op_host_get_worker_cpu_usage,

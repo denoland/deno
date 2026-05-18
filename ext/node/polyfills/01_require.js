@@ -7,6 +7,7 @@ import {
   op_fs_cwd,
   op_import_sync,
   op_napi_open,
+  op_node_has_child_ipc_pipe,
   op_require_as_file_path,
   op_require_break_on_next_statement,
   op_require_can_parse_as_esm,
@@ -2385,15 +2386,19 @@ function initialize(args) {
       maybeWorkerMetadata,
       moduleSpecifier,
     );
-    // `child_process.ts` is in lazyNodeModules, so force its module body to
-    // evaluate now (which registers `internals.__setupChildProcessIpcChannel`),
-    // then call the registered helper. We can't skip the load even when there
-    // is no IPC pipe: `op_node_child_ipc_pipe` has the side effect of opening
-    // the channel resource, so checking it here would cause
-    // `setupChildProcessIpcChannel`'s own internal call to re-open the FD
-    // and fail with EEXIST.
-    core.loadExtScript("ext:deno_node/child_process.ts");
-    internals.__setupChildProcessIpcChannel();
+    // `child_process.ts` is in `lazy_loaded_js` (see ext/node/lib.rs), so its
+    // module body - which registers `internals.__setupChildProcessIpcChannel`
+    // - only runs once `loadExtScript` is called. Skip both when there is no
+    // IPC pipe configured: that path is hot for every `deno run`, and pulling
+    // child_process into the snapshot defeats the lazification. We use
+    // `op_node_has_child_ipc_pipe` (a peek-only check) instead of
+    // `op_node_child_ipc_pipe`, because the latter has the side effect of
+    // opening the channel resource and calling it here would make
+    // `setupChildProcessIpcChannel`'s own call fail with EEXIST.
+    if (op_node_has_child_ipc_pipe()) {
+      core.loadExtScript("ext:deno_node/child_process.ts");
+      internals.__setupChildProcessIpcChannel();
+    }
     if (nodeClusterUniqueId) {
       core.loadExtScript("ext:deno_node/cluster.ts");
       internals.__initCluster(nodeClusterUniqueId, nodeClusterSchedPolicy);

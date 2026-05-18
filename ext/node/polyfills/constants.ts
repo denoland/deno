@@ -3,7 +3,7 @@
 // Based on: https://github.com/nodejs/node/blob/0646eda/lib/constants.js
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { ObjectAssign } = primordials;
 
 const fsConstants = core.loadExtScript(

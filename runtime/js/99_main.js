@@ -805,12 +805,13 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     performance.setTimeOrigin();
     globalThis_ = globalThis;
 
-    // Replace bootstrapping data with the captured snapshot view, which
-    // holds a frozen clone of `core.ops` taken before `removeImportedOps()`.
-    // Lazy-loaded IIFE scripts (`ext:.../*.js`) and the synthetic_esm
-    // backing-script path both read `globalThis.__bootstrap.core.ops` at
-    // module body, so this view has to stay available after bootstrap.
-    globalThis.__bootstrap = internals.capturedBootstrap;
+    // Remove bootstrapping data from the global scope. Lazy-loaded IIFE
+    // scripts (`ext:.../*.js`) and the synthetic_esm backing-script path
+    // both read `globalThis.__bootstrap.core.ops` at module body; the
+    // Rust `load_ext_script` reinstalls a captured snapshot view of
+    // `__bootstrap` for the duration of each script's evaluation (see
+    // `BootstrapInstallGuard` in `libs/core/modules/map.rs`).
+    delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
     hasBootstrapped = true;
 
@@ -946,12 +947,13 @@ function bootstrapWorkerRuntime(
     performance.setTimeOrigin();
     globalThis_ = globalThis;
 
-    // Replace bootstrapping data with the captured snapshot view, which
-    // holds a frozen clone of `core.ops` taken before `removeImportedOps()`.
-    // Lazy-loaded IIFE scripts (`ext:.../*.js`) and the synthetic_esm
-    // backing-script path both read `globalThis.__bootstrap.core.ops` at
-    // module body, so this view has to stay available after bootstrap.
-    globalThis.__bootstrap = internals.capturedBootstrap;
+    // Remove bootstrapping data from the global scope. Lazy-loaded IIFE
+    // scripts (`ext:.../*.js`) and the synthetic_esm backing-script path
+    // both read `globalThis.__bootstrap.core.ops` at module body; the
+    // Rust `load_ext_script` reinstalls a captured snapshot view of
+    // `__bootstrap` for the duration of each script's evaluation (see
+    // `BootstrapInstallGuard` in `libs/core/modules/map.rs`).
+    delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
     hasBootstrapped = true;
 

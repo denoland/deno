@@ -30,7 +30,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { osType } = core.loadExtScript("ext:deno_node/_util/os.ts");
 const { uvTranslateSysError } = core.loadExtScript(
   "ext:deno_node/internal_binding/_libuv_winerror.ts",

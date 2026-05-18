@@ -4,7 +4,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const lazyPath = core.createLazyLoader("node:path");
 const lazyFsPromises = core.createLazyLoader(
   "ext:deno_node/internal/fs/promises.ts",

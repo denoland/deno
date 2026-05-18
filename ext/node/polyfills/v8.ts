@@ -7,7 +7,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { ObjectPrototypeToString, SymbolSpecies } = primordials;
 const {
   op_v8_cached_data_version_tag,

@@ -24,7 +24,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { customPromisifyArgs } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",

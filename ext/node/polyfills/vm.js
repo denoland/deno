@@ -2,7 +2,7 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const {

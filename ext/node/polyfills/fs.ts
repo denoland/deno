@@ -3,7 +3,7 @@
 // deno-lint-ignore-file no-explicit-any
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { fs: fsConstants } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );

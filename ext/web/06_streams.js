@@ -7,7 +7,7 @@
 /// <reference lib="esnext" />
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   isAnyArrayBuffer,
   isArrayBuffer,

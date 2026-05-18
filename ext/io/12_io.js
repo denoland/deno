@@ -5,7 +5,7 @@
 // Thank you! We love Go! <3
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_set_raw } = core.ops;
 const {
   Uint8Array,

@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 (function () {
-const { primordials } = globalThis.__bootstrap;
+const { primordials } = __bootstrap;
 const {
   ArrayPrototypeForEach,
   ArrayPrototypeIncludes,

@@ -60,6 +60,7 @@
     op_drain_pending_rejections,
     op_lazy_load_esm,
     op_load_ext_script,
+    op_set_captured_bootstrap,
     op_memory_usage,
     op_op_names,
     op_print,
@@ -900,40 +901,28 @@
 
   const loadedScripts = { __proto__: null };
 
-  // Captured below at the very end of this IIFE, after `__bootstrap.core`
-  // is fully populated and `core.ops` has every op registered. Every
-  // `lazy_loaded_js` polyfill's IIFE preamble destructures
-  // `globalThis.__bootstrap` and `__bootstrap.core.ops`, but at runtime
-  // (`runtime/js/99_main.js`) the harness deletes `globalThis.__bootstrap`
-  // and `removeImportedOps()` strips most entries out of `Deno.core.ops`
-  // (those that are imported via the virtual `ext:core/ops` module
-  // instead). Lazy scripts that load *after* that pruning see
-  // `__bootstrap === undefined` and miss most of the ops they expect.
-  //
-  // We work around both by stashing a snapshot-time view: a shallow clone
-  // of `core.ops` (immune to `removeImportedOps`) and a Proxy over `core`
-  // that returns that clone for the `.ops` property. `loadExtScript`
-  // reinstalls this captured view on `globalThis` for the duration of
-  // the synchronous `op_load_ext_script` call.
-  let capturedBootstrap;
-
+  // Note: the Rust side of `op_load_ext_script` (in `libs/core/modules/map.rs`)
+  // temporarily reinstalls a captured snapshot-time view of `__bootstrap`
+  // on `globalThis` for the duration of each script evaluation if
+  // `__bootstrap` isn't already on the global. Every `lazy_loaded_js`
+  // polyfill's IIFE preamble destructures `globalThis.__bootstrap` and
+  // `__bootstrap.core.ops`, but at runtime (`runtime/js/99_main.js`) the
+  // harness deletes `globalThis.__bootstrap` and `removeImportedOps()`
+  // strips most entries out of `Deno.core.ops`. The captured view (a
+  // shallow clone of `core.ops` immune to `removeImportedOps`) is
+  // registered via `op_set_captured_bootstrap` at the end of this IIFE.
+  // Doing the install in Rust means the `synthetic_esm` dispatch path
+  // (which calls `load_ext_script` directly without going through this
+  // wrapper) gets the same treatment without leaving `__bootstrap`
+  // permanently on the global (where user code can observe it via
+  // `Object.keys`).
   function loadExtScript(specifier) {
     if (specifier in loadedScripts) {
       return loadedScripts[specifier];
     }
-    const hadBootstrap = "__bootstrap" in globalThis;
-    if (!hadBootstrap) {
-      globalThis.__bootstrap = capturedBootstrap;
-    }
-    try {
-      const result = op_load_ext_script(specifier);
-      loadedScripts[specifier] = result;
-      return result;
-    } finally {
-      if (!hadBootstrap) {
-        delete globalThis.__bootstrap;
-      }
-    }
+    const result = op_load_ext_script(specifier);
+    loadedScripts[specifier] = result;
+    return result;
   }
 
   const getAsyncContext = getContinuationPreservedEmbedderData;
@@ -1224,24 +1213,21 @@
   ObjectAssign(globalThis.Deno, { core });
   ObjectFreeze(globalThis.__bootstrap.core);
 
-  // Build the snapshot-time view of __bootstrap that `loadExtScript` will
-  // reinstall on `globalThis` when a lazy_loaded_js script loads after
-  // runtime bootstrap. See the comment above the `let capturedBootstrap`
-  // declaration earlier in this file for context.
+  // Build the snapshot-time view of __bootstrap and hand it off to Rust.
+  // The Rust `load_ext_script` (libs/core/modules/map.rs) temporarily
+  // installs this on `globalThis.__bootstrap` for each script evaluation
+  // when the live `__bootstrap` has already been deleted (i.e. after
+  // runtime bootstrap). See the comment above `loadExtScript` earlier in
+  // this file for context.
   const capturedCore = ObjectAssign({ __proto__: null }, core);
   capturedCore.ops = ObjectAssign({ __proto__: null }, core.ops);
-  capturedBootstrap = {
+  const capturedBootstrap = {
     __proto__: null,
     primordials: globalThis.__bootstrap.primordials,
     core: capturedCore,
     internals,
   };
-  // Expose the captured view so 99_main.js can reinstall it on globalThis
-  // permanently after bootstrap (instead of deleting __bootstrap), so any
-  // path that loads a lazy_loaded_js script - including the synthetic_esm
-  // path which doesn't go through this file's `loadExtScript` wrapper -
-  // sees a populated __bootstrap.
-  internals.capturedBootstrap = capturedBootstrap;
+  op_set_captured_bootstrap(capturedBootstrap);
 
   // Direct bindings on `globalThis`
   ObjectAssign(globalThis, { queueMicrotask });

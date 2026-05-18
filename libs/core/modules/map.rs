@@ -2934,10 +2934,26 @@ impl ModuleMap {
     // may call back into `load_ext_script` for its own dependencies.
     drop(data);
 
-    // Execute the script as-is. Scripts are expected to be manually wrapped
-    // in an IIFE and use `return` to provide their exports.
+    // Each script's IIFE preamble destructures the snapshot-time
+    // `__bootstrap` view (a frozen clone of `core.ops` captured before
+    // `removeImportedOps()` runs). To avoid leaving `__bootstrap` on
+    // `globalThis` (where user code or `Object.keys` would see it), we
+    // compile the source as the body of a function with one named
+    // parameter `__bootstrap` and invoke it with the captured value. The
+    // script's `(function () { ... })()` is the function body's single
+    // expression, so we wrap it with `return ( ... );` to surface the
+    // IIFE's result as the function's return value.
     let source_str =
       ModuleSource::get_string_source(ModuleSourceCode::String(source));
+    // The script body's last statement is an IIFE expression like
+    // `(function () { ... })();`. Strip the trailing `;`/whitespace so the
+    // whole source becomes the operand of a single `return ( ... )`. This
+    // way the function we compile below returns the IIFE's exports object
+    // — the same value the original `Script::run` produced as the script's
+    // completion value.
+    let trimmed: &str = AsRef::<str>::as_ref(&source_str)
+      .trim_end_matches(|c: char| c.is_whitespace() || c == ';');
+    let wrapped_source = format!("return ({trimmed});");
     let name = v8::String::new(scope, specifier).unwrap();
     let origin = v8::ScriptOrigin::new(
       scope,
@@ -2955,10 +2971,19 @@ impl ModuleMap {
 
     v8::tc_scope!(let tc_scope, scope);
 
-    let v8_source =
-      v8::String::new(tc_scope, AsRef::<str>::as_ref(&source_str)).unwrap();
-    let script = match v8::Script::compile(tc_scope, v8_source, Some(&origin)) {
-      Some(script) => script,
+    let v8_source = v8::String::new(tc_scope, &wrapped_source).unwrap();
+    let bootstrap_param = v8::String::new(tc_scope, "__bootstrap").unwrap();
+    let mut compile_source =
+      v8::script_compiler::Source::new(v8_source, Some(&origin));
+    let function = match v8::script_compiler::compile_function(
+      tc_scope,
+      &mut compile_source,
+      &[bootstrap_param],
+      &[],
+      v8::script_compiler::CompileOptions::NoCompileOptions,
+      v8::script_compiler::NoCacheReason::NoReason,
+    ) {
+      Some(f) => f,
       None => {
         let exception = tc_scope.exception().unwrap();
         let err = JsError::from_v8_exception(tc_scope, exception);
@@ -2971,7 +2996,14 @@ impl ModuleMap {
         return Err(CoreErrorKind::Js(err).into_box());
       }
     };
-    let result = match script.run(tc_scope) {
+
+    let captured = self.data.borrow().captured_bootstrap.borrow().clone();
+    let bootstrap_arg = match &captured {
+      Some(global) => v8::Local::new(tc_scope, global),
+      None => v8::undefined(tc_scope).into(),
+    };
+    let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
+    let result = match function.call(tc_scope, undefined, &[bootstrap_arg]) {
       Some(value) => v8::Global::new(tc_scope, value),
       None => {
         assert!(tc_scope.has_caught());
@@ -3001,6 +3033,15 @@ impl ModuleMap {
     }
 
     Ok(result)
+  }
+
+  /// Stash the snapshot-time `__bootstrap` view registered from JS via
+  /// `op_set_captured_bootstrap`. `load_ext_script` injects this value as
+  /// the `__bootstrap` parameter when invoking each lazy script's compiled
+  /// function — keeping the value off `globalThis` so user code never sees
+  /// it.
+  pub(crate) fn set_captured_bootstrap(&self, value: v8::Global<v8::Value>) {
+    *self.data.borrow().captured_bootstrap.borrow_mut() = Some(value);
   }
 }
 

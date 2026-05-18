@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_net_listen_udp,
   op_net_listen_unixpacket,
@@ -62,12 +62,61 @@ import { unstableIds } from "ext:deno_features/flags.js";
 const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
 import { bundle } from "ext:deno_bundle_runtime/bundle.ts";
 
-const { ObjectDefineProperties, Float64Array } = primordials;
+const { ObjectDefineProperties, ObjectDefineProperty, Float64Array } =
+  primordials;
 
 const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
 const loadWebTransport = core.createLazyLoader(
   "ext:deno_web/webtransport.js",
 );
+
+// Each entry here is a property on `internals` (i.e. `Deno[Deno.internal]`)
+// that's defined at module body time by a `lazy_loaded_js` polyfill (e.g.
+// `internals.serveHttpOnListener = ...` at the end of `00_serve.ts`). When
+// the lazy script hasn't loaded yet, the property is `undefined` and any
+// caller that captured it (Deno's own unit tests, user code reaching into
+// `Deno[Deno.internal]`) sees `undefined`. Define a configurable accessor
+// here so the first read triggers the lazy load and the polyfill's own
+// `internals.X = value;` assignment then replaces this accessor with a
+// plain data property via the setter. After the first read it costs the
+// same as a direct property access.
+function defineLazyInternal(name, specifier) {
+  ObjectDefineProperty(internals, name, {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    get() {
+      core.loadExtScript(specifier);
+      // The script body's `internals.X = value;` ran during loadExtScript;
+      // our setter below replaced this accessor with a data property, so
+      // this read goes to that data property and returns the real value.
+      return internals[name];
+    },
+    set(value) {
+      ObjectDefineProperty(internals, name, {
+        __proto__: null,
+        value,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
+    },
+  });
+}
+
+// `ext:deno_http/00_serve.ts` (registers serve internals at module body).
+defineLazyInternal("addTrailers", "ext:deno_http/00_serve.ts");
+defineLazyInternal("upgradeHttpRaw", "ext:deno_http/00_serve.ts");
+defineLazyInternal("upgradeHttpRawConnect", "ext:deno_http/00_serve.ts");
+defineLazyInternal("serveHttpOnListener", "ext:deno_http/00_serve.ts");
+defineLazyInternal("serveHttpOnConnection", "ext:deno_http/00_serve.ts");
+// `ext:deno_http/02_websocket.ts`.
+defineLazyInternal(
+  "buildCaseInsensitiveCommaValueFinder",
+  "ext:deno_http/02_websocket.ts",
+);
+// `ext:deno_fetch/23_request.js`.
+defineLazyInternal("getCachedAbortSignal", "ext:deno_fetch/23_request.js");
 
 // the out buffer for `cpuUsage` and `memoryUsage`
 const usageBuffer = new Float64Array(4);

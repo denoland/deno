@@ -6,7 +6,7 @@
 /// <reference path="../webidl/internal.d.ts" />
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   op_url_get_serialization,
   op_url_parse,

@@ -24,7 +24,7 @@
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 
 const { BlockList, SocketAddress } = core.loadExtScript(
   "ext:deno_node/internal/blocklist.mjs",

@@ -4,7 +4,7 @@
 // The following are all the process APIs that don't depend on the stream module
 // They have to be split this way to prevent a circular dependency
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   Error,
   ObjectGetOwnPropertyNames,
