@@ -1857,7 +1857,7 @@ Socket.prototype._unrefTimer = function () {
 };
 
 Socket.prototype._final = function (cb) {
-  if (this.pending) {
+  if (this.connecting) {
     debug("_final: not yet connected");
     return this.once("connect", () => this._final(cb));
   }
