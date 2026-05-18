@@ -45,7 +45,7 @@ const _brand = webidl.brand;
  * Returns a parallel array to `headers[_headerList]` whose i-th entry is the
  * byte-lowercased form of `headers[_headerList][i][0]`.
  *
- * Rebuilt from scratch when the lengths diverge -- that catches the
+ * Rebuilt from scratch when the lengths diverge, which catches the
  * `Request` constructor's splice/refill block, which empties `_headerList`
  * without going through `appendHeader` / `set` / `delete`.
  *
@@ -562,31 +562,20 @@ function headersFromHeaderList(list, guard) {
  * Returns the underlying header list for direct mutation (used by
  * `initializeAResponse` and the `Request` constructor's splice/refill block).
  *
- * IMPORTANT: if you mutate the returned list, the parallel
- * `[_lowerNames]` cache (see `ensureLowerNames`) will desync unless either
- * (a) your mutation changes the list length (push/splice keeps the cache
- * invariant satisfied via the length-divergence rebuild trigger), or
- * (b) you call `invalidateLowerNames(headers)` afterwards.
- *
- * In-place name replacement (`list[i] = [...]` or `list[i][0] = ...`) and
- * pop+push pairs preserve length and would silently keep stale lowercase
- * entries -- callers doing those should invalidate explicitly.
+ * IMPORTANT: callers must change the list length when mutating (push, splice,
+ * or empty-and-refill). Equal-length in-place mutations
+ * (`list[i] = [...]` or `list[i][0] = ...`, pop-and-push pairs) silently leave
+ * the parallel `[_lowerNames]` cache (see `ensureLowerNames`) stale, because
+ * the rebuild trigger is a length divergence between `_headerList` and
+ * `[_lowerNames]`. There is currently no caller doing this; the next one to
+ * reach for an equal-length in-place mutation needs to add a cache-invalidator
+ * (and a test) alongside it.
  *
  * @param {Headers} headers
  * @returns {HeaderList}
  */
 function headerListFromHeaders(headers) {
   return headers[_headerList];
-}
-
-/**
- * Reset the lowercased-header-names cache so the next read rebuilds it.
- * Use after equal-length, in-place mutations to `headerListFromHeaders(headers)`.
- *
- * @param {Headers} headers
- */
-function invalidateLowerNames(headers) {
-  headers[_lowerNames] = null;
 }
 
 /**
@@ -615,6 +604,5 @@ return {
   Headers,
   headersEntries,
   headersFromHeaderList,
-  invalidateLowerNames,
 };
 })();
