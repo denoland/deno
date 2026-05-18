@@ -420,10 +420,17 @@ pub fn create_client_config(
         .expect("Failed to create WebPkiServerVerifier");
     let verifier = Arc::new(NoServerNameVerification::new(inner));
     client.dangerous().set_certificate_verifier(verifier);
-  } else if tolerate_legacy_cert_versions {
+  } else if tolerate_legacy_cert_versions && !root_cert_store.is_empty() {
     // Wrap the default verifier with one that accepts X.509v1 certs
     // (which OpenSSL — and so Node — accepts) when the chain validates
     // structurally.  rustls/webpki otherwise refuse v1 outright.
+    //
+    // Skip when the root store is empty: webpki's
+    // `WebPkiServerVerifier::builder().build()` errors with
+    // `NoRootAnchors`, and there's nothing for the legacy verifier to
+    // structurally chain against anyway — leaving the default empty-store
+    // behaviour in place (every cert is rejected) matches what callers
+    // expect from `RootCertStore::empty()`.
     let mut trusted_subjects: Vec<Vec<u8>> = root_cert_store
       .roots
       .iter()
