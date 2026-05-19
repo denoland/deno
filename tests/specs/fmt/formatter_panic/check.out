@@ -1,0 +1,2 @@
+Formatter panicked for '[WILDCARD]main.ts': For some reason finish_indent was called without a corresponding start_indent., leaving unformatted
+Checked 1 file

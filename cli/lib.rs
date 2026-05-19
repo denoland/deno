@@ -545,6 +545,29 @@ fn should_fallback_on_run_error(script_err: &str) -> bool {
   re.is_match(script_err)
 }
 
+thread_local! {
+  /// When true, the panic hook lets `catch_unwind` handle the panic instead
+  /// of exiting the process.
+  static CATCHING_UNWIND: std::cell::Cell<bool> =
+    const { std::cell::Cell::new(false) };
+}
+
+pub fn catch_unwind_with_hook<R>(
+  f: impl FnOnce() -> R + std::panic::UnwindSafe,
+) -> std::thread::Result<R> {
+  struct CatchingUnwindGuard;
+
+  impl Drop for CatchingUnwindGuard {
+    fn drop(&mut self) {
+      CATCHING_UNWIND.with(|c| c.set(false));
+    }
+  }
+
+  CATCHING_UNWIND.with(|c| c.set(true));
+  let _guard = CatchingUnwindGuard;
+  std::panic::catch_unwind(f)
+}
+
 #[allow(clippy::print_stderr, reason = "panic hook")]
 fn setup_panic_hook() {
   // This function does two things inside of the panic hook:
@@ -554,6 +577,10 @@ fn setup_panic_hook() {
   //   should be reported to us.
   let orig_hook = std::panic::take_hook();
   std::panic::set_hook(Box::new(move |panic_info| {
+    if CATCHING_UNWIND.with(|c| c.get()) {
+      return;
+    }
+
     eprintln!("\n============================================================");
     eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
     eprintln!("at https://github.com/denoland/deno/issues/new.");
