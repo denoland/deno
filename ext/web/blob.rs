@@ -37,45 +37,80 @@ use crate::Location;
 
 pub type PartMap = HashMap<Uuid, Arc<dyn BlobPart + Send + Sync>>;
 
+/// Trait abstracting the blob store, allowing custom implementations
+/// (e.g. with memory limits or persistence).
+///
+/// All methods have default `unimplemented!()` bodies so that new methods
+/// can be added in the future without breaking existing embedder impls.
+pub trait BlobStoreTrait: Debug + Send + Sync {
+  fn insert_part(
+    &self,
+    _part: Arc<dyn BlobPart + Send + Sync>,
+  ) -> Uuid {
+    unimplemented!()
+  }
+  fn get_part(
+    &self,
+    _id: &Uuid,
+  ) -> Option<Arc<dyn BlobPart + Send + Sync>> {
+    unimplemented!()
+  }
+  fn remove_part(
+    &self,
+    _id: &Uuid,
+  ) -> Option<Arc<dyn BlobPart + Send + Sync>> {
+    unimplemented!()
+  }
+  fn get_object_url(&self, _url: Url) -> Option<Arc<Blob>> {
+    unimplemented!()
+  }
+  fn insert_object_url(
+    &self,
+    _blob: Blob,
+    _maybe_location: Option<Url>,
+  ) -> Url {
+    unimplemented!()
+  }
+  fn remove_object_url(&self, _url: &Url) {
+    unimplemented!()
+  }
+  fn clear(&self) {
+    unimplemented!()
+  }
+}
+
 #[derive(Default, Debug)]
 pub struct BlobStore {
   parts: Mutex<PartMap>,
   object_urls: Mutex<HashMap<Url, Arc<Blob>>>,
 }
 
-impl BlobStore {
-  pub fn insert_part(&self, part: Arc<dyn BlobPart + Send + Sync>) -> Uuid {
+impl BlobStoreTrait for BlobStore {
+  fn insert_part(&self, part: Arc<dyn BlobPart + Send + Sync>) -> Uuid {
     let id = Uuid::new_v4();
     let mut parts = self.parts.lock();
     parts.insert(id, part);
     id
   }
 
-  pub fn get_part(&self, id: &Uuid) -> Option<Arc<dyn BlobPart + Send + Sync>> {
+  fn get_part(&self, id: &Uuid) -> Option<Arc<dyn BlobPart + Send + Sync>> {
     let parts = self.parts.lock();
     let part = parts.get(id);
     part.cloned()
   }
 
-  pub fn remove_part(
-    &self,
-    id: &Uuid,
-  ) -> Option<Arc<dyn BlobPart + Send + Sync>> {
+  fn remove_part(&self, id: &Uuid) -> Option<Arc<dyn BlobPart + Send + Sync>> {
     let mut parts = self.parts.lock();
     parts.remove(id)
   }
 
-  pub fn get_object_url(&self, mut url: Url) -> Option<Arc<Blob>> {
+  fn get_object_url(&self, mut url: Url) -> Option<Arc<Blob>> {
     let blob_store = self.object_urls.lock();
     url.set_fragment(None);
     blob_store.get(&url).cloned()
   }
 
-  pub fn insert_object_url(
-    &self,
-    blob: Blob,
-    maybe_location: Option<Url>,
-  ) -> Url {
+  fn insert_object_url(&self, blob: Blob, maybe_location: Option<Url>) -> Url {
     let origin = if let Some(location) = maybe_location {
       location.origin().ascii_serialization()
     } else {
@@ -90,12 +125,12 @@ impl BlobStore {
     url
   }
 
-  pub fn remove_object_url(&self, url: &Url) {
+  fn remove_object_url(&self, url: &Url) {
     let mut blob_store = self.object_urls.lock();
     blob_store.remove(url);
   }
 
-  pub fn clear(&self) {
+  fn clear(&self) {
     self.parts.lock().clear();
     self.object_urls.lock().clear();
   }
@@ -185,7 +220,7 @@ pub fn op_blob_create_part(
   state: &mut OpState,
   #[buffer] data: JsBuffer,
 ) -> Uuid {
-  let blob_store = state.borrow::<Arc<BlobStore>>();
+  let blob_store = state.borrow::<Arc<dyn BlobStoreTrait>>();
   let part = InMemoryBlobPart(data.to_vec());
   blob_store.insert_part(Arc::new(part))
 }
@@ -203,7 +238,7 @@ pub fn op_blob_slice_part(
   #[serde] id: Uuid,
   #[scoped] options: SliceOptions,
 ) -> Result<Uuid, BlobError> {
-  let blob_store = state.borrow::<Arc<BlobStore>>();
+  let blob_store = state.borrow::<Arc<dyn BlobStoreTrait>>();
   let part = blob_store
     .get_part(&id)
     .ok_or(BlobError::BlobPartNotFound)?;
@@ -228,7 +263,7 @@ pub async fn op_blob_read_part(
 ) -> Result<Uint8Array, BlobError> {
   let part = {
     let state = state.borrow();
-    let blob_store = state.borrow::<Arc<BlobStore>>();
+    let blob_store = state.borrow::<Arc<dyn BlobStoreTrait>>();
     blob_store.get_part(&id)
   }
   .ok_or(BlobError::BlobPartNotFound)?;
@@ -238,7 +273,7 @@ pub async fn op_blob_read_part(
 
 #[op2]
 pub fn op_blob_remove_part(state: &mut OpState, #[serde] id: Uuid) {
-  let blob_store = state.borrow::<Arc<BlobStore>>();
+  let blob_store = state.borrow::<Arc<dyn BlobStoreTrait>>();
   blob_store.remove_part(&id);
 }
 
@@ -247,7 +282,7 @@ pub fn op_blob_clone_part(
   state: &mut OpState,
   #[serde] id: Uuid,
 ) -> Result<ReturnBlobPart, BlobError> {
-  let blob_store = state.borrow::<Arc<BlobStore>>();
+  let blob_store = state.borrow::<Arc<dyn BlobStoreTrait>>();
   let part = blob_store
     .get_part(&id)
     .ok_or(BlobError::BlobPartNotFound)?;
@@ -264,7 +299,7 @@ pub fn op_blob_create_object_url(
   #[serde] part_ids: Vec<Uuid>,
 ) -> Result<String, BlobError> {
   let mut parts = Vec::with_capacity(part_ids.len());
-  let blob_store = state.borrow::<Arc<BlobStore>>();
+  let blob_store = state.borrow::<Arc<dyn BlobStoreTrait>>();
   for part_id in part_ids {
     let part = blob_store
       .get_part(&part_id)
@@ -275,7 +310,7 @@ pub fn op_blob_create_object_url(
   let blob = Blob { media_type, parts };
 
   let maybe_location = state.try_borrow::<Location>();
-  let blob_store = state.borrow::<Arc<BlobStore>>();
+  let blob_store = state.borrow::<Arc<dyn BlobStoreTrait>>();
 
   let url = blob_store
     .insert_object_url(blob, maybe_location.map(|location| location.0.clone()));
@@ -289,7 +324,7 @@ pub fn op_blob_revoke_object_url(
   #[string] url: &str,
 ) -> Result<(), BlobError> {
   let url = Url::parse(url)?;
-  let blob_store = state.borrow::<Arc<BlobStore>>();
+  let blob_store = state.borrow::<Arc<dyn BlobStoreTrait>>();
   blob_store.remove_object_url(&url);
   Ok(())
 }
@@ -318,7 +353,7 @@ pub fn op_blob_from_object_url(
   }
 
   let blob_store = state
-    .try_borrow::<Arc<BlobStore>>()
+    .try_borrow::<Arc<dyn BlobStoreTrait>>()
     .ok_or(BlobError::BlobURLsNotSupported)?;
   match blob_store.get_object_url(url) {
     Some(blob) => {
@@ -336,5 +371,129 @@ pub fn op_blob_from_object_url(
       }))
     }
     _ => Ok(None),
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::sync::atomic::AtomicUsize;
+  use std::sync::atomic::Ordering;
+
+  use deno_core::OpState;
+
+  use super::*;
+
+  /// A counting wrapper around `BlobStore` that increments a counter
+  /// on every `insert_part` call. Used to prove that a custom impl
+  /// plumbed through `deno_web::init()` is actually invoked by ops.
+  #[derive(Debug)]
+  struct CountingBlobStore {
+    inner: BlobStore,
+    insert_count: AtomicUsize,
+  }
+
+  impl Default for CountingBlobStore {
+    fn default() -> Self {
+      Self {
+        inner: BlobStore::default(),
+        insert_count: AtomicUsize::new(0),
+      }
+    }
+  }
+
+  impl BlobStoreTrait for CountingBlobStore {
+    fn insert_part(
+      &self,
+      part: Arc<dyn BlobPart + Send + Sync>,
+    ) -> Uuid {
+      self.insert_count.fetch_add(1, Ordering::SeqCst);
+      self.inner.insert_part(part)
+    }
+    fn get_part(
+      &self,
+      id: &Uuid,
+    ) -> Option<Arc<dyn BlobPart + Send + Sync>> {
+      self.inner.get_part(id)
+    }
+    fn remove_part(
+      &self,
+      id: &Uuid,
+    ) -> Option<Arc<dyn BlobPart + Send + Sync>> {
+      self.inner.remove_part(id)
+    }
+    fn get_object_url(&self, url: Url) -> Option<Arc<Blob>> {
+      self.inner.get_object_url(url)
+    }
+    fn insert_object_url(
+      &self,
+      blob: Blob,
+      maybe_location: Option<Url>,
+    ) -> Url {
+      self.inner.insert_object_url(blob, maybe_location)
+    }
+    fn remove_object_url(&self, url: &Url) {
+      self.inner.remove_object_url(url)
+    }
+    fn clear(&self) {
+      self.inner.clear()
+    }
+  }
+
+  /// Verify that a custom `BlobStoreTrait` impl passed through
+  /// `deno_web::init()` ends up in `OpState` and is the same
+  /// instance the ops would use.
+  #[test]
+  fn custom_blob_store_through_init() {
+    let counting: Arc<CountingBlobStore> =
+      Arc::new(CountingBlobStore::default());
+    let blob_store: Arc<dyn BlobStoreTrait> = counting.clone();
+
+    // Build the extension the same way the runtime does.
+    let ext = crate::deno_web::init(
+      blob_store,
+      None,
+      Default::default(),
+      Default::default(),
+    );
+
+    // Run the extension's state initializer on a fresh OpState.
+    let mut op_state = OpState::new(None);
+    let state_fn = ext
+      .op_state_fn
+      .expect("deno_web extension should have an op_state_fn");
+    state_fn(&mut op_state);
+
+    // Extract the store from OpState — same code path as the ops.
+    let store = op_state.borrow::<Arc<dyn BlobStoreTrait>>();
+
+    // A trivial in-memory BlobPart for testing.
+    #[derive(Debug)]
+    struct MemPart(Vec<u8>);
+
+    #[async_trait]
+    impl BlobPart for MemPart {
+      async fn read<'a>(&'a self) -> &'a [u8] {
+        &self.0
+      }
+      fn size(&self) -> usize {
+        self.0.len()
+      }
+    }
+
+    assert_eq!(counting.insert_count.load(Ordering::SeqCst), 0);
+
+    let part: Arc<dyn BlobPart + Send + Sync> =
+      Arc::new(MemPart(b"hello".to_vec()));
+    let id = store.insert_part(part);
+
+    // The counter proves our custom impl was called, not the default.
+    assert_eq!(counting.insert_count.load(Ordering::SeqCst), 1);
+
+    // Basic round-trip still works.
+    let retrieved = store.get_part(&id).expect("part should exist");
+    assert_eq!(retrieved.size(), 5);
+
+    assert!(store.remove_part(&id).is_some());
+    assert!(store.get_part(&id).is_none());
   }
 }

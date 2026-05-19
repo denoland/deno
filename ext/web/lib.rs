@@ -36,6 +36,7 @@ pub use stream_resource::StreamResourceError;
 pub use crate::blob::Blob;
 pub use crate::blob::BlobPart;
 pub use crate::blob::BlobStore;
+pub use crate::blob::BlobStoreTrait;
 pub use crate::blob::InMemoryBlobPart;
 use crate::blob::op_blob_clone_part;
 use crate::blob::op_blob_create_object_url;
@@ -160,7 +161,7 @@ deno_core::extension!(deno_web,
     "16_image_data.js",
   ],
   options = {
-    blob_store: Arc<BlobStore>,
+    blob_store: Arc<dyn BlobStoreTrait>,
     maybe_location: Option<Url>,
     enable_css_parser_features: bool,
     bc: InMemoryBroadcastChannel,

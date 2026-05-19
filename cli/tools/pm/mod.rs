@@ -478,7 +478,8 @@ pub async fn add(
   let http_client = cli_factory.http_client_provider();
   let deps_http_cache = cli_factory.global_http_cache()?;
   let deps_file_fetcher = create_cli_file_fetcher(
-    Default::default(),
+    Arc::new(deno_runtime::deno_web::BlobStore::default())
+      as Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
     GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
     cli_factory.memory_files().clone(),

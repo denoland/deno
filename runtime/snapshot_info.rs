@@ -5,6 +5,7 @@ use std::sync::Arc;
 use deno_core::Extension;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
+use deno_web::BlobStore;
 
 use crate::ops;
 use crate::shared::runtime;
@@ -18,7 +19,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_telemetry::deno_telemetry::init(),
     deno_webidl::deno_webidl::init(),
     deno_web::deno_web::init(
-      Default::default(),
+      Arc::new(BlobStore::default()) as Arc<dyn deno_web::BlobStoreTrait>,
       Default::default(),
       Default::default(),
       deno_web::InMemoryBroadcastChannel::default(),
