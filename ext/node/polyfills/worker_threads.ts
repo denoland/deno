@@ -1932,17 +1932,17 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
     map.set(listener, _listener);
     port.addEventListener(name, _listener);
     if (name === "message") {
-      // Mirror Node MessagePort's auto-start on `port.on('message', ...)`.
-      // For ports already touched by `receiveMessageOnPort` we keep the
-      // microtask-deferred start so the sync drain pattern (used by
-      // `npm:piscina`) still wins; otherwise start synchronously so
-      // messages queued before this listener was attached aren't dropped
-      // when the paired port is closed in the same turn.
-      if (port[MessagePortReceiveMessageOnPortSymbol]) {
-        PromisePrototypeThen(PromiseResolve(undefined), () => port.start());
-      } else {
-        port.start();
-      }
+      // Mirror the auto-start behavior of `port.onmessage = fn` so Node
+      // code that does `port.on('message', ...)` without an explicit
+      // `port.start()` still receives messages. Deferred via a
+      // microtask so `receiveMessageOnPort` (sync) gets a chance to
+      // drain the queue first -- this is the same pattern the web
+      // MessagePort applies in its `message` event handler init, which
+      // `npm:piscina` relies on. Messages buffered before the listener
+      // was attached are still picked up by the next iteration of the
+      // recv loop (or by `MessagePort.close()`'s drain when the paired
+      // port closes in the same turn).
+      PromisePrototypeThen(PromiseResolve(undefined), () => port.start());
     }
     return this;
   };
