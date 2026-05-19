@@ -119,8 +119,16 @@ function getAssertObject() {
   return assertObject;
 }
 
-function run() {
+let runImpl = function defaultRun() {
   notImplemented("test.run");
+};
+
+function setRunImpl(fn) {
+  runImpl = fn;
+}
+
+function run(options) {
+  return runImpl(options);
 }
 
 function noop() {}
@@ -1076,6 +1084,7 @@ test.run = run;
 
 return {
   run,
+  setRunImpl,
   test,
   suite,
   it,
