@@ -97,6 +97,7 @@ deno_core::extension!(deno_crypto,
     op_crypto_encrypt,
     op_crypto_decrypt,
     op_crypto_subtle_digest,
+    op_crypto_subtle_digest_sync,
     op_crypto_random_uuid,
     op_crypto_wrap_key,
     op_crypto_unwrap_key,
@@ -875,6 +876,24 @@ pub fn op_crypto_random_uuid(
   };
 
   Ok(uuid)
+}
+
+/// Sync digest path used by JS for small inputs (see
+/// `SubtleCrypto.digest` in `00_crypto.js`). For tiny payloads — token
+/// signatures, request hashes, asset names — running on the calling
+/// thread is strictly cheaper than dispatching to tokio's blocking pool:
+/// SHA-2 on commodity x86 with hardware acceleration is roughly 1 GB/s,
+/// so a few KB finishes in well under the ~30 us cost of the async-op +
+/// `spawn_blocking` round-trip.
+#[op2]
+pub fn op_crypto_subtle_digest_sync(
+  #[serde] algorithm: CryptoHash,
+  #[buffer] data: JsBuffer,
+) -> Uint8Array {
+  digest::digest(algorithm.into(), &data)
+    .as_ref()
+    .to_vec()
+    .into()
 }
 
 #[op2]
