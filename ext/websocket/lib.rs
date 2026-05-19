@@ -147,6 +147,13 @@ pub struct CreateResponse {
   rid: ResourceId,
   protocol: String,
   extensions: String,
+  /// HTTP status code from the handshake response (101 on success).
+  /// Exposed to JS for inspector `Network.webSocketHandshakeResponseReceived`.
+  status: u16,
+  /// HTTP status text from the handshake response.
+  status_text: String,
+  /// All handshake response headers, as a flat `[name, value]` list.
+  headers: Vec<(ByteString, ByteString)>,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -495,6 +502,25 @@ pub async fn op_ws_create(
     res.close();
   }
 
+  // `handshake_websocket` only resolves on a successful Upgrade response, so
+  // the status is implicitly 101 Switching Protocols. We surface it (plus
+  // the response headers) for the inspector's
+  // `Network.webSocketHandshakeResponseReceived` event.
+  //
+  // Failed handshakes (non-101) bail earlier via
+  // `HandshakeError::InvalidStatusCode` and never reach this point, so
+  // DevTools won't see a `webSocketHandshakeResponseReceived` for them —
+  // only the eventual `webSocketClosed`. This matches Chrome's behavior.
+  let response_headers: Vec<(ByteString, ByteString)> = response
+    .iter()
+    .map(|(name, value)| {
+      (
+        ByteString::from(name.as_str().as_bytes()),
+        ByteString::from(value.as_bytes()),
+      )
+    })
+    .collect();
+
   let mut state = state.borrow_mut();
   let rid = state.resource_table.add(ServerWebSocket::new(stream));
 
@@ -511,6 +537,9 @@ pub async fn op_ws_create(
     rid,
     protocol: protocol.to_string(),
     extensions,
+    status: 101,
+    status_text: "Switching Protocols".to_string(),
+    headers: response_headers,
   })
 }
 

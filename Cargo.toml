@@ -310,7 +310,7 @@ sourcemap = "9.1.2"
 static_assertions = "1"
 strum = { version = "0.27.1", features = ["derive"] }
 strum_macros = "0.27.1"
-sys_traits = "=0.1.27"
+sys_traits = "0.1.28"
 tar = "=0.4.45"
 tempfile = "3.4.0"
 termcolor = "1.1.3"
