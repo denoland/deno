@@ -6,6 +6,7 @@ use std::env;
 use std::ffi::OsString;
 use std::ops::ControlFlow;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
 
@@ -48,6 +49,30 @@ pub fn exit(code: i32) -> ! {
     reason = "exit is the intended behavior"
   )]
   std::process::exit(code);
+}
+
+#[derive(Clone)]
+pub struct OpExitInterceptor {
+  handle: v8::IsolateHandle,
+  did_intercept: Arc<AtomicBool>,
+}
+
+impl OpExitInterceptor {
+  pub fn new(handle: v8::IsolateHandle) -> Self {
+    Self {
+      handle,
+      did_intercept: Arc::new(AtomicBool::new(false)),
+    }
+  }
+
+  pub fn did_intercept(&self) -> bool {
+    self.did_intercept.load(Ordering::Relaxed)
+  }
+
+  fn intercept(&self) {
+    self.did_intercept.store(true, Ordering::Relaxed);
+    self.handle.terminate_execution();
+  }
 }
 
 /// Callbacks to run before the process exits via `Deno.exit()`.
@@ -350,6 +375,10 @@ fn op_exit(state: &mut OpState) {
     cbs.run();
   }
   if let Some(exit_code) = state.try_borrow::<ExitCode>() {
+    if let Some(interceptor) = state.try_borrow::<OpExitInterceptor>() {
+      interceptor.intercept();
+      return;
+    }
     exit(exit_code.get())
   }
 }

@@ -1530,6 +1530,66 @@ async fn run_watch_sigterm_on_restart() {
   check_alive_then_kill(child);
 }
 
+async fn run_watch_sigterm_exit_on_restart(exit_call: &str) {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(format!(
+    r#"
+      import process from "node:process";
+      Deno.addSignalListener("SIGTERM", () => {{
+        console.log("received SIGTERM");
+        {exit_call};
+      }});
+      setInterval(() => {{}}, 1000);
+    "#
+  ));
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  file_to_watch.write(format!(
+    r#"
+      import process from "node:process";
+      Deno.addSignalListener("SIGTERM", () => {{
+        console.log("received SIGTERM");
+        {exit_call};
+      }});
+      setInterval(() => {{}}, 1000);
+      // changed
+    "#
+  ));
+
+  wait_contains("received SIGTERM", &mut stdout_lines).await;
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+/// Test that Deno.exit() in a SIGTERM handler does not exit watch mode.
+#[test(flaky)]
+async fn run_watch_sigterm_deno_exit_on_restart() {
+  run_watch_sigterm_exit_on_restart("Deno.exit(0)").await;
+}
+
+/// Test that process.exit() in a SIGTERM handler does not exit watch mode.
+#[test(flaky)]
+async fn run_watch_sigterm_process_exit_on_restart() {
+  run_watch_sigterm_exit_on_restart("process.exit(0)").await;
+}
+
 /// Test that both SIGINT and SIGTERM are dispatched on Ctrl+C in watch mode.
 #[cfg(unix)]
 #[test(flaky)]
