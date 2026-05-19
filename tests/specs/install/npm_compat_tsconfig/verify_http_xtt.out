@@ -1,0 +1,4 @@
+has paths entry: true
+target ends in .d.ts: true
+types mirror exists: true
+ts source mirror exists: false

@@ -1,0 +1,6 @@
+strict: true
+moduleResolution: bundler
+types includes deno: true
+has npm:chalk path: true
+root extends deno: true
+deno types exist: true
