@@ -10,11 +10,18 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_ast::SourceRangedForSpanned;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitWith;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
+use deno_graph::Position;
+use deno_graph::PositionRange;
+use deno_graph::Range;
+use deno_graph::ResolutionError;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_resolver::deno_json::CompilerOptionsData;
 use deno_resolver::deno_json::CompilerOptionsParseError;
@@ -792,10 +799,16 @@ struct GraphWalker<'a> {
   compiler_options_resolver: &'a CompilerOptionsResolver,
   maybe_hasher: Option<FastInsecureHasher>,
   seen: HashSet<&'a Url>,
-  pending: VecDeque<(&'a Url, bool)>,
+  pending: VecDeque<PendingGraphWalkSpecifier<'a>>,
   has_seen_node_builtin: bool,
   roots: Vec<(ModuleSpecifier, MediaType)>,
   missing_diagnostics: tsc::Diagnostics,
+}
+
+struct PendingGraphWalkSpecifier<'a> {
+  specifier: &'a Url,
+  is_dynamic: bool,
+  is_root: bool,
 }
 
 impl<'a> GraphWalker<'a> {
@@ -859,7 +872,11 @@ impl<'a> GraphWalker<'a> {
           }
         },
         _ => {
-          self.pending.push_back((specifier, false));
+          self.pending.push_back(PendingGraphWalkSpecifier {
+            specifier,
+            is_dynamic: false,
+            is_root: false,
+          });
           self.resolve_pending();
         }
       }
@@ -869,7 +886,11 @@ impl<'a> GraphWalker<'a> {
   pub fn add_root(&mut self, root: &'a Url) {
     let specifier = self.graph.resolve(root);
     if self.seen.insert(specifier) {
-      self.pending.push_back((specifier, false));
+      self.pending.push_back(PendingGraphWalkSpecifier {
+        specifier,
+        is_dynamic: false,
+        is_root: true,
+      });
     }
 
     self.resolve_pending()
@@ -897,7 +918,12 @@ impl<'a> GraphWalker<'a> {
   }
 
   fn resolve_pending(&mut self) {
-    while let Some((specifier, is_dynamic)) = self.pending.pop_front() {
+    while let Some(PendingGraphWalkSpecifier {
+      specifier,
+      is_dynamic,
+      is_root,
+    }) = self.pending.pop_front()
+    {
       let module = match self.graph.try_get(specifier) {
         Ok(Some(module)) => module,
         Ok(None) => continue,
@@ -953,6 +979,13 @@ impl<'a> GraphWalker<'a> {
             self.has_seen_node_builtin = true;
           }
         }
+      }
+
+      if is_root
+        && let Module::Js(module) = module
+        && module.media_type.is_declaration()
+      {
+        self.add_unresolved_dts_entrypoint_imports(module);
       }
 
       if module.media_type().is_declaration() {
@@ -1100,10 +1133,81 @@ impl<'a> GraphWalker<'a> {
     let specifier = self.graph.resolve(specifier);
     if is_dynamic {
       if !self.seen.contains(specifier) {
-        self.pending.push_back((specifier, true));
+        self.pending.push_back(PendingGraphWalkSpecifier {
+          specifier,
+          is_dynamic: true,
+          is_root: false,
+        });
       }
     } else if self.seen.insert(specifier) {
-      self.pending.push_back((specifier, false));
+      self.pending.push_back(PendingGraphWalkSpecifier {
+        specifier,
+        is_dynamic: false,
+        is_root: false,
+      });
+    }
+  }
+
+  fn add_unresolved_dts_entrypoint_imports(
+    &mut self,
+    module: &'a deno_graph::JsModule,
+  ) {
+    let Ok(parsed_source) = deno_ast::parse_module(deno_ast::ParseParams {
+      specifier: module.specifier.clone(),
+      text: module.source.text.clone(),
+      media_type: match module.media_type {
+        MediaType::Dmts => MediaType::Mts,
+        MediaType::Dcts => MediaType::Cts,
+        _ => MediaType::TypeScript,
+      },
+      capture_tokens: false,
+      scope_analysis: false,
+      maybe_syntax: None,
+    }) else {
+      return;
+    };
+
+    let mut collector = DtsImportCollector::default();
+    parsed_source.program_ref().visit_with(&mut collector);
+    let text_info = parsed_source.text_info_lazy();
+    for import in collector.imports {
+      if let Some(dep) =
+        module.dependencies_prefer_fast_check().get(&import.text)
+        && (!dep.maybe_type.is_none() || !dep.maybe_code.is_none())
+      {
+        continue;
+      }
+      let range = Range {
+        specifier: module.specifier.clone(),
+        range: PositionRange {
+          start: position_from_source_pos(import.range.start, text_info),
+          end: position_from_source_pos(import.range.end, text_info),
+        },
+        resolution_mode: None,
+      };
+      match deno_path_util::resolve_import(&import.text, &module.specifier) {
+        Ok(specifier) => {
+          let specifier = self.graph.resolve(&specifier);
+          if self.graph.try_get(specifier).ok().flatten().is_none() {
+            self
+              .missing_diagnostics
+              .push(tsc::Diagnostic::from_missing_error(
+                specifier.as_str(),
+                Some(&range),
+                maybe_additional_sloppy_imports_message(self.sys, specifier),
+              ));
+          }
+        }
+        Err(error) => {
+          let resolution_error =
+            ResolutionError::InvalidSpecifier { error, range };
+          if let Some(diagnostic) =
+            tsc::Diagnostic::maybe_from_resolution_error(&resolution_error)
+          {
+            self.missing_diagnostics.push(diagnostic);
+          }
+        }
+      }
     }
   }
 
@@ -1130,6 +1234,66 @@ impl<'a> GraphWalker<'a> {
       .ok()?;
     resolved.into_url().ok()
   }
+}
+
+#[derive(Default)]
+struct DtsImportCollector {
+  imports: Vec<DtsImport>,
+}
+
+struct DtsImport {
+  text: String,
+  range: deno_ast::SourceRange,
+}
+
+impl Visit for DtsImportCollector {
+  fn visit_import_decl(&mut self, node: &deno_ast::swc::ast::ImportDecl) {
+    self.imports.push(DtsImport {
+      text: node.src.value.to_string_lossy().to_string(),
+      range: node.src.range(),
+    });
+  }
+
+  fn visit_named_export(&mut self, node: &deno_ast::swc::ast::NamedExport) {
+    if let Some(src) = &node.src {
+      self.imports.push(DtsImport {
+        text: src.value.to_string_lossy().to_string(),
+        range: src.range(),
+      });
+    }
+  }
+
+  fn visit_export_all(&mut self, node: &deno_ast::swc::ast::ExportAll) {
+    self.imports.push(DtsImport {
+      text: node.src.value.to_string_lossy().to_string(),
+      range: node.src.range(),
+    });
+  }
+
+  fn visit_ts_import_equals_decl(
+    &mut self,
+    node: &deno_ast::swc::ast::TsImportEqualsDecl,
+  ) {
+    if let deno_ast::swc::ast::TsModuleRef::TsExternalModuleRef(module) =
+      &node.module_ref
+    {
+      self.imports.push(DtsImport {
+        text: module.expr.value.to_string_lossy().to_string(),
+        range: module.expr.range(),
+      });
+    }
+  }
+}
+
+fn position_from_source_pos(
+  pos: deno_ast::SourcePos,
+  text_info: &deno_ast::SourceTextInfo,
+) -> Position {
+  let line_and_column_index = text_info.line_and_column_index(pos);
+  Position::new(
+    line_and_column_index.line_index,
+    line_and_column_index.column_index,
+  )
 }
 
 /// Matches the `@ts-check` pragma.
