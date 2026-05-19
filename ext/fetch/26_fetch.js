@@ -275,7 +275,7 @@ function createResponseBodyStream(responseBodyRid, terminator) {
  * @param {AbortSignal} terminator
  * @returns {Promise<InnerResponse>}
  */
-async function mainFetch(req, recursive, terminator) {
+async function mainFetch(req, recursive, terminator, inspectorCtx = null) {
   if (req.blobUrlEntry !== null) {
     if (req.method !== "GET") {
       throw new TypeError("Blob URL fetch only supports GET method");
@@ -341,15 +341,37 @@ async function mainFetch(req, recursive, terminator) {
   // ---- Inspector: Network.requestWillBeSent ------------------------------
   // Only fires when `node:inspector` is loaded AND the inspector is currently
   // attached, so the cost is one method call (`isEnabled()`) otherwise.
+  //
+  // For redirect chains the recursive call carries an `inspectorCtx` with the
+  // original requestId plus the previous hop's response, so DevTools sees:
+  //   requestWillBeSent(URL_A)
+  //   requestWillBeSent(URL_B, redirectResponse=<URL_A's 30x>)
+  //   responseReceived(URL_B)
+  // with the same requestId throughout, matching Chrome's contract.
   const inspectorNetwork = getInspectorNetwork();
-  let inspectorRequestId = null;
-  if (inspectorNetwork !== null && !recursive) {
+  let inspectorRequestId = inspectorCtx?.requestId ?? null;
+  const inspectorRedirectResponse = inspectorCtx?.redirectResponse ?? null;
+  if (
+    inspectorNetwork !== null && inspectorRequestId === null && !recursive
+  ) {
     inspectorRequestId = inspectorNetwork.nextRequestId();
-    const hasPostData = reqBody !== null;
+  }
+  // If the inspector detached between the initial request and a redirect
+  // hop, drop the requestId so we stop emitting half-events for it.
+  if (inspectorRequestId !== null && inspectorNetwork === null) {
+    inspectorRequestId = null;
+  }
+  if (inspectorRequestId !== null) {
+    // hasPostData reflects whether the request carries a body at all,
+    // including streamed bodies (reqRid !== null). The Rust capture uses
+    // it to initialize `is_request_finished = !has_post_data`, so getting
+    // this right is what keeps streaming-body requests un-finished until
+    // a chunked `dataSent` path actually flushes them.
+    const hasPostData = reqBody !== null || reqRid !== null;
     let postDataText;
     if (
-      hasPostData && TypedArrayPrototypeGetSymbolToStringTag(reqBody) ===
-        "Uint8Array"
+      reqBody !== null &&
+      TypedArrayPrototypeGetSymbolToStringTag(reqBody) === "Uint8Array"
     ) {
       try {
         postDataText = core.decode(reqBody);
@@ -370,7 +392,7 @@ async function mainFetch(req, recursive, terminator) {
     if (requestCharset === undefined && postDataText !== undefined) {
       requestCharset = "utf-8";
     }
-    safeEmit(inspectorNetwork.requestWillBeSent, {
+    const requestWillBeSentParams = {
       requestId: inspectorRequestId,
       timestamp: DateNow() / 1000,
       wallTime: DateNow() / 1000,
@@ -386,7 +408,11 @@ async function mainFetch(req, recursive, terminator) {
       // V8's current stack trace, so the user-code frame at the fetch()
       // call site is preserved.
       charset: requestCharset,
-    });
+    };
+    if (inspectorRedirectResponse !== null) {
+      requestWillBeSentParams.redirectResponse = inspectorRedirectResponse;
+    }
+    safeEmit(inspectorNetwork.requestWillBeSent, requestWillBeSentParams);
     // When we supplied the entire request body inline via
     // `request.postData`, flip the buffer's `is_request_finished` flag
     // immediately so `Network.getRequestPostData` doesn't reject with
@@ -467,25 +493,34 @@ async function mainFetch(req, recursive, terminator) {
   };
 
   // ---- Inspector: Network.responseReceived -------------------------------
+  // Skip when we're about to follow a redirect: the 30x response becomes
+  // the `redirectResponse` on the next hop's `requestWillBeSent` instead
+  // of its own `responseReceived`, matching Chrome DevTools' contract.
+  const willFollowRedirect = redirectStatus(resp.status) &&
+    req.redirectMode === "follow";
+  let cdpResponse = null;
   if (inspectorRequestId !== null) {
     const { mimeType, charset } = parseContentTypeForCdp(resp.headers);
     const responseHeadersForCdp = joinHeaderValuesForCdp(
       resp.headers,
       /* lowerCaseNames */ false,
     );
-    safeEmit(inspectorNetwork.responseReceived, {
-      requestId: inspectorRequestId,
-      timestamp: DateNow() / 1000,
-      type: "Fetch",
-      response: {
-        url: resp.url || req.currentUrl(),
-        status: resp.status,
-        statusText: resp.statusText,
-        headers: responseHeadersForCdp,
-        mimeType,
-        charset,
-      },
-    });
+    cdpResponse = {
+      url: resp.url || req.currentUrl(),
+      status: resp.status,
+      statusText: resp.statusText,
+      headers: responseHeadersForCdp,
+      mimeType,
+      charset,
+    };
+    if (!willFollowRedirect) {
+      safeEmit(inspectorNetwork.responseReceived, {
+        requestId: inspectorRequestId,
+        timestamp: DateNow() / 1000,
+        type: "Fetch",
+        response: cdpResponse,
+      });
+    }
   }
 
   if (redirectStatus(resp.status)) {
@@ -506,7 +541,14 @@ async function mainFetch(req, recursive, terminator) {
         );
       case "follow":
         core.close(resp.responseRid);
-        return httpRedirectFetch(req, response, terminator);
+        return httpRedirectFetch(
+          req,
+          response,
+          terminator,
+          inspectorRequestId !== null
+            ? { requestId: inspectorRequestId, redirectResponse: cdpResponse }
+            : null,
+        );
       case "manual":
         break;
     }
@@ -568,9 +610,13 @@ async function mainFetch(req, recursive, terminator) {
  * @param {InnerRequest} request
  * @param {InnerResponse} response
  * @param {AbortSignal} terminator
+ * @param {?{requestId: string, redirectResponse: object}} inspectorCtx
+ *   When present, carries the inspector requestId across the redirect so
+ *   the next hop's `requestWillBeSent` keeps the same id and gets the
+ *   previous response attached as `redirectResponse`.
  * @returns {Promise<InnerResponse>}
  */
-function httpRedirectFetch(request, response, terminator) {
+function httpRedirectFetch(request, response, terminator, inspectorCtx = null) {
   const locationHeaders = ArrayPrototypeFilter(
     response.headerList,
     (entry) => byteLowerCase(entry[0]) === "location",
@@ -651,7 +697,7 @@ function httpRedirectFetch(request, response, terminator) {
     request.body = res.body;
   }
   ArrayPrototypePush(request.urlList, () => locationURL.href);
-  return mainFetch(request, true, terminator);
+  return mainFetch(request, true, terminator, inspectorCtx);
 }
 
 /**
