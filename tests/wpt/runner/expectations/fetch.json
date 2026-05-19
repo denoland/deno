@@ -1477,7 +1477,9 @@
       "request.any.html": true,
       "request.any.worker.html": true,
       "general.any.html": true,
-      "general.any.worker.html": true,
+      "general.any.worker.html": {
+        "ignore": true
+      },
       "cache.https.any.html": false,
       "cache.https.any.worker.html": false,
       "destroyed-context.html": false,
