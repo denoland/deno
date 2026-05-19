@@ -8,5 +8,6 @@ const { add } = require("./add");
     hint: Rewrite this module to ESM,
           or change the file extension to .cjs,
           or add package.json next to the file with "type": "commonjs" option,
+          or pass --cjs flag to treat the entry point as CommonJS,
           or pass --unstable-detect-cjs flag to detect CommonJS when loading.
     docs: https://docs.deno.com/go/commonjs

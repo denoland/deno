@@ -379,6 +379,9 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
             "or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option,"
           ),
           cstr!(
+            "or pass <i>--cjs</> flag to treat the entry point as CommonJS,"
+          ),
+          cstr!(
             "or pass <i>--unstable-detect-cjs</> flag to detect CommonJS when loading."
           ),
         ]),

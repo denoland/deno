@@ -1,0 +1,3 @@
+hello from cjs entry
+typeof module.exports: object
+typeof require: function
