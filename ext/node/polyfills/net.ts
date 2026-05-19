@@ -274,9 +274,19 @@ interface IpcSocketConnectOptions extends ConnectOptions {
 type SocketConnectOptions = TcpSocketConnectOptions | IpcSocketConnectOptions;
 
 function _getNewAsyncId(handle?: Handle): number {
-  return !handle || typeof handle.getAsyncId !== "function"
-    ? newAsyncId()
-    : handle.getAsyncId();
+  if (!handle || typeof handle.getAsyncId !== "function") {
+    return newAsyncId();
+  }
+
+  try {
+    return handle.getAsyncId();
+  } catch (err) {
+    if (err instanceof TypeError && err.message === "expected AsyncWrap") {
+      return newAsyncId();
+    }
+
+    throw err;
+  }
 }
 
 const providerTypeNames = [
