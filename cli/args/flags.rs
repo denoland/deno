@@ -3600,6 +3600,7 @@ The following information is shown:
     .defer(|cmd| cmd
       .arg(Arg::new("file").value_hint(ValueHint::FilePath))
       .arg(reload_arg().requires("file"))
+      .arg(min_dep_age_arg())
       .arg(ca_file_arg())
       .arg(unsafely_ignore_certificate_errors_arg())
       .arg(
@@ -7222,6 +7223,7 @@ fn info_parse(
   lock_args_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
+  min_dep_age_arg_parse(flags, matches);
   allow_and_deny_import_parse(flags, matches)?;
   let json = matches.get_flag("json");
   flags.subcommand = DenoSubcommand::Info(InfoFlags {
@@ -10341,6 +10343,26 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let flags = flags_from_vec(svec![
+      "deno",
+      "info",
+      "--minimum-dependency-age",
+      "120",
+      "test.ts"
+    ])
+    .unwrap();
+    assert_eq!(
+      flags.subcommand,
+      DenoSubcommand::Info(InfoFlags {
+        json: false,
+        file: Some("test.ts".to_string()),
+      }),
+    );
+    assert!(matches!(
+      flags.minimum_dependency_age,
+      Some(NewestDependencyDate::Enabled(_))
+    ));
   }
 
   #[test]
