@@ -63,6 +63,19 @@ impl Foo {
                 let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
                     info,
                 );
+                if !args.is_construct_call() {
+                    let msg = format!(
+                        "{}: Please use the 'new' operator, this constructor cannot be called as a function.",
+                        "Failed to construct 'Foo'",
+                    );
+                    let msg = deno_core::v8::String::new(&mut scope, &msg).unwrap();
+                    let exception = deno_core::v8::Exception::type_error(
+                        &mut scope,
+                        msg.into(),
+                    );
+                    scope.throw_exception(exception);
+                    return 1;
+                }
                 let result = {
                     let arg0 = args.get(0usize as i32);
                     let arg0 = if arg0.is_null_or_undefined() {
