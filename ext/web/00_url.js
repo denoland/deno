@@ -13,6 +13,7 @@ const {
   op_url_parse_search_params,
   op_url_parse_with_base,
   op_url_reparse,
+  op_url_stringify_search_params,
 } = core.ops;
 const {
   Array,
@@ -87,8 +88,12 @@ for (let i = 0; i < 256; i++) {
 }
 
 /**
- * Serializes a single string per the application/x-www-form-urlencoded byte
- * serializer in https://url.spec.whatwg.org/#urlencoded-serializing.
+ * Serializes a single ASCII string per the application/x-www-form-urlencoded
+ * byte serializer in https://url.spec.whatwg.org/#urlencoded-serializing.
+ *
+ * Precondition: `input` contains only ASCII (code points < 0x80). The caller
+ * (`urlencodedSerialize`) pre-scans the whole list and dispatches non-ASCII
+ * inputs to the Rust op, so this function never has to UTF-8 encode.
  *
  * @param {string} input
  * @returns {string}
@@ -96,35 +101,17 @@ for (let i = 0; i < 256; i++) {
 function urlencodedSerializeString(input) {
   const len = input.length;
   let needEscape = false;
-  let hasNonAscii = false;
   for (let i = 0; i < len; i++) {
-    const c = StringPrototypeCharCodeAt(input, i);
-    if (c >= 0x80) {
-      hasNonAscii = true;
+    if (!formEscapeSafe[StringPrototypeCharCodeAt(input, i)]) {
       needEscape = true;
       break;
-    }
-    if (!formEscapeSafe[c]) {
-      needEscape = true;
     }
   }
   if (!needEscape) return input;
 
-  if (!hasNonAscii) {
-    let output = "";
-    for (let i = 0; i < len; i++) {
-      output += formEscape[StringPrototypeCharCodeAt(input, i)];
-    }
-    return output;
-  }
-
-  // `core.encode` UTF-8 encodes the string with U+FFFD substitution for any
-  // unpaired surrogates, matching what serde-v8 did on the way into the
-  // previous Rust op (and what `form_urlencoded::Serializer` then serialized).
-  const bytes = core.encode(input);
   let output = "";
-  for (let i = 0; i < bytes.length; i++) {
-    output += formEscape[bytes[i]];
+  for (let i = 0; i < len; i++) {
+    output += formEscape[StringPrototypeCharCodeAt(input, i)];
   }
   return output;
 }
@@ -137,6 +124,27 @@ function urlencodedSerializeString(input) {
  * @returns {string}
  */
 function urlencodedSerialize(list) {
+  // Pre-scan: if every name+value in the list is pure ASCII, take the
+  // JS fast path. Otherwise dispatch to the Rust serializer, which
+  // marshals the whole list across the v8/Rust boundary once and lets
+  // form_urlencoded handle UTF-8 encoding inline -- cheaper per byte
+  // than `core.encode` + JS per-byte string concat.
+  for (let i = 0; i < list.length; i++) {
+    const pair = list[i];
+    const name = pair[0];
+    for (let k = 0; k < name.length; k++) {
+      if (StringPrototypeCharCodeAt(name, k) >= 0x80) {
+        return op_url_stringify_search_params(list);
+      }
+    }
+    const value = pair[1];
+    for (let k = 0; k < value.length; k++) {
+      if (StringPrototypeCharCodeAt(value, k) >= 0x80) {
+        return op_url_stringify_search_params(list);
+      }
+    }
+  }
+
   let output = "";
   for (let i = 0; i < list.length; i++) {
     if (i > 0) output += "&";
