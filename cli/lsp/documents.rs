@@ -42,7 +42,6 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::Lazy;
-use serde::Serialize;
 use tower_lsp::lsp_types as lsp;
 use weak_table::PtrWeakKeyHashMap;
 use weak_table::WeakValueHashMap;
@@ -206,8 +205,7 @@ fn data_url_to_uri(url: &Url) -> Option<Uri> {
   Some(uri)
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone)]
 pub enum DocumentText {
   Static(&'static str),
   Arc(Arc<str>),
@@ -220,6 +218,18 @@ impl DocumentText {
       Self::Static(s) => (*s).into(),
       Self::Arc(s) => s.clone(),
     }
+  }
+}
+
+impl<'a> deno_core::convert::ToV8<'a> for DocumentText {
+  type Error = std::convert::Infallible;
+
+  fn to_v8<'i>(
+    self,
+    scope: &mut deno_core::v8::PinScope<'a, 'i>,
+  ) -> Result<deno_core::v8::Local<'a, deno_core::v8::Value>, Self::Error> {
+    let s: &str = &self;
+    Ok(deno_core::v8::String::new(scope, s).unwrap().into())
   }
 }
 
