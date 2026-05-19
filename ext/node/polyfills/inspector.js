@@ -319,6 +319,16 @@ internals.__inspectorNetwork = {
   loadingFailed: Network.loadingFailed,
   dataReceived: Network.dataReceived,
   dataSent: Network.dataSent,
+  webSocketCreated: Network.webSocketCreated,
+  // Not exposed on `inspector.Network` (Node doesn't expose it either - see
+  // node_compat test-inspector-emit-protocol-event), but DevTools still
+  // needs the event to populate the request-side Headers panel, so we
+  // route it directly through `broadcastToFrontend`.
+  webSocketWillSendHandshakeRequest: (params) =>
+    broadcastToFrontend("Network.webSocketWillSendHandshakeRequest", params),
+  webSocketHandshakeResponseReceived:
+    Network.webSocketHandshakeResponseReceived,
+  webSocketClosed: Network.webSocketClosed,
 };
 
 const DOMStorage = {

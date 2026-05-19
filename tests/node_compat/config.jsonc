@@ -4999,6 +4999,10 @@
       "extraDenoArgs": ["--unsafely-ignore-certificate-errors"],
       "reason": "Hits a local HTTPS server with a self-signed cert via fetch(). The upstream test bypasses cert checks by setting undici's global dispatcher with rejectUnauthorized:false; Deno's fetch doesn't honor that, so we disable cert validation only for this test."
     },
+    "parallel/test-inspector-network-websocket.js": {
+      "ignore": true,
+      "reason": "Asserts the Network.webSocketCreated initiator stack contains a frame matching /undici/. Node's WebSocket is built on undici; Deno's is native (ext/websocket) so no such frame exists. The Network.* events themselves are emitted correctly."
+    },
     "parallel/test-listen-fd-cluster.js": {
       "linux": false,
       "darwin": false,
