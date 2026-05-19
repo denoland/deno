@@ -263,6 +263,13 @@ fn extract_files_from_regex_blocks(
 #[derive(Default)]
 struct ExportCollector {
   named_exports: BTreeSet<Atom>,
+  /// Subset of `named_exports` whose declaration was a TypeScript-only
+  /// construct (`type` alias, `interface`, or an explicit `export type {}`
+  /// re-export). When generating injected imports for doc tests we emit
+  /// these with the per-specifier `type` modifier so projects with
+  /// `verbatimModuleSyntax: true` don't fail type-checking
+  /// (denoland/deno#31385).
+  named_type_only_exports: BTreeSet<Atom>,
   default_export: Option<Atom>,
 }
 
@@ -308,7 +315,7 @@ impl ExportCollector {
             optional: false,
           },
           imported: None,
-          is_type_only: false,
+          is_type_only: self.named_type_only_exports.contains(named_export),
         },
       ));
     }
@@ -360,10 +367,14 @@ impl Visit for ExportCollector {
         }
       }
       ast::Decl::TsTypeAlias(ts_type_alias) => {
-        self.named_exports.insert(ts_type_alias.id.sym.clone());
+        let name = ts_type_alias.id.sym.clone();
+        self.named_exports.insert(name.clone());
+        self.named_type_only_exports.insert(name);
       }
       ast::Decl::TsInterface(ts_interface) => {
-        self.named_exports.insert(ts_interface.id.sym.clone());
+        let name = ts_interface.id.sym.clone();
+        self.named_exports.insert(name.clone());
+        self.named_type_only_exports.insert(name);
       }
       ast::Decl::Using(_) => {}
     }
@@ -399,10 +410,12 @@ impl Visit for ExportCollector {
     }
   }
 
-  fn visit_export_named_specifier(
-    &mut self,
-    export_named_specifier: &ast::ExportNamedSpecifier,
-  ) {
+  fn visit_named_export(&mut self, named_export: &ast::NamedExport) {
+    // ExportCollector does not handle re-exports
+    if named_export.src.is_some() {
+      return;
+    }
+
     fn get_atom(export_name: &ast::ModuleExportName) -> Atom {
       match export_name {
         ast::ModuleExportName::Ident(ident) => ident.sym.clone(),
@@ -410,25 +423,23 @@ impl Visit for ExportCollector {
       }
     }
 
-    match &export_named_specifier.exported {
-      Some(exported) => {
-        self.named_exports.insert(get_atom(exported));
+    for specifier in &named_export.specifiers {
+      let ast::ExportSpecifier::Named(named) = specifier else {
+        continue;
+      };
+      let name = match &named.exported {
+        Some(exported) => get_atom(exported),
+        None => get_atom(&named.orig),
+      };
+      // `export type { Foo }` (`named_export.type_only`) and
+      // `export { type Foo }` (`named.is_type_only`) both make the binding
+      // type-only.
+      let is_type_only = named_export.type_only || named.is_type_only;
+      if is_type_only {
+        self.named_type_only_exports.insert(name.clone());
       }
-      None => {
-        self
-          .named_exports
-          .insert(get_atom(&export_named_specifier.orig));
-      }
+      self.named_exports.insert(name);
     }
-  }
-
-  fn visit_named_export(&mut self, named_export: &ast::NamedExport) {
-    // ExportCollector does not handle re-exports
-    if named_export.src.is_some() {
-      return;
-    }
-
-    named_export.visit_children_with(self);
   }
 }
 
@@ -928,7 +939,7 @@ export type Args = { a: number };
           specifier: "file:///main.ts",
         },
         expected: vec![Expected {
-          source: r#"import { Args, foo } from "file:///main.ts";
+          source: r#"import { type Args, foo } from "file:///main.ts";
 Deno.test("file:///main.ts$3-7.ts", async ()=>{
     const input = {
         a: 42
@@ -1301,6 +1312,34 @@ Deno.test("file:///main.ts$3-8.ts", async ()=>{
 });
 "#,
           specifier: "file:///main.ts$3-8.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Regression test for https://github.com/denoland/deno/issues/31385
+      // Type-only exports must be injected with the per-specifier `type`
+      // modifier so doc tests don't fail under `verbatimModuleSyntax: true`.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * useFoo();
+ * ```
+ */
+export function useFoo() {}
+export type Foo = string;
+export interface Bar { x: number }
+export class Quux {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { type Bar, type Foo, Quux, useFoo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-6.ts", async ()=>{
+    useFoo();
+});
+"#,
+          specifier: "file:///main.ts$3-6.ts",
           media_type: MediaType::TypeScript,
         }],
       },
