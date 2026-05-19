@@ -778,7 +778,8 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   }
 
   if (req.upgrade) {
-    req.upgrade = req.method === "CONNECT" || true;
+    req.upgrade = req.method === "CONNECT" ||
+      server.listenerCount("upgrade") > 0;
     if (req.upgrade) return 0;
   }
 
