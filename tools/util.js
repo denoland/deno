@@ -23,6 +23,25 @@ const versions = {
   "dlint": "dlint 0.73.0",
 };
 
+const sourceRepos = {
+  "dlint": {
+    repo: "denoland/deno_lint",
+    versionTag: (v) => v.replace("dlint ", ""),
+    buildCommand: () => ["cargo", "build", "--release", "--example", "dlint"],
+    binaryPath: (dir) =>
+      join(dir, "target", "release", "examples", `dlint${executableSuffix}`),
+    prebuiltAvailable: () => Deno.build.arch === "x86_64",
+    downloadTarget: () => {
+      const targets = {
+        "darwin": "x86_64-apple-darwin",
+        "windows": "x86_64-pc-windows-msvc",
+        "linux": "x86_64-unknown-linux-gnu",
+      };
+      return targets[Deno.build.os];
+    },
+  },
+};
+
 const compressed = new Set(["ld64.lld", "rcodesign"]);
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
@@ -164,6 +183,12 @@ async function sanityCheckPrebuiltFile(toolPath) {
 }
 
 export async function getPrebuilt(toolName) {
+  const localPath = await findLocalTool(toolName);
+  if (localPath) {
+    console.error(`Using local ${toolName} from PATH: ${localPath}`);
+    return localPath;
+  }
+
   const toolPath = getPrebuiltToolPath(toolName);
   try {
     await sanityCheckPrebuiltFile(toolPath);
@@ -171,11 +196,130 @@ export async function getPrebuilt(toolName) {
     if (!versionOk) {
       throw new Error("Version mismatch");
     }
+    return toolPath;
   } catch {
-    await downloadPrebuilt(toolName);
+    const config = sourceRepos[toolName];
+    const canDownload = config?.prebuiltAvailable?.() ?? true;
+    if (canDownload) {
+      await downloadPrebuilt(toolName);
+      return toolPath;
+    } else if (config) {
+      const builtPath = await buildFromSource(toolName);
+      return builtPath;
+    } else {
+      throw new Error(
+        `No prebuilt binary available for ${toolName} on ${Deno.build.arch}-${Deno.build.os} and no source repo configured.`,
+      );
+    }
+  }
+}
+
+async function findLocalTool(toolName) {
+  const requiredVersion = versions[toolName];
+  if (!requiredVersion) {
+    return null;
   }
 
-  return toolPath;
+  const pathEnv = Deno.env.get("PATH");
+  if (!pathEnv) {
+    return null;
+  }
+
+  const pathSeparator = Deno.build.os === "windows" ? ";" : ":";
+  const paths = pathEnv.split(pathSeparator);
+
+  for (const dir of paths) {
+    const candidatePath = join(dir, toolName + executableSuffix);
+    try {
+      await Deno.stat(candidatePath);
+      const versionOk = await verifyVersion(toolName, candidatePath);
+      if (versionOk) {
+        return candidatePath;
+      }
+    } catch {
+      // File doesn't exist, continue
+    }
+  }
+
+  return null;
+}
+
+async function buildFromSource(toolName) {
+  const config = sourceRepos[toolName];
+  if (!config) {
+    throw new Error(`No source repo configured for ${toolName}`);
+  }
+
+  const requiredVersion = versions[toolName];
+  const versionTag = config.versionTag(requiredVersion);
+
+  console.error(
+    `Building ${toolName} from source (${config.repo}@${versionTag})...`,
+  );
+
+  const tempDir = await Deno.makeTempDir({ prefix: `${toolName}-build-` });
+
+  try {
+    const cloneUrl = `https://github.com/${config.repo}.git`;
+    const cloneArgs = [
+      "clone",
+      "--depth",
+      "1",
+      "--branch",
+      versionTag,
+      cloneUrl,
+      tempDir,
+    ];
+
+    console.error(`Cloning ${cloneUrl}...`);
+    const cloneResult = await new Deno.Command("git", {
+      args: cloneArgs,
+      stdout: "inherit",
+      stderr: "inherit",
+    }).output();
+
+    if (!cloneResult.success) {
+      throw new Error(`Failed to clone ${config.repo}`);
+    }
+
+    const buildArgs = config.buildCommand(tempDir);
+    console.error(`Running: ${buildArgs.join(" ")}`);
+
+    const buildResult = await new Deno.Command(buildArgs[0], {
+      args: buildArgs.slice(1),
+      cwd: tempDir,
+      stdout: "inherit",
+      stderr: "inherit",
+    }).output();
+
+    if (!buildResult.success) {
+      throw new Error(`Failed to build ${toolName}`);
+    }
+
+    const builtBinary = config.binaryPath(tempDir);
+    await sanityCheckPrebuiltFile(builtBinary);
+
+    const versionOk = await verifyVersion(toolName, builtBinary);
+    if (!versionOk) {
+      throw new Error(`Built ${toolName} has wrong version`);
+    }
+
+    const destPath = getPrebuiltToolPath(toolName);
+    await Deno.mkdir(dirname(destPath), { recursive: true });
+    await Deno.copyFile(builtBinary, destPath);
+    await Deno.chmod(destPath, 0o755);
+
+    console.error(`Successfully built ${toolName}`);
+    return destPath;
+  } catch (e) {
+    throw new Error(`Failed to build ${toolName} from source: ${e.message}`);
+  } finally {
+    try {
+      await Deno.remove(tempDir, { recursive: true });
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
 }
 
 const PREBUILT_PATH = join(ROOT_PATH, "third_party", "prebuilt");
@@ -205,9 +349,21 @@ export async function downloadPrebuilt(toolName) {
   try {
     await Deno.mkdir(PREBUILT_TOOL_DIR, { recursive: true });
 
-    let url = `${downloadUrl}/${toolName}${executableSuffix}`;
-    if (compressed.has(toolName)) {
-      url += ".gz";
+    let url;
+    let needsUnzip = false;
+
+    if (toolName === "dlint") {
+      const config = sourceRepos[toolName];
+      const target = config.downloadTarget();
+      const versionTag = config.versionTag(versions[toolName]);
+      url =
+        `https://github.com/${config.repo}/releases/download/${versionTag}/${toolName}-${target}.zip`;
+      needsUnzip = true;
+    } else {
+      url = `${downloadUrl}/${toolName}${executableSuffix}`;
+      if (compressed.has(toolName)) {
+        url += ".gz";
+      }
     }
 
     const headers = new Headers();
@@ -215,24 +371,52 @@ export async function downloadPrebuilt(toolName) {
       headers.append("authorization", `Bearer ${Deno.env.get("GITHUB_TOKEN")}`);
     }
 
+    console.error(`Downloading from: ${url}`);
     const resp = await fetch(url, { headers });
     if (!resp.ok) {
       throw new Error(`Non-successful response from ${url}: ${resp.status}`);
     }
 
-    const file = await Deno.open(tempFile, {
-      create: true,
-      write: true,
-      mode: 0o755,
-    });
+    if (needsUnzip) {
+      const zipData = await resp.arrayBuffer();
+      const tempDir = await Deno.makeTempDir({
+        prefix: `${toolName}-extract-`,
+      });
+      try {
+        const zipPath = join(tempDir, `${toolName}.zip`);
+        await Deno.writeFile(zipPath, new Uint8Array(zipData));
 
-    if (compressed.has(toolName)) {
-      await resp.body.pipeThrough(new DecompressionStream("gzip")).pipeTo(
-        file.writable,
-      );
+        const unzipResult = await new Deno.Command("unzip", {
+          args: ["-o", zipPath, "-d", tempDir],
+          stdout: "inherit",
+          stderr: "inherit",
+        }).output();
+
+        if (!unzipResult.success) {
+          throw new Error("Failed to unzip archive");
+        }
+
+        const extractedBinary = join(tempDir, toolName + executableSuffix);
+        await Deno.copyFile(extractedBinary, tempFile);
+      } finally {
+        await Deno.remove(tempDir, { recursive: true });
+      }
     } else {
-      await resp.body.pipeTo(file.writable);
+      const file = await Deno.open(tempFile, {
+        create: true,
+        write: true,
+        mode: 0o755,
+      });
+
+      if (compressed.has(toolName)) {
+        await resp.body.pipeThrough(new DecompressionStream("gzip")).pipeTo(
+          file.writable,
+        );
+      } else {
+        await resp.body.pipeTo(file.writable);
+      }
     }
+
     console.error("Checking prebuilt tool:", toolName);
     await sanityCheckPrebuiltFile(tempFile);
     if (!await verifyVersion(toolName, tempFile)) {
