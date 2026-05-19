@@ -918,6 +918,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 'echo "Appending $BLOB into dnclbk section of target/release/deno$EXE_SUFFIX"',
                 'sui dnclbk "target/release/deno$EXE_SUFFIX" "$BLOB" "target/release/deno.with-sui$EXE_SUFFIX"',
                 'mv "target/release/deno.with-sui$EXE_SUFFIX" "target/release/deno$EXE_SUFFIX"',
+                // sui writes a fresh file; restore +x (lost on linux/macOS;
+                // a no-op on windows).
+                'chmod +x "target/release/deno$EXE_SUFFIX"',
               ],
             },
             {

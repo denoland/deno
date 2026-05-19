@@ -772,6 +772,7 @@ jobs:
           echo "Appending $BLOB into dnclbk section of target/release/deno$EXE_SUFFIX"
           sui dnclbk "target/release/deno$EXE_SUFFIX" "$BLOB" "target/release/deno.with-sui$EXE_SUFFIX"
           mv "target/release/deno.with-sui$EXE_SUFFIX" "target/release/deno$EXE_SUFFIX"
+          chmod +x "target/release/deno$EXE_SUFFIX"
       - name: Smoke-test residual-sidecar binary
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
@@ -1798,6 +1799,7 @@ jobs:
           echo "Appending $BLOB into dnclbk section of target/release/deno$EXE_SUFFIX"
           sui dnclbk "target/release/deno$EXE_SUFFIX" "$BLOB" "target/release/deno.with-sui$EXE_SUFFIX"
           mv "target/release/deno.with-sui$EXE_SUFFIX" "target/release/deno$EXE_SUFFIX"
+          chmod +x "target/release/deno$EXE_SUFFIX"
       - name: Smoke-test residual-sidecar binary
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
@@ -2754,6 +2756,7 @@ jobs:
           echo "Appending $BLOB into dnclbk section of target/release/deno$EXE_SUFFIX"
           sui dnclbk "target/release/deno$EXE_SUFFIX" "$BLOB" "target/release/deno.with-sui$EXE_SUFFIX"
           mv "target/release/deno.with-sui$EXE_SUFFIX" "target/release/deno$EXE_SUFFIX"
+          chmod +x "target/release/deno$EXE_SUFFIX"
       - name: Smoke-test residual-sidecar binary
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
@@ -3593,6 +3596,7 @@ jobs:
           echo "Appending $BLOB into dnclbk section of target/release/deno$EXE_SUFFIX"
           sui dnclbk "target/release/deno$EXE_SUFFIX" "$BLOB" "target/release/deno.with-sui$EXE_SUFFIX"
           mv "target/release/deno.with-sui$EXE_SUFFIX" "target/release/deno$EXE_SUFFIX"
+          chmod +x "target/release/deno$EXE_SUFFIX"
       - name: Smoke-test residual-sidecar binary
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
@@ -4171,6 +4175,7 @@ jobs:
           echo "Appending $BLOB into dnclbk section of target/release/deno$EXE_SUFFIX"
           sui dnclbk "target/release/deno$EXE_SUFFIX" "$BLOB" "target/release/deno.with-sui$EXE_SUFFIX"
           mv "target/release/deno.with-sui$EXE_SUFFIX" "target/release/deno$EXE_SUFFIX"
+          chmod +x "target/release/deno$EXE_SUFFIX"
       - name: Smoke-test residual-sidecar binary
         run: |-
           EXE_SUFFIX=""
@@ -6124,6 +6129,7 @@ jobs:
           echo "Appending $BLOB into dnclbk section of target/release/deno$EXE_SUFFIX"
           sui dnclbk "target/release/deno$EXE_SUFFIX" "$BLOB" "target/release/deno.with-sui$EXE_SUFFIX"
           mv "target/release/deno.with-sui$EXE_SUFFIX" "target/release/deno$EXE_SUFFIX"
+          chmod +x "target/release/deno$EXE_SUFFIX"
       - name: Smoke-test residual-sidecar binary
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
