@@ -24,6 +24,8 @@ const {
   ObjectCreate,
   ObjectDefineProperty,
   ObjectGetOwnPropertyDescriptor,
+  ObjectGetPrototypeOf,
+  ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   ReflectDefineProperty,
   SafeArrayIterator,
@@ -1327,10 +1329,13 @@ class MessageEvent extends Event {
       const MessagePortProto = getMessagePortPrototype();
       const arr = [];
       let i = 0;
-      // Iterate via SafeArrayIterator so user-provided iterables work
-      // and the per-index error message can mention `ports[i]` like
-      // Node.
-      for (const p of new SafeArrayIterator(ports)) {
+      // Iterate using the user's own iterator so values that aren't real
+      // arrays (e.g. a `RegExp` with a custom `Symbol.iterator` -- covered
+      // by WPT's no-regexp-special-casing test) still produce the
+      // expected `ports` array. SafeArrayIterator can't be used here
+      // because it walks the value as if it were an Array.
+      // deno-lint-ignore prefer-primordials
+      for (const p of ports) {
         if (
           p === null || typeof p !== "object" ||
           !ObjectPrototypeIsPrototypeOf(MessagePortProto, p)
@@ -1355,11 +1360,26 @@ class MessageEvent extends Event {
       : String(eventInitDict.lastEventId);
     const source = eventInitDict?.source;
     if (source != null) {
-      const MessagePortProto = getMessagePortPrototype();
-      if (
-        typeof source !== "object" ||
-        !ObjectPrototypeIsPrototypeOf(MessagePortProto, source)
-      ) {
+      // The Web spec types source as `MessageEventSource = MessagePort |
+      // ServiceWorker | WindowProxy`. We don't have a JS-level Window or
+      // ServiceWorker brand to gate against, so accept anything except
+      // primitives (which the node_compat tests expect to throw on,
+      // e.g. `source: 1`) and plain `Object` instances like `{}` (also
+      // checked by Node). MessagePort, Window-like globals, and
+      // user-defined classes all pass through unchanged -- matching both
+      // the WPT `messageevent-constructor.https.html` test (which
+      // assigns `window` to `source`) and node_compat
+      // `test-worker-message-event`.
+      const t = typeof source;
+      const isPrimitive = t !== "object" && t !== "function";
+      // Treat values whose prototype is exactly Object.prototype (i.e.
+      // plain object literals like `{}`) as invalid sources. Using the
+      // prototype chain rather than `.constructor` avoids the
+      // prefer-primordials lint and is more reliable since user code
+      // can override `constructor`.
+      const isPlainObject = !isPrimitive &&
+        ObjectGetPrototypeOf(source) === ObjectPrototype;
+      if (isPrimitive || isPlainObject) {
         throw new TypeError(
           `MessageEvent constructor: Expected eventInitDict.source (${
             formatForBranded(source)
