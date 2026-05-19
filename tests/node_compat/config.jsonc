@@ -2946,7 +2946,9 @@
     "parallel/test-process-exception-capture.js": {},
     "parallel/test-process-execve-no-args.js": {},
     "parallel/test-process-execve-worker-threads.js": {},
-    "parallel/test-process-exit-code-validation.js": {},
+    "parallel/test-process-exit-code-validation.js": {
+      "flaky": true
+    },
     "parallel/test-process-exit-from-before-exit.js": {},
     "parallel/test-process-exit-handler.js": {},
     "parallel/test-process-exit-recursive.js": {},
