@@ -9,7 +9,7 @@
 // - numeric timer IDs (vs Node's Timeout objects)
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_defer } = core.ops;
 const {
   PromisePrototypeThen,

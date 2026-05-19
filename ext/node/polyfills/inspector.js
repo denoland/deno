@@ -4,7 +4,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   op_base64_encode_from_buffer,
   op_get_extras_binding_object,
@@ -308,7 +308,7 @@ const Network = {
 // Bridge for other extensions (fetch, websocket, http) to emit Network.*
 // inspector events without depending on ext/node directly. Populated when
 // node:inspector is loaded; ext/fetch and friends look it up lazily on
-// `globalThis.__bootstrap.internals.__inspectorNetwork`.
+// `internals.__inspectorNetwork`.
 let networkRequestIdCounter = 0;
 internals.__inspectorNetwork = {
   isEnabled: () => op_inspector_enabled(),

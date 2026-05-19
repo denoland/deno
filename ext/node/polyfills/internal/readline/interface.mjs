@@ -25,7 +25,7 @@
 // deno-lint-ignore-file camelcase no-inner-declarations no-this-alias
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_get_env_no_permission_check } = core.ops;
 
 const {

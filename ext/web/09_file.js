@@ -11,7 +11,7 @@
 /// <reference lib="esnext" />
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   isAnyArrayBuffer,
   isArrayBuffer,
@@ -44,6 +44,7 @@ const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeTest,
+  SafeArrayIterator,
   SafeFinalizationRegistry,
   SafeRegExp,
   StringPrototypeCharAt,
@@ -60,7 +61,17 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-const { ReadableStream } = core.loadExtScript("ext:deno_web/06_streams.js");
+// Defer loading the 208 KB `06_streams.js` polyfill: ReadableStream is
+// only constructed inside `Blob.stream()` (see usage below), so we don't
+// need to pay the parse cost at module body time.
+let _readableStream;
+function ReadableStream(...args) {
+  return new (_readableStream ??
+    (_readableStream =
+      core.loadExtScript("ext:deno_web/06_streams.js").ReadableStream))(
+    ...new SafeArrayIterator(args),
+  );
+}
 const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
 const { createFilteredInspectProxy } = core.loadExtScript(
   "ext:deno_web/01_console.js",
