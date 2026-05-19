@@ -12,7 +12,7 @@
  */
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   AggregateError,
   ArrayIsArray,

@@ -2,7 +2,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const lazyProcess = core.createLazyLoader("node:process");
 const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { kEmptyObject, once } = core.loadExtScript(

@@ -24,7 +24,7 @@
 // - https://github.com/nodejs/node/blob/master/src/node_symbols.cc
 
 (function () {
-const { primordials } = globalThis.__bootstrap;
+const { primordials } = __bootstrap;
 const { Symbol } = primordials;
 
 const asyncIdSymbol: unique symbol = Symbol("asyncIdSymbol");

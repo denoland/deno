@@ -98,6 +98,14 @@ struct TestConfig {
   /// override (e.g. `node_shared_openssl=1`) which would regress other tests
   /// if applied globally.
   env: Option<HashMap<String, String>>,
+  /// Extra `deno run`/`deno test` CLI flags to append for this test only,
+  /// appearing after the standard `RUN_ARGS`/`TEST_ARGS` and after any
+  /// flags derived from the test source's `// Flags:` directive. Use
+  /// sparingly - typically for security knobs like
+  /// `--unsafely-ignore-certificate-errors` that one specific test
+  /// requires and that we explicitly do not want every test to inherit.
+  #[serde(rename = "extraDenoArgs", default)]
+  extra_deno_args: Vec<String>,
 }
 
 /// The full config.json structure
@@ -541,24 +549,14 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>, Vec<String>) {
           // Deno, normalizing the bare port form to `127.0.0.1:PORT` since
           // Deno's CLI expects `host:port`.
           n if n == "--inspect" || n.starts_with("--inspect=") => {
-            let mapped = if let Some(rest) = n.strip_prefix("--inspect=") {
-              if rest.is_empty() || rest.chars().all(|c| c.is_ascii_digit()) {
+            let mapped = match n.strip_prefix("--inspect=") {
+              None | Some("") => "--inspect=127.0.0.1:0".to_string(),
+              Some(rest) if rest.chars().all(|c| c.is_ascii_digit()) => {
                 format!("--inspect=127.0.0.1:{}", rest)
-              } else {
-                format!("--inspect={}", rest)
               }
-            } else {
-              "--inspect=127.0.0.1:0".to_string()
+              Some(rest) => format!("--inspect={}", rest),
             };
             deno_args.push(mapped);
-            // The Node `--experimental-network-inspection` flag below
-            // enables `Network.*` instrumentation in Node; Deno wires it
-            // unconditionally when the inspector is active, but tests
-            // attached to a self-signed local HTTPS server typically rely
-            // on undici's `rejectUnauthorized: false` global dispatcher,
-            // which Deno's fetch doesn't honor. Disable cert validation
-            // here so the HTTPS branch of the test can complete.
-            deno_args.push("--unsafely-ignore-certificate-errors".to_string());
           }
           "--experimental-network-inspection" => {
             // Deno emits Network.* events when the inspector is attached;
@@ -616,6 +614,13 @@ impl TestSetup {
     }
     for arg in &extra_deno_args {
       args.push(arg.clone());
+    }
+    // Per-test extra args from config.jsonc, e.g. security knobs that
+    // only one specific test needs.
+    if let Some(extra) = test_config {
+      for arg in &extra.extra_deno_args {
+        args.push(arg.clone());
+      }
     }
     if cli_args.inspect_brk {
       args.push("--inspect-brk".to_string());

@@ -3,7 +3,7 @@
 /// <reference path="../../core/internal.d.ts" />
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   isAnyArrayBuffer,
   isArgumentsObject,

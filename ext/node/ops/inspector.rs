@@ -221,6 +221,12 @@ fn capture_initiator(scope: &mut v8::PinScope<'_, '_>) -> serde_json::Value {
     }));
   }
 
+  // Always emit `type: "script"` even when `call_frames` is empty.
+  // Returning `{type: "other"}` for the empty case (as the original code
+  // did) tripped node_compat tests that assert `initiator.type ===
+  // "script"` whenever the inspector saw a JS-originated request - which
+  // is true here by construction, since we only reach this function from
+  // `op_inspector_emit_protocol_event` called from JS-land emitters.
   serde_json::json!({
     "type": "script",
     "stack": {

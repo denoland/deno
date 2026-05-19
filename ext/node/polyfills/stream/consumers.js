@@ -2,7 +2,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { TextDecoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
 const { Blob } = core.loadExtScript("ext:deno_web/09_file.js");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
