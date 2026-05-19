@@ -225,7 +225,7 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
       {
         if let Ok(value) = value {
           match value {
-            PackageJsonDepValue::File(_) => {
+            PackageJsonDepValue::File(_) | PackageJsonDepValue::Tarball(_) => {
               // skip
             }
             PackageJsonDepValue::Req(dep_req) => {

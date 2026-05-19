@@ -34,6 +34,7 @@ deno_semver.workspace = true
 deno_terminal.workspace = true
 deno_unsync.workspace = true
 dyn-clone.workspace = true
+flate2.workspace = true
 futures.workspace = true
 lazy-regex.workspace = true
 log.workspace = true
@@ -44,6 +45,7 @@ rustc-hash.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sys_traits = { workspace = true, features = ["getrandom", "real", "winapi", "libc"] }
+tar.workspace = true
 thiserror.workspace = true
 twox-hash.workspace = true
 url.workspace = true
