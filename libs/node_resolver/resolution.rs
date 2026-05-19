@@ -2074,6 +2074,21 @@ impl<
       }
     }
 
+    // When resolving for types and we couldn't find declaration files,
+    // fall back to the JS main entry if it exists. This allows tools like
+    // `deno doc` to process npm packages that don't ship type declarations.
+    if resolution_kind.is_types() {
+      if let Some(main) = self.legacy_fallback_resolve(package_json) {
+        let guess = package_json.path.parent().unwrap().join(main).clean();
+        if self.sys.is_file(Cow::Borrowed(&guess)) {
+          return Ok(MaybeTypesResolvedUrl(LocalUrlOrPath::Path(LocalPath {
+            path: guess,
+            known_exists: true,
+          })));
+        }
+      }
+    }
+
     self.legacy_index_resolve(
       package_json.path.parent().unwrap(),
       maybe_referrer,

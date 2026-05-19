@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "doc --json main.ts",
+  "output": "main.out",
+  "exitCode": 0
+}
