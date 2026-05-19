@@ -1288,18 +1288,27 @@ internals.__initWorkerThreads = (
     }
   }
 
-  // In Node, `globalThis.MessageChannel` IS the `worker_threads.MessageChannel`
-  // (so port instances have `.on`/`.off`/`.emit`/etc.). Tests in the
-  // node_compat suite import individual helpers from `worker_threads` and
-  // then use `MessageChannel` from the global scope, expecting Node-style
-  // ports. Override the global symbol once at bootstrap so this pattern
-  // works. `instanceof MessageChannel` still works either way because we
-  // route NodeMessageChannel's prototype through the web MessageChannel
-  // prototype chain (set near the bottom of this polyfill).
+  // In Node, `globalThis.MessageChannel` / `globalThis.MessagePort` ARE
+  // the `worker_threads` versions (so port instances have
+  // `.on`/`.off`/`.emit`/etc., and `worker_threads.MessagePort` is
+  // identity-equal to the global `MessagePort`). Tests in the
+  // node_compat suite import individual helpers from `worker_threads`
+  // and then use `MessageChannel` from the global scope, expecting
+  // Node-style ports. Override the global symbols once at bootstrap so
+  // this pattern works. `instanceof MessageChannel` / `instanceof
+  // MessagePort` still work either way because both Node wrappers
+  // route through the web prototype chain.
   try {
     ObjectDefineProperty(globalThis, "MessageChannel", {
       __proto__: null,
       value: NodeMessageChannel,
+      writable: true,
+      enumerable: false,
+      configurable: true,
+    });
+    ObjectDefineProperty(globalThis, "MessagePort", {
+      __proto__: null,
+      value: NodeMessagePort,
       writable: true,
       enumerable: false,
       configurable: true,
