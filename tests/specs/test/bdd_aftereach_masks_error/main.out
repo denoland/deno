@@ -1,0 +1,22 @@
+Check [WILDCARD]main.ts
+running 1 test from ./main.ts
+failure is not apparent ...
+  failing 'it' block ... FAILED [WILDCARD]
+failure is not apparent ... FAILED (due to 1 failed step) [WILDCARD]
+
+ ERRORS 
+
+failure is not apparent ... failing 'it' block [WILDCARD]
+error: AggregateError: Multiple errors: test failure followed by afterEach hook failure
+    Error: original test failure
+[WILDCARD]
+    Error: afterEach failure, perhaps a side-effect of the original failure
+[WILDCARD]
+
+ FAILURES 
+
+failure is not apparent ... failing 'it' block [WILDCARD]
+
+FAILED | 0 passed | 1 failed (1 step) [WILDCARD]
+
+error: Test failed
