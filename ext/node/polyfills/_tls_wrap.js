@@ -66,7 +66,11 @@ const {
 const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
-const { op_tls_canonicalize_ipv4_address } = core.ops;
+const {
+  op_get_env_no_permission_check,
+  op_tls_canonicalize_ipv4_address,
+} = core.ops;
+const lazyLoadProcess = core.createLazyLoader("node:process");
 const { default: tlsWrap } = core.loadExtScript(
   "ext:deno_node/internal_binding/tls_wrap.ts",
 );
@@ -1611,8 +1615,22 @@ function connect(...args) {
   return tlssock;
 }
 
+let emittedNodeTlsRejectUnauthorized = false;
+
 function getAllowUnauthorized() {
-  return false;
+  const allowUnauthorized =
+    op_get_env_no_permission_check("NODE_TLS_REJECT_UNAUTHORIZED") === "0";
+
+  if (allowUnauthorized && !emittedNodeTlsRejectUnauthorized) {
+    emittedNodeTlsRejectUnauthorized = true;
+    lazyLoadProcess().emitWarning(
+      "Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to " +
+        "'0' makes TLS connections and HTTPS requests insecure by " +
+        "disabling certificate verification.",
+    );
+  }
+
+  return allowUnauthorized;
 }
 
 function createServer(options, listener) {

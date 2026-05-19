@@ -453,9 +453,10 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
         ),
       ];
     } else if msg.contains("client error (Connect): invalid peer certificate") {
-      return vec![FixSuggestion::hint(
+      return vec![FixSuggestion::hint_multiline(&[
         "Run again with the `--unsafely-ignore-certificate-errors` flag to bypass certificate errors.",
-      )];
+        "For `node:tls` / `node:https` clients, you can also set `NODE_TLS_REJECT_UNAUTHORIZED=0` to disable verification.",
+      ])];
     // Try to capture errors like:
     // ```
     // Uncaught Error: Cannot find module '../build/Release/canvas.node'
