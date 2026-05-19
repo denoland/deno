@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "kill_on_overflow": {
+      "args": "run -A main.ts",
+      "output": "ok\n"
+    },
+    "inherit_stdio_does_not_hang": {
+      "args": "run -A inherit.ts",
+      "output": "child done\nok\n"
+    }
+  }
+}
