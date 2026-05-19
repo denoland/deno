@@ -309,6 +309,35 @@ Deno.test("createPublicKey() RSA", () => {
   assertEquals(key.asymmetricKeyDetails?.publicExponent, 65537n);
 });
 
+Deno.test("createPublicKey() accepts non-canonical RSA SPKI", () => {
+  const spki = Buffer.from(
+    "MDswDQYJKoZIhvcNAQEBBQADKgAwJwIg3wUvyMOfq7G6dT5bIM6keoShd9YGwP7PIc2Tfa8Q99ECAwEAAQ==",
+    "base64",
+  );
+  const key = createPublicKey({ key: spki, format: "der", type: "spki" });
+
+  assertEquals(key.type, "public");
+  assertEquals(key.asymmetricKeyType, "rsa");
+  assertEquals(key.asymmetricKeyDetails?.modulusLength, 256);
+  assertEquals(key.asymmetricKeyDetails?.publicExponent, 65537n);
+});
+
+Deno.test("createPublicKey() rejects malformed non-canonical RSA SPKI", () => {
+  const spki = Buffer.from(
+    "MDswDQYJKoZIhvcNAQEBBQADKgAwJwIg3wUvyMOfq7G6dT5bIM6keoShd9YGwP7PIc2Tfa8Q99ECAwEAAQ==",
+    "base64",
+  );
+  spki[1] += 2;
+  spki[19] += 2;
+  spki[22] += 2;
+  const malformed = Buffer.concat([spki, Buffer.from([0x05, 0x00])]);
+
+  assertThrows(
+    () => createPublicKey({ key: malformed, format: "der", type: "spki" }),
+    Error,
+  );
+});
+
 // openssl ecparam -name prime256v1 -genkey -noout -out a.pem
 // openssl ec -in a.pem -pubout -out b.pem
 const ecPublicKey = Deno.readTextFileSync(
