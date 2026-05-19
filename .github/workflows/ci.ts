@@ -885,8 +885,60 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               run: [
                 // output fs space before and after building
                 "df -h",
-                `cargo build --release --locked ${binsToBuild} --features=panic-trace`,
+                // `residual-sidecar` (cli + deno_snapshots) drops the
+                // include_bytes! fallback for residual lazy sources; the
+                // runtime then requires a libsui `dnclbk` section in the
+                // final binary, which the next step appends.
+                `cargo build --release --locked ${binsToBuild} --features=panic-trace,residual-sidecar`,
                 "df -h",
+              ],
+            },
+            {
+              // Append the residual lazy-source blob (produced by
+              // cli/snapshot/build.rs) as its own Mach-O __SUI segment / ELF
+              // trailer / PE resource named `dnclbk`. With `residual-sidecar`
+              // on, the binary panics at startup without this section.
+              //
+              // Runs before strip and codesign:
+              //   * strip on linux/macOS leaves the appended section alone
+              //     (it's not a known debug section / segment).
+              //   * codesign (rcodesign on mac, Azure Authenticode on win)
+              //     hashes the final file layout, so the signature covers
+              //     the appended section.
+              name: "Append residual lazy-source segment",
+              run: [
+                // libsui ships a `sui` CLI; install once into ~/.cargo/bin
+                // (already on PATH). Kept on the same version pin as the
+                // workspace `libsui` dep.
+                "cargo install --locked --version 0.12.6 libsui --bin sui",
+                'EXE_SUFFIX=""',
+                'if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi',
+                "BLOB=$(find target/release/build -path '*/deno_snapshots-*/out/RESIDUAL_BLOB.bin' | head -1)",
+                'if [ -z "$BLOB" ]; then echo "RESIDUAL_BLOB.bin not found under target/release/build" >&2; exit 1; fi',
+                'echo "Appending $BLOB into dnclbk section of target/release/deno$EXE_SUFFIX"',
+                'sui dnclbk "target/release/deno$EXE_SUFFIX" "$BLOB" "target/release/deno.with-sui$EXE_SUFFIX"',
+                'mv "target/release/deno.with-sui$EXE_SUFFIX" "target/release/deno$EXE_SUFFIX"',
+              ],
+            },
+            {
+              // Smoke-test the sui-appended binary right here, before strip /
+              // codesign / zip. If the dnclbk section is missing or the
+              // residual blob is malformed, `residual-sidecar` makes the
+              // runtime panic at startup — this catches that on every release
+              // build instead of only at release-publish time.
+              name: "Smoke-test residual-sidecar binary",
+              run: [
+                'EXE_SUFFIX=""',
+                'if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi',
+                'DENO="target/release/deno$EXE_SUFFIX"',
+                // 1. Plain eval exercises startup (would panic if `dnclbk`
+                //    section is missing under the residual-sidecar feature).
+                '"$DENO" eval "console.log(1+2)" | grep -F 3',
+                // 2. Force-import a residual lazy node: module so we actually
+                //    pull bytes out of the sui-appended section and hand them
+                //    to v8. Catches a corrupted blob, wrong offsets, or a
+                //    non-ASCII residual sneaking past the debug_assert.
+                '"$DENO" eval "await import(\'node:zlib\'); const z = await import(\'node:zlib\'); console.log(\'sui-zlib:\', z.constants.Z_OK)" | grep -F "sui-zlib: 0"',
               ],
             },
             {

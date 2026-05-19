@@ -759,8 +759,27 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
           df -h
-          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
+          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace,residual-sidecar
           df -h
+      - name: Append residual lazy-source segment
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        run: |-
+          cargo install --locked --version 0.12.6 libsui --bin sui
+          EXE_SUFFIX=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
+          BLOB=$(find target/release/build -path '*/deno_snapshots-*/out/RESIDUAL_BLOB.bin' | head -1)
+          if [ -z "$BLOB" ]; then echo "RESIDUAL_BLOB.bin not found under target/release/build" >&2; exit 1; fi
+          echo "Appending $BLOB into dnclbk section of target/release/deno$EXE_SUFFIX"
+          sui dnclbk "target/release/deno$EXE_SUFFIX" "$BLOB" "target/release/deno.with-sui$EXE_SUFFIX"
+          mv "target/release/deno.with-sui$EXE_SUFFIX" "target/release/deno$EXE_SUFFIX"
+      - name: Smoke-test residual-sidecar binary
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        run: |-
+          EXE_SUFFIX=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
+          DENO="target/release/deno$EXE_SUFFIX"
+          "$DENO" eval "console.log(1+2)" | grep -F 3
+          "$DENO" eval "await import('node:zlib'); const z = await import('node:zlib'); console.log('sui-zlib:', z.constants.Z_OK)" | grep -F "sui-zlib: 0"
       - name: Generate symcache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         env:
@@ -1766,8 +1785,27 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
           df -h
-          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
+          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace,residual-sidecar
           df -h
+      - name: Append residual lazy-source segment
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        run: |-
+          cargo install --locked --version 0.12.6 libsui --bin sui
+          EXE_SUFFIX=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
+          BLOB=$(find target/release/build -path '*/deno_snapshots-*/out/RESIDUAL_BLOB.bin' | head -1)
+          if [ -z "$BLOB" ]; then echo "RESIDUAL_BLOB.bin not found under target/release/build" >&2; exit 1; fi
+          echo "Appending $BLOB into dnclbk section of target/release/deno$EXE_SUFFIX"
+          sui dnclbk "target/release/deno$EXE_SUFFIX" "$BLOB" "target/release/deno.with-sui$EXE_SUFFIX"
+          mv "target/release/deno.with-sui$EXE_SUFFIX" "target/release/deno$EXE_SUFFIX"
+      - name: Smoke-test residual-sidecar binary
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        run: |-
+          EXE_SUFFIX=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
+          DENO="target/release/deno$EXE_SUFFIX"
+          "$DENO" eval "console.log(1+2)" | grep -F 3
+          "$DENO" eval "await import('node:zlib'); const z = await import('node:zlib'); console.log('sui-zlib:', z.constants.Z_OK)" | grep -F "sui-zlib: 0"
       - name: Generate symcache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         env:
@@ -2703,8 +2741,27 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
           df -h
-          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
+          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace,residual-sidecar
           df -h
+      - name: Append residual lazy-source segment
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        run: |-
+          cargo install --locked --version 0.12.6 libsui --bin sui
+          EXE_SUFFIX=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
+          BLOB=$(find target/release/build -path '*/deno_snapshots-*/out/RESIDUAL_BLOB.bin' | head -1)
+          if [ -z "$BLOB" ]; then echo "RESIDUAL_BLOB.bin not found under target/release/build" >&2; exit 1; fi
+          echo "Appending $BLOB into dnclbk section of target/release/deno$EXE_SUFFIX"
+          sui dnclbk "target/release/deno$EXE_SUFFIX" "$BLOB" "target/release/deno.with-sui$EXE_SUFFIX"
+          mv "target/release/deno.with-sui$EXE_SUFFIX" "target/release/deno$EXE_SUFFIX"
+      - name: Smoke-test residual-sidecar binary
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        run: |-
+          EXE_SUFFIX=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
+          DENO="target/release/deno$EXE_SUFFIX"
+          "$DENO" eval "console.log(1+2)" | grep -F 3
+          "$DENO" eval "await import('node:zlib'); const z = await import('node:zlib'); console.log('sui-zlib:', z.constants.Z_OK)" | grep -F "sui-zlib: 0"
       - name: Generate symcache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         env:
@@ -3523,8 +3580,27 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
           df -h
-          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
+          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace,residual-sidecar
           df -h
+      - name: Append residual lazy-source segment
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        run: |-
+          cargo install --locked --version 0.12.6 libsui --bin sui
+          EXE_SUFFIX=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
+          BLOB=$(find target/release/build -path '*/deno_snapshots-*/out/RESIDUAL_BLOB.bin' | head -1)
+          if [ -z "$BLOB" ]; then echo "RESIDUAL_BLOB.bin not found under target/release/build" >&2; exit 1; fi
+          echo "Appending $BLOB into dnclbk section of target/release/deno$EXE_SUFFIX"
+          sui dnclbk "target/release/deno$EXE_SUFFIX" "$BLOB" "target/release/deno.with-sui$EXE_SUFFIX"
+          mv "target/release/deno.with-sui$EXE_SUFFIX" "target/release/deno$EXE_SUFFIX"
+      - name: Smoke-test residual-sidecar binary
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        run: |-
+          EXE_SUFFIX=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
+          DENO="target/release/deno$EXE_SUFFIX"
+          "$DENO" eval "console.log(1+2)" | grep -F 3
+          "$DENO" eval "await import('node:zlib'); const z = await import('node:zlib'); console.log('sui-zlib:', z.constants.Z_OK)" | grep -F "sui-zlib: 0"
       - name: Generate symcache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         env:
@@ -4083,8 +4159,25 @@ jobs:
       - name: Build release
         run: |-
           df -h
-          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
+          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace,residual-sidecar
           df -h
+      - name: Append residual lazy-source segment
+        run: |-
+          cargo install --locked --version 0.12.6 libsui --bin sui
+          EXE_SUFFIX=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
+          BLOB=$(find target/release/build -path '*/deno_snapshots-*/out/RESIDUAL_BLOB.bin' | head -1)
+          if [ -z "$BLOB" ]; then echo "RESIDUAL_BLOB.bin not found under target/release/build" >&2; exit 1; fi
+          echo "Appending $BLOB into dnclbk section of target/release/deno$EXE_SUFFIX"
+          sui dnclbk "target/release/deno$EXE_SUFFIX" "$BLOB" "target/release/deno.with-sui$EXE_SUFFIX"
+          mv "target/release/deno.with-sui$EXE_SUFFIX" "target/release/deno$EXE_SUFFIX"
+      - name: Smoke-test residual-sidecar binary
+        run: |-
+          EXE_SUFFIX=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
+          DENO="target/release/deno$EXE_SUFFIX"
+          "$DENO" eval "console.log(1+2)" | grep -F 3
+          "$DENO" eval "await import('node:zlib'); const z = await import('node:zlib'); console.log('sui-zlib:', z.constants.Z_OK)" | grep -F "sui-zlib: 0"
       - name: Generate symcache
         env:
           NO_COLOR: 1
@@ -6018,8 +6111,27 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           df -h
-          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
+          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace,residual-sidecar
           df -h
+      - name: Append residual lazy-source segment
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: |-
+          cargo install --locked --version 0.12.6 libsui --bin sui
+          EXE_SUFFIX=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
+          BLOB=$(find target/release/build -path '*/deno_snapshots-*/out/RESIDUAL_BLOB.bin' | head -1)
+          if [ -z "$BLOB" ]; then echo "RESIDUAL_BLOB.bin not found under target/release/build" >&2; exit 1; fi
+          echo "Appending $BLOB into dnclbk section of target/release/deno$EXE_SUFFIX"
+          sui dnclbk "target/release/deno$EXE_SUFFIX" "$BLOB" "target/release/deno.with-sui$EXE_SUFFIX"
+          mv "target/release/deno.with-sui$EXE_SUFFIX" "target/release/deno$EXE_SUFFIX"
+      - name: Smoke-test residual-sidecar binary
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: |-
+          EXE_SUFFIX=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
+          DENO="target/release/deno$EXE_SUFFIX"
+          "$DENO" eval "console.log(1+2)" | grep -F 3
+          "$DENO" eval "await import('node:zlib'); const z = await import('node:zlib'); console.log('sui-zlib:', z.constants.Z_OK)" | grep -F "sui-zlib: 0"
       - name: Generate symcache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
