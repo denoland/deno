@@ -13,6 +13,8 @@ const {
   op_host_recv_message_sync,
   op_host_terminate_worker,
   op_mark_as_untransferable,
+  op_message_port_post_message_raw,
+  op_message_port_recv_message,
   op_message_port_recv_message_sync,
   op_node_worker_thread_post_message,
   op_node_worker_thread_recv_message,
@@ -1584,8 +1586,119 @@ function markAsUntransferable(obj: object) {
     op_mark_as_untransferable(obj as ArrayBuffer);
   }
 }
-function moveMessagePortToContext() {
-  notImplemented("moveMessagePortToContext");
+const lazyVm = () => core.loadExtScript("ext:deno_node/vm.js");
+
+// Move a MessagePort into a vm.Context. The returned object lives in the
+// target context (so its prototype chain is in that realm and it is *not*
+// `instanceof Object` in the calling realm). Messages arriving on the
+// underlying port are deserialized without the global host-object
+// deserializers, mirroring Node's behavior where the target context lacks
+// the JS classes registered in the source realm: any host object (e.g. a
+// crypto KeyObject) triggers `messageerror` with the
+// `ERR_MESSAGE_TARGET_CONTEXT_UNAVAILABLE` code, while plain transferable
+// data is delivered as `message`.
+function moveMessagePortToContext(
+  port: MessagePort,
+  context: object,
+): object {
+  if (!(ObjectPrototypeIsPrototypeOf(MessagePortPrototype, port))) {
+    throw new ERR_INVALID_ARG_TYPE("port", "MessagePort", port);
+  }
+  const vm = lazyVm();
+  if (!vm.isContext(context)) {
+    throw new ERR_INVALID_ARG_TYPE("context", "vm.Context", context);
+  }
+
+  // Take ownership of the port: clear the id on the original so it can no
+  // longer be used from this context.
+  const portId = port[MessagePortIdSymbol];
+  if (portId === null) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "port",
+      "an entangled MessagePort",
+      port,
+    );
+  }
+  port[MessagePortIdSymbol] = null;
+
+  // Allocate the wrapper inside the target context so its prototype chain
+  // is the target realm's (i.e., `wrapper instanceof Object` in the caller
+  // realm is false, matching Node).
+  const wrapper = vm.runInContext("({})", context);
+  wrapper.onmessage = null;
+  wrapper.onmessageerror = null;
+
+  let enabled = false;
+  let closed = false;
+
+  const dispatchMessageError = (err: object) => {
+    if (typeof wrapper.onmessageerror === "function") {
+      try {
+        wrapper.onmessageerror({ data: err });
+      } catch {
+        // Silently ignore - user handler errors must not break the loop.
+      }
+    }
+  };
+
+  const dispatchMessage = (msg: unknown) => {
+    if (typeof wrapper.onmessage === "function") {
+      try {
+        wrapper.onmessage({ data: msg });
+      } catch {
+        // Silently ignore - user handler errors must not break the loop.
+      }
+    }
+  };
+
+  wrapper.start = () => {
+    if (enabled || closed) return;
+    enabled = true;
+    (async () => {
+      while (!closed) {
+        let data;
+        try {
+          data = await op_message_port_recv_message(portId);
+        } catch {
+          break;
+        }
+        if (data === null) break;
+        // Intentionally deserialize without the host-object deserializers
+        // registry. Any host object marker in the stream throws, which we
+        // surface as `messageerror` per Node semantics.
+        let message;
+        try {
+          message = core.deserialize(data.data);
+        } catch {
+          const err = new Error(
+            "Message could not be deserialized in the target context",
+          );
+          // deno-lint-ignore no-explicit-any
+          (err as any).code = "ERR_MESSAGE_TARGET_CONTEXT_UNAVAILABLE";
+          dispatchMessageError(err);
+          continue;
+        }
+        dispatchMessage(message);
+      }
+    })();
+  };
+
+  wrapper.close = () => {
+    if (closed) return;
+    closed = true;
+    try {
+      core.close(portId);
+    } catch {
+      // ignore
+    }
+  };
+
+  wrapper.postMessage = (msg: unknown) => {
+    if (closed) return;
+    op_message_port_post_message_raw(portId, core.serialize(msg));
+  };
+
+  return wrapper;
 }
 
 /**
