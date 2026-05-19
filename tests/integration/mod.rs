@@ -41,6 +41,8 @@ mod init;
 mod install;
 #[path = "jsr_tests.rs"]
 mod jsr;
+#[path = "jupyter_client.rs"]
+mod jupyter_client;
 #[path = "jupyter_tests.rs"]
 mod jupyter;
 #[path = "lsp_tests.rs"]

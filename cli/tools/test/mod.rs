@@ -680,7 +680,7 @@ async fn configure_main_worker(
   permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
-  sender: UnboundedSender<jupyter_protocol::messaging::StreamContent>,
+  sender: UnboundedSender<crate::ops::jupyter::IopubMessage>,
 ) -> Result<(Option<CoverageCollector>, MainWorker), CreateCustomWorkerError> {
   let mut worker = worker_factory
     .create_custom_worker(
