@@ -1,9 +1,21 @@
 {
   "tempDir": true,
-  "steps": [
-    {
-      "args": "add npm:ajv@latest",
-      "output": "add.out"
+  "tests": {
+    "npm_latest": {
+      "steps": [
+        {
+          "args": "add npm:ajv@latest",
+          "output": "add.out"
+        }
+      ]
+    },
+    "jsr_latest": {
+      "steps": [
+        {
+          "args": "add jsr:@denotest/add@latest",
+          "output": "add_jsr.out"
+        }
+      ]
     }
-  ]
+  }
 }
