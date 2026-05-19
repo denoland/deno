@@ -1,0 +1,3 @@
+[WILDCARD]PASS: happy path emits four events with shared requestId
+PASS: failed handshake emits created + willSend + closed only
+ALL PASSED

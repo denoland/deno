@@ -506,6 +506,11 @@ pub async fn op_ws_create(
   // the status is implicitly 101 Switching Protocols. We surface it (plus
   // the response headers) for the inspector's
   // `Network.webSocketHandshakeResponseReceived` event.
+  //
+  // Failed handshakes (non-101) bail earlier via
+  // `HandshakeError::InvalidStatusCode` and never reach this point, so
+  // DevTools won't see a `webSocketHandshakeResponseReceived` for them —
+  // only the eventual `webSocketClosed`. This matches Chrome's behavior.
   let response_headers: Vec<(ByteString, ByteString)> = response
     .iter()
     .map(|(name, value)| {

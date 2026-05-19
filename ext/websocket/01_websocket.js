@@ -55,7 +55,7 @@ const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { createFilteredInspectProxy } = core.loadExtScript(
   "ext:deno_web/01_console.js",
 );
-const { HTTP_TOKEN_CODE_POINT_RE } = core.loadExtScript(
+const { HTTP_TOKEN_CODE_POINT_RE, byteLowerCase } = core.loadExtScript(
   "ext:deno_web/00_infra.js",
 );
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
@@ -356,6 +356,45 @@ class WebSocket extends EventTarget {
       } catch {
         // ignore
       }
+      // `Network.webSocketWillSendHandshakeRequest` populates DevTools'
+      // "Headers" panel for the request side. Tungstenite-generated headers
+      // (Sec-WebSocket-Key, Sec-WebSocket-Version, Upgrade, Connection) are
+      // produced in Rust and not visible here; we surface what JS knows -
+      // user-supplied headers via `init.headers` plus the negotiated
+      // Sec-WebSocket-Protocol. That's enough for the panel to show the
+      // intent of the request; the response panel still gets the real
+      // server-sent headers via `webSocketHandshakeResponseReceived`.
+      const requestHeaders = { __proto__: null };
+      if (headers !== null) {
+        const list = headerListFromHeaders(headers);
+        for (let i = 0; i < list.length; i++) {
+          const name = byteLowerCase(list[i][0]);
+          const value = list[i][1];
+          if (requestHeaders[name] === undefined) {
+            requestHeaders[name] = value;
+          } else {
+            requestHeaders[name] = requestHeaders[name] + ", " + value;
+          }
+        }
+      }
+      if (protocols.length > 0) {
+        requestHeaders["sec-websocket-protocol"] = ArrayPrototypeJoin(
+          protocols,
+          ", ",
+        );
+      }
+      try {
+        inspectorNetwork.webSocketWillSendHandshakeRequest({
+          requestId,
+          timestamp: DateNow() / 1000,
+          wallTime: DateNow() / 1000,
+          request: {
+            headers: requestHeaders,
+          },
+        });
+      } catch {
+        // ignore
+      }
     }
 
     PromisePrototypeThen(
@@ -383,7 +422,7 @@ class WebSocket extends EventTarget {
           if (ins !== null) {
             const responseHeaders = { __proto__: null };
             for (let i = 0; i < create.headers.length; i++) {
-              const name = StringPrototypeToLowerCase(create.headers[i][0]);
+              const name = byteLowerCase(create.headers[i][0]);
               const value = create.headers[i][1];
               if (responseHeaders[name] === undefined) {
                 responseHeaders[name] = value;

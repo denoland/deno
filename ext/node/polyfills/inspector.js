@@ -299,6 +299,8 @@ const Network = {
   dataSent: (params) => broadcastNetworkData("Network.dataSent", params),
   webSocketCreated: (params) =>
     broadcastToFrontend("Network.webSocketCreated", params),
+  webSocketWillSendHandshakeRequest: (params) =>
+    broadcastToFrontend("Network.webSocketWillSendHandshakeRequest", params),
   webSocketHandshakeResponseReceived: (params) =>
     broadcastToFrontend("Network.webSocketHandshakeResponseReceived", params),
   webSocketClosed: (params) =>
@@ -320,6 +322,7 @@ internals.__inspectorNetwork = {
   dataReceived: Network.dataReceived,
   dataSent: Network.dataSent,
   webSocketCreated: Network.webSocketCreated,
+  webSocketWillSendHandshakeRequest: Network.webSocketWillSendHandshakeRequest,
   webSocketHandshakeResponseReceived:
     Network.webSocketHandshakeResponseReceived,
   webSocketClosed: Network.webSocketClosed,
