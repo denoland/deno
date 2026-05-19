@@ -84,6 +84,12 @@ const {
   TCP,
 } = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
 const lazyNet = core.createLazyLoader("node:net");
+const { channel: createDiagnosticsChannel, tracingChannel } = core
+  .loadExtScript(
+    "ext:deno_node/diagnostics_channel.js",
+  );
+const childProcessChannel = createDiagnosticsChannel("child_process");
+const childProcessSpawnChannel = tracingChannel("child_process.spawn");
 const lazyDgram = core.createLazyLoader("node:dgram");
 const lazyDgramInternal = () =>
   core.loadExtScript("ext:deno_node/internal/dgram.ts");
@@ -236,6 +242,13 @@ class ChildProcess extends EventEmitter {
 
   constructor() {
     super();
+
+    // 'child_process' channel fires once per ChildProcess construction, before
+    // spawn(). cluster.fork() / cp.fork() / cp.spawn() all flow through here,
+    // so a single publish site covers every entry point.
+    if (childProcessChannel.hasSubscribers) {
+      childProcessChannel.publish({ process: this });
+    }
   }
 
   /**
@@ -266,6 +279,13 @@ class ChildProcess extends EventEmitter {
       throw new ERR_INVALID_ARG_TYPE("options.file", "string", file);
     }
 
+    // 'child_process.spawn' tracingChannel: publish start before invoking the
+    // platform spawn. #spawnInternal publishes end on success or error on
+    // synchronous spawn failures (ENOENT/EACCES/EPERM) itself, because it
+    // catches and handles the failure rather than re-throwing.
+    if (childProcessSpawnChannel.hasSubscribers) {
+      childProcessSpawnChannel.start.publish({ process: this, options });
+    }
     this.#spawnInternal(file, args || [], options);
   }
 
@@ -564,6 +584,12 @@ class ChildProcess extends EventEmitter {
           nextTick(flushStdio, this);
         });
       })();
+
+      // Synchronous spawn succeeded. Publish 'child_process.spawn'.end so the
+      // tracing channel mirrors Node's "end XOR error" semantics.
+      if (childProcessSpawnChannel.hasSubscribers) {
+        childProcessSpawnChannel.end.publish({ process: this });
+      }
     } catch (err) {
       const { Readable, Writable } = lazyStream();
       let e = err;
@@ -571,8 +597,37 @@ class ChildProcess extends EventEmitter {
         // args.slice(1) to exclude argv0 (prepended by normalizeSpawnArguments)
         e = _createSpawnError("ENOENT", command, args.slice(1));
       } else if (e instanceof Deno.errors.PermissionDenied) {
-        // Node.js throws EPERM synchronously for uid/gid permission errors.
-        throw _createSpawnError("EPERM", command, args.slice(1));
+        // Node distinguishes two failure modes that Deno collapses into
+        // PermissionDenied:
+        //   * setuid/setgid refused by the kernel -> EPERM, thrown sync,
+        //     matching `process_handle_init` in libuv.
+        //   * execve() refused because the target isn't executable -> EACCES,
+        //     emitted asynchronously on the child's 'error' event (see Node's
+        //     test-diagnostics-channel-child-process EACCES branch).
+        // Tell them apart by whether uid/gid were requested.
+        if (uid != null || gid != null) {
+          if (childProcessSpawnChannel.hasSubscribers) {
+            const epermErr = _createSpawnError(
+              "EPERM",
+              command,
+              args.slice(1),
+            );
+            childProcessSpawnChannel.error.publish({
+              process: this,
+              error: epermErr,
+            });
+            throw epermErr;
+          }
+          throw _createSpawnError("EPERM", command, args.slice(1));
+        }
+        e = _createSpawnError("EACCES", command, args.slice(1));
+      }
+
+      // Publish 'child_process.spawn'.error for the non-rethrow cases (ENOENT
+      // and other Deno spawn failures that turn into an async 'error' event
+      // on the child). Subscribers see the synthesized Node-style error.
+      if (childProcessSpawnChannel.hasSubscribers) {
+        childProcessSpawnChannel.error.publish({ process: this, error: e });
       }
 
       // Set up stdio streams even when spawn fails (Node.js creates pipes

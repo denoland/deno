@@ -127,7 +127,9 @@ const { debuglog } = core.loadExtScript(
 type DuplexOptions = any;
 type BufferEncoding = any;
 type Abortable = any;
-const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
+const { channel, tracingChannel } = core.loadExtScript(
+  "ext:deno_node/diagnostics_channel.js",
+);
 const {
   registerActiveHandle,
   unregisterActiveHandle,
@@ -351,6 +353,7 @@ const _noop = (_arrayBuffer: Uint8Array, _nread: number): undefined => {
 
 const netClientSocketChannel = channel("net.client.socket");
 const netServerSocketChannel = channel("net.server.socket");
+const netServerListenChannel = tracingChannel("net.server.listen");
 
 function _toNumber(x: unknown): number | false {
   return (x = Number(x)) >= 0 ? (x as number) : false;
@@ -1514,6 +1517,12 @@ Socket.prototype.connect = function (...args) {
     throw new ERR_MISSING_ARGS(["options", "port", "path"]);
   }
 
+  if (netClientSocketChannel.hasSubscribers) {
+    netClientSocketChannel.publish({
+      socket: this,
+    });
+  }
+
   if (this.write !== Socket.prototype.write) {
     this.write = Socket.prototype.write;
   }
@@ -2141,16 +2150,13 @@ function connect(...args: unknown[]) {
   debug("createConnection", normalized);
   const socket = new Socket(options);
 
-  if (netClientSocketChannel.hasSubscribers) {
-    netClientSocketChannel.publish({
-      socket,
-    });
-  }
-
   if (options.timeout) {
     socket.setTimeout(options.timeout);
   }
 
+  // `Socket.prototype.connect` publishes `net.client.socket` so that all
+  // entry points (net.connect, net.createConnection, new net.Socket().connect,
+  // tls.connect via TLSSocket extending Socket) emit exactly once.
   return socket.connect(normalized);
 }
 
@@ -2450,12 +2456,18 @@ function _createServerHandle(
 }
 
 function _emitErrorNT(server: Server, err: Error) {
+  if (netServerListenChannel.hasSubscribers) {
+    netServerListenChannel.error.publish({ server, error: err });
+  }
   server.emit("error", err);
 }
 
 function _emitListeningNT(server: Server) {
   // Ensure handle hasn't closed
   if (server._handle) {
+    if (netServerListenChannel.hasSubscribers) {
+      netServerListenChannel.asyncEnd.publish({ server });
+    }
     server.emit("listening");
   }
 }
@@ -2725,6 +2737,16 @@ Server.prototype.listen = function (...args: unknown[]) {
 
   if (cb !== null) {
     this.once("listening", cb);
+  }
+
+  // The 'net.server.listen' tracingChannel publishes the user-visible
+  // listen() options. Doing it here (after _normalizeArgs but before any
+  // pre-existing-handle short-circuits return) lets subscribers see the same
+  // options the caller passed in (including ad-hoc fields like
+  // `customOption` used by test-diagnostics-channel-net to verify the
+  // payload is the original options object).
+  if (netServerListenChannel.hasSubscribers) {
+    netServerListenChannel.asyncStart.publish({ server: this, options });
   }
 
   const backlogFromArgs: number =
