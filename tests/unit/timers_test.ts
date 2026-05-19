@@ -721,6 +721,15 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "AbortSignal.timeout() with large delay does not abort immediately",
+  fn: async () => {
+    const signal = AbortSignal.timeout(2 ** 53 - 1);
+    await delay(50);
+    assert(!signal.aborted);
+  },
+});
+
 // Regression test for https://github.com/denoland/deno/issues/19866
 Deno.test({
   name: "regression for #19866",
