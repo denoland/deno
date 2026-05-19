@@ -7,9 +7,10 @@ use aws_lc_rs::rand::SystemRandom;
 use aws_lc_rs::signature::EcdsaKeyPair;
 use aws_lc_rs::signature::KeyPair;
 use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD_NO_PAD;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::prelude::BASE64_STANDARD;
 use deno_core::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -572,8 +573,10 @@ struct JwtSubject<'a> {
 fn extract_jwt_subject(token: &str) -> Result<String, AnyError> {
   let parts: Vec<&str> = token.split('.').collect();
 
-  let payload = parts[1];
-  let payload = STANDARD_NO_PAD.decode(payload)?;
+  let payload = parts.get(1).context("OIDC token is missing JWT payload")?;
+  let payload = URL_SAFE_NO_PAD
+    .decode(payload)
+    .context("Failed to decode OIDC token JWT payload")?;
 
   let subject: JwtSubject = serde_json::from_slice(&payload)?;
   match subject.iss {
@@ -719,9 +722,13 @@ async fn testify(
 mod tests {
   use std::env;
 
+  use base64::Engine as _;
+  use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
   use super::ProvenanceAttestation;
   use super::Subject;
   use super::SubjectDigest;
+  use super::extract_jwt_subject;
 
   // TODO(dsherret): use sys_traits in the implementation so that this can
   // be properly tested without polluting the process environment
@@ -764,5 +771,28 @@ mod tests {
     );
     assert_eq!(slsa.subject[0].name, "jsr:@divy/sdl2@0.0.1");
     assert_eq!(slsa.subject[0].digest.sha256, "yourmom");
+  }
+
+  #[test]
+  fn extract_jwt_subject_decodes_base64_url_payload() {
+    let payload = format!(
+      concat!(
+        r#"{{"iss":"https://token.actions.githubusercontent.com","#,
+        r#""sub":"repo:denoland/deno:ref:refs/heads/main","#,
+        r#""pad":"xx","workflow":"{} CI"}}"#
+      ),
+      '\u{1f4e6}',
+    );
+    let payload = URL_SAFE_NO_PAD.encode(payload);
+    assert!(
+      payload.contains('-') || payload.contains('_'),
+      "payload should require the URL-safe base64 alphabet"
+    );
+    let token = format!("unused.{}.unused", payload);
+
+    assert_eq!(
+      extract_jwt_subject(&token).unwrap(),
+      "repo:denoland/deno:ref:refs/heads/main"
+    );
   }
 }
