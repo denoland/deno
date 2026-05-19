@@ -1407,8 +1407,14 @@ Server.prototype.setTicketKeys = function setTicketKeys(keys) {
     );
   }
   if (keys.byteLength !== 48) {
-    throw new Error("Session ticket keys must be a 48-byte buffer");
+    throw new RangeError(
+      `The value of "keys.byteLength" is out of range. It must be 48. Received ${keys.byteLength}`,
+    );
   }
+  // TODO(#33963): propagate to the TLS backend so already-running
+  // listeners actually rotate their session-ticket keys. Today this
+  // only stores the bytes; new listeners pick them up through
+  // options.ticketKeys.
   this._ticketKeys = Buffer.from(keys.buffer, keys.byteOffset, keys.byteLength);
 };
 
