@@ -365,6 +365,8 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       let unstable_features =
         shared.resolve_unstable_features(feature_checker.as_ref());
 
+      let has_module_deny_rules = args.permissions.has_module_deny_rules();
+
       let services = WebWorkerServiceOptions {
         deno_rt_native_addon_loader: shared.deno_rt_native_addon_loader.clone(),
         root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
@@ -499,7 +501,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         enable_raw_imports: shared.options.enable_raw_imports,
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(
           &shared.sys,
-        ),
+        ) || has_module_deny_rules,
       };
 
       let has_resource_limits = args.resource_limits.is_some();
@@ -658,6 +660,8 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
     });
 
+    let has_module_deny_rules = permissions.has_module_deny_rules();
+
     let services = WorkerServiceOptions {
       deno_rt_native_addon_loader: shared.deno_rt_native_addon_loader.clone(),
       root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
@@ -739,7 +743,8 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       stdio,
       skip_op_registration: shared.options.skip_op_registration,
       enable_raw_imports: shared.options.enable_raw_imports,
-      enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(&shared.sys),
+      enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(&shared.sys)
+        || has_module_deny_rules,
       unconfigured_runtime,
     };
 
@@ -908,6 +913,86 @@ impl LibMainWorker {
     self.worker.run_napi_ref_finalizers()
   }
 
+  /// Compile and instantiate each `--deny-module-isolated` specifier in
+  /// its own sibling `v8::Context` with no `Deno` binding, registering a
+  /// bridge in the main `ModuleMap` so subsequent imports of the
+  /// specifier resolve to the isolated module's exports. Must run
+  /// *before* the main module is loaded so the bridge is in place when
+  /// V8 resolves the import.
+  pub fn apply_isolated_modules(&mut self) -> Result<(), CoreError> {
+    let specifiers: std::sync::Arc<Vec<String>> = {
+      let op_state = self.worker.js_runtime.op_state();
+      let op_state = op_state.borrow();
+      let perms = op_state
+        .try_borrow::<deno_runtime::deno_permissions::PermissionsContainer>();
+      match perms {
+        Some(p) => p.module_isolated_specifiers().clone(),
+        None => return Ok(()),
+      }
+    };
+    if specifiers.is_empty() {
+      return Ok(());
+    }
+    for raw in specifiers.iter() {
+      let url = match deno_core::ModuleSpecifier::parse(raw) {
+        Ok(u) => u,
+        // Treat anything that isn't a valid URL as a path relative to cwd.
+        Err(_) => {
+          #[allow(
+            clippy::disallowed_methods,
+            reason = "CLI-level resolution of a user-supplied flag value"
+          )]
+          let cwd = std::env::current_dir().map_err(|err| {
+            CoreError::from(deno_error::JsErrorBox::generic(format!(
+              "--deny-module-isolated: cannot read cwd: {err}"
+            )))
+          })?;
+          let abs = cwd.join(raw);
+          #[allow(
+            clippy::disallowed_methods,
+            reason = "CLI-level conversion of a user path"
+          )]
+          let url = deno_core::ModuleSpecifier::from_file_path(&abs).map_err(
+            |_| {
+              CoreError::from(deno_error::JsErrorBox::generic(format!(
+                "--deny-module-isolated: cannot convert '{raw}' to a file URL"
+              )))
+            },
+          )?;
+          url
+        }
+      };
+      let source = if url.scheme() == "file" {
+        let path = deno_path_util::url_to_file_path(&url).map_err(|err| {
+          CoreError::from(deno_error::JsErrorBox::generic(format!(
+            "--deny-module-isolated: cannot resolve '{raw}' to a path: {err}"
+          )))
+        })?;
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "CLI-level source read for a user-supplied flag value"
+        )]
+        let src = std::fs::read_to_string(&path).map_err(|err| {
+          CoreError::from(deno_error::JsErrorBox::generic(format!(
+            "--deny-module-isolated: cannot read '{}': {err}",
+            path.display()
+          )))
+        })?;
+        src
+      } else {
+        return Err(CoreError::from(deno_error::JsErrorBox::generic(format!(
+          "--deny-module-isolated: only file: URLs are supported (got '{raw}')"
+        ))));
+      };
+      self
+        .worker
+        .js_runtime
+        .install_isolated_module(url.to_string(), source)
+        .map_err(CoreError::from)?;
+    }
+    Ok(())
+  }
+
   pub async fn execute_main_module(&mut self) -> Result<(), CoreError> {
     let id = self.worker.preload_main_module(&self.main_module).await?;
     self.worker.evaluate_module(id).await?;
@@ -963,6 +1048,11 @@ impl LibMainWorker {
 
     // Run preload modules first if they were defined
     self.execute_preload_modules().await?;
+
+    // Install --deny-module-isolated specifiers in sibling v8::Contexts
+    // before the main module starts loading so that import resolution
+    // finds the bridges.
+    self.apply_isolated_modules()?;
 
     self.execute_main_module().await?;
     self.worker.dispatch_load_event()?;

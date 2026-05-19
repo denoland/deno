@@ -137,6 +137,12 @@ impl CliMainWorker {
 
     // Run preload modules first if they were defined
     self.worker.execute_preload_modules().await?;
+
+    // Install --deny-module-isolated specifiers in sibling v8::Contexts
+    // before the main module starts loading so that import resolution
+    // finds the bridges.
+    self.worker.apply_isolated_modules()?;
+
     self.execute_main_module().await?;
     self.worker.dispatch_load_event()?;
 

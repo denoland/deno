@@ -1,0 +1,1 @@
+[WILDCARD]NotCapable: module 'file://[WILDLINE]helper.ts' is restricted by --deny-module='helper.ts:[WILDLINE]'[WILDCARD]

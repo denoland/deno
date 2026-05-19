@@ -49,7 +49,6 @@ use deno_runtime::CpuProfilerConfig;
 use deno_runtime::FeatureChecker;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::RealFs;
-use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_tls::rustls::RootCertStore;
@@ -1046,12 +1045,9 @@ impl CliFactory {
       .root_permissions_container
       .get_or_try_init(|| {
         let desc_parser = self.permission_desc_parser()?.clone();
-        let permissions = Permissions::from_options(
-          desc_parser.as_ref(),
-          &self.cli_options()?.permissions_options()?,
-        )?;
-
-        Ok(PermissionsContainer::new(desc_parser, permissions))
+        let opts = self.cli_options()?.permissions_options()?;
+        let container = PermissionsContainer::from_options(desc_parser, &opts)?;
+        Ok(container)
       })
   }
 

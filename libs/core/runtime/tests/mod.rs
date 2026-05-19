@@ -19,6 +19,7 @@ mod error;
 mod jsrealm;
 mod misc;
 mod ops;
+mod sibling_context;
 mod snapshot;
 
 #[derive(Copy, Clone)]
