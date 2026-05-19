@@ -14,6 +14,7 @@ import {
   Node,
   Project,
   ScriptTarget,
+  SourceFile,
   SyntaxKind,
   VariableDeclaration,
 } from "jsr:@ts-morph/ts-morph@27.0.2";
@@ -260,9 +261,51 @@ function modifySourceFiles() {
         ),
       );
     }
+
+    // Detect Deno's web fetch surface via `Blob` instead of `onmessage`.
+    // `onmessage` only exists on `globalThis` in worker contexts, so the
+    // upstream heuristic falls back to undici's types in regular Deno code
+    // and breaks LSP type checks against `RequestInit` etc. (denoland/deno#33012).
+    if (sourceFile.getBaseName() === "globals.d.cts") {
+      rewriteFetchGlobalsDiscriminator(sourceFile);
+    }
   }
 
   project.saveSync();
+}
+
+function rewriteFetchGlobalsDiscriminator(sourceFile: SourceFile) {
+  const startMarker = "// #region Fetch and friends\n";
+  const endMarker = "// #endregion Fetch and friends\n";
+  const text = sourceFile.getFullText();
+  const start = text.indexOf(startMarker);
+  const end = text.indexOf(endMarker);
+  if (start === -1 || end === -1) {
+    return;
+  }
+  const blockStart = start + startMarker.length;
+  const blockBody = text.slice(blockStart, end);
+  if (!blockBody.includes("{ onmessage: any }")) {
+    return;
+  }
+  const rewritten = blockBody
+    .replace(
+      "// Conditional type aliases, used at the end of this file.\n" +
+        "// Will either be empty if lib.dom (or lib.webworker) is included, " +
+        "or the undici version otherwise.\n",
+      "// Conditional type aliases, used at the end of this file.\n" +
+        "// Deno's web globals don't expose `onmessage` on `globalThis` " +
+        "outside of\n" +
+        "// worker contexts, so detect Deno's web fetch surface via `Blob` " +
+        "instead.\n" +
+        "type _HasWebFetchGlobals = typeof globalThis extends { Blob: any } " +
+        "? true : false;\n",
+    )
+    .replaceAll(
+      "typeof globalThis extends { onmessage: any }",
+      "_HasWebFetchGlobals extends true",
+    );
+  sourceFile.replaceText([blockStart, end], rewritten);
 }
 
 function handleInterface(decl: InterfaceDeclaration) {
