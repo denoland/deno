@@ -1070,8 +1070,8 @@
     "parallel/test-dns-resolveany-bad-ancount.js": {},
     "parallel/test-dns-resolvens-typeerror.js": {},
     "parallel/test-dns-resolver-max-timeout.js": {
-      "flaky": true,
-      "windows": false // incredibly flaky in CI
+      "ignore": true,
+      "reason": "Flaky: timing-sensitive DNS timeout assertion; see #34176"
     },
     "parallel/test-dns-resolvesrv.js": {},
     "parallel/test-dns-resolvesrv-econnrefused.js": {},
