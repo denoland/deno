@@ -1,0 +1,5 @@
+TS2307 [ERROR]: Import "missing-package" not a dependency
+  hint: If you want to use the npm package, try running `deno add npm:missing-package`
+    at file:///[WILDLINE]/unsuppressed.ts:1:19
+
+error: Type checking failed.
