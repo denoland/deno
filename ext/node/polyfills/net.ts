@@ -2456,18 +2456,12 @@ function _createServerHandle(
 }
 
 function _emitErrorNT(server: Server, err: Error) {
-  if (netServerListenChannel.hasSubscribers) {
-    netServerListenChannel.error.publish({ server, error: err });
-  }
   server.emit("error", err);
 }
 
 function _emitListeningNT(server: Server) {
   // Ensure handle hasn't closed
   if (server._handle) {
-    if (netServerListenChannel.hasSubscribers) {
-      netServerListenChannel.asyncEnd.publish({ server });
-    }
     server.emit("listening");
   }
 }
@@ -2570,6 +2564,14 @@ function _setupListenHandle(
 
     if (typeof rval === "number") {
       const error = uvExceptionWithHostPort(rval, "listen", address, port);
+      // Publish to the `net.server.listen` tracingChannel synchronously
+      // (before the deferred error emit) so subscribers see the result
+      // even if a caller immediately unsubscribes after `Server.listen()`
+      // returns -- mirrors Node, which the test-diagnostics-channel-net
+      // failing-listen subscribe/unsubscribe pattern relies on.
+      if (netServerListenChannel.hasSubscribers) {
+        netServerListenChannel.error.publish({ server: this, error });
+      }
       nextTick(_emitErrorNT, this, error);
 
       return;
@@ -2603,6 +2605,12 @@ function _setupListenHandle(
     this._handle = null;
     unregisterActiveHandle(this);
 
+    // Synchronous channel publish (see comment above on the bind/handle
+    // failure path) -- the deferred `_emitErrorNT` runs after callers have
+    // already unsubscribed.
+    if (netServerListenChannel.hasSubscribers) {
+      netServerListenChannel.error.publish({ server: this, error: ex });
+    }
     defaultTriggerAsyncIdScope(
       this[asyncIdSymbol],
       nextTick,
@@ -2622,6 +2630,11 @@ function _setupListenHandle(
     this.unref();
   }
 
+  // Synchronous asyncEnd publish so subscribers that unsubscribe right
+  // after `Server.listen()` returns still observe the success result.
+  if (netServerListenChannel.hasSubscribers) {
+    netServerListenChannel.asyncEnd.publish({ server: this });
+  }
   defaultTriggerAsyncIdScope(
     this[asyncIdSymbol],
     nextTick,
