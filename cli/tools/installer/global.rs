@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -22,6 +23,7 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm_installer::PackagesAllowedScripts;
 use deno_path_util::resolve_url_or_path;
+use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use jsonc_parser::cst::CstInputValue;
@@ -424,6 +426,55 @@ async fn setup_config_dir(
   jsr_lockfile_fetcher: Option<&JsrLockfileFetcher<'_>>,
   force: bool,
 ) -> Result<(), AnyError> {
+  fn collect_workspace_dep_reqs(
+    value: &serde_json::Value,
+    dep_reqs: &mut BTreeMap<String, String>,
+  ) {
+    match value {
+      serde_json::Value::Object(map) => {
+        for (key, value) in map {
+          if key == "dependencies"
+            && let serde_json::Value::Array(dependencies) = value
+          {
+            for dependency in dependencies {
+              let Some(dependency) = dependency.as_str() else {
+                continue;
+              };
+              let Ok(req) = JsrDepPackageReq::from_str(dependency) else {
+                continue;
+              };
+              dep_reqs
+                .entry(req.req.name.to_string())
+                .or_insert_with(|| req.to_string());
+            }
+          }
+          collect_workspace_dep_reqs(value, dep_reqs);
+        }
+      }
+      serde_json::Value::Array(values) => {
+        for value in values {
+          collect_workspace_dep_reqs(value, dep_reqs);
+        }
+      }
+      _ => {}
+    }
+  }
+
+  fn lockfile_workspace_deps(
+    lockfile_content: &str,
+  ) -> BTreeMap<String, String> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(lockfile_content)
+    else {
+      return BTreeMap::new();
+    };
+    let Some(workspace) = value.get("workspace") else {
+      return BTreeMap::new();
+    };
+    let mut dep_reqs = BTreeMap::new();
+    collect_workspace_dep_reqs(workspace, &mut dep_reqs);
+    dep_reqs
+  }
+
   fn resolve_implicit_node_modules_dir(
     flags: &Flags,
     module_url: &Url,
@@ -495,6 +546,23 @@ async fn setup_config_dir(
       CstInputValue::String(mode.as_str().to_string()),
     );
   }
+
+  // fetch deno.lock from JSR if this is a JSR package
+  let fetched_lockfile_content = if !flags.no_lock
+    && let Some(fetcher) = jsr_lockfile_fetcher
+  {
+    fetcher.fetch_lockfile(&bin_name_and_url.module_url).await
+  } else {
+    None
+  };
+  if let Some(lockfile_content) = &fetched_lockfile_content {
+    let imports = config_obj.object_value_or_set("imports");
+    for (key, value) in lockfile_workspace_deps(lockfile_content) {
+      if imports.get(&key).is_none() {
+        imports.append(&key, CstInputValue::String(value));
+      }
+    }
+  }
   fs::write(dir.join("deno.json"), config.to_string())?;
 
   // write package.json for npm specifiers
@@ -511,12 +579,7 @@ async fn setup_config_dir(
     )?;
   }
 
-  // fetch deno.lock from JSR if this is a JSR package
-  if !flags.no_lock
-    && let Some(fetcher) = jsr_lockfile_fetcher
-    && let Some(lockfile_content) =
-      fetcher.fetch_lockfile(&bin_name_and_url.module_url).await
-  {
+  if let Some(lockfile_content) = fetched_lockfile_content {
     fs::write(dir.join("deno.lock"), lockfile_content)?;
   }
 
