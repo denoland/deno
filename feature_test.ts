@@ -485,6 +485,116 @@ win.bind("traySetTooltip", async (text: unknown) => {
   return { ok: true };
 });
 
+// ── Notifications (Web Notifications API) ──────────────────────────────────
+
+// `Notification` is the standard Web Notifications API. The desktop runtime
+// routes it through the backend's native UN/snore/winrt path. Permission
+// state is cached on `Notification.permission`; `requestPermission()` is the
+// async spec entry point. Events: show/click/close/error.
+
+// Track active notifications by a JS-side id so the UI can close them. The
+// underlying instance is what owns the resource — we just keep references.
+const activeNotifications = new Map<number, Notification>();
+let notificationCounter = 0;
+
+win.bind("notificationPermission", async () => {
+  // `Notification.permission` is a cached synchronous getter. Hit
+  // `navigator.permissions.query` so we observe the *current* OS state
+  // (this also refreshes the cache). The query path additionally lets
+  // us distinguish "unsupported" (process not bundled / wrong bundle id)
+  // from a real "denied" — the Notifications spec collapses those, but
+  // the permissions API surfaces the distinction via the "unsupported"
+  // wef status before it gets remapped.
+  const status = await (navigator as unknown as {
+    permissions: {
+      query: (d: { name: string }) => Promise<{ state: string }>;
+    };
+  }).permissions.query({ name: "notifications" });
+  return {
+    cached: Notification.permission,
+    permissionsApi: status.state,
+  };
+});
+
+win.bind("notificationRequestPermission", async () => {
+  try {
+    const perm = await Notification.requestPermission();
+    return { ok: true, permission: perm };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+});
+
+win.bind(
+  "notificationShow",
+  // deno-lint-ignore no-explicit-any
+  async (opts: any) => {
+    const o = (opts ?? {}) as {
+      title?: string;
+      body?: string;
+      tag?: string;
+      requireInteraction?: boolean;
+      silent?: boolean;
+      icon?: string;
+    };
+    const title = o.title ?? "Desktop Feature Test";
+    try {
+      const n = new Notification(title, {
+        body: o.body ?? "Notification body text",
+        tag: o.tag,
+        requireInteraction: o.requireInteraction === true,
+        silent: o.silent === true,
+        icon: o.icon,
+      });
+      const localId = ++notificationCounter;
+      activeNotifications.set(localId, n);
+      // Wire up the four spec events. We log to the same event log used by
+      // the rest of the dashboard so the report picks them up automatically.
+      n.addEventListener("show", () => {
+        pushEvent({ type: "notification:show", localId, title: n.title });
+      });
+      n.addEventListener("click", () => {
+        pushEvent({ type: "notification:click", localId, title: n.title });
+      });
+      n.addEventListener("close", () => {
+        pushEvent({ type: "notification:close", localId, title: n.title });
+        activeNotifications.delete(localId);
+      });
+      n.addEventListener("error", () => {
+        pushEvent({ type: "notification:error", localId, title: n.title });
+        activeNotifications.delete(localId);
+      });
+      return {
+        ok: true,
+        localId,
+        notificationId: (n as unknown as { notificationId: number })
+          .notificationId,
+        title: n.title,
+        permission: Notification.permission,
+      };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  },
+);
+
+win.bind("notificationCloseLast", async () => {
+  const keys = [...activeNotifications.keys()];
+  if (keys.length === 0) return { ok: false, reason: "no active notification" };
+  const id = keys[keys.length - 1];
+  const n = activeNotifications.get(id)!;
+  n.close();
+  activeNotifications.delete(id);
+  return { ok: true, localId: id };
+});
+
+win.bind("notificationCloseAll", async () => {
+  for (const n of activeNotifications.values()) n.close();
+  const count = activeNotifications.size;
+  activeNotifications.clear();
+  return { ok: true, closed: count };
+});
+
 // ── Secondary window (multi-window) ─────────────────────────────────────────
 
 // Exercises issue #4 (HMR all-windows reload tracks every window) and
@@ -872,6 +982,27 @@ const html = `<!DOCTYPE html>
       <div id="tray-log" class="log">Click the tray icon (or its menu) once created.</div>
     </div>
 
+    <!-- Notifications (Web Notifications API) -->
+    <div class="card">
+      <h2>Notifications <span class="count" id="notif-count">0</span></h2>
+      <div class="btn-row">
+        <button onclick="notifRequestPermission()">Request Permission</button>
+        <button onclick="notifQueryPermission()">Query Permission</button>
+        <span id="notif-perm" style="color:#888;align-self:center;margin-left:6px">perm: ?</span>
+      </div>
+      <div class="btn-row">
+        <button onclick="notifShow()">Show</button>
+        <button onclick="notifShowPersistent()">Show (requireInteraction)</button>
+        <button onclick="notifShowSilent()">Show (silent)</button>
+      </div>
+      <div class="btn-row">
+        <button onclick="notifShowTagged()">Show (tag=&quot;reuse&quot;)</button>
+        <button onclick="notifCloseLast()">Close Last</button>
+        <button onclick="notifCloseAll()">Close All</button>
+      </div>
+      <div id="notif-log" class="log">Click Request Permission first, then Show. Events: show/click/close/error.</div>
+    </div>
+
     <!-- Secondary Window (multi-window) -->
     <div class="card">
       <h2>Secondary Window <span class="count" id="secondwin-count">0</span></h2>
@@ -1048,6 +1179,15 @@ const html = `<!DOCTYPE html>
 
       renderEvents("secondwin-log", events, ["secondwin:close"]);
       updateCount("secondwin-count", ["secondwin:close"]);
+
+      renderEvents("notif-log", events, [
+        "notification:show", "notification:click",
+        "notification:close", "notification:error"
+      ]);
+      updateCount("notif-count", [
+        "notification:show", "notification:click",
+        "notification:close", "notification:error"
+      ]);
     } catch (_) {}
   }
 
@@ -1129,6 +1269,93 @@ const html = `<!DOCTYPE html>
     const r = await bindings.traySetTooltip(text);
     document.getElementById("tray-log").textContent =
       "setTooltip(" + JSON.stringify(text) + ") => " + JSON.stringify(r);
+  }
+
+  // ── Notifications ────────────────────────────────────────────────────────
+
+  function setNotifPerm(p) {
+    document.getElementById("notif-perm").textContent = "perm: " + p;
+  }
+
+  async function notifQueryPermission() {
+    const p = await bindings.notificationPermission();
+    // p = { cached, permissionsApi }. The permissionsApi field is what
+    // we just read from wef; "cached" is what Notification.permission
+    // returns synchronously (only updates after a successful query/request).
+    setNotifPerm(p.permissionsApi);
+    document.getElementById("notif-log").textContent =
+      "Notification.permission (cached) => " + p.cached + "\\n" +
+      "navigator.permissions.query => " + p.permissionsApi +
+      (p.permissionsApi === "denied"
+        ? "\\n[hint] 'denied' here can also mean the process isn't bundled" +
+          " (running outside .app on macOS); see notes below"
+        : "");
+  }
+  async function notifRequestPermission() {
+    document.getElementById("notif-log").textContent =
+      "Requesting permission...";
+    const r = await bindings.notificationRequestPermission();
+    if (r.ok) setNotifPerm(r.permission);
+    document.getElementById("notif-log").textContent =
+      "requestPermission => " + JSON.stringify(r);
+  }
+  async function notifShow() {
+    const r = await bindings.notificationShow({
+      title: "Desktop Feature Test",
+      body: "Hello from the Notification API @ " + new Date().toLocaleTimeString(),
+    });
+    if (r.ok && r.permission) setNotifPerm(r.permission);
+    document.getElementById("notif-log").textContent =
+      "show => " + JSON.stringify(r);
+  }
+  async function notifShowPersistent() {
+    const r = await bindings.notificationShow({
+      title: "Persistent Notification",
+      body: "requireInteraction=true — won't auto-dismiss",
+      requireInteraction: true,
+    });
+    if (r.ok && r.permission) setNotifPerm(r.permission);
+    document.getElementById("notif-log").textContent =
+      "show(persistent) => " + JSON.stringify(r);
+  }
+  async function notifShowSilent() {
+    const r = await bindings.notificationShow({
+      title: "Silent Notification",
+      body: "silent=true — no sound",
+      silent: true,
+    });
+    if (r.ok && r.permission) setNotifPerm(r.permission);
+    document.getElementById("notif-log").textContent =
+      "show(silent) => " + JSON.stringify(r);
+  }
+  async function notifShowTagged() {
+    // Two notifications with the same tag — on platforms that honor it,
+    // the second should replace the first instead of stacking.
+    const r1 = await bindings.notificationShow({
+      title: "Tagged #1",
+      body: "tag='reuse' — should be replaced by the next one",
+      tag: "reuse",
+    });
+    await new Promise(r => setTimeout(r, 600));
+    const r2 = await bindings.notificationShow({
+      title: "Tagged #2",
+      body: "tag='reuse' — replaces #1 on platforms that honor tags",
+      tag: "reuse",
+    });
+    if (r2.ok && r2.permission) setNotifPerm(r2.permission);
+    document.getElementById("notif-log").textContent =
+      "show(tag) #1 => " + JSON.stringify(r1) + "\\n" +
+      "show(tag) #2 => " + JSON.stringify(r2);
+  }
+  async function notifCloseLast() {
+    const r = await bindings.notificationCloseLast();
+    document.getElementById("notif-log").textContent =
+      "closeLast => " + JSON.stringify(r);
+  }
+  async function notifCloseAll() {
+    const r = await bindings.notificationCloseAll();
+    document.getElementById("notif-log").textContent =
+      "closeAll => " + JSON.stringify(r);
   }
 
   // ── Secondary window ─────────────────────────────────────────────────────
@@ -1236,7 +1463,9 @@ const html = `<!DOCTYPE html>
       "menuclick", "contextmenuclick", "close",
       "dockmenuclick", "dockreopen",
       "trayclick", "traydblclick", "traymenuclick",
-      "secondwin:close"
+      "secondwin:close",
+      "notification:show", "notification:click",
+      "notification:close", "notification:error"
     ];
     const missing = allEventTypes.filter(t => !observedEvents.includes(t));
     if (missing.length > 0) {
