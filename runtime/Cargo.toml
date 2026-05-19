@@ -29,6 +29,8 @@ name = "deno_runtime"
 path = "lib.rs"
 
 [dependencies]
+boxed_error.workspace = true
+color-print.workspace = true
 deno_ast = { workspace = true, optional = true }
 deno_bundle_runtime.workspace = true
 deno_cache.workspace = true
@@ -65,15 +67,13 @@ deno_webgpu.workspace = true
 deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
-node_resolver = { workspace = true, features = ["sync"] }
-boxed_error.workspace = true
-color-print.workspace = true
 encoding_rs.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
 libc.workspace = true
 log.workspace = true
+node_resolver = { workspace = true, features = ["sync"] }
 notify.workspace = true
 once_cell.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }
