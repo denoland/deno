@@ -76,7 +76,7 @@ function getReport(_err) {
     nativeStack: todoUndefined,
     resourceUsage: todoUndefined,
     uvthreadResourceUsage: todoUndefined,
-    libuv: todoUndefined,
+    libuv: [],
     workers: [],
     environmentVariables: todoUndefined,
     userLimits: todoUndefined,
