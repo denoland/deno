@@ -4158,6 +4158,36 @@ impl PermissionsContainer {
       })
     } else {
       let path = self.descriptor_parser.parse_special_file_descriptor(path)?;
+      // Re-check deny rules against the canonicalized (symlink-resolved) path.
+      // The initial check used the unresolved symlink path; without this a symlink
+      // inside an allowed directory can point to a --deny-* protected path and
+      // bypass the denial entirely.
+      if path.canonicalized {
+        let mut inner = self.inner.lock();
+        let resolved =
+          self.descriptor_parser.parse_path_query(path.path.clone())?;
+        if access_kind.is_read() {
+          let desc = resolved.clone().into_read();
+          if matches!(
+            inner.read.query(Some(&desc)),
+            PermissionState::Denied | PermissionState::DeniedPartial
+          ) {
+            inner
+              .read
+              .check(&desc, api_name)
+              .map_err(ignored_to_not_found)?;
+          }
+        }
+        if access_kind.is_write() {
+          let desc = resolved.into_write();
+          if matches!(
+            inner.write.query(Some(&desc)),
+            PermissionState::Denied | PermissionState::DeniedPartial
+          ) {
+            inner.write.check(&desc, api_name)?;
+          }
+        }
+      }
       self.check_special_file(path, access_kind, api_name)
     }
   }

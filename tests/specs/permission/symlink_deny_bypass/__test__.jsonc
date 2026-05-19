@@ -1,0 +1,31 @@
+{
+  "tempDir": true,
+  "tests": {
+    "write_bypass": {
+      "if": "unix",
+      "steps": [
+        {
+          "args": "run --allow-read --allow-write setup.ts",
+          "output": "setup done\n"
+        },
+        {
+          "args": "run --allow-read=allowed --allow-write=allowed --deny-write=denied write_via_link.ts",
+          "output": "write_via_link.out"
+        }
+      ]
+    },
+    "read_bypass": {
+      "if": "unix",
+      "steps": [
+        {
+          "args": "run --allow-read --allow-write setup.ts",
+          "output": "setup done\n"
+        },
+        {
+          "args": "run --allow-read=allowed --deny-read=denied read_via_link.ts",
+          "output": "read_via_link.out"
+        }
+      ]
+    }
+  }
+}
