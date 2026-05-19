@@ -31,7 +31,7 @@ pub mod device;
 pub mod error;
 mod pipeline_layout;
 mod query_set;
-mod queue;
+pub mod queue;
 mod render_bundle;
 mod render_pass;
 mod render_pipeline;
