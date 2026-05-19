@@ -13,5 +13,7 @@ description = "Compile-test runner for deno_ops"
 path = "lib.rs"
 
 [dev-dependencies]
+deno_core.workspace = true
+deno_error.workspace = true
 deno_ops.workspace = true
 trybuild = "1.0.104"
