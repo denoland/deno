@@ -51,6 +51,34 @@ async function patchFile(path, patcher) {
   await Deno.writeTextFile(path, patched);
 }
 
+async function patchReadme() {
+  const sourceSection = `## Source
+
+The canonical source is considered to be https://github.com/gfx-rs/wgpu@trunk/deno_webgpu,
+even though they are maintained separately but synced occasionally using the script
+https://github.com/denoland/deno/blob/main/tools/wgpu_sync.js
+`;
+
+  await patchFile(
+    join(TARGET_DIR, "README.md"),
+    (data) => {
+      // Drop any existing Source section so re-runs stay idempotent.
+      const stripped = data.replace(
+        /\n## Source\n[\s\S]*?(?=\n## |\n*$)/,
+        "",
+      );
+      // Insert before the first subsequent "## " heading, or append.
+      const headingMatch = stripped.match(/\n## /);
+      if (headingMatch) {
+        const idx = headingMatch.index + 1;
+        return stripped.slice(0, idx) + sourceSection + "\n" +
+          stripped.slice(idx);
+      }
+      return stripped.replace(/\n*$/, "\n\n") + sourceSection;
+    },
+  );
+}
+
 async function patchCargo() {
   const vDenoWebgpu = await denoWebgpuVersion();
   await patchFile(
@@ -58,10 +86,9 @@ async function patchCargo() {
     (data) =>
       data
         .replace(/^version = .*/m, `version = "${vDenoWebgpu}"`)
-        .replace(
-          /^repository.workspace = true/m,
-          `repository = "https://github.com/gfx-rs/wgpu"`,
-        )
+        .replace(/^authors = .*/m, `authors.workspace = true`)
+        .replace(/^license = .*/m, `license.workspace = true`)
+        .replace(/^repository = .*/m, `repository.workspace = true`)
         .replace(
           /^serde = { workspace = true, features = ["derive"] }/m,
           `serde.workspace = true`,
@@ -85,6 +112,7 @@ async function main() {
   await clearTargetDir();
   await checkoutUpstream();
   await patchCargo();
+  await patchReadme();
   await bash(join(ROOT_PATH, "tools", "format.js"));
 }
 
