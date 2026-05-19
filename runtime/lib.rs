@@ -55,6 +55,7 @@ pub use worker_bootstrap::WorkerExecutionMode;
 pub use worker_bootstrap::WorkerLogLevel;
 
 pub mod shared;
+pub mod source_highlight;
 pub use deno_features::FeatureChecker;
 pub use deno_features::UNSTABLE_ENV_VAR_NAMES;
 pub use deno_features::UNSTABLE_FEATURES;
