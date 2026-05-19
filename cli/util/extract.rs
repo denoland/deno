@@ -423,8 +423,33 @@ impl Visit for ExportCollector {
   }
 
   fn visit_named_export(&mut self, named_export: &ast::NamedExport) {
-    // ExportCollector does not handle re-exports
+    // For re-exports of the form `export { foo } from "./other.ts"` the
+    // names listed in the specifiers are still part of *this* module's
+    // export surface, so doc-test snippets should be able to use them
+    // without an explicit import (denoland/deno#30550). Namespace and
+    // default re-exports are still skipped.
     if named_export.src.is_some() {
+      fn get_atom(export_name: &ast::ModuleExportName) -> Atom {
+        match export_name {
+          ast::ModuleExportName::Ident(ident) => ident.sym.clone(),
+          ast::ModuleExportName::Str(s) => s.value.to_atom_lossy().into_owned(),
+        }
+      }
+      for specifier in &named_export.specifiers {
+        if let ast::ExportSpecifier::Named(named) = specifier {
+          let name = match &named.exported {
+            Some(exported) => get_atom(exported),
+            None => get_atom(&named.orig),
+          };
+          // `export { default } from "./other.ts"` re-exports the
+          // default through this module — there's no new *named* export
+          // surface to inject.
+          if name.as_ref() == "default" {
+            continue;
+          }
+          self.named_exports.insert(name);
+        }
+      }
       return;
     }
 
@@ -1739,11 +1764,12 @@ export function foo(a: number | boolean): boolean | string {
         named_expected: atom_set!("foo"),
         default_expected: None,
       },
-      // The collector deliberately does not handle re-exports, because from
-      // doc reader's perspective, an example code would become hard to follow
-      // if it uses re-exported items (as opposed to normal, non-re-exported
-      // items that would look verbose if an example code explicitly imports
-      // them).
+      // Re-exports of the form `export { name } from "./other.ts"` are
+      // collected so doc-test snippets that reference them resolve
+      // (denoland/deno#30550). Namespace re-exports (`export *`,
+      // `export * as ns`) and `export { default }` re-exports are still
+      // skipped because we'd have to follow the re-export chain to know
+      // their actual exported names.
       Test {
         input: r#"
 export * from "./module1.ts";
@@ -1752,7 +1778,7 @@ export { name2, name3 as N3 } from "./module3.js";
 export { default } from "./module4.ts";
 export { default as myDefault } from "./module5.ts";
 "#,
-        named_expected: atom_set!(),
+        named_expected: atom_set!("name2", "N3", "myDefault"),
         default_expected: None,
       },
       Test {
