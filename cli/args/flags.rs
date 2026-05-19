@@ -4022,7 +4022,24 @@ fn deno_x_shim_name_parser(value: &str) -> Result<DenoXShimName, String> {
 fn x_subcommand() -> Command {
   command(
     "x",
-    cstr!("Execute a binary from npm or jsr, like npx"),
+    cstr!("Execute a binary from npm or jsr, like npx.
+
+  <p(245)>deno x npm:create-vite my-app</>
+  <p(245)>deno x jsr:@std/http/file-server</>
+
+JSR packages do not use the package.json bin field. When you run
+<c>deno x jsr:<<package>></>, Deno resolves the JSR specifier through the
+package's exports field in deno.json or jsr.json, then runs the resolved module.
+
+To make a JSR package runnable with <c>deno x</>, publish a module that can run
+as a script and expose it from exports. For example, a package with
+<c>\"exports\": { \"./cli\": \"./cli.ts\" }</> can be run with:
+
+  <p(245)>deno x jsr:@scope/tool/cli</>
+
+If the package is only meant to be used as a command, point the root export at
+the CLI module instead, for example <c>\"exports\": \"./cli.ts\"</>, so
+<c>deno x jsr:@scope/tool</> runs that module."),
     UnstableArgsConfig::ResolutionAndRuntime,
   )
   .defer(|cmd| {
