@@ -39,6 +39,7 @@ pub enum PluginHostRequest {
   LoadPlugins {
     specifiers: Vec<ModuleSpecifier>,
     exclude_rules: Option<Vec<String>>,
+    include_rules: Option<Vec<String>>,
     tx: oneshot::Sender<PluginHostResponse>,
   },
   Run {
@@ -267,9 +268,12 @@ impl PluginHost {
         PluginHostRequest::LoadPlugins {
           specifiers,
           exclude_rules,
+          include_rules,
           tx,
         } => {
-          let r = self.load_plugins(specifiers, exclude_rules).await;
+          let r = self
+            .load_plugins(specifiers, exclude_rules, include_rules)
+            .await;
           let _ = tx.send(PluginHostResponse::LoadPlugin(r));
         }
         PluginHostRequest::Run {
@@ -368,6 +372,7 @@ impl PluginHost {
     &mut self,
     plugin_specifiers: Vec<ModuleSpecifier>,
     exclude: Option<Vec<String>>,
+    include: Option<Vec<String>>,
   ) -> Result<Vec<PluginInfo>, AnyError> {
     let mut load_futures = Vec::with_capacity(plugin_specifiers.len());
     for specifier in plugin_specifiers {
@@ -413,6 +418,15 @@ impl PluginHost {
 
         v8::Array::new_with_elements(scope, elems.as_slice()).into()
       });
+    let include_v8: v8::Local<v8::Value> =
+      include.map_or(v8::null(scope).into(), |v| {
+        let elems = v
+          .iter()
+          .map(|item| v8::String::new(scope, item).unwrap().into())
+          .collect::<Vec<_>>();
+
+        v8::Array::new_with_elements(scope, elems.as_slice()).into()
+      });
 
     let undefined = v8::undefined(scope);
 
@@ -426,7 +440,7 @@ impl PluginHost {
       }
       arr
     };
-    let args = &[local_handles.into(), exclude_v8];
+    let args = &[local_handles.into(), exclude_v8, include_v8];
 
     log::debug!("Installing lint plugins...");
 
@@ -454,6 +468,7 @@ impl PluginHostProxy {
     &self,
     specifiers: Vec<ModuleSpecifier>,
     exclude_rules: Option<Vec<String>>,
+    include_rules: Option<Vec<String>>,
   ) -> Result<(), AnyError> {
     let (tx, rx) = oneshot::channel();
     self
@@ -461,6 +476,7 @@ impl PluginHostProxy {
       .send(PluginHostRequest::LoadPlugins {
         specifiers,
         exclude_rules,
+        include_rules,
         tx,
       })
       .await?;
@@ -522,9 +538,12 @@ pub async fn create_runner_and_load_plugins(
   plugin_specifiers: Vec<ModuleSpecifier>,
   logger: PluginLogger,
   exclude: Option<Vec<String>>,
+  include: Option<Vec<String>>,
 ) -> Result<PluginHostProxy, AnyError> {
   let host_proxy = PluginHost::create(logger)?;
-  host_proxy.load_plugins(plugin_specifiers, exclude).await?;
+  host_proxy
+    .load_plugins(plugin_specifiers, exclude, include)
+    .await?;
   Ok(host_proxy)
 }
 

@@ -290,6 +290,7 @@ impl WorkspaceLinter {
     self.file_count += paths.len();
 
     let exclude = lint_options.rules.exclude.clone();
+    let include = lint_options.rules.include.clone();
 
     let plugin_specifiers = lint_options.plugins.clone();
     let lint_rules = self
@@ -332,6 +333,7 @@ impl WorkspaceLinter {
         plugin_specifiers,
         logger,
         exclude,
+        include,
       )
       .await?;
       plugin_runner = Some(Arc::new(runner));
