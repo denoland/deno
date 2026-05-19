@@ -2993,6 +2993,8 @@ dependencies = [
 name = "deno_ops_compile_test_runner"
 version = "0.2.0"
 dependencies = [
+ "deno_core",
+ "deno_error",
  "deno_ops",
  "trybuild",
 ]
