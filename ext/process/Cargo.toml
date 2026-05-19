@@ -26,7 +26,6 @@ deno_subprocess_windows.workspace = true
 libc.workspace = true
 log.workspace = true
 memchr.workspace = true
-pin-project-lite.workspace = true
 rand.workspace = true
 serde.workspace = true
 simd-json.workspace = true

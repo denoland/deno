@@ -66,22 +66,16 @@ deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
 node_resolver = { workspace = true, features = ["sync"] }
-
-async-trait.workspace = true
 boxed_error.workspace = true
 color-print.workspace = true
 encoding_rs.workspace = true
-fastwebsockets.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
-hyper-util.workspace = true
-indexmap.workspace = true
 libc.workspace = true
 log.workspace = true
 notify.workspace = true
 once_cell.workspace = true
-regex.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }
 same-file.workspace = true
 serde.workspace = true
@@ -97,7 +91,6 @@ unicode-normalization.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["commapi", "handleapi", "knownfolders", "mswsock", "objbase", "processthreadsapi", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winnt", "winuser", "winsock2"] }
-ntapi = "0.4.0"
 windows-sys.workspace = true
 
 [target.'cfg(unix)'.dependencies]
