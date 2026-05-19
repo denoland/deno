@@ -130,24 +130,31 @@ fn write_runtime_preamble(f: &mut std::fs::File) {
 //
 // With `residual_sidecar` OFF (default, dev convenience): the same blob
 // is baked via `include_bytes!`; the bytes end up resident but `cargo
-// run` works without ceremony.
+// run` works without ceremony. We deliberately do NOT consult libsui in
+// this mode: on Intel macOS, `libsui::find_section` is name-blind (it
+// searches the file backward for the libsui sentinel and returns whatever
+// was appended last), so a `deno compile`-produced binary — which appends
+// a `d3n0l4nd` section — would have our `find_section("dnclbk")` return
+// the user's compiled JS instead of None, and the residual table would
+// index out of bounds.
 #[cfg(not(feature = "residual_sidecar"))]
 static FALLBACK_BLOB: &[u8] =
   include_bytes!(concat!(env!("OUT_DIR"), "/RESIDUAL_BLOB.bin"));
 
+#[cfg(not(feature = "residual_sidecar"))]
+fn residual_blob() -> &'static [u8] {{
+  FALLBACK_BLOB
+}}
+
+#[cfg(feature = "residual_sidecar")]
 fn residual_blob() -> &'static [u8] {{
   static BLOB: std::sync::LazyLock<&'static [u8]> =
-    std::sync::LazyLock::new(|| {{
-      match libsui::find_section("dnclbk") {{
-        Ok(Some(bytes)) => bytes,
-        #[cfg(not(feature = "residual_sidecar"))]
-        _ => FALLBACK_BLOB,
-        #[cfg(feature = "residual_sidecar")]
-        other => panic!(
-          "residual_sidecar feature requires a libsui 'dnclbk' section in the binary; \
-           run `sui dnclbk <bin> RESIDUAL_BLOB.bin <out>` after linking (got {{other:?}})",
-        ),
-      }}
+    std::sync::LazyLock::new(|| match libsui::find_section("dnclbk") {{
+      Ok(Some(bytes)) => bytes,
+      other => panic!(
+        "residual_sidecar feature requires a libsui 'dnclbk' section in the binary; \
+         run `sui dnclbk <bin> RESIDUAL_BLOB.bin <out>` after linking (got {{other:?}})",
+      ),
     }});
   *BLOB
 }}
