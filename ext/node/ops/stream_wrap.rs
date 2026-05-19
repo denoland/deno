@@ -254,7 +254,6 @@ impl LibUvStreamWrap {
     self.fd.set(fd);
   }
 
-  #[cfg(windows)]
   pub(crate) fn get_fd(&self) -> i32 {
     self.fd.get()
   }
