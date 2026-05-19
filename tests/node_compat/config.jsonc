@@ -768,10 +768,7 @@
     "parallel/test-crypto-keygen-sync.js": {},
     "parallel/test-crypto-key-objects.js": {},
     "parallel/test-crypto-scrypt.js": {},
-    "parallel/test-crypto-key-objects-messageport.js": {
-      "exitCode": 1,
-      "reason": "KeyObject structured clone (MessagePort serialization) not yet implemented"
-    },
+    "parallel/test-crypto-key-objects-messageport.js": {},
     "parallel/test-crypto-key-objects-to-crypto-key.js": {
       "exitCode": 1,
       "output": "[WILDCARD]NotSupportedError: Unrecognized algorithm name[WILDCARD]",
