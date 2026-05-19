@@ -45,6 +45,7 @@ futures.workspace = true
 indexmap.workspace = true
 inventory = "0.3.21"
 libc.workspace = true
+num-bigint.workspace = true
 parking_lot.workspace = true
 percent-encoding.workspace = true
 pin-project.workspace = true
