@@ -196,6 +196,38 @@ fn stdio_fd(fd: i32) -> StdFile {
   unsafe { StdFile::from_raw_fd(fd) }
 }
 
+#[cfg(unix)]
+fn inherited_extra_stdio_fd(fd: i32) -> Option<StdFile> {
+  if fd < 3 {
+    return None;
+  }
+  // SAFETY: dup validates the descriptor and gives FdTable its own handle.
+  let dup_fd = unsafe { libc::dup(fd) };
+  if dup_fd == -1 {
+    return None;
+  }
+  // SAFETY: dup_fd is a fresh descriptor owned by the returned file.
+  Some(unsafe { StdFile::from_raw_fd(dup_fd) })
+}
+
+#[cfg(unix)]
+fn register_inherited_extra_stdio_fds(fd_table: &mut FdTable) {
+  let Ok(fds) = std::env::var("DENO_EXTRA_STDIO_FDS") else {
+    return;
+  };
+  for fd in fds.split(',').filter_map(|fd| fd.parse::<i32>().ok()) {
+    if fd_table.contains(fd) {
+      continue;
+    }
+    if let Some(file) = inherited_extra_stdio_fd(fd) {
+      fd_table.register_inherited_extra_stdio(
+        fd,
+        Rc::new(StdFileResourceInner::file(file, None)) as Rc<dyn fs::File>,
+      );
+    }
+  }
+}
+
 #[cfg(windows)]
 fn stdio_fd(fd: i32) -> StdFile {
   let std_handle = match fd {
@@ -296,6 +328,9 @@ deno_core::extension!(deno_io,
         stderr: child_stderr,
       });
     }
+
+    #[cfg(unix)]
+    register_inherited_extra_stdio_fds(&mut fd_table);
 
     state.put(fd_table);
   },
