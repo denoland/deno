@@ -112,7 +112,8 @@ fn typecheck_declarations_unstable() {
   output.assert_exit_code(0);
 }
 
-#[test]
+// Flaky: depends on an external network fetch to docs.deno.com.
+#[test(flaky)]
 fn ts_no_recheck_on_redirect() {
   let test_context = TestContext::default();
   let check_command = test_context.new_command().args_vec([
