@@ -138,6 +138,12 @@ pub struct Options {
   pub no_legacy_abort: bool,
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ServeOptions {
+  /// HTTP/1 keep-alive idle timeout in milliseconds.
+  pub keep_alive_timeout: Option<u64>,
+}
+
 #[cfg(not(feature = "default_property_extractor"))]
 deno_core::extension!(
   deno_http,

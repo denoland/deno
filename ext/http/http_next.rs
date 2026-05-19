@@ -7,6 +7,7 @@ use std::future::poll_fn;
 use std::io;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::time::Duration;
 
 use bytes::Bytes;
 use bytes::BytesMut;
@@ -55,6 +56,7 @@ use hyper::service::HttpService;
 use hyper::service::service_fn;
 use hyper::upgrade::OnUpgrade;
 use hyper_util::rt::TokioIo;
+use hyper_util::rt::TokioTimer;
 use once_cell::sync::Lazy;
 use smallvec::SmallVec;
 use tokio::io::AsyncReadExt;
@@ -64,6 +66,7 @@ use tokio::net::TcpStream;
 use super::fly_accept_encoding;
 use crate::LocalExecutor;
 use crate::Options;
+use crate::ServeOptions;
 use crate::compressible::is_content_compressible;
 use crate::extract_network_stream;
 use crate::network_buffered_stream::NetworkStreamPrefixCheck;
@@ -913,10 +916,19 @@ fn serve_http11_unconditional(
   io: impl HttpServeStream,
   svc: impl HttpService<Incoming, ResBody = HttpRecordResponse> + 'static,
   cancel: Rc<CancelHandle>,
+  serve_options: ServeOptions,
   http1_builder_hook: Option<fn(http1::Builder) -> http1::Builder>,
 ) -> impl Future<Output = Result<(), hyper::Error>> + 'static {
   let mut builder = http1::Builder::new();
   builder.keep_alive(true).writev(*USE_WRITEV);
+  if let Some(keep_alive_timeout) = serve_options
+    .keep_alive_timeout
+    .filter(|timeout| *timeout > 0)
+  {
+    builder
+      .timer(TokioTimer::new())
+      .header_read_timeout(Duration::from_millis(keep_alive_timeout));
+  }
 
   if let Some(http1_builder_hook) = http1_builder_hook {
     builder = http1_builder_hook(builder);
@@ -968,6 +980,7 @@ async fn serve_http2_autodetect(
   svc: impl HttpService<Incoming, ResBody = HttpRecordResponse> + 'static,
   cancel: Rc<CancelHandle>,
   options: Options,
+  serve_options: ServeOptions,
 ) -> Result<(), HttpNextError> {
   let prefix = NetworkStreamPrefixCheck::new(io, HTTP2_PREFIX);
   let (matches, io) =
@@ -977,9 +990,15 @@ async fn serve_http2_autodetect(
       .await
       .map_err(HttpNextError::Hyper)
   } else {
-    serve_http11_unconditional(io, svc, cancel, options.http1_builder_hook)
-      .await
-      .map_err(HttpNextError::Hyper)
+    serve_http11_unconditional(
+      io,
+      svc,
+      cancel,
+      serve_options,
+      options.http1_builder_hook,
+    )
+    .await
+    .map_err(HttpNextError::Hyper)
   }
 }
 
@@ -1004,6 +1023,7 @@ fn serve_https(
   lifetime: HttpLifetime,
   callback: Rc<ServerCallback>,
   options: Options,
+  serve_options: ServeOptions,
 ) -> JoinHandle<Result<(), HttpNextError>> {
   let HttpLifetime {
     server_state,
@@ -1020,6 +1040,7 @@ fn serve_https(
       server_state.clone(),
       move |record| dispatch_to_js(&callback, record),
       legacy_abort,
+      serve_options.keep_alive_timeout,
     )
   });
   spawn(
@@ -1042,12 +1063,20 @@ fn serve_https(
           io,
           svc,
           listen_cancel_handle,
+          serve_options,
           options.http1_builder_hook,
         )
         .await
         .map_err(HttpNextError::Hyper)
       } else {
-        serve_http2_autodetect(io, svc, listen_cancel_handle, options).await
+        serve_http2_autodetect(
+          io,
+          svc,
+          listen_cancel_handle,
+          options,
+          serve_options,
+        )
+        .await
       }
     }
     .try_or_cancel(connection_cancel_handle),
@@ -1060,6 +1089,7 @@ fn serve_http(
   lifetime: HttpLifetime,
   callback: Rc<ServerCallback>,
   options: Options,
+  serve_options: ServeOptions,
   wait_for_connection: bool,
 ) -> JoinHandle<Result<(), HttpNextError>> {
   let HttpLifetime {
@@ -1077,6 +1107,7 @@ fn serve_http(
       server_state.clone(),
       move |record| dispatch_to_js(&callback, record),
       legacy_abort,
+      serve_options.keep_alive_timeout,
     )
   });
   let connection_cancel_handle_for_outer = connection_cancel_handle.clone();
@@ -1108,6 +1139,7 @@ fn serve_http(
               io,
               svc,
               listen_cancel_handle,
+              serve_options,
               options.http1_builder_hook,
             )
             .await
@@ -1133,6 +1165,7 @@ fn serve_http_on<HTTP>(
   lifetime: HttpLifetime,
   callback: Rc<ServerCallback>,
   options: Options,
+  serve_options: ServeOptions,
   wait_for_connection: bool,
 ) -> JoinHandle<Result<(), HttpNextError>>
 where
@@ -1150,11 +1183,17 @@ where
       lifetime,
       callback,
       options,
+      serve_options,
       wait_for_connection,
     ),
-    NetworkStream::Tls(conn) => {
-      serve_https(conn, connection_properties, lifetime, callback, options)
-    }
+    NetworkStream::Tls(conn) => serve_https(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      serve_options,
+    ),
     #[cfg(unix)]
     NetworkStream::Unix(conn) => serve_http(
       conn,
@@ -1162,6 +1201,7 @@ where
       lifetime,
       callback,
       options,
+      serve_options,
       wait_for_connection,
     ),
     #[cfg(any(
@@ -1175,6 +1215,7 @@ where
       lifetime,
       callback,
       options,
+      serve_options,
       wait_for_connection,
     ),
     NetworkStream::Tunnel(conn) => serve_http(
@@ -1183,6 +1224,7 @@ where
       lifetime,
       callback,
       options,
+      serve_options,
       wait_for_connection,
     ),
     #[cfg(windows)]
@@ -1192,6 +1234,7 @@ where
       lifetime,
       callback,
       options,
+      serve_options,
       wait_for_connection,
     ),
   }
@@ -1264,6 +1307,7 @@ pub fn op_http_serve<'scope, HTTP>(
   isolate: &mut v8::Isolate,
   state: Rc<RefCell<OpState>>,
   #[smi] listener_rid: ResourceId,
+  #[smi] keep_alive_timeout: Option<u32>,
   callback: v8::Local<'scope, v8::Function>,
 ) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
@@ -1285,6 +1329,9 @@ where
     let state = state.borrow();
     *state.borrow::<Options>()
   };
+  let serve_options = ServeOptions {
+    keep_alive_timeout: keep_alive_timeout.map(u64::from),
+  };
 
   let listen_properties_clone: HttpListenProperties = listen_properties.clone();
   let handle = spawn(async move {
@@ -1298,6 +1345,7 @@ where
         lifetime.clone(),
         callback.clone(),
         options,
+        serve_options,
         false,
       );
     }
@@ -1324,6 +1372,7 @@ pub fn op_http_serve_on<'scope, HTTP>(
   isolate: &mut v8::Isolate,
   state: Rc<RefCell<OpState>>,
   #[smi] connection_rid: ResourceId,
+  #[smi] keep_alive_timeout: Option<u32>,
   callback: v8::Local<'scope, v8::Function>,
 ) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
@@ -1349,6 +1398,9 @@ where
     resource.lifetime(),
     callback,
     options,
+    ServeOptions {
+      keep_alive_timeout: keep_alive_timeout.map(u64::from),
+    },
     true,
   );
 
