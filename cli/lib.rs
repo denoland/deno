@@ -4,6 +4,7 @@ mod args;
 mod cache;
 mod cdp;
 mod factory;
+mod fast_check;
 mod file_fetcher;
 mod graph_container;
 mod graph_util;

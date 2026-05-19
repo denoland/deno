@@ -20,6 +20,7 @@ use deno_terminal::colors;
 use crate::args::Flags;
 use crate::args::PackFlags;
 use crate::factory::CliFactory;
+use crate::fast_check::strip_decorators;
 use crate::graph_util::CreatePublishGraphOptions;
 use crate::util::display::human_size;
 
@@ -939,7 +940,7 @@ fn extract_dts(
         &Default::default(),
         &emit_options,
       ) {
-        Ok(emitted) => return Some(emitted.text),
+        Ok(emitted) => return Some(strip_decorators(&emitted.text)),
         Err(e) => {
           // No fall-through to fast_check.source: it's simplified
           // TypeScript, not valid .d.ts. We return None so the .d.ts

@@ -41,6 +41,7 @@ use thiserror::Error;
 use crate::args::CompilerOptions;
 use crate::args::TypeCheckMode;
 use crate::cache::ModuleInfoCache;
+use crate::fast_check::strip_decorators_arc;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
@@ -1182,7 +1183,7 @@ pub fn load_for_tsc<T: LoadContent, M: Mapper>(
           Some(
             module
               .fast_check_module()
-              .map(|m| T::from_arc_str(m.source.clone()))
+              .map(|m| T::from_arc_str(strip_decorators_arc(&m.source)))
               .unwrap_or(T::from_arc_str(module.source.text.clone())),
           )
         }

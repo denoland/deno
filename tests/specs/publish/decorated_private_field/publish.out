@@ -1,0 +1,7 @@
+Check [WILDCARD]mod.ts
+Checking for slow types in the public API...
+Check [WILDCARD]mod.ts
+Simulating publish of @example/decorators@1.0.0 with files:
+   [WILDCARD]deno.json (103B)
+   [WILDCARD]mod.ts (199B)
+Success Dry run complete
