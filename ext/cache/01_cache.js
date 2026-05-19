@@ -23,6 +23,8 @@ const {
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const {
+  getHeaderList,
+  getRequestUrl,
   Request,
   RequestPrototype,
   toInnerRequest,
@@ -141,7 +143,7 @@ class Cache {
       innerRequest = toInnerRequest(new Request(request));
     }
     // Step 4.
-    const reqUrl = new URL(innerRequest.url());
+    const reqUrl = new URL(getRequestUrl(innerRequest));
     if (reqUrl.protocol !== "http:" && reqUrl.protocol !== "https:") {
       throw new TypeError(
         `Request url protocol must be 'http:' or 'https:': received '${reqUrl.protocol}'`,
@@ -197,7 +199,7 @@ class Cache {
         // deno-lint-ignore prefer-primordials
         requestUrl: reqUrl.toString(),
         responseHeaders: innerResponse.headerList,
-        requestHeaders: innerRequest.headerList,
+        requestHeaders: getHeaderList(innerRequest),
         responseStatus: innerResponse.status,
         responseStatusText: innerResponse.statusMessage,
         responseRid: rid,
@@ -296,7 +298,7 @@ class Cache {
           cacheId: this[_id],
           // deno-lint-ignore prefer-primordials
           requestUrl: url.toString(),
-          requestHeaders: innerRequest.headerList,
+          requestHeaders: getHeaderList(innerRequest),
         },
       );
       if (matchResult) {
