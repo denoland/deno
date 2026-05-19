@@ -398,13 +398,17 @@ where
 /// Convert the color space of the image from the ICC profile to sRGB.
 pub(crate) fn to_srgb_from_icc_profile(
   image: DynamicImage,
-  icc_profile: Option<Vec<u8>>,
+  icc_profile: Option<&Vec<u8>>,
 ) -> Result<DynamicImage, ImageError> {
   match icc_profile {
     // If there is no color profile information, return the image as is.
+    // The CSS color spec instructs that untagged images should be treated as sRGB.
+    // https://www.w3.org/TR/css-color-4/#untagged
     None => Ok(image),
-    Some(icc_profile) => match Profile::new_icc(&icc_profile) {
+    Some(icc_profile) => match Profile::new_icc(icc_profile) {
       // If the color profile information is invalid, return the image as is.
+      // The CSS color spec instructs that "images" with invalid profiles should be treated as sRGB.
+      // https://www.w3.org/TR/css-color-4/#tagged-images
       Err(_) => Ok(image),
       Ok(icc_profile) => {
         let srgb_icc_profile = Profile::new_srgb();
@@ -495,6 +499,7 @@ pub(crate) fn to_srgb_from_icc_profile(
   }
 }
 
+// TODO: we could remove this when the `createImageBitmap` will be implemented by Rust entirely.
 /// Create an image buffer from raw bytes.
 fn process_image_buffer_from_raw_bytes<P, S>(
   width: u32,
