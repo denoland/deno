@@ -2293,9 +2293,10 @@
     "parallel/test-inspector-heapdump.js": {},
     "parallel/test-inspector-module.js": {},
 
-    // TODO(bartlomieju): depends on `Network` CDP domain
-    // "parallel/test-inspector-network-http.js": {},
-    // "parallel/test-inspector-network-arbitrary-data.js": {},
+    "parallel/test-inspector-network-http.js": {
+      "extraDenoArgs": ["--unsafely-ignore-certificate-errors"],
+      "reason": "Hits a local HTTPS server with a self-signed cert via node:https. The upstream test relies on a custom https Agent with rejectUnauthorized:false propagated to Deno's TLS layer; until that wiring is in place, disable cert validation only for this test."
+    },
     "parallel/test-inspector-emit-protocol-event.js": {},
 
     "parallel/test-inspector-esm.js": {},
@@ -2312,8 +2313,6 @@
     // "parallel/test-inspector-wait.mjs": {},
     // "parallel/test-inspector-break-when-eval.js": {},
 
-    // TODO(bartlomieju): depends on 'internal/deps/undici/undici' internal module
-    // "parallel/test-inspector-network-fetch.js": {},
     "parallel/test-http2-allow-http1-upgrade-ws.js": {},
     "parallel/test-inspector-multisession-ws.js": {},
     "parallel/test-inspector-not-blocked-on-idle.js": {},
