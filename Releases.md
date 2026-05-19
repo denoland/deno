@@ -4396,7 +4396,7 @@ Read more: http://deno.com/blog/v1.44
 - fix(lsp): respect types dependencies for tsc roots (#23825)
 - fix(lsp): show reference code lens on methods (#23804)
 - fix(node): error when throwing `FS_EISDIR` (#23829)
-- fix(node): seperate worker module cache (#23634)
+- fix(node): separate worker module cache (#23634)
 - fix(node): stub `AsyncResource.emitDestroy()` (#23802)
 - fix(node): wrong `worker_threads.terminate()` return value (#23803)
 - fix(npm): handle null fields in npm registry JSON (#23785)
