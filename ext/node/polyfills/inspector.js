@@ -4,7 +4,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core, primordials } = __bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   op_base64_encode_from_buffer,
   op_get_extras_binding_object,
@@ -303,6 +303,22 @@ const Network = {
     broadcastToFrontend("Network.webSocketHandshakeResponseReceived", params),
   webSocketClosed: (params) =>
     broadcastToFrontend("Network.webSocketClosed", params),
+};
+
+// Bridge for other extensions (fetch, websocket, http) to emit Network.*
+// inspector events without depending on ext/node directly. Populated when
+// node:inspector is loaded; ext/fetch and friends look it up lazily on
+// `internals.__inspectorNetwork`.
+let networkRequestIdCounter = 0;
+internals.__inspectorNetwork = {
+  isEnabled: () => op_inspector_enabled(),
+  nextRequestId: () => `node-network-event-${++networkRequestIdCounter}`,
+  requestWillBeSent: Network.requestWillBeSent,
+  responseReceived: Network.responseReceived,
+  loadingFinished: Network.loadingFinished,
+  loadingFailed: Network.loadingFailed,
+  dataReceived: Network.dataReceived,
+  dataSent: Network.dataSent,
 };
 
 const DOMStorage = {

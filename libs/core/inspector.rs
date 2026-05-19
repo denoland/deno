@@ -140,7 +140,7 @@ fn extend_capped(target: &mut Vec<u8>, bytes: &[u8]) {
 /// Charset string matching Node's `request_charset == "utf-8"` check
 /// in `network_agent.cc`. Anything else is treated as binary.
 fn is_utf8_charset(charset: Option<&str>) -> bool {
-  charset == Some("utf-8")
+  charset.is_some_and(|c| c.eq_ignore_ascii_case("utf-8"))
 }
 
 fn encode_b64(bytes: &[u8]) -> String {
