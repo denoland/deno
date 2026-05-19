@@ -393,6 +393,41 @@ impl ReplSession {
     Ok(repl_session)
   }
 
+  pub async fn import_and_expose_module(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<(), AnyError> {
+    // Resolve and cache npm packages before loading
+    if let Some(npm_installer) = &self.npm_installer
+      && let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier)
+    {
+      npm_installer
+        .add_and_cache_package_reqs(&[npm_ref.into_inner().req])
+        .await?;
+    }
+    let id = self.worker.preload_side_module(specifier).await?;
+    self.worker.evaluate_module(id).await?;
+    self.worker.run_event_loop(false).await?;
+    let namespace = self.worker.js_runtime.get_module_namespace(id)?;
+    {
+      deno_core::scope!(scope, self.worker.js_runtime);
+      let namespace = deno_core::v8::Local::new(scope, namespace);
+      let global = scope.get_current_context().global(scope);
+      if let Some(names) =
+        namespace.get_own_property_names(scope, Default::default())
+      {
+        for i in 0..names.length() {
+          if let Some(key) = names.get_index(scope, i)
+            && let Some(value) = namespace.get(scope, key)
+          {
+            global.set(scope, key, value);
+          }
+        }
+      }
+    }
+    Ok(())
+  }
+
   pub fn set_test_reporter_factory(
     &mut self,
     f: Box<dyn Fn() -> Box<dyn TestReporter>>,

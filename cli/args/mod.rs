@@ -698,6 +698,10 @@ impl CliOptions {
     Ok(modules)
   }
 
+  pub fn raw_preload_specifiers(&self) -> &[String] {
+    &self.flags.preload
+  }
+
   pub fn require_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
     if self.flags.require.is_empty() {
       return Ok(vec![]);
