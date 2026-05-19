@@ -53,6 +53,9 @@ Deno.test({ permissions: { ffi: false } }, function ffiNotCapable() {
     ptrView.getCString();
   }, Deno.errors.NotCapable);
   assertThrows(() => {
+    ptrView.getString(0);
+  }, Deno.errors.NotCapable);
+  assertThrows(() => {
     ptrView.getUint8();
   }, Deno.errors.NotCapable);
   assertThrows(() => {
@@ -114,6 +117,47 @@ Deno.test({ permissions: { ffi: true } }, function callWithError() {
   assertThrows(() => fnPointer.call());
   cb.close();
 });
+
+Deno.test(
+  { permissions: { ffi: true } },
+  function unsafePointerViewGetString() {
+    const decoder = new TextDecoder();
+    const bytes = Uint8Array.from([
+      ...new TextEncoder().encode("prefix"),
+      0x00,
+      ...new TextEncoder().encode("suffix"),
+      0xC0,
+      0xAF,
+    ]);
+    const pointer = Deno.UnsafePointer.of(bytes);
+    if (pointer === null) {
+      throw new Error("expected pointer for non-empty byte array");
+    }
+    const view = new Deno.UnsafePointerView(pointer);
+
+    assertEquals(view.getString(6), "prefix");
+    assertEquals(
+      view.getString(7),
+      decoder.decode(bytes.subarray(0, 7)),
+    );
+    assertEquals(
+      view.getString(bytes.byteLength),
+      decoder.decode(bytes),
+    );
+    assertEquals(
+      view.getString(6, 7),
+      decoder.decode(bytes.subarray(7, 13)),
+    );
+    assertEquals(
+      Deno.UnsafePointerView.getString(pointer, bytes.byteLength),
+      decoder.decode(bytes),
+    );
+    assertEquals(
+      Deno.UnsafePointerView.getString(pointer, 6, 7),
+      decoder.decode(bytes.subarray(7, 13)),
+    );
+  },
+);
 
 Deno.test(
   { permissions: { ffi: true }, ignore: true },
