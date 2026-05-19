@@ -183,6 +183,7 @@ pub async fn install_global(
     setup_config_dir(
       &name_and_url,
       &flags,
+      cli_options.initial_cwd(),
       &installation_dir,
       Some(&jsr_lockfile_fetcher),
       install_flags_global.force,
@@ -420,6 +421,7 @@ async fn install_global_compiled(
 async fn setup_config_dir(
   bin_name_and_url: &BinaryNameAndUrl,
   flags: &Flags,
+  cwd: &Path,
   installation_dir: &Path,
   jsr_lockfile_fetcher: Option<&JsrLockfileFetcher<'_>>,
   force: bool,
@@ -522,6 +524,10 @@ async fn setup_config_dir(
 
   // create cloned flags to run cache_top_level_deps
   let mut new_flags = flags.clone();
+  if let Some(import_map_path) = &flags.import_map_path {
+    let import_map_url = resolve_url_or_path(import_map_path, cwd)?;
+    new_flags.import_map_path = Some(import_map_url.to_string());
+  }
   new_flags.initial_cwd = Some(dir.clone());
   new_flags.node_modules_dir = flags.node_modules_dir;
   new_flags.internal.root_node_modules_dir_override =
@@ -1232,6 +1238,7 @@ mod tests {
     super::setup_config_dir(
       &binary_name_and_url,
       flags,
+      &cwd,
       &installation_dir,
       None,
       install_flags_global.force,
