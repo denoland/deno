@@ -121,8 +121,8 @@ impl PluginHostProxy {
 
 pub struct PluginHost {
   worker: MainWorker,
-  install_plugins_fn: Rc<v8::Global<v8::Function>>,
-  run_plugins_for_file_fn: Rc<v8::Global<v8::Function>>,
+  install_plugins_fn: v8::Global<v8::Function>,
+  run_plugins_for_file_fn: v8::Global<v8::Function>,
   rx: mpsc::Receiver<PluginHostRequest>,
 }
 
@@ -194,8 +194,8 @@ async fn create_plugin_runner_inner(
       run_plugins_for_file_fn_val.try_into().unwrap();
 
     (
-      Rc::new(v8::Global::new(scope, install_plugins_fn)),
-      Rc::new(v8::Global::new(scope, run_plugins_for_file_fn)),
+      v8::Global::new(scope, install_plugins_fn),
+      v8::Global::new(scope, run_plugins_for_file_fn),
     )
   };
 
@@ -344,7 +344,7 @@ impl PluginHost {
         .unwrap()
         .into();
     let run_plugins_for_file =
-      v8::Local::new(scope, &*self.run_plugins_for_file_fn);
+      v8::Local::new(scope, &self.run_plugins_for_file_fn);
     let undefined = v8::undefined(scope);
 
     let _run_plugins_result = {
@@ -402,8 +402,7 @@ impl PluginHost {
     }
 
     deno_core::scope!(scope, &mut self.worker.js_runtime);
-    let install_plugins_local =
-      v8::Local::new(scope, &*self.install_plugins_fn.clone());
+    let install_plugins_local = v8::Local::new(scope, &self.install_plugins_fn);
     let exclude_v8: v8::Local<v8::Value> =
       exclude.map_or(v8::null(scope).into(), |v| {
         let elems = v
