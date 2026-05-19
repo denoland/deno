@@ -574,6 +574,7 @@ let insideLoadHook = false;
 let utf8Decoder;
 let esmLoadLoopRunning = false;
 const requireResolveOptionsMarker = Symbol("require.resolve");
+const kSourceURL = Symbol("kSourceURL");
 
 function executeResolveHookChain(specifier, context, parent, isMain, options) {
   // Collect resolve hooks from hookEntries in LIFO order
@@ -831,7 +832,27 @@ function executeEsmLoadHookChain(fileUrl, context) {
       currentContext = { ...currentContext, ...ctx };
     }
     if (index >= loadHooks.length) {
-      // End of chain - signal fallthrough to Rust default loading
+      // End of chain - perform default load so user hooks calling
+      // nextLoad() receive the actual source they can transform.
+      if (StringPrototypeStartsWith(loadUrl, "node:")) {
+        return { source: null, format: "builtin", shortCircuit: true };
+      }
+      if (StringPrototypeStartsWith(loadUrl, "file://")) {
+        try {
+          const source = op_require_read_file(url.fileURLToPath(loadUrl));
+          return {
+            source,
+            format: currentContext?.format ?? undefined,
+            shortCircuit: true,
+          };
+        } catch {
+          // File isn't available synchronously (e.g. embedded in a compiled
+          // binary's eszip); fall through to Rust default loading.
+          return { source: null, shortCircuit: true };
+        }
+      }
+      // For other schemes (data:, http(s):, etc.) we cannot synchronously
+      // produce source here; fall through to Rust default loading.
       return { source: null, shortCircuit: true };
     }
     const hook = loadHooks[index++];
@@ -1525,11 +1546,13 @@ Module._load = function (request, parent, isMain) {
   }
 
   maybeEmitNativeModuleDeprecation(filename);
-  const mod = loadNativeModule(filename, request);
-  if (
-    mod
-  ) {
-    return mod.exports;
+  // A resolve hook that redirected `require('zlib')` to a file path must
+  // not silently fall back to the native module via the original request.
+  if (!SetPrototypeHas(cjsHookResolvedFilenames, filename)) {
+    const mod = loadNativeModule(filename, request);
+    if (mod) {
+      return mod.exports;
+    }
   }
   // Don't call updateChildren(), Module constructor already does.
   const module = cachedModule || new Module(filename, parent);
@@ -1630,9 +1653,8 @@ Module._resolveFilename = function (
     // observable.
     request !== parent?.filename
   ) {
-    const parentURL = parent?.filename
-      ? url.pathToFileURL(parent.filename).href
-      : undefined;
+    const parentURL = parent?.[kSourceURL] ??
+      (parent?.filename ? url.pathToFileURL(parent.filename).href : undefined);
     const context = {
       conditions: ["node", "require"],
       importAttributes: { __proto__: null },
@@ -2267,11 +2289,17 @@ Module._extensions[".node"] = function (module, filename) {
   );
 };
 
-function createRequireFromPath(filename) {
+function createRequireFromPath(filename, sourceURL) {
   const proxyPath = op_require_proxy_path(filename) ?? filename;
   const mod = new Module(proxyPath);
   mod.filename = proxyPath;
   mod.paths = Module._nodeModulePaths(mod.path);
+  if (sourceURL !== undefined) {
+    // Preserve the original URL (with query/hash) for resolve hooks'
+    // `context.parentURL`, which would otherwise lose those parts via
+    // pathToFileURL(filename).
+    mod[kSourceURL] = sourceURL;
+  }
   return makeRequireFunction(mod);
 }
 
@@ -2353,7 +2381,7 @@ function createRequire(filenameOrUrl) {
     );
   }
   const filename = op_require_as_file_path(fileUrlStr) ?? fileUrlStr;
-  return createRequireFromPath(filename);
+  return createRequireFromPath(filename, fileUrlStr);
 }
 
 function isBuiltin(moduleName) {
