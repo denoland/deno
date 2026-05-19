@@ -124,7 +124,18 @@ webidl.converters["DOMString or PerformanceMeasureOptions"] = (
   context,
   opts,
 ) => {
-  if (webidl.type(V) === "Object" && V !== null) {
+  // Per WebIDL union conversion (3.2.20): when the union includes a dictionary
+  // type, null and undefined are converted to that dictionary type (yielding
+  // its defaults) rather than being stringified.
+  if (V === null || V === undefined) {
+    return webidl.converters["PerformanceMeasureOptions"](
+      V,
+      prefix,
+      context,
+      opts,
+    );
+  }
+  if (webidl.type(V) === "Object") {
     return webidl.converters["PerformanceMeasureOptions"](
       V,
       prefix,
