@@ -102,7 +102,6 @@ const {
   queueMicrotask,
   RangeError,
   ReferenceError,
-  SafeArrayIterator,
   SafeMap,
   SafeRegExp,
   SafeSet,
@@ -2027,7 +2026,7 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
     // value through. For iterables we materialize into an array so the
     // untransferable check below doesn't consume the iterator before the
     // serializer sees it.
-    let normalized = transferOrOptions;
+    const normalized = transferOrOptions;
     if (arguments.length >= 2 && transferOrOptions !== undefined) {
       if (transferOrOptions === null) {
         // null is allowed; treated as no transferables.
@@ -2042,9 +2041,11 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
         (e as any).code = "ERR_INVALID_ARG_TYPE";
         throw e;
       } else if (transferOrOptions[SymbolIterator] !== undefined) {
-        // Iterable. Materialize to an array so we can both check
-        // untransferable markers AND let the web postMessage iterate
-        // again -- generators can only be consumed once.
+        // Only check untransferable markers when we can do so without
+        // consuming the iterator -- a user-provided iterator can only
+        // be drained once and we have to leave that drain to the
+        // underlying web `postMessage`. Arrays are random-access so
+        // we can inspect them without consuming.
         if (ArrayIsArray(transferOrOptions)) {
           for (let i = 0; i < transferOrOptions.length; i++) {
             const item = transferOrOptions[i];
@@ -2058,22 +2059,9 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
               );
             }
           }
-        } else {
-          const arr = [];
-          for (const item of new SafeArrayIterator(transferOrOptions)) {
-            if (
-              item !== null && typeof item === "object" &&
-              item[untransferableSymbol] === true
-            ) {
-              throw new DOMException(
-                "Value not transferable",
-                "DataCloneError",
-              );
-            }
-            ArrayPrototypePush(arr, item);
-          }
-          normalized = arr;
         }
+        // For non-array iterables, pass through unchanged so the
+        // serializer below sees the original iterator.
       } else {
         // Treat as a StructuredSerializeOptions dict. Only `transfer` is
         // recognized; if present, validate that it's iterable.
@@ -2093,24 +2081,13 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
             (e as any).code = "ERR_INVALID_ARG_TYPE";
             throw e;
           }
-          // Materialize options.transfer when it's an iterator-only value,
-          // again so the consumption below + the serializer both work.
-          if (!ArrayIsArray(t)) {
-            const arr = [];
-            for (const item of new SafeArrayIterator(t)) {
-              if (
-                item !== null && typeof item === "object" &&
-                item[untransferableSymbol] === true
-              ) {
-                throw new DOMException(
-                  "Value not transferable",
-                  "DataCloneError",
-                );
-              }
-              ArrayPrototypePush(arr, item);
-            }
-            normalized = { transfer: arr };
-          } else {
+          // Inspect arrays for untransferable markers. For non-array
+          // iterables we have to leave the drain to the serializer
+          // below -- consuming the iterator here would either lose
+          // values or, for an infinite generator (the
+          // terminate-transfer-list test), short-circuit Node's
+          // expected hang.
+          if (ArrayIsArray(t)) {
             for (let i = 0; i < t.length; i++) {
               const item = t[i];
               if (
