@@ -1596,6 +1596,17 @@ impl WasiContext {
     match std::fs::read_link(&resolved) {
       Ok(target) => {
         let target_bytes = target.as_os_str().as_encoded_bytes();
+        // On Windows, path_symlink rewrote forward slashes to backslashes so
+        // the OS could resolve relative symlinks. Convert them back here so
+        // WASI callers see the POSIX-style target they originally stored
+        // (Node's test-wasi-symlinks asserts the bytes round-trip exactly).
+        #[cfg(windows)]
+        let owned = target_bytes
+          .iter()
+          .map(|b| if *b == b'\\' { b'/' } else { *b })
+          .collect::<Vec<u8>>();
+        #[cfg(windows)]
+        let target_bytes: &[u8] = &owned;
         let n = std::cmp::min(target_bytes.len(), buf_len as usize);
         let Some(dest) = get_memory_slice_mut(memory, buf_ptr, n as i32) else {
           return ERRNO_FAULT;
