@@ -46,6 +46,7 @@ use deno_lib::worker::LibMainWorkerOptions;
 use deno_lib::worker::ModuleLoaderFactory;
 use deno_lib::worker::StorageKeyResolver;
 use deno_media_type::MediaType;
+use deno_node::ops::ipc::ChildIpcSerialization;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npmrc::ResolvedNpmRc;
 use deno_package_json::PackageJsonDepValue;
@@ -1436,20 +1437,23 @@ pub async fn run_with_options(
     sys: sys.clone(),
   };
 
+  // Desktop runtimes always need a baseline set of permissions to function:
+  // the renderer is served over loopback HTTP, so net access to 127.0.0.1
+  // is mandatory; the desktop init JS reads `DENO_DESKTOP_*` env vars to
+  // discover the inspector mux, HMR watch dir, etc. Without these, the
+  // very first `Deno.serve(...)` or `Deno.env.get(...)` throws NotCapable
+  // and aborts script execution before the event-loop IIFE registers —
+  // which manifests as a blank window where nothing works (no input,
+  // no auto-tests, no bindings). Granting them up front avoids forcing
+  // every `deno desktop` user to remember `-A`.
+  let has_desktop = op_state_init.is_some();
   let permissions = {
     let mut permissions = metadata.permissions;
     // grant read access to the vfs
-    match &mut permissions.allow_read {
-      Some(vec) if vec.is_empty() => {
-        // do nothing, already granted
-      }
-      Some(vec) => {
-        vec.push(root_path.to_string_lossy().into_owned());
-      }
-      None => {
-        permissions.allow_read =
-          Some(vec![root_path.to_string_lossy().into_owned()]);
-      }
+    grant_vfs_read_access(&mut permissions, &root_path);
+
+    if has_desktop {
+      apply_desktop_permission_defaults(&mut permissions);
     }
 
     let desc_parser =
@@ -1552,7 +1556,6 @@ pub async fn run_with_options(
     .map(|key| root_dir_url.join(key).unwrap())
     .collect::<Vec<_>>();
 
-  let has_desktop = op_state_init.is_some();
   let mut worker = worker_factory.create_custom_worker(
     WorkerExecutionMode::Run,
     main_module,
@@ -1657,4 +1660,216 @@ fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
     scopes: Default::default(),
     registry_configs: Default::default(),
   })
+}
+
+/// Grant read access to the embedded VFS root so the compiled binary
+/// can read the files it shipped with. Preserves the `Some(vec![])`
+/// allow-all sentinel and avoids duplicating an already-present entry.
+pub(crate) fn grant_vfs_read_access(
+  permissions: &mut deno_runtime::deno_permissions::PermissionsOptions,
+  root_path: &std::path::Path,
+) {
+  let entry = root_path.to_string_lossy().into_owned();
+  match &mut permissions.allow_read {
+    Some(vec) if vec.is_empty() => {
+      // already wide-open (--allow-read with no args / -A); nothing to
+      // extend.
+    }
+    Some(vec) => {
+      if !vec.contains(&entry) {
+        vec.push(entry);
+      }
+    }
+    None => {
+      permissions.allow_read = Some(vec![entry]);
+    }
+  }
+}
+
+/// Loopback hosts a desktop runtime must be able to reach. The compiled
+/// app's renderer talks to its `Deno.serve()` over loopback HTTP, so
+/// net access here is structural, not optional.
+const DESKTOP_LOOPBACK_HOSTS: &[&str] = &["127.0.0.1", "localhost", "[::1]"];
+
+/// Env vars the DESKTOP_JS init script reads. Granting only these
+/// (instead of blanket `allow-env`) keeps the user's shell environment
+/// off-limits to arbitrary `Deno.env.get` calls in their app code while
+/// still letting the framework boot.
+const DESKTOP_ENV_KEYS: &[&str] = &[
+  "DENO_DESKTOP_MUX_WS",
+  "DENO_DESKTOP_HMR",
+  "DENO_DESKTOP_INSPECT_INTERNAL_PORT",
+  "DENO_DESKTOP_INSPECT_BRK",
+  "DENO_DESKTOP_INSPECT_WAIT",
+  "WEF_RUNTIME_PATH",
+  "WEF_REMOTE_DEBUGGING_PORT",
+];
+
+/// Grant the baseline net (loopback) and env (DESKTOP_JS read keys)
+/// access a desktop runtime needs to boot. Idempotent: re-applying
+/// preserves any wider grants the user already had.
+///
+/// `Some(vec)` with `vec.is_empty()` represents allow-all (e.g. `-A`)
+/// and is left untouched. `Some(vec)` with entries gets the missing
+/// loopback/key entries appended. `None` is replaced with the baseline
+/// vec.
+pub(crate) fn apply_desktop_permission_defaults(
+  permissions: &mut deno_runtime::deno_permissions::PermissionsOptions,
+) {
+  fn extend(slot: &mut Option<Vec<String>>, defaults: &[&str]) {
+    match slot {
+      Some(vec) if vec.is_empty() => {
+        // already allow-all — wider than our baseline; don't narrow.
+      }
+      Some(vec) => {
+        for entry in defaults {
+          let s = (*entry).to_string();
+          if !vec.contains(&s) {
+            vec.push(s);
+          }
+        }
+      }
+      None => {
+        *slot = Some(defaults.iter().map(|s| (*s).to_string()).collect());
+      }
+    }
+  }
+
+  extend(&mut permissions.allow_net, DESKTOP_LOOPBACK_HOSTS);
+  extend(&mut permissions.allow_env, DESKTOP_ENV_KEYS);
+}
+
+#[cfg(test)]
+mod tests {
+  use deno_runtime::deno_permissions::PermissionsOptions;
+
+  use super::DESKTOP_ENV_KEYS;
+  use super::DESKTOP_LOOPBACK_HOSTS;
+  use super::apply_desktop_permission_defaults;
+  use super::grant_vfs_read_access;
+
+  fn strs(v: &[&str]) -> Vec<String> {
+    v.iter().map(|s| (*s).to_string()).collect()
+  }
+
+  #[test]
+  fn defaults_populate_empty_options() {
+    let mut p = PermissionsOptions::default();
+    apply_desktop_permission_defaults(&mut p);
+    assert_eq!(p.allow_net, Some(strs(DESKTOP_LOOPBACK_HOSTS)));
+    assert_eq!(p.allow_env, Some(strs(DESKTOP_ENV_KEYS)));
+    // Other permission categories must remain untouched.
+    assert_eq!(p.allow_read, None);
+    assert_eq!(p.allow_write, None);
+  }
+
+  #[test]
+  fn defaults_extend_existing_allowlist_without_duplicating() {
+    let mut p = PermissionsOptions {
+      allow_net: Some(vec![
+        "example.com".to_string(),
+        "127.0.0.1".to_string(), // already present — must not duplicate
+      ]),
+      allow_env: Some(vec!["MY_VAR".to_string()]),
+      ..Default::default()
+    };
+    apply_desktop_permission_defaults(&mut p);
+
+    let net = p.allow_net.unwrap();
+    // Original entries preserved.
+    assert!(net.contains(&"example.com".to_string()));
+    // 127.0.0.1 still appears exactly once.
+    assert_eq!(net.iter().filter(|s| *s == "127.0.0.1").count(), 1);
+    // Missing loopback entries appended.
+    assert!(net.contains(&"localhost".to_string()));
+    assert!(net.contains(&"[::1]".to_string()));
+
+    let env = p.allow_env.unwrap();
+    assert!(env.contains(&"MY_VAR".to_string()));
+    for key in DESKTOP_ENV_KEYS {
+      assert!(env.contains(&key.to_string()), "missing {key}");
+    }
+  }
+
+  #[test]
+  fn defaults_preserve_allow_all_sentinel() {
+    // `Some(vec![])` is the allow-all sentinel (-A / --allow-net with
+    // no args). Narrowing it down to a specific allowlist would silently
+    // break user code that depends on broader access — leave it alone.
+    let mut p = PermissionsOptions {
+      allow_net: Some(vec![]),
+      allow_env: Some(vec![]),
+      ..Default::default()
+    };
+    apply_desktop_permission_defaults(&mut p);
+    assert_eq!(p.allow_net, Some(vec![]));
+    assert_eq!(p.allow_env, Some(vec![]));
+  }
+
+  #[test]
+  fn defaults_are_idempotent() {
+    let mut p = PermissionsOptions::default();
+    apply_desktop_permission_defaults(&mut p);
+    let after_once = p.clone();
+    apply_desktop_permission_defaults(&mut p);
+    assert_eq!(p, after_once);
+  }
+
+  // --- grant_vfs_read_access ---
+
+  #[test]
+  fn vfs_grant_populates_empty_options() {
+    let mut p = PermissionsOptions::default();
+    grant_vfs_read_access(&mut p, std::path::Path::new("/data/vfs"));
+    assert_eq!(p.allow_read, Some(vec!["/data/vfs".to_string()]));
+    // Net / env / write must remain None.
+    assert_eq!(p.allow_net, None);
+    assert_eq!(p.allow_env, None);
+    assert_eq!(p.allow_write, None);
+  }
+
+  #[test]
+  fn vfs_grant_preserves_allow_all_sentinel() {
+    // `Some(vec![])` means --allow-read with no args (allow-all). The
+    // compiled binary should keep its broader privilege; narrowing it
+    // to a single path here would silently break user code that reads
+    // outside the VFS.
+    let mut p = PermissionsOptions {
+      allow_read: Some(vec![]),
+      ..Default::default()
+    };
+    grant_vfs_read_access(&mut p, std::path::Path::new("/data/vfs"));
+    assert_eq!(p.allow_read, Some(vec![]));
+  }
+
+  #[test]
+  fn vfs_grant_extends_existing_allowlist() {
+    let mut p = PermissionsOptions {
+      allow_read: Some(vec!["/etc".to_string()]),
+      ..Default::default()
+    };
+    grant_vfs_read_access(&mut p, std::path::Path::new("/data/vfs"));
+    let v = p.allow_read.unwrap();
+    assert!(
+      v.contains(&"/etc".to_string()),
+      "original entries preserved"
+    );
+    assert!(v.contains(&"/data/vfs".to_string()));
+  }
+
+  #[test]
+  fn vfs_grant_is_idempotent() {
+    let mut p = PermissionsOptions::default();
+    grant_vfs_read_access(&mut p, std::path::Path::new("/data/vfs"));
+    grant_vfs_read_access(&mut p, std::path::Path::new("/data/vfs"));
+    // Same path twice must not duplicate.
+    assert_eq!(p.allow_read, Some(vec!["/data/vfs".to_string()]));
+  }
+
+  #[test]
+  fn vfs_grant_handles_path_with_unicode() {
+    let mut p = PermissionsOptions::default();
+    grant_vfs_read_access(&mut p, std::path::Path::new("/Users/café/My App"));
+    assert_eq!(p.allow_read, Some(vec!["/Users/café/My App".to_string()]));
+  }
 }

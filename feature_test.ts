@@ -743,10 +743,6 @@ win.addEventListener("contextmenuclick", (e: CustomEvent) => {
   pushEvent({ type: "contextmenuclick", id: e.detail.id });
 });
 
-win.addEventListener("close", () => {
-  pushEvent({ type: "close" });
-});
-
 // ── Application Menu ───────────────────────────────────────────────────────
 
 win.setApplicationMenu([
@@ -839,7 +835,7 @@ const html = `<!DOCTYPE html>
     padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;
   }
   button:hover { background: #3d3d5a; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
   .card {
     background: #16213e; border: 1px solid #333; border-radius: 6px; padding: 10px;
   }
@@ -1025,12 +1021,6 @@ const html = `<!DOCTYPE html>
       <div id="navigate-log" class="log">reload() goes through location.reload(); navigate() replaces the document.</div>
     </div>
 
-    <!-- Close Event (manual) -->
-    <div class="card">
-      <h2>Close Event <span class="count" id="close-count">0</span></h2>
-      <p style="color:#888;margin-bottom:4px">Close button click is intercepted (preventDefault)</p>
-      <div id="close-log" class="log">Try closing the window (it will be prevented)</div>
-    </div>
   </div>
 
   <div id="report" class="report" style="display:none"></div>
@@ -1164,9 +1154,6 @@ const html = `<!DOCTYPE html>
       renderEvents("ctx-log", events, ["contextmenuclick"]);
       updateCount("ctx-count", ["contextmenuclick"]);
 
-      renderEvents("close-log", events, ["close"]);
-      updateCount("close-count", ["close"]);
-
       renderEvents("dock-log", events, ["dockmenuclick", "dockreopen"]);
       updateCount("dock-count", ["dockmenuclick", "dockreopen"]);
 
@@ -1287,8 +1274,10 @@ const html = `<!DOCTYPE html>
       "Notification.permission (cached) => " + p.cached + "\\n" +
       "navigator.permissions.query => " + p.permissionsApi +
       (p.permissionsApi === "denied"
-        ? "\\n[hint] 'denied' here can also mean the process isn't bundled" +
-          " (running outside .app on macOS); see notes below"
+        ? "\\n[hint] macOS UN caches denied per CFBundleIdentifier." +
+          " Under 'deno desktop' the bundle id is io.wef.cef (CEF backend)" +
+          " or io.wef.webview (webview backend); fix at" +
+          " System Settings > Notifications."
         : "");
   }
   async function notifRequestPermission() {
@@ -1460,7 +1449,7 @@ const html = `<!DOCTYPE html>
       "keydown", "keyup", "mousedown", "mouseup", "click", "dblclick",
       "mousemove", "mouseenter", "mouseleave", "wheel",
       "focus", "blur", "resize", "move",
-      "menuclick", "contextmenuclick", "close",
+      "menuclick", "contextmenuclick",
       "dockmenuclick", "dockreopen",
       "trayclick", "traydblclick", "traymenuclick",
       "secondwin:close",

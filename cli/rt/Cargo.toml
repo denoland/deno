@@ -38,6 +38,7 @@ deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"]
 deno_error.workspace = true
 deno_lib.workspace = true
 deno_media_type = { workspace = true, features = ["data_url", "decoding"] }
+deno_node.workspace = true
 deno_npm.workspace = true
 deno_npmrc.workspace = true
 deno_package_json = { workspace = true, features = ["sync"] }

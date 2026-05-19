@@ -1796,3 +1796,421 @@ async fn run_desktop(
 
   Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+  use std::ffi::OsString;
+
+  use deno_runtime::ops::desktop::PermissionState;
+
+  use super::desktop_menu_item_to_wef_menu_item;
+  use super::extract_fork_script_path;
+  use super::json_to_wef_value;
+  use super::map_permission_status;
+  use super::wef_value_to_desktop_value;
+  use super::wef_value_to_json;
+
+  // --- extract_fork_script_path ---
+  //
+  // Framework dev servers (e.g. Next.js) call `child_process.fork()` to
+  // re-exec this binary as a worker process. We detect that pattern by
+  // argv shape: `<exe> run [flags…] script.js …`. Mis-classifying the
+  // main launch as a worker would mean no window appears at all.
+
+  fn args(parts: &[&str]) -> Vec<OsString> {
+    parts.iter().map(|s| OsString::from(*s)).collect()
+  }
+
+  #[test]
+  fn fork_argv_shape_returns_script_url() {
+    let v =
+      extract_fork_script_path(&args(&["myapp", "run", "/tmp/worker.js"]));
+    let url = v.expect("argv with `run <abs-script>` is a worker");
+    assert!(url.as_str().ends_with("worker.js"));
+    assert_eq!(url.scheme(), "file");
+  }
+
+  #[test]
+  fn fork_argv_skips_flags_before_script() {
+    let v = extract_fork_script_path(&args(&[
+      "myapp",
+      "run",
+      "--allow-net",
+      "-A",
+      "/tmp/worker.js",
+    ]));
+    assert!(v.is_some(), "flags before the script path must be skipped");
+  }
+
+  #[test]
+  fn fork_argv_rejects_non_run_subcommand() {
+    // Only `<exe> run …` is the worker shape. The main desktop launch
+    // never has a subcommand at argv[1] — wef passes no argv at all.
+    assert!(extract_fork_script_path(&args(&["myapp"])).is_none());
+    assert!(
+      extract_fork_script_path(&args(&["myapp", "task", "build"])).is_none()
+    );
+    assert!(extract_fork_script_path(&args(&["myapp", "test"])).is_none());
+  }
+
+  #[test]
+  fn fork_argv_run_with_only_flags_is_not_a_fork() {
+    // `<exe> run --help` has no script path — don't claim this is a
+    // worker.
+    let v = extract_fork_script_path(&args(&["myapp", "run", "--help"]));
+    assert!(
+      v.is_none(),
+      "argv with only flags after `run` is not a fork worker"
+    );
+  }
+
+  #[test]
+  fn fork_argv_bare_run_is_not_a_fork() {
+    // `<exe> run` with no further args isn't enough to be a fork.
+    assert!(extract_fork_script_path(&args(&["myapp", "run"])).is_none());
+  }
+
+  // --- map_permission_status ---
+
+  #[test]
+  fn permission_status_maps_one_to_one() {
+    // Every wef PermissionStatus must round-trip to the matching
+    // deno PermissionState. Off-by-one swaps here would surface in JS
+    // as "granted shows up as denied" — silent and very confusing.
+    assert!(matches!(
+      map_permission_status(just_wef::PermissionStatus::Granted),
+      PermissionState::Granted
+    ));
+    assert!(matches!(
+      map_permission_status(just_wef::PermissionStatus::Denied),
+      PermissionState::Denied
+    ));
+    assert!(matches!(
+      map_permission_status(just_wef::PermissionStatus::Prompt),
+      PermissionState::Prompt
+    ));
+    assert!(matches!(
+      map_permission_status(just_wef::PermissionStatus::Unsupported),
+      PermissionState::Unsupported
+    ));
+  }
+
+  // --- desktop_menu_item_to_wef_menu_item ---
+
+  #[test]
+  fn menu_item_conversion_preserves_fields() {
+    let item = denort::desktop::MenuItem::Item {
+      label: "Save".into(),
+      id: Some("file.save".into()),
+      accelerator: Some("CmdOrCtrl+S".into()),
+      enabled: true,
+    };
+    match desktop_menu_item_to_wef_menu_item(item) {
+      just_wef::MenuItem::Item {
+        label,
+        id,
+        accelerator,
+        enabled,
+      } => {
+        assert_eq!(label, "Save");
+        assert_eq!(id.as_deref(), Some("file.save"));
+        assert_eq!(accelerator.as_deref(), Some("CmdOrCtrl+S"));
+        assert!(enabled);
+      }
+      _ => panic!("expected Item"),
+    }
+  }
+
+  #[test]
+  fn menu_item_conversion_recurses_into_submenus() {
+    let item = denort::desktop::MenuItem::Submenu {
+      label: "File".into(),
+      items: vec![
+        denort::desktop::MenuItem::Item {
+          label: "Open".into(),
+          id: Some("open".into()),
+          accelerator: None,
+          enabled: false,
+        },
+        denort::desktop::MenuItem::Separator,
+        denort::desktop::MenuItem::Role {
+          role: "quit".into(),
+        },
+      ],
+    };
+    let converted = desktop_menu_item_to_wef_menu_item(item);
+    let just_wef::MenuItem::Submenu { items, .. } = converted else {
+      panic!("expected Submenu");
+    };
+    assert_eq!(items.len(), 3);
+    // First child is an Item with enabled=false preserved.
+    match &items[0] {
+      just_wef::MenuItem::Item { enabled, label, .. } => {
+        assert_eq!(label, "Open");
+        assert!(!enabled, "enabled=false must propagate through recursion");
+      }
+      _ => panic!("first child should be Item"),
+    }
+    assert!(matches!(items[1], just_wef::MenuItem::Separator));
+    match &items[2] {
+      just_wef::MenuItem::Role { role } => assert_eq!(role, "quit"),
+      _ => panic!("third child should be Role"),
+    }
+  }
+
+  // --- wef_value_to_desktop_value / wef_value_to_json / json_to_wef_value ---
+
+  #[test]
+  fn wef_value_to_desktop_value_covers_every_variant() {
+    use deno_runtime::ops::desktop::DesktopValue;
+    assert!(matches!(
+      wef_value_to_desktop_value(just_wef::Value::Null),
+      DesktopValue::Null
+    ));
+    assert!(matches!(
+      wef_value_to_desktop_value(just_wef::Value::Bool(true)),
+      DesktopValue::Bool(true)
+    ));
+    assert!(matches!(
+      wef_value_to_desktop_value(just_wef::Value::Int(7)),
+      DesktopValue::Int(7)
+    ));
+    assert!(matches!(
+      wef_value_to_desktop_value(just_wef::Value::Double(1.5)),
+      DesktopValue::Double(d) if d == 1.5
+    ));
+    match wef_value_to_desktop_value(just_wef::Value::String("hi".into())) {
+      DesktopValue::String(s) => assert_eq!(s, "hi"),
+      _ => panic!(),
+    }
+    match wef_value_to_desktop_value(just_wef::Value::Binary(vec![1, 2, 3])) {
+      DesktopValue::Binary(b) => assert_eq!(b, vec![1, 2, 3]),
+      _ => panic!(),
+    }
+  }
+
+  #[test]
+  fn wef_value_to_desktop_value_recurses() {
+    use deno_runtime::ops::desktop::DesktopValue;
+    let v = just_wef::Value::List(vec![
+      just_wef::Value::Int(1),
+      just_wef::Value::List(vec![just_wef::Value::String("nested".into())]),
+    ]);
+    let dv = wef_value_to_desktop_value(v);
+    let DesktopValue::List(outer) = dv else {
+      panic!("outer must be List")
+    };
+    assert_eq!(outer.len(), 2);
+    let DesktopValue::List(inner) = &outer[1] else {
+      panic!("second element must be a nested List")
+    };
+    match &inner[0] {
+      DesktopValue::String(s) => assert_eq!(s, "nested"),
+      _ => panic!("inner element should be String"),
+    }
+  }
+
+  #[test]
+  fn wef_value_to_json_roundtrip() {
+    use std::collections::HashMap;
+    let mut dict = HashMap::new();
+    dict.insert("name".to_string(), just_wef::Value::String("ada".into()));
+    dict.insert("count".to_string(), just_wef::Value::Int(42));
+    dict.insert("ok".to_string(), just_wef::Value::Bool(true));
+    let v = just_wef::Value::Dict(dict);
+    let j = wef_value_to_json(&v);
+    assert_eq!(j["name"], "ada");
+    assert_eq!(j["count"], 42);
+    assert_eq!(j["ok"], true);
+
+    // Round-trip back through json_to_wef_value to confirm symmetry on
+    // the simple types.
+    let back = json_to_wef_value(&j);
+    let just_wef::Value::Dict(d) = back else {
+      panic!("round-trip must yield Dict")
+    };
+    match d.get("name") {
+      Some(just_wef::Value::String(s)) => assert_eq!(s, "ada"),
+      _ => panic!("name must round-trip as String"),
+    }
+    match d.get("count") {
+      // json_to_wef_value maps integer numbers to Int via as_i64() — so
+      // it should land in the Int branch.
+      Some(just_wef::Value::Int(42)) => {}
+      _ => panic!("count round-trip should yield just_wef::Value::Int(42)"),
+    }
+  }
+
+  #[test]
+  fn json_to_wef_value_distinguishes_int_and_double() {
+    let n_int = serde_json::json!(42);
+    let n_float = serde_json::json!(1.5);
+    assert!(matches!(
+      json_to_wef_value(&n_int),
+      just_wef::Value::Int(42)
+    ));
+    assert!(matches!(
+      json_to_wef_value(&n_float),
+      just_wef::Value::Double(d) if d == 1.5
+    ));
+  }
+
+  // --- apply_pending_update ---
+  //
+  // State machine: presence/absence of `<dylib>.update`, `.backup`, and
+  // `.update-ok` sentinel decides what apply_pending_update does next.
+  // The four combinations have non-obvious effects (commit / rollback /
+  // cleanup / no-op) and the consequences of getting them wrong are
+  // serious (booting a half-applied dylib, or boot-looping on rollback).
+  // Tests below exercise each branch using a tempdir as the live dylib
+  // location.
+
+  use super::apply_pending_update;
+
+  fn touch(path: &std::path::Path, content: &str) {
+    std::fs::write(path, content).unwrap();
+  }
+
+  fn read(path: &std::path::Path) -> String {
+    std::fs::read_to_string(path).unwrap()
+  }
+
+  fn paths(
+    tmp: &std::path::Path,
+  ) -> (
+    std::path::PathBuf,
+    std::path::PathBuf,
+    std::path::PathBuf,
+    std::path::PathBuf,
+  ) {
+    let dylib = tmp.join("app.dylib");
+    let update = tmp.join("app.dylib.update");
+    let backup = tmp.join("app.dylib.backup");
+    let sentinel = tmp.join("app.dylib.update-ok");
+    (dylib, update, backup, sentinel)
+  }
+
+  #[test]
+  fn pending_update_no_files_is_noop() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (dylib, _, _, _) = paths(tmp.path());
+    touch(&dylib, "live");
+    let rolled_back = apply_pending_update(&dylib);
+    assert!(!rolled_back, "no .update / .backup → no rollback");
+    assert_eq!(read(&dylib), "live", "dylib must be untouched");
+  }
+
+  #[test]
+  fn pending_update_swaps_in_new_dylib_when_update_exists() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (dylib, update, backup, sentinel) = paths(tmp.path());
+    touch(&dylib, "old");
+    touch(&update, "new");
+    let rolled_back = apply_pending_update(&dylib);
+
+    assert!(!rolled_back, "applying a fresh update is not a rollback");
+    assert_eq!(
+      read(&dylib),
+      "new",
+      "dylib must now hold the update contents"
+    );
+    assert!(backup.exists(), "live dylib must be preserved as .backup");
+    assert_eq!(read(&backup), "old", "backup must be the *previous* dylib");
+    // Stale sentinel from a prior update is cleared so the next launch
+    // can detect THIS update's success/failure.
+    assert!(!sentinel.exists());
+    // The staged update file is consumed.
+    assert!(!update.exists());
+  }
+
+  #[test]
+  fn pending_update_clears_stale_sentinel_before_swap() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (dylib, update, backup, sentinel) = paths(tmp.path());
+    touch(&dylib, "old");
+    touch(&update, "new");
+    touch(&sentinel, "ok"); // sentinel left over from a previous launch
+    touch(&backup, "very-old"); // and a backup, also stale
+    apply_pending_update(&dylib);
+    // After applying a new update: backup is the just-replaced 'old',
+    // sentinel was cleared. The previous backup ("very-old") must not
+    // persist, or rollback would resurrect a two-version-old dylib.
+    assert_eq!(read(&backup), "old");
+    assert!(!sentinel.exists());
+  }
+
+  #[test]
+  fn pending_update_rolls_back_when_sentinel_missing() {
+    // .backup present + no sentinel = previous update booted but crashed
+    // before writing the sentinel. Rollback to backup.
+    let tmp = tempfile::tempdir().unwrap();
+    let (dylib, _, backup, _) = paths(tmp.path());
+    touch(&dylib, "new-but-broken");
+    touch(&backup, "old-but-known-good");
+    let rolled_back = apply_pending_update(&dylib);
+    assert!(rolled_back, "missing sentinel must trigger rollback");
+    assert_eq!(
+      read(&dylib),
+      "old-but-known-good",
+      "rollback must restore the backup contents over the live dylib"
+    );
+  }
+
+  #[test]
+  fn pending_update_cleans_up_after_successful_boot() {
+    // .backup + .update-ok sentinel = previous update was applied AND
+    // booted at least once. Clean up; we don't need to keep the backup
+    // around forever.
+    let tmp = tempfile::tempdir().unwrap();
+    let (dylib, _, backup, sentinel) = paths(tmp.path());
+    touch(&dylib, "new");
+    touch(&backup, "old");
+    touch(&sentinel, "ok");
+    let rolled_back = apply_pending_update(&dylib);
+    assert!(!rolled_back);
+    assert!(!backup.exists(), "successful-boot path must delete .backup");
+    assert!(
+      !sentinel.exists(),
+      "successful-boot path must delete sentinel"
+    );
+    assert_eq!(read(&dylib), "new", "dylib untouched on cleanup path");
+  }
+
+  #[test]
+  fn pending_update_with_only_sentinel_is_noop() {
+    // Sentinel without backup or update — orphaned. Don't roll back
+    // (there's nothing to roll back to) and don't touch the dylib.
+    let tmp = tempfile::tempdir().unwrap();
+    let (dylib, _, _, sentinel) = paths(tmp.path());
+    touch(&dylib, "live");
+    touch(&sentinel, "ok");
+    let rolled_back = apply_pending_update(&dylib);
+    assert!(!rolled_back);
+    assert_eq!(read(&dylib), "live");
+  }
+
+  #[test]
+  fn json_to_wef_value_handles_nested_arrays_and_objects() {
+    let j = serde_json::json!({
+      "list": [1, 2, 3],
+      "nested": {"key": "value"},
+      "null": null,
+    });
+    let v = json_to_wef_value(&j);
+    let just_wef::Value::Dict(d) = v else {
+      panic!("expected Dict")
+    };
+    assert!(matches!(d.get("null"), Some(just_wef::Value::Null)));
+    match d.get("list") {
+      Some(just_wef::Value::List(items)) => assert_eq!(items.len(), 3),
+      _ => panic!("list must convert to List"),
+    }
+    match d.get("nested") {
+      Some(just_wef::Value::Dict(inner)) => match inner.get("key") {
+        Some(just_wef::Value::String(s)) => assert_eq!(s, "value"),
+        _ => panic!("nested.key must be String"),
+      },
+      _ => panic!("nested must convert to Dict"),
+    }
+  }
+}

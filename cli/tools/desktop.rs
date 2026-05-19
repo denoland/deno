@@ -483,17 +483,36 @@ async fn run_desktop_hmr(
   // rather than being orphaned. Normal Ctrl-C delivers SIGINT to the
   // whole process group so this rarely matters in practice; it covers
   // the abnormal-exit cases.
-  let mut child = tokio::process::Command::from(cmd)
-    .kill_on_drop(true)
-    .spawn()
-    .with_context(|| {
+  //
+  // On macOS we go through posix_spawn with TCC responsibility disclaimed
+  // (see `disclaim_spawn`) so the wef child is its own permission principal.
+  // Without this, the kernel attributes notification/location/etc requests
+  // to whatever started deno (typically the terminal), which has no bundle
+  // id and causes `UNUserNotificationCenter.requestAuthorization` to fail
+  // with UNErrorCodeNotificationsNotAllowed before any user prompt.
+  #[cfg(target_os = "macos")]
+  let status = {
+    let mut child = disclaim_spawn::spawn(&cmd).with_context(|| {
       format!("Failed to launch WEF backend: {}", wef_backend.display())
     })?;
-
-  let status = child
-    .wait()
-    .await
-    .context("Failed waiting for WEF backend")?;
+    child
+      .wait()
+      .await
+      .context("Failed waiting for WEF backend")?
+  };
+  #[cfg(not(target_os = "macos"))]
+  let status = {
+    let mut child = tokio::process::Command::from(cmd)
+      .kill_on_drop(true)
+      .spawn()
+      .with_context(|| {
+        format!("Failed to launch WEF backend: {}", wef_backend.display())
+      })?;
+    child
+      .wait()
+      .await
+      .context("Failed waiting for WEF backend")?
+  };
 
   // Keep the mux alive until the subprocess exits, then drop it.
   drop(mux_handle);
@@ -1103,8 +1122,11 @@ fn check_pinned_sums_version() -> Result<(), AnyError> {
 fn parse_sha256sum(contents: &str, file: &str) -> Option<String> {
   for line in contents.lines() {
     let mut parts = line.split_whitespace();
-    let hex = parts.next()?;
-    let name = parts.next()?;
+    // Skip blank / whitespace-only lines instead of bailing out of the
+    // whole parse — `?` would terminate the function early on the first
+    // empty line and quietly miss every subsequent entry.
+    let Some(hex) = parts.next() else { continue };
+    let Some(name) = parts.next() else { continue };
     if name.trim_start_matches('*') == file {
       return Some(hex.to_string());
     }
@@ -2343,4 +2365,1320 @@ pub fn convert_icon_set_to_ico(
 
   std::fs::write(ico_path, &buf)?;
   Ok(())
+}
+
+/// Spawn a child with macOS TCC "responsibility" disclaimed, so the child
+/// is its own permission principal instead of inheriting attribution from
+/// the calling chain (terminal → deno → wef).
+///
+/// Without this, requests like `UNUserNotificationCenter.requestAuthorization`
+/// fail immediately with `UNErrorCodeNotificationsNotAllowed` because TCC
+/// resolves "who's asking" to a process that has no notification bundle id.
+/// `responsibility_spawnattrs_setdisclaim` is the same SPI `open(1)` uses
+/// internally — it tells the kernel "this child decides its own permissions".
+#[cfg(target_os = "macos")]
+mod disclaim_spawn {
+  use std::ffi::CString;
+  use std::ffi::OsString;
+  use std::os::unix::ffi::OsStrExt;
+  use std::process::ExitStatus;
+
+  // SPI in libsystem (10.14+). Not in libc's bindings.
+  unsafe extern "C" {
+    fn responsibility_spawnattrs_setdisclaim(
+      attrs: *mut libc::posix_spawnattr_t,
+      disclaim: libc::c_int,
+    ) -> libc::c_int;
+    // macOS 10.15+. libc has the *_addclose family but not *_addchdir_np yet.
+    fn posix_spawn_file_actions_addchdir_np(
+      actions: *mut libc::posix_spawn_file_actions_t,
+      path: *const libc::c_char,
+    ) -> libc::c_int;
+  }
+
+  pub struct Child {
+    pid: libc::pid_t,
+    exited: bool,
+  }
+
+  impl Child {
+    pub async fn wait(&mut self) -> std::io::Result<ExitStatus> {
+      use std::os::unix::process::ExitStatusExt;
+      let pid = self.pid;
+      let status_raw = tokio::task::spawn_blocking(move || {
+        let mut status: libc::c_int = 0;
+        loop {
+          // Safety: waiting on our own child pid.
+          let rc = unsafe { libc::waitpid(pid, &mut status, 0) };
+          if rc < 0 {
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() == Some(libc::EINTR) {
+              continue;
+            }
+            return Err(err);
+          }
+          return Ok(status);
+        }
+      })
+      .await
+      .map_err(std::io::Error::other)??;
+      self.exited = true;
+      Ok(ExitStatus::from_raw(status_raw))
+    }
+  }
+
+  impl Drop for Child {
+    fn drop(&mut self) {
+      // Mirrors tokio's kill_on_drop: if we didn't observe an exit, SIGKILL
+      // the orphan. Polite escalation (TERM-then-KILL) isn't possible inside
+      // sync Drop, and the existing tokio path uses SIGKILL too.
+      if !self.exited {
+        unsafe {
+          libc::kill(self.pid, libc::SIGKILL);
+        }
+      }
+    }
+  }
+
+  /// Convert a std::process::Command into the argv/envp/cwd tuple posix_spawn
+  /// needs. Inherits the parent's env, then applies Command::env() overrides
+  /// (matching what std::process::Command does internally).
+  fn flatten(
+    cmd: &std::process::Command,
+  ) -> std::io::Result<(CString, Vec<CString>, Vec<CString>, Option<CString>)>
+  {
+    let program = CString::new(cmd.get_program().as_bytes()).map_err(|_| {
+      std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "program path contains NUL",
+      )
+    })?;
+    let mut argv: Vec<CString> = Vec::with_capacity(cmd.get_args().len() + 1);
+    argv.push(program.clone());
+    for a in cmd.get_args() {
+      argv.push(CString::new(a.as_bytes()).map_err(|_| {
+        std::io::Error::new(
+          std::io::ErrorKind::InvalidInput,
+          "argv contains NUL",
+        )
+      })?);
+    }
+    let mut env_map: std::collections::BTreeMap<OsString, OsString> =
+      std::env::vars_os().collect();
+    for (k, v) in cmd.get_envs() {
+      match v {
+        Some(v) => {
+          env_map.insert(k.to_os_string(), v.to_os_string());
+        }
+        None => {
+          env_map.remove(k);
+        }
+      }
+    }
+    let envp: Vec<CString> = env_map
+      .into_iter()
+      .map(|(k, v)| {
+        let mut s =
+          Vec::with_capacity(k.as_bytes().len() + 1 + v.as_bytes().len());
+        s.extend_from_slice(k.as_bytes());
+        s.push(b'=');
+        s.extend_from_slice(v.as_bytes());
+        CString::new(s).map_err(|_| {
+          std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "env contains NUL",
+          )
+        })
+      })
+      .collect::<std::io::Result<_>>()?;
+    let cwd = match cmd.get_current_dir() {
+      Some(p) => {
+        Some(CString::new(p.as_os_str().as_bytes()).map_err(|_| {
+          std::io::Error::new(std::io::ErrorKind::InvalidInput, "cwd has NUL")
+        })?)
+      }
+      None => None,
+    };
+    Ok((program, argv, envp, cwd))
+  }
+
+  pub fn spawn(cmd: &std::process::Command) -> std::io::Result<Child> {
+    let (program, argv, envp, cwd) = flatten(cmd)?;
+    let mut argv_ptrs: Vec<*mut libc::c_char> =
+      argv.iter().map(|c| c.as_ptr() as *mut _).collect();
+    argv_ptrs.push(std::ptr::null_mut());
+    let mut envp_ptrs: Vec<*mut libc::c_char> =
+      envp.iter().map(|c| c.as_ptr() as *mut _).collect();
+    envp_ptrs.push(std::ptr::null_mut());
+
+    // SAFETY: posix_spawn FFI. We initialize attrs/actions before use,
+    // destroy them on every exit path, and keep argv/envp CString backing
+    // alive until posix_spawn returns. Spawn inherits fds 0/1/2 by default
+    // (no file action redirects them), which is the stdio behavior the
+    // caller expects.
+    unsafe {
+      let mut attrs: libc::posix_spawnattr_t = std::mem::zeroed();
+      if libc::posix_spawnattr_init(&mut attrs) != 0 {
+        return Err(std::io::Error::last_os_error());
+      }
+      let res = (|| -> std::io::Result<libc::pid_t> {
+        let mut actions: libc::posix_spawn_file_actions_t = std::mem::zeroed();
+        if libc::posix_spawn_file_actions_init(&mut actions) != 0 {
+          return Err(std::io::Error::last_os_error());
+        }
+        let inner = (|| -> std::io::Result<libc::pid_t> {
+          // The disclaim. Ignored if the SPI is missing (hypothetical
+          // older system) — caller just falls back to inherited TCC.
+          let _ = responsibility_spawnattrs_setdisclaim(&mut attrs, 1);
+
+          if let Some(cwd) = cwd.as_ref() {
+            let rc =
+              posix_spawn_file_actions_addchdir_np(&mut actions, cwd.as_ptr());
+            if rc != 0 {
+              return Err(std::io::Error::from_raw_os_error(rc));
+            }
+          }
+
+          let mut pid: libc::pid_t = 0;
+          let rc = libc::posix_spawn(
+            &mut pid,
+            program.as_ptr(),
+            &actions,
+            &attrs,
+            argv_ptrs.as_mut_ptr(),
+            envp_ptrs.as_mut_ptr(),
+          );
+          if rc != 0 {
+            return Err(std::io::Error::from_raw_os_error(rc));
+          }
+          Ok(pid)
+        })();
+        libc::posix_spawn_file_actions_destroy(&mut actions);
+        inner
+      })();
+      libc::posix_spawnattr_destroy(&mut attrs);
+      let pid = res?;
+      Ok(Child { pid, exited: false })
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  // --- wef_archive_name / wef_release_url ---
+
+  #[test]
+  fn archive_name_extensions() {
+    assert_eq!(
+      wef_archive_name("cef", "aarch64-apple-darwin"),
+      "wef-cef-aarch64-apple-darwin.tar.gz"
+    );
+    assert_eq!(
+      wef_archive_name("webview", "x86_64-pc-windows-msvc"),
+      "wef-webview-x86_64-pc-windows-msvc.zip",
+      "windows targets must use zip, not tar.gz — the bundled 7z step assumes it"
+    );
+  }
+
+  #[test]
+  fn archive_name_raw_aliases_to_winit() {
+    // `raw` is the public name; the GitHub releases ship under `winit`.
+    // A regression here would 404 every backend download for raw users.
+    assert_eq!(
+      wef_archive_name("raw", "x86_64-unknown-linux-gnu"),
+      "wef-winit-x86_64-unknown-linux-gnu.tar.gz"
+    );
+  }
+
+  #[test]
+  fn release_url_uses_v_prefix() {
+    let url = wef_release_url("wef-cef-aarch64-apple-darwin.tar.gz");
+    assert!(url.starts_with(
+      "https://github.com/littledivy/just-wef/releases/download/v"
+    ));
+    assert!(url.ends_with("/wef-cef-aarch64-apple-darwin.tar.gz"));
+    // No spaces, no shell metachars — this string is fed to `curl` and to
+    // log messages.
+    assert!(!url.contains(' '));
+  }
+
+  // --- parse_sha256sum ---
+
+  #[test]
+  fn parse_sha256sum_basic() {
+    let contents = "\
+abc123  file-a.tar.gz
+def456  file-b.zip
+";
+    assert_eq!(
+      parse_sha256sum(contents, "file-a.tar.gz").as_deref(),
+      Some("abc123")
+    );
+    assert_eq!(
+      parse_sha256sum(contents, "file-b.zip").as_deref(),
+      Some("def456")
+    );
+    assert_eq!(parse_sha256sum(contents, "missing").as_deref(), None);
+  }
+
+  #[test]
+  fn parse_sha256sum_handles_binary_mode_star() {
+    // GNU sha256sum's binary mode emits `<hex>  *filename`. We must
+    // strip the leading star or we'll fail to match every Windows
+    // artifact line.
+    let contents = "abc123  *file-a.zip\n";
+    assert_eq!(
+      parse_sha256sum(contents, "file-a.zip").as_deref(),
+      Some("abc123")
+    );
+  }
+
+  #[test]
+  fn parse_sha256sum_tolerates_blank_and_extra_whitespace() {
+    let contents = "\
+
+abc123    file.tar.gz
+   \t
+
+def456  other.zip
+";
+    assert_eq!(
+      parse_sha256sum(contents, "file.tar.gz").as_deref(),
+      Some("abc123")
+    );
+    assert_eq!(
+      parse_sha256sum(contents, "other.zip").as_deref(),
+      Some("def456")
+    );
+  }
+
+  // --- validate_bundle_identifier ---
+
+  #[test]
+  fn bundle_id_accepts_canonical() {
+    for ok in &[
+      "com.deno.app",
+      "com.deno.my-app",
+      "com.deno.app.v2",
+      "A.B",
+      "com.deno.app.helper",
+    ] {
+      assert!(
+        validate_bundle_identifier(ok).is_ok(),
+        "{ok:?} should be accepted"
+      );
+    }
+  }
+
+  #[test]
+  fn bundle_id_rejects_bad_shapes() {
+    let cases = &[
+      ("", "empty"),
+      ("noseparator", "no dot"),
+      ("com.deno.", "trailing empty segment"),
+      (".com.deno", "leading empty segment"),
+      ("com..deno", "doubled dot"),
+      ("com.deno.app/foo", "slash"),
+      ("com.deno.app foo", "space"),
+      ("com.deno.app$bar", "shell metachar"),
+      ("com.deno.app;rm", "semicolon"),
+      ("com.deno.app\nx", "newline"),
+    ];
+    for (bad, why) in cases {
+      assert!(
+        validate_bundle_identifier(bad).is_err(),
+        "{bad:?} should be rejected ({why})"
+      );
+    }
+  }
+
+  #[test]
+  fn bundle_id_rejects_too_long() {
+    let long = format!("com.deno.{}", "x".repeat(200));
+    assert!(validate_bundle_identifier(&long).is_err());
+    // Right at the boundary.
+    let just_too_long = format!("com.deno.{}", "x".repeat(155));
+    assert!(
+      validate_bundle_identifier(&just_too_long).is_err(),
+      "ids longer than 155 chars must be rejected (Apple receipt limit)"
+    );
+  }
+
+  // --- validate_launcher_name ---
+
+  #[test]
+  fn launcher_name_accepts_canonical() {
+    for ok in &["my-app", "My App", "app_1.0", "FooBar", "a"] {
+      assert!(
+        validate_launcher_name(ok, "test").is_ok(),
+        "{ok:?} should be accepted"
+      );
+    }
+  }
+
+  #[test]
+  fn launcher_name_rejects_shell_metachars() {
+    // Every char that could let a value escape an unquoted .bat / .sh
+    // launcher line must be rejected.
+    let cases = &[
+      ("", "empty"),
+      ("a&b", "ampersand"),
+      ("a;b", "semicolon"),
+      ("a|b", "pipe"),
+      ("a$b", "dollar"),
+      ("a`b", "backtick"),
+      ("a'b", "single quote"),
+      ("a\"b", "double quote"),
+      ("a\\b", "backslash"),
+      ("a/b", "slash"),
+      ("a\nb", "newline"),
+      ("a\rb", "carriage return"),
+      ("a\tb", "tab"),
+      ("a\0b", "NUL"),
+      ("café", "non-ascii"),
+    ];
+    for (bad, why) in cases {
+      assert!(
+        validate_launcher_name(bad, "test").is_err(),
+        "{bad:?} should be rejected ({why})"
+      );
+    }
+  }
+
+  #[test]
+  fn launcher_name_error_message_includes_kind() {
+    let err = validate_launcher_name("bad/name", "WEF backend binary name")
+      .unwrap_err()
+      .to_string();
+    assert!(
+      err.contains("WEF backend binary name"),
+      "error should label what was invalid; got: {err}"
+    );
+    assert!(
+      err.contains("/"),
+      "error should name the bad char; got: {err}"
+    );
+  }
+
+  // --- dylib_parts ---
+
+  #[test]
+  fn dylib_parts_basic() {
+    let p = std::path::PathBuf::from("/tmp/app/myapp.dylib");
+    let parts = dylib_parts(&p).expect("parts");
+    assert_eq!(parts.parent, std::path::Path::new("/tmp/app"));
+    assert_eq!(parts.file_name, "myapp.dylib");
+    assert_eq!(parts.app_name, "myapp");
+  }
+
+  #[test]
+  fn dylib_parts_strips_libdenort_prefix() {
+    // .so on Linux carries the `lib` prefix in the file stem; the
+    // resulting bundle name shouldn't include it (the user typed
+    // `--output myapp`, not `libmyapp`).
+    let p = std::path::PathBuf::from("/tmp/libdenort.so");
+    let parts = dylib_parts(&p).expect("parts");
+    // dylib_parts itself doesn't strip; that's downstream. But the
+    // pieces should at least round-trip cleanly.
+    assert_eq!(parts.file_name, "libdenort.so");
+    assert_eq!(parts.app_name, "libdenort");
+  }
+
+  #[test]
+  fn dylib_parts_rejects_degenerate_inputs() {
+    // The whole point of this helper is to surface friendly errors
+    // instead of the `file_stem().unwrap()` panic the old code had
+    // on `--output /` and `--output .`.
+    assert!(dylib_parts(std::path::Path::new("/")).is_err());
+    // `dylib_parts` doesn't reject "" by itself — Path::new("") still
+    // has a parent (None on some platforms, Some("") on others). Spot
+    // a degenerate case that previously panicked.
+    let empty = std::path::Path::new("");
+    let _ = dylib_parts(empty); // not panicking is the regression test
+  }
+
+  // --- appimage_runtime_for_target ---
+
+  #[test]
+  fn appimage_runtime_target_arch_lookup() {
+    assert!(
+      appimage_runtime_for_target(Some("x86_64-unknown-linux-gnu")).is_ok()
+    );
+    assert!(
+      appimage_runtime_for_target(Some("aarch64-unknown-linux-gnu")).is_ok()
+    );
+  }
+
+  #[test]
+  fn appimage_runtime_rejects_unknown_arch() {
+    let err = appimage_runtime_for_target(Some("powerpc64-unknown-linux-gnu"))
+      .unwrap_err()
+      .to_string();
+    assert!(
+      err.contains("powerpc64"),
+      "error should name the arch: {err}"
+    );
+    assert!(
+      err.contains("x86_64") && err.contains("aarch64"),
+      "error should list supported arches: {err}"
+    );
+  }
+
+  // --- icns_ostypes_for_size ---
+
+  #[test]
+  fn icns_ostypes_known_sizes() {
+    // These OSType codes are part of the macOS iconset spec; a change
+    // here means Finder will silently skip the icon. Pin them.
+    assert_eq!(icns_ostypes_for_size(16), &[b"icp4"]);
+    assert_eq!(icns_ostypes_for_size(32), &[b"ic11", b"icp5"]);
+    assert_eq!(icns_ostypes_for_size(64), &[b"ic12"]);
+    assert_eq!(icns_ostypes_for_size(128), &[b"ic07"]);
+    assert_eq!(icns_ostypes_for_size(256), &[b"ic13", b"ic08"]);
+    assert_eq!(icns_ostypes_for_size(512), &[b"ic14", b"ic09"]);
+    assert_eq!(icns_ostypes_for_size(1024), &[b"ic10"]);
+  }
+
+  #[test]
+  fn icns_ostypes_unknown_size_returns_empty() {
+    assert!(icns_ostypes_for_size(0).is_empty());
+    assert!(icns_ostypes_for_size(48).is_empty());
+    assert!(icns_ostypes_for_size(999).is_empty());
+  }
+
+  // --- extract_wef_archive ---
+  //
+  // These tests build tar.gz fixtures in-memory and feed them through
+  // extract_wef_archive. They mirror the manual checklist items 1.33–1.37:
+  // a malicious archive must be rejected, a normal one must extract,
+  // and setuid/world-writable bits must never reach disk.
+
+  use std::io::Read;
+  use std::io::Write;
+
+  fn make_tar_gz(entries: &[(&str, tar::EntryType, &[u8], u32)]) -> Vec<u8> {
+    let mut tar_buf: Vec<u8> = Vec::new();
+    {
+      let mut builder = tar::Builder::new(&mut tar_buf);
+      for (name, ty, data, mode) in entries {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(data.len() as u64);
+        header.set_mode(*mode);
+        header.set_mtime(0);
+        header.set_entry_type(*ty);
+        header.set_cksum();
+        builder
+          .append_data(&mut header, name, &data[..])
+          .expect("tar append");
+      }
+      builder.finish().expect("tar finish");
+    }
+    let mut gz = Vec::new();
+    let mut enc =
+      flate2::write::GzEncoder::new(&mut gz, flate2::Compression::default());
+    enc.write_all(&tar_buf).expect("gz write");
+    enc.finish().expect("gz finish");
+    gz
+  }
+
+  fn make_tar_gz_symlink(name: &str, target: &str) -> Vec<u8> {
+    let mut tar_buf: Vec<u8> = Vec::new();
+    {
+      let mut builder = tar::Builder::new(&mut tar_buf);
+      let mut header = tar::Header::new_gnu();
+      header.set_size(0);
+      header.set_mode(0o777);
+      header.set_mtime(0);
+      header.set_entry_type(tar::EntryType::Symlink);
+      header.set_link_name(target).expect("set_link_name");
+      header.set_cksum();
+      builder
+        .append_data(&mut header, name, std::io::empty())
+        .expect("tar append symlink");
+      builder.finish().expect("tar finish");
+    }
+    let mut gz = Vec::new();
+    let mut enc =
+      flate2::write::GzEncoder::new(&mut gz, flate2::Compression::default());
+    enc.write_all(&tar_buf).expect("gz write");
+    enc.finish().expect("gz finish");
+    gz
+  }
+
+  #[test]
+  fn extract_tar_normal_succeeds() {
+    let tmp = tempfile::tempdir().unwrap();
+    let gz = make_tar_gz(&[
+      ("greet", tar::EntryType::Regular, b"hello", 0o755),
+      ("notes/readme.txt", tar::EntryType::Regular, b"docs", 0o644),
+    ]);
+    extract_wef_archive("ok.tar.gz", &gz, tmp.path()).expect("extract");
+
+    let mut out = String::new();
+    std::fs::File::open(tmp.path().join("greet"))
+      .unwrap()
+      .read_to_string(&mut out)
+      .unwrap();
+    assert_eq!(out, "hello");
+    assert!(tmp.path().join("notes/readme.txt").exists());
+  }
+
+  #[test]
+  fn extract_tar_rejects_parent_dir_traversal() {
+    // Hand-craft a tar block with `../escape.txt` as the name: the
+    // `tar` crate's `Builder` refuses to *write* such a path (a safety
+    // feature in the producer), so a unit test that goes through it
+    // wouldn't actually exercise extract_wef_archive's reader-side
+    // check. We construct the 512-byte ustar header directly to get a
+    // genuinely-malicious archive on the wire.
+    fn ustar_block(name: &str, body: &[u8]) -> Vec<u8> {
+      let mut hdr = [0u8; 512];
+      // name (offset 0..100)
+      let nb = name.as_bytes();
+      hdr[..nb.len()].copy_from_slice(nb);
+      // mode "000644 \0" octal (offset 100..108)
+      hdr[100..108].copy_from_slice(b"000644 \0");
+      // uid/gid zeroed via spaces+NUL
+      hdr[108..116].copy_from_slice(b"000000 \0");
+      hdr[116..124].copy_from_slice(b"000000 \0");
+      // size in octal
+      let sz = format!("{:011o} ", body.len());
+      hdr[124..136].copy_from_slice(sz.as_bytes());
+      // mtime
+      hdr[136..148].copy_from_slice(b"00000000000 ");
+      // checksum placeholder (8 spaces)
+      hdr[148..156].copy_from_slice(b"        ");
+      // typeflag '0' = regular file
+      hdr[156] = b'0';
+      // magic "ustar" then null then version "00"
+      hdr[257..263].copy_from_slice(b"ustar\0");
+      hdr[263..265].copy_from_slice(b"00");
+      // checksum: unsigned sum of all bytes, written as 6 octal digits
+      // + NUL + space at offset 148..156.
+      let sum: u32 = hdr.iter().map(|&b| b as u32).sum();
+      let cs = format!("{:06o}\0 ", sum);
+      hdr[148..156].copy_from_slice(cs.as_bytes());
+
+      let mut out = Vec::with_capacity(512 + body.len().div_ceil(512) * 512);
+      out.extend_from_slice(&hdr);
+      out.extend_from_slice(body);
+      // pad body to 512.
+      let pad = (512 - body.len() % 512) % 512;
+      out.extend(std::iter::repeat_n(0u8, pad));
+      // two zero blocks for end-of-archive marker.
+      out.extend(std::iter::repeat_n(0u8, 1024));
+      out
+    }
+
+    let raw_tar = ustar_block("../escape.txt", b"oops");
+    let mut gz = Vec::new();
+    let mut enc =
+      flate2::write::GzEncoder::new(&mut gz, flate2::Compression::default());
+    enc.write_all(&raw_tar).unwrap();
+    enc.finish().unwrap();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let err = extract_wef_archive("evil.tar.gz", &gz, tmp.path())
+      .expect_err("malicious `..` path must be rejected");
+    let msg = err.to_string();
+    assert!(
+      msg.contains("traversal") || msg.contains("outside"),
+      "error must indicate the rejection reason; got: {msg}"
+    );
+    // The sibling file must not exist — defence-in-depth check passed.
+    assert!(!tmp.path().parent().unwrap().join("escape.txt").exists());
+  }
+
+  #[test]
+  fn extract_tar_rejects_symlink_escape() {
+    let tmp = tempfile::tempdir().unwrap();
+    // A bare symlink whose target escapes the dest. unpack_in must
+    // refuse: the test name documents the canonical zip-slip-via-symlink
+    // pattern (entry A = symlink escape, entry B writes through it).
+    let gz = make_tar_gz_symlink("foo", "../../etc/passwd");
+    let _ = extract_wef_archive("evil.tar.gz", &gz, tmp.path());
+    // Tar's `unpack_in` is allowed to either error or skip the entry —
+    // both behaviours mean the symlink didn't land in dest. Either is
+    // acceptable; what matters is that nothing escaped.
+    assert!(
+      !tmp.path().join("foo").exists()
+        || std::fs::symlink_metadata(tmp.path().join("foo"))
+          .map(|m| m.file_type().is_symlink())
+          .unwrap_or(false),
+      "if a symlink was extracted it must live inside dest"
+    );
+    // The target itself never came into existence under dest.
+    assert!(!tmp.path().join("etc/passwd").exists());
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn extract_tar_strips_setuid_bits() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = tempfile::tempdir().unwrap();
+    // Setuid + setgid + world-writable + executable. All the bad bits
+    // we never want extracted to disk.
+    let gz = make_tar_gz(&[(
+      "exe",
+      tar::EntryType::Regular,
+      b"#!/bin/sh\necho gotcha\n",
+      0o7777,
+    )]);
+    extract_wef_archive("perm.tar.gz", &gz, tmp.path()).expect("extract");
+    let meta = std::fs::metadata(tmp.path().join("exe")).unwrap();
+    let mode = meta.permissions().mode() & 0o7777;
+    // We normalize execute-bit-set files to 0o755. setuid/setgid/sticky
+    // bits must be gone, world-writable must be gone.
+    assert_eq!(
+      mode, 0o755,
+      "extracted mode must be exactly 0o755 (was {:o})",
+      mode
+    );
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn extract_tar_keeps_non_executable_as_0644() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = tempfile::tempdir().unwrap();
+    // A doc file with overly permissive 0o666 mode — must be downgraded
+    // to 0o644 (no world-writable).
+    let gz =
+      make_tar_gz(&[("readme.txt", tar::EntryType::Regular, b"hello", 0o666)]);
+    extract_wef_archive("doc.tar.gz", &gz, tmp.path()).expect("extract");
+    let mode = std::fs::metadata(tmp.path().join("readme.txt"))
+      .unwrap()
+      .permissions()
+      .mode()
+      & 0o7777;
+    assert_eq!(
+      mode, 0o644,
+      "non-executable mode must be 0o644 (was {:o})",
+      mode
+    );
+  }
+
+  #[test]
+  fn extract_unknown_format_errors() {
+    let tmp = tempfile::tempdir().unwrap();
+    let err = extract_wef_archive("evil.rar", b"PK\x03\x04", tmp.path())
+      .expect_err("unknown extensions must error");
+    assert!(err.to_string().contains("unsupported archive format"));
+  }
+
+  // --- rewrite_helper_plist_identifier ---
+
+  fn write_helper_plist(path: &std::path::Path, bundle_id: &str) {
+    let xml = format!(
+      r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>{bundle_id}</string>
+</dict>
+</plist>
+"#
+    );
+    std::fs::write(path, xml).unwrap();
+  }
+
+  fn read_bundle_id(path: &std::path::Path) -> String {
+    let d: plist::Dictionary = plist::from_file(path).unwrap();
+    d.get("CFBundleIdentifier")
+      .and_then(|v| v.as_string())
+      .unwrap()
+      .to_string()
+  }
+
+  #[test]
+  fn rewrite_helper_plist_keeps_helper_suffix() {
+    let tmp = tempfile::tempdir().unwrap();
+    let p = tmp.path().join("Info.plist");
+    write_helper_plist(&p, "com.example.wef.helper");
+    rewrite_helper_plist_identifier(&p, "com.acme.myapp").unwrap();
+    assert_eq!(read_bundle_id(&p), "com.acme.myapp.helper");
+  }
+
+  #[test]
+  fn rewrite_helper_plist_keeps_subhelper_suffix() {
+    // CEF spawns multiple helper variants (Renderer, GPU, Plugin,
+    // Alerts). Each Info.plist's existing id has the role baked in
+    // after `helper`; we must preserve everything from `helper` onward.
+    let tmp = tempfile::tempdir().unwrap();
+    let p = tmp.path().join("Info.plist");
+    write_helper_plist(&p, "com.example.wef.helper.gpu");
+    rewrite_helper_plist_identifier(&p, "com.acme.myapp").unwrap();
+    assert_eq!(read_bundle_id(&p), "com.acme.myapp.helper.gpu");
+  }
+
+  #[test]
+  fn rewrite_helper_plist_falls_back_when_no_helper_token() {
+    // Defensive path: every wef helper plist today has `helper` in its
+    // id, but if a hypothetical future bundle drops it we still emit
+    // something reasonable.
+    let tmp = tempfile::tempdir().unwrap();
+    let p = tmp.path().join("Info.plist");
+    write_helper_plist(&p, "com.example.wef.misc");
+    rewrite_helper_plist_identifier(&p, "com.acme.myapp").unwrap();
+    assert_eq!(read_bundle_id(&p), "com.acme.myapp.helper");
+  }
+
+  // --- extract_wef_archive ZIP path ---
+
+  fn build_zip<
+    F: FnOnce(&mut zip::ZipWriter<std::io::Cursor<&mut Vec<u8>>>),
+  >(
+    f: F,
+  ) -> Vec<u8> {
+    let mut buf: Vec<u8> = Vec::new();
+    {
+      let cursor = std::io::Cursor::new(&mut buf);
+      let mut writer = zip::ZipWriter::new(cursor);
+      f(&mut writer);
+      writer.finish().unwrap();
+    }
+    buf
+  }
+
+  #[test]
+  fn extract_zip_normal_succeeds() {
+    use zip::write::SimpleFileOptions;
+    let zip = build_zip(|w| {
+      w.start_file("greet.txt", SimpleFileOptions::default())
+        .unwrap();
+      w.write_all(b"hello zip").unwrap();
+      w.start_file("nested/readme.md", SimpleFileOptions::default())
+        .unwrap();
+      w.write_all(b"docs").unwrap();
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    extract_wef_archive("ok.zip", &zip, tmp.path()).expect("extract");
+    assert_eq!(
+      std::fs::read(tmp.path().join("greet.txt")).unwrap(),
+      b"hello zip"
+    );
+    assert!(tmp.path().join("nested/readme.md").exists());
+  }
+
+  #[test]
+  fn extract_zip_rejects_absolute_path() {
+    use zip::write::SimpleFileOptions;
+    let zip = build_zip(|w| {
+      // `enclosed_name` rejects absolute paths.
+      w.start_file("/etc/escape.txt", SimpleFileOptions::default())
+        .unwrap();
+      w.write_all(b"oops").unwrap();
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    let err = extract_wef_archive("evil.zip", &zip, tmp.path())
+      .expect_err("absolute path in zip must be rejected");
+    let msg = err.to_string();
+    assert!(
+      msg.contains("unsafe") || msg.contains("traversal"),
+      "error must indicate rejection; got: {msg}"
+    );
+    // /etc/escape.txt mustn't exist on the host.
+    assert!(!std::path::Path::new("/etc/escape.txt").exists());
+  }
+
+  #[test]
+  fn extract_zip_rejects_parent_traversal() {
+    use zip::write::SimpleFileOptions;
+    // ZIP without "/" prefix but with `..` segments — must also be
+    // refused by enclosed_name OR the defence-in-depth components check.
+    let zip = build_zip(|w| {
+      w.start_file("../escape.txt", SimpleFileOptions::default())
+        .unwrap();
+      w.write_all(b"oops").unwrap();
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    let err = extract_wef_archive("evil.zip", &zip, tmp.path())
+      .expect_err("parent-dir traversal in zip must be rejected");
+    let msg = err.to_string();
+    assert!(
+      msg.contains("unsafe") || msg.contains("traversal"),
+      "error must indicate rejection; got: {msg}"
+    );
+    assert!(!tmp.path().parent().unwrap().join("escape.txt").exists());
+  }
+
+  #[test]
+  fn extract_zip_rejects_symlink_entries() {
+    use zip::write::SimpleFileOptions;
+    let zip = build_zip(|w| {
+      // Use `add_symlink` so the entry is genuinely typed as a symlink
+      // in the ZIP central directory. `entry.is_symlink()` in the
+      // reader keys off that — a regression that removed our `if
+      // entry.is_symlink() { bail!(...) }` check would let a follow-on
+      // entry write through the symlink to escape `dest`.
+      w.add_symlink("link", "../../etc", SimpleFileOptions::default())
+        .unwrap();
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    let err = extract_wef_archive("evil.zip", &zip, tmp.path())
+      .expect_err("symlink in zip must be rejected");
+    let msg = err.to_string();
+    assert!(
+      msg.contains("symlink"),
+      "error must name symlink rejection; got: {msg}"
+    );
+    // And nothing landed at the symlink path.
+    assert!(!tmp.path().join("link").exists());
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn extract_zip_strips_setuid_bits() {
+    use std::os::unix::fs::PermissionsExt;
+
+    use zip::write::SimpleFileOptions;
+    let zip = build_zip(|w| {
+      let opts = SimpleFileOptions::default().unix_permissions(0o7777);
+      w.start_file("exe", opts).unwrap();
+      w.write_all(b"#!/bin/sh\necho gotcha\n").unwrap();
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    extract_wef_archive("perm.zip", &zip, tmp.path()).expect("extract");
+    let mode = std::fs::metadata(tmp.path().join("exe"))
+      .unwrap()
+      .permissions()
+      .mode()
+      & 0o7777;
+    assert_eq!(mode, 0o755, "mode must be exactly 0o755 (was {:o})", mode);
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn extract_zip_keeps_non_exec_at_0644() {
+    use std::os::unix::fs::PermissionsExt;
+
+    use zip::write::SimpleFileOptions;
+    let zip = build_zip(|w| {
+      let opts = SimpleFileOptions::default().unix_permissions(0o666);
+      w.start_file("doc.txt", opts).unwrap();
+      w.write_all(b"hello").unwrap();
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    extract_wef_archive("perm.zip", &zip, tmp.path()).expect("extract");
+    let mode = std::fs::metadata(tmp.path().join("doc.txt"))
+      .unwrap()
+      .permissions()
+      .mode()
+      & 0o7777;
+    assert_eq!(mode, 0o644);
+  }
+
+  #[test]
+  fn extract_zip_creates_nested_directories() {
+    use zip::write::SimpleFileOptions;
+    let zip = build_zip(|w| {
+      w.start_file("a/b/c/leaf.txt", SimpleFileOptions::default())
+        .unwrap();
+      w.write_all(b"deep").unwrap();
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    extract_wef_archive("nest.zip", &zip, tmp.path()).expect("extract");
+    assert_eq!(
+      std::fs::read(tmp.path().join("a/b/c/leaf.txt")).unwrap(),
+      b"deep"
+    );
+  }
+
+  // --- read_plist_string ---
+
+  #[test]
+  fn read_plist_string_returns_value_for_existing_key() {
+    let tmp = tempfile::tempdir().unwrap();
+    let p = tmp.path().join("Info.plist");
+    std::fs::write(
+      &p,
+      r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleExecutable</key><string>my_app</string>
+  <key>CFBundleIdentifier</key><string>com.example.foo</string>
+</dict></plist>
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+      read_plist_string(&p, "CFBundleExecutable").as_deref(),
+      Some("my_app")
+    );
+    assert_eq!(
+      read_plist_string(&p, "CFBundleIdentifier").as_deref(),
+      Some("com.example.foo")
+    );
+  }
+
+  #[test]
+  fn read_plist_string_none_for_missing_key() {
+    let tmp = tempfile::tempdir().unwrap();
+    let p = tmp.path().join("Info.plist");
+    std::fs::write(
+      &p,
+      r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>X</key><string>y</string></dict></plist>
+"#,
+    )
+    .unwrap();
+    assert_eq!(read_plist_string(&p, "CFBundleExecutable"), None);
+  }
+
+  #[test]
+  fn read_plist_string_none_for_non_string_value() {
+    // A key with a non-string value (e.g. an array) must yield None
+    // rather than panic or return some stringified form.
+    let tmp = tempfile::tempdir().unwrap();
+    let p = tmp.path().join("Info.plist");
+    std::fs::write(
+      &p,
+      r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>K</key><array><string>x</string></array></dict></plist>
+"#,
+    )
+    .unwrap();
+    assert_eq!(read_plist_string(&p, "K"), None);
+  }
+
+  #[test]
+  fn read_plist_string_none_for_unreadable_or_corrupt_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    // Non-existent file.
+    assert_eq!(
+      read_plist_string(&tmp.path().join("missing.plist"), "K"),
+      None
+    );
+    // Garbage contents.
+    let p = tmp.path().join("bad.plist");
+    std::fs::write(&p, b"this is not a plist").unwrap();
+    assert_eq!(read_plist_string(&p, "K"), None);
+  }
+
+  // --- rewrite_cef_helper_bundle_ids ---
+
+  fn setup_cef_frameworks(tmp: &std::path::Path) -> std::path::PathBuf {
+    let contents = tmp.join("Contents");
+    let fw = contents.join("Frameworks");
+    std::fs::create_dir_all(&fw).unwrap();
+    let make_helper_app = |name: &str, id: &str| {
+      let app = fw.join(format!("{name}.app"));
+      let plist_dir = app.join("Contents");
+      std::fs::create_dir_all(&plist_dir).unwrap();
+      write_helper_plist(&plist_dir.join("Info.plist"), id);
+    };
+    make_helper_app("wef Helper", "com.example.wef.helper");
+    make_helper_app("wef Helper (GPU)", "com.example.wef.helper.gpu");
+    make_helper_app("wef Helper (Renderer)", "com.example.wef.helper.renderer");
+    // A non-helper .app — must NOT be rewritten.
+    let other = fw.join("Other.app/Contents");
+    std::fs::create_dir_all(&other).unwrap();
+    write_helper_plist(&other.join("Info.plist"), "com.example.other");
+    // The CEF framework directory itself — also must NOT be touched
+    // (rewriting it invalidates its embedded code signature).
+    let cef_fw =
+      fw.join("Chromium Embedded Framework.framework/Versions/A/Resources");
+    std::fs::create_dir_all(&cef_fw).unwrap();
+    write_helper_plist(
+      &cef_fw.join("Info.plist"),
+      "org.chromium.embedded.framework",
+    );
+    contents
+  }
+
+  #[test]
+  fn rewrite_helpers_rewrites_only_helper_apps() {
+    let tmp = tempfile::tempdir().unwrap();
+    let contents = setup_cef_frameworks(tmp.path());
+    rewrite_cef_helper_bundle_ids(&contents, "com.acme.myapp").unwrap();
+
+    let fw = contents.join("Frameworks");
+    assert_eq!(
+      read_bundle_id(&fw.join("wef Helper.app/Contents/Info.plist")),
+      "com.acme.myapp.helper"
+    );
+    assert_eq!(
+      read_bundle_id(&fw.join("wef Helper (GPU).app/Contents/Info.plist")),
+      "com.acme.myapp.helper.gpu"
+    );
+    assert_eq!(
+      read_bundle_id(&fw.join("wef Helper (Renderer).app/Contents/Info.plist")),
+      "com.acme.myapp.helper.renderer"
+    );
+    // Other.app does not contain "Helper" → must NOT be rewritten.
+    assert_eq!(
+      read_bundle_id(&fw.join("Other.app/Contents/Info.plist")),
+      "com.example.other"
+    );
+    // CEF framework: also untouched.
+    assert_eq!(
+      read_bundle_id(&fw.join(
+        "Chromium Embedded Framework.framework/Versions/A/Resources/Info.plist"
+      )),
+      "org.chromium.embedded.framework"
+    );
+  }
+
+  #[test]
+  fn rewrite_helpers_is_noop_when_frameworks_missing() {
+    // Some backends (winit, servo) don't ship a Frameworks/ subdir. The
+    // helper-rewriter must tolerate that without erroring.
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join("Contents")).unwrap();
+    rewrite_cef_helper_bundle_ids(
+      &tmp.path().join("Contents"),
+      "com.acme.myapp",
+    )
+    .expect("absent Frameworks must not error");
+  }
+
+  // --- locate_dev_backend_binary / locate_dev_app_bundle ---
+
+  #[test]
+  fn locate_dev_webview_returns_first_existing_candidate() {
+    let tmp = tempfile::tempdir().unwrap();
+    // Set up TWO candidates; the function should return whichever it
+    // finds first in its candidate list. We create the SECOND one to
+    // prove the function actually walks the list (rather than blindly
+    // returning candidate[0] which would not exist).
+    let p = tmp
+      .path()
+      .join("webview/build/wef_webview.app/Contents/MacOS/wef_webview");
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(&p, b"binary").unwrap();
+    let found = locate_dev_backend_binary(tmp.path(), "webview");
+    assert_eq!(found.as_deref(), Some(p.as_path()));
+  }
+
+  #[test]
+  fn locate_dev_returns_none_when_nothing_exists() {
+    let tmp = tempfile::tempdir().unwrap();
+    assert!(locate_dev_backend_binary(tmp.path(), "cef").is_none());
+    assert!(locate_dev_backend_binary(tmp.path(), "webview").is_none());
+    assert!(locate_dev_backend_binary(tmp.path(), "raw").is_none());
+  }
+
+  #[test]
+  fn locate_dev_backend_winit_target_paths() {
+    let tmp = tempfile::tempdir().unwrap();
+    let p = tmp.path().join("target/release/wef_winit");
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(&p, b"binary").unwrap();
+    // `raw` is the public backend name; the binary file is `wef_winit`.
+    let found = locate_dev_backend_binary(tmp.path(), "raw");
+    assert_eq!(found.as_deref(), Some(p.as_path()));
+  }
+
+  #[test]
+  fn locate_dev_app_bundle_skips_winit_and_servo() {
+    // winit and servo don't ship as .app bundles. locate_dev_app_bundle
+    // must short-circuit to None for those, never touching the
+    // filesystem (so a misleading directory with the right name can't
+    // accidentally match).
+    let tmp = tempfile::tempdir().unwrap();
+    assert!(locate_dev_app_bundle(tmp.path(), "raw").is_none());
+    assert!(locate_dev_app_bundle(tmp.path(), "servo").is_none());
+  }
+
+  #[test]
+  fn locate_dev_app_bundle_finds_webview() {
+    let tmp = tempfile::tempdir().unwrap();
+    let p = tmp.path().join("webview/build/wef_webview.app");
+    std::fs::create_dir_all(&p).unwrap();
+    let found = locate_dev_app_bundle(tmp.path(), "webview");
+    assert_eq!(found.as_deref(), Some(p.as_path()));
+  }
+
+  // --- convert_icon_set_to_ico ---
+  //
+  // ICO is a binary container with a strict header layout. A regression
+  // that flips a width/height byte, or computes data_offset wrong,
+  // produces a visually-fine file that Windows refuses to display.
+
+  fn fake_png(label: &[u8]) -> Vec<u8> {
+    // Not a real PNG, just bytes the converter reads verbatim into the
+    // ICO entry body. The converter doesn't validate the PNG contents.
+    let mut v = Vec::with_capacity(8 + label.len());
+    v.extend_from_slice(b"\x89PNG\r\n\x1a\n"); // PNG magic
+    v.extend_from_slice(label);
+    v
+  }
+
+  fn read_u16(buf: &[u8], off: usize) -> u16 {
+    u16::from_le_bytes([buf[off], buf[off + 1]])
+  }
+
+  fn read_u32(buf: &[u8], off: usize) -> u32 {
+    u32::from_le_bytes([buf[off], buf[off + 1], buf[off + 2], buf[off + 3]])
+  }
+
+  #[test]
+  fn ico_writes_correct_header_for_multiple_sizes() {
+    let cwd = tempfile::tempdir().unwrap();
+    let png16 = fake_png(b"size16");
+    let png32 = fake_png(b"size32");
+    let png256 = fake_png(b"size256");
+    std::fs::write(cwd.path().join("a.png"), &png16).unwrap();
+    std::fs::write(cwd.path().join("b.png"), &png32).unwrap();
+    std::fs::write(cwd.path().join("c.png"), &png256).unwrap();
+
+    let entries = vec![
+      crate::args::IconSetEntry {
+        path: "a.png".into(),
+        size: 16,
+      },
+      crate::args::IconSetEntry {
+        path: "b.png".into(),
+        size: 32,
+      },
+      crate::args::IconSetEntry {
+        path: "c.png".into(),
+        size: 256,
+      },
+    ];
+    let out = cwd.path().join("icon.ico");
+    convert_icon_set_to_ico(cwd.path(), &entries, &out).expect("ok");
+    let buf = std::fs::read(&out).unwrap();
+
+    // ICO header: reserved=0, type=1 (ICO), count=3.
+    assert_eq!(read_u16(&buf, 0), 0);
+    assert_eq!(read_u16(&buf, 2), 1);
+    assert_eq!(read_u16(&buf, 4), 3);
+
+    // Three directory entries follow, 16 bytes each.
+    // Entry 0: 16x16 PNG. dim=16, planes=1, bpp=32, size, offset.
+    assert_eq!(buf[6], 16);
+    assert_eq!(buf[7], 16);
+    assert_eq!(read_u16(&buf, 6 + 4), 1, "planes");
+    assert_eq!(read_u16(&buf, 6 + 6), 32, "bits per pixel");
+    let sz0 = read_u32(&buf, 6 + 8) as usize;
+    let off0 = read_u32(&buf, 6 + 12) as usize;
+    assert_eq!(sz0, png16.len());
+    // First entry's data starts right after the header + 3 directory
+    // entries (6 + 48 = 54).
+    assert_eq!(off0, 54);
+
+    // Entry 2: 256 is encoded as 0 in the dim byte per ICO convention.
+    assert_eq!(buf[6 + 32], 0, "256px width must be encoded as 0");
+    assert_eq!(buf[6 + 33], 0, "256px height must be encoded as 0");
+
+    // The three PNG bodies appear at the offsets the directory entries
+    // claim, in the order they were listed.
+    assert_eq!(&buf[off0..off0 + sz0], png16.as_slice());
+    let off1 = read_u32(&buf, 6 + 16 + 12) as usize;
+    let sz1 = read_u32(&buf, 6 + 16 + 8) as usize;
+    assert_eq!(&buf[off1..off1 + sz1], png32.as_slice());
+    let off2 = read_u32(&buf, 6 + 32 + 12) as usize;
+    let sz2 = read_u32(&buf, 6 + 32 + 8) as usize;
+    assert_eq!(&buf[off2..off2 + sz2], png256.as_slice());
+  }
+
+  #[test]
+  fn ico_skips_missing_files_with_warning() {
+    let cwd = tempfile::tempdir().unwrap();
+    let png = fake_png(b"only");
+    std::fs::write(cwd.path().join("there.png"), &png).unwrap();
+    let entries = vec![
+      crate::args::IconSetEntry {
+        path: "missing.png".into(),
+        size: 16,
+      },
+      crate::args::IconSetEntry {
+        path: "there.png".into(),
+        size: 32,
+      },
+    ];
+    let out = cwd.path().join("icon.ico");
+    convert_icon_set_to_ico(cwd.path(), &entries, &out).expect("ok");
+    let buf = std::fs::read(&out).unwrap();
+    // Only one image survived; the count must reflect that, otherwise
+    // the directory would name an entry with bogus offset/size.
+    assert_eq!(read_u16(&buf, 4), 1, "count must skip missing entries");
+  }
+
+  #[test]
+  fn ico_errors_when_no_inputs_resolve() {
+    let cwd = tempfile::tempdir().unwrap();
+    let entries = vec![
+      crate::args::IconSetEntry {
+        path: "absent1.png".into(),
+        size: 16,
+      },
+      crate::args::IconSetEntry {
+        path: "absent2.png".into(),
+        size: 32,
+      },
+    ];
+    let out = cwd.path().join("icon.ico");
+    let err = convert_icon_set_to_ico(cwd.path(), &entries, &out).unwrap_err();
+    assert!(err.to_string().contains("No valid icon"));
+    // Output file must not exist if we never wrote anything.
+    assert!(!out.exists());
+  }
+
+  #[test]
+  fn ico_data_offsets_are_monotonically_increasing() {
+    // The data_offset accumulator in the producer increments by each
+    // image's byte length. A regression that forgot to advance the
+    // offset would cause later entries to alias earlier ones.
+    let cwd = tempfile::tempdir().unwrap();
+    let a = fake_png(b"aaaaaaaaaa"); // distinct lengths
+    let b = fake_png(b"bbbbbbbbbbbbbbbb");
+    let c = fake_png(b"cccc");
+    std::fs::write(cwd.path().join("a.png"), &a).unwrap();
+    std::fs::write(cwd.path().join("b.png"), &b).unwrap();
+    std::fs::write(cwd.path().join("c.png"), &c).unwrap();
+
+    let entries = vec![
+      crate::args::IconSetEntry {
+        path: "a.png".into(),
+        size: 16,
+      },
+      crate::args::IconSetEntry {
+        path: "b.png".into(),
+        size: 32,
+      },
+      crate::args::IconSetEntry {
+        path: "c.png".into(),
+        size: 64,
+      },
+    ];
+    let out = cwd.path().join("icon.ico");
+    convert_icon_set_to_ico(cwd.path(), &entries, &out).expect("ok");
+    let buf = std::fs::read(&out).unwrap();
+    let off0 = read_u32(&buf, 6 + 12) as usize;
+    let off1 = read_u32(&buf, 6 + 16 + 12) as usize;
+    let off2 = read_u32(&buf, 6 + 32 + 12) as usize;
+    let sz0 = read_u32(&buf, 6 + 8) as usize;
+    let sz1 = read_u32(&buf, 6 + 16 + 8) as usize;
+    assert_eq!(off1, off0 + sz0, "second offset = first off + first size");
+    assert_eq!(off2, off1 + sz1, "third offset = second off + second size");
+    // And the file must be at least long enough to hold all images.
+    let total = read_u32(&buf, 6 + 32 + 8) as usize + off2;
+    assert_eq!(buf.len(), total);
+  }
+
+  #[test]
+  fn rewrite_helper_plist_errors_on_missing_key() {
+    let tmp = tempfile::tempdir().unwrap();
+    let p = tmp.path().join("Info.plist");
+    // Plist without CFBundleIdentifier at all — the rewrite must fail
+    // loudly rather than silently insert a wrong id.
+    std::fs::write(
+      &p,
+      r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>Other</key><string>x</string></dict></plist>
+"#,
+    )
+    .unwrap();
+    let err =
+      rewrite_helper_plist_identifier(&p, "com.acme.myapp").unwrap_err();
+    assert!(err.to_string().contains("CFBundleIdentifier"));
+  }
 }

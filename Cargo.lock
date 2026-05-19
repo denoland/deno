@@ -3770,6 +3770,7 @@ dependencies = [
  "deno_error",
  "deno_lib",
  "deno_media_type",
+ "deno_node",
  "deno_npm",
  "deno_npmrc",
  "deno_package_json",
@@ -3815,6 +3816,7 @@ dependencies = [
  "raw-window-handle",
  "rustls",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 

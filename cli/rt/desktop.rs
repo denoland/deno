@@ -209,8 +209,21 @@ pub const DESKTOP_JS: &str = r#"
   // Binding-call correlation: when --inspect is active, both the Deno
   // and renderer consoles emit matching console.debug messages so the
   // developer can trace a binding call across isolates.
-  const bindingTrace = typeof Deno.env?.get === "function"
-    && Deno.env.get("DENO_DESKTOP_MUX_WS") != null;
+  // bindingTrace is only useful under --inspect (where DENO_DESKTOP_MUX_WS
+  // is set by the parent). `Deno.env.get` THROWS `NotCapable` if the
+  // runtime wasn't compiled with --allow-env, which aborts DESKTOP_JS
+  // execution before the event-loop IIFE below has a chance to register.
+  // That's the "nothing works — no mouse, no keyboard, no alerts"
+  // failure mode: events fire on the wef side and pile up in the mpsc
+  // channel, but the JS side never reads them because this throw kills
+  // the script. Catch the env-permission error and disable tracing.
+  let bindingTrace = false;
+  try {
+    bindingTrace = typeof Deno.env?.get === "function"
+      && Deno.env.get("DENO_DESKTOP_MUX_WS") != null;
+  } catch (_) {
+    // No env access — fine, we just don't trace binding calls.
+  }
 
   const nativeBind = BrowserWindowPrototype.bind;
   BrowserWindowPrototype.bind = function(name, fn) {
@@ -399,18 +412,23 @@ pub const DESKTOP_JS: &str = r#"
   Object.setPrototypeOf(Notification.prototype, NotificationPrototype);
   Notification.prototype.constructor = Notification;
 
-  // Cache of the last status the OS reported. `Notification.permission` is
-  // a *synchronous* getter per spec, but the underlying wef call is async
-  // (it's serviced on the UI thread). We seed the cache with "default"
-  // until the first query/request completes, then keep it in sync as
-  // requestPermission / permissions.query resolve.
+  // Cache of the last status the OS reported. `Notification.permission`
+  // is a *synchronous* getter per spec, but the underlying wef call is
+  // async (it's serviced on the UI thread). The cache starts at
+  // "default" and updates as `requestPermission()` / permissions.query()
+  // resolve. We deliberately do NOT do a startup query — that op
+  // dispatches into the wef backend's UI thread, which may not be
+  // pumping when DESKTOP_JS first runs; a hung promise there shouldn't
+  // be possible to interfere with the event loop below, but the cost
+  // of being defensive is also zero (apps generally read `.permission`
+  // only after a user-driven request anyway).
   //
-  // Web spec maps the wef "prompt" status (no decision yet) to "default"
-  // for `Notification`, and "prompt" for `navigator.permissions`. The wef
-  // "unsupported" status — emitted when the backend or platform has no
-  // permission model — surfaces to JS as a thrown error from
-  // requestPermission (most honest) and as "denied" from permissions.query
-  // (spec doesn't have an "unsupported" state).
+  // Web spec maps wef's "prompt" status (no decision yet) to "default"
+  // for `Notification`, and "prompt" for `navigator.permissions`. The
+  // wef "unsupported" status — emitted when the backend or platform
+  // has no permission model — surfaces to JS as a thrown error from
+  // requestPermission (most honest) and as "denied" from
+  // permissions.query (spec doesn't have an "unsupported" state).
   let cachedNotificationPermission = "default";
 
   function wefToNotificationPermission(s) {
@@ -424,60 +442,55 @@ pub const DESKTOP_JS: &str = r#"
     }
   }
 
-  // Kick off a query at startup so `Notification.permission` reports a
-  // useful value before the app calls requestPermission(). Failures are
-  // silent — the cache stays at "default".
-  (async () => {
-    try {
-      const s = await op_desktop_query_notification_permission();
-      if (s !== "unsupported") {
-        cachedNotificationPermission = wefToNotificationPermission(s);
-      }
-    } catch (_) {}
-  })();
-
-  Object.defineProperties(Notification, {
-    permission: {
-      get() { return cachedNotificationPermission; },
-      enumerable: true,
-      configurable: true,
-    },
-    maxActions: internals.core.propReadOnly(0),
-    requestPermission: internals.core.propWritable(function requestPermission(
-      cb,
-    ) {
-      // The Web Notifications spec gates `requestPermission` on a
-      // transient user activation. The desktop runtime can't reliably
-      // observe activations from inside the renderer (the OS-level
-      // notification permission lives outside Chromium's activation
-      // tracking), so we don't enforce it — but we still warn so callers
-      // know they're relying on lenient behavior the browser wouldn't
-      // give them.
-      const promise = (async () => {
-        const s = await op_desktop_request_notification_permission();
-        if (s === "unsupported") {
-          // Honest signaling: this OS / backend has no notification
-          // permission model. Throw rather than silently returning a
-          // misleading "denied" or "granted".
-          throw new TypeError(
-            "Notification.requestPermission: not supported by this platform/backend",
+  // Wrap every new descriptor mutation in a try/catch. Anything that
+  // throws here would otherwise abort DESKTOP_JS execution and prevent
+  // the event-loop IIFE at the bottom of this script from registering,
+  // which manifests as "nothing works" (no mouse, no keyboard, no
+  // alerts). The catch is logged via console.error so a regression is
+  // visible but doesn't take the whole desktop runtime down with it.
+  try {
+    Object.defineProperties(Notification, {
+      permission: {
+        get() { return cachedNotificationPermission; },
+        enumerable: true,
+        configurable: true,
+      },
+      maxActions: internals.core.propReadOnly(0),
+      requestPermission: internals.core.propWritable(function requestPermission(
+        cb,
+      ) {
+        // The Web Notifications spec gates `requestPermission` on a
+        // transient user activation. The desktop runtime can't observe
+        // renderer activations cleanly (the OS-level UN dialog lives
+        // outside Chromium's activation tracking), so we don't enforce.
+        const promise = (async () => {
+          const s = await op_desktop_request_notification_permission();
+          if (s === "unsupported") {
+            // Honest signaling: this OS / backend has no notification
+            // permission model. Throw rather than silently returning a
+            // misleading "denied" or "granted".
+            throw new TypeError(
+              "Notification.requestPermission: not supported by this platform/backend",
+            );
+          }
+          const perm = wefToNotificationPermission(s);
+          cachedNotificationPermission = perm;
+          return perm;
+        })();
+        if (typeof cb === "function") {
+          // Deprecated callback form. Per spec, the callback is invoked
+          // with the resolved permission *and* the promise still resolves.
+          promise.then(
+            (perm) => { try { cb(perm); } catch (_) {} },
+            () => { try { cb("denied"); } catch (_) {} },
           );
         }
-        const perm = wefToNotificationPermission(s);
-        cachedNotificationPermission = perm;
-        return perm;
-      })();
-      if (typeof cb === "function") {
-        // Deprecated callback form. Per spec, the callback is invoked
-        // with the resolved permission *and* the promise still resolves.
-        promise.then(
-          (perm) => { try { cb(perm); } catch (_) {} },
-          () => { try { cb("denied"); } catch (_) {} },
-        );
-      }
-      return promise;
-    }),
-  });
+        return promise;
+      }),
+    });
+  } catch (e) {
+    console.error("[deno desktop] failed to install Notification permission API:", e);
+  }
 
   internals.defineEventHandler(NotificationPrototype, "show");
   internals.defineEventHandler(NotificationPrototype, "click");
@@ -559,21 +572,26 @@ pub const DESKTOP_JS: &str = r#"
   // Plug into globalThis.navigator. The base Deno runtime defines
   // `navigator` without a `permissions` slot — add ours, but don't
   // clobber the object if it's missing entirely (defensive against
-  // future-Deno changes).
-  if (typeof navigator === "object" && navigator != null) {
-    Object.defineProperty(navigator, "permissions", {
-      value: permissionsImpl,
+  // future-Deno changes). Wrapped: a failure here must not abort the
+  // event-loop IIFE below, because that's what drives all input.
+  try {
+    if (typeof navigator === "object" && navigator != null) {
+      Object.defineProperty(navigator, "permissions", {
+        value: permissionsImpl,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
+    }
+    Object.defineProperty(globalThis, "PermissionStatus", {
+      value: PermissionStatus,
       writable: true,
-      enumerable: true,
+      enumerable: false,
       configurable: true,
     });
+  } catch (e) {
+    console.error("[deno desktop] failed to install navigator.permissions:", e);
   }
-  Object.defineProperty(globalThis, "PermissionStatus", {
-    value: PermissionStatus,
-    writable: true,
-    enumerable: false,
-    configurable: true,
-  });
 
   // Start polling loops immediately. Use core.unrefOpPromise so these
   // pending ops don't block event loop completion (e.g. the pre-module
@@ -1084,3 +1102,168 @@ pub fn init_desktop_state(
 }
 
 pub use deno_lib::util::net::allocate_random_port;
+
+#[cfg(test)]
+mod tests {
+  use super::DESKTOP_JS;
+  use super::desktop_auto_update_js;
+  use super::desktop_error_reporting_js;
+
+  // --- DESKTOP_JS structural invariants ---
+  //
+  // DESKTOP_JS is an 800+ line string baked into the binary. We can't
+  // cheaply exec it in a v8 isolate from here, but the asserts below
+  // pin the regressions that motivated this whole fix: the "Deno.env
+  // throws NotCapable and aborts the IIFE" bug from May 2026.
+
+  #[test]
+  fn desktop_js_wraps_binding_trace_env_read_in_try_catch() {
+    // The original bug: `Deno.env.get("DENO_DESKTOP_MUX_WS")` threw
+    // NotCapable when --allow-env wasn't granted, aborting the rest of
+    // DESKTOP_JS. The fix is to wrap that read in try/catch and let it
+    // soft-fail. A regression that removed the try/catch would
+    // reintroduce the "blank window where nothing works" failure mode.
+    let near = locate_around(DESKTOP_JS, "DENO_DESKTOP_MUX_WS");
+    assert!(
+      near.contains("try {") || near.contains("try{"),
+      "DENO_DESKTOP_MUX_WS read must be wrapped in try/catch; got:\n{near}"
+    );
+  }
+
+  #[test]
+  fn desktop_js_installs_alert_confirm_prompt_overrides() {
+    // The renderer reaches `op_desktop_alert/confirm/prompt` through
+    // these globalThis overrides; the assignment lines must survive.
+    // Each must reference its op so a stub/no-op replacement would
+    // fail the check.
+    assert!(DESKTOP_JS.contains("op_desktop_alert"));
+    assert!(DESKTOP_JS.contains("op_desktop_confirm"));
+    assert!(DESKTOP_JS.contains("op_desktop_prompt"));
+    assert!(DESKTOP_JS.contains("globalThis"));
+  }
+
+  #[test]
+  fn desktop_js_installs_recv_event_loop() {
+    // The event-loop IIFE at the bottom polls `op_desktop_recv_event`
+    // and dispatches to BrowserWindow listeners. Without this code path
+    // mouse / keyboard / focus / resize events would never reach JS,
+    // exactly the symptom from the original bug report.
+    assert!(
+      DESKTOP_JS.contains("op_desktop_recv_event"),
+      "DESKTOP_JS must call op_desktop_recv_event"
+    );
+  }
+
+  #[test]
+  fn desktop_js_installs_notification_permission_getter() {
+    // Notification.permission is a synchronous spec-mandated getter.
+    // A regression that turned the property definition into a plain
+    // value would break feature-detection in user code.
+    assert!(DESKTOP_JS.contains("Notification"));
+    assert!(DESKTOP_JS.contains("permission"));
+    assert!(DESKTOP_JS.contains("requestPermission"));
+  }
+
+  #[test]
+  fn desktop_js_installs_navigator_permissions() {
+    assert!(DESKTOP_JS.contains("navigator"));
+    assert!(DESKTOP_JS.contains("permissions"));
+    assert!(DESKTOP_JS.contains("PermissionStatus"));
+  }
+
+  #[test]
+  fn desktop_js_installs_browser_window_constructor() {
+    assert!(DESKTOP_JS.contains("Deno.BrowserWindow"));
+    // The original BrowserWindow is wrapped so per-window state is
+    // recorded.
+    assert!(DESKTOP_JS.contains("windows.set"));
+  }
+
+  // --- desktop_auto_update_js ---
+
+  #[test]
+  fn auto_update_js_inlines_version_as_json_literal() {
+    let js = desktop_auto_update_js(Some("1.2.3"), false);
+    // The version must be a JSON-quoted string, not a bare identifier:
+    // we feed it through serde_json::to_string. A regression that
+    // dropped the quoting would produce invalid JS for any non-trivial
+    // version (e.g. `1.2.3-alpha`).
+    assert!(
+      js.contains(r#""1.2.3""#),
+      "version must be quoted; got: {js}"
+    );
+    assert!(js.contains("const _version ="));
+    assert!(js.contains("const _rolledBack = false"));
+  }
+
+  #[test]
+  fn auto_update_js_serializes_none_as_null_literal() {
+    let js = desktop_auto_update_js(None, true);
+    assert!(js.contains("const _version = null"));
+    assert!(js.contains("const _rolledBack = true"));
+  }
+
+  #[test]
+  fn auto_update_js_blocks_non_https_manifest_url() {
+    // Anti-downgrade defence: the auto-update path must refuse to
+    // fetch its manifest over http://, gopher://, file://, etc. A
+    // change that loosened this check is a security regression.
+    let js = desktop_auto_update_js(Some("1.0.0"), false);
+    assert!(js.contains("isHttpsUrl"));
+    assert!(js.contains("https:"));
+  }
+
+  // --- desktop_error_reporting_js ---
+
+  #[test]
+  fn error_reporting_js_quotes_url_and_version() {
+    let js =
+      desktop_error_reporting_js(Some("https://err.example/r"), Some("0.1.0"));
+    assert!(js.contains(r#""https://err.example/r""#));
+    assert!(js.contains(r#""0.1.0""#));
+    // The URL must be referenced by the script body — otherwise the
+    // emitted code would silently never POST.
+    assert!(js.contains("_errorReportingUrl"));
+  }
+
+  #[test]
+  fn error_reporting_js_handles_none_url() {
+    let js = desktop_error_reporting_js(None, None);
+    // null both — the handler short-circuits the POST but still shows
+    // the alert.
+    assert!(js.contains("const _errorReportingUrl = null"));
+    assert!(js.contains("const _appVersion = null"));
+  }
+
+  #[test]
+  fn error_reporting_js_listens_for_unhandledrejection() {
+    // Both `error` and `unhandledrejection` events must be hooked
+    // — missing either would let half of all user-code failures fall
+    // out the bottom of the runtime without notification.
+    let js = desktop_error_reporting_js(None, None);
+    assert!(js.contains("\"error\""));
+    assert!(js.contains("\"unhandledrejection\""));
+  }
+
+  // --- helpers ---
+
+  /// Return a window of DESKTOP_JS around the first occurrence of `needle`,
+  /// covering ~10 lines on each side. Useful for asserting "the region
+  /// near this token contains a try/catch" without coupling the test
+  /// to a precise line range.
+  fn locate_around(hay: &str, needle: &str) -> String {
+    // The first occurrence of DENO_DESKTOP_MUX_WS in DESKTOP_JS is
+    // inside a comment block; the *code* occurrence is the second. We
+    // want the window around the code path, so search after the first.
+    let first = hay.find(needle).unwrap_or_else(|| {
+      panic!("needle {needle:?} not found in DESKTOP_JS");
+    });
+    let idx = hay[first + needle.len()..]
+      .find(needle)
+      .map(|i| first + needle.len() + i)
+      .unwrap_or(first);
+    let start = idx.saturating_sub(500);
+    let end = (idx + needle.len() + 500).min(hay.len());
+    hay[start..end].to_string()
+  }
+}

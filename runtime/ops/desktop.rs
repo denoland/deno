@@ -934,13 +934,13 @@ pub fn op_desktop_apply_patch(
 }
 
 /// Verify an Ed25519 signature over `message` using the base64-encoded
-/// 32-byte public key and base64-encoded 64-byte signature. Used by the JS
-/// auto-update path to validate `latest.json` before fetching any patch.
-#[op2(fast)]
-pub fn op_desktop_verify_ed25519(
-  #[string] public_key_b64: &str,
-  #[string] signature_b64: &str,
-  #[buffer] message: &[u8],
+/// 32-byte public key and base64-encoded 64-byte signature. Inner pure
+/// function so it's directly callable from unit tests (the `#[op2]`
+/// wrapper replaces the surface name with an `OpDecl`).
+fn verify_ed25519_b64(
+  public_key_b64: &str,
+  signature_b64: &str,
+  message: &[u8],
 ) -> bool {
   use base64::Engine;
   let engine = base64::engine::general_purpose::STANDARD;
@@ -963,6 +963,18 @@ pub fn op_desktop_verify_ed25519(
   let signature = ed25519_dalek::Signature::from_bytes(&sig_arr);
   use ed25519_dalek::Verifier;
   verifying_key.verify(message, &signature).is_ok()
+}
+
+/// Verify an Ed25519 signature over `message` using the base64-encoded
+/// 32-byte public key and base64-encoded 64-byte signature. Used by the JS
+/// auto-update path to validate `latest.json` before fetching any patch.
+#[op2(fast)]
+pub fn op_desktop_verify_ed25519(
+  #[string] public_key_b64: &str,
+  #[string] signature_b64: &str,
+  #[buffer] message: &[u8],
+) -> bool {
+  verify_ed25519_b64(public_key_b64, signature_b64, message)
 }
 
 #[op2]
@@ -1621,3 +1633,638 @@ deno_core::extension!(
   ],
   objects = [BrowserWindow, Dock, Tray, Notification],
 );
+
+#[cfg(test)]
+mod tests {
+  use deno_core::serde_json;
+  use deno_core::serde_json::json;
+
+  use super::DesktopEvent;
+  use super::PendingBindResponses;
+  use super::PermissionState;
+  use super::dylib_magic_ok;
+  use super::permission_state_to_web_string;
+  use super::register_bind_call;
+  use super::verify_ed25519_b64;
+
+  // These tests pin the wire format that the DESKTOP_JS event-loop
+  // IIFE consumes. Changing any of these shapes is a breaking change
+  // for in-renderer event listeners — the assertions below should
+  // fail if you change a field name or remove a `#[serde(rename_all =
+  // "camelCase")]` so you find out at test time, not at runtime in the
+  // packaged app.
+
+  #[test]
+  fn app_menu_click_wire_shape() {
+    let v = serde_json::to_value(DesktopEvent::AppMenuClick {
+      window_id: 7,
+      id: "file.quit".to_string(),
+    })
+    .unwrap();
+    assert_eq!(
+      v,
+      json!({
+        "kind": "appMenuClick",
+        "windowId": 7,
+        "id": "file.quit",
+      })
+    );
+  }
+
+  #[test]
+  fn keyboard_event_camelcases_and_keeps_type() {
+    let v = serde_json::to_value(DesktopEvent::KeyboardEvent {
+      window_id: 1,
+      r#type: "keydown".to_string(),
+      key: "a".to_string(),
+      code: "KeyA".to_string(),
+      shift: true,
+      control: false,
+      alt: false,
+      meta: true,
+      repeat: false,
+    })
+    .unwrap();
+    // `type` (a Rust keyword, written `r#type`) must serialize as
+    // `"type"` — the renderer reads it as `e.type` per Web spec.
+    assert_eq!(v["type"], "keydown");
+    assert_eq!(v["kind"], "keyboardEvent");
+    assert_eq!(v["windowId"], 1);
+    assert_eq!(v["shift"], true);
+    assert_eq!(v["meta"], true);
+  }
+
+  #[test]
+  fn mouse_click_uses_client_xy() {
+    let v = serde_json::to_value(DesktopEvent::MouseClick {
+      window_id: 1,
+      state: "released".to_string(),
+      button: 0,
+      client_x: 10.5,
+      client_y: 20.25,
+      shift: false,
+      control: false,
+      alt: false,
+      meta: false,
+      click_count: 1,
+    })
+    .unwrap();
+    assert_eq!(v["kind"], "mouseClick");
+    // The renderer reads `e.clientX` / `e.clientY` per the Web spec.
+    // Snake-case names here would silently break the JS side.
+    assert_eq!(v["clientX"], 10.5);
+    assert_eq!(v["clientY"], 20.25);
+    assert_eq!(v["clickCount"], 1);
+  }
+
+  #[test]
+  fn window_resize_wire_shape() {
+    let v = serde_json::to_value(DesktopEvent::WindowResize {
+      window_id: 1,
+      width: 800,
+      height: 600,
+    })
+    .unwrap();
+    assert_eq!(
+      v,
+      json!({
+        "kind": "windowResize",
+        "windowId": 1,
+        "width": 800,
+        "height": 600,
+      })
+    );
+  }
+
+  #[test]
+  fn dock_reopen_camelcase_payload() {
+    let v = serde_json::to_value(DesktopEvent::DockReopen {
+      has_visible_windows: true,
+    })
+    .unwrap();
+    assert_eq!(v["kind"], "dockReopen");
+    assert_eq!(v["hasVisibleWindows"], true);
+    // The snake_case variant must NOT exist — DESKTOP_JS reads the
+    // camelCased name.
+    assert!(v.get("has_visible_windows").is_none());
+  }
+
+  #[test]
+  fn runtime_error_omits_stack_when_none() {
+    let with_stack = serde_json::to_value(DesktopEvent::RuntimeError {
+      message: "boom".to_string(),
+      stack: Some("at foo".to_string()),
+    })
+    .unwrap();
+    assert_eq!(with_stack["message"], "boom");
+    assert_eq!(with_stack["stack"], "at foo");
+
+    let no_stack = serde_json::to_value(DesktopEvent::RuntimeError {
+      message: "boom".to_string(),
+      stack: None,
+    })
+    .unwrap();
+    // None should serialize as JSON null (not be omitted), matching
+    // what the JS handler currently expects.
+    assert_eq!(no_stack["stack"], serde_json::Value::Null);
+  }
+
+  #[test]
+  fn notification_variants_share_field_name() {
+    // All four notification variants must use the same `notificationId`
+    // key so the JS handler can route by `kind` alone.
+    for ev in [
+      DesktopEvent::NotificationShow {
+        notification_id: 42,
+      },
+      DesktopEvent::NotificationClick {
+        notification_id: 42,
+      },
+      DesktopEvent::NotificationClose {
+        notification_id: 42,
+      },
+      DesktopEvent::NotificationError {
+        notification_id: 42,
+      },
+    ] {
+      let v = serde_json::to_value(&ev).unwrap();
+      assert_eq!(v["notificationId"], 42, "for variant {ev:?}");
+    }
+  }
+
+  // --- Every remaining DesktopEvent variant gets a kind pin ---
+
+  fn kind_of(ev: DesktopEvent) -> String {
+    serde_json::to_value(ev).unwrap()["kind"]
+      .as_str()
+      .expect("kind must be a string")
+      .to_string()
+  }
+
+  #[test]
+  fn every_variant_has_camelcase_kind() {
+    // The kind discriminator is what DESKTOP_JS switches on. A
+    // misspelled or accidentally renamed variant would make its events
+    // silently no-op in the renderer. Pin every kind name.
+    assert_eq!(
+      kind_of(DesktopEvent::AppMenuClick {
+        window_id: 0,
+        id: "".into()
+      }),
+      "appMenuClick"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::ContextMenuClick {
+        window_id: 0,
+        id: "".into()
+      }),
+      "contextMenuClick"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::KeyboardEvent {
+        window_id: 0,
+        r#type: "".into(),
+        key: "".into(),
+        code: "".into(),
+        shift: false,
+        control: false,
+        alt: false,
+        meta: false,
+        repeat: false,
+      }),
+      "keyboardEvent"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::BindCall {
+        window_id: 0,
+        name: "".into(),
+        args: serde_json::Value::Null,
+        call_id: 0,
+      }),
+      "bindCall"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::MouseClick {
+        window_id: 0,
+        state: "".into(),
+        button: 0,
+        client_x: 0.0,
+        client_y: 0.0,
+        shift: false,
+        control: false,
+        alt: false,
+        meta: false,
+        click_count: 0,
+      }),
+      "mouseClick"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::MouseMove {
+        window_id: 0,
+        client_x: 0.0,
+        client_y: 0.0,
+        shift: false,
+        control: false,
+        alt: false,
+        meta: false,
+      }),
+      "mouseMove"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::Wheel {
+        window_id: 0,
+        delta_x: 0.0,
+        delta_y: 0.0,
+        delta_mode: 0,
+        client_x: 0.0,
+        client_y: 0.0,
+        shift: false,
+        control: false,
+        alt: false,
+        meta: false,
+      }),
+      "wheel"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::CursorEnterLeave {
+        window_id: 0,
+        entered: false,
+        client_x: 0.0,
+        client_y: 0.0,
+        shift: false,
+        control: false,
+        alt: false,
+        meta: false,
+      }),
+      "cursorEnterLeave"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::FocusChanged {
+        window_id: 0,
+        focused: false
+      }),
+      "focusChanged"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::WindowResize {
+        window_id: 0,
+        width: 0,
+        height: 0
+      }),
+      "windowResize"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::WindowMove {
+        window_id: 0,
+        x: 0,
+        y: 0
+      }),
+      "windowMove"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::CloseRequested { window_id: 0 }),
+      "closeRequested"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::RuntimeError {
+        message: "".into(),
+        stack: None
+      }),
+      "runtimeError"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::DockMenuClick { id: "".into() }),
+      "dockMenuClick"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::DockReopen {
+        has_visible_windows: false
+      }),
+      "dockReopen"
+    );
+    assert_eq!(kind_of(DesktopEvent::TrayClick { tray_id: 0 }), "trayClick");
+    assert_eq!(
+      kind_of(DesktopEvent::TrayDoubleClick { tray_id: 0 }),
+      "trayDoubleClick"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::TrayMenuClick {
+        tray_id: 0,
+        id: "".into()
+      }),
+      "trayMenuClick"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::NotificationShow { notification_id: 0 }),
+      "notificationShow"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::NotificationClick { notification_id: 0 }),
+      "notificationClick"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::NotificationClose { notification_id: 0 }),
+      "notificationClose"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::NotificationError { notification_id: 0 }),
+      "notificationError"
+    );
+  }
+
+  // --- BindCall.args round-trip ---
+
+  #[test]
+  fn bind_call_args_passes_through_arbitrary_json() {
+    // BindCall carries a serde_json::Value as `args`. We must serialize
+    // it transparently (not nested under "args.value" or with a Some()
+    // wrapper) so the renderer sees exactly what was passed.
+    let ev = DesktopEvent::BindCall {
+      window_id: 1,
+      name: "greet".into(),
+      args: json!([{"name": "ada", "n": 42}]),
+      call_id: 7,
+    };
+    let v = serde_json::to_value(&ev).unwrap();
+    assert_eq!(v["args"][0]["name"], "ada");
+    assert_eq!(v["args"][0]["n"], 42);
+    assert_eq!(v["callId"], 7);
+    assert_eq!(v["windowId"], 1);
+  }
+
+  // --- permission_state_to_web_string ---
+
+  #[test]
+  fn permission_state_strings_match_web_api() {
+    // These exact strings are surfaced to JS via `Notification.permission`
+    // and `navigator.permissions.query(...).state`. The Web Permissions
+    // API specifies "granted" / "denied" / "prompt" verbatim; renaming
+    // any of them silently breaks feature detection in user code.
+    assert_eq!(
+      permission_state_to_web_string(PermissionState::Granted),
+      "granted"
+    );
+    assert_eq!(
+      permission_state_to_web_string(PermissionState::Denied),
+      "denied"
+    );
+    assert_eq!(
+      permission_state_to_web_string(PermissionState::Prompt),
+      "prompt"
+    );
+    // "unsupported" is wef-specific (the spec has no such state); DESKTOP_JS
+    // maps it to a TypeError throw from requestPermission.
+    assert_eq!(
+      permission_state_to_web_string(PermissionState::Unsupported),
+      "unsupported"
+    );
+  }
+
+  // --- dylib_magic_ok ---
+
+  #[test]
+  fn dylib_magic_accepts_native_formats() {
+    // 32/64-bit Mach-O, both endians.
+    assert!(dylib_magic_ok(&[0xFE, 0xED, 0xFA, 0xCE]));
+    assert!(dylib_magic_ok(&[0xFE, 0xED, 0xFA, 0xCF]));
+    assert!(dylib_magic_ok(&[0xCE, 0xFA, 0xED, 0xFE]));
+    assert!(dylib_magic_ok(&[0xCF, 0xFA, 0xED, 0xFE]));
+    // Fat Mach-O (universal binary).
+    assert!(dylib_magic_ok(&[0xCA, 0xFE, 0xBA, 0xBE]));
+    assert!(dylib_magic_ok(&[0xCA, 0xFE, 0xBA, 0xBF]));
+    // ELF (Linux).
+    assert!(dylib_magic_ok(&[0x7F, b'E', b'L', b'F']));
+    // PE/COFF (Windows): starts with "MZ".
+    assert!(dylib_magic_ok(b"MZ\x90\x00rest_of_pe_header"));
+  }
+
+  #[test]
+  fn dylib_magic_rejects_non_binaries() {
+    // Plain text — what a malformed bspatch result might decode to.
+    assert!(!dylib_magic_ok(b"not a dylib"));
+    // Empty / too short.
+    assert!(!dylib_magic_ok(b""));
+    assert!(!dylib_magic_ok(b"M"));
+    assert!(!dylib_magic_ok(b"MZ"));
+    assert!(!dylib_magic_ok(b"MZ\x90"));
+    // Random gibberish.
+    assert!(!dylib_magic_ok(&[0xDE, 0xAD, 0xBE, 0xEF]));
+    // The wrapper check is the last line of defence — failure here means
+    // we'd write garbage as the staged dylib.
+  }
+
+  // --- op_desktop_verify_ed25519 ---
+  //
+  // The op is the trust anchor for auto-update: the manifest is signed
+  // and verified against a baked-in pubkey before any patch hash is
+  // trusted. A regression that returns true for invalid input would
+  // turn the whole auto-update path into "fetch + apply arbitrary code".
+
+  fn keypair_from_seed(
+    seed: &[u8; 32],
+  ) -> (ed25519_dalek::SigningKey, ed25519_dalek::VerifyingKey) {
+    let sk = ed25519_dalek::SigningKey::from_bytes(seed);
+    let vk = sk.verifying_key();
+    (sk, vk)
+  }
+
+  fn b64(bytes: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+  }
+
+  #[test]
+  fn verify_ed25519_accepts_real_signature() {
+    use ed25519_dalek::Signer;
+    let (sk, vk) = keypair_from_seed(&[1u8; 32]);
+    let message = b"deno desktop update v1.2.3";
+    let sig = sk.sign(message);
+    let ok =
+      verify_ed25519_b64(&b64(&vk.to_bytes()), &b64(&sig.to_bytes()), message);
+    assert!(ok, "signature over message must verify");
+  }
+
+  #[test]
+  fn verify_ed25519_rejects_tampered_message() {
+    use ed25519_dalek::Signer;
+    let (sk, vk) = keypair_from_seed(&[1u8; 32]);
+    let original = b"deno desktop update v1.2.3";
+    let sig = sk.sign(original);
+    // Flip a single byte of the message — a correct verifier must reject.
+    let tampered = b"deno desktop update v1.2.4";
+    let ok =
+      verify_ed25519_b64(&b64(&vk.to_bytes()), &b64(&sig.to_bytes()), tampered);
+    assert!(!ok, "tampered message must fail verification");
+  }
+
+  #[test]
+  fn verify_ed25519_rejects_wrong_key() {
+    use ed25519_dalek::Signer;
+    let (sk_a, _) = keypair_from_seed(&[1u8; 32]);
+    let (_, vk_b) = keypair_from_seed(&[2u8; 32]);
+    let message = b"hi";
+    let sig = sk_a.sign(message);
+    let ok = verify_ed25519_b64(
+      &b64(&vk_b.to_bytes()),
+      &b64(&sig.to_bytes()),
+      message,
+    );
+    assert!(
+      ok == false,
+      "signature from key A must NOT verify under key B"
+    );
+  }
+
+  #[test]
+  fn verify_ed25519_rejects_malformed_inputs() {
+    let message = b"hi";
+    // Empty key.
+    assert!(!verify_ed25519_b64("", &b64(&[0u8; 64]), message));
+    // Empty sig.
+    assert!(!verify_ed25519_b64(&b64(&[0u8; 32]), "", message));
+    // Wrong-length key.
+    assert!(!verify_ed25519_b64(
+      &b64(&[0u8; 31]),
+      &b64(&[0u8; 64]),
+      message
+    ));
+    assert!(!verify_ed25519_b64(
+      &b64(&[0u8; 33]),
+      &b64(&[0u8; 64]),
+      message
+    ));
+    // Wrong-length sig.
+    assert!(!verify_ed25519_b64(
+      &b64(&[0u8; 32]),
+      &b64(&[0u8; 63]),
+      message
+    ));
+    assert!(!verify_ed25519_b64(
+      &b64(&[0u8; 32]),
+      &b64(&[0u8; 65]),
+      message
+    ));
+    // Invalid base64.
+    assert!(!verify_ed25519_b64(
+      "!!! not base64 !!!",
+      &b64(&[0u8; 64]),
+      message
+    ));
+    assert!(!verify_ed25519_b64(
+      &b64(&[0u8; 32]),
+      "@@@ not base64 @@@",
+      message
+    ));
+  }
+
+  // --- register_bind_call + PendingBindResponses ---
+
+  // The op_desktop_resolve_bind_call / op_desktop_reject_bind_call ops
+  // both reduce to map.remove(&call_id).map(|tx| tx.send(...)). We
+  // exercise the underlying state machine directly here — the ops
+  // themselves are #[op2(fast)] wrappers and aren't callable from a
+  // unit test, but the bug surface is the map manipulation, not the
+  // tiny op2 wrapper.
+
+  fn resolve(responses: &PendingBindResponses, id: u32, v: serde_json::Value) {
+    if let Some(tx) = responses.0.lock().unwrap().remove(&id) {
+      let _ = tx.send(Ok(v));
+    }
+  }
+
+  fn reject(responses: &PendingBindResponses, id: u32, e: String) {
+    if let Some(tx) = responses.0.lock().unwrap().remove(&id) {
+      let _ = tx.send(Err(e));
+    }
+  }
+
+  #[tokio::test]
+  async fn bind_call_resolve_round_trips_value() {
+    let responses = PendingBindResponses::new();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let id = register_bind_call(&responses, tx);
+    // The renderer resolves with a JSON value.
+    resolve(&responses, id, serde_json::json!({"ok": true, "n": 42}));
+    let v = rx.await.expect("oneshot recv").expect("Ok variant");
+    assert_eq!(v["ok"], true);
+    assert_eq!(v["n"], 42);
+    // After resolve, the map entry is gone.
+    assert!(
+      responses.0.lock().unwrap().is_empty(),
+      "responses map must be drained after resolve"
+    );
+  }
+
+  #[tokio::test]
+  async fn bind_call_reject_delivers_error_string() {
+    let responses = PendingBindResponses::new();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let id = register_bind_call(&responses, tx);
+    reject(&responses, id, "binding threw".to_string());
+    let e = rx.await.unwrap().expect_err("must be Err");
+    assert_eq!(e, "binding threw");
+    assert!(responses.0.lock().unwrap().is_empty());
+  }
+
+  #[test]
+  fn bind_call_ids_are_unique_across_concurrent_registers() {
+    // The id counter is a single AtomicU32 shared across calls.
+    // Registering many at once must produce distinct ids — duplicates
+    // would silently route a renderer response to the wrong pending
+    // call.
+    let responses = PendingBindResponses::new();
+    let ids: Vec<u32> = (0..50)
+      .map(|_| {
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        register_bind_call(&responses, tx)
+      })
+      .collect();
+    let mut seen: std::collections::HashSet<u32> =
+      std::collections::HashSet::new();
+    for id in &ids {
+      assert!(seen.insert(*id), "duplicate bind call id: {id}");
+    }
+    // All 50 are registered in the map.
+    assert_eq!(responses.0.lock().unwrap().len(), 50);
+  }
+
+  #[test]
+  fn bind_call_unknown_id_resolve_is_noop() {
+    let responses = PendingBindResponses::new();
+    // No entry registered — resolve with a random id must not panic
+    // and must not affect any state.
+    resolve(&responses, 999_999, serde_json::Value::Null);
+    reject(&responses, 999_999, "x".to_string());
+    assert!(responses.0.lock().unwrap().is_empty());
+  }
+
+  #[tokio::test]
+  async fn bind_call_dropped_receiver_doesnt_panic_resolve() {
+    // The renderer may give up on a bind call before the Deno side
+    // resolves it (window closed). The resolve path uses `let _ = tx.send(...)`
+    // explicitly because the receiver might be gone; we pin that
+    // behaviour here so a future refactor doesn't reintroduce a
+    // .unwrap() that would crash the runtime.
+    let responses = PendingBindResponses::new();
+    let (tx, rx) =
+      tokio::sync::oneshot::channel::<Result<serde_json::Value, String>>();
+    let id = register_bind_call(&responses, tx);
+    drop(rx);
+    resolve(&responses, id, serde_json::Value::Null);
+    // If we reach this line without panicking, the test passes.
+  }
+
+  #[test]
+  fn verify_ed25519_trims_whitespace_on_b64_inputs() {
+    use ed25519_dalek::Signer;
+    let (sk, vk) = keypair_from_seed(&[1u8; 32]);
+    let message = b"trim me";
+    let sig = sk.sign(message);
+    let pk = format!("  {}\n", b64(&vk.to_bytes()));
+    let sg = format!("\t{}\n", b64(&sig.to_bytes()));
+    // The op trims the base64 before decoding so manifest JSON with
+    // pretty-printed whitespace (or trailing newlines from `\n` literals)
+    // still verifies.
+    assert!(verify_ed25519_b64(&pk, &sg, message));
+  }
+}
