@@ -8,15 +8,22 @@ use std::task::Poll;
 use std::task::{self};
 use std::vec;
 
+use deno_permissions::PermissionsContainer;
 use hickory_resolver::name_server::TokioConnectionProvider;
 use hyper_util::client::legacy::connect::dns::GaiResolver;
 use hyper_util::client::legacy::connect::dns::Name;
 use tokio::task::JoinHandle;
 use tower::Service;
 
+#[derive(Clone, Debug)]
+pub struct Resolver {
+  kind: ResolverKind,
+  permissions: Option<PermissionsContainer>,
+}
+
 #[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
 #[derive(Clone, Debug)]
-pub enum Resolver {
+enum ResolverKind {
   /// A resolver using blocking `getaddrinfo` calls in a threadpool.
   Gai(GaiResolver),
   /// hickory-resolver's userspace resolver.
@@ -49,20 +56,45 @@ impl Default for Resolver {
 
 impl Resolver {
   pub fn gai() -> Self {
-    Self::Gai(GaiResolver::new())
+    Self {
+      kind: ResolverKind::Gai(GaiResolver::new()),
+      permissions: None,
+    }
   }
 
   /// Create a [`AsyncResolver`] from system conf.
   pub fn hickory() -> Result<Self, hickory_resolver::ResolveError> {
-    Ok(Self::Hickory(
-      hickory_resolver::Resolver::builder_tokio()?.build(),
-    ))
+    Ok(Self {
+      kind: ResolverKind::Hickory(
+        hickory_resolver::Resolver::builder_tokio()?.build(),
+      ),
+      permissions: None,
+    })
   }
 
   pub fn hickory_from_resolver(
     resolver: hickory_resolver::Resolver<TokioConnectionProvider>,
   ) -> Self {
-    Self::Hickory(resolver)
+    Self {
+      kind: ResolverKind::Hickory(resolver),
+      permissions: None,
+    }
+  }
+
+  pub fn custom(resolver: Arc<dyn Resolve>) -> Self {
+    Self {
+      kind: ResolverKind::Custom(resolver),
+      permissions: None,
+    }
+  }
+
+  /// Attach a permissions container so that resolved addresses are checked
+  /// against the net deny list before being returned to the HTTP connector.
+  /// This mirrors the post-resolution check that `Deno.connect` performs and
+  /// prevents bypassing IP-literal deny rules via attacker-controlled DNS.
+  pub fn with_permissions(mut self, permissions: PermissionsContainer) -> Self {
+    self.permissions = Some(permissions);
+    self
   }
 }
 
@@ -106,34 +138,57 @@ impl Service<Name> for Resolver {
   }
 
   fn call(&mut self, name: Name) -> Self::Future {
-    let task = match self {
-      Resolver::Gai(gai_resolver) => {
+    let permissions = self.permissions.clone();
+    let task = match &mut self.kind {
+      ResolverKind::Gai(gai_resolver) => {
         let mut resolver = gai_resolver.clone();
         tokio::spawn(async move {
           let result = resolver.call(name).await?;
-          let x: Vec<_> = result.into_iter().collect();
-          let iter: SocketAddrs = x.into_iter();
-          Ok(iter)
+          let addrs: Vec<_> = result.into_iter().collect();
+          check_resolved_permissions(&addrs, permissions.as_ref())?;
+          Ok(addrs.into_iter())
         })
       }
-      Resolver::Hickory(async_resolver) => {
+      ResolverKind::Hickory(async_resolver) => {
         let resolver = async_resolver.clone();
         tokio::spawn(async move {
           let result = resolver.lookup_ip(name.as_str()).await?;
-
-          let x: Vec<_> =
+          let addrs: Vec<_> =
             result.into_iter().map(|x| SocketAddr::new(x, 0)).collect();
-          let iter: SocketAddrs = x.into_iter();
-          Ok(iter)
+          check_resolved_permissions(&addrs, permissions.as_ref())?;
+          Ok(addrs.into_iter())
         })
       }
-      Resolver::Custom(resolver) => {
+      ResolverKind::Custom(resolver) => {
         let resolver = resolver.clone();
-        tokio::spawn(async move { resolver.resolve(name).await })
+        tokio::spawn(async move {
+          let result = resolver.resolve(name).await?;
+          let addrs: Vec<_> = result.into_iter().collect();
+          check_resolved_permissions(&addrs, permissions.as_ref())?;
+          Ok(addrs.into_iter())
+        })
       }
     };
     ResolveFut { inner: task }
   }
+}
+
+fn check_resolved_permissions(
+  addrs: &[SocketAddr],
+  permissions: Option<&PermissionsContainer>,
+) -> io::Result<()> {
+  let Some(permissions) = permissions else {
+    return Ok(());
+  };
+  for addr in addrs {
+    permissions
+      .clone()
+      .check_net_resolved(&addr.ip(), addr.port(), "fetch()")
+      .map_err(|e| {
+        io::Error::new(io::ErrorKind::PermissionDenied, e.to_string())
+      })?;
+  }
+  Ok(())
 }
 
 #[cfg(test)]
@@ -155,7 +210,7 @@ mod tests {
 
   #[tokio::test]
   async fn custom_dns_resolver() {
-    let mut resolver = Resolver::Custom(Arc::new(DebugResolver(
+    let mut resolver = Resolver::custom(Arc::new(DebugResolver(
       "127.0.0.1:8080".parse().unwrap(),
     )));
     let mut addr = resolver
