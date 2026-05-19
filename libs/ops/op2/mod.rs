@@ -407,6 +407,7 @@ pub(crate) fn generate_op2(
     let ident = format_ident!("{ty}");
     quote! {
       trait Callable {
+        #[allow(clippy::too_many_arguments)]
         #op_fn_sig;
       }
       impl Callable for #ident {

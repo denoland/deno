@@ -2,10 +2,6 @@
 
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
-#![allow(
-  clippy::too_many_arguments,
-  reason = "op macro expansion causes issues"
-)]
 
 use std::borrow::Cow;
 use std::env;
