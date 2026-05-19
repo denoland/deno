@@ -2325,8 +2325,7 @@
     // "parallel/test-inspector-port-zero-cluster.js": {},
     // "parallel/test-inspect-support-for-node_options.js": {},
 
-    // TODO(bartlomieju):: easy, `--inspect` flag doesn't support `localhost`
-    // "parallel/test-inspector-port-zero.js": {},
+    "parallel/test-inspector-port-zero.js": {},
     "parallel/test-inspector-promises.js": {},
     "parallel/test-inspector-reported-host.js": {},
     "parallel/test-inspector-resource-name-to-url.js": {

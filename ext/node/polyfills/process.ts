@@ -19,6 +19,7 @@ import {
   op_getgroups,
   op_inspector_close,
   op_inspector_enabled,
+  op_inspector_port,
   op_node_load_env_file,
   op_node_process_constrained_memory,
   op_node_process_kill,
@@ -900,8 +901,17 @@ Object.defineProperty(process, "argv0", {
  */
 // Node's default inspector port (kDefaultInspectorPort in src/node_options.h).
 let _debugPort = 9229;
+let _debugPortWasSet = false;
 Object.defineProperty(process, "debugPort", {
   get() {
+    // When the inspector is running, report the actual bound port so
+    // `--inspect=...:0` reflects the ephemeral port chosen at bind
+    // time. An explicit assignment via the setter wins over this
+    // (matching Node's mutable `process.debugPort`).
+    if (!_debugPortWasSet) {
+      const port = op_inspector_port();
+      if (port !== 0) return port;
+    }
     return _debugPort;
   },
   set(val) {
@@ -913,6 +923,7 @@ Object.defineProperty(process, "debugPort", {
       );
     }
     _debugPort = port;
+    _debugPortWasSet = true;
   },
   enumerable: true,
   configurable: true,

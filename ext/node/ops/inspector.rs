@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::net::IpAddr;
 use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use std::rc::Rc;
 
 use deno_core::GarbageCollected;
@@ -27,6 +28,30 @@ pub fn op_inspector_enabled(state: &OpState) -> bool {
   state.try_borrow::<InspectorServerUrl>().is_some()
 }
 
+/// Returns the port the inspector server is listening on, or 0 if the
+/// inspector server has not been started. Used to back Node.js'
+/// `process.debugPort` so it reflects the actual bound port (which is
+/// important when `--inspect=...:0` requests an ephemeral port).
+#[op2(fast)]
+pub fn op_inspector_port(state: &OpState) -> u32 {
+  let Some(url) = state.try_borrow::<InspectorServerUrl>() else {
+    return 0;
+  };
+  // URL looks like `ws://host:port/<uuid>` (or `wss://...`). Parse out
+  // the port. We don't depend on the `url` crate here to keep the op
+  // tiny; the format is fixed by `get_websocket_debugger_url`.
+  let s = url.0.as_str();
+  let Some(after_scheme) = s.split_once("://").map(|(_, rest)| rest) else {
+    return 0;
+  };
+  let host_and_port = after_scheme.split('/').next().unwrap_or("");
+  let port_str = match host_and_port.rsplit_once(':') {
+    Some((_, p)) => p,
+    None => return 0,
+  };
+  port_str.parse::<u16>().map(|p| p as u32).unwrap_or(0)
+}
+
 #[op2(stack_trace)]
 pub fn op_inspector_open(
   state: &mut OpState,
@@ -39,12 +64,34 @@ pub fn op_inspector_open(
   const DEFAULT_PORT: u16 = 9229;
 
   let host_ip: IpAddr = match &host {
-    Some(h) => h.parse().map_err(|e| {
-      InspectorOpenError::InvalidHost(format!(
-        "Invalid inspector host '{}': {}",
-        h, e
-      ))
-    })?,
+    Some(h) => {
+      if let Ok(ip) = h.parse::<IpAddr>() {
+        ip
+      } else {
+        // Resolve hostnames like "localhost" via DNS to match Node's
+        // `inspector.open(port, host)` behavior. Prefer IPv4 results.
+        let addrs = (h.as_str(), 0u16)
+          .to_socket_addrs()
+          .map_err(|e| {
+            InspectorOpenError::InvalidHost(format!(
+              "Invalid inspector host '{}': {}",
+              h, e
+            ))
+          })?
+          .collect::<Vec<_>>();
+        addrs
+          .iter()
+          .find(|a| a.is_ipv4())
+          .or_else(|| addrs.first())
+          .map(|a| a.ip())
+          .ok_or_else(|| {
+            InspectorOpenError::InvalidHost(format!(
+              "Could not resolve inspector host '{}'",
+              h
+            ))
+          })?
+      }
+    }
     None => DEFAULT_HOST,
   };
   let port = port.unwrap_or(DEFAULT_PORT);
