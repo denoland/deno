@@ -1,0 +1,11 @@
+{
+  "tempDir": true,
+  "tests": {
+    "many_concurrent_locks": {
+      // Regression test for #22504: acquiring more than 32 file locks
+      // should not prevent other file operations from completing.
+      "args": "run --allow-read --allow-write --unstable-fs main.ts",
+      "output": "main.out"
+    }
+  }
+}
