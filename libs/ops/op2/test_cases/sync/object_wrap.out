@@ -171,6 +171,7 @@ impl Foo {
             }
         }
         trait Callable {
+            #[allow(clippy::too_many_arguments)]
             fn call(&self) -> u32;
         }
         impl Callable for Foo {
@@ -251,6 +252,7 @@ impl Foo {
             }
         }
         trait Callable {
+            #[allow(clippy::too_many_arguments)]
             fn call(&self, x: u32);
         }
         impl Callable for Foo {
@@ -351,6 +353,7 @@ impl Foo {
             }
         }
         trait Callable {
+            #[allow(clippy::too_many_arguments)]
             fn call(&self, _v: u32);
         }
         impl Callable for Foo {
@@ -514,6 +517,7 @@ impl Foo {
             }
         }
         trait Callable {
+            #[allow(clippy::too_many_arguments)]
             fn call(&self);
         }
         impl Callable for Foo {
@@ -588,6 +592,7 @@ impl Foo {
             }
         }
         trait Callable {
+            #[allow(clippy::too_many_arguments)]
             fn call(&self, _args: Option<&v8::FunctionCallbackArguments>);
         }
         impl Callable for Foo {
@@ -659,6 +664,7 @@ impl Foo {
             }
         }
         trait Callable {
+            #[allow(clippy::too_many_arguments)]
             fn call(&self);
         }
         impl Callable for Foo {
@@ -784,6 +790,7 @@ impl Foo {
             }
         }
         trait Callable {
+            #[allow(clippy::too_many_arguments)]
             fn call(&self);
         }
         impl Callable for Foo {
@@ -958,6 +965,7 @@ impl Foo {
             }
         }
         trait Callable {
+            #[allow(clippy::too_many_arguments)]
             fn call(&self);
         }
         impl Callable for Foo {
