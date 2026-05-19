@@ -210,6 +210,12 @@ pub fn op_url_parse_search_params(
   Ok(params)
 }
 
+/// Form-urlencoded serializer used as a fallback for `URLSearchParams.toString()`
+/// when the list contains any non-ASCII content. For all-ASCII lists the JS
+/// path in `urlencodedSerialize` is faster (no op-dispatch, no
+/// `Vec<(String, String)>` marshaling); but for non-ASCII inputs the per-byte
+/// UTF-8 + percent-encode cost is dominated by `form_urlencoded` inline, so the
+/// op call amortizes better than calling `core.encode` per string in JS.
 #[op2]
 #[string]
 pub fn op_url_stringify_search_params(
