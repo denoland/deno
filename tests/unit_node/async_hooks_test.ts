@@ -1,5 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { AsyncLocalStorage, AsyncResource, createHook } from "node:async_hooks";
+import {
+  AsyncLocalStorage,
+  AsyncResource,
+  createHook,
+  executionAsyncId,
+  triggerAsyncId,
+} from "node:async_hooks";
 import process from "node:process";
 import { clearImmediate, setImmediate } from "node:timers";
 import { assert, assertEquals } from "@std/assert";
@@ -131,6 +137,50 @@ Deno.test(async function bind() {
 Deno.test(function asyncResourceStub() {
   const resource = new AsyncResource("dbquery");
   assert(typeof resource.asyncId() === "number");
+});
+
+Deno.test(function asyncResourceConstructorValidatesArgs() {
+  function check(fn: () => unknown, code: string) {
+    let caught: unknown;
+    try {
+      fn();
+    } catch (e) {
+      caught = e;
+    }
+    assert(caught instanceof Error, `expected throw, got ${typeof caught}`);
+    // deno-lint-ignore no-explicit-any
+    assertEquals((caught as any).code, code);
+  }
+  // Empty type name
+  check(() => new AsyncResource(""), "ERR_ASYNC_TYPE");
+  // Non-string type
+  // deno-lint-ignore no-explicit-any
+  check(() => new AsyncResource(undefined as any), "ERR_INVALID_ARG_TYPE");
+  // Negative triggerAsyncId
+  // deno-lint-ignore no-explicit-any
+  check(() => new (AsyncResource as any)("type", -4), "ERR_INVALID_ASYNC_ID");
+  // Non-integer triggerAsyncId
+  check(
+    // deno-lint-ignore no-explicit-any
+    () => new (AsyncResource as any)("type", Math.PI),
+    "ERR_INVALID_ASYNC_ID",
+  );
+});
+
+Deno.test(function asyncResourceTriggerAsyncIdMatchesExecutionAtCtor() {
+  const before = executionAsyncId();
+  const resource = new AsyncResource("dbquery");
+  assertEquals(resource.triggerAsyncId(), before);
+  // asyncId is allocated on construction and must be > triggerAsyncId.
+  assert(resource.asyncId() > resource.triggerAsyncId());
+});
+
+Deno.test(function runInAsyncScopePropagatesTriggerAsyncId() {
+  const resource = new AsyncResource("MYRES");
+  resource.runInAsyncScope(() => {
+    assertEquals(executionAsyncId(), resource.asyncId());
+    assertEquals(triggerAsyncId(), resource.triggerAsyncId());
+  }, null);
 });
 
 Deno.test(function emitDestroyStub() {

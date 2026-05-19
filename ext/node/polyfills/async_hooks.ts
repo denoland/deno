@@ -11,6 +11,11 @@ const {
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const {
+  ERR_ASYNC_TYPE,
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ASYNC_ID,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   AsyncHook,
   emitAfter,
   emitBefore,
@@ -19,6 +24,7 @@ const {
   enterAsyncResource,
   exitAsyncResource,
   executionAsyncId: internalExecutionAsyncId,
+  triggerAsyncId: internalTriggerAsyncId,
   executionAsyncResource: internalExecutionAsyncResource,
   newAsyncId,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
@@ -29,6 +35,7 @@ const {
   FunctionPrototypeBind,
   ArrayPrototypeUnshift,
   ObjectFreeze,
+  NumberIsSafeInteger,
 } = primordials;
 
 const {
@@ -47,21 +54,58 @@ class AsyncResource {
   type: string;
   #snapshot: unknown;
   #asyncId: number;
+  #triggerAsyncId: number;
 
-  constructor(type: string) {
+  constructor(
+    type: string,
+    opts: number | { triggerAsyncId?: number; requireManualDestroy?: boolean } =
+      {},
+  ) {
+    if (typeof type !== "string") {
+      throw new ERR_INVALID_ARG_TYPE("type", "string", type);
+    }
+    if (type.length <= 0) {
+      throw new ERR_ASYNC_TYPE(type);
+    }
+
+    let triggerAsyncId: number;
+    let requireManualDestroy = false;
+    if (typeof opts === "number") {
+      triggerAsyncId = opts;
+    } else {
+      const optTrigger = (opts as { triggerAsyncId?: number }).triggerAsyncId;
+      triggerAsyncId = optTrigger === undefined
+        ? internalExecutionAsyncId()
+        : optTrigger;
+      requireManualDestroy =
+        ((opts as { requireManualDestroy?: boolean }).requireManualDestroy) ??
+          false;
+    }
+
+    if (!NumberIsSafeInteger(triggerAsyncId) || triggerAsyncId < -1) {
+      throw new ERR_INVALID_ASYNC_ID("triggerAsyncId", triggerAsyncId);
+    }
+
     this.type = type;
     this.#snapshot = getAsyncContext();
     this.#asyncId = newAsyncId();
+    this.#triggerAsyncId = triggerAsyncId;
     // Fire the init hook so that async_hooks.createHook({ init }) callbacks
     // receive this resource, matching Node.js behaviour.
-    emitInit(this.#asyncId, type, internalExecutionAsyncId(), this);
+    emitInit(this.#asyncId, type, this.#triggerAsyncId, this);
     // Register with the FinalizationRegistry so emitDestroy is called when
-    // this object is garbage collected.
-    asyncResourceRegistry.register(this, this.#asyncId);
+    // this object is garbage collected (unless the caller opts out).
+    if (!requireManualDestroy) {
+      asyncResourceRegistry.register(this, this.#asyncId, this);
+    }
   }
 
   asyncId() {
     return this.#asyncId;
+  }
+
+  triggerAsyncId() {
+    return this.#triggerAsyncId;
   }
 
   runInAsyncScope(
@@ -70,7 +114,7 @@ class AsyncResource {
     ...args: unknown[]
   ) {
     const previousContext = getAsyncContext();
-    emitBefore(this.#asyncId);
+    emitBefore(this.#asyncId, this.#triggerAsyncId);
     try {
       setAsyncContext(this.#snapshot);
       // Enter this resource as the current executionAsyncResource() so that
@@ -150,11 +194,15 @@ class AsyncLocalStorage {
   // deno-lint-ignore no-explicit-any
   run(store: any, callback: any, ...args: any[]): any {
     this.enabled = true;
-    const previous = this.#variable.enter(store);
+    // Save just this variable's previous slot value so that nested
+    // enterWith()/run() calls on *other* AsyncLocalStorage instances during
+    // the callback are not reverted when we return - only our slot is.
+    const oldStore = this.#variable.get();
+    this.#variable.enter(store);
     try {
       return ReflectApply(callback, null, args);
     } finally {
-      setAsyncContext(previous);
+      this.#variable.enter(oldStore);
     }
   }
 
@@ -203,10 +251,7 @@ class AsyncLocalStorage {
 
 // Re-export executionAsyncId from internal
 const executionAsyncId = internalExecutionAsyncId;
-
-function triggerAsyncId() {
-  return 0;
-}
+const triggerAsyncId = internalTriggerAsyncId;
 
 const executionAsyncResource = internalExecutionAsyncResource;
 

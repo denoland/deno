@@ -127,6 +127,23 @@
     errorMap[className] = errorBuilder;
   }
 
+  // Depth counter for "internal" promise hook suppression. While > 0, any
+  // promises created in JS belong to deno_core infrastructure (async-op
+  // wrappers, etc.) and async_hooks (`ext:deno_node/internal/async_hooks.ts`)
+  // skips firing user init/before/after/promiseResolve callbacks for them.
+  // The counter is meant to be raised around `new Promise(...)` calls that
+  // are not visible to user code.
+  let promiseHooksSuppressedDepth = 0;
+  function incPromiseHooksSuppressed() {
+    promiseHooksSuppressedDepth++;
+  }
+  function decPromiseHooksSuppressed() {
+    promiseHooksSuppressedDepth--;
+  }
+  function isPromiseHooksSuppressed() {
+    return promiseHooksSuppressedDepth > 0;
+  }
+
   function setPromise(promiseId) {
     const idx = promiseId % RING_SIZE;
     // Move old promise from ring to map
@@ -136,17 +153,27 @@
       MapPrototypeSet(promiseMap, oldPromiseId, oldPromise);
     }
 
-    const promise = new Promise((resolve, reject) => {
-      promiseRing[idx] = [resolve, reject];
-    });
-    const wrappedPromise = PromisePrototypeCatch(
-      promise,
-      function __opRejectHandler(res) {
-        // recreate the stacktrace and strip internal event loop frames
-        ErrorCaptureStackTrace(res, __opRejectHandler);
-        throw res;
-      },
-    );
+    // The bare `new Promise()` here and the `PromisePrototypeCatch()` below
+    // both create promise objects that V8 fires its promise hook on, even
+    // though they are deno_core-internal and never observable to user code.
+    // Suppress around them so async_hooks does not surface init/before/etc.
+    promiseHooksSuppressedDepth++;
+    let wrappedPromise;
+    try {
+      const promise = new Promise((resolve, reject) => {
+        promiseRing[idx] = [resolve, reject];
+      });
+      wrappedPromise = PromisePrototypeCatch(
+        promise,
+        function __opRejectHandler(res) {
+          // recreate the stacktrace and strip internal event loop frames
+          ErrorCaptureStackTrace(res, __opRejectHandler);
+          throw res;
+        },
+      );
+    } finally {
+      promiseHooksSuppressedDepth--;
+    }
     wrappedPromise[promiseIdSymbol] = promiseId;
     return wrappedPromise;
   }
@@ -515,6 +542,9 @@
     setUpAsyncStub,
     hasPromise,
     promiseIdSymbol,
+    incPromiseHooksSuppressed,
+    decPromiseHooksSuppressed,
+    isPromiseHooksSuppressed,
   });
 
   const infra = {
