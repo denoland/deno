@@ -463,6 +463,7 @@ impl CoverageReporter for HtmlCoverageReporter {
       };
       let is_dir = stats.file_text.is_none();
       let html = self.create_html(node, is_dir, stats, &now, &main_content);
+      let html = self.minify_html(&html);
       fs::create_dir_all(report_path.parent().unwrap()).unwrap();
       fs::write(report_path, html).unwrap();
     }
@@ -480,6 +481,18 @@ impl CoverageReporter for HtmlCoverageReporter {
 impl HtmlCoverageReporter {
   pub fn new() -> HtmlCoverageReporter {
     HtmlCoverageReporter {}
+  }
+
+  /// Minifies HTML by stripping whitespace between tags.
+  /// Safe for coverage reports because `<pre>` content is generated
+  /// line-by-line with no significant inter-tag whitespace.
+  fn minify_html(&self, html: &str) -> String {
+    html
+      .lines()
+      .map(|line| line.trim())
+      .filter(|line| !line.is_empty())
+      .collect::<Vec<_>>()
+      .join("")
   }
 
   /// Gets the report path for a single file
