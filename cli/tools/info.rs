@@ -28,6 +28,7 @@ use deno_npmrc::ResolvedNpmRc;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::DenoResolveErrorKind;
 use deno_resolver::display::DisplayTreeNode;
+use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use deno_terminal::colors;
@@ -202,6 +203,10 @@ pub async fn info(
       GraphDisplayContext::write(
         &graph,
         maybe_npm_info.as_ref().map(|(r, s)| (r.as_ref(), s)),
+        GraphDisplayOptions {
+          depth: info_flags.depth,
+          collapse_modules: info_flags.collapse_modules,
+        },
         &mut output,
       )?;
       display::write_to_stdout_ignore_sigpipe(output.as_bytes())?;
@@ -495,7 +500,27 @@ impl NpmInfo {
 struct GraphDisplayContext<'a> {
   graph: &'a ModuleGraph,
   npm_info: NpmInfo,
+  options: GraphDisplayOptions,
+  collapsed_labels: HashMap<String, String>,
   seen: HashSet<String>,
+}
+
+#[derive(Clone, Copy, Default)]
+struct GraphDisplayOptions {
+  depth: Option<usize>,
+  collapse_modules: bool,
+}
+
+#[derive(Clone, Copy, Default)]
+struct SubtreeSummary {
+  file_count: usize,
+  size: u64,
+}
+
+impl SubtreeSummary {
+  fn has_files(self) -> bool {
+    self.file_count > 0
+  }
 }
 
 impl<'a> GraphDisplayContext<'a> {
@@ -505,6 +530,7 @@ impl<'a> GraphDisplayContext<'a> {
       &'a CliManagedNpmResolver,
       &'a NpmResolutionSnapshot,
     )>,
+    options: GraphDisplayOptions,
     writer: &mut TWrite,
   ) -> Result<(), AnyError> {
     let npm_info = match managed_npm_info {
@@ -516,6 +542,8 @@ impl<'a> GraphDisplayContext<'a> {
     Self {
       graph,
       npm_info,
+      options,
+      collapsed_labels: Default::default(),
       seen: Default::default(),
     }
     .into_writer(writer)
@@ -587,7 +615,7 @@ impl<'a> GraphDisplayContext<'a> {
           display::human_size(total_size),
         )?;
         writeln!(writer)?;
-        let root_node = self.build_module_info(root, false);
+        let root_node = self.build_module_info(root, false, 0, None);
         root_node.print(writer)?;
         Ok(())
       }
@@ -604,15 +632,21 @@ impl<'a> GraphDisplayContext<'a> {
     }
   }
 
-  fn build_dep_info(&mut self, dep: &Dependency) -> Vec<DisplayTreeNode> {
+  fn build_dep_info(
+    &mut self,
+    dep: &Dependency,
+    depth: usize,
+  ) -> Vec<DisplayTreeNode> {
     let mut children = Vec::with_capacity(2);
     if !dep.maybe_code.is_none()
-      && let Some(child) = self.build_resolved_info(&dep.maybe_code, false)
+      && let Some(child) =
+        self.build_resolved_info(&dep.maybe_code, false, depth)
     {
       children.push(child);
     }
     if !dep.maybe_type.is_none()
-      && let Some(child) = self.build_resolved_info(&dep.maybe_type, true)
+      && let Some(child) =
+        self.build_resolved_info(&dep.maybe_type, true, depth)
     {
       children.push(child);
     }
@@ -623,6 +657,8 @@ impl<'a> GraphDisplayContext<'a> {
     &mut self,
     module: &Module,
     type_dep: bool,
+    depth: usize,
+    display_specifier: Option<&ModuleSpecifier>,
   ) -> DisplayTreeNode {
     enum PackageOrSpecifier<'a> {
       Package {
@@ -646,10 +682,11 @@ impl<'a> GraphDisplayContext<'a> {
       }
       None => Specifier(module.specifier().clone()),
     };
-    let was_seen = !self.seen.insert(match &package_or_specifier {
+    let key = match &package_or_specifier {
       Package { package, .. } => package.id.as_serialized().into_string(),
       Specifier(specifier) => specifier.to_string(),
-    });
+    };
+    let was_seen = !self.seen.insert(key);
     let header_text = match &package_or_specifier {
       Package { package, sub_path } => {
         format!(
@@ -662,13 +699,43 @@ impl<'a> GraphDisplayContext<'a> {
       }
       Specifier(specifier) => specifier.to_string(),
     };
+    let can_collapse_module = self.should_collapse_module(module);
+    let should_collapse_module = !was_seen && can_collapse_module;
+    let collapsed_label = can_collapse_module.then(|| {
+      self
+        .collapsed_labels
+        .get(&header_text)
+        .cloned()
+        .unwrap_or_else(|| {
+          self.collapsed_module_label(module, display_specifier)
+        })
+    });
+    if let Some(label) = &collapsed_label
+      && should_collapse_module
+    {
+      self
+        .collapsed_labels
+        .insert(header_text.clone(), label.clone());
+    }
     let header_text = if was_seen {
+      let header_text = if let Some(label) = collapsed_label {
+        label
+      } else {
+        header_text
+      };
       let specifier_str = if type_dep {
         colors::italic_gray(header_text).to_string()
       } else {
         colors::gray(header_text).to_string()
       };
       format!("{} {}", specifier_str, colors::gray("*"))
+    } else if should_collapse_module {
+      let summary = self.summarize_module(module, true);
+      format!(
+        "{} {}",
+        collapsed_label.unwrap(),
+        subtree_summary_to_text(summary),
+      )
     } else {
       let header_text = if type_dep {
         colors::italic(header_text).to_string()
@@ -691,26 +758,46 @@ impl<'a> GraphDisplayContext<'a> {
 
     let mut tree_node = DisplayTreeNode::from_text(header_text);
 
-    if !was_seen {
+    if !was_seen && !should_collapse_module {
+      if self.should_truncate_children(depth) {
+        let summary = match &package_or_specifier {
+          Package { package, .. } => self.summarize_npm_package(package, false),
+          Specifier(_) => self.summarize_module(module, false),
+        };
+        if summary.has_files() {
+          tree_node.children.push(DisplayTreeNode::from_text(format!(
+            "... {}",
+            subtree_summary_to_text(summary)
+          )));
+        }
+        return tree_node;
+      }
+
       match &package_or_specifier {
         Package { package, .. } => {
-          tree_node.children.extend(self.build_npm_deps(package));
+          tree_node
+            .children
+            .extend(self.build_npm_deps(package, depth + 1));
         }
         Specifier(_) => match module {
           Module::Js(module) => {
             if let Some(types_dep) = &module.maybe_types_dependency
               && let Some(child) =
-                self.build_resolved_info(&types_dep.dependency, true)
+                self.build_resolved_info(&types_dep.dependency, true, depth + 1)
             {
               tree_node.children.push(child);
             }
             for dep in module.dependencies.values() {
-              tree_node.children.extend(self.build_dep_info(dep));
+              tree_node
+                .children
+                .extend(self.build_dep_info(dep, depth + 1));
             }
           }
           Module::Wasm(module) => {
             for dep in module.dependencies.values() {
-              tree_node.children.extend(self.build_dep_info(dep));
+              tree_node
+                .children
+                .extend(self.build_dep_info(dep, depth + 1));
             }
           }
           Module::Json(_)
@@ -726,6 +813,7 @@ impl<'a> GraphDisplayContext<'a> {
   fn build_npm_deps(
     &mut self,
     package: &NpmResolutionPackage,
+    depth: usize,
   ) -> Vec<DisplayTreeNode> {
     let mut deps = package.dependencies.values().collect::<Vec<_>>();
     deps.sort();
@@ -745,9 +833,19 @@ impl<'a> GraphDisplayContext<'a> {
           !self.seen.insert(package.id.as_serialized().into_string());
         if was_seen {
           child.text = format!("{} {}", child.text, colors::gray("*"));
+        } else if self.should_truncate_children(depth) {
+          let summary = self.summarize_npm_package(package, false);
+          if summary.has_files() {
+            child.children.push(DisplayTreeNode::from_text(format!(
+              "... {}",
+              subtree_summary_to_text(summary)
+            )));
+          }
         } else {
           let package = package.clone();
-          child.children.extend(self.build_npm_deps(&package));
+          child
+            .children
+            .extend(self.build_npm_deps(&package, depth + 1));
         }
       }
       children.push(child);
@@ -820,13 +918,16 @@ impl<'a> GraphDisplayContext<'a> {
     &mut self,
     resolution: &Resolution,
     type_dep: bool,
+    depth: usize,
   ) -> Option<DisplayTreeNode> {
     match resolution {
       Resolution::Ok(resolved) => {
         let specifier = &resolved.specifier;
         let resolved_specifier = self.graph.resolve(specifier);
         Some(match self.graph.try_get(resolved_specifier) {
-          Ok(Some(module)) => self.build_module_info(module, type_dep),
+          Ok(Some(module)) => {
+            self.build_module_info(module, type_dep, depth, Some(specifier))
+          }
           Err(err) => self.build_error_info(err, resolved_specifier),
           Ok(None) => DisplayTreeNode::from_text(format!(
             "{} {}",
@@ -843,6 +944,189 @@ impl<'a> GraphDisplayContext<'a> {
       _ => None,
     }
   }
+
+  fn should_truncate_children(&self, depth: usize) -> bool {
+    self.options.depth.is_some_and(|limit| depth >= limit)
+  }
+
+  fn should_collapse_module(&self, module: &Module) -> bool {
+    self.options.collapse_modules
+      && module.npm().is_none()
+      && module.specifier().scheme() != "file"
+  }
+
+  fn collapsed_module_label(
+    &self,
+    module: &Module,
+    display_specifier: Option<&ModuleSpecifier>,
+  ) -> String {
+    display_specifier
+      .and_then(Self::specifier_to_collapsed_label)
+      .or_else(|| Self::specifier_to_collapsed_label(module.specifier()))
+      .unwrap_or_else(|| module.specifier().to_string())
+  }
+
+  fn specifier_to_collapsed_label(
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
+    JsrPackageReqReference::from_specifier(specifier)
+      .map(|req_ref| req_ref.to_string())
+      .ok()
+      .or_else(|| match specifier.scheme() {
+        "jsr" | "npm" => Some(specifier.to_string()),
+        _ => None,
+      })
+  }
+
+  fn summarize_module(
+    &self,
+    module: &Module,
+    include_self: bool,
+  ) -> SubtreeSummary {
+    let mut visited = HashSet::new();
+    self.summarize_module_with_visited(module, include_self, &mut visited)
+  }
+
+  fn summarize_module_with_visited(
+    &self,
+    module: &Module,
+    include_self: bool,
+    visited: &mut HashSet<String>,
+  ) -> SubtreeSummary {
+    if let Module::Npm(module) = module {
+      return self
+        .npm_info
+        .resolve_package(module.pkg_req_ref.req())
+        .map(|package| {
+          self.summarize_npm_package_with_visited(
+            package,
+            include_self,
+            visited,
+          )
+        })
+        .unwrap_or_default();
+    }
+
+    let key = module.specifier().to_string();
+    if !visited.insert(key) {
+      return SubtreeSummary::default();
+    }
+
+    let mut summary = SubtreeSummary::default();
+    if include_self {
+      summary.file_count += 1;
+      summary.size += match module {
+        Module::Js(module) => module.size() as u64,
+        Module::Json(module) => module.size() as u64,
+        Module::Wasm(module) => module.size() as u64,
+        Module::Node(_) | Module::Npm(_) | Module::External(_) => 0,
+      };
+    }
+
+    match module {
+      Module::Js(module) => {
+        if let Some(types_dep) = &module.maybe_types_dependency {
+          summary += self.summarize_resolution(&types_dep.dependency, visited);
+        }
+        for dep in module.dependencies.values() {
+          summary += self.summarize_dependency(dep, visited);
+        }
+      }
+      Module::Wasm(module) => {
+        for dep in module.dependencies.values() {
+          summary += self.summarize_dependency(dep, visited);
+        }
+      }
+      Module::Json(_)
+      | Module::Npm(_)
+      | Module::Node(_)
+      | Module::External(_) => {}
+    }
+
+    summary
+  }
+
+  fn summarize_dependency(
+    &self,
+    dep: &Dependency,
+    visited: &mut HashSet<String>,
+  ) -> SubtreeSummary {
+    let mut summary = SubtreeSummary::default();
+    if !dep.maybe_code.is_none() {
+      summary += self.summarize_resolution(&dep.maybe_code, visited);
+    }
+    if !dep.maybe_type.is_none() {
+      summary += self.summarize_resolution(&dep.maybe_type, visited);
+    }
+    summary
+  }
+
+  fn summarize_resolution(
+    &self,
+    resolution: &Resolution,
+    visited: &mut HashSet<String>,
+  ) -> SubtreeSummary {
+    match resolution {
+      Resolution::Ok(resolved) => {
+        let resolved_specifier = self.graph.resolve(&resolved.specifier);
+        match self.graph.try_get(resolved_specifier) {
+          Ok(Some(module)) => {
+            self.summarize_module_with_visited(module, true, visited)
+          }
+          _ => SubtreeSummary::default(),
+        }
+      }
+      _ => SubtreeSummary::default(),
+    }
+  }
+
+  fn summarize_npm_package(
+    &self,
+    package: &NpmResolutionPackage,
+    include_self: bool,
+  ) -> SubtreeSummary {
+    let mut visited = HashSet::new();
+    self.summarize_npm_package_with_visited(package, include_self, &mut visited)
+  }
+
+  fn summarize_npm_package_with_visited(
+    &self,
+    package: &NpmResolutionPackage,
+    include_self: bool,
+    visited: &mut HashSet<String>,
+  ) -> SubtreeSummary {
+    let key = package.id.as_serialized().into_string();
+    if !visited.insert(key) {
+      return SubtreeSummary::default();
+    }
+
+    let mut summary = SubtreeSummary::default();
+    if include_self {
+      summary.file_count += 1;
+      summary.size += self
+        .npm_info
+        .package_sizes
+        .get(&package.id)
+        .copied()
+        .unwrap_or_default();
+    }
+
+    for dep_id in package.dependencies.values() {
+      if let Some(dep_pkg) = self.npm_info.packages.get(dep_id) {
+        summary +=
+          self.summarize_npm_package_with_visited(dep_pkg, true, visited);
+      }
+    }
+
+    summary
+  }
+}
+
+impl std::ops::AddAssign for SubtreeSummary {
+  fn add_assign(&mut self, rhs: Self) {
+    self.file_count += rhs.file_count;
+    self.size += rhs.size;
+  }
 }
 
 fn maybe_size_to_text(maybe_size: Option<u64>) -> String {
@@ -854,4 +1138,17 @@ fn maybe_size_to_text(maybe_size: Option<u64>) -> String {
     }
   ))
   .to_string()
+}
+
+fn subtree_summary_to_text(summary: SubtreeSummary) -> String {
+  format!(
+    "(+ {} {}, {})",
+    summary.file_count,
+    if summary.file_count == 1 {
+      "file"
+    } else {
+      "files"
+    },
+    display::human_size(summary.size as f64),
+  )
 }
