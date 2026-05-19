@@ -507,7 +507,6 @@ fn collect_lint_files(
   .collect_file_patterns(&CliSys::default(), &files)
 }
 
-#[allow(clippy::print_stdout, reason = "print method")]
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
   let rule_provider = LintRuleProvider::new(None);
   let mut all_rules = rule_provider.all_rules();
@@ -537,27 +536,39 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
         .collect::<Vec<serde_json::Value>>(),
     });
     display::write_json_to_stdout(&json_output).unwrap();
-  } else {
-    // The rules should still be printed even if `--quiet` option is enabled,
-    // so use `println!` here instead of `info!`.
-    println!("Available rules:");
-    for rule in all_rules.iter() {
-      // TODO(bartlomieju): this is O(n) search, fix before landing
-      let enabled = if configured_rules.rules.contains(rule) {
-        "✓"
-      } else {
-        ""
-      };
-      println!("- {} {}", rule.code(), colors::green(enabled),);
-      println!(
-        "{}",
-        colors::gray(format!("  help: {}", rule.help_docs_url()))
-      );
+    return;
+  }
+
+  use std::io::Write;
+  // The rules should still be printed even if `--quiet` option is enabled,
+  // so write directly to stdout instead of using `info!`. Bail out on the
+  // first failed write (typically `EPIPE` when piped to e.g. `head`) rather
+  // than letting `println!` panic — see denoland/deno#30248.
+  let stdout = std::io::stdout();
+  let mut out = stdout.lock();
+  let mut write =
+    |args: std::fmt::Arguments<'_>| -> bool { out.write_fmt(args).is_ok() };
+  if !write(format_args!("Available rules:\n")) {
+    return;
+  }
+  for rule in all_rules.iter() {
+    // TODO(bartlomieju): this is O(n) search, fix before landing
+    let enabled = if configured_rules.rules.contains(rule) {
+      "✓"
+    } else {
+      ""
+    };
+    let ok = write(format_args!(
+      "- {} {}\n{}\n",
+      rule.code(),
+      colors::green(enabled),
+      colors::gray(format!("  help: {}", rule.help_docs_url())),
+    )) && {
       if rule.tags().is_empty() {
-        println!("  {}", colors::gray("tags:"));
+        write(format_args!("  {}\n\n", colors::gray("tags:")))
       } else {
-        println!(
-          "  {}",
+        write(format_args!(
+          "  {}\n\n",
           colors::gray(format!(
             "tags: {}",
             rule
@@ -566,10 +577,12 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
               .map(|t| t.display())
               .collect::<Vec<_>>()
               .join(", ")
-          ))
-        );
+          )),
+        ))
       }
-      println!();
+    };
+    if !ok {
+      return;
     }
   }
 }
