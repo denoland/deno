@@ -102,6 +102,19 @@ function getInspectorNetwork() {
   return null;
 }
 
+// Inspector emission is purely observational - if anything goes wrong
+// (inspector detached mid-flight, payload validation in
+// `op_inspector_emit_protocol_event`, etc.) we never want it to surface
+// as a fetch error to user code. Centralized so the call sites stay
+// straight-line.
+function safeEmit(fn, params) {
+  try {
+    fn(params);
+  } catch {
+    // swallow
+  }
+}
+
 // Join repeated header values according to Chrome DevTools conventions:
 // cookies use `; `, set-cookie uses `\n`, everything else uses `, `.
 //
@@ -196,7 +209,7 @@ function drainResponseForInspector(inspectorStream, requestId, ins) {
           const len = TypedArrayPrototypeGetByteLength(value);
           if (len > 0) {
             totalLength += len;
-            ins.dataReceived({
+            safeEmit(ins.dataReceived, {
               requestId,
               timestamp: DateNow() / 1000,
               dataLength: len,
@@ -206,27 +219,24 @@ function drainResponseForInspector(inspectorStream, requestId, ins) {
           }
         }
       }
-      ins.loadingFinished({
+      safeEmit(ins.loadingFinished, {
         requestId,
         timestamp: DateNow() / 1000,
         encodedDataLength: totalLength,
       });
     } catch (err) {
-      try {
-        ins.loadingFailed({
-          requestId,
-          timestamp: DateNow() / 1000,
-          type: "Fetch",
-          errorText: err && err.message ? String(err.message) : String(err),
-        });
-      } catch {
-        // ignore - inspector may have detached mid-drain
-      }
+      safeEmit(ins.loadingFailed, {
+        requestId,
+        timestamp: DateNow() / 1000,
+        type: "Fetch",
+        errorText: err && err.message ? String(err.message) : String(err),
+      });
     } finally {
       try {
         reader.releaseLock();
       } catch {
-        // ignore
+        // releaseLock can throw if the stream errored mid-read; swallowing
+        // matches what the wrapping `safeEmit` calls do above.
       }
     }
   })();
@@ -355,48 +365,40 @@ async function mainFetch(req, recursive, terminator) {
     // (utf-8 only). Prefer an explicit charset from Content-Type; fall
     // back to utf-8 when we successfully decoded the body as a JS string,
     // since fetch encodes string bodies as utf-8 over the wire.
-    let requestCharset;
-    for (let i = 0; i < req.headerList.length; i++) {
-      if (byteLowerCase(req.headerList[i][0]) === "content-type") {
-        requestCharset = parseContentTypeForCdp(req.headerList).charset ||
-          undefined;
-        break;
-      }
-    }
+    let requestCharset = parseContentTypeForCdp(req.headerList).charset ||
+      undefined;
     if (requestCharset === undefined && postDataText !== undefined) {
       requestCharset = "utf-8";
     }
-    try {
-      inspectorNetwork.requestWillBeSent({
+    safeEmit(inspectorNetwork.requestWillBeSent, {
+      requestId: inspectorRequestId,
+      timestamp: DateNow() / 1000,
+      wallTime: DateNow() / 1000,
+      type: "Fetch",
+      request: {
+        url: req.currentUrl(),
+        method: req.method,
+        headers: requestHeadersForCdp,
+        hasPostData,
+        postData: postDataText,
+      },
+      // initiator: filled in by `op_inspector_emit_protocol_event` using
+      // V8's current stack trace, so the user-code frame at the fetch()
+      // call site is preserved.
+      charset: requestCharset,
+    });
+    // When we supplied the entire request body inline via
+    // `request.postData`, flip the buffer's `is_request_finished` flag
+    // immediately so `Network.getRequestPostData` doesn't reject with
+    // "Request data is not finished yet". Streaming bodies (reqRid !==
+    // null, where postDataText stays undefined) take the chunked
+    // `Network.dataSent` path instead and aren't covered here; keeping
+    // them un-finished is the desired outcome until that lands.
+    if (postDataText !== undefined) {
+      safeEmit(inspectorNetwork.dataSent, {
         requestId: inspectorRequestId,
-        timestamp: DateNow() / 1000,
-        wallTime: DateNow() / 1000,
-        type: "Fetch",
-        request: {
-          url: req.currentUrl(),
-          method: req.method,
-          headers: requestHeadersForCdp,
-          hasPostData,
-          postData: postDataText,
-        },
-        // initiator: filled in by `op_inspector_emit_protocol_event` using
-        // V8's current stack trace, so the user-code frame at the fetch()
-        // call site is preserved.
-        charset: requestCharset,
+        finished: true,
       });
-      // We supplied the entire request body inline via `request.postData`,
-      // so flip the buffer's `is_request_finished` flag immediately - else
-      // `Network.getRequestPostData` would reject with "Request data is
-      // not finished yet". Streaming bodies (reqRid !== null) take the
-      // chunked `Network.dataSent` path instead and aren't covered here.
-      if (hasPostData) {
-        inspectorNetwork.dataSent({
-          requestId: inspectorRequestId,
-          finished: true,
-        });
-      }
-    } catch {
-      // never let inspector instrumentation break a real fetch
     }
   }
 
@@ -411,16 +413,12 @@ async function mainFetch(req, recursive, terminator) {
     resp = await opFetchSend(requestRid);
   } catch (err) {
     if (inspectorRequestId !== null) {
-      try {
-        inspectorNetwork.loadingFailed({
-          requestId: inspectorRequestId,
-          timestamp: DateNow() / 1000,
-          type: "Fetch",
-          errorText: err && err.message ? String(err.message) : String(err),
-        });
-      } catch {
-        // ignore
-      }
+      safeEmit(inspectorNetwork.loadingFailed, {
+        requestId: inspectorRequestId,
+        timestamp: DateNow() / 1000,
+        type: "Fetch",
+        errorText: err && err.message ? String(err.message) : String(err),
+      });
     }
     if (terminator.aborted) return abortedNetworkError();
     throw err;
@@ -432,16 +430,12 @@ async function mainFetch(req, recursive, terminator) {
   // Re-throw any body errors
   if (resp.error !== null) {
     if (inspectorRequestId !== null) {
-      try {
-        inspectorNetwork.loadingFailed({
-          requestId: inspectorRequestId,
-          timestamp: DateNow() / 1000,
-          type: "Fetch",
-          errorText: resp.error[0],
-        });
-      } catch {
-        // ignore
-      }
+      safeEmit(inspectorNetwork.loadingFailed, {
+        requestId: inspectorRequestId,
+        timestamp: DateNow() / 1000,
+        type: "Fetch",
+        errorText: resp.error[0],
+      });
     }
     const { 0: message, 1: cause } = resp.error;
     throw new TypeError(message, { cause: new Error(cause) });
@@ -479,23 +473,19 @@ async function mainFetch(req, recursive, terminator) {
       resp.headers,
       /* lowerCaseNames */ false,
     );
-    try {
-      inspectorNetwork.responseReceived({
-        requestId: inspectorRequestId,
-        timestamp: DateNow() / 1000,
-        type: "Fetch",
-        response: {
-          url: resp.url || req.currentUrl(),
-          status: resp.status,
-          statusText: resp.statusText,
-          headers: responseHeadersForCdp,
-          mimeType,
-          charset,
-        },
-      });
-    } catch {
-      // ignore
-    }
+    safeEmit(inspectorNetwork.responseReceived, {
+      requestId: inspectorRequestId,
+      timestamp: DateNow() / 1000,
+      type: "Fetch",
+      response: {
+        url: resp.url || req.currentUrl(),
+        status: resp.status,
+        statusText: resp.statusText,
+        headers: responseHeadersForCdp,
+        mimeType,
+        charset,
+      },
+    });
   }
 
   if (redirectStatus(resp.status)) {
@@ -503,17 +493,13 @@ async function mainFetch(req, recursive, terminator) {
       case "error":
         core.close(resp.responseRid);
         if (inspectorRequestId !== null) {
-          try {
-            inspectorNetwork.loadingFailed({
-              requestId: inspectorRequestId,
-              timestamp: DateNow() / 1000,
-              type: "Fetch",
-              errorText:
-                "Encountered redirect while redirect mode is set to 'error'",
-            });
-          } catch {
-            // ignore
-          }
+          safeEmit(inspectorNetwork.loadingFailed, {
+            requestId: inspectorRequestId,
+            timestamp: DateNow() / 1000,
+            type: "Fetch",
+            errorText:
+              "Encountered redirect while redirect mode is set to 'error'",
+          });
         }
         return networkError(
           "Encountered redirect while redirect mode is set to 'error'",
@@ -529,30 +515,22 @@ async function mainFetch(req, recursive, terminator) {
   if (nullBodyStatus(response.status)) {
     core.close(resp.responseRid);
     if (inspectorRequestId !== null) {
-      try {
-        inspectorNetwork.loadingFinished({
-          requestId: inspectorRequestId,
-          timestamp: DateNow() / 1000,
-          encodedDataLength: 0,
-        });
-      } catch {
-        // ignore
-      }
+      safeEmit(inspectorNetwork.loadingFinished, {
+        requestId: inspectorRequestId,
+        timestamp: DateNow() / 1000,
+        encodedDataLength: 0,
+      });
     }
   } else {
     if (req.method === "HEAD" || req.method === "CONNECT") {
       response.body = null;
       core.close(resp.responseRid);
       if (inspectorRequestId !== null) {
-        try {
-          inspectorNetwork.loadingFinished({
-            requestId: inspectorRequestId,
-            timestamp: DateNow() / 1000,
-            encodedDataLength: 0,
-          });
-        } catch {
-          // ignore
-        }
+        safeEmit(inspectorNetwork.loadingFinished, {
+          requestId: inspectorRequestId,
+          timestamp: DateNow() / 1000,
+          encodedDataLength: 0,
+        });
       }
     } else {
       let bodyStream = createResponseBodyStream(resp.responseRid, terminator);

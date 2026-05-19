@@ -174,6 +174,14 @@ pub fn op_inspector_emit_protocol_event(
 /// assertions like `findFrameInInitiator(__filename, initiator)` match.
 ///
 /// Anything that isn't a `file://` URL is returned unchanged.
+///
+/// TODO: percent-decode the URL path. Paths with spaces or non-ASCII
+/// characters arrive as e.g. `/path%20with%20spaces/foo.js` and won't
+/// match a `__filename` containing literal spaces. Rare in CI, real in
+/// user code.
+/// TODO: handle UNC paths (`file://server/share/x`) on Windows. The
+/// current `strip_prefix("file://")` drops both slashes, losing the
+/// `\\server\share` marker.
 fn file_url_to_os_path(s: String) -> String {
   let Some(after_scheme) = s.strip_prefix("file://") else {
     return s;
@@ -228,6 +236,12 @@ fn capture_initiator(scope: &mut v8::PinScope<'_, '_>) -> serde_json::Value {
     }));
   }
 
+  // Always emit `type: "script"` even when `call_frames` is empty.
+  // Returning `{type: "other"}` for the empty case (as the original code
+  // did) tripped node_compat tests that assert `initiator.type ===
+  // "script"` whenever the inspector saw a JS-originated request - which
+  // is true here by construction, since we only reach this function from
+  // `op_inspector_emit_protocol_event` called from JS-land emitters.
   serde_json::json!({
     "type": "script",
     "stack": {

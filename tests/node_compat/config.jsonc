@@ -4986,7 +4986,10 @@
     "parallel/test-inspector-network-arbitrary-data.js": {},
     "parallel/test-inspector-network-data-received.js": {},
     "parallel/test-inspector-network-data-sent.js": {},
-    "parallel/test-inspector-network-fetch.js": {},
+    "parallel/test-inspector-network-fetch.js": {
+      "extraDenoArgs": ["--unsafely-ignore-certificate-errors"],
+      "reason": "Hits a local HTTPS server with a self-signed cert via fetch(). The upstream test bypasses cert checks by setting undici's global dispatcher with rejectUnauthorized:false; Deno's fetch doesn't honor that, so we disable cert validation only for this test."
+    },
     "parallel/test-listen-fd-cluster.js": {
       "linux": false,
       "darwin": false,
