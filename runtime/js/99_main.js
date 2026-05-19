@@ -583,8 +583,6 @@ const NOT_IMPORTED_OPS = [
   "op_jupyter_input",
   "op_jupyter_create_png_from_texture",
   "op_jupyter_get_buffer",
-  // Used in jupyter API
-  "op_base64_encode",
 
   // Used in the lint API
   "op_lint_report",
@@ -610,7 +608,6 @@ const NOT_IMPORTED_OPS = [
 
   // TODO(bartlomieju): used in various integration tests - figure out a way
   // to not depend on them.
-  "op_set_exit_code",
   "op_napi_open",
 
   // deno deploy subcommand
