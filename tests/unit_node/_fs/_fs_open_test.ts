@@ -10,7 +10,13 @@ import {
   O_TRUNC,
   O_WRONLY,
 } from "node:constants";
-import { assertEquals, assertRejects, assertThrows, fail } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertThrows,
+  fail,
+} from "@std/assert";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import {
   closeSync,
@@ -25,6 +31,24 @@ import { open as openPromise } from "node:fs/promises";
 import { join, parse } from "node:path";
 
 const tempDir = parse(Deno.makeTempFileSync()).dir;
+const epermErrno = Deno.build.os === "windows" ? -4048 : -1;
+
+function assertNodePermissionError(
+  err: unknown,
+  syscall: string,
+  path?: string,
+) {
+  assert(err instanceof Error);
+  assert(!(err instanceof Deno.errors.NotCapable));
+
+  const nodeErr = err as NodeJS.ErrnoException;
+  assertEquals(nodeErr.code, "EPERM");
+  assertEquals(nodeErr.errno, epermErrno);
+  assertEquals(nodeErr.syscall, syscall);
+  if (path !== undefined) {
+    assertEquals(nodeErr.path, path);
+  }
+}
 
 Deno.test({
   name: "ASYNC: open file",
@@ -50,6 +74,16 @@ Deno.test({
     const file = Deno.makeTempFileSync();
     const fd = openSync(file, "r");
     closeSync(fd);
+  },
+});
+
+Deno.test({
+  name: "openSync maps denied write permission to Node EPERM",
+  permissions: { write: false },
+  fn() {
+    const file = join(Deno.cwd(), "_fs_openSync_denied_write.txt");
+    const err = assertThrows(() => openSync(file, "w"));
+    assertNodePermissionError(err, "open", file);
   },
 });
 

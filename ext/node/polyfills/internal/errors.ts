@@ -374,13 +374,17 @@ const handleDnsError = hideStackFrames(
       return dnsException(err?.uv_errcode, syscall, address);
     }
 
-    if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, err)) {
+    if (isDenoNotCapableError(err)) {
       return dnsException(codeMap.get("EPERM")!, syscall, address);
     }
 
     return denoErrorToNodeError(err, { syscall });
   },
 );
+
+function isDenoNotCapableError(err: Error) {
+  return ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, err);
+}
 
 /**
  * @param code A libuv error number or a c-ares error code
@@ -3055,12 +3059,24 @@ interface UvExceptionContext {
   path?: string;
   dest?: string;
 }
+
+function denoNotCapableErrorToNodeError(ctx: UvExceptionContext) {
+  return uvException({
+    errno: codeMap.get("EPERM")!,
+    ...ctx,
+  });
+}
+
 function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
   if (ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)) {
     return uvException({
       errno: UV_EBADF,
       ...ctx,
     });
+  }
+
+  if (isDenoNotCapableError(e)) {
+    return denoNotCapableErrorToNodeError(ctx);
   }
 
   const errno = extractOsErrorNumberFromErrorMessage(e);
@@ -3084,6 +3100,10 @@ function denoWriteFileErrorToNodeError(
       errno: UV_EBADF,
       ...ctx,
     });
+  }
+
+  if (isDenoNotCapableError(e)) {
+    return denoNotCapableErrorToNodeError(ctx);
   }
 
   let errno = extractOsErrorNumberFromErrorMessage(e);
