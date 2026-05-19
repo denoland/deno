@@ -150,22 +150,156 @@ fn op_node_load_env_file(
   Ok(())
 }
 
+/// Dyn-safe surface of [`node_resolver::NodeResolver`] for the methods
+/// invoked from the `deno_node` extension's ops. Storing the resolver as
+/// `Rc<dyn DynNodeResolver>` lets us drop the `TInNpmPackageChecker`
+/// generic from the extension and its ops; callers' existing
+/// `NodeResolverRc<...>` coerces to this trait object automatically via
+/// the blanket impl on `node_resolver::NodeResolver`.
+pub trait DynNodeResolver {
+  fn in_npm_package(&self, specifier: &Url) -> bool;
+
+  fn resolve_package_folder_from_package(
+    &self,
+    specifier: &str,
+    referrer: &node_resolver::UrlOrPathRef,
+  ) -> Result<
+    std::path::PathBuf,
+    node_resolver::errors::PackageFolderResolveError,
+  >;
+
+  fn package_exports_resolve(
+    &self,
+    package_json_path: &Path,
+    package_subpath: &str,
+    package_exports: &deno_core::serde_json::Map<
+      String,
+      deno_core::serde_json::Value,
+    >,
+    maybe_referrer: Option<&node_resolver::UrlOrPathRef>,
+    resolution_mode: node_resolver::ResolutionMode,
+    conditions: &[Cow<'static, str>],
+    resolution_kind: node_resolver::NodeResolutionKind,
+  ) -> Result<
+    node_resolver::UrlOrPath,
+    node_resolver::errors::PackageExportsResolveError,
+  >;
+
+  fn resolve_package_import(
+    &self,
+    name: &str,
+    maybe_referrer: Option<&node_resolver::UrlOrPathRef>,
+    referrer_pkg_json: Option<&deno_package_json::PackageJson>,
+    resolution_mode: node_resolver::ResolutionMode,
+    resolution_kind: node_resolver::NodeResolutionKind,
+  ) -> Result<
+    node_resolver::UrlOrPath,
+    node_resolver::errors::PackageImportsResolveError,
+  >;
+
+  fn require_conditions(&self) -> &[Cow<'static, str>];
+}
+
+impl<TInNpm, TIsBuiltIn, TNpm, TSys> DynNodeResolver
+  for node_resolver::NodeResolver<TInNpm, TIsBuiltIn, TNpm, TSys>
+where
+  TInNpm: InNpmPackageChecker + 'static,
+  TIsBuiltIn: IsBuiltInNodeModuleChecker + 'static,
+  TNpm: NpmPackageFolderResolver + 'static,
+  TSys: node_resolver::NodeResolverSys + 'static,
+{
+  fn in_npm_package(&self, specifier: &Url) -> bool {
+    node_resolver::NodeResolver::in_npm_package(self, specifier)
+  }
+
+  fn resolve_package_folder_from_package(
+    &self,
+    specifier: &str,
+    referrer: &node_resolver::UrlOrPathRef,
+  ) -> Result<
+    std::path::PathBuf,
+    node_resolver::errors::PackageFolderResolveError,
+  > {
+    node_resolver::NodeResolver::resolve_package_folder_from_package(
+      self, specifier, referrer,
+    )
+  }
+
+  fn package_exports_resolve(
+    &self,
+    package_json_path: &Path,
+    package_subpath: &str,
+    package_exports: &deno_core::serde_json::Map<
+      String,
+      deno_core::serde_json::Value,
+    >,
+    maybe_referrer: Option<&node_resolver::UrlOrPathRef>,
+    resolution_mode: node_resolver::ResolutionMode,
+    conditions: &[Cow<'static, str>],
+    resolution_kind: node_resolver::NodeResolutionKind,
+  ) -> Result<
+    node_resolver::UrlOrPath,
+    node_resolver::errors::PackageExportsResolveError,
+  > {
+    node_resolver::NodeResolver::package_exports_resolve(
+      self,
+      package_json_path,
+      package_subpath,
+      package_exports,
+      maybe_referrer,
+      resolution_mode,
+      conditions,
+      resolution_kind,
+    )
+  }
+
+  fn resolve_package_import(
+    &self,
+    name: &str,
+    maybe_referrer: Option<&node_resolver::UrlOrPathRef>,
+    referrer_pkg_json: Option<&deno_package_json::PackageJson>,
+    resolution_mode: node_resolver::ResolutionMode,
+    resolution_kind: node_resolver::NodeResolutionKind,
+  ) -> Result<
+    node_resolver::UrlOrPath,
+    node_resolver::errors::PackageImportsResolveError,
+  > {
+    node_resolver::NodeResolver::resolve_package_import(
+      self,
+      name,
+      maybe_referrer,
+      referrer_pkg_json,
+      resolution_mode,
+      resolution_kind,
+    )
+  }
+
+  fn require_conditions(&self) -> &[Cow<'static, str>] {
+    node_resolver::NodeResolver::require_conditions(self)
+  }
+}
+
+#[allow(clippy::disallowed_types, reason = "definition")]
+pub type DynNodeResolverRc = deno_fs::sync::MaybeArc<dyn DynNodeResolver>;
+
 #[derive(Clone)]
 pub struct NodeExtInitServices<
-  TInNpmPackageChecker: InNpmPackageChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
   TSys: ExtNodeSys,
 > {
   pub node_require_loader: NodeRequireLoaderRc,
-  pub node_resolver:
-    NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+  pub node_resolver: DynNodeResolverRc,
   pub pkg_json_resolver: PackageJsonResolverRc<TSys>,
   pub sys: TSys,
+  /// Phantom marker so callers can keep typing the package-folder resolver
+  /// alongside `sys`. Retained until the matching generic is removed from
+  /// the `deno_node` extension in a follow-up.
+  pub _phantom: std::marker::PhantomData<TNpmPackageFolderResolver>,
 }
 
 deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
-  parameters = [TInNpmPackageChecker: InNpmPackageChecker, TNpmPackageFolderResolver: NpmPackageFolderResolver, TSys: ExtNodeSys],
+  parameters = [TNpmPackageFolderResolver: NpmPackageFolderResolver, TSys: ExtNodeSys],
   ops = [
     ops::assert::op_node_get_first_expression,
 
@@ -319,12 +453,12 @@ deno_core::extension!(deno_node,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<TSys>,
     ops::require::op_require_proxy_path,
-    ops::require::op_require_is_deno_dir_package<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
-    ops::require::op_require_resolve_deno_dir<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::require::op_require_is_deno_dir_package,
+    ops::require::op_require_resolve_deno_dir,
     ops::require::op_require_is_maybe_cjs,
     ops::require::op_require_is_request_relative,
     ops::require::op_require_resolve_lookup_paths,
-    ops::require::op_require_try_self<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::require::op_require_try_self<TSys>,
     ops::require::op_require_real_path<TSys>,
     ops::require::op_require_path_is_absolute,
     ops::require::op_require_path_dirname,
@@ -333,15 +467,15 @@ deno_core::extension!(deno_node,
     ops::require::op_require_path_basename,
     ops::require::op_require_read_file,
     ops::require::op_require_as_file_path,
-    ops::require::op_require_resolve_exports<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::require::op_require_resolve_exports<TSys>,
     ops::require::op_require_read_package_scope<TSys>,
-    ops::require::op_require_package_imports_resolve<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::require::op_require_package_imports_resolve<TSys>,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
     ops::util::op_node_view_has_buffer,
     ops::util::op_node_get_own_non_index_properties,
-    ops::util::op_node_call_is_from_dependency<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
-    ops::util::op_node_in_npm_package<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::util::op_node_call_is_from_dependency,
+    ops::util::op_node_in_npm_package,
     ops::util::op_node_parse_env,
     ops::worker_threads::op_worker_threads_filename<TSys>,
     ops::worker_threads::op_worker_get_resource_limits,
@@ -735,7 +869,7 @@ deno_core::extension!(deno_node,
     "node:zlib" = "ext:deno_node/zlib.js",
   ],
   options = {
-    maybe_init: Option<NodeExtInitServices<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>>,
+    maybe_init: Option<NodeExtInitServices<TNpmPackageFolderResolver, TSys>>,
     fs: deno_fs::FileSystemRc,
   },
   state = |state, options| {

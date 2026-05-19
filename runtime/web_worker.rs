@@ -60,7 +60,6 @@ use deno_web::Transferable;
 use deno_web::create_entangled_message_port;
 use deno_web::serialize_transferables;
 use log::debug;
-use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
 use crate::BootstrapOptions;
@@ -342,7 +341,6 @@ fn create_handles(
 }
 
 pub struct WebWorkerServiceOptions<
-  TInNpmPackageChecker: InNpmPackageChecker + 'static,
   TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
   TExtNodeSys: ExtNodeSys + 'static,
 > {
@@ -354,13 +352,8 @@ pub struct WebWorkerServiceOptions<
   pub fs: Arc<dyn FileSystem>,
   pub main_inspector_session_tx: MainInspectorSessionChannel,
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub node_services: Option<
-    NodeExtInitServices<
-      TInNpmPackageChecker,
-      TNpmPackageFolderResolver,
-      TExtNodeSys,
-    >,
-  >,
+  pub node_services:
+    Option<NodeExtInitServices<TNpmPackageFolderResolver, TExtNodeSys>>,
   pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
@@ -438,15 +431,10 @@ impl Drop for WebWorker {
 
 impl WebWorker {
   pub fn bootstrap_from_options<
-    TInNpmPackageChecker: InNpmPackageChecker + 'static,
     TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
     TExtNodeSys: ExtNodeSys + 'static,
   >(
-    services: WebWorkerServiceOptions<
-      TInNpmPackageChecker,
-      TNpmPackageFolderResolver,
-      TExtNodeSys,
-    >,
+    services: WebWorkerServiceOptions<TNpmPackageFolderResolver, TExtNodeSys>,
     options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle) {
     let (mut worker, handle, bootstrap_options) =
@@ -456,15 +444,10 @@ impl WebWorker {
   }
 
   pub fn from_options<
-    TInNpmPackageChecker: InNpmPackageChecker + 'static,
     TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
     TExtNodeSys: ExtNodeSys + 'static,
   >(
-    services: WebWorkerServiceOptions<
-      TInNpmPackageChecker,
-      TNpmPackageFolderResolver,
-      TExtNodeSys,
-    >,
+    services: WebWorkerServiceOptions<TNpmPackageFolderResolver, TExtNodeSys>,
     mut options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle, BootstrapOptions) {
     // Permissions: many ops depend on this
@@ -570,11 +553,10 @@ impl WebWorker {
       deno_process::deno_process::init(services.npm_process_state_provider),
       deno_node_crypto::deno_node_crypto::init(),
       deno_node_sqlite::deno_node_sqlite::init(),
-      deno_node::deno_node::init::<
-        TInNpmPackageChecker,
-        TNpmPackageFolderResolver,
-        TExtNodeSys,
-      >(services.node_services, services.fs),
+      deno_node::deno_node::init::<TNpmPackageFolderResolver, TExtNodeSys>(
+        services.node_services,
+        services.fs,
+      ),
       // Runtime ops that are always initialized for WebWorkers
       ops::runtime::deno_runtime::init(options.main_module.clone()),
       ops::worker_host::deno_worker_host::init(

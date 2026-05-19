@@ -959,7 +959,6 @@ fn wait_for_start(
     init_v8(&Flags::default());
 
     let unconfigured = deno_runtime::UnconfiguredRuntime::new::<
-      deno_resolver::npm::DenoInNpmPackageChecker,
       crate::npm::CliNpmResolver,
       crate::sys::CliSys,
     >(deno_runtime::UnconfiguredRuntimeOptions {

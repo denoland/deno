@@ -325,12 +325,13 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
   fn create_node_init_services(
     &self,
     node_require_loader: NodeRequireLoaderRc,
-  ) -> NodeExtInitServices<DenoInNpmPackageChecker, NpmResolver<TSys>, TSys> {
+  ) -> NodeExtInitServices<NpmResolver<TSys>, TSys> {
     NodeExtInitServices {
       node_require_loader,
       node_resolver: self.node_resolver.clone(),
       pkg_json_resolver: self.pkg_json_resolver.clone(),
       sys: self.sys.clone(),
+      _phantom: std::marker::PhantomData,
     }
   }
 

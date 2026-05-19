@@ -9,7 +9,6 @@ use deno_core::ExtensionFileSource;
 use deno_core::ExtensionFileSourceCode;
 use deno_core::snapshot::*;
 use deno_core::v8;
-use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
 
 use crate::ops;
@@ -84,7 +83,6 @@ pub fn create_runtime_snapshot(
     deno_node_crypto::deno_node_crypto::lazy_init(),
     deno_node_sqlite::deno_node_sqlite::lazy_init(),
     deno_node::deno_node::lazy_init::<
-      DenoInNpmPackageChecker,
       NpmResolver<sys_traits::impls::RealSys>,
       sys_traits::impls::RealSys,
     >(),
