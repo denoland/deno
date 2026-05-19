@@ -102,11 +102,7 @@ pub fn get_body(
           #(#unit_arms)*
           _ => {
             return Err(::deno_error::JsErrorBox::type_error(
-              format!(
-                "Unknown string variant '{}' for '{}'",
-                __s,
-                #ident_string,
-              ),
+              concat!("Unknown string variant for '", #ident_string, "'"),
             ));
           }
         }
@@ -129,21 +125,13 @@ pub fn get_body(
       #(#variant_arms)*
 
       Err(::deno_error::JsErrorBox::type_error(
-        concat!(
-          "No matching variant key found for '",
-          #ident_string,
-          "'",
-        ),
+        concat!("No matching variant key found for '", #ident_string, "'"),
       ))
     }
   } else {
     quote! {
       Err(::deno_error::JsErrorBox::type_error(
-        concat!(
-          "Expected string variant for '",
-          #ident_string,
-          "'",
-        ),
+        concat!("Expected string variant for '", #ident_string, "'"),
       ))
     }
   };

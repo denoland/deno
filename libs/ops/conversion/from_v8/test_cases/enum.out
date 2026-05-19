@@ -14,9 +14,7 @@ impl<'a> ::deno_core::convert::FromV8<'a> for SimpleEnum {
                 _ => {
                     return Err(
                         ::deno_error::JsErrorBox::type_error(
-                            format!(
-                                "Unknown string variant '{}' for '{}'", __s, "SimpleEnum",
-                            ),
+                            concat!("Unknown string variant for '", "SimpleEnum", "'"),
                         ),
                     );
                 }
@@ -70,7 +68,7 @@ impl<'a> ::deno_core::convert::FromV8<'a> for SimpleEnum {
         }
         Err(
             ::deno_error::JsErrorBox::type_error(
-                concat!("No matching variant key found for '", "SimpleEnum", "'",),
+                concat!("No matching variant key found for '", "SimpleEnum", "'"),
             ),
         )
     }
@@ -91,9 +89,7 @@ impl<'a> ::deno_core::convert::FromV8<'a> for SerdeEnum {
                 _ => {
                     return Err(
                         ::deno_error::JsErrorBox::type_error(
-                            format!(
-                                "Unknown string variant '{}' for '{}'", __s, "SerdeEnum",
-                            ),
+                            concat!("Unknown string variant for '", "SerdeEnum", "'"),
                         ),
                     );
                 }
@@ -130,7 +126,7 @@ impl<'a> ::deno_core::convert::FromV8<'a> for SerdeEnum {
         }
         Err(
             ::deno_error::JsErrorBox::type_error(
-                concat!("No matching variant key found for '", "SerdeEnum", "'",),
+                concat!("No matching variant key found for '", "SerdeEnum", "'"),
             ),
         )
     }
