@@ -1,0 +1,5 @@
+{
+  "engines": {
+    "deno": "totally-not-a-range"
+  }
+}
