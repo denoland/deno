@@ -517,6 +517,13 @@ impl InitializeParamsBuilder {
     self
   }
 
+  pub fn set_testing_args(&mut self, value: Vec<&str>) -> &mut Self {
+    let options = self.initialization_options_mut();
+    let testing = options.get_mut("testing").unwrap().as_object_mut().unwrap();
+    testing.insert("args".to_string(), json!(value));
+    self
+  }
+
   pub fn set_unstable(&mut self, value: bool) -> &mut Self {
     let options = self.initialization_options_mut();
     options.insert("unstable".to_string(), value.into());
