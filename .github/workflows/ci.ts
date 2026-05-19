@@ -910,7 +910,12 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 // libsui ships a `sui` CLI; install once into ~/.cargo/bin
                 // (already on PATH). Kept on the same version pin as the
                 // workspace `libsui` dep.
-                "cargo install --locked --version 0.12.6 libsui --bin sui",
+                // Pin to the same libsui git rev as the workspace dependency
+                // (Cargo.toml). Reader/writer storage formats must match —
+                // libsui changed ELF storage between 0.12 and 0.14, so a
+                // mismatch silently produces a binary whose dnclbk section
+                // cannot be found at runtime.
+                "cargo install --locked --git https://github.com/denoland/sui.git --rev 562412b5e8b8fdde904ff07e957839a56fdb3b7d libsui --bin sui",
                 'EXE_SUFFIX=""',
                 'if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi',
                 "BLOB=$(find target/release/build -path '*/deno_snapshots-*/out/RESIDUAL_BLOB.bin' | head -1)",

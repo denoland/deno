@@ -764,7 +764,7 @@ jobs:
       - name: Append residual lazy-source segment
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
-          cargo install --locked --version 0.12.6 libsui --bin sui
+          cargo install --locked --git https://github.com/denoland/sui.git --rev 562412b5e8b8fdde904ff07e957839a56fdb3b7d libsui --bin sui
           EXE_SUFFIX=""
           if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
           BLOB=$(find target/release/build -path '*/deno_snapshots-*/out/RESIDUAL_BLOB.bin' | head -1)
@@ -1791,7 +1791,7 @@ jobs:
       - name: Append residual lazy-source segment
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
-          cargo install --locked --version 0.12.6 libsui --bin sui
+          cargo install --locked --git https://github.com/denoland/sui.git --rev 562412b5e8b8fdde904ff07e957839a56fdb3b7d libsui --bin sui
           EXE_SUFFIX=""
           if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
           BLOB=$(find target/release/build -path '*/deno_snapshots-*/out/RESIDUAL_BLOB.bin' | head -1)
@@ -2748,7 +2748,7 @@ jobs:
       - name: Append residual lazy-source segment
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
-          cargo install --locked --version 0.12.6 libsui --bin sui
+          cargo install --locked --git https://github.com/denoland/sui.git --rev 562412b5e8b8fdde904ff07e957839a56fdb3b7d libsui --bin sui
           EXE_SUFFIX=""
           if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
           BLOB=$(find target/release/build -path '*/deno_snapshots-*/out/RESIDUAL_BLOB.bin' | head -1)
@@ -3588,7 +3588,7 @@ jobs:
       - name: Append residual lazy-source segment
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
-          cargo install --locked --version 0.12.6 libsui --bin sui
+          cargo install --locked --git https://github.com/denoland/sui.git --rev 562412b5e8b8fdde904ff07e957839a56fdb3b7d libsui --bin sui
           EXE_SUFFIX=""
           if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
           BLOB=$(find target/release/build -path '*/deno_snapshots-*/out/RESIDUAL_BLOB.bin' | head -1)
@@ -4167,7 +4167,7 @@ jobs:
           df -h
       - name: Append residual lazy-source segment
         run: |-
-          cargo install --locked --version 0.12.6 libsui --bin sui
+          cargo install --locked --git https://github.com/denoland/sui.git --rev 562412b5e8b8fdde904ff07e957839a56fdb3b7d libsui --bin sui
           EXE_SUFFIX=""
           if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
           BLOB=$(find target/release/build -path '*/deno_snapshots-*/out/RESIDUAL_BLOB.bin' | head -1)
@@ -6121,7 +6121,7 @@ jobs:
       - name: Append residual lazy-source segment
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
-          cargo install --locked --version 0.12.6 libsui --bin sui
+          cargo install --locked --git https://github.com/denoland/sui.git --rev 562412b5e8b8fdde904ff07e957839a56fdb3b7d libsui --bin sui
           EXE_SUFFIX=""
           if [[ "${{ runner.os }}" == "Windows" ]]; then EXE_SUFFIX=".exe"; fi
           BLOB=$(find target/release/build -path '*/deno_snapshots-*/out/RESIDUAL_BLOB.bin' | head -1)
