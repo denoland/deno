@@ -15,8 +15,7 @@ error handling for unexpected types, that is not supported in Fast calls.
 
 Optimized calls enter a JIT compiled function "trampoline" that translates Fast
 API values directly for symbol calls. JIT compilation itself is super fast,
-thanks to `tinycc`. Currently, the optimized path is only supported on Linux and
-MacOS.
+thanks to `cranelift`. 
 
 To run benchmarks:
 
