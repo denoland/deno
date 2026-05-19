@@ -833,6 +833,22 @@ impl WorkspaceSettings {
       .as_object()
       .and_then(|o| o.get("typescript").cloned())
       .unwrap_or_default();
+    // VSCode recently merged "typescript.*" and "javascript.*" settings into "js/ts.*"
+    // Use "js/ts" settings as fallback when "javascript" or "typescript" settings are not provided
+    let js_ts = deno
+      .as_object()
+      .and_then(|o| o.get("js/ts").cloned())
+      .unwrap_or_default();
+    let javascript = if javascript.is_null() {
+      js_ts.clone()
+    } else {
+      javascript
+    };
+    let typescript = if typescript.is_null() {
+      js_ts
+    } else {
+      typescript
+    };
     Self::from_raw_settings(deno, javascript, typescript)
   }
 }
