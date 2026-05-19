@@ -1645,7 +1645,31 @@ impl WasiContext {
     }
     #[cfg(not(unix))]
     {
-      match std::os::windows::fs::symlink_file(&old_path, &new_resolved) {
+      // Windows stores the link target verbatim in the reparse point. WASI
+      // callers pass POSIX-style targets with forward slashes (the C
+      // create_symlink test calls `symlink("./input-in-subdir.txt", …)`),
+      // and Windows can't resolve those — opens through the link fail.
+      // Normalize to backslashes here so subsequent path_open succeeds.
+      // If the existing target is a directory, fall back to symlink_dir so
+      // resolution doesn't break on directory targets.
+      let target = old_path.replace('/', "\\");
+      let target_path = std::path::PathBuf::from(&target);
+      let abs_target = if target_path.is_absolute() {
+        target_path.clone()
+      } else if let Some(parent) = new_resolved.parent() {
+        parent.join(&target_path)
+      } else {
+        target_path.clone()
+      };
+      let is_dir = std::fs::metadata(&abs_target)
+        .map(|m| m.is_dir())
+        .unwrap_or(false);
+      let result = if is_dir {
+        std::os::windows::fs::symlink_dir(&target, &new_resolved)
+      } else {
+        std::os::windows::fs::symlink_file(&target, &new_resolved)
+      };
+      match result {
         Ok(()) => ERRNO_SUCCESS,
         Err(e) => io_err_to_errno(&e),
       }
