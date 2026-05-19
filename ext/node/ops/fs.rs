@@ -11,6 +11,7 @@ use std::sync::atomic::Ordering;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::ToV8;
 use deno_core::op2;
 #[cfg(feature = "sync_fs")]
 use deno_core::unsync::spawn_blocking;
@@ -23,7 +24,6 @@ use deno_permissions::CheckedPath;
 use deno_permissions::CheckedPathBuf;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
-use serde::Serialize;
 #[cfg(feature = "sync_fs")]
 use tokio::task::JoinError;
 
@@ -479,9 +479,9 @@ pub async fn op_node_open(
   state.borrow_mut::<deno_io::FdTable>().register(fd, file);
   Ok(fd)
 }
-#[derive(Debug, Serialize)]
+#[derive(Debug, ToV8)]
 pub struct StatFs {
-  #[serde(rename = "type")]
+  #[to_v8(rename = "type")]
   pub typ: u64,
   pub bsize: u64,
   pub blocks: u64,
@@ -492,7 +492,6 @@ pub struct StatFs {
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_node_statfs_sync(
   state: &mut OpState,
   #[string] path: &str,
@@ -511,7 +510,6 @@ pub fn op_node_statfs_sync(
 }
 
 #[op2(stack_trace)]
-#[serde]
 #[allow(clippy::unused_async, reason = "sometimes async")]
 pub async fn op_node_statfs(
   state: Rc<RefCell<OpState>>,
@@ -1200,11 +1198,10 @@ pub async fn op_node_fs_seek(
   Ok(pos)
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 /// Stat result returned to JS. Uses f64 for numeric fields to ensure
 /// they always serialize as JS Number (not BigInt). BigInt conversion
 /// for the bigint stat API is handled on the JS side by CFISBIS.
+#[derive(ToV8)]
 pub struct NodeFsStat {
   pub is_file: bool,
   pub is_directory: bool,
@@ -1258,7 +1255,6 @@ impl From<deno_io::fs::FsStat> for NodeFsStat {
 }
 
 #[op2]
-#[serde]
 pub fn op_node_fs_fstat_sync(
   state: &mut OpState,
   fd: i32,
@@ -1269,7 +1265,6 @@ pub fn op_node_fs_fstat_sync(
 }
 
 #[op2]
-#[serde]
 pub async fn op_node_fs_fstat(
   state: Rc<RefCell<OpState>>,
   fd: i32,

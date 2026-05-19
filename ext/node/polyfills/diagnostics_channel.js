@@ -5,7 +5,7 @@
 // deno-lint-ignore-file prefer-primordials ban-untagged-todo
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );

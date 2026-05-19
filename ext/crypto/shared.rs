@@ -3,7 +3,8 @@
 use std::borrow::Cow;
 
 use deno_core::JsBuffer;
-use deno_core::ToJsBuffer;
+use deno_core::ToV8;
+use deno_core::convert::Uint8Array;
 use elliptic_curve::sec1::ToEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
 use rsa::RsaPrivateKey;
@@ -58,12 +59,12 @@ pub enum V8RawKeyData {
   Public(JsBuffer),
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "lowercase", tag = "type", content = "data")]
+#[derive(ToV8)]
+#[to_v8(tag = "type", content = "data")]
 pub enum RustRawKeyData {
-  Secret(ToJsBuffer),
-  Private(ToJsBuffer),
-  Public(ToJsBuffer),
+  Secret(Uint8Array),
+  Private(Uint8Array),
+  Public(Uint8Array),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]

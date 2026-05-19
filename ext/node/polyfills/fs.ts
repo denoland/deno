@@ -3,7 +3,7 @@
 // deno-lint-ignore-file no-explicit-any
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { fs: fsConstants } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
@@ -93,9 +93,12 @@ let _promises: any;
 const { default: SyncWriteStream } = core.loadExtScript(
   "ext:deno_node/internal/fs/sync_write_stream.js",
 );
-const { default: Utf8Stream } = core.createLazyLoader(
+// Utf8Stream is only re-exported, never used at module body. Keep this as
+// a thunk so loading fs.ts doesn't immediately pull fast-utf8-stream.js
+// (which statically imports node:fs and triggers the whole stream subtree).
+const lazyUtf8Stream = core.createLazyLoader(
   "ext:deno_node/internal/streams/fast-utf8-stream.js",
-)();
+);
 const {
   arrayBufferViewToUint8Array,
   BigIntStats,
@@ -3964,7 +3967,9 @@ return {
   unlink,
   unlinkSync,
   unwatchFile,
-  Utf8Stream,
+  get Utf8Stream() {
+    return lazyUtf8Stream().default;
+  },
   utimes,
   utimesSync,
   watch,

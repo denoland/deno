@@ -4,7 +4,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const { ERR_TRACE_EVENTS_CATEGORY_REQUIRED } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );

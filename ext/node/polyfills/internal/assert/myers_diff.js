@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { ERR_OUT_OF_RANGE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );

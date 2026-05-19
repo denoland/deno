@@ -157,21 +157,30 @@
       "ignore": true,
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
     },
+    "module-hooks/test-module-hooks-create-require-with-url.mjs": {},
     "module-hooks/test-module-hooks-load-context-merged.js": {},
     "module-hooks/test-module-hooks-load-context-optional.js": {},
     "module-hooks/test-module-hooks-load-async-and-sync.js": {
       "ignore": true,
       "reason": "Depends on deprecated module.register() loader hooks, which Deno intentionally does not implement"
     },
+    "module-hooks/test-module-hooks-load-builtin-override-commonjs.js": {},
+    "module-hooks/test-module-hooks-load-builtin-override-json.js": {},
+    "module-hooks/test-module-hooks-load-builtin-override-module.js": {},
+    "module-hooks/test-module-hooks-load-esm.js": {},
+    "module-hooks/test-module-hooks-load-esm-mock.js": {},
     "module-hooks/test-module-hooks-load-short-circuit.js": {},
     "module-hooks/test-module-hooks-load-short-circuit-required-middle.js": {},
     "module-hooks/test-module-hooks-load-short-circuit-required-start.js": {},
+    "module-hooks/test-module-hooks-load-url-change-import.mjs": {},
     "module-hooks/test-module-hooks-preload.js": {
       "ignore": true,
       "reason": "Depends on deprecated module.register() loader hooks, which Deno intentionally does not implement"
     },
+    "module-hooks/test-module-hooks-resolve-builtin-on-disk-require.js": {},
     "module-hooks/test-module-hooks-resolve-context-merged.js": {},
     "module-hooks/test-module-hooks-resolve-context-optional.js": {},
+    "module-hooks/test-module-hooks-resolve-load-builtin-override-both.js": {},
     "module-hooks/test-module-hooks-resolve-require-resolve-loaded-with-source.js": {
       "ignore": true,
       "reason": "Depends on deprecated module.register() loader hooks, which Deno intentionally does not implement"
@@ -4974,6 +4983,14 @@
     "parallel/test-inspector-network-arbitrary-data.js": {},
     "parallel/test-inspector-network-data-received.js": {},
     "parallel/test-inspector-network-data-sent.js": {},
+    "parallel/test-inspector-network-fetch.js": {
+      "extraDenoArgs": ["--unsafely-ignore-certificate-errors"],
+      "reason": "Hits a local HTTPS server with a self-signed cert via fetch(). The upstream test bypasses cert checks by setting undici's global dispatcher with rejectUnauthorized:false; Deno's fetch doesn't honor that, so we disable cert validation only for this test."
+    },
+    "parallel/test-inspector-network-websocket.js": {
+      "ignore": true,
+      "reason": "Asserts the Network.webSocketCreated initiator stack contains a frame matching /undici/. Node's WebSocket is built on undici; Deno's is native (ext/websocket) so no such frame exists. The Network.* events themselves are emitted correctly."
+    },
     "parallel/test-listen-fd-cluster.js": {
       "linux": false,
       "darwin": false,

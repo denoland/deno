@@ -7,7 +7,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 
 const lazyNet = core.createLazyLoader("node:net");
 const lazyTimers = core.createLazyLoader("node:timers");

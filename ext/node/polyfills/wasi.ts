@@ -4,7 +4,7 @@
 // deno-lint-ignore-file prefer-primordials ban-types no-this-alias
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { WasiContext } = core.ops;
 const { statSync } = core.loadExtScript("ext:deno_node/fs.ts");
 const { exit } = core.loadExtScript("ext:deno_os/30_os.js");
