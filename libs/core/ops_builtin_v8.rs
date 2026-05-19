@@ -206,6 +206,21 @@ pub fn op_load_ext_script(
   module_map_rc.load_ext_script(scope, &specifier)
 }
 
+/// Stash the snapshot-time `__bootstrap` view (a frozen clone of
+/// `core.ops` etc.) so `load_ext_script` can temporarily reinstall it on
+/// `globalThis.__bootstrap` for the duration of each script evaluation.
+/// Called once from `libs/core/01_core.js` after `__bootstrap.core` is
+/// fully populated.
+#[op2(fast)]
+pub fn op_set_captured_bootstrap(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) {
+  let module_map_rc = JsRealm::module_map_from(scope);
+  let global = v8::Global::new(scope, value);
+  module_map_rc.set_captured_bootstrap(global);
+}
+
 // We run in a `nofast` op here so we don't get put into a `DisallowJavascriptExecutionScope` and we're
 // allowed to touch JS heap.
 #[op2(nofast)]

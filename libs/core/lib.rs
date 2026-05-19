@@ -145,6 +145,7 @@ pub use crate::modules::ModuleLoadReferrer;
 pub use crate::modules::ModuleLoadResponse;
 pub use crate::modules::ModuleLoader;
 pub use crate::modules::ModuleName;
+pub use crate::modules::ModuleResolveResponse;
 pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceCode;
 pub use crate::modules::ModuleSourceFuture;

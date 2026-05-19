@@ -4,7 +4,7 @@
 /// <reference path="../../core/internal.d.ts" />
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   ArrayPrototypePush,
   FunctionPrototypeApply,
@@ -222,15 +222,20 @@ class AbortSignal extends EventTarget {
       if (this[timerId] !== null) {
         core.refTimer(this[timerId]);
       } else if (this[sourceSignals] !== null) {
+        // While this dependent signal has 'abort' listeners, keep it strongly
+        // reachable from each source signal so that an upstream abort can
+        // still reach us. The source-to-dependent edge stored in
+        // `dependentSignals` is a WeakRef; without this strong backref,
+        // a GC between `AbortSignal.any(...)` and `source.abort()` will
+        // collect us and the abort silently fails to propagate.
         for (const weakRef of new SafeSetIterator(this[sourceSignals])) {
           const sourceSignal = WeakRefPrototypeDeref(weakRef);
-          if (
-            sourceSignal !== undefined && sourceSignal[timerId] !== null
-          ) {
+          if (sourceSignal === undefined) continue;
+          sourceSignal[activeDependents] ??= new SafeSet();
+          SetPrototypeAdd(sourceSignal[activeDependents], this);
+          if (sourceSignal[timerId] !== null) {
+            // For timer sources, also keep the event loop alive.
             core.refTimer(sourceSignal[timerId]);
-            // prevent GC of this dependent signal while the timer is keeping the event loop alive
-            sourceSignal[activeDependents] ??= new SafeSet();
-            SetPrototypeAdd(sourceSignal[activeDependents], this);
           }
         }
       }
@@ -245,10 +250,15 @@ class AbortSignal extends EventTarget {
       } else if (this[sourceSignals] !== null) {
         for (const weakRef of new SafeSetIterator(this[sourceSignals])) {
           const sourceSignal = WeakRefPrototypeDeref(weakRef);
-          if (
-            sourceSignal !== undefined && sourceSignal[timerId] !== null
-          ) {
-            // Check that all dependent signals of the timer signal do not have listeners
+          if (sourceSignal === undefined) continue;
+          // Release the strong backref that addEventListener installed; the
+          // dependent is now free to be GC'd if nothing else holds it.
+          if (sourceSignal[activeDependents]) {
+            SetPrototypeDelete(sourceSignal[activeDependents], this);
+          }
+          if (sourceSignal[timerId] !== null) {
+            // Timer source: stop refing the event loop only if no other
+            // dependent of this timer still has listeners.
             let allInactive = true;
             if (sourceSignal[dependentSignals] !== null) {
               for (
@@ -268,10 +278,6 @@ class AbortSignal extends EventTarget {
             }
             if (allInactive) {
               core.unrefTimer(sourceSignal[timerId]);
-            }
-            // release the strong reference since no more listeners need it
-            if (sourceSignal[activeDependents]) {
-              SetPrototypeDelete(sourceSignal[activeDependents], this);
             }
           }
         }

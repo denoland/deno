@@ -7,7 +7,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const { kKeyObject } = core.loadExtScript(
   "ext:deno_node/internal/crypto/constants.ts",
 );

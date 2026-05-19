@@ -195,6 +195,19 @@ fn capture_initiator(scope: &mut v8::PinScope<'_, '_>) -> serde_json::Value {
     let url = frame
       .get_script_name(scope)
       .map(|n| n.to_rust_string_lossy(scope))
+      .map(|s| {
+        // CJS code sees `__filename` as an OS filesystem path (with
+        // backslashes on Windows), not a `file://` URL. Convert here so
+        // that test frame lookups like
+        // `findFrameInInitiator(__filename, initiator)` match.
+        if s.starts_with("file://")
+          && let Ok(parsed) = ModuleSpecifier::parse(&s)
+          && let Ok(path) = deno_path_util::url_to_file_path(&parsed)
+        {
+          return path.to_string_lossy().into_owned();
+        }
+        s
+      })
       .unwrap_or_default();
     let line_number = frame.get_line_number().saturating_sub(1); // CDP uses 0-based
     let column_number = frame.get_column().saturating_sub(1);
@@ -208,16 +221,18 @@ fn capture_initiator(scope: &mut v8::PinScope<'_, '_>) -> serde_json::Value {
     }));
   }
 
-  if call_frames.is_empty() {
-    serde_json::json!({ "type": "other" })
-  } else {
-    serde_json::json!({
-      "type": "script",
-      "stackTrace": {
-        "callFrames": call_frames,
-      },
-    })
-  }
+  // Always emit `type: "script"` even when `call_frames` is empty.
+  // Returning `{type: "other"}` for the empty case (as the original code
+  // did) tripped node_compat tests that assert `initiator.type ===
+  // "script"` whenever the inspector saw a JS-originated request - which
+  // is true here by construction, since we only reach this function from
+  // `op_inspector_emit_protocol_event` called from JS-land emitters.
+  serde_json::json!({
+    "type": "script",
+    "stack": {
+      "callFrames": call_frames,
+    },
+  })
 }
 
 struct JSInspectorSession {
