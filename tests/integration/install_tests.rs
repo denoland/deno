@@ -196,7 +196,7 @@ fn install_custom_dir_env_var() {
     .skip_output_check()
     .assert_exit_code(0);
 
-  let mut file_path = temp_dir.path().join("bin/echo_test");
+  let mut file_path = temp_dir.path().join("echo_test");
   assert!(file_path.exists());
 
   if cfg!(windows) {
@@ -207,7 +207,6 @@ fn install_custom_dir_env_var() {
   // shim should point to a per-command config
   let config_path = temp_dir
     .path()
-    .join("bin")
     .canonicalize()
     .join(".echo_test")
     .join("deno.json");
