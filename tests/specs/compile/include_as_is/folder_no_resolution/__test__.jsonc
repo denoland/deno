@@ -1,0 +1,25 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "if": "unix",
+    // --include-as-is on a folder should not resolve/check invalid imports in contained .js/.ts files
+    "args": "compile --allow-read=scripts --include-as-is scripts --output main main.js",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "commandName": "./main",
+    "args": [],
+    "output": "output.out",
+    "exitCode": 0
+  }, {
+    "if": "windows",
+    "args": "compile --allow-read=scripts --include-as-is scripts --output main.exe main.js",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "commandName": "./main.exe",
+    "args": [],
+    "output": "output.out",
+    "exitCode": 0
+  }]
+}

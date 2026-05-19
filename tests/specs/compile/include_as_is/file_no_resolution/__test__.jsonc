@@ -1,0 +1,25 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "if": "unix",
+    // --include-as-is should not resolve/check the invalid import in invalid_module.js
+    "args": "compile --allow-read=invalid_module.js --include-as-is invalid_module.js --output main main.js",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "commandName": "./main",
+    "args": [],
+    "output": "output.out",
+    "exitCode": 0
+  }, {
+    "if": "windows",
+    "args": "compile --allow-read=invalid_module.js --include-as-is invalid_module.js --output main.exe main.js",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "commandName": "./main.exe",
+    "args": [],
+    "output": "output.out",
+    "exitCode": 0
+  }]
+}

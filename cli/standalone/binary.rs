@@ -197,6 +197,7 @@ pub struct WriteBinOptions<'a> {
   pub graph: &'a ModuleGraph,
   pub entrypoint: &'a ModuleSpecifier,
   pub include_paths: &'a [ModuleSpecifier],
+  pub include_as_is_paths: &'a [ModuleSpecifier],
   pub exclude_paths: Vec<PathBuf>,
   pub compile_flags: &'a CompileFlags,
 }
@@ -380,6 +381,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       graph,
       entrypoint,
       include_paths,
+      include_as_is_paths,
       exclude_paths,
       compile_flags,
     } = options;
@@ -435,6 +437,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       vfs
         .add_path(&path)
         .with_context(|| format!("Including {}", path.display()))?;
+    }
+    for include_file in include_as_is_paths {
+      let path = deno_path_util::url_to_file_path(include_file)?;
+      vfs
+        .add_path(&path)
+        .with_context(|| format!("Including as-is {}", path.display()))?;
     }
     let specifiers_count = graph.specifiers_count();
     let mut specifier_store = SpecifierStore::with_capacity(specifiers_count);

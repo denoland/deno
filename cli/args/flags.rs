@@ -213,6 +213,7 @@ pub struct CompileFlags {
   pub no_terminal: bool,
   pub icon: Option<String>,
   pub include: Vec<String>,
+  pub include_as_is: Vec<String>,
   pub exclude: Vec<String>,
   pub eszip: bool,
   pub self_extracting: bool,
@@ -2914,6 +2915,19 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
   <p(245)>Use this flag if a dynamically imported module or a web worker main module
   fails to load in the executable or to embed a file or directory in the executable.
   This flag can be passed multiple times, to include multiple additional modules.</>",
+          ))
+          .action(ArgAction::Append)
+          .value_hint(ValueHint::FilePath)
+          .help_heading(COMPILE_HEADING),
+      )
+      .arg(
+        Arg::new("include-as-is")
+          .long("include-as-is")
+          .help(
+            cstr!("Includes a file or directory in the compiled executable without module resolution.
+  <p(245)>The file will be embedded as-is and accessible via filesystem APIs at runtime.
+  Unlike --include, this flag does not perform module resolution or transpilation.
+  This flag can be passed multiple times. Paths matched by --exclude are not embedded.</>",
           ))
           .action(ArgAction::Append)
           .value_hint(ValueHint::FilePath)
@@ -6779,6 +6793,10 @@ fn compile_parse(
     .remove_many::<String>("include")
     .map(|f| f.collect::<Vec<_>>())
     .unwrap_or_default();
+  let include_as_is = matches
+    .remove_many::<String>("include-as-is")
+    .map(|f| f.collect::<Vec<_>>())
+    .unwrap_or_default();
   let exclude = matches
     .remove_many::<String>("exclude")
     .map(|f| f.collect::<Vec<_>>())
@@ -6795,6 +6813,7 @@ fn compile_parse(
     no_terminal,
     icon,
     include,
+    include_as_is,
     exclude,
     eszip,
     self_extracting,
@@ -13349,6 +13368,7 @@ mod tests {
           no_terminal: false,
           icon: None,
           include: Default::default(),
+          include_as_is: Default::default(),
           exclude: Default::default(),
           eszip: false,
           self_extracting: false,
@@ -13376,6 +13396,7 @@ mod tests {
           no_terminal: true,
           icon: Some(String::from("favicon.ico")),
           include: vec!["include.txt".to_string()],
+          include_as_is: Default::default(),
           exclude: vec!["exclude.txt".to_string()],
           eszip: false,
           self_extracting: false,
@@ -13399,6 +13420,40 @@ mod tests {
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
         env_file: Some(vec![".example.env".to_owned()]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn compile_with_include_as_is() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "compile",
+      "--include-as-is",
+      "data.txt",
+      "--include-as-is",
+      "assets/",
+      "main.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Compile(CompileFlags {
+          source_file: "main.ts".to_string(),
+          output: None,
+          args: vec![],
+          target: None,
+          no_terminal: false,
+          icon: None,
+          include: Default::default(),
+          include_as_is: vec!["data.txt".to_string(), "assets/".to_string()],
+          exclude: Default::default(),
+          eszip: false,
+          self_extracting: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -15878,6 +15933,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           no_terminal: false,
           icon: None,
           include: Default::default(),
+          include_as_is: Default::default(),
           exclude: Default::default(),
           eszip: false,
           self_extracting: false,
