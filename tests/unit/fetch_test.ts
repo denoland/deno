@@ -1642,6 +1642,37 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true, read: true } },
+  async function fetchHttp2MaxHeaderListSizeTooSmall() {
+    const caCert = await Deno.readTextFile("tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({
+      caCerts: [caCert],
+      http2MaxHeaderListSize: 64,
+    });
+    await assertRejects(
+      () => fetch("https://localhost:5547/large_headers", { client }),
+      TypeError,
+    );
+    client.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true } },
+  async function fetchHttp2MaxHeaderListSizeLargeEnough() {
+    const caCert = await Deno.readTextFile("tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({
+      caCerts: [caCert],
+      http2MaxHeaderListSize: 64 * 1024,
+    });
+    const res = await fetch("https://localhost:5547/large_headers", { client });
+    assert(res.ok);
+    assertEquals(await res.text(), "ok");
+    client.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true } },
   async function fetchForceHttp1OnHttp2Server() {
     const client = Deno.createHttpClient({ http2: false, http1: true });
     await assertRejects(
