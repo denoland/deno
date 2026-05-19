@@ -37,6 +37,7 @@ impl From<RtBundleOptions> for crate::args::BundleFlags {
       sourcemap: value.sourcemap,
       inline_imports: value.inline_imports,
       packages: value.packages,
+      declaration: false,
     }
   }
 }
