@@ -938,7 +938,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 //    pull bytes out of the sui-appended section and hand them
                 //    to v8. Catches a corrupted blob, wrong offsets, or a
                 //    non-ASCII residual sneaking past the debug_assert.
-                '"$DENO" eval "await import(\'node:zlib\'); const z = await import(\'node:zlib\'); console.log(\'sui-zlib:\', z.constants.Z_OK)" | grep -F "sui-zlib: 0"',
+                "\"$DENO\" eval \"await import('node:zlib'); const z = await import('node:zlib'); console.log('sui-zlib:', z.constants.Z_OK)\" | grep -F \"sui-zlib: 0\"",
               ],
             },
             {

@@ -218,12 +218,8 @@ fn write_manifest(
   entries: &[(&str, u32, u32)],
 ) {
   use std::io::Write;
-  writeln!(
-    f,
-    "const {name}: [(&str, u32, u32); {}] = [",
-    entries.len()
-  )
-  .unwrap();
+  writeln!(f, "const {name}: [(&str, u32, u32); {}] = [", entries.len())
+    .unwrap();
   for (specifier, offset, len) in entries {
     writeln!(f, "  ({specifier:?}, {offset}, {len}),").unwrap();
   }
