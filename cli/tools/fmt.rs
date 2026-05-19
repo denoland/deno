@@ -54,6 +54,8 @@ use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::get_extension;
 
+const OXFMT_VERSION: &str = "0.36.0";
+
 /// Format JavaScript/TypeScript files.
 pub async fn format(
   flags: Arc<Flags>,
@@ -222,43 +224,77 @@ fn maybe_show_format_confirmation(
 }
 
 async fn format_files(
-  caches: &Arc<Caches>,
-  cli_options: &Arc<CliOptions>,
+  _caches: &Arc<Caches>,
+  _cli_options: &Arc<CliOptions>,
   fmt_flags: &FmtFlags,
   paths_with_options_batches: Vec<PathsWithOptions>,
 ) -> Result<(), AnyError> {
-  let formatter: Box<dyn Formatter> = if fmt_flags.check {
-    let fail_fast = fmt_flags.fail_fast || cli_options.is_quiet();
-    Box::new(CheckFormatter::new(fail_fast))
-  } else {
-    Box::new(RealFormatter::default())
-  };
-  for paths_with_options in paths_with_options_batches {
+  let deno_bin = std::env::current_exe()
+    .context("failed to get current executable path")?;
+
+  let mut all_paths = Vec::new();
+  for paths_with_options in &paths_with_options_batches {
     log::debug!(
       "Formatting {} file(s) in {}",
       paths_with_options.paths.len(),
       paths_with_options.base.display()
     );
-    let fmt_options = paths_with_options.options;
-    let paths = paths_with_options.paths;
-    let incremental_cache = Arc::new(IncrementalCache::new(
-      caches.fmt_incremental_cache_db(),
-      CacheDBHash::from_hashable((&fmt_options.options, &fmt_options.unstable)),
-      &paths,
-    ));
-    formatter
-      .handle_files(
-        paths,
-        fmt_options.options,
-        fmt_options.unstable,
-        incremental_cache.clone(),
-        cli_options.ext_flag().clone(),
-      )
-      .await?;
-    incremental_cache.wait_completion().await;
+    all_paths.extend(paths_with_options.paths.iter().cloned());
   }
 
-  formatter.finish()
+  if all_paths.is_empty() {
+    return Ok(());
+  }
+
+  // Determine working directory from first batch (for config file detection)
+  let cwd = paths_with_options_batches
+    .first()
+    .map(|p| p.base.clone())
+    .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+  let mut cmd = std::process::Command::new(&deno_bin);
+  cmd
+    .arg("run")
+    .arg("-A")
+    .arg("--no-config")
+    .arg(format!("npm:oxfmt@{}", OXFMT_VERSION));
+
+  // Auto-detect oxfmt config file by walking up from cwd
+  if let Some(config_path) = find_oxfmt_config(&cwd) {
+    cmd.arg("-c").arg(&config_path);
+  }
+
+  if fmt_flags.check {
+    cmd.arg("--check");
+  } else {
+    cmd.arg("--write");
+  }
+  cmd.args(&all_paths);
+
+  let status = cmd.status().with_context(|| {
+    format!("failed to execute oxfmt via {}", deno_bin.display())
+  })?;
+
+  if fmt_flags.check && !status.success() {
+    return Err(anyhow!("Found files not formatted by oxfmt"));
+  }
+
+  Ok(())
+}
+
+/// Walk up from `start` looking for `.oxfmtrc.json`.
+fn find_oxfmt_config(start: &Path) -> Option<PathBuf> {
+  let mut dir = start;
+  loop {
+    let candidate = dir.join(".oxfmtrc.json");
+    if candidate.exists() {
+      return Some(candidate);
+    }
+    match dir.parent() {
+      Some(parent) => dir = parent,
+      None => return None,
+    }
+  }
 }
 
 fn collect_fmt_files(
@@ -1221,37 +1257,47 @@ fn format_ensure_stable(
 /// Compatible with `--check` flag.
 fn format_stdin(
   fmt_flags: &FmtFlags,
-  fmt_options: FmtOptions,
+  _fmt_options: FmtOptions,
   ext: &str,
 ) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     bail!("Failed to read from stdin");
   }
-  let file = FileContents {
-    had_bom: false,
-    text: source.into(),
-  };
-  let file_path = PathBuf::from(format!("_stdin.{ext}"));
-  let formatted_text = format_file(
-    &file_path,
-    &file,
-    &fmt_options.options,
-    &fmt_options.unstable,
-    None,
-  )?;
+
+  let deno_bin = std::env::current_exe()
+    .context("failed to get current executable path")?;
+
+  let mut cmd = std::process::Command::new(&deno_bin);
+  cmd
+    .arg("run")
+    .arg("-A")
+    .arg("--no-config")
+    .arg(format!("npm:oxfmt@{}", OXFMT_VERSION))
+    .arg("--stdin-filepath")
+    .arg(format!("_stdin.{ext}"))
+    .stdin(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped());
+
+  let mut child = cmd.spawn().with_context(|| {
+    format!("failed to execute oxfmt via {}", deno_bin.display())
+  })?;
+
+  if let Some(mut child_stdin) = child.stdin.take() {
+    child_stdin.write_all(source.as_bytes())?;
+  }
+
+  let output = child.wait_with_output()?;
+
   if fmt_flags.check {
+    let formatted = String::from_utf8_lossy(&output.stdout);
     #[allow(clippy::print_stdout, reason = "actually want to output")]
-    if formatted_text.is_some() {
+    if formatted.as_ref() != source {
       println!("Not formatted stdin");
     }
   } else {
-    stdout().write_all(
-      formatted_text
-        .as_ref()
-        .map(|t| t.as_bytes())
-        .unwrap_or(file.text.as_bytes()),
-    )?;
+    stdout().write_all(&output.stdout)?;
   }
   Ok(())
 }
