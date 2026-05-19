@@ -3,19 +3,19 @@
     "bare": {
       "args": "fmt",
       "output": "error.out",
-      "exitCode": 1
+      "exitCode": 1,
     },
     "specify_dir": {
       "args": "fmt .",
-      "output": "[WILDCARD]"
+      "output": "[WILDCARD]",
     },
     "check": {
       "args": "fmt --check",
-      "output": "[WILDCARD]"
+      "output": "[WILDCARD]",
     },
     "arg": {
       "args": "fmt main.ts",
-      "output": "[WILDCARD]"
-    }
-  }
+      "output": "[WILDCARD]",
+    },
+  },
 }
