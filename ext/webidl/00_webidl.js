@@ -7,7 +7,7 @@
 /// <reference path="../../core/internal.d.ts" />
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   isArrayBuffer,
   isDataView,
