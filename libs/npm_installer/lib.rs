@@ -366,6 +366,9 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     };
 
     if uncached.is_empty() {
+      if matches!(caching, PackageCaching::All) {
+        return self.fs_installer.cache_packages(caching).await;
+      }
       return Ok(());
     }
     let result = self.fs_installer.cache_packages(caching).await;
