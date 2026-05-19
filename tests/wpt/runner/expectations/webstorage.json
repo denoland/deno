@@ -36,12 +36,7 @@
   },
   "storage_string_conversion.window.html": true,
   "storage_supported_property_names.window.html": true,
-  "symbol-props.window.html": {
-    "expectedFailures": [
-      "localStorage: defineProperty not configurable",
-      "sessionStorage: defineProperty not configurable"
-    ]
-  },
+  "symbol-props.window.html": true,
   "storage_local_window_open.window.html": false,
   "storage_session_window_noopener.window.html": false,
   "storage_session_window_open.window.html": false,
