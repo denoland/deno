@@ -66,6 +66,7 @@ function validateCipherList(ciphers: string): void {
       hasValidEntry = true;
       break;
     }
+    hasValidEntry = true;
   }
   if (!hasValidEntry) {
     const err = new Error("no cipher match") as any;
