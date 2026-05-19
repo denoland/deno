@@ -964,8 +964,8 @@ fn wait_for_start(
       crate::sys::CliSys,
     >(deno_runtime::UnconfiguredRuntimeOptions {
       startup_snapshot,
-      residual_lazy_js_sources: deno_snapshots::RESIDUAL_LAZY_JS,
-      residual_lazy_esm_sources: deno_snapshots::RESIDUAL_LAZY_ESM,
+      residual_lazy_js_sources: deno_snapshots::residual_lazy_js(),
+      residual_lazy_esm_sources: deno_snapshots::residual_lazy_esm(),
       create_params: deno_lib::worker::create_isolate_create_params(
         &crate::sys::CliSys::default(),
       ),

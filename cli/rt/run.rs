@@ -1254,8 +1254,8 @@ pub async fn run(
     otel_config: metadata.otel_config,
     no_legacy_abort: false,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
-    residual_lazy_js_sources: deno_snapshots::RESIDUAL_LAZY_JS,
-    residual_lazy_esm_sources: deno_snapshots::RESIDUAL_LAZY_ESM,
+    residual_lazy_js_sources: deno_snapshots::residual_lazy_js(),
+    residual_lazy_esm_sources: deno_snapshots::residual_lazy_esm(),
     enable_raw_imports: metadata.unstable_config.raw_imports,
     maybe_initial_cwd: None,
   };

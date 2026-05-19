@@ -15,6 +15,15 @@ path = "lib.rs"
 
 [features]
 disable = []
+# Omit the baked `include_bytes!` fallback for residual lazy sources. With
+# this feature on, the binary MUST be post-linked (via `libsui::Macho::write_section`
+# / `sui dnclbk ...`) to add a "dnclbk" section; otherwise startup panics.
+# Production release builds should enable this so the blob bytes live only
+# in their cold `__SUI` / ELF-trailer / PE-resource location.
+residual_sidecar = []
+
+[dependencies]
+libsui.workspace = true
 
 [build-dependencies]
 deno_runtime = { workspace = true, features = ["snapshot"] }

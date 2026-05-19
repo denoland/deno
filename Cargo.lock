@@ -3329,6 +3329,7 @@ name = "deno_snapshots"
 version = "0.62.0"
 dependencies = [
  "deno_runtime",
+ "libsui",
 ]
 
 [[package]]

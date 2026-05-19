@@ -42,6 +42,11 @@ __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 lsp-tracing = ["dep:tracing", "dep:tracing-subscriber", "dep:tracing-opentelemetry"]
 # Custom panic trace with `deno_panic`
 panic-trace = ["deno_panic"]
+# Build with residual lazy sources living only in a libsui-appended section
+# (own __SUI segment / ELF trailer / PE resource), no `include_bytes!`
+# fallback. Requires post-link `sui dnclbk <bin> RESIDUAL_BLOB.bin <out>`
+# (see cli/snapshot/build.rs); without it, startup panics.
+residual-sidecar = ["deno_snapshots/residual_sidecar"]
 
 [build-dependencies]
 deno_runtime = { workspace = true }

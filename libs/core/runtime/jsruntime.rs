@@ -1139,16 +1139,42 @@ impl JsRuntime {
       // them and `core.loadExtScript()` / lazy ESM imports need to find them
       // here. (When there is no snapshot, the same sources are loaded from
       // disk through `Extension.lazy_loaded_*_files` instead.)
+      // `from_static` walks every byte to set the v8 OneByteConst ASCII
+      // flag. Residual lazy sources total ~1MB+ across many entries; doing
+      // that scan at every startup just to register modules that mostly
+      // never get imported is wasted work. Skip the scan in release builds
+      // and trust that residual sources are ASCII (transpiled JS); debug
+      // builds keep the checked `from_static` so any non-ASCII residual
+      // gets caught in CI before it ships.
+      #[inline]
+      fn lazy_source_to_module_code_string(
+        specifier: &'static str,
+        code: &'static str,
+      ) -> crate::ModuleCodeString {
+        // Debug builds verify the ASCII invariant so any non-ASCII residual
+        // source panics in CI before it can mis-encode in a release binary.
+        debug_assert!(
+          code.is_ascii(),
+          "residual lazy source {specifier:?} contains non-ASCII bytes; \
+           `from_ascii_static_unchecked` (used in release) would feed it to \
+           v8 as one-byte external and corrupt the source",
+        );
+        // SAFETY: residual lazy sources are transpiled JavaScript and are
+        // ASCII in practice (verified by the debug_assert above on every
+        // dev/CI run before any release ships).
+        unsafe { crate::ModuleCodeString::from_ascii_static_unchecked(code) }
+      }
+
       for (specifier, code) in options.residual_lazy_js_sources {
         module_map.add_lazy_loaded_script_source(
           crate::ModuleName::from_static(specifier),
-          crate::ModuleCodeString::from_static(code),
+          lazy_source_to_module_code_string(specifier, code),
         );
       }
       for (specifier, code) in options.residual_lazy_esm_sources {
         module_map.add_lazy_loaded_esm_source(
           crate::ModuleName::from_static(specifier),
-          crate::ModuleCodeString::from_static(code),
+          lazy_source_to_module_code_string(specifier, code),
         );
       }
 
