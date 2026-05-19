@@ -14,6 +14,7 @@ use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
 
 use crate::Instance;
+use crate::error::GPUError;
 use crate::error::GPUGenericError;
 
 pub struct GPUComputePassEncoder {
@@ -186,15 +187,39 @@ impl GPUComputePassEncoder {
         },
       )? as usize;
 
+      let view_byte_offset = uint_32.byte_offset();
+      let view_len = uint_32.length();
+
+      // Validate `start..start+len` against the **view** length, not the
+      // backing buffer's length. Without this check, `&data[start..end]`
+      // below would panic on out-of-range input; the panic crosses the
+      // op's `extern "C"` boundary and aborts the process. See #33956.
+      let Some(end) = start.checked_add(len).filter(|end| *end <= view_len)
+      else {
+        self.error_handler.push_error(Some(GPUError::Validation(format!(
+          "{PREFIX}: dynamicOffsetsDataStart + dynamicOffsetsDataLength ({start} + {len}) is outside the bounds of dynamicOffsetsData (length {view_len})",
+        ))));
+        return Ok(());
+      };
+
       let ab = uint_32.buffer(scope).unwrap();
       let ptr = ab.data().unwrap();
-      let ab_len = ab.byte_length() / 4;
 
-      // SAFETY: compute_pass_set_bind_group internally calls extend_from_slice with this slice
-      let data =
-        unsafe { std::slice::from_raw_parts(ptr.as_ptr() as _, ab_len) };
+      // SAFETY: `ptr` is the start of the backing ArrayBuffer's data; the
+      // Uint32Array constructor guarantees `byte_offset + view_len * 4`
+      // fits within `byte_length`, so the resulting slice covers exactly
+      // the view's window. `data` is dropped at the end of this call;
+      // `ab` keeps the backing buffer alive for that duration.
+      // compute_pass_set_bind_group internally calls extend_from_slice
+      // with this slice.
+      let data = unsafe {
+        std::slice::from_raw_parts(
+          (ptr.as_ptr() as *const u8).add(view_byte_offset) as *const u32,
+          view_len,
+        )
+      };
 
-      let offsets = &data[start..(start + len)];
+      let offsets = &data[start..end];
 
       self
         .instance
