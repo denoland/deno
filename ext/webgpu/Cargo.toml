@@ -21,13 +21,10 @@ wgpu-types = { workspace = true, features = ["serde", "std"] }
 
 deno_core.workspace = true
 deno_error.workspace = true
-serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["full"] }
-raw-window-handle = { workspace = true }
 thiserror.workspace = true
 indexmap.workspace = true
 serde_json.workspace = true
-deno_unsync.workspace = true
 deno_image.workspace = true
 
 # Apple Platforms
