@@ -2017,6 +2017,29 @@ Deno.test(async function testECspkiRoundTrip() {
   await crypto.subtle.importKey("spki", spki, alg, true, []);
 });
 
+// https://github.com/denoland/deno/issues/34044
+Deno.test(async function p521CompressedSpkiExportsUncompressed() {
+  // deno-fmt-ignore
+  const compressedSpki = new Uint8Array([
+    48, 88, 48, 16, 6, 7, 42, 134, 72, 206, 61, 2, 1, 6, 5, 43, 129, 4, 0, 35, 3, 68, 0, 3, 1, 86, 244, 121, 248, 223, 30, 32, 167, 255, 192, 76, 228, 32, 195, 225, 84, 174, 37, 25, 150, 190, 228, 47, 3, 75, 132, 212, 27, 116, 63, 52, 228, 95, 49, 27, 129, 58, 156, 222, 200, 205, 165, 155, 187, 189, 49, 212, 96, 179, 41, 37, 33, 231, 193, 183, 34, 229, 102, 124, 3, 219, 47, 174, 117, 63,
+  ]);
+
+  const key = await crypto.subtle.importKey(
+    "spki",
+    compressedSpki,
+    { name: "ECDSA", namedCurve: "P-521" },
+    true,
+    ["verify"],
+  );
+  const exported = new Uint8Array(await crypto.subtle.exportKey("spki", key));
+
+  // deno-fmt-ignore
+  const expected = new Uint8Array([
+    48, 129, 155, 48, 16, 6, 7, 42, 134, 72, 206, 61, 2, 1, 6, 5, 43, 129, 4, 0, 35, 3, 129, 134, 0, 4, 1, 86, 244, 121, 248, 223, 30, 32, 167, 255, 192, 76, 228, 32, 195, 225, 84, 174, 37, 25, 150, 190, 228, 47, 3, 75, 132, 212, 27, 116, 63, 52, 228, 95, 49, 27, 129, 58, 156, 222, 200, 205, 165, 155, 187, 189, 49, 212, 96, 179, 41, 37, 33, 231, 193, 183, 34, 229, 102, 124, 3, 219, 47, 174, 117, 63, 1, 80, 23, 54, 207, 226, 71, 57, 67, 32, 216, 228, 175, 194, 253, 57, 181, 169, 51, 16, 97, 184, 30, 34, 65, 40, 43, 158, 23, 137, 24, 34, 181, 183, 158, 5, 47, 69, 151, 181, 150, 67, 253, 57, 55, 156, 81, 189, 81, 37, 196, 244, 139, 195, 240, 37, 206, 60, 211, 105, 83, 40, 108, 203, 56, 251,
+  ]);
+  assertEquals(exported, expected);
+});
+
 Deno.test(async function testHmacJwkImport() {
   await crypto.subtle.importKey(
     "jwk",
@@ -2194,6 +2217,83 @@ Deno.test(async function x25519ExportJwk() {
   assert(jwk.x);
 });
 
+// https://github.com/denoland/deno/issues/32330
+Deno.test(async function testSha3DigestAlgorithms() {
+  function toHex(buf: ArrayBuffer): string {
+    return [...new Uint8Array(buf)]
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  const data = new TextEncoder().encode("Hello, Deno!");
+
+  // SHA3-256 produces 32 bytes
+  // deno-lint-ignore camelcase
+  const sha3_256 = await crypto.subtle.digest("SHA3-256", data);
+  assertEquals(sha3_256.byteLength, 32);
+
+  // SHA3-384 produces 48 bytes
+  // deno-lint-ignore camelcase
+  const sha3_384 = await crypto.subtle.digest("SHA3-384", data);
+  assertEquals(sha3_384.byteLength, 48);
+
+  // SHA3-512 produces 64 bytes
+  // deno-lint-ignore camelcase
+  const sha3_512 = await crypto.subtle.digest("SHA3-512", data);
+  assertEquals(sha3_512.byteLength, 64);
+
+  // Verify deterministic: same input always gives same output
+  // deno-lint-ignore camelcase
+  const sha3_256_again = await crypto.subtle.digest("SHA3-256", data);
+  assertEquals(toHex(sha3_256), toHex(sha3_256_again));
+});
+
+Deno.test(async function testSha3DigestKnownVectors() {
+  function toHex(buf: ArrayBuffer): string {
+    return [...new Uint8Array(buf)]
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  // Empty input test vectors (from NIST)
+  const empty = new Uint8Array(0);
+
+  assertEquals(
+    toHex(await crypto.subtle.digest("SHA3-256", empty)),
+    "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a",
+  );
+  assertEquals(
+    toHex(await crypto.subtle.digest("SHA3-384", empty)),
+    "0c63a75b845e4f7d01107d852e4c2485c51a50aaaa94fc61995e71bbee983a2ac3713831264adb47fb6bd1e058d5f004",
+  );
+  assertEquals(
+    toHex(await crypto.subtle.digest("SHA3-512", empty)),
+    "a69f73cca23a9ac5c8b567dc185a756e97c982164fe25859e0d1dcc1475c80a615b2123af1f5f94c11e3e9402c3ac558f500199d95b6d3e301758586281dcd26",
+  );
+});
+
+Deno.test(async function testSha3DigestVariousInputTypes() {
+  const text = new TextEncoder().encode("test");
+  const expected = await crypto.subtle.digest("SHA3-256", text);
+
+  // ArrayBuffer input
+  const fromBuffer = await crypto.subtle.digest("SHA3-256", text.buffer);
+  assertEquals(
+    new Uint8Array(fromBuffer),
+    new Uint8Array(expected),
+  );
+
+  // DataView input
+  const fromDataView = await crypto.subtle.digest(
+    "SHA3-256",
+    new DataView(text.buffer),
+  );
+  assertEquals(
+    new Uint8Array(fromDataView),
+    new Uint8Array(expected),
+  );
+});
+
 // Regression test for https://github.com/denoland/deno/issues/30243
 // Importing a PKCS#8 RSA key with the wrong algorithm (ECDSA) should throw, not panic.
 Deno.test("crypto.subtle.importKey PKCS#8 with wrong algorithm does not panic", async () => {
@@ -2218,6 +2318,71 @@ Deno.test("crypto.subtle.importKey PKCS#8 with wrong algorithm does not panic", 
       true,
       ["sign"],
     )
+  );
+});
+
+// Regression test for https://github.com/denoland/deno/issues/33032
+// Importing a raw X25519 public key whose length is not 32 bytes
+// must throw a DataError DOMException, not panic.
+Deno.test(async function x25519ImportRawInvalidLength() {
+  await assertRejects(
+    () =>
+      crypto.subtle.importKey(
+        "raw",
+        new Uint8Array(0),
+        "X25519",
+        false,
+        [],
+      ),
+    DOMException,
+    "Invalid key data",
+  );
+
+  await assertRejects(
+    () =>
+      crypto.subtle.importKey(
+        "raw",
+        new Uint8Array(33),
+        "X25519",
+        false,
+        [],
+      ),
+    DOMException,
+    "Invalid key data",
+  );
+});
+
+// Importing a raw X448 public key whose length is not 56 bytes
+// must throw a DataError DOMException, not panic.
+Deno.test(async function x448ImportRawInvalidLength() {
+  await assertRejects(
+    () =>
+      crypto.subtle.importKey(
+        "raw",
+        new Uint8Array(0),
+        "X448",
+        false,
+        [],
+      ),
+    DOMException,
+    "Invalid key data",
+  );
+});
+
+// Importing a raw Ed25519 public key whose length is not 32 bytes
+// must throw a DataError DOMException, not panic.
+Deno.test(async function ed25519ImportRawInvalidLength() {
+  await assertRejects(
+    () =>
+      crypto.subtle.importKey(
+        "raw",
+        new Uint8Array(0),
+        "Ed25519",
+        false,
+        ["verify"],
+      ),
+    DOMException,
+    "Invalid key data",
   );
 });
 

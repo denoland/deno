@@ -1,8 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   BadResourcePrototype,
   isAnyArrayBuffer,
@@ -573,4 +572,4 @@ webidl.converters["BodyInit_DOMString?"] = webidl.createNullableConverter(
 );
 
 return { extractBody, InnerBody, mixinBody, packageData };
-})()
+})();

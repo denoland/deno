@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// deno-fmt-ignore-file
-
 // Web timers (setTimeout/setInterval) built on top of Node's Timeout class.
 // The Node Timeout class is the canonical timer implementation that wraps
 // core.createTimer. Web timers add WHATWG-specific behavior on top:
@@ -11,7 +9,7 @@
 // - numeric timer IDs (vs Node's Timeout objects)
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_defer } = core.ops;
 const {
   PromisePrototypeThen,
@@ -22,9 +20,8 @@ const {
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 
-const loadNodeTimers = core.createLazyLoader(
-  "ext:deno_node/internal/timers.mjs",
-);
+const loadNodeTimers = () =>
+  core.loadExtScript("ext:deno_node/internal/timers.mjs");
 
 // WHATWG timer nesting depth tracking.
 let timerDepth = 0;
@@ -157,4 +154,4 @@ return {
   setTimeout,
   unrefTimer,
 };
-})()
+})();

@@ -1,12 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 // Interfaces 100% copied from Go.
 // Documentation liberally lifted from them too.
 // Thank you! We love Go! <3
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_set_raw } = core.ops;
 const {
   Uint8Array,
@@ -17,10 +16,16 @@ const {
   TypedArrayPrototypeGetByteLength,
 } = primordials;
 
-const {
-  readableStreamForRid,
-  writableStreamForRid,
-} = core.loadExtScript("ext:deno_web/06_streams.js");
+// Defer loading the 208 KB `06_streams.js` polyfill: the two helpers below
+// are only used inside the `get readable()` / `get writable()` getters on
+// Stdin/Stdout/Stderr, so the cost can be paid the first time someone
+// accesses those streams (e.g. `process.stdout.writable`) rather than at
+// every startup.
+let _streamsImpl;
+function lazyStreams() {
+  return _streamsImpl ??
+    (_streamsImpl = core.loadExtScript("ext:deno_web/06_streams.js"));
+}
 
 // Seek whence values.
 // https://golang.org/pkg/io/#pkg-constants
@@ -146,7 +151,7 @@ class Stdin {
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRid(this.#rid, false);
+      this.#readable = lazyStreams().readableStreamForRid(this.#rid, false);
     }
     return this.#readable;
   }
@@ -200,7 +205,7 @@ class Stdout {
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.#rid);
+      this.#writable = lazyStreams().writableStreamForRid(this.#rid);
     }
     return this.#writable;
   }
@@ -235,7 +240,7 @@ class Stderr {
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.#rid);
+      this.#writable = lazyStreams().writableStreamForRid(this.#rid);
     }
     return this.#writable;
   }
@@ -268,4 +273,4 @@ return {
   write,
   writeSync,
 };
-})()
+})();

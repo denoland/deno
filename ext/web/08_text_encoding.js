@@ -9,9 +9,8 @@
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-// deno-fmt-ignore-file
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   isDataView,
   isSharedArrayBuffer,
@@ -22,6 +21,7 @@ const {
   op_encoding_decode_single,
   op_encoding_decode_utf8,
   op_encoding_encode_into,
+  op_encoding_encode_into_fallback,
   op_encoding_new_decoder,
   op_encoding_normalize_label,
 } = core.ops;
@@ -29,6 +29,7 @@ const {
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
   DataViewPrototypeGetByteOffset,
+  MathTrunc,
   ObjectPrototypeIsPrototypeOf,
   PromiseReject,
   PromiseResolve,
@@ -47,7 +48,9 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
 
 class TextDecoder {
   /** @type {string} */
@@ -297,10 +300,18 @@ class TextEncoder {
         encodeIntoOpts,
       );
     }
-    op_encoding_encode_into(source, destination, encodeIntoBuf);
+    const packed = op_encoding_encode_into(source, destination);
+    if (packed === ENCODE_INTO_PACKED_SENTINEL) {
+      op_encoding_encode_into_fallback(source, destination, encodeIntoBuf);
+      return {
+        read: encodeIntoBuf[0],
+        written: encodeIntoBuf[1],
+      };
+    }
+    const read = MathTrunc(packed / ENCODE_INTO_PACKED_MULTIPLIER);
     return {
-      read: encodeIntoBuf[0],
-      written: encodeIntoBuf[1],
+      read,
+      written: packed - read * ENCODE_INTO_PACKED_MULTIPLIER,
     };
   }
 
@@ -318,6 +329,8 @@ class TextEncoder {
 
 const encodeIntoBuf = new Uint32Array(2);
 const encodeIntoOpts = { __proto__: null, allowShared: true };
+const ENCODE_INTO_PACKED_SENTINEL = -1;
+const ENCODE_INTO_PACKED_MULTIPLIER = 0x100000000;
 
 webidl.configureInterface(TextEncoder);
 const TextEncoderPrototype = TextEncoder.prototype;
@@ -584,4 +597,4 @@ return {
   TextEncoder,
   TextEncoderStream,
 };
-})()
+})();

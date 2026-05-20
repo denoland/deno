@@ -20,6 +20,8 @@ const {
   DateNow,
   Error,
   Map,
+  NumberIsFinite,
+  NumberIsInteger,
   NumberIsNaN,
   MapPrototypeGet,
   MapPrototypeSet,
@@ -245,8 +247,34 @@ function wrapInner(fn) {
 const registerTestIdRetBuf = new Uint32Array(1);
 const registerTestIdRetBufU8 = new Uint8Array(registerTestIdRetBuf.buffer);
 
+const TIMEOUT_MAX = 0x7FFFFFFF;
+
+function encodeTimeout(value) {
+  if (value === undefined || value === null) return 0;
+  if (
+    typeof value !== "number" || NumberIsNaN(value) ||
+    !NumberIsFinite(value) || !NumberIsInteger(value) || value < 0
+  ) {
+    throw new TypeError(
+      "Test timeout must be a non-negative integer number of milliseconds",
+    );
+  }
+  if (value === 0) return 0;
+  if (value > TIMEOUT_MAX) {
+    throw new TypeError(
+      "Test timeout out of range (must be between 1 and 2147483647 ms)",
+    );
+  }
+  return value;
+}
+
 // As long as we're using one isolate per test, we can cache the origin since it won't change
 let cachedOrigin = undefined;
+
+// Module-level sanitizer overrides set via Deno.test.sanitizer()
+// These have higher precedence than CLI flags/config but lower than per-test options
+let moduleSanitizeOps = undefined;
+let moduleSanitizeResources = undefined;
 
 function testInner(
   nameOrFnOrOptions,
@@ -263,10 +291,13 @@ function testInner(
   const defaults = {
     ignore: false,
     only: false,
-    sanitizeOps: true,
-    sanitizeResources: true,
+    sanitizeOps: moduleSanitizeOps ??
+      Deno[Deno.internal].testSanitizeOps ?? false,
+    sanitizeResources: moduleSanitizeResources ??
+      Deno[Deno.internal].testSanitizeResources ?? false,
     sanitizeExit: true,
     permissions: null,
+    timeout: undefined,
   };
 
   if (typeof nameOrFnOrOptions === "string") {
@@ -367,6 +398,7 @@ function testInner(
     testDesc.location.columnNumber,
     registerTestIdRetBufU8,
     testDesc.sanitizeOnly ?? true,
+    encodeTimeout(testDesc.timeout),
   );
   testDesc.id = registerTestIdRetBuf[0];
   testDesc.origin = cachedOrigin;
@@ -425,6 +457,20 @@ test.afterEach = function (fn) {
 
 test.afterAll = function (fn) {
   registerHook("afterAll", fn);
+};
+
+test.sanitizer = function (options) {
+  if (typeof options !== "object" || options === null) {
+    throw new TypeError(
+      "Deno.test.sanitizer: options must be an object",
+    );
+  }
+  if (options.ops !== undefined) {
+    moduleSanitizeOps = options.ops;
+  }
+  if (options.resources !== undefined) {
+    moduleSanitizeResources = options.resources;
+  }
 };
 
 function getFullName(desc) {

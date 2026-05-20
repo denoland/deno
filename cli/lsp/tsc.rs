@@ -5271,7 +5271,6 @@ fn op_project_version(state: &mut OpState) -> usize {
 }
 
 #[op2]
-#[serde]
 fn op_tsc_constants() -> crate::tsc::TscConstants {
   crate::tsc::TscConstants::new()
 }
@@ -6567,6 +6566,8 @@ mod tests {
       json!(diagnostics),
       json!([
         {
+          "category": 1,
+          "code": 2339,
           "start": {
             "line": 2,
             "character": 16,
@@ -6575,11 +6576,9 @@ mod tests {
             "line": 2,
             "character": 17
           },
-          "fileName": specifier,
-          "messageText": "Property \'a\' does not exist on type \'typeof import(\"https://deno.land/x/example/a\")\'.",
+          "messageText": "Property \'a\' does not exist on type \'typeof import(\"https://deno.land/x/example/a\", { with: { \"resolution-mode\": \"import\" } })\'.",
           "sourceLine": "          if (a.a === \"b\") {",
-          "code": 2339,
-          "category": 1,
+          "fileName": specifier,
         }
       ]),
     );

@@ -79,6 +79,7 @@ use crate::util::env::handle_dotenv_io_error;
 use crate::util::env::handle_dotenv_not_found;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
+use crate::util::progress_bar::ProgressMessagePrompt;
 
 /// A URL that can be designated as the base for relative URLs.
 ///
@@ -393,6 +394,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     for path in exclude_paths {
       vfs.add_exclude_path(path);
     }
+    let progress_bar = ProgressBar::new(ProgressBarStyle::ProgressBars);
     let npm_snapshot = match &self.npm_resolver {
       CliNpmResolver::Managed(managed) => {
         if graph.modules().any(|m| m.npm().is_some()) {
@@ -413,7 +415,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           .as_valid_serialized_for_system(&self.npm_system_info);
           if !snapshot.as_serialized().packages.is_empty() {
             self
-              .fill_npm_vfs(&mut vfs, Some(&snapshot))
+              .fill_npm_vfs(&mut vfs, Some(&snapshot), &progress_bar)
               .context("Building npm vfs.")?;
             Some(snapshot)
           } else {
@@ -424,7 +426,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         }
       }
       CliNpmResolver::Byonm(_) => {
-        self.fill_npm_vfs(&mut vfs, None)?;
+        self.fill_npm_vfs(&mut vfs, None, &progress_bar)?;
         None
       }
     };
@@ -439,6 +441,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let mut remote_modules_store =
       SpecifierDataStore::with_capacity(specifiers_count);
     let mut asset_module_urls = graph.asset_module_urls();
+    let progress =
+      progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
+    progress.set_total_size(specifiers_count as u64);
+    let mut modules_done: u64 = 0;
     // todo(dsherret): transpile and analyze CJS in parallel
     for module in graph.modules() {
       if module.specifier().scheme() == "data" {
@@ -558,7 +564,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           );
         }
       }
+      modules_done += 1;
+      progress.set_position(modules_done);
     }
+    drop(progress);
 
     for url in asset_module_urls {
       if graph.try_get(url).is_err() {
@@ -921,6 +930,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     &self,
     builder: &mut VfsBuilder,
     snapshot: Option<&ValidSerializedNpmResolutionSnapshot>,
+    progress_bar: &ProgressBar,
   ) -> Result<(), AnyError> {
     fn maybe_warn_different_system(system_info: &NpmSystemInfo) {
       if system_info != &NpmSystemInfo::default() {
@@ -935,6 +945,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       CliNpmResolver::Managed(npm_resolver) => {
         if let Some(node_modules_path) = npm_resolver.root_node_modules_path() {
           maybe_warn_different_system(&self.npm_system_info);
+          let _progress =
+            progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
           builder.add_dir_recursive(node_modules_path)?;
           Ok(())
         } else {
@@ -944,6 +956,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             snapshot.as_serialized().packages.iter().collect::<Vec<_>>();
           packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
           let current_system = NpmSystemInfo::default();
+          let progress =
+            progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
+          progress.set_total_size(packages.len() as u64);
+          let mut packages_done: u64 = 0;
           for package in packages {
             let folder =
               npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)?;
@@ -958,7 +974,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             } else {
               builder.add_dir_recursive(&folder)?;
             }
+            packages_done += 1;
+            progress.set_position(packages_done);
           }
+          drop(progress);
           Ok(())
         }
       }
@@ -967,6 +986,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         for pkg_json in self.cli_options.workspace().package_jsons() {
           builder.add_path(&pkg_json.path)?;
         }
+        let _progress =
+          progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
         // traverse and add all the node_modules directories in the workspace
         let mut pending_dirs = VecDeque::new();
         pending_dirs.push_back(

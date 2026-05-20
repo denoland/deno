@@ -1,8 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const {
   Blob,
@@ -138,11 +137,14 @@ class FormData {
     name = webidl.converters["USVString"](name, prefix, "Argument 1");
 
     const list = this[entryList];
+    let writeIdx = 0;
     for (let i = 0; i < list.length; i++) {
-      if (list[i].name === name) {
-        ArrayPrototypeSplice(list, i, 1);
-        i--;
+      if (list[i].name !== name) {
+        list[writeIdx++] = list[i];
       }
+    }
+    if (writeIdx !== list.length) {
+      ArrayPrototypeSplice(list, writeIdx);
     }
   }
 
@@ -240,20 +242,22 @@ class FormData {
     const entry = createEntry(name, valueOrBlobValue, filename);
 
     const list = this[entryList];
+    let writeIdx = 0;
     let added = false;
     for (let i = 0; i < list.length; i++) {
       if (list[i].name === name) {
         if (!added) {
-          list[i] = entry;
+          list[writeIdx++] = entry;
           added = true;
-        } else {
-          ArrayPrototypeSplice(list, i, 1);
-          i--;
         }
+      } else {
+        list[writeIdx++] = list[i];
       }
     }
     if (!added) {
       ArrayPrototypePush(list, entry);
+    } else if (writeIdx !== list.length) {
+      ArrayPrototypeSplice(list, writeIdx);
     }
   }
 
@@ -554,4 +558,4 @@ return {
   formDataToBlob,
   parseFormData,
 };
-})()
+})();

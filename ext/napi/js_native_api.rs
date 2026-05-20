@@ -124,52 +124,44 @@ impl Reference {
   fn weak_callback(reference: *mut Reference) {
     let reference = unsafe { &mut *reference };
 
+    // Copy out the callback fields before resetting; the finalize_cb may free
+    // the Reference (UAF if we kept borrowing it).
     let finalize_cb = reference.finalize_cb;
     let finalize_data = reference.finalize_data;
     let finalize_hint = reference.finalize_hint;
-    reference.reset();
-
-    // Copy these before any callback, since the finalizer might free
-    // the reference (which would be a UAF).
     let ownership = reference.ownership;
     let env_ptr = reference.env;
+    reference.reset();
 
+    // Note: we are NOT inside a V8 GC pause here. `v8::Weak::with_finalizer`
+    // (rusty_v8) schedules this closure as V8's *second-pass* weak callback,
+    // which V8 invokes after the GC cycle completes, with the isolate in a
+    // fully usable state. This is rusty_v8's equivalent of Node.js's
+    // `node_napi_env__::DrainFinalizerQueue` (driven by SetImmediate): both
+    // amount to "run the finalizer after GC, with a live Isolate." Calling
+    // user-provided `napi_finalize` callbacks here is therefore safe.
+    //
+    // History: a previous attempt (#33260) deferred this work through
+    // `V8CrossThreadTaskSpawner::spawn` under the (incorrect) belief that
+    // rusty_v8 invoked us inside a GC pause. The cross-thread spawner takes a
+    // `Mutex` and pokes a tokio `AtomicWaker` synchronously on every
+    // finalizer; doing that from V8's second-pass callback is what produced
+    // the intermittent `napi_unwrap` failure reported in #33924 / #34008
+    // ("Failed to unwrap exclusive reference of `...` type from napi value").
     if let Some(finalize_cb) = finalize_cb {
-      // Deregister before dispatching so it won't be called again at shutdown
-      let env = unsafe { &*env_ptr };
-      env.remove_ref_finalizer(finalize_data);
+      // Deregister before dispatching so the finalizer is not called again
+      // at env shutdown (matches Node's `Unlink` ordering in
+      // `Reference::Finalize`).
+      unsafe { &*env_ptr }.remove_ref_finalizer(finalize_data);
+      unsafe {
+        finalize_cb(env_ptr as _, finalize_data, finalize_hint);
+      }
+    }
 
-      // Defer the finalizer to after GC completes. Calling user-provided
-      // finalizer callbacks during V8 GC is unsafe — they can re-enter V8,
-      // allocate GC'd objects, or trigger cascading weak callbacks, all of
-      // which lead to undefined behavior. Node.js defers these via
-      // EnqueueFinalizer; we use the cross-thread task spawner to schedule
-      // the callback on the next event loop tick.
-      let sender = env.async_work_sender.clone();
-      let env_send = SendPtr(env_ptr);
-      let data_send = SendPtr(finalize_data);
-      let hint_send = SendPtr(finalize_hint);
-      let ref_ptr = if ownership == ReferenceOwnership::Runtime {
-        SendPtr(reference as *mut Reference)
-      } else {
-        SendPtr(std::ptr::null_mut())
-      };
-      sender.spawn(move |_scope| {
-        unsafe {
-          finalize_cb(
-            env_send.take() as _,
-            data_send.take() as *mut c_void,
-            hint_send.take() as *mut c_void,
-          );
-        }
-        let ref_ptr = ref_ptr.take();
-        if !ref_ptr.is_null() {
-          unsafe { drop(Reference::from_raw(ref_ptr as *mut Reference)) }
-        }
-      });
-    } else if ownership == ReferenceOwnership::Runtime {
-      // No finalizer — just clean up the Reference. This only frees Rust
-      // heap memory (no V8 interaction), so it's safe during GC.
+    if ownership == ReferenceOwnership::Runtime {
+      // Runtime-owned: free the Reference now. Userland-owned references are
+      // freed by the addon via `napi_delete_reference` (or by napi-rs's
+      // REFERENCE_MAP overwrite path).
       unsafe { drop(Reference::from_raw(reference)) }
     }
   }

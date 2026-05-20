@@ -4,28 +4,65 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
-import {
+(function () {
+const { core } = __bootstrap;
+const {
+  ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED,
   ERR_INVALID_ARG_TYPE,
+  ERR_TLS_INVALID_PROTOCOL_METHOD,
   ERR_TLS_INVALID_PROTOCOL_VERSION,
   ERR_TLS_PROTOCOL_VERSION_CONFLICT,
-} from "ext:deno_node/internal/errors.ts";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
-import { createPrivateKey } from "ext:deno_node/internal/crypto/keys.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const { validateString } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const { op_node_validate_crl, op_node_validate_pfx } = core.ops;
+const { createPrivateKey } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/keys.ts",
+);
 
 // OpenSSL cipher names are uppercase alphanumeric with hyphens/underscores
 // and "=" (for @SECLEVEL=N). Examples: "ECDHE-RSA-AES128-GCM-SHA256",
 // "AECDH-NULL-SHA", "@SECLEVEL=2". Meta-keywords like "ALL", "HIGH",
 // "DEFAULT" also match. We reject strings where no colon-separated entry
 // looks like a valid cipher name, which catches typos like "no-such-cipher".
-const CIPHER_NAME_RE = /^[!+\-@]?[A-Z0-9][A-Z0-9_=\-]*$/;
+const CIPHER_NAME_RE = /^[!+\-@]?[A-Z0-9][A-Z0-9_=\-]*(?:@[A-Z0-9_=\-]+)?$/;
+const CIPHER_META_NAMES = new Set([
+  "ALL",
+  "COMPLEMENTOFALL",
+  "COMPLEMENTOFDEFAULT",
+  "DEFAULT",
+  "FIPS",
+  "HIGH",
+  "LOW",
+  "MEDIUM",
+  "SUITEB128",
+  "SUITEB128ONLY",
+  "SUITEB192",
+]);
 
 function validateCipherList(ciphers: string): void {
   const entries = ciphers.split(":");
   let hasValidEntry = false;
   for (const entry of entries) {
     if (entry === "") continue;
-    if (CIPHER_NAME_RE.test(entry)) {
+    if (!CIPHER_NAME_RE.test(entry)) {
+      continue;
+    }
+    const normalized = entry.replace(/^[!+\-]/, "");
+    const name = normalized.split("@", 1)[0];
+    if (
+      normalized.startsWith("@SECLEVEL=") ||
+      CIPHER_META_NAMES.has(name) ||
+      name.startsWith("TLS_") ||
+      name.includes("-")
+    ) {
       hasValidEntry = true;
       break;
     }
@@ -205,23 +242,37 @@ function normalizeCertValue(
 function getProtocolRange(
   options: any,
 ): { minVersion: string; maxVersion: string } {
-  let minVersion = "TLSv1.2"; // Default per Node.js
-  let maxVersion = "TLSv1.3";
+  let minVersion = getDefaultMinVersion();
+  let maxVersion = getDefaultMaxVersion();
 
   if (options.secureProtocol) {
-    const range = kProtocolMap[options.secureProtocol];
-    if (!range) {
-      throw new ERR_TLS_INVALID_PROTOCOL_VERSION(
-        options.secureProtocol,
-        "secureProtocol",
-      );
-    }
-
-    // If secureProtocol is set, minVersion/maxVersion must not also be set
+    // If secureProtocol is set, minVersion/maxVersion must not also be set.
+    // Node raises this conflict before validating the protocol method string.
     if (options.minVersion || options.maxVersion) {
       throw new ERR_TLS_PROTOCOL_VERSION_CONFLICT(
         options.minVersion || options.maxVersion,
         "secureProtocol",
+      );
+    }
+
+    const range = kProtocolMap[options.secureProtocol];
+    if (!range) {
+      if (
+        options.secureProtocol === "SSLv2_method" ||
+        options.secureProtocol === "SSLv2_client_method" ||
+        options.secureProtocol === "SSLv2_server_method"
+      ) {
+        throw new ERR_TLS_INVALID_PROTOCOL_METHOD("SSLv2 methods disabled");
+      }
+      if (
+        options.secureProtocol === "SSLv3_method" ||
+        options.secureProtocol === "SSLv3_client_method" ||
+        options.secureProtocol === "SSLv3_server_method"
+      ) {
+        throw new ERR_TLS_INVALID_PROTOCOL_METHOD("SSLv3 methods disabled");
+      }
+      throw new ERR_TLS_INVALID_PROTOCOL_METHOD(
+        `Unknown method: ${options.secureProtocol}`,
       );
     }
 
@@ -248,6 +299,20 @@ function getProtocolRange(
   }
 
   return { minVersion, maxVersion };
+}
+
+function getDefaultMinVersion(): string {
+  if (getOptionValue("--tls-min-v1.0")) return "TLSv1";
+  if (getOptionValue("--tls-min-v1.1")) return "TLSv1.1";
+  if (getOptionValue("--tls-min-v1.2")) return "TLSv1.2";
+  if (getOptionValue("--tls-min-v1.3")) return "TLSv1.3";
+  return "TLSv1.2";
+}
+
+function getDefaultMaxVersion(): string {
+  if (getOptionValue("--tls-max-v1.3")) return "TLSv1.3";
+  if (getOptionValue("--tls-max-v1.2")) return "TLSv1.2";
+  return "TLSv1.3";
 }
 
 function isValidKeyCertValue(val: any): boolean {
@@ -287,11 +352,25 @@ function validateKeyCertOption(
   );
 }
 
+function toUint8Array(val: any): Uint8Array {
+  if (typeof val === "string") {
+    return new TextEncoder().encode(val);
+  }
+  if (val instanceof globalThis.ArrayBuffer) {
+    return new Uint8Array(val);
+  }
+  if (isArrayBufferView(val)) {
+    return new Uint8Array(val.buffer, val.byteOffset, val.byteLength);
+  }
+  return new TextEncoder().encode(String(val));
+}
+
 const secureContextBrand = new WeakSet<object>();
 
-export class SecureContext {
+class SecureContext {
   context: {
     ca?: string | string[];
+    useDefaultCA?: boolean;
     cert?: string;
     key?: string;
     minVersion: string;
@@ -312,6 +391,22 @@ export class SecureContext {
     }
     if (options.clientCertEngine != null) {
       validateString(options.clientCertEngine, "options.clientCertEngine");
+      // OpenSSL engines are not supported in Deno (which uses rustls).
+      // Match Node's behaviour when OpenSSL fails to load the engine: throw
+      // an Error whose message contains "could not load the shared library"
+      // and carries an `opensslErrorStack` array.
+      const err = new Error(
+        `error:25066067:DSO support routines:dlfcn_load:could not load the shared library`,
+      ) as any;
+      err.opensslErrorStack = [
+        `error:25070067:DSO support routines:DSO_load:could not load the shared library`,
+        `error:260B6084:engine routines:dynamic_load:dso not found`,
+      ];
+      err.library = "DSO support routines";
+      err.function = "dlfcn_load";
+      err.reason = "could not load the shared library";
+      err.code = "ERR_OSSL_DSO_COULD_NOT_LOAD_THE_SHARED_LIBRARY";
+      throw err;
     }
     if (options.privateKeyEngine != null) {
       validateString(options.privateKeyEngine, "options.privateKeyEngine");
@@ -322,6 +417,12 @@ export class SecureContext {
         "options.privateKeyIdentifier",
       );
     }
+    if (
+      options.privateKeyEngine != null &&
+      options.privateKeyIdentifier != null
+    ) {
+      throw new ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED();
+    }
     if (options.ecdhCurve != null) {
       validateString(options.ecdhCurve, "options.ecdhCurve");
     }
@@ -329,6 +430,25 @@ export class SecureContext {
     validateKeyCertOption(options.cert, "options.cert", false);
     validateKeyCertOption(options.key, "options.key", true);
     validateKeyCertOption(options.ca, "options.ca", false);
+
+    // Validate PFX / PKCS#12 data.
+    if (options.pfx != null) {
+      const pfxData = toUint8Array(options.pfx);
+      const pfxPassphrase = options.passphrase != null
+        ? String(options.passphrase)
+        : null;
+      op_node_validate_pfx(pfxData, pfxPassphrase);
+    }
+
+    // Validate CRL data.
+    if (options.crl != null) {
+      const crls = globalThis.Array.isArray(options.crl)
+        ? options.crl
+        : [options.crl];
+      for (const crl of crls) {
+        op_node_validate_crl(toUint8Array(crl));
+      }
+    }
 
     // Mirror OpenSSL's SECLEVEL key-size enforcement. The cipher list is
     // applied before the key is loaded (matching Node.js' order in
@@ -338,8 +458,10 @@ export class SecureContext {
 
     const { minVersion, maxVersion } = getProtocolRange(options);
 
+    const useDefaultCA = !options.ca;
     this.context = {
-      ca: normalizeCertValue(options.ca),
+      ca: useDefaultCA ? undefined : normalizeCertValue(options.ca),
+      useDefaultCA,
       cert: toStringOrUndefined(options.cert),
       key: toStringOrUndefined(options.key),
       minVersion,
@@ -355,16 +477,40 @@ export class SecureContext {
       configurable: true,
       enumerable: false,
       get(this: object) {
-        // In Node, `_external` is the C++ external pointer; reading it on a
-        // non-context receiver hits an internal slot check and throws. Match
-        // that behaviour so prototype-tampering tests don't get a silent
-        // undefined.
         if (!secureContextBrand.has(this)) {
           throw new TypeError("Illegal invocation");
         }
         return this;
       },
     });
+    (this.context as any).setOptions = function setOptions(
+      this: object,
+      _options?: number,
+    ) {
+      if (!secureContextBrand.has(this)) {
+        throw new TypeError("Illegal invocation");
+      }
+    };
+    (this.context as any).addCACert = function addCACert(
+      this: any,
+      cert: any,
+    ) {
+      if (!secureContextBrand.has(this)) {
+        throw new TypeError("Illegal invocation");
+      }
+      validateKeyCertOption(cert, "cert", false);
+      const normalized = toStringOrUndefined(cert);
+      if (normalized === undefined) {
+        return;
+      }
+      if (this.ca === undefined) {
+        this.ca = normalized;
+      } else if (globalThis.Array.isArray(this.ca)) {
+        this.ca.push(normalized);
+      } else {
+        this.ca = [this.ca, normalized];
+      }
+    };
   }
 
   // Backward compat: current _tls_wrap.js accesses .ca, .cert, .key directly
@@ -379,11 +525,11 @@ export class SecureContext {
   }
 }
 
-export function createSecureContext(options: any = {}) {
+function createSecureContext(options: any = {}) {
   return new SecureContext(options);
 }
 
-export function translatePeerCertificate(c: any) {
+function translatePeerCertificate(c: any) {
   if (!c) {
     return null;
   }
@@ -421,8 +567,14 @@ export function translatePeerCertificate(c: any) {
   return c;
 }
 
-export default {
+return {
   SecureContext,
   createSecureContext,
   translatePeerCertificate,
+  default: {
+    SecureContext,
+    createSecureContext,
+    translatePeerCertificate,
+  },
 };
+})();

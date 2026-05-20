@@ -23,15 +23,18 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-import {
+(function () {
+const { core } = __bootstrap;
+const {
   op_node_udp_bind,
+  op_node_udp_fd_for_ipc,
   op_node_udp_join_multi_v4,
   op_node_udp_join_multi_v6,
   op_node_udp_join_source_specific,
   op_node_udp_leave_multi_v4,
   op_node_udp_leave_multi_v6,
   op_node_udp_leave_source_specific,
+  op_node_udp_open,
   op_node_udp_recv,
   op_node_udp_send,
   op_node_udp_set_broadcast,
@@ -39,22 +42,27 @@ import {
   op_node_udp_set_multicast_loopback,
   op_node_udp_set_multicast_ttl,
   op_node_udp_set_ttl,
-} from "ext:core/ops";
+} = core.ops;
 
-import {
+const {
   AsyncWrap,
   providerType,
-} from "ext:deno_node/internal_binding/async_wrap.ts";
-import { GetAddrInfoReqWrap } from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
-import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
-import { codeMap, errorMap } from "ext:deno_node/internal_binding/uv.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
-import { Buffer } from "node:buffer";
-import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import { isIP } from "ext:deno_node/internal/net.ts";
-import { isLinux, isWindows } from "ext:deno_node/_util/os.ts";
-import { os } from "ext:deno_node/internal_binding/constants.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/async_wrap.ts");
+const { HandleWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/handle_wrap.ts",
+);
+const { ownerSymbol } = core.loadExtScript(
+  "ext:deno_node/internal_binding/symbols.ts",
+);
+const { codeMap, errorMap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/uv.ts",
+);
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
+const { isLinux, isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { os } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 
 type MessageType = string | Uint8Array | Buffer | DataView;
 
@@ -90,12 +98,12 @@ function isValidMulticastAddress(
   }
 }
 
-export class SendWrap extends AsyncWrap {
+class SendWrap extends AsyncWrap {
   list!: MessageType[];
   address!: string;
   port!: number;
 
-  callback!: (error: ErrnoException | null, bytes?: number) => void;
+  callback!: (error: Error | null, bytes?: number) => void;
   oncomplete!: (err: number | null, sent?: number) => void;
 
   constructor() {
@@ -103,7 +111,7 @@ export class SendWrap extends AsyncWrap {
   }
 }
 
-export class UDP extends HandleWrap {
+class UDP extends HandleWrap {
   [ownerSymbol]: unknown = null;
 
   #address?: string;
@@ -137,11 +145,12 @@ export class UDP extends HandleWrap {
   lookup!: (
     address: string,
     callback: (
-      err: ErrnoException | null,
+      err: Error | null,
       address: string,
       family: number,
     ) => void,
-  ) => GetAddrInfoReqWrap | Record<string, never>;
+    // deno-lint-ignore no-explicit-any
+  ) => any;
 
   constructor() {
     super(providerType.UDPWRAP);
@@ -369,13 +378,35 @@ export class UDP extends HandleWrap {
   }
 
   /**
-   * Opens a file descriptor.
+   * Opens an existing file descriptor as this UDP socket.
    * @param fd The file descriptor to open.
    * @return An error status code.
    */
-  open(_fd: number): number {
-    // REF: https://github.com/denoland/deno/issues/6529
-    notImplemented("udp.UDP.prototype.open");
+  open(fd: number): number {
+    try {
+      const [rid, hostname, boundPort] = op_node_udp_open(fd);
+      this.#rid = rid;
+      this.#address = hostname;
+      this.#port = boundPort;
+      // Determine family from the address string returned by the op.
+      this.#family = hostname.includes(":")
+        ? ("IPv6" as const)
+        : ("IPv4" as const);
+      return 0;
+    } catch (e) {
+      return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
+    }
+  }
+
+  /**
+   * Return the raw fd so it can be sent over IPC via SCM_RIGHTS.
+   * Returns -1 on platforms that don't support fd-passing.
+   */
+  fdForIpc(): number {
+    if (this.#rid === undefined) {
+      return -1;
+    }
+    return op_node_udp_fd_for_ipc(this.#rid);
   }
 
   /**
@@ -684,3 +715,10 @@ export class UDP extends HandleWrap {
     return 0;
   }
 }
+
+return {
+  default: { SendWrap, UDP },
+  SendWrap,
+  UDP,
+};
+})();

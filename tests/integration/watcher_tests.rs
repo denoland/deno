@@ -1095,6 +1095,43 @@ async fn test_watch_basic() {
 }
 
 #[test(flaky)]
+async fn test_watch_external_watch_files() {
+  let t = TempDir::new();
+
+  let test_file = t.path().join("test_file.ts");
+  test_file.write("Deno.test('hello', () => {});");
+
+  let external_file = t.path().join("external_file.txt");
+  external_file.write("Hello world");
+
+  let mut watch_arg = "--watch=".to_owned();
+  let external_file_str = external_file.to_string();
+  watch_arg.push_str(&external_file_str);
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("test")
+    .arg(watch_arg)
+    .arg("-L")
+    .arg("debug")
+    .arg(&test_file)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_for_watcher("external_file.txt", &mut stderr_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  // Change content of the external file — should trigger a re-run
+  external_file.write("Hello world2");
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[test(flaky)]
 async fn test_watch_doc() {
   let t = TempDir::new();
 
@@ -1938,6 +1975,89 @@ async fn run_watch_with_excluded_paths() {
   mjs_file_to_exclude.write("export const foo = 42;");
 
   wait_contains("finished", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+// Regression test for https://github.com/denoland/deno/issues/26217
+// When using `--watch=.` (directory), excluded files within that directory
+// should not trigger restarts.
+#[test(flaky)]
+async fn run_watch_directory_with_excluded_file() {
+  let t = TempDir::new();
+
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write("console.log('hello');");
+
+  let file_to_exclude = t.path().join("file_to_exclude.txt");
+  file_to_exclude.write("original content");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch=.")
+    .arg("--watch-exclude=file_to_exclude.txt")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("hello", &mut stdout_lines).await;
+  wait_contains("finished", &mut stderr_lines).await;
+
+  // Modify excluded file - should NOT trigger restart
+  file_to_exclude.write("modified content");
+
+  // Modify watched file - should trigger restart
+  file_to_watch.write("console.log('restarted');");
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("restarted", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+// When using `--watch=.`, excluded subdirectories should not trigger restarts
+// for any file changes within them.
+#[test(flaky)]
+async fn run_watch_directory_with_excluded_subdirectory() {
+  let t = TempDir::new();
+
+  let file_to_watch = t.path().join("main.js");
+  file_to_watch.write("console.log('start');");
+
+  let sub_dir = t.path().join("ignored_dir");
+  sub_dir.create_dir_all();
+  let sub_file = sub_dir.join("data.txt");
+  sub_file.write("data");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch=.")
+    .arg("--watch-exclude=ignored_dir")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("start", &mut stdout_lines).await;
+  wait_contains("finished", &mut stderr_lines).await;
+
+  // Modify file inside excluded subdirectory - should NOT trigger restart
+  sub_file.write("data updated");
+
+  // Modify watched file - should trigger restart
+  file_to_watch.write("console.log('restarted');");
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("restarted", &mut stdout_lines).await;
+
   check_alive_then_kill(child);
 }
 

@@ -30,6 +30,7 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeShift,
   ArrayPrototypeSome,
+  DateNow,
   Error,
   ErrorPrototypeToString,
   ObjectDefineProperties,
@@ -54,7 +55,7 @@ const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { createFilteredInspectProxy } = core.loadExtScript(
   "ext:deno_web/01_console.js",
 );
-const { HTTP_TOKEN_CODE_POINT_RE } = core.loadExtScript(
+const { HTTP_TOKEN_CODE_POINT_RE, byteLowerCase } = core.loadExtScript(
   "ext:deno_web/00_infra.js",
 );
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
@@ -162,6 +163,33 @@ const _cancelHandle = Symbol("[[cancelHandle]]");
 const _idleTimeoutDuration = Symbol("[[idleTimeout]]");
 const _idleTimeoutTimeout = Symbol("[[idleTimeoutTimeout]]");
 const _serverHandleIdleTimeout = Symbol("[[serverHandleIdleTimeout]]");
+
+// Inspector Network domain instrumentation. The bridge is installed by
+// `ext/node/polyfills/inspector.js` on `internals.__inspectorNetwork` when
+// `node:inspector` is loaded; it stays null in normal runs so the cost is
+// one method call per WebSocket lifecycle.
+const _inspectorRequestId = Symbol("[[inspectorRequestId]]");
+
+function getInspectorNetwork() {
+  const ins = internals.__inspectorNetwork;
+  if (ins && ins.isEnabled()) return ins;
+  return null;
+}
+
+function emitWebSocketClosed(ws) {
+  const ins = getInspectorNetwork();
+  const requestId = ws[_inspectorRequestId];
+  if (ins === null || requestId === undefined) return;
+  try {
+    ins.webSocketClosed({
+      requestId,
+      timestamp: DateNow() / 1000,
+    });
+  } catch {
+    // never let inspector instrumentation break a real WebSocket
+  }
+  ws[_inspectorRequestId] = undefined;
+}
 
 class WebSocket extends EventTarget {
   constructor(url, initOrProtocols) {
@@ -311,6 +339,64 @@ class WebSocket extends EventTarget {
 
     this[_cancelHandle] = cancelRid;
 
+    // Inspector: emit `Network.webSocketCreated` before initiating the
+    // handshake. The op call itself reaches deep into Rust async work, so
+    // we want the "we're attempting this URL" notification to fire even if
+    // the handshake later fails.
+    const inspectorNetwork = getInspectorNetwork();
+    if (inspectorNetwork !== null) {
+      const requestId = inspectorNetwork.nextRequestId();
+      this[_inspectorRequestId] = requestId;
+      try {
+        inspectorNetwork.webSocketCreated({
+          requestId,
+          url: this[_url],
+          // initiator is filled in by the inspector op using V8's stack.
+        });
+      } catch {
+        // ignore
+      }
+      // `Network.webSocketWillSendHandshakeRequest` populates DevTools'
+      // "Headers" panel for the request side. Tungstenite-generated headers
+      // (Sec-WebSocket-Key, Sec-WebSocket-Version, Upgrade, Connection) are
+      // produced in Rust and not visible here; we surface what JS knows -
+      // user-supplied headers via `init.headers` plus the negotiated
+      // Sec-WebSocket-Protocol. That's enough for the panel to show the
+      // intent of the request; the response panel still gets the real
+      // server-sent headers via `webSocketHandshakeResponseReceived`.
+      const requestHeaders = { __proto__: null };
+      if (headers !== null) {
+        const list = headerListFromHeaders(headers);
+        for (let i = 0; i < list.length; i++) {
+          const name = byteLowerCase(list[i][0]);
+          const value = list[i][1];
+          if (requestHeaders[name] === undefined) {
+            requestHeaders[name] = value;
+          } else {
+            requestHeaders[name] = requestHeaders[name] + ", " + value;
+          }
+        }
+      }
+      if (protocols.length > 0) {
+        requestHeaders["sec-websocket-protocol"] = ArrayPrototypeJoin(
+          protocols,
+          ", ",
+        );
+      }
+      try {
+        inspectorNetwork.webSocketWillSendHandshakeRequest({
+          requestId,
+          timestamp: DateNow() / 1000,
+          wallTime: DateNow() / 1000,
+          request: {
+            headers: requestHeaders,
+          },
+        });
+      } catch {
+        // ignore
+      }
+    }
+
     PromisePrototypeThen(
       op_ws_create(
         "new WebSocket()",
@@ -327,6 +413,40 @@ class WebSocket extends EventTarget {
         this[_extensions] = create.extensions;
         this[_protocol] = create.protocol;
 
+        // Inspector: emit `Network.webSocketHandshakeResponseReceived` with
+        // the real upgrade response (status, statusText, headers) returned
+        // by the Rust op.
+        const reqId = this[_inspectorRequestId];
+        if (reqId !== undefined) {
+          const ins = getInspectorNetwork();
+          if (ins !== null) {
+            const responseHeaders = { __proto__: null };
+            for (let i = 0; i < create.headers.length; i++) {
+              const name = byteLowerCase(create.headers[i][0]);
+              const value = create.headers[i][1];
+              if (responseHeaders[name] === undefined) {
+                responseHeaders[name] = value;
+              } else {
+                // Connection, Upgrade etc. shouldn't repeat, but be defensive.
+                responseHeaders[name] = responseHeaders[name] + ", " + value;
+              }
+            }
+            try {
+              ins.webSocketHandshakeResponseReceived({
+                requestId: reqId,
+                timestamp: DateNow() / 1000,
+                response: {
+                  status: create.status,
+                  statusText: create.statusText,
+                  headers: responseHeaders,
+                },
+              });
+            } catch {
+              // ignore
+            }
+          }
+        }
+
         if (this[_readyState] === CLOSING) {
           PromisePrototypeThen(
             op_ws_close(this[_rid]),
@@ -336,6 +456,7 @@ class WebSocket extends EventTarget {
               const errEvent = new ErrorEvent("error");
               this.dispatchEvent(errEvent);
 
+              emitWebSocketClosed(this);
               const event = new CloseEvent("close");
               this.dispatchEvent(event);
               core.tryClose(this[_rid]);
@@ -364,6 +485,7 @@ class WebSocket extends EventTarget {
           this[_cancelHandle] = undefined;
         }
 
+        emitWebSocketClosed(this);
         const closeEv = new CloseEvent("close");
         this.dispatchEvent(closeEv);
       },
@@ -532,6 +654,7 @@ class WebSocket extends EventTarget {
           });
           this.dispatchEvent(errorEv);
 
+          emitWebSocketClosed(this);
           const closeEv = new CloseEvent("close");
           this.dispatchEvent(closeEv);
           core.tryClose(this[_rid]);
@@ -551,6 +674,7 @@ class WebSocket extends EventTarget {
       ) {
         this[_readyState] = CLOSED;
 
+        emitWebSocketClosed(this);
         const event = new CloseEvent("close");
         this.dispatchEvent(event);
         core.tryClose(rid);
@@ -616,6 +740,7 @@ class WebSocket extends EventTarget {
           });
           this.dispatchEvent(errorEv);
 
+          emitWebSocketClosed(this);
           const closeEv = new CloseEvent("close");
           this.dispatchEvent(closeEv);
           core.tryClose(rid);
@@ -643,6 +768,7 @@ class WebSocket extends EventTarget {
             }
           }
 
+          emitWebSocketClosed(this);
           const event = new CloseEvent("close", {
             wasClean: true,
             code: code,

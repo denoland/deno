@@ -2,9 +2,8 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-// deno-fmt-ignore-file
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   op_broadcast_recv,
   op_broadcast_send,
@@ -22,7 +21,9 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
 const {
   defineEventHandler,
   EventTarget,
@@ -200,4 +201,4 @@ defineEventHandler(BroadcastChannel.prototype, "messageerror");
 const BroadcastChannelPrototype = BroadcastChannel.prototype;
 
 return { BroadcastChannel, refBroadcastChannel };
-})()
+})();

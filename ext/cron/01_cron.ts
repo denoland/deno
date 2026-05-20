@@ -1,8 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const { op_cron_create, op_cron_next } = core.ops;
 const {
   ArrayPrototypeJoin,
@@ -174,7 +173,9 @@ function cron(
       if (otelState.TRACING_ENABLED) {
         let activeContext = ContextManager.active();
         if (r.traceparent) {
-          for (const propagator of new SafeArrayIterator(otelState.PROPAGATORS)) {
+          for (
+            const propagator of new SafeArrayIterator(otelState.PROPAGATORS)
+          ) {
             activeContext = propagator.extract(activeContext, {}, {
               get(_carrier, key) {
                 if (key === "traceparent") return r.traceparent;
@@ -227,4 +228,4 @@ internals.formatToCronSchedule = formatToCronSchedule;
 internals.parseScheduleToString = parseScheduleToString;
 
 return { cron, formatToCronSchedule, parseScheduleToString };
-})()
+})();

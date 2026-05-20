@@ -1,8 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_signal_bind, op_signal_poll, op_signal_unbind } = core.ops;
 const {
   SafeSet,
@@ -82,4 +81,4 @@ async function loop(sigData) {
 }
 
 return { addSignalListener, removeSignalListener };
-})()
+})();

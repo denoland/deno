@@ -289,18 +289,14 @@ impl ModuleLoader for MockLoader {
     let output_specifier = match resolve_import(specifier, referrer) {
       Ok(specifier) => specifier,
       Err(..) => {
-        return ModuleResolveResponse::Sync(Err(JsErrorBox::from_err(
-          MockError::ResolveErr,
-        )));
+        return Err(JsErrorBox::from_err(MockError::ResolveErr));
       }
     };
 
     if mock_source_code(output_specifier.as_ref()).is_some() {
-      ModuleResolveResponse::Sync(Ok(output_specifier))
+      Ok(output_specifier)
     } else {
-      ModuleResolveResponse::Sync(Err(JsErrorBox::from_err(
-        MockError::ResolveErr,
-      )))
+      Err(JsErrorBox::from_err(MockError::ResolveErr))
     }
   }
 
@@ -391,7 +387,6 @@ fn test_recursive_load() {
         specifier_key: Some("/b.js".to_string()),
         referrer_source_offset: Some(19),
         phase: crate::modules::ModuleImportPhase::Evaluation,
-        needs_resolve: false,
       },
       ModuleRequest {
         reference: crate::modules::ModuleReference {
@@ -401,7 +396,6 @@ fn test_recursive_load() {
         specifier_key: Some("/c.js".to_string()),
         referrer_source_offset: Some(46),
         phase: crate::modules::ModuleImportPhase::Evaluation,
-        needs_resolve: false,
       },
     ])
   );
@@ -415,7 +409,6 @@ fn test_recursive_load() {
       specifier_key: Some("/c.js".to_string()),
       referrer_source_offset: Some(19),
       phase: crate::modules::ModuleImportPhase::Evaluation,
-      needs_resolve: false,
     },])
   );
   assert_eq!(
@@ -428,7 +421,6 @@ fn test_recursive_load() {
       specifier_key: Some("/d.js".to_string()),
       referrer_source_offset: Some(19),
       phase: crate::modules::ModuleImportPhase::Evaluation,
-      needs_resolve: false,
     },])
   );
   assert_eq!(modules.get_requested_modules(d_id), Some(vec![]));
@@ -504,7 +496,6 @@ fn test_mods() {
         specifier_key: Some("./b.js".to_string()),
         referrer_source_offset: Some(29),
         phase: crate::modules::ModuleImportPhase::Evaluation,
-        needs_resolve: false,
       },])
     );
 
@@ -564,6 +555,110 @@ fn test_lazy_loaded_esm() {
       "#,
     )
     .unwrap();
+}
+
+#[test]
+fn test_lazy_loaded_esm_aliased_specifier() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "custom:aliased" = "lazy_loaded_aliased.js",
+    ]
+  );
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  // Test via createLazyLoader
+  runtime
+    .execute_script(
+      "setup.js",
+      r#"
+      const module = Deno.core.createLazyLoader("custom:aliased")();
+      if (module.value !== "aliased") throw new Error("expected 'aliased', got " + module.value);
+      if (module.default.value !== "aliased") throw new Error("expected default.value to be 'aliased'");
+      Deno.core.print("lazy_loaded_esm aliased specifier works\n");
+      "#,
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn test_lazy_loaded_esm_aliased_via_import() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "custom:aliased" = "lazy_loaded_aliased.js",
+    ]
+  );
+
+  let loader = Rc::new(StaticModuleLoader::with(
+    ModuleSpecifier::parse("file:///importer.js").unwrap(),
+    crate::ascii_str_include!("testdata/lazy_loaded_importer.js"),
+  ));
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let mod_id = runtime
+    .load_side_es_module_from_code(
+      &ModuleSpecifier::parse("file:///importer.js").unwrap(),
+      crate::ascii_str_include!("testdata/lazy_loaded_importer.js"),
+    )
+    .await
+    .unwrap();
+  let result = runtime.mod_evaluate(mod_id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  result.await.unwrap();
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/33940
+///
+/// When two lazy-loaded ESM modules (A and B) are statically imported as
+/// siblings, V8 instantiates both during the link phase and evaluates them
+/// in DFS post-order. If A's evaluation calls `createLazyLoader(B)()`, the
+/// `op_lazy_load_esm` early-return path used to hand back B's module
+/// namespace without first evaluating it, so any `export const` bindings in
+/// B were in the temporal dead zone — producing `Cannot access 'X' before
+/// initialization`. This reproduces the gemini-cli failure where
+/// `events_esm.ts` eagerly destructures `EventEmitterAsyncResource`, whose
+/// getter lazy-loads `async_hooks_esm.ts` (a sibling in the user's bundle).
+#[tokio::test]
+async fn test_lazy_load_esm_evaluates_pre_instantiated_sibling() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "custom:lazy_a" = "lazy_load_sibling_a.js",
+      "custom:lazy_b" = "lazy_load_sibling_b.js",
+    ]
+  );
+
+  let loader = Rc::new(StaticModuleLoader::with(
+    ModuleSpecifier::parse("file:///main.js").unwrap(),
+    crate::ascii_str_include!("testdata/lazy_load_sibling_main.js"),
+  ));
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let mod_id = runtime
+    .load_main_es_module(&ModuleSpecifier::parse("file:///main.js").unwrap())
+    .await
+    .unwrap();
+  let result = runtime.mod_evaluate(mod_id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  result.await.unwrap();
 }
 
 #[test]
@@ -688,7 +783,6 @@ fn test_json_text_bytes_modules() {
           specifier_key: Some("./c.json".to_string()),
           referrer_source_offset: Some(32),
           phase: crate::modules::ModuleImportPhase::Evaluation,
-          needs_resolve: false,
         },
         ModuleRequest {
           reference: crate::modules::ModuleReference {
@@ -698,7 +792,6 @@ fn test_json_text_bytes_modules() {
           specifier_key: Some("./d.txt".to_string()),
           referrer_source_offset: Some(165),
           phase: crate::modules::ModuleImportPhase::Evaluation,
-          needs_resolve: false,
         },
         ModuleRequest {
           reference: crate::modules::ModuleReference {
@@ -708,7 +801,6 @@ fn test_json_text_bytes_modules() {
           specifier_key: Some("./e.bin".to_string()),
           referrer_source_offset: Some(264),
           phase: crate::modules::ModuleImportPhase::Evaluation,
-          needs_resolve: false,
         },
       ])
     );
@@ -1140,7 +1232,6 @@ export const foo = bytes;
         specifier_key: Some("file:///b.png".to_string()),
         referrer_source_offset: Some(19),
         phase: crate::modules::ModuleImportPhase::Evaluation,
-        needs_resolve: false,
       }],
       module_type: ModuleType::Other("foobar".into()),
     }
@@ -1182,7 +1273,7 @@ async fn dyn_import_err() {
     // We should get an error here.
     let result = runtime.poll_event_loop(cx, Default::default());
     assert!(matches!(result, Poll::Ready(Err(_))));
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(1, 1, 1, 1));
     Poll::Ready(())
   })
   .await;
@@ -1244,12 +1335,12 @@ async fn dyn_import_ok() {
       runtime.poll_event_loop(cx, Default::default()),
       Poll::Ready(Ok(_))
     ));
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(3, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
     assert!(matches!(
       runtime.poll_event_loop(cx, Default::default()),
       Poll::Ready(Ok(_))
     ));
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(3, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
     Poll::Ready(())
   })
   .await;
@@ -1287,10 +1378,10 @@ async fn dyn_import_borrow_mut_error() {
     // Old comments that are likely wrong:
     // First poll runs `prepare_load` hook.
     let _ = runtime.poll_event_loop(cx, Default::default());
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(1, 1, 1, 1));
     // Second poll triggers error
     let _ = runtime.poll_event_loop(cx, Default::default());
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(1, 1, 1, 1));
     Poll::Ready(())
   })
   .await;
@@ -1345,7 +1436,6 @@ fn test_circular_load() {
         specifier_key: Some("/circular2.js".to_string()),
         referrer_source_offset: Some(8),
         phase: crate::modules::ModuleImportPhase::Evaluation,
-        needs_resolve: false,
       }])
     );
 
@@ -1359,7 +1449,6 @@ fn test_circular_load() {
         specifier_key: Some("/circular3.js".to_string()),
         referrer_source_offset: Some(8),
         phase: crate::modules::ModuleImportPhase::Evaluation,
-        needs_resolve: false,
       }])
     );
 
@@ -1382,7 +1471,6 @@ fn test_circular_load() {
           specifier_key: Some("/circular1.js".to_string()),
           referrer_source_offset: Some(8),
           phase: crate::modules::ModuleImportPhase::Evaluation,
-          needs_resolve: false,
         },
         ModuleRequest {
           reference: crate::modules::ModuleReference {
@@ -1392,7 +1480,6 @@ fn test_circular_load() {
           specifier_key: Some("/circular2.js".to_string()),
           referrer_source_offset: Some(32),
           phase: crate::modules::ModuleImportPhase::Evaluation,
-          needs_resolve: false,
         }
       ])
     );
@@ -1647,7 +1734,6 @@ fn recursive_load_main_with_code() {
         specifier_key: Some("/b.js".to_string()),
         referrer_source_offset: Some(23),
         phase: crate::modules::ModuleImportPhase::Evaluation,
-        needs_resolve: false,
       },
       ModuleRequest {
         reference: crate::modules::ModuleReference {
@@ -1657,7 +1743,6 @@ fn recursive_load_main_with_code() {
         specifier_key: Some("/c.js".to_string()),
         referrer_source_offset: Some(54),
         phase: crate::modules::ModuleImportPhase::Evaluation,
-        needs_resolve: false,
       }
     ])
   );
@@ -1671,7 +1756,6 @@ fn recursive_load_main_with_code() {
       specifier_key: Some("/c.js".to_string()),
       referrer_source_offset: Some(19),
       phase: crate::modules::ModuleImportPhase::Evaluation,
-      needs_resolve: false,
     }])
   );
   assert_eq!(
@@ -1684,7 +1768,6 @@ fn recursive_load_main_with_code() {
       specifier_key: Some("/d.js".to_string()),
       referrer_source_offset: Some(19),
       phase: crate::modules::ModuleImportPhase::Evaluation,
-      needs_resolve: false,
     }])
   );
   assert_eq!(modules.get_requested_modules(d_id), Some(vec![]));
@@ -1868,9 +1951,7 @@ async fn no_duplicate_loads() {
         referrer
       };
 
-      ModuleResolveResponse::Sync(
-        resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
-      )
+      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
     }
 
     fn load(
@@ -1943,9 +2024,7 @@ async fn import_meta_resolve() {
       } else {
         referrer
       };
-      ModuleResolveResponse::Sync(
-        resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
-      )
+      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
     }
 
     fn import_meta_resolve(
@@ -2196,13 +2275,9 @@ fn ext_module_loader_relative() {
     (("./foo.js", "ext:bar.js"), "ext:foo.js"),
   ];
   for ((specifier, referrer), expected) in cases {
-    let response = loader.resolve(specifier, referrer, ResolutionKind::Import);
-    let result = match response {
-      ModuleResolveResponse::Sync(r) => r.unwrap(),
-      ModuleResolveResponse::Async(_) => {
-        unreachable!("ExtModuleLoader should resolve synchronously")
-      }
-    };
+    let result = loader
+      .resolve(specifier, referrer, ResolutionKind::Import)
+      .unwrap();
     assert_eq!(result.as_str(), expected);
   }
 }
@@ -2386,9 +2461,7 @@ impl ModuleLoader for ExternalSourceMapLoader {
     referrer: &str,
     _kind: ResolutionKind,
   ) -> ModuleResolveResponse {
-    ModuleResolveResponse::Sync(
-      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
-    )
+    resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
   }
 
   fn load(
@@ -2709,6 +2782,125 @@ async fn test_lazy_loaded_esm_with_tla_no_panic() {
   runtime.instantiate_module(mod_main).unwrap();
 
   // This should not panic with "Expected at least one stalled top-level await"
+  let receiver = runtime.mod_evaluate(mod_main);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  receiver.await.unwrap();
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/32821
+///
+/// When an async module graph has TLA and `has_tick_scheduled` is set during
+/// module evaluation (e.g. CJS `process.nextTick()` calls), the
+/// `has_tick_scheduled` guard on the microtask checkpoint in `mod_evaluate`
+/// could prevent TLA resume microtasks from being drained. For large module
+/// graphs where the TLA op resolves during event loop processing (not during
+/// `module.evaluate()` itself), this leaves the evaluation promise permanently
+/// stuck in Pending, causing a panic at
+/// "Expected at least one stalled top-level await".
+#[tokio::test]
+async fn test_tla_with_tick_scheduled_no_hang() {
+  // An async op that resolves on the next event loop iteration (not eagerly)
+  #[op2]
+  async fn op_async_resolve() -> u32 {
+    // Yield to the event loop so this does NOT resolve eagerly
+    tokio::task::yield_now().await;
+    42
+  }
+
+  deno_core::extension!(
+    test_ext,
+    ops = [op_async_resolve],
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "lazy_loaded.js",
+      "lazy_loaded_2.js",
+    ]
+  );
+
+  let loader = Rc::new(TestingModuleLoader::new(NoopModuleLoader));
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let module_map = runtime.module_map().clone();
+
+  // Build a module graph where:
+  //   main.js (main module)
+  //     +-- tick_mod.js  -- sets has_tick_scheduled (simulates CJS nextTick)
+  //     +-- tla_mod.js   -- has TLA on an async op + triggers lazy load
+  //
+  // The key scenario: tick_mod.js sets has_tick_scheduled = true during
+  // module evaluation, causing the checkpoint in mod_evaluate to be
+  // skipped. tla_mod.js has a TLA that resolves during event loop
+  // processing, not during module.evaluate(). Without the fix, the
+  // evaluation promise stays Pending forever.
+
+  let (mod_main, mod_tick, mod_tla) = {
+    deno_core::scope!(scope, runtime);
+
+    let mod_tick = module_map
+      .new_es_module(
+        scope,
+        false,
+        ascii_str!("file:///tick_mod.js").into(),
+        ascii_str!(
+          r#"
+          Deno.core.setHasTickScheduled(true);
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    let mod_tla = module_map
+      .new_es_module(
+        scope,
+        false,
+        ascii_str!("file:///tla_mod.js").into(),
+        ascii_str!(
+          r#"
+          const lazy1 = Deno.core.createLazyLoader("ext:test_ext/lazy_loaded.js")();
+          if (lazy1.foo !== "foo") throw new Error("lazy1.foo: " + lazy1.foo);
+          const result = await Deno.core.ops.op_async_resolve();
+          if (result !== 42) throw new Error("unexpected: " + result);
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    let mod_main = module_map
+      .new_es_module(
+        scope,
+        true,
+        ascii_str!("file:///main.js").into(),
+        ascii_str!(
+          r#"
+          import "./tick_mod.js";
+          import "./tla_mod.js";
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    (mod_main, mod_tick, mod_tla)
+  };
+
+  runtime.instantiate_module(mod_tick).unwrap();
+  runtime.instantiate_module(mod_tla).unwrap();
+  runtime.instantiate_module(mod_main).unwrap();
+
+  // This should not panic or hang
   let receiver = runtime.mod_evaluate(mod_main);
   runtime.run_event_loop(Default::default()).await.unwrap();
   receiver.await.unwrap();

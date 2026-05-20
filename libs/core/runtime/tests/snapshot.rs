@@ -235,7 +235,6 @@ fn es_snapshot() {
         specifier_key: Some(format!("file:///{prev}.js")),
         referrer_source_offset: Some(25 + prev.to_string().len() as i32),
         phase: crate::modules::ModuleImportPhase::Evaluation,
-        needs_resolve: false,
       }],
       module_type: ModuleType::JavaScript,
     }
@@ -460,6 +459,84 @@ pub fn snapshot_with_additional_extensions() {
     assert_eq!(
       serde_v8::to_utf8(global_test.to_string(scope).unwrap(), scope),
       String::from("before/after"),
+    );
+  }
+}
+
+#[test]
+fn lazy_loaded_esm_not_snapshotted_but_metadata_survives() {
+  let snapshot = {
+    deno_core::extension!(
+      test_ext,
+      lazy_loaded_esm =
+        ["custom:lazy_mod" = { source = "export const value = 'lazy';" },]
+    );
+
+    let runtime = JsRuntimeForSnapshot::new(RuntimeOptions {
+      extensions: vec![test_ext::init()],
+      ..Default::default()
+    });
+
+    runtime.snapshot()
+  };
+
+  let snapshot = Box::leak(snapshot);
+
+  // When loading from the snapshot, the lazy ESM module should NOT
+  // be in the module map (not compiled/instantiated), but the metadata
+  // should be present in known_lazy_esm.
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_esm =
+      ["custom:lazy_mod" = { source = "export const value = 'lazy';" },]
+  );
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    startup_snapshot: Some(snapshot),
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  // Verify: module is NOT in the module map
+  {
+    let module_map = runtime.main_realm().0.module_map();
+    assert!(
+      module_map
+        .get_id("custom:lazy_mod", RequestedModuleType::None)
+        .is_none(),
+      "lazy_loaded_esm module should NOT be in the snapshot module map"
+    );
+  }
+
+  // Verify: module IS known as a lazy ESM
+  {
+    let module_map = runtime.main_realm().0.module_map();
+    assert!(
+      module_map.has_lazy_esm_source("custom:lazy_mod"),
+      "lazy_loaded_esm module should be in known_lazy_esm metadata"
+    );
+  }
+
+  // Verify: the module can be loaded on first access
+  runtime
+    .execute_script(
+      "test.js",
+      r#"
+      const mod = Deno.core.createLazyLoader("custom:lazy_mod")();
+      if (mod.value !== "lazy") throw new Error("expected 'lazy', got " + mod.value);
+      Deno.core.print("lazy ESM survived snapshot without being snapshotted\n");
+      "#,
+    )
+    .unwrap();
+
+  // After loading, the module IS in the module map
+  {
+    let module_map = runtime.main_realm().0.module_map();
+    assert!(
+      module_map
+        .get_id("custom:lazy_mod", RequestedModuleType::None)
+        .is_some(),
+      "lazy_loaded_esm module should now be in the module map after loading"
     );
   }
 }

@@ -4,20 +4,24 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
   validateFunction,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   AsyncHook,
   emitAfter,
   emitBefore,
-  emitDestroy as emitDestroyHook,
+  emitDestroy: emitDestroyHook,
   emitInit,
-  executionAsyncId as internalExecutionAsyncId,
+  enterAsyncResource,
+  exitAsyncResource,
+  executionAsyncId: internalExecutionAsyncId,
+  executionAsyncResource: internalExecutionAsyncResource,
   newAsyncId,
-} from "ext:deno_node/internal/async_hooks.ts";
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 
 const {
   ObjectDefineProperties,
@@ -39,7 +43,7 @@ const asyncResourceRegistry = new FinalizationRegistry(
   (asyncId: number) => emitDestroyHook(asyncId),
 );
 
-export class AsyncResource {
+class AsyncResource {
   type: string;
   #snapshot: unknown;
   #asyncId: number;
@@ -69,7 +73,14 @@ export class AsyncResource {
     emitBefore(this.#asyncId);
     try {
       setAsyncContext(this.#snapshot);
-      return ReflectApply(fn, thisArg, args);
+      // Enter this resource as the current executionAsyncResource() so that
+      // user code inside the scope observes `this` as the active resource.
+      const prevResource = enterAsyncResource(this);
+      try {
+        return ReflectApply(fn, thisArg, args);
+      } finally {
+        exitAsyncResource(prevResource);
+      }
     } finally {
       setAsyncContext(previousContext);
       emitAfter(this.#asyncId);
@@ -117,7 +128,7 @@ export class AsyncResource {
   }
 }
 
-export class AsyncLocalStorage {
+class AsyncLocalStorage {
   #variable = new AsyncVariable();
   // deno-lint-ignore no-explicit-any
   #defaultValue: any = undefined;
@@ -191,17 +202,15 @@ export class AsyncLocalStorage {
 }
 
 // Re-export executionAsyncId from internal
-export const executionAsyncId = internalExecutionAsyncId;
+const executionAsyncId = internalExecutionAsyncId;
 
-export function triggerAsyncId() {
+function triggerAsyncId() {
   return 0;
 }
 
-export function executionAsyncResource() {
-  return {};
-}
+const executionAsyncResource = internalExecutionAsyncResource;
 
-export const asyncWrapProviders = ObjectFreeze({
+const asyncWrapProviders = ObjectFreeze({
   __proto__: null,
   NONE: 0,
   DIRHANDLE: 1,
@@ -269,7 +278,7 @@ export const asyncWrapProviders = ObjectFreeze({
 });
 
 // Use the AsyncHook from the internal module
-export function createHook(callbacks: {
+function createHook(callbacks: {
   init?: (
     asyncId: number,
     type: string,
@@ -284,12 +293,22 @@ export function createHook(callbacks: {
   return new AsyncHook(callbacks);
 }
 
-export default {
+return {
+  default: {
+    AsyncLocalStorage,
+    createHook,
+    executionAsyncId,
+    triggerAsyncId,
+    executionAsyncResource,
+    asyncWrapProviders,
+    AsyncResource,
+  },
   AsyncLocalStorage,
+  AsyncResource,
   createHook,
   executionAsyncId,
   triggerAsyncId,
   executionAsyncResource,
   asyncWrapProviders,
-  AsyncResource,
 };
+})();

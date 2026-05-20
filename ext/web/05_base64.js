@@ -6,10 +6,8 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference lib="esnext" />
 
-// deno-fmt-ignore-file
-
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_base64_atob, op_base64_btoa } = core.ops;
 const {
   ObjectPrototypeIsPrototypeOf,
@@ -62,4 +60,4 @@ function btoa(data) {
 }
 
 return { atob, btoa };
-})()
+})();

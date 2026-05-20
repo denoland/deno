@@ -2,13 +2,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 
 const { internalRidSymbol } = core;
 const {
   ArrayFrom,
   ArrayIsArray,
   ArrayPrototypeForEach,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeSort,
   ArrayPrototypeUnshift,
@@ -46,59 +48,73 @@ const {
   Uint8Array,
 } = primordials;
 
-import {
-  Http2Session as InternalHttp2Session,
+const {
+  Http2Session: InternalHttp2Session,
   op_http2_callbacks,
-} from "ext:core/ops";
-import { enqueueNodePerformanceEntry } from "node:perf_hooks";
+} = core.ops;
+const { enqueueNodePerformanceEntry } = core.loadExtScript(
+  "ext:deno_node/perf_hooks.js",
+);
 const { performance: webPerformance } = core.loadExtScript(
   "ext:deno_web/15_performance.js",
 );
-import net from "node:net";
-import assert from "node:assert";
-import http from "node:http";
-import { AsyncResource } from "node:async_hooks";
-import {
-  _connectionListener as httpConnectionListener,
+const lazyNet = core.createLazyLoader("node:net");
+const net = lazyNet().default;
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
+const lazyHttp = core.createLazyLoader("node:http");
+const http = lazyHttp().default;
+const { AsyncResource } = core.loadExtScript("ext:deno_node/async_hooks.ts");
+const {
+  _connectionListener: httpConnectionListener,
   httpServerPreClose,
   kIncomingMessage,
   kServerResponse,
-  Server as HttpServer,
+  Server: HttpServer,
   setupConnectionsTracking,
   STATUS_CODES,
   storeHTTPOptions,
-} from "node:_http_server";
-import { Duplex } from "node:stream";
-import tls from "node:tls";
-import { deprecate } from "node:util";
-import dc from "node:diagnostics_channel";
-import { utcDate } from "ext:deno_node/internal/http.ts";
-import {
+} = core.createLazyLoader("node:_http_server")();
+const { Duplex } = core.createLazyLoader("node:stream")();
+const lazyTls = core.createLazyLoader("node:tls");
+const tls = lazyTls().default;
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
+const dc = core.loadExtScript("ext:deno_node/diagnostics_channel.js").default;
+const { utcDate } = core.loadExtScript("ext:deno_node/internal/http.ts");
+const {
   kLastWriteWasAsync,
   ShutdownWrap,
   streamBaseState,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
-import {
-  Http2Session as BindingHttp2Session,
-  Http2Stream as BindingHttp2Stream,
-} from "ext:deno_node/internal_binding/http2.ts";
-import { EventEmitter } from "node:events";
-import {
+} = core.loadExtScript("ext:deno_node/internal_binding/stream_wrap.ts");
+const {
+  Http2Session: BindingHttp2Session,
+  Http2Stream: BindingHttp2Stream,
+} = core.loadExtScript("ext:deno_node/internal_binding/http2.ts");
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+const {
   defaultTriggerAsyncIdScope,
   symbols,
-} from "ext:deno_node/internal/async_hooks.ts";
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { async_id_symbol } = symbols;
-import { kTimeout } from "ext:deno_node/internal/timers.mjs";
+const { kTimeout } = core.loadExtScript(
+  "ext:deno_node/internal/timers.mjs",
+);
 // Use node:timers' setTimeout/clearTimeout so the returned Timeout object
 // supports unref() -- globalThis.setTimeout returns a plain number.
-import { clearTimeout, setTimeout } from "node:timers";
-import { addAbortListener } from "ext:deno_node/internal/events/abort_listener.mjs";
-export { addAbortListener } from "ext:deno_node/internal/events/abort_listener.mjs";
-import fs from "node:fs";
-import { FileHandle as FsFileHandle } from "ext:deno_node/internal/fs/handle.ts";
-import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
-import { format, inspect } from "node:util";
-import {
+const lazyTimers = core.createLazyLoader("node:timers");
+const { clearTimeout, setTimeout } = lazyTimers();
+const { addAbortListener } = core.loadExtScript(
+  "ext:deno_node/internal/events/abort_listener.mjs",
+);
+const lazyFs = core.createLazyLoader("node:fs");
+const fs = lazyFs().default;
+const { FileHandle: FsFileHandle } = core.createLazyLoader(
+  "ext:deno_node/internal/fs/handle.ts",
+)();
+const { JSStreamSocket } = core.loadExtScript(
+  "ext:deno_node/internal/js_stream_socket.js",
+);
+const { format, inspect } = core.loadExtScript("ext:deno_node/util.ts");
+const {
   isUint32,
   validateAbortSignal,
   validateArray,
@@ -111,10 +127,12 @@ import {
   validateObject,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import { promisify } from "ext:deno_node/internal/util.mjs";
-import { customInspectSymbol as kInspect } from "ext:deno_node/internal/util.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { customInspectSymbol: kInspect } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+const {
   AbortError,
   aggregateTwoErrors,
   ERR_HTTP2_ALTSVC_INVALID_ORIGIN,
@@ -160,8 +178,8 @@ import {
   ERR_SOCKET_CLOSED,
   ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
   hideStackFrames,
-} from "ext:deno_node/internal/errors.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   kAfterAsyncWrite,
   kBoundSession,
   kHandle,
@@ -172,8 +190,8 @@ import {
   setStreamTimeout,
   writeGeneric,
   writevGeneric,
-} from "ext:deno_node/internal/stream_base_commons.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/stream_base_commons.ts");
+const {
   assertIsArray,
   assertIsObject,
   assertValidPseudoHeader,
@@ -203,26 +221,37 @@ import {
   toHeaderObject,
   updateOptionsBuffer,
   updateSettingsBuffer,
-} from "ext:deno_node/internal/http2/util.ts";
-import { ownerSymbol as owner_symbol } from "ext:deno_node/internal_binding/symbols.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/http2/util.ts");
+const { ownerSymbol: owner_symbol } = core.loadExtScript(
+  "ext:deno_node/internal_binding/symbols.ts",
+);
+const {
   Http2ServerRequest,
   Http2ServerResponse,
   onServerStream,
-} from "ext:deno_node/internal/http2/compat.js";
+} = core.loadExtScript("ext:deno_node/internal/http2/compat.js");
 const onClientStreamCreatedChannel = dc.channel("http2.client.stream.created");
 const onClientStreamStartChannel = dc.channel("http2.client.stream.start");
 const onClientStreamErrorChannel = dc.channel("http2.client.stream.error");
 const onClientStreamFinishChannel = dc.channel("http2.client.stream.finish");
 const onClientStreamCloseChannel = dc.channel("http2.client.stream.close");
+const onClientStreamBodyChunkSentChannel = dc.channel(
+  "http2.client.stream.bodyChunkSent",
+);
+const onClientStreamBodySentChannel = dc.channel(
+  "http2.client.stream.bodySent",
+);
 const onServerStreamCreatedChannel = dc.channel("http2.server.stream.created");
 const onServerStreamStartChannel = dc.channel("http2.server.stream.start");
 const onServerStreamErrorChannel = dc.channel("http2.server.stream.error");
 const onServerStreamFinishChannel = dc.channel("http2.server.stream.finish");
 const onServerStreamCloseChannel = dc.channel("http2.server.stream.close");
 
-import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
-import console from "node:console";
+const { debuglog } = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
+const lazyConsole = core.createLazyLoader("node:console");
+const console = lazyConsole().default;
 let debug = debuglog("http2", (fn) => {
   debug = fn;
 });
@@ -369,9 +398,10 @@ function flushDeferredHttp2Writes(session) {
 }
 
 // HTTP2 Constants
-const MAX_ADDITIONAL_SETTINGS = 10;
 
-import * as constants from "ext:deno_node/internal/http2/constants.ts";
+const constants = core.loadExtScript(
+  "ext:deno_node/internal/http2/constants.ts",
+);
 const {
   NGHTTP2_CANCEL,
   NGHTTP2_FLOW_CONTROL_ERROR,
@@ -2214,10 +2244,42 @@ class Http2Stream extends Duplex {
   }
 
   _write(data, encoding, cb) {
+    if (
+      this[kSession]?.[kType] === NGHTTP2_SESSION_CLIENT &&
+      onClientStreamBodyChunkSentChannel.hasSubscribers
+    ) {
+      onClientStreamBodyChunkSentChannel.publish({
+        stream: this,
+        writev: false,
+        data,
+        encoding,
+      });
+    }
     this[kWriteGeneric](false, data, encoding, cb);
   }
 
   _writev(data, cb) {
+    if (
+      this[kSession]?.[kType] === NGHTTP2_SESSION_CLIENT &&
+      onClientStreamBodyChunkSentChannel.hasSubscribers
+    ) {
+      // `data` is the chunks array assembled by Writable.clearBuffer. When
+      // every queued write was a Buffer, the writable internals flag
+      // `chunks.allBuffers = true` and the bodyChunkSent channel reports
+      // the array of raw Buffers (matching Node's
+      // test-diagnostics-channel-http2-client-stream-body-multiple-buffers
+      // shape). For mixed encodings the {chunk, encoding} entries flow
+      // through verbatim.
+      const chunkData = data.allBuffers
+        ? ArrayPrototypeMap(data, (c) => c.chunk)
+        : data;
+      onClientStreamBodyChunkSentChannel.publish({
+        stream: this,
+        writev: true,
+        data: chunkData,
+        encoding: "",
+      });
+    }
     this[kWriteGeneric](true, data, "", cb);
   }
 
@@ -2269,6 +2331,19 @@ class Http2Stream extends Duplex {
       return;
     }
     debugStreamObj(this, "shutting down writable on _final");
+    if (
+      this[kSession]?.[kType] === NGHTTP2_SESSION_CLIENT &&
+      onClientStreamBodySentChannel.hasSubscribers
+    ) {
+      // bodySent fires once per ClientHttp2Stream when the writable side has
+      // received its final chunk (or end() with no chunks). _final is the
+      // Writable.prototype hook that runs after the last _write/_writev, so
+      // this is the right spot to report the body as fully queued. Empty-body
+      // requests still publish: tests/parallel/test-diagnostics-channel-
+      // http2-client-stream-body-no-chunks asserts bodySent fires without any
+      // preceding bodyChunkSent.
+      onClientStreamBodySentChannel.publish({ stream: this });
+    }
     ReflectApply(shutdownWritable, this, [cb]);
   }
 
@@ -4743,6 +4818,7 @@ function initializeTLSOptions(options, servername) {
       );
     }
     options.ALPNProtocols = [selected];
+    delete options.ALPNCallback;
   } else {
     options.ALPNProtocols = ["h2"];
     if (options.allowHTTP1 === true) {
@@ -5152,7 +5228,8 @@ function performServerHandshake(socket, options = {}) {
   return new ServerHttp2Session(options, socket, undefined);
 }
 
-export {
+return {
+  addAbortListener,
   ClientHttp2Session,
   connect,
   constants,
@@ -5169,17 +5246,4 @@ export {
   sensitiveHeaders,
   ServerHttp2Session,
 };
-
-export default {
-  constants,
-  connect,
-  createServer,
-  createSecureServer,
-  getDefaultSettings,
-  getPackedSettings,
-  getUnpackedSettings,
-  Http2ServerRequest,
-  Http2ServerResponse,
-  performServerHandshake,
-  sensitiveHeaders,
-};
+})();

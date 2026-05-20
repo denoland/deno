@@ -15,7 +15,3 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
-
-[build-dependencies]
-serde.workspace = true
-serde_json.workspace = true

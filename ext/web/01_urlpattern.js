@@ -7,10 +7,8 @@
 /// <reference path="./internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_url.d.ts" />
 
-// deno-fmt-ignore-file
-
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   op_urlpattern_parse,
   op_urlpattern_process_match_input,
@@ -488,4 +486,4 @@ webidl.converters.URLPatternOptions = webidl
   ]);
 
 return { URLPattern, urlPatternSettings };
-})()
+})();

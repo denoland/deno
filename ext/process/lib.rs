@@ -532,6 +532,7 @@ fn create_command(
   state: &mut OpState,
   mut args: SpawnArgs,
   api_name: &str,
+  allow_cwd_inherit: bool,
 ) -> Result<CreateCommand, ProcessError> {
   let maybe_npm_process_state = if args.needs_npm_process_state {
     let provider = state.borrow::<NpmProcessStateProviderRc>();
@@ -553,6 +554,7 @@ fn create_command(
     args.clear_env,
     state,
     api_name,
+    allow_cwd_inherit,
   )?;
   let mut command = Command::new(cmd);
 
@@ -576,7 +578,9 @@ fn create_command(
     command.args(args.args);
   }
 
-  command.current_dir(run_env.cwd);
+  if run_env.set_cwd_on_command {
+    command.current_dir(&run_env.cwd);
+  }
   command.env_clear();
   command.envs(run_env.envs.into_iter().map(|(k, v)| (k.into_inner(), v)));
 
@@ -1059,14 +1063,14 @@ fn compute_run_cmd_and_check_permissions(
   arg_clear_env: bool,
   state: &mut OpState,
   api_name: &str,
+  allow_cwd_inherit: bool,
 ) -> Result<(PathBuf, RunEnv), ProcessError> {
   let run_env =
-    compute_run_env(arg_cwd, arg_envs, arg_clear_env).map_err(|e| {
-      ProcessError::SpawnFailed {
+    compute_run_env(arg_cwd, arg_envs, arg_clear_env, allow_cwd_inherit)
+      .map_err(|e| ProcessError::SpawnFailed {
         command: arg_cmd.to_string(),
         error: Box::new(e),
-      }
-    })?;
+      })?;
   let cmd =
     resolve_cmd(arg_cmd, &run_env).map_err(|e| ProcessError::SpawnFailed {
       command: arg_cmd.to_string(),
@@ -1138,7 +1142,15 @@ impl std::cmp::PartialEq for EnvVarKey {
 
 struct RunEnv {
   envs: HashMap<EnvVarKey, OsString>,
+  /// Best-effort cwd used for resolving relative cmd paths and PATH lookups.
+  /// When the cwd cannot be determined and the caller permits inheritance
+  /// (see `set_cwd_on_command`), this is set to `"."` as a placeholder.
   cwd: PathBuf,
+  /// When `false`, the spawned `Command` should not have its cwd set
+  /// explicitly so that the child inherits the parent's (possibly unlinked)
+  /// cwd. This matches Node.js semantics for `child_process.spawn` and is
+  /// only enabled for Node-compat code paths.
+  set_cwd_on_command: bool,
 }
 
 /// Computes the current environment, which will then be used to inform
@@ -1146,20 +1158,41 @@ struct RunEnv {
 /// ahead of time so that the environment used to verify permissions is
 /// the same environment used to spawn the sub command. This protects against
 /// someone doing timing attacks by changing the environment on a worker.
+///
+/// `allow_cwd_inherit` controls whether spawning is allowed to proceed when
+/// no explicit cwd was passed and `current_dir()` fails (e.g. the parent's
+/// cwd has been unlinked). Only Node-compat ops opt into this; Deno's own
+/// `Deno.run` / `Deno.Command` keep the existing strict behavior.
 fn compute_run_env(
   arg_cwd: Option<&str>,
   arg_envs: &[(String, String)],
   arg_clear_env: bool,
+  allow_cwd_inherit: bool,
 ) -> Result<RunEnv, ProcessError> {
   #[allow(
     clippy::disallowed_methods,
     reason = "ok for now because launching a sub process requires the real fs"
   )]
-  let cwd =
-    std::env::current_dir().map_err(ProcessError::FailedResolvingCwd)?;
-  let cwd = arg_cwd
-    .map(|cwd_arg| resolve_path(cwd_arg, &cwd))
-    .unwrap_or(cwd);
+  let current_dir = std::env::current_dir();
+  let (cwd, set_cwd_on_command) = match arg_cwd {
+    Some(cwd_arg) => {
+      let arg_path = Path::new(cwd_arg);
+      if arg_path.is_absolute() {
+        (
+          deno_path_util::normalize_path(Cow::Borrowed(arg_path)).into_owned(),
+          true,
+        )
+      } else {
+        let base = current_dir.map_err(ProcessError::FailedResolvingCwd)?;
+        (resolve_path(cwd_arg, &base), true)
+      }
+    }
+    None => match current_dir {
+      Ok(c) => (c, true),
+      Err(_) if allow_cwd_inherit => (PathBuf::from("."), false),
+      Err(e) => return Err(ProcessError::FailedResolvingCwd(e)),
+    },
+  };
   let envs = if arg_clear_env {
     arg_envs
       .iter()
@@ -1174,7 +1207,11 @@ fn compute_run_env(
     }
     envs
   };
-  Ok(RunEnv { envs, cwd })
+  Ok(RunEnv {
+    envs,
+    cwd,
+    set_cwd_on_command,
+  })
 }
 
 fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, ProcessError> {
@@ -1182,9 +1219,24 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, ProcessError> {
   #[cfg(windows)]
   let is_path = is_path || cmd.contains('\\') || Path::new(&cmd).is_absolute();
   if is_path {
-    Ok(resolve_path(cmd, &env.cwd))
+    let cmd_path = Path::new(cmd);
+    if cmd_path.is_absolute() {
+      Ok(deno_path_util::normalize_path(Cow::Borrowed(cmd_path)).into_owned())
+    } else if !env.set_cwd_on_command {
+      // Relative cmd path can't be resolved without a known cwd.
+      Err(ProcessError::FailedResolvingCwd(std::io::Error::from(
+        std::io::ErrorKind::NotFound,
+      )))
+    } else {
+      Ok(resolve_path(cmd, &env.cwd))
+    }
   } else {
     let path = env.envs.get(&EnvVarKey::new(OsString::from("PATH")));
+    // When the cwd is unknown (`set_cwd_on_command == false`) `env.cwd` is
+    // a placeholder `"."`. PATH-resolvable names don't need a real cwd; for
+    // unqualified names that fall back to a cwd-relative search this is a
+    // best-effort lookup that will simply miss when the parent's cwd has
+    // been unlinked.
     match deno_permissions::which::which_in(
       sys_traits::impls::RealSys,
       cmd,
@@ -1291,7 +1343,7 @@ fn op_spawn_child(
 ) -> Result<Child, ProcessError> {
   let detached = args.detached;
   let (command, pipe_rid, extra_pipe_fds, handles_to_close) =
-    create_command(state, args, &api_name)?;
+    create_command(state, args, &api_name, /* allow_cwd_inherit */ false)?;
   let child = spawn_child(state, command, pipe_rid, extra_pipe_fds, detached);
   for handle in handles_to_close {
     deno_io::close_raw_handle(handle);
@@ -1308,8 +1360,10 @@ fn op_node_spawn_child(
   #[string] api_name: String,
 ) -> Result<NodeChild, ProcessError> {
   let detached = args.detached;
+  // `child_process.spawn` in Node tolerates the parent's cwd being unlinked
+  // by inheriting it, so allow cwd inheritance for Node-compat spawns.
   let (command, pipe_rid, extra_pipe_fds, handles_to_close) =
-    create_command(state, args, &api_name)?;
+    create_command(state, args, &api_name, /* allow_cwd_inherit */ true)?;
   let child =
     spawn_child_node(state, command, pipe_rid, extra_pipe_fds, detached);
   for handle in handles_to_close {
@@ -1356,8 +1410,12 @@ fn op_spawn_sync(
   let timeout = args.timeout;
   #[cfg(unix)]
   let kill_signal = args.kill_signal.clone();
-  let (mut command, _, _, _) =
-    create_command(state, args, "Deno.Command().outputSync()")?;
+  let (mut command, _, _, _) = create_command(
+    state,
+    args,
+    "Deno.Command().outputSync()",
+    /* allow_cwd_inherit */ false,
+  )?;
 
   // When timeout is specified on Unix, create a new process group so we can
   // kill the entire tree (shell + children) on timeout, not just the shell.
@@ -1656,6 +1714,7 @@ mod deprecated {
       /* clear env */ false,
       state,
       "Deno.run()",
+      /* allow_cwd_inherit */ false,
     )?;
 
     #[cfg(windows)]
@@ -1665,7 +1724,9 @@ mod deprecated {
     for arg in args.iter().skip(1) {
       c.arg(arg);
     }
-    c.current_dir(run_env.cwd);
+    if run_env.set_cwd_on_command {
+      c.current_dir(&run_env.cwd);
+    }
 
     c.env_clear();
     for (key, value) in run_env.envs {

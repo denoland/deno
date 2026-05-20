@@ -3174,6 +3174,9 @@ pub struct TranslatedArgs {
   pub node_options: Vec<String>,
   /// Whether to set DENO_TLS_CA_STORE=system
   pub use_system_ca: bool,
+  /// Comma-separated trace event categories from --trace-event-categories,
+  /// propagated to the spawned process via DENO_NODE_TRACE_EVENT_CATEGORIES.
+  pub trace_event_categories: String,
 }
 
 /// Wraps eval code for Node.js compatibility.
@@ -3192,9 +3195,9 @@ pub fn wrap_eval_code(source_code: &str) -> String {
     r#"(
     globalThis.require = process.getBuiltinModule("module").createRequire(import.meta.url),
     process.getBuiltinModule("module").builtinModules
-      .filter((m) => !/\/|crypto|process/.test(m))
+      .filter((m) => !/\/|crypto|process|_tls_common/.test(m))
       .forEach((m) => {{ globalThis[m] = process.getBuiltinModule(m); }}),
-    process.getBuiltinModule("vm").runInThisContext({})
+    process.getBuiltinModule("vm").runInThisContext({}, {{ filename: "[eval]" }})
   )"#,
     json_escaped
   )
@@ -3256,6 +3259,14 @@ pub fn translate_to_deno_args(
 
   let opts = &parsed_args.options;
   let env_opts = &opts.per_isolate.per_env;
+
+  add_tls_node_options(node_options, env_opts);
+
+  // Forward --trace-event-categories regardless of subcommand path. Set here
+  // so it survives early-returning translations (`-e`, `--test`, REPL, etc.).
+  if !opts.trace_event_categories.is_empty() {
+    result.trace_event_categories = opts.trace_event_categories.clone();
+  }
 
   // Check for system CA usage
   if opts.use_system_ca || opts.use_openssl_ca {
@@ -3459,10 +3470,47 @@ pub fn translate_to_deno_args(
     node_options.push("--pending-deprecation".to_string());
   }
 
+  // Forward --require/--import modules to Deno's run subcommand so that
+  // child_process.spawnSync(process.execPath, ['-r', wrapper, main])
+  // (the pattern Node.js compat tests use) actually preloads the wrapper
+  // before evaluating the main script.
+  for module in &env_opts.preload_cjs_modules {
+    deno_args.push("--require".to_string());
+    deno_args.push(module.clone());
+  }
+  for module in &env_opts.preload_esm_modules {
+    deno_args.push("--import".to_string());
+    deno_args.push(module.clone());
+  }
+
   // Add the script and remaining args
   deno_args.extend(parsed_args.remaining_args);
 
   result
+}
+
+fn add_tls_node_options(
+  node_options: &mut Vec<String>,
+  env_opts: &EnvironmentOptions,
+) {
+  if env_opts.tls_min_v1_0 {
+    node_options.push("--tls-min-v1.0".to_string());
+  }
+  if env_opts.tls_min_v1_1 {
+    node_options.push("--tls-min-v1.1".to_string());
+  }
+  if env_opts.tls_min_v1_2 {
+    node_options.push("--tls-min-v1.2".to_string());
+  }
+  if env_opts.tls_min_v1_3 {
+    node_options.push("--tls-min-v1.3".to_string());
+  }
+  if env_opts.tls_max_v1_2 {
+    node_options.push("--tls-max-v1.2".to_string());
+  }
+  if env_opts.tls_max_v1_3 {
+    node_options.push("--tls-max-v1.3".to_string());
+  }
 }
 
 fn add_common_flags(

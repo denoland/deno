@@ -61,6 +61,8 @@ use util::fs::canonicalize_path;
 
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
+const UNSUPPORTED_DIR_IMPORT: &str =
+  "[ERR_UNSUPPORTED_DIR_IMPORT] Directory import";
 
 use self::util::draw_thread::DrawThread;
 use self::util::env::resolve_cwd;
@@ -274,6 +276,7 @@ async fn run_subcommand(
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         };
         let mut flags = flags;
         flags.subcommand = DenoSubcommand::Task(task_flags.clone());
@@ -381,6 +384,7 @@ async fn run_subcommand(
                   recursive: false,
                   filter: None,
                   eval: false,
+                  no_prefix: false,
                 };
                 new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
                 let result = tools::task::execute_script(
@@ -489,6 +493,9 @@ async fn run_subcommand(
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
       tools::publish::publish(Arc::new(flags), publish_flags).await
     }),
+    DenoSubcommand::Pack(pack_flags) => spawn_subcommand(async {
+      tools::pack::pack(flags.into(), pack_flags).await
+    }),
     DenoSubcommand::Help(help_flags) => spawn_subcommand(async move {
       use std::io::Write;
 
@@ -528,6 +535,7 @@ async fn run_subcommand(
 fn should_fallback_on_run_error(script_err: &str) -> bool {
   if script_err.starts_with(MODULE_NOT_FOUND)
     || script_err.starts_with(UNSUPPORTED_SCHEME)
+    || script_err.starts_with(UNSUPPORTED_DIR_IMPORT)
   {
     return true;
   }
@@ -956,6 +964,8 @@ fn wait_for_start(
       crate::sys::CliSys,
     >(deno_runtime::UnconfiguredRuntimeOptions {
       startup_snapshot,
+      residual_lazy_js_sources: deno_snapshots::RESIDUAL_LAZY_JS,
+      residual_lazy_esm_sources: deno_snapshots::RESIDUAL_LAZY_ESM,
       create_params: deno_lib::worker::create_isolate_create_params(
         &crate::sys::CliSys::default(),
       ),

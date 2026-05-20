@@ -38,5 +38,4 @@ nix = { workspace = true, features = ["fs", "user"] }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winbase"] }
-windows-sys.workspace = true
 junction.workspace = true

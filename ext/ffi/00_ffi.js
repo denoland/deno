@@ -1,8 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   isArrayBuffer,
   isDataView,
@@ -579,4 +578,4 @@ return {
   UnsafePointer,
   UnsafePointerView,
 };
-})()
+})();

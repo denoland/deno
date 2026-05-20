@@ -1,0 +1,6 @@
+PASS: findSourceMap returns undefined for non-mapped files
+PASS: findSourceMap with external source map
+PASS: findSourceMap with inline base64 source map
+PASS: findSourceMap caches results
+
+All findSourceMap tests passed!
