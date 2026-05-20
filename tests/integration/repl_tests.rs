@@ -1059,6 +1059,23 @@ fn env_file() {
     });
 }
 
+// Regression test for https://github.com/denoland/deno/issues/30244
+// A primitive string near `v8::String::kMaxLength` used to crash V8 inspector
+// when the REPL passed it back as a CallArgument value.
+#[test(flaky)]
+fn pty_huge_primitive_string_regression_test() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl"],
+    Some(vec![r#""a".repeat(2**29 - 24)"#]),
+    None,
+    false,
+  );
+
+  assert_contains!(out, "more characters");
+  assert!(!err.contains("Fatal error in v8::ToLocalChecked"));
+}
+
 // Regression test for https://github.com/denoland/deno/issues/20528
 #[test(flaky)]
 fn pty_promise_was_collected_regression_test() {
