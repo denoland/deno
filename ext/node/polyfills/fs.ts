@@ -259,7 +259,6 @@ const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 
 const {
   kIoMaxLength,
-  kReadFileBufferLength,
   kReadFileUnknownBufferLength,
 } = fsUtilConstants;
 
@@ -699,46 +698,52 @@ function readFileConcatBuffers(buffers: Uint8Array[]): Uint8Array {
 
 async function readFileFromFd(fd: number, options?: FileOptions) {
   const signal = options?.signal;
-  const encoding = options?.encoding;
   readFileCheckAborted(signal);
 
   const statFields = op_node_fs_fstat_sync(fd);
   readFileCheckAborted(signal);
 
-  let size = 0;
-  let length = 0;
-  if (statFields.isFile) {
-    size = statFields.size;
-    length = encoding ? MathMin(size, kReadFileBufferLength) : size;
-  }
-  if (length === 0) {
-    length = kReadFileUnknownBufferLength;
-  }
+  const isFile = statFields.isFile;
+  const size = isFile ? statFields.size : 0;
 
   if (size > kIoMaxLength) {
     throw new ERR_FS_FILE_TOO_LARGE(size);
   }
 
-  const buffer = new Uint8Array(length);
+  if (isFile && size > 0) {
+    // Known size: read into a single buffer with an advancing offset.
+    // Mirrors Node's readFileHandle which avoids the subarray-aliasing trap
+    // by writing successive reads into different regions of one buffer.
+    const buffer = new Uint8Array(size);
+    let totalRead = 0;
+    while (totalRead < size) {
+      readFileCheckAborted(signal);
+      const slice = TypedArrayPrototypeSubarray(buffer, totalRead);
+      // Use the deferred op so we yield to the event loop between reads,
+      // allowing abort signals scheduled via process.nextTick to fire.
+      const nread = await op_node_fs_read_deferred(fd, slice, -1n);
+      if (nread === 0) break;
+      totalRead += nread;
+    }
+    return totalRead === size
+      ? buffer
+      : TypedArrayPrototypeSubarray(buffer, 0, totalRead);
+  }
+
+  // Unknown size (pipes, sockets, /dev/stdin): allocate a fresh buffer per
+  // iteration so pushed subarrays don't alias a reused read buffer.
   const buffers: Uint8Array[] = [];
   let totalRead = 0;
-
   while (true) {
     readFileCheckAborted(signal);
-    // Use the deferred op so we yield to the event loop between reads,
-    // allowing abort signals scheduled via process.nextTick to fire.
-    const nread = await op_node_fs_read_deferred(fd, buffer, -1n);
-    if (nread === 0) {
-      break;
-    }
+    const chunk = new Uint8Array(kReadFileUnknownBufferLength);
+    const nread = await op_node_fs_read_deferred(fd, chunk, -1n);
+    if (nread === 0) break;
     totalRead += nread;
     if (totalRead > kIoMaxLength) {
       throw new ERR_FS_FILE_TOO_LARGE(totalRead);
     }
-    ArrayPrototypePush(
-      buffers,
-      TypedArrayPrototypeSubarray(buffer, 0, nread),
-    );
+    ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(chunk, 0, nread));
   }
 
   return readFileConcatBuffers(buffers);
