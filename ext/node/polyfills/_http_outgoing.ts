@@ -1272,6 +1272,8 @@ function tryDirectEnd(
   msg._contentLength = len;
   msg._implicitHeader();
 
+  // The normal write fallback is _header-aware if header generation caused a
+  // guard to trip.
   if (!msg._hasBody || msg.chunkedEncoding || msg._header === null) {
     return false;
   }
@@ -1327,6 +1329,8 @@ function writeDirectString(
   finish: () => void,
 ) {
   const handle = socket._handle;
+  // This terminal response write bypasses stream_base_commons completion
+  // bookkeeping; the caller finishes the ServerResponse directly.
   socket._unrefTimer?.();
 
   const req = {
