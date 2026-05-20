@@ -115,6 +115,28 @@ pub struct TestRunProgressParams {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct TestCoverageLine {
+  /// Zero-based line number matching LSP positions.
+  pub line: u32,
+  pub count: u32,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TestCoverageFile {
+  pub text_document: lsp::TextDocumentIdentifier,
+  pub lines: Vec<TestCoverageLine>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TestCoverageNotificationParams {
+  pub id: u32,
+  pub files: Vec<TestCoverageFile>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct TestIdentifier {
   /// The module identifier which contains the test.
   pub text_document: lsp::TextDocumentIdentifier,
@@ -185,4 +207,12 @@ impl lsp::notification::Notification for TestRunProgressNotification {
   type Params = TestRunProgressParams;
 
   const METHOD: &'static str = "deno/testRunProgress";
+}
+
+pub enum TestCoverageNotification {}
+
+impl lsp::notification::Notification for TestCoverageNotification {
+  type Params = TestCoverageNotificationParams;
+
+  const METHOD: &'static str = "deno/testCoverage";
 }
