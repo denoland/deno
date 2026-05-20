@@ -31,6 +31,4 @@ deno_core.workspace = true
 deno_core.features = ["unsafe_use_unprotected_platform"]
 futures.workspace = true
 pretty_assertions.workspace = true
-prettyplease.workspace = true
-testing_macros.workspace = true
 tokio.workspace = true

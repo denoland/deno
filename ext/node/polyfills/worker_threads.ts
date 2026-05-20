@@ -25,13 +25,13 @@ const {
 } = core.ops;
 const {
   deserializeJsMessageData,
+  markAsUncloneable: webMarkAsUncloneable,
   MessageChannel,
   MessagePort,
   MessagePortIdSymbol,
   MessagePortPrototype,
   MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
-  nodeWorkerThreadCloseCbInvoked,
   refMessagePort,
   serializeJsMessageData,
   unrefParentPort,
@@ -39,6 +39,8 @@ const {
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const {
+  ERR_CLOSED_MESSAGE_PORT,
+  ERR_CONSTRUCT_CALL_REQUIRED,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_URL_SCHEME,
   ERR_OUT_OF_RANGE,
@@ -76,8 +78,14 @@ const process = lazyProcess().default;
 
 const {
   ArrayIsArray,
+  ArrayPrototypeIndexOf,
+  ArrayPrototypePush,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSplice,
   Error,
   EvalError,
+  FunctionPrototypeApply,
+  FunctionPrototypeBind,
   FunctionPrototypeCall,
   NumberIsFinite,
   NumberIsNaN,
@@ -91,6 +99,9 @@ const {
   PromisePrototypeThen,
   PromiseReject,
   PromiseResolve,
+  queueMicrotask,
+  RangeError,
+  ReferenceError,
   SafeMap,
   SafeRegExp,
   SafeSet,
@@ -100,17 +111,14 @@ const {
   StringPrototypeSplit,
   StringPrototypeStartsWith,
   StringPrototypeTrim,
-  SyntaxError,
   Symbol,
   SymbolAsyncDispose,
   SymbolFor,
   SymbolIterator,
+  SyntaxError,
   TypeError,
   URIError,
-  RangeError,
-  ReferenceError,
   Float64Array,
-  FunctionPrototypeBind,
 } = primordials;
 
 // Map error names to native constructors so that worker error events
@@ -1280,6 +1288,36 @@ internals.__initWorkerThreads = (
     }
   }
 
+  // In Node, `globalThis.MessageChannel` / `globalThis.MessagePort` ARE
+  // the `worker_threads` versions (so port instances have
+  // `.on`/`.off`/`.emit`/etc., and `worker_threads.MessagePort` is
+  // identity-equal to the global `MessagePort`). Tests in the
+  // node_compat suite import individual helpers from `worker_threads`
+  // and then use `MessageChannel` from the global scope, expecting
+  // Node-style ports. Override the global symbols once at bootstrap so
+  // this pattern works. `instanceof MessageChannel` / `instanceof
+  // MessagePort` still work either way because both Node wrappers
+  // route through the web prototype chain.
+  try {
+    ObjectDefineProperty(globalThis, "MessageChannel", {
+      __proto__: null,
+      value: NodeMessageChannel,
+      writable: true,
+      enumerable: false,
+      configurable: true,
+    });
+    ObjectDefineProperty(globalThis, "MessagePort", {
+      __proto__: null,
+      value: NodeMessagePort,
+      writable: true,
+      enumerable: false,
+      configurable: true,
+    });
+  } catch {
+    // globalThis may be a sandbox without writable property descriptors;
+    // ignore.
+  }
+
   // Register this thread in the cross-thread registry so it can receive
   // `postMessageToThread` calls.
   setupCrossThreadMessaging();
@@ -1582,9 +1620,42 @@ function postMessageToThread(
 }
 
 function markAsUntransferable(obj: object) {
+  // Primitives are silently ignored to match Node.
+  if (obj === null) return;
+  const t = typeof obj;
+  if (t !== "object" && t !== "function") return;
+
   if (core.isArrayBuffer(obj)) {
+    // Sets V8's detach key so postMessage(..., [ab]) throws DataCloneError
+    // without detaching the buffer.
     op_mark_as_untransferable(obj as ArrayBuffer);
   }
+
+  // For non-ArrayBuffer transferables (e.g. MessagePort) Node uses a
+  // symbol marker that postMessage checks before adding to the transfer
+  // list; we also set it on ArrayBuffer so `isMarkedAsUntransferable`
+  // returns true without needing to poke at V8's detach key from JS.
+  ObjectDefineProperty(obj, untransferableSymbol, {
+    __proto__: null,
+    value: true,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  });
+}
+
+function isMarkedAsUntransferable(obj: unknown): boolean {
+  if (obj === null) return false;
+  const t = typeof obj;
+  if (t !== "object" && t !== "function") return false;
+  // Check own property -- Node's spec is explicit that the mark is *not*
+  // inherited through the prototype chain.
+  return ObjectHasOwn(obj as object, untransferableSymbol) &&
+    (obj as Record<symbol, unknown>)[untransferableSymbol] === true;
+}
+
+function markAsUncloneable(obj: unknown) {
+  return webMarkAsUncloneable(obj);
 }
 const lazyVm = () => core.loadExtScript("ext:deno_node/vm.js");
 
@@ -1604,21 +1675,19 @@ function moveMessagePortToContext(
   if (!(ObjectPrototypeIsPrototypeOf(MessagePortPrototype, port))) {
     throw new ERR_INVALID_ARG_TYPE("port", "MessagePort", port);
   }
+  // Node checks closed-port state before vm.Context to give a clearer
+  // error when the port is detached -- order matters for tests in the
+  // node_compat suite that pass an empty {} as the context.
+  const portId = port[MessagePortIdSymbol];
+  if (portId === null) {
+    throw new ERR_CLOSED_MESSAGE_PORT();
+  }
   const vm = lazyVm();
   if (!vm.isContext(context)) {
     throw new ERR_INVALID_ARG_TYPE("context", "vm.Context", context);
   }
-
   // Take ownership of the port: clear the id on the original so it can no
   // longer be used from this context.
-  const portId = port[MessagePortIdSymbol];
-  if (portId === null) {
-    throw new ERR_INVALID_ARG_TYPE(
-      "port",
-      "an entangled MessagePort",
-      port,
-    );
-  }
   port[MessagePortIdSymbol] = null;
 
   // Allocate the wrapper inside the target context so its prototype chain
@@ -1721,38 +1790,73 @@ function receiveMessageOnPort(port: MessagePort): object | undefined {
   return { message };
 }
 
-class NodeMessageChannel {
-  port1: MessagePort;
-  port2: MessagePort;
+// Implemented as a function (not a class) so calling without `new` throws
+// our Node-style `ERR_CONSTRUCT_CALL_REQUIRED` instead of V8's default
+// "Class constructor X cannot be invoked without 'new'" -- the node_compat
+// suite asserts the specific code/constructor for both forms.
+// deno-lint-ignore no-explicit-any
+function NodeMessageChannel(this: any) {
+  if (new.target === undefined) {
+    throw new ERR_CONSTRUCT_CALL_REQUIRED("MessageChannel");
+  }
+  {
+    const channel = new MessageChannel();
+    const port1 = webMessagePortToNodeMessagePort(channel.port1);
+    const port2 = webMessagePortToNodeMessagePort(channel.port2);
+    // The web MessageChannel.prototype defines port1/port2 as getter-only
+    // accessors, so a plain `this.port1 = ...` triggers a setter trap. Use
+    // defineProperty to shadow the prototype accessors with own data
+    // properties that hold our Node-style ports.
+    ObjectDefineProperty(this, "port1", {
+      __proto__: null,
+      value: port1,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
+    ObjectDefineProperty(this, "port2", {
+      __proto__: null,
+      value: port2,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
 
-  constructor() {
-    const { port1, port2 } = new MessageChannel();
-    this.port1 = webMessagePortToNodeMessagePort(port1);
-    this.port2 = webMessagePortToNodeMessagePort(port2);
-
-    // When one port is closed, the paired port should also receive
-    // a 'close' event (matching Node.js behavior).
+    // When one port is closed, force the paired port to start its recv
+    // loop so it drains any in-flight messages and observes the channel
+    // tear-down via its `end-of-stream` -> closeCb path. This also makes
+    // sure the paired port's close event fires even if no message
+    // listener was attached.
     const origClose1 = FunctionPrototypeBind(port1.close, port1);
     const origClose2 = FunctionPrototypeBind(port2.close, port2);
 
-    port1.close = () => {
-      origClose1();
-      if (!port2[nodeWorkerThreadCloseCbInvoked]) {
-        port2[nodeWorkerThreadCloseCbInvoked] = true;
-        port2.dispatchEvent(new Event("close"));
+    port1.close = (cb) => {
+      origClose1(cb);
+      try {
+        port2.start();
+      } catch {
+        // start may throw if the port is already detached -- safe to
+        // ignore.
       }
     };
-    port2.close = () => {
-      origClose2();
-      if (!port1[nodeWorkerThreadCloseCbInvoked]) {
-        port1[nodeWorkerThreadCloseCbInvoked] = true;
-        port1.dispatchEvent(new Event("close"));
+    port2.close = (cb) => {
+      origClose2(cb);
+      try {
+        port1.start();
+      } catch {
+        // see above
       }
     };
   }
 }
 
 const nodePortListenersSymbol = Symbol("nodePortListeners");
+// Reuse the web MessageChannel's prototype so `instanceof MessageChannel`
+// still works regardless of whether the user got the global MessageChannel
+// (NodeMessageChannel) or the web one. Port1/port2 own properties on each
+// instance shadow the prototype's getters.
+// deno-lint-ignore no-explicit-any
+(NodeMessageChannel as any).prototype = MessageChannel.prototype;
 function webMessagePortToNodeMessagePort(port: MessagePort) {
   // Patch idempotently: a port can be reached more than once through
   // patchMessagePortIfFound (e.g. when included in a nested message
@@ -1762,14 +1866,35 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
   // Track listeners per port and per event name so the same handler
   // reference passed to `on` twice registers only once (Node parity),
   // and `off` can locate the wrapper that was actually attached.
-  const portListeners = {
-    // deno-lint-ignore no-explicit-any
-    message: new SafeMap<(...args: any[]) => void, (ev: any) => any>(),
-    // deno-lint-ignore no-explicit-any
-    messageerror: new SafeMap<(...args: any[]) => void, (ev: any) => any>(),
-    // deno-lint-ignore no-explicit-any
-    close: new SafeMap<(...args: any[]) => void, (ev: any) => any>(),
+  //
+  // Maps are created on demand: Node's MessagePort, like EventEmitter,
+  // accepts arbitrary event names so `port.on('foo', fn) + port.emit('foo')`
+  // works. The Web-style events (`message`, `messageerror`, `close`) are
+  // routed through addEventListener; everything else falls through to a
+  // plain EventEmitter-like dispatch that runs the registered functions
+  // with whatever args `emit` was given.
+  // deno-lint-ignore no-explicit-any
+  type ListenerMap = SafeMap<(...args: any[]) => void, (ev: any) => any>;
+  const portListeners: Record<string | symbol, ListenerMap> = ObjectCreate(
+    null,
+  );
+  const getListenerMap = (name: string | symbol): ListenerMap => {
+    let map = portListeners[name as string];
+    if (map === undefined) {
+      map = new SafeMap();
+      portListeners[name as string] = map;
+    }
+    return map;
   };
+  // Listener bags for arbitrary event names (anything other than the three
+  // Web event names) -- they don't go through EventTarget's dispatch path.
+  const customEventListeners = new SafeMap<
+    string | symbol,
+    // deno-lint-ignore no-explicit-any
+    Array<(...a: any[]) => void>
+  >();
+  const isWebEvent = (name: string | symbol): boolean =>
+    name === "message" || name === "messageerror" || name === "close";
   ObjectDefineProperty(port, nodePortListenersSymbol, {
     __proto__: null,
     value: portListeners,
@@ -1778,12 +1903,20 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
     configurable: false,
   });
   port.on = port.addListener = function (this: MessagePort, name, listener) {
-    const map = portListeners[name as "message" | "messageerror" | "close"] as
-      | typeof portListeners.message
-      | undefined;
-    if (map === undefined) {
-      throw new Error(`Unknown event: "${name}"`);
+    if (!isWebEvent(name)) {
+      // EventEmitter-like dispatch path for arbitrary event names.
+      // `port.on('foo', fn) + port.emit('foo', 'bar')` works like Node's
+      // MessagePort, which mixes in EventEmitter semantics on top of the
+      // Web EventTarget interface.
+      let arr = customEventListeners.get(name);
+      if (arr === undefined) {
+        arr = [];
+        customEventListeners.set(name, arr);
+      }
+      ArrayPrototypePush(arr, listener);
+      return this;
     }
+    const map = getListenerMap(name);
     if (map.has(listener)) {
       // Same listener already registered for this event on this port --
       // matches Node.js MessagePort, where repeated `.on('message', fn)`
@@ -1799,13 +1932,16 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
     map.set(listener, _listener);
     port.addEventListener(name, _listener);
     if (name === "message") {
-      // Mirror the auto-start behavior of `port.onmessage = fn` so that
-      // Node code that does `port.on('message', ...)` without an explicit
-      // `port.start()` still receives messages. Deferred via a microtask
-      // so `receiveMessageOnPort` (sync) gets a chance to drain the
-      // queue first -- this is the same pattern the web MessagePort
-      // applies in its `message` event handler init, which `piscina`
-      // relies on.
+      // Mirror the auto-start behavior of `port.onmessage = fn` so Node
+      // code that does `port.on('message', ...)` without an explicit
+      // `port.start()` still receives messages. Deferred via a
+      // microtask so `receiveMessageOnPort` (sync) gets a chance to
+      // drain the queue first -- this is the same pattern the web
+      // MessagePort applies in its `message` event handler init, which
+      // `npm:piscina` relies on. Messages buffered before the listener
+      // was attached are still picked up by the next iteration of the
+      // recv loop (or by `MessagePort.close()`'s drain when the paired
+      // port closes in the same turn).
       PromisePrototypeThen(PromiseResolve(undefined), () => port.start());
     }
     return this;
@@ -1815,12 +1951,15 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
     name,
     listener,
   ) {
-    const map = portListeners[name as "message" | "messageerror" | "close"] as
-      | typeof portListeners.message
-      | undefined;
-    if (map === undefined) {
-      throw new Error(`Unknown event: "${name}"`);
+    if (!isWebEvent(name)) {
+      const arr = customEventListeners.get(name);
+      if (arr !== undefined) {
+        const idx = ArrayPrototypeIndexOf(arr, listener);
+        if (idx !== -1) ArrayPrototypeSplice(arr, idx, 1);
+      }
+      return this;
     }
+    const map = getListenerMap(name);
     const wrapper = map.get(listener);
     if (wrapper !== undefined) {
       port.removeEventListener(name, wrapper);
@@ -1828,8 +1967,59 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
     }
     return this;
   };
+  // Node's MessagePort mixes in `emit` from EventEmitter so calling
+  // `port.emit('foo', arg)` invokes listeners registered via `port.on`
+  // *and* dispatches the equivalent Event for addEventListener listeners.
+  // deno-lint-ignore no-explicit-any
+  port.emit = function (this: MessagePort, name, ...args: any[]) {
+    // Dispatch an Event so addEventListener listeners fire too. Use a
+    // minimal Event with `detail` copied from the first arg to match the
+    // common Node pattern of `emit('foo', payload)`.
+    const ev = new Event(String(name));
+    if (args.length > 0) {
+      // deno-lint-ignore no-explicit-any
+      (ev as any).detail = args[0];
+    }
+    port.dispatchEvent(ev);
+    // Fire EventEmitter-style listeners.
+    const arr = customEventListeners.get(name);
+    if (arr !== undefined) {
+      // Iterate over a copy so handlers that remove themselves don't
+      // skip the next listener.
+      const copy = ArrayPrototypeSlice(arr);
+      for (let i = 0; i < copy.length; i++) {
+        try {
+          FunctionPrototypeApply(copy[i], undefined, args);
+        } catch {
+          // EventEmitter semantics swallow handler exceptions when
+          // there's no 'error' listener; we just continue to the next
+          // handler.
+        }
+      }
+    }
+    return arr !== undefined && arr.length > 0;
+  };
   port[nodeWorkerThreadCloseCb] = () => {
-    port.dispatchEvent(new Event("close"));
+    // Dispatch asynchronously so listeners attached via `port.on('close', cb)`
+    // (or via `port.close(cb)` which goes through addEventListener) see the
+    // event after the current synchronous turn. This matches Node's
+    // MessagePort, where close events fire on the next tick.
+    queueMicrotask(() => {
+      port[refMessagePort](false);
+      // Mark the port as detached so `util.inspect(port)` shows
+      // `active: false` after the close event has fired. The underlying
+      // resource may already be closed (recv loop saw end-of-stream);
+      // swallow any "bad resource id" error from a redundant core.close.
+      if (port[MessagePortIdSymbol] !== null) {
+        try {
+          core.close(port[MessagePortIdSymbol]);
+        } catch {
+          // already closed
+        }
+        port[MessagePortIdSymbol] = null;
+      }
+      port.dispatchEvent(new Event("close"));
+    });
   };
   port.unref = () => {
     port[refMessagePort](false);
@@ -1838,11 +2028,89 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
     port[refMessagePort](true);
   };
   const webPostMessage = port.postMessage;
-  port.postMessage = (message, transferList) => {
-    for (let i = 0; i < transferList?.length; i++) {
-      const item = transferList[i];
-      if (item[untransferableSymbol] === true) {
-        throw new DOMException("Value not transferable", "DataCloneError");
+  port.postMessage = function postMessage(message, transferOrOptions) {
+    // Node-style validation + untransferable check on the second argument.
+    // The Web spec normalizes via WebIDL dictionary conversion (different
+    // error wording), so do the validation up-front and pass a normalized
+    // value through. For iterables we materialize into an array so the
+    // untransferable check below doesn't consume the iterator before the
+    // serializer sees it.
+    const normalized = transferOrOptions;
+    if (arguments.length >= 2 && transferOrOptions !== undefined) {
+      if (transferOrOptions === null) {
+        // null is allowed; treated as no transferables.
+      } else if (
+        typeof transferOrOptions !== "object" &&
+        typeof transferOrOptions !== "function"
+      ) {
+        const e = new TypeError(
+          "Optional transferList argument must be an iterable",
+        );
+        // deno-lint-ignore no-explicit-any
+        (e as any).code = "ERR_INVALID_ARG_TYPE";
+        throw e;
+      } else if (transferOrOptions[SymbolIterator] !== undefined) {
+        // Only check untransferable markers when we can do so without
+        // consuming the iterator -- a user-provided iterator can only
+        // be drained once and we have to leave that drain to the
+        // underlying web `postMessage`. Arrays are random-access so
+        // we can inspect them without consuming.
+        if (ArrayIsArray(transferOrOptions)) {
+          for (let i = 0; i < transferOrOptions.length; i++) {
+            const item = transferOrOptions[i];
+            if (
+              item !== null && typeof item === "object" &&
+              item[untransferableSymbol] === true
+            ) {
+              throw new DOMException(
+                "Value not transferable",
+                "DataCloneError",
+              );
+            }
+          }
+        }
+        // For non-array iterables, pass through unchanged so the
+        // serializer below sees the original iterator.
+      } else {
+        // Treat as a StructuredSerializeOptions dict. Only `transfer` is
+        // recognized; if present, validate that it's iterable.
+        const t = transferOrOptions.transfer;
+        if (t !== undefined) {
+          if (
+            t === null ||
+            (typeof t !== "object" && typeof t !== "function") ||
+            t[SymbolIterator] === undefined ||
+            (typeof t[SymbolIterator] === "function" &&
+              typeof t[SymbolIterator]().next !== "function")
+          ) {
+            const e = new TypeError(
+              "Optional options.transfer argument must be an iterable",
+            );
+            // deno-lint-ignore no-explicit-any
+            (e as any).code = "ERR_INVALID_ARG_TYPE";
+            throw e;
+          }
+          // Inspect arrays for untransferable markers. For non-array
+          // iterables we have to leave the drain to the serializer
+          // below -- consuming the iterator here would either lose
+          // values or, for an infinite generator (the
+          // terminate-transfer-list test), short-circuit Node's
+          // expected hang.
+          if (ArrayIsArray(t)) {
+            for (let i = 0; i < t.length; i++) {
+              const item = t[i];
+              if (
+                item !== null && typeof item === "object" &&
+                item[untransferableSymbol] === true
+              ) {
+                throw new DOMException(
+                  "Value not transferable",
+                  "DataCloneError",
+                );
+              }
+            }
+          }
+        }
       }
     }
 
@@ -1850,7 +2118,7 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
       webPostMessage,
       port,
       message,
-      transferList,
+      normalized,
     );
   };
   port.once = (name: string | symbol, listener) => {
@@ -1897,9 +2165,36 @@ class BroadcastChannel extends WebBroadcastChannel {
   }
 }
 
+// Node's `worker_threads.MessagePort` is a function (not a class) that throws
+// `ERR_CONSTRUCT_CALL_INVALID` whether called as `MessagePort()` or
+// `new MessagePort()`. Mirror that here while keeping
+// `port instanceof MessagePort` and `port.constructor === MessagePort` true
+// by routing through the web MessagePort's prototype. Named "MessagePort"
+// so that `port.constructor.name === "MessagePort"` and the default
+// inspect output reads as MessagePort, not the wrapper.
+// deno-lint-ignore no-explicit-any
+const NodeMessagePort: any = {
+  MessagePort: function MessagePort() {
+    const err = new TypeError(
+      "Constructor for class MessagePort cannot be invoked",
+    );
+    // deno-lint-ignore no-explicit-any
+    (err as any).code = "ERR_CONSTRUCT_CALL_INVALID";
+    throw err;
+  },
+}.MessagePort;
+NodeMessagePort.prototype = MessagePort.prototype;
+ObjectDefineProperty(MessagePort.prototype, "constructor", {
+  __proto__: null,
+  value: NodeMessagePort,
+  writable: true,
+  enumerable: false,
+  configurable: true,
+});
+
 ObjectAssign(exportsObj, {
   BroadcastChannel,
-  MessagePort,
+  MessagePort: NodeMessagePort,
   MessageChannel: NodeMessageChannel,
   Worker: NodeWorker,
   // Initial placeholders for fields that `__initWorkerThreads` overwrites
@@ -1912,7 +2207,9 @@ ObjectAssign(exportsObj, {
   isMainThread: true,
   resourceLimits: undefined,
   threadName: "",
+  markAsUncloneable,
   markAsUntransferable,
+  isMarkedAsUntransferable,
   moveMessagePortToContext,
   postMessageToThread,
   receiveMessageOnPort,
