@@ -513,6 +513,60 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
   }
 }
 
+/// Re-attach fast-call overloads to the top-level ops in `Deno.core.ops` after
+/// snapshot deserialization. Fast-call setup creates V8
+/// `Managed<CFunctionWithSignature>` resources, which the V8 14.9 snapshot
+/// serializer rejects (see `op_ctx_template`), so the snapshot bakes the slow
+/// version of each op function and this pass replaces them with fresh
+/// fast-call equivalents at runtime startup.
+///
+/// Only top-level ops in `Deno.core.ops` are upgraded here. Methods on cppgc
+/// class prototypes are not yet re-attached and stay on the slow path; that's
+/// a follow-up.
+pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  context: v8::Local<'s, v8::Context>,
+  op_ctxs: &[OpCtx],
+  methods_ctx_offset: usize,
+) {
+  let global = context.global(scope);
+  let deno_obj = get(scope, global, DENO, "Deno");
+  let deno_core_obj = get(scope, deno_obj, CORE, "Deno.core");
+  let deno_core_ops_obj: v8::Local<v8::Object> =
+    get(scope, deno_core_obj, OPS, "Deno.core.ops");
+  let set_up_async_stub_fn: v8::Local<v8::Function> = get(
+    scope,
+    deno_core_obj,
+    SET_UP_ASYNC_STUB,
+    "Deno.core.setUpAsyncStub",
+  );
+  let undefined = v8::undefined(scope);
+
+  for op_ctx in &op_ctxs[methods_ctx_offset..] {
+    let has_fast_fn = if op_ctx.metrics_enabled() {
+      op_ctx.decl.fast_fn_with_metrics.is_some()
+    } else {
+      op_ctx.decl.fast_fn.is_some()
+    };
+    if !has_fast_fn {
+      continue;
+    }
+
+    let mut op_fn =
+      op_ctx_function(scope, op_ctx, v8::ConstructorBehavior::Allow, false);
+    let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
+
+    if op_ctx.decl.is_async {
+      let result = set_up_async_stub_fn
+        .call(scope, undefined.into(), &[key.into(), op_fn.into()])
+        .unwrap();
+      op_fn = result.try_into().unwrap();
+    }
+
+    deno_core_ops_obj.set(scope, key.into(), op_fn.into());
+  }
+}
+
 fn op_ctx_template_or_accessor<'s, 'i>(
   accessor_store: &AccessorStore,
   set_up_async_stub_fn: v8::Local<'s, v8::Function>,
@@ -638,33 +692,24 @@ pub(crate) fn op_ctx_template<'s, 'i>(
       })
       .length(op_ctx.decl.arg_count as i32);
 
-  let template = if let Some(fast_function) = fast_fn {
-    let template = builder.build_fast(scope, &[fast_function]);
-    if will_snapshot {
-      // V8 14.9 wraps each fast-call overload in a Managed<CFunctionWithSignature>
-      // that lives as an isolate-level Global. The snapshot's
-      // CheckGlobalAndEternalHandles pass aborts unless each one is attached
-      // to the isolate's serialized_objects via add_isolate_data().
-      register_fast_call_overloads_for_snapshot(scope, template);
-    }
-    template
+  // V8 14.9 wraps every fast-call overload in a Managed<CFunctionWithSignature>
+  // whose external pointer is a process-local ManagedPtrDestructor allocation.
+  // Such managed resources are not serializable into a startup snapshot (see
+  // v8/src/snapshot/deserializer.cc: "we cannot normally serialize managed
+  // resources"), so skip the fast-call setup during snapshot creation. The
+  // template is still wired to slow_fn; ops fall back to the slow callback
+  // path until a follow-up runtime hook re-attaches the fast overloads after
+  // snapshot deserialization.
+  let template = if let Some(fast_function) = fast_fn
+    && !will_snapshot
+  {
+    builder.build_fast(scope, &[fast_function])
   } else {
     builder.build(scope)
   };
   template.set_class_name(op_ctx.decl.name_fast.v8_string(scope).unwrap());
 
   template
-}
-
-fn register_fast_call_overloads_for_snapshot(
-  scope: &mut v8::PinScope,
-  template: v8::Local<v8::FunctionTemplate>,
-) {
-  let count = template.c_function_overload_count();
-  for i in 0..count {
-    let overload = template.get_c_function_overload(scope, i);
-    scope.add_isolate_data(overload);
-  }
 }
 
 fn op_ctx_function<'s, 'i>(
