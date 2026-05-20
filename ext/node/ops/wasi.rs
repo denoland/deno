@@ -100,6 +100,25 @@ const RIGHTS_FILE: u64 = RIGHTS_FD_READ
   | RIGHTS_FD_FILESTAT_SET_SIZE
   | RIGHTS_FD_FILESTAT_SET_TIMES;
 
+// Rights whose presence indicates the caller intends to mutate the file or
+// its metadata (write data, extend it, change its times, fsync, etc.). When
+// any of these is requested at path_open, we treat the open as needing
+// Deno write permission so a read-only --allow-read can't be turned into a
+// write-capable handle.
+const RIGHTS_MUTATING: u64 = RIGHTS_FD_WRITE
+  | RIGHTS_FD_DATASYNC
+  | RIGHTS_FD_SYNC
+  | RIGHTS_FD_ALLOCATE
+  | RIGHTS_FD_FILESTAT_SET_SIZE
+  | RIGHTS_FD_FILESTAT_SET_TIMES
+  | RIGHTS_PATH_CREATE_DIRECTORY
+  | RIGHTS_PATH_FILESTAT_SET_TIMES
+  | RIGHTS_PATH_SYMLINK
+  | RIGHTS_PATH_REMOVE_DIRECTORY
+  | RIGHTS_PATH_UNLINK_FILE
+  | RIGHTS_PATH_RENAME_SOURCE
+  | RIGHTS_PATH_RENAME_TARGET;
+
 const CLOCK_REALTIME: i32 = 0;
 const CLOCK_MONOTONIC: i32 = 1;
 const CLOCK_PROCESS_CPUTIME: i32 = 2;
@@ -171,6 +190,18 @@ impl WasiInner {
 
   fn get_fd_mut(&mut self, fd: i32) -> Option<&mut FdEntry> {
     self.fds.get_mut(fd as usize).and_then(|e| e.as_mut())
+  }
+
+  /// Returns the WASI rights granted to `fd` at path_open time, if the fd
+  /// is a regular file or directory we tracked. Stdio and HostFile entries
+  /// return None because rights are implied by the entry type rather than
+  /// stored explicitly.
+  fn fd_rights(&self, fd: i32) -> Option<u64> {
+    match self.get_fd(fd) {
+      Some(FdEntry::File { rights, .. })
+      | Some(FdEntry::Dir { rights, .. }) => Some(*rights),
+      _ => None,
+    }
   }
 
   fn alloc_fd(&mut self, entry: FdEntry) -> i32 {
@@ -341,6 +372,18 @@ fn is_loop_error(e: &std::io::Error) -> bool {
   {
     let _ = code;
     false
+  }
+}
+
+/// Whether the fd's stored rights bitset includes every bit in `needed`.
+/// Stdio / HostFile entries don't carry an explicit rights field — they
+/// return `None` from `fd_rights` and we let those fall through to the
+/// per-op entry-type checks. For File/Dir entries the rights were granted
+/// at path_open time and intersected with the caller's request.
+fn has_right(rights: Option<u64>, needed: u64) -> bool {
+  match rights {
+    Some(r) => r & needed == needed,
+    None => true,
   }
 }
 
@@ -717,6 +760,9 @@ impl WasiContext {
     };
 
     let mut inner = self.inner.borrow_mut();
+    if !has_right(inner.fd_rights(fd), RIGHTS_FD_WRITE) {
+      return ERRNO_NOTCAPABLE;
+    }
     let mut total_written: u32 = 0;
 
     match inner.get_fd_mut(fd) {
@@ -781,6 +827,9 @@ impl WasiContext {
     };
 
     let mut inner = self.inner.borrow_mut();
+    if !has_right(inner.fd_rights(fd), RIGHTS_FD_READ) {
+      return ERRNO_NOTCAPABLE;
+    }
     let mut total_read: u32 = 0;
 
     match inner.get_fd_mut(fd) {
@@ -1037,6 +1086,9 @@ impl WasiContext {
   #[fast]
   fn fd_sync(&self, #[smi] fd: i32) -> i32 {
     let inner = self.inner.borrow();
+    if !has_right(inner.fd_rights(fd), RIGHTS_FD_SYNC) {
+      return ERRNO_NOTCAPABLE;
+    }
     match inner.get_fd(fd) {
       Some(FdEntry::File { file, .. }) => match file.sync_all() {
         Ok(()) => ERRNO_SUCCESS,
@@ -1049,6 +1101,9 @@ impl WasiContext {
   #[fast]
   fn fd_datasync(&self, #[smi] fd: i32) -> i32 {
     let inner = self.inner.borrow();
+    if !has_right(inner.fd_rights(fd), RIGHTS_FD_DATASYNC) {
+      return ERRNO_NOTCAPABLE;
+    }
     match inner.get_fd(fd) {
       Some(FdEntry::File { file, .. }) => match file.sync_data() {
         Ok(()) => ERRNO_SUCCESS,
@@ -1077,6 +1132,9 @@ impl WasiContext {
     #[number] len: i64,
   ) -> i32 {
     let inner = self.inner.borrow();
+    if !has_right(inner.fd_rights(fd), RIGHTS_FD_ALLOCATE) {
+      return ERRNO_NOTCAPABLE;
+    }
     match inner.get_fd(fd) {
       Some(FdEntry::File { file, .. }) => {
         let required = (offset as u64).saturating_add(len as u64);
@@ -1151,6 +1209,9 @@ impl WasiContext {
   #[fast]
   fn fd_filestat_set_size(&self, #[smi] fd: i32, #[number] size: i64) -> i32 {
     let inner = self.inner.borrow();
+    if !has_right(inner.fd_rights(fd), RIGHTS_FD_FILESTAT_SET_SIZE) {
+      return ERRNO_NOTCAPABLE;
+    }
     match inner.get_fd(fd) {
       Some(FdEntry::File { file, .. }) => match file.set_len(size as u64) {
         Ok(()) => ERRNO_SUCCESS,
@@ -1169,6 +1230,12 @@ impl WasiContext {
     #[smi] fst_flags: i32,
   ) -> i32 {
     let inner = self.inner.borrow();
+    // futimens on a read-only handle still succeeds at the OS level when
+    // the caller owns the file, so this rights check is the only guard
+    // against using read-only access to mutate atime/mtime.
+    if !has_right(inner.fd_rights(fd), RIGHTS_FD_FILESTAT_SET_TIMES) {
+      return ERRNO_NOTCAPABLE;
+    }
     let file_ref = match inner.get_fd(fd) {
       Some(FdEntry::File { file, .. }) => file,
       _ => return ERRNO_BADF,
@@ -1219,6 +1286,9 @@ impl WasiContext {
     #[buffer] memory: &mut [u8],
   ) -> i32 {
     let inner = self.inner.borrow();
+    if !has_right(inner.fd_rights(fd), RIGHTS_FD_READDIR) {
+      return ERRNO_NOTCAPABLE;
+    }
     let dir_path = match inner.get_fd(fd) {
       Some(FdEntry::PreopenDir { real_path, .. }) => {
         std::path::PathBuf::from(real_path)
@@ -1313,13 +1383,22 @@ impl WasiContext {
     let oflags = oflags as u16;
     let fdflags_u16 = fdflags as u16;
     let rights = fs_rights_base as u64;
-    let wants_write = rights & RIGHTS_FD_WRITE != 0;
+    // Any right that would let the caller mutate file state or metadata
+    // requires Deno write permission. RIGHTS_FD_WRITE alone is not enough
+    // because RIGHTS_FD_FILESTAT_SET_TIMES (utimens via fd) succeeds at the
+    // OS level even on read-only handles when the caller owns the file.
+    let needs_write_perm = rights & RIGHTS_MUTATING != 0;
+    // Distinct from the permission gate: only actually open the OS file in
+    // write mode when the caller asked to write data or wants O_CREAT etc.
+    // Asking for SET_TIMES alone shouldn't force the underlying open to
+    // demand OS write access.
+    let wants_os_write = rights & RIGHTS_FD_WRITE != 0;
     let creates = oflags & OFLAGS_CREAT != 0
       || oflags & OFLAGS_EXCL != 0
       || oflags & OFLAGS_TRUNC != 0;
     let follow_symlinks = (dirflags as u32) & LOOKUPFLAGS_SYMLINK_FOLLOW != 0;
 
-    let access_kind = if wants_write || creates {
+    let access_kind = if needs_write_perm || creates {
       OpenAccessKind::ReadWrite
     } else {
       OpenAccessKind::Read
@@ -1353,10 +1432,15 @@ impl WasiContext {
         }) => preopen_root_path.clone(),
         _ => return ERRNO_BADF,
       };
+      // Grant only the requested rights (intersected with the maximum a
+      // directory fd can hold). The earlier permissions.check_open already
+      // gated Read vs ReadWrite based on the requested rights, so we mustn't
+      // hand out rights beyond what the caller asked for.
+      let granted = rights & RIGHTS_DIR;
       let new_fd = inner.alloc_fd(FdEntry::Dir {
         path: resolved,
         preopen_root_path,
-        rights: RIGHTS_DIR,
+        rights: granted,
       });
       if write_i32(memory, fd_ptr, new_fd).is_none() {
         return ERRNO_FAULT;
@@ -1379,15 +1463,20 @@ impl WasiContext {
     if fdflags_u16 & FDFLAGS_APPEND != 0 {
       opts.append(true);
     }
-    if wants_write {
+    if wants_os_write {
       opts.write(true);
     }
 
     match opts.open(&resolved) {
       Ok(file) => {
+        // Hand out only the requested rights, intersected with what a file
+        // fd can hold. Each mutating fd_* op re-checks the corresponding
+        // right below so the caller can't escalate by, say, opening with
+        // RIGHTS_FD_READ and then calling fd_filestat_set_times.
+        let granted = rights & RIGHTS_FILE;
         let new_fd = inner.alloc_fd(FdEntry::File {
           file,
-          rights: RIGHTS_FILE,
+          rights: granted,
           fdflags: fdflags_u16,
         });
         if write_i32(memory, fd_ptr, new_fd).is_none() {
@@ -2011,6 +2100,9 @@ impl WasiContext {
     };
 
     let mut inner = self.inner.borrow_mut();
+    if !has_right(inner.fd_rights(fd), RIGHTS_FD_READ) {
+      return ERRNO_NOTCAPABLE;
+    }
     let mut total_read: u32 = 0;
 
     match inner.get_fd_mut(fd) {
@@ -2073,6 +2165,9 @@ impl WasiContext {
     };
 
     let mut inner = self.inner.borrow_mut();
+    if !has_right(inner.fd_rights(fd), RIGHTS_FD_WRITE) {
+      return ERRNO_NOTCAPABLE;
+    }
     let mut total_written: u32 = 0;
 
     match inner.get_fd_mut(fd) {
@@ -2165,6 +2260,12 @@ fn resolve_filestat_times_from_meta(
 /// host fd. Returns None for fd 0/1/2 (use inherited process stdio) and
 /// for any fd we can't dup or resolve. The dup'd file owns its own OS
 /// handle so the user-side fd stays open after WASI exits.
+///
+/// Permissions: we only accept fds that node:fs has registered in
+/// `deno_io::FdTable`, so an opener went through Deno's permission system
+/// (op_node_open_sync). Naked OS fds inherited from the parent process or
+/// internal Deno opens are rejected so the WASI constructor can't become
+/// an escape hatch around `--allow-read` / `--allow-write`.
 fn make_stdio_entry(
   state: &mut OpState,
   user_fd: i32,
@@ -2173,8 +2274,13 @@ fn make_stdio_entry(
   match user_fd {
     0..=2 => None,
     fd if fd < 0 => None,
-    fd => dup_user_fd_to_file(state, fd)
-      .map(|file| FdEntry::HostFile { file, is_stdin }),
+    fd => {
+      if !state.borrow::<deno_io::FdTable>().contains(fd) {
+        return None;
+      }
+      dup_user_fd_to_file(state, fd)
+        .map(|file| FdEntry::HostFile { file, is_stdin })
+    }
   }
 }
 
