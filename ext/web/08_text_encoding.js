@@ -70,16 +70,7 @@ class TextDecoder {
    * @param {TextDecoderOptions} options
    */
   constructor(label = "utf-8", options = { __proto__: null }) {
-    // No-arg fast path: `new TextDecoder()` is the overwhelmingly common
-    // shape (every TextDecoderStream, every fetch body parse, every
-    // `Response.text()`, every JSON parse from a Uint8Array). The full
-    // constructor's TextDecoderOptions dictionary converter walks
-    // `options.fatal` and `options.ignoreBOM` on a fresh `{ __proto__: null }`
-    // object every call, which lands in V8's megamorphic load IC and
-    // accounts for ~50% of the no-arg constructor's runtime per `--prof`.
-    // Short-circuiting here skips both converters, the default-parameter
-    // allocation of `{ __proto__: null }`, and the label fast-path branch
-    // since we already know the result.
+    // No-arg fast path.
     if (arguments.length === 0) {
       this.#encoding = "utf-8";
       this.#fatal = false;
