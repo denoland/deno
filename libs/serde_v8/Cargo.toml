@@ -22,7 +22,6 @@ thiserror.workspace = true
 v8.workspace = true
 
 [dev-dependencies]
-bencher.workspace = true
 serde_bytes.workspace = true
 serde_json.workspace = true
 serde_v8_utilities = { path = "./utilities" }

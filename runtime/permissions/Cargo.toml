@@ -26,7 +26,6 @@ libc.workspace = true
 log.workspace = true
 once_cell.workspace = true
 parking_lot.workspace = true
-percent-encoding = { workspace = true, features = [] }
 serde.workspace = true
 serde_json.workspace = true
 sys_traits.workspace = true

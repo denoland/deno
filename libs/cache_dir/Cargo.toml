@@ -30,7 +30,6 @@ deno_maybe_sync.workspace = true
 deno_media_type.workspace = true
 deno_path_util.workspace = true
 http = { workspace = true, optional = true }
-indexmap = { workspace = true, features = ["serde"] }
 log.workspace = true
 once_cell.workspace = true
 parking_lot.workspace = true

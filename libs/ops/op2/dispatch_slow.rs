@@ -176,12 +176,19 @@ pub(crate) fn generate_dispatch_slow(
     quote!()
   };
 
+  let with_parts = if generator_state.needs_parts {
+    with_parts(generator_state)
+  } else {
+    quote!()
+  };
+
   Ok(gs_quote!(generator_state(info, slow_function) => {
     fn slow_function_impl<'s>(#info: *const deno_core::v8::FunctionCallbackInfo) -> usize {
       let #info: &'s _ = unsafe { &*#info };
       #[cfg(debug_assertions)]
       let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(&<Self as deno_core::_ops::Op>::DECL);
 
+      #with_parts
       #with_scope
       #with_retval
       #with_args
@@ -220,6 +227,22 @@ pub(crate) fn with_scope(generator_state: &mut GeneratorState) -> TokenStream {
   )
 }
 
+/// Emit `let parts = info.get_parts();` once before the per-helper
+/// destructuring. The single shim returns the isolate, return value,
+/// callback data, and argument length together so the retval/args
+/// helpers can avoid the equivalent separate FFI calls.
+///
+/// `CallbackScope::new` keeps taking `info` directly: its trait impl for
+/// `&'s FunctionCallbackInfoParts<'s>` requires the outer borrow to live for
+/// `'s`, which a stack-local `parts` can't satisfy. Using `info` (already a
+/// `&'s FunctionCallbackInfo`) avoids that constraint without changing the
+/// number of FFI calls.
+pub(crate) fn with_parts(generator_state: &mut GeneratorState) -> TokenStream {
+  gs_quote!(generator_state(info, parts) =>
+    (let #parts: deno_core::v8::FunctionCallbackInfoParts<'s> = #info.get_parts();)
+  )
+}
+
 pub(crate) fn with_stack_trace(
   generator_state: &mut GeneratorState,
 ) -> TokenStream {
@@ -239,16 +262,18 @@ pub(crate) fn with_stack_trace(
 }
 
 pub(crate) fn with_retval(generator_state: &mut GeneratorState) -> TokenStream {
-  gs_quote!(generator_state(retval, info) =>
-    (let mut #retval = deno_core::v8::ReturnValue::from_function_callback_info(#info);)
+  generator_state.needs_parts = true;
+  gs_quote!(generator_state(retval, parts) =>
+    (let mut #retval = #parts.return_value;)
   )
 }
 
 pub(crate) fn with_fn_args(
   generator_state: &mut GeneratorState,
 ) -> TokenStream {
-  gs_quote!(generator_state(info, fn_args) =>
-    (let #fn_args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(#info);)
+  generator_state.needs_parts = true;
+  gs_quote!(generator_state(info, parts, fn_args) =>
+    (let #fn_args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info_parts(#info, &#parts);)
   )
 }
 

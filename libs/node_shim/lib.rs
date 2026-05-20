@@ -3186,6 +3186,9 @@ pub struct TranslatedArgs {
   pub node_options: Vec<String>,
   /// Whether to set DENO_TLS_CA_STORE=system
   pub use_system_ca: bool,
+  /// Comma-separated trace event categories from --trace-event-categories,
+  /// propagated to the spawned process via DENO_NODE_TRACE_EVENT_CATEGORIES.
+  pub trace_event_categories: String,
 }
 
 /// Wraps eval code for Node.js compatibility.
@@ -3270,6 +3273,12 @@ pub fn translate_to_deno_args(
   let env_opts = &opts.per_isolate.per_env;
 
   add_tls_node_options(node_options, env_opts);
+
+  // Forward --trace-event-categories regardless of subcommand path. Set here
+  // so it survives early-returning translations (`-e`, `--test`, REPL, etc.).
+  if !opts.trace_event_categories.is_empty() {
+    result.trace_event_categories = opts.trace_event_categories.clone();
+  }
 
   // Check for system CA usage
   if opts.use_system_ca || opts.use_openssl_ca {
