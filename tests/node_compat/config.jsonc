@@ -5445,6 +5445,26 @@
     },
     "wasi/test-return-on-exit.js": {},
     "wasi/test-wasi-not-started.js": {},
-    "wasi/test-wasi-worker-terminate.js": {}
+    "wasi/test-wasi-worker-terminate.js": {},
+    "wasi/test-wasi-cant_dotdot.js": {},
+    "wasi/test-wasi-clock_getres.js": {},
+    "wasi/test-wasi-exitcode.js": {},
+    "wasi/test-wasi-fd_prestat_get_refresh.js": {},
+    "wasi/test-wasi-ftruncate.js": {},
+    "wasi/test-wasi-getentropy.js": {},
+    "wasi/test-wasi-getrusage.js": {},
+    "wasi/test-wasi-gettimeofday.js": {},
+    "wasi/test-wasi-io.js": {},
+    "wasi/test-wasi-main_args.js": {},
+    "wasi/test-wasi-notdir.js": {},
+    "wasi/test-wasi-poll.js": {},
+    "wasi/test-wasi-preopen_populates.js": {},
+    "wasi/test-wasi-pthread.js": {},
+    "wasi/test-wasi-readdir.js": {},
+    "wasi/test-wasi-sock.js": {},
+    "wasi/test-wasi-stat.js": {},
+    "wasi/test-wasi-stdio.js": {},
+    "wasi/test-wasi-symlinks.js": {},
+    "wasi/test-wasi-write_file.js": {}
   }
 }
