@@ -4453,6 +4453,7 @@
       "ignore": true,
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
     },
+    "test-runner/test-output-tap-escape.mjs": {},
     "test-runner/test-output-tap-reporter.mjs": {
       "exitCode": 1,
       "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"

@@ -28,6 +28,7 @@ const {
   SafeArrayIterator,
   SafeMap,
   String,
+  StringPrototypeReplaceAll,
   Symbol,
   SymbolFor,
   TypeError,
@@ -126,6 +127,357 @@ function run() {
 function noop() {}
 
 const skippedSymbol = Symbol("skipped");
+
+// Detect Node.js-compatible `--test-reporter=...` selection so the polyfill
+// can emit reporter output matching Node's snapshot fixtures. Deno's CLI does
+// not consume `--test-reporter`; instead, our `child_process` polyfill (via
+// node_shim) propagates the value through NODE_OPTIONS when one Deno process
+// spawns another using Node-style flags. Reading the env var here keeps the
+// detection self-contained and avoids new Rust plumbing.
+function detectNodeTestReporter() {
+  const env = globalThis.Deno?.env;
+  if (!env) return null;
+  let value = null;
+  try {
+    value = env.get("NODE_TEST_REPORTER");
+  } catch { /* permission denied */ }
+  if (value) return value;
+  let nodeOptions = "";
+  try {
+    nodeOptions = env.get("NODE_OPTIONS") || "";
+  } catch { /* permission denied */ }
+  if (!nodeOptions) return null;
+  // Match the first `--test-reporter` occurrence; support both `=value` and
+  // space-separated forms. We intentionally do not handle multiple reporters
+  // (Node lets you stack reporters with destinations); the snapshot tests use
+  // a single reporter and that is what we target.
+  const match = nodeOptions.match(/--test-reporter(?:=|\s+)(\S+)/);
+  return match ? match[1] : null;
+}
+
+// Resolve lazily: testing.ts ships inside Deno's startup snapshot, so any env
+// lookups performed at module-evaluation time observe the build environment,
+// not the running process. Memoize on the first call so we still only read the
+// env once.
+let nodeTestReporterCache;
+function getNodeTestReporter() {
+  if (nodeTestReporterCache !== undefined) return nodeTestReporterCache;
+  nodeTestReporterCache = detectNodeTestReporter();
+  return nodeTestReporterCache;
+}
+function isTapMode() {
+  return getNodeTestReporter() === "tap";
+}
+
+// Top-level queue of test/suite entries collected synchronously while the
+// script body evaluates. Children of describe() blocks live under their parent
+// entry's `children` array, populated during the synchronous descend through
+// the describe body.
+const tapTopEntries = [];
+let tapRunScheduled = false;
+let tapCurrentSuite = null;
+const tapStats = {
+  tests: 0,
+  suites: 0,
+  pass: 0,
+  fail: 0,
+  cancelled: 0,
+  skipped: 0,
+  todo: 0,
+};
+
+function tapEscape(input) {
+  // Node's TAP encoder replaces control characters with their two-char
+  // backslash escape, then escapes literal backslashes, then escapes `#`.
+  // Order matters: doubling backslashes last ensures the escapes introduced
+  // by the previous step also get their backslashes doubled.
+  let s = String(input);
+  s = StringPrototypeReplaceAll(s, "\b", "\\b");
+  s = StringPrototypeReplaceAll(s, "\f", "\\f");
+  s = StringPrototypeReplaceAll(s, "\v", "\\v");
+  s = StringPrototypeReplaceAll(s, "\n", "\\n");
+  s = StringPrototypeReplaceAll(s, "\r", "\\r");
+  s = StringPrototypeReplaceAll(s, "\t", "\\t");
+  s = StringPrototypeReplaceAll(s, "\\", "\\\\");
+  s = StringPrototypeReplaceAll(s, "#", "\\#");
+  return s;
+}
+
+function tapWrite(line) {
+  // deno-lint-ignore no-console
+  console.log(line);
+}
+
+function tapIndent(depth) {
+  return "    ".repeat(depth);
+}
+
+function tapDirective(options) {
+  if (options.skip) {
+    const msg = options.skip === true ? "" : tapEscape(String(options.skip));
+    return msg ? ` # SKIP ${msg}` : " # SKIP";
+  }
+  if (options.todo) {
+    const msg = options.todo === true ? "" : tapEscape(String(options.todo));
+    return msg ? ` # TODO ${msg}` : " # TODO";
+  }
+  return "";
+}
+
+function tapYaml(depth, type) {
+  const pad = tapIndent(depth) + "  ";
+  tapWrite(`${pad}---`);
+  tapWrite(`${pad}duration_ms: 0`);
+  tapWrite(`${pad}type: '${type}'`);
+  tapWrite(`${pad}...`);
+}
+
+class TapContext {
+  #diagnostics = [];
+  #name;
+  #depth;
+  #subtestTail = PromiseResolve();
+  #subtestCount = 0;
+  #parentChildren;
+
+  constructor(name, depth, parentChildren) {
+    this.#name = name;
+    this.#depth = depth;
+    this.#parentChildren = parentChildren;
+  }
+
+  get name() {
+    return this.#name;
+  }
+
+  get fullName() {
+    return this.#name;
+  }
+
+  get signal() {
+    // Provide an AbortSignal so consumers that read t.signal don't crash; the
+    // minimal TAP runner does not currently honour aborts.
+    return new AbortController().signal;
+  }
+
+  get assert() {
+    return getAssertObject();
+  }
+
+  get mock() {
+    return mock;
+  }
+
+  diagnostic(message) {
+    ArrayPrototypePush(this.#diagnostics, String(message));
+  }
+
+  _drainDiagnostics() {
+    const out = this.#diagnostics;
+    this.#diagnostics = [];
+    return out;
+  }
+
+  // Subtest registration: `t.test(name, opts?, fn?)` queues a subtest that runs
+  // sequentially in the order it was registered. Concurrent calls (Promise.all)
+  // are serialized through the parent's subtest tail.
+  test(name, options, fn) {
+    const prepared = prepareOptions(name, options, fn, {});
+    this.#subtestCount++;
+    const n = this.#subtestCount;
+    const childDepth = this.#depth + 1;
+    const entry = {
+      name: prepared.name,
+      fn: prepared.fn,
+      options: prepared.options,
+      kind: "test",
+      children: [],
+      bodyPromise: null,
+      bodyError: null,
+    };
+    if (this.#parentChildren) {
+      ArrayPrototypePush(this.#parentChildren, entry);
+    }
+    const p = PromisePrototypeThen(
+      this.#subtestTail,
+      () => runTapEntry(entry, childDepth, n),
+    );
+    this.#subtestTail = PromisePrototypeThen(p, () => {}, () => {});
+    return p;
+  }
+
+  _drainSubtests() {
+    return this.#subtestTail;
+  }
+
+  _subtestCount() {
+    return this.#subtestCount;
+  }
+}
+
+function scheduleTapRun() {
+  if (tapRunScheduled) return;
+  tapRunScheduled = true;
+  // Defer to the macrotask queue so synchronous top-level test() calls finish
+  // queueing before we start running.
+  setTimeout(() => {
+    runTapTop();
+  }, 0);
+}
+
+async function runTapTop() {
+  // Hold the event loop open while tests run so that fixtures using
+  // unref'd timers (Node's runner keeps itself alive internally) don't cause
+  // Deno to exit before subtests complete.
+  const keepAlive = setInterval(() => {}, 1 << 30);
+  try {
+    tapWrite("TAP version 13");
+    let n = 0;
+    for (const entry of new SafeArrayIterator(tapTopEntries)) {
+      n++;
+      await runTapEntry(entry, 0, n);
+    }
+    tapWrite(`1..${n}`);
+    tapWrite(`# tests ${tapStats.tests}`);
+    tapWrite(`# suites ${tapStats.suites}`);
+    tapWrite(`# pass ${tapStats.pass}`);
+    tapWrite(`# fail ${tapStats.fail}`);
+    tapWrite(`# cancelled ${tapStats.cancelled}`);
+    tapWrite(`# skipped ${tapStats.skipped}`);
+    tapWrite(`# todo ${tapStats.todo}`);
+    tapWrite(`# duration_ms 0`);
+  } finally {
+    clearInterval(keepAlive);
+  }
+  if (tapStats.fail > 0 || tapStats.cancelled > 0) {
+    try {
+      globalThis.Deno?.exit?.(1);
+    } catch { /* exit unavailable */ }
+  }
+}
+
+// Recursively run a test or suite entry, emitting TAP output at the given
+// nesting depth.
+async function runTapEntry(entry, depth, n) {
+  const indent = tapIndent(depth);
+  const isSuite = entry.kind === "suite";
+  tapWrite(`${indent}# Subtest: ${tapEscape(entry.name)}`);
+  const directive = tapDirective(entry.options);
+
+  let status = "ok";
+  let diagnostics = [];
+  let childCount = 0;
+
+  if (entry.options.skip) {
+    tapStats.skipped++;
+    tapStats.tests++;
+  } else if (entry.options.todo) {
+    // Per Node behavior, a TODO test that throws is not counted as a failure.
+    // The runner skips invoking the body to match snapshot output.
+    tapStats.todo++;
+    tapStats.tests++;
+  } else if (isSuite) {
+    try {
+      if (entry.bodyError) throw entry.bodyError;
+      if (entry.bodyPromise) await entry.bodyPromise;
+      let childN = 0;
+      for (const child of new SafeArrayIterator(entry.children)) {
+        childN++;
+        await runTapEntry(child, depth + 1, childN);
+      }
+      childCount = childN;
+    } catch (_err) {
+      status = "not ok";
+      tapStats.fail++;
+    }
+    tapStats.suites++;
+  } else {
+    // test/it body
+    const ctx = new TapContext(entry.name, depth, entry.children);
+    try {
+      const ret = ReflectApply(entry.fn, ctx, [ctx]);
+      if (isThenable(ret)) await ret;
+      // Wait for any concurrent t.test() calls (e.g. Promise.all([...])).
+      await ctx._drainSubtests();
+      childCount = ctx._subtestCount();
+      tapStats.pass++;
+    } catch (_err) {
+      status = "not ok";
+      tapStats.fail++;
+      // Even on failure, drain any in-flight subtests so their output is
+      // emitted before the parent's "not ok" line.
+      try {
+        await ctx._drainSubtests();
+      } catch { /* ignore */ }
+      childCount = ctx._subtestCount();
+    }
+    diagnostics = ctx._drainDiagnostics();
+    tapStats.tests++;
+  }
+
+  if (childCount > 0) {
+    tapWrite(`${tapIndent(depth + 1)}1..${childCount}`);
+  }
+
+  tapWrite(`${indent}${status} ${n} - ${tapEscape(entry.name)}${directive}`);
+  tapYaml(depth, isSuite ? "suite" : "test");
+  for (const d of new SafeArrayIterator(diagnostics)) {
+    tapWrite(`${indent}# ${tapEscape(d)}`);
+  }
+}
+
+function queueTapTest(name, options, fn, overrides) {
+  const prepared = prepareOptions(name, options, fn, overrides);
+  const entry = {
+    name: prepared.name,
+    fn: prepared.fn,
+    options: prepared.options,
+    kind: "test",
+    children: [],
+    bodyPromise: null,
+    bodyError: null,
+  };
+  if (tapCurrentSuite !== null) {
+    ArrayPrototypePush(tapCurrentSuite.children, entry);
+  } else {
+    ArrayPrototypePush(tapTopEntries, entry);
+    scheduleTapRun();
+  }
+  return PromiseResolve();
+}
+
+function queueTapSuite(name, options, fn, overrides) {
+  const prepared = prepareOptions(name, options, fn, overrides);
+  const entry = {
+    name: prepared.name,
+    fn: prepared.fn,
+    options: prepared.options,
+    kind: "suite",
+    children: [],
+    bodyPromise: null,
+    bodyError: null,
+  };
+  const parentSuite = tapCurrentSuite;
+  if (parentSuite !== null) {
+    ArrayPrototypePush(parentSuite.children, entry);
+  } else {
+    ArrayPrototypePush(tapTopEntries, entry);
+    scheduleTapRun();
+  }
+  // Evaluate the suite body synchronously so nested describe()/test() calls
+  // register against this suite. If the body returns a promise, defer its
+  // continuation until the runner pulls it.
+  tapCurrentSuite = entry;
+  try {
+    const ret = ReflectApply(prepared.fn, null, []);
+    if (isThenable(ret)) entry.bodyPromise = ret;
+  } catch (err) {
+    entry.bodyError = err;
+  } finally {
+    tapCurrentSuite = parentSuite;
+  }
+  return PromiseResolve();
+}
 
 function isThenable(value) {
   return value !== null && value !== undefined &&
@@ -671,6 +1023,9 @@ function prepareDenoTestForSuite(name, options, fn, overrides) {
 
 function test(name, options, fn, overrides) {
   installErrorHandlers();
+  if (isTapMode()) {
+    return queueTapTest(name, options, fn, overrides);
+  }
   if (currentSuite) {
     return currentSuite.addTest(name, options, fn, overrides);
   }
@@ -695,6 +1050,9 @@ test.expectFailure = function expectFailure(name, options, fn) {
 
 function suite(name, options, fn, overrides) {
   installErrorHandlers();
+  if (isTapMode()) {
+    return queueTapSuite(name, options, fn, overrides);
+  }
   if (currentSuite) {
     return currentSuite.addSuite(name, options, fn, overrides);
   }

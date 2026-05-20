@@ -3461,6 +3461,14 @@ pub fn translate_to_deno_args(
     node_options.push("--pending-deprecation".to_string());
   }
 
+  // Forward Node's --test-reporter so node:test in the spawned child can
+  // detect it and emit the corresponding output format. Deno's own CLI does
+  // not consume the flag (its TAP/spec output differs from Node's), so the
+  // value rides along through NODE_OPTIONS for the polyfill to pick up.
+  for reporter in &env_opts.test_reporter {
+    node_options.push(format!("--test-reporter={}", reporter));
+  }
+
   // Forward --require/--import modules to Deno's run subcommand so that
   // child_process.spawnSync(process.execPath, ['-r', wrapper, main])
   // (the pattern Node.js compat tests use) actually preloads the wrapper
