@@ -219,6 +219,9 @@ async fn run_subcommand(
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
       tools::installer::install_command(Arc::new(flags), install_flags).await
     }),
+    DenoSubcommand::Ci(ci_flags) => spawn_subcommand(async {
+      tools::installer::ci_command(Arc::new(flags), ci_flags).await
+    }),
     DenoSubcommand::JSONReference(json_reference) => {
       spawn_subcommand(async move {
         display::write_to_stdout_ignore_sigpipe(

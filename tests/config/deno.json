@@ -1,4 +1,8 @@
 {
   "lock": false,
-  "importMap": "../../import_map.json"
+  "importMap": "../../import_map.json",
+  "test": {
+    "sanitizeOps": true,
+    "sanitizeResources": true
+  }
 }

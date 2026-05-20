@@ -312,6 +312,7 @@ const IGNORED_TEST_DIRS: &[&str] = &[
 
 /// Collect all test files from the suite directory.
 fn collect_all_tests() -> CollectedTestCategory<NodeCompatTestData> {
+  ensure_dir_fixtures();
   let suite_dir = suite_test_dir();
   let mut children = Vec::new();
 
@@ -395,6 +396,21 @@ fn suite_test_dir() -> std::path::PathBuf {
   tests_path()
     .join("node_compat/runner/suite/test")
     .to_path_buf()
+}
+
+/// Restore directory-only fixtures that git can't track.
+///
+/// The vendored Node.js suite contains a few empty directories that the
+/// individual tests rely on (e.g. `test/fixtures/wasi/subdir` is asserted
+/// by `test-wasi-readdir.js`). Git does not preserve empty directories on
+/// checkout, so we recreate them here before the runner enumerates tests.
+fn ensure_dir_fixtures() {
+  let suite = suite_test_dir();
+  // Extend this when more directory-only fixtures are needed.
+  let p = suite.join("fixtures/wasi/subdir");
+  if !p.exists() {
+    let _ = std::fs::create_dir_all(&p);
+  }
 }
 
 fn create_collected_test(

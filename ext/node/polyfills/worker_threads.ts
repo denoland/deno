@@ -632,7 +632,6 @@ class NodeWorker extends EventEmitter {
       switch (type) {
         case 1: { // TerminalError
           this.#status = "CLOSED";
-          this.#closeStdio();
           if (this.listenerCount("error") > 0) {
             const errMsg = data.errorMessage ?? data.message;
             const errName = data.name;
@@ -652,9 +651,13 @@ class NodeWorker extends EventEmitter {
             err.stack = undefined;
             this.emit("error", err);
           }
-          // Drain pending messages before emitting exit so that
-          // all 'message' events fire before 'exit' (Node.js behavior).
+          // Drain pending messages before closing stdio and emitting exit:
+          // any stdio chunks still queued on the message channel must be
+          // pushed onto the Readable streams *before* we EOF them, otherwise
+          // we hit "stream.push() after EOF" if the Close control arrives
+          // before the last stdout/stderr message (Node.js behavior).
           await this.#messageLoopPromise;
+          this.#closeStdio();
           this.resourceLimits = {};
           if (!this.#exited) {
             this.#exited = true;
@@ -669,10 +672,13 @@ class NodeWorker extends EventEmitter {
         case 3: { // Close
           debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
-          this.#closeStdio();
-          // Drain pending messages before emitting exit so that
-          // all 'message' events fire before 'exit' (Node.js behavior).
+          // Drain pending messages before closing stdio and emitting exit:
+          // any stdio chunks still queued on the message channel must be
+          // pushed onto the Readable streams *before* we EOF them, otherwise
+          // we hit "stream.push() after EOF" if the Close control arrives
+          // before the last stdout/stderr message (Node.js behavior).
           await this.#messageLoopPromise;
+          this.#closeStdio();
           this.resourceLimits = {};
           if (!this.#exited) {
             this.#exited = true;
