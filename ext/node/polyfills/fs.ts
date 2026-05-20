@@ -725,6 +725,7 @@ async function readFileFromFd(fd: number, options?: FileOptions) {
       if (nread === 0) break;
       totalRead += nread;
     }
+    readFileCheckAborted(signal);
     return totalRead === size
       ? buffer
       : TypedArrayPrototypeSubarray(buffer, 0, totalRead);
