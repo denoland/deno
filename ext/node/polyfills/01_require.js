@@ -1976,6 +1976,8 @@ Module.prototype.load = function (filename) {
 
 // Loads a module at the given file path. Returns that module's
 // `exports` property.
+const moduleRequireDc = diagnosticsChannel.tracingChannel("module.require");
+
 Module.prototype.require = function (id) {
   if (typeof id !== "string") {
     throw new internalErrors.ERR_INVALID_ARG_TYPE("id", "string", id);
@@ -1989,7 +1991,24 @@ Module.prototype.require = function (id) {
     );
   }
   requireDepth++;
+  // `tracingChannel('module.require').traceSync` publishes:
+  //   start: { parentFilename, id } before the load
+  //   end:   { parentFilename, id, result } on success (in finally)
+  //   error: { parentFilename, id, error } when require throws; end still
+  //          fires in finally with the error context, matching Node.
+  const parentFilename = this.filename;
   try {
+    if (moduleRequireDc.hasSubscribers) {
+      return moduleRequireDc.traceSync(
+        Module._load,
+        { parentFilename, id },
+        // deno-lint-ignore no-undef
+        Module,
+        id,
+        this,
+        /* isMain */ false,
+      );
+    }
     return Module._load(id, this, /* isMain */ false);
   } finally {
     requireDepth--;

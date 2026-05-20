@@ -58,6 +58,10 @@ const {
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+const { channel: createDiagnosticsChannel } = core.loadExtScript(
+  "ext:deno_node/diagnostics_channel.js",
+);
+const workerThreadsChannel = createDiagnosticsChannel("worker_threads");
 const lazyStream = core.createLazyLoader("node:stream");
 const {
   BroadcastChannel: WebBroadcastChannel,
@@ -562,6 +566,10 @@ class NodeWorker extends EventEmitter {
     this.#pollControl();
     this.#messageLoopPromise = this.#pollMessages();
     process.nextTick(() => process.emit("worker", this));
+
+    if (workerThreadsChannel.hasSubscribers) {
+      workerThreadsChannel.publish({ worker: this });
+    }
   }
 
   [privateWorkerRef](ref) {
