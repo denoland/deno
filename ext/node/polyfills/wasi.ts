@@ -749,6 +749,15 @@ class WASI {
     this.#memory = memory as WebAssembly.Memory;
     // finalizeBindings is intentionally idempotent: the same WASI instance
     // can be bound to multiple wasm instances across threads.
+    //
+    // Setting #started here is a one-way transition shared with start()
+    // and initialize(): once finalizeBindings has been called on this
+    // instance (typically from the thread-spawn worker path), a later
+    // start()/initialize() call on the same WASI object will throw
+    // ERR_WASI_ALREADY_STARTED. Node's wasi_thread_start path has the
+    // same behavior - re-entering start/initialize on a bound WASI is
+    // never valid, the spawning thread is expected to construct a fresh
+    // WASI per wasm module.
     this.#started = true;
   }
 

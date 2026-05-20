@@ -56,6 +56,8 @@ const RIGHTS_FD_WRITE: u64 = 1 << 6;
 const RIGHTS_FD_ADVISE: u64 = 1 << 7;
 const RIGHTS_FD_ALLOCATE: u64 = 1 << 8;
 const RIGHTS_PATH_CREATE_DIRECTORY: u64 = 1 << 9;
+const RIGHTS_PATH_LINK_SOURCE: u64 = 1 << 11;
+const RIGHTS_PATH_LINK_TARGET: u64 = 1 << 12;
 const RIGHTS_PATH_OPEN: u64 = 1 << 13;
 const RIGHTS_FD_READDIR: u64 = 1 << 14;
 const RIGHTS_PATH_READLINK: u64 = 1 << 15;
@@ -77,6 +79,8 @@ const RIGHTS_DIR: u64 = RIGHTS_FD_READ
   | RIGHTS_FD_DATASYNC
   | RIGHTS_FD_ADVISE
   | RIGHTS_PATH_CREATE_DIRECTORY
+  | RIGHTS_PATH_LINK_SOURCE
+  | RIGHTS_PATH_LINK_TARGET
   | RIGHTS_PATH_OPEN
   | RIGHTS_FD_READDIR
   | RIGHTS_PATH_READLINK
@@ -113,6 +117,7 @@ const RIGHTS_MUTATING: u64 = RIGHTS_FD_WRITE
   | RIGHTS_FD_FILESTAT_SET_TIMES
   | RIGHTS_PATH_CREATE_DIRECTORY
   | RIGHTS_PATH_FILESTAT_SET_TIMES
+  | RIGHTS_PATH_LINK_TARGET
   | RIGHTS_PATH_SYMLINK
   | RIGHTS_PATH_REMOVE_DIRECTORY
   | RIGHTS_PATH_UNLINK_FILE
@@ -196,6 +201,13 @@ impl WasiInner {
   /// is a regular file or directory we tracked. Stdio and HostFile entries
   /// return None because rights are implied by the entry type rather than
   /// stored explicitly.
+  ///
+  /// Note: callers pair this with [`has_right`], which treats `None` as
+  /// "all rights granted". For inherited stdio that's fine. For HostFile,
+  /// the per-op rights gate is intentionally skipped because the Deno
+  /// permission for the underlying path was already paid when node:fs
+  /// opened the user fd (see [`make_stdio_entry`]'s `FdTable` check);
+  /// the OS-level open mode then limits what actually succeeds.
   fn fd_rights(&self, fd: i32) -> Option<u64> {
     match self.get_fd(fd) {
       Some(FdEntry::File { rights, .. })
@@ -1685,10 +1697,14 @@ impl WasiContext {
     match std::fs::read_link(&resolved) {
       Ok(target) => {
         let target_bytes = target.as_os_str().as_encoded_bytes();
-        // On Windows, path_symlink rewrote forward slashes to backslashes so
-        // the OS could resolve relative symlinks. Convert them back here so
-        // WASI callers see the POSIX-style target they originally stored
-        // (Node's test-wasi-symlinks asserts the bytes round-trip exactly).
+        // Best-effort reverse of the normalization in path_symlink: on
+        // Windows we rewrote forward slashes to backslashes so the OS
+        // could resolve relative symlinks, so here we flip them back to
+        // give WASI callers a POSIX-style target. This is biased toward
+        // the test-wasi-symlinks round-trip case — a symlink created
+        // outside WASI with literal backslashes in its target will have
+        // its bytes rewritten to forward slashes too, which is a known
+        // limitation we accept to keep the WASI surface POSIX-shaped.
         #[cfg(windows)]
         let owned = target_bytes
           .iter()
@@ -1780,7 +1796,7 @@ impl WasiContext {
   fn path_filestat_set_times(
     &self,
     #[smi] dirfd: i32,
-    #[smi] _flags: i32,
+    #[smi] flags: i32,
     #[smi] path_ptr: i32,
     #[smi] path_len: i32,
     #[number] atim: i64,
@@ -1791,17 +1807,28 @@ impl WasiContext {
     let Some(path_str) = read_string(memory, path_ptr, path_len) else {
       return ERRNO_FAULT;
     };
+    let follow_symlinks = (flags as u32) & LOOKUPFLAGS_SYMLINK_FOLLOW != 0;
     let inner = self.inner.borrow();
-    let resolved = match inner.resolve_preopen_path(
+    let resolved = match inner.resolve_preopen_path_ex(
       dirfd,
       &path_str,
       &self.permissions,
       OpenAccessKind::Write,
+      follow_symlinks,
     ) {
       Ok(p) => p,
       Err(e) => return e,
     };
-    let meta = match std::fs::metadata(&resolved) {
+    // Mirror path_filestat_get: honor LOOKUPFLAGS_SYMLINK_FOLLOW for both the
+    // metadata lookup we use to fill in absent atim/mtim and for the
+    // utimensat-equivalent call. Otherwise a caller passing flags=0 would
+    // silently traverse symlinks and modify the target's times.
+    let meta = if follow_symlinks {
+      std::fs::metadata(&resolved)
+    } else {
+      std::fs::symlink_metadata(&resolved)
+    };
+    let meta = match meta {
       Ok(m) => m,
       Err(e) => return io_err_to_errno(&e),
     };
@@ -1814,7 +1841,12 @@ impl WasiContext {
       Ok(v) => v,
       Err(e) => return e,
     };
-    match filetime::set_file_times(&resolved, atime, mtime) {
+    let result = if follow_symlinks {
+      filetime::set_file_times(&resolved, atime, mtime)
+    } else {
+      filetime::set_symlink_file_times(&resolved, atime, mtime)
+    };
+    match result {
       Ok(()) => ERRNO_SUCCESS,
       Err(e) => io_err_to_errno(&e),
     }
@@ -1839,6 +1871,16 @@ impl WasiContext {
       return ERRNO_FAULT;
     };
     let inner = self.inner.borrow();
+    // The Deno permission check inside `resolve_preopen_path` is what
+    // actually gates the OS-level hardlink; the per-fd rights check here
+    // is purely for parity with the other path_* ops that consult the
+    // dirfd's stored rights (`path_create_directory`, `path_unlink_file`,
+    // etc.). Skipping it would be safe but inconsistent.
+    if !has_right(inner.fd_rights(old_dirfd), RIGHTS_PATH_LINK_SOURCE)
+      || !has_right(inner.fd_rights(new_dirfd), RIGHTS_PATH_LINK_TARGET)
+    {
+      return ERRNO_NOTCAPABLE;
+    }
     let old_resolved = match inner.resolve_preopen_path(
       old_dirfd,
       &old_path,
@@ -1983,6 +2025,13 @@ impl WasiContext {
 
     // If no FD subscription fired and a clock deadline was set, wait it out.
     // The clock event itself only fires after the wait, signaled below.
+    //
+    // NOTE: this intentionally blocks the V8 isolate thread for the full
+    // clock subscription. WASI's poll_oneoff is a synchronous host call, so
+    // we can't yield back to the event loop here without breaking the
+    // contract. Callers passing long clock timeouts will hang JS until the
+    // deadline elapses — that's the inherent cost of running a synchronous
+    // WASI program on a single-threaded runtime, not a bug.
     if events.is_empty()
       && let Some(due) = deadline
     {
@@ -2297,14 +2346,18 @@ fn dup_user_fd_to_file(
   #[cfg(unix)]
   {
     use std::os::fd::FromRawFd;
-    // SAFETY: libc::dup is always safe to call. It either returns -1 on
-    // error or a fresh fd owned by the caller. We only construct File from
-    // a successful dup, so the resulting File owns a valid OS fd.
-    let new_fd = unsafe { libc::dup(user_fd) };
+    // Use F_DUPFD_CLOEXEC instead of plain dup so the dup'd fd is marked
+    // close-on-exec. A WASI program that spawns a child process would
+    // otherwise leak this host fd into the child, which is exactly the
+    // kind of escape hatch we just closed off in make_stdio_entry.
+    // SAFETY: fcntl(F_DUPFD_CLOEXEC, 0) is always safe to call. It either
+    // returns -1 on error or a fresh fd (>=0) owned by the caller.
+    let new_fd = unsafe { libc::fcntl(user_fd, libc::F_DUPFD_CLOEXEC, 0) };
     if new_fd >= 0 {
-      // SAFETY: new_fd was just returned by libc::dup, so it's a fresh OS
-      // file descriptor we now own. Wrapping it in std::fs::File transfers
-      // ownership to the returned File, which closes the fd on Drop.
+      // SAFETY: new_fd was just returned by fcntl(F_DUPFD_CLOEXEC), so it's
+      // a fresh OS file descriptor we now own. Wrapping it in std::fs::File
+      // transfers ownership to the returned File, which closes the fd on
+      // Drop.
       return Some(unsafe { std::fs::File::from_raw_fd(new_fd) });
     }
     let _ = state;
@@ -2356,7 +2409,10 @@ struct PollSubscription {
   tag: u8,
   clock_id: i32,
   clock_timeout: u64,
-  #[allow(dead_code, reason = "kept for parity with full WASI errno set")]
+  #[allow(
+    dead_code,
+    reason = "WASI subscription field, not currently consulted"
+  )]
   clock_precision: u64,
   clock_flags: u16,
   fd: i32,

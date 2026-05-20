@@ -196,7 +196,7 @@ Deno.test("[node/wasi] - finalizeBindings binds wasm memory", () => {
   assertEquals(view.getUint32(0, true), 0);
 });
 
-Deno.test("[node/wasi] - constructor emits ExperimentalWarning once", async () => {
+Deno.test("[node/wasi] - constructor emits ExperimentalWarning with the expected message", async () => {
   const warnings: { name?: string; message?: string }[] = [];
   const proc = (globalThis as any).process;
   const listener = (w: { name?: string; message?: string }) => {
