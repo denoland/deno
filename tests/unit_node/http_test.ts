@@ -2948,6 +2948,7 @@ Deno.test(
         port: 1,
         path: "/foo",
         agent: new http.Agent({
+          keepAlive: true,
           proxyEnv: {
             HTTP_PROXY: `http://127.0.0.1:${proxyPort}`,
           },

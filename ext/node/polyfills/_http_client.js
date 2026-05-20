@@ -394,9 +394,14 @@ function ClientRequest(input, options, cb) {
     }
 
     if (this[kProxy] && protocol === "http:") {
-      // Node sends Proxy-Connection: keep-alive alongside Connection: keep-alive.
+      // Mirror what _storeHeader will pick for Connection: when shouldKeepAlive
+      // is true, both Connection and Proxy-Connection are "keep-alive"; when
+      // false, both are "close". Matches Node's wire format on the proxy hop.
       if (!this.getHeader("proxy-connection")) {
-        this.setHeader("Proxy-Connection", "keep-alive");
+        this.setHeader(
+          "Proxy-Connection",
+          this.shouldKeepAlive ? "keep-alive" : "close",
+        );
       }
       if (this[kProxy].auth && !this.getHeader("proxy-authorization")) {
         this.setHeader("Proxy-Authorization", this[kProxy].auth);

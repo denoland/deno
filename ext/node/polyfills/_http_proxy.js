@@ -46,27 +46,35 @@ function readEnvKey(env, keys) {
   return undefined;
 }
 
-function parseProxyUrl(raw, kind) {
+function parseProxyUrl(raw, kind, mode) {
   if (raw === undefined || raw === null || raw === "") return null;
   if (typeof raw !== "string") {
+    if (mode === "env") {
+      throw new TypeError(`Invalid URL: ${raw}`);
+    }
     throw new ERR_PROXY_INVALID_CONFIG(
       `Invalid proxy URL for ${kind}: must be a string`,
     );
   }
   // CRLF injection guard - check raw string before URL parsing strips them.
+  // Matches Node's CRLF rejection in the proxy URL validator. We surface this
+  // even for env-derived URLs so the auth tests get the expected error class.
   if (/[\r\n]/.test(raw)) {
     throw new ERR_PROXY_INVALID_CONFIG(`Invalid proxy URL: ${raw}`);
   }
   let url;
   try {
-    // Allow `host:port` form (Node accepts this; URL parser doesn't).
-    url = new URL(
-      /^[a-zA-Z][a-zA-Z0-9+.\-]*:\/\//.test(raw) ? raw : `http://${raw}`,
-    );
+    url = new URL(raw);
   } catch {
+    if (mode === "env") {
+      throw new TypeError(`Invalid URL: ${raw}`);
+    }
     throw new ERR_PROXY_INVALID_CONFIG(`Invalid proxy URL: ${raw}`);
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
+    if (mode === "env") {
+      throw new TypeError(`Invalid URL: ${raw}`);
+    }
     throw new ERR_PROXY_INVALID_CONFIG(
       `Invalid proxy URL: ${raw} (unsupported scheme ${url.protocol})`,
     );
@@ -90,6 +98,44 @@ function parseProxyUrl(raw, kind) {
         Buffer.from(`${username}:${password}`).toString("base64")
       : undefined,
   };
+}
+
+// Returns the numeric value of an IPv4 dotted-quad string, or null if not
+// a valid IPv4 literal.
+function parseIPv4(s) {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s);
+  if (!m) return null;
+  let acc = 0;
+  for (let i = 1; i <= 4; i++) {
+    const oct = Number(m[i]);
+    if (oct > 255) return null;
+    acc = (acc * 256) + oct;
+  }
+  return acc;
+}
+
+// Returns { lo, hi } for a CIDR (a.b.c.d/N) or IP range (a-b), where lo/hi
+// are 32-bit IPv4 numbers; null if the input isn't recognized.
+function parseIPv4Range(s) {
+  const slash = s.indexOf("/");
+  if (slash !== -1) {
+    const ip = parseIPv4(s.slice(0, slash));
+    if (ip === null) return null;
+    const bits = Number(s.slice(slash + 1));
+    if (!Number.isInteger(bits) || bits < 0 || bits > 32) return null;
+    const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+    const lo = ip & mask;
+    const hi = lo | (~mask >>> 0);
+    return { lo, hi };
+  }
+  const dash = s.indexOf("-");
+  if (dash !== -1) {
+    const lo = parseIPv4(s.slice(0, dash));
+    const hi = parseIPv4(s.slice(dash + 1));
+    if (lo === null || hi === null || lo > hi) return null;
+    return { lo, hi };
+  }
+  return null;
 }
 
 function parseNoProxy(raw) {
@@ -118,20 +164,41 @@ function parseNoProxy(raw) {
     } else {
       const lastColon = host.lastIndexOf(":");
       // Only treat trailing :NNN as a port when the host has no other colons
-      // (so we don't mistake a bare IPv6 like ::1 for host:port).
-      if (lastColon !== -1 && host.indexOf(":") === lastColon) {
+      // (so we don't mistake a bare IPv6 like ::1 for host:port). Also skip
+      // when the host already contains "/" or "-" (CIDR / range syntax).
+      if (
+        lastColon !== -1 && host.indexOf(":") === lastColon &&
+        host.indexOf("/") === -1 && host.indexOf("-") === -1
+      ) {
         port = host.slice(lastColon + 1);
         host = host.slice(0, lastColon);
       }
     }
-    // Leading dot means "matches any subdomain of"; normalize for matching.
+    // Try CIDR or IPv4 range first (a-b, a/n).
+    const range = parseIPv4Range(host);
+    if (range) {
+      entries.push({
+        host: null,
+        ipRange: range,
+        port: port === null ? null : Number(port),
+        suffixMatch: false,
+      });
+      continue;
+    }
+    // Leading dot or "*." prefix means "matches this domain and any
+    // subdomain of it". `*.example.com` is the wildcard form; `.example.com`
+    // is the bare-suffix form. Both normalize to the same matcher.
     let suffixMatch = false;
-    if (host.startsWith(".")) {
+    if (host.startsWith("*.")) {
+      suffixMatch = true;
+      host = host.slice(2);
+    } else if (host.startsWith(".")) {
       suffixMatch = true;
       host = host.slice(1);
     }
     entries.push({
       host: host.toLowerCase(),
+      ipRange: null,
       port: port === null ? null : Number(port),
       suffixMatch,
     });
@@ -151,9 +218,20 @@ function shouldBypassProxy(noProxy, host, port) {
   if (noProxy.all) return true;
   const normalizedHost = stripIpv6Brackets(String(host || "")).toLowerCase();
   const portNum = port == null ? null : Number(port);
+  const hostAsIp = parseIPv4(normalizedHost);
   for (let i = 0; i < noProxy.entries.length; i++) {
     const entry = noProxy.entries[i];
     if (entry.port !== null && entry.port !== portNum) {
+      continue;
+    }
+    if (entry.ipRange !== null) {
+      if (
+        hostAsIp !== null &&
+        hostAsIp >= entry.ipRange.lo &&
+        hostAsIp <= entry.ipRange.hi
+      ) {
+        return true;
+      }
       continue;
     }
     if (entry.host === "" || entry.host === "*") {
@@ -179,14 +257,16 @@ function shouldBypassProxy(noProxy, host, port) {
   return false;
 }
 
-// Builds a ProxyConfig from a raw env-like object.
-// Throws ERR_PROXY_INVALID_CONFIG on invalid proxy URLs.
-function buildProxyConfig(env) {
+// Builds a ProxyConfig from a raw env-like object. `mode` controls which
+// error class invalid URLs surface as: "env" throws TypeError("Invalid URL"),
+// matching Node's behavior when NODE_USE_ENV_PROXY=1 sees a bad HTTP_PROXY;
+// "strict" throws ERR_PROXY_INVALID_CONFIG, matching setGlobalProxyFromEnv().
+function buildProxyConfig(env, mode) {
   const httpRaw = readEnvKey(env, HTTP_PROXY_KEYS);
   const httpsRaw = readEnvKey(env, HTTPS_PROXY_KEYS);
   const noProxyRaw = readEnvKey(env, NO_PROXY_KEYS);
-  const http = parseProxyUrl(httpRaw, "http_proxy");
-  const https = parseProxyUrl(httpsRaw, "https_proxy");
+  const http = parseProxyUrl(httpRaw, "http_proxy", mode);
+  const https = parseProxyUrl(httpsRaw, "https_proxy", mode);
   if (http === null && https === null) return null;
   return {
     http,
@@ -225,12 +305,11 @@ function maybeInitFromEnv() {
     enabled = v === "1" || v === "true";
   }
   if (!enabled) return;
-  try {
-    const cfg = buildProxyConfig(env);
-    if (cfg) globalProxyConfig = cfg;
-  } catch {
-    // ignore - invalid env should not crash; tests cover this path.
-  }
+  // Use "env" mode so an invalid HTTP_PROXY surfaces as TypeError: Invalid URL,
+  // matching Node v24's behavior at request time. The error propagates out
+  // through resolveAgentProxyConfig and surfaces on the offending request.
+  const cfg = buildProxyConfig(env, "env");
+  if (cfg) globalProxyConfig = cfg;
 }
 
 function getGlobalProxyConfig() {
@@ -253,9 +332,14 @@ function setGlobalProxyFromEnv(input) {
   }
   // Calling setGlobalProxyFromEnv replaces any NODE_USE_ENV_PROXY-derived
   // state; ensure that read-once gate is closed.
-  maybeInitFromEnv();
+  try {
+    maybeInitFromEnv();
+  } catch {
+    // Env-derived init may throw on invalid URLs, but the explicit caller
+    // is replacing it anyway - swallow so we can install the new config.
+  }
   initializedFromEnv = true;
-  const newConfig = buildProxyConfig(env);
+  const newConfig = buildProxyConfig(env, "strict");
   const prev = globalProxyConfig;
   globalProxyConfig = newConfig;
   let restored = false;
@@ -285,7 +369,7 @@ function initAgentProxy(agent, options) {
         options.proxyEnv,
       );
     }
-    agent.__proxyConfig = buildProxyConfig(options.proxyEnv);
+    agent.__proxyConfig = buildProxyConfig(options.proxyEnv, "strict");
   }
 }
 
@@ -303,7 +387,7 @@ function initFromStartupEnv() {
   const env = (globalThis.process && globalThis.process.env) || {};
   // Don't throw on startup if env vars are malformed - fall back to direct.
   try {
-    const cfg = buildProxyConfig(env);
+    const cfg = buildProxyConfig(env, "env");
     if (cfg) globalProxyConfig = cfg;
   } catch {
     // ignore

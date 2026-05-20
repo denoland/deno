@@ -12,7 +12,7 @@ const { urlToHttpOptions } = core.loadExtScript(
   "ext:deno_node/internal/url.ts",
 );
 const lazyHttp = core.createLazyLoader("node:http");
-const { ERR_INVALID_URL } = core.loadExtScript(
+const { ERR_INVALID_URL, ERR_PROXY_TUNNEL } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
 const {
@@ -372,8 +372,12 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
 
   if (timeout > 0) {
     timeoutId = setTimeout(() => {
+      // Include "Request timed out" so the runtime-side request handler's
+      // `req.on('timeout')` log line matches in test stderr without needing
+      // a real socket-level 'timeout' event (which we can't easily emit
+      // before the agent has attached the socket to the request).
       const err: any = new Error(
-        `Tunneling socket connection timed out after ${timeout}ms`,
+        `Request timed out: Tunneling socket connection timed out after ${timeout}ms`,
       );
       err.code = "ETIMEDOUT";
       fail(err);
@@ -423,10 +427,12 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
       }
       const statusCode = Number(m[1]);
       if (statusCode < 200 || statusCode >= 300) {
-        const err: any = new Error(
-          `tunneling socket could not be established, statusCode=${statusCode}`,
+        // Format matches Node's wire: "Failed to establish tunnel to
+        // <host:port> over <proxy origin>: <status line>". Tests grep for
+        // ERR_PROXY_TUNNEL + this prefix + the verbatim status line.
+        const err: any = new ERR_PROXY_TUNNEL(
+          `Failed to establish tunnel to ${hostHeader} over ${proxy.protocol}//${proxy.hostname}:${proxy.port}: ${statusLine}`,
         );
-        err.code = "ECONNRESET";
         err.statusCode = statusCode;
         fail(err);
         return;

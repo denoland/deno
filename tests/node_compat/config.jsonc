@@ -4518,7 +4518,6 @@
     "client-proxy/test-http-set-global-proxy-from-env-override-http.mjs": {},
     "client-proxy/test-https-proxy-request-invalid-char-in-options.mjs": {},
     "client-proxy/test-https-proxy-request-connection-refused.mjs": {},
-    "client-proxy/test-https-proxy-request-invalid-char-in-url.mjs": {},
     "client-proxy/test-https-proxy-request-invalid-credentials.mjs": {},
     "client-proxy/test-https-proxy-request-invalid-url.mjs": {},
     "es-module/test-esm-dns-promises.mjs": {},
