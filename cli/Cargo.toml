@@ -211,3 +211,6 @@ OriginalFilename = "deno.exe"
 LegalCopyright = "© Deno contributors & Deno Land Inc. MIT licensed."
 ProductName = "Deno"
 FileDescription = "Deno: A secure runtime for JavaScript and TypeScript"
+
+[package.metadata.cargo-shear]
+ignored = ["locked-tripwire"]
