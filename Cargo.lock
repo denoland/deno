@@ -1948,7 +1948,7 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
- "twox-hash 2.1.0",
+ "twox-hash 2.1.2",
  "typed-arena",
  "unicode-width 0.1.13",
  "uuid",
@@ -2173,7 +2173,7 @@ dependencies = [
  "sys_traits",
  "thiserror 2.0.12",
  "tokio",
- "twox-hash 2.1.0",
+ "twox-hash 2.1.2",
  "unicycle",
  "url",
  "v8",
@@ -2619,7 +2619,7 @@ dependencies = [
  "serde_json",
  "sys_traits",
  "thiserror 2.0.12",
- "twox-hash 2.1.0",
+ "twox-hash 2.1.2",
  "url",
 ]
 
@@ -2956,7 +2956,7 @@ dependencies = [
  "test_util",
  "thiserror 2.0.12",
  "tokio",
- "twox-hash 2.1.0",
+ "twox-hash 2.1.2",
  "url",
  "winapi",
 ]
@@ -3162,7 +3162,7 @@ dependencies = [
  "sys_traits",
  "test_util",
  "thiserror 2.0.12",
- "twox-hash 2.1.0",
+ "twox-hash 2.1.2",
  "url",
 ]
 
@@ -3226,7 +3226,7 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-metrics",
- "twox-hash 2.1.0",
+ "twox-hash 2.1.2",
  "unicode-normalization",
  "uuid",
  "winapi",
@@ -3632,7 +3632,7 @@ dependencies = [
  "sys_traits",
  "tempfile",
  "thiserror 2.0.12",
- "twox-hash 2.1.0",
+ "twox-hash 2.1.2",
 ]
 
 [[package]]
@@ -10544,7 +10544,7 @@ dependencies = [
  "tempfile",
  "termcolor",
  "test_macro",
- "twox-hash 2.1.0",
+ "twox-hash 2.1.2",
  "url",
  "win32job",
  "winapi",
@@ -11133,9 +11133,9 @@ dependencies = [
 
 [[package]]
 name = "twox-hash"
-version = "2.1.0"
+version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7b17f197b3050ba473acf9181f7b1d3b66d1cf7356c6cc57886662276e65908"
+checksum = "9ea3136b675547379c4bd395ca6b938e5ad3c3d20fad76e7fe85f9e0d011419c"
 
 [[package]]
 name = "typed-arena"
