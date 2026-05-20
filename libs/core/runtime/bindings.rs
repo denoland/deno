@@ -175,16 +175,6 @@ pub(crate) fn create_external_references(
     pointer: std::ptr::null_mut(),
   });
 
-  for (i, r) in references.iter().enumerate() {
-    let addr = unsafe { r.pointer as usize };
-    if addr != 0 && addr < 0x100000000 && addr >= 0x600000000000 {
-      eprintln!(
-        "[debug] external_references[{i}] looks heap-allocated: {:#x}",
-        addr
-      );
-    }
-  }
-
   references
 }
 
@@ -513,20 +503,25 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
   }
 }
 
-/// Re-attach fast-call overloads to the top-level ops in `Deno.core.ops` after
-/// snapshot deserialization. Fast-call setup creates V8
-/// `Managed<CFunctionWithSignature>` resources, which the V8 14.9 snapshot
-/// serializer rejects (see `op_ctx_template`), so the snapshot bakes the slow
-/// version of each op function and this pass replaces them with fresh
-/// fast-call equivalents at runtime startup.
+/// Re-attach fast-call overloads to snapshotted ops after deserialization.
 ///
-/// Only top-level ops in `Deno.core.ops` are upgraded here. Methods on cppgc
-/// class prototypes are not yet re-attached and stay on the slow path; that's
-/// a follow-up.
+/// Fast-call setup creates V8 `Managed<CFunctionWithSignature>` resources,
+/// which the V8 14.9 snapshot serializer rejects (see `op_ctx_template`), so
+/// the snapshot bakes the slow version of every op function. This pass builds
+/// fresh fast-call-equipped functions for each op that declares a `fast_fn`
+/// and overwrites:
+///
+/// 1. the top-level entries in `Deno.core.ops`,
+/// 2. instance methods on each cppgc class prototype,
+/// 3. static methods on each cppgc class function itself.
+///
+/// Accessors stay as-is because they're built with plain
+/// `FunctionTemplate::build` (no `Managed`) and survived the snapshot.
 pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   context: v8::Local<'s, v8::Context>,
   op_ctxs: &[OpCtx],
+  op_method_decls: &[OpMethodDecl],
   methods_ctx_offset: usize,
 ) {
   let global = context.global(scope);
@@ -540,15 +535,72 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
     SET_UP_ASYNC_STUB,
     "Deno.core.setUpAsyncStub",
   );
+  let prototype_key = v8::String::new(scope, "prototype").unwrap();
   let undefined = v8::undefined(scope);
 
+  let mut index = 0;
+  for decl in op_method_decls {
+    if index == methods_ctx_offset {
+      break;
+    }
+
+    if decl.constructor.is_some() {
+      index += 1;
+    }
+
+    // Resolve the class function from `Deno.core.ops`; we need it both as the
+    // anchor for prototype methods and to receive static methods.
+    let class_key = decl.name.1.v8_string(scope).unwrap();
+    let class_fn_val = deno_core_ops_obj.get(scope, class_key.into());
+    let class_fn =
+      class_fn_val.and_then(|v| v8::Local::<v8::Function>::try_from(v).ok());
+    let prototype = class_fn.and_then(|f| {
+      let p = f.get(scope, prototype_key.into())?;
+      v8::Local::<v8::Object>::try_from(p).ok()
+    });
+
+    let method_ctxs = &op_ctxs[index..index + decl.methods.len()];
+    for method in method_ctxs {
+      let needs_upgrade =
+        method_needs_fast_call_upgrade(method) && !method.decl.is_accessor();
+      if !needs_upgrade {
+        continue;
+      }
+      let Some(prototype) = prototype else { continue };
+      let method_fn =
+        op_ctx_function(scope, method, v8::ConstructorBehavior::Throw, false);
+      let method_key = name_key(scope, &method.decl);
+      if method.decl.is_async {
+        // `setUpAsyncStub` installs the wrapped fn on `class_fn.prototype`
+        // when given the class as the third argument.
+        let Some(class_fn) = class_fn else { continue };
+        let _ = set_up_async_stub_fn.call(
+          scope,
+          undefined.into(),
+          &[method_key.into(), method_fn.into(), class_fn.into()],
+        );
+      } else {
+        prototype.set(scope, method_key.into(), method_fn.into());
+      }
+    }
+    index += decl.methods.len();
+
+    let static_method_ctxs = &op_ctxs[index..index + decl.static_methods.len()];
+    for method in static_method_ctxs {
+      if !method_needs_fast_call_upgrade(method) {
+        continue;
+      }
+      let Some(class_fn) = class_fn else { continue };
+      let method_fn =
+        op_ctx_function(scope, method, v8::ConstructorBehavior::Throw, false);
+      let method_key = name_key(scope, &method.decl);
+      class_fn.set(scope, method_key.into(), method_fn.into());
+    }
+    index += decl.static_methods.len();
+  }
+
   for op_ctx in &op_ctxs[methods_ctx_offset..] {
-    let has_fast_fn = if op_ctx.metrics_enabled() {
-      op_ctx.decl.fast_fn_with_metrics.is_some()
-    } else {
-      op_ctx.decl.fast_fn.is_some()
-    };
-    if !has_fast_fn {
+    if !method_needs_fast_call_upgrade(op_ctx) {
       continue;
     }
 
@@ -564,6 +616,14 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
     }
 
     deno_core_ops_obj.set(scope, key.into(), op_fn.into());
+  }
+}
+
+fn method_needs_fast_call_upgrade(op_ctx: &OpCtx) -> bool {
+  if op_ctx.metrics_enabled() {
+    op_ctx.decl.fast_fn_with_metrics.is_some()
+  } else {
+    op_ctx.decl.fast_fn.is_some()
   }
 }
 

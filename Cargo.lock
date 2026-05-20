@@ -6656,7 +6656,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -11528,9 +11528,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "149.1.0"
+version = "149.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5698bd6863eab0dcf0c536ffa3b0d8e3aaec16f4de5282e6acd288b9064f38ef"
+checksum = "55897294cf631f99d5ff57c6a0611648861645ed7c8f251579161e0768812840"
 dependencies = [
  "bindgen 0.72.1",
  "bitflags 2.9.3",
