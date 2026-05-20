@@ -12,10 +12,13 @@ async function teardownTestRepo() {
   await $`rm -rf nextjs-demo`;
 }
 
-async function runPackageManager(pm: string, cmd: string) {
+async function runPackageManager(pm: string, args: string[]) {
   const state = Date.now();
+  // pnpm's bundled upath2 reads `who.__proto__.constructor`, which Deno
+  // exposes only behind `--unstable-unsafe-proto`.
+  const denoFlags = pm === "pnpm" ? ["--unstable-unsafe-proto"] : [];
   const result =
-    await $`cd nextjs-demo ; rm -rf node_modules ; ${Deno.execPath()} run -A --no-config npm:${pm} ${cmd}`
+    await $`cd nextjs-demo ; rm -rf node_modules ; ${Deno.execPath()} run -A ${denoFlags} --no-config npm:${pm} ${args}`
       .stdout("inheritPiped").stderr("inheritPiped").noThrow().timeout(
         "120s",
       );
@@ -30,7 +33,7 @@ async function runPackageManager(pm: string, cmd: string) {
 
 async function testNpm() {
   $.logStep("Testing npm...");
-  const report = await runPackageManager("npm", "install");
+  const report = await runPackageManager("npm", ["install"]);
   if (report.exitCode === 0) {
     $.logStep("npm install succeeded");
   } else {
@@ -41,7 +44,7 @@ async function testNpm() {
 
 async function testYarn() {
   $.logStep("Testing yarn...");
-  const report = await runPackageManager("yarn", "install");
+  const report = await runPackageManager("yarn", ["install"]);
   if (report.exitCode === 0) {
     $.logStep("yarn install succeeded");
   } else {
@@ -52,7 +55,14 @@ async function testYarn() {
 
 async function testPnpm() {
   $.logStep("Testing pnpm...");
-  const report = await runPackageManager("pnpm", "install");
+  // pnpm 11's strict-builds policy exits 1 with `ERR_PNPM_IGNORED_BUILDS`
+  // in non-interactive mode whenever a dependency has an unapproved
+  // postinstall script (e.g. `unrs-resolver`); allow them all so the
+  // smoke test reflects whether the install actually works.
+  const report = await runPackageManager("pnpm", [
+    "install",
+    "--config.dangerouslyAllowAllBuilds=true",
+  ]);
   if (report.exitCode === 0) {
     $.logStep("pnpm install succeeded");
   } else {
