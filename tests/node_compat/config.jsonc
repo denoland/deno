@@ -4457,6 +4457,11 @@
       "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
     },
     "test-runner/test-output-typescript-coverage.mjs": {},
+    "test-runner/test-run-watch-cwd-isolation-none.mjs": {},
+    "test-runner/test-run-watch-cwd-isolation-process.mjs": {},
+    "test-runner/test-run-watch-cwd.mjs": {},
+    "test-runner/test-run-watch-emit-restarted.mjs": {},
+    "test-runner/test-run-watch-no-emit-restarted-disabled.mjs": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-watch-mode-inspect.mjs": {},
     // TODO(bartlomieju): this test is very flaky on CI, especially on Windows ARM
