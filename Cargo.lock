@@ -6689,9 +6689,9 @@ dependencies = [
 
 [[package]]
 name = "locked-tripwire"
-version = "0.1.1002"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a353f41156137ba2d80fad2ed46bea382d7790f55a3d06cdb6a35eed3344660"
+checksum = "d18841f136ee0993c6637a1387eb3758acc9fa24d558f540d329b2d8bb901c67"
 
 [[package]]
 name = "log"
