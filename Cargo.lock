@@ -1895,6 +1895,7 @@ dependencies = [
  "libc",
  "libsui",
  "libz-sys",
+ "locked-tripwire",
  "log",
  "lol_html",
  "ls-types",
@@ -6685,6 +6686,12 @@ dependencies = [
  "autocfg",
  "scopeguard",
 ]
+
+[[package]]
+name = "locked-tripwire"
+version = "0.1.1002"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a353f41156137ba2d80fad2ed46bea382d7790f55a3d06cdb6a35eed3344660"
 
 [[package]]
 name = "log"
