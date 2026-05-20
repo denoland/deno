@@ -1805,7 +1805,10 @@
     "parallel/test-http-many-ended-pipelines.js": {},
     "parallel/test-http-max-header-size-per-stream.js": {},
     "parallel/test-http-max-headers-count.js": {},
-    "parallel/test-http-max-http-headers.js": {},
+    "parallel/test-http-max-http-headers.js": {
+      "ignore": true,
+      "reason": "Depends on `require('internal/options')`, which Deno does not expose"
+    },
     "parallel/test-http-max-sockets.js": {},
     "parallel/test-http-methods.js": {},
     "parallel/test-http-missing-header-separator-cr.js": {},
@@ -2668,7 +2671,10 @@
       "reason": "Tests node --run CLI subcommand which is not implemented in Deno"
     },
     "parallel/test-nodeeventtarget.js": {},
-    "parallel/test-options-binding.js": {},
+    "parallel/test-options-binding.js": {
+      "ignore": true,
+      "reason": "Depends on `require('internal/options')`, which Deno does not expose"
+    },
     "parallel/test-os-checked-function.js": {
       "darwin": false,
       "linux": false,

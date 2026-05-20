@@ -337,10 +337,9 @@ const wasi = core.loadExtScript("ext:deno_node/wasi.ts").default;
 // zlib is lazy-loaded via `lazyNodeModules` below: zlib.js extends
 // `Transform` from `node:stream` at module body, so loading it eagerly
 // pulls the stream subtree into the snapshot.
-const internalOptions = core.loadExtScript(
+const { getOptionValue } = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
 );
-const { getOptionValue } = internalOptions;
 
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
@@ -461,7 +460,6 @@ function setupBuiltinModules() {
     "internal/socketaddress": internalSocketAddress,
     "internal/js_stream_socket": internalJsStreamSocket,
     "internal/net": internalNet,
-    "internal/options": internalOptions,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
     "internal/tty": internalTty,
