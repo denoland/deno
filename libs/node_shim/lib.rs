@@ -3468,6 +3468,12 @@ pub fn translate_to_deno_args(
   for reporter in &env_opts.test_reporter {
     node_options.push(format!("--test-reporter={}", reporter));
   }
+  for pattern in &env_opts.test_name_pattern {
+    node_options.push(format!("--test-name-pattern={}", pattern));
+  }
+  for pattern in &env_opts.test_skip_pattern {
+    node_options.push(format!("--test-skip-pattern={}", pattern));
+  }
 
   // Forward --require/--import modules to Deno's run subcommand so that
   // child_process.spawnSync(process.execPath, ['-r', wrapper, main])

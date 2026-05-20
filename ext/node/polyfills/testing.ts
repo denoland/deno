@@ -169,13 +169,110 @@ function isTapMode() {
   return getNodeTestReporter() === "tap";
 }
 
+function getTapSuiteALS() {
+  if (tapSuiteALS !== null) return tapSuiteALS;
+  const mod = core.loadExtScript("ext:deno_node/async_hooks.ts");
+  const ALS = mod.AsyncLocalStorage;
+  tapSuiteALS = new ALS();
+  return tapSuiteALS;
+}
+
+function getTapCurrentSuite() {
+  if (tapSuiteALS !== null) {
+    const fromAls = tapSuiteALS.getStore();
+    if (fromAls !== undefined) return fromAls;
+  }
+  return tapCurrentSuiteSync;
+}
+
+// Parse `--test-skip-pattern` from NODE_OPTIONS so the TAP-mode polyfill can
+// filter tests Node-style. A bare string is interpreted as a regex source;
+// `/.../flags` is a regex literal.
+function parsePatternFlag(flag) {
+  const env = globalThis.Deno?.env;
+  if (!env) return null;
+  let nodeOptions = "";
+  try {
+    nodeOptions = env.get("NODE_OPTIONS") || "";
+  } catch { /* permission denied */ }
+  if (!nodeOptions) return null;
+  const out = [];
+  const re = new RegExp(`${flag}(?:=|\\s+)(\\S+)`, "g");
+  let m;
+  while ((m = re.exec(nodeOptions)) !== null) {
+    const value = m[1];
+    let pattern;
+    const litMatch = value.match(/^\/(.*)\/([a-z]*)$/);
+    if (litMatch) {
+      try {
+        pattern = new RegExp(litMatch[1], litMatch[2]);
+      } catch {
+        continue;
+      }
+    } else {
+      try {
+        pattern = new RegExp(value);
+      } catch {
+        continue;
+      }
+    }
+    ArrayPrototypePush(out, pattern);
+  }
+  return out.length > 0 ? out : null;
+}
+
+let testSkipPatternCache;
+function getTestSkipPatterns() {
+  if (testSkipPatternCache !== undefined) return testSkipPatternCache;
+  testSkipPatternCache = parsePatternFlag("--test-skip-pattern");
+  return testSkipPatternCache;
+}
+
+let testOnlyFlagCache;
+function isTestOnlyFlagSet() {
+  if (testOnlyFlagCache !== undefined) return testOnlyFlagCache;
+  const env = globalThis.Deno?.env;
+  if (!env) {
+    testOnlyFlagCache = false;
+    return false;
+  }
+  let nodeOptions = "";
+  try {
+    nodeOptions = env.get("NODE_OPTIONS") || "";
+  } catch { /* permission denied */ }
+  testOnlyFlagCache = /(^|\s)--test-only(\s|=|$)/.test(nodeOptions);
+  return testOnlyFlagCache;
+}
+
+const TEST_ONLY_WARNING =
+  "# 'only' and 'runOnly' require the --test-only command-line option.";
+
+function matchesAnyPattern(name, patterns) {
+  for (const p of new SafeArrayIterator(patterns)) {
+    if (p.test(name)) return true;
+  }
+  return false;
+}
+
+// Returns true if the given test/suite name should be excluded from the run.
+function shouldSkipByPattern(name) {
+  const skip = getTestSkipPatterns();
+  if (skip && matchesAnyPattern(String(name), skip)) return true;
+  return false;
+}
+
 // Top-level queue of test/suite entries collected synchronously while the
 // script body evaluates. Children of describe() blocks live under their parent
 // entry's `children` array, populated during the synchronous descend through
 // the describe body.
 const tapTopEntries = [];
 let tapRunScheduled = false;
-let tapCurrentSuite = null;
+// AsyncLocalStorage tracking the currently-active describe() so that test()
+// and describe() calls made inside an async describe body - even after
+// `await` boundaries - still register against the surrounding suite. The
+// fallback variable handles synchronous nesting before ALS is loaded.
+let tapCurrentSuiteSync = null;
+let tapSuiteALS = null;
 const tapStats = {
   tests: 0,
   suites: 0,
@@ -239,6 +336,9 @@ class TapContext {
   #subtestTail = PromiseResolve();
   #subtestCount = 0;
   #parentChildren;
+  // Per-context "warning printed" flag for the `--test-only` diagnostic.
+  // Mutated by `runTapEntry` when a child uses `only: true`.
+  onlyWarningEmitted = false;
 
   constructor(name, depth, parentChildren) {
     this.#name = name;
@@ -298,9 +398,11 @@ class TapContext {
     if (this.#parentChildren) {
       ArrayPrototypePush(this.#parentChildren, entry);
     }
+    // deno-lint-ignore no-this-alias
+    const parentState = this;
     const p = PromisePrototypeThen(
       this.#subtestTail,
-      () => runTapEntry(entry, childDepth, n),
+      () => runTapEntry(entry, childDepth, n, parentState),
     );
     this.#subtestTail = PromisePrototypeThen(p, () => {}, () => {});
     return p;
@@ -331,11 +433,40 @@ async function runTapTop() {
   // Deno to exit before subtests complete.
   const keepAlive = setInterval(() => {}, 1 << 30);
   try {
+    // Match Node's ordering: top-level `before()` callbacks fire before the
+    // `TAP version 13` line, so any console output they produce appears
+    // before the reporter header in the captured stream.
+    if (rootBeforeHooks.length > 0) {
+      const rootCtx = { name: "<root>", fullName: "<root>" };
+      for (const hook of new SafeArrayIterator(rootBeforeHooks)) {
+        try {
+          const r = ReflectApply(hook, null, [rootCtx]);
+          if (isThenable(r)) await r;
+        } catch { /* swallow to keep parity with Node's lenient hook errors */ }
+      }
+    }
     tapWrite("TAP version 13");
     let n = 0;
+    const topState = { onlyWarningEmitted: false };
     for (const entry of new SafeArrayIterator(tapTopEntries)) {
       n++;
-      await runTapEntry(entry, 0, n);
+      await runTapEntry(entry, 0, n, topState);
+    }
+    // Drain top-level `after()` hooks before printing the plan/summary so
+    // their console output appears between the last test and the `1..N` line.
+    if (rootAfterHooks.length > 0) {
+      const rootCtx = { name: "<root>", fullName: "<root>" };
+      const hooks = ArrayPrototypeSplice(
+        rootAfterHooks,
+        0,
+        rootAfterHooks.length,
+      );
+      for (const hook of new SafeArrayIterator(hooks)) {
+        try {
+          const r = ReflectApply(hook, null, [rootCtx]);
+          if (isThenable(r)) await r;
+        } catch { /* swallow */ }
+      }
     }
     tapWrite(`1..${n}`);
     tapWrite(`# tests ${tapStats.tests}`);
@@ -357,8 +488,11 @@ async function runTapTop() {
 }
 
 // Recursively run a test or suite entry, emitting TAP output at the given
-// nesting depth.
-async function runTapEntry(entry, depth, n) {
+// nesting depth. `parentState` is the runtime state of the immediate parent
+// (a TapContext for test-bodies, or a `{ onlyWarningEmitted }` object for
+// suite/root scopes); it's used to emit the `# 'only' and 'runOnly' require
+// the --test-only command-line option.` warning at most once per parent.
+async function runTapEntry(entry, depth, n, parentState) {
   const indent = tapIndent(depth);
   const isSuite = entry.kind === "suite";
   tapWrite(`${indent}# Subtest: ${tapEscape(entry.name)}`);
@@ -368,14 +502,26 @@ async function runTapEntry(entry, depth, n) {
   let diagnostics = [];
   let childCount = 0;
 
+  // Each test/suite body gets its own state object so warnings emitted
+  // because of an `only: true` child don't leak across siblings.
+  const myChildrenState = { onlyWarningEmitted: false };
+
   if (entry.options.skip) {
-    tapStats.skipped++;
-    tapStats.tests++;
+    if (isSuite) {
+      tapStats.suites++;
+    } else {
+      tapStats.skipped++;
+      tapStats.tests++;
+    }
   } else if (entry.options.todo) {
     // Per Node behavior, a TODO test that throws is not counted as a failure.
     // The runner skips invoking the body to match snapshot output.
-    tapStats.todo++;
-    tapStats.tests++;
+    if (isSuite) {
+      tapStats.suites++;
+    } else {
+      tapStats.todo++;
+      tapStats.tests++;
+    }
   } else if (isSuite) {
     try {
       if (entry.bodyError) throw entry.bodyError;
@@ -383,7 +529,7 @@ async function runTapEntry(entry, depth, n) {
       let childN = 0;
       for (const child of new SafeArrayIterator(entry.children)) {
         childN++;
-        await runTapEntry(child, depth + 1, childN);
+        await runTapEntry(child, depth + 1, childN, myChildrenState);
       }
       childCount = childN;
     } catch (_err) {
@@ -424,10 +570,28 @@ async function runTapEntry(entry, depth, n) {
   for (const d of new SafeArrayIterator(diagnostics)) {
     tapWrite(`${indent}# ${tapEscape(d)}`);
   }
+  // If this entry was registered with `only: true` and the `--test-only` flag
+  // wasn't supplied, Node prints a one-off warning in the parent's scope
+  // immediately after the entry's yaml/diagnostics. Emit it at the same depth
+  // and only once per parent.
+  if (
+    entry.options.only &&
+    !isTestOnlyFlagSet() &&
+    parentState &&
+    !parentState.onlyWarningEmitted
+  ) {
+    tapWrite(`${indent}${TEST_ONLY_WARNING}`);
+    parentState.onlyWarningEmitted = true;
+  }
 }
 
 function queueTapTest(name, options, fn, overrides) {
   const prepared = prepareOptions(name, options, fn, overrides);
+  if (shouldSkipByPattern(prepared.name)) {
+    // Filtered out entirely: do not register or run.
+    scheduleTapRun();
+    return PromiseResolve();
+  }
   const entry = {
     name: prepared.name,
     fn: prepared.fn,
@@ -437,8 +601,9 @@ function queueTapTest(name, options, fn, overrides) {
     bodyPromise: null,
     bodyError: null,
   };
-  if (tapCurrentSuite !== null) {
-    ArrayPrototypePush(tapCurrentSuite.children, entry);
+  const parentSuite = getTapCurrentSuite();
+  if (parentSuite !== null) {
+    ArrayPrototypePush(parentSuite.children, entry);
   } else {
     ArrayPrototypePush(tapTopEntries, entry);
     scheduleTapRun();
@@ -448,6 +613,12 @@ function queueTapTest(name, options, fn, overrides) {
 
 function queueTapSuite(name, options, fn, overrides) {
   const prepared = prepareOptions(name, options, fn, overrides);
+  if (shouldSkipByPattern(prepared.name)) {
+    // Filtered out entirely: do not register, but the suite body must not
+    // run (it would otherwise add unwanted children to the parent).
+    scheduleTapRun();
+    return PromiseResolve();
+  }
   const entry = {
     name: prepared.name,
     fn: prepared.fn,
@@ -457,24 +628,31 @@ function queueTapSuite(name, options, fn, overrides) {
     bodyPromise: null,
     bodyError: null,
   };
-  const parentSuite = tapCurrentSuite;
+  const parentSuite = getTapCurrentSuite();
   if (parentSuite !== null) {
     ArrayPrototypePush(parentSuite.children, entry);
   } else {
     ArrayPrototypePush(tapTopEntries, entry);
     scheduleTapRun();
   }
-  // Evaluate the suite body synchronously so nested describe()/test() calls
-  // register against this suite. If the body returns a promise, defer its
-  // continuation until the runner pulls it.
-  tapCurrentSuite = entry;
+  // Evaluate the suite body inside an AsyncLocalStorage scope so any nested
+  // describe()/test() calls - including those scheduled after `await` inside
+  // the body - register against this suite, not the outer (or null) scope.
+  // The sync fallback handles environments without ALS available.
+  const als = getTapSuiteALS();
+  const prev = tapCurrentSuiteSync;
+  tapCurrentSuiteSync = entry;
   try {
-    const ret = ReflectApply(prepared.fn, null, []);
-    if (isThenable(ret)) entry.bodyPromise = ret;
-  } catch (err) {
-    entry.bodyError = err;
+    als.run(entry, () => {
+      try {
+        const ret = ReflectApply(prepared.fn, null, []);
+        if (isThenable(ret)) entry.bodyPromise = ret;
+      } catch (err) {
+        entry.bodyError = err;
+      }
+    });
   } finally {
-    tapCurrentSuite = parentSuite;
+    tapCurrentSuiteSync = prev;
   }
   return PromiseResolve();
 }
@@ -1076,6 +1254,18 @@ function before(fn, _options) {
   if (typeof fn !== "function") {
     throw new TypeError("before() requires a function argument");
   }
+  if (isTapMode()) {
+    const tapSuite = getTapCurrentSuite();
+    if (tapSuite !== null) {
+      ArrayPrototypePush(tapSuite.beforeAllHooks ??= [], fn);
+      return;
+    }
+    ArrayPrototypePush(rootBeforeHooks, fn);
+    // A bare top-level `before()` with no tests must still produce TAP
+    // output (`before` runs, then `TAP version 13`, then `1..0`).
+    scheduleTapRun();
+    return;
+  }
   if (currentSuite) {
     ArrayPrototypePush(currentSuite.beforeAllHooks, fn);
     return;
@@ -1086,6 +1276,16 @@ function before(fn, _options) {
 function after(fn, _options) {
   if (typeof fn !== "function") {
     throw new TypeError("after() requires a function argument");
+  }
+  if (isTapMode()) {
+    const tapSuite = getTapCurrentSuite();
+    if (tapSuite !== null) {
+      ArrayPrototypePush(tapSuite.afterAllHooks ??= [], fn);
+      return;
+    }
+    ArrayPrototypePush(rootAfterHooks, fn);
+    scheduleTapRun();
+    return;
   }
   if (currentSuite) {
     ArrayPrototypePush(currentSuite.afterAllHooks, fn);
