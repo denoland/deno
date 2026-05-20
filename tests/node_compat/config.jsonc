@@ -4501,7 +4501,10 @@
     "client-proxy/test-http-proxy-request-invalid-credentials.mjs": {},
     "client-proxy/test-http-proxy-request-invalid-proxy.mjs": {},
     "client-proxy/test-http-proxy-request-invalid-url.mjs": {},
-    "client-proxy/test-http-proxy-request-ipv6.mjs": {},
+    "client-proxy/test-http-proxy-request-ipv6.mjs": {
+      "windows": false,
+      "reason": "Windows CI runner reports hasIPv6=true but rejects connections to the IPv6 proxy listener with ECONNREFUSED; unrelated to proxy logic"
+    },
     "client-proxy/test-http-proxy-request-no-proxy-port-specific.mjs": {},
     "client-proxy/test-http-proxy-request-proxy-failure-500.mjs": {},
     "client-proxy/test-http-proxy-request-proxy-failure-hang-up.mjs": {},
