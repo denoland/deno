@@ -11545,9 +11545,9 @@ dependencies = [
 
 [[package]]
 name = "v8_valueserializer"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97599c400fc79925922b58303e98fcb8fa88f573379a08ddb652e72cbd2e70f6"
+checksum = "9e05741b8524f73cbf239bea12239458d3a835246c5c637cc9e7e601eac60770"
 dependencies = [
  "bitflags 2.9.3",
  "encoding_rs",
