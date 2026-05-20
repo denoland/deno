@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "init --cli project",
+  "output": "init.out"
+}
