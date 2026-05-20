@@ -15,6 +15,23 @@ const {
   ERR_WASI_NOT_STARTED,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
+let warningEmitted = false;
+function emitExperimentalWarning() {
+  if (warningEmitted) return;
+  warningEmitted = true;
+  // Match Node's "WASI is an experimental feature ..." warning. The
+  // node_compat test runner asserts on this exact message via
+  // common.expectWarning('ExperimentalWarning', ...).
+  // deno-lint-ignore no-explicit-any
+  const proc = (globalThis as any).process;
+  if (proc && typeof proc.emitWarning === "function") {
+    proc.emitWarning(
+      "WASI is an experimental feature and might change at any time",
+      "ExperimentalWarning",
+    );
+  }
+}
+
 const {
   ArrayPrototypeMap,
   ArrayIsArray,
@@ -120,6 +137,7 @@ class WASI {
   #wasiImport;
 
   constructor(options?: WasiOptions) {
+    emitExperimentalWarning();
     if (options === undefined) {
       throw new ERR_INVALID_ARG_TYPE("options.version", "string", undefined);
     }
@@ -532,6 +550,26 @@ class WASI {
           self.#getMemoryBuffer(),
         );
       },
+      path_link(
+        oldDirfd: number,
+        oldFlags: number,
+        oldPathPtr: number,
+        oldPathLen: number,
+        newDirfd: number,
+        newPathPtr: number,
+        newPathLen: number,
+      ) {
+        return ctx.pathLink(
+          oldDirfd,
+          oldFlags,
+          oldPathPtr,
+          oldPathLen,
+          newDirfd,
+          newPathPtr,
+          newPathLen,
+          self.#getMemoryBuffer(),
+        );
+      },
       path_filestat_set_times(
         dirfd: number,
         flags: number,
@@ -682,6 +720,45 @@ class WASI {
     }
 
     return 0;
+  }
+
+  // Node.js exposes finalizeBindings() so worker threads spawned via
+  // `wasi.thread-spawn` can bind a wasm instance that shares the main
+  // thread's WASI state (the existing #ctx) to an external WebAssembly.Memory.
+  // We don't manage thread bookkeeping ourselves - that lives in the user's
+  // thread-spawn shim - but we must accept the call so the user's bindings
+  // can call wasi_thread_start() in the worker.
+  finalizeBindings(
+    instance?: WebAssembly.Instance,
+    options?: { memory?: WebAssembly.Memory },
+  ): void {
+    if (instance === undefined || instance === null) {
+      throw new ERR_INVALID_ARG_TYPE("instance", "object", instance);
+    }
+    if (typeof instance !== "object") {
+      throw new ERR_INVALID_ARG_TYPE("instance", "object", instance);
+    }
+    const exports = instance.exports;
+    if (exports === null || typeof exports !== "object") {
+      throw new ERR_INVALID_ARG_TYPE("instance.exports", "object", exports);
+    }
+    const memory = options?.memory ?? (exports as { memory?: unknown }).memory;
+    if (!isWasmMemory(memory)) {
+      throw createMemoryTypeError(memory);
+    }
+    this.#memory = memory as WebAssembly.Memory;
+    // finalizeBindings is intentionally idempotent: the same WASI instance
+    // can be bound to multiple wasm instances across threads.
+    //
+    // Setting #started here is a one-way transition shared with start()
+    // and initialize(): once finalizeBindings has been called on this
+    // instance (typically from the thread-spawn worker path), a later
+    // start()/initialize() call on the same WASI object will throw
+    // ERR_WASI_ALREADY_STARTED. Node's wasi_thread_start path has the
+    // same behavior - re-entering start/initialize on a bound WASI is
+    // never valid, the spawning thread is expected to construct a fresh
+    // WASI per wasm module.
+    this.#started = true;
   }
 
   initialize(instance?: WebAssembly.Instance): void {

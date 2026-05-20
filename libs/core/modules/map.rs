@@ -1146,9 +1146,7 @@ impl ModuleMap {
       );
     };
     let wasm_module_object: v8::Local<v8::Object> = wasm_module.into();
-    let wasm_module_object_global = v8::Global::new(scope, wasm_module_object);
-
-    let source = Rc::new(wasm_module_object_global);
+    let source = v8::Global::new(scope, wasm_module_object);
     {
       let mut data = self.data.borrow_mut();
       data.sources.insert(reference_key, source.clone());
@@ -1423,7 +1421,7 @@ impl ModuleMap {
     };
     let key = ModuleSourceKey::from_reference(&module_reference);
     if let Some(entry) = module_map.data.borrow().sources.get(&key) {
-      Some(v8::Local::new(scope, entry.as_ref()))
+      Some(v8::Local::new(scope, entry))
     } else {
       let message = v8::String::new(
         scope,
@@ -2504,7 +2502,7 @@ impl ModuleMap {
               let key = ModuleSourceKey::from_reference(module_reference);
               let source = {
                 let data = self.data.borrow();
-                let source = data.sources.get(&key).expect("Source had to have been inserted successfully, or recursion would error.").as_ref();
+                let source = data.sources.get(&key).expect("Source had to have been inserted successfully, or recursion would error.");
                 v8::Local::new(scope, source).into()
               };
               let resolver = state.resolver.open(scope);

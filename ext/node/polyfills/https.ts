@@ -533,6 +533,14 @@ function request(...args: any[]) {
   return new ClientRequest(args[0], args[1], args[2]);
 }
 
+// `agent-base` (used by `@npmcli/agent`, `http-proxy-agent`, etc.) figures
+// out whether a polymorphic agent should behave as https by scanning the
+// current stack for `(https.js:` or `node:https:`. Without a marker the
+// stack only shows our polyfill path and the agent reports `protocol:
+// "http:"`, causing `http.ClientRequest` to throw `ERR_INVALID_PROTOCOL`
+// against an `https:` URL. Encode the marker in the function name.
+Object.defineProperty(request, "name", { value: "node:https:request" });
+
 return {
   Agent,
   Server,
