@@ -4427,7 +4427,15 @@
       "exitCode": 1,
       "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
     },
+    "test-runner/test-output-before-and-after-each-too-many-listeners.mjs": {},
+    "test-runner/test-output-before-and-after-each-with-timeout-too-many-listeners.mjs": {},
+    "test-runner/test-output-describe-nested.mjs": {},
+    "test-runner/test-output-global-hooks-with-no-tests.mjs": {},
+    "test-runner/test-output-hooks-with-no-global-test.mjs": {},
+    "test-runner/test-output-name-and-skip-patterns.mjs": {},
+    "test-runner/test-output-no-refs.mjs": {},
     "test-runner/test-output-no-tests.mjs": {},
+    "test-runner/test-output-skip-pattern.mjs": {},
     "test-runner/test-output-output.mjs": {
       "exitCode": 1,
       "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
@@ -4444,11 +4452,17 @@
       "ignore": true,
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
     },
+    "test-runner/test-output-tap-escape.mjs": {},
     "test-runner/test-output-tap-reporter.mjs": {
       "exitCode": 1,
       "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
     },
     "test-runner/test-output-typescript-coverage.mjs": {},
+    "test-runner/test-run-watch-cwd-isolation-none.mjs": {},
+    "test-runner/test-run-watch-cwd-isolation-process.mjs": {},
+    "test-runner/test-run-watch-cwd.mjs": {},
+    "test-runner/test-run-watch-emit-restarted.mjs": {},
+    "test-runner/test-run-watch-no-emit-restarted-disabled.mjs": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-watch-mode-inspect.mjs": {},
     // TODO(bartlomieju): this test is very flaky on CI, especially on Windows ARM
