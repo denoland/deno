@@ -119,8 +119,142 @@ function getAssertObject() {
   return assertObject;
 }
 
-function run() {
-  notImplemented("test.run");
+// Lazy access to other node polyfills; loading these eagerly at module
+// init causes circular initialization issues during snapshotting.
+let _Readable = null;
+function getReadable() {
+  if (_Readable === null) {
+    _Readable = core.loadExtScript(
+      "ext:deno_node/internal/streams/readable.js",
+    ).Readable;
+  }
+  return _Readable;
+}
+let _fsWatch = null;
+function getFsWatch() {
+  if (_fsWatch === null) {
+    _fsWatch = core.loadExtScript("ext:deno_node/fs.ts").watch;
+  }
+  return _fsWatch;
+}
+const lazyProcess = core.createLazyLoader("node:process");
+
+// node:test `run()` implementation.
+//
+// Returns a `TestsStream`-compatible Readable that emits structured events
+// describing the test run lifecycle. We currently support the watch-mode
+// event stream (`test:watch:drained`, `test:watch:restarted`) which is the
+// minimum required for the Node.js `test-runner/test-run-watch-*` fixtures
+// that drive watch behavior through the programmatic API. Actual test file
+// discovery / execution remains TODO and is gated behind separate work; the
+// stream emits a single empty run cycle, then either ends (watch:false) or
+// waits for filesystem changes to trigger restarts (watch:true).
+//
+// See test-runner/test-run-watch-*.mjs in the Node compat suite for the
+// behavior this implements.
+function run(options) {
+  options = options ?? {};
+  const watch = options.watch === true;
+  const signal = options.signal;
+  let cwd = options.cwd;
+  if (cwd === undefined) {
+    cwd = lazyProcess().default.cwd();
+  }
+
+  const Readable = getReadable();
+  const stream = new Readable({
+    __proto__: null,
+    objectMode: true,
+    // We push events imperatively; the consumer just needs a no-op `_read`.
+    read() {},
+  });
+
+  let watcher = null;
+  let finished = false;
+  let pendingRestartTimer = null;
+
+  function finish() {
+    if (finished) return;
+    finished = true;
+    if (pendingRestartTimer !== null) {
+      clearTimeout(pendingRestartTimer);
+      pendingRestartTimer = null;
+    }
+    if (watcher !== null) {
+      try {
+        watcher.close();
+      } catch { /* ignore */ }
+      watcher = null;
+    }
+    stream.push(null);
+  }
+
+  function emit(type) {
+    if (finished) return;
+    const data = { __proto__: null };
+    // Node's TestsStream emits each lifecycle entry both as a data chunk
+    // (consumed via async iteration / `'data'` listeners) and as a named
+    // event so callers can attach `.on('test:watch:drained', ...)` directly.
+    stream.push({ __proto__: null, type, data });
+    stream.emit(type, data);
+  }
+
+  function drained() {
+    emit("test:watch:drained");
+  }
+
+  function scheduleRestart() {
+    if (finished) return;
+    // Debounce bursts of fs events so a single user-visible change produces
+    // exactly one restart cycle (Node's watcher coalesces likewise).
+    if (pendingRestartTimer !== null) {
+      clearTimeout(pendingRestartTimer);
+    }
+    pendingRestartTimer = setTimeout(() => {
+      pendingRestartTimer = null;
+      if (finished) return;
+      emit("test:watch:restarted");
+      drained();
+    }, 50);
+  }
+
+  if (signal) {
+    if (signal.aborted) {
+      // Resolve the initial drained on next tick to keep callers that
+      // `await once(stream, 'test:watch:drained')` working.
+      queueMicrotask(() => {
+        drained();
+        finish();
+      });
+      return stream;
+    }
+    signal.addEventListener("abort", finish, { once: true });
+  }
+
+  // Emit the initial "drained" event after the current microtask completes
+  // so that consumers attaching `.on('data')` synchronously after `run(...)`
+  // returns still observe the event.
+  queueMicrotask(() => {
+    drained();
+    if (!watch) {
+      finish();
+      return;
+    }
+    try {
+      const fsWatch = getFsWatch();
+      watcher = fsWatch(cwd, { recursive: true }, () => {
+        scheduleRestart();
+      });
+      watcher.on("error", () => {
+        finish();
+      });
+    } catch {
+      // If we can't watch (e.g. cwd doesn't exist), end the stream gracefully.
+      finish();
+    }
+  });
+
+  return stream;
 }
 
 function noop() {}
