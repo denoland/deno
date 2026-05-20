@@ -54,13 +54,11 @@ pkcs8 = { workspace = true, features = ["std", "pkcs5", "encryption"] }
 rand.workspace = true
 ripemd = { workspace = true, features = ["oid"] }
 rsa.workspace = true
-scrypt.workspace = true
 sec1.workspace = true
 serde.workspace = true
 sha1.workspace = true
 sha2.workspace = true
 sha3 = { workspace = true, features = ["oid"] }
-signature.workspace = true
 sm3.workspace = true
 spki.workspace = true
 subtle.workspace = true

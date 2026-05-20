@@ -22,7 +22,6 @@ deno_permissions.workspace = true
 denort_helper.workspace = true
 dlopen2.workspace = true
 libffi.workspace = true
-libffi-sys.workspace = true
 log.workspace = true
 memmap2.workspace = true
 num-bigint.workspace = true

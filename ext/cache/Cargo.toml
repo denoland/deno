@@ -28,7 +28,6 @@ hyper.workspace = true
 hyper-util.workspace = true
 log.workspace = true
 rusqlite.workspace = true
-serde.workspace = true
 sha2.workspace = true
 slab.workspace = true
 thiserror.workspace = true
