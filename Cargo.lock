@@ -3280,9 +3280,9 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.31.0"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75003f3c39a260a891af8a2b4f13c58f74b14636bcb2a0b89c76adb412f3dcdc"
+checksum = "a5724630e5d004297ca84920ef90cbf8a5459b06f8cd553e1a75d9f3ad5cd6fd"
 dependencies = [
  "anyhow",
  "bitflags 2.9.3",
@@ -4054,9 +4054,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.95.15"
+version = "0.96.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82a9955c99ac8e2c0780e14af209c7fff8833b1b58a963f4525c5f3efe3080ed"
+checksum = "90733c56ab425fc299c25ad81a5924bfc3c0050f25d865da742a6987b1255927"
 dependencies = [
  "anyhow",
  "capacity_builder",
