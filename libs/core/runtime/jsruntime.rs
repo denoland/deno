@@ -979,6 +979,7 @@ impl JsRuntime {
           &context_state.op_method_decls,
           methods_ctx_offset,
           &mut state_rc.function_templates.borrow_mut(),
+          will_snapshot,
         );
       }
 

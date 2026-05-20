@@ -175,6 +175,16 @@ pub(crate) fn create_external_references(
     pointer: std::ptr::null_mut(),
   });
 
+  for (i, r) in references.iter().enumerate() {
+    let addr = unsafe { r.pointer as usize };
+    if addr != 0 && addr < 0x100000000 && addr >= 0x600000000000 {
+      eprintln!(
+        "[debug] external_references[{i}] looks heap-allocated: {:#x}",
+        addr
+      );
+    }
+  }
+
   references
 }
 
@@ -366,6 +376,7 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
   op_method_decls: &[OpMethodDecl],
   methods_ctx_offset: usize,
   fn_template_store: &mut FunctionTemplateData,
+  will_snapshot: bool,
 ) {
   let global = context.global(scope);
 
@@ -395,8 +406,12 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
     let tmpl = if decl.constructor.is_some() {
       let constructor_ctx = &op_ctxs[index];
 
-      let tmpl =
-        op_ctx_template(scope, constructor_ctx, v8::ConstructorBehavior::Allow);
+      let tmpl = op_ctx_template(
+        scope,
+        constructor_ctx,
+        v8::ConstructorBehavior::Allow,
+        will_snapshot,
+      );
 
       index += 1;
 
@@ -425,6 +440,7 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
         prototype,
         tmpl,
         method,
+        will_snapshot,
       );
     }
 
@@ -432,8 +448,12 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
 
     let static_method_ctxs = &op_ctxs[index..index + decl.static_methods.len()];
     for method in static_method_ctxs.iter() {
-      let op_fn =
-        op_ctx_template(scope, method, v8::ConstructorBehavior::Throw);
+      let op_fn = op_ctx_template(
+        scope,
+        method,
+        v8::ConstructorBehavior::Throw,
+        will_snapshot,
+      );
       let method_key = name_key(scope, &method.decl);
 
       tmpl.set(method_key, op_fn.into());
@@ -451,6 +471,7 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
           prototype,
           tmpl,
           method,
+          will_snapshot,
         );
       }
     }
@@ -470,8 +491,12 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
 
   let op_ctxs = &op_ctxs[index..];
   for op_ctx in op_ctxs {
-    let mut op_fn =
-      op_ctx_function(scope, op_ctx, v8::ConstructorBehavior::Allow);
+    let mut op_fn = op_ctx_function(
+      scope,
+      op_ctx,
+      v8::ConstructorBehavior::Allow,
+      will_snapshot,
+    );
     let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
 
     // For async ops we need to set them up, by calling `Deno.core.setUpAsyncStub` -
@@ -495,9 +520,15 @@ fn op_ctx_template_or_accessor<'s, 'i>(
   tmpl: v8::Local<'s, v8::ObjectTemplate>,
   constructor: v8::Local<'s, v8::FunctionTemplate>,
   op_ctx: &OpCtx,
+  will_snapshot: bool,
 ) {
   if !op_ctx.decl.is_accessor() {
-    let op_fn = op_ctx_template(scope, op_ctx, v8::ConstructorBehavior::Throw);
+    let op_fn = op_ctx_template(
+      scope,
+      op_ctx,
+      v8::ConstructorBehavior::Throw,
+      will_snapshot,
+    );
     let method_key = name_key(scope, &op_ctx.decl);
     if op_ctx.decl.is_async {
       let undefined = v8::undefined(scope);
@@ -582,6 +613,7 @@ pub(crate) fn op_ctx_template<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   op_ctx: &OpCtx,
   constructor_behaviour: v8::ConstructorBehavior,
+  will_snapshot: bool,
 ) -> v8::Local<'s, v8::FunctionTemplate> {
   let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
   let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
@@ -607,7 +639,15 @@ pub(crate) fn op_ctx_template<'s, 'i>(
       .length(op_ctx.decl.arg_count as i32);
 
   let template = if let Some(fast_function) = fast_fn {
-    builder.build_fast(scope, &[fast_function])
+    let template = builder.build_fast(scope, &[fast_function]);
+    if will_snapshot {
+      // V8 14.9 wraps each fast-call overload in a Managed<CFunctionWithSignature>
+      // that lives as an isolate-level Global. The snapshot's
+      // CheckGlobalAndEternalHandles pass aborts unless each one is attached
+      // to the isolate's serialized_objects via add_isolate_data().
+      register_fast_call_overloads_for_snapshot(scope, template);
+    }
+    template
   } else {
     builder.build(scope)
   };
@@ -616,13 +656,26 @@ pub(crate) fn op_ctx_template<'s, 'i>(
   template
 }
 
+fn register_fast_call_overloads_for_snapshot(
+  scope: &mut v8::PinScope,
+  template: v8::Local<v8::FunctionTemplate>,
+) {
+  let count = template.c_function_overload_count();
+  for i in 0..count {
+    let overload = template.get_c_function_overload(scope, i);
+    scope.add_isolate_data(overload);
+  }
+}
+
 fn op_ctx_function<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   op_ctx: &OpCtx,
   constructor_behaviour: v8::ConstructorBehavior,
+  will_snapshot: bool,
 ) -> v8::Local<'s, v8::Function> {
   let v8name = op_ctx.decl.name_fast.v8_string(scope).unwrap();
-  let template = op_ctx_template(scope, op_ctx, constructor_behaviour);
+  let template =
+    op_ctx_template(scope, op_ctx, constructor_behaviour, will_snapshot);
   let v8fn = template.get_function(scope).unwrap();
   v8fn.set_name(v8name);
   v8fn
