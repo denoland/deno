@@ -271,6 +271,11 @@ function encodeTimeout(value) {
 // As long as we're using one isolate per test, we can cache the origin since it won't change
 let cachedOrigin = undefined;
 
+// Module-level sanitizer overrides set via Deno.test.sanitizer()
+// These have higher precedence than CLI flags/config but lower than per-test options
+let moduleSanitizeOps = undefined;
+let moduleSanitizeResources = undefined;
+
 function testInner(
   nameOrFnOrOptions,
   optionsOrFn,
@@ -286,8 +291,10 @@ function testInner(
   const defaults = {
     ignore: false,
     only: false,
-    sanitizeOps: true,
-    sanitizeResources: true,
+    sanitizeOps: moduleSanitizeOps ??
+      Deno[Deno.internal].testSanitizeOps ?? false,
+    sanitizeResources: moduleSanitizeResources ??
+      Deno[Deno.internal].testSanitizeResources ?? false,
     sanitizeExit: true,
     permissions: null,
     timeout: undefined,
@@ -450,6 +457,20 @@ test.afterEach = function (fn) {
 
 test.afterAll = function (fn) {
   registerHook("afterAll", fn);
+};
+
+test.sanitizer = function (options) {
+  if (typeof options !== "object" || options === null) {
+    throw new TypeError(
+      "Deno.test.sanitizer: options must be an object",
+    );
+  }
+  if (options.ops !== undefined) {
+    moduleSanitizeOps = options.ops;
+  }
+  if (options.resources !== undefined) {
+    moduleSanitizeResources = options.resources;
+  }
 };
 
 function getFullName(desc) {

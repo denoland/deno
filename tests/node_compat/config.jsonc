@@ -2303,9 +2303,10 @@
     "parallel/test-inspector-heapdump.js": {},
     "parallel/test-inspector-module.js": {},
 
-    // TODO(bartlomieju): depends on `Network` CDP domain
-    // "parallel/test-inspector-network-http.js": {},
-    // "parallel/test-inspector-network-arbitrary-data.js": {},
+    "parallel/test-inspector-network-http.js": {
+      "extraDenoArgs": ["--unsafely-ignore-certificate-errors"],
+      "reason": "Hits a local HTTPS server with a self-signed cert via node:https. The upstream test relies on a custom https Agent with rejectUnauthorized:false propagated to Deno's TLS layer; until that wiring is in place, disable cert validation only for this test."
+    },
     "parallel/test-inspector-emit-protocol-event.js": {},
 
     "parallel/test-inspector-esm.js": {},
@@ -2322,8 +2323,6 @@
     // "parallel/test-inspector-wait.mjs": {},
     // "parallel/test-inspector-break-when-eval.js": {},
 
-    // TODO(bartlomieju): depends on 'internal/deps/undici/undici' internal module
-    // "parallel/test-inspector-network-fetch.js": {},
     "parallel/test-http2-allow-http1-upgrade-ws.js": {},
     "parallel/test-inspector-multisession-ws.js": {},
     "parallel/test-inspector-not-blocked-on-idle.js": {},
@@ -3088,7 +3087,10 @@
     "parallel/test-repl-use-global.js": {},
     "parallel/test-repl-history-perm.js": {},
     "parallel/test-repl-load-multiline-from-history.js": {},
-    "parallel/test-repl-mode.js": {},
+    "parallel/test-repl-mode.js": {
+      "ignore": true,
+      "reason": "testStrictModeTerminal expects the REPL to render an inspector-driven error preview line (`// ReferenceError: xyz is not defined`) for partial strict-mode input. node:repl in deno catches preview eval errors and renders nothing (ext/node/polyfills/repl.ts try/catch around vm.Script.runInThisContext), so the assertion always fails. On v8 14.7 the failure was swallowed by _replCaptureCallback and the binary exited 0; v8 14.9 surfaces it as a fatal unhandled rejection. Needs an error-preview implementation in the polyfill to re-enable."
+    },
     "parallel/test-repl-multiline-navigation-while-adding.js": {},
     "parallel/test-repl-multiline-navigation.js": {},
     "parallel/test-repl-no-terminal-restore-process-listeners.js": {},
@@ -3791,18 +3793,9 @@
     "parallel/test-wrap-js-stream-duplex.js": {},
     "parallel/test-wrap-js-stream-exceptions.js": {},
     "parallel/test-wrap-js-stream-read-stop.js": {},
-    "parallel/test-trace-events-api.js": {
-      "ignore": true,
-      "reason": "Deno's node:trace_events polyfill is a stub (createTracing returns an object without .enable/.disable, getEnabledCategories returns \"\" instead of undefined). These tests were silently skipping via try/catch(require('trace_events')) until that lookup was fixed."
-    },
-    "parallel/test-trace-events-async-hooks-dynamic.js": {
-      "ignore": true,
-      "reason": "Deno's node:trace_events polyfill is a stub (createTracing returns an object without .enable/.disable, getEnabledCategories returns \"\" instead of undefined). These tests were silently skipping via try/catch(require('trace_events')) until that lookup was fixed."
-    },
-    "parallel/test-trace-events-async-hooks-worker.js": {
-      "ignore": true,
-      "reason": "Deno's node:trace_events polyfill is a stub (createTracing returns an object without .enable/.disable, getEnabledCategories returns \"\" instead of undefined). These tests were silently skipping via try/catch(require('trace_events')) until that lookup was fixed."
-    },
+    "parallel/test-trace-events-api.js": {},
+    "parallel/test-trace-events-async-hooks-dynamic.js": {},
+    "parallel/test-trace-events-async-hooks-worker.js": {},
     "parallel/test-trace-events-bootstrap.js": {
       "ignore": true,
       "reason": "Deno does not implement Node.js --trace-event-categories CLI flag, so node_trace.${rotation}.log is never emitted."
@@ -3810,10 +3803,7 @@
     "parallel/test-trace-events-dynamic-enable-workers-disabled.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-trace-events-dynamic-enable.js": {},
-    "parallel/test-trace-events-get-category-enabled-buffer.js": {
-      "ignore": true,
-      "reason": "Deno's node:trace_events polyfill is a stub (createTracing returns an object without .enable/.disable, getEnabledCategories returns \"\" instead of undefined). These tests were silently skipping via try/catch(require('trace_events')) until that lookup was fixed."
-    },
+    "parallel/test-trace-events-get-category-enabled-buffer.js": {},
     "parallel/test-trace-sigint-in-worker.js": {},
     "parallel/test-tty-stdin-end.js": {},
     "parallel/test-tty-stdin-pipe.js": {},
@@ -4436,7 +4426,15 @@
       "exitCode": 1,
       "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
     },
+    "test-runner/test-output-before-and-after-each-too-many-listeners.mjs": {},
+    "test-runner/test-output-before-and-after-each-with-timeout-too-many-listeners.mjs": {},
+    "test-runner/test-output-describe-nested.mjs": {},
+    "test-runner/test-output-global-hooks-with-no-tests.mjs": {},
+    "test-runner/test-output-hooks-with-no-global-test.mjs": {},
+    "test-runner/test-output-name-and-skip-patterns.mjs": {},
+    "test-runner/test-output-no-refs.mjs": {},
     "test-runner/test-output-no-tests.mjs": {},
+    "test-runner/test-output-skip-pattern.mjs": {},
     "test-runner/test-output-output.mjs": {
       "exitCode": 1,
       "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
@@ -4453,6 +4451,7 @@
       "ignore": true,
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
     },
+    "test-runner/test-output-tap-escape.mjs": {},
     "test-runner/test-output-tap-reporter.mjs": {
       "exitCode": 1,
       "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
@@ -5448,6 +5447,26 @@
     },
     "wasi/test-return-on-exit.js": {},
     "wasi/test-wasi-not-started.js": {},
-    "wasi/test-wasi-worker-terminate.js": {}
+    "wasi/test-wasi-worker-terminate.js": {},
+    "wasi/test-wasi-cant_dotdot.js": {},
+    "wasi/test-wasi-clock_getres.js": {},
+    "wasi/test-wasi-exitcode.js": {},
+    "wasi/test-wasi-fd_prestat_get_refresh.js": {},
+    "wasi/test-wasi-ftruncate.js": {},
+    "wasi/test-wasi-getentropy.js": {},
+    "wasi/test-wasi-getrusage.js": {},
+    "wasi/test-wasi-gettimeofday.js": {},
+    "wasi/test-wasi-io.js": {},
+    "wasi/test-wasi-main_args.js": {},
+    "wasi/test-wasi-notdir.js": {},
+    "wasi/test-wasi-poll.js": {},
+    "wasi/test-wasi-preopen_populates.js": {},
+    "wasi/test-wasi-pthread.js": {},
+    "wasi/test-wasi-readdir.js": {},
+    "wasi/test-wasi-sock.js": {},
+    "wasi/test-wasi-stat.js": {},
+    "wasi/test-wasi-stdio.js": {},
+    "wasi/test-wasi-symlinks.js": {},
+    "wasi/test-wasi-write_file.js": {}
   }
 }

@@ -14,6 +14,7 @@ use super::dispatch_slow::throw_exception;
 use super::dispatch_slow::with_fn_args;
 use super::dispatch_slow::with_opctx;
 use super::dispatch_slow::with_opstate;
+use super::dispatch_slow::with_parts;
 use super::dispatch_slow::with_required_check;
 use super::dispatch_slow::with_retval;
 use super::dispatch_slow::with_scope;
@@ -185,12 +186,19 @@ pub(crate) fn generate_dispatch_async(
     quote!()
   };
 
+  let with_parts_ts = if generator_state.needs_parts {
+    with_parts(generator_state)
+  } else {
+    quote!()
+  };
+
   Ok(gs_quote!(generator_state(info, slow_function) => {
     fn slow_function_impl<'s>(info: *const deno_core::v8::FunctionCallbackInfo) -> usize {
       let info: &'s _ = unsafe { &*info };
       #[cfg(debug_assertions)]
       let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(&<Self as deno_core::_ops::Op>::DECL);
 
+      #with_parts_ts
       #with_scope
       #with_retval
       #with_args

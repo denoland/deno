@@ -100,9 +100,8 @@ pub fn create_validate_import_attributes_callback(
     move |scope: &mut v8::PinScope<'_, '_>,
           attributes: &HashMap<String, String>| {
       let valid_attribute = |kind: &str| {
-        enable_raw_imports.load(Ordering::Relaxed)
-          && matches!(kind, "bytes" | "text")
-          || matches!(kind, "json")
+        matches!(kind, "json" | "text")
+          || (enable_raw_imports.load(Ordering::Relaxed) && kind == "bytes")
       };
       for (key, value) in attributes {
         let msg = if key != "type" {
