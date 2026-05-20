@@ -59,6 +59,7 @@ import {
   parseUniqueHeadersOption,
 } from "node:_http_outgoing";
 import httpAgent from "node:_http_agent";
+import httpProxy from "node:_http_proxy";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { urlToHttpOptions } = core.loadExtScript(
   "ext:deno_node/internal/url.ts",
@@ -112,6 +113,9 @@ const kOtelSpan = Symbol("kOtelSpan");
 const kPerfStartTime = Symbol("kPerfStartTime");
 const kRetryData = Symbol("kRetryData");
 const kRetryOptions = Symbol("kRetryOptions");
+const kProxy = Symbol("kProxy");
+const kProxyTargetHost = Symbol("kProxyTargetHost");
+const kProxyTargetPort = Symbol("kProxyTargetPort");
 
 const kLenientAll = HTTPParser.kLenientAll | 0;
 const kLenientNone = HTTPParser.kLenientNone | 0;
@@ -223,6 +227,29 @@ function ClientRequest(input, options, cb) {
     validateHost(options.hostname, "hostname") ||
     validateHost(options.host, "host") || "localhost";
 
+  // Proxy detection: if an env-derived proxy applies to this request,
+  // either rewrite to absolute URL (http target) or set up a CONNECT tunnel
+  // via a custom createConnection (https target). The agent's socket pool
+  // is keyed by target host:port so users can look it up the same way as
+  // a direct connection - the proxy is a transport detail tracked under
+  // _proxy on the options.
+  const proxyConfig = httpProxy.resolveAgentProxyConfig(this.agent);
+  const proxyEntry = httpProxy.selectProxy(
+    proxyConfig,
+    protocol,
+    host,
+    port,
+  );
+  if (proxyEntry) {
+    this[kProxy] = proxyEntry;
+    this[kProxyTargetHost] = host;
+    this[kProxyTargetPort] = port;
+    optsWithoutSignal._proxy = proxyEntry;
+    optsWithoutSignal._proxyTargetHost = host;
+    optsWithoutSignal._proxyTargetPort = port;
+    optsWithoutSignal._proxyProtocol = protocol;
+  }
+
   const setHost = options.setHost !== undefined
     ? Boolean(options.setHost)
     : options.setDefaultHeaders !== false;
@@ -279,6 +306,19 @@ function ClientRequest(input, options, cb) {
   this.joinDuplicateHeaders = options.joinDuplicateHeaders;
 
   this[kPath] = options.path || "/";
+
+  // For HTTP via HTTP proxy, rewrite path to an absolute URL so the proxy
+  // knows where to forward the request.
+  if (this[kProxy] && protocol === "http:") {
+    const t = this[kProxyTargetHost];
+    const formattedHost = t && t.indexOf(":") !== -1 && t.charCodeAt(0) !== 91
+      ? `[${t}]`
+      : t;
+    this[kPath] = `http://${formattedHost}:${this[kProxyTargetPort]}${
+      options.path || "/"
+    }`;
+  }
+
   if (cb) {
     this.once("response", cb);
   }
@@ -351,6 +391,16 @@ function ClientRequest(input, options, cb) {
         "Authorization",
         "Basic " + Buffer.from(options.auth).toString("base64"),
       );
+    }
+
+    if (this[kProxy] && protocol === "http:") {
+      // Node sends Proxy-Connection: keep-alive alongside Connection: keep-alive.
+      if (!this.getHeader("proxy-connection")) {
+        this.setHeader("Proxy-Connection", "keep-alive");
+      }
+      if (this[kProxy].auth && !this.getHeader("proxy-authorization")) {
+        this.setHeader("Proxy-Authorization", this[kProxy].auth);
+      }
     }
 
     if (this.getHeader("expect")) {
