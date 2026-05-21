@@ -146,10 +146,6 @@ impl GPUAdapter {
     )?
     .or_better_values_from(&wgpu_types::Limits::default());
 
-    let trace = std::env::var_os("DENO_WEBGPU_TRACE")
-      .map(|path| wgpu_types::Trace::Directory(std::path::PathBuf::from(path)))
-      .unwrap_or_default();
-
     let wgpu_descriptor = wgpu_types::DeviceDescriptor {
       label: crate::transform_label(descriptor.label.clone()),
       required_features: super::webidl::feature_names_to_features(
@@ -158,7 +154,7 @@ impl GPUAdapter {
       required_limits,
       experimental_features: wgpu_types::ExperimentalFeatures::disabled(),
       memory_hints: Default::default(),
-      trace,
+      trace: wgpu_types::Trace::default(),
     };
 
     let (device, queue) = self.instance.adapter_request_device(
