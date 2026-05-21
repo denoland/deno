@@ -202,6 +202,7 @@ pub struct CheckFlags {
   pub doc: bool,
   pub doc_only: bool,
   pub check_js: bool,
+  pub watch: Option<WatchFlags>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -762,6 +763,9 @@ impl DenoSubcommand {
         watch: Some(flags), ..
       }) => Some(WatchFlagsRef::WithPaths(flags)),
       Self::Bench(BenchFlags {
+        watch: Some(flags), ..
+      })
+      | Self::Check(CheckFlags {
         watch: Some(flags), ..
       })
       | Self::Lint(LintFlags {
@@ -2896,6 +2900,9 @@ Unless --reload is specified, this command will not re-download already cached d
         .arg(allow_import_arg())
         .arg(deny_import_arg())
         .arg(v8_flags_arg())
+        .arg(watch_arg(false))
+        .arg(watch_exclude_arg())
+        .arg(no_clear_screen_arg())
       }
     )
 }
@@ -6792,6 +6799,7 @@ fn check_parse(
     doc: matches.get_flag("doc"),
     doc_only: matches.get_flag("doc-only"),
     check_js: matches.get_flag("check-js"),
+    watch: watch_arg_parse(matches)?,
   });
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   allow_and_deny_import_parse(flags, matches)?;
@@ -10228,6 +10236,7 @@ mod tests {
           doc: false,
           doc_only: false,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10244,6 +10253,7 @@ mod tests {
           doc: false,
           doc_only: false,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10260,6 +10270,7 @@ mod tests {
           doc: true,
           doc_only: false,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10276,6 +10287,7 @@ mod tests {
           doc: false,
           doc_only: true,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10306,6 +10318,7 @@ mod tests {
             doc: false,
             doc_only: false,
             check_js: false,
+            watch: None,
           }),
           type_check_mode: TypeCheckMode::All,
           code_cache_enabled: true,
@@ -10335,6 +10348,7 @@ mod tests {
           doc: false,
           doc_only: false,
           check_js: true,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -16127,6 +16141,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           doc: false,
           doc_only: false,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
