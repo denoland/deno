@@ -884,3 +884,28 @@ declare function fetch(
   input: RequestInfo | URL,
   init?: RequestInit & { client?: Deno.HttpClient },
 ): Promise<Response>;
+
+/** @category Platform */
+interface Math {
+  /**
+   * Returns the sum of the given values using a more precise algorithm than a
+   * naive `+`-based reduction, avoiding the floating-point rounding errors
+   * that accumulate when summing many numbers.
+   *
+   * [MDN Reference](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/sumPrecise)
+   */
+  sumPrecise(values: Iterable<number>): number;
+}
+
+declare namespace Intl {
+  interface Locale {
+    /**
+     * Returns the variant subtags of the locale as a single string, with
+     * subtags separated by `-`. Returns an empty string if the locale has no
+     * variant subtags.
+     *
+     * [MDN Reference](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Locale/variants)
+     */
+    readonly variants: string;
+  }
+}
