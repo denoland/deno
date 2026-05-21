@@ -22,3 +22,7 @@ deno_bench_util.workspace = true
 [[bench]]
 name = "dict"
 harness = false
+
+[[bench]]
+name = "usvstring"
+harness = false
