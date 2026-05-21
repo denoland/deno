@@ -213,6 +213,9 @@ pub struct WorkspaceFactoryOptions {
   pub node_modules_linker: Option<NodeModulesLinkerMode>,
   pub no_lock: bool,
   pub no_npm: bool,
+  /// When no `deno.lock` exists, attempt to seed one by translating a
+  /// sibling `package-lock.json`. Currently set by `deno install`.
+  pub import_npm_lockfile: bool,
   /// The process state if using ext/node and the current process was "forked".
   /// This value is found at `deno_lib::args::NPM_PROCESS_STATE`
   /// but in most scenarios this can probably just be `None`.
@@ -547,6 +550,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
               ConfigDiscoveryOption::Disabled
             ),
             no_npm: self.options.no_npm,
+            import_npm_lockfile: self.options.import_npm_lockfile,
           },
           &workspace_directory.workspace,
           maybe_external_import_map.as_ref().map(|v| &v.value),
