@@ -470,6 +470,7 @@ lto = true
 opt-level = 'z' # Optimize for size
 split-debuginfo = "packed"
 debug = "line-tables-only"
+panic = "abort"
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.bench]
@@ -479,6 +480,7 @@ lto = true
 opt-level = 'z' # Optimize for size
 split-debuginfo = "packed"
 debug = "line-tables-only"
+panic = "abort"
 
 # Build release with debug symbols: cargo build --profile=release-with-debug
 [profile.release-with-debug]
