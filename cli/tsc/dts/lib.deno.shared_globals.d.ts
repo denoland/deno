@@ -897,8 +897,10 @@ interface Math {
   sumPrecise(values: Iterable<number>): number;
 }
 
+/** @category Intl */
 declare namespace Intl {
-  interface Locale {
+  /** @category Intl */
+  export interface Locale {
     /**
      * Returns the variant subtags of the locale as a single string, with
      * subtags separated by `-`. Returns an empty string if the locale has no
