@@ -903,11 +903,11 @@ declare namespace Intl {
   export interface Locale {
     /**
      * Returns the variant subtags of the locale as a single string, with
-     * subtags separated by `-`. Returns an empty string if the locale has no
+     * subtags separated by `-`. Returns `undefined` if the locale has no
      * variant subtags.
      *
      * [MDN Reference](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Locale/variants)
      */
-    readonly variants: string;
+    readonly variants: string | undefined;
   }
 }
