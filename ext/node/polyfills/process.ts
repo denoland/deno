@@ -5,6 +5,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals, primordials } from "ext:core/mod.js";
+// Installs `internals.__inspectorNetwork` so ext/fetch (and other
+// extensions) can emit Network.* CDP events without requiring user code
+// to import `node:inspector`. Side-effect import; no exports.
+core.loadExtScript("ext:deno_node/inspector_network_bridge.js");
 const { initializeDebugEnv } = core.loadExtScript(
   "ext:deno_node/internal/util/debuglog.ts",
 );

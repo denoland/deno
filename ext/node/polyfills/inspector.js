@@ -4,7 +4,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core, internals, primordials } = __bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   op_base64_encode_from_buffer,
   op_get_extras_binding_object,
@@ -303,32 +303,6 @@ const Network = {
     broadcastToFrontend("Network.webSocketHandshakeResponseReceived", params),
   webSocketClosed: (params) =>
     broadcastToFrontend("Network.webSocketClosed", params),
-};
-
-// Bridge for other extensions (fetch, websocket, http) to emit Network.*
-// inspector events without depending on ext/node directly. Populated when
-// node:inspector is loaded; ext/fetch and friends look it up lazily on
-// `internals.__inspectorNetwork`.
-let networkRequestIdCounter = 0;
-internals.__inspectorNetwork = {
-  isEnabled: () => op_inspector_enabled(),
-  nextRequestId: () => `node-network-event-${++networkRequestIdCounter}`,
-  requestWillBeSent: Network.requestWillBeSent,
-  responseReceived: Network.responseReceived,
-  loadingFinished: Network.loadingFinished,
-  loadingFailed: Network.loadingFailed,
-  dataReceived: Network.dataReceived,
-  dataSent: Network.dataSent,
-  webSocketCreated: Network.webSocketCreated,
-  // Not exposed on `inspector.Network` (Node doesn't expose it either - see
-  // node_compat test-inspector-emit-protocol-event), but DevTools still
-  // needs the event to populate the request-side Headers panel, so we
-  // route it directly through `broadcastToFrontend`.
-  webSocketWillSendHandshakeRequest: (params) =>
-    broadcastToFrontend("Network.webSocketWillSendHandshakeRequest", params),
-  webSocketHandshakeResponseReceived:
-    Network.webSocketHandshakeResponseReceived,
-  webSocketClosed: Network.webSocketClosed,
 };
 
 const DOMStorage = {
