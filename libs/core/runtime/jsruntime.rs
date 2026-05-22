@@ -48,6 +48,7 @@ use crate::OpMetadata;
 use crate::OpMetricsEvent;
 use crate::OpStackTraceCallback;
 use crate::OpState;
+use crate::StaticSourceCode;
 use crate::ascii_str;
 use crate::ascii_str_include;
 use crate::cppgc::FunctionTemplateData;
@@ -513,11 +514,11 @@ pub struct RuntimeOptions {
   /// build time and therefore aren't reachable via the snapshot blob. The
   /// build script that produced `startup_snapshot` emits this table.
   /// Each entry is `(specifier, source)`.
-  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  pub residual_lazy_js_sources: &'static [(&'static str, StaticSourceCode)],
 
   /// Source for `lazy_loaded_esm` files that were *not* consumed at snapshot
   /// build time. See [`Self::residual_lazy_js_sources`].
-  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
+  pub residual_lazy_esm_sources: &'static [(&'static str, StaticSourceCode)],
 
   /// Should op registration be skipped?
   pub skip_op_registration: bool,
@@ -1153,15 +1154,15 @@ impl JsRuntime {
       // here. (When there is no snapshot, the same sources are loaded from
       // disk through `Extension.lazy_loaded_*_files` instead.)
       for (specifier, code) in options.residual_lazy_js_sources {
-        module_map.add_lazy_loaded_script_source(
+        module_map.add_lazy_loaded_script_static_source(
           crate::ModuleName::from_static(specifier),
-          crate::ModuleCodeString::from_static(code),
+          *code,
         );
       }
       for (specifier, code) in options.residual_lazy_esm_sources {
-        module_map.add_lazy_loaded_esm_source(
+        module_map.add_lazy_loaded_esm_static_source(
           crate::ModuleName::from_static(specifier),
-          crate::ModuleCodeString::from_static(code),
+          *code,
         );
       }
 

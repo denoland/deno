@@ -28,6 +28,7 @@ use deno_runtime::deno_core::JsRuntime;
 use deno_runtime::deno_core::LocalInspectorSession;
 use deno_runtime::deno_core::ModuleLoader;
 use deno_runtime::deno_core::SharedArrayBufferStore;
+use deno_runtime::deno_core::StaticSourceCode;
 use deno_runtime::deno_core::error::CoreError;
 use deno_runtime::deno_core::v8;
 use deno_runtime::deno_fs;
@@ -270,9 +271,9 @@ pub struct LibMainWorkerOptions {
   pub no_legacy_abort: bool,
   pub startup_snapshot: Option<&'static [u8]>,
   /// Residual `lazy_loaded_js` sources from the snapshot build script.
-  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  pub residual_lazy_js_sources: &'static [(&'static str, StaticSourceCode)],
   /// Residual `lazy_loaded_esm` sources from the snapshot build script.
-  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
+  pub residual_lazy_esm_sources: &'static [(&'static str, StaticSourceCode)],
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
   pub maybe_initial_cwd: Option<Url>,

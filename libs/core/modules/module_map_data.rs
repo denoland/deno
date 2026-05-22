@@ -9,9 +9,9 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::RequestedModuleType;
-use crate::ModuleCodeString;
 use crate::ModuleSource;
 use crate::fast_string::FastString;
+use crate::modules::LazySourceCode;
 use crate::modules::ModuleId;
 use crate::modules::ModuleInfo;
 use crate::modules::ModuleLoadId;
@@ -199,14 +199,13 @@ pub(crate) struct ModuleMapData {
   /// This store is used to temporarily store data that is used
   /// to evaluate a "synthetic module".
   pub(crate) synthetic_module_exports_store: SyntheticModuleExportsStore,
-  pub(crate) lazy_esm_sources:
-    Rc<RefCell<HashMap<ModuleName, ModuleCodeString>>>,
+  pub(crate) lazy_esm_sources: Rc<RefCell<HashMap<ModuleName, LazySourceCode>>>,
   /// Specifiers of lazy-loaded ESM modules known to exist (survives
   /// snapshotting). Used to check if a module should be loaded from
   /// `lazy_esm_sources` without going through the external module loader.
   pub(crate) known_lazy_esm: RefCell<HashSet<String>>,
   pub(crate) lazy_script_sources:
-    Rc<RefCell<HashMap<ModuleName, ModuleCodeString>>>,
+    Rc<RefCell<HashMap<ModuleName, LazySourceCode>>>,
   /// Results of `load_ext_script` evaluations. Populated on first
   /// evaluation so later callers (`Deno.core.loadExtScript()` from JS,
   /// the `synthetic_esm` dispatch from Rust) share a single evaluated

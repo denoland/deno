@@ -23,9 +23,9 @@ pub use residual::RESIDUAL_LAZY_ESM;
 pub use residual::RESIDUAL_LAZY_JS;
 
 #[cfg(feature = "disable")]
-pub static RESIDUAL_LAZY_JS: &[(&str, &str)] = &[];
+pub static RESIDUAL_LAZY_JS: &[(&str, deno_core::StaticSourceCode)] = &[];
 #[cfg(feature = "disable")]
-pub static RESIDUAL_LAZY_ESM: &[(&str, &str)] = &[];
+pub static RESIDUAL_LAZY_ESM: &[(&str, deno_core::StaticSourceCode)] = &[];
 
 mod shared;
 

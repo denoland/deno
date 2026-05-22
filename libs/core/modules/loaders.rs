@@ -16,6 +16,7 @@ use crate::error::CoreError;
 use crate::error::CoreErrorKind;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::IntoModuleCodeString;
+use crate::modules::LazySourceCode;
 use crate::modules::ModuleCodeString;
 use crate::modules::ModuleName;
 use crate::modules::ModuleSource;
@@ -392,12 +393,12 @@ impl ModuleLoader for ExtModuleLoader {
 /// ES modules that were embedded in the binary using `lazy_loaded_esm`
 /// option in `extension!` macro.
 pub(crate) struct LazyEsmModuleLoader {
-  sources: Rc<RefCell<HashMap<ModuleName, ModuleCodeString>>>,
+  sources: Rc<RefCell<HashMap<ModuleName, LazySourceCode>>>,
 }
 
 impl LazyEsmModuleLoader {
   pub fn new(
-    sources: Rc<RefCell<HashMap<ModuleName, ModuleCodeString>>>,
+    sources: Rc<RefCell<HashMap<ModuleName, LazySourceCode>>>,
   ) -> Self {
     LazyEsmModuleLoader { sources }
   }
@@ -428,6 +429,10 @@ impl ModuleLoader for LazyEsmModuleLoader {
           specifier
         ))));
       }
+    };
+    let source = match source.into_module_code() {
+      Ok(source) => source,
+      Err(err) => return ModuleLoadResponse::Sync(Err(err)),
     };
     ModuleLoadResponse::Sync(Ok(ModuleSource::new(
       ModuleType::JavaScript,

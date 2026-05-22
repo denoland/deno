@@ -16,5 +16,9 @@ path = "lib.rs"
 [features]
 disable = []
 
+[dependencies]
+deno_core.workspace = true
+
 [build-dependencies]
 deno_runtime = { workspace = true, features = ["snapshot"] }
+zstd.workspace = true

@@ -50,6 +50,7 @@ use crate::error::JsError;
 use crate::error::exception_to_err;
 use crate::error::exception_to_err_result;
 use crate::modules::ImportAttributesKind;
+use crate::modules::LazySourceCode;
 use crate::modules::ModuleCodeString;
 use crate::modules::ModuleError;
 use crate::modules::ModuleId;
@@ -61,6 +62,7 @@ use crate::modules::ModuleReference;
 use crate::modules::ModuleRequest;
 use crate::modules::ModuleType;
 use crate::modules::ResolutionKind;
+use crate::modules::StaticSourceCode;
 use crate::modules::get_requested_module_type_from_attributes;
 use crate::modules::module_map_data::ModuleSourceKey;
 use crate::modules::parse_import_attributes;
@@ -1571,7 +1573,14 @@ impl ModuleMap {
 
     // Fallback: check lazy-loaded ESM sources (modules embedded in the
     // binary but not included in the snapshot).
-    let maybe_source = self.take_lazy_esm_source(resolved_specifier.as_str());
+    let maybe_source =
+      match self.take_lazy_esm_source(resolved_specifier.as_str()) {
+        Ok(source) => source,
+        Err(err) => {
+          crate::error::throw_js_error_class(scope, &CoreError::from(err));
+          return None;
+        }
+      };
     if let Some(source_code) = maybe_source {
       match self.new_es_module(
         scope,
@@ -2715,7 +2724,7 @@ impl ModuleMap {
   pub(crate) fn take_lazy_esm_source(
     &self,
     specifier: &str,
-  ) -> Option<ModuleCodeString> {
+  ) -> Result<Option<ModuleCodeString>, JsErrorBox> {
     let data = self.data.borrow();
     let source = data.lazy_esm_sources.borrow_mut().remove(specifier);
     if source.is_some() {
@@ -2724,13 +2733,33 @@ impl ModuleMap {
         .borrow_mut()
         .insert(specifier.to_string());
     }
-    source
+    source.map(|source| source.into_module_code()).transpose()
   }
 
   pub(crate) fn add_lazy_loaded_esm_source(
     &self,
     specifier: ModuleName,
     code: ModuleCodeString,
+  ) {
+    self.add_lazy_loaded_esm_lazy_source(
+      specifier,
+      LazySourceCode::Uncompressed(code),
+    );
+  }
+
+  pub(crate) fn add_lazy_loaded_esm_static_source(
+    &self,
+    specifier: ModuleName,
+    code: StaticSourceCode,
+  ) {
+    self
+      .add_lazy_loaded_esm_lazy_source(specifier, LazySourceCode::Static(code));
+  }
+
+  fn add_lazy_loaded_esm_lazy_source(
+    &self,
+    specifier: ModuleName,
+    code: LazySourceCode,
   ) {
     let data = self.data.borrow_mut();
     data
@@ -2891,6 +2920,28 @@ impl ModuleMap {
     specifier: ModuleName,
     code: ModuleCodeString,
   ) {
+    self.add_lazy_loaded_script_lazy_source(
+      specifier,
+      LazySourceCode::Uncompressed(code),
+    );
+  }
+
+  pub(crate) fn add_lazy_loaded_script_static_source(
+    &self,
+    specifier: ModuleName,
+    code: StaticSourceCode,
+  ) {
+    self.add_lazy_loaded_script_lazy_source(
+      specifier,
+      LazySourceCode::Static(code),
+    );
+  }
+
+  fn add_lazy_loaded_script_lazy_source(
+    &self,
+    specifier: ModuleName,
+    code: LazySourceCode,
+  ) {
     let data = self.data.borrow_mut();
     assert!(
       data
@@ -3048,6 +3099,7 @@ impl ModuleMap {
         );
       }
     };
+    let source = source.into_module_code()?;
 
     data
       .consumed_lazy_specifiers

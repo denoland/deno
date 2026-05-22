@@ -27,6 +27,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_core::StaticSourceCode;
 use deno_core::ToV8;
 use deno_core::error::CoreError;
 use deno_core::error::CoreErrorKind;
@@ -377,10 +378,10 @@ pub struct WebWorkerOptions {
   pub startup_snapshot: Option<&'static [u8]>,
   /// `(specifier, source)` pairs for `lazy_loaded_js` files not consumed
   /// during snapshot creation; emitted by the snapshot build script.
-  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  pub residual_lazy_js_sources: &'static [(&'static str, StaticSourceCode)],
   /// `(specifier, source)` pairs for `lazy_loaded_esm` files not consumed
   /// during snapshot creation; emitted by the snapshot build script.
-  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
+  pub residual_lazy_esm_sources: &'static [(&'static str, StaticSourceCode)],
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   /// Optional isolate creation parameters, such as heap limits.
   pub create_params: Option<v8::CreateParams>,

@@ -30,6 +30,7 @@ use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceCodeCacheInfo;
+use deno_core::StaticSourceCode;
 use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::v8;
@@ -230,11 +231,11 @@ pub struct WorkerOptions {
 
   /// `(specifier, source)` pairs for `lazy_loaded_js` files that were not
   /// consumed during snapshot creation. Emitted by the snapshot build script.
-  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  pub residual_lazy_js_sources: &'static [(&'static str, StaticSourceCode)],
 
   /// `(specifier, source)` pairs for `lazy_loaded_esm` files that were not
   /// consumed during snapshot creation. Emitted by the snapshot build script.
-  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
+  pub residual_lazy_esm_sources: &'static [(&'static str, StaticSourceCode)],
 
   /// Should op registration be skipped?
   pub skip_op_registration: bool,
@@ -1125,8 +1126,8 @@ fn common_extensions<
 struct CommonRuntimeOptions {
   module_loader: Rc<dyn ModuleLoader>,
   startup_snapshot: Option<&'static [u8]>,
-  residual_lazy_js_sources: &'static [(&'static str, &'static str)],
-  residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
+  residual_lazy_js_sources: &'static [(&'static str, StaticSourceCode)],
+  residual_lazy_esm_sources: &'static [(&'static str, StaticSourceCode)],
   create_params: Option<v8::CreateParams>,
   skip_op_registration: bool,
   shared_array_buffer_store: Option<SharedArrayBufferStore>,
@@ -1202,8 +1203,8 @@ pub fn create_permissions_stack_trace_callback()
 
 pub struct UnconfiguredRuntimeOptions {
   pub startup_snapshot: &'static [u8],
-  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
-  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
+  pub residual_lazy_js_sources: &'static [(&'static str, StaticSourceCode)],
+  pub residual_lazy_esm_sources: &'static [(&'static str, StaticSourceCode)],
   pub create_params: Option<v8::CreateParams>,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,

@@ -61,6 +61,7 @@ tokio.workspace = true
 url.workspace = true
 v8.workspace = true
 wasm_dep_analyzer = "0.4.0"
+zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true

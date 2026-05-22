@@ -2179,6 +2179,7 @@ dependencies = [
  "v8",
  "wasm_dep_analyzer",
  "windows-sys 0.59.0",
+ "zstd",
 ]
 
 [[package]]
@@ -3265,7 +3266,9 @@ dependencies = [
 name = "deno_snapshots"
 version = "0.62.0"
 dependencies = [
+ "deno_core",
  "deno_runtime",
+ "zstd",
 ]
 
 [[package]]

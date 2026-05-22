@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
 
+use deno_error::JsErrorBox;
 use serde::Deserialize;
 use serde::Serialize;
 use url::Url;
@@ -79,6 +80,49 @@ impl ModuleSourceCode {
 
 pub type ModuleCodeString = FastString;
 pub type ModuleName = FastString;
+
+#[derive(Clone, Copy, Debug)]
+pub struct CompressedSourceCode {
+  pub bytes: &'static [u8],
+  pub uncompressed_size: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum StaticSourceCode {
+  Uncompressed(&'static str),
+  ZstdCompressed(CompressedSourceCode),
+}
+
+#[derive(Debug)]
+pub(crate) enum LazySourceCode {
+  Uncompressed(ModuleCodeString),
+  Static(StaticSourceCode),
+}
+
+impl LazySourceCode {
+  pub(crate) fn into_module_code(self) -> Result<ModuleCodeString, JsErrorBox> {
+    match self {
+      Self::Uncompressed(code) => Ok(code),
+      Self::Static(StaticSourceCode::Uncompressed(code)) => {
+        Ok(ModuleCodeString::from_static(code))
+      }
+      Self::Static(StaticSourceCode::ZstdCompressed(code)) => {
+        let bytes = zstd::bulk::decompress(code.bytes, code.uncompressed_size)
+          .map_err(|err| {
+            JsErrorBox::generic(format!(
+              "Failed to decompress lazy extension source: {err}"
+            ))
+          })?;
+        let source = String::from_utf8(bytes).map_err(|err| {
+          JsErrorBox::generic(format!(
+            "Lazy extension source was not valid UTF-8: {err}"
+          ))
+        })?;
+        Ok(ModuleCodeString::from(source))
+      }
+    }
+  }
+}
 
 /// Converts various string-like things into `ModuleName`.
 pub trait IntoModuleName {

@@ -24,6 +24,7 @@ use parking_lot::Mutex;
 use tokio::task::LocalSet;
 use url::Url;
 
+use crate::CompressedSourceCode;
 use crate::FastString;
 use crate::ModuleCodeString;
 use crate::ModuleSource;
@@ -47,6 +48,7 @@ use crate::modules::ModuleRequest;
 use crate::modules::ModuleSourceCode;
 use crate::modules::RequestedModuleType;
 use crate::modules::SourceCodeCacheInfo;
+use crate::modules::StaticSourceCode;
 use crate::modules::loaders::ModuleLoadEventCounts;
 use crate::modules::loaders::TestingModuleLoader;
 use crate::modules::loaders::*;
@@ -717,6 +719,55 @@ fn test_lazy_loaded_script_not_found() {
     "unexpected error: {}",
     err
   );
+}
+
+#[test]
+fn test_compressed_residual_lazy_sources() {
+  const COMPRESSED_ESM: &[u8] = &[
+    0x28, 0xb5, 0x2f, 0xfd, 0x04, 0x68, 0x31, 0x01, 0x00, 0x65, 0x78, 0x70,
+    0x6f, 0x72, 0x74, 0x20, 0x63, 0x6f, 0x6e, 0x73, 0x74, 0x20, 0x76, 0x61,
+    0x6c, 0x75, 0x65, 0x20, 0x3d, 0x20, 0x22, 0x63, 0x6f, 0x6d, 0x70, 0x72,
+    0x65, 0x73, 0x73, 0x65, 0x64, 0x20, 0x65, 0x73, 0x6d, 0x22, 0x3b, 0x71,
+    0x61, 0x9e, 0x4b,
+  ];
+  const COMPRESSED_SCRIPT: &[u8] = &[
+    0x28, 0xb5, 0x2f, 0xfd, 0x04, 0x68, 0xbd, 0x01, 0x00, 0xb2, 0xc3, 0x0c,
+    0x11, 0xb0, 0xeb, 0xb8, 0x6d, 0x29, 0xa6, 0x11, 0xb8, 0x52, 0x68, 0x28,
+    0xab, 0xe3, 0x98, 0x98, 0x09, 0x45, 0x42, 0x53, 0xe3, 0x45, 0x3c, 0x68,
+    0xcb, 0xf4, 0xb2, 0x13, 0x66, 0x8c, 0x7b, 0x21, 0xb5, 0xe0, 0x81, 0xdd,
+    0x19, 0xef, 0xf0, 0xa9, 0x5d, 0xe3, 0x3e, 0xbc, 0xe6, 0x93, 0x32, 0x6d,
+    0x93, 0x2b, 0x19, 0x00, 0x0a, 0xa3, 0xf9, 0x1b,
+  ];
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    residual_lazy_js_sources: &[(
+      "ext:test_ext/compressed_script.js",
+      StaticSourceCode::ZstdCompressed(CompressedSourceCode {
+        bytes: COMPRESSED_SCRIPT,
+        uncompressed_size: 59,
+      }),
+    )],
+    residual_lazy_esm_sources: &[(
+      "ext:test_ext/compressed_esm.js",
+      StaticSourceCode::ZstdCompressed(CompressedSourceCode {
+        bytes: COMPRESSED_ESM,
+        uncompressed_size: 38,
+      }),
+    )],
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "test_compressed_residual_lazy_sources.js",
+      r#"
+      const script = Deno.core.loadExtScript("ext:test_ext/compressed_script.js");
+      if (script.value !== "compressed script") throw new Error("bad compressed script");
+      const esm = Deno.core.createLazyLoader("ext:test_ext/compressed_esm.js")();
+      if (esm.value !== "compressed esm") throw new Error("bad compressed esm");
+      "#,
+    )
+    .unwrap();
 }
 
 #[test]
