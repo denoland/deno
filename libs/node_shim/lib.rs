@@ -78,6 +78,10 @@ pub struct DebugOptions {
   pub inspect_publish_uid_string: String,
   pub inspect_publish_uid: InspectPublishUid,
   pub host_port: HostPort,
+  /// True when `--inspect-port` was explicitly passed. Used to make
+  /// `process.debugPort` reflect the requested port even when the
+  /// inspector itself was not enabled, matching Node's behavior.
+  pub inspect_port_explicit: bool,
 }
 
 impl Default for DebugOptions {
@@ -92,6 +96,7 @@ impl Default for DebugOptions {
       inspect_publish_uid_string: "stderr,http".to_string(),
       inspect_publish_uid: InspectPublishUid::default(),
       host_port: HostPort::default(),
+      inspect_port_explicit: false,
     }
   }
 }
@@ -2764,12 +2769,19 @@ impl OptionsParser {
     value: HostPort,
   ) {
     match name {
-      "--inspect-port" => options
-        .per_isolate
-        .per_env
-        .debug_options
-        .host_port
-        .update(&value),
+      "--inspect-port" => {
+        options
+          .per_isolate
+          .per_env
+          .debug_options
+          .host_port
+          .update(&value);
+        options
+          .per_isolate
+          .per_env
+          .debug_options
+          .inspect_port_explicit = true;
+      }
       _ => {
         // Unknown host port option
       }
@@ -3372,10 +3384,28 @@ pub fn translate_to_deno_args(
     let raw_eval_code = eval_string_for_print
       .as_ref()
       .unwrap_or(&env_opts.eval_string);
+
+    // When `--inspect-port=N` is passed without `--inspect[-brk|-wait]`,
+    // Node updates `process.debugPort` to N but does not start the
+    // inspector. Deno doesn't carry `--inspect-port` as a runtime flag,
+    // so emit an equivalent assignment as part of the eval code.
+    let raw_eval_code_owned;
+    let raw_eval_code: &str = if env_opts.debug_options.inspect_port_explicit
+      && !env_opts.debug_options.inspector_enabled
+    {
+      raw_eval_code_owned = format!(
+        "process.debugPort = {}; {}",
+        env_opts.debug_options.host_port.port, raw_eval_code
+      );
+      raw_eval_code_owned.as_str()
+    } else {
+      raw_eval_code.as_str()
+    };
+
     let eval_code = if options.wrap_eval_code {
       wrap_eval_code(raw_eval_code)
     } else {
-      raw_eval_code.clone()
+      raw_eval_code.to_string()
     };
     deno_args.push(eval_code);
 
@@ -4790,6 +4820,45 @@ mod tests {
         .host_port
         .port,
       0
+    );
+  }
+
+  #[test]
+  fn test_translate_inspect_port_injects_debug_port_for_print() {
+    // `--inspect-port=N` without `--inspect[-brk|-wait]` should make
+    // `process.debugPort` equal N — matching Node — even though Deno
+    // has no equivalent runtime flag. The translator injects the
+    // assignment into the eval code used by `-p`/`-e`.
+    let parsed =
+      parse_args(svec!["--inspect-port=0", "-p", "process.debugPort"]).unwrap();
+    let result = translate_to_deno_args(parsed, &TranslateOptions::default());
+    let eval_arg = result
+      .deno_args
+      .iter()
+      .find(|a| a.contains("process.debugPort"))
+      .expect("expected an eval arg referencing process.debugPort");
+    assert!(
+      eval_arg.contains("process.debugPort = 0"),
+      "expected process.debugPort assignment in eval arg, got: {eval_arg}"
+    );
+  }
+
+  #[test]
+  fn test_translate_inspect_port_does_not_inject_when_inspector_enabled() {
+    // When `--inspect` is also set, `process.debugPort` is updated by
+    // the inspector itself; we should not inject an assignment.
+    let parsed =
+      parse_args(svec!["--inspect=localhost:0", "-p", "process.debugPort"])
+        .unwrap();
+    let result = translate_to_deno_args(parsed, &TranslateOptions::default());
+    let eval_arg = result
+      .deno_args
+      .iter()
+      .find(|a| a.contains("process.debugPort"))
+      .expect("expected an eval arg referencing process.debugPort");
+    assert!(
+      !eval_arg.contains("process.debugPort ="),
+      "should not inject debugPort assignment, got: {eval_arg}"
     );
   }
 
