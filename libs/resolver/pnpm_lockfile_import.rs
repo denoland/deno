@@ -80,6 +80,10 @@ pub fn pnpm_lock_to_deno_lock_v5(
   // We accept whichever is present (or both, with snapshots taking
   // precedence).
   let mut npm: BTreeMap<String, Value> = BTreeMap::new();
+  // In v9 dependencies live under `snapshots`; in v6 they live inline under
+  // `packages`. Walk snapshots first so the dep-bearing entries win when
+  // both sections exist (the `packages` pass for v9 only carries metadata
+  // we've already captured in `integrity`).
   let snapshot_sources: [&str; 2] = ["snapshots", "packages"];
   for section in snapshot_sources {
     let Some(snaps) = doc.as_mapping_get(section).and_then(|s| s.as_mapping())
@@ -93,7 +97,10 @@ pub fn pnpm_lock_to_deno_lock_v5(
       let normalized = normalize_package_key(&raw_key);
       let base = strip_peer_suffix(&normalized).to_string();
       // Snapshot keys may include peer-suffix parens; for our purposes,
-      // collapse to the base `name@version`. Last entry wins.
+      // collapse to the base `name@version`. First entry wins.
+      if npm.contains_key(&base) {
+        continue;
+      }
       let Some(integ) = integrity.get(&base) else {
         // No integrity for this package — skip.
         continue;
@@ -220,6 +227,13 @@ pub fn pnpm_lock_to_deno_lock_v5(
 }
 
 fn yaml_to_string(node: &Yaml) -> Option<String> {
+  // Saphyr lazy-parses plain scalars and leaves them in the `Representation`
+  // variant when they don't resolve to a typed value (e.g. multi-dot
+  // version strings like `4.3.0`). Pull the raw text out for those before
+  // falling back to the typed accessors.
+  if let Yaml::Representation(raw, _, _) = node {
+    return Some(raw.to_string());
+  }
   if let Some(s) = node.as_str() {
     return Some(s.to_string());
   }
