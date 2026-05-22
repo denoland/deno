@@ -21,7 +21,6 @@ const {
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   FunctionPrototypeApply,
-  SafeFinalizationRegistry,
   SafeWeakMap,
   SafeWeakSet,
   Symbol,
@@ -357,10 +356,14 @@ const promiseInfo = new SafeWeakMap();
 // skip them as well.
 const suppressedPromises = new SafeWeakSet();
 
-// FinalizationRegistry to fire destroy() when a promise is garbage collected.
-const promiseDestroyRegistry = new SafeFinalizationRegistry(
-  (asyncId: number) => emitDestroy(asyncId),
-);
+// We deliberately do NOT register promises with a FinalizationRegistry to fire
+// `destroy()`. Doing so would queue one cleanup callback per Promise in V8's
+// finalizer queue and noticeably delay unrelated FinalizationRegistry callbacks
+// (notably `AsyncResource`'s destroy), causing GC-timing-sensitive Node tests
+// such as `test-zlib-invalid-input-memory.js` and `test-net-connect-memleak.js`
+// to fail. Promise `destroy` events are best-effort in Node too; user code that
+// needs to know when a promise is collected should use a FinalizationRegistry
+// directly. Init/before/after/promiseResolve are still wired up below.
 
 let promiseHooksInstalled = false;
 
@@ -392,7 +395,6 @@ function trackPromise(
   }
   const info = { asyncId, triggerAsyncId: trigger };
   promiseInfo.set(promise, info);
-  promiseDestroyRegistry.register(promise, asyncId, promise);
   return info;
 }
 
