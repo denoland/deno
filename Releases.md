@@ -10,18 +10,14 @@ https://github.com/denoland/deno_install
 
 Read more: http://deno.com/blog/v2.8
 
-- Revert "fix(ext/node): support AES-128-ECB cipher for PKCS#8 private key
-  encryption and decryption" (#33837)
-- Revert module loader hooks stack (#34077)
+- feat: accept `deno audit fix` as alias for `deno audit --fix` (#34273)
+- feat: add --watch flag to deno check (#34224)
+- feat: add `deno bump-version` subcommand (#30562)
+- feat: add `deno why` subcommand (#32908)
+- feat: support workspaces in `deno bump-version` (#33689)
 - feat(add/install): default to npm registry for unprefixed packages (#33246)
-- feat(cli): accept `deno audit fix` as alias for `deno audit --fix` (#34273)
-- feat(cli): add --watch flag to deno check (#34224)
-- feat(cli): add `deno bump-version` subcommand (#30562)
-- feat(cli): add `deno why` subcommand (#32908)
-- feat(cli): support workspaces in `deno bump-version` (#33689)
 - feat(compile): add progress bar for deno compile (#33874)
-- feat(compile): support module.register() and module.registerHooks() in
-  compiled binaries (#33853)
+- feat(compile): support module.registerHooks() in compiled binaries (#33853)
 - feat(core): add `Deno.core.loadExtScript()` for lazy-loaded scripts (#33739)
 - feat(core): add async module resolution support via ModuleResolveResponse
   (#32432)
@@ -38,7 +34,6 @@ Read more: http://deno.com/blog/v2.8
   (#34203)
 - feat(ext/node): implement Network CDP domain for inspector (#32707)
 - feat(ext/node): implement NodeRuntime.notifyWhenWaitingForDisconnect (#34204)
-- feat(ext/node): implement module.register() API (#33849)
 - feat(ext/node): implement module.registerHooks() API for CommonJS (#33733)
 - feat(ext/node): implement node:module SourceMap API (#32890)
 - feat(ext/node): implement node:wasi (#34089)
@@ -317,10 +312,6 @@ Read more: http://deno.com/blog/v2.8
 - fix(ext/node): share TLS session cache and ticketer for tls.TLSSocket session
   resumption (#33693)
 - fix(ext/node): skip ESM load hook bridge for CJS modules (#33861)
-- fix(ext/node): skip user module.register() load hooks for node:/ext: builtins
-  (#34006)
-- fix(ext/node): support AES-128-ECB cipher for PKCS#8 private key encryption
-  and decryption (#33809)
 - fix(ext/node): support CA certificate introspection and off-thread loading
   tests (#33708)
 - fix(ext/node): support PKCS#8 encrypted private key PEM export via PBES2
