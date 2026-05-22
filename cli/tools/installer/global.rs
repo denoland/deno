@@ -48,7 +48,6 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
 use crate::jsr::JsrFetchResolver;
-use crate::npm::NpmFetchResolver;
 use crate::util::env::resolve_cwd;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
@@ -81,17 +80,6 @@ pub async fn install_global(
 
   let npmrc = factory.npmrc()?;
 
-  let deps_file_fetcher = create_deps_file_fetcher(log::Level::Trace);
-  let jsr_resolver = Arc::new(JsrFetchResolver::new(
-    deps_file_fetcher.clone(),
-    factory.jsr_version_resolver()?.clone(),
-  ));
-  let npm_resolver = Arc::new(NpmFetchResolver::new(
-    deps_file_fetcher,
-    npmrc.clone(),
-    factory.npm_version_resolver()?.clone(),
-  ));
-
   if matches!(flags.config_flag, ConfigFlag::Discover)
     && cli_options.workspace().deno_jsons().next().is_some()
   {
@@ -106,10 +94,20 @@ pub async fn install_global(
       .await;
   }
 
-  for (i, module_url) in install_flags_global.module_urls.iter().enumerate() {
-    let entry_text = module_url;
-    if !cli_options.initial_cwd().join(entry_text).exists() {
-      // provide a helpful error message for users migrating from Deno < 3.0
+  // Validate every entry and default unprefixed bare package names to the npm
+  // registry (matching `deno add` and local `deno install`) before installing
+  // anything, so an error on entry N doesn't leave entries < N installed.
+  let module_urls: Vec<String> = install_flags_global
+    .module_urls
+    .iter()
+    .enumerate()
+    .map(|(i, module_url)| -> Result<String, AnyError> {
+      let entry_text = module_url;
+      if cli_options.initial_cwd().join(entry_text).exists() {
+        return Ok(module_url.clone());
+      }
+      // Migration error for users coming from Deno < 3.0 who passed script
+      // args without `--`.
       if i == 1
         && install_flags_global.args.is_empty()
         && Url::parse(entry_text).is_err()
@@ -122,39 +120,18 @@ pub async fn install_global(
           entry_text,
           &install_flags_global.module_urls[0],
           install_flags_global.module_urls[1..].join(" "),
-        )
+        );
       }
-      // check for package requirement missing prefix
       if let Ok(Err(package_req)) =
         crate::tools::pm::AddRmPackageReq::parse(entry_text, None)
       {
-        if package_req.name.starts_with("@")
-          && jsr_resolver
-            .req_to_nv(&package_req)
-            .await
-            .ok()
-            .flatten()
-            .is_some()
-        {
-          bail!(
-            "{entry_text} is missing a prefix. Did you mean `{}`?",
-            crate::colors::yellow(format!("deno install -g jsr:{package_req}"))
-          );
-        } else if npm_resolver
-          .req_to_nv(&package_req)
-          .await
-          .ok()
-          .flatten()
-          .is_some()
-        {
-          bail!(
-            "{entry_text} is missing a prefix. Did you mean `{}`?",
-            crate::colors::yellow(format!("deno install -g npm:{package_req}"))
-          );
-        }
+        return Ok(format!("npm:{package_req}"));
       }
-    }
+      Ok(module_url.clone())
+    })
+    .collect::<Result<_, _>>()?;
 
+  for module_url in &module_urls {
     let (name_and_url, extra_bin_entries) = BinaryNameAndUrl::resolve(
       &factory.bin_name_resolver()?,
       cli_options.initial_cwd(),

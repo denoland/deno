@@ -3,7 +3,7 @@
 // deno-lint-ignore-file no-explicit-any
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { fs: fsConstants } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
@@ -93,9 +93,12 @@ let _promises: any;
 const { default: SyncWriteStream } = core.loadExtScript(
   "ext:deno_node/internal/fs/sync_write_stream.js",
 );
-const { default: Utf8Stream } = core.createLazyLoader(
+// Utf8Stream is only re-exported, never used at module body. Keep this as
+// a thunk so loading fs.ts doesn't immediately pull fast-utf8-stream.js
+// (which statically imports node:fs and triggers the whole stream subtree).
+const lazyUtf8Stream = core.createLazyLoader(
   "ext:deno_node/internal/streams/fast-utf8-stream.js",
-)();
+);
 const {
   arrayBufferViewToUint8Array,
   BigIntStats,
@@ -200,8 +203,15 @@ const {
 const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
+const { Blob, markFileBackedBlob } = core.loadExtScript(
+  "ext:deno_web/09_file.js",
+);
 // Re-exported under both names for tests.
 const _toUnixTimestamp = toUnixTimestamp;
+const {
+  createFSReqCallback,
+  unregisterActiveRequest,
+} = core.loadExtScript("ext:deno_node/internal/process/active_resources.ts");
 
 const {
   ArrayBufferIsView,
@@ -249,7 +259,6 @@ const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 
 const {
   kIoMaxLength,
-  kReadFileBufferLength,
   kReadFileUnknownBufferLength,
 } = fsUtilConstants;
 
@@ -689,46 +698,53 @@ function readFileConcatBuffers(buffers: Uint8Array[]): Uint8Array {
 
 async function readFileFromFd(fd: number, options?: FileOptions) {
   const signal = options?.signal;
-  const encoding = options?.encoding;
   readFileCheckAborted(signal);
 
   const statFields = op_node_fs_fstat_sync(fd);
   readFileCheckAborted(signal);
 
-  let size = 0;
-  let length = 0;
-  if (statFields.isFile) {
-    size = statFields.size;
-    length = encoding ? MathMin(size, kReadFileBufferLength) : size;
-  }
-  if (length === 0) {
-    length = kReadFileUnknownBufferLength;
-  }
+  const isFile = statFields.isFile;
+  const size = isFile ? statFields.size : 0;
 
   if (size > kIoMaxLength) {
     throw new ERR_FS_FILE_TOO_LARGE(size);
   }
 
-  const buffer = new Uint8Array(length);
+  if (isFile && size > 0) {
+    // Known size: read into a single buffer with an advancing offset.
+    // Mirrors Node's readFileHandle which avoids the subarray-aliasing trap
+    // by writing successive reads into different regions of one buffer.
+    const buffer = new Uint8Array(size);
+    let totalRead = 0;
+    while (totalRead < size) {
+      readFileCheckAborted(signal);
+      const slice = TypedArrayPrototypeSubarray(buffer, totalRead);
+      // Use the deferred op so we yield to the event loop between reads,
+      // allowing abort signals scheduled via process.nextTick to fire.
+      const nread = await op_node_fs_read_deferred(fd, slice, -1n);
+      if (nread === 0) break;
+      totalRead += nread;
+    }
+    readFileCheckAborted(signal);
+    return totalRead === size
+      ? buffer
+      : TypedArrayPrototypeSubarray(buffer, 0, totalRead);
+  }
+
+  // Unknown size (pipes, sockets, /dev/stdin): allocate a fresh buffer per
+  // iteration so pushed subarrays don't alias a reused read buffer.
   const buffers: Uint8Array[] = [];
   let totalRead = 0;
-
   while (true) {
     readFileCheckAborted(signal);
-    // Use the deferred op so we yield to the event loop between reads,
-    // allowing abort signals scheduled via process.nextTick to fire.
-    const nread = await op_node_fs_read_deferred(fd, buffer, -1n);
-    if (nread === 0) {
-      break;
-    }
+    const chunk = new Uint8Array(kReadFileUnknownBufferLength);
+    const nread = await op_node_fs_read_deferred(fd, chunk, -1n);
+    if (nread === 0) break;
     totalRead += nread;
     if (totalRead > kIoMaxLength) {
       throw new ERR_FS_FILE_TOO_LARGE(totalRead);
     }
-    ArrayPrototypePush(
-      buffers,
-      TypedArrayPrototypeSubarray(buffer, 0, nread),
-    );
+    ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(chunk, 0, nread));
   }
 
   return readFileConcatBuffers(buffers);
@@ -2232,11 +2248,24 @@ function open(
   flags = stringToFlags(flags);
   callback = makeCallback(callback);
 
+  const request = createFSReqCallback();
+  let openPromise: Promise<number>;
+  try {
+    openPromise = op_node_open(path, flags, mode);
+  } catch (err) {
+    unregisterActiveRequest(request);
+    throw err;
+  }
   PromisePrototypeThen(
-    op_node_open(path, flags, mode),
-    (rid: number) => callback(null, rid),
-    (err: Error) =>
-      callback(denoErrorToNodeError(err, { syscall: "open", path })),
+    openPromise,
+    (rid: number) => {
+      unregisterActiveRequest(request);
+      callback(null, rid);
+    },
+    (err: Error) => {
+      unregisterActiveRequest(request);
+      callback(denoErrorToNodeError(err, { syscall: "open", path }));
+    },
   );
 }
 
@@ -2360,7 +2389,7 @@ function openAsBlob(
   path = getValidatedPath(path);
   return PromisePrototypeThen(
     op_fs_read_file_async(path as string, undefined, 0),
-    (data: Uint8Array) => new Blob([data], { type }),
+    (data: Uint8Array) => markFileBackedBlob(new Blob([data], { type })),
   );
 }
 
@@ -3944,7 +3973,9 @@ return {
   unlink,
   unlinkSync,
   unwatchFile,
-  Utf8Stream,
+  get Utf8Stream() {
+    return lazyUtf8Stream().default;
+  },
   utimes,
   utimesSync,
   watch,

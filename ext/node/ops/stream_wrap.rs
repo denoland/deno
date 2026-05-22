@@ -61,6 +61,53 @@ pub(crate) struct StreamHandleData {
   pub read_callbacks: RefCell<ReadCallbackRegistry>,
   pub active_read: Cell<Option<ReadCallbackKey>>,
   pub request_callbacks: RefCell<RequestCallbackRegistry>,
+  /// User-supplied static read buffer (Node's `onread.buffer` option).
+  /// When set, `on_uv_alloc` directs libuv to read into this buffer and
+  /// `on_uv_read` skips ArrayBuffer wrapping / freeing — the buffer's
+  /// backing store is owned by V8 via the held `Global<Uint8Array>`.
+  pub user_buffer: RefCell<Option<UserBuffer>>,
+}
+
+/// User-supplied read buffer. Stored on `StreamHandleData` after
+/// `LibUvStreamWrap::useUserBuffer(buf)` so subsequent reads land in
+/// `buf` instead of a freshly-allocated pool slab.
+///
+/// `handle` retains the `Uint8Array` (and therefore its backing store)
+/// for the lifetime of this slot, so `ptr`/`len` stay valid.
+pub(crate) struct UserBuffer {
+  /// Strong retention of the JS Uint8Array; keeps the backing store
+  /// alive so `ptr` is safe to hand to libuv.
+  #[allow(
+    dead_code,
+    reason = "retention only — handle keeps the backing store alive"
+  )]
+  pub(crate) handle: v8::Global<v8::Uint8Array>,
+  pub(crate) ptr: *mut u8,
+  pub(crate) len: usize,
+}
+
+impl UserBuffer {
+  /// Capture pointer + length from a `Uint8Array` view and retain the
+  /// view so the backing store stays alive. Returns `None` when the
+  /// view's `ArrayBuffer` has no data pointer (detached / shared).
+  pub(crate) fn from_view(
+    scope: &mut v8::PinScope,
+    buffer: v8::Local<v8::Uint8Array>,
+  ) -> Option<Self> {
+    let byte_length = buffer.byte_length();
+    let byte_offset = buffer.byte_offset();
+    let ab = buffer.buffer(scope)?;
+    let data_ptr = ab.data()?;
+    // SAFETY: `data_ptr` is the ArrayBuffer's backing store and
+    // `byte_offset + byte_length` is within the allocation per the
+    // Uint8Array view's invariants.
+    let ptr = unsafe { (data_ptr.as_ptr() as *mut u8).add(byte_offset) };
+    Some(Self {
+      handle: v8::Global::new(scope, buffer),
+      ptr,
+      len: byte_length,
+    })
+  }
 }
 
 #[op2(fast)]
@@ -191,6 +238,7 @@ impl LibUvStreamWrap {
         read_callbacks: RefCell::new(ReadCallbackRegistry::default()),
         active_read: Cell::new(None),
         request_callbacks: RefCell::new(RequestCallbackRegistry::default()),
+        user_buffer: RefCell::new(None),
       }),
       reading_started: Cell::new(false),
     }
@@ -498,13 +546,34 @@ fn pool_release_buf(ptr: *mut u8) -> bool {
 /// Alloc callback for uv_read_start. Returns a pooled 64KB slab when
 /// `suggested_size` matches, otherwise falls back to `std::alloc::alloc`.
 ///
+/// When a user buffer has been registered via `useUserBuffer`, libuv
+/// reads directly into that buffer's memory and the pool path is
+/// skipped. `on_uv_read` recognizes the same condition and avoids
+/// freeing the buffer (V8 owns the backing store).
+///
 /// # Safety
 /// `buf` must be the out-param provided by libuv per the `uv_alloc_cb` contract.
 unsafe extern "C" fn on_uv_alloc(
-  _handle: *mut uv_compat::uv_handle_t,
+  handle: *mut uv_compat::uv_handle_t,
   suggested_size: usize,
   buf: *mut uv_buf_t,
 ) {
+  let stream = handle as *mut uv_stream_t;
+  if let Some(handle_data_ptr) = LibUvStreamWrap::stable_handle_data(stream) {
+    // SAFETY: `uv_stream_t.data` points at the owning handle's stable
+    // `StreamHandleData` allocation while the native stream is alive.
+    let handle_data = unsafe { handle_data_ptr.as_ref() };
+    if let Ok(user_buffer) = handle_data.user_buffer.try_borrow()
+      && let Some(user_buf) = user_buffer.as_ref()
+    {
+      // SAFETY: buf is a valid pointer provided by libuv per the uv_alloc_cb contract.
+      unsafe {
+        (*buf).base = user_buf.ptr as *mut c_char;
+        (*buf).len = user_buf.len;
+      }
+      return;
+    }
+  }
   let ptr = if suggested_size == POOLED_BUF_SIZE
     && let Some(ptr) = pool_acquire_buf()
   {
@@ -562,9 +631,13 @@ unsafe extern "C" fn on_uv_read(
     .get()
     .and_then(|key| handle_data.read_callbacks.borrow().snapshot(key))
   else {
-    free_uv_buf(buf);
+    if !user_owned_buf(handle_data, buf) {
+      free_uv_buf(buf);
+    }
     return;
   };
+
+  let user_owned = user_owned_buf(handle_data, buf);
 
   if let Some(interceptor) = snapshot.read_interceptor {
     if nread < 0 {
@@ -588,21 +661,29 @@ unsafe extern "C" fn on_uv_read(
       // not take ownership — free the buffer here once it returns.
       // Skipping this previously leaked 64KB per read on the consume
       // path (RSS climbed into GBs under sustained HTTP traffic).
-      free_uv_buf(buf);
+      if !user_owned {
+        free_uv_buf(buf);
+      }
       return;
     }
   }
 
   let Some(stream_base_state) = snapshot.stream_base_state else {
-    free_uv_buf(buf);
+    if !user_owned {
+      free_uv_buf(buf);
+    }
     return;
   };
   let Some(onread_global) = snapshot.onread else {
-    free_uv_buf(buf);
+    if !user_owned {
+      free_uv_buf(buf);
+    }
     return;
   };
   let Some(handle_global) = snapshot.handle else {
-    free_uv_buf(buf);
+    if !user_owned {
+      free_uv_buf(buf);
+    }
     return;
   };
 
@@ -619,7 +700,9 @@ unsafe extern "C" fn on_uv_read(
   let scope = &mut v8::ContextScope::new(handle_scope, context);
 
   if nread <= 0 {
-    free_uv_buf(buf);
+    if !user_owned {
+      free_uv_buf(buf);
+    }
     if nread < 0 {
       // Error/EOF path
       let state_array = v8::Local::new(scope, &stream_base_state);
@@ -650,25 +733,6 @@ unsafe extern "C" fn on_uv_read(
     .bytes_read
     .set(snapshot.bytes_read.get() + nread as u64);
 
-  // Successful read: wrap data in ArrayBuffer
-  let nread_usize = nread as usize;
-  // SAFETY: buf is a valid uv_buf_t allocated by on_uv_alloc per the uv_read_cb contract.
-  let buf_ref = unsafe { &*buf };
-
-  // Create a backing store from the allocated memory.
-  // The deleter will free the alloc when the ArrayBuffer is GC'd.
-  // SAFETY: buf_ref.base points to memory allocated by on_uv_alloc with size buf_ref.len; ownership transfers to the backing store.
-  let backing_store = unsafe {
-    v8::ArrayBuffer::new_backing_store_from_ptr(
-      buf_ref.base as *mut std::ffi::c_void,
-      nread_usize,
-      backing_store_deleter,
-      buf_ref.len as *mut std::ffi::c_void,
-    )
-  };
-
-  let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store.into());
-
   // Update stream_base_state
   let state_array = v8::Local::new(scope, &stream_base_state);
   state_array.set_index(
@@ -682,13 +746,35 @@ unsafe extern "C" fn on_uv_read(
     v8::Integer::new(scope, 0).into(),
   );
 
-  // Call onread(arrayBuffer) with handle as `this`
-  // Matches Node's convention: nread is in streamBaseState[kReadBytesOrError].
+  // Successful read: wrap data in ArrayBuffer (or pass undefined when
+  // the user supplied a static read buffer — JS reads the bytes via
+  // `stream[kBuffer]` and ignores the callback's ArrayBuffer arg).
+  let nread_usize = nread as usize;
   let onread = v8::Local::new(scope, &onread_global);
   let recv = v8::Local::new(scope, &handle_global);
+
   let caught_exception = {
     v8::tc_scope!(tc, scope);
-    let result = onread.call(tc, recv.into(), &[ab.into()]);
+    let arg: v8::Local<v8::Value> = if user_owned {
+      v8::undefined(tc).into()
+    } else {
+      // SAFETY: buf is a valid uv_buf_t allocated by on_uv_alloc per the uv_read_cb contract.
+      let buf_ref = unsafe { &*buf };
+      // Create a backing store from the allocated memory.
+      // The deleter will free the alloc when the ArrayBuffer is GC'd.
+      // SAFETY: buf_ref.base points to memory allocated by on_uv_alloc with size buf_ref.len; ownership transfers to the backing store.
+      let backing_store = unsafe {
+        v8::ArrayBuffer::new_backing_store_from_ptr(
+          buf_ref.base as *mut std::ffi::c_void,
+          nread_usize,
+          backing_store_deleter,
+          buf_ref.len as *mut std::ffi::c_void,
+        )
+      };
+      let ab = v8::ArrayBuffer::with_backing_store(tc, &backing_store.into());
+      ab.into()
+    };
+    let result = onread.call(tc, recv.into(), &[arg]);
     if result.is_none() && tc.has_caught() {
       let exc = tc.exception();
       tc.reset();
@@ -700,6 +786,33 @@ unsafe extern "C" fn on_uv_read(
   if let Some(exception) = caught_exception {
     call_fatal_exception(scope, exception);
   }
+}
+
+/// Detect whether `buf.base` points into a registered user buffer for
+/// `handle_data`. When true, the buffer's memory is owned by V8 (via the
+/// retained `Global<Uint8Array>`) and `free_uv_buf` must NOT be called.
+///
+/// Matches by pointer equality rather than borrowing the `RefCell` so
+/// the check can be made cheaply during interceptor / error paths
+/// without risking a borrow conflict against the JS callback.
+fn user_owned_buf(
+  handle_data: &StreamHandleData,
+  buf: *const uv_buf_t,
+) -> bool {
+  if buf.is_null() {
+    return false;
+  }
+  let Ok(borrow) = handle_data.user_buffer.try_borrow() else {
+    // If we can't borrow, a JS callback is mutating it — be conservative
+    // and assume the buffer is user-owned to avoid double-free.
+    return true;
+  };
+  let Some(user_buf) = borrow.as_ref() else {
+    return false;
+  };
+  // SAFETY: buf was provided by libuv per the uv_read_cb contract.
+  let base = unsafe { (*buf).base };
+  std::ptr::eq(base as *const u8, user_buf.ptr)
 }
 
 /// Handle uncaught exceptions from stream onread callbacks.
@@ -1138,6 +1251,22 @@ impl LibUvStreamWrap {
   #[reentrant]
   pub fn read_stop(&self, _scope: &mut v8::PinScope) -> i32 {
     self.read_stop_internal()
+  }
+
+  /// Register a static read buffer (Node's `onread.buffer` option).
+  /// Subsequent reads land directly in `buffer` instead of a pooled
+  /// slab, and `onStreamRead` invokes the user callback with this
+  /// same Uint8Array. Mirrors Node's `LibuvStreamWrap::UseUserBuffer`
+  /// in `src/stream_base.cc`.
+  #[fast]
+  #[rename("useUserBuffer")]
+  pub fn use_user_buffer(
+    &self,
+    buffer: v8::Local<v8::Uint8Array>,
+    scope: &mut v8::PinScope,
+  ) {
+    *self.handle_data.user_buffer.borrow_mut() =
+      UserBuffer::from_view(scope, buffer);
   }
 
   #[fast]

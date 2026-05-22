@@ -609,6 +609,7 @@ impl CliFactory {
             | DenoSubcommand::ApproveScripts { .. }
             | DenoSubcommand::Remove { .. }
             | DenoSubcommand::Cache { .. }
+            | DenoSubcommand::Ci { .. }
             | DenoSubcommand::Uninstall { .. } => true,
             DenoSubcommand::Install(flags) => match flags {
               InstallFlags::Local(flags, _) => match flags {
@@ -669,6 +670,7 @@ impl CliFactory {
                 InstallFlagsLocal::Add(_) => false,
               }
             }
+            DenoSubcommand::Ci(f) => f.production,
             _ => false,
           },
           skip_types: match cli_options.sub_command() {
@@ -679,6 +681,7 @@ impl CliFactory {
                 InstallFlagsLocal::Add(_) => false,
               }
             }
+            DenoSubcommand::Ci(f) => f.skip_types,
             _ => false,
           },
           resolve_npm_resolution_snapshot: Box::new(|| {
@@ -705,7 +708,8 @@ impl CliFactory {
       .get_or_try_init(|| match self.cli_options()?.sub_command() {
         DenoSubcommand::Install(InstallFlags::Local(_, _))
         | DenoSubcommand::Add(_)
-        | DenoSubcommand::Cache(_) => Ok(Some(Arc::new(
+        | DenoSubcommand::Cache(_)
+        | DenoSubcommand::Ci(_) => Ok(Some(Arc::new(
           crate::tools::installer::InstallReporter::new(),
         ))),
         _ => Ok(None),
@@ -720,6 +724,10 @@ impl CliFactory {
   pub async fn npm_resolver(&self) -> Result<&CliNpmResolver, AnyError> {
     self.initialize_npm_resolution_if_managed().await?;
     self.resolver_factory()?.npm_resolver()
+  }
+
+  pub fn node_modules_dir_path(&self) -> Result<Option<&Path>, AnyError> {
+    self.workspace_factory()?.node_modules_dir_path()
   }
 
   fn workspace_factory(&self) -> Result<&Arc<CliWorkspaceFactory>, AnyError> {
@@ -771,7 +779,7 @@ impl CliFactory {
     &self,
   ) -> Result<&Option<Arc<dyn deno_graph::source::Reporter>>, AnyError> {
     match self.cli_options()?.sub_command() {
-      DenoSubcommand::Install(_) => {
+      DenoSubcommand::Install(_) | DenoSubcommand::Ci(_) => {
         self.services.graph_reporter.get_or_try_init(|| {
           self.install_reporter().map(|opt| {
             opt.map(|r| r.clone() as Arc<dyn deno_graph::source::Reporter>)
@@ -1281,7 +1289,6 @@ impl CliFactory {
     Ok(CliMainWorkerOptions {
       needs_test_modules: cli_options.sub_command().needs_test(),
       create_hmr_runner,
-      experimental_loaders: cli_options.experimental_loaders()?,
       maybe_coverage_dir,
       maybe_cpu_prof_config,
       default_npm_caching_strategy: cli_options.default_npm_caching_strategy(),
@@ -1428,6 +1435,7 @@ fn new_workspace_factory_options(
       flags.subcommand,
       DenoSubcommand::Add(_)
         | DenoSubcommand::Audit(_)
+        | DenoSubcommand::Ci(_)
         | DenoSubcommand::Clean(_)
         | DenoSubcommand::Init(_)
         | DenoSubcommand::Install(_)

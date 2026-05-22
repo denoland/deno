@@ -87,6 +87,7 @@ use tokio::sync::Notify;
 use crate::network_buffered_stream::NetworkBufferedStream;
 use crate::reader_stream::ExternallyAbortableReaderStream;
 use crate::reader_stream::ShutdownHandle;
+use crate::response_body::brotli_compressor;
 
 pub mod compressible;
 mod fly_accept_encoding;
@@ -1239,12 +1240,7 @@ fn http_response(
   match data {
     Some(data) if compressing => match encoding {
       Encoding::Brotli => {
-        // quality level 6 is based on google's nginx default value for
-        // on-the-fly compression
-        // https://github.com/google/ngx_brotli#brotli_comp_level
-        // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes
-        // (~4MB)
-        let mut writer = brotli::CompressorWriter::new(Vec::new(), 4096, 6, 22);
+        let mut writer = brotli_compressor(4096);
         writer.write_all(&data)?;
         Ok((HttpResponseWriter::Closed, writer.into_inner().into()))
       }

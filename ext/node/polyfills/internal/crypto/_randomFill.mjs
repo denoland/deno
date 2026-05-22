@@ -4,7 +4,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_node_fill_random, op_node_fill_random_async } = core.ops;
 
 const { Buffer, kMaxLength } = core.loadExtScript(

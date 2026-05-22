@@ -355,7 +355,7 @@ Deno.test("tls.rootCertificates is not empty", () => {
 
 Deno.test("TLSSocket.alpnProtocol is set for client", async () => {
   const listener = Deno.listenTls({
-    hostname: "localhost",
+    hostname: "::1",
     port: 0,
     key,
     cert,
@@ -640,14 +640,19 @@ Deno.test("tls.setDefaultCACertificates validates input - array elements must be
 });
 
 Deno.test("tls.setDefaultCACertificates accepts valid certificate array", () => {
-  const testCert = `-----BEGIN CERTIFICATE-----
-MIIBkTCB+wIJAKHHCgVZU1FFMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnRl
-c3RDQTAeFw0yMDAxMDEwMDAwMDBaFw0zMDAxMDEwMDAwMDBaMBExDzANBgNVBAMM
-BnRlc3RDQTCB
------END CERTIFICATE-----`;
-
   // deno-lint-ignore no-explicit-any
-  (tls as any).setDefaultCACertificates([testCert]);
+  (tls as any).setDefaultCACertificates([rootCaCert]);
+});
+
+Deno.test("tls default options ignore runtime NODE_OPTIONS and execArgv mutations", async () => {
+  const [status, output] = await execCode(`
+    process.env.NODE_OPTIONS = "--tls-min-v1.0 --use-system-ca";
+    process.execArgv.push("--tls-min-v1.0", "--use-system-ca");
+    const tls = await import("node:tls");
+    console.log(tls.DEFAULT_MIN_VERSION);
+  `);
+  assertEquals(status, 0);
+  assertEquals(output.trim(), "TLSv1.2");
 });
 
 // https://github.com/denoland/deno/issues/31759

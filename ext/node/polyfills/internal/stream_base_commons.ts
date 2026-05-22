@@ -21,7 +21,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 
 const { ownerSymbol } = core.loadExtScript(
   "ext:deno_node/internal/async_hooks.ts",
@@ -292,6 +292,14 @@ function onStreamRead(
 
         if (isUint8Array(nextBuf)) {
           stream[kBuffer] = ret = nextBuf;
+          // Re-point the handle at the rotated buffer so the next
+          // libuv read lands in the new slab. Node's native
+          // OnStreamRead consumes onread's return value here; we
+          // forward it explicitly to keep the buffer hand-off
+          // purely on the JS side.
+          if (typeof handle.useUserBuffer === "function") {
+            handle.useUserBuffer(nextBuf);
+          }
         }
       }
     } else {

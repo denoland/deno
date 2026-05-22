@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_os"
-version = "0.64.0"
+version = "0.65.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -21,8 +21,6 @@ deno_permissions.workspace = true
 deno_signals.workspace = true
 libc.workspace = true
 netif.workspace = true
-once_cell.workspace = true
-serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 

@@ -17,6 +17,9 @@ pub enum X448Error {
   #[class("DOMExceptionOperationError")]
   #[error("Failed to export key")]
   FailedExport,
+  #[class("DOMExceptionDataError")]
+  #[error("Invalid key data")]
+  InvalidKeyLength,
   #[class(generic)]
   #[error(transparent)]
   Der(#[from] spki::der::Error),
@@ -45,9 +48,9 @@ pub fn op_crypto_derive_bits_x448(
   #[buffer] k: &[u8],
   #[buffer] u: &[u8],
   #[buffer] secret: &mut [u8],
-) -> bool {
-  let k: [u8; 56] = k.try_into().expect("Expected byteLength 56");
-  let u: [u8; 56] = u.try_into().expect("Expected byteLength 56");
+) -> Result<bool, X448Error> {
+  let k: [u8; 56] = k.try_into().map_err(|_| X448Error::InvalidKeyLength)?;
+  let u: [u8; 56] = u.try_into().map_err(|_| X448Error::InvalidKeyLength)?;
 
   // x448(k, u)
   let mut scalar_bytes = [0u8; 57];
@@ -55,11 +58,11 @@ pub fn op_crypto_derive_bits_x448(
   let scalar = EdwardsScalar::from_bytes_mod_order(&scalar_bytes.into());
   let point = &MontgomeryPoint(u) * &scalar;
   if point.ct_eq(&MONTGOMERY_IDENTITY).unwrap_u8() == 1 {
-    return true;
+    return Ok(true);
   }
 
   secret.copy_from_slice(&point.0);
-  false
+  Ok(false)
 }
 
 // id-X448 OBJECT IDENTIFIER ::= { 1 3 101 111 }

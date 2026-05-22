@@ -6,9 +6,9 @@ use std::cell::RefCell;
 use base64::Engine;
 use deno_core::FromV8;
 use deno_core::GarbageCollected;
+use deno_core::ToV8;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
-use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
 use ed25519_dalek::pkcs8::BitStringRef;
@@ -2614,33 +2614,29 @@ pub fn op_node_get_asymmetric_key_type(
   }
 }
 
-#[derive(serde::Serialize)]
-#[serde(untagged)]
+#[derive(ToV8)]
+#[to_v8(untagged)]
 pub enum AsymmetricKeyDetails {
-  #[serde(rename_all = "camelCase")]
   Rsa {
     modulus_length: usize,
-    public_exponent: V8BigInt,
+    public_exponent: deno_core::convert::BigInt,
   },
-  #[serde(rename_all = "camelCase")]
   RsaPss {
     modulus_length: usize,
-    public_exponent: V8BigInt,
+    public_exponent: deno_core::convert::BigInt,
     hash_algorithm: &'static str,
     mgf1_hash_algorithm: &'static str,
     salt_length: u32,
   },
-  #[serde(rename = "rsaPss", rename_all = "camelCase")]
+  #[to_v8(rename = "rsaPss")]
   RsaPssBasic {
     modulus_length: usize,
-    public_exponent: V8BigInt,
+    public_exponent: deno_core::convert::BigInt,
   },
-  #[serde(rename_all = "camelCase")]
   Dsa {
     modulus_length: usize,
     divisor_length: usize,
   },
-  #[serde(rename_all = "camelCase")]
   Ec {
     named_curve: &'static str,
   },
@@ -2652,7 +2648,6 @@ pub enum AsymmetricKeyDetails {
 }
 
 #[op2]
-#[serde]
 pub fn op_node_get_asymmetric_key_details(
   #[cppgc] handle: &KeyObjectHandle,
 ) -> Result<AsymmetricKeyDetails, JsErrorBox> {
@@ -2664,7 +2659,7 @@ pub fn op_node_get_asymmetric_key_details(
           BigInt::from_bytes_be(num_bigint::Sign::Plus, &key.e().to_bytes_be());
         Ok(AsymmetricKeyDetails::Rsa {
           modulus_length,
-          public_exponent: V8BigInt::from(public_exponent),
+          public_exponent: public_exponent.into(),
         })
       }
       AsymmetricPrivateKey::RsaPss(key) => {
@@ -2673,7 +2668,7 @@ pub fn op_node_get_asymmetric_key_details(
           num_bigint::Sign::Plus,
           &key.key.e().to_bytes_be(),
         );
-        let public_exponent = V8BigInt::from(public_exponent);
+        let public_exponent = public_exponent.into();
         let details = match key.details {
           Some(details) => AsymmetricKeyDetails::RsaPss {
             modulus_length,
@@ -2721,7 +2716,7 @@ pub fn op_node_get_asymmetric_key_details(
           BigInt::from_bytes_be(num_bigint::Sign::Plus, &key.e().to_bytes_be());
         Ok(AsymmetricKeyDetails::Rsa {
           modulus_length,
-          public_exponent: V8BigInt::from(public_exponent),
+          public_exponent: public_exponent.into(),
         })
       }
       AsymmetricPublicKey::RsaPss(key) => {
@@ -2730,7 +2725,7 @@ pub fn op_node_get_asymmetric_key_details(
           num_bigint::Sign::Plus,
           &key.key.e().to_bytes_be(),
         );
-        let public_exponent = V8BigInt::from(public_exponent);
+        let public_exponent = public_exponent.into();
         let details = match key.details {
           Some(details) => AsymmetricKeyDetails::RsaPss {
             modulus_length,
@@ -3005,31 +3000,117 @@ pub async fn op_node_generate_rsa_pss_key_async(
   .unwrap()
 }
 
+/// Generate DSA common components (p, q, g) for arbitrary L and N values.
+///
+/// The `dsa` crate's `KeySize` only exposes a fixed set of (L, N) variants, so
+/// for non-standard `modulusLength` / `divisorLength` combinations (e.g.
+/// `modulusLength: 2049`) we generate the parameters ourselves and construct
+/// `Components` via `Components::from_components`. The algorithm mirrors
+/// `dsa::generate::components::common`: generate prime q of N bits, then a
+/// prime p of L bits such that q divides (p - 1), then a generator g of order
+/// q using the unverifiable method (FIPS 186-4 Appendix A.2.1).
+fn dsa_generate_components<R: rand::Rng + rand::CryptoRng>(
+  rng: &mut R,
+  l: u32,
+  n: u32,
+) -> (
+  num_bigint_dig::BigUint,
+  num_bigint_dig::BigUint,
+  num_bigint_dig::BigUint,
+) {
+  use num_bigint_dig::BigUint;
+  use num_bigint_dig::RandBigInt;
+  use num_bigint_dig::RandPrime;
+  use num_bigint_dig::prime::probably_prime;
+  use num_traits::One;
+  use num_traits::Pow;
+
+  const MR_ROUNDS: usize = 64;
+  let two = || BigUint::from(2u8);
+  let bounds = |size: u32| -> (BigUint, BigUint) {
+    let lower = two().pow(size - 1);
+    let upper = two().pow(size);
+    (lower, upper)
+  };
+
+  let (p_min, p_max) = bounds(l);
+  let (q_min, q_max) = bounds(n);
+
+  let (p, q) = 'gen_pq: loop {
+    let q = rng.gen_prime(n as usize);
+    if q < q_min || q > q_max {
+      continue;
+    }
+
+    // Attempt to find a prime p which has a subgroup of the order q
+    for _ in 0..4096 {
+      let m = 'gen_m: loop {
+        let m = rng.gen_biguint(l as usize);
+        if m > p_min && m < p_max {
+          break 'gen_m m;
+        }
+      };
+      let mr = &m % (two() * &q);
+      let p = m - mr + BigUint::one();
+
+      if probably_prime(&p, MR_ROUNDS) {
+        break 'gen_pq (p, q);
+      }
+    }
+  };
+
+  // Generate g using the unverifiable method as defined by Appendix A.2.1
+  let e = (&p - BigUint::one()) / &q;
+  let mut h = BigUint::one();
+  let g = loop {
+    let g = h.modpow(&e, &p);
+    if !num_traits::One::is_one(&g) {
+      break g;
+    }
+    h += BigUint::one();
+  };
+
+  (p, q, g)
+}
+
 fn dsa_generate(
   modulus_length: usize,
   divisor_length: usize,
 ) -> Result<KeyObjectHandlePair, JsErrorBox> {
-  let mut rng = rand::thread_rng();
   use dsa::Components;
-  use dsa::KeySize;
   use dsa::SigningKey;
 
-  let key_size = match (modulus_length, divisor_length) {
-    #[allow(
-      deprecated,
-      reason = "needed for compatibility with legacy DSA key sizes"
-    )]
-    (1024, 160) => KeySize::DSA_1024_160,
-    (2048, 224) => KeySize::DSA_2048_224,
-    (2048, 256) => KeySize::DSA_2048_256,
-    (3072, 256) => KeySize::DSA_3072_256,
-    _ => {
-      return Err(JsErrorBox::type_error(
-        "Invalid modulusLength+divisorLength combination",
-      ));
-    }
-  };
-  let components = Components::generate(&mut rng, key_size);
+  // Validate (L, N) per Node.js / OpenSSL behavior: divisor (N) must be
+  // smaller than modulus (L) and large enough to be meaningful. We deliberately
+  // accept arbitrary L and N otherwise (e.g. L=2049) to match Node's
+  // `crypto.generateKeyPair('dsa', { modulusLength, divisorLength })`.
+  if modulus_length < 2 || divisor_length < 2 {
+    return Err(JsErrorBox::type_error(
+      "Invalid modulusLength+divisorLength combination",
+    ));
+  }
+  if divisor_length >= modulus_length {
+    return Err(JsErrorBox::type_error(
+      "Invalid modulusLength+divisorLength combination",
+    ));
+  }
+  if u32::try_from(modulus_length).is_err()
+    || u32::try_from(divisor_length).is_err()
+  {
+    return Err(JsErrorBox::type_error(
+      "Invalid modulusLength+divisorLength combination",
+    ));
+  }
+
+  let mut rng = rand::thread_rng();
+  let (p, q, g) = dsa_generate_components(
+    &mut rng,
+    modulus_length as u32,
+    divisor_length as u32,
+  );
+  let components = Components::from_components(p, q, g).map_err(|_| {
+    JsErrorBox::type_error("Invalid modulusLength+divisorLength combination")
+  })?;
   let signing_key = SigningKey::generate(&mut rng, components);
   let private_key = AsymmetricPrivateKey::Dsa(signing_key);
   let public_key = private_key.to_public_key();

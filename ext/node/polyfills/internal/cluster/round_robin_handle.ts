@@ -7,7 +7,7 @@
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const lazyNet = core.createLazyLoader("node:net");
 const { sendHelper } = core.loadExtScript(
   "ext:deno_node/internal/cluster/utils.ts",

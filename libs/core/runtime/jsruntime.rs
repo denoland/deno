@@ -979,6 +979,19 @@ impl JsRuntime {
           &context_state.op_method_decls,
           methods_ctx_offset,
           &mut state_rc.function_templates.borrow_mut(),
+          will_snapshot,
+        );
+      } else if !will_snapshot {
+        // Snapshots built against V8 14.9+ bake the slow version of each op
+        // function (see `op_ctx_template`). Re-attach fast-call overloads to
+        // the snapshotted ops (top-level + cppgc class methods) now that
+        // we're running.
+        bindings::upgrade_snapshotted_ops_with_fast_calls(
+          scope,
+          context,
+          &context_state.op_ctxs,
+          &context_state.op_method_decls,
+          methods_ctx_offset,
         );
       }
 
@@ -1408,6 +1421,13 @@ impl JsRuntime {
     // Add lazy-loaded scripts (loaded on demand via loadExtScript())
     for source in loaded_sources.lazy_js {
       module_map.add_lazy_loaded_script_source(source.specifier, source.code);
+    }
+
+    // Register `synthetic_esm` mappings so imports of the declared module
+    // specifiers resolve via the synthetic-module dispatch in
+    // `resolve_callback` instead of going through normal ESM loading.
+    for (module_spec, backing_spec) in loaded_sources.synthetic_esm {
+      module_map.add_synthetic_esm_module(module_spec, backing_spec);
     }
 
     // Temporarily override the loader of the `ModuleMap` so we can load

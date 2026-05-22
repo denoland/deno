@@ -266,7 +266,7 @@ impl From<deno_fs::FsError> for FetchError {
 pub type CancelableResponseFuture =
   Pin<Box<dyn Future<Output = CancelableResponseResult>>>;
 
-pub trait FetchHandler: dyn_clone::DynClone {
+pub trait FetchHandler {
   // Return the result of the fetch request consisting of a tuple of the
   // cancelable response result, the optional fetch body resource and the
   // optional cancel handle.
@@ -276,8 +276,6 @@ pub trait FetchHandler: dyn_clone::DynClone {
     url: &Url,
   ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>);
 }
-
-dyn_clone::clone_trait_object!(FetchHandler);
 
 /// A default implementation which will error for every request.
 #[derive(Clone)]
@@ -598,7 +596,6 @@ pub struct FetchResponse {
   pub headers: Vec<(ByteString, ByteString)>,
   pub url: String,
   pub response_rid: ResourceId,
-  #[to_v8(serde)]
   pub content_length: Option<u64>,
   /// This field is populated if some error occurred which needs to be
   /// reconstructed in the JS side to set the error _cause_.

@@ -1035,3 +1035,82 @@ Deno.test({
     await worker.terminate();
   },
 });
+
+Deno.test({
+  name:
+    "[node/worker_threads] V8 profiling flags in execArgv are accepted and ignored",
+  async fn() {
+    const profilingFlags = [
+      "--heap-prof",
+      "--heap-prof-interval=1000",
+      "--heap-prof-name=foo.heapprofile",
+      "--heap-prof-dir=/tmp",
+      "--cpu-prof",
+      "--cpu-prof-interval=1000",
+      "--cpu-prof-name=foo.cpuprofile",
+      "--cpu-prof-dir=/tmp",
+    ];
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      parentPort.postMessage("ok");
+      `,
+      { eval: true, execArgv: profilingFlags },
+    );
+    const msg = await once(worker, "message");
+    assertEquals(msg[0], "ok");
+    await worker.terminate();
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] V8 profiling flags in NODE_OPTIONS env are accepted",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      parentPort.postMessage("ok");
+      `,
+      {
+        eval: true,
+        env: { NODE_OPTIONS: "--heap-prof --cpu-prof-interval=1000" },
+      },
+    );
+    const msg = await once(worker, "message");
+    assertEquals(msg[0], "ok");
+    await worker.terminate();
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] unknown execArgv flags still throw ERR_WORKER_INVALID_EXEC_ARGV",
+  fn() {
+    assertThrows(
+      () =>
+        new workerThreads.Worker("/*noop*/", {
+          eval: true,
+          execArgv: ["--this-flag-does-not-exist"],
+        }),
+      Error,
+      "Initiated Worker with invalid execArgv flags",
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] disallowed NODE_OPTIONS flag with =value is still rejected",
+  fn() {
+    assertThrows(
+      () =>
+        new workerThreads.Worker("/*noop*/", {
+          eval: true,
+          env: { NODE_OPTIONS: "--title=foo" },
+        }),
+      Error,
+      "invalid NODE_OPTIONS env variable",
+    );
+  },
+});
