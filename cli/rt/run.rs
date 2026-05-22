@@ -80,7 +80,6 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
-use deno_runtime::deno_web::BlobStoreTrait;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
@@ -1261,7 +1260,7 @@ pub async fn run(
     maybe_initial_cwd: None,
   };
   let worker_factory = LibMainWorkerFactory::new(
-    Arc::new(BlobStore::default()) as Arc<dyn BlobStoreTrait>,
+    BlobStore::default_arc(),
     code_cache.map(|c| c.for_deno_core()),
     sys.maybe_native_addon_loader(),
     feature_checker,

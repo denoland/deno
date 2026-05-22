@@ -57,6 +57,12 @@ pub struct BlobStore {
   object_urls: Mutex<HashMap<Url, Arc<Blob>>>,
 }
 
+impl BlobStore {
+  pub fn default_arc() -> Arc<dyn BlobStoreTrait> {
+    Arc::new(Self::default())
+  }
+}
+
 impl BlobStoreTrait for BlobStore {
   fn insert_part(&self, part: Arc<dyn BlobPart + Send + Sync>) -> Uuid {
     let id = Uuid::new_v4();
