@@ -6,6 +6,7 @@ use std::env;
 use std::ffi::OsString;
 use std::net::IpAddr;
 use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use std::num::NonZeroU8;
 use std::num::NonZeroU32;
 use std::num::NonZeroUsize;
@@ -5710,6 +5711,26 @@ pub fn inspect_value_parser(host_and_port: &str) -> Result<SocketAddr, String> {
       .map_err(|_| format!("Invalid inspector port '{port}'"))
   }
 
+  // Resolve a host string to an IP address. IPs are returned as-is.
+  // Hostnames (e.g. "localhost") are resolved via DNS so Node's
+  // `--inspect=localhost:0` syntax works. To match Node's resolver,
+  // IPv4 results are preferred when both families are returned.
+  fn resolve_host(host: &str) -> Result<IpAddr, String> {
+    if let Ok(ip) = host.parse::<IpAddr>() {
+      return Ok(ip);
+    }
+    let addrs = (host, 0u16)
+      .to_socket_addrs()
+      .map_err(|e| format!("Invalid inspector host '{host}': {}", e))?
+      .collect::<Vec<_>>();
+    addrs
+      .iter()
+      .find(|a| a.is_ipv4())
+      .or_else(|| addrs.first())
+      .map(|a| a.ip())
+      .ok_or_else(|| format!("Could not resolve inspector host '{host}'"))
+  }
+
   let default_host: IpAddr = DEFAULT_HOST.parse().unwrap();
 
   if host_and_port.is_empty() {
@@ -5744,9 +5765,7 @@ pub fn inspect_value_parser(host_and_port: &str) -> Result<SocketAddr, String> {
       parse_port(port_part)?
     };
 
-    let host_ip = host_part
-      .parse::<IpAddr>()
-      .map_err(|e| format!("Invalid inspector host '{host_part}': {:?}", e))?;
+    let host_ip = resolve_host(host_part)?;
 
     return Ok(SocketAddr::new(host_ip, port));
   }
@@ -5756,9 +5775,7 @@ pub fn inspect_value_parser(host_and_port: &str) -> Result<SocketAddr, String> {
     return Ok(SocketAddr::new(default_host, port));
   }
 
-  let host_ip = host_and_port.parse::<IpAddr>().map_err(|e| {
-    format!("Invalid inspector host '{host_and_port}': {:?}", e)
-  })?;
+  let host_ip = resolve_host(host_and_port)?;
 
   Ok(SocketAddr::new(host_ip, DEFAULT_PORT))
 }
@@ -16231,6 +16248,27 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           code_cache_enabled: true,
           ..Flags::default()
         }
+      );
+    }
+  }
+
+  #[test]
+  fn inspect_value_parser_resolves_hostnames() {
+    // Node accepts `--inspect=localhost:0` (and similar hostname forms);
+    // the parser should resolve them via DNS rather than rejecting.
+    let cases = [
+      ("localhost:0", 0),
+      ("localhost:1234", 1234),
+      ("localhost", 9229),
+    ];
+    for (input, expected_port) in cases {
+      let addr = inspect_value_parser(input)
+        .unwrap_or_else(|e| panic!("failed to parse {input:?}: {e}"));
+      assert_eq!(addr.port(), expected_port, "port for {input:?}");
+      assert!(
+        addr.ip().is_loopback(),
+        "expected loopback for {input:?}, got {}",
+        addr.ip()
       );
     }
   }
