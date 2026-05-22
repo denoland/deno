@@ -2,7 +2,7 @@
 //
 // Standalone WebSocket load generator for the ext/websocket fast-path
 // benchmark. Same load shape as fastwebsockets PR #133's bench
-// (`benches/load_test.c`) so before/after numbers compare against the
+// (`bench/load_test.c`) so before/after numbers compare against the
 // fastwebsockets baseline directly.
 //
 // Each of `N` concurrent connections runs a tight echo loop: send one
@@ -10,12 +10,12 @@
 // count completed round trips over `WINDOW` seconds.
 //
 // Build standalone with:
-//   rustc -O ext/websocket/benches/load_test.rs -o /tmp/ws_load_test \
+//   rustc -O tools/ws_bench/load_test.rs -o /tmp/ws_load_test \
 //     --extern tokio=... (cumbersome — easier path below)
 //
 // Or, with the workspace toolchain already present, drop the file
 // alongside a Cargo.toml that has `tokio` / `bytes` / `httparse` deps
-// and `cargo run --release`. The repo's `ext/websocket/benches/` does
+// and `cargo run --release`. The repo's `tools/ws_bench/` does
 // not have its own Cargo.toml because the benchmark is intentionally
 // one-shot ad-hoc tooling — see the PR body for the exact invocation
 // the maintainer used.

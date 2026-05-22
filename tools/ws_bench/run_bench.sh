@@ -9,22 +9,22 @@
 # msg/s plus relative speedup.
 #
 # Usage:
-#   ./ext/websocket/benches/run_bench.sh /path/to/release/deno
+#   ./tools/ws_bench/run_bench.sh /path/to/release/deno
 #
 # Requires the standalone load generator built once with
-#   (cd ext/websocket/benches && cargo build --release)
+#   (cd tools/ws_bench && cargo build --release)
 set -euo pipefail
 
 DENO_BIN="${1:?usage: $0 /path/to/deno}"
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-LT="$ROOT/ext/websocket/benches/target/release/ws_load_test"
-SERVER="$ROOT/ext/websocket/benches/echo_server.ts"
+LT="$ROOT/tools/ws_bench/target/release/ws_load_test"
+SERVER="$ROOT/tools/ws_bench/echo_server.ts"
 
 if [[ ! -x "$DENO_BIN" ]]; then
   echo "deno binary not found: $DENO_BIN" >&2; exit 1
 fi
 if [[ ! -x "$LT" ]]; then
-  echo "load generator not built; run (cd ext/websocket/benches && cargo build --release)" >&2
+  echo "load generator not built; run (cd tools/ws_bench && cargo build --release)" >&2
   exit 1
 fi
 
