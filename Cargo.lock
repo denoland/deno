@@ -2449,7 +2449,7 @@ version = "0.23.0"
 dependencies = [
  "deno_core",
  "deno_error",
- "fastwebsockets 0.10.0 (git+ssh://git@github.com/denoland/fastwebsockets.git?branch=orch%2Fdivybot-167)",
+ "fastwebsockets 0.10.0 (git+https://github.com/denoland/fastwebsockets.git?rev=a14f4bae0bf8b3937f3318967772b02cf9f9f679)",
  "http",
  "http-body-util",
  "hyper",
@@ -3414,7 +3414,7 @@ dependencies = [
  "deno_net",
  "deno_permissions",
  "deno_tls",
- "fastwebsockets 0.10.0 (git+ssh://git@github.com/denoland/fastwebsockets.git?branch=orch%2Fdivybot-167)",
+ "fastwebsockets 0.10.0 (git+https://github.com/denoland/fastwebsockets.git?rev=a14f4bae0bf8b3937f3318967772b02cf9f9f679)",
  "h2",
  "http",
  "http-body-util",
@@ -4390,7 +4390,7 @@ dependencies = [
 [[package]]
 name = "fastwebsockets"
 version = "0.10.0"
-source = "git+ssh://git@github.com/denoland/fastwebsockets.git?branch=orch%2Fdivybot-167#a14f4bae0bf8b3937f3318967772b02cf9f9f679"
+source = "git+https://github.com/denoland/fastwebsockets.git?rev=a14f4bae0bf8b3937f3318967772b02cf9f9f679#a14f4bae0bf8b3937f3318967772b02cf9f9f679"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -5894,7 +5894,7 @@ dependencies = [
  "deno_semver",
  "deno_tower_lsp",
  "deno_unsync",
- "fastwebsockets 0.10.0 (git+ssh://git@github.com/denoland/fastwebsockets.git?branch=orch%2Fdivybot-167)",
+ "fastwebsockets 0.10.0 (git+https://github.com/denoland/fastwebsockets.git?rev=a14f4bae0bf8b3937f3318967772b02cf9f9f679)",
  "file_test_runner",
  "hickory-proto",
  "hickory-server",
@@ -9943,7 +9943,7 @@ dependencies = [
  "deno_unsync",
  "denokv_proto",
  "faster-hex",
- "fastwebsockets 0.10.0 (git+ssh://git@github.com/denoland/fastwebsockets.git?branch=orch%2Fdivybot-167)",
+ "fastwebsockets 0.10.0 (git+https://github.com/denoland/fastwebsockets.git?rev=a14f4bae0bf8b3937f3318967772b02cf9f9f679)",
  "flate2",
  "futures",
  "h2",
