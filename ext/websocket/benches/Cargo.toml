@@ -1,0 +1,25 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+#
+# Standalone Cargo package for the WebSocket load generator used to
+# benchmark the ext/websocket fast-TCP path. Lives outside the
+# workspace so building/running it doesn't perturb the deno-binary
+# build that we're benchmarking.
+[workspace]
+
+[package]
+name = "ws_load_test"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "ws_load_test"
+path = "load_test.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

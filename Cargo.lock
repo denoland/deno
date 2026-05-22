@@ -1732,7 +1732,7 @@ dependencies = [
  "clap",
  "deno_core",
  "deno_core_testing",
- "fastwebsockets 0.10.0",
+ "fastwebsockets 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "http",
  "http-body-util",
  "hyper",
@@ -2449,7 +2449,7 @@ version = "0.23.0"
 dependencies = [
  "deno_core",
  "deno_error",
- "fastwebsockets 0.8.1",
+ "fastwebsockets 0.10.0 (git+ssh://git@github.com/denoland/fastwebsockets.git?branch=orch%2Fdivybot-167)",
  "http",
  "http-body-util",
  "hyper",
@@ -3414,7 +3414,7 @@ dependencies = [
  "deno_net",
  "deno_permissions",
  "deno_tls",
- "fastwebsockets 0.8.1",
+ "fastwebsockets 0.10.0 (git+ssh://git@github.com/denoland/fastwebsockets.git?branch=orch%2Fdivybot-167)",
  "h2",
  "http",
  "http-body-util",
@@ -4347,7 +4347,7 @@ checksum = "4e7f34442dbe69c60fe8eaf58a8cafff81a1f278816d8ab4db255b3bef4ac3c4"
 dependencies = [
  "getrandom 0.3.3",
  "libm",
- "rand 0.9.2",
+ "rand 0.9.4",
  "siphasher 1.0.1",
 ]
 
@@ -4369,9 +4369,9 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
 name = "fastwebsockets"
-version = "0.8.1"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9dac026e15fb7e44d768880b868a0fd5bd30ffdee272e88b3060f657a5a72947"
+checksum = "305d3ba574508e27190906d11707dad683e0494e6b85eae9b044cb2734a5e422"
 dependencies = [
  "base64 0.21.7",
  "bytes",
@@ -4390,16 +4390,15 @@ dependencies = [
 [[package]]
 name = "fastwebsockets"
 version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "305d3ba574508e27190906d11707dad683e0494e6b85eae9b044cb2734a5e422"
+source = "git+ssh://git@github.com/denoland/fastwebsockets.git?branch=orch%2Fdivybot-167#a14f4bae0bf8b3937f3318967772b02cf9f9f679"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.1",
  "bytes",
  "http-body-util",
  "hyper",
  "hyper-util",
  "pin-project",
- "rand 0.8.5",
+ "rand 0.9.4",
  "sha1",
  "simdutf8",
  "thiserror 1.0.69",
@@ -5219,7 +5218,7 @@ dependencies = [
  "idna",
  "ipnet",
  "once_cell",
- "rand 0.9.2",
+ "rand 0.9.4",
  "ring",
  "serde",
  "thiserror 2.0.12",
@@ -5242,7 +5241,7 @@ dependencies = [
  "moka",
  "once_cell",
  "parking_lot",
- "rand 0.9.2",
+ "rand 0.9.4",
  "resolv-conf",
  "serde",
  "smallvec",
@@ -5895,7 +5894,7 @@ dependencies = [
  "deno_semver",
  "deno_tower_lsp",
  "deno_unsync",
- "fastwebsockets 0.8.1",
+ "fastwebsockets 0.10.0 (git+ssh://git@github.com/denoland/fastwebsockets.git?branch=orch%2Fdivybot-167)",
  "file_test_runner",
  "hickory-proto",
  "hickory-server",
@@ -7827,7 +7826,7 @@ dependencies = [
  "bit-vec",
  "bitflags 2.9.3",
  "num-traits",
- "rand 0.9.2",
+ "rand 0.9.4",
  "rand_chacha 0.9.0",
  "rand_xorshift",
  "regex-syntax",
@@ -7922,7 +7921,7 @@ dependencies = [
  "fastbloom",
  "getrandom 0.3.3",
  "lru-slab",
- "rand 0.9.2",
+ "rand 0.9.4",
  "ring",
  "rustc-hash 2.1.1",
  "rustls",
@@ -8013,9 +8012,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.9.2"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6db2770f06117d490610c7488547d543617b21bfa07796d7a12f6f1bd53850d1"
+checksum = "44c5af06bb1b7d3216d91932aed5265164bf384dc89cd6ba05cf59a35f5f76ea"
 dependencies = [
  "rand_chacha 0.9.0",
  "rand_core 0.9.3",
@@ -9944,7 +9943,7 @@ dependencies = [
  "deno_unsync",
  "denokv_proto",
  "faster-hex",
- "fastwebsockets 0.8.1",
+ "fastwebsockets 0.10.0 (git+ssh://git@github.com/denoland/fastwebsockets.git?branch=orch%2Fdivybot-167)",
  "flate2",
  "futures",
  "h2",

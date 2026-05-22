@@ -208,7 +208,7 @@ error_reporter = "1"
 fast-socks5 = "0.9.6"
 faster-hex = "0.10.0"
 fastrand = "2"
-fastwebsockets = { version = "^0.8.1", features = ["upgrade", "unstable-split"] }
+fastwebsockets = { git = "ssh://git@github.com/denoland/fastwebsockets.git", branch = "orch/divybot-167", features = ["upgrade", "unstable-split"] }
 file_test_runner = "0.12.1"
 filetime = "0.2.16"
 flate2 = { version = "1.0.30", default-features = false }

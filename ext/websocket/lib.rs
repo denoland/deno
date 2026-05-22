@@ -59,8 +59,13 @@ use tokio::io::AsyncWrite;
 use tokio::io::ReadHalf;
 use tokio::io::WriteHalf;
 
+use crate::fast_tcp::TcpReadStream;
+use crate::fast_tcp::TcpWriteState;
+use crate::fast_tcp::fast_tcp_enabled;
+use crate::fast_tcp::write_frame_fast;
 use crate::stream::WebSocketStream;
 
+mod fast_tcp;
 mod stream;
 
 static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
@@ -555,6 +560,39 @@ pub enum MessageKind {
   ClosedDefault = 1005,
 }
 
+/// Split read/write halves of the underlying transport.
+///
+/// `Generic` keeps the original `fastwebsockets::WebSocket` split — used
+/// for TLS, H2, Unix sockets, vsock, tunnels, and any future transport
+/// that doesn't expose a tokio `try_write`-compatible socket.
+///
+/// `FastTcp` is the optimized path from fastwebsockets PR #133's
+/// `echo_server_tokio_fast` example: reads still go through
+/// `WebSocketRead` (so auto-pong / auto-close / fragmentation /
+/// max-message-size semantics are byte-identical to `Generic`), but
+/// writes bypass `WebSocketWrite` and go straight to
+/// `try_write` / `try_write_vectored` on the `TcpStream`. Avoids the
+/// per-frame future allocation that drove the v4 tokio_fast win.
+enum ServerWsHalves {
+  Generic {
+    ws_read: AsyncRefCell<FragmentCollectorRead<ReadHalf<WebSocketStream>>>,
+    ws_write: AsyncRefCell<WebSocketWrite<WriteHalf<WebSocketStream>>>,
+  },
+  FastTcp {
+    ws_read: AsyncRefCell<FragmentCollectorRead<TcpReadStream>>,
+    write_state: AsyncRefCell<TcpWriteState>,
+  },
+}
+
+/// Reserved write slot for an in-flight send. Constructed *before* the
+/// task is spawned so that the lock queue position matches the JS-call
+/// order — the existing `reserve_lock`/`write_frame` contract from
+/// pre-fast-path Deno.
+enum WriteLockFut {
+  Generic(AsyncMutFuture<WebSocketWrite<WriteHalf<WebSocketStream>>>),
+  FastTcp(AsyncMutFuture<TcpWriteState>),
+}
+
 /// To avoid locks, we keep as much as we can inside of [`Cell`]s.
 pub struct ServerWebSocket {
   buffered: Cell<usize>,
@@ -563,8 +601,7 @@ pub struct ServerWebSocket {
   closed: Cell<bool>,
   buffer: Cell<Option<Vec<u8>>>,
   string: Cell<Option<String>>,
-  ws_read: AsyncRefCell<FragmentCollectorRead<ReadHalf<WebSocketStream>>>,
-  ws_write: AsyncRefCell<WebSocketWrite<WriteHalf<WebSocketStream>>>,
+  halves: ServerWsHalves,
 }
 
 impl ServerWebSocket {
@@ -577,8 +614,37 @@ impl ServerWebSocket {
       closed: Cell::new(false),
       buffer: Cell::new(None),
       string: Cell::new(None),
-      ws_read: AsyncRefCell::new(FragmentCollectorRead::new(ws_read)),
-      ws_write: AsyncRefCell::new(ws_write),
+      halves: ServerWsHalves::Generic {
+        ws_read: AsyncRefCell::new(FragmentCollectorRead::new(ws_read)),
+        ws_write: AsyncRefCell::new(ws_write),
+      },
+    }
+  }
+
+  fn new_fast_tcp(tcp: tokio::net::TcpStream, read_buf: Bytes) -> Self {
+    let _ = tcp.set_nodelay(true);
+    let (r, w) = tcp.into_split();
+    let read_stream = TcpReadStream::new(r, Some(read_buf));
+    // `WebSocketRead` only has a public split constructor, so feed a
+    // throwaway `tokio::io::sink()` for the write side — we never call
+    // through it; user-initiated writes and the read-loop's auto-pong /
+    // auto-close fan out to `TcpWriteState` instead.
+    let (ws_read, _discarded_write) = fastwebsockets::after_handshake_split(
+      read_stream,
+      tokio::io::sink(),
+      Role::Server,
+    );
+    Self {
+      buffered: Cell::new(0),
+      error: Cell::new(None),
+      errored: Cell::new(false),
+      closed: Cell::new(false),
+      buffer: Cell::new(None),
+      string: Cell::new(None),
+      halves: ServerWsHalves::FastTcp {
+        ws_read: AsyncRefCell::new(FragmentCollectorRead::new(ws_read)),
+        write_state: AsyncRefCell::new(TcpWriteState::new(w)),
+      },
     }
   }
 
@@ -593,23 +659,44 @@ impl ServerWebSocket {
   }
 
   /// Reserve a lock, but don't wait on it. This gets us our place in line.
-  fn reserve_lock(
-    self: &Rc<Self>,
-  ) -> AsyncMutFuture<WebSocketWrite<WriteHalf<WebSocketStream>>> {
-    RcRef::map(self, |r| &r.ws_write).borrow_mut()
+  fn reserve_lock(self: &Rc<Self>) -> WriteLockFut {
+    match &self.halves {
+      ServerWsHalves::Generic { .. } => WriteLockFut::Generic(
+        RcRef::map(self, |r| match &r.halves {
+          ServerWsHalves::Generic { ws_write, .. } => ws_write,
+          _ => unreachable!(),
+        })
+        .borrow_mut(),
+      ),
+      ServerWsHalves::FastTcp { .. } => WriteLockFut::FastTcp(
+        RcRef::map(self, |r| match &r.halves {
+          ServerWsHalves::FastTcp { write_state, .. } => write_state,
+          _ => unreachable!(),
+        })
+        .borrow_mut(),
+      ),
+    }
   }
 
   #[inline]
   async fn write_frame(
     self: &Rc<Self>,
-    lock: AsyncMutFuture<WebSocketWrite<WriteHalf<WebSocketStream>>>,
+    lock: WriteLockFut,
     frame: Frame<'_>,
   ) -> Result<(), WebsocketError> {
-    let mut ws = lock.await;
-    if ws.is_closed() {
-      return Ok(());
+    match lock {
+      WriteLockFut::Generic(lock) => {
+        let mut ws = lock.await;
+        if ws.is_closed() {
+          return Ok(());
+        }
+        ws.write_frame(frame).await?;
+      }
+      WriteLockFut::FastTcp(lock) => {
+        let mut state = lock.await;
+        write_frame_fast(&mut state, frame).await?;
+      }
     }
-    ws.write_frame(frame).await?;
     Ok(())
   }
 }
@@ -621,6 +708,30 @@ impl Resource for ServerWebSocket {
 }
 
 pub fn ws_create_server_stream(
+  state: &mut OpState,
+  transport: NetworkStream,
+  read_buf: Bytes,
+) -> ResourceId {
+  // Fast TCP path: when the transport is a plain `TcpStream`, drive
+  // sends with `try_write` / `try_write_vectored` instead of the
+  // `WebSocketWrite` Future state machine. fastwebsockets PR #133's
+  // `echo_server_tokio_fast` example reported +5–15% msg/s in the
+  // low-connection cases this way. Reads stay on
+  // `fastwebsockets::WebSocketRead`, so auto-pong / auto-close /
+  // pong surfacing / fragmentation behavior is unchanged. Other
+  // transports (TLS, Unix, vsock, tunnel, H2 — surfaced separately
+  // via the H2 op) fall through to the generic path.
+  if fast_tcp_enabled()
+    && let NetworkStream::Tcp(tcp) = transport
+  {
+    return state
+      .resource_table
+      .add(ServerWebSocket::new_fast_tcp(tcp, read_buf));
+  }
+  create_generic_for_other_transports(state, transport, read_buf)
+}
+
+fn create_generic_for_other_transports(
   state: &mut OpState,
   transport: NetworkStream,
   read_buf: Bytes,
@@ -865,64 +976,131 @@ pub async fn op_ws_next_event(
     return MessageKind::Error as u16;
   }
 
-  let mut ws = RcRef::map(&resource, |r| &r.ws_read).borrow_mut().await;
-  let writer = RcRef::map(&resource, |r| &r.ws_write);
+  let next = match &resource.halves {
+    ServerWsHalves::Generic { .. } => next_event_generic(&resource).await,
+    ServerWsHalves::FastTcp { .. } => next_event_fast_tcp(&resource).await,
+  };
+  let val = match next {
+    Ok(val) => val,
+    Err(err) => {
+      if resource.closed.get() {
+        return MessageKind::ClosedDefault as u16;
+      }
+      resource.set_error(Some(err.to_string()));
+      return MessageKind::Error as u16;
+    }
+  };
+  decode_frame_for_js(&resource, val)
+}
+
+#[inline]
+fn decode_frame_for_js(
+  resource: &ServerWebSocket,
+  val: fastwebsockets::Frame<'_>,
+) -> u16 {
+  match val.opcode {
+    OpCode::Text => match String::from_utf8(val.payload.to_vec()) {
+      Ok(s) => {
+        resource.string.set(Some(s));
+        MessageKind::Text as u16
+      }
+      Err(_) => {
+        resource.set_error(Some("Invalid string data".into()));
+        MessageKind::Error as u16
+      }
+    },
+    OpCode::Binary => {
+      resource.buffer.set(Some(val.payload.to_vec()));
+      MessageKind::Binary as u16
+    }
+    OpCode::Close => {
+      if val.payload.len() < 2 {
+        resource.set_error(None);
+        MessageKind::ClosedDefault as u16
+      } else {
+        let close_code =
+          CloseCode::from(u16::from_be_bytes([val.payload[0], val.payload[1]]));
+        let reason = String::from_utf8(val.payload[2..].to_vec()).ok();
+        resource.set_error(reason);
+        close_code.into()
+      }
+    }
+    OpCode::Pong => MessageKind::Pong as u16,
+    OpCode::Continuation | OpCode::Ping => unreachable!(),
+  }
+}
+
+async fn next_event_generic(
+  resource: &Rc<ServerWebSocket>,
+) -> Result<fastwebsockets::Frame<'static>, fastwebsockets::WebSocketError> {
+  let ServerWsHalves::Generic { .. } = &resource.halves else {
+    unreachable!()
+  };
+  let mut ws = RcRef::map(resource, |r| match &r.halves {
+    ServerWsHalves::Generic { ws_read, .. } => ws_read,
+    _ => unreachable!(),
+  })
+  .borrow_mut()
+  .await;
+  let writer = RcRef::map(resource, |r| match &r.halves {
+    ServerWsHalves::Generic { ws_write, .. } => ws_write,
+    _ => unreachable!(),
+  });
   let mut sender = move |frame| {
     let writer = writer.clone();
     async move { writer.borrow_mut().await.write_frame(frame).await }
   };
   loop {
-    let res = ws.read_frame(&mut sender).await;
-    let val = match res {
-      Ok(val) => val,
-      Err(err) => {
-        // No message was received, socket closed while we waited.
-        // Report closed status to JavaScript.
-        if resource.closed.get() {
-          return MessageKind::ClosedDefault as u16;
-        }
-
-        resource.set_error(Some(err.to_string()));
-        return MessageKind::Error as u16;
-      }
-    };
-
-    break match val.opcode {
-      OpCode::Text => match String::from_utf8(val.payload.to_vec()) {
-        Ok(s) => {
-          resource.string.set(Some(s));
-          MessageKind::Text as u16
-        }
-        Err(_) => {
-          resource.set_error(Some("Invalid string data".into()));
-          MessageKind::Error as u16
-        }
-      },
-      OpCode::Binary => {
-        resource.buffer.set(Some(val.payload.to_vec()));
-        MessageKind::Binary as u16
-      }
-      OpCode::Close => {
-        // Close reason is returned through error
-        if val.payload.len() < 2 {
-          resource.set_error(None);
-          MessageKind::ClosedDefault as u16
-        } else {
-          let close_code = CloseCode::from(u16::from_be_bytes([
-            val.payload[0],
-            val.payload[1],
-          ]));
-          let reason = String::from_utf8(val.payload[2..].to_vec()).ok();
-          resource.set_error(reason);
-          close_code.into()
-        }
-      }
-      OpCode::Pong => MessageKind::Pong as u16,
-      OpCode::Continuation | OpCode::Ping => {
-        continue;
-      }
-    };
+    let val = ws.read_frame(&mut sender).await?;
+    match val.opcode {
+      OpCode::Continuation | OpCode::Ping => continue,
+      _ => return Ok(into_owned_frame(val)),
+    }
   }
+}
+
+async fn next_event_fast_tcp(
+  resource: &Rc<ServerWebSocket>,
+) -> Result<fastwebsockets::Frame<'static>, fastwebsockets::WebSocketError> {
+  let ServerWsHalves::FastTcp { .. } = &resource.halves else {
+    unreachable!()
+  };
+  let mut ws = RcRef::map(resource, |r| match &r.halves {
+    ServerWsHalves::FastTcp { ws_read, .. } => ws_read,
+    _ => unreachable!(),
+  })
+  .borrow_mut()
+  .await;
+  let writer = RcRef::map(resource, |r| match &r.halves {
+    ServerWsHalves::FastTcp { write_state, .. } => write_state,
+    _ => unreachable!(),
+  });
+  // The read loop's `send_fn` carries fastwebsockets's auto-pong /
+  // auto-close obligations onto the wire via the same `try_write`
+  // path that user-initiated sends use, preserving ordering with
+  // user sends through `write_state`'s lock queue.
+  let mut sender = move |frame: fastwebsockets::Frame<'static>| {
+    let writer = writer.clone();
+    async move {
+      let mut state = writer.borrow_mut().await;
+      write_frame_fast(&mut state, frame).await
+    }
+  };
+  loop {
+    let val = ws.read_frame(&mut sender).await?;
+    match val.opcode {
+      OpCode::Continuation | OpCode::Ping => continue,
+      _ => return Ok(into_owned_frame(val)),
+    }
+  }
+}
+
+#[inline]
+fn into_owned_frame(
+  frame: fastwebsockets::Frame<'_>,
+) -> fastwebsockets::Frame<'static> {
+  let payload: Vec<u8> = frame.payload.to_vec();
+  fastwebsockets::Frame::new(frame.fin, frame.opcode, None, payload.into())
 }
 
 deno_core::extension!(
