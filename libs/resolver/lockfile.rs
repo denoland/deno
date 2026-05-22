@@ -32,6 +32,7 @@ use parking_lot::MutexGuard;
 use crate::npm_lockfile_import::package_lock_to_deno_lock_v5;
 use crate::pnpm_lockfile_import::pnpm_lock_to_deno_lock_v5;
 use crate::workspace::WorkspaceNpmLinkPackagesRc;
+use crate::yarn_lockfile_import::yarn_lock_to_deno_lock_v5;
 
 pub trait NpmRegistryApiEx: NpmRegistryApi + MaybeSend + MaybeSync {}
 
@@ -589,12 +590,15 @@ async fn try_import_npm_lockfile<TSys: LockfileSys>(
   };
 
   type Translator = fn(&str) -> Result<String, String>;
-  let candidates: [(&str, Translator); 2] = [
+  let candidates: [(&str, Translator); 3] = [
     ("package-lock.json", |s| {
       package_lock_to_deno_lock_v5(s).map_err(|e| e.to_string())
     }),
     ("pnpm-lock.yaml", |s| {
       pnpm_lock_to_deno_lock_v5(s).map_err(|e| e.to_string())
+    }),
+    ("yarn.lock", |s| {
+      yarn_lock_to_deno_lock_v5(s).map_err(|e| e.to_string())
     }),
   ];
 

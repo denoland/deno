@@ -65,6 +65,7 @@ pub mod pnpm_lockfile_import;
 #[cfg(feature = "sync")]
 mod rt;
 pub mod workspace;
+pub mod yarn_lockfile_import;
 
 #[allow(clippy::disallowed_types, reason = "definition")]
 pub type WorkspaceResolverRc<TSys> =
