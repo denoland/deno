@@ -40,43 +40,15 @@ pub type PartMap = HashMap<Uuid, Arc<dyn BlobPart + Send + Sync>>;
 /// Trait abstracting the blob store, allowing custom implementations
 /// (e.g. with memory limits or persistence).
 ///
-/// All methods have default `unimplemented!()` bodies so that new methods
-/// can be added in the future without breaking existing embedder impls.
+/// See [`BlobStore`] for a reference implementation.
 pub trait BlobStoreTrait: Debug + Send + Sync {
-  fn insert_part(
-    &self,
-    _part: Arc<dyn BlobPart + Send + Sync>,
-  ) -> Uuid {
-    unimplemented!()
-  }
-  fn get_part(
-    &self,
-    _id: &Uuid,
-  ) -> Option<Arc<dyn BlobPart + Send + Sync>> {
-    unimplemented!()
-  }
-  fn remove_part(
-    &self,
-    _id: &Uuid,
-  ) -> Option<Arc<dyn BlobPart + Send + Sync>> {
-    unimplemented!()
-  }
-  fn get_object_url(&self, _url: Url) -> Option<Arc<Blob>> {
-    unimplemented!()
-  }
-  fn insert_object_url(
-    &self,
-    _blob: Blob,
-    _maybe_location: Option<Url>,
-  ) -> Url {
-    unimplemented!()
-  }
-  fn remove_object_url(&self, _url: &Url) {
-    unimplemented!()
-  }
-  fn clear(&self) {
-    unimplemented!()
-  }
+  fn insert_part(&self, part: Arc<dyn BlobPart + Send + Sync>) -> Uuid;
+  fn get_part(&self, id: &Uuid) -> Option<Arc<dyn BlobPart + Send + Sync>>;
+  fn remove_part(&self, id: &Uuid) -> Option<Arc<dyn BlobPart + Send + Sync>>;
+  fn get_object_url(&self, url: Url) -> Option<Arc<Blob>>;
+  fn insert_object_url(&self, blob: Blob, maybe_location: Option<Url>) -> Url;
+  fn remove_object_url(&self, url: &Url);
+  fn clear(&self);
 }
 
 #[derive(Default, Debug)]
@@ -402,17 +374,11 @@ mod tests {
   }
 
   impl BlobStoreTrait for CountingBlobStore {
-    fn insert_part(
-      &self,
-      part: Arc<dyn BlobPart + Send + Sync>,
-    ) -> Uuid {
+    fn insert_part(&self, part: Arc<dyn BlobPart + Send + Sync>) -> Uuid {
       self.insert_count.fetch_add(1, Ordering::SeqCst);
       self.inner.insert_part(part)
     }
-    fn get_part(
-      &self,
-      id: &Uuid,
-    ) -> Option<Arc<dyn BlobPart + Send + Sync>> {
+    fn get_part(&self, id: &Uuid) -> Option<Arc<dyn BlobPart + Send + Sync>> {
       self.inner.get_part(id)
     }
     fn remove_part(
