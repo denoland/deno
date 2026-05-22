@@ -976,73 +976,25 @@ pub async fn op_ws_next_event(
     return MessageKind::Error as u16;
   }
 
-  let next = match &resource.halves {
-    ServerWsHalves::Generic { .. } => next_event_generic(&resource).await,
-    ServerWsHalves::FastTcp { .. } => next_event_fast_tcp(&resource).await,
-  };
-  let val = match next {
-    Ok(val) => val,
-    Err(err) => {
-      if resource.closed.get() {
-        return MessageKind::ClosedDefault as u16;
-      }
-      resource.set_error(Some(err.to_string()));
-      return MessageKind::Error as u16;
-    }
-  };
-  decode_frame_for_js(&resource, val)
-}
-
-#[inline]
-fn decode_frame_for_js(
-  resource: &ServerWebSocket,
-  val: fastwebsockets::Frame<'_>,
-) -> u16 {
-  match val.opcode {
-    OpCode::Text => match String::from_utf8(val.payload.to_vec()) {
-      Ok(s) => {
-        resource.string.set(Some(s));
-        MessageKind::Text as u16
-      }
-      Err(_) => {
-        resource.set_error(Some("Invalid string data".into()));
-        MessageKind::Error as u16
-      }
-    },
-    OpCode::Binary => {
-      resource.buffer.set(Some(val.payload.to_vec()));
-      MessageKind::Binary as u16
-    }
-    OpCode::Close => {
-      if val.payload.len() < 2 {
-        resource.set_error(None);
-        MessageKind::ClosedDefault as u16
-      } else {
-        let close_code =
-          CloseCode::from(u16::from_be_bytes([val.payload[0], val.payload[1]]));
-        let reason = String::from_utf8(val.payload[2..].to_vec()).ok();
-        resource.set_error(reason);
-        close_code.into()
-      }
-    }
-    OpCode::Pong => MessageKind::Pong as u16,
-    OpCode::Continuation | OpCode::Ping => unreachable!(),
+  // FastTcp dispatch — own dedicated loop so it can take the
+  // OwnedReadHalf borrow without going through the generic
+  // FragmentCollectorRead<WebSocketStream> type.
+  if matches!(resource.halves, ServerWsHalves::FastTcp { .. }) {
+    return op_ws_next_event_fast_tcp(resource).await;
   }
-}
 
-async fn next_event_generic(
-  resource: &Rc<ServerWebSocket>,
-) -> Result<fastwebsockets::Frame<'static>, fastwebsockets::WebSocketError> {
-  let ServerWsHalves::Generic { .. } = &resource.halves else {
-    unreachable!()
-  };
-  let mut ws = RcRef::map(resource, |r| match &r.halves {
+  // Generic path — kept byte-identical to the pre-PR code so the TLS /
+  // H2 / Unix / Vsock / Tunnel transports go through exactly the same
+  // borrow / spawn / drop sequence they did before. The `RcRef::map`
+  // closures only project differently — they still resolve to the
+  // same `AsyncRefCell`s through the variant.
+  let mut ws = RcRef::map(&resource, |r| match &r.halves {
     ServerWsHalves::Generic { ws_read, .. } => ws_read,
     _ => unreachable!(),
   })
   .borrow_mut()
   .await;
-  let writer = RcRef::map(resource, |r| match &r.halves {
+  let writer = RcRef::map(&resource, |r| match &r.halves {
     ServerWsHalves::Generic { ws_write, .. } => ws_write,
     _ => unreachable!(),
   });
@@ -1051,27 +1003,67 @@ async fn next_event_generic(
     async move { writer.borrow_mut().await.write_frame(frame).await }
   };
   loop {
-    let val = ws.read_frame(&mut sender).await?;
-    match val.opcode {
-      OpCode::Continuation | OpCode::Ping => continue,
-      _ => return Ok(into_owned_frame(val)),
-    }
+    let res = ws.read_frame(&mut sender).await;
+    let val = match res {
+      Ok(val) => val,
+      Err(err) => {
+        // No message was received, socket closed while we waited.
+        // Report closed status to JavaScript.
+        if resource.closed.get() {
+          return MessageKind::ClosedDefault as u16;
+        }
+
+        resource.set_error(Some(err.to_string()));
+        return MessageKind::Error as u16;
+      }
+    };
+
+    break match val.opcode {
+      OpCode::Text => match String::from_utf8(val.payload.to_vec()) {
+        Ok(s) => {
+          resource.string.set(Some(s));
+          MessageKind::Text as u16
+        }
+        Err(_) => {
+          resource.set_error(Some("Invalid string data".into()));
+          MessageKind::Error as u16
+        }
+      },
+      OpCode::Binary => {
+        resource.buffer.set(Some(val.payload.to_vec()));
+        MessageKind::Binary as u16
+      }
+      OpCode::Close => {
+        // Close reason is returned through error
+        if val.payload.len() < 2 {
+          resource.set_error(None);
+          MessageKind::ClosedDefault as u16
+        } else {
+          let close_code = CloseCode::from(u16::from_be_bytes([
+            val.payload[0],
+            val.payload[1],
+          ]));
+          let reason = String::from_utf8(val.payload[2..].to_vec()).ok();
+          resource.set_error(reason);
+          close_code.into()
+        }
+      }
+      OpCode::Pong => MessageKind::Pong as u16,
+      OpCode::Continuation | OpCode::Ping => {
+        continue;
+      }
+    };
   }
 }
 
-async fn next_event_fast_tcp(
-  resource: &Rc<ServerWebSocket>,
-) -> Result<fastwebsockets::Frame<'static>, fastwebsockets::WebSocketError> {
-  let ServerWsHalves::FastTcp { .. } = &resource.halves else {
-    unreachable!()
-  };
-  let mut ws = RcRef::map(resource, |r| match &r.halves {
+async fn op_ws_next_event_fast_tcp(resource: Rc<ServerWebSocket>) -> u16 {
+  let mut ws = RcRef::map(&resource, |r| match &r.halves {
     ServerWsHalves::FastTcp { ws_read, .. } => ws_read,
     _ => unreachable!(),
   })
   .borrow_mut()
   .await;
-  let writer = RcRef::map(resource, |r| match &r.halves {
+  let writer = RcRef::map(&resource, |r| match &r.halves {
     ServerWsHalves::FastTcp { write_state, .. } => write_state,
     _ => unreachable!(),
   });
@@ -1087,20 +1079,53 @@ async fn next_event_fast_tcp(
     }
   };
   loop {
-    let val = ws.read_frame(&mut sender).await?;
-    match val.opcode {
-      OpCode::Continuation | OpCode::Ping => continue,
-      _ => return Ok(into_owned_frame(val)),
-    }
-  }
-}
+    let res = ws.read_frame(&mut sender).await;
+    let val = match res {
+      Ok(val) => val,
+      Err(err) => {
+        if resource.closed.get() {
+          return MessageKind::ClosedDefault as u16;
+        }
+        resource.set_error(Some(err.to_string()));
+        return MessageKind::Error as u16;
+      }
+    };
 
-#[inline]
-fn into_owned_frame(
-  frame: fastwebsockets::Frame<'_>,
-) -> fastwebsockets::Frame<'static> {
-  let payload: Vec<u8> = frame.payload.to_vec();
-  fastwebsockets::Frame::new(frame.fin, frame.opcode, None, payload.into())
+    break match val.opcode {
+      OpCode::Text => match String::from_utf8(val.payload.to_vec()) {
+        Ok(s) => {
+          resource.string.set(Some(s));
+          MessageKind::Text as u16
+        }
+        Err(_) => {
+          resource.set_error(Some("Invalid string data".into()));
+          MessageKind::Error as u16
+        }
+      },
+      OpCode::Binary => {
+        resource.buffer.set(Some(val.payload.to_vec()));
+        MessageKind::Binary as u16
+      }
+      OpCode::Close => {
+        if val.payload.len() < 2 {
+          resource.set_error(None);
+          MessageKind::ClosedDefault as u16
+        } else {
+          let close_code = CloseCode::from(u16::from_be_bytes([
+            val.payload[0],
+            val.payload[1],
+          ]));
+          let reason = String::from_utf8(val.payload[2..].to_vec()).ok();
+          resource.set_error(reason);
+          close_code.into()
+        }
+      }
+      OpCode::Pong => MessageKind::Pong as u16,
+      OpCode::Continuation | OpCode::Ping => {
+        continue;
+      }
+    };
+  }
 }
 
 deno_core::extension!(
