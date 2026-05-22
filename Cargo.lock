@@ -510,12 +510,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd307490d624467aa6f74b0eabb77633d1f758a7b25f12bceb0b22e08d9726f6"
 
 [[package]]
-name = "base32"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "022dfe9eb35f19ebbcb51e0b40a5ab759f46ad60cadf7297e0bd085afb50e076"
-
-[[package]]
 name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2066,7 +2060,6 @@ name = "deno_cache_dir"
 version = "0.39.0"
 dependencies = [
  "async-trait",
- "base32",
  "base64 0.22.1",
  "boxed_error",
  "cache_control",
@@ -2353,7 +2346,6 @@ dependencies = [
  "deno_tls",
  "deno_web",
  "deno_webidl",
- "dyn-clone",
  "error_reporter",
  "fast-socks5",
  "h2 0.4.7",
@@ -2406,7 +2398,6 @@ name = "deno_fs"
 version = "0.157.0"
 dependencies = [
  "async-trait",
- "base32",
  "boxed_error",
  "deno_core",
  "deno_error",
@@ -2942,7 +2933,6 @@ dependencies = [
  "deno_semver",
  "deno_terminal",
  "deno_unsync",
- "dyn-clone",
  "futures",
  "lazy-regex",
  "log",
@@ -3125,7 +3115,6 @@ dependencies = [
  "anyhow",
  "async-once-cell",
  "async-trait",
- "base32",
  "boxed_error",
  "capacity_builder",
  "chrono",
@@ -4123,12 +4112,6 @@ name = "dunce"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
-
-[[package]]
-name = "dyn-clone"
-version = "1.0.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d6ef0072f8a535281e4876be788938b528e9a1d43900b82c2569af7da799125"
 
 [[package]]
 name = "ecb"

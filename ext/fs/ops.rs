@@ -1390,11 +1390,8 @@ fn tmp_name(
 
   // If we use a 32-bit number, we only need ~70k temp files before we have a 50%
   // chance of collision. By bumping this up to 64-bits, we require ~5 billion
-  // before hitting a 50% chance. We also base32-encode this value so the entire
-  // thing is 1) case insensitive and 2) slightly shorter than the equivalent hex
-  // value.
+  // before hitting a 50% chance.
   let unique = rng.r#gen::<u64>();
-  base32::encode(base32::Alphabet::Crockford, &unique.to_le_bytes());
   let path = dir.join(format!("{prefix}{unique:08x}{suffix}"));
 
   Ok(path)

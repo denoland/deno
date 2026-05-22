@@ -29,7 +29,6 @@ sync = [
 anyhow.workspace = true
 async-once-cell.workspace = true
 async-trait.workspace = true
-base32.workspace = true
 boxed_error.workspace = true
 capacity_builder.workspace = true
 chrono.workspace = true
