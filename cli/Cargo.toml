@@ -193,7 +193,6 @@ deno_subprocess_windows.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
-shell-escape = "=0.1.5"
 [target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]
 tokio-vsock.workspace = true
 
