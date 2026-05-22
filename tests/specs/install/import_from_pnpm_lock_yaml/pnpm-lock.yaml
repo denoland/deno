@@ -1,0 +1,21 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+  .:
+    dependencies:
+      '@denotest/add':
+        specifier: '1'
+        version: 1.0.0
+
+packages:
+  '@denotest/add@1.0.0':
+    resolution: {
+      integrity: sha512-uvNpnVPU/CC2Do/LNF3TkhoLGLLKC6jFDPiSnojuZCEwmoXJjS2+Sn+LYk7eUix4vsMKA9ctxaMhcfb6pdHQTQ==,
+    }
+
+snapshots:
+  '@denotest/add@1.0.0': {}
