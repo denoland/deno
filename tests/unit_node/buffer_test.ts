@@ -645,6 +645,25 @@ Deno.test({
   },
 });
 
+// https://github.com/denoland/deno/issues/34286
+Deno.test({
+  name: "[node/buffer] base64Slice allows omitting arguments",
+  fn() {
+    const buf = Buffer.from([1, 2, 3]);
+    assertEquals(Buffer.prototype.base64Slice.call(buf), "AQID");
+    assertEquals(Buffer.prototype.base64Slice.call(buf, 0, 3), "AQID");
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] base64urlSlice allows omitting arguments",
+  fn() {
+    const buf = Buffer.from([1, 2, 3]);
+    assertEquals(Buffer.prototype.base64urlSlice.call(buf), "AQID");
+    assertEquals(Buffer.prototype.base64urlSlice.call(buf, 0, 3), "AQID");
+  },
+});
+
 Deno.test({
   name: "[node/buffer] isEncoding returns true for valid encodings",
   fn() {
