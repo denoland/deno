@@ -5,7 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {

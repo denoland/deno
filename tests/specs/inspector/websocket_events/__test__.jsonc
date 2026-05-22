@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "websocket_events": {
+      "args": "run --inspect=0 -A main.js",
+      "output": "main.out"
+    }
+  }
+}

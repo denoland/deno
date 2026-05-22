@@ -24,7 +24,7 @@
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 
 const { BlockList, SocketAddress } = core.loadExtScript(
   "ext:deno_node/internal/blocklist.mjs",
@@ -127,7 +127,9 @@ const { debuglog } = core.loadExtScript(
 type DuplexOptions = any;
 type BufferEncoding = any;
 type Abortable = any;
-const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
+const { channel, tracingChannel } = core.loadExtScript(
+  "ext:deno_node/diagnostics_channel.js",
+);
 const {
   registerActiveHandle,
   unregisterActiveHandle,
@@ -351,6 +353,7 @@ const _noop = (_arrayBuffer: Uint8Array, _nread: number): undefined => {
 
 const netClientSocketChannel = channel("net.client.socket");
 const netServerSocketChannel = channel("net.server.socket");
+const netServerListenChannel = tracingChannel("net.server.listen");
 
 function _toNumber(x: unknown): number | false {
   return (x = Number(x)) >= 0 ? (x as number) : false;
@@ -1514,6 +1517,12 @@ Socket.prototype.connect = function (...args) {
     throw new ERR_MISSING_ARGS(["options", "port", "path"]);
   }
 
+  if (netClientSocketChannel.hasSubscribers) {
+    netClientSocketChannel.publish({
+      socket: this,
+    });
+  }
+
   if (this.write !== Socket.prototype.write) {
     this.write = Socket.prototype.write;
   }
@@ -2141,16 +2150,13 @@ function connect(...args: unknown[]) {
   debug("createConnection", normalized);
   const socket = new Socket(options);
 
-  if (netClientSocketChannel.hasSubscribers) {
-    netClientSocketChannel.publish({
-      socket,
-    });
-  }
-
   if (options.timeout) {
     socket.setTimeout(options.timeout);
   }
 
+  // `Socket.prototype.connect` publishes `net.client.socket` so that all
+  // entry points (net.connect, net.createConnection, new net.Socket().connect,
+  // tls.connect via TLSSocket extending Socket) emit exactly once.
   return socket.connect(normalized);
 }
 
@@ -2558,6 +2564,14 @@ function _setupListenHandle(
 
     if (typeof rval === "number") {
       const error = uvExceptionWithHostPort(rval, "listen", address, port);
+      // Publish to the `net.server.listen` tracingChannel synchronously
+      // (before the deferred error emit) so subscribers see the result
+      // even if a caller immediately unsubscribes after `Server.listen()`
+      // returns -- mirrors Node, which the test-diagnostics-channel-net
+      // failing-listen subscribe/unsubscribe pattern relies on.
+      if (netServerListenChannel.hasSubscribers) {
+        netServerListenChannel.error.publish({ server: this, error });
+      }
       nextTick(_emitErrorNT, this, error);
 
       return;
@@ -2591,6 +2605,12 @@ function _setupListenHandle(
     this._handle = null;
     unregisterActiveHandle(this);
 
+    // Synchronous channel publish (see comment above on the bind/handle
+    // failure path) -- the deferred `_emitErrorNT` runs after callers have
+    // already unsubscribed.
+    if (netServerListenChannel.hasSubscribers) {
+      netServerListenChannel.error.publish({ server: this, error: ex });
+    }
     defaultTriggerAsyncIdScope(
       this[asyncIdSymbol],
       nextTick,
@@ -2610,6 +2630,11 @@ function _setupListenHandle(
     this.unref();
   }
 
+  // Synchronous asyncEnd publish so subscribers that unsubscribe right
+  // after `Server.listen()` returns still observe the success result.
+  if (netServerListenChannel.hasSubscribers) {
+    netServerListenChannel.asyncEnd.publish({ server: this });
+  }
   defaultTriggerAsyncIdScope(
     this[asyncIdSymbol],
     nextTick,
@@ -2725,6 +2750,16 @@ Server.prototype.listen = function (...args: unknown[]) {
 
   if (cb !== null) {
     this.once("listening", cb);
+  }
+
+  // The 'net.server.listen' tracingChannel publishes the user-visible
+  // listen() options. Doing it here (after _normalizeArgs but before any
+  // pre-existing-handle short-circuits return) lets subscribers see the same
+  // options the caller passed in (including ad-hoc fields like
+  // `customOption` used by test-diagnostics-channel-net to verify the
+  // payload is the original options object).
+  if (netServerListenChannel.hasSubscribers) {
+    netServerListenChannel.asyncStart.publish({ server: this, options });
   }
 
   const backlogFromArgs: number =

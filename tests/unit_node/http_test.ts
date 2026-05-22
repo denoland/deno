@@ -722,6 +722,61 @@ Deno.test("[node/http] ServerResponse _implicitHeader", async () => {
   await promise;
 });
 
+async function getRawServerResponse(
+  handler: http.RequestListener,
+): Promise<string> {
+  const server = http.createServer(handler);
+  const response = Promise.withResolvers<string>();
+  let rawResponse = "";
+
+  server.listen(0, "127.0.0.1", () => {
+    const { port } = server.address() as AddressInfo;
+    const client = net.createConnection(port, "127.0.0.1", () => {
+      client.write(
+        "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+      );
+    });
+    client.setEncoding("utf8");
+    client.on("data", (chunk) => {
+      rawResponse += chunk;
+    });
+    client.on("end", () => response.resolve(rawResponse));
+    client.on("error", response.reject);
+  });
+
+  try {
+    return await response.promise;
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
+Deno.test("[node/http] ServerResponse direct end sets content-length", async () => {
+  const rawResponse = await getRawServerResponse((_req, res) => {
+    res.end("hi");
+  });
+
+  assertStringIncludes(rawResponse, "HTTP/1.1 200 OK\r\n");
+  assertStringIncludes(rawResponse, "Content-Length: 2\r\n");
+  assert(!rawResponse.includes("Transfer-Encoding: chunked\r\n"));
+  assert(rawResponse.endsWith("\r\n\r\nhi"));
+});
+
+Deno.test(
+  "[node/http] ServerResponse direct end respects explicit chunked transfer-encoding",
+  async () => {
+    const rawResponse = await getRawServerResponse((_req, res) => {
+      res.setHeader("Transfer-Encoding", "chunked");
+      res.end("hi");
+    });
+
+    assertStringIncludes(rawResponse, "HTTP/1.1 200 OK\r\n");
+    assertStringIncludes(rawResponse, "Transfer-Encoding: chunked\r\n");
+    assert(!rawResponse.includes("Content-Length:"));
+    assert(rawResponse.endsWith("\r\n\r\n2\r\nhi\r\n0\r\n\r\n"));
+  },
+);
+
 // https://github.com/denoland/deno/issues/34002
 Deno.test(
   "[node/http] ServerResponse does not emit 'finish' after client abort",

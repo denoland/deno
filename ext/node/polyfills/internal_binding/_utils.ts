@@ -3,7 +3,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const {
   forgivingBase64Decode,
   forgivingBase64UrlDecode,

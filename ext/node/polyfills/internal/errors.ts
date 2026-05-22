@@ -12,7 +12,7 @@
  */
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   AggregateError,
   ArrayIsArray,
@@ -1031,6 +1031,24 @@ class ERR_CONSTRUCT_CALL_REQUIRED extends NodeTypeError {
     super(
       "ERR_CONSTRUCT_CALL_REQUIRED",
       `Class constructor ${x} cannot be invoked without \`new\``,
+    );
+  }
+}
+
+class ERR_CONSTRUCT_CALL_INVALID extends NodeTypeError {
+  constructor(x: string) {
+    super(
+      "ERR_CONSTRUCT_CALL_INVALID",
+      `Constructor for class ${x} cannot be invoked`,
+    );
+  }
+}
+
+class ERR_CLOSED_MESSAGE_PORT extends NodeError {
+  constructor() {
+    super(
+      "ERR_CLOSED_MESSAGE_PORT",
+      "Cannot send data on closed MessagePort",
     );
   }
 }
@@ -3319,7 +3337,9 @@ return {
   ERR_CHILD_CLOSED_BEFORE_REPLY,
   ERR_CHILD_PROCESS_IPC_REQUIRED,
   ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
+  ERR_CLOSED_MESSAGE_PORT,
   ERR_CONSOLE_WRITABLE_STREAM,
+  ERR_CONSTRUCT_CALL_INVALID,
   ERR_CONSTRUCT_CALL_REQUIRED,
   ERR_CONTEXT_NOT_INITIALIZED,
   ERR_CPU_USAGE,
@@ -3637,7 +3657,9 @@ return {
     ERR_CHILD_CLOSED_BEFORE_REPLY,
     ERR_CHILD_PROCESS_IPC_REQUIRED,
     ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
+    ERR_CLOSED_MESSAGE_PORT,
     ERR_CONSOLE_WRITABLE_STREAM,
+    ERR_CONSTRUCT_CALL_INVALID,
     ERR_CONSTRUCT_CALL_REQUIRED,
     ERR_CONTEXT_NOT_INITIALIZED,
     ERR_CPU_USAGE,

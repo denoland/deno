@@ -23,7 +23,7 @@
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const { HTTPParser: NativeHTTPParser } = core.ops;
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { AsyncResource } = core.loadExtScript("ext:deno_node/async_hooks.ts");

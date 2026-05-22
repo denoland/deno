@@ -202,6 +202,7 @@ pub struct CheckFlags {
   pub doc: bool,
   pub doc_only: bool,
   pub check_js: bool,
+  pub watch: Option<WatchFlags>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -381,6 +382,12 @@ pub enum InstallFlagsLocal {
   Add(AddFlags),
   TopLevel(InstallTopLevelFlags),
   Entrypoints(InstallEntrypointsFlags),
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CiFlags {
+  pub production: bool,
+  pub skip_types: bool,
 }
 
 /// Overrides for the target OS and architecture when installing npm packages.
@@ -611,6 +618,8 @@ pub struct TestFlags {
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub trace_leaks: bool,
+  pub sanitize_ops: bool,
+  pub sanitize_resources: bool,
   pub watch: Option<WatchFlagsWithPaths>,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
@@ -709,6 +718,7 @@ pub enum DenoSubcommand {
   Bundle(BundleFlags),
   Cache(CacheFlags),
   Check(CheckFlags),
+  Ci(CiFlags),
   Clean(CleanFlags),
   Compile(CompileFlags),
   Completions(CompletionsFlags),
@@ -753,6 +763,9 @@ impl DenoSubcommand {
         watch: Some(flags), ..
       }) => Some(WatchFlagsRef::WithPaths(flags)),
       Self::Bench(BenchFlags {
+        watch: Some(flags), ..
+      })
+      | Self::Check(CheckFlags {
         watch: Some(flags), ..
       })
       | Self::Lint(LintFlags {
@@ -1756,6 +1769,8 @@ static DENO_HELP: &str = cstr!(
                   <p(245)>deno add jsr:@std/assert  |  deno add npm:express</>
     <g>bump-version</> Update version in the configuration file
     <g>install</>      Installs dependencies either in the local project or globally to a bin directory
+    <g>ci</>           Install dependencies in a clean, reproducible way for CI environments
+                  <p(245)>deno ci  |  deno ci --prod</>
     <g>uninstall</>    Uninstalls a dependency or an executable script in the installation root's bin directory
     <g>outdated</>     Find and update outdated dependencies
     <g>approve-scripts</> Approve npm lifecycle scripts
@@ -2001,6 +2016,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "init" => init_parse(&mut flags, &mut m)?,
         "info" => info_parse(&mut flags, &mut m)?,
         "install" => install_parse(&mut flags, &mut m, app)?,
+        "ci" => ci_parse(&mut flags, &mut m)?,
         "json_reference" => json_reference_parse(&mut flags, &mut m, app),
         "jupyter" => jupyter_parse(&mut flags, &mut m),
         "lint" => lint_parse(&mut flags, &mut m)?,
@@ -2274,6 +2290,7 @@ pub fn clap_root() -> Command {
         .subcommand(init_subcommand())
         .subcommand(info_subcommand())
         .subcommand(install_subcommand())
+        .subcommand(ci_subcommand())
         .subcommand(json_reference_subcommand())
         .subcommand(jupyter_subcommand())
         .subcommand(approve_scripts_subcommand())
@@ -2474,6 +2491,11 @@ Don't error if the audit data can't be retrieved from the registry
           .long("fix")
           .help("Automatically fix vulnerabilities by upgrading packages")
           .action(ArgAction::SetTrue)
+      )
+      .arg(
+        Arg::new("action")
+          .value_parser(["fix"])
+          .hide(true)
       )
   })
 }
@@ -2878,6 +2900,9 @@ Unless --reload is specified, this command will not re-download already cached d
         .arg(allow_import_arg())
         .arg(deny_import_arg())
         .arg(v8_flags_arg())
+        .arg(watch_arg(false))
+        .arg(watch_exclude_arg())
+        .arg(no_clear_screen_arg())
       }
     )
 }
@@ -3773,6 +3798,39 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
     })
 }
 
+fn ci_subcommand() -> Command {
+  command(
+    "ci",
+    cstr!("Install dependencies in a clean, reproducible way for CI environments.
+
+Similar to <p(245)>npm ci</>: requires a <p(245)>deno.lock</> file, removes any existing <p(245)>node_modules</>
+directory, and then installs strictly from the lockfile. Errors if <p(245)>deno.lock</>
+is missing or out of date with the config file.
+
+  <p(245)>deno ci</>
+  <p(245)>deno ci --prod</>"),
+    UnstableArgsConfig::ResolutionAndRuntime,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("prod")
+          .long("prod")
+          .alias("production")
+          .help("Only install production dependencies (excludes devDependencies)")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("skip-types")
+          .long("skip-types")
+          .help(cstr!("Exclude @types/* packages from installation.
+<y>Be careful, as it uses a name-based heuristic and may skip packages that ship runtime code.</>"))
+          .action(ArgAction::SetTrue)
+          .requires("prod"),
+      )
+  })
+}
+
 fn lockfile_only_arg() -> Arg {
   Arg::new("lockfile-only")
     .long("lockfile-only")
@@ -4566,6 +4624,20 @@ or <c>**/__tests__/**</>:
         Arg::new("trace-leaks")
           .long("trace-leaks")
           .help("Enable tracing of leaks. Useful when debugging leaking ops in test, but impacts test execution time")
+          .action(ArgAction::SetTrue)
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
+        Arg::new("sanitize-ops")
+          .long("sanitize-ops")
+          .help("Enable the ops sanitizer, which ensures that all async ops started in a test are completed before the test ends")
+          .action(ArgAction::SetTrue)
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
+        Arg::new("sanitize-resources")
+          .long("sanitize-resources")
+          .help("Enable the resources sanitizer, which ensures that all resources opened in a test are closed before the test ends")
           .action(ArgAction::SetTrue)
           .help_heading(TEST_HEADING),
       )
@@ -6468,7 +6540,11 @@ fn audit_parse(
   let ignore_unfixable = matches.get_flag("ignore-unfixable");
   let ignore_registry_errors = matches.get_flag("ignore-registry-errors");
   let socket = matches.get_flag("socket");
-  let fix = matches.get_flag("fix");
+  let fix = matches.get_flag("fix")
+    || matches
+      .get_one::<String>("action")
+      .map(|s| s == "fix")
+      .unwrap_or(false);
   let dev = true;
   let prod = true;
   let optional = true;
@@ -6723,6 +6799,7 @@ fn check_parse(
     doc: matches.get_flag("doc"),
     doc_only: matches.get_flag("doc-only"),
     check_js: matches.get_flag("check-js"),
+    watch: watch_arg_parse(matches)?,
   });
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   allow_and_deny_import_parse(flags, matches)?;
@@ -7337,6 +7414,19 @@ fn install_parse(
   Ok(())
 }
 
+fn ci_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  flags.frozen_lockfile = Some(true);
+  flags.subcommand = DenoSubcommand::Ci(CiFlags {
+    production: matches.get_flag("prod"),
+    skip_types: matches.get_flag("skip-types"),
+  });
+  Ok(())
+}
+
 fn json_reference_parse(
   flags: &mut Flags,
   _matches: &mut ArgMatches,
@@ -7860,6 +7950,8 @@ fn test_parse(
 
   let no_run = matches.get_flag("no-run");
   let trace_leaks = matches.get_flag("trace-leaks");
+  let sanitize_ops = matches.get_flag("sanitize-ops");
+  let sanitize_resources = matches.get_flag("sanitize-resources");
   let doc = matches.get_flag("doc");
   let filter = matches.remove_one::<String>("filter");
   let clean = matches.get_flag("clean");
@@ -7927,6 +8019,8 @@ fn test_parse(
     permit_no_files: permit_no_files_parse(matches),
     parallel: matches.get_flag("parallel"),
     trace_leaks,
+    sanitize_ops,
+    sanitize_resources,
     watch: watch_arg_parse_with_paths(matches)?,
     reporter,
     junit_path,
@@ -10142,6 +10236,7 @@ mod tests {
           doc: false,
           doc_only: false,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10158,6 +10253,7 @@ mod tests {
           doc: false,
           doc_only: false,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10174,6 +10270,7 @@ mod tests {
           doc: true,
           doc_only: false,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10190,6 +10287,7 @@ mod tests {
           doc: false,
           doc_only: true,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10220,6 +10318,7 @@ mod tests {
             doc: false,
             doc_only: false,
             check_js: false,
+            watch: None,
           }),
           type_check_mode: TypeCheckMode::All,
           code_cache_enabled: true,
@@ -10249,6 +10348,7 @@ mod tests {
           doc: false,
           doc_only: false,
           check_js: true,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -12214,6 +12314,8 @@ mod tests {
           shuffle: None,
           parallel: false,
           trace_leaks: true,
+          sanitize_ops: false,
+          sanitize_resources: false,
           coverage_dir: Some("cov".to_string()),
           coverage_raw_data_only: false,
           clean: true,
@@ -12321,6 +12423,8 @@ mod tests {
           },
           parallel: false,
           trace_leaks: false,
+          sanitize_ops: false,
+          sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
@@ -12365,6 +12469,8 @@ mod tests {
           },
           parallel: false,
           trace_leaks: false,
+          sanitize_ops: false,
+          sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
@@ -12503,6 +12609,8 @@ mod tests {
           },
           parallel: false,
           trace_leaks: false,
+          sanitize_ops: false,
+          sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
@@ -12540,6 +12648,8 @@ mod tests {
           },
           parallel: false,
           trace_leaks: false,
+          sanitize_ops: false,
+          sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
@@ -12576,6 +12686,8 @@ mod tests {
           },
           parallel: false,
           trace_leaks: false,
+          sanitize_ops: false,
+          sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
@@ -12614,6 +12726,8 @@ mod tests {
           },
           parallel: false,
           trace_leaks: false,
+          sanitize_ops: false,
+          sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
@@ -15052,6 +15166,35 @@ mod tests {
   }
 
   #[test]
+  fn ci_subcommand_defaults() {
+    let r = flags_from_vec(svec!["deno", "ci"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Ci(CiFlags::default()),
+        frozen_lockfile: Some(true),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn ci_subcommand_prod_skip_types() {
+    let r = flags_from_vec(svec!["deno", "ci", "--prod", "--skip-types"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Ci(CiFlags {
+          production: true,
+          skip_types: true,
+        }),
+        frozen_lockfile: Some(true),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn install_permissions_non_global() {
     let r =
       flags_from_vec(svec!["deno", "install", "--allow-net", "jsr:@std/fs"]);
@@ -15998,6 +16141,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           doc: false,
           doc_only: false,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -16479,6 +16623,68 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
   #[test]
   fn why_missing_package() {
     let r = flags_from_vec(svec!["deno", "why"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn audit_basic() {
+    let r = flags_from_vec(svec!["deno", "audit"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Audit(AuditFlags {
+          severity: "low".to_string(),
+          dev: true,
+          prod: true,
+          optional: true,
+          ..Default::default()
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn audit_fix_flag() {
+    let r = flags_from_vec(svec!["deno", "audit", "--fix"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Audit(AuditFlags {
+          severity: "low".to_string(),
+          dev: true,
+          prod: true,
+          optional: true,
+          fix: true,
+          ..Default::default()
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn audit_fix_positional() {
+    let r = flags_from_vec(svec!["deno", "audit", "fix"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Audit(AuditFlags {
+          severity: "low".to_string(),
+          dev: true,
+          prod: true,
+          optional: true,
+          fix: true,
+          ..Default::default()
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn audit_invalid_positional() {
+    let r = flags_from_vec(svec!["deno", "audit", "bogus"]);
     assert!(r.is_err());
   }
 

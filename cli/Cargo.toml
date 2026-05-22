@@ -85,7 +85,6 @@ deno_snapshots.workspace = true
 deno_task_shell.workspace = true
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
-deno_typescript_go_client_rust.workspace = true
 eszip.workspace = true
 libsui.workspace = true
 node_resolver = { workspace = true, features = ["graph", "sync"] }
@@ -99,14 +98,12 @@ bincode.workspace = true
 boxed_error.workspace = true
 bsdiff.workspace = true
 bytes.workspace = true
-bytes-str = "0.2.5"
 capacity_builder.workspace = true
 chrono = { workspace = true, features = ["now"] }
 clap = { workspace = true, features = ["env", "string", "wrap_help", "error-context"] }
 clap_complete.workspace = true
 clap_complete_fig.workspace = true
 color-print.workspace = true
-comrak.workspace = true
 console_static_text.workspace = true
 crossterm.workspace = true
 dashmap.workspace = true
@@ -177,7 +174,6 @@ text_lines.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
-tower.workspace = true
 tower-lsp.workspace = true
 tracing = { workspace = true, features = ["log"], optional = true }
 tracing-opentelemetry = { workspace = true, optional = true }
@@ -215,3 +211,6 @@ OriginalFilename = "deno.exe"
 LegalCopyright = "© Deno contributors & Deno Land Inc. MIT licensed."
 ProductName = "Deno"
 FileDescription = "Deno: A secure runtime for JavaScript and TypeScript"
+
+[package.metadata.cargo-shear]
+ignored = ["locked-tripwire"]

@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials, internals } = globalThis.__bootstrap;
+const { core, primordials, internals } = __bootstrap;
 const {
   isArrayBuffer,
   isTypedArray,

@@ -7,7 +7,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const {
   ArrayIsArray,
   ObjectAssign,
@@ -77,6 +77,8 @@ const { X509Certificate } = core.loadExtScript(
   "ext:deno_node/internal/crypto/x509.ts",
 );
 
+const lazyTls = core.createLazyLoader("node:tls");
+
 const kConnectOptions = Symbol("connect-options");
 const kHandshakeTimer = Symbol("handshake-timer");
 const kIsVerified = Symbol("verified");
@@ -91,6 +93,14 @@ let debug = debuglog("tls", (fn) => {
 
 function canonicalizeIP(ip) {
   return op_tls_canonicalize_ipv4_address(ip);
+}
+
+function getDefaultProtocolVersions() {
+  const tls = lazyTls().default;
+  return {
+    minVersion: tls.DEFAULT_MIN_VERSION,
+    maxVersion: tls.DEFAULT_MAX_VERSION,
+  };
 }
 
 function emitPendingSession(socket) {
@@ -971,15 +981,45 @@ TLSSocket.prototype.setServername = function (name) {
   this._handle?.setServername(name);
 };
 
+// Format prefixes for the synthetic session buffers we emit from
+// onConnectSecure when rustls handles resumption internally. The encoded
+// payload is `${servername ?? host ?? ""}:${port ?? ""}` -- see the
+// matching emit sites in onConnectSecure.
+const SYNTHETIC_SESSION_PREFIXES = [
+  "deno-tls12-session:",
+  "deno-tls13-session-ticket-1:",
+  "deno-tls13-session-ticket-2:",
+  "deno-tls13-dummy-session:",
+];
+
+function syntheticSessionMatches(buf, options) {
+  if (!buf || !options) return false;
+  const sessionKey = `${options.servername ?? options.host ?? ""}:${
+    options.port ?? ""
+  }`;
+  const text = buf.toString("latin1");
+  for (const prefix of SYNTHETIC_SESSION_PREFIXES) {
+    if (text === prefix + sessionKey) return true;
+  }
+  return false;
+}
+
 TLSSocket.prototype.setSession = function (_session) {
   if (typeof _session === "string") {
     _session = Buffer.from(_session, "latin1");
   }
   this._session = _session ? Buffer.from(_session) : null;
-  // Note: rustls does not support session resumption via setSession.
-  // Do not set _sessionReused = true here; the session buffer is stored
-  // but not actually sent to the native TLS layer for 0-RTT reuse.
-  // Reporting true would mislead connection pooling logic.
+  // rustls drives session resumption itself; the buffer we hand back from
+  // getSession() is synthetic and encodes the host:port it was issued for.
+  // Only treat the next handshake as a resume when the caller is replaying
+  // a buffer that matches *this* connection's host:port -- otherwise
+  // accepting any deno-tls*-session prefix would let an attacker skip
+  // checkServerIdentity() in onConnectSecure by forging a session for a
+  // different name.
+  this._sessionReused = syntheticSessionMatches(
+    this._session,
+    this[kConnectOptions],
+  );
 };
 
 TLSSocket.prototype.getPeerCertificate = function (detailed) {
@@ -1313,6 +1353,11 @@ Server.prototype[Symbol.for("nodejs.rejection")] = function (
 
 Server.prototype.setSecureContext = function (options) {
   validateObject(options, "options");
+  const useVersionDefaults = !options.secureProtocol && !options.minVersion &&
+    !options.maxVersion;
+  const defaults = useVersionDefaults
+    ? getDefaultProtocolVersions()
+    : undefined;
 
   this._sharedCreds = createSecureContext({
     allowPartialTrustChain: options.allowPartialTrustChain,
@@ -1327,8 +1372,8 @@ Server.prototype.setSecureContext = function (options) {
       ? !!options.honorCipherOrder
       : true,
     key: options.key,
-    maxVersion: options.maxVersion,
-    minVersion: options.minVersion,
+    maxVersion: options.maxVersion ?? defaults?.maxVersion,
+    minVersion: options.minVersion ?? defaults?.minVersion,
     passphrase: options.passphrase,
     pfx: options.pfx,
     privateKeyEngine: options.privateKeyEngine,
@@ -1393,8 +1438,13 @@ function onConnectSecure() {
 
   let verifyError = makeVerifyError(this._handle.verifyError());
 
-  // Verify that server's identity matches its certificate's names
-  if (!verifyError && !this.isSessionReused()) {
+  // Verify that server's identity matches its certificate's names.
+  // Run this even on resumed sessions: rustls defers NotValidForName to
+  // the JS layer, so a name-mismatched handshake can succeed at the TLS
+  // layer (and have its session cached) before checkServerIdentity()
+  // destroys it. Re-running here ensures a later resumption of that
+  // session can't bypass the hostname check.
+  if (!verifyError) {
     const hostname = options.servername ||
       options.host ||
       options.socket?._host ||
@@ -1481,6 +1531,12 @@ function connect(...args) {
     minDHSize: 1024,
     ...options,
   };
+
+  if (!options.secureProtocol && !options.minVersion && !options.maxVersion) {
+    const defaults = getDefaultProtocolVersions();
+    options.minVersion = defaults.minVersion;
+    options.maxVersion = defaults.maxVersion;
+  }
 
   if (!options.keepAlive) {
     options.singleUse = true;

@@ -98,6 +98,14 @@ struct TestConfig {
   /// override (e.g. `node_shared_openssl=1`) which would regress other tests
   /// if applied globally.
   env: Option<HashMap<String, String>>,
+  /// Extra `deno run`/`deno test` CLI flags to append for this test only,
+  /// appearing after the standard `RUN_ARGS`/`TEST_ARGS` and after any
+  /// flags derived from the test source's `// Flags:` directive. Use
+  /// sparingly - typically for security knobs like
+  /// `--unsafely-ignore-certificate-errors` that one specific test
+  /// requires and that we explicitly do not want every test to inherit.
+  #[serde(rename = "extraDenoArgs", default)]
+  extra_deno_args: Vec<String>,
 }
 
 /// The full config.json structure
@@ -304,6 +312,7 @@ const IGNORED_TEST_DIRS: &[&str] = &[
 
 /// Collect all test files from the suite directory.
 fn collect_all_tests() -> CollectedTestCategory<NodeCompatTestData> {
+  ensure_dir_fixtures();
   let suite_dir = suite_test_dir();
   let mut children = Vec::new();
 
@@ -387,6 +396,21 @@ fn suite_test_dir() -> std::path::PathBuf {
   tests_path()
     .join("node_compat/runner/suite/test")
     .to_path_buf()
+}
+
+/// Restore directory-only fixtures that git can't track.
+///
+/// The vendored Node.js suite contains a few empty directories that the
+/// individual tests rely on (e.g. `test/fixtures/wasi/subdir` is asserted
+/// by `test-wasi-readdir.js`). Git does not preserve empty directories on
+/// checkout, so we recreate them here before the runner enumerates tests.
+fn ensure_dir_fixtures() {
+  let suite = suite_test_dir();
+  // Extend this when more directory-only fixtures are needed.
+  let p = suite.join("fixtures/wasi/subdir");
+  if !p.exists() {
+    let _ = std::fs::create_dir_all(&p);
+  }
 }
 
 fn create_collected_test(
@@ -476,9 +500,10 @@ fn uses_node_test_module(source: &str) -> bool {
   source.contains("'node:test'") || source.contains("\"node:test\"")
 }
 
-fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
+fn parse_flags(source: &str) -> (Vec<String>, Vec<String>, Vec<String>) {
   let mut v8_flags = Vec::new();
   let mut node_options = Vec::new();
+  let mut deno_args = Vec::new();
 
   let re = Regex::new(r"^// Flags: (.+)$").unwrap();
   for line in source.lines() {
@@ -535,6 +560,24 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
           n if n.starts_with("--title=") => {
             node_options.push(flag.to_string());
           }
+          // Inspector tests opt in to the inspector via `--inspect=PORT`
+          // (commonly `--inspect=0` to pick a random port). Forward to
+          // Deno, normalizing the bare port form to `127.0.0.1:PORT` since
+          // Deno's CLI expects `host:port`.
+          n if n == "--inspect" || n.starts_with("--inspect=") => {
+            let mapped = match n.strip_prefix("--inspect=") {
+              None | Some("") => "--inspect=127.0.0.1:0".to_string(),
+              Some(rest) if rest.chars().all(|c| c.is_ascii_digit()) => {
+                format!("--inspect=127.0.0.1:{}", rest)
+              }
+              Some(rest) => format!("--inspect={}", rest),
+            };
+            deno_args.push(mapped);
+          }
+          "--experimental-network-inspection" => {
+            // Deno emits Network.* events when the inspector is attached;
+            // no separate opt-in flag.
+          }
           _ => {}
         }
       }
@@ -542,7 +585,7 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
     }
   }
 
-  (v8_flags, node_options)
+  (v8_flags, node_options, deno_args)
 }
 
 fn truncate_output(output: &str, max_len: usize) -> String {
@@ -574,7 +617,7 @@ impl TestSetup {
 
     let source = full_test_path.read_to_string();
     let uses_node_test = uses_node_test_module(&source);
-    let (v8_flags, node_options) = parse_flags(&source);
+    let (v8_flags, node_options, extra_deno_args) = parse_flags(&source);
 
     let mut args: Vec<String> = if uses_node_test {
       TEST_ARGS.iter().map(|s| s.to_string()).collect()
@@ -584,6 +627,16 @@ impl TestSetup {
 
     if !v8_flags.is_empty() {
       args.push(format!("--v8-flags={}", v8_flags.join(",")));
+    }
+    for arg in &extra_deno_args {
+      args.push(arg.clone());
+    }
+    // Per-test extra args from config.jsonc, e.g. security knobs that
+    // only one specific test needs.
+    if let Some(extra) = test_config {
+      for arg in &extra.extra_deno_args {
+        args.push(arg.clone());
+      }
     }
     if cli_args.inspect_brk {
       args.push("--inspect-brk".to_string());

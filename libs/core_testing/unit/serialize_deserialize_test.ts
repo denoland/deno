@@ -47,7 +47,9 @@ test(function testIssue20727b() {
 
 test(function testEmptyString() {
   const emptyString = "";
-  const emptyStringSerialized = [255, 15, 34, 0];
+  // 255 = SerializationTag::kVersion, 16 = V8 14.9 wire format version,
+  // 34 = "kOneByteString", 0 = length
+  const emptyStringSerialized = [255, 16, 34, 0];
   assertArrayEquals(
     Deno.core.serialize(emptyString),
     emptyStringSerialized,
@@ -64,7 +66,7 @@ test(function testPrimitiveArray() {
   const primitiveValueArray = ["test", "a", null, undefined];
   // deno-fmt-ignore
   const primitiveValueArraySerialized = [
-    255, 15, 65, 4, 34, 4, 116, 101, 115, 116,
+    255, 16, 65, 4, 34, 4, 116, 101, 115, 116,
     34, 1, 97, 48, 95, 36, 0, 4,
   ];
   assertArrayEquals(
@@ -84,7 +86,7 @@ test(function testCircularObject() {
   circularObject.test = circularObject;
   // deno-fmt-ignore
   const circularObjectSerialized = [
-    255, 15, 111, 34, 4, 116, 101, 115,
+    255, 16, 111, 34, 4, 116, 101, 115,
     116, 94, 0, 34, 5, 116, 101, 115,
     116, 50, 34, 2, 100, 100, 34, 5,
     116, 101, 115, 116, 51, 34, 2, 97,

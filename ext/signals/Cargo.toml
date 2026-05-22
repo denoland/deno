@@ -14,7 +14,6 @@ description = "Signals for Deno"
 path = "lib.rs"
 
 [dependencies]
-deno_error.workspace = true
 libc.workspace = true
 signal-hook.workspace = true
 thiserror.workspace = true

@@ -3174,6 +3174,9 @@ pub struct TranslatedArgs {
   pub node_options: Vec<String>,
   /// Whether to set DENO_TLS_CA_STORE=system
   pub use_system_ca: bool,
+  /// Comma-separated trace event categories from --trace-event-categories,
+  /// propagated to the spawned process via DENO_NODE_TRACE_EVENT_CATEGORIES.
+  pub trace_event_categories: String,
 }
 
 /// Wraps eval code for Node.js compatibility.
@@ -3258,6 +3261,12 @@ pub fn translate_to_deno_args(
   let env_opts = &opts.per_isolate.per_env;
 
   add_tls_node_options(node_options, env_opts);
+
+  // Forward --trace-event-categories regardless of subcommand path. Set here
+  // so it survives early-returning translations (`-e`, `--test`, REPL, etc.).
+  if !opts.trace_event_categories.is_empty() {
+    result.trace_event_categories = opts.trace_event_categories.clone();
+  }
 
   // Check for system CA usage
   if opts.use_system_ca || opts.use_openssl_ca {
@@ -3459,6 +3468,20 @@ pub fn translate_to_deno_args(
   // Handle --pending-deprecation (pass to NODE_OPTIONS)
   if env_opts.pending_deprecation {
     node_options.push("--pending-deprecation".to_string());
+  }
+
+  // Forward Node's --test-reporter so node:test in the spawned child can
+  // detect it and emit the corresponding output format. Deno's own CLI does
+  // not consume the flag (its TAP/spec output differs from Node's), so the
+  // value rides along through NODE_OPTIONS for the polyfill to pick up.
+  for reporter in &env_opts.test_reporter {
+    node_options.push(format!("--test-reporter={}", reporter));
+  }
+  for pattern in &env_opts.test_name_pattern {
+    node_options.push(format!("--test-name-pattern={}", pattern));
+  }
+  for pattern in &env_opts.test_skip_pattern {
+    node_options.push(format!("--test-skip-pattern={}", pattern));
   }
 
   // Forward --require/--import modules to Deno's run subcommand so that
