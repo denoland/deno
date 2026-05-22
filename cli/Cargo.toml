@@ -129,7 +129,6 @@ indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
 jupyter-protocol.workspace = true
 jupyter_runtime.workspace = true
-keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service", "windows-native", "vendored"] }
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
@@ -190,6 +189,12 @@ zstd.workspace = true
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["consoleapi", "knownfolders", "mswsock", "objbase", "processenv", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
 deno_subprocess_windows.workspace = true
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))'.dependencies]
+dbus = { version = "=0.9.7", features = ["vendored"] }
+
+[target.'cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd")))'.dependencies]
+keyring = { version = "3.6.3", features = ["apple-native", "windows-native"] }
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true

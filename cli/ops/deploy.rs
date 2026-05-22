@@ -3,6 +3,7 @@
 use deno_core::op2;
 use deno_error::JsErrorBox;
 
+use crate::tools::deploy::DeployTokenError;
 use crate::tools::deploy::get_token_entry;
 
 deno_core::extension!(
@@ -22,7 +23,7 @@ pub fn op_deploy_token_get() -> Result<Option<String>, JsErrorBox> {
     .get_password()
   {
     Ok(password) => Ok(Some(password)),
-    Err(keyring::Error::NoEntry) => Ok(None),
+    Err(DeployTokenError::NoEntry) => Ok(None),
     Err(e) => Err(JsErrorBox::type_error(e.to_string())),
   }
 }
