@@ -58,3 +58,7 @@ rustls.workspace = true
 [[bench]]
 name = "body"
 harness = false
+
+[[bench]]
+name = "formdata"
+harness = false
