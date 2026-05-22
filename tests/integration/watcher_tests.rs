@@ -492,6 +492,35 @@ async fn fmt_check_all_files_on_each_change_test() {
 }
 
 #[test(flaky)]
+async fn check_watch_test() {
+  let t = TempDir::new();
+  let file_to_check = t.path().join("main.ts");
+  file_to_check.write("const x: number = \"hello\";\n");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("check")
+    .arg(&file_to_check)
+    .arg("--watch")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  let next_line = next_line(&mut stderr_lines).await.unwrap();
+  assert_contains!(&next_line, "Check started");
+  assert_contains!(wait_contains("TS2322", &mut stderr_lines).await, "TS2322");
+  wait_contains("Check failed.", &mut stderr_lines).await;
+
+  // Fix the type error.
+  file_to_check.write("const x: number = 42;\nconsole.log(x);\n");
+
+  wait_contains("Check finished.", &mut stderr_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[test(flaky)]
 async fn run_watch_no_dynamic() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");

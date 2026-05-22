@@ -202,6 +202,7 @@ pub struct CheckFlags {
   pub doc: bool,
   pub doc_only: bool,
   pub check_js: bool,
+  pub watch: Option<WatchFlags>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -762,6 +763,9 @@ impl DenoSubcommand {
         watch: Some(flags), ..
       }) => Some(WatchFlagsRef::WithPaths(flags)),
       Self::Bench(BenchFlags {
+        watch: Some(flags), ..
+      })
+      | Self::Check(CheckFlags {
         watch: Some(flags), ..
       })
       | Self::Lint(LintFlags {
@@ -2488,6 +2492,11 @@ Don't error if the audit data can't be retrieved from the registry
           .help("Automatically fix vulnerabilities by upgrading packages")
           .action(ArgAction::SetTrue)
       )
+      .arg(
+        Arg::new("action")
+          .value_parser(["fix"])
+          .hide(true)
+      )
   })
 }
 
@@ -2891,6 +2900,9 @@ Unless --reload is specified, this command will not re-download already cached d
         .arg(allow_import_arg())
         .arg(deny_import_arg())
         .arg(v8_flags_arg())
+        .arg(watch_arg(false))
+        .arg(watch_exclude_arg())
+        .arg(no_clear_screen_arg())
       }
     )
 }
@@ -6528,7 +6540,11 @@ fn audit_parse(
   let ignore_unfixable = matches.get_flag("ignore-unfixable");
   let ignore_registry_errors = matches.get_flag("ignore-registry-errors");
   let socket = matches.get_flag("socket");
-  let fix = matches.get_flag("fix");
+  let fix = matches.get_flag("fix")
+    || matches
+      .get_one::<String>("action")
+      .map(|s| s == "fix")
+      .unwrap_or(false);
   let dev = true;
   let prod = true;
   let optional = true;
@@ -6783,6 +6799,7 @@ fn check_parse(
     doc: matches.get_flag("doc"),
     doc_only: matches.get_flag("doc-only"),
     check_js: matches.get_flag("check-js"),
+    watch: watch_arg_parse(matches)?,
   });
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   allow_and_deny_import_parse(flags, matches)?;
@@ -10219,6 +10236,7 @@ mod tests {
           doc: false,
           doc_only: false,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10235,6 +10253,7 @@ mod tests {
           doc: false,
           doc_only: false,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10251,6 +10270,7 @@ mod tests {
           doc: true,
           doc_only: false,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10267,6 +10287,7 @@ mod tests {
           doc: false,
           doc_only: true,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10297,6 +10318,7 @@ mod tests {
             doc: false,
             doc_only: false,
             check_js: false,
+            watch: None,
           }),
           type_check_mode: TypeCheckMode::All,
           code_cache_enabled: true,
@@ -10326,6 +10348,7 @@ mod tests {
           doc: false,
           doc_only: false,
           check_js: true,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -16118,6 +16141,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           doc: false,
           doc_only: false,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -16599,6 +16623,68 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
   #[test]
   fn why_missing_package() {
     let r = flags_from_vec(svec!["deno", "why"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn audit_basic() {
+    let r = flags_from_vec(svec!["deno", "audit"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Audit(AuditFlags {
+          severity: "low".to_string(),
+          dev: true,
+          prod: true,
+          optional: true,
+          ..Default::default()
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn audit_fix_flag() {
+    let r = flags_from_vec(svec!["deno", "audit", "--fix"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Audit(AuditFlags {
+          severity: "low".to_string(),
+          dev: true,
+          prod: true,
+          optional: true,
+          fix: true,
+          ..Default::default()
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn audit_fix_positional() {
+    let r = flags_from_vec(svec!["deno", "audit", "fix"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Audit(AuditFlags {
+          severity: "low".to_string(),
+          dev: true,
+          prod: true,
+          optional: true,
+          fix: true,
+          ..Default::default()
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn audit_invalid_positional() {
+    let r = flags_from_vec(svec!["deno", "audit", "bogus"]);
     assert!(r.is_err());
   }
 
