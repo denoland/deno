@@ -20,6 +20,7 @@ const {
   op_encoding_decode,
   op_encoding_decode_single,
   op_encoding_decode_utf8,
+  op_encoding_decode_utf8_ascii_only,
   op_encoding_encode_into,
   op_encoding_encode_into_fallback,
   op_encoding_new_decoder,
@@ -209,6 +210,19 @@ class TextDecoder {
           this.#fatal,
           this.#ignoreBOM,
         );
+      }
+
+      // Streaming UTF-8 fast path. While the decoder has no pending state
+      // (`#handle === null`), an ASCII-only chunk decodes the same way
+      // single-pass would: there are no partial codepoints to carry over,
+      // so we can hand V8 the bytes directly as a one-byte string and skip
+      // both the `Vec<u16>` allocation and the UTF-8 -> UTF-16 conversion
+      // in `op_encoding_decode`. `op_encoding_decode_utf8_ascii_only`
+      // returns `null` for any non-ASCII byte, in which case we fall
+      // through to the general streaming op (which will create the handle).
+      if (stream && this.#utf8SinglePass && this.#handle === null) {
+        const ascii = op_encoding_decode_utf8_ascii_only(input);
+        if (ascii !== null) return ascii;
       }
 
       if (this.#handle === null) {
