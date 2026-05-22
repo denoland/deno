@@ -52,9 +52,7 @@ fn setup() -> Vec<Extension> {
         "#
       },
     ],
-    lazy_loaded_js = [
-      "ext:deno_fetch/21_formdata.js" = "21_formdata.js",
-    ],
+    lazy_loaded_js = ["ext:deno_fetch/21_formdata.js" = "21_formdata.js",],
   );
 
   vec![
