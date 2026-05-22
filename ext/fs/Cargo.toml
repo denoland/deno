@@ -18,7 +18,6 @@ sync_fs = ["deno_maybe_sync/sync"]
 
 [dependencies]
 async-trait.workspace = true
-base32.workspace = true
 boxed_error.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
