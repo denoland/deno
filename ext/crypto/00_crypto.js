@@ -38,10 +38,12 @@ const {
   op_crypto_random_uuid,
   op_crypto_sign_ed25519,
   op_crypto_sign_key,
+  op_crypto_sign_key_sync,
   op_crypto_subtle_digest,
   op_crypto_unwrap_key,
   op_crypto_verify_ed25519,
   op_crypto_verify_key,
+  op_crypto_verify_key_sync,
   op_crypto_wrap_key,
   op_crypto_x25519_public_key,
 } = core.ops;
@@ -950,11 +952,24 @@ class SubtleCrypto {
       case "HMAC": {
         const hashAlgorithm = key[_algorithm].hash.name;
 
-        const signature = await op_crypto_sign_key({
+        // HMAC on commodity x86 is in the hundreds of nanoseconds for
+        // token-sized payloads, so the ~30 us cost of dispatching the
+        // async op + `spawn_blocking` round-trip dominates total wall
+        // time. Route small inputs to the sync op (same pattern as
+        // #34213 for digest and the AES path in `encrypt`/`decrypt`
+        // above). RSASSA / RSA-PSS / ECDSA stay async at any size
+        // because the compute is intrinsically slow.
+        const signOpts = {
           key: keyData,
           algorithm: "HMAC",
           hash: hashAlgorithm,
-        }, data);
+        };
+        let signature;
+        if (TypedArrayPrototypeGetByteLength(data) <= 64 * 1024) {
+          signature = op_crypto_sign_key_sync(signOpts, data);
+        } else {
+          signature = await op_crypto_sign_key(signOpts, data);
+        }
 
         return TypedArrayPrototypeGetBuffer(signature);
       }
@@ -1344,12 +1359,18 @@ class SubtleCrypto {
       }
       case "HMAC": {
         const hash = key[_algorithm].hash.name;
-        return await op_crypto_verify_key({
+        // Same dispatch as `sign` above: HMAC verify on token-sized
+        // payloads is dominated by the spawn_blocking round-trip.
+        const verifyOpts = {
           key: keyData,
           algorithm: "HMAC",
           hash,
           signature,
-        }, data);
+        };
+        if (TypedArrayPrototypeGetByteLength(data) <= 64 * 1024) {
+          return op_crypto_verify_key_sync(verifyOpts, data);
+        }
+        return await op_crypto_verify_key(verifyOpts, data);
       }
       case "ECDSA": {
         // 1.

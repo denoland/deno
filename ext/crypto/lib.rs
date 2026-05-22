@@ -90,7 +90,9 @@ deno_core::extension!(deno_crypto,
     op_crypto_get_random_values,
     op_crypto_generate_key,
     op_crypto_sign_key,
+    op_crypto_sign_key_sync,
     op_crypto_verify_key,
+    op_crypto_verify_key_sync,
     op_crypto_derive_bits,
     op_crypto_import_key,
     op_crypto_export_key,
@@ -296,153 +298,169 @@ pub struct SignArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
+fn sign_inner(args: SignArg, data: &[u8]) -> Result<Vec<u8>, CryptoError> {
+  let algorithm = args.algorithm;
+
+  let signature = match algorithm {
+    Algorithm::RsassaPkcs1v15 => {
+      use rsa::pkcs1v15::SigningKey;
+      let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
+      match args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)? {
+        CryptoHash::Sha1 => {
+          let signing_key = SigningKey::<Sha1>::new(private_key);
+          signing_key.sign(data)
+        }
+        CryptoHash::Sha256 => {
+          let signing_key = SigningKey::<Sha256>::new(private_key);
+          signing_key.sign(data)
+        }
+        CryptoHash::Sha384 => {
+          let signing_key = SigningKey::<Sha384>::new(private_key);
+          signing_key.sign(data)
+        }
+        CryptoHash::Sha512 => {
+          let signing_key = SigningKey::<Sha512>::new(private_key);
+          signing_key.sign(data)
+        }
+        _ => return Err(CryptoError::UnsupportedAlgorithm),
+      }
+      .to_vec()
+    }
+    Algorithm::RsaPss => {
+      let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
+
+      let salt_len = args
+        .salt_length
+        .ok_or_else(|| CryptoError::MissingArgumentSaltLength)?
+        as usize;
+
+      let mut rng = OsRng;
+      match args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)? {
+        CryptoHash::Sha1 => {
+          let signing_key = Pss::new_with_salt::<Sha1>(salt_len);
+          let hashed = Sha1::digest(data);
+          signing_key.sign(Some(&mut rng), &private_key, &hashed)?
+        }
+        CryptoHash::Sha256 => {
+          let signing_key = Pss::new_with_salt::<Sha256>(salt_len);
+          let hashed = Sha256::digest(data);
+          signing_key.sign(Some(&mut rng), &private_key, &hashed)?
+        }
+        CryptoHash::Sha384 => {
+          let signing_key = Pss::new_with_salt::<Sha384>(salt_len);
+          let hashed = Sha384::digest(data);
+          signing_key.sign(Some(&mut rng), &private_key, &hashed)?
+        }
+        CryptoHash::Sha512 => {
+          let signing_key = Pss::new_with_salt::<Sha512>(salt_len);
+          let hashed = Sha512::digest(data);
+          signing_key.sign(Some(&mut rng), &private_key, &hashed)?
+        }
+        _ => return Err(CryptoError::UnsupportedAlgorithm),
+      }
+      .to_vec()
+    }
+    Algorithm::Ecdsa => {
+      let hash = args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)?;
+      let named_curve =
+        args.named_curve.ok_or_else(JsErrorBox::not_supported)?;
+      match named_curve {
+        CryptoNamedCurve::P256 => {
+          // Decode PKCS#8 private key.
+          let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)
+            .map_err(|_| CryptoError::InvalidKeyFormat)?;
+          let signing_key = P256SigningKey::from(secret_key);
+          let prehash = match hash {
+            CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
+            CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
+            CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
+            CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+            _ => return Err(CryptoError::UnsupportedAlgorithm),
+          };
+          // Sign the prehashed message, producing a raw r||s signature.
+          let signature: P256Signature = signing_key.sign_prehash(&prehash)?;
+          signature.to_bytes().to_vec()
+        }
+        CryptoNamedCurve::P384 => {
+          let secret_key = p384::SecretKey::from_pkcs8_der(&args.key.data)
+            .map_err(|_| CryptoError::InvalidKeyFormat)?;
+          let signing_key = P384SigningKey::from(secret_key);
+          let prehash = match hash {
+            CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
+            CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
+            CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
+            CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+            _ => return Err(CryptoError::UnsupportedAlgorithm),
+          };
+          let signature: P384Signature = signing_key.sign_prehash(&prehash)?;
+          signature.to_bytes().to_vec()
+        }
+        CryptoNamedCurve::P521 => {
+          let secret_key = p521::SecretKey::from_pkcs8_der(&args.key.data)
+            .map_err(|_| CryptoError::InvalidKeyFormat)?;
+          let signing_key = P521SigningKey::from_bytes(&secret_key.to_bytes())
+            .map_err(|_| CryptoError::InvalidKeyFormat)?;
+          let prehash = match hash {
+            CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
+            CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
+            CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
+            CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+            _ => return Err(CryptoError::UnsupportedAlgorithm),
+          };
+          // P-521 field size is 66 bytes; bits2field requires at least
+          // half that (33 bytes). Left-pad shorter hashes to meet the
+          // minimum.
+          let prehash = if prehash.len() < 33 {
+            let mut padded = vec![0u8; 33 - prehash.len()];
+            padded.extend_from_slice(&prehash);
+            padded
+          } else {
+            prehash
+          };
+          let signature: P521Signature = signing_key.sign_prehash(&prehash)?;
+          signature.to_bytes().to_vec()
+        }
+      }
+    }
+    Algorithm::Hmac => {
+      let hash: HmacAlgorithm =
+        args.hash.ok_or_else(JsErrorBox::not_supported)?.into();
+
+      let key = HmacKey::new(hash, &args.key.data);
+
+      let signature = aws_lc_rs::hmac::sign(&key, data);
+      signature.as_ref().to_vec()
+    }
+    _ => return Err(CryptoError::UnsupportedAlgorithm),
+  };
+
+  Ok(signature)
+}
+
+// AES used spawn_blocking universally before #34306; sign/verify still do for
+// every algorithm. HMAC (and Ed25519) finish in well under the ~30 us cost
+// of an async-op + `spawn_blocking` round-trip for token-sized payloads, so
+// the JS dispatch in `00_crypto.js` routes those to this sync op when the
+// payload is below the 64 KiB threshold. RSASSA-PKCS1-v1_5 / RSA-PSS /
+// ECDSA stay on the async path: their compute is intrinsically slow
+// enough that offloading is the right call regardless of input size.
+#[op2]
+pub fn op_crypto_sign_key_sync(
+  #[scoped] args: SignArg,
+  #[buffer] zero_copy: JsBuffer,
+) -> Result<Uint8Array, CryptoError> {
+  let signature = sign_inner(args, &zero_copy)?;
+  Ok(signature.into())
+}
+
 #[op2]
 pub async fn op_crypto_sign_key(
   #[scoped] args: SignArg,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<Uint8Array, CryptoError> {
   deno_core::unsync::spawn_blocking(move || {
-    let data = &*zero_copy;
-    let algorithm = args.algorithm;
-
-    let signature = match algorithm {
-      Algorithm::RsassaPkcs1v15 => {
-        use rsa::pkcs1v15::SigningKey;
-        let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
-        match args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)? {
-          CryptoHash::Sha1 => {
-            let signing_key = SigningKey::<Sha1>::new(private_key);
-            signing_key.sign(data)
-          }
-          CryptoHash::Sha256 => {
-            let signing_key = SigningKey::<Sha256>::new(private_key);
-            signing_key.sign(data)
-          }
-          CryptoHash::Sha384 => {
-            let signing_key = SigningKey::<Sha384>::new(private_key);
-            signing_key.sign(data)
-          }
-          CryptoHash::Sha512 => {
-            let signing_key = SigningKey::<Sha512>::new(private_key);
-            signing_key.sign(data)
-          }
-          _ => return Err(CryptoError::UnsupportedAlgorithm),
-        }
-        .to_vec()
-      }
-      Algorithm::RsaPss => {
-        let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
-
-        let salt_len = args
-          .salt_length
-          .ok_or_else(|| CryptoError::MissingArgumentSaltLength)?
-          as usize;
-
-        let mut rng = OsRng;
-        match args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)? {
-          CryptoHash::Sha1 => {
-            let signing_key = Pss::new_with_salt::<Sha1>(salt_len);
-            let hashed = Sha1::digest(data);
-            signing_key.sign(Some(&mut rng), &private_key, &hashed)?
-          }
-          CryptoHash::Sha256 => {
-            let signing_key = Pss::new_with_salt::<Sha256>(salt_len);
-            let hashed = Sha256::digest(data);
-            signing_key.sign(Some(&mut rng), &private_key, &hashed)?
-          }
-          CryptoHash::Sha384 => {
-            let signing_key = Pss::new_with_salt::<Sha384>(salt_len);
-            let hashed = Sha384::digest(data);
-            signing_key.sign(Some(&mut rng), &private_key, &hashed)?
-          }
-          CryptoHash::Sha512 => {
-            let signing_key = Pss::new_with_salt::<Sha512>(salt_len);
-            let hashed = Sha512::digest(data);
-            signing_key.sign(Some(&mut rng), &private_key, &hashed)?
-          }
-          _ => return Err(CryptoError::UnsupportedAlgorithm),
-        }
-        .to_vec()
-      }
-      Algorithm::Ecdsa => {
-        let hash = args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)?;
-        let named_curve =
-          args.named_curve.ok_or_else(JsErrorBox::not_supported)?;
-        match named_curve {
-          CryptoNamedCurve::P256 => {
-            // Decode PKCS#8 private key.
-            let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)
-              .map_err(|_| CryptoError::InvalidKeyFormat)?;
-            let signing_key = P256SigningKey::from(secret_key);
-            let prehash = match hash {
-              CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
-              CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
-              CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
-              CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
-              _ => return Err(CryptoError::UnsupportedAlgorithm),
-            };
-            // Sign the prehashed message, producing a raw r||s signature.
-            let signature: P256Signature =
-              signing_key.sign_prehash(&prehash)?;
-            signature.to_bytes().to_vec()
-          }
-          CryptoNamedCurve::P384 => {
-            let secret_key = p384::SecretKey::from_pkcs8_der(&args.key.data)
-              .map_err(|_| CryptoError::InvalidKeyFormat)?;
-            let signing_key = P384SigningKey::from(secret_key);
-            let prehash = match hash {
-              CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
-              CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
-              CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
-              CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
-              _ => return Err(CryptoError::UnsupportedAlgorithm),
-            };
-            let signature: P384Signature =
-              signing_key.sign_prehash(&prehash)?;
-            signature.to_bytes().to_vec()
-          }
-          CryptoNamedCurve::P521 => {
-            let secret_key = p521::SecretKey::from_pkcs8_der(&args.key.data)
-              .map_err(|_| CryptoError::InvalidKeyFormat)?;
-            let signing_key =
-              P521SigningKey::from_bytes(&secret_key.to_bytes())
-                .map_err(|_| CryptoError::InvalidKeyFormat)?;
-            let prehash = match hash {
-              CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
-              CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
-              CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
-              CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
-              _ => return Err(CryptoError::UnsupportedAlgorithm),
-            };
-            // P-521 field size is 66 bytes; bits2field requires at least
-            // half that (33 bytes). Left-pad shorter hashes to meet the
-            // minimum.
-            let prehash = if prehash.len() < 33 {
-              let mut padded = vec![0u8; 33 - prehash.len()];
-              padded.extend_from_slice(&prehash);
-              padded
-            } else {
-              prehash
-            };
-            let signature: P521Signature =
-              signing_key.sign_prehash(&prehash)?;
-            signature.to_bytes().to_vec()
-          }
-        }
-      }
-      Algorithm::Hmac => {
-        let hash: HmacAlgorithm =
-          args.hash.ok_or_else(JsErrorBox::not_supported)?.into();
-
-        let key = HmacKey::new(hash, &args.key.data);
-
-        let signature = aws_lc_rs::hmac::sign(&key, data);
-        signature.as_ref().to_vec()
-      }
-      _ => return Err(CryptoError::UnsupportedAlgorithm),
-    };
-
-    Ok(signature.into())
+    let signature = sign_inner(args, &zero_copy)?;
+    Ok::<Uint8Array, CryptoError>(signature.into())
   })
   .await?
 }
@@ -461,192 +479,201 @@ pub struct VerifyArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
+fn verify_inner(args: VerifyArg, data: &[u8]) -> Result<bool, CryptoError> {
+  let algorithm = args.algorithm;
+
+  let verification = match algorithm {
+    Algorithm::RsassaPkcs1v15 => {
+      use rsa::pkcs1v15::Signature;
+      use rsa::pkcs1v15::VerifyingKey;
+      let public_key = read_rsa_public_key(args.key)?;
+      let signature: Signature = (&*args.signature).try_into()?;
+      match args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)? {
+        CryptoHash::Sha1 => {
+          let verifying_key = VerifyingKey::<Sha1>::new(public_key);
+          verifying_key.verify(data, &signature).is_ok()
+        }
+        CryptoHash::Sha256 => {
+          let verifying_key = VerifyingKey::<Sha256>::new(public_key);
+          verifying_key.verify(data, &signature).is_ok()
+        }
+        CryptoHash::Sha384 => {
+          let verifying_key = VerifyingKey::<Sha384>::new(public_key);
+          verifying_key.verify(data, &signature).is_ok()
+        }
+        CryptoHash::Sha512 => {
+          let verifying_key = VerifyingKey::<Sha512>::new(public_key);
+          verifying_key.verify(data, &signature).is_ok()
+        }
+        _ => return Err(CryptoError::UnsupportedAlgorithm),
+      }
+    }
+    Algorithm::RsaPss => {
+      let public_key = read_rsa_public_key(args.key)?;
+      let signature = args.signature.as_ref();
+
+      let salt_len = args
+        .salt_length
+        .ok_or_else(|| CryptoError::MissingArgumentSaltLength)?
+        as usize;
+
+      match args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)? {
+        CryptoHash::Sha1 => {
+          let pss = Pss::new_with_salt::<Sha1>(salt_len);
+          let hashed = Sha1::digest(data);
+          pss.verify(&public_key, &hashed, signature).is_ok()
+        }
+        CryptoHash::Sha256 => {
+          let pss = Pss::new_with_salt::<Sha256>(salt_len);
+          let hashed = Sha256::digest(data);
+          pss.verify(&public_key, &hashed, signature).is_ok()
+        }
+        CryptoHash::Sha384 => {
+          let pss = Pss::new_with_salt::<Sha384>(salt_len);
+          let hashed = Sha384::digest(data);
+          pss.verify(&public_key, &hashed, signature).is_ok()
+        }
+        CryptoHash::Sha512 => {
+          let pss = Pss::new_with_salt::<Sha512>(salt_len);
+          let hashed = Sha512::digest(data);
+          pss.verify(&public_key, &hashed, signature).is_ok()
+        }
+        _ => return Err(CryptoError::UnsupportedAlgorithm),
+      }
+    }
+    Algorithm::Hmac => {
+      let hash: HmacAlgorithm =
+        args.hash.ok_or_else(JsErrorBox::not_supported)?.into();
+      let key = HmacKey::new(hash, &args.key.data);
+      aws_lc_rs::hmac::verify(&key, data, &args.signature).is_ok()
+    }
+    Algorithm::Ecdsa => {
+      let hash = args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)?;
+      let named_curve =
+        args.named_curve.ok_or_else(JsErrorBox::not_supported)?;
+      match named_curve {
+        CryptoNamedCurve::P256 => {
+          let verifying_key = match args.key.r#type {
+            KeyType::Public => {
+              P256VerifyingKey::from_sec1_bytes(&args.key.data)
+                .map_err(|_| CryptoError::InvalidKeyFormat)?
+            }
+            KeyType::Private => {
+              let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)
+                .map_err(|_| CryptoError::InvalidKeyFormat)?;
+              let signing_key = P256SigningKey::from(secret_key);
+              *signing_key.verifying_key()
+            }
+            _ => return Err(CryptoError::InvalidKeyFormat),
+          };
+          match P256Signature::from_slice(&args.signature) {
+            Ok(signature) => {
+              let prehash = match hash {
+                CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
+                CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
+                CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
+                CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+                _ => return Err(CryptoError::UnsupportedAlgorithm),
+              };
+              verifying_key.verify_prehash(&prehash, &signature).is_ok()
+            }
+            _ => false,
+          }
+        }
+        CryptoNamedCurve::P384 => {
+          let verifying_key = match args.key.r#type {
+            KeyType::Public => {
+              P384VerifyingKey::from_sec1_bytes(&args.key.data)
+                .map_err(|_| CryptoError::InvalidKeyFormat)?
+            }
+            KeyType::Private => {
+              let secret_key = p384::SecretKey::from_pkcs8_der(&args.key.data)
+                .map_err(|_| CryptoError::InvalidKeyFormat)?;
+              let signing_key = P384SigningKey::from(secret_key);
+              *signing_key.verifying_key()
+            }
+            _ => return Err(CryptoError::InvalidKeyFormat),
+          };
+          match P384Signature::from_slice(&args.signature) {
+            Ok(signature) => {
+              let prehash = match hash {
+                CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
+                CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
+                CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
+                CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+                _ => return Err(CryptoError::UnsupportedAlgorithm),
+              };
+              verifying_key.verify_prehash(&prehash, &signature).is_ok()
+            }
+            _ => false,
+          }
+        }
+        CryptoNamedCurve::P521 => {
+          let verifying_key = match args.key.r#type {
+            KeyType::Public => {
+              P521VerifyingKey::from_sec1_bytes(&args.key.data)
+                .map_err(|_| CryptoError::InvalidKeyFormat)?
+            }
+            KeyType::Private => {
+              let secret_key = p521::SecretKey::from_pkcs8_der(&args.key.data)
+                .map_err(|_| CryptoError::InvalidKeyFormat)?;
+              // Construct inner ecdsa signing key to get verifying key
+              let inner_signing_key =
+                ecdsa::SigningKey::<p521::NistP521>::from(secret_key);
+              P521VerifyingKey::from(*inner_signing_key.verifying_key())
+            }
+            _ => return Err(CryptoError::InvalidKeyFormat),
+          };
+          match P521Signature::from_slice(&args.signature) {
+            Ok(signature) => {
+              let prehash = match hash {
+                CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
+                CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
+                CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
+                CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+                _ => return Err(CryptoError::UnsupportedAlgorithm),
+              };
+              // P-521 field size is 66 bytes; bits2field requires at least
+              // half that (33 bytes). Left-pad shorter hashes to meet the
+              // minimum.
+              let prehash = if prehash.len() < 33 {
+                let mut padded = vec![0u8; 33 - prehash.len()];
+                padded.extend_from_slice(&prehash);
+                padded
+              } else {
+                prehash
+              };
+              verifying_key.verify_prehash(&prehash, &signature).is_ok()
+            }
+            _ => false,
+          }
+        }
+      }
+    }
+    _ => return Err(CryptoError::UnsupportedAlgorithm),
+  };
+
+  Ok(verification)
+}
+
+// See the comment on `op_crypto_sign_key_sync`. HMAC verify on token-sized
+// payloads is dominated by the spawn_blocking round-trip; the JS dispatch
+// routes HMAC <= 64 KiB to this op.
+#[op2]
+pub fn op_crypto_verify_key_sync(
+  #[scoped] args: VerifyArg,
+  #[buffer] zero_copy: JsBuffer,
+) -> Result<bool, CryptoError> {
+  verify_inner(args, &zero_copy)
+}
+
 #[op2]
 pub async fn op_crypto_verify_key(
   #[scoped] args: VerifyArg,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<bool, CryptoError> {
-  deno_core::unsync::spawn_blocking(move || {
-    let data = &*zero_copy;
-    let algorithm = args.algorithm;
-
-    let verification = match algorithm {
-      Algorithm::RsassaPkcs1v15 => {
-        use rsa::pkcs1v15::Signature;
-        use rsa::pkcs1v15::VerifyingKey;
-        let public_key = read_rsa_public_key(args.key)?;
-        let signature: Signature = (&*args.signature).try_into()?;
-        match args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)? {
-          CryptoHash::Sha1 => {
-            let verifying_key = VerifyingKey::<Sha1>::new(public_key);
-            verifying_key.verify(data, &signature).is_ok()
-          }
-          CryptoHash::Sha256 => {
-            let verifying_key = VerifyingKey::<Sha256>::new(public_key);
-            verifying_key.verify(data, &signature).is_ok()
-          }
-          CryptoHash::Sha384 => {
-            let verifying_key = VerifyingKey::<Sha384>::new(public_key);
-            verifying_key.verify(data, &signature).is_ok()
-          }
-          CryptoHash::Sha512 => {
-            let verifying_key = VerifyingKey::<Sha512>::new(public_key);
-            verifying_key.verify(data, &signature).is_ok()
-          }
-          _ => return Err(CryptoError::UnsupportedAlgorithm),
-        }
-      }
-      Algorithm::RsaPss => {
-        let public_key = read_rsa_public_key(args.key)?;
-        let signature = args.signature.as_ref();
-
-        let salt_len = args
-          .salt_length
-          .ok_or_else(|| CryptoError::MissingArgumentSaltLength)?
-          as usize;
-
-        match args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)? {
-          CryptoHash::Sha1 => {
-            let pss = Pss::new_with_salt::<Sha1>(salt_len);
-            let hashed = Sha1::digest(data);
-            pss.verify(&public_key, &hashed, signature).is_ok()
-          }
-          CryptoHash::Sha256 => {
-            let pss = Pss::new_with_salt::<Sha256>(salt_len);
-            let hashed = Sha256::digest(data);
-            pss.verify(&public_key, &hashed, signature).is_ok()
-          }
-          CryptoHash::Sha384 => {
-            let pss = Pss::new_with_salt::<Sha384>(salt_len);
-            let hashed = Sha384::digest(data);
-            pss.verify(&public_key, &hashed, signature).is_ok()
-          }
-          CryptoHash::Sha512 => {
-            let pss = Pss::new_with_salt::<Sha512>(salt_len);
-            let hashed = Sha512::digest(data);
-            pss.verify(&public_key, &hashed, signature).is_ok()
-          }
-          _ => return Err(CryptoError::UnsupportedAlgorithm),
-        }
-      }
-      Algorithm::Hmac => {
-        let hash: HmacAlgorithm =
-          args.hash.ok_or_else(JsErrorBox::not_supported)?.into();
-        let key = HmacKey::new(hash, &args.key.data);
-        aws_lc_rs::hmac::verify(&key, data, &args.signature).is_ok()
-      }
-      Algorithm::Ecdsa => {
-        let hash = args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)?;
-        let named_curve =
-          args.named_curve.ok_or_else(JsErrorBox::not_supported)?;
-        match named_curve {
-          CryptoNamedCurve::P256 => {
-            let verifying_key = match args.key.r#type {
-              KeyType::Public => {
-                P256VerifyingKey::from_sec1_bytes(&args.key.data)
-                  .map_err(|_| CryptoError::InvalidKeyFormat)?
-              }
-              KeyType::Private => {
-                let secret_key =
-                  p256::SecretKey::from_pkcs8_der(&args.key.data)
-                    .map_err(|_| CryptoError::InvalidKeyFormat)?;
-                let signing_key = P256SigningKey::from(secret_key);
-                *signing_key.verifying_key()
-              }
-              _ => return Err(CryptoError::InvalidKeyFormat),
-            };
-            match P256Signature::from_slice(&args.signature) {
-              Ok(signature) => {
-                let prehash = match hash {
-                  CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
-                  CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
-                  CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
-                  CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
-                  _ => return Err(CryptoError::UnsupportedAlgorithm),
-                };
-                verifying_key.verify_prehash(&prehash, &signature).is_ok()
-              }
-              _ => false,
-            }
-          }
-          CryptoNamedCurve::P384 => {
-            let verifying_key = match args.key.r#type {
-              KeyType::Public => {
-                P384VerifyingKey::from_sec1_bytes(&args.key.data)
-                  .map_err(|_| CryptoError::InvalidKeyFormat)?
-              }
-              KeyType::Private => {
-                let secret_key =
-                  p384::SecretKey::from_pkcs8_der(&args.key.data)
-                    .map_err(|_| CryptoError::InvalidKeyFormat)?;
-                let signing_key = P384SigningKey::from(secret_key);
-                *signing_key.verifying_key()
-              }
-              _ => return Err(CryptoError::InvalidKeyFormat),
-            };
-            match P384Signature::from_slice(&args.signature) {
-              Ok(signature) => {
-                let prehash = match hash {
-                  CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
-                  CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
-                  CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
-                  CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
-                  _ => return Err(CryptoError::UnsupportedAlgorithm),
-                };
-                verifying_key.verify_prehash(&prehash, &signature).is_ok()
-              }
-              _ => false,
-            }
-          }
-          CryptoNamedCurve::P521 => {
-            let verifying_key = match args.key.r#type {
-              KeyType::Public => {
-                P521VerifyingKey::from_sec1_bytes(&args.key.data)
-                  .map_err(|_| CryptoError::InvalidKeyFormat)?
-              }
-              KeyType::Private => {
-                let secret_key =
-                  p521::SecretKey::from_pkcs8_der(&args.key.data)
-                    .map_err(|_| CryptoError::InvalidKeyFormat)?;
-                // Construct inner ecdsa signing key to get verifying key
-                let inner_signing_key =
-                  ecdsa::SigningKey::<p521::NistP521>::from(secret_key);
-                P521VerifyingKey::from(*inner_signing_key.verifying_key())
-              }
-              _ => return Err(CryptoError::InvalidKeyFormat),
-            };
-            match P521Signature::from_slice(&args.signature) {
-              Ok(signature) => {
-                let prehash = match hash {
-                  CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
-                  CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
-                  CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
-                  CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
-                  _ => return Err(CryptoError::UnsupportedAlgorithm),
-                };
-                // P-521 field size is 66 bytes; bits2field requires at least
-                // half that (33 bytes). Left-pad shorter hashes to meet the
-                // minimum.
-                let prehash = if prehash.len() < 33 {
-                  let mut padded = vec![0u8; 33 - prehash.len()];
-                  padded.extend_from_slice(&prehash);
-                  padded
-                } else {
-                  prehash
-                };
-                verifying_key.verify_prehash(&prehash, &signature).is_ok()
-              }
-              _ => false,
-            }
-          }
-        }
-      }
-      _ => return Err(CryptoError::UnsupportedAlgorithm),
-    };
-
-    Ok(verification)
-  })
-  .await?
+  deno_core::unsync::spawn_blocking(move || verify_inner(args, &zero_copy))
+    .await?
 }
 
 #[derive(deno_core::FromV8)]
