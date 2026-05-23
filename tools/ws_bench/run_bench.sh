@@ -4,8 +4,8 @@
 # Runs the ext/websocket fast-TCP path benchmark in the same load
 # shapes as fastwebsockets PR #133's bench: conns/payload pairs of
 # 100/20, 10/1024, 10/16384, 200/16384, 500/16384. Each shape runs
-# twice (1× warmup, 1× measure) on both the fast path and the
-# generic fallback path (via DENO_WS_DISABLE_FAST_TCP=1) and prints
+# twice (1× warmup, 1× measure) on both the fast path (opt-in via
+# DENO_WS_FAST_TCP=1) and the default generic path, then prints
 # msg/s plus relative speedup.
 #
 # Usage:
@@ -60,8 +60,8 @@ echo "shape         | fast (mps)  | base (mps)  | speedup"
 echo "--------------+-------------+-------------+--------"
 for shape in "${SHAPES[@]}"; do
   IFS=' ' read -r conns payload <<<"$shape"
-  fast_mps=$(run_one "fast"     "$conns" "$payload" "" | tail -1)
-  base_mps=$(run_one "baseline" "$conns" "$payload" "DENO_WS_DISABLE_FAST_TCP=1" | tail -1)
+  fast_mps=$(run_one "fast"     "$conns" "$payload" "DENO_WS_FAST_TCP=1" | tail -1)
+  base_mps=$(run_one "baseline" "$conns" "$payload" "" | tail -1)
   if [[ "${base_mps:-0}" -gt 0 ]]; then
     speed=$(awk -v f="$fast_mps" -v b="$base_mps" 'BEGIN{printf "%.3fx", f/b}')
   else

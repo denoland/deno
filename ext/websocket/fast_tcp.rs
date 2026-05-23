@@ -556,12 +556,14 @@ where
   }
 }
 
-/// Whether the fast path is enabled. Set `DENO_WS_DISABLE_FAST_TCP=1`
-/// to fall back to the generic path for any reason (regression hunt,
-/// instrumented build, etc.).
+/// Whether the fast path is enabled. Opt-in via `DENO_WS_FAST_TCP=1`.
+///
+/// This is opt-in for now while the engine read path (in-place unmask,
+/// scratch-buf parsing, drop-time cleanup ordering) is being settled
+/// against Deno's existing op_ws_next_event leak/cleanup expectations
+/// and the Autobahn protocol-conformance suite. The generic
+/// `WebSocketStream` path remains the default and stays byte-identical
+/// to pre-PR behavior.
 pub(crate) fn fast_tcp_enabled() -> bool {
-  match std::env::var("DENO_WS_DISABLE_FAST_TCP") {
-    Ok(v) => v.is_empty(),
-    Err(_) => true,
-  }
+  matches!(std::env::var("DENO_WS_FAST_TCP").as_deref(), Ok("1"))
 }
