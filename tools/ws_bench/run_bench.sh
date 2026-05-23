@@ -16,7 +16,7 @@
 set -euo pipefail
 
 DENO_BIN="${1:?usage: $0 /path/to/deno}"
-ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 LT="$ROOT/tools/ws_bench/target/release/ws_load_test"
 SERVER="$ROOT/tools/ws_bench/echo_server.ts"
 
