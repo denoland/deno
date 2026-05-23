@@ -34,6 +34,7 @@ use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
+use crate::util::path::relative_path;
 
 mod approve_scripts;
 mod audit;
@@ -426,7 +427,7 @@ fn load_configs(
 }
 
 fn path_distance(a: &Path, b: &Path) -> usize {
-  let diff = pathdiff::diff_paths(a, b);
+  let diff = relative_path(a, b);
   let Some(diff) = diff else {
     return usize::MAX;
   };

@@ -29,7 +29,7 @@ use sys_traits::FsWrite;
 use sys_traits::PathsInErrorsExt;
 
 use crate::bin_entries::EntrySetupOutcome;
-use crate::bin_entries::relative_path;
+use crate::path::relative_path;
 
 // note: parts of logic and pretty much all of the shims ported from https://github.com/npm/cmd-shim
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -325,7 +325,7 @@ pub fn set_up_bin_shim<'a>(
   };
 
   let rel_target =
-    relative_path(bin_node_modules_dir_path, &target_file).unwrap();
+    relative_path(&target_file, bin_node_modules_dir_path).unwrap();
   let shebang = resolve_shebang(sys.as_ref(), &target_file);
   let shim = ShimData::new(rel_target.to_string_lossy(), shebang);
 

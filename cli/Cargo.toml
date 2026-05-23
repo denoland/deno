@@ -148,7 +148,6 @@ opentelemetry-otlp.workspace = true
 opentelemetry-semantic-conventions.workspace = true
 opentelemetry_sdk.workspace = true
 p256.workspace = true
-pathdiff.workspace = true
 percent-encoding.workspace = true
 phf.workspace = true
 pretty_yaml.workspace = true

@@ -26,6 +26,8 @@ use sys_traits::FsWrite;
 use sys_traits::PathsInErrorsExt;
 use sys_traits::SysWithPathsInErrors;
 
+use crate::path::relative_path;
+
 /// Returns the name of the default binary for the given package.
 /// This is the package name without the organization (`@org/`), if any.
 fn default_bin_name(package: &NpmResolutionPackage) -> &str {
@@ -436,10 +438,6 @@ impl EntrySetupOutcome<'_> {
   }
 }
 
-fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
-  pathdiff::diff_paths(to, from)
-}
-
 fn symlink_bin_entry<'a>(
   sys: &(impl FsOpen + FsSymlinkFile + FsRemoveFile + FsReadLink),
   package: &'a NpmResolutionPackage,
@@ -453,7 +451,7 @@ fn symlink_bin_entry<'a>(
   let link = bin_node_modules_dir_path.join(bin_name);
   let original = package_path.join(bin_script);
 
-  let original_relative = relative_path(bin_node_modules_dir_path, &original)
+  let original_relative = relative_path(&original, bin_node_modules_dir_path)
     .map(Cow::Owned)
     .unwrap_or_else(|| Cow::Borrowed(&original));
 
