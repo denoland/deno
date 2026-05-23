@@ -98,13 +98,13 @@ Object.defineProperty(globalThis, "AbortController", {
 | structuredClone                  | messagePort.structuredClone              | true       | true         | true      |
 
 Then from rust, provide:
-`deno_web::deno_web::init::<Permissions>(Arc<BlobStore>, Option<Url>, bool, InMemoryBroadcastChannel)`
+`deno_web::deno_web::init::<Permissions>(Arc<dyn BlobStoreTrait>, Option<Url>, bool, InMemoryBroadcastChannel)`
 in the `extensions` field of your `RuntimeOptions`
 
 Where:
 
 - `Permissions` is a struct implementing `deno_web::TimersPermission`
-- `Arc<BlobStore>` can be provided by `Default::default()`
+- `Arc<dyn BlobStoreTrait>` can be provided by `BlobStore::default_arc()`
 - `Option<Url>` provides an optional base URL for certain ops
 - `bool` indicates whether window features are enabled at initialization
 - `InMemoryBroadcastChannel` can be provided by `Default::default()`
