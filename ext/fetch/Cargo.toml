@@ -57,3 +57,7 @@ rustls.workspace = true
 [[bench]]
 name = "body"
 harness = false
+
+[[bench]]
+name = "extract_body"
+harness = false

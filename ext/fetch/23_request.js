@@ -537,7 +537,7 @@ class Request {
 
     // 37.
     if (init.body !== undefined && init.body !== null) {
-      const res = extractBody(init.body);
+      const res = extractBody(init.body, init.transfer);
       initBody = res.body;
       if (res.contentType !== null && !this[_headers].has("content-type")) {
         this[_headers].append("Content-Type", res.contentType);
@@ -776,6 +776,14 @@ webidl.converters["RequestInit"] = webidl.createDictionaryConverter(
       ),
     },
     { key: "client", converter: webidl.converters.any },
+    // Deno-specific: when true, BufferSource bodies are transferred (their
+    // backing ArrayBuffer is detached) rather than memcpy'd. Defaults to
+    // false; spec-compatible additive extension.
+    {
+      key: "transfer",
+      defaultValue: false,
+      converter: webidl.converters["boolean"],
+    },
   ],
 );
 

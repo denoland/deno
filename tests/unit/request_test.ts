@@ -180,3 +180,31 @@ Deno.test(function requestCloneCopiesAllProperties() {
   assertEquals(cloned.referrer, "http://example.com/");
   assertEquals(cloned.referrerPolicy, "strict-origin");
 });
+
+// `transfer: true` opt-in detaches the source ArrayBuffer for POST bodies;
+// the default path keeps the source intact (spec-mandated copy).
+Deno.test(function requestInitTransferDetachesBuffer() {
+  const buf = new Uint8Array([1, 2, 3, 4, 5]);
+  new Request("https://example.com/", {
+    method: "POST",
+    body: buf,
+    transfer: true,
+  });
+  assertEquals(buf.byteLength, 0);
+});
+
+Deno.test(function requestInitTransferDefaultIsCopy() {
+  const buf = new Uint8Array([1, 2, 3]);
+  new Request("https://example.com/", { method: "POST", body: buf });
+  assertEquals(buf.byteLength, 3);
+});
+
+Deno.test(async function requestInitTransferPreservesBodyBytes() {
+  const original = new Uint8Array([72, 105]); // "Hi"
+  const request = new Request("https://example.com/", {
+    method: "POST",
+    body: original,
+    transfer: true,
+  });
+  assertEquals(await request.text(), "Hi");
+});

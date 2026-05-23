@@ -331,7 +331,7 @@ class Response {
 
     let bodyWithType = null;
     if (body !== null) {
-      bodyWithType = extractBody(body);
+      bodyWithType = extractBody(body, init.transfer);
     }
     initializeAResponse(this, init, bodyWithType);
     this[_brand] = _brand;
@@ -465,6 +465,13 @@ const webidlConvertersResponseInit = webidl.converters["ResponseInit"] = webidl
     }, {
       key: "headers",
       converter: webidlConvertersHeadersInit,
+    }, {
+      // Deno-specific: when true, BufferSource bodies are transferred
+      // (their backing ArrayBuffer is detached) rather than memcpy'd.
+      // Spec-compatible additive extension; defaults to false.
+      key: "transfer",
+      defaultValue: false,
+      converter: webidl.converters["boolean"],
     }],
   );
 const webidlConvertersResponseInitFast = webidl
@@ -475,7 +482,12 @@ const webidlConvertersResponseInitFast = webidl
     opts,
   ) {
     if (init === undefined || init === null) {
-      return { status: 200, statusText: "", headers: undefined };
+      return {
+        status: 200,
+        statusText: "",
+        headers: undefined,
+        transfer: false,
+      };
     }
     // Fast path, if not a proxy
     if (typeof init === "object" && !core.isProxy(init)) {
@@ -489,7 +501,10 @@ const webidlConvertersResponseInitFast = webidl
       const headers = init.headers !== undefined
         ? webidlConvertersHeadersInit(init.headers)
         : undefined;
-      return { status, statusText, headers };
+      // Single explicit boolean compare keeps the fast path on V8's hidden
+      // class for the common shape of `transfer` (undefined / true / false).
+      const transfer = init.transfer === true;
+      return { status, statusText, headers, transfer };
     }
     // Slow default path
     return webidlConvertersResponseInit(init, prefix, context, opts);

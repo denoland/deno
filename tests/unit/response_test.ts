@@ -100,3 +100,42 @@ Deno.test(async function responseBodyUsed() {
   response.body;
   assert(response.bodyUsed);
 });
+
+// `transfer: true` opt-in detaches the source ArrayBuffer; the default path
+// keeps the source intact (spec-mandated copy).
+Deno.test(function responseInitTransferDetachesBuffer() {
+  const buf = new Uint8Array([1, 2, 3, 4, 5]);
+  new Response(buf, { transfer: true });
+  assertEquals(buf.byteLength, 0);
+
+  const ab = new Uint8Array([6, 7, 8]).buffer;
+  new Response(ab, { transfer: true });
+  assertEquals(ab.byteLength, 0);
+});
+
+Deno.test(function responseInitTransferDefaultIsCopy() {
+  const buf = new Uint8Array([1, 2, 3]);
+  new Response(buf);
+  assertEquals(buf.byteLength, 3);
+
+  const buf2 = new Uint8Array([1, 2, 3]);
+  new Response(buf2, { transfer: false });
+  assertEquals(buf2.byteLength, 3);
+});
+
+Deno.test(async function responseInitTransferPreservesBodyBytes() {
+  const original = new Uint8Array([72, 101, 108, 108, 111]); // "Hello"
+  const response = new Response(original, { transfer: true });
+  assertEquals(await response.text(), "Hello");
+});
+
+// A partial view (byteOffset > 0 or byteLength < buffer.byteLength) cannot be
+// transferred — the spec-mandated copy is the only way to extract just the
+// view's bytes. The flag is silently honored by falling through to slice.
+Deno.test(function responseInitTransferPartialViewFallsBackToSlice() {
+  const ab = new ArrayBuffer(16);
+  const partial = new Uint8Array(ab, 4, 8);
+  new Response(partial, { transfer: true });
+  assertEquals(ab.byteLength, 16, "underlying AB stays attached");
+  assertEquals(partial.byteLength, 8, "view stays usable");
+});

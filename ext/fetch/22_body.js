@@ -10,6 +10,8 @@ const {
 } = core;
 const {
   ArrayBufferIsView,
+  ArrayBufferPrototypeGetByteLength,
+  ArrayBufferPrototypeTransfer,
   ArrayPrototypeMap,
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
@@ -415,10 +417,34 @@ function packageData(bytes, type, mimeType) {
 }
 
 /**
+ * Take ownership of `view` if it covers the full underlying ArrayBuffer
+ * (byteOffset === 0 and byteLength === buffer.byteLength); the original
+ * ArrayBuffer is detached and we wrap the transferred buffer in a fresh
+ * Uint8Array. For partial views the spec-mandated copy is unavoidable, so
+ * fall back to `slice`.
+ *
+ * @param {Uint8Array} view
+ * @returns {Uint8Array}
+ */
+function transferOrSliceView(view) {
+  const buffer = TypedArrayPrototypeGetBuffer(view);
+  const offset = TypedArrayPrototypeGetByteOffset(view);
+  const length = TypedArrayPrototypeGetByteLength(view);
+  if (offset === 0 && length === ArrayBufferPrototypeGetByteLength(buffer)) {
+    return new Uint8Array(ArrayBufferPrototypeTransfer(buffer));
+  }
+  return TypedArrayPrototypeSlice(view);
+}
+
+/**
  * @param {BodyInit} object
+ * @param {boolean} [transfer] Deno-specific opt-in: detach the source
+ *   ArrayBuffer instead of memcpy'ing its bytes when the source is a
+ *   BufferSource. Honored only for ArrayBuffer / ArrayBufferView inputs;
+ *   ignored for Blob / FormData / URLSearchParams / ReadableStream / string.
  * @returns {{body: InnerBody, contentType: string | null}}
  */
-function extractBody(object) {
+function extractBody(object, transfer) {
   /** @type {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} */
   let stream;
   let source = null;
@@ -454,9 +480,13 @@ function extractBody(object) {
         DataViewPrototypeGetByteLength(/** @type {DataView} */ (object)),
       );
     }
-    source = TypedArrayPrototypeSlice(object);
+    source = transfer
+      ? transferOrSliceView(object)
+      : TypedArrayPrototypeSlice(object);
   } else if (isArrayBuffer(object)) {
-    source = TypedArrayPrototypeSlice(new Uint8Array(object));
+    source = transfer
+      ? new Uint8Array(ArrayBufferPrototypeTransfer(object))
+      : TypedArrayPrototypeSlice(new Uint8Array(object));
   } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, object)) {
     const res = formDataToBlob(object);
     stream = res.stream();
