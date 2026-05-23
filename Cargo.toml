@@ -270,7 +270,6 @@ prettyplease = "0.2.31"
 proc-macro2 = "1.0"
 proptest = "1"
 prost = "0.13"
-quick-junit = "0.3.5"
 quinn = { version = "0.11.8", default-features = false }
 rand = "=0.8.5"
 rayon = "1.11.0"
