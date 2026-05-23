@@ -74,32 +74,26 @@ impl AsyncRead for TcpReadStream {
       }
       return Poll::Ready(Ok(()));
     }
-    // tokio's `TcpStream::poll_read` is implemented via
-    // `poll_read_priv`, which only needs a `&TcpStream` internally —
-    // exposing it through `Pin<&mut Self>` here is just because the
-    // `AsyncRead` contract requires `&mut Self`.
+    // Loop to drain spurious `WouldBlock` returns from `try_read`:
+    // when `poll_read_ready` says the socket is readable but
+    // `try_read` then refuses, tokio has already cleared its internal
+    // readiness flag, so we retry `poll_read_ready` which will park
+    // the task properly. We must *not* return `Poll::Ready(Ok(()))`
+    // with 0 bytes filled here — `AsyncReadExt::read` and friends
+    // interpret that as EOF and tear the connection down.
     let tcp: &TcpStream = &self.tcp;
-    tcp.poll_read_ready(cx).map(|res| {
-      res.and_then(|()| {
-        let unfilled = buf.initialize_unfilled();
-        match tcp.try_read(unfilled) {
-          Ok(n) => {
-            buf.advance(n);
-            Ok(())
-          }
-          Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-            // Spurious wakeup — `Poll::Pending`. Returning Ok(()) here
-            // (Poll::Ready(Ok(()))) with 0 bytes filled would look
-            // like EOF to the caller. Re-poll-read-ready instead:
-            // tokio clears the readiness bit on `try_read` returning
-            // WouldBlock, so the next call to `poll_read_ready` will
-            // wait for fresh readiness rather than spinning.
-            Ok(())
-          }
-          Err(e) => Err(e),
+    loop {
+      std::task::ready!(tcp.poll_read_ready(cx))?;
+      let unfilled = buf.initialize_unfilled();
+      match tcp.try_read(unfilled) {
+        Ok(n) => {
+          buf.advance(n);
+          return Poll::Ready(Ok(()));
         }
-      })
-    })
+        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
+        Err(e) => return Poll::Ready(Err(e)),
+      }
+    }
   }
 }
 
