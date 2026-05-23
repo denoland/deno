@@ -288,10 +288,10 @@ impl ImageBitmapRenderingContext {
             .queue_submit(*queue, &[command_buffer])
             .map_err(|(_, e)| JsErrorBox::from_err(GPUError::from(e)))?;
 
-          instance.texture_view_drop(swap_view_id).unwrap();
+          instance.texture_view_drop(swap_view_id);
           instance.command_encoder_drop(command_encoder);
           instance.bind_group_drop(bind_group);
-          instance.texture_view_drop(view).unwrap();
+          instance.texture_view_drop(view);
           instance.texture_drop(texture);
         }
       }
@@ -376,7 +376,7 @@ impl ImageBitmapRenderingContext {
             .queue_submit(*queue, &[command_buffer])
             .map_err(|(_, e)| JsErrorBox::from_err(GPUError::from(e)))?;
 
-          instance.texture_view_drop(swap_view_id).unwrap();
+          instance.texture_view_drop(swap_view_id);
           instance.command_encoder_drop(command_encoder);
         }
       }
@@ -586,7 +586,7 @@ pub fn create<'s>(
       device,
       &wgpu_core::binding_model::PipelineLayoutDescriptor {
         label: None,
-        bind_group_layouts: vec![bind_group_layout].into(),
+        bind_group_layouts: vec![Some(bind_group_layout)].into(),
         immediate_size: 0,
       },
       None,

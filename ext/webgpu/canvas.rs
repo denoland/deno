@@ -22,6 +22,7 @@ use crate::device::GPUDevice;
 use crate::error::GPUError;
 use crate::texture::GPUTexture;
 use crate::texture::GPUTextureFormat;
+use crate::webidl::GPUTextureUsageFlags;
 
 pub enum ContextData {
   Canvas(Rc<RefCell<DynamicImage>>),
@@ -243,8 +244,7 @@ impl GPUCanvasContext {
     &self,
     configuration: &GPUCanvasConfiguration,
   ) -> Result<Descriptor, JsErrorBox> {
-    let usage = wgpu_types::TextureUsages::from_bits(configuration.usage)
-      .ok_or_else(|| JsErrorBox::type_error("usage is not valid"))?;
+    let usage = configuration.usage.0;
     let view_formats = configuration
       .view_formats
       .clone()
@@ -428,9 +428,8 @@ impl GPUCanvasContext {
 pub struct GPUCanvasConfiguration {
   pub device: Ref<GPUDevice>,
   pub format: GPUTextureFormat,
-  #[webidl(default = wgpu_types::TextureUsages::RENDER_ATTACHMENT.bits())]
-  #[options(enforce_range = true)]
-  pub usage: u32,
+  #[webidl(default = GPUTextureUsageFlags(wgpu_types::TextureUsages::RENDER_ATTACHMENT))]
+  usage: GPUTextureUsageFlags,
   #[webidl(default = vec![])]
   pub view_formats: Vec<GPUTextureFormat>,
   pub tone_mapping: GPUCanvasToneMapping, // TODO(@crowlkats): support

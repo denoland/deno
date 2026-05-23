@@ -3,9 +3,9 @@
 
 import { join, ROOT_PATH } from "./util.js";
 
-const COMMIT = "68c74ff242b9b0dfada93d5be90fb3d6b9e29746";
+const COMMIT = "ae87ffe28041a7ebd82d8d3c2fa0e2343f0f0234";
 const REPO = "gfx-rs/wgpu";
-const V_WGPU = "28.0.0";
+const V_WGPU = "29.0.1";
 const TARGET_DIR = join(ROOT_PATH, "ext", "webgpu");
 
 async function bash(subcmd, opts = {}) {
