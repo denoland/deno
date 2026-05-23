@@ -649,18 +649,22 @@ Deno.test({
 Deno.test({
   name: "[node/buffer] base64Slice allows omitting arguments",
   fn() {
-    const buf = Buffer.from([1, 2, 3]);
-    assertEquals(Buffer.prototype.base64Slice.call(buf), "AQID");
-    assertEquals(Buffer.prototype.base64Slice.call(buf, 0, 3), "AQID");
+    const buf = Buffer.of(1, 2, 3);
+    // @ts-expect-error Buffer.prototype.base64Slice is an undocumented API
+    assertEquals(buf.base64Slice(), "AQID");
+    // @ts-expect-error Buffer.prototype.base64Slice is an undocumented API
+    assertEquals(buf.base64Slice(0, 3), "AQID");
   },
 });
 
 Deno.test({
   name: "[node/buffer] base64urlSlice allows omitting arguments",
   fn() {
-    const buf = Buffer.from([1, 2, 3]);
-    assertEquals(Buffer.prototype.base64urlSlice.call(buf), "AQID");
-    assertEquals(Buffer.prototype.base64urlSlice.call(buf, 0, 3), "AQID");
+    const buf = Buffer.of(1, 2, 3);
+    // @ts-expect-error Buffer.prototype.base64urlSlice is an undocumented API
+    assertEquals(buf.base64urlSlice(), "AQID");
+    // @ts-expect-error Buffer.prototype.base64urlSlice is an undocumented API
+    assertEquals(buf.base64urlSlice(0, 3), "AQID");
   },
 });
 
