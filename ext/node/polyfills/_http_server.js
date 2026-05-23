@@ -27,6 +27,7 @@
 import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
+  ArrayPrototypeIncludes,
   Error,
   MathMin,
   NumberIsFinite,
@@ -70,6 +71,11 @@ const {
   ERR_OUT_OF_RANGE,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const {
+  kDestroy,
+  kTimeout,
+  suspendTimeout,
+} = core.loadExtScript("ext:deno_node/internal/timers.mjs");
 const {
   validateBoolean,
   validateFunction,
@@ -530,6 +536,9 @@ function connectionListenerInternal(server, socket) {
     outgoingData: 0,
     requestsCount: 0,
     keepAliveTimeoutSet: false,
+    keepAliveTimeout: null,
+    keepAliveTimeoutMsecs: 0,
+    keepAliveTimeoutSuspended: false,
   };
   state.onData = socketOnData.bind(undefined, server, socket, parser, state);
   state.onEnd = socketOnEnd.bind(undefined, server, socket, parser, state);
@@ -599,6 +608,7 @@ function socketOnTimeout() {
 }
 
 function socketOnClose(socket, state) {
+  destroySuspendedKeepAliveTimeout(state);
   freeParser(socket.parser, undefined, socket);
   abortIncoming(state.incoming);
 }
@@ -687,10 +697,30 @@ function onParserExecuteCommon(server, socket, parser, state, ret, d) {
   }
 }
 
-function resetSocketTimeout(server, socket, state) {
+function resetSocketTimeout(server, socket, state, allowKeepAliveReuse = true) {
   if (!state.keepAliveTimeoutSet) return;
+
+  const keepAliveTimeout = state.keepAliveTimeout;
+  if (
+    allowKeepAliveReuse &&
+    server.timeout === 0 &&
+    socket.setTimeout === net.Socket.prototype.setTimeout &&
+    socket[kTimeout] === keepAliveTimeout &&
+    ArrayPrototypeIncludes(socket.listeners("timeout"), socketOnTimeout)
+  ) {
+    suspendTimeout(keepAliveTimeout);
+    socket[kTimeout] = null;
+    socket.timeout = 0;
+    state.keepAliveTimeoutSet = false;
+    state.keepAliveTimeoutSuspended = true;
+    return;
+  }
+
   socket.setTimeout(server.timeout || 0);
   state.keepAliveTimeoutSet = false;
+  state.keepAliveTimeout = null;
+  state.keepAliveTimeoutMsecs = 0;
+  state.keepAliveTimeoutSuspended = false;
 }
 
 function socketOnDrain(socket, state) {
@@ -707,6 +737,17 @@ function socketOnDrain(socket, state) {
     msg[kNeedDrain] = false;
     msg.emit("drain");
   }
+}
+
+function destroySuspendedKeepAliveTimeout(state) {
+  if (!state.keepAliveTimeoutSuspended) return;
+  const keepAliveTimeout = state.keepAliveTimeout;
+  if (keepAliveTimeout !== null) {
+    keepAliveTimeout[kDestroy]();
+  }
+  state.keepAliveTimeout = null;
+  state.keepAliveTimeoutMsecs = 0;
+  state.keepAliveTimeoutSuspended = false;
 }
 
 const badRequestResponse =
@@ -766,7 +807,7 @@ function updateOutgoingData(socket, state, delta) {
 // ---- parserOnIncoming: creates ServerResponse, emits 'request' ----
 
 function parserOnIncoming(server, socket, state, req, keepAlive) {
-  resetSocketTimeout(server, socket, state);
+  resetSocketTimeout(server, socket, state, !req.upgrade);
 
   if (req.upgrade && req.method !== "CONNECT") {
     if (
@@ -1040,8 +1081,34 @@ function resOnFinish(req, res, socket, state, server) {
         : 0;
 
       if (keepAliveTimeout) {
-        socket.setTimeout(keepAliveTimeout + 1000);
+        const timeoutMsecs = keepAliveTimeout + 1000;
+        const suspendedTimeout = state.keepAliveTimeout;
+        if (
+          state.keepAliveTimeoutSuspended &&
+          socket.setTimeout === net.Socket.prototype.setTimeout &&
+          socket[kTimeout] === null &&
+          state.keepAliveTimeoutMsecs === timeoutMsecs
+        ) {
+          socket[kTimeout] = suspendedTimeout;
+          socket.timeout = timeoutMsecs;
+          suspendedTimeout.refresh();
+        } else {
+          if (state.keepAliveTimeoutSuspended) {
+            suspendedTimeout[kDestroy]();
+          }
+          socket.setTimeout(timeoutMsecs);
+          state.keepAliveTimeout = socket[kTimeout];
+          state.keepAliveTimeoutMsecs = timeoutMsecs;
+        }
         state.keepAliveTimeoutSet = true;
+        state.keepAliveTimeoutSuspended = false;
+      } else if (
+        state.keepAliveTimeoutSuspended
+      ) {
+        state.keepAliveTimeout[kDestroy]();
+        state.keepAliveTimeout = null;
+        state.keepAliveTimeoutMsecs = 0;
+        state.keepAliveTimeoutSuspended = false;
       }
     }
   } else {
