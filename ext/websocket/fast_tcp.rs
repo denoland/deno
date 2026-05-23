@@ -10,9 +10,20 @@
 //! `fastwebsockets::WebSocketRead` so behavior — including auto-pong,
 //! auto-close, pong surfacing for idle-timeout, and fragmentation
 //! reassembly — is byte-for-byte identical to the generic path.
+//!
+//! We keep the `TcpStream` shared between read and write through an
+//! `Rc<TcpStream>` rather than splitting via `TcpStream::into_split`.
+//! tokio's `OwnedWriteHalf::drop` calls `shutdown(SHUT_WR)` which
+//! would send an extra `FIN` on the write side before the inner
+//! `Arc<TcpStreamInner>` count reaches zero, shifting the
+//! peer-disconnect timing relative to the generic
+//! `tokio::io::split`-based path and tripping the
+//! `tests/unit/websocket_test.ts::websocketTlsSocketWorks` leak
+//! sanitizer on linux-aarch64 / linux-x86_64.
 
 use std::io::IoSlice;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::task::Poll;
 
 use bytes::Buf;
@@ -23,22 +34,26 @@ use fastwebsockets::WebSocketError;
 use tokio::io::AsyncRead;
 use tokio::io::ReadBuf;
 use tokio::net::TcpStream;
-use tokio::net::tcp::OwnedReadHalf;
-use tokio::net::tcp::OwnedWriteHalf;
 
-/// `AsyncRead` adapter over `OwnedReadHalf` that prepends any bytes
-/// already buffered by the upstream HTTP upgrade before delivering
-/// fresh bytes from the socket. Mirrors `stream::WebSocketStream`'s
-/// `pre` field for the split-TCP fast path.
+/// `AsyncRead` adapter over a shared `Rc<TcpStream>` that prepends any
+/// bytes already buffered by the upstream HTTP upgrade before
+/// delivering fresh bytes from the socket. Mirrors
+/// `stream::WebSocketStream`'s `pre` field for the fast-TCP path.
+///
+/// We poll the socket directly with `TcpStream::poll_read_ready` +
+/// `try_read` rather than going through `OwnedReadHalf` so that the
+/// write side can hold the same `Rc<TcpStream>` and use `try_write` /
+/// `try_write_vectored` without an `into_split` half-close on drop —
+/// see the module-level doc comment.
 pub(crate) struct TcpReadStream {
-  read_half: OwnedReadHalf,
+  tcp: Rc<TcpStream>,
   pre: Option<Bytes>,
 }
 
 impl TcpReadStream {
-  pub(crate) fn new(read_half: OwnedReadHalf, prefix: Option<Bytes>) -> Self {
+  pub(crate) fn new(tcp: Rc<TcpStream>, prefix: Option<Bytes>) -> Self {
     Self {
-      read_half,
+      tcp,
       pre: prefix.filter(|b| !b.is_empty()),
     }
   }
@@ -59,24 +74,47 @@ impl AsyncRead for TcpReadStream {
       }
       return Poll::Ready(Ok(()));
     }
-    Pin::new(&mut self.read_half).poll_read(cx, buf)
+    // tokio's `TcpStream::poll_read` is implemented via
+    // `poll_read_priv`, which only needs a `&TcpStream` internally —
+    // exposing it through `Pin<&mut Self>` here is just because the
+    // `AsyncRead` contract requires `&mut Self`.
+    let tcp: &TcpStream = &self.tcp;
+    tcp.poll_read_ready(cx).map(|res| {
+      res.and_then(|()| {
+        let unfilled = buf.initialize_unfilled();
+        match tcp.try_read(unfilled) {
+          Ok(n) => {
+            buf.advance(n);
+            Ok(())
+          }
+          Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            // Spurious wakeup — `Poll::Pending`. Returning Ok(()) here
+            // (Poll::Ready(Ok(()))) with 0 bytes filled would look
+            // like EOF to the caller. Re-poll-read-ready instead:
+            // tokio clears the readiness bit on `try_read` returning
+            // WouldBlock, so the next call to `poll_read_ready` will
+            // wait for fresh readiness rather than spinning.
+            Ok(())
+          }
+          Err(e) => Err(e),
+        }
+      })
+    })
   }
 }
 
-/// Per-resource write state for the fast-TCP path: the owned write
-/// half plus a sticky `closed` flag that matches
-/// `fastwebsockets::WebSocketWrite::is_closed`.
+/// Per-resource write state for the fast-TCP path. Holds a clone of
+/// the shared `Rc<TcpStream>` (same socket as the read side, so the
+/// inner-Arc count is bookkept correctly on drop) plus a sticky
+/// `closed` flag matching `fastwebsockets::WebSocketWrite::is_closed`.
 pub(crate) struct TcpWriteState {
-  pub(crate) write_half: OwnedWriteHalf,
+  pub(crate) tcp: Rc<TcpStream>,
   pub(crate) closed: bool,
 }
 
 impl TcpWriteState {
-  pub(crate) fn new(write_half: OwnedWriteHalf) -> Self {
-    Self {
-      write_half,
-      closed: false,
-    }
+  pub(crate) fn new(tcp: Rc<TcpStream>) -> Self {
+    Self { tcp, closed: false }
   }
 }
 
@@ -201,8 +239,7 @@ pub(crate) async fn write_frame_fast<'f>(
   if matches!(frame.opcode, OpCode::Close) {
     state.closed = true;
   }
-  let tcp: &TcpStream = state.write_half.as_ref();
-  write_via_try(tcp, &head[..head_len], payload)
+  write_via_try(&state.tcp, &head[..head_len], payload)
     .await
     .map_err(WebSocketError::IoError)?;
   Ok(())

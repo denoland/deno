@@ -623,8 +623,8 @@ impl ServerWebSocket {
 
   fn new_fast_tcp(tcp: tokio::net::TcpStream, read_buf: Bytes) -> Self {
     let _ = tcp.set_nodelay(true);
-    let (r, w) = tcp.into_split();
-    let read_stream = TcpReadStream::new(r, Some(read_buf));
+    let tcp = Rc::new(tcp);
+    let read_stream = TcpReadStream::new(tcp.clone(), Some(read_buf));
     // `WebSocketRead` only has a public split constructor, so feed a
     // throwaway `tokio::io::sink()` for the write side — we never call
     // through it; user-initiated writes and the read-loop's auto-pong /
@@ -643,7 +643,7 @@ impl ServerWebSocket {
       string: Cell::new(None),
       halves: ServerWsHalves::FastTcp {
         ws_read: AsyncRefCell::new(FragmentCollectorRead::new(ws_read)),
-        write_state: AsyncRefCell::new(TcpWriteState::new(w)),
+        write_state: AsyncRefCell::new(TcpWriteState::new(tcp)),
       },
     }
   }
