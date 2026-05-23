@@ -152,7 +152,6 @@ pathdiff.workspace = true
 percent-encoding.workspace = true
 phf.workspace = true
 pretty_yaml.workspace = true
-quick-junit.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 rustc-hash.workspace = true
@@ -193,7 +192,6 @@ deno_subprocess_windows.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
-shell-escape = "=0.1.5"
 [target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]
 tokio-vsock.workspace = true
 
