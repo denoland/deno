@@ -17,16 +17,25 @@ const {
 } = core.ops;
 const {
   ArrayBufferPrototypeGetByteLength,
+  ArrayPrototype,
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
   ArrayPrototypePush,
+  Date,
+  DatePrototype,
+  DatePrototypeGetTime,
   ObjectDefineProperty,
   ObjectFreeze,
+  ObjectGetPrototypeOf,
   ObjectHasOwn,
+  ObjectKeys,
+  ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   PromiseResolve,
   queueMicrotask,
+  RegExp,
+  RegExpPrototype,
   SafeArrayIterator,
   SafeSet,
   Symbol,
@@ -811,6 +820,50 @@ function isOwnPrototypeObject(value, sym) {
 // Fetch types (Headers / Request / Response) call `markNotSerializable`
 // themselves at the bottom of their respective modules.
 
+// Returns a fresh plain object copy of `value` iff every own enumerable
+// string-keyed property of `value` is a non-reference primitive. Returns
+// `null` to signal "fall through to the V8 path" otherwise. Spec
+// equivalence: structuredClone of a plain object only copies own
+// enumerable string-keyed properties, so we match `Object.keys` here.
+// Non-enumerable own properties and symbol-keyed properties are dropped
+// (also matching the V8 path).
+function tryCloneFlatPlainObject(value) {
+  const keys = ObjectKeys(value);
+  const out = {};
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    const v = value[key];
+    // Bail on any reference type. Functions and symbols throw
+    // DataCloneError on the V8 path; falling through here keeps that
+    // behavior. Object/null distinction: `typeof null === "object"`
+    // is fine because `null` is itself a clonable leaf, not a
+    // reference type that needs deeper structured cloning.
+    if (v !== null && (typeof v === "object" || typeof v === "function")) {
+      return null;
+    }
+    if (typeof v === "symbol") return null;
+    out[key] = v;
+  }
+  return out;
+}
+
+// Mirror of `tryCloneFlatPlainObject` for plain Array instances. Holes
+// in the input array are preserved as `undefined` indices, which matches
+// V8's serializer for sparse arrays of typed content.
+function tryCloneFlatPlainArray(value) {
+  const len = value.length;
+  const out = new Array(len);
+  for (let i = 0; i < len; i++) {
+    const v = value[i];
+    if (v !== null && (typeof v === "object" || typeof v === "function")) {
+      return null;
+    }
+    if (typeof v === "symbol") return null;
+    out[i] = v;
+  }
+  return out;
+}
+
 function structuredClone(value, options) {
   // Fast path for primitives that StructuredSerialize returns by reference:
   // null, undefined, boolean, number, string, bigint. These don't need the
@@ -864,6 +917,38 @@ function structuredClone(value, options) {
 
   // Fast-path, avoiding round-trip serialization and deserialization
   if (options.transfer.length === 0) {
+    // JS-level fast paths for common simple shapes that don't need the V8
+    // ValueSerializer / ValueDeserializer round-trip (which allocates two
+    // `Box<SerializeDeserialize>` and an intermediate `Vec<u8>` per call).
+    // Each path matches the spec algorithm for the exact JS type - matched
+    // by exact-prototype check, so subclasses fall through to the V8 path
+    // which handles them correctly. Plain Object / Array fast paths bail
+    // on first nested-reference value (no recursion, no cycle handling
+    // needed - the V8 path covers those). `value` here is whatever
+    // survived the primitive fast path at the top of the function -
+    // typically object/function, but `null` is possible when `options`
+    // was non-undefined and skipped that early return.
+    const proto = value === null ? null : ObjectGetPrototypeOf(value);
+    if (proto === DatePrototype) {
+      // Spec: serialize [[DateValue]], deserialize as fresh Date.
+      // Own non-internal properties on the input Date are dropped.
+      return new Date(DatePrototypeGetTime(value));
+    }
+    if (proto === RegExpPrototype) {
+      // Spec: serialize [[OriginalSource]] + [[OriginalFlags]], drop
+      // [[LastIndex]] (RegExp constructor with a RegExp argument and
+      // no flags arg copies both internal slots without using user-
+      // overridable `.source` / `.flags` getters).
+      return new RegExp(value);
+    }
+    if (proto === ObjectPrototype) {
+      const fast = tryCloneFlatPlainObject(value);
+      if (fast !== null) return fast;
+    } else if (proto === ArrayPrototype) {
+      const fast = tryCloneFlatPlainArray(value);
+      if (fast !== null) return fast;
+    }
+
     try {
       return core.structuredClone(value);
     } catch (e) {

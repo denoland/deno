@@ -46,3 +46,7 @@ harness = false
 [[bench]]
 name = "url_ops"
 harness = false
+
+[[bench]]
+name = "structured_clone"
+harness = false
