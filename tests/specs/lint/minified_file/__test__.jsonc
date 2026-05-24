@@ -1,0 +1,19 @@
+{
+  "tests": {
+    "minified_hides_snippet": {
+      "args": "lint minified.js",
+      "output": "minified.out",
+      "exitCode": 1
+    },
+    "normal_keeps_snippet": {
+      "args": "lint short.js",
+      "output": "short.out",
+      "exitCode": 1
+    },
+    "compact_unaffected": {
+      "args": "lint --compact minified.js",
+      "output": "compact.out",
+      "exitCode": 1
+    }
+  }
+}

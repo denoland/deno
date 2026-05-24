@@ -1,0 +1,4 @@
+[WILDCARD]minified.js: line 1, col 1 - `var` keyword is not allowed. (no-var)
+[WILDCARD]minified.js: line 1, col 180 - Empty block statement (no-empty)
+Found 2 problems
+Checked 1 file

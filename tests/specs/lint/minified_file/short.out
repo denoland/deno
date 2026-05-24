@@ -1,0 +1,12 @@
+error[no-empty]: Empty block statement
+ --> [WILDCARD]short.js:1:15
+  | 
+1 | while (false) {}
+  |               ^^
+  = hint: Add code or comment to the empty block
+
+  docs: https://docs.deno.com/lint/rules/no-empty
+
+
+Found 1 problem
+Checked 1 file

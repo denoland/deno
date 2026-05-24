@@ -1,0 +1,19 @@
+error[no-var]: `var` keyword is not allowed.
+ --> [WILDCARD]minified.js:1:1
+
+  info: the source snippet was hidden because this line looks like minified output.
+  info: if this file is not meant to be linted, exclude it via the "lint.exclude" option in your deno.json.
+  docs: https://docs.deno.com/lint/rules/no-var
+
+
+error[no-empty]: Empty block statement
+ --> [WILDCARD]minified.js:1:180
+  = hint: Add code or comment to the empty block
+
+  info: the source snippet was hidden because this line looks like minified output.
+  info: if this file is not meant to be linted, exclude it via the "lint.exclude" option in your deno.json.
+  docs: https://docs.deno.com/lint/rules/no-empty
+
+
+Found 2 problems
+Checked 1 file

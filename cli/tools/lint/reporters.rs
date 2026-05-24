@@ -1,6 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+
 use deno_ast::diagnostics::Diagnostic;
+use deno_ast::diagnostics::DiagnosticLevel;
+use deno_ast::diagnostics::DiagnosticLocation;
+use deno_ast::diagnostics::DiagnosticSnippet;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_lib::util::result::js_error_downcast_ref;
@@ -11,6 +16,110 @@ use log::info;
 use serde::Serialize;
 
 use crate::args::LintReporterKind;
+
+/// When the line containing a lint diagnostic is at least this many bytes
+/// long we treat it as suspected minified output and avoid dumping the full
+/// line into the terminal (which would produce thousands of characters of
+/// noise). The threshold is intentionally well above any reasonable
+/// hand-authored line length.
+const MINIFIED_LINE_THRESHOLD: usize = 250;
+
+/// Wrapper around `LintDiagnostic` that adjusts the pretty output when the
+/// offending line appears to come from a minified file: the source snippet is
+/// suppressed and an informational hint is added directing the user to
+/// exclude the file from linting.
+struct PrettyLintDiagnostic<'a> {
+  inner: &'a LintDiagnostic,
+  minified: bool,
+  minified_info: Vec<Cow<'a, str>>,
+}
+
+impl<'a> PrettyLintDiagnostic<'a> {
+  fn new(inner: &'a LintDiagnostic) -> Self {
+    let minified = is_likely_minified(inner);
+    let minified_info = if minified {
+      vec![
+        Cow::Borrowed(
+          "the source snippet was hidden because this line looks like \
+           minified output.",
+        ),
+        Cow::Borrowed(
+          "if this file is not meant to be linted, exclude it via the \
+           \"lint.exclude\" option in your deno.json.",
+        ),
+      ]
+    } else {
+      Vec::new()
+    };
+    Self {
+      inner,
+      minified,
+      minified_info,
+    }
+  }
+}
+
+fn is_likely_minified(d: &LintDiagnostic) -> bool {
+  let Some(range) = d.range.as_ref() else {
+    return false;
+  };
+  let text_info = &range.text_info;
+  let line_index = text_info.line_index(range.range.start);
+  let line_text = text_info.line_text(line_index);
+  line_text.len() >= MINIFIED_LINE_THRESHOLD
+}
+
+impl Diagnostic for PrettyLintDiagnostic<'_> {
+  fn level(&self) -> DiagnosticLevel {
+    self.inner.level()
+  }
+
+  fn code(&self) -> Cow<'_, str> {
+    self.inner.code()
+  }
+
+  fn message(&self) -> Cow<'_, str> {
+    self.inner.message()
+  }
+
+  fn location(&self) -> DiagnosticLocation<'_> {
+    self.inner.location()
+  }
+
+  fn snippet(&self) -> Option<DiagnosticSnippet<'_>> {
+    if self.minified {
+      None
+    } else {
+      self.inner.snippet()
+    }
+  }
+
+  fn hint(&self) -> Option<Cow<'_, str>> {
+    self.inner.hint()
+  }
+
+  fn snippet_fixed(&self) -> Option<DiagnosticSnippet<'_>> {
+    if self.minified {
+      None
+    } else {
+      self.inner.snippet_fixed()
+    }
+  }
+
+  fn info(&self) -> Cow<'_, [Cow<'_, str>]> {
+    if self.minified {
+      let mut combined: Vec<Cow<'_, str>> = self.minified_info.clone();
+      combined.extend(self.inner.info().iter().cloned());
+      Cow::Owned(combined)
+    } else {
+      self.inner.info()
+    }
+  }
+
+  fn docs_url(&self) -> Option<Cow<'_, str>> {
+    self.inner.docs_url()
+  }
+}
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 
@@ -49,7 +158,8 @@ impl LintReporter for PrettyLintReporter {
       self.fixable_diagnostics += 1;
     }
 
-    log::error!("{}\n", d.display());
+    let wrapped = PrettyLintDiagnostic::new(d);
+    log::error!("{}\n", wrapped.display());
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
