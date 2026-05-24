@@ -135,8 +135,7 @@ const summaryCheckout = step({
 // submodules (WPT, etc.) are not needed.
 const summaryCloneStd = step.dependsOn(summaryCheckout)({
   name: "Clone std submodule",
-  run:
-    "git submodule update --init --recursive --depth=1 -- ./tests/util/std",
+  run: "git submodule update --init --recursive --depth=1 -- ./tests/util/std",
 });
 
 const summarySetupDeno = step.dependsOn(summaryCloneStd)({
