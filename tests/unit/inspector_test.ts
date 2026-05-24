@@ -1424,14 +1424,16 @@ Deno.test("inspector_node_runtime_api_url", async () => {
 // empty and the visible nesting drifts out of alignment with the CLI.
 Deno.test("inspector_console_group_emits_label_log", async () => {
   const script = `${testdataPath}/inspector_group.js`;
+  // `--inspect-wait` keeps the script paused until the inspector calls
+  // `Runtime.runIfWaitingForDebugger`. Avoid `--inspect-brk` here: that mode
+  // also pauses on the first line and would require an extra
+  // `Debugger.resume` round-trip, which races with this test's expectations.
   const tester = await InspectorTester.create(
-    ["run", "-A", "--inspect-brk=0", script],
+    ["run", "-A", "--inspect-wait=0", script],
     { notificationFilter: ignoreScriptParsed },
   );
 
   try {
-    await tester.assertStderrForInspectBrk();
-
     tester.sendMany([
       { id: 1, method: "Runtime.enable" },
       { id: 2, method: "Debugger.enable" },
