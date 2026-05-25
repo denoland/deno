@@ -163,7 +163,7 @@ const _kOnTimeout = HTTPParser.kOnTimeout | 0;
 class ConnectionsList {
   constructor() {
     this._all = new Set();
-    this._active = new Map(); // socket -> { headersCompleted, startTime }
+    this._active = new Map(); // socket -> { headersCompleted, startTime, req }
   }
 
   push(socket) {
@@ -179,6 +179,7 @@ class ConnectionsList {
     this._active.set(socket, {
       headersCompleted: false,
       startTime: performance.now(),
+      req: null,
     });
   }
 
@@ -188,19 +189,20 @@ class ConnectionsList {
 
   // For pipelined requests the parser fires kOnMessageBegin for the next
   // request before the previous response finishes, replacing the active
-  // entry. resOnFinish must only clear the entry if it still belongs to
-  // the just-completed request (i.e. headersCompleted=true).
-  popActiveIfCompleted(socket) {
+  // entry. resOnFinish must only clear the entry if it still tracks the
+  // request whose response just finished, not a pipelined successor.
+  popActiveIfReq(socket, req) {
     const entry = this._active.get(socket);
-    if (entry && entry.headersCompleted) {
+    if (entry && entry.req === req) {
       this._active.delete(socket);
     }
   }
 
-  markHeadersCompleted(socket) {
+  markHeadersCompleted(socket, req) {
     const entry = this._active.get(socket);
     if (entry) {
       entry.headersCompleted = true;
+      entry.req = req;
     }
   }
 
@@ -803,10 +805,11 @@ function updateOutgoingData(socket, state, delta) {
 function parserOnIncoming(server, socket, state, req, keepAlive) {
   resetSocketTimeout(server, socket, state);
 
-  // Headers have been fully parsed; clear the headersTimeout watchdog.
-  // requestTimeout (if any) continues to count from message begin.
+  // Headers have been fully parsed; clear the headersTimeout watchdog and
+  // bind the active entry to this request so resOnFinish can identify it
+  // even if a pipelined successor has already replaced it.
   const connections = server[kConnectionsKey];
-  if (connections) connections.markHeadersCompleted(socket);
+  if (connections) connections.markHeadersCompleted(socket, req);
 
   if (req.upgrade && req.method !== "CONNECT") {
     if (
@@ -1067,7 +1070,7 @@ function resOnFinish(req, res, socket, state, server) {
   // requests are pipelined, the parser has already pushed a fresh entry
   // for the next request via kOnMessageBegin.
   const connections = server[kConnectionsKey];
-  if (connections) connections.popActiveIfCompleted(socket);
+  if (connections) connections.popActiveIfReq(socket, req);
 
   if (res._last) {
     if (typeof socket.destroySoon === "function") {

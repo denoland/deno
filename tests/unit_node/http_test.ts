@@ -2659,6 +2659,74 @@ Deno.test(
   },
 );
 
+// Regression test for pipelined requests: when request 2's response finishes
+// after request 1's, resOnFinish for request 1 must not delete the active
+// ConnectionsList entry that now belongs to request 2 (otherwise
+// headersTimeout/requestTimeout silently stop covering request 2).
+// Verifies both pipelined responses succeed without spurious clientError.
+Deno.test(
+  "[node/http] pipelined requests don't drop timeout tracking",
+  async () => {
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+    let req1Finished = false;
+    let req2Finished = false;
+    const server = http.createServer({
+      headersTimeout: 2000,
+      requestTimeout: 2000,
+      connectionsCheckingInterval: 50,
+    }, (req, res) => {
+      if (req.url === "/1") {
+        // Finish first response quickly so resOnFinish for req1 runs while
+        // request 2 may still be in flight on the parser.
+        setTimeout(() => res.end("first"), 50);
+      } else {
+        // Hold second response until well after the first has finished so
+        // the pipelined entry-swap window is exercised.
+        setTimeout(() => res.end("second"), 300);
+      }
+    });
+
+    server.on("clientError", (err: Error & { code?: string }) => {
+      reject(new Error(`unexpected clientError: ${err.code ?? err.message}`));
+    });
+
+    server.listen(0, async () => {
+      try {
+        const port = (server.address() as AddressInfo).port;
+        const conn = await Deno.connect({ port, hostname: "127.0.0.1" });
+        const encoder = new TextEncoder();
+        await conn.write(encoder.encode(
+          "GET /1 HTTP/1.1\r\nHost: localhost\r\n\r\n" +
+            "GET /2 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+        ));
+        const decoder = new TextDecoder();
+        const buf = new Uint8Array(8192);
+        let received = "";
+        while (true) {
+          const n = await conn.read(buf);
+          if (n === null) break;
+          received += decoder.decode(buf.subarray(0, n));
+        }
+        try {
+          conn.close();
+        } catch { /* already closed */ }
+        assertStringIncludes(received, "first");
+        assertStringIncludes(received, "second");
+        req1Finished = true;
+        req2Finished = true;
+        server.close(() => resolve());
+      } catch (e) {
+        reject(e);
+      }
+    });
+
+    await promise;
+    assertEquals(req1Finished, true);
+    assertEquals(req2Finished, true);
+  },
+);
+
 // Regression test: oversized headers must trigger HPE_HEADER_OVERFLOW on the
 // server's clientError event, and the default handler should respond with 431.
 // Previously maxHeaderSize was tracked but never enforced.
