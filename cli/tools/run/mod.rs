@@ -3,6 +3,7 @@
 use std::io::Read;
 use std::sync::Arc;
 
+use deno_ast::ModuleSpecifier;
 use deno_cache_dir::file_fetcher::File;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::anyhow::Context;
@@ -13,6 +14,8 @@ use deno_npm_installer::PackageCaching;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
 use deno_runtime::WorkerExecutionMode;
+use deno_semver::npm::NpmPackageReqReference;
+use node_resolver::BinValue;
 
 use crate::args::EvalFlags;
 use crate::args::Flags;
@@ -50,6 +53,78 @@ pub fn set_npm_user_agent() {
   });
 }
 
+/// If the main module is an `npm:` specifier whose resolved bin entry is a
+/// native executable (Mach-O / ELF / PE), spawn it as a subprocess instead of
+/// feeding it to the JS module loader. Returns `Ok(None)` to fall through to
+/// the normal JS-loading path; `Ok(Some(exit_code))` if the executable ran.
+///
+/// JavaScript bin entries are intentionally left to the JS loader so existing
+/// behavior is preserved.
+async fn try_run_npm_bin_executable(
+  factory: &CliFactory,
+  flags: &Flags,
+  main_module: &ModuleSpecifier,
+) -> Result<Option<i32>, AnyError> {
+  if main_module.scheme() != "npm" {
+    return Ok(None);
+  }
+  let req_ref = match NpmPackageReqReference::from_specifier(main_module) {
+    Ok(req_ref) => req_ref,
+    Err(_) => return Ok(None),
+  };
+  // If the user explicitly asked for a sub-path, don't intercept.
+  if req_ref.sub_path().is_some() {
+    return Ok(None);
+  }
+
+  let cli_options = factory.cli_options()?;
+  let npm_resolver = factory.npm_resolver().await?;
+  let node_resolver = factory.node_resolver().await?;
+
+  let cwd_url =
+    match deno_path_util::url_from_directory_path(cli_options.initial_cwd()) {
+      Ok(url) => url,
+      Err(_) => return Ok(None),
+    };
+
+  let package_folder = match npm_resolver
+    .resolve_pkg_folder_from_deno_module_req(req_ref.req(), &cwd_url)
+  {
+    Ok(folder) => folder,
+    Err(_) => return Ok(None),
+  };
+
+  let bins = match node_resolver
+    .resolve_npm_binary_commands_for_package(&package_folder)
+  {
+    Ok(bins) if !bins.is_empty() => bins,
+    _ => return Ok(None),
+  };
+
+  let bin_value =
+    match crate::tools::x::find_bin_value(&bins, req_ref.req().name.as_str()) {
+      Some(bin_value) => bin_value,
+      None => return Ok(None),
+    };
+
+  // Only intercept native executables. JS bin entries continue to use the
+  // existing module-loader path so behavior is unchanged for them.
+  if matches!(bin_value, BinValue::JsFile(_)) {
+    return Ok(None);
+  }
+
+  let unstable_args = cli_options.unstable_args();
+  let npm_process_state = crate::tools::x::get_npm_process_state(npm_resolver);
+  let exit_code = crate::tools::x::run_bin_value(
+    factory,
+    flags,
+    bin_value,
+    npm_process_state,
+    &unstable_args,
+  )?;
+  Ok(Some(exit_code))
+}
+
 pub async fn run_script(
   mode: WorkerExecutionMode,
   flags: Arc<Flags>,
@@ -65,7 +140,7 @@ pub async fn run_script(
 
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line
-  let factory = CliFactory::from_flags(flags);
+  let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
   let deno_dir = factory.deno_dir()?;
   let http_client = factory.http_client_provider();
@@ -93,6 +168,12 @@ pub async fn run_script(
   }
 
   maybe_npm_install(&factory).await?;
+
+  if let Some(exit_code) =
+    try_run_npm_bin_executable(&factory, &flags, main_module).await?
+  {
+    return Ok(exit_code);
+  }
 
   let worker_factory = factory
     .create_cli_main_worker_factory_with_roots(roots)
