@@ -576,6 +576,62 @@ Deno.test("mTLS client certificate authentication", async () => {
   await new Promise<void>((resolve) => server.on("close", resolve));
 });
 
+Deno.test(
+  "requestCert + rejectUnauthorized:false: no client cert => authorized=false",
+  async () => {
+    const server = tls.createServer({
+      key,
+      cert,
+      ca: [rootCaCert],
+      requestCert: true,
+      rejectUnauthorized: false,
+    }, (socket) => {
+      // deno-lint-ignore no-explicit-any
+      const s = socket as any;
+      socket.write(
+        JSON.stringify({
+          authorized: s.authorized,
+          authorizationError: s.authorizationError?.code ??
+            s.authorizationError,
+          peerCertSubject: socket.getPeerCertificate()?.subject,
+        }),
+      );
+      socket.end();
+    });
+
+    const { promise, resolve, reject } = Promise.withResolvers<string>();
+
+    server.listen(0, () => {
+      // deno-lint-ignore no-explicit-any
+      const port = (server.address() as any)?.port;
+
+      const client = tls.connect({
+        host: "localhost",
+        port,
+        ca: rootCaCert,
+      });
+
+      client.setEncoding("utf8");
+      let data = "";
+      client.on("data", (chunk) => {
+        data += chunk;
+      });
+      client.on("end", () => {
+        client.destroy();
+        resolve(data);
+      });
+      client.on("error", (err) => reject(err));
+    });
+
+    const result = JSON.parse(await promise);
+    assertEquals(result.authorized, false);
+    assertEquals(result.authorizationError, "UNABLE_TO_GET_ISSUER_CERT");
+    assertEquals(result.peerCertSubject, undefined);
+    server.close();
+    await new Promise<void>((resolve) => server.on("close", resolve));
+  },
+);
+
 Deno.test("tls.getCACertificates returns bundled certificates", () => {
   const certs = tls.getCACertificates("bundled");
   assert(Array.isArray(certs));
