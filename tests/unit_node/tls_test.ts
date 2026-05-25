@@ -942,3 +942,40 @@ Deno.test("TLSSocket.setServername throws Node-compatible coded errors", () => {
   );
   serverSocket.destroy();
 });
+
+// Regression: tls.createSecureContext must accept the documented array forms
+// of `cert`, `key` and `pfx`. An empty `pfx: []` (as produced by playwright's
+// APIRequestContext) used to throw "not enough data", and array forms of
+// cert/key were silently coerced via String() into unusable values.
+Deno.test("[node/tls] createSecureContext accepts array cert/key/pfx", () => {
+  // Empty pfx array is a no-op (regression test for #34371).
+  const ctx1 = tls.createSecureContext({ pfx: [] });
+  assert(ctx1);
+
+  // Cert as Buffer[] is concatenated into a single PEM string
+  // (regression test for #34367).
+  const ctx2 = tls.createSecureContext({
+    cert: [cert],
+    key: [{ pem: key }],
+  });
+  assertStringIncludes(ctx2.context.cert as string, "BEGIN CERTIFICATE");
+  assertStringIncludes(ctx2.context.key as string, "PRIVATE KEY");
+
+  // Multiple PEM blocks via array stay parseable: both certs are present.
+  const ctx3 = tls.createSecureContext({ cert: [cert, cert] });
+  const certBlocks =
+    (ctx3.context.cert as string).match(/BEGIN CERTIFICATE/g) ?? [];
+  assertEquals(certBlocks.length, 2);
+
+  // A malformed pfx still throws.
+  assertThrows(
+    () => tls.createSecureContext({ pfx: "short" }),
+    Error,
+    "not enough data",
+  );
+  assertThrows(
+    () => tls.createSecureContext({ pfx: ["short"] }),
+    Error,
+    "not enough data",
+  );
+});
