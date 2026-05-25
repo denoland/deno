@@ -11,10 +11,15 @@ use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
+use digest::Digest;
+use digest::FixedOutputReset;
 use ed25519_dalek::pkcs8::BitStringRef;
 use elliptic_curve::JwkEcKey;
+use hmac::Hmac;
+use hmac::Mac;
 use num_bigint::BigInt;
 use num_traits::FromPrimitive as _;
+use p12::AlgorithmIdentifier as Pkcs12AlgorithmIdentifier;
 use p12::PFX as Pkcs12;
 use pkcs8::DecodePrivateKey as _;
 use pkcs8::Document;
@@ -4168,10 +4173,238 @@ pub fn op_node_validate_pfx(
   let parsed =
     Pkcs12::parse(pfx).map_err(|_| PfxValidationError::NotEnoughData)?;
   let password = passphrase.as_deref().unwrap_or("");
-  if !parsed.verify_mac(password) {
+  let bmp_password = bmp_string(password);
+  // If no MAC is present, the file is considered valid.
+  let Some(mac_data) = &parsed.mac_data else {
+    return Ok(());
+  };
+  let data = parsed
+    .auth_safe
+    .data(&bmp_password)
+    .ok_or(PfxValidationError::MacVerifyFailure)?;
+  let ok = verify_pkcs12_mac(
+    &mac_data.mac.digest_algorithm,
+    &mac_data.mac.digest,
+    &mac_data.salt,
+    mac_data.iterations as u64,
+    &data,
+    &bmp_password,
+  )
+  .ok_or(PfxValidationError::MacVerifyFailure)?;
+  if !ok {
     return Err(PfxValidationError::MacVerifyFailure);
   }
   Ok(())
+}
+
+// Convert a UTF-8 password to the PKCS#12 BMPString form: each
+// character is encoded as UTF-16BE, followed by a U+0000 terminator.
+fn bmp_string(s: &str) -> Vec<u8> {
+  let utf16: Vec<u16> = s.encode_utf16().collect();
+  let mut bytes = Vec::with_capacity(utf16.len() * 2 + 2);
+  for c in utf16 {
+    bytes.extend_from_slice(&c.to_be_bytes());
+  }
+  bytes.extend_from_slice(&[0x00, 0x00]);
+  bytes
+}
+
+// PKCS#12 PBKDF (RFC 7292, Appendix B.2), generic over a Digest. `v` is
+// the hash function's block size in bytes (64 for SHA-1/224/256, 128 for
+// SHA-384/512/512-224/512-256). `id` is the diversifier (1 = key,
+// 2 = IV, 3 = MAC).
+fn pkcs12_pbkdf<D: Digest + FixedOutputReset>(
+  pass: &[u8],
+  salt: &[u8],
+  iterations: u64,
+  id: u8,
+  size: usize,
+  v: usize,
+) -> Vec<u8> {
+  let u = <D as Digest>::output_size();
+  let d = vec![id; v];
+  let s_len = if salt.is_empty() {
+    0
+  } else {
+    v * salt.len().div_ceil(v)
+  };
+  let p_len = if pass.is_empty() {
+    0
+  } else {
+    v * pass.len().div_ceil(v)
+  };
+  let s: Vec<u8> = if s_len == 0 {
+    Vec::new()
+  } else {
+    salt.iter().cycle().take(s_len).copied().collect()
+  };
+  let p: Vec<u8> = if p_len == 0 {
+    Vec::new()
+  } else {
+    pass.iter().cycle().take(p_len).copied().collect()
+  };
+  let mut i: Vec<u8> = Vec::with_capacity(s.len() + p.len());
+  i.extend_from_slice(&s);
+  i.extend_from_slice(&p);
+  let c = size.div_ceil(u);
+  let mut out: Vec<u8> = Vec::with_capacity(c * u);
+  let mut hasher = D::new();
+  for _ in 0..c {
+    Digest::update(&mut hasher, &d);
+    Digest::update(&mut hasher, &i);
+    let mut ai = hasher.finalize_reset().to_vec();
+    for _ in 1..iterations {
+      Digest::update(&mut hasher, &ai);
+      ai = hasher.finalize_reset().to_vec();
+    }
+    out.extend_from_slice(&ai);
+    if i.is_empty() {
+      continue;
+    }
+    // B = leftmost v bytes of Ai repeated cyclically.
+    let b: Vec<u8> = ai.iter().cycle().take(v).copied().collect();
+    // For each v-byte block of I, set I_j = (I_j + B + 1) mod 2^(v*8).
+    for chunk in i.chunks_mut(v) {
+      let mut carry: u16 = 1;
+      for j in (0..v).rev() {
+        let sum = chunk[j] as u16 + b[j] as u16 + carry;
+        chunk[j] = (sum & 0xff) as u8;
+        carry = sum >> 8;
+      }
+    }
+  }
+  out.truncate(size);
+  out
+}
+
+fn pkcs12_hmac<D>(key: &[u8], data: &[u8]) -> Vec<u8>
+where
+  D: Digest
+    + digest::core_api::CoreProxy
+    + FixedOutputReset
+    + digest::core_api::BlockSizeUser,
+  <D as digest::core_api::CoreProxy>::Core: digest::core_api::BufferKindUser<
+      BufferKind = digest::block_buffer::Eager,
+    > + digest::core_api::FixedOutputCore
+    + digest::HashMarker
+    + Default
+    + Clone,
+  <<D as digest::core_api::CoreProxy>::Core as digest::core_api::BlockSizeUser>::BlockSize: digest::typenum::IsLess<digest::typenum::U256>,
+  digest::typenum::Le<<<D as digest::core_api::CoreProxy>::Core as digest::core_api::BlockSizeUser>::BlockSize, digest::typenum::U256>: digest::typenum::NonZero,
+{
+  let mut mac = <Hmac<D> as Mac>::new_from_slice(key).unwrap();
+  Mac::update(&mut mac, data);
+  mac.finalize().into_bytes().to_vec()
+}
+
+// OID identifiers in components.
+const OID_SHA1: &[u64] = &[1, 3, 14, 3, 2, 26];
+const OID_SHA224: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 4];
+const OID_SHA256: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 1];
+const OID_SHA384: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 2];
+const OID_SHA512: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 3];
+const OID_SHA512_224: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 5];
+const OID_SHA512_256: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 6];
+
+enum Pkcs12MacAlgorithm {
+  Sha1,
+  Sha224,
+  Sha256,
+  Sha384,
+  Sha512,
+  Sha512_224,
+  Sha512_256,
+}
+
+fn pkcs12_mac_algorithm(
+  algorithm: &Pkcs12AlgorithmIdentifier,
+) -> Option<Pkcs12MacAlgorithm> {
+  let oid = match algorithm {
+    Pkcs12AlgorithmIdentifier::Sha1 => return Some(Pkcs12MacAlgorithm::Sha1),
+    Pkcs12AlgorithmIdentifier::OtherAlg(other) => {
+      other.algorithm_type.components().as_slice()
+    }
+    _ => return None,
+  };
+  if oid == OID_SHA1 {
+    Some(Pkcs12MacAlgorithm::Sha1)
+  } else if oid == OID_SHA224 {
+    Some(Pkcs12MacAlgorithm::Sha224)
+  } else if oid == OID_SHA256 {
+    Some(Pkcs12MacAlgorithm::Sha256)
+  } else if oid == OID_SHA384 {
+    Some(Pkcs12MacAlgorithm::Sha384)
+  } else if oid == OID_SHA512 {
+    Some(Pkcs12MacAlgorithm::Sha512)
+  } else if oid == OID_SHA512_224 {
+    Some(Pkcs12MacAlgorithm::Sha512_224)
+  } else if oid == OID_SHA512_256 {
+    Some(Pkcs12MacAlgorithm::Sha512_256)
+  } else {
+    None
+  }
+}
+
+fn verify_pkcs12_mac(
+  algorithm: &Pkcs12AlgorithmIdentifier,
+  expected: &[u8],
+  salt: &[u8],
+  iterations: u64,
+  data: &[u8],
+  password: &[u8],
+) -> Option<bool> {
+  let mac_alg = pkcs12_mac_algorithm(algorithm)?;
+  let computed = match mac_alg {
+    Pkcs12MacAlgorithm::Sha1 => {
+      let key =
+        pkcs12_pbkdf::<sha1::Sha1>(password, salt, iterations, 3, 20, 64);
+      pkcs12_hmac::<sha1::Sha1>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha224 => {
+      let key =
+        pkcs12_pbkdf::<sha2::Sha224>(password, salt, iterations, 3, 28, 64);
+      pkcs12_hmac::<sha2::Sha224>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha256 => {
+      let key =
+        pkcs12_pbkdf::<sha2::Sha256>(password, salt, iterations, 3, 32, 64);
+      pkcs12_hmac::<sha2::Sha256>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha384 => {
+      let key =
+        pkcs12_pbkdf::<sha2::Sha384>(password, salt, iterations, 3, 48, 128);
+      pkcs12_hmac::<sha2::Sha384>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha512 => {
+      let key =
+        pkcs12_pbkdf::<sha2::Sha512>(password, salt, iterations, 3, 64, 128);
+      pkcs12_hmac::<sha2::Sha512>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha512_224 => {
+      let key = pkcs12_pbkdf::<sha2::Sha512_224>(
+        password, salt, iterations, 3, 28, 128,
+      );
+      pkcs12_hmac::<sha2::Sha512_224>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha512_256 => {
+      let key = pkcs12_pbkdf::<sha2::Sha512_256>(
+        password, salt, iterations, 3, 32, 128,
+      );
+      pkcs12_hmac::<sha2::Sha512_256>(&key, data)
+    }
+  };
+  Some(constant_time_eq(&computed, expected))
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+  if a.len() != b.len() {
+    return false;
+  }
+  let mut diff = 0u8;
+  for (x, y) in a.iter().zip(b.iter()) {
+    diff |= x ^ y;
+  }
+  diff == 0
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
