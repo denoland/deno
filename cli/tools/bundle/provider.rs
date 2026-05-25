@@ -7,6 +7,9 @@ use deno_bundle_runtime as rt_bundle;
 use deno_bundle_runtime::BundleOptions as RtBundleOptions;
 use deno_bundle_runtime::BundleProvider;
 use deno_core::error::AnyError;
+use rolldown::BundleOutput;
+use rolldown_common::Output;
+use rolldown_error::Severity;
 
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -41,54 +44,11 @@ impl From<RtBundleOptions> for crate::args::BundleFlags {
   }
 }
 
-fn convert_note(note: esbuild_client::protocol::Note) -> rt_bundle::Note {
-  rt_bundle::Note {
-    text: note.text,
-    location: note.location.map(convert_location),
-  }
-}
-
-fn convert_location(
-  location: esbuild_client::protocol::Location,
-) -> rt_bundle::Location {
-  rt_bundle::Location {
-    file: location.file,
-    namespace: Some(location.namespace),
-    line: location.line,
-    column: location.column,
-    length: Some(location.length),
-    suggestion: Some(location.suggestion),
-  }
-}
-fn convert_message(
-  message: esbuild_client::protocol::Message,
-) -> rt_bundle::Message {
+fn convert_diagnostic(diag: &rolldown_error::BuildDiagnostic) -> rt_bundle::Message {
   rt_bundle::Message {
-    text: message.text,
-    location: message.location.map(convert_location),
-    notes: message.notes.into_iter().map(convert_note).collect(),
-  }
-}
-
-fn convert_build_output_file(
-  file: esbuild_client::protocol::BuildOutputFile,
-) -> rt_bundle::BuildOutputFile {
-  rt_bundle::BuildOutputFile {
-    path: file.path,
-    contents: Some(file.contents.into()),
-    hash: file.hash,
-  }
-}
-
-pub fn convert_build_response(
-  response: esbuild_client::protocol::BuildResponse,
-) -> rt_bundle::BuildResponse {
-  rt_bundle::BuildResponse {
-    errors: response.errors.into_iter().map(convert_message).collect(),
-    warnings: response.warnings.into_iter().map(convert_message).collect(),
-    output_files: response
-      .output_files
-      .map(|files| files.into_iter().map(convert_build_output_file).collect()),
+    text: diag.to_string(),
+    location: None,
+    notes: vec![],
   }
 }
 
@@ -99,41 +59,38 @@ fn hash_contents(contents: &[u8]) -> String {
   base64::engine::general_purpose::STANDARD_NO_PAD.encode(bytes)
 }
 
-fn process_output_files(
-  bundle_flags: &crate::args::BundleFlags,
-  response: &mut esbuild_client::protocol::BuildResponse,
-  cwd: &Path,
-  input: super::BundlerInput,
-) -> Result<(), AnyError> {
-  if let Some(files) = std::mem::take(&mut response.output_files) {
-    let output_files = super::collect_output_files(
-      Some(&*files),
-      cwd,
-      input,
-      bundle_flags.output_dir.as_ref().map(Path::new),
-    )?;
-    let mut new_files = Vec::new();
+fn convert_bundle_output(output: BundleOutput) -> rt_bundle::BuildResponse {
+  let mut errors = Vec::new();
+  let mut warnings = Vec::new();
 
-    for output_file in output_files {
-      let processed_contents = crate::tools::bundle::maybe_process_contents(
-        &output_file,
-        crate::tools::bundle::should_replace_require_shim(
-          bundle_flags.platform,
-        ),
-        bundle_flags.minify,
-      )?;
-      let contents = processed_contents
-        .contents
-        .unwrap_or_else(|| output_file.contents.into_owned());
-      new_files.push(esbuild_client::protocol::BuildOutputFile {
-        path: output_file.path.to_string_lossy().into_owned(),
-        hash: hash_contents(&contents),
-        contents,
-      });
+  for diag in &output.warnings {
+    let msg = convert_diagnostic(diag);
+    match diag.severity() {
+      Severity::Error => errors.push(msg),
+      Severity::Warning | Severity::Info => warnings.push(msg),
     }
-    response.output_files = Some(new_files);
   }
-  Ok(())
+
+  let output_files: Vec<rt_bundle::BuildOutputFile> = output
+    .assets
+    .iter()
+    .map(|asset| {
+      let filename = asset.filename().to_string();
+      let contents = asset.content_as_bytes().to_vec();
+      let hash = hash_contents(&contents);
+      rt_bundle::BuildOutputFile {
+        path: filename,
+        contents: Some(contents.into()),
+        hash,
+      }
+    })
+    .collect();
+
+  rt_bundle::BuildResponse {
+    errors,
+    warnings,
+    output_files: Some(output_files),
+  }
 }
 
 #[async_trait::async_trait]
@@ -161,8 +118,8 @@ impl BundleProvider for CliBundleProvider {
           }
         };
         log::trace!("bundler.build");
-        let mut result = match bundler.build().await {
-          Ok(result) => result,
+        let output = match bundler.build().await {
+          Ok(output) => output,
           Err(e) => {
             log::trace!("bundler.build error: {e:?}");
             let _ = tx.send(Err(e));
@@ -172,28 +129,22 @@ impl BundleProvider for CliBundleProvider {
         log::trace!("process_result");
         if write_output {
           super::process_result(
-            &result,
+            &output,
             &bundler.cwd,
-            crate::tools::bundle::should_replace_require_shim(
-              bundle_flags.platform,
-            ),
-            bundle_flags.minify,
-            bundler.input,
             bundle_flags.output_dir.as_ref().map(Path::new),
+            bundle_flags.output_path.as_ref().map(Path::new),
+            super::should_replace_require_shim(bundle_flags.platform),
+            bundle_flags.minify,
+            Some(&bundler.input),
           )?;
+          // Convert with no output files since we already wrote them
+          let mut result = convert_bundle_output(output);
           result.output_files = None;
+          let _ = tx.send(Ok(result));
         } else {
-          process_output_files(
-            &bundle_flags,
-            &mut result,
-            &bundler.cwd,
-            bundler.input,
-          )?;
+          let result = convert_bundle_output(output);
+          let _ = tx.send(Ok(result));
         }
-        log::trace!("convert_build_response");
-        let result = convert_build_response(result);
-        log::trace!("send result");
-        let _ = tx.send(Ok(result));
         Ok::<_, AnyError>(())
       })
     });

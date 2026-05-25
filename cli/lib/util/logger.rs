@@ -99,6 +99,10 @@ pub fn init(options: InitLoggingOptions) {
   .filter_module("opentelemetry_sdk", log::LevelFilter::Off)
   // for deno_compile, this is too verbose
   .filter_module("editpe", log::LevelFilter::Error)
+  // rolldown emits tracing spans at info level on every bundle; silence them
+  .filter_module("rolldown", log::LevelFilter::Off)
+  .filter_module("rolldown_plugin", log::LevelFilter::Off)
+  .filter_module("rolldown_common", log::LevelFilter::Off)
   // too verbose
   .filter_module("cranelift_codegen", log::LevelFilter::Off)
   .write_style(if deno_terminal::colors::use_color() {
