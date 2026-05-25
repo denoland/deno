@@ -79,13 +79,14 @@ pub async fn run_script(
     deno_dir.upgrade_check_file_path(),
   );
 
-  let main_module = cli_options.resolve_main_module_with_resolver(Some(
-    &crate::args::WorkspaceMainModuleResolver::new(
-      workspace_resolver.clone(),
-      node_resolver.clone(),
-    ),
-  ))?;
-  let preload_modules = cli_options.preload_modules()?;
+  let main_module_resolver = crate::args::WorkspaceMainModuleResolver::new(
+    workspace_resolver.clone(),
+    node_resolver.clone(),
+  );
+  let main_module = cli_options
+    .resolve_main_module_with_resolver(Some(&main_module_resolver))?;
+  let preload_modules =
+    cli_options.preload_modules_with_resolver(Some(&main_module_resolver))?;
   let require_modules = cli_options.require_modules()?;
 
   if main_module.scheme() == "npm" {
