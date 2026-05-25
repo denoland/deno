@@ -4064,45 +4064,31 @@ function inspect(
   return formatValue(ctx, value, 0);
 }
 
-/** Creates a proxy that represents a subset of the properties
- * of the original object optionally without evaluating the properties
- * in order to get the values. */
+/** Creates an object that represents a subset of the properties of the
+ * original object, suitable for handing to `inspect()`. The returned value
+ * carries the original object's class name and the listed keys as own
+ * enumerable data properties. Previously this returned a Proxy with traps
+ * exposing the filtered view, but since `inspect()` now mirrors Node.js and
+ * skips proxy traps in default mode, we materialise the view eagerly. */
 function createFilteredInspectProxy({ object, keys, evaluate }) {
-  const obj = class {};
+  const cls = class {};
   if (object.constructor?.name) {
-    ObjectDefineProperty(obj, "name", {
+    ObjectDefineProperty(cls, "name", {
       __proto__: null,
       value: object.constructor.name,
     });
   }
 
-  return new Proxy(new obj(), {
-    get(_target, key) {
-      if (key === SymbolToStringTag) {
-        return object.constructor?.name;
-      } else if (ArrayPrototypeIncludes(keys, key)) {
-        return ReflectGet(object, key);
-      } else {
-        return undefined;
-      }
-    },
-    getOwnPropertyDescriptor(_target, key) {
-      if (!ArrayPrototypeIncludes(keys, key)) {
-        return undefined;
-      } else if (evaluate) {
-        return getEvaluatedDescriptor(object, key);
-      } else {
-        return getDescendantPropertyDescriptor(object, key) ??
-          getEvaluatedDescriptor(object, key);
-      }
-    },
-    has(_target, key) {
-      return ArrayPrototypeIncludes(keys, key);
-    },
-    ownKeys() {
-      return keys;
-    },
-  });
+  const result = new cls();
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    const descriptor = evaluate
+      ? getEvaluatedDescriptor(object, key)
+      : (getDescendantPropertyDescriptor(object, key) ??
+        getEvaluatedDescriptor(object, key));
+    ObjectDefineProperty(result, key, descriptor);
+  }
+  return result;
 
   function getDescendantPropertyDescriptor(object, key) {
     let propertyDescriptor = ReflectGetOwnPropertyDescriptor(object, key);
