@@ -249,6 +249,13 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
                 return Ok(Some(key.clone()));
               }
             }
+            PackageJsonDepValue::Git(_) => {
+              // git deps are installed under their declared alias; match
+              // by name only since there is no semver to intersect.
+              if key.as_str() == req.name {
+                return Ok(Some(key.clone()));
+              }
+            }
           }
         }
       }

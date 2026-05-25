@@ -448,6 +448,11 @@ impl WorkspaceMainModuleResolver {
             let cwd_path = deno_path_util::url_to_file_path(cwd)?;
             deno_path_util::resolve_path(file, &cwd_path)?
           }
+          deno_package_json::PackageJsonDepValue::Git(_) => {
+            return Err(deno_core::anyhow::anyhow!(
+              "Importing npm packages via a git: specifier is only supported with --node-modules-dir=manual"
+            ));
+          }
           deno_package_json::PackageJsonDepValue::Req(package_req) => {
             ModuleSpecifier::parse(&format!(
               "npm:{}{}",

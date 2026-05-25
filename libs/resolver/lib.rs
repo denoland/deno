@@ -114,6 +114,7 @@ impl DenoResolveError {
       | DenoResolveErrorKind::ResolvePkgFolderFromDenoReq(_)
       | DenoResolveErrorKind::InvalidVendorFolderImport
       | DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+      | DenoResolveErrorKind::UnsupportedPackageJsonGitSpecifier
       | DenoResolveErrorKind::NodeModulesOutOfDate(_)
       | DenoResolveErrorKind::CatalogPackageNotFound(_)
       | DenoResolveErrorKind::PackageJsonDepValueParse(_)
@@ -134,6 +135,11 @@ pub enum DenoResolveErrorKind {
     "Importing npm packages via a file: specifier is only supported with --node-modules-dir=manual"
   )]
   UnsupportedPackageJsonFileSpecifier,
+  #[class(type)]
+  #[error(
+    "Importing npm packages via a git: specifier is only supported with --node-modules-dir=manual"
+  )]
+  UnsupportedPackageJsonGitSpecifier,
   #[class(type)]
   #[error("Package '{0}' not found in catalog")]
   CatalogPackageNotFound(String),
@@ -171,6 +177,7 @@ impl DenoResolveErrorKind {
     match self {
       DenoResolveErrorKind::InvalidVendorFolderImport
       | DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+      | DenoResolveErrorKind::UnsupportedPackageJsonGitSpecifier
       | DenoResolveErrorKind::CatalogPackageNotFound { .. }
       | DenoResolveErrorKind::MappedResolution { .. }
       | DenoResolveErrorKind::NodeModulesOutOfDate { .. }
@@ -421,6 +428,10 @@ impl<
                     .into_box(),
                 )
               }
+              PackageJsonDepValue::Git(_) => Err(
+                DenoResolveErrorKind::UnsupportedPackageJsonGitSpecifier
+                  .into_box(),
+              ),
               // todo(dsherret): it seems bad that we're converting this
               // to a url because the req might not be a valid url.
               PackageJsonDepValue::Req(req) => Url::parse(&format!(

@@ -143,11 +143,24 @@ pub fn parse_jsr_dep_value<'a>(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PackageJsonDepGit {
+  /// Canonical git URL with the committish stripped. For host shorthands
+  /// (`github:owner/repo`, `gitlab:`, `bitbucket:`, `gist:`) this is the
+  /// expanded https URL. For `git+<proto>://...` specifiers the `git+`
+  /// prefix is stripped.
+  pub url: String,
+  /// The optional `#<ref>` portion of the original specifier (a branch,
+  /// tag, or commit SHA). `None` means HEAD of the default branch.
+  pub committish: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PackageJsonDepValue {
   File(String),
   Req(PackageReq),
   Workspace(PackageJsonDepWorkspaceReq),
   Catalog(String),
+  Git(PackageJsonDepGit),
 }
 
 impl PackageJsonDepValue {
@@ -167,6 +180,10 @@ impl PackageJsonDepValue {
           Err(PackageJsonDepValueParseErrorKind::VersionReq(err).into_box())
         }
       }
+    }
+
+    if let Some(git) = parse_git_dep(value) {
+      return Ok(Self::Git(git));
     }
 
     if let Some((scheme, value)) = value.split_once(':') {
@@ -220,6 +237,42 @@ impl PackageJsonDepValue {
       from_name_and_version_req(key.into(), value)
     }
   }
+}
+
+/// Parses an npm-style git dependency specifier as documented by
+/// npm-package-arg. Returns `None` if `value` is not a git specifier.
+///
+/// Recognized forms (`#<committish>` is optional in all of them):
+/// - `git://host/...`
+/// - `git+http(s)://host/...`, `git+ssh://...`, `git+file://...`
+/// - `github:owner/repo`, `gitlab:owner/repo`, `bitbucket:owner/repo`
+/// - `gist:<id>`
+pub fn parse_git_dep(value: &str) -> Option<PackageJsonDepGit> {
+  let (url_part, committish) = match value.split_once('#') {
+    Some((url, c)) if !c.is_empty() => (url, Some(c.to_string())),
+    _ => (value, None),
+  };
+
+  let url = if let Some(rest) = url_part.strip_prefix("git+") {
+    // `git+https://...`, `git+ssh://...`, `git+http://...`, `git+file://...`
+    rest.to_string()
+  } else if url_part.starts_with("git:") {
+    // `git://host/path` (canonical) or the looser `git:something` accepted
+    // by npm-package-arg.
+    url_part.to_string()
+  } else if let Some(rest) = url_part.strip_prefix("github:") {
+    format!("https://github.com/{}.git", rest)
+  } else if let Some(rest) = url_part.strip_prefix("gitlab:") {
+    format!("https://gitlab.com/{}.git", rest)
+  } else if let Some(rest) = url_part.strip_prefix("bitbucket:") {
+    format!("https://bitbucket.org/{}.git", rest)
+  } else if let Some(rest) = url_part.strip_prefix("gist:") {
+    format!("https://gist.github.com/{}.git", rest)
+  } else {
+    return None;
+  };
+
+  Some(PackageJsonDepGit { url, committish })
 }
 
 pub type PackageJsonDepsMap = IndexMap<
@@ -946,6 +999,11 @@ mod test {
       ),
       ("file-test".to_string(), "file:something".to_string()),
       ("git-test".to_string(), "git:something".to_string()),
+      (
+        "git-plus-test".to_string(),
+        "git+https://github.com/foo/bar.git".to_string(),
+      ),
+      ("github-test".to_string(), "github:foo/bar#v1".to_string()),
       ("http-test".to_string(), "http://something".to_string()),
       ("https-test".to_string(), "https://something".to_string()),
     ]));
@@ -1005,9 +1063,24 @@ mod test {
         ),
         (
           "git-test".to_string(),
-          Err(PackageJsonDepValueParseErrorKind::Unsupported {
-            scheme: "git".to_string()
-          }),
+          Ok(PackageJsonDepValue::Git(PackageJsonDepGit {
+            url: "git:something".to_string(),
+            committish: None,
+          })),
+        ),
+        (
+          "git-plus-test".to_string(),
+          Ok(PackageJsonDepValue::Git(PackageJsonDepGit {
+            url: "https://github.com/foo/bar.git".to_string(),
+            committish: None,
+          })),
+        ),
+        (
+          "github-test".to_string(),
+          Ok(PackageJsonDepValue::Git(PackageJsonDepGit {
+            url: "https://github.com/foo/bar.git".to_string(),
+            committish: Some("v1".to_string()),
+          })),
         ),
         (
           "http-test".to_string(),
@@ -1023,6 +1096,53 @@ mod test {
         ),
       ])
     );
+  }
+
+  #[test]
+  fn test_parse_git_dep() {
+    let cases = [
+      (
+        "git+https://github.com/foo/bar.git",
+        "https://github.com/foo/bar.git",
+        None,
+      ),
+      (
+        "git+ssh://git@github.com/foo/bar.git#v1.2.3",
+        "ssh://git@github.com/foo/bar.git",
+        Some("v1.2.3"),
+      ),
+      ("git://github.com/foo/bar", "git://github.com/foo/bar", None),
+      ("github:foo/bar", "https://github.com/foo/bar.git", None),
+      (
+        "github:foo/bar#main",
+        "https://github.com/foo/bar.git",
+        Some("main"),
+      ),
+      (
+        "gitlab:foo/bar#v1",
+        "https://gitlab.com/foo/bar.git",
+        Some("v1"),
+      ),
+      (
+        "bitbucket:foo/bar",
+        "https://bitbucket.org/foo/bar.git",
+        None,
+      ),
+      ("gist:abc123", "https://gist.github.com/abc123.git", None),
+    ];
+    for (input, want_url, want_committish) in cases {
+      let got = parse_git_dep(input)
+        .unwrap_or_else(|| panic!("expected Some for {input}"));
+      assert_eq!(got.url, want_url, "url for {input}");
+      assert_eq!(
+        got.committish.as_deref(),
+        want_committish,
+        "committish for {input}"
+      );
+    }
+    assert!(parse_git_dep("^1.0.0").is_none());
+    assert!(parse_git_dep("https://example.com/foo.tgz").is_none());
+    assert!(parse_git_dep("file:./local").is_none());
   }
 
   #[test]
