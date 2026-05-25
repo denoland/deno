@@ -194,7 +194,6 @@ const internalCryptoUtil = core.loadExtScript(
 const internalCryptoX509 = core.loadExtScript(
   "ext:deno_node/internal/crypto/x509.ts",
 ).default;
-import * as internalCompileCache from "ext:deno_node/internal/compile_cache.js";
 const internalDgram = core.loadExtScript(
   "ext:deno_node/internal/dgram.ts",
 ).default;
@@ -1208,11 +1207,6 @@ ObjectDefineProperty(Module.prototype, "parent", {
 
 Module.builtinModules = builtinModules;
 
-Module.enableCompileCache = internalCompileCache.enableCompileCache;
-Module.flushCompileCache = internalCompileCache.flushCompileCache;
-Module.getCompileCacheDir = internalCompileCache.getCompileCacheDir;
-Module.constants = internalCompileCache.constants;
-
 Module._extensions = ObjectCreate(null);
 Module._cache = ObjectCreate(null);
 Module._pathCache = ObjectCreate(null);
@@ -2180,7 +2174,7 @@ Module._extensions[".js"] = function (module, filename) {
   ) {
     return loadMaybeCjs(module, filename);
   } else if (StringPrototypeEndsWith(filename, ".mts")) {
-    return loadEsm(module, filename);
+    return loadESMFromCJS(module, filename);
   } else if (StringPrototypeEndsWith(filename, ".cts")) {
     return loadCjs(module, filename);
   } else {
@@ -2189,49 +2183,18 @@ Module._extensions[".js"] = function (module, filename) {
 };
 
 Module._extensions[".cjs"] = loadCjs;
-Module._extensions[".mjs"] = loadEsm;
+Module._extensions[".mjs"] = loadESMFromCJS;
 Module._extensions[".wasm"] = loadESMFromCJS;
 
 function loadMaybeCjs(module, filename) {
   const content = op_require_read_file(filename);
   const format = op_require_is_maybe_cjs(filename) ? undefined : "module";
-  internalCompileCache.onCompile(filename, content, format);
-  internalCompileCache.onPersist(filename);
-  try {
-    module._compile(content, filename, format);
-  } catch (e) {
-    internalCompileCache.onCompileError(filename, format);
-    throw e;
-  }
+  module._compile(content, filename, format);
 }
 
 function loadCjs(module, filename) {
   const content = op_require_read_file(filename);
-  internalCompileCache.onCompile(filename, content, "commonjs");
-  internalCompileCache.onPersist(filename);
-  try {
-    module._compile(content, filename, "commonjs");
-  } catch (e) {
-    internalCompileCache.onCompileError(filename, "commonjs");
-    throw e;
-  }
-}
-
-function loadEsm(module, filename) {
-  let content;
-  try {
-    content = op_require_read_file(filename);
-  } catch { /* missing or non-text file - let loadESMFromCJS handle errors */ }
-  if (typeof content === "string") {
-    internalCompileCache.onCompile(filename, content, "module");
-    internalCompileCache.onPersist(filename);
-  }
-  try {
-    loadESMFromCJS(module, filename, content);
-  } catch (e) {
-    internalCompileCache.onCompileError(filename, "module");
-    throw e;
-  }
+  module._compile(content, filename, "commonjs");
 }
 
 function _throwRequireAsyncModule(specifier, module) {
@@ -3220,19 +3183,10 @@ function closeIdleConnections() {
 
 internals.closeIdleConnections = closeIdleConnections;
 
-const enableCompileCache = internalCompileCache.enableCompileCache;
-const flushCompileCache = internalCompileCache.flushCompileCache;
-const getCompileCacheDir = internalCompileCache.getCompileCacheDir;
-const compileCacheConstants = internalCompileCache.constants;
-
 export {
   builtinModules,
-  compileCacheConstants as constants,
   createRequire,
-  enableCompileCache,
-  flushCompileCache,
   getBuiltinModule,
-  getCompileCacheDir,
   isBuiltin,
   Module,
   SourceMap,

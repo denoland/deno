@@ -2012,3 +2012,25 @@ Deno.test(
     );
   },
 );
+
+// Regression test for #34335: `paths.map(fs.promises.unlink)` passes
+// `(elem, index, array)` to unlink. The promisify wrapper used to forward all
+// three to callback-style `fs.unlink`, which then read `index` as the callback
+// and rejected. Promisified `fs.promises.*` methods must slice extra args.
+Deno.test(
+  "[node/fs] promises methods drop extra positional args (Array#map use)",
+  async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "fs-arity-"));
+    try {
+      const a = join(tmp, "a");
+      const b = join(tmp, "b");
+      writeFileSync(a, "");
+      writeFileSync(b, "");
+      await Promise.all([a, b].map(promises.unlink));
+      assertEquals(existsSync(a), false);
+      assertEquals(existsSync(b), false);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  },
+);
