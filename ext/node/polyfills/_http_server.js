@@ -186,6 +186,17 @@ class ConnectionsList {
     this._active.delete(socket);
   }
 
+  // For pipelined requests the parser fires kOnMessageBegin for the next
+  // request before the previous response finishes, replacing the active
+  // entry. resOnFinish must only clear the entry if it still belongs to
+  // the just-completed request (i.e. headersCompleted=true).
+  popActiveIfCompleted(socket) {
+    const entry = this._active.get(socket);
+    if (entry && entry.headersCompleted) {
+      this._active.delete(socket);
+    }
+  }
+
   markHeadersCompleted(socket) {
     const entry = this._active.get(socket);
     if (entry) {
@@ -588,7 +599,14 @@ function onParserMessageBegin(server, socket) {
 }
 
 function onParserExecute(server, socket, parser, state, ret, d) {
-  socket._unrefTimer?.();
+  // Don't refresh the socket timeout while the connection is idling in
+  // keep-alive mode (waiting for the next request). Stray bytes like
+  // `\r\n` between requests must not reset keepAliveTimeout. The timer
+  // is reset explicitly via resetSocketTimeout once a new request
+  // actually begins.
+  if (!state.keepAliveTimeoutSet) {
+    socket._unrefTimer?.();
+  }
   // The consume path (parser.consume(handle)) passes `d` as a bare
   // Uint8Array from the C++ binding. onParserExecuteCommon's upgrade
   // branch does `d.slice(bytesParsed).toString()` and expects the
@@ -1045,10 +1063,11 @@ function resOnFinish(req, res, socket, state, server) {
   nextTick(emitCloseNT, res);
 
   // The request is done; stop tracking it for headersTimeout/requestTimeout.
-  // A new entry will be added by parser[kOnMessageBegin] if another request
-  // arrives on this keepalive socket.
+  // Only pop if the entry still belongs to this completed request: when
+  // requests are pipelined, the parser has already pushed a fresh entry
+  // for the next request via kOnMessageBegin.
   const connections = server[kConnectionsKey];
-  if (connections) connections.popActive(socket);
+  if (connections) connections.popActiveIfCompleted(socket);
 
   if (res._last) {
     if (typeof socket.destroySoon === "function") {
