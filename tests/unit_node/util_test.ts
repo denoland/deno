@@ -45,6 +45,30 @@ Deno.test({
 });
 
 Deno.test({
+  // https://github.com/denoland/deno/issues/26355
+  name: "[util] inspect on Proxy doesn't invoke traps",
+  fn() {
+    assertEquals(
+      stripAnsiCode(util.inspect(
+        // deno-lint-ignore no-explicit-any
+        new Proxy({ x: 1 }, { ownKeys: (() => undefined) as any }),
+      )),
+      "{ x: 1 }",
+    );
+    assertEquals(
+      stripAnsiCode(util.inspect(
+        new Proxy({}, {
+          get() {
+            throw new Error("should not be invoked");
+          },
+        }),
+      )),
+      "{}",
+    );
+  },
+});
+
+Deno.test({
   name: "[util] types.isTypedArray",
   fn() {
     assert(util.types.isTypedArray(new Buffer(4)));
