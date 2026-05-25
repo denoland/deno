@@ -5577,6 +5577,26 @@ pub mod test {
   }
 
   #[test]
+  fn test_config_file_path_not_convertible_to_url() {
+    // Regression test for https://github.com/denoland/deno/issues/34308 -
+    // passing a path whose parent can't be converted to a `file://` URL
+    // (e.g. a `file:///D:/deno.json` argument joined with cwd on Windows)
+    // used to panic. It should return an error instead.
+    let sys = InMemorySys::default();
+    let path = PathBuf::from("deno.json"); // relative path; parent is ""
+    let err = WorkspaceDirectory::discover(
+      &sys,
+      WorkspaceDiscoverStart::ConfigFile(&path),
+      &WorkspaceDiscoverOptions::default(),
+    )
+    .unwrap_err();
+    assert!(matches!(
+      err.as_kind(),
+      WorkspaceDiscoverErrorKind::PathToUrl(_)
+    ));
+  }
+
+  #[test]
   fn test_config_workspace() {
     let sys = InMemorySys::default();
     let root_config_path = root_dir().join("deno.json");
