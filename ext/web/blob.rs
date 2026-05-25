@@ -61,6 +61,41 @@ impl BlobStore {
   pub fn default_arc() -> Arc<dyn BlobStoreTrait> {
     Arc::new(Self::default())
   }
+
+  pub fn insert_part(&self, part: Arc<dyn BlobPart + Send + Sync>) -> Uuid {
+    <Self as BlobStoreTrait>::insert_part(self, part)
+  }
+
+  pub fn get_part(&self, id: &Uuid) -> Option<Arc<dyn BlobPart + Send + Sync>> {
+    <Self as BlobStoreTrait>::get_part(self, id)
+  }
+
+  pub fn remove_part(
+    &self,
+    id: &Uuid,
+  ) -> Option<Arc<dyn BlobPart + Send + Sync>> {
+    <Self as BlobStoreTrait>::remove_part(self, id)
+  }
+
+  pub fn get_object_url(&self, url: Url) -> Option<Arc<Blob>> {
+    <Self as BlobStoreTrait>::get_object_url(self, url)
+  }
+
+  pub fn insert_object_url(
+    &self,
+    blob: Blob,
+    maybe_location: Option<Url>,
+  ) -> Url {
+    <Self as BlobStoreTrait>::insert_object_url(self, blob, maybe_location)
+  }
+
+  pub fn remove_object_url(&self, url: &Url) {
+    <Self as BlobStoreTrait>::remove_object_url(self, url)
+  }
+
+  pub fn clear(&self) {
+    <Self as BlobStoreTrait>::clear(self)
+  }
 }
 
 impl BlobStoreTrait for BlobStore {

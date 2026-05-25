@@ -32,7 +32,7 @@ fn setup() -> Vec<Extension> {
   vec![
     deno_webidl::deno_webidl::init(),
     deno_web::deno_web::init(
-      Default::default(),
+      deno_web::BlobStore::default_arc(),
       None,
       Default::default(),
       Default::default(),
