@@ -1792,18 +1792,15 @@ impl WorkspaceDirectory {
             // so this is ok for now
             let path = &paths[0];
             match sys.fs_is_dir(path) {
-              Ok(is_dir) => Ok(
-                url_from_directory_path(if is_dir {
-                  path
-                } else {
-                  path.parent().unwrap()
-                })
-                .unwrap(),
-              ),
+              Ok(is_dir) => Ok(url_from_directory_path(if is_dir {
+                path
+              } else {
+                path.parent().unwrap()
+              })?),
               Err(_err) => {
                 // assume the parent is a directory
                 match path.parent() {
-                  Some(parent) => Ok(url_from_directory_path(parent).unwrap()),
+                  Some(parent) => Ok(url_from_directory_path(parent)?),
                   None => Err(
                     WorkspaceDiscoverErrorKind::FailedResolvingStartDirectory(
                       FailedResolvingStartDirectoryError::CouldNotResolvePath(
@@ -1825,7 +1822,7 @@ impl WorkspaceDirectory {
               ),
             )
           })?;
-          Ok(url_from_directory_path(parent).unwrap())
+          Ok(url_from_directory_path(parent)?)
         }
       }
     }
