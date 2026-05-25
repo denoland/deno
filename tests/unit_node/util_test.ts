@@ -290,3 +290,48 @@ Deno.test("[util] parseEnv()", () => {
     KEY6: "A",
   });
 });
+
+Deno.test("[util] getSystemErrorMap()", () => {
+  const map = util.getSystemErrorMap();
+  assert(map instanceof Map);
+  // The map must agree with getSystemErrorName / getSystemErrorMessage on
+  // every entry it returns.
+  for (const [code, [name, message]] of map) {
+    assertStrictEquals(util.getSystemErrorName(code), name);
+    assertStrictEquals(util.getSystemErrorMessage(code), message);
+  }
+  // Smoke-check a couple of well-known platform-independent codes.
+  const eaddrinuse = Deno.build.os === "windows" ? -4091 : -98;
+  if (Deno.build.os === "darwin") {
+    assertStrictEquals(map.get(-48)?.[0], "EADDRINUSE");
+  } else {
+    assertStrictEquals(map.get(eaddrinuse)?.[0], "EADDRINUSE");
+  }
+});
+
+Deno.test("[util] transferableAbortController() returns an AbortController", () => {
+  const ac = util.transferableAbortController();
+  assert(ac instanceof AbortController);
+  assert(ac.signal instanceof AbortSignal);
+  assertEquals(ac.signal.aborted, false);
+  ac.abort("reason");
+  assertEquals(ac.signal.aborted, true);
+  assertEquals(ac.signal.reason, "reason");
+});
+
+Deno.test("[util] transferableAbortSignal() returns the given signal", () => {
+  const ac = new AbortController();
+  assertStrictEquals(util.transferableAbortSignal(ac.signal), ac.signal);
+  // Also accepts already-aborted signals.
+  const aborted = AbortSignal.abort("boom");
+  assertStrictEquals(util.transferableAbortSignal(aborted), aborted);
+});
+
+Deno.test("[util] transferableAbortSignal() throws on non-AbortSignal", () => {
+  // deno-lint-ignore no-explicit-any
+  const fn = util.transferableAbortSignal as (signal: any) => unknown;
+  assertThrows(() => fn(undefined), TypeError);
+  assertThrows(() => fn(null), TypeError);
+  assertThrows(() => fn({}), TypeError);
+  assertThrows(() => fn("signal"), TypeError);
+});
