@@ -12,6 +12,7 @@ import { dirname, fromFileUrl, join } from "@std/path";
 import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";
+import { Buffer } from "node:buffer";
 import { execCode } from "../unit/test_util.ts";
 
 const tlsTestdataDir = fromFileUrl(
@@ -941,4 +942,46 @@ Deno.test("TLSSocket.setServername throws Node-compatible coded errors", () => {
     "ERR_TLS_SNI_FROM_SERVER",
   );
   serverSocket.destroy();
+});
+
+// Regression test for https://github.com/denoland/deno/issues/33963
+// tls.Server.setTicketKeys was missing; calling it threw
+// TypeError: ... is not a function. Verify the method now exists,
+// validates input shape (Buffer/TypedArray/DataView, 48 bytes), and
+// returns undefined for a well-formed input.
+Deno.test("tls.Server.setTicketKeys accepts a 48-byte Buffer", () => {
+  const server = new tls.Server();
+  const keys = Buffer.alloc(48);
+  // Node returns undefined.
+  assertEquals(server.setTicketKeys(keys), undefined);
+});
+
+Deno.test("tls.Server.setTicketKeys accepts a 48-byte Uint8Array", () => {
+  const server = new tls.Server();
+  const keys = new Uint8Array(48);
+  // @ts-expect-error: @types/node types this as Buffer-only, but the
+  // runtime (here and in Node) accepts any TypedArray of 48 bytes.
+  assertEquals(server.setTicketKeys(keys), undefined);
+});
+
+Deno.test("tls.Server.setTicketKeys throws on wrong byteLength", () => {
+  const server = new tls.Server();
+  assertThrows(
+    () => server.setTicketKeys(Buffer.alloc(47)),
+    RangeError,
+    "must be 48",
+  );
+});
+
+Deno.test("tls.Server.setTicketKeys throws on non-buffer input", () => {
+  const server = new tls.Server();
+  const err = assertThrows(
+    // @ts-expect-error testing runtime type validation
+    () => server.setTicketKeys("not-a-buffer"),
+    TypeError,
+  );
+  assertEquals(
+    (err as Error & { code?: string }).code,
+    "ERR_INVALID_ARG_TYPE",
+  );
 });
