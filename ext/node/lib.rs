@@ -423,7 +423,6 @@ deno_core::extension!(deno_node,
   esm_entry_point = "node:module",
   esm = [
     dir "polyfills",
-    "internal/compile_cache.js",
     "internal_binding/mod.ts",
     "node:module" = "01_require.js",
     "node:process" = "process.ts",
