@@ -37,9 +37,11 @@ const {
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectGetOwnPropertyDescriptor,
   ObjectGetOwnPropertyDescriptors,
   ObjectHasOwn,
   ObjectKeys,
+  ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   PromisePrototypeThen,
@@ -912,6 +914,17 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
       // Removes the `__proto__` for security reasons.
       // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+      //
+      // npm packages commonly do `Foo.prototype.__proto__ = Bar.prototype`
+      // to set up inheritance; with the accessor gone that assignment
+      // silently becomes an own-property write that doesn't change the
+      // [[Prototype]], breaking the package (see denoland/deno#34337,
+      // stylus and its dependents stack-overflow). The Node compat
+      // layer restores the accessor on first CJS module load.
+      internals.__savedProtoDescriptor = ObjectGetOwnPropertyDescriptor(
+        ObjectPrototype,
+        "__proto__",
+      );
       delete Object.prototype.__proto__;
     }
 
@@ -1044,6 +1057,13 @@ function bootstrapWorkerRuntime(
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
       // Removes the `__proto__` for security reasons.
       // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+      //
+      // See bootstrapMainRuntime() above for the rationale and how Node
+      // compat restores the accessor on first CJS load.
+      internals.__savedProtoDescriptor = ObjectGetOwnPropertyDescriptor(
+        ObjectPrototype,
+        "__proto__",
+      );
       delete Object.prototype.__proto__;
     }
 

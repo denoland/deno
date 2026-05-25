@@ -2039,12 +2039,33 @@ function enrichCJSError(error) {
   }
 }
 
+// `99_main.js` deletes `Object.prototype.__proto__` for security, after
+// saving the original descriptor on `internals.__savedProtoDescriptor`.
+// CJS code in npm packages routinely uses `Foo.prototype.__proto__ =
+// Bar.prototype` for inheritance, and without the accessor that
+// assignment silently becomes an own-property write that leaves the
+// real [[Prototype]] unchanged, breaking the package (see
+// denoland/deno#34337 -- stylus and its dependents stack-overflow).
+// Restore the accessor lazily on first CJS load. Pure-ESM programs
+// that never touch CJS never hit this and keep the hardened default.
+let protoRestoredForNodeCompat = false;
+function restoreProtoForNodeCompat() {
+  if (protoRestoredForNodeCompat) return;
+  protoRestoredForNodeCompat = true;
+  const descriptor = internals.__savedProtoDescriptor;
+  if (descriptor) {
+    ObjectDefineProperty(ObjectPrototype, "__proto__", descriptor);
+    internals.__savedProtoDescriptor = undefined;
+  }
+}
+
 function wrapSafe(
   filename,
   content,
   cjsModuleInstance,
   format,
 ) {
+  restoreProtoForNodeCompat();
   let f;
   let err;
 

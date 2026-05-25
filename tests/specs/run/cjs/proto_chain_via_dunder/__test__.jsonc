@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "inheritance_via_dunder_proto": {
+      "args": "run --allow-read inheritance.cjs",
+      "output": "inheritance.out"
+    },
+    "esm_only_keeps_proto_deleted": {
+      "args": "run esm_only.mjs",
+      "output": "esm_only.out"
+    },
+    "esm_after_require_has_proto_restored": {
+      "args": "run --allow-read after_require.mjs",
+      "output": "after_require.out"
+    }
+  }
+}
