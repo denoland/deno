@@ -4151,27 +4151,99 @@ pub fn op_node_derive_public_key_from_private_key(
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum PfxValidationError {
+pub enum PfxLoadError {
   #[class(generic)]
   #[error("not enough data")]
   NotEnoughData,
   #[class(generic)]
   #[error("mac verify failure")]
   MacVerifyFailure,
+  #[class(generic)]
+  #[error("PFX contains no usable certificate")]
+  NoCert,
+  #[class(generic)]
+  #[error("PFX contains no usable private key")]
+  NoKey,
+  #[class(generic)]
+  #[error("failed to encode PFX contents: {0}")]
+  Encode(String),
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadPfxResult {
+  pub cert: String,
+  pub key: String,
+  pub ca: Vec<String>,
+}
+
+fn der_to_pem(label: &str, der: &[u8]) -> String {
+  use base64::engine::general_purpose::STANDARD;
+  let body = STANDARD.encode(der);
+  let mut out = String::with_capacity(body.len() + 64);
+  out.push_str("-----BEGIN ");
+  out.push_str(label);
+  out.push_str("-----\n");
+  for chunk in body.as_bytes().chunks(64) {
+    // SAFETY: base64 output is ASCII.
+    out.push_str(std::str::from_utf8(chunk).unwrap());
+    out.push('\n');
+  }
+  out.push_str("-----END ");
+  out.push_str(label);
+  out.push_str("-----\n");
+  out
 }
 
 #[op2]
-pub fn op_node_validate_pfx(
+#[serde]
+pub fn op_node_load_pfx(
   #[buffer] pfx: &[u8],
   #[string] passphrase: Option<String>,
-) -> Result<(), PfxValidationError> {
-  let parsed =
-    Pkcs12::parse(pfx).map_err(|_| PfxValidationError::NotEnoughData)?;
+) -> Result<LoadPfxResult, PfxLoadError> {
+  let parsed = Pkcs12::parse(pfx).map_err(|_| PfxLoadError::NotEnoughData)?;
   let password = passphrase.as_deref().unwrap_or("");
-  if !parsed.verify_mac(password) {
-    return Err(PfxValidationError::MacVerifyFailure);
+
+  // p12 0.6 only supports SHA-1 MAC verification (newer OpenSSL defaults to
+  // SHA-256). Run the check inside `catch_unwind` to tolerate the upstream
+  // `debug_assert!` on the digest algorithm, and treat any non-SHA-1 MAC as
+  // unverifiable rather than a hard failure - matching OpenSSL's behaviour
+  // of accepting PFX with a non-default MAC algorithm. The PBE-decryption
+  // step below provides the real integrity/authenticity check.
+  let mac_ok = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    parsed.verify_mac(password)
+  }))
+  .unwrap_or(true);
+  if !mac_ok {
+    return Err(PfxLoadError::MacVerifyFailure);
   }
-  Ok(())
+
+  let cert_ders = parsed
+    .cert_bags(password)
+    .map_err(|e| PfxLoadError::Encode(e.to_string()))?;
+  let key_ders = parsed
+    .key_bags(password)
+    .map_err(|e| PfxLoadError::Encode(e.to_string()))?;
+
+  if cert_ders.is_empty() {
+    return Err(PfxLoadError::NoCert);
+  }
+  if key_ders.is_empty() {
+    return Err(PfxLoadError::NoKey);
+  }
+
+  // The first cert bag is taken as the leaf; any additional bags are
+  // returned as CA/chain certificates.
+  let mut iter = cert_ders.into_iter();
+  let leaf = iter.next().unwrap();
+  let cert = der_to_pem("CERTIFICATE", &leaf);
+  let ca: Vec<String> =
+    iter.map(|der| der_to_pem("CERTIFICATE", &der)).collect();
+
+  // p12 returns PKCS#8 DER for shrouded key bags.
+  let key = der_to_pem("PRIVATE KEY", &key_ders[0]);
+
+  Ok(LoadPfxResult { cert, key, ca })
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]

@@ -576,6 +576,76 @@ Deno.test("mTLS client certificate authentication", async () => {
   await new Promise<void>((resolve) => server.on("close", resolve));
 });
 
+Deno.test(
+  "tls PFX: cert+key from pfx are used for handshake",
+  async () => {
+    // Regression test for https://github.com/denoland/deno/issues/34202:
+    // the cert/key embedded in PFX must be extracted into the SecureContext
+    // so the TLS handshake doesn't fail with no-server-cert.
+    const pfx = Deno.readFileSync(join(tlsTestdataDir, "localhost.pfx"));
+
+    const server = tls.createServer({
+      pfx,
+      passphrase: "testpass",
+      requestCert: true,
+      rejectUnauthorized: false,
+    }, (socket) => {
+      // deno-lint-ignore no-explicit-any
+      const s = socket as any;
+      socket.write(JSON.stringify({
+        authorized: s.authorized,
+        authorizationError: s.authorizationError?.code ?? s.authorizationError,
+      }));
+      socket.end();
+    });
+
+    const { promise, resolve, reject } = Promise.withResolvers<string>();
+
+    server.listen(0, () => {
+      // deno-lint-ignore no-explicit-any
+      const port = (server.address() as any)?.port;
+      const client = tls.connect({
+        host: "localhost",
+        port,
+        pfx,
+        passphrase: "testpass",
+        rejectUnauthorized: false,
+      });
+      client.setEncoding("utf8");
+      let data = "";
+      client.on("data", (chunk) => {
+        data += chunk;
+      });
+      client.on("end", () => {
+        // deno-lint-ignore no-explicit-any
+        const ce = (client as any).authorizationError;
+        client.destroy();
+        resolve(JSON.stringify({
+          server: JSON.parse(data),
+          // deno-lint-ignore no-explicit-any
+          clientAuthorized: (client as any).authorized,
+          clientAuthorizationError: ce?.code ?? ce,
+        }));
+      });
+      client.on("error", reject);
+    });
+
+    const result = JSON.parse(await promise);
+    assertEquals(result.server.authorized, false);
+    assertEquals(
+      result.server.authorizationError,
+      "DEPTH_ZERO_SELF_SIGNED_CERT",
+    );
+    assertEquals(result.clientAuthorized, false);
+    assertEquals(
+      result.clientAuthorizationError,
+      "DEPTH_ZERO_SELF_SIGNED_CERT",
+    );
+    server.close();
+    await new Promise<void>((resolve) => server.on("close", resolve));
+  },
+);
+
 Deno.test("tls.getCACertificates returns bundled certificates", () => {
   const certs = tls.getCACertificates("bundled");
   assert(Array.isArray(certs));

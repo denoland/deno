@@ -22,7 +22,7 @@ const { isArrayBufferView } = core.loadExtScript(
 const { validateString } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-const { op_node_validate_crl, op_node_validate_pfx } = core.ops;
+const { op_node_validate_crl, op_node_load_pfx } = core.ops;
 const { createPrivateKey } = core.loadExtScript(
   "ext:deno_node/internal/crypto/keys.ts",
 );
@@ -431,13 +431,23 @@ class SecureContext {
     validateKeyCertOption(options.key, "options.key", true);
     validateKeyCertOption(options.ca, "options.ca", false);
 
-    // Validate PFX / PKCS#12 data.
+    // Load PFX / PKCS#12 data: extract the cert + private key so they can
+    // be used by the underlying TLS implementation. Any additional certs
+    // present in the PFX are merged into `ca`. Caller-supplied `cert`/`key`
+    // (and `ca`) take precedence, matching Node, which loads PFX first and
+    // then layers explicit cert/key on top.
+    let pfxCert: string | undefined;
+    let pfxKey: string | undefined;
+    let pfxCa: string[] | undefined;
     if (options.pfx != null) {
       const pfxData = toUint8Array(options.pfx);
       const pfxPassphrase = options.passphrase != null
         ? String(options.passphrase)
         : null;
-      op_node_validate_pfx(pfxData, pfxPassphrase);
+      const loaded = op_node_load_pfx(pfxData, pfxPassphrase);
+      pfxCert = loaded.cert;
+      pfxKey = loaded.key;
+      pfxCa = loaded.ca?.length ? loaded.ca : undefined;
     }
 
     // Validate CRL data.
@@ -458,12 +468,13 @@ class SecureContext {
 
     const { minVersion, maxVersion } = getProtocolRange(options);
 
-    const useDefaultCA = !options.ca;
+    const effectiveCa = options.ca != null ? options.ca : pfxCa;
+    const useDefaultCA = !effectiveCa;
     this.context = {
-      ca: useDefaultCA ? undefined : normalizeCertValue(options.ca),
+      ca: useDefaultCA ? undefined : normalizeCertValue(effectiveCa),
       useDefaultCA,
-      cert: toStringOrUndefined(options.cert),
-      key: toStringOrUndefined(options.key),
+      cert: toStringOrUndefined(options.cert) ?? pfxCert,
+      key: toStringOrUndefined(options.key) ?? pfxKey,
       minVersion,
       maxVersion,
       ciphers: options.ciphers,
