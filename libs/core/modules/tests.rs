@@ -661,6 +661,59 @@ async fn test_lazy_load_esm_evaluates_pre_instantiated_sibling() {
   result.await.unwrap();
 }
 
+/// Regression test for https://github.com/denoland/deno/issues/34307
+///
+/// Two concurrent dynamic `import()` calls each spawn their own
+/// `RecursiveModuleLoad`. If both transitively depend on the same
+/// `lazy_loaded_esm` module, their per-load `visited`/`get_id` dedup misses
+/// (the first hasn't registered the module yet) and both queue load futures
+/// for the same lazy specifier. The first wins `take_lazy_esm_source`; the
+/// second used to get `None` and fall through to `loader.load()`, which
+/// surfaces "Unsupported scheme" for `node:` builtins in the wild (vite 8
+/// + react-router 7.15 under a CJS bin).
+#[tokio::test]
+async fn test_lazy_loaded_esm_concurrent_loads() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "custom:lazy_shared" = "lazy_loaded_shared.js",
+    ]
+  );
+
+  let main =
+    ModuleSpecifier::parse("file:///lazy_loaded_concurrent_main.js").unwrap();
+  let a =
+    ModuleSpecifier::parse("file:///lazy_loaded_concurrent_a.js").unwrap();
+  let b =
+    ModuleSpecifier::parse("file:///lazy_loaded_concurrent_b.js").unwrap();
+  let loader = Rc::new(StaticModuleLoader::new([
+    (
+      main.clone(),
+      crate::ascii_str_include!("testdata/lazy_loaded_concurrent_main.js"),
+    ),
+    (
+      a,
+      crate::ascii_str_include!("testdata/lazy_loaded_concurrent_a.js"),
+    ),
+    (
+      b,
+      crate::ascii_str_include!("testdata/lazy_loaded_concurrent_b.js"),
+    ),
+  ]));
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let mod_id = runtime.load_main_es_module(&main).await.unwrap();
+  let result = runtime.mod_evaluate(mod_id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  result.await.unwrap();
+}
+
 #[test]
 fn test_lazy_loaded_script() {
   deno_core::extension!(
