@@ -1689,6 +1689,11 @@ static ENV_VARS: &[EnvVar] = &[
     example: Some("(module downloads, fetch)"),
   },
   EnvVar {
+    name: "NODE_USE_ENV_PROXY",
+    description: "If set to 1, node:http and node:https honor HTTP_PROXY,\nHTTPS_PROXY, and NO_PROXY from the environment.",
+    example: None,
+  },
+  EnvVar {
     name: "NPM_CONFIG_REGISTRY",
     description: "URL to use for the npm registry.",
     example: None,
