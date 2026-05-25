@@ -1122,7 +1122,7 @@
         buffer,
         options?.hostObjects,
         options?.transferredArrayBuffers,
-        options?.deserializers,
+        options?.deserializers ?? cloneableDeserializers,
         options?.forStorage ?? false,
       );
     },
