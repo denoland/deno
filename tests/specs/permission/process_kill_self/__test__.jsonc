@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "self_pid_no_allow_run": {
+      "args": "run main.js",
+      "output": "ok\n"
+    }
+  }
+}
