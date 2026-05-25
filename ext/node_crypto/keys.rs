@@ -4197,8 +4197,9 @@ pub fn op_node_validate_pfx(
   Ok(())
 }
 
-// Convert a UTF-8 password to the PKCS#12 BMPString form: each
-// character is encoded as UTF-16BE, followed by a U+0000 terminator.
+// Convert a UTF-8 password to the PKCS#12 BMPString form (RFC 7292
+// section B.1): each character is encoded as UTF-16BE, followed by a
+// U+0000 terminator.
 fn bmp_string(s: &str) -> Vec<u8> {
   let utf16: Vec<u16> = s.encode_utf16().collect();
   let mut bytes = Vec::with_capacity(utf16.len() * 2 + 2);
@@ -4209,10 +4210,14 @@ fn bmp_string(s: &str) -> Vec<u8> {
   bytes
 }
 
-// PKCS#12 PBKDF (RFC 7292, Appendix B.2), generic over a Digest. `v` is
-// the hash function's block size in bytes (64 for SHA-1/224/256, 128 for
-// SHA-384/512/512-224/512-256). `id` is the diversifier (1 = key,
-// 2 = IV, 3 = MAC).
+// PKCS#12 password-based key derivation, generic over a Digest. Implements
+// the algorithm from RFC 7292 Appendix B.2:
+//   https://www.rfc-editor.org/rfc/rfc7292#appendix-B.2
+//
+// `v` is the hash function's block size in bytes (64 for SHA-1, SHA-224,
+// SHA-256; 128 for SHA-384, SHA-512, SHA-512/224, SHA-512/256). `id` is
+// the diversifier (1 = encryption key, 2 = IV, 3 = MAC key). `size` is
+// the number of output bytes desired.
 fn pkcs12_pbkdf<D: Digest + FixedOutputReset>(
   pass: &[u8],
   salt: &[u8],
@@ -4221,35 +4226,42 @@ fn pkcs12_pbkdf<D: Digest + FixedOutputReset>(
   size: usize,
   v: usize,
 ) -> Vec<u8> {
+  // u = hash output size in bytes.
   let u = <D as Digest>::output_size();
+  // Step 1: D = id repeated v bytes.
   let d = vec![id; v];
-  let s_len = if salt.is_empty() {
-    0
-  } else {
-    v * salt.len().div_ceil(v)
-  };
-  let p_len = if pass.is_empty() {
-    0
-  } else {
-    v * pass.len().div_ceil(v)
-  };
-  let s: Vec<u8> = if s_len == 0 {
+  // Steps 2 & 3: S and P are the salt / password padded to a multiple of
+  // v bytes by cyclic repetition. Empty inputs contribute an empty string.
+  let s: Vec<u8> = if salt.is_empty() {
     Vec::new()
   } else {
-    salt.iter().cycle().take(s_len).copied().collect()
+    salt
+      .iter()
+      .cycle()
+      .take(v * salt.len().div_ceil(v))
+      .copied()
+      .collect()
   };
-  let p: Vec<u8> = if p_len == 0 {
+  let p: Vec<u8> = if pass.is_empty() {
     Vec::new()
   } else {
-    pass.iter().cycle().take(p_len).copied().collect()
+    pass
+      .iter()
+      .cycle()
+      .take(v * pass.len().div_ceil(v))
+      .copied()
+      .collect()
   };
+  // Step 4: I = S || P.
   let mut i: Vec<u8> = Vec::with_capacity(s.len() + p.len());
   i.extend_from_slice(&s);
   i.extend_from_slice(&p);
+  // Step 5: c = ceil(size / u).
   let c = size.div_ceil(u);
   let mut out: Vec<u8> = Vec::with_capacity(c * u);
   let mut hasher = D::new();
   for _ in 0..c {
+    // Step 6a: Ai = H^iterations(D || I).
     Digest::update(&mut hasher, &d);
     Digest::update(&mut hasher, &i);
     let mut ai = hasher.finalize_reset().to_vec();
@@ -4257,13 +4269,15 @@ fn pkcs12_pbkdf<D: Digest + FixedOutputReset>(
       Digest::update(&mut hasher, &ai);
       ai = hasher.finalize_reset().to_vec();
     }
+    // Step 7 (partial): A = A || Ai.
     out.extend_from_slice(&ai);
     if i.is_empty() {
       continue;
     }
-    // B = leftmost v bytes of Ai repeated cyclically.
+    // Step 6b: B = Ai repeated cyclically to v bytes.
     let b: Vec<u8> = ai.iter().cycle().take(v).copied().collect();
-    // For each v-byte block of I, set I_j = (I_j + B + 1) mod 2^(v*8).
+    // Step 6c: treating I as v-byte blocks, set each block to
+    // (block + B + 1) mod 2^(8v). Big-endian add with carry.
     for chunk in i.chunks_mut(v) {
       let mut carry: u16 = 1;
       for j in (0..v).rev() {
@@ -4273,6 +4287,7 @@ fn pkcs12_pbkdf<D: Digest + FixedOutputReset>(
       }
     }
   }
+  // Step 8: take the first `size` bytes of A.
   out.truncate(size);
   out
 }
@@ -4393,18 +4408,8 @@ fn verify_pkcs12_mac(
       pkcs12_hmac::<sha2::Sha512_256>(&key, data)
     }
   };
-  Some(constant_time_eq(&computed, expected))
-}
-
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-  if a.len() != b.len() {
-    return false;
-  }
-  let mut diff = 0u8;
-  for (x, y) in a.iter().zip(b.iter()) {
-    diff |= x ^ y;
-  }
-  diff == 0
+  use subtle::ConstantTimeEq;
+  Some(bool::from(computed.ct_eq(expected)))
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -4431,4 +4436,87 @@ pub fn op_node_validate_crl(
       .map_err(|_| CrlValidationError::ParseFailed)?;
   }
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  // Cross-check our generic implementation of the PKCS#12 PBKDF
+  // (RFC 7292 Appendix B.2) against test vectors computed with an
+  // independent reference implementation.
+
+  // SHA-1 vector lifted from the `p12` crate's own test suite, which
+  // matches output produced by Bouncy Castle.
+  #[test]
+  fn pkcs12_pbkdf_sha1() {
+    let pass = bmp_string("");
+    assert_eq!(pass, vec![0, 0]);
+    let salt: [u8; 8] = [0x9a, 0xf4, 0x70, 0x29, 0x58, 0xa8, 0xe9, 0x5c];
+    let got = pkcs12_pbkdf::<sha1::Sha1>(&pass, &salt, 2048, 1, 24, 64);
+    let expected: [u8; 24] = [
+      0xc2, 0x29, 0x4a, 0xa6, 0xd0, 0x29, 0x30, 0xeb, 0x5c, 0xe9, 0xc3, 0x29,
+      0xec, 0xcb, 0x9a, 0xee, 0x1c, 0xb1, 0x36, 0xba, 0xea, 0x74, 0x65, 0x57,
+    ];
+    assert_eq!(got, expected);
+  }
+
+  // SHA-256 / SHA-384 / SHA-512 vectors were generated by porting the
+  // RFC 7292 B.2 pseudocode to Python and feeding the same inputs.
+  #[test]
+  fn pkcs12_pbkdf_sha256() {
+    let pass = bmp_string("secret");
+    let salt: [u8; 8] = [0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef];
+    let got = pkcs12_pbkdf::<sha2::Sha256>(&pass, &salt, 1000, 3, 32, 64);
+    let expected: [u8; 32] = [
+      0x7f, 0xe1, 0x91, 0x75, 0x7d, 0xca, 0xf1, 0xed, 0x6a, 0x29, 0x77, 0xb9,
+      0xb9, 0x15, 0x3f, 0x60, 0x82, 0xaf, 0x0b, 0xda, 0xfd, 0x09, 0x35, 0x2d,
+      0xcd, 0xaa, 0x96, 0x7f, 0x57, 0x17, 0x82, 0xb0,
+    ];
+    assert_eq!(got, expected);
+  }
+
+  #[test]
+  fn pkcs12_pbkdf_sha384() {
+    let pass = bmp_string("secret");
+    let salt: [u8; 8] = [0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef];
+    let got = pkcs12_pbkdf::<sha2::Sha384>(&pass, &salt, 1000, 3, 48, 128);
+    let expected: [u8; 48] = [
+      0x6a, 0x59, 0x71, 0x72, 0x05, 0x22, 0x76, 0x31, 0x21, 0xf4, 0x9a, 0x1d,
+      0x5c, 0x04, 0x10, 0xa1, 0xdb, 0x42, 0x0b, 0xe4, 0x96, 0x6d, 0xc5, 0x2f,
+      0x51, 0x91, 0x9d, 0x91, 0x15, 0x2d, 0x60, 0x2d, 0x31, 0x1c, 0x4c, 0xb0,
+      0x8d, 0x99, 0x83, 0xad, 0xaf, 0x68, 0xff, 0x5d, 0xdd, 0x69, 0x0b, 0x87,
+    ];
+    assert_eq!(got, expected);
+  }
+
+  #[test]
+  fn pkcs12_pbkdf_sha512() {
+    let pass = bmp_string("secret");
+    let salt: [u8; 8] = [0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef];
+    let got = pkcs12_pbkdf::<sha2::Sha512>(&pass, &salt, 1000, 3, 64, 128);
+    let expected: [u8; 64] = [
+      0x3e, 0x5c, 0x5d, 0xb5, 0xf5, 0xe3, 0xd0, 0xc2, 0x23, 0x2e, 0xbf, 0xbb,
+      0x86, 0x08, 0x23, 0x7a, 0x2b, 0x0a, 0xf6, 0x00, 0x30, 0xe6, 0xa0, 0x08,
+      0x2a, 0xbe, 0x7c, 0x19, 0x3f, 0x52, 0x5e, 0x98, 0x97, 0x6f, 0xb2, 0xbb,
+      0x1c, 0x88, 0xc3, 0xc6, 0xf8, 0xb5, 0x64, 0x91, 0x74, 0x3f, 0xc5, 0x04,
+      0xfb, 0x3d, 0xd9, 0x10, 0xf4, 0xf9, 0x5e, 0xf6, 0x99, 0xc2, 0x48, 0x15,
+      0xf1, 0x3e, 0xc1, 0x74,
+    ];
+    assert_eq!(got, expected);
+  }
+
+  #[test]
+  fn bmp_string_basic() {
+    assert_eq!(bmp_string(""), vec![0x00, 0x00]);
+    // "Beavis" — every code unit becomes two big-endian bytes, then a
+    // U+0000 terminator.
+    assert_eq!(
+      bmp_string("Beavis"),
+      vec![
+        0x00, 0x42, 0x00, 0x65, 0x00, 0x61, 0x00, 0x76, 0x00, 0x69, 0x00, 0x73,
+        0x00, 0x00,
+      ],
+    );
+  }
 }
