@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "default": {
+      "args": "check --quiet main.ts",
+      "output": ""
+    },
+    "tsconfig_dom": {
+      "args": "check --quiet dom_main.ts",
+      "output": ""
+    }
+  }
+}

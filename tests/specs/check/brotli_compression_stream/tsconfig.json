@@ -1,0 +1,6 @@
+{
+  "files": ["dom_main.ts"],
+  "compilerOptions": {
+    "lib": ["esnext", "dom"]
+  }
+}
