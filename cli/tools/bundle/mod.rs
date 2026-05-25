@@ -21,29 +21,19 @@ use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
 use deno_bundle_runtime::BundleFormat;
 use deno_bundle_runtime::BundlePlatform;
-use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
 use deno_config::workspace::TsTypeLib;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
-use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::url::Url;
-use deno_error::JsError;
 use deno_error::JsErrorClass;
-use deno_graph::ModuleErrorKind;
 use deno_graph::Position;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::graph::ResolveWithGraphError;
 use deno_resolver::graph::ResolveWithGraphOptions;
 use deno_resolver::loader::LoadCodeSourceError;
-use deno_resolver::loader::LoadCodeSourceErrorKind;
-use deno_resolver::loader::LoadPreparedModuleErrorKind;
-use deno_resolver::loader::LoadedModuleOrAsset;
-use deno_resolver::loader::LoadedModuleSource;
-use deno_resolver::loader::RequestedModuleType;
-use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
@@ -51,7 +41,6 @@ use indexmap::IndexSet;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageNotFoundError;
-use node_resolver::errors::PackageSubpathResolveError;
 pub use provider::CliBundleProvider;
 use rolldown::BundleOutput;
 use rolldown::BundlerBuilder;
@@ -59,13 +48,13 @@ use rolldown::BundlerOptions;
 use rolldown::InputItem;
 use rolldown::OutputFormat;
 use rolldown::Platform;
+use rolldown::plugin::__inner::SharedPluginable;
 use rolldown::plugin::HookLoadArgs;
 use rolldown::plugin::HookLoadOutput;
 use rolldown::plugin::HookResolveIdArgs;
 use rolldown::plugin::HookResolveIdOutput;
 use rolldown::plugin::HookUsage;
 use rolldown::plugin::Plugin;
-use rolldown::plugin::__inner::SharedPluginable;
 use rolldown_common::ImportKind;
 use rolldown_common::ModuleType;
 use rolldown_common::Output;
@@ -80,7 +69,6 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::module_loader::CliDenoResolverModuleLoader;
 use crate::module_loader::CliEmitter;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
@@ -165,10 +153,14 @@ pub async fn prepare_inputs(
 
     let _ = plugin_handler.prepare_module_load(&script_entry_urls).await;
 
-    let roots = resolve_roots(script_entry_urls, init_cwd, npm_resolver, node_resolver);
+    let roots =
+      resolve_roots(script_entry_urls, init_cwd, npm_resolver, node_resolver);
     let _ = plugin_handler.prepare_module_load(&roots).await;
 
-    let to_cache_urls: Vec<Url> = all_entries.iter().filter_map(|(_, url)| Url::parse(url).ok()).collect();
+    let to_cache_urls: Vec<Url> = all_entries
+      .iter()
+      .filter_map(|(_, url)| Url::parse(url).ok())
+      .collect();
     let _ = plugin_handler.prepare_module_load(&to_cache_urls).await;
 
     let graph = plugin_handler.module_graph_container.graph();
@@ -201,7 +193,6 @@ pub async fn bundle_init(
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
   let cli_options = factory.cli_options()?;
-  let module_loader = factory.resolver_factory()?.module_loader()?;
   let init_cwd = cli_options.initial_cwd().to_path_buf();
   let module_graph_container =
     factory.main_module_graph_container().await?.clone();
@@ -213,7 +204,6 @@ pub async fn bundle_init(
     resolved_roots: Arc::new(RwLock::new(Arc::new(IndexSet::new()))),
     module_graph_container,
     permissions: root_permissions.clone(),
-    module_loader: module_loader.clone(),
     externals_matcher: if bundle_flags.external.is_empty() {
       None
     } else {
@@ -225,7 +215,6 @@ pub async fn bundle_init(
     parsed_source_cache: factory.parsed_source_cache()?.clone(),
     cjs_tracker: factory.cjs_tracker()?.clone(),
     emitter: factory.emitter()?.clone(),
-    deferred_resolve_errors: Default::default(),
     virtual_modules: None,
     initial_cwd: deno_path_util::url_from_directory_path(
       cli_options.initial_cwd(),
@@ -248,15 +237,12 @@ pub async fn bundle_init(
   };
 
   let is_html = matches!(input, BundlerInput::EntrypointsWithHtml { .. });
-  let rolldown_options = build_rolldown_options(bundle_flags, &init_cwd, is_html, &entries);
+  let rolldown_options =
+    build_rolldown_options(bundle_flags, &init_cwd, is_html, &entries);
 
   let bundler = RolldownBundler {
     options: rolldown_options,
     plugin: Arc::new(plugin_handler),
-    mode: match bundle_flags.watch {
-      true => BundlingMode::Watch,
-      false => BundlingMode::OneShot,
-    },
     cwd: init_cwd,
     input,
     minified: bundle_flags.minify,
@@ -419,7 +405,7 @@ fn get_input_paths_from_output(output: &BundleOutput) -> Vec<PathBuf> {
           if let Ok(path) = deno_path_util::url_to_file_path(&url) {
             paths.insert(path);
           }
-        } else if let Ok(path) = std::fs::canonicalize(module_str) {
+        } else if let Ok(path) = canonicalize_path(Path::new(module_str)) {
           paths.insert(path);
         }
       }
@@ -429,12 +415,6 @@ fn get_input_paths_from_output(output: &BundleOutput) -> Vec<PathBuf> {
 }
 
 // --- Bundler ---
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum BundlingMode {
-  OneShot,
-  Watch,
-}
 
 #[derive(Debug, Clone)]
 pub enum BundlerInput {
@@ -448,7 +428,6 @@ pub enum BundlerInput {
 pub struct RolldownBundler {
   options: BundlerOptions,
   plugin: Arc<DenoPluginHandler>,
-  mode: BundlingMode,
   pub cwd: PathBuf,
   pub input: BundlerInput,
   pub minified: bool,
@@ -557,11 +536,6 @@ fn build_rolldown_options(
 
 // --- Plugin ---
 
-pub struct DeferredResolveError {
-  path: String,
-  error: ResolveWithGraphError,
-}
-
 #[derive(Clone)]
 pub struct VirtualModule {
   contents: Vec<u8>,
@@ -608,9 +582,7 @@ pub struct DenoPluginHandler {
   resolved_roots: Arc<RwLock<Arc<IndexSet<ModuleSpecifier>>>>,
   module_graph_container: Arc<MainModuleGraphContainer>,
   permissions: PermissionsContainer,
-  module_loader: Arc<CliDenoResolverModuleLoader>,
   externals_matcher: Option<Arc<ExternalsMatcher>>,
-  deferred_resolve_errors: Arc<Mutex<Vec<DeferredResolveError>>>,
   virtual_modules: Option<Arc<VirtualModules>>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   cjs_tracker: Arc<CliCjsTracker>,
@@ -623,18 +595,6 @@ impl Debug for DenoPluginHandler {
     f.debug_struct("DenoPluginHandler")
       .field("initial_cwd", &self.initial_cwd)
       .finish()
-  }
-}
-
-impl DenoPluginHandler {
-  pub fn take_deferred_resolve_errors(&self) -> Vec<DeferredResolveError> {
-    std::mem::take(&mut *self.deferred_resolve_errors.lock())
-  }
-
-  fn update_virtual_module(&self, path: &str, module: VirtualModule) {
-    if let Some(virtual_modules) = &self.virtual_modules {
-      virtual_modules.insert(path.to_string(), module);
-    }
   }
 }
 
@@ -651,11 +611,12 @@ impl Plugin for DenoPluginHandler {
     &self,
     _ctx: &rolldown::plugin::PluginContext,
     args: &HookResolveIdArgs<'_>,
-  ) -> impl std::future::Future<Output = deno_core::anyhow::Result<Option<HookResolveIdOutput>>> + Send {
+  ) -> impl std::future::Future<
+    Output = deno_core::anyhow::Result<Option<HookResolveIdOutput>>,
+  > + Send {
     let specifier = args.specifier.to_string();
     let importer = args.importer.map(|s| s.to_string());
     let kind = args.kind;
-    let is_entry = args.is_entry;
 
     // We need to capture self's fields since the future must be Send
     let resolver = self.resolver.clone();
@@ -663,17 +624,16 @@ impl Plugin for DenoPluginHandler {
     let virtual_modules = self.virtual_modules.clone();
     let module_graph_container = self.module_graph_container.clone();
     let initial_cwd = self.initial_cwd.clone();
-    let deferred_resolve_errors = self.deferred_resolve_errors.clone();
 
     async move {
       // Virtual module
-      if let Some(vm) = &virtual_modules {
-        if vm.contains(&specifier) {
-          return Ok(Some(HookResolveIdOutput {
-            id: ArcStr::from(specifier),
-            ..Default::default()
-          }));
-        }
+      if let Some(vm) = &virtual_modules
+        && vm.contains(&specifier)
+      {
+        return Ok(Some(HookResolveIdOutput {
+          id: ArcStr::from(specifier),
+          ..Default::default()
+        }));
       }
 
       // Pre-resolve external check
@@ -754,13 +714,7 @@ impl Plugin for DenoPluginHandler {
           }))
         }
         Err(e) => {
-          if let Some(pkg_name) = maybe_ignorable_resolution_error(&e) {
-            deferred_resolve_errors
-              .lock()
-              .push(DeferredResolveError {
-                path: pkg_name,
-                error: e,
-              });
+          if maybe_ignorable_resolution_error(&e).is_some() {
             return Ok(None);
           }
           Err(e.into())
@@ -773,14 +727,14 @@ impl Plugin for DenoPluginHandler {
     &self,
     _ctx: rolldown::plugin::SharedLoadPluginContext,
     args: &HookLoadArgs<'_>,
-  ) -> impl std::future::Future<Output = deno_core::anyhow::Result<Option<HookLoadOutput>>> + Send {
+  ) -> impl std::future::Future<
+    Output = deno_core::anyhow::Result<Option<HookLoadOutput>>,
+  > + Send {
     let id = args.id.to_string();
     let virtual_modules = self.virtual_modules.clone();
     let file_fetcher = self.file_fetcher.clone();
     let resolver = self.resolver.clone();
     let module_graph_container = self.module_graph_container.clone();
-    let module_load_preparer = self.module_load_preparer.clone();
-    let module_loader = self.module_loader.clone();
     let permissions = self.permissions.clone();
     let parsed_source_cache = self.parsed_source_cache.clone();
     let cjs_tracker = self.cjs_tracker.clone();
@@ -789,15 +743,15 @@ impl Plugin for DenoPluginHandler {
 
     async move {
       // Virtual module
-      if let Some(vm) = &virtual_modules {
-        if let Some(module) = vm.get(&id) {
-          let code = String::from_utf8(module.contents)?;
-          return Ok(Some(HookLoadOutput {
-            code: ArcStr::from(code),
-            module_type: Some(module.module_type.clone()),
-            ..Default::default()
-          }));
-        }
+      if let Some(vm) = &virtual_modules
+        && let Some(module) = vm.get(&id)
+      {
+        let code = String::from_utf8(module.contents)?;
+        return Ok(Some(HookLoadOutput {
+          code: ArcStr::from(code),
+          module_type: Some(module.module_type.clone()),
+          ..Default::default()
+        }));
       }
 
       // Parse URL
@@ -819,11 +773,12 @@ impl Plugin for DenoPluginHandler {
           (json.specifier.clone(), MediaType::Json)
         }
         Some(deno_graph::Module::Wasm(_)) => {
-          return Err(deno_core::anyhow::anyhow!("Wasm modules are not yet implemented in deno bundle."));
+          return Err(deno_core::anyhow::anyhow!(
+            "Wasm modules are not yet implemented in deno bundle."
+          ));
         }
-        Some(deno_graph::Module::Npm(npm)) => {
-          let req_ref =
-            NpmPackageReqReference::from_specifier(&specifier)?;
+        Some(deno_graph::Module::Npm(_)) => {
+          let req_ref = NpmPackageReqReference::from_specifier(&specifier)?;
           let url = resolver.resolve_managed_npm_req_ref(
             &req_ref,
             None,
@@ -853,11 +808,8 @@ impl Plugin for DenoPluginHandler {
 
                 if needs_transpile(mt) {
                   let source_arc: Arc<str> = Arc::from(source.as_str());
-                  let parsed_source = parsed_source_cache.remove_or_parse_module(
-                    &specifier,
-                    mt,
-                    source_arc,
-                  )?;
+                  let parsed_source = parsed_source_cache
+                    .remove_or_parse_module(&specifier, mt, source_arc)?;
                   let is_cjs = cjs_tracker.is_maybe_cjs(&specifier, mt)?
                     && parsed_source.compute_is_script();
                   let module_kind = ModuleKind::from_is_cjs(is_cjs);
@@ -890,9 +842,8 @@ impl Plugin for DenoPluginHandler {
               let result = ff.fetch(&spec, &perms).await;
               let _ = tx.send(result);
             });
-            let fetched = rx
-              .await?
-              .map_err(|e| deno_core::anyhow::anyhow!("{}", e))?;
+            let fetched =
+              rx.await?.map_err(|e| deno_core::anyhow::anyhow!("{}", e))?;
             let source = String::from_utf8(fetched.source.to_vec())?;
             let (mt, _) =
               deno_media_type::resolve_media_type_and_charset_from_content_type(
@@ -913,8 +864,9 @@ impl Plugin for DenoPluginHandler {
       // Load module source — read file directly for Send compatibility
       let source_string = if resolved_specifier.scheme() == "file" {
         let path = deno_path_util::url_to_file_path(&resolved_specifier)?;
-        tokio::fs::read_to_string(&path).await
-          .map_err(|e| deno_core::anyhow::anyhow!("Failed to read {}: {}", path.display(), e))?
+        tokio::fs::read_to_string(&path).await.map_err(|e| {
+          deno_core::anyhow::anyhow!("Failed to read {}: {}", path.display(), e)
+        })?
       } else {
         // For remote modules, use a oneshot channel to bridge non-Send fetch
         let (tx, rx) = tokio::sync::oneshot::channel();
@@ -925,8 +877,8 @@ impl Plugin for DenoPluginHandler {
           let result = ff.fetch(&spec, &perms).await;
           let _ = tx.send(result);
         });
-        let fetched = rx.await?
-          .map_err(|e| deno_core::anyhow::anyhow!("{}", e))?;
+        let fetched =
+          rx.await?.map_err(|e| deno_core::anyhow::anyhow!("{}", e))?;
         String::from_utf8(fetched.source.to_vec())?
       };
       let source_bytes = source_string.as_bytes();
@@ -942,7 +894,8 @@ impl Plugin for DenoPluginHandler {
           source_arc.clone(),
         )?;
 
-        let is_cjs = cjs_tracker.is_maybe_cjs(&resolved_specifier, media_type)?
+        let is_cjs = cjs_tracker
+          .is_maybe_cjs(&resolved_specifier, media_type)?
           && parsed_source.compute_is_script();
         let module_kind = ModuleKind::from_is_cjs(is_cjs);
         let transpiled = emitter
@@ -1014,25 +967,6 @@ impl DenoPluginHandler {
     Ok(())
   }
 
-  async fn reload_specifiers(
-    &self,
-    specifiers: &[PathBuf],
-  ) -> Result<(), AnyError> {
-    let mut graph_permit =
-      self.module_graph_container.acquire_update_permit().await;
-    let graph = graph_permit.graph_mut();
-    let mut specifiers_vec = Vec::with_capacity(specifiers.len());
-    for specifier in specifiers {
-      let specifier = deno_path_util::url_from_file_path(specifier)?;
-      specifiers_vec.push(specifier);
-    }
-    self
-      .module_load_preparer
-      .reload_specifiers(graph, specifiers_vec, false, self.permissions.clone())
-      .await?;
-    graph_permit.commit();
-    Ok(())
-  }
 }
 
 fn apply_transform(
@@ -1154,9 +1088,6 @@ pub enum BundleLoadErrorKind {
   #[error(transparent)]
   ResolveWithGraph(#[from] ResolveWithGraphError),
   #[class(generic)]
-  #[error("Wasm modules are not implemented in deno bundle.")]
-  WasmUnsupported,
-  #[class(generic)]
   #[error("UTF-8 conversion error")]
   Utf8(#[from] std::str::Utf8Error),
   #[class(generic)]
@@ -1181,41 +1112,6 @@ pub enum BundleLoadErrorKind {
   ),
 }
 
-#[derive(Debug, boxed_error::Boxed, JsError)]
-struct BundleError(Box<BundleErrorKind>);
-
-#[derive(Debug, thiserror::Error, JsError)]
-#[class(generic)]
-enum BundleErrorKind {
-  #[error(transparent)]
-  Resolver(#[from] deno_resolver::graph::ResolveWithGraphError),
-  #[error(transparent)]
-  Url(#[from] deno_core::url::ParseError),
-  #[error(transparent)]
-  ResolveNpmPkg(#[from] ResolvePkgFolderFromDenoModuleError),
-  #[error(transparent)]
-  SubpathResolve(#[from] PackageSubpathResolveError),
-  #[error(transparent)]
-  PathToUrlError(#[from] deno_path_util::PathToUrlError),
-  #[error(transparent)]
-  UrlToPathError(#[from] deno_path_util::UrlToFilePathError),
-  #[error(transparent)]
-  Io(#[from] std::io::Error),
-  #[error(transparent)]
-  ResolveUrlOrPathError(#[from] deno_path_util::ResolveUrlOrPathError),
-  #[error(transparent)]
-  PrepareModuleLoad(#[from] crate::module_loader::PrepareModuleLoadError),
-  #[error(transparent)]
-  ResolveReqWithSubPath(#[from] deno_resolver::npm::ResolveReqWithSubPathError),
-  #[error(transparent)]
-  PackageReqReferenceParse(
-    #[from] deno_semver::package::PackageReqReferenceParseError,
-  ),
-  #[allow(dead_code, reason = "not used yet")]
-  #[error("Http cache error")]
-  HttpCache,
-}
-
 // --- Output processing ---
 
 fn has_errors(output: &BundleOutput) -> bool {
@@ -1229,11 +1125,7 @@ fn handle_diagnostics(output: &BundleOutput) {
   for diag in &output.warnings {
     match diag.severity() {
       Severity::Error => {
-        log::error!(
-          "{}: {}",
-          deno_terminal::colors::red_bold("error"),
-          diag
-        );
+        log::error!("{}: {}", deno_terminal::colors::red_bold("error"), diag);
       }
       Severity::Warning => {
         log::warn!(
@@ -1270,60 +1162,6 @@ fn is_js(path: &Path) -> bool {
 pub struct OutputFile<'a> {
   pub path: PathBuf,
   pub contents: Cow<'a, [u8]>,
-  pub hash: Option<String>,
-}
-
-pub fn collect_output_files<'a>(
-  output: &'a BundleOutput,
-  cwd: &Path,
-  input: BundlerInput,
-  outdir: Option<&Path>,
-) -> Result<Vec<OutputFile<'a>>, AnyError> {
-  let outdir = if let Some(outdir) = outdir {
-    if outdir.is_absolute() {
-      Some(outdir.to_path_buf())
-    } else {
-      Some(cwd.join(outdir))
-    }
-  } else {
-    None
-  };
-
-  let mut output_files: Vec<OutputFile> = output
-    .assets
-    .iter()
-    .map(|asset| {
-      let filename = asset.filename();
-      let path = if let Some(ref outdir) = outdir {
-        outdir.join(filename)
-      } else {
-        PathBuf::from(filename)
-      };
-      OutputFile {
-        path,
-        contents: Cow::Borrowed(asset.content_as_bytes()),
-        hash: None,
-      }
-    })
-    .collect();
-
-  if let BundlerInput::EntrypointsWithHtml {
-    entries: _,
-    html_pages,
-  } = input
-  {
-    let outdir = outdir.ok_or_else(|| {
-      deno_core::anyhow::anyhow!(
-        "--outdir is required when bundling HTML entrypoints",
-      )
-    })?;
-
-    let mut html_output_files = html::HtmlOutputFiles::new(&mut output_files);
-    for page in html_pages {
-      page.patch_html_with_response(cwd, &outdir, &mut html_output_files)?;
-    }
-  }
-  Ok(output_files)
 }
 
 pub fn process_result(
@@ -1339,7 +1177,8 @@ pub fn process_result(
   let mut output_infos = Vec::new();
 
   // Build list of OutputFile entries with their target paths.
-  let mut output_files: Vec<OutputFile> = Vec::with_capacity(output.assets.len());
+  let mut output_files: Vec<OutputFile> =
+    Vec::with_capacity(output.assets.len());
   for asset in &output.assets {
     let filename = asset.filename();
     let path = if let Some(outdir) = outdir {
@@ -1368,7 +1207,6 @@ pub fn process_result(
     output_files.push(OutputFile {
       path,
       contents: Cow::Borrowed(asset.content_as_bytes()),
-      hash: None,
     });
   }
 
@@ -1385,9 +1223,11 @@ pub fn process_result(
     if let Some(outdir) = outdir_path {
       let mut html_output_files = html::HtmlOutputFiles::new(&mut output_files);
       for page in html_pages {
-        page
-          .clone()
-          .patch_html_with_response(cwd, &outdir, &mut html_output_files)?;
+        page.clone().patch_html_with_response(
+          cwd,
+          &outdir,
+          &mut html_output_files,
+        )?;
       }
     }
   }
@@ -1409,10 +1249,7 @@ pub fn process_result(
       pathdiff::diff_paths(path, cwd).unwrap_or_else(|| path.clone());
 
     // If no output dir or path specified and single entry, write to stdout
-    if outdir.is_none()
-      && output_path.is_none()
-      && output_files.len() == 1
-    {
+    if outdir.is_none() && output_path.is_none() && output_files.len() == 1 {
       crate::display::write_to_stdout_ignore_sigpipe(bytes)?;
       continue;
     }
@@ -1502,28 +1339,28 @@ fn print_finished_message(
 // when possible. e.g. for `src/foo/main.ts` under `cwd`, returns `foo/main`.
 // Falls back to just the basename for files outside cwd.
 fn entry_name_for_url(url: &Url, cwd: &Path) -> String {
-  if url.scheme() == "file" {
-    if let Ok(path) = deno_path_util::url_to_file_path(url) {
-      // Strip the cwd prefix; if not under cwd, fall back to file_stem.
-      let rel = path.strip_prefix(cwd).unwrap_or(&path);
-      let mut buf = PathBuf::new();
-      if let Some(parent) = rel.parent() {
-        for comp in parent.components() {
-          if let std::path::Component::Normal(c) = comp {
-            // Skip a leading `src` directory, matching esbuild's default
-            // behavior for common project layouts.
-            if buf.as_os_str().is_empty() && c == std::ffi::OsStr::new("src") {
-              continue;
-            }
-            buf.push(c);
+  if url.scheme() == "file"
+    && let Ok(path) = deno_path_util::url_to_file_path(url)
+  {
+    // Strip the cwd prefix; if not under cwd, fall back to file_stem.
+    let rel = path.strip_prefix(cwd).unwrap_or(&path);
+    let mut buf = PathBuf::new();
+    if let Some(parent) = rel.parent() {
+      for comp in parent.components() {
+        if let std::path::Component::Normal(c) = comp {
+          // Skip a leading `src` directory, matching esbuild's default
+          // behavior for common project layouts.
+          if buf.as_os_str().is_empty() && c == std::ffi::OsStr::new("src") {
+            continue;
           }
+          buf.push(c);
         }
       }
-      if let Some(stem) = rel.file_stem() {
-        buf.push(stem);
-      }
-      return buf.to_string_lossy().into_owned();
     }
+    if let Some(stem) = rel.file_stem() {
+      buf.push(stem);
+    }
+    return buf.to_string_lossy().into_owned();
   }
   String::new()
 }
@@ -1612,37 +1449,6 @@ fn resolve_roots(
   }
 
   roots
-}
-
-pub fn maybe_process_contents(
-  file: &OutputFile<'_>,
-  should_replace_require_shim: bool,
-  minified: bool,
-) -> Result<ProcessedContents, AnyError> {
-  let path = &file.path;
-  let is_js = is_js(path) || path.ends_with("<stdout>");
-  if is_js {
-    let string = std::str::from_utf8(&file.contents)?;
-    let string = if should_replace_require_shim {
-      replace_require_shim(string, minified)
-    } else {
-      string.to_string()
-    };
-    Ok(ProcessedContents {
-      contents: Some(string.into_bytes()),
-      is_js,
-    })
-  } else {
-    Ok(ProcessedContents {
-      contents: None,
-      is_js,
-    })
-  }
-}
-
-pub struct ProcessedContents {
-  pub contents: Option<Vec<u8>>,
-  pub is_js: bool,
 }
 
 pub fn should_replace_require_shim(platform: BundlePlatform) -> bool {

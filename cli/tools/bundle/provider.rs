@@ -8,7 +8,6 @@ use deno_bundle_runtime::BundleOptions as RtBundleOptions;
 use deno_bundle_runtime::BundleProvider;
 use deno_core::error::AnyError;
 use rolldown::BundleOutput;
-use rolldown_common::Output;
 use rolldown_error::Severity;
 
 use crate::args::DenoSubcommand;
@@ -44,7 +43,9 @@ impl From<RtBundleOptions> for crate::args::BundleFlags {
   }
 }
 
-fn convert_diagnostic(diag: &rolldown_error::BuildDiagnostic) -> rt_bundle::Message {
+fn convert_diagnostic(
+  diag: &rolldown_error::BuildDiagnostic,
+) -> rt_bundle::Message {
   rt_bundle::Message {
     text: diag.to_string(),
     location: None,
