@@ -154,6 +154,7 @@ function getOtelMetrics() {
 const kLenientAll = HTTPParser.kLenientAll | 0;
 const kLenientNone = HTTPParser.kLenientNone | 0;
 const kOnExecute = HTTPParser.kOnExecute | 0;
+const kOnMessageBegin = HTTPParser.kOnMessageBegin | 0;
 const _kOnTimeout = HTTPParser.kOnTimeout | 0;
 
 // JS-based ConnectionsList matching Node's native ConnectionsList.
@@ -566,8 +567,24 @@ function connectionListenerInternal(server, socket) {
     parser,
     state,
   );
+  // Reset timeout-tracking state at the start of each HTTP message so
+  // headersTimeout/requestTimeout are measured per-request on keepalive
+  // connections (mirrors Node's native on_message_begin behavior).
+  parser[kOnMessageBegin] = onParserMessageBegin.bind(
+    undefined,
+    server,
+    socket,
+  );
 
   socket._paused = false;
+}
+
+function onParserMessageBegin(server, socket) {
+  const connections = server[kConnectionsKey];
+  if (connections) {
+    connections.popActive(socket);
+    connections.pushActive(socket);
+  }
 }
 
 function onParserExecute(server, socket, parser, state, ret, d) {
@@ -767,6 +784,11 @@ function updateOutgoingData(socket, state, delta) {
 
 function parserOnIncoming(server, socket, state, req, keepAlive) {
   resetSocketTimeout(server, socket, state);
+
+  // Headers have been fully parsed; clear the headersTimeout watchdog.
+  // requestTimeout (if any) continues to count from message begin.
+  const connections = server[kConnectionsKey];
+  if (connections) connections.markHeadersCompleted(socket);
 
   if (req.upgrade && req.method !== "CONNECT") {
     if (
@@ -1021,6 +1043,12 @@ function resOnFinish(req, res, socket, state, server) {
   res.detachSocket(socket);
   clearIncoming(req);
   nextTick(emitCloseNT, res);
+
+  // The request is done; stop tracking it for headersTimeout/requestTimeout.
+  // A new entry will be added by parser[kOnMessageBegin] if another request
+  // arrives on this keepalive socket.
+  const connections = server[kConnectionsKey];
+  if (connections) connections.popActive(socket);
 
   if (res._last) {
     if (typeof socket.destroySoon === "function") {
