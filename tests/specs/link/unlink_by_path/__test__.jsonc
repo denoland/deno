@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "link ./pkg",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "unlink ./pkg",
+      "output": "unlinked.out"
+    },
+    {
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('deno.json').trim())"
+      ],
+      "output": "deno_after.out"
+    }
+  ]
+}

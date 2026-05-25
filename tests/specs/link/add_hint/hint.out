@@ -1,0 +1,1 @@
+error: './pkg' looks like a local package directory. Did you mean `deno link ./pkg`?

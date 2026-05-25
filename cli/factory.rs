@@ -604,6 +604,8 @@ impl CliFactory {
             DenoSubcommand::Add { .. }
             | DenoSubcommand::ApproveScripts { .. }
             | DenoSubcommand::Remove { .. }
+            | DenoSubcommand::Link { .. }
+            | DenoSubcommand::Unlink { .. }
             | DenoSubcommand::Cache { .. }
             | DenoSubcommand::Ci { .. }
             | DenoSubcommand::Uninstall { .. } => true,
@@ -1435,8 +1437,10 @@ fn new_workspace_factory_options(
         | DenoSubcommand::Clean(_)
         | DenoSubcommand::Init(_)
         | DenoSubcommand::Install(_)
+        | DenoSubcommand::Link(_)
         | DenoSubcommand::Outdated(_)
         | DenoSubcommand::Remove(_)
+        | DenoSubcommand::Unlink(_)
         | DenoSubcommand::Uninstall(_)
         | DenoSubcommand::ApproveScripts(_)
     ),

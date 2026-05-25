@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "link ./pkg",
+      "output": "linked.out"
+    },
+    {
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('deno.json').trim())"
+      ],
+      "output": "deno_after.out"
+    },
+    {
+      "args": "run main.ts",
+      "output": "Hello, link!\n"
+    }
+  ]
+}
