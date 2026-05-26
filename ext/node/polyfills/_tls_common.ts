@@ -22,7 +22,7 @@ const { isArrayBufferView } = core.loadExtScript(
 const { validateString } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-const { op_node_validate_crl, op_node_validate_pfx } = core.ops;
+const { op_node_validate_crl, op_node_load_pfx } = core.ops;
 const { createPrivateKey } = core.loadExtScript(
   "ext:deno_node/internal/crypto/keys.ts",
 );
@@ -496,10 +496,19 @@ class SecureContext {
     validateKeyCertOption(options.key, "options.key", true);
     validateKeyCertOption(options.ca, "options.ca", false);
 
-    // Validate PFX / PKCS#12 data. Node accepts both a single
-    // <string>|<Buffer> and an <Array<string|Buffer|{ buf, passphrase? }>>;
-    // an empty array (which playwright passes when no PFX is configured)
-    // must be a no-op rather than feeding an empty buffer to the parser.
+    // Load PFX / PKCS#12 data: extract the cert + private key so they can
+    // be used by the underlying TLS implementation. Any additional certs
+    // present in the PFX are merged into `ca`. Caller-supplied `cert`/`key`
+    // (and `ca`) take precedence, matching Node, which loads PFX first and
+    // then layers explicit cert/key on top.
+    //
+    // Node accepts both a single <string>|<Buffer> and an
+    // <Array<string|Buffer|{ buf, passphrase? }>>; an empty array (which
+    // playwright passes when no PFX is configured) must be a no-op rather
+    // than feeding an empty buffer to the parser.
+    let pfxCert: string | undefined;
+    let pfxKey: string | undefined;
+    let pfxCa: string[] | undefined;
     if (options.pfx != null) {
       const pfxItems = globalThis.Array.isArray(options.pfx)
         ? options.pfx
@@ -522,7 +531,15 @@ class SecureContext {
         if (buf == null) continue;
         const pfxData = toUint8Array(buf);
         const pfxPassphrase = passphrase != null ? String(passphrase) : null;
-        op_node_validate_pfx(pfxData, pfxPassphrase);
+        const loaded = op_node_load_pfx(pfxData, pfxPassphrase);
+        if (pfxCert === undefined) {
+          pfxCert = loaded.cert;
+          pfxKey = loaded.key;
+        }
+        if (loaded.ca?.length) {
+          if (pfxCa === undefined) pfxCa = [];
+          pfxCa.push(...loaded.ca);
+        }
       }
     }
 
@@ -544,12 +561,13 @@ class SecureContext {
 
     const { minVersion, maxVersion } = getProtocolRange(options);
 
-    const useDefaultCA = !options.ca;
+    const effectiveCa = options.ca != null ? options.ca : pfxCa;
+    const useDefaultCA = !effectiveCa;
     this.context = {
-      ca: useDefaultCA ? undefined : normalizeCertValue(options.ca),
+      ca: useDefaultCA ? undefined : normalizeCertValue(effectiveCa),
       useDefaultCA,
-      cert: normalizeCertPem(options.cert),
-      key: normalizeKeyPem(options.key, options.passphrase),
+      cert: normalizeCertPem(options.cert) ?? pfxCert,
+      key: normalizeKeyPem(options.key, options.passphrase) ?? pfxKey,
       minVersion,
       maxVersion,
       ciphers: options.ciphers,
