@@ -12,6 +12,7 @@ import { dirname, fromFileUrl, join } from "@std/path";
 import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";
+import { Buffer } from "node:buffer";
 import { execCode } from "../unit/test_util.ts";
 
 const tlsTestdataDir = fromFileUrl(
@@ -997,4 +998,28 @@ Deno.test("TLSSocket.setServername throws Node-compatible coded errors", () => {
     "ERR_TLS_SNI_FROM_SERVER",
   );
   serverSocket.destroy();
+});
+
+// https://github.com/denoland/deno/issues/34336
+// Default OpenSSL 3 PFX bundles use a SHA-256 MAC, and Node accepts them.
+// Older bundles can use SHA-1, SHA-384, or SHA-512.
+for (const alg of ["sha1", "sha256", "sha384", "sha512"] as const) {
+  Deno.test(`tls.createSecureContext accepts pfx with ${alg} MAC`, () => {
+    const pfx = Buffer.from(
+      Deno.readFileSync(join(tlsTestdataDir, `localhost_${alg}.pfx`)),
+    );
+    const ctx = tls.createSecureContext({ pfx, passphrase: "secret" });
+    assert(ctx);
+  });
+}
+
+Deno.test("tls.createSecureContext rejects pfx with wrong passphrase", () => {
+  const pfx = Buffer.from(
+    Deno.readFileSync(join(tlsTestdataDir, "localhost_sha256.pfx")),
+  );
+  assertThrows(
+    () => tls.createSecureContext({ pfx, passphrase: "wrong" }),
+    Error,
+    "mac verify failure",
+  );
 });
