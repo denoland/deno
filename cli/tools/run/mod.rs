@@ -15,7 +15,6 @@ use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
 use deno_runtime::WorkerExecutionMode;
 use deno_semver::npm::NpmPackageReqReference;
-use node_resolver::BinValue;
 
 use crate::args::EvalFlags;
 use crate::args::Flags;
@@ -54,17 +53,13 @@ pub fn set_npm_user_agent() {
 }
 
 /// If the main module is an `npm:` specifier whose resolved bin entry is a
-/// native executable (Mach-O / ELF / PE), spawn it as a subprocess instead of
-/// feeding it to the JS module loader. Returns `Ok(None)` to fall through to
-/// the normal JS-loading path; `Ok(Some(exit_code))` if the executable ran.
-///
-/// JavaScript bin entries are intentionally left to the JS loader so existing
-/// behavior is preserved.
-async fn try_run_npm_bin_executable(
+/// native executable (Mach-O / ELF / PE), returns the resolved `BinValue` so
+/// callers can decide what to do with it. Returns `Ok(None)` when the bin
+/// should fall through to the JS module loader (or no bin can be resolved).
+async fn resolve_npm_native_bin(
   factory: &CliFactory,
-  flags: &Flags,
   main_module: &ModuleSpecifier,
-) -> Result<Option<i32>, AnyError> {
+) -> Result<Option<node_resolver::BinValue>, AnyError> {
   if main_module.scheme() != "npm" {
     return Ok(None);
   }
@@ -107,12 +102,33 @@ async fn try_run_npm_bin_executable(
       None => return Ok(None),
     };
 
-  // Only intercept native executables. JS bin entries continue to use the
-  // existing module-loader path so behavior is unchanged for them.
-  if matches!(bin_value, BinValue::JsFile(_)) {
+  // `read_bin_value` (used to build `bins`) classifies anything without a
+  // `#!` shebang as `BinValue::Executable`, so a plain `cli.mjs` ends up
+  // here too. Re-check the actual file magic so we only intercept real
+  // ELF / Mach-O / PE binaries and let JS bins fall through to the module
+  // loader as before.
+  if !is_native_binary(bin_value.path()) {
     return Ok(None);
   }
 
+  Ok(Some(bin_value))
+}
+
+/// If the main module resolves to a native npm bin, spawn it as a subprocess
+/// and return its exit code. Otherwise returns `Ok(None)` so the caller
+/// proceeds with the normal JS module-loading path.
+async fn try_run_npm_bin_executable(
+  factory: &CliFactory,
+  flags: &Flags,
+  main_module: &ModuleSpecifier,
+) -> Result<Option<i32>, AnyError> {
+  let Some(bin_value) = resolve_npm_native_bin(factory, main_module).await?
+  else {
+    return Ok(None);
+  };
+
+  let cli_options = factory.cli_options()?;
+  let npm_resolver = factory.npm_resolver().await?;
   let unstable_args = cli_options.unstable_args();
   let npm_process_state = crate::tools::x::get_npm_process_state(npm_resolver);
   let exit_code = crate::tools::x::run_bin_value(
@@ -123,6 +139,28 @@ async fn try_run_npm_bin_executable(
     &unstable_args,
   )?;
   Ok(Some(exit_code))
+}
+
+async fn is_npm_native_bin(
+  factory: &CliFactory,
+  main_module: &ModuleSpecifier,
+) -> Result<bool, AnyError> {
+  Ok(
+    resolve_npm_native_bin(factory, main_module)
+      .await?
+      .is_some(),
+  )
+}
+
+fn is_native_binary(path: &std::path::Path) -> bool {
+  let Ok(mut file) = std::fs::File::open(path) else {
+    return false;
+  };
+  let mut buf = [0u8; 4];
+  if file.read_exact(&mut buf).is_err() {
+    return false;
+  }
+  node_resolver::is_binary(&buf)
 }
 
 pub async fn run_script(
@@ -270,6 +308,12 @@ async fn run_with_watch(
         }
 
         maybe_npm_install(&factory).await?;
+
+        if is_npm_native_bin(&factory, main_module).await? {
+          return Err(deno_core::anyhow::anyhow!(
+            "Cannot use --watch with an npm package whose bin entry is a native executable: {main_module}"
+          ));
+        }
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
