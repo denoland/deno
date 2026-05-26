@@ -627,6 +627,19 @@ impl JsRuntimeInspectorState {
                     }),
                   ));
                 }
+
+                if self.nodeworker_enabled.get() {
+                  (main_session.state.send)(InspectorMsg::notification(
+                    json!({
+                      "method": "NodeWorker.attachedToWorker",
+                      "params": {
+                        "sessionId": ts.session_id,
+                        "workerInfo": ts.worker_info(),
+                        "waitingForDebugger": false
+                      }
+                    }),
+                  ));
+                }
               }
 
               continue;
