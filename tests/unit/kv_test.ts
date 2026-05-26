@@ -173,7 +173,9 @@ dbTest("set and get CryptoKey value", async (db) => {
   const result = await db.get<CryptoKey>(["a"]);
   assert(result.value instanceof CryptoKey);
   assertEquals(result.value.type, "secret");
-  assertEquals(result.value.algorithm, { name: "AES-GCM", length: 256 });
+  const algorithm = result.value.algorithm as AesKeyAlgorithm;
+  assertEquals(algorithm.name, "AES-GCM");
+  assertEquals(algorithm.length, 256);
 });
 
 dbTest("set and get recursive object", async (db) => {
