@@ -1748,10 +1748,12 @@ function moveMessagePortToContext(
         if (data === null) break;
         // Intentionally deserialize without the host-object deserializers
         // registry. Any host object marker in the stream throws, which we
-        // surface as `messageerror` per Node semantics.
+        // surface as `messageerror` per Node semantics. `deserializers:
+        // null` opts out of `core.deserialize`'s default
+        // `cloneableDeserializers` fallback.
         let message;
         try {
-          message = core.deserialize(data.data);
+          message = core.deserialize(data.data, { deserializers: null });
         } catch {
           const err = new Error(
             "Message could not be deserialized in the target context",
