@@ -770,6 +770,7 @@ name = "bsdiff_helper"
 version = "0.1.0"
 dependencies = [
  "bsdiff",
+ "zstd",
 ]
 
 [[package]]
@@ -7387,9 +7388,9 @@ dependencies = [
 
 [[package]]
 name = "openssl"
-version = "0.10.79"
+version = "0.10.80"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf0b434746ee2832f4f0baf10137e1cabb18cbe6912c69e2e33263c45250f542"
+checksum = "a45fa2aa886c42762255da344f0a0d313e254066c46aad76f300c3d3da62d967"
 dependencies = [
  "bitflags 2.9.3",
  "cfg-if",
@@ -7427,9 +7428,9 @@ dependencies = [
 
 [[package]]
 name = "openssl-sys"
-version = "0.9.115"
+version = "0.9.116"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "158fe5b292746440aa6e7a7e690e55aeb72d41505e2804c23c6973ad0e9c9781"
+checksum = "f28a22dc7140cda5f096e5e7724a6962ca81a7f8bfd2979f9b18c11af56318c4"
 dependencies = [
  "cc",
  "libc",
@@ -11296,9 +11297,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "149.0.0"
+version = "149.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55897294cf631f99d5ff57c6a0611648861645ed7c8f251579161e0768812840"
+checksum = "46dccf61a364b61bbaac70a8ba64a1a1006e87123b7d62eaeec999a3ba31ecdb"
 dependencies = [
  "bindgen 0.72.1",
  "bitflags 2.9.3",

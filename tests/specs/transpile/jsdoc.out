@@ -1,0 +1,9 @@
+[WILDCARD]deno transpile is experimental and subject to changes
+/**
+ * Greets the user and shows their balance.
+ * @param user - The user to greet.
+ * @returns A greeting message with the user's name and balance.
+ */
+export function greet(user) {
+  return `Hello ${user.name}, you have $${user.balance.toFixed(2)}`;
+}
