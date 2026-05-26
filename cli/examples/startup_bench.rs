@@ -43,6 +43,12 @@ use deno_runtime::worker::WorkerServiceOptions;
 type Sys = sys_traits::impls::RealSys;
 
 fn bootstrap_once() -> MainWorker {
+  // Microbenchmark only — no resolver context, this is the simplest way to
+  // get a `Url` to pass `bootstrap_from_options`.
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "example binary, no `initial_cwd` to thread"
+  )]
   let cwd = std::env::current_dir().unwrap();
   let main_module = resolve_path("./startup_bench.js", &cwd).unwrap();
   let fs = Arc::new(RealFs);

@@ -29,8 +29,16 @@ use smallvec::SmallVec;
 fn startup_phases_enabled() -> bool {
   static ENABLED: OnceLock<bool> = OnceLock::new();
   *ENABLED.get_or_init(|| {
-    std::env::var_os("DENO_STARTUP_PHASES")
-      .is_some_and(|v| !v.is_empty() && v != "0")
+    // Diagnostic env var — only consulted once per process. Bypassing
+    // `sys_traits` here is intentional: the snapshot/runtime layers don't
+    // thread an `EnvProvider` through this code path, and this opt-in
+    // tracing is only useful when running an actual `deno` binary anyway.
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "diagnostic env var; not part of the sys_traits surface"
+    )]
+    let v = std::env::var_os("DENO_STARTUP_PHASES");
+    v.is_some_and(|v| !v.is_empty() && v != "0")
   })
 }
 

@@ -727,6 +727,11 @@ impl MainWorker {
   }
 
   pub fn bootstrap(&mut self, options: BootstrapOptions) {
+    // Diagnostic env var; not on the sys_traits surface in this crate.
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "diagnostic env var; not part of the sys_traits surface"
+    )]
     let phase_enabled = std::env::var_os("DENO_STARTUP_PHASES")
       .is_some_and(|v| !v.is_empty() && v != "0");
     let t0 = if phase_enabled {
