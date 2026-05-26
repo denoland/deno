@@ -711,13 +711,28 @@ impl CliOptions {
   }
 
   pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
+    self.preload_modules_with_resolver(None)
+  }
+
+  pub fn preload_modules_with_resolver(
+    &self,
+    resolver: Option<&WorkspaceMainModuleResolver>,
+  ) -> Result<Vec<ModuleSpecifier>, AnyError> {
     if self.flags.preload.is_empty() {
       return Ok(vec![]);
     }
 
     let mut modules = Vec::with_capacity(self.flags.preload.len());
     for preload_specifier in self.flags.preload.iter() {
-      modules.push(resolve_url_or_path(preload_specifier, self.initial_cwd())?);
+      let default_resolve = || {
+        resolve_url_or_path(preload_specifier, self.initial_cwd())
+          .map_err(|e| e.into())
+      };
+      modules.push(self.resolve_main_module_with_resolver_if_bare(
+        preload_specifier,
+        resolver,
+        default_resolve,
+      )?);
     }
 
     Ok(modules)
