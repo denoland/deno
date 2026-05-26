@@ -1,0 +1,5 @@
+error: Cannot import native Node.js addon "[WILDCARD]addon.node" via ESM. Native `.node` addons can only be loaded through `require()`. Use `createRequire()` from `node:module`, e.g.:
+  import { createRequire } from "node:module";
+  const require = createRequire(import.meta.url);
+  const addon = require("./addon.node");
+    at [WILDCARD]main.ts:2:19
