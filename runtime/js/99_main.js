@@ -105,9 +105,29 @@ import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
 const { SymbolMetadata } = core.loadExtScript("ext:deno_web/00_infra.js");
-const { bootstrap: bootstrapOtel } = core.loadExtScript(
-  "ext:deno_telemetry/telemetry.ts",
-);
+// Telemetry (~2000 LOC, ~70 KB of bytecode + V8 heap) is only needed when an
+// OTEL config flag is set, but it was being loaded unconditionally at snapshot
+// build time. Skip the load on the cold-start path; only enter the module
+// when the bootstrap config actually asks for telemetry.
+//
+// Layout of `otelConfig` (see OtelConfig::as_v8 in ext/telemetry/lib.rs):
+//   [0]  tracing_enabled (0/1)
+//   [1]  metrics_enabled (0/1)
+//   [2]  console mode (OtelConsoleConfig: 0 = Ignore, 1 = Capture, 2 = Replace)
+//   [3..] zero or more propagator ids; if no propagator is configured the
+//         array ends at length 3.
+function bootstrapOtel(otelConfig) {
+  if (
+    otelConfig[0] === 0 &&
+    otelConfig[1] === 0 &&
+    otelConfig[2] === 0 &&
+    otelConfig.length <= 3
+  ) {
+    return;
+  }
+  const { bootstrap } = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
+  bootstrap(otelConfig);
+}
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {

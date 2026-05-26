@@ -15,6 +15,10 @@ name = "deno"
 path = "main.rs"
 doc = false
 
+[[example]]
+name = "startup_bench"
+path = "examples/startup_bench.rs"
+
 [lib]
 path = "lib.rs"
 

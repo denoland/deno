@@ -15,14 +15,44 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::OnceLock;
 use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
+use std::time::Instant;
 
 use deno_error::JsErrorBox;
 use futures::FutureExt;
 use futures::task::AtomicWaker;
 use smallvec::SmallVec;
+
+fn startup_phases_enabled() -> bool {
+  static ENABLED: OnceLock<bool> = OnceLock::new();
+  *ENABLED.get_or_init(|| {
+    std::env::var_os("DENO_STARTUP_PHASES")
+      .is_some_and(|v| !v.is_empty() && v != "0")
+  })
+}
+
+#[inline]
+fn startup_phase_begin() -> Option<Instant> {
+  if startup_phases_enabled() {
+    Some(Instant::now())
+  } else {
+    None
+  }
+}
+
+#[inline]
+fn startup_phase_end(t: Option<Instant>, label: &str) {
+  if let Some(start) = t {
+    let elapsed = start.elapsed();
+    #[allow(clippy::print_stderr, reason = "diagnostic")]
+    {
+      eprintln!("[startup] {label:>32}  {elapsed:?}");
+    }
+  }
+}
 
 use super::SnapshotStoreDataStore;
 use super::SnapshottedData;
@@ -675,11 +705,13 @@ impl JsRuntime {
   /// Only constructor, configuration is done through `options`.
   /// Returns an error if the runtime cannot be initialized.
   pub fn try_new(mut options: RuntimeOptions) -> Result<JsRuntime, CoreError> {
+    let _t0 = startup_phase_begin();
     setup::init_v8(
       options.v8_platform.take(),
       cfg!(test),
       options.unsafe_expose_natives_and_gc(),
     );
+    startup_phase_end(_t0, "init_v8");
     JsRuntime::new_inner(options, false)
   }
 
@@ -721,6 +753,7 @@ impl JsRuntime {
     mut options: RuntimeOptions,
     will_snapshot: bool,
   ) -> Result<JsRuntime, CoreError> {
+    let _phase_total = startup_phase_begin();
     let init_mode = InitMode::from_options(&options);
     let mut extensions = std::mem::take(&mut options.extensions);
     let mut isolate_allocations = IsolateAllocations::default();
@@ -729,11 +762,13 @@ impl JsRuntime {
       options.maybe_op_stack_trace_callback.is_some();
 
     // First let's create an `OpState` and contribute to it from extensions...
+    let _phase = startup_phase_begin();
     let mut op_state = OpState::new(options.maybe_op_stack_trace_callback);
     let unrefed_ops = op_state.unrefed_ops.clone();
 
     let lazy_extensions =
       extension_set::setup_op_state(&mut op_state, &mut extensions);
+    startup_phase_end(_phase, "setup_op_state");
 
     // Load the sources and source maps
     let mut files_loaded = Vec::with_capacity(128);
@@ -743,12 +778,15 @@ impl JsRuntime {
 
     let mut source_mapper = SourceMapper::new(loader.clone());
 
+    let _phase = startup_phase_begin();
     let (maybe_startup_snapshot, mut sidecar_data) = options
       .startup_snapshot
       .take()
       .map(snapshot::deconstruct)
       .unzip();
+    startup_phase_end(_phase, "snapshot::deconstruct");
 
+    let _phase = startup_phase_begin();
     let mut sources = extension_set::into_sources_and_source_maps(
       options.extension_transpiler.as_deref(),
       &extensions,
@@ -757,6 +795,7 @@ impl JsRuntime {
         mark_as_loaded_from_fs_during_snapshot(&mut files_loaded, &source.code)
       },
     )?;
+    startup_phase_end(_phase, "into_sources_and_source_maps");
 
     for loaded_source in sources
       .js
@@ -869,12 +908,14 @@ impl JsRuntime {
     );
 
     let has_snapshot = maybe_startup_snapshot.is_some();
+    let _phase = startup_phase_begin();
     let mut isolate = setup::create_isolate(
       will_snapshot,
       options.create_params.take(),
       maybe_startup_snapshot,
       external_references.into(),
     );
+    startup_phase_end(_phase, "create_isolate (v8 snapshot deser)");
 
     let isolate_ptr = unsafe { isolate.as_raw_isolate_ptr() };
 
@@ -925,6 +966,7 @@ impl JsRuntime {
     op_state.borrow_mut().put(spawner);
 
     // ...and with `ContextState` available we can set up V8 context...
+    let _phase = startup_phase_begin();
     let mut snapshotted_data = None;
     let main_context = {
       v8::scope!(let scope, &mut isolate);
@@ -951,6 +993,7 @@ impl JsRuntime {
 
       v8::Global::new(scope, context)
     };
+    startup_phase_end(_phase, "create_context+load_data");
 
     let main_realm = {
       v8::scope_with_context!(context_scope, &mut isolate, &main_context);
@@ -965,6 +1008,7 @@ impl JsRuntime {
 
       // ...followed by creation of `Deno.core` namespace, as well as internal
       // infrastructure to provide JavaScript bindings for ops...
+      let _phase = startup_phase_begin();
       if init_mode == InitMode::New {
         bindings::initialize_deno_core_namespace(scope, context, init_mode);
         bindings::initialize_primordials_and_infra(scope)?;
@@ -994,6 +1038,7 @@ impl JsRuntime {
           methods_ctx_offset,
         );
       }
+      startup_phase_end(_phase, "ops_bindings (fast call upgrade)");
 
       // SAFETY: Initialize the context state slot.
       unsafe {
@@ -1026,6 +1071,7 @@ impl JsRuntime {
         will_snapshot,
       ));
 
+      let _phase = startup_phase_begin();
       if let Some((snapshotted_data, mut data_store)) = snapshotted_data {
         *exception_state.js_handled_promise_rejection_cb.borrow_mut() =
           snapshotted_data
@@ -1056,6 +1102,7 @@ impl JsRuntime {
           mapper.add_ext_source_map(ModuleName::from_static(key), map.into());
         }
       }
+      startup_phase_end(_phase, "load module map from snapshot");
 
       if context_state.ext_import_meta_proto.borrow().is_none() {
         let null = v8::null(scope);
@@ -1132,19 +1179,25 @@ impl JsRuntime {
       //   }
       // ) {
       if init_mode == InitMode::New {
+        let _phase = startup_phase_begin();
         js_runtime
           .execute_virtual_ops_module(context_global, module_map.clone());
+        startup_phase_end(_phase, "execute_virtual_ops_module");
       }
 
       if init_mode == InitMode::New {
+        let _phase = startup_phase_begin();
         js_runtime.execute_builtin_sources(
           &realm,
           &module_map,
           &mut files_loaded,
         )?;
+        startup_phase_end(_phase, "execute_builtin_sources");
       }
 
+      let _phase = startup_phase_begin();
       js_runtime.store_js_callbacks(&realm, will_snapshot);
+      startup_phase_end(_phase, "store_js_callbacks");
 
       // Register residual `lazy_loaded_*` sources from the snapshot bundle.
       // These are the files that were declared on extensions but were not
@@ -1165,13 +1218,17 @@ impl JsRuntime {
         );
       }
 
+      let _phase = startup_phase_begin();
       js_runtime.init_extension_js(
         &realm,
         &module_map,
         sources,
         options.extension_code_cache,
       )?;
+      startup_phase_end(_phase, "init_extension_js");
     }
+
+    startup_phase_end(_phase_total, "TOTAL JsRuntime::new_inner");
 
     if will_snapshot {
       js_runtime.files_loaded_from_fs_during_snapshot = files_loaded;

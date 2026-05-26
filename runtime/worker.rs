@@ -727,6 +727,13 @@ impl MainWorker {
   }
 
   pub fn bootstrap(&mut self, options: BootstrapOptions) {
+    let phase_enabled = std::env::var_os("DENO_STARTUP_PHASES")
+      .is_some_and(|v| !v.is_empty() && v != "0");
+    let t0 = if phase_enabled {
+      Some(std::time::Instant::now())
+    } else {
+      None
+    };
     // Setup bootstrap options for ops.
     {
       let op_state = self.js_runtime.op_state();
@@ -747,6 +754,16 @@ impl MainWorker {
     if let Some(exception) = scope.exception() {
       let error = JsError::from_v8_exception(scope, exception);
       panic!("Bootstrap exception: {error}");
+    }
+    if let Some(t) = t0 {
+      #[allow(clippy::print_stderr, reason = "diagnostic")]
+      {
+        eprintln!(
+          "[startup] {:>32}  {:?}",
+          "MainWorker::bootstrap (99_main)",
+          t.elapsed()
+        );
+      }
     }
   }
 

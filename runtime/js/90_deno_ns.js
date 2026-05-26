@@ -55,9 +55,22 @@ let _kvImpl;
 function lazyKv() {
   return _kvImpl ?? (_kvImpl = core.loadExtScript("ext:deno_kv/01_db.ts"));
 }
-const cron = core.loadExtScript("ext:deno_cron/01_cron.ts");
-const surface = core.loadExtScript("ext:deno_canvas/02_surface.js");
-const telemetry = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
+// `Deno.cron`, `Deno.UnsafeWindowSurface`, `Deno.telemetry` are rarely used
+// and their backing modules (`01_cron.ts`, `02_surface.js`, `telemetry.ts`)
+// are several KB of bytecode + closures each in the snapshot heap. Defer the
+// `loadExtScript()` calls so they don't materialize at snapshot build time:
+// only on first property access at runtime.
+let _cron;
+const lazyCron = () =>
+  _cron ?? (_cron = core.loadExtScript("ext:deno_cron/01_cron.ts"));
+let _surface;
+const lazySurface = () =>
+  _surface ??
+    (_surface = core.loadExtScript("ext:deno_canvas/02_surface.js"));
+let _telemetry;
+const lazyTelemetry = () =>
+  _telemetry ??
+    (_telemetry = core.loadExtScript("ext:deno_telemetry/telemetry.ts"));
 import { unstableIds } from "ext:deno_features/flags.js";
 const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
 import { bundle } from "ext:deno_bundle_runtime/bundle.ts";
@@ -274,7 +287,9 @@ const denoNs = {
   umask: fs.umask,
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
-  telemetry: telemetry.telemetry,
+  get telemetry() {
+    return lazyTelemetry().telemetry;
+  },
 };
 
 const denoNsUnstableById = { __proto__: null };
@@ -286,7 +301,9 @@ denoNsUnstableById[unstableIds.bundle] = {
 // denoNsUnstableById[unstableIds.broadcastChannel] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.cron] = {
-  cron: cron.cron,
+  get cron() {
+    return lazyCron().cron;
+  },
 };
 
 denoNsUnstableById[unstableIds.kv] = {
@@ -341,7 +358,9 @@ ObjectDefineProperties(denoNsUnstableById[unstableIds.net], {
 // denoNsUnstableById[unstableIds.unsafeProto] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.webgpu] = {
-  UnsafeWindowSurface: surface.UnsafeWindowSurface,
+  get UnsafeWindowSurface() {
+    return lazySurface().UnsafeWindowSurface;
+  },
 };
 ObjectDefineProperties(denoNsUnstableById[unstableIds.webgpu], {
   webgpu: core.propWritableLazyLoaded(
