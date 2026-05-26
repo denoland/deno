@@ -805,6 +805,13 @@ pub enum AsymmetricPublicKeyError {
   UnsupportedPrivateKeyOid,
 }
 
+// Node/OpenSSL accept RSAPublicKey DER whose INTEGER payloads omit the
+// leading 0x00 byte that strict DER requires for positive values with the
+// high bit set. The `rsa` crate's parser rejects those as malformed. When
+// the strict parse fails, fall back to a narrow walk that re-parses
+// `SEQUENCE { INTEGER n, INTEGER e }` and treats the INTEGER payload bytes
+// as unsigned. The length encoding is still validated as strict DER; only
+// the signed/unsigned interpretation of the integer payload is relaxed.
 fn rsa_public_key_from_pkcs1_der_lenient(
   der: &[u8],
 ) -> Result<RsaPublicKey, rsa::pkcs1::Error> {
@@ -842,10 +849,9 @@ fn read_lenient_positive_integer(
 
   let payload = &der[*pos..end];
   *pos = end;
-  let first_non_zero = payload
-    .iter()
-    .position(|&byte| byte != 0)
-    .unwrap_or(payload.len() - 1);
+  // Reject all-zero payloads: a valid RSA modulus or public exponent is
+  // strictly positive, and BigUint::from_bytes_be(&[]) would produce 0.
+  let first_non_zero = payload.iter().position(|&byte| byte != 0)?;
   Some(rsa::BigUint::from_bytes_be(&payload[first_non_zero..]))
 }
 

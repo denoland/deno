@@ -309,24 +309,37 @@ Deno.test("createPublicKey() RSA", () => {
   assertEquals(key.asymmetricKeyDetails?.publicExponent, 65537n);
 });
 
+// The modulus in this SPKI is 32 bytes starting with 0xDF (high bit set),
+// and lacks the leading 0x00 byte that strict DER requires for positive
+// INTEGERs. Node/OpenSSL accept it; this exercises the lenient fallback.
+const nonCanonicalRsaSpki =
+  "MDswDQYJKoZIhvcNAQEBBQADKgAwJwIg3wUvyMOfq7G6dT5bIM6keoShd9YGwP7PIc2Tfa8Q99ECAwEAAQ==";
+
 Deno.test("createPublicKey() accepts non-canonical RSA SPKI", () => {
-  const spki = Buffer.from(
-    "MDswDQYJKoZIhvcNAQEBBQADKgAwJwIg3wUvyMOfq7G6dT5bIM6keoShd9YGwP7PIc2Tfa8Q99ECAwEAAQ==",
-    "base64",
-  );
+  const spki = Buffer.from(nonCanonicalRsaSpki, "base64");
   const key = createPublicKey({ key: spki, format: "der", type: "spki" });
 
   assertEquals(key.type, "public");
   assertEquals(key.asymmetricKeyType, "rsa");
   assertEquals(key.asymmetricKeyDetails?.modulusLength, 256);
   assertEquals(key.asymmetricKeyDetails?.publicExponent, 65537n);
+
+  // Round-trip through JWK to confirm the modulus parsed as the expected
+  // unsigned 32-byte value (base64url of the leading 0xDF... bytes).
+  const jwk = key.export({ format: "jwk" });
+  assertEquals(jwk.kty, "RSA");
+  assertEquals(
+    jwk.n,
+    "3wUvyMOfq7G6dT5bIM6keoShd9YGwP7PIc2Tfa8Q99E",
+  );
+  assertEquals(jwk.e, "AQAB");
 });
 
 Deno.test("createPublicKey() rejects malformed non-canonical RSA SPKI", () => {
-  const spki = Buffer.from(
-    "MDswDQYJKoZIhvcNAQEBBQADKgAwJwIg3wUvyMOfq7G6dT5bIM6keoShd9YGwP7PIc2Tfa8Q99ECAwEAAQ==",
-    "base64",
-  );
+  const spki = Buffer.from(nonCanonicalRsaSpki, "base64");
+  // Extend the outer SEQUENCE, inner BIT STRING, and inner SEQUENCE lengths
+  // by 2 each, then append a trailing NULL inside the inner SEQUENCE. The
+  // lenient parser must still reject when pos != sequence_end.
   spki[1] += 2;
   spki[19] += 2;
   spki[22] += 2;
