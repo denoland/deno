@@ -37,7 +37,6 @@ lazy-regex.workspace = true
 log.workspace = true
 once_cell.workspace = true
 parking_lot.workspace = true
-pathdiff.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true
 serde_json.workspace = true

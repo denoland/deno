@@ -78,6 +78,7 @@ use crate::resolver::CliResolver;
 use crate::tools::bundle::externals::ExternalsMatcher;
 use crate::util::file_watcher::WatcherRestartMode;
 use crate::util::fs::canonicalize_path;
+use crate::util::path::relative_path;
 
 static DISABLE_HACK: LazyLock<bool> =
   LazyLock::new(|| std::env::var("NO_DENO_BUNDLE_HACK").is_err());
@@ -2017,7 +2018,7 @@ pub fn process_result(
       maybe_process_contents(file, should_replace_require_shim, minified)?;
     let path = Path::new(&file.path);
     let relative_path =
-      pathdiff::diff_paths(path, cwd).unwrap_or_else(|| path.to_path_buf());
+      relative_path(path, cwd).unwrap_or_else(|| path.to_path_buf());
     let is_js = processed_contents.is_js;
     let bytes: Cow<'_, [u8]> = processed_contents
       .contents

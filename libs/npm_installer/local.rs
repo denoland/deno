@@ -67,6 +67,7 @@ use crate::lifecycle_scripts::LifecycleScriptsStrategy;
 use crate::lifecycle_scripts::has_lifecycle_scripts;
 use crate::lifecycle_scripts::is_running_lifecycle_script;
 use crate::package_json::NpmInstallDepsProvider;
+use crate::path::relative_path;
 use crate::process_state::NpmProcessState;
 
 #[sys_traits::auto_impl]
@@ -1322,7 +1323,7 @@ pub(crate) fn symlink_package_dir(
   // need to delete the previous symlink before creating a new one
   let _ignore = sys.fs_remove_dir_all(new_path);
 
-  let old_path_relative = relative_path(new_parent, old_path)
+  let old_path_relative = relative_path(old_path, new_parent)
     .unwrap_or_else(|| old_path.to_path_buf());
 
   if sys_traits::impls::is_windows() {
@@ -1335,10 +1336,6 @@ pub(crate) fn symlink_package_dir(
   } else {
     symlink_dir(sys.as_ref(), &old_path_relative, new_path)
   }
-}
-
-fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
-  pathdiff::diff_paths(to, from)
 }
 
 fn junction_or_symlink_dir(

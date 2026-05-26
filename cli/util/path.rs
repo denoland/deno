@@ -1,7 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::path::Component;
 use std::path::Path;
+use std::path::PathBuf;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
@@ -130,6 +132,46 @@ pub fn relative_specifier_path_for_display(
   }
 }
 
+pub fn relative_path(path: &Path, base: &Path) -> Option<PathBuf> {
+  if path.is_absolute() != base.is_absolute() {
+    return if path.is_absolute() {
+      Some(path.to_path_buf())
+    } else {
+      None
+    };
+  }
+
+  let mut path_components = path.components();
+  let mut base_components = base.components();
+  let mut components = Vec::new();
+  loop {
+    match (path_components.next(), base_components.next()) {
+      (None, None) => break,
+      (Some(component), None) => {
+        components.push(component);
+        components.extend(path_components);
+        break;
+      }
+      (None, Some(_)) => components.push(Component::ParentDir),
+      (Some(path_component), Some(base_component))
+        if components.is_empty() && path_component == base_component => {}
+      (Some(path_component), Some(Component::CurDir)) => {
+        components.push(path_component)
+      }
+      (Some(_), Some(Component::ParentDir)) => return None,
+      (Some(path_component), Some(_)) => {
+        components.push(Component::ParentDir);
+        components.extend(base_components.map(|_| Component::ParentDir));
+        components.push(path_component);
+        components.extend(path_components);
+        break;
+      }
+    }
+  }
+
+  Some(components.iter().map(|c| c.as_os_str()).collect())
+}
+
 /// Slightly different behaviour than the default matching
 /// where an exact path needs to be matched to be opted-in
 /// rather than just a partial directory match.
@@ -204,6 +246,31 @@ mod test {
     assert!(!is_script_ext(Path::new("foo.json")));
     assert!(!is_script_ext(Path::new("foo.wasm")));
     assert!(!is_script_ext(Path::new("foo.mjsx")));
+  }
+
+  #[test]
+  fn test_relative_path() {
+    assert_eq!(
+      relative_path(Path::new("/foo/bar/baz"), Path::new("/foo/bar")),
+      Some(PathBuf::from("baz"))
+    );
+    assert_eq!(
+      relative_path(Path::new("/foo/bar"), Path::new("/foo/bar/baz")),
+      Some(PathBuf::from(".."))
+    );
+    assert_eq!(
+      relative_path(Path::new("foo/bar/baz"), Path::new("foo")),
+      Some(PathBuf::from("bar/baz"))
+    );
+    assert_eq!(relative_path(Path::new("foo"), Path::new("/bar")), None);
+    assert_eq!(
+      relative_path(Path::new("/foo"), Path::new("bar")),
+      Some(PathBuf::from("/foo"))
+    );
+    assert_eq!(
+      relative_path(Path::new("../foo"), Path::new("bar")),
+      Some(PathBuf::from("../../foo"))
+    );
   }
 
   #[test]

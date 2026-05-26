@@ -29,6 +29,7 @@ pub mod initializer;
 pub mod lifecycle_scripts;
 mod local;
 pub mod package_json;
+mod path;
 pub mod process_state;
 pub mod resolution;
 mod rt;

@@ -13,6 +13,7 @@ use lol_html::element;
 use lol_html::html_content::ContentType as LolContentType;
 
 use crate::tools::bundle::OutputFile;
+use crate::util::path::relative_path;
 
 #[derive(Debug, Clone)]
 pub struct Script {
@@ -148,8 +149,7 @@ const VIRTUAL_ENTRY_SUFFIX: &str = ".deno-bundle-html.entry";
 
 // Helper to create a filesystem-friendly name based on a path
 fn sanitize_entry_name(cwd: &Path, path: &Path) -> String {
-  let rel =
-    pathdiff::diff_paths(path, cwd).unwrap_or_else(|| path.to_path_buf());
+  let rel = relative_path(path, cwd).unwrap_or_else(|| path.to_path_buf());
   let stem = rel
     .with_extension("")
     .to_string_lossy()
@@ -323,7 +323,7 @@ impl HtmlEntrypoint {
 
     let script_src = {
       let base = html_out_path.parent().unwrap_or(outdir);
-      let mut rel = pathdiff::diff_paths(&js_out, base)
+      let mut rel = relative_path(&js_out, base)
         .unwrap_or_else(|| js_out.clone())
         .to_string_lossy()
         .into_owned();
@@ -350,7 +350,7 @@ impl HtmlEntrypoint {
 
     let css_href = css_out.as_ref().map(|p| {
       let base = html_out_path.parent().unwrap_or(outdir);
-      let mut rel = pathdiff::diff_paths(p, base)
+      let mut rel = relative_path(p, base)
         .unwrap_or_else(|| p.clone())
         .to_string_lossy()
         .into_owned();
