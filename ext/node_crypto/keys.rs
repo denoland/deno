@@ -4165,6 +4165,16 @@ pub enum PfxValidationError {
   MacVerifyFailure,
 }
 
+// Cap on the iteration count for the PKCS#12 MAC PBKDF, since an attacker
+// who controls the PFX bytes also controls this field (`mac_data.iterations`
+// is a u32, up to ~4 billion, which would tie up CPU for tens of seconds).
+// Matches the limit Mozilla NSS uses for the same KDF; well above any
+// realistic legitimate value — OpenSSL defaults to 2048 on creation, and
+// hardened producers rarely go beyond ~100k. OpenSSL itself doesn't cap
+// here, but Node trusts the caller's PFX; in Deno the PFX often comes
+// from untrusted input (e.g. server config), so capping is defensive.
+const PFX_MAC_ITERATIONS_CAP: u64 = 600_000;
+
 #[op2]
 pub fn op_node_validate_pfx(
   #[buffer] pfx: &[u8],
@@ -4178,6 +4188,10 @@ pub fn op_node_validate_pfx(
   let Some(mac_data) = &parsed.mac_data else {
     return Ok(());
   };
+  let iterations = u64::from(mac_data.iterations);
+  if iterations > PFX_MAC_ITERATIONS_CAP {
+    return Err(PfxValidationError::MacVerifyFailure);
+  }
   let data = parsed
     .auth_safe
     .data(&bmp_password)
@@ -4186,7 +4200,7 @@ pub fn op_node_validate_pfx(
     &mac_data.mac.digest_algorithm,
     &mac_data.mac.digest,
     &mac_data.salt,
-    mac_data.iterations as u64,
+    iterations,
     &data,
     &bmp_password,
   )
