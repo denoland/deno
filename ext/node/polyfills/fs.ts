@@ -3450,35 +3450,71 @@ function watch(
   const encoding = options?.encoding;
   validateIgnoreOption(options?.ignore, "options.ignore");
   const ignoreMatcher = createIgnoreMatcher(options?.ignore);
-  const iterator: Deno.FsWatcher = Deno.watchFs(watchPath, {
-    recursive,
-  });
 
-  // Resolve the watched path once so we can compute relative paths.
-  // Use realPathSync to resolve symlinks (e.g. macOS /var -> /private/var)
-  // since Deno.watchFs returns real (symlink-resolved) paths.
-  const resolvedWatchPath = realpathSync(watchPath) as string;
-
-  asyncIterableToCallback<Deno.FsEvent>(iterator, (val, done) => {
-    if (done) return;
-    // Node.js returns the relative path from the watched directory for
-    // recursive watches, but just the basename for non-recursive watches.
-    const filename = recursive
-      ? relative(resolvedWatchPath, val.paths[0])
-      : basename(val.paths[0]);
-    if (ignoreMatcher !== null && ignoreMatcher(filename)) {
-      return;
+  // Open the underlying Deno.FsWatcher, but defer any failure to an
+  // 'error' event on the returned FSWatcher rather than throwing
+  // synchronously with a raw `Deno.errors.NotFound`. Editors that
+  // atomically save (write to <file>.tmp.<pid>.<ts> then rename over
+  // the original) can race the inotify watch and produce a transient
+  // ENOENT here; callers using EventEmitter-style error handling
+  // (chokidar, vite) can't recover from a sync throw of a Deno error.
+  // See denoland/deno#34396.
+  let iterator: Deno.FsWatcher | undefined;
+  let openError: Error | undefined;
+  let resolvedWatchPath = watchPath;
+  try {
+    iterator = Deno.watchFs(watchPath, { recursive });
+    // Resolve the watched path once so we can compute relative paths.
+    // Use realPathSync to resolve symlinks (e.g. macOS /var -> /private/var)
+    // since Deno.watchFs returns real (symlink-resolved) paths.
+    resolvedWatchPath = realpathSync(watchPath) as string;
+  } catch (e) {
+    if (iterator) {
+      try {
+        iterator.close();
+      } catch { /* ignore */ }
+      iterator = undefined;
     }
-    fsWatcher.emit(
-      "change",
-      convertDenoFsEventToNodeFsEvent(val.kind),
-      encodeWatchFilename(filename, encoding),
-    );
-  }, (e) => {
-    fsWatcher.emit("error", e);
-  });
+    // The notify crate's PathNotFound/WatchNotFound error messages don't
+    // include the "(os error N)" suffix that `denoErrorToNodeError` parses,
+    // so detect NotFound by class and build a Node-style ENOENT manually.
+    if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)) {
+      openError = uvException({
+        errno: codeMap.get("ENOENT")!,
+        syscall: "watch",
+        path: watchPath,
+      });
+    } else {
+      openError = denoErrorToNodeError(e as Error, {
+        syscall: "watch",
+        path: watchPath,
+      });
+    }
+  }
+
+  if (iterator) {
+    asyncIterableToCallback<Deno.FsEvent>(iterator, (val, done) => {
+      if (done) return;
+      // Node.js returns the relative path from the watched directory for
+      // recursive watches, but just the basename for non-recursive watches.
+      const filename = recursive
+        ? relative(resolvedWatchPath, val.paths[0])
+        : basename(val.paths[0]);
+      if (ignoreMatcher !== null && ignoreMatcher(filename)) {
+        return;
+      }
+      fsWatcher.emit(
+        "change",
+        convertDenoFsEventToNodeFsEvent(val.kind),
+        encodeWatchFilename(filename, encoding),
+      );
+    }, (e) => {
+      fsWatcher.emit("error", e);
+    });
+  }
 
   const fsWatcher = new FSWatcher(() => {
+    if (!iterator) return;
     try {
       iterator.close();
     } catch (e) {
@@ -3513,6 +3549,12 @@ function watch(
         signal.removeEventListener("abort", onAbort);
       });
     }
+  }
+
+  if (openError) {
+    process.nextTick(() => {
+      fsWatcher.emit("error", openError);
+    });
   }
 
   return fsWatcher;
@@ -3805,9 +3847,12 @@ class StatWatcher extends EventEmitter {
 class FSWatcher extends EventEmitter {
   #closer: () => void;
   #closed = false;
-  #watcher: () => Deno.FsWatcher;
+  #watcher: () => Deno.FsWatcher | undefined;
 
-  constructor(closer: () => void, getter: () => Deno.FsWatcher) {
+  constructor(
+    closer: () => void,
+    getter: () => Deno.FsWatcher | undefined,
+  ) {
     super();
     this.#closer = closer;
     this.#watcher = getter;
@@ -3821,10 +3866,10 @@ class FSWatcher extends EventEmitter {
     this.#closer();
   }
   ref() {
-    this.#watcher().ref();
+    this.#watcher()?.ref();
   }
   unref() {
-    this.#watcher().unref();
+    this.#watcher()?.unref();
   }
 }
 
