@@ -1030,6 +1030,7 @@ pub fn create_http_client(
       .map_err(|_| HttpClientCreateError::InvalidAddress(local_address))?;
     http_connector.set_local_address(Some(local_addr));
   }
+  let http_connector = dns::PermissionedHttpConnector::new(http_connector);
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
     HttpClientCreateError::InvalidUserAgent(user_agent.to_string())
@@ -1199,7 +1200,9 @@ impl Client {
   }
 }
 
-type Connector = proxy::ProxyConnector<HttpConnector<dns::Resolver>>;
+type Connector = proxy::ProxyConnector<
+  dns::PermissionedHttpConnector<HttpConnector<dns::Resolver>>,
+>;
 
 #[allow(
   clippy::declare_interior_mutable_const,

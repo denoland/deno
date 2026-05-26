@@ -10,10 +10,21 @@ use std::vec;
 
 use deno_permissions::PermissionsContainer;
 use hickory_resolver::name_server::TokioConnectionProvider;
+use http::Uri;
+use http::uri::Scheme;
 use hyper_util::client::legacy::connect::dns::GaiResolver;
 use hyper_util::client::legacy::connect::dns::Name;
 use tokio::task::JoinHandle;
 use tower::Service;
+
+tokio::task_local! {
+  /// The destination port for the in-flight HTTP/WS connection. Set by
+  /// [`PermissionedHttpConnector`] before invoking the inner connector so
+  /// that the DNS resolver below can run the post-resolution deny check
+  /// against the real request port instead of the placeholder `0` that
+  /// hyper-util's `HttpConnector` carries through `Service<Name>`.
+  static REQUEST_PORT: u16;
+}
 
 #[derive(Clone, Debug)]
 pub struct Resolver {
@@ -139,13 +150,16 @@ impl Service<Name> for Resolver {
 
   fn call(&mut self, name: Name) -> Self::Future {
     let permissions = self.permissions.clone();
+    // Capture the request port *before* spawning, since `tokio::spawn`
+    // detaches from the parent task and would lose the task-local.
+    let port = REQUEST_PORT.try_with(|p| *p).ok();
     let task = match &mut self.kind {
       ResolverKind::Gai(gai_resolver) => {
         let mut resolver = gai_resolver.clone();
         tokio::spawn(async move {
           let result = resolver.call(name).await?;
           let addrs: Vec<_> = result.into_iter().collect();
-          check_resolved_permissions(&addrs, permissions.as_ref())?;
+          check_resolved_permissions(&addrs, port, permissions.as_ref())?;
           Ok(addrs.into_iter())
         })
       }
@@ -155,7 +169,7 @@ impl Service<Name> for Resolver {
           let result = resolver.lookup_ip(name.as_str()).await?;
           let addrs: Vec<_> =
             result.into_iter().map(|x| SocketAddr::new(x, 0)).collect();
-          check_resolved_permissions(&addrs, permissions.as_ref())?;
+          check_resolved_permissions(&addrs, port, permissions.as_ref())?;
           Ok(addrs.into_iter())
         })
       }
@@ -164,7 +178,7 @@ impl Service<Name> for Resolver {
         tokio::spawn(async move {
           let result = resolver.resolve(name).await?;
           let addrs: Vec<_> = result.into_iter().collect();
-          check_resolved_permissions(&addrs, permissions.as_ref())?;
+          check_resolved_permissions(&addrs, port, permissions.as_ref())?;
           Ok(addrs.into_iter())
         })
       }
@@ -175,20 +189,73 @@ impl Service<Name> for Resolver {
 
 fn check_resolved_permissions(
   addrs: &[SocketAddr],
+  request_port: Option<u16>,
   permissions: Option<&PermissionsContainer>,
 ) -> io::Result<()> {
   let Some(permissions) = permissions else {
     return Ok(());
   };
   for addr in addrs {
+    // `addr.port()` is `0` for the GAI and Hickory paths because hyper-util's
+    // `HttpConnector` sets the destination port *after* DNS resolution. Prefer
+    // the real request port carried via [`REQUEST_PORT`].
+    let port = request_port.unwrap_or_else(|| addr.port());
     permissions
       .clone()
-      .check_net_resolved(&addr.ip(), addr.port(), "fetch()")
+      .check_net_resolved(&addr.ip(), port, "fetch()")
       .map_err(|e| {
         io::Error::new(io::ErrorKind::PermissionDenied, e.to_string())
       })?;
   }
   Ok(())
+}
+
+/// `Service<Uri>` adapter that runs ahead of hyper-util's `HttpConnector`.
+///
+/// `HttpConnector` only forwards the hostname to its `Service<Name>` resolver
+/// and applies the destination port afterwards, which means the resolver
+/// cannot check post-resolution permissions against the real request port.
+/// This wrapper extracts the port from the `Uri`, scopes it into the
+/// [`REQUEST_PORT`] task-local, and then delegates to the inner connector.
+#[derive(Clone, Debug)]
+pub struct PermissionedHttpConnector<C> {
+  inner: C,
+}
+
+impl<C> PermissionedHttpConnector<C> {
+  pub fn new(inner: C) -> Self {
+    Self { inner }
+  }
+}
+
+impl<C> Service<Uri> for PermissionedHttpConnector<C>
+where
+  C: Service<Uri>,
+  C::Future: Send + 'static,
+{
+  type Response = C::Response;
+  type Error = C::Error;
+  type Future =
+    Pin<Box<dyn Future<Output = Result<C::Response, C::Error>> + Send>>;
+
+  fn poll_ready(
+    &mut self,
+    cx: &mut task::Context<'_>,
+  ) -> Poll<Result<(), Self::Error>> {
+    self.inner.poll_ready(cx)
+  }
+
+  fn call(&mut self, uri: Uri) -> Self::Future {
+    let port = uri.port_u16().unwrap_or_else(|| {
+      if uri.scheme() == Some(&Scheme::HTTPS) {
+        443
+      } else {
+        80
+      }
+    });
+    let fut = self.inner.call(uri);
+    Box::pin(REQUEST_PORT.scope(port, fut))
+  }
 }
 
 #[cfg(test)]
