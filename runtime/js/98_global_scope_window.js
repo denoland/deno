@@ -190,6 +190,9 @@ const mainRuntimeGlobalProperties = {
   alert: core.propWritableLazyLoaded((p) => p.alert, lazyPrompt),
   confirm: core.propWritableLazyLoaded((p) => p.confirm, lazyPrompt),
   prompt: core.propWritableLazyLoaded((p) => p.prompt, lazyPrompt),
+  // Match the previous descriptor shape (get-only with a silent `set() {}`):
+  // `webstorage_test.ts` relies on `globalThis.localStorage = 1` being
+  // silently ignored rather than throwing.
   localStorage: {
     __proto__: null,
     configurable: true,
@@ -197,6 +200,7 @@ const mainRuntimeGlobalProperties = {
     get() {
       return lazyWebStorage().localStorage();
     },
+    set() {},
   },
   sessionStorage: {
     __proto__: null,
@@ -205,6 +209,7 @@ const mainRuntimeGlobalProperties = {
     get() {
       return lazyWebStorage().sessionStorage();
     },
+    set() {},
   },
   Storage: core.propNonEnumerableLazyLoaded((w) => w.Storage, lazyWebStorage),
 };

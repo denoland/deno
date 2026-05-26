@@ -137,7 +137,9 @@ fn main() {
   let warmup = one_iter();
   #[allow(clippy::print_stdout, reason = "example output")]
   {
-    println!("    warmup  n=1    {warmup:?}  (V8 platform init + first bootstrap)");
+    println!(
+      "    warmup  n=1    {warmup:?}  (V8 platform init + first bootstrap)"
+    );
   }
 
   let mut samples = Vec::with_capacity(iters);

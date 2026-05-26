@@ -123,6 +123,13 @@ defineLazyInternal("upgradeHttpRaw", "ext:deno_http/00_serve.ts");
 defineLazyInternal("upgradeHttpRawConnect", "ext:deno_http/00_serve.ts");
 defineLazyInternal("serveHttpOnListener", "ext:deno_http/00_serve.ts");
 defineLazyInternal("serveHttpOnConnection", "ext:deno_http/00_serve.ts");
+// `ext:deno_cron/01_cron.ts` registers `internals.formatToCronSchedule` /
+// `internals.parseScheduleToString` at module body. Now that cron is lazy
+// (see `lazyCron` below), expose these via the same accessor pattern so
+// `cron_test.ts` (which destructures them from `Deno[Deno.internal]`) and
+// any user code reaching in keep working.
+defineLazyInternal("formatToCronSchedule", "ext:deno_cron/01_cron.ts");
+defineLazyInternal("parseScheduleToString", "ext:deno_cron/01_cron.ts");
 // `ext:deno_http/02_websocket.ts`.
 defineLazyInternal(
   "buildCaseInsensitiveCommaValueFinder",
