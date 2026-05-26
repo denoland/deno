@@ -90,6 +90,15 @@ pub fn verify_and_decompress_tarball(
   decompress_gzip(data)
 }
 
+/// Decompresses a gzip tarball without integrity verification.
+/// Used for user-provided tarballs (local files, remote URLs) where
+/// there is no registry-provided integrity hash.
+pub fn decompress_tarball(
+  data: &[u8],
+) -> Result<Vec<u8>, VerifyAndExtractTarballError> {
+  decompress_gzip(data)
+}
+
 /// Uses libdeflater for faster gzip decompression with preallocated buffers.
 #[cfg(not(target_arch = "wasm32"))]
 fn decompress_gzip(
