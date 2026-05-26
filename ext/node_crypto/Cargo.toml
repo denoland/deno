@@ -37,6 +37,7 @@ ed448-goldilocks = { workspace = true }
 elliptic-curve.workspace = true
 faster-hex.workspace = true
 hkdf.workspace = true
+hmac.workspace = true
 k256.workspace = true
 md-5 = { workspace = true, features = ["oid"] }
 md4.workspace = true
