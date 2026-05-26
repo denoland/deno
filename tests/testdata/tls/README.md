@@ -55,3 +55,22 @@ For testing purposes we need following files:
 - `localhost.key`
 - `localhost_ecc.crt`
 - `localhost_ecc.key`
+
+## PKCS#12 (PFX) bundles
+
+Bundles wrapping `localhost.crt` + `localhost.key`, with the MAC computed using
+each of the supported hash algorithms. All use the passphrase `secret`.
+
+```shell
+for alg in sha1 sha256 sha384 sha512; do
+  openssl pkcs12 -export -macalg "$alg" \
+    -inkey localhost.key -in localhost.crt \
+    -passout pass:secret \
+    -out "localhost_${alg}.pfx"
+done
+```
+
+- `localhost_sha1.pfx` — RFC 7292 default MAC algorithm
+- `localhost_sha256.pfx` — OpenSSL 3.x default MAC algorithm
+- `localhost_sha384.pfx`
+- `localhost_sha512.pfx`

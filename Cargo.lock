@@ -2808,6 +2808,7 @@ dependencies = [
  "elliptic-curve 0.13.8",
  "faster-hex",
  "hkdf",
+ "hmac",
  "k256",
  "md-5",
  "md4",
@@ -11296,9 +11297,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "149.0.0"
+version = "149.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55897294cf631f99d5ff57c6a0611648861645ed7c8f251579161e0768812840"
+checksum = "46dccf61a364b61bbaac70a8ba64a1a1006e87123b7d62eaeec999a3ba31ecdb"
 dependencies = [
  "bindgen 0.72.1",
  "bitflags 2.9.3",

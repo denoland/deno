@@ -578,6 +578,62 @@ Deno.test("mTLS client certificate authentication", async () => {
 });
 
 Deno.test(
+  "requestCert + rejectUnauthorized:false: no client cert => authorized=false",
+  async () => {
+    const server = tls.createServer({
+      key,
+      cert,
+      ca: [rootCaCert],
+      requestCert: true,
+      rejectUnauthorized: false,
+    }, (socket) => {
+      // deno-lint-ignore no-explicit-any
+      const s = socket as any;
+      socket.write(
+        JSON.stringify({
+          authorized: s.authorized,
+          authorizationError: s.authorizationError?.code ??
+            s.authorizationError,
+          peerCertSubject: socket.getPeerCertificate()?.subject,
+        }),
+      );
+      socket.end();
+    });
+
+    const { promise, resolve, reject } = Promise.withResolvers<string>();
+
+    server.listen(0, () => {
+      // deno-lint-ignore no-explicit-any
+      const port = (server.address() as any)?.port;
+
+      const client = tls.connect({
+        host: "localhost",
+        port,
+        ca: rootCaCert,
+      });
+
+      client.setEncoding("utf8");
+      let data = "";
+      client.on("data", (chunk) => {
+        data += chunk;
+      });
+      client.on("end", () => {
+        client.destroy();
+        resolve(data);
+      });
+      client.on("error", (err) => reject(err));
+    });
+
+    const result = JSON.parse(await promise);
+    assertEquals(result.authorized, false);
+    assertEquals(result.authorizationError, "UNABLE_TO_GET_ISSUER_CERT");
+    assertEquals(result.peerCertSubject, undefined);
+    server.close();
+    await new Promise<void>((resolve) => server.on("close", resolve));
+  },
+);
+
+Deno.test(
   "tls PFX: cert+key from pfx are used for handshake",
   async () => {
     // Regression test for https://github.com/denoland/deno/issues/34202:
@@ -1014,4 +1070,28 @@ Deno.test("TLSSocket.setServername throws Node-compatible coded errors", () => {
     "ERR_TLS_SNI_FROM_SERVER",
   );
   serverSocket.destroy();
+});
+
+// https://github.com/denoland/deno/issues/34336
+// Default OpenSSL 3 PFX bundles use a SHA-256 MAC, and Node accepts them.
+// Older bundles can use SHA-1, SHA-384, or SHA-512.
+for (const alg of ["sha1", "sha256", "sha384", "sha512"] as const) {
+  Deno.test(`tls.createSecureContext accepts pfx with ${alg} MAC`, () => {
+    const pfx = Buffer.from(
+      Deno.readFileSync(join(tlsTestdataDir, `localhost_${alg}.pfx`)),
+    );
+    const ctx = tls.createSecureContext({ pfx, passphrase: "secret" });
+    assert(ctx);
+  });
+}
+
+Deno.test("tls.createSecureContext rejects pfx with wrong passphrase", () => {
+  const pfx = Buffer.from(
+    Deno.readFileSync(join(tlsTestdataDir, "localhost_sha256.pfx")),
+  );
+  assertThrows(
+    () => tls.createSecureContext({ pfx, passphrase: "wrong" }),
+    Error,
+    "mac verify failure",
+  );
 });

@@ -1279,7 +1279,12 @@ where
 
   let lifetime = resource.lifetime();
   let callback_global = v8::Global::new(scope, callback);
-  let callback = Rc::new(ServerCallback::new(scope, isolate, callback_global));
+  let callback = Rc::new(ServerCallback::new(
+    scope,
+    isolate,
+    callback_global,
+    state.borrow().waker.clone(),
+  ));
 
   let options = {
     let state = state.borrow();
@@ -1336,7 +1341,12 @@ where
 
   let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new());
   let callback_global = v8::Global::new(scope, callback);
-  let callback = Rc::new(ServerCallback::new(scope, isolate, callback_global));
+  let callback = Rc::new(ServerCallback::new(
+    scope,
+    isolate,
+    callback_global,
+    state.borrow().waker.clone(),
+  ));
 
   let options = {
     let state = state.borrow();

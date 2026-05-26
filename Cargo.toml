@@ -102,7 +102,7 @@ deno_task_shell = "=0.32.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-v8 = { version = "149.0.0", default-features = false, features = ["simdutf"] }
+v8 = { version = "149.2.0", default-features = false, features = ["simdutf"] }
 
 denokv_proto = "0.13.0"
 denokv_remote = "0.13.0"
@@ -397,6 +397,7 @@ ed25519-dalek = "2.1.1"
 ed448-goldilocks = "0.14.0-pre.10"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
 hkdf = "0.12.3"
+hmac = "0.12.1"
 k256 = { version = "0.13.1", features = ["ecdh", "jwk", "pem"] }
 md-5 = "0.10.5"
 md4 = "0.10.2"
