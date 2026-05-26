@@ -637,6 +637,46 @@ fn patch_react_cves_source(
 impl<TGraphContainer: ModuleGraphContainer>
   CliModuleLoaderInner<TGraphContainer>
 {
+  /// Best-effort prepare a specifier through the module graph when ESM
+  /// hooks are active. Used both for the initial load preparation and for
+  /// redirects introduced by a load hook calling `nextLoad(newUrl)`.
+  /// Failures are intentionally swallowed: a user hook may resolve to a
+  /// virtual URL the graph builder cannot fetch, in which case the load
+  /// is serviced entirely by hooks.
+  async fn prepare_hooked_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+    is_dynamic_import: bool,
+  ) {
+    let permissions = if is_dynamic_import {
+      &self.permissions
+    } else {
+      &self.parent_permissions
+    };
+    let is_dynamic = is_dynamic_import || self.is_worker;
+    let mut update_permit = self.graph_container.acquire_update_permit().await;
+    let graph = update_permit.graph_mut();
+    let _ = self
+      .shared
+      .module_load_preparer
+      .prepare_module_load(
+        graph,
+        std::slice::from_ref(specifier),
+        PrepareModuleLoadOptions {
+          is_dynamic,
+          lib: self.lib,
+          permissions: permissions.clone(),
+          ext_overwrite: None,
+          allow_unknown_media_types: false,
+          skip_graph_roots_validation: true,
+          file_content_overrides: HashMap::new(),
+        },
+      )
+      .await;
+    graph.prune_types();
+    update_permit.commit();
+  }
+
   async fn load_inner(
     &self,
     specifier: &ModuleSpecifier,
@@ -1209,13 +1249,15 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
             }
           };
           match hook_result {
-            Ok((Some(source), _format)) => Ok(deno_core::ModuleSource::new(
-              deno_core::ModuleType::JavaScript,
-              deno_core::ModuleSourceCode::String(source.into()),
-              &specifier,
-              None,
-            )),
-            Ok((None, Some(format)))
+            Ok((Some(source), _format, _effective_url)) => {
+              Ok(deno_core::ModuleSource::new(
+                deno_core::ModuleType::JavaScript,
+                deno_core::ModuleSourceCode::String(source.into()),
+                &specifier,
+                None,
+              ))
+            }
+            Ok((None, Some(format), _effective_url))
               if format == "builtin" && specifier.scheme() == "node" =>
             {
               Ok(deno_core::ModuleSource::new(
@@ -1225,15 +1267,41 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
                 None,
               ))
             }
-            Ok((None, _)) => {
-              // Fallthrough: hooks didn't intercept, use default
-              inner
+            Ok((None, _, effective_url)) => {
+              // Fallthrough: hooks didn't intercept. If the user's load hook
+              // chain delegated via `nextLoad(newUrl)`, fetch source from
+              // that URL but keep the module's identity at the original
+              // specifier (matches Node's hook semantics).
+              let fetch_specifier = effective_url
+                .as_deref()
+                .and_then(|u| deno_core::ModuleSpecifier::parse(u).ok())
+                .filter(|u| u != &specifier);
+              if let Some(redirect) = fetch_specifier.as_ref() {
+                // The redirect target wasn't seen by the initial graph
+                // preparation pass; prepare it now so load_inner can find
+                // it in the graph.
+                inner
+                  .prepare_hooked_specifier(redirect, options.is_dynamic_import)
+                  .await;
+              }
+              let load_url = fetch_specifier.as_ref().unwrap_or(&specifier);
+              let source = inner
                 .load_inner(
-                  &specifier,
+                  load_url,
                   maybe_referrer.as_ref().map(|r| &r.specifier),
                   &options.requested_module_type,
                 )
-                .await
+                .await?;
+              if fetch_specifier.is_some() {
+                Ok(deno_core::ModuleSource::new(
+                  source.module_type,
+                  source.code,
+                  &specifier,
+                  source.code_cache,
+                ))
+              } else {
+                Ok(source)
+              }
             }
             Err(err) => Err(JsErrorBox::generic(err)),
           }
@@ -1325,33 +1393,9 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       let inner = self.0.clone();
       let is_dynamic_import = options.is_dynamic_import;
       return Box::pin(async move {
-        let graph_container = &inner.graph_container;
-        let module_load_preparer = &inner.shared.module_load_preparer;
-        let permissions = if is_dynamic_import {
-          &inner.permissions
-        } else {
-          &inner.parent_permissions
-        };
-        let is_dynamic = is_dynamic_import || inner.is_worker;
-        let mut update_permit = graph_container.acquire_update_permit().await;
-        let graph = update_permit.graph_mut();
-        let _ = module_load_preparer
-          .prepare_module_load(
-            graph,
-            &[specifier],
-            PrepareModuleLoadOptions {
-              is_dynamic,
-              lib: inner.lib,
-              permissions: permissions.clone(),
-              ext_overwrite: None,
-              allow_unknown_media_types: false,
-              skip_graph_roots_validation: true,
-              file_content_overrides: HashMap::new(),
-            },
-          )
+        inner
+          .prepare_hooked_specifier(&specifier, is_dynamic_import)
           .await;
-        graph.prune_types();
-        update_permit.commit();
         Ok(())
       });
     }

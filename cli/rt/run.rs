@@ -797,7 +797,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             }
           };
           match hook_result {
-            Ok((Some(source), _format)) => {
+            Ok((Some(source), _format, _effective_url)) => {
               // Hook provided transformed source
               Ok(deno_core::ModuleSource::new(
                 deno_core::ModuleType::JavaScript,
@@ -806,12 +806,20 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 None,
               ))
             }
-            Ok((None, _)) => {
+            Ok((None, _, effective_url)) => {
               // Fallthrough: hooks didn't intercept; route through the same
               // default loader that an un-hooked load would use, so npm
-              // packages and embedded modules resolve correctly.
+              // packages and embedded modules resolve correctly. If the
+              // user's load hook chain delegated via `nextLoad(newUrl)`,
+              // fetch source from that URL while keeping the module's
+              // identity at the original specifier (matches Node).
+              let fetch_specifier = effective_url
+                .as_deref()
+                .and_then(|u| deno_core::ModuleSpecifier::parse(u).ok())
+                .filter(|u| u != &specifier);
+              let load_url = fetch_specifier.as_ref().unwrap_or(&specifier);
               let response = this.load_default(
-                &specifier,
+                load_url,
                 maybe_referrer.as_ref(),
                 ModuleLoadOptions {
                   is_dynamic_import,
@@ -819,9 +827,19 @@ impl ModuleLoader for EmbeddedModuleLoader {
                   requested_module_type,
                 },
               );
-              match response {
-                deno_core::ModuleLoadResponse::Sync(r) => r,
-                deno_core::ModuleLoadResponse::Async(fut) => fut.await,
+              let source = match response {
+                deno_core::ModuleLoadResponse::Sync(r) => r?,
+                deno_core::ModuleLoadResponse::Async(fut) => fut.await?,
+              };
+              if fetch_specifier.is_some() {
+                Ok(deno_core::ModuleSource::new(
+                  source.module_type,
+                  source.code,
+                  &specifier,
+                  source.code_cache,
+                ))
+              } else {
+                Ok(source)
               }
             }
             Err(err) => Err(JsErrorBox::generic(err)),
