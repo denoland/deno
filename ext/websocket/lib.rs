@@ -407,6 +407,7 @@ fn populate_common_request_headers(
 
 fn create_client_from_websocket_options(
   options: &FetchOptions,
+  permissions: PermissionsContainer,
   ca_certs: Vec<String>,
   unsafely_ignore_certificate_errors: bool,
 ) -> Result<deno_fetch::Client, HttpClientCreateError> {
@@ -418,7 +419,7 @@ fn create_client_from_websocket_options(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs: ca_certs.into_iter().map(|cert| cert.into_bytes()).collect(),
       proxy: options.proxy.clone(),
-      dns_resolver: options.resolver.clone(),
+      dns_resolver: options.resolver.clone().with_permissions(permissions),
       unsafely_ignore_certificate_errors: unsafely_ignore_certificate_errors
         .then_some(vec![]),
       client_cert_chain_and_key: options
@@ -462,10 +463,12 @@ pub async fn op_ws_create(
       let r = s.resource_table.get::<HttpClientResource>(rid)?;
       (r.client.clone(), r.allow_host)
     } else if ca_certs.is_some() || unsafely_ignore_certificate_errors {
+      let permissions = s.borrow::<PermissionsContainer>().clone();
       let options = s.borrow::<FetchOptions>().clone();
       (
         create_client_from_websocket_options(
           &options,
+          permissions,
           ca_certs.unwrap_or_default(),
           unsafely_ignore_certificate_errors,
         )?,
