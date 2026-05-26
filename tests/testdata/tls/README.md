@@ -80,8 +80,8 @@ which is OpenSSL 3.x's default.
 - `localhost_sha384.pfx`
 - `localhost_sha512.pfx`
 
-A separate self-signed bundle exercises the
-`DEPTH_ZERO_SELF_SIGNED_CERT` path in the TLS handshake. Generated with:
+A separate self-signed bundle exercises the `DEPTH_ZERO_SELF_SIGNED_CERT` path
+in the TLS handshake. Generated with:
 
 ```shell
 openssl req -x509 -nodes -newkey rsa:2048 \
