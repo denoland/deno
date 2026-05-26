@@ -17,6 +17,11 @@
       "cwd": "worker",
       "args": "run -A main.mjs",
       "output": "worker/main.out"
+    },
+    "preload_main": {
+      "cwd": "preload_main",
+      "args": "run -A --import=./hook.mjs main.mjs",
+      "output": "preload_main/main.out"
     }
   }
 }
