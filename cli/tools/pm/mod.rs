@@ -840,7 +840,9 @@ async fn resolve_tarball_package(
   decoder
     .take(MAX_TARBALL_SIZE)
     .read_to_end(&mut decompressed)
-    .context("Failed to decompress tarball (not valid gzip or exceeds size limit)")?;
+    .context(
+      "Failed to decompress tarball (not valid gzip or exceeds size limit)",
+    )?;
 
   let mut archive = tar::Archive::new(&decompressed[..]);
   let mut package_json: Option<deno_core::serde_json::Value> = None;
@@ -888,10 +890,10 @@ async fn resolve_tarball_package(
     );
   }
   if let Some(scope_end) = name.find('/') {
-    if name[scope_end + 1..].contains('/') || name[scope_end + 1..].contains("..") {
-      bail!(
-        "Invalid package name in tarball: {name:?}"
-      );
+    if name[scope_end + 1..].contains('/')
+      || name[scope_end + 1..].contains("..")
+    {
+      bail!("Invalid package name in tarball: {name:?}");
     }
   }
   if version.contains('/') || version.contains('\\') || version.contains("..") {
@@ -931,8 +933,7 @@ async fn resolve_tarball_package(
     let mut hasher = sha2::Sha512::new();
     hasher.update(&tarball_bytes);
     let result = hasher.finalize();
-    let b64 =
-      base64::engine::general_purpose::STANDARD.encode(&result);
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&result);
     let hex = result
       .iter()
       .take(16)
