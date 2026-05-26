@@ -12,6 +12,7 @@ import { dirname, fromFileUrl, join } from "@std/path";
 import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";
+import { Buffer } from "node:buffer";
 import { execCode } from "../unit/test_util.ts";
 
 const tlsTestdataDir = fromFileUrl(
@@ -582,7 +583,9 @@ Deno.test(
     // Regression test for https://github.com/denoland/deno/issues/34202:
     // the cert/key embedded in PFX must be extracted into the SecureContext
     // so the TLS handshake doesn't fail with no-server-cert.
-    const pfx = Deno.readFileSync(join(tlsTestdataDir, "localhost.pfx"));
+    const pfx = Buffer.from(
+      Deno.readFileSync(join(tlsTestdataDir, "localhost.pfx")),
+    );
 
     const server = tls.createServer({
       pfx,
