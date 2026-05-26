@@ -798,14 +798,32 @@ function executeEsmLoadHookChain(fileUrl, context) {
       currentContext = { ...currentContext, ...ctx };
     }
     if (index >= loadHooks.length) {
-      // End of chain. Delegate to Rust default loading by returning
-      // a null source, so TypeScript transpilation and JSON handling
-      // produced by the module graph apply uniformly. User hooks
-      // calling nextLoad() will not observe raw on-disk source for
-      // these schemes.
+      // End of chain. Synthesize a default load result so user hooks
+      // that call `await nextLoad(...)` observe a real `source` they
+      // can transform (matches Node, where `defaultLoad` returns the
+      // on-disk source).
       if (StringPrototypeStartsWith(loadUrl, "node:")) {
         return { source: null, format: "builtin", shortCircuit: true };
       }
+      if (StringPrototypeStartsWith(loadUrl, "file://")) {
+        try {
+          const source = op_require_read_file(url.fileURLToPath(loadUrl));
+          return {
+            source,
+            format: currentContext?.format,
+            shortCircuit: true,
+          };
+        } catch {
+          // Any sync read failure (file absent from disk because it's
+          // embedded in a compiled binary's eszip, permission errors,
+          // transient IO) falls through to Rust default loading via
+          // the load loop, which surfaces a clearer error if the
+          // module truly cannot be loaded.
+          return { source: null, shortCircuit: true };
+        }
+      }
+      // For other schemes (data:, http(s):, etc.) we cannot synchronously
+      // produce source here; fall through to Rust default loading.
       return { source: null, shortCircuit: true };
     }
     const hook = loadHooks[index++];
