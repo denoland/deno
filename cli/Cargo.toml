@@ -91,6 +91,7 @@ node_resolver = { workspace = true, features = ["graph", "sync"] }
 node_shim.workspace = true
 
 anstream.workspace = true
+arcstr = "1.2"
 async-trait.workspace = true
 aws-lc-rs.workspace = true
 base64.workspace = true
@@ -114,7 +115,6 @@ dprint-plugin-json.workspace = true
 dprint-plugin-jupyter.workspace = true
 dprint-plugin-markdown.workspace = true
 dprint-plugin-typescript.workspace = true
-esbuild_client = { version = "0.7.1", features = ["serde"] }
 fancy-regex.workspace = true
 faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
@@ -154,6 +154,10 @@ phf.workspace = true
 pretty_yaml.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
+rolldown = { version = "1.0.0" }
+rolldown_common = { version = "1.0.0" }
+rolldown_error = { version = "1.0.0" }
+rolldown_plugin = { version = "1.0.0" }
 rustc-hash.workspace = true
 rustls.workspace = true
 rustyline.workspace = true

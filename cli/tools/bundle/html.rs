@@ -135,7 +135,6 @@ fn collect_scripts(doc: &str) -> Result<Vec<Script>, AnyError> {
 #[derive(Debug, Clone)]
 pub struct HtmlEntrypoint {
   pub path: PathBuf,
-  pub canonical_path: PathBuf,
   pub scripts: Vec<Script>,
   pub temp_module: String,
   pub contents: String,
@@ -164,7 +163,6 @@ fn sanitize_entry_name(cwd: &Path, path: &Path) -> String {
 fn parse_html_entrypoint(
   cwd: &Path,
   path: &Path,
-  canonical_path: PathBuf,
   contents: String,
 ) -> anyhow::Result<HtmlEntrypoint> {
   let mut scripts = collect_scripts(&contents)?;
@@ -190,7 +188,6 @@ fn parse_html_entrypoint(
 
   Ok(HtmlEntrypoint {
     path: path.to_path_buf(),
-    canonical_path,
     scripts,
     temp_module,
     contents,
@@ -204,8 +201,7 @@ pub fn load_html_entrypoint(
   path: &Path,
 ) -> anyhow::Result<HtmlEntrypoint> {
   let contents = std::fs::read_to_string(path)?;
-  let canonical_path = crate::util::fs::canonicalize_path(path)?;
-  parse_html_entrypoint(cwd, path, canonical_path, contents)
+  parse_html_entrypoint(cwd, path, contents)
 }
 
 #[derive(Debug, Clone)]
@@ -283,7 +279,6 @@ impl HtmlEntrypoint {
       html_output_files.output_files.push(OutputFile {
         path: html_out_path,
         contents: Cow::Owned(self.contents.into_bytes()),
-        hash: None,
       });
       return Ok(());
     }
@@ -373,7 +368,6 @@ impl HtmlEntrypoint {
     html_output_files.output_files.push(OutputFile {
       path: html_out_path,
       contents: Cow::Owned(patched.into_bytes()),
-      hash: None,
     });
 
     Ok(())
