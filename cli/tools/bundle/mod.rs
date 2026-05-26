@@ -851,6 +851,10 @@ pub struct DeferredResolveError {
   error: ResolveWithGraphError,
 }
 
+/// Path prefix used to mark modules disabled via a `browser` map (`"foo": false`).
+/// `\0` keeps it from colliding with any real filesystem path.
+const BROWSER_DISABLED_PREFIX: &str = "\0deno-browser-disabled:";
+
 pub struct DenoPluginHandler {
   file_fetcher: Arc<CliFileFetcher>,
   resolver: Arc<CliResolver>,
@@ -1013,6 +1017,17 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     let result = match result {
       Ok(r) => r,
       Err(e) => {
+        // A `browser` map entry of `false` disables the module: return a
+        // sentinel path that `on_load` recognizes and turns into an empty
+        // module, rather than surfacing the resolver error.
+        if let Some(orig) = browser_map_disabled_specifier(&e) {
+          return Ok(Some(esbuild_client::OnResolveResult {
+            path: Some(format!("{BROWSER_DISABLED_PREFIX}{orig}")),
+            namespace: Some("deno".into()),
+            plugin_name: Some("deno".to_string()),
+            ..Default::default()
+          }));
+        }
         return Ok(Some(esbuild_client::OnResolveResult {
           errors: Some(vec![esbuild_client::protocol::PartialMessage {
             id: "deno_error".into(),
@@ -1068,6 +1083,13 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     args: esbuild_client::OnLoadArgs,
   ) -> Result<Option<esbuild_client::OnLoadResult>, AnyError> {
     log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_load"));
+    if args.path.starts_with(BROWSER_DISABLED_PREFIX) {
+      return Ok(Some(esbuild_client::OnLoadResult {
+        contents: Some(b"module.exports = {};\n".to_vec()),
+        loader: Some(esbuild_client::BuiltinLoader::Js),
+        ..Default::default()
+      }));
+    }
     if let Some(virtual_modules) = &self.virtual_modules
       && let Some(module) = virtual_modules.get(&args.path)
     {
@@ -1213,6 +1235,29 @@ impl BundleLoadError {
       _ => false,
     }
   }
+}
+
+/// Walk a `BundleError` looking for a `BrowserMapDisabled` error returned
+/// by `node_resolver`. Returns the original specifier so the bundle can
+/// emit an empty-module stub in place of the resolution.
+fn browser_map_disabled_specifier(error: &BundleError) -> Option<String> {
+  let BundleErrorKind::Resolver(resolve_err) = error.as_kind() else {
+    return None;
+  };
+  let deno_resolver::graph::ResolveWithGraphErrorKind::Resolve(e) =
+    resolve_err.as_kind()
+  else {
+    return None;
+  };
+  let deno_resolver::DenoResolveErrorKind::Node(node_err) = e.as_kind() else {
+    return None;
+  };
+  let node_resolver::errors::NodeResolveErrorKind::BrowserMapDisabled(disabled) =
+    node_err.as_kind()
+  else {
+    return None;
+  };
+  Some(disabled.specifier.clone())
 }
 
 fn maybe_ignorable_resolution_error(

@@ -62,6 +62,17 @@ pub enum PackageJsonSideEffects {
   Patterns(Vec<String>),
 }
 
+/// An entry in the object form of `package.json`'s `browser` field.
+///
+/// A string value remaps the key to a different specifier; `false` marks the
+/// key as disabled (bundlers should substitute an empty module).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum BrowserMapEntry {
+  Replace(String),
+  Disabled,
+}
+
 #[derive(Debug, Clone, Error, JsError, PartialEq, Eq)]
 #[class(generic)]
 #[error("'{}' did not have a name", pkg_json_path.display())]
@@ -295,6 +306,8 @@ pub struct PackageJson {
   pub main: Option<String>,
   pub module: Option<String>,
   pub browser: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub browser_map: Option<IndexMap<String, BrowserMapEntry>>,
   pub name: Option<String>,
   pub version: Option<String>,
   #[serde(skip)]
@@ -376,6 +389,7 @@ impl PackageJson {
         version: None,
         module: None,
         browser: None,
+        browser_map: None,
         typ: "none".to_string(),
         types: None,
         types_versions: None,
@@ -494,7 +508,29 @@ impl PackageJson {
     let name = name_val.and_then(map_string);
     let version = version_val.and_then(map_string);
     let module = module_val.and_then(map_string);
-    let browser = browser_val.and_then(map_string);
+    let (browser, browser_map) = match browser_val {
+      Some(Value::String(s)) => (Some(s), None),
+      Some(Value::Object(map)) => {
+        let mut entries = IndexMap::with_capacity(map.len());
+        for (k, v) in map {
+          match v {
+            Value::String(s) => {
+              entries.insert(k, BrowserMapEntry::Replace(s));
+            }
+            Value::Bool(false) => {
+              entries.insert(k, BrowserMapEntry::Disabled);
+            }
+            _ => {}
+          }
+        }
+        if entries.is_empty() {
+          (None, None)
+        } else {
+          (None, Some(entries))
+        }
+      }
+      _ => (None, None),
+    };
 
     let dependencies = package_json
       .remove("dependencies")
@@ -610,6 +646,7 @@ impl PackageJson {
       version,
       module,
       browser,
+      browser_map,
       typ,
       types,
       types_versions,
