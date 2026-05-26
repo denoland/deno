@@ -1118,19 +1118,11 @@
       );
     },
     deserialize: (buffer, options) => {
-      // Treat a missing `deserializers` key as "use the global registry",
-      // but let callers opt out by explicitly passing
-      // `deserializers: null/undefined` (used by node:worker_threads'
-      // moveMessagePortToContext to surface host objects as
-      // `messageerror` instead of resolving them).
-      const deserializers = options && "deserializers" in options
-        ? options.deserializers
-        : cloneableDeserializers;
       return op_deserialize(
         buffer,
         options?.hostObjects,
         options?.transferredArrayBuffers,
-        deserializers,
+        options?.deserializers,
         options?.forStorage ?? false,
       );
     },

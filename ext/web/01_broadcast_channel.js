@@ -75,7 +75,10 @@ function dispatch(source, name, data) {
     const go = () => {
       if (channel[_closed]) return;
       const event = new MessageEvent("message", {
-        data: core.deserialize(data), // TODO(bnoordhuis) Cache immutables.
+        // TODO(bnoordhuis) Cache immutables.
+        data: core.deserialize(data, {
+          deserializers: core.getCloneableDeserializers(),
+        }),
         origin: "http://127.0.0.1",
       });
       setIsTrusted(event, true);
