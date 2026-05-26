@@ -1308,11 +1308,46 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
-    // When ESM hooks are active, skip graph preparation — hooked modules
-    // may be virtual and can't be fetched by the module graph builder.
+    // When ESM hooks are active, attempt graph preparation best-effort.
+    // A user hook may have resolved this specifier to a virtual URL the
+    // graph builder cannot fetch; in that case the load itself will be
+    // serviced entirely by hooks, so failure here is fine and must not
+    // abort the load.
     if self.0.hook_registry.load_active.get() {
       self.0.shared.has_js_execution_started_flag.raise();
-      return Box::pin(deno_core::futures::future::ready(Ok(())));
+      let specifier = specifier.clone();
+      let inner = self.0.clone();
+      let is_dynamic_import = options.is_dynamic_import;
+      return Box::pin(async move {
+        let graph_container = &inner.graph_container;
+        let module_load_preparer = &inner.shared.module_load_preparer;
+        let permissions = if is_dynamic_import {
+          &inner.permissions
+        } else {
+          &inner.parent_permissions
+        };
+        let is_dynamic = is_dynamic_import || inner.is_worker;
+        let mut update_permit = graph_container.acquire_update_permit().await;
+        let graph = update_permit.graph_mut();
+        let _ = module_load_preparer
+          .prepare_module_load(
+            graph,
+            &[specifier],
+            PrepareModuleLoadOptions {
+              is_dynamic,
+              lib: inner.lib,
+              permissions: permissions.clone(),
+              ext_overwrite: None,
+              allow_unknown_media_types: false,
+              skip_graph_roots_validation: true,
+              file_content_overrides: HashMap::new(),
+            },
+          )
+          .await;
+        graph.prune_types();
+        update_permit.commit();
+        Ok(())
+      });
     }
 
     if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier) {
