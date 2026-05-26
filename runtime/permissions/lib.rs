@@ -1770,6 +1770,7 @@ pub enum Host {
   Ip(IpAddr),
   Vsock(u32),
   IpSubnet(IpNetwork),
+  UnixSocket(PathBuf),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -1929,6 +1930,7 @@ impl QueryDescriptor for NetDescriptor {
       ) => a == b,
       (Host::Ip(a), Host::Ip(b)) => a == b,
       (Host::Vsock(a), Host::Vsock(b)) => a == b,
+      (Host::UnixSocket(a), Host::UnixSocket(b)) => a == b,
       (Host::IpSubnet(a), Host::Ip(b)) => a.contains(*b),
       _ => false,
     }
@@ -2004,6 +2006,8 @@ pub enum NetDescriptorParseError {
   Host(#[from] HostParseError),
   #[error("invalid vsock: '{0}'")]
   InvalidVsock(String),
+  #[error("invalid unix socket: '{0}' (path must be absolute and non-empty)")]
+  InvalidUnixSocket(String),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -2049,6 +2053,16 @@ impl NetDescriptor {
         return Err(NetDescriptorParseError::InvalidVsock(hostname.into()));
       };
       return Ok(NetDescriptor(Host::Vsock(cid), Some(port)));
+    }
+
+    if let Some(rest) = hostname.strip_prefix("unix:") {
+      let path = PathBuf::from(rest);
+      if rest.is_empty() || !path.is_absolute() {
+        return Err(NetDescriptorParseError::InvalidUnixSocket(
+          hostname.to_string(),
+        ));
+      }
+      return Ok(NetDescriptor(Host::UnixSocket(path), None));
     }
 
     if hostname.starts_with("http://") || hostname.starts_with("https://") {
@@ -2157,6 +2171,7 @@ impl fmt::Display for NetDescriptor {
       Host::Ip(IpAddr::V4(ip)) => write!(f, "{ip}"),
       Host::Ip(IpAddr::V6(ip)) => write!(f, "[{ip}]"),
       Host::Vsock(cid) => write!(f, "vsock:{cid}"),
+      Host::UnixSocket(path) => write!(f, "unix:{}", path.display()),
     }?;
     if let Some(port) = self.1 {
       write!(f, ":{}", port)?;
@@ -4527,6 +4542,28 @@ impl PermissionsContainer {
       format!("{cid}:{port}")
     );
     let desc = NetDescriptor(Host::Vsock(cid), Some(port));
+    inner.net.check(&desc, Some(api_name))?;
+    Ok(())
+  }
+
+  /// Network permission check for Unix domain socket endpoints.
+  ///
+  /// `path` must already be resolved to an absolute path (typically by the
+  /// caller's earlier `check_open` pass). Matched lexically against
+  /// `--allow-net=unix:<absolute-path>` rules — no symlink resolution, by
+  /// design (mirrors `check_open`'s symlink-location semantics).
+  pub fn check_net_unix_socket(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    let mut inner = self.inner.lock();
+    audit_and_skip_check_if_is_permission_fully_granted!(
+      inner.net,
+      NetDescriptor::flag_name(),
+      format!("unix:{}", path.display())
+    );
+    let desc = NetDescriptor(Host::UnixSocket(path.to_path_buf()), None);
     inner.net.check(&desc, Some(api_name))?;
     Ok(())
   }

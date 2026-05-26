@@ -124,14 +124,23 @@ pub async fn op_net_connect_unix(
 ) -> Result<(ResourceId, Option<String>, Option<String>), NetError> {
   let address_path = {
     let mut state = state.borrow_mut();
-    state
-      .borrow_mut::<PermissionsContainer>()
+    let permissions = state.borrow_mut::<PermissionsContainer>();
+    let address_path = permissions
       .check_open(
         Cow::Owned(PathBuf::from(address_path)),
         OpenAccessKind::ReadWriteNoFollow,
         Some("Deno.connect()"),
       )
-      .map_err(NetError::Permission)?
+      .map_err(NetError::Permission)?;
+    // Unix sockets are an outbound network primitive — require an
+    // `--allow-net=unix:<path>` rule in addition to filesystem access on
+    // the socket path. Without this, a script with only
+    // `--allow-read=/var/run/docker.sock` could connect to local IPC
+    // services (Docker, dbus, podman, etc.) with no `--allow-net` grant.
+    permissions
+      .check_net_unix_socket(&address_path, "Deno.connect()")
+      .map_err(NetError::Permission)?;
+    address_path
   };
   let unix_stream = UnixStream::connect(address_path).await?;
   let local_addr = unix_stream.local_addr()?;
@@ -176,13 +185,18 @@ pub async fn op_net_send_unixpacket(
 ) -> Result<usize, NetError> {
   let address_path = {
     let mut s = state.borrow_mut();
-    s.borrow_mut::<PermissionsContainer>()
+    let permissions = s.borrow_mut::<PermissionsContainer>();
+    let address_path = permissions
       .check_open(
         Cow::Owned(PathBuf::from(address_path)),
         OpenAccessKind::WriteNoFollow,
         Some("Deno.DatagramConn.send()"),
       )
-      .map_err(NetError::Permission)?
+      .map_err(NetError::Permission)?;
+    permissions
+      .check_net_unix_socket(&address_path, "Deno.DatagramConn.send()")
+      .map_err(NetError::Permission)?;
+    address_path
   };
 
   let resource = state
@@ -213,6 +227,9 @@ pub fn op_net_listen_unix(
       Some(&api_call_expr),
     )
     .map_err(NetError::Permission)?;
+  permissions
+    .check_net_unix_socket(&address_path, &api_call_expr)
+    .map_err(NetError::Permission)?;
   let listener = UnixListener::bind(&address_path)?;
   let local_addr = listener.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;
@@ -234,6 +251,9 @@ pub fn net_listen_unixpacket(
       OpenAccessKind::ReadWriteNoFollow,
       Some("Deno.listenDatagram()"),
     )
+    .map_err(NetError::Permission)?;
+  permissions
+    .check_net_unix_socket(&address_path, "Deno.listenDatagram()")
     .map_err(NetError::Permission)?;
   let socket = UnixDatagram::bind(address_path)?;
   let local_addr = socket.local_addr()?;

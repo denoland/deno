@@ -13,6 +13,7 @@ const serverProcess = new Deno.Command(Deno.execPath(), {
     "--allow-read",
     "--allow-write",
     "--allow-env",
+    "--allow-net",
     "--unstable-cron",
     join(testDir, "server.js"),
   ],

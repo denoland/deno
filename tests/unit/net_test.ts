@@ -49,7 +49,7 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   function netUnixListenClose() {
     const filePath = tmpUnixSocketPath();
@@ -66,7 +66,7 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   function netUnixPacketListenClose() {
     const filePath = tmpUnixSocketPath();
@@ -137,7 +137,7 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   async function netUnixCloseWhileAccept() {
     const filePath = tmpUnixSocketPath();
@@ -181,7 +181,7 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   async function netUnixConcurrentAccept() {
     const filePath = tmpUnixSocketPath();
@@ -312,7 +312,7 @@ Deno.test({ permissions: { net: true } }, async function netTcpSetKeepAlive() {
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   async function netUnixDialListen() {
     const filePath = tmpUnixSocketPath();
@@ -684,7 +684,7 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   async function netUnixPacketSendReceive() {
     const aliceFilePath = tmpUnixSocketPath();
@@ -721,7 +721,7 @@ Deno.test(
 
 // TODO(lucacasonato): support concurrent reads and writes on unixpacket sockets
 Deno.test(
-  { ignore: true, permissions: { read: true, write: true } },
+  { ignore: true, permissions: { read: true, write: true, net: true } },
   async function netUnixPacketConcurrentSendReceive() {
     const filePath = tmpUnixSocketPath();
     const socket = Deno.listenDatagram({
@@ -806,7 +806,7 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   async function netUnixListenCloseWhileIterating() {
     const filePath = tmpUnixSocketPath();
@@ -823,7 +823,7 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   async function netUnixPacketListenCloseWhileIterating() {
     const filePath = tmpUnixSocketPath();
@@ -965,7 +965,7 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os !== "linux",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   function netUnixAbstractPathShouldNotPanic() {
     const err = assertThrows(
@@ -1119,7 +1119,7 @@ Deno.test(
 
 Deno.test({
   ignore: Deno.build.os === "windows",
-  permissions: { read: true, write: true },
+  permissions: { read: true, write: true, net: true },
 }, function netUnixListenAddrAlreadyInUse() {
   const filePath = tmpUnixSocketPath();
   const listener = Deno.listen({ path: filePath, transport: "unix" });
@@ -1385,5 +1385,58 @@ Deno.test(
       Deno.errors.BadResource,
     );
     // calling [Symbol.dispose] after manual close is a no-op
+  },
+);
+
+// Regression test for GHSA-rjhc-mq2r-fp9w: Unix socket connect/listen used
+// to check only filesystem permissions, letting scripts with
+// `--allow-read=/var/run/docker.sock` reach Docker without any `--allow-net`
+// grant. They now also require an `--allow-net=unix:<path>` rule (or
+// unscoped `--allow-net`).
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  function netUnixListenRequiresAllowNet() {
+    const filePath = tmpUnixSocketPath();
+    assertThrows(
+      () => Deno.listen({ path: filePath, transport: "unix" }),
+      Deno.errors.NotCapable,
+    );
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  async function netUnixConnectRequiresAllowNet() {
+    const filePath = tmpUnixSocketPath();
+    await assertRejects(
+      () => Deno.connect({ path: filePath, transport: "unix" }),
+      Deno.errors.NotCapable,
+    );
+  },
+);
+
+// Scoped form must match the exact path — a different unix path does not
+// grant access to this one.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: {
+      read: true,
+      write: true,
+      net: ["unix:/some/other/path.sock"],
+    },
+  },
+  function netUnixScopedAllowNetMatchesExactly() {
+    const filePath = tmpUnixSocketPath();
+    assertThrows(
+      () => Deno.listen({ path: filePath, transport: "unix" }),
+      Deno.errors.NotCapable,
+    );
   },
 );
