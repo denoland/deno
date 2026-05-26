@@ -2381,6 +2381,9 @@ Deno.test(function inspectProxy() {
     )),
     `{ key: "value" }`,
   );
+  // When `showProxy` is false (the default), `Deno.inspect` mirrors Node.js
+  // and inspects the proxy target directly without invoking any traps. The
+  // handler below is ignored entirely; the empty target prints as `{}`.
   assertEquals(
     stripAnsiCode(Deno.inspect(
       new Proxy({}, {
@@ -2403,7 +2406,18 @@ Deno.test(function inspectProxy() {
         },
       }),
     )),
-    `{ prop1: 5, prop2: 5 }`,
+    `{}`,
+  );
+
+  // Issue: https://github.com/denoland/deno/issues/26355
+  // A proxy whose `ownKeys` trap violates the invariant (returns a
+  // non-Object) must not throw — Node.js returns the target's inspection.
+  assertEquals(
+    stripAnsiCode(Deno.inspect(
+      // deno-lint-ignore no-explicit-any
+      new Proxy({ x: 1 }, { ownKeys: (() => undefined) as any }),
+    )),
+    `{ x: 1 }`,
   );
   assertEquals(
     stripAnsiCode(Deno.inspect(

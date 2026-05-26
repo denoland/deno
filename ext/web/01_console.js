@@ -135,10 +135,8 @@ const {
   ObjectValues,
   Promise,
   PromisePrototype,
-  Proxy,
   RangeError,
   RangeErrorPrototype,
-  ReflectGet,
   ReflectGetOwnPropertyDescriptor,
   ReflectGetPrototypeOf,
   ReflectHas,
@@ -543,23 +541,28 @@ function formatValue(
   const context = value;
   // Always check for proxies to prevent side effects and to prevent triggering
   // any proxy handlers.
-  // TODO(wafuwafu13): Set Proxy
-  const proxyDetails = core.getProxyDetails(value);
-  // const proxy = getProxyDetails(value, !!ctx.showProxy);
-  // if (proxy !== undefined) {
-  //   if (ctx.showProxy) {
-  //     return formatProxy(ctx, proxy, recurseTimes);
-  //   }
-  //   value = proxy;
-  // }
+  let proxyDetails = core.getProxyDetails(value);
+  // Match Node.js: when not in `showProxy` mode, inspect the proxy target
+  // directly. This avoids invoking any proxy traps (which may have side
+  // effects or throw -- e.g. an `ownKeys` trap that violates the invariant
+  // by returning a non-object). Downstream code branches on whether
+  // `proxyDetails` is null to decide which value to operate on, so clearing
+  // it here keeps those branches consistent now that `value` is the target.
+  if (proxyDetails !== null && !ctx.showProxy) {
+    value = proxyDetails[0];
+    proxyDetails = null;
+  }
 
   // Provide a hook for user-specified inspect functions.
   // Check that value is an object with an inspect function on it.
-  // For Proxy objects, look up custom inspect symbols on the unwrapped
-  // target (via core.getProxyDetails) to avoid triggering the proxy's
-  // get/has traps which may cause side effects (e.g. grammy API proxies
-  // return functions for any property access). This matches Node.js
-  // behavior. The call itself still uses `value` (the proxy) as `this`.
+  // When `showProxy` is false, `value` is already the proxy target (see the
+  // unwrap above), so traps are never triggered here. When `showProxy` is
+  // true, we keep the proxy as `value` but still resolve the inspect symbol
+  // on the underlying target via `proxyDetails[0]` to avoid get/has traps
+  // (matching Node.js -- and necessary for proxies that respond to arbitrary
+  // property access, e.g. grammy/nodejs-polars). The call itself uses
+  // `value` so `this` inside a custom inspector is whatever the caller
+  // originally passed.
   if (ctx.customInspect) {
     const inspectTarget = proxyDetails ? proxyDetails[0] : value;
     if (
@@ -4073,45 +4076,31 @@ function inspect(
   return formatValue(ctx, value, 0);
 }
 
-/** Creates a proxy that represents a subset of the properties
- * of the original object optionally without evaluating the properties
- * in order to get the values. */
+/** Creates an object that represents a subset of the properties of the
+ * original object, suitable for handing to `inspect()`. The returned value
+ * carries the original object's class name and the listed keys as own
+ * enumerable data properties. Previously this returned a Proxy with traps
+ * exposing the filtered view, but since `inspect()` now mirrors Node.js and
+ * skips proxy traps in default mode, we materialise the view eagerly. */
 function createFilteredInspectProxy({ object, keys, evaluate }) {
-  const obj = class {};
+  const cls = class {};
   if (object.constructor?.name) {
-    ObjectDefineProperty(obj, "name", {
+    ObjectDefineProperty(cls, "name", {
       __proto__: null,
       value: object.constructor.name,
     });
   }
 
-  return new Proxy(new obj(), {
-    get(_target, key) {
-      if (key === SymbolToStringTag) {
-        return object.constructor?.name;
-      } else if (ArrayPrototypeIncludes(keys, key)) {
-        return ReflectGet(object, key);
-      } else {
-        return undefined;
-      }
-    },
-    getOwnPropertyDescriptor(_target, key) {
-      if (!ArrayPrototypeIncludes(keys, key)) {
-        return undefined;
-      } else if (evaluate) {
-        return getEvaluatedDescriptor(object, key);
-      } else {
-        return getDescendantPropertyDescriptor(object, key) ??
-          getEvaluatedDescriptor(object, key);
-      }
-    },
-    has(_target, key) {
-      return ArrayPrototypeIncludes(keys, key);
-    },
-    ownKeys() {
-      return keys;
-    },
-  });
+  const result = new cls();
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    const descriptor = evaluate
+      ? getEvaluatedDescriptor(object, key)
+      : (getDescendantPropertyDescriptor(object, key) ??
+        getEvaluatedDescriptor(object, key));
+    ObjectDefineProperty(result, key, descriptor);
+  }
+  return result;
 
   function getDescendantPropertyDescriptor(object, key) {
     let propertyDescriptor = ReflectGetOwnPropertyDescriptor(object, key);
