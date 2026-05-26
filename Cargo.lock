@@ -1877,6 +1877,7 @@ dependencies = [
  "faster-hex",
  "flate2",
  "fluent-uri",
+ "glob",
  "http 1.4.0",
  "http-body 1.0.0",
  "http-body-util",

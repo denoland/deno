@@ -47,6 +47,21 @@ pub enum PackageJsonBins {
   Bins(BTreeMap<String, PathBuf>),
 }
 
+/// The value of the `sideEffects` field in a `package.json`.
+///
+/// See https://webpack.js.org/guides/tree-shaking/#mark-the-file-as-side-effect-free
+/// for details on how this field is interpreted by bundlers.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum PackageJsonSideEffects {
+  /// `false` means the package has no side effects;
+  /// `true` (or omitted) means every file may have side effects.
+  Bool(bool),
+  /// A list of glob patterns matching files that have side effects.
+  /// All other files in the package are treated as side-effect-free.
+  Patterns(Vec<String>),
+}
+
 #[derive(Debug, Clone, Error, JsError, PartialEq, Eq)]
 #[class(generic)]
 #[error("'{}' did not have a name", pkg_json_path.display())]
@@ -305,6 +320,8 @@ pub struct PackageJson {
   pub catalog: Option<IndexMap<String, String>>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub catalogs: Option<IndexMap<String, IndexMap<String, String>>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub side_effects: Option<PackageJsonSideEffects>,
   #[serde(skip_serializing)]
   resolved_deps: PackageJsonDepsRcCell,
 }
@@ -379,6 +396,7 @@ impl PackageJson {
         overrides: None,
         catalog: None,
         catalogs: None,
+        side_effects: None,
         resolved_deps: Default::default(),
       });
     }
@@ -554,6 +572,14 @@ impl PackageJson {
     let os = package_json.remove("os").and_then(parse_string_array);
     let cpu = package_json.remove("cpu").and_then(parse_string_array);
     let overrides = package_json.remove("overrides").and_then(map_object);
+    let side_effects =
+      package_json.remove("sideEffects").and_then(|v| match v {
+        Value::Bool(b) => Some(PackageJsonSideEffects::Bool(b)),
+        Value::Array(_) => {
+          parse_string_array(v).map(PackageJsonSideEffects::Patterns)
+        }
+        _ => None,
+      });
     // Top-level catalog/catalogs take precedence; fall back to those
     // extracted from the workspaces object form.
     let catalog = package_json
@@ -604,6 +630,7 @@ impl PackageJson {
       overrides,
       catalog,
       catalogs,
+      side_effects,
       resolved_deps: Default::default(),
     })
   }
