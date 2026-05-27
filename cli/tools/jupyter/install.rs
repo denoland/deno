@@ -21,7 +21,7 @@ fn get_user_data_dir() -> Result<PathBuf, AnyError> {
   Ok(if let Some(env_var) = std::env::var_os(TEST_ENV_VAR_NAME) {
     PathBuf::from(env_var)
   } else {
-    jupyter_runtime::dirs::user_data_dir()?
+    super::connection::user_data_dir()?
   })
 }
 

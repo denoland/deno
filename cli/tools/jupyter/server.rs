@@ -28,14 +28,15 @@ use jupyter_protocol::ReplyError;
 use jupyter_protocol::ReplyStatus;
 use jupyter_protocol::StreamContent;
 use jupyter_protocol::messaging;
-use jupyter_runtime::KernelControlConnection;
-use jupyter_runtime::KernelIoPubConnection;
-use jupyter_runtime::KernelShellConnection;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use super::JupyterReplProxy;
+use super::connection;
+use super::connection::KernelControlConnection;
+use super::connection::KernelIoPubConnection;
+use super::connection::KernelShellConnection;
 use crate::cdp;
 
 pub struct JupyterServer {
@@ -67,28 +68,21 @@ impl JupyterServer {
     let session_id = Uuid::new_v4().to_string();
 
     let mut heartbeat =
-      jupyter_runtime::create_kernel_heartbeat_connection(&connection_info)
+      connection::create_kernel_heartbeat_connection(&connection_info).await?;
+    let shell_connection =
+      connection::create_kernel_shell_connection(&connection_info, &session_id)
         .await?;
-    let shell_connection = jupyter_runtime::create_kernel_shell_connection(
+    let control_connection = connection::create_kernel_control_connection(
       &connection_info,
       &session_id,
     )
     .await?;
-    let control_connection = jupyter_runtime::create_kernel_control_connection(
-      &connection_info,
-      &session_id,
-    )
-    .await?;
-    let mut stdin_connection = jupyter_runtime::create_kernel_stdin_connection(
-      &connection_info,
-      &session_id,
-    )
-    .await?;
-    let iopub_connection = jupyter_runtime::create_kernel_iopub_connection(
-      &connection_info,
-      &session_id,
-    )
-    .await?;
+    let mut stdin_connection =
+      connection::create_kernel_stdin_connection(&connection_info, &session_id)
+        .await?;
+    let iopub_connection =
+      connection::create_kernel_iopub_connection(&connection_info, &session_id)
+        .await?;
 
     let iopub_connection = Arc::new(Mutex::new(iopub_connection));
     let last_execution_request = Arc::new(Mutex::new(None));

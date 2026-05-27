@@ -34,6 +34,7 @@ use crate::tools::test::TestFailureFormatOptions;
 use crate::tools::test::create_single_test_event_channel;
 use crate::tools::test::reporters::PrettyTestReporter;
 
+pub mod connection;
 mod install;
 pub mod server;
 

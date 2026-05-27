@@ -129,7 +129,6 @@ import_map.workspace = true
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
 jupyter-protocol.workspace = true
-jupyter_runtime.workspace = true
 keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service", "windows-native", "vendored"] }
 lazy-regex.workspace = true
 libc.workspace = true
@@ -185,6 +184,7 @@ uuid = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
 weak-table.workspace = true
 zip = { workspace = true, features = ["deflate-flate2"] }
+zeromq.workspace = true
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]

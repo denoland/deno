@@ -18,9 +18,9 @@ use jupyter_protocol::InputRequest;
 use jupyter_protocol::JupyterMessage;
 use jupyter_protocol::JupyterMessageContent;
 use jupyter_protocol::StreamContent;
-use jupyter_runtime::KernelIoPubConnection;
 use tokio::sync::mpsc;
 
+use crate::tools::jupyter::connection::KernelIoPubConnection;
 use crate::tools::jupyter::server::StdinConnectionProxy;
 
 deno_core::extension!(deno_jupyter,
