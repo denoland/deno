@@ -2223,6 +2223,7 @@ dependencies = [
  "ecdsa",
  "ed448-goldilocks",
  "elliptic-curve 0.13.8",
+ "hmac",
  "num-traits",
  "ocb3",
  "once_cell",
