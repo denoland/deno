@@ -780,8 +780,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
       // The hook function itself is synchronous, but this load path has no V8
       // scope. The async bridge lets the JS event loop run the hook; blocking
       // here waiting for JS would deadlock the same runtime.
-      let receiver =
-        self.hook_registry.push_load(original_specifier.to_string());
+      let import_type =
+        options.requested_module_type.as_str().map(str::to_owned);
+      let receiver = self
+        .hook_registry
+        .push_load(original_specifier.to_string(), import_type);
       let this = self.clone();
       let specifier = original_specifier.clone();
       let maybe_referrer = maybe_referrer.cloned();
