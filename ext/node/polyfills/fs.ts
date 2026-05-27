@@ -3481,6 +3481,13 @@ function watch(
   let openError: Error | undefined;
   let resolvedWatchPath = watchPath;
   try {
+    // Pre-validate path existence so missing-path failures surface as a
+    // typed `Deno.errors.NotFound` consistently across platforms. notify
+    // 6.1.1's Windows backend (`add_watch` in src/windows.rs) returns a
+    // Generic error rather than a typed NotFound when the path doesn't
+    // exist, which would otherwise bypass the prototype check in
+    // makeWatchNodeError above.
+    Deno.lstatSync(watchPath);
     iterator = Deno.watchFs(watchPath, { recursive });
     // Resolve the watched path once so we can compute relative paths.
     // Use realPathSync to resolve symlinks (e.g. macOS /var -> /private/var)
