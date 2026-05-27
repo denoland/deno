@@ -62,8 +62,7 @@ import { unstableIds } from "ext:deno_features/flags.js";
 const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
 import { bundle } from "ext:deno_bundle_runtime/bundle.ts";
 
-const { ObjectDefineProperties, ObjectDefineProperty, Float64Array } =
-  primordials;
+const { ObjectDefineProperty, Float64Array } = primordials;
 
 const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
 const loadWebTransport = core.createLazyLoader(
@@ -314,7 +313,7 @@ denoNsUnstableById[unstableIds.net] = {
   ),
 };
 
-ObjectDefineProperties(denoNsUnstableById[unstableIds.net], {
+core.defineGlobalProperties(denoNsUnstableById[unstableIds.net], {
   connectQuic: core.propWritableLazyLoaded((q) => q.connectQuic, loadQuic),
   QuicEndpoint: core.propWritableLazyLoaded((q) => q.QuicEndpoint, loadQuic),
   QuicBidirectionalStream: core.propWritableLazyLoaded(
@@ -343,7 +342,7 @@ ObjectDefineProperties(denoNsUnstableById[unstableIds.net], {
 denoNsUnstableById[unstableIds.webgpu] = {
   UnsafeWindowSurface: surface.UnsafeWindowSurface,
 };
-ObjectDefineProperties(denoNsUnstableById[unstableIds.webgpu], {
+core.defineGlobalProperties(denoNsUnstableById[unstableIds.webgpu], {
   webgpu: core.propWritableLazyLoaded(
     (webgpu) => webgpu.denoNsWebGPU,
     loadWebGPU,

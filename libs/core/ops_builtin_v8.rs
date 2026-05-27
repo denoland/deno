@@ -923,11 +923,15 @@ pub fn op_deserialize<'s, 'i>(
     None => None,
   };
 
+  let key = v8_static_strings::HOST_OBJECT.v8_string(scope).unwrap();
+  let symbol = v8::Symbol::for_key(scope, key);
+  let host_object_brand = Some(symbol);
+
   let serialize_deserialize = Box::new(SerializeDeserialize {
     host_objects,
     error_callback: None,
     for_storage,
-    host_object_brand: None,
+    host_object_brand,
     deserializers,
   });
   let value_deserializer =
