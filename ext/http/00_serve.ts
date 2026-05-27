@@ -574,6 +574,18 @@ function mapToCallback(context, callback, onError) {
         );
       }
 
+      // The Response prototype check above passes for Response-like objects
+      // (e.g. a subclass that skipped super(), or a Response from a different
+      // realm/polyfill). Those don't carry the internal slot we read from
+      // below, so reject them with a clear error instead of crashing the
+      // serve loop with "Cannot read properties of undefined (reading
+      // 'status')".
+      if (toInnerResponse(response) === undefined) {
+        throw new TypeError(
+          "Return value from serve handler must be a Response constructed via the Response constructor in this realm",
+        );
+      }
+
       if (response.type === "error") {
         throw new TypeError(
           "Return value from serve handler must not be an error response (like Response.error())",
@@ -591,6 +603,11 @@ function mapToCallback(context, callback, onError) {
         if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
           throw new TypeError(
             "Return value from onError handler must be a response or a promise resolving to a response",
+          );
+        }
+        if (toInnerResponse(response) === undefined) {
+          throw new TypeError(
+            "Return value from onError handler must be a Response constructed via the Response constructor in this realm",
           );
         }
       } catch (error) {
