@@ -841,12 +841,20 @@ impl DenoSubcommand {
             os: "linux".into(),
             cpu: "arm64".into(),
           },
+          "aarch64-linux-android" => NpmSystemInfo {
+            os: "android".into(),
+            cpu: "arm64".into(),
+          },
           "x86_64-apple-darwin" => NpmSystemInfo {
             os: "darwin".into(),
             cpu: "x64".into(),
           },
           "x86_64-unknown-linux-gnu" => NpmSystemInfo {
             os: "linux".into(),
+            cpu: "x64".into(),
+          },
+          "x86_64-linux-android" => NpmSystemInfo {
+            os: "android".into(),
             cpu: "x64".into(),
           },
           "x86_64-pc-windows-msvc" => NpmSystemInfo {
@@ -2969,13 +2977,21 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
       .arg(
         Arg::new("target")
           .long("target")
-          .help("Target OS architecture")
+          .help(cstr!(
+            "Target OS architecture\
+            <p(245)>\n\nNote: pre-built denort binaries for Bionic-libc hosts \
+            (e.g. Termux/Android) are not distributed. To target those, build \
+            `denort` locally and set the DENORT_BIN environment variable to \
+            its path.</>"
+          ))
           .value_parser([
             "x86_64-unknown-linux-gnu",
             "aarch64-unknown-linux-gnu",
             "x86_64-pc-windows-msvc",
             "x86_64-apple-darwin",
             "aarch64-apple-darwin",
+            "aarch64-linux-android",
+            "x86_64-linux-android",
           ])
           .help_heading(COMPILE_HEADING),
       )

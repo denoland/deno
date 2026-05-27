@@ -289,6 +289,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
 
     let target = compile_flags.resolve_target();
+    if !is_distributed_denort_target(&target) {
+      bail!("{}", unsupported_denort_target_message(&target));
+    }
     let binary_name = format!("denort-{target}.zip");
 
     let binary_path_suffix = match DENO_VERSION_INFO.release_channel {
@@ -1310,6 +1313,53 @@ fn get_dev_binary_path() -> Option<OsString> {
   })
 }
 
+/// The set of target triples for which a `denort` binary is published to
+/// `dl.deno.land`. Compiling for any other target requires the user to
+/// supply their own `denort` via the `DENORT_BIN` environment variable.
+const DISTRIBUTED_DENORT_TARGETS: &[&str] = &[
+  "aarch64-apple-darwin",
+  "aarch64-pc-windows-msvc",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-apple-darwin",
+  "x86_64-pc-windows-msvc",
+  "x86_64-unknown-linux-gnu",
+];
+
+fn is_distributed_denort_target(target: &str) -> bool {
+  DISTRIBUTED_DENORT_TARGETS.contains(&target)
+}
+
+/// Builds the error message shown when the resolved compile target has no
+/// pre-built `denort` binary available for download. Special-cases Android /
+/// Bionic-libc hosts (e.g. Termux), where the default target inferred from
+/// `env!("TARGET")` is `*-linux-android`.
+fn unsupported_denort_target_message(target: &str) -> String {
+  let mut msg = format!(
+    "deno compile is not supported for target '{target}': no pre-built denort \
+     binary is available."
+  );
+  if target.ends_with("-linux-android") {
+    msg.push_str(
+      "\n\nThis usually happens when running `deno compile` on Termux/Android. \
+       Pre-built denort binaries for Bionic libc are not yet distributed.",
+    );
+  }
+  msg.push_str("\n\nTo work around this, you can either:");
+  msg.push_str(
+    "\n  - Build a `denort` binary locally for your target and point the \
+     `DENORT_BIN` environment variable at it, or",
+  );
+  msg.push_str(
+    "\n  - Cross-compile to a supported target with `--target`, e.g. \
+     `--target=x86_64-unknown-linux-gnu` (note: a glibc binary produced this \
+     way will not run on Bionic libc hosts such as Termux/Android).",
+  );
+  msg.push_str(
+    "\n\nSee https://github.com/denoland/deno/issues/33338 for more details.",
+  );
+  msg
+}
+
 /// This function returns the environment variables specified
 /// in the passed environment file.
 fn get_file_env_vars(
@@ -1365,4 +1415,39 @@ fn set_windows_binary_to_gui(bin: &mut [u8]) -> Result<(), AnyError> {
   bin[(subsystem_start)..(subsystem_start + 2)]
     .copy_from_slice(&subsystem.to_le_bytes());
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn distributed_denort_targets_recognized() {
+    for target in DISTRIBUTED_DENORT_TARGETS {
+      assert!(is_distributed_denort_target(target), "{target}");
+    }
+  }
+
+  #[test]
+  fn android_target_is_not_distributed() {
+    assert!(!is_distributed_denort_target("aarch64-linux-android"));
+    assert!(!is_distributed_denort_target("x86_64-linux-android"));
+  }
+
+  #[test]
+  fn unsupported_target_message_mentions_android_for_bionic() {
+    let msg = unsupported_denort_target_message("aarch64-linux-android");
+    assert!(msg.contains("aarch64-linux-android"));
+    assert!(msg.contains("Termux/Android"));
+    assert!(msg.contains("DENORT_BIN"));
+    assert!(msg.contains("--target"));
+  }
+
+  #[test]
+  fn unsupported_target_message_generic_for_unknown() {
+    let msg = unsupported_denort_target_message("riscv64-unknown-linux-gnu");
+    assert!(msg.contains("riscv64-unknown-linux-gnu"));
+    assert!(!msg.contains("Termux/Android"));
+    assert!(msg.contains("DENORT_BIN"));
+  }
 }
