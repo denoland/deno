@@ -105,3 +105,19 @@ check("Script.runInThisContext", globalThis.__result);
   await waitFor(() => globalThis.__result);
   check("SourceTextModule", globalThis.__result);
 }
+
+// USE_MAIN_CONTEXT_DEFAULT_LOADER: dynamic import should *succeed*
+{
+  const src =
+    `globalThis.__loader_ok = import('node:process').then((m) => typeof m.argv);`;
+  const script = new vm.Script(src, {
+    filename: "loader.mjs",
+    importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+  });
+  script.runInThisContext();
+  const ty = await globalThis.__loader_ok;
+  console.log(
+    "USE_MAIN_CONTEXT_DEFAULT_LOADER",
+    ty === "object" ? "ok" : `FAIL got ${ty}`,
+  );
+}
