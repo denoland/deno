@@ -877,12 +877,26 @@
         return getter(loadFn());
       },
       set(v) {
-        ObjectDefineProperty(this, desc[lazyNameSym], {
-          value: v,
-          writable: true,
-          enumerable: false,
-          configurable: true,
-        });
+        const name = desc[lazyNameSym];
+        // Match OrdinarySetWithOwnDescriptor semantics for an inherited
+        // writable data property: a direct set on the holder updates the
+        // value in place (preserving enumerable: false), while an inherited
+        // set creates a new enumerable own data property on the receiver.
+        if (ObjectHasOwn(this, name)) {
+          ObjectDefineProperty(this, name, {
+            value: v,
+            writable: true,
+            enumerable: false,
+            configurable: true,
+          });
+        } else {
+          ObjectDefineProperty(this, name, {
+            value: v,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+          });
+        }
       },
       enumerable: false,
       configurable: true,

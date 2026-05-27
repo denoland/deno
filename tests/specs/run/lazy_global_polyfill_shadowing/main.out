@@ -4,5 +4,7 @@ global ReadableStream untouched: true
 global WebSocket untouched: true
 own Response on receiver: true
 own Request on receiver: true
+receiver Response descriptor: {"hasValue":true,"writable":true,"enumerable":true,"configurable":true}
 real Response instanceof Response: true
 direct set on globalThis: true
+global WebSocket descriptor: {"hasValue":true,"writable":true,"enumerable":false,"configurable":true}

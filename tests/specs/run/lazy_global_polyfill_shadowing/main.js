@@ -45,11 +45,36 @@ console.log(
   Object.prototype.hasOwnProperty.call(g, "Request"),
 );
 
+// The shadowing own property on the inheriting receiver should be a normal
+// enumerable, writable, configurable data property - matching standard
+// [[Set]] semantics for an inherited writable data property.
+const receiverDesc = Object.getOwnPropertyDescriptor(g, "Response");
+console.log(
+  "receiver Response descriptor:",
+  JSON.stringify({
+    hasValue: Object.hasOwn(receiverDesc, "value"),
+    writable: receiverDesc.writable,
+    enumerable: receiverDesc.enumerable,
+    configurable: receiverDesc.configurable,
+  }),
+);
+
 // `new Response()` still produces a real Response (instanceof works).
 const r = new Response("hello");
 console.log("real Response instanceof Response:", r instanceof Response);
 
-// Direct assignment to globalThis still works.
+// Direct assignment to globalThis still works, and preserves the original
+// non-enumerable attribute of the global descriptor.
 globalThis.WebSocket = "patched";
 console.log("direct set on globalThis:", globalThis.WebSocket === "patched");
+const globalDesc = Object.getOwnPropertyDescriptor(globalThis, "WebSocket");
+console.log(
+  "global WebSocket descriptor:",
+  JSON.stringify({
+    hasValue: Object.hasOwn(globalDesc, "value"),
+    writable: globalDesc.writable,
+    enumerable: globalDesc.enumerable,
+    configurable: globalDesc.configurable,
+  }),
+);
 globalThis.WebSocket = originalWebSocket;
