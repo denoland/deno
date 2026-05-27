@@ -297,9 +297,7 @@ impl JupyterReplSession {
           .repl_session
           .evaluate_line_with_object_wrapping(&line)
           .await;
-        let json = result
-          .ok()
-          .and_then(|r| serde_json::to_value(r.value).ok());
+        let json = result.ok().and_then(|r| serde_json::to_value(r.value).ok());
         let _ = resp_tx.send(json);
       }
       JupyterReplRequest::GetProperties { object_id, resp_tx } => {
