@@ -88,9 +88,10 @@ const {
   enterAsyncResource,
   exitAsyncResource,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
-const { enqueueNodePerformanceEntry } = core.loadExtScript(
-  "ext:deno_node/perf_hooks.js",
-);
+const { enqueueNodePerformanceEntry, hasNodeObserverForType } = core
+  .loadExtScript(
+    "ext:deno_node/perf_hooks.js",
+  );
 const {
   otelState,
   builtinTracer,
@@ -824,7 +825,9 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   }
 
   state.incoming.push(req);
-  req[kPerfStartTime] = performance.now();
+  if (hasNodeObserverForType("http")) {
+    req[kPerfStartTime] = performance.now();
+  }
 
   if (!socket._paused) {
     const ws = socket._writableState;
@@ -1009,7 +1012,7 @@ function resOnFinish(req, res, socket, state, server) {
 
   // Emit HttpRequest perf entry
   const perfStartTime = req[kPerfStartTime];
-  if (perfStartTime !== undefined) {
+  if (perfStartTime !== undefined && hasNodeObserverForType("http")) {
     enqueueNodePerformanceEntry({
       name: "HttpRequest",
       entryType: "http",
