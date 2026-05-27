@@ -5,6 +5,8 @@
   "browser": {
     "./main.js": "./main.browser.js",
     "./util.js": "./util.browser.js",
+    "./extensionless": false,
+    "./dir-extensionless": false,
     "fs": false,
     "foo": "./shims/foo.js"
   },

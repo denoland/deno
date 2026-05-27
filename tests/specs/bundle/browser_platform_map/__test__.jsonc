@@ -13,7 +13,7 @@
         },
         {
           "args": "run -A bundled.js",
-          "output": "browser: util-browser fs=object foo=foo-shim\n"
+          "output": "browser: util-browser fs=object foo=foo-shim ext={\"default\":{}} dirext={\"default\":{}}\n"
         }
       ]
     }

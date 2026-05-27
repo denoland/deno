@@ -268,6 +268,34 @@ struct BrowserMapMatch {
   pkg_json: PackageJsonRc,
 }
 
+/// Extensions probed when matching a relative-path `browser` map key against a
+/// resolved file path. Mirrors the suffixes Node's `require()` algorithm tries
+/// after the bare path, so an entry like `"./foo": false` also catches
+/// `./foo.js`, `./foo.cjs`, `./foo/index.js`, etc.
+const BROWSER_MAP_PROBE_EXTS: &[&str] =
+  &[".js", ".mjs", ".cjs", ".json", ".node"];
+
+fn browser_map_key_matches(key_path: &Path, resolved_path: &Path) -> bool {
+  if key_path == resolved_path {
+    return true;
+  }
+  for ext in BROWSER_MAP_PROBE_EXTS {
+    // strip the leading '.' so OsString::push("js") gives "foo.js".
+    let ext = &ext[1..];
+    let mut with_ext = key_path.as_os_str().to_owned();
+    with_ext.push(".");
+    with_ext.push(ext);
+    if Path::new(&with_ext) == resolved_path {
+      return true;
+    }
+    let index_path = key_path.join("index").with_extension(ext);
+    if index_path == resolved_path {
+      return true;
+    }
+  }
+  false
+}
+
 #[derive(Debug)]
 struct ResolutionConfig {
   pub bundle_mode: bool,
@@ -600,7 +628,11 @@ impl<
       let joined = pkg_dir.join(key);
       let key_path =
         deno_path_util::normalize_path(Cow::Borrowed(joined.as_path()));
-      if key_path == resolved_clean {
+      // Per the proposal, relative-path keys are matched after node-style
+      // probing — `"./foo": false` should disable `./foo.js`, `./foo/index.js`,
+      // etc. Compare the resolved file against the key plus the same extension
+      // and `/index.*` variants `require()` would try.
+      if browser_map_key_matches(&key_path, &resolved_clean) {
         return Some(BrowserMapMatch {
           entry: entry.clone(),
           pkg_json: pkg_json.clone(),
