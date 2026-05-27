@@ -144,6 +144,7 @@ async fn run_test_client_with_resolver(
       pool_max_idle_per_host: None,
       pool_idle_timeout: None,
       dns_resolver: resolver,
+      permissions: None,
       http1: true,
       http2: true,
       local_address: None,

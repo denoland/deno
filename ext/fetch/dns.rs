@@ -12,24 +12,17 @@ use deno_permissions::PermissionsContainer;
 use hickory_resolver::name_server::TokioConnectionProvider;
 use http::Uri;
 use http::uri::Scheme;
+use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::connect::dns::GaiResolver;
 use hyper_util::client::legacy::connect::dns::Name;
+use hyper_util::rt::TokioIo;
+use tokio::net::TcpStream;
 use tokio::task::JoinHandle;
 use tower::Service;
-
-tokio::task_local! {
-  /// The destination port for the in-flight HTTP/WS connection. Set by
-  /// [`PermissionedHttpConnector`] before invoking the inner connector so
-  /// that the DNS resolver below can run the post-resolution deny check
-  /// against the real request port instead of the placeholder `0` that
-  /// hyper-util's `HttpConnector` carries through `Service<Name>`.
-  static REQUEST_PORT: u16;
-}
 
 #[derive(Clone, Debug)]
 pub struct Resolver {
   kind: ResolverKind,
-  permissions: Option<PermissionsContainer>,
 }
 
 #[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
@@ -69,7 +62,6 @@ impl Resolver {
   pub fn gai() -> Self {
     Self {
       kind: ResolverKind::Gai(GaiResolver::new()),
-      permissions: None,
     }
   }
 
@@ -79,7 +71,6 @@ impl Resolver {
       kind: ResolverKind::Hickory(
         hickory_resolver::Resolver::builder_tokio()?.build(),
       ),
-      permissions: None,
     })
   }
 
@@ -88,24 +79,13 @@ impl Resolver {
   ) -> Self {
     Self {
       kind: ResolverKind::Hickory(resolver),
-      permissions: None,
     }
   }
 
   pub fn custom(resolver: Arc<dyn Resolve>) -> Self {
     Self {
       kind: ResolverKind::Custom(resolver),
-      permissions: None,
     }
-  }
-
-  /// Attach a permissions container so that resolved addresses are checked
-  /// against the net deny list before being returned to the HTTP connector.
-  /// This mirrors the post-resolution check that `Deno.connect` performs and
-  /// prevents bypassing IP-literal deny rules via attacker-controlled DNS.
-  pub fn with_permissions(mut self, permissions: PermissionsContainer) -> Self {
-    self.permissions = Some(permissions);
-    self
   }
 }
 
@@ -149,18 +129,12 @@ impl Service<Name> for Resolver {
   }
 
   fn call(&mut self, name: Name) -> Self::Future {
-    let permissions = self.permissions.clone();
-    // Capture the request port *before* spawning, since `tokio::spawn`
-    // detaches from the parent task and would lose the task-local.
-    let port = REQUEST_PORT.try_with(|p| *p).ok();
     let task = match &mut self.kind {
       ResolverKind::Gai(gai_resolver) => {
         let mut resolver = gai_resolver.clone();
         tokio::spawn(async move {
           let result = resolver.call(name).await?;
-          let addrs: Vec<_> = result.into_iter().collect();
-          check_resolved_permissions(&addrs, port, permissions.as_ref())?;
-          Ok(addrs.into_iter())
+          Ok(result.collect::<Vec<_>>().into_iter())
         })
       }
       ResolverKind::Hickory(async_resolver) => {
@@ -169,80 +143,55 @@ impl Service<Name> for Resolver {
           let result = resolver.lookup_ip(name.as_str()).await?;
           let addrs: Vec<_> =
             result.into_iter().map(|x| SocketAddr::new(x, 0)).collect();
-          check_resolved_permissions(&addrs, port, permissions.as_ref())?;
           Ok(addrs.into_iter())
         })
       }
       ResolverKind::Custom(resolver) => {
         let resolver = resolver.clone();
-        tokio::spawn(async move {
-          let result = resolver.resolve(name).await?;
-          let addrs: Vec<_> = result.into_iter().collect();
-          check_resolved_permissions(&addrs, port, permissions.as_ref())?;
-          Ok(addrs.into_iter())
-        })
+        tokio::spawn(async move { resolver.resolve(name).await })
       }
     };
     ResolveFut { inner: task }
   }
 }
 
-fn check_resolved_permissions(
-  addrs: &[SocketAddr],
-  request_port: Option<u16>,
-  permissions: Option<&PermissionsContainer>,
-) -> io::Result<()> {
-  let Some(permissions) = permissions else {
-    return Ok(());
-  };
-  for addr in addrs {
-    // `addr.port()` is `0` for the GAI and Hickory paths because hyper-util's
-    // `HttpConnector` sets the destination port *after* DNS resolution. Prefer
-    // the real request port carried via [`REQUEST_PORT`].
-    let port = request_port.unwrap_or_else(|| addr.port());
-    permissions
-      .clone()
-      .check_net_resolved(&addr.ip(), port, "fetch()")
-      .map_err(|e| {
-        io::Error::new(io::ErrorKind::PermissionDenied, e.to_string())
-      })?;
-  }
-  Ok(())
-}
-
-/// `Service<Uri>` adapter that runs ahead of hyper-util's `HttpConnector`.
+/// `Service<Uri>` adapter that runs the net-deny permission check against the
+/// IP we actually connected to.
 ///
-/// `HttpConnector` only forwards the hostname to its `Service<Name>` resolver
-/// and applies the destination port afterwards, which means the resolver
-/// cannot check post-resolution permissions against the real request port.
-/// This wrapper extracts the port from the `Uri`, scopes it into the
-/// [`REQUEST_PORT`] task-local, and then delegates to the inner connector.
+/// hyper-util's `HttpConnector` resolves DNS and then picks one address to
+/// connect to, applying the destination port itself. By wrapping it we can
+/// read the real peer address off the resulting [`TcpStream`] and run the
+/// same post-resolution check that `Deno.connect` performs in
+/// `ext/net/ops.rs`, without smuggling the port to the DNS resolver out of
+/// band.
 #[derive(Clone, Debug)]
-pub struct PermissionedHttpConnector<C> {
-  inner: C,
+pub struct PermissionedHttpConnector {
+  inner: HttpConnector<Resolver>,
+  permissions: Option<PermissionsContainer>,
 }
 
-impl<C> PermissionedHttpConnector<C> {
-  pub fn new(inner: C) -> Self {
-    Self { inner }
+impl PermissionedHttpConnector {
+  pub fn new(
+    inner: HttpConnector<Resolver>,
+    permissions: Option<PermissionsContainer>,
+  ) -> Self {
+    Self { inner, permissions }
   }
 }
 
-impl<C> Service<Uri> for PermissionedHttpConnector<C>
-where
-  C: Service<Uri>,
-  C::Future: Send + 'static,
-{
-  type Response = C::Response;
-  type Error = C::Error;
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
+
+impl Service<Uri> for PermissionedHttpConnector {
+  type Response = TokioIo<TcpStream>;
+  type Error = BoxError;
   type Future =
-    Pin<Box<dyn Future<Output = Result<C::Response, C::Error>> + Send>>;
+    Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
   fn poll_ready(
     &mut self,
     cx: &mut task::Context<'_>,
   ) -> Poll<Result<(), Self::Error>> {
-    self.inner.poll_ready(cx)
+    self.inner.poll_ready(cx).map_err(Into::into)
   }
 
   fn call(&mut self, uri: Uri) -> Self::Future {
@@ -253,8 +202,22 @@ where
         80
       }
     });
+    let permissions = self.permissions.clone();
     let fut = self.inner.call(uri);
-    Box::pin(REQUEST_PORT.scope(port, fut))
+    Box::pin(async move {
+      let stream = fut.await?;
+      if let Some(mut permissions) = permissions
+        && let Ok(peer) = stream.inner().peer_addr()
+      {
+        permissions
+          .check_net_resolved(&peer.ip(), port, "fetch()")
+          .map_err(|e| -> BoxError {
+            io::Error::new(io::ErrorKind::PermissionDenied, e.to_string())
+              .into()
+          })?;
+      }
+      Ok(stream)
+    })
   }
 }
 

@@ -316,10 +316,6 @@ pub fn create_client_from_options(
   options: &Options,
   permissions: Option<PermissionsContainer>,
 ) -> Result<Client, HttpClientCreateError> {
-  let dns_resolver = match permissions {
-    Some(p) => options.resolver.clone().with_permissions(p),
-    None => options.resolver.clone(),
-  };
   create_http_client(
     &options.user_agent,
     CreateHttpClientOptions {
@@ -328,7 +324,8 @@ pub fn create_client_from_options(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs: vec![],
       proxy: options.proxy.clone(),
-      dns_resolver,
+      dns_resolver: options.resolver.clone(),
+      permissions,
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -899,7 +896,8 @@ pub fn op_fetch_custom_client(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs,
       proxy: args.proxy,
-      dns_resolver: dns::Resolver::default().with_permissions(permissions),
+      dns_resolver: dns::Resolver::default(),
+      permissions: Some(permissions),
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -934,6 +932,9 @@ pub struct CreateHttpClientOptions {
   pub ca_certs: Vec<Vec<u8>>,
   pub proxy: Option<Proxy>,
   pub dns_resolver: dns::Resolver,
+  /// When set, every connection runs the net-deny check against the IP it
+  /// actually connected to, mirroring `Deno.connect`.
+  pub permissions: Option<PermissionsContainer>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<TlsKey>,
   pub pool_max_idle_per_host: Option<usize>,
@@ -951,6 +952,7 @@ impl Default for CreateHttpClientOptions {
       ca_certs: vec![],
       proxy: None,
       dns_resolver: dns::Resolver::default(),
+      permissions: None,
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
       pool_max_idle_per_host: None,
@@ -1028,7 +1030,8 @@ pub fn create_http_client(
       .map_err(|_| HttpClientCreateError::InvalidAddress(local_address))?;
     http_connector.set_local_address(Some(local_addr));
   }
-  let http_connector = dns::PermissionedHttpConnector::new(http_connector);
+  let http_connector =
+    dns::PermissionedHttpConnector::new(http_connector, options.permissions);
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
     HttpClientCreateError::InvalidUserAgent(user_agent.to_string())
@@ -1198,9 +1201,7 @@ impl Client {
   }
 }
 
-type Connector = proxy::ProxyConnector<
-  dns::PermissionedHttpConnector<HttpConnector<dns::Resolver>>,
->;
+type Connector = proxy::ProxyConnector<dns::PermissionedHttpConnector>;
 
 #[allow(
   clippy::declare_interior_mutable_const,
