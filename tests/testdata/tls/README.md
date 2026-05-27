@@ -71,14 +71,26 @@ for alg in sha1 sha256 sha384 sha512; do
 done
 ```
 
-`-keypbe`/`-certpbe` pin bag encryption to legacy PBE-SHA1-3DES because the
-`p12` crate used by `op_node_load_pfx` does not yet support PBES2/AES-256-CBC,
-which is OpenSSL 3.x's default.
+`-keypbe`/`-certpbe` pin bag encryption to legacy PBE-SHA1-3DES so the fixtures
+exercise the PKCS#12 PBE path in `op_node_load_pfx`; the PBES2 + AES-256-CBC
+path (OpenSSL 3.x's default) is covered separately by `localhost_modern.pfx`.
 
 - `localhost_sha1.pfx` — RFC 7292 default MAC algorithm
 - `localhost_sha256.pfx` — OpenSSL 3.x default MAC algorithm
 - `localhost_sha384.pfx`
 - `localhost_sha512.pfx`
+
+A separate bundle uses OpenSSL 3.x's default PBES2 + PBKDF2 + AES-256-CBC shape
+(regression coverage for #34434). Generated with:
+
+```shell
+openssl pkcs12 -export \
+  -inkey localhost.key -in localhost.crt \
+  -passout pass:secret \
+  -out localhost_modern.pfx
+```
+
+- `localhost_modern.pfx` — passphrase `secret`, PBES2/AES-256-CBC bags
 
 A separate self-signed bundle exercises the `DEPTH_ZERO_SELF_SIGNED_CERT` path
 in the TLS handshake. Generated with:

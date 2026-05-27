@@ -67,4 +67,5 @@ thiserror.workspace = true
 tokio.workspace = true
 x25519-dalek = { workspace = true, features = ["static_secrets"] }
 x509-parser.workspace = true
+yasna = { version = "0.5", features = ["std"] }
 yoke.workspace = true

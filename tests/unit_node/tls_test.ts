@@ -1132,3 +1132,16 @@ Deno.test("tls.createSecureContext rejects pfx with wrong passphrase", () => {
     "mac verify failure",
   );
 });
+
+// https://github.com/denoland/deno/issues/34434
+// `openssl pkcs12 -export` without -legacy emits PBES2 + PBKDF2 + AES-256-CBC
+// for both the cert bag and the shrouded key bag. This is the default shape
+// on OpenSSL 3.x and the one Node interoperates with; -legacy (SHA-1/RC2-40)
+// is the only shape the old code path accepted, and Node rejects that one.
+Deno.test("tls.createSecureContext accepts modern pfx (PBES2/AES-256-CBC)", () => {
+  const pfx = Buffer.from(
+    Deno.readFileSync(join(tlsTestdataDir, "localhost_modern.pfx")),
+  );
+  const ctx = tls.createSecureContext({ pfx, passphrase: "secret" });
+  assert(ctx);
+});

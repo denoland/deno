@@ -20,7 +20,11 @@ use hmac::Mac;
 use num_bigint::BigInt;
 use num_traits::FromPrimitive as _;
 use p12::AlgorithmIdentifier as Pkcs12AlgorithmIdentifier;
+use p12::CertBag as Pkcs12CertBag;
+use p12::ContentInfo as Pkcs12ContentInfo;
 use p12::PFX as Pkcs12;
+use p12::SafeBag as Pkcs12SafeBag;
+use p12::SafeBagKind as Pkcs12SafeBagKind;
 use pkcs8::DecodePrivateKey as _;
 use pkcs8::Document;
 use pkcs8::EncodePrivateKey as _;
@@ -4244,12 +4248,28 @@ pub fn op_node_load_pfx(
     }
   }
 
-  let cert_ders = parsed
-    .cert_bags(password)
-    .map_err(|e| PfxLoadError::Encode(e.to_string()))?;
-  let key_ders = parsed
-    .key_bags(password)
-    .map_err(|e| PfxLoadError::Encode(e.to_string()))?;
+  let safe_bags = pfx_safe_bags(&parsed, password, &bmp_password)?;
+
+  let mut cert_ders: Vec<Vec<u8>> = Vec::new();
+  let mut key_ders: Vec<Vec<u8>> = Vec::new();
+  for bag in &safe_bags {
+    match &bag.bag {
+      Pkcs12SafeBagKind::CertBag(Pkcs12CertBag::X509(der)) => {
+        cert_ders.push(der.clone());
+      }
+      Pkcs12SafeBagKind::Pkcs8ShroudedKeyBag(epki) => {
+        let der = decrypt_pfx_blob(
+          &epki.encryption_algorithm,
+          &epki.encrypted_data,
+          password,
+          &bmp_password,
+        )
+        .ok_or(PfxLoadError::NoKey)?;
+        key_ders.push(der);
+      }
+      _ => {}
+    }
+  }
 
   if cert_ders.is_empty() {
     return Err(PfxLoadError::NoCert);
@@ -4266,10 +4286,97 @@ pub fn op_node_load_pfx(
   let ca: Vec<String> =
     iter.map(|der| der_to_pem("CERTIFICATE", &der)).collect();
 
-  // p12 returns PKCS#8 DER for shrouded key bags.
+  // Shrouded key bags decrypt to PKCS#8 DER.
   let key = der_to_pem("PRIVATE KEY", &key_ders[0]);
 
   Ok(LoadPfxResult { cert, key, ca })
+}
+
+// PBES2 OID (id-PBES2) from RFC 8018.
+fn pbes2_oid() -> yasna::models::ObjectIdentifier {
+  yasna::models::ObjectIdentifier::from_slice(&[1, 2, 840, 113_549, 1, 5, 13])
+}
+
+// Decrypt a PFX blob (the SafeContents body of an EncryptedData ContentInfo,
+// or the EncryptedPrivateKeyInfo body of a shrouded key bag), dispatching
+// by algorithm:
+//
+// - PKCS#12 PBE (RC2-40 / 3DES with SHA-1 KDF): the only schemes the `p12`
+//   crate handles natively. These take the password as a BMPString.
+// - PBES2 (PBKDF2 + AES-CBC, and the other PBES2-supported ciphers): the
+//   shape every modern `openssl pkcs12 -export` invocation emits. Handled
+//   here via `pkcs8::pkcs5::EncryptionScheme`. PBES2 within PKCS#12 takes
+//   the password as raw UTF-8 (no BMPString conversion); this matches
+//   what OpenSSL and Node accept.
+fn decrypt_pfx_blob(
+  alg: &Pkcs12AlgorithmIdentifier,
+  ciphertext: &[u8],
+  utf8_password: &str,
+  bmp_password: &[u8],
+) -> Option<Vec<u8>> {
+  match alg {
+    Pkcs12AlgorithmIdentifier::PbewithSHAAnd40BitRC2CBC(_)
+    | Pkcs12AlgorithmIdentifier::PbeWithSHAAnd3KeyTripleDESCBC(_) => {
+      alg.decrypt_pbe(ciphertext, bmp_password)
+    }
+    Pkcs12AlgorithmIdentifier::OtherAlg(other)
+      if other.algorithm_type == pbes2_oid() =>
+    {
+      let alg_der = yasna::construct_der(|w| alg.write(w));
+      let scheme = pkcs8::pkcs5::EncryptionScheme::from_der(&alg_der).ok()?;
+      scheme.decrypt(utf8_password.as_bytes(), ciphertext).ok()
+    }
+    _ => None,
+  }
+}
+
+// Walk a PFX and return the flat list of SafeBags, decrypting EncryptedData
+// envelopes along the way. This is a reimplementation of `p12::PFX::bags`
+// that adds PBES2 support; the p12 crate only handles the legacy PKCS#12
+// PBE algorithms (RC2-40 and 3DES with the SHA-1 KDF). Without PBES2 we
+// cannot read PFX files produced by `openssl pkcs12 -export` on OpenSSL 3,
+// which is the default shape Node also produces and consumes.
+fn pfx_safe_bags(
+  parsed: &Pkcs12,
+  utf8_password: &str,
+  bmp_password: &[u8],
+) -> Result<Vec<Pkcs12SafeBag>, PfxLoadError> {
+  let outer = pfx_content_data(&parsed.auth_safe, utf8_password, bmp_password)?;
+  let safe_contents: Vec<Pkcs12ContentInfo> = yasna::parse_der(&outer, |r| {
+    r.collect_sequence_of(Pkcs12ContentInfo::parse)
+  })
+  .map_err(|e| PfxLoadError::Encode(e.to_string()))?;
+  let mut bags: Vec<Pkcs12SafeBag> = Vec::new();
+  for content in &safe_contents {
+    let bytes = pfx_content_data(content, utf8_password, bmp_password)?;
+    let parsed: Vec<Pkcs12SafeBag> =
+      yasna::parse_der(&bytes, |r| r.collect_sequence_of(Pkcs12SafeBag::parse))
+        .map_err(|e| PfxLoadError::Encode(e.to_string()))?;
+    bags.extend(parsed);
+  }
+  Ok(bags)
+}
+
+fn pfx_content_data(
+  ci: &Pkcs12ContentInfo,
+  utf8_password: &str,
+  bmp_password: &[u8],
+) -> Result<Vec<u8>, PfxLoadError> {
+  match ci {
+    Pkcs12ContentInfo::Data(d) => Ok(d.clone()),
+    Pkcs12ContentInfo::EncryptedData(e) => decrypt_pfx_blob(
+      &e.encrypted_content_info.content_encryption_algorithm,
+      &e.encrypted_content_info.encrypted_content,
+      utf8_password,
+      bmp_password,
+    )
+    .ok_or_else(|| {
+      PfxLoadError::Encode("unsupported PFX encryption algorithm".into())
+    }),
+    Pkcs12ContentInfo::OtherContext(_) => {
+      Err(PfxLoadError::Encode("unsupported PFX content info".into()))
+    }
+  }
 }
 
 // Convert a UTF-8 password to the PKCS#12 BMPString form (RFC 7292
