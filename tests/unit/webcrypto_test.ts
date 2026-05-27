@@ -2415,13 +2415,20 @@ Deno.test("crypto constructors throw ERR_ILLEGAL_CONSTRUCTOR", () => {
 
 // Tests for WICG "Modern Algorithms in the Web Cryptography API"
 // https://wicg.github.io/webcrypto-modern-algos/
+//
+// The lib.dom.d.ts shipped in Deno reflects the current Web Crypto IDL,
+// which does not yet include the WICG modern-algorithms additions. Until
+// those land upstream, parameter dictionaries for the new algorithms are
+// cast to AlgorithmIdentifier here.
+// deno-lint-ignore no-explicit-any
+type AnyAlg = any;
 
 Deno.test(async function chaCha20Poly1305RoundTrip() {
   const key = await crypto.subtle.generateKey(
-    { name: "ChaCha20-Poly1305" },
+    { name: "ChaCha20-Poly1305" } as AnyAlg,
     true,
     ["encrypt", "decrypt"],
-  ) as CryptoKey;
+  ) as unknown as CryptoKey;
   assertEquals(key.algorithm.name, "ChaCha20-Poly1305");
   assertEquals(key.type, "secret");
 
@@ -2430,7 +2437,7 @@ Deno.test(async function chaCha20Poly1305RoundTrip() {
   const aad = new TextEncoder().encode("authentic-aad");
 
   const ciphertext = await crypto.subtle.encrypt(
-    { name: "ChaCha20-Poly1305", nonce, additionalData: aad },
+    { name: "ChaCha20-Poly1305", nonce, additionalData: aad } as AnyAlg,
     key,
     plaintext,
   );
@@ -2438,7 +2445,7 @@ Deno.test(async function chaCha20Poly1305RoundTrip() {
   assertEquals(ciphertext.byteLength, plaintext.byteLength + 16);
 
   const decrypted = await crypto.subtle.decrypt(
-    { name: "ChaCha20-Poly1305", nonce, additionalData: aad },
+    { name: "ChaCha20-Poly1305", nonce, additionalData: aad } as AnyAlg,
     key,
     ciphertext,
   );
@@ -2447,15 +2454,15 @@ Deno.test(async function chaCha20Poly1305RoundTrip() {
 
 Deno.test(async function chaCha20Poly1305TamperDetected() {
   const key = await crypto.subtle.generateKey(
-    { name: "ChaCha20-Poly1305" },
+    { name: "ChaCha20-Poly1305" } as AnyAlg,
     true,
     ["encrypt", "decrypt"],
-  ) as CryptoKey;
+  ) as unknown as CryptoKey;
   const nonce = new Uint8Array(12);
   const plaintext = new Uint8Array([1, 2, 3, 4]);
   const ciphertext = new Uint8Array(
     await crypto.subtle.encrypt(
-      { name: "ChaCha20-Poly1305", nonce },
+      { name: "ChaCha20-Poly1305", nonce } as AnyAlg,
       key,
       plaintext,
     ),
@@ -2464,7 +2471,7 @@ Deno.test(async function chaCha20Poly1305TamperDetected() {
   ciphertext[ciphertext.length - 1] ^= 1;
   await assertRejects(() =>
     crypto.subtle.decrypt(
-      { name: "ChaCha20-Poly1305", nonce },
+      { name: "ChaCha20-Poly1305", nonce } as AnyAlg,
       key,
       ciphertext,
     ), DOMException);
@@ -2472,14 +2479,14 @@ Deno.test(async function chaCha20Poly1305TamperDetected() {
 
 Deno.test(async function chaCha20Poly1305RejectsBadNonceLength() {
   const key = await crypto.subtle.generateKey(
-    { name: "ChaCha20-Poly1305" },
+    { name: "ChaCha20-Poly1305" } as AnyAlg,
     true,
     ["encrypt", "decrypt"],
-  ) as CryptoKey;
+  ) as unknown as CryptoKey;
   const badNonce = new Uint8Array(11); // not 12
   await assertRejects(() =>
     crypto.subtle.encrypt(
-      { name: "ChaCha20-Poly1305", nonce: badNonce },
+      { name: "ChaCha20-Poly1305", nonce: badNonce } as AnyAlg,
       key,
       new Uint8Array(1),
     ), DOMException);
@@ -2490,7 +2497,7 @@ Deno.test(async function chaCha20Poly1305ImportRawKey() {
   const key = await crypto.subtle.importKey(
     "raw",
     raw,
-    { name: "ChaCha20-Poly1305" },
+    { name: "ChaCha20-Poly1305" } as AnyAlg,
     true,
     ["encrypt", "decrypt"],
   );
@@ -2518,7 +2525,10 @@ Deno.test(async function shakeDigest() {
   // 7f9c2ba4e88f827d616045507605853ed73b8093f6efbc88eb1a6eacfa66ef26
   // (NIST test vector)
   const shake128 = new Uint8Array(
-    await crypto.subtle.digest({ name: "SHAKE128", length: 256 }, data),
+    await crypto.subtle.digest(
+      { name: "SHAKE128", length: 256 } as AnyAlg,
+      data,
+    ),
   );
   assertEquals(shake128.length, 32);
   assertEquals(
@@ -2528,7 +2538,10 @@ Deno.test(async function shakeDigest() {
 
   // SHAKE256 with 512 bits.
   const shake256 = new Uint8Array(
-    await crypto.subtle.digest({ name: "SHAKE256", length: 512 }, data),
+    await crypto.subtle.digest(
+      { name: "SHAKE256", length: 512 } as AnyAlg,
+      data,
+    ),
   );
   assertEquals(shake256.length, 64);
 });
@@ -2537,7 +2550,10 @@ Deno.test(async function cshakeDigest() {
   // cSHAKE with empty function name and empty customization equals SHAKE.
   const data = new TextEncoder().encode("hello");
   const shake = new Uint8Array(
-    await crypto.subtle.digest({ name: "SHAKE128", length: 128 }, data),
+    await crypto.subtle.digest(
+      { name: "SHAKE128", length: 128 } as AnyAlg,
+      data,
+    ),
   );
   const cshake = new Uint8Array(
     await crypto.subtle.digest(
@@ -2546,7 +2562,7 @@ Deno.test(async function cshakeDigest() {
         length: 128,
         functionName: new Uint8Array(0),
         customization: new Uint8Array(0),
-      },
+      } as AnyAlg,
       data,
     ),
   );
@@ -2559,7 +2575,7 @@ Deno.test(async function cshakeDigest() {
         name: "cSHAKE128",
         length: 128,
         customization: new TextEncoder().encode("Email Signature"),
-      },
+      } as AnyAlg,
       data,
     ),
   );
@@ -2579,7 +2595,7 @@ Deno.test(async function turboShakeDigest() {
   const data = new TextEncoder().encode("hello");
   const ts128 = new Uint8Array(
     await crypto.subtle.digest(
-      { name: "TurboSHAKE128", length: 256 },
+      { name: "TurboSHAKE128", length: 256 } as AnyAlg,
       data,
     ),
   );
@@ -2592,7 +2608,7 @@ Deno.test(async function turboShakeDigest() {
         name: "TurboSHAKE128",
         length: 256,
         domainSeparation: 0x06,
-      },
+      } as AnyAlg,
       data,
     ),
   );
