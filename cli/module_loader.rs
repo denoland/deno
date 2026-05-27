@@ -1239,7 +1239,10 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           .unwrap_or(false)
       }
     {
-      let receiver = self.0.hook_registry.push_load(specifier.to_string());
+      let import_type =
+        options.requested_module_type.as_str().map(str::to_owned);
+      let receiver =
+        self.0.hook_registry.push_load(specifier.to_string(), import_type);
       return deno_core::ModuleLoadResponse::Async(
         async move {
           let hook_result = match receiver.await {

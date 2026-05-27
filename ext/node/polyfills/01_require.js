@@ -860,11 +860,15 @@ function _startEsmLoadLoop() {
       core.unrefOpPromise(pollPromise);
       const req = await pollPromise;
       if (req === null) break;
-      const [id, fileUrl] = req;
+      const [id, fileUrl, importType] = req;
+      const importAttributes = { __proto__: null };
+      if (importType !== null && importType !== undefined) {
+        importAttributes.type = importType;
+      }
       const context = {
         format: undefined,
         conditions: ["node", "import"],
-        importAttributes: { __proto__: null },
+        importAttributes,
       };
       try {
         const chainResult = executeEsmLoadHookChain(fileUrl, context);
