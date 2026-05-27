@@ -162,11 +162,8 @@ pub async fn pack(
     })?;
 
     // Generate package.json
-    let package_json = generate_package_json(
-      &package.config_file,
-      &version,
-      &processed_files,
-    )?;
+    let package_json =
+      generate_package_json(&package.config_file, &version, &processed_files)?;
 
     // Create tarball
     let tarball_path = create_npm_tarball(
@@ -721,4 +718,3 @@ fn extract_dts(
   );
   None
 }
-
