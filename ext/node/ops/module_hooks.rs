@@ -170,10 +170,11 @@ impl LoaderHookRegistry {
     let (sender, receiver) = deno_core::futures::channel::oneshot::channel();
     self.load_senders.borrow_mut().insert(id, sender);
     self.load_id_keys.borrow_mut().insert(id, url.clone());
-    self
-      .pending_loads
-      .borrow_mut()
-      .push_back(PendingLoad { id, url, import_type });
+    self.pending_loads.borrow_mut().push_back(PendingLoad {
+      id,
+      url,
+      import_type,
+    });
     if let Some(waker) = self.load_waker.borrow_mut().take() {
       waker.wake();
     }
