@@ -75,7 +75,6 @@ const {
   errorMap,
   mapSysErrnoToUvErrno,
   UV_EBADF,
-  UV_ENOENT,
 } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 const { os: osConstants } = core.loadExtScript(
@@ -3075,19 +3074,9 @@ interface UvExceptionContext {
   dest?: string;
 }
 function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
-  const denoErrors = Deno.errors;
-  if (ObjectPrototypeIsPrototypeOf(denoErrors.BadResource.prototype, e)) {
+  if (ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)) {
     return uvException({
       errno: UV_EBADF,
-      ...ctx,
-    });
-  }
-  // The notify crate's PathNotFound/WatchNotFound (and a few other Deno
-  // sources) raise NotFound without the "(os error N)" suffix that
-  // `extractOsErrorNumberFromErrorMessage` parses, so map by class.
-  if (ObjectPrototypeIsPrototypeOf(denoErrors.NotFound.prototype, e)) {
-    return uvException({
-      errno: UV_ENOENT,
       ...ctx,
     });
   }

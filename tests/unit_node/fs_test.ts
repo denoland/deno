@@ -2019,20 +2019,16 @@ Deno.test({
       return;
     }
     watcher.on("error", resolve);
-    const timeoutId = setTimeout(
+    setTimeout(
       () => reject(new Error("watcher never emitted 'error'")),
       5000,
     );
 
-    try {
-      const err = await promise as NodeJS.ErrnoException;
-      assertEquals(err.code, "ENOENT");
-      assertEquals(err.syscall, "watch");
-      assertEquals(err.path, missing);
-    } finally {
-      clearTimeout(timeoutId);
-      watcher.close();
-    }
+    const err = await promise as NodeJS.ErrnoException;
+    watcher.close();
+    assertEquals(err.code, "ENOENT");
+    assertEquals(err.syscall, "watch");
+    assertEquals(err.path, missing);
   },
 });
 
