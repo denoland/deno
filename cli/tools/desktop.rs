@@ -263,6 +263,42 @@ async fn compile_desktop(
   // until end-of-scope and removes it on drop. Hold it past
   // compile_binary by keeping it bound here.
 
+  // No explicit icon, but a framework was detected — try to use its
+  // favicon (e.g. `public/favicon.ico`, `app/icon.png`) as the app icon
+  // so the bundle gets the project's branding for free.
+  if desktop_flags.icon.is_none()
+    && let Some(detection) = detected_framework.as_ref()
+  {
+    let target_os = match desktop_flags.target.as_deref() {
+      Some(t) if t.contains("apple-darwin") => "macos",
+      Some(t) if t.contains("windows") => "windows",
+      Some(_) => "linux",
+      None => {
+        if cfg!(target_os = "macos") {
+          "macos"
+        } else if cfg!(target_os = "windows") {
+          "windows"
+        } else {
+          "linux"
+        }
+      }
+    };
+    if let Some(path) = super::framework::find_framework_favicon(
+      &detection_cwd,
+      detection,
+      target_os,
+    ) {
+      let display = path
+        .strip_prefix(&detection_cwd)
+        .unwrap_or(&path)
+        .display()
+        .to_string();
+      log::info!("Using {} favicon as icon: {}", detection.name, display);
+      desktop_flags.icon =
+        Some(crate::args::IconConfig::Single(path.display().to_string()));
+    }
+  }
+
   let compile_flags = CompileFlags {
     source_file: desktop_flags.source_file.clone(),
     output: desktop_flags.output.clone(),

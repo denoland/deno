@@ -7,6 +7,7 @@
 //! entrypoint and include paths so that `deno compile .` just works.
 
 use std::path::Path;
+use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -22,6 +23,54 @@ pub struct FrameworkDetection {
   /// Optional build command to run before compilation (e.g. "next build").
   /// The command is run with the detected directory as cwd.
   pub build_command: Option<Vec<String>>,
+}
+
+impl FrameworkDetection {
+  /// Directories (relative to the project root) where the framework keeps
+  /// static assets like favicons. Used to auto-detect a desktop app icon
+  /// when the user didn't supply `--icon`.
+  pub fn static_asset_dirs(&self) -> &'static [&'static str] {
+    match self.name {
+      // Next.js App Router puts `favicon.ico` / `icon.*` directly in `app/`
+      // (or `src/app/`); the Pages Router and older versions use `public/`.
+      "Next.js" => &["public", "app", "src/app"],
+      "Fresh" | "SvelteKit" => &["static"],
+      _ => &["public"],
+    }
+  }
+}
+
+/// Search a framework's static asset directories for a favicon that can
+/// double as the desktop app icon. Returns the first match in priority
+/// order, restricted to file formats supported by `target_os` (so we
+/// don't pick a `.png` for a Windows build where bundling would silently
+/// drop it).
+pub fn find_framework_favicon(
+  dir: &Path,
+  detection: &FrameworkDetection,
+  target_os: &str,
+) -> Option<PathBuf> {
+  let exts: &[&str] = match target_os {
+    "macos" => &["icns", "png"],
+    "windows" => &["ico"],
+    _ => &["png"],
+  };
+  let names = ["icon", "favicon", "apple-touch-icon", "logo"];
+  for sub in detection.static_asset_dirs() {
+    let base = dir.join(sub);
+    if !base.is_dir() {
+      continue;
+    }
+    for name in names {
+      for ext in exts {
+        let candidate = base.join(format!("{name}.{ext}"));
+        if candidate.is_file() {
+          return Some(candidate);
+        }
+      }
+    }
+  }
+  None
 }
 
 /// Detect a web framework in the given directory.
@@ -915,5 +964,111 @@ mod tests {
     let dir = setup_dir();
     fs::write(dir.path().join("deno.json"), r#"{"tasks":{}}"#).unwrap();
     assert!(read_deno_json_imports(dir.path()).is_none());
+  }
+
+  // --- Favicon discovery ---
+
+  fn nextjs_detection() -> FrameworkDetection {
+    FrameworkDetection {
+      name: "Next.js",
+      entrypoint_code: String::new(),
+      include_paths: vec![],
+      build_command: None,
+    }
+  }
+
+  fn fresh_detection() -> FrameworkDetection {
+    FrameworkDetection {
+      name: "Fresh",
+      entrypoint_code: String::new(),
+      include_paths: vec![],
+      build_command: None,
+    }
+  }
+
+  #[test]
+  fn finds_favicon_in_public_for_linux() {
+    let dir = setup_dir();
+    fs::create_dir_all(dir.path().join("public")).unwrap();
+    fs::write(dir.path().join("public/favicon.png"), "").unwrap();
+    let det = nextjs_detection();
+    let p = find_framework_favicon(dir.path(), &det, "linux").unwrap();
+    assert_eq!(p, dir.path().join("public/favicon.png"));
+  }
+
+  #[test]
+  fn finds_ico_for_windows_but_not_png() {
+    let dir = setup_dir();
+    fs::create_dir_all(dir.path().join("public")).unwrap();
+    fs::write(dir.path().join("public/favicon.png"), "").unwrap();
+    let det = nextjs_detection();
+    assert!(find_framework_favicon(dir.path(), &det, "windows").is_none());
+    fs::write(dir.path().join("public/favicon.ico"), "").unwrap();
+    let p = find_framework_favicon(dir.path(), &det, "windows").unwrap();
+    assert_eq!(p, dir.path().join("public/favicon.ico"));
+  }
+
+  #[test]
+  fn macos_prefers_icns_over_png() {
+    let dir = setup_dir();
+    fs::create_dir_all(dir.path().join("public")).unwrap();
+    fs::write(dir.path().join("public/icon.png"), "").unwrap();
+    fs::write(dir.path().join("public/icon.icns"), "").unwrap();
+    let det = nextjs_detection();
+    let p = find_framework_favicon(dir.path(), &det, "macos").unwrap();
+    assert_eq!(p, dir.path().join("public/icon.icns"));
+  }
+
+  #[test]
+  fn icon_name_preferred_over_favicon() {
+    let dir = setup_dir();
+    fs::create_dir_all(dir.path().join("public")).unwrap();
+    fs::write(dir.path().join("public/favicon.png"), "").unwrap();
+    fs::write(dir.path().join("public/icon.png"), "").unwrap();
+    let det = nextjs_detection();
+    let p = find_framework_favicon(dir.path(), &det, "linux").unwrap();
+    assert_eq!(p, dir.path().join("public/icon.png"));
+  }
+
+  #[test]
+  fn nextjs_app_router_favicon_in_app_dir() {
+    let dir = setup_dir();
+    // No public/, but app/favicon.ico — Next 13+ App Router layout.
+    fs::create_dir_all(dir.path().join("app")).unwrap();
+    fs::write(dir.path().join("app/favicon.ico"), "").unwrap();
+    let det = nextjs_detection();
+    let p = find_framework_favicon(dir.path(), &det, "windows").unwrap();
+    assert_eq!(p, dir.path().join("app/favicon.ico"));
+  }
+
+  #[test]
+  fn fresh_uses_static_dir() {
+    let dir = setup_dir();
+    fs::create_dir_all(dir.path().join("static")).unwrap();
+    fs::write(dir.path().join("static/favicon.png"), "").unwrap();
+    let det = fresh_detection();
+    let p = find_framework_favicon(dir.path(), &det, "linux").unwrap();
+    assert_eq!(p, dir.path().join("static/favicon.png"));
+  }
+
+  #[test]
+  fn no_favicon_returns_none() {
+    let dir = setup_dir();
+    fs::create_dir_all(dir.path().join("public")).unwrap();
+    let det = nextjs_detection();
+    assert!(find_framework_favicon(dir.path(), &det, "linux").is_none());
+  }
+
+  #[test]
+  fn public_takes_priority_over_app_for_nextjs() {
+    let dir = setup_dir();
+    fs::create_dir_all(dir.path().join("public")).unwrap();
+    fs::create_dir_all(dir.path().join("app")).unwrap();
+    fs::write(dir.path().join("public/favicon.png"), "").unwrap();
+    fs::write(dir.path().join("app/icon.png"), "").unwrap();
+    let det = nextjs_detection();
+    let p = find_framework_favicon(dir.path(), &det, "linux").unwrap();
+    // public/ is checked before app/.
+    assert_eq!(p, dir.path().join("public/favicon.png"));
   }
 }
