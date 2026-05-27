@@ -5561,10 +5561,32 @@ class ReadableStreamDefaultReader {
     } catch (err) {
       return PromiseReject(err);
     }
-    if (this[_stream] === undefined) {
+    const stream = this[_stream];
+    if (stream === undefined) {
       return PromiseReject(
         new TypeError("Reader has no associated stream."),
       );
+    }
+    // Sync fast path: stream is readable, controller is the default (not
+    // byte) variant, and there's already a chunk queued. Skips allocating a
+    // Deferred, a ReadRequest object literal, three closures, and avoids
+    // the chunkSteps indirection.
+    if (stream[_state] === "readable") {
+      const controller = stream[_controller];
+      if (
+        controller[_pendingPullIntos] === undefined &&
+        controller[_queue].size !== 0
+      ) {
+        stream[_disturbed] = true;
+        const chunk = dequeueValue(controller);
+        if (controller[_closeRequested] && controller[_queue].size === 0) {
+          readableStreamDefaultControllerClearAlgorithms(controller);
+          readableStreamClose(stream);
+        } else {
+          readableStreamDefaultControllerCallPullIfNeeded(controller);
+        }
+        return PromiseResolve({ value: chunk, done: false });
+      }
     }
     /** @type {Deferred<ReadableStreamReadResult<R>>} */
     const promise = new Deferred();
