@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "deny_net_fetch_resolved_port": {
+      "args": "run -A main.ts",
+      "output": "main.out"
+    }
+  }
+}
