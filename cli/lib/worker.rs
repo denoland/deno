@@ -8,22 +8,28 @@ use std::sync::Arc;
 use boxed_error::Boxed;
 use deno_bundle_runtime::BundleProvider;
 use deno_core::error::JsError;
-use deno_node::ops::ipc::ChildIpcSerialization;
 use deno_node::NodeRequireLoaderRc;
+use deno_node::ops::ipc::ChildIpcSerialization;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
+use deno_runtime::BootstrapOptions;
+use deno_runtime::CpuProfilerConfig;
+use deno_runtime::FeatureChecker;
+use deno_runtime::UNSTABLE_FEATURES;
+use deno_runtime::WorkerExecutionMode;
+use deno_runtime::WorkerLogLevel;
 use deno_runtime::colors;
 use deno_runtime::deno_core;
-use deno_runtime::deno_core::error::CoreError;
-use deno_runtime::deno_core::v8;
 use deno_runtime::deno_core::CompiledWasmModuleStore;
 use deno_runtime::deno_core::Extension;
 use deno_runtime::deno_core::JsRuntime;
 use deno_runtime::deno_core::LocalInspectorSession;
 use deno_runtime::deno_core::ModuleLoader;
 use deno_runtime::deno_core::SharedArrayBufferStore;
+use deno_runtime::deno_core::error::CoreError;
+use deno_runtime::deno_core::v8;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_inspector_server::MainInspectorSessionChannel;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
@@ -44,14 +50,8 @@ use deno_runtime::web_worker::WebWorkerServiceOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::worker::WorkerServiceOptions;
-use deno_runtime::BootstrapOptions;
-use deno_runtime::CpuProfilerConfig;
-use deno_runtime::FeatureChecker;
-use deno_runtime::WorkerExecutionMode;
-use deno_runtime::WorkerLogLevel;
-use deno_runtime::UNSTABLE_FEATURES;
-use node_resolver::errors::ResolvePkgJsonBinExportError;
 use node_resolver::UrlOrPath;
+use node_resolver::errors::ResolvePkgJsonBinExportError;
 use url::Url;
 
 use crate::args::has_trace_permissions_enabled;
@@ -164,8 +164,8 @@ pub fn create_isolate_create_params<TSys: DenoLibSys>(
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 mod linux {
-  use deno_runtime::deno_node::ops::process::cgroup::parse_self_cgroup;
   use deno_runtime::deno_node::ops::process::cgroup::CgroupVersion;
+  use deno_runtime::deno_node::ops::process::cgroup::parse_self_cgroup;
 
   /// Get memory limit with cgroup (either v1 or v2) taken into account.
   pub(super) fn get_memory_limit<TSys: crate::sys::DenoLibSys>(

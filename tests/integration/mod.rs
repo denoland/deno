@@ -41,10 +41,10 @@ mod init;
 mod install;
 #[path = "jsr_tests.rs"]
 mod jsr;
-#[path = "jupyter_client.rs"]
-mod jupyter_client;
 #[path = "jupyter_tests.rs"]
 mod jupyter;
+#[path = "jupyter_client.rs"]
+mod jupyter_client;
 #[path = "lsp_tests.rs"]
 mod lsp;
 #[path = "napi_tests.rs"]

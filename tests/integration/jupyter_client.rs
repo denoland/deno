@@ -3,8 +3,9 @@
 //! Minimal ZMTP 3.1 client for Jupyter integration tests.
 //! Implements the client side of REQ, DEALER, SUB, and ROUTER socket types.
 
-use bytes::Bytes;
 use std::io;
+
+use bytes::Bytes;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -106,7 +107,7 @@ impl ZmtpConn {
   }
 }
 
-fn make_greeting(socket_type: &str, as_server: bool) -> Vec<u8> {
+fn make_greeting(_socket_type: &str, as_server: bool) -> Vec<u8> {
   let mut buf = vec![0u8; 64];
   buf[0] = 0xff;
   buf[8] = 0x01;

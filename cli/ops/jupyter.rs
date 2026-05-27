@@ -3,10 +3,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use deno_core::OpState;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde_json;
-use deno_core::OpState;
 use deno_error::JsErrorBox;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -16,28 +16,6 @@ use crate::cdp;
 // ------------------------------------------------------------------
 // Shared data types
 // ------------------------------------------------------------------
-
-/// Mirrors jupyter_protocol::StreamContent (stdout/stderr capture).
-#[derive(Debug, Clone)]
-pub struct StreamContent {
-  pub name: String,
-  pub text: String,
-}
-
-impl StreamContent {
-  pub fn stdout(text: &str) -> Self {
-    Self {
-      name: "stdout".into(),
-      text: text.into(),
-    }
-  }
-  pub fn stderr(text: &str) -> Self {
-    Self {
-      name: "stderr".into(),
-      text: text.into(),
-    }
-  }
-}
 
 /// An iopub message produced by the REPL thread to be published by the kernel.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -85,7 +63,7 @@ pub struct KernelReplSender {
 }
 
 pub struct KernelIopubReceiver {
-  pub rx: RefCell<mpsc::UnboundedReceiver<IopubMessage>>,
+  pub rx: tokio::sync::Mutex<mpsc::UnboundedReceiver<IopubMessage>>,
 }
 
 pub struct KernelIsolateHandle {
@@ -144,7 +122,7 @@ deno_core::extension!(
   },
 );
 
-/// Variant used when running tests (no middleware so stdout/stderr pass through).
+// Variant used when running tests (no middleware so stdout/stderr pass through).
 deno_core::extension!(
   deno_jupyter_repl_for_test,
   ops = [
@@ -310,7 +288,8 @@ pub async fn op_jupyter_recv_iopub(
   };
   // SAFETY: The KernelIopubReceiver lives as long as op_state.
   let rx = unsafe { &*(rx_ref as *const KernelIopubReceiver) };
-  Ok(rx.rx.borrow_mut().recv().await)
+  let mut guard = rx.rx.lock().await;
+  Ok(guard.recv().await)
 }
 
 #[op2]
@@ -337,6 +316,10 @@ pub enum JupyterBroadcastError {
 }
 
 #[op2]
+#[allow(
+  clippy::result_large_err,
+  reason = "IopubMessage is moved through the channel; boxing the error adds an allocation on the hot path."
+)]
 pub fn op_jupyter_broadcast(
   state: &mut OpState,
   #[string] message_type: String,

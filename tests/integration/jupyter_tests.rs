@@ -10,14 +10,14 @@ use chrono::DateTime;
 use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json::json;
 use serde_json::Value;
-use test_util::assertions::assert_json_subset;
-use test_util::eprintln;
-use test_util::test;
+use serde_json::json;
 use test_util::DenoChild;
 use test_util::TestContext;
 use test_util::TestContextBuilder;
+use test_util::assertions::assert_json_subset;
+use test_util::eprintln;
+use test_util::test;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -382,12 +382,17 @@ async fn server_ready_on(addr: &str) -> bool {
 }
 
 async fn server_ready(conn: &ConnectionSpec) -> bool {
+  let hb = conn.endpoint(conn.hb_port);
+  let control = conn.endpoint(conn.control_port);
+  let shell = conn.endpoint(conn.shell_port);
+  let stdin = conn.endpoint(conn.stdin_port);
+  let iopub = conn.endpoint(conn.iopub_port);
   let (a, b, c, d, e) = tokio::join!(
-    server_ready_on(&conn.endpoint(conn.hb_port)),
-    server_ready_on(&conn.endpoint(conn.control_port)),
-    server_ready_on(&conn.endpoint(conn.shell_port)),
-    server_ready_on(&conn.endpoint(conn.stdin_port)),
-    server_ready_on(&conn.endpoint(conn.iopub_port)),
+    server_ready_on(&hb),
+    server_ready_on(&control),
+    server_ready_on(&shell),
+    server_ready_on(&stdin),
+    server_ready_on(&iopub),
   );
   a && b && c && d && e
 }

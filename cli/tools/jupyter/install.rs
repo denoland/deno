@@ -5,8 +5,8 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -27,14 +27,14 @@ fn get_user_data_dir() -> Result<PathBuf, AnyError> {
     let home = std::env::var_os("HOME")
       .map(PathBuf::from)
       .ok_or_else(|| deno_core::anyhow::anyhow!("HOME not set"))?;
-    return Ok(home.join("Library").join("Jupyter"));
+    Ok(home.join("Library").join("Jupyter"))
   }
   #[cfg(target_os = "windows")]
   {
     let appdata = std::env::var_os("APPDATA")
       .map(PathBuf::from)
       .ok_or_else(|| deno_core::anyhow::anyhow!("APPDATA not set"))?;
-    return Ok(appdata.join("jupyter"));
+    Ok(appdata.join("jupyter"))
   }
   #[cfg(not(any(target_os = "macos", target_os = "windows")))]
   {
@@ -44,7 +44,7 @@ fn get_user_data_dir() -> Result<PathBuf, AnyError> {
     let home = std::env::var_os("HOME")
       .map(PathBuf::from)
       .ok_or_else(|| deno_core::anyhow::anyhow!("HOME not set"))?;
-    return Ok(home.join(".local").join("share").join("jupyter"));
+    Ok(home.join(".local").join("share").join("jupyter"))
   }
 }
 

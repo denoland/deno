@@ -1,26 +1,25 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_path_util::resolve_url_or_path;
+use deno_runtime::WorkerExecutionMode;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::WorkerExecutionMode;
 use deno_terminal::colors;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
+use crate::CliFactory;
 use crate::args::Flags;
 use crate::args::JupyterFlags;
 use crate::cdp;
@@ -31,13 +30,9 @@ use crate::ops::jupyter::KernelConnectionInfo;
 use crate::ops::jupyter::KernelIopubReceiver;
 use crate::ops::jupyter::KernelIsolateHandle;
 use crate::ops::jupyter::KernelReplSender;
-use crate::ops::jupyter::ReplIopubSender;
 use crate::tools::repl;
-use crate::tools::test::create_single_test_event_channel;
-use crate::tools::test::reporters::PrettyTestReporter;
 use crate::tools::test::TestEventWorkerSender;
-use crate::tools::test::TestFailureFormatOptions;
-use crate::CliFactory;
+use crate::tools::test::create_single_test_event_channel;
 
 mod install;
 
@@ -229,7 +224,7 @@ pub async fn kernel(
     let mut op_state = op_state_rc.borrow_mut();
     op_state.put(KernelReplSender { tx: repl_req_tx });
     op_state.put(KernelIopubReceiver {
-      rx: RefCell::new(iopub_rx),
+      rx: tokio::sync::Mutex::new(iopub_rx),
     });
     op_state.put(KernelIsolateHandle {
       handle: isolate_handle,
@@ -304,8 +299,7 @@ impl JupyterReplSession {
           .await;
         let json = result
           .ok()
-          .map(|r| serde_json::to_value(r.value).ok())
-          .flatten();
+          .and_then(|r| serde_json::to_value(r.value).ok());
         let _ = resp_tx.send(json);
       }
       JupyterReplRequest::GetProperties { object_id, resp_tx } => {

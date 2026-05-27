@@ -122,10 +122,13 @@ function makeReadyCommand(socketType) {
   const propLen = 1 + propName.length + 4 + sockBytes.length;
   const body = new Uint8Array(nameBytes.length + propLen);
   let o = 0;
-  body.set(nameBytes, o); o += nameBytes.length;
+  body.set(nameBytes, o);
+  o += nameBytes.length;
   body[o++] = propName.length;
-  body.set(propName, o); o += propName.length;
-  new DataView(body.buffer).setUint32(o, sockBytes.length); o += 4;
+  body.set(propName, o);
+  o += propName.length;
+  new DataView(body.buffer).setUint32(o, sockBytes.length);
+  o += 4;
   body.set(sockBytes, o);
 
   return makeShortFrame(body, false, true); // command flag
@@ -183,7 +186,16 @@ function makeHeader(session, msgType) {
   });
 }
 
-async function encodeMsg(session, key, identities, msgType, content, parentHeader = {}, metadata = {}, buffers = []) {
+async function encodeMsg(
+  session,
+  key,
+  identities,
+  msgType,
+  content,
+  parentHeader = {},
+  metadata = {},
+  buffers = [],
+) {
   const header = makeHeader(session, msgType);
   const parentHeaderStr = JSON.stringify(parentHeader);
   const metaStr = JSON.stringify(metadata);
@@ -215,9 +227,15 @@ function decodeMsg(frames) {
     if (frames[i].length === DELIMITER.length) {
       let match = true;
       for (let j = 0; j < DELIMITER.length; j++) {
-        if (frames[i][j] !== DELIMITER[j]) { match = false; break; }
+        if (frames[i][j] !== DELIMITER[j]) {
+          match = false;
+          break;
+        }
       }
-      if (match) { delimIdx = i; break; }
+      if (match) {
+        delimIdx = i;
+        break;
+      }
     }
   }
   if (delimIdx === -1) throw new Error("no <IDS|MSG> delimiter");
@@ -266,7 +284,9 @@ async function runHeartbeat(port, ip) {
       } catch {
         // peer disconnected
       } finally {
-        try { conn.close(); } catch { /**/ }
+        try {
+          conn.close();
+        } catch { /**/ }
       }
     })();
   }
@@ -323,7 +343,9 @@ async function runRouter(port, ip, incomingQueue, outgoingQueue) {
       } catch {
         // peer disconnected
       } finally {
-        try { conn.close(); } catch { /**/ }
+        try {
+          conn.close();
+        } catch { /**/ }
       }
     })();
   }
@@ -368,7 +390,9 @@ class RouterSocket {
         // disconnected
       } finally {
         this.peers.delete(peerKey);
-        try { conn.close(); } catch { /**/ }
+        try {
+          conn.close();
+        } catch { /**/ }
       }
     })();
   }
@@ -421,7 +445,9 @@ class PubSocket {
             // disconnected
           } finally {
             this.conns.delete(conn);
-            try { conn.close(); } catch { /**/ }
+            try {
+              conn.close();
+            } catch { /**/ }
           }
         })();
       }
@@ -461,7 +487,9 @@ async function startJupyterKernel() {
 
   async function publishStatus(status, parentHeader) {
     const frames = await encodeMsg(
-      session, key, [],
+      session,
+      key,
+      [],
       "status",
       { execution_state: status },
       parentHeader,
@@ -476,7 +504,9 @@ async function startJupyterKernel() {
       msgType = "stream";
     }
     const frames = await encodeMsg(
-      session, key, [],
+      session,
+      key,
+      [],
       msgType,
       msg.content,
       currentParentHeader,
@@ -502,9 +532,22 @@ async function startJupyterKernel() {
   }
   iopubDrainer();
 
-  async function sendReply(socket, peerId, msgType, content, parentHeader, metadata = {}) {
+  async function sendReply(
+    socket,
+    peerId,
+    msgType,
+    content,
+    parentHeader,
+    metadata = {},
+  ) {
     const frames = await encodeMsg(
-      session, key, [peerId], msgType, content, parentHeader, metadata,
+      session,
+      key,
+      [peerId],
+      msgType,
+      content,
+      parentHeader,
+      metadata,
     );
     // The first frame is the identity; send without it as the socket adds identity
     // Actually send WITH the identity as the routing prefix for ROUTER
@@ -518,10 +561,22 @@ async function startJupyterKernel() {
   }
 
   // Actually let's simplify the send logic:
-  async function routerSend(socket, peerId, msgType, content, parentHeader, metadata = {}) {
+  async function routerSend(
+    socket,
+    peerId,
+    msgType,
+    content,
+    parentHeader,
+    metadata = {},
+  ) {
     const frames = await encodeMsg(
-      session, key, [], // no identities in the payload itself
-      msgType, content, parentHeader, metadata,
+      session,
+      key,
+      [], // no identities in the payload itself
+      msgType,
+      content,
+      parentHeader,
+      metadata,
     );
     // Prepend identity frame for ROUTER?DEALER routing
     // The DEALER peer expects: [DELIMITER, sig, header, ...]
@@ -569,7 +624,11 @@ async function startJupyterKernel() {
         i += 2;
         let closed = false;
         while (i < code.length - 1) {
-          if (code[i] === "*" && code[i + 1] === "/") { i += 2; closed = true; break; }
+          if (code[i] === "*" && code[i + 1] === "/") {
+            i += 2;
+            closed = true;
+            break;
+          }
           i++;
         }
         if (!closed) return { status: "incomplete", indent: "" };
@@ -580,8 +639,15 @@ async function startJupyterKernel() {
         i++;
         let closed = false;
         while (i < code.length) {
-          if (code[i] === "\\" && q !== "`") { i += 2; continue; }
-          if (code[i] === q) { i++; closed = true; break; }
+          if (code[i] === "\\" && q !== "`") {
+            i += 2;
+            continue;
+          }
+          if (code[i] === q) {
+            i++;
+            closed = true;
+            break;
+          }
           i++;
         }
         if (!closed) return { status: "incomplete", indent: "" };
@@ -617,7 +683,9 @@ async function startJupyterKernel() {
 
     // Publish execute_input
     const inputFrames = await encodeMsg(
-      session, key, [],
+      session,
+      key,
+      [],
       "execute_input",
       { code, execution_count: executionCount },
       parentHeader,
@@ -631,7 +699,9 @@ async function startJupyterKernel() {
     } catch (e) {
       // Evaluation threw (e.g. interrupted)
       const errFrames = await encodeMsg(
-        session, key, [],
+        session,
+        key,
+        [],
         "error",
         {
           ename: e?.name || "Error",
@@ -649,7 +719,9 @@ async function startJupyterKernel() {
         traceback: [],
       };
       const replyFrames = await encodeMsg(
-        session, key, [],
+        session,
+        key,
+        [],
         "execute_reply",
         replyContent,
         parentHeader,
@@ -697,7 +769,9 @@ async function startJupyterKernel() {
         }
 
         const errFrames = await encodeMsg(
-          session, key, [],
+          session,
+          key,
+          [],
           "error",
           { ename, evalue, traceback },
           parentHeader,
@@ -705,7 +779,9 @@ async function startJupyterKernel() {
         await iopub.send(errFrames);
 
         const replyFrames = await encodeMsg(
-          session, key, [],
+          session,
+          key,
+          [],
           "execute_reply",
           {
             status: "error",
@@ -729,7 +805,9 @@ async function startJupyterKernel() {
         }
 
         const replyFrames = await encodeMsg(
-          session, key, [],
+          session,
+          key,
+          [],
           "execute_reply",
           {
             status: "ok",
@@ -744,7 +822,9 @@ async function startJupyterKernel() {
     } else {
       // Null result means eval was skipped or interrupted
       const replyFrames = await encodeMsg(
-        session, key, [],
+        session,
+        key,
+        [],
         "execute_reply",
         {
           status: "error",
@@ -783,7 +863,9 @@ async function startJupyterKernel() {
       try {
         if (msgType === "kernel_info_request") {
           const replyFrames = await encodeMsg(
-            session, key, [],
+            session,
+            key,
+            [],
             "kernel_info_reply",
             kernelInfo(),
             parentHeader,
@@ -820,7 +902,9 @@ async function startJupyterKernel() {
           }
 
           const replyFrames = await encodeMsg(
-            session, key, [],
+            session,
+            key,
+            [],
             "complete_reply",
             {
               status: "ok",
@@ -835,7 +919,9 @@ async function startJupyterKernel() {
         } else if (msgType === "is_complete_request") {
           const result = checkIsComplete(msg.content?.code || "");
           const replyFrames = await encodeMsg(
-            session, key, [],
+            session,
+            key,
+            [],
             "is_complete_reply",
             result,
             parentHeader,
@@ -843,7 +929,9 @@ async function startJupyterKernel() {
           await socket.send(peerId, [peerId, ...replyFrames]);
         } else if (msgType === "inspect_request") {
           const replyFrames = await encodeMsg(
-            session, key, [],
+            session,
+            key,
+            [],
             "inspect_reply",
             {
               status: "ok",
@@ -856,7 +944,9 @@ async function startJupyterKernel() {
           await socket.send(peerId, [peerId, ...replyFrames]);
         } else if (msgType === "history_request") {
           const replyFrames = await encodeMsg(
-            session, key, [],
+            session,
+            key,
+            [],
             "history_reply",
             { status: "ok", history: [] },
             parentHeader,
@@ -864,7 +954,9 @@ async function startJupyterKernel() {
           await socket.send(peerId, [peerId, ...replyFrames]);
         } else if (msgType === "comm_info_request") {
           const replyFrames = await encodeMsg(
-            session, key, [],
+            session,
+            key,
+            [],
             "comm_info_reply",
             { status: "ok", comms: {} },
             parentHeader,
@@ -872,7 +964,9 @@ async function startJupyterKernel() {
           await socket.send(peerId, [peerId, ...replyFrames]);
         } else if (msgType === "comm_open") {
           const replyFrames = await encodeMsg(
-            session, key, [],
+            session,
+            key,
+            [],
             "comm_close",
             { comm_id: msg.content?.comm_id, data: {} },
             parentHeader,
@@ -894,7 +988,9 @@ async function startJupyterKernel() {
 
       if (msgType === "kernel_info_request") {
         const replyFrames = await encodeMsg(
-          session, key, [],
+          session,
+          key,
+          [],
           "kernel_info_reply",
           kernelInfo(),
           parentHeader,
@@ -903,7 +999,9 @@ async function startJupyterKernel() {
       } else if (msgType === "shutdown_request") {
         const restart = msg.content?.restart || false;
         const replyFrames = await encodeMsg(
-          session, key, [],
+          session,
+          key,
+          [],
           "shutdown_reply",
           { status: "ok", restart },
           parentHeader,
@@ -917,7 +1015,9 @@ async function startJupyterKernel() {
       } else if (msgType === "interrupt_request") {
         op_jupyter_repl_interrupt();
         const replyFrames = await encodeMsg(
-          session, key, [],
+          session,
+          key,
+          [],
           "interrupt_reply",
           { status: "ok" },
           parentHeader,
