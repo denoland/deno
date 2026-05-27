@@ -695,7 +695,8 @@ mod tests {
 
   #[test]
   fn collect_scripts_handles_unterminated_opening_tag_attrs() {
-    let scripts = collect_scripts(r#"<script src="./unterminated.ts""#).unwrap();
+    let scripts =
+      collect_scripts(r#"<script src="./unterminated.ts""#).unwrap();
 
     assert_eq!(scripts.len(), 1);
     assert_eq!(scripts[0].src.as_deref(), Some("./unterminated.ts"));
