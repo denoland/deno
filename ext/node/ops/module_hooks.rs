@@ -16,6 +16,7 @@ use deno_error::JsErrorBox;
 struct PendingLoad {
   id: u32,
   url: String,
+  import_type: Option<String>,
 }
 
 /// Load hook result: (source, format, effective_url).
@@ -140,9 +141,13 @@ impl LoaderHookRegistry {
   /// Push a load request and return a receiver for the response.
   /// `Ok((Some(source), format, _))` = hook provided source,
   /// `Ok((None, _, effective_url))` = fallthrough, optionally redirected.
+  /// `import_type` is the `type` value from `with { type: "..." }` import
+  /// attributes, forwarded to JS so hooks see the correct
+  /// `context.importAttributes`.
   pub fn push_load(
     &self,
     url: String,
+    import_type: Option<String>,
   ) -> deno_core::futures::channel::oneshot::Receiver<Result<LoadResult, String>>
   {
     // Dedup: if there's already a pending load for this URL, piggyback.
@@ -168,7 +173,7 @@ impl LoaderHookRegistry {
     self
       .pending_loads
       .borrow_mut()
-      .push_back(PendingLoad { id, url });
+      .push_back(PendingLoad { id, url, import_type });
     if let Some(waker) = self.load_waker.borrow_mut().take() {
       waker.wake();
     }
@@ -188,17 +193,23 @@ pub fn op_module_hooks_register(
   registry.load_active.set(has_load);
 }
 
-/// Poll for a pending load request. Returns `[id, url]` or null.
+/// Poll for a pending load request. Returns `[id, url, importType]` or null.
+/// `importType` is the `type` value from `with { type: "..." }` import
+/// attributes (e.g. "json", "text", "bytes"), or null when none was specified.
 #[op2]
 #[serde]
 pub async fn op_module_hooks_poll_load(
   state: Rc<RefCell<OpState>>,
-) -> Result<Option<(u32, String)>, JsErrorBox> {
+) -> Result<Option<(u32, String, Option<String>)>, JsErrorBox> {
   let registry = state.borrow().borrow::<LoaderHookRegistry>().clone();
 
   std::future::poll_fn(|cx| {
     if let Some(req) = registry.pending_loads.borrow_mut().pop_front() {
-      return std::task::Poll::Ready(Ok(Some((req.id, req.url))));
+      return std::task::Poll::Ready(Ok(Some((
+        req.id,
+        req.url,
+        req.import_type,
+      ))));
     }
     *registry.load_waker.borrow_mut() = Some(cx.waker().clone());
     std::task::Poll::Pending
