@@ -15,7 +15,7 @@ use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
 
-use crate::create_host_defined_options;
+use crate::create_vm_dynamic_import_missing_host_defined_options;
 
 pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst =
   v8::String::create_external_onebyte_const(b"node:contextify:context");
@@ -67,7 +67,8 @@ impl ContextifyScript {
     };
 
     let scope = &mut v8::ContextScope::new(scope, context);
-    let host_defined_options = create_host_defined_options(scope);
+    let host_defined_options =
+      create_vm_dynamic_import_missing_host_defined_options(scope);
     let origin = v8::ScriptOrigin::new(
       scope,
       filename,
@@ -1431,7 +1432,8 @@ pub fn op_vm_compile_function<'s>(
   };
 
   let scope = &mut v8::ContextScope::new(scope, context);
-  let host_defined_options = create_host_defined_options(scope);
+  let host_defined_options =
+    create_vm_dynamic_import_missing_host_defined_options(scope);
   let origin = v8::ScriptOrigin::new(
     scope,
     filename,
@@ -1633,7 +1635,8 @@ pub fn op_vm_module_create_source_text_module<'a>(
     resolve_module_context(scope, context_object)?;
 
   let scope = &mut v8::ContextScope::new(scope, context);
-  let host_defined_options = create_host_defined_options(scope);
+  let host_defined_options =
+    create_vm_dynamic_import_missing_host_defined_options(scope);
   let filename = v8::String::new(scope, &identifier)?;
   let origin = v8::ScriptOrigin::new(
     scope,
