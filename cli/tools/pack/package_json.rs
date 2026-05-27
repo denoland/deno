@@ -32,13 +32,6 @@ fn has_dts(set: &HashSet<String>, source_path: &str) -> bool {
   set.contains(&ts_to_js_extension(source_path))
 }
 
-/// Pinned version range of the @deno/shim-deno polyfill that pack injects
-/// when it detects Deno API usage. Bump this when shim-deno publishes a
-/// release we want users to pick up by default; check
-/// https://www.npmjs.com/package/@deno/shim-deno for the latest. We use a
-/// `~` range so consumers receive patch fixes but not breaking changes.
-const DENO_SHIM_VERSION: &str = "~0.19.0";
-
 #[derive(Serialize)]
 struct PackageJson {
   name: String,
@@ -67,7 +60,6 @@ pub fn generate_package_json(
   config_file: &ConfigFile,
   version: &str,
   files: &[ProcessedFile],
-  include_deno_shim: bool,
 ) -> Result<String, AnyError> {
   let name = config_file
     .json
@@ -84,11 +76,6 @@ pub fn generate_package_json(
   // Collect dependencies from all files. BTreeMap so the serialized
   // package.json keys come out in sorted order (reproducibility).
   let mut dependencies: BTreeMap<String, String> = BTreeMap::new();
-
-  if include_deno_shim {
-    dependencies
-      .insert("@deno/shim-deno".to_string(), DENO_SHIM_VERSION.to_string());
-  }
 
   // Merge dependencies from all processed files
   for file in files {
