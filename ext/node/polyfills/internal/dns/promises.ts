@@ -23,7 +23,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
+(function () {
+const { core } = __bootstrap;
 const {
   validateBoolean,
   validateNumber,
@@ -32,28 +33,17 @@ const {
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
-import {
+const {
   dnsOrderToNumber,
-  emitInvalidHostnameWarning,
   getDefaultDnsOrder,
   getDefaultResolver,
   isFamily,
   isLookupOptions,
-  Resolver as CallbackResolver,
+  Resolver: CallbackResolver,
   validateHints,
   validDnsOrders,
-} from "ext:deno_node/internal/dns/utils.ts";
+} = core.loadExtScript("ext:deno_node/internal/dns/utils.ts");
 
-export { getDefaultDnsOrder as getDefaultResultOrder };
-import type {
-  LookupAddress,
-  LookupAllOptions,
-  LookupOneOptions,
-  LookupOptions,
-  Records,
-  ResolveOptions,
-  ResolveWithTtlOptions,
-} from "ext:deno_node/internal/dns/utils.ts";
 const {
   dnsException,
   ERR_INVALID_ARG_TYPE,
@@ -119,8 +109,13 @@ function createLookupPromise(
 ): Promise<void | LookupAddress | LookupAddress[]> {
   return new Promise((resolve, reject) => {
     if (!hostname) {
-      emitInvalidHostnameWarning(hostname);
-      resolve(all ? [] : { address: null, family: family === 6 ? 6 : 4 });
+      reject(
+        new ERR_INVALID_ARG_VALUE(
+          "hostname",
+          hostname,
+          "must be a non-empty string",
+        ),
+      );
 
       return;
     }
@@ -158,23 +153,23 @@ function createLookupPromise(
 
 const validFamilies = [0, 4, 6];
 
-export function lookup(
+function lookup(
   hostname: string,
   family: number,
 ): Promise<void | LookupAddress | LookupAddress[]>;
-export function lookup(
+function lookup(
   hostname: string,
   options: LookupOneOptions,
 ): Promise<void | LookupAddress | LookupAddress[]>;
-export function lookup(
+function lookup(
   hostname: string,
   options: LookupAllOptions,
 ): Promise<void | LookupAddress | LookupAddress[]>;
-export function lookup(
+function lookup(
   hostname: string,
   options: LookupOptions,
 ): Promise<void | LookupAddress | LookupAddress[]>;
-export function lookup(
+function lookup(
   hostname: string,
   options: unknown,
 ): Promise<void | LookupAddress | LookupAddress[]> {
@@ -293,7 +288,7 @@ function createLookupServicePromise(address: string, port: number) {
   });
 }
 
-export function lookupService(address: string, port: number) {
+function lookupService(address: string, port: number) {
   if (arguments.length !== 2) {
     throw new ERR_MISSING_ARGS("address", "port");
   }
@@ -403,11 +398,11 @@ function _resolve(
 // exporting these methods which dynamically bind to the default resolver when
 // called.
 
-export function getServers(): string[] {
+function getServers(): string[] {
   return Resolver.prototype.getServers.bind(getDefaultResolver())();
 }
 
-export function resolveAny(
+function resolveAny(
   hostname: string,
 ) {
   return Resolver.prototype.resolveAny.bind(getDefaultResolver() as Resolver)(
@@ -415,41 +410,41 @@ export function resolveAny(
   );
 }
 
-export function resolve4(
+function resolve4(
   hostname: string,
 ): Promise<void>;
-export function resolve4(
+function resolve4(
   hostname: string,
   options: ResolveWithTtlOptions,
 ): Promise<void>;
-export function resolve4(
+function resolve4(
   hostname: string,
   options: ResolveOptions,
 ): Promise<void>;
-export function resolve4(hostname: string, options?: unknown) {
+function resolve4(hostname: string, options?: unknown) {
   return Resolver.prototype.resolve4.bind(getDefaultResolver() as Resolver)(
     hostname,
     options,
   );
 }
 
-export function resolve6(hostname: string): Promise<void>;
-export function resolve6(
+function resolve6(hostname: string): Promise<void>;
+function resolve6(
   hostname: string,
   options: ResolveWithTtlOptions,
 ): Promise<void>;
-export function resolve6(
+function resolve6(
   hostname: string,
   options: ResolveOptions,
 ): Promise<void>;
-export function resolve6(hostname: string, options?: unknown) {
+function resolve6(hostname: string, options?: unknown) {
   return Resolver.prototype.resolve6.bind(getDefaultResolver() as Resolver)(
     hostname,
     options,
   );
 }
 
-export function resolveCaa(
+function resolveCaa(
   hostname: string,
 ) {
   return Resolver.prototype.resolveCaa.bind(getDefaultResolver() as Resolver)(
@@ -457,7 +452,7 @@ export function resolveCaa(
   );
 }
 
-export function resolveCname(
+function resolveCname(
   hostname: string,
 ) {
   return Resolver.prototype.resolveCname.bind(getDefaultResolver() as Resolver)(
@@ -465,7 +460,7 @@ export function resolveCname(
   );
 }
 
-export function resolveMx(
+function resolveMx(
   hostname: string,
 ) {
   return Resolver.prototype.resolveMx.bind(getDefaultResolver() as Resolver)(
@@ -473,113 +468,132 @@ export function resolveMx(
   );
 }
 
-export function resolveNs(hostname: string) {
+function resolveNs(hostname: string) {
   return Resolver.prototype.resolveNs.bind(getDefaultResolver() as Resolver)(
     hostname,
   );
 }
 
-export function resolveTxt(hostname: string) {
+function resolveTxt(hostname: string) {
   return Resolver.prototype.resolveTxt.bind(getDefaultResolver() as Resolver)(
     hostname,
   );
 }
 
-export function resolveSrv(hostname: string) {
+function resolveSrv(hostname: string) {
   return Resolver.prototype.resolveSrv.bind(getDefaultResolver() as Resolver)(
     hostname,
   );
 }
 
-export function resolvePtr(hostname: string) {
+function resolvePtr(hostname: string) {
   return Resolver.prototype.resolvePtr.bind(getDefaultResolver() as Resolver)(
     hostname,
   );
 }
 
-export function resolveNaptr(hostname: string) {
+function resolveNaptr(hostname: string) {
   return Resolver.prototype.resolveNaptr.bind(getDefaultResolver() as Resolver)(
     hostname,
   );
 }
 
-export function resolveSoa(hostname: string) {
+function resolveSoa(hostname: string) {
   return Resolver.prototype.resolveSoa.bind(getDefaultResolver() as Resolver)(
     hostname,
   );
 }
 
-export function reverse(ip: string) {
+function reverse(ip: string) {
   return Resolver.prototype.reverse.bind(getDefaultResolver() as Resolver)(
     ip,
   );
 }
 
-export function resolve(
+function resolve(
   hostname: string,
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "A",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "AAAA",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "ANY",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "CNAME",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "MX",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "NAPTR",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "NS",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "PTR",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "SOA",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "SRV",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "TXT",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: string,
 ): Promise<void>;
-export function resolve(hostname: string, rrtype?: string) {
+function resolve(hostname: string, rrtype?: string) {
   return Resolver.prototype.resolve.bind(getDefaultResolver() as Resolver)(
     hostname,
     rrtype,
   );
 }
 
-export { Resolver };
-
-export default {
-  lookup,
-  lookupService,
+return {
+  default: {
+    lookup,
+    lookupService,
+    Resolver,
+    getDefaultResultOrder: getDefaultDnsOrder,
+    getServers,
+    resolveAny,
+    resolve4,
+    resolve6,
+    resolveCaa,
+    resolveCname,
+    resolveMx,
+    resolveNs,
+    resolveTxt,
+    resolveSrv,
+    resolvePtr,
+    resolveNaptr,
+    resolveSoa,
+    resolve,
+    reverse,
+  },
   Resolver,
   getDefaultResultOrder: getDefaultDnsOrder,
+  lookup,
+  lookupService,
   getServers,
   resolveAny,
   resolve4,
@@ -596,3 +610,4 @@ export default {
   resolve,
   reverse,
 };
+})();

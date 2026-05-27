@@ -61,6 +61,8 @@ use util::fs::canonicalize_path;
 
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
+const UNSUPPORTED_DIR_IMPORT: &str =
+  "[ERR_UNSUPPORTED_DIR_IMPORT] Directory import";
 
 use self::util::draw_thread::DrawThread;
 use self::util::env::resolve_cwd;
@@ -216,6 +218,9 @@ async fn run_subcommand(
     }),
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
       tools::installer::install_command(Arc::new(flags), install_flags).await
+    }),
+    DenoSubcommand::Ci(ci_flags) => spawn_subcommand(async {
+      tools::installer::ci_command(Arc::new(flags), ci_flags).await
     }),
     DenoSubcommand::JSONReference(json_reference) => {
       spawn_subcommand(async move {
@@ -533,6 +538,7 @@ async fn run_subcommand(
 fn should_fallback_on_run_error(script_err: &str) -> bool {
   if script_err.starts_with(MODULE_NOT_FOUND)
     || script_err.starts_with(UNSUPPORTED_SCHEME)
+    || script_err.starts_with(UNSUPPORTED_DIR_IMPORT)
   {
     return true;
   }
@@ -961,6 +967,8 @@ fn wait_for_start(
       crate::sys::CliSys,
     >(deno_runtime::UnconfiguredRuntimeOptions {
       startup_snapshot,
+      residual_lazy_js_sources: deno_snapshots::RESIDUAL_LAZY_JS,
+      residual_lazy_esm_sources: deno_snapshots::RESIDUAL_LAZY_ESM,
       create_params: deno_lib::worker::create_isolate_create_params(
         &crate::sys::CliSys::default(),
       ),

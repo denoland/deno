@@ -5,6 +5,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals, primordials } from "ext:core/mod.js";
+// Installs `internals.__inspectorNetwork` so ext/fetch (and other
+// extensions) can emit Network.* CDP events without requiring user code
+// to import `node:inspector`. Side-effect import; no exports.
+core.loadExtScript("ext:deno_node/inspector_network_bridge.js");
 const { initializeDebugEnv } = core.loadExtScript(
   "ext:deno_node/internal/util/debuglog.ts",
 );
@@ -17,6 +21,9 @@ import {
   op_getegid,
   op_geteuid,
   op_getgroups,
+  op_inspector_close,
+  op_inspector_enabled,
+  op_inspector_port,
   op_node_load_env_file,
   op_node_process_constrained_memory,
   op_node_process_kill,
@@ -117,6 +124,13 @@ import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 const { buildAllowedFlags } = core.loadExtScript(
   "ext:deno_node/internal/process/per_thread.mjs",
 );
+const {
+  getActiveHandles,
+  getActiveRequests,
+} = core.loadExtScript("ext:deno_node/internal/process/active_resources.ts");
+const {
+  getActiveResourcesInfo: getTimerActiveResourcesInfo,
+} = core.loadExtScript("ext:deno_node/internal/timers.mjs");
 import type fsUtils from "ext:deno_node/internal/fs/utils.mjs";
 import type * as utilModule from "ext:deno_node/util.ts";
 
@@ -440,6 +454,10 @@ memoryUsage.rss = function (): number {
   return memoryUsage().rss;
 };
 
+export function getActiveResourcesInfo(): string[] {
+  return getTimerActiveResourcesInfo();
+}
+
 export function availableMemory(): number {
   return Deno.systemMemoryInfo().available;
 }
@@ -539,16 +557,27 @@ export { getegid, geteuid, getgid, getuid, setegid, seteuid, setgid, setuid };
 
 const ALLOWED_FLAGS = buildAllowedFlags();
 
+// Tracks error values for which the synchronous Module._load entry-module
+// path in 01_require.js has already invoked process._fatalException. When
+// the same error is later re-thrown and surfaces as a module-evaluation
+// rejection (via the ESM wrapper that loads the main CJS module), the
+// unhandled-rejection fallback below uses this set to skip emitting
+// 'uncaughtExceptionMonitor' / 'uncaughtException' a second time.
 // deno-lint-ignore no-explicit-any
-function uncaughtExceptionHandler(err: any, origin: string) {
+const _dispatchedFatalErrors = new WeakSet<any>();
+internals._dispatchedFatalErrors = _dispatchedFatalErrors;
+
+// deno-lint-ignore no-explicit-any
+function uncaughtExceptionHandler(err: any, origin: string): boolean {
   // The origin parameter can be 'unhandledRejection' or 'uncaughtException'
   // depending on how the uncaught exception was created. In Node.js,
   // exceptions thrown from the top level of a CommonJS module are reported as
   // 'uncaughtException', while exceptions thrown from the top level of an ESM
   // module are reported as 'unhandledRejection'. Deno does not have a true
-  // CommonJS implementation, so all exceptions thrown from the top level are
-  // reported as 'uncaughtException'.
-  process._fatalException(err, origin === "unhandledRejection");
+  // CommonJS implementation; sync throws in the entry CJS module are
+  // dispatched up-front via Module._load (see ext/node/polyfills/01_require.js)
+  // so this path only fires for real unhandled promise rejections.
+  return process._fatalException(err, origin === "unhandledRejection");
 }
 
 export let execPath: string = "";
@@ -876,8 +905,17 @@ Object.defineProperty(process, "argv0", {
  */
 // Node's default inspector port (kDefaultInspectorPort in src/node_options.h).
 let _debugPort = 9229;
+let _debugPortWasSet = false;
 Object.defineProperty(process, "debugPort", {
   get() {
+    // When the inspector is running, report the actual bound port so
+    // `--inspect=...:0` reflects the ephemeral port chosen at bind
+    // time. An explicit assignment via the setter wins over this
+    // (matching Node's mutable `process.debugPort`).
+    if (!_debugPortWasSet) {
+      const port = op_inspector_port();
+      if (port !== 0) return port;
+    }
     return _debugPort;
   },
   set(val) {
@@ -889,10 +927,38 @@ Object.defineProperty(process, "debugPort", {
       );
     }
     _debugPort = port;
+    _debugPortWasSet = true;
   },
   enumerable: true,
   configurable: true,
 });
+
+/**
+ * Undocumented but public Node API: stops the inspector / debugger session
+ * if one is running. No-op if no inspector is attached. See
+ * `lib/internal/inspector.js` in the Node source.
+ */
+process._debugEnd = function _debugEnd() {
+  if (op_inspector_enabled()) {
+    op_inspector_close();
+  }
+};
+
+/**
+ * Undocumented but public Node API: starts the inspector in another process by
+ * sending `SIGUSR1` to it. On the current process, this would (in Node) open
+ * the inspector; we don't yet support reopening the inspector from JS, so for
+ * `pid === process.pid` we no-op rather than throwing, matching the
+ * "safe when no inspector is active" contract callers rely on.
+ */
+process._debugProcess = function _debugProcess(pid) {
+  if (typeof pid !== "number") {
+    throw new ERR_INVALID_ARG_TYPE("pid", "number", pid);
+  }
+  if (pid !== process.pid) {
+    process.kill(pid, "SIGUSR1");
+  }
+};
 
 /** https://nodejs.org/api/process.html#process_process_chdir_directory */
 process.chdir = chdir;
@@ -969,6 +1035,10 @@ process.openStdin = () => {
 process._rawDebug = (...args: unknown[]) => {
   core.print(`${format(...args)}\n`, true);
 };
+
+process.getActiveResourcesInfo = getActiveResourcesInfo;
+process._getActiveRequests = getActiveRequests;
+process._getActiveHandles = getActiveHandles;
 
 // Undocumented Node API that is used by `signal-exit` which in turn
 // is used by `node-tap`. It was marked for removal a couple of years
@@ -1297,6 +1367,7 @@ export const removeAllListeners = process.removeAllListeners;
 let unhandledRejectionListenerCount = 0;
 let rejectionHandledListenerCount = 0;
 let uncaughtExceptionListenerCount = 0;
+let uncaughtExceptionMonitorListenerCount = 0;
 let beforeExitListenerCount = 0;
 let exitListenerCount = 0;
 
@@ -1310,6 +1381,9 @@ process.on("newListener", (event: string) => {
       break;
     case "uncaughtException":
       uncaughtExceptionListenerCount++;
+      break;
+    case "uncaughtExceptionMonitor":
+      uncaughtExceptionMonitorListenerCount++;
       break;
     case "beforeExit":
       beforeExitListenerCount++;
@@ -1333,6 +1407,9 @@ process.on("removeListener", (event: string) => {
       break;
     case "uncaughtException":
       uncaughtExceptionListenerCount--;
+      break;
+    case "uncaughtExceptionMonitor":
+      uncaughtExceptionMonitorListenerCount--;
       break;
     case "beforeExit":
       beforeExitListenerCount--;
@@ -1388,6 +1465,7 @@ function synchronizeListeners() {
   if (
     unhandledRejectionListenerCount > 0 ||
     uncaughtExceptionListenerCount > 0 ||
+    uncaughtExceptionMonitorListenerCount > 0 ||
     _uncaughtExceptionCaptureFn !== null
   ) {
     internals.nodeProcessUnhandledRejectionCallback = (event) => {
@@ -1396,9 +1474,20 @@ function synchronizeListeners() {
         // an unhandled rejection occurs and there are no unhandledRejection
         // listeners.
 
-        event.preventDefault();
-
         let reason = event.reason;
+
+        // The synchronous Module._load path in 01_require.js already invoked
+        // process._fatalException for this error. Re-firing here would
+        // double-emit 'uncaughtExceptionMonitor' (and 'uncaughtException')
+        // for the same value. Skip and let Deno's default unhandled-rejection
+        // handling print the error and terminate the runtime.
+        if (
+          reason !== null && typeof reason === "object" &&
+          _dispatchedFatalErrors.has(reason)
+        ) {
+          return;
+        }
+
         // If the rejection reason is not an Error, wrap it in an
         // ERR_UNHANDLED_REJECTION error, matching Node.js behavior.
         if (!(reason instanceof Error)) {
@@ -1419,7 +1508,12 @@ function synchronizeListeners() {
           reason = err;
         }
 
-        uncaughtExceptionHandler(reason, "unhandledRejection");
+        // Only preventDefault if a registered handler (uncaughtException
+        // listener or capture callback) actually consumed the error.
+        // Otherwise we want the runtime to terminate normally.
+        if (uncaughtExceptionHandler(reason, "unhandledRejection")) {
+          event.preventDefault();
+        }
         return;
       }
 
@@ -1441,7 +1535,9 @@ function synchronizeListeners() {
   }
 
   if (
-    uncaughtExceptionListenerCount > 0 || _uncaughtExceptionCaptureFn !== null
+    uncaughtExceptionListenerCount > 0 ||
+    uncaughtExceptionMonitorListenerCount > 0 ||
+    _uncaughtExceptionCaptureFn !== null
   ) {
     globalThis.addEventListener("error", processOnError);
   } else {
@@ -1614,6 +1710,11 @@ internals.__bootstrapNodeProcess = function (
         },
         configurable: true,
       });
+
+      // Inspector control APIs are main-thread-only in Node; matches the
+      // assertions in parallel/test-worker-unsupported-things.js.
+      delete process._debugEnd;
+      delete process._debugProcess;
     }
 
     delete internals.__bootstrapNodeProcess;

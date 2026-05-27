@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   isPromise,
 } = core;
@@ -46,6 +46,8 @@ const {
 } = primordials;
 
 const { ReadableStream } = core.loadExtScript("ext:deno_web/06_streams.js");
+
+const cloneableDeserializers = core.getCloneableDeserializers();
 
 const encodeCursor: (
   selector: [Deno.KvKey | null, Deno.KvKey | null, Deno.KvKey | null],
@@ -316,6 +318,7 @@ class Kv {
       const { 0: payload, 1: handleId } = next;
       const deserializedPayload = core.deserialize(payload, {
         forStorage: true,
+        deserializers: cloneableDeserializers,
       });
 
       // Dispatch the payload.
@@ -608,7 +611,10 @@ class AtomicOperation {
           } else {
             switch (rawValue.kind) {
               case "v8":
-                value = core.deserialize(rawValue.value, { forStorage: true });
+                value = core.deserialize(rawValue.value, {
+                  forStorage: true,
+                  deserializers: cloneableDeserializers,
+                });
                 break;
               case "bytes":
                 value = rawValue.value;
@@ -649,7 +655,10 @@ class AtomicOperation {
       // Deserialize message for display
       let message;
       try {
-        message = core.deserialize(serializedMessage, { forStorage: true });
+        message = core.deserialize(serializedMessage, {
+          forStorage: true,
+          deserializers: cloneableDeserializers,
+        });
       } catch {
         message = "[serialized message]";
       }
@@ -736,7 +745,10 @@ function deserializeValue(entry: RawKvEntry): Deno.KvEntry<unknown> {
     case "v8":
       return {
         ...entry,
-        value: core.deserialize(value, { forStorage: true }),
+        value: core.deserialize(value, {
+          forStorage: true,
+          deserializers: cloneableDeserializers,
+        }),
       };
     case "bytes":
       return {

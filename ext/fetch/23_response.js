@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { createFilteredInspectProxy } = core.loadExtScript(
   "ext:deno_web/01_console.js",
@@ -291,7 +291,7 @@ class Response {
    * @param {ResponseInit} init
    * @returns {Response}
    */
-  static json(data = undefined, init = { __proto__: null }) {
+  static json(data = undefined, init = undefined) {
     const prefix = "Failed to execute 'Response.json'";
     data = webidlConvertersAny(data);
     init = webidlConvertersResponseInitFast(init, prefix, "Argument 2");

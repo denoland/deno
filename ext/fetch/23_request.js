@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
@@ -318,7 +318,7 @@ class Request {
    * @param {RequestInfo} input
    * @param {RequestInit} init
    */
-  constructor(input, init = { __proto__: null }) {
+  constructor(input, init = undefined) {
     if (input === _brand) {
       this[_brand] = _brand;
       return;

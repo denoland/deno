@@ -2,13 +2,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 
 const { internalRidSymbol } = core;
 const {
   ArrayFrom,
   ArrayIsArray,
   ArrayPrototypeForEach,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeSort,
   ArrayPrototypeUnshift,
@@ -46,32 +48,35 @@ const {
   Uint8Array,
 } = primordials;
 
-import {
-  Http2Session as InternalHttp2Session,
+const {
+  Http2Session: InternalHttp2Session,
   op_http2_callbacks,
-} from "ext:core/ops";
+} = core.ops;
 const { enqueueNodePerformanceEntry } = core.loadExtScript(
   "ext:deno_node/perf_hooks.js",
 );
 const { performance: webPerformance } = core.loadExtScript(
   "ext:deno_web/15_performance.js",
 );
-import net from "node:net";
+const lazyNet = core.createLazyLoader("node:net");
+const net = lazyNet().default;
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
-import http from "node:http";
+const lazyHttp = core.createLazyLoader("node:http");
+const http = lazyHttp().default;
 const { AsyncResource } = core.loadExtScript("ext:deno_node/async_hooks.ts");
-import {
-  _connectionListener as httpConnectionListener,
+const {
+  _connectionListener: httpConnectionListener,
   httpServerPreClose,
   kIncomingMessage,
   kServerResponse,
-  Server as HttpServer,
+  Server: HttpServer,
   setupConnectionsTracking,
   STATUS_CODES,
   storeHTTPOptions,
-} from "node:_http_server";
-import { Duplex } from "node:stream";
-import tls from "node:tls";
+} = core.createLazyLoader("node:_http_server")();
+const { Duplex } = core.createLazyLoader("node:stream")();
+const lazyTls = core.createLazyLoader("node:tls");
+const tls = lazyTls().default;
 const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 const dc = core.loadExtScript("ext:deno_node/diagnostics_channel.js").default;
 const { utcDate } = core.loadExtScript("ext:deno_node/internal/http.ts");
@@ -90,16 +95,21 @@ const {
   symbols,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { async_id_symbol } = symbols;
-import { kTimeout } from "ext:deno_node/internal/timers.mjs";
+const { kTimeout } = core.loadExtScript(
+  "ext:deno_node/internal/timers.mjs",
+);
 // Use node:timers' setTimeout/clearTimeout so the returned Timeout object
 // supports unref() -- globalThis.setTimeout returns a plain number.
-import { clearTimeout, setTimeout } from "node:timers";
+const lazyTimers = core.createLazyLoader("node:timers");
+const { clearTimeout, setTimeout } = lazyTimers();
 const { addAbortListener } = core.loadExtScript(
   "ext:deno_node/internal/events/abort_listener.mjs",
 );
-export { addAbortListener };
-import fs from "node:fs";
-import { FileHandle as FsFileHandle } from "ext:deno_node/internal/fs/handle.ts";
+const lazyFs = core.createLazyLoader("node:fs");
+const fs = lazyFs().default;
+const { FileHandle: FsFileHandle } = core.createLazyLoader(
+  "ext:deno_node/internal/fs/handle.ts",
+)();
 const { JSStreamSocket } = core.loadExtScript(
   "ext:deno_node/internal/js_stream_socket.js",
 );
@@ -225,6 +235,12 @@ const onClientStreamStartChannel = dc.channel("http2.client.stream.start");
 const onClientStreamErrorChannel = dc.channel("http2.client.stream.error");
 const onClientStreamFinishChannel = dc.channel("http2.client.stream.finish");
 const onClientStreamCloseChannel = dc.channel("http2.client.stream.close");
+const onClientStreamBodyChunkSentChannel = dc.channel(
+  "http2.client.stream.bodyChunkSent",
+);
+const onClientStreamBodySentChannel = dc.channel(
+  "http2.client.stream.bodySent",
+);
 const onServerStreamCreatedChannel = dc.channel("http2.server.stream.created");
 const onServerStreamStartChannel = dc.channel("http2.server.stream.start");
 const onServerStreamErrorChannel = dc.channel("http2.server.stream.error");
@@ -234,7 +250,8 @@ const onServerStreamCloseChannel = dc.channel("http2.server.stream.close");
 const { debuglog } = core.loadExtScript(
   "ext:deno_node/internal/util/debuglog.ts",
 );
-import console from "node:console";
+const lazyConsole = core.createLazyLoader("node:console");
+const console = lazyConsole().default;
 let debug = debuglog("http2", (fn) => {
   debug = fn;
 });
@@ -2227,10 +2244,42 @@ class Http2Stream extends Duplex {
   }
 
   _write(data, encoding, cb) {
+    if (
+      this[kSession]?.[kType] === NGHTTP2_SESSION_CLIENT &&
+      onClientStreamBodyChunkSentChannel.hasSubscribers
+    ) {
+      onClientStreamBodyChunkSentChannel.publish({
+        stream: this,
+        writev: false,
+        data,
+        encoding,
+      });
+    }
     this[kWriteGeneric](false, data, encoding, cb);
   }
 
   _writev(data, cb) {
+    if (
+      this[kSession]?.[kType] === NGHTTP2_SESSION_CLIENT &&
+      onClientStreamBodyChunkSentChannel.hasSubscribers
+    ) {
+      // `data` is the chunks array assembled by Writable.clearBuffer. When
+      // every queued write was a Buffer, the writable internals flag
+      // `chunks.allBuffers = true` and the bodyChunkSent channel reports
+      // the array of raw Buffers (matching Node's
+      // test-diagnostics-channel-http2-client-stream-body-multiple-buffers
+      // shape). For mixed encodings the {chunk, encoding} entries flow
+      // through verbatim.
+      const chunkData = data.allBuffers
+        ? ArrayPrototypeMap(data, (c) => c.chunk)
+        : data;
+      onClientStreamBodyChunkSentChannel.publish({
+        stream: this,
+        writev: true,
+        data: chunkData,
+        encoding: "",
+      });
+    }
     this[kWriteGeneric](true, data, "", cb);
   }
 
@@ -2282,6 +2331,19 @@ class Http2Stream extends Duplex {
       return;
     }
     debugStreamObj(this, "shutting down writable on _final");
+    if (
+      this[kSession]?.[kType] === NGHTTP2_SESSION_CLIENT &&
+      onClientStreamBodySentChannel.hasSubscribers
+    ) {
+      // bodySent fires once per ClientHttp2Stream when the writable side has
+      // received its final chunk (or end() with no chunks). _final is the
+      // Writable.prototype hook that runs after the last _write/_writev, so
+      // this is the right spot to report the body as fully queued. Empty-body
+      // requests still publish: tests/parallel/test-diagnostics-channel-
+      // http2-client-stream-body-no-chunks asserts bodySent fires without any
+      // preceding bodyChunkSent.
+      onClientStreamBodySentChannel.publish({ stream: this });
+    }
     ReflectApply(shutdownWritable, this, [cb]);
   }
 
@@ -5166,7 +5228,8 @@ function performServerHandshake(socket, options = {}) {
   return new ServerHttp2Session(options, socket, undefined);
 }
 
-export {
+return {
+  addAbortListener,
   ClientHttp2Session,
   connect,
   constants,
@@ -5183,17 +5246,4 @@ export {
   sensitiveHeaders,
   ServerHttp2Session,
 };
-
-export default {
-  constants,
-  connect,
-  createServer,
-  createSecureServer,
-  getDefaultSettings,
-  getPackedSettings,
-  getUnpackedSettings,
-  Http2ServerRequest,
-  Http2ServerResponse,
-  performServerHandshake,
-  sensitiveHeaders,
-};
+})();

@@ -131,13 +131,15 @@ const fn op_cppgc_object() -> ::deno_core::_ops::OpDecl {
             let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                 &<Self as deno_core::_ops::Op>::DECL,
             );
+            let parts: deno_core::v8::FunctionCallbackInfoParts<'s> = info.get_parts();
             let scope = ::std::pin::pin!(
                 unsafe { deno_core::v8::CallbackScope::new(info) }
             );
             let mut scope = scope.init();
-            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
-            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+            let mut rv = parts.return_value;
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info_parts(
                 info,
+                &parts,
             );
             let result = {
                 let arg0 = args.get(0usize as i32);
@@ -301,13 +303,15 @@ const fn op_option_cppgc_object() -> ::deno_core::_ops::OpDecl {
             let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                 &<Self as deno_core::_ops::Op>::DECL,
             );
+            let parts: deno_core::v8::FunctionCallbackInfoParts<'s> = info.get_parts();
             let scope = ::std::pin::pin!(
                 unsafe { deno_core::v8::CallbackScope::new(info) }
             );
             let mut scope = scope.init();
-            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
-            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+            let mut rv = parts.return_value;
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info_parts(
                 info,
+                &parts,
             );
             let result = {
                 let arg0 = args.get(0usize as i32);
@@ -375,11 +379,12 @@ const fn op_make_cppgc_object() -> ::deno_core::_ops::OpDecl {
             let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                 &<Self as deno_core::_ops::Op>::DECL,
             );
+            let parts: deno_core::v8::FunctionCallbackInfoParts<'s> = info.get_parts();
             let scope = ::std::pin::pin!(
                 unsafe { deno_core::v8::CallbackScope::new(info) }
             );
             let mut scope = scope.init();
-            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+            let mut rv = parts.return_value;
             let result = { Self::call() };
             rv.set(
                 deno_core::_ops::RustToV8::to_v8(
@@ -538,13 +543,15 @@ const fn op_use_cppgc_object() -> ::deno_core::_ops::OpDecl {
             let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                 &<Self as deno_core::_ops::Op>::DECL,
             );
+            let parts: deno_core::v8::FunctionCallbackInfoParts<'s> = info.get_parts();
             let scope = ::std::pin::pin!(
                 unsafe { deno_core::v8::CallbackScope::new(info) }
             );
             let mut scope = scope.init();
-            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
-            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+            let mut rv = parts.return_value;
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info_parts(
                 info,
+                &parts,
             );
             let result = {
                 let arg0 = args.get(0usize as i32);
@@ -608,11 +615,12 @@ const fn op_make_cppgc_object_option() -> ::deno_core::_ops::OpDecl {
             let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                 &<Self as deno_core::_ops::Op>::DECL,
             );
+            let parts: deno_core::v8::FunctionCallbackInfoParts<'s> = info.get_parts();
             let scope = ::std::pin::pin!(
                 unsafe { deno_core::v8::CallbackScope::new(info) }
             );
             let mut scope = scope.init();
-            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+            let mut rv = parts.return_value;
             let result = { Self::call() };
             rv.set(
                 deno_core::_ops::RustToV8::to_v8(
@@ -774,13 +782,15 @@ const fn op_use_cppgc_object_option() -> ::deno_core::_ops::OpDecl {
             let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                 &<Self as deno_core::_ops::Op>::DECL,
             );
+            let parts: deno_core::v8::FunctionCallbackInfoParts<'s> = info.get_parts();
             let scope = ::std::pin::pin!(
                 unsafe { deno_core::v8::CallbackScope::new(info) }
             );
             let mut scope = scope.init();
-            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
-            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+            let mut rv = parts.return_value;
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info_parts(
                 info,
+                &parts,
             );
             let result = {
                 let arg0 = args.get(0usize as i32);

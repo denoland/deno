@@ -546,7 +546,6 @@ pub fn op_require_resolve_exports<
   #[string] name: &str,
   #[string] expansion: &str,
   #[string] parent_path: &str,
-  #[serde] conditions: Option<Vec<String>>,
 ) -> Result<Option<String>, RequireError> {
   let sys = state.borrow::<TSys>();
   let node_resolver = state.borrow::<NodeResolverRc<
@@ -585,15 +584,6 @@ pub fn op_require_resolve_exports<
     Some(PathBuf::from(parent_path))
   };
   NodeResolutionThreadLocalCache::clear();
-  let conditions_cow: Vec<Cow<'static, str>> = conditions
-    .as_ref()
-    .map(|c| c.iter().map(|s| Cow::Owned(s.clone())).collect())
-    .unwrap_or_default();
-  let resolve_conditions = if conditions.is_some() {
-    &conditions_cow[..]
-  } else {
-    node_resolver.require_conditions()
-  };
   let r = node_resolver.package_exports_resolve(
     &pkg.path,
     &format!(".{expansion}"),
@@ -603,7 +593,7 @@ pub fn op_require_resolve_exports<
       .map(|r| UrlOrPathRef::from_path(r))
       .as_ref(),
     ResolutionMode::Require,
-    resolve_conditions,
+    node_resolver.require_conditions(),
     NodeResolutionKind::Execution,
   )?;
   Ok(Some(url_or_path_to_string(r)?))

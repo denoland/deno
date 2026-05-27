@@ -28,7 +28,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const {
   op_dns_resolve,
   op_net_get_ips_from_perm_token,

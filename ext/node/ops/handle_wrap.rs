@@ -239,7 +239,7 @@ pub fn op_node_new_async_id(state: &mut OpState) -> f64 {
 #[repr(C)]
 pub struct AsyncWrap {
   provider: i32,
-  async_id: i64,
+  async_id: Cell<i64>,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -255,7 +255,10 @@ impl AsyncWrap {
   pub(crate) fn create(state: &mut OpState, provider: i32) -> Self {
     let async_id = next_async_id(state);
 
-    Self { provider, async_id }
+    Self {
+      provider,
+      async_id: Cell::new(async_id),
+    }
   }
 }
 
@@ -268,12 +271,17 @@ impl AsyncWrap {
 
   #[fast]
   fn get_async_id(&self) -> f64 {
-    self.async_id as f64
+    self.async_id.get() as f64
   }
 
   #[fast]
   fn get_provider_type(&self) -> i32 {
     self.provider
+  }
+
+  #[fast]
+  fn async_reset(&self, state: &mut OpState) {
+    self.async_id.set(next_async_id(state));
   }
 }
 

@@ -7,7 +7,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const {
   op_node_in_npm_package,
   op_node_ipc_buffer_constructor,
@@ -84,13 +84,17 @@ const {
   TCP,
 } = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
 const lazyNet = core.createLazyLoader("node:net");
+const { channel: createDiagnosticsChannel, tracingChannel } = core
+  .loadExtScript(
+    "ext:deno_node/diagnostics_channel.js",
+  );
+const childProcessChannel = createDiagnosticsChannel("child_process");
+const childProcessSpawnChannel = tracingChannel("child_process.spawn");
 const lazyDgram = core.createLazyLoader("node:dgram");
-const lazyDgramInternal = core.createLazyLoader(
-  "ext:deno_node/internal/dgram.ts",
-);
-const lazyUdpWrap = core.createLazyLoader(
-  "ext:deno_node/internal_binding/udp_wrap.ts",
-);
+const lazyDgramInternal = () =>
+  core.loadExtScript("ext:deno_node/internal/dgram.ts");
+const lazyUdpWrap = () =>
+  core.loadExtScript("ext:deno_node/internal_binding/udp_wrap.ts");
 const {
   kNeedsNpmProcessState,
   nodeSpawnChild,
@@ -238,6 +242,13 @@ class ChildProcess extends EventEmitter {
 
   constructor() {
     super();
+
+    // 'child_process' channel fires once per ChildProcess construction, before
+    // spawn(). cluster.fork() / cp.fork() / cp.spawn() all flow through here,
+    // so a single publish site covers every entry point.
+    if (childProcessChannel.hasSubscribers) {
+      childProcessChannel.publish({ process: this });
+    }
   }
 
   /**
@@ -268,6 +279,13 @@ class ChildProcess extends EventEmitter {
       throw new ERR_INVALID_ARG_TYPE("options.file", "string", file);
     }
 
+    // 'child_process.spawn' tracingChannel: publish start before invoking the
+    // platform spawn. #spawnInternal publishes end on success or error on
+    // synchronous spawn failures (ENOENT/EACCES/EPERM) itself, because it
+    // catches and handles the failure rather than re-throwing.
+    if (childProcessSpawnChannel.hasSubscribers) {
+      childProcessSpawnChannel.start.publish({ process: this, options });
+    }
     this.#spawnInternal(file, args || [], options);
   }
 
@@ -566,6 +584,12 @@ class ChildProcess extends EventEmitter {
           nextTick(flushStdio, this);
         });
       })();
+
+      // Synchronous spawn succeeded. Publish 'child_process.spawn'.end so the
+      // tracing channel mirrors Node's "end XOR error" semantics.
+      if (childProcessSpawnChannel.hasSubscribers) {
+        childProcessSpawnChannel.end.publish({ process: this });
+      }
     } catch (err) {
       const { Readable, Writable } = lazyStream();
       let e = err;
@@ -573,8 +597,37 @@ class ChildProcess extends EventEmitter {
         // args.slice(1) to exclude argv0 (prepended by normalizeSpawnArguments)
         e = _createSpawnError("ENOENT", command, args.slice(1));
       } else if (e instanceof Deno.errors.PermissionDenied) {
-        // Node.js throws EPERM synchronously for uid/gid permission errors.
-        throw _createSpawnError("EPERM", command, args.slice(1));
+        // Node distinguishes two failure modes that Deno collapses into
+        // PermissionDenied:
+        //   * setuid/setgid refused by the kernel -> EPERM, thrown sync,
+        //     matching `process_handle_init` in libuv.
+        //   * execve() refused because the target isn't executable -> EACCES,
+        //     emitted asynchronously on the child's 'error' event (see Node's
+        //     test-diagnostics-channel-child-process EACCES branch).
+        // Tell them apart by whether uid/gid were requested.
+        if (uid != null || gid != null) {
+          if (childProcessSpawnChannel.hasSubscribers) {
+            const epermErr = _createSpawnError(
+              "EPERM",
+              command,
+              args.slice(1),
+            );
+            childProcessSpawnChannel.error.publish({
+              process: this,
+              error: epermErr,
+            });
+            throw epermErr;
+          }
+          throw _createSpawnError("EPERM", command, args.slice(1));
+        }
+        e = _createSpawnError("EACCES", command, args.slice(1));
+      }
+
+      // Publish 'child_process.spawn'.error for the non-rethrow cases (ENOENT
+      // and other Deno spawn failures that turn into an async 'error' event
+      // on the child). Subscribers see the synthesized Node-style error.
+      if (childProcessSpawnChannel.hasSubscribers) {
+        childProcessSpawnChannel.error.publish({ process: this, error: e });
       }
 
       // Set up stdio streams even when spawn fails (Node.js creates pipes
@@ -1323,7 +1376,7 @@ function transformDenoShellCommand(
     // Shell-quote translated args that contain metacharacters so they are
     // safe to embed in a shell command string.
     const quotedArgs = isWindows
-      ? result.deno_args.map((a) => {
+      ? result.denoArgs.map((a) => {
         // Windows cmd.exe: use double quotes for args with spaces or
         // special chars. Backslash is a path separator, not an escape.
         if (/[\s"&|<>^]/.test(a)) {
@@ -1333,7 +1386,7 @@ function transformDenoShellCommand(
         }
         return a;
       })
-      : result.deno_args.map((a) => {
+      : result.denoArgs.map((a) => {
         // POSIX shell quoting for translated args.
         const hasShellVarRef = /\$\{[^}]+\}|\$[A-Za-z_]/.test(a);
         const unsafeInDoubleQuotes = /`|\$\(|\\/.test(a);
@@ -1433,20 +1486,23 @@ function buildCommand(
     // Use the Rust parser to translate Node.js args to Deno args
     // The parser handles Deno-style args (e.g., "run -A script.js") by passing them through unchanged
     const result = op_node_translate_cli_args(args, scriptInNpmPackage, true);
-    args = result.deno_args;
-    includeNpmProcessState = result.needs_npm_process_state;
-    if (result.ca_stores?.length) {
-      env.DENO_TLS_CA_STORE = result.ca_stores.join(",");
+    args = result.denoArgs;
+    includeNpmProcessState = result.needsNpmProcessState;
+    if (result.caStores?.length) {
+      env.DENO_TLS_CA_STORE = result.caStores.join(",");
     }
-    if (result.use_openssl_ca) {
+    if (result.useOpensslCa) {
       env.DENO_NODE_USE_OPENSSL_CA = "1";
     } else {
       delete env.DENO_NODE_USE_OPENSSL_CA;
     }
+    if (result.traceEventCategories) {
+      env.DENO_NODE_TRACE_EVENT_CATEGORIES = result.traceEventCategories;
+    }
 
     // Update NODE_OPTIONS if needed
-    if (result.node_options.length > 0) {
-      const options = result.node_options.join(" ");
+    if (result.nodeOptions.length > 0) {
+      const options = result.nodeOptions.join(" ");
       if (env.NODE_OPTIONS) {
         env.NODE_OPTIONS += " " + options;
       } else {
@@ -1503,7 +1559,7 @@ function buildCommand(
       if (argsForDeno.length > 0) {
         try {
           const result = op_node_translate_cli_args(argsForDeno, false, true);
-          args = [...args.slice(0, denoArgIndex + 1), ...result.deno_args];
+          args = [...args.slice(0, denoArgIndex + 1), ...result.denoArgs];
         } catch {
           // If translation fails (unknown flags), leave args unchanged
         }

@@ -4,7 +4,7 @@
 // HTTP/2 classes that some tests use for `instanceof` checks.
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const lazyHttp2 = core.createLazyLoader("node:http2");
 
 return {

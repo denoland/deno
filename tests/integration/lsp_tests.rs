@@ -2790,6 +2790,33 @@ fn lsp_hover_dependency() {
   client.shutdown();
 }
 
+#[test(timeout = 300)]
+fn lsp_hover_unresolved_dependency_in_dts() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/types.d.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import UI5Element from 'unresolved-bare-specifier';\n",
+    }
+  }));
+
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/types.d.ts",
+      },
+      "position": { "line": 0, "character": 29 }
+    }),
+  );
+  assert_eq!(res, json!(null));
+  client.shutdown();
+}
+
 // This tests for a regression covered by denoland/deno#12753 where the lsp was
 // unable to resolve dependencies when there was an invalid syntax in the module
 #[test(timeout = 300)]
@@ -9202,7 +9229,6 @@ fn lsp_completions_node_specifier() {
       "node:string_decoder",
       "node:sys",
       "node:test",
-      "node:test/reporters",
       "node:timers",
       "node:timers/promises",
       "node:tls",

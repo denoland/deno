@@ -4,37 +4,39 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
-import { core } from "ext:core/mod.js";
-import tls from "node:tls";
-import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
-import {
-  _connectionListener,
-  ClientRequest,
-  type ServerHandler,
-  ServerImpl as HttpServer,
-} from "node:http";
+(function () {
+const { core } = __bootstrap;
+const lazyTls = core.createLazyLoader("node:tls");
+const { urlToHttpOptions } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
+const lazyHttp = core.createLazyLoader("node:http");
 const { ERR_INVALID_URL } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
-import {
+const {
   httpServerPreClose,
   setupConnectionsTracking,
   storeHTTPOptions,
-} from "node:_http_server";
-import { Agent as HttpAgent } from "node:_http_agent";
+} = core.createLazyLoader("node:_http_server")();
+const { Agent: HttpAgent } = core.createLazyLoader("node:_http_agent")();
 const { validateObject } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
 const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
+const tls = lazyTls().default;
+const http = lazyHttp();
+const { _connectionListener, ClientRequest, ServerImpl: HttpServer } = http;
+
 // https.Server extends tls.Server (which extends net.Server).
 // Each accepted TCP connection is wrapped with TLS by tls.Server's
 // connectionListener, then the HTTP _connectionListener handles the
 // HTTP protocol on the decrypted stream. Matches Node.js architecture.
-export function Server(
+function Server(
   this: any,
   opts: any,
-  requestListener?: ServerHandler,
+  requestListener?: any,
 ) {
   if (!(this instanceof Server)) {
     return new (Server as any)(opts, requestListener);
@@ -98,15 +100,15 @@ Server.prototype[Symbol.asyncDispose] = async function (this: any) {
   });
 };
 
-export function createServer(
+function createServer(
   opts: any,
-  requestListener?: ServerHandler,
+  requestListener?: any,
 ) {
   return new (Server as any)(opts, requestListener);
 }
 
 /** Makes a GET request to an https server. */
-export function get(...args: any[]) {
+function get(...args: any[]) {
   const req = request(args[0], args[1], args[2]);
   req.end();
   return req;
@@ -115,7 +117,7 @@ export function get(...args: any[]) {
 // Defined as a regular function (not a `class`) so that `https.Agent()` may be
 // invoked without `new`, matching Node:
 // https://github.com/nodejs/node/blob/main/lib/https.js
-export function Agent(this: any, options: any) {
+function Agent(this: any, options: any) {
   if (!(this instanceof Agent)) {
     return new (Agent as any)(options);
   }
@@ -248,26 +250,28 @@ Agent.prototype._evictSession = function _evictSession(
 
 Agent.prototype.createConnection = function createConnection(
   this: any,
-  options: any,
-  cb?: any,
+  ...args: any[]
 ) {
-  if (typeof options === "number") {
+  let options = args[0];
+  const cb = typeof args[args.length - 1] === "function"
+    ? args[args.length - 1]
+    : undefined;
+
+  if (typeof args[0] === "number") {
     // createConnection(port, host, options) signature
-    const args = arguments;
     const opts: any = {};
-    if (args[0] !== null && typeof args[0] === "object") {
-      Object.assign(opts, args[0]);
-    } else if (args[1] !== null && typeof args[1] === "object") {
-      Object.assign(opts, args[1]);
-    } else if (args[2] !== null && typeof args[2] === "object") {
-      Object.assign(opts, args[2]);
+    for (let i = 1; i < args.length; i++) {
+      if (args[i] !== null && typeof args[i] === "object") {
+        Object.assign(opts, args[i]);
+      }
     }
     if (typeof args[0] === "number") opts.port = args[0];
     if (typeof args[1] === "string") opts.host = args[1];
-    if (typeof args[args.length - 1] === "function") {
-      cb = args[args.length - 1];
-    }
     options = opts;
+  } else if (options !== null && typeof options === "object") {
+    options = { ...options };
+  } else {
+    options = {};
   }
 
   // Look up cached TLS session for reuse
@@ -298,14 +302,14 @@ Agent.prototype.createConnection = function createConnection(
   return socket;
 };
 
-export const globalAgent = new Agent({
+const globalAgent = new (Agent as any)({
   keepAlive: true,
   scheduling: "lifo",
   timeout: 5000,
 });
 
 /** Makes a request to an https server. */
-export function request(...args: any[]) {
+function request(...args: any[]) {
   let options: any = {};
 
   if (typeof args[0] === "string") {
@@ -332,7 +336,15 @@ export function request(...args: any[]) {
   return new ClientRequest(args[0], args[1], args[2]);
 }
 
-export default {
+// `agent-base` (used by `@npmcli/agent`, `http-proxy-agent`, etc.) figures
+// out whether a polymorphic agent should behave as https by scanning the
+// current stack for `(https.js:` or `node:https:`. Without a marker the
+// stack only shows our polyfill path and the agent reports `protocol:
+// "http:"`, causing `http.ClientRequest` to throw `ERR_INVALID_PROTOCOL`
+// against an `https:` URL. Encode the marker in the function name.
+Object.defineProperty(request, "name", { value: "node:https:request" });
+
+return {
   Agent,
   Server,
   createServer,
@@ -340,3 +352,4 @@ export default {
   globalAgent,
   request,
 };
+})();

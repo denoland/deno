@@ -22,6 +22,11 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const lazyStream = core.createLazyLoader("node:stream");
+// `node:tty`'s module body calls `setReadStream(...)` to register the TTY
+// ReadStream class with this file. We used to rely on `node:tty` being
+// loaded eagerly at snapshot from 01_require.js; now it's lazy, so the TTY
+// branch of `initStdin` has to force-load it before using `readStream`.
+const lazyTty = core.createLazyLoader("node:tty");
 const io = core.loadExtScript("ext:deno_io/12_io.js");
 const { guessHandleType } = core.loadExtScript(
   "ext:deno_node/internal_binding/util.ts",
@@ -245,6 +250,8 @@ export const initStdin = (warmup = false) => {
       if (warmup) {
         return null;
       }
+      // Force `node:tty` to evaluate so its body runs `setReadStream`.
+      lazyTty();
       stdin = new readStream(fd);
       break;
     }

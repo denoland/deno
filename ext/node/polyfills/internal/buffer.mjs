@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // Copyright Feross Aboukhadijeh, and other contributors. All rights reserved. MIT license.
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   isAnyArrayBuffer,
   isArrayBuffer,
@@ -1021,6 +1021,14 @@ Buffer.prototype.base64Slice = function base64Slice(
   offset,
   length,
 ) {
+  if (offset === undefined) {
+    offset = 0;
+  }
+
+  if (length === undefined) {
+    length = this.length;
+  }
+
   // Use op_base64_encode (#[string] return) for small buffers where
   // the lighter-weight op2 string path is faster.
   // Use op_base64_encode_from_buffer (v8::String::new_external_onebyte) for

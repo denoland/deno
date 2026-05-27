@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   ArrayIsArray,
   ArrayPrototypePush,
@@ -333,11 +333,14 @@ class Headers {
 
     const list = this[_headerList];
     const lowercaseName = byteLowerCase(name);
+    let writeIdx = 0;
     for (let i = 0; i < list.length; i++) {
-      if (byteLowerCase(list[i][0]) === lowercaseName) {
-        ArrayPrototypeSplice(list, i, 1);
-        i--;
+      if (byteLowerCase(list[i][0]) !== lowercaseName) {
+        list[writeIdx++] = list[i];
       }
+    }
+    if (writeIdx !== list.length) {
+      ArrayPrototypeSplice(list, writeIdx);
     }
   }
 
@@ -422,20 +425,24 @@ class Headers {
 
     const list = this[_headerList];
     const lowercaseName = byteLowerCase(name);
+    let writeIdx = 0;
     let added = false;
     for (let i = 0; i < list.length; i++) {
-      if (byteLowerCase(list[i][0]) === lowercaseName) {
+      const entry = list[i];
+      if (byteLowerCase(entry[0]) === lowercaseName) {
         if (!added) {
-          list[i][1] = value;
+          entry[1] = value;
+          list[writeIdx++] = entry;
           added = true;
-        } else {
-          ArrayPrototypeSplice(list, i, 1);
-          i--;
         }
+      } else {
+        list[writeIdx++] = entry;
       }
     }
     if (!added) {
       ArrayPrototypePush(list, [name, value]);
+    } else if (writeIdx !== list.length) {
+      ArrayPrototypeSplice(list, writeIdx);
     }
   }
 

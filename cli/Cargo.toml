@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.7.14"
+version = "2.8.1"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -44,8 +44,8 @@ lsp-tracing = ["dep:tracing", "dep:tracing-subscriber", "dep:tracing-opentelemet
 panic-trace = ["deno_panic"]
 
 [build-dependencies]
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_runtime = { workspace = true }
+deno_core = { workspace = true }
 lazy-regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -62,7 +62,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_bundle_runtime.workspace = true
 deno_cache_dir = { workspace = true, features = ["sync"] }
 deno_config = { workspace = true, features = ["sync", "workspace"] }
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_core.workspace = true
 deno_doc = { workspace = true, features = ["rust", "comrak"] }
 deno_error.workspace = true
 deno_graph = { workspace = true, features = ["fast_check"] }
@@ -78,14 +78,13 @@ deno_package_json = { workspace = true, features = ["sync"] }
 deno_panic = { version = "0.2.0", optional = true }
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["deno_ast", "graph", "sync"] }
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_runtime.workspace = true
 deno_semver.workspace = true
 deno_signals.workspace = true
 deno_snapshots.workspace = true
 deno_task_shell.workspace = true
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
-deno_typescript_go_client_rust.workspace = true
 eszip.workspace = true
 libsui.workspace = true
 node_resolver = { workspace = true, features = ["graph", "sync"] }
@@ -99,14 +98,12 @@ bincode.workspace = true
 boxed_error.workspace = true
 bsdiff.workspace = true
 bytes.workspace = true
-bytes-str = "0.2.5"
 capacity_builder.workspace = true
 chrono = { workspace = true, features = ["now"] }
 clap = { workspace = true, features = ["env", "string", "wrap_help", "error-context"] }
 clap_complete.workspace = true
 clap_complete_fig.workspace = true
 color-print.workspace = true
-comrak.workspace = true
 console_static_text.workspace = true
 crossterm.workspace = true
 dashmap.workspace = true
@@ -123,6 +120,7 @@ faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
 flate2.workspace = true
 fluent-uri.workspace = true
+glob.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
@@ -153,7 +151,6 @@ pathdiff.workspace = true
 percent-encoding.workspace = true
 phf.workspace = true
 pretty_yaml.workspace = true
-quick-junit.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 rustc-hash.workspace = true
@@ -175,7 +172,6 @@ text_lines.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
-tower.workspace = true
 tower-lsp.workspace = true
 tracing = { workspace = true, features = ["log"], optional = true }
 tracing-opentelemetry = { workspace = true, optional = true }
@@ -195,14 +191,13 @@ deno_subprocess_windows.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
-shell-escape = "=0.1.5"
 [target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]
 tokio-vsock.workspace = true
 
 [dev-dependencies]
 # unsafe_use_unprotected_platform is a workaround for a segfault that may occur
 # when running multiple v8 tests on different threads
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting", "unsafe_use_unprotected_platform"] }
+deno_core = { workspace = true, features = ["unsafe_use_unprotected_platform"] }
 pretty_assertions.workspace = true
 sys_traits = { workspace = true, features = ["memory"] }
 test_util.workspace = true
@@ -213,3 +208,6 @@ OriginalFilename = "deno.exe"
 LegalCopyright = "© Deno contributors & Deno Land Inc. MIT licensed."
 ProductName = "Deno"
 FileDescription = "Deno: A secure runtime for JavaScript and TypeScript"
+
+[package.metadata.cargo-shear]
+ignored = ["locked-tripwire"]

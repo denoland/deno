@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials, internals } = globalThis.__bootstrap;
+const { core, primordials, internals } = __bootstrap;
 const {
   isArrayBuffer,
   isTypedArray,
@@ -39,6 +39,7 @@ const {
   op_crypto_sign_ed25519,
   op_crypto_sign_key,
   op_crypto_subtle_digest,
+  op_crypto_subtle_digest_xof,
   op_crypto_unwrap_key,
   op_crypto_verify_ed25519,
   op_crypto_verify_key,
@@ -119,6 +120,16 @@ const simpleAlgorithmDictionaries = {
   RsaOaepParams: { label: "BufferSource" },
   RsaHashedImportParams: { hash: "HashAlgorithmIdentifier" },
   EcKeyImportParams: {},
+  ChaCha20Poly1305Params: {
+    nonce: "BufferSource",
+    additionalData: "BufferSource",
+  },
+  ShakeParams: {},
+  CShakeParams: {
+    functionName: "BufferSource",
+    customization: "BufferSource",
+  },
+  TurboShakeParams: {},
 };
 
 const supportedAlgorithms = {
@@ -130,6 +141,12 @@ const supportedAlgorithms = {
     "SHA3-256": null,
     "SHA3-384": null,
     "SHA3-512": null,
+    "SHAKE128": "ShakeParams",
+    "SHAKE256": "ShakeParams",
+    "cSHAKE128": "CShakeParams",
+    "cSHAKE256": "CShakeParams",
+    "TurboSHAKE128": "TurboShakeParams",
+    "TurboSHAKE256": "TurboShakeParams",
   },
   "generateKey": {
     "RSASSA-PKCS1-v1_5": "RsaHashedKeyGenParams",
@@ -143,6 +160,7 @@ const supportedAlgorithms = {
     "AES-OCB": "AesKeyGenParams",
     "AES-KW": "AesKeyGenParams",
     "HMAC": "HmacKeyGenParams",
+    "ChaCha20-Poly1305": null,
     "X25519": null,
     "X448": null,
     "Ed25519": null,
@@ -193,7 +211,7 @@ const supportedAlgorithms = {
     "AES-GCM": "AesGcmParams",
     "AES-OCB": "AesGcmParams",
     "AES-CTR": "AesCtrParams",
-    "ChaCha20-Poly1305": null,
+    "ChaCha20-Poly1305": "ChaCha20Poly1305Params",
   },
   "decrypt": {
     "RSA-OAEP": "RsaOaepParams",
@@ -201,7 +219,7 @@ const supportedAlgorithms = {
     "AES-GCM": "AesGcmParams",
     "AES-OCB": "AesGcmParams",
     "AES-CTR": "AesCtrParams",
-    "ChaCha20-Poly1305": null,
+    "ChaCha20-Poly1305": "ChaCha20Poly1305Params",
   },
   "get key length": {
     "AES-CBC": "AesDerivedKeyParams",
@@ -579,6 +597,48 @@ class SubtleCrypto {
 
     algorithm = normalizeAlgorithm(algorithm, "digest");
 
+    switch (algorithm.name) {
+      case "SHAKE128":
+      case "SHAKE256":
+      case "cSHAKE128":
+      case "cSHAKE256":
+      case "TurboSHAKE128":
+      case "TurboSHAKE256": {
+        if (algorithm.length === undefined || algorithm.length === 0) {
+          throw new DOMException(
+            `'length' must be a positive multiple of 8 for ${algorithm.name}`,
+            "OperationError",
+          );
+        }
+        if (algorithm.length % 8 !== 0) {
+          throw new DOMException(
+            `'length' must be a multiple of 8 for ${algorithm.name}`,
+            "OperationError",
+          );
+        }
+        if (
+          (algorithm.name === "TurboSHAKE128" ||
+            algorithm.name === "TurboSHAKE256") &&
+          algorithm.domainSeparation !== undefined &&
+          (algorithm.domainSeparation < 0x01 ||
+            algorithm.domainSeparation > 0x7F)
+        ) {
+          throw new DOMException(
+            "'domainSeparation' must be in [0x01, 0x7F]",
+            "OperationError",
+          );
+        }
+        const xofResult = await op_crypto_subtle_digest_xof({
+          name: algorithm.name,
+          length: algorithm.length,
+          functionName: algorithm.functionName ?? null,
+          customization: algorithm.customization ?? null,
+          domainSeparation: algorithm.domainSeparation ?? null,
+        }, data);
+        return TypedArrayPrototypeGetBuffer(xofResult);
+      }
+    }
+
     const result = await op_crypto_subtle_digest(
       algorithm.name,
       data,
@@ -832,6 +892,40 @@ class SubtleCrypto {
         }, data);
 
         // 9.
+        return TypedArrayPrototypeGetBuffer(plaintext);
+      }
+      case "ChaCha20-Poly1305": {
+        if (normalizedAlgorithm.nonce === undefined) {
+          throw new TypeError("nonce is required");
+        }
+        normalizedAlgorithm.nonce = copyBuffer(normalizedAlgorithm.nonce);
+        if (
+          TypedArrayPrototypeGetByteLength(normalizedAlgorithm.nonce) !== 12
+        ) {
+          throw new DOMException(
+            "ChaCha20-Poly1305 nonce must be 12 bytes",
+            "OperationError",
+          );
+        }
+        if (TypedArrayPrototypeGetByteLength(data) < 16) {
+          throw new DOMException(
+            "The provided data is too small",
+            "OperationError",
+          );
+        }
+        if (normalizedAlgorithm.additionalData !== undefined) {
+          normalizedAlgorithm.additionalData = copyBuffer(
+            normalizedAlgorithm.additionalData,
+          );
+        }
+
+        const plaintext = await op_crypto_decrypt({
+          key: keyData,
+          algorithm: "ChaCha20-Poly1305",
+          nonce: normalizedAlgorithm.nonce,
+          additionalData: normalizedAlgorithm.additionalData || null,
+        }, data);
+
         return TypedArrayPrototypeGetBuffer(plaintext);
       }
       default:
@@ -2136,6 +2230,46 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
 
       return { publicKey, privateKey };
     }
+    case "ChaCha20-Poly1305": {
+      // 1.
+      if (
+        ArrayPrototypeFind(
+          usages,
+          (u) =>
+            !ArrayPrototypeIncludes([
+              "encrypt",
+              "decrypt",
+              "wrapKey",
+              "unwrapKey",
+            ], u),
+        ) !== undefined
+      ) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+
+      // 2. ChaCha20-Poly1305 keys are always 256 bits.
+      const keyData = await op_crypto_generate_key({
+        algorithm: "AES",
+        length: 256,
+      });
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, {
+        type: "secret",
+        data: keyData,
+      });
+
+      const algorithm = {
+        name: algorithmName,
+      };
+
+      return constructKey(
+        "secret",
+        extractable,
+        usages,
+        algorithm,
+        handle,
+      );
+    }
     case "HMAC": {
       // 1.
       if (
@@ -2204,6 +2338,10 @@ function importKeyX448(
       // 1.
       if (keyUsages.length > 0) {
         throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+
+      if (TypedArrayPrototypeGetByteLength(keyData) !== 56) {
+        throw new DOMException("Invalid key data", "DataError");
       }
 
       const handle = {};
@@ -2357,7 +2495,15 @@ function importKeyX448(
       // 9.
       if (jwk.d !== undefined) {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const privateKeyData = op_crypto_base64url_decode(jwk.d);
+        let privateKeyData;
+        try {
+          privateKeyData = op_crypto_base64url_decode(jwk.d);
+        } catch (_) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(privateKeyData) !== 56) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2375,7 +2521,15 @@ function importKeyX448(
         );
       } else {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const publicKeyData = op_crypto_base64url_decode(jwk.x);
+        let publicKeyData;
+        try {
+          publicKeyData = op_crypto_base64url_decode(jwk.x);
+        } catch (_) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(publicKeyData) !== 56) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
@@ -2414,6 +2568,10 @@ function importKeyEd25519(
         ) !== undefined
       ) {
         throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+
+      if (TypedArrayPrototypeGetByteLength(keyData) !== 32) {
+        throw new DOMException("Invalid key data", "DataError");
       }
 
       const handle = {};
@@ -2586,6 +2744,9 @@ function importKeyEd25519(
         } catch (_) {
           throw new DOMException("Invalid private key data", "DataError");
         }
+        if (TypedArrayPrototypeGetByteLength(privateKeyData) !== 32) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2607,6 +2768,9 @@ function importKeyEd25519(
         try {
           publicKeyData = op_crypto_base64url_decode(jwk.x);
         } catch (_) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(publicKeyData) !== 32) {
           throw new DOMException("Invalid public key data", "DataError");
         }
 
@@ -2642,6 +2806,10 @@ function importKeyX25519(
       // 1.
       if (keyUsages.length > 0) {
         throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+
+      if (TypedArrayPrototypeGetByteLength(keyData) !== 32) {
+        throw new DOMException("Invalid key data", "DataError");
       }
 
       const handle = {};
@@ -2795,7 +2963,15 @@ function importKeyX25519(
       // 9.
       if (jwk.d !== undefined) {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const privateKeyData = op_crypto_base64url_decode(jwk.d);
+        let privateKeyData;
+        try {
+          privateKeyData = op_crypto_base64url_decode(jwk.d);
+        } catch (_) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(privateKeyData) !== 32) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2813,7 +2989,15 @@ function importKeyX25519(
         );
       } else {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const publicKeyData = op_crypto_base64url_decode(jwk.x);
+        let publicKeyData;
+        try {
+          publicKeyData = op_crypto_base64url_decode(jwk.x);
+        } catch (_) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(publicKeyData) !== 32) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
@@ -5360,6 +5544,36 @@ async function encrypt(normalizedAlgorithm, key, data) {
       // 7.
       return TypedArrayPrototypeGetBuffer(cipherText);
     }
+    case "ChaCha20-Poly1305": {
+      if (normalizedAlgorithm.nonce === undefined) {
+        throw new TypeError("nonce is required");
+      }
+      normalizedAlgorithm.nonce = copyBuffer(normalizedAlgorithm.nonce);
+      if (TypedArrayPrototypeGetByteLength(normalizedAlgorithm.nonce) !== 12) {
+        throw new DOMException(
+          "ChaCha20-Poly1305 nonce must be 12 bytes",
+          "OperationError",
+        );
+      }
+      // RFC 8439 plaintext size cap.
+      if (TypedArrayPrototypeGetByteLength(data) > ((2 ** 32) - 1) * 64) {
+        throw new DOMException("Plaintext too large", "OperationError");
+      }
+      if (normalizedAlgorithm.additionalData !== undefined) {
+        normalizedAlgorithm.additionalData = copyBuffer(
+          normalizedAlgorithm.additionalData,
+        );
+      }
+
+      const cipherText = await op_crypto_encrypt({
+        key: keyData,
+        algorithm: "ChaCha20-Poly1305",
+        nonce: normalizedAlgorithm.nonce,
+        additionalData: normalizedAlgorithm.additionalData || null,
+      }, data);
+
+      return TypedArrayPrototypeGetBuffer(cipherText);
+    }
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
   }
@@ -5932,6 +6146,76 @@ const dictEcdhKeyDeriveParams = [
 
 webidl.converters.EcdhKeyDeriveParams = webidl
   .createDictionaryConverter("EcdhKeyDeriveParams", dictEcdhKeyDeriveParams);
+
+const dictChaCha20Poly1305Params = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "nonce",
+    converter: webidl.converters["BufferSource"],
+    required: true,
+  },
+  {
+    key: "additionalData",
+    converter: webidl.converters["BufferSource"],
+  },
+];
+
+webidl.converters.ChaCha20Poly1305Params = webidl.createDictionaryConverter(
+  "ChaCha20Poly1305Params",
+  dictChaCha20Poly1305Params,
+);
+
+const dictShakeParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "length",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+    required: true,
+  },
+];
+
+webidl.converters.ShakeParams = webidl.createDictionaryConverter(
+  "ShakeParams",
+  dictShakeParams,
+);
+
+const dictCShakeParams = [
+  ...new SafeArrayIterator(dictShakeParams),
+  {
+    key: "functionName",
+    converter: webidl.converters["BufferSource"],
+  },
+  {
+    key: "customization",
+    converter: webidl.converters["BufferSource"],
+  },
+];
+
+webidl.converters.CShakeParams = webidl.createDictionaryConverter(
+  "CShakeParams",
+  dictCShakeParams,
+);
+
+const dictTurboShakeParams = [
+  ...new SafeArrayIterator(dictShakeParams),
+  {
+    key: "domainSeparation",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["octet"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+  },
+];
+
+webidl.converters.TurboShakeParams = webidl.createDictionaryConverter(
+  "TurboShakeParams",
+  dictTurboShakeParams,
+);
 
 // Bridge functions for Node.js KeyObject interop
 

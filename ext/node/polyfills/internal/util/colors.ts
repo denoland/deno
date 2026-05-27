@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const io = core.loadExtScript("ext:deno_io/12_io.js");
 
 let blue = "";

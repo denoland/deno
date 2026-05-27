@@ -22,7 +22,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 
 const {
   // isExternal,
