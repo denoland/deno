@@ -3451,14 +3451,13 @@ function watch(
   validateIgnoreOption(options?.ignore, "options.ignore");
   const ignoreMatcher = createIgnoreMatcher(options?.ignore);
 
-  // Open the underlying Deno.FsWatcher, but defer any failure to an
-  // 'error' event on the returned FSWatcher rather than throwing
-  // synchronously with a raw `Deno.errors.NotFound`. Editors that
-  // atomically save (write to <file>.tmp.<pid>.<ts> then rename over
-  // the original) can race the inotify watch and produce a transient
-  // ENOENT here; callers using EventEmitter-style error handling
-  // (chokidar, vite) can't recover from a sync throw of a Deno error.
-  // See denoland/deno#34396.
+  // Open the underlying FsWatcher, but defer any failure to an 'error'
+  // event on the returned FSWatcher rather than throwing synchronously
+  // with a raw NotFound. Editors that atomically save (write to
+  // <file>.tmp.<pid>.<ts> then rename over the original) can race the
+  // inotify watch and produce a transient ENOENT here; callers using
+  // EventEmitter-style error handling (chokidar, vite) can't recover
+  // from a sync throw. See denoland/deno#34396.
   let iterator: Deno.FsWatcher | undefined;
   let openError: Error | undefined;
   let resolvedWatchPath = watchPath;
@@ -3475,21 +3474,10 @@ function watch(
       } catch { /* ignore */ }
       iterator = undefined;
     }
-    // The notify crate's PathNotFound/WatchNotFound error messages don't
-    // include the "(os error N)" suffix that `denoErrorToNodeError` parses,
-    // so detect NotFound by class and build a Node-style ENOENT manually.
-    if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)) {
-      openError = uvException({
-        errno: codeMap.get("ENOENT")!,
-        syscall: "watch",
-        path: watchPath,
-      });
-    } else {
-      openError = denoErrorToNodeError(e as Error, {
-        syscall: "watch",
-        path: watchPath,
-      });
-    }
+    openError = denoErrorToNodeError(e as Error, {
+      syscall: "watch",
+      path: watchPath,
+    });
   }
 
   if (iterator) {
