@@ -1,0 +1,3 @@
+PASS: fetch to 127.0.0.1 (deny port) denied
+PASS: fetch to localhost (deny port via DNS) denied
+PASS: fetch to localhost (different port) allowed

@@ -276,9 +276,20 @@ interface IpcSocketConnectOptions extends ConnectOptions {
 type SocketConnectOptions = TcpSocketConnectOptions | IpcSocketConnectOptions;
 
 function _getNewAsyncId(handle?: Handle): number {
-  return !handle || typeof handle.getAsyncId !== "function"
-    ? newAsyncId()
-    : handle.getAsyncId();
+  if (!handle || typeof handle.getAsyncId !== "function") {
+    return newAsyncId();
+  }
+  // Node's ASSIGN_OR_RETURN_UNWRAP in the C++ AsyncWrap::GetAsyncId returns
+  // silently if the receiver isn't a real AsyncWrap, so user-land handles that
+  // expose `getAsyncId` borrowed from a prototype (or that have been wrapped
+  // by libraries like pg/sequelize across socket reuse) don't crash on Node.
+  // Deno's op2 brand check throws `TypeError: expected AsyncWrap` in the same
+  // shape, so match Node's tolerance by falling back to a fresh async id.
+  try {
+    return handle.getAsyncId();
+  } catch {
+    return newAsyncId();
+  }
 }
 
 const providerTypeNames = [
