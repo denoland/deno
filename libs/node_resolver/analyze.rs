@@ -239,7 +239,7 @@ impl<
   }
 
   /// For each `module.exports = require(X).MEMBER` shape recorded on
-  /// `entry_specifier`, resolve `X`, ask the analyzer for the property
+  /// `referrer`, resolve `X`, ask the analyzer for the property
   /// names attached to the value of `exports.MEMBER` inside `X`, and
   /// surface those (and only those) as names on the wrapper. This is
   /// strictly narrower than treating `X` as a wildcard re-export: only
@@ -251,7 +251,7 @@ impl<
   )]
   async fn resolve_member_reexports<'a>(
     &'a self,
-    entry_specifier: &Url,
+    referrer: &Url,
     member_reexports: &[CjsMemberReExport],
     all_exports: &mut BTreeSet<String>,
     errors: &mut Vec<JsErrorBox>,
@@ -260,7 +260,7 @@ impl<
       let result = self
         .resolve(
           &entry.specifier,
-          entry_specifier,
+          referrer,
           &[
             Cow::Borrowed("deno"),
             Cow::Borrowed("node"),
@@ -425,6 +425,17 @@ impl<
               &mut analyze_futures,
               errors,
             );
+          }
+
+          if !analysis.member_reexports.is_empty() {
+            self
+              .resolve_member_reexports(
+                &reexport_specifier,
+                &analysis.member_reexports,
+                all_exports,
+                errors,
+              )
+              .await;
           }
 
           all_exports.extend(
