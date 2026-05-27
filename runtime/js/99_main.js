@@ -663,49 +663,55 @@ function removeImportedOps() {
 // methods should be left there.
 ObjectAssign(internals, { core });
 const internalSymbol = Symbol("Deno.internal");
-// Build finalDenoNs without spreading denoNs: spread invokes every getter,
-// including the lazy ones (Deno.serve / Deno.run / etc.) that intentionally
-// avoid loading 06_streams / 22_body / 40_process at snapshot time. Use
-// ObjectDefineProperties + getOwnPropertyDescriptors to preserve the lazy
-// descriptors.
-const finalDenoNs = ObjectDefineProperties(
-  {
-    internal: internalSymbol,
-    [internalSymbol]: internals,
-    // Deno.test, Deno.bench, Deno.lint are noops here, but kept for
-    // compatibility; so that they don't cause errors when used outside of
-    // `deno test`/`deno bench`/`deno lint` contexts.
-    test: () => {},
-    bench: () => {},
-    lint: {
-      runPlugin: () => {
-        throw new Error(
-          "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
-        );
+// `finalDenoNs` is the object exposed as `globalThis.Deno`. It clones every
+// descriptor from `denoNs` (~80) and layers on `pid` / `ppid` / `args` /
+// `noColor` / `mainModule` / `exitCode` getter-only descriptors. Building it
+// at module body level baked ~150 descriptor entries into the snapshot
+// heap on every cold-start, even though only one of bootstrapMainRuntime
+// / bootstrapWorkerRuntime ever runs per process and both build the
+// descriptor list lazily. Build on first read instead.
+let _finalDenoNs;
+function getFinalDenoNs() {
+  if (_finalDenoNs) return _finalDenoNs;
+  _finalDenoNs = ObjectDefineProperties(
+    {
+      internal: internalSymbol,
+      [internalSymbol]: internals,
+      // Deno.test, Deno.bench, Deno.lint are noops here, but kept for
+      // compatibility; so that they don't cause errors when used outside of
+      // `deno test`/`deno bench`/`deno lint` contexts.
+      test: () => {},
+      bench: () => {},
+      lint: {
+        runPlugin: () => {
+          throw new Error(
+            "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
+          );
+        },
       },
     },
-  },
-  ObjectGetOwnPropertyDescriptors(denoNs),
-);
-
-ObjectDefineProperties(finalDenoNs, {
-  pid: core.propGetterOnly(opPid),
-  // `ppid` should not be memoized.
-  // https://github.com/denoland/deno/issues/23004
-  ppid: core.propGetterOnly(() => op_ppid()),
-  noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
-  args: core.propGetterOnly(opArgs),
-  mainModule: core.propGetterOnly(() => op_main_module()),
-  exitCode: {
-    __proto__: null,
-    get() {
-      return os.getExitCode();
+    ObjectGetOwnPropertyDescriptors(denoNs),
+  );
+  ObjectDefineProperties(_finalDenoNs, {
+    pid: core.propGetterOnly(opPid),
+    // `ppid` should not be memoized.
+    // https://github.com/denoland/deno/issues/23004
+    ppid: core.propGetterOnly(() => op_ppid()),
+    noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
+    args: core.propGetterOnly(opArgs),
+    mainModule: core.propGetterOnly(() => op_main_module()),
+    exitCode: {
+      __proto__: null,
+      get() {
+        return os.getExitCode();
+      },
+      set(value) {
+        os.setExitCode(value);
+      },
     },
-    set(value) {
-      os.setExitCode(value);
-    },
-  },
-});
+  });
+  return _finalDenoNs;
+}
 
 const {
   tsVersion,
@@ -889,6 +895,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     // TODO(bartlomieju): this is not ideal, but because we use `ObjectAssign`
     // above any properties that are defined elsewhere using `Object.defineProperty`
     // are lost.
+    const finalDenoNs = getFinalDenoNs();
     let jupyterNs = undefined;
     ObjectDefineProperty(finalDenoNs, "jupyter", {
       __proto__: null,
@@ -1034,6 +1041,7 @@ function bootstrapWorkerRuntime(
     globalThis.pollForMessages = pollForMessages;
     globalThis.hasMessageEventListener = hasMessageEventListener;
 
+    const finalDenoNs = getFinalDenoNs();
     for (let i = 0; i <= unstableFeatures.length; i++) {
       const id = unstableFeatures[i];
       const unstable = denoNsUnstableById[id];
