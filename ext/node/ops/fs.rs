@@ -315,13 +315,19 @@ pub fn op_node_fs_exists_sync(
   state: &mut OpState,
   #[string] path: &str,
 ) -> Result<bool, deno_permissions::PermissionCheckError> {
-  let path = state.borrow_mut::<PermissionsContainer>().check_open(
+  let path_or_err = state.borrow_mut::<PermissionsContainer>().check_open(
     Cow::Borrowed(Path::new(path)),
     OpenAccessKind::ReadNoFollow,
     Some("node:fs.existsSync()"),
-  )?;
-  let fs = state.borrow::<FileSystemRc>();
-  Ok(fs.exists_sync(&path))
+  );
+  match path_or_err {
+    Ok(path) => {
+      let fs = state.borrow::<FileSystemRc>();
+      Ok(fs.exists_sync(&path))
+    }
+    Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+    Err(err) => Err(err),
+  }
 }
 
 #[op2(stack_trace)]
@@ -329,17 +335,21 @@ pub async fn op_node_fs_exists(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
 ) -> Result<bool, FsError> {
-  let (fs, path) = {
+  let (fs, path_or_err) = {
     let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<PermissionsContainer>().check_open(
+    let path_or_err = state.borrow_mut::<PermissionsContainer>().check_open(
       Cow::Owned(PathBuf::from(path)),
       OpenAccessKind::ReadNoFollow,
       Some("node:fs.exists()"),
-    )?;
-    (state.borrow::<FileSystemRc>().clone(), path)
+    );
+    (state.borrow::<FileSystemRc>().clone(), path_or_err)
   };
 
-  Ok(fs.exists_async(path.into_owned()).await?)
+  match path_or_err {
+    Ok(path) => Ok(fs.exists_async(path.into_owned()).await?),
+    Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+    Err(err) => Err(FsError::Permission(err)),
+  }
 }
 
 fn get_open_options(flags: i32, mode: Option<u32>) -> OpenOptions {

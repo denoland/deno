@@ -304,8 +304,9 @@ pub fn get_or_create_client_from_state(
   if let Some(client) = state.try_borrow::<Client>() {
     Ok(client.clone())
   } else {
+    let permissions = state.borrow::<PermissionsContainer>().clone();
     let options = state.borrow::<Options>();
-    let client = create_client_from_options(options)?;
+    let client = create_client_from_options(options, Some(permissions))?;
     state.put::<Client>(client.clone());
     Ok(client)
   }
@@ -313,7 +314,12 @@ pub fn get_or_create_client_from_state(
 
 pub fn create_client_from_options(
   options: &Options,
+  permissions: Option<PermissionsContainer>,
 ) -> Result<Client, HttpClientCreateError> {
+  let dns_resolver = match permissions {
+    Some(p) => options.resolver.clone().with_permissions(p),
+    None => options.resolver.clone(),
+  };
   create_http_client(
     &options.user_agent,
     CreateHttpClientOptions {
@@ -322,7 +328,7 @@ pub fn create_client_from_options(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs: vec![],
       proxy: options.proxy.clone(),
-      dns_resolver: options.resolver.clone(),
+      dns_resolver,
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -877,6 +883,7 @@ pub fn op_fetch_custom_client(
     }
   }
 
+  let permissions = state.borrow::<PermissionsContainer>().clone();
   let options = state.borrow::<Options>();
   let ca_certs = args
     .ca_certs
@@ -892,7 +899,7 @@ pub fn op_fetch_custom_client(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs,
       proxy: args.proxy,
-      dns_resolver: dns::Resolver::default(),
+      dns_resolver: dns::Resolver::default().with_permissions(permissions),
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -1021,6 +1028,7 @@ pub fn create_http_client(
       .map_err(|_| HttpClientCreateError::InvalidAddress(local_address))?;
     http_connector.set_local_address(Some(local_addr));
   }
+  let http_connector = dns::PermissionedHttpConnector::new(http_connector);
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
     HttpClientCreateError::InvalidUserAgent(user_agent.to_string())
@@ -1190,7 +1198,9 @@ impl Client {
   }
 }
 
-type Connector = proxy::ProxyConnector<HttpConnector<dns::Resolver>>;
+type Connector = proxy::ProxyConnector<
+  dns::PermissionedHttpConnector<HttpConnector<dns::Resolver>>,
+>;
 
 #[allow(
   clippy::declare_interior_mutable_const,

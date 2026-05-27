@@ -113,8 +113,11 @@ fn op_node_load_env_file(
   #[string] path: &str,
 ) -> Result<(), DotEnvLoadErr> {
   let fs = state.borrow::<deno_fs::FileSystemRc>().clone();
-  let path = state
-    .borrow::<PermissionsContainer>()
+  let permissions = state.borrow::<PermissionsContainer>().clone();
+  permissions
+    .check_env_all()
+    .map_err(DotEnvLoadErr::Permission)?;
+  let path = permissions
     .check_open(
       Cow::Borrowed(Path::new(path)),
       OpenAccessKind::ReadNoFollow,
@@ -380,6 +383,7 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_disconnect,
     ops::inspector::op_inspector_emit_protocol_event,
     ops::inspector::op_inspector_enabled,
+    ops::inspector::op_inspector_port,
     ops::udp::op_node_udp_bind,
     ops::udp::op_node_udp_join_multi_v4,
     ops::udp::op_node_udp_leave_multi_v4,
@@ -422,7 +426,6 @@ deno_core::extension!(deno_node,
   esm_entry_point = "node:module",
   esm = [
     dir "polyfills",
-    "internal/compile_cache.js",
     "internal_binding/mod.ts",
     "node:module" = "01_require.js",
     "node:process" = "process.ts",
