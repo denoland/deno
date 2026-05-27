@@ -28,8 +28,7 @@ extension!(runtime,
     dir "js",
     "90_deno_ns.js",
     "98_global_scope_shared.js",
-    "98_global_scope_window.js",
-    "98_global_scope_worker.js"
+    "98_global_scope_window.js"
   ],
   lazy_loaded_js = [
     dir "js",
@@ -41,6 +40,12 @@ extension!(runtime,
     "40_fs_events.js",
     "40_tty.js",
     "41_prompt.js",
+    // The worker-side global scope setup (`WorkerNavigator`, the
+    // `workerRuntimeGlobalProperties` accessor descriptors) was being
+    // evaluated at snapshot build time even for cold-start main runtimes
+    // that never become a worker. `bootstrapWorkerRuntime` now loads it
+    // on demand via `core.loadExtScript()`.
+    "98_global_scope_worker.js",
   ],
   customizer = |ext: &mut Extension| {
     #[cfg(not(feature = "exclude_runtime_main_js"))]

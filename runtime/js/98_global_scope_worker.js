@@ -1,11 +1,20 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-import {
+// IIFE / `lazy_loaded_js` form. The previous ESM form was statically
+// imported from `99_main.js` and therefore evaluated at snapshot build
+// time, baking the WorkerNavigator class, the workerRuntimeGlobalProperties
+// object, and every accessor-descriptor closure into the snapshot heap
+// even for cold-start `deno eval`s that never become a worker. Now
+// `bootstrapWorkerRuntime` in `99_main.js` loads this script on demand via
+// `core.loadExtScript()` (registered in `runtime/shared.rs` as a
+// `lazy_loaded_js` entry).
+(function () {
+const { core, primordials } = __bootstrap;
+const {
   op_bootstrap_language,
   op_bootstrap_numcpus,
   op_bootstrap_user_agent,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
@@ -20,7 +29,10 @@ const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const globalInterfaces = core.loadExtScript(
   "ext:deno_web/04_global_interfaces.js",
 );
-const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
+let _webgpu;
+const lazyWebGPU = () =>
+  (_webgpu ??
+    (_webgpu = core.loadExtScript("ext:deno_webgpu/00_init.js"))).loadWebGPU();
 
 /**
  * @param {string} arch
@@ -109,7 +121,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     enumerable: true,
     get() {
       webidl.assertBranded(this, WorkerNavigatorPrototype);
-      const webgpu = loadWebGPU();
+      const webgpu = lazyWebGPU();
       webgpu.initGPU();
       return webgpu.gpu;
     },
@@ -173,4 +185,5 @@ const workerRuntimeGlobalProperties = {
   self: core.propGetterOnly(() => globalThis),
 };
 
-export { workerRuntimeGlobalProperties };
+return { workerRuntimeGlobalProperties };
+})();

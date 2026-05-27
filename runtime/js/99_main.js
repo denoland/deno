@@ -101,9 +101,18 @@ import {
   mainRuntimeGlobalProperties,
   memoizeLazy,
 } from "ext:runtime/98_global_scope_window.js";
-import {
-  workerRuntimeGlobalProperties,
-} from "ext:runtime/98_global_scope_worker.js";
+// `98_global_scope_worker.js` is loaded on demand inside
+// `bootstrapWorkerRuntime`. Importing it eagerly here forced the entire
+// `WorkerNavigator` class + descriptor closures into the snapshot heap on
+// every cold-start `deno eval`, even though main-runtime bootstrap never
+// touches the export.
+let _workerRuntimeGlobalProperties;
+function getWorkerRuntimeGlobalProperties() {
+  return _workerRuntimeGlobalProperties ??
+    (_workerRuntimeGlobalProperties = core.loadExtScript(
+      "ext:runtime/98_global_scope_worker.js",
+    ).workerRuntimeGlobalProperties);
+}
 const { SymbolMetadata } = core.loadExtScript("ext:deno_web/00_infra.js");
 // Telemetry (~2000 LOC, ~70 KB of bytecode + V8 heap) is only needed when an
 // OTEL config flag is set, but it was being loaded unconditionally at snapshot
@@ -977,11 +986,12 @@ function bootstrapWorkerRuntime(
     delete globalThis.bootstrap;
     hasBootstrapped = true;
 
+    const wrGlobals = getWorkerRuntimeGlobalProperties();
     if (workerType === "node") {
-      delete workerRuntimeGlobalProperties["WorkerGlobalScope"];
-      delete workerRuntimeGlobalProperties["self"];
+      delete wrGlobals["WorkerGlobalScope"];
+      delete wrGlobals["self"];
     }
-    ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
+    ObjectDefineProperties(globalThis, wrGlobals);
     ObjectDefineProperties(globalThis, {
       name: core.propWritable(name),
       // TODO(bartlomieju): should be readonly?
