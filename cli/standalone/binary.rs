@@ -1438,7 +1438,7 @@ mod tests {
   fn unsupported_target_message_mentions_android_for_bionic() {
     let msg = unsupported_denort_target_message("aarch64-linux-android");
     assert!(msg.contains("aarch64-linux-android"));
-    assert!(msg.contains("Termux/Android"));
+    assert!(msg.contains("Pre-built denort binaries for Bionic libc"));
     assert!(msg.contains("DENORT_BIN"));
     assert!(msg.contains("--target"));
   }
@@ -1447,7 +1447,9 @@ mod tests {
   fn unsupported_target_message_generic_for_unknown() {
     let msg = unsupported_denort_target_message("riscv64-unknown-linux-gnu");
     assert!(msg.contains("riscv64-unknown-linux-gnu"));
-    assert!(!msg.contains("Termux/Android"));
+    // The android-specific paragraph should be omitted; the cross-compile
+    // workaround note still mentions Termux/Android in passing.
+    assert!(!msg.contains("Pre-built denort binaries for Bionic libc"));
     assert!(msg.contains("DENORT_BIN"));
   }
 }
