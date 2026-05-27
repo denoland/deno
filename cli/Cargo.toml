@@ -58,7 +58,7 @@ winapi.workspace = true
 winres.workspace = true
 
 [dependencies]
-deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit", "utils"] }
+deno_ast = { workspace = true, features = ["cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit", "utils"] }
 deno_bundle_runtime.workspace = true
 deno_cache_dir = { workspace = true, features = ["sync"] }
 deno_config = { workspace = true, features = ["sync", "workspace"] }
