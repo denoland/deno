@@ -7476,7 +7476,6 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tonic",
- "tracing",
 ]
 
 [[package]]
@@ -7517,7 +7516,6 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-stream",
- "tracing",
 ]
 
 [[package]]
@@ -11001,10 +10999,8 @@ dependencies = [
  "once_cell",
  "opentelemetry",
  "opentelemetry_sdk",
- "smallvec",
  "tracing",
  "tracing-core",
- "tracing-log",
  "tracing-subscriber",
  "web-time",
 ]
