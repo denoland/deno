@@ -8,7 +8,6 @@ use deno_core::Extension;
 use deno_core::ExtensionFileSource;
 use deno_core::ExtensionFileSourceCode;
 use deno_core::snapshot::*;
-use deno_core::v8;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
 
@@ -111,22 +110,9 @@ pub fn create_runtime_snapshot(
       extension_transpiler: Some(Rc::new(|specifier, source| {
         crate::transpile::maybe_transpile_source(specifier, source)
       })),
-      with_runtime_cb: Some(Box::new(|rt| {
-        let isolate = rt.v8_isolate();
-        v8::scope!(scope, isolate);
-
-        let tmpl = deno_node::init_global_template(
-          scope,
-          deno_node::ContextInitMode::ForSnapshot,
-        );
-        let ctx = deno_node::create_v8_context(
-          scope,
-          tmpl,
-          deno_node::ContextInitMode::ForSnapshot,
-          std::ptr::null_mut(),
-        );
-        assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
-      })),
+      // EXPERIMENT: skip the vm contextify template snapshot context to save
+      // ~12 ms of context deser at every startup.
+      with_runtime_cb: None,
       skip_op_registration: false,
     },
     None,

@@ -674,23 +674,23 @@ pub enum ContextInitMode {
 pub fn create_v8_context<'a>(
   scope: &mut v8::PinScope<'a, '_, ()>,
   object_template: v8::Local<v8::ObjectTemplate>,
-  mode: ContextInitMode,
+  // `mode` no longer changes anything — we always go through the fresh
+  // Context::new path (see comment below). Kept in the signature so
+  // existing callers don't have to change.
+  _mode: ContextInitMode,
   microtask_queue: *mut v8::MicrotaskQueue,
 ) -> v8::Local<'a, v8::Context> {
   let scope = std::pin::pin!(v8::EscapableHandleScope::new(scope));
   let scope = &mut scope.init();
 
-  let context = if mode == ContextInitMode::UseSnapshot {
-    v8::Context::from_snapshot(
-      scope,
-      VM_CONTEXT_INDEX,
-      v8::ContextOptions {
-        microtask_queue: Some(microtask_queue),
-        ..Default::default()
-      },
-    )
-    .unwrap()
-  } else {
+  // The CLI snapshot no longer embeds a contextify template at
+  // `VM_CONTEXT_INDEX` (loading that context at every startup adds ~12 ms
+  // of context deser). Skip `Context::from_snapshot` entirely; the main
+  // context is now at snapshot index 0 too, so we'd otherwise get a copy
+  // of the main context — without the contextify property interceptors,
+  // every lookup against the sandbox falls through to global and throws
+  // ReferenceError.
+  let context = {
     let ctx = v8::Context::new(
       scope,
       v8::ContextOptions {
