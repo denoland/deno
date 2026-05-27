@@ -161,7 +161,7 @@ impl UnsafeWindowSurface {
     let (_, instance) = deno_webgpu::get_or_init_instance(
       state,
       &deno_webgpu::adapter::GPURequestAdapterOptions {
-        feature_level: "".to_string(),
+        feature_level: "core".to_string(),
         power_preference: None,
         force_fallback_adapter: false,
       },

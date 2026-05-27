@@ -46,7 +46,7 @@ pub const UNSTABLE_FEATURE_NAME: &str = "webgpu";
 
 pub const DX12_COMPILER_ENV_VAR: &str = "DENO_WEBGPU_DX12_COMPILER";
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "prints linker flags for build scripts")]
 pub fn print_linker_flags(name: &str) {
   if cfg!(windows) {
     // these dls load slowly, so delay loading them
