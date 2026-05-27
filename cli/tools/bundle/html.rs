@@ -116,7 +116,7 @@ fn starts_with_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
     .is_some_and(|value| value.eq_ignore_ascii_case(needle.as_bytes()))
 }
 
-fn find_tag_end(input: &str, start: usize) -> usize {
+fn find_tag_end(input: &str, start: usize) -> (usize, bool) {
   let bytes = input.as_bytes();
   let mut i = start;
   let mut quote = None;
@@ -129,11 +129,11 @@ fn find_tag_end(input: &str, start: usize) -> usize {
     } else if matches!(byte, b'\'' | b'"') {
       quote = Some(byte);
     } else if byte == b'>' {
-      return i + 1;
+      return (i + 1, true);
     }
     i += 1;
   }
-  input.len()
+  (input.len(), false)
 }
 
 fn find_next_tag(input: &str, mut pos: usize) -> Option<HtmlTag<'_>> {
@@ -155,7 +155,7 @@ fn find_next_tag(input: &str, mut pos: usize) -> Option<HtmlTag<'_>> {
     }
 
     if matches!(bytes[after_lt], b'!' | b'?') {
-      pos = find_tag_end(input, after_lt + 1);
+      pos = find_tag_end(input, after_lt + 1).0;
       continue;
     }
 
@@ -171,12 +171,17 @@ fn find_next_tag(input: &str, mut pos: usize) -> Option<HtmlTag<'_>> {
       name_end += 1;
     }
 
-    let end = find_tag_end(input, name_end);
+    let (end, found_end) = find_tag_end(input, name_end);
+    let attrs_end = if found_end {
+      end.saturating_sub(1)
+    } else {
+      end
+    };
     return Some(HtmlTag {
       start,
       end,
       name: &input[name_start..name_end],
-      attrs: &input[name_end..end.saturating_sub(1)],
+      attrs: &input[name_end..attrs_end],
       is_end,
     });
   }
@@ -264,7 +269,7 @@ fn find_script_end(input: &str, from: usize) -> usize {
     if starts_with_ignore_ascii_case(&input[start..], "</script") {
       let after_name = start + "</script".len();
       if after_name >= bytes.len() || is_tag_name_delimiter(bytes[after_name]) {
-        return find_tag_end(input, after_name);
+        return find_tag_end(input, after_name).0;
       }
     }
     pos = start + 1;
@@ -686,6 +691,14 @@ mod tests {
     assert_eq!(scripts[1].src.as_deref(), Some("./unquoted.ts"));
     assert!(scripts[1].is_module);
     assert_eq!(scripts[2].src.as_deref(), Some("./plain.ts"));
+  }
+
+  #[test]
+  fn collect_scripts_handles_unterminated_opening_tag_attrs() {
+    let scripts = collect_scripts(r#"<script src="./unterminated.ts""#).unwrap();
+
+    assert_eq!(scripts.len(), 1);
+    assert_eq!(scripts[0].src.as_deref(), Some("./unterminated.ts"));
   }
 
   #[test]
