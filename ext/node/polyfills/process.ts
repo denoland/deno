@@ -149,9 +149,16 @@ const lazyLoadUtil = core.createLazyLoader<typeof utilModule>(
 
 const {
   ArrayIsArray,
+  FunctionPrototypeBind,
   NumberMAX_SAFE_INTEGER,
+  ObjectCreate,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
+  ReflectGet,
+  ReflectGetOwnPropertyDescriptor,
+  ReflectGetPrototypeOf,
+  ReflectHas,
+  ReflectOwnKeys,
 } = primordials;
 
 export const argv: string[] = ["", ""];
@@ -843,6 +850,62 @@ function _removeAllSignalListeners(
 /** https://nodejs.org/api/process.html#process_process */
 // @ts-ignore TS doesn't work well with ES5 classes
 const process = new Process();
+
+// `node:process` exposes `stdin`/`stdout`/`stderr` as ESM named exports. The
+// underlying streams are constructed lazily via accessor properties on
+// `process` (see `defineLazyStream` below), so the `let` bindings stay
+// undefined until something touches `process.stdout` etc. Code like
+// `import { stdout } from "node:process"; stdout.write("x")` would then
+// throw. Initialize the exported bindings with delegating proxies that
+// forward every operation to `process[name]`, which triggers the lazy
+// accessor on first use. Once the accessor fires, `defineLazyStream`
+// updates the `let` binding directly so subsequent reads see the real
+// stream and don't pay the proxy hop.
+function makeStreamDelegate(name: "stdin" | "stdout" | "stderr"): unknown {
+  return new Proxy(ObjectCreate(null), {
+    get(_target, prop) {
+      const real = process[name];
+      if (real == null) return undefined;
+      const value = ReflectGet(real, prop, real);
+      return typeof value === "function"
+        ? FunctionPrototypeBind(value, real)
+        : value;
+    },
+    set(_target, prop, value) {
+      const real = process[name];
+      if (real == null) return true;
+      real[prop] = value;
+      return true;
+    },
+    has(_target, prop) {
+      const real = process[name];
+      return real != null && ReflectHas(real, prop);
+    },
+    deleteProperty(_target, prop) {
+      const real = process[name];
+      if (real == null) return true;
+      delete real[prop];
+      return true;
+    },
+    ownKeys(_target) {
+      const real = process[name];
+      return real != null ? ReflectOwnKeys(real) : [];
+    },
+    getOwnPropertyDescriptor(_target, prop) {
+      const real = process[name];
+      return real != null
+        ? ReflectGetOwnPropertyDescriptor(real, prop)
+        : undefined;
+    },
+    getPrototypeOf(_target) {
+      const real = process[name];
+      return real != null ? ReflectGetPrototypeOf(real) : null;
+    },
+  });
+}
+stdin = makeStreamDelegate("stdin");
+stdout = makeStreamDelegate("stdout");
+stderr = makeStreamDelegate("stderr");
 
 /** https://nodejs.org/api/process.html#processrelease */
 Object.defineProperty(process, "release", {
