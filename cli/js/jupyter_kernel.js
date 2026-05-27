@@ -471,7 +471,8 @@ class PubSocket {
 
 async function startJupyterKernel() {
   const info = JSON.parse(op_jupyter_get_connection_info());
-  const { ip, key, hb_port, shell_port, control_port, iopub_port } = info;
+  const { ip, key, hb_port, shell_port, control_port, stdin_port, iopub_port } =
+    info;
   const session = crypto.randomUUID();
 
   // Start heartbeat (purely async, fire-and-forget)
@@ -480,6 +481,9 @@ async function startJupyterKernel() {
   const shell = new RouterSocket(shell_port, ip);
   const control = new RouterSocket(control_port, ip);
   const iopub = new PubSocket(iopub_port, ip);
+  // Bind stdin port so frontends can connect. Input requests are not
+  // supported in this kernel, so received messages are discarded.
+  new RouterSocket(stdin_port, ip);
 
   let executionCount = 0;
   let currentParentHeader = {};
