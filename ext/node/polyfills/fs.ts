@@ -3459,6 +3459,24 @@ function watch(
   // ENOENT here; callers using EventEmitter-style error handling
   // (chokidar, vite) can't recover from a sync throw of a Deno error.
   // See denoland/deno#34396.
+  const notFoundProto = Deno.errors.NotFound.prototype;
+  const makeWatchNodeError = (e: unknown): Error => {
+    // The notify crate's PathNotFound/WatchNotFound error messages don't
+    // include the "(os error N)" suffix that `denoErrorToNodeError` parses,
+    // so detect NotFound by class and build a Node-style ENOENT manually.
+    if (ObjectPrototypeIsPrototypeOf(notFoundProto, e)) {
+      return uvException({
+        errno: codeMap.get("ENOENT")!,
+        syscall: "watch",
+        path: watchPath,
+      });
+    }
+    return denoErrorToNodeError(e as Error, {
+      syscall: "watch",
+      path: watchPath,
+    });
+  };
+
   let iterator: Deno.FsWatcher | undefined;
   let openError: Error | undefined;
   let resolvedWatchPath = watchPath;
@@ -3475,21 +3493,7 @@ function watch(
       } catch { /* ignore */ }
       iterator = undefined;
     }
-    // The notify crate's PathNotFound/WatchNotFound error messages don't
-    // include the "(os error N)" suffix that `denoErrorToNodeError` parses,
-    // so detect NotFound by class and build a Node-style ENOENT manually.
-    if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)) {
-      openError = uvException({
-        errno: codeMap.get("ENOENT")!,
-        syscall: "watch",
-        path: watchPath,
-      });
-    } else {
-      openError = denoErrorToNodeError(e as Error, {
-        syscall: "watch",
-        path: watchPath,
-      });
-    }
+    openError = makeWatchNodeError(e);
   }
 
   if (iterator) {
@@ -3509,7 +3513,7 @@ function watch(
         encodeWatchFilename(filename, encoding),
       );
     }, (e) => {
-      fsWatcher.emit("error", e);
+      fsWatcher.emit("error", makeWatchNodeError(e));
     });
   }
 
