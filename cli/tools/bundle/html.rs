@@ -708,6 +708,22 @@ mod tests {
   }
 
   #[test]
+  fn inject_scripts_and_css_ignores_head_text_inside_inline_script() {
+    let actual = inject_scripts_and_css(
+      r#"<html><head><script>const head = "<head>";</script></head></html>"#,
+      script("./bundle.js"),
+      &[],
+      None,
+    )
+    .unwrap();
+
+    assert_eq!(
+      actual,
+      r#"<html><head><script>const head = "<head>";</script><script src="./bundle.js" type="module" crossorigin></script></head></html>"#,
+    );
+  }
+
+  #[test]
   fn inject_scripts_and_css_appends_head_when_missing() {
     let actual = inject_scripts_and_css(
       r#"<main><!-- <head></head> --></main>"#,
