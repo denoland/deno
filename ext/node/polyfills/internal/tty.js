@@ -33,10 +33,7 @@ const {
 const { validateInteger } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-import {
-  op_tty_check_fd_permission,
-  TTY,
-} from "ext:core/ops";
+import { op_tty_check_fd_permission, TTY } from "ext:core/ops";
 const { isatty } = core.loadExtScript("ext:deno_node/tty.js");
 const lazyNet = core.createLazyLoader("node:net");
 const {

@@ -354,7 +354,8 @@ const lazyNodeModules = {
   "inspector/promises": () =>
     core.loadExtScript("ext:deno_node/inspector/promises.js"),
   "perf_hooks": () => core.loadExtScript("ext:deno_node/perf_hooks.js").default,
-  "querystring": () => core.loadExtScript("ext:deno_node/querystring.js").default,
+  "querystring": () =>
+    core.loadExtScript("ext:deno_node/querystring.js").default,
   "sqlite": () => core.loadExtScript("ext:deno_node/sqlite.ts"),
   "string_decoder": () =>
     core.loadExtScript("ext:deno_node/string_decoder.ts").default,
