@@ -614,7 +614,7 @@ fn setup_panic_hook() {
   #[allow(clippy::print_stderr, reason = "fatal exit")]
   fn exit_with_oom(detail: &str) -> ! {
     eprintln!("\n============================================================");
-    eprintln!("error: V8 out of memory: {detail}.");
+    eprintln!("error: V8 fatal error: {detail}.");
     eprintln!();
     eprintln!("Hint: this is usually caused by allocating an ArrayBuffer or");
     eprintln!("TypedArray that is too large (e.g. `new Float64Array(10e9)`).");
