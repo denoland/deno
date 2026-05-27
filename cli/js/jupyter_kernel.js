@@ -862,6 +862,13 @@ async function startJupyterKernel() {
       const msgType = msg.header?.msg_type;
       const parentHeader = msg.header;
 
+      // execute_request manages its own busy/idle status via handleExecute.
+      // For other request types, publish busy here and idle in `finally`.
+      if (msgType === "execute_request") {
+        await handleExecute(peerId, socket, msg);
+        continue;
+      }
+
       await publishStatus("busy", parentHeader);
 
       try {
@@ -875,11 +882,6 @@ async function startJupyterKernel() {
             parentHeader,
           );
           await socket.send(peerId, [peerId, ...replyFrames]);
-        } else if (msgType === "execute_request") {
-          // publishStatus busy already sent; execute handles everything
-          await publishStatus("idle", parentHeader); // undo busy first
-          await handleExecute(peerId, socket, msg);
-          continue; // handleExecute handles its own status
         } else if (msgType === "complete_request") {
           const userCode = msg.content?.code || "";
           const cursorPos = msg.content?.cursor_pos || userCode.length;
