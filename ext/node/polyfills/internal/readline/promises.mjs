@@ -3,19 +3,24 @@
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
-
-import {
+(function () {
+const { core } = __bootstrap;
+const {
   ArrayPrototypeJoin,
   ArrayPrototypePush,
-} from "ext:deno_node/internal/primordials.mjs";
+} = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
 
-import { CSI } from "ext:deno_node/internal/readline/utils.mjs";
-import {
+const { CSI } = core.loadExtScript("ext:deno_node/internal/readline/utils.mjs");
+const {
   validateBoolean,
   validateInteger,
-} from "ext:deno_node/internal/validators.mjs";
-import { isWritable } from "ext:deno_node/internal/streams/utils.js";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isWritable } = core.loadExtScript(
+  "ext:deno_node/internal/streams/utils.js",
+);
+const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
 const {
   kClearToLineBeginning,
@@ -24,7 +29,7 @@ const {
   kClearScreenDown,
 } = CSI;
 
-export class Readline {
+class Readline {
   #autoCommit = false;
   #stream;
   #todo = [];
@@ -145,4 +150,8 @@ export class Readline {
   }
 }
 
-export default Readline;
+return {
+  Readline,
+  default: Readline,
+};
+})();

@@ -855,6 +855,58 @@ Deno.test("inspector_worker_target_discovery", async () => {
   }
 });
 
+// Regression test for https://github.com/denoland/deno/issues/34291
+// vscode-js-debug calls NodeWorker.enable before the user script runs, so
+// any Worker constructor fires *after* NodeWorker.enable has been processed.
+// Previously these later workers were not announced — NodeWorker.enable
+// only walked existing workers, and the new-worker registration path only
+// emitted Target.* events. Now NodeWorker.attachedToWorker fires for both.
+Deno.test("inspector_node_worker_attached_after_enable", async () => {
+  const script = `${testdataPath}/worker_main.js`;
+  const tester = await InspectorTester.create(
+    ["run", "-A", "--inspect-brk=0", script],
+    { notificationFilter: ignoreScriptParsed },
+  );
+
+  try {
+    await tester.assertStderrForInspectBrk();
+
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+      {
+        id: 3,
+        method: "NodeWorker.enable",
+        params: { waitForDebuggerOnStart: false },
+      },
+      { id: 4, method: "Runtime.runIfWaitingForDebugger" },
+    ]);
+
+    await tester.expectResponse(1);
+    await tester.expectResponse(2);
+    await tester.expectResponse(3);
+    await tester.expectResponse(4);
+    await tester.expectNotification("Runtime.executionContextCreated");
+    await tester.expectNotification("Debugger.paused");
+
+    tester.send({ id: 5, method: "Debugger.resume" });
+    await tester.expectResponse(5);
+
+    const attached = await tester.expectNotification(
+      "NodeWorker.attachedToWorker",
+    );
+    const params = attached.params as Record<string, unknown>;
+    assert(params.sessionId, "attachedToWorker should include sessionId");
+    const workerInfo = params.workerInfo as Record<string, unknown>;
+    assert(workerInfo, "attachedToWorker should include workerInfo");
+    assertEquals(workerInfo.type, "node_worker");
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+  }
+});
+
 Deno.test("inspector_node_worker_enable", async () => {
   const script = `${testdataPath}/worker_main.js`;
   const tester = await InspectorTester.create(
@@ -1027,6 +1079,72 @@ Deno.test("inspector_runtime_evaluate_does_not_crash", async () => {
 
     const doneLine = await tester.nextStderrLine();
     assertEquals(doneLine, "done");
+
+    await tester.stdin.close();
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+  }
+});
+
+// Regression test for "Promise was collected" CDP errors when an external
+// debugger sends `Runtime.evaluate({replMode: true})` to `deno repl --inspect`.
+// V8 inspector wraps replMode evaluations in `(async () => EXPR)()` and tracks
+// the result promise via a weak handle — without an immediate microtask drain
+// after each event-loop poll, GC can collect the promise before its resolution
+// microtask runs. `--gc-interval=100` forces a major GC every 100 allocations,
+// which deterministically exposes the race.
+Deno.test("inspector_repl_runtime_evaluate_replmode_under_gc", async () => {
+  const tester = await InspectorTester.create(
+    ["repl", "-A", "--inspect=0", "--v8-flags=--gc-interval=100"],
+    {
+      notificationFilter: ignoreScriptParsed,
+      env: { RUST_BACKTRACE: "1" },
+    },
+  );
+
+  try {
+    await tester.assertStderrForInspect();
+    await tester.nextStdoutLine(); // banner
+    await tester.nextStdoutLine(); // exit hint
+    await tester.nextStderrLine(); // "Debugger session started."
+
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+    ]);
+    await tester.expectResponse(1, { prefixMatch: '{"id":1,"result":{}}' });
+    await tester.expectResponse(2, {
+      prefixMatch: '{"id":2,"result":{"debuggerId":',
+    });
+    await tester.expectNotification("Runtime.executionContextCreated");
+
+    for (let i = 0; i < 50; i++) {
+      const id = 100 + i;
+      tester.send({
+        id,
+        method: "Runtime.evaluate",
+        params: {
+          expression: `new Array(2048).fill({}); ${i}`,
+          objectGroup: "console",
+          includeCommandLineAPI: true,
+          silent: false,
+          contextId: 1,
+          returnByValue: true,
+          generatePreview: true,
+          userGesture: true,
+          awaitPromise: false,
+          replMode: true,
+        },
+      });
+      const resp = await tester.expectResponse(id);
+      assertEquals(
+        resp.error,
+        undefined,
+        `iter ${i}: unexpected error ${JSON.stringify(resp.error)}`,
+      );
+    }
 
     await tester.stdin.close();
   } finally {

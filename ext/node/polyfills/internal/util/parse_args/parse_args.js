@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   ArrayPrototypeForEach,
   ArrayPrototypeIncludes,
@@ -19,7 +20,7 @@ const {
   StringPrototypeStartsWith,
 } = primordials;
 
-import {
+const {
   validateArray,
   validateBoolean,
   validateBooleanArray,
@@ -27,9 +28,9 @@ import {
   validateString,
   validateStringArray,
   validateUnion,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
-import {
+const {
   findLongOptionForShort,
   isLoneLongOption,
   isLoneShortOption,
@@ -41,9 +42,9 @@ import {
   objectGetOwn,
   optionsGetOwn,
   useDefaultValueOption,
-} from "ext:deno_node/internal/util/parse_args/utils.js";
+} = core.loadExtScript("ext:deno_node/internal/util/parse_args/utils.js");
 
-import { codes } from "ext:deno_node/internal/error_codes.ts";
+const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
 const {
   ERR_INVALID_ARG_VALUE,
   ERR_PARSE_ARGS_INVALID_OPTION_VALUE,
@@ -51,24 +52,25 @@ const {
   ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL,
 } = codes;
 
-import process from "node:process";
+const lazyProcess = core.createLazyLoader("node:process");
 
 function getMainArgs() {
+  const proc = lazyProcess();
   // Work out where to slice process.argv for user supplied arguments.
 
   // Check node options for scenarios where user CLI args follow executable.
-  const execArgv = process.execArgv;
+  const execArgv = proc.execArgv;
   if (
     ArrayPrototypeIncludes(execArgv, "-e") ||
     ArrayPrototypeIncludes(execArgv, "--eval") ||
     ArrayPrototypeIncludes(execArgv, "-p") ||
     ArrayPrototypeIncludes(execArgv, "--print")
   ) {
-    return ArrayPrototypeSlice(process.argv, 1);
+    return ArrayPrototypeSlice(proc.argv, 1);
   }
 
   // Normally first two arguments are executable and script, then CLI arguments
-  return ArrayPrototypeSlice(process.argv, 2);
+  return ArrayPrototypeSlice(proc.argv, 2);
 }
 
 /**
@@ -326,7 +328,7 @@ function argsToTokens(args, options) {
   return tokens;
 }
 
-export const parseArgs = (config = { __proto__: null }) => {
+const parseArgs = (config = { __proto__: null }) => {
   const args = objectGetOwn(config, "args") ?? getMainArgs();
   const strict = objectGetOwn(config, "strict") ?? true;
   const allowPositionals = objectGetOwn(config, "allowPositionals") ?? !strict;
@@ -469,3 +471,6 @@ export const parseArgs = (config = { __proto__: null }) => {
 
   return result;
 };
+
+return { parseArgs };
+})();

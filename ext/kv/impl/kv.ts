@@ -63,18 +63,20 @@ const {
   Uint8ArrayPrototype,
 } = primordials;
 
-import { ReadableStream } from "ext:deno_web/06_streams.js";
+const { ReadableStream } = core.loadExtScript("ext:deno_web/06_streams.js");
 // deno-lint-ignore prefer-primordials
 const promiseAllSettled = Promise.allSettled.bind(Promise);
+
+const cloneableDeserializers = core.getCloneableDeserializers();
 
 import {
   decodeKey,
   encodeKey,
   keyPartsToKvKey,
   kvKeyToKeyParts,
-} from "./key_codec.ts";
+} from "ext:deno_kv/impl/key_codec.ts";
 
-import { SqliteBackend } from "./sqlite_backend.ts";
+import { SqliteBackend } from "ext:deno_kv/impl/sqlite_backend.ts";
 import type {
   Check as SqliteCheck,
   CommitResult,
@@ -84,10 +86,13 @@ import type {
   Mutation as SqliteMutation,
   MutationKind,
   ReadRange,
-} from "./sqlite_backend.ts";
+} from "ext:deno_kv/impl/sqlite_backend.ts";
 
-import { RemoteBackend } from "./remote_backend.ts";
-import type { RemoteKvEntry, WatchKeyUpdate } from "./remote_backend.ts";
+import { RemoteBackend } from "ext:deno_kv/impl/remote_backend.ts";
+import type {
+  RemoteKvEntry,
+  WatchKeyUpdate,
+} from "ext:deno_kv/impl/remote_backend.ts";
 
 import {
   type Check as ProtoCheck,
@@ -96,7 +101,7 @@ import {
   MutationType,
   type ReadRange as ProtoReadRange,
   ValueEncoding,
-} from "./protobuf.ts";
+} from "ext:deno_kv/impl/protobuf.ts";
 
 const eqTailRe = new SafeRegExp("=+$");
 const versionstampRe = new SafeRegExp("^[0-9a-f]{20}$");
@@ -180,7 +185,10 @@ function serializeValue(value: unknown): RawValue {
 function deserializeRawValue(raw: RawValue): unknown {
   switch (raw.kind) {
     case "v8":
-      return core.deserialize(raw.value as Uint8Array, { forStorage: true });
+      return core.deserialize(raw.value as Uint8Array, {
+        forStorage: true,
+        deserializers: cloneableDeserializers,
+      });
     case "bytes":
       return raw.value;
     case "u64":
@@ -1249,6 +1257,7 @@ class Kv {
 
       const deserialized = core.deserialize(next.payload, {
         forStorage: true,
+        deserializers: cloneableDeserializers,
       });
 
       // Dispatch handler concurrently (IIFE), matching the old Rust-backed

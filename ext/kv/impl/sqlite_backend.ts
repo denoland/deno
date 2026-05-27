@@ -34,9 +34,9 @@ const {
   Uint8ArrayPrototype,
 } = primordials;
 
-import { crypto } from "ext:deno_crypto/00_crypto.js";
 import { DatabaseSync } from "node:sqlite";
 
+const { crypto } = core.loadExtScript("ext:deno_crypto/00_crypto.js");
 // Capture built-ins at load time to prevent monkeypatching
 // deno-lint-ignore prefer-primordials
 const cryptoRandomUUID = crypto.randomUUID.bind(crypto);

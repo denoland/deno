@@ -1,14 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
   op_create_worker,
   op_host_post_message,
   op_host_post_message_raw,
   op_host_recv_ctrl,
   op_host_recv_message,
   op_host_terminate_worker,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeJoin,
@@ -22,25 +23,31 @@ const {
   SymbolToStringTag,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import { URL } from "ext:deno_web/00_url.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
-import { serializePermissions } from "ext:runtime/10_permissions.js";
-import { log } from "ext:runtime/06_util.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
+const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
+const { serializePermissions } = core.loadExtScript(
+  "ext:runtime/10_permissions.js",
+);
+const { log } = core.loadExtScript("ext:runtime/06_util.js");
+const {
   defineEventHandler,
   ErrorEvent,
   EventTarget,
   MessageEvent,
   setIsTrusted,
-} from "ext:deno_web/02_event.js";
-import {
+} = core.loadExtScript("ext:deno_web/02_event.js");
+const {
   deserializeJsMessageData,
   MessagePortPrototype,
   serializeJsMessageData,
-} from "ext:deno_web/13_message_port.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+} = core.loadExtScript("ext:deno_web/13_message_port.js");
+const { DOMException } = core.loadExtScript(
+  "ext:deno_web/01_dom_exception.js",
+);
 
 function createWorker(
   specifier,
@@ -356,4 +363,5 @@ webidl.converters["WorkerType"] = webidl.createEnumConverter("WorkerType", [
   "module",
 ]);
 
-export { Worker };
+return { Worker };
+})();

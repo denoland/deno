@@ -13,6 +13,8 @@ pub mod sqlite;
 
 use std::rc::Rc;
 
+use dynamic::DynamicDbHandler;
+
 pub use crate::config::*;
 pub use crate::interface::*;
 
@@ -20,8 +22,7 @@ pub const UNSTABLE_FEATURE_NAME: &str = "kv";
 
 deno_core::extension!(deno_kv,
   deps = [ deno_web ],
-  parameters = [ DBH: DatabaseHandler ],
-  esm = [
+  lazy_loaded_esm = [
     "impl/key_codec.ts",
     "impl/protobuf.ts",
     "impl/sqlite_backend.ts",
@@ -30,11 +31,11 @@ deno_core::extension!(deno_kv,
     "01_db.ts",
   ],
   options = {
-    handler: DBH,
+    handler: Box<dyn DynamicDbHandler>,
     config: KvConfig,
   },
   state = |state, options| {
     state.put(Rc::new(options.config));
-    state.put(Rc::new(options.handler));
+    state.put::<Rc<dyn DynamicDbHandler>>(Rc::from(options.handler));
   }
 );

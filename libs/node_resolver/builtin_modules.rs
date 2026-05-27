@@ -80,6 +80,7 @@ pub static DENO_SUPPORTED_BUILTIN_NODE_MODULES: &[&str] = &[
   "timers",
   "timers/promises",
   "tls",
+  "trace_events",
   "tty",
   "url",
   "util",

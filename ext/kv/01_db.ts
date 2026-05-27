@@ -9,4 +9,4 @@ export {
   KvListIterator,
   KvU64,
   openKv,
-} from "./impl/kv.ts";
+} from "ext:deno_kv/impl/kv.ts";

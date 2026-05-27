@@ -2303,6 +2303,9 @@ Deno.test(function inspectProxy() {
     )),
     `{ key: "value" }`,
   );
+  // When `showProxy` is false (the default), `Deno.inspect` mirrors Node.js
+  // and inspects the proxy target directly without invoking any traps. The
+  // handler below is ignored entirely; the empty target prints as `{}`.
   assertEquals(
     stripAnsiCode(Deno.inspect(
       new Proxy({}, {
@@ -2325,7 +2328,18 @@ Deno.test(function inspectProxy() {
         },
       }),
     )),
-    `{ prop1: 5, prop2: 5 }`,
+    `{}`,
+  );
+
+  // Issue: https://github.com/denoland/deno/issues/26355
+  // A proxy whose `ownKeys` trap violates the invariant (returns a
+  // non-Object) must not throw — Node.js returns the target's inspection.
+  assertEquals(
+    stripAnsiCode(Deno.inspect(
+      // deno-lint-ignore no-explicit-any
+      new Proxy({ x: 1 }, { ownKeys: (() => undefined) as any }),
+    )),
+    `{ x: 1 }`,
   );
   assertEquals(
     stripAnsiCode(Deno.inspect(
@@ -2674,4 +2688,38 @@ Deno.test(function inspectEscapeSequencesFalse() {
     Deno.inspect("foo\nbar", { escapeSequences: false }),
     '"foo\nbar"',
   );
+});
+
+Deno.test(function inspectProxyDoesNotTriggerGetTrap() {
+  // Regression test for https://github.com/denoland/deno/issues/33719
+  // Proxies that return functions for any property access (e.g. grammy API
+  // client) should not have their get/has traps triggered for custom inspect
+  // symbols during inspection.
+  const accessed: PropertyKey[] = [];
+  const proxy = new Proxy({}, {
+    has(_target, prop) {
+      accessed.push(prop);
+      return false;
+    },
+    get(_target, prop) {
+      accessed.push(prop);
+      return () => {};
+    },
+  });
+
+  accessed.length = 0;
+  Deno.inspect(proxy);
+
+  const inspectSymbols = [
+    Symbol.for("nodejs.util.inspect.custom"),
+    Symbol.for("Deno.customInspect"),
+    Symbol.for("Deno.privateCustomInspect"),
+  ];
+  for (const sym of inspectSymbols) {
+    assertEquals(
+      accessed.filter((p) => p === sym).length,
+      0,
+      `Deno.inspect should not trigger proxy traps for ${String(sym)}`,
+    );
+  }
 });

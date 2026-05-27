@@ -25,6 +25,7 @@ import {
   closeSync,
   constants,
   copyFileSync,
+  createReadStream,
   createWriteStream,
   existsSync,
   fchmod,
@@ -610,6 +611,29 @@ Deno.test(
     const blob = await openAsBlob(filename, { type: "text/plain" });
     assertEquals(blob.type, "text/plain");
     assertEquals(await blob.text(), "content");
+  },
+);
+
+Deno.test(
+  "[node/fs openAsBlob] structuredClone throws DataCloneError",
+  async () => {
+    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+    writeFileSync(filename, "content");
+
+    const blob = await openAsBlob(filename);
+    const err = assertThrows(
+      () => structuredClone(blob),
+      DOMException,
+      "Invalid state: File-backed Blobs are not cloneable",
+    );
+    assertEquals(err.name, "DataCloneError");
+
+    const sliceErr = assertThrows(
+      () => structuredClone(blob.slice(0, 1)),
+      DOMException,
+      "Invalid state: File-backed Blobs are not cloneable",
+    );
+    assertEquals(sliceErr.name, "DataCloneError");
   },
 );
 
@@ -1211,6 +1235,28 @@ Deno.test({
     closeSync(rid), Deno.errors.BadResource;
   });
   await Deno.remove(tempFile);
+});
+
+// Regression test for https://github.com/denoland/deno/issues/33712
+// `fs.close` used to defer via `setTimeout(0)`, which Deno's test sanitizer
+// flagged as a leaked timer when a stream auto-closed at end-of-stream.
+// `createReadStream(...).on("end", ...)` triggers exactly that path.
+Deno.test({
+  name: "[node/fs.close] createReadStream auto-close doesn't leak a timer",
+  async fn() {
+    const tempFile = await Deno.makeTempFile();
+    try {
+      await Deno.writeTextFile(tempFile, "hello");
+      await new Promise<void>((resolve, reject) => {
+        const stream = createReadStream(tempFile);
+        stream.on("data", () => {});
+        stream.on("end", () => resolve());
+        stream.on("error", reject);
+      });
+    } finally {
+      await Deno.remove(tempFile);
+    }
+  },
 });
 
 // ==========
@@ -1946,6 +1992,50 @@ Deno.test({
   },
 });
 
+// Regression test for #34396: fs.watch on a non-existent path used to
+// throw a raw `Deno.errors.NotFound` synchronously, which left chokidar/
+// vite (and any other EventEmitter-style consumer) unable to recover from
+// transient races (e.g. an editor's atomic-save temp file getting renamed
+// away before the inotify watch is added). The error should instead be
+// delivered as a Node-style ENOENT on the watcher's 'error' event.
+Deno.test({
+  name: "[node/fs] watch surfaces NotFound as 'error' event with ENOENT",
+  async fn() {
+    const missing = join(
+      tmpdir(),
+      `deno-watch-missing-${Date.now()}-${Math.random()}`,
+    );
+
+    const { promise, resolve, reject } = Promise.withResolvers<Error>();
+    let watcher: ReturnType<typeof watch>;
+    try {
+      watcher = watch(missing, () => {});
+    } catch (e) {
+      reject(
+        new Error(
+          `watch threw synchronously instead of emitting 'error': ${e}`,
+        ),
+      );
+      return;
+    }
+    watcher.on("error", resolve);
+    const timeoutId = setTimeout(
+      () => reject(new Error("watcher never emitted 'error'")),
+      5000,
+    );
+
+    try {
+      const err = await promise as NodeJS.ErrnoException;
+      assertEquals(err.code, "ENOENT");
+      assertEquals(err.syscall, "watch");
+      assertEquals(err.path, missing);
+    } finally {
+      clearTimeout(timeoutId);
+      watcher.close();
+    }
+  },
+});
+
 Deno.test(
   {
     name: "[node/fs] readFile on non-terminating source respects AbortSignal",
@@ -1964,5 +2054,27 @@ Deno.test(
       Error,
       "abort",
     );
+  },
+);
+
+// Regression test for #34335: `paths.map(fs.promises.unlink)` passes
+// `(elem, index, array)` to unlink. The promisify wrapper used to forward all
+// three to callback-style `fs.unlink`, which then read `index` as the callback
+// and rejected. Promisified `fs.promises.*` methods must slice extra args.
+Deno.test(
+  "[node/fs] promises methods drop extra positional args (Array#map use)",
+  async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "fs-arity-"));
+    try {
+      const a = join(tmp, "a");
+      const b = join(tmp, "b");
+      writeFileSync(a, "");
+      writeFileSync(b, "");
+      await Promise.all([a, b].map(promises.unlink));
+      assertEquals(existsSync(a), false);
+      assertEquals(existsSync(b), false);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   },
 );

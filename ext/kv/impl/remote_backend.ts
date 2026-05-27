@@ -5,7 +5,7 @@
 // using hand-rolled protobuf from the sibling module for the data path
 // and JSON for metadata exchange.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,
@@ -27,8 +27,10 @@ const {
   Uint8Array,
 } = primordials;
 
-import { fetch } from "ext:deno_fetch/26_fetch.js";
-import { AbortController } from "ext:deno_web/03_abort_signal.js";
+const { fetch } = core.loadExtScript("ext:deno_fetch/26_fetch.js");
+const { AbortController } = core.loadExtScript(
+  "ext:deno_web/03_abort_signal.js",
+);
 
 import {
   type AtomicWriteOutput,
@@ -47,7 +49,7 @@ import {
   type SnapshotReadOutput,
   SnapshotReadStatus,
   type WatchOutput,
-} from "./protobuf.ts";
+} from "ext:deno_kv/impl/protobuf.ts";
 
 // ---------------------------------------------------------------------------
 // Public types

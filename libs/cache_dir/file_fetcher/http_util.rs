@@ -3,11 +3,58 @@
 use std::time::Duration;
 use std::time::SystemTime;
 
-use cache_control::Cachability;
-use cache_control::CacheControl;
 use chrono::DateTime;
 
 use crate::common::HeadersMap;
+
+#[derive(Eq, PartialEq)]
+enum Cachability {
+  Public,
+  Private,
+  NoCache,
+  OnlyIfCached,
+}
+
+#[derive(Default)]
+struct CacheControl {
+  cachability: Option<Cachability>,
+  max_age: Option<Duration>,
+  max_stale: Option<Duration>,
+  min_fresh: Option<Duration>,
+}
+
+impl CacheControl {
+  fn from_value(value: &str) -> Option<Self> {
+    let mut ret = Self::default();
+    for token in value.split(',') {
+      let (key, val) = {
+        let mut split = token.split('=').map(|s| s.trim());
+        (split.next().unwrap(), split.next())
+      };
+
+      match key {
+        "public" => ret.cachability = Some(Cachability::Public),
+        "private" => ret.cachability = Some(Cachability::Private),
+        "no-cache" => ret.cachability = Some(Cachability::NoCache),
+        "only-if-cached" => ret.cachability = Some(Cachability::OnlyIfCached),
+        "max-age" => match val.and_then(|v| v.parse().ok()) {
+          Some(secs) => ret.max_age = Some(Duration::from_secs(secs)),
+          None => return None,
+        },
+        "max-stale" => match val.and_then(|v| v.parse().ok()) {
+          Some(secs) => ret.max_stale = Some(Duration::from_secs(secs)),
+          None => return None,
+        },
+        "min-fresh" => match val.and_then(|v| v.parse().ok()) {
+          Some(secs) => ret.min_fresh = Some(Duration::from_secs(secs)),
+          None => return None,
+        },
+        _ => (),
+      };
+    }
+    Some(ret)
+  }
+}
 
 /// A structure used to determine if a entity in the http cache can be used.
 ///
@@ -150,5 +197,38 @@ impl CacheSemantics {
 
   fn time_to_live(&self) -> Duration {
     self.max_age().checked_sub(self.age()).unwrap_or_default()
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn cache_control_parse_freshness_directives() {
+    let cache_control =
+      CacheControl::from_value("public, max-age=60, max-stale=10, min-fresh=5")
+        .unwrap();
+    assert!(matches!(
+      cache_control.cachability,
+      Some(Cachability::Public)
+    ));
+    assert_eq!(cache_control.max_age, Some(Duration::from_secs(60)));
+    assert_eq!(cache_control.max_stale, Some(Duration::from_secs(10)));
+    assert_eq!(cache_control.min_fresh, Some(Duration::from_secs(5)));
+  }
+
+  #[test]
+  fn cache_control_parse_matches_dependency_quirks() {
+    assert!(CacheControl::from_value("max-age=bad, no-cache").is_none());
+    assert!(CacheControl::from_value("max-stale").is_none());
+
+    let cache_control =
+      CacheControl::from_value("no-cache, public, max-age=60=ignored").unwrap();
+    assert!(matches!(
+      cache_control.cachability,
+      Some(Cachability::Public)
+    ));
+    assert_eq!(cache_control.max_age, Some(Duration::from_secs(60)));
   }
 }

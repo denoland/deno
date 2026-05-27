@@ -79,13 +79,14 @@ pub async fn run_script(
     deno_dir.upgrade_check_file_path(),
   );
 
-  let main_module = cli_options.resolve_main_module_with_resolver(Some(
-    &crate::args::WorkspaceMainModuleResolver::new(
-      workspace_resolver.clone(),
-      node_resolver.clone(),
-    ),
-  ))?;
-  let preload_modules = cli_options.preload_modules()?;
+  let main_module_resolver = crate::args::WorkspaceMainModuleResolver::new(
+    workspace_resolver.clone(),
+    node_resolver.clone(),
+  );
+  let main_module = cli_options
+    .resolve_main_module_with_resolver(Some(&main_module_resolver))?;
+  let preload_modules =
+    cli_options.preload_modules_with_resolver(Some(&main_module_resolver))?;
   let require_modules = cli_options.require_modules()?;
 
   if main_module.scheme() == "npm" {
@@ -279,6 +280,11 @@ pub async fn eval_command(
   } else {
     eval_flags.code
   };
+  // Match Node's `[eval]` URL for `-e` scripts so inspector clients (and
+  // Node compat tests) see the same script URL. V8 honors the
+  // `//# sourceURL=` comment for both classic scripts and ES modules.
+  // Appended (not prepended) so user line numbers are preserved.
+  let source_code = format!("{source_code}\n//# sourceURL=[eval]\n");
 
   // Save a fake file into file fetcher cache
   // to allow module access by TS compiler.

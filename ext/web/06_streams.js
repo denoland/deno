@@ -6,14 +6,15 @@
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, internals, primordials } from "ext:core/mod.js";
+(function () {
+const { core, internals, primordials } = __bootstrap;
 const {
   isAnyArrayBuffer,
   isArrayBuffer,
   isSharedArrayBuffer,
   isTypedArray,
 } = core;
-import {
+const {
   // TODO(mmastrac): use readAll
   op_read_all,
   op_readable_stream_resource_allocate,
@@ -24,7 +25,7 @@ import {
   op_readable_stream_resource_write_buf,
   op_readable_stream_resource_write_error,
   op_readable_stream_resource_write_sync,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayBuffer,
   ArrayBufferIsView,
@@ -90,18 +91,24 @@ const {
   queueMicrotask,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { structuredClone } from "./02_structured_clone.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { structuredClone } = core.loadExtScript(
+  "ext:deno_web/02_structured_clone.js",
+);
+const {
   AbortSignalPrototype,
   add,
   newSignal,
   remove,
   signalAbort,
-} from "./03_abort_signal.js";
+} = core.loadExtScript("ext:deno_web/03_abort_signal.js");
 
-import { createFilteredInspectProxy } from "./01_console.js";
-import { assert, AssertionError } from "./00_infra.js";
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { assert, AssertionError } = core.loadExtScript(
+  "ext:deno_web/00_infra.js",
+);
 
 /** @template T */
 class Deferred {
@@ -165,7 +172,7 @@ function resolvePromiseWith(value) {
 function rethrowAssertionErrorRejection(e) {
   if (e && ObjectPrototypeIsPrototypeOf(AssertionError.prototype, e)) {
     queueMicrotask(() => {
-      import.meta.log("error", `Internal Error: ${e.stack}`);
+      core.print(`[error]: Internal Error: ${e.stack}\n`, true);
     });
   }
 }
@@ -7278,77 +7285,382 @@ internals.resourceForReadableStream = resourceForReadableStream;
 internals.readableStreamForRid = readableStreamForRid;
 internals.writableStreamForRid = writableStreamForRid;
 
-export default {
-  // Non-Public
-  _state,
-  // Exposed in global runtime scope
-  ByteLengthQueuingStrategy,
-  CountQueuingStrategy,
-  createProxy,
-  Deferred,
-  errorReadableStream,
-  getReadableStreamResourceBacking,
-  getWritableStreamResourceBacking,
-  isDetachedBuffer,
-  isReadableStreamDisturbed,
-  ReadableByteStreamController,
-  ReadableStream,
-  ReadableStreamBYOBReader,
-  ReadableStreamBYOBRequest,
-  readableStreamClose,
-  readableStreamCollectIntoUint8Array,
-  ReadableStreamDefaultController,
-  ReadableStreamDefaultReader,
-  readableStreamDisturb,
-  readableStreamForRid,
-  readableStreamForRidUnrefable,
-  readableStreamForRidUnrefableRef,
-  readableStreamForRidUnrefableUnref,
-  ReadableStreamPrototype,
-  readableStreamTee,
-  readableStreamThrowIfErrored,
-  resourceForReadableStream,
-  TransformStream,
-  TransformStreamDefaultController,
-  WritableStream,
-  writableStreamClose,
-  WritableStreamDefaultController,
-  WritableStreamDefaultWriter,
-  writableStreamForRid,
-};
+// Register stream prototypes with the structured clone allowlist.
+// 13_message_port used to do this from its own module body, but doing it
+// there pulled this 208 KB module into the snapshot. Inverting the import
+// keeps message_port snapshot-light.
+{
+  const { markNotSerializable } = core.loadExtScript(
+    "ext:deno_web/13_message_port.js",
+  );
+  markNotSerializable(ReadableStream.prototype);
+  markNotSerializable(WritableStream.prototype);
+  markNotSerializable(TransformStream.prototype);
+}
 
-export {
+const kNodeWebStreamsState = SymbolFor("nodejs.webstreams.kState");
+const kNodeWebStreamsType = SymbolFor("nodejs.webstreams.kType");
+const kNodeMessagingTransfer = SymbolFor("nodejs.messaging.kTransfer");
+
+function createReadableStreamStateView(stream) {
+  return {
+    get disturbed() {
+      return stream[_disturbed];
+    },
+    get reader() {
+      return stream[_reader];
+    },
+    get state() {
+      return stream[_state];
+    },
+    get storedError() {
+      return stream[_storedError];
+    },
+    get controller() {
+      return stream[_controller];
+    },
+  };
+}
+
+function createReadableStreamDefaultReaderStateView(reader) {
+  return {
+    get closedPromise() {
+      return reader[_closedPromise]?.promise;
+    },
+    get readRequests() {
+      return reader[_readRequests];
+    },
+    get stream() {
+      return reader[_stream];
+    },
+  };
+}
+
+function createReadableStreamBYOBReaderStateView(reader) {
+  return {
+    get closedPromise() {
+      return reader[_closedPromise]?.promise;
+    },
+    get readIntoRequests() {
+      return reader[_readIntoRequests];
+    },
+    get stream() {
+      return reader[_stream];
+    },
+  };
+}
+
+function createReadableStreamDefaultControllerStateView(controller) {
+  return {
+    get cancelAlgorithm() {
+      return controller[_cancelAlgorithm];
+    },
+    get closeRequested() {
+      return controller[_closeRequested];
+    },
+    get desiredSize() {
+      return readableStreamDefaultControllerGetDesiredSize(controller);
+    },
+    get pullAlgorithm() {
+      return controller[_pullAlgorithm];
+    },
+    get pulling() {
+      return controller[_pulling];
+    },
+    get pullAgain() {
+      return controller[_pullAgain];
+    },
+    get queue() {
+      return controller[_queue];
+    },
+    get queueTotalSize() {
+      return controller[_queueTotalSize];
+    },
+    get sizeAlgorithm() {
+      return controller[_strategySizeAlgorithm];
+    },
+    get started() {
+      return controller[_started];
+    },
+    get stream() {
+      return controller[_stream];
+    },
+  };
+}
+
+function createReadableByteStreamControllerStateView(controller) {
+  return {
+    get autoAllocateChunkSize() {
+      return controller[_autoAllocateChunkSize];
+    },
+    get byobRequest() {
+      return controller[_byobRequest];
+    },
+    get cancelAlgorithm() {
+      return controller[_cancelAlgorithm];
+    },
+    get closeRequested() {
+      return controller[_closeRequested];
+    },
+    get desiredSize() {
+      return readableByteStreamControllerGetDesiredSize(controller);
+    },
+    get pendingPullIntos() {
+      return controller[_pendingPullIntos];
+    },
+    set pendingPullIntos(value) {
+      controller[_pendingPullIntos] = value;
+    },
+    get pullAlgorithm() {
+      return controller[_pullAlgorithm];
+    },
+    get pulling() {
+      return controller[_pulling];
+    },
+    get pullAgain() {
+      return controller[_pullAgain];
+    },
+    get queue() {
+      return controller[_queue];
+    },
+    get queueTotalSize() {
+      return controller[_queueTotalSize];
+    },
+    get started() {
+      return controller[_started];
+    },
+    get stream() {
+      return controller[_stream];
+    },
+  };
+}
+
+function isReadableStreamBYOBRequest(value) {
+  return !(typeof value !== "object" || value === null || !value[_view]);
+}
+
+function isReadableByteStreamController(value) {
+  return !(typeof value !== "object" || value === null ||
+    !ReflectHas(value, _pendingPullIntos));
+}
+
+function readableStreamDefaultControllerHasBackpressure(controller) {
+  return readableStreamDefaultControllerGetDesiredSize(controller) <= 0;
+}
+
+function readableStreamDefaultControllerShouldCallPull(controller) {
+  const stream = controller[_stream];
+  if (!readableStreamDefaultControllerCanCloseOrEnqueue(controller)) {
+    return false;
+  }
+  if (!controller[_started]) {
+    return false;
+  }
+  if (
+    isReadableStreamLocked(stream) &&
+    readableStreamGetNumReadRequests(stream) > 0
+  ) {
+    return true;
+  }
+  return readableStreamDefaultControllerGetDesiredSize(controller) > 0;
+}
+
+const setUpReadableByteStreamControllerFromSource =
+  setUpReadableByteStreamControllerFromUnderlyingSource;
+const setUpReadableStreamDefaultControllerFromSource =
+  setUpReadableStreamDefaultControllerFromUnderlyingSource;
+
+ObjectDefineProperty(ReadableStreamPrototype, kNodeWebStreamsState, {
+  __proto__: null,
+  configurable: true,
+  get() {
+    return createReadableStreamStateView(this);
+  },
+});
+ObjectDefineProperty(ReadableStreamPrototype, kNodeWebStreamsType, {
+  __proto__: null,
+  configurable: true,
+  value: "ReadableStream",
+});
+ObjectDefineProperty(ReadableStreamPrototype, kNodeMessagingTransfer, {
+  __proto__: null,
+  configurable: true,
+  value() {
+    if (!isReadableStream(this)) {
+      const error = new TypeError(
+        'Value of "this" must be of type ReadableStream',
+      );
+      error.code = "ERR_INVALID_THIS";
+      throw error;
+    }
+  },
+});
+ObjectDefineProperty(
+  ReadableStreamDefaultReaderPrototype,
+  kNodeWebStreamsState,
+  {
+    __proto__: null,
+    configurable: true,
+    get() {
+      return createReadableStreamDefaultReaderStateView(this);
+    },
+  },
+);
+ObjectDefineProperty(
+  ReadableStreamDefaultReaderPrototype,
+  kNodeWebStreamsType,
+  {
+    __proto__: null,
+    configurable: true,
+    value: "ReadableStreamDefaultReader",
+  },
+);
+ObjectDefineProperty(ReadableStreamBYOBReaderPrototype, kNodeWebStreamsState, {
+  __proto__: null,
+  configurable: true,
+  get() {
+    return createReadableStreamBYOBReaderStateView(this);
+  },
+});
+ObjectDefineProperty(ReadableStreamBYOBReaderPrototype, kNodeWebStreamsType, {
+  __proto__: null,
+  configurable: true,
+  value: "ReadableStreamBYOBReader",
+});
+ObjectDefineProperty(
+  ReadableStreamDefaultControllerPrototype,
+  kNodeWebStreamsState,
+  {
+    __proto__: null,
+    configurable: true,
+    get() {
+      return createReadableStreamDefaultControllerStateView(this);
+    },
+  },
+);
+ObjectDefineProperty(
+  ReadableStreamDefaultControllerPrototype,
+  kNodeWebStreamsType,
+  {
+    __proto__: null,
+    configurable: true,
+    value: "ReadableStreamDefaultController",
+  },
+);
+ObjectDefineProperty(
+  ReadableByteStreamControllerPrototype,
+  kNodeWebStreamsState,
+  {
+    __proto__: null,
+    configurable: true,
+    get() {
+      return createReadableByteStreamControllerStateView(this);
+    },
+  },
+);
+ObjectDefineProperty(
+  ReadableByteStreamControllerPrototype,
+  kNodeWebStreamsType,
+  {
+    __proto__: null,
+    configurable: true,
+    value: "ReadableByteStreamController",
+  },
+);
+ObjectDefineProperty(ReadableStreamBYOBRequestPrototype, kNodeWebStreamsType, {
+  __proto__: null,
+  configurable: true,
+  value: "ReadableStreamBYOBRequest",
+});
+
+return {
   _isClosedPromise,
   // Non-Public
   _state,
+  kNodeWebStreamsState,
+  kNodeWebStreamsType,
+  kNodeMessagingTransfer,
   // Exposed in global runtime scope
   ByteLengthQueuingStrategy,
   CountQueuingStrategy,
   createProxy,
+  createReadableByteStream,
+  createReadableStream,
   Deferred,
   errorReadableStream,
   getReadableStreamResourceBacking,
   getWritableStreamResourceBacking,
+  isReadableByteStreamController,
+  isReadableStream,
+  isReadableStreamBYOBReader,
+  isReadableStreamBYOBRequest,
   isDetachedBuffer,
   isReadableStreamDisturbed,
+  isReadableStreamLocked,
+  isReadableStreamDefaultReader,
   ReadableByteStreamController,
   ReadableStream,
   ReadableStreamBYOBReader,
   ReadableStreamBYOBRequest,
+  readableByteStreamControllerClearAlgorithms,
+  readableByteStreamControllerClearPendingPullIntos,
+  readableByteStreamControllerClose,
+  readableByteStreamControllerCommitPullIntoDescriptor,
+  readableByteStreamControllerConvertPullIntoDescriptor,
+  readableByteStreamControllerEnqueue,
+  readableByteStreamControllerEnqueueChunkToQueue,
+  readableByteStreamControllerError,
+  readableByteStreamControllerFillHeadPullIntoDescriptor,
+  readableByteStreamControllerFillPullIntoDescriptorFromQueue,
+  readableByteStreamControllerGetDesiredSize,
+  readableByteStreamControllerHandleQueueDrain,
+  readableByteStreamControllerInvalidateBYOBRequest,
+  readableByteStreamControllerProcessPullIntoDescriptorsUsingQueue,
+  readableByteStreamControllerPullInto,
+  readableByteStreamControllerRespond,
+  readableByteStreamControllerRespondInClosedState,
+  readableByteStreamControllerRespondInReadableState,
+  readableByteStreamControllerRespondInternal,
+  readableByteStreamControllerRespondWithNewView,
+  readableByteStreamControllerShiftPendingPullInto,
+  readableByteStreamControllerShouldCallPull,
+  readableByteStreamControllerCallPullIfNeeded,
   readableStreamCancel,
   readableStreamClose,
   readableStreamCollectIntoUint8Array,
+  readableStreamDefaultControllerCallPullIfNeeded,
+  readableStreamDefaultControllerCanCloseOrEnqueue,
+  readableStreamDefaultControllerClearAlgorithms,
   ReadableStreamDefaultController,
+  readableStreamDefaultControllerClose,
+  readableStreamDefaultControllerEnqueue,
+  readableStreamDefaultControllerError,
+  readableStreamDefaultControllerGetDesiredSize,
+  readableStreamDefaultControllerHasBackpressure,
+  readableStreamDefaultControllerShouldCallPull,
   ReadableStreamDefaultReader,
   readableStreamDisturb,
   readableStreamForRid,
   readableStreamForRidUnrefable,
   readableStreamForRidUnrefableRef,
   readableStreamForRidUnrefableUnref,
+  readableStreamGetNumReadIntoRequests,
+  readableStreamGetNumReadRequests,
+  readableStreamHasBYOBReader,
+  readableStreamHasDefaultReader,
   ReadableStreamPrototype,
+  readableStreamReaderGenericCancel,
+  readableStreamReaderGenericRelease,
+  readableStreamPipeTo,
   readableStreamTee,
   readableStreamThrowIfErrored,
   resourceForReadableStream,
+  setUpReadableByteStreamController,
+  setUpReadableByteStreamControllerFromSource,
+  setUpReadableStreamBYOBReader,
+  setUpReadableStreamDefaultController,
+  setUpReadableStreamDefaultControllerFromSource,
+  setUpReadableStreamDefaultReader,
   TransformStream,
   TransformStreamDefaultController,
   WritableStream,
@@ -7357,3 +7669,4 @@ export {
   WritableStreamDefaultWriter,
   writableStreamForRid,
 };
+})();

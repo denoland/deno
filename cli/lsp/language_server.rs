@@ -1104,7 +1104,7 @@ impl Inner {
         }
       }
       workspace_files.extend(dir_files);
-      pending.extend(dir_subdirs.into_iter());
+      pending.extend(dir_subdirs);
     }
     (workspace_files, false)
   }
@@ -1922,7 +1922,7 @@ impl Inner {
           self
             .resolution_to_hover_text(&dep.maybe_type, module.scope.as_deref()),
         ),
-        (true, true, _) => unreachable!("{}", json!(params)),
+        (true, true, _) => return Ok(None),
       };
       let value = if let Some(docs) = self.module_registry.get_hover(dep).await
       {

@@ -279,7 +279,7 @@ impl ModuleLoader for MockLoader {
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+  ) -> ModuleResolveResponse {
     let referrer = if referrer == "." {
       "file:///"
     } else {
@@ -555,6 +555,221 @@ fn test_lazy_loaded_esm() {
       "#,
     )
     .unwrap();
+}
+
+#[test]
+fn test_lazy_loaded_esm_aliased_specifier() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "custom:aliased" = "lazy_loaded_aliased.js",
+    ]
+  );
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  // Test via createLazyLoader
+  runtime
+    .execute_script(
+      "setup.js",
+      r#"
+      const module = Deno.core.createLazyLoader("custom:aliased")();
+      if (module.value !== "aliased") throw new Error("expected 'aliased', got " + module.value);
+      if (module.default.value !== "aliased") throw new Error("expected default.value to be 'aliased'");
+      Deno.core.print("lazy_loaded_esm aliased specifier works\n");
+      "#,
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn test_lazy_loaded_esm_aliased_via_import() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "custom:aliased" = "lazy_loaded_aliased.js",
+    ]
+  );
+
+  let loader = Rc::new(StaticModuleLoader::with(
+    ModuleSpecifier::parse("file:///importer.js").unwrap(),
+    crate::ascii_str_include!("testdata/lazy_loaded_importer.js"),
+  ));
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let mod_id = runtime
+    .load_side_es_module_from_code(
+      &ModuleSpecifier::parse("file:///importer.js").unwrap(),
+      crate::ascii_str_include!("testdata/lazy_loaded_importer.js"),
+    )
+    .await
+    .unwrap();
+  let result = runtime.mod_evaluate(mod_id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  result.await.unwrap();
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/33940
+///
+/// When two lazy-loaded ESM modules (A and B) are statically imported as
+/// siblings, V8 instantiates both during the link phase and evaluates them
+/// in DFS post-order. If A's evaluation calls `createLazyLoader(B)()`, the
+/// `op_lazy_load_esm` early-return path used to hand back B's module
+/// namespace without first evaluating it, so any `export const` bindings in
+/// B were in the temporal dead zone — producing `Cannot access 'X' before
+/// initialization`. This reproduces the gemini-cli failure where
+/// `events_esm.ts` eagerly destructures `EventEmitterAsyncResource`, whose
+/// getter lazy-loads `async_hooks_esm.ts` (a sibling in the user's bundle).
+#[tokio::test]
+async fn test_lazy_load_esm_evaluates_pre_instantiated_sibling() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "custom:lazy_a" = "lazy_load_sibling_a.js",
+      "custom:lazy_b" = "lazy_load_sibling_b.js",
+    ]
+  );
+
+  let loader = Rc::new(StaticModuleLoader::with(
+    ModuleSpecifier::parse("file:///main.js").unwrap(),
+    crate::ascii_str_include!("testdata/lazy_load_sibling_main.js"),
+  ));
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let mod_id = runtime
+    .load_main_es_module(&ModuleSpecifier::parse("file:///main.js").unwrap())
+    .await
+    .unwrap();
+  let result = runtime.mod_evaluate(mod_id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  result.await.unwrap();
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/34307
+///
+/// Two concurrent dynamic `import()` calls each spawn their own
+/// `RecursiveModuleLoad`. If both transitively depend on the same
+/// `lazy_loaded_esm` module, their per-load `visited`/`get_id` dedup misses
+/// (the first hasn't registered the module yet) and both queue load futures
+/// for the same lazy specifier. The first wins `take_lazy_esm_source`; the
+/// second used to get `None` and fall through to `loader.load()`, which
+/// surfaces "Unsupported scheme" for `node:` builtins in the wild (vite 8
+/// + react-router 7.15 under a CJS bin).
+#[tokio::test]
+async fn test_lazy_loaded_esm_concurrent_loads() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "custom:lazy_shared" = "lazy_loaded_shared.js",
+    ]
+  );
+
+  let main =
+    ModuleSpecifier::parse("file:///lazy_loaded_concurrent_main.js").unwrap();
+  let a =
+    ModuleSpecifier::parse("file:///lazy_loaded_concurrent_a.js").unwrap();
+  let b =
+    ModuleSpecifier::parse("file:///lazy_loaded_concurrent_b.js").unwrap();
+  let loader = Rc::new(StaticModuleLoader::new([
+    (
+      main.clone(),
+      crate::ascii_str_include!("testdata/lazy_loaded_concurrent_main.js"),
+    ),
+    (
+      a,
+      crate::ascii_str_include!("testdata/lazy_loaded_concurrent_a.js"),
+    ),
+    (
+      b,
+      crate::ascii_str_include!("testdata/lazy_loaded_concurrent_b.js"),
+    ),
+  ]));
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let mod_id = runtime.load_main_es_module(&main).await.unwrap();
+  let result = runtime.mod_evaluate(mod_id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  result.await.unwrap();
+}
+
+#[test]
+fn test_lazy_loaded_script() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_js = [dir "modules/testdata", "lazy_script.js", "lazy_script_dep.js"]
+  );
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "test_load_ext_script.js",
+      r#"
+      // Load a lazy script
+      const module = Deno.core.loadExtScript("ext:test_ext/lazy_script.js");
+      if (module.foo !== "foo") throw new Error("expected foo");
+      if (module.bar !== 123) throw new Error("expected 123");
+
+      // Should be cached - same object returned
+      const module2 = Deno.core.loadExtScript("ext:test_ext/lazy_script.js");
+      if (module !== module2) throw new Error("should return the same cached object");
+
+      // Load a script that depends on another lazy script
+      const dep = Deno.core.loadExtScript("ext:test_ext/lazy_script_dep.js");
+      if (dep.fromDep !== true) throw new Error("expected fromDep");
+      if (dep.utils.foo !== "foo") throw new Error("expected nested foo");
+
+      Deno.core.print("lazy script test passed\n");
+      "#,
+    )
+    .unwrap();
+}
+
+#[test]
+fn test_lazy_loaded_script_not_found() {
+  deno_core::extension!(test_ext);
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  let result = runtime.execute_script(
+    "test_not_found.js",
+    r#"Deno.core.loadExtScript("ext:test_ext/nonexistent.js")"#,
+  );
+  assert!(result.is_err());
+  let err = result.unwrap_err();
+  assert!(
+    err.to_string().contains("cannot be lazy-loaded"),
+    "unexpected error: {}",
+    err
+  );
 }
 
 #[test]
@@ -1111,7 +1326,7 @@ async fn dyn_import_err() {
     // We should get an error here.
     let result = runtime.poll_event_loop(cx, Default::default());
     assert!(matches!(result, Poll::Ready(Err(_))));
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(1, 1, 1, 1));
     Poll::Ready(())
   })
   .await;
@@ -1173,12 +1388,12 @@ async fn dyn_import_ok() {
       runtime.poll_event_loop(cx, Default::default()),
       Poll::Ready(Ok(_))
     ));
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(3, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
     assert!(matches!(
       runtime.poll_event_loop(cx, Default::default()),
       Poll::Ready(Ok(_))
     ));
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(3, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
     Poll::Ready(())
   })
   .await;
@@ -1216,10 +1431,10 @@ async fn dyn_import_borrow_mut_error() {
     // Old comments that are likely wrong:
     // First poll runs `prepare_load` hook.
     let _ = runtime.poll_event_loop(cx, Default::default());
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(1, 1, 1, 1));
     // Second poll triggers error
     let _ = runtime.poll_event_loop(cx, Default::default());
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(1, 1, 1, 1));
     Poll::Ready(())
   })
   .await;
@@ -1782,7 +1997,7 @@ async fn no_duplicate_loads() {
       specifier: &str,
       referrer: &str,
       _kind: ResolutionKind,
-    ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+    ) -> ModuleResolveResponse {
       let referrer = if referrer == "." {
         "file:///"
       } else {
@@ -1856,7 +2071,7 @@ async fn import_meta_resolve() {
       specifier: &str,
       referrer: &str,
       _kind: ResolutionKind,
-    ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+    ) -> ModuleResolveResponse {
       let referrer = if referrer == "." {
         "file:///"
       } else {
@@ -2298,7 +2513,7 @@ impl ModuleLoader for ExternalSourceMapLoader {
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+  ) -> ModuleResolveResponse {
     resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
   }
 
@@ -2620,6 +2835,125 @@ async fn test_lazy_loaded_esm_with_tla_no_panic() {
   runtime.instantiate_module(mod_main).unwrap();
 
   // This should not panic with "Expected at least one stalled top-level await"
+  let receiver = runtime.mod_evaluate(mod_main);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  receiver.await.unwrap();
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/32821
+///
+/// When an async module graph has TLA and `has_tick_scheduled` is set during
+/// module evaluation (e.g. CJS `process.nextTick()` calls), the
+/// `has_tick_scheduled` guard on the microtask checkpoint in `mod_evaluate`
+/// could prevent TLA resume microtasks from being drained. For large module
+/// graphs where the TLA op resolves during event loop processing (not during
+/// `module.evaluate()` itself), this leaves the evaluation promise permanently
+/// stuck in Pending, causing a panic at
+/// "Expected at least one stalled top-level await".
+#[tokio::test]
+async fn test_tla_with_tick_scheduled_no_hang() {
+  // An async op that resolves on the next event loop iteration (not eagerly)
+  #[op2]
+  async fn op_async_resolve() -> u32 {
+    // Yield to the event loop so this does NOT resolve eagerly
+    tokio::task::yield_now().await;
+    42
+  }
+
+  deno_core::extension!(
+    test_ext,
+    ops = [op_async_resolve],
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "lazy_loaded.js",
+      "lazy_loaded_2.js",
+    ]
+  );
+
+  let loader = Rc::new(TestingModuleLoader::new(NoopModuleLoader));
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let module_map = runtime.module_map().clone();
+
+  // Build a module graph where:
+  //   main.js (main module)
+  //     +-- tick_mod.js  -- sets has_tick_scheduled (simulates CJS nextTick)
+  //     +-- tla_mod.js   -- has TLA on an async op + triggers lazy load
+  //
+  // The key scenario: tick_mod.js sets has_tick_scheduled = true during
+  // module evaluation, causing the checkpoint in mod_evaluate to be
+  // skipped. tla_mod.js has a TLA that resolves during event loop
+  // processing, not during module.evaluate(). Without the fix, the
+  // evaluation promise stays Pending forever.
+
+  let (mod_main, mod_tick, mod_tla) = {
+    deno_core::scope!(scope, runtime);
+
+    let mod_tick = module_map
+      .new_es_module(
+        scope,
+        false,
+        ascii_str!("file:///tick_mod.js").into(),
+        ascii_str!(
+          r#"
+          Deno.core.setHasTickScheduled(true);
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    let mod_tla = module_map
+      .new_es_module(
+        scope,
+        false,
+        ascii_str!("file:///tla_mod.js").into(),
+        ascii_str!(
+          r#"
+          const lazy1 = Deno.core.createLazyLoader("ext:test_ext/lazy_loaded.js")();
+          if (lazy1.foo !== "foo") throw new Error("lazy1.foo: " + lazy1.foo);
+          const result = await Deno.core.ops.op_async_resolve();
+          if (result !== 42) throw new Error("unexpected: " + result);
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    let mod_main = module_map
+      .new_es_module(
+        scope,
+        true,
+        ascii_str!("file:///main.js").into(),
+        ascii_str!(
+          r#"
+          import "./tick_mod.js";
+          import "./tla_mod.js";
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    (mod_main, mod_tick, mod_tla)
+  };
+
+  runtime.instantiate_module(mod_tick).unwrap();
+  runtime.instantiate_module(mod_tla).unwrap();
+  runtime.instantiate_module(mod_main).unwrap();
+
+  // This should not panic or hang
   let receiver = runtime.mod_evaluate(mod_main);
   runtime.run_event_loop(Default::default()).await.unwrap();
   receiver.await.unwrap();

@@ -1,5 +1,7 @@
+[UNORDERED_START]
 Task b echo 'b'
-b
+[b] b
 Task c echo 'c'
-c
+[c] c
+[UNORDERED_END]
 Task a (no command)

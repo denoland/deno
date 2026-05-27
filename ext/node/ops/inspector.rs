@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::net::IpAddr;
 use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use std::rc::Rc;
 
 use deno_core::GarbageCollected;
@@ -12,6 +13,7 @@ use deno_core::JsRuntimeInspector;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::op2;
+use deno_core::serde_json;
 use deno_core::v8;
 use deno_inspector_server::InspectPublishUid;
 use deno_inspector_server::InspectorServerUrl;
@@ -26,6 +28,30 @@ pub fn op_inspector_enabled(state: &OpState) -> bool {
   state.try_borrow::<InspectorServerUrl>().is_some()
 }
 
+/// Returns the port the inspector server is listening on, or 0 if the
+/// inspector server has not been started. Used to back Node.js'
+/// `process.debugPort` so it reflects the actual bound port (which is
+/// important when `--inspect=...:0` requests an ephemeral port).
+#[op2(fast)]
+pub fn op_inspector_port(state: &OpState) -> u32 {
+  let Some(url) = state.try_borrow::<InspectorServerUrl>() else {
+    return 0;
+  };
+  // URL looks like `ws://host:port/<uuid>` (or `wss://...`). Parse out
+  // the port. We don't depend on the `url` crate here to keep the op
+  // tiny; the format is fixed by `get_websocket_debugger_url`.
+  let s = url.0.as_str();
+  let Some(after_scheme) = s.split_once("://").map(|(_, rest)| rest) else {
+    return 0;
+  };
+  let host_and_port = after_scheme.split('/').next().unwrap_or("");
+  let port_str = match host_and_port.rsplit_once(':') {
+    Some((_, p)) => p,
+    None => return 0,
+  };
+  port_str.parse::<u16>().map(|p| p as u32).unwrap_or(0)
+}
+
 #[op2(stack_trace)]
 pub fn op_inspector_open(
   state: &mut OpState,
@@ -38,12 +64,34 @@ pub fn op_inspector_open(
   const DEFAULT_PORT: u16 = 9229;
 
   let host_ip: IpAddr = match &host {
-    Some(h) => h.parse().map_err(|e| {
-      InspectorOpenError::InvalidHost(format!(
-        "Invalid inspector host '{}': {}",
-        h, e
-      ))
-    })?,
+    Some(h) => {
+      if let Ok(ip) = h.parse::<IpAddr>() {
+        ip
+      } else {
+        // Resolve hostnames like "localhost" via DNS to match Node's
+        // `inspector.open(port, host)` behavior. Prefer IPv4 results.
+        let addrs = (h.as_str(), 0u16)
+          .to_socket_addrs()
+          .map_err(|e| {
+            InspectorOpenError::InvalidHost(format!(
+              "Invalid inspector host '{}': {}",
+              h, e
+            ))
+          })?
+          .collect::<Vec<_>>();
+        addrs
+          .iter()
+          .find(|a| a.is_ipv4())
+          .or_else(|| addrs.first())
+          .map(|a| a.ip())
+          .ok_or_else(|| {
+            InspectorOpenError::InvalidHost(format!(
+              "Could not resolve inspector host '{}'",
+              h
+            ))
+          })?
+      }
+    }
     None => DEFAULT_HOST,
   };
   let port = port.unwrap_or(DEFAULT_PORT);
@@ -99,12 +147,139 @@ pub fn op_inspector_wait(state: &OpState) -> bool {
   }
 }
 
-#[op2(fast)]
+#[op2(nofast, reentrant)]
 pub fn op_inspector_emit_protocol_event(
-  #[string] _event_name: String,
-  #[string] _params: String,
+  state: Rc<RefCell<OpState>>,
+  scope: &mut v8::PinScope<'_, '_>,
+  #[string] event_name: String,
+  #[string] params: String,
 ) {
-  // TODO: inspector channel & protocol notifications
+  let inspector = {
+    let state = state.borrow();
+    state.try_borrow::<Rc<JsRuntimeInspector>>().cloned()
+  };
+  let Some(inspector) = inspector else {
+    return;
+  };
+
+  let needs_initiator = event_name == "Network.requestWillBeSent"
+    || event_name == "Network.webSocketCreated";
+  let needs_has_post_data = event_name == "Network.requestWillBeSent";
+  let needs_capture = matches!(
+    event_name.as_str(),
+    "Network.requestWillBeSent"
+      | "Network.responseReceived"
+      | "Network.loadingFinished"
+      | "Network.loadingFailed"
+      | "Network.dataReceived"
+      | "Network.dataSent"
+  );
+
+  if !needs_initiator && !needs_has_post_data && !needs_capture {
+    inspector.broadcast_to_sessions(&event_name, &params);
+    return;
+  }
+
+  let Ok(mut parsed) = serde_json::from_str::<serde_json::Value>(&params)
+  else {
+    inspector.broadcast_to_sessions(&event_name, &params);
+    return;
+  };
+
+  if needs_initiator {
+    let initiator = capture_initiator(scope);
+    parsed
+      .as_object_mut()
+      .unwrap()
+      .insert("initiator".to_string(), initiator);
+  }
+
+  if needs_has_post_data
+    && let Some(request) =
+      parsed.get_mut("request").and_then(|r| r.as_object_mut())
+  {
+    request
+      .entry("hasPostData")
+      .or_insert(serde_json::Value::Bool(false));
+  }
+
+  let should_broadcast = if needs_capture {
+    inspector.capture_network_event(&event_name, &parsed)
+  } else {
+    true
+  };
+
+  if should_broadcast {
+    let augmented = serde_json::to_string(&parsed).unwrap();
+    inspector.broadcast_to_sessions(&event_name, &augmented);
+  }
+}
+
+fn capture_initiator(scope: &mut v8::PinScope<'_, '_>) -> serde_json::Value {
+  let Some(stack_trace) = v8::StackTrace::current_stack_trace(scope, 10) else {
+    return serde_json::json!({ "type": "other" });
+  };
+
+  let frame_count = stack_trace.get_frame_count();
+  let mut call_frames = Vec::new();
+
+  for i in 0..frame_count {
+    let Some(frame) = stack_trace.get_frame(scope, i) else {
+      continue;
+    };
+    // Skip internal frames (ext:, node: prefixes)
+    if let Some(script_name) = frame.get_script_name(scope) {
+      let name = script_name.to_rust_string_lossy(scope);
+      if name.starts_with("ext:") || name.starts_with("node:") {
+        continue;
+      }
+    }
+
+    let function_name = frame
+      .get_function_name(scope)
+      .map(|n| n.to_rust_string_lossy(scope))
+      .unwrap_or_default();
+    let url = frame
+      .get_script_name(scope)
+      .map(|n| n.to_rust_string_lossy(scope))
+      .map(|s| {
+        // CJS code sees `__filename` as an OS filesystem path (with
+        // backslashes on Windows), not a `file://` URL. Convert here so
+        // that test frame lookups like
+        // `findFrameInInitiator(__filename, initiator)` match.
+        if s.starts_with("file://")
+          && let Ok(parsed) = ModuleSpecifier::parse(&s)
+          && let Ok(path) = deno_path_util::url_to_file_path(&parsed)
+        {
+          return path.to_string_lossy().into_owned();
+        }
+        s
+      })
+      .unwrap_or_default();
+    let line_number = frame.get_line_number().saturating_sub(1); // CDP uses 0-based
+    let column_number = frame.get_column().saturating_sub(1);
+
+    call_frames.push(serde_json::json!({
+      "functionName": function_name,
+      "scriptId": "",
+      "url": url,
+      "lineNumber": line_number,
+      "columnNumber": column_number,
+    }));
+  }
+
+  // Always emit `type: "script"` even when `call_frames` is empty.
+  // Returning `{type: "other"}` for the empty case (as the original code
+  // did) tripped node_compat tests that assert `initiator.type ===
+  // "script"` whenever the inspector saw a JS-originated request - which
+  // is true here by construction, since we only reach this function from
+  // `op_inspector_emit_protocol_event` called from JS-land emitters.
+  serde_json::json!({
+    "type": "script",
+    "stack": {
+      "callFrames": call_frames,
+    },
+  })
 }
 
 struct JSInspectorSession {

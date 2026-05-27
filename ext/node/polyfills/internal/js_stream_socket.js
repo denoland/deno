@@ -6,16 +6,27 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { Socket } from "node:net";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { codeMap, UV_ECANCELED } from "ext:deno_node/internal_binding/uv.ts";
-import { setImmediate } from "node:timers";
-import {
+(function () {
+const { core } = __bootstrap;
+
+const lazyNet = core.createLazyLoader("node:net");
+const lazyTimers = core.createLazyLoader("node:timers");
+
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { codeMap, UV_ECANCELED } = core.loadExtScript(
+  "ext:deno_node/internal_binding/uv.ts",
+);
+const {
+  kArrayBufferOffset,
   kBytesWritten,
   kLastWriteWasAsync,
+  kReadBytesOrError,
   streamBaseState,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { Buffer } from "node:buffer";
+} = core.loadExtScript("ext:deno_node/internal_binding/stream_wrap.ts");
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { ERR_STREAM_WRAP } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
 const kCurrentWriteRequest = Symbol("kCurrentWriteRequest");
 const kCurrentShutdownRequest = Symbol("kCurrentShutdownRequest");
@@ -51,7 +62,7 @@ const kOwner = Symbol.for("kJSStreamOwner");
  * composability, we need a way to create "fake" net.Socket instances that
  * call back into a "real" JavaScript stream. JSStreamSocket is exactly this.
  */
-class JSStreamSocket extends Socket {
+class JSStreamSocket extends lazyNet().Socket {
   constructor(stream) {
     // Create a lightweight handle object that mimics what Node's
     // JSStream C++ binding provides. TLSWrap detects kJSStreamHandle
@@ -120,9 +131,23 @@ class JSStreamSocket extends Socket {
       shutdown(req) {
         return handle[kOwner].doShutdown(req);
       },
-      // These are set by TLSWrap after attachJsStream()
-      readBuffer: null,
-      emitEOF: null,
+      // Default read path: forward bytes from the underlying Duplex into
+      // the wrapping Socket's readable side via the standard onread
+      // callback (set by net._initSocketHandle).
+      // TLSWrap.attachJsStream() overrides these to route data through
+      // the TLS engine instead.
+      readBuffer(chunk) {
+        if (!handle.onread) return;
+        const len = chunk.byteLength ?? chunk.length ?? 0;
+        if (len === 0) return;
+        streamBaseState[kArrayBufferOffset] = chunk.byteOffset ?? 0;
+        streamBaseState[kReadBytesOrError] = len;
+        handle.onread.call(handle, chunk, len);
+      },
+      emitEOF() {
+        if (!handle.onread) return;
+        handle.onread.call(handle, null, codeMap.get("EOF"));
+      },
       reading: false,
     };
 
@@ -136,7 +161,7 @@ class JSStreamSocket extends Socket {
         // Make sure that no further `data` events will happen.
         stream.pause();
         stream.removeListener("data", ondata);
-        this.emit("error", new Error("Stream is not in binary mode"));
+        this.emit("error", new ERR_STREAM_WRAP());
         return;
       }
 
@@ -245,7 +270,7 @@ class JSStreamSocket extends Socket {
         errCode = codeMap.get(err.code) || codeMap.get("EPIPE");
       }
 
-      setImmediate(() => {
+      lazyTimers().setImmediate(() => {
         self.finishWrite(handle, errCode);
       });
     }
@@ -274,7 +299,7 @@ class JSStreamSocket extends Socket {
 
     this.stream.destroy();
 
-    setImmediate(() => {
+    lazyTimers().setImmediate(() => {
       this.finishWrite(handle, UV_ECANCELED);
       this.finishShutdown(handle, UV_ECANCELED);
       this[kPendingClose] = false;
@@ -283,5 +308,11 @@ class JSStreamSocket extends Socket {
   }
 }
 
-export { JSStreamSocket, kJSStreamHandle, kOwner };
-export default JSStreamSocket;
+// Node's lib/internal/js_stream_socket exports the class as the module
+// itself, with `StreamWrap` as a self-reference so destructuring works:
+//   const StreamWrap = require('internal/js_stream_socket');
+//   const { StreamWrap } = require('internal/js_stream_socket');
+JSStreamSocket.StreamWrap = JSStreamSocket;
+
+return { JSStreamSocket, kJSStreamHandle, kOwner, default: JSStreamSocket };
+})();

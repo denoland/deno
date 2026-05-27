@@ -12,7 +12,12 @@
       }]
     },
     "file_not_exists": {
-      "args": "install --root ./bins -g --name my-cli cli.ts",
+      // No local cli.ts file: the entry is treated as an npm package
+      // (defaulting to the npm registry, like `deno add`). The mock npm
+      // registry doesn't have this name, so install fails with a clear
+      // "package does not exist" error rather than the legacy
+      // "missing a prefix" hint.
+      "args": "install --root ./bins -g --name my-cli nonexistent-pkg-name-xyz123",
       "output": "file_not_exists.out",
       "exitCode": 1
     }

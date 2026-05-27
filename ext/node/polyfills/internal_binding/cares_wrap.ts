@@ -27,34 +27,43 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import { isIPv4, isIPv6 } from "ext:deno_node/internal/net.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import {
-  AsyncWrap,
-  providerType,
-} from "ext:deno_node/internal_binding/async_wrap.ts";
-import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
-import { core } from "ext:core/mod.js";
-import {
+(function () {
+const { core } = __bootstrap;
+const {
   op_dns_resolve,
   op_net_get_ips_from_perm_token,
   op_net_get_system_dns_servers,
   op_node_getaddrinfo,
   op_node_getnameinfo,
-} from "ext:core/ops";
+} = core.ops;
+const { isIPv4, isIPv6 } = core.loadExtScript("ext:deno_node/internal/net.ts");
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const {
+  AsyncWrap,
+  providerType,
+} = core.loadExtScript("ext:deno_node/internal_binding/async_wrap.ts");
+const { ares_strerror } = core.loadExtScript(
+  "ext:deno_node/internal_binding/ares.ts",
+);
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 
 interface LookupAddress {
   address: string;
   family: number;
 }
 
-export const DNS_ORDER_VERBATIM = 0;
-export const DNS_ORDER_IPV4_FIRST = 1;
-export const DNS_ORDER_IPV6_FIRST = 2;
+interface ErrnoException extends Error {
+  errno?: number;
+  code?: string;
+  path?: string;
+  syscall?: string;
+}
 
-export class GetAddrInfoReqWrap extends AsyncWrap {
+const DNS_ORDER_VERBATIM = 0;
+const DNS_ORDER_IPV4_FIRST = 1;
+const DNS_ORDER_IPV6_FIRST = 2;
+
+class GetAddrInfoReqWrap extends AsyncWrap {
   family!: number;
   hostname!: string;
   port: number | undefined;
@@ -77,7 +86,7 @@ export class GetAddrInfoReqWrap extends AsyncWrap {
   }
 }
 
-export function getaddrinfo(
+function getaddrinfo(
   req: GetAddrInfoReqWrap,
   hostname: string,
   family: number,
@@ -144,7 +153,7 @@ export function getaddrinfo(
   return 0;
 }
 
-export class GetNameInfoReqWrap extends AsyncWrap {
+class GetNameInfoReqWrap extends AsyncWrap {
   address!: string;
   port!: number;
 
@@ -166,7 +175,7 @@ export class GetNameInfoReqWrap extends AsyncWrap {
   }
 }
 
-export function getnameinfo(
+function getnameinfo(
   req: GetNameInfoReqWrap,
   address: string,
   port: number,
@@ -182,7 +191,7 @@ export function getnameinfo(
   return 0;
 }
 
-export class QueryReqWrap extends AsyncWrap {
+class QueryReqWrap extends AsyncWrap {
   bindingName!: string;
   hostname!: string;
   ttl!: boolean;
@@ -207,7 +216,7 @@ export class QueryReqWrap extends AsyncWrap {
   }
 }
 
-export interface ChannelWrapQuery {
+interface ChannelWrapQuery {
   queryAny(req: QueryReqWrap, name: string): number;
   queryA(req: QueryReqWrap, name: string): number;
   queryAaaa(req: QueryReqWrap, name: string): number;
@@ -238,22 +247,29 @@ function getSystemDnsServers(): [string, number][] {
   return systemDnsServers;
 }
 
-export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
+class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   #servers: [string, number][] | null = null;
   #timeout: number;
   #tries: number;
+  #maxTimeout: number;
   #pendingQueries: Set<QueryReqWrap> = new Set();
   #cancelRids: Set<number> = new Set();
 
-  constructor(timeout: number, tries: number) {
+  constructor(timeout: number, tries: number, maxTimeout: number) {
     super(providerType.DNSCHANNEL);
 
     this.#timeout = timeout;
     this.#tries = tries;
+    this.#maxTimeout = maxTimeout;
   }
 
-  async #query(query: string, recordType: Deno.RecordType, ttl?: boolean) {
-    let code: number;
+  async #query(
+    query: string,
+    recordType: Deno.RecordType,
+    ttl?: boolean,
+  ) {
+    // deno-lint-ignore no-explicit-any
+    let code: any;
     let ret: Awaited<ReturnType<typeof Deno.resolveDns>>;
 
     if (this.#servers !== null && this.#servers.length) {
@@ -297,167 +313,165 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     // deno-lint-ignore no-explicit-any
     ret: any[];
   }> {
-    let ret = [];
-    // deno-lint-ignore no-explicit-any
-    let code: any = 0;
+    const tries = this.#tries > 0 ? this.#tries : 1;
 
-    // Always create a cancel handle so cancel() can abort in-flight ops.
-    const cancelRid = core.createCancelHandle();
-    this.#cancelRids.add(cancelRid);
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    for (let attempt = 0; attempt < tries; attempt++) {
+      let ret = [];
+      // deno-lint-ignore no-explicit-any
+      let code: any = 0;
 
-    try {
-      if (this.#timeout >= 0) {
-        timer = setTimeout(() => {
-          this.#cancelRids.delete(cancelRid);
-          core.tryClose(cancelRid);
-        }, this.#timeout);
-      }
+      // Always create a cancel handle so cancel() can abort in-flight ops.
+      const cancelRid = core.createCancelHandle();
+      this.#cancelRids.add(cancelRid);
+      let timer: ReturnType<typeof setTimeout> | undefined;
 
-      const res = await op_dns_resolve({
-        query,
-        recordType,
-        options: resolveOptions,
-        cancelRid,
-      }, /* useEdns0 */ false);
-      if (ttl) {
-        ret = res;
-      } else {
-        ret = res.map((recordWithTtl) => recordWithTtl.data);
+      try {
+        if (this.#timeout >= 0) {
+          // c-ares doubles timeout on each retry, capped by maxTimeout
+          let currentTimeout = this.#timeout * Math.pow(2, attempt);
+          if (this.#maxTimeout >= 0) {
+            currentTimeout = Math.min(currentTimeout, this.#maxTimeout);
+          }
+          timer = setTimeout(() => {
+            this.#cancelRids.delete(cancelRid);
+            core.tryClose(cancelRid);
+          }, currentTimeout);
+        }
+
+        const res = await op_dns_resolve({
+          query,
+          recordType,
+          options: resolveOptions,
+          cancelRid,
+        }, /* useEdns0 */ false);
+        if (ttl) {
+          ret = res;
+        } else {
+          ret = res.map((recordWithTtl) => recordWithTtl.data);
+        }
+        return { code, ret };
+      } catch (e) {
+        if (e instanceof Deno.errors.Interrupted) {
+          // Interrupted means explicit cancel - don't retry
+          code = "ETIMEOUT";
+        } else if (e instanceof Deno.errors.TimedOut) {
+          // TimedOut from hickory - retry if attempts remain
+          if (attempt < tries - 1) continue;
+          code = "ETIMEOUT";
+        } else if (e instanceof Deno.errors.NotFound) {
+          code = codeMap.get("EAI_NODATA")!;
+        } else {
+          // TODO(cmorten): map errors to appropriate error codes.
+          code = codeMap.get("UNKNOWN")!;
+        }
+        return { code, ret };
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+        this.#cancelRids.delete(cancelRid);
+        core.tryClose(cancelRid);
       }
-    } catch (e) {
-      if (e instanceof Deno.errors.Interrupted) {
-        code = "ETIMEOUT";
-      } else if (e instanceof Deno.errors.NotFound) {
-        code = codeMap.get("EAI_NODATA")!;
-      } else {
-        // TODO(cmorten): map errors to appropriate error codes.
-        code = codeMap.get("UNKNOWN")!;
-      }
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-      this.#cancelRids.delete(cancelRid);
-      core.tryClose(cancelRid);
     }
 
-    return { code, ret };
+    return { code: codeMap.get("UNKNOWN")!, ret: [] };
   }
 
   queryAny(req: QueryReqWrap, name: string): number {
-    // TODO(@bartlomieju): implemented temporary measure to allow limited usage of
-    // `resolveAny` like APIs.
-    //
-    // Ideally we move to using the "ANY" / "*" DNS query in future
-    // REF: https://github.com/denoland/deno/issues/14492
     this.#pendingQueries.add(req);
-    (async () => {
-      const records: { type: Deno.RecordType; [key: string]: unknown }[] = [];
 
-      await Promise.allSettled([
-        this.#query(name, "A").then(({ ret }) => {
-          ret.forEach((record) =>
-            records.push({ type: "A", address: record, ttl: 0 })
-          );
-        }),
-        this.#query(name, "AAAA").then(({ ret }) => {
-          (ret as string[]).forEach((record) =>
-            records.push({ type: "AAAA", address: record, ttl: 0 })
-          );
-        }),
-        this.#query(name, "CAA").then(({ ret }) => {
-          (ret as Deno.CaaRecord[]).forEach(({ critical, tag, value }) =>
-            records.push({
-              type: "CAA",
-              [tag]: value,
-              critical: +critical && 128,
-            })
-          );
-        }),
-        this.#query(name, "CNAME").then(({ ret }) => {
-          ret.forEach((record) =>
-            records.push({ type: "CNAME", value: record })
-          );
-        }),
-        this.#query(name, "MX").then(({ ret }) => {
-          (ret as Deno.MxRecord[]).forEach(({ preference, exchange }) =>
-            records.push({
-              type: "MX",
-              priority: preference,
-              exchange: fqdnToHostname(exchange),
-            })
-          );
-        }),
-        this.#query(name, "NAPTR").then(({ ret }) => {
-          (ret as Deno.NaptrRecord[]).forEach(
-            ({ order, preference, flags, services, regexp, replacement }) =>
-              records.push({
-                type: "NAPTR",
-                order,
-                preference,
-                flags,
-                service: services,
-                regexp,
-                replacement,
-              }),
-          );
-        }),
-        this.#query(name, "NS").then(({ ret }) => {
-          (ret as string[]).forEach((record) =>
-            records.push({ type: "NS", value: fqdnToHostname(record) })
-          );
-        }),
-        this.#query(name, "PTR").then(({ ret }) => {
-          (ret as string[]).forEach((record) =>
-            records.push({ type: "PTR", value: fqdnToHostname(record) })
-          );
-        }),
-        this.#query(name, "SOA").then(({ ret }) => {
-          (ret as Deno.SoaRecord[]).forEach(
-            ({ mname, rname, serial, refresh, retry, expire, minimum }) =>
-              records.push({
-                type: "SOA",
-                nsname: fqdnToHostname(mname),
-                hostmaster: fqdnToHostname(rname),
-                serial,
-                refresh,
-                retry,
-                expire,
-                minttl: minimum,
-              }),
-          );
-        }),
-        this.#query(name, "SRV").then(({ ret }) => {
-          (ret as Deno.SrvRecord[]).forEach(
-            ({ priority, weight, port, target }) =>
-              records.push({
-                type: "SRV",
-                priority,
-                weight,
-                port,
-                name: fqdnToHostname(target),
-              }),
-          );
-        }),
-        this.#query(name, "TXT").then(({ ret }) => {
-          ret.forEach((record) =>
-            records.push({ type: "TXT", entries: record })
-          );
-        }),
-      ]);
-
+    // deno-lint-ignore no-explicit-any
+    this.#query(name, "ANY" as any, true).then(({ code, ret }) => {
       if (!this.#pendingQueries.has(req)) return;
       this.#pendingQueries.delete(req);
 
-      const err = records.length ? 0 : codeMap.get("EAI_NODATA")!;
+      if (code !== 0) {
+        req.oncomplete(code, []);
+        return;
+      }
 
+      const records: { type: string; [key: string]: unknown }[] = [];
+      for (const entry of ret) {
+        const data = entry?.data ?? entry;
+        const ttl = entry?.ttl ?? 0;
+        const rt = entry?.recordType;
+
+        switch (rt) {
+          case "A":
+            records.push({ type: "A", address: data, ttl });
+            break;
+          case "AAAA":
+            records.push({ type: "AAAA", address: data, ttl });
+            break;
+          case "MX":
+            records.push({
+              type: "MX",
+              priority: data.preference,
+              exchange: fqdnToHostname(data.exchange),
+            });
+            break;
+          case "NS":
+            records.push({ type: "NS", value: fqdnToHostname(data) });
+            break;
+          case "TXT":
+            records.push({ type: "TXT", entries: data });
+            break;
+          case "PTR":
+            records.push({ type: "PTR", value: fqdnToHostname(data) });
+            break;
+          case "SOA":
+            records.push({
+              type: "SOA",
+              nsname: fqdnToHostname(data.mname),
+              hostmaster: fqdnToHostname(data.rname),
+              serial: data.serial,
+              refresh: data.refresh,
+              retry: data.retry,
+              expire: data.expire,
+              minttl: data.minimum,
+            });
+            break;
+          case "CAA":
+            records.push({
+              type: "CAA",
+              [data.tag]: data.value,
+              critical: +data.critical && 128,
+            });
+            break;
+          case "CNAME":
+            records.push({ type: "CNAME", value: data });
+            break;
+          case "NAPTR":
+            records.push({
+              type: "NAPTR",
+              order: data.order,
+              preference: data.preference,
+              flags: data.flags,
+              service: data.services,
+              regexp: data.regexp,
+              replacement: data.replacement,
+            });
+            break;
+          case "SRV":
+            records.push({
+              type: "SRV",
+              priority: data.priority,
+              weight: data.weight,
+              port: data.port,
+              name: fqdnToHostname(data.target),
+            });
+            break;
+        }
+      }
+
+      const err = records.length ? 0 : codeMap.get("EAI_NODATA")!;
       req.oncomplete(err, records);
-    })();
+    });
 
     return 0;
   }
 
   queryA(req: QueryReqWrap, name: string): number {
     this.#pendingQueries.add(req);
+
     this.#query(name, "A", req.ttl).then(({ code, ret }) => {
       if (!this.#pendingQueries.has(req)) return;
       this.#pendingQueries.delete(req);
@@ -478,6 +492,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
   queryAaaa(req: QueryReqWrap, name: string): number {
     this.#pendingQueries.add(req);
+
     this.#query(name, "AAAA", req.ttl).then(({ code, ret }) => {
       if (!this.#pendingQueries.has(req)) return;
       this.#pendingQueries.delete(req);
@@ -498,6 +513,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
   queryCaa(req: QueryReqWrap, name: string): number {
     this.#pendingQueries.add(req);
+
     this.#query(name, "CAA").then(({ code, ret }) => {
       if (!this.#pendingQueries.has(req)) return;
       this.#pendingQueries.delete(req);
@@ -517,6 +533,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
   queryCname(req: QueryReqWrap, name: string): number {
     this.#pendingQueries.add(req);
+
     this.#query(name, "CNAME").then(({ code, ret }) => {
       if (!this.#pendingQueries.has(req)) return;
       this.#pendingQueries.delete(req);
@@ -529,6 +546,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
   queryMx(req: QueryReqWrap, name: string): number {
     this.#pendingQueries.add(req);
+
     this.#query(name, "MX").then(({ code, ret }) => {
       if (!this.#pendingQueries.has(req)) return;
       this.#pendingQueries.delete(req);
@@ -548,6 +566,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
   queryNaptr(req: QueryReqWrap, name: string): number {
     this.#pendingQueries.add(req);
+
     this.#query(name, "NAPTR").then(({ code, ret }) => {
       if (!this.#pendingQueries.has(req)) return;
       this.#pendingQueries.delete(req);
@@ -571,6 +590,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
   queryNs(req: QueryReqWrap, name: string): number {
     this.#pendingQueries.add(req);
+
     this.#query(name, "NS").then(({ code, ret }) => {
       if (!this.#pendingQueries.has(req)) return;
       this.#pendingQueries.delete(req);
@@ -585,6 +605,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
   queryPtr(req: QueryReqWrap, name: string): number {
     this.#pendingQueries.add(req);
+
     this.#query(name, "PTR").then(({ code, ret }) => {
       if (!this.#pendingQueries.has(req)) return;
       this.#pendingQueries.delete(req);
@@ -599,6 +620,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
   querySoa(req: QueryReqWrap, name: string): number {
     this.#pendingQueries.add(req);
+
     this.#query(name, "SOA").then(({ code, ret }) => {
       if (!this.#pendingQueries.has(req)) return;
       this.#pendingQueries.delete(req);
@@ -628,6 +650,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
   querySrv(req: QueryReqWrap, name: string): number {
     this.#pendingQueries.add(req);
+
     this.#query(name, "SRV").then(({ code, ret }) => {
       if (!this.#pendingQueries.has(req)) return;
       this.#pendingQueries.delete(req);
@@ -649,6 +672,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
   queryTxt(req: QueryReqWrap, name: string): number {
     this.#pendingQueries.add(req);
+
     this.#query(name, "TXT").then(({ code, ret }) => {
       if (!this.#pendingQueries.has(req)) return;
       this.#pendingQueries.delete(req);
@@ -755,20 +779,33 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 const DNS_ESETSRVPENDING = -1000;
 const EMSG_ESETSRVPENDING = "There are pending queries.";
 
-export function strerror(code: number) {
+function strerror(code: number) {
   return code === DNS_ESETSRVPENDING
     ? EMSG_ESETSRVPENDING
     : ares_strerror(code);
 }
 
-export default {
+return {
   DNS_ORDER_VERBATIM,
   DNS_ORDER_IPV4_FIRST,
   DNS_ORDER_IPV6_FIRST,
   GetAddrInfoReqWrap,
   getaddrinfo,
+  GetNameInfoReqWrap,
   getnameinfo,
   QueryReqWrap,
   ChannelWrap,
   strerror,
+  default: {
+    DNS_ORDER_VERBATIM,
+    DNS_ORDER_IPV4_FIRST,
+    DNS_ORDER_IPV6_FIRST,
+    GetAddrInfoReqWrap,
+    getaddrinfo,
+    getnameinfo,
+    QueryReqWrap,
+    ChannelWrap,
+    strerror,
+  },
 };
+})();
