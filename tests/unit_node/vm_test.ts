@@ -172,7 +172,10 @@ Deno.test({
     assertEquals(result.ok, false);
     assertEquals(result.code, "ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING");
     assertEquals(result.name, "TypeError");
-    assertEquals(result.message, "A dynamic import callback was not specified.");
+    assertEquals(
+      result.message,
+      "A dynamic import callback was not specified.",
+    );
   },
 });
 
