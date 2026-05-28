@@ -1992,6 +1992,50 @@ Deno.test({
   },
 });
 
+// Regression test for #34396: fs.watch on a non-existent path used to
+// throw a raw `Deno.errors.NotFound` synchronously, which left chokidar/
+// vite (and any other EventEmitter-style consumer) unable to recover from
+// transient races (e.g. an editor's atomic-save temp file getting renamed
+// away before the inotify watch is added). The error should instead be
+// delivered as a Node-style ENOENT on the watcher's 'error' event.
+Deno.test({
+  name: "[node/fs] watch surfaces NotFound as 'error' event with ENOENT",
+  async fn() {
+    const missing = join(
+      tmpdir(),
+      `deno-watch-missing-${Date.now()}-${Math.random()}`,
+    );
+
+    const { promise, resolve, reject } = Promise.withResolvers<Error>();
+    let watcher: ReturnType<typeof watch>;
+    try {
+      watcher = watch(missing, () => {});
+    } catch (e) {
+      reject(
+        new Error(
+          `watch threw synchronously instead of emitting 'error': ${e}`,
+        ),
+      );
+      return;
+    }
+    watcher.on("error", resolve);
+    const timeoutId = setTimeout(
+      () => reject(new Error("watcher never emitted 'error'")),
+      5000,
+    );
+
+    try {
+      const err = await promise as NodeJS.ErrnoException;
+      assertEquals(err.code, "ENOENT");
+      assertEquals(err.syscall, "watch");
+      assertEquals(err.path, missing);
+    } finally {
+      clearTimeout(timeoutId);
+      watcher.close();
+    }
+  },
+});
+
 Deno.test(
   {
     name: "[node/fs] readFile on non-terminating source respects AbortSignal",
