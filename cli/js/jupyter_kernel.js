@@ -22,6 +22,8 @@ const {
   op_jupyter_repl_interrupt,
   op_jupyter_repl_cancel_interrupt,
   op_jupyter_recv_iopub,
+  op_jupyter_recv_input,
+  op_jupyter_send_input_reply,
   op_jupyter_deno_version,
   op_jupyter_typescript_version,
 } = core.ops;
@@ -314,47 +316,11 @@ function makeQueue() {
   };
 }
 
-async function runRouter(port, ip, incomingQueue, outgoingQueue) {
-  const listener = Deno.listen({ hostname: ip, port });
-  while (true) {
-    const conn = await listener.accept();
-    (async () => {
-      try {
-        await zmtpHandshake(conn, "ROUTER", true);
-
-        // Generate peer identity
-        const peerId = crypto.getRandomValues(new Uint8Array(5));
-
-        // reader loop
-        const readerLoop = (async () => {
-          while (true) {
-            const frames = await recvMultipart(conn);
-            // Prepend peer identity (ROUTER semantics)
-            incomingQueue.push([peerId, ...frames]);
-          }
-        })();
-
-        // writer loop - deliver outgoing frames addressed to this peer
-        const peerConnections = globalThis.__peerConnections__ ||
-          (globalThis.__peerConnections__ = new Map());
-        peerConnections.set(peerId, conn);
-
-        await readerLoop;
-      } catch {
-        // peer disconnected
-      } finally {
-        try {
-          conn.close();
-        } catch { /**/ }
-      }
-    })();
-  }
-}
-
 /**
- * Simple per-connection ROUTER: each accepted connection maps to a peer.
- * Incoming messages are pushed to the queue with the peer id prepended.
- * Outgoing messages from the queue are matched to the correct peer by first frame.
+ * Per-connection ROUTER: each accepted connection maps to a peer with a
+ * generated identity. Incoming messages are queued with the peer id prepended;
+ * outgoing messages are dispatched to a specific peer by id (or broadcast to
+ * every connected peer via `sendAll`).
  */
 class RouterSocket {
   constructor(port, ip) {
@@ -406,6 +372,19 @@ class RouterSocket {
     const conn = this.peers.get(peerKey);
     if (!conn) return;
     await sendFrames(conn, frames);
+  }
+
+  async sendAll(frames) {
+    const dead = [];
+    for (const [peerKey, conn] of this.peers) {
+      const peerId = new Uint8Array(peerKey.split(",").map(Number));
+      try {
+        await sendFrames(conn, [peerId, ...frames]);
+      } catch {
+        dead.push(peerKey);
+      }
+    }
+    for (const peerKey of dead) this.peers.delete(peerKey);
   }
 }
 
@@ -481,12 +460,11 @@ async function startJupyterKernel() {
   const shell = new RouterSocket(shell_port, ip);
   const control = new RouterSocket(control_port, ip);
   const iopub = new PubSocket(iopub_port, ip);
-  // Bind stdin port so frontends can connect. Input requests are not
-  // supported in this kernel, so received messages are discarded.
-  new RouterSocket(stdin_port, ip);
+  const stdin = new RouterSocket(stdin_port, ip);
 
   let executionCount = 0;
   let currentParentHeader = {};
+  let currentAllowStdin = false;
   let shuttingDown = false;
 
   async function publishStatus(status, parentHeader) {
@@ -535,64 +513,6 @@ async function startJupyterKernel() {
     }
   }
   iopubDrainer();
-
-  async function sendReply(
-    socket,
-    peerId,
-    msgType,
-    content,
-    parentHeader,
-    metadata = {},
-  ) {
-    const frames = await encodeMsg(
-      session,
-      key,
-      [peerId],
-      msgType,
-      content,
-      parentHeader,
-      metadata,
-    );
-    // The first frame is the identity; send without it as the socket adds identity
-    // Actually send WITH the identity as the routing prefix for ROUTER
-    await socket.send(peerId, frames.slice(1)); // skip identity since RouterSocket.send prepends it? No-frames[0] IS the identity
-    // Actually let's just send all frames including the identity since ROUTER peer matching is by peerId arg
-    // Re-think: we call socket.send(peerId, framesWithoutLeadingIdentity)
-    // encodeMsg with identities=[peerId] produces [peerId, DELIMITER, ...]
-    // RouterSocket.send(peerId, frames) should send the frames directly.
-    // The peer's receiving side (DEALER) expects no leading identity.
-    // So strip the identity from encodeMsg output:
-  }
-
-  // Actually let's simplify the send logic:
-  async function routerSend(
-    socket,
-    peerId,
-    msgType,
-    content,
-    parentHeader,
-    metadata = {},
-  ) {
-    const frames = await encodeMsg(
-      session,
-      key,
-      [], // no identities in the payload itself
-      msgType,
-      content,
-      parentHeader,
-      metadata,
-    );
-    // Prepend identity frame for ROUTER?DEALER routing
-    // The DEALER peer expects: [DELIMITER, sig, header, ...]
-    // ROUTER adds its routing frame as first; but since we're sending directly
-    // on the raw TCP connection via sendFrames, we send all frames as-is.
-    // The DEALER client interprets: first frame = routing (for sub-addressing), then DELIMITER...
-    // Actually in ZMQ ROUTER?DEALER: ROUTER sends [identity, DELIMITER, sig, header, ...]
-    // DEALER receives [DELIMITER, sig, header, ...] (strips identity automatically)
-    // Since we're implementing TCP directly, we need to match this.
-    const fullFrames = [peerId, ...frames];
-    await socket.send(peerId, fullFrames);
-  }
 
   function kernelInfo() {
     return {
@@ -676,6 +596,7 @@ async function startJupyterKernel() {
   async function handleExecute(peerId, socket, msg) {
     const { header: parentHeader, content } = msg;
     currentParentHeader = parentHeader;
+    currentAllowStdin = content.allow_stdin === true;
 
     const silent = content.silent || false;
     const storeHistory = content.store_history !== false;
@@ -843,16 +764,6 @@ async function startJupyterKernel() {
     }
 
     await publishStatus("idle", parentHeader);
-  }
-
-  async function handleShellMsg(peerId, socket) {
-    const { frames } = await socket.recv();
-    // Wait for more messages on that peer - but since we get {peerId, frames} from recv():
-    // Actually recv() returns {peerId, peerKey, frames}
-    const decodedPeerId = peerId; // already have it
-    void decodedPeerId;
-    // This function is called already with {peerId, frames}
-    // We need to restructure...
   }
 
   async function shellLoop(socket) {
@@ -1061,24 +972,6 @@ async function startJupyterKernel() {
     return resp?.names || [];
   }
 
-  // Actually, let's use a simpler approach for getExprProperties:
-  async function getExprPropertiesSimple(objectExpr) {
-    // Evaluate to get object id, then get properties
-    let result = null;
-    try {
-      // We need objectId for getProperties; use a small evaluate
-      // The op_jupyter_repl_evaluate returns the full eval response
-      const evalResp = await op_jupyter_repl_evaluate(`(${objectExpr})`);
-      const objectId = evalResp?.value?.result?.objectId;
-      if (!objectId) return [];
-      const propsResp = await op_jupyter_repl_get_properties(objectId);
-      if (!propsResp?.result) return [];
-      return propsResp.result.map((p) => p.name);
-    } catch {
-      return [];
-    }
-  }
-
   function getExprFromLineAtPos(line, cursorPos) {
     const sub = line.slice(0, cursorPos);
     const start = sub.search(/[\w$._]+$/);
@@ -1086,10 +979,61 @@ async function startJupyterKernel() {
     return sub.slice(start);
   }
 
+  // Services REPL-originated input_request messages: send them to the
+  // frontend over the stdin ROUTER and forward the input_reply value back
+  // through the response channel parked in op_state.
+  async function stdinLoop() {
+    while (!shuttingDown) {
+      const req = await op_jupyter_recv_input();
+      if (req === null || req === undefined) break;
+
+      if (!currentAllowStdin || !currentParentHeader.msg_id) {
+        op_jupyter_send_input_reply(null);
+        continue;
+      }
+
+      // Wait briefly for a frontend to connect to stdin if none has yet.
+      if (stdin.peers.size === 0) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      if (stdin.peers.size === 0) {
+        op_jupyter_send_input_reply(null);
+        continue;
+      }
+
+      const reqFrames = await encodeMsg(
+        session,
+        key,
+        [],
+        "input_request",
+        { prompt: req.prompt, password: req.password },
+        currentParentHeader,
+      );
+      await stdin.sendAll(reqFrames);
+
+      let value = null;
+      while (true) {
+        const { frames } = await stdin.recv();
+        try {
+          const reply = decodeMsg(frames);
+          if (reply.header?.msg_type === "input_reply") {
+            const raw = reply.content?.value;
+            value = typeof raw === "string" ? raw : null;
+            break;
+          }
+        } catch {
+          break;
+        }
+      }
+      op_jupyter_send_input_reply(value);
+    }
+  }
+
   // Start the loops concurrently
   await Promise.all([
     shellLoop(shell),
     controlLoop(control),
+    stdinLoop(),
   ]);
 }
 

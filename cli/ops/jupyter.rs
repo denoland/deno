@@ -74,12 +74,34 @@ pub struct KernelConnectionInfo {
   pub json: String,
 }
 
+/// An input_request originated by the REPL thread (user code calling
+/// `prompt()`/`confirm()`) that the kernel thread must satisfy by sending
+/// `input_request` on the stdin channel and awaiting `input_reply`.
+pub struct PendingInputRequest {
+  pub prompt: String,
+  pub password: bool,
+  pub resp_tx: oneshot::Sender<Option<String>>,
+}
+
+pub struct KernelInputState {
+  pub rx: tokio::sync::Mutex<mpsc::UnboundedReceiver<PendingInputRequest>>,
+  // Holds the responder for the currently outstanding input_request.
+  // Set by `op_jupyter_recv_input` and consumed by
+  // `op_jupyter_send_input_reply` after the frontend replies.
+  pub pending_responder:
+    std::sync::Mutex<Option<oneshot::Sender<Option<String>>>>,
+}
+
 // ------------------------------------------------------------------
 // State stored in op_state of the REPL worker (background thread)
 // ------------------------------------------------------------------
 
 pub struct ReplIopubSender {
   pub tx: mpsc::UnboundedSender<IopubMessage>,
+}
+
+pub struct ReplInputSender {
+  pub tx: mpsc::UnboundedSender<PendingInputRequest>,
 }
 
 // ------------------------------------------------------------------
@@ -98,6 +120,8 @@ deno_core::extension!(
     op_jupyter_repl_interrupt,
     op_jupyter_repl_cancel_interrupt,
     op_jupyter_recv_iopub,
+    op_jupyter_recv_input,
+    op_jupyter_send_input_reply,
     op_jupyter_deno_version,
     op_jupyter_typescript_version,
   ],
@@ -107,18 +131,21 @@ deno_core::extension!(
   deno_jupyter_repl,
   ops = [
     op_jupyter_broadcast,
+    op_jupyter_input,
     op_jupyter_create_png_from_texture,
     op_jupyter_get_buffer,
   ],
   options = {
-    sender: mpsc::UnboundedSender<IopubMessage>,
+    iopub_sender: mpsc::UnboundedSender<IopubMessage>,
+    input_sender: mpsc::UnboundedSender<PendingInputRequest>,
   },
   middleware = |op| match op.name {
     "op_print" => op_print(),
     _ => op,
   },
   state = |state, options| {
-    state.put(ReplIopubSender { tx: options.sender });
+    state.put(ReplIopubSender { tx: options.iopub_sender });
+    state.put(ReplInputSender { tx: options.input_sender });
   },
 );
 
@@ -127,14 +154,17 @@ deno_core::extension!(
   deno_jupyter_repl_for_test,
   ops = [
     op_jupyter_broadcast,
+    op_jupyter_input,
     op_jupyter_create_png_from_texture,
     op_jupyter_get_buffer,
   ],
   options = {
-    sender: mpsc::UnboundedSender<IopubMessage>,
+    iopub_sender: mpsc::UnboundedSender<IopubMessage>,
+    input_sender: mpsc::UnboundedSender<PendingInputRequest>,
   },
   state = |state, options| {
-    state.put(ReplIopubSender { tx: options.sender });
+    state.put(ReplIopubSender { tx: options.iopub_sender });
+    state.put(ReplInputSender { tx: options.input_sender });
   },
 );
 
@@ -292,6 +322,49 @@ pub async fn op_jupyter_recv_iopub(
   Ok(guard.recv().await)
 }
 
+/// Awaits the next REPL-originated input_request. Returns `{ prompt, password }`
+/// or `None` when the REPL thread has been torn down. The responder for this
+/// request is parked in `op_state` for `op_jupyter_send_input_reply` to consume.
+#[op2]
+#[serde]
+pub async fn op_jupyter_recv_input(
+  state: Rc<RefCell<OpState>>,
+) -> Option<serde_json::Value> {
+  let ptr = {
+    let s = state.borrow();
+    s.borrow::<KernelInputState>() as *const KernelInputState as usize
+  };
+  // SAFETY: The KernelInputState lives as long as op_state.
+  let kernel_state = unsafe { &*(ptr as *const KernelInputState) };
+  let req = {
+    let mut rx = kernel_state.rx.lock().await;
+    rx.recv().await?
+  };
+  let prompt = req.prompt.clone();
+  let password = req.password;
+  *kernel_state.pending_responder.lock().unwrap() = Some(req.resp_tx);
+  Some(serde_json::json!({ "prompt": prompt, "password": password }))
+}
+
+/// Delivers an `input_reply` value back to the REPL-side `op_jupyter_input`
+/// caller. Pass `None`/null to abort the request (e.g. when `allow_stdin` is
+/// false or no frontend is connected to the stdin channel).
+#[op2]
+pub fn op_jupyter_send_input_reply(
+  state: &mut OpState,
+  #[string] value: Option<String>,
+) {
+  if let Some(tx) = state
+    .borrow::<KernelInputState>()
+    .pending_responder
+    .lock()
+    .unwrap()
+    .take()
+  {
+    let _ = tx.send(value);
+  }
+}
+
 #[op2]
 #[string]
 pub fn op_jupyter_deno_version(_state: &mut OpState) -> String {
@@ -313,6 +386,38 @@ pub enum JupyterBroadcastError {
   #[class(generic)]
   #[error(transparent)]
   Send(#[from] mpsc::error::SendError<IopubMessage>),
+}
+
+/// Synchronous op invoked by user code via `prompt()`/`confirm()` in a cell.
+/// Forwards the request to the kernel thread (which talks to the frontend over
+/// the stdin ZMQ channel) and blocks until a reply arrives. Returns `None`
+/// when stdin is disabled, the channel has been closed, or the frontend
+/// declines to answer.
+#[op2]
+#[string]
+pub fn op_jupyter_input(
+  state: &mut OpState,
+  #[string] prompt: String,
+  is_password: bool,
+) -> Option<String> {
+  let sender = state.borrow::<ReplInputSender>().tx.clone();
+  let (resp_tx, resp_rx) = oneshot::channel();
+  if sender
+    .send(PendingInputRequest {
+      prompt,
+      password: is_password,
+      resp_tx,
+    })
+    .is_err()
+  {
+    return None;
+  }
+  // `oneshot::Receiver::blocking_recv` panics inside a tokio runtime, so park
+  // the wait on a worker thread. This matches the original zmq-based kernel.
+  std::thread::spawn(move || resp_rx.blocking_recv().ok().flatten())
+    .join()
+    .ok()
+    .flatten()
 }
 
 #[op2]

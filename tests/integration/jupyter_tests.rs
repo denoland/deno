@@ -213,7 +213,6 @@ struct JupyterClient {
 enum JupyterChannel {
   Control,
   Shell,
-  #[allow(dead_code, reason = "variant kept for completeness")]
   Stdin,
   IoPub,
 }
@@ -705,6 +704,83 @@ async fn jupyter_http_server() -> Result<()> {
     let text: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(text, json!({ "hello": "world" }));
   }
+
+  Ok(())
+}
+
+#[test]
+async fn jupyter_stdin_prompt_reply() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": true,
+        "user_expressions": {},
+        "allow_stdin": true,
+        "stop_on_error": false,
+        "code": "prompt(\"name?\")",
+      }),
+    )
+    .await?;
+
+  // Kernel sends input_request on stdin; reply with input_reply.
+  let req = client.recv(Stdin).await?;
+  assert_eq!(req.header.msg_type, "input_request");
+  assert_json_subset(
+    req.content.clone(),
+    json!({ "prompt": "name?", "password": false }),
+  );
+
+  client
+    .send(Stdin, "input_reply", json!({ "value": "deno" }))
+    .await?;
+
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  assert_json_subset(reply.content, json!({ "status": "ok" }));
+
+  Ok(())
+}
+
+#[test]
+async fn jupyter_stdin_disabled_returns_null() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  // allow_stdin: false should short-circuit prompt() to null without
+  // sending anything on the stdin channel.
+  client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": true,
+        "user_expressions": {},
+        "allow_stdin": false,
+        "stop_on_error": false,
+        "code": "Deno.jupyter.broadcast(\"stream\", { name: \"stdout\", text: String(prompt(\"x?\")) })",
+      }),
+    )
+    .await?;
+
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  assert_json_subset(reply.content, json!({ "status": "ok" }));
+
+  // Find the stream message and confirm the prompt() call returned null.
+  let mut found = false;
+  for _ in 0..6 {
+    let msg = client.recv(IoPub).await?;
+    if msg.header.msg_type == "stream"
+      && msg.content.get("text").and_then(|v| v.as_str()) == Some("null")
+    {
+      found = true;
+      break;
+    }
+  }
+  assert!(found, "expected stream message with text \"null\"");
 
   Ok(())
 }

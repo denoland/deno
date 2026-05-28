@@ -542,7 +542,6 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
   }
 }
 
-#[derive(Clone)]
 pub struct LibMainWorkerFactory<TSys: DenoLibSys> {
   shared: Arc<LibWorkerFactorySharedState<TSys>>,
 }

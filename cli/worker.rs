@@ -361,7 +361,6 @@ pub enum CreateCustomWorkerError {
   LockfileWrite(#[from] deno_resolver::lockfile::LockfileWriteError),
 }
 
-#[derive(Clone)]
 pub struct CliMainWorkerFactory {
   lib_main_worker_factory: LibMainWorkerFactory<CliSys>,
   maybe_lockfile: Option<Arc<CliLockfile>>,

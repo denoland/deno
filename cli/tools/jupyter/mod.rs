@@ -27,9 +27,11 @@ use crate::ops;
 use crate::ops::jupyter::IopubMessage;
 use crate::ops::jupyter::JupyterReplRequest;
 use crate::ops::jupyter::KernelConnectionInfo;
+use crate::ops::jupyter::KernelInputState;
 use crate::ops::jupyter::KernelIopubReceiver;
 use crate::ops::jupyter::KernelIsolateHandle;
 use crate::ops::jupyter::KernelReplSender;
+use crate::ops::jupyter::PendingInputRequest;
 use crate::tools::repl;
 use crate::tools::test::TestEventWorkerSender;
 use crate::tools::test::create_single_test_event_channel;
@@ -82,7 +84,11 @@ pub async fn kernel(
   let compiler_options_resolver_arc =
     factory.compiler_options_resolver()?.clone();
   let resolver = factory.resolver().await?.clone();
-  let worker_factory = factory.create_cli_main_worker_factory().await?;
+  // Wrap in `Arc` so the kernel thread and the REPL background thread can
+  // each create workers from the same factory without forcing `Clone` onto
+  // `CliMainWorkerFactory` itself.
+  let worker_factory =
+    Arc::new(factory.create_cli_main_worker_factory().await?);
   let cli_options_arc = factory.cli_options()?.clone();
 
   // --- Channel setup -------------------------------------------------
@@ -91,12 +97,14 @@ pub async fn kernel(
     mpsc::unbounded_channel::<JupyterReplRequest>();
   // IoPub messages: REPL thread → ZMQ kernel
   let (iopub_tx, iopub_rx) = mpsc::unbounded_channel::<IopubMessage>();
+  // input_request originating from user code (REPL thread → ZMQ kernel)
+  let (input_tx, input_rx) = mpsc::unbounded_channel::<PendingInputRequest>();
   // REPL isolate handle: REPL thread → main thread
   let (isolate_handle_tx, isolate_handle_rx) =
     oneshot::channel::<v8::IsolateHandle>();
 
   // --- Spawn the REPL on a background OS thread ---------------------
-  let repl_worker_factory = worker_factory.clone();
+  let repl_worker_factory = Arc::clone(&worker_factory);
   let repl_main_module = resolve_url_or_path(
     "./$deno$jupyter_repl.mts",
     cli_options_arc.initial_cwd(),
@@ -105,6 +113,7 @@ pub async fn kernel(
   let repl_main_module2 = repl_main_module.clone();
   let repl_permissions = permissions.clone();
   let repl_iopub_tx = iopub_tx.clone();
+  let repl_input_tx = input_tx;
 
   let repl_thread = std::thread::spawn(move || {
     let fut = async move {
@@ -123,7 +132,7 @@ pub async fn kernel(
           vec![],
           repl_permissions,
           vec![
-            ops::jupyter::deno_jupyter_repl::init(repl_iopub_tx),
+            ops::jupyter::deno_jupyter_repl::init(repl_iopub_tx, repl_input_tx),
             ops::testing::deno_test::init(test_event_sender),
           ],
           Stdio {
@@ -225,6 +234,10 @@ pub async fn kernel(
     op_state.put(KernelReplSender { tx: repl_req_tx });
     op_state.put(KernelIopubReceiver {
       rx: tokio::sync::Mutex::new(iopub_rx),
+    });
+    op_state.put(KernelInputState {
+      rx: tokio::sync::Mutex::new(input_rx),
+      pending_responder: std::sync::Mutex::new(None),
     });
     op_state.put(KernelIsolateHandle {
       handle: isolate_handle,

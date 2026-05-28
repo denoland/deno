@@ -694,7 +694,13 @@ async fn configure_main_worker(
       vec![
         ops::testing::deno_test::init(worker_sender.sender),
         ops::lint::deno_lint_ext_for_test::init(),
-        ops::jupyter::deno_jupyter_for_test::init(sender),
+        ops::jupyter::deno_jupyter_for_test::init(
+          sender,
+          // deno test does not service stdin requests; supplying a sender keeps
+          // the extension uniform with the live kernel build but the rx end is
+          // dropped so any `op_jupyter_input` call will resolve to `None`.
+          tokio::sync::mpsc::unbounded_channel().0,
+        ),
       ],
       Stdio {
         stdin: StdioPipe::inherit(),
