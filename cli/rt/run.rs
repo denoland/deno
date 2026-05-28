@@ -800,10 +800,17 @@ impl ModuleLoader for EmbeddedModuleLoader {
             }
           };
           match hook_result {
-            Ok((Some(source), _format, _effective_url)) => {
-              // Hook provided transformed source
+            Ok((Some(source), format, _effective_url)) => {
+              // Hook provided transformed source. Honor a hook-supplied
+              // `format` (Node's hook contract) first, then fall back to
+              // the importer's `with { type: "..." }` attribute, so e.g.
+              // a passthrough hook on a JSON import still parses as JSON.
+              let module_type = pick_hook_module_type(
+                format.as_deref(),
+                &requested_module_type,
+              );
               Ok(deno_core::ModuleSource::new(
-                deno_core::ModuleType::JavaScript,
+                module_type,
                 ModuleSourceCode::String(source.into()),
                 &specifier,
                 None,
@@ -1486,6 +1493,30 @@ pub async fn run(
 
   let exit_code = worker.run().await?;
   Ok(exit_code)
+}
+
+/// Pick the `ModuleType` for source returned by a `module.registerHooks()`
+/// load hook. Honors a hook-supplied `format` first (Node's hook contract),
+/// then falls back to the importer's `with { type: "..." }` attribute.
+fn pick_hook_module_type(
+  format: Option<&str>,
+  requested: &deno_core::RequestedModuleType,
+) -> deno_core::ModuleType {
+  if let Some(format) = format {
+    match format {
+      "json" => return deno_core::ModuleType::Json,
+      "text" => return deno_core::ModuleType::Text,
+      "bytes" => return deno_core::ModuleType::Bytes,
+      "wasm" => return deno_core::ModuleType::Wasm,
+      _ => {}
+    }
+  }
+  match requested {
+    deno_core::RequestedModuleType::Json => deno_core::ModuleType::Json,
+    deno_core::RequestedModuleType::Text => deno_core::ModuleType::Text,
+    deno_core::RequestedModuleType::Bytes => deno_core::ModuleType::Bytes,
+    _ => deno_core::ModuleType::JavaScript,
+  }
 }
 
 fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
