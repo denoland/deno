@@ -245,7 +245,7 @@ const testPnpmLocalNoScripts = step.dependsOn(testNpmGlobalIgnoreScripts)({
     'cd "$TEST_DIR"',
     "npm init -y",
     'EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"',
-    "pnpm install deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/",
+    "pnpm install --ignore-scripts deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/",
     'ACTUAL="$(node node_modules/deno/bin.cjs -v)"',
     'echo "$ACTUAL"',
     '[ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected \'$EXPECTED_VERSION\', got \'$ACTUAL\'"; exit 1; }',
@@ -256,7 +256,7 @@ const testPnpmGlobalNoScripts = step.dependsOn(testPnpmLocalNoScripts)({
   name: "Test pnpm global install deno (without postinstall)",
   run: [
     'EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"',
-    "pnpm install -g deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/",
+    "pnpm install -g --ignore-scripts deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/",
     'ACTUAL="$(node "$PNPM_HOME/global/5/node_modules/deno/bin.cjs" -v)"',
     'echo "$ACTUAL"',
     '[ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected \'$EXPECTED_VERSION\', got \'$ACTUAL\'"; exit 1; }',
