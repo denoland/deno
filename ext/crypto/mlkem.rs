@@ -86,7 +86,6 @@ impl MlKemVariant {
       MlKemVariant::MlKem1024 => 1568,
     }
   }
-
 }
 
 #[derive(deno_core::ToV8)]
