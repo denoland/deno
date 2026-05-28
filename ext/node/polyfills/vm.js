@@ -3,6 +3,14 @@
 
 (function () {
 const { core, primordials } = __bootstrap;
+// Pre-evaluate node:process in the realm that imported node:vm so that any
+// vm context's `import('node:process')` returns the cached module rather
+// than instantiating node:process inside the sandbox (where `Deno` is not
+// defined and process.ts's body would throw `ReferenceError: Deno is not
+// defined`). node:process is `lazy_loaded_esm` now, so without this nudge
+// the first instantiation can happen from a sandbox realm. Loader is
+// memoized; repeat calls are cheap.
+core.createLazyLoader("node:process")();
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const {

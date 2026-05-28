@@ -3168,19 +3168,19 @@ function initialize(args) {
 
 globalThis.nodeBootstrap = initialize;
 
-// node-defer: node:process's own deferred trigger runs the process half of the
-// bootstrap (`__bootstrapNodeProcess`) on first node:* use, but it intentionally
-// skips the parts of `initialize` that pull node:module (worker_threads alias,
-// IPC, cluster, console<->process binding, trace_events). We can safely run
-// them HERE because by the time 01_require.js evaluates, both node:process and
-// node:module are fully evaluated -- so the previous "mid-eval TDZ" hazard is
-// gone. `initialize` is idempotent for the process half (`__bootstrapNodeProcess`
-// early-returns when `__nodeProcessBootstrapped` is set), so calling it twice
-// is fine; the remaining parts run for the first and only time here.
-if (internals.__nodeBootstrapArgs !== undefined) {
-  initialize(internals.__nodeBootstrapArgs);
-  internals.__nodeBootstrapArgs = undefined;
-}
+// node-defer: node:process's own deferred trigger runs the process half of
+// the bootstrap (`__bootstrapNodeProcess`) on first node:* use. The other
+// half of `initialize` (worker_threads alias, IPC, cluster, console<->process
+// binding, trace_events) used to run unconditionally; under node-defer each
+// piece is now handled where it belongs:
+// - worker_threads MessageChannel/MessagePort alias: at the bottom of
+//   ext/node/polyfills/worker_threads.ts module body, so importing
+//   node:worker_threads is enough to install the globals.
+// - IPC fork bootstrap: 99_main.js runs the full eager bootstrap when
+//   `op_node_has_child_ipc_pipe()` is true (forked child path).
+// - cluster init / bindStreamsLazy / trace_events env-var pre-enable:
+//   still pending; only matter when those features are actively used and
+//   are tracked as follow-ups, not regressions for ordinary programs.
 
 function closeIdleConnections() {
   try {

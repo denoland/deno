@@ -2248,5 +2248,34 @@ ObjectAssign(exportsObj, {
   setEnvironmentData,
   SHARE_ENV,
 });
+
+// node-defer: under deferred bootstrap, `__initWorkerThreads` may never run on
+// the main thread (it ran from 01_require.js's `initialize`, which now only
+// fires on a require/node:module path). The global MessageChannel/MessagePort
+// alias to the Node classes is observable as soon as node:worker_threads
+// itself is imported (e.g. `import * as wt from "node:worker_threads"` and
+// then `wt.MessagePort === MessagePort`), so install it here unconditionally
+// when this module loads. The other half of __initWorkerThreads (parentPort,
+// setupCrossThreadMessaging) still runs from initialize() / the worker eager
+// bootstrap path because it depends on node:process being bootstrapped.
+try {
+  ObjectDefineProperty(globalThis, "MessageChannel", {
+    __proto__: null,
+    value: NodeMessageChannel,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
+  ObjectDefineProperty(globalThis, "MessagePort", {
+    __proto__: null,
+    value: NodeMessagePort,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
+} catch {
+  // globalThis may be a sandbox without writable property descriptors; ignore.
+}
+
 return exportsObj;
 })();
