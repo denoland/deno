@@ -59,8 +59,11 @@ struct MlDsaParams {
   verifying: &'static PqdsaVerificationAlgorithm,
   oid: const_oid::ObjectIdentifier,
   pub_key_len: usize,
-  #[allow(dead_code, reason = "kept for symmetry/documentation; sizes come \
-    from FIPS 204 Table 2 and aren't checked at this layer")]
+  #[allow(
+    dead_code,
+    reason = "kept for symmetry/documentation; sizes come \
+    from FIPS 204 Table 2 and aren't checked at this layer"
+  )]
   priv_key_len: usize,
   sig_len: usize,
 }
