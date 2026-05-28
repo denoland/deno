@@ -2341,6 +2341,22 @@ Deno.test(function inspectProxy() {
     )),
     `{ x: 1 }`,
   );
+
+  // Issue: https://github.com/denoland/deno/issues/24980
+  // A proxy whose `getOwnPropertyDescriptor` trap throws used to surface
+  // as `AssertionError: Assertion failed` from inside the console
+  // formatter. With proxy unwrapping in default mode, the target is
+  // inspected directly and the trap is never invoked.
+  assertEquals(
+    stripAnsiCode(Deno.inspect(
+      new Proxy({ x: 10 }, {
+        getOwnPropertyDescriptor: () => {
+          throw new Error("oops");
+        },
+      }),
+    )),
+    `{ x: 10 }`,
+  );
   assertEquals(
     stripAnsiCode(Deno.inspect(
       new Proxy([1, 2, 3], { get() {} }),
