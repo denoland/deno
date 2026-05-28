@@ -1,6 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#[allow(unused_imports)]
+#[allow(
+  unused_imports,
+  reason = "AsRawBytes is used via the AsRawBytesVec helper trait below"
+)]
 use aws_lc_rs::encoding::AsRawBytes;
 use aws_lc_rs::signature::KeyPair;
 use aws_lc_rs::signature::UnparsedPublicKey;
@@ -56,7 +59,8 @@ struct MlDsaParams {
   verifying: &'static PqdsaVerificationAlgorithm,
   oid: const_oid::ObjectIdentifier,
   pub_key_len: usize,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "kept for symmetry/documentation; sizes come \
+    from FIPS 204 Table 2 and aren't checked at this layer")]
   priv_key_len: usize,
   sig_len: usize,
 }
