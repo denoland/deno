@@ -4927,10 +4927,12 @@ fn op_resolve_inner(
       o.map(|(s, mt)| {
         (
           state.specifier_map.denormalize(&s, mt),
-          if matches!(mt, MediaType::Unknown) {
-            None
-          } else {
-            Some(mt.as_ts_extension().to_string())
+          match mt {
+            MediaType::Unknown => None,
+            // surface these as .js for typescript so side-effect imports
+            // (e.g. `import "./styles.css"`) don't trigger TS6263
+            MediaType::Css => Some(".js".to_string()),
+            _ => Some(mt.as_ts_extension().to_string()),
           },
         )
       })
