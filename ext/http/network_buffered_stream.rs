@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::future::Future;
 use std::future::poll_fn;
 use std::io;
 use std::mem::MaybeUninit;
@@ -10,6 +11,7 @@ use std::task::ready;
 use bytes::Bytes;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
+use tokio::io::AsyncWriteExt;
 use tokio::io::ReadBuf;
 
 const MAX_PREFIX_SIZE: usize = 256;
@@ -41,9 +43,8 @@ impl<S: AsyncRead + Unpin> NetworkStreamPrefixCheck<S> {
 
   // Returns a [`NetworkBufferedStream`] and a flag determining if we matched a prefix, rewound with the bytes we read to determine what
   // type of stream this is.
-  pub async fn match_prefix(
-    self,
-  ) -> io::Result<(bool, NetworkBufferedStream<S>)> {
+  #[cfg(test)]
+  async fn match_prefix(self) -> io::Result<(bool, NetworkBufferedStream<S>)> {
     let mut buffer = self.buffer;
     let mut readbuf = ReadBuf::uninit(&mut buffer);
     let mut io = self.io;
@@ -105,6 +106,85 @@ impl<S: AsyncRead + Unpin> NetworkStreamPrefixCheck<S> {
   }
 }
 
+impl<S: AsyncRead + AsyncWrite + Unpin> NetworkStreamPrefixCheck<S> {
+  pub async fn match_prefix_or_shutdown<F>(
+    self,
+    cancel: F,
+  ) -> io::Result<Option<(bool, NetworkBufferedStream<S>)>>
+  where
+    F: Future,
+  {
+    let mut buffer = self.buffer;
+    let mut readbuf = ReadBuf::uninit(&mut buffer);
+    let mut io = self.io;
+    let prefix = self.prefix;
+    let mut cancel = std::pin::pin!(cancel);
+    loop {
+      enum State {
+        Unknown,
+        Matched,
+        NotMatched,
+        Canceled,
+      }
+
+      let state = poll_fn(|cx| {
+        if cancel.as_mut().poll(cx).is_ready() {
+          return Poll::Ready(Ok(State::Canceled));
+        }
+
+        let filled_len = readbuf.filled().len();
+        let res = ready!(Pin::new(&mut io).poll_read(cx, &mut readbuf));
+        if let Err(e) = res {
+          return Poll::Ready(Err(e));
+        }
+        let filled = readbuf.filled();
+        let new_len = filled.len();
+        if new_len == filled_len {
+          // Empty read, no match
+          return Poll::Ready(Ok(State::NotMatched));
+        } else if new_len < prefix.len() {
+          // Read less than prefix, make sure we're still matching the prefix (early exit)
+          if !prefix.starts_with(filled) {
+            return Poll::Ready(Ok(State::NotMatched));
+          }
+        } else if new_len >= prefix.len() {
+          // We have enough to determine
+          if filled.starts_with(prefix) {
+            return Poll::Ready(Ok(State::Matched));
+          } else {
+            return Poll::Ready(Ok(State::NotMatched));
+          }
+        }
+
+        Poll::Ready(Ok(State::Unknown))
+      })
+      .await?;
+
+      match state {
+        State::Unknown => continue,
+        State::Matched => {
+          let initialized_len = readbuf.filled().len();
+          return Ok(Some((
+            true,
+            NetworkBufferedStream::new(io, buffer, initialized_len),
+          )));
+        }
+        State::NotMatched => {
+          let initialized_len = readbuf.filled().len();
+          return Ok(Some((
+            false,
+            NetworkBufferedStream::new(io, buffer, initialized_len),
+          )));
+        }
+        State::Canceled => {
+          io.shutdown().await?;
+          return Ok(None);
+        }
+      }
+    }
+  }
+}
+
 /// [`NetworkBufferedStream`] is a stream that allows us to efficiently search for an incoming prefix in another stream without
 /// reading too much data. If the stream detects that the prefix has definitely been matched, or definitely not been matched,
 /// it returns a flag and a rewound stream allowing later code to take another pass at that data.
@@ -127,6 +207,16 @@ pub struct NetworkBufferedStream<S: AsyncRead + Unpin> {
 }
 
 impl<S: AsyncRead + Unpin> NetworkBufferedStream<S> {
+  pub fn from_io(io: S) -> Self {
+    Self {
+      io,
+      initialized_len: 0,
+      prefix_offset: 0,
+      prefix: [MaybeUninit::<u8>::uninit(); MAX_PREFIX_SIZE * 2],
+      prefix_read: true,
+    }
+  }
+
   /// This constructor is private, because passing partially initialized data between the [`NetworkStreamPrefixCheck`] and
   /// this [`NetworkBufferedStream`] is challenging without the introduction of extra copies.
   fn new(

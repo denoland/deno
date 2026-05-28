@@ -106,7 +106,6 @@ function defineLazyInternal(name, specifier) {
 // `ext:deno_http/00_serve.ts` (registers serve internals at module body).
 defineLazyInternal("addTrailers", "ext:deno_http/00_serve.ts");
 defineLazyInternal("upgradeHttpRaw", "ext:deno_http/00_serve.ts");
-defineLazyInternal("upgradeHttpRawConnect", "ext:deno_http/00_serve.ts");
 defineLazyInternal("serveHttpOnListener", "ext:deno_http/00_serve.ts");
 defineLazyInternal("serveHttpOnConnection", "ext:deno_http/00_serve.ts");
 // `ext:deno_http/02_websocket.ts`.

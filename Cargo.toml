@@ -43,6 +43,7 @@ members = [
   "libs/dcore",
   "libs/dotenv",
   "libs/eszip",
+  "libs/http_h1",
   "libs/inspector_server",
   "libs/lockfile",
   "libs/maybe_sync",
@@ -148,6 +149,7 @@ deno_core_testing = { path = "./libs/core_testing" }
 deno_crypto_provider = { version = "0.43.0", path = "./libs/crypto" }
 deno_dotenv = { version = "0.18.0", path = "./libs/dotenv" }
 deno_features = { version = "0.46.0", path = "./runtime/features" }
+deno_http_h1 = { version = "0.1.0", path = "./libs/http_h1" }
 deno_inspector_server = { version = "0.23.0", path = "./libs/inspector_server" }
 deno_lib = { version = "0.67.0", path = "./cli/lib" }
 deno_lockfile = { version = "0.51.0", path = "./libs/lockfile" }
@@ -226,6 +228,7 @@ http-body = "1.0"
 http-body-util = "0.1.2"
 http_v02 = { package = "http", version = "0.2.9" }
 httparse = "1.8.0"
+httpdate = "1.0.3"
 hyper = { version = "1.6.0", features = ["full"] }
 hyper-rustls = { version = "0.27.2", default-features = false, features = ["http1", "http2", "tls12", "aws-lc-rs"] }
 hyper-util = { version = "0.1.17", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
@@ -526,6 +529,8 @@ opt-level = 3
 [profile.release.package.deno_ffi]
 opt-level = 3
 [profile.release.package.deno_http]
+opt-level = 3
+[profile.release.package.deno_http_h1]
 opt-level = 3
 [profile.release.package.deno_napi]
 opt-level = 3

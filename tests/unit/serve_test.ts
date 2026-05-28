@@ -683,6 +683,66 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
+  async function httpServerResponseHeadersMutation() {
+    const ac = new AbortController();
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const response = new Response("Hello World");
+    response.headers.set("x-native-test", "mutated");
+
+    await using server = Deno.serve({
+      handler: () => response,
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    await promise;
+    const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+      headers: { "connection": "close" },
+    });
+    assertEquals(resp.status, 200);
+    assertEquals(resp.headers.get("x-native-test"), "mutated");
+    assertEquals(await resp.text(), "Hello World");
+
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerEmptyResponseWithHeaders() {
+    const ac = new AbortController();
+    const { promise, resolve } = Promise.withResolvers<void>();
+
+    await using server = Deno.serve({
+      handler: () =>
+        new Response(null, {
+          status: 201,
+          headers: { "x-empty-native-test": "yes" },
+        }),
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    await promise;
+    const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+      headers: { "connection": "close" },
+    });
+    assertEquals(resp.status, 201);
+    assertEquals(resp.headers.get("x-empty-native-test"), "yes");
+    assertEquals(await resp.text(), "");
+
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function httpServerReturnErrorResponse() {
     const ac = new AbortController();
     const { promise, resolve } = Promise.withResolvers<void>();

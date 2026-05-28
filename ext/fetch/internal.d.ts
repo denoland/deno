@@ -87,6 +87,7 @@ declare module "ext:deno_fetch/26_fetch.js" {
     body?: fetchBody.InnerBody,
   ): InnerResponse;
   function toInnerResponse(response: Response): InnerResponse;
+  function responseIsError(response: Response): boolean;
   function fromInnerResponse(
     inner: InnerResponse,
     guard:

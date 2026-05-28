@@ -120,6 +120,15 @@ Deno.test(function urlHostnameParsing() {
   assertThrows(() => new URL("http://0.16777216"), TypeError, "Invalid URL");
   assertEquals(new URL("http://4294967295").hostname, "255.255.255.255");
   assertThrows(() => new URL("http://4294967296"), TypeError, "Invalid URL");
+  assertThrows(
+    () => new URL("https://0x100000000/test"),
+    TypeError,
+    "Invalid URL",
+  );
+  assertThrows(() => new URL("https://xn--/"), TypeError, "Invalid URL");
+
+  // Special query percent-encoding.
+  assertEquals(new URL("http://host/?'").href, "http://host/?%27");
 });
 
 Deno.test(function urlPortParsing() {

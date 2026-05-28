@@ -62,7 +62,6 @@ use deno_telemetry::UpDownCounter;
 use deno_websocket::ws_create_server_stream;
 use flate2::Compression;
 use flate2::write::GzEncoder;
-use hyper::server::conn::http1;
 use hyper::server::conn::http2;
 use hyper_util::rt::TokioIo;
 use hyper_v014::Body;
@@ -145,13 +144,6 @@ pub struct Options {
   /// that the default configuration is subject to change in future versions.
   pub http2_builder_hook:
     Option<fn(http2::Builder<LocalExecutor>) -> http2::Builder<LocalExecutor>>,
-  /// By passing a hook function, the caller can customize various configuration
-  /// options for the HTTP/1 server.
-  /// See [`http1::Builder`] for what parameters can be customized.
-  ///
-  /// If `None`, the default configuration provided by hyper will be used. Note
-  /// that the default configuration is subject to change in future versions.
-  pub http1_builder_hook: Option<fn(http1::Builder) -> http1::Builder>,
 
   /// If `false`, the server will abort the request when the response is dropped.
   pub no_legacy_abort: bool,
@@ -176,23 +168,35 @@ deno_core::extension!(
     http_next::op_http_get_request_header,
     http_next::op_http_get_request_headers,
     http_next::op_http_request_on_cancel,
+    http_next::op_http_get_request_method<HTTP>,
+    http_next::op_http_get_request_url<HTTP>,
     http_next::op_http_get_request_method_and_url<HTTP>,
+    http_next::op_http_get_request_remote_addr<HTTP>,
     http_next::op_http_get_request_cancelled,
+    http_next::op_http_is_raw_request,
     http_next::op_http_read_request_body,
     http_next::op_http_try_take_full_request_body,
+    http_next::op_http_try_take_full_request_body_text,
     http_next::op_http_serve_on<HTTP>,
     http_next::op_http_serve<HTTP>,
     http_next::op_http_set_promise_complete,
+    http_next::op_http_drop_response_native,
+    http_next::op_http_new_response_native_headers,
+    http_next::op_http_new_response_native_static,
+    http_next::op_http_set_response_native,
     http_next::op_http_set_response_body_bytes,
+    http_next::op_http_set_response_body_bytes_with_headers,
     http_next::op_http_set_response_body_resource,
+    http_next::op_http_set_response_body_static_with_content_type,
+    http_next::op_http_set_response_body_static_with_default_header,
+    http_next::op_http_set_response_body_static_with_header,
     http_next::op_http_set_response_body_text,
+    http_next::op_http_set_response_body_text_with_headers,
     http_next::op_http_set_response_header,
     http_next::op_http_set_response_headers,
     http_next::op_http_set_response_trailers,
     http_next::op_http_upgrade_websocket_next,
     http_next::op_http_upgrade_raw,
-    http_next::op_http_upgrade_raw_connect,
-    http_next::op_http_upgrade_raw_get_head,
     http_next::op_http_ws_create_from_stream_resource,
     http_next::op_raw_write_vectored,
     http_next::op_can_write_vectored,
@@ -230,23 +234,35 @@ deno_core::extension!(
     http_next::op_http_get_request_header,
     http_next::op_http_get_request_headers,
     http_next::op_http_request_on_cancel,
+    http_next::op_http_get_request_method<DefaultHttpPropertyExtractor>,
+    http_next::op_http_get_request_url<DefaultHttpPropertyExtractor>,
     http_next::op_http_get_request_method_and_url<DefaultHttpPropertyExtractor>,
+    http_next::op_http_get_request_remote_addr<DefaultHttpPropertyExtractor>,
     http_next::op_http_get_request_cancelled,
+    http_next::op_http_is_raw_request,
     http_next::op_http_read_request_body,
     http_next::op_http_try_take_full_request_body,
+    http_next::op_http_try_take_full_request_body_text,
     http_next::op_http_serve_on<DefaultHttpPropertyExtractor>,
     http_next::op_http_serve<DefaultHttpPropertyExtractor>,
     http_next::op_http_set_promise_complete,
+    http_next::op_http_drop_response_native,
+    http_next::op_http_new_response_native_headers,
+    http_next::op_http_new_response_native_static,
+    http_next::op_http_set_response_native,
     http_next::op_http_set_response_body_bytes,
+    http_next::op_http_set_response_body_bytes_with_headers,
     http_next::op_http_set_response_body_resource,
+    http_next::op_http_set_response_body_static_with_content_type,
+    http_next::op_http_set_response_body_static_with_default_header,
+    http_next::op_http_set_response_body_static_with_header,
     http_next::op_http_set_response_body_text,
+    http_next::op_http_set_response_body_text_with_headers,
     http_next::op_http_set_response_header,
     http_next::op_http_set_response_headers,
     http_next::op_http_set_response_trailers,
     http_next::op_http_upgrade_websocket_next,
     http_next::op_http_upgrade_raw,
-    http_next::op_http_upgrade_raw_connect,
-    http_next::op_http_upgrade_raw_get_head,
     http_next::op_http_ws_create_from_stream_resource,
     http_next::op_raw_write_vectored,
     http_next::op_can_write_vectored,
