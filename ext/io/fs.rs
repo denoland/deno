@@ -126,6 +126,19 @@ pub struct FsStat {
   pub is_socket: bool,
 }
 
+/// File system statistics as returned by `statfs(2)` (or `GetDiskFreeSpaceW`
+/// on Windows). Mirrors the result of Node's `fs.statfs`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FsStatFs {
+  pub typ: u64,
+  pub bsize: u64,
+  pub blocks: u64,
+  pub bfree: u64,
+  pub bavail: u64,
+  pub files: u64,
+  pub ffree: u64,
+}
+
 impl FsStat {
   pub fn from_std(metadata: std::fs::Metadata) -> Self {
     macro_rules! unix_some_or_none {
