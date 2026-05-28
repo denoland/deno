@@ -1,12 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { core } from "ext:core/mod.js";
-// Side-effect import: force node:process to evaluate (and its self-trigger
-// to run `__bootstrapNodeProcess`) at the time `node:http` is first imported,
-// so any nextTick / signal / agent setup that http transitively does is
-// observed by the test sanitizer as pre-test state (not "started in this
-// test"). Without this, the bootstrap fires from inside the first http test
-// body, which the leak detector counts as a test-internal pending op.
-import "node:process";
 // Re-export `globalAgent` from `_http_agent` so consumers of `node:http` get
 // the live binding, matching Node's behavior where `http.globalAgent` updates
 // after `setGlobalAgent` propagate to importers.
