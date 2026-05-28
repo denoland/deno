@@ -4,12 +4,7 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const lazyProcess = core.createLazyLoader("node:process");
-// Force node:process to evaluate before this stream module's body completes.
-// Its self-trigger calls `__bootstrapNodeProcess`, which runs
-// `enableNextTick()`. Until that flag is set `process.nextTick` silently
-// no-ops; the http internals schedule socket-teardown callbacks through it,
-// and the test runner reports the unflushed callbacks as timer leaks.
-lazyProcess();
+const process = lazyProcess().default;
 const { EventEmitter: EE } = core.loadExtScript("ext:deno_node/_events.mjs");
 const {
   prependListener,
@@ -901,7 +896,7 @@ function emitReadable(stream) {
   if ((state[kState] & kEmittedReadable) === 0) {
     debug("emitReadable", (state[kState] & kFlowing) !== 0);
     state[kState] |= kEmittedReadable;
-    lazyProcess().default.nextTick(emitReadable_, stream);
+    process.nextTick(emitReadable_, stream);
   }
 }
 
@@ -938,7 +933,7 @@ function emitReadable_(stream) {
 function maybeReadMore(stream, state) {
   if ((state[kState] & (kReadingMore | kConstructed)) === kConstructed) {
     state[kState] |= kReadingMore;
-    lazyProcess().default.nextTick(maybeReadMore_, stream, state);
+    process.nextTick(maybeReadMore_, stream, state);
   }
 }
 
@@ -1007,12 +1002,12 @@ Readable.prototype.pipe = function (dest, pipeOpts) {
   debug("pipe count=%d opts=%j", state.pipes.length, pipeOpts);
 
   const doEnd = (!pipeOpts || pipeOpts.end !== false) &&
-    dest !== lazyProcess().default.stdout &&
-    dest !== lazyProcess().default.stderr;
+    dest !== process.stdout &&
+    dest !== process.stderr;
 
   const endFn = doEnd ? onend : unpipe;
   if ((state[kState] & kEndEmitted) !== 0) {
-    lazyProcess().default.nextTick(endFn);
+    process.nextTick(endFn);
   } else {
     src.once("end", endFn);
   }
@@ -1242,7 +1237,7 @@ Readable.prototype.on = function (ev, fn) {
       if (state.length) {
         emitReadable(this);
       } else if ((state[kState] & kReading) === 0) {
-        lazyProcess().default.nextTick(nReadingNextTick, this);
+        process.nextTick(nReadingNextTick, this);
       }
     }
   }
@@ -1263,7 +1258,7 @@ Readable.prototype.removeListener = function (ev, fn) {
     // support once('readable', fn) cycles. This means that calling
     // resume within the same tick will have no
     // effect.
-    lazyProcess().default.nextTick(updateReadableListening, this);
+    process.nextTick(updateReadableListening, this);
   } else if (ev === "data" && this.listenerCount("data") === 0) {
     state[kState] &= ~kDataListening;
   }
@@ -1282,7 +1277,7 @@ Readable.prototype.removeAllListeners = function (ev) {
     // support once('readable', fn) cycles. This means that calling
     // resume within the same tick will have no
     // effect.
-    lazyProcess().default.nextTick(updateReadableListening, this);
+    process.nextTick(updateReadableListening, this);
   }
 
   return res;
@@ -1343,7 +1338,7 @@ Readable.prototype.resume = function () {
 function resume(stream, state) {
   if ((state[kState] & kResumeScheduled) === 0) {
     state[kState] |= kResumeScheduled;
-    lazyProcess().default.nextTick(resume_, stream, state);
+    process.nextTick(resume_, stream, state);
   }
 }
 
@@ -1790,7 +1785,7 @@ function endReadable(stream) {
   debug("endReadable");
   if ((state[kState] & kEndEmitted) === 0) {
     state[kState] |= kEnded;
-    lazyProcess().default.nextTick(endReadableNT, state, stream);
+    process.nextTick(endReadableNT, state, stream);
   }
 }
 
@@ -1806,7 +1801,7 @@ function endReadableNT(state, stream) {
     stream.emit("end");
 
     if (stream.writable && stream.allowHalfOpen === false) {
-      lazyProcess().default.nextTick(endWritableNT, stream);
+      process.nextTick(endWritableNT, stream);
     } else if (state.autoDestroy) {
       // In case of duplex streams we need a way to detect
       // if the writable side is ready for autoDestroy as well.

@@ -66,9 +66,7 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const lazyProcess = core.createLazyLoader("node:process");
-// See internal/streams/readable.js for the rationale -- force the node:process
-// bootstrap before this module returns so `process.nextTick` is wired up.
-lazyProcess();
+const process = lazyProcess().default;
 const _mod1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const Duplex = core.loadExtScript(
   "ext:deno_node/internal/streams/duplex.js",
@@ -199,7 +197,7 @@ Transform.prototype._write = function (chunk, encoding, callback) {
       // If user has called this.push(null) we have to
       // delay the callback to properly propagate the new
       // state.
-      lazyProcess().default.nextTick(callback);
+      process.nextTick(callback);
     } else if (
       wState.ended || // Backwards compat.
       length === rState.length || // Backwards compat.
