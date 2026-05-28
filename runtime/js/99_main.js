@@ -950,10 +950,22 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     } else {
       // node-defer: node:module (01_require.js) is `lazy_loaded_esm`, so its
       // top-level `globalThis.nodeBootstrap = initialize` hasn't run yet and
-      // `nodeBootstrap` is undefined here. Stash the args; node:process and
-      // 01_require.js self-bootstrap from them when first lazily loaded (on the
-      // first node:* use), so non-node programs never pay node bootstrap.
+      // `nodeBootstrap` is undefined here. Stash the args so node:process's
+      // self-trigger (and any other deferred trigger) can find them; then
+      // force node:process to evaluate NOW. We can't keep the process half
+      // of the bootstrap fully deferred: `_next_tick.ts` keeps `nextTick`
+      // a silent no-op until `__bootstrapNodeProcess()` calls
+      // `enableNextTick()`, and many node polyfills (streams, http) schedule
+      // callbacks through `process.nextTick`. If those callbacks fire
+      // before bootstrap, they're silently dropped and the request hangs
+      // (which surfaced as http_test "timer was started in this test but
+      // never completed" leak failures). node:process is still
+      // `lazy_loaded_esm`, so the snapshot blob doesn't carry it -- we just
+      // pay the parse/eval cost at runtime startup once, before any user
+      // code can call `nextTick`. The other big closures (node:module,
+      // node:stream/net/tty) stay fully deferred.
       internals.__nodeBootstrapArgs = nodeBootstrapArgs;
+      core.createLazyLoader("node:process")();
     }
   } else {
     // Warmup
