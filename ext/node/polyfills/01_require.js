@@ -368,16 +368,7 @@ const lazyNodeModules = {
   "v8": () => core.loadExtScript("ext:deno_node/v8.ts"),
   "vm": () => core.loadExtScript("ext:deno_node/vm.js").default,
   "wasi": () => core.loadExtScript("ext:deno_node/wasi.ts").default,
-  "punycode": () => {
-    const proc = nativeModuleExports.process;
-    proc.emitWarning(
-      "The `punycode` module is deprecated. Please use a userland " +
-        "alternative instead.",
-      "DeprecationWarning",
-      "DEP0040",
-    );
-    return core.loadExtScript("ext:deno_node/punycode.ts").default;
-  },
+  "punycode": () => core.loadExtScript("ext:deno_node/punycode.ts").default,
   // Previously eager via static imports. Lazified together with the
   // process.stdio lazy-getter refactor.
   "net": () => lazyNet().default,
