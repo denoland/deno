@@ -295,7 +295,7 @@ fn parse_chunk_size(line: &[u8]) -> Result<usize, ParseError> {
   if line.iter().any(|byte| matches!(*byte, 0..=0x1f | 0x7f)) {
     return Err(ParseError::Invalid);
   }
-  let size = line.split(|byte| *byte == b';').next().unwrap_or(line);
+  let size = trim_ows(line.split(|byte| *byte == b';').next().unwrap_or(line));
   if size.is_empty() {
     return Err(ParseError::Invalid);
   }
@@ -384,6 +384,16 @@ fn valid_field_value(value: &[u8]) -> bool {
   value
     .iter()
     .all(|byte| matches!(*byte, b'\t' | b' '..=0x7e | 0x80..=0xff))
+}
+
+fn trim_ows(mut value: &[u8]) -> &[u8] {
+  while matches!(value.first(), Some(b' ' | b'\t')) {
+    value = &value[1..];
+  }
+  while matches!(value.last(), Some(b' ' | b'\t')) {
+    value = &value[..value.len() - 1];
+  }
+  value
 }
 
 #[cfg(test)]
@@ -497,6 +507,82 @@ mod tests {
     assert_eq!(body_consumed, 2);
     assert_eq!(
       protocol.body_chunk(&[]).unwrap(),
+      BodyStatus::Partial { consumed: 0 },
+    );
+  }
+
+  #[test]
+  fn parses_hyper_chunk_size_cases() {
+    for (line, expected) in [
+      (b"1".as_slice(), 1),
+      (b"01", 1),
+      (b"0", 0),
+      (b"00", 0),
+      (b"A", 10),
+      (b"a", 10),
+      (b"Ff", 255),
+      (b"Ff   ", 255),
+      (b"1;extension", 1),
+      (b"a;ext name=value", 10),
+      (b"1;extension;extension2", 1),
+      (b"1;;;  ;", 1),
+      (b"2; extension...", 2),
+      (b"3   ; extension=123", 3),
+      (b"3   ;", 3),
+      (b"3   ;   ", 3),
+    ] {
+      assert_eq!(parse_chunk_size(line), Ok(expected), "{line:?}");
+    }
+  }
+
+  #[test]
+  fn rejects_hyper_invalid_chunk_size_cases() {
+    for line in [
+      b"\r\n\r\n".as_slice(),
+      b"\r\n",
+      b"X",
+      b"1X",
+      b"-",
+      b"-1",
+      b"1 invalid extension",
+      b"1 A",
+      b"1;reject\nnewlines",
+      b"f0000000000000003",
+    ] {
+      assert!(
+        parse_chunk_size(line).is_err(),
+        "{line:?} should be rejected"
+      );
+    }
+  }
+
+  #[test]
+  fn rejects_chunked_body_with_missing_zero_chunk_digit() {
+    let mut protocol = Protocol {
+      request_body: BodyKind::Chunked,
+      ..Protocol::new()
+    };
+    assert_eq!(
+      protocol.body_chunk(b"1\r\nZ\r\n").unwrap(),
+      BodyStatus::Chunk {
+        bytes: b"Z",
+        consumed: 4,
+      },
+    );
+    assert_eq!(
+      protocol.body_chunk(b"\r\n\r\n"),
+      Err(ProtocolError::Parse(ParseError::Invalid)),
+    );
+  }
+
+  #[test]
+  fn reports_partial_for_incomplete_chunk_size_line() {
+    let mut protocol = Protocol {
+      request_body: BodyKind::Chunked,
+      ..Protocol::new()
+    };
+    assert_eq!(
+      protocol.body_chunk(b"1;no CRLF").unwrap(),
       BodyStatus::Partial { consumed: 0 },
     );
   }

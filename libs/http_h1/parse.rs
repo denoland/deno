@@ -184,7 +184,7 @@ fn finish_request_head<'a>(
   let headers_out = &headers_out[..header_len];
 
   let keep_alive = header_info.keep_alive(version);
-  let body_kind = header_info.body_kind(method)?;
+  let body_kind = header_info.body_kind(method, version)?;
   header_info.validate_host(version, body_kind, allow_missing_host)?;
   let expect_continue = header_info.expect_continue;
 
@@ -244,7 +244,7 @@ fn finish_request_head_uninit<'a>(
   };
 
   let keep_alive = header_info.keep_alive(version);
-  let body_kind = header_info.body_kind(method)?;
+  let body_kind = header_info.body_kind(method, version)?;
   header_info.validate_host(version, body_kind, allow_missing_host)?;
   let expect_continue = header_info.expect_continue;
 
@@ -372,12 +372,19 @@ impl HeaderInfo {
     }
   }
 
-  fn body_kind(&self, method: &[u8]) -> Result<BodyKind, ParseError> {
+  fn body_kind(
+    &self,
+    method: &[u8],
+    version: Version,
+  ) -> Result<BodyKind, ParseError> {
     if self.connection_upgrade && self.has_upgrade {
       return Ok(BodyKind::Upgrade);
     }
 
     if self.has_transfer_encoding {
+      if version == Version::Http10 {
+        return Err(ParseError::UnsupportedTransferEncoding);
+      }
       if !self.transfer_encoding_invalid
         && self.transfer_encoding_saw_chunked
         && self.transfer_encoding_last_was_chunked
@@ -523,9 +530,24 @@ mod tests {
   fn parses_http10_keep_alive() {
     let mut headers = [Header::EMPTY; 8];
     let request = parse(
-      b"GET / HTTP/1.0\r\nConnection: keep-alive\r\n\r\n",
+      b"GET / HTTP/1.0\r\nConnection: foo, keep-alive, bar\r\n\r\n",
       &mut headers,
     );
+    assert!(request.keep_alive);
+  }
+
+  #[test]
+  fn parses_http10_close_by_default() {
+    let mut headers = [Header::EMPTY; 8];
+    let request = parse(b"GET / HTTP/1.0\r\n\r\n", &mut headers);
+    assert!(!request.keep_alive);
+  }
+
+  #[test]
+  fn parses_http11_keep_alive_by_default() {
+    let mut headers = [Header::EMPTY; 8];
+    let request =
+      parse(b"GET / HTTP/1.1\r\nHost: example.com\r\n\r\n", &mut headers);
     assert!(request.keep_alive);
   }
 
@@ -591,6 +613,43 @@ mod tests {
       &mut headers,
     );
     assert_eq!(request.body_kind, BodyKind::Chunked);
+  }
+
+  #[test]
+  fn parses_chunked_transfer_encoding_across_header_lines() {
+    let mut headers = [Header::EMPTY; 8];
+    let request = parse(
+      b"POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: gzip\r\nTransfer-Encoding: chunked\r\n\r\n",
+      &mut headers,
+    );
+    assert_eq!(request.body_kind, BodyKind::Chunked);
+  }
+
+  #[test]
+  fn rejects_transfer_encoding_that_does_not_end_in_chunked() {
+    for input in [
+      b"POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: gzip\r\n\r\n".as_slice(),
+      b"POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked, gzip\r\n\r\n",
+      b"POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nTransfer-Encoding: gzip\r\n\r\n",
+    ] {
+      let mut headers = [Header::EMPTY; 8];
+      assert_eq!(
+        parse_request_head(input, &mut headers),
+        Err(ParseError::UnsupportedTransferEncoding)
+      );
+    }
+  }
+
+  #[test]
+  fn rejects_http10_transfer_encoding() {
+    let mut headers = [Header::EMPTY; 8];
+    assert_eq!(
+      parse_request_head(
+        b"POST / HTTP/1.0\r\nTransfer-Encoding: chunked\r\n\r\n",
+        &mut headers,
+      ),
+      Err(ParseError::UnsupportedTransferEncoding)
+    );
   }
 
   #[test]
