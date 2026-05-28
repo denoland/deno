@@ -257,7 +257,7 @@ const testPnpmGlobalNoScripts = step.dependsOn(testPnpmLocalNoScripts)({
   run: [
     'EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"',
     "pnpm install -g --ignore-scripts deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/",
-    'ACTUAL="$(node "$(pnpm root -g)/deno/bin.cjs" -v)"',
+    'ACTUAL="$(deno -v)"',
     'echo "$ACTUAL"',
     '[ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected \'$EXPECTED_VERSION\', got \'$ACTUAL\'"; exit 1; }',
     "pnpm uninstall -g deno",
