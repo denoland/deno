@@ -68,6 +68,11 @@ const {
 
 const kParsingContext = Symbol("script parsing context");
 
+const USE_MAIN_CONTEXT_DEFAULT_LOADER = Symbol(
+  "USE_MAIN_CONTEXT_DEFAULT_LOADER",
+);
+const DONT_CONTEXTIFY = Symbol("DONT_CONTEXTIFY");
+
 class Script {
   #inner;
 
@@ -85,7 +90,7 @@ class Script {
       columnOffset = 0,
       cachedData,
       produceCachedData = false,
-      // importModuleDynamically,
+      importModuleDynamically,
       [kParsingContext]: parsingContext,
     } = options;
 
@@ -97,8 +102,8 @@ class Script {
     }
     validateBoolean(produceCachedData, "options.produceCachedData");
 
-    // const hostDefinedOptionId =
-    //     getHostDefinedOptionId(importModuleDynamically, filename);
+    const useDefaultLoader =
+      importModuleDynamically === USE_MAIN_CONTEXT_DEFAULT_LOADER;
 
     const result = op_vm_create_script(
       code,
@@ -108,6 +113,7 @@ class Script {
       cachedData,
       produceCachedData,
       parsingContext,
+      useDefaultLoader,
     );
     this.#inner = result.value;
     this.cachedDataProduced = result.cached_data_produced;
@@ -399,8 +405,8 @@ function compileFunction(code, params, options = { __proto__: null }) {
     validateObject(extension, name, { nullable: true });
   });
 
-  // const hostDefinedOptionId =
-  //     getHostDefinedOptionId(importModuleDynamically, filename);
+  const useDefaultLoader =
+    options.importModuleDynamically === USE_MAIN_CONTEXT_DEFAULT_LOADER;
 
   const result = op_vm_compile_function(
     code,
@@ -412,6 +418,7 @@ function compileFunction(code, params, options = { __proto__: null }) {
     parsingContext,
     contextExtensions,
     params,
+    useDefaultLoader,
   );
 
   result.value.cachedDataProduced = result.cached_data_produced;
@@ -426,11 +433,6 @@ function compileFunction(code, params, options = { __proto__: null }) {
 function measureMemory(_options) {
   notImplemented("measureMemory");
 }
-
-const USE_MAIN_CONTEXT_DEFAULT_LOADER = Symbol(
-  "USE_MAIN_CONTEXT_DEFAULT_LOADER",
-);
-const DONT_CONTEXTIFY = Symbol("DONT_CONTEXTIFY");
 
 const constants = {
   __proto__: null,
@@ -618,6 +620,7 @@ class SourceTextModule extends Module {
       context,
       lineOffset = 0,
       columnOffset = 0,
+      importModuleDynamically,
     } = options;
     if (context !== undefined) {
       validateContext(context);
@@ -626,6 +629,9 @@ class SourceTextModule extends Module {
     validateInt32(lineOffset, "options.lineOffset");
     validateInt32(columnOffset, "options.columnOffset");
 
+    const useDefaultLoader =
+      importModuleDynamically === USE_MAIN_CONTEXT_DEFAULT_LOADER;
+
     this[kContext] = context;
     this[kWrap] = op_vm_module_create_source_text_module(
       sourceText,
@@ -633,6 +639,7 @@ class SourceTextModule extends Module {
       lineOffset,
       columnOffset,
       context,
+      useDefaultLoader,
     );
     this[kModuleRequests] = buildModuleRequests(this[kWrap]);
     this[kDependencySpecifiers] = undefined;
