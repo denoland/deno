@@ -88,6 +88,26 @@ fn compute_hoisted_layout<'a>(
   packages: &'a [NpmResolutionPackage],
   system_info: &NpmSystemInfo,
 ) -> HoistedLayout<'a> {
+  // Versions explicitly required by the root/workspace package.json(s).
+  // These take priority when picking what to hoist, matching npm: a
+  // version listed in package.json wins over a (possibly higher) version
+  // pulled in only transitively.
+  let mut root_version_for_name: HashMap<&StackString, &PackageNv> =
+    HashMap::new();
+  for root_nv in snapshot.package_reqs().values() {
+    root_version_for_name
+      .entry(&root_nv.name)
+      .and_modify(|existing| {
+        // Multiple workspace members directly require the same package
+        // at different versions. Tie-break by higher version so the
+        // result is deterministic; the loser gets nested.
+        if root_nv.cmp(existing) == Ordering::Greater {
+          *existing = root_nv;
+        }
+      })
+      .or_insert(root_nv);
+  }
+
   // Count how many packages depend on each (name, version) pair
   let mut version_dependents: HashMap<&PackageNv, usize> = HashMap::new();
 
@@ -98,12 +118,22 @@ fn compute_hoisted_layout<'a>(
     }
   }
 
-  // For each package name, find the version with the most dependents
+  // For each package name, pick the version to hoist. A version
+  // required directly by the root/workspace always wins; otherwise we
+  // fall back to "most depended on, then highest version".
   let mut best_version_for_name: HashMap<&StackString, &NpmResolutionPackage> =
     HashMap::new();
 
   for package in packages {
-    match best_version_for_name.get(&package.id.nv.name) {
+    let name = &package.id.nv.name;
+    if let Some(root_nv) = root_version_for_name.get(name) {
+      if package.id.nv == **root_nv {
+        best_version_for_name.insert(name, package);
+      }
+      // Any other version of a root-required name will be nested.
+      continue;
+    }
+    match best_version_for_name.get(name) {
       Some(current_best) => {
         let current_count = version_dependents
           .get(&current_best.id.nv)
@@ -115,11 +145,11 @@ fn compute_hoisted_layout<'a>(
           || (new_count == current_count
             && package.id.nv.cmp(&current_best.id.nv) == Ordering::Greater)
         {
-          best_version_for_name.insert(&package.id.nv.name, package);
+          best_version_for_name.insert(name, package);
         }
       }
       None => {
-        best_version_for_name.insert(&package.id.nv.name, package);
+        best_version_for_name.insert(name, package);
       }
     }
   }
