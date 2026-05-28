@@ -35,6 +35,16 @@ const {
   op_crypto_import_spki_x25519,
   op_crypto_import_spki_x448,
   op_crypto_jwk_x_ed25519,
+  op_crypto_ml_kem_decapsulate,
+  op_crypto_ml_kem_encapsulate,
+  op_crypto_ml_kem_export_pkcs8,
+  op_crypto_ml_kem_export_spki,
+  op_crypto_ml_kem_generate_key,
+  op_crypto_ml_kem_get_public_key,
+  op_crypto_ml_kem_import_pkcs8,
+  op_crypto_ml_kem_import_spki,
+  op_crypto_ml_kem_validate_private_key,
+  op_crypto_ml_kem_validate_public_key,
   op_crypto_random_uuid,
   op_crypto_sign_ed25519,
   op_crypto_sign_key,
@@ -101,6 +111,10 @@ const recognisedUsages = [
   "deriveBits",
   "wrapKey",
   "unwrapKey",
+  "encapsulateKey",
+  "encapsulateBits",
+  "decapsulateKey",
+  "decapsulateBits",
 ];
 
 const simpleAlgorithmDictionaries = {
@@ -164,6 +178,9 @@ const supportedAlgorithms = {
     "X25519": null,
     "X448": null,
     "Ed25519": null,
+    "ML-KEM-512": null,
+    "ML-KEM-768": null,
+    "ML-KEM-1024": null,
   },
   "sign": {
     "RSASSA-PKCS1-v1_5": null,
@@ -197,6 +214,19 @@ const supportedAlgorithms = {
     "Ed25519": null,
     "X25519": null,
     "X448": null,
+    "ML-KEM-512": null,
+    "ML-KEM-768": null,
+    "ML-KEM-1024": null,
+  },
+  "encapsulate": {
+    "ML-KEM-512": null,
+    "ML-KEM-768": null,
+    "ML-KEM-1024": null,
+  },
+  "decapsulate": {
+    "ML-KEM-512": null,
+    "ML-KEM-768": null,
+    "ML-KEM-1024": null,
   },
   "deriveBits": {
     "HKDF": "HkdfParams",
@@ -416,6 +446,68 @@ class CryptoKey {
     webidl.assertBranded(this, CryptoKeyPrototype);
     // TODO(lucacasonato): return a SameObject copy
     return this[_algorithm];
+  }
+
+  /**
+   * Derive the public key associated with this CryptoKey, when the underlying
+   * algorithm supports it (currently ML-KEM decapsulation keys).
+   *
+   * https://wicg.github.io/webcrypto-modern-algos/#CryptoKey-method-getPublicKey
+   *
+   * @returns {CryptoKey}
+   */
+  getPublicKey() {
+    webidl.assertBranded(this, CryptoKeyPrototype);
+    if (this[_type] !== "private") {
+      throw new DOMException(
+        "getPublicKey() is only valid on private keys",
+        "InvalidAccessError",
+      );
+    }
+
+    const algorithm = this[_algorithm];
+    const algorithmName = algorithm.name;
+    switch (algorithmName) {
+      case "ML-KEM-512":
+      case "ML-KEM-768":
+      case "ML-KEM-1024": {
+        const handle = this[_handle];
+        const privateKeyBytes = WeakMapPrototypeGet(KEY_STORE, handle);
+        let publicKeyBytes;
+        try {
+          publicKeyBytes = op_crypto_ml_kem_get_public_key(
+            algorithmName,
+            privateKeyBytes,
+          );
+        } catch (_) {
+          throw new DOMException(
+            "Failed to derive public key",
+            "OperationError",
+          );
+        }
+        const pubHandle = {};
+        WeakMapPrototypeSet(KEY_STORE, pubHandle, publicKeyBytes);
+        const filteredUsages = ArrayPrototypeFilter(
+          this[_usages],
+          (u) =>
+            u === "encapsulateKey" || u === "encapsulateBits",
+        );
+        return constructKey(
+          "public",
+          true,
+          filteredUsages.length > 0
+            ? filteredUsages
+            : ["encapsulateKey", "encapsulateBits"],
+          { name: algorithmName },
+          pubHandle,
+        );
+      }
+      default:
+        throw new DOMException(
+          `getPublicKey() is not supported for ${algorithmName}`,
+          "NotSupportedError",
+        );
+    }
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -1203,6 +1295,12 @@ class SubtleCrypto {
         result = exportKeyChaCha20Poly1305(format, key, innerKey);
         break;
       }
+      case "ML-KEM-512":
+      case "ML-KEM-768":
+      case "ML-KEM-1024": {
+        result = exportKeyMlKem(format, key, innerKey);
+        break;
+      }
       default:
         throw new DOMException("Not implemented", "NotSupportedError");
     }
@@ -1820,11 +1918,362 @@ class SubtleCrypto {
     return result;
   }
 
+  /**
+   * Encapsulate a fresh shared secret to the given encapsulation key and
+   * return the shared secret as a CryptoKey, along with the ciphertext.
+   *
+   * https://wicg.github.io/webcrypto-modern-algos/#SubtleCrypto-method-encapsulateKey
+   *
+   * @param {AlgorithmIdentifier} algorithm
+   * @param {CryptoKey} encapsulationKey
+   * @param {AlgorithmIdentifier} sharedKeyAlgorithm
+   * @param {boolean} extractable
+   * @param {KeyUsage[]} usages
+   * @returns {Promise<{ciphertext: ArrayBuffer, sharedKey: CryptoKey}>}
+   */
+  async encapsulateKey(
+    algorithm,
+    encapsulationKey,
+    sharedKeyAlgorithm,
+    extractable,
+    usages,
+  ) {
+    webidl.assertBranded(this, SubtleCryptoPrototype);
+    const prefix = "Failed to execute 'encapsulateKey' on 'SubtleCrypto'";
+    webidl.requiredArguments(arguments.length, 5, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
+      prefix,
+      "Argument 1",
+    );
+    encapsulationKey = webidl.converters.CryptoKey(
+      encapsulationKey,
+      prefix,
+      "Argument 2",
+    );
+    sharedKeyAlgorithm = webidl.converters.AlgorithmIdentifier(
+      sharedKeyAlgorithm,
+      prefix,
+      "Argument 3",
+    );
+    extractable = webidl.converters.boolean(extractable, prefix, "Argument 4");
+    usages = webidl.converters["sequence<KeyUsage>"](
+      usages,
+      prefix,
+      "Argument 5",
+    );
+
+    const normalizedAlgorithm = normalizeAlgorithm(algorithm, "encapsulate");
+
+    if (encapsulationKey[_algorithm].name !== normalizedAlgorithm.name) {
+      throw new DOMException(
+        "Encapsulation key algorithm does not match",
+        "InvalidAccessError",
+      );
+    }
+    if (encapsulationKey[_type] !== "public") {
+      throw new DOMException(
+        "Encapsulation key must be a public key",
+        "InvalidAccessError",
+      );
+    }
+    if (!ArrayPrototypeIncludes(encapsulationKey[_usages], "encapsulateKey")) {
+      throw new DOMException(
+        "Encapsulation key usages must include 'encapsulateKey'",
+        "InvalidAccessError",
+      );
+    }
+
+    const { ciphertext, sharedSecret } = mlKemEncapsulate(
+      normalizedAlgorithm,
+      encapsulationKey,
+    );
+
+    const sharedKey = await this.importKey(
+      "raw",
+      sharedSecret,
+      sharedKeyAlgorithm,
+      extractable,
+      usages,
+    );
+
+    return {
+      ciphertext: TypedArrayPrototypeGetBuffer(ciphertext),
+      sharedKey,
+    };
+  }
+
+  /**
+   * Encapsulate a fresh shared secret to the given encapsulation key and
+   * return the raw shared secret bytes.
+   *
+   * https://wicg.github.io/webcrypto-modern-algos/#SubtleCrypto-method-encapsulateBits
+   *
+   * @param {AlgorithmIdentifier} algorithm
+   * @param {CryptoKey} encapsulationKey
+   * @returns {Promise<{ciphertext: ArrayBuffer, sharedKey: ArrayBuffer}>}
+   */
+  async encapsulateBits(algorithm, encapsulationKey) {
+    webidl.assertBranded(this, SubtleCryptoPrototype);
+    const prefix = "Failed to execute 'encapsulateBits' on 'SubtleCrypto'";
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
+      prefix,
+      "Argument 1",
+    );
+    encapsulationKey = webidl.converters.CryptoKey(
+      encapsulationKey,
+      prefix,
+      "Argument 2",
+    );
+
+    const normalizedAlgorithm = normalizeAlgorithm(algorithm, "encapsulate");
+
+    if (encapsulationKey[_algorithm].name !== normalizedAlgorithm.name) {
+      throw new DOMException(
+        "Encapsulation key algorithm does not match",
+        "InvalidAccessError",
+      );
+    }
+    if (encapsulationKey[_type] !== "public") {
+      throw new DOMException(
+        "Encapsulation key must be a public key",
+        "InvalidAccessError",
+      );
+    }
+    if (!ArrayPrototypeIncludes(encapsulationKey[_usages], "encapsulateBits")) {
+      throw new DOMException(
+        "Encapsulation key usages must include 'encapsulateBits'",
+        "InvalidAccessError",
+      );
+    }
+
+    const { ciphertext, sharedSecret } = mlKemEncapsulate(
+      normalizedAlgorithm,
+      encapsulationKey,
+    );
+    return {
+      ciphertext: TypedArrayPrototypeGetBuffer(ciphertext),
+      sharedKey: TypedArrayPrototypeGetBuffer(sharedSecret),
+    };
+  }
+
+  /**
+   * Decapsulate the given ciphertext using the provided decapsulation key,
+   * importing the resulting shared secret as a CryptoKey under
+   * `sharedKeyAlgorithm`.
+   *
+   * https://wicg.github.io/webcrypto-modern-algos/#SubtleCrypto-method-decapsulateKey
+   *
+   * @param {AlgorithmIdentifier} algorithm
+   * @param {CryptoKey} decapsulationKey
+   * @param {BufferSource} ciphertext
+   * @param {AlgorithmIdentifier} sharedKeyAlgorithm
+   * @param {boolean} extractable
+   * @param {KeyUsage[]} usages
+   * @returns {Promise<CryptoKey>}
+   */
+  async decapsulateKey(
+    algorithm,
+    decapsulationKey,
+    ciphertext,
+    sharedKeyAlgorithm,
+    extractable,
+    usages,
+  ) {
+    webidl.assertBranded(this, SubtleCryptoPrototype);
+    const prefix = "Failed to execute 'decapsulateKey' on 'SubtleCrypto'";
+    webidl.requiredArguments(arguments.length, 6, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
+      prefix,
+      "Argument 1",
+    );
+    decapsulationKey = webidl.converters.CryptoKey(
+      decapsulationKey,
+      prefix,
+      "Argument 2",
+    );
+    ciphertext = webidl.converters.BufferSource(
+      ciphertext,
+      prefix,
+      "Argument 3",
+    );
+    sharedKeyAlgorithm = webidl.converters.AlgorithmIdentifier(
+      sharedKeyAlgorithm,
+      prefix,
+      "Argument 4",
+    );
+    extractable = webidl.converters.boolean(extractable, prefix, "Argument 5");
+    usages = webidl.converters["sequence<KeyUsage>"](
+      usages,
+      prefix,
+      "Argument 6",
+    );
+
+    ciphertext = copyBuffer(ciphertext);
+    const normalizedAlgorithm = normalizeAlgorithm(algorithm, "decapsulate");
+    if (decapsulationKey[_algorithm].name !== normalizedAlgorithm.name) {
+      throw new DOMException(
+        "Decapsulation key algorithm does not match",
+        "InvalidAccessError",
+      );
+    }
+    if (decapsulationKey[_type] !== "private") {
+      throw new DOMException(
+        "Decapsulation key must be a private key",
+        "InvalidAccessError",
+      );
+    }
+    if (!ArrayPrototypeIncludes(decapsulationKey[_usages], "decapsulateKey")) {
+      throw new DOMException(
+        "Decapsulation key usages must include 'decapsulateKey'",
+        "InvalidAccessError",
+      );
+    }
+
+    const sharedSecret = mlKemDecapsulate(
+      normalizedAlgorithm,
+      decapsulationKey,
+      ciphertext,
+    );
+
+    return await this.importKey(
+      "raw",
+      sharedSecret,
+      sharedKeyAlgorithm,
+      extractable,
+      usages,
+    );
+  }
+
+  /**
+   * Decapsulate the given ciphertext using the provided decapsulation key
+   * and return the raw shared secret bytes.
+   *
+   * https://wicg.github.io/webcrypto-modern-algos/#SubtleCrypto-method-decapsulateBits
+   *
+   * @param {AlgorithmIdentifier} algorithm
+   * @param {CryptoKey} decapsulationKey
+   * @param {BufferSource} ciphertext
+   * @returns {Promise<ArrayBuffer>}
+   */
+  async decapsulateBits(algorithm, decapsulationKey, ciphertext) {
+    webidl.assertBranded(this, SubtleCryptoPrototype);
+    const prefix = "Failed to execute 'decapsulateBits' on 'SubtleCrypto'";
+    webidl.requiredArguments(arguments.length, 3, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
+      prefix,
+      "Argument 1",
+    );
+    decapsulationKey = webidl.converters.CryptoKey(
+      decapsulationKey,
+      prefix,
+      "Argument 2",
+    );
+    ciphertext = webidl.converters.BufferSource(
+      ciphertext,
+      prefix,
+      "Argument 3",
+    );
+
+    ciphertext = copyBuffer(ciphertext);
+    const normalizedAlgorithm = normalizeAlgorithm(algorithm, "decapsulate");
+    if (decapsulationKey[_algorithm].name !== normalizedAlgorithm.name) {
+      throw new DOMException(
+        "Decapsulation key algorithm does not match",
+        "InvalidAccessError",
+      );
+    }
+    if (decapsulationKey[_type] !== "private") {
+      throw new DOMException(
+        "Decapsulation key must be a private key",
+        "InvalidAccessError",
+      );
+    }
+    if (!ArrayPrototypeIncludes(decapsulationKey[_usages], "decapsulateBits")) {
+      throw new DOMException(
+        "Decapsulation key usages must include 'decapsulateBits'",
+        "InvalidAccessError",
+      );
+    }
+
+    const sharedSecret = mlKemDecapsulate(
+      normalizedAlgorithm,
+      decapsulationKey,
+      ciphertext,
+    );
+    return TypedArrayPrototypeGetBuffer(sharedSecret);
+  }
+
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
   }
 }
 const SubtleCryptoPrototype = SubtleCrypto.prototype;
+
+function mlKemEncapsulate(normalizedAlgorithm, encapsulationKey) {
+  switch (normalizedAlgorithm.name) {
+    case "ML-KEM-512":
+    case "ML-KEM-768":
+    case "ML-KEM-1024": {
+      const handle = encapsulationKey[_handle];
+      const publicKeyBytes = WeakMapPrototypeGet(KEY_STORE, handle);
+      let result;
+      try {
+        result = op_crypto_ml_kem_encapsulate(
+          normalizedAlgorithm.name,
+          publicKeyBytes,
+        );
+      } catch (_) {
+        throw new DOMException("Encapsulation failed", "OperationError");
+      }
+      return {
+        ciphertext: result.ciphertext,
+        sharedSecret: result.sharedSecret,
+      };
+    }
+    default:
+      throw new DOMException(
+        `Encapsulation not supported for ${normalizedAlgorithm.name}`,
+        "NotSupportedError",
+      );
+  }
+}
+
+function mlKemDecapsulate(normalizedAlgorithm, decapsulationKey, ciphertext) {
+  switch (normalizedAlgorithm.name) {
+    case "ML-KEM-512":
+    case "ML-KEM-768":
+    case "ML-KEM-1024": {
+      const expectedCtSize = ML_KEM_CIPHERTEXT_SIZES[normalizedAlgorithm.name];
+      if (TypedArrayPrototypeGetByteLength(ciphertext) !== expectedCtSize) {
+        throw new DOMException(
+          `ML-KEM ${normalizedAlgorithm.name} ciphertext must be ${expectedCtSize} bytes`,
+          "OperationError",
+        );
+      }
+      const handle = decapsulationKey[_handle];
+      const privateKeyBytes = WeakMapPrototypeGet(KEY_STORE, handle);
+      try {
+        return op_crypto_ml_kem_decapsulate(
+          normalizedAlgorithm.name,
+          privateKeyBytes,
+          ciphertext,
+        );
+      } catch (_) {
+        throw new DOMException("Decapsulation failed", "OperationError");
+      }
+    }
+    default:
+      throw new DOMException(
+        `Decapsulation not supported for ${normalizedAlgorithm.name}`,
+        "NotSupportedError",
+      );
+  }
+}
 
 async function generateKey(normalizedAlgorithm, extractable, usages) {
   const algorithmName = normalizedAlgorithm.name;
@@ -2323,6 +2772,55 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
 
       // 14.
       return key;
+    }
+    case "ML-KEM-512":
+    case "ML-KEM-768":
+    case "ML-KEM-1024": {
+      // ML-KEM (FIPS 203) keys use the encapsulateKey/decapsulateKey usages
+      // defined in the WICG Modern Algorithms spec.
+      for (let i = 0; i < usages.length; i++) {
+        if (
+          !ArrayPrototypeIncludes(
+            [
+              "encapsulateKey",
+              "encapsulateBits",
+              "decapsulateKey",
+              "decapsulateBits",
+            ],
+            usages[i],
+          )
+        ) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      }
+
+      const { privateKey: privBytes, publicKey: pubBytes } =
+        op_crypto_ml_kem_generate_key(algorithmName);
+
+      const algorithm = { name: algorithmName };
+
+      const privHandle = {};
+      WeakMapPrototypeSet(KEY_STORE, privHandle, privBytes);
+
+      const pubHandle = {};
+      WeakMapPrototypeSet(KEY_STORE, pubHandle, pubBytes);
+
+      const publicKey = constructKey(
+        "public",
+        true,
+        usageIntersection(usages, ["encapsulateKey", "encapsulateBits"]),
+        algorithm,
+        pubHandle,
+      );
+      const privateKey = constructKey(
+        "private",
+        extractable,
+        usageIntersection(usages, ["decapsulateKey", "decapsulateBits"]),
+        algorithm,
+        privHandle,
+      );
+
+      return { publicKey, privateKey };
     }
   }
 }
@@ -3087,6 +3585,217 @@ function exportKeyChaCha20Poly1305(format, _key, innerKey) {
     }
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
+  }
+}
+
+const ML_KEM_PRIVATE_SIZES = {
+  "ML-KEM-512": 1632,
+  "ML-KEM-768": 2400,
+  "ML-KEM-1024": 3168,
+};
+const ML_KEM_PUBLIC_SIZES = {
+  "ML-KEM-512": 800,
+  "ML-KEM-768": 1184,
+  "ML-KEM-1024": 1568,
+};
+const ML_KEM_CIPHERTEXT_SIZES = {
+  "ML-KEM-512": 768,
+  "ML-KEM-768": 1088,
+  "ML-KEM-1024": 1568,
+};
+
+const ML_KEM_PRIVATE_USAGES = ["decapsulateKey", "decapsulateBits"];
+const ML_KEM_PUBLIC_USAGES = ["encapsulateKey", "encapsulateBits"];
+
+function importKeyMlKem(
+  format,
+  normalizedAlgorithm,
+  keyData,
+  extractable,
+  keyUsages,
+) {
+  const algorithmName = normalizedAlgorithm.name;
+  const algorithm = { name: algorithmName };
+
+  switch (format) {
+    case "raw-public": {
+      // Public encapsulation key.
+      const expectedSize = ML_KEM_PUBLIC_SIZES[algorithmName];
+      if (TypedArrayPrototypeGetByteLength(keyData) !== expectedSize) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      for (let i = 0; i < keyUsages.length; i++) {
+        if (!ArrayPrototypeIncludes(ML_KEM_PUBLIC_USAGES, keyUsages[i])) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      }
+      if (
+        !op_crypto_ml_kem_validate_public_key(algorithmName, keyData)
+      ) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, keyData);
+      return constructKey(
+        "public",
+        extractable,
+        usageIntersection(keyUsages, ML_KEM_PUBLIC_USAGES),
+        algorithm,
+        handle,
+      );
+    }
+    case "raw-private": {
+      // Private decapsulation key in FIPS 203 expanded form.
+      const expectedSize = ML_KEM_PRIVATE_SIZES[algorithmName];
+      if (TypedArrayPrototypeGetByteLength(keyData) !== expectedSize) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      for (let i = 0; i < keyUsages.length; i++) {
+        if (!ArrayPrototypeIncludes(ML_KEM_PRIVATE_USAGES, keyUsages[i])) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      }
+      if (
+        !op_crypto_ml_kem_validate_private_key(algorithmName, keyData)
+      ) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, keyData);
+      return constructKey(
+        "private",
+        extractable,
+        usageIntersection(keyUsages, ML_KEM_PRIVATE_USAGES),
+        algorithm,
+        handle,
+      );
+    }
+    case "raw-seed": {
+      // FIPS 203 64-byte seed format. Not yet supported by the aws-lc-rs
+      // backend; tracked as a follow-up.
+      throw new DOMException(
+        "ML-KEM 'raw-seed' format is not yet supported",
+        "NotSupportedError",
+      );
+    }
+    case "spki": {
+      for (let i = 0; i < keyUsages.length; i++) {
+        if (!ArrayPrototypeIncludes(ML_KEM_PUBLIC_USAGES, keyUsages[i])) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      }
+      let imported;
+      try {
+        imported = op_crypto_ml_kem_import_spki(keyData);
+      } catch (_) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      if (imported.variant !== algorithmName) {
+        throw new DOMException(
+          "Imported key algorithm does not match",
+          "DataError",
+        );
+      }
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, imported.publicKey);
+      return constructKey(
+        "public",
+        extractable,
+        usageIntersection(keyUsages, ML_KEM_PUBLIC_USAGES),
+        algorithm,
+        handle,
+      );
+    }
+    case "pkcs8": {
+      for (let i = 0; i < keyUsages.length; i++) {
+        if (!ArrayPrototypeIncludes(ML_KEM_PRIVATE_USAGES, keyUsages[i])) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      }
+      let imported;
+      try {
+        imported = op_crypto_ml_kem_import_pkcs8(keyData);
+      } catch (_) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      if (imported.variant !== algorithmName) {
+        throw new DOMException(
+          "Imported key algorithm does not match",
+          "DataError",
+        );
+      }
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, imported.privateKey);
+      return constructKey(
+        "private",
+        extractable,
+        usageIntersection(keyUsages, ML_KEM_PRIVATE_USAGES),
+        algorithm,
+        handle,
+      );
+    }
+    default:
+      throw new DOMException(
+        "Unsupported key format for ML-KEM",
+        "NotSupportedError",
+      );
+  }
+}
+
+function exportKeyMlKem(format, key, innerKey) {
+  const algorithmName = key[_algorithm].name;
+  const type = key[_type];
+
+  switch (format) {
+    case "raw-public": {
+      if (type !== "public") {
+        throw new DOMException(
+          "'raw-public' is only valid for public keys",
+          "InvalidAccessError",
+        );
+      }
+      return TypedArrayPrototypeGetBuffer(innerKey);
+    }
+    case "raw-private": {
+      if (type !== "private") {
+        throw new DOMException(
+          "'raw-private' is only valid for private keys",
+          "InvalidAccessError",
+        );
+      }
+      return TypedArrayPrototypeGetBuffer(innerKey);
+    }
+    case "raw-seed": {
+      throw new DOMException(
+        "ML-KEM 'raw-seed' format is not yet supported",
+        "NotSupportedError",
+      );
+    }
+    case "spki": {
+      if (type !== "public") {
+        throw new DOMException(
+          "'spki' is only valid for public keys",
+          "InvalidAccessError",
+        );
+      }
+      const der = op_crypto_ml_kem_export_spki(algorithmName, innerKey);
+      return TypedArrayPrototypeGetBuffer(der);
+    }
+    case "pkcs8": {
+      if (type !== "private") {
+        throw new DOMException(
+          "'pkcs8' is only valid for private keys",
+          "InvalidAccessError",
+        );
+      }
+      const der = op_crypto_ml_kem_export_pkcs8(algorithmName, innerKey);
+      return TypedArrayPrototypeGetBuffer(der);
+    }
+    default:
+      throw new DOMException(
+        "Unsupported key format for ML-KEM",
+        "NotSupportedError",
+      );
   }
 }
 
@@ -3954,6 +4663,17 @@ async function importKeyInner(
     case "Ed25519": {
       return importKeyEd25519(
         format,
+        keyData,
+        extractable,
+        keyUsages,
+      );
+    }
+    case "ML-KEM-512":
+    case "ML-KEM-768":
+    case "ML-KEM-1024": {
+      return importKeyMlKem(
+        format,
+        normalizedAlgorithm,
         keyData,
         extractable,
         keyUsages,
@@ -5681,6 +6401,10 @@ webidl.converters.KeyFormat = webidl.createEnumConverter("KeyFormat", [
   "pkcs8",
   "spki",
   "jwk",
+  // WICG modern algorithms (ML-KEM, ML-DSA): split raw key formats.
+  "raw-public",
+  "raw-private",
+  "raw-seed",
 ]);
 
 webidl.converters.KeyUsage = webidl.createEnumConverter("KeyUsage", [
@@ -5692,6 +6416,11 @@ webidl.converters.KeyUsage = webidl.createEnumConverter("KeyUsage", [
   "deriveBits",
   "wrapKey",
   "unwrapKey",
+  // WICG modern algorithms (ML-KEM): KEM-specific usages.
+  "encapsulateKey",
+  "encapsulateBits",
+  "decapsulateKey",
+  "decapsulateBits",
 ]);
 
 webidl.converters["sequence<KeyUsage>"] = webidl.createSequenceConverter(
