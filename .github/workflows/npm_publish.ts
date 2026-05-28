@@ -134,7 +134,7 @@ const installPnpm = step.dependsOn(startVerdaccio)({
     'PNPM_HOME="${{ runner.temp }}/pnpm-global"',
     'mkdir -p "$PNPM_HOME"',
     'echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"',
-    'echo "$PNPM_HOME" >> "$GITHUB_PATH"',
+    'echo "$PNPM_HOME/bin" >> "$GITHUB_PATH"',
   ],
 });
 

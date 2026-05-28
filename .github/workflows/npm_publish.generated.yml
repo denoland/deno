@@ -110,7 +110,7 @@ jobs:
           PNPM_HOME="${{ runner.temp }}/pnpm-global"
           mkdir -p "$PNPM_HOME"
           echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
-          echo "$PNPM_HOME" >> "$GITHUB_PATH"
+          echo "$PNPM_HOME/bin" >> "$GITHUB_PATH"
       - name: Configure npm to use Verdaccio
         run: |-
           npm config set registry http://localhost:4873/
