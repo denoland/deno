@@ -423,14 +423,28 @@ deno_core::extension!(deno_node,
     ops::http2::Http2Session,
     ops::http2::Http2Stream,
   ],
-  // Keep the node require system out of the eager snapshot graph: its
-  // foundational closure (process / module / streams / net / tty) is loaded
-  // and evaluated only on first use, so non-node `deno run` paths skip the
-  // ~2 MB of node-polyfill SFIs/object state in the snapshot deserializer.
-  lazy_loaded_esm = [
+  // node:module stays eager (it's the entry point and its body's
+  // `globalThis.nodeBootstrap = initialize` is needed at runtime startup so
+  // 99_main.js can call it). Moving 01_require.js to lazy_loaded_esm has a
+  // subtle side effect on the http_test sanitizer: the deferred load shifts
+  // when `__bootstrapNodeProcess` happens relative to test runner microtask
+  // sampling, causing `Agent.keepSocketAlive`'s 5000ms `setUnrefTimeout` to
+  // appear inside test boundaries even though the timer is unref'd. Keeping
+  // node:module eager keeps the bootstrap on the snapshot side of the
+  // sanitizer's baseline.
+  esm_entry_point = "node:module",
+  esm = [
     dir "polyfills",
     "internal_binding/mod.ts",
     "node:module" = "01_require.js",
+  ],
+  // The foundational node closure (process / streams / net / tty) is loaded
+  // and evaluated only on first use, so non-node `deno run` paths skip the
+  // ~1.8 MB of node-polyfill SFIs/object state in the snapshot deserializer.
+  // 98_global_scope_shared.js + 99_main.js's defer logic was designed around
+  // these specific modules; they stay lazy.
+  lazy_loaded_esm = [
+    dir "polyfills",
     // node:process is lazy: globalThis.process / Buffer are lazy globals (see
     // 98_global_scope_shared.js) and nodeBootstrap is deferred (99_main.js), so
     // a program that never touches process/Buffer/require never deserializes the
