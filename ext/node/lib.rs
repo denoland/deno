@@ -882,3 +882,19 @@ pub fn create_host_defined_options<'s>(
   host_defined_options.set(scope, 0, value.into());
   host_defined_options.into()
 }
+
+/// Build host-defined options that mark a script as having been compiled
+/// by `node:vm` (e.g. via `vm.Script`, `vm.runInThisContext`,
+/// `vm.compileFunction`, `vm.SourceTextModule`) without an
+/// `importModuleDynamically` callback. When V8 invokes the dynamic-import
+/// host callback for such a script, the runtime rejects the import with
+/// `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`, matching Node.js. Without
+/// this marker, sandboxed `vm` code could escape via `import()`.
+pub fn create_vm_dynamic_import_missing_host_defined_options<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Data> {
+  deno_core::create_host_defined_options_with_kind(
+    scope,
+    deno_core::host_defined_options_kind::VM_DYNAMIC_IMPORT_MISSING,
+  )
+}

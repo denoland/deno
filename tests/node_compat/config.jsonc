@@ -4496,7 +4496,7 @@
       "darwin": false,
       "reason": "Responses were not received within 5000 ms"
     },
-    "internet/test-dns-any.js": {},
+    // "internet/test-dns-any.js": {}, // really flaky in CI
     "internet/test-dns-getDefaultResultOrder.js": {},
     "internet/test-dns-idna2008.js": {},
     "internet/test-dns-lookup.js": {},

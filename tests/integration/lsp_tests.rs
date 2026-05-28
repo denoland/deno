@@ -19264,6 +19264,22 @@ fn lsp_skip_lib_check_graph_errors() {
 }
 
 #[test(timeout = 300)]
+fn lsp_css_side_effect_import() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("styles.css", "body { background: red; }\n");
+  let file = temp_dir.source_file(
+    "main.ts",
+    "import \"./styles.css\";\nconsole.log(\"hello\");\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_import_json_module_import_attribute_variations() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir().path();

@@ -862,12 +862,33 @@ pub fn host_import_module_dynamically_callback<'s, 'i>(
 )]
 pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  _host_defined_options: v8::Local<'s, v8::Data>,
+  host_defined_options: v8::Local<'s, v8::Data>,
   resource_name: v8::Local<'s, v8::Value>,
   specifier: v8::Local<'s, v8::String>,
   phase: v8::ModuleImportPhase,
   import_attributes: v8::Local<'s, v8::FixedArray>,
 ) -> Option<v8::Local<'s, v8::Promise>> {
+  // Scripts compiled by `node:vm` without an `importModuleDynamically`
+  // callback tag their host-defined options so that dynamic `import()` at
+  // runtime rejects with `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING` instead
+  // of falling through to the embedder's module loader (which would let
+  // the sandboxed script reach arbitrary modules).
+  if matches!(
+    crate::runtime::host_defined_options::read_host_defined_options_kind(
+      scope,
+      host_defined_options,
+    ),
+    Some(
+      crate::runtime::host_defined_options::host_defined_options_kind::VM_DYNAMIC_IMPORT_MISSING,
+    )
+  ) {
+    let resolver = v8::PromiseResolver::new(scope).unwrap();
+    let promise = resolver.get_promise(scope);
+    let exception = vm_dynamic_import_callback_missing_exception(scope);
+    resolver.reject(scope, exception);
+    return Some(promise);
+  }
+
   // NOTE(bartlomieju): will crash for non-UTF-8 specifier
   let specifier_str = specifier
     .to_string(scope)
@@ -956,6 +977,31 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
   };
 
   Some(promise_new)
+}
+
+/// Build a Node-style `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING` TypeError.
+/// The error code and message string match Node.js exactly so that user
+/// code switching on `err.code` behaves the same under Deno.
+fn vm_dynamic_import_callback_missing_exception<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Value> {
+  let message = v8::String::new_external_onebyte_static(
+    scope,
+    b"A dynamic import callback was not specified.",
+  )
+  .unwrap();
+  let exception = v8::Exception::type_error(scope, message);
+  let code_key =
+    v8::String::new_external_onebyte_static(scope, b"code").unwrap();
+  let code_val = v8::String::new_external_onebyte_static(
+    scope,
+    b"ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING",
+  )
+  .unwrap();
+  if let Ok(obj) = v8::Local::<v8::Object>::try_from(exception) {
+    obj.set(scope, code_key.into(), code_val.into());
+  }
+  exception
 }
 
 pub extern "C" fn host_initialize_import_meta_object_callback(

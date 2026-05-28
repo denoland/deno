@@ -9,6 +9,7 @@ use deno_media_type::MediaType;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
 use node_resolver::analyze::CjsCodeAnalyzer;
+use node_resolver::analyze::CjsMemberReExport;
 use node_resolver::analyze::EsmAnalysisMode;
 use serde::Deserialize;
 use serde::Serialize;
@@ -27,6 +28,19 @@ pub use deno_ast::DenoAstModuleExportAnalyzer;
 pub struct ModuleExportsAndReExports {
   pub exports: Vec<String>,
   pub reexports: Vec<String>,
+  /// Re-exports that pin down a specific member of the inner module.
+  /// Set when the analyzer detects a `module.exports = require("X").MEMBER`
+  /// shape. Downstream analysis filters the inner module's exports to
+  /// those statically attached to `MEMBER` rather than treating the
+  /// whole inner module as the re-export source.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub member_reexports: Vec<MemberReExport>,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MemberReExport {
+  pub specifier: String,
+  pub member: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -96,6 +110,13 @@ pub trait ModuleForExportAnalysis {
   fn compute_is_script(&self) -> bool;
   fn analyze_cjs(&self) -> ModuleExportsAndReExports;
   fn analyze_es_runtime_exports(&self) -> ModuleExportsAndReExports;
+  /// For the shape `module.exports = require(X).MEMBER`, return the
+  /// property names that this module statically attaches to the value
+  /// bound to `exports.MEMBER`. Returns `None` if the member cannot be
+  /// statically resolved to an identifier whose property assignments
+  /// are visible at the top level (in which case callers must not
+  /// advertise any names from this module under the member shape).
+  fn analyze_member_export_props(&self, member: &str) -> Option<Vec<String>>;
 }
 
 #[allow(clippy::disallowed_types, reason = "definition")]
@@ -253,12 +274,14 @@ impl<TSys: DenoCjsCodeAnalyzerSys> CjsCodeAnalyzer
             return Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
               exports: vec![],
               reexports: vec![],
+              member_reexports: vec![],
             }));
           }
         } else {
           return Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
             exports: vec![],
             reexports: vec![],
+            member_reexports: vec![],
           }));
         }
       }
@@ -270,17 +293,68 @@ impl<TSys: DenoCjsCodeAnalyzerSys> CjsCodeAnalyzer
       DenoCjsAnalysis::Esm => Ok(ExtNodeCjsAnalysis::Esm(source, None)),
       DenoCjsAnalysis::EsmAnalysis(analysis) => Ok(ExtNodeCjsAnalysis::Esm(
         source,
-        Some(CjsAnalysisExports {
-          exports: analysis.exports,
-          reexports: analysis.reexports,
-        }),
+        Some(to_ext_cjs_analysis_exports(analysis)),
       )),
-      DenoCjsAnalysis::Cjs(analysis) => {
-        Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
-          exports: analysis.exports,
-          reexports: analysis.reexports,
-        }))
-      }
+      DenoCjsAnalysis::Cjs(analysis) => Ok(ExtNodeCjsAnalysis::Cjs(
+        to_ext_cjs_analysis_exports(analysis),
+      )),
     }
+  }
+
+  async fn analyze_cjs_member_props<'a>(
+    &self,
+    specifier: &Url,
+    maybe_source: Option<Cow<'a, str>>,
+    member: &str,
+  ) -> Result<Option<Vec<String>>, JsErrorBox> {
+    let source = match maybe_source {
+      Some(source) => source,
+      None => match deno_path_util::url_to_file_path(specifier) {
+        Ok(path) => match self.sys.fs_read_to_string_lossy(path) {
+          Ok(source_from_file) => source_from_file,
+          Err(_) => return Ok(None),
+        },
+        Err(_) => return Ok(None),
+      },
+    };
+    let source = source.strip_prefix('\u{FEFF}').unwrap_or(&source);
+    let media_type = MediaType::from_specifier(specifier);
+    if media_type == MediaType::Json {
+      return Ok(None);
+    }
+    let module_export_analyzer = self.module_export_analyzer.clone();
+    let specifier = specifier.clone();
+    let source_arc: ArcStr = source.into();
+    let member = member.to_string();
+    let analyze = move || -> Result<Option<Vec<String>>, JsErrorBox> {
+      let parsed = module_export_analyzer
+        .parse_module(specifier, media_type, source_arc)?;
+      Ok(parsed.analyze_member_export_props(&member))
+    };
+    #[cfg(feature = "sync")]
+    {
+      crate::rt::spawn_blocking(analyze).await.unwrap()
+    }
+    #[cfg(not(feature = "sync"))]
+    {
+      analyze()
+    }
+  }
+}
+
+fn to_ext_cjs_analysis_exports(
+  analysis: ModuleExportsAndReExports,
+) -> CjsAnalysisExports {
+  CjsAnalysisExports {
+    exports: analysis.exports,
+    reexports: analysis.reexports,
+    member_reexports: analysis
+      .member_reexports
+      .into_iter()
+      .map(|m| CjsMemberReExport {
+        specifier: m.specifier,
+        member: m.member,
+      })
+      .collect(),
   }
 }

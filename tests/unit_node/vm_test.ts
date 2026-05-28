@@ -150,12 +150,32 @@ reject().catch(() => {})
 });
 
 // https://github.com/denoland/deno/issues/22441
+// https://github.com/denoland/deno/issues/33385
+// `import()` inside a `vm.Script` that was compiled without an
+// `importModuleDynamically` callback must reject with
+// `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`, matching Node — otherwise a
+// sandboxed script could escape via dynamic import.
 Deno.test({
   name: "vm runInNewContext module loader",
-  fn() {
-    const code = "import('node:process')";
+  async fn() {
+    const code =
+      `globalThis.__p = import('node:process').then((m) => ({ ok: true, m }), (e) => ({ ok: false, code: e.code, name: e.name, message: e.message }));`;
     const script = new Script(code);
-    script.runInNewContext();
+    const sandbox: Record<string, unknown> = {};
+    script.runInNewContext(sandbox);
+    const result = await (sandbox.__p as Promise<{
+      ok: boolean;
+      code?: string;
+      name?: string;
+      message?: string;
+    }>);
+    assertEquals(result.ok, false);
+    assertEquals(result.code, "ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING");
+    assertEquals(result.name, "TypeError");
+    assertEquals(
+      result.message,
+      "A dynamic import callback was not specified.",
+    );
   },
 });
 

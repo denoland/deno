@@ -3,8 +3,11 @@
 use std::cell::RefCell;
 use std::io::Write;
 
-use brotli::CompressorWriter as BrotliEncoder;
 use brotli::DecompressorWriter as BrotliDecoder;
+use brotli::enc::encode::BrotliEncoderOperation;
+use brotli::enc::encode::BrotliEncoderParameter;
+use brotli::enc::encode::BrotliEncoderStateStruct;
+use brotli::writer::StandardAlloc;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use flate2::Compression;
@@ -31,6 +34,109 @@ pub enum CompressionError {
   Io(std::io::Error),
 }
 
+const BROTLI_COMPRESSION_QUALITY: u32 = 6;
+const BROTLI_COMPRESSION_LGWIN: u32 = 22;
+
+// Quality level 6 is based on google's nginx default value for on-the-fly
+// compression:
+// https://github.com/google/ngx_brotli#brotli_comp_level
+// lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes (~4MB).
+fn new_brotli_encoder() -> BrotliEncoderStateStruct<StandardAlloc> {
+  let mut stm = BrotliEncoderStateStruct::new(StandardAlloc::default());
+  stm.set_parameter(
+    BrotliEncoderParameter::BROTLI_PARAM_QUALITY,
+    BROTLI_COMPRESSION_QUALITY,
+  );
+  stm.set_parameter(
+    BrotliEncoderParameter::BROTLI_PARAM_LGWIN,
+    BROTLI_COMPRESSION_LGWIN,
+  );
+  stm
+}
+
+fn max_brotli_compressed_size(input_size: usize) -> usize {
+  if input_size == 0 {
+    return 2;
+  }
+
+  // [window bits / empty metadata] + N * [uncompressed] + [last empty]
+  let num_large_blocks = input_size >> 14;
+  let overhead = 2 + (4 * num_large_blocks) + 3 + 1;
+  let result = input_size + overhead;
+
+  if result < input_size { 0 } else { result }
+}
+
+struct RawBrotliEncoder {
+  stm: BrotliEncoderStateStruct<StandardAlloc>,
+}
+
+impl RawBrotliEncoder {
+  fn new() -> Self {
+    Self {
+      stm: new_brotli_encoder(),
+    }
+  }
+
+  fn compress(
+    &mut self,
+    input: &[u8],
+    operation: BrotliEncoderOperation,
+  ) -> Result<Vec<u8>, CompressionError> {
+    let mut input_offset = 0;
+    let mut available_in = input.len();
+    let mut output = vec![0; max_brotli_compressed_size(input.len()).max(1024)];
+    let mut output_offset = 0;
+    let mut total_out = Some(0);
+
+    loop {
+      let mut available_out = output.len() - output_offset;
+      let ok = self.stm.compress_stream(
+        operation,
+        &mut available_in,
+        input,
+        &mut input_offset,
+        &mut available_out,
+        &mut output,
+        &mut output_offset,
+        &mut total_out,
+        &mut |_, _, _, _| (),
+      );
+
+      if !ok {
+        return Err(CompressionError::IoTypeError(std::io::Error::new(
+          std::io::ErrorKind::InvalidData,
+          "brotli compression failed",
+        )));
+      }
+
+      let done = match operation {
+        BrotliEncoderOperation::BROTLI_OPERATION_FINISH => {
+          self.stm.is_finished()
+        }
+        _ => available_in == 0 && !self.stm.has_more_output(),
+      };
+
+      if done {
+        output.truncate(output_offset);
+        return Ok(output);
+      }
+
+      if output_offset == output.len() {
+        output.resize(output.len() + 1024, 0);
+      }
+    }
+  }
+
+  fn write(&mut self, input: &[u8]) -> Result<Vec<u8>, CompressionError> {
+    self.compress(input, BrotliEncoderOperation::BROTLI_OPERATION_FLUSH)
+  }
+
+  fn finish(mut self) -> Result<Vec<u8>, CompressionError> {
+    self.compress(&[], BrotliEncoderOperation::BROTLI_OPERATION_FINISH)
+  }
+}
+
 #[derive(Debug)]
 struct CompressionResource(RefCell<Option<Inner>>);
 
@@ -52,7 +158,7 @@ enum Inner {
   GzDecoder(GzDecoder<Vec<u8>>),
   GzEncoder(GzEncoder<Vec<u8>>),
   BrotliDecoder(Box<BrotliDecoder<Vec<u8>>>),
-  BrotliEncoder(Box<BrotliEncoder<Vec<u8>>>),
+  BrotliEncoder(Box<RawBrotliEncoder>),
 }
 
 impl std::fmt::Debug for Inner {
@@ -95,10 +201,8 @@ pub fn op_compression_new(
       Inner::BrotliDecoder(Box::new(BrotliDecoder::new(w, 4096)))
     }
     ("brotli", false) => {
-      // quality level 6 and lgwin 22 are based on google's nginx default values
-      // https://github.com/google/ngx_brotli#brotli_comp_level
-      // 4096 is the default buffer size used by brotli crate
-      Inner::BrotliEncoder(Box::new(BrotliEncoder::new(w, 4096, 6, 22)))
+      drop(w);
+      Inner::BrotliEncoder(Box::new(RawBrotliEncoder::new()))
     }
     _ => return Err(CompressionError::UnsupportedFormat),
   };
@@ -149,9 +253,7 @@ pub fn op_compression_write(
       d.get_mut().drain(..)
     }
     Inner::BrotliEncoder(d) => {
-      d.write_all(input).map_err(CompressionError::IoTypeError)?;
-      d.flush().map_err(CompressionError::Io)?;
-      d.get_mut().drain(..)
+      return d.write(input).map(Into::into);
     }
   }
   .collect();
@@ -189,7 +291,7 @@ pub fn op_compression_finish(
         "brotli decompression failed",
       ))
     }),
-    Inner::BrotliEncoder(d) => Ok(d.into_inner()),
+    Inner::BrotliEncoder(d) => d.finish(),
   };
   match out {
     Err(err) => {
@@ -200,5 +302,39 @@ pub fn op_compression_finish(
       }
     }
     Ok(out) => Ok(out.into()),
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::io::Read;
+
+  use super::*;
+
+  fn decompress_brotli(input: &[u8]) -> Vec<u8> {
+    let mut decoder = brotli::Decompressor::new(input, 4096);
+    let mut output = vec![];
+    decoder.read_to_end(&mut output).unwrap();
+    output
+  }
+
+  #[test]
+  fn raw_brotli_encoder_flushes_multiple_chunks() {
+    let mut encoder = RawBrotliEncoder::new();
+    let mut compressed = vec![];
+    compressed.extend(encoder.write(b"hello ").unwrap());
+    compressed.extend(encoder.write(b"world").unwrap());
+    compressed.extend(encoder.finish().unwrap());
+
+    assert_eq!(decompress_brotli(&compressed), b"hello world");
+  }
+
+  #[test]
+  fn raw_brotli_encoder_handles_empty_input() {
+    let mut encoder = RawBrotliEncoder::new();
+    let mut compressed = encoder.write(&[]).unwrap();
+    compressed.extend(encoder.finish().unwrap());
+
+    assert_eq!(decompress_brotli(&compressed), b"");
   }
 }
