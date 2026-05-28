@@ -926,6 +926,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       nodeDebug,
       nodeClusterUniqueId,
       nodeClusterSchedPolicy,
+      // Stashed so process.ts's self-trigger can call __bootstrapNodeProcess
+      // without reading Deno.* (the no-deno-api-in-polyfills lint counts
+      // Deno.* references in node polyfills; passing them in keeps process.ts
+      // at zero new violations).
+      denoArgs: Deno.args,
+      denoVersion: Deno.version,
     };
     if (nodeBootstrap) {
       nodeBootstrap(nodeBootstrapArgs);
@@ -1085,6 +1091,10 @@ function bootstrapWorkerRuntime(
       nodeClusterUniqueId,
       nodeClusterSchedPolicy,
       moduleSpecifier: workerType === "node" ? moduleSpecifier : null,
+      // Stashed so process.ts's self-trigger can call __bootstrapNodeProcess
+      // without reading Deno.* (see the main-thread branch above).
+      denoArgs: Deno.args,
+      denoVersion: Deno.version,
     };
     if (nodeBootstrap) {
       nodeBootstrap(nodeBootstrapArgs);

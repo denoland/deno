@@ -1826,8 +1826,8 @@ if (internals.__nodeBootstrapArgs !== undefined) {
   const a = internals.__nodeBootstrapArgs;
   internals.__bootstrapNodeProcess(
     a.argv0,
-    Deno.args,
-    Deno.version,
+    a.denoArgs,
+    a.denoVersion,
     a.nodeDebug ?? "",
     false,
     a.runningOnMainThread,
