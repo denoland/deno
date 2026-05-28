@@ -1777,7 +1777,12 @@ internals.__bootstrapNodeProcess = function (
       delete process._debugProcess;
     }
 
-    delete internals.__bootstrapNodeProcess;
+    // NOTE: we used to delete internals.__bootstrapNodeProcess here. Under
+    // node-defer 01_require.js's deferred trigger calls `initialize()`
+    // (which in turn calls this function) after the node:process self-trigger
+    // ran. The idempotency guard above (`__nodeProcessBootstrapped`) handles
+    // the double call; keeping the function reachable just avoids crashing
+    // that second call with "undefined is not a function".
   } else {
     // Warmup, assuming stdin/stdout/stderr are all terminals. Loaded lazily
     // (the stream machinery is no longer statically imported); this branch
@@ -1828,13 +1833,11 @@ if (internals.__nodeBootstrapArgs !== undefined) {
     a.runningOnMainThread,
   );
   // NOTE: the full worker_threads init (`__initWorkerThreads`, which aliases
-  // globalThis.MessageChannel/MessagePort to the node classes) is NOT run here
-  // -- its `setupCrossThreadMessaging` captures node:process and hits the same
-  // cold-bootstrap `default` TDZ when invoked during node:process's own eval.
-  // The main-thread `resourceLimits` default is set directly in
-  // worker_threads.ts instead. Aliasing the global MessageChannel/MessagePort
-  // on the main thread under node-defer remains a follow-up (needs full init
-  // run after node:process finishes evaluating).
+  // globalThis.MessageChannel/MessagePort to the node classes) is NOT run
+  // here -- its `setupCrossThreadMessaging` captures node:process and hits a
+  // mid-eval TDZ when invoked from inside node:process's own evaluation. It
+  // is finished from 01_require.js's deferred trigger (bottom of file),
+  // which only runs after node:process is fully evaluated.
 }
 
 export default process;

@@ -394,6 +394,11 @@ const lazyNodeModules = {
     core.createLazyLoader("node:stream/promises")().default,
   "net": () => core.createLazyLoader("node:net")().default,
   "tty": () => core.createLazyLoader("node:tty")().default,
+  // `process` must lazy-resolve to the real `node:process` default export
+  // (the proxy at the top of this file is for internal use only). When
+  // `getBuiltinModule('process')` is called we want the actual singleton so
+  // strict-equality against the global `process` holds.
+  "process": () => core.createLazyLoader("node:process")().default,
   "internal/net": () => core.loadExtScript("ext:deno_node/internal/net.ts"),
   "internal/js_stream_socket": () =>
     core.loadExtScript("ext:deno_node/internal/js_stream_socket.js").default,
@@ -498,7 +503,9 @@ function setupBuiltinModules() {
     "path/posix": pathPosix,
     "path/win32": pathWin32,
     path,
-    process,
+    // `process` is registered lazily below (see `lazyNodeModules`) so that
+    // `getBuiltinModule('process')` returns the real `node:process` default
+    // export rather than the proxy stand-in used elsewhere in this file.
     // NOTE(perf): punycode's deprecation warning previously used `process` in a
     // getter, which ObjectEntries() invoked at module-eval -> loaded node:process
     // into the snapshot. Plain entry now (deprecation warning dropped pending
@@ -3161,15 +3168,19 @@ function initialize(args) {
 
 globalThis.nodeBootstrap = initialize;
 
-// node-defer: node:process's own deferred trigger runs the process bootstrap
-// (`__bootstrapNodeProcess`) on first node:* use, which covers the common node
-// surface (process.stdout/argv/pid, fs, streams, http, etc.). The full
-// `initialize` (worker_threads/cluster/stream_wrap/console<->process binding)
-// is intentionally NOT auto-run here: invoking it during this module's own cold
-// evaluation re-enters the node:module<->node:process cycle (node:process is
-// mid-eval, so `__bootstrapNodeProcess` isn't defined yet -> crash). Completing
-// full init for worker_threads/cluster under node-defer is a follow-up; it must
-// run only after BOTH node:module and node:process have finished evaluating.
+// node-defer: node:process's own deferred trigger runs the process half of the
+// bootstrap (`__bootstrapNodeProcess`) on first node:* use, but it intentionally
+// skips the parts of `initialize` that pull node:module (worker_threads alias,
+// IPC, cluster, console<->process binding, trace_events). We can safely run
+// them HERE because by the time 01_require.js evaluates, both node:process and
+// node:module are fully evaluated -- so the previous "mid-eval TDZ" hazard is
+// gone. `initialize` is idempotent for the process half (`__bootstrapNodeProcess`
+// early-returns when `__nodeProcessBootstrapped` is set), so calling it twice
+// is fine; the remaining parts run for the first and only time here.
+if (internals.__nodeBootstrapArgs !== undefined) {
+  initialize(internals.__nodeBootstrapArgs);
+  internals.__nodeBootstrapArgs = undefined;
+}
 
 function closeIdleConnections() {
   try {
