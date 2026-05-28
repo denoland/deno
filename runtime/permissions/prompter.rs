@@ -297,6 +297,48 @@ fn clear_n_lines(stderr_lock: &mut std::io::StderrLock, n: usize) {
   write!(stderr_lock, "\x1B[{n}A\x1B[0J").unwrap();
 }
 
+/// Returns true if stdin's terminal line discipline has been put into raw
+/// mode (canonical input disabled) by something else in this process — for
+/// example a Node.js library calling `process.stdin.setRawMode(true)`.
+///
+/// When that has happened our line-oriented `read_line()` prompt loop would
+/// hang forever (Enter delivers `\r` rather than `\n`, and ECHO is off so the
+/// user can't see they're typing), so we bail out instead.
+#[cfg(unix)]
+fn stdin_is_raw_mode() -> bool {
+  // SAFETY: tcgetattr on a possibly-invalid fd 0 returns -1; we only treat
+  // ICANON-cleared as raw, so any failure conservatively returns false.
+  unsafe {
+    let mut termios = std::mem::MaybeUninit::<libc::termios>::uninit();
+    if libc::tcgetattr(libc::STDIN_FILENO, termios.as_mut_ptr()) != 0 {
+      return false;
+    }
+    let termios = termios.assume_init();
+    termios.c_lflag & libc::ICANON == 0
+  }
+}
+
+#[cfg(all(not(unix), not(target_arch = "wasm32")))]
+fn stdin_is_raw_mode() -> bool {
+  use winapi::shared::minwindef::DWORD;
+  use winapi::shared::minwindef::FALSE;
+  use winapi::um::consoleapi::GetConsoleMode;
+  use winapi::um::processenv::GetStdHandle;
+  use winapi::um::winbase::STD_INPUT_HANDLE;
+  use winapi::um::wincon::ENABLE_LINE_INPUT;
+
+  // SAFETY: winapi calls. GetConsoleMode returns FALSE for non-console handles
+  // (e.g. when stdin is a pipe), in which case we conservatively return false.
+  unsafe {
+    let handle = GetStdHandle(STD_INPUT_HANDLE);
+    let mut mode: DWORD = 0;
+    if GetConsoleMode(handle, &mut mode) == FALSE {
+      return false;
+    }
+    mode & ENABLE_LINE_INPUT == 0
+  }
+}
+
 #[cfg(unix)]
 fn get_stdin_metadata() -> std::io::Result<std::fs::Metadata> {
   use std::os::fd::FromRawFd;
@@ -339,6 +381,23 @@ impl PermissionPrompter for TtyPrompter {
     if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
       return PromptResponse::Deny;
     };
+
+    // If stdin has been put into raw mode (e.g. a Node.js library has called
+    // `process.stdin.setRawMode(true)`) our line-oriented prompt loop would
+    // hang forever waiting for a `\n` that the terminal will never deliver,
+    // and the user wouldn't see what they're typing either. Bail out with a
+    // clear message so the program doesn't appear to freeze.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::print_stderr, reason = "actually want to print")]
+    if stdin_is_raw_mode() {
+      eprintln!(
+        "❌ Cannot prompt for {message}: stdin is in raw mode (a library has likely called setRawMode)."
+      );
+      eprintln!(
+        "❌ Run again with --allow-{name} to grant the permission up front, or with -A to skip all prompts."
+      );
+      return PromptResponse::Deny;
+    }
 
     #[allow(clippy::print_stderr, reason = "actually want to print")]
     if message.len() > MAX_PERMISSION_PROMPT_LENGTH {
