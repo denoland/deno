@@ -166,6 +166,9 @@ export function encodeVarint(n: number | bigint): Uint8Array {
       // Encode negative numbers as 10-byte two's complement
       return encodeVarint(BigInt(n) & 0xFFFFFFFFFFFFFFFFn);
     }
+    // The `>>>= 7` shift below operates on 32 bits, so anything that doesn't
+    // fit in a u32 must take the BigInt path or it will silently truncate.
+    if (n > 0xFFFFFFFF) return encodeVarint(BigInt(n));
     // Fast path for small values
     if (n === 0) return new Uint8Array([0]);
     const bytes: number[] = [];

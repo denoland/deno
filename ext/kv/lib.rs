@@ -4,6 +4,12 @@
 // This Rust module now only provides the extension shell (ESM registration)
 // and the backend initialization types that the runtime still references.
 // The ops have been removed - all KV logic runs in JavaScript.
+//
+// TODO: follow-up PR to delete dynamic.rs / remote.rs / sqlite.rs and drop the
+// denokv_proto / denokv_remote / denokv_sqlite dependencies. They are still in
+// Cargo.toml because the runtime backend init wiring keeps referencing them;
+// this prototype intentionally stops short of that cleanup so the JS rewrite
+// can land first.
 
 pub mod config;
 pub mod dynamic;

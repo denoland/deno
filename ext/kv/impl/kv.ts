@@ -60,7 +60,9 @@ const {
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSlice,
   Uint8Array,
+  Uint8ArrayFromHex,
   Uint8ArrayPrototype,
+  Uint8ArrayPrototypeToHex,
 } = primordials;
 
 const { ReadableStream } = core.loadExtScript("ext:deno_web/06_streams.js");
@@ -220,38 +222,6 @@ function kvValueToRawValue(kv: KvValue): RawValue {
     case "u64":
       return { kind: "u64", value: kv.value };
   }
-}
-
-// ---------------------------------------------------------------------------
-// Hex encoding for versionstamps
-// ---------------------------------------------------------------------------
-
-const HEX_CHARS = "0123456789abcdef";
-function hexEncode(buf: Uint8Array): string {
-  let result = "";
-  for (let i = 0; i < TypedArrayPrototypeGetLength(buf); i++) {
-    result += HEX_CHARS[buf[i] >> 4] + HEX_CHARS[buf[i] & 0xf];
-  }
-  return result;
-}
-
-function hexCharToNibble(c: number): number {
-  // 0-9: 0x30-0x39, a-f: 0x61-0x66, A-F: 0x41-0x46
-  if (c >= 0x30 && c <= 0x39) return c - 0x30;
-  if (c >= 0x61 && c <= 0x66) return c - 0x61 + 10;
-  if (c >= 0x41 && c <= 0x46) return c - 0x41 + 10;
-  return 0;
-}
-
-function hexDecode(s: string): Uint8Array {
-  const len = s.length >> 1;
-  const buf = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    const hi = hexCharToNibble(StringPrototypeCharCodeAt(s, i * 2));
-    const lo = hexCharToNibble(StringPrototypeCharCodeAt(s, i * 2 + 1));
-    buf[i] = (hi << 4) | lo;
-  }
-  return buf;
 }
 
 // ---------------------------------------------------------------------------
@@ -605,14 +575,18 @@ class SqliteKvBackend implements KvBackend {
   }
 
   watch(keys: Uint8Array[]): ReadableStream {
-    // SQLite watch: poll-based implementation
-    // For now, return a stream that polls every 500ms
+    // SQLite watch: poll-based implementation, polling every 500ms.
     const backend = this.#backend;
     const lastVersionstamps: (string | null | undefined)[] = ArrayPrototypeMap(
       keys,
       () => undefined,
     );
     let closed = false;
+    const closedSentinel = Symbol("closed");
+    let resolveClose: () => void;
+    const closePromise = new Promise<void>((r) => {
+      resolveClose = r;
+    });
 
     return new ReadableStream({
       async pull(controller) {
@@ -646,7 +620,9 @@ class SqliteKvBackend implements KvBackend {
 
           for (let i = 0; i < keys.length; i++) {
             const entry = results[i][0];
-            const vs = entry ? hexEncode(entry.versionstamp) : null;
+            const vs = entry
+              ? Uint8ArrayPrototypeToHex(entry.versionstamp)
+              : null;
             if (vs !== lastVersionstamps[i]) {
               changed = true;
               lastVersionstamps[i] = vs;
@@ -656,7 +632,7 @@ class SqliteKvBackend implements KvBackend {
               ArrayPrototypePush(entries, {
                 key: decodedKey,
                 value: deserializeRawValue(kvValueToRawValue(entry.value)),
-                versionstamp: hexEncode(entry.versionstamp),
+                versionstamp: Uint8ArrayPrototypeToHex(entry.versionstamp),
               });
             } else {
               ArrayPrototypePush(entries, {
@@ -672,12 +648,26 @@ class SqliteKvBackend implements KvBackend {
             return;
           }
 
-          // Poll interval
-          await new Promise((r) => setTimeout(r, 500));
+          // Race the poll interval against the close signal so that a cancel
+          // mid-poll doesn't leave a dangling timer that trips the test
+          // sanitizer's leaked-op detection.
+          let timerId: number | undefined;
+          const winner = await SafePromiseRace([
+            new Promise((r) => {
+              timerId = setTimeout(r, 500);
+            }),
+            PromisePrototypeThen(closePromise, () => closedSentinel),
+          ]);
+          if (winner === closedSentinel) {
+            clearTimeout(timerId);
+            controller.close();
+            return;
+          }
         }
       },
       cancel() {
         closed = true;
+        resolveClose();
       },
     });
   }
@@ -836,7 +826,7 @@ class RemoteKvBackend implements KvBackend {
             ArrayPrototypePush(entries, {
               key: decodeKvKeyBytes(kvEntry.key),
               value: deserializeRawValue(kvValueToRawValue(kvEntry.value)),
-              versionstamp: hexEncode(kvEntry.versionstamp),
+              versionstamp: Uint8ArrayPrototypeToHex(kvEntry.versionstamp),
             });
           } else {
             ArrayPrototypePush(entries, {
@@ -1011,7 +1001,7 @@ class Kv {
     return {
       key: decodeKvKeyBytes(e.key),
       value: deserializeRawValue(kvValueToRawValue(e.value)),
-      versionstamp: hexEncode(e.versionstamp),
+      versionstamp: Uint8ArrayPrototypeToHex(e.versionstamp),
     };
   }
 
@@ -1050,7 +1040,7 @@ class Kv {
         return {
           key: decodeKvKeyBytes(e.key),
           value: deserializeRawValue(kvValueToRawValue(e.value)),
-          versionstamp: hexEncode(e.versionstamp),
+          versionstamp: Uint8ArrayPrototypeToHex(e.versionstamp),
         };
       },
     );
@@ -1093,7 +1083,10 @@ class Kv {
       [],
     );
     if (!result) throw new TypeError("Failed to set value");
-    return { ok: true, versionstamp: hexEncode(result.versionstamp) };
+    return {
+      ok: true,
+      versionstamp: Uint8ArrayPrototypeToHex(result.versionstamp),
+    };
   }
 
   async delete(key: Deno.KvKey): Promise<void> {
@@ -1174,7 +1167,7 @@ class Kv {
         (e: SqliteKvEntry) => ({
           key: decodeKvKeyBytes(e.key),
           value: deserializeRawValue(kvValueToRawValue(e.value)),
-          versionstamp: hexEncode(e.versionstamp),
+          versionstamp: Uint8ArrayPrototypeToHex(e.versionstamp),
         }),
       );
     };
@@ -1215,13 +1208,16 @@ class Kv {
       },
     ]);
     if (!result) throw new TypeError("Failed to enqueue value");
-    return { ok: true, versionstamp: hexEncode(result.versionstamp) };
+    return {
+      ok: true,
+      versionstamp: Uint8ArrayPrototypeToHex(result.versionstamp),
+    };
   }
 
   async listenQueue(
     handler: (message: unknown) => Promise<void> | void,
   ): Promise<void> {
-    if (this.#isClosed) throw new Error("Queue already closed");
+    if (this.#isClosed) throw new core.BadResource("Queue already closed");
 
     const closedSentinel = Symbol("closed");
     const inflightHandlers = new SafeMap<number, Promise<void>>();
@@ -1785,7 +1781,7 @@ class AtomicOperation {
         ) {
           throw new TypeError("invalid versionstamp");
         }
-        versionstamp = hexDecode(check.versionstamp);
+        versionstamp = Uint8ArrayFromHex(check.versionstamp);
       }
       ArrayPrototypePush(encodedChecks, {
         key: check.key,
@@ -1800,7 +1796,10 @@ class AtomicOperation {
       this.#enqueues,
     );
     if (!result) return { ok: false };
-    return { ok: true, versionstamp: hexEncode(result.versionstamp) };
+    return {
+      ok: true,
+      versionstamp: Uint8ArrayPrototypeToHex(result.versionstamp),
+    };
   }
 
   then(): never {
