@@ -250,6 +250,14 @@ interface RequestInit {
    * Can only be null. Used to disassociate request from any Window.
    */
   window?: any;
+  /**
+   * Deno-specific extension. When true and `body` is a `BufferSource` that
+   * covers the full underlying `ArrayBuffer`, the body buffer is transferred
+   * (its backing `ArrayBuffer` is detached) instead of memcpy'd. The original
+   * buffer becomes unusable from JavaScript after the `Request` is
+   * constructed. Defaults to `false` (spec behavior: a copy is made).
+   */
+  transfer?: boolean;
 }
 
 /** This Fetch API interface represents a resource request.
@@ -357,6 +365,14 @@ interface ResponseInit {
   headers?: HeadersInit;
   status?: number;
   statusText?: string;
+  /**
+   * Deno-specific extension. When true and the body is a `BufferSource` that
+   * covers the full underlying `ArrayBuffer`, the body buffer is transferred
+   * (its backing `ArrayBuffer` is detached) instead of memcpy'd. The original
+   * buffer becomes unusable from JavaScript after the `Response` is
+   * constructed. Defaults to `false` (spec behavior: a copy is made).
+   */
+  transfer?: boolean;
 }
 
 /** @category Fetch */
