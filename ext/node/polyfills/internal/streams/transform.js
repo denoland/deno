@@ -66,6 +66,9 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const lazyProcess = core.createLazyLoader("node:process");
+// See internal/streams/readable.js for the rationale -- force the node:process
+// bootstrap before this module returns so `process.nextTick` is wired up.
+lazyProcess();
 const _mod1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const Duplex = core.loadExtScript(
   "ext:deno_node/internal/streams/duplex.js",

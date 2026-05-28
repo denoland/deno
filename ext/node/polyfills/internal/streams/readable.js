@@ -4,6 +4,12 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const lazyProcess = core.createLazyLoader("node:process");
+// Force node:process to evaluate before this stream module's body completes.
+// Its self-trigger calls `__bootstrapNodeProcess`, which runs
+// `enableNextTick()`. Until that flag is set `process.nextTick` silently
+// no-ops; the http internals schedule socket-teardown callbacks through it,
+// and the test runner reports the unflushed callbacks as timer leaks.
+lazyProcess();
 const { EventEmitter: EE } = core.loadExtScript("ext:deno_node/_events.mjs");
 const {
   prependListener,

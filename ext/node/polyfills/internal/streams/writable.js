@@ -4,6 +4,10 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const lazyProcess = core.createLazyLoader("node:process");
+// See internal/streams/readable.js: force node:process bootstrap now so
+// `process.nextTick` is wired up before this module's afterWrite/onFinish
+// machinery starts scheduling callbacks through it.
+lazyProcess();
 const { EventEmitter: EE } = core.loadExtScript("ext:deno_node/_events.mjs");
 const _mod1 =
   core.loadExtScript("ext:deno_node/internal/streams/legacy.js").default;
