@@ -3863,6 +3863,7 @@
     "parallel/test-vm-low-stack-space.js": {},
     "parallel/test-vm-module-after-evaluate.js": {},
     "parallel/test-vm-module-instantiate.js": {},
+    "parallel/test-vm-module-link.js": {},
     "parallel/test-vm-module-linkmodulerequests.js": {},
     "parallel/test-vm-module-linkmodulerequests-circular.js": {},
     "parallel/test-vm-module-linkmodulerequests-deep.js": {},
