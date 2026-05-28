@@ -2013,6 +2013,7 @@ class SubtleCrypto {
    * @param {CryptoKey} encapsulationKey
    * @returns {Promise<{ciphertext: ArrayBuffer, sharedKey: ArrayBuffer}>}
    */
+  // deno-lint-ignore require-await
   async encapsulateBits(algorithm, encapsulationKey) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'encapsulateBits' on 'SubtleCrypto'";
@@ -2159,6 +2160,7 @@ class SubtleCrypto {
    * @param {BufferSource} ciphertext
    * @returns {Promise<ArrayBuffer>}
    */
+  // deno-lint-ignore require-await
   async decapsulateBits(algorithm, decapsulationKey, ciphertext) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'decapsulateBits' on 'SubtleCrypto'";
