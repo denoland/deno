@@ -1,5 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { core } from "ext:core/mod.js";
+// See http_esm.ts: force node:process bootstrap before any https code can
+// run, so test-sanitizer-pending ops from the deferred bootstrap are
+// observed as pre-test state.
+import "node:process";
 const mod = core.loadExtScript("ext:deno_node/https.ts");
 
 export const Agent = mod.Agent;
