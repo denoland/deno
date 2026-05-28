@@ -849,7 +849,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       location.setLocationHref(location_);
     }
 
-    ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
+    // Use defineGlobalProperties so the lazy-loaded descriptors (alert,
+    // confirm, prompt, Storage) get their `lazyNameSym` stamped with the
+    // property name. Without this, the setter calls
+    // `Object.defineProperty(this, undefined, ...)` which fails because the
+    // global `undefined` is non-configurable on `globalThis`.
+    core.defineGlobalProperties(globalThis, mainRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, {
       // TODO(bartlomieju): in the future we might want to change the
       // behavior of setting `name` to actually update the process name.
