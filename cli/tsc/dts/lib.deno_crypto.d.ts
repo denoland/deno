@@ -35,14 +35,7 @@ type KeyUsage =
   | "verify"
   | "wrapKey";
 /** @category Crypto */
-type KeyFormat =
-  | "jwk"
-  | "pkcs8"
-  | "raw"
-  | "spki"
-  | "raw-seed"
-  | "raw-private"
-  | "raw-public";
+type KeyFormat = "jwk" | "pkcs8" | "raw" | "spki";
 /** @category Crypto */
 type NamedCurve = string;
 /** @category Crypto */
@@ -139,11 +132,6 @@ interface RsaPssParams extends Algorithm {
 }
 
 /** @category Crypto */
-interface MlDsaParams extends Algorithm {
-  context?: BufferSource;
-}
-
-/** @category Crypto */
 interface RsaOaepParams extends Algorithm {
   label?: BufferSource;
 }
@@ -220,15 +208,6 @@ interface CryptoKey {
   readonly extractable: boolean;
   readonly type: KeyType;
   readonly usages: KeyUsage[];
-  /**
-   * Returns the public {@link CryptoKey} associated with this private
-   * CryptoKey, if one is available. Defined in the WICG "Modern Algorithms
-   * in the Web Crypto API" proposal and currently used by ML-DSA.
-   *
-   * Throws `InvalidAccessError` when called on a key whose `type` is not
-   * `"private"`, or when no associated public key is available.
-   */
-  getPublicKey(): CryptoKey;
 }
 
 /** @category Crypto */
@@ -458,7 +437,7 @@ interface SubtleCrypto {
    * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/sign
    */
   sign(
-    algorithm: AlgorithmIdentifier | RsaPssParams | EcdsaParams | MlDsaParams,
+    algorithm: AlgorithmIdentifier | RsaPssParams | EcdsaParams,
     key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
@@ -475,7 +454,7 @@ interface SubtleCrypto {
    * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/verify
    */
   verify(
-    algorithm: AlgorithmIdentifier | RsaPssParams | EcdsaParams | MlDsaParams,
+    algorithm: AlgorithmIdentifier | RsaPssParams | EcdsaParams,
     key: CryptoKey,
     signature: BufferSource,
     data: BufferSource,
