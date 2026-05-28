@@ -200,8 +200,6 @@ jobs:
           echo "$ACTUAL"
           [ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected '$EXPECTED_VERSION', got '$ACTUAL'"; exit 1; }
           pnpm uninstall -g deno
-      - name: Allow pnpm build scripts
-        run: 'pnpm config set --global onlyBuiltDependencies ''["*"]'''
       - name: Test pnpm local install deno (with postinstall)
         run: |-
           TEST_DIR="${{ runner.temp }}/pnpm-test"
@@ -209,14 +207,14 @@ jobs:
           cd "$TEST_DIR"
           npm init -y
           EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"
-          pnpm install deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/
+          pnpm install --config.onlyBuiltDependencies='["deno"]' deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/
           ACTUAL="$(pnpm exec deno -v)"
           echo "$ACTUAL"
           [ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected '$EXPECTED_VERSION', got '$ACTUAL'"; exit 1; }
       - name: Test pnpm global install deno (with postinstall)
         run: |-
           EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"
-          pnpm install -g deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/
+          pnpm install -g --config.onlyBuiltDependencies='["deno"]' deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/
           ACTUAL="$(deno -v)"
           echo "$ACTUAL"
           [ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected '$EXPECTED_VERSION', got '$ACTUAL'"; exit 1; }
