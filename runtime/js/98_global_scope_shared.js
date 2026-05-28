@@ -4,15 +4,17 @@ import { core, primordials } from "ext:core/mod.js";
 const { SafeArrayIterator } = primordials;
 
 const event = core.loadExtScript("ext:deno_web/02_event.js");
-const base64 = core.loadExtScript("ext:deno_web/05_base64.js");
-const encoding = core.loadExtScript("ext:deno_web/08_text_encoding.js");
-const console = core.loadExtScript("ext:deno_web/01_console.js");
+const loadBase64 = () => core.loadExtScript("ext:deno_web/05_base64.js");
+const loadEncoding = () =>
+  core.loadExtScript("ext:deno_web/08_text_encoding.js");
+const loadConsole = () => core.loadExtScript("ext:deno_web/01_console.js");
 const worker = core.loadExtScript("ext:runtime/11_workers.js");
 const performance = core.loadExtScript("ext:deno_web/15_performance.js");
-const crypto = core.loadExtScript("ext:deno_crypto/00_crypto.js");
+const loadCrypto = () => core.loadExtScript("ext:deno_crypto/00_crypto.js");
 const url = core.loadExtScript("ext:deno_web/00_url.js");
-const urlPattern = core.loadExtScript("ext:deno_web/01_urlpattern.js");
-const headers = core.loadExtScript("ext:deno_fetch/20_headers.js");
+const loadUrlPattern = () =>
+  core.loadExtScript("ext:deno_web/01_urlpattern.js");
+const loadHeaders = () => core.loadExtScript("ext:deno_fetch/20_headers.js");
 // 06_streams.js is the 208 KB web-streams polyfill. Defer until a global
 // stream class (ReadableStream/WritableStream/TransformStream/etc.) is
 // accessed.
@@ -46,12 +48,12 @@ let _eventSourceMod;
 const lazyEventSource = () =>
   _eventSourceMod ??
     (_eventSourceMod = core.loadExtScript("ext:deno_fetch/27_eventsource.js"));
-const fileReader = core.loadExtScript("ext:deno_web/10_filereader.js");
-const broadcastChannel = core.loadExtScript(
-  "ext:deno_web/01_broadcast_channel.js",
-);
+const loadFileReader = () =>
+  core.loadExtScript("ext:deno_web/10_filereader.js");
+const loadBroadcastChannel = () =>
+  core.loadExtScript("ext:deno_web/01_broadcast_channel.js");
 const file = core.loadExtScript("ext:deno_web/09_file.js");
-const formData = core.loadExtScript("ext:deno_fetch/21_formdata.js");
+const loadFormData = () => core.loadExtScript("ext:deno_fetch/21_formdata.js");
 const messagePort = core.loadExtScript("ext:deno_web/13_message_port.js");
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const {
@@ -59,8 +61,10 @@ const {
   QuotaExceededError,
 } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
-const imageData = core.loadExtScript("ext:deno_web/16_image_data.js");
-import process from "node:process";
+const loadImageData = () => core.loadExtScript("ext:deno_web/16_image_data.js");
+// node:process is loaded lazily so its closure isn't pulled into the snapshot
+// build; the `process` global is installed via `propWritableLazyLoaded` below.
+const lazyProcessMod = core.createLazyLoader("node:process");
 import { Buffer } from "node:buffer";
 import {
   clearImmediate,
@@ -91,7 +95,10 @@ const windowOrWorkerGlobalScope = {
   AbortController: core.propNonEnumerable(abortSignal.AbortController),
   AbortSignal: core.propNonEnumerable(abortSignal.AbortSignal),
   Blob: core.propNonEnumerable(file.Blob),
-  BroadcastChannel: core.propNonEnumerable(broadcastChannel.BroadcastChannel),
+  BroadcastChannel: core.propNonEnumerableLazyLoaded(
+    (m) => m.BroadcastChannel,
+    loadBroadcastChannel,
+  ),
   ByteLengthQueuingStrategy: core.propNonEnumerableLazyLoaded(
     (s) => s.ByteLengthQueuingStrategy,
     lazyStreams,
@@ -105,7 +112,7 @@ const windowOrWorkerGlobalScope = {
     (s) => s.CountQueuingStrategy,
     lazyStreams,
   ),
-  CryptoKey: core.propNonEnumerable(crypto.CryptoKey),
+  CryptoKey: core.propNonEnumerableLazyLoaded((m) => m.CryptoKey, loadCrypto),
   CustomEvent: core.propNonEnumerable(event.CustomEvent),
   DecompressionStream: core.propNonEnumerableLazyLoaded(
     (c) => c.DecompressionStream,
@@ -145,10 +152,16 @@ const windowOrWorkerGlobalScope = {
   Event: core.propNonEnumerable(event.Event),
   EventTarget: core.propNonEnumerable(event.EventTarget),
   File: core.propNonEnumerable(file.File),
-  FileReader: core.propNonEnumerable(fileReader.FileReader),
-  FormData: core.propNonEnumerable(formData.FormData),
-  Headers: core.propNonEnumerable(headers.Headers),
-  ImageData: core.propNonEnumerable(imageData.ImageData),
+  FileReader: core.propNonEnumerableLazyLoaded(
+    (m) => m.FileReader,
+    loadFileReader,
+  ),
+  FormData: core.propNonEnumerableLazyLoaded((m) => m.FormData, loadFormData),
+  Headers: core.propNonEnumerableLazyLoaded((m) => m.Headers, loadHeaders),
+  ImageData: core.propNonEnumerableLazyLoaded(
+    (m) => m.ImageData,
+    loadImageData,
+  ),
   ImageBitmap: core.propNonEnumerableLazyLoaded(
     (image) => image.ImageBitmap,
     loadImage,
@@ -180,16 +193,31 @@ const windowOrWorkerGlobalScope = {
     (r) => r.Response,
     lazyResponse,
   ),
-  TextDecoder: core.propNonEnumerable(encoding.TextDecoder),
-  TextEncoder: core.propNonEnumerable(encoding.TextEncoder),
-  TextDecoderStream: core.propNonEnumerable(encoding.TextDecoderStream),
-  TextEncoderStream: core.propNonEnumerable(encoding.TextEncoderStream),
+  TextDecoder: core.propNonEnumerableLazyLoaded(
+    (m) => m.TextDecoder,
+    loadEncoding,
+  ),
+  TextEncoder: core.propNonEnumerableLazyLoaded(
+    (m) => m.TextEncoder,
+    loadEncoding,
+  ),
+  TextDecoderStream: core.propNonEnumerableLazyLoaded(
+    (m) => m.TextDecoderStream,
+    loadEncoding,
+  ),
+  TextEncoderStream: core.propNonEnumerableLazyLoaded(
+    (m) => m.TextEncoderStream,
+    loadEncoding,
+  ),
   TransformStream: core.propNonEnumerableLazyLoaded(
     (s) => s.TransformStream,
     lazyStreams,
   ),
   URL: core.propNonEnumerable(url.URL),
-  URLPattern: core.propNonEnumerable(urlPattern.URLPattern),
+  URLPattern: core.propNonEnumerableLazyLoaded(
+    (m) => m.URLPattern,
+    loadUrlPattern,
+  ),
   URLSearchParams: core.propNonEnumerable(url.URLSearchParams),
   WebSocket: core.propNonEnumerableLazyLoaded(
     (ws) => ws.WebSocket,
@@ -230,8 +258,8 @@ const windowOrWorkerGlobalScope = {
     (s) => s.TransformStreamDefaultController,
     lazyStreams,
   ),
-  atob: core.propWritable(base64.atob),
-  btoa: core.propWritable(base64.btoa),
+  atob: core.propWritableLazyLoaded((m) => m.atob, loadBase64),
+  btoa: core.propWritableLazyLoaded((m) => m.btoa, loadBase64),
   createImageBitmap: core.propWritableLazyLoaded(
     (image) => image.createImageBitmap,
     loadImage,
@@ -253,12 +281,16 @@ const windowOrWorkerGlobalScope = {
     (c) => c.Cache,
     lazyCache,
   ),
-  console: core.propNonEnumerable(
-    new console.Console((msg, level) => core.print(msg, level > 1)),
+  console: core.propNonEnumerableLazyLoaded(
+    (m) => new m.Console((msg, level) => core.print(msg, level > 1)),
+    loadConsole,
   ),
-  crypto: core.propReadOnly(crypto.crypto),
-  Crypto: core.propNonEnumerable(crypto.Crypto),
-  SubtleCrypto: core.propNonEnumerable(crypto.SubtleCrypto),
+  crypto: core.propWritableLazyLoaded((m) => m.crypto, loadCrypto),
+  Crypto: core.propNonEnumerableLazyLoaded((m) => m.Crypto, loadCrypto),
+  SubtleCrypto: core.propNonEnumerableLazyLoaded(
+    (m) => m.SubtleCrypto,
+    loadCrypto,
+  ),
   // `fetch` is installed as a plain data descriptor whose value is a lazy
   // wrapper function (not an accessor descriptor). node:test's `mock.method`
   // reads `descriptor.value` and rejects accessor descriptors as
@@ -272,7 +304,7 @@ const windowOrWorkerGlobalScope = {
     lazyEventSource,
   ),
   performance: core.propWritable(performance.performance),
-  process: core.propWritable(process),
+  process: core.propWritableLazyLoaded((m) => m.default, lazyProcessMod),
   setImmediate: core.propWritable(setImmediate),
   clearImmediate: core.propWritable(clearImmediate),
   Buffer: core.propWritable(Buffer),

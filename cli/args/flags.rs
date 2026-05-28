@@ -1834,6 +1834,39 @@ pub fn flags_from_vec_with_initial_cwd(
   } else {
     args
   };
+  // Fast path: `deno run <file> [script args...]` with no deno-level flags.
+  // Building the full clap command tree (clap_root) costs ~5.5ms cold /
+  // ~0.86ms warm at startup; for the overwhelmingly common bare-run case we
+  // skip it entirely. Any deno flag (anything starting with `-` before the
+  // script) falls through to the full parser, preserving exact behavior.
+  // Config-file discovery still happens downstream in CliOptions, so this only
+  // skips argument parsing, not resolution.
+  if args.len() >= 3 && args[1] == "run" {
+    let script_bytes = args[2].as_encoded_bytes();
+    let looks_like_flag = script_bytes.first() == Some(&b'-');
+    #[allow(clippy::disallowed_methods, reason = "startup fast-path guard")]
+    let env_clean = std::env::var_os("NODE_OPTIONS").is_none()
+      && std::env::var_os("DENO_COMPAT").is_none();
+    if !looks_like_flag && env_clean && args[2] != "-" {
+      if let Some(script) = args[2].to_str() {
+        let argv = args[3..]
+          .iter()
+          .map(|a| a.to_string_lossy().into_owned())
+          .collect::<Vec<_>>();
+        return Ok(Flags {
+          subcommand: DenoSubcommand::Run(RunFlags {
+            script: script.to_string(),
+            watch: None,
+            bare: false,
+            coverage_dir: None,
+            print_task_list: false,
+          }),
+          argv,
+          ..Default::default()
+        });
+      }
+    }
+  }
   let mut app = clap_root();
   let mut matches =
     app

@@ -146,7 +146,20 @@ function parseOption(options: Map<string, OptionValue>, arg: string) {
 }
 
 function getExecArgv() {
-  return execArgvSnapshot ?? globalThis.process?.execArgv ?? [];
+  if (execArgvSnapshot) {
+    return execArgvSnapshot;
+  }
+  // `globalThis.process` is a lazy getter that loads `node:process`. During
+  // node:process's OWN cold bootstrap (when the require system is deferred
+  // out of the snapshot), reading it re-enters that load and the `default`
+  // export is still in the temporal dead zone -- accessing the getter throws
+  // rather than yielding undefined, so `?.` doesn't help. Guard it: no exec
+  // args are available pre-bootstrap anyway, so fall back to `[]`.
+  try {
+    return globalThis.process?.execArgv ?? [];
+  } catch {
+    return [];
+  }
 }
 
 function getOptions() {

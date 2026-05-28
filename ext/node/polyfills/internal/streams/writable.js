@@ -4,7 +4,6 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const lazyProcess = core.createLazyLoader("node:process");
-const process = lazyProcess().default;
 const { EventEmitter: EE } = core.loadExtScript("ext:deno_node/_events.mjs");
 const _mod1 =
   core.loadExtScript("ext:deno_node/internal/streams/legacy.js").default;
@@ -545,7 +544,7 @@ function _write(stream, chunk, encoding, cb) {
   }
 
   if (err) {
-    process.nextTick(cb, err);
+    lazyProcess().default.nextTick(cb, err);
     errorOrDestroy(stream, err, true);
     return err;
   }
@@ -704,7 +703,7 @@ function onwrite(stream, er) {
     }
 
     if (sync) {
-      process.nextTick(onwriteError, stream, state, er, cb);
+      lazyProcess().default.nextTick(onwriteError, stream, state, er, cb);
     } else {
       onwriteError(stream, state, er, cb);
     }
@@ -725,7 +724,7 @@ function onwrite(stream, er) {
       // memory allocations.
       if (cb === nop) {
         if ((state[kState] & kAfterWritePending) === 0 && needTick) {
-          process.nextTick(afterWrite, stream, state, 1, cb);
+          lazyProcess().default.nextTick(afterWrite, stream, state, 1, cb);
           state[kState] |= kAfterWritePending;
         } else {
           state.pendingcb--;
@@ -740,7 +739,10 @@ function onwrite(stream, er) {
         state[kAfterWriteTickInfoValue].count++;
       } else if (needTick) {
         state[kAfterWriteTickInfoValue] = { count: 1, cb, stream, state };
-        process.nextTick(afterWriteTick, state[kAfterWriteTickInfoValue]);
+        lazyProcess().default.nextTick(
+          afterWriteTick,
+          state[kAfterWriteTickInfoValue],
+        );
         state[kState] |= kAfterWritePending | kAfterWriteTickInfo;
       } else {
         state.pendingcb--;
@@ -924,11 +926,11 @@ Writable.prototype.end = function (chunk, encoding, cb) {
 
   if (typeof cb === "function") {
     if (err) {
-      process.nextTick(cb, err);
+      lazyProcess().default.nextTick(cb, err);
     } else if ((state[kState] & kErrored) !== 0) {
-      process.nextTick(cb, state[kErroredValue]);
+      lazyProcess().default.nextTick(cb, state[kErroredValue]);
     } else if ((state[kState] & kFinished) !== 0) {
-      process.nextTick(cb, null);
+      lazyProcess().default.nextTick(cb, null);
     } else {
       state[kState] |= kOnFinished;
       state[kOnFinishedValue] ??= [];
@@ -972,7 +974,7 @@ function onFinish(stream, state, err) {
     // Some streams assume 'finish' will be emitted
     // asynchronously relative to _final callback.
     state.pendingcb++;
-    process.nextTick(finish, stream, state);
+    lazyProcess().default.nextTick(finish, stream, state);
   }
 }
 
@@ -1006,7 +1008,7 @@ function finishMaybe(stream, state, sync) {
     if (state.pendingcb === 0) {
       if (sync) {
         state.pendingcb++;
-        process.nextTick(
+        lazyProcess().default.nextTick(
           (stream, state) => {
             if (needFinish(state)) {
               finish(stream, state);
@@ -1204,7 +1206,7 @@ Writable.prototype.destroy = function (err, cb) {
     (state[kState] & (kBuffered | kOnFinished)) !== 0 &&
     (state[kState] & kDestroyed) === 0
   ) {
-    process.nextTick(errorBuffer, state);
+    lazyProcess().default.nextTick(errorBuffer, state);
   }
 
   destroy.call(this, err, cb);

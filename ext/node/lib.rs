@@ -420,27 +420,30 @@ deno_core::extension!(deno_node,
     ops::http2::Http2Session,
     ops::http2::Http2Stream,
   ],
-  esm_entry_point = "node:module",
-  esm = [
+  // Keep the node require system out of the eager snapshot graph: its
+  // foundational closure (process / module / streams / net / tty) is loaded
+  // and evaluated only on first use, so non-node `deno run` paths skip the
+  // ~2 MB of node-polyfill SFIs/object state in the snapshot deserializer.
+  lazy_loaded_esm = [
     dir "polyfills",
     "internal_binding/mod.ts",
     "node:module" = "01_require.js",
+    // node:process is lazy: globalThis.process / Buffer are lazy globals (see
+    // 98_global_scope_shared.js) and nodeBootstrap is deferred (99_main.js), so
+    // a program that never touches process/Buffer/require never deserializes the
+    // node process closure (errors/buffer/events/internals) - the bulk of the
+    // node snapshot-deser cost.
     "node:process" = "process.ts",
-    // node:stream + node:stream/promises stay eager: every Deno program
-    // pays their parse/compile cost at runtime startup via
-    // `__bootstrapNodeProcess` -> `createWritableStdioStream` -> Writable,
-    // so keeping them in the snapshot is a net startup-time win even
-    // though most programs never directly require('stream').
+    // node:stream/net/tty were eager only because __bootstrapNodeProcess built
+    // process.stdout/stderr eagerly (TTYWriteStream extends net.Socket; the
+    // pipe path builds a Writable). process.stdout/stderr/stdin are now lazy
+    // getters (see process.ts), so this whole closure stays out of the snapshot
+    // and is only deserialized/compiled when a program actually touches stdio
+    // or require()s these modules.
     "node:stream" = "stream.ts",
     "node:stream/promises" = "stream/promises.js",
-    // node:net and node:tty are needed at every TTY-stdout startup via
-    // internal/tty.js's TTYWriteStream constructor extending net.Socket.
-    // Keeping them eager is a startup-time win for interactive runs.
     "node:net" = "net_esm.ts",
     "node:tty" = "tty_esm.ts",
-  ],
-  lazy_loaded_esm = [
-    dir "polyfills",
     "internal/streams/compose.js",
     "internal/streams/duplexpair.js",
     "internal/streams/lazy_transform.js",

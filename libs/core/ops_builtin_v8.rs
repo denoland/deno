@@ -185,6 +185,9 @@ pub fn op_lazy_load_esm(
   scope: &mut v8::PinScope,
   #[string] module_specifier: String,
 ) -> Result<v8::Global<v8::Value>, CoreError> {
+  // First residual ESM load: run the deferred fast-call op upgrade so this
+  // module's body captures the fast op overloads. No-op after the first call.
+  crate::runtime::bindings::ensure_fast_ops_upgraded(scope);
   let module_map_rc = JsRealm::module_map_from(scope);
   // `synthetic_esm` registrations don't live in `lazy_esm_sources`, so
   // route them through their own sync-load path. `createLazyLoader` calls
@@ -202,6 +205,9 @@ pub fn op_load_ext_script(
   scope: &mut v8::PinScope,
   #[string] specifier: String,
 ) -> Result<v8::Global<v8::Value>, CoreError> {
+  // First residual ext-script load: run the deferred fast-call op upgrade so
+  // this script captures the fast op overloads. No-op after the first call.
+  crate::runtime::bindings::ensure_fast_ops_upgraded(scope);
   let module_map_rc = JsRealm::module_map_from(scope);
   module_map_rc.load_ext_script(scope, &specifier)
 }

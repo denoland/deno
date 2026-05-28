@@ -38,8 +38,6 @@ const {
   ERR_INSPECTOR_NOT_WORKER,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
-const process = lazyProcess().default;
-
 function isLoopback(host) {
   const hostLower = host.toLowerCase();
 
@@ -141,7 +139,7 @@ class Session extends EventEmitter {
         this.emit("inspectorNotification", parsed);
       }
     } catch (error) {
-      process.emitWarning(error);
+      lazyProcess().default.emitWarning(error);
     }
   }
 
@@ -150,7 +148,7 @@ class Session extends EventEmitter {
     if (this.#isDraining) return;
     if (!this.#drainScheduled) {
       this.#drainScheduled = true;
-      process.nextTick(() => this.#drainMessages());
+      lazyProcess().default.nextTick(() => this.#drainMessages());
     }
   }
 
@@ -201,7 +199,7 @@ class Session extends EventEmitter {
     op_inspector_disconnect(this.#connection);
     this.#connection = null;
     for (const callback of this.#messageCallbacks.values()) {
-      process.nextTick(callback, new ERR_INSPECTOR_CLOSED());
+      lazyProcess().default.nextTick(callback, new ERR_INSPECTOR_CLOSED());
     }
     this.#messageCallbacks.clear();
     this.#nextId = 1;
@@ -231,7 +229,7 @@ function open(port, host, wait) {
   }
 
   if (host && !isLoopback(host)) {
-    process.emitWarning(
+    lazyProcess().default.emitWarning(
       "Binding the inspector to a public IP with an open port is insecure, " +
         "as it allows external hosts to connect to the inspector " +
         "and perform a remote code execution attack.",

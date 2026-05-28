@@ -16,6 +16,7 @@ import {
   op_get_ext_import_meta_proto,
   op_internal_log,
   op_main_module,
+  op_node_has_child_ipc_pipe,
   op_ppid,
   op_set_format_exception_callback,
   op_snapshot_options,
@@ -917,15 +918,35 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     // `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
+    const nodeBootstrapArgs = {
+      usesLocalNodeModulesDir: hasNodeModulesDir,
+      runningOnMainThread: true,
+      argv0,
+      nodeDebug,
+      nodeClusterUniqueId,
+      nodeClusterSchedPolicy,
+    };
     if (nodeBootstrap) {
-      nodeBootstrap({
-        usesLocalNodeModulesDir: hasNodeModulesDir,
-        runningOnMainThread: true,
-        argv0,
-        nodeDebug,
-        nodeClusterUniqueId,
-        nodeClusterSchedPolicy,
-      });
+      nodeBootstrap(nodeBootstrapArgs);
+    } else if (op_node_has_child_ipc_pipe()) {
+      // node-defer: this main process is a forked child with an IPC pipe. It
+      // needs the IPC channel (set up in the full `initialize`) ready
+      // synchronously before its main module calls process.send /
+      // process.on("message"). Run the full node bootstrap EAGERLY (like
+      // workers) -- a forked IPC child is a node process, so the deser win
+      // doesn't apply. node:process first (fully evaluates), then node:module
+      // (its closure captures a finished node:process, so no cold-bootstrap
+      // TDZ), then `initialize`.
+      core.createLazyLoader("node:process")();
+      core.createLazyLoader("node:module")();
+      globalThis.nodeBootstrap(nodeBootstrapArgs);
+    } else {
+      // node-defer: node:module (01_require.js) is `lazy_loaded_esm`, so its
+      // top-level `globalThis.nodeBootstrap = initialize` hasn't run yet and
+      // `nodeBootstrap` is undefined here. Stash the args; node:process and
+      // 01_require.js self-bootstrap from them when first lazily loaded (on the
+      // first node:* use), so non-node programs never pay node bootstrap.
+      internals.__nodeBootstrapArgs = nodeBootstrapArgs;
     }
   } else {
     // Warmup
@@ -1053,18 +1074,30 @@ function bootstrapWorkerRuntime(
       ? messagePort.deserializeJsMessageData(maybeWorkerMetadata)
       : undefined;
 
+    const nodeBootstrapArgs = {
+      usesLocalNodeModulesDir: hasNodeModulesDir,
+      runningOnMainThread: false,
+      argv0,
+      workerId,
+      maybeWorkerMetadata: workerMetadata,
+      nodeDebug,
+      nodeClusterUniqueId,
+      nodeClusterSchedPolicy,
+      moduleSpecifier: workerType === "node" ? moduleSpecifier : null,
+    };
     if (nodeBootstrap) {
-      nodeBootstrap({
-        usesLocalNodeModulesDir: hasNodeModulesDir,
-        runningOnMainThread: false,
-        argv0,
-        workerId,
-        maybeWorkerMetadata: workerMetadata,
-        nodeDebug,
-        nodeClusterUniqueId,
-        nodeClusterSchedPolicy,
-        moduleSpecifier: workerType === "node" ? moduleSpecifier : null,
-      });
+      nodeBootstrap(nodeBootstrapArgs);
+    } else {
+      // node-defer: in a WORKER, run the FULL node bootstrap eagerly. Unlike
+      // the main thread (where deferring node is the whole deser win), worker
+      // code commonly needs `require`, `workerData`, SharedArrayBuffer, etc.
+      // ready before its first line runs, and a worker is node-heavy anyway.
+      // Load node:process FIRST (fully evaluates + runs the process bootstrap),
+      // THEN node:module (its closure now captures a fully-evaluated
+      // node:process, avoiding the cold-bootstrap TDZ), then run `initialize`.
+      core.createLazyLoader("node:process")();
+      core.createLazyLoader("node:module")();
+      globalThis.nodeBootstrap(nodeBootstrapArgs);
     }
   } else {
     // Warmup
@@ -1074,10 +1107,20 @@ function bootstrapWorkerRuntime(
 
 const nodeBootstrap = globalThis.nodeBootstrap;
 delete globalThis.nodeBootstrap;
-const dispatchProcessExitEvent = internals.dispatchProcessExitEvent;
-delete internals.dispatchProcessExitEvent;
-const dispatchProcessBeforeExitEvent = internals.dispatchProcessBeforeExitEvent;
-delete internals.dispatchProcessBeforeExitEvent;
+// node-defer: node:process sets internals.dispatchProcess{Exit,BeforeExit}Event
+// during its bootstrap, which is now deferred to first node:* use -- i.e. AFTER
+// this module evaluates. Capturing the values here would freeze the no-op
+// (node not yet bootstrapped). Instead dispatch dynamically: look up the
+// current internals handler at call time. No-op when node was never
+// bootstrapped (a non-node program has no process exit listeners).
+const dispatchProcessExitEvent = (...args) =>
+  internals.dispatchProcessExitEvent
+    ? internals.dispatchProcessExitEvent(...args)
+    : undefined;
+const dispatchProcessBeforeExitEvent = (...args) =>
+  internals.dispatchProcessBeforeExitEvent
+    ? internals.dispatchProcessBeforeExitEvent(...args)
+    : false;
 
 globalThis.bootstrap = {
   mainRuntime: bootstrapMainRuntime,
