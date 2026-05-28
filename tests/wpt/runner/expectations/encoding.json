@@ -15,8 +15,22 @@
   "api-surrogates-utf8.any.worker.html": true,
   "encodeInto.any.html": true,
   "encodeInto.any.worker.html": true,
-  "idlharness.any.html": true,
-  "idlharness.any.worker.html": true,
+  "idlharness.any.html": {
+    "expectedFailures": [
+      "TextDecoder interface: existence and properties of interface object",
+      "TextEncoder interface: existence and properties of interface object",
+      "TextDecoderStream interface: existence and properties of interface object",
+      "TextEncoderStream interface: existence and properties of interface object"
+    ]
+  },
+  "idlharness.any.worker.html": {
+    "expectedFailures": [
+      "TextDecoder interface: existence and properties of interface object",
+      "TextEncoder interface: existence and properties of interface object",
+      "TextDecoderStream interface: existence and properties of interface object",
+      "TextEncoderStream interface: existence and properties of interface object"
+    ]
+  },
   "iso-2022-jp-decoder.any.html": true,
   "iso-2022-jp-decoder.any.worker.html": true,
   "legacy-mb-schinese": {
