@@ -580,6 +580,7 @@ const NOT_IMPORTED_OPS = [
 
   // Related to `Deno.jupyter` REPL API
   "op_jupyter_broadcast",
+  "op_jupyter_input",
   "op_jupyter_create_png_from_texture",
   "op_jupyter_get_buffer",
   // Related to the Jupyter ZMQ kernel worker
@@ -592,6 +593,8 @@ const NOT_IMPORTED_OPS = [
   "op_jupyter_repl_interrupt",
   "op_jupyter_repl_cancel_interrupt",
   "op_jupyter_recv_iopub",
+  "op_jupyter_recv_input",
+  "op_jupyter_send_input_reply",
   "op_jupyter_deno_version",
   "op_jupyter_typescript_version",
   // Used in jupyter API
