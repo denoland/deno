@@ -7,7 +7,11 @@ const event = core.loadExtScript("ext:deno_web/02_event.js");
 const loadBase64 = () => core.loadExtScript("ext:deno_web/05_base64.js");
 const loadEncoding = () =>
   core.loadExtScript("ext:deno_web/08_text_encoding.js");
-const loadConsole = () => core.loadExtScript("ext:deno_web/01_console.js");
+// console must stay eager so the V8 inspector backend can hook console.log
+// via Runtime.consoleAPICalled at startup; otherwise inspector_does_not_hang
+// and inspector_runtime_evaluate_does_not_crash time out waiting for the
+// notification.
+const console = core.loadExtScript("ext:deno_web/01_console.js");
 const worker = core.loadExtScript("ext:runtime/11_workers.js");
 const performance = core.loadExtScript("ext:deno_web/15_performance.js");
 const loadCrypto = () => core.loadExtScript("ext:deno_crypto/00_crypto.js");
@@ -281,9 +285,8 @@ const windowOrWorkerGlobalScope = {
     (c) => c.Cache,
     lazyCache,
   ),
-  console: core.propNonEnumerableLazyLoaded(
-    (m) => new m.Console((msg, level) => core.print(msg, level > 1)),
-    loadConsole,
+  console: core.propNonEnumerable(
+    new console.Console((msg, level) => core.print(msg, level > 1)),
   ),
   crypto: core.propWritableLazyLoaded((m) => m.crypto, loadCrypto),
   Crypto: core.propNonEnumerableLazyLoaded((m) => m.Crypto, loadCrypto),

@@ -5,15 +5,8 @@ import { windowOrWorkerGlobalScope } from "ext:runtime/98_global_scope_shared.js
 const { Console } = core.loadExtScript("ext:deno_node/console.ts");
 
 // Don't rely on global `console` because during bootstrapping, it is pointing
-// to the native `console` object provided by V8. Read via the property
-// descriptor from `windowOrWorkerGlobalScope` so this works whether the
-// install used a data descriptor (`propNonEnumerable`) or an accessor
-// descriptor (`propNonEnumerableLazyLoaded`).
-// deno-lint-ignore no-explicit-any
-const _consoleDesc = windowOrWorkerGlobalScope.console as any;
-const console = typeof _consoleDesc.get === "function"
-  ? _consoleDesc.get()
-  : _consoleDesc.value;
+// to the native `console` object provided by V8.
+const console = windowOrWorkerGlobalScope.console.value;
 
 const { ObjectAssign } = primordials;
 
