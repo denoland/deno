@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 // `deno compile` virtual file system. Calling node:fs.statfs on it used to
 // fail because the implementation bypassed the FileSystem trait and called
 // libc / `GetDiskFreeSpaceW` directly on a path that does not exist on disk.
-const selfPath = import.meta.filename;
+const selfPath = import.meta.filename!;
 
 // deno-lint-ignore no-explicit-any
 function assertValidStatFs(result: any) {
