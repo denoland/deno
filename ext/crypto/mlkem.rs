@@ -87,14 +87,6 @@ impl MlKemVariant {
     }
   }
 
-  #[allow(dead_code)]
-  pub fn ciphertext_size(self) -> usize {
-    match self {
-      MlKemVariant::MlKem512 => 768,
-      MlKemVariant::MlKem768 => 1088,
-      MlKemVariant::MlKem1024 => 1568,
-    }
-  }
 }
 
 #[derive(deno_core::ToV8)]
