@@ -611,3 +611,8 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
+
+# TEMPORARY: consume the dprint-core fix for the `deno fmt` OOM (denoland/deno#26713)
+# until a new dprint-core is published. Replace with a version bump once released.
+[patch.crates-io]
+dprint-core = { git = "https://github.com/divybot/dprint", rev = "cf9204061ae09de48d19f23e097b296afde7d22e" }
