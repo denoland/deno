@@ -45,6 +45,7 @@ const {
   ObjectSetPrototypeOf,
   PromisePrototypeThen,
   PromiseResolve,
+  ReflectApply,
   StringPrototypePadEnd,
   Symbol,
   SymbolDispose,
@@ -1115,11 +1116,11 @@ delete globalThis.nodeBootstrap;
 // bootstrapped (a non-node program has no process exit listeners).
 const dispatchProcessExitEvent = (...args) =>
   internals.dispatchProcessExitEvent
-    ? internals.dispatchProcessExitEvent(...args)
+    ? ReflectApply(internals.dispatchProcessExitEvent, internals, args)
     : undefined;
 const dispatchProcessBeforeExitEvent = (...args) =>
   internals.dispatchProcessBeforeExitEvent
-    ? internals.dispatchProcessBeforeExitEvent(...args)
+    ? ReflectApply(internals.dispatchProcessBeforeExitEvent, internals, args)
     : false;
 
 globalThis.bootstrap = {

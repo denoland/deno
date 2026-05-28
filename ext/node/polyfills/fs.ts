@@ -3562,7 +3562,7 @@ function watch(
   }
 
   if (openError) {
-    process.nextTick(() => {
+    lazyProcess().default.nextTick(() => {
       fsWatcher.emit("error", openError);
     });
   }

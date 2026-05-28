@@ -1846,24 +1846,26 @@ pub fn flags_from_vec_with_initial_cwd(
     #[allow(clippy::disallowed_methods, reason = "startup fast-path guard")]
     let env_clean = std::env::var_os("NODE_OPTIONS").is_none()
       && std::env::var_os("DENO_COMPAT").is_none();
-    if !looks_like_flag && env_clean && args[2] != "-" {
-      if let Some(script) = args[2].to_str() {
-        let argv = args[3..]
-          .iter()
-          .map(|a| a.to_string_lossy().into_owned())
-          .collect::<Vec<_>>();
-        return Ok(Flags {
-          subcommand: DenoSubcommand::Run(RunFlags {
-            script: script.to_string(),
-            watch: None,
-            bare: false,
-            coverage_dir: None,
-            print_task_list: false,
-          }),
-          argv,
-          ..Default::default()
-        });
-      }
+    if !looks_like_flag
+      && env_clean
+      && args[2] != "-"
+      && let Some(script) = args[2].to_str()
+    {
+      let argv = args[3..]
+        .iter()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+      return Ok(Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: script.to_string(),
+          watch: None,
+          bare: false,
+          coverage_dir: None,
+          print_task_list: false,
+        }),
+        argv,
+        ..Default::default()
+      });
     }
   }
   let mut app = clap_root();
