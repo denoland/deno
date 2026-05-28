@@ -489,8 +489,7 @@ class CryptoKey {
         WeakMapPrototypeSet(KEY_STORE, pubHandle, publicKeyBytes);
         const filteredUsages = ArrayPrototypeFilter(
           this[_usages],
-          (u) =>
-            u === "encapsulateKey" || u === "encapsulateBits",
+          (u) => u === "encapsulateKey" || u === "encapsulateBits",
         );
         return constructKey(
           "public",
