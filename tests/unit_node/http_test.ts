@@ -2268,6 +2268,51 @@ Deno.test("[node/http] rawHeaders are in flattened format", async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
+Deno.test("[node/http] request header values trim trailing OWS", async () => {
+  const parsed = Promise.withResolvers<void>();
+  const server = http.createServer((req, res) => {
+    try {
+      assertEquals(req.headers["x-ows"], "value");
+      const idx = req.rawHeaders.findIndex((header) =>
+        header.toLowerCase() === "x-ows"
+      );
+      assert(idx >= 0);
+      assertEquals(req.rawHeaders[idx + 1], "value");
+      res.end();
+      parsed.resolve();
+    } catch (err) {
+      parsed.reject(err);
+      res.destroy(err as Error);
+    }
+  });
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const client = net.createConnection(
+    (server.address() as AddressInfo).port,
+    "127.0.0.1",
+    () => {
+      client.end(
+        "GET / HTTP/1.1\r\n" +
+          "Host: localhost\r\n" +
+          "X-OWS:\t value \t \r\n" +
+          "Connection: close\r\n\r\n",
+      );
+    },
+  );
+  client.resume();
+  client.on("error", parsed.reject);
+
+  try {
+    await parsed.promise;
+  } finally {
+    client.destroy();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 // TODO(@bartlomieju): re-enable once server-side HTTP also uses llhttp
 // (currently the Deno.serve-based server path still needs RID access)
 Deno.test("[node/http] client http over unix socket works", async () => {
