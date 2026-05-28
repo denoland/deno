@@ -113,8 +113,11 @@ fn op_node_load_env_file(
   #[string] path: &str,
 ) -> Result<(), DotEnvLoadErr> {
   let fs = state.borrow::<deno_fs::FileSystemRc>().clone();
-  let path = state
-    .borrow::<PermissionsContainer>()
+  let permissions = state.borrow::<PermissionsContainer>().clone();
+  permissions
+    .check_env_all()
+    .map_err(DotEnvLoadErr::Permission)?;
+  let path = permissions
     .check_open(
       Cow::Borrowed(Path::new(path)),
       OpenAccessKind::ReadNoFollow,

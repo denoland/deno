@@ -318,6 +318,7 @@ struct RunSingleOptions<'a> {
   script: &'a str,
   cwd: PathBuf,
   custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
+  node_modules_bin_dirs: Vec<PathBuf>,
   kill_signal: KillSignal,
   argv: &'a [String],
   parallel_info: Option<ParallelInfo>,
@@ -566,9 +567,12 @@ impl<'a> TaskRunner<'a> {
       }
     };
 
+    let node_modules_bin_dirs =
+      task_runner::resolve_task_node_modules_bin_dirs(self.npm_resolver, &cwd);
     let custom_commands = task_runner::resolve_custom_commands(
       self.node_resolver,
       self.npm_resolver,
+      &node_modules_bin_dirs,
     )?;
 
     self
@@ -578,6 +582,7 @@ impl<'a> TaskRunner<'a> {
         script: command,
         cwd,
         custom_commands,
+        node_modules_bin_dirs,
         kill_signal,
         argv,
         parallel_info,
@@ -615,9 +620,12 @@ impl<'a> TaskRunner<'a> {
       task_name.to_string(),
       format!("post{}", task_name),
     ];
+    let node_modules_bin_dirs =
+      task_runner::resolve_task_node_modules_bin_dirs(self.npm_resolver, &cwd);
     let custom_commands = task_runner::resolve_custom_commands(
       self.node_resolver,
       self.npm_resolver,
+      &node_modules_bin_dirs,
     )?;
 
     for task_name in &task_names {
@@ -629,6 +637,7 @@ impl<'a> TaskRunner<'a> {
             script,
             cwd: cwd.to_path_buf(),
             custom_commands: custom_commands.clone(),
+            node_modules_bin_dirs: node_modules_bin_dirs.clone(),
             kill_signal: kill_signal.clone(),
             argv,
             parallel_info,
@@ -653,6 +662,7 @@ impl<'a> TaskRunner<'a> {
       script,
       cwd,
       custom_commands,
+      node_modules_bin_dirs,
       kill_signal,
       argv,
       parallel_info,
@@ -686,7 +696,7 @@ impl<'a> TaskRunner<'a> {
       custom_commands,
       init_cwd: self.cli_options.initial_cwd(),
       argv,
-      root_node_modules_dir: self.npm_resolver.root_node_modules_path(),
+      node_modules_bin_dirs: &node_modules_bin_dirs,
       stdio,
       kill_signal,
     })

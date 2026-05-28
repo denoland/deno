@@ -677,7 +677,6 @@ pub struct PackFlags {
   pub allow_slow_types: bool,
   pub allow_dirty: bool,
   pub set_version: Option<String>,
-  pub no_shim: bool,
   pub no_source_maps: bool,
 }
 
@@ -5189,12 +5188,6 @@ fn pack_subcommand() -> Command {
           .value_name("VERSION"),
       )
       .arg(
-        Arg::new("no-deno-shim")
-          .long("no-deno-shim")
-          .help("Don't automatically add @deno/shim-deno dependency")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(
         Arg::new("no-source-maps")
           .long("no-source-maps")
           .help("Don't include source maps in the output")
@@ -8217,7 +8210,6 @@ fn pack_parse(
     allow_slow_types: matches.get_flag("allow-slow-types"),
     allow_dirty: matches.get_flag("allow-dirty"),
     set_version: matches.remove_one::<String>("set-version"),
-    no_shim: matches.get_flag("no-deno-shim"),
     no_source_maps: matches.get_flag("no-source-maps"),
   });
 

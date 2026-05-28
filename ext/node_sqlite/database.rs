@@ -2386,24 +2386,12 @@ unsafe extern "C" fn custom_aggregate_xvalue(
 
 unsafe extern "C" fn custom_aggregate_xdestroy(data: *mut c_void) {
   // SAFETY: `data` is a valid pointer to CustomAggregate.
-  // The v8 handles are properly dropped here.
+  // We intentionally do not re-enter V8 here. SQLite may invoke this
+  // destructor while the isolate is already tearing down, so creating a
+  // callback scope can panic. The raw V8 handles are allowed to leak in that
+  // case, matching the custom function destroy path.
   unsafe {
-    let data = Box::from_raw(data as *mut CustomAggregate);
-    let context_local: v8::Local<v8::Context> =
-      std::mem::transmute(data.context.as_ptr());
-
-    v8::callback_scope!(unsafe cb_scope, context_local);
-    v8::scope!(scope, cb_scope);
-
-    let _ = v8::Global::from_raw(scope, data.context);
-    let _ = v8::Global::from_raw(scope, data.start);
-    let _ = v8::Global::from_raw(scope, data.step_fn);
-    if let Some(inverse_ptr) = data.inverse_fn {
-      let _ = v8::Global::from_raw(scope, inverse_ptr);
-    }
-    if let Some(final_ptr) = data.final_fn {
-      let _ = v8::Global::from_raw(scope, final_ptr);
-    }
+    let _ = Box::from_raw(data as *mut CustomAggregate);
   }
 }
 
