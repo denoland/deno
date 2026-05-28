@@ -126,6 +126,15 @@ const buffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs").default;
 // at module evaluation time, which requires Deno env permission at runtime
 // but is freely granted at snapshot.
 const cluster = core.loadExtScript("ext:deno_node/cluster.ts").default;
+// Side-effect imports: node:stream + node:stream/promises are in the eager
+// `esm` block in lib.rs (kept eager to avoid the zlib + stream synthetic_esm
+// vs lazy_loaded_esm race), so they need to be reached from the eager import
+// graph or `JsRuntimeForSnapshot::new` fails with `NonEvaluatedModules`.
+// The originals were full `import x from` bindings on main; we only need the
+// modules registered in the graph here -- the rest of 01_require.js still
+// reaches their exports via the lazy require-time loaders.
+import "node:stream";
+import "node:stream/promises";
 import console from "node:console";
 const constants = core.loadExtScript("ext:deno_node/constants.ts").default;
 const diagnosticsChannel =
