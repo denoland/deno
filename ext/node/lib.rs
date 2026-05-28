@@ -432,33 +432,32 @@ deno_core::extension!(deno_node,
   // appear inside test boundaries even though the timer is unref'd. Keeping
   // node:module eager keeps the bootstrap on the snapshot side of the
   // sanitizer's baseline.
+  // node:module + node:stream stay eager. node:module is the entry point so
+  // 01_require.js's `globalThis.nodeBootstrap = initialize` runs at startup
+  // and 99_main.js can call it. node:stream stays eager because the
+  // synthetic_esm zlib (and friends) script body does
+  // `createLazyLoader("node:stream")()` at IIFE eval; if user code then has
+  // `import http from "node:zlib"` + `import { Readable } from "node:stream"`,
+  // V8 races to resolve the static import while zlib.js's lazy load is
+  // mid-flight and resolves node:stream's specifier through the wrong
+  // loader, producing "Unsupported scheme node for module node:stream"
+  // (visible on tests/unit_node/zlib_test.ts).
   esm_entry_point = "node:module",
   esm = [
     dir "polyfills",
     "internal_binding/mod.ts",
     "node:module" = "01_require.js",
-  ],
-  // The foundational node closure (process / streams / net / tty) is loaded
-  // and evaluated only on first use, so non-node `deno run` paths skip the
-  // ~1.8 MB of node-polyfill SFIs/object state in the snapshot deserializer.
-  // 98_global_scope_shared.js + 99_main.js's defer logic was designed around
-  // these specific modules; they stay lazy.
-  lazy_loaded_esm = [
-    dir "polyfills",
-    // node:process is lazy: globalThis.process / Buffer are lazy globals (see
-    // 98_global_scope_shared.js) and nodeBootstrap is deferred (99_main.js), so
-    // a program that never touches process/Buffer/require never deserializes the
-    // node process closure (errors/buffer/events/internals) - the bulk of the
-    // node snapshot-deser cost.
-    "node:process" = "process.ts",
-    // node:stream/net/tty were eager only because __bootstrapNodeProcess built
-    // process.stdout/stderr eagerly (TTYWriteStream extends net.Socket; the
-    // pipe path builds a Writable). process.stdout/stderr/stdin are now lazy
-    // getters (see process.ts), so this whole closure stays out of the snapshot
-    // and is only deserialized/compiled when a program actually touches stdio
-    // or require()s these modules.
     "node:stream" = "stream.ts",
     "node:stream/promises" = "stream/promises.js",
+  ],
+  // node:process / node:net / node:tty stay lazy: most of the node-polyfill
+  // snapshot weight is in their closures (errors/buffer/events/internals on
+  // the process side, the TTYWriteStream / net.Socket chain on the net/tty
+  // side). They're behind 98_global_scope_shared.js + 99_main.js's defer
+  // logic so non-node programs never deserialize them.
+  lazy_loaded_esm = [
+    dir "polyfills",
+    "node:process" = "process.ts",
     "node:net" = "net_esm.ts",
     "node:tty" = "tty_esm.ts",
     "internal/streams/compose.js",
