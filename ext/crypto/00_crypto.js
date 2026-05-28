@@ -45,14 +45,22 @@ const {
   op_crypto_ml_kem_import_spki,
   op_crypto_ml_kem_validate_private_key,
   op_crypto_ml_kem_validate_public_key,
+  op_crypto_mldsa_export_pkcs8,
+  op_crypto_mldsa_export_spki,
+  op_crypto_mldsa_from_pkcs8,
+  op_crypto_mldsa_from_raw_private,
+  op_crypto_mldsa_from_seed,
+  op_crypto_mldsa_from_spki,
   op_crypto_random_uuid,
   op_crypto_sign_ed25519,
   op_crypto_sign_key,
+  op_crypto_sign_mldsa,
   op_crypto_subtle_digest,
   op_crypto_subtle_digest_xof,
   op_crypto_unwrap_key,
   op_crypto_verify_ed25519,
   op_crypto_verify_key,
+  op_crypto_verify_mldsa,
   op_crypto_wrap_key,
   op_crypto_x25519_public_key,
 } = core.ops;
@@ -144,6 +152,7 @@ const simpleAlgorithmDictionaries = {
     customization: "BufferSource",
   },
   TurboShakeParams: {},
+  MlDsaParams: { context: "BufferSource" },
 };
 
 const supportedAlgorithms = {
@@ -181,6 +190,9 @@ const supportedAlgorithms = {
     "ML-KEM-512": null,
     "ML-KEM-768": null,
     "ML-KEM-1024": null,
+    "ML-DSA-44": null,
+    "ML-DSA-65": null,
+    "ML-DSA-87": null,
   },
   "sign": {
     "RSASSA-PKCS1-v1_5": null,
@@ -188,6 +200,9 @@ const supportedAlgorithms = {
     "ECDSA": "EcdsaParams",
     "HMAC": null,
     "Ed25519": null,
+    "ML-DSA-44": "MlDsaParams",
+    "ML-DSA-65": "MlDsaParams",
+    "ML-DSA-87": "MlDsaParams",
   },
   "verify": {
     "RSASSA-PKCS1-v1_5": null,
@@ -195,6 +210,9 @@ const supportedAlgorithms = {
     "ECDSA": "EcdsaParams",
     "HMAC": null,
     "Ed25519": null,
+    "ML-DSA-44": "MlDsaParams",
+    "ML-DSA-65": "MlDsaParams",
+    "ML-DSA-87": "MlDsaParams",
   },
   "importKey": {
     "RSASSA-PKCS1-v1_5": "RsaHashedImportParams",
@@ -217,6 +235,9 @@ const supportedAlgorithms = {
     "ML-KEM-512": null,
     "ML-KEM-768": null,
     "ML-KEM-1024": null,
+    "ML-DSA-44": null,
+    "ML-DSA-65": null,
+    "ML-DSA-87": null,
   },
   "encapsulate": {
     "ML-KEM-512": null,
@@ -450,7 +471,8 @@ class CryptoKey {
 
   /**
    * Derive the public key associated with this CryptoKey, when the underlying
-   * algorithm supports it (currently ML-KEM decapsulation keys).
+   * algorithm supports it (currently ML-KEM decapsulation keys and ML-DSA
+   * signing keys).
    *
    * https://wicg.github.io/webcrypto-modern-algos/#CryptoKey-method-getPublicKey
    *
@@ -500,6 +522,18 @@ class CryptoKey {
           { name: algorithmName },
           pubHandle,
         );
+      }
+      case "ML-DSA-44":
+      case "ML-DSA-65":
+      case "ML-DSA-87": {
+        const pub = WeakMapPrototypeGet(MLDSA_PUBLIC_FROM_PRIVATE, this);
+        if (pub === undefined) {
+          throw new DOMException(
+            "Public key is not available",
+            "InvalidAccessError",
+          );
+        }
+        return pub;
       }
       default:
         throw new DOMException(
@@ -590,6 +624,35 @@ function usageIntersection(a, b) {
 // TODO(lucacasonato): this should be moved to rust
 /** @type {WeakMap<object, object>} */
 const KEY_STORE = new SafeWeakMap();
+
+/** @type {WeakMap<CryptoKey, CryptoKey>} */
+const MLDSA_PUBLIC_FROM_PRIVATE = new SafeWeakMap();
+
+function mldsaVariantId(name) {
+  switch (name) {
+    case "ML-DSA-44":
+      return 0;
+    case "ML-DSA-65":
+      return 1;
+    case "ML-DSA-87":
+      return 2;
+    default:
+      throw new TypeError(`Unknown ML-DSA variant: ${name}`);
+  }
+}
+
+function mldsaPublicKeyLen(variant) {
+  switch (variant) {
+    case 0:
+      return 1312;
+    case 1:
+      return 1952;
+    case 2:
+      return 2592;
+    default:
+      throw new TypeError("Unknown ML-DSA variant");
+  }
+}
 
 function getKeyLength(algorithm) {
   switch (algorithm.name) {
@@ -1163,6 +1226,25 @@ class SubtleCrypto {
         }
         return TypedArrayPrototypeGetBuffer(signature);
       }
+      case "ML-DSA-44":
+      case "ML-DSA-65":
+      case "ML-DSA-87": {
+        if (key[_type] !== "private") {
+          throw new DOMException(
+            "Key type not supported",
+            "InvalidAccessError",
+          );
+        }
+        const variant = mldsaVariantId(normalizedAlgorithm.name);
+        const context = normalizedAlgorithm.context;
+        const signature = op_crypto_sign_mldsa(
+          variant,
+          keyData.privateKey,
+          data,
+          context !== undefined ? context : null,
+        );
+        return TypedArrayPrototypeGetBuffer(signature);
+      }
     }
 
     throw new TypeError("Unreachable");
@@ -1272,6 +1354,12 @@ class SubtleCrypto {
       }
       case "Ed25519": {
         result = exportKeyEd25519(format, key, innerKey);
+        break;
+      }
+      case "ML-DSA-44":
+      case "ML-DSA-65":
+      case "ML-DSA-87": {
+        result = exportKeyMlDsa(format, key, innerKey);
         break;
       }
       case "X448": {
@@ -1571,6 +1659,25 @@ class SubtleCrypto {
         }
 
         return op_crypto_verify_ed25519(keyData, data, signature);
+      }
+      case "ML-DSA-44":
+      case "ML-DSA-65":
+      case "ML-DSA-87": {
+        if (key[_type] !== "public") {
+          throw new DOMException(
+            "Key type not supported",
+            "InvalidAccessError",
+          );
+        }
+        const variant = mldsaVariantId(normalizedAlgorithm.name);
+        const context = normalizedAlgorithm.context;
+        return op_crypto_verify_mldsa(
+          variant,
+          keyData,
+          data,
+          signature,
+          context !== undefined ? context : null,
+        );
       }
     }
 
@@ -2677,6 +2784,57 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
         algorithm,
         handle,
       );
+
+      return { publicKey, privateKey };
+    }
+    case "ML-DSA-44":
+    case "ML-DSA-65":
+    case "ML-DSA-87": {
+      if (
+        ArrayPrototypeFind(
+          usages,
+          (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
+        ) !== undefined
+      ) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+
+      const variant = mldsaVariantId(algorithmName);
+      const seed = new Uint8Array(32);
+      op_crypto_get_random_values(seed);
+      const { privateKey: privateKeyBytes, publicKey: publicKeyBytes } =
+        op_crypto_mldsa_from_seed(variant, seed);
+
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, {
+        seed,
+        privateKey: privateKeyBytes,
+      });
+
+      const publicHandle = {};
+      WeakMapPrototypeSet(KEY_STORE, publicHandle, publicKeyBytes);
+
+      const algorithm = {
+        name: algorithmName,
+      };
+
+      const publicKey = constructKey(
+        "public",
+        true,
+        usageIntersection(usages, ["verify"]),
+        algorithm,
+        publicHandle,
+      );
+
+      const privateKey = constructKey(
+        "private",
+        extractable,
+        usageIntersection(usages, ["sign"]),
+        algorithm,
+        handle,
+      );
+
+      WeakMapPrototypeSet(MLDSA_PUBLIC_FROM_PRIVATE, privateKey, publicKey);
 
       return { publicKey, privateKey };
     }
@@ -4567,6 +4725,220 @@ function importKeyEC(
   }
 }
 
+function importKeyMlDsa(
+  format,
+  normalizedAlgorithm,
+  keyData,
+  extractable,
+  keyUsages,
+) {
+  const algorithmName = normalizedAlgorithm.name;
+  const variant = mldsaVariantId(algorithmName);
+
+  const makePublicKey = (publicBytes) => {
+    const handle = {};
+    WeakMapPrototypeSet(KEY_STORE, handle, publicBytes);
+    return constructKey(
+      "public",
+      extractable,
+      usageIntersection(keyUsages, ["verify"]),
+      { name: algorithmName },
+      handle,
+    );
+  };
+
+  const makePrivateKey = (seed, privateBytes, publicBytes) => {
+    const handle = {};
+    WeakMapPrototypeSet(KEY_STORE, handle, {
+      seed,
+      privateKey: privateBytes,
+    });
+    const privateKey = constructKey(
+      "private",
+      extractable,
+      usageIntersection(keyUsages, ["sign"]),
+      { name: algorithmName },
+      handle,
+    );
+    WeakMapPrototypeSet(
+      MLDSA_PUBLIC_FROM_PRIVATE,
+      privateKey,
+      makePublicKey(publicBytes),
+    );
+    return privateKey;
+  };
+
+  switch (format) {
+    case "raw-seed": {
+      if (
+        ArrayPrototypeFind(
+          keyUsages,
+          (u) => !ArrayPrototypeIncludes(["sign"], u),
+        ) !== undefined
+      ) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+      if (TypedArrayPrototypeGetByteLength(keyData) !== 32) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      let res;
+      try {
+        res = op_crypto_mldsa_from_seed(variant, keyData);
+      } catch (_) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      const seedCopy = TypedArrayPrototypeSlice(keyData);
+      return makePrivateKey(seedCopy, res.privateKey, res.publicKey);
+    }
+    case "raw-private": {
+      if (
+        ArrayPrototypeFind(
+          keyUsages,
+          (u) => !ArrayPrototypeIncludes(["sign"], u),
+        ) !== undefined
+      ) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+      let res;
+      try {
+        res = op_crypto_mldsa_from_raw_private(variant, keyData);
+      } catch (_) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      return makePrivateKey(null, res.privateKey, res.publicKey);
+    }
+    case "raw-public": {
+      if (
+        ArrayPrototypeFind(
+          keyUsages,
+          (u) => !ArrayPrototypeIncludes(["verify"], u),
+        ) !== undefined
+      ) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+      const expected = mldsaPublicKeyLen(variant);
+      if (TypedArrayPrototypeGetByteLength(keyData) !== expected) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      return makePublicKey(TypedArrayPrototypeSlice(keyData));
+    }
+    case "pkcs8": {
+      if (
+        ArrayPrototypeFind(
+          keyUsages,
+          (u) => !ArrayPrototypeIncludes(["sign"], u),
+        ) !== undefined
+      ) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+      let res;
+      try {
+        res = op_crypto_mldsa_from_pkcs8(variant, keyData);
+      } catch (_) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      return makePrivateKey(
+        res.seed !== undefined && res.seed !== null ? res.seed : null,
+        res.privateKey,
+        res.publicKey,
+      );
+    }
+    case "spki": {
+      if (
+        ArrayPrototypeFind(
+          keyUsages,
+          (u) => !ArrayPrototypeIncludes(["verify"], u),
+        ) !== undefined
+      ) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+      let pub;
+      try {
+        pub = op_crypto_mldsa_from_spki(variant, keyData);
+      } catch (_) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      return makePublicKey(pub);
+    }
+    default:
+      throw new DOMException("Not implemented", "NotSupportedError");
+  }
+}
+
+function exportKeyMlDsa(format, key, innerKey) {
+  const algorithmName = key[_algorithm].name;
+  const variant = mldsaVariantId(algorithmName);
+
+  switch (format) {
+    case "raw-seed": {
+      if (key[_type] !== "private") {
+        throw new DOMException(
+          "Key is not a private key",
+          "InvalidAccessError",
+        );
+      }
+      const seed = innerKey?.seed;
+      if (seed == null) {
+        throw new DOMException(
+          "Seed is not available for this key",
+          "OperationError",
+        );
+      }
+      return TypedArrayPrototypeGetBuffer(TypedArrayPrototypeSlice(seed));
+    }
+    case "raw-private": {
+      if (key[_type] !== "private") {
+        throw new DOMException(
+          "Key is not a private key",
+          "InvalidAccessError",
+        );
+      }
+      return TypedArrayPrototypeGetBuffer(
+        TypedArrayPrototypeSlice(innerKey.privateKey),
+      );
+    }
+    case "raw-public": {
+      if (key[_type] !== "public") {
+        throw new DOMException(
+          "Key is not a public key",
+          "InvalidAccessError",
+        );
+      }
+      return TypedArrayPrototypeGetBuffer(TypedArrayPrototypeSlice(innerKey));
+    }
+    case "pkcs8": {
+      if (key[_type] !== "private") {
+        throw new DOMException(
+          "Key is not a private key",
+          "InvalidAccessError",
+        );
+      }
+      const seed = innerKey?.seed;
+      if (seed == null) {
+        throw new DOMException(
+          "PKCS#8 export requires the original ML-DSA seed; this key was " +
+            "imported without one",
+          "OperationError",
+        );
+      }
+      const der = op_crypto_mldsa_export_pkcs8(variant, seed);
+      return TypedArrayPrototypeGetBuffer(der);
+    }
+    case "spki": {
+      if (key[_type] !== "public") {
+        throw new DOMException(
+          "Key is not a public key",
+          "InvalidAccessError",
+        );
+      }
+      const der = op_crypto_mldsa_export_spki(variant, innerKey);
+      return TypedArrayPrototypeGetBuffer(der);
+    }
+    default:
+      throw new DOMException("Not implemented", "NotSupportedError");
+  }
+}
+
 // deno-lint-ignore require-await
 async function importKeyInner(
   format,
@@ -4673,6 +5045,17 @@ async function importKeyInner(
     case "ML-KEM-768":
     case "ML-KEM-1024": {
       return importKeyMlKem(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        keyUsages,
+      );
+    }
+    case "ML-DSA-44":
+    case "ML-DSA-65":
+    case "ML-DSA-87": {
+      return importKeyMlDsa(
         format,
         normalizedAlgorithm,
         keyData,
@@ -6947,6 +7330,19 @@ webidl.converters.TurboShakeParams = webidl.createDictionaryConverter(
   dictTurboShakeParams,
 );
 
+const dictMlDsaParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "context",
+    converter: webidl.converters["BufferSource"],
+  },
+];
+
+webidl.converters.MlDsaParams = webidl.createDictionaryConverter(
+  "MlDsaParams",
+  dictMlDsaParams,
+);
+
 // Bridge functions for Node.js KeyObject interop
 
 /**
@@ -6990,6 +7386,14 @@ function cryptoKeyExportNodeKeyMaterial(cryptoKey) {
         break;
       case "X448":
         data = op_crypto_export_spki_x448(innerKey);
+        break;
+      case "ML-DSA-44":
+      case "ML-DSA-65":
+      case "ML-DSA-87":
+        data = op_crypto_mldsa_export_spki(
+          mldsaVariantId(algorithmName),
+          innerKey,
+        );
         break;
       default:
         throw new TypeError(`Unsupported algorithm: ${algorithmName}`);
@@ -7037,6 +7441,19 @@ function cryptoKeyExportNodeKeyMaterial(cryptoKey) {
       data[15] = 0x20;
       break;
     }
+    case "ML-DSA-44":
+    case "ML-DSA-65":
+    case "ML-DSA-87":
+      if (innerKey?.seed == null) {
+        throw new TypeError(
+          `Cannot export ${algorithmName} private key without a seed`,
+        );
+      }
+      data = op_crypto_mldsa_export_pkcs8(
+        mldsaVariantId(algorithmName),
+        innerKey.seed,
+      );
+      break;
     default:
       throw new TypeError(`Unsupported algorithm: ${algorithmName}`);
   }
@@ -7122,6 +7539,16 @@ function importCryptoKeySync(format, keyData, algorithm, extractable, usages) {
       return importKeyX25519(format, keyData, extractable, usages);
     case "Ed25519":
       return importKeyEd25519(format, keyData, extractable, usages);
+    case "ML-DSA-44":
+    case "ML-DSA-65":
+    case "ML-DSA-87":
+      return importKeyMlDsa(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        usages,
+      );
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
   }
