@@ -2,7 +2,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const lazyProcess = core.createLazyLoader("node:process");
 const process = lazyProcess().default;
 const { EventEmitter: EE } = core.loadExtScript("ext:deno_node/_events.mjs");
@@ -36,9 +36,8 @@ const {
   kState,
 } = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
 
-const lazyWebStreamsAdapters = core.createLazyLoader(
-  "ext:deno_node/internal/webstreams/adapters.js",
-);
+const webStreamsAdaptersSpecifier =
+  "ext:deno_node/internal/webstreams/adapters.js";
 
 const {
   AbortError,
@@ -1226,7 +1225,7 @@ let webStreamsAdapters;
 // Lazy to avoid circular references
 function lazyWebStreams() {
   if (webStreamsAdapters === undefined) {
-    webStreamsAdapters = lazyWebStreamsAdapters();
+    webStreamsAdapters = core.loadExtScript(webStreamsAdaptersSpecifier);
   }
   return webStreamsAdapters;
 }

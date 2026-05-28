@@ -5,7 +5,7 @@
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const lazyTls = core.createLazyLoader("node:tls");
 const { urlToHttpOptions } = core.loadExtScript(
   "ext:deno_node/internal/url.ts",
@@ -250,26 +250,28 @@ Agent.prototype._evictSession = function _evictSession(
 
 Agent.prototype.createConnection = function createConnection(
   this: any,
-  options: any,
-  cb?: any,
+  ...args: any[]
 ) {
-  if (typeof options === "number") {
+  let options = args[0];
+  const cb = typeof args[args.length - 1] === "function"
+    ? args[args.length - 1]
+    : undefined;
+
+  if (typeof args[0] === "number") {
     // createConnection(port, host, options) signature
-    const args = arguments;
     const opts: any = {};
-    if (args[0] !== null && typeof args[0] === "object") {
-      Object.assign(opts, args[0]);
-    } else if (args[1] !== null && typeof args[1] === "object") {
-      Object.assign(opts, args[1]);
-    } else if (args[2] !== null && typeof args[2] === "object") {
-      Object.assign(opts, args[2]);
+    for (let i = 1; i < args.length; i++) {
+      if (args[i] !== null && typeof args[i] === "object") {
+        Object.assign(opts, args[i]);
+      }
     }
     if (typeof args[0] === "number") opts.port = args[0];
     if (typeof args[1] === "string") opts.host = args[1];
-    if (typeof args[args.length - 1] === "function") {
-      cb = args[args.length - 1];
-    }
     options = opts;
+  } else if (options !== null && typeof options === "object") {
+    options = { ...options };
+  } else {
+    options = {};
   }
 
   // Look up cached TLS session for reuse
@@ -333,6 +335,14 @@ function request(...args: any[]) {
 
   return new ClientRequest(args[0], args[1], args[2]);
 }
+
+// `agent-base` (used by `@npmcli/agent`, `http-proxy-agent`, etc.) figures
+// out whether a polymorphic agent should behave as https by scanning the
+// current stack for `(https.js:` or `node:https:`. Without a marker the
+// stack only shows our polyfill path and the agent reports `protocol:
+// "http:"`, causing `http.ClientRequest` to throw `ERR_INVALID_PROTOCOL`
+// against an `https:` URL. Encode the marker in the function name.
+Object.defineProperty(request, "name", { value: "node:https:request" });
 
 return {
   Agent,

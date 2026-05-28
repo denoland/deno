@@ -37,6 +37,7 @@ const {
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectGetOwnPropertyDescriptors,
   ObjectHasOwn,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
@@ -52,9 +53,13 @@ const {
 const {
   isNativeError,
 } = core;
-const { registerDeclarativeServer } = core.loadExtScript(
-  "ext:deno_http/00_serve.ts",
-);
+// Deno.serve (00_serve.ts) chains through 23_request/23_response/22_body
+// into the 208 KB web-streams polyfill. Only loaded if `deno serve` / a
+// declarative server export is actually used.
+let _serveMod;
+const lazyServeMod = () =>
+  _serveMod ??
+    (_serveMod = core.loadExtScript("ext:deno_http/00_serve.ts"));
 const event = core.loadExtScript("ext:deno_web/02_event.js");
 const location = core.loadExtScript("ext:deno_web/12_location.js");
 const version = core.loadExtScript("ext:runtime/01_version.ts");
@@ -69,7 +74,13 @@ const {
 } = core.loadExtScript("ext:deno_web/01_console.js");
 const performance = core.loadExtScript("ext:deno_web/15_performance.js");
 const url = core.loadExtScript("ext:deno_web/00_url.js");
-const fetch = core.loadExtScript("ext:deno_fetch/26_fetch.js");
+// 26_fetch pulls 22_body -> 06_streams (208 KB). The only thing 99_main
+// needs from it at bootstrap is the wasm-streaming callback registration -
+// wrap that so the actual module loads on first WebAssembly streaming use.
+let _fetchMod;
+const lazyFetchMod = () =>
+  _fetchMod ??
+    (_fetchMod = core.loadExtScript("ext:deno_fetch/26_fetch.js"));
 const messagePort = core.loadExtScript("ext:deno_web/13_message_port.js");
 import {
   denoNs,
@@ -457,7 +468,10 @@ function runtimeStart(
   tsVersion,
   target,
 ) {
-  core.setWasmStreamingCallback(fetch.handleWasmStreaming);
+  core.setWasmStreamingCallback(function wasmStreamingCallback(source, rid) {
+    const handleWasmStreaming = lazyFetchMod().handleWasmStreaming;
+    return handleWasmStreaming(source, rid);
+  });
   core.setReportExceptionCallback(event.reportException);
   op_set_format_exception_callback(formatException);
   version.setVersions(
@@ -534,7 +548,7 @@ function dispatchUnloadEvent() {
 
 let hasBootstrapped = false;
 // Set up global properties shared by main and worker runtime.
-ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+core.defineGlobalProperties(globalThis, windowOrWorkerGlobalScope);
 
 // Set up global properties shared by main and worker runtime that are exposed
 // by unstable features if those are enabled.
@@ -550,7 +564,7 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures) {
     const featureId = featureIds[i];
     if (ArrayPrototypeIncludes(unstableFeatures, featureId)) {
       const props = unstableForWindowOrWorkerGlobalScope[featureId];
-      ObjectDefineProperties(globalThis, { ...props });
+      core.defineGlobalProperties(globalThis, { ...props });
     }
   }
 }
@@ -620,23 +634,30 @@ function removeImportedOps() {
 // methods should be left there.
 ObjectAssign(internals, { core });
 const internalSymbol = Symbol("Deno.internal");
-const finalDenoNs = {
-  internal: internalSymbol,
-  [internalSymbol]: internals,
-  ...denoNs,
-  // Deno.test, Deno.bench, Deno.lint are noops here, but kept for compatibility; so
-  // that they don't cause errors when used outside of `deno test`/`deno bench`/`deno lint`
-  // contexts.
-  test: () => {},
-  bench: () => {},
-  lint: {
-    runPlugin: () => {
-      throw new Error(
-        "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
-      );
+// Build finalDenoNs without spreading denoNs: spread invokes every getter,
+// including the lazy ones (Deno.serve / Deno.run / etc.) that intentionally
+// avoid loading 06_streams / 22_body / 40_process at snapshot time. Use
+// ObjectDefineProperties + getOwnPropertyDescriptors to preserve the lazy
+// descriptors.
+const finalDenoNs = ObjectDefineProperties(
+  {
+    internal: internalSymbol,
+    [internalSymbol]: internals,
+    // Deno.test, Deno.bench, Deno.lint are noops here, but kept for
+    // compatibility; so that they don't cause errors when used outside of
+    // `deno test`/`deno bench`/`deno lint` contexts.
+    test: () => {},
+    bench: () => {},
+    lint: {
+      runPlugin: () => {
+        throw new Error(
+          "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
+        );
+      },
     },
   },
-};
+  ObjectGetOwnPropertyDescriptors(denoNs),
+);
 
 ObjectDefineProperties(finalDenoNs, {
   pid: core.propGetterOnly(opPid),
@@ -732,7 +753,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       core.addMainModuleHandler((main) => {
         if (ObjectHasOwn(main, "default")) {
           try {
-            serve = registerDeclarativeServer(main.default);
+            serve = lazyServeMod().registerDeclarativeServer(main.default);
           } catch (e) {
             if (mode === executionModes.serve || autoServe) {
               throw e;
@@ -784,7 +805,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     performance.setTimeOrigin();
     globalThis_ = globalThis;
 
-    // Remove bootstrapping data from the global scope
+    // Remove bootstrapping data from the global scope. Lazy-loaded IIFE
+    // scripts (`ext:.../*.js`) and the synthetic_esm backing-script path
+    // both read `globalThis.__bootstrap.core.ops` at module body; the
+    // Rust `load_ext_script` reinstalls a captured snapshot view of
+    // `__bootstrap` for the duration of each script's evaluation (see
+    // `BootstrapInstallGuard` in `libs/core/modules/map.rs`).
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
     hasBootstrapped = true;
@@ -852,7 +878,13 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     for (let i = 0; i <= unstableFeatures.length; i++) {
       const id = unstableFeatures[i];
-      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+      const unstable = denoNsUnstableById[id];
+      if (unstable) {
+        ObjectDefineProperties(
+          finalDenoNs,
+          ObjectGetOwnPropertyDescriptors(unstable),
+        );
+      }
     }
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
@@ -915,7 +947,12 @@ function bootstrapWorkerRuntime(
     performance.setTimeOrigin();
     globalThis_ = globalThis;
 
-    // Remove bootstrapping data from the global scope
+    // Remove bootstrapping data from the global scope. Lazy-loaded IIFE
+    // scripts (`ext:.../*.js`) and the synthetic_esm backing-script path
+    // both read `globalThis.__bootstrap.core.ops` at module body; the
+    // Rust `load_ext_script` reinstalls a captured snapshot view of
+    // `__bootstrap` for the duration of each script's evaluation (see
+    // `BootstrapInstallGuard` in `libs/core/modules/map.rs`).
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
     hasBootstrapped = true;
@@ -969,7 +1006,13 @@ function bootstrapWorkerRuntime(
 
     for (let i = 0; i <= unstableFeatures.length; i++) {
       const id = unstableFeatures[i];
-      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+      const unstable = denoNsUnstableById[id];
+      if (unstable) {
+        ObjectDefineProperties(
+          finalDenoNs,
+          ObjectGetOwnPropertyDescriptors(unstable),
+        );
+      }
     }
 
     // Not available in workers
@@ -1046,4 +1089,9 @@ bootstrapWorkerRuntime(
   undefined,
   true,
 );
-nodeBootstrap({ warmup: true });
+// Skip warmup. The warmup branch creates placeholder stdin/stdout/stderr
+// streams that the runtime bootstrap (__bootstrapNodeProcess(warmup=false))
+// then unconditionally overwrites with fresh TTYWriteStream instances, so
+// the only observable effect of warmup was pulling node:stream and friends
+// into the snapshot via createWritableStdioStream/initStdin.
+// nodeBootstrap({ warmup: true });

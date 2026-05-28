@@ -186,6 +186,14 @@ pub fn op_lazy_load_esm(
   #[string] module_specifier: String,
 ) -> Result<v8::Global<v8::Value>, CoreError> {
   let module_map_rc = JsRealm::module_map_from(scope);
+  // `synthetic_esm` registrations don't live in `lazy_esm_sources`, so
+  // route them through their own sync-load path. `createLazyLoader` calls
+  // this op from JS land for builtins it wants to keep deferred (e.g.
+  // `node:worker_threads.ts` uses `createLazyLoader("node:url")`).
+  if module_map_rc.has_synthetic_esm_module(&module_specifier) {
+    return module_map_rc
+      .lazy_load_synthetic_esm_module(scope, &module_specifier);
+  }
   module_map_rc.lazy_load_esm_module(scope, &module_specifier)
 }
 
@@ -196,6 +204,21 @@ pub fn op_load_ext_script(
 ) -> Result<v8::Global<v8::Value>, CoreError> {
   let module_map_rc = JsRealm::module_map_from(scope);
   module_map_rc.load_ext_script(scope, &specifier)
+}
+
+/// Stash the snapshot-time `__bootstrap` view (a frozen clone of
+/// `core.ops` etc.) so `load_ext_script` can temporarily reinstall it on
+/// `globalThis.__bootstrap` for the duration of each script evaluation.
+/// Called once from `libs/core/01_core.js` after `__bootstrap.core` is
+/// fully populated.
+#[op2(fast)]
+pub fn op_set_captured_bootstrap(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) {
+  let module_map_rc = JsRealm::module_map_from(scope);
+  let global = v8::Global::new(scope, value);
+  module_map_rc.set_captured_bootstrap(global);
 }
 
 // We run in a `nofast` op here so we don't get put into a `DisallowJavascriptExecutionScope` and we're
@@ -900,11 +923,15 @@ pub fn op_deserialize<'s, 'i>(
     None => None,
   };
 
+  let key = v8_static_strings::HOST_OBJECT.v8_string(scope).unwrap();
+  let symbol = v8::Symbol::for_key(scope, key);
+  let host_object_brand = Some(symbol);
+
   let serialize_deserialize = Box::new(SerializeDeserialize {
     host_objects,
     error_callback: None,
     for_storage,
-    host_object_brand: None,
+    host_object_brand,
     deserializers,
   });
   let value_deserializer =

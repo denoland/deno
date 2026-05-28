@@ -159,15 +159,26 @@ fn generate_key_hmac(
   hash: ShaHash,
   length: Option<usize>,
 ) -> Result<Vec<u8>, GenerateKeyError> {
-  let hash = match hash {
-    ShaHash::Sha1 => &aws_lc_rs::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
-    ShaHash::Sha256 => &aws_lc_rs::hmac::HMAC_SHA256,
-    ShaHash::Sha384 => &aws_lc_rs::hmac::HMAC_SHA384,
-    ShaHash::Sha512 => &aws_lc_rs::hmac::HMAC_SHA512,
-    // SHA3 is not supported by aws-lc-rs for HMAC
-    ShaHash::Sha3_256 | ShaHash::Sha3_384 | ShaHash::Sha3_512 => {
-      return Err(GenerateKeyError::UnsupportedAlgorithm);
+  // Default key length (in bytes) is the hash's block size.
+  // SHA-3 is not supported by aws-lc-rs for HMAC, so the block sizes are
+  // hard-coded here per FIPS 202.
+  let default_block_len = match hash {
+    ShaHash::Sha1 => aws_lc_rs::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY
+      .digest_algorithm()
+      .block_len(),
+    ShaHash::Sha256 => {
+      aws_lc_rs::hmac::HMAC_SHA256.digest_algorithm().block_len()
     }
+    ShaHash::Sha384 => {
+      aws_lc_rs::hmac::HMAC_SHA384.digest_algorithm().block_len()
+    }
+    ShaHash::Sha512 => {
+      aws_lc_rs::hmac::HMAC_SHA512.digest_algorithm().block_len()
+    }
+    // FIPS 202: rate (r) in bytes for SHA3-N is (1600 - 2N) / 8.
+    ShaHash::Sha3_256 => 136,
+    ShaHash::Sha3_384 => 104,
+    ShaHash::Sha3_512 => 72,
   };
 
   let length = if let Some(length) = length {
@@ -182,7 +193,7 @@ fn generate_key_hmac(
 
     length
   } else {
-    hash.digest_algorithm().block_len()
+    default_block_len
   };
 
   let rng = aws_lc_rs::rand::SystemRandom::new();

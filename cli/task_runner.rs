@@ -32,7 +32,14 @@ pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
     .iter()
     // surround all the additional arguments in double quotes
     // and sanitize any command substitution
-    .map(|a| format!("\"{}\"", a.replace('"', "\\\"").replace('$', "\\$")))
+    .map(|a| {
+      format!(
+        "\"{}\"",
+        a.replace('"', "\\\"")
+          .replace('$', "\\$")
+          .replace('`', "\\`")
+      )
+    })
     .collect::<Vec<_>>()
     .join(" ");
 
@@ -158,7 +165,9 @@ pub struct RunTaskOptions<'a> {
   pub env_vars: HashMap<OsString, OsString>,
   pub argv: &'a [String],
   pub custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
-  pub root_node_modules_dir: Option<&'a Path>,
+  /// Directories to prepend to `PATH` for the duration of the task,
+  /// ordered closest-first (closest entry ends up first in `PATH`).
+  pub node_modules_bin_dirs: &'a [PathBuf],
   pub stdio: Option<TaskIo>,
   pub kill_signal: KillSignal,
 }
@@ -178,7 +187,7 @@ pub async fn run_task(
   let seq_list = deno_task_shell::parser::parse(&script)
     .with_context(|| format!("Error parsing script '{}'.", opts.task_name))?;
   let env_vars =
-    prepare_env_vars(opts.env_vars, opts.init_cwd, opts.root_node_modules_dir);
+    prepare_env_vars(opts.env_vars, opts.init_cwd, opts.node_modules_bin_dirs);
   if !opts.custom_commands.contains_key("deno") {
     opts
       .custom_commands
@@ -237,7 +246,7 @@ pub async fn run_task(
 fn prepare_env_vars(
   mut env_vars: HashMap<OsString, OsString>,
   initial_cwd: &Path,
-  node_modules_dir: Option<&Path>,
+  node_modules_bin_dirs: &[PathBuf],
 ) -> HashMap<OsString, OsString> {
   const INIT_CWD_NAME: &str = "INIT_CWD";
   if !env_vars.contains_key(OsStr::new(INIT_CWD_NAME)) {
@@ -255,11 +264,9 @@ fn prepare_env_vars(
       crate::npm::get_npm_config_user_agent().into(),
     );
   }
-  if let Some(node_modules_dir) = node_modules_dir {
-    prepend_to_path(
-      &mut env_vars,
-      node_modules_dir.join(".bin").into_os_string(),
-    );
+  // Prepend in reverse so the closest dir ends up first in `PATH`.
+  for bin_dir in node_modules_bin_dirs.iter().rev() {
+    prepend_to_path(&mut env_vars, bin_dir.as_os_str().to_os_string());
   }
   env_vars
 }
@@ -526,12 +533,20 @@ impl ShellCommand for NodeModulesFileRunCommand {
 pub fn resolve_custom_commands(
   node_resolver: &CliNodeResolver,
   npm_resolver: &CliNpmResolver,
+  bin_dirs: &[PathBuf],
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut commands = match npm_resolver {
-    CliNpmResolver::Byonm(npm_resolver) => {
-      let node_modules_dir = npm_resolver.root_node_modules_path().unwrap();
-      let bin_dir = node_modules_dir.join(".bin");
-      resolve_npm_commands_from_bin_dir(&bin_dir, node_resolver)
+    CliNpmResolver::Byonm(_) => {
+      // Walk the bin dirs in order (closest first) and merge; closest wins.
+      let mut commands: HashMap<String, Rc<dyn ShellCommand>> = HashMap::new();
+      for bin_dir in bin_dirs {
+        for (name, cmd) in
+          resolve_npm_commands_from_bin_dir(bin_dir, node_resolver)
+        {
+          commands.entry(name).or_insert(cmd);
+        }
+      }
+      commands
     }
     CliNpmResolver::Managed(npm_resolver) => {
       resolve_managed_npm_commands(node_resolver, npm_resolver)?
@@ -539,6 +554,28 @@ pub fn resolve_custom_commands(
   };
   commands.insert("npm".to_string(), Rc::new(NpmCommand));
   Ok(commands)
+}
+
+/// Builds the list of `node_modules/.bin` directories to consult for a task.
+///
+/// For BYONM this walks up the filesystem from `cwd` collecting every
+/// `<ancestor>/node_modules/.bin` directory (matching how Node, npm, and pnpm
+/// resolve bin commands). For the managed npm resolver there is only ever a
+/// single `node_modules/.bin`.
+pub fn resolve_task_node_modules_bin_dirs(
+  npm_resolver: &CliNpmResolver,
+  cwd: &Path,
+) -> Vec<PathBuf> {
+  match npm_resolver {
+    CliNpmResolver::Byonm(_) => cwd
+      .ancestors()
+      .map(|dir| dir.join("node_modules").join(".bin"))
+      .collect(),
+    CliNpmResolver::Managed(npm_resolver) => npm_resolver
+      .root_node_modules_path()
+      .map(|p| vec![p.join(".bin")])
+      .unwrap_or_default(),
+  }
 }
 
 pub fn resolve_npm_commands_from_bin_dir(

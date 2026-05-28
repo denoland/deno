@@ -1,8 +1,0 @@
-{
-  "name": "@test/selective",
-  "version": "1.0.0",
-  "exports": {
-    ".": "./mod.ts",
-    "./util": "./util.ts"
-  }
-}

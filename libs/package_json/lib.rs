@@ -47,6 +47,32 @@ pub enum PackageJsonBins {
   Bins(BTreeMap<String, PathBuf>),
 }
 
+/// The value of the `sideEffects` field in a `package.json`.
+///
+/// See https://webpack.js.org/guides/tree-shaking/#mark-the-file-as-side-effect-free
+/// for details on how this field is interpreted by bundlers.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum PackageJsonSideEffects {
+  /// `false` means the package has no side effects;
+  /// `true` (or omitted) means every file may have side effects.
+  Bool(bool),
+  /// A list of glob patterns matching files that have side effects.
+  /// All other files in the package are treated as side-effect-free.
+  Patterns(Vec<String>),
+}
+
+/// An entry in the object form of `package.json`'s `browser` field.
+///
+/// A string value remaps the key to a different specifier; `false` marks the
+/// key as disabled (bundlers should substitute an empty module).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum BrowserMapEntry {
+  Replace(String),
+  Disabled,
+}
+
 #[derive(Debug, Clone, Error, JsError, PartialEq, Eq)]
 #[class(generic)]
 #[error("'{}' did not have a name", pkg_json_path.display())]
@@ -280,6 +306,8 @@ pub struct PackageJson {
   pub main: Option<String>,
   pub module: Option<String>,
   pub browser: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub browser_map: Option<IndexMap<String, BrowserMapEntry>>,
   pub name: Option<String>,
   pub version: Option<String>,
   #[serde(skip)]
@@ -305,6 +333,8 @@ pub struct PackageJson {
   pub catalog: Option<IndexMap<String, String>>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub catalogs: Option<IndexMap<String, IndexMap<String, String>>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub side_effects: Option<PackageJsonSideEffects>,
   #[serde(skip_serializing)]
   resolved_deps: PackageJsonDepsRcCell,
 }
@@ -359,6 +389,7 @@ impl PackageJson {
         version: None,
         module: None,
         browser: None,
+        browser_map: None,
         typ: "none".to_string(),
         types: None,
         types_versions: None,
@@ -379,6 +410,7 @@ impl PackageJson {
         overrides: None,
         catalog: None,
         catalogs: None,
+        side_effects: None,
         resolved_deps: Default::default(),
       });
     }
@@ -476,7 +508,29 @@ impl PackageJson {
     let name = name_val.and_then(map_string);
     let version = version_val.and_then(map_string);
     let module = module_val.and_then(map_string);
-    let browser = browser_val.and_then(map_string);
+    let (browser, browser_map) = match browser_val {
+      Some(Value::String(s)) => (Some(s), None),
+      Some(Value::Object(map)) => {
+        let mut entries = IndexMap::with_capacity(map.len());
+        for (k, v) in map {
+          match v {
+            Value::String(s) => {
+              entries.insert(k, BrowserMapEntry::Replace(s));
+            }
+            Value::Bool(false) => {
+              entries.insert(k, BrowserMapEntry::Disabled);
+            }
+            _ => {}
+          }
+        }
+        if entries.is_empty() {
+          (None, None)
+        } else {
+          (None, Some(entries))
+        }
+      }
+      _ => (None, None),
+    };
 
     let dependencies = package_json
       .remove("dependencies")
@@ -554,6 +608,14 @@ impl PackageJson {
     let os = package_json.remove("os").and_then(parse_string_array);
     let cpu = package_json.remove("cpu").and_then(parse_string_array);
     let overrides = package_json.remove("overrides").and_then(map_object);
+    let side_effects =
+      package_json.remove("sideEffects").and_then(|v| match v {
+        Value::Bool(b) => Some(PackageJsonSideEffects::Bool(b)),
+        Value::Array(_) => {
+          parse_string_array(v).map(PackageJsonSideEffects::Patterns)
+        }
+        _ => None,
+      });
     // Top-level catalog/catalogs take precedence; fall back to those
     // extracted from the workspaces object form.
     let catalog = package_json
@@ -584,6 +646,7 @@ impl PackageJson {
       version,
       module,
       browser,
+      browser_map,
       typ,
       types,
       types_versions,
@@ -604,6 +667,7 @@ impl PackageJson {
       overrides,
       catalog,
       catalogs,
+      side_effects,
       resolved_deps: Default::default(),
     })
   }

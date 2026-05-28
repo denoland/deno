@@ -1,0 +1,21 @@
+{
+  "tempDir": true,
+  "tests": {
+    "applies_browser_map": {
+      "steps": [
+        {
+          "args": "run -A entry.ts",
+          "output": "[WILDCARD]node: util-node\n"
+        },
+        {
+          "args": "bundle --platform browser --output bundled.js entry.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A bundled.js",
+          "output": "browser: util-browser fs=object foo=foo-shim ext={\"default\":{}} dirext={\"default\":{}}\n"
+        }
+      ]
+    }
+  }
+}

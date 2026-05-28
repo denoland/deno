@@ -154,7 +154,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
   UnstableFeatureDefinition {
     name: "raw-imports",
     flag_name: "unstable-raw-imports",
-    help_text: "Enable unstable 'bytes' and 'text' imports.",
+    help_text: "Enable unstable 'bytes' imports.",
     show_in_help: true,
     id: 18,
     kind: UnstableFeatureKind::Runtime,

@@ -25,7 +25,7 @@
 // - https://github.com/nodejs/node/blob/master/src/node_file.cc
 // - https://github.com/nodejs/node/blob/master/src/node_file.h
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_node_fs_seek_sync, op_node_fs_write_sync } = core.ops;
 
 let assert: typeof nodeAssert.default;

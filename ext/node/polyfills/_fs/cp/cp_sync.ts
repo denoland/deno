@@ -2,7 +2,7 @@
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const {
   denoErrorToNodeError,
   ERR_INVALID_RETURN_VALUE,

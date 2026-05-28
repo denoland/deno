@@ -1792,18 +1792,15 @@ impl WorkspaceDirectory {
             // so this is ok for now
             let path = &paths[0];
             match sys.fs_is_dir(path) {
-              Ok(is_dir) => Ok(
-                url_from_directory_path(if is_dir {
-                  path
-                } else {
-                  path.parent().unwrap()
-                })
-                .unwrap(),
-              ),
+              Ok(is_dir) => Ok(url_from_directory_path(if is_dir {
+                path
+              } else {
+                path.parent().unwrap()
+              })?),
               Err(_err) => {
                 // assume the parent is a directory
                 match path.parent() {
-                  Some(parent) => Ok(url_from_directory_path(parent).unwrap()),
+                  Some(parent) => Ok(url_from_directory_path(parent)?),
                   None => Err(
                     WorkspaceDiscoverErrorKind::FailedResolvingStartDirectory(
                       FailedResolvingStartDirectoryError::CouldNotResolvePath(
@@ -1825,7 +1822,7 @@ impl WorkspaceDirectory {
               ),
             )
           })?;
-          Ok(url_from_directory_path(parent).unwrap())
+          Ok(url_from_directory_path(parent)?)
         }
       }
     }
@@ -2481,6 +2478,8 @@ impl WorkspaceDirectory {
           url_to_file_path(&self.dir_url).unwrap(),
         ),
         permissions: None,
+        sanitize_ops: None,
+        sanitize_resources: None,
       },
     };
     let root_config = match &self.deno_json.root {
@@ -2495,6 +2494,10 @@ impl WorkspaceDirectory {
         (Some(r), _) => Some(r),
         (None, None) => None,
       },
+      sanitize_ops: member_config.sanitize_ops.or(root_config.sanitize_ops),
+      sanitize_resources: member_config
+        .sanitize_resources
+        .or(root_config.sanitize_resources),
     })
   }
 
@@ -3957,6 +3960,8 @@ pub mod test {
           exclude: Default::default(),
         },
         permissions: None,
+        sanitize_ops: None,
+        sanitize_resources: None,
       }
     );
 
@@ -3980,6 +3985,8 @@ pub mod test {
           )])),
         },
         permissions: None,
+        sanitize_ops: None,
+        sanitize_resources: None,
       }
     );
   }
@@ -4102,6 +4109,8 @@ pub mod test {
         TestConfig {
           files: expected_files.clone(),
           permissions: None,
+          sanitize_ops: None,
+          sanitize_resources: None,
         }
       );
       assert_eq!(
@@ -5565,6 +5574,26 @@ pub mod test {
         .collect::<Vec<_>>(),
       vec![deno_path_util::url_from_file_path(&other_deno_json).unwrap()]
     );
+  }
+
+  #[test]
+  fn test_config_file_path_not_convertible_to_url() {
+    // Regression test for https://github.com/denoland/deno/issues/34308 -
+    // passing a path whose parent can't be converted to a `file://` URL
+    // (e.g. a `file:///D:/deno.json` argument joined with cwd on Windows)
+    // used to panic. It should return an error instead.
+    let sys = InMemorySys::default();
+    let path = PathBuf::from("deno.json"); // relative path; parent is ""
+    let err = WorkspaceDirectory::discover(
+      &sys,
+      WorkspaceDiscoverStart::ConfigFile(&path),
+      &WorkspaceDiscoverOptions::default(),
+    )
+    .unwrap_err();
+    assert!(matches!(
+      err.as_kind(),
+      WorkspaceDiscoverErrorKind::PathToUrl(_)
+    ));
   }
 
   #[test]

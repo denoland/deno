@@ -65,6 +65,7 @@ use crate::modules::get_requested_module_type_from_attributes;
 use crate::modules::module_map_data::ModuleSourceKey;
 use crate::modules::parse_import_attributes;
 use crate::modules::recursive_load::RecursiveModuleLoad;
+use crate::modules::recursive_load::RegisterOutcome;
 use crate::runtime::JsRealm;
 use crate::runtime::SnapshotLoadDataStore;
 use crate::runtime::SnapshotStoreDataStore;
@@ -256,6 +257,19 @@ pub(crate) struct ModuleMap {
   pub(crate) import_sync_eval_stack: RefCell<Vec<ModuleId>>,
 }
 
+/// Outcome of compiling a module's source.
+pub(crate) enum NewModuleResult {
+  Ready(ModuleId),
+}
+
+impl NewModuleResult {
+  fn into_ready(self) -> ModuleId {
+    match self {
+      NewModuleResult::Ready(id) => id,
+    }
+  }
+}
+
 impl ModuleMap {
   /// There is a circular Rc reference between the module map and the futures,
   /// so when destroying the module map we need to clear the pending futures.
@@ -418,6 +432,7 @@ impl ModuleMap {
     self.data.borrow().assert_module_map(modules);
   }
 
+  #[cfg(all(test, not(miri)))]
   pub(crate) fn new_module(
     &self,
     scope: &mut v8::PinScope,
@@ -425,6 +440,20 @@ impl ModuleMap {
     dynamic: bool,
     module_source: ModuleSource,
   ) -> Result<ModuleId, ModuleError> {
+    Ok(
+      self
+        .new_module_with_pending(scope, main, dynamic, module_source)?
+        .into_ready(),
+    )
+  }
+
+  pub(crate) fn new_module_with_pending(
+    &self,
+    scope: &mut v8::PinScope,
+    main: bool,
+    dynamic: bool,
+    module_source: ModuleSource,
+  ) -> Result<NewModuleResult, ModuleError> {
     let ModuleSource {
       code,
       module_type,
@@ -458,7 +487,7 @@ impl ModuleMap {
     let maybe_module_id = self.get_id(&module_url_found, requested_module_type);
 
     if let Some(module_id) = maybe_module_id {
-      return Ok(module_id);
+      return Ok(NewModuleResult::Ready(module_id));
     }
     let module_id = match module_type {
       ModuleType::JavaScript => {
@@ -484,15 +513,17 @@ impl ModuleMap {
             (None, module_url_found)
           };
 
-        self.new_module_from_js_source(
-          scope,
-          main,
-          ModuleType::JavaScript,
-          module_url_found,
-          code,
-          dynamic,
-          code_cache_info,
-        )?
+        self
+          .new_module_from_js_source_with_pending(
+            scope,
+            main,
+            ModuleType::JavaScript,
+            module_url_found,
+            code,
+            dynamic,
+            code_cache_info,
+          )?
+          .into_ready()
       }
       ModuleType::Wasm => {
         self.new_wasm_module(scope, module_url_found, code, dynamic)?
@@ -587,20 +618,22 @@ impl ModuleMap {
               (None, url2)
             };
 
-            self.new_module_from_js_source(
-              scope,
-              main,
-              ModuleType::Other(module_type.clone()),
-              url2,
-              computed_src,
-              dynamic,
-              code_cache_info,
-            )?
+            self
+              .new_module_from_js_source_with_pending(
+                scope,
+                main,
+                ModuleType::Other(module_type.clone()),
+                url2,
+                computed_src,
+                dynamic,
+                code_cache_info,
+              )?
+              .into_ready()
           }
         }
       }
     };
-    Ok(module_id)
+    Ok(NewModuleResult::Ready(module_id))
   }
 
   /// Creates a synthetic module whose exports mirror the own string-keyed
@@ -637,13 +670,20 @@ impl ModuleMap {
       Vec::with_capacity(len as usize + 1);
     let mut export_values: Vec<v8::Local<v8::Value>> =
       Vec::with_capacity(len as usize + 1);
+    // If the IIFE returns `{ default: <ns>, ...named }`, treat the inner
+    // `default` as the ESM default export. This mirrors the manual
+    // `export default mod.default` pattern used by the old `*_esm.ts`
+    // wrappers and Node's behavior for builtins whose `module.exports`
+    // includes a `default` property. Otherwise fall back to the entire
+    // exports object as the default (matches `module.exports = { ... }`
+    // shape).
+    let mut default_value: v8::Local<v8::Value> = exports_obj.into();
     for i in 0..len {
       let key_val = property_names.get_index(scope, i).unwrap();
       let key_str = key_val.to_string(scope).unwrap();
       let value = exports_obj.get(scope, key_val).unwrap();
-      // Don't double-bind "default": it always points at the whole
-      // exports object below, regardless of any "default" own property.
       if key_str.to_rust_string_lossy(scope) == "default" {
+        default_value = value;
         continue;
       }
       export_names.push(key_str);
@@ -651,7 +691,7 @@ impl ModuleMap {
     }
     let default_str = v8::String::new(scope, "default").unwrap();
     export_names.push(default_str);
-    export_values.push(exports_obj.into());
+    export_values.push(default_value);
 
     let module = v8::Module::create_synthetic_module(
       scope,
@@ -685,6 +725,19 @@ impl ModuleMap {
 
     // Synthetic modules have no imports so their instantation must never fail.
     self.instantiate_module(scope, id).unwrap();
+    // Eagerly evaluate so the `synthetic_module_evaluation_steps` callback
+    // fires now (which sets the exports from the staged store) instead of
+    // at first read. Important during snapshot creation: V8 needs the
+    // module in `Evaluated` state with its exports populated before the
+    // snapshot is serialized; otherwise consumers that look up the
+    // module's namespace at snapshot-finalize time hit
+    // "GetModuleNamespace must be used on an instantiated module" or get
+    // unbound exports. Evaluation is synchronous for synthetic modules.
+    {
+      let handle = self.get_handle(id).unwrap();
+      let local = v8::Local::new(scope, handle);
+      let _ = local.evaluate(scope);
+    }
 
     id
   }
@@ -779,6 +832,8 @@ impl ModuleMap {
   /// and attached to associated [`ModuleInfo`].
   ///
   /// Returns an ID of newly created module.
+  ///
+  /// Sync call sites can use this directly.
   #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub(crate) fn new_module_from_js_source(
     &self,
@@ -788,8 +843,35 @@ impl ModuleMap {
     name: ModuleName,
     source: ModuleCodeString,
     is_dynamic_import: bool,
-    mut code_cache_info: Option<CodeCacheInfo>,
+    code_cache_info: Option<CodeCacheInfo>,
   ) -> Result<ModuleId, ModuleError> {
+    Ok(
+      self
+        .new_module_from_js_source_with_pending(
+          scope,
+          main,
+          module_type,
+          name,
+          source,
+          is_dynamic_import,
+          code_cache_info,
+        )?
+        .into_ready(),
+    )
+  }
+
+  /// Same as [`new_module_from_js_source`] but returns [`NewModuleResult`].
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
+  pub(crate) fn new_module_from_js_source_with_pending(
+    &self,
+    scope: &mut v8::PinScope,
+    main: bool,
+    module_type: ModuleType,
+    name: ModuleName,
+    source: ModuleCodeString,
+    is_dynamic_import: bool,
+    mut code_cache_info: Option<CodeCacheInfo>,
+  ) -> Result<NewModuleResult, ModuleError> {
     if main {
       let data = self.data.borrow();
       if let Some(main_module) = data.main_module_id {
@@ -965,37 +1047,25 @@ impl ModuleMap {
       } else {
         ResolutionKind::Import
       };
-      let resolve_response =
-        self.resolve(&import_specifier, name.as_ref(), resolve_kind);
-      let (module_specifier, needs_resolve) = match resolve_response {
-        ModuleResolveResponse::Sync(Ok(s)) => (s, false),
-        ModuleResolveResponse::Sync(Err(e)) => {
-          return Err(ModuleError::Core(e.into()));
-        }
-        ModuleResolveResponse::Async(_) => {
-          // Async resolution for child imports is deferred to
-          // RecursiveModuleLoad. Use the raw specifier as a best-effort
-          // parse for now.
-          let specifier = match ModuleSpecifier::parse(&import_specifier) {
-            Ok(s) => s,
-            Err(_) => {
-              // Try resolving as relative URL with the module name as base
-              match ModuleSpecifier::parse(name.as_ref())
-                .and_then(|base| base.join(&import_specifier))
-              {
-                Ok(s) => s,
-                Err(e) => {
-                  return Err(ModuleError::Core(
-                    JsErrorBox::type_error(format!(
-                      "Cannot resolve module \"{import_specifier}\": {e}"
-                    ))
-                    .into(),
-                  ));
-                }
-              }
-            }
-          };
-          (specifier, true)
+      let module_specifier = match self.resolve_with_scope(
+        tc_scope,
+        &import_specifier,
+        name.as_ref(),
+        resolve_kind,
+      ) {
+        Ok(s) => s,
+        Err(e) => {
+          // Fall back to lazy ESM sources for bare internal specifiers (e.g.
+          // `node:_http_common` from `node:_http_outgoing`) that the
+          // user-facing loader doesn't know about. If the specifier matches
+          // a registered lazy ESM entry, use it verbatim.
+          if self.has_lazy_esm_source(&import_specifier)
+            && let Ok(parsed) = ModuleSpecifier::parse(&import_specifier)
+          {
+            parsed
+          } else {
+            return Err(ModuleError::Core(e.into()));
+          }
         }
       };
       let requested_module_type =
@@ -1008,6 +1078,12 @@ impl ModuleMap {
       } else {
         Some(module_request.get_source_offset())
       };
+      if crate::modules::import_graph::is_enabled() {
+        crate::modules::import_graph::record_esm_import(
+          name.as_ref(),
+          module_specifier.as_str(),
+        );
+      }
       let request = ModuleRequest {
         reference: ModuleReference {
           specifier: module_specifier,
@@ -1020,7 +1096,6 @@ impl ModuleMap {
           v8::ModuleImportPhase::kSource => ModuleImportPhase::Source,
           v8::ModuleImportPhase::kDefer => ModuleImportPhase::Defer,
         },
-        needs_resolve,
       };
       requests.push(request);
     }
@@ -1033,8 +1108,7 @@ impl ModuleMap {
       main,
       requests,
     );
-
-    Ok(id)
+    Ok(NewModuleResult::Ready(id))
   }
 
   pub(crate) fn new_wasm_module_source(
@@ -1072,9 +1146,7 @@ impl ModuleMap {
       );
     };
     let wasm_module_object: v8::Local<v8::Object> = wasm_module.into();
-    let wasm_module_object_global = v8::Global::new(scope, wasm_module_object);
-
-    let source = Rc::new(wasm_module_object_global);
+    let source = v8::Global::new(scope, wasm_module_object);
     {
       let mut data = self.data.borrow_mut();
       data.sources.insert(reference_key, source.clone());
@@ -1269,11 +1341,30 @@ impl ModuleMap {
       import_attributes,
       ImportAttributesKind::StaticImport,
     );
+    let requested_module_type =
+      get_requested_module_type_from_attributes(&attributes);
+    let pre_resolved_specifier = {
+      let module_map_data = module_map.data.borrow();
+      let referrer_info = module_map_data
+        .get_info_by_module(&referrer_global)
+        .expect("ModuleInfo not found");
+      referrer_info
+        .requests
+        .iter()
+        .find(|r| {
+          r.specifier_key
+            .as_ref()
+            .is_some_and(|s| s == &specifier_str)
+            && r.reference.requested_module_type == requested_module_type
+        })
+        .map(|r| r.reference.specifier.clone())
+    };
     let maybe_module = module_map.resolve_callback(
       scope,
       &specifier_str,
       &referrer_name,
       attributes,
+      pre_resolved_specifier,
     );
     if let Some(module) = maybe_module {
       return Some(module);
@@ -1330,7 +1421,7 @@ impl ModuleMap {
     };
     let key = ModuleSourceKey::from_reference(&module_reference);
     if let Some(entry) = module_map.data.borrow().sources.get(&key) {
-      Some(v8::Local::new(scope, entry.as_ref()))
+      Some(v8::Local::new(scope, entry))
     } else {
       let message = v8::String::new(
         scope,
@@ -1347,8 +1438,6 @@ impl ModuleMap {
   /// but applies some additional checks that disallow resolving/importing
   /// certain modules (eg. `ext:` or `node:` modules).
   ///
-  /// Returns a `ModuleResolveResponse` which may be sync or async depending
-  /// on the loader implementation.
   pub fn resolve(
     &self,
     specifier: &str,
@@ -1371,44 +1460,42 @@ impl ModuleMap {
         "Importing ext: modules is only allowed from ext: and node: modules. Tried to import {} from {}",
         specifier, referrer
       );
-      return ModuleResolveResponse::Sync(Err(JsErrorBox::type_error(msg)));
+      return Err(JsErrorBox::type_error(msg));
     }
 
     self.loader.borrow().resolve(specifier, referrer, kind)
   }
 
-  /// Synchronously resolve a module. This calls `resolve()` and unwraps the
-  /// sync result. Panics if the loader returns an async response.
-  ///
-  /// This is used in the V8 `module_resolve_callback` path, where by
-  /// instantiation time all modules are already resolved.
-  pub fn resolve_sync(
+  pub fn resolve_with_scope(
     &self,
+    scope: &mut v8::PinScope,
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, CoreError> {
-    match self.resolve(specifier, referrer, kind) {
-      ModuleResolveResponse::Sync(result) => result.map_err(|e| e.into()),
-      ModuleResolveResponse::Async(_) => {
-        panic!(
-          "Cannot synchronously resolve an async ModuleResolveResponse during module instantiation"
-        )
-      }
+  ) -> ModuleResolveResponse {
+    if specifier.starts_with("ext:")
+      && !referrer.starts_with("ext:")
+      && !referrer.starts_with("node:")
+      && !referrer.starts_with("checkin:")
+      && referrer != "."
+      && kind != ResolutionKind::MainModule
+    {
+      let referrer = if referrer.is_empty() {
+        "(no referrer)"
+      } else {
+        referrer
+      };
+      let msg = format!(
+        "Importing ext: modules is only allowed from ext: and node: modules. Tried to import {} from {}",
+        specifier, referrer
+      );
+      return Err(JsErrorBox::type_error(msg));
     }
-  }
 
-  /// Asynchronously resolve a module. Handles both sync and async responses.
-  pub async fn resolve_async(
-    &self,
-    specifier: &str,
-    referrer: &str,
-    kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, CoreError> {
-    match self.resolve(specifier, referrer, kind) {
-      ModuleResolveResponse::Sync(result) => result.map_err(|e| e.into()),
-      ModuleResolveResponse::Async(fut) => fut.await.map_err(|e| e.into()),
-    }
+    self
+      .loader
+      .borrow()
+      .resolve_with_scope(scope, specifier, referrer, kind)
   }
 
   /// Called by `module_resolve_callback` during module instantiation.
@@ -1418,18 +1505,54 @@ impl ModuleMap {
     specifier: &str,
     referrer: &str,
     import_attributes: HashMap<String, String>,
+    pre_resolved_specifier: Option<ModuleSpecifier>,
   ) -> Option<v8::Local<'s, v8::Module>> {
-    let resolved_specifier =
-      match self.resolve_sync(specifier, referrer, ResolutionKind::Import) {
-        Ok(s) => s,
-        Err(e) => {
-          crate::error::throw_js_error_class(scope, &e);
-          return None;
-        }
-      };
+    // Synthetic ESM dispatch first, by raw specifier. The active loader
+    // may not know about the spec (e.g. `LazyEsmModuleLoader` only
+    // resolves `lazy_loaded_esm` entries), so checking before
+    // `resolve_sync` ensures the synthetic dispatch wins over a loader
+    // "cannot resolve" error. `node:foo` specifiers are their own
+    // canonical form, so no further resolution is needed.
+    if self.has_synthetic_esm_module(specifier) {
+      if let Some(id) = self.get_id(specifier, &RequestedModuleType::None)
+        && let Some(handle) = self.get_handle(id)
+      {
+        return Some(v8::Local::new(scope, handle));
+      }
+      if let Some(module) = self.try_resolve_synthetic_esm(scope, specifier) {
+        return Some(module);
+      }
+    }
 
     let module_type =
       get_requested_module_type_from_attributes(&import_attributes);
+    let resolved_specifier = match pre_resolved_specifier {
+      Some(specifier) => specifier,
+      None => match self.resolve_with_scope(
+        scope,
+        specifier,
+        referrer,
+        ResolutionKind::Import,
+      ) {
+        Ok(s) => s,
+        Err(e) => {
+          // Fall back to lazy ESM sources for bare internal specifiers like
+          // `node:_http_common` that the runtime's user-facing loader
+          // doesn't know how to resolve (only public `node:` modules go
+          // through the normal path). The lazy_esm registry has them by
+          // exact specifier, so if the specifier is a registered lazy ESM
+          // entry, use it verbatim instead of erroring.
+          if self.has_lazy_esm_source(specifier)
+            && let Ok(parsed) = ModuleSpecifier::parse(specifier)
+          {
+            parsed
+          } else {
+            crate::error::throw_js_error_class(scope, &e);
+            return None;
+          }
+        }
+      },
+    };
 
     if let Some(id) = self.get_id(resolved_specifier.as_str(), module_type)
       && let Some(handle) = self.get_handle(id)
@@ -1437,9 +1560,9 @@ impl ModuleMap {
       return Some(v8::Local::new(scope, handle));
     }
 
-    // Synthetic ESM dispatch: if the specifier was registered via
-    // `synthetic_esm`, build a synthetic module from the IIFE exports of
-    // its backing script.
+    // Synthetic ESM dispatch (post-resolve): in case the loader returned
+    // a redirected/normalized form, also check here. Most callers hit
+    // the pre-resolve branch above.
     if let Some(module) =
       self.try_resolve_synthetic_esm(scope, resolved_specifier.as_str())
     {
@@ -1494,13 +1617,17 @@ impl ModuleMap {
     resolver_handle: v8::Global<v8::PromiseResolver>,
     cped_handle: v8::Global<v8::Value>,
   ) -> bool {
-    let resolve_response =
-      self.resolve(&specifier, &referrer, ResolutionKind::DynamicImport);
+    let resolve_response = self.resolve_with_scope(
+      scope,
+      &specifier,
+      &referrer,
+      ResolutionKind::DynamicImport,
+    );
 
-    // Fast path: if resolution is synchronous and module is already loaded,
-    // we can resolve the import immediately without async work.
-    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
-      && phase == ModuleImportPhase::Evaluation
+    // Fast path: if the module is already loaded, resolve the import
+    // immediately without async work.
+    if phase == ModuleImportPhase::Evaluation
+      && let ref resolve_result = resolve_response
       && let Ok(module_specifier) = resolve_result
       && let Some(id) = self
         .data
@@ -1544,8 +1671,8 @@ impl ModuleMap {
 
     // Fast path for lazy-loaded ESM: load synchronously and resolve
     // immediately, avoiding the async RecursiveModuleLoad path entirely.
-    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
-      && phase == ModuleImportPhase::Evaluation
+    if phase == ModuleImportPhase::Evaluation
+      && let ref resolve_result = resolve_response
       && let Ok(module_specifier) = resolve_result
       && self.has_lazy_esm_source(module_specifier.as_str())
     {
@@ -1569,10 +1696,14 @@ impl ModuleMap {
     // Fast path for `synthetic_esm`-registered modules: build the
     // synthetic module synchronously and resolve immediately, same
     // pattern as the lazy ESM fast path above.
-    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
-      && phase == ModuleImportPhase::Evaluation
+    if phase == ModuleImportPhase::Evaluation
+      && let ref resolve_result = resolve_response
       && let Ok(module_specifier) = resolve_result
       && self.has_synthetic_esm_module(module_specifier.as_str())
+      && !self
+        .loader
+        .borrow()
+        .should_load_synthetic_esm(module_specifier.as_str())
     {
       match self
         .lazy_load_synthetic_esm_module(scope, module_specifier.as_str())
@@ -1593,12 +1724,13 @@ impl ModuleMap {
       }
     }
 
-    let load = RecursiveModuleLoad::dynamic_import(
+    let load = RecursiveModuleLoad::new_dynamic_import(
       specifier,
       referrer,
       requested_module_type,
       phase,
       self.clone(),
+      resolve_response,
     );
 
     self.dynamic_import_map.borrow_mut().insert(
@@ -1681,8 +1813,6 @@ impl ModuleMap {
       return Either::Right(receiver);
     };
     self.evaluating_top_level.set(false);
-
-    let is_graph_async = module.is_graph_async();
 
     self.pending_mod_evaluation.set(true);
 
@@ -1805,21 +1935,17 @@ impl ModuleMap {
         }
       }
 
-      // Under Explicit microtask policy, guard this checkpoint so that
-      // nextTick callbacks can run before promise microtasks queued during
-      // module evaluation (e.g., Promise.resolve().then(...)).
+      // Under Explicit microtask policy, run the module-evaluation
+      // checkpoint here. This matches Node's ESM ordering: Promise and
+      // queueMicrotask jobs queued during top-level module evaluation run
+      // before process.nextTick callbacks queued in the same evaluation.
       //
-      // However, for async module graphs (with TLA), this checkpoint is
-      // critical for draining TLA resume microtasks that V8 enqueued
-      // during module.evaluate(). If skipped, the evaluation promise may
-      // never resolve because V8's internal async module evaluation state
-      // machine relies on these microtasks being processed. The nextTick
-      // ordering concern does not apply to V8-internal TLA resolution.
-      if is_graph_async
-        || !JsRealm::state_from_scope(tc_scope).has_tick_scheduled()
-      {
-        tc_scope.perform_microtask_checkpoint();
-      }
+      // For async module graphs (with TLA), this checkpoint is also critical
+      // for draining V8-internal TLA resume microtasks. If skipped, the
+      // evaluation promise may never resolve because V8's internal async
+      // module evaluation state machine relies on these microtasks being
+      // processed.
+      tc_scope.perform_microtask_checkpoint();
     }
 
     Either::Right(receiver)
@@ -2232,7 +2358,7 @@ impl ModuleMap {
           // fetched. Create and register it, and if successful, poll for the
           // next recursive-load event related to this dynamic import.
           match load.register_and_recurse(scope, &request, info) {
-            Ok(()) => {
+            Ok(RegisterOutcome::Done) => {
               // Keep importing until it's fully drained
               self
                 .pending_dynamic_imports
@@ -2376,7 +2502,7 @@ impl ModuleMap {
               let key = ModuleSourceKey::from_reference(module_reference);
               let source = {
                 let data = self.data.borrow();
-                let source = data.sources.get(&key).expect("Source had to have been inserted successfully, or recursion would error.").as_ref();
+                let source = data.sources.get(&key).expect("Source had to have been inserted successfully, or recursion would error.");
                 v8::Local::new(scope, source).into()
               };
               let resolver = state.resolver.open(scope);
@@ -2584,21 +2710,31 @@ impl ModuleMap {
       .contains(specifier)
   }
 
-  /// Try to take a lazy-loaded ESM source by specifier. Returns the source
-  /// code if found, removing it from the lazy sources map.
+  /// Get a lazy-loaded ESM source by specifier. Returns a cheap clone of the
+  /// source code if found, keeping it in the lazy sources map so concurrent
+  /// loads of the same lazy specifier from independent `RecursiveModuleLoad`
+  /// instances each get their own copy. The duplicate `ModuleSource`s are
+  /// deduplicated by `new_module_with_pending`'s `get_id` check at register
+  /// time.
   pub(crate) fn take_lazy_esm_source(
     &self,
     specifier: &str,
   ) -> Option<ModuleCodeString> {
     let data = self.data.borrow();
-    let source = data.lazy_esm_sources.borrow_mut().remove(specifier);
-    if source.is_some() {
-      data
-        .consumed_lazy_specifiers
-        .borrow_mut()
-        .insert(specifier.to_string());
-    }
-    source
+    let mut sources = data.lazy_esm_sources.borrow_mut();
+    let entry = sources.get_mut(specifier)?;
+    // `into_cheap_copy` always returns two cheap handles to the same backing
+    // storage (Arc or Static), so we can keep one in the map and return the
+    // other. The Owned variant gets promoted to Arc in the process.
+    let placeholder = ModuleCodeString::from_static("");
+    let owned = std::mem::replace(entry, placeholder);
+    let (keep, give) = owned.into_cheap_copy();
+    *entry = keep;
+    data
+      .consumed_lazy_specifiers
+      .borrow_mut()
+      .insert(specifier.to_string());
+    Some(give)
   }
 
   pub(crate) fn add_lazy_loaded_esm_source(
@@ -2681,38 +2817,49 @@ impl ModuleMap {
     let lazy_esm_sources = self.data.borrow().lazy_esm_sources.clone();
     let loader = LazyEsmModuleLoader::new(lazy_esm_sources);
 
-    // Check if this module has already been loaded.
-    {
+    // Check if this module has already been loaded. We release the
+    // `self.data` borrow before doing anything that could re-enter the
+    // module map (notably `module.evaluate(scope)`, which can recursively
+    // compile dependent modules and would otherwise panic with a
+    // `RefCell already borrowed` at `new_module_from_js_source`).
+    let cached_handle = {
       let module_map_data = self.data.borrow();
-      if let Some(id) =
-        module_map_data.get_id(module_specifier, RequestedModuleType::None)
-      {
-        let handle = module_map_data.get_handle(id).unwrap();
-        let handle_local = v8::Local::new(scope, handle);
-        // The module may be present in the map but not yet evaluated — e.g.
-        // when this lazy load fires from a sibling ES module that V8 is
-        // evaluating earlier in DFS post-order. Returning the namespace
-        // before evaluation leaves `export const` bindings in the temporal
-        // dead zone, so trigger evaluation here.
-        if handle_local.get_status() == v8::ModuleStatus::Instantiated {
-          let value = handle_local.evaluate(scope).unwrap();
-          if !self.evaluating_top_level.get() {
-            scope.perform_microtask_checkpoint();
-          }
-          let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
-          let result = promise.result(scope);
-          if !result.is_undefined() {
-            return Err(
-              CoreErrorKind::Js(exception_to_err(scope, result, false, true))
-                .into_box(),
-            );
-          }
+      module_map_data
+        .get_id(module_specifier, RequestedModuleType::None)
+        .and_then(|id| module_map_data.get_handle(id))
+    };
+    if let Some(handle) = cached_handle {
+      crate::modules::import_graph::record_lazy_esm_cached(
+        scope,
+        module_specifier,
+      );
+      let handle_local = v8::Local::new(scope, handle);
+      // The module may be present in the map but not yet evaluated --
+      // e.g. when this lazy load fires from a sibling ES module that V8 is
+      // evaluating earlier in DFS post-order. Returning the namespace
+      // before evaluation leaves `export const` bindings in the temporal
+      // dead zone, so trigger evaluation here.
+      if handle_local.get_status() == v8::ModuleStatus::Instantiated {
+        let value = handle_local.evaluate(scope).unwrap();
+        if !self.evaluating_top_level.get() {
+          scope.perform_microtask_checkpoint();
         }
-        let module =
-          v8::Global::new(scope, handle_local.get_module_namespace());
-        return Ok(module);
+        let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
+        let result = promise.result(scope);
+        if !result.is_undefined() {
+          return Err(
+            CoreErrorKind::Js(exception_to_err(scope, result, false, true))
+              .into_box(),
+          );
+        }
       }
+      let module = v8::Global::new(scope, handle_local.get_module_namespace());
+      return Ok(module);
     }
+
+    // Cache miss: real load incoming. This is the call that pays the
+    // parse/compile/evaluate cost at runtime.
+    crate::modules::import_graph::record_lazy_esm(scope, module_specifier);
 
     let specifier = ModuleSpecifier::parse(module_specifier)?;
 
@@ -2866,6 +3013,7 @@ impl ModuleMap {
     scope: &mut v8::PinScope,
     specifier: &str,
   ) -> Result<v8::Global<v8::Value>, CoreError> {
+    crate::modules::import_graph::record_lazy_script(scope, specifier);
     let specifier_str = String::from(specifier);
     let data = self.data.borrow();
 
@@ -2926,10 +3074,37 @@ impl ModuleMap {
     // may call back into `load_ext_script` for its own dependencies.
     drop(data);
 
-    // Execute the script as-is. Scripts are expected to be manually wrapped
-    // in an IIFE and use `return` to provide their exports.
+    // Each script's IIFE preamble destructures the snapshot-time
+    // `__bootstrap` view (a frozen clone of `core.ops` captured before
+    // `removeImportedOps()` runs). To avoid leaving `__bootstrap` on
+    // `globalThis` (where user code or `Object.keys` would see it), we
+    // compile the source as the body of a function with one named
+    // parameter `__bootstrap` and invoke it with the captured value. The
+    // script's `(function () { ... })()` is the function body's single
+    // expression, so we wrap it with `return ( ... );` to surface the
+    // IIFE's result as the function's return value.
     let source_str =
       ModuleSource::get_string_source(ModuleSourceCode::String(source));
+    // The script body's last statement is an IIFE expression like
+    // `(function () { ... })();`. Strip the trailing `;`/whitespace so the
+    // whole source becomes the operand of a single `return ( ... )`. This
+    // way the function we compile below returns the IIFE's exports object
+    // — the same value the original `Script::run` produced as the script's
+    // completion value.
+    let source_text: &str = AsRef::<str>::as_ref(&source_str);
+    // Some polyfills ship a leading `"use strict";` directive (transpiled
+    // from Node sources). A bare `"use strict";` is a statement, not an
+    // expression, so it can't sit inside `return ( ... )`. Skip past the
+    // leading prologue (comments + any directive prologue) and start the
+    // expression at the IIFE's opening `(function`.
+    let expr_start = strip_script_prologue(source_text).unwrap_or(source_text);
+    let trimmed: &str =
+      expr_start.trim_end_matches(|c: char| c.is_whitespace() || c == ';');
+    // Emit `"use strict";` at the head of the compile_function body so
+    // the IIFE still runs in strict mode (function bodies default to
+    // sloppy, unlike modules — and these polyfills were strict before
+    // being lazified, so we preserve that).
+    let wrapped_source = format!("\"use strict\"; return ({trimmed});");
     let name = v8::String::new(scope, specifier).unwrap();
     let origin = v8::ScriptOrigin::new(
       scope,
@@ -2947,10 +3122,19 @@ impl ModuleMap {
 
     v8::tc_scope!(let tc_scope, scope);
 
-    let v8_source =
-      v8::String::new(tc_scope, AsRef::<str>::as_ref(&source_str)).unwrap();
-    let script = match v8::Script::compile(tc_scope, v8_source, Some(&origin)) {
-      Some(script) => script,
+    let v8_source = v8::String::new(tc_scope, &wrapped_source).unwrap();
+    let bootstrap_param = v8::String::new(tc_scope, "__bootstrap").unwrap();
+    let mut compile_source =
+      v8::script_compiler::Source::new(v8_source, Some(&origin));
+    let function = match v8::script_compiler::compile_function(
+      tc_scope,
+      &mut compile_source,
+      &[bootstrap_param],
+      &[],
+      v8::script_compiler::CompileOptions::NoCompileOptions,
+      v8::script_compiler::NoCacheReason::NoReason,
+    ) {
+      Some(f) => f,
       None => {
         let exception = tc_scope.exception().unwrap();
         let err = JsError::from_v8_exception(tc_scope, exception);
@@ -2963,7 +3147,14 @@ impl ModuleMap {
         return Err(CoreErrorKind::Js(err).into_box());
       }
     };
-    let result = match script.run(tc_scope) {
+
+    let captured = self.data.borrow().captured_bootstrap.borrow().clone();
+    let bootstrap_arg = match &captured {
+      Some(global) => v8::Local::new(tc_scope, global),
+      None => v8::undefined(tc_scope).into(),
+    };
+    let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
+    let result = match function.call(tc_scope, undefined, &[bootstrap_arg]) {
       Some(value) => v8::Global::new(tc_scope, value),
       None => {
         assert!(tc_scope.has_caught());
@@ -2993,6 +3184,56 @@ impl ModuleMap {
     }
 
     Ok(result)
+  }
+
+  /// Stash the snapshot-time `__bootstrap` view registered from JS via
+  /// `op_set_captured_bootstrap`. `load_ext_script` injects this value as
+  /// the `__bootstrap` parameter when invoking each lazy script's compiled
+  /// function — keeping the value off `globalThis` so user code never sees
+  /// it.
+  pub(crate) fn set_captured_bootstrap(&self, value: v8::Global<v8::Value>) {
+    *self.data.borrow().captured_bootstrap.borrow_mut() = Some(value);
+  }
+}
+
+/// Skip past a lazy-loaded script's leading prologue (line/block comments and
+/// directive prologue like `"use strict";`) and return a slice that starts at
+/// the IIFE's opening `(function`. Returns `None` if no such opener is found
+/// — callers fall back to using the original source unchanged.
+fn strip_script_prologue(source: &str) -> Option<&str> {
+  let mut rest = source;
+  loop {
+    let trimmed = rest.trim_start();
+    if let Some(after) = trimmed.strip_prefix("//") {
+      // Line comment — skip to end of line.
+      let nl = after.find('\n').map(|i| i + 1).unwrap_or(after.len());
+      rest = &after[nl..];
+      continue;
+    }
+    if let Some(after) = trimmed.strip_prefix("/*") {
+      // Block comment — skip to closing `*/`.
+      let end = after.find("*/").map(|i| i + 2).unwrap_or(after.len());
+      rest = &after[end..];
+      continue;
+    }
+    // Directive prologue: `"use strict";` or `'use strict';` (or any other
+    // string-literal directive). A directive is a string literal followed
+    // by a `;`/newline at the statement boundary.
+    if trimmed.starts_with('"') || trimmed.starts_with('\'') {
+      let quote = trimmed.as_bytes()[0];
+      let after_quote = &trimmed[1..];
+      if let Some(close) = after_quote.find(quote as char) {
+        let after_str = after_quote[close + 1..].trim_start();
+        if let Some(after_semi) = after_str.strip_prefix(';') {
+          rest = after_semi;
+          continue;
+        }
+      }
+    }
+    if trimmed.starts_with("(function") {
+      return Some(trimmed);
+    }
+    return None;
   }
 }
 

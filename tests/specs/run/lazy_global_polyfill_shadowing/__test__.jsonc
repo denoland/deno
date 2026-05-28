@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "polyfill_shadow": {
+      "args": "run main.js",
+      "output": "main.out"
+    }
+  }
+}

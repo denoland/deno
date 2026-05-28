@@ -318,6 +318,7 @@ struct RunSingleOptions<'a> {
   script: &'a str,
   cwd: PathBuf,
   custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
+  node_modules_bin_dirs: Vec<PathBuf>,
   kill_signal: KillSignal,
   argv: &'a [String],
   parallel_info: Option<ParallelInfo>,
@@ -566,9 +567,12 @@ impl<'a> TaskRunner<'a> {
       }
     };
 
+    let node_modules_bin_dirs =
+      task_runner::resolve_task_node_modules_bin_dirs(self.npm_resolver, &cwd);
     let custom_commands = task_runner::resolve_custom_commands(
       self.node_resolver,
       self.npm_resolver,
+      &node_modules_bin_dirs,
     )?;
 
     self
@@ -578,6 +582,7 @@ impl<'a> TaskRunner<'a> {
         script: command,
         cwd,
         custom_commands,
+        node_modules_bin_dirs,
         kill_signal,
         argv,
         parallel_info,
@@ -615,9 +620,12 @@ impl<'a> TaskRunner<'a> {
       task_name.to_string(),
       format!("post{}", task_name),
     ];
+    let node_modules_bin_dirs =
+      task_runner::resolve_task_node_modules_bin_dirs(self.npm_resolver, &cwd);
     let custom_commands = task_runner::resolve_custom_commands(
       self.node_resolver,
       self.npm_resolver,
+      &node_modules_bin_dirs,
     )?;
 
     for task_name in &task_names {
@@ -629,6 +637,7 @@ impl<'a> TaskRunner<'a> {
             script,
             cwd: cwd.to_path_buf(),
             custom_commands: custom_commands.clone(),
+            node_modules_bin_dirs: node_modules_bin_dirs.clone(),
             kill_signal: kill_signal.clone(),
             argv,
             parallel_info,
@@ -653,6 +662,7 @@ impl<'a> TaskRunner<'a> {
       script,
       cwd,
       custom_commands,
+      node_modules_bin_dirs,
       kill_signal,
       argv,
       parallel_info,
@@ -686,7 +696,7 @@ impl<'a> TaskRunner<'a> {
       custom_commands,
       init_cwd: self.cli_options.initial_cwd(),
       argv,
-      root_node_modules_dir: self.npm_resolver.root_node_modules_path(),
+      node_modules_bin_dirs: &node_modules_bin_dirs,
       stdio,
       kill_signal,
     })
@@ -948,13 +958,36 @@ pub struct AvailableTaskDescription {
 pub fn get_available_tasks_for_completion(
   flags: Arc<Flags>,
 ) -> Result<Vec<AvailableTaskDescription>, AnyError> {
+  let recursive = match &flags.subcommand {
+    crate::args::DenoSubcommand::Task(task_flags) => {
+      task_flags.recursive || task_flags.filter.is_some()
+    }
+    _ => false,
+  };
+
   let factory = crate::factory::CliFactory::from_flags(flags);
   let options = factory.cli_options()?;
 
-  let member_dir = &options.start_dir;
-  let tasks_config = member_dir.to_tasks_config()?;
-
-  get_available_tasks(member_dir, &tasks_config).map_err(AnyError::from)
+  if recursive {
+    let workspace = options.workspace();
+    let mut all_tasks = Vec::new();
+    let mut seen_task_names = HashSet::new();
+    for folder_url in workspace.config_folders().keys() {
+      let member_dir = workspace.resolve_member_dir(folder_url);
+      let tasks_config = member_dir.to_tasks_config()?;
+      let tasks = get_available_tasks(&member_dir, &tasks_config)?;
+      for task in tasks {
+        if seen_task_names.insert(task.name.clone()) {
+          all_tasks.push(task);
+        }
+      }
+    }
+    Ok(all_tasks)
+  } else {
+    let member_dir = &options.start_dir;
+    let tasks_config = member_dir.to_tasks_config()?;
+    get_available_tasks(member_dir, &tasks_config).map_err(AnyError::from)
+  }
 }
 
 fn get_available_tasks(

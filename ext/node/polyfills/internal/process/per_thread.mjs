@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 (function () {
-const { primordials } = globalThis.__bootstrap;
+const { primordials } = __bootstrap;
 const {
   ArrayPrototypeForEach,
   ArrayPrototypeIncludes,
@@ -131,6 +131,8 @@ function buildAllowedFlags() {
     "--no-insecure-http-parser",
     "--use-openssl-ca",
     "--no-use-openssl-ca",
+    "--use-system-ca",
+    "--no-use-system-ca",
     "--tls-cipher-list",
     "--experimental-top-level-await",
     "--no-experimental-top-level-await",
