@@ -361,6 +361,14 @@ where
       tokio::task::yield_now().await;
     }
 
+    // The previous iteration of the watched program may have changed the
+    // process's working directory (e.g. via `Deno.chdir()`). Restore it
+    // before starting the next run so that module resolution, watched
+    // paths, and `Deno.cwd()` all behave as they did on the first run.
+    if let Some(initial_cwd) = &initial_cwd {
+      let _ = std::env::set_current_dir(initial_cwd);
+    }
+
     let mut watcher = new_watcher(watcher_sender.clone(), exclude_set.clone())?;
     consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &exclude_set);
 
