@@ -645,14 +645,49 @@ impl StandaloneModules {
             .and_then(|t| self.vfs.read_file_offset_with_len(t).ok());
           bytes
         }
-        Err(err) if err.kind() == ErrorKind::NotFound =>
-        {
+        Err(err) if err.kind() == ErrorKind::NotFound => {
           #[allow(
             clippy::disallowed_types,
             reason = "use real file system because not in vfs"
           )]
           match sys_traits::impls::RealSys.fs_read(&path) {
-            Ok(bytes) => bytes,
+            Ok(bytes) => {
+              // HMR / dev mode: the file lives on the host filesystem
+              // outside the embedded VFS, so it hasn't been pre-transpiled.
+              // Transpile TS-family media types now; otherwise raw TS source
+              // would be handed to V8 and fail with a SyntaxError.
+              let media_type = MediaType::from_specifier(specifier);
+              if matches!(
+                media_type,
+                MediaType::TypeScript
+                  | MediaType::Mts
+                  | MediaType::Cts
+                  | MediaType::Jsx
+                  | MediaType::Tsx
+              ) && let Ok(source) = std::str::from_utf8(&bytes)
+              {
+                is_valid_utf8 = true;
+                let parsed = deno_ast::parse_module(deno_ast::ParseParams {
+                  specifier: specifier.clone(),
+                  text: source.to_string().into(),
+                  media_type,
+                  capture_tokens: false,
+                  scope_analysis: false,
+                  maybe_syntax: None,
+                })
+                .map_err(|e| JsErrorBox::type_error(e.to_string()))?;
+                let emit = parsed
+                  .transpile(
+                    &deno_ast::TranspileOptions::default(),
+                    &deno_ast::TranspileModuleOptions::default(),
+                    &deno_ast::EmitOptions::default(),
+                  )
+                  .map_err(|e| JsErrorBox::type_error(e.to_string()))?
+                  .into_source();
+                transpiled = Some(Cow::Owned(emit.text.into_bytes()));
+              }
+              bytes
+            }
             Err(err) if err.kind() == ErrorKind::NotFound => {
               return Ok(None);
             }
