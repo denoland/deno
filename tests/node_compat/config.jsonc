@@ -4788,16 +4788,8 @@
       "darwin": false,
       "reason": "error: Uncaught (in promise) AssertionError: Expected values to be strictly deep"
     },
-    "parallel/test-cwd-enoent-preload.js": {
-      "linux": false,
-      "darwin": false,
-      "reason": "Expected values to be strictly equal"
-    },
-    "parallel/test-cwd-enoent.js": {
-      "linux": false,
-      "darwin": false,
-      "reason": "Expected values to be strictly equal"
-    },
+    "parallel/test-cwd-enoent-preload.js": {},
+    "parallel/test-cwd-enoent.js": {},
     "parallel/test-debug-process.js": {
       "windows": false,
       "reason": "Expected values to be strictly equal"
