@@ -17,7 +17,7 @@ path = "lib.rs"
 aes.workspace = true
 aes-gcm.workspace = true
 aes-kw = { workspace = true, features = ["alloc"] }
-aws-lc-rs.workspace = true
+aws-lc-rs = { workspace = true, features = ["unstable"] }
 base64.workspace = true
 cbc.workspace = true
 const-oid.workspace = true
