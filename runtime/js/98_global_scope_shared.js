@@ -75,7 +75,10 @@ import { unstableIds } from "ext:runtime/90_deno_ns.js";
 const loadImage = core.createLazyLoader("ext:deno_image/01_image.js");
 const loadCanvas = core.createLazyLoader("ext:deno_canvas/01_canvas.js");
 const loadGeometry = core.createLazyLoader("ext:deno_web/geometry.js");
-const loadImageData = core.createLazyLoader("ext:deno_web/16_image_data.js");
+let _imageDataMod;
+const loadImageData = () =>
+  _imageDataMod ??
+    (_imageDataMod = core.loadExtScript("ext:deno_web/16_image_data.js"));
 const loadWebSocket = core.createLazyLoader(
   "ext:deno_websocket/01_websocket.js",
 );

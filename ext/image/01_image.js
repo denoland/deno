@@ -23,7 +23,10 @@ const {
   RangeError,
   ArrayPrototypeJoin,
 } = primordials;
-const loadImageData = core.createLazyLoader("ext:deno_web/16_image_data.js");
+let _imageDataMod;
+const loadImageData = () =>
+  _imageDataMod ??
+    (_imageDataMod = core.loadExtScript("ext:deno_web/16_image_data.js"));
 
 webidl.converters["ImageOrientation"] = webidl.createEnumConverter(
   "ImageOrientation",

@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-import { ImageData } from "ext:core/ops";
+(function () {
+const { core, primordials } = __bootstrap;
+const { ImageData } = core.ops;
 const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
@@ -43,4 +44,5 @@ ObjectDefineProperty(
 );
 webidl.configureInterface(ImageData);
 
-export { ImageData, ImageDataPrototype };
+return { ImageData, ImageDataPrototype };
+})();
