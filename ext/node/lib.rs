@@ -423,27 +423,33 @@ deno_core::extension!(deno_node,
     ops::http2::Http2Session,
     ops::http2::Http2Stream,
   ],
-  esm_entry_point = "node:module",
+  // node:stream + node:stream/promises stay registered as `esm` (not
+  // evaluated -- there's no eager importer) so user code's static
+  // `import { Readable } from "node:stream"` resolves through the main
+  // loader. `lazy_loaded_esm` modules are NOT registered for V8's static
+  // resolution; an import there fails with `Unsupported scheme "node"`
+  // (see tests/unit_node/zlib_test.ts).
   esm = [
     dir "polyfills",
     "internal_binding/mod.ts",
-    "node:module" = "01_require.js",
-    "node:process" = "process.ts",
-    // node:stream + node:stream/promises stay eager: every Deno program
-    // pays their parse/compile cost at runtime startup via
-    // `__bootstrapNodeProcess` -> `createWritableStdioStream` -> Writable,
-    // so keeping them in the snapshot is a net startup-time win even
-    // though most programs never directly require('stream').
     "node:stream" = "stream.ts",
     "node:stream/promises" = "stream/promises.js",
-    // node:net and node:tty are needed at every TTY-stdout startup via
-    // internal/tty.js's TTYWriteStream constructor extending net.Socket.
-    // Keeping them eager is a startup-time win for interactive runs.
-    "node:net" = "net_esm.ts",
-    "node:tty" = "tty_esm.ts",
   ],
+  // Keep the rest of the node-polyfill closures (process / module / net /
+  // tty / 01_require) out of the eager evaluation graph: their foundational
+  // SFIs and context state are loaded only on first node:* use, so non-node
+  // `deno run` paths skip ~2 MB of node-polyfill deserialization.
+  // node:module previously had to stay eager because lazy bootstrap shifted
+  // Agent.keepSocketAlive's setUnrefTimeout(5000) into test execution where
+  // the sanitizer saw it as a leak; the timer is now marked is_system in
+  // internal/timers.mjs so the sanitizer skips it correctly and node:module
+  // can stay lazy again.
   lazy_loaded_esm = [
     dir "polyfills",
+    "node:module" = "01_require.js",
+    "node:process" = "process.ts",
+    "node:net" = "net_esm.ts",
+    "node:tty" = "tty_esm.ts",
     "internal/streams/compose.js",
     "internal/streams/duplexpair.js",
     "internal/streams/lazy_transform.js",

@@ -1403,6 +1403,7 @@
     },
     "idlharness.any.html": {
       "expectedFailures": [
+        "Headers interface: existence and properties of interface object",
         "Request interface: existence and properties of interface object",
         "Request interface: attribute destination",
         "Request interface: attribute referrer",
@@ -1438,6 +1439,7 @@
     },
     "idlharness.any.worker.html": {
       "expectedFailures": [
+        "Headers interface: existence and properties of interface object",
         "Request interface: existence and properties of interface object",
         "Request interface: attribute destination",
         "Request interface: attribute referrer",

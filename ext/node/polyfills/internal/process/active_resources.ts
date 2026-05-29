@@ -3,7 +3,7 @@
 // deno-lint-ignore-file no-explicit-any
 
 (function () {
-const { primordials } = globalThis.__bootstrap;
+const { primordials } = __bootstrap;
 const { ArrayPrototypePush, SafeSet, SafeSetIterator } = primordials;
 
 const activeRequests = new SafeSet();

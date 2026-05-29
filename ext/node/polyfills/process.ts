@@ -33,10 +33,17 @@ import {
   op_node_process_setgid,
   op_node_process_setuid,
   op_process_abort,
+  op_stream_base_register_state,
 } from "ext:core/ops";
 
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
-import Module, { getBuiltinModule } from "node:module";
+// Lazy: a static `import ... from "node:module"` makes node:process eagerly
+// pull node:module's entire eager closure (~95 loadExtScript) at process
+// bootstrap. When node:process is itself cold-bootstrapping (node-defer path),
+// those closure modules eval while node:process is mid-eval and capture its
+// not-yet-ready exports -> circular-require TDZs. `Module`/`getBuiltinModule`
+// are only used at call time, so load node:module lazily on first use.
+const lazyNodeModule = core.createLazyLoader("node:module");
 const { report } = core.loadExtScript(
   "ext:deno_node/internal/process/report.ts",
 );
@@ -78,23 +85,18 @@ const {
   versions,
 } = core.loadExtScript("ext:deno_node/_process/process.ts");
 const { _exiting } = core.loadExtScript("ext:deno_node/_process/exiting.ts");
-export {
-  _nextTick as nextTick,
-  chdir,
-  cwd,
-  env,
-  getBuiltinModule,
-  version,
-  versions,
-};
-import {
-  createWritableStdioStream,
-  initStdin,
-} from "ext:deno_node/_process/streams.mjs";
-import {
-  addSigwinchListener,
-  WriteStream as TTYWriteStream,
-} from "ext:deno_node/internal/tty.js";
+export { _nextTick as nextTick, chdir, cwd, env, version, versions };
+// Lazily load the stream/tty machinery. Static imports here would pin
+// `node:stream`, `node:net` and `node:tty` (TTYWriteStream extends net.Socket)
+// into the snapshot heap for EVERY program. Instead, `process.stdout` /
+// `stderr` / `stdin` are built on first access (see the getters installed in
+// `__bootstrapNodeProcess`), so a program that never touches stdio never pulls
+// the stream/net/tty closure into the heap - the single biggest chunk of node
+// snapshot-deserialization time.
+const lazyStreamsMod = core.createLazyLoader(
+  "ext:deno_node/_process/streams.mjs",
+);
+const lazyTtyMod = core.createLazyLoader("ext:deno_node/internal/tty.js");
 const { enableNextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { isAndroid, isWindows } = core.loadExtScript(
   "ext:deno_node/_util/os.ts",
@@ -489,7 +491,7 @@ export function dlopen(module, filename, _flags) {
   // NOTE(bartlomieju): _flags is currently ignored, but we don't warn for it
   // as it makes DX bad, even though it might not be needed:
   // https://github.com/denoland/deno/issues/20075
-  Module._extensions[".node"](module, filename);
+  lazyNodeModule().default._extensions[".node"](module, filename);
   return module;
 }
 
@@ -1250,7 +1252,25 @@ process.setgid = setgid;
 /** This method is removed on Windows */
 process.setuid = setuid;
 
-process.getBuiltinModule = getBuiltinModule;
+// Lazy getter: a direct assignment here would call `lazyNodeModule()` at
+// node:process eval time, eagerly pulling node:module's closure (and the
+// cold-bootstrap TDZ cascade). Resolve node:module only when
+// `process.getBuiltinModule` is first accessed.
+Object.defineProperty(process, "getBuiltinModule", {
+  get() {
+    return lazyNodeModule().getBuiltinModule;
+  },
+  set(v) {
+    Object.defineProperty(process, "getBuiltinModule", {
+      value: v,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
+  },
+  enumerable: true,
+  configurable: true,
+});
 
 // TODO(kt3k): Implement this when we added -e option to node compat mode
 process._eval = undefined;
@@ -1558,6 +1578,24 @@ internals.__bootstrapNodeProcess = function (
   runningOnMainThread = true,
 ) {
   if (!warmup) {
+    // Idempotent: under node-defer this runs either from node:process's own
+    // deferred trigger (process bootstrap) or from 01_require.js's initialize
+    // (full bootstrap) -- whichever node module loads first. The second caller
+    // must not re-run the process setup.
+    if (internals.__nodeProcessBootstrapped) {
+      return;
+    }
+    internals.__nodeProcessBootstrapped = true;
+    // Register the stream-wrap GothamState (used by net/tcp/pipe handles and
+    // process._getActiveHandles). Previously this ran in 01_require.js's
+    // `initialize`; under node-defer that no longer auto-runs, and the op
+    // panics ("StreamBaseState is not present") if a net handle is used before
+    // it. It is self-contained (no node:module), so run it here as part of the
+    // process bootstrap that node:process triggers on first node:* use.
+    const { streamBaseState } = core.loadExtScript(
+      "ext:deno_node/internal_binding/stream_wrap.ts",
+    );
+    op_stream_base_register_state(streamBaseState);
     argv0 = argv0Val || "";
     argv[0] = Deno.execPath();
     argv[1] = Deno.build.standalone
@@ -1576,58 +1614,62 @@ internals.__bootstrapNodeProcess = function (
 
     enableNextTick();
 
-    // Replace warmup stdout/stderr with proper streams
-    if (io.stdout.isTerminal()) {
-      /** https://nodejs.org/api/process.html#process_process_stdout */
-      stdout = process.stdout = new TTYWriteStream(1);
-      // For supporting legacy API we put the FD here.
-      // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
-      stdout.fd = 1;
-      // Match Node.js: stdio streams are indestructible.
-      // Libraries like mute-stream (@inquirer/prompts) call destroy()/end()
-      // on process.stdout between prompts. Without this, the underlying TTY
-      // handle is closed, breaking subsequent I/O.
-      // _isStdio also prevents Stream.pipe() from calling end() on stdout
-      // when a piped source stream ends.
-      // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
-      stdout._isStdio = true;
-      stdout.destroySoon = stdout.destroy;
-      stdout._destroy = function (err, cb) {
-        cb(err);
-        this._undestroy();
-        if (!this._writableState.emitClose) {
-          nextTick(() => this.emit("close"));
-        }
-      };
-      addSigwinchListener(stdout);
-    } else {
-      stdout = process.stdout = createWritableStdioStream(
-        io.stdout,
-        "stdout",
-      );
-    }
-
-    if (io.stderr.isTerminal()) {
-      /** https://nodejs.org/api/process.html#process_process_stderr */
-      stderr = process.stderr = new TTYWriteStream(2);
-      // For supporting legacy API we put the FD here.
-      stderr.fd = 2;
-      stderr._isStdio = true;
-      stderr.destroySoon = stderr.destroy;
-      stderr._destroy = function (err, cb) {
-        cb(err);
-        this._undestroy();
-        if (!this._writableState.emitClose) {
-          nextTick(() => this.emit("close"));
-        }
-      };
-      addSigwinchListener(stderr);
-    } else {
-      stderr = process.stderr = createWritableStdioStream(
-        io.stderr,
-        "stderr",
-      );
-    }
+    // process.stdout / process.stderr are built lazily on first access.
+    // Constructing them eagerly here pulls the node stream/net/tty closure
+    // into the snapshot for every program (TTYWriteStream extends net.Socket;
+    // the pipe path builds a node Writable). Most `deno run` invocations never
+    // touch process.stdout (Deno's own `console` doesn't route through it), so
+    // deferring construction keeps that closure out of the deserialized heap.
+    const makeStdioWriteStream = (fd, ioStream, name) => {
+      let s;
+      if (ioStream.isTerminal()) {
+        const { WriteStream, addSigwinchListener } = lazyTtyMod();
+        s = new WriteStream(fd);
+        // For supporting legacy API we put the FD here.
+        s.fd = fd;
+        // Match Node.js: stdio streams are indestructible. Libraries like
+        // mute-stream (@inquirer/prompts) call destroy()/end() on
+        // process.stdout between prompts. `_isStdio` also prevents
+        // Stream.pipe() from calling end() on stdout when a source ends.
+        s._isStdio = true;
+        s.destroySoon = s.destroy;
+        s._destroy = function (err, cb) {
+          cb(err);
+          this._undestroy();
+          if (!this._writableState.emitClose) {
+            nextTick(() => this.emit("close"));
+          }
+        };
+        addSigwinchListener(s);
+      } else {
+        s = lazyStreamsMod().createWritableStdioStream(ioStream, name);
+      }
+      return s;
+    };
+    ObjectDefineProperty(process, "stdout", {
+      __proto__: null,
+      configurable: true,
+      enumerable: true,
+      get() {
+        return stdout ??
+          (stdout = makeStdioWriteStream(1, io.stdout, "stdout"));
+      },
+      set(v) {
+        stdout = v;
+      },
+    });
+    ObjectDefineProperty(process, "stderr", {
+      __proto__: null,
+      configurable: true,
+      enumerable: true,
+      get() {
+        return stderr ??
+          (stderr = makeStdioWriteStream(2, io.stderr, "stderr"));
+      },
+      set(v) {
+        stderr = v;
+      },
+    });
 
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;
@@ -1666,11 +1708,29 @@ internals.__bootstrapNodeProcess = function (
       );
     }
 
-    // Replace stdin if it is not a terminal
-    const newStdin = initStdin();
-    if (newStdin) {
-      stdin = process.stdin = newStdin;
-    }
+    // process.stdin lazily - initStdin() pulls the stream machinery, so defer
+    // it until process.stdin is actually accessed.
+    let stdinInitialized = false;
+    ObjectDefineProperty(process, "stdin", {
+      __proto__: null,
+      configurable: true,
+      enumerable: true,
+      get() {
+        if (!stdinInitialized) {
+          stdinInitialized = true;
+          // Replace stdin if it is not a terminal.
+          const newStdin = lazyStreamsMod().initStdin();
+          if (newStdin) {
+            stdin = newStdin;
+          }
+        }
+        return stdin;
+      },
+      set(v) {
+        stdinInitialized = true;
+        stdin = v;
+      },
+    });
 
     // In worker threads, replace certain process functions with stubs
     // that throw ERR_WORKER_UNSUPPORTED_OPERATION and have .disabled = true.
@@ -1717,25 +1777,67 @@ internals.__bootstrapNodeProcess = function (
       delete process._debugProcess;
     }
 
-    delete internals.__bootstrapNodeProcess;
+    // NOTE: we used to delete internals.__bootstrapNodeProcess here. Under
+    // node-defer 01_require.js's deferred trigger calls `initialize()`
+    // (which in turn calls this function) after the node:process self-trigger
+    // ran. The idempotency guard above (`__nodeProcessBootstrapped`) handles
+    // the double call; keeping the function reachable just avoids crashing
+    // that second call with "undefined is not a function".
   } else {
-    // Warmup, assuming stdin/stdout/stderr are all terminals
-    stdin = process.stdin = initStdin(true);
+    // Warmup, assuming stdin/stdout/stderr are all terminals. Loaded lazily
+    // (the stream machinery is no longer statically imported); this branch
+    // only runs if nodeBootstrap warmup is invoked.
+    const streams = lazyStreamsMod();
+    stdin = process.stdin = streams.initStdin(true);
 
     /** https://nodejs.org/api/process.html#process_process_stdout */
-    stdout = process.stdout = createWritableStdioStream(
+    stdout = process.stdout = streams.createWritableStdioStream(
       io.stdout,
       "stdout",
       true,
     );
 
     /** https://nodejs.org/api/process.html#process_process_stderr */
-    stderr = process.stderr = createWritableStdioStream(
+    stderr = process.stderr = streams.createWritableStdioStream(
       io.stderr,
       "stderr",
       true,
     );
   }
 };
+
+// node-defer: node:process is lazy_loaded_esm, so it evaluates on first node:*
+// use rather than at snapshot bootstrap. By then 99_main has stashed the
+// bootstrap args on `internals` (it found `globalThis.nodeBootstrap` undefined,
+// since 01_require.js -- which sets it -- is also deferred). Run the process
+// bootstrap now so process.stdout/argv/pid/etc. are wired.
+//
+// We call `__bootstrapNodeProcess` DIRECTLY rather than the full
+// `nodeBootstrap`/`initialize`: `initialize` loads node:module, and doing that
+// while node:process is still mid-evaluation re-pulls the node closure
+// (cluster/etc.) which then captures this not-yet-finished module and TDZs.
+// `__bootstrapNodeProcess` only touches the `process` object and installs LAZY
+// stdio getters, so it loads no closure here; the stream machinery loads only
+// when process.stdout is first accessed, by which point node:process is fully
+// evaluated. The remaining init (worker_threads, cluster, stream_wrap) runs
+// from 01_require.js's own deferred trigger when node:module is first loaded.
+// `__nodeBootstrapArgs` is intentionally left set so that path can complete it.
+if (internals.__nodeBootstrapArgs !== undefined) {
+  const a = internals.__nodeBootstrapArgs;
+  internals.__bootstrapNodeProcess(
+    a.argv0,
+    a.denoArgs,
+    a.denoVersion,
+    a.nodeDebug ?? "",
+    false,
+    a.runningOnMainThread,
+  );
+  // NOTE: the full worker_threads init (`__initWorkerThreads`, which aliases
+  // globalThis.MessageChannel/MessagePort to the node classes) is NOT run
+  // here -- its `setupCrossThreadMessaging` captures node:process and hits a
+  // mid-eval TDZ when invoked from inside node:process's own evaluation. It
+  // is finished from 01_require.js's deferred trigger (bottom of file),
+  // which only runs after node:process is fully evaluated.
+}
 
 export default process;

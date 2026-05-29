@@ -42,7 +42,6 @@ const { getSystemErrorName, promisify } = core.loadExtScript(
   "ext:deno_node/util.ts",
 );
 const lazyProcess = core.createLazyLoader("node:process");
-const process = lazyProcess().default;
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   convertToValidSignal,
@@ -137,10 +136,13 @@ function fork(
   }
 
   // Prepare arguments for fork:
-  execArgv = options.execArgv || process.execArgv;
+  execArgv = options.execArgv || lazyProcess().default.execArgv;
 
-  if (execArgv === process.execArgv && process._eval != null) {
-    const index = execArgv.lastIndexOf(process._eval);
+  if (
+    execArgv === lazyProcess().default.execArgv &&
+    lazyProcess().default._eval != null
+  ) {
+    const index = execArgv.lastIndexOf(lazyProcess().default._eval);
     if (index > 0) {
       // Remove the -e switch to avoid fork bombing ourselves.
       execArgv = execArgv.slice(0);
@@ -188,18 +190,21 @@ function fork(
           ? options.env.NODE_OPTIONS + " " + nodeOptionsStr
           : nodeOptionsStr;
       } else {
-        options.env = { ...process.env, NODE_OPTIONS: nodeOptionsStr };
+        options.env = {
+          ...lazyProcess().default.env,
+          NODE_OPTIONS: nodeOptionsStr,
+        };
       }
     }
     if (result.caStores?.length) {
       options.env = {
-        ...(options.env ?? process.env),
+        ...(options.env ?? lazyProcess().default.env),
         DENO_TLS_CA_STORE: result.caStores.join(","),
       };
     }
     if (result.useOpensslCa) {
       options.env = {
-        ...(options.env ?? process.env),
+        ...(options.env ?? lazyProcess().default.env),
         DENO_NODE_USE_OPENSSL_CA: "1",
       };
     } else if (options.env?.DENO_NODE_USE_OPENSSL_CA) {
@@ -207,7 +212,7 @@ function fork(
     }
     if (result.traceEventCategories) {
       options.env = {
-        ...(options.env ?? process.env),
+        ...(options.env ?? lazyProcess().default.env),
         DENO_NODE_TRACE_EVENT_CATEGORIES: result.traceEventCategories,
       };
     }
@@ -795,7 +800,7 @@ function execSync(command: string, options: ExecSyncOptions) {
   const ret = spawnSync(opts.file, opts.options as SpawnSyncOptions);
 
   if (inheritStderr && ret.stderr) {
-    process.stderr.write(ret.stderr);
+    lazyProcess().default.stderr.write(ret.stderr);
   }
 
   const err = checkExecSyncError(ret, [], command);
@@ -870,7 +875,7 @@ function execFileSync(
   const ret = spawnSync(file, args, options);
 
   if (inheritStderr && ret.stderr) {
-    process.stderr.write(ret.stderr);
+    lazyProcess().default.stderr.write(ret.stderr);
   }
 
   const errArgs: string[] = [options.argv0 || file, ...(args as string[])];
@@ -889,13 +894,13 @@ function setupChildProcessIpcChannel() {
   const [fd, serialization] = maybePipe;
   const serializationMode = serialization === 0 ? "json" : "advanced";
   if (typeof fd != "number" || fd < 0) return;
-  const control = setupChannel(process, fd, serializationMode);
-  process.on("newListener", (name: string) => {
+  const control = setupChannel(lazyProcess().default, fd, serializationMode);
+  lazyProcess().default.on("newListener", (name: string) => {
     if (name === "message" || name === "disconnect") {
       control.refCounted();
     }
   });
-  process.on("removeListener", (name: string) => {
+  lazyProcess().default.on("removeListener", (name: string) => {
     if (name === "message" || name === "disconnect") {
       control.unrefCounted();
     }
