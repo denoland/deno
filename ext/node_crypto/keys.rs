@@ -4174,6 +4174,11 @@ pub enum PfxLoadError {
   #[error("PFX contains no usable private key")]
   NoKey,
   #[class(generic)]
+  #[error(
+    "failed to decrypt PFX private key (wrong passphrase or unsupported encryption)"
+  )]
+  KeyDecryptFailed,
+  #[class(generic)]
   #[error("failed to encode PFX contents: {0}")]
   Encode(String),
 }
@@ -4204,15 +4209,17 @@ fn der_to_pem(label: &str, der: &[u8]) -> String {
   out
 }
 
-// Cap on the iteration count for the PKCS#12 MAC PBKDF, since an attacker
-// who controls the PFX bytes also controls this field (`mac_data.iterations`
-// is a u32, up to ~4 billion, which would tie up CPU for tens of seconds).
-// Matches the limit Mozilla NSS uses for the same KDF; well above any
-// realistic legitimate value — OpenSSL defaults to 2048 on creation, and
-// hardened producers rarely go beyond ~100k. OpenSSL itself doesn't cap
-// here, but Node trusts the caller's PFX; in Deno the PFX often comes
-// from untrusted input (e.g. server config), so capping is defensive.
-const PFX_MAC_ITERATIONS_CAP: u64 = 600_000;
+// Cap on the PBKDF iteration count for any PFX-controlled KDF — the
+// PKCS#12 MAC PBKDF and any PBES2/PBKDF2 inside a SafeContents or shrouded
+// key bag envelope. An attacker who controls the PFX bytes also controls
+// the iteration count (a u32, up to ~4 billion), which would otherwise tie
+// up CPU for tens of seconds per call. Matches the limit Mozilla NSS uses
+// for the MAC KDF; well above any realistic legitimate value — OpenSSL
+// defaults to 2048 on creation, and hardened producers rarely go beyond
+// ~100k. OpenSSL itself doesn't cap here, but Node trusts the caller's
+// PFX; in Deno the PFX often comes from untrusted input (e.g. server
+// config), so capping is defensive.
+const PFX_PBKDF_ITERATIONS_CAP: u64 = 600_000;
 
 #[op2]
 #[serde]
@@ -4227,7 +4234,7 @@ pub fn op_node_load_pfx(
   // OpenSSL/Node behaviour).
   if let Some(mac_data) = &parsed.mac_data {
     let iterations = u64::from(mac_data.iterations);
-    if iterations > PFX_MAC_ITERATIONS_CAP {
+    if iterations > PFX_PBKDF_ITERATIONS_CAP {
       return Err(PfxLoadError::MacVerifyFailure);
     }
     let data = parsed
@@ -4264,7 +4271,7 @@ pub fn op_node_load_pfx(
           password,
           &bmp_password,
         )
-        .ok_or(PfxLoadError::NoKey)?;
+        .ok_or(PfxLoadError::KeyDecryptFailed)?;
         key_ders.push(der);
       }
       _ => {}
@@ -4324,6 +4331,15 @@ fn decrypt_pfx_blob(
     {
       let alg_der = yasna::construct_der(|w| alg.write(w));
       let scheme = pkcs8::pkcs5::EncryptionScheme::from_der(&alg_der).ok()?;
+      // Apply the same PBKDF iteration cap used for the MAC. The PBKDF2
+      // iteration count here is attacker-controlled in the same way
+      // (parsed straight out of the PFX bytes), and
+      // `pkcs8::pkcs5::EncryptionScheme::decrypt` does not cap on its own.
+      if let Some(pbkdf2) = scheme.pbes2().and_then(|p| p.kdf.pbkdf2())
+        && u64::from(pbkdf2.iteration_count) > PFX_PBKDF_ITERATIONS_CAP
+      {
+        return None;
+      }
       scheme.decrypt(utf8_password.as_bytes(), ciphertext).ok()
     }
     _ => None,
