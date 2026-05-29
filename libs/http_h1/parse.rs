@@ -382,6 +382,9 @@ impl HeaderInfo {
     }
 
     if self.has_transfer_encoding {
+      if self.content_length.is_some() || self.content_length_error.is_some() {
+        return Err(ParseError::ConflictingContentLength);
+      }
       if version == Version::Http10 {
         return Err(ParseError::UnsupportedTransferEncoding);
       }
@@ -903,7 +906,7 @@ mod tests {
       (
         "Conflicting Transfer-Encoding and Content-Length in varying case",
         b"POST / HTTP/1.1\r\nHost: example.com\r\ncontent-LengtH: 5\r\nTransFer-Encoding: chunked\r\n\r\nc\r\nHellO world1\r\n0\r\n\r\n",
-        Expected::Ok,
+        Expected::Err,
       ),
     ];
 

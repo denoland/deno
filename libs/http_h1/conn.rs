@@ -80,6 +80,7 @@ pub enum ResponseBody<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Response<'a> {
+  pub version: Version,
   pub status: u16,
   pub reason: &'a [u8],
   pub headers: &'a [Header<'a>],
@@ -89,6 +90,7 @@ pub struct Response<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct ResponseHead<'a> {
+  pub version: Version,
   pub status: u16,
   pub reason: &'a [u8],
   pub headers: &'a [Header<'a>],
@@ -398,6 +400,7 @@ where
       return Err(Error::ResponseStreamActive);
     }
     let response = ResponseHeaderFast {
+      version: Version::Http11,
       date,
       body_len: body.len() as u64,
       body,
@@ -423,6 +426,7 @@ where
       return Err(Error::ResponseStreamActive);
     }
     let response = ResponseContentTypeFast {
+      version: Version::Http11,
       content_type,
       date,
       body_len: body.len() as u64,
@@ -547,6 +551,7 @@ where
     write_response_head(
       &mut self.write_buf,
       ResponseHeader {
+        version: response.version,
         status: response.status,
         reason: response.reason,
         headers: response.headers,
@@ -573,6 +578,7 @@ where
     write_chunked_response_head(
       &mut self.write_buf,
       ResponseHeader {
+        version: response.version,
         status: response.status,
         reason: response.reason,
         headers: response.headers,
@@ -582,7 +588,11 @@ where
     );
     self.io.write_all(&self.write_buf).await?;
     self.response_state = if status_allows_body(response.status) {
-      ResponseState::Chunked
+      if response.version == Version::Http11 {
+        ResponseState::Chunked
+      } else {
+        ResponseState::Fixed
+      }
     } else {
       ResponseState::NoBody
     };
@@ -600,6 +610,7 @@ where
     write_response_head(
       &mut self.write_buf,
       ResponseHeader {
+        version: response.version,
         status: response.status,
         reason: response.reason,
         headers: response.headers,
@@ -669,9 +680,34 @@ where
   async fn finish_previous_request(&mut self) -> Result<(), Error> {
     self.consume_pending_head();
     self.consume_pending_body_chunk();
-    let mut sink = Vec::new();
-    self.read_body_to_end(&mut sink).await?;
-    Ok(())
+    loop {
+      match self.body_status()? {
+        ConnBodyStatus::Chunk { consumed, .. } => {
+          self.read_buf.consume(consumed);
+          continue;
+        }
+        ConnBodyStatus::Complete { consumed } => {
+          self.read_buf.consume(consumed);
+          return Ok(());
+        }
+        ConnBodyStatus::Partial { consumed } => {
+          self.read_buf.consume(consumed);
+        }
+      }
+      if self.read_more().await? == 0 {
+        match self.body_status()? {
+          ConnBodyStatus::Chunk { consumed, .. } => {
+            self.read_buf.consume(consumed);
+            continue;
+          }
+          ConnBodyStatus::Complete { consumed } => {
+            self.read_buf.consume(consumed);
+            return Ok(());
+          }
+          ConnBodyStatus::Partial { .. } => return Err(unexpected_eof()),
+        }
+      }
+    }
   }
 
   fn body_status(&mut self) -> Result<ConnBodyStatus, Error> {
@@ -923,6 +959,7 @@ where
     write_response_head(
       &mut scratch.write_buf,
       ResponseHeader {
+        version: writer.response.version,
         status: writer.response.status,
         reason: writer.response.reason,
         headers: writer.response.headers,
@@ -1006,6 +1043,7 @@ where
     write_chunked_response_head(
       &mut scratch.write_buf,
       ResponseHeader {
+        version: writer.response.version,
         status: writer.response.status,
         reason: writer.response.reason,
         headers: writer.response.headers,
@@ -1027,7 +1065,11 @@ where
       writer.written += written;
     }
     self.response_state = if status_allows_body(writer.response.status) {
-      ResponseState::Chunked
+      if writer.response.version == Version::Http11 {
+        ResponseState::Chunked
+      } else {
+        ResponseState::Fixed
+      }
     } else {
       ResponseState::NoBody
     };
@@ -1062,6 +1104,7 @@ where
     write_response_head(
       &mut scratch.write_buf,
       ResponseHeader {
+        version: writer.response.version,
         status: writer.response.status,
         reason: writer.response.reason,
         headers: writer.response.headers,
@@ -1469,6 +1512,7 @@ mod tests {
       conn.read_body_to_end(&mut body).await?;
       conn
         .write_response(Response {
+          version: Version::Http11,
           status: 200,
           reason: b"OK",
           headers: &[],
@@ -1511,6 +1555,7 @@ mod tests {
         body.extend_from_slice(&chunk);
       }
       let mut writer = SharedResponseWriter::new(Response {
+        version: Version::Http11,
         status: 200,
         reason: b"OK",
         headers: &[],
@@ -1632,6 +1677,7 @@ mod tests {
         .is_some()
       );
       let mut head = SharedChunkedResponseHeadWriter::new(ResponseHead {
+        version: Version::Http11,
         status: 200,
         reason: b"OK",
         headers: &[],
@@ -1769,6 +1815,7 @@ mod tests {
 
       conn
         .write_response(Response {
+          version: Version::Http11,
           status: 200,
           reason: b"OK",
           headers: &[],
@@ -1814,6 +1861,7 @@ mod tests {
       assert!(chunk_count >= 2);
       conn
         .write_response(Response {
+          version: Version::Http11,
           status: 200,
           reason: b"OK",
           headers: &[],
@@ -1866,6 +1914,7 @@ mod tests {
 
       conn
         .write_response(Response {
+          version: Version::Http11,
           status: 200,
           reason: b"OK",
           headers: &[],
@@ -1914,6 +1963,7 @@ mod tests {
 
       conn
         .write_response(Response {
+          version: Version::Http11,
           status: 200,
           reason: b"OK",
           headers: &[],
@@ -1962,6 +2012,7 @@ mod tests {
       };
       conn
         .write_response(Response {
+          version: Version::Http11,
           status: 200,
           reason: b"OK",
           headers: &[],
@@ -2002,6 +2053,7 @@ mod tests {
       }];
       conn
         .start_chunked_response(ResponseHead {
+          version: Version::Http11,
           status: 200,
           reason: b"OK",
           headers: &response_headers,
@@ -2053,6 +2105,7 @@ mod tests {
 
       conn
         .start_chunked_response(ResponseHead {
+          version: Version::Http11,
           status: 200,
           reason: b"OK",
           headers: &[],
@@ -2062,6 +2115,7 @@ mod tests {
       assert!(matches!(
         conn
           .start_chunked_response(ResponseHead {
+            version: Version::Http11,
             status: 200,
             reason: b"OK",
             headers: &[],
@@ -2073,6 +2127,7 @@ mod tests {
       assert!(matches!(
         conn
           .write_response(Response {
+            version: Version::Http11,
             status: 200,
             reason: b"OK",
             headers: &[],
@@ -2113,6 +2168,7 @@ mod tests {
       assert!(conn.next_request(&mut headers).await?.is_some());
       conn
         .start_chunked_response(ResponseHead {
+          version: Version::Http11,
           status: 204,
           reason: b"No Content",
           headers: &[],
@@ -2152,6 +2208,7 @@ mod tests {
           if conn.read_body_to_end(&mut body).await.is_err() {
             conn
               .write_response(Response {
+                version: Version::Http11,
                 status: 400,
                 reason: b"Bad Request",
                 headers: &[],
@@ -2163,6 +2220,7 @@ mod tests {
           }
           conn
             .write_response(Response {
+              version: Version::Http11,
               status: 200,
               reason: b"OK",
               headers: &[],
@@ -2175,6 +2233,7 @@ mod tests {
         Err(_) => {
           conn
             .write_response(Response {
+              version: Version::Http11,
               status: 400,
               reason: b"Bad Request",
               headers: &[],
@@ -2347,8 +2406,8 @@ mod tests {
       (
         "Conflicting Transfer-Encoding and Content-Length in varying case",
         b"POST / HTTP/1.1\r\nHost: example.com\r\ncontent-LengtH: 5\r\nTransFer-Encoding: chunked\r\n\r\nc\r\nHellO world1\r\n0\r\n\r\n",
-        200..=299,
-        Some(b"HellO world1"),
+        400..=499,
+        None,
       ),
     ];
 

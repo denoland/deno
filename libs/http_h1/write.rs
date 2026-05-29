@@ -1,12 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use crate::Header;
+use crate::Version;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OutputFull;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ResponseHeader<'a> {
+  pub version: Version,
   pub status: u16,
   pub reason: &'a [u8],
   pub headers: &'a [Header<'a>],
@@ -16,6 +18,7 @@ pub struct ResponseHeader<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct ResponseHeaderFast<'a> {
+  pub version: Version,
   pub date: &'a [u8],
   pub body_len: u64,
   pub body: &'a [u8],
@@ -24,6 +27,7 @@ pub struct ResponseHeaderFast<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct ResponseContentTypeFast<'a> {
+  pub version: Version,
   pub content_type: &'a [u8],
   pub date: &'a [u8],
   pub body_len: u64,
@@ -36,33 +40,39 @@ pub fn write_response_head(out: &mut Vec<u8>, response: ResponseHeader<'_>) {
 }
 
 pub fn default_text_response_len(response: ResponseHeaderFast<'_>) -> usize {
-  b"HTTP/1.1 200 OK\r\ncontent-type: text/plain;charset=UTF-8\r\ncontent-length: "
-    .len()
+  response_version_bytes(response.version).len()
+    + b" 200 OK\r\ncontent-type: text/plain;charset=UTF-8\r\ncontent-length: "
+      .len()
     + decimal_len(response.body_len)
     + b"\r\ndate: ".len()
     + response.date.len()
-    + if response.keep_alive {
-      b"\r\n\r\n".len()
-    } else {
-      b"\r\nconnection: close\r\n\r\n".len()
-    }
+    + connection_header_len(response.version, response.keep_alive)
     + response.body.len()
+}
+
+fn connection_header_len(version: Version, keep_alive: bool) -> usize {
+  if keep_alive && version == Version::Http11 {
+    b"\r\n\r\n".len()
+  } else if keep_alive {
+    b"\r\nconnection: keep-alive\r\n\r\n".len()
+  } else if version == Version::Http10 {
+    b"\r\n\r\n".len()
+  } else {
+    b"\r\nconnection: close\r\n\r\n".len()
+  }
 }
 
 pub fn content_type_response_len(
   response: ResponseContentTypeFast<'_>,
 ) -> usize {
-  b"HTTP/1.1 200 OK\r\ncontent-type: ".len()
+  response_version_bytes(response.version).len()
+    + b" 200 OK\r\ncontent-type: ".len()
     + response.content_type.len()
     + b"\r\ncontent-length: ".len()
     + decimal_len(response.body_len)
     + b"\r\ndate: ".len()
     + response.date.len()
-    + if response.keep_alive {
-      b"\r\n\r\n".len()
-    } else {
-      b"\r\nconnection: close\r\n\r\n".len()
-    }
+    + connection_header_len(response.version, response.keep_alive)
     + response.body.len()
 }
 
@@ -71,13 +81,18 @@ pub fn write_default_text_response(
   response: ResponseHeaderFast<'_>,
 ) {
   out.clear();
+  out.extend_from_slice(response_version_bytes(response.version));
   out.extend_from_slice(
-    b"HTTP/1.1 200 OK\r\ncontent-type: text/plain;charset=UTF-8\r\ncontent-length: ",
+    b" 200 OK\r\ncontent-type: text/plain;charset=UTF-8\r\ncontent-length: ",
   );
   push_u64(out, response.body_len);
   out.extend_from_slice(b"\r\ndate: ");
   out.extend_from_slice(response.date);
-  if response.keep_alive {
+  if response.keep_alive && response.version == Version::Http11 {
+    out.extend_from_slice(b"\r\n\r\n");
+  } else if response.keep_alive {
+    out.extend_from_slice(b"\r\nconnection: keep-alive\r\n\r\n");
+  } else if response.version == Version::Http10 {
     out.extend_from_slice(b"\r\n\r\n");
   } else {
     out.extend_from_slice(b"\r\nconnection: close\r\n\r\n");
@@ -90,13 +105,18 @@ pub fn write_content_type_response(
   response: ResponseContentTypeFast<'_>,
 ) {
   out.clear();
-  out.extend_from_slice(b"HTTP/1.1 200 OK\r\ncontent-type: ");
+  out.extend_from_slice(response_version_bytes(response.version));
+  out.extend_from_slice(b" 200 OK\r\ncontent-type: ");
   out.extend_from_slice(response.content_type);
   out.extend_from_slice(b"\r\ncontent-length: ");
   push_u64(out, response.body_len);
   out.extend_from_slice(b"\r\ndate: ");
   out.extend_from_slice(response.date);
-  if response.keep_alive {
+  if response.keep_alive && response.version == Version::Http11 {
+    out.extend_from_slice(b"\r\n\r\n");
+  } else if response.keep_alive {
+    out.extend_from_slice(b"\r\nconnection: keep-alive\r\n\r\n");
+  } else if response.version == Version::Http10 {
     out.extend_from_slice(b"\r\n\r\n");
   } else {
     out.extend_from_slice(b"\r\nconnection: close\r\n\r\n");
@@ -121,6 +141,8 @@ pub fn append_chunk(out: &mut Vec<u8>, chunk: &[u8]) {
 pub fn append_chunked_end(out: &mut Vec<u8>, trailers: &[Header<'_>]) {
   out.extend_from_slice(b"0\r\n");
   for trailer in trailers {
+    debug_assert!(valid_header_name(trailer.name));
+    debug_assert!(valid_header_value(trailer.value));
     out.extend_from_slice(trailer.name);
     out.extend_from_slice(b": ");
     out.extend_from_slice(trailer.value);
@@ -162,6 +184,8 @@ pub fn append_chunked_end_to(
   let mut cursor = SliceWriter::new(out);
   cursor.push(b"0\r\n")?;
   for trailer in trailers {
+    debug_assert!(valid_header_name(trailer.name));
+    debug_assert!(valid_header_value(trailer.value));
     cursor.push(trailer.name)?;
     cursor.push(b": ")?;
     cursor.push(trailer.value)?;
@@ -176,8 +200,11 @@ fn write_response_head_inner(
   response: ResponseHeader<'_>,
   chunked: bool,
 ) {
+  let chunked = chunked && response.version == Version::Http11;
+  debug_assert!(valid_reason(response.reason));
   out.clear();
-  out.extend_from_slice(b"HTTP/1.1 ");
+  out.extend_from_slice(response_version_bytes(response.version));
+  out.push(b' ');
   push_status(out, response.status);
   out.push(b' ');
   out.extend_from_slice(response.reason);
@@ -188,6 +215,8 @@ fn write_response_head_inner(
   let mut date = None;
   let body_allowed = status_allows_body(response.status);
   for header in response.headers {
+    debug_assert!(valid_header_name(header.name));
+    debug_assert!(valid_header_value(header.value));
     if header.name.eq_ignore_ascii_case(b"date") {
       date = Some(header.value);
       continue;
@@ -230,7 +259,9 @@ fn write_response_head_inner(
     out.extend_from_slice(b"\r\n");
   }
 
-  if !response.keep_alive {
+  if response.keep_alive && response.version == Version::Http10 {
+    out.extend_from_slice(b"connection: keep-alive\r\n");
+  } else if !response.keep_alive && response.version == Version::Http11 {
     out.extend_from_slice(b"connection: close\r\n");
   }
   out.extend_from_slice(b"\r\n");
@@ -241,8 +272,11 @@ fn write_response_head_to_inner(
   response: ResponseHeader<'_>,
   chunked: bool,
 ) -> Result<usize, OutputFull> {
+  let chunked = chunked && response.version == Version::Http11;
+  debug_assert!(valid_reason(response.reason));
   let mut cursor = SliceWriter::new(out);
-  cursor.push(b"HTTP/1.1 ")?;
+  cursor.push(response_version_bytes(response.version))?;
+  cursor.push(b" ")?;
   cursor.push_status(response.status)?;
   cursor.push(b" ")?;
   cursor.push(response.reason)?;
@@ -253,6 +287,8 @@ fn write_response_head_to_inner(
   let mut date = None;
   let body_allowed = status_allows_body(response.status);
   for header in response.headers {
+    debug_assert!(valid_header_name(header.name));
+    debug_assert!(valid_header_value(header.value));
     if header.name.eq_ignore_ascii_case(b"date") {
       date = Some(header.value);
       continue;
@@ -295,7 +331,9 @@ fn write_response_head_to_inner(
     cursor.push(b"\r\n")?;
   }
 
-  if !response.keep_alive {
+  if response.keep_alive && response.version == Version::Http10 {
+    cursor.push(b"connection: keep-alive\r\n")?;
+  } else if !response.keep_alive && response.version == Version::Http11 {
     cursor.push(b"connection: close\r\n")?;
   }
   cursor.push(b"\r\n")?;
@@ -304,6 +342,51 @@ fn write_response_head_to_inner(
 
 pub fn status_allows_body(status: u16) -> bool {
   !((100..200).contains(&status) || status == 204 || status == 304)
+}
+
+fn response_version_bytes(version: Version) -> &'static [u8] {
+  match version {
+    Version::Http10 => b"HTTP/1.0",
+    Version::Http11 => b"HTTP/1.1",
+  }
+}
+
+fn valid_header_name(name: &[u8]) -> bool {
+  !name.is_empty()
+    && name.iter().all(|byte| {
+      matches!(
+        *byte,
+        b'!' | b'#'
+          | b'$'
+          | b'%'
+          | b'&'
+          | b'\''
+          | b'*'
+          | b'+'
+          | b'-'
+          | b'.'
+          | b'^'
+          | b'_'
+          | b'`'
+          | b'|'
+          | b'~'
+          | b'0'..=b'9'
+          | b'A'..=b'Z'
+          | b'a'..=b'z'
+      )
+    })
+}
+
+fn valid_header_value(value: &[u8]) -> bool {
+  value
+    .iter()
+    .all(|byte| matches!(*byte, b'\t' | b' '..=0x7e | 0x80..=0xff))
+}
+
+fn valid_reason(reason: &[u8]) -> bool {
+  reason
+    .iter()
+    .all(|byte| matches!(*byte, b'\t' | b' '..=0x7e | 0x80..=0xff))
 }
 
 fn push_status(out: &mut Vec<u8>, status: u16) {
@@ -441,6 +524,7 @@ mod tests {
     write_response_head(
       &mut out,
       ResponseHeader {
+        version: Version::Http11,
         status: 200,
         reason: b"OK",
         headers: &headers,
@@ -458,6 +542,7 @@ mod tests {
   fn writes_default_text_response_fast_with_date() {
     let mut out = Vec::new();
     let response = ResponseHeaderFast {
+      version: Version::Http11,
       date: b"Thu, 21 May 2026 12:00:00 GMT",
       body_len: 5,
       body: b"hello",
@@ -468,6 +553,42 @@ mod tests {
     assert_eq!(
       out,
       b"HTTP/1.1 200 OK\r\ncontent-type: text/plain;charset=UTF-8\r\ncontent-length: 5\r\ndate: Thu, 21 May 2026 12:00:00 GMT\r\n\r\nhello"
+    );
+  }
+
+  #[test]
+  fn writes_http10_default_text_response_fast() {
+    let mut out = Vec::new();
+    let response = ResponseHeaderFast {
+      version: Version::Http10,
+      date: b"Thu, 21 May 2026 12:00:00 GMT",
+      body_len: 5,
+      body: b"hello",
+      keep_alive: false,
+    };
+    write_default_text_response(&mut out, response);
+    assert_eq!(out.len(), default_text_response_len(response));
+    assert_eq!(
+      out,
+      b"HTTP/1.0 200 OK\r\ncontent-type: text/plain;charset=UTF-8\r\ncontent-length: 5\r\ndate: Thu, 21 May 2026 12:00:00 GMT\r\n\r\nhello"
+    );
+  }
+
+  #[test]
+  fn writes_http10_keep_alive_default_text_response_fast() {
+    let mut out = Vec::new();
+    let response = ResponseHeaderFast {
+      version: Version::Http10,
+      date: b"Thu, 21 May 2026 12:00:00 GMT",
+      body_len: 5,
+      body: b"hello",
+      keep_alive: true,
+    };
+    write_default_text_response(&mut out, response);
+    assert_eq!(out.len(), default_text_response_len(response));
+    assert_eq!(
+      out,
+      b"HTTP/1.0 200 OK\r\ncontent-type: text/plain;charset=UTF-8\r\ncontent-length: 5\r\ndate: Thu, 21 May 2026 12:00:00 GMT\r\nconnection: keep-alive\r\n\r\nhello"
     );
   }
 
@@ -487,6 +608,7 @@ mod tests {
     write_chunked_response_head(
       &mut out,
       ResponseHeader {
+        version: Version::Http11,
         status: 200,
         reason: b"OK",
         headers: &headers,
@@ -518,6 +640,7 @@ mod tests {
     write_response_head(
       &mut out,
       ResponseHeader {
+        version: Version::Http11,
         status: 404,
         reason: b"Not Found",
         headers: &[],
@@ -532,6 +655,60 @@ mod tests {
   }
 
   #[test]
+  fn writes_http10_response_head() {
+    let mut out = Vec::new();
+    write_response_head(
+      &mut out,
+      ResponseHeader {
+        version: Version::Http10,
+        status: 200,
+        reason: b"OK",
+        headers: &[],
+        content_length: Some(5),
+        keep_alive: false,
+      },
+    );
+    assert_eq!(out, b"HTTP/1.0 200 OK\r\ncontent-length: 5\r\n\r\n");
+  }
+
+  #[test]
+  fn writes_http10_keep_alive_response_head() {
+    let mut out = Vec::new();
+    write_response_head(
+      &mut out,
+      ResponseHeader {
+        version: Version::Http10,
+        status: 200,
+        reason: b"OK",
+        headers: &[],
+        content_length: Some(5),
+        keep_alive: true,
+      },
+    );
+    assert_eq!(
+      out,
+      b"HTTP/1.0 200 OK\r\ncontent-length: 5\r\nconnection: keep-alive\r\n\r\n"
+    );
+  }
+
+  #[test]
+  fn http10_chunked_head_falls_back_to_close_delimited() {
+    let mut out = Vec::new();
+    write_chunked_response_head(
+      &mut out,
+      ResponseHeader {
+        version: Version::Http10,
+        status: 200,
+        reason: b"OK",
+        headers: &[],
+        content_length: None,
+        keep_alive: false,
+      },
+    );
+    assert_eq!(out, b"HTTP/1.0 200 OK\r\n\r\n");
+  }
+
+  #[test]
   fn writes_response_head_to_slice() {
     let headers = [Header {
       name: b"content-type",
@@ -541,6 +718,7 @@ mod tests {
     let len = write_response_head_to(
       &mut out,
       ResponseHeader {
+        version: Version::Http11,
         status: 200,
         reason: b"OK",
         headers: &headers,
@@ -562,6 +740,7 @@ mod tests {
       write_response_head_to(
         &mut out,
         ResponseHeader {
+          version: Version::Http11,
           status: 200,
           reason: b"OK",
           headers: &[],

@@ -7,6 +7,7 @@ use criterion::criterion_main;
 use deno_http_h1::Header;
 use deno_http_h1::MAX_HEADERS;
 use deno_http_h1::ResponseHeader;
+use deno_http_h1::Version;
 use deno_http_h1::append_chunk;
 use deno_http_h1::append_chunked_end;
 use deno_http_h1::parse_request_head;
@@ -55,6 +56,7 @@ fn bench_write(c: &mut Criterion) {
       write_response_head(
         black_box(&mut out),
         ResponseHeader {
+          version: Version::Http11,
           status: 200,
           reason: b"OK",
           headers: black_box(&headers),

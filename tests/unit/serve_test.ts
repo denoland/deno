@@ -3219,12 +3219,10 @@ Deno.test(
   async function httpServerRequestCLTE() {
     const ac = new AbortController();
     const listeningDeferred = Promise.withResolvers<void>();
-    const deferred = Promise.withResolvers<void>();
 
     await using server = Deno.serve({
-      handler: async (req) => {
-        assertEquals(await req.text(), "");
-        deferred.resolve();
+      handler: () => {
+        fail("CL.TE request should be rejected before dispatch");
         return new Response("ok");
       },
       port: servePort,
@@ -3241,7 +3239,13 @@ Deno.test(
       `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 13\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\nEXTRA`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
-    await deferred.promise;
+    const response = new Uint8Array(1024);
+    const read = await conn.read(response);
+    assert(read !== null);
+    assertStringIncludes(
+      new TextDecoder().decode(response.subarray(0, read)),
+      "HTTP/1.1 400 Bad Request",
+    );
 
     conn.close();
 
@@ -4429,6 +4433,7 @@ Deno.test({
   await promise;
 
   using conn = await Deno.connect({ port: servePort });
+  await delay(0);
 
   await server.shutdown();
 

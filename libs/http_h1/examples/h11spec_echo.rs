@@ -300,6 +300,7 @@ async fn write_echo(
       .start_chunked_response_with_scratch(
         scratch,
         ResponseHead {
+          version: request.version,
           status,
           reason: reason_for(status),
           headers: &response_headers,
@@ -332,6 +333,7 @@ async fn write_echo(
     .write_response_with_scratch(
       scratch,
       Response {
+        version: request.version,
         status,
         reason: reason_for(status),
         headers: &response_headers,
@@ -356,6 +358,7 @@ async fn write_simple(
     .write_response_with_scratch(
       scratch,
       Response {
+        version: Version::Http11,
         status,
         reason: reason_for(status),
         headers: &headers,
