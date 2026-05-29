@@ -2436,6 +2436,11 @@ deprecatedNativeModules._stream_writable = [
   "The _stream_writable module is deprecated. Use `node:stream` instead.",
   "DEP0193",
 ];
+deprecatedNativeModules.punycode = [
+  "The `punycode` module is deprecated. Please use a userland " +
+  "alternative instead.",
+  "DEP0040",
+];
 
 const emittedNativeModuleDeprecations = new SafeSet();
 function maybeEmitNativeModuleDeprecation(request) {
