@@ -1,0 +1,6 @@
+{
+  "args": "run --allow-net=127.0.0.1:12477,127.0.0.1:12478 main.ts",
+  "output": "main.out",
+  "exitCode": 0,
+  "tempDir": true
+}

@@ -107,6 +107,7 @@ use crate::sys::CliSys;
 use crate::type_checker::CheckError;
 use crate::type_checker::CheckOptions;
 use crate::type_checker::TypeChecker;
+use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
@@ -352,6 +353,7 @@ struct SharedCliModuleLoaderState {
   sys: CliSys,
   in_flight_loads_tracker: InFlightModuleLoadsTracker,
   maybe_eszip_loader: Option<Arc<EszipModuleLoader>>,
+  watcher_communicator: Option<Arc<WatcherCommunicator>>,
 }
 
 struct InFlightModuleLoadsTracker {
@@ -415,6 +417,7 @@ impl CliModuleLoaderFactory {
     resolver: Arc<CliResolver>,
     sys: CliSys,
     maybe_eszip_loader: Option<Arc<EszipModuleLoader>>,
+    watcher_communicator: Option<Arc<WatcherCommunicator>>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
@@ -448,6 +451,7 @@ impl CliModuleLoaderFactory {
           cleanup_task_handle: Arc::new(Mutex::new(None)),
         },
         maybe_eszip_loader,
+        watcher_communicator,
       }),
     }
   }
@@ -606,6 +610,17 @@ impl<TGraphContainer: ModuleGraphContainer>
     maybe_referrer: Option<&ModuleSpecifier>,
     requested_module_type: &RequestedModuleType,
   ) -> Result<ModuleSource, ModuleLoaderError> {
+    if specifier.path().ends_with(".node") {
+      return Err(JsErrorBox::type_error(format!(
+        "Cannot import native Node.js addon \"{specifier}\" via ESM. \
+         Native `.node` addons can only be loaded through `require()`. \
+         Use `createRequire()` from `node:module`, e.g.:\n  \
+         import {{ createRequire }} from \"node:module\";\n  \
+         const require = createRequire(import.meta.url);\n  \
+         const addon = require(\"./addon.node\");"
+      )));
+    }
+
     let code_source = self
       .load_code_source(specifier, maybe_referrer, requested_module_type)
       .await
@@ -1228,6 +1243,19 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       options.requested_module_type,
       RequestedModuleType::Text | RequestedModuleType::Bytes
     ) {
+      // Text/Bytes imports skip graph preparation, so the file watcher's
+      // graph reporter never sees them. For dynamic imports, register the
+      // file directly with the watcher so editing it triggers a reload.
+      // (Static text/bytes imports are picked up by the initial graph
+      // build via deno_graph's asset/text edge analysis.)
+      if options.is_dynamic_import
+        && let Some(watcher_communicator) =
+          self.0.shared.watcher_communicator.as_ref()
+        && specifier.scheme() == "file"
+        && let Ok(file_path) = specifier.to_file_path()
+      {
+        let _ = watcher_communicator.watch_paths(vec![file_path]);
+      }
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 

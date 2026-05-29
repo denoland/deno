@@ -5,6 +5,7 @@ import {
   PerformanceEntry,
   PerformanceObserver,
 } from "node:perf_hooks";
+import http from "node:http";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 
 // Basic performance API tests removed - covered by Node compat tests:
@@ -134,4 +135,90 @@ Deno.test("[perf_hooks]: PerformanceObserver takeRecords", () => {
 
   observer.disconnect();
   performance.clearMarks();
+});
+
+Deno.test("[perf_hooks]: PerformanceObserver observes node:http server entries", async () => {
+  const server = http.createServer((_req, res) => {
+    res.end("ok");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let observer: PerformanceObserver | undefined;
+  const entryPromise = new Promise<PerformanceEntry>((resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("Timed out waiting for HTTP performance entry")),
+      1000,
+    );
+    observer = new PerformanceObserver((list) => {
+      const entry = list.getEntries().find((entry) =>
+        entry.entryType === "http"
+      );
+      if (entry) {
+        clearTimeout(timer);
+        resolve(entry);
+      }
+    });
+    observer.observe({ entryTypes: ["http"] });
+  });
+
+  try {
+    const address = server.address();
+    if (!address || typeof address !== "object") {
+      throw new Error("Server did not listen on a TCP address");
+    }
+    const response = await fetch(`http://127.0.0.1:${address.port}/observed`);
+    assertEquals(await response.text(), "ok");
+
+    const entry = await entryPromise;
+    assertEquals(entry.name, "HttpRequest");
+    assertEquals(entry.entryType, "http");
+    assert(entry.duration >= 0);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    observer?.disconnect();
+    await new Promise<void>((resolve, reject) =>
+      server.close((err) => err ? reject(err) : resolve())
+    );
+  }
+});
+
+Deno.test("[perf_hooks]: node:http server entries are not retroactive", async () => {
+  let finishResponse: (() => void) | undefined;
+  let resolveRequestStarted = () => {};
+  const requestStarted = new Promise<void>((resolve) => {
+    resolveRequestStarted = resolve;
+  });
+  const server = http.createServer((_req, res) => {
+    finishResponse = () => res.end("ok");
+    resolveRequestStarted();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+
+  const entries: PerformanceEntry[] = [];
+  const observer = new PerformanceObserver((list) => {
+    entries.push(...list.getEntries());
+  });
+
+  try {
+    const address = server.address();
+    if (!address || typeof address !== "object") {
+      throw new Error("Server did not listen on a TCP address");
+    }
+    const responsePromise = fetch(`http://127.0.0.1:${address.port}/late`);
+    await requestStarted;
+
+    observer.observe({ entryTypes: ["http"] });
+    finishResponse?.();
+    const response = await responsePromise;
+    assertEquals(await response.text(), "ok");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    assertEquals(entries.length, 0);
+  } finally {
+    observer.disconnect();
+    await new Promise<void>((resolve, reject) =>
+      server.close((err) => err ? reject(err) : resolve())
+    );
+  }
 });

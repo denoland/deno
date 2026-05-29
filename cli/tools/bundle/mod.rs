@@ -243,6 +243,7 @@ pub async fn bundle_init(
     parsed_source_cache: factory.parsed_source_cache()?.clone(),
     cjs_tracker: factory.cjs_tracker()?.clone(),
     emitter: factory.emitter()?.clone(),
+    pkg_json_resolver: factory.pkg_json_resolver()?.clone(),
     deferred_resolve_errors: Default::default(),
     virtual_modules: None,
     initial_cwd: deno_path_util::url_from_directory_path(
@@ -850,6 +851,10 @@ pub struct DeferredResolveError {
   error: ResolveWithGraphError,
 }
 
+/// Path prefix used to mark modules disabled via a `browser` map (`"foo": false`).
+/// `\0` keeps it from colliding with any real filesystem path.
+const BROWSER_DISABLED_PREFIX: &str = "\0deno-browser-disabled:";
+
 pub struct DenoPluginHandler {
   file_fetcher: Arc<CliFileFetcher>,
   resolver: Arc<CliResolver>,
@@ -865,6 +870,7 @@ pub struct DenoPluginHandler {
   parsed_source_cache: Arc<ParsedSourceCache>,
   cjs_tracker: Arc<CliCjsTracker>,
   emitter: Arc<CliEmitter>,
+  pkg_json_resolver: Arc<crate::node::CliPackageJsonResolver>,
   initial_cwd: Url,
 }
 
@@ -877,6 +883,75 @@ impl DenoPluginHandler {
     if let Some(virtual_modules) = &self.virtual_modules {
       virtual_modules.insert(path.to_string(), module);
     }
+  }
+
+  /// Determines whether the resolved file has side effects by consulting
+  /// the closest `package.json`'s `sideEffects` field. Returns `Some(false)`
+  /// when the file is known to be side-effect-free (which lets esbuild
+  /// tree-shake unused exports), and `None` otherwise (esbuild's default
+  /// is to assume side effects).
+  fn resolve_side_effects(&self, resolved: &str) -> Option<bool> {
+    // Only inspect concrete local file paths. URLs (jsr:, https:, data:, etc.)
+    // are handled elsewhere and don't have a package.json context.
+    if resolved.starts_with("jsr:")
+      || resolved.starts_with("https:")
+      || resolved.starts_with("http:")
+      || resolved.starts_with("data:")
+      || resolved.starts_with("node:")
+      || resolved.starts_with("bun:")
+      || resolved.starts_with("npm:")
+    {
+      return None;
+    }
+    let file_path = std::path::Path::new(resolved);
+    if !file_path.is_absolute() {
+      return None;
+    }
+    let pkg_json = self
+      .pkg_json_resolver
+      .get_closest_package_json(file_path)
+      .ok()
+      .flatten()?;
+    match pkg_json.side_effects.as_ref()? {
+      deno_package_json::PackageJsonSideEffects::Bool(true) => None,
+      deno_package_json::PackageJsonSideEffects::Bool(false) => Some(false),
+      deno_package_json::PackageJsonSideEffects::Patterns(patterns) => {
+        let rel = file_path.strip_prefix(pkg_json.dir_path()).ok()?;
+        let rel_str = rel.to_string_lossy().replace('\\', "/");
+        for pattern in patterns {
+          if side_effects_pattern_matches(pattern, &rel_str) {
+            return None;
+          }
+        }
+        Some(false)
+      }
+    }
+  }
+}
+
+/// Matches a path (relative to the package root, using forward slashes)
+/// against a `sideEffects` entry from a `package.json`.
+///
+/// Per webpack's convention, a pattern without a leading `./`, `/`, or `*`
+/// is implicitly treated as `**/<pattern>`.
+fn side_effects_pattern_matches(pattern: &str, rel_path: &str) -> bool {
+  let normalized = if let Some(rest) = pattern.strip_prefix("./") {
+    rest.to_string()
+  } else if pattern.starts_with('/') {
+    pattern.trim_start_matches('/').to_string()
+  } else {
+    format!("**/{pattern}")
+  };
+  match glob::Pattern::new(&normalized) {
+    Ok(p) => p.matches_with(
+      rel_path,
+      glob::MatchOptions {
+        case_sensitive: true,
+        require_literal_separator: false,
+        require_literal_leading_dot: false,
+      },
+    ),
+    Err(_) => false,
   }
 }
 
@@ -942,6 +1017,17 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     let result = match result {
       Ok(r) => r,
       Err(e) => {
+        // A `browser` map entry of `false` disables the module: return a
+        // sentinel path that `on_load` recognizes and turns into an empty
+        // module, rather than surfacing the resolver error.
+        if let Some(orig) = browser_map_disabled_specifier(&e) {
+          return Ok(Some(esbuild_client::OnResolveResult {
+            path: Some(format!("{BROWSER_DISABLED_PREFIX}{orig}")),
+            namespace: Some("deno".into()),
+            plugin_name: Some("deno".to_string()),
+            ..Default::default()
+          }));
+        }
         return Ok(Some(esbuild_client::OnResolveResult {
           errors: Some(vec![esbuild_client::protocol::PartialMessage {
             id: "deno_error".into(),
@@ -966,6 +1052,12 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
           .map(|matcher| matcher.is_post_resolve_match(&r))
           .unwrap_or(false);
 
+      let side_effects = if is_external {
+        None
+      } else {
+        self.resolve_side_effects(&r)
+      };
+
       esbuild_client::OnResolveResult {
         namespace: if r.starts_with("jsr:")
           || r.starts_with("https:")
@@ -980,6 +1072,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
         path: Some(r),
         plugin_name: Some("deno".to_string()),
         plugin_data: None,
+        side_effects,
         ..Default::default()
       }
     }))
@@ -990,6 +1083,13 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     args: esbuild_client::OnLoadArgs,
   ) -> Result<Option<esbuild_client::OnLoadResult>, AnyError> {
     log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_load"));
+    if args.path.starts_with(BROWSER_DISABLED_PREFIX) {
+      return Ok(Some(esbuild_client::OnLoadResult {
+        contents: Some(b"module.exports = {};\n".to_vec()),
+        loader: Some(esbuild_client::BuiltinLoader::Js),
+        ..Default::default()
+      }));
+    }
     if let Some(virtual_modules) = &self.virtual_modules
       && let Some(module) = virtual_modules.get(&args.path)
     {
@@ -1135,6 +1235,29 @@ impl BundleLoadError {
       _ => false,
     }
   }
+}
+
+/// Walk a `BundleError` looking for a `BrowserMapDisabled` error returned
+/// by `node_resolver`. Returns the original specifier so the bundle can
+/// emit an empty-module stub in place of the resolution.
+fn browser_map_disabled_specifier(error: &BundleError) -> Option<String> {
+  let BundleErrorKind::Resolver(resolve_err) = error.as_kind() else {
+    return None;
+  };
+  let deno_resolver::graph::ResolveWithGraphErrorKind::Resolve(e) =
+    resolve_err.as_kind()
+  else {
+    return None;
+  };
+  let deno_resolver::DenoResolveErrorKind::Node(node_err) = e.as_kind() else {
+    return None;
+  };
+  let node_resolver::errors::NodeResolveErrorKind::BrowserMapDisabled(disabled) =
+    node_err.as_kind()
+  else {
+    return None;
+  };
+  Some(disabled.specifier.clone())
 }
 
 fn maybe_ignorable_resolution_error(

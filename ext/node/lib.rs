@@ -113,8 +113,11 @@ fn op_node_load_env_file(
   #[string] path: &str,
 ) -> Result<(), DotEnvLoadErr> {
   let fs = state.borrow::<deno_fs::FileSystemRc>().clone();
-  let path = state
-    .borrow::<PermissionsContainer>()
+  let permissions = state.borrow::<PermissionsContainer>().clone();
+  permissions
+    .check_env_all()
+    .map_err(DotEnvLoadErr::Permission)?;
+  let path = permissions
     .check_open(
       Cow::Borrowed(Path::new(path)),
       OpenAccessKind::ReadNoFollow,
@@ -423,7 +426,6 @@ deno_core::extension!(deno_node,
   esm_entry_point = "node:module",
   esm = [
     dir "polyfills",
-    "internal/compile_cache.js",
     "internal_binding/mod.ts",
     "node:module" = "01_require.js",
     "node:process" = "process.ts",
@@ -879,4 +881,20 @@ pub fn create_host_defined_options<'s>(
   let value = v8::Boolean::new(scope, true);
   host_defined_options.set(scope, 0, value.into());
   host_defined_options.into()
+}
+
+/// Build host-defined options that mark a script as having been compiled
+/// by `node:vm` (e.g. via `vm.Script`, `vm.runInThisContext`,
+/// `vm.compileFunction`, `vm.SourceTextModule`) without an
+/// `importModuleDynamically` callback. When V8 invokes the dynamic-import
+/// host callback for such a script, the runtime rejects the import with
+/// `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`, matching Node.js. Without
+/// this marker, sandboxed `vm` code could escape via `import()`.
+pub fn create_vm_dynamic_import_missing_host_defined_options<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Data> {
+  deno_core::create_host_defined_options_with_kind(
+    scope,
+    deno_core::host_defined_options_kind::VM_DYNAMIC_IMPORT_MISSING,
+  )
 }

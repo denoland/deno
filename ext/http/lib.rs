@@ -27,7 +27,6 @@ use async_compression::tokio::write::BrotliEncoder;
 use async_compression::tokio::write::GzipEncoder;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
-use cache_control::CacheControl;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -107,6 +106,25 @@ pub use request_properties::HttpListenProperties;
 pub use request_properties::HttpPropertyExtractor;
 pub use request_properties::HttpRequestProperties;
 pub use service::UpgradeUnavailableError;
+
+fn cache_control_has_no_transform(value: &str) -> Option<bool> {
+  let mut no_transform = false;
+  for token in value.split(',') {
+    let (key, val) = {
+      let mut split = token.split('=').map(|s| s.trim());
+      (split.next().unwrap(), split.next())
+    };
+
+    match key {
+      "max-age" | "max-stale" | "min-fresh" => {
+        val.and_then(|v| v.parse::<u64>().ok())?;
+      }
+      "no-transform" => no_transform = true,
+      _ => (),
+    }
+  }
+  Some(no_transform)
+}
 
 struct OtelCollectors {
   duration: Histogram<f64>,
@@ -1338,8 +1356,7 @@ fn should_compress(headers: &hyper_v014::HeaderMap) -> bool {
       Ok(s) => s,
       Err(_) => return Some(true),
     };
-    let c = CacheControl::from_value(s)?;
-    Some(c.no_transform)
+    cache_control_has_no_transform(s)
   }
   // we skip compression if the `content-range` header value is set, as it
   // indicates the contents of the body were negotiated based directly
@@ -1803,6 +1820,25 @@ fn op_http_notify_serving() {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn cache_control_no_transform_parse_matches_dependency_quirks() {
+    assert_eq!(cache_control_has_no_transform(""), Some(false));
+    assert_eq!(cache_control_has_no_transform("no-transform"), Some(true));
+    assert_eq!(
+      cache_control_has_no_transform("public, no-transform=anything"),
+      Some(true)
+    );
+    assert_eq!(cache_control_has_no_transform("max-age=bad"), None);
+    assert_eq!(
+      cache_control_has_no_transform("no-transform, max-age=bad"),
+      None
+    );
+    assert_eq!(
+      cache_control_has_no_transform("max-age=60=ignored, no-transform"),
+      Some(true)
+    );
+  }
 
   #[test]
   fn test_parse_serve_address() {

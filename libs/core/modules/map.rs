@@ -2710,21 +2710,31 @@ impl ModuleMap {
       .contains(specifier)
   }
 
-  /// Try to take a lazy-loaded ESM source by specifier. Returns the source
-  /// code if found, removing it from the lazy sources map.
+  /// Get a lazy-loaded ESM source by specifier. Returns a cheap clone of the
+  /// source code if found, keeping it in the lazy sources map so concurrent
+  /// loads of the same lazy specifier from independent `RecursiveModuleLoad`
+  /// instances each get their own copy. The duplicate `ModuleSource`s are
+  /// deduplicated by `new_module_with_pending`'s `get_id` check at register
+  /// time.
   pub(crate) fn take_lazy_esm_source(
     &self,
     specifier: &str,
   ) -> Option<ModuleCodeString> {
     let data = self.data.borrow();
-    let source = data.lazy_esm_sources.borrow_mut().remove(specifier);
-    if source.is_some() {
-      data
-        .consumed_lazy_specifiers
-        .borrow_mut()
-        .insert(specifier.to_string());
-    }
-    source
+    let mut sources = data.lazy_esm_sources.borrow_mut();
+    let entry = sources.get_mut(specifier)?;
+    // `into_cheap_copy` always returns two cheap handles to the same backing
+    // storage (Arc or Static), so we can keep one in the map and return the
+    // other. The Owned variant gets promoted to Arc in the process.
+    let placeholder = ModuleCodeString::from_static("");
+    let owned = std::mem::replace(entry, placeholder);
+    let (keep, give) = owned.into_cheap_copy();
+    *entry = keep;
+    data
+      .consumed_lazy_specifiers
+      .borrow_mut()
+      .insert(specifier.to_string());
+    Some(give)
   }
 
   pub(crate) fn add_lazy_loaded_esm_source(
