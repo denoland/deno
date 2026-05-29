@@ -524,9 +524,12 @@ async fn setup_config_dir(
 
   // create cloned flags to run cache_top_level_deps
   let mut new_flags = flags.clone();
+  // Pre-resolve cwd-relative paths against the user's original cwd before
+  // switching `initial_cwd` to the generated install dir, otherwise they'd
+  // be re-resolved against `dir` and point at non-existent files.
   if let Some(import_map_path) = &flags.import_map_path {
-    let import_map_url = resolve_url_or_path(import_map_path, cwd)?;
-    new_flags.import_map_path = Some(import_map_url.to_string());
+    new_flags.import_map_path =
+      Some(resolve_url_or_path(import_map_path, cwd)?.to_string());
   }
   new_flags.initial_cwd = Some(dir.clone());
   new_flags.node_modules_dir = flags.node_modules_dir;

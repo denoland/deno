@@ -177,6 +177,9 @@ fn install_basic_global() {
   assert!(!file_path.exists());
 }
 
+// Regression test for #32798: a relative `--import-map` passed to a global
+// install (typically via `deno task`) must resolve against the user's cwd,
+// not the generated `~/.deno/bin/.<name>/` install dir.
 #[test]
 fn install_global_from_task_with_relative_import_map() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
