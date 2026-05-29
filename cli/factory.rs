@@ -1134,6 +1134,7 @@ impl CliFactory {
       self.resolver().await?.clone(),
       self.sys(),
       maybe_eszip_loader,
+      self.watcher_communicator.clone(),
     );
 
     Ok(module_loader_factory)

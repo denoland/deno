@@ -580,6 +580,7 @@ impl CliOptions {
       DenoSubcommand::Add(_) => GraphKind::All,
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
+      DenoSubcommand::Ci(_) => GraphKind::All,
       DenoSubcommand::Install(InstallFlags::Local(
         InstallFlagsLocal::Entrypoints(flags),
         _,

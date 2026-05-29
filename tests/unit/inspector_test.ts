@@ -1469,3 +1469,57 @@ Deno.test("inspector_node_runtime_api_url", async () => {
     "inspector.url() should return the same URL as stderr",
   );
 });
+
+// Regression test for https://github.com/denoland/deno/issues/30176.
+// `console.group(label)` must emit a paired `log` event so Chrome DevTools
+// renders the label inside the group container; otherwise the group appears
+// empty and the visible nesting drifts out of alignment with the CLI.
+Deno.test("inspector_console_group_emits_label_log", async () => {
+  const script = `${testdataPath}/inspector_group.js`;
+  // `--inspect-wait` keeps the script paused until the inspector calls
+  // `Runtime.runIfWaitingForDebugger`. Avoid `--inspect-brk` here: that mode
+  // also pauses on the first line and would require an extra
+  // `Debugger.resume` round-trip, which races with this test's expectations.
+  const tester = await InspectorTester.create(
+    ["run", "-A", "--inspect-wait=0", script],
+    { notificationFilter: ignoreScriptParsed },
+  );
+
+  try {
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+    ]);
+    await tester.expectResponse(1);
+    await tester.expectResponse(2);
+    await tester.expectNotification("Runtime.executionContextCreated");
+
+    tester.send({ id: 3, method: "Runtime.runIfWaitingForDebugger" });
+    await tester.expectResponse(3);
+
+    // Sentinel "done" log marks the end of the script-emitted console events.
+    const events: Array<{ type: string; arg: string | undefined }> = [];
+    while (true) {
+      const msg = await tester.expectNotification("Runtime.consoleAPICalled");
+      // deno-lint-ignore no-explicit-any
+      const params = msg.params as any;
+      const arg = params.args?.[0]?.value;
+      events.push({ type: params.type, arg });
+      if (params.type === "log" && arg === "done") break;
+    }
+
+    assertEquals(events, [
+      { type: "startGroup", arg: "test1" },
+      { type: "log", arg: "test1" },
+      { type: "startGroup", arg: "test2" },
+      { type: "log", arg: "test2" },
+      { type: "endGroup", arg: "console.groupEnd" },
+      { type: "endGroup", arg: "console.groupEnd" },
+      { type: "log", arg: "done" },
+    ]);
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+  }
+});
