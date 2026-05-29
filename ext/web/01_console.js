@@ -243,19 +243,6 @@ function getStderrNoColor() {
   return noColorStderr();
 }
 
-class AssertionError extends Error {
-  name = "AssertionError";
-  constructor(message) {
-    super(message);
-  }
-}
-
-function assert(cond, msg = "Assertion failed") {
-  if (!cond) {
-    throw new AssertionError(msg);
-  }
-}
-
 // Attempt to JSON.stringify, returning "[Circular]" only for circular
 // reference errors (matching Node.js behavior).
 const firstErrorLine = (error) =>
@@ -1434,29 +1421,55 @@ function getCtxStyle(value, constructor, tag) {
 // Look up the keys of the object.
 function getKeys(value, showHidden) {
   let keys;
-  const symbols = ObjectGetOwnPropertySymbols(value);
+  let symbols;
+  try {
+    symbols = ObjectGetOwnPropertySymbols(value);
+  } catch {
+    // `ObjectGetOwnPropertySymbols` triggers the `[[OwnPropertyKeys]]`
+    // internal method, which is observable on exotic objects (e.g. a
+    // Proxy with a throwing `ownKeys` trap). The inspect path normally
+    // unwraps proxies to their target before reaching here, so this is
+    // purely defensive.
+    symbols = [];
+  }
   if (showHidden) {
-    keys = ObjectGetOwnPropertyNames(value);
+    try {
+      keys = ObjectGetOwnPropertyNames(value);
+    } catch {
+      keys = [];
+    }
     if (symbols.length !== 0) {
       ArrayPrototypePushApply(keys, symbols);
     }
   } else {
-    // This might throw if `value` is a Module Namespace Object from an
-    // unevaluated module, but we don't want to perform the actual type
-    // check because it's expensive.
+    // `ObjectKeys` can throw for a Module Namespace Object from an
+    // unevaluated module (ReferenceError), and could in principle throw
+    // for other exotic objects whose property-descriptor lookups have
+    // side effects (e.g. a Proxy whose `getOwnPropertyDescriptor` trap
+    // throws -- see denoland/deno#24980). The proxy unwrap in
+    // `formatValue` should prevent the proxy case from reaching here,
+    // but we fall back to `ObjectGetOwnPropertyNames` for any failure
+    // rather than asserting so an unexpected case degrades gracefully
+    // instead of surfacing as "AssertionError: Assertion failed".
     // TODO(devsnek): track https://github.com/tc39/ecma262/issues/1209
     // and modify this logic as needed.
     try {
       keys = ObjectKeys(value);
-    } catch (err) {
-      assert(
-        isNativeError(err) && err.name === "ReferenceError" &&
-          isModuleNamespaceObject(value),
-      );
-      keys = ObjectGetOwnPropertyNames(value);
+    } catch {
+      try {
+        keys = ObjectGetOwnPropertyNames(value);
+      } catch {
+        keys = [];
+      }
     }
     if (symbols.length !== 0) {
-      const filter = (key) => ObjectPrototypePropertyIsEnumerable(value, key);
+      const filter = (key) => {
+        try {
+          return ObjectPrototypePropertyIsEnumerable(value, key);
+        } catch {
+          return false;
+        }
+      };
       ArrayPrototypePushApply(keys, ArrayPrototypeFilter(symbols, filter));
     }
   }
