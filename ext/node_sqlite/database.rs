@@ -578,6 +578,28 @@ pub struct DatabaseSync {
   location: String,
   ignore_next_sqlite_error: Rc<Cell<bool>>,
   authorizer_data: Rc<RefCell<Option<*mut AuthorizerData>>>,
+  // Non-zero while a user-defined callback is on the stack; close() refuses
+  // to free the connection in that state to avoid a SQLite VDBE use-after-free.
+  callback_depth: Rc<Cell<usize>>,
+}
+
+struct CallbackDepthGuard {
+  depth: Rc<Cell<usize>>,
+}
+
+impl CallbackDepthGuard {
+  fn new(depth: &Rc<Cell<usize>>) -> Self {
+    depth.set(depth.get().saturating_add(1));
+    Self {
+      depth: Rc::clone(depth),
+    }
+  }
+}
+
+impl Drop for CallbackDepthGuard {
+  fn drop(&mut self) {
+    self.depth.set(self.depth.get().saturating_sub(1));
+  }
 }
 
 // SAFETY: we're sure this can be GCed
@@ -834,6 +856,7 @@ impl DatabaseSync {
       options,
       ignore_next_sqlite_error: Rc::new(Cell::new(false)),
       authorizer_data: Rc::new(RefCell::new(None)),
+      callback_depth: Rc::new(Cell::new(0)),
     })
   }
 
@@ -879,6 +902,12 @@ impl DatabaseSync {
   fn close(&self) -> Result<(), SqliteError> {
     if self.conn.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);
+    }
+
+    // Refuse to close while a user-defined callback is on the SQLite stack —
+    // freeing the in-flight statement would be a VDBE use-after-free.
+    if self.callback_depth.get() > 0 {
+      return Err(SqliteError::ActiveCallback);
     }
 
     // Finalize all prepared statements
@@ -1213,6 +1242,7 @@ impl DatabaseSync {
       context,
       use_big_int_arguments,
       ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
+      callback_depth: Rc::clone(&self.callback_depth),
     });
     let data_ptr = Box::into_raw(data);
 
@@ -1384,6 +1414,9 @@ impl DatabaseSync {
     // SAFETY: lifetime of the connection is guaranteed by reference
     // counting.
     let raw_handle = unsafe { db.handle() };
+
+    // Block close() while filter/onConflict callbacks may be on the stack.
+    let _apply_depth_guard = CallbackDepthGuard::new(&self.callback_depth);
 
     // SAFETY: `changeset` points to a valid memory location and its
     // length is correct. `ctx` is stack allocated and its lifetime is
@@ -1659,6 +1692,7 @@ impl DatabaseSync {
       callback: callback_global,
       context: context_global,
       ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
+      callback_depth: Rc::clone(&self.callback_depth),
     });
     let data_ptr = Box::into_raw(data);
 
@@ -1787,6 +1821,7 @@ impl DatabaseSync {
       inverse_fn,
       final_fn,
       ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
+      callback_depth: Rc::clone(&self.callback_depth),
     });
 
     let custom_aggregate_ptr = Box::into_raw(custom_aggregate);
@@ -2100,6 +2135,7 @@ struct CustomAggregate {
   inverse_fn: Option<NonNull<v8::Function>>,
   final_fn: Option<NonNull<v8::Function>>,
   ignore_next_sqlite_error: Rc<Cell<bool>>,
+  callback_depth: Rc<Cell<usize>>,
 }
 
 enum AggregateStepKind {
@@ -2174,6 +2210,8 @@ unsafe fn custom_aggregate_step_base(
     }
 
     let data = &*data_ptr;
+    // Block close() from freeing the in-flight statement under the VDBE.
+    let _depth_guard = CallbackDepthGuard::new(&data.callback_depth);
     let context_local: v8::Local<v8::Context> =
       std::mem::transmute(data.context.as_ptr());
 
@@ -2278,6 +2316,8 @@ unsafe fn custom_aggregate_value_base(
     }
 
     let data = &*data_ptr;
+    // Block close() from freeing the in-flight statement under the VDBE.
+    let _depth_guard = CallbackDepthGuard::new(&data.callback_depth);
     let context_local: v8::Local<v8::Context> =
       std::mem::transmute(data.context.as_ptr());
 
@@ -2406,12 +2446,14 @@ struct CustomFunctionData {
   context: NonNull<v8::Context>,
   use_big_int_arguments: bool,
   ignore_next_sqlite_error: Rc<Cell<bool>>,
+  callback_depth: Rc<Cell<usize>>,
 }
 
 struct AuthorizerData {
   callback: NonNull<v8::Function>,
   context: NonNull<v8::Context>,
   ignore_next_sqlite_error: Rc<Cell<bool>>,
+  callback_depth: Rc<Cell<usize>>,
 }
 
 unsafe extern "C" fn custom_function_handler(
@@ -2432,6 +2474,8 @@ unsafe extern "C" fn custom_function_handler(
     }
 
     let data = &*data_ptr;
+    // Block close() from freeing the in-flight statement under the VDBE.
+    let _depth_guard = CallbackDepthGuard::new(&data.callback_depth);
     let context_local: v8::Local<v8::Context> =
       std::mem::transmute(data.context.as_ptr());
 
@@ -2685,6 +2729,8 @@ unsafe extern "C" fn authorizer_callback(
     }
 
     let data = &*data_ptr;
+    // Block close() from freeing the in-flight statement under the VDBE.
+    let _depth_guard = CallbackDepthGuard::new(&data.callback_depth);
     let context_local: v8::Local<v8::Context> =
       std::mem::transmute(data.context.as_ptr());
 
