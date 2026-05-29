@@ -364,15 +364,22 @@ pub async fn bundle(
 /// resulting JavaScript bytes in memory. The Deno-specific `createRequire`
 /// shim is applied to the output so CJS `require()` calls keep working in
 /// the compiled binary.
+///
+/// `external` is the set of import patterns (typically npm package names) to
+/// leave unbundled. For `deno compile --bundle` this is populated with the
+/// names of packages that ship native `.node` addons so their internal
+/// `require('./X.node')` calls keep their original `__dirname` context at
+/// runtime.
 pub async fn bundle_for_compile(
   flags: Arc<Flags>,
   entrypoint: String,
+  external: Vec<String>,
 ) -> Result<Vec<u8>, AnyError> {
   let bundle_flags = BundleFlags {
     entrypoints: vec![entrypoint],
     output_path: None,
     output_dir: None,
-    external: vec![],
+    external,
     format: BundleFormat::Esm,
     minify: false,
     keep_names: false,

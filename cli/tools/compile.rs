@@ -172,7 +172,13 @@ pub async fn compile(
       "{} deno compile --bundle is experimental and may change.",
       colors::yellow("Warning")
     );
-    let bundle_path = run_bundle_for_compile(&flags, &compile_flags).await?;
+    let BundleForCompileResult {
+      path: bundle_path,
+      needs_npm_embed,
+    } = run_bundle_for_compile(&flags, &compile_flags)
+      .boxed_local()
+      .await?;
+    flags.internal.compile_bundle_embed_node_modules = needs_npm_embed;
     compile_flags.source_file = bundle_path.display().to_string();
     cleanup_paths.push(bundle_path);
     flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
@@ -188,14 +194,31 @@ pub async fn compile(
   }
 }
 
+struct BundleForCompileResult {
+  path: PathBuf,
+  /// True when esbuild's CJS-from-ESM wrapper appears in the bundle, which
+  /// means runtime require()s against npm package paths will happen. The
+  /// standalone binary writer reads this to decide whether to embed the
+  /// npm tree.
+  needs_npm_embed: bool,
+}
+
 async fn run_bundle_for_compile(
   flags: &Flags,
   compile_flags: &CompileFlags,
-) -> Result<PathBuf, AnyError> {
+) -> Result<BundleForCompileResult, AnyError> {
   let bundle_flags = Arc::new(flags.clone());
+
+  // Always leave `.node` files external. esbuild has no loader for them
+  // and would error if it tried to inline a native binary; with this
+  // pattern the require() calls are emitted verbatim and resolved at
+  // runtime against the embedded VFS by the native addon loader.
+  let external = vec!["*.node".to_string()];
+
   let bytes = super::bundle::bundle_for_compile(
     bundle_flags,
     compile_flags.source_file.clone(),
+    external,
   )
   .boxed_local()
   .await?;
@@ -207,10 +230,82 @@ async fn run_bundle_for_compile(
     ".deno_compile_bundle_{:08x}.mjs",
     rand::thread_rng().r#gen::<u32>()
   ));
-  std::fs::write(&bundle_path, &bytes).with_context(|| {
+
+  // esbuild's CJS-from-ESM wrapper hardcodes the absolute on-disk path of
+  // each CJS module it imports. At runtime the embedded VFS is mounted
+  // somewhere else (a temp dir under the user's $TMPDIR), so those paths
+  // miss. Rewrite each such literal to a runtime-relative resolution
+  // against `import.meta.url` so it survives the relocation.
+  let RewriteResult {
+    bytes: rewritten,
+    rewrote_paths,
+  } = rewrite_absolute_bundle_paths(&bytes, &initial_cwd)?;
+
+  std::fs::write(&bundle_path, &rewritten).with_context(|| {
     format!("Writing bundled entrypoint to '{}'", bundle_path.display())
   })?;
-  Ok(bundle_path)
+  Ok(BundleForCompileResult {
+    path: bundle_path,
+    needs_npm_embed: rewrote_paths,
+  })
+}
+
+struct RewriteResult {
+  bytes: Vec<u8>,
+  rewrote_paths: bool,
+}
+
+fn rewrite_absolute_bundle_paths(
+  bundle_bytes: &[u8],
+  bundle_dir: &Path,
+) -> Result<RewriteResult, AnyError> {
+  let src = std::str::from_utf8(bundle_bytes)
+    .context("Bundle output is not valid UTF-8")?;
+
+  // Match string literals that look like absolute Unix paths to a JS/JSON
+  // source file. Conservative on extension on purpose — we don't want to
+  // rewrite arbitrary user-provided strings.
+  let pattern = lazy_regex::regex!(r#""(/[^"\n]+\.(?:js|cjs|mjs|json))""#);
+
+  let mut any_rewrite = false;
+  let rewritten = pattern.replace_all(src, |caps: &regex::Captures<'_>| {
+    let abs = caps.get(1).unwrap().as_str();
+    let path = Path::new(abs);
+    // Only rewrite paths that actually exist on disk at build time —
+    // these are the ones the bundler emitted referring to files it
+    // expects to be reachable through the VFS at runtime.
+    if !path.exists() {
+      return caps[0].to_string();
+    }
+    let Some(rel) = pathdiff::diff_paths(path, bundle_dir) else {
+      return caps[0].to_string();
+    };
+    any_rewrite = true;
+    let rel_str: String = rel.to_string_lossy().replace('\\', "/");
+    format!("__internalResolveBundlePath({:?})", rel_str.as_str())
+  });
+
+  if !any_rewrite {
+    return Ok(RewriteResult {
+      bytes: bundle_bytes.to_vec(),
+      rewrote_paths: false,
+    });
+  }
+
+  let prefix = r#"// Injected by deno compile --bundle: resolve absolute paths emitted by
+// esbuild's CJS-from-ESM wrapper against the bundle file's runtime
+// location instead of the build-time absolute path.
+import { fileURLToPath as __internalFileURLToPath } from "node:url";
+import * as __internalPath from "node:path";
+const __internalBundleDir = __internalPath.dirname(__internalFileURLToPath(import.meta.url));
+function __internalResolveBundlePath(rel) {
+  return __internalPath.join(__internalBundleDir, rel);
+}
+"#;
+  Ok(RewriteResult {
+    bytes: format!("{prefix}{rewritten}").into_bytes(),
+    rewrote_paths: true,
+  })
 }
 
 async fn compile_binary(

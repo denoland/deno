@@ -396,9 +396,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
     let progress_bar = ProgressBar::new(ProgressBarStyle::ProgressBars);
     // With --bundle the JS graph is self-contained, so the whole npm tree
-    // is intentionally left out of the binary.
+    // is intentionally left out of the binary. The exception is packages
+    // that ship native (.node) addons: those must stay external during
+    // bundling (so their internal `require('./X.node')` keeps the right
+    // `__dirname` context) and their installed folder, plus the closure
+    // of their dependencies, must be embedded in the VFS so resolution
+    // works at runtime.
     let npm_snapshot = if compile_flags.bundle {
-      None
+      self
+        .fill_bundle_native_addon_vfs(&mut vfs, &progress_bar)
+        .context("Embedding native addon packages.")?
     } else {
       match &self.npm_resolver {
         CliNpmResolver::Managed(managed) => {
@@ -930,6 +937,59 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         },
       )
       .await
+  }
+
+  /// Decide what to embed for `deno compile --bundle`. The bundle itself
+  /// is always shipped; this method controls whether the npm tree comes
+  /// along. We embed it in two cases:
+  ///
+  /// 1. The bundled output references npm packages via absolute file
+  ///    paths (esbuild's CJS-from-ESM wrapper). Signalled by the
+  ///    `compile_bundle_embed_node_modules` internal flag, set by
+  ///    `compile.rs` after rewriting those paths.
+  /// 2. The dependency tree contains a package with a `.node` native
+  ///    addon. Even if no CJS wrapper was emitted, the bundled code
+  ///    still needs the addon files reachable through node-module
+  ///    resolution at runtime.
+  ///
+  /// Pure-ESM bundles with no native addons skip this entirely and ship
+  /// nothing npm-related — a tiny self-contained binary.
+  fn fill_bundle_native_addon_vfs(
+    &self,
+    builder: &mut VfsBuilder,
+    progress_bar: &ProgressBar,
+  ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
+    let needs_for_cjs_wrapper =
+      self.cli_options.compile_bundle_embed_node_modules();
+    let needs_for_native_addons = !needs_for_cjs_wrapper
+      && !super::native_addons::find_native_addon_packages(
+        self.npm_resolver,
+        &self.npm_system_info,
+      )?
+      .is_empty();
+    if !needs_for_cjs_wrapper && !needs_for_native_addons {
+      return Ok(None);
+    }
+
+    match self.npm_resolver {
+      CliNpmResolver::Managed(managed) => {
+        let snapshot = managed
+          .resolution()
+          .snapshot()
+          .as_valid_serialized_for_system(&self.npm_system_info);
+        if snapshot.as_serialized().packages.is_empty() {
+          return Ok(None);
+        }
+        self
+          .fill_npm_vfs(builder, Some(&snapshot), progress_bar)
+          .context("Building npm vfs for native addon support.")?;
+        Ok(Some(snapshot))
+      }
+      CliNpmResolver::Byonm(_) => {
+        self.fill_npm_vfs(builder, None, progress_bar)?;
+        Ok(None)
+      }
+    }
   }
 
   fn fill_npm_vfs(
