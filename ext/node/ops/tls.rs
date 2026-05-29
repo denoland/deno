@@ -25,7 +25,6 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::op2;
-use deno_native_certs::load_native_certs;
 use deno_net::DefaultTlsOptions;
 use deno_net::UnsafelyIgnoreCertificateErrors;
 use deno_net::ops::NetError;
@@ -40,6 +39,7 @@ use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
 use deno_tls::create_client_config;
+use deno_tls::load_platform_root_certs;
 use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls::pki_types::ServerName;
 use rustls_tokio_stream::TlsStream;
@@ -145,7 +145,7 @@ fn parse_extra_ca_certs(sys: &(impl EnvVar + FsRead)) -> Vec<String> {
 }
 
 fn load_system_ca_certificates() -> Result<Vec<String>, CaCertificatesError> {
-  let mut certs = load_native_certs()
+  let mut certs = load_platform_root_certs()
     .map_err(|err| CaCertificatesError::Other(err.to_string()))?
     .into_iter()
     .map(|cert| cert_der_to_pem(&cert.0))

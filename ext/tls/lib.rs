@@ -64,6 +64,73 @@ pub trait RootCertStoreProvider: Send + Sync {
   fn get_or_try_init(&self) -> Result<&RootCertStore, JsErrorBox>;
 }
 
+/// Common locations where Linux distributions store the root CA bundle.
+/// Mirrors Go's `crypto/x509` fallback list. Consulted only when
+/// [`deno_native_certs::load_native_certs`] returns no certificates and
+/// the user has not pinned `SSL_CERT_FILE`. This rescues setups where
+/// the openssl-probe candidate-dir/filename matrix misses the bundle —
+/// e.g. minimal containers that install `ca-certificates` but not
+/// `openssl`, leaving `/etc/ssl/certs/ca-certificates.crt` present but
+/// `/usr/lib/ssl` absent.
+#[cfg(target_os = "linux")]
+const LINUX_FALLBACK_CERT_FILES: &[&str] = &[
+  "/etc/ssl/certs/ca-certificates.crt", // Debian/Ubuntu/Gentoo
+  "/etc/pki/tls/certs/ca-bundle.crt",   // Fedora/RHEL 6
+  "/etc/ssl/ca-bundle.pem",             // OpenSUSE
+  "/etc/pki/tls/cacert.pem",            // OpenELEC
+  "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", // CentOS/RHEL 7
+  "/etc/ssl/cert.pem",                  // Alpine Linux
+];
+
+/// Load root certificates from the platform's native trust store.
+///
+/// Wraps [`deno_native_certs::load_native_certs`] with a Linux-specific
+/// fallback: if the native probe finds no certificates (and the user
+/// has not explicitly set `SSL_CERT_FILE`), consults a fixed list of
+/// common cert-bundle paths used by major distros.
+pub fn load_platform_root_certs()
+-> std::io::Result<Vec<deno_native_certs::Certificate>> {
+  let primary = deno_native_certs::load_native_certs();
+
+  #[cfg(target_os = "linux")]
+  {
+    // If the user explicitly pointed at a cert file, honor that result
+    // — including its errors. Silently falling back would hide a typo.
+    let ssl_cert_file_set =
+      std::env::var_os("SSL_CERT_FILE").is_some_and(|v| !v.is_empty());
+    if ssl_cert_file_set {
+      return primary;
+    }
+
+    if let Ok(certs) = &primary
+      && !certs.is_empty()
+    {
+      return primary;
+    }
+
+    for path in LINUX_FALLBACK_CERT_FILES {
+      if let Ok(certs) = load_pem_certs_from_file(std::path::Path::new(path))
+        && !certs.is_empty()
+      {
+        return Ok(certs);
+      }
+    }
+  }
+
+  primary
+}
+
+#[cfg(target_os = "linux")]
+fn load_pem_certs_from_file(
+  path: &std::path::Path,
+) -> std::io::Result<Vec<deno_native_certs::Certificate>> {
+  let file = std::fs::File::open(path)?;
+  let mut reader = BufReader::new(file);
+  rustls_pemfile::certs(&mut reader)
+    .map(|res| res.map(|der| deno_native_certs::Certificate(der.to_vec())))
+    .collect()
+}
+
 // This extension has no runtime apis, it only exports some shared native functions.
 deno_core::extension!(
   deno_tls,

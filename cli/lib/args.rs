@@ -14,7 +14,7 @@ use deno_npm_installer::process_state::NpmProcessStateFromEnvVarSys;
 use deno_npm_installer::process_state::NpmProcessStateKind;
 use deno_runtime::UNSTABLE_ENV_VAR_NAMES;
 use deno_runtime::colors;
-use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
+use deno_runtime::deno_tls::load_platform_root_certs;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::rustls_pemfile;
@@ -111,7 +111,7 @@ pub fn get_root_cert_store(
         root_cert_store.extend(webpki_roots::TLS_SERVER_ROOTS.to_vec());
       }
       "system" => {
-        let roots = load_native_certs().map_err(|err| {
+        let roots = load_platform_root_certs().map_err(|err| {
           RootCertStoreLoadError::FailedNativeCerts(err.to_string())
         })?;
         for root in roots {
