@@ -34,3 +34,16 @@ Deno.test({
     assertEquals(called, true);
   },
 });
+
+// Exercises the uv polyfills added for native addons that link directly
+// against libuv (e.g. @sentry/profiling-node). The Rust side asserts that
+// uv_hrtime, uv_timer_*, uv_cpu_info, uv_handle_*, uv_default_loop,
+// uv_ref/unref, and uv_is_active/closing are all resolvable and behave as
+// expected. If any of these symbols are missing from the deno binary, the
+// addon would fail to load and this test would error.
+Deno.test({
+  name: "napi uv polyfills (hrtime, timer stub, cpu_info, handle helpers)",
+  fn: () => {
+    uv.test_uv_polyfills();
+  },
+});

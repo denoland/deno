@@ -2,6 +2,8 @@
 
 use std::mem::MaybeUninit;
 use std::ptr::addr_of_mut;
+use std::sync::OnceLock;
+use std::time::Instant;
 
 use deno_core::parking_lot::Mutex;
 
@@ -206,22 +208,228 @@ type uv_close_cb = unsafe extern "C" fn(*mut uv_handle_t);
 #[unsafe(export_name = "uv_close")]
 unsafe extern "C" fn _napi_uv_close(
   handle: *mut uv_handle_t,
-  close: uv_close_cb,
+  close: Option<uv_close_cb>,
 ) {
   unsafe {
     if handle.is_null() {
-      close(handle);
+      if let Some(close) = close {
+        close(handle);
+      }
       return;
     }
-    if let uv_handle_type::UV_ASYNC = (*handle).r#type {
-      let handle: *mut uv_async_t = handle.cast();
-      napi_delete_async_work((*handle).r#loop, (*handle).work);
-      // Unref the event loop to match the ref in uv_async_init.
-      let env = &mut *(*handle).r#loop;
-      env.external_ops_tracker.unref_op();
+    match (*handle).r#type {
+      uv_handle_type::UV_ASYNC => {
+        let handle: *mut uv_async_t = handle.cast();
+        napi_delete_async_work((*handle).r#loop, (*handle).work);
+        // Unref the event loop to match the ref in uv_async_init.
+        let env = &mut *(*handle).r#loop;
+        env.external_ops_tracker.unref_op();
+      }
+      uv_handle_type::UV_TIMER => {
+        let handle: *mut uv_timer_t = handle.cast();
+        timer_drop(handle);
+      }
+      _ => {}
     }
-    close(handle);
+    if let Some(close) = close {
+      close(handle);
+    }
   }
+}
+
+// ---------- uv timer / cpu_info / misc polyfills ----------
+//
+// The Sentry profiling-node native addon (and a handful of other native
+// addons that link against libuv directly) reaches into libuv for handle
+// types beyond `uv_async_t` and `uv_mutex_t`. Deno does not run on libuv,
+// so we satisfy these symbols with lightweight polyfills:
+//
+// * `uv_hrtime` returns a monotonic timestamp.
+// * `uv_handle_set_data`, `uv_ref`, `uv_unref`, `uv_is_closing` mirror the
+//   trivial libuv behavior.
+// * `uv_cpu_info` returns an error so callers degrade gracefully (the
+//   profiler skips per-tick CPU stats but still produces a valid profile).
+// * `uv_timer_*` is a no-op stub. The Sentry profiler uses the timer to
+//   collect periodic heap/CPU measurements; the CPU profile itself is
+//   captured via `v8::CpuProfiler::StartProfiling` and does not depend on
+//   the timer firing. With a no-op timer the resulting profile is valid
+//   but lacks measurement samples.
+
+#[cfg(unix)]
+const UV_TIMER_SIZE: usize = 152;
+
+#[cfg(windows)]
+const UV_TIMER_SIZE: usize = 160;
+
+type uv_timer_cb = Option<unsafe extern "C" fn(handle: *mut uv_timer_t)>;
+
+#[repr(C)]
+struct uv_timer_t {
+  // public members (must match libuv layout)
+  pub data: *mut c_void,
+  pub r#loop: *mut uv_loop_t,
+  pub r#type: uv_handle_type,
+
+  _padding: [MaybeUninit<usize>; const {
+    (UV_TIMER_SIZE
+      - size_of::<*mut c_void>()
+      - size_of::<*mut uv_loop_t>()
+      - size_of::<uv_handle_type>())
+      / size_of::<usize>()
+  }],
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_timer_init(
+  r#loop: *mut uv_loop_t,
+  timer: *mut uv_timer_t,
+) -> c_int {
+  // Zero the public fields. Internal libuv layout is opaque to the addon,
+  // and our polyfill does not track per-timer state (see notes above), so
+  // there is nothing else to initialize.
+  unsafe {
+    addr_of_mut!((*timer).data).write(std::ptr::null_mut());
+    addr_of_mut!((*timer).r#loop).write(r#loop);
+    addr_of_mut!((*timer).r#type).write(uv_handle_type::UV_TIMER);
+  }
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_timer_start(
+  _handle: *mut uv_timer_t,
+  _cb: uv_timer_cb,
+  _timeout_ms: u64,
+  _repeat_ms: u64,
+) -> c_int {
+  // No-op. See the module comment above.
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_timer_stop(_handle: *mut uv_timer_t) -> c_int {
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_timer_set_repeat(
+  _handle: *mut uv_timer_t,
+  _repeat_ms: u64,
+) {
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_timer_get_repeat(_handle: *const uv_timer_t) -> u64 {
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_timer_again(_handle: *mut uv_timer_t) -> c_int {
+  0
+}
+
+fn timer_drop(_handle: *mut uv_timer_t) {
+  // Currently no per-timer state to release. Reserved for a future real
+  // timer polyfill so uv_close can clean up.
+}
+
+// uv_hrtime returns nanoseconds since an arbitrary monotonic origin. We
+// peg the origin to the first call.
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_hrtime() -> u64 {
+  static START: OnceLock<Instant> = OnceLock::new();
+  let start = START.get_or_init(Instant::now);
+  start.elapsed().as_nanos() as u64
+}
+
+// Many native addons reach for `uv_default_loop()` because they predate
+// `napi_get_uv_event_loop`. We return a sentinel that is sufficient for
+// the no-op timer/handle polyfills below.
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_default_loop() -> *mut uv_loop_t {
+  std::ptr::null_mut()
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_is_closing(_handle: *const uv_handle_t) -> c_int {
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_is_active(_handle: *const uv_handle_t) -> c_int {
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_ref(_handle: *mut uv_handle_t) {}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_unref(_handle: *mut uv_handle_t) {}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_has_ref(_handle: *const uv_handle_t) -> c_int {
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_handle_set_data(
+  handle: *mut uv_handle_t,
+  data: *mut c_void,
+) {
+  if handle.is_null() {
+    return;
+  }
+  unsafe {
+    (*handle).data = data;
+  }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_handle_get_data(
+  handle: *const uv_handle_t,
+) -> *mut c_void {
+  if handle.is_null() {
+    return std::ptr::null_mut();
+  }
+  unsafe { (*handle).data }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_handle_get_loop(
+  handle: *const uv_handle_t,
+) -> *mut uv_loop_t {
+  if handle.is_null() {
+    return std::ptr::null_mut();
+  }
+  unsafe { (*handle).r#loop }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_handle_get_type(handle: *const uv_handle_t) -> c_int {
+  if handle.is_null() {
+    return uv_handle_type::UV_UNKNOWN_HANDLE as c_int;
+  }
+  unsafe { (*handle).r#type as c_int }
+}
+
+// uv_cpu_info: report no available CPU info. Callers (e.g. Sentry's
+// profiler) treat this as a non-fatal degradation.
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_cpu_info(
+  _cpu_infos: *mut *mut c_void,
+  count: *mut c_int,
+) -> c_int {
+  if !count.is_null() {
+    unsafe { *count = 0 };
+  }
+  // UV_ENOSYS (-libc::ENOSYS on unix); -4093 matches libuv's numbering for
+  // ENOSYS on Linux. Any non-zero return signals "unsupported" to the addon.
+  -4093
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_free_cpu_info(_cpu_infos: *mut c_void, _count: c_int) {
+  // uv_cpu_info never allocates in our polyfill.
 }
 
 unsafe extern "C" fn async_exec_wrap(_env: napi_env, data: *mut c_void) {
@@ -252,5 +460,10 @@ mod tests {
     assert_eq!(std::mem::size_of::<uv_mutex_t>(), UV_MUTEX_SIZE);
     assert_eq!(std::mem::size_of::<uv_handle_t>(), UV_HANDLE_SIZE);
     assert_eq!(std::mem::size_of::<uv_async_t>(), UV_ASYNC_SIZE);
+    assert_eq!(
+      std::mem::size_of::<libuv_sys_lite::uv_timer_t>(),
+      UV_TIMER_SIZE
+    );
+    assert_eq!(std::mem::size_of::<uv_timer_t>(), UV_TIMER_SIZE);
   }
 }

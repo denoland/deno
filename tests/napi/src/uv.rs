@@ -275,10 +275,134 @@ extern "C" fn test_uv_async_ref(
   ptr::null_mut()
 }
 
+// Smoke test for the new uv polyfills (uv_hrtime, uv_timer_*, uv_cpu_info,
+// uv_handle_*, uv_default_loop, uv_is_active/closing, uv_ref/unref). The
+// goal is to verify that the symbols are exported from the host binary and
+// behave like their libuv counterparts to the extent that the polyfills
+// promise. The timer polyfill is a no-op stub by design (see
+// ext/napi/uv.rs), so we only assert that init/start/stop do not crash and
+// return success.
+#[allow(unused_unsafe, reason = "napi_sys safe fn in unsafe extern blocks")]
+extern "C" fn test_uv_polyfills(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  use std::ffi::c_int;
+  use std::mem::MaybeUninit;
+  use std::ptr;
+  use std::ptr::addr_of_mut;
+
+  use libuv_sys_lite::uv_close;
+  use libuv_sys_lite::uv_cpu_info;
+  use libuv_sys_lite::uv_cpu_info_t;
+  use libuv_sys_lite::uv_default_loop;
+  use libuv_sys_lite::uv_free_cpu_info;
+  use libuv_sys_lite::uv_handle_get_data;
+  use libuv_sys_lite::uv_handle_set_data;
+  use libuv_sys_lite::uv_handle_t;
+  use libuv_sys_lite::uv_hrtime;
+  use libuv_sys_lite::uv_is_active;
+  use libuv_sys_lite::uv_is_closing;
+  use libuv_sys_lite::uv_ref;
+  use libuv_sys_lite::uv_timer_init;
+  use libuv_sys_lite::uv_timer_set_repeat;
+  use libuv_sys_lite::uv_timer_start;
+  use libuv_sys_lite::uv_timer_stop;
+  use libuv_sys_lite::uv_timer_t;
+  use libuv_sys_lite::uv_unref;
+
+  unsafe {
+    // uv_hrtime must produce a non-zero, monotonically non-decreasing value.
+    let t1 = uv_hrtime();
+    let t2 = uv_hrtime();
+    assert!(t1 > 0);
+    assert!(t2 >= t1);
+
+    // uv_default_loop is allowed to return null (Deno does not run a libuv
+    // loop). The pointer is opaque to callers.
+    let _loop = uv_default_loop();
+
+    // uv_cpu_info reports unsupported (non-zero error). The Sentry profiler
+    // checks the error code and skips CPU stats on failure.
+    let mut cpu_infos: *mut uv_cpu_info_t = ptr::null_mut();
+    let mut count: c_int = 42;
+    let err = uv_cpu_info(&mut cpu_infos, &mut count);
+    assert_ne!(err, 0);
+    assert_eq!(count, 0);
+    uv_free_cpu_info(cpu_infos, count);
+
+    // uv_timer_init/start/stop must not crash. Callbacks are not expected to
+    // fire (timer is stubbed).
+    let mut timer: MaybeUninit<uv_timer_t> = MaybeUninit::zeroed();
+    assert_eq!(uv_timer_init(uv_default_loop(), timer.as_mut_ptr()), 0);
+    let timer_ptr = timer.as_mut_ptr();
+
+    unsafe extern "C" fn never_called(_handle: *mut uv_timer_t) {
+      unreachable!(
+        "Deno's uv_timer polyfill is a no-op stub; this should not fire"
+      );
+    }
+    assert_eq!(uv_timer_start(timer_ptr, Some(never_called), 1, 1), 0);
+    uv_timer_set_repeat(timer_ptr, 1);
+    assert_eq!(uv_timer_stop(timer_ptr), 0);
+
+    // uv_handle_set_data/get_data round-trips on a stub handle.
+    let handle = timer_ptr.cast::<uv_handle_t>();
+    let cookie = 0x1234_5678usize as *mut std::ffi::c_void;
+    uv_handle_set_data(handle, cookie);
+    assert_eq!(uv_handle_get_data(handle), cookie);
+    // restore for clean uv_close
+    uv_handle_set_data(handle, ptr::null_mut());
+
+    // uv_ref/uv_unref/uv_is_active/uv_is_closing should not crash on the
+    // stub handle.
+    uv_ref(handle);
+    uv_unref(handle);
+    let _ = uv_is_active(handle);
+    let _ = uv_is_closing(handle);
+
+    // uv_close on a stub timer with a null close_cb must not crash. The
+    // polyfill's uv_close should detect UV_TIMER and skip a null callback.
+    uv_close(handle, None);
+
+    // Force the address of every export we care about so that link-time
+    // resolution is exercised even if all earlier asserts were optimized
+    // away.
+    let _ = (
+      uv_hrtime as *const () as usize,
+      uv_default_loop as *const () as usize,
+      uv_cpu_info as *const () as usize,
+      uv_free_cpu_info as *const () as usize,
+      uv_timer_init as *const () as usize,
+      uv_timer_start as *const () as usize,
+      uv_timer_stop as *const () as usize,
+      uv_timer_set_repeat as *const () as usize,
+      uv_handle_set_data as *const () as usize,
+      uv_handle_get_data as *const () as usize,
+      uv_ref as *const () as usize,
+      uv_unref as *const () as usize,
+      uv_is_active as *const () as usize,
+      uv_is_closing as *const () as usize,
+      uv_close as *const () as usize,
+    );
+
+    // Touch addr_of_mut to silence unused import warnings on platforms
+    // where the body above is fully elided.
+    let _ = addr_of_mut!(count);
+  }
+
+  let mut undefined: napi_value = ptr::null_mut();
+  unsafe {
+    assert_napi_ok!(napi_get_undefined(env, &mut undefined));
+  }
+  undefined
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_uv_async", test_uv_async),
     napi_new_property!(env, "test_uv_async_ref", test_uv_async_ref),
+    napi_new_property!(env, "test_uv_polyfills", test_uv_polyfills),
   ];
 
   assert_napi_ok!(napi_define_properties(
