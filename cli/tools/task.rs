@@ -1208,7 +1208,7 @@ fn arg_to_task_name_filter(
 
   let mut regex_str = regex::escape(pattern);
   regex_str = regex_str.replace("\\*", "(.*)");
-  regex_str = format!("^{}$", regex_str);
+  regex_str = format!("^{}", regex_str);
   let re = Regex::new(&regex_str)?;
   let exclusions = exclusions.into_iter().map(String::from).collect();
   Ok(TaskNameFilter::Regex { re, exclusions })
@@ -1235,10 +1235,10 @@ impl TaskNameFilter<'_> {
           return true;
         }
         for i in 1..caps.len() {
-          if let Some(m) = caps.get(i) {
-            if exclusions.iter().any(|e| e == m.as_str()) {
-              return false;
-            }
+          if let Some(m) = caps.get(i)
+            && exclusions.iter().any(|e| e == m.as_str())
+          {
+            return false;
           }
         }
         true
