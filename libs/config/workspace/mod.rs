@@ -4936,6 +4936,28 @@ pub mod test {
   }
 
   #[test]
+  fn test_deno_workspace_member_dir_without_config_errors() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": ["./member"]
+      }),
+    );
+    // The member directory exists but has no deno.json(c). This is a
+    // genuine misconfiguration (typo'd path or missing config file) and
+    // should still error rather than being silently skipped.
+    sys.fs_insert(root_dir().join("member/other.ts"), "");
+    let err = workspace_at_start_dir_err(&sys, &root_dir());
+    assert_eq!(
+      err.to_string(),
+      normalize_err_text(
+        "Could not find config file for workspace member in '[ROOT_DIR_URL]/member/'."
+      )
+    );
+  }
+
+  #[test]
   fn test_deno_workspace_member_deno_json_member_name() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(
@@ -5215,6 +5237,28 @@ pub mod test {
     // Member exists with a deno.json but no package.json — that's a
     // genuine npm-workspace misconfiguration and should still error.
     sys.fs_insert_json(root_dir().join("member/deno.json"), json!({}));
+    let err = workspace_at_start_dir_err(&sys, &root_dir());
+    assert_eq!(
+      err.to_string(),
+      normalize_err_text(
+        "Could not find package.json for workspace member in '[ROOT_DIR_URL]/member/'."
+      )
+    );
+  }
+
+  #[test]
+  fn test_npm_workspace_member_dir_without_config_errors() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("package.json"),
+      json!({
+        "workspaces": ["./member"]
+      }),
+    );
+    // Member directory exists but has no package.json (or deno.json) at
+    // all. Treat this like a typo'd path and surface the package.json
+    // error rather than silently skipping it.
+    sys.fs_insert(root_dir().join("member/other.ts"), "");
     let err = workspace_at_start_dir_err(&sys, &root_dir());
     assert_eq!(
       err.to_string(),

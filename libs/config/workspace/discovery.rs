@@ -848,7 +848,9 @@ fn resolve_workspace_for_config_folder<
         match find_member_config_folder(&member_dir_url) {
           Ok(folder) => folder,
           Err(err) => match err.into_kind() {
-            ResolveWorkspaceMemberErrorKind::NotFound { dir_url } => {
+            ResolveWorkspaceMemberErrorKind::NotFound { dir_url }
+              if !member_dir_exists(sys, &dir_url) =>
+            {
               log::warn!(
                 "Workspace member \"{}\" not found at {}. Skipping.",
                 raw_member,
@@ -892,15 +894,16 @@ fn resolve_workspace_for_config_folder<
       IndexSet::with_capacity(path_members.len() + pkg_json_paths.len());
     for path_member in path_members {
       let member_dir_url = resolve_member_url(path_member)?;
-      member_dir_urls.insert(member_dir_url);
+      member_dir_urls.insert((path_member.clone(), member_dir_url));
     }
     for pkg_json_path in pkg_json_paths {
-      let member_dir_url =
-        url_from_directory_path(pkg_json_path.parent().unwrap())?;
-      member_dir_urls.insert(member_dir_url);
+      let member_dir = pkg_json_path.parent().unwrap();
+      let member_dir_url = url_from_directory_path(member_dir)?;
+      member_dir_urls
+        .insert((member_dir.to_string_lossy().into_owned(), member_dir_url));
     }
 
-    for member_dir_url in member_dir_urls {
+    for (raw_member, member_dir_url) in member_dir_urls {
       if member_dir_url == root_config_file_directory_url {
         continue; // ignore self references
       }
@@ -909,12 +912,27 @@ fn resolve_workspace_for_config_folder<
         match find_member_config_folder(&member_dir_url) {
           Ok(config_folder) => config_folder,
           Err(err) => match err.into_kind() {
-            ResolveWorkspaceMemberErrorKind::NotFound { dir_url } => {
+            ResolveWorkspaceMemberErrorKind::NotFound { dir_url }
+              if !member_dir_exists(sys, &dir_url) =>
+            {
               log::warn!(
-                "Workspace member directory \"{}\" not found. Skipping.",
+                "Workspace member \"{}\" not found at {}. Skipping.",
+                raw_member,
                 dir_url,
               );
               continue;
+            }
+            ResolveWorkspaceMemberErrorKind::NotFound { dir_url } => {
+              // dir exists but neither deno.json nor package.json — for
+              // an npm workspace member, surface this as the more specific
+              // "package.json not found" error.
+              return Err(
+                ResolveWorkspaceMemberErrorKind::NotFoundPackageJson {
+                  dir_url,
+                }
+                .into_box()
+                .into(),
+              );
             }
             other => return Err(other.into_box().into()),
           },
@@ -939,6 +957,13 @@ fn resolve_workspace_for_config_folder<
     members: final_members,
     vendor_dir: maybe_vendor_dir,
   })
+}
+
+fn member_dir_exists<TSys: FsMetadata>(sys: &TSys, dir_url: &Url) -> bool {
+  let Ok(path) = url_to_file_path(dir_url) else {
+    return false;
+  };
+  sys.fs_is_dir_no_err(&path)
 }
 
 fn resolve_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
