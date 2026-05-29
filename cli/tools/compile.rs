@@ -175,11 +175,13 @@ pub async fn compile(
     let BundleForCompileResult {
       path: bundle_path,
       needs_npm_embed,
+      referenced_abs_paths,
       extra_cleanup,
     } = run_bundle_for_compile(&flags, &compile_flags)
       .boxed_local()
       .await?;
     flags.internal.compile_bundle_embed_node_modules = needs_npm_embed;
+    flags.internal.compile_bundle_referenced_paths = referenced_abs_paths;
     compile_flags.source_file = bundle_path.display().to_string();
     // Make sure any worker bundles travel along in the VFS so the runtime
     // `new Worker(new URL(..., import.meta.url))` lookup hits them.
@@ -210,6 +212,9 @@ struct BundleForCompileResult {
   /// package paths will happen. The standalone binary writer reads this to
   /// decide whether to embed the npm tree.
   needs_npm_embed: bool,
+  /// Absolute paths the bundle path-rewriter resolved. Used downstream to
+  /// scope the npm-tree embed to just the packages those paths live in.
+  referenced_abs_paths: Vec<PathBuf>,
   /// Worker bundle files produced alongside the main one; they live next to
   /// the main bundle and must be cleaned up too.
   extra_cleanup: Vec<PathBuf>,
@@ -231,6 +236,8 @@ async fn run_bundle_for_compile(
   .await?;
   let main_rewrite = rewrite_absolute_bundle_paths(&main_bytes, &initial_cwd)?;
   let mut needs_npm_embed = main_rewrite.rewrote_paths;
+  let mut all_referenced_paths: Vec<PathBuf> =
+    main_rewrite.referenced_abs_paths.clone();
 
   // Scan the main bundle for `new Worker(new URL("X", import.meta.url))`
   // patterns. For each unique X, bundle the target as a separate entry,
@@ -266,6 +273,7 @@ async fn run_bundle_for_compile(
     let worker_rewrite =
       rewrite_absolute_bundle_paths(&worker_bytes, &initial_cwd)?;
     needs_npm_embed |= worker_rewrite.rewrote_paths;
+    all_referenced_paths.extend(worker_rewrite.referenced_abs_paths.clone());
 
     let worker_path = initial_cwd.join(format!(
       ".deno_compile_worker_{:08x}.mjs",
@@ -305,6 +313,7 @@ async fn run_bundle_for_compile(
   Ok(BundleForCompileResult {
     path: bundle_path,
     needs_npm_embed,
+    referenced_abs_paths: all_referenced_paths,
     extra_cleanup,
   })
 }
@@ -365,6 +374,11 @@ fn rewrite_worker_urls(
 struct RewriteResult {
   bytes: Vec<u8>,
   rewrote_paths: bool,
+  /// Absolute paths the rewriter touched. These point at the build-machine
+  /// locations of files the bundled output expects to require at runtime
+  /// — typically deep inside the npm cache. The binary writer uses this
+  /// set to decide which npm packages to embed in the VFS.
+  referenced_abs_paths: Vec<PathBuf>,
 }
 
 fn rewrite_absolute_bundle_paths(
@@ -380,6 +394,7 @@ fn rewrite_absolute_bundle_paths(
   let pattern = lazy_regex::regex!(r#""(/[^"\n]+\.(?:js|cjs|mjs|json))""#);
 
   let mut any_rewrite = false;
+  let mut referenced_abs_paths: Vec<PathBuf> = Vec::new();
   let rewritten = pattern.replace_all(src, |caps: &regex::Captures<'_>| {
     let abs = caps.get(1).unwrap().as_str();
     let path = Path::new(abs);
@@ -393,6 +408,7 @@ fn rewrite_absolute_bundle_paths(
       return caps[0].to_string();
     };
     any_rewrite = true;
+    referenced_abs_paths.push(path.to_path_buf());
     let rel_str: String = rel.to_string_lossy().replace('\\', "/");
     format!("__internalResolveBundlePath({:?})", rel_str.as_str())
   });
@@ -401,6 +417,7 @@ fn rewrite_absolute_bundle_paths(
     return Ok(RewriteResult {
       bytes: bundle_bytes.to_vec(),
       rewrote_paths: false,
+      referenced_abs_paths,
     });
   }
 
@@ -417,6 +434,7 @@ function __internalResolveBundlePath(rel) {
   Ok(RewriteResult {
     bytes: format!("{prefix}{rewritten}").into_bytes(),
     rewrote_paths: true,
+    referenced_abs_paths,
   })
 }
 
