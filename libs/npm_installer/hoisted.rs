@@ -177,16 +177,22 @@ fn compute_hoisted_layout<'a>(
   //     With the BFS below it lands at
   //     `node_modules/terser-webpack-plugin/node_modules/schema-utils/node_modules/ajv`.
   let mut nested = Vec::new();
-  let mut queue: VecDeque<(PathBuf, &NpmResolutionPackage)> = VecDeque::new();
-  // `(parent_path, parent_nv)` we've already expanded — guards against
-  // cyclic dep graphs and avoids re-emitting the same edges.
+  // Each queue entry carries the parent's path (relative to the root
+  // `node_modules/`), the parent package, and the chain of ancestor
+  // NVs whose `node_modules/<name>` segments lie on `parent_path` —
+  // these are the candidates Node's resolver walks up to.
+  let mut queue: VecDeque<(PathBuf, &NpmResolutionPackage, Vec<&PackageNv>)> =
+    VecDeque::new();
+  // `(parent_path, parent_nv)` we've already expanded — avoids
+  // re-emitting the same edges when multiple paths reach the same
+  // (path, package) pair.
   let mut visited: HashSet<(PathBuf, &PackageNv)> = HashSet::new();
 
   for (name, package) in &best_version_for_name {
-    queue.push_back((PathBuf::from(name.as_str()), package));
+    queue.push_back((PathBuf::from(name.as_str()), package, Vec::new()));
   }
 
-  while let Some((parent_path, parent)) = queue.pop_front() {
+  while let Some((parent_path, parent, parent_ancestors)) = queue.pop_front() {
     if !visited.insert((parent_path.clone(), &parent.id.nv)) {
       continue;
     }
@@ -202,8 +208,17 @@ fn compute_hoisted_layout<'a>(
       if let Some(hoisted) = best_version_for_name.get(&dep.id.nv.name)
         && hoisted.id.nv == dep.id.nv
       {
-        // Resolved by the top-level (or an ancestor) — Node's lookup
-        // walks up the directory tree, so no nesting needed here.
+        // Top-level provides this version; Node's walk-up finds it.
+        continue;
+      }
+
+      // An ancestor on `parent_path` (including `parent` itself) already
+      // resolves `dep.id.nv` via Node's directory walk-up. This both
+      // breaks dependency cycles (A@1 ↔ B@1 where neither hoists) and
+      // avoids redundant deeper nestings.
+      if parent.id.nv == dep.id.nv
+        || parent_ancestors.iter().any(|a| **a == dep.id.nv)
+      {
         continue;
       }
 
@@ -215,7 +230,9 @@ fn compute_hoisted_layout<'a>(
         dep_name,
         dep,
       });
-      queue.push_back((dep_path, dep));
+      let mut dep_ancestors = parent_ancestors.clone();
+      dep_ancestors.push(&parent.id.nv);
+      queue.push_back((dep_path, dep, dep_ancestors));
     }
   }
 
