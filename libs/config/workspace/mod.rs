@@ -791,6 +791,9 @@ impl Workspace {
                           },
                         )
                       }),
+                    // git deps point at an external repo, not a workspace
+                    // member; they cannot participate in workspace cycles.
+                    PackageJsonDepValue::Git(_) => None,
                   })
               })
               .into_iter()

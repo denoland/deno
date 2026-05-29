@@ -136,6 +136,12 @@ To work around this, you can use a package.json and install the dependencies via
   /// in the published package tarball. We silently skip them.
   #[error("Unsupported local dependency: {specifier}")]
   LocalDependency { specifier: String },
+  /// A git dependency (e.g. `git+https://...`, `github:owner/repo`).
+  /// Transitive git dependencies are silently skipped today; user-declared
+  /// git dependencies in the top-level package.json are handled separately
+  /// by the installer.
+  #[error("Unsupported git dependency: {specifier}")]
+  GitDependency { specifier: String },
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -290,6 +296,7 @@ impl NpmPackageVersionInfo {
       match parse_dep_entry_inner(key_value, kind) {
         Ok(entry) => Ok(Some(entry)),
         Err(NpmDependencyEntryErrorSource::LocalDependency { .. }) => Ok(None),
+        Err(NpmDependencyEntryErrorSource::GitDependency { .. }) => Ok(None),
         Err(source) => Err(Box::new(NpmDependencyEntryError {
           parent_nv: PackageNv {
             name: parent_nv.0.into(),
@@ -382,11 +389,12 @@ fn parse_dep_entry_name_and_raw_version<'a>(
     } else {
       (key, value)
     };
-  if version_req.starts_with("https://")
+  if is_git_specifier(version_req) {
+    Err(NpmDependencyEntryErrorSource::GitDependency {
+      specifier: version_req.to_string(),
+    })
+  } else if version_req.starts_with("https://")
     || version_req.starts_with("http://")
-    || version_req.starts_with("git:")
-    || version_req.starts_with("github:")
-    || version_req.starts_with("git+")
   {
     Err(NpmDependencyEntryErrorSource::RemoteDependency {
       specifier: version_req.to_string(),
@@ -399,6 +407,20 @@ fn parse_dep_entry_name_and_raw_version<'a>(
   } else {
     Ok((name, version_req))
   }
+}
+
+/// Whether the given dependency specifier names a git source.
+///
+/// Recognizes the npm-package-arg syntax for git deps: `git:`, `git+http(s):`,
+/// `git+ssh:`, `git+file:`, plus the host shorthands `github:`, `gitlab:`,
+/// `bitbucket:`, and `gist:`.
+pub fn is_git_specifier(specifier: &str) -> bool {
+  specifier.starts_with("git:")
+    || specifier.starts_with("git+")
+    || specifier.starts_with("github:")
+    || specifier.starts_with("gitlab:")
+    || specifier.starts_with("bitbucket:")
+    || specifier.starts_with("gist:")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1433,12 +1455,12 @@ mod test {
   fn test_parse_dep_entry_name_and_raw_version_error() {
     let err = parse_dep_entry_name_and_raw_version(
       &StackString::from("test"),
-      &StackString::from("git:somerepo"),
+      &StackString::from("https://example.com/something.tgz"),
     )
     .unwrap_err();
     match err {
       NpmDependencyEntryErrorSource::RemoteDependency { specifier } => {
-        assert_eq!(specifier, "git:somerepo")
+        assert_eq!(specifier, "https://example.com/something.tgz")
       }
       _ => unreachable!(),
     }
@@ -1446,22 +1468,65 @@ mod test {
 
   #[test]
   fn remote_deps_as_entries() {
+    let specifier = "https://example.com/something.tgz";
+    let deps = NpmPackageVersionInfo {
+      dependencies: HashMap::from([("a".into(), specifier.into())]),
+      ..Default::default()
+    };
+    let err = deps.dependencies_as_entries("pkg-name").unwrap_err();
+    match err.source {
+      NpmDependencyEntryErrorSource::RemoteDependency {
+        specifier: err_specifier,
+      } => assert_eq!(err_specifier, specifier),
+      _ => unreachable!(),
+    }
+  }
+
+  #[test]
+  fn test_parse_dep_entry_name_and_raw_version_git_dep() {
     for specifier in [
-      "https://example.com/something.tgz",
+      "git:somerepo",
       "git://github.com/example/example",
       "git+ssh://github.com/example/example",
+      "git+https://github.com/example/example.git",
+      "github:example/example",
+      "gitlab:example/example",
+      "bitbucket:example/example",
+      "gist:abc123",
     ] {
-      let deps = NpmPackageVersionInfo {
-        dependencies: HashMap::from([("a".into(), specifier.into())]),
-        ..Default::default()
-      };
-      let err = deps.dependencies_as_entries("pkg-name").unwrap_err();
-      match err.source {
-        NpmDependencyEntryErrorSource::RemoteDependency {
+      let err = parse_dep_entry_name_and_raw_version(
+        &StackString::from("test"),
+        &StackString::from(specifier),
+      )
+      .unwrap_err();
+      match err {
+        NpmDependencyEntryErrorSource::GitDependency {
           specifier: err_specifier,
         } => assert_eq!(err_specifier, specifier),
         _ => unreachable!(),
       }
+    }
+  }
+
+  #[test]
+  fn git_deps_as_entries_are_skipped() {
+    for specifier in [
+      "git+https://github.com/adiwajshing/libsignal-node.git",
+      "github:ecadlabs/axios-fetch-adapter",
+      "git://github.com/example/example",
+      "git+ssh://git@github.com/example/example.git#main",
+    ] {
+      let deps = NpmPackageVersionInfo {
+        dependencies: HashMap::from([
+          ("a".into(), "^1.0.0".into()),
+          ("git-dep".into(), specifier.into()),
+        ]),
+        ..Default::default()
+      };
+      let entries = deps.dependencies_as_entries("pkg-name").unwrap();
+      // The git dependency should be skipped, only "a" remains.
+      assert_eq!(entries.len(), 1);
+      assert_eq!(entries[0].bare_specifier.as_str(), "a");
     }
   }
 

@@ -313,6 +313,9 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
               version_req,
             }))
           }
+          // git deps are tracked separately in the lockfile; they aren't
+          // part of the JsrDepPackageReq set.
+          PackageJsonDepValue::Git(_) => None,
         })
         .collect()
     }
@@ -419,7 +422,8 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
                     // not supported
                     PackageJsonDepValue::File(_)
                     | PackageJsonDepValue::Workspace(_)
-                    | PackageJsonDepValue::Catalog(_) => None,
+                    | PackageJsonDepValue::Catalog(_)
+                    | PackageJsonDepValue::Git(_) => None,
                   })
                   .collect()
               })

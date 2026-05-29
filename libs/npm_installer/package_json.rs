@@ -37,6 +37,14 @@ pub struct InstallPatchPkg {
   pub target_dir: PathBuf,
 }
 
+#[derive(Debug)]
+pub struct InstallGitPkg {
+  pub alias: StackString,
+  pub base_dir: PathBuf,
+  pub url: String,
+  pub committish: Option<String>,
+}
+
 #[derive(Debug, Error, Clone)]
 #[error("Failed to install '{}'\n    at {}", alias, location)]
 pub struct PackageJsonDepValueParseWithLocationError {
@@ -51,6 +59,7 @@ pub struct NpmInstallDepsProvider {
   remote_pkgs: Vec<InstallNpmRemotePkg>,
   local_pkgs: Vec<InstallLocalPkg>,
   patch_pkgs: Vec<InstallPatchPkg>,
+  git_pkgs: Vec<InstallGitPkg>,
   pkg_json_dep_errors: Vec<PackageJsonDepValueParseWithLocationError>,
 }
 
@@ -68,6 +77,7 @@ impl NpmInstallDepsProvider {
     let mut local_pkgs = Vec::new();
     let mut remote_pkgs = Vec::new();
     let mut patch_pkgs = Vec::new();
+    let mut git_pkgs: Vec<InstallGitPkg> = Vec::new();
     let mut pkg_json_dep_errors = Vec::new();
     let workspace_npm_pkgs = workspace.npm_packages();
 
@@ -190,6 +200,14 @@ impl NpmInstallDepsProvider {
                 });
               }
             }
+            PackageJsonDepValue::Git(git) => {
+              git_pkgs.push(InstallGitPkg {
+                alias: alias.clone(),
+                base_dir: pkg_json.dir_path().to_path_buf(),
+                url: git.url.clone(),
+                committish: git.committish.clone(),
+              });
+            }
             PackageJsonDepValue::Catalog(catalog_name) => {
               let catalogs = workspace.catalogs();
               if let Some(catalog) = catalogs.get(catalog_name.as_str())
@@ -252,10 +270,12 @@ impl NpmInstallDepsProvider {
     remote_pkgs.shrink_to_fit();
     local_pkgs.shrink_to_fit();
     patch_pkgs.shrink_to_fit();
+    git_pkgs.shrink_to_fit();
     Self {
       remote_pkgs,
       local_pkgs,
       patch_pkgs,
+      git_pkgs,
       pkg_json_dep_errors,
     }
   }
@@ -270,6 +290,10 @@ impl NpmInstallDepsProvider {
 
   pub fn patch_pkgs(&self) -> &[InstallPatchPkg] {
     &self.patch_pkgs
+  }
+
+  pub fn git_pkgs(&self) -> &[InstallGitPkg] {
+    &self.git_pkgs
   }
 
   pub fn pkg_json_dep_errors(

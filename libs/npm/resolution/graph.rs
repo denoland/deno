@@ -3460,7 +3460,6 @@ mod test {
 
   use super::*;
   use crate::NpmSystemInfo;
-  use crate::registry::NpmDependencyEntryErrorSource;
   use crate::registry::TestNpmRegistryApi;
   use crate::resolution::NewestDependencyDate;
   use crate::resolution::NewestDependencyDateOptions;
@@ -6092,22 +6091,29 @@ mod test {
   }
 
   #[tokio::test]
-  async fn errors_for_git_dep() {
+  async fn skips_git_dep() {
     let api = TestNpmRegistryApi::default();
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-b", "1.0.0");
     api.add_dependency(("package-a", "1.0.0"), ("package-b", "*"));
-    api.add_dependency(("package-b", "1.0.0"), ("SomeGitDep", "git:somerepo"));
-    let err = run_resolver_and_get_error(api, vec!["package-a@1.0.0"]).await;
-    match err {
-      NpmResolutionError::DependencyEntry(err) => match err.source {
-        NpmDependencyEntryErrorSource::RemoteDependency { specifier } => {
-          assert_eq!(specifier, "git:somerepo")
-        }
-        _ => unreachable!(),
+    api.add_dependency(
+      ("package-b", "1.0.0"),
+      ("SomeGitDep", "git+https://github.com/example/example.git"),
+    );
+    // Should resolve successfully, skipping the git dependency.
+    let snapshot =
+      run_resolver_and_get_snapshot(api, vec!["package-a@1.0.0"]).await;
+    let packages = package_names_with_info(
+      &snapshot,
+      &NpmSystemInfo {
+        os: "darwin".into(),
+        cpu: "x86_64".into(),
       },
-      _ => unreachable!(),
-    }
+    );
+    assert_eq!(
+      packages,
+      vec!["package-a@1.0.0".to_string(), "package-b@1.0.0".to_string(),]
+    );
   }
 
   #[tokio::test]
@@ -8146,34 +8152,6 @@ mod test {
     );
   }
 
-  async fn run_resolver_and_get_error(
-    api: TestNpmRegistryApi,
-    reqs: Vec<&str>,
-  ) -> NpmResolutionError {
-    let snapshot = NpmResolutionSnapshot::new(Default::default());
-    let mut graph = Graph::from_snapshot(snapshot);
-    let npm_version_resolver = NpmVersionResolver {
-      link_packages: Default::default(),
-      newest_dependency_date_options: Default::default(),
-      overrides: Default::default(),
-    };
-    let mut resolver = GraphDependencyResolver::new(
-      &mut graph,
-      &api,
-      &npm_version_resolver,
-      None,
-      GraphDependencyResolverOptions { should_dedup: true },
-    );
-
-    for req in reqs {
-      let req = PackageReq::from_str(req).unwrap();
-      resolver
-        .add_package_req(&req, &api.package_info(&req.name).await.unwrap())
-        .unwrap();
-    }
-
-    resolver.resolve_pending().await.unwrap_err()
-  }
 
   // === npm overrides integration tests ===
 

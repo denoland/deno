@@ -90,6 +90,9 @@ pub fn categorize_installed_npm_deps(
             normal_deps.insert(k.to_string());
           }
         }
+        deno_package_json::PackageJsonDepValue::Git(_) => {
+          normal_deps.insert(k.to_string());
+        }
       }
     }
 
@@ -115,6 +118,9 @@ pub fn categorize_installed_npm_deps(
           {
             dev_deps.insert(k.to_string());
           }
+        }
+        deno_package_json::PackageJsonDepValue::Git(_) => {
+          dev_deps.insert(k.to_string());
         }
       }
     }
