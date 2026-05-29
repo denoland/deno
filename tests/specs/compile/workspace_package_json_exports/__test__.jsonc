@@ -1,0 +1,22 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "if": "unix",
+    "args": "compile --no-check --output main main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "commandName": "./main",
+    "args": [],
+    "output": "main.out"
+  }, {
+    "if": "windows",
+    "args": "compile --no-check --output main.exe main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "commandName": "./main.exe",
+    "args": [],
+    "output": "main.out"
+  }]
+}
