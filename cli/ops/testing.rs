@@ -33,6 +33,7 @@ deno_core::extension!(deno_test,
     op_test_event_step_result_ok,
     op_test_event_step_result_ignored,
     op_test_event_step_result_failed,
+    op_test_event_exit,
   ],
   options = {
     sender: TestEventSender,
@@ -241,4 +242,34 @@ fn op_test_event_step_result_failed(
       duration,
     ))
     .ok();
+}
+
+/// Called when a test calls `Deno.exit()` while the exit sanitizer is disabled
+/// (`sanitizeExit: false`). Rather than letting the process terminate
+/// immediately - which can drop buffered test output - we hand the exit code
+/// off to the reporter (running on a separate thread) so it can print a
+/// message, flush all output, and then exit the process with the given code.
+///
+/// This op does not return: once the `Exit` event has been queued, we park the
+/// worker so it doesn't keep executing user code (which would otherwise resume
+/// after `Deno.exit()` returned) while we wait for the process to be
+/// terminated.
+#[op2(fast)]
+fn op_test_event_exit(state: &mut OpState, #[smi] exit_code: i32) {
+  let sender = state.borrow_mut::<TestEventSender>();
+  // `TestEvent::Exit` requires stdio sync, so sending it first drains any
+  // pending stdout/stderr output to the reporter.
+  if sender.send(TestEvent::Exit(exit_code)).is_ok() {
+    loop {
+      std::thread::park();
+    }
+  }
+
+  // The channel is closed (the receiver has already finished), so there's
+  // nobody left to print a message or flush - just exit directly.
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "a test called Deno.exit() with the exit sanitizer disabled"
+  )]
+  std::process::exit(exit_code);
 }
