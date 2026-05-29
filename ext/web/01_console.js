@@ -3693,6 +3693,14 @@ class Console {
   #printFunc = null;
   #countMap = new SafeMap();
   #timerMap = new SafeMap();
+  // Reference to the namespace object returned from the constructor. Arrow
+  // class fields capture `this` lexically (the Console instance), but
+  // `wrapConsole` patches methods on the returned namespace object, not on
+  // the instance. Reaching back through `#consoleRef` lets `group` invoke
+  // the wrapped `log`, matching Node's behavior of emitting both a
+  // `startGroup` and a `log` event so DevTools renders the label inside
+  // the group container.
+  #consoleRef = null;
   [isConsoleInstance] = false;
 
   constructor(printFunc) {
@@ -3713,6 +3721,7 @@ class Console {
       },
     });
     ObjectAssign(console, this);
+    this.#consoleRef = console;
     return console;
   }
 
@@ -4004,7 +4013,12 @@ class Console {
 
   group = (...label) => {
     if (label.length > 0) {
-      this.log(...new SafeArrayIterator(label));
+      // Route through the namespace object's `log` so that, when the
+      // inspector wraps console methods, both the V8 console binding (for
+      // DevTools) and the internal `log` (for the terminal) are invoked.
+      // Without this, DevTools receives a `startGroup` event but no
+      // matching `log`, leaving the group container without a visible label.
+      this.#consoleRef.log(...new SafeArrayIterator(label));
     }
     this.indentLevel++;
   };
