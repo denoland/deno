@@ -765,11 +765,17 @@ function executeEsmResolveHookChain(specifier, context) {
   return nextResolve(specifier, context);
 }
 
-function esmResolveHookCallback(specifier, referrer) {
+function esmResolveHookCallback(specifier, referrer, importAttributes) {
+  const attrs = { __proto__: null };
+  if (importAttributes !== null && typeof importAttributes === "object") {
+    for (const key in importAttributes) {
+      attrs[key] = importAttributes[key];
+    }
+  }
   const context = {
     parentURL: referrer || undefined,
     conditions: ["node", "import"],
-    importAttributes: { __proto__: null },
+    importAttributes: attrs,
   };
   try {
     const result = executeEsmResolveHookChain(specifier, context);

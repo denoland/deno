@@ -49,6 +49,10 @@ pub type DefaultResolveCb =
 pub struct LoaderHookRegistry {
   resolve_callback: Rc<RefCell<Option<v8::Global<v8::Function>>>>,
   pub load_active: Rc<Cell<bool>>,
+  /// True when either a resolve or load hook is registered. Used by the
+  /// import-attribute validation callback to relax validation while hooks
+  /// are active so user code can use custom module types / attributes.
+  pub hooks_active: Rc<Cell<bool>>,
   next_id: Rc<Cell<u32>>,
 
   pending_loads: Rc<RefCell<VecDeque<PendingLoad>>>,
@@ -97,6 +101,7 @@ impl LoaderHookRegistry {
     scope: &mut v8::PinScope,
     specifier: &str,
     referrer: &str,
+    import_attributes: &HashMap<String, String>,
   ) -> Result<Option<String>, JsErrorBox> {
     let callbacks = self.resolve_callback.borrow();
     let Some(callback) = callbacks.as_ref() else {
@@ -108,9 +113,21 @@ impl LoaderHookRegistry {
       .ok_or_else(|| JsErrorBox::generic("failed to allocate specifier"))?;
     let referrer = v8::String::new(scope, referrer)
       .ok_or_else(|| JsErrorBox::generic("failed to allocate referrer"))?;
-    let Some(result) =
-      callback.call(scope, recv, &[specifier.into(), referrer.into()])
-    else {
+    let attributes_obj = v8::Object::new(scope);
+    for (key, value) in import_attributes {
+      let k = v8::String::new(scope, key).ok_or_else(|| {
+        JsErrorBox::generic("failed to allocate attribute key")
+      })?;
+      let v = v8::String::new(scope, value).ok_or_else(|| {
+        JsErrorBox::generic("failed to allocate attribute value")
+      })?;
+      attributes_obj.set(scope, k.into(), v.into());
+    }
+    let Some(result) = callback.call(
+      scope,
+      recv,
+      &[specifier.into(), referrer.into(), attributes_obj.into()],
+    ) else {
       return Err(JsErrorBox::generic("module resolve hook failed"));
     };
     if result.is_null_or_undefined() {
@@ -189,8 +206,10 @@ pub fn op_module_hooks_register(
   has_load: bool,
 ) {
   let registry = state.borrow::<LoaderHookRegistry>().clone();
+  let has_resolve = resolve_callback.is_some();
   *registry.resolve_callback.borrow_mut() = resolve_callback;
   registry.load_active.set(has_load);
+  registry.hooks_active.set(has_resolve || has_load);
 }
 
 /// Poll for a pending load request. Returns `[id, url, importType]` or null.

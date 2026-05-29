@@ -27,6 +27,11 @@
       "cwd": "import_attributes",
       "args": "run -A --import=./hook.mjs main.mjs",
       "output": "import_attributes/main.out"
+    },
+    "import_attributes_custom": {
+      "cwd": "import_attributes_custom",
+      "args": "run -A --import=./hook.mjs main.mjs",
+      "output": "import_attributes_custom/main.out"
     }
   }
 }
