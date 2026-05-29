@@ -211,6 +211,34 @@ pub fn op_node_decode_utf8<'a>(
   }
 }
 
+#[op2]
+pub fn op_node_decode_latin1<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  buf: v8::Local<v8::ArrayBufferView>,
+  start: v8::Local<v8::Value>,
+  end: v8::Local<v8::Value>,
+) -> Result<v8::Local<'a, v8::String>, JsErrorBox> {
+  let buf = buf.get_contents(&mut [0; v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP]);
+
+  let start =
+    parse_array_index(scope, start, 0).map_err(JsErrorBox::from_err)?;
+  let mut end =
+    parse_array_index(scope, end, buf.len()).map_err(JsErrorBox::from_err)?;
+
+  if end < start {
+    end = start;
+  }
+
+  if end > buf.len() {
+    return Err(JsErrorBox::from_err(BufferError::OutOfRange));
+  }
+
+  let buffer = &buf[start..end];
+
+  v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
+    .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 enum BufferError {
   #[error(

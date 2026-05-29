@@ -74,6 +74,7 @@ const {
   op_node_buffer_compare_offset,
   op_node_call_is_from_dependency,
   op_node_decode_utf8,
+  op_node_decode_latin1,
   op_transcode,
 } = core.ops;
 
@@ -719,6 +720,14 @@ function decodeUtf8(buffer, start, end) {
   );
 }
 
+function decodeLatin1(buffer, start, end) {
+  return op_node_decode_latin1(
+    buffer,
+    start,
+    end,
+  );
+}
+
 Buffer.prototype.toString = function toString(encoding, start, end) {
   if (arguments.length === 0) {
     return decodeUtf8(
@@ -1088,7 +1097,7 @@ Buffer.prototype.hexSlice = function hexSlice(offset, length) {
 };
 
 Buffer.prototype.latin1Slice = function latin1Slice(offset, length) {
-  return _latin1Slice(this, offset, length);
+  return decodeLatin1(this, offset, length);
 };
 
 Buffer.prototype.latin1Write = function latin1Write(
@@ -1271,20 +1280,6 @@ function _utf8Slice(buf, start, end) {
     }
     throw err;
   }
-}
-
-function _latin1Slice(buf, start, end) {
-  let ret = "";
-  if (!start || start < 0) {
-    start = 0;
-  }
-  if (end === undefined || end > buf.length) {
-    end = buf.length;
-  }
-  for (let i = start; i < end; ++i) {
-    ret += StringFromCharCode(buf[i]);
-  }
-  return ret;
 }
 
 function _hexSlice(buf, start, end) {
