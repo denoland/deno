@@ -673,28 +673,22 @@ Deno.test(
         await r.cancel();
         await reading;
       `;
-      const child = new Deno.Command(Deno.execPath(), {
+      const out = await new Deno.Command(Deno.execPath(), {
         args: ["eval", script],
         stdout: "null",
         stderr: "piped",
-      }).spawn();
-      const watchdog = new Promise<"timeout">((resolve) => {
-        const signal = AbortSignal.timeout(10_000);
-        signal.addEventListener("abort", () => resolve("timeout"), {
-          once: true,
-        });
-      });
-      const result = await Promise.race([child.status, watchdog]);
-      if (result === "timeout") {
-        try {
-          child.kill("SIGKILL");
-        } catch { /* already exited */ }
-        await child.status;
+        signal: AbortSignal.timeout(10_000),
+      }).output();
+      if (out.signal !== null) {
         throw new Error(
           "subprocess hung after stream cancellation — read was not cancelled",
         );
       }
-      assertEquals(result.code, 0);
+      assertEquals(
+        out.code,
+        0,
+        `subprocess failed: ${new TextDecoder().decode(out.stderr)}`,
+      );
     } finally {
       await Deno.remove(tempDir, { recursive: true });
     }
