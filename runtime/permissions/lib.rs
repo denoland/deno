@@ -3090,6 +3090,20 @@ impl UnaryPermission<ReadDescriptor> {
     self.check_desc(Some(desc), true, api_name)
   }
 
+  #[inline]
+  pub fn check_partial(
+    &mut self,
+    desc: &ReadQueryDescriptor,
+    api_name: Option<&str>,
+  ) -> Result<(), PermissionDeniedError> {
+    audit_and_skip_check_if_is_permission_fully_granted!(
+      self,
+      ReadQueryDescriptor::flag_name(),
+      desc.display_name()
+    );
+    self.check_desc(Some(desc), false, api_name)
+  }
+
   pub fn check_all(
     &mut self,
     api_name: Option<&str>,
@@ -4129,10 +4143,18 @@ impl PermissionsContainer {
         drop(inner);
         path_descriptor
       } else {
+        // Use partial-deny semantics here: the operations gated by
+        // `check_open` (open, stat, lstat, readDir, readFile, writeFile, …)
+        // act on a single path and do not recurse, so a deny scope that lies
+        // *under* the queried path should not block the operation. The strict
+        // `check` (which fails on partial denies inside the requested scope)
+        // remains in use for recursive operations like `fs::remove_all`.
         let path = if should_check_read {
           let inner = &mut inner.read;
           let desc = path_descriptor.into_read();
-          inner.check(&desc, api_name).map_err(ignored_to_not_found)?;
+          inner
+            .check_partial(&desc, api_name)
+            .map_err(ignored_to_not_found)?;
           desc.0
         } else {
           path_descriptor
@@ -4140,7 +4162,7 @@ impl PermissionsContainer {
         if should_check_write {
           let inner = &mut inner.write;
           let desc = path.into_write();
-          inner.check(&desc, api_name)?;
+          inner.check_partial(&desc, api_name)?;
           desc.0
         } else {
           path
@@ -7063,6 +7085,52 @@ mod tests {
       .into_write();
     perms.write.check_partial(&write_query, None).unwrap();
     assert!(perms.write.check(&write_query, None).is_err());
+  }
+
+  // Regression test for https://github.com/denoland/deno/issues/27622.
+  // Querying a path that is an ancestor of a denied path must succeed for
+  // single-path read/write operations (`check_partial`), even though the
+  // strict `check` continues to reject it.
+  #[test]
+  fn test_check_partial_ancestor_of_deny() {
+    let parser = TestPermissionDescriptorParser;
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(vec![]),
+        deny_read: Some(svec!["/mnt"]),
+        allow_write: Some(vec![]),
+        deny_write: Some(svec!["/foo/bar"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    let root_read = parser
+      .parse_path_query(Cow::Borrowed(Path::new("/")))
+      .unwrap()
+      .into_read();
+    perms.read.check_partial(&root_read, None).unwrap();
+    assert!(perms.read.check(&root_read, None).is_err());
+
+    let foo_write = parser
+      .parse_path_query(Cow::Borrowed(Path::new("/foo")))
+      .unwrap()
+      .into_write();
+    perms.write.check_partial(&foo_write, None).unwrap();
+    assert!(perms.write.check(&foo_write, None).is_err());
+
+    // The actually-denied path is still denied under partial semantics.
+    let mnt_read = parser
+      .parse_path_query(Cow::Borrowed(Path::new("/mnt")))
+      .unwrap()
+      .into_read();
+    assert!(perms.read.check_partial(&mnt_read, None).is_err());
+    let mnt_sub_read = parser
+      .parse_path_query(Cow::Borrowed(Path::new("/mnt/sub")))
+      .unwrap()
+      .into_read();
+    assert!(perms.read.check_partial(&mnt_sub_read, None).is_err());
   }
 
   #[test]

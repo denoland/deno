@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "tests": {
+    "stat_ancestor_of_denied_read": {
+      "args": "run --allow-read --deny-read=denied main.ts",
+      "output": "main.out"
+    },
+    "stat_ancestor_of_denied_write": {
+      "args": "run --allow-write --deny-write=denied write.ts",
+      "output": "write.out"
+    }
+  }
+}
