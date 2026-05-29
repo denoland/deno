@@ -73,8 +73,7 @@ const {
   op_node_buffer_compare,
   op_node_buffer_compare_offset,
   op_node_call_is_from_dependency,
-  op_node_decode_utf8,
-  op_node_decode_latin1,
+  op_node_decode,
   op_transcode,
 } = core.ops;
 
@@ -713,18 +712,20 @@ Buffer.prototype.swap64 = function swap64() {
 };
 
 function decodeUtf8(buffer, start, end) {
-  return op_node_decode_utf8(
+  return op_node_decode(
     buffer,
     start,
     end,
+    0,
   );
 }
 
 function decodeLatin1(buffer, start, end) {
-  return op_node_decode_latin1(
+  return op_node_decode(
     buffer,
     start,
     end,
+    1,
   );
 }
 
