@@ -2467,7 +2467,7 @@ type TestCase = {
 
 function hasHeader(msg: string, name: string): boolean {
   const n = msg.indexOf("\r\n\r\n") || msg.length;
-  return msg.slice(0, n).includes(name);
+  return msg.slice(0, n).toLowerCase().includes(name.toLowerCase());
 }
 
 function createServerLengthTest(name: string, testCase: TestCase) {
@@ -2566,8 +2566,8 @@ createServerLengthTest("fixedResponseKnownEmpty", {
 createServerLengthTest("chunkedRespondKnown", {
   headers: { "transfer-encoding": "chunked" },
   body: "foo bar baz",
-  expectsChunked: false,
-  expectsConnLen: true,
+  expectsChunked: true,
+  expectsConnLen: false,
 });
 
 createServerLengthTest("chunkedRespondUnknown", {
@@ -2756,10 +2756,14 @@ Deno.test(
     const deferred = Promise.withResolvers<void>();
     const listeningDeferred = Promise.withResolvers<void>();
     const ac = new AbortController();
+    let requests = 0;
 
     await using server = Deno.serve({
       handler: () => {
-        deferred.resolve();
+        requests++;
+        if (requests === 2) {
+          deferred.resolve();
+        }
         return new Response("NaN".repeat(100));
       },
       port: servePort,
@@ -2774,21 +2778,72 @@ Deno.test(
     const decoder = new TextDecoder();
 
     const body =
-      `HEAD / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+      `HEAD / HTTP/1.1\r\nHost: example.domain\r\n\r\nGET / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
 
     await deferred.promise;
 
-    const buf = new Uint8Array(1024);
-    const readResult = await conn.read(buf);
-    assert(readResult);
-    const msg = decoder.decode(buf.subarray(0, readResult));
+    let msg = "";
+    while (true) {
+      const buf = new Uint8Array(1024);
+      const readResult = await conn.read(buf);
+      if (!readResult) {
+        break;
+      }
+      msg += decoder.decode(buf.subarray(0, readResult));
+    }
 
-    assert(msg.includes("content-length: 300\r\n"));
+    const firstHeaderEnd = msg.indexOf("\r\n\r\n");
+    assert(firstHeaderEnd > 0);
+    assertStringIncludes(msg.slice(0, firstHeaderEnd), "content-length: 300");
+    const secondResponse = msg.indexOf("HTTP/1.1 200 OK", firstHeaderEnd + 4);
+    assert(secondResponse > firstHeaderEnd);
+    assertEquals(msg.slice(firstHeaderEnd + 4, secondResponse), "");
+    assertStringIncludes(msg.slice(secondResponse), "NaNNaN");
 
     conn.close();
 
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerUpgradeWithContentLengthRejected() {
+    const ac = new AbortController();
+    const listeningDeferred = Promise.withResolvers<void>();
+
+    await using server = Deno.serve({
+      handler: () => {
+        fail("Upgrade request with Content-Length should be rejected");
+        return new Response("ok");
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningDeferred.promise;
+    const conn = await Deno.connect({ port: servePort });
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    const smuggled = `GET /second HTTP/1.1\r\nHost: example.domain\r\n\r\n`;
+    const body =
+      `GET /upgrade HTTP/1.1\r\nHost: example.domain\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nContent-Length: ${smuggled.length}\r\n\r\n${smuggled}`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+
+    const buf = new Uint8Array(1024);
+    const readResult = await conn.read(buf);
+    assert(readResult !== null);
+    const msg = decoder.decode(buf.subarray(0, readResult));
+    assertStringIncludes(msg, "HTTP/1.1 400 Bad Request");
+    assertEquals(msg.includes("HTTP/1.1 200 OK"), false);
+
+    conn.close();
     ac.abort();
     await server.finished;
   },

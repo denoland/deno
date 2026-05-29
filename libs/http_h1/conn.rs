@@ -74,7 +74,7 @@ pub struct Request<'a> {
 #[derive(Debug, Clone, Copy)]
 pub enum ResponseBody<'a> {
   Empty,
-  Head(u64),
+  Head(Option<u64>),
   Bytes(&'a [u8]),
 }
 
@@ -109,12 +109,13 @@ pub struct SharedResponseWriter<'a> {
 impl<'a> SharedResponseWriter<'a> {
   pub fn new(response: Response<'a>) -> Self {
     let body_len = match response.body {
-      ResponseBody::Empty => 0,
+      ResponseBody::Empty => Some(0),
       ResponseBody::Head(content_length) => content_length,
-      ResponseBody::Bytes(bytes) => bytes.len() as u64,
+      ResponseBody::Bytes(bytes) => Some(bytes.len() as u64),
     };
-    let content_length =
-      status_allows_body(response.status).then_some(body_len);
+    let content_length = status_allows_body(response.status)
+      .then_some(body_len)
+      .flatten();
     let body = match response.body {
       ResponseBody::Bytes(bytes) if status_allows_body(response.status) => {
         bytes
@@ -542,12 +543,13 @@ where
       return Err(Error::ResponseStreamActive);
     }
     let body_len = match response.body {
-      ResponseBody::Empty => 0,
+      ResponseBody::Empty => Some(0),
       ResponseBody::Head(content_length) => content_length,
-      ResponseBody::Bytes(bytes) => bytes.len() as u64,
+      ResponseBody::Bytes(bytes) => Some(bytes.len() as u64),
     };
-    let content_length =
-      status_allows_body(response.status).then_some(body_len);
+    let content_length = status_allows_body(response.status)
+      .then_some(body_len)
+      .flatten();
     write_response_head(
       &mut self.write_buf,
       ResponseHeader {

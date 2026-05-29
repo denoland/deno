@@ -378,6 +378,12 @@ impl HeaderInfo {
     version: Version,
   ) -> Result<BodyKind, ParseError> {
     if self.connection_upgrade && self.has_upgrade {
+      if self.has_transfer_encoding
+        || self.content_length.is_some()
+        || self.content_length_error.is_some()
+      {
+        return Err(ParseError::ConflictingContentLength);
+      }
       return Ok(BodyKind::Upgrade);
     }
 
@@ -417,8 +423,11 @@ fn comma_tokens(value: &[u8]) -> impl Iterator<Item = &[u8]> {
 }
 
 fn parse_content_length(value: &[u8]) -> Result<u64, ParseError> {
+  if value.contains(&b',') {
+    return Err(ParseError::InvalidContentLength);
+  }
   let mut parsed = None;
-  for item in value.split(|byte| *byte == b',') {
+  for item in std::iter::once(value) {
     let value = trim_ows(item);
     if value.is_empty() {
       return Err(ParseError::InvalidContentLength);
@@ -575,24 +584,14 @@ mod tests {
   }
 
   #[test]
-  fn parses_equal_content_length_list() {
-    let mut headers = [Header::EMPTY; 8];
-    let request = parse(
-      b"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 5, 5\r\n\r\nhello",
-      &mut headers,
-    );
-    assert_eq!(request.body_kind, BodyKind::ContentLength(5));
-  }
-
-  #[test]
-  fn rejects_conflicting_content_length_list() {
+  fn rejects_content_length_list() {
     let mut headers = [Header::EMPTY; 8];
     assert_eq!(
       parse_request_head(
-        b"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 5, 6\r\n\r\n",
+        b"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 5, 5\r\n\r\n",
         &mut headers,
       ),
-      Err(ParseError::ConflictingContentLength)
+      Err(ParseError::InvalidContentLength)
     );
   }
 
@@ -616,6 +615,18 @@ mod tests {
       &mut headers,
     );
     assert_eq!(request.body_kind, BodyKind::Chunked);
+  }
+
+  #[test]
+  fn rejects_upgrade_with_content_length() {
+    let mut headers = [Header::EMPTY; 8];
+    assert_eq!(
+      parse_request_head(
+        b"GET / HTTP/1.1\r\nHost: example.com\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nContent-Length: 5\r\n\r\nhello",
+        &mut headers,
+      ),
+      Err(ParseError::ConflictingContentLength)
+    );
   }
 
   #[test]

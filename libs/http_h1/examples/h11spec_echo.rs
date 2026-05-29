@@ -323,7 +323,7 @@ async fn write_echo(
     return conn.finish_response_with_scratch(scratch, &trailers).await;
   }
   let body = if request.method == b"HEAD" {
-    ResponseBody::Head(response_body.len() as u64)
+    ResponseBody::Head(Some(response_body.len() as u64))
   } else if response_body.is_empty() {
     ResponseBody::Empty
   } else {

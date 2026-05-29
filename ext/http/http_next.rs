@@ -394,6 +394,10 @@ impl RawMethod {
     matches!(self, Self::Connect)
   }
 
+  fn is_head(&self) -> bool {
+    matches!(self, Self::Head)
+  }
+
   fn is_options(&self) -> bool {
     matches!(self, Self::Options)
   }
@@ -1016,6 +1020,24 @@ impl RawHttpRecord {
     }
   }
 
+  fn cancel_unfinished_request(&self) {
+    let mut inner = self.0.borrow_mut();
+    if inner.response_ready && inner.response_body_finished {
+      return;
+    }
+    inner.request_cancelled = true;
+    inner.response_body_finished = true;
+    if let Some(waker) = inner.request_cancel_waker.take() {
+      waker.wake();
+    }
+    if let Some(waker) = inner.response_ready_waker.take() {
+      waker.wake();
+    }
+    if let Some(waker) = inner.response_body_waker.take() {
+      waker.wake();
+    }
+  }
+
   fn cancelled(&self) -> bool {
     self.0.borrow().request_cancelled
   }
@@ -1264,6 +1286,26 @@ impl RawHttpRecord {
     }
 
     Finished(self)
+  }
+}
+
+struct RawHttpRecordCancelGuard(Option<Rc<RawHttpRecord>>);
+
+impl RawHttpRecordCancelGuard {
+  fn new(record: Rc<RawHttpRecord>) -> Self {
+    Self(Some(record))
+  }
+
+  fn disarm(&mut self) {
+    self.0 = None;
+  }
+}
+
+impl Drop for RawHttpRecordCancelGuard {
+  fn drop(&mut self) {
+    if let Some(record) = self.0.take() {
+      record.cancel_unfinished_request();
+    }
   }
 }
 
@@ -2979,11 +3021,7 @@ fn raw_request_from_h1(
 
   RawParsedRequest {
     version: request.version,
-    method: if store_request {
-      RawMethod::from_bytes(request.method)
-    } else {
-      RawMethod::Other(String::new())
-    },
+    method: RawMethod::from_bytes(request.method),
     path: if store_request {
       raw_request_target_to_string(request.target)
     } else {
@@ -3013,6 +3051,13 @@ fn h1_reason_for(status: u16) -> &'static [u8] {
 }
 
 const RAW_H1_DATE_LEN: usize = 29;
+
+#[derive(Clone, Copy)]
+struct RawH1ResponseContext {
+  version: h1::Version,
+  keep_alive: bool,
+  head: bool,
+}
 
 #[derive(Clone, Copy)]
 struct RawH1DateCache {
@@ -3124,12 +3169,16 @@ async fn write_h1_flat_response<I>(
   parts: RawResponseParts,
   body: FlatResponseBody,
   keep_alive: bool,
+  head: bool,
 ) -> Result<(), h1::Error>
 where
   I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
   let date = raw_h1_date();
-  if version == h1::Version::Http11 && !parts.trailers.is_empty() {
+  let should_chunk = version == h1::Version::Http11
+    && !head
+    && raw_response_needs_chunked(&parts);
+  if should_chunk {
     let headers = raw_response_headers(&parts, &date);
     let trailers = raw_response_trailers(&parts);
     conn
@@ -3156,7 +3205,8 @@ where
       .await?;
     return Ok(());
   }
-  if version == h1::Version::Http11
+  if !head
+    && version == h1::Version::Http11
     && parts.status == StatusCode::OK.as_u16()
     && parts.default_text_content_type
     && parts.headers.is_empty()
@@ -3174,7 +3224,8 @@ where
       return Ok(());
     }
   }
-  if version == h1::Version::Http11
+  if !head
+    && version == h1::Version::Http11
     && parts.status == StatusCode::OK.as_u16()
     && !parts.default_text_content_type
     && parts.headers.is_empty()
@@ -3200,6 +3251,10 @@ where
 
   let headers = raw_response_headers(&parts, &date);
   let response_body = match &body {
+    _ if head => h1::ResponseBody::Head(Some(match &body {
+      FlatResponseBody::Empty => 0,
+      FlatResponseBody::Bytes(body) => body.len() as u64,
+    })),
     FlatResponseBody::Empty => h1::ResponseBody::Empty,
     FlatResponseBody::Bytes(body) => h1::ResponseBody::Bytes(body.as_ref()),
   };
@@ -3353,12 +3408,16 @@ async fn write_h1_flat_response_shared<I>(
   parts: RawResponseParts,
   body: FlatResponseBody,
   keep_alive: bool,
+  head: bool,
 ) -> Result<(), HttpNextError>
 where
   I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
   let date = raw_h1_date();
-  if version == h1::Version::Http11 && !parts.trailers.is_empty() {
+  let should_chunk = version == h1::Version::Http11
+    && !head
+    && raw_response_needs_chunked(&parts);
+  if should_chunk {
     let headers = raw_response_headers(&parts, &date);
     let trailers = raw_response_trailers(&parts);
     let mut head = h1::SharedChunkedResponseHeadWriter::new(h1::ResponseHead {
@@ -3402,6 +3461,10 @@ where
   }
   let headers = raw_response_headers(&parts, &date);
   let response_body = match &body {
+    _ if head => h1::ResponseBody::Head(Some(match &body {
+      FlatResponseBody::Empty => 0,
+      FlatResponseBody::Bytes(body) => body.len() as u64,
+    })),
     FlatResponseBody::Empty => h1::ResponseBody::Empty,
     FlatResponseBody::Bytes(body) => h1::ResponseBody::Bytes(body.as_ref()),
   };
@@ -3469,6 +3532,17 @@ fn raw_response_trailers(
       value: value.as_slice(),
     })
     .collect()
+}
+
+fn raw_response_has_transfer_encoding(parts: &RawResponseParts) -> bool {
+  parts
+    .headers
+    .iter()
+    .any(|header| header.name.eq_ignore_ascii_case(b"transfer-encoding"))
+}
+
+fn raw_response_needs_chunked(parts: &RawResponseParts) -> bool {
+  !parts.trailers.is_empty() || raw_response_has_transfer_encoding(parts)
 }
 
 fn raw_response_content_length(parts: &RawResponseParts) -> Option<u64> {
@@ -3559,10 +3633,9 @@ impl Drop for RawResponseBodyFinishGuard {
 async fn write_h1_stream_response<I>(
   conn: &mut h1::SharedConn<I>,
   scratch: &mut h1::SharedScratch,
-  version: h1::Version,
+  context: RawH1ResponseContext,
   parts: RawResponseParts,
   mut body: ResponseBytesInner,
-  keep_alive: bool,
   record: Rc<RawHttpRecord>,
 ) -> Result<(), HttpNextError>
 where
@@ -3572,16 +3645,36 @@ where
   let date = raw_h1_date();
   let headers = raw_response_headers(&parts, &date);
   let trailers = raw_response_trailers(&parts);
-  let content_length = (!raw_response_body_is_compressed(&body))
-    .then(|| raw_response_content_length(&parts))
-    .flatten();
+  let content_length = (!raw_response_body_is_compressed(&body)
+    && !raw_response_has_transfer_encoding(&parts))
+  .then(|| raw_response_content_length(&parts))
+  .flatten();
+  if context.head {
+    conn
+      .write_response_with_scratch(
+        scratch,
+        h1::Response {
+          version: context.version,
+          status: parts.status,
+          reason: h1_reason_for(parts.status),
+          headers: &headers,
+          body: h1::ResponseBody::Head(content_length),
+          keep_alive: context.keep_alive,
+        },
+      )
+      .await
+      .inspect_err(|_| abort_raw_response_body(&mut body))?;
+    abort_raw_response_body(&mut body);
+    finish.finish(false);
+    return Ok(());
+  }
   let response_head = h1::ResponseHead {
-    version,
+    version: context.version,
     status: parts.status,
     reason: h1_reason_for(parts.status),
     headers: &headers,
-    keep_alive: keep_alive
-      && (version == h1::Version::Http11 || content_length.is_some()),
+    keep_alive: context.keep_alive
+      && (context.version == h1::Version::Http11 || content_length.is_some()),
   };
   if let Some(content_length) = content_length {
     if let Err(error) = conn
@@ -3625,12 +3718,13 @@ where
         return Ok(());
       }
       RawResponseBodyEvent::Frame(ResponseStreamResult::EndOfStream) => {
-        let trailers =
-          if content_length.is_some() || version == h1::Version::Http10 {
-            &[][..]
-          } else {
-            trailers.as_slice()
-          };
+        let trailers = if content_length.is_some()
+          || context.version == h1::Version::Http10
+        {
+          &[][..]
+        } else {
+          trailers.as_slice()
+        };
         conn.finish_response_with_scratch(scratch, trailers).await?;
         finish.finish(true);
         return Ok(());
@@ -3661,10 +3755,9 @@ where
 
 async fn write_h1_stream_response_shared<I>(
   conn: RawH1ConnectionCell<I>,
-  version: h1::Version,
+  context: RawH1ResponseContext,
   parts: RawResponseParts,
   mut body: ResponseBytesInner,
-  keep_alive: bool,
   record: Rc<RawHttpRecord>,
 ) -> Result<(), HttpNextError>
 where
@@ -3674,16 +3767,39 @@ where
   let date = raw_h1_date();
   let headers = raw_response_headers(&parts, &date);
   let trailers = raw_response_trailers(&parts);
-  let content_length = (!raw_response_body_is_compressed(&body))
-    .then(|| raw_response_content_length(&parts))
-    .flatten();
+  let content_length = (!raw_response_body_is_compressed(&body)
+    && !raw_response_has_transfer_encoding(&parts))
+  .then(|| raw_response_content_length(&parts))
+  .flatten();
+  if context.head {
+    let mut writer = h1::SharedResponseWriter::new(h1::Response {
+      version: context.version,
+      status: parts.status,
+      reason: h1_reason_for(parts.status),
+      headers: &headers,
+      body: h1::ResponseBody::Head(content_length),
+      keep_alive: context.keep_alive,
+    });
+    poll_fn(|cx| {
+      let mut conn = conn.borrow_mut();
+      let Some(conn) = conn.as_mut() else {
+        return Poll::Ready(Err(raw_h1_connection_closed()));
+      };
+      conn.poll_write_response(cx, &mut writer)
+    })
+    .await
+    .inspect_err(|_| abort_raw_response_body(&mut body))?;
+    abort_raw_response_body(&mut body);
+    finish.finish(false);
+    return Ok(());
+  }
   let response_head = h1::ResponseHead {
-    version,
+    version: context.version,
     status: parts.status,
     reason: h1_reason_for(parts.status),
     headers: &headers,
-    keep_alive: keep_alive
-      && (version == h1::Version::Http11 || content_length.is_some()),
+    keep_alive: context.keep_alive
+      && (context.version == h1::Version::Http11 || content_length.is_some()),
   };
   if let Some(content_length) = content_length {
     let mut head =
@@ -3738,12 +3854,13 @@ where
         return Ok(());
       }
       RawResponseBodyEvent::Frame(ResponseStreamResult::EndOfStream) => {
-        let trailers =
-          if content_length.is_some() || version == h1::Version::Http10 {
-            &[][..]
-          } else {
-            trailers.as_slice()
-          };
+        let trailers = if content_length.is_some()
+          || context.version == h1::Version::Http10
+        {
+          &[][..]
+        } else {
+          trailers.as_slice()
+        };
         let mut end = h1::SharedResponseEndWriter::new(trailers);
         poll_fn(|cx| {
           let mut conn = conn.borrow_mut();
@@ -3834,6 +3951,12 @@ async fn serve_http11_raw(
     let keep_alive = parsed.keep_alive;
     let expect_continue = parsed.expect_continue;
     let has_body = parsed.has_body;
+    let head = parsed.method.is_head();
+    let response_context = RawH1ResponseContext {
+      version: parsed.version,
+      keep_alive,
+      head,
+    };
 
     if expect_continue && has_body {
       conn.write_continue().await?;
@@ -3856,6 +3979,8 @@ async fn serve_http11_raw(
         None,
         parsed.request_size,
       );
+      let mut record_cancel_guard =
+        RawHttpRecordCancelGuard::new(record.clone());
       let direct_response =
         dispatch_raw_to_native_response(&callback, record.clone());
       if let Some(response) = direct_response {
@@ -3869,8 +3994,10 @@ async fn serve_http11_raw(
           response_parts,
           body,
           keep_alive,
+          head,
         )
         .await?;
+        record_cancel_guard.disarm();
         if response_status == StatusCode::SWITCHING_PROTOCOLS.as_u16()
           || !keep_alive
           || cancel.is_canceled()
@@ -3904,6 +4031,7 @@ async fn serve_http11_raw(
             response_parts,
             body,
             keep_alive,
+            head,
           )
           .await?;
         }
@@ -3911,14 +4039,14 @@ async fn serve_http11_raw(
           write_h1_stream_response(
             &mut conn,
             &mut scratch,
-            parsed.version,
+            response_context,
             response_parts,
             body,
-            keep_alive,
             record.clone(),
           )
           .await?;
           if parsed.version == h1::Version::Http10 {
+            record_cancel_guard.disarm();
             return Ok(());
           }
         }
@@ -3927,8 +4055,10 @@ async fn serve_http11_raw(
         || !keep_alive
         || cancel.is_canceled()
       {
+        record_cancel_guard.disarm();
         return Ok(());
       }
+      record_cancel_guard.disarm();
       continue;
     }
     if parsed.has_body || upgrade.is_some() {
@@ -3953,6 +4083,8 @@ async fn serve_http11_raw(
         upgrade.clone(),
         parsed.request_size,
       );
+      let mut record_cancel_guard =
+        RawHttpRecordCancelGuard::new(record.clone());
       let direct_response = if upgrade.is_none() {
         dispatch_raw_to_native_response(&callback, record.clone())
       } else {
@@ -3974,10 +4106,12 @@ async fn serve_http11_raw(
             response_parts,
             body,
             keep_alive,
+            head,
           )
           .await?;
           conn = local_conn;
           scratch = local_scratch;
+          record_cancel_guard.disarm();
           if response_status == StatusCode::SWITCHING_PROTOCOLS.as_u16()
             || !keep_alive
             || cancel.is_canceled()
@@ -4012,6 +4146,7 @@ async fn serve_http11_raw(
                 response_parts,
                 body,
                 keep_alive,
+                head,
               )
               .await?;
             }
@@ -4019,14 +4154,14 @@ async fn serve_http11_raw(
               write_h1_stream_response(
                 &mut local_conn,
                 &mut local_scratch,
-                parsed.version,
+                response_context,
                 response_parts,
                 body,
-                keep_alive,
                 record.clone(),
               )
               .await?;
               if parsed.version == h1::Version::Http10 {
+                record_cancel_guard.disarm();
                 return Ok(());
               }
             }
@@ -4034,8 +4169,10 @@ async fn serve_http11_raw(
           conn = local_conn;
           scratch = local_scratch;
           if !keep_alive || cancel.is_canceled() {
+            record_cancel_guard.disarm();
             return Ok(());
           }
+          record_cancel_guard.disarm();
           continue;
         }
       }
@@ -4047,20 +4184,21 @@ async fn serve_http11_raw(
             response_parts,
             body,
             keep_alive,
+            head,
           )
           .await?;
         }
         RawResponseBody::Stream(body) => {
           write_h1_stream_response_shared(
             body_conn.clone(),
-            parsed.version,
+            response_context,
             response_parts,
             body,
-            keep_alive,
             record.clone(),
           )
           .await?;
           if parsed.version == h1::Version::Http10 {
+            record_cancel_guard.disarm();
             return Ok(());
           }
         }
@@ -4071,6 +4209,7 @@ async fn serve_http11_raw(
       {
         let result = take_raw_upgrade_stream(&upgrade);
         let _ = tx.send(result);
+        record_cancel_guard.disarm();
         return Ok(());
       }
       let Some(state) = body_conn.borrow_mut().take() else {
@@ -4079,8 +4218,10 @@ async fn serve_http11_raw(
       conn = state.conn;
       scratch = state.scratch;
       if !keep_alive || cancel.is_canceled() {
+        record_cancel_guard.disarm();
         return Ok(());
       }
+      record_cancel_guard.disarm();
       continue;
     }
 
@@ -4093,6 +4234,7 @@ async fn serve_http11_raw(
       None,
       parsed.request_size,
     );
+    let mut record_cancel_guard = RawHttpRecordCancelGuard::new(record.clone());
     let direct_response =
       dispatch_raw_to_native_response(&callback, record.clone());
     if let Some(response) = direct_response {
@@ -4104,8 +4246,10 @@ async fn serve_http11_raw(
         response_parts,
         body,
         keep_alive,
+        head,
       )
       .await?;
+      record_cancel_guard.disarm();
       if !keep_alive || cancel.is_canceled() {
         return Ok(());
       }
@@ -4135,6 +4279,7 @@ async fn serve_http11_raw(
           response_parts,
           body,
           keep_alive,
+          head,
         )
         .await?;
       }
@@ -4142,21 +4287,23 @@ async fn serve_http11_raw(
         write_h1_stream_response(
           &mut conn,
           &mut scratch,
-          parsed.version,
+          response_context,
           response_parts,
           body,
-          keep_alive,
           record.clone(),
         )
         .await?;
         if parsed.version == h1::Version::Http10 {
+          record_cancel_guard.disarm();
           return Ok(());
         }
       }
     }
     if !keep_alive || cancel.is_canceled() {
+      record_cancel_guard.disarm();
       return Ok(());
     }
+    record_cancel_guard.disarm();
   }
 }
 

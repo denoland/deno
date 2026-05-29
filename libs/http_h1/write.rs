@@ -243,6 +243,7 @@ fn write_response_head_inner(
     && body_allowed
     && !chunked
     && !has_content_length
+    && !has_transfer_encoding
   {
     out.extend_from_slice(b"content-length: ");
     push_u64(out, content_length);
@@ -315,6 +316,7 @@ fn write_response_head_to_inner(
     && body_allowed
     && !chunked
     && !has_content_length
+    && !has_transfer_encoding
   {
     cursor.push(b"content-length: ")?;
     cursor.push_u64(content_length)?;
