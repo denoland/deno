@@ -4918,7 +4918,7 @@ pub mod test {
   }
 
   #[test]
-  fn test_deno_workspace_member_no_config_file_error() {
+  fn test_deno_workspace_member_missing_dir_skipped() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(
       root_dir().join("deno.json"),
@@ -4926,14 +4926,13 @@ pub mod test {
         "workspace": ["./member"]
       }),
     );
-    // no deno.json in this folder, so should error
-    let err = workspace_at_start_dir_err(&sys, &root_dir().join("package"));
-    assert_eq!(
-      err.to_string(),
-      normalize_err_text(
-        "Could not find config file for workspace member in '[ROOT_DIR_URL]/member/'."
-      )
-    );
+    // The listed member directory does not exist on disk; we should warn
+    // and skip it instead of erroring, so other workspace operations can
+    // still proceed (e.g. partial Docker images that only copy a subset
+    // of workspace members).
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
+    assert_eq!(workspace_dir.workspace.deno_jsons().count(), 1);
+    assert_eq!(workspace_dir.workspace.config_folders().len(), 1);
   }
 
   #[test]
@@ -5188,7 +5187,7 @@ pub mod test {
   }
 
   #[test]
-  fn test_npm_workspace_member_no_config_file_error() {
+  fn test_npm_workspace_member_missing_dir_skipped() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(
       root_dir().join("package.json"),
@@ -5196,8 +5195,27 @@ pub mod test {
         "workspaces": ["./member"]
       }),
     );
-    // no package.json in this folder, so should error
-    let err = workspace_at_start_dir_err(&sys, &root_dir().join("package"));
+    // The listed npm workspace member directory does not exist; warn and
+    // skip instead of erroring, matching npm's behavior and supporting
+    // partial Docker image scenarios.
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
+    assert_eq!(workspace_dir.workspace.package_jsons().count(), 1);
+    assert_eq!(workspace_dir.workspace.config_folders().len(), 1);
+  }
+
+  #[test]
+  fn test_npm_workspace_member_only_deno_json_errors() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("package.json"),
+      json!({
+        "workspaces": ["./member"]
+      }),
+    );
+    // Member exists with a deno.json but no package.json — that's a
+    // genuine npm-workspace misconfiguration and should still error.
+    sys.fs_insert_json(root_dir().join("member/deno.json"), json!({}));
+    let err = workspace_at_start_dir_err(&sys, &root_dir());
     assert_eq!(
       err.to_string(),
       normalize_err_text(

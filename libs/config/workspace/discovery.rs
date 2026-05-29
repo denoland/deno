@@ -844,7 +844,21 @@ fn resolve_workspace_for_config_folder<
         );
       }
       validate_member_url_is_descendant(&member_dir_url)?;
-      let member_config_folder = find_member_config_folder(&member_dir_url)?;
+      let member_config_folder =
+        match find_member_config_folder(&member_dir_url) {
+          Ok(folder) => folder,
+          Err(err) => match err.into_kind() {
+            ResolveWorkspaceMemberErrorKind::NotFound { dir_url } => {
+              log::warn!(
+                "Workspace member \"{}\" not found at {}. Skipping.",
+                raw_member,
+                dir_url,
+              );
+              continue;
+            }
+            other => return Err(other.into_box().into()),
+          },
+        };
       let previous_member = final_members
         .insert(new_rc(member_dir_url.clone()), member_config_folder);
       if previous_member.is_some() {
@@ -894,21 +908,16 @@ fn resolve_workspace_for_config_folder<
       let member_config_folder =
         match find_member_config_folder(&member_dir_url) {
           Ok(config_folder) => config_folder,
-          Err(err) => {
-            return Err(
-              match err.into_kind() {
-                ResolveWorkspaceMemberErrorKind::NotFound { dir_url } => {
-                  // enhance the error to say we didn't find a package.json
-                  ResolveWorkspaceMemberErrorKind::NotFoundPackageJson {
-                    dir_url,
-                  }
-                  .into_box()
-                }
-                err => err.into_box(),
-              }
-              .into(),
-            );
-          }
+          Err(err) => match err.into_kind() {
+            ResolveWorkspaceMemberErrorKind::NotFound { dir_url } => {
+              log::warn!(
+                "Workspace member directory \"{}\" not found. Skipping.",
+                dir_url,
+              );
+              continue;
+            }
+            other => return Err(other.into_box().into()),
+          },
         };
       if member_config_folder.pkg_json().is_none() {
         return Err(
