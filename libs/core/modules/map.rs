@@ -12,6 +12,7 @@ use std::task::Context;
 use std::task::Poll;
 
 use capacity_builder::StringBuilder;
+use deno_core::FastString;
 use deno_core::error::CoreError;
 use deno_error::JsErrorBox;
 use futures::StreamExt;
@@ -371,6 +372,22 @@ impl ModuleMap {
     requested_module_type: impl AsRef<RequestedModuleType>,
   ) -> Option<ModuleId> {
     self.data.borrow().get_id(name, requested_module_type)
+  }
+
+  /// Register an additional `(name, requested_module_type) -> module_id`
+  /// mapping for an already-registered module. See
+  /// `ModuleMapData::register_under_type`.
+  pub(crate) fn register_under_type(
+    &self,
+    name: FastString,
+    requested_module_type: &RequestedModuleType,
+    module_id: ModuleId,
+  ) {
+    self.data.borrow_mut().register_under_type(
+      name,
+      requested_module_type,
+      module_id,
+    );
   }
 
   pub(crate) fn is_main_module(&self, global: &v8::Global<v8::Module>) -> bool {
@@ -1052,6 +1069,7 @@ impl ModuleMap {
         &import_specifier,
         name.as_ref(),
         resolve_kind,
+        &attributes,
       ) {
         Ok(s) => s,
         Err(e) => {
@@ -1472,6 +1490,7 @@ impl ModuleMap {
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
+    import_attributes: &HashMap<String, String>,
   ) -> ModuleResolveResponse {
     if specifier.starts_with("ext:")
       && !referrer.starts_with("ext:")
@@ -1492,10 +1511,13 @@ impl ModuleMap {
       return Err(JsErrorBox::type_error(msg));
     }
 
-    self
-      .loader
-      .borrow()
-      .resolve_with_scope(scope, specifier, referrer, kind)
+    self.loader.borrow().resolve_with_scope(
+      scope,
+      specifier,
+      referrer,
+      kind,
+      import_attributes,
+    )
   }
 
   /// Called by `module_resolve_callback` during module instantiation.
@@ -1533,6 +1555,7 @@ impl ModuleMap {
         specifier,
         referrer,
         ResolutionKind::Import,
+        &import_attributes,
       ) {
         Ok(s) => s,
         Err(e) => {
@@ -1622,6 +1645,7 @@ impl ModuleMap {
       &specifier,
       &referrer,
       ResolutionKind::DynamicImport,
+      &HashMap::new(),
     );
 
     // Fast path: if the module is already loaded, resolve the import

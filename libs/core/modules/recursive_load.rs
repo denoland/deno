@@ -380,6 +380,27 @@ impl RecursiveModuleLoad {
       module_source,
     )? {
       NewModuleResult::Ready(module_id) => {
+        // If the import statement used a custom `type` attribute that
+        // doesn't correspond to a builtin module type
+        // (e.g. `with { type: "x-css" }`) and the loaded module was
+        // registered under a different requested type (e.g. JavaScript ->
+        // `RequestedModuleType::None` for a `module.registerHooks()` load
+        // hook that returned `format: "module"`), also register the module
+        // under the import's requested type so subsequent lookups for the
+        // same `(specifier, attribute)` pair resolve to it.
+        let imported_type = &module_request.reference.requested_module_type;
+        if matches!(imported_type, RequestedModuleType::Other(_))
+          && self
+            .module_map_rc
+            .get_id(module_request.reference.specifier.as_str(), imported_type)
+            != Some(module_id)
+        {
+          self.module_map_rc.register_under_type(
+            module_request.reference.specifier.clone().into(),
+            imported_type,
+            module_id,
+          );
+        }
         self.finalize_module(module_id, &module_request.reference, Some(&code));
         Ok(RegisterOutcome::Done)
       }

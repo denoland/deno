@@ -81,12 +81,16 @@ pub trait ModuleLoader {
   /// Most loaders should use the default implementation. Embedders that need
   /// to synchronously call JavaScript during resolution, such as Node
   /// `module.registerHooks()`, can override this method.
+  ///
+  /// `import_attributes` carries the static-import attributes from the
+  /// `with { ... }` clause; the default implementation ignores them.
   fn resolve_with_scope(
     &self,
     _scope: &mut v8::PinScope,
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
+    _import_attributes: &HashMap<String, String>,
   ) -> ModuleResolveResponse {
     self.resolve(specifier, referrer, kind)
   }

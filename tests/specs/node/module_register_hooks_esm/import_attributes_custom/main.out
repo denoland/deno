@@ -1,0 +1,5 @@
+hook:resolve ./mod.css {"type":"x-css-component"}
+hook:resolve ./mod.css {"x_loader":"css-mod"}
+hook:load mod.css {"type":"x-css-component"}
+a: css-content
+b: css-content
