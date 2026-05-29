@@ -889,12 +889,11 @@ async fn resolve_tarball_package(
       "Invalid package name in tarball: {name:?} (must be a valid npm package name)"
     );
   }
-  if let Some(scope_end) = name.find('/') {
-    if name[scope_end + 1..].contains('/')
-      || name[scope_end + 1..].contains("..")
-    {
-      bail!("Invalid package name in tarball: {name:?}");
-    }
+  if let Some(scope_end) = name.find('/')
+    && (name[scope_end + 1..].contains('/')
+      || name[scope_end + 1..].contains(".."))
+  {
+    bail!("Invalid package name in tarball: {name:?}");
   }
   if version.contains('/') || version.contains('\\') || version.contains("..") {
     bail!(
@@ -933,12 +932,12 @@ async fn resolve_tarball_package(
     let mut hasher = sha2::Sha512::new();
     hasher.update(&tarball_bytes);
     let result = hasher.finalize();
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&result);
     let hex = result
       .iter()
       .take(16)
       .map(|b| format!("{b:02x}"))
       .collect::<String>();
+    let b64 = base64::engine::general_purpose::STANDARD.encode(result);
     (format!("sha512-{b64}"), hex)
   };
 
