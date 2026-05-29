@@ -63,6 +63,7 @@ mod export_key;
 mod generate_key;
 mod import_key;
 mod key;
+mod mlkem;
 mod shared;
 mod x25519;
 mod x448;
@@ -82,6 +83,7 @@ use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
+pub use crate::mlkem::MlKemError;
 pub use crate::shared::SharedError;
 use crate::shared::V8RawKeyData;
 pub use crate::x448::X448Error;
@@ -127,6 +129,16 @@ deno_core::extension!(deno_crypto,
     ed25519::op_crypto_export_spki_ed25519,
     ed25519::op_crypto_export_pkcs8_ed25519,
     ed25519::op_crypto_jwk_x_ed25519,
+    mlkem::op_crypto_ml_kem_generate_key,
+    mlkem::op_crypto_ml_kem_encapsulate,
+    mlkem::op_crypto_ml_kem_decapsulate,
+    mlkem::op_crypto_ml_kem_import_spki,
+    mlkem::op_crypto_ml_kem_import_pkcs8,
+    mlkem::op_crypto_ml_kem_export_spki,
+    mlkem::op_crypto_ml_kem_export_pkcs8,
+    mlkem::op_crypto_ml_kem_get_public_key,
+    mlkem::op_crypto_ml_kem_validate_private_key,
+    mlkem::op_crypto_ml_kem_validate_public_key,
   ],
   lazy_loaded_js = [ "00_crypto.js" ],
   options = {
