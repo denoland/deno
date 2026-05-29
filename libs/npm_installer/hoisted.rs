@@ -179,10 +179,13 @@ fn compute_hoisted_layout<'a>(
   let mut nested = Vec::new();
   // Each queue entry carries the parent's path (relative to the root
   // `node_modules/`), the parent package, and the chain of ancestor
-  // NVs whose `node_modules/<name>` segments lie on `parent_path` —
-  // these are the candidates Node's resolver walks up to.
-  let mut queue: VecDeque<(PathBuf, &NpmResolutionPackage, Vec<&PackageNv>)> =
-    VecDeque::new();
+  // packages whose `node_modules/<name>` segments lie on `parent_path`
+  // — these are the candidates Node's resolver walks up to.
+  let mut queue: VecDeque<(
+    PathBuf,
+    &NpmResolutionPackage,
+    Vec<&NpmResolutionPackage>,
+  )> = VecDeque::new();
   // `(parent_path, parent_nv)` we've already expanded — avoids
   // re-emitting the same edges when multiple paths reach the same
   // (path, package) pair.
@@ -205,20 +208,44 @@ fn compute_hoisted_layout<'a>(
         continue;
       }
 
-      if let Some(hoisted) = best_version_for_name.get(&dep.id.nv.name)
-        && hoisted.id.nv == dep.id.nv
-      {
-        // Top-level provides this version; Node's walk-up finds it.
+      // Self-loop: parent depends on something at its own nv. Nesting
+      // at `parent_path/node_modules/<name>` would just be a copy of
+      // parent under itself.
+      if parent.id.nv == dep.id.nv {
         continue;
       }
 
-      // An ancestor on `parent_path` (including `parent` itself) already
-      // resolves `dep.id.nv` via Node's directory walk-up. This both
-      // breaks dependency cycles (A@1 ↔ B@1 where neither hoists) and
-      // avoids redundant deeper nestings.
-      if parent.id.nv == dep.id.nv
-        || parent_ancestors.iter().any(|a| **a == dep.id.nv)
-      {
+      // Simulate Node's directory walk-up from `parent`'s dir: it
+      // binds the nearest `<ancestor>/node_modules/<dep.name>`, which
+      // exists iff that ancestor has a *non-hoisted* dep with that
+      // name (hoisted versions live at the root, not in the
+      // ancestor's own node_modules). Match by name, not by nv — two
+      // different versions of the same name on one path each shadow
+      // further-up copies.
+      //
+      // If walk-up already finds `dep.id.nv`, no nesting is needed.
+      // This subsumes the simple "hoisted at root" case, breaks
+      // dependency cycles, and avoids redundant deeper nestings.
+      let hoisted_for_name =
+        best_version_for_name.get(&dep.id.nv.name).map(|p| &p.id.nv);
+      let walkup_target = parent_ancestors
+        .iter()
+        .rev()
+        .find_map(|ancestor| {
+          ancestor.dependencies.values().find_map(|aid| {
+            let apkg = snapshot.package_from_id(aid).unwrap();
+            if apkg.id.nv.name == dep.id.nv.name
+              && hoisted_for_name != Some(&apkg.id.nv)
+            {
+              Some(&apkg.id.nv)
+            } else {
+              None
+            }
+          })
+        })
+        .or(hoisted_for_name);
+
+      if walkup_target == Some(&dep.id.nv) {
         continue;
       }
 
@@ -231,7 +258,7 @@ fn compute_hoisted_layout<'a>(
         dep,
       });
       let mut dep_ancestors = parent_ancestors.clone();
-      dep_ancestors.push(&parent.id.nv);
+      dep_ancestors.push(parent);
       queue.push_back((dep_path, dep, dep_ancestors));
     }
   }
