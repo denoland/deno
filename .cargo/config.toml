@@ -22,8 +22,7 @@ rustflags = [
 [target.x86_64-apple-darwin]
 rustflags = [
   "-C",
-  # --icf=safe folds identical (address-insignificant) functions; ~7% smaller __TEXT, ~10% lower idle RSS (measured on aarch64 release). Requires lld.
-  "link-args=-fuse-ld=lld -Wl,--icf=safe -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
+  "link-args=-weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
 ]
 
 [target.aarch64-apple-darwin]
