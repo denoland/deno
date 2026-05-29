@@ -2,6 +2,7 @@
 
 // Note: Only add code in this folder that has no application specific logic
 pub mod archive;
+pub mod browser;
 pub mod console;
 pub mod display;
 pub mod draw_thread;
