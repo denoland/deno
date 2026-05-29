@@ -1,4 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-lint-ignore-file
 
 // Regression test for https://github.com/denoland/deno/issues/20956.
 //
