@@ -9,5 +9,8 @@
   // tasks concurrently across packages.
   "tempDir": true,
   "args": "task -r dev",
+  "envs": {
+    "DENO_JOBS": "3"
+  },
   "output": "task.out"
 }
