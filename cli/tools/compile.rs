@@ -261,20 +261,38 @@ fn rewrite_absolute_bundle_paths(
 ) -> Result<RewriteResult, AnyError> {
   let src = std::str::from_utf8(bundle_bytes)
     .context("Bundle output is not valid UTF-8")?;
+  // Only rewrite paths that actually exist on disk at build time — these are
+  // the ones the bundler emitted referring to files it expects to be
+  // reachable through the VFS at runtime.
+  Ok(rewrite_absolute_bundle_paths_inner(src, bundle_dir, |p| {
+    p.exists()
+  }))
+}
 
-  // Match string literals that look like absolute Unix paths to a JS/JSON
-  // source file. Conservative on extension on purpose — we don't want to
-  // rewrite arbitrary user-provided strings.
-  let pattern = lazy_regex::regex!(r#""(/[^"\n]+\.(?:js|cjs|mjs|json))""#);
+/// Core of [`rewrite_absolute_bundle_paths`], parameterized over the
+/// build-time existence check so it can be unit-tested with synthetic paths.
+fn rewrite_absolute_bundle_paths_inner(
+  src: &str,
+  bundle_dir: &Path,
+  path_exists: impl Fn(&Path) -> bool,
+) -> RewriteResult {
+  // Match string literals that look like an absolute path to a JS/JSON source
+  // file: either POSIX (`/a/b.js`) or a Windows drive-letter path
+  // (`C:\a\b.js` / `C:/a/b.js`). Because the bundle is JS source, a Windows
+  // path's separators arrive JS-escaped as `\\`, which the body matches as
+  // ordinary (non-`"`) characters. Conservative on extension on purpose — we
+  // don't want to rewrite arbitrary user-provided strings.
+  let pattern = lazy_regex::regex!(
+    r#""((?:[A-Za-z]:)?[\\/][^"\n]+\.(?:js|cjs|mjs|json))""#
+  );
 
   let mut any_rewrite = false;
   let rewritten = pattern.replace_all(src, |caps: &regex::Captures<'_>| {
-    let abs = caps.get(1).unwrap().as_str();
-    let path = Path::new(abs);
-    // Only rewrite paths that actually exist on disk at build time —
-    // these are the ones the bundler emitted referring to files it
-    // expects to be reachable through the VFS at runtime.
-    if !path.exists() {
+    // Collapse JS-escaped backslashes (`C:\\a\\b.js`) back to real
+    // separators before touching the filesystem.
+    let abs = caps.get(1).unwrap().as_str().replace("\\\\", "\\");
+    let path = Path::new(&abs);
+    if !path_exists(path) {
       return caps[0].to_string();
     }
     let Some(rel) = pathdiff::diff_paths(path, bundle_dir) else {
@@ -286,10 +304,10 @@ fn rewrite_absolute_bundle_paths(
   });
 
   if !any_rewrite {
-    return Ok(RewriteResult {
-      bytes: bundle_bytes.to_vec(),
+    return RewriteResult {
+      bytes: src.as_bytes().to_vec(),
       rewrote_paths: false,
-    });
+    };
   }
 
   let prefix = r#"// Injected by deno compile --bundle: resolve absolute paths emitted by
@@ -302,10 +320,10 @@ function __internalResolveBundlePath(rel) {
   return __internalPath.join(__internalBundleDir, rel);
 }
 "#;
-  Ok(RewriteResult {
+  RewriteResult {
     bytes: format!("{prefix}{rewritten}").into_bytes(),
     rewrote_paths: true,
-  })
+  }
 }
 
 async fn compile_binary(
@@ -914,5 +932,44 @@ mod test {
     run_test("C:\\my-exe.exe", Some("windows"), "C:\\my-exe.exe");
     run_test("C:\\my-exe.0.1.2", Some("windows"), "C:\\my-exe.0.1.2.exe");
     run_test("my-exe-0.1.2", Some("linux"), "my-exe-0.1.2");
+  }
+
+  #[test]
+  fn test_rewrite_absolute_bundle_paths_native() {
+    // Use the platform-native absolute path layout so this exercises the
+    // real shape esbuild emits on each OS. On Windows the require() string in
+    // the bundle is a drive-letter path with JS-escaped backslashes
+    // (`C:\\proj\\dist\\pkg\\index.js`), which the previous Unix-only regex
+    // never matched — leaving the require pointed at a non-existent
+    // build-time path at runtime.
+    let bundle_dir = if cfg!(windows) {
+      PathBuf::from("C:\\proj\\dist")
+    } else {
+      PathBuf::from("/proj/dist")
+    };
+    let abs = bundle_dir.join("pkg").join("index.js");
+    // Escape backslashes the way they appear inside a JS string literal.
+    let abs_in_js = abs.to_string_lossy().replace('\\', "\\\\");
+    let src = format!("var m = require(\"{abs_in_js}\");\n");
+
+    let result =
+      rewrite_absolute_bundle_paths_inner(&src, &bundle_dir, |_| true);
+
+    assert!(result.rewrote_paths);
+    let out = String::from_utf8(result.bytes).unwrap();
+    assert!(
+      out.contains(r#"__internalResolveBundlePath("pkg/index.js")"#),
+      "unexpected output: {out}"
+    );
+  }
+
+  #[test]
+  fn test_rewrite_absolute_bundle_paths_skips_missing() {
+    let bundle_dir = PathBuf::from("/proj/dist");
+    let src = "var m = require(\"/does/not/exist.js\");\n";
+    let result =
+      rewrite_absolute_bundle_paths_inner(src, &bundle_dir, |_| false);
+    assert!(!result.rewrote_paths);
+    assert_eq!(result.bytes.as_slice(), src.as_bytes());
   }
 }
