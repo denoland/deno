@@ -666,8 +666,6 @@ function byteLength(string, encoding) {
 
 Buffer.byteLength = byteLength;
 
-Buffer.prototype._isBuffer = true;
-
 function swap(b, n, m) {
   const i = b[n];
   b[n] = b[m];

@@ -2076,7 +2076,17 @@ impl ModuleMap {
     tc_scope.set_continuation_preserved_embedder_data(cped);
 
     let module = v8::Local::new(tc_scope, &module_handle);
+    // Set `evaluating_top_level` so that any nested `lazy_load_esm_module`
+    // calls (triggered e.g. by CJS `require()` chains under
+    // `npm:` packages) skip their post-evaluate `perform_microtask_checkpoint`.
+    // Draining microtasks while V8 is inside `module.evaluate()` on an
+    // async module graph leaves the evaluation promise permanently
+    // Pending — V8 advances AsyncModuleExecutionFulfilled for the resumed
+    // TLA dep but cannot then run `ExecuteModule` on the still-evaluating
+    // parent.
+    self.evaluating_top_level.set(true);
     let maybe_value = module.evaluate(tc_scope);
+    self.evaluating_top_level.set(false);
 
     // Update status after evaluating.
     let status = module.get_status();
