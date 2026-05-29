@@ -1,0 +1,8 @@
+{
+  "name": "@denotest/hoisted-nested-grandchild-chain",
+  "version": "2.0.0",
+  "type": "module",
+  "dependencies": {
+    "@denotest/different-nested-dep-child": "1.0.0"
+  }
+}
