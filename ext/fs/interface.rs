@@ -9,6 +9,7 @@ use deno_core::FromV8;
 use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
+use deno_io::fs::FsStatFs;
 use deno_maybe_sync::MaybeSend;
 use deno_maybe_sync::MaybeSync;
 use deno_permissions::CheckedPath;
@@ -245,6 +246,14 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
 
   fn lstat_sync(&self, path: &CheckedPath) -> FsResult<FsStat>;
   async fn lstat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat>;
+
+  fn statfs_sync(&self, path: &CheckedPath, bigint: bool)
+  -> FsResult<FsStatFs>;
+  async fn statfs_async(
+    &self,
+    path: CheckedPathBuf,
+    bigint: bool,
+  ) -> FsResult<FsStatFs>;
 
   fn realpath_sync(&self, path: &CheckedPath) -> FsResult<PathBuf>;
   async fn realpath_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf>;

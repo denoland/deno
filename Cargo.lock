@@ -2376,6 +2376,7 @@ dependencies = [
  "serde",
  "thiserror 2.0.12",
  "winapi",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
