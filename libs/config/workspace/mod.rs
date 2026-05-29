@@ -5035,6 +5035,29 @@ pub mod test {
   }
 
   #[test]
+  fn test_npm_package_under_deno_workspace_with_empty_members() {
+    // Exact repro from #30672: parent deno.json has an empty `workspace` array
+    // and the start folder contains only a package.json. The parent workspace
+    // should be discarded and the start folder resolved standalone.
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": []
+      }),
+    );
+    sys.fs_insert_json(root_dir().join("package/package.json"), json!({}));
+    let workspace_dir =
+      workspace_at_start_dir(&sys, &root_dir().join("package"));
+    assert_eq!(
+      workspace_dir.workspace.root_dir_path(),
+      root_dir().join("package"),
+    );
+    assert_eq!(workspace_dir.workspace.deno_jsons().count(), 0);
+    assert_eq!(workspace_dir.workspace.package_jsons().count(), 1);
+  }
+
+  #[test]
   fn test_multiple_workspaces_npm_package_referenced_in_package_json_workspace()
   {
     let sys = InMemorySys::default();
