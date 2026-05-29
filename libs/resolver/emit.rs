@@ -546,8 +546,9 @@ fn transpile(
   let transpile_options = if !matches!(
     transpile_options.decorators,
     deno_ast::DecoratorsTranspileOption::None
-  ) && !program_has_decorators(parsed_source.program_ref())
-  {
+  ) && !program_has_decorators(
+    parsed_source.program_ref(),
+  ) {
     owned_options = deno_ast::TranspileOptions {
       decorators: deno_ast::DecoratorsTranspileOption::None,
       ..transpile_options.clone()
