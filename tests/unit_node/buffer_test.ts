@@ -802,6 +802,17 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] asciiSlice returns correct string",
+  fn() {
+    // deno-lint-ignore no-explicit-any
+    const buf: any = Buffer.of(1, 2, 3, 0x80, 0xc0, 0xff);
+    assertEquals(buf.asciiSlice().length, 6);
+    assertEquals(buf.asciiSlice(), "\x01\x02\x03\x00\x40\x7f");
+    assertEquals(buf.asciiSlice(1, 3), "\x02\x03");
+  },
+});
+
+Deno.test({
   name: "[node/buffer] hexSlice returns correct string",
   fn() {
     // deno-lint-ignore no-explicit-any

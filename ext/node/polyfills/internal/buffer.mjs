@@ -90,7 +90,6 @@ const {
   asciiToBytes,
   base64ToBytes,
   base64UrlToBytes,
-  bytesToAscii,
   bytesToUtf16le,
   hexToBytes,
   utf16leToBytes,
@@ -726,6 +725,15 @@ function decodeLatin1(buffer, start, end) {
   );
 }
 
+function decodeAscii(buffer, start, end) {
+  return op_node_decode(
+    buffer,
+    start,
+    end,
+    2,
+  );
+}
+
 Buffer.prototype.toString = function toString(encoding, start, end) {
   if (arguments.length === 0) {
     return decodeUtf8(
@@ -1004,11 +1012,7 @@ Buffer.prototype.lastIndexOf = function lastIndexOf(
 };
 
 Buffer.prototype.asciiSlice = function asciiSlice(offset, length) {
-  if (offset === 0 && length === this.length) {
-    return bytesToAscii(this);
-  } else {
-    return bytesToAscii(TypedArrayPrototypeSlice(this, offset, length));
-  }
+  return decodeAscii(this, offset, length);
 };
 
 Buffer.prototype.asciiWrite = function asciiWrite(string, offset, length) {

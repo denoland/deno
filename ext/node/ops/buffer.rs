@@ -216,6 +216,19 @@ pub fn op_node_decode<'a>(
       // latin1
       v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
     }
+    2 => {
+      // ascii
+      if buffer.is_ascii() {
+        v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
+      } else {
+        let ascii_bytes: Vec<u8> = buffer.iter().map(|&b| b & 0x7F).collect();
+        v8::String::new_from_one_byte(
+          scope,
+          &ascii_bytes,
+          v8::NewStringType::Normal,
+        )
+      }
+    }
     _ => return Err(JsErrorBox::from_err(BufferError::InvalidType)),
   }
   .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
