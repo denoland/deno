@@ -1,10 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#[allow(
-  unused_imports,
-  reason = "AsRawBytes is used via the AsRawBytesVec helper trait below"
-)]
-use aws_lc_rs::encoding::AsRawBytes;
 use aws_lc_rs::signature::KeyPair;
 use aws_lc_rs::signature::UnparsedPublicKey;
 use aws_lc_rs::unstable::signature::ML_DSA_44;
