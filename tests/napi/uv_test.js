@@ -47,3 +47,22 @@ Deno.test({
     uv.test_uv_polyfills();
   },
 });
+
+// uv_timer scheduled by a NAPI addon must fire on the deno event loop —
+// the ext/napi uv_timer_* polyfills bridge onto deno_core's uv_compat
+// layer, the same layer driving Node-compat timers on top of tokio. This
+// is what unblocks addons like @sentry/profiling-node, which uses a
+// repeating uv_timer for periodic measurement ticks.
+Deno.test({
+  name: "napi uv timer callback fires",
+  fn: async () => {
+    let called = false;
+    await new Promise((resolve) => {
+      uv.test_uv_timer_fires(() => {
+        called = true;
+        resolve();
+      });
+    });
+    assertEquals(called, true);
+  },
+});

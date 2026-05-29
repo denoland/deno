@@ -279,9 +279,10 @@ extern "C" fn test_uv_async_ref(
 // uv_handle_*, uv_default_loop, uv_is_active/closing, uv_ref/unref). The
 // goal is to verify that the symbols are exported from the host binary and
 // behave like their libuv counterparts to the extent that the polyfills
-// promise. The timer polyfill is a no-op stub by design (see
-// ext/napi/uv.rs), so we only assert that init/start/stop do not crash and
-// return success.
+// promise. Timer callbacks are bridged onto deno_core's uv_compat loop;
+// here we synchronously start+stop the timer in the same napi callback so
+// the event loop has no opportunity to fire it, matching the original
+// no-op-stub-era assertion that the user callback is not invoked.
 #[allow(unused_unsafe, reason = "napi_sys safe fn in unsafe extern blocks")]
 extern "C" fn test_uv_polyfills(
   env: napi_env,
@@ -318,8 +319,9 @@ extern "C" fn test_uv_polyfills(
     assert!(t1 > 0);
     assert!(t2 >= t1);
 
-    // uv_default_loop is allowed to return null (Deno does not run a libuv
-    // loop). The pointer is opaque to callers.
+    // uv_default_loop returns null (Deno does not expose a libuv loop
+    // pointer to addons). uv_timer_init resolves the real backing loop
+    // from a thread-local registered at op_napi_open time.
     let _loop = uv_default_loop();
 
     // uv_cpu_info reports unsupported (non-zero error). The Sentry profiler
@@ -331,16 +333,15 @@ extern "C" fn test_uv_polyfills(
     assert_eq!(count, 0);
     uv_free_cpu_info(cpu_infos, count);
 
-    // uv_timer_init/start/stop must not crash. Callbacks are not expected to
-    // fire (timer is stubbed).
+    // uv_timer_init/start/stop must not crash. The user callback is started
+    // and stopped synchronously here, so the event loop never has a chance
+    // to dispatch it.
     let mut timer: MaybeUninit<uv_timer_t> = MaybeUninit::zeroed();
     assert_eq!(uv_timer_init(uv_default_loop(), timer.as_mut_ptr()), 0);
     let timer_ptr = timer.as_mut_ptr();
 
     unsafe extern "C" fn never_called(_handle: *mut uv_timer_t) {
-      unreachable!(
-        "Deno's uv_timer polyfill is a no-op stub; this should not fire"
-      );
+      unreachable!("uv_timer was stopped synchronously before the loop polled");
     }
     assert_eq!(uv_timer_start(timer_ptr, Some(never_called), 1, 1), 0);
     uv_timer_set_repeat(timer_ptr, 1);
@@ -398,11 +399,107 @@ extern "C" fn test_uv_polyfills(
   undefined
 }
 
+// Verifies that a uv_timer scheduled by a NAPI addon actually fires on
+// the deno event loop (i.e. the uv_compat bridge is wired up). The addon
+// passes a JS callback that resolves the test promise from inside the
+// libuv timer tick. The active timer holds an event-loop ref until it
+// is closed; the JS callback ref and the heap allocations are released
+// in the uv_close callback once the timer has fired.
+struct TimerTestState {
+  env: napi_env,
+  callback: napi_ref,
+  timer: *mut libuv_sys_lite::uv_timer_t,
+}
+
+unsafe extern "C" fn timer_test_close_cb(handle: *mut uv_handle_t) {
+  unsafe {
+    let state =
+      libuv_sys_lite::uv_handle_get_data(handle) as *mut TimerTestState;
+    if !state.is_null() {
+      let env = (*state).env;
+      assert_napi_ok!(napi_delete_reference(env, (*state).callback));
+      let _ = Box::from_raw((*state).timer);
+      let _ = Box::from_raw(state);
+    }
+  }
+}
+
+unsafe extern "C" fn timer_test_tick(handle: *mut libuv_sys_lite::uv_timer_t) {
+  unsafe {
+    use libuv_sys_lite::uv_close;
+    use libuv_sys_lite::uv_handle_get_data;
+    use libuv_sys_lite::uv_timer_stop;
+
+    let state = uv_handle_get_data(handle.cast()) as *mut TimerTestState;
+    let env = (*state).env;
+    let mut js_cb = null_mut();
+    assert_napi_ok!(napi_get_reference_value(
+      env,
+      (*state).callback,
+      &mut js_cb
+    ));
+    let mut global: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_global(env, &mut global));
+    let mut result: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_call_function(
+      env,
+      global,
+      js_cb,
+      0,
+      ptr::null(),
+      &mut result,
+    ));
+    // Stop and close so the second tick (1ms repeat) doesn't re-enter
+    // after the test's JS promise has already resolved.
+    uv_timer_stop(handle);
+    uv_close(handle.cast(), Some(timer_test_close_cb));
+  }
+}
+
+#[allow(unused_unsafe, reason = "napi_sys safe fn in unsafe extern blocks")]
+extern "C" fn test_uv_timer_fires(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  use libuv_sys_lite::uv_handle_set_data;
+  use libuv_sys_lite::uv_timer_init;
+  use libuv_sys_lite::uv_timer_start;
+  use libuv_sys_lite::uv_timer_t;
+
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let mut loop_ = null_mut();
+  unsafe {
+    assert_napi_ok!(napi_get_uv_event_loop(env, &mut loop_));
+  }
+
+  let timer = Box::into_raw(Box::new(MaybeUninit::<uv_timer_t>::zeroed()))
+    as *mut uv_timer_t;
+  let mut js_cb = null_mut();
+  unsafe {
+    assert_napi_ok!(napi_create_reference(env, args[0], 1, &mut js_cb));
+  }
+  let state = Box::into_raw(Box::new(TimerTestState {
+    env,
+    callback: js_cb,
+    timer,
+  }));
+  unsafe {
+    assert_napi_ok!(uv_timer_init(loop_.cast(), timer));
+    uv_handle_set_data(timer.cast(), state.cast());
+    assert_napi_ok!(uv_timer_start(timer, Some(timer_test_tick), 5, 1));
+  }
+
+  ptr::null_mut()
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_uv_async", test_uv_async),
     napi_new_property!(env, "test_uv_async_ref", test_uv_async_ref),
     napi_new_property!(env, "test_uv_polyfills", test_uv_polyfills),
+    napi_new_property!(env, "test_uv_timer_fires", test_uv_timer_fires),
   ];
 
   assert_napi_ok!(napi_define_properties(
