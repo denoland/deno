@@ -175,12 +175,21 @@ pub async fn compile(
     let BundleForCompileResult {
       path: bundle_path,
       needs_npm_embed,
+      extra_cleanup,
     } = run_bundle_for_compile(&flags, &compile_flags)
       .boxed_local()
       .await?;
     flags.internal.compile_bundle_embed_node_modules = needs_npm_embed;
     compile_flags.source_file = bundle_path.display().to_string();
+    // Make sure any worker bundles travel along in the VFS so the runtime
+    // `new Worker(new URL(..., import.meta.url))` lookup hits them.
+    for worker_path in &extra_cleanup {
+      compile_flags
+        .include
+        .push(worker_path.display().to_string());
+    }
     cleanup_paths.push(bundle_path);
+    cleanup_paths.extend(extra_cleanup);
     flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
   }
 
@@ -196,11 +205,14 @@ pub async fn compile(
 
 struct BundleForCompileResult {
   path: PathBuf,
-  /// True when esbuild's CJS-from-ESM wrapper appears in the bundle, which
-  /// means runtime require()s against npm package paths will happen. The
-  /// standalone binary writer reads this to decide whether to embed the
-  /// npm tree.
+  /// True when esbuild's CJS-from-ESM wrapper appears in the bundle (in the
+  /// main entry or any worker), which means runtime require()s against npm
+  /// package paths will happen. The standalone binary writer reads this to
+  /// decide whether to embed the npm tree.
   needs_npm_embed: bool,
+  /// Worker bundle files produced alongside the main one; they live next to
+  /// the main bundle and must be cleaned up too.
+  extra_cleanup: Vec<PathBuf>,
 }
 
 async fn run_bundle_for_compile(
@@ -208,46 +220,146 @@ async fn run_bundle_for_compile(
   compile_flags: &CompileFlags,
 ) -> Result<BundleForCompileResult, AnyError> {
   let bundle_flags = Arc::new(flags.clone());
+  let initial_cwd = flags.initial_cwd.clone().unwrap_or_else(|| {
+    crate::util::env::resolve_cwd(None).unwrap().to_path_buf()
+  });
 
+  let main_bytes = bundle_one_for_compile(
+    bundle_flags.clone(),
+    compile_flags.source_file.clone(),
+  )
+  .await?;
+  let main_rewrite = rewrite_absolute_bundle_paths(&main_bytes, &initial_cwd)?;
+  let mut needs_npm_embed = main_rewrite.rewrote_paths;
+
+  // Scan the main bundle for `new Worker(new URL("X", import.meta.url))`
+  // patterns. For each unique X, bundle the target as a separate entry,
+  // write it next to the main bundle, and rewrite the URL string in the
+  // main bundle to point at the worker bundle's file name. The worker
+  // bundles are then reachable through `new URL(..., import.meta.url)`
+  // at runtime, just like the main bundle.
+  let main_src = std::str::from_utf8(&main_rewrite.bytes)
+    .context("Bundle output is not valid UTF-8")?;
+  let worker_urls = discover_worker_urls(main_src);
+
+  let mut url_replacements: Vec<(String, String)> = Vec::new();
+  let mut extra_cleanup: Vec<PathBuf> = Vec::new();
+  for worker_url in &worker_urls {
+    let worker_abs = if Path::new(worker_url).is_absolute() {
+      PathBuf::from(worker_url)
+    } else {
+      initial_cwd.join(worker_url)
+    };
+    if !worker_abs.exists() {
+      log::warn!(
+        "{} Worker entrypoint '{}' was not found on disk; leaving it as-is. The compiled binary will fail to start this worker unless the file is provided via --include.",
+        colors::yellow("Warning"),
+        worker_url,
+      );
+      continue;
+    }
+    let worker_bytes = bundle_one_for_compile(
+      bundle_flags.clone(),
+      worker_abs.display().to_string(),
+    )
+    .await?;
+    let worker_rewrite =
+      rewrite_absolute_bundle_paths(&worker_bytes, &initial_cwd)?;
+    needs_npm_embed |= worker_rewrite.rewrote_paths;
+
+    let worker_path = initial_cwd.join(format!(
+      ".deno_compile_worker_{:08x}.mjs",
+      rand::thread_rng().r#gen::<u32>()
+    ));
+    std::fs::write(&worker_path, &worker_rewrite.bytes).with_context(|| {
+      format!(
+        "Writing bundled worker entrypoint to '{}'",
+        worker_path.display()
+      )
+    })?;
+    let worker_file_name = worker_path
+      .file_name()
+      .unwrap()
+      .to_string_lossy()
+      .into_owned();
+    url_replacements
+      .push((worker_url.clone(), format!("./{worker_file_name}")));
+    extra_cleanup.push(worker_path);
+  }
+
+  // Apply URL replacements to the main bundle source.
+  let final_main_src = if url_replacements.is_empty() {
+    main_src.to_string()
+  } else {
+    rewrite_worker_urls(main_src, &url_replacements)
+  };
+
+  let bundle_path = initial_cwd.join(format!(
+    ".deno_compile_bundle_{:08x}.mjs",
+    rand::thread_rng().r#gen::<u32>()
+  ));
+  std::fs::write(&bundle_path, final_main_src.as_bytes()).with_context(
+    || format!("Writing bundled entrypoint to '{}'", bundle_path.display()),
+  )?;
+
+  Ok(BundleForCompileResult {
+    path: bundle_path,
+    needs_npm_embed,
+    extra_cleanup,
+  })
+}
+
+async fn bundle_one_for_compile(
+  flags: Arc<Flags>,
+  entrypoint: String,
+) -> Result<Vec<u8>, AnyError> {
   // Always leave `.node` files external. esbuild has no loader for them
   // and would error if it tried to inline a native binary; with this
   // pattern the require() calls are emitted verbatim and resolved at
   // runtime against the embedded VFS by the native addon loader.
   let external = vec!["*.node".to_string()];
+  super::bundle::bundle_for_compile(flags, entrypoint, external)
+    .boxed_local()
+    .await
+}
 
-  let bytes = super::bundle::bundle_for_compile(
-    bundle_flags,
-    compile_flags.source_file.clone(),
-    external,
-  )
-  .boxed_local()
-  .await?;
+/// Pull the relative path argument out of every
+/// `new Worker(new URL("X", import.meta.url), …)` in the bundle source.
+/// Returns unique paths in source order.
+fn discover_worker_urls(bundle_src: &str) -> Vec<String> {
+  let pattern = lazy_regex::regex!(
+    r#"new\s+Worker\s*\(\s*new\s+URL\s*\(\s*"([^"]+)"\s*,\s*import\.meta\.url"#
+  );
+  let mut seen = std::collections::HashSet::new();
+  let mut out = Vec::new();
+  for caps in pattern.captures_iter(bundle_src) {
+    let url = caps.get(1).unwrap().as_str().to_string();
+    if seen.insert(url.clone()) {
+      out.push(url);
+    }
+  }
+  out
+}
 
-  let initial_cwd = flags.initial_cwd.clone().unwrap_or_else(|| {
-    crate::util::env::resolve_cwd(None).unwrap().to_path_buf()
-  });
-  let bundle_path = initial_cwd.join(format!(
-    ".deno_compile_bundle_{:08x}.mjs",
-    rand::thread_rng().r#gen::<u32>()
-  ));
-
-  // esbuild's CJS-from-ESM wrapper hardcodes the absolute on-disk path of
-  // each CJS module it imports. At runtime the embedded VFS is mounted
-  // somewhere else (a temp dir under the user's $TMPDIR), so those paths
-  // miss. Rewrite each such literal to a runtime-relative resolution
-  // against `import.meta.url` so it survives the relocation.
-  let RewriteResult {
-    bytes: rewritten,
-    rewrote_paths,
-  } = rewrite_absolute_bundle_paths(&bytes, &initial_cwd)?;
-
-  std::fs::write(&bundle_path, &rewritten).with_context(|| {
-    format!("Writing bundled entrypoint to '{}'", bundle_path.display())
-  })?;
-  Ok(BundleForCompileResult {
-    path: bundle_path,
-    needs_npm_embed: rewrote_paths,
-  })
+fn rewrite_worker_urls(
+  bundle_src: &str,
+  replacements: &[(String, String)],
+) -> String {
+  let pattern = lazy_regex::regex!(
+    r#"(new\s+Worker\s*\(\s*new\s+URL\s*\(\s*")([^"]+)("\s*,\s*import\.meta\.url)"#
+  );
+  pattern
+    .replace_all(bundle_src, |caps: &regex::Captures<'_>| {
+      let original = caps.get(2).unwrap().as_str();
+      if let Some((_, replacement)) =
+        replacements.iter().find(|(orig, _)| orig == original)
+      {
+        format!("{}{}{}", &caps[1], replacement, &caps[3])
+      } else {
+        caps[0].to_string()
+      }
+    })
+    .into_owned()
 }
 
 struct RewriteResult {
