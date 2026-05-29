@@ -145,6 +145,78 @@ impl<'de> Deserialize<'de> for ForeignSymbol {
   }
 }
 
+/// Open a dynamic library.
+///
+/// On Unix, the library bytes are first copied into a temporary file with a
+/// fresh inode and then loaded from that copy. The temp file is unlinked once
+/// `dlopen(3)` has mmap'd it: the kernel keeps the inode (and therefore the
+/// backing pages) alive as long as the mapping exists, so the loaded code is
+/// no longer affected by any later writes to the user-supplied path.
+///
+/// Without this isolation, overwriting an in-use library (e.g. via
+/// `Deno.copyFileSync` truncating the same path) invalidates the page-cache
+/// pages backing the mapping, and any later page fault in that library (such
+/// as the finalizers run by ld.so at process exit) crashes.
+///
+/// See https://github.com/denoland/deno/issues/20956.
+fn open_library(path: &Path) -> Result<Library, dlopen2::Error> {
+  #[cfg(unix)]
+  {
+    open_library_isolated(path)
+  }
+  #[cfg(not(unix))]
+  {
+    Library::open(path)
+  }
+}
+
+#[cfg(unix)]
+fn open_library_isolated(path: &Path) -> Result<Library, dlopen2::Error> {
+  use std::os::unix::fs::PermissionsExt;
+
+  fn copy_into_temp(path: &Path) -> std::io::Result<tempfile::NamedTempFile> {
+    // Prefer the source directory so `$ORIGIN`-relative RPATH/RUNPATH and
+    // sibling-library lookups keep working; fall back to the system temp
+    // directory when the source directory isn't writable.
+    let suffix = path
+      .extension()
+      .map(|e| format!(".{}", e.to_string_lossy()));
+    let mut builder = tempfile::Builder::new();
+    builder.prefix(".deno-ffi-");
+    if let Some(ref s) = suffix {
+      builder.suffix(s);
+    }
+    let mut temp = match path.parent() {
+      Some(parent) if !parent.as_os_str().is_empty() => builder
+        .tempfile_in(parent)
+        .or_else(|_| builder.tempfile())?,
+      _ => builder.tempfile()?,
+    };
+
+    // dlopen requires execute permission on the backing file.
+    temp
+      .as_file()
+      .set_permissions(std::fs::Permissions::from_mode(0o700))?;
+
+    let mut src = std::fs::File::open(path)?;
+    std::io::copy(&mut src, temp.as_file_mut())?;
+    temp.as_file_mut().sync_data()?;
+
+    Ok(temp)
+  }
+
+  let temp = match copy_into_temp(path) {
+    Ok(t) => t,
+    Err(e) => return Err(dlopen2::Error::OpeningLibraryError(e)),
+  };
+
+  // `Library::open` calls `dlopen(3)`, which opens the file, mmaps the ELF
+  // segments and closes its file descriptor. The temp file is unlinked when
+  // `temp` is dropped at the end of this function; the mmap keeps the inode
+  // alive afterwards.
+  Library::open(temp.path())
+}
+
 #[op2(stack_trace)]
 pub fn op_ffi_load<'scope>(
   scope: &mut v8::PinScope<'scope, '_>,
@@ -166,7 +238,7 @@ pub fn op_ffi_load<'scope>(
     Some(loader) => loader.load_and_resolve_path(&path)?,
     None => Cow::Borrowed(path.as_ref()),
   };
-  let lib = Library::open(real_path.as_ref()).map_err(|e| {
+  let lib = open_library(real_path.as_ref()).map_err(|e| {
     dlopen2::Error::OpeningLibraryError(std::io::Error::other(format_error(
       e, &real_path,
     )))

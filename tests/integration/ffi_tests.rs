@@ -290,6 +290,42 @@ fn ffi_event_loop_integration() {
   assert_eq!(stderr, "");
 }
 
+// Regression test for https://github.com/denoland/deno/issues/20956: dlopen
+// of a file that is later overwritten must not crash at process exit. On
+// Windows the OS already forbids modifying a loaded DLL, so the issue only
+// reproduces on Unix.
+#[cfg(unix)]
+#[test_util::test]
+fn ffi_dlopen_modified_file() {
+  build();
+
+  let output = deno_cmd()
+    .current_dir(ffi_tests_path())
+    .arg("run")
+    .arg("--config")
+    .arg(deno_config_path())
+    .arg("--no-lock")
+    .arg("--allow-ffi")
+    .arg("--allow-read")
+    .arg("--allow-write")
+    .arg("--unstable-ffi")
+    .arg("--quiet")
+    .arg("testdata/dlopen_modified_file_test.js")
+    .env("NO_COLOR", "1")
+    .output()
+    .unwrap();
+  let stdout = std::str::from_utf8(&output.stdout).unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  if !output.status.success() {
+    println!("stdout {stdout}");
+    println!("stderr {stderr}");
+  }
+  println!("{:?}", output.status);
+  assert!(output.status.success());
+  assert_eq!(stdout, "dlopen_modified_file_test passed\n");
+  assert_eq!(stderr, "");
+}
+
 #[test_util::test]
 fn ffi_callback_errors() {
   build();
