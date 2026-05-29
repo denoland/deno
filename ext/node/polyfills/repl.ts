@@ -534,9 +534,16 @@ export class REPLServer extends (Interface as any) {
       options.terminal = !!(options.output as { isTTY?: boolean })?.isTTY;
     }
     options.terminal = !!options.terminal;
-    // Node: default preview to ON only if no custom eval was provided.
-    const usePreview = !!options.terminal &&
-      (options.preview !== undefined ? !!options.preview : !eval_);
+    // The preview re-runs the typed input via `vm.Script` on every
+    // keystroke. Node guards this with the V8 inspector's
+    // `throwOnSideEffect`; we don't have that wired up yet, so the
+    // preview path will visibly fire side effects (e.g. typing the
+    // closing paren of `console.log("hi")` prints "hi" before Enter).
+    // Disable preview whenever a custom eval is supplied -- consumers
+    // like `@babel/node` set `preview: true` explicitly and hit this
+    // bug. See: https://github.com/denoland/deno/issues/34360
+    const usePreview = !!options.terminal && !eval_ &&
+      options.preview !== false;
 
     if (options.terminal && options.useColors === undefined) {
       options.useColors = _shouldColorize(options.output);

@@ -3047,7 +3047,10 @@
     "parallel/test-repl-autolibs.js": {},
     "parallel/test-repl-colors.js": {},
     "parallel/test-repl-custom-eval.js": {},
-    "parallel/test-repl-custom-eval-previews.js": {},
+    "parallel/test-repl-custom-eval-previews.js": {
+      "ignore": true,
+      "reason": "Asserts the custom-eval preview path runs the typed input via vm.Script; Deno disables preview for custom-eval REPLs until inspector-backed `throwOnSideEffect` preview is wired up (see denoland/deno#34360)"
+    },
     "parallel/test-repl-envvars.js": {},
     "parallel/test-repl-permission-model.js": {},
     "parallel/test-repl-pretty-stack.js": {},
