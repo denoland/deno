@@ -38,6 +38,7 @@ const {
   SafeRegExp,
   SafeSet,
   StringPrototypeCharCodeAt,
+  StringPrototypeIndexOf,
   StringPrototypeSlice,
   StringPrototypeToLowerCase,
   Symbol,
@@ -230,6 +231,15 @@ const {
   Http2ServerResponse,
   onServerStream,
 } = core.loadExtScript("ext:deno_node/internal/http2/compat.js");
+const { updateSpanFromError } = core.loadExtScript(
+  "ext:deno_telemetry/util.ts",
+);
+const {
+  otelState,
+  builtinTracer,
+  ContextManager,
+  SPAN_KEY,
+} = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 const onClientStreamCreatedChannel = dc.channel("http2.client.stream.created");
 const onClientStreamStartChannel = dc.channel("http2.client.stream.start");
 const onClientStreamErrorChannel = dc.channel("http2.client.stream.error");
@@ -514,6 +524,20 @@ const kState = Symbol("state");
 const kType = Symbol("type");
 const kWriteGeneric = Symbol("write-generic");
 const kSessions = Symbol("sessions");
+const kOtelSpan = Symbol("kOtelSpan");
+
+// Server-side helper: record HTTP response status on the OTel span attached
+// to a stream by onSessionHeaders. Per OTel HTTP semconv, server spans are
+// only marked ERROR for 5xx (client errors stay OK).
+function setOtelServerStatus(stream, statusCode) {
+  const span = stream[kOtelSpan];
+  if (span === undefined || statusCode === undefined) return;
+  span.setAttribute("http.response.status_code", String(statusCode));
+  if (statusCode >= 500) {
+    span.setAttribute("error.type", String(statusCode));
+    span.setStatus({ code: 2, message: "" });
+  }
+}
 
 // Symbols for tracking perf_hooks `http2` performance entry stats. The
 // `pingRTT`, `streamCount`, etc. fields surfaced via `entry.detail` are
@@ -1506,6 +1530,47 @@ function onSessionHeaders(
     if (type === NGHTTP2_SESSION_SERVER) {
       // eslint-disable-next-line no-use-before-define
       stream = new ServerHttp2Stream(session, handle, id, {}, obj);
+      if (otelState.TRACING_ENABLED) {
+        let ctx = ContextManager.active();
+        for (const propagator of otelState.PROPAGATORS) {
+          ctx = propagator.extract(ctx, obj, {
+            get(carrier, key) {
+              return carrier[key];
+            },
+            keys(carrier) {
+              return ObjectKeys(carrier);
+            },
+          });
+        }
+        const reqMethod = obj[HTTP2_HEADER_METHOD] ?? "GET";
+        const span = builtinTracer().startSpan(
+          reqMethod,
+          { kind: 1 }, // SpanKind.SERVER
+          ctx,
+        );
+        span.setAttribute("http.request.method", reqMethod);
+        const reqScheme = obj[HTTP2_HEADER_SCHEME];
+        if (reqScheme) span.setAttribute("url.scheme", reqScheme);
+        const reqAuthority = obj[HTTP2_HEADER_AUTHORITY];
+        if (reqAuthority) span.setAttribute("server.address", reqAuthority);
+        const reqPath = obj[HTTP2_HEADER_PATH];
+        if (reqPath !== undefined) {
+          const qIdx = StringPrototypeIndexOf(reqPath, "?");
+          if (qIdx < 0) {
+            span.setAttribute("url.path", reqPath);
+          } else {
+            span.setAttribute(
+              "url.path",
+              StringPrototypeSlice(reqPath, 0, qIdx),
+            );
+            span.setAttribute(
+              "url.query",
+              StringPrototypeSlice(reqPath, qIdx + 1),
+            );
+          }
+        }
+        stream[kOtelSpan] = span;
+      }
       if (onServerStreamCreatedChannel.hasSubscribers) {
         onServerStreamCreatedChannel.publish({
           stream,
@@ -1608,6 +1673,16 @@ function onSessionHeaders(
         headers: obj,
         flags: flags,
       });
+    }
+    if (event === "response" && status !== undefined) {
+      const span = stream[kOtelSpan];
+      if (span) {
+        span.setAttribute("http.response.status_code", String(status));
+        if (status >= 400) {
+          span.setAttribute("error.type", String(status));
+          span.setStatus({ code: 2, message: "" });
+        }
+      }
     }
   }
   if (endOfStream) {
@@ -2500,6 +2575,20 @@ class Http2Stream extends Duplex {
 
     emitStreamPerfEntry(this);
 
+    const otelSpan = this[kOtelSpan];
+    if (otelSpan !== undefined) {
+      if (err != null) {
+        updateSpanFromError(otelSpan, err);
+      } else if (code !== NGHTTP2_NO_ERROR) {
+        updateSpanFromError(
+          otelSpan,
+          new ERR_HTTP2_STREAM_ERROR(nameForErrorCode[code] || code),
+        );
+      }
+      otelSpan.end();
+      this[kOtelSpan] = undefined;
+    }
+
     this[kSession] = undefined;
     this[kHandle] = undefined;
 
@@ -3075,6 +3164,8 @@ class ServerHttp2Stream extends Http2Stream {
       statusCode,
     } = prepareResponseHeaders(this, headersParam, options);
 
+    setOtelServerStatus(this, statusCode);
+
     state.flags |= STREAM_FLAGS_HEADERS_SENT;
 
     // Close the writable side if the endStream option is set or status
@@ -3166,6 +3257,8 @@ class ServerHttp2Stream extends Http2Stream {
       statusCode,
     } = prepareResponseHeadersObject(headersParam, options);
 
+    setOtelServerStatus(this, statusCode);
+
     // Payload/DATA frames are not permitted in these cases
     if (
       statusCode === HTTP_STATUS_NO_CONTENT ||
@@ -3250,6 +3343,8 @@ class ServerHttp2Stream extends Http2Stream {
       headers,
       statusCode,
     } = prepareResponseHeadersObject(headersParam, options);
+
+    setOtelServerStatus(this, statusCode);
 
     // Payload/DATA frames are not permitted in these cases
     if (
@@ -4517,6 +4612,51 @@ class ClientHttp2Session extends Http2Session {
 
     this[kUpdateTimer]();
 
+    let span;
+    if (otelState.TRACING_ENABLED) {
+      // Determine the method name for the span; mirrors the default applied
+      // by prepareRequestHeaders{Object,Array} below.
+      let spanMethod;
+      if (ArrayIsArray(headersParam)) {
+        for (let i = 0; i < headersParam.length; i += 2) {
+          if (
+            StringPrototypeToLowerCase(headersParam[i]) === HTTP2_HEADER_METHOD
+          ) {
+            spanMethod = headersParam[i + 1];
+            break;
+          }
+        }
+      } else if (!!headersParam && typeof headersParam === "object") {
+        spanMethod = headersParam[HTTP2_HEADER_METHOD];
+      }
+      span = builtinTracer().startSpan(spanMethod ?? "GET", { kind: 2 });
+
+      // Inject propagation headers directly into the user-supplied headers
+      // before prepareRequestHeaders* reads them. Object form: assign keys.
+      // Array form: push [name, value] pairs.
+      const spanContext = ContextManager.active().setValue(SPAN_KEY, span);
+      if (headersParam === undefined) {
+        headersParam = { __proto__: null };
+      }
+      if (ArrayIsArray(headersParam)) {
+        for (const propagator of otelState.PROPAGATORS) {
+          propagator.inject(spanContext, headersParam, {
+            set(carrier, key, value) {
+              ArrayPrototypePush(carrier, key, value);
+            },
+          });
+        }
+      } else if (typeof headersParam === "object") {
+        for (const propagator of otelState.PROPAGATORS) {
+          propagator.inject(spanContext, headersParam, {
+            set(carrier, key, value) {
+              carrier[key] = value;
+            },
+          });
+        }
+      }
+    }
+
     let headersList;
     let headersObject;
     let rawHeaders;
@@ -4576,6 +4716,35 @@ class ClientHttp2Session extends Http2Session {
     stream[kRawHeaders] = rawHeaders; // N.b. Only set for raw headers, not object headers
     stream[kOrigin] = `${scheme}://${authority}`;
     stream[kRequestAsyncResource] = new AsyncResource("PendingRequest");
+
+    if (span) {
+      stream[kOtelSpan] = span;
+      span.setAttribute("http.request.method", method);
+      if (scheme) span.setAttribute("url.scheme", scheme);
+      if (authority) span.setAttribute("server.address", authority);
+      let path;
+      if (headersObject) {
+        path = headersObject[HTTP2_HEADER_PATH];
+      } else if (rawHeaders) {
+        for (let i = 0; i < rawHeaders.length; i += 2) {
+          if (
+            StringPrototypeToLowerCase(rawHeaders[i]) === HTTP2_HEADER_PATH
+          ) {
+            path = rawHeaders[i + 1];
+            break;
+          }
+        }
+      }
+      if (path !== undefined) {
+        const qIdx = StringPrototypeIndexOf(path, "?");
+        if (qIdx < 0) {
+          span.setAttribute("url.path", path);
+        } else {
+          span.setAttribute("url.path", StringPrototypeSlice(path, 0, qIdx));
+          span.setAttribute("url.query", StringPrototypeSlice(path, qIdx + 1));
+        }
+      }
+    }
 
     // Close the writable side of the stream if options.endStream is set.
     if (options.endStream) {
