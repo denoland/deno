@@ -40,7 +40,6 @@ const {
   RangeError,
   SafeRegExp,
   String,
-  StringFromCharCode,
   StringPrototypeCharCodeAt,
   StringPrototypeSlice,
   StringPrototypeIncludes,
