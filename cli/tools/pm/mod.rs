@@ -925,21 +925,14 @@ async fn resolve_tarball_package(
   // local package handling (it detects .tgz/.tar.gz targets and
   // extracts instead of symlinking).
 
-  // Compute sha512 integrity hash (matching npm/pnpm lockfile format)
-  use base64::Engine;
-  let (hash, hash_hex) = {
-    use sha2::Digest;
-    let mut hasher = sha2::Sha512::new();
-    hasher.update(&tarball_bytes);
-    let result = hasher.finalize();
-    let hex = result
-      .iter()
-      .take(16)
-      .map(|b| format!("{b:02x}"))
-      .collect::<String>();
-    let b64 = base64::engine::general_purpose::STANDARD.encode(result);
-    (format!("sha512-{b64}"), hex)
-  };
+  // Compute the sha512 integrity hash (matching npm/pnpm lockfile format)
+  // and the truncated hex prefix used in the cache filename. The npm
+  // installer recomputes the hex prefix at extraction time and bails if
+  // the cached tarball was tampered with after install.
+  let hash =
+    deno_npm_cache::tarball_extract::tarball_sha512_sri(&tarball_bytes);
+  let hash_hex =
+    deno_npm_cache::tarball_extract::tarball_sha512_hex_prefix(&tarball_bytes);
 
   // Record the dependency with a file: reference pointing to the tarball.
   // For remote tarballs, save a local copy first so the dep can be
