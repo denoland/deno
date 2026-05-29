@@ -181,6 +181,23 @@ pub async fn compile(
       .boxed_local()
       .await?;
     flags.internal.compile_bundle_embed_node_modules = needs_npm_embed;
+    // Referenced files that live inside a `node_modules` tree are npm
+    // packages, embedded by the binary writer's npm path. The rest are local
+    // project files the bundle externalized (e.g. a sibling `.cjs` imported
+    // from ESM, which the CJS-from-ESM wrapper turns into a runtime
+    // require()). Those aren't covered by the npm embed, so add them to the
+    // include set to ship them in the VFS at their real path — that's where
+    // `__internalResolveBundlePath` looks for them at runtime.
+    for path in &referenced_abs_paths {
+      let in_node_modules =
+        path.components().any(|c| c.as_os_str() == "node_modules");
+      if !in_node_modules {
+        let included = path.display().to_string();
+        if !compile_flags.include.contains(&included) {
+          compile_flags.include.push(included);
+        }
+      }
+    }
     flags.internal.compile_bundle_referenced_paths = referenced_abs_paths;
     compile_flags.source_file = bundle_path.display().to_string();
     // Make sure any worker bundles travel along in the VFS so the runtime
