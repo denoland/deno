@@ -1936,6 +1936,81 @@ fn lsp_inlay_hints() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/30455 — the
+// inlay hint return-type display must walk `ComputedPropertyName` nodes
+// (e.g. `[Symbol.dispose]`) rather than tripping a TypeScript debug failure.
+#[test(timeout = 300)]
+fn lsp_inlay_hints_computed_property_name() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+    },
+    "typescript": {
+      "inlayHints": {
+        "functionLikeReturnTypes": {
+          "enabled": true,
+        },
+      },
+    },
+  }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"class Mutex {
+  #queue: (() => void)[] = [];
+
+  async acquire() {
+    const pwr = Promise.withResolvers<void>();
+    this.#queue.push(pwr.resolve.bind(pwr));
+    if (this.#queue.length === 1) {
+      this.#queue[0]();
+    }
+    await pwr.promise;
+    return {
+      [Symbol.dispose]: () => {
+        this.#queue.shift();
+        if (this.#queue.length > 0) {
+          this.#queue[0]();
+        }
+      },
+    };
+  }
+}
+"#,
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/inlayHint",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 21, "character": 0 },
+      },
+    }),
+  );
+  // Before the upstream TypeScript fix, this request produced an "Internal
+  // error" because `visitForDisplayParts` did not handle ComputedPropertyName.
+  // Now it must succeed and return at least the inlay hint for the `acquire`
+  // method's inferred return type.
+  let hints = res.as_array().expect("expected an array of inlay hints");
+  assert!(
+    hints.iter().any(|hint| {
+      let position = &hint["position"];
+      position["line"] == 3 && position["character"].as_u64().is_some()
+    }),
+    "expected at least one inlay hint on the `acquire()` signature line, got: {res:#?}",
+  );
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_inlay_hints_not_enabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
