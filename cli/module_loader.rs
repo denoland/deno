@@ -77,6 +77,7 @@ use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 use eszip::EszipV2;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
@@ -1678,6 +1679,20 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     } else {
       deno_runtime::deno_node::default_resolve_require_node_module_paths(from)
     }
+  }
+
+  fn resolve_package_folder_from_name(
+    &self,
+    package_name: &str,
+  ) -> Option<PathBuf> {
+    // Only meaningful in global-cache mode: when a local node_modules
+    // directory exists, byonm-style walking handles the lookup.
+    let managed = self
+      .npm_resolver
+      .as_managed()
+      .filter(|r| r.root_node_modules_path().is_none())?;
+    let req = PackageReq::from_str(package_name).ok()?;
+    managed.resolve_pkg_folder_from_deno_module_req(&req).ok()
   }
 }
 
