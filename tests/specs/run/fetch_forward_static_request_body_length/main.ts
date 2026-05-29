@@ -37,5 +37,3 @@ console.log(
 
 await proxyServer.shutdown();
 await echoServer.shutdown();
-
-export {};
