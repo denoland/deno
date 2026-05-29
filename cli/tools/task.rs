@@ -1184,28 +1184,65 @@ fn package_filter_to_regex(input: &str) -> Result<regex::Regex, regex::Error> {
 fn arg_to_task_name_filter(
   input: &str,
 ) -> Result<TaskNameFilter<'_>, AnyError> {
-  if !input.contains("*") {
+  // Parse an optional trailing exclusion group of the form `(!a|b|c)`.
+  // Exclusion values are matched against what each `*` in the pattern
+  // captures, e.g. `test:*(!e2e|interactive)` excludes `test:e2e` and
+  // `test:interactive` but still matches `test:unit`.
+  let (pattern, exclusions): (&str, Vec<&str>) = match input.rfind("(!") {
+    Some(open) if input.ends_with(')') => {
+      let inner = &input[open + 2..input.len() - 1];
+      (&input[..open], inner.split('|').collect())
+    }
+    _ => (input, Vec::new()),
+  };
+
+  if !pattern.contains('*') {
+    if !exclusions.is_empty() {
+      return Err(anyhow!(
+        "task name filter '{}' uses an exclusion group '(!...)' but has no wildcard '*' to exclude from",
+        input
+      ));
+    }
     return Ok(TaskNameFilter::Exact(input));
   }
 
-  let mut regex_str = regex::escape(input);
-  regex_str = regex_str.replace("\\*", ".*");
-  regex_str = format!("^{}", regex_str);
+  let mut regex_str = regex::escape(pattern);
+  regex_str = regex_str.replace("\\*", "(.*)");
+  regex_str = format!("^{}$", regex_str);
   let re = Regex::new(&regex_str)?;
-  Ok(TaskNameFilter::Regex(re))
+  let exclusions = exclusions.into_iter().map(String::from).collect();
+  Ok(TaskNameFilter::Regex { re, exclusions })
 }
 
 #[derive(Debug)]
 enum TaskNameFilter<'s> {
   Exact(&'s str),
-  Regex(regex::Regex),
+  Regex {
+    re: regex::Regex,
+    exclusions: Vec<String>,
+  },
 }
 
 impl TaskNameFilter<'_> {
   fn matches(&self, name: &str) -> bool {
     match self {
       Self::Exact(n) => *n == name,
-      Self::Regex(re) => re.is_match(name),
+      Self::Regex { re, exclusions } => {
+        let Some(caps) = re.captures(name) else {
+          return false;
+        };
+        if exclusions.is_empty() {
+          return true;
+        }
+        for i in 1..caps.len() {
+          if let Some(m) = caps.get(i) {
+            if exclusions.iter().any(|e| e == m.as_str()) {
+              return false;
+            }
+          }
+        }
+        true
+      }
     }
   }
 }
@@ -1226,12 +1263,36 @@ mod tests {
     ));
     assert!(matches!(
       arg_to_task_name_filter("test*").unwrap(),
-      TaskNameFilter::Regex(_)
+      TaskNameFilter::Regex { .. }
     ));
 
     let filter = arg_to_task_name_filter("test:*").unwrap();
     assert!(filter.matches("test:deno"));
     assert!(filter.matches("test:dprint"));
     assert!(!filter.matches("update:latest:deno"));
+  }
+
+  #[test]
+  fn test_arg_to_task_name_filter_exclusion() {
+    let filter = arg_to_task_name_filter("test:*(!e2e|interactive)").unwrap();
+    assert!(filter.matches("test:unit"));
+    assert!(filter.matches("test:integration"));
+    assert!(!filter.matches("test:e2e"));
+    assert!(!filter.matches("test:interactive"));
+    assert!(!filter.matches("update:latest:deno"));
+
+    let filter = arg_to_task_name_filter("*(!build)").unwrap();
+    assert!(filter.matches("test"));
+    assert!(filter.matches("lint"));
+    assert!(!filter.matches("build"));
+
+    let filter = arg_to_task_name_filter("test:*(!e2e)").unwrap();
+    assert!(filter.matches("test:e2e:smoke"));
+    assert!(!filter.matches("test:e2e"));
+  }
+
+  #[test]
+  fn test_arg_to_task_name_filter_exclusion_without_wildcard_errors() {
+    assert!(arg_to_task_name_filter("test(!e2e)").is_err());
   }
 }
