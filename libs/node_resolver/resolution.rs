@@ -895,9 +895,13 @@ impl<
             || self.resolution_config.bundle_mode)
           && e.kind() == std::io::ErrorKind::NotFound
         {
-          let file_with_ext = with_known_extension(&path, "js");
-          if self.sys.is_file(Cow::Borrowed(&file_with_ext)) {
-            return Ok(UrlOrPath::Path(file_with_ext));
+          // Match Node's `require()` resolution order: try .js, then .node
+          // for native addons (`require('./build/Release/foo')`).
+          for ext in ["js", "node"] {
+            let file_with_ext = with_known_extension(&path, ext);
+            if self.sys.is_file(Cow::Borrowed(&file_with_ext)) {
+              return Ok(UrlOrPath::Path(file_with_ext));
+            }
           }
         }
 

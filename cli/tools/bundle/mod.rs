@@ -391,6 +391,21 @@ pub async fn bundle_for_compile(
     watch: false,
   };
 
+  // Force bundle-style resolver config for the duration of bundling.
+  // Without this, module-graph creation skips deep CJS files inside
+  // `node_modules` (jiti.cjs is the canonical case) and the parent
+  // `.mjs` trips an esbuild parse error when its import target can't
+  // be loaded. This is a surgical override of just the resolver's
+  // `bundle_mode` flag — narrower than swapping the whole subcommand,
+  // which would also flip `node_code_translator_mode` and disable the
+  // `.node` extension fallback that `compile --bundle` still needs
+  // for native addons.
+  let mut flags = flags;
+  {
+    let flags_mut = Arc::make_mut(&mut flags);
+    flags_mut.internal.force_bundle_mode = true;
+  }
+
   let bundler = bundle_init(flags, &bundle_flags).await?;
   let response = bundler.build().await?;
 
@@ -1115,6 +1130,12 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       // output file this import will end up in. We may have to use the metafile and rewrite at the end
       let is_external = r.starts_with("node:")
         || r.starts_with("bun:")
+        // Always externalize native addons regardless of `--external`.
+        // esbuild has no loader for `.node` files, and the user-facing
+        // `*.node` pre-resolve pattern doesn't catch paths that arrive
+        // here only after `.node`-extension auto-resolution (e.g. CJS
+        // `require('./build/Release/foo')`).
+        || r.ends_with(".node")
         || self
           .externals_matcher
           .as_ref()
