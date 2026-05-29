@@ -423,40 +423,30 @@ deno_core::extension!(deno_node,
     ops::http2::Http2Session,
     ops::http2::Http2Stream,
   ],
-  // node:module stays eager (it's the entry point and its body's
-  // `globalThis.nodeBootstrap = initialize` is needed at runtime startup so
-  // 99_main.js can call it). Moving 01_require.js to lazy_loaded_esm has a
-  // subtle side effect on the http_test sanitizer: the deferred load shifts
-  // when `__bootstrapNodeProcess` happens relative to test runner microtask
-  // sampling, causing `Agent.keepSocketAlive`'s 5000ms `setUnrefTimeout` to
-  // appear inside test boundaries even though the timer is unref'd. Keeping
-  // node:module eager keeps the bootstrap on the snapshot side of the
-  // sanitizer's baseline.
-  // node:module + node:stream stay eager. node:module is the entry point so
-  // 01_require.js's `globalThis.nodeBootstrap = initialize` runs at startup
-  // and 99_main.js can call it. node:stream stays eager because the
-  // synthetic_esm zlib (and friends) script body does
-  // `createLazyLoader("node:stream")()` at IIFE eval; if user code then has
-  // `import http from "node:zlib"` + `import { Readable } from "node:stream"`,
-  // V8 races to resolve the static import while zlib.js's lazy load is
-  // mid-flight and resolves node:stream's specifier through the wrong
-  // loader, producing "Unsupported scheme node for module node:stream"
-  // (visible on tests/unit_node/zlib_test.ts).
-  esm_entry_point = "node:module",
+  // node:stream + node:stream/promises stay registered as `esm` (not
+  // evaluated -- there's no eager importer) so user code's static
+  // `import { Readable } from "node:stream"` resolves through the main
+  // loader. `lazy_loaded_esm` modules are NOT registered for V8's static
+  // resolution; an import there fails with `Unsupported scheme "node"`
+  // (see tests/unit_node/zlib_test.ts).
   esm = [
     dir "polyfills",
     "internal_binding/mod.ts",
-    "node:module" = "01_require.js",
     "node:stream" = "stream.ts",
     "node:stream/promises" = "stream/promises.js",
   ],
-  // node:process / node:net / node:tty stay lazy: most of the node-polyfill
-  // snapshot weight is in their closures (errors/buffer/events/internals on
-  // the process side, the TTYWriteStream / net.Socket chain on the net/tty
-  // side). They're behind 98_global_scope_shared.js + 99_main.js's defer
-  // logic so non-node programs never deserialize them.
+  // Keep the rest of the node-polyfill closures (process / module / net /
+  // tty / 01_require) out of the eager evaluation graph: their foundational
+  // SFIs and context state are loaded only on first node:* use, so non-node
+  // `deno run` paths skip ~2 MB of node-polyfill deserialization.
+  // node:module previously had to stay eager because lazy bootstrap shifted
+  // Agent.keepSocketAlive's setUnrefTimeout(5000) into test execution where
+  // the sanitizer saw it as a leak; the timer is now marked is_system in
+  // internal/timers.mjs so the sanitizer skips it correctly and node:module
+  // can stay lazy again.
   lazy_loaded_esm = [
     dir "polyfills",
+    "node:module" = "01_require.js",
     "node:process" = "process.ts",
     "node:net" = "net_esm.ts",
     "node:tty" = "tty_esm.ts",
