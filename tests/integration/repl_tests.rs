@@ -1133,8 +1133,8 @@ fn pty_node_repl_no_preview_side_effects_with_custom_eval() {
   let context = TestContextBuilder::default().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
-    "main.js",
-    r#"const repl = require("node:repl");
+    "main.mjs",
+    r#"import repl from "node:repl";
 globalThis.__sideEffectCount = 0;
 const server = repl.start({
   prompt: "> ",
@@ -1155,7 +1155,7 @@ server.on("exit", () => process.exit(0));
   context
     .new_command()
     .env("NO_COLOR", "1")
-    .args_vec(["run", "-A", "main.js"])
+    .args_vec(["run", "-A", "main.mjs"])
     .with_pty(|mut console| {
       console.expect("> ");
       // Type a fully-formed expression that *would* increment the side-
