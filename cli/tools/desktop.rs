@@ -1029,6 +1029,26 @@ impl WefBackendResolver {
       ));
     }
 
+    // The wef release archive linker-signs the `wef` binary with
+    // identifier=`wef` rather than the .app's CFBundleIdentifier. UN
+    // (UNUserNotificationCenter) rejects authorization requests when
+    // the running binary's signed identifier disagrees with the host
+    // bundle's id (UNErrorCodeNotificationsNotAllowed, error code 1).
+    // In HMR mode the user's project bundle isn't involved — we run
+    // wef.app directly — so we have to fix the cached copy itself.
+    // Re-sign every Mach-O inside the cached wef.app with the bundle
+    // id so the running identity is internally consistent. No-op on
+    // non-macOS targets / hosts (no `codesign(1)`).
+    #[cfg(target_os = "macos")]
+    if target.contains("apple-darwin") {
+      if let Err(e) = harmonize_cached_wef_identifiers(&dir, backend) {
+        log::warn!(
+          "[desktop] could not re-sign cached wef backend: {e} \
+           (notifications may not work in HMR mode until you re-download)"
+        );
+      }
+    }
+
     Ok(dir)
   }
 
@@ -1042,13 +1062,29 @@ impl WefBackendResolver {
     target: &str,
   ) -> Result<PathBuf, AnyError> {
     if let Some(dev_dir) = wef_dev_dir() {
-      return locate_dev_backend_binary(&dev_dir, backend).ok_or_else(|| {
-        deno_core::anyhow::anyhow!(
-          "could not find '{backend}' backend binary under {} (set via {})",
-          dev_dir.display(),
-          WEF_DEV_DIR_ENV
-        )
-      });
+      let binary =
+        locate_dev_backend_binary(&dev_dir, backend).ok_or_else(|| {
+          deno_core::anyhow::anyhow!(
+            "could not find '{backend}' backend binary under {} (set via {})",
+            dev_dir.display(),
+            WEF_DEV_DIR_ENV
+          )
+        })?;
+      // Re-sign the dev wef build so its identifier matches the bundle
+      // id — same fix as the download path, applied every launch
+      // because a fresh `cargo build` of wef restores the linker's
+      // default `Identifier=wef`. The harmonize call is idempotent:
+      // already-correct binaries are skipped.
+      #[cfg(target_os = "macos")]
+      if let Some(wef_app) = wef_app_for_binary(&binary) {
+        if let Err(e) = harmonize_wef_app_identifiers(&wef_app) {
+          log::warn!(
+            "[desktop] could not re-sign dev wef backend: {e} \
+             (notifications may not work in HMR mode)"
+          );
+        }
+      }
+      return Ok(binary);
     }
 
     let dir = self.ensure_downloaded(backend, target).await?;
@@ -1571,6 +1607,15 @@ fn codesign_macos_bundle(
     identity,
   );
 
+  // Read the bundle id from the main Info.plist so we can override the
+  // signed identifier on `Contents/MacOS/wef`. The default identifier
+  // codesign infers from a bare Mach-O binary is `wef` (the basename),
+  // which doesn't match the .app's CFBundleIdentifier — and UN refuses
+  // notification authorization when the running binary's signed id
+  // doesn't match the bundle's id. Forcing `--identifier=<bundle_id>`
+  // makes them match.
+  let bundle_id = read_bundle_identifier(app_bundle)?;
+
   // Sign helpers first (inside → outside). The order within helpers
   // doesn't matter — they don't nest into each other.
   let frameworks = app_bundle.join("Contents/Frameworks");
@@ -1586,13 +1631,37 @@ fn codesign_macos_bundle(
       };
       if path.is_dir() && name.ends_with(".app") {
         let helper_entitlements = locate_helper_entitlements(&path);
-        codesign_one(&path, identity, helper_entitlements.as_deref())?;
+        codesign_one(&path, identity, helper_entitlements.as_deref(), None)?;
       } else if path.is_dir() && name.ends_with(".framework") {
         // Frameworks (notably the CEF framework) have an embedded
         // signature already — `codesign --force` re-signs the
         // versioned directory in place.
-        codesign_one(&path, identity, None)?;
+        codesign_one(&path, identity, None, None)?;
       }
+    }
+  }
+
+  // Sign `Contents/MacOS/wef` (and the launcher shim, the dylib) with
+  // the bundle's id as the signed identifier. This is what UN keys
+  // notification permission to — without it, UN sees `wef` requesting
+  // permission for `com.example.app` and rejects with
+  // `UNErrorCodeNotificationsNotAllowed`.
+  let macos_dir = app_bundle.join("Contents/MacOS");
+  if let Ok(entries) = std::fs::read_dir(&macos_dir) {
+    for entry in entries.flatten() {
+      let path = entry.path();
+      if !path.is_file() {
+        continue;
+      }
+      // Skip non-Mach-O files: the auto-update sentinel (`*.update-ok`),
+      // staged updates (`*.update`, `*.backup`), and the POSIX shell
+      // launcher (`Contents/MacOS/<app>` is a shell script that execs
+      // wef). codesign can't sign a text file and would fail the
+      // whole signing pass.
+      if !is_macho_file(&path) {
+        continue;
+      }
+      codesign_one(&path, identity, None, Some(&bundle_id))?;
     }
   }
 
@@ -1601,8 +1670,57 @@ fn codesign_macos_bundle(
   // launches, just no JIT for V8 in the browser process — which doesn't
   // host V8 anyway, so this is fine).
   let browser_entitlements = locate_browser_entitlements(app_bundle);
-  codesign_one(app_bundle, identity, browser_entitlements.as_deref())?;
+  codesign_one(app_bundle, identity, browser_entitlements.as_deref(), None)?;
   Ok(())
+}
+
+/// Read `CFBundleIdentifier` out of `Contents/Info.plist` via `plutil`.
+fn read_bundle_identifier(app_bundle: &Path) -> Result<String, AnyError> {
+  let plist = app_bundle.join("Contents/Info.plist");
+  let output = std::process::Command::new("plutil")
+    .arg("-extract")
+    .arg("CFBundleIdentifier")
+    .arg("raw")
+    .arg("-o")
+    .arg("-")
+    .arg(&plist)
+    .output()
+    .context("failed to invoke plutil(1) to read CFBundleIdentifier")?;
+  if !output.status.success() {
+    bail!(
+      "plutil could not read CFBundleIdentifier from {}: {}",
+      plist.display(),
+      String::from_utf8_lossy(&output.stderr).trim(),
+    );
+  }
+  let id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+  if id.is_empty() {
+    bail!("CFBundleIdentifier is empty in {}", plist.display());
+  }
+  Ok(id)
+}
+
+/// Cheap Mach-O sniff: a Mach-O file starts with one of the well-known
+/// magic numbers (32-bit, 64-bit, fat — both endians). Used to skip
+/// non-binaries inside `Contents/MacOS/` (shell launchers, update
+/// sentinels) before passing them to `codesign(1)`, which would reject
+/// them and abort the signing pass.
+fn is_macho_file(path: &Path) -> bool {
+  let Ok(mut f) = std::fs::File::open(path) else {
+    return false;
+  };
+  use std::io::Read;
+  let mut magic = [0u8; 4];
+  if f.read_exact(&mut magic).is_err() {
+    return false;
+  }
+  matches!(
+    u32::from_be_bytes(magic),
+    // FAT_MAGIC / FAT_CIGAM / FAT_MAGIC_64 / FAT_CIGAM_64
+    0xcafebabe | 0xbebafeca | 0xcafebabf | 0xbfbafeca
+      // MH_MAGIC / MH_CIGAM (32-bit) / MH_MAGIC_64 / MH_CIGAM_64
+      | 0xfeedface | 0xcefaedfe | 0xfeedfacf | 0xcffaedfe
+  )
 }
 
 /// Search for a per-helper entitlements plist that wef bundled with this
@@ -1630,25 +1748,35 @@ fn locate_browser_entitlements(app_bundle: &Path) -> Option<PathBuf> {
   candidates.into_iter().find(|p| p.exists())
 }
 
-/// Run `codesign --force --options runtime --sign <identity> [--entitlements <plist>] <path>`.
+/// Run `codesign --force [--timestamp --options runtime] --sign <identity> [--entitlements <plist>] <path>`.
 ///
 /// `--options runtime` enables the Hardened Runtime, which is required
 /// for notarization. `--force` overwrites any existing signature; the
 /// helpers come pre-signed by wef with an ad-hoc signature that we
 /// always need to replace.
+///
+/// Ad-hoc identity (`-`) skips `--timestamp` (no cert to anchor a
+/// timestamp to) and `--options runtime` (Hardened Runtime + ad-hoc is
+/// a Gatekeeper-rejected combo). Ad-hoc is what we use when the user
+/// hasn't configured a real signing identity — it's enough for macOS
+/// to grant the bundle a stable code identity, which UN requires
+/// before it will hand out notification permission.
 fn codesign_one(
   target: &Path,
   identity: &str,
   entitlements: Option<&Path>,
+  signing_identifier: Option<&str>,
 ) -> Result<(), AnyError> {
+  let adhoc = identity == "-";
   let mut cmd = std::process::Command::new("codesign");
-  cmd
-    .arg("--force")
-    .arg("--timestamp")
-    .arg("--options")
-    .arg("runtime")
-    .arg("--sign")
-    .arg(identity);
+  cmd.arg("--force");
+  if !adhoc {
+    cmd.arg("--timestamp").arg("--options").arg("runtime");
+  }
+  if let Some(ident) = signing_identifier {
+    cmd.arg("--identifier").arg(ident);
+  }
+  cmd.arg("--sign").arg(identity);
   if let Some(ent) = entitlements {
     cmd.arg("--entitlements").arg(ent);
   }
@@ -1666,6 +1794,118 @@ fn codesign_one(
     );
   }
   Ok(())
+}
+
+/// Re-sign the cached wef.app's binaries so the running binary's
+/// identifier matches its host bundle's `CFBundleIdentifier`. Run once
+/// per fresh download; HMR mode runs wef.app directly (no per-project
+/// wrapper), so without this UN sees `Identifier=wef` /
+/// `CFBundleIdentifier=io.wef.<backend>` and refuses notification
+/// authorization. Best-effort: failures here are logged but don't
+/// abort the install, since most desktop features still work without
+/// notifications.
+#[cfg(target_os = "macos")]
+fn harmonize_cached_wef_identifiers(
+  install_dir: &Path,
+  backend: &str,
+) -> Result<(), AnyError> {
+  let wef_app =
+    locate_wef_app_in_install(install_dir, backend).ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "could not find wef.app under {} to re-sign",
+        install_dir.display()
+      )
+    })?;
+  harmonize_wef_app_identifiers(&wef_app)
+}
+
+/// Idempotently re-sign every Mach-O in `<wef.app>/Contents/MacOS/` so
+/// its code-signing identifier matches the bundle's `CFBundleIdentifier`.
+/// macOS `usernoted` rejects UN authorization with
+/// `UNErrorCodeNotificationsNotAllowed` when the running binary's
+/// signed identifier disagrees with the bundle id ("Legacy client X
+/// connecting to modern client" in the daemon log). The linker-signed
+/// default for the wef binary is `Identifier=wef`, which never matches.
+/// Safe to call on every launch — binaries already at the correct
+/// identifier are skipped without a re-sign.
+#[cfg(target_os = "macos")]
+fn harmonize_wef_app_identifiers(wef_app: &Path) -> Result<(), AnyError> {
+  let bundle_id = read_bundle_identifier(wef_app)?;
+  let macos_dir = wef_app.join("Contents/MacOS");
+  for entry in std::fs::read_dir(&macos_dir)?.flatten() {
+    let path = entry.path();
+    // Skip non-Mach-O files (`Contents/MacOS/` legitimately contains
+    // shell launchers and update sentinels, plus wef's runtime data
+    // cache under `.wef/` which is a *directory* — `is_file` filters
+    // both directories and shell scripts; `is_macho_file` rejects the
+    // rest). Skipping these is critical: handing them to codesign
+    // would fail with "bundle format unrecognized" and abort the run.
+    if !path.is_file() || !is_macho_file(&path) {
+      continue;
+    }
+    if signed_identifier_matches(&path, &bundle_id) {
+      continue;
+    }
+    codesign_one(&path, "-", None, Some(&bundle_id))?;
+  }
+  Ok(())
+}
+
+/// Read the code-signing identifier of `path` (`codesign -dv` →
+/// `Identifier=...`). Returns true if it equals `expected`. False if
+/// we can't read it (unsigned binary, codesign missing) — that means
+/// "needs a re-sign," which is the correct fall-through for the
+/// caller.
+#[cfg(target_os = "macos")]
+fn signed_identifier_matches(path: &Path, expected: &str) -> bool {
+  let Ok(output) = std::process::Command::new("codesign")
+    .arg("-dv")
+    .arg(path)
+    .output()
+  else {
+    return false;
+  };
+  // codesign writes its display info to stderr, not stdout.
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  stderr
+    .lines()
+    .filter_map(|l| l.strip_prefix("Identifier="))
+    .any(|id| id.trim() == expected)
+}
+
+/// Given a path to the wef Mach-O binary (`wef.app/Contents/MacOS/wef`),
+/// return the containing `.app` bundle. Returns `None` if the path
+/// doesn't sit inside a `.app` bundle in the expected layout.
+#[cfg(target_os = "macos")]
+fn wef_app_for_binary(binary: &Path) -> Option<PathBuf> {
+  let app = binary.parent()?.parent()?.parent()?;
+  if app.extension().and_then(|s| s.to_str()) == Some("app") {
+    Some(app.to_path_buf())
+  } else {
+    None
+  }
+}
+
+/// Locate the wef backend's `.app` bundle within an extracted install
+/// dir. The release layout varies by backend (`cef/Release/wef.app`,
+/// `webview/Release/wef_webview.app`, etc.) so probe the well-known
+/// names rather than hardcoding one.
+#[cfg(target_os = "macos")]
+fn locate_wef_app_in_install(dir: &Path, backend: &str) -> Option<PathBuf> {
+  let candidates = match backend {
+    "cef" => vec![
+      dir.join("wef.app"),
+      dir.join("Release/wef.app"),
+      dir.join("cef/Release/wef.app"),
+    ],
+    "webview" => vec![
+      dir.join("wef_webview.app"),
+      dir.join("Release/wef_webview.app"),
+      dir.join("webview/Release/wef_webview.app"),
+    ],
+    _ => vec![dir.join(format!("wef_{backend}.app")), dir.join("wef.app")],
+  };
+  candidates.into_iter().find(|p| p.exists())
 }
 
 /// Reject any name we'd interpolate into a generated launcher script
@@ -1906,11 +2146,32 @@ async fn package_macos_app_bundle(
   // identifier we just wrote into the main plist.
   rewrite_cef_helper_bundle_ids(&contents_dir, &bundle_id)?;
 
-  // Codesign the assembled bundle if the user provided an identity.
-  // Helpers must be signed before the main bundle (Gatekeeper / CEF
-  // verify them in that order), and the main bundle's signature seals
-  // the helpers' signatures into its CodeDirectory.
-  if let Some(identity) = desktop_flags.codesign_identity.as_deref() {
+  // Codesign the assembled bundle. Helpers must be signed before the
+  // main bundle (Gatekeeper / CEF verify them in that order), and the
+  // main bundle's signature seals the helpers' signatures into its
+  // CodeDirectory.
+  //
+  // When the user provides an identity we use it (path to a real
+  // Developer ID for distribution). Otherwise — on a macOS host — we
+  // ad-hoc sign with `-`. Ad-hoc is required for the bundle to receive
+  // a stable code identity from the OS, which gates:
+  //   - UNUserNotificationCenter authorization (without signing,
+  //     `requestAuthorization` silently fails and the user sees
+  //     "denied" with no prompt — this is why Notification.permission
+  //     stays "denied" for unsigned dev builds);
+  //   - LaunchServices registration under a stable bundle id;
+  //   - TCC entries (microphone/camera/automation) attaching to a
+  //     persistent identity rather than re-prompting on every rebuild.
+  // We skip on non-macOS hosts (cross-build) since `codesign(1)` only
+  // exists on macOS.
+  let codesign_identity = desktop_flags.codesign_identity.as_deref().or(
+    if cfg!(target_os = "macos") {
+      Some("-")
+    } else {
+      None
+    },
+  );
+  if let Some(identity) = codesign_identity {
     codesign_macos_bundle(&app_bundle, identity)?;
   }
 
