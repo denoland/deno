@@ -1,6 +1,8 @@
-// As soon as ESM code pulls in a CJS module via createRequire, the
-// accessor is lazily restored so the CJS module behaves like it does
-// under Node.
+// `Object.prototype.__proto__` is restored only during CJS module
+// evaluation, so that load-time inheritance setup like
+// `Boolean.prototype.__proto__ = Node.prototype` actually mutates the
+// real [[Prototype]]. Once the CJS module returns, the accessor is
+// deleted again, so non-CJS code keeps the hardened default.
 import { createRequire } from "node:module";
 console.log("before require:", Object.hasOwn(Object.prototype, "__proto__"));
 const require = createRequire(import.meta.url);

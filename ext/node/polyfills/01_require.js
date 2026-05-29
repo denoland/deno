@@ -2046,16 +2046,23 @@ function enrichCJSError(error) {
 // assignment silently becomes an own-property write that leaves the
 // real [[Prototype]] unchanged, breaking the package (see
 // denoland/deno#34337 -- stylus and its dependents stack-overflow).
-// Restore the accessor lazily on first CJS load. Pure-ESM programs
-// that never touch CJS never hit this and keep the hardened default.
-let protoRestoredForNodeCompat = false;
-function restoreProtoForNodeCompat() {
-  if (protoRestoredForNodeCompat) return;
-  protoRestoredForNodeCompat = true;
-  const descriptor = internals.__savedProtoDescriptor;
-  if (descriptor) {
-    ObjectDefineProperty(ObjectPrototype, "__proto__", descriptor);
-    internals.__savedProtoDescriptor = undefined;
+// Restore the accessor only for the duration of CJS module evaluation
+// (the window where load-time inheritance setup runs), then delete it
+// again so non-CJS code still sees the hardened default.
+let cjsEvalDepth = 0;
+function enterCjsEvalScope() {
+  if (cjsEvalDepth === 0) {
+    const descriptor = internals.__savedProtoDescriptor;
+    if (descriptor) {
+      ObjectDefineProperty(ObjectPrototype, "__proto__", descriptor);
+    }
+  }
+  cjsEvalDepth++;
+}
+function exitCjsEvalScope() {
+  cjsEvalDepth--;
+  if (cjsEvalDepth === 0 && internals.__savedProtoDescriptor) {
+    delete ObjectPrototype.__proto__;
   }
 }
 
@@ -2065,7 +2072,6 @@ function wrapSafe(
   cjsModuleInstance,
   format,
 ) {
-  restoreProtoForNodeCompat();
   let f;
   let err;
 
@@ -2136,14 +2142,20 @@ Module.prototype._compile = function (
     op_require_break_on_next_statement();
   }
 
-  const result = compiledWrapper.call(
-    thisValue,
-    exports,
-    require,
-    this,
-    filename,
-    dirname,
-  );
+  enterCjsEvalScope();
+  let result;
+  try {
+    result = compiledWrapper.call(
+      thisValue,
+      exports,
+      require,
+      this,
+      filename,
+      dirname,
+    );
+  } finally {
+    exitCjsEvalScope();
+  }
   if (requireDepth === 0) {
     statCache = null;
   }

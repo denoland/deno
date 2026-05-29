@@ -2,4 +2,4 @@ before require: false
 nodeName: boolean
 val: true
 isNode: true
-after require: true
+after require: false

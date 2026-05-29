@@ -920,7 +920,9 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       // silently becomes an own-property write that doesn't change the
       // [[Prototype]], breaking the package (see denoland/deno#34337,
       // stylus and its dependents stack-overflow). The Node compat
-      // layer restores the accessor on first CJS module load.
+      // layer restores the accessor only during CJS module evaluation
+      // and re-deletes it afterward, so non-CJS code keeps the
+      // hardened default.
       internals.__savedProtoDescriptor = ObjectGetOwnPropertyDescriptor(
         ObjectPrototype,
         "__proto__",
@@ -1059,7 +1061,7 @@ function bootstrapWorkerRuntime(
       // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
       //
       // See bootstrapMainRuntime() above for the rationale and how Node
-      // compat restores the accessor on first CJS load.
+      // compat scopes the accessor restoration to CJS module evaluation.
       internals.__savedProtoDescriptor = ObjectGetOwnPropertyDescriptor(
         ObjectPrototype,
         "__proto__",

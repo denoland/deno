@@ -8,7 +8,7 @@
       "args": "run esm_only.mjs",
       "output": "esm_only.out"
     },
-    "esm_after_require_has_proto_restored": {
+    "esm_after_require_keeps_proto_deleted": {
       "args": "run --allow-read after_require.mjs",
       "output": "after_require.out"
     }

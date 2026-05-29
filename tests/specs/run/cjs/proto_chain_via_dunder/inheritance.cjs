@@ -1,3 +1,5 @@
+// deno-lint-ignore-file no-var
+// `var` mirrors the original stylus pattern this regression test reduces.
 // Regression test for https://github.com/denoland/deno/issues/34337
 // Stylus (and many other npm packages) install the prototype chain via
 // `Child.prototype.__proto__ = Parent.prototype`. When Deno deletes
