@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "child_dir_not_in_workspace": {
+      "cwd": "child",
+      "args": "run main.ts",
+      "output": "child/main.out"
+    }
+  }
+}

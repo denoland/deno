@@ -4958,23 +4958,25 @@ pub mod test {
 
   #[test]
   fn test_deno_member_not_referenced_in_deno_workspace() {
-    fn assert_err(err: &WorkspaceDiscoverError, config_file_path: &Path) {
-      match err.as_kind() {
-        WorkspaceDiscoverErrorKind::ConfigNotWorkspaceMember {
-          workspace_url,
-          config_url,
-        } => {
-          assert_eq!(
-            workspace_url,
-            &url_from_directory_path(&root_dir()).unwrap()
-          );
-          assert_eq!(
-            config_url,
-            &url_from_file_path(config_file_path).unwrap()
-          );
-        }
-        _ => unreachable!(),
-      }
+    // A start directory that has a deno.json but is not a member of the
+    // parent deno workspace falls back to a standalone workspace at the start
+    // directory (a warning is logged about the ignored parent workspace).
+    fn assert_standalone(
+      workspace_dir: &WorkspaceDirectoryRc,
+      config_file_path: &Path,
+    ) {
+      assert_eq!(
+        workspace_dir.workspace.root_dir_path(),
+        config_file_path.parent().unwrap(),
+      );
+      assert_eq!(
+        workspace_dir
+          .workspace
+          .deno_jsons()
+          .map(|c| deno_path_util::url_to_file_path(&c.specifier).unwrap())
+          .collect::<Vec<_>>(),
+        vec![config_file_path.to_path_buf()],
+      );
     }
 
     for file_name in ["deno.json", "deno.jsonc"] {
@@ -4988,11 +4990,12 @@ pub mod test {
       );
       sys.fs_insert_json(root_dir().join("member-a/deno.json"), json!({}));
       sys.fs_insert_json(config_file_path.clone(), json!({}));
-      let err = workspace_at_start_dir_err(&sys, &root_dir().join("member-b"));
-      assert_err(&err, &config_file_path);
+      let workspace_dir =
+        workspace_at_start_dir(&sys, &root_dir().join("member-b"));
+      assert_standalone(&workspace_dir, &config_file_path);
 
       // try for when the config file is specified as well
-      let err = WorkspaceDirectory::discover(
+      let workspace_dir = WorkspaceDirectory::discover(
         &sys,
         WorkspaceDiscoverStart::ConfigFile(&config_file_path),
         &WorkspaceDiscoverOptions {
@@ -5000,8 +5003,8 @@ pub mod test {
           ..Default::default()
         },
       )
-      .unwrap_err();
-      assert_err(&err, &config_file_path);
+      .unwrap();
+      assert_standalone(&workspace_dir, &config_file_path);
     }
   }
 
@@ -5085,16 +5088,40 @@ pub mod test {
     );
     sys.fs_insert_json(root_dir().join("member/deno.json"), json!({}));
     sys.fs_insert_json(root_dir().join("package/package.json"), json!({}));
-    // npm package needs to be a member of the deno workspace
-    let err = workspace_at_start_dir_err(&sys, &root_dir().join("package"));
+    // The start folder is not referenced by the parent deno workspace, so the
+    // parent workspace is discarded and the start folder is resolved on its
+    // own (a warning is logged for the deno workspace case).
+    let workspace_dir =
+      workspace_at_start_dir(&sys, &root_dir().join("package"));
     assert_eq!(
-      err.to_string(),
-      normalize_err_text(
-        "Config file must be a member of the workspace.
-  Config: [ROOT_DIR_URL]/package/package.json
-  Workspace: [ROOT_DIR_URL]/"
-      )
+      workspace_dir.workspace.root_dir_path(),
+      root_dir().join("package"),
     );
+    assert_eq!(workspace_dir.workspace.deno_jsons().count(), 0);
+    assert_eq!(workspace_dir.workspace.package_jsons().count(), 1);
+  }
+
+  #[test]
+  fn test_npm_package_under_deno_workspace_with_empty_members() {
+    // Exact repro from #30672: parent deno.json has an empty `workspace` array
+    // and the start folder contains only a package.json. The parent workspace
+    // should be discarded and the start folder resolved standalone.
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": []
+      }),
+    );
+    sys.fs_insert_json(root_dir().join("package/package.json"), json!({}));
+    let workspace_dir =
+      workspace_at_start_dir(&sys, &root_dir().join("package"));
+    assert_eq!(
+      workspace_dir.workspace.root_dir_path(),
+      root_dir().join("package"),
+    );
+    assert_eq!(workspace_dir.workspace.deno_jsons().count(), 0);
+    assert_eq!(workspace_dir.workspace.package_jsons().count(), 1);
   }
 
   #[test]
