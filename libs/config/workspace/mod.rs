@@ -162,6 +162,8 @@ pub enum WorkspaceDiagnosticKind {
   InvalidWorkspacesOption,
   #[error("\"exports\" field should be specified when specifying a \"name\".")]
   MissingExports,
+  #[error("Invalid \"exports\" field in configuration file. {0}")]
+  InvalidExports(String),
   #[error(
     "\"importMap\" field is ignored when \"imports\" or \"scopes\" are specified in the config file."
   )]
@@ -1243,6 +1245,7 @@ impl Workspace {
           kind: WorkspaceDiagnosticKind::MissingExports,
         });
       }
+      check_invalid_exports(config, diagnostics);
       if config.is_an_import_map() && config.json.import_map.is_some() {
         diagnostics.push(WorkspaceDiagnostic {
           config_url: config.specifier.clone(),
@@ -1314,6 +1317,26 @@ impl Workspace {
       }
     }
 
+    // Surface a clear error when a package's `exports` map is invalid.
+    //
+    // This is especially important for linked packages: an invalid `exports`
+    // map would otherwise cause the package to be silently dropped during
+    // resolution and fall back to fetching it from the JSR registry, producing
+    // a confusing "JSR package not found" error instead.
+    fn check_invalid_exports(
+      config: &ConfigFile,
+      diagnostics: &mut Vec<WorkspaceDiagnostic>,
+    ) {
+      if config.json.exports.is_some()
+        && let Err(err) = config.to_exports_config()
+      {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::InvalidExports(err.to_string()),
+        });
+      }
+    }
+
     let mut diagnostics = Vec::new();
     for (url, folder) in &self.config_folders {
       let is_root = url == &self.root_dir_url;
@@ -1351,14 +1374,15 @@ impl Workspace {
     }
 
     for folder in self.links.values() {
-      if let Some(config) = &folder.deno_json
-        && config.json.links.is_some()
-      {
-        // supporting linking in links is too complicated
-        diagnostics.push(WorkspaceDiagnostic {
-          config_url: config.specifier.clone(),
-          kind: WorkspaceDiagnosticKind::RootOnlyOption("links"),
-        });
+      if let Some(config) = &folder.deno_json {
+        if config.json.links.is_some() {
+          // supporting linking in links is too complicated
+          diagnostics.push(WorkspaceDiagnostic {
+            config_url: config.specifier.clone(),
+            kind: WorkspaceDiagnosticKind::RootOnlyOption("links"),
+          });
+        }
+        check_invalid_exports(config, &mut diagnostics);
       }
     }
 
@@ -3383,6 +3407,49 @@ pub mod test {
           .join("../dir/deno.json")
           .unwrap(),
       }]
+    );
+  }
+
+  #[test]
+  fn test_link_invalid_exports() {
+    // A linked package with an invalid `exports` map should surface a
+    // diagnostic instead of being silently dropped (which would cause a
+    // confusing fallback to fetching the package from the JSR registry).
+    let workspace_dir = workspace_for_root_and_member_with_fs(
+      json!({
+        "links": ["../dir"],
+      }),
+      json!({}),
+      |fs| {
+        fs.fs_insert_json(
+          root_dir().join("../dir/deno.json"),
+          json!({
+            "name": "@scope/pkg",
+            "version": "1.0.0",
+            "exports": {
+              ".": "./mod.ts",
+              "types": "./types.ts"
+            }
+          }),
+        );
+      },
+    );
+    let diagnostics = workspace_dir.workspace.diagnostics();
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+      diagnostics[0].config_url,
+      url_from_directory_path(&root_dir())
+        .unwrap()
+        .join("../dir/deno.json")
+        .unwrap(),
+    );
+    assert!(matches!(
+      diagnostics[0].kind,
+      WorkspaceDiagnosticKind::InvalidExports(..)
+    ));
+    assert_eq!(
+      diagnostics[0].kind.to_string(),
+      "Invalid \"exports\" field in configuration file. The 'types' export must start with './'. Did you mean './types'?",
     );
   }
 
