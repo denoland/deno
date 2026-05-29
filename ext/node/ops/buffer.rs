@@ -204,19 +204,18 @@ pub fn op_node_decode<'a>(
   let buffer = &buf[start..end];
 
   match encoding {
-    // utf-8
     0 => {
+      // utf-8
       if buffer.len() <= 256 && buffer.is_ascii() {
         v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
       } else {
         v8::String::new_from_utf8(scope, buffer, v8::NewStringType::Normal)
       }
     }
-    // latin1
     1 => {
+      // latin1
       v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
     }
-    // unknown
     _ => return Err(JsErrorBox::from_err(BufferError::InvalidType)),
   }
   .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
