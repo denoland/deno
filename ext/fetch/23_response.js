@@ -903,6 +903,14 @@ function toInnerResponse(response) {
 
 /**
  * @param {Response} response
+ * @returns {InnerResponse | undefined}
+ */
+function getInnerResponse(response) {
+  return response[_response];
+}
+
+/**
+ * @param {Response} response
  * @returns {InnerResponse}
  */
 function toInnerResponseForDenoServe(response) {
@@ -968,6 +976,7 @@ return {
   responseIsError,
   ResponsePrototype,
   dropServeNativeResponse,
+  getInnerResponse,
   serveNativeResponseKey: _serveNativeResponse,
   serveFastBodyKey: _serveFastBody,
   serveFastConsumedKey: _serveFastConsumed,

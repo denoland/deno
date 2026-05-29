@@ -74,9 +74,9 @@ const { InnerBody } = core.loadExtScript("ext:deno_fetch/22_body.js");
 const {
   dropServeNativeResponse,
   fromInnerResponse,
+  getInnerResponse,
   newInnerResponse,
   responseBodyUsed,
-  responseIsError,
   ResponsePrototype,
   serveNativeResponseKey,
   serveFastBodyKey,
@@ -684,6 +684,7 @@ function mapToCallback(context, callback, onError) {
     // 500 error.
     let innerRequest;
     let response;
+    let inner;
     try {
       if (zeroArgCallback && op_http_is_raw_request(req)) {
         response = await callback();
@@ -709,7 +710,18 @@ function mapToCallback(context, callback, onError) {
         );
       }
 
-      if (responseIsError(response)) {
+      // The Response prototype check above passes for Response-like objects
+      // (e.g. a subclass that skipped super(), or a Response from a different
+      // realm/polyfill). Those don't carry the internal slot we read from
+      // below, so reject them with a clear error instead of crashing later.
+      inner = getInnerResponse(response);
+      if (inner === undefined) {
+        throw new TypeError(
+          "Return value from serve handler must be a Response constructed via the Response constructor in this realm",
+        );
+      }
+
+      if (inner.type === "error") {
         throw new TypeError(
           "Return value from serve handler must not be an error response (like Response.error())",
         );
@@ -728,6 +740,12 @@ function mapToCallback(context, callback, onError) {
             "Return value from onError handler must be a response or a promise resolving to a response",
           );
         }
+        inner = toInnerResponse(response);
+        if (inner === undefined) {
+          throw new TypeError(
+            "Return value from onError handler must be a Response constructed via the Response constructor in this realm",
+          );
+        }
       } catch (error) {
         if (otelState.METRICS_ENABLED) {
           op_http_metric_handle_otel_error(req);
@@ -738,6 +756,7 @@ function mapToCallback(context, callback, onError) {
           error,
         );
         response = internalServerError();
+        inner = toInnerResponse(response);
       }
     }
 
@@ -787,7 +806,7 @@ function mapToCallback(context, callback, onError) {
       return;
     }
 
-    const inner = toInnerResponse(response);
+    inner = toInnerResponse(response);
     const status = inner.status;
     const headers = inner.headerList;
     const respBody = inner.body;
@@ -877,7 +896,13 @@ function mapToNativeResponseCallback(context, callback, onError) {
         "Return value from serve handler must be a response or a promise resolving to a response",
       );
     }
-    if (responseIsError(response)) {
+    let inner = getInnerResponse(response);
+    if (inner === undefined) {
+      throw new TypeError(
+        "Return value from serve handler must be a Response constructed via the Response constructor in this realm",
+      );
+    }
+    if (inner.type === "error") {
       throw new TypeError(
         "Return value from serve handler must not be an error response (like Response.error())",
       );
@@ -949,7 +974,7 @@ function mapToNativeResponseCallback(context, callback, onError) {
       return undefined;
     }
 
-    const inner = toInnerResponse(response);
+    inner = toInnerResponse(response);
     fastSyncResponseOrStream(
       req,
       inner.body,

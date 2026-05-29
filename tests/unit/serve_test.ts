@@ -4235,6 +4235,81 @@ Deno.test(
   },
 );
 
+// Handler returning a Response-like object (prototype matches but no internal
+// slot — e.g. a subclass that skipped super(), or a Response from a different
+// realm/polyfill) must not crash the serve loop. This was the crash reported
+// in https://github.com/denoland/deno/issues/33893 for nitro+vite, where the
+// loop tore down with "Cannot read properties of undefined (reading 'status')"
+// inside `mapped` in `ext:deno_http/00_serve.ts`.
+function makeResponseLike(): Response {
+  const fake = Object.create(Response.prototype);
+  // Own-data properties for getters Deno.serve probes during validation,
+  // so the inherited (branded) accessors don't run.
+  Object.defineProperty(fake, "type", { value: "default" });
+  Object.defineProperty(fake, "bodyUsed", { value: false });
+  return fake as Response;
+}
+
+Deno.test(
+  { permissions: { net: true, run: true } },
+  async function handleServeCallbackReturnsResponseLike() {
+    const deferred = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve(
+      {
+        port: servePort,
+        onListen: onListen(listeningDeferred.resolve),
+        signal: ac.signal,
+        onError: (error) => {
+          assert(error instanceof TypeError);
+          assert(
+            error.message.includes("must be a Response") &&
+              error.message.includes("constructor in this realm"),
+          );
+          deferred.resolve();
+          return new Response("recovered", { status: 200 });
+        },
+      },
+      () => makeResponseLike(),
+    );
+    await listeningDeferred.promise;
+    const respText = await curlRequest([`http://localhost:${servePort}`]);
+    await deferred.promise;
+    ac.abort();
+    await server.finished;
+    assert(respText === "recovered");
+  },
+);
+
+// onError handler returning a Response-like object must also not crash the
+// serve loop — it should fall through to the default 500 instead.
+Deno.test(
+  { permissions: { net: true, run: true } },
+  async function handleServeErrorCallbackReturnsResponseLike() {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve(
+      {
+        port: servePort,
+        onListen: onListen(resolve),
+        signal: ac.signal,
+        onError: () => makeResponseLike(),
+      },
+      () => {
+        throw new Error("boom");
+      },
+    );
+    await promise;
+    const respText = await curlRequest([`http://localhost:${servePort}`]);
+    ac.abort();
+    await server.finished;
+    assert(respText === "Internal Server Error");
+  },
+);
+
 // onError Handler must return Response class or promise that resolves Response class
 Deno.test(
   { permissions: { net: true, run: true } },

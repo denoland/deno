@@ -8,6 +8,7 @@ const {
   op_register_test_step,
   op_register_test,
   op_register_test_hook,
+  op_test_event_exit,
   op_test_event_step_result_failed,
   op_test_event_step_result_ignored,
   op_test_event_step_result_ok,
@@ -132,11 +133,27 @@ function parseTestLocation(str) {
   };
 }
 
-// Wrap test function in additional assertion that makes sure
-// that the test case does not accidentally exit prematurely.
-function assertExit(fn, isTest) {
+// Wrap test function in additional assertion that handles a test case trying
+// to exit the process prematurely.
+//
+// When `sanitizeExit` is enabled (the default), any attempt to exit fails the
+// current test (and a non-zero exit code set during the test fails it too),
+// allowing the remaining tests to keep running.
+//
+// When `sanitizeExit` is disabled, the user has opted out of failing the test,
+// but we still don't want a test to silently terminate the process without a
+// message and - more importantly - without reliably flushing buffered output.
+// Instead we abort the whole test run: the reporter prints a message, flushes
+// all output, and then exits the process with the requested code.
+function assertExit(fn, isTest, sanitizeExit) {
   return async function exitSanitizer(...params) {
     setExitHandler((exitCode) => {
+      if (!sanitizeExit) {
+        // Hand the exit off to the test runner. This never returns - the
+        // process is terminated once the reporter has flushed its output.
+        op_test_event_exit(exitCode);
+        return;
+      }
       throw new Error(
         `${
           isTest ? "Test case" : "Bench"
@@ -146,16 +163,18 @@ function assertExit(fn, isTest) {
 
     try {
       const innerResult = await fn(...new SafeArrayIterator(params));
-      const exitCode = DenoNs.exitCode;
-      if (exitCode !== 0) {
-        // Reset the code to allow other tests to run...
-        DenoNs.exitCode = 0;
-        // ...and fail the current test.
-        throw new Error(
-          `${
-            isTest ? "Test case" : "Bench"
-          } finished with exit code set to ${exitCode}`,
-        );
+      if (sanitizeExit) {
+        const exitCode = DenoNs.exitCode;
+        if (exitCode !== 0) {
+          // Reset the code to allow other tests to run...
+          DenoNs.exitCode = 0;
+          // ...and fail the current test.
+          throw new Error(
+            `${
+              isTest ? "Test case" : "Bench"
+            } finished with exit code set to ${exitCode}`,
+          );
+        }
       }
       if (innerResult) {
         return innerResult;
@@ -625,9 +644,8 @@ function createTestContext(desc) {
  */
 function wrapTest(desc) {
   let testFn = wrapInner(desc.fn);
-  if (desc.sanitizeExit) {
-    testFn = assertExit(testFn, true);
-  }
+  // Always install the exit handler - its behavior depends on `sanitizeExit`.
+  testFn = assertExit(testFn, true, desc.sanitizeExit);
   if (!("parent" in desc) && desc.permissions) {
     testFn = withPermissions(testFn, desc.permissions);
   }

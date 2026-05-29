@@ -1,0 +1,31 @@
+{
+  "tempDir": true,
+  "tests": {
+    "walkup_shadow_forces_nested_copy": {
+      // Regression test for the directory walk-up resolution. Root
+      // directly requires walkup-x@1.0.0, so walkup-x@1 hoists to the
+      // top level. walkup-needs-x2 transitively pulls walkup-x@2,
+      // which nests under it. walkup-x@2 in turn depends on
+      // walkup-chain@1, which depends back on walkup-x@1.0.0. A
+      // separate root dep on walkup-needs-chain2 hoists
+      // walkup-chain@2 at the top, leaving walkup-chain@1 nested.
+      //
+      // Node's resolver walks up by NAME, binding the nearest
+      // node_modules/<name>: from walkup-chain@1's dir the nearest
+      // walkup-x is the nested walkup-x@2 (at
+      // .../needs-x2/node_modules/walkup-x), not the hoisted
+      // walkup-x@1. Skipping the nest because the top level "has"
+      // walkup-x@1 would let walkup-x@2 shadow it — the wrong
+      // version. The walk-up simulation in compute_hoisted_layout
+      // must nest walkup-x@1 inside walkup-chain@1's node_modules so
+      // walkup-chain@1 actually resolves to its declared version.
+      "steps": [{
+        "args": "install",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "run --allow-read main.ts",
+        "output": "top x: 1.0.0\ntop chain: 2.0.0\nnested x@2: 2.0.0\nnested chain@1: 1.0.0\nchain's nested x: 1.0.0\n"
+      }]
+    }
+  }
+}

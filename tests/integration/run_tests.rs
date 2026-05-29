@@ -1676,6 +1676,14 @@ mod permissions {
         console.expect("What is Windows EOL? ");
         console.write_line("windows");
         console.expect("Your answer is \"windows\"");
+        console.expect("Type some unicode: ");
+        console.write_line_raw("Hello! ążć 🦕");
+        console.expect("Your unicode answer is \"Hello! ążć 🦕\"");
+        // \u{ą} = 0xC4 0x85, \u{ż} = 0xC5 0xBC, \u{ć} = 0xC4 0x87,
+        // \u{1F995} = 0xF0 0x9F 0xA6 0x95 (🦕)
+        console.expect(
+          "bytes=72,101,108,108,111,33,32,196,133,197,188,196,135,32,240,159,166,149",
+        );
         console.expect("Hi [Enter] ");
         console.write_line("");
         console.expect("Alert [Enter] ");

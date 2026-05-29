@@ -541,6 +541,12 @@ pub enum TestEvent {
   /// Indicates that the user has cancelled the test run with Ctrl+C and
   /// the run should be aborted.
   Sigint,
+  /// Indicates that a test called `Deno.exit()` while the exit sanitizer was
+  /// disabled (`sanitizeExit: false`). The test run should be aborted, a
+  /// message printed, and the process should exit with the given code. This
+  /// ensures that buffered output is reliably flushed before exiting, instead
+  /// of letting the test silently terminate the process.
+  Exit(i32),
   /// Used by the REPL to force a report to end without closing the worker
   /// or receiver.
   ForceEndReport,
@@ -559,6 +565,7 @@ impl TestEvent {
         | TestEvent::UncaughtError(..)
         | TestEvent::ForceEndReport
         | TestEvent::Completed
+        | TestEvent::Exit(..)
     )
   }
 }
@@ -1570,6 +1577,30 @@ pub async fn report_tests(
           reason = "TODO: why is this not using deno_runtime::exit?"
         )]
         std::process::exit(130);
+      }
+      TestEvent::Exit(exit_code) => {
+        let elapsed = start_time
+          .map(|t| Instant::now().duration_since(t))
+          .unwrap_or_default();
+        reporter.report_exit(
+          exit_code,
+          &tests_started
+            .difference(&tests_with_result)
+            .copied()
+            .collect(),
+          &tests,
+          &test_steps,
+        );
+
+        #[allow(clippy::print_stderr, reason = "force outputting on failure")]
+        if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
+          eprint!("Test reporter failed to flush: {}", err)
+        }
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "a test called Deno.exit() with the exit sanitizer disabled"
+        )]
+        std::process::exit(exit_code);
       }
     }
   }

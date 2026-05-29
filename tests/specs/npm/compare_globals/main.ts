@@ -18,6 +18,29 @@ type _TestHasBufferGlobal = AssertTrue<
 >;
 type _TestHasNodeJsGlobal = NodeJS.Architecture;
 
+// Regression test for https://github.com/denoland/deno/issues/27150
+// The Deno `RequestInit`/`ResponseInit` globals must take precedence over the
+// ones declared by `@types/node` (the latter can resolve to an empty
+// interface). Otherwise web-standard properties such as `signal` would not
+// exist on the `fetch` init type. The reproduction from the issue:
+const _issue27150 =
+  (_rawFetch: typeof globalThis.fetch) =>
+  async (...args: Parameters<typeof globalThis.fetch>) => {
+    const { signal: _userSignal } = args[1] ?? {};
+    return _userSignal;
+  };
+type _TestRequestInitHasSignal = AssertTrue<
+  "signal" extends keyof NonNullable<Parameters<typeof globalThis.fetch>[1]>
+    ? true
+    : false
+>;
+type _TestResponseInitHasStatus = AssertTrue<
+  "status" extends keyof NonNullable<
+    ConstructorParameters<typeof Response>[1]
+  > ? true
+    : false
+>;
+
 const controller = new AbortController();
 controller.abort("reason"); // in the NodeJS declaration it doesn't have a reason
 
