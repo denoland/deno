@@ -14,6 +14,7 @@ use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -68,12 +69,18 @@ use crate::process_state::NpmProcessState;
 struct HoistedLayout<'a> {
   /// Packages that go to `node_modules/<name>/`.
   top_level: HashMap<&'a StackString, &'a NpmResolutionPackage>,
-  /// Packages that must be nested: parent's `node_modules/<dep_name>/`.
+  /// Packages that must be nested: `<parent_path>/node_modules/<dep>/`,
+  /// where `parent_path` is relative to the root `node_modules/` dir and
+  /// may itself include `.../node_modules/<name>` segments for parents
+  /// that are themselves nested.
   nested: Vec<NestedPackage<'a>>,
 }
 
 struct NestedPackage<'a> {
-  parent: &'a NpmResolutionPackage,
+  /// Path of the parent relative to the root `node_modules/` directory.
+  /// For a top-level parent this is just `<name>`; for a nested parent
+  /// it is `<ancestor>/node_modules/.../node_modules/<name>`.
+  parent_path: PathBuf,
   #[allow(dead_code, reason = "used for future nested package resolution")]
   dep_name: &'a StackString,
   dep: &'a NpmResolutionPackage,
@@ -154,14 +161,39 @@ fn compute_hoisted_layout<'a>(
     }
   }
 
-  // Determine which deps need to be nested
+  // Walk the dependency tree breadth-first starting from the top-level
+  // (hoisted) packages so that when a transitive package is itself
+  // nested, its own conflicting deps get placed under the actual
+  // nested location rather than under the top-level package that
+  // happens to share the same name.
+  //
+  // For example with root deps `schema-utils@4` + `terser-webpack-plugin`:
+  //   * `schema-utils@4` and `ajv@8` hoist to the top level.
+  //   * `terser-webpack-plugin` transitively pulls `schema-utils@3`,
+  //     which nests at `terser-webpack-plugin/node_modules/schema-utils`.
+  //   * `schema-utils@3` needs `ajv@6`. The previous flat algorithm
+  //     placed it at `node_modules/schema-utils/node_modules/ajv`,
+  //     shadowing the top-level `ajv@8` for the hoisted `schema-utils@4`.
+  //     With the BFS below it lands at
+  //     `node_modules/terser-webpack-plugin/node_modules/schema-utils/node_modules/ajv`.
   let mut nested = Vec::new();
+  let mut queue: VecDeque<(PathBuf, &NpmResolutionPackage)> = VecDeque::new();
+  // `(parent_path, parent_nv)` we've already expanded — guards against
+  // cyclic dep graphs and avoids re-emitting the same edges.
+  let mut visited: HashSet<(PathBuf, &PackageNv)> = HashSet::new();
 
-  for package in packages {
-    for (dep_name, dep_id) in &package.dependencies {
+  for (name, package) in &best_version_for_name {
+    queue.push_back((PathBuf::from(name.as_str()), package));
+  }
+
+  while let Some((parent_path, parent)) = queue.pop_front() {
+    if !visited.insert((parent_path.clone(), &parent.id.nv)) {
+      continue;
+    }
+    for (dep_name, dep_id) in &parent.dependencies {
       let dep = snapshot.package_from_id(dep_id).unwrap();
 
-      if package.optional_dependencies.contains(dep_name)
+      if parent.optional_dependencies.contains(dep_name)
         && !dep.system.matches_system(system_info)
       {
         continue;
@@ -170,14 +202,20 @@ fn compute_hoisted_layout<'a>(
       if let Some(hoisted) = best_version_for_name.get(&dep.id.nv.name)
         && hoisted.id.nv == dep.id.nv
       {
-        continue; // This version is hoisted, no nesting needed
+        // Resolved by the top-level (or an ancestor) — Node's lookup
+        // walks up the directory tree, so no nesting needed here.
+        continue;
       }
 
+      let dep_path = parent_path
+        .join("node_modules")
+        .join(dep.id.nv.name.as_str());
       nested.push(NestedPackage {
-        parent: package,
+        parent_path: parent_path.clone(),
         dep_name,
         dep,
       });
+      queue.push_back((dep_path, dep));
     }
   }
 
@@ -373,10 +411,7 @@ impl<
 
     // 3. Clone nested packages (version conflicts)
     for nested in &layout.nested {
-      let parent_path = join_package_name(
-        Cow::Borrowed(&self.root_node_modules_path),
-        &nested.parent.id.nv.name,
-      );
+      let parent_path = self.root_node_modules_path.join(&nested.parent_path);
       let nested_node_modules = parent_path.join("node_modules");
       sys.fs_create_dir_all(&nested_node_modules)?;
       let package_path = join_package_name(
