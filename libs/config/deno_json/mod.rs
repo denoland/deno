@@ -862,6 +862,20 @@ pub struct TaskDefinition {
   pub dependencies: Vec<String>,
   #[serde(default)]
   pub description: Option<String>,
+  /// Globs identifying input files. When set, the task participates in
+  /// input-based caching and is skipped on subsequent runs if none of the
+  /// inputs (or the listed `env` values, or the command itself) have changed.
+  #[serde(default)]
+  pub files: Vec<String>,
+  /// Globs identifying output artifacts produced by the task. Recorded in the
+  /// cache manifest; in this first pass they are not yet restored on hit.
+  #[serde(default)]
+  pub output: Vec<String>,
+  /// Names of environment variables whose values should be folded into the
+  /// task fingerprint. Capture is explicit — variables not listed here are
+  /// not part of the cache key, even if the command reads them.
+  #[serde(default)]
+  pub env: Vec<String>,
 }
 
 #[cfg(test)]
@@ -871,6 +885,9 @@ impl From<&str> for TaskDefinition {
       command: Some(value.to_string()),
       dependencies: vec![],
       description: None,
+      files: Vec::new(),
+      output: Vec::new(),
+      env: Vec::new(),
     }
   }
 }
@@ -910,6 +927,9 @@ impl TaskDefinition {
               command: Some(command),
               dependencies: Vec::new(),
               description: None,
+              files: Vec::new(),
+              output: Vec::new(),
+              env: Vec::new(),
             },
             serde_json::Value::Object(_) => {
               serde_json::from_value(value).map_err(serde::de::Error::custom)?
@@ -2627,7 +2647,10 @@ mod tests {
       TaskDefinition {
         description: Some("Build client project".to_string()),
         command: Some("deno run -A client.js".to_string()),
-        dependencies: vec!["build".to_string()]
+        dependencies: vec!["build".to_string()],
+        files: Vec::new(),
+        output: Vec::new(),
+        env: Vec::new(),
       }
     );
 

@@ -1,0 +1,28 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "task build",
+      "output": "first.out"
+    },
+    {
+      "args": "task build",
+      "output": "cached.out"
+    },
+    {
+      "args": [
+        "eval",
+        "Deno.writeTextFileSync('src/in.ts', 'console.log(2)')"
+      ],
+      "output": ""
+    },
+    {
+      "args": "task build",
+      "output": "changed.out"
+    },
+    {
+      "args": "task build",
+      "output": "cached.out"
+    }
+  ]
+}

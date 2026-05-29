@@ -23,6 +23,7 @@ pub mod repl;
 pub mod run;
 pub mod serve;
 pub mod task;
+pub mod task_cache;
 pub mod test;
 pub mod transpile;
 pub mod unfurl_utils;

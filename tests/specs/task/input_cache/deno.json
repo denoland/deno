@@ -1,0 +1,8 @@
+{
+  "tasks": {
+    "build": {
+      "command": "deno run src/in.ts",
+      "files": ["src/**/*.ts"]
+    }
+  }
+}
