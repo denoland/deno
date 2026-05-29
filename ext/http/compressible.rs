@@ -2,11 +2,9 @@
 
 use std::str::FromStr;
 
-use phf::phf_set;
-
 // Data obtained from https://github.com/jshttp/mime-db/blob/fa5e4ef3cc8907ec3c5ec5b85af0c63d7059a5cd/db.json
 // Important! Keep this list sorted alphabetically.
-static CONTENT_TYPES: phf::Set<&'static [u8]> = phf_set! {
+static CONTENT_TYPES: &[&[u8]] = &[
   b"application/3gpdash-qoe-report+xml",
   b"application/3gpp-ims+xml",
   b"application/3gpphal+json",
@@ -619,10 +617,29 @@ static CONTENT_TYPES: phf::Set<&'static [u8]> = phf_set! {
   b"text/yaml",
   b"x-shader/x-fragment",
   b"x-shader/x-vertex",
-};
+];
+
+const APPLICATION_TYPES: std::ops::Range<usize> = 0..569;
+const FONT_TYPES: std::ops::Range<usize> = 569..571;
+const IMAGE_TYPES: std::ops::Range<usize> = 571..576;
+const M_TYPES: std::ops::Range<usize> = 576..583;
+const TEXT_TYPES: std::ops::Range<usize> = 583..610;
+const X_TYPES: std::ops::Range<usize> = 610..612;
 
 fn known_compressible(ct: &[u8]) -> bool {
-  CONTENT_TYPES.contains(ct)
+  let candidates = match ct.first() {
+    Some(b'a') => &CONTENT_TYPES[APPLICATION_TYPES],
+    Some(b'f') => &CONTENT_TYPES[FONT_TYPES],
+    Some(b'i') => &CONTENT_TYPES[IMAGE_TYPES],
+    Some(b'm') => &CONTENT_TYPES[M_TYPES],
+    Some(b't') => &CONTENT_TYPES[TEXT_TYPES],
+    Some(b'x') => &CONTENT_TYPES[X_TYPES],
+    _ => return false,
+  };
+
+  candidates
+    .binary_search_by(|content_type| content_type.cmp(&ct))
+    .is_ok()
 }
 
 fn known_mime(ct: &[u8]) -> Option<bool> {
@@ -653,5 +670,34 @@ mod tests {
     assert!(is_content_compressible("application/json"));
     assert!(is_content_compressible("text/plain;charset=UTF-8"));
     assert!(is_content_compressible("text/PlAIn; charset=utf-8"));
+  }
+
+  #[test]
+  fn content_types_are_sorted() {
+    for pair in CONTENT_TYPES.windows(2) {
+      assert!(pair[0] < pair[1], "{:?} >= {:?}", pair[0], pair[1]);
+    }
+  }
+
+  #[test]
+  fn content_type_ranges_cover_all_entries() {
+    let ranges = [
+      (b'a', APPLICATION_TYPES),
+      (b'f', FONT_TYPES),
+      (b'i', IMAGE_TYPES),
+      (b'm', M_TYPES),
+      (b't', TEXT_TYPES),
+      (b'x', X_TYPES),
+    ];
+    let mut next = 0;
+    for (first_byte, range) in ranges {
+      assert_eq!(range.start, next);
+      assert!(range.start < range.end);
+      for content_type in &CONTENT_TYPES[range.clone()] {
+        assert_eq!(content_type.first(), Some(&first_byte));
+      }
+      next = range.end;
+    }
+    assert_eq!(next, CONTENT_TYPES.len());
   }
 }

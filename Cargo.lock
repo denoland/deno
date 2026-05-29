@@ -2441,7 +2441,6 @@ dependencies = [
  "mime",
  "once_cell",
  "percent-encoding",
- "phf 0.11.2",
  "pin-project",
  "rand 0.8.5",
  "scopeguard",
