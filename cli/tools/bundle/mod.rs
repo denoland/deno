@@ -1741,6 +1741,17 @@ impl DenoPluginHandler {
     let mut transform = transform::BundleImportMetaMainTransform::new(
       graph.roots.contains(specifier) || resolved_roots.contains(specifier),
     );
+    // A CJS module imported from ESM reaches us as an ESM facade the module
+    // loader generated (`import { createRequire } ...; export default mod;`).
+    // Parsing that under `MediaType::Cjs` forces script mode (see
+    // deno_ast `refine_parse_mode`), which rejects the facade's import/export
+    // statements with a parse error. Parse as JavaScript so program mode
+    // auto-detects module vs script and handles both the facade and genuine
+    // CJS scripts.
+    let media_type = match media_type {
+      deno_ast::MediaType::Cjs => deno_ast::MediaType::JavaScript,
+      other => other,
+    };
     let parsed_source = deno_ast::parse_program_with_post_process(
       deno_ast::ParseParams {
         specifier: specifier.clone(),
