@@ -1,0 +1,16 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_TESTING_DISABLE_GIT_CHECK": "1"
+  },
+  "tests": {
+    "auto_detect": {
+      "args": "publish --dry-run",
+      "output": "dry_run.out"
+    },
+    "explicit_npm_flag": {
+      "args": "publish --npm --dry-run",
+      "output": "dry_run.out"
+    }
+  }
+}

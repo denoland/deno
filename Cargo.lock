@@ -1889,6 +1889,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_repr",
+ "sha1",
  "sha2",
  "shlex",
  "spki 0.7.3",
