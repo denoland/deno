@@ -5,7 +5,17 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::path::Path;
+#[cfg(unix)]
+use std::path::PathBuf;
 use std::rc::Rc;
+#[cfg(unix)]
+use std::sync::Arc;
+#[cfg(unix)]
+use std::sync::LazyLock;
+#[cfg(unix)]
+use std::sync::Mutex;
+#[cfg(unix)]
+use std::sync::Weak;
 
 use deno_core::GarbageCollected;
 use deno_core::OpState;
@@ -62,6 +72,17 @@ pub enum DlfcnError {
 pub struct DynamicLibraryResource {
   lib: Library,
   pub symbols: HashMap<String, Box<Symbol>>,
+  // On Unix, holds a strong reference to the temp file the library was loaded
+  // from (see `open_library`). Keeps the temp file alive — and the entry in
+  // `OPEN_TEMPS` reachable — for as long as this library is loaded, so
+  // subsequent dlopens of the same source path reuse the same temp file (and
+  // therefore the same OS-level mapping).
+  #[cfg(unix)]
+  #[allow(
+    dead_code,
+    reason = "RAII owner: kept alive for the lifetime of the library"
+  )]
+  temp: Option<Arc<tempfile::NamedTempFile>>,
 }
 
 impl Resource for DynamicLibraryResource {
@@ -147,32 +168,66 @@ impl<'de> Deserialize<'de> for ForeignSymbol {
 
 /// Open a dynamic library.
 ///
-/// On Unix, the library bytes are first copied into a temporary file with a
-/// fresh inode and then loaded from that copy. The temp file is unlinked once
-/// `dlopen(3)` has mmap'd it: the kernel keeps the inode (and therefore the
-/// backing pages) alive as long as the mapping exists, so the loaded code is
-/// no longer affected by any later writes to the user-supplied path.
+/// On Unix, when the caller passes a real file path (one that contains a path
+/// separator — bare `libfoo.so` style SONAMEs are forwarded to `dlopen` so
+/// the dynamic loader can search `LD_LIBRARY_PATH`, `/etc/ld.so.cache`, etc.),
+/// the library bytes are first copied into a temporary file with a fresh
+/// inode and `dlopen(3)` is pointed at that copy. The temp file is unlinked
+/// from the directory tree as soon as `dlopen` has mmap'd it: the kernel
+/// keeps the inode (and therefore the backing pages) alive while the mapping
+/// exists, so the loaded code is no longer affected by any later writes to
+/// the user-supplied path.
 ///
 /// Without this isolation, overwriting an in-use library (e.g. via
 /// `Deno.copyFileSync` truncating the same path) invalidates the page-cache
-/// pages backing the mapping, and any later page fault in that library (such
-/// as the finalizers run by ld.so at process exit) crashes.
+/// pages backing the mapping, and any later page fault into that library —
+/// including the finalizers run by ld.so at process exit — crashes. See
+/// https://github.com/denoland/deno/issues/20956.
 ///
-/// See https://github.com/denoland/deno/issues/20956.
-fn open_library(path: &Path) -> Result<Library, dlopen2::Error> {
+/// A process-wide cache (`OPEN_TEMPS`) keyed by the user-supplied path makes
+/// sure two callers of `Deno.dlopen(samePath, ...)` — e.g. a main isolate and
+/// a Worker — observe the same temp file and therefore the same OS-level
+/// mapping. That matches the dedup `dlopen` would normally do based on path
+/// identity, so library statics like `STORED_FUNCTION` remain shared across
+/// isolates exactly as they would without the isolation.
+fn open_library(
+  path: &Path,
+) -> Result<(Library, OpenLibraryHolder), dlopen2::Error> {
   #[cfg(unix)]
   {
     open_library_isolated(path)
   }
   #[cfg(not(unix))]
   {
-    Library::open(path)
+    Library::open(path).map(|lib| (lib, ()))
   }
 }
 
+#[cfg(not(unix))]
+type OpenLibraryHolder = ();
+
 #[cfg(unix)]
-fn open_library_isolated(path: &Path) -> Result<Library, dlopen2::Error> {
+type OpenLibraryHolder = Option<Arc<tempfile::NamedTempFile>>;
+
+#[cfg(unix)]
+static OPEN_TEMPS: LazyLock<
+  Mutex<HashMap<PathBuf, Weak<tempfile::NamedTempFile>>>,
+> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+#[cfg(unix)]
+fn open_library_isolated(
+  path: &Path,
+) -> Result<(Library, OpenLibraryHolder), dlopen2::Error> {
+  use std::os::unix::ffi::OsStrExt;
   use std::os::unix::fs::PermissionsExt;
+
+  // Names without a path separator are dlopen SONAMEs — let the dynamic
+  // loader search the system library paths. We don't have a real file to
+  // interpose on here, and the isolation problem only arises when the
+  // caller controls (and can rewrite) the file on disk.
+  if !path.as_os_str().as_bytes().contains(&b'/') {
+    return Library::open(path).map(|lib| (lib, None));
+  }
 
   fn copy_into_temp(path: &Path) -> std::io::Result<tempfile::NamedTempFile> {
     // Prefer the source directory so `$ORIGIN`-relative RPATH/RUNPATH and
@@ -205,16 +260,29 @@ fn open_library_isolated(path: &Path) -> Result<Library, dlopen2::Error> {
     Ok(temp)
   }
 
-  let temp = match copy_into_temp(path) {
-    Ok(t) => t,
-    Err(e) => return Err(dlopen2::Error::OpeningLibraryError(e)),
+  // Reuse an existing temp file if one already exists for this source path,
+  // so multiple `Deno.dlopen` calls with the same path share one mapping.
+  let temp = {
+    let mut cache = OPEN_TEMPS.lock().unwrap();
+    match cache.get(path).and_then(Weak::upgrade) {
+      Some(existing) => existing,
+      None => {
+        let temp =
+          copy_into_temp(path).map_err(dlopen2::Error::OpeningLibraryError)?;
+        let temp = Arc::new(temp);
+        cache.insert(path.to_path_buf(), Arc::downgrade(&temp));
+        temp
+      }
+    }
   };
 
   // `Library::open` calls `dlopen(3)`, which opens the file, mmaps the ELF
-  // segments and closes its file descriptor. The temp file is unlinked when
-  // `temp` is dropped at the end of this function; the mmap keeps the inode
-  // alive afterwards.
-  Library::open(temp.path())
+  // segments and closes its file descriptor. The caller stores the returned
+  // `Arc<NamedTempFile>` in `DynamicLibraryResource` so the temp file (and
+  // therefore the cache entry) stays alive for as long as any library loaded
+  // from it is still around.
+  let lib = Library::open(temp.path())?;
+  Ok((lib, Some(temp)))
 }
 
 #[op2(stack_trace)]
@@ -238,7 +306,7 @@ pub fn op_ffi_load<'scope>(
     Some(loader) => loader.load_and_resolve_path(&path)?,
     None => Cow::Borrowed(path.as_ref()),
   };
-  let lib = open_library(real_path.as_ref()).map_err(|e| {
+  let (lib, _temp) = open_library(real_path.as_ref()).map_err(|e| {
     dlopen2::Error::OpeningLibraryError(std::io::Error::other(format_error(
       e, &real_path,
     )))
@@ -246,6 +314,8 @@ pub fn op_ffi_load<'scope>(
   let mut resource = DynamicLibraryResource {
     lib,
     symbols: HashMap::new(),
+    #[cfg(unix)]
+    temp: _temp,
   };
   let obj = v8::Object::new(scope);
 
