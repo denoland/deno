@@ -186,7 +186,6 @@
       "FileList interface: document.querySelector(\"#fileChooser\").files must inherit property \"length\" with the proper type"
     ]
   },
-  "unicode.html": true,
   "BlobURL": {
     "cross-partition-navigation.https.html": false,
     "cross-partition-worker-creation.https.html": false,
