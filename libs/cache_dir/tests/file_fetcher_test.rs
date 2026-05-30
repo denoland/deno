@@ -200,12 +200,10 @@ async fn test_fetch_query_redirect_to_dts_is_cached() {
   use std::sync::atomic::AtomicUsize;
   use std::sync::atomic::Ordering;
 
-  use deno_maybe_sync::MaybeArc;
-
   #[derive(Debug, Clone, Default)]
   struct TestHttpClient {
     #[allow(clippy::disallowed_types, reason = "arc wrapper type")]
-    request_count: MaybeArc<AtomicUsize>,
+    request_count: deno_maybe_sync::MaybeArc<AtomicUsize>,
   }
 
   #[async_trait::async_trait(?Send)]
