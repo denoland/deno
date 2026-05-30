@@ -429,21 +429,17 @@ deno_core::extension!(deno_node,
     "internal_binding/mod.ts",
     "node:module" = "01_require.js",
     "node:process" = "process.ts",
-    // node:stream + node:stream/promises stay eager: every Deno program
-    // pays their parse/compile cost at runtime startup via
-    // `__bootstrapNodeProcess` -> `createWritableStdioStream` -> Writable,
-    // so keeping them in the snapshot is a net startup-time win even
-    // though most programs never directly require('stream').
-    "node:stream" = "stream.ts",
-    "node:stream/promises" = "stream/promises.js",
-    // node:net and node:tty are needed at every TTY-stdout startup via
-    // internal/tty.js's TTYWriteStream constructor extending net.Socket.
-    // Keeping them eager is a startup-time win for interactive runs.
-    "node:net" = "net_esm.ts",
-    "node:tty" = "tty_esm.ts",
   ],
   lazy_loaded_esm = [
     dir "polyfills",
+    // Previously eager. Combined with the lazy stdio refactor in
+    // process.ts (process.stdout/stderr/stdin are accessor properties),
+    // these modules only load when a script actually touches stdio or
+    // requires node:stream/net/tty directly.
+    "node:stream" = "stream.ts",
+    "node:stream/promises" = "stream/promises.js",
+    "node:net" = "net_esm.ts",
+    "node:tty" = "tty_esm.ts",
     "internal/streams/compose.js",
     "internal/streams/duplexpair.js",
     "internal/streams/lazy_transform.js",

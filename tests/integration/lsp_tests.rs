@@ -1936,6 +1936,74 @@ fn lsp_inlay_hints() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/30455 — the
+// inlay hint return-type display must walk `ComputedPropertyName` nodes
+// (e.g. `[Symbol.dispose]`) rather than tripping a TypeScript debug failure.
+#[test(timeout = 300)]
+fn lsp_inlay_hints_computed_property_name() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+    },
+    "typescript": {
+      "inlayHints": {
+        "functionLikeReturnTypes": {
+          "enabled": true,
+        },
+      },
+    },
+  }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"class Mutex {
+  #queue: (() => void)[] = [];
+
+  async acquire() {
+    const pwr = Promise.withResolvers<void>();
+    this.#queue.push(pwr.resolve.bind(pwr));
+    if (this.#queue.length === 1) {
+      this.#queue[0]();
+    }
+    await pwr.promise;
+    return {
+      [Symbol.dispose]: () => {
+        this.#queue.shift();
+        if (this.#queue.length > 0) {
+          this.#queue[0]();
+        }
+      },
+    };
+  }
+}
+"#,
+    },
+  }));
+  // Before the upstream TypeScript fix the LSP server reported an "Internal
+  // error" (JSON-RPC -32603) here because `visitForDisplayParts` did not
+  // handle `ComputedPropertyName`. `write_request` panics on any LSP error
+  // response, so a successful return — null or an array — is enough to
+  // demonstrate the regression has not come back.
+  client.write_request(
+    "textDocument/inlayHint",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 21, "character": 0 },
+      },
+    }),
+  );
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_inlay_hints_not_enabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -12242,6 +12310,44 @@ fn lsp_untitled_file_diagnostics() {
         "version": 1,
       },
     ])
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_jupyter_untitled_notebook() {
+  use std::str::FromStr;
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  // Simulate VSCode opening an unsaved Jupyter notebook. The notebook URI uses
+  // the `untitled:` scheme and the cell URIs use the `vscode-notebook-cell:`
+  // scheme with no directory component — neither corresponds to a file on
+  // disk. This used to panic in `get_closest_package_json` because the
+  // converted file path was just a root directory whose `parent()` is `None`.
+  // Regression test for https://github.com/denoland/deno/issues/27433.
+  let notebook_uri = lsp::Uri::from_str("untitled:Untitled-1.ipynb").unwrap();
+  let cell_uri =
+    lsp::Uri::from_str("vscode-notebook-cell:Untitled-1.ipynb#W0sZmlsZQ%3D%3D")
+      .unwrap();
+  let diagnostics = client.notebook_did_open(
+    notebook_uri,
+    1,
+    vec![json!({
+      "uri": cell_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "const x: number = 1;\nconsole.log(x);\n",
+    })],
+  );
+  // The cell should be diagnosable with no panics.
+  let messages = diagnostics.all_messages();
+  assert!(
+    messages.iter().all(|m| m.diagnostics.is_empty()),
+    "{:?}",
+    messages
   );
   client.shutdown();
 }

@@ -2832,23 +2832,33 @@ impl ModuleMap {
     // module map (notably `module.evaluate(scope)`, which can recursively
     // compile dependent modules and would otherwise panic with a
     // `RefCell already borrowed` at `new_module_from_js_source`).
-    let cached_handle = {
+    let cached_id_and_handle = {
       let module_map_data = self.data.borrow();
       module_map_data
         .get_id(module_specifier, RequestedModuleType::None)
-        .and_then(|id| module_map_data.get_handle(id))
+        .and_then(|id| module_map_data.get_handle(id).map(|h| (id, h)))
     };
-    if let Some(handle) = cached_handle {
+    if let Some((cached_id, handle)) = cached_id_and_handle {
       crate::modules::import_graph::record_lazy_esm_cached(
         scope,
         module_specifier,
       );
       let handle_local = v8::Local::new(scope, handle);
-      // The module may be present in the map but not yet evaluated --
-      // e.g. when this lazy load fires from a sibling ES module that V8 is
-      // evaluating earlier in DFS post-order. Returning the namespace
-      // before evaluation leaves `export const` bindings in the temporal
-      // dead zone, so trigger evaluation here.
+      // The module may be present in the map but not yet instantiated --
+      // e.g. when this lazy load fires from inside a sibling module's
+      // resolve-callback (a `synthetic_esm` backing script synchronously
+      // calling `op_lazy_load_esm` for a peer that the surrounding
+      // `RecursiveModuleLoad` has registered but not yet instantiated).
+      // `get_module_namespace` requires Instantiated+, so drive the module
+      // forward synchronously here.
+      if handle_local.get_status() == v8::ModuleStatus::Uninstantiated {
+        self.instantiate_module(scope, cached_id).map_err(|e| {
+          let exception = v8::Local::new(scope, e);
+          exception_to_err(scope, exception, false, true)
+        })?;
+      }
+      // Returning the namespace before evaluation leaves `export const`
+      // bindings in the temporal dead zone, so trigger evaluation here.
       if handle_local.get_status() == v8::ModuleStatus::Instantiated {
         let value = handle_local.evaluate(scope).unwrap();
         if !self.evaluating_top_level.get() {
