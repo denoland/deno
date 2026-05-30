@@ -820,7 +820,14 @@ impl ModuleGraphBuilder {
       self.cjs_tracker.as_ref(),
       &jsx_import_source_config_resolver,
       None,
-      NpmTypesResolutionMode::Strict,
+      // When type checking, an npm package that has no type declarations
+      // (e.g. a "bring your own node_modules" dependency without bundled
+      // types and without a corresponding `@types` package) should be
+      // treated as untyped rather than producing a hard "Failed resolving
+      // types" error. Falling back to the execution entrypoint matches the
+      // behaviour of the managed npm resolver. See:
+      // https://github.com/denoland/deno/issues/23507
+      NpmTypesResolutionMode::FallbackToExecution,
     );
     let maybe_reporter = self.maybe_reporter.as_deref();
     let mut locker = self.lockfile.as_ref().map(|l| l.as_deno_graph_locker());
