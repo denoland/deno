@@ -610,3 +610,9 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
+
+[patch.crates-io]
+# Temporary until dprint/dprint-plugin-typescript#796 is released, which fixes
+# unstable JSX formatting for <pre> elements that contain comments. Tracks
+# denoland/deno#20403.
+dprint-plugin-typescript = { git = "https://github.com/divybot/dprint-plugin-typescript", rev = "7b7b2a2df15b02e7bba2b9bc32f011961b002cc2" }
