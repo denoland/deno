@@ -650,8 +650,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
     }
 
     if original_specifier.scheme() == "blob" {
-      let Some(blob) =
-        self.shared.blob_store.get_object_url(original_specifier.clone())
+      let Some(blob) = self
+        .shared
+        .blob_store
+        .get_object_url(original_specifier.clone())
       else {
         return deno_core::ModuleLoadResponse::Sync(Err(
           JsErrorBox::type_error(format!(
@@ -675,12 +677,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
             &requested_module_type,
           );
           let source = match module_type {
-            ModuleType::Bytes => {
+            ModuleType::Bytes | ModuleType::Wasm => {
               ModuleSourceCode::Bytes(bytes.into_boxed_slice().into())
             }
-            _ => ModuleSourceCode::String(
-              from_utf8_lossy_owned(bytes).into(),
-            ),
+            _ => ModuleSourceCode::String(from_utf8_lossy_owned(bytes).into()),
           };
           Ok(deno_core::ModuleSource::new(
             module_type,
