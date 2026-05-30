@@ -495,30 +495,15 @@ extern "C" fn test_uv_timer_fires(
 }
 
 // Exercises the libuv threading + semaphore polyfills (uv_thread_*,
-// uv_sem_*) added to the host binary in ext/napi/uv.rs. libuv-sys-lite
-// does not bind these, so we declare them directly; like the other uv_*
-// symbols used in this file they resolve from the host `deno` process at
-// runtime. A worker thread increments a counter and posts a counting
-// semaphore three times; the main thread drains the semaphore, joins the
-// worker, and checks the results.
-unsafe extern "C" {
-  fn uv_sem_init(sem: *mut u32, value: u32) -> std::ffi::c_int;
-  fn uv_sem_post(sem: *mut u32);
-  fn uv_sem_wait(sem: *mut u32);
-  fn uv_sem_trywait(sem: *mut u32) -> std::ffi::c_int;
-  fn uv_sem_destroy(sem: *mut u32);
-  fn uv_thread_create(
-    tid: *mut u64,
-    entry: unsafe extern "C" fn(*mut std::ffi::c_void),
-    arg: *mut std::ffi::c_void,
-  ) -> std::ffi::c_int;
-  fn uv_thread_join(tid: *mut u64) -> std::ffi::c_int;
-  fn uv_thread_self() -> u64;
-  fn uv_thread_equal(t1: *const u64, t2: *const u64) -> std::ffi::c_int;
-}
-
+// uv_sem_*) added to the host binary in ext/napi/uv.rs. Like the other
+// uv_* symbols in this file, they are resolved from the host `deno`
+// process at runtime by libuv-sys-lite (dyn-symbols) — declaring them
+// directly would create static imports that fail to link on Windows. A
+// worker thread increments a counter and posts a counting semaphore three
+// times; the main thread drains the semaphore, joins the worker, and
+// checks the results.
 struct ThreadArg {
-  sem: *mut u32,
+  sem: *mut libuv_sys_lite::uv_sem_t,
   counter: *mut i32,
 }
 
@@ -527,7 +512,7 @@ unsafe extern "C" fn uv_threads_entry(arg: *mut std::ffi::c_void) {
     let a = arg as *mut ThreadArg;
     for _ in 0..3 {
       *(*a).counter += 1;
-      uv_sem_post((*a).sem);
+      libuv_sys_lite::uv_sem_post((*a).sem);
     }
   }
 }
@@ -536,9 +521,20 @@ extern "C" fn test_uv_threads(
   env: napi_env,
   _info: napi_callback_info,
 ) -> napi_value {
+  use libuv_sys_lite::uv_sem_destroy;
+  use libuv_sys_lite::uv_sem_init;
+  use libuv_sys_lite::uv_sem_t;
+  use libuv_sys_lite::uv_sem_trywait;
+  use libuv_sys_lite::uv_sem_wait;
+  use libuv_sys_lite::uv_thread_create;
+  use libuv_sys_lite::uv_thread_equal;
+  use libuv_sys_lite::uv_thread_join;
+  use libuv_sys_lite::uv_thread_self;
+  use libuv_sys_lite::uv_thread_t;
+
   unsafe {
-    let mut sem: u32 = 0;
-    let sem_ptr: *mut u32 = &mut sem;
+    let mut sem = MaybeUninit::<uv_sem_t>::zeroed();
+    let sem_ptr = sem.as_mut_ptr();
     assert_eq!(uv_sem_init(sem_ptr, 0), 0);
 
     let mut counter: i32 = 0;
@@ -548,10 +544,10 @@ extern "C" fn test_uv_threads(
     };
     let arg_ptr: *mut ThreadArg = &mut arg;
 
-    let mut tid: u64 = 0;
-    let tid_ptr: *mut u64 = &mut tid;
+    let mut tid = MaybeUninit::<uv_thread_t>::zeroed();
+    let tid_ptr = tid.as_mut_ptr();
     assert_eq!(
-      uv_thread_create(tid_ptr, uv_threads_entry, arg_ptr.cast()),
+      uv_thread_create(tid_ptr, Some(uv_threads_entry), arg_ptr.cast()),
       0
     );
 
