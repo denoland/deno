@@ -295,6 +295,7 @@ deno_core::extension!(deno_node,
     ops::vm::op_vm_compile_function,
     ops::vm::op_vm_script_get_source_map_url,
     ops::vm::op_vm_script_create_cached_data,
+    ops::vm::op_vm_dynamic_import_callback_register,
     ops::vm::op_vm_module_create_source_text_module,
     ops::vm::op_vm_module_create_synthetic_module,
     ops::vm::op_vm_module_set_synthetic_export,
@@ -907,5 +908,16 @@ pub fn create_vm_dynamic_import_missing_host_defined_options<'s>(
   deno_core::create_host_defined_options_with_kind(
     scope,
     deno_core::host_defined_options_kind::VM_DYNAMIC_IMPORT_MISSING,
+  )
+}
+
+pub fn create_vm_dynamic_import_callback_host_defined_options<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback_id: u32,
+) -> v8::Local<'s, v8::Data> {
+  deno_core::create_host_defined_options_with_kind_and_key(
+    scope,
+    deno_core::host_defined_options_kind::VM_DYNAMIC_IMPORT_CALLBACK,
+    callback_id,
   )
 }
