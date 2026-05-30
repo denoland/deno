@@ -16,6 +16,7 @@ use crate::error::exception_to_err;
 use crate::fast_string::FastString;
 use crate::module_specifier::ModuleSpecifier;
 
+mod import_graph;
 mod loaders;
 mod map;
 mod module_map_data;

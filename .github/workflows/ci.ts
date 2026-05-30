@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 113;
+const cacheVersion = 115;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -176,6 +176,7 @@ RUSTFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
   -C link-arg=-fuse-ld=lld-${llvmVersion}
+  -C link-arg=-Wl,--icf=safe
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -194,6 +195,7 @@ RUSTDOCFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
   -C link-arg=-fuse-ld=lld-${llvmVersion}
+  -C link-arg=-Wl,--icf=safe
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache

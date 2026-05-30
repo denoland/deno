@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   Error,
   PromisePrototypeThen,
@@ -174,6 +174,13 @@ function getSystemErrorMessage(code: number): string | undefined {
   return errorMap.get(code)?.[1];
 }
 
+/**
+ * Returns the map of all system error codes available from the Node.js API.
+ */
+function getSystemErrorMap(): Map<number, [string, string]> {
+  return errorMap;
+}
+
 return {
   notImplemented,
   warnNotImplemented,
@@ -185,7 +192,8 @@ return {
   validateIntegerRange,
   once,
   makeMethodsEnumerable,
-  getSystemErrorName,
+  getSystemErrorMap,
   getSystemErrorMessage,
+  getSystemErrorName,
 };
 })();

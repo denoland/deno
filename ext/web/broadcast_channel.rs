@@ -91,7 +91,6 @@ pub fn op_broadcast_send(
 }
 
 #[op2]
-#[serde]
 pub async fn op_broadcast_recv(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

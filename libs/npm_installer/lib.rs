@@ -104,9 +104,7 @@ pub trait InstallProgressReporter:
 
   fn deprecated_message(&self, message: String);
 }
-pub trait Reporter:
-  std::fmt::Debug + Send + Sync + 'static + dyn_clone::DynClone
-{
+pub trait Reporter: std::fmt::Debug + Send + Sync + Clone + 'static {
   type Guard;
   type ClearGuard;
 
@@ -214,7 +212,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
                 npm_cache.clone(),
                 extra_info_provider,
                 npm_install_deps_provider.clone(),
-                dyn_clone::clone(reporter),
+                (*reporter).clone(),
                 npm_resolution.clone(),
                 sys,
                 tarball_cache,
@@ -233,7 +231,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
                 npm_cache.clone(),
                 extra_info_provider,
                 npm_install_deps_provider.clone(),
-                dyn_clone::clone(reporter),
+                (*reporter).clone(),
                 npm_resolution.clone(),
                 sys,
                 tarball_cache,
@@ -411,8 +409,9 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
         }
         deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
           ..
-        } => {
-          // only warn for this one
+        }
+        | deno_package_json::PackageJsonDepValueParseErrorKind::EmptyName => {
+          // only warn for these
           log::warn!(
             "{} {}\n    at {}",
             colors::yellow("Warning"),

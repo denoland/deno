@@ -7,7 +7,7 @@
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   isArrayBuffer,
 } = core;

@@ -138,7 +138,7 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
   },
   UnstableFeatureDescription {
     name: "raw-imports",
-    help_text: "Enable unstable 'bytes' and 'text' imports.",
+    help_text: "Enable unstable 'bytes' imports.",
     show_in_help: true,
     kind: UnstableFeatureKind::Runtime,
     env_var: Some("DENO_UNSTABLE_RAW_IMPORTS"),

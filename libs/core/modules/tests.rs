@@ -289,18 +289,14 @@ impl ModuleLoader for MockLoader {
     let output_specifier = match resolve_import(specifier, referrer) {
       Ok(specifier) => specifier,
       Err(..) => {
-        return ModuleResolveResponse::Sync(Err(JsErrorBox::from_err(
-          MockError::ResolveErr,
-        )));
+        return Err(JsErrorBox::from_err(MockError::ResolveErr));
       }
     };
 
     if mock_source_code(output_specifier.as_ref()).is_some() {
-      ModuleResolveResponse::Sync(Ok(output_specifier))
+      Ok(output_specifier)
     } else {
-      ModuleResolveResponse::Sync(Err(JsErrorBox::from_err(
-        MockError::ResolveErr,
-      )))
+      Err(JsErrorBox::from_err(MockError::ResolveErr))
     }
   }
 
@@ -660,6 +656,59 @@ async fn test_lazy_load_esm_evaluates_pre_instantiated_sibling() {
     .load_main_es_module(&ModuleSpecifier::parse("file:///main.js").unwrap())
     .await
     .unwrap();
+  let result = runtime.mod_evaluate(mod_id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  result.await.unwrap();
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/34307
+///
+/// Two concurrent dynamic `import()` calls each spawn their own
+/// `RecursiveModuleLoad`. If both transitively depend on the same
+/// `lazy_loaded_esm` module, their per-load `visited`/`get_id` dedup misses
+/// (the first hasn't registered the module yet) and both queue load futures
+/// for the same lazy specifier. The first wins `take_lazy_esm_source`; the
+/// second used to get `None` and fall through to `loader.load()`, which
+/// surfaces "Unsupported scheme" for `node:` builtins in the wild (vite 8
+/// + react-router 7.15 under a CJS bin).
+#[tokio::test]
+async fn test_lazy_loaded_esm_concurrent_loads() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "custom:lazy_shared" = "lazy_loaded_shared.js",
+    ]
+  );
+
+  let main =
+    ModuleSpecifier::parse("file:///lazy_loaded_concurrent_main.js").unwrap();
+  let a =
+    ModuleSpecifier::parse("file:///lazy_loaded_concurrent_a.js").unwrap();
+  let b =
+    ModuleSpecifier::parse("file:///lazy_loaded_concurrent_b.js").unwrap();
+  let loader = Rc::new(StaticModuleLoader::new([
+    (
+      main.clone(),
+      crate::ascii_str_include!("testdata/lazy_loaded_concurrent_main.js"),
+    ),
+    (
+      a,
+      crate::ascii_str_include!("testdata/lazy_loaded_concurrent_a.js"),
+    ),
+    (
+      b,
+      crate::ascii_str_include!("testdata/lazy_loaded_concurrent_b.js"),
+    ),
+  ]));
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let mod_id = runtime.load_main_es_module(&main).await.unwrap();
   let result = runtime.mod_evaluate(mod_id);
   runtime.run_event_loop(Default::default()).await.unwrap();
   result.await.unwrap();
@@ -1277,7 +1326,7 @@ async fn dyn_import_err() {
     // We should get an error here.
     let result = runtime.poll_event_loop(cx, Default::default());
     assert!(matches!(result, Poll::Ready(Err(_))));
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(1, 1, 1, 1));
     Poll::Ready(())
   })
   .await;
@@ -1339,12 +1388,12 @@ async fn dyn_import_ok() {
       runtime.poll_event_loop(cx, Default::default()),
       Poll::Ready(Ok(_))
     ));
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(3, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
     assert!(matches!(
       runtime.poll_event_loop(cx, Default::default()),
       Poll::Ready(Ok(_))
     ));
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(3, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
     Poll::Ready(())
   })
   .await;
@@ -1382,10 +1431,10 @@ async fn dyn_import_borrow_mut_error() {
     // Old comments that are likely wrong:
     // First poll runs `prepare_load` hook.
     let _ = runtime.poll_event_loop(cx, Default::default());
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(1, 1, 1, 1));
     // Second poll triggers error
     let _ = runtime.poll_event_loop(cx, Default::default());
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(1, 1, 1, 1));
     Poll::Ready(())
   })
   .await;
@@ -1955,9 +2004,7 @@ async fn no_duplicate_loads() {
         referrer
       };
 
-      ModuleResolveResponse::Sync(
-        resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
-      )
+      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
     }
 
     fn load(
@@ -2030,9 +2077,7 @@ async fn import_meta_resolve() {
       } else {
         referrer
       };
-      ModuleResolveResponse::Sync(
-        resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
-      )
+      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
     }
 
     fn import_meta_resolve(
@@ -2283,13 +2328,9 @@ fn ext_module_loader_relative() {
     (("./foo.js", "ext:bar.js"), "ext:foo.js"),
   ];
   for ((specifier, referrer), expected) in cases {
-    let response = loader.resolve(specifier, referrer, ResolutionKind::Import);
-    let result = match response {
-      ModuleResolveResponse::Sync(r) => r.unwrap(),
-      ModuleResolveResponse::Async(_) => {
-        unreachable!("ExtModuleLoader should resolve synchronously")
-      }
-    };
+    let result = loader
+      .resolve(specifier, referrer, ResolutionKind::Import)
+      .unwrap();
     assert_eq!(result.as_str(), expected);
   }
 }
@@ -2473,9 +2514,7 @@ impl ModuleLoader for ExternalSourceMapLoader {
     referrer: &str,
     _kind: ResolutionKind,
   ) -> ModuleResolveResponse {
-    ModuleResolveResponse::Sync(
-      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
-    )
+    resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
   }
 
   fn load(
@@ -2920,101 +2959,97 @@ async fn test_tla_with_tick_scheduled_no_hang() {
   receiver.await.unwrap();
 }
 
-/// Regression: bare-specifier imports from a `cannot-be-a-base` referrer
-/// (e.g. `blob:`, `data:`) must succeed when the loader returns
-/// `ModuleResolveResponse::Async` for the bare specifier. Previously, the
-/// async-resolve placeholder construction tried `base.join(spec)`, which
-/// fails for cannot-be-a-base referrers and surfaced as `Cannot resolve
-/// module "<spec>": relative URL with a cannot-be-a-base base`.
+/// Regression test for https://github.com/denoland/deno/issues/34466
+///
+/// When a dynamic import evaluates an async module graph whose
+/// dependencies trigger nested `lazy_load_esm_module` calls (e.g. an npm
+/// CJS package whose `require()` chain pulls in a now-lazy `node:*`
+/// polyfill), the inner `perform_microtask_checkpoint` was firing while
+/// V8 was still inside the outer `module.evaluate()` on the async graph.
+/// That drained the TLA dependency's await-resume microtask too early
+/// and wedged V8's async module state machine — the parent module's
+/// evaluation promise stayed Pending forever and the runtime reported
+/// "Top-level await promise never resolved" at the dynamic import site.
+///
+/// The fix is to mark `evaluating_top_level` true around
+/// `module.evaluate()` in `dynamic_import_module_evaluate`, matching
+/// `mod_evaluate`, so nested lazy ESM loads skip their post-evaluate
+/// microtask checkpoint.
 #[tokio::test]
-async fn bare_import_from_cannot_be_a_base_referrer_async_resolve() {
-  // Main imports a data: module (cannot-be-a-base) that in turn imports a
-  // bare specifier. The loader returns Async for the bare resolve and
-  // produces a file:/// URL once awaited -- mirroring the hook-bridge
-  // behaviour without involving Node hook machinery.
-  const DATA_SRC: &str =
-    r#"import{value}from'bare-spec';globalThis.bareValue=value;"#;
-  let data_url = format!("data:text/javascript,{DATA_SRC}");
-  let main_src = format!(
-    r#"await import("{data_url}");
-if (globalThis.bareValue !== "from-bare") throw new Error("bad: " + globalThis.bareValue);"#,
+async fn test_dyn_import_async_graph_with_lazy_esm_no_stall() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "lazy_loaded.js",
+    ]
   );
 
-  struct BareAsyncLoader {
-    main_src: String,
-    // Cache the async-resolve result so V8's synchronous
-    // `module_resolve_callback` at instantiation time can return Sync,
-    // mirroring how the CLI module loader handles the hook bridge.
-    resolve_cache: Rc<RefCell<HashMap<String, String>>>,
-  }
-
-  impl ModuleLoader for BareAsyncLoader {
+  // mod.js mimics an npm package side-effect import: it has a TLA dep
+  // (tla.js) and a sibling that triggers a lazy ESM load (the CJS
+  // require-of-node:* case in the original bug).
+  struct Loader;
+  impl ModuleLoader for Loader {
     fn resolve(
       &self,
       specifier: &str,
       referrer: &str,
       _kind: ResolutionKind,
-    ) -> ModuleResolveResponse {
-      if specifier == "bare-spec" {
-        let key = format!("{specifier}\x00{referrer}");
-        if let Some(cached) = self.resolve_cache.borrow().get(&key) {
-          return ModuleResolveResponse::Sync(
-            Url::parse(cached).map_err(JsErrorBox::from_err),
-          );
-        }
-        let cache = self.resolve_cache.clone();
-        return ModuleResolveResponse::Async(
-          async move {
-            let url = Url::parse("file:///bare.js").unwrap();
-            cache.borrow_mut().insert(key, url.to_string());
-            Ok(url)
-          }
-          .boxed_local(),
-        );
-      }
-      ModuleResolveResponse::Sync(
-        resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
-      )
+    ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+      resolve_import(specifier, referrer)
+        .map_err(|e| deno_error::JsErrorBox::generic(e.to_string()))
     }
-
     fn load(
       &self,
       module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<&ModuleLoadReferrer>,
       _options: ModuleLoadOptions,
     ) -> ModuleLoadResponse {
-      let src = match module_specifier.as_str() {
-        "file:///main.js" => self.main_src.clone(),
-        "file:///bare.js" => r#"export const value = "from-bare";"#.to_string(),
-        s if s.starts_with("data:") => {
-          // data: bodies are decoded by the runtime; loader shouldn't be
-          // called for them in this configuration. Return source mirroring
-          // the data payload as a fallback.
-          DATA_SRC.to_string()
+      let s = module_specifier.as_str();
+      let code = match s {
+        "file:///main.js" => {
+          r#"await import("./mod.js"); globalThis.done = true;"#
         }
-        other => panic!("unexpected load: {other}"),
+        // mod.js mirrors the npm-package shape from the original bug:
+        // a TLA dep imported first, then a sibling whose evaluation
+        // triggers a `lazy_load_esm_module` call (the CJS-require-of-a-
+        // now-lazy-node:*-polyfill case).
+        "file:///mod.js" => r#"import "./tla.js"; import "./helper.js";"#,
+        "file:///tla.js" => r#"await Promise.resolve();"#,
+        "file:///helper.js" => {
+          r#"
+          const lazy = Deno.core.createLazyLoader("ext:test_ext/lazy_loaded.js")();
+          if (lazy.foo !== "foo") throw new Error("lazy.foo: " + lazy.foo);
+          "#
+        }
+        _ => panic!("unexpected: {s}"),
       };
       ModuleLoadResponse::Sync(Ok(ModuleSource::new(
         ModuleType::JavaScript,
-        ModuleSourceCode::String(src.into()),
+        ModuleSourceCode::String(FastString::from_static(code)),
         module_specifier,
         None,
       )))
     }
   }
 
-  let loader = Rc::new(BareAsyncLoader {
-    main_src,
-    resolve_cache: Rc::new(RefCell::new(HashMap::new())),
-  });
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    module_loader: Some(loader),
+    extensions: vec![test_ext::init()],
+    module_loader: Some(Rc::new(Loader)),
     ..Default::default()
   });
 
-  let spec = resolve_url("file:///main.js").unwrap();
-  let mod_id = runtime.load_main_es_module(&spec).await.unwrap();
+  let main_url = Url::parse("file:///main.js").unwrap();
+  let mod_id = runtime.load_main_es_module(&main_url).await.unwrap();
   let receiver = runtime.mod_evaluate(mod_id);
   runtime.run_event_loop(Default::default()).await.unwrap();
   receiver.await.unwrap();
+
+  // Confirm main.js's TLA actually completed (not just that we didn't
+  // hit a stall error).
+  deno_core::scope!(scope, runtime);
+  let g = scope.get_current_context().global(scope);
+  let key = v8::String::new(scope, "done").unwrap();
+  let v = g.get(scope, key.into()).unwrap();
+  assert!(v.is_true(), "main.js await import never resolved");
 }

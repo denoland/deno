@@ -150,12 +150,32 @@ reject().catch(() => {})
 });
 
 // https://github.com/denoland/deno/issues/22441
+// https://github.com/denoland/deno/issues/33385
+// `import()` inside a `vm.Script` that was compiled without an
+// `importModuleDynamically` callback must reject with
+// `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`, matching Node — otherwise a
+// sandboxed script could escape via dynamic import.
 Deno.test({
   name: "vm runInNewContext module loader",
-  fn() {
-    const code = "import('node:process')";
+  async fn() {
+    const code =
+      `globalThis.__p = import('node:process').then((m) => ({ ok: true, m }), (e) => ({ ok: false, code: e.code, name: e.name, message: e.message }));`;
     const script = new Script(code);
-    script.runInNewContext();
+    const sandbox: Record<string, unknown> = {};
+    script.runInNewContext(sandbox);
+    const result = await (sandbox.__p as Promise<{
+      ok: boolean;
+      code?: string;
+      name?: string;
+      message?: string;
+    }>);
+    assertEquals(result.ok, false);
+    assertEquals(result.code, "ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING");
+    assertEquals(result.name, "TypeError");
+    assertEquals(
+      result.message,
+      "A dynamic import callback was not specified.",
+    );
   },
 });
 
@@ -177,6 +197,28 @@ Deno.test({
   fn() {
     const result = runInThisContext(`global.foo = 1`);
     assertEquals(result, 1);
+  },
+});
+
+// https://github.com/denoland/deno/issues/34185
+Deno.test({
+  name:
+    "vm createContext/runInContext in a tight loop does not panic at teardown",
+  fn() {
+    // Each iteration creates a new contextified sandbox, compiles a script
+    // and runs it. Previously the per-context `Weak<Context>` registered by
+    // the v8 crate's `Context::set_slot` would survive into isolate teardown
+    // and panic in the final GC's first-pass weak callback because the
+    // backing `WeakData` had already been freed by `dispose_annex` without
+    // resetting the v8 Global. We need enough iterations to trigger the
+    // teardown GC's final weak-callback pass; 10000 is more than sufficient.
+    for (let i = 0; i < 10000; i++) {
+      const sandbox: Record<string, unknown> = {};
+      createContext(sandbox);
+      const s = new Script("x = 42");
+      s.runInContext(sandbox);
+      assertEquals(sandbox.x, 42);
+    }
   },
 });
 

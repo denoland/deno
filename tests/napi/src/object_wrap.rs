@@ -343,6 +343,32 @@ extern "C" fn test_raw_unwrap(
   result
 }
 
+/// Invokes `napi_new_instance` on the constructor passed as the first
+/// argument with the i32 second argument forwarded. Regression coverage
+/// for #33924: `napi_new_instance` wraps `func.new_instance(...)` in a
+/// `DisallowJavascriptExecutionScope` to keep V8 from pumping unrelated
+/// JS (e.g. threadsafe-function deliveries) while V8 is constructing the
+/// instance. This test verifies the API path still produces a properly
+/// wrapped instance on the normal codepath.
+extern "C" fn test_call_new_instance(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 2);
+  assert_eq!(argc, 2);
+
+  let argv = [args[1]];
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_new_instance(
+    env,
+    args[0],
+    argv.len(),
+    argv.as_ptr(),
+    &mut result,
+  ));
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let mut static_prop = napi_new_property!(env, "factory", NapiObject::factory);
   static_prop.attributes = PropertyAttributes::static_;
@@ -429,6 +455,7 @@ pub fn init(env: napi_env, exports: napi_value) {
     napi_new_property!(env, "test_remove_wrap", test_remove_wrap),
     napi_new_property!(env, "test_raw_wrap", test_raw_wrap),
     napi_new_property!(env, "test_raw_unwrap", test_raw_unwrap),
+    napi_new_property!(env, "test_call_new_instance", test_call_new_instance),
   ];
   assert_napi_ok!(napi_define_properties(
     env,

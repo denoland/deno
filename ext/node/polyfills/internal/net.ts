@@ -21,7 +21,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { uvException } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { writeBuffer } = core.loadExtScript(
@@ -102,6 +102,9 @@ function makeSyncWrite(fd) {
 }
 
 const kReinitializeHandle = Symbol("kReinitializeHandle");
+const kSetNoDelay = Symbol("kSetNoDelay");
+const kSetKeepAlive = Symbol("kSetKeepAlive");
+const kSetKeepAliveInitialDelay = Symbol("kSetKeepAliveInitialDelay");
 const normalizedArgsSymbol = Symbol("normalizedArgs");
 
 return {
@@ -111,6 +114,9 @@ return {
   getIPFamily,
   makeSyncWrite,
   kReinitializeHandle,
+  kSetKeepAlive,
+  kSetKeepAliveInitialDelay,
+  kSetNoDelay,
   normalizedArgsSymbol,
 };
 })();

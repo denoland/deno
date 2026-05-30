@@ -246,6 +246,24 @@ impl TestReporter for TapTestReporter {
     );
   }
 
+  fn report_exit(
+    &mut self,
+    exit_code: i32,
+    tests_pending: &HashSet<usize>,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    println!("Bail out! Deno.exit({}) called.", exit_code);
+    common::report_exit(
+      &mut std::io::stdout(),
+      &self.cwd,
+      exit_code,
+      tests_pending,
+      tests,
+      test_steps,
+    );
+  }
+
   fn report_completed(&mut self) {}
 
   fn flush_report(

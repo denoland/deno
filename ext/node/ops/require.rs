@@ -170,9 +170,15 @@ pub fn op_require_node_module_paths<TSys: ExtNodeSys + 'static>(
   #[string] from: &str,
 ) -> Result<Vec<String>, RequireError> {
   let sys = state.borrow::<TSys>();
-  // Guarantee that "from" is absolute.
+  // Guarantee that "from" is absolute. Avoid calling `env_current_dir()`
+  // when we don't need it — on macOS it walks the directory tree from `/`
+  // and fails with EACCES if any ancestor is unreadable (see #21585), so
+  // an unrelated absolute `from` would otherwise crash here.
+  let from_path = Path::new(from);
   let from = if from.starts_with("file:///") {
     Cow::Owned(url_to_file_path(&Url::parse(from)?)?)
+  } else if from_path.is_absolute() {
+    normalize_path(Cow::Borrowed(from_path))
   } else {
     let current_dir = &sys
       .env_current_dir()
@@ -546,7 +552,6 @@ pub fn op_require_resolve_exports<
   #[string] name: &str,
   #[string] expansion: &str,
   #[string] parent_path: &str,
-  #[serde] conditions: Option<Vec<String>>,
 ) -> Result<Option<String>, RequireError> {
   let sys = state.borrow::<TSys>();
   let node_resolver = state.borrow::<NodeResolverRc<
@@ -585,15 +590,6 @@ pub fn op_require_resolve_exports<
     Some(PathBuf::from(parent_path))
   };
   NodeResolutionThreadLocalCache::clear();
-  let conditions_cow: Vec<Cow<'static, str>> = conditions
-    .as_ref()
-    .map(|c| c.iter().map(|s| Cow::Owned(s.clone())).collect())
-    .unwrap_or_default();
-  let resolve_conditions = if conditions.is_some() {
-    &conditions_cow[..]
-  } else {
-    node_resolver.require_conditions()
-  };
   let r = node_resolver.package_exports_resolve(
     &pkg.path,
     &format!(".{expansion}"),
@@ -603,7 +599,7 @@ pub fn op_require_resolve_exports<
       .map(|r| UrlOrPathRef::from_path(r))
       .as_ref(),
     ResolutionMode::Require,
-    resolve_conditions,
+    node_resolver.require_conditions(),
     NodeResolutionKind::Execution,
   )?;
   Ok(Some(url_or_path_to_string(r)?))

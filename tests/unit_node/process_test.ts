@@ -10,6 +10,7 @@ import process, {
   env,
   execArgv as importedExecArgv,
   execPath as importedExecPath,
+  getActiveResourcesInfo as importedGetActiveResourcesInfo,
   getegid,
   geteuid,
   getgid,
@@ -39,9 +40,16 @@ import * as path from "@std/path";
 import { delay } from "@std/async/delay";
 import { stub } from "@std/testing/mock";
 import { execSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as net from "node:net";
 import nodeAssert from "node:assert";
 
 const testDir = new URL(".", import.meta.url);
+
+const processWithActiveResources = process as typeof process & {
+  _getActiveHandles(): unknown[];
+  _getActiveRequests(): unknown[];
+};
 
 function getGroupNameFromSystem(gid: number): string {
   const stdout = execSync(`grep ":${gid}:" /etc/group`).toString();
@@ -804,6 +812,93 @@ Deno.test({
     await delay(10);
     assert(withoutArguments);
     assertEquals(result, expected);
+  },
+});
+
+Deno.test({
+  name: "process.getActiveResourcesInfo reports active timers",
+  fn() {
+    const countTimeouts = () =>
+      process.getActiveResourcesInfo().filter((type) => type === "Timeout")
+        .length;
+    const before = countTimeouts();
+    const timer = setTimeout(() => {}, 1000);
+    try {
+      assertEquals(countTimeouts(), before + 1);
+      assertEquals(importedGetActiveResourcesInfo(), [
+        ...process.getActiveResourcesInfo(),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+});
+
+Deno.test({
+  name: "process._getActiveRequests reports pending fs requests",
+  async fn() {
+    const tempFile = Deno.makeTempFileSync();
+    try {
+      const before = processWithActiveResources._getActiveRequests().length;
+      const promises = Array.from(
+        { length: 12 },
+        () =>
+          new Promise<number>((resolve, reject) => {
+            fs.open(tempFile, "r", (err, fd) => {
+              if (err) {
+                reject(err);
+              } else {
+                resolve(fd);
+              }
+            });
+          }),
+      );
+
+      assertEquals(
+        processWithActiveResources._getActiveRequests().length,
+        before + 12,
+      );
+
+      const fds = await Promise.all(promises);
+      for (const fd of fds) {
+        fs.closeSync(fd);
+      }
+      assertEquals(
+        processWithActiveResources._getActiveRequests().length,
+        before,
+      );
+    } finally {
+      Deno.removeSync(tempFile);
+    }
+  },
+});
+
+Deno.test({
+  name: "process._getActiveHandles reports active net handles",
+  async fn() {
+    let acceptedSocket: net.Socket | undefined;
+    const server = net.createServer((socket) => {
+      acceptedSocket = socket;
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    const serverConnection = once(server, "connection");
+    const clientSocket = net.connect(
+      (server.address() as net.AddressInfo).port,
+    );
+    try {
+      await Promise.all([once(clientSocket, "connect"), serverConnection]);
+
+      const handles = processWithActiveResources._getActiveHandles();
+      assert(handles.includes(server));
+      assert(handles.includes(clientSocket));
+      assert(acceptedSocket);
+      assert(handles.includes(acceptedSocket));
+    } finally {
+      clientSocket.destroy();
+      acceptedSocket?.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   },
 });
 

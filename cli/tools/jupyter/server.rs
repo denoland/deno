@@ -124,23 +124,34 @@ impl JupyterServer {
         let Some(msg) = stdin_rx1.recv().await else {
           return;
         };
-        let Ok(()) = stdin_connection.send(msg).await else {
-          return;
-        };
+        if let Err(err) = stdin_connection.send(msg).await {
+          log::warn!("Stdin send error: {} (continuing)", err);
+          continue;
+        }
 
-        let Ok(msg) = stdin_connection.read().await else {
-          return;
-        };
-        let Ok(()) = stdin_tx2.send(msg) else {
-          return;
-        };
+        match stdin_connection.read().await {
+          Ok(msg) => {
+            if stdin_tx2.send(msg).is_err() {
+              return;
+            }
+          }
+          Err(err) => {
+            log::warn!("Stdin read error: {} (continuing)", err);
+            continue;
+          }
+        }
       }
     });
 
     let hearbeat_fut = deno_core::unsync::spawn(async move {
       loop {
         if let Err(err) = heartbeat.single_heartbeat().await {
-          log::error!("Heartbeat error: {}", err);
+          log::warn!("Heartbeat error: {} (continuing)", err);
+          // Yield to avoid spinning if the underlying socket is in a
+          // bad state. The heartbeat must stay alive across transient
+          // peer disconnects so the frontend can confirm the kernel
+          // is still healthy. See denoland/deno#20542.
+          tokio::task::yield_now().await;
         }
       }
     });
@@ -211,7 +222,7 @@ impl JupyterServer {
       .await;
 
     if let Err(err) = result {
-      log::error!("Output error: {}", err);
+      log::warn!("Output error: {}", err);
     }
   }
 
@@ -221,53 +232,83 @@ impl JupyterServer {
     isolate_handle: v8::IsolateHandle,
   ) -> Result<(), AnyError> {
     loop {
-      let msg = connection.read().await?;
+      let msg = match connection.read().await {
+        Ok(msg) => msg,
+        Err(err) => {
+          // Transient read errors (e.g. peer disconnect during first
+          // launch) should not kill the control loop, otherwise the
+          // kernel hangs and never accepts another shutdown/interrupt
+          // request. See denoland/deno#20542.
+          log::warn!("Control read error: {} (continuing)", err);
+          tokio::task::yield_now().await;
+          continue;
+        }
+      };
 
-      match msg.content {
-        JupyterMessageContent::KernelInfoRequest(_) => {
-          // normally kernel info is sent from the shell channel
-          // however, some frontends will send it on the control channel
-          // and it's no harm to send a kernel info reply on control
-          connection.send(kernel_info().as_child_of(&msg)).await?;
-        }
-        JupyterMessageContent::ShutdownRequest(ref req) => {
-          connection
-            .send(
-              messaging::ShutdownReply {
-                restart: req.restart,
-                status: ReplyStatus::Ok,
-                error: None,
-              }
-              .as_child_of(&msg),
-            )
-            .await?;
-          cancel_handle.cancel();
-        }
-        JupyterMessageContent::InterruptRequest(_) => {
-          isolate_handle.terminate_execution();
-          connection
-            .send(
-              messaging::InterruptReply {
-                status: ReplyStatus::Ok,
-                error: None,
-              }
-              .as_child_of(&msg),
-            )
-            .await?;
-        }
-        JupyterMessageContent::DebugRequest(_) => {
-          log::error!("Debug request currently not supported");
-          // See https://jupyter-client.readthedocs.io/en/latest/messaging.html#debug-request
-          // and https://microsoft.github.io/debug-adapter-protocol/
-        }
-        _ => {
-          log::error!(
-            "Unrecognized control message type: {}",
-            msg.message_type()
-          );
-        }
+      if let Err(err) = Self::handle_control_message(
+        msg,
+        &mut connection,
+        &cancel_handle,
+        &isolate_handle,
+      )
+      .await
+      {
+        log::warn!("Control message error: {} (continuing)", err);
       }
     }
+  }
+
+  async fn handle_control_message(
+    msg: JupyterMessage,
+    connection: &mut KernelControlConnection,
+    cancel_handle: &Rc<CancelHandle>,
+    isolate_handle: &v8::IsolateHandle,
+  ) -> Result<(), AnyError> {
+    match msg.content {
+      JupyterMessageContent::KernelInfoRequest(_) => {
+        // normally kernel info is sent from the shell channel
+        // however, some frontends will send it on the control channel
+        // and it's no harm to send a kernel info reply on control
+        connection.send(kernel_info().as_child_of(&msg)).await?;
+      }
+      JupyterMessageContent::ShutdownRequest(ref req) => {
+        connection
+          .send(
+            messaging::ShutdownReply {
+              restart: req.restart,
+              status: ReplyStatus::Ok,
+              error: None,
+            }
+            .as_child_of(&msg),
+          )
+          .await?;
+        cancel_handle.cancel();
+      }
+      JupyterMessageContent::InterruptRequest(_) => {
+        isolate_handle.terminate_execution();
+        connection
+          .send(
+            messaging::InterruptReply {
+              status: ReplyStatus::Ok,
+              error: None,
+            }
+            .as_child_of(&msg),
+          )
+          .await?;
+      }
+      JupyterMessageContent::DebugRequest(_) => {
+        log::error!("Debug request currently not supported");
+        // See https://jupyter-client.readthedocs.io/en/latest/messaging.html#debug-request
+        // and https://microsoft.github.io/debug-adapter-protocol/
+      }
+      _ => {
+        log::error!(
+          "Unrecognized control message type: {}",
+          msg.message_type()
+        );
+      }
+    }
+    Ok(())
   }
 
   async fn handle_shell(
@@ -275,8 +316,25 @@ impl JupyterServer {
     mut connection: KernelShellConnection,
   ) -> Result<(), AnyError> {
     loop {
-      let msg = connection.read().await?;
-      self.handle_shell_message(msg, &mut connection).await?;
+      let msg = match connection.read().await {
+        Ok(msg) => msg,
+        Err(err) => {
+          // Transient read errors (e.g. peer disconnect during first
+          // launch) should not kill the shell loop, otherwise the
+          // kernel hangs and never accepts another request. The peer
+          // will typically reconnect and resend; we just need to keep
+          // listening. See denoland/deno#20542.
+          log::warn!("Shell read error: {} (continuing)", err);
+          tokio::task::yield_now().await;
+          continue;
+        }
+      };
+      if let Err(err) = self.handle_shell_message(msg, &mut connection).await {
+        // Per-message handling errors (e.g. failure to route a reply to
+        // a client that disconnected between request and reply) are
+        // logged but must not terminate the loop.
+        log::warn!("Shell message error: {} (continuing)", err);
+      }
     }
   }
 
@@ -650,16 +708,21 @@ impl JupyterServer {
     Ok(())
   }
 
+  /// Sends an iopub message, swallowing any transport error.
+  ///
+  /// IoPub is a broadcast channel; failures to publish (e.g. a subscriber
+  /// briefly disconnected) must never abort shell-reply handling, otherwise
+  /// the kernel would silently drop the reply the client is waiting on and
+  /// the session would appear to hang. See denoland/deno#20542.
   async fn send_iopub(
     &mut self,
     message: JupyterMessage,
   ) -> Result<(), AnyError> {
-    self
-      .iopub_connection
-      .lock()
-      .send(message.clone())
-      .await
-      .map_err(|e| e.into())
+    let result = self.iopub_connection.lock().send(message).await;
+    if let Err(err) = result {
+      log::warn!("IoPub send error: {} (continuing)", err);
+    }
+    Ok(())
   }
 }
 

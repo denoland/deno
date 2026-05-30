@@ -104,11 +104,10 @@ pub unsafe extern "C" fn slow_metrics_dispatch(
 ) {
   // SAFETY: info is a valid pointer from V8
   let info_ref = unsafe { &*info };
-  let args =
-    v8::FunctionCallbackArguments::from_function_callback_info(info_ref);
+  let parts = info_ref.get_parts();
   // SAFETY: data is always an External pointing to OpCtx
   let opctx: &OpCtx = unsafe {
-    &*(v8::Local::<v8::External>::cast_unchecked(args.data()).value()
+    &*(v8::Local::<v8::External>::cast_unchecked(parts.data).value()
       as *const OpCtx)
   };
 

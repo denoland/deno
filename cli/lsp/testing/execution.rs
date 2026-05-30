@@ -331,6 +331,11 @@ impl TestRun {
               filter,
               shuffle: None,
               trace_leaks: false,
+              // LSP-driven test runs intentionally disable sanitizers — the
+              // LSP UI doesn't surface op/resource leak failures usefully
+              // and they'd generate noise in the test gutter.
+              sanitize_ops: false,
+              sanitize_resources: false,
             },
           ))
         }
@@ -439,6 +444,7 @@ impl TestRun {
             }
             test::TestEvent::ForceEndReport => {}
             test::TestEvent::Sigint => {}
+            test::TestEvent::Exit(_) => {}
           }
         }
 

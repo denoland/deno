@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   BadResourcePrototype,
   InterruptedPrototype,
@@ -556,6 +556,7 @@ function mapToCallback(context, callback, onError) {
     // 500 error.
     let innerRequest;
     let response;
+    let inner;
     try {
       innerRequest = new InnerRequest(req, context);
       const request = fromInnerRequest(innerRequest, "immutable");
@@ -571,6 +572,19 @@ function mapToCallback(context, callback, onError) {
       if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
         throw new TypeError(
           "Return value from serve handler must be a response or a promise resolving to a response",
+        );
+      }
+
+      // The Response prototype check above passes for Response-like objects
+      // (e.g. a subclass that skipped super(), or a Response from a different
+      // realm/polyfill). Those don't carry the internal slot we read from
+      // below, so reject them with a clear error instead of crashing the
+      // serve loop with "Cannot read properties of undefined (reading
+      // 'status')". Compute the inner response once here and reuse it below.
+      inner = toInnerResponse(response);
+      if (inner === undefined) {
+        throw new TypeError(
+          "Return value from serve handler must be a Response constructed via the Response constructor in this realm",
         );
       }
 
@@ -593,6 +607,12 @@ function mapToCallback(context, callback, onError) {
             "Return value from onError handler must be a response or a promise resolving to a response",
           );
         }
+        inner = toInnerResponse(response);
+        if (inner === undefined) {
+          throw new TypeError(
+            "Return value from onError handler must be a Response constructed via the Response constructor in this realm",
+          );
+        }
       } catch (error) {
         if (otelState.METRICS_ENABLED) {
           op_http_metric_handle_otel_error(req);
@@ -603,6 +623,7 @@ function mapToCallback(context, callback, onError) {
           error,
         );
         response = internalServerError();
+        inner = toInnerResponse(response);
       }
     }
 
@@ -616,7 +637,6 @@ function mapToCallback(context, callback, onError) {
       }
     }
 
-    const inner = toInnerResponse(response);
     if (innerRequest?.[_upgraded]) {
       if (response.status !== 101) {
         internals.log(

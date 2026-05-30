@@ -243,3 +243,34 @@ Deno.test("fs.readFileSync creates new file when passed 'w+' flag", () => {
   assert(existsSync(filePath));
   Deno.removeSync(tmpDir, { recursive: true });
 });
+
+// Regression for https://github.com/denoland/deno/issues/34246: when fs.readFile
+// is given an fd + encoding, readFileFromFd used a shared buffer and pushed
+// aliased subarrays, so files larger than the per-read chunk size came back
+// with the right length but scrambled content.
+Deno.test("fs.promises.readFile(path, encoding) returns intact content for >512KB files", async () => {
+  const tmpDir = await Deno.makeTempDir();
+  try {
+    const filePath = path.join(tmpDir, "large.txt");
+    // 600 KiB of ASCII so byte length == char length; enough to span multiple
+    // reads through the fd-based path.
+    let chunk = "";
+    for (let i = 0; i < 1024; i++) chunk += i.toString().padStart(8, "0");
+    const expected = chunk.repeat(75);
+    await Deno.writeTextFile(filePath, expected);
+
+    const viaPathUtf8 = await readFilePromise(filePath, "utf8");
+    assertEquals(viaPathUtf8.length, expected.length);
+    assertEquals(viaPathUtf8, expected);
+
+    const fh = await open(filePath, "r");
+    try {
+      const viaFhUtf8 = await fh.readFile("utf8");
+      assertEquals(viaFhUtf8, expected);
+    } finally {
+      await fh.close();
+    }
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
