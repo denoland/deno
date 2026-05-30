@@ -10,6 +10,7 @@
 use std::borrow::Cow;
 use std::env;
 use std::path::Path;
+use std::path::PathBuf;
 
 use deno_core::FastString;
 use deno_core::OpState;
@@ -68,6 +69,20 @@ pub trait NodeRequireLoader {
 
   fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {
     default_resolve_require_node_module_paths(from)
+  }
+
+  /// Attempts to resolve an npm package by bare specifier from the global
+  /// cache when there is no usable referrer context (e.g. a `require` call
+  /// made from a file outside of the global cache directory while running
+  /// in `--no-node-modules-dir` mode). Returns the package folder for the
+  /// top-level dependency matching `package_name`, or `None` if it can't be
+  /// resolved or if the runtime is configured to use a local
+  /// `node_modules` directory.
+  fn resolve_package_folder_from_name(
+    &self,
+    _package_name: &str,
+  ) -> Option<PathBuf> {
+    None
   }
 }
 

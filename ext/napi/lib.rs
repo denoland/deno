@@ -694,6 +694,22 @@ fn op_napi_open<'scope>(
     )
   };
 
+  // Register the uv_compat loop so that our libuv-ABI `uv_timer_*`
+  // polyfills bridge onto Deno's event loop instead of degrading to
+  // no-ops. The loop pointer is opaque to addons — they only pass it
+  // through to other uv_* polyfill functions, which re-resolve it from
+  // this thread-local in any case.
+  {
+    let op_state = op_state.borrow();
+    if let Some(uv_loop) =
+      op_state.try_borrow::<Box<deno_core::uv_compat::UvLoop>>()
+    {
+      let loop_ptr =
+        &**uv_loop as *const deno_core::uv_compat::UvLoop as *mut _;
+      crate::uv::register_default_uv_loop(loop_ptr);
+    }
+  }
+
   // Use per-isolate Private keys (like Node.js) so that objects wrapped by one
   // addon can be unwrapped by another. Lazily create on first addon load.
   let (napi_wrap, type_tag) = {
