@@ -1,6 +1,8 @@
 {
   "tempDir": true,
   "tests": {
+    // No nodeModulesDir flag: with package.json dependencies installed in
+    // node_modules, this exercises the byonm resolver path.
     "byonm": {
       "steps": [{
         "args": "install",
