@@ -264,6 +264,15 @@ impl TestReporter for TapTestReporter {
     );
   }
 
+  fn report_isolate_exit(&mut self, origin: &str, exit_code: i32) {
+    common::report_isolate_exit(
+      &mut std::io::stdout(),
+      &self.cwd,
+      origin,
+      exit_code,
+    );
+  }
+
   fn report_completed(&mut self) {}
 
   fn flush_report(
