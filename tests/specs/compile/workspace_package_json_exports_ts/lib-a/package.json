@@ -1,0 +1,7 @@
+{
+  "name": "@my-scope/lib-a",
+  "type": "module",
+  "version": "1.0.0",
+  "main": "main.ts",
+  "exports": "./main.ts"
+}
