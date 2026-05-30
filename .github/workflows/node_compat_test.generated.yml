@@ -60,7 +60,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          submodules: true
+          submodules: false
+      - name: Clone node_compat suite submodule
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Setup Rust
         uses: dsherret/rust-toolchain-file@3551321aa44dd44a0393eb3b6bdfbc5d25ecf621
       - name: Setup Deno
@@ -109,7 +111,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          submodules: true
+          submodules: false
+      - name: Clone std submodule
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Setup Deno
         uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282
       - name: Install Python

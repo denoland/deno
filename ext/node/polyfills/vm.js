@@ -63,10 +63,16 @@ const {
   PromiseResolve,
   SafeMap,
   SafePromiseAll,
+  SafeSet,
   Symbol,
 } = primordials;
 
 const kParsingContext = Symbol("script parsing context");
+
+const USE_MAIN_CONTEXT_DEFAULT_LOADER = Symbol(
+  "USE_MAIN_CONTEXT_DEFAULT_LOADER",
+);
+const DONT_CONTEXTIFY = Symbol("DONT_CONTEXTIFY");
 
 class Script {
   #inner;
@@ -85,7 +91,7 @@ class Script {
       columnOffset = 0,
       cachedData,
       produceCachedData = false,
-      // importModuleDynamically,
+      importModuleDynamically,
       [kParsingContext]: parsingContext,
     } = options;
 
@@ -97,8 +103,8 @@ class Script {
     }
     validateBoolean(produceCachedData, "options.produceCachedData");
 
-    // const hostDefinedOptionId =
-    //     getHostDefinedOptionId(importModuleDynamically, filename);
+    const useDefaultLoader =
+      importModuleDynamically === USE_MAIN_CONTEXT_DEFAULT_LOADER;
 
     const result = op_vm_create_script(
       code,
@@ -108,6 +114,7 @@ class Script {
       cachedData,
       produceCachedData,
       parsingContext,
+      useDefaultLoader,
     );
     this.#inner = result.value;
     this.cachedDataProduced = result.cached_data_produced;
@@ -399,8 +406,8 @@ function compileFunction(code, params, options = { __proto__: null }) {
     validateObject(extension, name, { nullable: true });
   });
 
-  // const hostDefinedOptionId =
-  //     getHostDefinedOptionId(importModuleDynamically, filename);
+  const useDefaultLoader =
+    options.importModuleDynamically === USE_MAIN_CONTEXT_DEFAULT_LOADER;
 
   const result = op_vm_compile_function(
     code,
@@ -412,6 +419,7 @@ function compileFunction(code, params, options = { __proto__: null }) {
     parsingContext,
     contextExtensions,
     params,
+    useDefaultLoader,
   );
 
   result.value.cachedDataProduced = result.cached_data_produced;
@@ -426,11 +434,6 @@ function compileFunction(code, params, options = { __proto__: null }) {
 function measureMemory(_options) {
   notImplemented("measureMemory");
 }
-
-const USE_MAIN_CONTEXT_DEFAULT_LOADER = Symbol(
-  "USE_MAIN_CONTEXT_DEFAULT_LOADER",
-);
-const DONT_CONTEXTIFY = Symbol("DONT_CONTEXTIFY");
 
 const constants = {
   __proto__: null,
@@ -457,6 +460,7 @@ const STATUS_NAMES = [
 const kWrap = Symbol("kWrap");
 const kContext = Symbol("kContext");
 const kLink = Symbol("kLink");
+const kLinkGraph = Symbol("kLinkGraph");
 const kLinkingStatus = Symbol("kLinkingStatus");
 const kModuleRequests = Symbol("kModuleRequests");
 const kDependencySpecifiers = Symbol("kDependencySpecifiers");
@@ -545,19 +549,34 @@ class Module {
     });
   }
 
-  // TODO(divybot): cyclic imports via `link(linker)` not yet supported.
-  // Single-pass linking makes instantiation order depend on linker
-  // resolution order: in a diamond (A imports B and C; B also imports C)
-  // C is instantiated when B's kLink finishes, so by the time A's
-  // instantiate runs, B and C are already instantiated. V8 tolerates
-  // re-instantiating an instantiated module as a no-op, but a Node-style
-  // two-phase resolve+instantiate would be needed for true cyclic-import
-  // support. The newer `linkRequests` + `instantiate` API does support
-  // cycles since linking is decoupled from instantiation.
+  // Two-phase linking so cyclic imports are supported. First walk the whole
+  // dependency graph, calling the linker for each module and recording its
+  // resolved dependencies via `op_vm_module_link`, WITHOUT instantiating.
+  // Then instantiate once at the root - V8 instantiates the entire graph in
+  // a single pass. Decoupling linking from instantiation is what lets a
+  // module that (transitively) imports itself resolve: the `visited` set
+  // short-circuits the cycle once a module has recorded its resolutions.
   async [kLink](linker) {
+    await this[kLinkGraph](linker, new SafeSet());
+    op_vm_module_instantiate(this[kWrap]);
+  }
+
+  async [kLinkGraph](linker, visited) {
+    if (visited.has(this)) {
+      return;
+    }
+    visited.add(this);
+
+    // Synthetic modules have no module requests and are already linked on
+    // construction; nothing to resolve. `op_vm_module_get_status` is used
+    // instead of the `status` getter because the latter reports "linking"
+    // for the root while `link()` is in flight.
     const requests = this[kModuleRequests];
+    if (requests === undefined || op_vm_module_get_status(this[kWrap]) !== 0) {
+      return;
+    }
+
     const specifiers = [];
-    const modules = [];
     const linkerPromises = [];
     for (let i = 0; i < requests.length; i++) {
       const { specifier, attributes } = requests[i];
@@ -568,6 +587,8 @@ class Module {
       ArrayPrototypePush(linkerPromises, p);
     }
     const resolvedModules = await SafePromiseAll(linkerPromises);
+
+    const wraps = [];
     for (let i = 0; i < resolvedModules.length; i++) {
       const m = resolvedModules[i];
       if (!isModule(m)) {
@@ -576,14 +597,16 @@ class Module {
       if (m.context !== this[kContext]) {
         throw new ERR_VM_MODULE_DIFFERENT_CONTEXT();
       }
-      if (m.status === "unlinked") {
-        await m[kLink](linker);
-      }
-      ArrayPrototypePush(modules, m[kWrap]);
+      ArrayPrototypePush(wraps, m[kWrap]);
     }
 
-    op_vm_module_link(this[kWrap], specifiers, modules);
-    op_vm_module_instantiate(this[kWrap]);
+    // Record this module's resolutions before recursing so a dependency that
+    // imports back into this module finds it already in `visited`.
+    op_vm_module_link(this[kWrap], specifiers, wraps);
+
+    for (let i = 0; i < resolvedModules.length; i++) {
+      await resolvedModules[i][kLinkGraph](linker, visited);
+    }
   }
 
   evaluate(options = { __proto__: null }) {
@@ -618,6 +641,7 @@ class SourceTextModule extends Module {
       context,
       lineOffset = 0,
       columnOffset = 0,
+      importModuleDynamically,
     } = options;
     if (context !== undefined) {
       validateContext(context);
@@ -626,6 +650,9 @@ class SourceTextModule extends Module {
     validateInt32(lineOffset, "options.lineOffset");
     validateInt32(columnOffset, "options.columnOffset");
 
+    const useDefaultLoader =
+      importModuleDynamically === USE_MAIN_CONTEXT_DEFAULT_LOADER;
+
     this[kContext] = context;
     this[kWrap] = op_vm_module_create_source_text_module(
       sourceText,
@@ -633,6 +660,7 @@ class SourceTextModule extends Module {
       lineOffset,
       columnOffset,
       context,
+      useDefaultLoader,
     );
     this[kModuleRequests] = buildModuleRequests(this[kWrap]);
     this[kDependencySpecifiers] = undefined;

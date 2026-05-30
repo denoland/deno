@@ -179,11 +179,12 @@ pub fn op_node_buffer_compare_offset(
 }
 
 #[op2]
-pub fn op_node_decode_utf8<'a>(
+pub fn op_node_decode<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   buf: v8::Local<v8::ArrayBufferView>,
   start: v8::Local<v8::Value>,
   end: v8::Local<v8::Value>,
+  encoding: u8,
 ) -> Result<v8::Local<'a, v8::String>, JsErrorBox> {
   let buf = buf.get_contents(&mut [0; v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP]);
 
@@ -202,13 +203,22 @@ pub fn op_node_decode_utf8<'a>(
 
   let buffer = &buf[start..end];
 
-  if buffer.len() <= 256 && buffer.is_ascii() {
-    v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
-      .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
-  } else {
-    v8::String::new_from_utf8(scope, buffer, v8::NewStringType::Normal)
-      .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
+  match encoding {
+    0 => {
+      // utf-8
+      if buffer.len() <= 256 && buffer.is_ascii() {
+        v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
+      } else {
+        v8::String::new_from_utf8(scope, buffer, v8::NewStringType::Normal)
+      }
+    }
+    1 => {
+      // latin1
+      v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
+    }
+    _ => return Err(JsErrorBox::from_err(BufferError::InvalidType)),
   }
+  .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]

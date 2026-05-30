@@ -3,6 +3,16 @@
     "env_load_file": {
       "args": "run --allow-env --allow-read env_file.ts",
       "output": "env_file.out"
+    },
+    "env_load_file_without_env_permission": {
+      "args": "run --allow-read --no-prompt env_file.ts",
+      "output": "env_file_no_env_perm.out",
+      "exitCode": 1
+    },
+    "env_load_file_with_partial_env_permission": {
+      "args": "run --allow-read --allow-env=FOO --no-prompt env_file.ts",
+      "output": "env_file_no_env_perm.out",
+      "exitCode": 1
     }
   }
 }

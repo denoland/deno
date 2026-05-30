@@ -227,6 +227,9 @@ impl NodeJsErrorCoded for PackageSubpathFromDenoModuleResolveError {
       PackageSubpathFromDenoModuleResolveErrorKind::FinalizeResolution(e) => {
         e.code()
       }
+      PackageSubpathFromDenoModuleResolveErrorKind::BrowserMapDisabled(_) => {
+        NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+      }
     }
   }
 }
@@ -240,6 +243,9 @@ impl PackageSubpathFromDenoModuleResolveError {
       PackageSubpathFromDenoModuleResolveErrorKind::FinalizeResolution(e) => {
         e.as_types_not_found()
       }
+      PackageSubpathFromDenoModuleResolveErrorKind::BrowserMapDisabled(_) => {
+        None
+      }
     }
   }
 
@@ -250,6 +256,9 @@ impl PackageSubpathFromDenoModuleResolveError {
       }
       PackageSubpathFromDenoModuleResolveErrorKind::FinalizeResolution(e) => {
         e.maybe_specifier()
+      }
+      PackageSubpathFromDenoModuleResolveErrorKind::BrowserMapDisabled(_) => {
+        None
       }
     }
   }
@@ -264,6 +273,9 @@ impl PackageSubpathFromDenoModuleResolveError {
       PackageSubpathFromDenoModuleResolveErrorKind::FinalizeResolution(e) => {
         NodeResolveErrorKind::FinalizeResolution(e)
       }
+      PackageSubpathFromDenoModuleResolveErrorKind::BrowserMapDisabled(e) => {
+        NodeResolveErrorKind::BrowserMapDisabled(e)
+      }
     }
     .into_box()
   }
@@ -277,6 +289,9 @@ pub enum PackageSubpathFromDenoModuleResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   FinalizeResolution(#[from] FinalizeResolutionError),
+  #[class(inherit)]
+  #[error(transparent)]
+  BrowserMapDisabled(#[from] BrowserMapDisabledError),
 }
 
 #[derive(Debug, Boxed, JsError)]
@@ -691,6 +706,17 @@ pub struct DataUrlReferrerError {
   pub source: url::ParseError,
 }
 
+/// A module was disabled by the importer's `package.json` `browser` map
+/// (`{"name": false}`). The bundler turns this into an empty stub; other
+/// callers treat it as a resolution failure.
+#[derive(Debug, Error, JsError)]
+#[class(generic)]
+#[error("Module `{specifier}` is disabled by the `browser` field in `{}`.", pkg_json_path.display())]
+pub struct BrowserMapDisabledError {
+  pub specifier: String,
+  pub pkg_json_path: PathBuf,
+}
+
 #[derive(Debug, Boxed, JsError)]
 pub struct NodeResolveError(pub Box<NodeResolveErrorKind>);
 
@@ -714,7 +740,8 @@ impl NodeResolveError {
       NodeResolveErrorKind::FinalizeResolution(err) => err.maybe_specifier(),
       NodeResolveErrorKind::UnsupportedEsmUrlScheme(_)
       | NodeResolveErrorKind::DataUrlReferrer(_)
-      | NodeResolveErrorKind::RelativeJoin(_) => None,
+      | NodeResolveErrorKind::RelativeJoin(_)
+      | NodeResolveErrorKind::BrowserMapDisabled(_) => None,
     }
   }
 }
@@ -751,6 +778,9 @@ pub enum NodeResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   FinalizeResolution(#[from] FinalizeResolutionError),
+  #[class(inherit)]
+  #[error(transparent)]
+  BrowserMapDisabled(#[from] BrowserMapDisabledError),
 }
 
 impl NodeResolveErrorKind {
@@ -769,6 +799,7 @@ impl NodeResolveErrorKind {
       | NodeResolveErrorKind::RelativeJoin(_)
       | NodeResolveErrorKind::PathToUrl(_)
       | NodeResolveErrorKind::UnknownBuiltInNodeModule(_)
+      | NodeResolveErrorKind::BrowserMapDisabled(_)
       | NodeResolveErrorKind::UrlToFilePath(_) => None,
     }
   }
@@ -785,6 +816,7 @@ impl NodeResolveErrorKind {
       NodeResolveErrorKind::TypesNotFound(e) => Some(e.code()),
       NodeResolveErrorKind::UnknownBuiltInNodeModule(e) => Some(e.code()),
       NodeResolveErrorKind::FinalizeResolution(e) => Some(e.code()),
+      NodeResolveErrorKind::BrowserMapDisabled(_) => None,
     }
   }
 }

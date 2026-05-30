@@ -1,0 +1,28 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Config file enables ops sanitizer - test with timer leak should fail
+    "config_ops_enabled": {
+      "args": "test --config=deno_sanitize_ops.json ops_leak.ts",
+      "exitCode": 1,
+      "output": "ops_leak.out"
+    },
+    // Config file enables resources sanitizer - test with resource leak should fail
+    "config_resources_enabled": {
+      "args": "test --config=deno_sanitize_resources.json --allow-read resource_leak.ts",
+      "exitCode": 1,
+      "output": "resource_leak.out"
+    },
+    // No config - default is sanitizers off, so leaks are not caught
+    "default_no_sanitizers": {
+      "args": "test --config=deno_no_sanitizers.json ops_leak.ts",
+      "output": "ops_pass.out"
+    },
+    // Config enables both sanitizers
+    "config_both_enabled": {
+      "args": "test --config=deno_sanitize_both.json ops_leak.ts",
+      "exitCode": 1,
+      "output": "ops_leak.out"
+    }
+  }
+}

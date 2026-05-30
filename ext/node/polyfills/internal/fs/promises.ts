@@ -45,13 +45,22 @@ const {
 // promises` on fs.ts, whose lazyInternalPromises() then hits a TDZ on the
 // in-flight `default` binding). Build wrappers lazily on first call.
 const _promisifyCache: Record<string, any> = { __proto__: null } as any;
-function lazyPromisifyFs(name: string): any {
+// `arity` is the max positional arg count the underlying fs callback method
+// accepts (excluding the callback). Extra args are dropped so idiomatic
+// patterns like `paths.map(fs.promises.unlink)` -- which Array#map invokes as
+// `unlink(elem, index, array)` -- don't trip the promisify wrapper's appended
+// callback (the wrapper would otherwise call `fs.unlink(path, index, array,
+// cb)` and `fs.unlink` reads the second positional as the callback). Node's
+// own `fs.promises.*` wrappers don't go through `util.promisify` and so don't
+// have this issue.
+function lazyPromisifyFs(name: string, arity: number): any {
   return (...args: any[]) => {
     let fn = _promisifyCache[name];
     if (fn === undefined) {
       fn = promisify((lazyFs() as any)[name]);
       _promisifyCache[name] = fn;
     }
+    if (args.length > arity) args.length = arity;
     return fn(...new SafeArrayIterator(args));
   };
 }
@@ -94,7 +103,7 @@ async function handleFdClose<T>(
 
 // -- access --
 
-const accessPromise = lazyPromisifyFs("access") as (
+const accessPromise = lazyPromisifyFs("access", 2) as (
   path: string | Buffer | URL,
   mode?: number,
 ) => Promise<void>;
@@ -123,14 +132,14 @@ function appendFilePromise(
 
 // -- chmod --
 
-const chmodPromise = lazyPromisifyFs("chmod") as (
+const chmodPromise = lazyPromisifyFs("chmod", 2) as (
   path: string | Buffer | URL,
   mode: string | number,
 ) => Promise<void>;
 
 // -- chown --
 
-const chownPromise = lazyPromisifyFs("chown") as (
+const chownPromise = lazyPromisifyFs("chown", 3) as (
   path: string | Buffer | URL,
   uid: number,
   gid: number,
@@ -147,22 +156,22 @@ const lchmodPromise: (
     return await op_node_lchmod(path, mode);
   };
 
-const lchownPromise = lazyPromisifyFs("lchown") as (
+const lchownPromise = lazyPromisifyFs("lchown", 3) as (
   path: string | Buffer | URL,
   uid: number,
   gid: number,
 ) => Promise<void>;
 
-const linkPromise = lazyPromisifyFs("link") as (
+const linkPromise = lazyPromisifyFs("link", 2) as (
   existingPath: string | Buffer | URL,
   newPath: string | Buffer | URL,
 ) => Promise<void>;
 
-const unlinkPromise = lazyPromisifyFs("unlink") as (
+const unlinkPromise = lazyPromisifyFs("unlink", 1) as (
   path: string | Buffer | URL,
 ) => Promise<void>;
 
-const renamePromise = lazyPromisifyFs("rename") as (
+const renamePromise = lazyPromisifyFs("rename", 2) as (
   oldPath: string | Buffer | URL,
   newPath: string | Buffer | URL,
 ) => Promise<void>;
@@ -176,7 +185,7 @@ type rmOptions = {
   retryDelay?: number;
 };
 
-const rmPromise = lazyPromisifyFs("rm") as (
+const rmPromise = lazyPromisifyFs("rm", 2) as (
   path: string | URL,
   options?: rmOptions,
 ) => Promise<void>;
@@ -189,7 +198,7 @@ type rmdirOptions = {
   retryDelay?: number;
 };
 
-const rmdirPromise = lazyPromisifyFs("rmdir") as (
+const rmdirPromise = lazyPromisifyFs("rmdir", 2) as (
   path: string | Buffer | URL,
   options?: rmdirOptions,
 ) => Promise<void>;
@@ -199,12 +208,12 @@ type MkdirOptions =
   | number
   | boolean;
 
-const mkdirPromise = lazyPromisifyFs("mkdir") as (
+const mkdirPromise = lazyPromisifyFs("mkdir", 2) as (
   path: string | URL,
   options?: MkdirOptions,
 ) => Promise<string | undefined>;
 
-const mkdtempPromise = lazyPromisifyFs("mkdtemp") as (
+const mkdtempPromise = lazyPromisifyFs("mkdtemp", 2) as (
   prefix: string | Buffer | Uint8Array | URL,
   options?: { encoding: string } | string,
 ) => Promise<string>;
@@ -277,14 +286,14 @@ type OpendirOptions = {
   bufferSize?: number;
 };
 
-const opendirPromise = lazyPromisifyFs("opendir") as (
+const opendirPromise = lazyPromisifyFs("opendir", 2) as (
   path: string | Buffer | URL,
   options?: OpendirOptions,
 ) => Promise<Dir>;
 
 // -- symlink --
 
-const symlinkPromise = lazyPromisifyFs("symlink") as (
+const symlinkPromise = lazyPromisifyFs("symlink", 3) as (
   target: string | Buffer | URL,
   path: string | Buffer | URL,
   type?: string,
@@ -306,7 +315,7 @@ async function truncatePromise(
 
 // -- utimes --
 
-const utimesPromise = lazyPromisifyFs("utimes") as (
+const utimesPromise = lazyPromisifyFs("utimes", 3) as (
   path: string | URL,
   atime: number | string | Date,
   mtime: number | string | Date,
@@ -316,7 +325,7 @@ const utimesPromise = lazyPromisifyFs("utimes") as (
 
 // Low-level callback writeFile, used when we already have an fd/FileHandle
 // (i.e. avoid recursing back through writeFilePromise via FileHandle.writeFile).
-const rawWriteFilePromise = lazyPromisifyFs("writeFile") as (
+const rawWriteFilePromise = lazyPromisifyFs("writeFile", 3) as (
   pathOrRid: string | number | URL | FileHandle,
   data:
     | string
@@ -366,21 +375,21 @@ function writeFilePromise(
 
 // -- realpath --
 
-const realpathPromise = lazyPromisifyFs("realpath") as (
+const realpathPromise = lazyPromisifyFs("realpath", 2) as (
   path: string | Buffer,
   options?: string | { encoding?: string },
 ) => Promise<string | Buffer>;
 
 // -- stat --
 
-const statPromise = lazyPromisifyFs("stat") as (
+const statPromise = lazyPromisifyFs("stat", 2) as (
   path: string | Buffer | URL,
   options?: { bigint?: boolean },
 ) => Promise<unknown>;
 
 // -- statfs --
 
-const statfsPromise = lazyPromisifyFs("statfs") as (
+const statfsPromise = lazyPromisifyFs("statfs", 2) as (
   path: string | Buffer | URL,
   options?: { bigint?: boolean },
 ) => Promise<unknown>;
@@ -389,7 +398,7 @@ const statfsPromise = lazyPromisifyFs("statfs") as (
 
 // Low-level callback readFile, used when we already have an fd/FileHandle
 // (i.e. avoid recursing back through readFilePromise via FileHandle.readFile).
-const rawReadFilePromise = lazyPromisifyFs("readFile");
+const rawReadFilePromise = lazyPromisifyFs("readFile", 2);
 
 // Mirrors Node's lib/internal/fs/promises.js readFile(): when given a path,
 // open a FileHandle and delegate via handleFdClose so the close error
@@ -424,7 +433,7 @@ function readFilePromise(
   })();
 }
 
-const readlinkPromise = lazyPromisifyFs("readlink") as (
+const readlinkPromise = lazyPromisifyFs("readlink", 2) as (
   path: string | Buffer | URL,
   opt?: { encoding?: string | null },
 ) => Promise<string | Uint8Array>;

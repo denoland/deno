@@ -2,6 +2,7 @@
 
 pub(crate) mod bindings;
 pub(crate) mod exception_state;
+pub mod host_defined_options;
 mod jsrealm;
 mod jsruntime;
 pub mod op_driver;

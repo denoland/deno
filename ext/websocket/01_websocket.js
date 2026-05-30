@@ -191,6 +191,62 @@ function emitWebSocketClosed(ws) {
   ws[_inspectorRequestId] = undefined;
 }
 
+// Opcodes per RFC 6455 / CDP `WebSocketFrame.opcode`:
+// 1 = text, 2 = binary. Per RFC 6455 client-to-server frames are masked,
+// server-to-client are not - so the `mask` flag depends on direction and
+// role: a CLIENT socket masks what it sends, a SERVER socket sees masked
+// frames coming in.
+function emitWebSocketFrame(ws, eventName, opcode, payloadData) {
+  const ins = getInspectorNetwork();
+  const requestId = ws[_inspectorRequestId];
+  if (ins === null || requestId === undefined) return;
+  const sent = eventName === "frameSent";
+  const mask = ws[_role] === SERVER ? !sent : sent;
+  try {
+    const params = {
+      requestId,
+      timestamp: DateNow() / 1000,
+      response: { opcode, mask, payloadData },
+    };
+    if (sent) ins.webSocketFrameSent(params);
+    else ins.webSocketFrameReceived(params);
+  } catch {
+    // never let inspector instrumentation break a real WebSocket
+  }
+}
+
+// Called by ext/http's `upgradeWebSocket` after a successful handshake, so
+// server-accepted sockets show up in the inspector's Network panel and
+// the frame emitters in `_eventLoop` / `send` start firing for them.
+// Handshake events (`willSendHandshakeRequest`, `handshakeResponseReceived`)
+// are intentionally skipped here - those are client-side concepts.
+function installServerInspector(ws, url) {
+  const ins = getInspectorNetwork();
+  if (ins === null) return;
+  const requestId = ins.nextRequestId();
+  ws[_inspectorRequestId] = requestId;
+  try {
+    ins.webSocketCreated({ requestId, url });
+  } catch {
+    // never let inspector instrumentation break a real WebSocket
+  }
+}
+
+function emitWebSocketFrameError(ws, errorMessage) {
+  const ins = getInspectorNetwork();
+  const requestId = ws[_inspectorRequestId];
+  if (ins === null || requestId === undefined) return;
+  try {
+    ins.webSocketFrameError({
+      requestId,
+      timestamp: DateNow() / 1000,
+      errorMessage,
+    });
+  } catch {
+    // never let inspector instrumentation break a real WebSocket
+  }
+}
+
 class WebSocket extends EventTarget {
   constructor(url, initOrProtocols) {
     super();
@@ -573,8 +629,10 @@ class WebSocket extends EventTarget {
       // data is being sent.
       if (ArrayBufferIsView(data)) {
         op_ws_send_binary(this[_rid], data);
+        emitWebSocketFrame(this, "frameSent", 2, data);
       } else if (isArrayBuffer(data)) {
         op_ws_send_binary_ab(this[_rid], data);
+        emitWebSocketFrame(this, "frameSent", 2, data);
       } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
         this[_queueSend](data);
       } else {
@@ -583,6 +641,7 @@ class WebSocket extends EventTarget {
           this[_rid],
           string,
         );
+        emitWebSocketFrame(this, "frameSent", 1, string);
       }
     } else {
       // Slower path if the send queue is not empty, for example when sending
@@ -690,6 +749,7 @@ class WebSocket extends EventTarget {
           }
 
           this[_serverHandleIdleTimeout]();
+          emitWebSocketFrame(this, "frameReceived", 1, data);
           const event = new MessageEvent("message", {
             data,
             origin: this[_url],
@@ -708,6 +768,7 @@ class WebSocket extends EventTarget {
           this[_serverHandleIdleTimeout]();
           // deno-lint-ignore prefer-primordials
           const buffer = d.buffer;
+          emitWebSocketFrame(this, "frameReceived", 2, buffer);
           let data;
           if (this.binaryType === "blob") {
             data = new Blob([buffer]);
@@ -733,6 +794,7 @@ class WebSocket extends EventTarget {
           this[_readyState] = CLOSED;
 
           const message = op_ws_get_error(rid);
+          emitWebSocketFrameError(this, message);
           const error = new Error(message);
           const errorEv = new ErrorEvent("error", {
             error,
@@ -797,18 +859,22 @@ class WebSocket extends EventTarget {
       const data = queue[0];
       if (ArrayBufferIsView(data)) {
         op_ws_send_binary(this[_rid], data);
+        emitWebSocketFrame(this, "frameSent", 2, data);
       } else if (isArrayBuffer(data)) {
         op_ws_send_binary_ab(this[_rid], data);
+        emitWebSocketFrame(this, "frameSent", 2, data);
       } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
         // deno-lint-ignore prefer-primordials
         const ab = await data.slice().arrayBuffer();
         op_ws_send_binary_ab(this[_rid], ab);
+        emitWebSocketFrame(this, "frameSent", 2, ab);
       } else {
         const string = String(data);
         op_ws_send_text(
           this[_rid],
           string,
         );
+        emitWebSocketFrame(this, "frameSent", 1, string);
       }
       ArrayPrototypeShift(queue);
     }
@@ -947,6 +1013,8 @@ export {
   _serverHandleIdleTimeout,
   CLIENT,
   createWebSocketBranded,
+  emitWebSocketClosed,
+  installServerInspector,
   SERVER,
   WebSocket,
 };

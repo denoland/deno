@@ -240,9 +240,11 @@ impl InspectorServer {
 impl Drop for InspectorServer {
   fn drop(&mut self) {
     if let Some(shutdown_server_tx) = self.shutdown_server_tx.take() {
-      shutdown_server_tx
-        .send(())
-        .expect("unable to send shutdown signal");
+      // The server thread may have already terminated (e.g. after a prior
+      // `reset_tx.send(())` from `stop()` caused `server()` to return),
+      // in which case the broadcast receiver is gone. Treat that as a
+      // no-op rather than panicking during process teardown.
+      let _ = shutdown_server_tx.send(());
     }
 
     if let Some(thread_handle) = self.thread_handle.lock().take() {

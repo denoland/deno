@@ -231,7 +231,7 @@ pub(crate) struct ModuleMapData {
   /// the `synthetic_esm` dispatch goes straight through Rust without the
   /// JS `core.loadExtScript` wrapper. Runtime-only — not snapshotted.
   pub(crate) captured_bootstrap: RefCell<Option<v8::Global<v8::Value>>>,
-  pub(crate) sources: HashMap<ModuleSourceKey, Rc<v8::Global<v8::Object>>>,
+  pub(crate) sources: HashMap<ModuleSourceKey, v8::Global<v8::Object>>,
   /// Specifiers of `lazy_loaded_esm` / `lazy_loaded_js` files whose source
   /// was actually compiled by V8 during snapshot creation. Their bytes live
   /// in the snapshot blob; the binary does not need a separate copy.

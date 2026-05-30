@@ -100,6 +100,44 @@ pub(super) fn report_sigint(
   writeln!(writer).ok();
 }
 
+pub(super) fn report_exit(
+  writer: &mut dyn std::io::Write,
+  cwd: &Url,
+  exit_code: i32,
+  tests_pending: &HashSet<usize>,
+  tests: &IndexMap<usize, TestDescription>,
+  test_steps: &IndexMap<usize, TestStepDescription>,
+) {
+  writeln!(
+    writer,
+    "\n{} A test called Deno.exit({}) while the exit sanitizer was disabled (sanitizeExit: false). Aborting the test run.",
+    colors::yellow("warning"),
+    exit_code,
+  )
+  .ok();
+
+  if tests_pending.is_empty() {
+    writeln!(writer).ok();
+    return;
+  }
+
+  let mut formatted_pending = BTreeSet::new();
+  for id in tests_pending {
+    if let Some(desc) = tests.get(id) {
+      formatted_pending.insert(format_test_for_summary(cwd, &desc.into()));
+    }
+    if let Some(desc) = test_steps.get(id) {
+      formatted_pending
+        .insert(format_test_step_for_summary(cwd, desc, tests, test_steps));
+    }
+  }
+  writeln!(writer, "\nThe following tests were pending:\n").ok();
+  for entry in formatted_pending {
+    writeln!(writer, "{}", entry).ok();
+  }
+  writeln!(writer).ok();
+}
+
 pub(super) fn report_summary(
   writer: &mut dyn std::io::Write,
   cwd: &Url,
