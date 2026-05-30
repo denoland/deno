@@ -271,15 +271,63 @@ pub fn op_require_resolve_deno_dir<
   >>();
 
   let path = Path::new(parent_filename);
+  if let Ok(folder) = resolver.resolve_package_folder_from_package(
+    request,
+    &UrlOrPathRef::from_path(path),
+  ) {
+    return Ok(Some(folder.to_string_lossy().into_owned()));
+  }
+
+  // Referrer-based resolution failed. When the referrer lives outside the
+  // global cache (e.g. a user's project file invoking `require()` through
+  // a hook installed by a package that *is* in the cache, mirroring the
+  // Playwright config-transpile flow), the npm resolver has no way to
+  // anchor the lookup. Fall back to resolving the bare specifier as a
+  // top-level dependency in the npm graph.
+  let referrer_is_in_npm_package = url_from_file_path(path)
+    .map(|url| resolver.in_npm_package(&url))
+    .unwrap_or(false);
+  if referrer_is_in_npm_package {
+    return Ok(None);
+  }
+  let package_name = bare_specifier_package_name(request);
+  if package_name.is_empty() {
+    return Ok(None);
+  }
+  let loader = state.borrow::<NodeRequireLoaderRc>();
   Ok(
-    resolver
-      .resolve_package_folder_from_package(
-        request,
-        &UrlOrPathRef::from_path(path),
-      )
-      .ok()
+    loader
+      .resolve_package_folder_from_name(package_name)
       .map(|p| p.to_string_lossy().into_owned()),
   )
+}
+
+/// Returns the npm package name portion of a bare specifier such as
+/// `pkg`, `pkg/sub`, `@scope/pkg`, or `@scope/pkg/sub`. Returns an empty
+/// string for relative or otherwise invalid specifiers.
+fn bare_specifier_package_name(specifier: &str) -> &str {
+  if specifier.is_empty()
+    || specifier.starts_with('.')
+    || specifier.starts_with('/')
+    || specifier.starts_with('#')
+  {
+    return "";
+  }
+  if let Some(rest) = specifier.strip_prefix('@') {
+    let Some(scope_end) = rest.find('/') else {
+      return "";
+    };
+    let after_scope = &rest[scope_end + 1..];
+    match after_scope.find('/') {
+      Some(rel) => &specifier[..1 + scope_end + 1 + rel],
+      None => specifier,
+    }
+  } else {
+    match specifier.find('/') {
+      Some(i) => &specifier[..i],
+      None => specifier,
+    }
+  }
 }
 
 #[op2(fast)]
