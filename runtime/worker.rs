@@ -921,7 +921,7 @@ impl MainWorker {
 
   /// If a debugger session is attached and would otherwise be dropped on
   /// shutdown (a legacy blocking session, or one that opted into
-  /// `NodeRuntime.notifyWhenWaitingForDisconnect` (e.g. Chrome DevTools),
+  /// `NodeRuntime.notifyWhenWaitingForDisconnect` (e.g. Chrome DevTools)),
   /// block until it disconnects. Returns immediately when no such session
   /// is attached.
   ///
