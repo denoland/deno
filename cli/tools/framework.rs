@@ -224,6 +224,21 @@ fn detect_sveltekit(dir: &Path) -> Option<FrameworkDetection> {
       build_command: Some(deno_task_build()),
     });
   }
+  // `svelte-adapter-deno` emits a `build/` directory whose `index.js`
+  // boots the server and whose `handler.js` serves the static assets from
+  // sibling `client`/`static`/`prerendered` directories. Those asset
+  // directories aren't part of the module graph, so they must be included
+  // explicitly or every request 404s in the compiled binary.
+  if dir.join("build/index.js").exists()
+    && dir.join("build/handler.js").exists()
+  {
+    return Some(FrameworkDetection {
+      name: "SvelteKit",
+      entrypoint_code: "// @ts-nocheck\nimport \"./build/index.js\";\n".into(),
+      include_paths: sveltekit_build_includes(dir),
+      build_command: Some(deno_task_build()),
+    });
+  }
   // No build artifacts yet — fall back to config inspection. We only
   // claim SvelteKit if the config references a supported adapter.
   let config_text =
@@ -239,9 +254,18 @@ fn detect_sveltekit(dir: &Path) -> Option<FrameworkDetection> {
       build_command: Some(deno_task_build()),
     });
   }
-  if config_text.contains("nitro")
-    || config_text.contains("svelte-adapter-deno")
-  {
+  if config_text.contains("svelte-adapter-deno") {
+    // Default `out` is `build`. Only `build/client` is guaranteed to exist
+    // after the build, so include just that here; the post-build branch
+    // above picks up `static`/`prerendered` when they're present.
+    return Some(FrameworkDetection {
+      name: "SvelteKit",
+      entrypoint_code: "// @ts-nocheck\nimport \"./build/index.js\";\n".into(),
+      include_paths: vec!["build/client".into()],
+      build_command: Some(deno_task_build()),
+    });
+  }
+  if config_text.contains("nitro") {
     return Some(FrameworkDetection {
       name: "SvelteKit",
       entrypoint_code:
@@ -251,6 +275,16 @@ fn detect_sveltekit(dir: &Path) -> Option<FrameworkDetection> {
     });
   }
   None
+}
+
+/// Existing asset directories under a `svelte-adapter-deno` `build/` output
+/// that need to be embedded so the adapter's static file server can find them.
+fn sveltekit_build_includes(dir: &Path) -> Vec<String> {
+  ["client", "static", "prerendered"]
+    .iter()
+    .map(|sub| format!("build/{sub}"))
+    .filter(|rel| dir.join(rel).is_dir())
+    .collect()
 }
 
 /// Nuxt, SolidStart, TanStack Start all use Nitro with the `deno_server`
@@ -574,11 +608,43 @@ mod tests {
   }
 
   #[test]
-  fn detects_sveltekit_nitro_from_config() {
+  fn detects_sveltekit_adapter_deno_from_config() {
+    // `svelte-adapter-deno` emits a `build/` directory (not `.output`).
     let dir = setup_dir();
     fs::write(
       dir.path().join("svelte.config.js"),
       "import adapter from 'svelte-adapter-deno';\nexport default { kit: { adapter: adapter() } };\n",
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "SvelteKit");
+    assert!(det.entrypoint_code.contains("build/index.js"));
+    assert_eq!(det.include_paths, vec!["build/client"]);
+  }
+
+  #[test]
+  fn detects_sveltekit_adapter_deno_from_built_output() {
+    // Post-build evidence: `build/index.js` + `build/handler.js` is the
+    // `svelte-adapter-deno` output shape. Existing asset dirs are included.
+    let dir = setup_dir();
+    fs::write(dir.path().join("svelte.config.js"), "").unwrap();
+    fs::create_dir_all(dir.path().join("build/client")).unwrap();
+    fs::create_dir_all(dir.path().join("build/prerendered")).unwrap();
+    fs::write(dir.path().join("build/index.js"), "").unwrap();
+    fs::write(dir.path().join("build/handler.js"), "").unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "SvelteKit");
+    assert!(det.entrypoint_code.contains("build/index.js"));
+    assert_eq!(det.include_paths, vec!["build/client", "build/prerendered"]);
+    assert!(det.build_command.is_some());
+  }
+
+  #[test]
+  fn detects_sveltekit_nitro_from_config() {
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("svelte.config.js"),
+      "// uses a nitro-based adapter\nexport default { kit: {} };\n",
     )
     .unwrap();
     let det = detect_framework(dir.path()).unwrap().unwrap();
