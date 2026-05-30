@@ -197,13 +197,15 @@ fn create_file_fetcher<TClient: HttpClient>(
 // fetches must hit the cache for both the redirect entry and the target.
 #[tokio::test]
 async fn test_fetch_query_redirect_to_dts_is_cached() {
-  use std::sync::Arc;
   use std::sync::atomic::AtomicUsize;
   use std::sync::atomic::Ordering;
 
+  use deno_maybe_sync::MaybeArc;
+
   #[derive(Debug, Clone, Default)]
   struct TestHttpClient {
-    request_count: Arc<AtomicUsize>,
+    #[allow(clippy::disallowed_types, reason = "arc wrapper type")]
+    request_count: MaybeArc<AtomicUsize>,
   }
 
   #[async_trait::async_trait(?Send)]
