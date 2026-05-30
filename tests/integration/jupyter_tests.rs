@@ -371,10 +371,6 @@ struct JupyterServerProcess(Option<DenoChild>);
 
 impl JupyterServerProcess {
   // Wait for the process to exit, or kill it after the given duration.
-  //
-  // Ideally we could use this at the end of each test, but the server
-  // doesn't seem to exit in a reasonable amount of time after getting
-  // a shutdown request.
   #[allow(dead_code, reason = "used in some tests")]
   async fn wait_or_kill(mut self, wait: Duration) -> Output {
     wait_or_kill(self.0.take().unwrap(), wait).await.unwrap()
