@@ -813,6 +813,36 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] ucs2Slice returns correct string",
+  fn() {
+    // deno-lint-ignore no-explicit-any
+    const buf: any = Buffer.of(
+      0x60,
+      0x4f,
+      0x7d,
+      0x59,
+      0x44,
+      0x00,
+      0x65,
+      0x00,
+      0x6e,
+      0x00,
+      0x6f,
+      0x00,
+    );
+
+    assertEquals(buf.ucs2Slice().length, 6);
+    assertEquals(buf.ucs2Slice(), "你好Deno");
+    assertEquals(buf.ucs2Slice(0, 4), "你好");
+    assertEquals(buf.ucs2Slice(4, 12), "Deno");
+
+    // deno-lint-ignore no-explicit-any
+    const oddBuf: any = Buffer.of(0x60, 0x4f, 0x7d, 0x59, 0x44);
+    assertEquals(oddBuf.ucs2Slice(), "你好");
+  },
+});
+
+Deno.test({
   name: "[node/buffer] hexSlice returns correct string",
   fn() {
     // deno-lint-ignore no-explicit-any

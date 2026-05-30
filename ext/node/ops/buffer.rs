@@ -229,6 +229,15 @@ pub fn op_node_decode<'a>(
         )
       }
     }
+    3 => {
+      // utf-16le (ucs2)
+      let len = buffer.len() & !1;
+      let u16_data: Vec<u16> = buffer[..len]
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect();
+      v8::String::new_from_two_byte(scope, &u16_data, v8::NewStringType::Normal)
+    }
     _ => return Err(JsErrorBox::from_err(BufferError::InvalidType)),
   }
   .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))

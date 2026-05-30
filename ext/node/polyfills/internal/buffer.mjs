@@ -734,6 +734,15 @@ function decodeAscii(buffer, start, end) {
   );
 }
 
+function decodeUtf16le(buffer, start, end) {
+  return op_node_decode(
+    buffer,
+    start,
+    end,
+    3,
+  );
+}
+
 Buffer.prototype.toString = function toString(encoding, start, end) {
   if (arguments.length === 0) {
     return decodeUtf8(
@@ -1120,11 +1129,7 @@ Buffer.prototype.latin1Write = function latin1Write(
 };
 
 Buffer.prototype.ucs2Slice = function ucs2Slice(offset, length) {
-  if (offset === 0 && length === this.length) {
-    return bytesToUtf16le(this);
-  } else {
-    return bytesToUtf16le(TypedArrayPrototypeSlice(this, offset, length));
-  }
+  return decodeUtf16le(this, offset, length);
 };
 
 Buffer.prototype.ucs2Write = function ucs2Write(string, offset, length) {
