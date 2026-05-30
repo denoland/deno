@@ -4,7 +4,7 @@
     "stdin": {
       "args": "fmt --ext=tsx -",
       "input": "import { ErrorPageProps } from \"$fresh/server.ts\";\n\nexport default function ErrorPage500(props: ErrorPageProps) {\n  return (\n    <pre>\n      {props.url}\n      {/* {props.url} */}\n    </pre>\n  );\n}\n",
-      "output": "import { ErrorPageProps } from \"$fresh/server.ts\";\n\nexport default function ErrorPage500(props: ErrorPageProps) {\n  return (\n    <pre>\n      {props.url}\n      {/* {props.url} */}\n    </pre>\n  );\n}\n"
+      "output": "expected.out"
     }
   }
 }
