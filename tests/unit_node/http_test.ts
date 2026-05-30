@@ -776,6 +776,21 @@ Deno.test("[node/http] ServerResponse empty end sets content-length", async () =
 });
 
 Deno.test(
+  "[node/http] ServerResponse empty end respects pre-generated content-length",
+  async () => {
+    const rawResponse = await getRawServerResponse((_req, res) => {
+      res.writeHead(200, { "Content-Length": "0" });
+      res.end();
+    });
+
+    assertStringIncludes(rawResponse, "HTTP/1.1 200 OK\r\n");
+    assertStringIncludes(rawResponse, "Content-Length: 0\r\n");
+    assert(!rawResponse.includes("Transfer-Encoding: chunked\r\n"));
+    assert(rawResponse.endsWith("\r\n\r\n"));
+  },
+);
+
+Deno.test(
   "[node/http] ServerResponse direct end respects explicit chunked transfer-encoding",
   async () => {
     const rawResponse = await getRawServerResponse((_req, res) => {
