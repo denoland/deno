@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "compile -A --unstable-kv --location https://example.com --output out_a main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "compile -A --unstable-kv --location https://example.com --output out_b main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "commandName": "./out_a",
+      "args": ["set"],
+      "output": "set\n"
+    },
+    {
+      "commandName": "./out_b",
+      "args": ["get"],
+      "output": "value: hi deno team.\n"
+    }
+  ]
+}
