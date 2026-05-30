@@ -1,0 +1,2 @@
+error: Uncaught (in promise) NotCapable: Requires read access to "[WILDCARD]@denotest/cjs-default-export/index.js", specify the required permissions during compilation using `deno compile --allow-read`
+[WILDCARD]

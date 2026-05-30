@@ -144,10 +144,10 @@ pub async fn compile(
       }
     }
   }
-  let mut cleanup_paths: Vec<PathBuf> = Vec::new();
-  if let Some(path) = _framework_entrypoint_file {
-    cleanup_paths.push(path);
-  }
+  // Register the framework entrypoint for cleanup up front so it's removed
+  // even if a later step (e.g. bundling) fails and unwinds via `?`.
+  let _framework_cleanup =
+    _framework_entrypoint_file.map(|p| CleanupGuard(vec![p]));
 
   // use a temporary directory with a node_modules folder when the user
   // specifies an npm package for better compatibility
@@ -167,18 +167,32 @@ pub async fn compile(
       None
     };
 
-  if compile_flags.bundle {
+  let _bundle_cleanup = if compile_flags.bundle {
     log::warn!(
       "{} deno compile --bundle is experimental and may change.",
       colors::yellow("Warning")
     );
-    let bundle_path = run_bundle_for_compile(&flags, &compile_flags).await?;
-    compile_flags.source_file = bundle_path.display().to_string();
-    cleanup_paths.push(bundle_path);
+    // Write the bundle next to the working directory rather than the system
+    // temp dir so the embedded VFS path stays relative to the project and
+    // doesn't bake the build machine's temp path into the binary.
+    let initial_cwd = flags.initial_cwd.clone().unwrap_or_else(|| {
+      crate::util::env::resolve_cwd(None).unwrap().to_path_buf()
+    });
+    let bundle_path = initial_cwd.join(format!(
+      ".deno_compile_bundle_{:08x}.mjs",
+      rand::thread_rng().r#gen::<u32>()
+    ));
+    // Register for cleanup before writing so a partially written file is
+    // removed even if bundling fails.
+    let guard = CleanupGuard(vec![bundle_path.clone()]);
+    run_bundle_for_compile(&flags, &compile_flags, &bundle_path).await?;
+    compile_flags.source_file = bundle_path.to_string_lossy().into_owned();
     flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
-  }
+    Some(guard)
+  } else {
+    None
+  };
 
-  let _cleanup = CleanupGuard(cleanup_paths);
   let flags = Arc::new(flags);
   // boxed_local() is to avoid large futures
   if compile_flags.eszip {
@@ -191,7 +205,8 @@ pub async fn compile(
 async fn run_bundle_for_compile(
   flags: &Flags,
   compile_flags: &CompileFlags,
-) -> Result<PathBuf, AnyError> {
+  bundle_path: &Path,
+) -> Result<(), AnyError> {
   let bundle_flags = Arc::new(flags.clone());
   let bytes = super::bundle::bundle_for_compile(
     bundle_flags,
@@ -200,17 +215,10 @@ async fn run_bundle_for_compile(
   .boxed_local()
   .await?;
 
-  let initial_cwd = flags.initial_cwd.clone().unwrap_or_else(|| {
-    crate::util::env::resolve_cwd(None).unwrap().to_path_buf()
-  });
-  let bundle_path = initial_cwd.join(format!(
-    ".deno_compile_bundle_{:08x}.mjs",
-    rand::thread_rng().r#gen::<u32>()
-  ));
-  std::fs::write(&bundle_path, &bytes).with_context(|| {
+  std::fs::write(bundle_path, &bytes).with_context(|| {
     format!("Writing bundled entrypoint to '{}'", bundle_path.display())
   })?;
-  Ok(bundle_path)
+  Ok(())
 }
 
 async fn compile_binary(
