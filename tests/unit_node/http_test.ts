@@ -3242,3 +3242,126 @@ Deno.test(
     await promise;
   },
 );
+
+Deno.test(
+  "[node/http] bodyless server request preserves IncomingMessage observables",
+  async () => {
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    let requestCount = 0;
+    let completedReq: IncomingMessage | undefined;
+    const events: string[] = [];
+    type ReadableStateForTest = {
+      highWaterMark: number;
+      length: number;
+      objectMode: boolean;
+      encoding: string | null;
+      ended: boolean;
+      endEmitted: boolean;
+      destroyed: boolean;
+      closed: boolean;
+      closeEmitted: boolean;
+      errorEmitted: boolean;
+      errored: unknown;
+    };
+
+    const server = http.createServer(
+      { highWaterMark: 32 * 1024 },
+      (req, res) => {
+        try {
+          requestCount++;
+          assertEquals(req.headers["x-check"], "ok");
+          assertEquals(req.readable, true);
+          assertEquals(req.readableEnded, false);
+          assertEquals(req.readableFlowing, null);
+          assertEquals(req.readableHighWaterMark, 32 * 1024);
+          assertEquals(req.readableLength, 0);
+          assertEquals(req.readableObjectMode, false);
+          assertEquals(req.readableEncoding, null);
+          assertEquals(req.readableDidRead, false);
+          assertEquals(req.complete, false);
+          assertEquals(req.aborted, false);
+          assertEquals(req.destroyed, false);
+          assertEquals(req.closed, false);
+          assertEquals(req.errored, null);
+          const readableState =
+            (req as unknown as { _readableState: ReadableStateForTest })
+              ._readableState;
+          assertEquals(readableState.highWaterMark, 32 * 1024);
+          assertEquals(readableState.length, 0);
+          assertEquals(readableState.objectMode, false);
+          assertEquals(readableState.encoding, null);
+          assertEquals(readableState.ended, false);
+          assertEquals(readableState.endEmitted, false);
+          assertEquals(readableState.destroyed, false);
+          assertEquals(readableState.closed, false);
+          assertEquals(readableState.closeEmitted, false);
+          assertEquals(readableState.errorEmitted, false);
+          assertEquals(readableState.errored, null);
+          assert(req.socket instanceof Socket);
+
+          if (requestCount === 1) {
+            completedReq = req;
+            res.end("first");
+            return;
+          }
+
+          req.on("data", () => events.push("data"));
+          req.on("end", () => {
+            events.push("end");
+            assertEquals(req.complete, true);
+            assertEquals(req.readableEnded, true);
+            res.end("second");
+          });
+        } catch (err) {
+          reject(err);
+        }
+      },
+    );
+
+    server.listen(0, async () => {
+      try {
+        const port = (server.address() as AddressInfo).port;
+        const url = `http://127.0.0.1:${port}/`;
+        const headers = { "x-check": "ok" };
+
+        const first = await fetch(url, { headers });
+        assertEquals(await first.text(), "first");
+        assertEquals(completedReq?.complete, true);
+        assertEquals(completedReq?.readable, false);
+        assertEquals(completedReq?.readableEnded, true);
+        assertEquals(completedReq?.readableFlowing, true);
+        assertEquals(completedReq?.readableHighWaterMark, 32 * 1024);
+        assertEquals(completedReq?.readableLength, 0);
+        assertEquals(completedReq?.readableObjectMode, false);
+        assertEquals(completedReq?.readableEncoding, null);
+        assertEquals(completedReq?.destroyed, true);
+        assertEquals(completedReq?.closed, true);
+        assertEquals(completedReq?.errored, null);
+        const readableState = (completedReq as unknown as {
+          _readableState: ReadableStateForTest;
+        })?._readableState;
+        assertEquals(readableState?.highWaterMark, 32 * 1024);
+        assertEquals(readableState?.length, 0);
+        assertEquals(readableState?.objectMode, false);
+        assertEquals(readableState?.encoding, null);
+        assertEquals(readableState?.ended, true);
+        assertEquals(readableState?.endEmitted, true);
+        assertEquals(readableState?.destroyed, true);
+        assertEquals(readableState?.closed, true);
+        assertEquals(readableState?.closeEmitted, true);
+        assertEquals(readableState?.errorEmitted, false);
+        assertEquals(readableState?.errored, null);
+
+        const second = await fetch(url, { headers });
+        assertEquals(await second.text(), "second");
+        assertEquals(events, ["end"]);
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close(() => resolve());
+      }
+    });
+
+    await promise;
+  },
+);

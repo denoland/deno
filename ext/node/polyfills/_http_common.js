@@ -43,7 +43,12 @@ const {
   HTTPParser,
   methods,
 } = core.loadExtScript("ext:deno_node/internal_binding/http_parser.ts");
-import { IncomingMessage, readStart, readStop } from "node:_http_incoming";
+import {
+  finishLazyReadable,
+  IncomingMessage,
+  readStart,
+  readStop,
+} from "node:_http_incoming";
 
 const kIncomingMessage = Symbol("IncomingMessage");
 const kSkipPendingData = Symbol("SkipPendingData");
@@ -100,6 +105,59 @@ function parserOnHeaders(headers, url) {
 
 const HTTP_VERSION_1_1 = "1.1";
 
+function fieldCharCode(field, i) {
+  return StringPrototypeCharCodeAt(field, i) | 0x20;
+}
+
+function isContentLength(field) {
+  return field.length === 14 &&
+    fieldCharCode(field, 0) === 0x63 &&
+    fieldCharCode(field, 1) === 0x6f &&
+    fieldCharCode(field, 2) === 0x6e &&
+    fieldCharCode(field, 3) === 0x74 &&
+    fieldCharCode(field, 4) === 0x65 &&
+    fieldCharCode(field, 5) === 0x6e &&
+    fieldCharCode(field, 6) === 0x74 &&
+    StringPrototypeCharCodeAt(field, 7) === 0x2d &&
+    fieldCharCode(field, 8) === 0x6c &&
+    fieldCharCode(field, 9) === 0x65 &&
+    fieldCharCode(field, 10) === 0x6e &&
+    fieldCharCode(field, 11) === 0x67 &&
+    fieldCharCode(field, 12) === 0x74 &&
+    fieldCharCode(field, 13) === 0x68;
+}
+
+function isTransferEncoding(field) {
+  return field.length === 17 &&
+    fieldCharCode(field, 0) === 0x74 &&
+    fieldCharCode(field, 1) === 0x72 &&
+    fieldCharCode(field, 2) === 0x61 &&
+    fieldCharCode(field, 3) === 0x6e &&
+    fieldCharCode(field, 4) === 0x73 &&
+    fieldCharCode(field, 5) === 0x66 &&
+    fieldCharCode(field, 6) === 0x65 &&
+    fieldCharCode(field, 7) === 0x72 &&
+    StringPrototypeCharCodeAt(field, 8) === 0x2d &&
+    fieldCharCode(field, 9) === 0x65 &&
+    fieldCharCode(field, 10) === 0x6e &&
+    fieldCharCode(field, 11) === 0x63 &&
+    fieldCharCode(field, 12) === 0x6f &&
+    fieldCharCode(field, 13) === 0x64 &&
+    fieldCharCode(field, 14) === 0x69 &&
+    fieldCharCode(field, 15) === 0x6e &&
+    fieldCharCode(field, 16) === 0x67;
+}
+
+function hasBodyHeaders(headers, n) {
+  for (let i = 0; i < n; i += 2) {
+    const header = headers[i];
+    if (isContentLength(header) || isTransferEncoding(header)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // `headers` and `url` are set only if .onHeaders() has not been called for
 // this request.
 // `url` is not set for response parsers but that's not applicable here since
@@ -132,9 +190,15 @@ function parserOnHeadersComplete(
   // Parser is also used by http client
   const ParserIncomingMessage = (socket?.server?.[kIncomingMessage]) ||
     IncomingMessage;
+  const useLazyReadable = typeof method === "number" &&
+    ParserIncomingMessage === IncomingMessage &&
+    socket?.server?.optimizeEmptyRequests !== true &&
+    !upgrade &&
+    !hasBodyHeaders(headers, headers.length);
 
   const incoming = parser.incoming = new ParserIncomingMessage(socket, {
     highWaterMark: socket?.server?.highWaterMark,
+    lazyReadable: useLazyReadable,
   });
   incoming.httpVersionMajor = versionMajor;
   incoming.httpVersionMinor = versionMinor;
@@ -204,8 +268,7 @@ function parserOnMessageComplete() {
     }
 
     // For emit end event
-    // deno-lint-ignore prefer-primordials
-    stream.push(null);
+    finishLazyReadable(stream);
   }
 
   // Force to read the next incoming message

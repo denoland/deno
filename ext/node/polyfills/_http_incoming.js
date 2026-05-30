@@ -40,6 +40,8 @@ const kHeadersCount = Symbol("kHeadersCount");
 const kTrailers = Symbol("kTrailers");
 const kTrailersDistinct = Symbol("kTrailersDistinct");
 const kTrailersCount = Symbol("kTrailersCount");
+const kLazyReadable = Symbol("kLazyReadable");
+const kLazyReadableOptions = Symbol("kLazyReadableOptions");
 
 function readStart(socket) {
   if (socket && !socket._paused && socket.readable) {
@@ -63,9 +65,32 @@ function IncomingMessage(socket, options) {
     };
   }
 
-  Readable.call(this, streamOptions);
-
-  this._readableState.readingMore = true;
+  if (options?.lazyReadable) {
+    this[kLazyReadable] = true;
+    this[kLazyReadableOptions] = streamOptions;
+    this._readableState = {
+      buffer: [],
+      closed: false,
+      closeEmitted: false,
+      dataEmitted: false,
+      encoding: null,
+      ended: false,
+      readable: true,
+      highWaterMark: streamOptions?.highWaterMark,
+      length: 0,
+      objectMode: false,
+      destroyed: false,
+      errored: null,
+      errorEmitted: false,
+      endEmitted: false,
+      flowing: null,
+      readingMore: true,
+      resumeScheduled: false,
+    };
+  } else {
+    Readable.call(this, streamOptions);
+    this._readableState.readingMore = true;
+  }
 
   this.socket = socket;
 
@@ -98,6 +123,34 @@ function IncomingMessage(socket, options) {
 }
 ObjectSetPrototypeOf(IncomingMessage.prototype, Readable.prototype);
 ObjectSetPrototypeOf(IncomingMessage, Readable);
+
+function initializeLazyReadable(self) {
+  if (!self[kLazyReadable]) {
+    return;
+  }
+  const wasEnded = self._readableState.endEmitted;
+  self[kLazyReadable] = false;
+  Readable.call(self, self[kLazyReadableOptions]);
+  self._readableState.readingMore = true;
+  if (wasEnded) {
+    self.push(null);
+  }
+}
+
+function finishLazyReadable(self) {
+  if (self[kLazyReadable]) {
+    self._readableState.ended = true;
+    self._readableState.endEmitted = true;
+  } else {
+    self.push(null);
+  }
+}
+
+function maybeInitializeLazyReadable(self) {
+  if (self[kLazyReadable]) {
+    initializeLazyReadable(self);
+  }
+}
 
 ObjectDefineProperty(IncomingMessage.prototype, "connection", {
   __proto__: null,
@@ -200,6 +253,7 @@ IncomingMessage.prototype.setTimeout = function setTimeout(msecs, callback) {
 // The parser pushes body data directly via push(). We just need to
 // unpause the underlying socket so data flows.
 IncomingMessage.prototype._read = function _read(_n) {
+  maybeInitializeLazyReadable(this);
   if (!this._consuming) {
     this._readableState.readingMore = false;
     this._consuming = true;
@@ -211,6 +265,7 @@ IncomingMessage.prototype._read = function _read(_n) {
 };
 
 IncomingMessage.prototype._destroy = function _destroy(err, cb) {
+  maybeInitializeLazyReadable(this);
   if (!this.readableEnded || !this.complete) {
     this.aborted = true;
     this.emit("aborted");
@@ -438,11 +493,56 @@ IncomingMessage.prototype._dumpAndCloseReadable =
 
 IncomingMessage.prototype._dump = function _dump() {
   if (!this._dumped) {
+    if (this[kLazyReadable] && this._readableState.endEmitted) {
+      this._dumped = true;
+      this._readableState.flowing = true;
+      this._readableState.destroyed = true;
+      this._readableState.closed = true;
+      this._readableState.closeEmitted = true;
+      return;
+    }
+    maybeInitializeLazyReadable(this);
     this._dumped = true;
     this.removeAllListeners("data");
     this.resume();
   }
 };
+
+for (
+  const method of [
+    "on",
+    "addListener",
+    "once",
+    "prependListener",
+    "prependOnceListener",
+    "read",
+    "resume",
+    "pause",
+    "pipe",
+    "unpipe",
+    "setEncoding",
+    "unshift",
+    "wrap",
+    "destroy",
+    "isPaused",
+  ]
+) {
+  const readableMethod = Readable.prototype[method];
+  if (readableMethod) {
+    IncomingMessage.prototype[method] = function (...args) {
+      maybeInitializeLazyReadable(this);
+      return readableMethod.apply(this, args);
+    };
+  }
+}
+
+const readableAsyncIterator = Readable.prototype[Symbol.asyncIterator];
+if (readableAsyncIterator) {
+  IncomingMessage.prototype[Symbol.asyncIterator] = function (...args) {
+    maybeInitializeLazyReadable(this);
+    return readableAsyncIterator.apply(this, args);
+  };
+}
 
 function onError(self, error, cb) {
   if (self.listenerCount("error") === 0) {
@@ -452,9 +552,10 @@ function onError(self, error, cb) {
   }
 }
 
-export { IncomingMessage, readStart, readStop };
+export { finishLazyReadable, IncomingMessage, readStart, readStop };
 
 export default {
+  finishLazyReadable,
   IncomingMessage,
   readStart,
   readStop,
