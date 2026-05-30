@@ -2076,36 +2076,6 @@ fn display_parts_to_string<'a>(
         // should decode percent-encoding string when hovering over the right edge of module specifier like below
         // module "file:///path/to/🦕"
         to_percent_decoded_str(&part.text),
-        // NOTE: The reason why an example above that lacks `.ts` extension is caused by the implementation of tsc itself.
-        // The request `tsc.request.getQuickInfoAtPosition` receives the payload from tsc host as follows.
-        // {
-        //   text_span: {
-        //     start: 19,
-        //     length: 9,
-        //   },
-        //   displayParts:
-        //     [
-        //       {
-        //         text: "module",
-        //         kind: "keyword",
-        //         target: null,
-        //       },
-        //       {
-        //         text: " ",
-        //         kind: "space",
-        //         target: null,
-        //       },
-        //       {
-        //         text: "\"file:///path/to/%F0%9F%A6%95\"",
-        //         kind: "stringLiteral",
-        //         target: null,
-        //       },
-        //     ],
-        //   documentation: [],
-        //   tags: null,
-        // }
-        //
-        // related issue: https://github.com/denoland/deno/issues/16058
       ),
     }
   }
@@ -6578,7 +6548,7 @@ mod tests {
             "line": 2,
             "character": 17
           },
-          "messageText": "Property \'a\' does not exist on type \'typeof import(\"https://deno.land/x/example/a\", { with: { \"resolution-mode\": \"import\" } })\'.",
+          "messageText": "Property \'a\' does not exist on type \'typeof import(\"https://deno.land/x/example/a.ts\", { with: { \"resolution-mode\": \"import\" } })\'.",
           "sourceLine": "          if (a.a === \"b\") {",
           "fileName": specifier,
         }
