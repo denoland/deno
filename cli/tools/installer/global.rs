@@ -373,6 +373,7 @@ async fn install_global_compiled(
     eszip: false,
     self_extracting: false,
     bundle: false,
+    minify: false,
   };
 
   let mut new_flags = flags.as_ref().clone();

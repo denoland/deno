@@ -221,6 +221,8 @@ pub struct CompileFlags {
   /// Bundle the entrypoint with esbuild before embedding it, instead of
   /// shipping the entire node_modules tree. Experimental.
   pub bundle: bool,
+  /// Minify the bundle. Only meaningful with `bundle: true`.
+  pub minify: bool,
 }
 
 impl CompileFlags {
@@ -3025,6 +3027,15 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .help(cstr!("<y>Experimental.</> Bundle the entrypoint with esbuild before embedding, instead of shipping the whole node_modules tree.
   <p(245)>Produces a smaller binary with faster startup, at the cost of dropping dynamic require/import patterns that can't be statically traced.</>"))
           .action(ArgAction::SetTrue)
+          .help_heading(COMPILE_HEADING),
+      )
+      .arg(
+        Arg::new("minify")
+          .long("minify")
+          .help(cstr!("<y>Experimental.</> Minify the bundled output. Only meaningful with <c>--bundle</>.
+  <p(245)>Reduces both the embedded bundle size and runtime memory use, at the cost of less readable stack traces.</>"))
+          .action(ArgAction::SetTrue)
+          .requires("bundle")
           .help_heading(COMPILE_HEADING),
       )
       .arg(executable_ext_arg())
@@ -6890,6 +6901,7 @@ fn compile_parse(
   let eszip = matches.get_flag("eszip-internal-do-not-use");
   let self_extracting = matches.get_flag("self-extracting");
   let bundle = matches.get_flag("bundle");
+  let minify = matches.get_flag("minify");
   let include = matches
     .remove_many::<String>("include")
     .map(|f| f.collect::<Vec<_>>())
@@ -6914,6 +6926,7 @@ fn compile_parse(
     eszip,
     self_extracting,
     bundle,
+    minify,
   });
 
   Ok(())
