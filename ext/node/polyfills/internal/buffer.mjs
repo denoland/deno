@@ -90,7 +90,6 @@ const {
   asciiToBytes,
   base64ToBytes,
   base64UrlToBytes,
-  bytesToUtf16le,
   hexToBytes,
   utf16leToBytes,
 } = core.loadExtScript("ext:deno_node/internal_binding/_utils.ts");

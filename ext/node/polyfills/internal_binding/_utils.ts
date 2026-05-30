@@ -117,23 +117,12 @@ function utf16leToBytes(str: string, units?: number) {
   return i * 2 === length ? byteArray : byteArray.subarray(0, i * 2);
 }
 
-function bytesToUtf16le(bytes: Uint8Array) {
-  let res = "";
-  const length = bytes.byteLength;
-  const view = new DataView(bytes.buffer, bytes.byteOffset, length);
-  for (let i = 0; i < length - 1; i += 2) {
-    res = `${res}${String.fromCharCode(view.getUint16(i, true))}`;
-  }
-  return res;
-}
-
 return {
   asciiToBytes,
   base64ToBytes,
   base64UrlToBytes,
   hexToBytes,
   utf16leToBytes,
-  bytesToUtf16le,
   unhexTable,
 };
 })();
