@@ -335,17 +335,17 @@ fn op_console_size(
     Ok(())
   }
 
-  let mut last_result = Ok(());
   // Since stdio might be piped we try to get the size of the console for all
   // of them and return the first one that succeeds.
   for rid in [0, 1, 2] {
-    last_result = check_console_size(state, result, rid);
-    if last_result.is_ok() {
-      return last_result;
+    if check_console_size(state, result, rid).is_ok() {
+      return Ok(());
     }
   }
 
-  last_result
+  Err(TtyError::Other(JsErrorBox::generic(
+    "Could not get console size: stdin, stdout, and stderr are not connected to a terminal",
+  )))
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

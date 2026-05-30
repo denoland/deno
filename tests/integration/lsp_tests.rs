@@ -12397,6 +12397,44 @@ fn lsp_untitled_file_diagnostics() {
 }
 
 #[test(timeout = 300)]
+fn lsp_jupyter_untitled_notebook() {
+  use std::str::FromStr;
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  // Simulate VSCode opening an unsaved Jupyter notebook. The notebook URI uses
+  // the `untitled:` scheme and the cell URIs use the `vscode-notebook-cell:`
+  // scheme with no directory component — neither corresponds to a file on
+  // disk. This used to panic in `get_closest_package_json` because the
+  // converted file path was just a root directory whose `parent()` is `None`.
+  // Regression test for https://github.com/denoland/deno/issues/27433.
+  let notebook_uri = lsp::Uri::from_str("untitled:Untitled-1.ipynb").unwrap();
+  let cell_uri =
+    lsp::Uri::from_str("vscode-notebook-cell:Untitled-1.ipynb#W0sZmlsZQ%3D%3D")
+      .unwrap();
+  let diagnostics = client.notebook_did_open(
+    notebook_uri,
+    1,
+    vec![json!({
+      "uri": cell_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "const x: number = 1;\nconsole.log(x);\n",
+    })],
+  );
+  // The cell should be diagnosable with no panics.
+  let messages = diagnostics.all_messages();
+  assert!(
+    messages.iter().all(|m| m.diagnostics.is_empty()),
+    "{:?}",
+    messages
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_non_normalized_uri_diagnostics_and_completions() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
