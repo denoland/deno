@@ -2346,6 +2346,10 @@ declare namespace Deno {
    * system. It's not a reflection of how many characters will fit within the
    * console window, but can be used as part of that calculation.
    *
+   * Throws if none of stdin, stdout, or stderr is connected to a terminal
+   * (e.g. all are piped or redirected). Use {@linkcode Deno.stdout.isTerminal}
+   * to check before calling.
+   *
    * @category I/O
    */
   export function consoleSize(): {
