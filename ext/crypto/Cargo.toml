@@ -21,9 +21,9 @@ aws-lc-rs = { workspace = true, features = ["unstable"] }
 base64.workspace = true
 cbc.workspace = true
 const-oid.workspace = true
+crrl.workspace = true
 ctr.workspace = true
 curve25519-dalek.workspace = true
-crrl.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
 ecdsa.workspace = true
