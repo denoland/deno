@@ -1246,6 +1246,13 @@ pub async fn run(
   // given compiled binary). Only do this when we have somewhere to persist the
   // data, otherwise stay empty so the runtime keeps the in-memory fallback
   // (and avoids unwrapping a missing `origin_data_folder_path`).
+  //
+  // NOTE: for a non-self-extracting binary the main module URL is derived from
+  // just the executable's file name (see `root_path` in `cli/rt/binary.rs`), so
+  // two unrelated compiled binaries that happen to share a name (e.g. both
+  // `out`) resolve to the same storage key and therefore share the same default
+  // KV database. This predates persistence actually working; a future fix could
+  // mix the entrypoint content hash into the key. See #24318.
   let storage_key_resolver = if origin_data_folder_path.is_some() {
     match &metadata.location {
       Some(location) => StorageKeyResolver::from_flag(location),
