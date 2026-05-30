@@ -752,6 +752,62 @@ async fn jupyter_interrupt_running_code() -> Result<()> {
   Ok(())
 }
 
+// Regression test for https://github.com/denoland/deno/issues/26816
+#[test]
+async fn jupyter_relative_import() -> Result<()> {
+  let (ctx, client, _process) = setup().await;
+  ctx
+    .temp_dir()
+    .path()
+    .join("data.ts")
+    .write("export function getData() { return 42; }\n");
+
+  client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": true,
+        "code":
+          "import { getData } from './data.ts';\nconsole.log(getData());",
+      }),
+    )
+    .await?;
+
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  assert_json_subset(
+    reply.content,
+    json!({
+      "status": "ok",
+    }),
+  );
+
+  // confirm the imported function actually ran by watching for the stdout
+  // stream on iopub
+  let mut saw_stdout = false;
+  for _ in 0..6 {
+    let Ok(msg) = client.recv(IoPub).await else {
+      break;
+    };
+    if msg.header.msg_type == "stream"
+      && msg.content.get("name").and_then(|v| v.as_str()) == Some("stdout")
+      && msg
+        .content
+        .get("text")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| s.contains("42"))
+    {
+      saw_stdout = true;
+      break;
+    }
+  }
+  assert!(saw_stdout, "expected stdout output containing 42");
+
+  Ok(())
+}
+
 #[test]
 async fn jupyter_http_server() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
