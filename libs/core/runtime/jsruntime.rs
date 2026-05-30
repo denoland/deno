@@ -453,6 +453,9 @@ pub struct JsRuntimeState {
     Option<WaitForInspectorDisconnectCallback>,
   pub(crate) validate_import_attributes_cb: Option<ValidateImportAttributesCb>,
   pub(crate) custom_module_evaluation_cb: Option<CustomModuleEvaluationCb>,
+  pub(crate) vm_dynamic_import_callbacks:
+    RefCell<HashMap<u32, v8::Global<v8::Function>>>,
+  pub(crate) next_vm_dynamic_import_callback_id: Cell<u32>,
   pub(crate) eval_context_get_code_cache_cb:
     RefCell<Option<EvalContextGetCodeCacheCb>>,
   pub(crate) eval_context_code_cache_ready_cb:
@@ -789,6 +792,8 @@ impl JsRuntime {
       op_state: op_state.clone(),
       validate_import_attributes_cb: options.validate_import_attributes_cb,
       custom_module_evaluation_cb: options.custom_module_evaluation_cb,
+      vm_dynamic_import_callbacks: Default::default(),
+      next_vm_dynamic_import_callback_id: Cell::new(1),
       eval_context_get_code_cache_cb: RefCell::new(
         eval_context_get_code_cache_cb,
       ),
