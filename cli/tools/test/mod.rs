@@ -865,6 +865,13 @@ async fn test_specifier_inner(
   // want to wait forever here.
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
+  // If a debugger session is still attached (e.g. Chrome DevTools holding
+  // the connection open for an in-progress Performance recording), wait for
+  // it to disconnect before tearing down the worker. Mirrors `deno run`'s
+  // behavior; otherwise the connection is dropped mid-flight, making it
+  // impossible to profile `deno test` runs. See issue #19289.
+  worker.wait_for_inspector_session_disconnect().await?;
+
   if let Some(coverage_collector) = &mut coverage_collector {
     coverage_collector.stop_collecting()?;
   }

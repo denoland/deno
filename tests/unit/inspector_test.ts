@@ -1217,6 +1217,77 @@ Deno.test("inspector_break_on_first_line_in_test", async () => {
   }
 });
 
+// Regression test for https://github.com/denoland/deno/issues/19289.
+// `deno test --inspect-brk` must wait for an attached debugger that opted into
+// `NodeRuntime.notifyWhenWaitingForDisconnect` (as Chrome DevTools does)
+// before exiting; otherwise an in-progress Performance recording is dropped
+// the moment the test finishes.
+Deno.test("inspector_test_waits_for_debugger_disconnect", async () => {
+  if (Deno.build.os === "windows") return;
+
+  const script = `${testdataPath}/inspector_test.js`;
+  const tester = await InspectorTester.create(
+    ["test", "-A", "--inspect-brk=0", script],
+    {
+      notificationFilter: ignoreScriptParsed,
+      env: { NO_COLOR: "1" },
+    },
+  );
+
+  try {
+    await tester.assertStderrForInspectBrk();
+
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+      {
+        id: 3,
+        method: "NodeRuntime.notifyWhenWaitingForDisconnect",
+        params: { enabled: true },
+      },
+    ]);
+
+    await tester.expectResponse(1);
+    await tester.expectResponse(2, {
+      prefixMatch: '{"id":2,"result":{"debuggerId":',
+    });
+    await tester.expectResponse(3);
+    await tester.expectNotification("Runtime.executionContextCreated");
+
+    tester.send({ id: 4, method: "Runtime.runIfWaitingForDebugger" });
+    await tester.expectResponse(4);
+    await tester.expectNotification("Debugger.paused");
+
+    tester.send({ id: 5, method: "Debugger.resume" });
+    await tester.expectResponse(5);
+
+    // The test must run to completion. Before the fix the process would
+    // race past the inspector wait and exit before the runtime emitted
+    // `Runtime.executionContextDestroyed`, leaving the websocket dangling.
+    const line1 = await tester.nextStdoutLine();
+    assert(
+      line1.includes("running 1 test from"),
+      `Expected test start, got: ${line1}`,
+    );
+    const line2 = await tester.nextStdoutLine();
+    assert(line2.includes("basic test ... ok"), `Expected ok, got: ${line2}`);
+
+    // The runtime should now be parked waiting for us to disconnect. Wait
+    // for the context-destroyed notification; proof that the wait kicked
+    // in, since on the buggy path the process would exit instead.
+    await tester.expectNotification("Runtime.executionContextDestroyed");
+
+    // Closing the socket signals the debugger has disconnected; the runtime
+    // should now exit cleanly with code 0.
+    await tester.close();
+    const status = await tester.waitForExit();
+    assertEquals(status.code, 0);
+  } finally {
+    tester.kill();
+    await tester.waitForExit();
+  }
+});
+
 Deno.test("inspector_with_ts_files", async () => {
   const script = `${testdataPath}/test.ts`;
 
