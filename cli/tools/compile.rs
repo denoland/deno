@@ -206,32 +206,38 @@ async fn compile_binary(
       effective_exclude.push(exc.clone());
     }
   }
-  let (module_roots, include_paths) = get_module_roots_and_include_paths(
-    entrypoint,
-    &effective_include,
-    &effective_exclude,
-    cli_options,
-  )?;
+  let (module_roots, include_module_roots, include_paths) =
+    get_module_roots_and_include_paths(
+      entrypoint,
+      &effective_include,
+      &effective_exclude,
+      cli_options,
+    )?;
 
-  let graph = Arc::try_unwrap(
-    module_graph_creator
-      .create_graph_and_maybe_check(module_roots.clone())
-      .await?,
-  )
-  .unwrap();
-  let graph = if cli_options.type_check_mode().is_true() {
-    // In this case, the previous graph creation did type checking, which will
-    // create a module graph with types information in it. We don't want to
-    // store that in the binary so create a code only module graph from scratch.
-    module_graph_creator
-      .create_graph(
-        GraphKind::CodeOnly,
-        module_roots,
-        NpmCachingStrategy::Eager,
-      )
-      .await?
+  // Validate and type check only the strict roots (entrypoint, preload and
+  // require modules). Files brought in via `--include` are best-effort assets
+  // whose graph resolution errors must not fail compilation (#27505).
+  let checked_graph = module_graph_creator
+    .create_graph_and_maybe_check(module_roots.clone())
+    .await?;
+
+  let graph = if include_module_roots.is_empty()
+    && !cli_options.type_check_mode().is_true()
+  {
+    // Fast path: no includes and no type checking, so the validated graph is
+    // exactly what we want to store.
+    Arc::try_unwrap(checked_graph).unwrap()
   } else {
-    graph
+    // Build a code-only graph that also includes the `--include` module roots.
+    // `create_graph` does not validate, so unresolved imports inside included
+    // assets are embedded as-is rather than surfaced as errors. We also use
+    // this path after type checking so type information isn't stored in the
+    // binary.
+    let mut all_roots = module_roots;
+    all_roots.extend(include_module_roots);
+    module_graph_creator
+      .create_graph(GraphKind::CodeOnly, all_roots, NpmCachingStrategy::Eager)
+      .await?
   };
 
   let initial_cwd =
@@ -367,32 +373,30 @@ async fn compile_eszip(
       effective_exclude.push(exc.clone());
     }
   }
-  let (module_roots, _include_paths) = get_module_roots_and_include_paths(
-    entrypoint,
-    &effective_include,
-    &effective_exclude,
-    cli_options,
-  )?;
+  let (module_roots, include_module_roots, _include_paths) =
+    get_module_roots_and_include_paths(
+      entrypoint,
+      &effective_include,
+      &effective_exclude,
+      cli_options,
+    )?;
 
-  let graph = Arc::try_unwrap(
-    module_graph_creator
-      .create_graph_and_maybe_check(module_roots.clone())
-      .await?,
-  )
-  .unwrap();
-  let graph = if cli_options.type_check_mode().is_true() {
-    // In this case, the previous graph creation did type checking, which will
-    // create a module graph with types information in it. We don't want to
-    // store that in the binary so create a code only module graph from scratch.
-    module_graph_creator
-      .create_graph(
-        GraphKind::CodeOnly,
-        module_roots,
-        NpmCachingStrategy::Eager,
-      )
-      .await?
+  // Validate/type check the strict roots only; `--include` modules are
+  // best-effort assets (#27505).
+  let checked_graph = module_graph_creator
+    .create_graph_and_maybe_check(module_roots.clone())
+    .await?;
+
+  let graph = if include_module_roots.is_empty()
+    && !cli_options.type_check_mode().is_true()
+  {
+    Arc::try_unwrap(checked_graph).unwrap()
   } else {
-    graph
+    let mut all_roots = module_roots;
+    all_roots.extend(include_module_roots);
+    module_graph_creator
+      .create_graph(GraphKind::CodeOnly, all_roots, NpmCachingStrategy::Eager)
+      .await?
   };
 
   let transpile_and_emit_options = compiler_options_resolver
@@ -514,12 +518,28 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
   Ok(())
 }
 
+// Returns `(module_roots, include_module_roots, include_paths)`.
+//
+// `module_roots` are the strict graph roots (entrypoint, `--preload` and
+// `--require` modules) whose graph errors should fail compilation.
+// `include_module_roots` are JS-like files brought in via `--include`; they
+// are embedded and transpiled but treated as best-effort assets, so their
+// graph resolution errors must not fail compilation (see #27505).
+// `include_paths` are the raw files/directories embedded into the VFS.
+#[allow(clippy::type_complexity)]
 fn get_module_roots_and_include_paths(
   entrypoint: &ModuleSpecifier,
   include: &[String],
   exclude: &[String],
   cli_options: &Arc<CliOptions>,
-) -> Result<(Vec<ModuleSpecifier>, Vec<ModuleSpecifier>), AnyError> {
+) -> Result<
+  (
+    Vec<ModuleSpecifier>,
+    Vec<ModuleSpecifier>,
+    Vec<ModuleSpecifier>,
+  ),
+  AnyError,
+> {
   let initial_cwd = cli_options.initial_cwd();
 
   fn is_module_graph_module(url: &ModuleSpecifier) -> bool {
@@ -590,6 +610,7 @@ fn get_module_roots_and_include_paths(
 
   let mut searched_paths = HashSet::new();
   let mut module_roots = Vec::new();
+  let mut include_module_roots = Vec::new();
   let mut include_paths = Vec::new();
   let exclude_set = exclude
     .iter()
@@ -599,14 +620,14 @@ fn get_module_roots_and_include_paths(
   for side_module in include {
     let url = resolve_url_or_path(side_module, initial_cwd)?;
     if is_module_graph_module(&url) {
-      module_roots.push(url.clone());
+      include_module_roots.push(url.clone());
     } else {
       analyze_path(&url, &exclude_set, &mut searched_paths, |file_path| {
         let media_type = MediaType::from_path(file_path);
         if is_module_graph_media_type(media_type)
           && let Ok(file_url) = url_from_file_path(file_path)
         {
-          module_roots.push(file_url);
+          include_module_roots.push(file_url);
         }
       })?;
     }
@@ -623,7 +644,7 @@ fn get_module_roots_and_include_paths(
     module_roots.push(require_module);
   }
 
-  Ok((module_roots, include_paths))
+  Ok((module_roots, include_module_roots, include_paths))
 }
 
 async fn resolve_compile_executable_output_path(
