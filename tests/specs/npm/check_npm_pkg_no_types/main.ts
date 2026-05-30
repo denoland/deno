@@ -6,5 +6,7 @@
 // "Failed resolving types" error. This previously failed when using a "bring
 // your own node_modules" (byonm) setup.
 import * as multipleExports from "npm:@denotest/cjs-multiple-exports@1.0.0";
+import noTypesCjs from "npm:@denotest/no-types-cjs@1.0.0";
 
 console.log(multipleExports);
+console.log(noTypesCjs());
