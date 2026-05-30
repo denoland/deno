@@ -408,10 +408,12 @@ fn load_configs(
     _ => {
       let factory = create_deno_json(flags, options)?;
       let options = factory.cli_options()?.clone();
-      let deno_json = options
-        .start_dir
-        .member_or_root_deno_json()
-        .expect("Just created deno.json");
+      let Some(deno_json) = options.start_dir.member_or_root_deno_json() else {
+        bail!(
+          "Failed to discover the newly created deno.json at \"{}\". This can happen when the current directory is inside a node_modules directory.",
+          options.initial_cwd().join("deno.json").display(),
+        );
+      };
       (
         factory,
         Some(ConfigUpdater::new(

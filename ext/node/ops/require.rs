@@ -170,9 +170,15 @@ pub fn op_require_node_module_paths<TSys: ExtNodeSys + 'static>(
   #[string] from: &str,
 ) -> Result<Vec<String>, RequireError> {
   let sys = state.borrow::<TSys>();
-  // Guarantee that "from" is absolute.
+  // Guarantee that "from" is absolute. Avoid calling `env_current_dir()`
+  // when we don't need it — on macOS it walks the directory tree from `/`
+  // and fails with EACCES if any ancestor is unreadable (see #21585), so
+  // an unrelated absolute `from` would otherwise crash here.
+  let from_path = Path::new(from);
   let from = if from.starts_with("file:///") {
     Cow::Owned(url_to_file_path(&Url::parse(from)?)?)
+  } else if from_path.is_absolute() {
+    normalize_path(Cow::Borrowed(from_path))
   } else {
     let current_dir = &sys
       .env_current_dir()

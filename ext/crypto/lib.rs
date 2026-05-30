@@ -63,6 +63,7 @@ mod export_key;
 mod generate_key;
 mod import_key;
 mod key;
+mod mldsa;
 mod mlkem;
 mod shared;
 mod x25519;
@@ -83,6 +84,7 @@ use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
+pub use crate::mldsa::MlDsaError;
 pub use crate::mlkem::MlKemError;
 pub use crate::shared::SharedError;
 use crate::shared::V8RawKeyData;
@@ -129,6 +131,14 @@ deno_core::extension!(deno_crypto,
     ed25519::op_crypto_export_spki_ed25519,
     ed25519::op_crypto_export_pkcs8_ed25519,
     ed25519::op_crypto_jwk_x_ed25519,
+    mldsa::op_crypto_mldsa_from_seed,
+    mldsa::op_crypto_mldsa_from_raw_private,
+    mldsa::op_crypto_mldsa_from_pkcs8,
+    mldsa::op_crypto_mldsa_from_spki,
+    mldsa::op_crypto_mldsa_export_pkcs8,
+    mldsa::op_crypto_mldsa_export_spki,
+    mldsa::op_crypto_sign_mldsa,
+    mldsa::op_crypto_verify_mldsa,
     mlkem::op_crypto_ml_kem_generate_key,
     mlkem::op_crypto_ml_kem_encapsulate,
     mlkem::op_crypto_ml_kem_decapsulate,

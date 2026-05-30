@@ -1300,8 +1300,12 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         );
       }
 
-      // 2.1. Try to resolve the bare specifier to a workspace member
-      for member in &self.jsr_pkgs {
+      // 2.1. Try to resolve the bare specifier to a workspace member.
+      // Linked packages are not resolved here — using a linked package
+      // requires a `jsr:` specifier or an import map entry, otherwise the
+      // bare specifier would resolve even when no JSR or import map
+      // declaration exists.
+      for member in self.jsr_pkgs.iter().filter(|p| !p.is_link) {
         if let Some(path) = specifier.strip_prefix(&member.name)
           && (path.is_empty() || path.starts_with('/'))
         {
@@ -2882,19 +2886,16 @@ mod test {
     let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
     let resolver = create_resolver(&workspace_dir);
     let root = url_from_directory_path(&root_dir()).unwrap();
-    match resolver
+    // Linked packages do not resolve via bare specifier — a `jsr:` specifier
+    // or an import map entry is required.
+    let err = resolver
       .resolve(
         "@scope/link",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
-      .unwrap()
-    {
-      MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
-      }
-      _ => unreachable!(),
-    }
+      .unwrap_err();
+    assert!(err.is_unmapped_bare_specifier());
     // matching version
     match resolver
       .resolve(
@@ -2959,19 +2960,16 @@ mod test {
     let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
     let resolver = create_resolver(&workspace_dir);
     let root = url_from_directory_path(&root_dir()).unwrap();
-    match resolver
+    // Linked packages do not resolve via bare specifier — a `jsr:` specifier
+    // or an import map entry is required.
+    let err = resolver
       .resolve(
         "@scope/link",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
-      .unwrap()
-    {
-      MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
-      }
-      _ => unreachable!(),
-    }
+      .unwrap_err();
+    assert!(err.is_unmapped_bare_specifier());
     // always resolves, no matter what version
     match resolver
       .resolve(

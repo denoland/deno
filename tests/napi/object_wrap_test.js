@@ -64,3 +64,18 @@ Deno.test("napi remove_wrap", function () {
   const result = objectWrap.test_remove_wrap(obj);
   assertEquals(result, true);
 });
+
+// Regression test for #33924: `napi_new_instance` must produce a
+// properly wrapped instance even though the native path is now executed
+// inside a `DisallowJavascriptExecutionScope`. Pre-fix, V8 could pump
+// unrelated JS during construction (e.g. threadsafe-function callbacks
+// from rolldown workers), letting napi-rs's `___CALL_FROM_FACTORY`
+// thread-local leak across class boundaries and produce an unwrapped
+// instance that later tripped `napi_unwrap`.
+Deno.test("napi new_instance via napi_new_instance", function () {
+  const obj = objectWrap.test_call_new_instance(objectWrap.NapiObject, 7);
+  assert(obj instanceof objectWrap.NapiObject);
+  assertEquals(obj.get_value(), 7);
+  obj.increment();
+  assertEquals(obj.get_value(), 8);
+});
