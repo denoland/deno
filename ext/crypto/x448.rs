@@ -1,17 +1,16 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use crrl::x448;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
+use ed448_goldilocks::EdwardsScalar;
+use ed448_goldilocks::MontgomeryPoint;
+use ed448_goldilocks::subtle::ConstantTimeEq;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use rand::RngCore;
 use rand::rngs::OsRng;
 use spki::der::Decode;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
-use subtle::ConstantTimeEq;
-
-static X448_IDENTITY: [u8; 56] = [0; 56];
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum X448Error {
@@ -33,9 +32,16 @@ pub fn op_crypto_generate_x448_keypair(
 ) {
   let mut rng = OsRng;
   rng.fill_bytes(pkey);
-  let pkey: &[u8; 56] = (&*pkey).try_into().unwrap();
-  pubkey.copy_from_slice(&x448::x448_base(pkey));
+
+  // x448(pkey, 5)
+  let mut scalar_bytes = [0u8; 57];
+  scalar_bytes[..56].copy_from_slice(pkey);
+  let scalar = EdwardsScalar::from_bytes_mod_order(&scalar_bytes.into());
+  let point = &MontgomeryPoint::GENERATOR * &scalar;
+  pubkey.copy_from_slice(&point.0);
 }
+
+static MONTGOMERY_IDENTITY: MontgomeryPoint = MontgomeryPoint([0; 56]);
 
 #[op2(fast)]
 pub fn op_crypto_derive_bits_x448(
@@ -46,12 +52,16 @@ pub fn op_crypto_derive_bits_x448(
   let k: [u8; 56] = k.try_into().map_err(|_| X448Error::InvalidKeyLength)?;
   let u: [u8; 56] = u.try_into().map_err(|_| X448Error::InvalidKeyLength)?;
 
-  let point = x448::x448(&u, &k);
-  if point.ct_eq(&X448_IDENTITY).unwrap_u8() == 1 {
+  // x448(k, u)
+  let mut scalar_bytes = [0u8; 57];
+  scalar_bytes[..56].copy_from_slice(&k);
+  let scalar = EdwardsScalar::from_bytes_mod_order(&scalar_bytes.into());
+  let point = &MontgomeryPoint(u) * &scalar;
+  if point.ct_eq(&MONTGOMERY_IDENTITY).unwrap_u8() == 1 {
     return Ok(true);
   }
 
-  secret.copy_from_slice(&point);
+  secret.copy_from_slice(&point.0);
   Ok(false)
 }
 
