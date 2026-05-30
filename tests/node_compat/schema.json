@@ -67,6 +67,12 @@
         "linux": {
           "$ref": "#/definitions/platformExpectation"
         },
+        "linuxAarch64": {
+          "$ref": "#/definitions/platformExpectation"
+        },
+        "linuxX86_64": {
+          "$ref": "#/definitions/platformExpectation"
+        },
         "reason": {
           "type": "string",
           "description": "Explanation for why the test is disabled or has special configuration."

@@ -512,6 +512,5 @@
   "shared-worker-parse-error-failure.html": false,
   "shared-worker-partitioned-cookies.tentative.https.html": false,
   "shared-worker-partitioned.tentative.html": false,
-  "worker-request-animation-frame.html": false,
-  "WorkerNavigator_userAgentData.https.tentative.html": false
+  "worker-request-animation-frame.html": false
 }

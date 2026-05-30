@@ -115,10 +115,6 @@
     "templated.any.worker.html": true,
     "async-iterator.any.worker.html": true,
     "cross-realm-crash.window.html": false,
-    "owning-type-message-port.any.html": false,
-    "owning-type-message-port.any.worker.html": false,
-    "owning-type.any.html": false,
-    "owning-type.any.worker.html": false,
     "from.any.html": {
       "expectedFailures": [
         "ReadableStream.from ignores a null @@asyncIterator",
@@ -136,8 +132,6 @@
       "garbage-collection.any.worker.html": true
     },
     "global.html": false,
-    "owning-type-video-frame.any.html": false,
-    "owning-type-video-frame.any.worker.html": false,
     "read-task-handling.window.html": true
   },
   "transform-streams": {

@@ -4753,7 +4753,10 @@
       "reason": "'.' is not recognized as an internal or external command,"
     },
     "parallel/test-child-process-windows-hide.js": {},
-    "parallel/test-cluster-concurrent-disconnect.js": {},
+    "parallel/test-cluster-concurrent-disconnect.js": {
+      "linuxAarch64": false,
+      "reason": "err.syscall is undefined on linux-aarch64"
+    },
     "parallel/test-cluster-dgram-1.js": {
       "linux": false,
       "darwin": false,

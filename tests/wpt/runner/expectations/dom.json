@@ -1295,21 +1295,7 @@
     "getElementsByClassName-whitespace-class-names.html": false,
     "insert-adjacent.html": false,
     "insertion-removing-steps": {
-      "Node-append-form-and-script-from-fragment.tentative.html": false,
-      "Node-append-meta-referrer-and-script-from-fragment.tentative.html": false,
-      "Node-appendChild-script-and-button-from-div.tentative.html": false,
-      "Node-appendChild-script-and-custom-from-fragment.tentative.html": false,
-      "Node-appendChild-script-and-default-style-meta-from-fragment.tentative.html": false,
-      "Node-appendChild-script-and-div-from-fragment.tentative.html": false,
-      "Node-appendChild-script-and-iframe.tentative.html": false,
-      "Node-appendChild-script-and-source-from-fragment.tentative.html": false,
-      "Node-appendChild-script-and-style.tentative.html": false,
-      "Node-appendChild-script-in-script.tentative.html": false,
       "Node-appendChild-script-with-mutation-observer-takeRecords.html": false,
-      "Node-appendChild-text-and-script-in-style.tentative.html": false,
-      "Node-appendChild-text-in-script.tentative.html": false,
-      "Node-appendChild-three-scripts-from-fragment.tentative.html": false,
-      "Node-appendChild-three-scripts.tentative.html": false,
       "blur-event.window.html": false,
       "insertion-removing-steps-iframe.window.html": false,
       "insertion-removing-steps-script.window.html": false,
@@ -1411,15 +1397,6 @@
       "observable-reduce.any.worker.html": false
     }
   },
-  "parts": {
-    "basic-dom-part-declarative-brace-syntax-innerhtml.tentative.html": false,
-    "basic-dom-part-declarative-brace-syntax.tentative.html": false,
-    "basic-dom-part-objects.tentative.html": false,
-    "dom-parts-parseparts-on-body.tentative.html": false,
-    "dom-parts-parseparts-on-head.tentative.html": false,
-    "dom-parts-parseparts-on-root.tentative.html": false,
-    "dom-parts-valid-node-types.tentative.html": false
-  },
   "ranges": {
     "Range-adopt-test.html": false,
     "Range-attributes.html": false,
@@ -1482,11 +1459,6 @@
       "window.addEventListener respects custom `this`",
       "window.addEventListener treats nullish `this` as `window`"
     ]
-  },
-  "xslt": {
-    "functions.tentative.window.html": false,
-    "transformToFragment.tentative.window.html": false,
-    "document-function.window.html": false
   },
   "historical-mutation-events.html": {
     "expectedFailures": [

@@ -87,6 +87,10 @@ struct TestConfig {
   windows: Option<PlatformExpectation>,
   darwin: Option<PlatformExpectation>,
   linux: Option<PlatformExpectation>,
+  #[serde(rename = "linuxAarch64")]
+  linux_aarch64: Option<PlatformExpectation>,
+  #[serde(rename = "linuxX86_64")]
+  linux_x86_64: Option<PlatformExpectation>,
   reason: Option<String>,
   /// Expected exit code for all platforms (overridden by per-platform config)
   #[serde(rename = "exitCode")]
@@ -441,11 +445,20 @@ fn wrap_in_category(
 
 fn platform_expectation(config: &TestConfig) -> Option<&PlatformExpectation> {
   let os = std::env::consts::OS;
-  match os {
-    "windows" => config.windows.as_ref(),
-    "linux" => config.linux.as_ref(),
-    "macos" => config.darwin.as_ref(),
-    _ => None,
+  let arch = std::env::consts::ARCH;
+  match (os, arch) {
+    ("linux", "aarch64") => {
+      config.linux_aarch64.as_ref().or(config.linux.as_ref())
+    }
+    ("linux", "x86_64") => {
+      config.linux_x86_64.as_ref().or(config.linux.as_ref())
+    }
+    _ => match os {
+      "windows" => config.windows.as_ref(),
+      "linux" => config.linux.as_ref(),
+      "macos" => config.darwin.as_ref(),
+      _ => None,
+    },
   }
 }
 
