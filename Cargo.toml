@@ -236,7 +236,6 @@ import_map = { version = "0.25.0", features = ["ext"] }
 indexmap = { version = "2", features = ["serde"] }
 inventory = "0.3.21"
 ipnet = "2.3"
-ipnetwork = "0.20.0"
 itertools = "0.14"
 jsonc-parser = { version = "0.32.1", features = ["serde"] }
 jupyter-protocol = "=1.2.1"
