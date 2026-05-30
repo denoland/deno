@@ -251,7 +251,7 @@ memchr = "2.7.4"
 mime = "0.3.16"
 monch = "=0.6.0"
 netif = "0.1.6"
-notify = "=6.1.1"
+notify = "8.2.0"
 num-bigint = { version = "0.4", features = ["rand"] }
 num-bigint-dig = "0.8.2"
 num-integer = "0.1.45"
