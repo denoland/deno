@@ -1,8 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 
 use deno_error::JsErrorBox;
+use deno_maybe_sync::MaybeDashMap;
 use deno_maybe_sync::MaybeSend;
 use deno_maybe_sync::MaybeSync;
 use deno_media_type::MediaType;
@@ -110,13 +112,13 @@ pub trait ModuleForExportAnalysis {
   fn compute_is_script(&self) -> bool;
   fn analyze_cjs(&self) -> ModuleExportsAndReExports;
   fn analyze_es_runtime_exports(&self) -> ModuleExportsAndReExports;
-  /// For the shape `module.exports = require(X).MEMBER`, return the
-  /// property names that this module statically attaches to the value
-  /// bound to `exports.MEMBER`. Returns `None` if the member cannot be
-  /// statically resolved to an identifier whose property assignments
-  /// are visible at the top level (in which case callers must not
-  /// advertise any names from this module under the member shape).
-  fn analyze_member_export_props(&self, member: &str) -> Option<Vec<String>>;
+  /// For every top-level `exports.MEMBER = IDENT` whose IDENT also
+  /// receives static `IDENT.X = …` assignments at the top level, return
+  /// the map from MEMBER to those X names. Used by the
+  /// `module.exports = require(X).MEMBER` wrapper shape to narrow the
+  /// inner module's advertised names to those statically attached to
+  /// MEMBER. Built in a single walk of the top-level statements.
+  fn analyze_member_export_props(&self) -> BTreeMap<String, Vec<String>>;
 }
 
 #[allow(clippy::disallowed_types, reason = "definition")]
@@ -156,10 +158,23 @@ impl ModuleExportAnalyzer for NotImplementedModuleExportAnalyzer {
 pub type DenoCjsCodeAnalyzerRc<TSys> =
   deno_maybe_sync::MaybeArc<DenoCjsCodeAnalyzer<TSys>>;
 
+type MemberPropsMap = BTreeMap<String, Vec<String>>;
+
+#[allow(clippy::disallowed_types, reason = "definition")]
+type MemberPropsCache = deno_maybe_sync::MaybeArc<
+  MaybeDashMap<(Url, u64), deno_maybe_sync::MaybeArc<MemberPropsMap>>,
+>;
+
 pub struct DenoCjsCodeAnalyzer<TSys: DenoCjsCodeAnalyzerSys> {
   cache: NodeAnalysisCacheRc,
   cjs_tracker: CjsTrackerRc<DenoInNpmPackageChecker, TSys>,
   module_export_analyzer: ModuleExportAnalyzerRc,
+  /// Memoizes the per-member property map keyed by `(specifier,
+  /// source_hash)`. Built once per inner module so that repeated
+  /// `analyze_cjs_member_props` calls (different members on the same
+  /// module, or the same lookup across multiple importers) do not
+  /// re-parse the source.
+  member_props_cache: MemberPropsCache,
   sys: TSys,
 }
 
@@ -174,6 +189,7 @@ impl<TSys: DenoCjsCodeAnalyzerSys> DenoCjsCodeAnalyzer<TSys> {
       cache,
       cjs_tracker,
       module_export_analyzer,
+      member_props_cache: Default::default(),
       sys,
     }
   }
@@ -322,23 +338,37 @@ impl<TSys: DenoCjsCodeAnalyzerSys> CjsCodeAnalyzer
     if media_type == MediaType::Json {
       return Ok(None);
     }
+    let source_hash = self.cache.compute_source_hash(source).0;
+    let cache_key = (specifier.clone(), source_hash);
+    if let Some(map) = self
+      .member_props_cache
+      .get(&cache_key)
+      .map(|entry| entry.clone())
+    {
+      return Ok(map.get(member).cloned());
+    }
+
     let module_export_analyzer = self.module_export_analyzer.clone();
-    let specifier = specifier.clone();
+    let parse_specifier = specifier.clone();
     let source_arc: ArcStr = source.into();
-    let member = member.to_string();
-    let analyze = move || -> Result<Option<Vec<String>>, JsErrorBox> {
-      let parsed = module_export_analyzer
-        .parse_module(specifier, media_type, source_arc)?;
-      Ok(parsed.analyze_member_export_props(&member))
+    let analyze = move || -> Result<MemberPropsMap, JsErrorBox> {
+      let parsed = module_export_analyzer.parse_module(
+        parse_specifier,
+        media_type,
+        source_arc,
+      )?;
+      Ok(parsed.analyze_member_export_props())
     };
     #[cfg(feature = "sync")]
-    {
-      crate::rt::spawn_blocking(analyze).await.unwrap()
-    }
+    let map = crate::rt::spawn_blocking(analyze).await.unwrap()?;
     #[cfg(not(feature = "sync"))]
-    {
-      analyze()
-    }
+    let map = analyze()?;
+
+    #[allow(clippy::disallowed_types, reason = "definition")]
+    let map = deno_maybe_sync::MaybeArc::new(map);
+    let result = map.get(member).cloned();
+    self.member_props_cache.insert(cache_key, map);
+    Ok(result)
   }
 }
 

@@ -88,11 +88,16 @@ pub async fn compile(
       }
       // Enable CJS detection for Node-based frameworks.
       flags.unstable_config.detect_cjs = true;
-      if detection.name == "Next.js"
+      // These frameworks emit a pre-built/bundled server entrypoint that is
+      // not meant to be type checked by Deno (it references Node types that
+      // aren't resolvable from the build output); the framework handles its
+      // own compilation.
+      if matches!(detection.name, "Next.js" | "SvelteKit")
         && !matches!(flags.type_check_mode, TypeCheckMode::None)
       {
         log::info!(
-          "Disabling Deno type checking for Next.js compile; Next handles app compilation itself"
+          "Disabling Deno type checking for {} compile; the framework handles app compilation itself",
+          detection.name
         );
         flags.type_check_mode = TypeCheckMode::None;
       }
