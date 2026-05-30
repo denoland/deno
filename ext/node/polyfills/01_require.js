@@ -254,18 +254,6 @@ const internalUtilInspect = core.loadExtScript(
 const internalValidators = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-const internalWebstreamsAdapters = core.loadExtScript(
-  "ext:deno_node/internal/webstreams/adapters.js",
-);
-const internalWebstreamsReadableStream = core.loadExtScript(
-  "ext:deno_node/internal/webstreams/readablestream.js",
-);
-const internalWebstreamsUtil = core.loadExtScript(
-  "ext:deno_node/internal/webstreams/util.js",
-);
-const internalWorkerJsTransferable = core.loadExtScript(
-  "ext:deno_node/internal/worker/js_transferable.js",
-);
 const internalConsole = core.loadExtScript(
   "ext:deno_node/internal/console/constructor.mjs",
 ).default;
@@ -313,6 +301,17 @@ const builtinModules = [];
 // Use `() => createLazyLoader("...")().default` for `lazy_loaded_esm` entries
 // and `() => loadExtScript("...")` for `lazy_loaded_js` entries.
 const lazyNodeModules = {
+  // Lazy so the WHATWG-streams adapter graph (stream/web -> deno_web
+  // 06_streams, ~1.8MB of snapshot heap) is only loaded when something
+  // actually requires these internals, not eagerly at node:module init.
+  "internal/worker/js_transferable": () =>
+    core.loadExtScript("ext:deno_node/internal/worker/js_transferable.js"),
+  "internal/webstreams/adapters": () =>
+    core.loadExtScript("ext:deno_node/internal/webstreams/adapters.js"),
+  "internal/webstreams/readablestream": () =>
+    core.loadExtScript("ext:deno_node/internal/webstreams/readablestream.js"),
+  "internal/webstreams/util": () =>
+    core.loadExtScript("ext:deno_node/internal/webstreams/util.js"),
   "_http_agent": () => _httpAgent().default,
   "_http_common": () => _httpCommon().default,
   "_http_outgoing": () => _httpOutgoing().default,
@@ -462,10 +461,6 @@ function setupBuiltinModules() {
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
     "internal/validators": internalValidators,
-    "internal/webstreams/adapters": internalWebstreamsAdapters,
-    "internal/webstreams/readablestream": internalWebstreamsReadableStream,
-    "internal/webstreams/util": internalWebstreamsUtil,
-    "internal/worker/js_transferable": internalWorkerJsTransferable,
     module: Module,
     os,
     process,

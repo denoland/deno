@@ -3,7 +3,7 @@
 // deno-lint-ignore-file
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 
 const webStreams = core.loadExtScript("ext:deno_web/06_streams.js");
 
