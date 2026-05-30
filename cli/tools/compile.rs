@@ -526,7 +526,10 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
 // are embedded and transpiled but treated as best-effort assets, so their
 // graph resolution errors must not fail compilation (see #27505).
 // `include_paths` are the raw files/directories embedded into the VFS.
-#[allow(clippy::type_complexity)]
+#[allow(
+  clippy::type_complexity,
+  reason = "internal helper returning three related specifier lists"
+)]
 fn get_module_roots_and_include_paths(
   entrypoint: &ModuleSpecifier,
   include: &[String],
