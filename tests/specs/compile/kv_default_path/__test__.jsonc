@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "compile -A --unstable-kv --output out main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "commandName": "./out",
+      "args": ["set"],
+      "output": "set\n"
+    },
+    {
+      "commandName": "./out",
+      "args": ["get"],
+      "output": "value: hi deno team.\n"
+    }
+  ]
+}

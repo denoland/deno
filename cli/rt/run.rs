@@ -51,6 +51,8 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npmrc::ResolvedNpmRc;
 use deno_package_json::PackageJsonDepValue;
 use deno_resolver::DenoResolveErrorKind;
+use deno_resolver::cache::DenoDirOptions;
+use deno_resolver::cache::DenoDirProvider;
 use deno_resolver::cjs::CjsTracker;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::loader::NpmModuleLoader;
@@ -1224,6 +1226,34 @@ pub async fn run(
     }
     checker
   });
+  // Resolve a persistent storage directory so that origin-bound storage such
+  // as `Deno.openKv()` (without an explicit path) and `localStorage` persists
+  // to disk instead of silently falling back to an in-memory database. We reuse
+  // the `DENO_DIR`'s `location_data` folder, matching `deno run`. If the deno
+  // dir can't be resolved we leave this unset and keep the in-memory fallback.
+  let origin_data_folder_path = DenoDirProvider::new(
+    sys_traits::impls::RealSys,
+    DenoDirOptions {
+      maybe_initial_cwd: None,
+      maybe_custom_root: None,
+    },
+  )
+  .get_or_create()
+  .ok()
+  .map(|deno_dir| deno_dir.origin_data_folder_path());
+  // Derive the storage key the same way `deno run` does: prefer an explicit
+  // `--location`, otherwise fall back to the main module (which is stable for a
+  // given compiled binary). Only do this when we have somewhere to persist the
+  // data, otherwise stay empty so the runtime keeps the in-memory fallback
+  // (and avoids unwrapping a missing `origin_data_folder_path`).
+  let storage_key_resolver = if origin_data_folder_path.is_some() {
+    match &metadata.location {
+      Some(location) => StorageKeyResolver::from_flag(location),
+      None => StorageKeyResolver::new_use_main_module(),
+    }
+  } else {
+    StorageKeyResolver::empty()
+  };
   let lib_main_worker_options = LibMainWorkerOptions {
     argv: metadata.argv,
     log_level: WorkerLogLevel::Info,
@@ -1244,7 +1274,7 @@ pub async fn run(
     node_debug: std::env::var("NODE_DEBUG").ok(),
     node_cluster_unique_id: std::env::var("NODE_UNIQUE_ID").ok(),
     node_cluster_sched_policy: std::env::var("NODE_CLUSTER_SCHED_POLICY").ok(),
-    origin_data_folder_path: None,
+    origin_data_folder_path,
     seed: metadata.seed,
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
@@ -1272,7 +1302,7 @@ pub async fn run(
     create_npm_process_state_provider(&npm_resolver),
     pkg_json_resolver,
     root_cert_store_provider,
-    StorageKeyResolver::empty(),
+    storage_key_resolver,
     sys.clone(),
     lib_main_worker_options,
     Default::default(),
