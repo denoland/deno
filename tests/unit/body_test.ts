@@ -211,6 +211,60 @@ Deno.test(
   },
 );
 
+Deno.test(
+  async function bodyMultipartFormDataEmbeddedBoundaryTextInFileContent() {
+    const boundary = "AaB03x";
+    const payload = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="x.txt"',
+      "Content-Type: text/plain",
+      "",
+      `before--${boundary}after`,
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const body = buildBody(
+      new TextEncoder().encode(payload),
+      new Headers({
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      }),
+    );
+
+    const formData = await body.formData();
+    const file = formData.get("file");
+    assert(file instanceof File);
+    assertEquals(await file.text(), `before--${boundary}after`);
+  },
+);
+
+Deno.test(
+  async function bodyMultipartFormDataBoundaryPrefixLineInFileContent() {
+    const boundary = "AaB03x";
+    const payload = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="x.txt"',
+      "Content-Type: text/plain",
+      "",
+      "before",
+      `--${boundary}x`,
+      "after",
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const body = buildBody(
+      new TextEncoder().encode(payload),
+      new Headers({
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      }),
+    );
+
+    const formData = await body.formData();
+    const file = formData.get("file");
+    assert(file instanceof File);
+    assertEquals(await file.text(), `before\r\n--${boundary}x\r\nafter`);
+  },
+);
+
 Deno.test(async function bodyBadResourceError() {
   const file = await Deno.open("README.md");
   file.close();
