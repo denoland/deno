@@ -41,6 +41,7 @@ use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
 use rsa::traits::PublicKeyParts;
+use subtle::ConstantTimeEq;
 
 pub mod cipher;
 pub(crate) mod dh;
@@ -53,6 +54,8 @@ pub mod sign;
 pub mod x509;
 
 use self::digest::match_fixed_digest_with_eager_block_buffer;
+
+static X448_IDENTITY: [u8; 56] = [0; 56];
 
 deno_core::extension!(
   deno_node_crypto,
@@ -1793,17 +1796,11 @@ pub fn op_node_diffie_hellman(
       AsymmetricPrivateKey::X448(private),
       AsymmetricPublicKey::X448(public),
     ) => {
-      let mut scalar_bytes = [0u8; 57];
-      scalar_bytes[..56].copy_from_slice(&private[..56]);
-      let scalar = ed448_goldilocks::EdwardsScalar::from_bytes_mod_order(
-        &scalar_bytes.into(),
-      );
-      let point = ed448_goldilocks::MontgomeryPoint(*public);
-      let shared = &point * &scalar;
-      if shared.0.iter().all(|b| *b == 0) {
+      let shared = crrl::x448::x448(public, private);
+      if shared.ct_eq(&X448_IDENTITY).unwrap_u8() == 1 {
         return Err(DiffieHellmanError::FailedDuringDerivation);
       }
-      shared.0.to_vec().into_boxed_slice()
+      shared.to_vec().into_boxed_slice()
     }
     (AsymmetricPrivateKey::Dh(private), AsymmetricPublicKey::Dh(public)) => {
       // Compare DH parameters by integer value, not byte encoding,
@@ -1940,7 +1937,7 @@ pub fn op_node_sign_ed448(
   };
 
   let sig = ed448.sign_raw(data);
-  signature.copy_from_slice(&sig.to_bytes());
+  signature.copy_from_slice(&sig);
 
   Ok(())
 }
@@ -1969,12 +1966,7 @@ pub fn op_node_verify_ed448(
     _ => return Err(VerifyEd448Error::ExpectedEd448PublicKey),
   };
 
-  let sig = match ed448_goldilocks::Signature::from_slice(signature) {
-    Ok(sig) => sig,
-    Err(_) => return Ok(false),
-  };
-
-  Ok(ed448.verify_raw(&sig, data).is_ok())
+  Ok(ed448.verify_raw(signature, data))
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]

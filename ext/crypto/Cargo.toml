@@ -23,10 +23,10 @@ cbc.workspace = true
 const-oid.workspace = true
 ctr.workspace = true
 curve25519-dalek.workspace = true
+crrl.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
 ecdsa.workspace = true
-ed448-goldilocks = { workspace = true }
 elliptic-curve = { workspace = true, features = ["std", "pem", "arithmetic"] }
 hmac.workspace = true
 num-traits.workspace = true
@@ -44,6 +44,7 @@ sha2.workspace = true
 sha3.workspace = true
 signature.workspace = true
 spki.workspace = true
+subtle.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 uuid.workspace = true

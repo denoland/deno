@@ -392,7 +392,7 @@ dsa = "0.6.3"
 ecb = "=0.1.2"
 ecdsa = "0.16.9"
 ed25519-dalek = "2.1.1"
-ed448-goldilocks = "0.14.0-pre.10"
+crrl = { version = "0.9.0", default-features = false, features = ["x448"] }
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
 hkdf = "0.12.3"
 hmac = "0.12.1"

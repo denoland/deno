@@ -87,7 +87,7 @@ pub enum AsymmetricPrivateKey {
   X25519(x25519_dalek::StaticSecret),
   Ed25519(ed25519_dalek::SigningKey),
   X448([u8; 56]),
-  Ed448(ed448_goldilocks::SigningKey),
+  Ed448(crrl::ed448::PrivateKey),
   Dh(DhPrivateKey),
 }
 
@@ -163,7 +163,7 @@ pub enum AsymmetricPublicKey {
   X25519(x25519_dalek::PublicKey),
   Ed25519(ed25519_dalek::VerifyingKey),
   X448([u8; 56]),
-  Ed448(ed448_goldilocks::VerifyingKey),
+  Ed448(crrl::ed448::PublicKey),
   Dh(DhPublicKey),
 }
 
@@ -241,16 +241,10 @@ impl AsymmetricPrivateKey {
         AsymmetricPublicKey::Ed25519(key.verifying_key())
       }
       AsymmetricPrivateKey::X448(key) => {
-        let mut scalar_bytes = [0u8; 57];
-        scalar_bytes[..56].copy_from_slice(&key[..56]);
-        let scalar = ed448_goldilocks::EdwardsScalar::from_bytes_mod_order(
-          &scalar_bytes.into(),
-        );
-        let point = &ed448_goldilocks::MontgomeryPoint::GENERATOR * &scalar;
-        AsymmetricPublicKey::X448(point.0)
+        AsymmetricPublicKey::X448(crrl::x448::x448_base(key))
       }
       AsymmetricPrivateKey::Ed448(key) => {
-        AsymmetricPublicKey::Ed448(key.verifying_key())
+        AsymmetricPublicKey::Ed448(key.public_key)
       }
       AsymmetricPrivateKey::Dh(dh_key) => {
         let prime = num_bigint_dig::BigUint::from_bytes_be(
@@ -385,7 +379,7 @@ impl PartialEq for AsymmetricPublicKey {
       (Self::X25519(a), Self::X25519(b)) => a == b,
       (Self::Ed25519(a), Self::Ed25519(b)) => a == b,
       (Self::X448(a), Self::X448(b)) => a == b,
-      (Self::Ed448(a), Self::Ed448(b)) => a == b,
+      (Self::Ed448(a), Self::Ed448(b)) => a.encode() == b.encode(),
       (Self::Dh(a), Self::Dh(b)) => a == b,
       _ => false,
     }
@@ -405,7 +399,7 @@ impl PartialEq for AsymmetricPrivateKey {
       (Self::X25519(a), Self::X25519(b)) => a.to_bytes() == b.to_bytes(),
       (Self::Ed25519(a), Self::Ed25519(b)) => a.to_bytes() == b.to_bytes(),
       (Self::X448(a), Self::X448(b)) => a == b,
-      (Self::Ed448(a), Self::Ed448(b)) => a == b,
+      (Self::Ed448(a), Self::Ed448(b)) => a.encode() == b.encode(),
       (Self::Dh(a), Self::Dh(b)) => a == b,
       _ => false,
     }
@@ -1140,8 +1134,7 @@ impl KeyObjectHandle {
         }
         let mut seed = [0u8; 57];
         seed.copy_from_slice(key_bytes);
-        let seed = ed448_goldilocks::EdwardsScalarBytes::from(seed);
-        AsymmetricPrivateKey::Ed448(ed448_goldilocks::SigningKey::from(seed))
+        AsymmetricPrivateKey::Ed448(crrl::ed448::PrivateKey::from_seed(&seed))
       }
       DH_KEY_AGREEMENT_OID => {
         let params = pk_info
@@ -1251,8 +1244,8 @@ impl KeyObjectHandle {
             let point_bytes: &[u8; 57] = data
               .try_into()
               .map_err(|_| X509PublicKeyError::InvalidEd448Key)?;
-            let vk = ed448_goldilocks::VerifyingKey::from_bytes(point_bytes)
-              .map_err(|_| X509PublicKeyError::InvalidEd448Key)?;
+            let vk = crrl::ed448::PublicKey::decode(point_bytes)
+              .ok_or(X509PublicKeyError::InvalidEd448Key)?;
             AsymmetricPublicKey::Ed448(vk)
           }
           ID_X448 => {
@@ -1415,17 +1408,16 @@ impl KeyObjectHandle {
         if !is_public {
           let key_bytes: [u8; 57] =
             data.try_into().map_err(|_| EdRawError::InvalidEd448Key)?;
-          let seed = ed448_goldilocks::EdwardsScalarBytes::from(key_bytes);
           Ok(KeyObjectHandle::AsymmetricPrivate(
-            AsymmetricPrivateKey::Ed448(ed448_goldilocks::SigningKey::from(
-              seed,
+            AsymmetricPrivateKey::Ed448(crrl::ed448::PrivateKey::from_seed(
+              &key_bytes,
             )),
           ))
         } else {
           let point_bytes: &[u8; 57] =
             data.try_into().map_err(|_| EdRawError::InvalidEd448Key)?;
-          let vk = ed448_goldilocks::VerifyingKey::from_bytes(point_bytes)
-            .map_err(|_| EdRawError::InvalidEd448Key)?;
+          let vk = crrl::ed448::PublicKey::decode(point_bytes)
+            .ok_or(EdRawError::InvalidEd448Key)?;
           Ok(KeyObjectHandle::AsymmetricPublic(
             AsymmetricPublicKey::Ed448(vk),
           ))
@@ -1634,8 +1626,8 @@ impl KeyObjectHandle {
         let point_bytes: &[u8; 57] = data
           .try_into()
           .map_err(|_| AsymmetricPublicKeyError::InvalidEd448PublicKey)?;
-        let vk = ed448_goldilocks::VerifyingKey::from_bytes(point_bytes)
-          .map_err(|_| AsymmetricPublicKeyError::InvalidEd448PublicKey)?;
+        let vk = crrl::ed448::PublicKey::decode(point_bytes)
+          .ok_or(AsymmetricPublicKeyError::InvalidEd448PublicKey)?;
         AsymmetricPublicKey::Ed448(vk)
       }
       DH_KEY_AGREEMENT_OID => {
@@ -1969,7 +1961,7 @@ impl AsymmetricPublicKey {
         Ok(jwk)
       }
       AsymmetricPublicKey::Ed448(key) => {
-        let bytes = key.to_bytes();
+        let bytes = key.encode();
         let jwk = deno_core::serde_json::json!({
             "kty": "OKP",
             "crv": "Ed448",
@@ -2126,7 +2118,7 @@ impl AsymmetricPublicKey {
               .into_boxed_slice()
           }
           AsymmetricPublicKey::Ed448(key) => {
-            let bytes = key.to_bytes();
+            let bytes = key.encode();
             let spki = SubjectPublicKeyInfoRef {
               algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
                 oid: ED448_OID,
@@ -2290,11 +2282,11 @@ impl AsymmetricPrivateKey {
         }))
       }
       AsymmetricPrivateKey::Ed448(key) => {
-        let bytes = key.to_bytes();
+        let bytes = key.encode();
         let AsymmetricPublicKey::Ed448(x) = self.to_public_key() else {
           unreachable!();
         };
-        let x_bytes = x.to_bytes();
+        let x_bytes = x.encode();
 
         Ok(deno_core::serde_json::json!({
             "crv": "Ed448",
@@ -2453,7 +2445,7 @@ impl AsymmetricPrivateKey {
               .into_boxed_slice()
           }
           AsymmetricPrivateKey::Ed448(key) => {
-            let seed = key.to_bytes();
+            let seed = key.encode();
             let private_key = OctetStringRef::new(&seed)
               .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEd448PrivateKey)?
               .to_der()
@@ -3255,9 +3247,7 @@ pub async fn op_node_generate_x448_key_async() -> KeyObjectHandlePair {
 fn ed448_generate() -> KeyObjectHandlePair {
   let mut seed = [0u8; 57];
   thread_rng().fill_bytes(&mut seed);
-  let signing_key = ed448_goldilocks::SigningKey::from(
-    ed448_goldilocks::EdwardsScalarBytes::from(seed),
-  );
+  let signing_key = crrl::ed448::PrivateKey::from_seed(&seed);
   let private_key = AsymmetricPrivateKey::Ed448(signing_key);
   let public_key = private_key.to_public_key();
   KeyObjectHandlePair::new(private_key, public_key)
