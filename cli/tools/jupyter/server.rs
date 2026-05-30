@@ -283,6 +283,15 @@ impl JupyterServer {
           )
           .await?;
         cancel_handle.cancel();
+        // The Jupyter protocol expects the kernel process to exit
+        // after sending a shutdown reply. Cancelling the server loop
+        // alone is not enough — the heartbeat/shell/stdio tasks and
+        // the worker thread can keep the process alive long after
+        // Jupyter has closed the connection. Brief sleep gives ZMQ a
+        // chance to flush the reply over TCP before we tear the
+        // process down.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        deno_runtime::exit(0);
       }
       JupyterMessageContent::InterruptRequest(_) => {
         isolate_handle.terminate_execution();
