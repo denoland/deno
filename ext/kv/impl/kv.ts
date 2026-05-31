@@ -60,9 +60,7 @@ const {
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSlice,
   Uint8Array,
-  Uint8ArrayFromHex,
   Uint8ArrayPrototype,
-  Uint8ArrayPrototypeToHex,
 } = primordials;
 
 const { ReadableStream } = core.loadExtScript("ext:deno_web/06_streams.js");
@@ -107,6 +105,43 @@ import {
 
 const eqTailRe = new SafeRegExp("=+$");
 const versionstampRe = new SafeRegExp("^[0-9a-f]{20}$");
+
+// ---------------------------------------------------------------------------
+// Hex encoding for versionstamps. `Uint8Array.prototype.toHex` and
+// `Uint8Array.fromHex` are not available in the runtime's V8 build, so we
+// implement the conversions manually.
+// ---------------------------------------------------------------------------
+
+const HEX_CHARS = "0123456789abcdef";
+
+function bytesToHex(bytes: Uint8Array): string {
+  let result = "";
+  const len = TypedArrayPrototypeGetLength(bytes);
+  for (let i = 0; i < len; i++) {
+    result += HEX_CHARS[bytes[i] >> 4] + HEX_CHARS[bytes[i] & 0xf];
+  }
+  return result;
+}
+
+function hexNibble(code: number): number {
+  // '0'-'9'
+  if (code >= 48 && code <= 57) return code - 48;
+  // 'a'-'f'
+  if (code >= 97 && code <= 102) return code - 87;
+  // 'A'-'F'
+  if (code >= 65 && code <= 70) return code - 55;
+  return 0;
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const len = hex.length >> 1;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = (hexNibble(StringPrototypeCharCodeAt(hex, i * 2)) << 4) |
+      hexNibble(StringPrototypeCharCodeAt(hex, i * 2 + 1));
+  }
+  return bytes;
+}
 
 // ---------------------------------------------------------------------------
 // Base64url for cursor encoding (matching the Rust backend)
@@ -620,9 +655,7 @@ class SqliteKvBackend implements KvBackend {
 
           for (let i = 0; i < keys.length; i++) {
             const entry = results[i][0];
-            const vs = entry
-              ? Uint8ArrayPrototypeToHex(entry.versionstamp)
-              : null;
+            const vs = entry ? bytesToHex(entry.versionstamp) : null;
             if (vs !== lastVersionstamps[i]) {
               changed = true;
               lastVersionstamps[i] = vs;
@@ -632,7 +665,7 @@ class SqliteKvBackend implements KvBackend {
               ArrayPrototypePush(entries, {
                 key: decodedKey,
                 value: deserializeRawValue(kvValueToRawValue(entry.value)),
-                versionstamp: Uint8ArrayPrototypeToHex(entry.versionstamp),
+                versionstamp: bytesToHex(entry.versionstamp),
               });
             } else {
               ArrayPrototypePush(entries, {
@@ -826,7 +859,7 @@ class RemoteKvBackend implements KvBackend {
             ArrayPrototypePush(entries, {
               key: decodeKvKeyBytes(kvEntry.key),
               value: deserializeRawValue(kvValueToRawValue(kvEntry.value)),
-              versionstamp: Uint8ArrayPrototypeToHex(kvEntry.versionstamp),
+              versionstamp: bytesToHex(kvEntry.versionstamp),
             });
           } else {
             ArrayPrototypePush(entries, {
@@ -1001,7 +1034,7 @@ class Kv {
     return {
       key: decodeKvKeyBytes(e.key),
       value: deserializeRawValue(kvValueToRawValue(e.value)),
-      versionstamp: Uint8ArrayPrototypeToHex(e.versionstamp),
+      versionstamp: bytesToHex(e.versionstamp),
     };
   }
 
@@ -1040,7 +1073,7 @@ class Kv {
         return {
           key: decodeKvKeyBytes(e.key),
           value: deserializeRawValue(kvValueToRawValue(e.value)),
-          versionstamp: Uint8ArrayPrototypeToHex(e.versionstamp),
+          versionstamp: bytesToHex(e.versionstamp),
         };
       },
     );
@@ -1085,7 +1118,7 @@ class Kv {
     if (!result) throw new TypeError("Failed to set value");
     return {
       ok: true,
-      versionstamp: Uint8ArrayPrototypeToHex(result.versionstamp),
+      versionstamp: bytesToHex(result.versionstamp),
     };
   }
 
@@ -1167,7 +1200,7 @@ class Kv {
         (e: SqliteKvEntry) => ({
           key: decodeKvKeyBytes(e.key),
           value: deserializeRawValue(kvValueToRawValue(e.value)),
-          versionstamp: Uint8ArrayPrototypeToHex(e.versionstamp),
+          versionstamp: bytesToHex(e.versionstamp),
         }),
       );
     };
@@ -1210,7 +1243,7 @@ class Kv {
     if (!result) throw new TypeError("Failed to enqueue value");
     return {
       ok: true,
-      versionstamp: Uint8ArrayPrototypeToHex(result.versionstamp),
+      versionstamp: bytesToHex(result.versionstamp),
     };
   }
 
@@ -1781,7 +1814,7 @@ class AtomicOperation {
         ) {
           throw new TypeError("invalid versionstamp");
         }
-        versionstamp = Uint8ArrayFromHex(check.versionstamp);
+        versionstamp = hexToBytes(check.versionstamp);
       }
       ArrayPrototypePush(encodedChecks, {
         key: check.key,
@@ -1798,7 +1831,7 @@ class AtomicOperation {
     if (!result) return { ok: false };
     return {
       ok: true,
-      versionstamp: Uint8ArrayPrototypeToHex(result.versionstamp),
+      versionstamp: bytesToHex(result.versionstamp),
     };
   }
 
