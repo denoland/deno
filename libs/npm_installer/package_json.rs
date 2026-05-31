@@ -7,6 +7,7 @@ use deno_config::workspace::Workspace;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_package_json::PackageJsonDepWorkspaceReq;
+use deno_semver::SmallStackString;
 use deno_semver::StackString;
 use deno_semver::Version;
 use deno_semver::VersionReq;
@@ -37,6 +38,20 @@ pub struct InstallPatchPkg {
   pub target_dir: PathBuf,
 }
 
+#[derive(Debug)]
+pub enum InstallWorkspacePkgDep {
+  Remote { alias: StackString, req: PackageReq },
+  Workspace { alias: StackString, nv: PackageNv },
+}
+
+#[derive(Debug)]
+pub struct InstallWorkspacePkg {
+  pub nv: PackageNv,
+  pub target_dir: PathBuf,
+  pub scripts: std::collections::HashMap<SmallStackString, String>,
+  pub deps: Vec<InstallWorkspacePkgDep>,
+}
+
 #[derive(Debug, Error, Clone)]
 #[error("Failed to install '{}'\n    at {}", alias, location)]
 pub struct PackageJsonDepValueParseWithLocationError {
@@ -51,7 +66,32 @@ pub struct NpmInstallDepsProvider {
   remote_pkgs: Vec<InstallNpmRemotePkg>,
   local_pkgs: Vec<InstallLocalPkg>,
   patch_pkgs: Vec<InstallPatchPkg>,
+  workspace_pkgs: Vec<InstallWorkspacePkg>,
   pkg_json_dep_errors: Vec<PackageJsonDepValueParseWithLocationError>,
+}
+
+fn package_json_to_lifecycle_nv(
+  pkg_json: &deno_package_json::PackageJson,
+) -> PackageNv {
+  let name = pkg_json
+    .name
+    .as_deref()
+    .map(PackageName::from_str)
+    .unwrap_or_else(|| {
+      PackageName::from_str(
+        pkg_json
+          .dir_path()
+          .file_name()
+          .and_then(|name| name.to_str())
+          .unwrap_or("workspace"),
+      )
+    });
+  let version = pkg_json
+    .version
+    .as_deref()
+    .and_then(|version| Version::parse_from_npm(version).ok())
+    .unwrap_or_else(|| Version::parse_from_npm("0.0.0").unwrap());
+  PackageNv { name, version }
 }
 
 impl NpmInstallDepsProvider {
@@ -68,6 +108,7 @@ impl NpmInstallDepsProvider {
     let mut local_pkgs = Vec::new();
     let mut remote_pkgs = Vec::new();
     let mut patch_pkgs = Vec::new();
+    let mut workspace_pkgs = Vec::new();
     let mut pkg_json_dep_errors = Vec::new();
     let workspace_npm_pkgs = workspace.npm_packages();
 
@@ -249,13 +290,121 @@ impl NpmInstallDepsProvider {
       })
     }
 
+    for pkg_json in workspace.package_jsons() {
+      let nv = package_json_to_lifecycle_nv(pkg_json);
+      let deps = pkg_json.resolve_local_package_json_deps();
+      let empty = Default::default();
+      let dev_deps = if production {
+        &empty
+      } else {
+        &deps.dev_dependencies
+      };
+      let mut pkg_deps =
+        Vec::with_capacity(deps.dependencies.len() + dev_deps.len());
+      for (alias, dep) in deps.dependencies.iter().chain(dev_deps.iter()) {
+        let dep = match dep {
+          Ok(dep) => dep,
+          Err(_) => continue,
+        };
+        match dep {
+          PackageJsonDepValue::Req(pkg_req) => {
+            if skip_types && pkg_req.name.starts_with("@types/") {
+              continue;
+            }
+            let workspace_dep = workspace_npm_pkgs.iter().find(|pkg| {
+              pkg.matches_req(pkg_req) && pkg.pkg_json.path != pkg_json.path
+            });
+            if let Some(pkg) = workspace_dep {
+              pkg_deps.push(InstallWorkspacePkgDep::Workspace {
+                alias: alias.clone(),
+                nv: pkg.nv.clone(),
+              });
+            } else {
+              pkg_deps.push(InstallWorkspacePkgDep::Remote {
+                alias: alias.clone(),
+                req: pkg_req.clone(),
+              });
+            }
+          }
+          PackageJsonDepValue::Workspace(workspace_version_req) => {
+            let version_req = match workspace_version_req {
+              PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
+                version_req.clone()
+              }
+              PackageJsonDepWorkspaceReq::Tilde
+              | PackageJsonDepWorkspaceReq::Caret => {
+                VersionReq::parse_from_npm("*").unwrap()
+              }
+            };
+            if let Some(pkg) = workspace_npm_pkgs
+              .iter()
+              .find(|pkg| pkg.matches_name_and_version_req(alias, &version_req))
+            {
+              pkg_deps.push(InstallWorkspacePkgDep::Workspace {
+                alias: alias.clone(),
+                nv: pkg.nv.clone(),
+              });
+            }
+          }
+          PackageJsonDepValue::Catalog(catalog_name) => {
+            let catalogs = workspace.catalogs();
+            if let Some(catalog) = catalogs.get(catalog_name.as_str())
+              && let Some(version_req_str) = catalog.get(alias.as_str())
+              && let Ok(version_req) =
+                VersionReq::parse_from_npm(version_req_str)
+            {
+              let pkg_req = PackageReq {
+                name: alias.clone(),
+                version_req,
+              };
+              let workspace_dep = workspace_npm_pkgs.iter().find(|pkg| {
+                pkg.matches_req(&pkg_req) && pkg.pkg_json.path != pkg_json.path
+              });
+              if let Some(pkg) = workspace_dep {
+                pkg_deps.push(InstallWorkspacePkgDep::Workspace {
+                  alias: alias.clone(),
+                  nv: pkg.nv.clone(),
+                });
+              } else {
+                pkg_deps.push(InstallWorkspacePkgDep::Remote {
+                  alias: alias.clone(),
+                  req: pkg_req,
+                });
+              }
+            }
+          }
+          PackageJsonDepValue::File(_) => {}
+        }
+      }
+
+      workspace_pkgs.push(InstallWorkspacePkg {
+        nv,
+        target_dir: pkg_json.dir_path().to_path_buf(),
+        scripts: pkg_json
+          .scripts
+          .as_ref()
+          .map(|scripts| {
+            scripts
+              .iter()
+              .map(|(key, value)| {
+                (SmallStackString::from_str(key), value.clone())
+              })
+              .collect()
+          })
+          .unwrap_or_default(),
+        deps: pkg_deps,
+      });
+    }
+
     remote_pkgs.shrink_to_fit();
     local_pkgs.shrink_to_fit();
     patch_pkgs.shrink_to_fit();
+    workspace_pkgs.shrink_to_fit();
     Self {
       remote_pkgs,
       local_pkgs,
       patch_pkgs,
+      workspace_pkgs,
       pkg_json_dep_errors,
     }
   }
@@ -270,6 +419,10 @@ impl NpmInstallDepsProvider {
 
   pub fn patch_pkgs(&self) -> &[InstallPatchPkg] {
     &self.patch_pkgs
+  }
+
+  pub fn workspace_pkgs(&self) -> &[InstallWorkspacePkg] {
+    &self.workspace_pkgs
   }
 
   pub fn pkg_json_dep_errors(

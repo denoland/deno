@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "postinstall": {
+      "steps": [
+        {
+          "args": "install --allow-scripts",
+          "output": "install.out"
+        },
+        {
+          "args": "eval \"console.log(Deno.readTextFileSync('foo/postinstall.txt'))\"",
+          "output": "postinstall.out"
+        }
+      ]
+    }
+  }
+}

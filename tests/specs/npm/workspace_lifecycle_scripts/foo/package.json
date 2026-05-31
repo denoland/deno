@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "postinstall": "node -e \"require('fs').writeFileSync('postinstall.txt', 'postinstall')\""
+  },
+  "dependencies": {
+    "preact": "^10.23.2"
+  }
+}
