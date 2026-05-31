@@ -1,3 +1,4 @@
 {
-  "workspace": ["./foo"]
+  "workspace": ["./foo"],
+  "nodeModulesDir": "auto"
 }
