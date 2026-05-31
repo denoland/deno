@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "add npm:@denotest/bin",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run -A cli-esm hello",
+      "output": "run_local.out"
+    },
+    {
+      "args": "run -A cli-cjs hello",
+      "output": "run_local.out"
+    }
+  ]
+}

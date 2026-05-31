@@ -16,6 +16,7 @@ use deno_path_util::resolve_url_or_path;
 use deno_runtime::WorkerExecutionMode;
 use deno_semver::npm::NpmPackageReqReference;
 
+use crate::args::DenoSubcommand;
 use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::args::RunFlags;
@@ -152,6 +153,82 @@ async fn is_npm_native_bin(
   )
 }
 
+/// Determines if the given script string is a bare command name that could
+/// match a `node_modules/.bin/<name>` entry. Returns the name to look up, or
+/// `None` if it should not be intercepted.
+fn bare_command_name(script: &str) -> Option<&str> {
+  if script.is_empty() || script == "-" {
+    return None;
+  }
+  if script.contains('/') || script.contains('\\') || script.contains(':') {
+    return None;
+  }
+  if std::path::Path::new(script).extension().is_some() {
+    return None;
+  }
+  Some(script)
+}
+
+/// If the user invoked `deno run <bare-name>` and `<bare-name>` doesn't
+/// correspond to an existing file but matches an entry in the project's
+/// `node_modules/.bin` directory, spawn that bin entry and return its exit
+/// code. Returns `Ok(None)` to let the caller fall through to the normal JS
+/// module loading path.
+async fn try_run_local_npm_bin(
+  factory: &CliFactory,
+  flags: &Flags,
+  main_module: &ModuleSpecifier,
+) -> Result<Option<i32>, AnyError> {
+  let DenoSubcommand::Run(run_flags) = &flags.subcommand else {
+    return Ok(None);
+  };
+  let Some(bin_name) = bare_command_name(&run_flags.script) else {
+    return Ok(None);
+  };
+  // Only intercept when the main module is a file URL that doesn't exist —
+  // never shadow a real file on disk with a bin lookup.
+  if main_module.scheme() != "file" {
+    return Ok(None);
+  }
+  if let Ok(path) = deno_path_util::url_to_file_path(main_module)
+    && path.exists()
+  {
+    return Ok(None);
+  }
+
+  let npm_resolver = factory.npm_resolver().await?;
+  let node_resolver = factory.node_resolver().await?;
+  let bins = match crate::tools::x::resolve_local_bins(
+    node_resolver,
+    npm_resolver,
+    factory,
+  )
+  .await
+  {
+    Ok(bins) => bins,
+    Err(_) => return Ok(None),
+  };
+  // Only match an exact bin name — never the single-bin / scoped-name
+  // fallbacks that `find_bin_value` applies for `deno x` and `npm:` resolution.
+  // `deno run web-test-runner` must run exactly `node_modules/.bin/web-test-runner`,
+  // not "the only bin that happens to be installed".
+  let Some(bin_value) = bins.get(bin_name).cloned() else {
+    return Ok(None);
+  };
+
+  let cli_options = factory.cli_options()?;
+  let unstable_args = cli_options.unstable_args();
+  let npm_process_state = crate::tools::x::get_npm_process_state(npm_resolver);
+  let exit_code = crate::tools::x::run_bin_value(
+    factory,
+    flags,
+    bin_value,
+    npm_process_state,
+    &unstable_args,
+  )?;
+  Ok(Some(exit_code))
+}
+
 fn is_native_binary(path: &std::path::Path) -> bool {
   let Ok(mut file) = std::fs::File::open(path) else {
     return false;
@@ -210,6 +287,12 @@ pub async fn run_script(
 
   if let Some(exit_code) =
     try_run_npm_bin_executable(&factory, &flags, main_module).await?
+  {
+    return Ok(exit_code);
+  }
+
+  if let Some(exit_code) =
+    try_run_local_npm_bin(&factory, &flags, main_module).await?
   {
     return Ok(exit_code);
   }

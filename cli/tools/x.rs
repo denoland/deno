@@ -30,14 +30,16 @@ use crate::util::console::confirm;
 use crate::util::draw_thread::DrawThread;
 use crate::util::fs::canonicalize_path;
 
-async fn resolve_local_bins(
+pub(crate) async fn resolve_local_bins(
   node_resolver: &CliNodeResolver,
   npm_resolver: &CliNpmResolver,
   factory: &CliFactory,
 ) -> Result<BTreeMap<String, BinValue>, AnyError> {
   match &npm_resolver {
     deno_resolver::npm::NpmResolver::Byonm(npm_resolver) => {
-      let node_modules_dir = npm_resolver.root_node_modules_path().unwrap();
+      let Some(node_modules_dir) = npm_resolver.root_node_modules_path() else {
+        return Ok(BTreeMap::new());
+      };
       let bin_dir = node_modules_dir.join(".bin");
       Ok(node_resolver.resolve_npm_commands_from_bin_dir(&bin_dir))
     }
