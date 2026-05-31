@@ -2266,6 +2266,7 @@ pub fn clap_root() -> Command {
         .action(ArgAction::SetTrue)
         .global(true),
     )
+    .args(node_compat_no_op_args())
     .subcommand(run_subcommand())
     .subcommand(serve_subcommand())
     .defer(|cmd| {
@@ -5922,6 +5923,27 @@ fn cached_only_arg() -> Arg {
     .action(ArgAction::SetTrue)
     .help("Require that remote dependencies are already cached")
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
+}
+
+/// Node.js CLI flags that Deno accepts silently as no-ops because the
+/// behavior they gate in Node is the default in Deno (e.g. `vm.Module` is
+/// always available, so `--experimental-vm-modules` has nothing to enable).
+///
+/// Surface area exists so that `deno run --experimental-vm-modules script.js`
+/// — common in Node-targeted scripts, shebangs and bin wrappers — does not
+/// fail clap parsing at the top level. The child_process polyfill handles
+/// the same flags when Deno is re-invoked as `process.execPath` by a Node
+/// program; this list covers the cases where Deno itself is the entry point.
+const NODE_COMPAT_NO_OP_FLAGS: &[&str] = &["experimental-vm-modules"];
+
+fn node_compat_no_op_args() -> impl IntoIterator<Item = Arg> {
+  NODE_COMPAT_NO_OP_FLAGS.iter().map(|name| {
+    Arg::new(*name)
+      .long(*name)
+      .action(ArgAction::SetTrue)
+      .hide(true)
+      .global(true)
+  })
 }
 
 /// Used for subcommands that operate on executable scripts only.
@@ -16419,6 +16441,29 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
     set_test_node_options(None);
     assert_eq!(flags.require, vec!["known.js"]);
+  }
+
+  // Regression for https://github.com/denoland/deno/issues/29917 — the flag
+  // is meaningful in Node (gates vm.Module) but a no-op in Deno where
+  // vm.Module is always available; we accept it silently rather than crash.
+  #[test]
+  fn experimental_vm_modules_is_accepted_as_no_op() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--experimental-vm-modules",
+      "script.ts",
+    ])
+    .unwrap();
+    assert!(matches!(r.subcommand, DenoSubcommand::Run(_)));
+    let r = flags_from_vec(svec![
+      "deno",
+      "--experimental-vm-modules",
+      "run",
+      "script.ts",
+    ])
+    .unwrap();
+    assert!(matches!(r.subcommand, DenoSubcommand::Run(_)));
   }
 
   #[test]
