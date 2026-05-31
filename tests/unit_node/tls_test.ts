@@ -1266,7 +1266,7 @@ Deno.test("tls.Server allows attaching 'resumeSession' listener (stub)", async (
   });
   // Just verify attaching the listener doesn't throw or break the server.
   server.on("resumeSession", (_id, cb) => {
-    cb();
+    cb(null, null);
   });
   server.listen(0, "127.0.0.1");
   await new Promise<void>((r) => server.once("listening", () => r()));
