@@ -11,6 +11,7 @@ import {
   // for `import.meta.filename` and `import.meta.dirname` that Deno
   // provides.
   register,
+  syncBuiltinESMExports,
 } from "node:module";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import process from "node:process";
@@ -122,6 +123,12 @@ Deno.test("[node/module] Module.register and Module.registerHooks are exposed", 
   assertEquals(typeof Module.registerHooks, "function");
   // @ts-ignore Stub returns undefined.
   assertEquals(Module.register("foo"), undefined);
+});
+
+Deno.test("[node/module syncBuiltinESMExports] is exposed", () => {
+  assertEquals(typeof syncBuiltinESMExports, "function");
+  assertEquals(syncBuiltinESMExports(), undefined);
+  assertEquals(Module.syncBuiltinESMExports, syncBuiltinESMExports);
 });
 
 Deno.test("[node/module] overriding Module._compile is possible and Node globals work", () => {
