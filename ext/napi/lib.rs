@@ -673,10 +673,17 @@ static NAPI_LOADED_MODULES: std::sync::LazyLock<
 /// unavailable, the addon will fail to load just as it does today, but
 /// most distributions ship a usable libcrypto/libssl.
 ///
-/// This is a no-op on Windows: addons there are expected to link against
-/// `node.lib` and resolve OpenSSL symbols at link time, which cannot be
-/// fixed up via `LoadLibrary`.
-#[cfg(unix)]
+/// This is a no-op on macOS and Windows:
+/// * macOS native addons are typically linked with
+///   `-undefined dynamic_lookup`, so they resolve symbols from the host
+///   process rather than a globally-loaded library. Worse,
+///   `dlopen("libcrypto.dylib", …)` resolves to the SIP-protected stub
+///   in `/usr/lib`, which causes dyld to print
+///   "is loading libcrypto in an unsafe way" to stderr and may abort
+///   the process.
+/// * Windows addons resolve OpenSSL symbols at link time against
+///   `node.lib`, which cannot be fixed up via `LoadLibrary`.
+#[cfg(all(unix, not(target_os = "macos")))]
 fn preload_compat_libraries() {
   static PRELOAD: std::sync::Once = std::sync::Once::new();
   PRELOAD.call_once(|| {
@@ -685,23 +692,6 @@ fn preload_compat_libraries() {
     // successfully per family, but always try every family so a system
     // that has, say, libcrypto without libssl still gets the libcrypto
     // symbols.
-    #[cfg(target_os = "macos")]
-    let families: &[&[&str]] = &[
-      &[
-        "libcrypto.3.dylib",
-        "libcrypto.1.1.dylib",
-        "libcrypto.1.0.0.dylib",
-        "libcrypto.dylib",
-      ],
-      &[
-        "libssl.3.dylib",
-        "libssl.1.1.dylib",
-        "libssl.1.0.0.dylib",
-        "libssl.dylib",
-      ],
-    ];
-
-    #[cfg(not(target_os = "macos"))]
     let families: &[&[&str]] = &[
       &[
         "libcrypto.so.3",
@@ -733,7 +723,7 @@ fn preload_compat_libraries() {
   });
 }
 
-#[cfg(not(unix))]
+#[cfg(any(not(unix), target_os = "macos"))]
 fn preload_compat_libraries() {}
 
 #[op2(reentrant, stack_trace)]

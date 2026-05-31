@@ -14,8 +14,13 @@ const noop = () => {};
 // asserts the load succeeds.
 //
 // See: https://github.com/denoland/deno/issues/31730
+//
+// The shim is Linux/BSD-only. macOS native addons typically link with
+// `-undefined dynamic_lookup` and resolve symbols from the host process;
+// `dlopen`ing the SIP-protected `libcrypto.dylib` would emit a warning
+// and may abort the process. Windows uses a different linkage model.
 Deno.test("native addon can resolve OpenSSL symbols", {
-  ignore: Deno.build.os === "windows",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "darwin",
 }, function () {
   const path = new URL(`./module_openssl.${libSuffix}`, import.meta.url)
     .pathname;
