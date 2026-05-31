@@ -405,9 +405,11 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
 
   function failUnexpectedEnd() {
     if (!waitingForTunnelResponse || settled) return;
-    fail(new ERR_PROXY_TUNNEL(
-      "Connection to establish proxy tunnel ended unexpectedly",
-    ));
+    fail(
+      new ERR_PROXY_TUNNEL(
+        "Connection to establish proxy tunnel ended unexpectedly",
+      ),
+    );
   }
 
   function onProxyReady() {
@@ -454,9 +456,11 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
       const statusLine = headerStr.split("\r\n", 1)[0];
       const m = /^HTTP\/1\.\d\s+(\d{3})/.exec(statusLine);
       if (!m) {
-        fail(new ERR_PROXY_TUNNEL(
-          `Failed to establish tunnel to ${hostHeader} over ${proxy.protocol}//${proxy.hostname}:${proxy.port}: ${statusLine}`,
-        ));
+        fail(
+          new ERR_PROXY_TUNNEL(
+            `Failed to establish tunnel to ${hostHeader} over ${proxy.protocol}//${proxy.hostname}:${proxy.port}: ${statusLine}`,
+          ),
+        );
         return;
       }
       const statusCode = Number(m[1]);
