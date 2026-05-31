@@ -14,6 +14,7 @@ import {
   op_module_hooks_respond_load,
   op_napi_open,
   op_node_has_child_ipc_pipe,
+  op_node_strip_typescript_types,
   op_require_as_file_path,
   op_require_break_on_next_statement,
   op_require_can_parse_as_esm,
@@ -81,6 +82,7 @@ const {
   StringPrototypeSlice,
   StringPrototypeSplit,
   StringPrototypeStartsWith,
+  SyntaxError,
   TypeError,
 } = primordials;
 
@@ -3111,6 +3113,81 @@ export function findSourceMap(path) {
 
 Module.findSourceMap = findSourceMap;
 Module.SourceMap = SourceMap;
+
+/**
+ * @param {string} code
+ * @param {{ mode?: "strip" | "transform", sourceMap?: boolean, sourceUrl?: string }} [options]
+ * @returns {string}
+ */
+export function stripTypeScriptTypes(code, options = undefined) {
+  if (typeof code !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("code", "string", code);
+  }
+  if (
+    options !== undefined &&
+    (typeof options !== "object" || options === null)
+  ) {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("options", "object", options);
+  }
+
+  const mode = options?.mode ?? "strip";
+  if (mode !== "strip" && mode !== "transform") {
+    throw new internalErrors.ERR_INVALID_ARG_VALUE(
+      "options.mode",
+      mode,
+      "must be one of: 'strip', 'transform'",
+    );
+  }
+
+  if (
+    options?.sourceMap !== undefined &&
+    typeof options.sourceMap !== "boolean"
+  ) {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(
+      "options.sourceMap",
+      "boolean",
+      options.sourceMap,
+    );
+  }
+  if (
+    options?.sourceUrl !== undefined &&
+    typeof options.sourceUrl !== "string"
+  ) {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(
+      "options.sourceUrl",
+      "string",
+      options.sourceUrl,
+    );
+  }
+
+  const sourceMap = options?.sourceMap === true;
+  if (mode === "strip" && sourceMap) {
+    throw new internalErrors.ERR_INVALID_ARG_VALUE(
+      "options.sourceMap",
+      sourceMap,
+      "must be one of: false, undefined",
+    );
+  }
+
+  let result;
+  try {
+    result = op_node_strip_typescript_types(code, mode, sourceMap);
+  } catch (err) {
+    if (mode === "strip") {
+      const syntaxError = new SyntaxError(err.message);
+      syntaxError.code = "ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX";
+      throw syntaxError;
+    }
+    throw err;
+  }
+
+  if (!sourceMap && options?.sourceUrl !== undefined) {
+    result += `\n\n//# sourceURL=${options.sourceUrl}`;
+  }
+  return result;
+}
+
+Module.stripTypeScriptTypes = stripTypeScriptTypes;
 
 /**
  * @param {string | URL} _specifier
