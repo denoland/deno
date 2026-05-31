@@ -145,7 +145,8 @@ impl FileSystem for DenoRtSys {
       // inside the embedded virtual file system, but applications (e.g.
       // Next.js standalone builds) commonly chdir into their own directory.
       // Verify the target exists and is a directory in the VFS and treat the
-      // change as a no-op rather than failing with NotSupported.
+      // change as a no-op rather than failing with NotSupported. Note that
+      // Deno.cwd() still reports the previous (real) working directory.
       if self.vfs.stat(path)?.as_fs_stat().is_directory {
         Ok(())
       } else {

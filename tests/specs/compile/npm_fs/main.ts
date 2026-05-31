@@ -82,6 +82,11 @@ assert.throws(
   () => Deno.chdir(vfsPackageJsonPath),
   Deno.errors.NotADirectory,
 );
+// chdir into a non-existent VFS path still fails
+assert.throws(
+  () => Deno.chdir(path.join(dirPath, "nonexistent")),
+  Deno.errors.NotFound,
+);
 
 // mkdir
 assert.throws(
