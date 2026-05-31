@@ -6,6 +6,7 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::PackageJsonResolverRc;
 use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageJsonLoadError;
+use serde_json::Value;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use url::Url;
@@ -199,9 +200,14 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
       MediaType::Mts | MediaType::Mjs | MediaType::Dmts => ResolutionMode::Import,
       MediaType::Cjs | MediaType::Cts | MediaType::Dcts => ResolutionMode::Require,
       MediaType::Dts => {
-        // dts files are always determined based on the package.json because
-        // they contain imports/exports even when considered CJS
-        self.check_based_on_pkg_json(specifier).unwrap_or(ResolutionMode::Import)
+        // If the .d.ts file's content uses TypeScript-only CJS syntax such as
+        // `export =` or `import x = require(...)`, it must be treated as CJS.
+        if is_script == Some(true) {
+          return ResolutionMode::Require;
+        }
+        self
+          .check_dts_based_on_pkg_json(specifier)
+          .unwrap_or(ResolutionMode::Import)
       }
       MediaType::Wasm |
       MediaType::Json => ResolutionMode::Import,
@@ -242,12 +248,29 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
       MediaType::Mts | MediaType::Mjs | MediaType::Dmts => Some(ResolutionMode::Import),
       MediaType::Cjs | MediaType::Cts | MediaType::Dcts => Some(ResolutionMode::Require),
       MediaType::Dts => {
-        // dts files are always determined based on the package.json because
-        // they contain imports/exports even when considered CJS
+        // If the .d.ts file's content uses TypeScript-only CJS syntax such as
+        // `export =` or `import x = require(...)`, it must be treated as CJS
+        // regardless of the surrounding package.json.
+        if is_script == Some(true) {
+          known_cache.insert(specifier.clone(), ResolutionMode::Require);
+          return Some(ResolutionMode::Require);
+        }
         if let Some(value) = known_cache.get(specifier).map(|v| *v) {
-          Some(value)
+          if value == ResolutionMode::Require && is_script == Some(false) {
+            // Previously marked as CJS based on package.json, but we now know
+            // the content has no CJS-only syntax. Re-check using `is_script`
+            // so packages with shared types and `exports.import` are treated
+            // as ESM (issue #28071).
+            let new_value = self
+              .check_dts_based_on_pkg_json(specifier)
+              .unwrap_or(ResolutionMode::Import);
+            known_cache.insert(specifier.clone(), new_value);
+            Some(new_value)
+          } else {
+            Some(value)
+          }
         } else {
-          let value = self.check_based_on_pkg_json(specifier).ok();
+          let value = self.check_dts_based_on_pkg_json(specifier).ok();
           if let Some(value) = value {
             known_cache.insert(specifier.clone(), value);
           }
@@ -290,6 +313,39 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
         }
       }
     }
+  }
+
+  /// Like [`check_based_on_pkg_json`] but for `.d.ts` files in npm packages.
+  ///
+  /// In addition to the standard `"type"` field check, this also treats the
+  /// `.d.ts` as ESM when the package opts into ESM via an `"import"`
+  /// condition in its `exports` map. Many packages (e.g. `@rollup/plugin-replace`)
+  /// publish a single `.d.ts` shared between the `import` and `require`
+  /// conditions and rely on consumers using ESM syntax. Treating those `.d.ts`
+  /// files as CJS causes `import x from "pkg"` to be typed as the namespace
+  /// rather than the default export. See issue #28071.
+  fn check_dts_based_on_pkg_json(
+    &self,
+    specifier: &Url,
+  ) -> Result<ResolutionMode, PackageJsonLoadError> {
+    if self.in_npm_pkg_checker.in_npm_package(specifier) {
+      let Ok(path) = deno_path_util::url_to_file_path(specifier) else {
+        return Ok(ResolutionMode::Require);
+      };
+      if let Some(pkg_json) =
+        self.pkg_json_resolver.get_closest_package_json(&path)?
+      {
+        if pkg_json.typ == "module" {
+          return Ok(ResolutionMode::Import);
+        }
+        if let Some(exports) = pkg_json.exports.as_ref()
+          && exports_has_import_condition(exports)
+        {
+          return Ok(ResolutionMode::Import);
+        }
+      }
+    }
+    self.check_based_on_pkg_json(specifier)
   }
 
   fn check_based_on_pkg_json(
@@ -335,5 +391,67 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
     } else {
       Ok(ResolutionMode::Import)
     }
+  }
+}
+
+/// Returns true if the given package `exports` value contains an `"import"`
+/// condition anywhere in the (possibly nested) condition map. This is used as
+/// a hint that the package supports ESM at runtime, in which case its `.d.ts`
+/// files should be treated as ESM by the type checker.
+fn exports_has_import_condition(
+  exports: &serde_json::Map<String, Value>,
+) -> bool {
+  fn value_has_import_condition(value: &Value) -> bool {
+    match value {
+      Value::Object(map) => map_has_import_condition(map),
+      Value::Array(arr) => arr.iter().any(value_has_import_condition),
+      _ => false,
+    }
+  }
+  fn map_has_import_condition(map: &serde_json::Map<String, Value>) -> bool {
+    for (key, v) in map {
+      if key == "import" {
+        // ignore null targets, which the exports algorithm treats as
+        // "no resolution".
+        if !v.is_null() {
+          return true;
+        }
+      } else if value_has_import_condition(v) {
+        return true;
+      }
+    }
+    false
+  }
+  map_has_import_condition(exports)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn parse(json: &str) -> serde_json::Map<String, Value> {
+    serde_json::from_str(json).unwrap()
+  }
+
+  #[test]
+  fn exports_with_import_condition() {
+    assert!(exports_has_import_condition(&parse(
+      r#"{"types": "./types/index.d.ts", "import": "./dist/es/index.js", "default": "./dist/cjs/index.js"}"#
+    )));
+    assert!(exports_has_import_condition(&parse(
+      r#"{".": {"import": "./dist/es/index.js", "require": "./dist/cjs/index.js"}}"#
+    )));
+    assert!(exports_has_import_condition(&parse(
+      r#"{".": {"node": {"import": "./dist/es/index.js"}}}"#
+    )));
+    assert!(!exports_has_import_condition(&parse(
+      r#"{".": {"require": "./dist/cjs/index.js", "default": "./dist/cjs/index.js"}}"#
+    )));
+    assert!(!exports_has_import_condition(&parse(
+      r#"{".": "./dist/cjs/index.js"}"#
+    )));
+    assert!(!exports_has_import_condition(&parse(
+      r#"{".": {"import": null, "require": "./dist/cjs/index.js"}}"#
+    )));
   }
 }
