@@ -200,9 +200,16 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
       MediaType::Mts | MediaType::Mjs | MediaType::Dmts => ResolutionMode::Import,
       MediaType::Cjs | MediaType::Cts | MediaType::Dcts => ResolutionMode::Require,
       MediaType::Dts => {
-        // If the .d.ts file's content uses TypeScript-only CJS syntax such as
-        // `export =` or `import x = require(...)`, it must be treated as CJS.
-        if is_script == Some(true) {
+        // Inside npm packages, the .d.ts content can override the package.json
+        // signal: if it uses TypeScript-only CJS syntax (`export =` etc.) it
+        // is CJS; if it uses ESM-style syntax it may be ESM even when the
+        // package.json has no `"type": "module"` (issue #28071). Outside of
+        // npm packages, keep the previous behavior of trusting the
+        // package.json so local `.d.ts` files (e.g. shimmed via
+        // `@deno-types`) are not affected.
+        if self.in_npm_pkg_checker.in_npm_package(specifier)
+          && is_script == Some(true)
+        {
           return ResolutionMode::Require;
         }
         self
@@ -248,15 +255,20 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
       MediaType::Mts | MediaType::Mjs | MediaType::Dmts => Some(ResolutionMode::Import),
       MediaType::Cjs | MediaType::Cts | MediaType::Dcts => Some(ResolutionMode::Require),
       MediaType::Dts => {
-        // If the .d.ts file's content uses TypeScript-only CJS syntax such as
-        // `export =` or `import x = require(...)`, it must be treated as CJS
-        // regardless of the surrounding package.json.
-        if is_script == Some(true) {
+        // Inside npm packages, the .d.ts content can override the package.json
+        // signal — see `get_lsp_resolution_mode`. Outside npm packages, keep
+        // the previous behavior of trusting the package.json so local .d.ts
+        // files (e.g. shimmed via `@deno-types`) are not affected.
+        let in_npm = self.in_npm_pkg_checker.in_npm_package(specifier);
+        if in_npm && is_script == Some(true) {
           known_cache.insert(specifier.clone(), ResolutionMode::Require);
           return Some(ResolutionMode::Require);
         }
         if let Some(value) = known_cache.get(specifier).map(|v| *v) {
-          if value == ResolutionMode::Require && is_script == Some(false) {
+          if in_npm
+            && value == ResolutionMode::Require
+            && is_script == Some(false)
+          {
             // Previously marked as CJS based on package.json, but we now know
             // the content has no CJS-only syntax. Re-check using `is_script`
             // so packages with shared types and `exports.import` are treated
