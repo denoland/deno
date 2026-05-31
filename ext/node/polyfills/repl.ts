@@ -287,6 +287,19 @@ function isObjectLiteral(code: string): boolean {
   return trimmed.startsWith("{") && !trimmed.startsWith("{\\");
 }
 
+interface PreviewSession {
+  isSafe(expression: string): boolean;
+  close(): void;
+}
+
+// The actual implementation lives in an IIFE-loaded script so it can
+// see the snapshot-time `core.ops` capture -- ES-module polyfills like
+// this file only see the post-`removeImportedOps` view, which doesn't
+// include `op_node_repl_inspector_connect`. See `_repl_preview.js`.
+const { createPreviewSession: _createPreviewSession } = core.loadExtScript(
+  "ext:deno_node/_repl_preview.js",
+) as { createPreviewSession(): PreviewSession | null };
+
 /**
  * Check if a syntax error is recoverable (i.e., the user might continue typing).
  */
@@ -534,16 +547,24 @@ export class REPLServer extends (Interface as any) {
       options.terminal = !!(options.output as { isTTY?: boolean })?.isTTY;
     }
     options.terminal = !!options.terminal;
-    // The preview re-runs the typed input via `vm.Script` on every
-    // keystroke. Node guards this with the V8 inspector's
-    // `throwOnSideEffect`; we don't have that wired up yet, so the
-    // preview path will visibly fire side effects (e.g. typing the
-    // closing paren of `console.log("hi")` prints "hi" before Enter).
-    // Disable preview whenever a custom eval is supplied -- consumers
-    // like `@babel/node` set `preview: true` explicitly and hit this
-    // bug. See: https://github.com/denoland/deno/issues/34360
-    const usePreview = !!options.terminal && !eval_ &&
-      options.preview !== false;
+    // The preview re-runs the typed input on every keystroke. To match
+    // Node's behavior and avoid visibly firing side effects (e.g. typing
+    // the closing paren of `console.log("hi")` printing "hi" before
+    // Enter), the preview path is gated by the V8 inspector's
+    // `Runtime.evaluate({ throwOnSideEffect: true })` -- see
+    // `_createPreviewSession`. If the inspector probe isn't available
+    // (`previewSession` ends up null below), preview stays off rather
+    // than falling back to an unprotected `vm.Script` eval.
+    // See: https://github.com/denoland/deno/issues/34360
+    //
+    // The `preview` default matches Node: off when a custom `eval` is
+    // supplied (consumers like `@babel/node` get clean output), on
+    // otherwise. A consumer that wants previews with a custom eval can
+    // pass `preview: true` explicitly.
+    const previewRequested = !!options.terminal &&
+      (options.preview !== undefined ? !!options.preview : !eval_);
+    const previewSession = previewRequested ? _createPreviewSession() : null;
+    const usePreview = previewSession !== null;
 
     if (options.terminal && options.useColors === undefined) {
       options.useColors = _shouldColorize(options.output);
@@ -1136,18 +1157,26 @@ export class REPLServer extends (Interface as any) {
         previewLine += completionPreview;
       }
 
-      // Use vm.Script with a timeout for preview evaluation to avoid
-      // hanging on infinite loops (e.g. `while(true){}`).
+      let previewCode = previewLine + "\n";
+      // Apply object literal wrapping for preview too
+      if (
+        isObjectLiteral(previewCode) &&
+        !/;\s*$/.test(previewCode.trim())
+      ) {
+        previewCode = `(${previewCode.trim()})\n`;
+      }
+
+      // Probe via the inspector first: if v8 reports a side effect
+      // (or a syntax/reference error / runtime throw / timeout), don't
+      // preview. This is what stops typed input like `console.log("hi")`
+      // from printing "hi" before the user presses Enter.
+      if (!previewSession!.isSafe(previewCode)) return;
+
+      // Probe passed -- safe to evaluate normally for the actual value
+      // so `inspect()` below sees the real JS object (with prototype,
+      // class info, getters, etc.) rather than the CDP wire shape.
       let result;
       try {
-        let previewCode = previewLine + "\n";
-        // Apply object literal wrapping for preview too
-        if (
-          isObjectLiteral(previewCode) &&
-          !/;\s*$/.test(previewCode.trim())
-        ) {
-          previewCode = `(${previewCode.trim()})\n`;
-        }
         const script = new vm.Script(previewCode, { filename: "repl" });
         if (self.useGlobal) {
           result = script.runInThisContext({
@@ -1161,7 +1190,9 @@ export class REPLServer extends (Interface as any) {
           });
         }
       } catch {
-        // Timeout, syntax error, or runtime error - no preview
+        // Probe says safe but the actual eval threw -- e.g. the probe
+        // ran against globalThis and the expression references a REPL
+        // var that only exists in `self.context`. Silently skip.
         return;
       }
 
@@ -1296,6 +1327,11 @@ export class REPLServer extends (Interface as any) {
       if (paused) {
         pausedBuffer.push(["close"]);
         return;
+      }
+      if (previewSession !== null) {
+        try {
+          previewSession.close();
+        } catch { /* ignore */ }
       }
       self.emit("exit");
     });
