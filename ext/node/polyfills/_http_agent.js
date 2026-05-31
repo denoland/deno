@@ -5,8 +5,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
+import { op_get_env_no_permission_check } from "ext:core/ops";
 import * as net from "node:net";
 import httpProxy from "node:_http_proxy";
+const lazyTls = core.createLazyLoader("node:tls");
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const { debuglog } = core.loadExtScript(
   "ext:deno_node/internal/util/debuglog.ts",
@@ -277,6 +279,16 @@ Agent.prototype.createConnection = function createConnection(options, cb) {
     delete connectOpts._proxyTargetHost;
     delete connectOpts._proxyTargetPort;
     delete connectOpts._proxyProtocol;
+    if (proxy.protocol === "https:") {
+      connectOpts.servername = proxy.hostname;
+      if (
+        connectOpts.ca === undefined &&
+        op_get_env_no_permission_check("NODE_EXTRA_CA_CERTS")
+      ) {
+        connectOpts.ca = lazyTls().default.getCACertificates("default");
+      }
+      return lazyTls().default.connect(connectOpts, cb);
+    }
     return net.createConnection(connectOpts, cb);
   }
   return net.createConnection(options, cb);

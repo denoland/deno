@@ -502,6 +502,9 @@ function ClientRequest(input, options, cb) {
     optsWithoutSignal._proxyTargetHost = host;
     optsWithoutSignal._proxyTargetPort = port;
     optsWithoutSignal._proxyProtocol = protocol;
+    optsWithoutSignal._proxyUseProxyConnection =
+      !(this.agent && this.agent.__proxyConfig !== undefined) ||
+      this.agent?.keepAlive === true;
   }
 
   const setHost = options.setHost !== undefined

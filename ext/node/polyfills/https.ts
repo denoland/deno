@@ -6,6 +6,7 @@
 
 (function () {
 const { core } = __bootstrap;
+const { op_get_env_no_permission_check } = core.ops;
 const lazyTls = core.createLazyLoader("node:tls");
 const lazyNet = core.createLazyLoader("node:net");
 const { urlToHttpOptions } = core.loadExtScript(
@@ -30,6 +31,13 @@ const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const tls = lazyTls().default;
 const http = lazyHttp();
 const { _connectionListener, ClientRequest, ServerImpl: HttpServer } = http;
+
+function getExtraCACertificates() {
+  if (!op_get_env_no_permission_check("NODE_EXTRA_CA_CERTS")) {
+    return undefined;
+  }
+  return tls.getCACertificates("default");
+}
 
 // https.Server extends tls.Server (which extends net.Server).
 // Each accepted TCP connection is wrapped with TLS by tls.Server's
@@ -276,6 +284,13 @@ Agent.prototype.createConnection = function createConnection(
     options = {};
   }
 
+  if (options.ca === undefined) {
+    const extraCACertificates = getExtraCACertificates();
+    if (extraCACertificates !== undefined) {
+      options.ca = extraCACertificates;
+    }
+  }
+
   // Look up cached TLS session for reuse
   if (options._agentKey) {
     const session = this._getSession(options._agentKey);
@@ -341,7 +356,7 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
     proxyConnectOpts.servername = proxy.hostname;
     // Propagate TLS knobs from the request options so NODE_EXTRA_CA_CERTS
     // and friends apply to the proxy hop too.
-    if (options.ca) proxyConnectOpts.ca = options.ca;
+    proxyConnectOpts.ca = options.ca ?? getExtraCACertificates();
     if (options.rejectUnauthorized !== undefined) {
       proxyConnectOpts.rejectUnauthorized = options.rejectUnauthorized;
     }
@@ -352,6 +367,7 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
 
   let settled = false;
   let timeoutId: any = null;
+  let waitingForTunnelResponse = false;
 
   function clearTimer() {
     if (timeoutId !== null) {
@@ -365,6 +381,7 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
     settled = true;
     clearTimer();
     try {
+      tunnelSocket.on("error", () => {});
       tunnelSocket.destroy();
     } catch { /* ignore */ }
     cb(err);
@@ -386,12 +403,21 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
 
   tunnelSocket.once("error", fail);
 
+  function failUnexpectedEnd() {
+    if (!waitingForTunnelResponse || settled) return;
+    fail(new ERR_PROXY_TUNNEL(
+      "Connection to establish proxy tunnel ended unexpectedly",
+    ));
+  }
+
   function onProxyReady() {
     // Send CONNECT request. Matches Node's wire format - no Connection
     // header, just Proxy-Connection: keep-alive plus Host.
     let request = `CONNECT ${hostHeader} HTTP/1.1\r\n` +
-      `Host: ${hostHeader}\r\n` +
-      `Proxy-Connection: keep-alive\r\n`;
+      `Host: ${hostHeader}\r\n`;
+    if (options._proxyUseProxyConnection !== false) {
+      request += `Proxy-Connection: keep-alive\r\n`;
+    }
     if (proxy.auth) {
       request += `Proxy-Authorization: ${proxy.auth}\r\n`;
     }
@@ -402,6 +428,9 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
       fail(err);
       return;
     }
+    waitingForTunnelResponse = true;
+    tunnelSocket.once("end", failUnexpectedEnd);
+    tunnelSocket.once("close", failUnexpectedEnd);
 
     // Buffer raw bytes until we've parsed the response status line + headers.
     let buf = Buffer.alloc(0);
@@ -417,12 +446,17 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
         return;
       }
       tunnelSocket.removeListener("data", onData);
+      waitingForTunnelResponse = false;
+      tunnelSocket.removeListener("end", failUnexpectedEnd);
+      tunnelSocket.removeListener("close", failUnexpectedEnd);
       const headerStr = buf.slice(0, idx).toString("ascii");
       const remainder = buf.slice(idx + 4);
       const statusLine = headerStr.split("\r\n", 1)[0];
       const m = /^HTTP\/1\.\d\s+(\d{3})/.exec(statusLine);
       if (!m) {
-        fail(new Error(`Invalid CONNECT response: ${statusLine}`));
+        fail(new ERR_PROXY_TUNNEL(
+          `Failed to establish tunnel to ${hostHeader} over ${proxy.protocol}//${proxy.hostname}:${proxy.port}: ${statusLine}`,
+        ));
         return;
       }
       const statusCode = Number(m[1]);
@@ -434,7 +468,14 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
           `Failed to establish tunnel to ${hostHeader} over ${proxy.protocol}//${proxy.hostname}:${proxy.port}: ${statusLine}`,
         );
         err.statusCode = statusCode;
-        fail(err);
+        if (settled) return;
+        settled = true;
+        clearTimer();
+        tunnelSocket.on("error", () => {});
+        try {
+          tunnelSocket.end();
+        } catch { /* ignore */ }
+        cb(err);
         return;
       }
       // Now upgrade to TLS. Use the TCP socket as the underlying transport.
@@ -445,12 +486,14 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
         socket: tunnelSocket,
         host: targetHost,
         port: targetPort,
-        servername: options.servername || targetHost,
+        servername: options.servername ||
+          (lazyNet().default.isIP(targetHost) ? undefined : targetHost),
       };
       delete tlsOpts._proxy;
       delete tlsOpts._proxyTargetHost;
       delete tlsOpts._proxyTargetPort;
       delete tlsOpts._proxyProtocol;
+      delete tlsOpts._proxyUseProxyConnection;
       // tls.connect doesn't expose handshake errors via a callback in our
       // bindings cleanly, so listen for 'error' before secureConnect.
       let tlsSocket: any;
@@ -499,7 +542,7 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
   return undefined;
 }
 
-const globalAgent = new (Agent as any)({
+let globalAgent = new (Agent as any)({
   keepAlive: true,
   scheduling: "lifo",
   timeout: 5000,
@@ -546,7 +589,12 @@ return {
   Server,
   createServer,
   get,
-  globalAgent,
+  get globalAgent() {
+    return globalAgent;
+  },
+  set globalAgent(value) {
+    globalAgent = value;
+  },
   request,
 };
 })();

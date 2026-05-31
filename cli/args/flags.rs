@@ -4323,6 +4323,8 @@ fn run_args(command: Command, top_level: bool) -> Command {
       .arg(coverage_arg()),
   )
   .arg(tunnel_arg())
+  .arg(use_env_proxy_arg())
+  .arg(no_use_env_proxy_arg())
 }
 
 #[cfg(test)]
@@ -5871,6 +5873,22 @@ fn env_file_arg() -> Arg {
     .require_equals(true)
     .num_args(0..=1)
     .action(ArgAction::Append)
+}
+
+fn use_env_proxy_arg() -> Arg {
+  Arg::new("use-env-proxy")
+    .long("use-env-proxy")
+    .action(ArgAction::SetTrue)
+    .conflicts_with("no-use-env-proxy")
+    .help("Use HTTP_PROXY, HTTPS_PROXY, and NO_PROXY for node:http/node:https")
+}
+
+fn no_use_env_proxy_arg() -> Arg {
+  Arg::new("no-use-env-proxy")
+    .long("no-use-env-proxy")
+    .action(ArgAction::SetTrue)
+    .conflicts_with("use-env-proxy")
+    .hide(true)
 }
 
 fn reload_arg() -> Arg {
@@ -7696,6 +7714,16 @@ fn run_parse(
   ext_arg_parse(flags, matches);
 
   flags.tunnel = matches.get_flag("tunnel");
+  if matches.get_flag("use-env-proxy") {
+    // Node's --use-env-proxy is process-wide. Deno's node polyfills read the
+    // same env variable as the Node tests when selecting global proxy config.
+    // SAFETY: CLI parsing runs before worker startup and before Deno starts
+    // any threads that could concurrently read the process environment.
+    unsafe { std::env::set_var("NODE_USE_ENV_PROXY", "1") };
+  } else if matches.get_flag("no-use-env-proxy") {
+    // SAFETY: see the --use-env-proxy branch above.
+    unsafe { std::env::set_var("NODE_USE_ENV_PROXY", "0") };
+  }
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   let coverage_dir = matches.remove_one::<String>("coverage");
   flags.cpu_prof = cpu_prof_parse(matches);
