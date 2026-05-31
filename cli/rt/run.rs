@@ -108,6 +108,7 @@ use crate::node::DenoRtNpmModuleLoader;
 use crate::node::DenoRtNpmReqResolver;
 
 struct SharedModuleLoaderState {
+  blob_store: Arc<BlobStore>,
   cjs_tracker: Arc<DenoRtCjsTracker>,
   code_cache: Option<Arc<DenoCompileCodeCache>>,
   modules: Arc<StandaloneModules>,
@@ -648,6 +649,60 @@ impl ModuleLoader for EmbeddedModuleLoader {
       ));
     }
 
+    if original_specifier.scheme() == "blob" {
+      let specifier = original_specifier.clone();
+      let Some(blob) = self.shared.blob_store.get_object_url(specifier.clone())
+      else {
+        return deno_core::ModuleLoadResponse::Sync(Err(
+          JsErrorBox::type_error(format!("Blob URL not found: {specifier}")),
+        ));
+      };
+      let requested_module_type = options.requested_module_type.clone();
+      return deno_core::ModuleLoadResponse::Async(
+        async move {
+          let bytes = blob.read_all().await;
+          let (media_type, maybe_charset) =
+            deno_media_type::resolve_media_type_and_charset_from_content_type(
+              &specifier,
+              Some(&blob.media_type),
+            );
+          let module_type = module_type_from_media_and_requested_type(
+            media_type,
+            &requested_module_type,
+          );
+          let source = match module_type {
+            ModuleType::Bytes | ModuleType::Wasm => {
+              ModuleSourceCode::Bytes(bytes.into_boxed_slice().into())
+            }
+            _ => {
+              // Mirror `deno run`'s charset-aware decoding (see
+              // `TextDecodedFile::decode` in cli/file_fetcher.rs) so blob
+              // sources honor the content-type charset and have a leading BOM
+              // stripped, instead of blindly assuming UTF-8.
+              let charset = maybe_charset.unwrap_or_else(|| {
+                deno_media_type::encoding::detect_charset(&specifier, &bytes)
+              });
+              let text =
+                deno_media_type::encoding::decode_owned_source(charset, bytes)
+                  .map_err(|err| {
+                    JsErrorBox::type_error(format!(
+                      "Failed decoding \"{specifier}\": {err}"
+                    ))
+                  })?;
+              ModuleSourceCode::String(text.into())
+            }
+          };
+          Ok(deno_core::ModuleSource::new(
+            module_type,
+            source,
+            &specifier,
+            None,
+          ))
+        }
+        .boxed_local(),
+      );
+    }
+
     // When load hooks are active, delegate to JS hooks first.
     // Only route through hooks for files that are NOT embedded in the binary
     // (i.e., external files that may need transformation like TS stripping).
@@ -1172,8 +1227,10 @@ pub async fn run(
       None
     }
   };
+  let blob_store = Arc::new(BlobStore::default());
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
+      blob_store: blob_store.clone(),
       cjs_tracker: cjs_tracker.clone(),
       code_cache: code_cache.clone(),
       modules,
@@ -1260,7 +1317,7 @@ pub async fn run(
     maybe_initial_cwd: None,
   };
   let worker_factory = LibMainWorkerFactory::new(
-    Arc::new(BlobStore::default()),
+    blob_store,
     code_cache.map(|c| c.for_deno_core()),
     sys.maybe_native_addon_loader(),
     feature_checker,

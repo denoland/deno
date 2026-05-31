@@ -77,6 +77,7 @@ use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 use eszip::EszipV2;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
@@ -107,6 +108,7 @@ use crate::sys::CliSys;
 use crate::type_checker::CheckError;
 use crate::type_checker::CheckOptions;
 use crate::type_checker::TypeChecker;
+use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
@@ -352,6 +354,7 @@ struct SharedCliModuleLoaderState {
   sys: CliSys,
   in_flight_loads_tracker: InFlightModuleLoadsTracker,
   maybe_eszip_loader: Option<Arc<EszipModuleLoader>>,
+  watcher_communicator: Option<Arc<WatcherCommunicator>>,
 }
 
 struct InFlightModuleLoadsTracker {
@@ -415,6 +418,7 @@ impl CliModuleLoaderFactory {
     resolver: Arc<CliResolver>,
     sys: CliSys,
     maybe_eszip_loader: Option<Arc<EszipModuleLoader>>,
+    watcher_communicator: Option<Arc<WatcherCommunicator>>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
@@ -448,6 +452,7 @@ impl CliModuleLoaderFactory {
           cleanup_task_handle: Arc::new(Mutex::new(None)),
         },
         maybe_eszip_loader,
+        watcher_communicator,
       }),
     }
   }
@@ -1239,6 +1244,19 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       options.requested_module_type,
       RequestedModuleType::Text | RequestedModuleType::Bytes
     ) {
+      // Text/Bytes imports skip graph preparation, so the file watcher's
+      // graph reporter never sees them. For dynamic imports, register the
+      // file directly with the watcher so editing it triggers a reload.
+      // (Static text/bytes imports are picked up by the initial graph
+      // build via deno_graph's asset/text edge analysis.)
+      if options.is_dynamic_import
+        && let Some(watcher_communicator) =
+          self.0.shared.watcher_communicator.as_ref()
+        && specifier.scheme() == "file"
+        && let Ok(file_path) = specifier.to_file_path()
+      {
+        let _ = watcher_communicator.watch_paths(vec![file_path]);
+      }
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
@@ -1661,6 +1679,20 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     } else {
       deno_runtime::deno_node::default_resolve_require_node_module_paths(from)
     }
+  }
+
+  fn resolve_package_folder_from_name(
+    &self,
+    package_name: &str,
+  ) -> Option<PathBuf> {
+    // Only meaningful in global-cache mode: when a local node_modules
+    // directory exists, byonm-style walking handles the lookup.
+    let managed = self
+      .npm_resolver
+      .as_managed()
+      .filter(|r| r.root_node_modules_path().is_none())?;
+    let req = PackageReq::from_str(package_name).ok()?;
+    managed.resolve_pkg_folder_from_deno_module_req(&req).ok()
   }
 }
 

@@ -371,7 +371,17 @@ class RouterSocket {
     const peerKey = Array.from(peerId).join(",");
     const conn = this.peers.get(peerKey);
     if (!conn) return;
-    await sendFrames(conn, frames);
+    try {
+      await sendFrames(conn, frames);
+    } catch {
+      // The peer disconnected between sending its request and us routing
+      // the reply. Drop it so the shell/control loop stays alive; the peer
+      // will resend after reconnecting. See denoland/deno#20542.
+      this.peers.delete(peerKey);
+      try {
+        conn.close();
+      } catch { /**/ }
+    }
   }
 
   async sendAll(frames) {
@@ -769,20 +779,33 @@ async function startJupyterKernel() {
   async function shellLoop(socket) {
     while (!shuttingDown) {
       const { peerId, frames } = await socket.recv();
-      const msg = decodeMsg(frames);
-      const msgType = msg.header?.msg_type;
-      const parentHeader = msg.header;
-
-      // execute_request manages its own busy/idle status via handleExecute.
-      // For other request types, publish busy here and idle in `finally`.
-      if (msgType === "execute_request") {
-        await handleExecute(peerId, socket, msg);
-        continue;
-      }
-
-      await publishStatus("busy", parentHeader);
-
       try {
+        await handleShellMessage(socket, peerId, frames);
+      } catch (err) {
+        // A transient peer disconnect (e.g. a client that drops between
+        // request and reply during first launch) must not kill the shell
+        // loop, otherwise the kernel hangs and never answers another
+        // request. The peer reconnects and resends. See denoland/deno#20542.
+        void err;
+      }
+    }
+  }
+
+  async function handleShellMessage(socket, peerId, frames) {
+    const msg = decodeMsg(frames);
+    const msgType = msg.header?.msg_type;
+    const parentHeader = msg.header;
+
+    // execute_request manages its own busy/idle status via handleExecute.
+    // For other request types, publish busy here and idle in `finally`.
+    if (msgType === "execute_request") {
+      await handleExecute(peerId, socket, msg);
+      return;
+    }
+
+    await publishStatus("busy", parentHeader);
+
+    try {
         if (msgType === "kernel_info_request") {
           const replyFrames = await encodeMsg(
             session,
@@ -893,56 +916,69 @@ async function startJupyterKernel() {
       } finally {
         await publishStatus("idle", parentHeader);
       }
-    }
   }
 
   async function controlLoop(socket) {
     while (true) {
       const { peerId, frames } = await socket.recv();
-      const msg = decodeMsg(frames);
-      const msgType = msg.header?.msg_type;
-      const parentHeader = msg.header;
-
-      if (msgType === "kernel_info_request") {
-        const replyFrames = await encodeMsg(
-          session,
-          key,
-          [],
-          "kernel_info_reply",
-          kernelInfo(),
-          parentHeader,
-        );
-        await socket.send(peerId, [peerId, ...replyFrames]);
-      } else if (msgType === "shutdown_request") {
-        const restart = msg.content?.restart || false;
-        const replyFrames = await encodeMsg(
-          session,
-          key,
-          [],
-          "shutdown_reply",
-          { status: "ok", restart },
-          parentHeader,
-        );
-        await socket.send(peerId, [peerId, ...replyFrames]);
-        shuttingDown = true;
-        if (!restart) {
-          // Give a moment for the reply to be sent, then exit
-          setTimeout(() => Deno.exit(0), 100);
-        }
-      } else if (msgType === "interrupt_request") {
-        op_jupyter_repl_interrupt();
-        const replyFrames = await encodeMsg(
-          session,
-          key,
-          [],
-          "interrupt_reply",
-          { status: "ok" },
-          parentHeader,
-        );
-        await socket.send(peerId, [peerId, ...replyFrames]);
-      } else if (msgType === "debug_request") {
-        // Not supported
+      try {
+        await handleControlMessage(socket, peerId, frames);
+      } catch (err) {
+        // Transient read/send errors (e.g. a peer disconnecting during
+        // first launch) must not kill the control loop, otherwise the
+        // kernel hangs and never accepts another shutdown/interrupt
+        // request. See denoland/deno#20542.
+        void err;
       }
+    }
+  }
+
+  async function handleControlMessage(socket, peerId, frames) {
+    const msg = decodeMsg(frames);
+    const msgType = msg.header?.msg_type;
+    const parentHeader = msg.header;
+
+    if (msgType === "kernel_info_request") {
+      const replyFrames = await encodeMsg(
+        session,
+        key,
+        [],
+        "kernel_info_reply",
+        kernelInfo(),
+        parentHeader,
+      );
+      await socket.send(peerId, [peerId, ...replyFrames]);
+    } else if (msgType === "shutdown_request") {
+      const restart = msg.content?.restart || false;
+      const replyFrames = await encodeMsg(
+        session,
+        key,
+        [],
+        "shutdown_reply",
+        { status: "ok", restart },
+        parentHeader,
+      );
+      await socket.send(peerId, [peerId, ...replyFrames]);
+      shuttingDown = true;
+      // The Jupyter protocol expects the kernel process to exit after
+      // sending a shutdown reply. Even on restart the frontend spawns a
+      // fresh kernel, so the current process must exit either way;
+      // otherwise it lingers as an orphan. Give the reply a moment to
+      // flush over TCP, then exit. See denoland/deno#20556.
+      setTimeout(() => Deno.exit(0), 100);
+    } else if (msgType === "interrupt_request") {
+      op_jupyter_repl_interrupt();
+      const replyFrames = await encodeMsg(
+        session,
+        key,
+        [],
+        "interrupt_reply",
+        { status: "ok" },
+        parentHeader,
+      );
+      await socket.send(peerId, [peerId, ...replyFrames]);
+    } else if (msgType === "debug_request") {
+      // Not supported
     }
   }
 
@@ -987,45 +1023,54 @@ async function startJupyterKernel() {
       const req = await op_jupyter_recv_input();
       if (req === null || req === undefined) break;
 
-      if (!currentAllowStdin || !currentParentHeader.msg_id) {
-        op_jupyter_send_input_reply(null);
-        continue;
-      }
-
-      // Wait briefly for a frontend to connect to stdin if none has yet.
-      if (stdin.peers.size === 0) {
-        await new Promise((r) => setTimeout(r, 100));
-      }
-      if (stdin.peers.size === 0) {
-        op_jupyter_send_input_reply(null);
-        continue;
-      }
-
-      const reqFrames = await encodeMsg(
-        session,
-        key,
-        [],
-        "input_request",
-        { prompt: req.prompt, password: req.password },
-        currentParentHeader,
-      );
-      await stdin.sendAll(reqFrames);
-
       let value = null;
-      while (true) {
-        const { frames } = await stdin.recv();
-        try {
-          const reply = decodeMsg(frames);
-          if (reply.header?.msg_type === "input_reply") {
-            const raw = reply.content?.value;
-            value = typeof raw === "string" ? raw : null;
-            break;
-          }
-        } catch {
-          break;
-        }
+      try {
+        value = await requestInput(req);
+      } catch (err) {
+        // A transient stdin transport error (e.g. a frontend that dropped
+        // mid-prompt) must not abort the loop or, worse, leave the REPL
+        // thread blocked forever waiting for a reply. See denoland/deno#20542.
+        void err;
       }
+      // Always answer the REPL thread exactly once so it can resume.
       op_jupyter_send_input_reply(value);
+    }
+  }
+
+  async function requestInput(req) {
+    if (!currentAllowStdin || !currentParentHeader.msg_id) {
+      return null;
+    }
+
+    // Wait briefly for a frontend to connect to stdin if none has yet.
+    if (stdin.peers.size === 0) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (stdin.peers.size === 0) {
+      return null;
+    }
+
+    const reqFrames = await encodeMsg(
+      session,
+      key,
+      [],
+      "input_request",
+      { prompt: req.prompt, password: req.password },
+      currentParentHeader,
+    );
+    await stdin.sendAll(reqFrames);
+
+    while (true) {
+      const { frames } = await stdin.recv();
+      try {
+        const reply = decodeMsg(frames);
+        if (reply.header?.msg_type === "input_reply") {
+          const raw = reply.content?.value;
+          return typeof raw === "string" ? raw : null;
+        }
+      } catch {
+        return null;
+      }
     }
   }
 

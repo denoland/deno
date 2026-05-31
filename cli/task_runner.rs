@@ -30,16 +30,11 @@ use crate::util::fs::canonicalize_path;
 pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
   let additional_args = argv
     .iter()
-    // surround all the additional arguments in double quotes
-    // and sanitize any command substitution
-    .map(|a| {
-      format!(
-        "\"{}\"",
-        a.replace('"', "\\\"")
-          .replace('$', "\\$")
-          .replace('`', "\\`")
-      )
-    })
+    // Wrap each argument in single quotes so the shell preserves the
+    // content literally (including backslashes, $, `, etc.). For an
+    // argument containing a single quote, splice in a double-quoted `'`
+    // using the POSIX idiom `'foo'"'"'bar'`.
+    .map(|a| format!("'{}'", a.replace('\'', "'\"'\"'")))
     .collect::<Vec<_>>()
     .join(" ");
 
@@ -731,5 +726,27 @@ mod test {
       env_vars,
       HashMap::from([("PATH".into(), "/example".into())])
     );
+  }
+
+  #[test]
+  fn test_get_script_with_args() {
+    let cases: &[(&[&str], &str)] = &[
+      (&[], "echo"),
+      (&["hello"], "echo 'hello'"),
+      (&["hello", "world"], "echo 'hello' 'world'"),
+      // Windows path with trailing backslash (issue #31453).
+      (&[".\\dist\\"], "echo '.\\dist\\'"),
+      // Dollar sign and backtick must not be expanded.
+      (&["$HOME"], "echo '$HOME'"),
+      (&["`cmd`"], "echo '`cmd`'"),
+      // Double quotes pass through literally.
+      (&["foo\"bar"], "echo 'foo\"bar'"),
+      // Single quote uses the POSIX `'"'"'` idiom.
+      (&["it's"], "echo 'it'\"'\"'s'"),
+    ];
+    for (argv, expected) in cases {
+      let argv: Vec<String> = argv.iter().map(|s| s.to_string()).collect();
+      assert_eq!(get_script_with_args("echo", &argv), *expected);
+    }
   }
 }

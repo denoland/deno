@@ -409,8 +409,9 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
         }
         deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
           ..
-        } => {
-          // only warn for this one
+        }
+        | deno_package_json::PackageJsonDepValueParseErrorKind::EmptyName => {
+          // only warn for these
           log::warn!(
             "{} {}\n    at {}",
             colors::yellow("Warning"),
