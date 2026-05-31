@@ -934,6 +934,12 @@ async fn test_specifier_inner(
   // want to wait forever here.
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
+  // Stop coverage before waiting for external debugger sessions. Coverage owns
+  // a blocking local inspector session, so waiting first would hang forever.
+  if let Some(mut coverage_collector) = coverage_collector.take() {
+    coverage_collector.stop_collecting()?;
+  }
+
   // If a debugger session is still attached (e.g. Chrome DevTools holding
   // the connection open for an in-progress Performance recording), wait for
   // it to disconnect before tearing down the worker. Mirrors `deno run`'s
@@ -941,9 +947,6 @@ async fn test_specifier_inner(
   // impossible to profile `deno test` runs. See issue #19289.
   worker.wait_for_inspector_session_disconnect().await?;
 
-  if let Some(coverage_collector) = &mut coverage_collector {
-    coverage_collector.stop_collecting()?;
-  }
   Ok(())
 }
 
