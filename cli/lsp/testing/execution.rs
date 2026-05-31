@@ -445,6 +445,7 @@ impl TestRun {
             test::TestEvent::ForceEndReport => {}
             test::TestEvent::Sigint => {}
             test::TestEvent::Exit(_) => {}
+            test::TestEvent::IsolateExit(_, _) => {}
           }
         }
 

@@ -73,8 +73,27 @@ pub(crate) fn compile_trampoline(
     .map_err(TurbocallError::IsaError)?
     .finish(flags)?;
 
+  // V8's fast API on arm64 always packs stack arguments into 8-byte slots
+  // (AAPCS64 layout), but Apple silicon's ABI requires natural alignment
+  // (e.g. 4-byte slots for i32/f32). Cranelift's default convention on
+  // aarch64-apple-darwin is `AppleAarch64`, which would read stack args at
+  // their natural offsets and pick up garbage for any args that V8 spilled.
+  // Force the wrapper itself (the function V8 calls) to use SystemV so it
+  // reads stack args at the same 8-byte-aligned offsets V8 writes them.
+  // The target signature (used to call the user's C function from within the
+  // wrapper) still uses the platform default, so the user's function is
+  // invoked per its native ABI.
+  //
+  // Upstream V8 issue: https://crbug.com/v8/13171 (chromium:42203110)
+  let wrapper_call_conv =
+    if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+      cranelift::codegen::isa::CallConv::SystemV
+    } else {
+      isa.default_call_conv()
+    };
+
   let mut wrapper_sig =
-    cranelift::codegen::ir::Signature::new(isa.default_call_conv());
+    cranelift::codegen::ir::Signature::new(wrapper_call_conv);
   let mut target_sig =
     cranelift::codegen::ir::Signature::new(isa.default_call_conv());
   let mut raise_sig =
