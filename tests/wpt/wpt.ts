@@ -774,11 +774,9 @@ function analyzeTestResult(
   const failed = result.cases.filter(
     (t) => !getExpectFailForCase(expectation, t.name) && !t.passed,
   );
-  const expectedFailedButPassed = isFlaky
-    ? []
-    : result.cases.filter(
-      (t) => getExpectFailForCase(expectation, t.name) && t.passed,
-    );
+  const expectedFailedButPassed = isFlaky ? [] : result.cases.filter(
+    (t) => getExpectFailForCase(expectation, t.name) && t.passed,
+  );
   const expectedFailedButPassedCount = expectedFailedButPassed.length;
   const failedCount = failed.length + expectedFailedButPassedCount;
   const expectedFailedAndFailedCount = result.cases.filter(
