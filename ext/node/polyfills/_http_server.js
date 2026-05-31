@@ -60,7 +60,7 @@ import {
 const { kNeedDrain, kOutHeaders } = core.loadExtScript(
   "ext:deno_node/internal/http.ts",
 );
-import { IncomingMessage } from "node:_http_incoming";
+import { IncomingMessage, readServerControlHeaders } from "node:_http_incoming";
 const {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
@@ -850,7 +850,9 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   res.shouldKeepAlive = keepAlive;
   res[kUniqueHeaders] = server[kUniqueHeaders];
 
-  if (server.optimizeEmptyRequests && isRequestKnownEmpty(req)) {
+  const controlHeaders = readServerControlHeaders(req);
+
+  if (server.optimizeEmptyRequests && isRequestKnownEmpty(controlHeaders)) {
     req._dumpAndCloseReadable();
   }
 
@@ -926,7 +928,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
     if (req.httpVersionMajor === 1 && req.httpVersionMinor === 1) {
       if (
         server.requireHostHeader !== false &&
-        req.headers.host === undefined
+        controlHeaders.host === undefined
       ) {
         res.writeHead(400, ["Connection", "close"]);
         res.end();
@@ -951,10 +953,10 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
         server.emit("dropRequest", req, socket);
         res.writeHead(503);
         res.end();
-      } else if (req.headers.expect !== undefined) {
+      } else if (controlHeaders.expect !== undefined) {
         handled = true;
 
-        if (continueExpression.test(req.headers.expect)) {
+        if (continueExpression.test(controlHeaders.expect)) {
           res._expect_continue = true;
           if (server.listenerCount("checkContinue") > 0) {
             server.emit("checkContinue", req, res);
@@ -981,9 +983,9 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   return 0;
 }
 
-function isRequestKnownEmpty(req) {
-  return req.headers["content-length"] === undefined &&
-    req.headers["transfer-encoding"] === undefined;
+function isRequestKnownEmpty(controlHeaders) {
+  return controlHeaders.contentLength === undefined &&
+    controlHeaders.transferEncoding === undefined;
 }
 
 function resOnFinish(req, res, socket, state, server) {

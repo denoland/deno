@@ -40,6 +40,7 @@ const kHeadersCount = Symbol("kHeadersCount");
 const kTrailers = Symbol("kTrailers");
 const kTrailersDistinct = Symbol("kTrailersDistinct");
 const kTrailersCount = Symbol("kTrailersCount");
+const SERVER_CONTROL_HEADER_SCAN_LIMIT = 16;
 
 function readStart(socket) {
   if (socket && !socket._paused && socket.readable) {
@@ -133,7 +134,7 @@ ObjectDefineProperty(IncomingMessage.prototype, "headersDistinct", {
   __proto__: null,
   get: function () {
     if (!this[kHeadersDistinct]) {
-      this[kHeadersDistinct] = {};
+      this[kHeadersDistinct] = { __proto__: null };
 
       const src = this.rawHeaders;
       const dst = this[kHeadersDistinct];
@@ -173,7 +174,7 @@ ObjectDefineProperty(IncomingMessage.prototype, "trailersDistinct", {
   __proto__: null,
   get: function () {
     if (!this[kTrailersDistinct]) {
-      this[kTrailersDistinct] = {};
+      this[kTrailersDistinct] = { __proto__: null };
 
       const src = this.rawTrailers;
       const dst = this[kTrailersDistinct];
@@ -426,6 +427,64 @@ function _addHeaderLineDistinct(field, value, dest) {
   }
 }
 
+function fieldMatches(field, canonical, commonCase) {
+  return field === commonCase || field === canonical ||
+    field.toLowerCase() === canonical;
+}
+
+function readServerControlHeaders(message) {
+  if (message[kHeadersCount] > SERVER_CONTROL_HEADER_SCAN_LIMIT) {
+    const headers = message.headers;
+    return {
+      host: headers.host,
+      expect: headers.expect,
+      contentLength: headers["content-length"],
+      transferEncoding: headers["transfer-encoding"],
+    };
+  }
+
+  const src = message.rawHeaders;
+  let host;
+  let expect;
+  let contentLength;
+  let transferEncoding;
+
+  for (let n = 0; n < message[kHeadersCount]; n += 2) {
+    const field = src[n];
+    const value = src[n + 1];
+    switch (field.length) {
+      case 4:
+        if (host === undefined && fieldMatches(field, "host", "Host")) {
+          host = value;
+        }
+        break;
+      case 6:
+        if (fieldMatches(field, "expect", "Expect")) {
+          expect = expect === undefined ? value : expect + ", " + value;
+        }
+        break;
+      case 14:
+        if (
+          contentLength === undefined &&
+          fieldMatches(field, "content-length", "Content-Length")
+        ) {
+          contentLength = value;
+        }
+        break;
+      case 17:
+        if (
+          transferEncoding === undefined &&
+          fieldMatches(field, "transfer-encoding", "Transfer-Encoding")
+        ) {
+          transferEncoding = value;
+        }
+        break;
+    }
+  }
+
+  return { host, expect, contentLength, transferEncoding };
+}
+
 IncomingMessage.prototype._dumpAndCloseReadable =
   function _dumpAndCloseReadable() {
     this._dumped = true;
@@ -452,10 +511,11 @@ function onError(self, error, cb) {
   }
 }
 
-export { IncomingMessage, readStart, readStop };
+export { IncomingMessage, readServerControlHeaders, readStart, readStop };
 
 export default {
   IncomingMessage,
+  readServerControlHeaders,
   readStart,
   readStop,
 };
