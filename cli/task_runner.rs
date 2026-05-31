@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::ffi::OsString;
@@ -40,6 +41,421 @@ pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
 
   let script = format!("{script} {additional_args}");
   script.trim().to_owned()
+}
+
+/// Maximum number of items a single brace sequence (`{a..b}`) may expand to.
+const MAX_SEQUENCE_LEN: usize = 10_000;
+
+/// Performs bash-style brace expansion on a task script prior to parsing.
+///
+/// `deno_task_shell`'s parser does not support brace expansion (e.g. `{a,b}`
+/// or `{1..5}`), so we expand it here, mirroring bash where brace expansion is
+/// an early, purely textual phase that happens before word splitting and other
+/// expansions.
+///
+/// This is intentionally conservative: only unquoted brace groups that contain
+/// a top-level comma or a valid numeric/character sequence are expanded.
+/// `${VAR}`, `$(cmd)`, backtick command substitutions, quoted text, and escaped
+/// braces are left untouched. Because the parser previously rejected any
+/// unquoted `{`, no script that currently parses can contain an unquoted brace
+/// group, so this expansion cannot change the behavior of existing tasks.
+pub fn expand_braces(script: &str) -> Cow<'_, str> {
+  if !script.contains('{') {
+    return Cow::Borrowed(script);
+  }
+  let chars: Vec<char> = script.chars().collect();
+  let len = chars.len();
+  let mut out = String::with_capacity(script.len());
+  let mut i = 0;
+  while i < len {
+    let c = chars[i];
+    if is_word_separator(c) {
+      out.push(c);
+      i += 1;
+      continue;
+    }
+    // Read a full word (respecting quotes and substitutions), then expand it.
+    let start = i;
+    while i < len {
+      let c = chars[i];
+      if is_word_separator(c) {
+        break;
+      }
+      if c == '\\' {
+        i = (i + 2).min(len);
+        continue;
+      }
+      if matches!(c, '\'' | '"' | '`' | '$')
+        && let Some(j) = skip_quoted_or_subst(&chars, i)
+      {
+        i = j;
+        continue;
+      }
+      i += 1;
+    }
+    let word: String = chars[start..i.min(len)].iter().collect();
+    out.push_str(&brace_expand(&word).join(" "));
+  }
+  Cow::Owned(out)
+}
+
+/// Characters that terminate a shell "word" when they appear unquoted.
+fn is_word_separator(c: char) -> bool {
+  matches!(
+    c,
+    ' ' | '\t' | '\r' | '\n' | '|' | '&' | ';' | '<' | '>' | '(' | ')'
+  )
+}
+
+/// If `chars[i]` begins a quoted string or a `$`/backtick substitution, returns
+/// the index just past it. Otherwise returns `None`. These regions are treated
+/// as opaque so braces, commas, and separators inside them are not interpreted.
+fn skip_quoted_or_subst(chars: &[char], i: usize) -> Option<usize> {
+  let len = chars.len();
+  match chars[i] {
+    '\'' => {
+      let mut j = i + 1;
+      while j < len && chars[j] != '\'' {
+        j += 1;
+      }
+      Some((j + 1).min(len))
+    }
+    '"' => {
+      let mut j = i + 1;
+      while j < len {
+        match chars[j] {
+          '\\' => j = (j + 2).min(len),
+          '"' => return Some(j + 1),
+          _ => j += 1,
+        }
+      }
+      Some(len)
+    }
+    '`' => {
+      let mut j = i + 1;
+      while j < len {
+        match chars[j] {
+          '\\' => j = (j + 2).min(len),
+          '`' => return Some(j + 1),
+          _ => j += 1,
+        }
+      }
+      Some(len)
+    }
+    '$' if i + 1 < len && chars[i + 1] == '{' => {
+      Some(skip_balanced(chars, i + 1, '{', '}').unwrap_or((i + 2).min(len)))
+    }
+    '$' if i + 1 < len && chars[i + 1] == '(' => {
+      Some(skip_balanced(chars, i + 1, '(', ')').unwrap_or((i + 2).min(len)))
+    }
+    _ => None,
+  }
+}
+
+/// Skips a balanced `open`/`close` region starting at `chars[start]` (which must
+/// equal `open`). Nested quotes and substitutions are skipped so their contents
+/// do not affect the nesting depth. Returns the index just past the matching
+/// `close`, or `None` if unbalanced.
+fn skip_balanced(
+  chars: &[char],
+  start: usize,
+  open: char,
+  close: char,
+) -> Option<usize> {
+  let len = chars.len();
+  let mut i = start;
+  let mut depth = 0usize;
+  while i < len {
+    let c = chars[i];
+    if c == '\\' {
+      i = (i + 2).min(len);
+      continue;
+    }
+    if matches!(c, '\'' | '"' | '`' | '$')
+      && let Some(j) = skip_quoted_or_subst(chars, i)
+    {
+      i = j;
+      continue;
+    }
+    if c == open {
+      depth += 1;
+    } else if c == close {
+      depth -= 1;
+      if depth == 0 {
+        return Some(i + 1);
+      }
+    }
+    i += 1;
+  }
+  None
+}
+
+enum BraceGroup {
+  List {
+    open: usize,
+    close: usize,
+  },
+  Sequence {
+    open: usize,
+    close: usize,
+    items: Vec<String>,
+  },
+}
+
+/// Recursively expands the brace groups in a single shell word, returning one
+/// string per expansion (or the original word when there is nothing to expand).
+fn brace_expand(word: &str) -> Vec<String> {
+  let chars: Vec<char> = word.chars().collect();
+  let group = match find_brace_group(&chars) {
+    Some(group) => group,
+    None => return vec![word.to_string()],
+  };
+  let (open, close, options, recurse_options) = match group {
+    BraceGroup::List { open, close } => {
+      (open, close, split_top_commas(&chars[open + 1..close]), true)
+    }
+    BraceGroup::Sequence { open, close, items } => (open, close, items, false),
+  };
+  let pre: String = chars[..open].iter().collect();
+  let post: String = chars[close + 1..].iter().collect();
+  // The postscript may itself contain further brace groups (cartesian product).
+  let post_expanded = brace_expand(&post);
+  let mut result = Vec::new();
+  for opt in &options {
+    let expanded_opts = if recurse_options {
+      brace_expand(opt)
+    } else {
+      vec![opt.clone()]
+    };
+    for eo in &expanded_opts {
+      for ep in &post_expanded {
+        result.push(format!("{pre}{eo}{ep}"));
+      }
+    }
+  }
+  result
+}
+
+/// Finds the first top-level brace group eligible for expansion in `chars`.
+fn find_brace_group(chars: &[char]) -> Option<BraceGroup> {
+  let len = chars.len();
+  let mut i = 0;
+  while i < len {
+    let c = chars[i];
+    if c == '\\' {
+      i = (i + 2).min(len);
+      continue;
+    }
+    if matches!(c, '\'' | '"' | '`' | '$')
+      && let Some(j) = skip_quoted_or_subst(chars, i)
+    {
+      i = j;
+      continue;
+    }
+    if c == '{'
+      && let Some((close, has_comma)) = match_closing_brace(chars, i)
+    {
+      let body = &chars[i + 1..close];
+      if has_comma {
+        return Some(BraceGroup::List { open: i, close });
+      }
+      if let Some(items) = parse_sequence(body) {
+        return Some(BraceGroup::Sequence {
+          open: i,
+          close,
+          items,
+        });
+      }
+      // Not an expandable group; keep scanning so nested groups such as
+      // `{a{b,c}}` are still found.
+    }
+    i += 1;
+  }
+  None
+}
+
+/// Finds the `}` matching the `{` at `open`, returning its index and whether the
+/// group body contains a top-level comma. Returns `None` if unbalanced.
+fn match_closing_brace(chars: &[char], open: usize) -> Option<(usize, bool)> {
+  let len = chars.len();
+  let mut i = open + 1;
+  let mut depth = 0usize;
+  let mut has_comma = false;
+  while i < len {
+    let c = chars[i];
+    if c == '\\' {
+      i = (i + 2).min(len);
+      continue;
+    }
+    if matches!(c, '\'' | '"' | '`' | '$')
+      && let Some(j) = skip_quoted_or_subst(chars, i)
+    {
+      i = j;
+      continue;
+    }
+    match c {
+      '{' => depth += 1,
+      '}' => {
+        if depth == 0 {
+          return Some((i, has_comma));
+        }
+        depth -= 1;
+      }
+      ',' if depth == 0 => has_comma = true,
+      _ => {}
+    }
+    i += 1;
+  }
+  None
+}
+
+/// Splits a brace body on commas that appear at the top level (not nested in
+/// inner braces, quotes, or substitutions).
+fn split_top_commas(body: &[char]) -> Vec<String> {
+  let len = body.len();
+  let mut parts = Vec::new();
+  let mut start = 0;
+  let mut i = 0;
+  let mut depth = 0usize;
+  while i < len {
+    let c = body[i];
+    if c == '\\' {
+      i = (i + 2).min(len);
+      continue;
+    }
+    if matches!(c, '\'' | '"' | '`' | '$')
+      && let Some(j) = skip_quoted_or_subst(body, i)
+    {
+      i = j;
+      continue;
+    }
+    match c {
+      '{' => depth += 1,
+      '}' => depth = depth.saturating_sub(1),
+      ',' if depth == 0 => {
+        parts.push(body[start..i].iter().collect());
+        start = i + 1;
+      }
+      _ => {}
+    }
+    i += 1;
+  }
+  parts.push(body[start..].iter().collect());
+  parts
+}
+
+/// Parses a sequence body such as `1..5`, `1..10..2`, or `a..e`, returning the
+/// expanded items, or `None` if it is not a valid sequence.
+fn parse_sequence(body: &[char]) -> Option<Vec<String>> {
+  let s: String = body.iter().collect();
+  let segments: Vec<&str> = s.split("..").collect();
+  if segments.len() != 2 && segments.len() != 3 {
+    return None;
+  }
+  let step_str = segments.get(2).copied();
+  // Integer sequence (e.g. `1..5`, `01..03`, `1..10..2`).
+  if let (Ok(start), Ok(end)) =
+    (segments[0].parse::<i64>(), segments[1].parse::<i64>())
+  {
+    let step = match step_str {
+      Some(s) => s.parse::<i64>().ok()?,
+      None => 1,
+    };
+    return integer_sequence(start, end, step, segments[0], segments[1]);
+  }
+  // Character sequence (e.g. `a..e`). Both bounds must be single ASCII letters.
+  let start_chars: Vec<char> = segments[0].chars().collect();
+  let end_chars: Vec<char> = segments[1].chars().collect();
+  if start_chars.len() == 1
+    && end_chars.len() == 1
+    && start_chars[0].is_ascii_alphabetic()
+    && end_chars[0].is_ascii_alphabetic()
+  {
+    let step = match step_str {
+      Some(s) => s.parse::<i64>().ok()?,
+      None => 1,
+    };
+    return char_sequence(start_chars[0], end_chars[0], step);
+  }
+  None
+}
+
+fn integer_sequence(
+  start: i64,
+  end: i64,
+  step: i64,
+  start_str: &str,
+  end_str: &str,
+) -> Option<Vec<String>> {
+  let step = if step == 0 { 1 } else { step.abs() };
+  // Bash zero-pads the output when either bound has a leading zero.
+  let width = sequence_pad_width(start_str).max(sequence_pad_width(end_str));
+  let mut items = Vec::new();
+  let mut cur = start;
+  while (start <= end && cur <= end) || (start > end && cur >= end) {
+    items.push(format_padded(cur, width));
+    if items.len() > MAX_SEQUENCE_LEN {
+      return None;
+    }
+    if start <= end {
+      cur += step;
+    } else {
+      cur -= step;
+    }
+  }
+  Some(items)
+}
+
+fn char_sequence(start: char, end: char, step: i64) -> Option<Vec<String>> {
+  let step = if step == 0 {
+    1
+  } else {
+    step.unsigned_abs() as u32
+  };
+  let (s, e) = (start as u32, end as u32);
+  let mut items = Vec::new();
+  let mut cur = s;
+  loop {
+    items.push(char::from_u32(cur)?.to_string());
+    if items.len() > MAX_SEQUENCE_LEN {
+      return None;
+    }
+    if s <= e {
+      if cur + step > e {
+        break;
+      }
+      cur += step;
+    } else {
+      if cur < step || cur - step < e {
+        break;
+      }
+      cur -= step;
+    }
+  }
+  Some(items)
+}
+
+/// Width to zero-pad sequence output to, or `0` when no padding is needed.
+fn sequence_pad_width(s: &str) -> usize {
+  let digits = s.strip_prefix(|c| c == '-' || c == '+').unwrap_or(s);
+  if digits.len() > 1 && digits.starts_with('0') {
+    digits.len()
+  } else {
+    0
+  }
+}
+
+fn format_padded(n: i64, width: usize) -> String {
+  if width == 0 {
+    return n.to_string();
+  }
+  let digits = n.unsigned_abs().to_string();
+  let padded = if digits.len() < width {
+    format!("{}{}", "0".repeat(width - digits.len()), digits)
+  } else {
+    digits
+  };
+  if n < 0 { format!("-{padded}") } else { padded }
 }
 
 pub struct TaskStdio(Option<ShellPipeReader>, ShellPipeWriter);
@@ -179,7 +595,8 @@ pub async fn run_task(
   mut opts: RunTaskOptions<'_>,
 ) -> Result<TaskResult, AnyError> {
   let script = get_script_with_args(opts.script, opts.argv);
-  let seq_list = deno_task_shell::parser::parse(&script)
+  let script = expand_braces(&script);
+  let seq_list = deno_task_shell::parser::parse(script.as_ref())
     .with_context(|| format!("Error parsing script '{}'.", opts.task_name))?;
   let env_vars =
     prepare_env_vars(opts.env_vars, opts.init_cwd, opts.node_modules_bin_dirs);
@@ -748,5 +1165,69 @@ mod test {
       let argv: Vec<String> = argv.iter().map(|s| s.to_string()).collect();
       assert_eq!(get_script_with_args("echo", &argv), *expected);
     }
+  }
+
+  #[test]
+  fn test_expand_braces() {
+    let cases = &[
+      // The case from the issue (denoland/deno#24500): glob brace lists.
+      ("mocha test/{*,**/**}.js", "mocha test/*.js test/**/**.js"),
+      // Basic comma list with preamble and postscript.
+      ("echo a{b,c}d", "echo abd acd"),
+      ("echo {foo,bar,baz}", "echo foo bar baz"),
+      ("echo pre{a,b}post", "echo preapost prebpost"),
+      // Empty options.
+      ("echo x{a,}y", "echo xay xy"),
+      ("echo x{,a}y", "echo xy xay"),
+      // Multiple groups in one word produce a cartesian product.
+      ("echo {a,b}{c,d}", "echo ac ad bc bd"),
+      // Nested groups.
+      ("echo {a,b{c,d}}", "echo a bc bd"),
+      ("echo {a{b,c}}", "echo {ab} {ac}"),
+      // File extension lists.
+      (
+        "eslint src/**/*.{js,ts,tsx}",
+        "eslint src/**/*.js src/**/*.ts src/**/*.tsx",
+      ),
+      // Numeric sequences.
+      ("echo {1..5}", "echo 1 2 3 4 5"),
+      ("echo {5..1}", "echo 5 4 3 2 1"),
+      ("echo {1..10..2}", "echo 1 3 5 7 9"),
+      ("echo {01..03}", "echo 01 02 03"),
+      ("echo {-2..2}", "echo -2 -1 0 1 2"),
+      // Character sequences.
+      ("echo {a..e}", "echo a b c d e"),
+      ("echo {A..C}", "echo A B C"),
+      ("echo {e..a}", "echo e d c b a"),
+      // Groups across multiple words are each expanded independently.
+      ("cp {a,b} dest/{x,y}", "cp a b dest/x dest/y"),
+      // --- Cases that must NOT expand ---
+      // No comma and not a sequence -> literal.
+      ("echo {a}", "echo {a}"),
+      ("echo {}", "echo {}"),
+      ("echo {a..}", "echo {a..}"),
+      ("echo {a..3}", "echo {a..3}"),
+      // Quoted braces are literal.
+      ("echo '{a,b}'", "echo '{a,b}'"),
+      ("echo \"{a,b}\"", "echo \"{a,b}\""),
+      // Variable and command substitutions are left untouched.
+      ("echo ${FOO}", "echo ${FOO}"),
+      ("echo ${FOO:-{a,b}}", "echo ${FOO:-{a,b}}"),
+      ("echo $(echo hi)", "echo $(echo hi)"),
+      // Escaped braces are literal.
+      ("echo \\{a,b\\}", "echo \\{a,b\\}"),
+      // Unbalanced braces are left as-is.
+      ("echo {a,b", "echo {a,b"),
+      // Script without any brace is returned untouched.
+      ("deno run main.ts", "deno run main.ts"),
+    ];
+    for &(input, expected) in cases {
+      assert_eq!(expand_braces(input).as_ref(), expected, "input: {input}");
+    }
+  }
+
+  #[test]
+  fn test_expand_braces_no_alloc_when_no_brace() {
+    assert!(matches!(expand_braces("deno test"), Cow::Borrowed(_)));
   }
 }

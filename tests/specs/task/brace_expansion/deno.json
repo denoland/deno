@@ -1,0 +1,11 @@
+{
+  "tasks": {
+    "issue": "echo mocha test/{*.js,**/*.js}",
+    "list": "echo a{b,c}d",
+    "ext": "echo file.{js,ts,tsx}",
+    "seq": "echo {1..5}",
+    "seq_pad": "echo {01..03}",
+    "nested": "echo {a,b{c,d}}",
+    "quoted": "echo '{a,b}'"
+  }
+}

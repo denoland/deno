@@ -1,0 +1,34 @@
+{
+  "tests": {
+    // Regression test for https://github.com/denoland/deno/issues/24500.
+    // Brace expansion of glob-style lists no longer fails to parse.
+    "issue": {
+      "args": "task -q issue",
+      "output": "mocha test/*.js test/**/*.js\n"
+    },
+    "list": {
+      "args": "task -q list",
+      "output": "abd acd\n"
+    },
+    "ext": {
+      "args": "task -q ext",
+      "output": "file.js file.ts file.tsx\n"
+    },
+    "seq": {
+      "args": "task -q seq",
+      "output": "1 2 3 4 5\n"
+    },
+    "seq_pad": {
+      "args": "task -q seq_pad",
+      "output": "01 02 03\n"
+    },
+    "nested": {
+      "args": "task -q nested",
+      "output": "a bc bd\n"
+    },
+    "quoted": {
+      "args": "task -q quoted",
+      "output": "{a,b}\n"
+    }
+  }
+}
