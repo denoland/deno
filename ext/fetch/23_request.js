@@ -77,20 +77,26 @@ function processUrlList(urlList, urlListProcessed) {
 }
 
 /**
+ * Fields named `*Mode`, `mode`, `referrer*`, `integrity`, and `keepalive` are
+ * only set on the inner object when the constructor's init bag customized
+ * them away from the spec default. Leaving them off the object literal keeps
+ * the V8 hidden class for `Deno.serve()`-created requests unchanged. The
+ * getters substitute the spec defaults when a field is missing.
+ *
  * @typedef InnerRequest
  * @property {() => string} method
  * @property {() => string} url
  * @property {() => string} currentUrl
  * @property {() => [string, string][]} headerList
  * @property {null | typeof __window.bootstrap.fetchBody.InnerBody} body
- * @property {"default" | "no-store" | "reload" | "no-cache" | "force-cache" | "only-if-cached"} cacheMode
- * @property {"omit" | "same-origin" | "include"} credentialsMode
- * @property {string} integrity
- * @property {boolean} keepalive
- * @property {"same-origin" | "no-cors" | "cors" | "navigate"} mode
+ * @property {undefined | "default" | "no-store" | "reload" | "no-cache" | "force-cache" | "only-if-cached"} [cacheMode]
+ * @property {undefined | "omit" | "same-origin" | "include"} [credentialsMode]
+ * @property {undefined | string} [integrity]
+ * @property {undefined | boolean} [keepalive]
+ * @property {undefined | "same-origin" | "no-cors" | "cors" | "navigate"} [mode]
  * @property {"follow" | "error" | "manual"} redirectMode
- * @property {string} referrer "client", "no-referrer", or a serialized URL
- * @property {"" | "no-referrer" | "no-referrer-when-downgrade" | "same-origin" | "origin" | "strict-origin" | "origin-when-cross-origin" | "strict-origin-when-cross-origin" | "unsafe-url"} referrerPolicy
+ * @property {undefined | string} [referrer] "client", "no-referrer", or a serialized URL
+ * @property {undefined | "" | "no-referrer" | "no-referrer-when-downgrade" | "same-origin" | "origin" | "strict-origin" | "origin-when-cross-origin" | "strict-origin-when-cross-origin" | "unsafe-url"} [referrerPolicy]
  * @property {number} redirectCount
  * @property {(() => string)[]} urlList
  * @property {string[]} urlListProcessed
@@ -138,14 +144,7 @@ function newInnerRequest(method, url, headerList, body, maybeBlob) {
       this.headerListInner = value;
     },
     body,
-    cacheMode: "default",
-    credentialsMode: "same-origin",
-    integrity: "",
-    keepalive: false,
-    mode: "cors",
     redirectMode: "follow",
-    referrer: "client",
-    referrerPolicy: "",
     redirectCount: 0,
     urlList: [typeof url === "string" ? () => url : url],
     urlListProcessed: [],
@@ -192,18 +191,11 @@ function cloneInnerRequest(request, skipBody = false) {
     body = request.body.clone();
   }
 
-  return {
+  const cloned = {
     method: request.method,
     headerList,
     body,
-    cacheMode: request.cacheMode,
-    credentialsMode: request.credentialsMode,
-    integrity: request.integrity,
-    keepalive: request.keepalive,
-    mode: request.mode,
     redirectMode: request.redirectMode,
-    referrer: request.referrer,
-    referrerPolicy: request.referrerPolicy,
     redirectCount: request.redirectCount,
     urlList: [() => request.url()],
     urlListProcessed: [request.url()],
@@ -231,6 +223,18 @@ function cloneInnerRequest(request, skipBody = false) {
       return this.urlListProcessed[currentIndex];
     },
   };
+  if (request.cacheMode !== undefined) cloned.cacheMode = request.cacheMode;
+  if (request.credentialsMode !== undefined) {
+    cloned.credentialsMode = request.credentialsMode;
+  }
+  if (request.integrity !== undefined) cloned.integrity = request.integrity;
+  if (request.keepalive !== undefined) cloned.keepalive = request.keepalive;
+  if (request.mode !== undefined) cloned.mode = request.mode;
+  if (request.referrer !== undefined) cloned.referrer = request.referrer;
+  if (request.referrerPolicy !== undefined) {
+    cloned.referrerPolicy = request.referrerPolicy;
+  }
+  return cloned;
 }
 
 // method => normalized method
@@ -589,44 +593,44 @@ class Request {
 
   get cache() {
     webidl.assertBranded(this, RequestPrototype);
-    return this[_request].cacheMode;
+    return this[_request].cacheMode ?? "default";
   }
 
   get credentials() {
     webidl.assertBranded(this, RequestPrototype);
-    return this[_request].credentialsMode;
+    return this[_request].credentialsMode ?? "same-origin";
   }
 
   get integrity() {
     webidl.assertBranded(this, RequestPrototype);
-    return this[_request].integrity;
+    return this[_request].integrity ?? "";
   }
 
   get keepalive() {
     webidl.assertBranded(this, RequestPrototype);
-    return this[_request].keepalive;
+    return this[_request].keepalive ?? false;
   }
 
   get mode() {
     webidl.assertBranded(this, RequestPrototype);
-    return this[_request].mode;
+    return this[_request].mode ?? "cors";
   }
 
   get referrer() {
     webidl.assertBranded(this, RequestPrototype);
     const referrer = this[_request].referrer;
+    if (referrer === undefined || referrer === "client") {
+      return "about:client";
+    }
     if (referrer === "no-referrer") {
       return "";
-    }
-    if (referrer === "client") {
-      return "about:client";
     }
     return referrer;
   }
 
   get referrerPolicy() {
     webidl.assertBranded(this, RequestPrototype);
-    return this[_request].referrerPolicy;
+    return this[_request].referrerPolicy ?? "";
   }
 
   get signal() {
