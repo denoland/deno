@@ -655,6 +655,87 @@ static NAPI_LOADED_MODULES: std::sync::LazyLock<
   RwLock<HashMap<PathBuf, NapiModuleHandle>>,
 > = std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
 
+/// Pre-load common dynamic libraries that legacy Node.js native addons
+/// (typically NAN-based, using the v8/internals API) expect to find at
+/// runtime.
+///
+/// Node.js statically links OpenSSL, libuv and zlib into its binary and
+/// re-exports the symbols, so addons built against the Node headers can
+/// reference symbols like `EVP_des_ede3_cbc` directly. Deno does not link
+/// against the system OpenSSL and does not export any such symbols from
+/// its own binary, which results in `undefined symbol: …` errors when the
+/// addon's shared library is loaded.
+///
+/// As a best-effort compatibility shim, when a native addon is loaded we
+/// try to `dlopen` the system OpenSSL libraries with `RTLD_GLOBAL` so
+/// that their symbols become visible to any subsequently loaded native
+/// addon. Failures are silently ignored — if the system OpenSSL is
+/// unavailable, the addon will fail to load just as it does today, but
+/// most distributions ship a usable libcrypto/libssl.
+///
+/// This is a no-op on Windows: addons there are expected to link against
+/// `node.lib` and resolve OpenSSL symbols at link time, which cannot be
+/// fixed up via `LoadLibrary`.
+#[cfg(unix)]
+fn preload_compat_libraries() {
+  static PRELOAD: std::sync::Once = std::sync::Once::new();
+  PRELOAD.call_once(|| {
+    // Each inner slice lists, in priority order, the soname variants of
+    // a single library. We stop at the first variant that loads
+    // successfully per family, but always try every family so a system
+    // that has, say, libcrypto without libssl still gets the libcrypto
+    // symbols.
+    #[cfg(target_os = "macos")]
+    let families: &[&[&str]] = &[
+      &[
+        "libcrypto.3.dylib",
+        "libcrypto.1.1.dylib",
+        "libcrypto.1.0.0.dylib",
+        "libcrypto.dylib",
+      ],
+      &[
+        "libssl.3.dylib",
+        "libssl.1.1.dylib",
+        "libssl.1.0.0.dylib",
+        "libssl.dylib",
+      ],
+    ];
+
+    #[cfg(not(target_os = "macos"))]
+    let families: &[&[&str]] = &[
+      &[
+        "libcrypto.so.3",
+        "libcrypto.so.1.1",
+        "libcrypto.so.1.0.0",
+        "libcrypto.so",
+      ],
+      &[
+        "libssl.so.3",
+        "libssl.so.1.1",
+        "libssl.so.1.0.0",
+        "libssl.so",
+      ],
+    ];
+
+    let flags = RTLD_LAZY | RTLD_GLOBAL;
+    for family in families {
+      for &name in *family {
+        // SAFETY: dlopen with RTLD_LAZY | RTLD_GLOBAL of a well-known
+        // system library. The library handle is intentionally leaked so
+        // the library remains loaded for the lifetime of the process and
+        // its symbols stay available to addons loaded later.
+        if let Ok(library) = unsafe { Library::open(Some(name), flags) } {
+          std::mem::forget(library);
+          break;
+        }
+      }
+    }
+  });
+}
+
+#[cfg(not(unix))]
+fn preload_compat_libraries() {}
+
 #[op2(reentrant, stack_trace)]
 fn op_napi_open<'scope>(
   scope: &mut v8::PinScope<'scope, '_>,
@@ -787,6 +868,13 @@ fn op_napi_open<'scope>(
     Some(loader) => loader.load_and_resolve_path(&path)?,
     None => Cow::Borrowed(path.as_ref()),
   };
+
+  // Make sure runtime symbols expected by legacy Node native addons (notably
+  // OpenSSL's `EVP_*` family, which Node.js statically links and re-exports)
+  // are present in the global symbol table before the addon's library is
+  // resolved. This is a best-effort compatibility shim; see the function's
+  // doc comment for details.
+  preload_compat_libraries();
 
   // SAFETY: opening a DLL calls dlopen
   #[cfg(unix)]
