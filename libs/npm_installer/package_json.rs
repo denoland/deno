@@ -168,6 +168,8 @@ impl NpmInstallDepsProvider {
         } else {
           &deps.dev_dependencies
         };
+        let mut workspace_pkg_deps =
+          Vec::with_capacity(deps.dependencies.len() + dev_deps.len());
         for (alias, dep) in deps.dependencies.iter().chain(dev_deps.iter()) {
           let dep = match dep {
             Ok(dep) => dep,
@@ -200,11 +202,19 @@ impl NpmInstallDepsProvider {
               });
 
               if let Some(pkg) = workspace_pkg {
+                workspace_pkg_deps.push(InstallWorkspacePkgDep::Workspace {
+                  alias: alias.clone(),
+                  nv: pkg.nv.clone(),
+                });
                 local_pkgs.push(InstallLocalPkg {
                   alias: Some(alias.clone()),
                   target_dir: pkg.pkg_json.dir_path().to_path_buf(),
                 });
               } else {
+                workspace_pkg_deps.push(InstallWorkspacePkgDep::Remote {
+                  alias: alias.clone(),
+                  req: pkg_req.clone(),
+                });
                 pkg_pkgs.push(InstallNpmRemotePkg {
                   alias: Some(alias.clone()),
                   base_dir: pkg_json.dir_path().to_path_buf(),
@@ -225,6 +235,10 @@ impl NpmInstallDepsProvider {
               if let Some(pkg) = workspace_npm_pkgs.iter().find(|pkg| {
                 pkg.matches_name_and_version_req(alias, &version_req)
               }) {
+                workspace_pkg_deps.push(InstallWorkspacePkgDep::Workspace {
+                  alias: alias.clone(),
+                  nv: pkg.nv.clone(),
+                });
                 local_pkgs.push(InstallLocalPkg {
                   alias: Some(alias.clone()),
                   target_dir: pkg.pkg_json.dir_path().to_path_buf(),
@@ -248,11 +262,19 @@ impl NpmInstallDepsProvider {
                 });
 
                 if let Some(pkg) = workspace_pkg {
+                  workspace_pkg_deps.push(InstallWorkspacePkgDep::Workspace {
+                    alias: alias.clone(),
+                    nv: pkg.nv.clone(),
+                  });
                   local_pkgs.push(InstallLocalPkg {
                     alias: Some(alias.clone()),
                     target_dir: pkg.pkg_json.dir_path().to_path_buf(),
                   });
                 } else {
+                  workspace_pkg_deps.push(InstallWorkspacePkgDep::Remote {
+                    alias: alias.clone(),
+                    req: pkg_req.clone(),
+                  });
                   pkg_pkgs.push(InstallNpmRemotePkg {
                     alias: Some(alias.clone()),
                     base_dir: pkg_json.dir_path().to_path_buf(),
@@ -267,6 +289,23 @@ impl NpmInstallDepsProvider {
         // sort within each package as npm does
         pkg_pkgs.sort_by(|a, b| a.alias.cmp(&b.alias));
         remote_pkgs.extend(pkg_pkgs);
+        workspace_pkgs.push(InstallWorkspacePkg {
+          nv: package_json_to_lifecycle_nv(pkg_json),
+          target_dir: pkg_json.dir_path().to_path_buf(),
+          scripts: pkg_json
+            .scripts
+            .as_ref()
+            .map(|scripts| {
+              scripts
+                .iter()
+                .map(|(key, value)| {
+                  (SmallStackString::from_str(key), value.clone())
+                })
+                .collect()
+            })
+            .unwrap_or_default(),
+          deps: workspace_pkg_deps,
+        });
       }
     }
 
@@ -288,112 +327,6 @@ impl NpmInstallDepsProvider {
         },
         target_dir: pkg.dir_path().to_path_buf(),
       })
-    }
-
-    for pkg_json in workspace.package_jsons() {
-      let nv = package_json_to_lifecycle_nv(pkg_json);
-      let deps = pkg_json.resolve_local_package_json_deps();
-      let empty = Default::default();
-      let dev_deps = if production {
-        &empty
-      } else {
-        &deps.dev_dependencies
-      };
-      let mut pkg_deps =
-        Vec::with_capacity(deps.dependencies.len() + dev_deps.len());
-      for (alias, dep) in deps.dependencies.iter().chain(dev_deps.iter()) {
-        let dep = match dep {
-          Ok(dep) => dep,
-          Err(_) => continue,
-        };
-        match dep {
-          PackageJsonDepValue::Req(pkg_req) => {
-            if skip_types && pkg_req.name.starts_with("@types/") {
-              continue;
-            }
-            let workspace_dep = workspace_npm_pkgs.iter().find(|pkg| {
-              pkg.matches_req(pkg_req) && pkg.pkg_json.path != pkg_json.path
-            });
-            if let Some(pkg) = workspace_dep {
-              pkg_deps.push(InstallWorkspacePkgDep::Workspace {
-                alias: alias.clone(),
-                nv: pkg.nv.clone(),
-              });
-            } else {
-              pkg_deps.push(InstallWorkspacePkgDep::Remote {
-                alias: alias.clone(),
-                req: pkg_req.clone(),
-              });
-            }
-          }
-          PackageJsonDepValue::Workspace(workspace_version_req) => {
-            let version_req = match workspace_version_req {
-              PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
-                version_req.clone()
-              }
-              PackageJsonDepWorkspaceReq::Tilde
-              | PackageJsonDepWorkspaceReq::Caret => {
-                VersionReq::parse_from_npm("*").unwrap()
-              }
-            };
-            if let Some(pkg) = workspace_npm_pkgs
-              .iter()
-              .find(|pkg| pkg.matches_name_and_version_req(alias, &version_req))
-            {
-              pkg_deps.push(InstallWorkspacePkgDep::Workspace {
-                alias: alias.clone(),
-                nv: pkg.nv.clone(),
-              });
-            }
-          }
-          PackageJsonDepValue::Catalog(catalog_name) => {
-            let catalogs = workspace.catalogs();
-            if let Some(catalog) = catalogs.get(catalog_name.as_str())
-              && let Some(version_req_str) = catalog.get(alias.as_str())
-              && let Ok(version_req) =
-                VersionReq::parse_from_npm(version_req_str)
-            {
-              let pkg_req = PackageReq {
-                name: alias.clone(),
-                version_req,
-              };
-              let workspace_dep = workspace_npm_pkgs.iter().find(|pkg| {
-                pkg.matches_req(&pkg_req) && pkg.pkg_json.path != pkg_json.path
-              });
-              if let Some(pkg) = workspace_dep {
-                pkg_deps.push(InstallWorkspacePkgDep::Workspace {
-                  alias: alias.clone(),
-                  nv: pkg.nv.clone(),
-                });
-              } else {
-                pkg_deps.push(InstallWorkspacePkgDep::Remote {
-                  alias: alias.clone(),
-                  req: pkg_req,
-                });
-              }
-            }
-          }
-          PackageJsonDepValue::File(_) => {}
-        }
-      }
-
-      workspace_pkgs.push(InstallWorkspacePkg {
-        nv,
-        target_dir: pkg_json.dir_path().to_path_buf(),
-        scripts: pkg_json
-          .scripts
-          .as_ref()
-          .map(|scripts| {
-            scripts
-              .iter()
-              .map(|(key, value)| {
-                (SmallStackString::from_str(key), value.clone())
-              })
-              .collect()
-          })
-          .unwrap_or_default(),
-        deps: pkg_deps,
-      });
     }
 
     remote_pkgs.shrink_to_fit();
