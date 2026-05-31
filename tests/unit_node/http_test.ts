@@ -33,6 +33,23 @@ Deno.test.beforeEach(() => {
   http.globalAgent.destroy();
 });
 
+function rawHttpRequest(port: number, request: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const client = net.createConnection({ port, host: "127.0.0.1" }, () => {
+      client.end(request);
+    });
+    let response = "";
+    client.setEncoding("utf8");
+    client.on("data", (chunk) => {
+      response += chunk;
+    });
+    client.on("error", reject);
+    client.on("close", () => {
+      resolve(response);
+    });
+  });
+}
+
 Deno.test("[node/http listen]", async () => {
   {
     const server = http.createServer();
@@ -2266,6 +2283,173 @@ Deno.test("[node/http] rawHeaders are in flattened format", async () => {
 
   await promise;
   await new Promise((resolve) => server.close(resolve));
+});
+
+Deno.test("[node/http] server header checks fall back for custom IncomingMessage", async () => {
+  class CustomIncomingMessage extends IncomingMessage {}
+
+  Object.defineProperty(CustomIncomingMessage.prototype, "headers", {
+    configurable: true,
+    get() {
+      return { host: "custom.test" };
+    },
+  });
+
+  const handled = Promise.withResolvers<void>();
+  const server = http.createServer({
+    IncomingMessage: CustomIncomingMessage,
+  }, (req, res) => {
+    assert(req instanceof CustomIncomingMessage);
+    assertEquals(req.headers.host, "custom.test");
+    res.end("ok");
+    handled.resolve();
+  });
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const response = await rawHttpRequest(
+      (server.address() as AddressInfo).port,
+      "GET / HTTP/1.1\r\nConnection: close\r\n\r\n",
+    );
+    await handled.promise;
+    assertStringIncludes(response, "200 OK");
+    assertStringIncludes(response, "ok");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+Deno.test("[node/http] server header checks fall back for patched headers getter", async () => {
+  type IncomingMessagePrototype = IncomingMessage & {
+    _addHeaderLines(headers: string[], n: number): void;
+  };
+
+  const incomingPrototype = IncomingMessage
+    .prototype as IncomingMessagePrototype;
+  const originalAddHeaderLines = incomingPrototype._addHeaderLines;
+  incomingPrototype._addHeaderLines = function (
+    this: IncomingMessage,
+    headers: string[],
+    n: number,
+  ) {
+    originalAddHeaderLines.call(this, headers, n);
+    Object.defineProperty(this, "headers", {
+      configurable: true,
+      get() {
+        return { host: "patched.test" };
+      },
+    });
+  };
+
+  const handled = Promise.withResolvers<void>();
+  const server = http.createServer((req, res) => {
+    assertEquals(req.headers.host, "patched.test");
+    res.end("ok");
+    handled.resolve();
+  });
+
+  try {
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+
+    const response = await rawHttpRequest(
+      (server.address() as AddressInfo).port,
+      "GET / HTTP/1.1\r\nConnection: close\r\n\r\n",
+    );
+    await handled.promise;
+    assertStringIncludes(response, "200 OK");
+    assertStringIncludes(response, "ok");
+  } finally {
+    incomingPrototype._addHeaderLines = originalAddHeaderLines;
+    if (server.listening) {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  }
+});
+
+Deno.test("[node/http] server header checks fall back for maxHeadersCount truncation", async () => {
+  let requestSeen = false;
+  const server = http.createServer((_req, res) => {
+    requestSeen = true;
+    res.end("should not reach request listener");
+  });
+  server.maxHeadersCount = 1;
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const response = await rawHttpRequest(
+      (server.address() as AddressInfo).port,
+      "GET / HTTP/1.1\r\nX-Filler: a\r\nHost: localhost\r\n\r\n",
+    );
+    assertStringIncludes(response, "400 Bad Request");
+    assertEquals(requestSeen, false);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+Deno.test("[node/http] server checkContinue sees duplicate Expect headers", async () => {
+  const checked = Promise.withResolvers<void>();
+  const server = http.createServer((_req, _res) => {
+    fail("request event should not be emitted when checkContinue handles it");
+  });
+  server.on("checkContinue", (req, res) => {
+    assertEquals(req.headers.expect, "not-now, 100-continue");
+    res.end("continue handled");
+    checked.resolve();
+  });
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const response = await rawHttpRequest(
+      (server.address() as AddressInfo).port,
+      "GET / HTTP/1.1\r\nHost: localhost\r\nExpect: not-now\r\n" +
+        "Expect: 100-continue\r\nConnection: close\r\n\r\n",
+    );
+    await checked.promise;
+    assertStringIncludes(response, "200 OK");
+    assertStringIncludes(response, "continue handled");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+Deno.test("[node/http] joinDuplicateHeaders preserves duplicate Host header", async () => {
+  const handled = Promise.withResolvers<void>();
+  const server = http.createServer({
+    joinDuplicateHeaders: true,
+  }, (req, res) => {
+    assertEquals(req.headers.host, "first.test, second.test");
+    res.end("ok");
+    handled.resolve();
+  });
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const response = await rawHttpRequest(
+      (server.address() as AddressInfo).port,
+      "GET / HTTP/1.1\r\nHost: first.test\r\nHost: second.test\r\n" +
+        "Connection: close\r\n\r\n",
+    );
+    await handled.promise;
+    assertStringIncludes(response, "200 OK");
+    assertStringIncludes(response, "ok");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 Deno.test("[node/http] request header values trim trailing OWS", async () => {

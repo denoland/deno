@@ -31,8 +31,11 @@ const {
   Error,
   MathMin,
   NumberIsFinite,
+  ObjectGetOwnPropertyDescriptor,
+  ObjectGetPrototypeOf,
   ObjectKeys,
   ObjectSetPrototypeOf,
+  StringPrototypeCharCodeAt,
   Symbol,
 } = primordials;
 
@@ -61,6 +64,10 @@ const { kNeedDrain, kOutHeaders } = core.loadExtScript(
   "ext:deno_node/internal/http.ts",
 );
 import { IncomingMessage } from "node:_http_incoming";
+const incomingMessageHeadersGetter = ObjectGetOwnPropertyDescriptor(
+  IncomingMessage.prototype,
+  "headers",
+)?.get;
 const {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
@@ -291,6 +298,104 @@ const STATUS_CODES = {
   510: "Not Extended",
   511: "Network Authentication Required",
 };
+
+function headerCharCode(field, i) {
+  return StringPrototypeCharCodeAt(field, i) | 0x20;
+}
+
+function isHostHeader(field) {
+  return field.length === 4 &&
+    headerCharCode(field, 0) === 0x68 &&
+    headerCharCode(field, 1) === 0x6f &&
+    headerCharCode(field, 2) === 0x73 &&
+    headerCharCode(field, 3) === 0x74;
+}
+
+function isExpectHeader(field) {
+  return field.length === 6 &&
+    headerCharCode(field, 0) === 0x65 &&
+    headerCharCode(field, 1) === 0x78 &&
+    headerCharCode(field, 2) === 0x70 &&
+    headerCharCode(field, 3) === 0x65 &&
+    headerCharCode(field, 4) === 0x63 &&
+    headerCharCode(field, 5) === 0x74;
+}
+
+function isContentLengthHeader(field) {
+  return field.length === 14 &&
+    headerCharCode(field, 0) === 0x63 &&
+    headerCharCode(field, 1) === 0x6f &&
+    headerCharCode(field, 2) === 0x6e &&
+    headerCharCode(field, 3) === 0x74 &&
+    headerCharCode(field, 4) === 0x65 &&
+    headerCharCode(field, 5) === 0x6e &&
+    headerCharCode(field, 6) === 0x74 &&
+    StringPrototypeCharCodeAt(field, 7) === 0x2d &&
+    headerCharCode(field, 8) === 0x6c &&
+    headerCharCode(field, 9) === 0x65 &&
+    headerCharCode(field, 10) === 0x6e &&
+    headerCharCode(field, 11) === 0x67 &&
+    headerCharCode(field, 12) === 0x74 &&
+    headerCharCode(field, 13) === 0x68;
+}
+
+function isTransferEncodingHeader(field) {
+  return field.length === 17 &&
+    headerCharCode(field, 0) === 0x74 &&
+    headerCharCode(field, 1) === 0x72 &&
+    headerCharCode(field, 2) === 0x61 &&
+    headerCharCode(field, 3) === 0x6e &&
+    headerCharCode(field, 4) === 0x73 &&
+    headerCharCode(field, 5) === 0x66 &&
+    headerCharCode(field, 6) === 0x65 &&
+    headerCharCode(field, 7) === 0x72 &&
+    StringPrototypeCharCodeAt(field, 8) === 0x2d &&
+    headerCharCode(field, 9) === 0x65 &&
+    headerCharCode(field, 10) === 0x6e &&
+    headerCharCode(field, 11) === 0x63 &&
+    headerCharCode(field, 12) === 0x6f &&
+    headerCharCode(field, 13) === 0x64 &&
+    headerCharCode(field, 14) === 0x69 &&
+    headerCharCode(field, 15) === 0x6e &&
+    headerCharCode(field, 16) === 0x67;
+}
+
+function rawHeaderValue(req, predicate) {
+  const headers = req.rawHeaders;
+  let value;
+  for (let i = 0; i < headers.length; i += 2) {
+    if (predicate(headers[i])) {
+      if (value === undefined) {
+        value = headers[i + 1];
+      } else {
+        value += ", " + headers[i + 1];
+      }
+    }
+  }
+  return value;
+}
+
+function rawHeaderExists(req, predicate) {
+  const headers = req.rawHeaders;
+  for (let i = 0; i < headers.length; i += 2) {
+    if (predicate(headers[i])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function canUseRawHeaders(server, req) {
+  const headersDescriptor = ObjectGetOwnPropertyDescriptor(
+    IncomingMessage.prototype,
+    "headers",
+  );
+  return server.maxHeadersCount === null &&
+    server[kIncomingMessage] === IncomingMessage &&
+    ObjectGetPrototypeOf(req) === IncomingMessage.prototype &&
+    headersDescriptor?.get === incomingMessageHeadersGetter &&
+    ObjectGetOwnPropertyDescriptor(req, "headers") === undefined;
+}
 
 // ---- ServerResponse ----
 
@@ -850,7 +955,9 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   res.shouldKeepAlive = keepAlive;
   res[kUniqueHeaders] = server[kUniqueHeaders];
 
-  if (server.optimizeEmptyRequests && isRequestKnownEmpty(req)) {
+  const useRawHeaders = canUseRawHeaders(server, req);
+
+  if (server.optimizeEmptyRequests && isRequestKnownEmpty(req, useRawHeaders)) {
     req._dumpAndCloseReadable();
   }
 
@@ -926,7 +1033,9 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
     if (req.httpVersionMajor === 1 && req.httpVersionMinor === 1) {
       if (
         server.requireHostHeader !== false &&
-        req.headers.host === undefined
+        (useRawHeaders
+          ? !rawHeaderExists(req, isHostHeader)
+          : req.headers.host === undefined)
       ) {
         res.writeHead(400, ["Connection", "close"]);
         res.end();
@@ -951,22 +1060,28 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
         server.emit("dropRequest", req, socket);
         res.writeHead(503);
         res.end();
-      } else if (req.headers.expect !== undefined) {
-        handled = true;
+      } else {
+        const expect = useRawHeaders
+          ? rawHeaderValue(req, isExpectHeader)
+          : req.headers.expect;
 
-        if (continueExpression.test(req.headers.expect)) {
-          res._expect_continue = true;
-          if (server.listenerCount("checkContinue") > 0) {
-            server.emit("checkContinue", req, res);
+        if (expect !== undefined) {
+          handled = true;
+
+          if (continueExpression.test(expect)) {
+            res._expect_continue = true;
+            if (server.listenerCount("checkContinue") > 0) {
+              server.emit("checkContinue", req, res);
+            } else {
+              res.writeContinue();
+              server.emit("request", req, res);
+            }
+          } else if (server.listenerCount("checkExpectation") > 0) {
+            server.emit("checkExpectation", req, res);
           } else {
-            res.writeContinue();
-            server.emit("request", req, res);
+            res.writeHead(417);
+            res.end();
           }
-        } else if (server.listenerCount("checkExpectation") > 0) {
-          server.emit("checkExpectation", req, res);
-        } else {
-          res.writeHead(417);
-          res.end();
         }
       }
     }
@@ -981,7 +1096,11 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   return 0;
 }
 
-function isRequestKnownEmpty(req) {
+function isRequestKnownEmpty(req, useRawHeaders) {
+  if (useRawHeaders) {
+    return !rawHeaderExists(req, isContentLengthHeader) &&
+      !rawHeaderExists(req, isTransferEncodingHeader);
+  }
   return req.headers["content-length"] === undefined &&
     req.headers["transfer-encoding"] === undefined;
 }
