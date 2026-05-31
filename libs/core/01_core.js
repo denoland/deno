@@ -1206,6 +1206,8 @@
     reportUnhandledPromiseRejection: (e) => op_dispatch_exception(e, true),
     createTimer: __timers.createTimer,
     cancelTimer: __timers.cancelTimer,
+    pauseTimer: __timers.pauseTimer,
+    resumeTimer: __timers.resumeTimer,
     refreshTimer: __timers.refreshTimer,
     refTimer: __timers.refTimer,
     unrefTimer: __timers.unrefTimer,

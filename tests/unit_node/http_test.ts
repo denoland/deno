@@ -25,7 +25,7 @@ import { retry } from "@std/async/retry";
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
 import { setImmediate } from "node:timers";
-import { execCode } from "../unit/test_util.ts";
+import { execCode, execCode3 } from "../unit/test_util.ts";
 
 // Destroy idle keep-alive sockets before each test so that sequential
 // tests reusing the same port (e.g. 4505) don't fail with EADDRINUSE.
@@ -2691,6 +2691,56 @@ Deno.test("[node/http] abandoned suspended keep-alive timer emits async_hooks de
       `Timeout asyncId ${asyncId} did not emit destroy`,
     );
   }
+});
+
+Deno.test("[node/http] destroying suspended keep-alive timer preserves timer refs", async () => {
+  const child = execCode3(Deno.execPath(), [
+    "eval",
+    `
+    import { once } from "node:events";
+    import http from "node:http";
+    import net from "node:net";
+
+    const server = http.createServer({ keepAliveTimeout: 1000 }, (req, res) => {
+      if (req.url === "/destroy") {
+        req.socket.destroy();
+        server.close();
+        setTimeout(() => console.log("ref timer fired"), 50);
+        return;
+      }
+      res.end("ok");
+    });
+
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = server.address().port;
+    const socket = net.createConnection(port, "127.0.0.1");
+    await once(socket, "connect");
+
+    let received = "";
+    socket.on("data", (chunk) => {
+      received += chunk;
+    });
+
+    async function readText(text) {
+      while (!received.includes(text)) {
+        await once(socket, "data");
+      }
+      received = "";
+    }
+
+    socket.write(
+      "GET /first HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: keep-alive\\r\\n\\r\\n",
+    );
+    await readText("ok");
+    socket.write(
+      "GET /destroy HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n",
+    );
+    await once(socket, "close");
+  `,
+  ]);
+  const [statusCode, output] = await child.finished();
+  assertEquals(statusCode, 0);
+  assertStringIncludes(output, "ref timer fired");
 });
 
 Deno.test("[node/http] user socket timeout still applies after keep-alive reuse", async () => {

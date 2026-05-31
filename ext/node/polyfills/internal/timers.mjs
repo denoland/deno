@@ -6,6 +6,8 @@ const { core, primordials } = __bootstrap;
 const {
   createTimer: createTimer_,
   cancelTimer: cancelTimer_,
+  pauseTimer: pauseTimer_,
+  resumeTimer: resumeTimer_,
   refreshTimer: refreshTimer_,
   refTimer: refTimer_,
   unrefTimer: unrefTimer_,
@@ -277,7 +279,10 @@ Timeout.prototype[inspect.custom] = function (_, options) {
 };
 
 Timeout.prototype.refresh = function () {
-  if (this._destroyed) {
+  if (this[kSuspended]) {
+    this[kSuspended] = false;
+    resumeTimer_(this._timer);
+  } else if (this._destroyed) {
     // Reactivate a timer that fired naturally (callback still set).
     // Do NOT reactivate a timer cancelled via clearTimeout (callback
     // nulled by kDestroy or _onTimeout explicitly cleared).
@@ -363,11 +368,9 @@ function setUnrefTimeout(callback, timeout, ...args) {
 
 function suspendTimeout(timeout) {
   if (timeout !== null && timeout !== undefined && !timeout._destroyed) {
-    timeout._destroyed = true;
     timeout[kSuspended] = true;
     timeout._idleStart = DateNow();
-    cancelTimer_(timeout._timer);
-    MapPrototypeDelete(activeTimers, timeout[kTimerId]);
+    pauseTimer_(timeout._timer);
   }
 }
 

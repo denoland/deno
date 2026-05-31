@@ -356,6 +356,7 @@
       _timerArgs: args,
       _repeat: isRepeat ? after : null,
       _destroyed: false,
+      _paused: false,
       [kRefed]: isRefed,
       _timerId: id,
     };
@@ -376,15 +377,39 @@
   function cancelTimer(timer) {
     if (timer._destroyed) return;
     timer._destroyed = true;
+    const wasPaused = timer._paused;
+    timer._paused = false;
     timer._onTimeout = null;
-    if (timer[kRefed]) {
+    if (timer[kRefed] && !wasPaused) {
       decRefCount();
     }
     L_remove(timer);
     op_timer_untrack(timer._timerId);
   }
 
+  function pauseTimer(timer) {
+    if (timer._destroyed || timer._paused) return;
+    timer._paused = true;
+    if (timer[kRefed]) {
+      decRefCount();
+    }
+    L_remove(timer);
+  }
+
+  function resumeTimer(timer) {
+    if (timer._destroyed || !timer._paused) return;
+    timer._paused = false;
+    if (timer[kRefed]) {
+      incRefCount();
+    }
+    insert(timer, timer._idleTimeout);
+  }
+
   function refreshTimer(timer) {
+    if (timer._paused) {
+      resumeTimer(timer);
+      return;
+    }
     // Remove from current list
     if (timer._idlePrev || timer._idleNext) {
       L_remove(timer);
@@ -396,14 +421,14 @@
   function refTimer(timer) {
     if (!timer[kRefed]) {
       timer[kRefed] = true;
-      if (!timer._destroyed) incRefCount();
+      if (!timer._destroyed && !timer._paused) incRefCount();
     }
   }
 
   function unrefTimer(timer) {
     if (timer[kRefed]) {
       timer[kRefed] = false;
-      if (!timer._destroyed) decRefCount();
+      if (!timer._destroyed && !timer._paused) decRefCount();
     }
   }
 
@@ -412,6 +437,8 @@
     processTimers,
     createTimer,
     cancelTimer,
+    pauseTimer,
+    resumeTimer,
     refreshTimer,
     refTimer,
     unrefTimer,
