@@ -14,6 +14,7 @@ import {
   // for `import.meta.filename` and `import.meta.dirname` that Deno
   // provides.
   register,
+  SourceMap,
   stripTypeScriptTypes,
   syncBuiltinESMExports,
 } from "node:module";
@@ -109,6 +110,12 @@ Deno.test("[node/module builtinModules] has 'module' in builtins", () => {
 // https://github.com/denoland/deno/issues/18666
 Deno.test("[node/module findSourceMap] is a function", () => {
   assertEquals(findSourceMap("foo"), undefined);
+});
+
+Deno.test("[node/module SourceMap] is exposed as a named export", () => {
+  assertEquals(typeof SourceMap, "function");
+  // @ts-ignore Not in all supported @types/node versions.
+  assertEquals(SourceMap, Module.SourceMap);
 });
 
 // https://github.com/denoland/deno/issues/31039
