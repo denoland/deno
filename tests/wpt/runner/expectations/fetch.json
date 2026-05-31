@@ -2188,7 +2188,11 @@
         "When params=?1 is set explicitly (equivalent to bare params), URLs differing only in their parameters (other than `dispatch` and `uuid`) should be cached as the same entry."
       ]
     },
-    "pragma-no-cache-with-cache-control.html": true
+    "pragma-no-cache-with-cache-control.html": {
+      "expectedFailures": [
+        "Response with Cache-Control: max-age=2592000, immutable and Pragma: no-cache should be cached"
+      ]
+    }
   },
   "metadata": {
     "fetch-preflight.https.sub.any.html": false,
