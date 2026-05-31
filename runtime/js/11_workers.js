@@ -14,6 +14,7 @@ const {
   ArrayPrototypeFilter,
   ArrayPrototypeJoin,
   Error,
+  JSONStringify,
   ObjectPrototypeIsPrototypeOf,
   String,
   StringPrototypeStartsWith,
@@ -142,7 +143,7 @@ class Worker extends EventTarget {
     let hasSourceCode, sourceCode;
     if (workerType === "classic") {
       hasSourceCode = true;
-      sourceCode = `importScripts("#");`;
+      sourceCode = `importScripts(${JSONStringify(specifier)});`;
     } else {
       hasSourceCode = false;
       sourceCode = "";
