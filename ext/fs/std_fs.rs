@@ -18,6 +18,7 @@ use deno_io::fs::File;
 use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
+use deno_io::fs::FsStatFs;
 use deno_permissions::CheckedPath;
 use deno_permissions::CheckedPathBuf;
 
@@ -222,6 +223,21 @@ impl FileSystem for RealFs {
   }
   async fn lstat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
     spawn_blocking(move || lstat(&path)).await?
+  }
+
+  fn statfs_sync(
+    &self,
+    path: &CheckedPath,
+    bigint: bool,
+  ) -> FsResult<FsStatFs> {
+    statfs(path, bigint)
+  }
+  async fn statfs_async(
+    &self,
+    path: CheckedPathBuf,
+    bigint: bool,
+  ) -> FsResult<FsStatFs> {
+    spawn_blocking(move || statfs(&path, bigint)).await?
   }
 
   fn exists_sync(&self, path: &CheckedPath) -> bool {
@@ -922,6 +938,127 @@ fn lstat(path: &Path) -> FsResult<FsStat> {
   let mut fsstat = FsStat::from_std(metadata);
   deno_io::stat_extra(&file, &mut fsstat)?;
   Ok(fsstat)
+}
+
+fn statfs(path: &Path, bigint: bool) -> FsResult<FsStatFs> {
+  #[cfg(unix)]
+  {
+    use std::os::unix::ffi::OsStrExt;
+
+    let mut cpath = path.as_os_str().as_bytes().to_vec();
+    cpath.push(0);
+    if bigint {
+      #[cfg(not(any(
+        target_os = "macos",
+        target_os = "freebsd",
+        target_os = "openbsd"
+      )))]
+      // SAFETY: `cpath` is NUL-terminated and result is pointer to valid statfs memory.
+      let (code, result) = unsafe {
+        let mut result: libc::statfs64 = std::mem::zeroed();
+        (libc::statfs64(cpath.as_ptr() as _, &mut result), result)
+      };
+      #[cfg(any(
+        target_os = "macos",
+        target_os = "freebsd",
+        target_os = "openbsd"
+      ))]
+      // SAFETY: `cpath` is NUL-terminated and result is pointer to valid statfs memory.
+      let (code, result) = unsafe {
+        let mut result: libc::statfs = std::mem::zeroed();
+        (libc::statfs(cpath.as_ptr() as _, &mut result), result)
+      };
+      if code == -1 {
+        return Err(std::io::Error::last_os_error().into());
+      }
+      Ok(FsStatFs {
+        #[cfg(not(target_os = "openbsd"))]
+        typ: result.f_type as _,
+        #[cfg(target_os = "openbsd")]
+        typ: 0 as _,
+        bsize: result.f_bsize as _,
+        blocks: result.f_blocks as _,
+        bfree: result.f_bfree as _,
+        bavail: result.f_bavail as _,
+        files: result.f_files as _,
+        ffree: result.f_ffree as _,
+      })
+    } else {
+      // SAFETY: `cpath` is NUL-terminated and result is pointer to valid statfs memory.
+      let (code, result) = unsafe {
+        let mut result: libc::statfs = std::mem::zeroed();
+        (libc::statfs(cpath.as_ptr() as _, &mut result), result)
+      };
+      if code == -1 {
+        return Err(std::io::Error::last_os_error().into());
+      }
+      Ok(FsStatFs {
+        #[cfg(not(target_os = "openbsd"))]
+        typ: result.f_type as _,
+        #[cfg(target_os = "openbsd")]
+        typ: 0 as _,
+        bsize: result.f_bsize as _,
+        blocks: result.f_blocks as _,
+        bfree: result.f_bfree as _,
+        bavail: result.f_bavail as _,
+        files: result.f_files as _,
+        ffree: result.f_ffree as _,
+      })
+    }
+  }
+  #[cfg(windows)]
+  {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+
+    use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceW;
+
+    let _ = bigint;
+    let path = path.canonicalize()?;
+    let root = path.ancestors().last().ok_or_else(|| {
+      std::io::Error::new(ErrorKind::NotFound, "Path has no root.")
+    })?;
+    let mut root = OsStr::new(root).encode_wide().collect::<Vec<_>>();
+    root.push(0);
+    let mut sectors_per_cluster = 0;
+    let mut bytes_per_sector = 0;
+    let mut available_clusters = 0;
+    let mut total_clusters = 0;
+    let mut code = 0;
+    let mut retries = 0;
+    // We retry here because libuv does: https://github.com/libuv/libuv/blob/fa6745b4f26470dae5ee4fcbb1ee082f780277e0/src/win/fs.c#L2705
+    while code == 0 && retries < 2 {
+      // SAFETY: Normal GetDiskFreeSpaceW usage.
+      code = unsafe {
+        GetDiskFreeSpaceW(
+          root.as_ptr(),
+          &mut sectors_per_cluster,
+          &mut bytes_per_sector,
+          &mut available_clusters,
+          &mut total_clusters,
+        )
+      };
+      retries += 1;
+    }
+    if code == 0 {
+      return Err(std::io::Error::last_os_error().into());
+    }
+    Ok(FsStatFs {
+      typ: 0,
+      bsize: (bytes_per_sector * sectors_per_cluster) as _,
+      blocks: total_clusters as _,
+      bfree: available_clusters as _,
+      bavail: available_clusters as _,
+      files: 0,
+      ffree: 0,
+    })
+  }
+  #[cfg(not(any(unix, windows)))]
+  {
+    let _ = path;
+    let _ = bigint;
+    Err(FsError::NotSupported)
+  }
 }
 
 fn exists(path: &Path) -> bool {

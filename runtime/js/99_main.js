@@ -548,7 +548,7 @@ function dispatchUnloadEvent() {
 
 let hasBootstrapped = false;
 // Set up global properties shared by main and worker runtime.
-ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+core.defineGlobalProperties(globalThis, windowOrWorkerGlobalScope);
 
 // Set up global properties shared by main and worker runtime that are exposed
 // by unstable features if those are enabled.
@@ -564,7 +564,7 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures) {
     const featureId = featureIds[i];
     if (ArrayPrototypeIncludes(unstableFeatures, featureId)) {
       const props = unstableForWindowOrWorkerGlobalScope[featureId];
-      ObjectDefineProperties(globalThis, { ...props });
+      core.defineGlobalProperties(globalThis, { ...props });
     }
   }
 }
@@ -606,6 +606,8 @@ const NOT_IMPORTED_OPS = [
   "op_register_test_hook",
   "op_register_test",
   "op_test_get_origin",
+  "op_test_event_exit",
+  "op_test_isolate_exit",
   "op_pledge_test_permissions",
 
   // TODO(bartlomieju): used in various integration tests - figure out a way

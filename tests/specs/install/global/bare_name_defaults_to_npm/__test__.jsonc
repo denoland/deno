@@ -1,0 +1,32 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Bare scoped package name (no `npm:` prefix) — should resolve to the
+    // npm registry, matching the behavior of `deno add` / local `deno install`.
+    "scoped": {
+      "steps": [{
+        "if": "unix",
+        "args": "install -g --allow-env --root ./bins @denotest/cli-with-permissions",
+        "output": "install_scoped.out"
+      }, {
+        "if": "unix",
+        "commandName": "./bins/bin/cli-with-permissions",
+        "args": [],
+        "envs": { "DENO_HELLO": "world" },
+        "output": "run.out",
+        "exitCode": 0
+      }, {
+        "if": "windows",
+        "args": "install -g --allow-env --root ./bins @denotest/cli-with-permissions",
+        "output": "install_scoped.out"
+      }, {
+        "if": "windows",
+        "commandName": "./bins/bin/cli-with-permissions.cmd",
+        "args": [],
+        "envs": { "DENO_HELLO": "world" },
+        "output": "run.out",
+        "exitCode": 0
+      }]
+    }
+  }
+}

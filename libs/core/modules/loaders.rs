@@ -420,8 +420,21 @@ impl ModuleLoader for LazyEsmModuleLoader {
     _options: ModuleLoadOptions,
   ) -> ModuleLoadResponse {
     let mut sources = self.sources.borrow_mut();
-    let source = match sources.remove(specifier.as_str()) {
-      Some(source) => source,
+    // Mirror `ModuleMap::take_lazy_esm_source`: keep a cheap copy in the
+    // map so concurrent loads of the same lazy specifier (e.g. one via
+    // `op_lazy_load_esm` from a `createLazyLoader(...)()` call inside an
+    // already-loading sibling, and one via static import from user code)
+    // both succeed. `remove` here used to leave the second loader with
+    // an empty entry, surfacing as "Unsupported scheme node" because the
+    // resolver-side fallback found no source to use.
+    let source = match sources.get_mut(specifier.as_str()) {
+      Some(entry) => {
+        let placeholder = ModuleCodeString::from_static("");
+        let owned = std::mem::replace(entry, placeholder);
+        let (keep, give) = owned.into_cheap_copy();
+        *entry = keep;
+        give
+      }
       None => {
         return ModuleLoadResponse::Sync(Err(JsErrorBox::generic(format!(
           "Specifier \"{0}\" cannot be lazy-loaded as it was not included in the binary.",

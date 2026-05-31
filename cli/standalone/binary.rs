@@ -394,6 +394,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     for path in exclude_paths {
       vfs.add_exclude_path(path);
     }
+    // Embed the workspace package.json files so the standalone binary's node
+    // resolver can read their "exports" (and other) fields at runtime. Without
+    // this, resolving a workspace member by its package name falls back to
+    // legacy `index.js` resolution instead of honoring the package's exports.
+    for pkg_json in self.cli_options.workspace().package_jsons() {
+      vfs.add_path(&pkg_json.path)?;
+    }
     let progress_bar = ProgressBar::new(ProgressBarStyle::ProgressBars);
     let npm_snapshot = match &self.npm_resolver {
       CliNpmResolver::Managed(managed) => {
@@ -983,9 +990,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
       CliNpmResolver::Byonm(_) => {
         maybe_warn_different_system(&self.npm_system_info);
-        for pkg_json in self.cli_options.workspace().package_jsons() {
-          builder.add_path(&pkg_json.path)?;
-        }
         let _progress =
           progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
         // traverse and add all the node_modules directories in the workspace

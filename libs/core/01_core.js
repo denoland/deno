@@ -9,6 +9,8 @@
     ErrorCaptureStackTrace,
     FunctionPrototypeBind,
     ObjectAssign,
+    ObjectDefineProperties,
+    ObjectDefineProperty,
     ObjectFreeze,
     ObjectFromEntries,
     ObjectKeys,
@@ -844,50 +846,79 @@
     };
   }
 
-  function propWritableLazyLoaded(getter, loadFn) {
-    let valueIsSet = false;
-    let value;
+  // Marker symbol identifying a lazy-loaded property descriptor. The property
+  // name is filled in by `defineGlobalProperties` at install time so the
+  // setter can mimic data-property [[Set]] semantics (define an own data
+  // property on the receiver) instead of mutating a closure shared across all
+  // receivers - see denoland/deno#34403.
+  const lazyNameSym = Symbol("lazyName");
 
-    return {
+  function propWritableLazyLoaded(getter, loadFn) {
+    const desc = {
       get() {
-        const loadedValue = loadFn();
-        if (valueIsSet) {
-          return value;
-        } else {
-          return getter(loadedValue);
-        }
+        return getter(loadFn());
       },
       set(v) {
-        loadFn();
-        valueIsSet = true;
-        value = v;
+        ObjectDefineProperty(this, desc[lazyNameSym], {
+          value: v,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
       },
       enumerable: true,
       configurable: true,
+      [lazyNameSym]: undefined,
     };
+    return desc;
   }
 
   function propNonEnumerableLazyLoaded(getter, loadFn) {
-    let valueIsSet = false;
-    let value;
-
-    return {
+    const desc = {
       get() {
-        const loadedValue = loadFn();
-        if (valueIsSet) {
-          return value;
-        } else {
-          return getter(loadedValue);
-        }
+        return getter(loadFn());
       },
       set(v) {
-        loadFn();
-        valueIsSet = true;
-        value = v;
+        const name = desc[lazyNameSym];
+        // Match OrdinarySetWithOwnDescriptor semantics for an inherited
+        // writable data property: a direct set on the holder updates the
+        // value in place (preserving enumerable: false), while an inherited
+        // set creates a new enumerable own data property on the receiver.
+        if (ObjectHasOwn(this, name)) {
+          ObjectDefineProperty(this, name, {
+            value: v,
+            writable: true,
+            enumerable: false,
+            configurable: true,
+          });
+        } else {
+          ObjectDefineProperty(this, name, {
+            value: v,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+          });
+        }
       },
       enumerable: false,
       configurable: true,
+      [lazyNameSym]: undefined,
     };
+    return desc;
+  }
+
+  // Like `Object.defineProperties`, but also stamps the property name into any
+  // lazy-loaded descriptors so their setters can target the correct receiver.
+  function defineGlobalProperties(target, props) {
+    const keys = ObjectKeys(props);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const desc = props[key];
+      if (desc !== null && typeof desc === "object" && lazyNameSym in desc) {
+        desc[lazyNameSym] = key;
+      }
+    }
+    ObjectDefineProperties(target, props);
   }
 
   function createLazyLoader(specifier) {
@@ -1221,6 +1252,7 @@
     propGetterOnly,
     propWritableLazyLoaded,
     propNonEnumerableLazyLoaded,
+    defineGlobalProperties,
     createLazyLoader,
     loadExtScript,
     createCancelHandle: () => op_cancel_handle(),

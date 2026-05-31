@@ -6,6 +6,7 @@ use std::env;
 use std::ffi::OsString;
 use std::net::IpAddr;
 use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use std::num::NonZeroU8;
 use std::num::NonZeroU32;
 use std::num::NonZeroUsize;
@@ -202,6 +203,7 @@ pub struct CheckFlags {
   pub doc: bool,
   pub doc_only: bool,
   pub check_js: bool,
+  pub watch: Option<WatchFlags>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -675,7 +677,6 @@ pub struct PackFlags {
   pub allow_slow_types: bool,
   pub allow_dirty: bool,
   pub set_version: Option<String>,
-  pub no_shim: bool,
   pub no_source_maps: bool,
 }
 
@@ -762,6 +763,9 @@ impl DenoSubcommand {
         watch: Some(flags), ..
       }) => Some(WatchFlagsRef::WithPaths(flags)),
       Self::Bench(BenchFlags {
+        watch: Some(flags), ..
+      })
+      | Self::Check(CheckFlags {
         watch: Some(flags), ..
       })
       | Self::Lint(LintFlags {
@@ -2488,6 +2492,11 @@ Don't error if the audit data can't be retrieved from the registry
           .help("Automatically fix vulnerabilities by upgrading packages")
           .action(ArgAction::SetTrue)
       )
+      .arg(
+        Arg::new("action")
+          .value_parser(["fix"])
+          .hide(true)
+      )
   })
 }
 
@@ -2891,6 +2900,9 @@ Unless --reload is specified, this command will not re-download already cached d
         .arg(allow_import_arg())
         .arg(deny_import_arg())
         .arg(v8_flags_arg())
+        .arg(watch_arg(false))
+        .arg(watch_exclude_arg())
+        .arg(no_clear_screen_arg())
       }
     )
 }
@@ -5143,12 +5155,6 @@ fn pack_subcommand() -> Command {
           .value_name("VERSION"),
       )
       .arg(
-        Arg::new("no-deno-shim")
-          .long("no-deno-shim")
-          .help("Don't automatically add @deno/shim-deno dependency")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(
         Arg::new("no-source-maps")
           .long("no-source-maps")
           .help("Don't include source maps in the output")
@@ -5698,6 +5704,26 @@ pub fn inspect_value_parser(host_and_port: &str) -> Result<SocketAddr, String> {
       .map_err(|_| format!("Invalid inspector port '{port}'"))
   }
 
+  // Resolve a host string to an IP address. IPs are returned as-is.
+  // Hostnames (e.g. "localhost") are resolved via DNS so Node's
+  // `--inspect=localhost:0` syntax works. To match Node's resolver,
+  // IPv4 results are preferred when both families are returned.
+  fn resolve_host(host: &str) -> Result<IpAddr, String> {
+    if let Ok(ip) = host.parse::<IpAddr>() {
+      return Ok(ip);
+    }
+    let addrs = (host, 0u16)
+      .to_socket_addrs()
+      .map_err(|e| format!("Invalid inspector host '{host}': {}", e))?
+      .collect::<Vec<_>>();
+    addrs
+      .iter()
+      .find(|a| a.is_ipv4())
+      .or_else(|| addrs.first())
+      .map(|a| a.ip())
+      .ok_or_else(|| format!("Could not resolve inspector host '{host}'"))
+  }
+
   let default_host: IpAddr = DEFAULT_HOST.parse().unwrap();
 
   if host_and_port.is_empty() {
@@ -5732,9 +5758,7 @@ pub fn inspect_value_parser(host_and_port: &str) -> Result<SocketAddr, String> {
       parse_port(port_part)?
     };
 
-    let host_ip = host_part
-      .parse::<IpAddr>()
-      .map_err(|e| format!("Invalid inspector host '{host_part}': {:?}", e))?;
+    let host_ip = resolve_host(host_part)?;
 
     return Ok(SocketAddr::new(host_ip, port));
   }
@@ -5744,9 +5768,7 @@ pub fn inspect_value_parser(host_and_port: &str) -> Result<SocketAddr, String> {
     return Ok(SocketAddr::new(default_host, port));
   }
 
-  let host_ip = host_and_port.parse::<IpAddr>().map_err(|e| {
-    format!("Invalid inspector host '{host_and_port}': {:?}", e)
-  })?;
+  let host_ip = resolve_host(host_and_port)?;
 
   Ok(SocketAddr::new(host_ip, DEFAULT_PORT))
 }
@@ -6528,7 +6550,11 @@ fn audit_parse(
   let ignore_unfixable = matches.get_flag("ignore-unfixable");
   let ignore_registry_errors = matches.get_flag("ignore-registry-errors");
   let socket = matches.get_flag("socket");
-  let fix = matches.get_flag("fix");
+  let fix = matches.get_flag("fix")
+    || matches
+      .get_one::<String>("action")
+      .map(|s| s == "fix")
+      .unwrap_or(false);
   let dev = true;
   let prod = true;
   let optional = true;
@@ -6783,6 +6809,7 @@ fn check_parse(
     doc: matches.get_flag("doc"),
     doc_only: matches.get_flag("doc-only"),
     check_js: matches.get_flag("check-js"),
+    watch: watch_arg_parse(matches)?,
   });
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   allow_and_deny_import_parse(flags, matches)?;
@@ -8150,7 +8177,6 @@ fn pack_parse(
     allow_slow_types: matches.get_flag("allow-slow-types"),
     allow_dirty: matches.get_flag("allow-dirty"),
     set_version: matches.remove_one::<String>("set-version"),
-    no_shim: matches.get_flag("no-deno-shim"),
     no_source_maps: matches.get_flag("no-source-maps"),
   });
 
@@ -10219,6 +10245,7 @@ mod tests {
           doc: false,
           doc_only: false,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10235,6 +10262,7 @@ mod tests {
           doc: false,
           doc_only: false,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10251,6 +10279,7 @@ mod tests {
           doc: true,
           doc_only: false,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10267,6 +10296,7 @@ mod tests {
           doc: false,
           doc_only: true,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10297,6 +10327,7 @@ mod tests {
             doc: false,
             doc_only: false,
             check_js: false,
+            watch: None,
           }),
           type_check_mode: TypeCheckMode::All,
           code_cache_enabled: true,
@@ -10326,6 +10357,7 @@ mod tests {
           doc: false,
           doc_only: false,
           check_js: true,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -16118,6 +16150,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           doc: false,
           doc_only: false,
           check_js: false,
+          watch: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -16207,6 +16240,27 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           code_cache_enabled: true,
           ..Flags::default()
         }
+      );
+    }
+  }
+
+  #[test]
+  fn inspect_value_parser_resolves_hostnames() {
+    // Node accepts `--inspect=localhost:0` (and similar hostname forms);
+    // the parser should resolve them via DNS rather than rejecting.
+    let cases = [
+      ("localhost:0", 0),
+      ("localhost:1234", 1234),
+      ("localhost", 9229),
+    ];
+    for (input, expected_port) in cases {
+      let addr = inspect_value_parser(input)
+        .unwrap_or_else(|e| panic!("failed to parse {input:?}: {e}"));
+      assert_eq!(addr.port(), expected_port, "port for {input:?}");
+      assert!(
+        addr.ip().is_loopback(),
+        "expected loopback for {input:?}, got {}",
+        addr.ip()
       );
     }
   }
@@ -16599,6 +16653,68 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
   #[test]
   fn why_missing_package() {
     let r = flags_from_vec(svec!["deno", "why"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn audit_basic() {
+    let r = flags_from_vec(svec!["deno", "audit"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Audit(AuditFlags {
+          severity: "low".to_string(),
+          dev: true,
+          prod: true,
+          optional: true,
+          ..Default::default()
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn audit_fix_flag() {
+    let r = flags_from_vec(svec!["deno", "audit", "--fix"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Audit(AuditFlags {
+          severity: "low".to_string(),
+          dev: true,
+          prod: true,
+          optional: true,
+          fix: true,
+          ..Default::default()
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn audit_fix_positional() {
+    let r = flags_from_vec(svec!["deno", "audit", "fix"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Audit(AuditFlags {
+          severity: "low".to_string(),
+          dev: true,
+          prod: true,
+          optional: true,
+          fix: true,
+          ..Default::default()
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn audit_invalid_positional() {
+    let r = flags_from_vec(svec!["deno", "audit", "bogus"]);
     assert!(r.is_err());
   }
 

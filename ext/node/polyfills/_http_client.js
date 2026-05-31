@@ -840,6 +840,11 @@ function maybeRetryRequest(req, socket) {
   req._headerSent = false;
   req.destroyed = false;
   req._closed = false;
+  // The first attempt set reusedSocket on the stale socket. The retry runs
+  // through addRequest again, which will call agent.reuseSocket() if it
+  // happens to land on another pooled free socket. Otherwise the request
+  // goes to a brand-new connection and the flag must stay false.
+  req.reusedSocket = false;
 
   // Restore output data saved before the first flush attempt
   if (req[kRetryData]) {

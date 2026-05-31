@@ -95,6 +95,7 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
     _role,
     _serverHandleIdleTimeout,
     createWebSocketBranded,
+    installServerInspector,
     SERVER,
     WebSocket,
   } = loadWebSocket();
@@ -116,6 +117,7 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
 
         socket[_rid] = wsRid;
         socket[_readyState] = WebSocket.OPEN;
+        installServerInspector(socket, request.url);
         const event = new Event("open");
         socket.dispatchEvent(event);
 
@@ -199,6 +201,7 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
 
         socket[_rid] = wsRid;
         socket[_readyState] = WebSocket.OPEN;
+        installServerInspector(socket, request.url);
         socket.dispatchEvent(new Event("open"));
 
         socket[_eventLoop]();

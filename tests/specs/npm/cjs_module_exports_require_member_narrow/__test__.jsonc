@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "attached_works": {
+      "args": "run -A --quiet main.ts",
+      "output": "main.out"
+    },
+    "loose_is_not_advertised": {
+      "args": "run -A --quiet loose.ts",
+      "output": "loose.out",
+      "exitCode": 1
+    }
+  }
+}

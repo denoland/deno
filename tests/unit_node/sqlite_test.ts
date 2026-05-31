@@ -1419,3 +1419,91 @@ Deno.test("createTagStore uses default capacity when not specified", () => {
   const sql = db.createTagStore();
   assertStrictEquals(sql.capacity, 1000);
 });
+
+// Regression test for denoland/orchid#330: closing the database from inside a
+// user-defined aggregate step callback used to free the in-flight statement
+// and connection while SQLite was still executing on the VDBE stack — a
+// native use-after-free. The close call must now throw instead of crashing,
+// and the connection must remain usable after the failed close.
+Deno.test(
+  "[node/sqlite] DatabaseSync.close from aggregate step throws instead of crashing",
+  () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec("CREATE TABLE t(x); INSERT INTO t VALUES (1),(2),(3),(4),(5)");
+
+    const closeErrors: unknown[] = [];
+    db.aggregate("sum_with_close", {
+      start: 0,
+      step(acc, x) {
+        try {
+          db.close();
+        } catch (e) {
+          closeErrors.push(e);
+        }
+        return (acc as number) + (x as number);
+      },
+    });
+
+    // The SELECT runs to completion because the in-step error was caught,
+    // and the aggregate accumulates normally — no crash.
+    const result = db.prepare("SELECT sum_with_close(x) AS s FROM t").get() as {
+      s: number;
+    };
+    assertStrictEquals(result.s, 15);
+
+    nodeAssert.ok(
+      closeErrors.length > 0,
+      "expected db.close() inside step to throw at least once",
+    );
+    for (const err of closeErrors) {
+      nodeAssert.ok(err instanceof Error);
+      assertStrictEquals(
+        (err as { code?: string }).code,
+        "ERR_INVALID_STATE",
+      );
+    }
+
+    // Connection must still be usable after the refused close.
+    assertStrictEquals(db.isOpen, true);
+    db.close();
+  },
+);
+
+Deno.test(
+  "[node/sqlite] DatabaseSync.close from scalar function throws instead of corrupting state",
+  () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec("CREATE TABLE t(x); INSERT INTO t VALUES (1),(2),(3)");
+
+    const closeErrors: unknown[] = [];
+    db.function("touch", (x) => {
+      try {
+        db.close();
+      } catch (e) {
+        closeErrors.push(e);
+      }
+      return x;
+    });
+
+    const rows = db.prepare("SELECT touch(x) AS v FROM t ORDER BY x").all();
+    assertEquals(rows, [
+      { v: 1, __proto__: null },
+      { v: 2, __proto__: null },
+      { v: 3, __proto__: null },
+    ]);
+
+    nodeAssert.ok(
+      closeErrors.length > 0,
+      "expected db.close() inside scalar callback to throw",
+    );
+    for (const err of closeErrors) {
+      assertStrictEquals(
+        (err as { code?: string }).code,
+        "ERR_INVALID_STATE",
+      );
+    }
+
+    assertStrictEquals(db.isOpen, true);
+    db.close();
+  },
+);

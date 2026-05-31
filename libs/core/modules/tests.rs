@@ -661,6 +661,59 @@ async fn test_lazy_load_esm_evaluates_pre_instantiated_sibling() {
   result.await.unwrap();
 }
 
+/// Regression test for https://github.com/denoland/deno/issues/34307
+///
+/// Two concurrent dynamic `import()` calls each spawn their own
+/// `RecursiveModuleLoad`. If both transitively depend on the same
+/// `lazy_loaded_esm` module, their per-load `visited`/`get_id` dedup misses
+/// (the first hasn't registered the module yet) and both queue load futures
+/// for the same lazy specifier. The first wins `take_lazy_esm_source`; the
+/// second used to get `None` and fall through to `loader.load()`, which
+/// surfaces "Unsupported scheme" for `node:` builtins in the wild (vite 8
+/// + react-router 7.15 under a CJS bin).
+#[tokio::test]
+async fn test_lazy_loaded_esm_concurrent_loads() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "custom:lazy_shared" = "lazy_loaded_shared.js",
+    ]
+  );
+
+  let main =
+    ModuleSpecifier::parse("file:///lazy_loaded_concurrent_main.js").unwrap();
+  let a =
+    ModuleSpecifier::parse("file:///lazy_loaded_concurrent_a.js").unwrap();
+  let b =
+    ModuleSpecifier::parse("file:///lazy_loaded_concurrent_b.js").unwrap();
+  let loader = Rc::new(StaticModuleLoader::new([
+    (
+      main.clone(),
+      crate::ascii_str_include!("testdata/lazy_loaded_concurrent_main.js"),
+    ),
+    (
+      a,
+      crate::ascii_str_include!("testdata/lazy_loaded_concurrent_a.js"),
+    ),
+    (
+      b,
+      crate::ascii_str_include!("testdata/lazy_loaded_concurrent_b.js"),
+    ),
+  ]));
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let mod_id = runtime.load_main_es_module(&main).await.unwrap();
+  let result = runtime.mod_evaluate(mod_id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  result.await.unwrap();
+}
+
 #[test]
 fn test_lazy_loaded_script() {
   deno_core::extension!(
@@ -2904,4 +2957,99 @@ async fn test_tla_with_tick_scheduled_no_hang() {
   let receiver = runtime.mod_evaluate(mod_main);
   runtime.run_event_loop(Default::default()).await.unwrap();
   receiver.await.unwrap();
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/34466
+///
+/// When a dynamic import evaluates an async module graph whose
+/// dependencies trigger nested `lazy_load_esm_module` calls (e.g. an npm
+/// CJS package whose `require()` chain pulls in a now-lazy `node:*`
+/// polyfill), the inner `perform_microtask_checkpoint` was firing while
+/// V8 was still inside the outer `module.evaluate()` on the async graph.
+/// That drained the TLA dependency's await-resume microtask too early
+/// and wedged V8's async module state machine — the parent module's
+/// evaluation promise stayed Pending forever and the runtime reported
+/// "Top-level await promise never resolved" at the dynamic import site.
+///
+/// The fix is to mark `evaluating_top_level` true around
+/// `module.evaluate()` in `dynamic_import_module_evaluate`, matching
+/// `mod_evaluate`, so nested lazy ESM loads skip their post-evaluate
+/// microtask checkpoint.
+#[tokio::test]
+async fn test_dyn_import_async_graph_with_lazy_esm_no_stall() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "lazy_loaded.js",
+    ]
+  );
+
+  // mod.js mimics an npm package side-effect import: it has a TLA dep
+  // (tla.js) and a sibling that triggers a lazy ESM load (the CJS
+  // require-of-node:* case in the original bug).
+  struct Loader;
+  impl ModuleLoader for Loader {
+    fn resolve(
+      &self,
+      specifier: &str,
+      referrer: &str,
+      _kind: ResolutionKind,
+    ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+      resolve_import(specifier, referrer)
+        .map_err(|e| deno_error::JsErrorBox::generic(e.to_string()))
+    }
+    fn load(
+      &self,
+      module_specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<&ModuleLoadReferrer>,
+      _options: ModuleLoadOptions,
+    ) -> ModuleLoadResponse {
+      let s = module_specifier.as_str();
+      let code = match s {
+        "file:///main.js" => {
+          r#"await import("./mod.js"); globalThis.done = true;"#
+        }
+        // mod.js mirrors the npm-package shape from the original bug:
+        // a TLA dep imported first, then a sibling whose evaluation
+        // triggers a `lazy_load_esm_module` call (the CJS-require-of-a-
+        // now-lazy-node:*-polyfill case).
+        "file:///mod.js" => r#"import "./tla.js"; import "./helper.js";"#,
+        "file:///tla.js" => r#"await Promise.resolve();"#,
+        "file:///helper.js" => {
+          r#"
+          const lazy = Deno.core.createLazyLoader("ext:test_ext/lazy_loaded.js")();
+          if (lazy.foo !== "foo") throw new Error("lazy.foo: " + lazy.foo);
+          "#
+        }
+        _ => panic!("unexpected: {s}"),
+      };
+      ModuleLoadResponse::Sync(Ok(ModuleSource::new(
+        ModuleType::JavaScript,
+        ModuleSourceCode::String(FastString::from_static(code)),
+        module_specifier,
+        None,
+      )))
+    }
+  }
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    module_loader: Some(Rc::new(Loader)),
+    ..Default::default()
+  });
+
+  let main_url = Url::parse("file:///main.js").unwrap();
+  let mod_id = runtime.load_main_es_module(&main_url).await.unwrap();
+  let receiver = runtime.mod_evaluate(mod_id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  receiver.await.unwrap();
+
+  // Confirm main.js's TLA actually completed (not just that we didn't
+  // hit a stall error).
+  deno_core::scope!(scope, runtime);
+  let g = scope.get_current_context().global(scope);
+  let key = v8::String::new(scope, "done").unwrap();
+  let v = g.get(scope, key.into()).unwrap();
+  assert!(v.is_true(), "main.js await import never resolved");
 }

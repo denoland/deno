@@ -210,7 +210,17 @@ pub async fn doc(
       let mut doc_nodes_by_url = doc_parser.parse()?;
 
       if doc_flags.lint {
-        let diagnostics = doc_parser.take_diagnostics();
+        let mut diagnostics = doc_parser.take_diagnostics();
+        // Drop private-type-ref diagnostics whose referenced type lives
+        // in a different package (i.e. a non-file specifier such as
+        // jsr:, npm:, http:, https:). Those types' visibility is the
+        // upstream package's concern, not the current package's.
+        diagnostics.retain(|diagnostic| match &diagnostic.kind {
+          doc::DocDiagnosticKind::PrivateTypeRef(d) => {
+            d.reference_location.filename.starts_with("file:")
+          }
+          _ => true,
+        });
         check_diagnostics(&diagnostics)?;
       }
 
