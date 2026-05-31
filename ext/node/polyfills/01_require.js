@@ -343,6 +343,8 @@ const lazyNodeModules = {
   "internal/repl": () => internalRepl().default,
   "fs/promises": () =>
     core.loadExtScript("ext:deno_node/fs/promises.ts").fsPromises,
+  "test/reporters": () =>
+    core.loadExtScript("ext:deno_node/test/reporters.ts").default,
   "assert/strict": () => assertStrict().default,
   "internal/event_target": () => internalEventTarget().default,
   "internal/fs/utils": () => internalFsUtils().default,
@@ -480,6 +482,7 @@ function setupBuiltinModules() {
   const schemelessBlockList = new SafeSet([
     "sqlite",
     "test",
+    "test/reporters",
   ]);
   function registerName(name) {
     // `internal/*` modules are only exposed under --expose-internals, so
@@ -2347,7 +2350,7 @@ function isBuiltin(moduleName) {
 
   if (StringPrototypeStartsWith(moduleName, "node:")) {
     moduleName = StringPrototypeSlice(moduleName, 5);
-  } else if (moduleName === "test") {
+  } else if (moduleName === "test" || moduleName === "test/reporters") {
     // test is only a builtin if it has the "node:" scheme
     // see https://github.com/nodejs/node/blob/73025c4dec042e344eeea7912ed39f7b7c4a3991/test/parallel/test-module-isBuiltin.js#L14
     return false;

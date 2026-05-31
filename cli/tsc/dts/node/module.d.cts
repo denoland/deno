@@ -589,6 +589,11 @@ declare module "module" {
              */
             readonly payload: SourceMapPayload;
             /**
+             * Line lengths for the generated source, if provided when the source
+             * map was created.
+             */
+            readonly lineLengths: readonly number[] | undefined;
+            /**
              * Given a line offset and column offset in the generated source
              * file, returns an object representing the SourceMap range in the
              * original file if found, or an empty object if not.
