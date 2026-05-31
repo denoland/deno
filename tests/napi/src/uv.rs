@@ -494,12 +494,94 @@ extern "C" fn test_uv_timer_fires(
   ptr::null_mut()
 }
 
+// Exercises the libuv threading + semaphore polyfills (uv_thread_*,
+// uv_sem_*) added to the host binary in ext/napi/uv.rs. Like the other
+// uv_* symbols in this file, they are resolved from the host `deno`
+// process at runtime by libuv-sys-lite (dyn-symbols) — declaring them
+// directly would create static imports that fail to link on Windows. A
+// worker thread increments a counter and posts a counting semaphore three
+// times; the main thread drains the semaphore, joins the worker, and
+// checks the results.
+struct ThreadArg {
+  sem: *mut libuv_sys_lite::uv_sem_t,
+  counter: *mut i32,
+}
+
+unsafe extern "C" fn uv_threads_entry(arg: *mut std::ffi::c_void) {
+  unsafe {
+    let a = arg as *mut ThreadArg;
+    for _ in 0..3 {
+      *(*a).counter += 1;
+      libuv_sys_lite::uv_sem_post((*a).sem);
+    }
+  }
+}
+
+extern "C" fn test_uv_threads(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  use libuv_sys_lite::uv_sem_destroy;
+  use libuv_sys_lite::uv_sem_init;
+  use libuv_sys_lite::uv_sem_t;
+  use libuv_sys_lite::uv_sem_trywait;
+  use libuv_sys_lite::uv_sem_wait;
+  use libuv_sys_lite::uv_thread_create;
+  use libuv_sys_lite::uv_thread_equal;
+  use libuv_sys_lite::uv_thread_join;
+  use libuv_sys_lite::uv_thread_self;
+  use libuv_sys_lite::uv_thread_t;
+
+  unsafe {
+    let mut sem = MaybeUninit::<uv_sem_t>::zeroed();
+    let sem_ptr = sem.as_mut_ptr();
+    assert_eq!(uv_sem_init(sem_ptr, 0), 0);
+
+    let mut counter: i32 = 0;
+    let mut arg = ThreadArg {
+      sem: sem_ptr,
+      counter: &mut counter,
+    };
+    let arg_ptr: *mut ThreadArg = &mut arg;
+
+    let mut tid = MaybeUninit::<uv_thread_t>::zeroed();
+    let tid_ptr = tid.as_mut_ptr();
+    assert_eq!(
+      uv_thread_create(tid_ptr, Some(uv_threads_entry), arg_ptr.cast()),
+      0
+    );
+
+    // Drain the three posts from the worker (blocks until they arrive).
+    for _ in 0..3 {
+      uv_sem_wait(sem_ptr);
+    }
+    assert_eq!(uv_thread_join(tid_ptr), 0);
+    assert_eq!(counter, 3);
+
+    // The count is back to zero, so a non-blocking wait must fail.
+    assert_ne!(uv_sem_trywait(sem_ptr), 0);
+
+    // uv_thread_self / uv_thread_equal smoke check.
+    let _ = uv_thread_self();
+    assert_ne!(uv_thread_equal(tid_ptr, tid_ptr), 0);
+
+    uv_sem_destroy(sem_ptr);
+  }
+
+  let mut undefined: napi_value = ptr::null_mut();
+  unsafe {
+    assert_napi_ok!(napi_get_undefined(env, &mut undefined));
+  }
+  undefined
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_uv_async", test_uv_async),
     napi_new_property!(env, "test_uv_async_ref", test_uv_async_ref),
     napi_new_property!(env, "test_uv_polyfills", test_uv_polyfills),
     napi_new_property!(env, "test_uv_timer_fires", test_uv_timer_fires),
+    napi_new_property!(env, "test_uv_threads", test_uv_threads),
   ];
 
   assert_napi_ok!(napi_define_properties(
