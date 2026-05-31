@@ -1657,13 +1657,21 @@ impl ConfigData {
         None
       }
     };
-    let unstable = member_dir
+    let mut unstable = member_dir
       .workspace
       .unstable_features()
       .iter()
       .chain(settings.unstable.as_deref())
       .cloned()
       .collect::<BTreeSet<_>>();
+    // Expand `"unstable": ["node-compat"]` (the config-file equivalent of
+    // `DENO_COMPAT=1`) into the set of features it implies, so existing checks
+    // like `unstable.contains("sloppy-imports")` pick up the right behavior.
+    if unstable.contains("node-compat") {
+      for feature in crate::args::NODE_COMPAT_UNSTABLE_FEATURES {
+        unstable.insert((*feature).to_string());
+      }
+    }
 
     ConfigData {
       scope,

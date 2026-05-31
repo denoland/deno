@@ -510,6 +510,15 @@ impl WorkspaceMainModuleResolver {
   }
 }
 
+/// Set of unstable feature names that `"unstable": ["node-compat"]` in
+/// `deno.json` (and the equivalent `DENO_COMPAT=1` env var) enables.
+pub const NODE_COMPAT_UNSTABLE_FEATURES: &[&str] = &[
+  "bare-node-builtins",
+  "detect-cjs",
+  "sloppy-imports",
+  "node-globals",
+];
+
 /// Holds the resolved options of many sources used by subcommands
 /// and provides some helper function for creating common objects.
 #[derive(Debug)]
@@ -1358,14 +1367,25 @@ impl CliOptions {
     &self.flags.unsafely_ignore_certificate_errors
   }
 
+  /// Returns true when `"unstable": ["node-compat"]` is set in the
+  /// workspace's `deno.json` (the config-file equivalent of `DENO_COMPAT=1`).
+  ///
+  /// When enabled, this implies the same set of features as `DENO_COMPAT=1`:
+  /// `bare-node-builtins`, `detect-cjs`, `sloppy-imports`, and `node-globals`.
+  pub fn unstable_node_compat_config(&self) -> bool {
+    self.workspace().has_unstable("node-compat")
+  }
+
   pub fn unstable_bare_node_builtins(&self) -> bool {
     self.flags.unstable_config.bare_node_builtins
       || self.workspace().has_unstable("bare-node-builtins")
+      || self.unstable_node_compat_config()
   }
 
   pub fn unstable_detect_cjs(&self) -> bool {
     self.flags.unstable_config.detect_cjs
       || self.workspace().has_unstable("detect-cjs")
+      || self.unstable_node_compat_config()
   }
 
   pub fn detect_cjs(&self) -> bool {
@@ -1388,10 +1408,12 @@ impl CliOptions {
   pub fn unstable_sloppy_imports(&self) -> bool {
     self.flags.unstable_config.sloppy_imports
       || self.workspace().has_unstable("sloppy-imports")
+      || self.unstable_node_compat_config()
   }
 
   pub fn unstable_features(&self) -> Vec<&str> {
     let from_config_file = self.workspace().unstable_features();
+    let node_compat = self.unstable_node_compat_config();
     let unstable_features = from_config_file
       .iter()
       .map(|s| s.as_str())
@@ -1404,13 +1426,36 @@ impl CliOptions {
           .filter(|f| !from_config_file.contains(f))
           .map(|s| s.as_str()),
       )
+      // When `"unstable": ["node-compat"]` is set in the config, expand it to
+      // the same features that `DENO_COMPAT=1` enables. `node-compat` itself
+      // is also kept in the list (it's recognized as valid below), so existing
+      // callers that check for it directly continue to work.
+      .chain(
+        node_compat
+          .then_some(NODE_COMPAT_UNSTABLE_FEATURES)
+          .into_iter()
+          .flatten()
+          .copied(),
+      )
+      .collect::<Vec<_>>();
+    // Deduplicate while preserving first occurrence.
+    let mut seen =
+      std::collections::HashSet::with_capacity(unstable_features.len());
+    let unstable_features = unstable_features
+      .into_iter()
+      .filter(|f| seen.insert(*f))
       .collect::<Vec<_>>();
 
     if !unstable_features.is_empty() {
       let all_valid_unstable_flags: Vec<&str> = deno_runtime::UNSTABLE_FEATURES
         .iter()
         .map(|feature| feature.name)
-        .chain(["fmt-component", "fmt-sql", "npm-lazy-caching"])
+        .chain([
+          "fmt-component",
+          "fmt-sql",
+          "npm-lazy-caching",
+          "node-compat",
+        ])
         .collect();
 
       // check and warn if the unstable flag of config file isn't supported, by

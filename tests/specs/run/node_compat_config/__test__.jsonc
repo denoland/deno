@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "node_compat_via_config": {
+      "args": "run main.ts",
+      "output": "main.out"
+    }
+  }
+}

@@ -1043,6 +1043,7 @@
           "http",
           "kv",
           "net",
+          "node-compat",
           "node-globals",
           "raw-imports",
           "sloppy-imports",
