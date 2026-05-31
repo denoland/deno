@@ -1,50 +1,50 @@
 {
   "urlpattern.any.html": {
     "expectedFailures": [
+      "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []",
+      "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"hostname\":\":domain(.*)\"}] Inputs: [{\"hostname\":\"localhost\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]",
-      "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
-      "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []"
+      "Pattern: [{\"hostname\":\":domain(.*)\"}] Inputs: [{\"hostname\":\"localhost\"}]"
     ]
   },
   "urlpattern.any.worker.html": {
     "expectedFailures": [
+      "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []",
+      "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"hostname\":\":domain(.*)\"}] Inputs: [{\"hostname\":\"localhost\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]",
-      "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
-      "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []"
+      "Pattern: [{\"hostname\":\":domain(.*)\"}] Inputs: [{\"hostname\":\"localhost\"}]"
     ]
   },
   "urlpattern.https.any.html": {
     "expectedFailures": [
+      "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []",
+      "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"hostname\":\":domain(.*)\"}] Inputs: [{\"hostname\":\"localhost\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]",
-      "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
-      "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []"
+      "Pattern: [{\"hostname\":\":domain(.*)\"}] Inputs: [{\"hostname\":\"localhost\"}]"
     ]
   },
   "urlpattern.https.any.worker.html": {
     "expectedFailures": [
+      "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []",
+      "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"hostname\":\":domain(.*)\"}] Inputs: [{\"hostname\":\"localhost\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]",
-      "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
-      "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []"
+      "Pattern: [{\"hostname\":\":domain(.*)\"}] Inputs: [{\"hostname\":\"localhost\"}]"
     ]
   },
   "urlpattern-hasregexpgroups.any.html": true,

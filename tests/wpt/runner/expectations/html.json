@@ -967,8 +967,8 @@
           "Growable SharedArrayBuffer",
           "ImageBitmap",
           "OffscreenCanvas",
-          "Transferring OOB TypedArray throws",
-          "Transferring a non-transferable platform object fails"
+          "Transferring a non-transferable platform object fails",
+          "Transferring OOB TypedArray throws"
         ]
       },
       "structured-clone.any.worker.html": {
@@ -976,8 +976,8 @@
           "Growable SharedArrayBuffer",
           "ImageBitmap",
           "OffscreenCanvas",
-          "Transferring OOB TypedArray throws",
-          "Transferring a non-transferable platform object fails"
+          "Transferring a non-transferable platform object fails",
+          "Transferring OOB TypedArray throws"
         ]
       },
       "structured-clone-cross-realm-method.html": false
@@ -1103,13 +1103,13 @@
       },
       "structuredclone_0.html": {
         "expectedFailures": [
-          "Document objects cannot be cloned",
-          "ImageData expandos are not cloned",
+          "Value 'undefined' is cloned",
           "ImageData object can be cloned",
-          "QuotaExceededError objects can be cloned",
-          "QuotaExceededError objects with empty quota/requested can be cloned",
+          "ImageData expandos are not cloned",
+          "Document objects cannot be cloned",
           "URIError objects from other realms are treated as URIError",
-          "Value 'undefined' is cloned"
+          "QuotaExceededError objects can be cloned",
+          "QuotaExceededError objects with empty quota/requested can be cloned"
         ]
       }
     },
