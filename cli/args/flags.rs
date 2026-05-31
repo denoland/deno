@@ -8926,7 +8926,7 @@ mod tests {
     // get consumed as Deno flags.
     let r = flags_from_vec(svec!["deno", "run", "script.ts", "--no-warnings"]);
     let flags = r.unwrap();
-    assert_eq!(flags.argv, svec!["--no-warnings"]);
+    assert_eq!(flags.argv, vec!["--no-warnings".to_string()]);
   }
 
   #[test]
