@@ -540,9 +540,18 @@ impl EmbeddedModuleLoader {
           )
         } else {
           let module_source = module_source.into_for_v8();
-          let code_cache_entry = self
-            .shared
-            .get_code_cache(module_specifier, module_source.as_bytes());
+          // Only JavaScript modules produce a V8 code cache. Requesting the
+          // code cache for other module types (JSON, Wasm, etc.) would still
+          // bump the `FirstRun` strategy's pending counter via `get_sync`
+          // without a matching `set_sync`, preventing the cache from ever
+          // being serialized. See https://github.com/denoland/deno/issues/31766
+          let code_cache_entry = if module_type == ModuleType::JavaScript {
+            self
+              .shared
+              .get_code_cache(module_specifier, module_source.as_bytes())
+          } else {
+            None
+          };
           deno_core::ModuleLoadResponse::Sync(Ok(
             deno_core::ModuleSource::new_with_redirect(
               module_type,
