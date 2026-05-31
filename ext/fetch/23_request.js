@@ -83,7 +83,14 @@ function processUrlList(urlList, urlListProcessed) {
  * @property {() => string} currentUrl
  * @property {() => [string, string][]} headerList
  * @property {null | typeof __window.bootstrap.fetchBody.InnerBody} body
+ * @property {"default" | "no-store" | "reload" | "no-cache" | "force-cache" | "only-if-cached"} cacheMode
+ * @property {"omit" | "same-origin" | "include"} credentialsMode
+ * @property {string} integrity
+ * @property {boolean} keepalive
+ * @property {"same-origin" | "no-cors" | "cors" | "navigate"} mode
  * @property {"follow" | "error" | "manual"} redirectMode
+ * @property {string} referrer "client", "no-referrer", or a serialized URL
+ * @property {"" | "no-referrer" | "no-referrer-when-downgrade" | "same-origin" | "origin" | "strict-origin" | "origin-when-cross-origin" | "strict-origin-when-cross-origin" | "unsafe-url"} referrerPolicy
  * @property {number} redirectCount
  * @property {(() => string)[]} urlList
  * @property {string[]} urlListProcessed
@@ -131,7 +138,14 @@ function newInnerRequest(method, url, headerList, body, maybeBlob) {
       this.headerListInner = value;
     },
     body,
+    cacheMode: "default",
+    credentialsMode: "same-origin",
+    integrity: "",
+    keepalive: false,
+    mode: "cors",
     redirectMode: "follow",
+    referrer: "client",
+    referrerPolicy: "",
     redirectCount: 0,
     urlList: [typeof url === "string" ? () => url : url],
     urlListProcessed: [],
@@ -182,7 +196,14 @@ function cloneInnerRequest(request, skipBody = false) {
     method: request.method,
     headerList,
     body,
+    cacheMode: request.cacheMode,
+    credentialsMode: request.credentialsMode,
+    integrity: request.integrity,
+    keepalive: request.keepalive,
+    mode: request.mode,
     redirectMode: request.redirectMode,
+    referrer: request.referrer,
+    referrerPolicy: request.referrerPolicy,
     redirectCount: request.redirectCount,
     urlList: [() => request.url()],
     urlListProcessed: [request.url()],
@@ -365,9 +386,77 @@ class Request {
 
     // 12. is folded into the else statement of step 6 above.
 
+    // 17. referrer
+    if (init.referrer !== undefined) {
+      const referrer = init.referrer;
+      if (referrer === "") {
+        request.referrer = "no-referrer";
+      } else {
+        let parsedReferrer;
+        try {
+          parsedReferrer = new URL(referrer, baseURL);
+        } catch (err) {
+          throw new TypeError(`Referrer "${referrer}" is not a valid URL.`, {
+            cause: err,
+          });
+        }
+        if (
+          (parsedReferrer.protocol === "about:" &&
+            parsedReferrer.pathname === "client")
+        ) {
+          request.referrer = "client";
+        } else {
+          request.referrer = parsedReferrer.href;
+        }
+      }
+    }
+
+    // 18. referrerPolicy
+    if (init.referrerPolicy !== undefined) {
+      request.referrerPolicy = init.referrerPolicy;
+    }
+
+    // 19. mode
+    if (init.mode !== undefined) {
+      if (init.mode === "navigate") {
+        throw new TypeError("Request mode 'navigate' is not allowed");
+      }
+      request.mode = init.mode;
+    }
+
+    // 20. credentials
+    if (init.credentials !== undefined) {
+      request.credentialsMode = init.credentials;
+    }
+
+    // 21. cache
+    if (init.cache !== undefined) {
+      request.cacheMode = init.cache;
+    }
+
+    // If request's cache mode is "only-if-cached" and request's mode is not
+    // "same-origin", then throw a TypeError.
+    if (
+      request.cacheMode === "only-if-cached" && request.mode !== "same-origin"
+    ) {
+      throw new TypeError(
+        'Request cache mode "only-if-cached" can only be used with same-origin mode',
+      );
+    }
+
     // 22.
     if (init.redirect !== undefined) {
       request.redirectMode = init.redirect;
+    }
+
+    // 23. integrity
+    if (init.integrity !== undefined) {
+      request.integrity = init.integrity;
+    }
+
+    // 24. keepalive
+    if (init.keepalive !== undefined) {
+      request.keepalive = init.keepalive;
     }
 
     // 25.
@@ -498,6 +587,48 @@ class Request {
     return this[_request].redirectMode;
   }
 
+  get cache() {
+    webidl.assertBranded(this, RequestPrototype);
+    return this[_request].cacheMode;
+  }
+
+  get credentials() {
+    webidl.assertBranded(this, RequestPrototype);
+    return this[_request].credentialsMode;
+  }
+
+  get integrity() {
+    webidl.assertBranded(this, RequestPrototype);
+    return this[_request].integrity;
+  }
+
+  get keepalive() {
+    webidl.assertBranded(this, RequestPrototype);
+    return this[_request].keepalive;
+  }
+
+  get mode() {
+    webidl.assertBranded(this, RequestPrototype);
+    return this[_request].mode;
+  }
+
+  get referrer() {
+    webidl.assertBranded(this, RequestPrototype);
+    const referrer = this[_request].referrer;
+    if (referrer === "no-referrer") {
+      return "";
+    }
+    if (referrer === "client") {
+      return "about:client";
+    }
+    return referrer;
+  }
+
+  get referrerPolicy() {
+    webidl.assertBranded(this, RequestPrototype);
+    return this[_request].referrerPolicy;
+  }
+
   get signal() {
     webidl.assertBranded(this, RequestPrototype);
     return this[_signal];
@@ -573,6 +704,48 @@ webidl.converters["RequestRedirect"] = webidl.createEnumConverter(
     "manual",
   ],
 );
+webidl.converters["RequestCache"] = webidl.createEnumConverter(
+  "RequestCache",
+  [
+    "default",
+    "no-store",
+    "reload",
+    "no-cache",
+    "force-cache",
+    "only-if-cached",
+  ],
+);
+webidl.converters["RequestCredentials"] = webidl.createEnumConverter(
+  "RequestCredentials",
+  [
+    "omit",
+    "same-origin",
+    "include",
+  ],
+);
+webidl.converters["RequestMode"] = webidl.createEnumConverter(
+  "RequestMode",
+  [
+    "navigate",
+    "same-origin",
+    "no-cors",
+    "cors",
+  ],
+);
+webidl.converters["ReferrerPolicy"] = webidl.createEnumConverter(
+  "ReferrerPolicy",
+  [
+    "",
+    "no-referrer",
+    "no-referrer-when-downgrade",
+    "same-origin",
+    "origin",
+    "strict-origin",
+    "origin-when-cross-origin",
+    "strict-origin-when-cross-origin",
+    "unsafe-url",
+  ],
+);
 webidl.converters["RequestInit"] = webidl.createDictionaryConverter(
   "RequestInit",
   [
@@ -584,7 +757,14 @@ webidl.converters["RequestInit"] = webidl.createDictionaryConverter(
         webidl.converters["BodyInit_DOMString"],
       ),
     },
+    { key: "referrer", converter: webidl.converters["USVString"] },
+    { key: "referrerPolicy", converter: webidl.converters["ReferrerPolicy"] },
+    { key: "mode", converter: webidl.converters["RequestMode"] },
+    { key: "credentials", converter: webidl.converters["RequestCredentials"] },
+    { key: "cache", converter: webidl.converters["RequestCache"] },
     { key: "redirect", converter: webidl.converters["RequestRedirect"] },
+    { key: "integrity", converter: webidl.converters["DOMString"] },
+    { key: "keepalive", converter: webidl.converters["boolean"] },
     {
       key: "signal",
       converter: webidl.createNullableConverter(
