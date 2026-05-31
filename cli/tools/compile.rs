@@ -16,6 +16,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_graph::GraphKind;
+use deno_graph::ModuleGraph;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_from_file_path;
@@ -31,6 +32,7 @@ use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::factory::CliFactory;
+use crate::graph_util::ModuleGraphCreator;
 use crate::standalone::binary::WriteBinOptions;
 use crate::standalone::binary::is_standalone_binary;
 use crate::util::temp::create_temp_node_modules_dir;
@@ -206,33 +208,15 @@ async fn compile_binary(
       effective_exclude.push(exc.clone());
     }
   }
-  let (module_roots, include_paths) = get_module_roots_and_include_paths(
+  let roots = get_module_roots_and_include_paths(
     entrypoint,
     &effective_include,
     &effective_exclude,
     cli_options,
   )?;
 
-  let graph = Arc::try_unwrap(
-    module_graph_creator
-      .create_graph_and_maybe_check(module_roots.clone())
-      .await?,
-  )
-  .unwrap();
-  let graph = if cli_options.type_check_mode().is_true() {
-    // In this case, the previous graph creation did type checking, which will
-    // create a module graph with types information in it. We don't want to
-    // store that in the binary so create a code only module graph from scratch.
-    module_graph_creator
-      .create_graph(
-        GraphKind::CodeOnly,
-        module_roots,
-        NpmCachingStrategy::Eager,
-      )
-      .await?
-  } else {
-    graph
-  };
+  let graph =
+    build_compile_graph(module_graph_creator, cli_options, &roots).await?;
 
   let initial_cwd =
     deno_path_util::url_from_directory_path(cli_options.initial_cwd())?;
@@ -282,7 +266,7 @@ async fn compile_binary(
         .to_string_lossy(),
       graph: &graph,
       entrypoint,
-      include_paths: &include_paths,
+      include_paths: &roots.include_paths,
       exclude_paths: effective_exclude
         .iter()
         .map(|p| cli_options.initial_cwd().join(p))
@@ -367,33 +351,15 @@ async fn compile_eszip(
       effective_exclude.push(exc.clone());
     }
   }
-  let (module_roots, _include_paths) = get_module_roots_and_include_paths(
+  let roots = get_module_roots_and_include_paths(
     entrypoint,
     &effective_include,
     &effective_exclude,
     cli_options,
   )?;
 
-  let graph = Arc::try_unwrap(
-    module_graph_creator
-      .create_graph_and_maybe_check(module_roots.clone())
-      .await?,
-  )
-  .unwrap();
-  let graph = if cli_options.type_check_mode().is_true() {
-    // In this case, the previous graph creation did type checking, which will
-    // create a module graph with types information in it. We don't want to
-    // store that in the binary so create a code only module graph from scratch.
-    module_graph_creator
-      .create_graph(
-        GraphKind::CodeOnly,
-        module_roots,
-        NpmCachingStrategy::Eager,
-      )
-      .await?
-  } else {
-    graph
-  };
+  let graph =
+    build_compile_graph(module_graph_creator, cli_options, &roots).await?;
 
   let transpile_and_emit_options = compiler_options_resolver
     .for_specifier(cli_options.workspace().root_dir_url())
@@ -514,12 +480,56 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
   Ok(())
 }
 
+struct CompileModuleRoots {
+  /// Strict graph roots (entrypoint, `--preload` and `--require` modules)
+  /// whose graph resolution errors should fail compilation.
+  strict: Vec<ModuleSpecifier>,
+  /// JS-like files brought in via `--include`; they are embedded and
+  /// transpiled but treated as best-effort assets, so their graph resolution
+  /// errors must not fail compilation (see #27505).
+  include: Vec<ModuleSpecifier>,
+  /// Raw files/directories embedded into the VFS.
+  include_paths: Vec<ModuleSpecifier>,
+}
+
+/// Builds the module graph stored in the compiled binary.
+///
+/// Only the strict roots are validated/type checked; `--include` modules are
+/// best-effort assets whose unresolved imports are embedded as-is rather than
+/// surfaced as errors (#27505).
+async fn build_compile_graph(
+  module_graph_creator: &ModuleGraphCreator,
+  cli_options: &CliOptions,
+  roots: &CompileModuleRoots,
+) -> Result<ModuleGraph, AnyError> {
+  let checked_graph = module_graph_creator
+    .create_graph_and_maybe_check(roots.strict.clone())
+    .await?;
+
+  if roots.include.is_empty() && !cli_options.type_check_mode().is_true() {
+    // Fast path: no includes and no type checking, so the validated graph is
+    // exactly what we want to store.
+    Ok(Arc::try_unwrap(checked_graph).unwrap())
+  } else {
+    // Build a code-only graph that also includes the `--include` module roots.
+    // `create_graph` does not validate, so unresolved imports inside included
+    // assets are embedded as-is rather than surfaced as errors. We also use
+    // this path after type checking so type information isn't stored in the
+    // binary.
+    let mut all_roots = roots.strict.clone();
+    all_roots.extend(roots.include.iter().cloned());
+    module_graph_creator
+      .create_graph(GraphKind::CodeOnly, all_roots, NpmCachingStrategy::Eager)
+      .await
+  }
+}
+
 fn get_module_roots_and_include_paths(
   entrypoint: &ModuleSpecifier,
   include: &[String],
   exclude: &[String],
   cli_options: &Arc<CliOptions>,
-) -> Result<(Vec<ModuleSpecifier>, Vec<ModuleSpecifier>), AnyError> {
+) -> Result<CompileModuleRoots, AnyError> {
   let initial_cwd = cli_options.initial_cwd();
 
   fn is_module_graph_module(url: &ModuleSpecifier) -> bool {
@@ -590,6 +600,7 @@ fn get_module_roots_and_include_paths(
 
   let mut searched_paths = HashSet::new();
   let mut module_roots = Vec::new();
+  let mut include_module_roots = Vec::new();
   let mut include_paths = Vec::new();
   let exclude_set = exclude
     .iter()
@@ -599,14 +610,14 @@ fn get_module_roots_and_include_paths(
   for side_module in include {
     let url = resolve_url_or_path(side_module, initial_cwd)?;
     if is_module_graph_module(&url) {
-      module_roots.push(url.clone());
+      include_module_roots.push(url.clone());
     } else {
       analyze_path(&url, &exclude_set, &mut searched_paths, |file_path| {
         let media_type = MediaType::from_path(file_path);
         if is_module_graph_media_type(media_type)
           && let Ok(file_url) = url_from_file_path(file_path)
         {
-          module_roots.push(file_url);
+          include_module_roots.push(file_url);
         }
       })?;
     }
@@ -623,7 +634,11 @@ fn get_module_roots_and_include_paths(
     module_roots.push(require_module);
   }
 
-  Ok((module_roots, include_paths))
+  Ok(CompileModuleRoots {
+    strict: module_roots,
+    include: include_module_roots,
+    include_paths,
+  })
 }
 
 async fn resolve_compile_executable_output_path(
