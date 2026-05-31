@@ -492,7 +492,12 @@
           "incomplete closing handshake should be considered unclean close"
         ]
       },
-      "close.any.worker.html?default": false,
+      "close.any.worker.html?default": {
+        "expectedFailures": [
+          "incomplete closing handshake should be considered unclean close"
+        ],
+        "flaky": true
+      },
       "remote-close.any.html?wpt_flags=h2": false,
       "remote-close.any.html?wss": false,
       "remote-close.any.worker.html?wpt_flags=h2": false,
