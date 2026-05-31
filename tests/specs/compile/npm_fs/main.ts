@@ -73,7 +73,15 @@ Deno.removeSync("package.json");
 }
 
 // chdir
-assert.throws(() => Deno.chdir(dirPath), Deno.errors.NotSupported);
+// Changing into a directory inside the VFS is a no-op rather than an error,
+// so that programs that chdir into their own directory (e.g. Next.js
+// standalone builds) keep working when compiled.
+Deno.chdir(dirPath);
+// chdir into a file in the VFS still fails
+assert.throws(
+  () => Deno.chdir(vfsPackageJsonPath),
+  Deno.errors.NotADirectory,
+);
 
 // mkdir
 assert.throws(
