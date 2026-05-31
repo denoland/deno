@@ -781,6 +781,7 @@ mod test {
         eszip: true,
         self_extracting: false,
         bundle: false,
+        app_name: None,
       },
       &resolve_cwd(None).unwrap(),
     )
@@ -814,6 +815,7 @@ mod test {
         eszip: true,
         self_extracting: false,
         bundle: false,
+        app_name: None,
       },
       &resolve_cwd(None).unwrap(),
     )

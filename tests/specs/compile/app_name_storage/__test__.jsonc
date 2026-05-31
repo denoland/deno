@@ -1,0 +1,79 @@
+{
+  "tempDir": true,
+  // Redirect the platform app-data dir into the temp dir so the persisted
+  // stores do not leak into the real user directory across runs.
+  "envs": {
+    "HOME": "$PWD",
+    "USERPROFILE": "$PWD",
+    "XDG_DATA_HOME": "$PWD/data",
+    "LOCALAPPDATA": "$PWD/data"
+  },
+  "steps": [
+    {
+      "if": "unix",
+      "args": "compile -A --unstable-kv --app-name shared --output out_a main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "unix",
+      "args": "compile -A --unstable-kv --app-name shared --output out_b main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "unix",
+      "args": "compile -A --unstable-kv --app-name lonely --output out_c main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "unix",
+      "commandName": "./out_a",
+      "args": ["set"],
+      "output": "set\n"
+    },
+    {
+      "if": "unix",
+      "commandName": "./out_b",
+      "args": ["get"],
+      "output": "value: hi deno team.\n"
+    },
+    {
+      "if": "unix",
+      "commandName": "./out_c",
+      "args": ["get"],
+      "output": "value: null\n"
+    },
+    {
+      "if": "windows",
+      "args": "compile -A --unstable-kv --app-name shared --output out_a.exe main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "windows",
+      "args": "compile -A --unstable-kv --app-name shared --output out_b.exe main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "windows",
+      "args": "compile -A --unstable-kv --app-name lonely --output out_c.exe main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "windows",
+      "commandName": "./out_a.exe",
+      "args": ["set"],
+      "output": "set\n"
+    },
+    {
+      "if": "windows",
+      "commandName": "./out_b.exe",
+      "args": ["get"],
+      "output": "value: hi deno team.\n"
+    },
+    {
+      "if": "windows",
+      "commandName": "./out_c.exe",
+      "args": ["get"],
+      "output": "value: null\n"
+    }
+  ]
+}

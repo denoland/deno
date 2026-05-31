@@ -882,6 +882,17 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       } else {
         None
       },
+      // Bake in a stable app identity so origin-bound storage (default
+      // `Deno.openKv()`, `localStorage`, `caches`) persists to a per-app
+      // directory at runtime. Prefer an explicit `--app-name`, otherwise derive
+      // it from the output file name (minus any `.exe` extension). Resolving
+      // here keeps the identity stable even if the binary is later renamed.
+      app_name: Some(compile_flags.app_name.clone().unwrap_or_else(|| {
+        display_output_filename
+          .strip_suffix(".exe")
+          .unwrap_or(display_output_filename)
+          .to_string()
+      })),
     };
 
     let (data_section_bytes, section_sizes) = serialize_binary_data_section(

@@ -221,6 +221,10 @@ pub struct CompileFlags {
   /// Bundle the entrypoint with esbuild before embedding it, instead of
   /// shipping the entire node_modules tree. Experimental.
   pub bundle: bool,
+  /// Stable identity for the compiled app. Determines where origin-bound
+  /// storage (default `Deno.openKv()`, `localStorage`, `caches`) is persisted.
+  /// Defaults to the output file name when not set.
+  pub app_name: Option<String>,
 }
 
 impl CompileFlags {
@@ -3009,6 +3013,16 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .help(cstr!("<y>Experimental.</> Bundle the entrypoint with esbuild before embedding, instead of shipping the whole node_modules tree.
   <p(245)>Produces a smaller binary with faster startup, at the cost of dropping dynamic require/import patterns that can't be statically traced.</>"))
           .action(ArgAction::SetTrue)
+          .help_heading(COMPILE_HEADING),
+      )
+      .arg(
+        Arg::new("app-name")
+          .long("app-name")
+          .help(cstr!("Stable identity for the compiled app.
+  <p(245)>Determines where origin-bound storage such as the default `Deno.openKv()`,
+  `localStorage` and `caches` is persisted (under the platform's app data directory).
+  Defaults to the output file name. Set this to keep storage stable across renames.</>"))
+          .value_parser(value_parser!(String))
           .help_heading(COMPILE_HEADING),
       )
       .arg(executable_ext_arg())
@@ -6874,6 +6888,7 @@ fn compile_parse(
   let eszip = matches.get_flag("eszip-internal-do-not-use");
   let self_extracting = matches.get_flag("self-extracting");
   let bundle = matches.get_flag("bundle");
+  let app_name = matches.remove_one::<String>("app-name");
   let include = matches
     .remove_many::<String>("include")
     .map(|f| f.collect::<Vec<_>>())
@@ -6898,6 +6913,7 @@ fn compile_parse(
     eszip,
     self_extracting,
     bundle,
+    app_name,
   });
 
   Ok(())
@@ -13489,6 +13505,7 @@ mod tests {
           eszip: false,
           self_extracting: false,
           bundle: false,
+          app_name: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -13517,6 +13534,7 @@ mod tests {
           eszip: false,
           self_extracting: false,
           bundle: false,
+          app_name: None,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -16049,6 +16067,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           eszip: false,
           self_extracting: false,
           bundle: false,
+          app_name: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         preload: svec!["p1.js", "./p2.js"],
