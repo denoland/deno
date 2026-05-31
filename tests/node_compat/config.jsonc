@@ -2928,6 +2928,7 @@
     "parallel/test-process-execve-worker-threads.js": {},
     "parallel/test-process-exit-code-validation.js": {
       "flaky": true,
+      "darwin": false,
       "reason": "Spawns deno 34 times via spawnSync; cumulative startup overhead can exceed the 20s per-test timeout on slow macOS CI runners"
     },
     "parallel/test-process-exit-from-before-exit.js": {},
