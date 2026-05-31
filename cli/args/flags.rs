@@ -1833,6 +1833,7 @@ pub fn flags_from_vec_with_initial_cwd(
   } else {
     args
   };
+  let args = strip_node_only_no_op_flags(args);
   let mut app = clap_root();
   let mut matches =
     app
@@ -2266,7 +2267,6 @@ pub fn clap_root() -> Command {
         .action(ArgAction::SetTrue)
         .global(true),
     )
-    .args(node_compat_no_op_args())
     .subcommand(run_subcommand())
     .subcommand(serve_subcommand())
     .defer(|cmd| {
@@ -5925,25 +5925,33 @@ fn cached_only_arg() -> Arg {
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
 }
 
-/// Node.js CLI flags that Deno accepts silently as no-ops because the
-/// behavior they gate in Node is the default in Deno (e.g. `vm.Module` is
-/// always available, so `--experimental-vm-modules` has nothing to enable).
+/// Drop Node.js-only flags that Deno silently accepts (e.g.
+/// `--experimental-vm-modules`). The flag set lives in `node_shim` so it
+/// stays scoped to Node-compat shimming and out of `deno --help`.
 ///
-/// Surface area exists so that `deno run --experimental-vm-modules script.js`
-/// — common in Node-targeted scripts, shebangs and bin wrappers — does not
-/// fail clap parsing at the top level. The child_process polyfill handles
-/// the same flags when Deno is re-invoked as `process.execPath` by a Node
-/// program; this list covers the cases where Deno itself is the entry point.
-const NODE_COMPAT_NO_OP_FLAGS: &[&str] = &["experimental-vm-modules"];
-
-fn node_compat_no_op_args() -> impl IntoIterator<Item = Arg> {
-  NODE_COMPAT_NO_OP_FLAGS.iter().map(|name| {
-    Arg::new(*name)
-      .long(*name)
-      .action(ArgAction::SetTrue)
-      .hide(true)
-      .global(true)
-  })
+/// Stripping happens before clap parsing so `deno run
+/// --experimental-vm-modules script.js` — common in Node-targeted scripts,
+/// shebangs and bin wrappers — doesn't fail with `unexpected argument`.
+/// Args after `--` are left alone so the script's argv is unaffected.
+fn strip_node_only_no_op_flags(args: Vec<OsString>) -> Vec<OsString> {
+  let mut out = Vec::with_capacity(args.len());
+  let mut past_double_dash = false;
+  for arg in args {
+    if past_double_dash {
+      out.push(arg);
+      continue;
+    }
+    if arg == "--" {
+      past_double_dash = true;
+      out.push(arg);
+      continue;
+    }
+    match arg.to_str() {
+      Some(s) if node_shim::is_node_only_no_op_flag(s) => continue,
+      _ => out.push(arg),
+    }
+  }
+  out
 }
 
 /// Used for subcommands that operate on executable scripts only.
@@ -16445,9 +16453,10 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
 
   // Regression for https://github.com/denoland/deno/issues/29917 — the flag
   // is meaningful in Node (gates vm.Module) but a no-op in Deno where
-  // vm.Module is always available; we accept it silently rather than crash.
+  // vm.Module is always available; we strip it before clap so it doesn't
+  // crash with `unexpected argument`. Script args (after `--`) are untouched.
   #[test]
-  fn experimental_vm_modules_is_accepted_as_no_op() {
+  fn experimental_vm_modules_is_stripped() {
     let r = flags_from_vec(svec![
       "deno",
       "run",
@@ -16464,6 +16473,17 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     ])
     .unwrap();
     assert!(matches!(r.subcommand, DenoSubcommand::Run(_)));
+
+    // Args after `--` reach the script verbatim, including the Node flag.
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "script.ts",
+      "--",
+      "--experimental-vm-modules",
+    ])
+    .unwrap();
+    assert_eq!(r.argv, svec!["--experimental-vm-modules"]);
   }
 
   #[test]
