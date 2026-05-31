@@ -1219,6 +1219,29 @@ Deno.test(async function noWarningsFlag() {
   await timeout.promise;
 });
 
+// Regression test for https://github.com/denoland/deno/issues/17977.
+// Packages like `npm:wrangler` re-spawn `process.execPath` with Node CLI
+// flags such as `--no-warnings`. When `execPath` is the Deno binary, the
+// node:child_process polyfill must translate Node flags via node_shim
+// before invoking Deno — otherwise Deno errors with "unexpected argument
+// '--no-warnings'".
+Deno.test(async function spawnExecPathWithNoWarnings() {
+  const timeout = withTimeout<number | null>();
+  const child = spawn(
+    Deno.execPath(),
+    ["--no-warnings", "-e", "process.stdout.write('ok')"],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  let stdout = "";
+  let stderr = "";
+  child.stdout!.on("data", (chunk) => stdout += chunk.toString());
+  child.stderr!.on("data", (chunk) => stderr += chunk.toString());
+  child.on("close", (code) => timeout.resolve(code));
+  const code = await timeout.promise;
+  assertEquals(code, 0, `child failed: stderr=${stderr}`);
+  assertEquals(stdout, "ok");
+});
+
 Deno.test({
   name: "[node/child_process] spawnSync supports input option",
   fn() {
