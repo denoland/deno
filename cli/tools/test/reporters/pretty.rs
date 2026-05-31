@@ -479,6 +479,15 @@ impl TestReporter for PrettyTestReporter {
     self.in_new_line = true;
   }
 
+  fn report_isolate_exit(&mut self, origin: &str, exit_code: i32) {
+    self.write_output_end();
+    common::report_isolate_exit(&mut self.writer, &self.cwd, origin, exit_code);
+    if exit_code != 0 {
+      self.summary.failed += 1;
+    }
+    self.in_new_line = true;
+  }
+
   fn report_completed(&mut self) {
     self.write_output_end();
     self.ended_tests = true;

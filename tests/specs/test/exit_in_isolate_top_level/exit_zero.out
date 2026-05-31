@@ -1,0 +1,3 @@
+[WILDCARD]note [WILDCARD]exit_zero.ts called `Deno.exit(0)` from outside any test. The isolate was terminated; remaining test files will continue.
+
+ok | 0 passed | 0 failed[WILDCARD]

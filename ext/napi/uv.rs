@@ -598,6 +598,192 @@ unsafe extern "C" fn uv_free_cpu_info(_cpu_infos: *mut c_void, _count: c_int) {
   // uv_cpu_info never allocates in our polyfill.
 }
 
+// ---------- uv thread / semaphore polyfills ----------
+//
+// Native addons that link against libuv directly frequently use libuv's
+// portable threading and synchronization primitives (`uv_thread_*`,
+// `uv_sem_*`) for their own background work instead of the raw OS APIs —
+// e.g. a worker thread that signals readiness through a counting
+// semaphore. Deno does not run on libuv, but these primitives are
+// self-contained (they never touch the event loop), so we back them with
+// Rust's std threading and a parking_lot-based counting semaphore.
+//
+// libuv lets the addon allocate the opaque handle structs itself, and
+// their sizes are platform specific (`uv_sem_t` is a 4-byte mach
+// `semaphore_t` on macOS but a 32-byte `sem_t` on Linux). To avoid
+// depending on those layouts we store only a small integer token in the
+// addon-provided struct and keep the real state in a process-global
+// registry: a `u32` token for semaphores (fits `uv_sem_t`'s 4-byte
+// minimum) and a `u64` token for threads (`uv_thread_t` is always
+// pointer-sized).
+
+type uv_thread_cb = unsafe extern "C" fn(arg: *mut c_void);
+
+struct SemInner {
+  count: Mutex<i64>,
+  cond: deno_core::parking_lot::Condvar,
+}
+
+static SEMS: OnceLock<
+  Mutex<std::collections::HashMap<u32, std::sync::Arc<SemInner>>>,
+> = OnceLock::new();
+static SEM_NEXT: std::sync::atomic::AtomicU32 =
+  std::sync::atomic::AtomicU32::new(1);
+
+fn sems()
+-> &'static Mutex<std::collections::HashMap<u32, std::sync::Arc<SemInner>>> {
+  SEMS.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
+fn sem_lookup(sem: *const u32) -> Option<std::sync::Arc<SemInner>> {
+  if sem.is_null() {
+    return None;
+  }
+  let id = unsafe { *sem };
+  sems().lock().get(&id).cloned()
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_sem_init(
+  sem: *mut u32,
+  value: std::ffi::c_uint,
+) -> c_int {
+  if sem.is_null() {
+    return -1;
+  }
+  let id = SEM_NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+  let inner = std::sync::Arc::new(SemInner {
+    count: Mutex::new(value as i64),
+    cond: deno_core::parking_lot::Condvar::new(),
+  });
+  sems().lock().insert(id, inner);
+  unsafe {
+    *sem = id;
+  }
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_sem_destroy(sem: *mut u32) {
+  if sem.is_null() {
+    return;
+  }
+  let id = unsafe { *sem };
+  sems().lock().remove(&id);
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_sem_post(sem: *mut u32) {
+  if let Some(inner) = sem_lookup(sem) {
+    let mut count = inner.count.lock();
+    *count += 1;
+    inner.cond.notify_one();
+  }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_sem_wait(sem: *mut u32) {
+  if let Some(inner) = sem_lookup(sem) {
+    let mut count = inner.count.lock();
+    while *count == 0 {
+      inner.cond.wait(&mut count);
+    }
+    *count -= 1;
+  }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_sem_trywait(sem: *mut u32) -> c_int {
+  match sem_lookup(sem) {
+    Some(inner) => {
+      let mut count = inner.count.lock();
+      if *count > 0 {
+        *count -= 1;
+        0
+      } else {
+        // UV_EAGAIN (-EAGAIN on Linux). Any non-zero return tells the
+        // caller the semaphore could not be decremented without blocking.
+        -11
+      }
+    }
+    None => -1,
+  }
+}
+
+static THREADS: OnceLock<
+  Mutex<std::collections::HashMap<u64, std::thread::JoinHandle<()>>>,
+> = OnceLock::new();
+static THREAD_NEXT: std::sync::atomic::AtomicU64 =
+  std::sync::atomic::AtomicU64::new(1);
+
+fn threads()
+-> &'static Mutex<std::collections::HashMap<u64, std::thread::JoinHandle<()>>> {
+  THREADS.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
+thread_local! {
+  // The libuv thread id of the currently running thread, or 0 for threads
+  // not created through `uv_thread_create` (e.g. the main thread).
+  static CURRENT_UV_THREAD_ID: Cell<u64> = const { Cell::new(0) };
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_thread_create(
+  tid: *mut u64,
+  entry: uv_thread_cb,
+  arg: *mut c_void,
+) -> c_int {
+  if tid.is_null() {
+    return -1;
+  }
+  let id = THREAD_NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+  let arg = SendPtr(arg as *const c_void);
+  let spawned = std::thread::Builder::new().spawn(move || {
+    CURRENT_UV_THREAD_ID.with(|c| c.set(id));
+    let arg = arg.take() as *mut c_void;
+    // SAFETY: `entry` is a valid C callback supplied by the addon.
+    unsafe {
+      entry(arg);
+    }
+  });
+  match spawned {
+    Ok(handle) => {
+      threads().lock().insert(id, handle);
+      unsafe {
+        *tid = id;
+      }
+      0
+    }
+    Err(_) => -1,
+  }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_thread_join(tid: *mut u64) -> c_int {
+  if tid.is_null() {
+    return -1;
+  }
+  let id = unsafe { *tid };
+  let handle = threads().lock().remove(&id);
+  if let Some(handle) = handle {
+    let _ = handle.join();
+  }
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_thread_self() -> u64 {
+  CURRENT_UV_THREAD_ID.with(|c| c.get())
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_thread_equal(t1: *const u64, t2: *const u64) -> c_int {
+  if t1.is_null() || t2.is_null() {
+    return 0;
+  }
+  (unsafe { *t1 == *t2 }) as c_int
+}
+
 unsafe extern "C" fn async_exec_wrap(_env: napi_env, data: *mut c_void) {
   let data: *mut uv_async_t = data.cast();
   unsafe {
@@ -631,5 +817,50 @@ mod tests {
       UV_TIMER_SIZE
     );
     assert_eq!(std::mem::size_of::<uv_timer_t>(), UV_TIMER_SIZE);
+  }
+
+  // Drives the uv_sem_* / uv_thread_* polyfills the way a native addon
+  // would: a worker thread increments a counter and posts a counting
+  // semaphore three times while the main thread drains the semaphore and
+  // joins the worker.
+  #[test]
+  fn thread_and_semaphore() {
+    struct Shared {
+      sem: u32,
+      counter: i32,
+    }
+
+    unsafe extern "C" fn worker(arg: *mut c_void) {
+      let shared = arg as *mut Shared;
+      unsafe {
+        for _ in 0..3 {
+          (*shared).counter += 1;
+          uv_sem_post(addr_of_mut!((*shared).sem));
+        }
+      }
+    }
+
+    unsafe {
+      let mut shared = Shared { sem: 0, counter: 0 };
+      let shared_ptr: *mut Shared = &mut shared;
+      let sem_ptr: *mut u32 = addr_of_mut!((*shared_ptr).sem);
+      assert_eq!(uv_sem_init(sem_ptr, 0), 0);
+
+      let mut tid: u64 = 0;
+      let tid_ptr: *mut u64 = &mut tid;
+      assert_eq!(uv_thread_create(tid_ptr, worker, shared_ptr.cast()), 0);
+
+      // Blocks until the worker has posted three times.
+      for _ in 0..3 {
+        uv_sem_wait(sem_ptr);
+      }
+      assert_eq!(uv_thread_join(tid_ptr), 0);
+      assert_eq!((*shared_ptr).counter, 3);
+
+      // The count is back to zero, so a non-blocking wait must fail.
+      assert_ne!(uv_sem_trywait(sem_ptr), 0);
+      assert_ne!(uv_thread_equal(tid_ptr, tid_ptr), 0);
+      uv_sem_destroy(sem_ptr);
+    }
   }
 }

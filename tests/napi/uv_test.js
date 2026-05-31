@@ -66,3 +66,15 @@ Deno.test({
     assertEquals(called, true);
   },
 });
+
+// Exercises the uv_thread_* / uv_sem_* polyfills end to end: a worker
+// thread increments a counter and posts a counting semaphore three times
+// while the main thread drains the semaphore and joins the worker. If any
+// of these symbols are missing from the deno binary the addon would fail
+// to load and this test would error.
+Deno.test({
+  name: "napi uv thread + semaphore",
+  fn: () => {
+    uv.test_uv_threads();
+  },
+});
