@@ -16,7 +16,7 @@
   "storage_length.window.html": true,
   "storage_local_setitem_quotaexceedederr.window.html": false,
   "storage_removeitem.window.html": true,
-  "storage_session_setitem_quotaexceedederr.window.html": false,
+  "storage_session_setitem_quotaexceedederr.window.html": true,
   "storage_set_value_enumerate.window.html": true,
   "storage_setitem.window.html": {
     "expectedFailures": [

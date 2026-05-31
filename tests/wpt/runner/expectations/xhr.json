@@ -1,15 +1,7 @@
 {
   "formdata": {
-    "append.any.html": {
-      "expectedFailures": [
-        "testFormDataAppendEmptyBlob"
-      ]
-    },
-    "append.any.worker.html": {
-      "expectedFailures": [
-        "testFormDataAppendEmptyBlob"
-      ]
-    },
+    "append.any.html": true,
+    "append.any.worker.html": true,
     "constructor.any.html": true,
     "constructor.any.worker.html": true,
     "delete.any.html": true,

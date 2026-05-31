@@ -5,8 +5,8 @@
         "json-module": {
           "charset-bom.any.html": true,
           "charset-bom.any.worker.html": true,
-          "invalid-content-type.any.html": true,
-          "invalid-content-type.any.worker.html": true,
+          "invalid-content-type.any.html": false,
+          "invalid-content-type.any.worker.html": false,
           "non-object.any.html": true,
           "non-object.any.worker.html": true,
           "repeated-imports.any.html": {
@@ -965,15 +965,19 @@
       "structured-clone.any.html": {
         "expectedFailures": [
           "Growable SharedArrayBuffer",
-          "Transferring a non-transferable platform object fails",
-          "Transferring OOB TypedArray throws"
+          "ImageBitmap",
+          "OffscreenCanvas",
+          "Transferring OOB TypedArray throws",
+          "Transferring a non-transferable platform object fails"
         ]
       },
       "structured-clone.any.worker.html": {
         "expectedFailures": [
           "Growable SharedArrayBuffer",
-          "Transferring a non-transferable platform object fails",
-          "Transferring OOB TypedArray throws"
+          "ImageBitmap",
+          "OffscreenCanvas",
+          "Transferring OOB TypedArray throws",
+          "Transferring a non-transferable platform object fails"
         ]
       },
       "structured-clone-cross-realm-method.html": false
@@ -1099,11 +1103,13 @@
       },
       "structuredclone_0.html": {
         "expectedFailures": [
-          "Value 'undefined' is cloned",
-          "ImageData object can be cloned",
-          "ImageData expandos are not cloned",
           "Document objects cannot be cloned",
-          "URIError objects from other realms are treated as URIError"
+          "ImageData expandos are not cloned",
+          "ImageData object can be cloned",
+          "QuotaExceededError objects can be cloned",
+          "QuotaExceededError objects with empty quota/requested can be cloned",
+          "URIError objects from other realms are treated as URIError",
+          "Value 'undefined' is cloned"
         ]
       }
     },

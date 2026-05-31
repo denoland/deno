@@ -2170,17 +2170,25 @@
     "split-cache.html": false,
     "no-vary-search.tentative.any.html": {
       "expectedFailures": [
+        "When key-order is set , URLs should be compared in an order-insensitive way. Matched cases:",
         "When params is set to true, URL differs only by their parameters (other than `dispatch` and `uuid`) should not be cached as different entries.",
-        "When key-order is set , URLs should be compared in an order-insensitive way. Matched cases:"
+        "When params names a parameter and key-order is set, URLs differing only in that parameter and parameter order should be cached as the same entry.",
+        "When params names a specific parameter, URLs differing only in that parameter should be cached as the same entry.",
+        "When params names multiple parameters, URLs differing only in those parameters should be cached as the same entry.",
+        "When params=?1 is set explicitly (equivalent to bare params), URLs differing only in their parameters (other than `dispatch` and `uuid`) should be cached as the same entry."
       ]
     },
     "no-vary-search.tentative.any.worker.html": {
       "expectedFailures": [
+        "When key-order is set , URLs should be compared in an order-insensitive way. Matched cases:",
         "When params is set to true, URL differs only by their parameters (other than `dispatch` and `uuid`) should not be cached as different entries.",
-        "When key-order is set , URLs should be compared in an order-insensitive way. Matched cases:"
+        "When params names a parameter and key-order is set, URLs differing only in that parameter and parameter order should be cached as the same entry.",
+        "When params names a specific parameter, URLs differing only in that parameter should be cached as the same entry.",
+        "When params names multiple parameters, URLs differing only in those parameters should be cached as the same entry.",
+        "When params=?1 is set explicitly (equivalent to bare params), URLs differing only in their parameters (other than `dispatch` and `uuid`) should be cached as the same entry."
       ]
     },
-    "pragma-no-cache-with-cache-control.html": false
+    "pragma-no-cache-with-cache-control.html": true
   },
   "metadata": {
     "fetch-preflight.https.sub.any.html": false,
@@ -2554,6 +2562,7 @@
         "expectedFailures": [
           "Consuming the body of a resource with bad zstd content with arrayBuffer() should reject",
           "Consuming the body of a resource with bad zstd content with blob() should reject",
+          "Consuming the body of a resource with bad zstd content with bytes() should reject",
           "Consuming the body of a resource with bad zstd content with json() should reject",
           "Consuming the body of a resource with bad zstd content with text() should reject"
         ]
@@ -2562,6 +2571,7 @@
         "expectedFailures": [
           "Consuming the body of a resource with bad zstd content with arrayBuffer() should reject",
           "Consuming the body of a resource with bad zstd content with blob() should reject",
+          "Consuming the body of a resource with bad zstd content with bytes() should reject",
           "Consuming the body of a resource with bad zstd content with json() should reject",
           "Consuming the body of a resource with bad zstd content with text() should reject"
         ]

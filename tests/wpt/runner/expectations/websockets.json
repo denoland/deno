@@ -434,7 +434,7 @@
     "003.html?wss": false,
     "005.html?default": false,
     "005.html?wss": false,
-    "006.html?default": true,
+    "006.html?default": false,
     "006.html?wss": false,
     "received-301-code.html": true
   },
@@ -487,18 +487,8 @@
       "constructor.any.html?wss": false,
       "constructor.any.worker.html?wpt_flags=h2": false,
       "constructor.any.worker.html?wss": false,
-      "close.any.html?default": {
-        "expectedFailures": [
-          "incomplete closing handshake should be considered unclean close"
-        ],
-        "flaky": true
-      },
-      "close.any.worker.html?default": {
-        "expectedFailures": [
-          "incomplete closing handshake should be considered unclean close"
-        ],
-        "flaky": true
-      },
+      "close.any.html?default": false,
+      "close.any.worker.html?default": false,
       "remote-close.any.html?wpt_flags=h2": false,
       "remote-close.any.html?wss": false,
       "remote-close.any.worker.html?wpt_flags=h2": false,
@@ -789,7 +779,7 @@
     }
   },
   "security": {
-    "001.html?default": true,
+    "001.html?default": false,
     "001.html?wss": true,
     "002.html?default": false,
     "002.html?wss": false
