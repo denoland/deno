@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "postinstall": "echo postinstall > postinstall.txt"
+    "postinstall": "deno eval \"Deno.writeTextFileSync('postinstall.txt', 'postinstall')\""
   },
   "dependencies": {
     "@denotest/add": "^1.0.0"
