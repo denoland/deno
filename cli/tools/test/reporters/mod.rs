@@ -60,6 +60,10 @@ pub trait TestReporter {
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   );
+  /// Called when a test isolate called `Deno.exit()` from outside any test
+  /// function (top-level code or an `unload` listener). The isolate is
+  /// terminated; the test runner continues with any remaining specifiers.
+  fn report_isolate_exit(&mut self, origin: &str, exit_code: i32);
   fn report_completed(&mut self);
   fn flush_report(
     &mut self,

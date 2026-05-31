@@ -14,6 +14,7 @@ const {
   op_test_event_step_result_ok,
   op_test_event_step_wait,
   op_test_get_origin,
+  op_test_isolate_exit,
 } = core.ops;
 const {
   ArrayPrototypeFilter,
@@ -133,6 +134,31 @@ function parseTestLocation(str) {
   };
 }
 
+// Default exit handler installed at the start of every test isolate (see
+// `installTestIsolateExitHandler` below). When user code calls `Deno.exit()`
+// outside of any test function - at module top level, in an `unload` event,
+// or from async work that escaped a test - we don't want to kill the deno
+// process. Instead we record the exit code, notify the reporter, and ask V8
+// to terminate the isolate so the test runner can move on to the next file.
+//
+// `defaultExitHandler` is also what `assertExit` restores when a per-test
+// handler finishes, so that `Deno.exit()` after a test (e.g., in an unload
+// listener) is still routed to the isolate-exit path.
+let defaultExitHandler = null;
+
+function installTestIsolateExitHandler() {
+  defaultExitHandler = (exitCode) => {
+    op_test_isolate_exit(exitCode);
+    // `op_test_isolate_exit` asks V8 to terminate execution; the throw here
+    // is a defense-in-depth so the current call stack is unwound even if V8
+    // doesn't check the termination flag before some intermediate frame
+    // catches the (uncatchable) termination exception. Either way, the test
+    // runner detects the isolate-exit via `IsolateExitInfo` in `OpState`.
+    throw new Error(`Deno.exit(${exitCode}) called outside of a test`);
+  };
+  setExitHandler(defaultExitHandler);
+}
+
 // Wrap test function in additional assertion that handles a test case trying
 // to exit the process prematurely.
 //
@@ -180,7 +206,10 @@ function assertExit(fn, isTest, sanitizeExit) {
         return innerResult;
       }
     } finally {
-      setExitHandler(null);
+      // Restore the isolate-level default handler so that a subsequent
+      // top-level `Deno.exit()` (e.g., in an `unload` listener) is routed
+      // back into the test runner instead of falling through to `op_exit`.
+      setExitHandler(defaultExitHandler);
     }
   };
 }
@@ -653,3 +682,5 @@ function wrapTest(desc) {
 }
 
 globalThis.Deno.test = test;
+globalThis.Deno[globalThis.Deno.internal].installTestIsolateExitHandler =
+  installTestIsolateExitHandler;

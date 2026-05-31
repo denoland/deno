@@ -182,6 +182,15 @@
     "uv_timer_stop",
     "uv_timer_set_repeat",
     "uv_timer_get_repeat",
-    "uv_timer_again"
+    "uv_timer_again",
+    "uv_thread_create",
+    "uv_thread_join",
+    "uv_thread_self",
+    "uv_thread_equal",
+    "uv_sem_init",
+    "uv_sem_destroy",
+    "uv_sem_post",
+    "uv_sem_wait",
+    "uv_sem_trywait"
   ]
 }
