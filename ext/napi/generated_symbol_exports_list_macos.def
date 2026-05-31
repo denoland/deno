@@ -181,3 +181,12 @@ _uv_timer_stop
 _uv_timer_set_repeat
 _uv_timer_get_repeat
 _uv_timer_again
+_uv_thread_create
+_uv_thread_join
+_uv_thread_self
+_uv_thread_equal
+_uv_sem_init
+_uv_sem_destroy
+_uv_sem_post
+_uv_sem_wait
+_uv_sem_trywait

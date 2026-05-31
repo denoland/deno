@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals, assertThrows } from "@std/assert";
-import {
+import vm, {
   compileFunction,
   createContext,
   isContext,
@@ -298,6 +298,25 @@ Deno.test({
       "from source text module",
     );
     assertEquals(referrer, root);
+  },
+});
+
+// https://github.com/denoland/deno/issues/31783
+Deno.test({
+  name: "vm SourceTextModule default import evaluates namespace",
+  async fn() {
+    const context = vm.createContext({});
+    const module = new vm.SourceTextModule(
+      "export const answer = 42;",
+      { context },
+    );
+
+    await module.link(() => {
+      throw new Error("unexpected static import");
+    });
+    await module.evaluate();
+
+    assertEquals((module.namespace as { answer: number }).answer, 42);
   },
 });
 

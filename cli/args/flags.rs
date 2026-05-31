@@ -218,6 +218,9 @@ pub struct CompileFlags {
   pub exclude: Vec<String>,
   pub eszip: bool,
   pub self_extracting: bool,
+  /// Bundle the entrypoint with esbuild before embedding it, instead of
+  /// shipping the entire node_modules tree. Experimental.
+  pub bundle: bool,
 }
 
 impl CompileFlags {
@@ -2998,6 +3001,14 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
         Arg::new("self-extracting")
           .long("self-extracting")
           .help("Create a self-extracting binary that extracts the embedded file system to disk on first run and then runs from there")
+          .action(ArgAction::SetTrue)
+          .help_heading(COMPILE_HEADING),
+      )
+      .arg(
+        Arg::new("bundle")
+          .long("bundle")
+          .help(cstr!("<y>Experimental.</> Bundle the entrypoint with esbuild before embedding, instead of shipping the whole node_modules tree.
+  <p(245)>Produces a smaller binary with faster startup, at the cost of dropping dynamic require/import patterns that can't be statically traced.</>"))
           .action(ArgAction::SetTrue)
           .help_heading(COMPILE_HEADING),
       )
@@ -6892,6 +6903,7 @@ fn compile_parse(
   let no_terminal = matches.get_flag("no-terminal");
   let eszip = matches.get_flag("eszip-internal-do-not-use");
   let self_extracting = matches.get_flag("self-extracting");
+  let bundle = matches.get_flag("bundle");
   let include = matches
     .remove_many::<String>("include")
     .map(|f| f.collect::<Vec<_>>())
@@ -6915,6 +6927,7 @@ fn compile_parse(
     exclude,
     eszip,
     self_extracting,
+    bundle,
   });
 
   Ok(())
@@ -13505,6 +13518,7 @@ mod tests {
           exclude: Default::default(),
           eszip: false,
           self_extracting: false,
+          bundle: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -13532,6 +13546,7 @@ mod tests {
           exclude: vec!["exclude.txt".to_string()],
           eszip: false,
           self_extracting: false,
+          bundle: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -16063,6 +16078,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           exclude: Default::default(),
           eszip: false,
           self_extracting: false,
+          bundle: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         preload: svec!["p1.js", "./p2.js"],
