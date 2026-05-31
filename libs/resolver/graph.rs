@@ -656,7 +656,7 @@ pub fn enhance_graph_error(
   error: ModuleGraphError,
   mode: EnhanceGraphErrorMode,
 ) -> EnhancedGraphError {
-  let message = match &error {
+  let mut message = match &error {
     ModuleGraphError::ResolutionError(resolution_error) => {
       enhanced_resolution_error_message(resolution_error)
     }
@@ -674,10 +674,39 @@ pub fn enhance_graph_error(
     }
   };
 
+  if let Some(docs_url) = maybe_docs_url_for_graph_error(&error) {
+    message.push_str(&format!(
+      "\n  {} {}",
+      deno_terminal::colors::cyan("docs:"),
+      docs_url,
+    ));
+  }
+
   EnhancedGraphError {
     original: error,
     message,
     mode,
+  }
+}
+
+/// Returns a link to relevant Deno documentation for known module graph
+/// errors so users can quickly find the recommended fix.
+fn maybe_docs_url_for_graph_error(
+  error: &ModuleGraphError,
+) -> Option<&'static str> {
+  let ModuleGraphError::ModuleError(error) = error else {
+    return None;
+  };
+  match error.as_kind() {
+    ModuleErrorKind::UnsupportedMediaType {
+      media_type: MediaType::Json,
+      ..
+    }
+    | ModuleErrorKind::InvalidTypeAssertion {
+      actual_media_type: MediaType::Json,
+      ..
+    } => Some("https://docs.deno.com/examples/importing_json/"),
+    _ => None,
   }
 }
 
