@@ -806,116 +806,116 @@ async function startJupyterKernel() {
     await publishStatus("busy", parentHeader);
 
     try {
-        if (msgType === "kernel_info_request") {
-          const replyFrames = await encodeMsg(
-            session,
-            key,
-            [],
-            "kernel_info_reply",
-            kernelInfo(),
-            parentHeader,
-          );
-          await socket.send(peerId, [peerId, ...replyFrames]);
-        } else if (msgType === "complete_request") {
-          const userCode = msg.content?.code || "";
-          const cursorPos = msg.content?.cursor_pos || userCode.length;
-          const expr = getExprFromLineAtPos(userCode, cursorPos);
+      if (msgType === "kernel_info_request") {
+        const replyFrames = await encodeMsg(
+          session,
+          key,
+          [],
+          "kernel_info_reply",
+          kernelInfo(),
+          parentHeader,
+        );
+        await socket.send(peerId, [peerId, ...replyFrames]);
+      } else if (msgType === "complete_request") {
+        const userCode = msg.content?.code || "";
+        const cursorPos = msg.content?.cursor_pos || userCode.length;
+        const expr = getExprFromLineAtPos(userCode, cursorPos);
 
-          let completions = [];
-          let cursorStart = cursorPos;
+        let completions = [];
+        let cursorStart = cursorPos;
 
-          if (expr.includes(".")) {
-            const dotIdx = expr.lastIndexOf(".");
-            const subExpr = expr.slice(0, dotIdx);
-            const propName = expr.slice(dotIdx + 1);
-            const props = await getExprProperties(subExpr);
-            completions = props.filter((n) =>
-              !n.startsWith("Symbol(") && n.startsWith(propName)
-            );
-            cursorStart = cursorPos - propName.length;
-          } else {
-            const globalProps = await getExprProperties("globalThis");
-            const lexicalNames = await getLexicalScopeNames();
-            const allNames = [...new Set([...globalProps, ...lexicalNames])];
-            completions = allNames.filter((n) => n.startsWith(expr)).sort();
-            cursorStart = cursorPos - expr.length;
-          }
-
-          const replyFrames = await encodeMsg(
-            session,
-            key,
-            [],
-            "complete_reply",
-            {
-              status: "ok",
-              matches: completions,
-              cursor_start: cursorStart,
-              cursor_end: cursorPos,
-              metadata: {},
-            },
-            parentHeader,
+        if (expr.includes(".")) {
+          const dotIdx = expr.lastIndexOf(".");
+          const subExpr = expr.slice(0, dotIdx);
+          const propName = expr.slice(dotIdx + 1);
+          const props = await getExprProperties(subExpr);
+          completions = props.filter((n) =>
+            !n.startsWith("Symbol(") && n.startsWith(propName)
           );
-          await socket.send(peerId, [peerId, ...replyFrames]);
-        } else if (msgType === "is_complete_request") {
-          const result = checkIsComplete(msg.content?.code || "");
-          const replyFrames = await encodeMsg(
-            session,
-            key,
-            [],
-            "is_complete_reply",
-            result,
-            parentHeader,
-          );
-          await socket.send(peerId, [peerId, ...replyFrames]);
-        } else if (msgType === "inspect_request") {
-          const replyFrames = await encodeMsg(
-            session,
-            key,
-            [],
-            "inspect_reply",
-            {
-              status: "ok",
-              found: false,
-              data: {},
-              metadata: {},
-            },
-            parentHeader,
-          );
-          await socket.send(peerId, [peerId, ...replyFrames]);
-        } else if (msgType === "history_request") {
-          const replyFrames = await encodeMsg(
-            session,
-            key,
-            [],
-            "history_reply",
-            { status: "ok", history: [] },
-            parentHeader,
-          );
-          await socket.send(peerId, [peerId, ...replyFrames]);
-        } else if (msgType === "comm_info_request") {
-          const replyFrames = await encodeMsg(
-            session,
-            key,
-            [],
-            "comm_info_reply",
-            { status: "ok", comms: {} },
-            parentHeader,
-          );
-          await socket.send(peerId, [peerId, ...replyFrames]);
-        } else if (msgType === "comm_open") {
-          const replyFrames = await encodeMsg(
-            session,
-            key,
-            [],
-            "comm_close",
-            { comm_id: msg.content?.comm_id, data: {} },
-            parentHeader,
-          );
-          await socket.send(peerId, [peerId, ...replyFrames]);
+          cursorStart = cursorPos - propName.length;
+        } else {
+          const globalProps = await getExprProperties("globalThis");
+          const lexicalNames = await getLexicalScopeNames();
+          const allNames = [...new Set([...globalProps, ...lexicalNames])];
+          completions = allNames.filter((n) => n.startsWith(expr)).sort();
+          cursorStart = cursorPos - expr.length;
         }
-      } finally {
-        await publishStatus("idle", parentHeader);
+
+        const replyFrames = await encodeMsg(
+          session,
+          key,
+          [],
+          "complete_reply",
+          {
+            status: "ok",
+            matches: completions,
+            cursor_start: cursorStart,
+            cursor_end: cursorPos,
+            metadata: {},
+          },
+          parentHeader,
+        );
+        await socket.send(peerId, [peerId, ...replyFrames]);
+      } else if (msgType === "is_complete_request") {
+        const result = checkIsComplete(msg.content?.code || "");
+        const replyFrames = await encodeMsg(
+          session,
+          key,
+          [],
+          "is_complete_reply",
+          result,
+          parentHeader,
+        );
+        await socket.send(peerId, [peerId, ...replyFrames]);
+      } else if (msgType === "inspect_request") {
+        const replyFrames = await encodeMsg(
+          session,
+          key,
+          [],
+          "inspect_reply",
+          {
+            status: "ok",
+            found: false,
+            data: {},
+            metadata: {},
+          },
+          parentHeader,
+        );
+        await socket.send(peerId, [peerId, ...replyFrames]);
+      } else if (msgType === "history_request") {
+        const replyFrames = await encodeMsg(
+          session,
+          key,
+          [],
+          "history_reply",
+          { status: "ok", history: [] },
+          parentHeader,
+        );
+        await socket.send(peerId, [peerId, ...replyFrames]);
+      } else if (msgType === "comm_info_request") {
+        const replyFrames = await encodeMsg(
+          session,
+          key,
+          [],
+          "comm_info_reply",
+          { status: "ok", comms: {} },
+          parentHeader,
+        );
+        await socket.send(peerId, [peerId, ...replyFrames]);
+      } else if (msgType === "comm_open") {
+        const replyFrames = await encodeMsg(
+          session,
+          key,
+          [],
+          "comm_close",
+          { comm_id: msg.content?.comm_id, data: {} },
+          parentHeader,
+        );
+        await socket.send(peerId, [peerId, ...replyFrames]);
       }
+    } finally {
+      await publishStatus("idle", parentHeader);
+    }
   }
 
   async function controlLoop(socket) {
