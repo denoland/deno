@@ -8,7 +8,7 @@
           "output": "install.out"
         },
         {
-          "args": "eval \"console.log(Deno.readTextFileSync('foo/postinstall.txt'))\"",
+          "args": "eval \"console.log(Deno.readTextFileSync('foo/postinstall.txt').trim())\"",
           "output": "postinstall.out"
         }
       ]

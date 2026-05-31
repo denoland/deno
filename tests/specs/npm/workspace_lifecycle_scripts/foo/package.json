@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "postinstall": "deno -A eval \"Deno.writeTextFileSync(Deno.env.get('INIT_CWD') + '/foo/postinstall.txt', 'postinstall')\""
+    "postinstall": "echo postinstall > postinstall.txt"
   },
   "dependencies": {
     "@denotest/add": "^1.0.0"
