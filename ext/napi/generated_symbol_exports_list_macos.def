@@ -190,3 +190,4 @@ _uv_sem_destroy
 _uv_sem_post
 _uv_sem_wait
 _uv_sem_trywait
+_EVP_des_ede3_cbc

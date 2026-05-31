@@ -40,16 +40,7 @@ fn napi_build() {
       "so"
     };
 
-    // `module_openssl.c` exercises the runtime OpenSSL compatibility
-    // shim, which only runs on Linux/BSD (see `preload_compat_libraries`
-    // in ext/napi/lib.rs). Skip building it on macOS.
-    let sources: &[&str] = if cfg!(target_os = "macos") {
-      &["module.c"]
-    } else {
-      &["module.c", "module_openssl.c"]
-    };
-
-    for source in sources {
+    for source in &["module.c", "module_openssl.c"] {
       let out = format!("{}.{suffix}", source.trim_end_matches(".c"));
       let mut cc = Command::new("cc");
       cc.current_dir(napi_tests_path());

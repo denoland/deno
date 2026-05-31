@@ -24,6 +24,11 @@
 
 pub mod js_native_api;
 pub mod node_api;
+// OpenSSL/AWS-LC symbol shims. The module is private — its only
+// "users" are `dlopen`ed native addons that resolve the
+// `#[no_mangle]` symbols at runtime. See the module doc-comment for
+// details.
+mod openssl_compat;
 pub mod util;
 pub mod uv;
 
@@ -655,77 +660,6 @@ static NAPI_LOADED_MODULES: std::sync::LazyLock<
   RwLock<HashMap<PathBuf, NapiModuleHandle>>,
 > = std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
 
-/// Pre-load common dynamic libraries that legacy Node.js native addons
-/// (typically NAN-based, using the v8/internals API) expect to find at
-/// runtime.
-///
-/// Node.js statically links OpenSSL, libuv and zlib into its binary and
-/// re-exports the symbols, so addons built against the Node headers can
-/// reference symbols like `EVP_des_ede3_cbc` directly. Deno does not link
-/// against the system OpenSSL and does not export any such symbols from
-/// its own binary, which results in `undefined symbol: …` errors when the
-/// addon's shared library is loaded.
-///
-/// As a best-effort compatibility shim, when a native addon is loaded we
-/// try to `dlopen` the system OpenSSL libraries with `RTLD_GLOBAL` so
-/// that their symbols become visible to any subsequently loaded native
-/// addon. Failures are silently ignored — if the system OpenSSL is
-/// unavailable, the addon will fail to load just as it does today, but
-/// most distributions ship a usable libcrypto/libssl.
-///
-/// This is a no-op on macOS and Windows:
-/// * macOS native addons are typically linked with
-///   `-undefined dynamic_lookup`, so they resolve symbols from the host
-///   process rather than a globally-loaded library. Worse,
-///   `dlopen("libcrypto.dylib", …)` resolves to the SIP-protected stub
-///   in `/usr/lib`, which causes dyld to print
-///   "is loading libcrypto in an unsafe way" to stderr and may abort
-///   the process.
-/// * Windows addons resolve OpenSSL symbols at link time against
-///   `node.lib`, which cannot be fixed up via `LoadLibrary`.
-#[cfg(all(unix, not(target_os = "macos")))]
-fn preload_compat_libraries() {
-  static PRELOAD: std::sync::Once = std::sync::Once::new();
-  PRELOAD.call_once(|| {
-    // Each inner slice lists, in priority order, the soname variants of
-    // a single library. We stop at the first variant that loads
-    // successfully per family, but always try every family so a system
-    // that has, say, libcrypto without libssl still gets the libcrypto
-    // symbols.
-    let families: &[&[&str]] = &[
-      &[
-        "libcrypto.so.3",
-        "libcrypto.so.1.1",
-        "libcrypto.so.1.0.0",
-        "libcrypto.so",
-      ],
-      &[
-        "libssl.so.3",
-        "libssl.so.1.1",
-        "libssl.so.1.0.0",
-        "libssl.so",
-      ],
-    ];
-
-    let flags = RTLD_LAZY | RTLD_GLOBAL;
-    for family in families {
-      for &name in *family {
-        // SAFETY: dlopen with RTLD_LAZY | RTLD_GLOBAL of a well-known
-        // system library. The library handle is intentionally leaked so
-        // the library remains loaded for the lifetime of the process and
-        // its symbols stay available to addons loaded later.
-        if let Ok(library) = unsafe { Library::open(Some(name), flags) } {
-          std::mem::forget(library);
-          break;
-        }
-      }
-    }
-  });
-}
-
-#[cfg(any(not(unix), target_os = "macos"))]
-fn preload_compat_libraries() {}
-
 #[op2(reentrant, stack_trace)]
 fn op_napi_open<'scope>(
   scope: &mut v8::PinScope<'scope, '_>,
@@ -858,13 +792,6 @@ fn op_napi_open<'scope>(
     Some(loader) => loader.load_and_resolve_path(&path)?,
     None => Cow::Borrowed(path.as_ref()),
   };
-
-  // Make sure runtime symbols expected by legacy Node native addons (notably
-  // OpenSSL's `EVP_*` family, which Node.js statically links and re-exports)
-  // are present in the global symbol table before the addon's library is
-  // resolved. This is a best-effort compatibility shim; see the function's
-  // doc comment for details.
-  preload_compat_libraries();
 
   // SAFETY: opening a DLL calls dlopen
   #[cfg(unix)]

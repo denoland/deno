@@ -192,3 +192,4 @@ EXPORTS
   uv_sem_post
   uv_sem_wait
   uv_sem_trywait
+  EVP_des_ede3_cbc

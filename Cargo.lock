@@ -2635,6 +2635,7 @@ dependencies = [
 name = "deno_napi"
 version = "0.180.0"
 dependencies = [
+ "aws-lc-sys",
  "deno_core",
  "deno_error",
  "deno_permissions",

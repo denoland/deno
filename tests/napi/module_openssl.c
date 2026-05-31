@@ -1,13 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 //
 // A minimal NAPI-style module that references an OpenSSL symbol
-// (`EVP_des_ede3_cbc`). It is intentionally linked *without* `-lcrypto`,
-// so the symbol must be resolved at runtime from a globally-loaded
-// libcrypto. This exercises the NAPI loader's runtime compatibility
-// shim that pre-loads system OpenSSL libraries with `RTLD_GLOBAL` so
-// that legacy Node.js native addons (e.g. NAN-based packages such as
-// `nodegit`) can resolve the OpenSSL symbols they expect to find in
-// the host binary.
+// (`EVP_des_ede3_cbc`). It is intentionally linked *without*
+// `-lcrypto`, so the symbol must be resolved at runtime from the host
+// process. This exercises the NAPI loader's OpenSSL compatibility
+// shim (`ext/napi/openssl_compat.rs`), which re-exports selected
+// AWS-LC functions under their conventional OpenSSL names so legacy
+// Node.js native addons (e.g. NAN-based packages such as `nodegit`)
+// can resolve them from the Deno binary itself — the same way Node.js
+// exposes its statically-linked OpenSSL.
 //
 // See: https://github.com/denoland/deno/issues/31730
 
