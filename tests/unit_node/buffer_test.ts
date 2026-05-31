@@ -835,6 +835,9 @@ Deno.test({
     assertEquals(buf.ucs2Slice(), "你好Deno");
     assertEquals(buf.ucs2Slice(0, 4), "你好");
     assertEquals(buf.ucs2Slice(4, 12), "Deno");
+    assertEquals(buf.ucs2Slice(0, 3), "你");
+    assertEquals(buf.ucs2Slice(1, 4), "絏");
+    assertEquals(buf.ucs2Slice(1, 6), "絏䑙");
 
     // deno-lint-ignore no-explicit-any
     const oddBuf: any = Buffer.of(0x60, 0x4f, 0x7d, 0x59, 0x44);

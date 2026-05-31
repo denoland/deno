@@ -218,29 +218,98 @@ pub fn op_node_decode<'a>(
     }
     2 => {
       // ascii
-      if buffer.is_ascii() {
-        v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
-      } else {
-        let ascii_bytes: Vec<u8> = buffer.iter().map(|&b| b & 0x7F).collect();
-        v8::String::new_from_one_byte(
-          scope,
-          &ascii_bytes,
-          v8::NewStringType::Normal,
-        )
-      }
+      let ascii_bytes = mask_ascii_fast(buffer);
+      v8::String::new_from_one_byte(
+        scope,
+        &ascii_bytes,
+        v8::NewStringType::Normal,
+      )
     }
     3 => {
       // utf-16le (ucs2)
-      let len = buffer.len() & !1;
-      let u16_data: Vec<u16> = buffer[..len]
-        .chunks_exact(2)
-        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-        .collect();
-      v8::String::new_from_two_byte(scope, &u16_data, v8::NewStringType::Normal)
+      decode_utf16le_from_bytes(scope, buffer)
     }
     _ => return Err(JsErrorBox::from_err(BufferError::InvalidType)),
   }
   .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
+}
+
+#[inline(always)]
+fn mask_ascii_fast(bytes: &[u8]) -> Vec<u8> {
+  // This function requires building with the `--release` flag to achieve optimal performance.
+
+  let len = bytes.len();
+  let mut ascii_bytes = Vec::<u8>::with_capacity(len);
+
+  let src = bytes.as_ptr();
+  let dst = ascii_bytes.as_mut_ptr();
+
+  let mut i = 0;
+  let chunk_size = std::mem::size_of::<usize>();
+  let mask = usize::from_ne_bytes([0x7F; std::mem::size_of::<usize>()]);
+
+  unsafe {
+    while i + chunk_size <= len {
+      let chunk = std::ptr::read_unaligned(src.add(i) as *const usize);
+      std::ptr::write_unaligned(dst.add(i) as *mut usize, chunk & mask);
+      i += chunk_size;
+    }
+
+    while i < len {
+      *dst.add(i) = *src.add(i) & 0x7F;
+      i += 1;
+    }
+
+    ascii_bytes.set_len(len);
+  }
+
+  ascii_bytes
+}
+
+#[inline(always)]
+fn decode_utf16le_from_bytes<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  bytes: &[u8],
+) -> Option<v8::Local<'a, v8::String>> {
+  // UTF-16 must be a multiple of 2 bytes. Discard any trailing odd byte.
+  let len = bytes.len() & !1;
+  let buf = &bytes[..len];
+
+  #[cfg(target_endian = "little")]
+  {
+    // Attempt a zero-copy cast to &[u16]
+    let (prefix, u16_slice, suffix) = unsafe { buf.align_to::<u16>() };
+
+    if prefix.is_empty() && suffix.is_empty() {
+      // Fast path: Memory is perfectly 2-byte aligned. Absolute zero-copy transfer.
+      v8::String::new_from_two_byte(scope, u16_slice, v8::NewStringType::Normal)
+    } else {
+      // Slow path: Unaligned memory (rare in V8, but must be handled).
+      // Use uninitialized memory to avoid Vec's memset(0) overhead.
+      let mut u16_data = Vec::<u16>::with_capacity(len / 2);
+      unsafe {
+        // Memcpy the data byte-by-byte into the newly allocated Vec memory.
+        std::ptr::copy_nonoverlapping(
+          buf.as_ptr(),
+          u16_data.as_mut_ptr() as *mut u8,
+          len,
+        );
+        // Manually set the length.
+        u16_data.set_len(len / 2);
+      }
+      v8::String::new_from_two_byte(scope, &u16_data, v8::NewStringType::Normal)
+    }
+  }
+
+  // Fallback for big-endian architectures (uncommon environments).
+  #[cfg(target_endian = "big")]
+  {
+    let mut u16_data = Vec::<u16>::with_capacity(len / 2);
+    for chunk in buf.chunks_exact(2) {
+      u16_data.push(u16::from_le_bytes([chunk[0], chunk[1]]));
+    }
+    v8::String::new_from_two_byte(scope, &u16_data, v8::NewStringType::Normal)
+  }
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
