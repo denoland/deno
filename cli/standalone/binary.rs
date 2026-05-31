@@ -403,39 +403,45 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       vfs.add_path(&pkg_json.path)?;
     }
     let progress_bar = ProgressBar::new(ProgressBarStyle::ProgressBars);
-    let npm_snapshot = match &self.npm_resolver {
-      CliNpmResolver::Managed(managed) => {
-        if graph.modules().any(|m| m.npm().is_some()) {
-          let snapshot = managed.resolution().snapshot();
-          let snapshot = if self.cli_options.unstable_npm_lazy_caching() {
-            let reqs = graph
-              .specifiers()
-              .filter_map(|(s, _)| {
-                NpmPackageReqReference::from_specifier(s)
-                  .ok()
-                  .map(|req_ref| req_ref.into_inner().req)
-              })
-              .collect::<Vec<_>>();
-            snapshot.subset(&reqs)
-          } else {
-            snapshot
-          }
-          .as_valid_serialized_for_system(&self.npm_system_info);
-          if !snapshot.as_serialized().packages.is_empty() {
-            self
-              .fill_npm_vfs(&mut vfs, Some(&snapshot), &progress_bar)
-              .context("Building npm vfs.")?;
-            Some(snapshot)
+    // With --bundle the JS graph is self-contained, so the whole npm tree
+    // is intentionally left out of the binary.
+    let npm_snapshot = if compile_flags.bundle {
+      None
+    } else {
+      match &self.npm_resolver {
+        CliNpmResolver::Managed(managed) => {
+          if graph.modules().any(|m| m.npm().is_some()) {
+            let snapshot = managed.resolution().snapshot();
+            let snapshot = if self.cli_options.unstable_npm_lazy_caching() {
+              let reqs = graph
+                .specifiers()
+                .filter_map(|(s, _)| {
+                  NpmPackageReqReference::from_specifier(s)
+                    .ok()
+                    .map(|req_ref| req_ref.into_inner().req)
+                })
+                .collect::<Vec<_>>();
+              snapshot.subset(&reqs)
+            } else {
+              snapshot
+            }
+            .as_valid_serialized_for_system(&self.npm_system_info);
+            if !snapshot.as_serialized().packages.is_empty() {
+              self
+                .fill_npm_vfs(&mut vfs, Some(&snapshot), &progress_bar)
+                .context("Building npm vfs.")?;
+              Some(snapshot)
+            } else {
+              None
+            }
           } else {
             None
           }
-        } else {
+        }
+        CliNpmResolver::Byonm(_) => {
+          self.fill_npm_vfs(&mut vfs, None, &progress_bar)?;
           None
         }
-      }
-      CliNpmResolver::Byonm(_) => {
-        self.fill_npm_vfs(&mut vfs, None, &progress_bar)?;
-        None
       }
     };
     for include_file in include_paths {
