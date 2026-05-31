@@ -2297,6 +2297,7 @@ function makeRequireFunction(mod) {
 // - C:/foo/...
 // - C:\foo\...
 const RE_START_OF_ABS_PATH = /^([/\\]|[a-zA-Z]:[/\\])/;
+const RE_URL_SCHEME = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
 
 function isAbsolute(filenameOrUrl) {
   return RE_START_OF_ABS_PATH.test(filenameOrUrl);
@@ -2378,6 +2379,144 @@ function getBuiltinModule(id) {
 Module.isBuiltin = isBuiltin;
 
 Module.createRequire = createRequire;
+
+function packageNameFromBareSpecifier(specifier) {
+  if (
+    op_require_is_request_relative(specifier) ||
+    isAbsolute(specifier) ||
+    RegExpPrototypeTest(RE_URL_SCHEME, specifier)
+  ) {
+    return null;
+  }
+
+  const parts = StringPrototypeSplit(specifier, "/");
+  if (parts[0] === "") {
+    return null;
+  }
+  if (StringPrototypeStartsWith(parts[0], "@")) {
+    if (parts.length < 2 || parts[1] === "") {
+      return specifier;
+    }
+    return `${parts[0]}/${parts[1]}`;
+  }
+  return parts[0];
+}
+
+function findClosestPackageJSON(filePath) {
+  let currentPath = stat(filePath) === 1 ? filePath : pathDirname(filePath);
+
+  while (true) {
+    const packageJsonPath = pathResolve(currentPath, "package.json");
+    if (op_require_read_package_scope(packageJsonPath)) {
+      return toRealPath(packageJsonPath);
+    }
+
+    const parentPath = pathDirname(currentPath);
+    if (parentPath === currentPath) {
+      return undefined;
+    }
+    currentPath = parentPath;
+  }
+}
+
+function basePathFromFileURLOrPath(base) {
+  if (base instanceof URL) {
+    if (base.protocol !== "file:") {
+      throw new internalErrors.ERR_INVALID_URL_SCHEME("file");
+    }
+    return op_require_as_file_path(base.href);
+  }
+  if (typeof base !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("base", "string", base);
+  }
+  if (StringPrototypeStartsWith(base, "file:")) {
+    return op_require_as_file_path(base);
+  }
+  return base;
+}
+
+function findPackageJSONForBareSpecifier(packageName, base) {
+  if (base === undefined) {
+    return undefined;
+  }
+
+  const basePath = basePathFromFileURLOrPath(base);
+  const baseDir = stat(basePath) === 1 ? basePath : pathDirname(basePath);
+  const parent = new Module("", null);
+  parent.filename = pathResolve(baseDir, "$deno$find_package_json.js");
+  parent.paths = Module._nodeModulePaths(baseDir);
+  const lookupPaths = Module._resolveLookupPaths(packageName, parent);
+
+  if (lookupPaths === null) {
+    return undefined;
+  }
+
+  for (let i = 0; i < lookupPaths.length; i++) {
+    const lookupPath = lookupPaths[i];
+    const candidatePackageJsonPaths = [
+      pathResolve(lookupPath, packageName, "package.json"),
+      pathResolve(lookupPath, "package.json"),
+    ];
+    for (let j = 0; j < candidatePackageJsonPaths.length; j++) {
+      const packageJsonPath = candidatePackageJsonPaths[j];
+      if (op_require_read_package_scope(packageJsonPath)) {
+        return toRealPath(packageJsonPath);
+      }
+    }
+  }
+  return undefined;
+}
+
+function pathFromResolvedFileUrl(resolved) {
+  if (!StringPrototypeStartsWith(resolved, "file:")) {
+    throw new internalErrors.ERR_INVALID_URL_SCHEME("file");
+  }
+  return op_require_as_file_path(resolved);
+}
+
+function resolveSpecifierForPackageJSON(specifier, base) {
+  if (specifier instanceof URL) {
+    return specifier.href;
+  }
+  specifier = String(specifier);
+  if (StringPrototypeStartsWith(specifier, "file:")) {
+    return specifier;
+  }
+  if (RegExpPrototypeTest(RE_URL_SCHEME, specifier)) {
+    return specifier;
+  }
+
+  let parentURL = "data:";
+  if (base !== undefined) {
+    if (base instanceof URL) {
+      parentURL = base.href;
+    } else if (typeof base === "string") {
+      parentURL = base;
+    } else {
+      throw new internalErrors.ERR_INVALID_ARG_TYPE("base", "string", base);
+    }
+  }
+  return op_module_default_resolve(specifier, parentURL);
+}
+
+function findPackageJSON(specifier, base = undefined) {
+  const specifierString = specifier instanceof URL
+    ? specifier.href
+    : String(specifier);
+  const packageName = packageNameFromBareSpecifier(specifierString);
+  if (packageName !== null) {
+    const packageJsonPath = findPackageJSONForBareSpecifier(packageName, base);
+    if (packageJsonPath !== undefined) {
+      return packageJsonPath;
+    }
+  }
+
+  const resolved = resolveSpecifierForPackageJSON(specifier, base);
+  const filePath = pathFromResolvedFileUrl(resolved);
+  return findClosestPackageJSON(filePath);
+}
+
+Module.findPackageJSON = findPackageJSON;
 
 Module._initPaths = function () {
   const paths = op_require_init_paths();
@@ -3152,6 +3291,7 @@ internals.closeIdleConnections = closeIdleConnections;
 export {
   builtinModules,
   createRequire,
+  findPackageJSON,
   getBuiltinModule,
   isBuiltin,
   Module,
