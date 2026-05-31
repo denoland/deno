@@ -22,6 +22,7 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::TextDecodedFile;
 
 mod channel;
+mod docs;
 mod editor;
 mod session;
 

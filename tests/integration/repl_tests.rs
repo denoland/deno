@@ -185,6 +185,79 @@ fn pty_internal_repl() {
 }
 
 #[test(flaky)]
+fn pty_dot_help() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(".help");
+    console.expect("REPL commands");
+    console.expect(".doc");
+    console.expect("doc(value)");
+  });
+}
+
+#[test(flaky)]
+fn pty_dot_doc_deno_api() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(".doc Deno.openSync");
+    console.expect("// Deno.openSync");
+    console.expect("Synchronously");
+  });
+}
+
+#[test(flaky)]
+fn pty_dot_doc_nested_member() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(".doc Deno.stdin.read");
+    console.expect("// Deno.stdin.read");
+    console.expect("Read the incoming data");
+  });
+}
+
+#[test(flaky)]
+fn pty_dot_doc_no_args() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(".doc");
+    console.expect("requires an expression");
+  });
+}
+
+#[test(flaky)]
+fn pty_doc_global_user_function() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("function add(a, b) { return a + b; }");
+    console.expect("undefined");
+    console.write_line("doc(add)");
+    console.expect("[Function: add]");
+    console.expect("arity: 2");
+  });
+}
+
+#[test(flaky)]
+fn pty_doc_global_native_function() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("doc(Math.max)");
+    console.expect("[Function: max]");
+    console.expect("native code");
+  });
+}
+
+#[test(flaky)]
+fn pty_doc_global_object_instance() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("doc(new URL('https://deno.land'))");
+    console.expect("Type: URL");
+  });
+}
+
+#[test(flaky)]
+fn pty_doc_global_primitive() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("doc(42)");
+    console.expect("Type: number");
+    console.expect("value: 42");
+  });
+}
+
+#[test(flaky)]
 fn pty_emoji() {
   // windows was having issues displaying this
   util::with_pty(&["repl"], |mut console| {

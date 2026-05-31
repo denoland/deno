@@ -51,6 +51,7 @@ use regex::Regex;
 use tokio::sync::Mutex;
 use tokio::sync::oneshot;
 
+use super::docs;
 use crate::args::CliOptions;
 use crate::cdp;
 use crate::cdp::RemoteObjectId;
@@ -137,6 +138,103 @@ fn get_prelude() -> String {
 
   globalThis.clear = console.clear.bind(console);
 
+  // `doc(value)` — REPL helper that prints a human-readable description
+  // of `value`. Mirrors the `.doc` dot-command but is usable inside
+  // arbitrary expressions.
+  //
+  // For functions it surfaces the name, parameter arity, and (when
+  // available) a JSDoc block embedded in the function source. For
+  // primitives it shows the type and value. For objects it shows the
+  // constructor's name. Returns a wrapper that the REPL renders
+  // verbatim (no extra quotes).
+  const REPL_DOC = Symbol.for("Deno.customInspect");
+  function _DocResult(text) {
+    this._text = text;
+  }
+  _DocResult.prototype[REPL_DOC] = function () {
+    return this._text;
+  };
+  _DocResult.prototype.toString = function () {
+    return this._text;
+  };
+
+  function _formatDoc(target) {
+    if (target === undefined) return "undefined";
+    if (target === null) return "null";
+
+    const typeOf = typeof target;
+    const lines = [];
+
+    if (typeOf === "function") {
+      const name = target.name || "(anonymous)";
+      let src = "";
+      try { src = Function.prototype.toString.call(target); } catch { /* ignore */ }
+      const native = /\{\s*\[native code\]\s*\}/.test(src);
+      const arity = typeof target.length === "number" ? target.length : "?";
+      lines.push(`[Function: ${name}] (arity: ${arity})`);
+      if (native) {
+        lines.push(
+          "// native code — no inline JSDoc available.",
+          "// Use `.doc <fully-qualified name>` to look up the bundled type docs",
+          "// (e.g. .doc Deno.openSync or .doc Array.prototype.map).",
+        );
+      } else {
+        // Extract a /** ... */ comment from within the function body.
+        // `Function.prototype.toString` doesn't include comments that
+        // precede the declaration; an inline doc inside the body is the
+        // closest we can get without source-map access.
+        const m = src.match(/\/\*\*([\s\S]*?)\*\//);
+        if (m) {
+          lines.push(_formatJsDoc(m[0]));
+        } else {
+          const sig = src.match(/^(?:async\s+)?(?:function\s*\*?\s*[^(]*\([^)]*\)|[^=]*=>)/);
+          if (sig) lines.push(sig[0].trim());
+        }
+      }
+      return lines.join("\n");
+    }
+
+    if (typeOf === "object") {
+      const ctor = target.constructor && target.constructor.name;
+      const tag = target[Symbol.toStringTag];
+      const label = tag ? `${ctor || "Object"} [${tag}]` : (ctor || "Object");
+      lines.push(`Type: ${label}`);
+      if (Array.isArray(target)) {
+        lines.push(`length: ${target.length}`);
+      }
+      return lines.join("\n");
+    }
+
+    // Primitives: number, string, boolean, bigint, symbol
+    let value;
+    try { value = repl_internal.String(target); } catch { value = "<unprintable>"; }
+    return `Type: ${typeOf}\nvalue: ${value}`;
+  }
+
+  globalThis.doc = function doc(target) {
+    return new _DocResult(_formatDoc(target));
+  };
+
+  function _formatJsDoc(raw) {
+    return raw
+      .split("\n")
+      .map((line) => {
+        let t = line.trimStart();
+        if (t.startsWith("/**")) t = t.slice(3);
+        else if (t.startsWith("*/")) t = t.slice(2);
+        else if (t.startsWith("*")) t = t.slice(1);
+        if (t.startsWith(" ")) t = t.slice(1);
+        return t.trimEnd();
+      })
+      .filter((line, i, arr) => {
+        if (line) return true;
+        if (i === 0 || i === arr.length - 1) return false;
+        return true;
+      })
+      .join("\n")
+      .trim();
+  }
+
   return repl_internal;
 })()"#.to_string()
 }
@@ -163,6 +261,59 @@ pub fn result_to_evaluation_output(
     Err(err) => {
       EvaluationOutput::Error(format!("{} {:#}", colors::red("error:"), err))
     }
+  }
+}
+
+fn help_text() -> String {
+  let mut s = String::new();
+  s.push_str(&colors::bold("REPL commands\n").to_string());
+  s.push_str("  .doc <expression>   Print documentation for the symbol.\n");
+  s.push_str("                      Example: .doc Deno.openSync\n");
+  s.push_str("  .help               Show this help message.\n");
+  s.push('\n');
+  s.push_str(&colors::bold("Globals\n").to_string());
+  s.push_str(
+    "  doc(value)          Same as .doc, but usable inside expressions.\n",
+  );
+  s.push_str("  _                   Last evaluated value.\n");
+  s.push_str("  _error              Last thrown error.\n");
+  s.push_str("  clear()             Clear the terminal screen.\n");
+  s
+}
+
+/// `get_eval_value` formats strings as JSON-quoted output (the default
+/// `console.log("%o", ...)` behavior). For the `.doc` command we already
+/// produced a fully-formatted string in JS — strip the surrounding quotes
+/// so multi-line JSDoc renders naturally in the terminal.
+fn strip_quotes(s: &str) -> String {
+  let trimmed = s.trim_end();
+  if let Some(inner) =
+    trimmed.strip_prefix('"').and_then(|s| s.strip_suffix('"'))
+  {
+    // Undo \n and \" escapes produced by inspect.
+    let mut out = String::with_capacity(inner.len());
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+      if c != '\\' {
+        out.push(c);
+        continue;
+      }
+      match chars.next() {
+        Some('n') => out.push('\n'),
+        Some('t') => out.push('\t'),
+        Some('r') => out.push('\r'),
+        Some('"') => out.push('"'),
+        Some('\\') => out.push('\\'),
+        Some(other) => {
+          out.push('\\');
+          out.push(other);
+        }
+        None => out.push('\\'),
+      }
+    }
+    out
+  } else {
+    s.to_string()
   }
 }
 
@@ -486,6 +637,9 @@ impl ReplSession {
     &mut self,
     line: &str,
   ) -> EvaluationOutput {
+    if let Some(output) = self.maybe_handle_dot_command(line).await {
+      return output;
+    }
     fn format_diagnostic(diagnostic: &deno_ast::ParseDiagnostic) -> String {
       let display_position = diagnostic.display_position();
       format!(
@@ -562,6 +716,82 @@ impl ReplSession {
 
     let result = inner(self, line).await;
     result_to_evaluation_output(result)
+  }
+
+  /// REPL dot-commands (Node-style): `.help`, `.doc <expr>`. Returns `None`
+  /// when the input isn't a recognized dot-command and should be evaluated
+  /// as JavaScript.
+  async fn maybe_handle_dot_command(
+    &mut self,
+    line: &str,
+  ) -> Option<EvaluationOutput> {
+    let trimmed = line.trim_start();
+    let rest = trimmed.strip_prefix('.')?;
+    // A bare leading dot followed by a digit or `.` (like `.5` or `..foo`)
+    // is JavaScript, not a command. Require an alphabetic command name.
+    let cmd_end = rest
+      .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+      .unwrap_or(rest.len());
+    if cmd_end == 0 {
+      return None;
+    }
+    let (cmd, args) = rest.split_at(cmd_end);
+    let args = args.trim();
+    if !cmd.chars().next()?.is_ascii_alphabetic() {
+      return None;
+    }
+    match cmd {
+      "help" => Some(EvaluationOutput::Value(help_text())),
+      "doc" => Some(self.repl_doc_command(args).await),
+      _ => None,
+    }
+  }
+
+  async fn repl_doc_command(&mut self, args: &str) -> EvaluationOutput {
+    if args.is_empty() {
+      return EvaluationOutput::Error(format!(
+        "{} .doc requires an expression. Try: .doc Deno.openSync",
+        colors::red("error:"),
+      ));
+    }
+    // First, check the bundled .d.ts registry for an exact dotted path
+    // match. This catches the common case `.doc Deno.openSync`.
+    if let Some(entry) = docs::lookup(args) {
+      return EvaluationOutput::Value(format!(
+        "{}\n{}",
+        colors::cyan(&format!("// {args}")),
+        docs::format_jsdoc(&entry.jsdoc),
+      ));
+    }
+    // Otherwise, evaluate the expression and emit runtime-derived info,
+    // using the `doc()` helper that the prelude injects.
+    let invocation = format!("globalThis.doc({args})");
+    match self.evaluate_line_with_object_wrapping(&invocation).await {
+      Ok(response) => {
+        let cdp::EvaluateResponse {
+          result,
+          exception_details,
+        } = response.value;
+        if let Some(exception_details) = exception_details {
+          EvaluationOutput::Error(format!(
+            "{} {}",
+            exception_details.text,
+            exception_details
+              .exception
+              .and_then(|e| e
+                .description
+                .or_else(|| e.value.map(|v| v.to_string())))
+              .unwrap_or_default(),
+          ))
+        } else {
+          match self.get_eval_value(&result).await {
+            Ok(value) => EvaluationOutput::Value(strip_quotes(&value)),
+            Err(err) => EvaluationOutput::Error(format!("{err:#}")),
+          }
+        }
+      }
+      Err(err) => EvaluationOutput::Error(format!("{err:#}")),
+    }
   }
 
   pub async fn evaluate_line_with_object_wrapping(
