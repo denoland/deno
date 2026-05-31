@@ -286,5 +286,8 @@ impl UnstableConfig {
     if !self.features.iter().any(|f| f == "node-globals") {
       self.features.push("node-globals".to_string());
     }
+    if !self.features.iter().any(|f| f == "unsafe-proto") {
+      self.features.push("unsafe-proto".to_string());
+    }
   }
 }

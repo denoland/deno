@@ -1,5 +1,17 @@
 {
-  "args": "run -A --unstable-unsafe-proto main.js",
-  "output": "main_with_unsafe_proto_flag.out",
-  "exitCode": 0
+  "tests": {
+    "flag": {
+      "args": "run -A --unstable-unsafe-proto main.js",
+      "output": "main_with_unsafe_proto_flag.out",
+      "exitCode": 0
+    },
+    "deno_compat_env": {
+      "args": "run -A main.js",
+      "envs": {
+        "DENO_COMPAT": "1"
+      },
+      "output": "main_with_unsafe_proto_flag.out",
+      "exitCode": 0
+    }
+  }
 }
