@@ -11,6 +11,7 @@ import {
   // for `import.meta.filename` and `import.meta.dirname` that Deno
   // provides.
   register,
+  stripTypeScriptTypes,
   syncBuiltinESMExports,
 } from "node:module";
 import { assert, assertEquals, assertThrows } from "@std/assert";
@@ -109,6 +110,36 @@ Deno.test("[node/module findSourceMap] is a function", () => {
 // https://github.com/denoland/deno/issues/24902
 Deno.test("[node/module register] is a function", () => {
   assertEquals(register("foo"), undefined);
+});
+
+Deno.test("[node/module stripTypeScriptTypes] strips TypeScript types", () => {
+  assertEquals(
+    stripTypeScriptTypes("const a: number = 1;"),
+    "const a         = 1;",
+  );
+  assertEquals(
+    stripTypeScriptTypes("const a: number = 1;", { sourceUrl: "source.ts" }),
+    "const a         = 1;\n\n//# sourceURL=source.ts",
+  );
+});
+
+Deno.test("[node/module stripTypeScriptTypes] transforms TypeScript syntax", () => {
+  const output = stripTypeScriptTypes("enum Color { Red }\nColor.Red;", {
+    mode: "transform",
+  });
+  assert(output.includes("Color"));
+  assert(output.includes("Red"));
+});
+
+Deno.test("[node/module stripTypeScriptTypes] rejects unsupported strip-only syntax", () => {
+  const err = assertThrows(
+    () => stripTypeScriptTypes("enum Color { Red }"),
+    SyntaxError,
+  );
+  assertEquals(
+    (err as SyntaxError & { code?: string }).code,
+    "ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX",
+  );
 });
 
 // Regression test: tsx and other tools probe `Module.register` (the default
