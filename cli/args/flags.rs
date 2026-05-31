@@ -5243,46 +5243,46 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     .after_help(cstr!(r#"<y>Permission options:</>
 <y>Docs</>: <c>https://docs.deno.com/go/permissions</>
 
-  <g>-A, --allow-all</>                           Allow all permissions.
-  <g>-P, --permission-set[=<<NAME>]</>            Loads the permission set from the config file.
-  <g>--no-prompt</>                               Always throw if required permission wasn't passed.
+  <g>-A, --allow-all</>                           Grant every runtime permission. Prefer the narrower --allow-* flags for scripts that do not need full access.
+  <g>-P, --permission-set[=<<NAME>]</>            Load a named permission set from the config file. Omit <<NAME>> to use the default permission set.
+  <g>--no-prompt</>                               Disable interactive permission prompts and throw when a required permission was not granted.
                                              <p(245)>Can also be set via the DENO_NO_PROMPT environment variable.</>
-  <g>-R, --allow-read[=<<PATH>...]</>             Allow file system read access. Optionally specify allowed paths.
-                                             <p(245)>--allow-read  |  --allow-read="/etc,/var/log.txt"</>
-  <g>-W, --allow-write[=<<PATH>...]</>            Allow file system write access. Optionally specify allowed paths.
-                                             <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"</>
-  <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</> Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
+  <g>-R, --allow-read[=<<PATH>...]</>             Read files, directories, and file metadata. Bare flag grants full file system read access; values restrict access to listed paths.
+                                             <p(245)>--allow-read  |  --allow-read="./data,./static/logo.png"</>
+  <g>-W, --allow-write[=<<PATH>...]</>            Create, modify, and delete files and directories. Bare flag grants full file system write access; values restrict writes to listed paths.
+                                             <p(245)>--allow-write  |  --allow-write="./cache,./out.txt"</>
+  <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</> Download remote modules and dynamic imports from hosts. Values are host names or IP addresses, optionally with ports.
                                             Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,raw.esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>
                                              <p(245)>--allow-import  |  --allow-import="example.com,github.com"</>
-  <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
+  <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Open network connections and listen on sockets. Values are IP addresses or host names, optionally with ports.
                                              <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
-  <g>-E, --allow-env[=<<VARIABLE_NAME>...]</>     Allow access to environment variables. Optionally specify accessible environment variables.
+  <g>-E, --allow-env[=<<VARIABLE_NAME>...]</>     Read, set, and delete environment variables. Bare flag grants access to all variables; values restrict access by variable name.
                                              <p(245)>--allow-env  |  --allow-env="PORT,HOME,PATH"</>
-  <g>-S, --allow-sys[=<<API_NAME>...]</>          Allow access to OS information. Optionally allow specific APIs by function name.
+  <g>-S, --allow-sys[=<<API_NAME>...]</>          Read operating system information such as hostname, load average, and OS release. Values restrict access by API name.
                                              <p(245)>--allow-sys  |  --allow-sys="systemMemoryInfo,osRelease"</>
-      <g>--allow-run[=<<PROGRAM_NAME>...]</>      Allow running subprocesses. Optionally specify allowed runnable program names.
+      <g>--allow-run[=<<PROGRAM_NAME>...]</>      Spawn subprocesses. Bare flag allows running any program; values restrict which program names or paths may be run.
                                              <p(245)>--allow-run  |  --allow-run="whoami,ps"</>
-      <g>--allow-ffi[=<<PATH>...]</>              (Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.
+      <g>--allow-ffi[=<<PATH>...]</>              (Unstable) Load dynamic libraries. Bare flag allows loading any library; values restrict loading to listed files or directories.
                                              <p(245)>--allow-ffi  |  --allow-ffi="./libfoo.so"</>
-      <g>--deny-read[=<<PATH>...]</>              Deny file system read access. Optionally specify denied paths.
+      <g>--deny-read[=<<PATH>...]</>              Deny file system read access, taking precedence over --allow-read. Values restrict denial to listed paths.
                                              <p(245)>--deny-read  |  --deny-read="/etc,/var/log.txt"</>
-      <g>--deny-write[=<<PATH>...]</>             Deny file system write access. Optionally specify denied paths.
+      <g>--deny-write[=<<PATH>...]</>             Deny file system write access, taking precedence over --allow-write. Values restrict denial to listed paths.
                                              <p(245)>--deny-write  |  --deny-write="/etc,/var/log.txt"</>
-      <g>--deny-net[=<<IP_OR_HOSTNAME>...]</>     Deny network access. Optionally specify defined IP addresses and host names, with ports as necessary.
+      <g>--deny-net[=<<IP_OR_HOSTNAME>...]</>     Deny network access, taking precedence over --allow-net. Values are IP addresses or host names, optionally with ports.
                                              <p(245)>--deny-net  |  --deny-net="localhost:8080,deno.land"</>
-      <g>--deny-env[=<<VARIABLE_NAME>...]</>      Deny access to environment variables. Optionally specify inacessible environment variables.
+      <g>--deny-env[=<<VARIABLE_NAME>...]</>      Deny access to environment variables, taking precedence over --allow-env. Values restrict denial by variable name.
                                              <p(245)>--deny-env  |  --deny-env="PORT,HOME,PATH"</>
-      <g>--deny-sys[=<<API_NAME>...]</>           Deny access to OS information. Optionally deny specific APIs by function name.
+      <g>--deny-sys[=<<API_NAME>...]</>           Deny access to OS information, taking precedence over --allow-sys. Values restrict denial by API name.
                                              <p(245)>--deny-sys  |  --deny-sys="systemMemoryInfo,osRelease"</>
-      <g>--deny-run[=<<PROGRAM_NAME>...]</>       Deny running subprocesses. Optionally specify denied runnable program names.
+      <g>--deny-run[=<<PROGRAM_NAME>...]</>       Deny spawning subprocesses, taking precedence over --allow-run. Values restrict denial by program name or path.
                                              <p(245)>--deny-run  |  --deny-run="whoami,ps"</>
-      <g>--deny-ffi[=<<PATH>...]</>               (Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.
+      <g>--deny-ffi[=<<PATH>...]</>               (Unstable) Deny loading dynamic libraries, taking precedence over --allow-ffi. Values restrict denial to listed files or directories.
                                              <p(245)>--deny-ffi  |  --deny-ffi="./libfoo.so"</>
-      <g>--deny-import[=<<IP_OR_HOSTNAME>...]</>  Deny importing from remote hosts. Optionally specify denied IP addresses and host names, with ports as necessary.
+      <g>--deny-import[=<<IP_OR_HOSTNAME>...]</>  Deny remote module imports, taking precedence over --allow-import. Values are IP addresses or host names, optionally with ports.
                                              <p(245)>--deny-import  |  --deny-import="example.com:443,github.com:443"</>
-      <g>--ignore-env[=<<VARIABLE_NAME>...]</>    Ignore access to environment variables returning `undefined`. Optionally specify ignored environment variables.
+      <g>--ignore-env[=<<VARIABLE_NAME>...]</>    Return `undefined` instead of throwing for denied environment variable reads. Values restrict this behavior by variable name.
                                              <p(245)>--ignore-env  |  --ignore-env="PORT,HOME,PATH"</>
-      <g>--ignore-read[=<<PATH>...]</>            Ignore file system read access with a `NotFound` error. Optionally specify ignored paths.
+      <g>--ignore-read[=<<PATH>...]</>            Return `NotFound` instead of throwing for denied file system reads. Values restrict this behavior to listed paths.
                                              <p(245)>--ignore-read  |  --ignore-read="/etc,/var/log.txt"</>
       <g>DENO_TRACE_PERMISSIONS</>                Environmental variable to enable stack traces in permission prompts.
                                              <p(245)>DENO_TRACE_PERMISSIONS=1 deno run main.ts</>
@@ -15172,6 +15172,32 @@ mod tests {
       assert_eq!(long_flag, short_flag, "{} subcommand", command.get_name());
       assert_eq!(long_flag, subcommand, "{} subcommand", command.get_name());
     }
+  }
+
+  #[test]
+  fn run_help_has_detailed_permission_flag_docs() {
+    let help = match flags_from_vec(svec!["deno", "run", "--help"])
+      .unwrap()
+      .subcommand
+    {
+      DenoSubcommand::Help(help) => help.help.to_string(),
+      _ => unreachable!(),
+    };
+
+    assert!(help.contains("Permission options:"));
+    assert!(help.contains(
+      "Read files, directories, and file metadata. Bare flag grants full file system read access; values restrict access to listed paths."
+    ));
+    assert!(help.contains("--allow-read=\"./data,./static/logo.png\""));
+    assert!(help.contains(
+      "Open network connections and listen on sockets. Values are IP addresses or host names, optionally with ports."
+    ));
+    assert!(
+      help.contains("Deny network access, taking precedence over --allow-net.")
+    );
+    assert!(help.contains(
+      "Return `undefined` instead of throwing for denied environment variable reads."
+    ));
   }
 
   #[test]
