@@ -3,6 +3,6 @@
     "postinstall": "node -e \"require('fs').writeFileSync('postinstall.txt', 'postinstall')\""
   },
   "dependencies": {
-    "preact": "^10.23.2"
+    "@denotest/add": "^1.0.0"
   }
 }
