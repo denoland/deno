@@ -3057,7 +3057,6 @@ fn find_package_root_from_node_modules(path: &Path) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-  use crate::PackageJsonResolver;
   use deno_package_json::PackageJsonBins;
   use serde_json::json;
   use sys_traits::FsCreateDirAll;
@@ -3065,6 +3064,7 @@ mod tests {
   use sys_traits::impls::InMemorySys;
 
   use super::*;
+  use crate::PackageJsonResolver;
 
   fn build_package_json(json: Value) -> PackageJson {
     PackageJson::load_from_value(PathBuf::from("/package.json"), json).unwrap()
