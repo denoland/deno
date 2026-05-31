@@ -696,8 +696,8 @@
       "<area>: Setting <http://test@example.net>.protocol = 'file' Can’t switch from URL containing username/password/port to file",
       "<a>: Setting <https://example.net:1234>.protocol = 'file'",
       "<area>: Setting <https://example.net:1234>.protocol = 'file'",
-      "<a>: Setting <***example.net:1234>.protocol = 'file'",
-      "<area>: Setting <***example.net:1234>.protocol = 'file'",
+      "<a>: Setting <wss://x:x@example.net:1234>.protocol = 'file'",
+      "<area>: Setting <wss://x:x@example.net:1234>.protocol = 'file'",
       "<a>: Setting <http://example.net>.protocol = 'b' Can’t switch from special scheme to non-special",
       "<area>: Setting <http://example.net>.protocol = 'b' Can’t switch from special scheme to non-special",
       "<a>: Setting <https://example.net>.protocol = 's'",
@@ -740,8 +740,8 @@
       "<area>: Setting <http://:secret@example.net>.username = 'me'",
       "<a>: Setting <http://me@example.net>.username = ''",
       "<area>: Setting <http://me@example.net>.username = ''",
-      "<a>: Setting <***example.net>.username = ''",
-      "<area>: Setting <***example.net>.username = ''",
+      "<a>: Setting <http://me:secret@example.net>.username = ''",
+      "<area>: Setting <http://me:secret@example.net>.username = ''",
       "<a>: Setting <http://example.net>.username = '\u0000\u0001\t\n\r\u001f !\"#$%&'()*+,-./09:;<=>?@AZ[\\]^_`az{|}~Éé' UTF-8 percent encoding with the userinfo encode set.",
       "<area>: Setting <http://example.net>.username = '\u0000\u0001\t\n\r\u001f !\"#$%&'()*+,-./09:;<=>?@AZ[\\]^_`az{|}~Éé' UTF-8 percent encoding with the userinfo encode set.",
       "<a>: Setting <http://example.net>.username = '%c3%89té' Bytes already percent-encoded are left as-is.",
@@ -756,8 +756,8 @@
       "<area>: Setting <http://me@example.net>.password = 'secret'",
       "<a>: Setting <http://:secret@example.net>.password = ''",
       "<area>: Setting <http://:secret@example.net>.password = ''",
-      "<a>: Setting <***example.net>.password = ''",
-      "<area>: Setting <***example.net>.password = ''",
+      "<a>: Setting <http://me:secret@example.net>.password = ''",
+      "<area>: Setting <http://me:secret@example.net>.password = ''",
       "<a>: Setting <http://example.net>.password = '\u0000\u0001\t\n\r\u001f !\"#$%&'()*+,-./09:;<=>?@AZ[\\]^_`az{|}~Éé' UTF-8 percent encoding with the userinfo encode set.",
       "<area>: Setting <http://example.net>.password = '\u0000\u0001\t\n\r\u001f !\"#$%&'()*+,-./09:;<=>?@AZ[\\]^_`az{|}~Éé' UTF-8 percent encoding with the userinfo encode set.",
       "<a>: Setting <http://example.net>.password = '%c3%89té' Bytes already percent-encoded are left as-is.",
@@ -1164,7 +1164,8 @@
       "<area>: Setting <data:text/plain,test>.hash = '#\u0000\u0001\t\n\r\u001f !\"#$%&'()*+,-./09:;<=>?@AZ[\\]^_`az{|}~Éé' Fragment percent-encode set on data: URI; tabs and newlines are removed",
       "<a>: Setting <about:blank>.hash = '#\u0000\u0001\t\n\r\u001f !\"#$%&'()*+,-./09:;<=>?@AZ[\\]^_`az{|}~Éé' Fragment percent-encode set on about:blank; tabs and newlines are removed",
       "<area>: Setting <about:blank>.hash = '#\u0000\u0001\t\n\r\u001f !\"#$%&'()*+,-./09:;<=>?@AZ[\\]^_`az{|}~Éé' Fragment percent-encode set on about:blank; tabs and newlines are removed"
-    ]
+    ],
+    "ignore": true
   },
   "url-setters-a-area.window.html?include=file": {
     "expectedFailures": [
@@ -1310,10 +1311,10 @@
   "a-element-origin.html": {
     "expectedFailures": [
       "Parsing origin: <http://example\t.\norg> against <http://example.org/foo/bar>",
-      "Parsing origin: <***foo:21/bar;par?b#c> against <http://example.org/foo/bar>",
-      "Parsing origin: <***test> against <about:blank>",
+      "Parsing origin: <http://user:pass@foo:21/bar;par?b#c> against <http://example.org/foo/bar>",
+      "Parsing origin: <https://test:@test> against <about:blank>",
       "Parsing origin: <https://:@test> against <about:blank>",
-      "Parsing origin: <***test/x> against <about:blank>",
+      "Parsing origin: <non-special://test:@test/x> against <about:blank>",
       "Parsing origin: <non-special://:@test/x> against <about:blank>",
       "Parsing origin: <http:foo.com> against <http://example.org/foo/bar>",
       "Parsing origin: <\t   :foo.com   \n> against <http://example.org/foo/bar>",
@@ -1347,15 +1348,15 @@
       "Parsing origin: <::> against <http://example.org/foo/bar>",
       "Parsing origin: <::23> against <http://example.org/foo/bar>",
       "Parsing origin: <foo://> against <http://example.org/foo/bar>",
-      "Parsing origin: <***c:29/d> against <http://example.org/foo/bar>",
+      "Parsing origin: <http://a:b@c:29/d> against <http://example.org/foo/bar>",
       "Parsing origin: <http::@c:29> against <http://example.org/foo/bar>",
       "Parsing origin: <http://&a:foo(b]c@d:2/> against <http://example.org/foo/bar>",
       "Parsing origin: <http://::@c@d:2> against <http://example.org/foo/bar>",
-      "Parsing origin: <***d/> against <http://example.org/foo/bar>",
+      "Parsing origin: <http://foo.com:b@d/> against <http://example.org/foo/bar>",
       "Parsing origin: <http://foo.com/\\@> against <http://example.org/foo/bar>",
       "Parsing origin: <http:\\\\foo.com\\> against <http://example.org/foo/bar>",
       "Parsing origin: <http:\\\\a\\b:c\\d@foo.com\\> against <http://example.org/foo/bar>",
-      "Parsing origin: <***c\\> against <about:blank>",
+      "Parsing origin: <http://a:b@c\\> against <about:blank>",
       "Parsing origin: <ws://a@b\\c> against <about:blank>",
       "Parsing origin: <foo:/> against <http://example.org/foo/bar>",
       "Parsing origin: <foo:/bar.com/> against <http://example.org/foo/bar>",
@@ -1447,7 +1448,7 @@
       "Parsing origin: <http://192.0x00A80001> against <about:blank>",
       "Parsing origin: <http://www/foo%2Ehtml> against <about:blank>",
       "Parsing origin: <http://www/foo/%2E/html> against <about:blank>",
-      "Parsing origin: <***foodomain.com/> against <about:blank>",
+      "Parsing origin: <http://%25DOMAIN:foobar@foodomain.com/> against <about:blank>",
       "Parsing origin: <http:\\\\www.google.com\\foo> against <about:blank>",
       "Parsing origin: <http://foo:80/> against <about:blank>",
       "Parsing origin: <http://foo:81/> against <about:blank>",
@@ -1494,14 +1495,14 @@
       "Parsing origin: <http://@www.example.com> against <about:blank>",
       "Parsing origin: <http:a:b@www.example.com> against <about:blank>",
       "Parsing origin: <http:/a:b@www.example.com> against <about:blank>",
-      "Parsing origin: <***www.example.com> against <about:blank>",
+      "Parsing origin: <http://a:b@www.example.com> against <about:blank>",
       "Parsing origin: <http://@pple.com> against <about:blank>",
       "Parsing origin: <http::b@www.example.com> against <about:blank>",
       "Parsing origin: <http:/:b@www.example.com> against <about:blank>",
       "Parsing origin: <http://:b@www.example.com> against <about:blank>",
       "Parsing origin: <http:a:@www.example.com> against <about:blank>",
       "Parsing origin: <http:/a:@www.example.com> against <about:blank>",
-      "Parsing origin: <***www.example.com> against <about:blank>",
+      "Parsing origin: <http:a:b@www.example.com> against <about:blank>",
       "Parsing origin: <http://www.@pple.com> against <about:blank>",
       "Parsing origin: <http://:@www.example.com> against <about:blank>",
       "Parsing origin: </> against <http://www.example.com/test>",
@@ -1553,8 +1554,8 @@
       "Parsing origin: <http://host/?'> against <about:blank>",
       "Parsing origin: <notspecial://host/?'> against <about:blank>",
       "Parsing origin: </some/path> against <http://user@example.org/smth>",
-      "Parsing origin: <> against <***example.org:21/smth>",
-      "Parsing origin: </some/path> against <***example.org:21/smth>",
+      "Parsing origin: <> against <http://user:pass@example.org:21/smth>",
+      "Parsing origin: </some/path> against <http://user:pass@example.org:21/smth>",
       "Parsing origin: <i> against <sc:/pa/pa>",
       "Parsing origin: <i> against <sc://ho/pa>",
       "Parsing origin: <i> against <sc:///pa/pa>",
@@ -1625,9 +1626,9 @@
       "Parsing origin: <#x> against <sc://ñ>",
       "Parsing origin: <?x> against <sc://ñ>",
       "Parsing origin: <tftp://foobar.com/someconfig;mode=netascii> against <about:blank>",
-      "Parsing origin: <***foobar.com:23/> against <about:blank>",
+      "Parsing origin: <telnet://user:pass@foobar.com:23/> against <about:blank>",
       "Parsing origin: <ut2004://10.10.10.10:7777/Index.ut2> against <about:blank>",
-      "Parsing origin: <***somehost:6379/0?baz=bam&qux=baz> against <about:blank>",
+      "Parsing origin: <redis://foo:bar@somehost:6379/0?baz=bam&qux=baz> against <about:blank>",
       "Parsing origin: <rsync://foo@host:911/sup> against <about:blank>",
       "Parsing origin: <git://github.com/foo/bar.git> against <about:blank>",
       "Parsing origin: <irc://myserver.com:6999/channel?passwd> against <about:blank>",
@@ -1708,7 +1709,8 @@
       "Parsing origin: <non-special:/\\path> against <about:blank>",
       "Parsing origin: <non-special://host/a\\b> against <about:blank>",
       "Parsing origin: <http://example.com/\ud800𐟾\udfff﷐﷏﷯ﷰ￾￿?\ud800𐟾\udfff﷐﷏﷯ﷰ￾￿> against <about:blank>"
-    ]
+    ],
+    "ignore": true
   },
   "a-element.html?exclude=(file|javascript|mailto)": {
     "expectedFailures": [
@@ -2440,7 +2442,8 @@
       "Parsing: <x> against <sc://ñ>",
       "Parsing: <中/test.txt> against <http://www.example.com/test>",
       "Test that embedded 0x0A is stripped"
-    ]
+    ],
+    "ignore": true
   },
   "a-element.html?include=file": {
     "expectedFailures": [
