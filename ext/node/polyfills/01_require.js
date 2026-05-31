@@ -2385,9 +2385,9 @@ Module._initPaths = function () {
   Module.globalPaths = ArrayPrototypeSlice(modulePaths);
 };
 
-Module.syncBuiltinESMExports = function syncBuiltinESMExports() {
-  throw new Error("not implemented");
-};
+function syncBuiltinESMExports() {}
+
+Module.syncBuiltinESMExports = syncBuiltinESMExports;
 
 // Mostly used by tools like ts-node.
 Module.runMain = function () {
@@ -3156,6 +3156,7 @@ export {
   isBuiltin,
   Module,
   SourceMap,
+  syncBuiltinESMExports,
 };
 export const _cache = Module._cache;
 export const _extensions = Module._extensions;
