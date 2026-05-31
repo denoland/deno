@@ -3524,19 +3524,6 @@ pub fn translate_to_deno_args(
     node_options.push(format!("--test-skip-pattern={}", pattern));
   }
 
-  // Forward --require/--import modules to Deno's run subcommand so that
-  // child_process.spawnSync(process.execPath, ['-r', wrapper, main])
-  // (the pattern Node.js compat tests use) actually preloads the wrapper
-  // before evaluating the main script.
-  for module in &env_opts.preload_cjs_modules {
-    deno_args.push("--require".to_string());
-    deno_args.push(module.clone());
-  }
-  for module in &env_opts.preload_esm_modules {
-    deno_args.push("--import".to_string());
-    deno_args.push(module.clone());
-  }
-
   // Add the script and remaining args
   deno_args.extend(parsed_args.remaining_args);
 

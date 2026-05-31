@@ -218,6 +218,9 @@ pub struct CompileFlags {
   pub exclude: Vec<String>,
   pub eszip: bool,
   pub self_extracting: bool,
+  /// Bundle the entrypoint with esbuild before embedding it, instead of
+  /// shipping the entire node_modules tree. Experimental.
+  pub bundle: bool,
 }
 
 impl CompileFlags {
@@ -677,7 +680,6 @@ pub struct PackFlags {
   pub allow_slow_types: bool,
   pub allow_dirty: bool,
   pub set_version: Option<String>,
-  pub no_shim: bool,
   pub no_source_maps: bool,
 }
 
@@ -3006,6 +3008,14 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .action(ArgAction::SetTrue)
           .help_heading(COMPILE_HEADING),
       )
+      .arg(
+        Arg::new("bundle")
+          .long("bundle")
+          .help(cstr!("<y>Experimental.</> Bundle the entrypoint with esbuild before embedding, instead of shipping the whole node_modules tree.
+  <p(245)>Produces a smaller binary with faster startup, at the cost of dropping dynamic require/import patterns that can't be statically traced.</>"))
+          .action(ArgAction::SetTrue)
+          .help_heading(COMPILE_HEADING),
+      )
       .arg(executable_ext_arg())
       .arg(env_file_arg())
       .arg(
@@ -5163,12 +5173,6 @@ fn pack_subcommand() -> Command {
           .value_name("VERSION"),
       )
       .arg(
-        Arg::new("no-deno-shim")
-          .long("no-deno-shim")
-          .help("Don't automatically add @deno/shim-deno dependency")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(
         Arg::new("no-source-maps")
           .long("no-source-maps")
           .help("Don't include source maps in the output")
@@ -6892,6 +6896,7 @@ fn compile_parse(
   let no_terminal = matches.get_flag("no-terminal");
   let eszip = matches.get_flag("eszip-internal-do-not-use");
   let self_extracting = matches.get_flag("self-extracting");
+  let bundle = matches.get_flag("bundle");
   let include = matches
     .remove_many::<String>("include")
     .map(|f| f.collect::<Vec<_>>())
@@ -6915,6 +6920,7 @@ fn compile_parse(
     exclude,
     eszip,
     self_extracting,
+    bundle,
   });
 
   Ok(())
@@ -8217,7 +8223,6 @@ fn pack_parse(
     allow_slow_types: matches.get_flag("allow-slow-types"),
     allow_dirty: matches.get_flag("allow-dirty"),
     set_version: matches.remove_one::<String>("set-version"),
-    no_shim: matches.get_flag("no-deno-shim"),
     no_source_maps: matches.get_flag("no-source-maps"),
   });
 
@@ -13516,6 +13521,7 @@ mod tests {
           exclude: Default::default(),
           eszip: false,
           self_extracting: false,
+          bundle: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -13543,6 +13549,7 @@ mod tests {
           exclude: vec!["exclude.txt".to_string()],
           eszip: false,
           self_extracting: false,
+          bundle: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -16074,6 +16081,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           exclude: Default::default(),
           eszip: false,
           self_extracting: false,
+          bundle: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         preload: svec!["p1.js", "./p2.js"],

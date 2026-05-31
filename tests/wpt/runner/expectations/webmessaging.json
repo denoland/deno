@@ -13,7 +13,7 @@
     "interface.any.html": true,
     "interface.any.worker.html": true,
     "origin.window.html": false,
-    "blobs.html": false,
+    "blobs.html": true,
     "cross-origin.html": false,
     "cross-partition.https.tentative.html": false,
     "detached-iframe.html": false,

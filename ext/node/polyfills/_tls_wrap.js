@@ -1148,6 +1148,14 @@ function onServerSocketSecure() {
         this.destroy();
         return;
       }
+    } else if (this._handle.getPeerCertificate(false) == null) {
+      // `rejectUnauthorized: false` lets the handshake complete even when
+      // the client presented no certificate. rustls only invokes the
+      // client cert verifier when a cert is actually presented, so
+      // `verifyError()` is empty in this case. Match Node's behaviour
+      // and surface "no client cert" as an authorization error rather
+      // than reporting `authorized = true`.
+      this.authorizationError = "UNABLE_TO_GET_ISSUER_CERT";
     } else {
       this.authorized = true;
     }

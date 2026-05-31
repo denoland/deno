@@ -137,6 +137,10 @@ pub enum SqliteError {
   #[error("statement has been finalized")]
   #[property("code" = self.code())]
   StatementFinalized,
+  #[class(generic)]
+  #[error("cannot close database while a user-defined callback is running")]
+  #[property("code" = self.code())]
+  ActiveCallback,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -196,7 +200,8 @@ impl SqliteError {
       | Self::AlreadyClosed
       | Self::InUse
       | Self::AlreadyOpen
-      | Self::StatementFinalized => ErrorCode::ERR_INVALID_STATE,
+      | Self::StatementFinalized
+      | Self::ActiveCallback => ErrorCode::ERR_INVALID_STATE,
       Self::NumberTooLarge(_) => ErrorCode::ERR_OUT_OF_RANGE,
       Self::LoadExensionFailed(_) => ErrorCode::ERR_LOAD_SQLITE_EXTENSION,
       _ => ErrorCode::ERR_SQLITE_ERROR,

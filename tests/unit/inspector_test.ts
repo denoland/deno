@@ -855,6 +855,58 @@ Deno.test("inspector_worker_target_discovery", async () => {
   }
 });
 
+// Regression test for https://github.com/denoland/deno/issues/34291
+// vscode-js-debug calls NodeWorker.enable before the user script runs, so
+// any Worker constructor fires *after* NodeWorker.enable has been processed.
+// Previously these later workers were not announced — NodeWorker.enable
+// only walked existing workers, and the new-worker registration path only
+// emitted Target.* events. Now NodeWorker.attachedToWorker fires for both.
+Deno.test("inspector_node_worker_attached_after_enable", async () => {
+  const script = `${testdataPath}/worker_main.js`;
+  const tester = await InspectorTester.create(
+    ["run", "-A", "--inspect-brk=0", script],
+    { notificationFilter: ignoreScriptParsed },
+  );
+
+  try {
+    await tester.assertStderrForInspectBrk();
+
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+      {
+        id: 3,
+        method: "NodeWorker.enable",
+        params: { waitForDebuggerOnStart: false },
+      },
+      { id: 4, method: "Runtime.runIfWaitingForDebugger" },
+    ]);
+
+    await tester.expectResponse(1);
+    await tester.expectResponse(2);
+    await tester.expectResponse(3);
+    await tester.expectResponse(4);
+    await tester.expectNotification("Runtime.executionContextCreated");
+    await tester.expectNotification("Debugger.paused");
+
+    tester.send({ id: 5, method: "Debugger.resume" });
+    await tester.expectResponse(5);
+
+    const attached = await tester.expectNotification(
+      "NodeWorker.attachedToWorker",
+    );
+    const params = attached.params as Record<string, unknown>;
+    assert(params.sessionId, "attachedToWorker should include sessionId");
+    const workerInfo = params.workerInfo as Record<string, unknown>;
+    assert(workerInfo, "attachedToWorker should include workerInfo");
+    assertEquals(workerInfo.type, "node_worker");
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+  }
+});
+
 Deno.test("inspector_node_worker_enable", async () => {
   const script = `${testdataPath}/worker_main.js`;
   const tester = await InspectorTester.create(
@@ -1416,4 +1468,58 @@ Deno.test("inspector_node_runtime_api_url", async () => {
     expectedUrl,
     "inspector.url() should return the same URL as stderr",
   );
+});
+
+// Regression test for https://github.com/denoland/deno/issues/30176.
+// `console.group(label)` must emit a paired `log` event so Chrome DevTools
+// renders the label inside the group container; otherwise the group appears
+// empty and the visible nesting drifts out of alignment with the CLI.
+Deno.test("inspector_console_group_emits_label_log", async () => {
+  const script = `${testdataPath}/inspector_group.js`;
+  // `--inspect-wait` keeps the script paused until the inspector calls
+  // `Runtime.runIfWaitingForDebugger`. Avoid `--inspect-brk` here: that mode
+  // also pauses on the first line and would require an extra
+  // `Debugger.resume` round-trip, which races with this test's expectations.
+  const tester = await InspectorTester.create(
+    ["run", "-A", "--inspect-wait=0", script],
+    { notificationFilter: ignoreScriptParsed },
+  );
+
+  try {
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+    ]);
+    await tester.expectResponse(1);
+    await tester.expectResponse(2);
+    await tester.expectNotification("Runtime.executionContextCreated");
+
+    tester.send({ id: 3, method: "Runtime.runIfWaitingForDebugger" });
+    await tester.expectResponse(3);
+
+    // Sentinel "done" log marks the end of the script-emitted console events.
+    const events: Array<{ type: string; arg: string | undefined }> = [];
+    while (true) {
+      const msg = await tester.expectNotification("Runtime.consoleAPICalled");
+      // deno-lint-ignore no-explicit-any
+      const params = msg.params as any;
+      const arg = params.args?.[0]?.value;
+      events.push({ type: params.type, arg });
+      if (params.type === "log" && arg === "done") break;
+    }
+
+    assertEquals(events, [
+      { type: "startGroup", arg: "test1" },
+      { type: "log", arg: "test1" },
+      { type: "startGroup", arg: "test2" },
+      { type: "log", arg: "test2" },
+      { type: "endGroup", arg: "console.groupEnd" },
+      { type: "endGroup", arg: "console.groupEnd" },
+      { type: "log", arg: "done" },
+    ]);
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+  }
 });

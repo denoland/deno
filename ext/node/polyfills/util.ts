@@ -142,6 +142,7 @@ function inherits(ctor, superCtor) {
 const {
   _TextDecoder,
   _TextEncoder,
+  getSystemErrorMap,
   getSystemErrorMessage,
   getSystemErrorName,
 } = core.loadExtScript("ext:deno_node/_utils.ts");
@@ -380,6 +381,23 @@ function queryObjects(ctor, options) {
   return lazyV8().queryObjects(ctor, options);
 }
 
+// Deno's AbortSignal is not yet structured-cloneable, so transfer is a no-op:
+// the returned signal/controller can still be used in-process. This mirrors
+// Node's API surface so user code calling these does not throw.
+function transferableAbortSignal(signal) {
+  if (
+    signal === null || typeof signal !== "object" ||
+    typeof signal.aborted !== "boolean"
+  ) {
+    throw new ERR_INVALID_ARG_TYPE("signal", "AbortSignal", signal);
+  }
+  return signal;
+}
+
+function transferableAbortController() {
+  return new AbortController();
+}
+
 function convertProcessSignalToExitCode(signalCode) {
   const { signals } = osConstants;
   validateOneOf(signalCode, "signalCode", ObjectKeys(signals));
@@ -413,7 +431,10 @@ return {
   parseEnv,
   queryObjects,
   setTraceSigInt,
+  transferableAbortController,
+  transferableAbortSignal,
   convertProcessSignalToExitCode,
+  getSystemErrorMap,
   getSystemErrorMessage,
   getSystemErrorName,
   isDeepStrictEqual,
