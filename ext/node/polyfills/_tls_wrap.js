@@ -76,6 +76,9 @@ const { ownerSymbol } = core.loadExtScript(
 const { X509Certificate } = core.loadExtScript(
   "ext:deno_node/internal/crypto/x509.ts",
 );
+const { default: randomBytes } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/_randomBytes.ts",
+);
 
 const lazyTls = core.createLazyLoader("node:tls");
 
@@ -112,6 +115,64 @@ function emitPendingSession(socket) {
     }
   } else if (session) {
     socket.emit("session", session);
+  }
+}
+
+// Build a synthetic 32-byte session identifier for use with the server-side
+// `newSession` / `resumeSession` events.  rustls drives session resumption
+// from its internal session store; the (id, data) bytes we emit here let
+// applications observe the event flow and store/return arbitrary blobs from
+// the corresponding callbacks but they are *not* fed back into rustls's
+// resumption path.  Matches the Node API surface so apps wiring up these
+// events (e.g. for telemetry or external session stores) keep working.
+function deriveSyntheticSessionId(socket) {
+  if (socket._syntheticSessionId) return socket._syntheticSessionId;
+  let id;
+  try {
+    id = randomBytes(32);
+  } catch {
+    // Fallback when the CSPRNG is somehow unavailable in this isolate.
+    id = Buffer.alloc(32);
+    for (let i = 0; i < id.length; i++) id[i] = (Math.random() * 256) | 0;
+  }
+  socket._syntheticSessionId = id;
+  return id;
+}
+
+function deriveSyntheticSessionData(socket) {
+  // Encode the negotiated protocol + cipher + servername so the buffer
+  // round-trips informational data, even though it cannot drive rustls's
+  // internal resumption logic.
+  const proto = socket.getProtocol?.() || "";
+  const cipher = socket.getCipher?.() || {};
+  const sni = socket.servername || "";
+  const payload = `deno-tls-server-session:${proto}:${
+    cipher.name ?? ""
+  }:${sni}`;
+  return Buffer.from(payload);
+}
+
+function maybeEmitServerSessionEvents(socket) {
+  const server = socket._tlsOptions?.server;
+  if (!server) return;
+  // Only emit when a listener exists; matches Node's behavior of avoiding
+  // unnecessary work for the common case where applications don't wire up
+  // the session events.
+  if (
+    socket._handle?.isSessionReused?.() &&
+    server.listenerCount("resumeSession") > 0
+  ) {
+    // Note: rustls already accepted/rejected the resumption attempt before
+    // this event fires, so the callback is informational only.  We invoke
+    // it eagerly with the data the listener returns (if any) so apps that
+    // chain async work still observe completion.
+    const id = deriveSyntheticSessionId(socket);
+    nextTick(() => {
+      if (socket.destroyed) return;
+      server.emit("resumeSession", id, (_err, _data) => {
+        // No-op: rustls's resumption decision is already final.
+      });
+    });
   }
 }
 
@@ -652,11 +713,45 @@ TLSSocket.prototype._init = function (socket, wrap) {
       debug("server onhandshakedone");
       const owner = this._owner;
       if (!owner) return;
+      // If the parent server has a `newSession` listener attached, hold
+      // off completing the secure connection until the listener invokes
+      // its callback.  Mirrors Node's contract: "The listener callback
+      // ... must be invoked in order for data to be sent or received
+      // over the secure connection."
+      const server = owner._tlsOptions?.server;
+      const hasNewSessionListener = !!server &&
+        server.listenerCount("newSession") > 0 &&
+        // rustls only really "creates" a new session on the initial
+        // handshake; resumptions don't go through Node's newSession path.
+        !owner._handle?.isSessionReused?.();
+      if (hasNewSessionListener) {
+        owner._newSessionPending = true;
+        const id = deriveSyntheticSessionId(owner);
+        const data = deriveSyntheticSessionData(owner);
+        let callbackCalled = false;
+        const done = () => {
+          if (callbackCalled || !owner._newSessionPending) return;
+          callbackCalled = true;
+          owner._newSessionPending = false;
+          if (owner._securePending) {
+            owner._securePending = false;
+            if (!owner.destroyed) owner._finishInit();
+          }
+        };
+        nextTick(() => {
+          if (owner.destroyed) {
+            owner._newSessionPending = false;
+            return;
+          }
+          server.emit("newSession", id, data, done);
+        });
+      }
       if (owner._newSessionPending) {
         owner._securePending = true;
         return;
       }
       owner._finishInit();
+      maybeEmitServerSessionEvents(owner);
     };
 
     // Enable Acceptor-based handshake when SNICallback or ALPNCallback
@@ -1095,6 +1190,20 @@ TLSSocket.prototype.getPeerFinished = function getPeerFinished() {
 
 TLSSocket.prototype.getSession = function getSession() {
   return this._session ?? null;
+};
+
+TLSSocket.prototype.getTLSTicket = function getTLSTicket() {
+  // Per Node docs: server-side sockets always return undefined; client-side
+  // returns the negotiated TLS session ticket Buffer or undefined when no
+  // session was negotiated.  rustls drives ticket-based resumption from its
+  // internal session store -- the buffer we hand back mirrors what
+  // getSession() returns and is intentionally opaque (it cannot be replayed
+  // to setSession() on a fresh process to drive resumption; in-process
+  // resumption is handled by the shared session store in NodeTlsState).
+  if (this._tlsOptions?.isServer) {
+    return undefined;
+  }
+  return this._session ?? undefined;
 };
 
 TLSSocket.prototype.getPeerX509Certificate = function getPeerX509Certificate() {

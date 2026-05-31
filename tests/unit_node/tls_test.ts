@@ -1132,3 +1132,154 @@ Deno.test("tls.createSecureContext rejects pfx with wrong passphrase", () => {
     "mac verify failure",
   );
 });
+
+// Coverage for the session resumption surface (tracking issue
+// https://github.com/denoland/deno/issues/30305).  rustls drives the
+// resumption decision internally; these tests assert the API shape that
+// applications depend on so listeners can be wired up without crashing.
+Deno.test("tlsSocket.getTLSTicket / getSession on client", async () => {
+  const deferred = Promise.withResolvers<void>();
+  const server = tls.createServer({ cert, key }, (socket) => {
+    socket.end();
+  });
+  server.listen(0, "127.0.0.1");
+  await new Promise<void>((r) => server.once("listening", () => r()));
+  const { port } = server.address() as net.AddressInfo;
+
+  const client = tls.connect({
+    host: "127.0.0.1",
+    port,
+    rejectUnauthorized: false,
+  });
+  client.once("secureConnect", () => {
+    // Per Node docs: client may have a ticket Buffer, server returns undefined.
+    const ticket = client.getTLSTicket();
+    if (ticket !== undefined) {
+      assert(Buffer.isBuffer(ticket));
+    }
+    assertEquals(typeof client.getTLSTicket, "function");
+    client.end();
+  });
+  client.once("close", () => {
+    server.close(() => deferred.resolve());
+  });
+  await deferred.promise;
+});
+
+Deno.test("tlsSocket.getTLSTicket on server-side socket returns undefined", async () => {
+  const deferred = Promise.withResolvers<void>();
+  const server = tls.createServer({ cert, key }, (socket) => {
+    // Server-side socket: must always return undefined per Node spec.
+    assertEquals(socket.getTLSTicket(), undefined);
+    socket.end();
+  });
+  server.listen(0, "127.0.0.1");
+  await new Promise<void>((r) => server.once("listening", () => r()));
+  const { port } = server.address() as net.AddressInfo;
+
+  const client = tls.connect({
+    host: "127.0.0.1",
+    port,
+    rejectUnauthorized: false,
+  });
+  client.once("close", () => {
+    server.close(() => deferred.resolve());
+  });
+  await deferred.promise;
+});
+
+Deno.test("tls.Server emits 'newSession' with (id, data, cb)", async () => {
+  const deferred = Promise.withResolvers<void>();
+  let sawNewSession = false;
+  const server = tls.createServer({ cert, key }, (socket) => {
+    socket.end();
+  });
+  server.on("newSession", (id, data, cb) => {
+    sawNewSession = true;
+    assert(Buffer.isBuffer(id), "sessionId is a Buffer");
+    assert(Buffer.isBuffer(data), "sessionData is a Buffer");
+    assertEquals(typeof cb, "function");
+    cb();
+  });
+  server.listen(0, "127.0.0.1");
+  await new Promise<void>((r) => server.once("listening", () => r()));
+  const { port } = server.address() as net.AddressInfo;
+
+  const client = tls.connect({
+    host: "127.0.0.1",
+    port,
+    rejectUnauthorized: false,
+  });
+  client.once("secureConnect", () => client.end());
+  client.once("close", () => {
+    assert(sawNewSession, "newSession event must fire on new connections");
+    server.close(() => deferred.resolve());
+  });
+  await deferred.promise;
+});
+
+Deno.test("tls.Server 'newSession' must invoke callback before secureConnection", async () => {
+  const deferred = Promise.withResolvers<void>();
+  let pendingCb: (() => void) | null = null;
+  let secureConnectionFired = false;
+  const server = tls.createServer({ cert, key });
+  server.on("newSession", (_id, _data, cb) => {
+    // Hold the callback for ~50ms before invoking it so we can prove
+    // secureConnection waits on us.
+    pendingCb = cb;
+  });
+  server.on("secureConnection", (socket) => {
+    secureConnectionFired = true;
+    assert(pendingCb === null, "secureConnection must wait for newSession cb");
+    socket.end();
+  });
+  server.listen(0, "127.0.0.1");
+  await new Promise<void>((r) => server.once("listening", () => r()));
+  const { port } = server.address() as net.AddressInfo;
+
+  const client = tls.connect({
+    host: "127.0.0.1",
+    port,
+    rejectUnauthorized: false,
+  });
+
+  setTimeout(() => {
+    assert(!secureConnectionFired, "secureConnection fired too early");
+    const cb = pendingCb;
+    pendingCb = null;
+    cb!();
+  }, 50);
+
+  client.once("close", () => {
+    assert(secureConnectionFired);
+    server.close(() => deferred.resolve());
+  });
+  await deferred.promise;
+});
+
+Deno.test("tls.Server allows attaching 'resumeSession' listener (stub)", async () => {
+  // The event surface must exist (apps wiring up resumeSession should not
+  // crash) even though rustls drives the resumption decision itself.
+  const deferred = Promise.withResolvers<void>();
+  const server = tls.createServer({ cert, key }, (socket) => {
+    socket.end();
+  });
+  // Just verify attaching the listener doesn't throw or break the server.
+  server.on("resumeSession", (_id, cb) => {
+    cb();
+  });
+  server.listen(0, "127.0.0.1");
+  await new Promise<void>((r) => server.once("listening", () => r()));
+  const { port } = server.address() as net.AddressInfo;
+
+  const client = tls.connect({
+    host: "127.0.0.1",
+    port,
+    rejectUnauthorized: false,
+  });
+  client.once("secureConnect", () => client.end());
+  client.once("close", () => {
+    server.close(() => deferred.resolve());
+  });
+  await deferred.promise;
+});
