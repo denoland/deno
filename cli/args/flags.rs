@@ -2266,6 +2266,7 @@ pub fn clap_root() -> Command {
         .action(ArgAction::SetTrue)
         .global(true),
     )
+    .args(node_compat_args())
     .subcommand(run_subcommand())
     .subcommand(serve_subcommand())
     .defer(|cmd| {
@@ -2318,6 +2319,45 @@ pub fn clap_root() -> Command {
     .help_template(DENO_HELP)
     .after_help(&*ENV_VARIABLES_HELP)
     .next_line_help(false)
+}
+
+/// Hidden no-op flags that mirror Node.js CLI flags. Accepted to allow Node
+/// programs that re-spawn `process.execPath` (which points at the Deno
+/// binary) with Node-specific flags — e.g. `npm:wrangler` runs
+/// `spawn(execPath, ["--no-warnings", "cli.js", ...])`. Without these,
+/// clap rejects the unknown flag and the spawn fails.
+///
+/// See https://github.com/denoland/deno/issues/17977 and
+/// https://nodejs.org/api/cli.html for the upstream flag definitions.
+fn node_compat_args() -> Vec<Arg> {
+  fn boolean(name: &'static str, long: &'static str) -> Arg {
+    Arg::new(name)
+      .long(long)
+      .action(ArgAction::SetTrue)
+      .hide(true)
+      .global(true)
+  }
+
+  fn value(name: &'static str, long: &'static str) -> Arg {
+    Arg::new(name)
+      .long(long)
+      .num_args(1)
+      .require_equals(true)
+      .hide(true)
+      .global(true)
+  }
+
+  vec![
+    boolean("__node_no_warnings", "no-warnings"),
+    boolean("__node_no_deprecation", "no-deprecation"),
+    boolean("__node_pending_deprecation", "pending-deprecation"),
+    boolean("__node_trace_warnings", "trace-warnings"),
+    boolean("__node_trace_deprecation", "trace-deprecation"),
+    boolean("__node_throw_deprecation", "throw-deprecation"),
+    boolean("__node_enable_source_maps", "enable-source-maps"),
+    value("__node_unhandled_rejections", "unhandled-rejections"),
+    value("__node_disable_warning", "disable-warning"),
+  ]
 }
 
 #[inline(always)]
@@ -8843,6 +8883,50 @@ mod tests {
     let r2 = flags_from_vec(svec!["deno", "run", "--log-level", "debug", "--quiet", "script.ts"]);
     let flags2 = r2.unwrap();
     assert_eq!(flags2, flags);
+  }
+
+  #[test]
+  fn node_compat_flags_accepted() {
+    // Node.js apps that spawn `process.execPath` may pass Node CLI flags
+    // (e.g. `--no-warnings`). These must be silently accepted so the spawned
+    // Deno process doesn't error out. https://github.com/denoland/deno/issues/17977
+    let r = flags_from_vec(svec!["deno", "--no-warnings", "script.ts"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.subcommand,
+      DenoSubcommand::Run(RunFlags::new_default("script.ts".to_string())),
+    );
+
+    // Multiple Node flags before the script.
+    let r = flags_from_vec(svec![
+      "deno",
+      "--no-warnings",
+      "--no-deprecation",
+      "--trace-warnings",
+      "--enable-source-maps",
+      "--unhandled-rejections=throw",
+      "script.ts"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.subcommand,
+      DenoSubcommand::Run(RunFlags::new_default("script.ts".to_string())),
+    );
+
+    // With an explicit `run` subcommand.
+    let r = flags_from_vec(svec!["deno", "run", "--no-warnings", "script.ts"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.subcommand,
+      DenoSubcommand::Run(RunFlags::new_default("script.ts".to_string())),
+    );
+
+    // Node flags after a script's positional are passed through to the
+    // script's argv (clap's trailing_var_arg behaviour) — verify they don't
+    // get consumed as Deno flags.
+    let r = flags_from_vec(svec!["deno", "run", "script.ts", "--no-warnings"]);
+    let flags = r.unwrap();
+    assert_eq!(flags.argv, svec!["--no-warnings"]);
   }
 
   #[test]
