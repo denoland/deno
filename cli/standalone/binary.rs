@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::env;
 use std::ffi::OsString;
@@ -1043,29 +1044,54 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         // that will be used by denort when loading the npm cache. This avoids us exposing
         // the user's private registry information and means we don't have to bother
         // serializing all the different registry config into the binary.
+        //
+        // A registry url may include a sub-path (e.g.
+        // `http://mirrors.example.com/npm/`), in which case the on-disk cache
+        // layout is `<global_cache>/<host>/<sub>/<pkg>/...` rather than
+        // `<global_cache>/<host>/<pkg>/...`. Walk to each known registry's
+        // package root before flattening so packages always end up directly
+        // under `localhost/`.
+        let known_registries_dirnames: Vec<String> =
+          npm_resolver.known_registries_dirnames().to_vec();
+        let mut localhost_entries: IndexMap<String, VfsEntry> = IndexMap::new();
+        let mut registry_top_segments: HashSet<String> = HashSet::new();
+        for registry_dirname in &known_registries_dirnames {
+          if let Some(first) = registry_dirname.split('/').next()
+            && !first.is_empty()
+          {
+            registry_top_segments.insert(first.to_string());
+          }
+          let registry_path = global_cache_root_path.join(registry_dirname);
+          let Some(registry_dir) = vfs.get_dir_mut(&registry_path) else {
+            continue;
+          };
+          for entry in registry_dir.entries.take_inner() {
+            log::debug!("Flattening {} into node_modules", entry.name());
+            if let Some(existing) =
+              localhost_entries.insert(entry.name().to_string(), entry)
+            {
+              panic!(
+                "Unhandled scenario where a duplicate entry was found: {:?}",
+                existing
+              );
+            }
+          }
+        }
+
         let Some(root_dir) = vfs.get_dir_mut(global_cache_root_path) else {
           return vfs.build();
         };
 
         root_dir.name = DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME.to_string();
         let mut new_entries = Vec::with_capacity(root_dir.entries.len());
-        let mut localhost_entries = IndexMap::new();
         for entry in root_dir.entries.take_inner() {
-          match entry {
-            VfsEntry::Dir(mut dir) => {
-              for entry in dir.entries.take_inner() {
-                log::debug!("Flattening {} into node_modules", entry.name());
-                if let Some(existing) =
-                  localhost_entries.insert(entry.name().to_string(), entry)
-                {
-                  panic!(
-                    "Unhandled scenario where a duplicate entry was found: {:?}",
-                    existing
-                  );
-                }
-              }
+          match &entry {
+            VfsEntry::Dir(dir) if registry_top_segments.contains(&dir.name) => {
+              // The packages under this registry host dir have already been
+              // flattened into `localhost_entries`. Drop the (now empty)
+              // intermediate directory tree so it isn't embedded twice.
             }
-            VfsEntry::File(_) | VfsEntry::Symlink(_) => {
+            _ => {
               new_entries.push(entry);
             }
           }
