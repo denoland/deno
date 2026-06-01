@@ -1,0 +1,8 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "compile --no-check --preload preload.ts --output main main.ts",
+    "output": "error.out",
+    "exitCode": 1
+  }]
+}

@@ -106,6 +106,9 @@ static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   lazy_regex!(r#"^\[['"](.+)[\['"]\]$"#);
 static CODEBLOCK_RE: Lazy<Regex> = lazy_regex!(r"^\s*[~`]{3}"m);
 static HTTP_RE: Lazy<Regex> = lazy_regex!(r#"(?i)^https?:"#);
+static SIMPLE_NAMED_IMPORT_RE: Lazy<Regex> = lazy_regex!(
+  r#"(?s)^\s*import\s+(?P<type>type\s+)?\{\s*(?P<names>[^{}]+?)\s*\}\s+from\s+["'](?P<specifier>[^"']+)["'];?\s*$"#
+);
 static JSDOC_LINKS_RE: Lazy<Regex> = lazy_regex!(
   r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}"
 );
@@ -3503,18 +3506,10 @@ fn parse_code_actions(
           additional_text_edits.extend(change.text_changes.iter().map(|tc| {
             let mut text_edit = tc.as_text_edit(&module.line_index);
             if let Some(specifier_rewrite) = &data.specifier_rewrite {
-              let specifier_index = text_edit
-                .new_text
-                .char_indices()
-                .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
-              if let Some(i) = specifier_index {
-                let mut specifier_part = text_edit.new_text.split_off(i);
-                specifier_part = specifier_part.replace(
-                  &specifier_rewrite.old_specifier,
-                  &specifier_rewrite.new_specifier,
-                );
-                text_edit.new_text.push_str(&specifier_part);
-              }
+              rewrite_first_quoted_specifier(
+                &mut text_edit.new_text,
+                &specifier_rewrite.new_specifier,
+              );
               if let Some(deno_types_specifier) =
                 &specifier_rewrite.new_deno_types_specifier
               {
@@ -3524,6 +3519,7 @@ fn parse_code_actions(
                 );
               }
             }
+            merge_completion_import_edit(&mut text_edit, module);
             text_edit
           }));
         } else {
@@ -3568,6 +3564,224 @@ fn parse_code_actions(
   } else {
     Ok((None, None))
   }
+}
+
+fn merge_completion_import_edit(
+  text_edit: &mut lsp::TextEdit,
+  module: &DocumentModule,
+) {
+  let Some(new_import) = parse_simple_named_import(&text_edit.new_text) else {
+    return;
+  };
+  let Some(existing_import) =
+    find_mergeable_named_import(&module.text, &new_import)
+  else {
+    return;
+  };
+  text_edit.range = lsp::Range {
+    start: byte_offset_to_position(&module.text, existing_import.insert_offset),
+    end: byte_offset_to_position(&module.text, existing_import.insert_offset),
+  };
+  text_edit.new_text = existing_import.new_text;
+}
+
+struct SimpleNamedImport<'a> {
+  is_type_only: bool,
+  specifier: &'a str,
+  names: Vec<&'a str>,
+}
+
+struct ExistingNamedImport {
+  insert_offset: usize,
+  new_text: String,
+}
+
+fn parse_simple_named_import(text: &str) -> Option<SimpleNamedImport<'_>> {
+  let captures = SIMPLE_NAMED_IMPORT_RE.captures(text)?;
+  let names = captures
+    .name("names")?
+    .as_str()
+    .split(',')
+    .map(str::trim)
+    .filter(|name| !name.is_empty())
+    .collect::<Vec<_>>();
+  if names.is_empty() {
+    return None;
+  }
+  Some(SimpleNamedImport {
+    is_type_only: captures.name("type").is_some(),
+    specifier: captures.name("specifier")?.as_str(),
+    names,
+  })
+}
+
+fn find_mergeable_named_import(
+  text: &str,
+  new_import: &SimpleNamedImport,
+) -> Option<ExistingNamedImport> {
+  for quote in ['"', '\''] {
+    let needle = format!("from {}{}{}", quote, new_import.specifier, quote);
+    let mut search_start = 0;
+    while let Some(relative_index) = text[search_start..].find(&needle) {
+      let from_index = search_start + relative_index;
+      search_start = from_index + needle.len();
+      let Some(import_start) = find_import_start(text, from_index) else {
+        continue;
+      };
+      let statement_before_from = &text[import_start..from_index];
+      if statement_before_from.contains(';') {
+        continue;
+      }
+      let Some(import_clause) =
+        statement_before_from.trim_start().strip_prefix("import ")
+      else {
+        continue;
+      };
+      let is_type_only = import_clause.trim_start().starts_with("type ");
+      if is_type_only && !new_import.is_type_only {
+        continue;
+      }
+      let Some(close_brace) = statement_before_from.rfind('}') else {
+        continue;
+      };
+      let close_brace = import_start + close_brace;
+      let Some(open_brace) = text[import_start..close_brace].rfind('{') else {
+        continue;
+      };
+      let open_brace = import_start + open_brace;
+      let existing_names = &text[open_brace + 1..close_brace];
+      if new_import
+        .names
+        .iter()
+        .any(|name| import_list_contains_name(existing_names, name))
+      {
+        continue;
+      }
+      let insert_offset =
+        import_list_insert_offset(text, open_brace, close_brace);
+      let names = new_import
+        .names
+        .iter()
+        .map(|name| {
+          if new_import.is_type_only && !is_type_only {
+            format!("type {name}")
+          } else {
+            (*name).to_string()
+          }
+        })
+        .collect::<Vec<_>>();
+      return Some(ExistingNamedImport {
+        insert_offset,
+        new_text: format_import_list_insertion(
+          text,
+          open_brace,
+          close_brace,
+          &names,
+        ),
+      });
+    }
+  }
+  None
+}
+
+fn find_import_start(text: &str, from_index: usize) -> Option<usize> {
+  let mut line_start = text[..from_index].rfind('\n').map_or(0, |i| i + 1);
+  loop {
+    let line = &text[line_start..from_index];
+    if line.trim_start().starts_with("import ") {
+      return Some(line_start);
+    }
+    if line_start == 0 {
+      return None;
+    }
+    line_start = text[..line_start - 1].rfind('\n').map_or(0, |i| i + 1);
+  }
+}
+
+fn import_list_contains_name(existing_names: &str, name: &str) -> bool {
+  let name = name.trim_start_matches("type ").trim();
+  existing_names.split(',').any(|existing_name| {
+    let existing_name = existing_name.trim().trim_start_matches("type ").trim();
+    existing_name
+      .split_once(" as ")
+      .map(|(_, alias)| alias.trim())
+      .unwrap_or(existing_name)
+      == name
+  })
+}
+
+fn format_import_list_insertion(
+  text: &str,
+  open_brace: usize,
+  close_brace: usize,
+  names: &[String],
+) -> String {
+  let existing_names = &text[open_brace + 1..close_brace];
+  if existing_names.contains('\n') {
+    let close_line_start = text[..close_brace].rfind('\n').map_or(0, |i| i + 1);
+    let indent = text[close_line_start..close_brace]
+      .chars()
+      .take_while(|c| c.is_whitespace())
+      .collect::<String>();
+    names
+      .iter()
+      .map(|name| format!("{indent}{name},\n"))
+      .collect()
+  } else if existing_names.trim().is_empty() {
+    names.join(", ")
+  } else {
+    format!(", {}", names.join(", "))
+  }
+}
+
+fn import_list_insert_offset(
+  text: &str,
+  open_brace: usize,
+  close_brace: usize,
+) -> usize {
+  let existing_names = &text[open_brace + 1..close_brace];
+  if existing_names.contains('\n') {
+    close_brace
+  } else {
+    close_brace
+      - existing_names
+        .chars()
+        .rev()
+        .take_while(|c| c.is_whitespace())
+        .map(char::len_utf8)
+        .sum::<usize>()
+  }
+}
+
+fn byte_offset_to_position(text: &str, offset: usize) -> lsp::Position {
+  let mut line = 0;
+  let mut character = 0;
+  for ch in text[..offset].chars() {
+    if ch == '\n' {
+      line += 1;
+      character = 0;
+    } else {
+      character += ch.len_utf16() as u32;
+    }
+  }
+  lsp::Position { line, character }
+}
+
+fn rewrite_first_quoted_specifier(text: &mut String, new_specifier: &str) {
+  let Some((quote_start, quote)) = text
+    .char_indices()
+    .find_map(|(i, c)| (c == '\'' || c == '"').then_some((i, c)))
+  else {
+    return;
+  };
+  let specifier_start = quote_start + quote.len_utf8();
+  let Some(quote_end) = text[specifier_start..]
+    .char_indices()
+    .find_map(|(i, c)| (c == quote).then_some(specifier_start + i))
+  else {
+    return;
+  };
+  text.replace_range(specifier_start..quote_end, new_specifier);
 }
 
 // Based on https://github.com/microsoft/vscode/blob/1.81.1/extensions/typescript-language-features/src/languageFeatures/util/snippetForFunctionCall.ts#L49.
@@ -3695,17 +3909,10 @@ impl CompletionEntryDetails {
       .collect::<Vec<_>>();
     if let Some(specifier_rewrite) = &data.specifier_rewrite {
       for description in &mut code_action_descriptions {
-        let specifier_index = description
-          .char_indices()
-          .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
-        if let Some(i) = specifier_index {
-          let mut specifier_part = description.to_mut().split_off(i);
-          specifier_part = specifier_part.replace(
-            &specifier_rewrite.old_specifier,
-            &specifier_rewrite.new_specifier,
-          );
-          description.to_mut().push_str(&specifier_part);
-        }
+        rewrite_first_quoted_specifier(
+          description.to_mut(),
+          &specifier_rewrite.new_specifier,
+        );
       }
       if let Some(text_edit) = &mut text_edit {
         let new_text = match text_edit {
@@ -3714,17 +3921,10 @@ impl CompletionEntryDetails {
             &mut insert_replace_edit.new_text
           }
         };
-        let specifier_index = new_text
-          .char_indices()
-          .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
-        if let Some(i) = specifier_index {
-          let mut specifier_part = new_text.split_off(i);
-          specifier_part = specifier_part.replace(
-            &specifier_rewrite.old_specifier,
-            &specifier_rewrite.new_specifier,
-          );
-          new_text.push_str(&specifier_part);
-        }
+        rewrite_first_quoted_specifier(
+          new_text,
+          &specifier_rewrite.new_specifier,
+        );
         if let Some(deno_types_specifier) =
           &specifier_rewrite.new_deno_types_specifier
         {
@@ -3746,7 +3946,7 @@ impl CompletionEntryDetails {
     let (command, additional_text_edits) =
       parse_code_actions(self.code_actions.as_ref(), data, module)?;
     let mut insert_text_format = original_item.insert_text_format;
-    let insert_text = if data.use_code_snippet {
+    let mut insert_text = if data.use_code_snippet {
       insert_text_format = Some(lsp::InsertTextFormat::SNIPPET);
       Some(format!(
         "{}({})",
@@ -3759,6 +3959,21 @@ impl CompletionEntryDetails {
     } else {
       original_item.insert_text.clone()
     };
+    let mut filter_text = original_item.filter_text.clone();
+    if let Some(specifier_rewrite) = &data.specifier_rewrite {
+      if let Some(insert_text) = &mut insert_text {
+        rewrite_first_quoted_specifier(
+          insert_text,
+          &specifier_rewrite.new_specifier,
+        );
+      }
+      if let Some(filter_text) = &mut filter_text {
+        rewrite_first_quoted_specifier(
+          filter_text,
+          &specifier_rewrite.new_specifier,
+        );
+      }
+    }
 
     Ok(lsp::CompletionItem {
       data: None,
@@ -3769,6 +3984,7 @@ impl CompletionEntryDetails {
       additional_text_edits,
       insert_text,
       insert_text_format,
+      filter_text,
       // NOTE(bartlomieju): it's not entirely clear to me why we need to do that,
       // but when `completionItem/resolve` is called, we get a list of commit chars
       // even though we might have returned an empty list in `completion` request.
@@ -3859,7 +4075,6 @@ impl CompletionInfo {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CompletionSpecifierRewrite {
-  old_specifier: String,
   new_specifier: String,
   new_deno_types_specifier: Option<String>,
 }
@@ -4203,10 +4418,23 @@ impl CompletionEntry {
           || new_deno_types_specifier.is_some()
         {
           specifier_rewrite = Some(CompletionSpecifierRewrite {
-            old_specifier: import_data.raw.module_specifier.clone(),
             new_specifier,
             new_deno_types_specifier,
           });
+        }
+      }
+      if let Some(specifier_rewrite) = &specifier_rewrite {
+        if let Some(insert_text) = &mut insert_text {
+          rewrite_first_quoted_specifier(
+            insert_text,
+            &specifier_rewrite.new_specifier,
+          );
+        }
+        if let Some(filter_text) = &mut filter_text {
+          rewrite_first_quoted_specifier(
+            filter_text,
+            &specifier_rewrite.new_specifier,
+          );
         }
       }
       // We want relative or bare (import-mapped or otherwise) specifiers to
@@ -4221,18 +4449,25 @@ impl CompletionEntry {
         .description = Some(display_source);
     }
 
-    let text_edit =
-      if let (Some(text_span), Some(new_text)) = (range, &insert_text) {
-        let range = text_span.to_range(line_index);
-        let insert_replace_edit = lsp::InsertReplaceEdit {
-          new_text: new_text.clone(),
-          insert: range,
-          replace: range,
-        };
-        Some(insert_replace_edit.into())
-      } else {
-        None
+    let text_edit = if let Some(text_span) = &range {
+      let range = text_span.to_range(line_index);
+      // TSC may provide a `replacementSpan` without a corresponding
+      // `insertText` (e.g. for string union literal members). In that case
+      // fall back to the entry name as the text to insert, matching the
+      // behavior of VSCode's TypeScript integration. Without this, the editor
+      // is left to apply its own word-based replacement, which breaks on
+      // string values containing characters like `.` (the part before the
+      // last dot is forgotten).
+      let new_text = insert_text.clone().unwrap_or_else(|| self.name.clone());
+      let insert_replace_edit = lsp::InsertReplaceEdit {
+        new_text,
+        insert: range,
+        replace: range,
       };
+      Some(insert_replace_edit.into())
+    } else {
+      None
+    };
 
     let data = TsJsCompletionItemData {
       uri: module.uri.as_ref().clone(),
@@ -4677,11 +4912,10 @@ enum LoadError {
   UrlParse(#[from] deno_core::url::ParseError),
   #[error("{0}")]
   #[class(inherit)]
-  SerdeV8(#[from] serde_v8::Error),
+  JsErrorBox(#[from] deno_error::JsErrorBox),
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, deno_core::ToV8)]
 struct LoadResponse {
   data: DocumentText,
   script_kind: i32,
@@ -4734,7 +4968,7 @@ fn op_load<'s>(
         }
       })
     };
-  let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
+  let serialized = maybe_load_response.to_v8(scope)?;
   state.performance.measure(mark);
   Ok(serialized)
 }
@@ -6050,6 +6284,34 @@ mod tests {
   use crate::lsp::resolver::LspResolver;
   use crate::lsp::text::LineIndex;
 
+  #[test]
+  fn test_find_mergeable_named_import() {
+    let new_import =
+      parse_simple_named_import("import { think } from \"cowsay\";\n\n")
+        .unwrap();
+    let existing_import = find_mergeable_named_import(
+      "import { say } from \"cowsay\";\n\nthink();\n",
+      &new_import,
+    )
+    .unwrap();
+    assert_eq!(existing_import.insert_offset, 12);
+    assert_eq!(existing_import.new_text, ", think");
+  }
+
+  #[test]
+  fn test_find_mergeable_named_import_multiline() {
+    let new_import =
+      parse_simple_named_import("import { think } from \"cowsay\";\n\n")
+        .unwrap();
+    let existing_import = find_mergeable_named_import(
+      "import {\n  say,\n} from \"cowsay\";\n\nthink();\n",
+      &new_import,
+    )
+    .unwrap();
+    assert_eq!(existing_import.insert_offset, 16);
+    assert_eq!(existing_import.new_text, "think,\n");
+  }
+
   async fn setup(
     deno_json_content: Value,
     sources: &[(&str, &str, i32, LanguageId)],
@@ -6148,6 +6410,17 @@ mod tests {
     let actual =
       replace_links(r"test {@linkcode http://deno.land/x/mod.ts a link} test");
     assert_eq!(actual, r"test [`a link`](http://deno.land/x/mod.ts) test");
+  }
+
+  #[test]
+  fn test_rewrite_first_quoted_specifier() {
+    let mut text = r#"import { rollup } from "";"#.to_string();
+    rewrite_first_quoted_specifier(&mut text, "$rollup");
+    assert_eq!(text, r#"import { rollup } from "$rollup";"#);
+
+    let mut text = r#"import { rollup } from "npm:rollup";"#.to_string();
+    rewrite_first_quoted_specifier(&mut text, "$rollup");
+    assert_eq!(text, r#"import { rollup } from "$rollup";"#);
   }
 
   #[tokio::test]
