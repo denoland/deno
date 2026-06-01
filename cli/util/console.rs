@@ -433,9 +433,11 @@ mod tests {
   fn terminal_mode_guard_acquire_and_drop() {
     // Should not panic whether or not a console is attached (in CI stdin is
     // typically redirected, so the captured mode is `None` and dropping is a
-    // no-op). On a real console it captures and restores the mode.
-    let guard = TerminalModeGuard::acquire();
-    drop(guard);
+    // no-op). On a real console it captures and restores the mode. The guard
+    // is restored when it goes out of scope at the end of this block.
+    {
+      let _guard = TerminalModeGuard::acquire();
+    }
   }
 
   #[test]
