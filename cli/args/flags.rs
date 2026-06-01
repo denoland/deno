@@ -1836,7 +1836,6 @@ pub fn flags_from_vec_with_initial_cwd(
   } else {
     args
   };
-  let args = strip_node_only_no_op_flags(args);
   let mut app = clap_root();
   let mut matches =
     app
@@ -5934,35 +5933,6 @@ fn cached_only_arg() -> Arg {
     .action(ArgAction::SetTrue)
     .help("Require that remote dependencies are already cached")
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
-}
-
-/// Drop Node.js-only flags that Deno silently accepts (e.g.
-/// `--experimental-vm-modules`). The flag set lives in `node_shim` so it
-/// stays scoped to Node-compat shimming and out of `deno --help`.
-///
-/// Stripping happens before clap parsing so `deno run
-/// --experimental-vm-modules script.js` — common in Node-targeted scripts,
-/// shebangs and bin wrappers — doesn't fail with `unexpected argument`.
-/// Args after `--` are left alone so the script's argv is unaffected.
-fn strip_node_only_no_op_flags(args: Vec<OsString>) -> Vec<OsString> {
-  let mut out = Vec::with_capacity(args.len());
-  let mut past_double_dash = false;
-  for arg in args {
-    if past_double_dash {
-      out.push(arg);
-      continue;
-    }
-    if arg == "--" {
-      past_double_dash = true;
-      out.push(arg);
-      continue;
-    }
-    match arg.to_str() {
-      Some(s) if node_shim::is_node_only_no_op_flag(s) => continue,
-      _ => out.push(arg),
-    }
-  }
-  out
 }
 
 /// Used for subcommands that operate on executable scripts only.
@@ -16465,41 +16435,6 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
     set_test_node_options(None);
     assert_eq!(flags.require, vec!["known.js"]);
-  }
-
-  // Regression for https://github.com/denoland/deno/issues/29917 — the flag
-  // is meaningful in Node (gates vm.Module) but a no-op in Deno where
-  // vm.Module is always available; we strip it before clap so it doesn't
-  // crash with `unexpected argument`. Script args (after `--`) are untouched.
-  #[test]
-  fn experimental_vm_modules_is_stripped() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--experimental-vm-modules",
-      "script.ts",
-    ])
-    .unwrap();
-    assert!(matches!(r.subcommand, DenoSubcommand::Run(_)));
-    let r = flags_from_vec(svec![
-      "deno",
-      "--experimental-vm-modules",
-      "run",
-      "script.ts",
-    ])
-    .unwrap();
-    assert!(matches!(r.subcommand, DenoSubcommand::Run(_)));
-
-    // Args after `--` reach the script verbatim, including the Node flag.
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "script.ts",
-      "--",
-      "--experimental-vm-modules",
-    ])
-    .unwrap();
-    assert_eq!(r.argv, svec!["--experimental-vm-modules"]);
   }
 
   #[test]

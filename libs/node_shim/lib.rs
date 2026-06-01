@@ -3250,24 +3250,6 @@ pub fn is_deno_subcommand(arg: &str) -> bool {
   DENO_SUBCOMMANDS.contains(&arg)
 }
 
-/// Node.js CLI flags that have no behavioral effect in Deno because the
-/// feature they gate in Node is always-on here (e.g. `vm.Module` is always
-/// available, so `--experimental-vm-modules` has nothing to toggle).
-///
-/// The list lives in `node_shim` rather than the public CLI flag schema so
-/// these don't leak into `deno --help` and stay clearly scoped to Node-compat
-/// shimming. Callers strip these from argv before clap parses, which keeps
-/// `deno run --experimental-vm-modules script.js` — common in Node-targeted
-/// scripts, shebangs, and bin wrappers — from failing with `unexpected
-/// argument`.
-const NODE_ONLY_NO_OP_FLAGS: &[&str] = &["--experimental-vm-modules"];
-
-/// Returns true if `arg` is a Node-only flag that Deno silently accepts.
-/// Use to filter argv before clap parses.
-pub fn is_node_only_no_op_flag(arg: &str) -> bool {
-  NODE_ONLY_NO_OP_FLAGS.contains(&arg)
-}
-
 /// Translate parsed Node.js CLI arguments to Deno CLI arguments.
 pub fn translate_to_deno_args(
   parsed_args: ParseResult,
