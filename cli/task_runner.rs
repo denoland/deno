@@ -637,6 +637,14 @@ pub async fn run_future_forwarding_signals<TOutput>(
     });
   }
 
+  // Save the terminal mode up front so it can be restored once the task (and
+  // all of its child processes) have finished. A child process such as a dev
+  // server may switch the terminal into raw mode and, when terminated via
+  // Ctrl+C, leave it in a broken state (no echo, no line editing). Declared
+  // first so it is dropped last, i.e. after the children have been torn down by
+  // the kill-signal drop guards below.
+  let _terminal_mode_guard = crate::util::console::TerminalModeGuard::acquire();
+
   let token = CancellationToken::new();
   let _token_drop_guard = token.clone().drop_guard();
   let _drop_guard = kill_signal.clone().drop_guard();

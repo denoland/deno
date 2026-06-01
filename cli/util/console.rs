@@ -222,6 +222,97 @@ mod windows_vt_input {
   }
 }
 
+/// Saves the current terminal mode on creation and restores it on drop.
+///
+/// This is used by `deno task` so that a child process (for example a dev
+/// server like `vite`) that switches the terminal into raw mode and is then
+/// terminated (e.g. via Ctrl+C) does not leave the user's terminal in a broken
+/// state with input echo and line editing disabled.
+///
+/// On non-Windows platforms this is a no-op: there the child process belongs to
+/// the same process group and the controlling terminal's line discipline is
+/// restored by the shell, so there's nothing for `deno` to do.
+pub struct TerminalModeGuard {
+  #[cfg(windows)]
+  stdin_mode: Option<u32>,
+  #[cfg(windows)]
+  stdout_mode: Option<u32>,
+}
+
+impl TerminalModeGuard {
+  pub fn acquire() -> Self {
+    #[cfg(windows)]
+    {
+      Self {
+        stdin_mode: windows_console_mode::get(
+          winapi::um::winbase::STD_INPUT_HANDLE,
+        ),
+        stdout_mode: windows_console_mode::get(
+          winapi::um::winbase::STD_OUTPUT_HANDLE,
+        ),
+      }
+    }
+    #[cfg(not(windows))]
+    {
+      Self {}
+    }
+  }
+}
+
+#[cfg(windows)]
+impl Drop for TerminalModeGuard {
+  fn drop(&mut self) {
+    windows_console_mode::set(
+      winapi::um::winbase::STD_INPUT_HANDLE,
+      self.stdin_mode,
+    );
+    windows_console_mode::set(
+      winapi::um::winbase::STD_OUTPUT_HANDLE,
+      self.stdout_mode,
+    );
+  }
+}
+
+#[cfg(windows)]
+mod windows_console_mode {
+  use winapi::shared::minwindef::DWORD;
+  use winapi::um::consoleapi::GetConsoleMode;
+  use winapi::um::consoleapi::SetConsoleMode;
+  use winapi::um::processenv::GetStdHandle;
+
+  /// Reads the console mode for the given std handle. Returns `None` when the
+  /// handle is not a console (e.g. redirected to a pipe or file), in which case
+  /// there is no mode to restore.
+  pub fn get(std_handle: DWORD) -> Option<u32> {
+    // SAFETY: GetStdHandle/GetConsoleMode are safe Windows API calls with
+    // valid handle constants.
+    unsafe {
+      let handle = GetStdHandle(std_handle);
+      if handle.is_null() {
+        return None;
+      }
+      let mut mode: DWORD = 0;
+      if GetConsoleMode(handle, &mut mode) == 0 {
+        return None;
+      }
+      Some(mode)
+    }
+  }
+
+  pub fn set(std_handle: DWORD, mode: Option<u32>) {
+    let Some(mode) = mode else {
+      return;
+    };
+    // SAFETY: restoring a previously saved console mode.
+    unsafe {
+      let handle = GetStdHandle(std_handle);
+      if !handle.is_null() {
+        SetConsoleMode(handle, mode);
+      }
+    }
+  }
+}
+
 pub struct HideCursorGuard {
   needs_disable: bool,
 }
@@ -337,6 +428,15 @@ pub fn confirm(options: ConfirmOptions) -> Option<bool> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn terminal_mode_guard_acquire_and_drop() {
+    // Should not panic whether or not a console is attached (in CI stdin is
+    // typically redirected, so the captured mode is `None` and dropping is a
+    // no-op). On a real console it captures and restores the mode.
+    let guard = TerminalModeGuard::acquire();
+    drop(guard);
+  }
 
   #[test]
   fn filter_destructive_ansi_plain_text() {
