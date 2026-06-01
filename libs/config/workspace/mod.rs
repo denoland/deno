@@ -3546,11 +3546,16 @@ pub mod test {
     let link_folders = workspace_dir
       .workspace
       .link_folders()
-      .values()
+      .iter()
       .collect::<Vec<_>>();
     assert_eq!(link_folders.len(), 1);
+    let (link_dir_url, link_folder) = link_folders[0];
     assert_eq!(
-      link_folders[0].deno_json.as_ref().unwrap().specifier,
+      **link_dir_url,
+      url_from_directory_path(&root_dir().join("../dir")).unwrap()
+    );
+    assert_eq!(
+      link_folder.deno_json.as_ref().unwrap().specifier,
       url_from_file_path(&root_dir().join("../dir/deno.json")).unwrap()
     )
   }
@@ -4918,7 +4923,7 @@ pub mod test {
   }
 
   #[test]
-  fn test_deno_workspace_member_no_config_file_error() {
+  fn test_deno_workspace_member_missing_dir_skipped() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(
       root_dir().join("deno.json"),
@@ -4926,8 +4931,29 @@ pub mod test {
         "workspace": ["./member"]
       }),
     );
-    // no deno.json in this folder, so should error
-    let err = workspace_at_start_dir_err(&sys, &root_dir().join("package"));
+    // The listed member directory does not exist on disk; we should warn
+    // and skip it instead of erroring, so other workspace operations can
+    // still proceed (e.g. partial Docker images that only copy a subset
+    // of workspace members).
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
+    assert_eq!(workspace_dir.workspace.deno_jsons().count(), 1);
+    assert_eq!(workspace_dir.workspace.config_folders().len(), 1);
+  }
+
+  #[test]
+  fn test_deno_workspace_member_dir_without_config_errors() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": ["./member"]
+      }),
+    );
+    // The member directory exists but has no deno.json(c). This is a
+    // genuine misconfiguration (typo'd path or missing config file) and
+    // should still error rather than being silently skipped.
+    sys.fs_insert(root_dir().join("member/other.ts"), "");
+    let err = workspace_at_start_dir_err(&sys, &root_dir());
     assert_eq!(
       err.to_string(),
       normalize_err_text(
@@ -5188,7 +5214,7 @@ pub mod test {
   }
 
   #[test]
-  fn test_npm_workspace_member_no_config_file_error() {
+  fn test_npm_workspace_member_missing_dir_skipped() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(
       root_dir().join("package.json"),
@@ -5196,8 +5222,49 @@ pub mod test {
         "workspaces": ["./member"]
       }),
     );
-    // no package.json in this folder, so should error
-    let err = workspace_at_start_dir_err(&sys, &root_dir().join("package"));
+    // The listed npm workspace member directory does not exist; warn and
+    // skip instead of erroring, matching npm's behavior and supporting
+    // partial Docker image scenarios.
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
+    assert_eq!(workspace_dir.workspace.package_jsons().count(), 1);
+    assert_eq!(workspace_dir.workspace.config_folders().len(), 1);
+  }
+
+  #[test]
+  fn test_npm_workspace_member_only_deno_json_errors() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("package.json"),
+      json!({
+        "workspaces": ["./member"]
+      }),
+    );
+    // Member exists with a deno.json but no package.json — that's a
+    // genuine npm-workspace misconfiguration and should still error.
+    sys.fs_insert_json(root_dir().join("member/deno.json"), json!({}));
+    let err = workspace_at_start_dir_err(&sys, &root_dir());
+    assert_eq!(
+      err.to_string(),
+      normalize_err_text(
+        "Could not find package.json for workspace member in '[ROOT_DIR_URL]/member/'."
+      )
+    );
+  }
+
+  #[test]
+  fn test_npm_workspace_member_dir_without_config_errors() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("package.json"),
+      json!({
+        "workspaces": ["./member"]
+      }),
+    );
+    // Member directory exists but has no package.json (or deno.json) at
+    // all. Treat this like a typo'd path and surface the package.json
+    // error rather than silently skipping it.
+    sys.fs_insert(root_dir().join("member/other.ts"), "");
+    let err = workspace_at_start_dir_err(&sys, &root_dir());
     assert_eq!(
       err.to_string(),
       normalize_err_text(

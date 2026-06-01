@@ -1,0 +1,25 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install --allow-scripts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "args": "compile --bundle --no-check --allow-ffi --output out main.ts",
+    "output": "compile.out"
+  }, {
+    "if": "unix",
+    "commandName": "./out",
+    "args": [],
+    "output": "world\n"
+  }, {
+    "if": "windows",
+    "args": "compile --bundle --no-check --allow-ffi --output out.exe main.ts",
+    "output": "compile.out"
+  }, {
+    "if": "windows",
+    "commandName": "./out.exe",
+    "args": [],
+    "output": "world\n"
+  }]
+}

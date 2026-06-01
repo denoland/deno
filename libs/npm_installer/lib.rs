@@ -364,6 +364,14 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     };
 
     if uncached.is_empty() {
+      // Even when every requested package is already cached we still need to
+      // sync the node_modules directory for a full install (e.g. after
+      // `deno remove`), otherwise stale packages are left on disk. Only do this
+      // for `All` caching so the hot path of running a script (which caches a
+      // specific subset) keeps short-circuiting.
+      if matches!(caching, PackageCaching::All) {
+        return self.fs_installer.cache_packages(caching).await;
+      }
       return Ok(());
     }
     let result = self.fs_installer.cache_packages(caching).await;

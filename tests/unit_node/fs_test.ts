@@ -1950,6 +1950,42 @@ Deno.test(
   },
 );
 
+// Regression test for #30873: read_dir used to silently drop entries
+// whose file names were not valid UTF-8, which made globSync (and
+// readdirSync) invisibly skip those files. Lossy decoding via
+// to_string_lossy keeps the file in the listing (matching Node's
+// default utf8 behavior of substituting U+FFFD for invalid bytes).
+Deno.test({
+  name: "[node/fs globSync] surfaces files with non-UTF-8 names",
+  // Restricted to Linux: macOS APFS/HFS+ normalizes/rejects non-UTF-8
+  // names, and Windows file names are UTF-16. The behavior under test
+  // is platform-independent, but the fixture is only buildable on Linux.
+  ignore: Deno.build.os !== "linux",
+  permissions: { read: true, write: true, env: true, run: true },
+  async fn() {
+    const tmp = mkdtempSync(join(tmpdir(), "glob-non-utf8-"));
+    try {
+      // Create a file whose name is the single non-UTF-8 byte 0xE9.
+      // We use bash + printf so the raw byte reaches the kernel as-is;
+      // passing a Buffer path through Deno's fs APIs would lossily
+      // decode it to U+FFFD before the file was created.
+      const cmd = new Deno.Command("/bin/bash", {
+        args: ["-c", `touch "$(printf '\\xe9')"`],
+        cwd: tmp,
+      });
+      const { code } = await cmd.output();
+      assertEquals(code, 0);
+
+      const results = globSync("*", { cwd: tmp });
+      assertEquals(results.length, 1);
+      // The non-UTF-8 byte is surfaced via Unicode replacement (U+FFFD).
+      assertEquals(results[0], "�");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  },
+});
+
 Deno.test({
   name: "[node/fs] watch recursive returns relative path for nested files",
   ignore: Deno.build.os === "windows",
