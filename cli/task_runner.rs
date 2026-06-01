@@ -383,12 +383,14 @@ pub struct NodeCommand;
 static NODE_EVAL_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// If `parsed` is a `node -e`/`-p` invocation, returns the JavaScript source to
-/// run (already wrapped in `console.log(...)` for `-p`/`--print`) along with the
-/// trailing script arguments. Mirrors node_shim's own eval detection so a
-/// `node -e`/`-p` can be turned into the equivalent `node <script>` run.
+/// run (already wrapped in `console.log(...)` for `-p`/`--print`), the file
+/// extension to give the temp file (`cjs` or `mjs`, auto-detected the same way
+/// `deno eval` picks CJS vs ESM), and the trailing script arguments. Mirrors
+/// node_shim's own eval detection so a `node -e`/`-p` can be turned into the
+/// equivalent `node <script>` run.
 fn node_eval_source(
   parsed: &node_shim::ParseResult,
-) -> Option<(String, Vec<String>)> {
+) -> Option<(String, &'static str, Vec<String>)> {
   let env = &parsed.options.per_isolate.per_env;
   let (code, argv) = if env.has_eval_string {
     (env.eval_string.clone(), parsed.remaining_args.clone())
@@ -405,7 +407,16 @@ fn node_eval_source(
   } else {
     format!("{code}\n")
   };
-  Some((source, argv))
+  // Node's `-e` defaults to CommonJS but runs ESM-syntax code (import/export,
+  // top-level await) as ESM. Match that by giving the temp file a `.cjs` or
+  // `.mjs` extension via the same detection `deno eval` uses, instead of always
+  // forcing CommonJS.
+  let ext = if crate::tools::run::eval_source_is_cjs(&source) {
+    "cjs"
+  } else {
+    "mjs"
+  };
+  Some((source, ext, argv))
 }
 
 impl ShellCommand for NodeCommand {
@@ -434,18 +445,19 @@ impl ShellCommand for NodeCommand {
     // `node -e`/`-p` would be translated by node_shim into `deno eval`, but
     // `deno eval`'s synthetic module can't be resolved under an npm
     // lifecycle-script resolution snapshot (ERR_MODULE_NOT_FOUND). So write the
-    // code to a real temporary `.cjs` file in the cwd and run *that* as a
+    // code to a real temporary `.cjs`/`.mjs` file in the cwd and run *that* as a
     // script instead: it goes through the same module-loading path as
-    // `node <script>` (bare `require()` works via the `.cjs` extension) and
-    // relative `require()`s resolve against the cwd like Node's `-e` does.
-    let cleanup_path = if let Some((source, eval_argv)) =
+    // `node <script>` (bare `require()` works for CJS) and relative `require()`s
+    // / imports resolve against the cwd like Node's `-e` does.
+    let cleanup_path = if let Some((source, ext, eval_argv)) =
       node_eval_source(&parsed)
     {
       // A unique, recognizable name in the cwd. Per-process counter + pid keeps
-      // concurrent lifecycle scripts from colliding.
+      // concurrent lifecycle scripts from colliding. The extension (`cjs`/`mjs`)
+      // mirrors Node's CommonJS-by-default-with-ESM-detection `-e` behavior.
       let counter = NODE_EVAL_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
       let file_name =
-        format!("$deno$node_eval${}${counter}.cjs", std::process::id());
+        format!("$deno$node_eval${}${counter}.{ext}", std::process::id());
       let temp_path = context.state.cwd().join(file_name);
       if let Err(err) = std::fs::write(&temp_path, source) {
         let _ = context
