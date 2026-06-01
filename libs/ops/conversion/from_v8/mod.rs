@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+mod r#enum;
 mod r#struct;
 
 use proc_macro2::TokenStream;
@@ -22,7 +23,9 @@ pub fn from_v8(item: TokenStream) -> Result<TokenStream, Error> {
     Data::Struct(data) => {
       create_impl(ident, r#struct::get_body(ident_string, span, data)?)
     }
-    Data::Enum(_) => return Err(Error::new(span, "Enums are not supported")),
+    Data::Enum(data) => {
+      create_impl(ident, r#enum::get_body(ident_string, input.attrs, data)?)
+    }
     Data::Union(_) => return Err(Error::new(span, "Unions are not supported")),
   };
 
