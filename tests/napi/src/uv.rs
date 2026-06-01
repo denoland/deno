@@ -531,6 +531,7 @@ unsafe fn loop_helper_complete(state: *mut LoopHelperState) {
       &mut result,
     ));
 
+    libuv_sys_lite::uv_check_stop((*state).check);
     assert_napi_ok!(napi_delete_reference(env, (*state).callback));
     let _ = Box::from_raw((*state).check);
     let _ = Box::from_raw((*state).idle);

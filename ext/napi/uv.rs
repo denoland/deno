@@ -238,6 +238,10 @@ unsafe extern "C" fn _napi_uv_close(
           return;
         }
       }
+      uv_handle_type::UV_CHECK => {
+        let handle: *mut uv_check_t = handle.cast();
+        uv_check_stop(handle);
+      }
       uv_handle_type::UV_POLL => {
         uv_poll_close(handle.cast());
       }
@@ -382,8 +386,10 @@ struct uv_check_t {
       / size_of::<usize>()
   }],
   check_cb: uv_check_cb,
+  active: bool,
   _padding: [MaybeUninit<usize>; const {
-    (UV_CHECK_SIZE - 96 - size_of::<uv_check_cb>()) / size_of::<usize>()
+    (UV_CHECK_SIZE - 96 - size_of::<uv_check_cb>() - size_of::<bool>())
+      / size_of::<usize>()
   }],
 }
 
@@ -630,6 +636,7 @@ unsafe extern "C" fn uv_check_init(
     addr_of_mut!((*check).data).write(data);
     addr_of_mut!((*check).r#loop).write(r#loop);
     addr_of_mut!((*check).r#type).write(uv_handle_type::UV_CHECK);
+    addr_of_mut!((*check).active).write(false);
   }
   0
 }
@@ -642,6 +649,10 @@ unsafe extern "C" fn uv_check_start(
   unsafe {
     (*check).check_cb = cb;
     if let Some(cb) = cb {
+      if !(*check).active {
+        (*check).active = true;
+        (&mut *(*check).r#loop).external_ops_tracker.ref_op();
+      }
       let env = &mut *(*check).r#loop;
       let check = SendPtr(check as *const uv_check_t);
       env.async_work_sender.spawn(move |_| {
@@ -654,7 +665,13 @@ unsafe extern "C" fn uv_check_start(
 }
 
 #[unsafe(no_mangle)]
-unsafe extern "C" fn uv_check_stop(_check: *mut uv_check_t) -> c_int {
+unsafe extern "C" fn uv_check_stop(check: *mut uv_check_t) -> c_int {
+  unsafe {
+    if !check.is_null() && (*check).active {
+      (*check).active = false;
+      (&mut *(*check).r#loop).external_ops_tracker.unref_op();
+    }
+  }
   0
 }
 
@@ -944,19 +961,24 @@ unsafe extern "C" fn uv_queue_work(
     (*req).work_cb = work_cb;
     (*req).after_work_cb = after_work_cb;
     let sender = (&mut *r#loop).async_work_sender.clone();
+    let tracker = (&mut *r#loop).external_ops_tracker.clone();
     let req_ptr = SendPtr(req as *const uv_work_t);
+    tracker.ref_op();
     std::thread::spawn(move || {
       let req = req_ptr.take() as *mut uv_work_t;
       if let Some(work_cb) = (*req).work_cb {
         work_cb(req);
       }
-      let req_ptr = SendPtr(req as *const uv_work_t);
-      sender.spawn(move |_| {
-        let req = req_ptr.take() as *mut uv_work_t;
-        if let Some(after_work_cb) = (*req).after_work_cb {
+      if let Some(after_work_cb) = (*req).after_work_cb {
+        let req_ptr = SendPtr(req as *const uv_work_t);
+        sender.spawn(move |_| {
+          let req = req_ptr.take() as *mut uv_work_t;
           after_work_cb(req, 0);
-        }
-      });
+          tracker.unref_op();
+        });
+      } else {
+        tracker.unref_op();
+      }
     });
   }
   0
