@@ -2667,6 +2667,57 @@ Deno.test("[node/http] AsyncLocalStorage propagates into request handler", async
   }
 });
 
+Deno.test("[node/http] AsyncLocalStorage enterWith in request handler is isolated", async () => {
+  const storage = new AsyncLocalStorage<string>();
+  const firstDone = Promise.withResolvers<void>();
+  const secondDone = Promise.withResolvers<void>();
+  let requests = 0;
+  const server = http.createServer((_req, res) => {
+    try {
+      requests++;
+      if (requests === 1) {
+        assertEquals(storage.getStore(), undefined);
+        storage.enterWith("first-request");
+        assertEquals(storage.getStore(), "first-request");
+      } else {
+        assertEquals(storage.getStore(), undefined);
+      }
+      res.end("ok");
+      if (requests === 1) {
+        firstDone.resolve();
+      } else {
+        secondDone.resolve();
+      }
+    } catch (err) {
+      firstDone.reject(err);
+      secondDone.reject(err);
+      res.destroy(err as Error);
+    }
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  try {
+    const port = (server.address() as AddressInfo).port;
+    const request = () =>
+      new Promise<void>((resolve, reject) => {
+        const req = http.get(`http://127.0.0.1:${port}`, (res) => {
+          res.resume();
+          res.on("end", resolve);
+          res.on("error", reject);
+        });
+        req.on("error", reject);
+      });
+
+    await request();
+    await firstDone.promise;
+    await request();
+    await secondDone.promise;
+  } finally {
+    storage.disable();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
 Deno.test("[node/http] async_hooks observes request execution resource", async () => {
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   const responseDone = Promise.withResolvers<void>();

@@ -25,7 +25,6 @@ const {
 } = primordials;
 const {
   AsyncVariable,
-  kNoAsyncContextRestore,
   setAsyncContext,
 } = core;
 
@@ -122,9 +121,7 @@ function enterAsyncResourceIfActive(resource: any): any {
 
 // deno-lint-ignore no-explicit-any
 function exitAsyncResourceIfActive(previousContext: any): void {
-  if (previousContext !== kNoAsyncContextRestore) {
-    setAsyncContext(previousContext);
-  }
+  setAsyncContext(previousContext);
 }
 
 // Emit functions that work with the internal hook system
