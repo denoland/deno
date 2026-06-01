@@ -1305,6 +1305,8 @@ impl<TSys: NpmCacheSys> LocalSetupCache<TSys> {
 pub(crate) fn symlink_package_dir(
   sys: &(
      impl sys_traits::FsSymlinkDir
+     + sys_traits::FsRemoveDir
+     + sys_traits::FsRemoveFile
      + sys_traits::FsRemoveDirAll
      + sys_traits::FsCreateDirAll
      + sys_traits::FsCreateJunction
@@ -1320,7 +1322,7 @@ pub(crate) fn symlink_package_dir(
   }
 
   // need to delete the previous symlink before creating a new one
-  let _ignore = sys.fs_remove_dir_all(new_path);
+  let _ignore = remove_dir_symlink(sys.as_ref(), new_path);
 
   let old_path_relative = relative_path(new_parent, old_path)
     .unwrap_or_else(|| old_path.to_path_buf());
@@ -1341,8 +1343,79 @@ fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
   pathdiff::diff_paths(to, from)
 }
 
+/// Removes whatever currently exists at `path` (file, directory, symlink, or
+/// junction) so a fresh symlink/junction can be created in its place. A stale
+/// entry can be left behind when a `node_modules` directory is reused across
+/// runs, for example when it's restored from a CI cache.
+fn remove_dir_symlink(
+  sys: &(
+     impl sys_traits::FsRemoveDir
+     + sys_traits::FsRemoveFile
+     + sys_traits::FsRemoveDirAll
+   ),
+  path: &Path,
+) -> Result<(), std::io::Error> {
+  let is_not_found =
+    |err: &std::io::Error| err.kind() == std::io::ErrorKind::NotFound;
+  if sys_traits::impls::is_windows() {
+    // On Windows a directory symlink or junction must be removed with
+    // RemoveDirectory rather than DeleteFile, and `remove_dir_all` may fail on
+    // a dangling directory symlink, so remove the link itself first.
+    match sys.fs_remove_dir(path) {
+      Ok(()) => return Ok(()),
+      Err(err) if is_not_found(&err) => return Ok(()),
+      Err(_) => {}
+    }
+    match sys.fs_remove_file(path) {
+      Ok(()) => return Ok(()),
+      Err(err) if is_not_found(&err) => return Ok(()),
+      Err(_) => {}
+    }
+  } else {
+    // On Unix unlinking a symlink does not follow it.
+    match sys.fs_remove_file(path) {
+      Ok(()) => return Ok(()),
+      Err(err) if is_not_found(&err) => return Ok(()),
+      Err(_) => {}
+    }
+  }
+  // Fall back to removing a real (possibly non-empty) directory.
+  match sys.fs_remove_dir_all(path) {
+    Ok(()) => Ok(()),
+    Err(err) if is_not_found(&err) => Ok(()),
+    Err(err) => Err(err),
+  }
+}
+
+/// Runs `create`, and if it fails because something already exists at `path`,
+/// removes that entry and tries once more. This makes creating a symlink or
+/// junction resilient to a stale entry left over from a previous run.
+fn create_retry_if_exists(
+  sys: &(
+     impl sys_traits::FsRemoveDir
+     + sys_traits::FsRemoveFile
+     + sys_traits::FsRemoveDirAll
+   ),
+  path: &Path,
+  mut create: impl FnMut() -> Result<(), std::io::Error>,
+) -> Result<(), std::io::Error> {
+  match create() {
+    Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+      remove_dir_symlink(sys, path)?;
+      create()
+    }
+    result => result,
+  }
+}
+
 fn junction_or_symlink_dir(
-  sys: &(impl sys_traits::FsSymlinkDir + sys_traits::FsCreateJunction),
+  sys: &(
+     impl sys_traits::FsSymlinkDir
+     + sys_traits::FsCreateJunction
+     + sys_traits::FsRemoveDir
+     + sys_traits::FsRemoveFile
+     + sys_traits::FsRemoveDirAll
+   ),
   old_path_relative: &Path,
   old_path: &Path,
   new_path: &Path,
@@ -1352,21 +1425,29 @@ fn junction_or_symlink_dir(
 
   let sys = sys.with_paths_in_errors();
 
+  // Use junctions because they're supported on ntfs file systems without
+  // needing to elevate privileges on Windows.
+  // Note: junctions don't support relative paths, so we need to use the
+  // absolute path here.
+  let create_junction = || {
+    create_retry_if_exists(sys.as_ref(), new_path, || {
+      sys.fs_create_junction(old_path, new_path)
+    })
+  };
+
   if USE_JUNCTIONS.load(std::sync::atomic::Ordering::Relaxed) {
-    // Use junctions because they're supported on ntfs file systems without
-    // needing to elevate privileges on Windows.
-    // Note: junctions don't support relative paths, so we need to use the
-    // absolute path here.
-    return sys.fs_create_junction(old_path, new_path);
+    return create_junction();
   }
 
-  match symlink_dir(sys.as_ref(), old_path_relative, new_path) {
+  match create_retry_if_exists(sys.as_ref(), new_path, || {
+    symlink_dir(sys.as_ref(), old_path_relative, new_path)
+  }) {
     Ok(()) => Ok(()),
     Err(symlink_err)
       if symlink_err.kind() == std::io::ErrorKind::PermissionDenied =>
     {
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      sys.fs_create_junction(old_path, new_path)
+      create_junction()
     }
     Err(symlink_err) => {
       log::warn!(
@@ -1374,7 +1455,7 @@ fn junction_or_symlink_dir(
         colors::yellow("Warning")
       );
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      sys.fs_create_junction(old_path, new_path)
+      create_junction()
     }
   }
 }
