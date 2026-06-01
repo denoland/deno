@@ -128,8 +128,6 @@ imara-diff.workspace = true
 import_map.workspace = true
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
-jupyter-protocol.workspace = true
-jupyter_runtime.workspace = true
 keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service", "windows-native", "vendored"] }
 lazy-regex.workspace = true
 libc.workspace = true
@@ -182,6 +180,8 @@ typed-arena.workspace = true
 unicode-width.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
+wasm-encoder = { version = "0.244.0", features = ["wasmparser"] }
+wasmparser = "0.244.0"
 weak-table.workspace = true
 zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true

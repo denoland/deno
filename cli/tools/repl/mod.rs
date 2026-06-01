@@ -33,7 +33,6 @@ use editor::EditorHelper;
 use editor::ReplEditor;
 pub use session::EvaluationOutput;
 pub use session::ReplSession;
-pub use session::TsEvaluateResponse;
 
 use super::test::create_single_test_event_channel;
 

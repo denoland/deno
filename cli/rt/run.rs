@@ -97,6 +97,7 @@ use sys_traits::EnvCurrentDir;
 use crate::binary::DenoCompileModuleSource;
 use crate::binary::StandaloneData;
 use crate::binary::StandaloneModules;
+use crate::binary::transpile_runtime_module;
 use crate::code_cache::DenoCompileCodeCache;
 use crate::file_system::DenoRtSys;
 use crate::file_system::FileBackedVfs;
@@ -424,21 +425,25 @@ impl EmbeddedModuleLoader {
             )
             .await
             .map_err(JsErrorBox::from_err)?;
-          let code_cache_entry = match options.requested_module_type {
-            RequestedModuleType::None => shared.get_code_cache(
+          let module_type = module_type_from_media_and_requested_type(
+            code_source.media_type,
+            &options.requested_module_type,
+          );
+          // Only JavaScript modules produce a V8 code cache. Requesting one
+          // for other module types (JSON, Wasm, etc.) bumps the `FirstRun`
+          // strategy's pending counter via `get_sync` without a matching
+          // `set_sync`, preventing the cache from ever being serialized.
+          // See https://github.com/denoland/deno/issues/31766
+          let code_cache_entry = if module_type == ModuleType::JavaScript {
+            shared.get_code_cache(
               &code_source.specifier,
               code_source.source.as_bytes(),
-            ),
-            RequestedModuleType::Other(_)
-            | RequestedModuleType::Json
-            | RequestedModuleType::Text
-            | RequestedModuleType::Bytes => None,
+            )
+          } else {
+            None
           };
           Ok(deno_core::ModuleSource::new_with_redirect(
-            module_type_from_media_and_requested_type(
-              code_source.media_type,
-              &options.requested_module_type,
-            ),
+            module_type,
             loaded_module_source_to_module_source_code(code_source.source),
             &original_specifier,
             &code_source.specifier,
@@ -526,8 +531,16 @@ impl EmbeddedModuleLoader {
                   ModuleSourceCode::String(FastString::from_static(source))
                 }
               };
-              let code_cache_entry = shared
-                .get_code_cache(&module_specifier, module_source.as_bytes());
+              // CJS modules are always JavaScript, but gate on the module
+              // type anyway to keep the code cache contract uniform across all
+              // load paths: only JavaScript produces a V8 code cache.
+              // See https://github.com/denoland/deno/issues/31766
+              let code_cache_entry = if module_type == ModuleType::JavaScript {
+                shared
+                  .get_code_cache(&module_specifier, module_source.as_bytes())
+              } else {
+                None
+              };
               Ok(deno_core::ModuleSource::new_with_redirect(
                 module_type,
                 module_source,
@@ -540,9 +553,18 @@ impl EmbeddedModuleLoader {
           )
         } else {
           let module_source = module_source.into_for_v8();
-          let code_cache_entry = self
-            .shared
-            .get_code_cache(module_specifier, module_source.as_bytes());
+          // Only JavaScript modules produce a V8 code cache. Requesting the
+          // code cache for other module types (JSON, Wasm, etc.) would still
+          // bump the `FirstRun` strategy's pending counter via `get_sync`
+          // without a matching `set_sync`, preventing the cache from ever
+          // being serialized. See https://github.com/denoland/deno/issues/31766
+          let code_cache_entry = if module_type == ModuleType::JavaScript {
+            self
+              .shared
+              .get_code_cache(module_specifier, module_source.as_bytes())
+          } else {
+            None
+          };
           deno_core::ModuleLoadResponse::Sync(Ok(
             deno_core::ModuleSource::new_with_redirect(
               module_type,
@@ -628,21 +650,41 @@ impl ModuleLoader for EmbeddedModuleLoader {
     options: ModuleLoadOptions,
   ) -> deno_core::ModuleLoadResponse {
     if original_specifier.scheme() == "data" {
-      let data_url_text =
-        match deno_media_type::data_url::RawDataUrl::parse(original_specifier)
-          .and_then(|url| url.decode())
-        {
-          Ok(response) => response,
-          Err(err) => {
-            return deno_core::ModuleLoadResponse::Sync(Err(
-              JsErrorBox::type_error(format!("{:#}", err)),
-            ));
-          }
-        };
+      let raw_data_url = match deno_media_type::data_url::RawDataUrl::parse(
+        original_specifier,
+      ) {
+        Ok(raw) => raw,
+        Err(err) => {
+          return deno_core::ModuleLoadResponse::Sync(Err(
+            JsErrorBox::type_error(format!("{:#}", err)),
+          ));
+        }
+      };
+      let media_type = raw_data_url.media_type();
+      let data_url_text = match raw_data_url.decode() {
+        Ok(text) => text,
+        Err(err) => {
+          return deno_core::ModuleLoadResponse::Sync(Err(
+            JsErrorBox::type_error(format!("{:#}", err)),
+          ));
+        }
+      };
+      // Transpile when the data URL carries TypeScript/JSX, so compiled
+      // programs can dynamically import TypeScript built at runtime.
+      let code = match transpile_runtime_module(
+        original_specifier,
+        media_type,
+        data_url_text,
+      ) {
+        Ok(code) => code,
+        Err(err) => {
+          return deno_core::ModuleLoadResponse::Sync(Err(err));
+        }
+      };
       return deno_core::ModuleLoadResponse::Sync(Ok(
         deno_core::ModuleSource::new(
           deno_core::ModuleType::JavaScript,
-          ModuleSourceCode::String(data_url_text.into()),
+          ModuleSourceCode::String(code.into()),
           original_specifier,
           None,
         ),
@@ -689,6 +731,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
                       "Failed decoding \"{specifier}\": {err}"
                     ))
                   })?;
+              // Transpile when the blob carries TypeScript/JSX, so compiled
+              // programs can dynamically import TypeScript built at runtime.
+              let text =
+                transpile_runtime_module(&specifier, media_type, text)?;
               ModuleSourceCode::String(text.into())
             }
           };
