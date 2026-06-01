@@ -249,6 +249,13 @@ fn mask_ascii_fast(bytes: &[u8]) -> Vec<u8> {
   let chunk_size = std::mem::size_of::<usize>();
   let mask = usize::from_ne_bytes([0x7F; std::mem::size_of::<usize>()]);
 
+  // SAFETY:
+  // 1. `ascii_bytes` capacity is `len`. Loop bounds ensure pointers
+  //    do not read or write out of bounds.
+  // 2. `read_unaligned` and `write_unaligned` prevent misalignment
+  //    issues when casting `u8` pointers to `usize`.
+  // 3. The first `len` bytes of `dst` are completely initialized
+  //    before `set_len(len)` is called.
   unsafe {
     while i + chunk_size <= len {
       let chunk = std::ptr::read_unaligned(src.add(i) as *const usize);
@@ -279,6 +286,9 @@ fn decode_utf16le_from_bytes<'a>(
   #[cfg(target_endian = "little")]
   {
     // Attempt a zero-copy cast to &[u16]
+    // SAFETY: `u16` allows any internal bit combination and has
+    // no invalid bit patterns. Reinterpreting an initialized
+    // `u8` memory block as `u16` is completely safe.
     let (prefix, u16_slice, suffix) = unsafe { buf.align_to::<u16>() };
 
     if prefix.is_empty() && suffix.is_empty() {
@@ -288,6 +298,15 @@ fn decode_utf16le_from_bytes<'a>(
       // Slow path: Unaligned memory (rare in V8, but must be handled).
       // Use uninitialized memory to avoid Vec's memset(0) overhead.
       let mut u16_data = Vec::<u16>::with_capacity(len / 2);
+
+      // SAFETY:
+      // 1. `u16_data` capacity is `len / 2` `u16` elements
+      //    (which perfectly equals `len` bytes).
+      // 2. Source and destination pointers point to differently
+      //    allocated memory regions (non-overlapping).
+      // 3. Copying `len` bytes will not exceed `buf` bounds.
+      // 4. Memory is fully initialized after the copy, making
+      //    `set_len(len / 2)` safe to call.
       unsafe {
         // Memcpy the data byte-by-byte into the newly allocated Vec memory.
         std::ptr::copy_nonoverlapping(
