@@ -10874,6 +10874,31 @@ fn lsp_completions_npm() {
 }
 
 #[test(timeout = 300)]
+fn lsp_completions_npm_package_exports() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import x from \"npm:@denotest/types-exports-subpaths@1/c",
+    }
+  }));
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (0, 55),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  assert!(list.items.iter().any(|item| {
+    item.label == "npm:@denotest/types-exports-subpaths@1/client"
+  }));
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_auto_import_npm_export_node_modules_dir_auto() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir_path = context.temp_dir().path();

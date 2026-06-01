@@ -1731,6 +1731,7 @@ fn pkg_json_to_version_info(
     .map_err(|source| PkgJsonToVersionInfoError::VersionInvalid { source })?;
   Ok(NpmPackageVersionInfo {
     version,
+    exports: pkg_json.exports.clone().map(serde_json::Value::Object),
     dist: None,
     bin: pkg_json
       .bin
@@ -3257,6 +3258,7 @@ mod test {
       .unwrap(),
       NpmPackageVersionInfo {
         version: Version::parse_from_npm("1.0.0").unwrap(),
+        exports: None,
         dist: None,
         has_install_script: None,
         bin: Some(deno_npm::registry::NpmPackageVersionBinEntry::String(
