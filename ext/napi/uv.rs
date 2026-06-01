@@ -128,7 +128,7 @@ struct uv_handle_t {
 const UV_ASYNC_SIZE: usize = 128;
 
 #[cfg(windows)]
-const UV_ASYNC_SIZE: usize = 224;
+const UV_ASYNC_SIZE: usize = 232;
 
 #[repr(C)]
 struct uv_async_t {
@@ -147,7 +147,8 @@ struct uv_async_t {
       - size_of::<uv_handle_type>()
       - size_of::<uv_async_cb>()
       - size_of::<napi_async_work>()
-      - size_of::<bool>())
+      - size_of::<bool>()
+      - size_of::<usize>())
       / size_of::<usize>()
   }],
 }
