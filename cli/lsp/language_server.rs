@@ -4041,12 +4041,14 @@ impl Inner {
       vec![referrer.clone()]
     };
 
+    let scoped_resolver = self.resolver.get_scoped_resolver(scope.as_deref());
+    roots.extend(scoped_resolver.configured_auto_import_roots());
+
     if byonm {
       roots.retain(|s| s.scheme() != "npm");
     } else {
       // always include the npm packages since resolution of one npm package
       // might affect the resolution of other npm packages
-      let scoped_resolver = self.resolver.get_scoped_resolver(scope.as_deref());
       roots.extend(
         scoped_resolver
           .npm_reqs()

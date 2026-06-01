@@ -6188,12 +6188,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
     })
     .to_string(),
   );
-  temp_dir.write(
-    "main.ts",
-    r#"
-      import "jsr:@denotest/add@1";
-    "#,
-  );
+  temp_dir.write("main.ts", "");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.cache_specifier(temp_dir.url().join("main.ts").unwrap());
@@ -6260,8 +6255,6 @@ fn lsp_jsr_auto_import_completion_import_map_sub_path() {
   let file = source_file(
     temp_dir.path().join("file.ts"),
     r#"
-      // Adds jsr:@std/path@^0.220.1/normalize to the module graph.
-      import "jsr:@std/url@^0.220.1/normalize";
       normalize
     "#,
   );
@@ -6272,7 +6265,7 @@ fn lsp_jsr_auto_import_completion_import_map_sub_path() {
   client.did_open_file(&file);
   let list = client.get_completion_list(
     file.uri().as_str(),
-    (3, 15),
+    (1, 15),
     json!({ "triggerKind": 1 }),
   );
   let item = list
@@ -6298,8 +6291,8 @@ fn lsp_jsr_auto_import_completion_import_map_sub_path() {
       "additionalTextEdits": [
         {
           "range": {
-            "start": { "line": 2, "character": 6 },
-            "end": { "line": 2, "character": 6 },
+            "start": { "line": 1, "character": 6 },
+            "end": { "line": 1, "character": 6 },
           },
           "newText": "import { normalize } from \"@std/path/posix/normalize\";\n",
         },
