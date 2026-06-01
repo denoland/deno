@@ -894,11 +894,15 @@ const webidlConvertersResponseInitFast = webidl
 
 /**
  * @param {Response} response
- * @returns {InnerResponse}
+ * @returns {InnerResponse | undefined}
  */
 function toInnerResponse(response) {
+  const inner = response[_response];
+  if (inner === undefined) {
+    return undefined;
+  }
   responseHeaderList(response);
-  return response[_response];
+  return inner;
 }
 
 /**
