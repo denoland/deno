@@ -1,80 +1,145 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { type WriteFileOptions } from "ext:deno_node/_fs/_fs_common.ts";
+// deno-lint-ignore-file no-explicit-any
+
+import { core } from "ext:core/mod.js";
+import type { WriteFileOptions } from "ext:deno_node/_fs/_fs_common.ts";
 import type { Encodings } from "ext:deno_node/_utils.ts";
-import { promisify } from "ext:deno_node/internal/util.mjs";
-import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
+const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const constants = core.loadExtScript("ext:deno_node/_fs/_fs_constants.ts");
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
-import { cpPromise } from "ext:deno_node/_fs/_fs_cp.ts";
+const { cpPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_cp.ts");
 import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { readdirPromise } from "ext:deno_node/_fs/_fs_readdir.ts";
-import { lstatPromise } from "ext:deno_node/_fs/_fs_lstat.ts";
-import {
-  access,
-  appendFile,
-  chmod,
-  chown,
-  lchown,
-  link,
-  mkdir,
-  mkdtemp,
-  open,
-  opendir,
-  readFile,
-  readlink,
-  realpath,
-  rename,
-  rm,
-  rmdir,
-  stat,
-  statfs,
-  symlink,
-  truncate,
-  unlink,
-  utimes,
-  watchPromise,
-  writeFile,
-} from "node:fs";
+const { lstatPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_lstat.ts");
+const lazyFs = core.createLazyLoader("node:fs");
 import { globPromise } from "ext:deno_node/_fs/_fs_glob.ts";
 import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
-import { parseFileMode } from "ext:deno_node/internal/validators.mjs";
-import { Buffer } from "node:buffer";
+import type { Buffer } from "node:buffer";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { primordials } from "ext:core/mod.js";
+const { parseFileMode } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 import { op_node_lchmod } from "ext:core/ops";
-import { isMacOS } from "ext:deno_node/_util/os.ts";
-import { ERR_METHOD_NOT_IMPLEMENTED } from "ext:deno_node/internal/errors.ts";
-import { resolve as pathResolve } from "node:path";
-import process from "node:process";
+const { isMacOS } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { ERR_METHOD_NOT_IMPLEMENTED, aggregateTwoErrors } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const lazyPath = core.createLazyLoader("node:path");
+const lazyProcess = core.createLazyLoader("node:process");
 
-const { Promise, PromiseReject, SymbolAsyncDispose } = primordials;
+const {
+  ObjectPrototypeIsPrototypeOf,
+  Promise,
+  PromiseReject,
+  SafeArrayIterator,
+  SymbolAsyncDispose,
+} = primordials;
+
+// Promisified fs.X wrappers MUST NOT be built at module body. handle.ts /
+// internal/fs/promises.ts are loaded during the initial `fs.promises`
+// access, and calling `lazyFs()` here re-enters `node:fs`'s evaluating body
+// (its `export const promises = mod.promises` line re-triggers `get
+// promises` on fs.ts, whose lazyInternalPromises() then hits a TDZ on the
+// in-flight `default` binding). Build wrappers lazily on first call.
+const _promisifyCache: Record<string, any> = { __proto__: null } as any;
+// `arity` is the max positional arg count the underlying fs callback method
+// accepts (excluding the callback). Extra args are dropped so idiomatic
+// patterns like `paths.map(fs.promises.unlink)` -- which Array#map invokes as
+// `unlink(elem, index, array)` -- don't trip the promisify wrapper's appended
+// callback (the wrapper would otherwise call `fs.unlink(path, index, array,
+// cb)` and `fs.unlink` reads the second positional as the callback). Node's
+// own `fs.promises.*` wrappers don't go through `util.promisify` and so don't
+// have this issue.
+function lazyPromisifyFs(name: string, arity: number): any {
+  return (...args: any[]) => {
+    let fn = _promisifyCache[name];
+    if (fn === undefined) {
+      fn = promisify((lazyFs() as any)[name]);
+      _promisifyCache[name] = fn;
+    }
+    if (args.length > arity) args.length = arity;
+    return fn(...new SafeArrayIterator(args));
+  };
+}
+
+// Mirrors Node's lib/internal/fs/promises.js handleFdClose(): run the file op,
+// then close the FileHandle. Looks up `fh.close` lazily so tests that
+// monkey-patch the prototype/instance close still take effect.
+//   op ok, close ok       -> resolve(result)
+//   op ok, close throws   -> throw closeError
+//   op throws, close ok   -> throw opError
+//   op throws, close throws -> throw AggregateError([opError, closeError])
+async function handleFdClose<T>(
+  fileOpPromise: Promise<T>,
+  closeFunc: () => Promise<void>,
+): Promise<T> {
+  let result: T;
+  let opError: unknown;
+  let opFailed = false;
+  try {
+    result = await fileOpPromise;
+  } catch (err) {
+    opError = err;
+    opFailed = true;
+  }
+  try {
+    await closeFunc();
+  } catch (closeError) {
+    if (opFailed) {
+      // Mirrors Node's aggregateTwoErrors(): preserves opError.code on the
+      // AggregateError so callers asserting err.code see the op's code.
+      throw aggregateTwoErrors(closeError, opError);
+    }
+    throw closeError;
+  }
+  if (opFailed) {
+    throw opError;
+  }
+  return result!;
+}
 
 // -- access --
 
-const accessPromise = promisify(access) as (
+const accessPromise = lazyPromisifyFs("access", 2) as (
   path: string | Buffer | URL,
   mode?: number,
 ) => Promise<void>;
 
 // -- appendFile --
 
-const appendFilePromise = promisify(appendFile) as (
-  path: string | number | URL,
+// Delegates to writeFilePromise with an "a" flag, mirroring Node's
+// lib/internal/fs/promises.js appendFile(). Per Node semantics, when given a
+// FileHandle the existing flag stays in effect.
+function appendFilePromise(
+  path: string | number | URL | FileHandle,
   data: string | Uint8Array,
   options?: Encodings | WriteFileOptions,
-) => Promise<void>;
+): Promise<void> {
+  let opts: WriteFileOptions;
+  if (typeof options === "string") {
+    opts = { encoding: options };
+  } else if (options == null || typeof options !== "object") {
+    opts = {};
+  } else {
+    opts = { ...options };
+  }
+  opts.flag = opts.flag || "a";
+  return writeFilePromise(path, data, opts);
+}
 
 // -- chmod --
 
-const chmodPromise = promisify(chmod) as (
+const chmodPromise = lazyPromisifyFs("chmod", 2) as (
   path: string | Buffer | URL,
   mode: string | number,
 ) => Promise<void>;
 
 // -- chown --
 
-const chownPromise = promisify(chown) as (
+const chownPromise = lazyPromisifyFs("chown", 3) as (
   path: string | Buffer | URL,
   uid: number,
   gid: number,
@@ -91,22 +156,22 @@ const lchmodPromise: (
     return await op_node_lchmod(path, mode);
   };
 
-const lchownPromise = promisify(lchown) as (
+const lchownPromise = lazyPromisifyFs("lchown", 3) as (
   path: string | Buffer | URL,
   uid: number,
   gid: number,
 ) => Promise<void>;
 
-const linkPromise = promisify(link) as (
+const linkPromise = lazyPromisifyFs("link", 2) as (
   existingPath: string | Buffer | URL,
   newPath: string | Buffer | URL,
 ) => Promise<void>;
 
-const unlinkPromise = promisify(unlink) as (
+const unlinkPromise = lazyPromisifyFs("unlink", 1) as (
   path: string | Buffer | URL,
 ) => Promise<void>;
 
-const renamePromise = promisify(rename) as (
+const renamePromise = lazyPromisifyFs("rename", 2) as (
   oldPath: string | Buffer | URL,
   newPath: string | Buffer | URL,
 ) => Promise<void>;
@@ -120,7 +185,7 @@ type rmOptions = {
   retryDelay?: number;
 };
 
-const rmPromise = promisify(rm) as (
+const rmPromise = lazyPromisifyFs("rm", 2) as (
   path: string | URL,
   options?: rmOptions,
 ) => Promise<void>;
@@ -133,7 +198,7 @@ type rmdirOptions = {
   retryDelay?: number;
 };
 
-const rmdirPromise = promisify(rmdir) as (
+const rmdirPromise = lazyPromisifyFs("rmdir", 2) as (
   path: string | Buffer | URL,
   options?: rmdirOptions,
 ) => Promise<void>;
@@ -143,12 +208,12 @@ type MkdirOptions =
   | number
   | boolean;
 
-const mkdirPromise = promisify(mkdir) as (
+const mkdirPromise = lazyPromisifyFs("mkdir", 2) as (
   path: string | URL,
   options?: MkdirOptions,
 ) => Promise<string | undefined>;
 
-const mkdtempPromise = promisify(mkdtemp) as (
+const mkdtempPromise = lazyPromisifyFs("mkdtemp", 2) as (
   prefix: string | Buffer | Uint8Array | URL,
   options?: { encoding: string } | string,
 ) => Promise<string>;
@@ -161,9 +226,9 @@ async function mkdtempDisposablePromise(
   prefix: string | Buffer | Uint8Array | URL,
   options?: { encoding: string } | string,
 ) {
-  const cwd = process.cwd();
+  const cwd = lazyProcess().default.cwd();
   const path = await mkdtempPromise(prefix, options);
-  const fullPath = pathResolve(cwd, path);
+  const fullPath = lazyPath().resolve(cwd, path);
   // `force: true` makes the second remove() a no-op when the dir is already
   // gone (Node's rimraf-based implementation treats ENOENT as success); other
   // errors (EACCES, EPERM, ...) still propagate.
@@ -209,7 +274,7 @@ function openPromise(
   mode = 0o666,
 ): Promise<FileHandle> {
   return new Promise((resolve, reject) => {
-    open(path, flags, mode, (err, fd) => {
+    lazyFs().open(path, flags, mode, (err, fd) => {
       if (err) reject(err);
       else resolve(new FileHandle(fd as number));
     });
@@ -221,14 +286,14 @@ type OpendirOptions = {
   bufferSize?: number;
 };
 
-const opendirPromise = promisify(opendir) as (
+const opendirPromise = lazyPromisifyFs("opendir", 2) as (
   path: string | Buffer | URL,
   options?: OpendirOptions,
 ) => Promise<Dir>;
 
 // -- symlink --
 
-const symlinkPromise = promisify(symlink) as (
+const symlinkPromise = lazyPromisifyFs("symlink", 3) as (
   target: string | Buffer | URL,
   path: string | Buffer | URL,
   type?: string,
@@ -236,14 +301,21 @@ const symlinkPromise = promisify(symlink) as (
 
 // -- truncate --
 
-const truncatePromise = promisify(truncate) as (
+// Mirrors Node's lib/internal/fs/promises.js truncate(): open the path as a
+// FileHandle, delegate to its truncate method, then close via handleFdClose
+// so callers that monkey-patch FileHandle still observe the fd access and
+// AggregateError-on-double-failure semantics that Node tests rely on.
+async function truncatePromise(
   path: string | URL,
   len?: number,
-) => Promise<void>;
+): Promise<void> {
+  const fh = await openPromise(path, "r+");
+  return handleFdClose(fh.truncate(len), () => fh.close());
+}
 
 // -- utimes --
 
-const utimesPromise = promisify(utimes) as (
+const utimesPromise = lazyPromisifyFs("utimes", 3) as (
   path: string | URL,
   atime: number | string | Date,
   mtime: number | string | Date,
@@ -251,7 +323,9 @@ const utimesPromise = promisify(utimes) as (
 
 // -- writeFile --
 
-const writeFilePromise = promisify(writeFile) as (
+// Low-level callback writeFile, used when we already have an fd/FileHandle
+// (i.e. avoid recursing back through writeFilePromise via FileHandle.writeFile).
+const rawWriteFilePromise = lazyPromisifyFs("writeFile", 3) as (
   pathOrRid: string | number | URL | FileHandle,
   data:
     | string
@@ -261,32 +335,105 @@ const writeFilePromise = promisify(writeFile) as (
   options?: Encodings | WriteFileOptions,
 ) => Promise<void>;
 
+// Mirrors Node's lib/internal/fs/promises.js writeFile(): when given a path,
+// open a FileHandle and delegate via handleFdClose so the close error
+// semantics are observable; when given an fd/FileHandle, write directly.
+function writeFilePromise(
+  pathOrRid: string | number | URL | FileHandle,
+  data:
+    | string
+    | DataView
+    | NodeJS.TypedArray
+    | AsyncIterable<NodeJS.TypedArray | string>,
+  options?: Encodings | WriteFileOptions,
+): Promise<void> {
+  if (
+    typeof pathOrRid === "number" ||
+    ObjectPrototypeIsPrototypeOf(FileHandle.prototype, pathOrRid)
+  ) {
+    return rawWriteFilePromise(pathOrRid, data, options);
+  }
+  const opts: WriteFileOptions = typeof options === "string"
+    ? { encoding: options }
+    : (options ?? {});
+  const flag = opts.flag ?? "w";
+  const mode = opts.mode ?? 0o666;
+  return (async () => {
+    // Match the existing path-based behavior: surface the same `DOMException`
+    // that `signal.throwIfAborted()` produces (the fd-based fallback would
+    // throw Deno's `AbortError` instead). Inside the async IIFE so the throw
+    // becomes a promise rejection, not a sync throw.
+    if (opts.signal?.aborted) opts.signal.throwIfAborted();
+    const fh = await openPromise(
+      pathOrRid as string | Buffer | URL,
+      flag,
+      mode,
+    );
+    return handleFdClose(fh.writeFile(data, opts), () => fh.close());
+  })();
+}
+
 // -- realpath --
 
-const realpathPromise = promisify(realpath) as (
+const realpathPromise = lazyPromisifyFs("realpath", 2) as (
   path: string | Buffer,
   options?: string | { encoding?: string },
 ) => Promise<string | Buffer>;
 
 // -- stat --
 
-const statPromise = promisify(stat) as (
+const statPromise = lazyPromisifyFs("stat", 2) as (
   path: string | Buffer | URL,
   options?: { bigint?: boolean },
 ) => Promise<unknown>;
 
 // -- statfs --
 
-const statfsPromise = promisify(statfs) as (
+const statfsPromise = lazyPromisifyFs("statfs", 2) as (
   path: string | Buffer | URL,
   options?: { bigint?: boolean },
 ) => Promise<unknown>;
 
 // -- readFile / readlink --
 
-const readFilePromise = promisify(readFile);
+// Low-level callback readFile, used when we already have an fd/FileHandle
+// (i.e. avoid recursing back through readFilePromise via FileHandle.readFile).
+const rawReadFilePromise = lazyPromisifyFs("readFile", 2);
 
-const readlinkPromise = promisify(readlink) as (
+// Mirrors Node's lib/internal/fs/promises.js readFile(): when given a path,
+// open a FileHandle and delegate via handleFdClose so the close error
+// semantics are observable; when given an fd/FileHandle, read directly.
+function readFilePromise(
+  path: string | number | URL | FileHandle,
+  options?: Encodings | {
+    encoding?: Encodings;
+    flag?: string;
+    signal?: AbortSignal;
+  },
+): Promise<string | Buffer> {
+  if (
+    typeof path === "number" ||
+    ObjectPrototypeIsPrototypeOf(FileHandle.prototype, path)
+  ) {
+    return rawReadFilePromise(path, options);
+  }
+  const opts: { encoding?: Encodings; flag?: string; signal?: AbortSignal } =
+    typeof options === "string" ? { encoding: options } : (options ?? {});
+  const flag = opts.flag ?? "r";
+  return (async () => {
+    // Match the existing path-based behavior: surface the same `DOMException`
+    // that `signal.throwIfAborted()` produces (the fd-based fallback would
+    // throw Deno's `AbortError` instead). Inside the async IIFE so the throw
+    // becomes a promise rejection, not a sync throw.
+    if (opts.signal?.aborted) opts.signal.throwIfAborted();
+    const fh = await openPromise(path as string | Buffer | URL, flag);
+    return handleFdClose(fh.readFile(opts), () => fh.close()) as Promise<
+      string | Buffer
+    >;
+  })();
+}
+
+const readlinkPromise = lazyPromisifyFs("readlink", 2) as (
   path: string | Buffer | URL,
   opt?: { encoding?: string | null },
 ) => Promise<string | Uint8Array>;
@@ -326,9 +473,11 @@ const promises = {
   writeFile: writeFilePromise,
   appendFile: appendFilePromise,
   readFile: readFilePromise,
-  watch: watchPromise,
+  watch:
+    ((...args: any[]) =>
+      (lazyFs() as any).watchPromise(...new SafeArrayIterator(args))) as any,
 };
 
 export default promises;
 
-export { mkdirPromise, opendirPromise };
+export { constants, FileHandle, mkdirPromise, opendirPromise };

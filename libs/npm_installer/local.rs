@@ -135,9 +135,9 @@ impl<
   }
 }
 
-struct InitializingGuard {
-  nv: PackageNv,
-  install_reporter: Arc<dyn crate::InstallReporter>,
+pub(crate) struct InitializingGuard {
+  pub(crate) nv: PackageNv,
+  pub(crate) install_reporter: Arc<dyn crate::InstallReporter>,
 }
 
 impl Drop for InitializingGuard {
@@ -185,8 +185,12 @@ impl<
     &self,
     snapshot: &NpmResolutionSnapshot,
   ) -> Result<(), SyncResolutionWithFsError> {
-    if snapshot.is_empty()
-      && self.npm_install_deps_provider.local_pkgs().is_empty()
+    let has_no_packages = snapshot.is_empty()
+      && self.npm_install_deps_provider.local_pkgs().is_empty();
+    let deno_local_registry_dir = self.root_node_modules_path.join(".deno");
+    if has_no_packages
+      && (!self.clean_on_install
+        || !self.sys.fs_exists_no_err(&deno_local_registry_dir))
     {
       return Ok(()); // don't create the directory
     }
@@ -198,7 +202,6 @@ impl<
     }
 
     let sys = self.sys.with_paths_in_errors();
-    let deno_local_registry_dir = self.root_node_modules_path.join(".deno");
     let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
     sys.fs_create_dir_all(&deno_node_modules_dir)?;
     let bin_node_modules_dir_path = self.root_node_modules_path.join(".bin");
@@ -914,6 +917,7 @@ impl<
       let process_state = NpmProcessState::new_local(
         snapshot.as_valid_serialized(),
         &self.root_node_modules_path,
+        crate::process_state::NpmProcessStateLinkerMode::Isolated,
       )
       .as_serialized();
 
@@ -983,7 +987,7 @@ pub enum SyncResolutionWithFsError {
   Other(#[from] JsErrorBox),
 }
 
-fn clone_dir_recursive_except_node_modules_child(
+pub(crate) fn clone_dir_recursive_except_node_modules_child(
   sys: &impl CloneDirRecursiveSys,
   from: &Path,
   to: &Path,
@@ -1301,7 +1305,7 @@ impl<TSys: NpmCacheSys> LocalSetupCache<TSys> {
   }
 }
 
-fn symlink_package_dir(
+pub(crate) fn symlink_package_dir(
   sys: &(
      impl sys_traits::FsSymlinkDir
      + sys_traits::FsRemoveDirAll
@@ -1402,7 +1406,10 @@ fn create_initialized_file<F: sys_traits::boxed::FsOpenBoxed + ?Sized>(
     .map(|_| ())
 }
 
-fn join_package_name(mut path: Cow<'_, Path>, package_name: &str) -> PathBuf {
+pub(crate) fn join_package_name(
+  mut path: Cow<'_, Path>,
+  package_name: &str,
+) -> PathBuf {
   // ensure backslashes are used on windows
   for part in package_name.split('/') {
     match path {
@@ -1531,11 +1538,17 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
 pub fn node_modules_package_actual_dir_to_name(
   path: &Path,
 ) -> Option<Cow<'_, str>> {
-  path
-    .parent()?
-    .parent()?
-    .file_name()
-    .map(|name| name.to_string_lossy())
+  let package_folder = path.parent()?.parent()?;
+  if package_folder.file_name()? == std::ffi::OsStr::new("node_modules") {
+    package_folder
+      .parent()?
+      .file_name()
+      .map(|name| name.to_string_lossy())
+  } else {
+    package_folder
+      .file_name()
+      .map(|name| name.to_string_lossy())
+  }
 }
 
 /// Remove symlinks from a node_modules directory where the target package
@@ -1564,6 +1577,22 @@ pub fn remove_unused_node_modules_symlinks<TSys: LocalNpmInstallSys>(
         && !keep_names.contains(&*name)
       {
         on_remove(&name, &entry_path)?;
+      }
+    } else if entry.file_name().to_string_lossy().starts_with('@')
+      && entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
+    {
+      remove_unused_node_modules_symlinks(
+        sys.as_ref(),
+        &entry_path,
+        keep_names,
+        on_remove,
+      )?;
+      if sys
+        .fs_read_dir(&entry_path)
+        .map(|mut entries| entries.next().is_none())
+        .unwrap_or(false)
+      {
+        let _ignore = sys.fs_remove_dir(&entry_path);
       }
     }
   }
@@ -1609,6 +1638,24 @@ mod test {
       cache
         .with_dep("package-a")
         .insert("package-b", "package-b@1.0.0")
+    );
+  }
+
+  #[test]
+  fn test_node_modules_package_actual_dir_to_name() {
+    assert_eq!(
+      node_modules_package_actual_dir_to_name(Path::new(
+        ".deno/chalk@5.0.1/node_modules/chalk"
+      ))
+      .as_deref(),
+      Some("chalk@5.0.1")
+    );
+    assert_eq!(
+      node_modules_package_actual_dir_to_name(Path::new(
+        ".deno/@denotest+add@1.0.0/node_modules/@denotest/add"
+      ))
+      .as_deref(),
+      Some("@denotest+add@1.0.0")
     );
   }
 }

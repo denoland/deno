@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "@denotest/hoisted-cycle-a": "2.0.0",
+    "@denotest/hoisted-cycle-b": "2.0.0",
+    "@denotest/hoisted-cycle-trigger": "1.0.0"
+  }
+}

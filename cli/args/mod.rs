@@ -204,13 +204,28 @@ pub struct WorkspaceTestOptions {
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
   pub trace_leaks: bool,
+  pub sanitize_ops: bool,
+  pub sanitize_resources: bool,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
   pub hide_stacktraces: bool,
 }
 
 impl WorkspaceTestOptions {
-  pub fn resolve(test_flags: &TestFlags) -> Self {
+  pub fn resolve(
+    test_flags: &TestFlags,
+    test_config: Option<&TestConfig>,
+  ) -> Self {
+    // The CLI flag, env var, and config layers are enable-only: any of them
+    // setting `true` turns the sanitizer on, and none of them can turn it
+    // back off. To disable a sanitizer that was enabled by one of these
+    // layers, opt out from JS via `Deno.test.sanitizer({ ops: false })` at
+    // the module level, or `{ sanitizeOps: false }` on the individual test.
+    let config_sanitize_ops =
+      test_config.and_then(|c| c.sanitize_ops).unwrap_or(false);
+    let config_sanitize_resources = test_config
+      .and_then(|c| c.sanitize_resources)
+      .unwrap_or(false);
     Self {
       permit_no_files: test_flags.permit_no_files,
       concurrent_jobs: parallelism_count(test_flags.parallel),
@@ -220,6 +235,15 @@ impl WorkspaceTestOptions {
       no_run: test_flags.no_run,
       shuffle: test_flags.shuffle,
       trace_leaks: test_flags.trace_leaks,
+      sanitize_ops: test_flags.sanitize_ops
+        || std::env::var("DENO_TEST_SANITIZE_OPS").ok().as_deref() == Some("1")
+        || config_sanitize_ops,
+      sanitize_resources: test_flags.sanitize_resources
+        || std::env::var("DENO_TEST_SANITIZE_RESOURCES")
+          .ok()
+          .as_deref()
+          == Some("1")
+        || config_sanitize_resources,
       reporter: test_flags.reporter,
       junit_path: test_flags.junit_path.clone(),
       hide_stacktraces: test_flags.hide_stacktraces,
@@ -234,7 +258,8 @@ pub struct TestOptions {
 
 impl TestOptions {
   pub fn resolve(test_config: TestConfig, _test_flags: &TestFlags) -> Self {
-    // this is the same, but keeping the same pattern as everywhere else for the future
+    // Sanitizer options from the config are consumed in
+    // WorkspaceTestOptions::resolve via CliOptions::resolve_workspace_test_options
     Self {
       files: test_config.files,
     }
@@ -448,6 +473,24 @@ impl WorkspaceMainModuleResolver {
               )?
               .into_url()?
           }
+          deno_package_json::PackageJsonDepValue::Catalog(catalog_name) => {
+            match self
+              .workspace_resolver
+              .resolve_catalog_dep(alias, catalog_name)
+            {
+              Some(req) => ModuleSpecifier::parse(&format!(
+                "npm:{}{}",
+                req,
+                sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+              ))?,
+              None => {
+                return Err(deno_core::anyhow::anyhow!(
+                  "Package '{}' not found in catalog",
+                  alias
+                ));
+              }
+            }
+          }
         }
       }
       deno_resolver::workspace::MappedResolution::PackageJsonImport {
@@ -537,7 +580,12 @@ impl CliOptions {
       DenoSubcommand::Add(_) => GraphKind::All,
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
-      DenoSubcommand::Install(InstallFlags::Local(_)) => GraphKind::All,
+      DenoSubcommand::Ci(_) => GraphKind::All,
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::Entrypoints(flags),
+        _,
+      )) if flags.production => GraphKind::CodeOnly,
+      DenoSubcommand::Install(InstallFlags::Local(_, _)) => GraphKind::All,
       _ => self.type_check_mode().as_graph_kind(),
     }
   }
@@ -628,6 +676,13 @@ impl CliOptions {
     self.flags.eszip
   }
 
+  /// Set by `deno compile --bundle` after rewriting the bundle's absolute
+  /// CJS paths; signals the standalone binary writer that the npm tree
+  /// must still ship alongside the bundle.
+  pub fn compile_bundle_embed_node_modules(&self) -> bool {
+    self.flags.internal.compile_bundle_embed_node_modules
+  }
+
   pub fn node_conditions(&self) -> &[String] {
     self.flags.node_conditions.as_ref()
   }
@@ -664,13 +719,28 @@ impl CliOptions {
   }
 
   pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
+    self.preload_modules_with_resolver(None)
+  }
+
+  pub fn preload_modules_with_resolver(
+    &self,
+    resolver: Option<&WorkspaceMainModuleResolver>,
+  ) -> Result<Vec<ModuleSpecifier>, AnyError> {
     if self.flags.preload.is_empty() {
       return Ok(vec![]);
     }
 
     let mut modules = Vec::with_capacity(self.flags.preload.len());
     for preload_specifier in self.flags.preload.iter() {
-      modules.push(resolve_url_or_path(preload_specifier, self.initial_cwd())?);
+      let default_resolve = || {
+        resolve_url_or_path(preload_specifier, self.initial_cwd())
+          .map_err(|e| e.into())
+      };
+      modules.push(self.resolve_main_module_with_resolver_if_bare(
+        preload_specifier,
+        resolver,
+        default_resolve,
+      )?);
     }
 
     Ok(modules)
@@ -915,7 +985,14 @@ impl CliOptions {
     &self,
     test_flags: &TestFlags,
   ) -> WorkspaceTestOptions {
-    WorkspaceTestOptions::resolve(test_flags)
+    // Get sanitizer config from deno.json if available
+    let test_config = self
+      .start_dir
+      .to_test_config(FilePatterns::new_with_base(
+        self.initial_cwd().to_path_buf(),
+      ))
+      .ok();
+    WorkspaceTestOptions::resolve(test_flags, test_config.as_ref())
   }
 
   pub fn resolve_test_options_for_members(
@@ -1225,6 +1302,7 @@ impl CliOptions {
           .map(|url| vec![url]),
         DenoSubcommand::Install(InstallFlags::Local(
           InstallFlagsLocal::Entrypoints(flags),
+          _,
         )) => Some(files_to_urls(&flags.entrypoints)),
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
@@ -1395,6 +1473,10 @@ impl CliOptions {
     | DenoSubcommand::Serve(ServeFlags {
       watch: Some(WatchFlagsWithPaths { paths, .. }),
       ..
+    })
+    | DenoSubcommand::Test(TestFlags {
+      watch: Some(WatchFlagsWithPaths { paths, .. }),
+      ..
     }) = &self.flags.subcommand
     {
       full_paths.extend(paths.iter().map(|path| self.initial_cwd.join(path)));
@@ -1460,7 +1542,8 @@ impl CliOptions {
           | InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
             lockfile_only: true,
             ..
-          })
+          }),
+        _,
       )) | DenoSubcommand::Add(_)
         | DenoSubcommand::Outdated(_)
     ) {
@@ -1562,6 +1645,7 @@ pub fn get_default_v8_flags() -> Vec<String> {
   vec![
     "--stack-size=1024".to_string(),
     "--inspector-live-edit".to_string(),
+    "--external-memory-max-reasonable-size=0".to_string(),
   ]
 }
 

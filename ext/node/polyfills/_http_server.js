@@ -27,6 +27,7 @@
 import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
+  ArrayPrototypeIncludes,
   Error,
   MathMin,
   NumberIsFinite,
@@ -36,8 +37,8 @@ const {
 } = primordials;
 
 import net from "node:net";
-import { Buffer } from "node:buffer";
-import { ok as assert } from "node:assert";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { ok: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
   chunkExpression,
@@ -56,32 +57,56 @@ import {
   validateHeaderName,
   validateHeaderValue,
 } from "node:_http_outgoing";
-import { kNeedDrain, kOutHeaders } from "ext:deno_node/internal/http.ts";
+const { kNeedDrain, kOutHeaders } = core.loadExtScript(
+  "ext:deno_node/internal/http.ts",
+);
 import { IncomingMessage } from "node:_http_incoming";
-import {
+const {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
   ERR_HTTP_SOCKET_ASSIGNED,
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CHAR,
   ERR_OUT_OF_RANGE,
-} from "ext:deno_node/internal/errors.ts";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const {
+  kDestroy,
+  kTimeout,
+  suspendTimeout,
+} = core.loadExtScript("ext:deno_node/internal/timers.mjs");
+const {
   validateBoolean,
+  validateFunction,
   validateInteger,
   validateLinkHeaderValue,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const {
+  enterAsyncResource,
+  exitAsyncResource,
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+const { enqueueNodePerformanceEntry, hasNodeObserverForType } = core
+  .loadExtScript(
+    "ext:deno_node/perf_hooks.js",
+  );
 import {
+  applyAddressOverride,
+  startOverrideListener,
+} from "ext:deno_node/internal/http/address_override.js";
+const {
+  otelState,
   builtinTracer,
   ContextManager,
-  METRICS_ENABLED,
-  PROPAGATORS,
   telemetry,
-  TRACING_ENABLED,
-} from "ext:deno_telemetry/telemetry.ts";
+} = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
+const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
+
+const onServerRequestStartChannel = channel("http.server.request.start");
+const onServerResponseCreatedChannel = channel("http.server.response.created");
+const onServerResponseFinishChannel = channel("http.server.response.finish");
 
 const kServerResponse = Symbol("ServerResponse");
 const kConnectionsKey = Symbol("http.server.connections");
@@ -91,6 +116,7 @@ const kConnectionsCheckingInterval = Symbol(
 const kOtelSpan = Symbol("kOtelSpan");
 const kOtelStartTime = Symbol("kOtelStartTime");
 const kOtelReqBodySize = Symbol("kOtelReqBodySize");
+const kPerfStartTime = Symbol("kPerfStartTime");
 
 // OTel server metrics - lazy initialized
 let otelMetrics = null;
@@ -199,7 +225,9 @@ class ConnectionsList {
 }
 
 function onRequestTimeout(socket) {
-  socketOnError.call(socket, new Error("ERR_HTTP_REQUEST_TIMEOUT"));
+  const err = new Error("ERR_HTTP_REQUEST_TIMEOUT");
+  err.code = "ERR_HTTP_REQUEST_TIMEOUT";
+  socketOnError.call(socket, err);
 }
 
 const STATUS_CODES = {
@@ -286,6 +314,13 @@ function ServerResponse(req, options) {
     );
     this.shouldKeepAlive = false;
   }
+
+  if (onServerResponseCreatedChannel.hasSubscribers) {
+    onServerResponseCreatedChannel.publish({
+      request: req,
+      response: this,
+    });
+  }
 }
 ObjectSetPrototypeOf(ServerResponse.prototype, OutgoingMessage.prototype);
 ObjectSetPrototypeOf(ServerResponse, OutgoingMessage);
@@ -304,6 +339,10 @@ ServerResponse.prototype.assignSocket = function assignSocket(socket) {
     throw new ERR_HTTP_SOCKET_ASSIGNED();
   }
   socket._httpMessage = this;
+  if (socket._parent) {
+    socket._parent._httpMessage = this;
+    socket._parent._httpMessageDetached = false;
+  }
   socket.on("close", onServerResponseClose);
   this.socket = socket;
   this.emit("socket", socket);
@@ -315,6 +354,10 @@ ServerResponse.prototype.detachSocket = function detachSocket(socket) {
   socket.removeListener("close", onServerResponseClose);
   socket._httpMessage = null;
   socket._httpMessageDetached = true;
+  if (socket._parent) {
+    socket._parent._httpMessage = null;
+    socket._parent._httpMessageDetached = true;
+  }
   this.socket = null;
 };
 
@@ -407,11 +450,7 @@ ServerResponse.prototype.writeHead = function writeHead(
     // Slow-case: progressive API and header fields are passed.
     if (ArrayIsArray(obj)) {
       if (obj.length % 2 !== 0) {
-        throw new ERR_INVALID_ARG_TYPE(
-          "headers",
-          "Array with even length",
-          obj,
-        );
+        throw new ERR_INVALID_ARG_VALUE("headers", obj);
       }
       for (let n = 0; n < obj.length; n += 2) {
         const k = obj[n + 0];
@@ -502,6 +541,9 @@ function connectionListenerInternal(server, socket) {
     outgoingData: 0,
     requestsCount: 0,
     keepAliveTimeoutSet: false,
+    keepAliveTimeout: null,
+    keepAliveTimeoutMsecs: 0,
+    keepAliveTimeoutSuspended: false,
   };
   state.onData = socketOnData.bind(undefined, server, socket, parser, state);
   state.onEnd = socketOnEnd.bind(undefined, server, socket, parser, state);
@@ -553,6 +595,9 @@ function onParserExecute(server, socket, parser, state, ret, d) {
   if (d !== undefined && !Buffer.isBuffer(d)) {
     d = Buffer.from(d.buffer, d.byteOffset, d.byteLength);
   }
+  if (d !== undefined) {
+    parser._lastRawPacket = d;
+  }
   onParserExecuteCommon(server, socket, parser, state, ret, d);
 }
 
@@ -568,6 +613,7 @@ function socketOnTimeout() {
 }
 
 function socketOnClose(socket, state) {
+  destroySuspendedKeepAliveTimeout(state);
   freeParser(socket.parser, undefined, socket);
   abortIncoming(state.incoming);
 }
@@ -583,7 +629,7 @@ function socketOnEnd(server, socket, parser, state) {
   const ret = parser.finish();
 
   if (ret instanceof Error) {
-    prepareError(ret, parser);
+    prepareError(ret, parser, parser._lastRawPacket);
     socketOnError.call(socket, ret);
     return;
   }
@@ -603,6 +649,7 @@ function socketOnEnd(server, socket, parser, state) {
 function socketOnData(server, socket, parser, state, d) {
   assert(googLength(d));
 
+  parser._lastRawPacket = d;
   const ret = parser.execute(d);
 
   onParserExecuteCommon(server, socket, parser, state, ret, d);
@@ -655,10 +702,30 @@ function onParserExecuteCommon(server, socket, parser, state, ret, d) {
   }
 }
 
-function resetSocketTimeout(server, socket, state) {
+function resetSocketTimeout(server, socket, state, allowKeepAliveReuse = true) {
   if (!state.keepAliveTimeoutSet) return;
+
+  const keepAliveTimeout = state.keepAliveTimeout;
+  if (
+    allowKeepAliveReuse &&
+    server.timeout === 0 &&
+    socket.setTimeout === net.Socket.prototype.setTimeout &&
+    socket[kTimeout] === keepAliveTimeout &&
+    ArrayPrototypeIncludes(socket.listeners("timeout"), socketOnTimeout)
+  ) {
+    suspendTimeout(keepAliveTimeout);
+    socket[kTimeout] = null;
+    socket.timeout = 0;
+    state.keepAliveTimeoutSet = false;
+    state.keepAliveTimeoutSuspended = true;
+    return;
+  }
+
   socket.setTimeout(server.timeout || 0);
   state.keepAliveTimeoutSet = false;
+  state.keepAliveTimeout = null;
+  state.keepAliveTimeoutMsecs = 0;
+  state.keepAliveTimeoutSuspended = false;
 }
 
 function socketOnDrain(socket, state) {
@@ -677,10 +744,23 @@ function socketOnDrain(socket, state) {
   }
 }
 
+function destroySuspendedKeepAliveTimeout(state) {
+  if (!state.keepAliveTimeoutSuspended) return;
+  const keepAliveTimeout = state.keepAliveTimeout;
+  if (keepAliveTimeout !== null) {
+    keepAliveTimeout[kDestroy]();
+  }
+  state.keepAliveTimeout = null;
+  state.keepAliveTimeoutMsecs = 0;
+  state.keepAliveTimeoutSuspended = false;
+}
+
 const badRequestResponse =
   "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n";
 const requestHeaderFieldsTooLargeResponse =
   "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n";
+const requestTimeoutResponse =
+  "HTTP/1.1 408 Request Timeout\r\nConnection: close\r\n\r\n";
 
 function socketOnError(e) {
   // Ignore further errors
@@ -702,6 +782,9 @@ function socketOnError(e) {
       switch (e.code) {
         case "HPE_HEADER_OVERFLOW":
           response = requestHeaderFieldsTooLargeResponse;
+          break;
+        case "ERR_HTTP_REQUEST_TIMEOUT":
+          response = requestTimeoutResponse;
           break;
         default:
           response = badRequestResponse;
@@ -729,7 +812,16 @@ function updateOutgoingData(socket, state, delta) {
 // ---- parserOnIncoming: creates ServerResponse, emits 'request' ----
 
 function parserOnIncoming(server, socket, state, req, keepAlive) {
-  resetSocketTimeout(server, socket, state);
+  resetSocketTimeout(server, socket, state, !req.upgrade);
+
+  if (req.upgrade && req.method !== "CONNECT") {
+    if (
+      server.shouldUpgradeCallback !== undefined &&
+      !server.shouldUpgradeCallback(req)
+    ) {
+      req.upgrade = false;
+    }
+  }
 
   if (req.upgrade) {
     req.upgrade = req.method === "CONNECT" || true;
@@ -737,6 +829,9 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   }
 
   state.incoming.push(req);
+  if (hasNodeObserverForType("http")) {
+    req[kPerfStartTime] = performance.now();
+  }
 
   if (!socket._paused) {
     const ws = socket._writableState;
@@ -750,6 +845,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
 
   const res = new server[kServerResponse](req, {
     rejectNonStandardBodyWrites: server.rejectNonStandardBodyWrites,
+    highWaterMark: server.highWaterMark,
   });
   res._keepAliveTimeout = server.keepAliveTimeout;
   res._maxRequestsPerSocket = server.maxRequestsPerSocket;
@@ -758,12 +854,16 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   res.shouldKeepAlive = keepAlive;
   res[kUniqueHeaders] = server[kUniqueHeaders];
 
+  if (server.optimizeEmptyRequests && isRequestKnownEmpty(req)) {
+    req._dumpAndCloseReadable();
+  }
+
   // Start OTel server span and metrics
-  if (TRACING_ENABLED) {
+  if (otelState.TRACING_ENABLED) {
     // Extract trace context from incoming request headers
     let context = ContextManager.active();
-    if (PROPAGATORS.length > 0) {
-      for (const propagator of PROPAGATORS) {
+    if (otelState.PROPAGATORS.length > 0) {
+      for (const propagator of otelState.PROPAGATORS) {
         context = propagator.extract(context, req.headers, {
           get(carrier, key) {
             return carrier[key];
@@ -786,7 +886,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
     span.setAttribute("url.query", url.includes("?") ? url.split("?")[1] : "");
     res[kOtelSpan] = span;
   }
-  if (METRICS_ENABLED) {
+  if (otelState.METRICS_ENABLED) {
     res[kOtelStartTime] = performance.now();
     res[kOtelReqBodySize] = 0;
     const metrics = getOtelMetrics();
@@ -808,64 +908,98 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
     resOnFinish.bind(undefined, req, res, socket, state, server),
   );
 
-  let handled = false;
-
-  if (req.httpVersionMajor === 1 && req.httpVersionMinor === 1) {
-    if (
-      server.requireHostHeader !== false &&
-      req.headers.host === undefined
-    ) {
-      res.writeHead(400, ["Connection", "close"]);
-      res.end();
-      return 0;
-    }
-
-    const isRequestsLimitSet =
-      typeof server.maxRequestsPerSocket === "number" &&
-      server.maxRequestsPerSocket > 0;
-
-    if (isRequestsLimitSet) {
-      state.requestsCount++;
-      res.maxRequestsOnConnectionReached =
-        server.maxRequestsPerSocket <= state.requestsCount;
-    }
-
-    if (
-      isRequestsLimitSet &&
-      server.maxRequestsPerSocket < state.requestsCount
-    ) {
-      handled = true;
-      server.emit("dropRequest", req, socket);
-      res.writeHead(503);
-      res.end();
-    } else if (req.headers.expect !== undefined) {
-      handled = true;
-
-      if (continueExpression.test(req.headers.expect)) {
-        res._expect_continue = true;
-        if (server.listenerCount("checkContinue") > 0) {
-          server.emit("checkContinue", req, res);
-        } else {
-          res.writeContinue();
-          server.emit("request", req, res);
-        }
-      } else if (server.listenerCount("checkExpectation") > 0) {
-        server.emit("checkExpectation", req, res);
-      } else {
-        res.writeHead(417);
-        res.end();
-      }
-    }
+  if (onServerRequestStartChannel.hasSubscribers) {
+    onServerRequestStartChannel.publish({
+      request: req,
+      response: res,
+      socket,
+      server,
+    });
   }
 
-  if (!handled) {
-    server.emit("request", req, res);
+  // Enter a new async-hooks resource scope for the duration of the request
+  // emission. Each request gets its own resource (the IncomingMessage), so
+  // executionAsyncResource() returns a per-request object that is preserved
+  // across timers, await transitions, etc. Without this, every request would
+  // share the top-level resource and concurrent requests would race on any
+  // state stashed there.
+  const prevAsyncResource = enterAsyncResource(req);
+  try {
+    let handled = false;
+
+    if (req.httpVersionMajor === 1 && req.httpVersionMinor === 1) {
+      if (
+        server.requireHostHeader !== false &&
+        req.headers.host === undefined
+      ) {
+        res.writeHead(400, ["Connection", "close"]);
+        res.end();
+        return 0;
+      }
+
+      const isRequestsLimitSet =
+        typeof server.maxRequestsPerSocket === "number" &&
+        server.maxRequestsPerSocket > 0;
+
+      if (isRequestsLimitSet) {
+        state.requestsCount++;
+        res.maxRequestsOnConnectionReached =
+          server.maxRequestsPerSocket <= state.requestsCount;
+      }
+
+      if (
+        isRequestsLimitSet &&
+        server.maxRequestsPerSocket < state.requestsCount
+      ) {
+        handled = true;
+        server.emit("dropRequest", req, socket);
+        res.writeHead(503);
+        res.end();
+      } else if (req.headers.expect !== undefined) {
+        handled = true;
+
+        if (continueExpression.test(req.headers.expect)) {
+          res._expect_continue = true;
+          if (server.listenerCount("checkContinue") > 0) {
+            server.emit("checkContinue", req, res);
+          } else {
+            res.writeContinue();
+            server.emit("request", req, res);
+          }
+        } else if (server.listenerCount("checkExpectation") > 0) {
+          server.emit("checkExpectation", req, res);
+        } else {
+          res.writeHead(417);
+          res.end();
+        }
+      }
+    }
+
+    if (!handled) {
+      server.emit("request", req, res);
+    }
+  } finally {
+    exitAsyncResource(prevAsyncResource);
   }
 
   return 0;
 }
 
+function isRequestKnownEmpty(req) {
+  return req.headers["content-length"] === undefined &&
+    req.headers["transfer-encoding"] === undefined;
+}
+
 function resOnFinish(req, res, socket, state, server) {
+  if (onServerResponseFinishChannel.hasSubscribers) {
+    onServerResponseFinishChannel.publish({
+      request: req,
+      response: res,
+      socket,
+      server,
+    });
+  }
+
   assert(state.incoming.length === 0 || state.incoming[0] === req);
 
   // End OTel server span
@@ -878,6 +1012,30 @@ function resOnFinish(req, res, socket, state, server) {
     }
     span.end();
     res[kOtelSpan] = null;
+  }
+
+  // Emit HttpRequest perf entry
+  const perfStartTime = req[kPerfStartTime];
+  if (perfStartTime !== undefined && hasNodeObserverForType("http")) {
+    enqueueNodePerformanceEntry({
+      name: "HttpRequest",
+      entryType: "http",
+      startTime: perfStartTime,
+      duration: performance.now() - perfStartTime,
+      detail: {
+        req: {
+          method: req.method,
+          url: req.url || "/",
+          headers: req.headers,
+        },
+        res: {
+          statusCode: res.statusCode,
+          statusMessage: res.statusMessage ||
+            STATUS_CODES[res.statusCode] || "",
+          headers: res.getHeaders(),
+        },
+      },
+    });
   }
 
   // Record OTel server metrics
@@ -930,8 +1088,34 @@ function resOnFinish(req, res, socket, state, server) {
         : 0;
 
       if (keepAliveTimeout) {
-        socket.setTimeout(keepAliveTimeout + 1000);
+        const timeoutMsecs = keepAliveTimeout + 1000;
+        const suspendedTimeout = state.keepAliveTimeout;
+        if (
+          state.keepAliveTimeoutSuspended &&
+          socket.setTimeout === net.Socket.prototype.setTimeout &&
+          socket[kTimeout] === null &&
+          state.keepAliveTimeoutMsecs === timeoutMsecs
+        ) {
+          socket[kTimeout] = suspendedTimeout;
+          socket.timeout = timeoutMsecs;
+          suspendedTimeout.refresh();
+        } else {
+          if (state.keepAliveTimeoutSuspended) {
+            suspendedTimeout[kDestroy]();
+          }
+          socket.setTimeout(timeoutMsecs);
+          state.keepAliveTimeout = socket[kTimeout];
+          state.keepAliveTimeoutMsecs = timeoutMsecs;
+        }
         state.keepAliveTimeoutSet = true;
+        state.keepAliveTimeoutSuspended = false;
+      } else if (
+        state.keepAliveTimeoutSuspended
+      ) {
+        state.keepAliveTimeout[kDestroy]();
+        state.keepAliveTimeout = null;
+        state.keepAliveTimeoutMsecs = 0;
+        state.keepAliveTimeoutSuspended = false;
       }
     }
   } else {
@@ -1050,6 +1234,12 @@ function storeHTTPOptions(options) {
   this[kIncomingMessage] = options.IncomingMessage || IncomingMessage;
   this[kServerResponse] = options.ServerResponse || ServerResponse;
 
+  const highWaterMark = options.highWaterMark;
+  if (highWaterMark !== undefined) {
+    validateInteger(highWaterMark, "options.highWaterMark", 1);
+  }
+  this.highWaterMark = highWaterMark;
+
   const maxHeaderSize = options.maxHeaderSize;
   if (maxHeaderSize !== undefined) {
     validateInteger(maxHeaderSize, "maxHeaderSize", 0);
@@ -1061,6 +1251,15 @@ function storeHTTPOptions(options) {
     validateBoolean(insecureHTTPParser, "options.insecureHTTPParser");
   }
   this.insecureHTTPParser = insecureHTTPParser;
+
+  const optimizeEmptyRequests = options.optimizeEmptyRequests;
+  if (optimizeEmptyRequests !== undefined) {
+    validateBoolean(
+      optimizeEmptyRequests,
+      "options.optimizeEmptyRequests",
+    );
+  }
+  this.optimizeEmptyRequests = optimizeEmptyRequests;
 
   const requestTimeout = options.requestTimeout;
   if (requestTimeout !== undefined) {
@@ -1097,6 +1296,18 @@ function storeHTTPOptions(options) {
     this.keepAliveTimeout = 5_000;
   }
 
+  const connectionsCheckingInterval = options.connectionsCheckingInterval;
+  if (connectionsCheckingInterval !== undefined) {
+    validateInteger(
+      connectionsCheckingInterval,
+      "connectionsCheckingInterval",
+      1,
+    );
+    this.connectionsCheckingInterval = connectionsCheckingInterval;
+  } else {
+    this.connectionsCheckingInterval = 30_000;
+  }
+
   const requireHostHeader = options.requireHostHeader;
   if (requireHostHeader !== undefined) {
     validateBoolean(requireHostHeader, "options.requireHostHeader");
@@ -1124,9 +1335,75 @@ function storeHTTPOptions(options) {
   } else {
     this.rejectNonStandardBodyWrites = false;
   }
+
+  const shouldUpgradeCallback = options.shouldUpgradeCallback;
+  if (shouldUpgradeCallback !== undefined) {
+    validateFunction(
+      shouldUpgradeCallback,
+      "options.shouldUpgradeCallback",
+    );
+    this.shouldUpgradeCallback = shouldUpgradeCallback;
+  } else {
+    this.shouldUpgradeCallback = function () {
+      return this.listenerCount("upgrade") > 0;
+    };
+  }
 }
 ObjectSetPrototypeOf(Server.prototype, net.Server.prototype);
 ObjectSetPrototypeOf(Server, net.Server);
+
+// Applies the DENO_SERVE_ADDRESS override before delegating to
+// net.Server.prototype.listen.
+//
+// TCP overrides rewrite the address passed to listen(). Non-TCP and
+// duplicate overrides spin up a separate Deno listener that feeds
+// synthetic "connection" events into this server.
+Server.prototype.listen = function listen(...args) {
+  const applied = applyAddressOverride();
+
+  switch (applied.mode) {
+    case "none":
+      return net.Server.prototype.listen.apply(this, args);
+
+    case "tcp": {
+      // Rewrite the listen args so the normal net.Server code binds
+      // to the override address instead of what the app requested.
+      let cb;
+      const last = args[args.length - 1];
+      if (typeof last === "function") {
+        cb = last;
+        args = args.slice(0, -1);
+      }
+      const rewritten = [{ host: applied.host, port: applied.port }];
+      if (cb) rewritten.push(cb);
+      return net.Server.prototype.listen.apply(this, rewritten);
+    }
+
+    case "override-only": {
+      // Don't bind the app-supplied TCP address at all -- the override
+      // listener is the only way into this server. `listening` on
+      // net.Server is derived from `_handle`, so install a stub that
+      // reports listening without owning a real OS handle.
+      let cb;
+      const last = args[args.length - 1];
+      if (typeof last === "function") cb = last;
+      if (cb) this.once("listening", cb);
+      this._handle = {
+        close() {},
+        ref() {},
+        unref() {},
+      };
+      startOverrideListener(this, applied.override, connectionListener);
+      nextTick(() => this.emit("listening"));
+      return this;
+    }
+
+    case "duplicate": {
+      startOverrideListener(this, applied.override, connectionListener);
+      return net.Server.prototype.listen.apply(this, args);
+    }
+  }
+};
 
 Server.prototype.setTimeout = function setTimeout(msecs, callback) {
   this.timeout = msecs;

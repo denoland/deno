@@ -2076,36 +2076,6 @@ fn display_parts_to_string<'a>(
         // should decode percent-encoding string when hovering over the right edge of module specifier like below
         // module "file:///path/to/🦕"
         to_percent_decoded_str(&part.text),
-        // NOTE: The reason why an example above that lacks `.ts` extension is caused by the implementation of tsc itself.
-        // The request `tsc.request.getQuickInfoAtPosition` receives the payload from tsc host as follows.
-        // {
-        //   text_span: {
-        //     start: 19,
-        //     length: 9,
-        //   },
-        //   displayParts:
-        //     [
-        //       {
-        //         text: "module",
-        //         kind: "keyword",
-        //         target: null,
-        //       },
-        //       {
-        //         text: " ",
-        //         kind: "space",
-        //         target: null,
-        //       },
-        //       {
-        //         text: "\"file:///path/to/%F0%9F%A6%95\"",
-        //         kind: "stringLiteral",
-        //         target: null,
-        //       },
-        //     ],
-        //   documentation: [],
-        //   tags: null,
-        // }
-        //
-        // related issue: https://github.com/denoland/deno/issues/16058
       ),
     }
   }
@@ -4251,18 +4221,25 @@ impl CompletionEntry {
         .description = Some(display_source);
     }
 
-    let text_edit =
-      if let (Some(text_span), Some(new_text)) = (range, &insert_text) {
-        let range = text_span.to_range(line_index);
-        let insert_replace_edit = lsp::InsertReplaceEdit {
-          new_text: new_text.clone(),
-          insert: range,
-          replace: range,
-        };
-        Some(insert_replace_edit.into())
-      } else {
-        None
+    let text_edit = if let Some(text_span) = &range {
+      let range = text_span.to_range(line_index);
+      // TSC may provide a `replacementSpan` without a corresponding
+      // `insertText` (e.g. for string union literal members). In that case
+      // fall back to the entry name as the text to insert, matching the
+      // behavior of VSCode's TypeScript integration. Without this, the editor
+      // is left to apply its own word-based replacement, which breaks on
+      // string values containing characters like `.` (the part before the
+      // last dot is forgotten).
+      let new_text = insert_text.clone().unwrap_or_else(|| self.name.clone());
+      let insert_replace_edit = lsp::InsertReplaceEdit {
+        new_text,
+        insert: range,
+        replace: range,
       };
+      Some(insert_replace_edit.into())
+    } else {
+      None
+    };
 
     let data = TsJsCompletionItemData {
       uri: module.uri.as_ref().clone(),
@@ -4927,10 +4904,12 @@ fn op_resolve_inner(
       o.map(|(s, mt)| {
         (
           state.specifier_map.denormalize(&s, mt),
-          if matches!(mt, MediaType::Unknown) {
-            None
-          } else {
-            Some(mt.as_ts_extension().to_string())
+          match mt {
+            MediaType::Unknown => None,
+            // surface these as .js for typescript so side-effect imports
+            // (e.g. `import "./styles.css"`) don't trigger TS6263
+            MediaType::Css => Some(".js".to_string()),
+            _ => Some(mt.as_ts_extension().to_string()),
           },
         )
       })
@@ -5271,7 +5250,6 @@ fn op_project_version(state: &mut OpState) -> usize {
 }
 
 #[op2]
-#[serde]
 fn op_tsc_constants() -> crate::tsc::TscConstants {
   crate::tsc::TscConstants::new()
 }
@@ -6567,6 +6545,8 @@ mod tests {
       json!(diagnostics),
       json!([
         {
+          "category": 1,
+          "code": 2339,
           "start": {
             "line": 2,
             "character": 16,
@@ -6575,11 +6555,9 @@ mod tests {
             "line": 2,
             "character": 17
           },
-          "fileName": specifier,
-          "messageText": "Property \'a\' does not exist on type \'typeof import(\"https://deno.land/x/example/a\")\'.",
+          "messageText": "Property \'a\' does not exist on type \'typeof import(\"https://deno.land/x/example/a.ts\", { with: { \"resolution-mode\": \"import\" } })\'.",
           "sourceLine": "          if (a.a === \"b\") {",
-          "code": 2339,
-          "category": 1,
+          "fileName": specifier,
         }
       ]),
     );

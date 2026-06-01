@@ -43,6 +43,18 @@ pub enum CjsAnalysis<'a> {
 pub struct CjsAnalysisExports {
   pub exports: Vec<String>,
   pub reexports: Vec<String>,
+  /// Re-exports that pin down a specific member of the inner module
+  /// (the shape `module.exports = require(X).MEMBER`). For these, only
+  /// names statically attached to that member in the inner module are
+  /// surfaced as exports of the wrapper.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub member_reexports: Vec<CjsMemberReExport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CjsMemberReExport {
+  pub specifier: String,
+  pub member: String,
 }
 
 /// What parts of an ES module should be analyzed.
@@ -68,6 +80,21 @@ pub trait CjsCodeAnalyzer {
     maybe_source: Option<Cow<'a, str>>,
     esm_analysis_mode: EsmAnalysisMode,
   ) -> Result<CjsAnalysis<'a>, JsErrorBox>;
+
+  /// For `module.exports = require(X).MEMBER` shapes, return the names
+  /// statically attached as properties of the value bound to
+  /// `exports.MEMBER` in the module at `specifier`. Used by callers to
+  /// narrow the wrapper's named exports to names the inner module
+  /// actually exposes on that specific member, rather than the entire
+  /// inner module. Returns `None` if the member's value can't be
+  /// statically resolved to such an identifier, in which case the
+  /// caller should advertise no names under the member shape.
+  async fn analyze_cjs_member_props<'a>(
+    &self,
+    specifier: &Url,
+    maybe_source: Option<Cow<'a, str>>,
+    member: &str,
+  ) -> Result<Option<Vec<String>>, JsErrorBox>;
 }
 
 pub enum ResolvedCjsAnalysis<'a> {
@@ -192,7 +219,90 @@ impl<
       }
     }
 
+    if !analysis.member_reexports.is_empty() {
+      let mut errors = Vec::new();
+      self
+        .resolve_member_reexports(
+          entry_specifier,
+          &analysis.member_reexports,
+          &mut all_exports,
+          &mut errors,
+        )
+        .await;
+      if !errors.is_empty() {
+        errors.sort_by_cached_key(|e| e.to_string());
+        return Err(TranslateCjsToEsmError::ExportAnalysis(errors.remove(0)));
+      }
+    }
+
     Ok(ResolvedCjsAnalysis::Cjs(all_exports))
+  }
+
+  /// For each `module.exports = require(X).MEMBER` shape recorded on
+  /// `referrer`, resolve `X`, ask the analyzer for the property
+  /// names attached to the value of `exports.MEMBER` inside `X`, and
+  /// surface those (and only those) as names on the wrapper. This is
+  /// strictly narrower than treating `X` as a wildcard re-export: only
+  /// names the inner module statically attaches to the specific member
+  /// are advertised, so unrelated names from `X` don't leak through.
+  #[allow(
+    clippy::needless_lifetimes,
+    reason = "explicit lifetimes improve clarity"
+  )]
+  async fn resolve_member_reexports<'a>(
+    &'a self,
+    referrer: &Url,
+    member_reexports: &[CjsMemberReExport],
+    all_exports: &mut BTreeSet<String>,
+    errors: &mut Vec<JsErrorBox>,
+  ) {
+    for entry in member_reexports {
+      let result = self
+        .resolve(
+          &entry.specifier,
+          referrer,
+          &[
+            Cow::Borrowed("deno"),
+            Cow::Borrowed("node"),
+            Cow::Borrowed("require"),
+            Cow::Borrowed("module-sync"),
+            Cow::Borrowed("default"),
+          ],
+          NodeResolutionKind::Execution,
+        )
+        .and_then(|value| {
+          value
+            .map(|url_or_path| url_or_path.into_url())
+            .transpose()
+            .map_err(JsErrorBox::from_err)
+        });
+      let inner_specifier = match result {
+        Ok(Some(spec)) => spec,
+        Ok(None) => continue,
+        Err(err) => {
+          errors.push(err);
+          continue;
+        }
+      };
+      let props = match self
+        .cjs_code_analyzer
+        .analyze_cjs_member_props(&inner_specifier, None, &entry.member)
+        .await
+      {
+        Ok(Some(props)) => props,
+        Ok(None) => continue,
+        Err(err) => {
+          errors.push(err);
+          continue;
+        }
+      };
+      for prop in props {
+        if prop == "default" {
+          continue;
+        }
+        all_exports.insert(prop);
+      }
+    }
   }
 
   #[allow(
@@ -237,6 +347,7 @@ impl<
                 Cow::Borrowed("deno"),
                 Cow::Borrowed("node"),
                 Cow::Borrowed("require"),
+                Cow::Borrowed("module-sync"),
                 Cow::Borrowed("default"),
               ],
               NodeResolutionKind::Execution,
@@ -316,6 +427,17 @@ impl<
               &mut analyze_futures,
               errors,
             );
+          }
+
+          if !analysis.member_reexports.is_empty() {
+            self
+              .resolve_member_reexports(
+                &reexport_specifier,
+                &analysis.member_reexports,
+                all_exports,
+                errors,
+              )
+              .await;
           }
 
           all_exports.extend(
@@ -425,7 +547,9 @@ impl<
       } else if let Some(main) =
         self.node_resolver.legacy_fallback_resolve(&package_json)
       {
-        return Ok(Some(UrlOrPath::Path(module_dir.join(main).clean())));
+        return self
+          .file_extension_probe(module_dir.join(main), referrer_path)
+          .map(|p| Some(UrlOrPath::Path(p)));
       } else {
         return Ok(Some(UrlOrPath::Path(module_dir.join("index.js").clean())));
       }

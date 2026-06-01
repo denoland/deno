@@ -20,7 +20,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypePop,
   ArrayPrototypePush,
@@ -38,11 +38,11 @@ const {
   Uint8Array,
 } = primordials;
 import { setImmediate } from "node:timers";
-import {
+const {
   allMethods,
   HTTPParser,
   methods,
-} from "ext:deno_node/internal_binding/http_parser.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/http_parser.ts");
 import { IncomingMessage, readStart, readStop } from "node:_http_incoming";
 
 const kIncomingMessage = Symbol("IncomingMessage");
@@ -133,7 +133,9 @@ function parserOnHeadersComplete(
   const ParserIncomingMessage = (socket?.server?.[kIncomingMessage]) ||
     IncomingMessage;
 
-  const incoming = parser.incoming = new ParserIncomingMessage(socket);
+  const incoming = parser.incoming = new ParserIncomingMessage(socket, {
+    highWaterMark: socket?.server?.highWaterMark,
+  });
   incoming.httpVersionMajor = versionMajor;
   incoming.httpVersionMinor = versionMinor;
   incoming.httpVersion = versionMajor === 1 && versionMinor === 1
@@ -306,6 +308,7 @@ function cleanParser(parser) {
   parser.onIncoming = null;
   parser.joinDuplicateHeaders = null;
   parser._asyncResource = null;
+  parser._lastRawPacket = null;
 }
 
 // The Rust binding collapses every llhttp errno into the generic HPE_ERROR;

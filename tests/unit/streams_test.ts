@@ -6,6 +6,10 @@ import {
   fail,
 } from "./test_util.ts";
 
+// `resourceForReadableStream` is registered on the internals object only when
+// `ext:deno_web/06_streams.js` first evaluates, which is now lazy. Touch the
+// lazy `ReadableStream` global so the polyfill loads before we read it below.
+const { ReadableStream: _ReadableStream } = globalThis;
 const {
   core,
   resourceForReadableStream,
@@ -71,7 +75,7 @@ function longStream() {
 
 // Long stream with Lorem Ipsum text.
 function longAsyncStream(cancelResolve?: (value: unknown) => void) {
-  let currentTimeout: number | undefined = undefined;
+  let currentTimeout: NodeJS.Timeout | undefined = undefined;
   return new ReadableStream({
     async start(controller) {
       for (let i = 0; i < 100; i++) {
@@ -620,7 +624,7 @@ Deno.test(async function readableStreamFromWithStringThrows() {
   function startUpstreamServer() {
     Deno.serve({ port: upstreamServerPort, signal: stopSignal.signal }, (_) => {
       // Create an infinite readable stream that emits 'a'
-      let pushTimeout: number | null = null;
+      let pushTimeout: NodeJS.Timeout | null = null;
       const readableStream = new ReadableStream({
         start(controller) {
           const encoder = new TextEncoder();

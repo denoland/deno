@@ -4,21 +4,29 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import * as net from "node:net";
-import EventEmitter from "node:events";
-import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+const { debuglog } = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
 let debug = debuglog("http", (fn) => {
   debug = fn;
 });
-import { AsyncResource } from "node:async_hooks";
-import { symbols } from "ext:deno_node/internal/async_hooks.ts";
+const { AsyncResource } = core.loadExtScript("ext:deno_node/async_hooks.ts");
+const {
+  emitDestroy,
+  emitInit,
+  executionAsyncId,
+  symbols,
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { async_id_symbol } = symbols;
-import { once } from "ext:deno_node/internal/util.mjs";
-import {
+const { once } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const {
   validateNumber,
   validateOneOf,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 const kOnKeylog = Symbol("onkeylog");
 const kRequestOptions = Symbol("requestOptions");
@@ -41,6 +49,53 @@ class ReusedHandle {
     this.handle = handle;
   }
 }
+
+const providerTypeNames = [
+  "NONE",
+  "DIRHANDLE",
+  "DNSCHANNEL",
+  "ELDHISTOGRAM",
+  "FILEHANDLE",
+  "FILEHANDLECLOSEREQ",
+  "FIXEDSIZEBLOBCOPY",
+  "FSEVENTWRAP",
+  "FSREQCALLBACK",
+  "FSREQPROMISE",
+  "GETADDRINFOREQWRAP",
+  "GETNAMEINFOREQWRAP",
+  "HEAPSNAPSHOT",
+  "HTTP2SESSION",
+  "HTTP2STREAM",
+  "HTTP2PING",
+  "HTTP2SETTINGS",
+  "HTTPINCOMINGMESSAGE",
+  "HTTPCLIENTREQUEST",
+  "JSSTREAM",
+  "JSUDPWRAP",
+  "MESSAGEPORT",
+  "PIPECONNECTWRAP",
+  "PIPESERVERWRAP",
+  "PIPEWRAP",
+  "PROCESSWRAP",
+  "PROMISE",
+  "QUERYWRAP",
+  "SHUTDOWNWRAP",
+  "SIGNALWRAP",
+  "STATWATCHER",
+  "STREAMPIPE",
+  "TCPCONNECTWRAP",
+  "TCPSERVERWRAP",
+  "TCPWRAP",
+  "TLSWRAP",
+  "TTYWRAP",
+  "UDPSENDWRAP",
+  "UDPWRAP",
+  "SIGINTWATCHDOG",
+  "WORKER",
+  "WORKERHEAPSNAPSHOT",
+  "WRITEWRAP",
+  "ZLIB",
+];
 
 function freeSocketErrorListener(err) {
   // deno-lint-ignore no-this-alias
@@ -571,9 +626,23 @@ function asyncResetHandle(socket) {
   // Guard against an uninitialized or user supplied Socket.
   const handle = socket._handle;
   if (handle && typeof handle.asyncReset === "function") {
+    const oldAsyncId = handle.getAsyncId();
+    const providerType = handle.getProviderType();
+    const reusedHandle = new ReusedHandle(providerType, handle);
+
+    if (oldAsyncId > 0) {
+      emitDestroy(oldAsyncId);
+    }
+
     // Assign the handle a new asyncId and run any destroy()/init() hooks.
-    handle.asyncReset(new ReusedHandle(handle.getProviderType(), handle));
+    handle.asyncReset(reusedHandle);
     socket[async_id_symbol] = handle.getAsyncId();
+    emitInit(
+      socket[async_id_symbol],
+      providerTypeNames[providerType] || "UNKNOWN",
+      executionAsyncId(),
+      reusedHandle,
+    );
   }
 }
 

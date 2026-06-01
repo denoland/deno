@@ -15,6 +15,7 @@
 /// <reference lib="deno.crypto" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.broadcast_channel" />
+/// <reference lib="node" />
 
 /** @category Wasm */
 declare namespace WebAssembly {
@@ -352,61 +353,6 @@ declare namespace WebAssembly {
   export function validate(bytes: BufferSource): boolean;
 }
 
-/** Sets a timer which executes a function once after the delay (in milliseconds) elapses. Returns
- * an id which may be used to cancel the timeout.
- *
- * ```ts
- * setTimeout(() => { console.log('hello'); }, 500);
- * ```
- *
- * @category Platform
- */
-declare function setTimeout(
-  cb: string | ((...args: any[]) => void),
-  delay?: number,
-  ...args: any[]
-): number;
-
-/** Repeatedly calls a function , with a fixed time delay between each call.
- *
- * ```ts
- * // Outputs 'hello' to the console every 500ms
- * setInterval(() => { console.log('hello'); }, 500);
- * ```
- *
- * @category Platform
- */
-declare function setInterval(
-  cb: string | ((...args: any[]) => void),
-  delay?: number,
-  ...args: any[]
-): number;
-
-/** Cancels a timed, repeating action which was previously started by a call
- * to `setInterval()`
- *
- * ```ts
- * const id = setInterval(() => {console.log('hello');}, 500);
- * // ...
- * clearInterval(id);
- * ```
- *
- * @category Platform
- */
-declare function clearInterval(id?: number): void;
-
-/** Cancels a scheduled action initiated by `setTimeout()`
- *
- * ```ts
- * const id = setTimeout(() => {console.log('hello');}, 500);
- * // ...
- * clearTimeout(id);
- * ```
- *
- * @category Platform
- */
-declare function clearTimeout(id?: number): void;
-
 /** @category Platform */
 interface VoidFunction {
   (): void;
@@ -439,23 +385,6 @@ declare function queueMicrotask(func: VoidFunction): void;
  */
 declare function dispatchEvent(event: Event): boolean;
 
-/** @category Platform */
-interface DOMStringList {
-  /** Returns the number of strings in strings. */
-  readonly length: number;
-  /** Returns true if strings contains string, and false otherwise. */
-  contains(string: string): boolean;
-  /** Returns the string with index index from strings. */
-  item(index: number): string | null;
-  [index: number]: string;
-}
-
-/** @category Platform */
-type BufferSource = ArrayBufferView<ArrayBuffer> | ArrayBuffer;
-
-/** @category Platform */
-type AllowSharedBufferSource = ArrayBufferView | ArrayBufferLike;
-
 /**
  * A global console object that provides methods for logging, debugging, and error reporting.
  * The console object provides access to the browser's or runtime's debugging console functionality.
@@ -474,6 +403,23 @@ type AllowSharedBufferSource = ArrayBufferView | ArrayBufferLike;
  * @category I/O
  */
 declare var console: Console;
+
+/** @category Platform */
+interface DOMStringList {
+  /** Returns the number of strings in strings. */
+  readonly length: number;
+  /** Returns true if strings contains string, and false otherwise. */
+  contains(string: string): boolean;
+  /** Returns the string with index index from strings. */
+  item(index: number): string | null;
+  [index: number]: string;
+}
+
+/** @category Platform */
+type BufferSource = ArrayBufferView<ArrayBuffer> | ArrayBuffer;
+
+/** @category Platform */
+type AllowSharedBufferSource = ArrayBufferView | ArrayBufferLike;
 
 /** @category Events */
 interface ErrorEventInit extends EventInit {
@@ -938,3 +884,30 @@ declare function fetch(
   input: RequestInfo | URL,
   init?: RequestInit & { client?: Deno.HttpClient },
 ): Promise<Response>;
+
+/** @category Platform */
+interface Math {
+  /**
+   * Returns the sum of the given values using a more precise algorithm than a
+   * naive `+`-based reduction, avoiding the floating-point rounding errors
+   * that accumulate when summing many numbers.
+   *
+   * [MDN Reference](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/sumPrecise)
+   */
+  sumPrecise(values: Iterable<number>): number;
+}
+
+/** @category Intl */
+declare namespace Intl {
+  /** @category Intl */
+  export interface Locale {
+    /**
+     * Returns the variant subtags of the locale as a single string, with
+     * subtags separated by `-`. Returns `undefined` if the locale has no
+     * variant subtags.
+     *
+     * [MDN Reference](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Locale/variants)
+     */
+    readonly variants: string | undefined;
+  }
+}

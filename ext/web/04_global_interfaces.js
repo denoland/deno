@@ -3,13 +3,14 @@
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   Symbol,
   SymbolToStringTag,
   TypeError,
 } = primordials;
-import { EventTarget } from "./02_event.js";
+const { EventTarget } = core.loadExtScript("ext:deno_web/02_event.js");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
@@ -73,7 +74,7 @@ const workerGlobalScopeConstructorDescriptor = {
   writable: true,
 };
 
-export {
+return {
   DedicatedWorkerGlobalScope,
   dedicatedWorkerGlobalScopeConstructorDescriptor,
   Window,
@@ -81,3 +82,4 @@ export {
   WorkerGlobalScope,
   workerGlobalScopeConstructorDescriptor,
 };
+})();

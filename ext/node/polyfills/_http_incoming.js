@@ -24,7 +24,7 @@
 
 // deno-lint-ignore-file prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ObjectDefineProperty,
   ObjectSetPrototypeOf,
@@ -32,7 +32,7 @@ const {
 } = primordials;
 
 import { finished, Readable } from "node:stream";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 
 const kHeaders = Symbol("kHeaders");
 const kHeadersDistinct = Symbol("kHeadersDistinct");
@@ -54,12 +54,12 @@ function readStop(socket) {
 }
 
 /* Abstract base class for ServerRequest and ClientResponse. */
-function IncomingMessage(socket) {
+function IncomingMessage(socket, options) {
   let streamOptions;
 
   if (socket) {
     streamOptions = {
-      highWaterMark: socket.readableHighWaterMark,
+      highWaterMark: options?.highWaterMark ?? socket.readableHighWaterMark,
     };
   }
 
@@ -374,6 +374,19 @@ function matchKnownFields(field, lowercased) {
 
 IncomingMessage.prototype._addHeaderLine = _addHeaderLine;
 function _addHeaderLine(field, value, dest) {
+  if (
+    field.length > 2 && field[1] === "-" &&
+    (field[0] === "X" || field[0] === "x")
+  ) {
+    field = field.toLowerCase();
+    if (typeof dest[field] === "string") {
+      dest[field] += ", " + value;
+    } else {
+      dest[field] = value;
+    }
+    return;
+  }
+
   field = matchKnownFields(field);
   const flag = field.charCodeAt(0);
   if (flag === 0 || flag === 2) {

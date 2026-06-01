@@ -33,6 +33,7 @@ use crate::modules::RequestedModuleType;
 use crate::modules::ResolutionKind;
 use crate::modules::loaders::ModuleLoadReferrer;
 use crate::modules::map::ModuleMap;
+use crate::modules::map::NewModuleResult;
 use crate::modules::module_map_data::ModuleSourceKind;
 use crate::source_map::SourceMapApplication;
 use crate::source_map::SourceMapper;
@@ -77,7 +78,7 @@ pub(crate) struct RecursiveModuleLoad {
   root_module_id: Option<ModuleId>,
   init: LoadInit,
   state: LoadState,
-  module_map_rc: Rc<ModuleMap>,
+  pub(crate) module_map_rc: Rc<ModuleMap>,
   pending: FuturesUnordered<Pin<Box<ModuleLoadFuture>>>,
   visited: HashSet<ModuleReference>,
   visited_as_alias: Rc<RefCell<HashSet<String>>>,
@@ -127,16 +128,15 @@ impl RecursiveModuleLoad {
     Ok(load)
   }
 
-  /// Starts a new asynchronous load of the module graph for given specifier
-  /// that was imported using `import()`.
-  pub(crate) fn dynamic_import(
+  pub(crate) fn new_dynamic_import(
     specifier: String,
     referrer: String,
     requested_module_type: RequestedModuleType,
     phase: ModuleImportPhase,
     module_map_rc: Rc<ModuleMap>,
+    resolved_specifier: Result<ModuleSpecifier, ModuleLoaderError>,
   ) -> Self {
-    Self::new(
+    Self::new_with_resolved_specifier(
       LoadInit::DynamicImport(
         specifier,
         referrer,
@@ -144,25 +144,29 @@ impl RecursiveModuleLoad {
         phase,
       ),
       module_map_rc,
+      resolved_specifier,
     )
   }
 
   fn new(init: LoadInit, module_map_rc: Rc<ModuleMap>) -> Self {
+    let resolve_response = Self::resolve_root_from_init(&init, &module_map_rc);
+    Self::new_with_resolved_specifier(init, module_map_rc, resolve_response)
+  }
+
+  fn new_with_resolved_specifier(
+    init: LoadInit,
+    module_map_rc: Rc<ModuleMap>,
+    resolve_response: Result<ModuleSpecifier, ModuleLoaderError>,
+  ) -> Self {
     let id = module_map_rc.next_load_id();
     let loader = module_map_rc.loader.borrow().clone();
-    let requested_module_type = match &init {
-      LoadInit::DynamicImport(_, _, module_type, _) => module_type.clone(),
-      _ => RequestedModuleType::None,
-    };
-    // Resolve the root specifier eagerly to cache it. Both success and error
-    // are cached to avoid resolving twice.
-    let resolved_specifier =
-      Some(Self::resolve_root_from_init(&init, &module_map_rc));
+    let resolved_specifier = Some(resolve_response.map_err(CoreError::from));
     let root_module_id = resolved_specifier
       .as_ref()
       .and_then(|r| r.as_ref().ok())
       .and_then(|spec| {
-        module_map_rc.get_id(spec.as_str(), requested_module_type)
+        module_map_rc
+          .get_id(spec.as_str(), Self::requested_module_type_from_init(&init))
       });
     Self {
       id,
@@ -191,10 +195,17 @@ impl RecursiveModuleLoad {
     self.root_module_reference.as_ref()
   }
 
+  fn requested_module_type_from_init(init: &LoadInit) -> &RequestedModuleType {
+    match init {
+      LoadInit::DynamicImport(_, _, module_type, _) => module_type,
+      _ => &RequestedModuleType::None,
+    }
+  }
+
   fn resolve_root_from_init(
     init: &LoadInit,
     module_map_rc: &ModuleMap,
-  ) -> Result<ModuleSpecifier, CoreError> {
+  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
     match init {
       LoadInit::Main(specifier) => {
         module_map_rc.resolve(specifier, ".", ResolutionKind::MainModule)
@@ -215,7 +226,9 @@ impl RecursiveModuleLoad {
         spec
       }
       Some(Err(err)) => return Err(err),
-      None => unreachable!("prepare() called after resolution consumed"),
+      None => {
+        unreachable!("root specifier is resolved in RecursiveModuleLoad::new")
+      }
     };
     let (maybe_referrer, maybe_code, requested_module_type, is_synchronous) =
       match &mut self.init {
@@ -236,6 +249,23 @@ impl RecursiveModuleLoad {
           false,
         ),
       };
+
+    // Skip prepare_load for lazy-loaded ESM sources -- they are embedded
+    // in the binary and do not need fetching/preparation. Same goes for
+    // `synthetic_esm` modules: their exports come from a backing polyfill
+    // script, not an external fetch.
+    if self
+      .module_map_rc
+      .has_lazy_esm_source(module_specifier.as_str())
+      || self
+        .module_map_rc
+        .has_synthetic_esm_module(module_specifier.as_str())
+        && !self
+          .loader
+          .should_load_synthetic_esm(module_specifier.as_str())
+    {
+      return Ok(());
+    }
 
     self
       .loader
@@ -277,8 +307,39 @@ impl RecursiveModuleLoad {
     &mut self,
     scope: &mut v8::PinScope,
     module_request: &ModuleRequest,
+    module_source: ModuleSource,
+  ) -> Result<RegisterOutcome, ModuleError> {
+    self.register_and_recurse_impl(scope, module_request, module_source)
+  }
+
+  fn register_and_recurse_impl(
+    &mut self,
+    scope: &mut v8::PinScope,
+    module_request: &ModuleRequest,
     mut module_source: ModuleSource,
-  ) -> Result<(), ModuleError> {
+  ) -> Result<RegisterOutcome, ModuleError> {
+    // Synthetic_esm specifiers carry a sentinel `ModuleSource` from
+    // the load step. Divert to building the synthetic module from the
+    // backing script's cached exports instead of going through
+    // `new_module`.
+    if self
+      .module_map_rc
+      .has_synthetic_esm_module(module_request.reference.specifier.as_str())
+    {
+      let module_id = self
+        .module_map_rc
+        .build_synthetic_esm_module(
+          scope,
+          module_request.reference.specifier.as_str(),
+        )
+        .map_err(|e| {
+          let exception = e.to_v8_error(scope);
+          ModuleError::Exception(v8::Global::new(scope, exception))
+        })?;
+      self.finalize_module(module_id, &module_request.reference, None);
+      return Ok(RegisterOutcome::Done);
+    }
+
     if let Some(source_kind) =
       ModuleSourceKind::from_module_type(&module_source.module_type)
     {
@@ -295,7 +356,7 @@ impl RecursiveModuleLoad {
         if self.pending.is_empty() {
           self.state = LoadState::Done;
         }
-        return Ok(());
+        return Ok(RegisterOutcome::Done);
       }
     } else if module_request.phase == ModuleImportPhase::Source {
       let message = v8::String::new(
@@ -312,19 +373,26 @@ impl RecursiveModuleLoad {
 
     let code = module_source.cheap_copy_code();
 
-    let module_id = self.module_map_rc.new_module(
+    match self.module_map_rc.new_module_with_pending(
       scope,
       self.is_currently_loading_main_module(),
       self.is_dynamic_import(),
       module_source,
-    )?;
+    )? {
+      NewModuleResult::Ready(module_id) => {
+        self.finalize_module(module_id, &module_request.reference, Some(&code));
+        Ok(RegisterOutcome::Done)
+      }
+    }
+  }
 
-    self.register_and_recurse_inner(
-      module_id,
-      &module_request.reference,
-      Some(&code),
-    );
-
+  fn finalize_module(
+    &mut self,
+    module_id: ModuleId,
+    reference: &ModuleReference,
+    code: Option<&ModuleSourceCode>,
+  ) {
+    self.register_and_recurse_inner(module_id, reference, code);
     if self.state == LoadState::LoadingRoot {
       self.root_module_id = Some(module_id);
       self.state = LoadState::LoadingImports;
@@ -332,8 +400,6 @@ impl RecursiveModuleLoad {
     if self.pending.is_empty() {
       self.state = LoadState::Done;
     }
-
-    Ok(())
   }
 
   fn register_and_recurse_inner(
@@ -356,7 +422,19 @@ impl RecursiveModuleLoad {
     while let Some((module_id, module_reference)) =
       already_registered.pop_front()
     {
-      let referrer = &module_reference.specifier;
+      // Use the module's canonical (post-redirect) URL as the referrer for
+      // its child imports. After `new_module` aliases e.g. `npm:foo@^1` to
+      // its `file:///.../node_modules/...` location, V8 records the module
+      // under the file URL, and Deno's resolver requires that file URL to
+      // resolve bare specifiers via the package's `package.json`. Using the
+      // original specifier (e.g. `npm:foo@^1`) here strands intra-package
+      // imports without resolution context.
+      let canonical_specifier = self
+        .module_map_rc
+        .get_name_by_id(module_id)
+        .and_then(|n| ModuleSpecifier::parse(&n).ok())
+        .unwrap_or_else(|| module_reference.specifier.clone());
+      let referrer = &canonical_specifier;
       let imports = self
         .module_map_rc
         .get_requested_modules(module_id)
@@ -380,7 +458,7 @@ impl RecursiveModuleLoad {
             _ => {
               let request = module_request.clone();
               let visited_as_alias = self.visited_as_alias.clone();
-              let referrer = code.and_then(|code| {
+              let referrer_info = code.and_then(|code| {
                 let source_offset = request.referrer_source_offset?;
                 source_mapped_module_load_referrer(
                   &self.module_map_rc.source_mapper,
@@ -394,6 +472,7 @@ impl RecursiveModuleLoad {
               let is_synchronous = self.is_synchronous();
               let requested_module_type =
                 request.reference.requested_module_type.clone();
+              let module_map_rc = self.module_map_rc.clone();
               let fut = async move {
                 // `visited_as_alias` unlike `visited` is checked as late as
                 // possible because it can only be populated after completed
@@ -406,19 +485,50 @@ impl RecursiveModuleLoad {
                   return Ok(None);
                 }
 
-                let load_response = loader.load(
-                  &request.reference.specifier,
-                  referrer.as_ref(),
-                  ModuleLoadOptions {
-                    is_dynamic_import,
-                    is_synchronous,
-                    requested_module_type,
-                  },
-                );
+                // Imports are pre-resolved in `new_module_from_js_source` --
+                // `request.reference.specifier` already holds the final URL.
+                let resolved_specifier = request.reference.specifier.clone();
 
-                let load_result = match load_response {
-                  ModuleLoadResponse::Sync(result) => result,
-                  ModuleLoadResponse::Async(fut) => fut.await,
+                // First check if this module is a lazy-loaded ESM source
+                // (embedded in binary but not snapshotted).
+                let load_result = if let Some(source_code) = module_map_rc
+                  .take_lazy_esm_source(resolved_specifier.as_str())
+                {
+                  Ok(ModuleSource::new(
+                    crate::ModuleType::JavaScript,
+                    ModuleSourceCode::String(source_code),
+                    &resolved_specifier,
+                    None,
+                  ))
+                } else if module_map_rc
+                  .has_synthetic_esm_module(resolved_specifier.as_str())
+                  && !loader
+                    .should_load_synthetic_esm(resolved_specifier.as_str())
+                {
+                  // Sentinel source. `register_and_recurse` detects the
+                  // synthetic_esm specifier and constructs the module from
+                  // its backing script's cached exports object instead of
+                  // calling `new_module` with this source.
+                  Ok(ModuleSource::new(
+                    crate::ModuleType::JavaScript,
+                    ModuleSourceCode::String("".to_string().into()),
+                    &resolved_specifier,
+                    None,
+                  ))
+                } else {
+                  let load_response = loader.load(
+                    &resolved_specifier,
+                    referrer_info.as_ref(),
+                    ModuleLoadOptions {
+                      is_dynamic_import,
+                      is_synchronous,
+                      requested_module_type,
+                    },
+                  );
+                  match load_response {
+                    ModuleLoadResponse::Sync(result) => result,
+                    ModuleLoadResponse::Async(fut) => fut.await,
+                  }
                 };
                 if let Ok(source) = &load_result
                   && let Some(found_specifier) = &source.module_url_found
@@ -442,17 +552,133 @@ impl RecursiveModuleLoad {
   /// loaded module. Returns the root module ID once the full graph is loaded.
   pub(crate) async fn run_to_completion(
     mut self,
-    mut on_module: impl FnMut(
+    mut step: impl FnMut(
       &mut Self,
-      &ModuleRequest,
-      ModuleSource,
-    ) -> Result<(), CoreError>,
+      RegisterStep<'_>,
+    ) -> Result<RegisterOutcome, CoreError>,
   ) -> Result<ModuleId, CoreError> {
     while let Some(load_result) = self.next().await {
       let (request, source) = load_result?;
-      on_module(&mut self, &request, source)?;
+      match step(
+        &mut self,
+        RegisterStep::Register {
+          request: &request,
+          source,
+        },
+      )? {
+        RegisterOutcome::Done => {}
+      }
     }
     Ok(self.root_module_id.expect("Root module should be loaded"))
+  }
+}
+
+/// Action requested by [`RecursiveModuleLoad::run_to_completion`] of its
+/// driver. A single `FnMut` closure handles both — passing one closure rather
+/// than two side-steps the borrow checker (both phases need `&mut isolate`,
+/// but they're never active simultaneously).
+pub(crate) enum RegisterStep<'a> {
+  /// Compile a freshly-loaded module's source, resolve its imports, and
+  /// register it. Returns [`RegisterOutcome`].
+  Register {
+    request: &'a ModuleRequest,
+    source: ModuleSource,
+  },
+}
+
+/// Outcome of a single `register_and_recurse` call.
+pub(crate) enum RegisterOutcome {
+  /// Module was registered synchronously; no further work for this entry.
+  Done,
+}
+
+impl RecursiveModuleLoad {
+  /// Shared logic for Init once the root specifier has been resolved.
+  fn init_with_resolved_root(
+    inner: &mut Self,
+    module_specifier: ModuleSpecifier,
+    cx: &mut Context,
+  ) -> Poll<Option<Result<(ModuleRequest, ModuleSource), CoreError>>> {
+    let (requested_module_type, phase) = match &inner.init {
+      LoadInit::DynamicImport(_, _, module_type, phase) => {
+        (module_type.clone(), *phase)
+      }
+      _ => (RequestedModuleType::None, ModuleImportPhase::Evaluation),
+    };
+    let module_request = ModuleRequest {
+      reference: ModuleReference {
+        specifier: module_specifier.clone(),
+        requested_module_type: requested_module_type.clone(),
+      },
+      specifier_key: None,
+      referrer_source_offset: None,
+      phase,
+    };
+    inner.root_module_reference = Some(module_request.reference.clone());
+    let load_fut = if phase == ModuleImportPhase::Evaluation
+      && let Some(module_id) = inner.root_module_id
+    {
+      // If the inner future is already in the map, we might be done (assuming there are no pending
+      // loads).
+      inner.register_and_recurse_inner(
+        module_id,
+        &module_request.reference,
+        None,
+      );
+      if inner.pending.is_empty() {
+        inner.state = LoadState::Done;
+      } else {
+        inner.state = LoadState::LoadingImports;
+      }
+      // Internally re-poll using the new state to avoid spinning the event loop again.
+      return Pin::new(inner).poll_next(cx);
+    } else if inner
+      .module_map_rc
+      .has_synthetic_esm_module(module_specifier.as_str())
+      && !inner
+        .loader
+        .should_load_synthetic_esm(module_specifier.as_str())
+    {
+      let module_request = module_request.clone();
+      let module_specifier = module_specifier.clone();
+      async move {
+        Ok(Some((
+          module_request,
+          ModuleSource::new(
+            crate::ModuleType::JavaScript,
+            ModuleSourceCode::String("".to_string().into()),
+            &module_specifier,
+            None,
+          ),
+        )))
+      }
+      .boxed_local()
+    } else {
+      let loader = inner.loader.clone();
+      let is_dynamic_import = inner.is_dynamic_import();
+      let is_synchronous = inner.is_synchronous();
+      let requested_module_type = requested_module_type.clone();
+      async move {
+        let load_response = loader.load(
+          &module_specifier,
+          None,
+          ModuleLoadOptions {
+            is_dynamic_import,
+            is_synchronous,
+            requested_module_type,
+          },
+        );
+        let result = match load_response {
+          ModuleLoadResponse::Sync(result) => result,
+          ModuleLoadResponse::Async(fut) => fut.await,
+        };
+        result.map(|s| Some((module_request, s)))
+      }
+      .boxed_local()
+    };
+    inner.pending.push(load_fut);
+    inner.state = LoadState::LoadingRoot;
+    inner.try_poll_next_unpin(cx)
   }
 }
 
@@ -473,69 +699,9 @@ impl Stream for RecursiveModuleLoad {
           Some(Err(error)) => {
             return Poll::Ready(Some(Err(error)));
           }
-          None => {
-            unreachable!("resolved_specifier should be set in LoadState::Init")
-          }
+          None => unreachable!("root specifier is resolved before polling"),
         };
-        let (requested_module_type, phase) = match &inner.init {
-          LoadInit::DynamicImport(_, _, module_type, phase) => {
-            (module_type.clone(), *phase)
-          }
-          _ => (RequestedModuleType::None, ModuleImportPhase::Evaluation),
-        };
-        let module_request = ModuleRequest {
-          reference: ModuleReference {
-            specifier: module_specifier.clone(),
-            requested_module_type: requested_module_type.clone(),
-          },
-          specifier_key: None,
-          referrer_source_offset: None,
-          phase,
-        };
-        inner.root_module_reference = Some(module_request.reference.clone());
-        let load_fut = if phase == ModuleImportPhase::Evaluation
-          && let Some(module_id) = inner.root_module_id
-        {
-          // If the inner future is already in the map, we might be done (assuming there are no pending
-          // loads).
-          inner.register_and_recurse_inner(
-            module_id,
-            &module_request.reference,
-            None,
-          );
-          if inner.pending.is_empty() {
-            inner.state = LoadState::Done;
-          } else {
-            inner.state = LoadState::LoadingImports;
-          }
-          // Internally re-poll using the new state to avoid spinning the event loop again.
-          return Self::poll_next(Pin::new(inner), cx);
-        } else {
-          let loader = inner.loader.clone();
-          let is_dynamic_import = inner.is_dynamic_import();
-          let is_synchronous = inner.is_synchronous();
-          let requested_module_type = requested_module_type.clone();
-          async move {
-            let load_response = loader.load(
-              &module_specifier,
-              None,
-              ModuleLoadOptions {
-                is_dynamic_import,
-                is_synchronous,
-                requested_module_type,
-              },
-            );
-            let result = match load_response {
-              ModuleLoadResponse::Sync(result) => result,
-              ModuleLoadResponse::Async(fut) => fut.await,
-            };
-            result.map(|s| Some((module_request, s)))
-          }
-          .boxed_local()
-        };
-        inner.pending.push(load_fut);
-        inner.state = LoadState::LoadingRoot;
-        inner.try_poll_next_unpin(cx)
+        Self::init_with_resolved_root(inner, module_specifier, cx)
       }
       LoadState::LoadingRoot | LoadState::LoadingImports => {
         // Poll the futures that load the source code of the modules

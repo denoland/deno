@@ -1,10 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, internals, primordials } = __bootstrap;
 const {
   isPromise,
 } = core;
-import {
+const {
   op_kv_atomic_write,
   op_kv_database_open,
   op_kv_dequeue_next_message,
@@ -13,7 +14,7 @@ import {
   op_kv_snapshot_read,
   op_kv_watch,
   op_kv_watch_next,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayFrom,
   ArrayPrototypeJoin,
@@ -44,7 +45,9 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
-import { ReadableStream } from "ext:deno_web/06_streams.js";
+const { ReadableStream } = core.loadExtScript("ext:deno_web/06_streams.js");
+
+const cloneableDeserializers = core.getCloneableDeserializers();
 
 const encodeCursor: (
   selector: [Deno.KvKey | null, Deno.KvKey | null, Deno.KvKey | null],
@@ -315,6 +318,7 @@ class Kv {
       const { 0: payload, 1: handleId } = next;
       const deserializedPayload = core.deserialize(payload, {
         forStorage: true,
+        deserializers: cloneableDeserializers,
       });
 
       // Dispatch the payload.
@@ -325,7 +329,7 @@ class Kv {
           const _res = isPromise(result) ? (await result) : result;
           success = true;
         } catch (error) {
-          import.meta.log("error", "Exception in queue handler", error);
+          internals.log("error", "Exception in queue handler", error);
         } finally {
           const promise: Promise<void> = op_kv_finish_dequeued_message(
             handleId,
@@ -607,7 +611,10 @@ class AtomicOperation {
           } else {
             switch (rawValue.kind) {
               case "v8":
-                value = core.deserialize(rawValue.value, { forStorage: true });
+                value = core.deserialize(rawValue.value, {
+                  forStorage: true,
+                  deserializers: cloneableDeserializers,
+                });
                 break;
               case "bytes":
                 value = rawValue.value;
@@ -648,7 +655,10 @@ class AtomicOperation {
       // Deserialize message for display
       let message;
       try {
-        message = core.deserialize(serializedMessage, { forStorage: true });
+        message = core.deserialize(serializedMessage, {
+          forStorage: true,
+          deserializers: cloneableDeserializers,
+        });
       } catch {
         message = "[serialized message]";
       }
@@ -735,7 +745,10 @@ function deserializeValue(entry: RawKvEntry): Deno.KvEntry<unknown> {
     case "v8":
       return {
         ...entry,
-        value: core.deserialize(value, { forStorage: true }),
+        value: core.deserialize(value, {
+          forStorage: true,
+          deserializers: cloneableDeserializers,
+        }),
       };
     case "bytes":
       return {
@@ -950,4 +963,5 @@ async function doAtomicWriteInPlace(
   );
 }
 
-export { AtomicOperation, Kv, KvListIterator, KvU64, openKv };
+return { AtomicOperation, Kv, KvListIterator, KvU64, openKv };
+})();

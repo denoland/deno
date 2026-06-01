@@ -29,10 +29,19 @@ const matrix = defineMatrix({
 const checkout = step({
   name: "Checkout",
   uses: "actions/checkout@v6",
-  with: { submodules: true },
+  with: { submodules: false },
 });
 
-const setupRust = step.dependsOn(checkout)({
+// The node compat tests only need the node_test suite submodule; avoid
+// cloning the other (much larger) submodules like WPT, which has caused
+// flaky failures on Windows runners.
+const cloneNodeCompatSuite = step.dependsOn(checkout)({
+  name: "Clone node_compat suite submodule",
+  run:
+    "git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite",
+});
+
+const setupRust = step.dependsOn(cloneNodeCompatSuite)({
   name: "Setup Rust",
   uses: "dsherret/rust-toolchain-file@v1",
 });
@@ -103,6 +112,7 @@ const testJob = job("test", {
   },
   steps: [
     checkout,
+    cloneNodeCompatSuite,
     setupRust,
     setupDeno,
     installPython,
@@ -117,10 +127,18 @@ const testJob = job("test", {
 const summaryCheckout = step({
   name: "Checkout",
   uses: "actions/checkout@v6",
-  with: { submodules: true },
+  with: { submodules: false },
 });
 
-const summarySetupDeno = step.dependsOn(summaryCheckout)({
+// The summary job's scripts resolve `@std/*` imports through the repo
+// import map, which points at the `tests/util/std` submodule. The other
+// submodules (WPT, etc.) are not needed.
+const summaryCloneStd = step.dependsOn(summaryCheckout)({
+  name: "Clone std submodule",
+  run: "git submodule update --init --recursive --depth=1 -- ./tests/util/std",
+});
+
+const summarySetupDeno = step.dependsOn(summaryCloneStd)({
   name: "Setup Deno",
   uses: "denoland/setup-deno@v2",
 });
@@ -183,7 +201,7 @@ const postSlack = step.dependsOn(uploadMonthSummary)({
 const workflow = createWorkflow({
   name: "node_compat_test",
   on: {
-    schedule: [{ cron: "0 10 * * 1-5" }],
+    schedule: [{ cron: "0 10 * * *" }],
     workflow_dispatch: {},
   },
   jobs: [

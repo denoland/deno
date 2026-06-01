@@ -5,14 +5,25 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals, primordials } from "ext:core/mod.js";
-import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
-import { format } from "ext:deno_node/internal/util/inspect.mjs";
+// Installs `internals.__inspectorNetwork` so ext/fetch (and other
+// extensions) can emit Network.* CDP events without requiring user code
+// to import `node:inspector`. Side-effect import; no exports.
+core.loadExtScript("ext:deno_node/inspector_network_bridge.js");
+const { initializeDebugEnv } = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
+const { format } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
 import {
   op_current_thread_cpu_usage,
   op_fs_umask,
   op_getegid,
   op_geteuid,
   op_getgroups,
+  op_inspector_close,
+  op_inspector_enabled,
+  op_inspector_port,
   op_node_load_env_file,
   op_node_process_constrained_memory,
   op_node_process_kill,
@@ -24,19 +35,23 @@ import {
   op_process_abort,
 } from "ext:core/ops";
 
-import { EventEmitter } from "node:events";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 import Module, { getBuiltinModule } from "node:module";
-import { report } from "ext:deno_node/internal/process/report.ts";
-import { onWarning } from "ext:deno_node/internal/process/warning.ts";
-import {
+const { report } = core.loadExtScript(
+  "ext:deno_node/internal/process/report.ts",
+);
+const { onWarning } = core.loadExtScript(
+  "ext:deno_node/internal/process/warning.ts",
+);
+const {
   parseFileMode,
   validateBoolean,
   validateNumber,
   validateObject,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   denoErrorToNodeError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE_RANGE,
@@ -46,21 +61,23 @@ import {
   ERR_WORKER_UNSUPPORTED_OPERATION,
   errnoException,
   NodeTypeError,
-} from "ext:deno_node/internal/errors.ts";
-import { getOptionValue } from "ext:deno_node/internal/options.ts";
-import assert from "node:assert";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import { join } from "node:path";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
-import {
-  arch as arch_,
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
+const {
+  arch: arch_,
   chdir,
   cwd,
   env,
-  nextTick as _nextTick,
+  nextTick: _nextTick,
   version,
   versions,
-} from "ext:deno_node/_process/process.ts";
-import { _exiting } from "ext:deno_node/_process/exiting.ts";
+} = core.loadExtScript("ext:deno_node/_process/process.ts");
+const { _exiting } = core.loadExtScript("ext:deno_node/_process/exiting.ts");
 export {
   _nextTick as nextTick,
   chdir,
@@ -70,15 +87,22 @@ export {
   version,
   versions,
 };
-import {
-  createWritableStdioStream,
-  initStdin,
-} from "ext:deno_node/_process/streams.mjs";
-import { WriteStream as TTYWriteStream } from "ext:deno_node/internal/tty.js";
-import { enableNextTick } from "ext:deno_node/_next_tick.ts";
-import { isAndroid, isWindows } from "ext:deno_node/_util/os.ts";
-import * as io from "ext:deno_io/12_io.js";
-import * as denoOs from "ext:deno_os/30_os.js";
+// _process/streams.mjs and internal/tty.js are lazy-loaded so that
+// process.stdout/stderr/stdin construction (and the node:stream/net/tty
+// graph it pulls in) is deferred until first access. See Node's pattern
+// in lib/internal/bootstrap/switches/is_main_thread.js (defineStream).
+const lazyProcessStreams = core.createLazyLoader(
+  "ext:deno_node/_process/streams.mjs",
+);
+const lazyInternalTty = core.createLazyLoader(
+  "ext:deno_node/internal/tty.js",
+);
+const { enableNextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { isAndroid, isWindows } = core.loadExtScript(
+  "ext:deno_node/_util/os.ts",
+);
+const io = core.loadExtScript("ext:deno_io/12_io.js");
+const denoOs = core.loadExtScript("ext:deno_os/30_os.js");
 
 export let argv0 = "";
 
@@ -94,22 +118,47 @@ let stdin, stdout, stderr;
 export { stderr, stdin, stdout };
 
 import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
-import * as constants from "ext:deno_node/internal_binding/constants.ts";
-import * as uv from "ext:deno_node/internal_binding/uv.ts";
+const constants = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
+const uv = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
-import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
+const { buildAllowedFlags } = core.loadExtScript(
+  "ext:deno_node/internal/process/per_thread.mjs",
+);
+const {
+  getActiveHandles,
+  getActiveRequests,
+} = core.loadExtScript("ext:deno_node/internal/process/active_resources.ts");
+const {
+  getActiveResourcesInfo: getTimerActiveResourcesInfo,
+} = core.loadExtScript("ext:deno_node/internal/timers.mjs");
 import type fsUtils from "ext:deno_node/internal/fs/utils.mjs";
+import type * as utilModule from "ext:deno_node/util.ts";
 
 let fsUtilsModule: typeof fsUtils;
 const lazyLoadFsUtils = core.createLazyLoader<typeof fsUtils>(
   "ext:deno_node/internal/fs/utils.mjs",
 );
+// Lazy-loaded to avoid a static circular import:
+//   process.ts -> util.ts -> internal/util/parse_args/parse_args.js
+//     -> "node:process" -> process.ts
+const lazyLoadUtil = core.createLazyLoader<typeof utilModule>(
+  "node:util",
+);
 
 const {
   ArrayIsArray,
+  FunctionPrototypeBind,
   NumberMAX_SAFE_INTEGER,
+  ObjectCreate,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
+  ReflectGet,
+  ReflectGetOwnPropertyDescriptor,
+  ReflectGetPrototypeOf,
+  ReflectHas,
+  ReflectOwnKeys,
 } = primordials;
 
 export const argv: string[] = ["", ""];
@@ -414,6 +463,10 @@ memoryUsage.rss = function (): number {
   return memoryUsage().rss;
 };
 
+export function getActiveResourcesInfo(): string[] {
+  return getTimerActiveResourcesInfo();
+}
+
 export function availableMemory(): number {
   return Deno.systemMemoryInfo().available;
 }
@@ -513,16 +566,27 @@ export { getegid, geteuid, getgid, getuid, setegid, seteuid, setgid, setuid };
 
 const ALLOWED_FLAGS = buildAllowedFlags();
 
+// Tracks error values for which the synchronous Module._load entry-module
+// path in 01_require.js has already invoked process._fatalException. When
+// the same error is later re-thrown and surfaces as a module-evaluation
+// rejection (via the ESM wrapper that loads the main CJS module), the
+// unhandled-rejection fallback below uses this set to skip emitting
+// 'uncaughtExceptionMonitor' / 'uncaughtException' a second time.
 // deno-lint-ignore no-explicit-any
-function uncaughtExceptionHandler(err: any, origin: string) {
+const _dispatchedFatalErrors = new WeakSet<any>();
+internals._dispatchedFatalErrors = _dispatchedFatalErrors;
+
+// deno-lint-ignore no-explicit-any
+function uncaughtExceptionHandler(err: any, origin: string): boolean {
   // The origin parameter can be 'unhandledRejection' or 'uncaughtException'
   // depending on how the uncaught exception was created. In Node.js,
   // exceptions thrown from the top level of a CommonJS module are reported as
   // 'uncaughtException', while exceptions thrown from the top level of an ESM
   // module are reported as 'unhandledRejection'. Deno does not have a true
-  // CommonJS implementation, so all exceptions thrown from the top level are
-  // reported as 'uncaughtException'.
-  process._fatalException(err, origin === "unhandledRejection");
+  // CommonJS implementation; sync throws in the entry CJS module are
+  // dispatched up-front via Module._load (see ext/node/polyfills/01_require.js)
+  // so this path only fires for real unhandled promise rejections.
+  return process._fatalException(err, origin === "unhandledRejection");
 }
 
 export let execPath: string = "";
@@ -787,6 +851,62 @@ function _removeAllSignalListeners(
 // @ts-ignore TS doesn't work well with ES5 classes
 const process = new Process();
 
+// `node:process` exposes `stdin`/`stdout`/`stderr` as ESM named exports. The
+// underlying streams are constructed lazily via accessor properties on
+// `process` (see `defineLazyStream` below), so the `let` bindings stay
+// undefined until something touches `process.stdout` etc. Code like
+// `import { stdout } from "node:process"; stdout.write("x")` would then
+// throw. Initialize the exported bindings with delegating proxies that
+// forward every operation to `process[name]`, which triggers the lazy
+// accessor on first use. Once the accessor fires, `defineLazyStream`
+// updates the `let` binding directly so subsequent reads see the real
+// stream and don't pay the proxy hop.
+function makeStreamDelegate(name: "stdin" | "stdout" | "stderr"): unknown {
+  return new Proxy(ObjectCreate(null), {
+    get(_target, prop) {
+      const real = process[name];
+      if (real == null) return undefined;
+      const value = ReflectGet(real, prop, real);
+      return typeof value === "function"
+        ? FunctionPrototypeBind(value, real)
+        : value;
+    },
+    set(_target, prop, value) {
+      const real = process[name];
+      if (real == null) return true;
+      real[prop] = value;
+      return true;
+    },
+    has(_target, prop) {
+      const real = process[name];
+      return real != null && ReflectHas(real, prop);
+    },
+    deleteProperty(_target, prop) {
+      const real = process[name];
+      if (real == null) return true;
+      delete real[prop];
+      return true;
+    },
+    ownKeys(_target) {
+      const real = process[name];
+      return real != null ? ReflectOwnKeys(real) : [];
+    },
+    getOwnPropertyDescriptor(_target, prop) {
+      const real = process[name];
+      return real != null
+        ? ReflectGetOwnPropertyDescriptor(real, prop)
+        : undefined;
+    },
+    getPrototypeOf(_target) {
+      const real = process[name];
+      return real != null ? ReflectGetPrototypeOf(real) : null;
+    },
+  });
+}
+stdin = makeStreamDelegate("stdin");
+stdout = makeStreamDelegate("stdout");
+stderr = makeStreamDelegate("stderr");
+
 /** https://nodejs.org/api/process.html#processrelease */
 Object.defineProperty(process, "release", {
   get() {
@@ -850,8 +970,17 @@ Object.defineProperty(process, "argv0", {
  */
 // Node's default inspector port (kDefaultInspectorPort in src/node_options.h).
 let _debugPort = 9229;
+let _debugPortWasSet = false;
 Object.defineProperty(process, "debugPort", {
   get() {
+    // When the inspector is running, report the actual bound port so
+    // `--inspect=...:0` reflects the ephemeral port chosen at bind
+    // time. An explicit assignment via the setter wins over this
+    // (matching Node's mutable `process.debugPort`).
+    if (!_debugPortWasSet) {
+      const port = op_inspector_port();
+      if (port !== 0) return port;
+    }
     return _debugPort;
   },
   set(val) {
@@ -863,10 +992,38 @@ Object.defineProperty(process, "debugPort", {
       );
     }
     _debugPort = port;
+    _debugPortWasSet = true;
   },
   enumerable: true,
   configurable: true,
 });
+
+/**
+ * Undocumented but public Node API: stops the inspector / debugger session
+ * if one is running. No-op if no inspector is attached. See
+ * `lib/internal/inspector.js` in the Node source.
+ */
+process._debugEnd = function _debugEnd() {
+  if (op_inspector_enabled()) {
+    op_inspector_close();
+  }
+};
+
+/**
+ * Undocumented but public Node API: starts the inspector in another process by
+ * sending `SIGUSR1` to it. On the current process, this would (in Node) open
+ * the inspector; we don't yet support reopening the inspector from JS, so for
+ * `pid === process.pid` we no-op rather than throwing, matching the
+ * "safe when no inspector is active" contract callers rely on.
+ */
+process._debugProcess = function _debugProcess(pid) {
+  if (typeof pid !== "number") {
+    throw new ERR_INVALID_ARG_TYPE("pid", "number", pid);
+  }
+  if (pid !== process.pid) {
+    process.kill(pid, "SIGUSR1");
+  }
+};
 
 /** https://nodejs.org/api/process.html#process_process_chdir_directory */
 process.chdir = chdir;
@@ -876,6 +1033,18 @@ let _configCache: Record<string, unknown> | undefined;
 Object.defineProperty(process, "config", {
   get() {
     if (_configCache === undefined) {
+      // Internal escape hatch for the node_compat test runner: allows a
+      // single test to opt into the "externally-linked OpenSSL" branch of
+      // upstream Node test fixtures, where Deno's aws-lc-rs/BoringSSL
+      // backend matches that branch's expectations. Not for user code; the
+      // env var is reserved (DENO_INTERNAL_*) and undocumented.
+      let forceSharedOpenssl = false;
+      try {
+        forceSharedOpenssl =
+          Deno.env.get("DENO_INTERNAL_NODE_TEST_FORCE_SHARED_OPENSSL") === "1";
+      } catch {
+        // Permission denied or no env access; leave forceSharedOpenssl false.
+      }
       _configCache = Object.freeze({
         target_defaults: Object.freeze({
           default_configuration: "Release",
@@ -885,10 +1054,11 @@ Object.defineProperty(process, "config", {
           // `node_module_version` is an integer ABI version exposed for native
           // addons. Mirror process.versions.modules so a single source of truth
           // wins.
-          node_module_version: Number(versions.modules),
-          llvm_version: "0.0",
-          enable_lto: "false",
-          host_arch: arch,
+          "node_module_version": Number(versions.modules),
+          "llvm_version": "0.0",
+          "enable_lto": "false",
+          "host_arch": arch,
+          ...(forceSharedOpenssl ? { "node_shared_openssl": 1 } : {}),
         }),
       });
     }
@@ -930,6 +1100,10 @@ process.openStdin = () => {
 process._rawDebug = (...args: unknown[]) => {
   core.print(`${format(...args)}\n`, true);
 };
+
+process.getActiveResourcesInfo = getActiveResourcesInfo;
+process._getActiveRequests = getActiveRequests;
+process._getActiveHandles = getActiveHandles;
 
 // Undocumented Node API that is used by `signal-exit` which in turn
 // is used by `node-tap`. It was marked for removal a couple of years
@@ -1258,6 +1432,7 @@ export const removeAllListeners = process.removeAllListeners;
 let unhandledRejectionListenerCount = 0;
 let rejectionHandledListenerCount = 0;
 let uncaughtExceptionListenerCount = 0;
+let uncaughtExceptionMonitorListenerCount = 0;
 let beforeExitListenerCount = 0;
 let exitListenerCount = 0;
 
@@ -1271,6 +1446,9 @@ process.on("newListener", (event: string) => {
       break;
     case "uncaughtException":
       uncaughtExceptionListenerCount++;
+      break;
+    case "uncaughtExceptionMonitor":
+      uncaughtExceptionMonitorListenerCount++;
       break;
     case "beforeExit":
       beforeExitListenerCount++;
@@ -1294,6 +1472,9 @@ process.on("removeListener", (event: string) => {
       break;
     case "uncaughtException":
       uncaughtExceptionListenerCount--;
+      break;
+    case "uncaughtExceptionMonitor":
+      uncaughtExceptionMonitorListenerCount--;
       break;
     case "beforeExit":
       beforeExitListenerCount--;
@@ -1349,6 +1530,7 @@ function synchronizeListeners() {
   if (
     unhandledRejectionListenerCount > 0 ||
     uncaughtExceptionListenerCount > 0 ||
+    uncaughtExceptionMonitorListenerCount > 0 ||
     _uncaughtExceptionCaptureFn !== null
   ) {
     internals.nodeProcessUnhandledRejectionCallback = (event) => {
@@ -1357,9 +1539,20 @@ function synchronizeListeners() {
         // an unhandled rejection occurs and there are no unhandledRejection
         // listeners.
 
-        event.preventDefault();
-
         let reason = event.reason;
+
+        // The synchronous Module._load path in 01_require.js already invoked
+        // process._fatalException for this error. Re-firing here would
+        // double-emit 'uncaughtExceptionMonitor' (and 'uncaughtException')
+        // for the same value. Skip and let Deno's default unhandled-rejection
+        // handling print the error and terminate the runtime.
+        if (
+          reason !== null && typeof reason === "object" &&
+          _dispatchedFatalErrors.has(reason)
+        ) {
+          return;
+        }
+
         // If the rejection reason is not an Error, wrap it in an
         // ERR_UNHANDLED_REJECTION error, matching Node.js behavior.
         if (!(reason instanceof Error)) {
@@ -1380,7 +1573,12 @@ function synchronizeListeners() {
           reason = err;
         }
 
-        uncaughtExceptionHandler(reason, "unhandledRejection");
+        // Only preventDefault if a registered handler (uncaughtException
+        // listener or capture callback) actually consumed the error.
+        // Otherwise we want the runtime to terminate normally.
+        if (uncaughtExceptionHandler(reason, "unhandledRejection")) {
+          event.preventDefault();
+        }
         return;
       }
 
@@ -1402,7 +1600,9 @@ function synchronizeListeners() {
   }
 
   if (
-    uncaughtExceptionListenerCount > 0 || _uncaughtExceptionCaptureFn !== null
+    uncaughtExceptionListenerCount > 0 ||
+    uncaughtExceptionMonitorListenerCount > 0 ||
+    _uncaughtExceptionCaptureFn !== null
   ) {
     globalThis.addEventListener("error", processOnError);
   } else {
@@ -1412,6 +1612,95 @@ function synchronizeListeners() {
 
 internals.dispatchProcessBeforeExitEvent = dispatchProcessBeforeExitEvent;
 internals.dispatchProcessExitEvent = dispatchProcessExitEvent;
+
+const { ObjectDefineProperty: _ObjectDefineProperty } = primordials;
+
+// Install an accessor property on `target` whose getter invokes `factory()`
+// once and replaces itself with the value. Also caches the result onto
+// the module-level `stdin`/`stdout`/`stderr` exports so ESM consumers
+// that captured the binding after first access see the materialized value.
+function defineLazyStream(
+  target: object,
+  name: "stdout" | "stderr" | "stdin",
+  factory: () => unknown,
+) {
+  _ObjectDefineProperty(target, name, {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    get() {
+      const value = factory();
+      _ObjectDefineProperty(target, name, {
+        __proto__: null,
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value,
+      });
+      if (name === "stdout") stdout = value;
+      else if (name === "stderr") stderr = value;
+      else stdin = value;
+      return value;
+    },
+    set(value) {
+      _ObjectDefineProperty(target, name, {
+        __proto__: null,
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value,
+      });
+      if (name === "stdout") stdout = value;
+      else if (name === "stderr") stderr = value;
+      else stdin = value;
+    },
+  });
+}
+
+function makeStdoutWriter() {
+  if (io.stdout.isTerminal()) {
+    const { WriteStream, addSigwinchListener } = lazyInternalTty();
+    const s = new WriteStream(1);
+    s.fd = 1;
+    s._isStdio = true;
+    s.destroySoon = s.destroy;
+    s._destroy = function (err, cb) {
+      cb(err);
+      this._undestroy();
+      if (!this._writableState.emitClose) {
+        nextTick(() => this.emit("close"));
+      }
+    };
+    addSigwinchListener(s);
+    return s;
+  }
+  return lazyProcessStreams().createWritableStdioStream(io.stdout, "stdout");
+}
+
+function makeStderrWriter() {
+  if (io.stderr.isTerminal()) {
+    const { WriteStream, addSigwinchListener } = lazyInternalTty();
+    const s = new WriteStream(2);
+    s.fd = 2;
+    s._isStdio = true;
+    s.destroySoon = s.destroy;
+    s._destroy = function (err, cb) {
+      cb(err);
+      this._undestroy();
+      if (!this._writableState.emitClose) {
+        nextTick(() => this.emit("close"));
+      }
+    };
+    addSigwinchListener(s);
+    return s;
+  }
+  return lazyProcessStreams().createWritableStdioStream(io.stderr, "stderr");
+}
+
+function makeStdinReader() {
+  return lazyProcessStreams().initStdin();
+}
+
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
 // bootstrapped.
 internals.__bootstrapNodeProcess = function (
@@ -1441,56 +1730,11 @@ internals.__bootstrapNodeProcess = function (
 
     enableNextTick();
 
-    // Replace warmup stdout/stderr with proper streams
-    if (io.stdout.isTerminal()) {
-      /** https://nodejs.org/api/process.html#process_process_stdout */
-      stdout = process.stdout = new TTYWriteStream(1);
-      // For supporting legacy API we put the FD here.
-      // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
-      stdout.fd = 1;
-      // Match Node.js: stdio streams are indestructible.
-      // Libraries like mute-stream (@inquirer/prompts) call destroy()/end()
-      // on process.stdout between prompts. Without this, the underlying TTY
-      // handle is closed, breaking subsequent I/O.
-      // _isStdio also prevents Stream.pipe() from calling end() on stdout
-      // when a piped source stream ends.
-      // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
-      stdout._isStdio = true;
-      stdout.destroySoon = stdout.destroy;
-      stdout._destroy = function (err, cb) {
-        cb(err);
-        this._undestroy();
-        if (!this._writableState.emitClose) {
-          nextTick(() => this.emit("close"));
-        }
-      };
-    } else {
-      stdout = process.stdout = createWritableStdioStream(
-        io.stdout,
-        "stdout",
-      );
-    }
-
-    if (io.stderr.isTerminal()) {
-      /** https://nodejs.org/api/process.html#process_process_stderr */
-      stderr = process.stderr = new TTYWriteStream(2);
-      // For supporting legacy API we put the FD here.
-      stderr.fd = 2;
-      stderr._isStdio = true;
-      stderr.destroySoon = stderr.destroy;
-      stderr._destroy = function (err, cb) {
-        cb(err);
-        this._undestroy();
-        if (!this._writableState.emitClose) {
-          nextTick(() => this.emit("close"));
-        }
-      };
-    } else {
-      stderr = process.stderr = createWritableStdioStream(
-        io.stderr,
-        "stderr",
-      );
-    }
+    // Install accessor properties for stdout/stderr/stdin so we only
+    // construct them (and load node:stream/net/tty) on first access.
+    // Matches Node's lib/internal/bootstrap/switches/is_main_thread.js.
+    defineLazyStream(process, "stdout", makeStdoutWriter);
+    defineLazyStream(process, "stderr", makeStderrWriter);
 
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;
@@ -1508,11 +1752,30 @@ internals.__bootstrapNodeProcess = function (
       process.on("warning", onWarning);
     }
 
-    // Replace stdin if it is not a terminal
-    const newStdin = initStdin();
-    if (newStdin) {
-      stdin = process.stdin = newStdin;
+    // Match Node's pre_execution.js: when --pending-deprecation is set, wrap
+    // `process.binding` with a DEP0111 warning, and wrap the `uv` binding's
+    // `errname` with DEP0119. See lib/internal/process/pre_execution.js and
+    // src/uv.cc (`ErrName`) in the upstream Node.js source.
+    if (getOptionValue("--pending-deprecation")) {
+      const { deprecate } = lazyLoadUtil();
+      const uvBinding = getBinding("uv");
+      uvBinding.errname = deprecate(
+        uvBinding.errname,
+        "Directly calling process.binding('uv').errname(<val>) is being " +
+          "deprecated. Please make sure to use util.getSystemErrorName() " +
+          "instead.",
+        "DEP0119",
+      );
+      process.binding = deprecate(
+        process.binding,
+        "process.binding() is deprecated. Please use public APIs instead.",
+        "DEP0111",
+      );
     }
+
+    // Install accessor for stdin too. initStdin() returns null for the
+    // TTY case at warmup, but at runtime it always returns a stream.
+    defineLazyStream(process, "stdin", makeStdinReader);
 
     // In worker threads, replace certain process functions with stubs
     // that throw ERR_WORKER_UNSUPPORTED_OPERATION and have .disabled = true.
@@ -1552,22 +1815,27 @@ internals.__bootstrapNodeProcess = function (
         },
         configurable: true,
       });
+
+      // Inspector control APIs are main-thread-only in Node; matches the
+      // assertions in parallel/test-worker-unsupported-things.js.
+      delete process._debugEnd;
+      delete process._debugProcess;
     }
 
     delete internals.__bootstrapNodeProcess;
   } else {
-    // Warmup, assuming stdin/stdout/stderr are all terminals
-    stdin = process.stdin = initStdin(true);
-
-    /** https://nodejs.org/api/process.html#process_process_stdout */
-    stdout = process.stdout = createWritableStdioStream(
+    // Warmup branch: only reached if someone calls __bootstrapNodeProcess
+    // with warmup=true (currently commented out in 99_main.js). Loads
+    // stream modules eagerly via the lazy loader to mirror previous
+    // warmup behaviour if it gets re-enabled.
+    const ps = lazyProcessStreams();
+    stdin = process.stdin = ps.initStdin(true);
+    stdout = process.stdout = ps.createWritableStdioStream(
       io.stdout,
       "stdout",
       true,
     );
-
-    /** https://nodejs.org/api/process.html#process_process_stderr */
-    stderr = process.stderr = createWritableStdioStream(
+    stderr = process.stderr = ps.createWritableStdioStream(
       io.stderr,
       "stderr",
       true,

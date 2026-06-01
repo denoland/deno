@@ -27,7 +27,6 @@ use async_compression::tokio::write::BrotliEncoder;
 use async_compression::tokio::write::GzipEncoder;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
-use cache_control::CacheControl;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -87,6 +86,7 @@ use tokio::sync::Notify;
 use crate::network_buffered_stream::NetworkBufferedStream;
 use crate::reader_stream::ExternallyAbortableReaderStream;
 use crate::reader_stream::ShutdownHandle;
+use crate::response_body::brotli_compressor;
 
 pub mod compressible;
 mod fly_accept_encoding;
@@ -106,6 +106,25 @@ pub use request_properties::HttpListenProperties;
 pub use request_properties::HttpPropertyExtractor;
 pub use request_properties::HttpRequestProperties;
 pub use service::UpgradeUnavailableError;
+
+fn cache_control_has_no_transform(value: &str) -> Option<bool> {
+  let mut no_transform = false;
+  for token in value.split(',') {
+    let (key, val) = {
+      let mut split = token.split('=').map(|s| s.trim());
+      (split.next().unwrap(), split.next())
+    };
+
+    match key {
+      "max-age" | "max-stale" | "min-fresh" => {
+        val.and_then(|v| v.parse::<u64>().ok())?;
+      }
+      "no-transform" => no_transform = true,
+      _ => (),
+    }
+  }
+  Some(no_transform)
+}
 
 struct OtelCollectors {
   duration: Histogram<f64>,
@@ -160,6 +179,7 @@ deno_core::extension!(
     http_next::op_http_get_request_method_and_url<HTTP>,
     http_next::op_http_get_request_cancelled,
     http_next::op_http_read_request_body,
+    http_next::op_http_try_take_full_request_body,
     http_next::op_http_serve_on<HTTP>,
     http_next::op_http_serve<HTTP>,
     http_next::op_http_set_promise_complete,
@@ -173,16 +193,16 @@ deno_core::extension!(
     http_next::op_http_upgrade_raw,
     http_next::op_http_upgrade_raw_connect,
     http_next::op_http_upgrade_raw_get_head,
+    http_next::op_http_ws_create_from_stream_resource,
     http_next::op_raw_write_vectored,
     http_next::op_can_write_vectored,
-    http_next::op_http_try_wait,
     http_next::op_http_wait,
     http_next::op_http_close,
     http_next::op_http_cancel,
     http_next::op_http_metric_handle_otel_error,
     http_next::op_http_copy_span_to_otel_info,
   ],
-  esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
+  lazy_loaded_js = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
   options = {
     options: Options,
   },
@@ -213,6 +233,7 @@ deno_core::extension!(
     http_next::op_http_get_request_method_and_url<DefaultHttpPropertyExtractor>,
     http_next::op_http_get_request_cancelled,
     http_next::op_http_read_request_body,
+    http_next::op_http_try_take_full_request_body,
     http_next::op_http_serve_on<DefaultHttpPropertyExtractor>,
     http_next::op_http_serve<DefaultHttpPropertyExtractor>,
     http_next::op_http_set_promise_complete,
@@ -226,16 +247,16 @@ deno_core::extension!(
     http_next::op_http_upgrade_raw,
     http_next::op_http_upgrade_raw_connect,
     http_next::op_http_upgrade_raw_get_head,
+    http_next::op_http_ws_create_from_stream_resource,
     http_next::op_raw_write_vectored,
     http_next::op_can_write_vectored,
-    http_next::op_http_try_wait,
     http_next::op_http_wait,
     http_next::op_http_close,
     http_next::op_http_cancel,
     http_next::op_http_metric_handle_otel_error,
     http_next::op_http_copy_span_to_otel_info,
   ],
-  esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
+  lazy_loaded_js = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
   options = {
     options: Options,
   },
@@ -1237,12 +1258,7 @@ fn http_response(
   match data {
     Some(data) if compressing => match encoding {
       Encoding::Brotli => {
-        // quality level 6 is based on google's nginx default value for
-        // on-the-fly compression
-        // https://github.com/google/ngx_brotli#brotli_comp_level
-        // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes
-        // (~4MB)
-        let mut writer = brotli::CompressorWriter::new(Vec::new(), 4096, 6, 22);
+        let mut writer = brotli_compressor(4096);
         writer.write_all(&data)?;
         Ok((HttpResponseWriter::Closed, writer.into_inner().into()))
       }
@@ -1340,8 +1356,7 @@ fn should_compress(headers: &hyper_v014::HeaderMap) -> bool {
       Ok(s) => s,
       Err(_) => return Some(true),
     };
-    let c = CacheControl::from_value(s)?;
-    Some(c.no_transform)
+    cache_control_has_no_transform(s)
   }
   // we skip compression if the `content-range` header value is set, as it
   // indicates the contents of the body were negotiated based directly
@@ -1805,6 +1820,25 @@ fn op_http_notify_serving() {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn cache_control_no_transform_parse_matches_dependency_quirks() {
+    assert_eq!(cache_control_has_no_transform(""), Some(false));
+    assert_eq!(cache_control_has_no_transform("no-transform"), Some(true));
+    assert_eq!(
+      cache_control_has_no_transform("public, no-transform=anything"),
+      Some(true)
+    );
+    assert_eq!(cache_control_has_no_transform("max-age=bad"), None);
+    assert_eq!(
+      cache_control_has_no_transform("no-transform, max-age=bad"),
+      None
+    );
+    assert_eq!(
+      cache_control_has_no_transform("max-age=60=ignored, no-transform"),
+      Some(true)
+    );
+  }
 
   #[test]
   fn test_parse_serve_address() {
