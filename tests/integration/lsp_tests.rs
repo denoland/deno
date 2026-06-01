@@ -17743,6 +17743,83 @@ fn lsp_tsconfig_node_modules_dts_diagnostics() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/33955 — with
+// `moduleResolution: "bundler"`, importing a subpath of an npm package whose
+// `package.json` doesn't list it under `exports` should not error in the LSP
+// when the subpath is a directory that contains an `index` declaration.
+#[test(timeout = 300)]
+fn lsp_tsconfig_module_resolution_bundler_dir_import() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "manual",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "tsconfig.json",
+    json!({
+      "compilerOptions": {
+        "moduleResolution": "bundler",
+        "lib": ["esnext", "dom"],
+      },
+    })
+    .to_string(),
+  );
+  // The package only declares `main` — no `exports` field, so subpath
+  // resolution falls back to the legacy node algorithm.
+  temp_dir.write(
+    "node_modules/some-pkg/package.json",
+    json!({
+      "name": "some-pkg",
+      "main": "./index.js",
+    })
+    .to_string(),
+  );
+  source_file(
+    temp_dir
+      .path()
+      .canonicalize()
+      .join("node_modules/some-pkg/index.d.ts"),
+    "export const root: number;\n",
+  );
+  // The subpath `some-pkg/text-box` is a directory with no `package.json` —
+  // Node's strict ESM resolution would refuse this with
+  // `ERR_UNSUPPORTED_DIR_IMPORT`, but a bundler-mode resolver should probe
+  // for an `index` file.
+  source_file(
+    temp_dir
+      .path()
+      .canonicalize()
+      .join("node_modules/some-pkg/text-box/index.js"),
+    "export const value = 1;\n",
+  );
+  source_file(
+    temp_dir
+      .path()
+      .canonicalize()
+      .join("node_modules/some-pkg/text-box/index.d.ts"),
+    "export const value: number;\n",
+  );
+  let file = temp_dir.source_file(
+    "main.ts",
+    r#"
+      import { value } from "some-pkg/text-box";
+      console.log(value);
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_tsconfig_root_dirs() {
   let context = TestContextBuilder::new()
