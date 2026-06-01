@@ -251,7 +251,6 @@ pub struct Conn<I> {
   write_buf: Vec<u8>,
   pending_head_consume: usize,
   pending_body_consume: usize,
-  keep_alive: bool,
   response_state: ResponseState,
 }
 
@@ -269,7 +268,6 @@ pub struct SharedConn<I> {
   io: I,
   protocol: Protocol,
   buffered: Vec<u8>,
-  keep_alive: bool,
   response_state: ResponseState,
 }
 
@@ -288,7 +286,6 @@ impl<I> Conn<I> {
       write_buf: Vec::with_capacity(DEFAULT_WRITE_CAPACITY),
       pending_head_consume: 0,
       pending_body_consume: 0,
-      keep_alive: true,
       response_state: ResponseState::Idle,
     }
   }
@@ -307,7 +304,6 @@ impl<I> SharedConn<I> {
       io,
       protocol: Protocol::new(),
       buffered: Vec::new(),
-      keep_alive: true,
       response_state: ResponseState::Idle,
     }
   }
@@ -475,7 +471,6 @@ where
       return Ok(None);
     };
     let request = request_from_core(&request);
-    self.keep_alive = request.keep_alive;
     self.pending_head_consume = consumed;
     Ok(Some(request))
   }
@@ -806,7 +801,6 @@ where
           return Poll::Ready(Ok(None));
         };
         let request = request_from_core(&request);
-        self.keep_alive = request.keep_alive;
         let result = callback(request);
         self.buffered.drain(..consumed);
         return Poll::Ready(Ok(Some(result)));
@@ -836,7 +830,6 @@ where
           .map_err(protocol_error)?;
         if let RequestStatus::Complete { request, consumed } = status {
           let request = request_from_core(&request);
-          self.keep_alive = request.keep_alive;
           let result = callback(request);
           if consumed < read {
             self
