@@ -128,7 +128,7 @@ struct uv_handle_t {
 const UV_ASYNC_SIZE: usize = 128;
 
 #[cfg(windows)]
-const UV_ASYNC_SIZE: usize = 232;
+const UV_ASYNC_SIZE: usize = 224;
 
 #[repr(C)]
 struct uv_async_t {
