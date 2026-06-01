@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 // deno-lint-ignore camelcase
 const async_wrap = core.loadExtScript(
   "ext:deno_node/internal_binding/async_wrap.ts",

@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 
 const { SafeRegExp } = primordials;

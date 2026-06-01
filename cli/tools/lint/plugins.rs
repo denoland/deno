@@ -2,13 +2,13 @@
 
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use ::tokio_util::sync::CancellationToken;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
+use deno_core::FromV8;
 use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -121,8 +121,8 @@ impl PluginHostProxy {
 
 pub struct PluginHost {
   worker: MainWorker,
-  install_plugins_fn: Rc<v8::Global<v8::Function>>,
-  run_plugins_for_file_fn: Rc<v8::Global<v8::Function>>,
+  install_plugins_fn: v8::Global<v8::Function>,
+  run_plugins_for_file_fn: v8::Global<v8::Function>,
   rx: mpsc::Receiver<PluginHostRequest>,
 }
 
@@ -194,8 +194,8 @@ async fn create_plugin_runner_inner(
       run_plugins_for_file_fn_val.try_into().unwrap();
 
     (
-      Rc::new(v8::Global::new(scope, install_plugins_fn)),
-      Rc::new(v8::Global::new(scope, run_plugins_for_file_fn)),
+      v8::Global::new(scope, install_plugins_fn),
+      v8::Global::new(scope, run_plugins_for_file_fn),
     )
   };
 
@@ -207,8 +207,7 @@ async fn create_plugin_runner_inner(
   })
 }
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, FromV8)]
 pub struct PluginInfo {
   pub name: String,
   pub rule_names: Vec<String>,
@@ -344,7 +343,7 @@ impl PluginHost {
         .unwrap()
         .into();
     let run_plugins_for_file =
-      v8::Local::new(scope, &*self.run_plugins_for_file_fn);
+      v8::Local::new(scope, &self.run_plugins_for_file_fn);
     let undefined = v8::undefined(scope);
 
     let _run_plugins_result = {
@@ -402,8 +401,7 @@ impl PluginHost {
     }
 
     deno_core::scope!(scope, &mut self.worker.js_runtime);
-    let install_plugins_local =
-      v8::Local::new(scope, &*self.install_plugins_fn.clone());
+    let install_plugins_local = v8::Local::new(scope, &self.install_plugins_fn);
     let exclude_v8: v8::Local<v8::Value> =
       exclude.map_or(v8::null(scope).into(), |v| {
         let elems = v
@@ -441,8 +439,7 @@ impl PluginHost {
       plugins_info_result
     };
     let plugins_info = plugins_info_result.unwrap();
-    let infos: Vec<PluginInfo> =
-      deno_core::serde_v8::from_v8(scope, plugins_info)?;
+    let infos = <Vec<PluginInfo> as FromV8>::from_v8(scope, plugins_info)?;
     log::debug!("Plugins installed: {}", infos.len());
 
     Ok(infos)

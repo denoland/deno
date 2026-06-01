@@ -1,0 +1,4 @@
+[WILDCARD]PASS: happy path emits client and server lifecycle events
+PASS: failed handshake emits created + willSend + closed only
+PASS: frame events fire for client and server sockets
+ALL PASSED

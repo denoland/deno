@@ -463,9 +463,18 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
     // - /.../deno/npm/registry.npmjs.org/canvas/2.11.2/lib/bindings.js
     // - /.../.cache/deno/npm/registry.npmjs.org/canvas/2.11.2/lib/canvas.js
     // ```
-    } else if msg.contains("Cannot find module")
+    // as well as errors thrown by the `bindings` npm package (used by
+    // libxmljs and many other native addons), like:
+    // ```
+    // Uncaught Error: Could not locate the bindings file. Tried:
+    //  → /.../node_modules/libxmljs/build/xmljs.node
+    //  → /.../node_modules/libxmljs/build/Release/xmljs.node
+    // ```
+    } else if (msg.contains("Cannot find module")
       && msg.contains("Require stack")
-      && msg.contains(".node'")
+      && msg.contains(".node'"))
+      || (msg.contains("Could not locate the bindings file")
+        && msg.contains(".node"))
     {
       return vec![
         FixSuggestion::info_multiline(&[

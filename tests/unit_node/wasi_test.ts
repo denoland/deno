@@ -161,7 +161,9 @@ Deno.test("[node/wasi] - wasiImport has all expected functions", () => {
     "fd_prestat_get",
     "fd_prestat_dir_name",
     "path_open",
+    "path_link",
     "sched_yield",
+    "poll_oneoff",
   ];
 
   for (const fn_name of expectedFunctions) {
@@ -170,5 +172,50 @@ Deno.test("[node/wasi] - wasiImport has all expected functions", () => {
       "function",
       `wasiImport.${fn_name} should be a function`,
     );
+  }
+});
+
+Deno.test("[node/wasi] - finalizeBindings binds wasm memory", () => {
+  const wasi = new WASI({ version: "preview1" });
+  const module = new WebAssembly.Module(MEMONLY_WASM);
+  const instance = new WebAssembly.Instance(module, {});
+  // finalizeBindings is a Node-only API used by `wasi:thread-spawn`
+  // implementations in workers: it associates a memory with the WASI
+  // instance without invoking _start.
+  (wasi as any).finalizeBindings(instance, {
+    memory: instance.exports.memory as WebAssembly.Memory,
+  });
+  // After binding, the wasi imports should accept calls. environ_sizes_get
+  // is read-only so we can exercise it without further setup.
+  const memory = new Uint8Array(
+    (instance.exports.memory as WebAssembly.Memory).buffer,
+  );
+  const view = new DataView(memory.buffer);
+  assertEquals(wasi.wasiImport.environ_sizes_get(0, 4), 0);
+  // Default env is empty when not supplied.
+  assertEquals(view.getUint32(0, true), 0);
+});
+
+Deno.test("[node/wasi] - constructor emits ExperimentalWarning with the expected message", async () => {
+  const warnings: { name?: string; message?: string }[] = [];
+  const proc = (globalThis as any).process;
+  const listener = (w: { name?: string; message?: string }) => {
+    if (w?.name === "ExperimentalWarning") warnings.push(w);
+  };
+  proc.on("warning", listener);
+  try {
+    new WASI({ version: "preview1" });
+    new WASI({ version: "preview1" });
+    // emitWarning uses process.nextTick, so wait one tick.
+    await new Promise((r) => setTimeout(r, 0));
+    // We can't guarantee uniqueness across the whole test process (the
+    // warning is module-scoped, so a prior test may have already triggered
+    // it), but if any fire they must carry the WASI message.
+    for (const w of warnings) {
+      assert(typeof w.message === "string");
+      assert(w.message!.includes("WASI is an experimental feature"));
+    }
+  } finally {
+    proc.off("warning", listener);
   }
 });

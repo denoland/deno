@@ -574,7 +574,9 @@ testOptimized(
     255, 65535, 4294967295, 4294967296n, 123.456, 789.876, -1n, -2, -3, -4, -1000n, 1000n,
     12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910
   ),
-  // apple silicon can't handle more than 8 args in fast calls: https://issues.chromium.org/issues/42203110
+  // V8 disables fast api for >8 args on Apple silicon (crbug.com/v8/13171).
+  // Deno's trampoline now produces a correctly-aligned wrapper on Apple
+  // silicon, so when V8 relaxes the guard this skip can be removed.
   process.platform === 'darwin' && process.arch === 'arm64' ? null : "log_many_parameters",
 );
 
@@ -597,7 +599,9 @@ function addManyU16Fast(a, b, c, d, e, f, g, h, i, j, k, l, m) {
 testOptimized(
   addManyU16Fast,
   () => addManyU16Fast(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
-  // apple silicon can't handle more than 8 args in fast calls: https://issues.chromium.org/issues/42203110
+  // V8 disables fast api for >8 args on Apple silicon (crbug.com/v8/13171).
+  // Deno's trampoline now produces a correctly-aligned wrapper on Apple
+  // silicon, so when V8 relaxes the guard this skip can be removed.
   process.platform === 'darwin' && process.arch === 'arm64' ? null : "add_many_u16",
 );
 

@@ -1,5 +1,0 @@
-{
-  "name": "@test/deno-shim",
-  "version": "1.0.0",
-  "exports": "./mod.ts"
-}

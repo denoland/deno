@@ -10,7 +10,6 @@ use std::rc::Rc;
 
 use bytes::Bytes;
 use bytes::BytesMut;
-use cache_control::CacheControl;
 use deno_core::AsyncMut;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -707,8 +706,8 @@ fn is_response_compressible(headers: &HeaderMap) -> bool {
   }
   if let Some(cache_control) = headers.get(CACHE_CONTROL)
     && let Ok(s) = std::str::from_utf8(cache_control.as_bytes())
-    && let Some(cache_control) = CacheControl::from_value(s)
-    && cache_control.no_transform
+    && let Some(no_transform) = crate::cache_control_has_no_transform(s)
+    && no_transform
   {
     return false;
   }
@@ -1279,7 +1278,12 @@ where
 
   let lifetime = resource.lifetime();
   let callback_global = v8::Global::new(scope, callback);
-  let callback = Rc::new(ServerCallback::new(scope, isolate, callback_global));
+  let callback = Rc::new(ServerCallback::new(
+    scope,
+    isolate,
+    callback_global,
+    state.borrow().waker.clone(),
+  ));
 
   let options = {
     let state = state.borrow();
@@ -1336,7 +1340,12 @@ where
 
   let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new());
   let callback_global = v8::Global::new(scope, callback);
-  let callback = Rc::new(ServerCallback::new(scope, isolate, callback_global));
+  let callback = Rc::new(ServerCallback::new(
+    scope,
+    isolate,
+    callback_global,
+    state.borrow().waker.clone(),
+  ));
 
   let options = {
     let state = state.borrow();

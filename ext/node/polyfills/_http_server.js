@@ -27,6 +27,7 @@
 import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
+  ArrayPrototypeIncludes,
   Error,
   MathMin,
   NumberIsFinite,
@@ -71,6 +72,11 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const {
+  kDestroy,
+  kTimeout,
+  suspendTimeout,
+} = core.loadExtScript("ext:deno_node/internal/timers.mjs");
+const {
   validateBoolean,
   validateFunction,
   validateInteger,
@@ -82,9 +88,14 @@ const {
   enterAsyncResource,
   exitAsyncResource,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
-const { enqueueNodePerformanceEntry } = core.loadExtScript(
-  "ext:deno_node/perf_hooks.js",
-);
+const { enqueueNodePerformanceEntry, hasNodeObserverForType } = core
+  .loadExtScript(
+    "ext:deno_node/perf_hooks.js",
+  );
+import {
+  applyAddressOverride,
+  startOverrideListener,
+} from "ext:deno_node/internal/http/address_override.js";
 const {
   otelState,
   builtinTracer,
@@ -530,6 +541,9 @@ function connectionListenerInternal(server, socket) {
     outgoingData: 0,
     requestsCount: 0,
     keepAliveTimeoutSet: false,
+    keepAliveTimeout: null,
+    keepAliveTimeoutMsecs: 0,
+    keepAliveTimeoutSuspended: false,
   };
   state.onData = socketOnData.bind(undefined, server, socket, parser, state);
   state.onEnd = socketOnEnd.bind(undefined, server, socket, parser, state);
@@ -599,6 +613,7 @@ function socketOnTimeout() {
 }
 
 function socketOnClose(socket, state) {
+  destroySuspendedKeepAliveTimeout(state);
   freeParser(socket.parser, undefined, socket);
   abortIncoming(state.incoming);
 }
@@ -687,10 +702,30 @@ function onParserExecuteCommon(server, socket, parser, state, ret, d) {
   }
 }
 
-function resetSocketTimeout(server, socket, state) {
+function resetSocketTimeout(server, socket, state, allowKeepAliveReuse = true) {
   if (!state.keepAliveTimeoutSet) return;
+
+  const keepAliveTimeout = state.keepAliveTimeout;
+  if (
+    allowKeepAliveReuse &&
+    server.timeout === 0 &&
+    socket.setTimeout === net.Socket.prototype.setTimeout &&
+    socket[kTimeout] === keepAliveTimeout &&
+    ArrayPrototypeIncludes(socket.listeners("timeout"), socketOnTimeout)
+  ) {
+    suspendTimeout(keepAliveTimeout);
+    socket[kTimeout] = null;
+    socket.timeout = 0;
+    state.keepAliveTimeoutSet = false;
+    state.keepAliveTimeoutSuspended = true;
+    return;
+  }
+
   socket.setTimeout(server.timeout || 0);
   state.keepAliveTimeoutSet = false;
+  state.keepAliveTimeout = null;
+  state.keepAliveTimeoutMsecs = 0;
+  state.keepAliveTimeoutSuspended = false;
 }
 
 function socketOnDrain(socket, state) {
@@ -707,6 +742,17 @@ function socketOnDrain(socket, state) {
     msg[kNeedDrain] = false;
     msg.emit("drain");
   }
+}
+
+function destroySuspendedKeepAliveTimeout(state) {
+  if (!state.keepAliveTimeoutSuspended) return;
+  const keepAliveTimeout = state.keepAliveTimeout;
+  if (keepAliveTimeout !== null) {
+    keepAliveTimeout[kDestroy]();
+  }
+  state.keepAliveTimeout = null;
+  state.keepAliveTimeoutMsecs = 0;
+  state.keepAliveTimeoutSuspended = false;
 }
 
 const badRequestResponse =
@@ -766,7 +812,7 @@ function updateOutgoingData(socket, state, delta) {
 // ---- parserOnIncoming: creates ServerResponse, emits 'request' ----
 
 function parserOnIncoming(server, socket, state, req, keepAlive) {
-  resetSocketTimeout(server, socket, state);
+  resetSocketTimeout(server, socket, state, !req.upgrade);
 
   if (req.upgrade && req.method !== "CONNECT") {
     if (
@@ -783,7 +829,9 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   }
 
   state.incoming.push(req);
-  req[kPerfStartTime] = performance.now();
+  if (hasNodeObserverForType("http")) {
+    req[kPerfStartTime] = performance.now();
+  }
 
   if (!socket._paused) {
     const ws = socket._writableState;
@@ -968,7 +1016,7 @@ function resOnFinish(req, res, socket, state, server) {
 
   // Emit HttpRequest perf entry
   const perfStartTime = req[kPerfStartTime];
-  if (perfStartTime !== undefined) {
+  if (perfStartTime !== undefined && hasNodeObserverForType("http")) {
     enqueueNodePerformanceEntry({
       name: "HttpRequest",
       entryType: "http",
@@ -1040,8 +1088,34 @@ function resOnFinish(req, res, socket, state, server) {
         : 0;
 
       if (keepAliveTimeout) {
-        socket.setTimeout(keepAliveTimeout + 1000);
+        const timeoutMsecs = keepAliveTimeout + 1000;
+        const suspendedTimeout = state.keepAliveTimeout;
+        if (
+          state.keepAliveTimeoutSuspended &&
+          socket.setTimeout === net.Socket.prototype.setTimeout &&
+          socket[kTimeout] === null &&
+          state.keepAliveTimeoutMsecs === timeoutMsecs
+        ) {
+          socket[kTimeout] = suspendedTimeout;
+          socket.timeout = timeoutMsecs;
+          suspendedTimeout.refresh();
+        } else {
+          if (state.keepAliveTimeoutSuspended) {
+            suspendedTimeout[kDestroy]();
+          }
+          socket.setTimeout(timeoutMsecs);
+          state.keepAliveTimeout = socket[kTimeout];
+          state.keepAliveTimeoutMsecs = timeoutMsecs;
+        }
         state.keepAliveTimeoutSet = true;
+        state.keepAliveTimeoutSuspended = false;
+      } else if (
+        state.keepAliveTimeoutSuspended
+      ) {
+        state.keepAliveTimeout[kDestroy]();
+        state.keepAliveTimeout = null;
+        state.keepAliveTimeoutMsecs = 0;
+        state.keepAliveTimeoutSuspended = false;
       }
     }
   } else {
@@ -1277,6 +1351,59 @@ function storeHTTPOptions(options) {
 }
 ObjectSetPrototypeOf(Server.prototype, net.Server.prototype);
 ObjectSetPrototypeOf(Server, net.Server);
+
+// Applies the DENO_SERVE_ADDRESS override before delegating to
+// net.Server.prototype.listen.
+//
+// TCP overrides rewrite the address passed to listen(). Non-TCP and
+// duplicate overrides spin up a separate Deno listener that feeds
+// synthetic "connection" events into this server.
+Server.prototype.listen = function listen(...args) {
+  const applied = applyAddressOverride();
+
+  switch (applied.mode) {
+    case "none":
+      return net.Server.prototype.listen.apply(this, args);
+
+    case "tcp": {
+      // Rewrite the listen args so the normal net.Server code binds
+      // to the override address instead of what the app requested.
+      let cb;
+      const last = args[args.length - 1];
+      if (typeof last === "function") {
+        cb = last;
+        args = args.slice(0, -1);
+      }
+      const rewritten = [{ host: applied.host, port: applied.port }];
+      if (cb) rewritten.push(cb);
+      return net.Server.prototype.listen.apply(this, rewritten);
+    }
+
+    case "override-only": {
+      // Don't bind the app-supplied TCP address at all -- the override
+      // listener is the only way into this server. `listening` on
+      // net.Server is derived from `_handle`, so install a stub that
+      // reports listening without owning a real OS handle.
+      let cb;
+      const last = args[args.length - 1];
+      if (typeof last === "function") cb = last;
+      if (cb) this.once("listening", cb);
+      this._handle = {
+        close() {},
+        ref() {},
+        unref() {},
+      };
+      startOverrideListener(this, applied.override, connectionListener);
+      nextTick(() => this.emit("listening"));
+      return this;
+    }
+
+    case "duplicate": {
+      startOverrideListener(this, applied.override, connectionListener);
+      return net.Server.prototype.listen.apply(this, args);
+    }
+  }
+};
 
 Server.prototype.setTimeout = function setTimeout(msecs, callback) {
   this.timeout = msecs;

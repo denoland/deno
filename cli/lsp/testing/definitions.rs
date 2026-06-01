@@ -20,6 +20,12 @@ use crate::tools::test::TestStepDescription;
 pub struct TestDefinition {
   pub id: String,
   pub name: String,
+  /// 0-based occurrence index for tests that share the same `name` and
+  /// `parent_id`. The first registration with a given (parent_id, name) pair
+  /// gets `0`, the next `1`, etc. Used to disambiguate duplicate test names
+  /// (see https://github.com/denoland/deno/issues/20371) without changing the
+  /// displayed `name`.
+  pub name_index: u32,
   pub range: Option<Range>,
   pub is_dynamic: bool,
   pub parent_id: Option<String>,
@@ -40,7 +46,66 @@ impl TestModule {
     }
   }
 
+  /// Compute the SHA-256 id for a test with the given `name`, `name_index`
+  /// (occurrence index for duplicate names), and `parent_id` chain. The id is
+  /// derived from the specifier + each ancestor's `name` (and `name_index` if
+  /// non-zero) + the test's own `name` (and `name_index` if non-zero).
+  ///
+  /// `name_index == 0` preserves the original id format, so the common case
+  /// of a unique test name hashes to the same value as before this method
+  /// existed.
+  fn compute_id(
+    &self,
+    name: &str,
+    name_index: u32,
+    parent_id: Option<&str>,
+  ) -> String {
+    let mut id_components: Vec<Vec<u8>> = Vec::with_capacity(8);
+    id_components.push(name.as_bytes().to_vec());
+    if name_index > 0 {
+      id_components.push(format!("#{name_index}").into_bytes());
+    }
+    let mut current_parent_id = parent_id;
+    while let Some(pid) = current_parent_id {
+      let parent = match self.defs.get(pid) {
+        Some(d) => d,
+        None => {
+          lsp_warn!(
+            "Internal Error: parent_id \"{}\" of test \"{}\" was not registered.",
+            pid,
+            name
+          );
+          id_components.push(b"<unknown>".to_vec());
+          break;
+        }
+      };
+      id_components.push(parent.name.as_bytes().to_vec());
+      if parent.name_index > 0 {
+        id_components.push(format!("#{}", parent.name_index).into_bytes());
+      }
+      current_parent_id = parent.parent_id.as_deref();
+    }
+    id_components.push(self.specifier.as_str().as_bytes().to_vec());
+    id_components.reverse();
+    checksum::r#gen(&id_components)
+  }
+
+  /// Determine the next `name_index` to assign for a test with this `name`
+  /// and `parent_id` — i.e., how many existing definitions already share
+  /// those keys.
+  fn next_name_index(&self, name: &str, parent_id: Option<&str>) -> u32 {
+    self
+      .defs
+      .values()
+      .filter(|d| d.name == name && d.parent_id.as_deref() == parent_id)
+      .count() as u32
+  }
+
   /// Returns `(id, is_newly_registered)`.
+  ///
+  /// Used by the static collector — each call inserts a fresh entry,
+  /// assigning the next available `name_index` for the `(parent_id, name)`
+  /// pair so duplicate-named tests in the source each get a unique id.
   pub fn register(
     &mut self,
     name: String,
@@ -48,28 +113,25 @@ impl TestModule {
     is_dynamic: bool,
     parent_id: Option<String>,
   ) -> (String, bool) {
-    let mut id_components = Vec::with_capacity(7);
-    id_components.push(name.as_bytes());
-    let mut current_parent_id = &parent_id;
-    while let Some(parent_id) = current_parent_id {
-      let parent = match self.defs.get(parent_id) {
-        Some(d) => d,
-        None => {
-          lsp_warn!(
-            "Internal Error: parent_id \"{}\" of test \"{}\" was not registered.",
-            parent_id,
-            &name
-          );
-          id_components.push("<unknown>".as_bytes());
-          break;
-        }
-      };
-      id_components.push(parent.name.as_bytes());
-      current_parent_id = &parent.parent_id;
-    }
-    id_components.push(self.specifier.as_str().as_bytes());
-    id_components.reverse();
-    let id = checksum::r#gen(&id_components);
+    let name_index = self.next_name_index(&name, parent_id.as_deref());
+    self.register_with_index(name, name_index, range, is_dynamic, parent_id)
+  }
+
+  /// Returns `(id, is_newly_registered)`.
+  ///
+  /// Used by dynamic (runtime-driven) registration. The caller is expected to
+  /// pass the same `name_index` sequence (0, 1, 2, …) that the static
+  /// collector assigned, so dynamic events resolve to the matching static
+  /// definition.
+  fn register_with_index(
+    &mut self,
+    name: String,
+    name_index: u32,
+    range: Option<Range>,
+    is_dynamic: bool,
+    parent_id: Option<String>,
+  ) -> (String, bool) {
+    let id = self.compute_id(&name, name_index, parent_id.as_deref());
     if self.defs.contains_key(&id) {
       return (id, false);
     }
@@ -82,6 +144,7 @@ impl TestModule {
       TestDefinition {
         id: id.clone(),
         name,
+        name_index,
         range,
         is_dynamic,
         parent_id,
@@ -92,8 +155,12 @@ impl TestModule {
   }
 
   /// Returns `(id, was_newly_registered)`.
-  pub fn register_dynamic(&mut self, desc: &TestDescription) -> (String, bool) {
-    self.register(desc.name.clone(), None, true, None)
+  pub fn register_dynamic(
+    &mut self,
+    desc: &TestDescription,
+    name_index: u32,
+  ) -> (String, bool) {
+    self.register_with_index(desc.name.clone(), name_index, None, true, None)
   }
 
   /// Returns `(id, was_newly_registered)`.
@@ -101,9 +168,11 @@ impl TestModule {
     &mut self,
     desc: &TestStepDescription,
     parent_static_id: &str,
+    name_index: u32,
   ) -> (String, bool) {
-    self.register(
+    self.register_with_index(
       desc.name.clone(),
+      name_index,
       None,
       true,
       Some(parent_static_id.to_string()),

@@ -3,7 +3,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 const _win32 = core.loadExtScript("ext:deno_node/path/_win32.ts").default;
 const _posix = core.loadExtScript("ext:deno_node/path/_posix.ts").default;

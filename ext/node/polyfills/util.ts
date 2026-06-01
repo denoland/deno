@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const { op_node_call_is_from_dependency } = core.ops;
 const {
   ArrayIsArray,
@@ -142,6 +142,7 @@ function inherits(ctor, superCtor) {
 const {
   _TextDecoder,
   _TextEncoder,
+  getSystemErrorMap,
   getSystemErrorMessage,
   getSystemErrorName,
 } = core.loadExtScript("ext:deno_node/_utils.ts");
@@ -215,17 +216,20 @@ function deprecate(
     __proto__: null,
   },
 ) {
-  process ??= lazyLoadProcess();
-  if (process.noDeprecation === true) {
-    return fn;
-  }
-
+  // Note: `process` is loaded lazily on first invocation of `deprecated`,
+  // not here. Loading it eagerly during `deprecate()` is enough to deadlock
+  // snapshot evaluation when `deprecate` is called from a module body that
+  // is itself in `process.ts`'s transitive load chain (e.g. assert.ts).
   if (code !== undefined) {
     validateString(code, "code");
   }
 
   let warned = false;
   function deprecated(...args) {
+    process ??= lazyLoadProcess();
+    if (process.noDeprecation === true) {
+      return ReflectApply(fn, this, args);
+    }
     if (!warned && !op_node_call_is_from_dependency()) {
       warned = true;
       if (code !== undefined) {
@@ -377,6 +381,23 @@ function queryObjects(ctor, options) {
   return lazyV8().queryObjects(ctor, options);
 }
 
+// Deno's AbortSignal is not yet structured-cloneable, so transfer is a no-op:
+// the returned signal/controller can still be used in-process. This mirrors
+// Node's API surface so user code calling these does not throw.
+function transferableAbortSignal(signal) {
+  if (
+    signal === null || typeof signal !== "object" ||
+    typeof signal.aborted !== "boolean"
+  ) {
+    throw new ERR_INVALID_ARG_TYPE("signal", "AbortSignal", signal);
+  }
+  return signal;
+}
+
+function transferableAbortController() {
+  return new AbortController();
+}
+
 function convertProcessSignalToExitCode(signalCode) {
   const { signals } = osConstants;
   validateOneOf(signalCode, "signalCode", ObjectKeys(signals));
@@ -410,7 +431,10 @@ return {
   parseEnv,
   queryObjects,
   setTraceSigInt,
+  transferableAbortController,
+  transferableAbortSignal,
   convertProcessSignalToExitCode,
+  getSystemErrorMap,
   getSystemErrorMessage,
   getSystemErrorName,
   isDeepStrictEqual,

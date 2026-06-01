@@ -8,11 +8,13 @@ const {
   op_register_test_step,
   op_register_test,
   op_register_test_hook,
+  op_test_event_exit,
   op_test_event_step_result_failed,
   op_test_event_step_result_ignored,
   op_test_event_step_result_ok,
   op_test_event_step_wait,
   op_test_get_origin,
+  op_test_isolate_exit,
 } = core.ops;
 const {
   ArrayPrototypeFilter,
@@ -132,11 +134,52 @@ function parseTestLocation(str) {
   };
 }
 
-// Wrap test function in additional assertion that makes sure
-// that the test case does not accidentally exit prematurely.
-function assertExit(fn, isTest) {
+// Default exit handler installed at the start of every test isolate (see
+// `installTestIsolateExitHandler` below). When user code calls `Deno.exit()`
+// outside of any test function - at module top level, in an `unload` event,
+// or from async work that escaped a test - we don't want to kill the deno
+// process. Instead we record the exit code, notify the reporter, and ask V8
+// to terminate the isolate so the test runner can move on to the next file.
+//
+// `defaultExitHandler` is also what `assertExit` restores when a per-test
+// handler finishes, so that `Deno.exit()` after a test (e.g., in an unload
+// listener) is still routed to the isolate-exit path.
+let defaultExitHandler = null;
+
+function installTestIsolateExitHandler() {
+  defaultExitHandler = (exitCode) => {
+    op_test_isolate_exit(exitCode);
+    // `op_test_isolate_exit` asks V8 to terminate execution; the throw here
+    // is a defense-in-depth so the current call stack is unwound even if V8
+    // doesn't check the termination flag before some intermediate frame
+    // catches the (uncatchable) termination exception. Either way, the test
+    // runner detects the isolate-exit via `IsolateExitInfo` in `OpState`.
+    throw new Error(`Deno.exit(${exitCode}) called outside of a test`);
+  };
+  setExitHandler(defaultExitHandler);
+}
+
+// Wrap test function in additional assertion that handles a test case trying
+// to exit the process prematurely.
+//
+// When `sanitizeExit` is enabled (the default), any attempt to exit fails the
+// current test (and a non-zero exit code set during the test fails it too),
+// allowing the remaining tests to keep running.
+//
+// When `sanitizeExit` is disabled, the user has opted out of failing the test,
+// but we still don't want a test to silently terminate the process without a
+// message and - more importantly - without reliably flushing buffered output.
+// Instead we abort the whole test run: the reporter prints a message, flushes
+// all output, and then exits the process with the requested code.
+function assertExit(fn, isTest, sanitizeExit) {
   return async function exitSanitizer(...params) {
     setExitHandler((exitCode) => {
+      if (!sanitizeExit) {
+        // Hand the exit off to the test runner. This never returns - the
+        // process is terminated once the reporter has flushed its output.
+        op_test_event_exit(exitCode);
+        return;
+      }
       throw new Error(
         `${
           isTest ? "Test case" : "Bench"
@@ -146,22 +189,27 @@ function assertExit(fn, isTest) {
 
     try {
       const innerResult = await fn(...new SafeArrayIterator(params));
-      const exitCode = DenoNs.exitCode;
-      if (exitCode !== 0) {
-        // Reset the code to allow other tests to run...
-        DenoNs.exitCode = 0;
-        // ...and fail the current test.
-        throw new Error(
-          `${
-            isTest ? "Test case" : "Bench"
-          } finished with exit code set to ${exitCode}`,
-        );
+      if (sanitizeExit) {
+        const exitCode = DenoNs.exitCode;
+        if (exitCode !== 0) {
+          // Reset the code to allow other tests to run...
+          DenoNs.exitCode = 0;
+          // ...and fail the current test.
+          throw new Error(
+            `${
+              isTest ? "Test case" : "Bench"
+            } finished with exit code set to ${exitCode}`,
+          );
+        }
       }
       if (innerResult) {
         return innerResult;
       }
     } finally {
-      setExitHandler(null);
+      // Restore the isolate-level default handler so that a subsequent
+      // top-level `Deno.exit()` (e.g., in an `unload` listener) is routed
+      // back into the test runner instead of falling through to `op_exit`.
+      setExitHandler(defaultExitHandler);
     }
   };
 }
@@ -271,6 +319,11 @@ function encodeTimeout(value) {
 // As long as we're using one isolate per test, we can cache the origin since it won't change
 let cachedOrigin = undefined;
 
+// Module-level sanitizer overrides set via Deno.test.sanitizer()
+// These have higher precedence than CLI flags/config but lower than per-test options
+let moduleSanitizeOps = undefined;
+let moduleSanitizeResources = undefined;
+
 function testInner(
   nameOrFnOrOptions,
   optionsOrFn,
@@ -286,8 +339,10 @@ function testInner(
   const defaults = {
     ignore: false,
     only: false,
-    sanitizeOps: true,
-    sanitizeResources: true,
+    sanitizeOps: moduleSanitizeOps ??
+      Deno[Deno.internal].testSanitizeOps ?? false,
+    sanitizeResources: moduleSanitizeResources ??
+      Deno[Deno.internal].testSanitizeResources ?? false,
     sanitizeExit: true,
     permissions: null,
     timeout: undefined,
@@ -452,6 +507,20 @@ test.afterAll = function (fn) {
   registerHook("afterAll", fn);
 };
 
+test.sanitizer = function (options) {
+  if (typeof options !== "object" || options === null) {
+    throw new TypeError(
+      "Deno.test.sanitizer: options must be an object",
+    );
+  }
+  if (options.ops !== undefined) {
+    moduleSanitizeOps = options.ops;
+  }
+  if (options.resources !== undefined) {
+    moduleSanitizeResources = options.resources;
+  }
+};
+
 function getFullName(desc) {
   if ("parent" in desc) {
     return `${getFullName(desc.parent)} ... ${desc.name}`;
@@ -604,9 +673,8 @@ function createTestContext(desc) {
  */
 function wrapTest(desc) {
   let testFn = wrapInner(desc.fn);
-  if (desc.sanitizeExit) {
-    testFn = assertExit(testFn, true);
-  }
+  // Always install the exit handler - its behavior depends on `sanitizeExit`.
+  testFn = assertExit(testFn, true, desc.sanitizeExit);
   if (!("parent" in desc) && desc.permissions) {
     testFn = withPermissions(testFn, desc.permissions);
   }
@@ -614,3 +682,5 @@ function wrapTest(desc) {
 }
 
 globalThis.Deno.test = test;
+globalThis.Deno[globalThis.Deno.internal].installTestIsolateExitHandler =
+  installTestIsolateExitHandler;

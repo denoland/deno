@@ -586,6 +586,7 @@ impl<
           | NodeResolveErrorKind::UrlToFilePath(_)
           | NodeResolveErrorKind::TypesNotFound(_)
           | NodeResolveErrorKind::UnknownBuiltInNodeModule(_)
+          | NodeResolveErrorKind::BrowserMapDisabled(_)
           | NodeResolveErrorKind::FinalizeResolution(_) => Err(
             ResolveIfForNpmPackageErrorKind::NodeResolve(err.into()).into_box(),
           ),

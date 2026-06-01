@@ -24,7 +24,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   ArrayPrototypeMap,
   ArrayPrototypeFilter,
@@ -105,13 +105,15 @@ EventEmitter.getEventListeners = getEventListeners;
 EventEmitter.setMaxListeners = setMaxListeners;
 EventEmitter.getMaxListeners = getMaxListeners;
 EventEmitter.listenerCount = listenerCount;
+EventEmitter.addAbortListener = addAbortListener;
 // Backwards-compat with node 0.10.x
 EventEmitter.EventEmitter = EventEmitter;
 EventEmitter.usingDomains = false;
 
 EventEmitter.captureRejectionSymbol = kRejection;
-const captureRejectionSymbol = EventEmitter.captureRejectionSymbol;
-const errorMonitor = EventEmitter.errorMonitor;
+EventEmitter.errorMonitor = kErrorMonitor;
+const captureRejectionSymbol = kRejection;
+const errorMonitor = kErrorMonitor;
 
 ObjectDefineProperty(EventEmitter, "captureRejections", {
   get() {
@@ -124,8 +126,6 @@ ObjectDefineProperty(EventEmitter, "captureRejections", {
   },
   enumerable: true,
 });
-
-EventEmitter.errorMonitor = kErrorMonitor;
 
 // The default for captureRejections is false
 ObjectDefineProperty(EventEmitter.prototype, kCapture, {
@@ -1275,7 +1275,6 @@ function getEventEmitterAsyncResource() {
     }
   };
 
-  EventEmitter.EventEmitterAsyncResource = _EventEmitterAsyncResource;
   return _EventEmitterAsyncResource;
 }
 

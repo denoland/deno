@@ -5,7 +5,7 @@
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const {
   PrivateKeyObject,
   PublicKeyObject,

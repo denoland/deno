@@ -55,3 +55,45 @@ For testing purposes we need following files:
 - `localhost.key`
 - `localhost_ecc.crt`
 - `localhost_ecc.key`
+
+## PKCS#12 (PFX) bundles
+
+Bundles wrapping `localhost.crt` + `localhost.key`, with the MAC computed using
+each of the supported hash algorithms. All use the passphrase `secret`.
+
+```shell
+for alg in sha1 sha256 sha384 sha512; do
+  openssl pkcs12 -export -macalg "$alg" \
+    -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES \
+    -inkey localhost.key -in localhost.crt \
+    -passout pass:secret \
+    -out "localhost_${alg}.pfx"
+done
+```
+
+`-keypbe`/`-certpbe` pin bag encryption to legacy PBE-SHA1-3DES because the
+`p12` crate used by `op_node_load_pfx` does not yet support PBES2/AES-256-CBC,
+which is OpenSSL 3.x's default.
+
+- `localhost_sha1.pfx` — RFC 7292 default MAC algorithm
+- `localhost_sha256.pfx` — OpenSSL 3.x default MAC algorithm
+- `localhost_sha384.pfx`
+- `localhost_sha512.pfx`
+
+A separate self-signed bundle exercises the `DEPTH_ZERO_SELF_SIGNED_CERT` path
+in the TLS handshake. Generated with:
+
+```shell
+openssl req -x509 -nodes -newkey rsa:2048 \
+  -keyout localhost_ss.key -out localhost_ss.crt \
+  -days 36135 -sha256 \
+  -subj "/C=US/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost"
+openssl pkcs12 -export \
+  -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES \
+  -inkey localhost_ss.key -in localhost_ss.crt \
+  -passout pass:testpass \
+  -out localhost.pfx
+```
+
+- `localhost.pfx` — self-signed `CN=localhost`, passphrase `testpass`
