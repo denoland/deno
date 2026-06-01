@@ -615,7 +615,7 @@ mod tests {
     // a -> b (no scripts) -> c (has scripts), where all three packages are
     // synthetic workspace packages that are not present in the npm snapshot.
     let snapshot = make_snapshot(&[], vec![]);
-    let additional = vec![
+    let additional = [
       resolution_pkg("a@1.0.0", &[("b", "b@1.0.0")], true),
       resolution_pkg("b@1.0.0", &[("c", "c@1.0.0")], false),
       resolution_pkg("c@1.0.0", &[], true),
