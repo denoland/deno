@@ -1,0 +1,31 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Regression test for https://github.com/denoland/deno/issues/24916.
+    // Node's `-e` defaults to CommonJS but runs ESM-syntax code as ESM. A
+    // package whose `postinstall` runs an ESM `node -e "import ..."` must
+    // succeed even with no `node` binary on `PATH`: the inline code is written
+    // to a temp `.mjs` (auto-detected) and run through Deno, not forced to CJS.
+    "esm_node_eval_postinstall_without_node_binary": {
+      "steps": [
+        {
+          "envs": {
+            "PATH": ""
+          },
+          "args": "cache --allow-scripts main.js",
+          "output": "cache.out"
+        },
+        {
+          // The ESM `node -e` script wrote this file via `import`ed `writeFileSync`;
+          // the "object" suffix confirms it ran under Deno (no `node` binary) and
+          // that the ESM `import` syntax parsed (it would not as `.cjs`).
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('./node_eval_esm_ran.txt'))"
+          ],
+          "output": "hello from esm node -e object\n"
+        }
+      ]
+    }
+  }
+}

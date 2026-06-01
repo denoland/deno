@@ -354,6 +354,32 @@ async fn run_with_watch(
   Ok(0)
 }
 
+/// Auto-detects whether inline eval source (`deno eval` / `node -e`/`-p`) should
+/// be treated as CommonJS. Returns `true` only when the code parses as a script
+/// (no `import`/`export` declarations) *and* contains CJS-specific patterns like
+/// `require()`. Code with ESM syntax — or no module hints at all — is ESM,
+/// preserving the longstanding `deno eval` default. Shared with
+/// `task_runner::NodeCommand` so a `node -e` temp file picks the same extension.
+pub fn eval_source_is_cjs(source_code: &str) -> bool {
+  let specifier = deno_core::url::Url::parse("file:///eval.js").unwrap();
+  let is_script = deno_ast::parse_program(deno_ast::ParseParams {
+    specifier,
+    text: source_code.to_string().into(),
+    media_type: deno_ast::MediaType::JavaScript,
+    capture_tokens: false,
+    scope_analysis: false,
+    maybe_syntax: None,
+  })
+  .map(|parsed| parsed.compute_is_script())
+  .unwrap_or(true);
+  is_script
+    && (source_code.contains("require(")
+      || source_code.contains("module.exports")
+      || source_code.contains("exports.")
+      || source_code.contains("__dirname")
+      || source_code.contains("__filename"))
+}
+
 pub async fn eval_command(
   flags: Arc<Flags>,
   eval_flags: EvalFlags,
@@ -361,35 +387,13 @@ pub async fn eval_command(
   // Auto-detect CJS vs ESM if --ext was not explicitly provided.
   // Default is ESM (preserving existing behavior). Only switch to CJS if
   // the code contains CJS-specific patterns like require() calls.
-  // We check for import/export declarations first — if present, it's
-  // definitely ESM. If absent, we look for CJS patterns to decide.
   let flags = if flags.ext.is_none() {
     let source_code = if eval_flags.print {
       format!("console.log({})", &eval_flags.code)
     } else {
       eval_flags.code.clone()
     };
-    let specifier = deno_core::url::Url::parse("file:///eval.js").unwrap();
-    let is_script = deno_ast::parse_program(deno_ast::ParseParams {
-      specifier,
-      text: source_code.clone().into(),
-      media_type: deno_ast::MediaType::JavaScript,
-      capture_tokens: false,
-      scope_analysis: false,
-      maybe_syntax: None,
-    })
-    .map(|parsed| parsed.compute_is_script())
-    .unwrap_or(true);
-    // Only treat as CJS if it parses as a script AND contains CJS patterns.
-    // This preserves backward compatibility: code without imports/exports
-    // defaults to ESM (the longstanding deno eval behavior).
-    let has_cjs_patterns = is_script
-      && (source_code.contains("require(")
-        || source_code.contains("module.exports")
-        || source_code.contains("exports.")
-        || source_code.contains("__dirname")
-        || source_code.contains("__filename"));
-    if has_cjs_patterns {
+    if eval_source_is_cjs(&source_code) {
       let mut flags = (*flags).clone();
       flags.ext = Some("cjs".to_string());
       Arc::new(flags)
