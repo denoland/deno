@@ -3007,13 +3007,9 @@ for (const delay of ["delay", "nodelay"]) {
   }
 }
 
-// NOTE: This test will start failing when we disable "deno_http/legacy_abort" feature.
-//
-// Test for the internal implementation detail of cached request signals. Ensure that the request's
-// signal is aborted if we try to access it after the request has been completed.
 Deno.test(
   { permissions: { net: true } },
-  async function httpServerSignalCancelled() {
+  async function httpServerSignalNotCancelledAfterSuccessfulResponse() {
     let stashedRequest;
     const { finished, abort } = await makeServer((req) => {
       // The cache signal is `undefined` because it has not been requested
@@ -3025,15 +3021,33 @@ Deno.test(
     abort();
     await finished;
 
-    // `false` is a semaphore for a signal that should be aborted on creation
-    assertEquals(getCachedAbortSignal(stashedRequest!), false);
-    // Requesting the signal causes it to be materialized
-    assert(stashedRequest!.signal.aborted);
+    assertEquals(getCachedAbortSignal(stashedRequest!), undefined);
+    assert(!stashedRequest!.signal.aborted);
     // The cached signal is now a full `AbortSignal`
     assertEquals(
       getCachedAbortSignal(stashedRequest!).constructor,
       AbortSignal,
     );
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerSignalCanBeReusedAfterSuccessfulResponse() {
+    let stashedRequest: Request | undefined;
+    const { finished, abort } = await makeServer((req) => {
+      stashedRequest = req;
+      return new Response("ok");
+    });
+    await (await fetch(`http://localhost:${servePort}`)).text();
+
+    const response = await fetch(`http://localhost:${servePort}`, {
+      signal: stashedRequest!.signal,
+    });
+    assertEquals(await response.text(), "ok");
+
+    abort();
+    await finished;
   },
 );
 

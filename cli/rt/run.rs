@@ -1330,7 +1330,7 @@ pub async fn run(
     serve_port: None,
     serve_host: None,
     otel_config: metadata.otel_config,
-    no_legacy_abort: false,
+    no_legacy_abort: true,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     residual_lazy_js_sources: deno_snapshots::RESIDUAL_LAZY_JS,
     residual_lazy_esm_sources: deno_snapshots::RESIDUAL_LAZY_ESM,

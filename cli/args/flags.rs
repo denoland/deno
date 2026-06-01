@@ -1323,10 +1323,7 @@ impl Flags {
   }
 
   pub fn no_legacy_abort(&self) -> bool {
-    self
-      .unstable_config
-      .features
-      .contains(&String::from("no-legacy-abort"))
+    true
   }
 
   pub fn otel_config(&self) -> OtelConfig {

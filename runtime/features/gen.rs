@@ -114,7 +114,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
   UnstableFeatureDefinition {
     name: "no-legacy-abort",
     flag_name: "unstable-no-legacy-abort",
-    help_text: "Enable abort signal in Deno.serve without legacy behavior. This will not abort the server when the request is handled successfully.",
+    help_text: "No-op. Deno.serve request signals no longer abort after a request is handled successfully.",
     show_in_help: true,
     id: 13,
     kind: UnstableFeatureKind::Runtime,
