@@ -2743,6 +2743,79 @@ Deno.test("[node/http] destroying suspended keep-alive timer preserves timer ref
   assertStringIncludes(output, "ref timer fired");
 });
 
+Deno.test("[node/http] ref/unref on suspended keep-alive timer preserves timer refs", async () => {
+  const child = execCode3(Deno.execPath(), [
+    "eval",
+    `
+    import { createHook } from "node:async_hooks";
+    import { once } from "node:events";
+    import http from "node:http";
+    import net from "node:net";
+
+    let keepAliveTimer;
+    const hook = createHook({
+      init(_asyncId, type, _triggerAsyncId, resource) {
+        if (type === "Timeout" && resource._idleTimeout === 1001) {
+          keepAliveTimer = resource;
+        }
+      },
+    });
+
+    const server = http.createServer({ keepAliveTimeout: 1 }, (req, res) => {
+      if (req.url === "/resume") {
+        if (keepAliveTimer === undefined) {
+          throw new Error("keep-alive timer was not captured");
+        }
+        keepAliveTimer.ref();
+        keepAliveTimer.unref();
+        keepAliveTimer.ref();
+      }
+      res.end("ok");
+    });
+
+    hook.enable();
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = server.address().port;
+    const socket = net.createConnection(port, "127.0.0.1");
+    await once(socket, "connect");
+
+    let received = "";
+    socket.on("data", (chunk) => {
+      received += chunk;
+    });
+
+    async function readText(text) {
+      while (!received.includes(text)) {
+        await once(socket, "data");
+      }
+      received = "";
+    }
+
+    socket.write(
+      "GET /first HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: keep-alive\\r\\n\\r\\n",
+    );
+    await readText("ok");
+    socket.write(
+      "GET /resume HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: keep-alive\\r\\n\\r\\n",
+    );
+    await readText("ok");
+
+    keepAliveTimer.unref();
+    hook.disable();
+    socket.destroy();
+    server.close();
+    setTimeout(() => console.log("ref timer fired"), 50);
+    setTimeout(() => {
+      console.error("process stayed alive after suspended timer unref");
+      Deno.exit(1);
+    }, 500).unref();
+  `,
+  ]);
+  const [statusCode, output] = await child.finished();
+  assertEquals(statusCode, 0);
+  assertStringIncludes(output, "ref timer fired");
+});
+
 Deno.test("[node/http] user socket timeout still applies after keep-alive reuse", async () => {
   let timeoutCount = 0;
   const serverTimeout = Promise.withResolvers<void>();
