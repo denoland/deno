@@ -17749,10 +17749,7 @@ fn lsp_tsconfig_node_modules_dts_diagnostics() {
 // when the subpath is a directory that contains an `index` declaration.
 #[test(timeout = 300)]
 fn lsp_tsconfig_module_resolution_bundler_dir_import() {
-  let context = TestContextBuilder::new()
-    .use_http_server()
-    .use_temp_cwd()
-    .build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
     "deno.json",
