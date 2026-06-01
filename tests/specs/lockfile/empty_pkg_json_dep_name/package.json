@@ -1,0 +1,8 @@
+{
+  "name": "lockfile_empty_pkg_json_dep_name",
+  "dependencies": {
+    "": ".",
+    "@denotest/esm-basic": "*"
+  },
+  "type": "module"
+}

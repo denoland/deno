@@ -4,7 +4,7 @@
 // deno-lint-ignore-file prefer-primordials no-process-global
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { AssertionError } = core.loadExtScript(
   "ext:deno_node/internal/assert/assertion_error.js",
 );

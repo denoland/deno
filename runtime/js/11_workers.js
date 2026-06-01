@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   op_create_worker,
   op_host_post_message,
@@ -14,6 +14,7 @@ const {
   ArrayPrototypeFilter,
   ArrayPrototypeJoin,
   Error,
+  JSONStringify,
   ObjectPrototypeIsPrototypeOf,
   String,
   StringPrototypeStartsWith,
@@ -142,7 +143,7 @@ class Worker extends EventTarget {
     let hasSourceCode, sourceCode;
     if (workerType === "classic") {
       hasSourceCode = true;
-      sourceCode = `importScripts("#");`;
+      sourceCode = `importScripts(${JSONStringify(specifier)});`;
     } else {
       hasSourceCode = false;
       sourceCode = "";
@@ -363,5 +364,5 @@ webidl.converters["WorkerType"] = webidl.createEnumConverter("WorkerType", [
   "module",
 ]);
 
-return { Worker, privateWorkerRef };
+return { Worker };
 })();

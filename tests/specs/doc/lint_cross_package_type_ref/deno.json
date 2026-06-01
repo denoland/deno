@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@denotest/lint-public-base": "jsr:@denotest/lint-public-base@^0.1.0"
+  }
+}

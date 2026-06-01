@@ -106,6 +106,9 @@ static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   lazy_regex!(r#"^\[['"](.+)[\['"]\]$"#);
 static CODEBLOCK_RE: Lazy<Regex> = lazy_regex!(r"^\s*[~`]{3}"m);
 static HTTP_RE: Lazy<Regex> = lazy_regex!(r#"(?i)^https?:"#);
+static SIMPLE_NAMED_IMPORT_RE: Lazy<Regex> = lazy_regex!(
+  r#"(?s)^\s*import\s+(?P<type>type\s+)?\{\s*(?P<names>[^{}]+?)\s*\}\s+from\s+["'](?P<specifier>[^"']+)["'];?\s*$"#
+);
 static JSDOC_LINKS_RE: Lazy<Regex> = lazy_regex!(
   r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}"
 );
@@ -2076,36 +2079,6 @@ fn display_parts_to_string<'a>(
         // should decode percent-encoding string when hovering over the right edge of module specifier like below
         // module "file:///path/to/🦕"
         to_percent_decoded_str(&part.text),
-        // NOTE: The reason why an example above that lacks `.ts` extension is caused by the implementation of tsc itself.
-        // The request `tsc.request.getQuickInfoAtPosition` receives the payload from tsc host as follows.
-        // {
-        //   text_span: {
-        //     start: 19,
-        //     length: 9,
-        //   },
-        //   displayParts:
-        //     [
-        //       {
-        //         text: "module",
-        //         kind: "keyword",
-        //         target: null,
-        //       },
-        //       {
-        //         text: " ",
-        //         kind: "space",
-        //         target: null,
-        //       },
-        //       {
-        //         text: "\"file:///path/to/%F0%9F%A6%95\"",
-        //         kind: "stringLiteral",
-        //         target: null,
-        //       },
-        //     ],
-        //   documentation: [],
-        //   tags: null,
-        // }
-        //
-        // related issue: https://github.com/denoland/deno/issues/16058
       ),
     }
   }
@@ -3554,6 +3527,7 @@ fn parse_code_actions(
                 );
               }
             }
+            merge_completion_import_edit(&mut text_edit, module);
             text_edit
           }));
         } else {
@@ -3598,6 +3572,207 @@ fn parse_code_actions(
   } else {
     Ok((None, None))
   }
+}
+
+fn merge_completion_import_edit(
+  text_edit: &mut lsp::TextEdit,
+  module: &DocumentModule,
+) {
+  let Some(new_import) = parse_simple_named_import(&text_edit.new_text) else {
+    return;
+  };
+  let Some(existing_import) =
+    find_mergeable_named_import(&module.text, &new_import)
+  else {
+    return;
+  };
+  text_edit.range = lsp::Range {
+    start: byte_offset_to_position(&module.text, existing_import.insert_offset),
+    end: byte_offset_to_position(&module.text, existing_import.insert_offset),
+  };
+  text_edit.new_text = existing_import.new_text;
+}
+
+struct SimpleNamedImport<'a> {
+  is_type_only: bool,
+  specifier: &'a str,
+  names: Vec<&'a str>,
+}
+
+struct ExistingNamedImport {
+  insert_offset: usize,
+  new_text: String,
+}
+
+fn parse_simple_named_import(text: &str) -> Option<SimpleNamedImport<'_>> {
+  let captures = SIMPLE_NAMED_IMPORT_RE.captures(text)?;
+  let names = captures
+    .name("names")?
+    .as_str()
+    .split(',')
+    .map(str::trim)
+    .filter(|name| !name.is_empty())
+    .collect::<Vec<_>>();
+  if names.is_empty() {
+    return None;
+  }
+  Some(SimpleNamedImport {
+    is_type_only: captures.name("type").is_some(),
+    specifier: captures.name("specifier")?.as_str(),
+    names,
+  })
+}
+
+fn find_mergeable_named_import(
+  text: &str,
+  new_import: &SimpleNamedImport,
+) -> Option<ExistingNamedImport> {
+  for quote in ['"', '\''] {
+    let needle = format!("from {}{}{}", quote, new_import.specifier, quote);
+    let mut search_start = 0;
+    while let Some(relative_index) = text[search_start..].find(&needle) {
+      let from_index = search_start + relative_index;
+      search_start = from_index + needle.len();
+      let Some(import_start) = find_import_start(text, from_index) else {
+        continue;
+      };
+      let statement_before_from = &text[import_start..from_index];
+      if statement_before_from.contains(';') {
+        continue;
+      }
+      let Some(import_clause) =
+        statement_before_from.trim_start().strip_prefix("import ")
+      else {
+        continue;
+      };
+      let is_type_only = import_clause.trim_start().starts_with("type ");
+      if is_type_only && !new_import.is_type_only {
+        continue;
+      }
+      let Some(close_brace) = statement_before_from.rfind('}') else {
+        continue;
+      };
+      let close_brace = import_start + close_brace;
+      let Some(open_brace) = text[import_start..close_brace].rfind('{') else {
+        continue;
+      };
+      let open_brace = import_start + open_brace;
+      let existing_names = &text[open_brace + 1..close_brace];
+      if new_import
+        .names
+        .iter()
+        .any(|name| import_list_contains_name(existing_names, name))
+      {
+        continue;
+      }
+      let insert_offset =
+        import_list_insert_offset(text, open_brace, close_brace);
+      let names = new_import
+        .names
+        .iter()
+        .map(|name| {
+          if new_import.is_type_only && !is_type_only {
+            format!("type {name}")
+          } else {
+            (*name).to_string()
+          }
+        })
+        .collect::<Vec<_>>();
+      return Some(ExistingNamedImport {
+        insert_offset,
+        new_text: format_import_list_insertion(
+          text,
+          open_brace,
+          close_brace,
+          &names,
+        ),
+      });
+    }
+  }
+  None
+}
+
+fn find_import_start(text: &str, from_index: usize) -> Option<usize> {
+  let mut line_start = text[..from_index].rfind('\n').map_or(0, |i| i + 1);
+  loop {
+    let line = &text[line_start..from_index];
+    if line.trim_start().starts_with("import ") {
+      return Some(line_start);
+    }
+    if line_start == 0 {
+      return None;
+    }
+    line_start = text[..line_start - 1].rfind('\n').map_or(0, |i| i + 1);
+  }
+}
+
+fn import_list_contains_name(existing_names: &str, name: &str) -> bool {
+  let name = name.trim_start_matches("type ").trim();
+  existing_names.split(',').any(|existing_name| {
+    let existing_name = existing_name.trim().trim_start_matches("type ").trim();
+    existing_name
+      .split_once(" as ")
+      .map(|(_, alias)| alias.trim())
+      .unwrap_or(existing_name)
+      == name
+  })
+}
+
+fn format_import_list_insertion(
+  text: &str,
+  open_brace: usize,
+  close_brace: usize,
+  names: &[String],
+) -> String {
+  let existing_names = &text[open_brace + 1..close_brace];
+  if existing_names.contains('\n') {
+    let close_line_start = text[..close_brace].rfind('\n').map_or(0, |i| i + 1);
+    let indent = text[close_line_start..close_brace]
+      .chars()
+      .take_while(|c| c.is_whitespace())
+      .collect::<String>();
+    names
+      .iter()
+      .map(|name| format!("{indent}{name},\n"))
+      .collect()
+  } else if existing_names.trim().is_empty() {
+    names.join(", ")
+  } else {
+    format!(", {}", names.join(", "))
+  }
+}
+
+fn import_list_insert_offset(
+  text: &str,
+  open_brace: usize,
+  close_brace: usize,
+) -> usize {
+  let existing_names = &text[open_brace + 1..close_brace];
+  if existing_names.contains('\n') {
+    close_brace
+  } else {
+    close_brace
+      - existing_names
+        .chars()
+        .rev()
+        .take_while(|c| c.is_whitespace())
+        .map(char::len_utf8)
+        .sum::<usize>()
+  }
+}
+
+fn byte_offset_to_position(text: &str, offset: usize) -> lsp::Position {
+  let mut line = 0;
+  let mut character = 0;
+  for ch in text[..offset].chars() {
+    if ch == '\n' {
+      line += 1;
+      character = 0;
+    } else {
+      character += ch.len_utf16() as u32;
+    }
+  }
+  lsp::Position { line, character }
 }
 
 // Based on https://github.com/microsoft/vscode/blob/1.81.1/extensions/typescript-language-features/src/languageFeatures/util/snippetForFunctionCall.ts#L49.
@@ -4251,18 +4426,25 @@ impl CompletionEntry {
         .description = Some(display_source);
     }
 
-    let text_edit =
-      if let (Some(text_span), Some(new_text)) = (range, &insert_text) {
-        let range = text_span.to_range(line_index);
-        let insert_replace_edit = lsp::InsertReplaceEdit {
-          new_text: new_text.clone(),
-          insert: range,
-          replace: range,
-        };
-        Some(insert_replace_edit.into())
-      } else {
-        None
+    let text_edit = if let Some(text_span) = &range {
+      let range = text_span.to_range(line_index);
+      // TSC may provide a `replacementSpan` without a corresponding
+      // `insertText` (e.g. for string union literal members). In that case
+      // fall back to the entry name as the text to insert, matching the
+      // behavior of VSCode's TypeScript integration. Without this, the editor
+      // is left to apply its own word-based replacement, which breaks on
+      // string values containing characters like `.` (the part before the
+      // last dot is forgotten).
+      let new_text = insert_text.clone().unwrap_or_else(|| self.name.clone());
+      let insert_replace_edit = lsp::InsertReplaceEdit {
+        new_text,
+        insert: range,
+        replace: range,
       };
+      Some(insert_replace_edit.into())
+    } else {
+      None
+    };
 
     let data = TsJsCompletionItemData {
       uri: module.uri.as_ref().clone(),
@@ -4707,11 +4889,10 @@ enum LoadError {
   UrlParse(#[from] deno_core::url::ParseError),
   #[error("{0}")]
   #[class(inherit)]
-  SerdeV8(#[from] serde_v8::Error),
+  JsErrorBox(#[from] deno_error::JsErrorBox),
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, deno_core::ToV8)]
 struct LoadResponse {
   data: DocumentText,
   script_kind: i32,
@@ -4764,7 +4945,7 @@ fn op_load<'s>(
         }
       })
     };
-  let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
+  let serialized = maybe_load_response.to_v8(scope)?;
   state.performance.measure(mark);
   Ok(serialized)
 }
@@ -4927,10 +5108,12 @@ fn op_resolve_inner(
       o.map(|(s, mt)| {
         (
           state.specifier_map.denormalize(&s, mt),
-          if matches!(mt, MediaType::Unknown) {
-            None
-          } else {
-            Some(mt.as_ts_extension().to_string())
+          match mt {
+            MediaType::Unknown => None,
+            // surface these as .js for typescript so side-effect imports
+            // (e.g. `import "./styles.css"`) don't trigger TS6263
+            MediaType::Css => Some(".js".to_string()),
+            _ => Some(mt.as_ts_extension().to_string()),
           },
         )
       })
@@ -5271,7 +5454,6 @@ fn op_project_version(state: &mut OpState) -> usize {
 }
 
 #[op2]
-#[serde]
 fn op_tsc_constants() -> crate::tsc::TscConstants {
   crate::tsc::TscConstants::new()
 }
@@ -6079,6 +6261,34 @@ mod tests {
   use crate::lsp::resolver::LspResolver;
   use crate::lsp::text::LineIndex;
 
+  #[test]
+  fn test_find_mergeable_named_import() {
+    let new_import =
+      parse_simple_named_import("import { think } from \"cowsay\";\n\n")
+        .unwrap();
+    let existing_import = find_mergeable_named_import(
+      "import { say } from \"cowsay\";\n\nthink();\n",
+      &new_import,
+    )
+    .unwrap();
+    assert_eq!(existing_import.insert_offset, 12);
+    assert_eq!(existing_import.new_text, ", think");
+  }
+
+  #[test]
+  fn test_find_mergeable_named_import_multiline() {
+    let new_import =
+      parse_simple_named_import("import { think } from \"cowsay\";\n\n")
+        .unwrap();
+    let existing_import = find_mergeable_named_import(
+      "import {\n  say,\n} from \"cowsay\";\n\nthink();\n",
+      &new_import,
+    )
+    .unwrap();
+    assert_eq!(existing_import.insert_offset, 16);
+    assert_eq!(existing_import.new_text, "think,\n");
+  }
+
   async fn setup(
     deno_json_content: Value,
     sources: &[(&str, &str, i32, LanguageId)],
@@ -6577,7 +6787,7 @@ mod tests {
             "line": 2,
             "character": 17
           },
-          "messageText": "Property \'a\' does not exist on type \'typeof import(\"https://deno.land/x/example/a\", { with: { \"resolution-mode\": \"import\" } })\'.",
+          "messageText": "Property \'a\' does not exist on type \'typeof import(\"https://deno.land/x/example/a.ts\", { with: { \"resolution-mode\": \"import\" } })\'.",
           "sourceLine": "          if (a.a === \"b\") {",
           "fileName": specifier,
         }

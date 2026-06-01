@@ -34,6 +34,7 @@ const { validateInteger } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
 import { op_tty_check_fd_permission, TTY } from "ext:core/ops";
+const { isatty } = core.loadExtScript("ext:deno_node/tty.js");
 const lazyNet = core.createLazyLoader("node:net");
 const {
   clearLine,
@@ -293,6 +294,7 @@ function removeSigwinchListener(stream) {
 
 // WriteStream needs to be callable without `new` to match Node.js behavior.
 function WriteStream(fd) {
+  ensureWriteStreamPrototype();
   if (!ObjectPrototypeIsPrototypeOf(WriteStream.prototype, this)) {
     return new WriteStream(fd);
   }
@@ -331,8 +333,18 @@ function WriteStream(fd) {
   }
 }
 
-ObjectSetPrototypeOf(WriteStream.prototype, lazyNet().Socket.prototype);
-ObjectSetPrototypeOf(WriteStream, lazyNet().Socket);
+// `lazyNet().Socket` may be in TDZ at module-eval time when net.ts is
+// lazy-loaded JS, since this module's body can run before net_esm.ts
+// finishes evaluating. Defer the prototype hookup until the first
+// WriteStream is constructed.
+let writeStreamPrototypeReady = false;
+function ensureWriteStreamPrototype() {
+  if (writeStreamPrototypeReady) return;
+  writeStreamPrototypeReady = true;
+  const NetSocket = lazyNet().Socket;
+  ObjectSetPrototypeOf(WriteStream.prototype, NetSocket.prototype);
+  ObjectSetPrototypeOf(WriteStream, NetSocket);
+}
 
 WriteStream.prototype.isTTY = true;
 
@@ -422,7 +434,7 @@ WriteStream.prototype.getWindowSize = function getWindowSize() {
  * @param {Record<string, string>} [env]
  * @returns {boolean}
  */
-WriteStream.prototype.hasColors = function hasColors(count, env) {
+export function hasColors(count, env) {
   if (
     env === undefined &&
     (count === undefined || typeof count === "object" && count !== null)
@@ -433,8 +445,12 @@ WriteStream.prototype.hasColors = function hasColors(count, env) {
     validateInteger(count, "count", 2);
   }
 
-  const depth = this.getColorDepth(env);
+  const depth = getColorDepth(env);
   return count <= 2 ** depth;
+}
+
+WriteStream.prototype.hasColors = function hasColors_(count, env) {
+  return hasColors(count, env);
 };
 
 /**
@@ -445,5 +461,5 @@ WriteStream.prototype.getColorDepth = function getColorDepth_(env) {
   return getColorDepth(env);
 };
 
-export { addSigwinchListener, WriteStream };
-export default WriteStream;
+export { addSigwinchListener, isatty, WriteStream };
+export default { getColorDepth, hasColors, isatty, WriteStream };

@@ -1,0 +1,42 @@
+{
+  "tests": {
+    "tcp_override": {
+      "args": "run --allow-net tcp.ts",
+      "envs": {
+        "DENO_SERVE_ADDRESS": "tcp:127.0.0.1:9401"
+      },
+      "output": "tcp.out"
+    },
+    "tcp_duplicate": {
+      "args": "run --allow-net duplicate_tcp.ts",
+      "envs": {
+        "DENO_SERVE_ADDRESS": "duplicate,tcp:127.0.0.1:9402"
+      },
+      "output": "duplicate_tcp.out"
+    },
+    "unix_duplicate": {
+      "if": "unix",
+      "args": "run --allow-net --allow-read --allow-write duplicate_unix.ts",
+      "envs": {
+        "DENO_SERVE_ADDRESS": "duplicate,unix:/tmp/deno-http-override-test.sock"
+      },
+      "output": "duplicate_unix.out"
+    },
+    "unix_override_only": {
+      "if": "unix",
+      "args": "run --allow-net --allow-read --allow-write unix_only.ts",
+      "envs": {
+        "DENO_SERVE_ADDRESS": "unix:/tmp/deno-http-override-only.sock"
+      },
+      "output": "unix_only.out"
+    },
+    "https_duplicate_unix": {
+      "if": "unix",
+      "args": "run --allow-net --allow-read --allow-write --unsafely-ignore-certificate-errors https_duplicate.ts",
+      "envs": {
+        "DENO_SERVE_ADDRESS": "duplicate,unix:/tmp/deno-https-override-test.sock"
+      },
+      "output": "https_duplicate.out"
+    }
+  }
+}

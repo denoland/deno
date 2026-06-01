@@ -1,10 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { assert, assertRejects, fail } from "@std/assert";
+import { assert, assertRejects, assertThrows, fail } from "@std/assert";
+import * as perfHooks from "node:perf_hooks";
 import * as timers from "node:timers";
 import * as timersPromises from "node:timers/promises";
 import { assertEquals } from "@std/assert";
-import { performance } from "node:perf_hooks";
+import {
+  createHistogram,
+  monitorEventLoopDelay,
+  performance,
+} from "node:perf_hooks";
 
 Deno.test("[node/perf_hooks] performance.timerify()", () => {
   function sayHello() {
@@ -17,6 +22,54 @@ Deno.test("[node/perf_hooks] performance.timerify()", () => {
   if (result !== "hello world") {
     throw new Error(`Expected "hello world", got "${result}"`);
   }
+});
+
+Deno.test("[node/perf_hooks] histogram parity regressions", () => {
+  assertEquals("Histogram" in perfHooks, false);
+  assertEquals("RecordableHistogram" in perfHooks, false);
+
+  const h = createHistogram();
+  assertEquals(h.percentiles, new Map([[100, 0]]));
+
+  h.record(1);
+  h.record(2);
+  assertEquals(
+    h.percentiles,
+    new Map([[0, 1], [50, 1], [75, 2], [100, 2]]),
+  );
+  assertThrows(
+    () => h.record(9223372036854775808n),
+    RangeError,
+    'The value of "val" is out of range',
+  );
+
+  const low = createHistogram({ lowest: 1, highest: 10 });
+  const high = createHistogram({ lowest: 1, highest: 100000 });
+  high.record(1000);
+  low.add(high);
+  assertEquals(low.count, 1);
+  assertEquals(low.exceeds, 0);
+  assertEquals(low.max, 0);
+  assertEquals(low.percentile(100), 0);
+  assertEquals(low.percentiles, new Map([[100, 0]]));
+
+  const eld = monitorEventLoopDelay();
+  assert(
+    eld instanceof Object.getPrototypeOf(Object.getPrototypeOf(h))
+      .constructor,
+  );
+  assertEquals(eld.percentiles, new Map([[100, 0]]));
+});
+
+Deno.test("[node/perf_hooks] timerify requires a real RecordableHistogram", () => {
+  assertThrows(
+    () =>
+      performance.timerify(() => {}, {
+        histogram: { record() {} } as never,
+      }),
+    TypeError,
+    '"options.histogram" property must be an instance of RecordableHistogram',
+  );
 });
 
 Deno.test("[node/timers setTimeout]", () => {

@@ -7,7 +7,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   op_bootstrap_unstable_args,
   op_node_child_ipc_pipe,
@@ -161,7 +161,7 @@ function fork(
     // Use the Rust parser to translate Node.js CLI args to Deno args
     // The parser handles Deno-style args (e.g., from vitest) by passing them through unchanged
     const result = op_node_translate_cli_args(nodeArgs, false, true);
-    const denoArgs = result.deno_args;
+    const denoArgs = result.denoArgs;
     const bootstrapArgs = op_bootstrap_unstable_args();
 
     // Insert bootstrap unstable args after "run" but before other args.
@@ -181,8 +181,8 @@ function fork(
     }
 
     // Handle NODE_OPTIONS if the parser returned any
-    if (result.node_options.length > 0) {
-      const nodeOptionsStr = result.node_options.join(" ");
+    if (result.nodeOptions.length > 0) {
+      const nodeOptionsStr = result.nodeOptions.join(" ");
       if (options.env) {
         options.env.NODE_OPTIONS = options.env.NODE_OPTIONS
           ? options.env.NODE_OPTIONS + " " + nodeOptionsStr
@@ -191,19 +191,25 @@ function fork(
         options.env = { ...process.env, NODE_OPTIONS: nodeOptionsStr };
       }
     }
-    if (result.ca_stores?.length) {
+    if (result.caStores?.length) {
       options.env = {
         ...(options.env ?? process.env),
-        DENO_TLS_CA_STORE: result.ca_stores.join(","),
+        DENO_TLS_CA_STORE: result.caStores.join(","),
       };
     }
-    if (result.use_openssl_ca) {
+    if (result.useOpensslCa) {
       options.env = {
         ...(options.env ?? process.env),
         DENO_NODE_USE_OPENSSL_CA: "1",
       };
     } else if (options.env?.DENO_NODE_USE_OPENSSL_CA) {
       delete options.env.DENO_NODE_USE_OPENSSL_CA;
+    }
+    if (result.traceEventCategories) {
+      options.env = {
+        ...(options.env ?? process.env),
+        DENO_NODE_TRACE_EVENT_CATEGORIES: result.traceEventCategories,
+      };
     }
   }
 
@@ -523,7 +529,7 @@ function execFile(
     shell: execOptions.shell,
     signal: execOptions.signal,
     uid: execOptions.uid,
-    windowsHide: !!execOptions.windowsHide,
+    windowsHide: execOptions.windowsHide !== false,
     windowsVerbatimArguments: !!execOptions.windowsVerbatimArguments,
   };
 

@@ -563,7 +563,9 @@ impl DenoTaskLifeCycleScriptsExecutor {
           custom_commands: custom_commands.clone(),
           init_cwd: options.init_cwd,
           argv: &[],
-          root_node_modules_dir: Some(options.root_node_modules_dir_path),
+          node_modules_bin_dirs: &[options
+            .root_node_modules_dir_path
+            .join(".bin")],
           stdio: Some(crate::task_runner::TaskIo {
             stderr: TaskStdio::piped(),
             stdout: TaskStdio::piped(),

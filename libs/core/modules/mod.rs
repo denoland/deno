@@ -16,6 +16,7 @@ use crate::error::exception_to_err;
 use crate::fast_string::FastString;
 use crate::module_specifier::ModuleSpecifier;
 
+mod import_graph;
 mod loaders;
 mod map;
 mod module_map_data;
@@ -723,10 +724,6 @@ pub(crate) struct ModuleRequest {
   /// None if this is a root request.
   pub referrer_source_offset: Option<i32>,
   pub phase: ModuleImportPhase,
-  /// If true, the specifier in `reference` is a best-effort parse and
-  /// needs to be properly resolved asynchronously during module loading.
-  #[serde(default)]
-  pub needs_resolve: bool,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]

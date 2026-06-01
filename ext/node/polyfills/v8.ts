@@ -7,8 +7,14 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
-const { ObjectPrototypeToString, SymbolSpecies } = primordials;
+const { core, primordials } = __bootstrap;
+const {
+  ArrayPrototypePush,
+  ObjectFreeze,
+  ObjectPrototypeToString,
+  SymbolDispose,
+  SymbolSpecies,
+} = primordials;
 const {
   op_v8_cached_data_version_tag,
   op_v8_get_heap_code_statistics,
@@ -24,7 +30,9 @@ const {
   op_v8_read_uint64,
   op_v8_read_value,
   op_v8_release_buffer,
+  op_v8_set_flags_from_string,
   op_v8_set_treat_array_buffer_views_as_host_objects,
+  op_v8_query_objects_count,
   op_v8_take_heap_snapshot,
   op_v8_transfer_array_buffer,
   op_v8_transfer_array_buffer_de,
@@ -35,6 +43,9 @@ const {
   op_v8_write_uint32,
   op_v8_write_uint64,
   op_v8_write_value,
+  op_v8_gc_profiler_new,
+  op_v8_gc_profiler_start,
+  op_v8_gc_profiler_stop,
 } = core.ops;
 
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
@@ -48,9 +59,10 @@ const { isArrayBufferView } = core.loadExtScript(
 const lazyFsUtils = core.createLazyLoader(
   "ext:deno_node/internal/fs/utils.mjs",
 );
-const { validateObject } = core.loadExtScript(
-  "ext:deno_node/internal/validators.mjs",
-);
+const { validateFunction, validateObject, validateOneOf, validateString } = core
+  .loadExtScript(
+    "ext:deno_node/internal/validators.mjs",
+  );
 
 function cachedDataVersionTag() {
   return op_v8_cached_data_version_tag();
@@ -118,15 +130,14 @@ function getHeapStatistics() {
   };
 }
 
-function setFlagsFromString() {
+function setFlagsFromString(flags: string) {
   // NOTE(bartlomieju): From Node.js docs:
   // The v8.setFlagsFromString() method can be used to programmatically set V8
   // command-line flags. This method should be used with care. Changing settings
   // after the VM has started may result in unpredictable behavior, including
   // crashes and data loss; or it may simply do nothing.
-  //
-  // Notice: "or it may simply do nothing". This is what we're gonna do,
-  // this function will just be a no-op.
+  validateString(flags, "flags");
+  op_v8_set_flags_from_string(flags);
 }
 function stopCoverage() {
   notImplemented("v8.stopCoverage");
@@ -165,6 +176,44 @@ function writeHeapSnapshot(
   const data = op_v8_take_heap_snapshot();
   lazyFs().writeFileSync(filename, data);
   return filename;
+}
+
+// https://nodejs.org/api/v8.html#v8queryobjectsctor-options
+//
+// Deno currently only supports `{ format: 'count' }`. Returning live instances
+// would require V8's `HeapProfiler::QueryObjects`, which isn't exposed in the
+// rusty_v8 bindings; the count form is what Node's leak tests rely on.
+function queryObjects(
+  ctor: { name?: string; prototype?: unknown },
+  options:
+    | { format?: "count" | "summary" }
+    | undefined = undefined,
+) {
+  validateFunction(ctor, "constructor");
+  if (options !== undefined) {
+    validateObject(options, "options");
+    if (options.format !== undefined) {
+      validateOneOf(options.format, "options.format", ["count", "summary"]);
+    }
+  }
+  const format = options?.format;
+
+  const name = typeof ctor.name === "string" ? ctor.name : "";
+  if (name === "") {
+    return format === "count" ? 0 : [];
+  }
+  const count = op_v8_query_objects_count(name);
+  if (format === "count") {
+    return count;
+  }
+  if (format === "summary") {
+    if (count === 0) return [];
+    return [`${count} instance(s) of ${name}`];
+  }
+  // Default format returns live object handles, which would require V8's
+  // `HeapProfiler::QueryObjects` (not exposed in rusty_v8). Returning an
+  // empty array keeps the signature sensible.
+  return [];
 }
 
 // deno-lint-ignore no-explicit-any
@@ -356,6 +405,102 @@ function arrayBufferViewIndexToType(index: number): any {
   return undefined;
 }
 
+const kGCHandle = Symbol("kGCHandle");
+const kGCStartTime = Symbol("kGCStartTime");
+
+class GCProfiler {
+  [kGCHandle]: object | null = null;
+  [kGCStartTime]: number = 0;
+
+  start() {
+    if (this[kGCHandle] !== null) return;
+    const handle = op_v8_gc_profiler_new();
+    this[kGCStartTime] = Date.now();
+    op_v8_gc_profiler_start(handle);
+    this[kGCHandle] = handle;
+  }
+
+  stop() {
+    const handle = this[kGCHandle];
+    if (handle === null) return undefined;
+    this[kGCHandle] = null;
+    const endTime = Date.now();
+    const result = op_v8_gc_profiler_stop(handle);
+    if (result === null) return undefined;
+    return {
+      version: 1,
+      startTime: this[kGCStartTime],
+      endTime,
+      statistics: result.statistics,
+    };
+  }
+
+  [SymbolDispose]() {
+    const handle = this[kGCHandle];
+    if (handle === null) return undefined;
+    this[kGCHandle] = null;
+    // Ignore the report; dispose() must return undefined.
+    op_v8_gc_profiler_stop(handle);
+    return undefined;
+  }
+}
+
+// https://nodejs.org/api/v8.html#startup-snapshot-api
+//
+// Deno does not ship `--build-snapshot` / `--snapshot-blob` for users, so this
+// is an API-surface polyfill that lets modules calling `v8.startupSnapshot`
+// load without errors. `isBuildingSnapshot()` always returns false. The
+// serialize/deserialize callbacks are stored but never invoked because there
+// is no snapshot lifecycle. `setDeserializeMainFunction` invokes the callback
+// synchronously so scripts that register a deserialize main still run their
+// entry point in plain Deno runs.
+// deno-lint-ignore no-explicit-any
+type SnapshotCallback = (data: any) => unknown;
+const serializeCallbacks: { fn: SnapshotCallback; data: unknown }[] = [];
+const deserializeCallbacks: { fn: SnapshotCallback; data: unknown }[] = [];
+let deserializeMainCalled = false;
+
+function startupSnapshotSetDeserializeMainFunction(
+  fn: SnapshotCallback,
+  data?: unknown,
+) {
+  validateFunction(fn, "callback");
+  if (deserializeMainCalled) {
+    throw new Error(
+      "v8.startupSnapshot.setDeserializeMainFunction() can only be called once.",
+    );
+  }
+  deserializeMainCalled = true;
+  fn(data);
+}
+
+function startupSnapshotAddSerializeCallback(
+  fn: SnapshotCallback,
+  data?: unknown,
+) {
+  validateFunction(fn, "callback");
+  ArrayPrototypePush(serializeCallbacks, { fn, data });
+}
+
+function startupSnapshotAddDeserializeCallback(
+  fn: SnapshotCallback,
+  data?: unknown,
+) {
+  validateFunction(fn, "callback");
+  ArrayPrototypePush(deserializeCallbacks, { fn, data });
+}
+
+function startupSnapshotIsBuildingSnapshot() {
+  return false;
+}
+
+const startupSnapshot = ObjectFreeze({
+  setDeserializeMainFunction: startupSnapshotSetDeserializeMainFunction,
+  addSerializeCallback: startupSnapshotAddSerializeCallback,
+  addDeserializeCallback: startupSnapshotAddDeserializeCallback,
+  isBuildingSnapshot: startupSnapshotIsBuildingSnapshot,
+});
+
 class DefaultDeserializer extends Deserializer {
   constructor(buffer: ArrayBufferView) {
     super(buffer);
@@ -396,12 +541,15 @@ return {
   getHeapSnapshot,
   getHeapSpaceStatistics,
   getHeapStatistics,
+  queryObjects,
   setFlagsFromString,
+  startupSnapshot,
   stopCoverage,
   takeCoverage,
   writeHeapSnapshot,
   serialize,
   deserialize,
+  GCProfiler,
   Serializer,
   Deserializer,
   DefaultSerializer,

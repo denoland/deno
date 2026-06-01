@@ -1,0 +1,14 @@
+{
+  "name": "@denotest/browser-field-map",
+  "version": "1.0.0",
+  "main": "main.js",
+  "browser": {
+    "./main.js": "./main.browser.js",
+    "./util.js": "./util.browser.js",
+    "./extensionless": false,
+    "./dir-extensionless": false,
+    "fs": false,
+    "foo": "./shims/foo.js"
+  },
+  "type": "module"
+}

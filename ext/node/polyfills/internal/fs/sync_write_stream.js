@@ -8,7 +8,7 @@
 // performs synchronous writes via fs.writeSync, matching Node.js
 // behavior for FILE-type stdio descriptors.
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   FunctionPrototypeCall,
   ObjectSetPrototypeOf,

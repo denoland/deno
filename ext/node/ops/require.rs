@@ -170,9 +170,15 @@ pub fn op_require_node_module_paths<TSys: ExtNodeSys + 'static>(
   #[string] from: &str,
 ) -> Result<Vec<String>, RequireError> {
   let sys = state.borrow::<TSys>();
-  // Guarantee that "from" is absolute.
+  // Guarantee that "from" is absolute. Avoid calling `env_current_dir()`
+  // when we don't need it — on macOS it walks the directory tree from `/`
+  // and fails with EACCES if any ancestor is unreadable (see #21585), so
+  // an unrelated absolute `from` would otherwise crash here.
+  let from_path = Path::new(from);
   let from = if from.starts_with("file:///") {
     Cow::Owned(url_to_file_path(&Url::parse(from)?)?)
+  } else if from_path.is_absolute() {
+    normalize_path(Cow::Borrowed(from_path))
   } else {
     let current_dir = &sys
       .env_current_dir()
@@ -265,15 +271,63 @@ pub fn op_require_resolve_deno_dir<
   >>();
 
   let path = Path::new(parent_filename);
+  if let Ok(folder) = resolver.resolve_package_folder_from_package(
+    request,
+    &UrlOrPathRef::from_path(path),
+  ) {
+    return Ok(Some(folder.to_string_lossy().into_owned()));
+  }
+
+  // Referrer-based resolution failed. When the referrer lives outside the
+  // global cache (e.g. a user's project file invoking `require()` through
+  // a hook installed by a package that *is* in the cache, mirroring the
+  // Playwright config-transpile flow), the npm resolver has no way to
+  // anchor the lookup. Fall back to resolving the bare specifier as a
+  // top-level dependency in the npm graph.
+  let referrer_is_in_npm_package = url_from_file_path(path)
+    .map(|url| resolver.in_npm_package(&url))
+    .unwrap_or(false);
+  if referrer_is_in_npm_package {
+    return Ok(None);
+  }
+  let package_name = bare_specifier_package_name(request);
+  if package_name.is_empty() {
+    return Ok(None);
+  }
+  let loader = state.borrow::<NodeRequireLoaderRc>();
   Ok(
-    resolver
-      .resolve_package_folder_from_package(
-        request,
-        &UrlOrPathRef::from_path(path),
-      )
-      .ok()
+    loader
+      .resolve_package_folder_from_name(package_name)
       .map(|p| p.to_string_lossy().into_owned()),
   )
+}
+
+/// Returns the npm package name portion of a bare specifier such as
+/// `pkg`, `pkg/sub`, `@scope/pkg`, or `@scope/pkg/sub`. Returns an empty
+/// string for relative or otherwise invalid specifiers.
+fn bare_specifier_package_name(specifier: &str) -> &str {
+  if specifier.is_empty()
+    || specifier.starts_with('.')
+    || specifier.starts_with('/')
+    || specifier.starts_with('#')
+  {
+    return "";
+  }
+  if let Some(rest) = specifier.strip_prefix('@') {
+    let Some(scope_end) = rest.find('/') else {
+      return "";
+    };
+    let after_scope = &rest[scope_end + 1..];
+    match after_scope.find('/') {
+      Some(rel) => &specifier[..1 + scope_end + 1 + rel],
+      None => specifier,
+    }
+  } else {
+    match specifier.find('/') {
+      Some(i) => &specifier[..i],
+      None => specifier,
+    }
+  }
 }
 
 #[op2(fast)]
@@ -546,7 +600,6 @@ pub fn op_require_resolve_exports<
   #[string] name: &str,
   #[string] expansion: &str,
   #[string] parent_path: &str,
-  #[serde] conditions: Option<Vec<String>>,
 ) -> Result<Option<String>, RequireError> {
   let sys = state.borrow::<TSys>();
   let node_resolver = state.borrow::<NodeResolverRc<
@@ -585,15 +638,6 @@ pub fn op_require_resolve_exports<
     Some(PathBuf::from(parent_path))
   };
   NodeResolutionThreadLocalCache::clear();
-  let conditions_cow: Vec<Cow<'static, str>> = conditions
-    .as_ref()
-    .map(|c| c.iter().map(|s| Cow::Owned(s.clone())).collect())
-    .unwrap_or_default();
-  let resolve_conditions = if conditions.is_some() {
-    &conditions_cow[..]
-  } else {
-    node_resolver.require_conditions()
-  };
   let r = node_resolver.package_exports_resolve(
     &pkg.path,
     &format!(".{expansion}"),
@@ -603,7 +647,7 @@ pub fn op_require_resolve_exports<
       .map(|r| UrlOrPathRef::from_path(r))
       .as_ref(),
     ResolutionMode::Require,
-    resolve_conditions,
+    node_resolver.require_conditions(),
     NodeResolutionKind::Execution,
   )?;
   Ok(Some(url_or_path_to_string(r)?))

@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "run -A --unstable-kv main.ts",
+  "exitCode": 1,
+  "output": "main.out"
+}

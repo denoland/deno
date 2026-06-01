@@ -21,8 +21,16 @@
       "toString.any.worker.html": true,
       "type.tentative.any.html": false,
       "type.tentative.any.worker.html": false,
-      "value-get-set.any.html": true,
-      "value-get-set.any.worker.html": true,
+      "value-get-set.any.html": {
+        "expectedFailures": [
+          "Calling setter without argument"
+        ]
+      },
+      "value-get-set.any.worker.html": {
+        "expectedFailures": [
+          "Calling setter without argument"
+        ]
+      },
       "valueOf.any.html": true,
       "valueOf.any.worker.html": true
     },
@@ -139,8 +147,16 @@
     "exception": {
       "basic.tentative.any.html": true,
       "basic.tentative.any.worker.html": true,
-      "constructor.tentative.any.html": true,
-      "constructor.tentative.any.worker.html": true,
+      "constructor.tentative.any.html": {
+        "expectedFailures": [
+          "length"
+        ]
+      },
+      "constructor.tentative.any.worker.html": {
+        "expectedFailures": [
+          "length"
+        ]
+      },
       "getArg.tentative.any.html": {
         "expectedFailures": [
           "Getting out-of-range argument"

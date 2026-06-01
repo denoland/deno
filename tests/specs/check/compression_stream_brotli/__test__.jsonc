@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "default_lib": {
+      "args": "check --quiet default.ts",
+      "output": ""
+    },
+    "dom_lib": {
+      "args": "check --quiet --config dom.json default.ts",
+      "output": ""
+    },
+    "webworker_lib": {
+      "args": "check --quiet --config webworker.json default.ts",
+      "output": ""
+    }
+  }
+}

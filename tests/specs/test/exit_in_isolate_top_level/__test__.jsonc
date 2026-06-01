@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "tests": {
+    "exit_zero_alone": {
+      "args": "test --no-check exit_zero.ts",
+      "exitCode": 0,
+      "output": "exit_zero.out"
+    },
+    "exit_nonzero_alone": {
+      "args": "test --no-check exit_nonzero.ts",
+      "exitCode": 1,
+      "output": "exit_nonzero.out"
+    },
+    "mixed_run_passing_alongside_isolate_exit": {
+      "args": "test --no-check passing.ts exit_zero.ts",
+      "exitCode": 0,
+      "output": "mixed.out"
+    }
+  }
+}

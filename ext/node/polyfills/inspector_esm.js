@@ -4,6 +4,7 @@ const mod = core.loadExtScript("ext:deno_node/inspector.js");
 
 export const close = mod.close;
 export const console = mod.console;
+export const DOMStorage = mod.DOMStorage;
 export const Network = mod.Network;
 export const open = mod.open;
 export const Session = mod.Session;
