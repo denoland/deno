@@ -660,6 +660,10 @@ impl<
     let packages_with_scripts =
       lifecycle_scripts_to_run.packages_with_scripts();
     if !packages_with_scripts.is_empty() {
+      let additional_packages = workspace_lifecycle_packages
+        .iter()
+        .map(|package| &package.package)
+        .collect::<Vec<_>>();
       let process_state = NpmProcessState::new_local(
         snapshot.as_valid_serialized(),
         &self.root_node_modules_path,
@@ -676,6 +680,7 @@ impl<
           on_ran_pkg_scripts: &|_pkg| Ok(()),
           snapshot,
           system_packages: &package_partitions.packages,
+          additional_packages: &additional_packages,
           packages_with_scripts,
           extra_info_provider: &extra_info_provider,
         })
@@ -708,9 +713,6 @@ impl<
       .collect::<HashMap<_, _>>();
     let mut packages = Vec::with_capacity(workspace_pkgs.len());
     for workspace_pkg in workspace_pkgs {
-      if workspace_pkg.scripts.is_empty() {
-        continue;
-      }
       let mut dependencies = HashMap::with_capacity(workspace_pkg.deps.len());
       for dep in &workspace_pkg.deps {
         match dep {
@@ -745,7 +747,7 @@ impl<
           }),
           is_deprecated: false,
           has_bin: false,
-          has_scripts: true,
+          has_scripts: !workspace_pkg.scripts.is_empty(),
         },
         package_path: workspace_pkg.target_dir.clone(),
         scripts: workspace_pkg.scripts.clone(),

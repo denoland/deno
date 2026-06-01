@@ -1,6 +1,8 @@
 {
+  "name": "c",
+  "version": "0.0.0",
   "scripts": {
-    "postinstall": "echo postinstall"
+    "postinstall": "echo c"
   },
   "dependencies": {
     "@denotest/add": "^1.0.0"

@@ -45,6 +45,7 @@ pub struct LifecycleScriptsExecutorOptions<'a> {
     &'a dyn Fn(&NpmResolutionPackage) -> Result<(), JsErrorBox>,
   pub snapshot: &'a NpmResolutionSnapshot,
   pub system_packages: &'a [NpmResolutionPackage],
+  pub additional_packages: &'a [&'a NpmResolutionPackage],
   pub packages_with_scripts: &'a [PackageWithScript<'a>],
   pub extra_info_provider: &'a CachedNpmPackageExtraInfoProvider,
 }
@@ -323,7 +324,8 @@ pub fn is_running_lifecycle_script(sys: &impl sys_traits::EnvVar) -> bool {
 /// than C.
 pub fn compute_lifecycle_script_layers<'a>(
   packages: &'a [PackageWithScript<'a>],
-  snapshot: &NpmResolutionSnapshot,
+  snapshot: &'a NpmResolutionSnapshot,
+  additional_packages: &'a [&'a NpmResolutionPackage],
 ) -> Vec<Vec<&'a PackageWithScript<'a>>> {
   if packages.len() <= 1 {
     return vec![packages.iter().collect()];
@@ -334,6 +336,11 @@ pub fn compute_lifecycle_script_layers<'a>(
     packages.iter().map(|p| &p.package.id).collect();
   let pkg_by_id: HashMap<&NpmPackageId, &PackageWithScript> =
     packages.iter().map(|p| (&p.package.id, p)).collect();
+  let additional_pkg_by_id: HashMap<&NpmPackageId, &NpmResolutionPackage> =
+    additional_packages
+      .iter()
+      .map(|package| (&package.id, *package))
+      .collect();
 
   // for each package, find transitive deps that have lifecycle scripts
   // (walking through intermediate packages that don't have scripts)
@@ -341,8 +348,12 @@ pub fn compute_lifecycle_script_layers<'a>(
   let mut dependents: HashMap<&NpmPackageId, Vec<&NpmPackageId>> =
     HashMap::new();
   for pkg in packages {
-    let transitive_script_deps =
-      find_transitive_script_deps(pkg.package, &script_pkg_ids, snapshot);
+    let transitive_script_deps = find_transitive_script_deps(
+      pkg.package,
+      &script_pkg_ids,
+      snapshot,
+      &additional_pkg_by_id,
+    );
     in_degree.insert(&pkg.package.id, transitive_script_deps.len());
     for dep_id in transitive_script_deps {
       dependents.entry(dep_id).or_default().push(&pkg.package.id);
@@ -395,6 +406,7 @@ fn find_transitive_script_deps<'a>(
   package: &'a NpmResolutionPackage,
   script_pkg_ids: &HashSet<&'a NpmPackageId>,
   snapshot: &'a NpmResolutionSnapshot,
+  additional_pkg_by_id: &HashMap<&'a NpmPackageId, &'a NpmResolutionPackage>,
 ) -> HashSet<&'a NpmPackageId> {
   let mut result = HashSet::new();
   let mut visited = HashSet::new();
@@ -410,7 +422,10 @@ fn find_transitive_script_deps<'a>(
       continue;
     }
     // walk through non-script packages to find transitive script deps
-    if let Some(dep_pkg) = snapshot.package_from_id(dep_id) {
+    if let Some(dep_pkg) = snapshot
+      .package_from_id(dep_id)
+      .or_else(|| additional_pkg_by_id.get(dep_id).copied())
+    {
       stack.extend(dep_pkg.dependencies.values());
     }
   }
@@ -424,6 +439,8 @@ mod tests {
   use std::path::PathBuf;
 
   use deno_npm::NpmPackageId;
+  use deno_npm::NpmResolutionPackage;
+  use deno_npm::NpmResolutionPackageSystemInfo;
   use deno_npm::resolution::NpmResolutionSnapshot;
   use deno_npm::resolution::SerializedNpmResolutionSnapshot;
   use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
@@ -462,6 +479,26 @@ mod tests {
     }
   }
 
+  fn resolution_pkg(
+    id: &str,
+    dependencies: &[(&str, &str)],
+    has_scripts: bool,
+  ) -> NpmResolutionPackage {
+    NpmResolutionPackage {
+      id: pkg_id(id),
+      copy_index: 0,
+      system: NpmResolutionPackageSystemInfo::default(),
+      dist: None,
+      dependencies: deps(dependencies),
+      optional_dependencies: Default::default(),
+      optional_peer_dependencies: Default::default(),
+      extra: None,
+      is_deprecated: false,
+      has_bin: false,
+      has_scripts,
+    }
+  }
+
   fn make_snapshot(
     root: &[(&str, &str)],
     packages: Vec<SerializedNpmResolutionSnapshotPackage>,
@@ -480,10 +517,18 @@ mod tests {
     id: &str,
     snapshot: &'a NpmResolutionSnapshot,
   ) -> PackageWithScript<'a> {
+    make_pkg_with_script_from_package(
+      snapshot.package_from_id(&pkg_id(id)).unwrap(),
+    )
+  }
+
+  fn make_pkg_with_script_from_package(
+    package: &NpmResolutionPackage,
+  ) -> PackageWithScript<'_> {
     PackageWithScript {
-      package: snapshot.package_from_id(&pkg_id(id)).unwrap(),
+      package,
       scripts: HashMap::from([("install".into(), "node-gyp rebuild".into())]),
-      package_folder: PathBuf::from(format!("/tmp/{id}")),
+      package_folder: PathBuf::from(format!("/tmp/{}", package.id)),
       init_cwds: Vec::new(),
     }
   }
@@ -508,7 +553,7 @@ mod tests {
     let snapshot =
       make_snapshot(&[("a@1", "a@1.0.0")], vec![pkg("a@1.0.0", &[])]);
     let pkgs = vec![make_pkg_with_script("a@1.0.0", &snapshot)];
-    let layers = compute_lifecycle_script_layers(&pkgs, &snapshot);
+    let layers = compute_lifecycle_script_layers(&pkgs, &snapshot, &[]);
     assert_eq!(layers.len(), 1);
     assert_eq!(layer_names(&layers), vec![vec!["a"]]);
   }
@@ -524,7 +569,7 @@ mod tests {
       make_pkg_with_script("a@1.0.0", &snapshot),
       make_pkg_with_script("b@1.0.0", &snapshot),
     ];
-    let layers = compute_lifecycle_script_layers(&pkgs, &snapshot);
+    let layers = compute_lifecycle_script_layers(&pkgs, &snapshot, &[]);
     assert_eq!(layers.len(), 1);
     assert_eq!(layer_names(&layers), vec![vec!["a", "b"]]);
   }
@@ -540,7 +585,7 @@ mod tests {
       make_pkg_with_script("a@1.0.0", &snapshot),
       make_pkg_with_script("b@1.0.0", &snapshot),
     ];
-    let layers = compute_lifecycle_script_layers(&pkgs, &snapshot);
+    let layers = compute_lifecycle_script_layers(&pkgs, &snapshot, &[]);
     assert_eq!(layer_names(&layers), vec![vec!["b"], vec!["a"]]);
   }
 
@@ -561,7 +606,27 @@ mod tests {
       make_pkg_with_script("a@1.0.0", &snapshot),
       make_pkg_with_script("c@1.0.0", &snapshot),
     ];
-    let layers = compute_lifecycle_script_layers(&pkgs, &snapshot);
+    let layers = compute_lifecycle_script_layers(&pkgs, &snapshot, &[]);
+    assert_eq!(layer_names(&layers), vec![vec!["c"], vec!["a"]]);
+  }
+
+  #[test]
+  fn transitive_through_additional_non_script_package() {
+    // a -> b (no scripts) -> c (has scripts), where all three packages are
+    // synthetic workspace packages that are not present in the npm snapshot.
+    let snapshot = make_snapshot(&[], vec![]);
+    let additional = vec![
+      resolution_pkg("a@1.0.0", &[("b", "b@1.0.0")], true),
+      resolution_pkg("b@1.0.0", &[("c", "c@1.0.0")], false),
+      resolution_pkg("c@1.0.0", &[], true),
+    ];
+    let pkgs = vec![
+      make_pkg_with_script_from_package(&additional[0]),
+      make_pkg_with_script_from_package(&additional[2]),
+    ];
+    let additional_refs = additional.iter().collect::<Vec<_>>();
+    let layers =
+      compute_lifecycle_script_layers(&pkgs, &snapshot, &additional_refs);
     assert_eq!(layer_names(&layers), vec![vec!["c"], vec!["a"]]);
   }
 
@@ -585,7 +650,7 @@ mod tests {
       make_pkg_with_script("c@1.0.0", &snapshot),
       make_pkg_with_script("d@1.0.0", &snapshot),
     ];
-    let layers = compute_lifecycle_script_layers(&pkgs, &snapshot);
+    let layers = compute_lifecycle_script_layers(&pkgs, &snapshot, &[]);
     assert_eq!(
       layer_names(&layers),
       vec![vec!["d"], vec!["b", "c"], vec!["a"]]
@@ -596,7 +661,7 @@ mod tests {
   fn empty_packages() {
     let snapshot = make_snapshot(&[], vec![]);
     let pkgs: Vec<PackageWithScript> = vec![];
-    let layers = compute_lifecycle_script_layers(&pkgs, &snapshot);
+    let layers = compute_lifecycle_script_layers(&pkgs, &snapshot, &[]);
     assert_eq!(layers.len(), 1);
     assert!(layers[0].is_empty());
   }
