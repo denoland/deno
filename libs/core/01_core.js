@@ -358,7 +358,6 @@
   function processTicksAndRejections() {
     let tock;
     do {
-      // deno-lint-ignore no-cond-assign
       while ((tock = queue.shift()) !== null) {
         const oldContext = getAsyncContext();
         setAsyncContext(tock.snapshot);
