@@ -21,10 +21,13 @@ const {
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   FunctionPrototypeApply,
+  ObjectKeys,
   Symbol,
 } = primordials;
 const {
   AsyncVariable,
+  getAsyncContext,
+  kNoAsyncContextRestore,
   setAsyncContext,
 } = core;
 
@@ -121,7 +124,19 @@ function enterAsyncResourceIfActive(resource: any): any {
 
 // deno-lint-ignore no-explicit-any
 function exitAsyncResourceIfActive(previousContext: any): void {
-  setAsyncContext(previousContext);
+  if (previousContext !== kNoAsyncContextRestore) {
+    setAsyncContext(previousContext);
+    return;
+  }
+
+  const currentContext = getAsyncContext();
+  if (
+    currentContext !== null &&
+    currentContext !== undefined &&
+    ObjectKeys(currentContext).length > 0
+  ) {
+    setAsyncContext(undefined);
+  }
 }
 
 // Emit functions that work with the internal hook system

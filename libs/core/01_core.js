@@ -958,6 +958,8 @@
 
   const getAsyncContext = getContinuationPreservedEmbedderData;
   const setAsyncContext = setContinuationPreservedEmbedderData;
+  const kNoAsyncContextRestore = Symbol("Deno.core.noAsyncContextRestore");
+
   function scopeAsyncContext(ctx) {
     const old = getAsyncContext();
     setAsyncContext(ctx);
@@ -987,7 +989,7 @@
         previousContextMapping === undefined ||
         ObjectKeys(previousContextMapping).length === 0
       ) {
-        return previousContextMapping;
+        return kNoAsyncContextRestore;
       }
       this.#enterWithPreviousContext(value, previousContextMapping);
       return previousContextMapping;
@@ -1254,6 +1256,7 @@
     setAsyncContext,
     scopeAsyncContext,
     AsyncVariable,
+    kNoAsyncContextRestore,
   });
 
   const internals = {};
