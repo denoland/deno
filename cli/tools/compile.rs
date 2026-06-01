@@ -288,6 +288,19 @@ fn rewrite_absolute_bundle_paths_inner(
   // path's separators arrive JS-escaped as `\\`, which the body matches as
   // ordinary (non-`"`) characters. Conservative on extension on purpose — we
   // don't want to rewrite arbitrary user-provided strings.
+  //
+  // Load-bearing assumption: every absolute-path literal we match is an
+  // external `require(...)` argument, i.e. a *value* position where wrapping
+  // it in `__internalResolveBundlePath(...)` stays valid JS. This holds
+  // because esbuild emits *relative* keys (no leading `/`) for the inlined
+  // `__commonJS` module map, so the only absolute literals left in the output
+  // are at external require call sites. If esbuild ever emitted an absolute
+  // `__commonJS` key (e.g. via a different `absWorkingDir`/outbase), this
+  // would rewrite it into `{ __internalResolveBundlePath("...")(...) {...} }`,
+  // a syntax error — the spec tests under `tests/specs/compile/bundle` would
+  // catch that. A genuine user string literal pointing at an existing file on
+  // disk would also be rewritten, but the build-time existence check below
+  // keeps that to paths that really resolve through the VFS.
   let pattern = lazy_regex::regex!(
     r#""((?:[A-Za-z]:)?[\\/][^"\n]+\.(?:js|cjs|mjs|json))""#
   );
@@ -301,6 +314,12 @@ fn rewrite_absolute_bundle_paths_inner(
     if !path_exists(path) {
       return caps[0].to_string();
     }
+    // Rewrite to a path relative to the bundle file. This is correct only
+    // because the VFS embeds `node_modules` at the same cwd-relative offset
+    // from the bundle that `diff_paths` computes here (bundle_dir =
+    // initial_cwd at build time, resolved at runtime against
+    // `import.meta.url`). See `fill_npm_vfs` in cli/standalone/binary.rs,
+    // which preserves that cwd-relative layout when populating the VFS.
     let Some(rel) = pathdiff::diff_paths(path, bundle_dir) else {
       return caps[0].to_string();
     };

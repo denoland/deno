@@ -405,11 +405,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let progress_bar = ProgressBar::new(ProgressBarStyle::ProgressBars);
     // With --bundle the JS graph is self-contained, so the whole npm tree
     // is intentionally left out of the binary. The exception is packages
-    // that ship native (.node) addons: those must stay external during
-    // bundling (so their internal `require('./X.node')` keeps the right
-    // `__dirname` context) and their installed folder, plus the closure
-    // of their dependencies, must be embedded in the VFS so resolution
-    // works at runtime.
+    // that ship native (.node) addons: the package JS is still bundled, but
+    // its `.node` file imports stay external (`external = ["*.node"]` in
+    // compile.rs) so the addon loader resolves them against the embedded VFS
+    // at runtime. For that to work the package's installed folder, plus the
+    // closure of its dependencies, must be embedded in the VFS.
     let npm_snapshot = if compile_flags.bundle {
       self
         .fill_bundle_native_addon_vfs(&mut vfs, &progress_bar)
@@ -969,6 +969,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
     let needs_for_cjs_wrapper =
       self.cli_options.compile_bundle_embed_node_modules();
+    // note: re-walks the snapshot — `find_native_addon_packages` derives
+    // `as_valid_serialized_for_system` and recursively `read_dir`s every
+    // package folder, then the Managed branch below derives the snapshot
+    // again. Bounded and compile-only, so not worth deduplicating now.
     let needs_for_native_addons = !needs_for_cjs_wrapper
       && !super::native_addons::find_native_addon_packages(
         self.npm_resolver,
