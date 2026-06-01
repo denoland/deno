@@ -60,6 +60,7 @@ pub struct Protocol {
   request_body: BodyKind,
   chunk_remaining: usize,
   chunk_needs_crlf: bool,
+  chunk_waiting_trailers: bool,
   allow_missing_host: bool,
 }
 
@@ -75,6 +76,7 @@ impl Protocol {
       request_body: BodyKind::Empty,
       chunk_remaining: 0,
       chunk_needs_crlf: false,
+      chunk_waiting_trailers: false,
       allow_missing_host: false,
     }
   }
@@ -96,6 +98,7 @@ impl Protocol {
     self.request_body = head.body_kind;
     self.chunk_remaining = 0;
     self.chunk_needs_crlf = false;
+    self.chunk_waiting_trailers = false;
     Ok(RequestStatus::Complete {
       consumed: head.consumed,
       request: request_from_head(&head),
@@ -125,6 +128,7 @@ impl Protocol {
     self.request_body = head.body_kind;
     self.chunk_remaining = 0;
     self.chunk_needs_crlf = false;
+    self.chunk_waiting_trailers = false;
     Ok(RequestStatus::Complete {
       consumed: head.consumed,
       request: request_from_head(&head),
@@ -150,6 +154,7 @@ impl Protocol {
     self.request_body = head.body_kind;
     self.chunk_remaining = 0;
     self.chunk_needs_crlf = false;
+    self.chunk_waiting_trailers = false;
     Ok(RequestStatus::Complete {
       consumed: head.consumed,
       request: request_from_head(&head),
@@ -199,12 +204,25 @@ impl Protocol {
     self.request_body = BodyKind::Empty;
     self.chunk_remaining = 0;
     self.chunk_needs_crlf = false;
+    self.chunk_waiting_trailers = false;
   }
 
   fn chunked_body_chunk<'a>(
     &mut self,
     input: &'a [u8],
   ) -> Result<BodyStatus<'a>, ProtocolError> {
+    if self.chunk_waiting_trailers {
+      let trailers = match parse_trailers(input)? {
+        TrailerStatus::Complete { consumed } => consumed,
+        TrailerStatus::Partial => {
+          return Ok(BodyStatus::Partial { consumed: 0 });
+        }
+      };
+      self.chunk_waiting_trailers = false;
+      self.request_body = BodyKind::Empty;
+      return Ok(BodyStatus::Complete { consumed: trailers });
+    }
+
     let mut cursor = 0usize;
     if self.chunk_needs_crlf {
       if input.len() < 2 {
@@ -232,7 +250,8 @@ impl Protocol {
         let trailers = match parse_trailers(&input[cursor..])? {
           TrailerStatus::Complete { consumed } => consumed,
           TrailerStatus::Partial => {
-            return Ok(BodyStatus::Partial { consumed: 0 });
+            self.chunk_waiting_trailers = true;
+            return Ok(BodyStatus::Partial { consumed: cursor });
           }
         };
         let consumed = cursor + trailers;
@@ -483,6 +502,41 @@ mod tests {
     };
     cursor += consumed;
     assert!(input[cursor..].starts_with(b"GET / HTTP/1.1"));
+  }
+
+  #[test]
+  fn chunked_zero_chunk_can_wait_for_trailers_after_data_chunk() {
+    let mut protocol = Protocol::new();
+    let mut headers = [Header::EMPTY; MAX_HEADERS];
+    let input =
+      b"POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n1\r\na";
+    let RequestStatus::Complete { consumed, .. } =
+      protocol.next_request(input, &mut headers).unwrap()
+    else {
+      panic!("expected complete request");
+    };
+    let BodyStatus::Chunk {
+      bytes,
+      consumed: body_consumed,
+    } = protocol.body_chunk(&input[consumed..]).unwrap()
+    else {
+      panic!("expected body chunk");
+    };
+    assert_eq!(bytes, b"a");
+    assert_eq!(body_consumed, 4);
+
+    assert_eq!(
+      protocol.body_chunk(b"\r\n0\r\n").unwrap(),
+      BodyStatus::Partial { consumed: 5 }
+    );
+    assert_eq!(
+      protocol.body_chunk(b"X-Trailer: yes\r\n").unwrap(),
+      BodyStatus::Partial { consumed: 0 }
+    );
+    assert_eq!(
+      protocol.body_chunk(b"X-Trailer: yes\r\n\r\n").unwrap(),
+      BodyStatus::Complete { consumed: 18 }
+    );
   }
 
   #[test]
