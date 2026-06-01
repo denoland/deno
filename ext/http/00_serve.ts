@@ -57,6 +57,8 @@ const {
   Uint8Array,
   Promise,
   Number,
+  NumberIsFinite,
+  MathFloor,
 } = primordials;
 
 const { InnerBody } = core.loadExtScript("ext:deno_fetch/22_body.js");
@@ -744,6 +746,7 @@ type RawServeOptions = {
   reusePort?: boolean;
   key?: string;
   cert?: string;
+  keepAliveTimeout?: number;
   onError?: (error: unknown) => Response | Promise<Response>;
   onListen?: (params: { hostname: string; port: number }) => void;
   handler?: RawHandler;
@@ -764,6 +767,21 @@ function formatHostName(hostname: string): string {
 
   // Add brackets around ipv6 hostname
   return StringPrototypeIncludes(hostname, ":") ? `[${hostname}]` : hostname;
+}
+
+function validateKeepAliveTimeout(value) {
+  if (value === undefined) {
+    return undefined;
+  }
+  value = Number(value);
+  if (
+    !NumberIsFinite(value) || value < 0 || value > 2147483647
+  ) {
+    throw new TypeError(
+      "keepAliveTimeout must be a finite number between 0 and 2147483647",
+    );
+  }
+  return MathFloor(value);
 }
 
 // Flag to track if DENO_SERVE_ADDRESS override has been consumed
@@ -904,6 +922,9 @@ function serveInner(options, handler) {
   const wantsVsock = ObjectHasOwn(options, "cid");
   const wantsTunnel = options.tunnel === true;
   const signal = options.signal;
+  const keepAliveTimeout = validateKeepAliveTimeout(
+    options.keepAliveTimeout,
+  );
   const onError = options.onError ??
     function (error) {
       internals.log("error", error);
@@ -1019,13 +1040,27 @@ function serveInner(options, handler) {
     }
   };
 
-  return serveHttpOnListener(listener, signal, handler, onError, onListen);
+  return serveHttpOnListener(
+    listener,
+    signal,
+    handler,
+    onError,
+    onListen,
+    keepAliveTimeout,
+  );
 }
 
 /**
  * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary listener.
  */
-function serveHttpOnListener(listener, signal, handler, onError, onListen) {
+function serveHttpOnListener(
+  listener,
+  signal,
+  handler,
+  onError,
+  onListen,
+  keepAliveTimeout = undefined,
+) {
   let serverContext = undefined;
   let callback = undefined;
   const promiseErrorHandler = (error) => {
@@ -1042,7 +1077,7 @@ function serveHttpOnListener(listener, signal, handler, onError, onListen) {
 
   serverContext = new CallbackContext(
     signal,
-    op_http_serve(listener[internalRidSymbol], dispatch),
+    op_http_serve(listener[internalRidSymbol], keepAliveTimeout, dispatch),
     listener,
   );
   callback = mapToCallback(serverContext, handler, onError);
@@ -1072,7 +1107,7 @@ function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
 
   serverContext = new CallbackContext(
     signal,
-    op_http_serve_on(connection[internalRidSymbol], dispatch),
+    op_http_serve_on(connection[internalRidSymbol], undefined, dispatch),
     null,
   );
   callback = mapToCallback(serverContext, handler, onError);

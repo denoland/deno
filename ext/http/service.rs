@@ -27,7 +27,10 @@ use hyper::body::Body;
 use hyper::body::Frame;
 use hyper::body::Incoming;
 use hyper::body::SizeHint;
+use hyper::header::CONNECTION;
 use hyper::header::HeaderMap;
+use hyper::header::HeaderName;
+use hyper::header::HeaderValue;
 use hyper::upgrade::OnUpgrade;
 use scopeguard::ScopeGuard;
 use scopeguard::guard;
@@ -42,6 +45,8 @@ use crate::response_body::ResponseStreamResult;
 
 pub type Request = hyper::Request<Incoming>;
 pub type Response = hyper::Response<HttpRecordResponse>;
+
+const KEEP_ALIVE: HeaderName = HeaderName::from_static("keep-alive");
 
 #[cfg(feature = "__http_tracing")]
 pub static RECORD_COUNT: std::sync::atomic::AtomicUsize =
@@ -302,6 +307,7 @@ pub(crate) async fn handle_request<F>(
   server_state: SignallingRc<HttpServerState>, // Keep server alive for duration of this future.
   dispatch: F,
   legacy_abort: bool,
+  keep_alive_timeout: Option<u64>,
 ) -> Result<Response, hyper_v014::Error>
 where
   F: FnOnce(Rc<HttpRecord>),
@@ -374,8 +380,49 @@ where
   // Defuse the guard. Must not await after this point.
   let record = ScopeGuard::into_inner(guarded_record);
   http_trace!(record, "handle_request complete");
+  advertise_keep_alive_timeout(&record, keep_alive_timeout);
   let response = record.into_response();
   Ok(response)
+}
+
+fn header_contains_token(header: &HeaderValue, token: &[u8]) -> bool {
+  header.as_bytes().split(|&b| b == b',').any(|part| {
+    let part = part.trim_ascii();
+    part.eq_ignore_ascii_case(token)
+  })
+}
+
+fn request_supports_http1_keep_alive(
+  request_parts: &http::request::Parts,
+) -> bool {
+  if request_parts.version != http::Version::HTTP_11 {
+    return false;
+  }
+  !request_parts
+    .headers
+    .get_all(CONNECTION)
+    .iter()
+    .any(|value| header_contains_token(value, b"close"))
+}
+
+fn advertise_keep_alive_timeout(
+  record: &HttpRecord,
+  keep_alive_timeout: Option<u64>,
+) {
+  let Some(keep_alive_timeout) = keep_alive_timeout else {
+    return;
+  };
+  if !request_supports_http1_keep_alive(&record.request_parts()) {
+    return;
+  }
+  if keep_alive_timeout == 0 {
+    return;
+  }
+  let timeout_secs = keep_alive_timeout / 1000;
+  let value = HeaderValue::from_str(&format!("timeout={timeout_secs}"))
+    .expect("keep-alive timeout header should be valid");
+  let mut response_parts = record.response_parts();
+  response_parts.headers.insert(KEEP_ALIVE, value);
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -956,6 +1003,7 @@ mod tests {
           tx.try_send(record).unwrap();
         },
         true,
+        None,
       )
     });
 

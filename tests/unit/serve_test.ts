@@ -97,6 +97,50 @@ Deno.test(async function httpServerShutsDownPortBeforeResolving() {
   listener!.close();
 });
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerKeepAliveTimeoutAdvertisedAndEnforced() {
+    const listening = Promise.withResolvers<void>();
+    await using _server = Deno.serve({
+      port: servePort,
+      keepAliveTimeout: 1000,
+      onListen: onListen(listening.resolve),
+    }, () => new Response("ok"));
+    await listening.promise;
+
+    const conn = await Deno.connect({ port: servePort });
+    try {
+      const encoder = new TextEncoder();
+      const writer = new BufWriter(conn);
+      const reader = new BufReader(conn);
+      const request =
+        "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n";
+      await writer.write(encoder.encode(request));
+      await writer.flush();
+
+      const tpr = new TextProtoReader(reader);
+      const statusLine = await tpr.readLine();
+      assertEquals(statusLine, "HTTP/1.1 200 OK");
+      const headers = await tpr.readMimeHeader();
+      if (headers === null) {
+        fail("expected response headers");
+      }
+      assertEquals(headers.get("keep-alive"), "timeout=1");
+
+      const contentLength = Number(headers.get("content-length"));
+      assertEquals(contentLength, 2);
+      const body = new Uint8Array(contentLength);
+      assertEquals(await reader.readFull(body), body);
+      assertEquals(new TextDecoder().decode(body), "ok");
+
+      await delay(1500);
+      assertEquals(await reader.read(new Uint8Array(1)), null);
+    } finally {
+      conn.close();
+    }
+  },
+);
+
 // When shutting down abruptly, we require that all in-progress connections are aborted,
 // no new connections are allowed, and no new transactions are allowed on existing connections.
 Deno.test(

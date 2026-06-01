@@ -5555,6 +5555,16 @@ declare namespace Deno {
      *
      * @default {511} */
     tcpBacklog?: number;
+
+    /** The HTTP/1.1 keep-alive timeout in milliseconds.
+     *
+     * When set to a non-zero value, idle keep-alive connections are closed
+     * after this timeout and HTTP/1.1 responses include a
+     * `Keep-Alive: timeout=N` header advertising the configured lifetime in
+     * seconds.
+     *
+     * @default {undefined} */
+    keepAliveTimeout?: number;
   }
 
   /**
