@@ -4577,4 +4577,59 @@ mod tests {
       ])
     );
   }
+
+  #[test]
+  fn test_walk_workspace_reaches_enabled_nested_workspace() {
+    let temp_dir = TempDir::new();
+    temp_dir.write("repo/root.ts", ""); // no, root is disabled
+    temp_dir.write("repo/apps/backend/deno.json", "{}"); // yes
+    temp_dir.write("repo/apps/backend/src/run.ts", ""); // yes
+    temp_dir.write("repo/apps/web/src/main.ts", ""); // no, not enabled
+    temp_dir.write("repo/shared/core/src/index.ts", ""); // no, not enabled
+
+    let root_url = temp_dir.url().join("repo/").unwrap();
+    let backend_url = temp_dir.url().join("repo/apps/backend/").unwrap();
+    let mut config =
+      Config::new_with_roots(vec![root_url.clone(), backend_url.clone()]);
+    config.set_client_capabilities(ClientCapabilities {
+      workspace: Some(Default::default()),
+      ..Default::default()
+    });
+    config.set_workspace_settings(
+      WorkspaceSettings {
+        enable: Some(false),
+        ..Default::default()
+      },
+      vec![
+        (
+          Arc::new(root_url.clone()),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+        (
+          Arc::new(backend_url.clone()),
+          WorkspaceSettings {
+            enable: Some(true),
+            ..Default::default()
+          },
+        ),
+      ],
+    );
+
+    let (workspace_files, hit_limit) = Inner::walk_workspace(&config);
+    let workspace_files = workspace_files
+      .into_iter()
+      .map(|p| Url::from_file_path(p).unwrap())
+      .collect::<IndexSet<_>>();
+    assert!(!hit_limit);
+    assert_eq!(
+      json!(workspace_files),
+      json!([
+        backend_url.join("deno.json").unwrap(),
+        backend_url.join("src/run.ts").unwrap(),
+      ])
+    );
+  }
 }
