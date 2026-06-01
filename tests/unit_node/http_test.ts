@@ -1535,7 +1535,6 @@ Deno.test("[node/http] IncomingMessage lazily materializes headers", () => {
   assertEquals(req.rawHeaders[1], "example.com");
 
   const headersDistinct = req.headersDistinct;
-  assertEquals(Object.getPrototypeOf(headersDistinct), null);
   assertEquals(req.distinctHeaderLineCount, 7);
   assertEquals(headersDistinct.host, ["example.com"]);
   assertEquals(headersDistinct["x-test"], ["one", "two"]);
@@ -1553,52 +1552,94 @@ Deno.test("[node/http] server checks raw headers without materializing headers",
   };
   const incomingMessagePrototype = http.IncomingMessage
     .prototype as unknown as IncomingMessageHeaderInternals;
+  const originalAddHeaderLine = incomingMessagePrototype._addHeaderLine;
+  let headerLineCount = 0;
 
-  class CountingIncomingMessage extends http.IncomingMessage {
-    headerLineCount = 0;
+  incomingMessagePrototype._addHeaderLine = function (
+    this: IncomingMessage,
+    field: string,
+    value: string,
+    dest: Record<string, string | string[]>,
+  ) {
+    headerLineCount++;
+    return originalAddHeaderLine.call(this, field, value, dest);
+  };
 
-    _addHeaderLine(
-      field: string,
-      value: string,
-      dest: Record<string, string | string[]>,
-    ) {
-      this.headerLineCount++;
-      return incomingMessagePrototype._addHeaderLine.call(
-        this,
-        field,
-        value,
-        dest,
-      );
-    }
-  }
-
-  await new Promise<void>((resolve, reject) => {
-    const server = http.createServer(
-      { IncomingMessage: CountingIncomingMessage },
-      (req, res) => {
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const server = http.createServer((req, res) => {
         try {
-          const countingReq = req as CountingIncomingMessage;
-          assertEquals(countingReq.headerLineCount, 0);
+          assertEquals(headerLineCount, 0);
           assertEquals(req.headers.host?.startsWith("localhost:"), true);
-          assert(countingReq.headerLineCount > 0);
+          assert(headerLineCount > 0);
           res.end("ok");
         } catch (err) {
           reject(err);
         } finally {
           server.close(() => resolve());
         }
-      },
-    );
-    server.listen(async () => {
-      try {
-        const { port } = server.address() as { port: number };
-        const response = await fetch(`http://localhost:${port}`);
-        assertEquals(await response.text(), "ok");
-      } catch (err) {
-        server.close(() => reject(err));
-      }
+      });
+      server.listen(async () => {
+        try {
+          const { port } = server.address() as { port: number };
+          const response = await fetch(`http://localhost:${port}`);
+          assertEquals(await response.text(), "ok");
+        } catch (err) {
+          server.close(() => reject(err));
+        }
+      });
     });
+  } finally {
+    incomingMessagePrototype._addHeaderLine = originalAddHeaderLine;
+  }
+});
+
+Deno.test("[node/http] server header checks fall back for custom IncomingMessage headers", async () => {
+  class CustomIncomingMessage extends http.IncomingMessage {}
+
+  Object.defineProperty(CustomIncomingMessage.prototype, "headers", {
+    configurable: true,
+    get() {
+      return { host: "custom.test" };
+    },
   });
+
+  let requestSeen = false;
+  const server = http.createServer(
+    { IncomingMessage: CustomIncomingMessage },
+    (req, res) => {
+      requestSeen = true;
+      assert(req instanceof CustomIncomingMessage);
+      assertEquals(req.headers.host, "custom.test");
+      res.end("ok");
+    },
+  );
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const { port } = server.address() as AddressInfo;
+    const response = await new Promise<string>((resolve, reject) => {
+      const client = net.createConnection({ port, host: "127.0.0.1" }, () => {
+        client.end("GET / HTTP/1.1\r\nConnection: close\r\n\r\n");
+      });
+      let rawResponse = "";
+      client.setEncoding("utf8");
+      client.on("data", (chunk) => {
+        rawResponse += chunk;
+      });
+      client.on("error", reject);
+      client.on("close", () => resolve(rawResponse));
+    });
+
+    assertEquals(requestSeen, true);
+    assertStringIncludes(response, "200 OK");
+    assertStringIncludes(response, "ok");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 Deno.test("[node/http] IncomingMessage materializes trailers", () => {
@@ -1634,7 +1675,6 @@ Deno.test("[node/http] IncomingMessage materializes trailers", () => {
   assertEquals(trailers["x-trailer"], "one, two");
 
   const trailersDistinct = req.trailersDistinct;
-  assertEquals(Object.getPrototypeOf(trailersDistinct), null);
   assertEquals(trailersDistinct.expires, ["soon"]);
   assertEquals(trailersDistinct["x-trailer"], ["one", "two"]);
 });

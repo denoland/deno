@@ -31,6 +31,8 @@ const {
   Error,
   MathMin,
   NumberIsFinite,
+  ObjectGetOwnPropertyDescriptor,
+  ObjectGetPrototypeOf,
   ObjectKeys,
   ObjectSetPrototypeOf,
   Symbol,
@@ -61,6 +63,10 @@ const { kNeedDrain, kOutHeaders } = core.loadExtScript(
   "ext:deno_node/internal/http.ts",
 );
 import { IncomingMessage, readServerControlHeaders } from "node:_http_incoming";
+const incomingMessageHeadersGetter = ObjectGetOwnPropertyDescriptor(
+  IncomingMessage.prototype,
+  "headers",
+)?.get;
 const {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
@@ -291,6 +297,18 @@ const STATUS_CODES = {
   510: "Not Extended",
   511: "Network Authentication Required",
 };
+
+function canUseRawHeaders(server, req) {
+  const headersDescriptor = ObjectGetOwnPropertyDescriptor(
+    IncomingMessage.prototype,
+    "headers",
+  );
+  return server.maxHeadersCount === null &&
+    server[kIncomingMessage] === IncomingMessage &&
+    ObjectGetPrototypeOf(req) === IncomingMessage.prototype &&
+    headersDescriptor?.get === incomingMessageHeadersGetter &&
+    ObjectGetOwnPropertyDescriptor(req, "headers") === undefined;
+}
 
 // ---- ServerResponse ----
 
@@ -850,7 +868,10 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   res.shouldKeepAlive = keepAlive;
   res[kUniqueHeaders] = server[kUniqueHeaders];
 
-  const controlHeaders = readServerControlHeaders(req);
+  const controlHeaders = readServerControlHeaders(
+    req,
+    canUseRawHeaders(server, req),
+  );
 
   if (server.optimizeEmptyRequests && isRequestKnownEmpty(controlHeaders)) {
     req._dumpAndCloseReadable();

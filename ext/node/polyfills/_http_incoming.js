@@ -134,7 +134,7 @@ ObjectDefineProperty(IncomingMessage.prototype, "headersDistinct", {
   __proto__: null,
   get: function () {
     if (!this[kHeadersDistinct]) {
-      this[kHeadersDistinct] = { __proto__: null };
+      this[kHeadersDistinct] = {};
 
       const src = this.rawHeaders;
       const dst = this[kHeadersDistinct];
@@ -174,7 +174,7 @@ ObjectDefineProperty(IncomingMessage.prototype, "trailersDistinct", {
   __proto__: null,
   get: function () {
     if (!this[kTrailersDistinct]) {
-      this[kTrailersDistinct] = { __proto__: null };
+      this[kTrailersDistinct] = {};
 
       const src = this.rawTrailers;
       const dst = this[kTrailersDistinct];
@@ -432,8 +432,10 @@ function fieldMatches(field, canonical, commonCase) {
     field.toLowerCase() === canonical;
 }
 
-function readServerControlHeaders(message) {
-  if (message[kHeadersCount] > SERVER_CONTROL_HEADER_SCAN_LIMIT) {
+function readServerControlHeaders(message, useRawHeaders) {
+  if (
+    !useRawHeaders || message[kHeadersCount] > SERVER_CONTROL_HEADER_SCAN_LIMIT
+  ) {
     const headers = message.headers;
     return {
       host: headers.host,
