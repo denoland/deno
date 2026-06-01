@@ -76,9 +76,13 @@ pub static IMPORT_CONDITIONS: &[Cow<'static, str>] = &[
   Cow::Borrowed("deno"),
   Cow::Borrowed("node"),
   Cow::Borrowed("import"),
+  Cow::Borrowed("module-sync"),
 ];
-pub static REQUIRE_CONDITIONS: &[Cow<'static, str>] =
-  &[Cow::Borrowed("require"), Cow::Borrowed("node")];
+pub static REQUIRE_CONDITIONS: &[Cow<'static, str>] = &[
+  Cow::Borrowed("require"),
+  Cow::Borrowed("node"),
+  Cow::Borrowed("module-sync"),
+];
 static TYPES_ONLY_CONDITIONS: &[Cow<'static, str>] = &[Cow::Borrowed("types")];
 
 #[derive(Debug, Default, Clone)]
@@ -86,11 +90,11 @@ pub struct NodeConditionOptions {
   pub conditions: Vec<Cow<'static, str>>,
   /// Provide a value to override the default import conditions.
   ///
-  /// Defaults to `["deno", "node", "import"]`
+  /// Defaults to `["deno", "node", "import", "module-sync"]`
   pub import_conditions_override: Option<Vec<Cow<'static, str>>>,
   /// Provide a value to override the default require conditions.
   ///
-  /// Defaults to `["require", "node"]`
+  /// Defaults to `["require", "node", "module-sync"]`
   pub require_conditions_override: Option<Vec<Cow<'static, str>>>,
 }
 
@@ -3060,6 +3064,7 @@ mod tests {
   use sys_traits::impls::InMemorySys;
 
   use super::*;
+  use crate::PackageJsonResolver;
 
   fn build_package_json(json: Value) -> PackageJson {
     PackageJson::load_from_value(PathBuf::from("/package.json"), json).unwrap()
@@ -3073,6 +3078,128 @@ mod tests {
         .map(|(k, v)| (k, BinValue::JsFile(v)))
         .collect(),
     }
+  }
+
+  #[derive(Debug)]
+  struct TestBuiltInNodeModuleChecker;
+
+  impl IsBuiltInNodeModuleChecker for TestBuiltInNodeModuleChecker {
+    fn is_builtin_node_module(&self, _module_name: &str) -> bool {
+      false
+    }
+  }
+
+  struct TestNpmPackageFolderResolver;
+
+  impl NpmPackageFolderResolver for TestNpmPackageFolderResolver {
+    fn resolve_package_folder_from_package(
+      &self,
+      _specifier: &str,
+      _referrer: &UrlOrPathRef,
+    ) -> Result<PathBuf, errors::PackageFolderResolveError> {
+      unreachable!()
+    }
+
+    fn resolve_types_package_folder(
+      &self,
+      _types_package_name: &str,
+      _maybe_package_version: Option<&Version>,
+      _maybe_referrer: Option<&UrlOrPathRef>,
+    ) -> Option<PathBuf> {
+      None
+    }
+  }
+
+  struct TestInNpmPackageChecker;
+
+  impl InNpmPackageChecker for TestInNpmPackageChecker {
+    fn in_npm_package(&self, _specifier: &Url) -> bool {
+      false
+    }
+  }
+
+  fn test_node_resolver() -> NodeResolver<
+    TestInNpmPackageChecker,
+    TestBuiltInNodeModuleChecker,
+    TestNpmPackageFolderResolver,
+    InMemorySys,
+  > {
+    let sys = InMemorySys::default();
+    NodeResolver::new(
+      TestInNpmPackageChecker,
+      TestBuiltInNodeModuleChecker,
+      TestNpmPackageFolderResolver,
+      deno_maybe_sync::new_rc(PackageJsonResolver::new(sys.clone(), None)),
+      NodeResolutionSys::new(sys, None),
+      NodeResolverOptions::default(),
+    )
+  }
+
+  #[test]
+  fn test_default_conditions_include_module_sync() {
+    assert_eq!(
+      IMPORT_CONDITIONS,
+      &[
+        Cow::Borrowed("deno"),
+        Cow::Borrowed("node"),
+        Cow::Borrowed("import"),
+        Cow::Borrowed("module-sync"),
+      ]
+    );
+    assert_eq!(
+      REQUIRE_CONDITIONS,
+      &[
+        Cow::Borrowed("require"),
+        Cow::Borrowed("node"),
+        Cow::Borrowed("module-sync"),
+      ]
+    );
+  }
+
+  #[test]
+  fn test_module_sync_condition_matches_import_and_require() {
+    let resolver = test_node_resolver();
+    let package_json_path =
+      PathBuf::from("/node_modules/module-sync-pkg/package.json");
+    let package_exports = json!({
+      ".": {
+        "module-sync": "./sync.mjs",
+        "node": "./node.cjs"
+      }
+    });
+    let package_exports = package_exports.as_object().unwrap();
+
+    let import_resolved = resolver
+      .package_exports_resolve(
+        &package_json_path,
+        ".",
+        package_exports,
+        None,
+        ResolutionMode::Import,
+        resolver.condition_resolver.resolve(ResolutionMode::Import),
+        NodeResolutionKind::Execution,
+      )
+      .unwrap();
+    let require_resolved = resolver
+      .package_exports_resolve(
+        &package_json_path,
+        ".",
+        package_exports,
+        None,
+        ResolutionMode::Require,
+        resolver.require_conditions(),
+        NodeResolutionKind::Execution,
+      )
+      .unwrap();
+
+    assert_eq!(
+      import_resolved.into_path().unwrap(),
+      PathBuf::from("/node_modules/module-sync-pkg/sync.mjs")
+    );
+    assert_eq!(
+      require_resolved.into_path().unwrap(),
+      PathBuf::from("/node_modules/module-sync-pkg/sync.mjs")
+    );
   }
 
   #[test]

@@ -1085,7 +1085,7 @@ version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
- "unicode-width 0.1.13",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]
@@ -1912,6 +1912,8 @@ dependencies = [
  "unicode-width 0.1.13",
  "uuid",
  "walkdir",
+ "wasm-encoder",
+ "wasmparser",
  "weak-table",
  "winapi",
  "winres",
@@ -1965,6 +1967,7 @@ dependencies = [
  "swc_eq_ignore_macros",
  "swc_macros_common",
  "swc_sourcemap",
+ "swc_ts_fast_strip",
  "swc_visit",
  "text_lines",
  "thiserror 2.0.12",
@@ -2718,7 +2721,7 @@ dependencies = [
  "filetime",
  "hdrhistogram",
  "idna",
- "ipnetwork",
+ "ipnet",
  "libc",
  "libnghttp2",
  "libz-sys",
@@ -3025,7 +3028,7 @@ dependencies = [
  "deno_terminal",
  "deno_unsync",
  "fqdn",
- "ipnetwork",
+ "ipnet",
  "libc",
  "log",
  "nix 0.30.1",
@@ -3232,11 +3235,10 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.32.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5724630e5d004297ca84920ef90cbf8a5459b06f8cd553e1a75d9f3ad5cd6fd"
+checksum = "bd069c87eb3cdc25e9898fe633a07ec7f20218e92ad3e7eccab3db324764d4fb"
 dependencies = [
- "anyhow",
  "bitflags 2.9.3",
  "deno_path_util",
  "futures",
@@ -5194,6 +5196,7 @@ dependencies = [
  "allocator-api2",
  "equivalent",
  "foldhash 0.1.4",
+ "serde",
 ]
 
 [[package]]
@@ -6088,15 +6091,6 @@ name = "ipnet"
 version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f518f335dce6725a761382244631d86cf0ccb2863413590b31338feb467f9c3"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "ipnetwork"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf466541e9d546596ee94f9f69590f89473455f88372423e0008fc1a7daf100e"
 dependencies = [
  "serde",
 ]
@@ -9948,6 +9942,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "swc_ts_fast_strip"
+version = "36.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af7939f2933c4e0fbfedc30fcedd8530c557dee7ea7c73bc4bed854c751c476e"
+dependencies = [
+ "anyhow",
+ "bytes-str",
+ "serde",
+ "swc_atoms",
+ "swc_common",
+ "swc_ecma_ast",
+ "swc_ecma_codegen",
+ "swc_ecma_parser",
+ "swc_ecma_transforms_base",
+ "swc_ecma_transforms_react",
+ "swc_ecma_transforms_typescript",
+ "swc_ecma_visit",
+]
+
+[[package]]
 name = "swc_visit"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10063,9 +10077,9 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "tar"
-version = "0.4.45"
+version = "0.4.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22692a6476a21fa75fdfc11d452fda482af402c008cdbaf3476414e122040973"
+checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
 dependencies = [
  "filetime",
  "libc",
@@ -10496,9 +10510,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-socks"
-version = "0.5.1"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51165dfa029d2a65969413a6cc96f354b86b464498702f174a4efa13608fd8c0"
+checksum = "a7e2948f60dbe26b35f2c7fb74ac2854c1fddded0fe9d7548fcc674a246f7615"
 dependencies = [
  "either",
  "futures-util",
@@ -11324,6 +11338,7 @@ dependencies = [
  "hashbrown 0.15.5",
  "indexmap 2.12.0",
  "semver",
+ "serde",
 ]
 
 [[package]]
