@@ -448,6 +448,12 @@ impl WorkspaceMainModuleResolver {
             let cwd_path = deno_path_util::url_to_file_path(cwd)?;
             deno_path_util::resolve_path(file, &cwd_path)?
           }
+          deno_package_json::PackageJsonDepValue::Git(git_dep) => {
+            return Err(deno_core::anyhow::anyhow!(
+              "Importing git dependencies from package.json is not supported ('{}')",
+              git_dep.url
+            ));
+          }
           deno_package_json::PackageJsonDepValue::Req(package_req) => {
             ModuleSpecifier::parse(&format!(
               "npm:{}{}",

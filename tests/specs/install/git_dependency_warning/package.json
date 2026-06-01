@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@denotest/add": "*",
+    "odh-dashboard-frontend": "https://github.com/opendatahub-io/odh-dashboard.git#semver:v2.29.0&path:/frontend"
+  }
+}

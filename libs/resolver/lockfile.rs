@@ -299,6 +299,8 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
             // ignored because this will have its own separate lockfile
             None
           }
+          // git dependencies are not yet tracked in the lockfile
+          PackageJsonDepValue::Git(_) => None,
           PackageJsonDepValue::Req(req) => {
             Some(JsrDepPackageReq::npm(req.clone()))
           }
@@ -418,6 +420,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
                     }
                     // not supported
                     PackageJsonDepValue::File(_)
+                    | PackageJsonDepValue::Git(_)
                     | PackageJsonDepValue::Workspace(_)
                     | PackageJsonDepValue::Catalog(_) => None,
                   })

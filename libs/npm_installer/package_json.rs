@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_config::workspace::Workspace;
+use deno_package_json::GitDep;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_package_json::PackageJsonDepWorkspaceReq;
@@ -37,6 +38,16 @@ pub struct InstallPatchPkg {
   pub target_dir: PathBuf,
 }
 
+/// A git dependency declared in a `package.json` that was encountered during
+/// install. Installing these is not yet implemented; they are surfaced so a
+/// helpful warning can be shown to the user.
+#[derive(Debug)]
+pub struct InstallNpmGitPkg {
+  pub alias: StackString,
+  pub location: Url,
+  pub git_dep: GitDep,
+}
+
 #[derive(Debug, Error, Clone)]
 #[error("Failed to install '{}'\n    at {}", alias, location)]
 pub struct PackageJsonDepValueParseWithLocationError {
@@ -51,6 +62,7 @@ pub struct NpmInstallDepsProvider {
   remote_pkgs: Vec<InstallNpmRemotePkg>,
   local_pkgs: Vec<InstallLocalPkg>,
   patch_pkgs: Vec<InstallPatchPkg>,
+  git_pkgs: Vec<InstallNpmGitPkg>,
   pkg_json_dep_errors: Vec<PackageJsonDepValueParseWithLocationError>,
 }
 
@@ -68,6 +80,7 @@ impl NpmInstallDepsProvider {
     let mut local_pkgs = Vec::new();
     let mut remote_pkgs = Vec::new();
     let mut patch_pkgs = Vec::new();
+    let mut git_pkgs = Vec::new();
     let mut pkg_json_dep_errors = Vec::new();
     let workspace_npm_pkgs = workspace.npm_packages();
 
@@ -147,6 +160,15 @@ impl NpmInstallDepsProvider {
                 alias: Some(alias.clone()),
                 target_dir: pkg_json.dir_path().join(specifier),
               })
+            }
+            PackageJsonDepValue::Git(git_dep) => {
+              // Installing git dependencies is not yet implemented; record
+              // them so the install flow can surface a helpful warning.
+              git_pkgs.push(InstallNpmGitPkg {
+                alias: alias.clone(),
+                location: pkg_json.specifier(),
+                git_dep: git_dep.clone(),
+              });
             }
             PackageJsonDepValue::Req(pkg_req) => {
               if skip_types && pkg_req.name.starts_with("@types/") {
@@ -252,10 +274,12 @@ impl NpmInstallDepsProvider {
     remote_pkgs.shrink_to_fit();
     local_pkgs.shrink_to_fit();
     patch_pkgs.shrink_to_fit();
+    git_pkgs.shrink_to_fit();
     Self {
       remote_pkgs,
       local_pkgs,
       patch_pkgs,
+      git_pkgs,
       pkg_json_dep_errors,
     }
   }
@@ -270,6 +294,10 @@ impl NpmInstallDepsProvider {
 
   pub fn patch_pkgs(&self) -> &[InstallPatchPkg] {
     &self.patch_pkgs
+  }
+
+  pub fn git_pkgs(&self) -> &[InstallNpmGitPkg] {
+    &self.git_pkgs
   }
 
   pub fn pkg_json_dep_errors(

@@ -171,12 +171,137 @@ pub fn parse_jsr_dep_value<'a>(
   Ok((npm_name, version_str))
 }
 
+/// A git dependency declared in `package.json`.
+///
+/// These come in many forms supported by npm/pnpm/yarn, e.g.:
+///
+/// - `git://github.com/user/repo.git`
+/// - `git+ssh://git@github.com:user/repo.git#v1.0.0`
+/// - `git+https://github.com/user/repo.git#semver:^1.0.0`
+/// - `https://github.com/user/repo.git#semver:v2.29.0&path:/frontend`
+/// - `github:user/repo`
+/// - `user/repo` (GitHub shorthand)
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct GitDep {
+  /// The URL to clone the repository from, with any `git+` prefix removed and
+  /// shorthand forms expanded (e.g. `github:user/repo` ->
+  /// `https://github.com/user/repo.git`). The committish fragment is not
+  /// included here.
+  pub url: String,
+  /// An explicit committish (branch, tag or commit hash) the dependency was
+  /// pinned to via `#<committish>`. Mutually exclusive with `semver`.
+  pub committish: Option<String>,
+  /// A semver range the dependency was pinned to via `#semver:<range>`. The
+  /// matching tag is resolved at install time.
+  pub semver: Option<String>,
+  /// A sub directory within the repository that contains the package, declared
+  /// via the pnpm `&path:<path>` fragment. The leading slash (if any) is
+  /// stripped.
+  pub sub_path: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PackageJsonDepValue {
   File(String),
+  /// A git dependency (see [`GitDep`]).
+  Git(GitDep),
   Req(PackageReq),
   Workspace(PackageJsonDepWorkspaceReq),
   Catalog(String),
+}
+
+/// Returns `true` if a bare (scheme-less) dependency value looks like a GitHub
+/// `owner/repo` shorthand (e.g. `denoland/deno`).
+fn is_github_shorthand(value: &str) -> bool {
+  let Some((owner, repo)) = value.split_once('/') else {
+    return false;
+  };
+  if owner.is_empty() || repo.is_empty() || repo.contains('/') {
+    return false;
+  }
+  fn is_valid_segment(segment: &str) -> bool {
+    segment
+      .chars()
+      .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+  }
+  is_valid_segment(owner) && is_valid_segment(repo)
+}
+
+/// Returns `true` if an `http(s)://` URL refers to a git repository (either it
+/// ends in `.git` or is hosted on a well known git host).
+fn is_git_http_url(url: &str) -> bool {
+  if url.trim_end_matches('/').ends_with(".git") {
+    return true;
+  }
+  let Some(rest) = url
+    .strip_prefix("https://")
+    .or_else(|| url.strip_prefix("http://"))
+  else {
+    return false;
+  };
+  let authority = rest.split(['/', '?']).next().unwrap_or("");
+  // strip any userinfo (e.g. `user@host`)
+  let host = authority.rsplit('@').next().unwrap_or(authority);
+  // strip any port
+  let host = host.split(':').next().unwrap_or(host);
+  matches!(
+    host,
+    "github.com" | "www.github.com" | "gitlab.com" | "bitbucket.org"
+  )
+}
+
+/// Attempts to parse a `package.json` dependency value as a git dependency,
+/// returning `None` if it is not one.
+fn parse_git_dep(value: &str) -> Option<GitDep> {
+  let (url_part, fragment) = match value.split_once('#') {
+    Some((url, fragment)) => (url, Some(fragment)),
+    None => (value, None),
+  };
+
+  let url = if let Some((scheme, rest)) = url_part.split_once(':') {
+    match scheme {
+      // `git://host/path` is already a cloneable URL.
+      "git" => url_part.to_string(),
+      "git+ssh" => format!("ssh:{rest}"),
+      "git+https" => format!("https:{rest}"),
+      "git+http" => format!("http:{rest}"),
+      "git+file" => format!("file:{rest}"),
+      "github" => format!("https://github.com/{rest}.git"),
+      "gitlab" => format!("https://gitlab.com/{rest}.git"),
+      "bitbucket" => format!("https://bitbucket.org/{rest}.git"),
+      "https" | "http" if is_git_http_url(url_part) => url_part.to_string(),
+      _ => return None,
+    }
+  } else if is_github_shorthand(url_part) {
+    format!("https://github.com/{url_part}.git")
+  } else {
+    return None;
+  };
+
+  let mut committish = None;
+  let mut semver = None;
+  let mut sub_path = None;
+  if let Some(fragment) = fragment {
+    for part in fragment.split('&') {
+      if let Some(range) = part.strip_prefix("semver:") {
+        semver = Some(range.to_string());
+      } else if let Some(path) = part.strip_prefix("path:") {
+        let path = path.trim_start_matches('/');
+        if !path.is_empty() {
+          sub_path = Some(path.to_string());
+        }
+      } else if !part.is_empty() && committish.is_none() && semver.is_none() {
+        committish = Some(part.to_string());
+      }
+    }
+  }
+
+  Some(GitDep {
+    url,
+    committish,
+    semver,
+    sub_path,
+  })
 }
 
 impl PackageJsonDepValue {
@@ -203,6 +328,10 @@ impl PackageJsonDepValue {
 
     if key.is_empty() {
       return Err(PackageJsonDepValueParseErrorKind::EmptyName.into_box());
+    }
+
+    if let Some(git_dep) = parse_git_dep(value) {
+      return Ok(Self::Git(git_dep));
     }
 
     if let Some((scheme, value)) = value.split_once(':') {
@@ -1101,9 +1230,12 @@ mod test {
         ),
         (
           "git-test".to_string(),
-          Err(PackageJsonDepValueParseErrorKind::Unsupported {
-            scheme: "git".to_string()
-          }),
+          Ok(PackageJsonDepValue::Git(GitDep {
+            url: "git:something".to_string(),
+            committish: None,
+            semver: None,
+            sub_path: None,
+          })),
         ),
         (
           "http-test".to_string(),
@@ -1118,6 +1250,166 @@ mod test {
           }),
         ),
       ])
+    );
+  }
+
+  #[test]
+  fn test_get_local_package_json_version_reqs_git() {
+    let mut package_json =
+      PackageJson::load_from_string(PathBuf::from("/package.json"), "{}")
+        .unwrap();
+    package_json.dependencies = Some(IndexMap::from([
+      (
+        "issue-example".to_string(),
+        "https://github.com/opendatahub-io/odh-dashboard.git#semver:v2.29.0&path:/frontend".to_string(),
+      ),
+      (
+        "git-proto".to_string(),
+        "git://github.com/user/repo.git".to_string(),
+      ),
+      (
+        "git-ssh".to_string(),
+        "git+ssh://git@github.com:user/repo.git#main".to_string(),
+      ),
+      (
+        "git-https-semver".to_string(),
+        "git+https://github.com/user/repo.git#semver:^1.0.0".to_string(),
+      ),
+      (
+        "github-scheme".to_string(),
+        "github:user/repo#v1.2.3".to_string(),
+      ),
+      (
+        "gitlab-scheme".to_string(),
+        "gitlab:user/repo".to_string(),
+      ),
+      (
+        "bitbucket-scheme".to_string(),
+        "bitbucket:user/repo".to_string(),
+      ),
+      (
+        "github-shorthand".to_string(),
+        "user/repo".to_string(),
+      ),
+      (
+        "github-host-no-dot-git".to_string(),
+        "https://github.com/user/repo".to_string(),
+      ),
+    ]));
+    let map = get_local_package_json_version_reqs_for_tests(&package_json);
+    assert_eq!(
+      map.get("issue-example").unwrap().as_ref().unwrap(),
+      &PackageJsonDepValue::Git(GitDep {
+        url: "https://github.com/opendatahub-io/odh-dashboard.git".to_string(),
+        committish: None,
+        semver: Some("v2.29.0".to_string()),
+        sub_path: Some("frontend".to_string()),
+      })
+    );
+    assert_eq!(
+      map.get("git-proto").unwrap().as_ref().unwrap(),
+      &PackageJsonDepValue::Git(GitDep {
+        url: "git://github.com/user/repo.git".to_string(),
+        committish: None,
+        semver: None,
+        sub_path: None,
+      })
+    );
+    assert_eq!(
+      map.get("git-ssh").unwrap().as_ref().unwrap(),
+      &PackageJsonDepValue::Git(GitDep {
+        url: "ssh://git@github.com:user/repo.git".to_string(),
+        committish: Some("main".to_string()),
+        semver: None,
+        sub_path: None,
+      })
+    );
+    assert_eq!(
+      map.get("git-https-semver").unwrap().as_ref().unwrap(),
+      &PackageJsonDepValue::Git(GitDep {
+        url: "https://github.com/user/repo.git".to_string(),
+        committish: None,
+        semver: Some("^1.0.0".to_string()),
+        sub_path: None,
+      })
+    );
+    assert_eq!(
+      map.get("github-scheme").unwrap().as_ref().unwrap(),
+      &PackageJsonDepValue::Git(GitDep {
+        url: "https://github.com/user/repo.git".to_string(),
+        committish: Some("v1.2.3".to_string()),
+        semver: None,
+        sub_path: None,
+      })
+    );
+    assert_eq!(
+      map.get("gitlab-scheme").unwrap().as_ref().unwrap(),
+      &PackageJsonDepValue::Git(GitDep {
+        url: "https://gitlab.com/user/repo.git".to_string(),
+        committish: None,
+        semver: None,
+        sub_path: None,
+      })
+    );
+    assert_eq!(
+      map.get("bitbucket-scheme").unwrap().as_ref().unwrap(),
+      &PackageJsonDepValue::Git(GitDep {
+        url: "https://bitbucket.org/user/repo.git".to_string(),
+        committish: None,
+        semver: None,
+        sub_path: None,
+      })
+    );
+    assert_eq!(
+      map.get("github-shorthand").unwrap().as_ref().unwrap(),
+      &PackageJsonDepValue::Git(GitDep {
+        url: "https://github.com/user/repo.git".to_string(),
+        committish: None,
+        semver: None,
+        sub_path: None,
+      })
+    );
+    assert_eq!(
+      map.get("github-host-no-dot-git").unwrap().as_ref().unwrap(),
+      &PackageJsonDepValue::Git(GitDep {
+        url: "https://github.com/user/repo".to_string(),
+        committish: None,
+        semver: None,
+        sub_path: None,
+      })
+    );
+  }
+
+  #[test]
+  fn test_git_dep_does_not_match_non_git() {
+    // bare semver ranges, npm aliases and remote tarballs must not be parsed
+    // as git dependencies.
+    let mut package_json =
+      PackageJson::load_from_string(PathBuf::from("/package.json"), "{}")
+        .unwrap();
+    package_json.dependencies = Some(IndexMap::from([
+      ("range".to_string(), "1.x - 1.3".to_string()),
+      ("scoped".to_string(), "npm:@scope/name@1".to_string()),
+      (
+        "tarball".to_string(),
+        "https://example.com/foo.tgz".to_string(),
+      ),
+    ]));
+    let map = get_local_package_json_version_reqs_for_tests(&package_json);
+    assert!(matches!(
+      map.get("range").unwrap().as_ref().unwrap(),
+      PackageJsonDepValue::Req(_)
+    ));
+    assert!(matches!(
+      map.get("scoped").unwrap().as_ref().unwrap(),
+      PackageJsonDepValue::Req(_)
+    ));
+    // a remote (non-git) tarball is still unsupported, not a git dep
+    assert_eq!(
+      map.get("tarball").unwrap().as_ref().unwrap_err(),
+      &PackageJsonDepValueParseErrorKind::Unsupported {
+        scheme: "https".to_string()
+      },
     );
   }
 

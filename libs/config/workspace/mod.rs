@@ -752,6 +752,8 @@ impl Workspace {
                     PackageJsonDepValue::File(path) => {
                       dir_url.join(path).ok().map(Dep::Path)
                     }
+                    // git dependencies are not tracked as managed deps
+                    PackageJsonDepValue::Git(_) => None,
                     PackageJsonDepValue::Req(package_req) => {
                       Some(Dep::Req(JsrDepPackageReq {
                         kind: PackageKind::Npm,

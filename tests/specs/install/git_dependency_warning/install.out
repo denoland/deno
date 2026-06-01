@@ -1,0 +1,4 @@
+[WILDCARD]Warning Git dependencies in package.json are not yet supported. Skipping 'odh-dashboard-frontend' (https://github.com/opendatahub-io/odh-dashboard.git).
+    at file:///[WILDLINE]/package.json
+[WILDCARD]Installed 1 package in [WILDCARD]
+[WILDCARD]

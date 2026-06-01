@@ -429,6 +429,17 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
         }
       }
     }
+    for git_pkg in self.npm_install_deps_provider.git_pkgs() {
+      // Installing git dependencies from package.json is not yet supported.
+      // Warn (rather than error) so the rest of the dependencies still install.
+      log::warn!(
+        "{} Git dependencies in package.json are not yet supported. Skipping '{}' ({}).\n    at {}",
+        colors::yellow("Warning"),
+        git_pkg.alias,
+        git_pkg.git_dep.url,
+        git_pkg.location,
+      )
+    }
     Ok(())
   }
 
