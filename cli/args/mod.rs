@@ -759,6 +759,15 @@ impl CliOptions {
     Ok(require)
   }
 
+  /// When `--cjs` is passed to `deno run`, the entry point should be treated
+  /// as CommonJS regardless of its extension or the closest `package.json`.
+  pub fn cjs_main_module(&self) -> bool {
+    matches!(
+      &self.flags.subcommand,
+      DenoSubcommand::Run(run_flags) if run_flags.cjs
+    )
+  }
+
   fn resolve_main_module_with_resolver_if_bare(
     &self,
     raw_specifier: &str,

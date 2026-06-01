@@ -1,7 +1,7 @@
-error: Uncaught (in promise) ReferenceError: exports is not defined
-Object.defineProperty(exports, "__esModule", { value: true });
-                      ^
-    at [WILDCARD]exports_error.js:1:23
+error: Uncaught (in promise) ReferenceError: module is not defined
+module.exports = { ok: true };
+^
+    at [WILDCARD]needs_cjs.js:1:1
 
     info: Deno supports CommonJS modules in .cjs files, or when the closest
           package.json has a "type": "commonjs" option.
