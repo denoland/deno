@@ -382,112 +382,30 @@ pub struct NodeCommand;
 /// Counter used to give each `node -e`/`-p` temp file a unique name.
 static NODE_EVAL_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// A `node` invocation translated into the equivalent Deno subcommand.
-enum NodeInvocation {
-  /// `node -e <code>` / `node -p <code>` -> run the code through Deno.
-  Eval {
-    print: bool,
-    code: OsString,
-    args: Vec<OsString>,
-  },
-  /// `node [--require <m>]... [--import <m>]... <script> [args]` -> `deno run`.
-  Run {
-    requires: Vec<OsString>,
-    imports: Vec<OsString>,
-    script_and_args: Vec<OsString>,
-  },
-  /// Anything we don't know how to translate -> run the real `node` binary.
-  Fallback,
-}
-
-/// Translates a `node` invocation into the equivalent Deno subcommand so that
-/// npm lifecycle scripts (and `deno task`) don't require a real `node` binary
-/// on `PATH`. Returns [`NodeInvocation::Fallback`] for anything we can't safely
-/// translate, in which case the real `node` binary is used (preserving the
-/// previous behavior).
-///
-/// See https://github.com/denoland/deno/issues/24916.
-fn parse_node_args(args: &[OsString]) -> NodeInvocation {
-  let mut requires: Vec<OsString> = Vec::new();
-  let mut imports: Vec<OsString> = Vec::new();
-  let mut i = 0;
-  while i < args.len() {
-    let arg = args[i].to_string_lossy();
-    // The first non-flag argument is the script to run; everything from there
-    // on is passed through untouched.
-    if !arg.starts_with('-') || arg == "-" {
-      return NodeInvocation::Run {
-        requires,
-        imports,
-        script_and_args: args[i..].to_vec(),
-      };
-    }
-    // Split `--flag=value` into its parts (`split_once` splits on the first
-    // `=`, so values containing `=` are preserved).
-    let (flag, inline_value) = match arg.split_once('=') {
-      Some((flag, value)) => (flag, Some(value.to_string())),
-      None => (arg.as_ref(), None),
-    };
-    // Reads the value for a flag, either from `--flag=value` or the next arg.
-    let read_value = |inline_value: Option<String>| -> Option<OsString> {
-      match inline_value {
-        Some(value) => Some(OsString::from(value)),
-        None => args.get(i + 1).cloned(),
-      }
-    };
-    match flag {
-      "-e" | "--eval" | "-p" | "--print" => {
-        let print = matches!(flag, "-p" | "--print");
-        let has_inline = inline_value.is_some();
-        let Some(code) = read_value(inline_value) else {
-          // `-e` with no code: let node report the error.
-          return NodeInvocation::Fallback;
-        };
-        let rest_start = if has_inline { i + 1 } else { i + 2 };
-        return NodeInvocation::Eval {
-          print,
-          code,
-          args: args
-            .get(rest_start..)
-            .map(<[_]>::to_vec)
-            .unwrap_or_default(),
-        };
-      }
-      "-r" | "--require" => {
-        let has_inline = inline_value.is_some();
-        let Some(value) = read_value(inline_value) else {
-          return NodeInvocation::Fallback;
-        };
-        requires.push(value);
-        i += if has_inline { 1 } else { 2 };
-      }
-      "--import" => {
-        let has_inline = inline_value.is_some();
-        let Some(value) = read_value(inline_value) else {
-          return NodeInvocation::Fallback;
-        };
-        imports.push(value);
-        i += if has_inline { 1 } else { 2 };
-      }
-      // Unknown flag: don't risk mistranslating it, fall back to real node.
-      _ => return NodeInvocation::Fallback,
-    }
-  }
-  // Only flags and no script (and no `-e`): fall back to real node.
-  NodeInvocation::Fallback
-}
-
-/// Flags passed to `deno run`/`deno eval` so that translated `node`
-/// invocations behave like Node (bare `node:`-less builtins, CommonJS, etc).
-fn node_compat_run_flags() -> [OsString; 6] {
-  [
-    "run".into(),
-    "-A".into(),
-    "--unstable-bare-node-builtins".into(),
-    "--unstable-detect-cjs".into(),
-    "--unstable-sloppy-imports".into(),
-    "--unstable-unsafe-proto".into(),
-  ]
+/// If `parsed` is a `node -e`/`-p` invocation, returns the JavaScript source to
+/// run (already wrapped in `console.log(...)` for `-p`/`--print`) along with the
+/// trailing script arguments. Mirrors node_shim's own eval detection so a
+/// `node -e`/`-p` can be turned into the equivalent `node <script>` run.
+fn node_eval_source(
+  parsed: &node_shim::ParseResult,
+) -> Option<(String, Vec<String>)> {
+  let env = &parsed.options.per_isolate.per_env;
+  let (code, argv) = if env.has_eval_string {
+    (env.eval_string.clone(), parsed.remaining_args.clone())
+  } else if env.print_eval && !parsed.remaining_args.is_empty() {
+    // `node -p <code>` (without `-e`) takes the first positional as the code.
+    let mut argv = parsed.remaining_args.clone();
+    let code = argv.remove(0);
+    (code, argv)
+  } else {
+    return None;
+  };
+  let source = if env.print_eval {
+    format!("console.log({code});\n")
+  } else {
+    format!("{code}\n")
+  };
+  Some((source, argv))
 }
 
 impl ShellCommand for NodeCommand {
@@ -495,91 +413,120 @@ impl ShellCommand for NodeCommand {
     &self,
     mut context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
-    let deno_exe = || {
-      std::env::current_exe()
-        .and_then(|p| canonicalize_path(&p))
-        .unwrap()
-    };
-
-    let (new_args, cleanup_path) = match parse_node_args(&context.args) {
-      // `node -e <code>` / `node -p <code>` -> run the inline script through
-      // Deno instead of shelling out to a `node` binary that very often isn't
-      // installed (e.g. in npm lifecycle scripts). We write the code to a real
-      // temporary `.cjs` file in the current directory (rather than using
-      // `deno eval`) so that the same module-loading path as `node <script>`
-      // is used. This both makes relative `require()`s resolve against the cwd
-      // like Node's `-e` does, and avoids issues loading an in-memory eval
-      // module when running under an npm resolution snapshot.
-      NodeInvocation::Eval { print, code, args } => {
-        let source = if print {
-          // mirror `deno eval --print`: evaluate the expression and log it
-          format!("console.log({});\n", code.to_string_lossy())
-        } else {
-          format!("{}\n", code.to_string_lossy())
-        };
-        // A unique, recognizable name in the cwd. Per-process counter + pid
-        // keeps concurrent lifecycle scripts from colliding.
-        let counter = NODE_EVAL_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let file_name =
-          format!("$deno$node_eval${}${counter}.cjs", std::process::id());
-        let temp_path = context.state.cwd().join(file_name);
-        if let Err(err) = std::fs::write(&temp_path, source) {
-          let _ = context
-            .stderr
-            .write_line(&format!("error launching 'node': {err}"));
-          return Box::pin(std::future::ready(ExecuteResult::from_exit_code(
-            1,
-          )));
-        }
-
-        let mut new_args: Vec<OsString> = Vec::with_capacity(7 + args.len());
-        new_args.extend(node_compat_run_flags());
-        new_args.push(temp_path.clone().into_os_string());
-        new_args.extend(args);
-        (new_args, Some(temp_path))
-      }
-      // `node [--require <m>]... <script> [args]` -> `deno run`.
-      NodeInvocation::Run {
-        requires,
-        imports,
-        script_and_args,
-      } => {
-        let mut new_args: Vec<OsString> = Vec::with_capacity(
-          7 + (requires.len() + imports.len()) * 2 + script_and_args.len(),
-        );
-        new_args.extend(node_compat_run_flags());
-        for require in requires {
-          new_args.push("--require".into());
-          new_args.push(require);
-        }
-        for import in imports {
-          new_args.push("--import".into());
-          new_args.push(import);
-        }
-        new_args.extend(script_and_args);
-        (new_args, None)
-      }
-      // Fall back to the real `node` binary, preserving previous behavior.
-      NodeInvocation::Fallback => {
-        return ExecutableCommand::new(
-          "node".to_string(),
-          PathBuf::from("node"),
-        )
+    // Parse the `node ...` invocation with the shared `node_shim` crate — the
+    // same parser/translation Deno uses when `child_process` spawns `node` — so
+    // npm lifecycle scripts (and `deno task`) can run `node -e`/`-p`,
+    // `node --require`, plain `node <script>`, etc. without a real `node` binary
+    // on `PATH`.
+    //
+    // See https://github.com/denoland/deno/issues/24916.
+    let node_args = context
+      .args
+      .iter()
+      .map(|arg| arg.to_string_lossy().into_owned())
+      .collect::<Vec<_>>();
+    let Ok(mut parsed) = node_shim::parse_args(node_args) else {
+      // Unsupported flag: defer to the real `node` binary.
+      return ExecutableCommand::new("node".to_string(), PathBuf::from("node"))
         .execute(context);
-      }
     };
+
+    // `node -e`/`-p` would be translated by node_shim into `deno eval`, but
+    // `deno eval`'s synthetic module can't be resolved under an npm
+    // lifecycle-script resolution snapshot (ERR_MODULE_NOT_FOUND). So write the
+    // code to a real temporary `.cjs` file in the cwd and run *that* as a
+    // script instead: it goes through the same module-loading path as
+    // `node <script>` (bare `require()` works via the `.cjs` extension) and
+    // relative `require()`s resolve against the cwd like Node's `-e` does.
+    let cleanup_path = if let Some((source, eval_argv)) =
+      node_eval_source(&parsed)
+    {
+      // A unique, recognizable name in the cwd. Per-process counter + pid keeps
+      // concurrent lifecycle scripts from colliding.
+      let counter = NODE_EVAL_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+      let file_name =
+        format!("$deno$node_eval${}${counter}.cjs", std::process::id());
+      let temp_path = context.state.cwd().join(file_name);
+      if let Err(err) = std::fs::write(&temp_path, source) {
+        let _ = context
+          .stderr
+          .write_line(&format!("error launching 'node': {err}"));
+        return Box::pin(std::future::ready(ExecuteResult::from_exit_code(1)));
+      }
+      // Re-parse as `node <tempfile> <args>` so node_shim produces the script
+      // run flags (`deno run -A --unstable-...`) rather than `deno eval`.
+      let mut run_args = Vec::with_capacity(1 + eval_argv.len());
+      run_args.push(temp_path.to_string_lossy().into_owned());
+      run_args.extend(eval_argv);
+      match node_shim::parse_args(run_args) {
+        Ok(reparsed) => parsed = reparsed,
+        Err(_) => {
+          let _ = std::fs::remove_file(&temp_path);
+          return ExecutableCommand::new(
+            "node".to_string(),
+            PathBuf::from("node"),
+          )
+          .execute(context);
+        }
+      }
+      Some(temp_path)
+    } else {
+      None
+    };
+
+    let translated = node_shim::translate_to_deno_args(
+      parsed,
+      &node_shim::TranslateOptions::for_shell_command(),
+    );
+    // node_shim returns empty args for the REPL (`node` with no script); defer
+    // to the real `node` binary there too, preserving the previous behavior.
+    if translated.deno_args.is_empty() {
+      if let Some(temp_path) = cleanup_path {
+        let _ = std::fs::remove_file(&temp_path);
+      }
+      return ExecutableCommand::new("node".to_string(), PathBuf::from("node"))
+        .execute(context);
+    }
 
     let mut state = context.state;
     state.apply_env_var(
       OsStr::new(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME),
       OsStr::new("1"),
     );
-    let future = ExecutableCommand::new("deno".to_string(), deno_exe())
-      .execute(ShellCommandContext {
-        args: new_args,
-        state,
-        ..context
-      });
+    // Forward any Node options node_shim couldn't express as Deno flags (e.g.
+    // `--no-warnings`) through `NODE_OPTIONS`, appending to any existing value
+    // just like `child_process` does.
+    if !translated.node_options.is_empty() {
+      let node_options_name = OsStr::new("NODE_OPTIONS");
+      let mut node_options = state
+        .get_var(node_options_name)
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_default();
+      for opt in &translated.node_options {
+        if !node_options.is_empty() {
+          node_options.push(' ');
+        }
+        node_options.push_str(opt);
+      }
+      state.apply_env_var(node_options_name, OsStr::new(&node_options));
+    }
+
+    let new_args = translated
+      .deno_args
+      .into_iter()
+      .map(OsString::from)
+      .collect::<Vec<_>>();
+    let future = ExecutableCommand::new(
+      "deno".to_string(),
+      std::env::current_exe()
+        .and_then(|p| canonicalize_path(&p))
+        .unwrap(),
+    )
+    .execute(ShellCommandContext {
+      args: new_args,
+      state,
+      ..context
+    });
     match cleanup_path {
       Some(temp_path) => Box::pin(async move {
         let result = future.await;
@@ -912,113 +859,6 @@ mod test {
       env_vars,
       HashMap::from([("PATH".into(), "/example".into())])
     );
-  }
-
-  fn osvec(args: &[&str]) -> Vec<OsString> {
-    args.iter().map(OsString::from).collect()
-  }
-
-  #[test]
-  fn test_parse_node_args_eval() {
-    // `node -e <code>` / `--eval`
-    for flag in ["-e", "--eval"] {
-      match parse_node_args(&osvec(&[flag, "console.log(1)"])) {
-        NodeInvocation::Eval { print, code, args } => {
-          assert!(!print);
-          assert_eq!(code, OsString::from("console.log(1)"));
-          assert!(args.is_empty());
-        }
-        _ => panic!("expected eval for {flag}"),
-      }
-    }
-
-    // `node -p <code>` / `--print` (print mode)
-    for flag in ["-p", "--print"] {
-      match parse_node_args(&osvec(&[flag, "1 + 1"])) {
-        NodeInvocation::Eval { print, code, .. } => {
-          assert!(print);
-          assert_eq!(code, OsString::from("1 + 1"));
-        }
-        _ => panic!("expected print eval for {flag}"),
-      }
-    }
-
-    // attached `--eval=<code>` form, preserving `=` in the code
-    match parse_node_args(&osvec(&["--eval=a===b"])) {
-      NodeInvocation::Eval { print, code, .. } => {
-        assert!(!print);
-        assert_eq!(code, OsString::from("a===b"));
-      }
-      _ => panic!("expected eval"),
-    }
-
-    // trailing args after the code become script argv
-    match parse_node_args(&osvec(&["-e", "code", "foo", "bar"])) {
-      NodeInvocation::Eval { code, args, .. } => {
-        assert_eq!(code, OsString::from("code"));
-        assert_eq!(args, osvec(&["foo", "bar"]));
-      }
-      _ => panic!("expected eval"),
-    }
-  }
-
-  #[test]
-  fn test_parse_node_args_run() {
-    // plain script
-    match parse_node_args(&osvec(&["script.js", "arg"])) {
-      NodeInvocation::Run {
-        requires,
-        imports,
-        script_and_args,
-      } => {
-        assert!(requires.is_empty());
-        assert!(imports.is_empty());
-        assert_eq!(script_and_args, osvec(&["script.js", "arg"]));
-      }
-      _ => panic!("expected run"),
-    }
-
-    // `--require`/`-r` and `--import` collected before the script
-    match parse_node_args(&osvec(&[
-      "--require",
-      "./a.js",
-      "-r",
-      "./b.js",
-      "--import=./c.js",
-      "script.js",
-    ])) {
-      NodeInvocation::Run {
-        requires,
-        imports,
-        script_and_args,
-      } => {
-        assert_eq!(requires, osvec(&["./a.js", "./b.js"]));
-        assert_eq!(imports, osvec(&["./c.js"]));
-        assert_eq!(script_and_args, osvec(&["script.js"]));
-      }
-      _ => panic!("expected run"),
-    }
-  }
-
-  #[test]
-  fn test_parse_node_args_fallback() {
-    // unknown flag -> fall back to the real node binary
-    assert!(matches!(
-      parse_node_args(&osvec(&["--max-old-space-size=4096", "script.js"])),
-      NodeInvocation::Fallback
-    ));
-    // no arguments
-    assert!(matches!(parse_node_args(&[]), NodeInvocation::Fallback));
-    // only flags, no script
-    assert!(matches!(
-      parse_node_args(&osvec(&["--require", "./a.js"])),
-      NodeInvocation::Fallback
-    ));
-    // `-e` with no code
-    assert!(matches!(
-      parse_node_args(&osvec(&["-e"])),
-      NodeInvocation::Fallback
-    ));
   }
 
   #[test]
