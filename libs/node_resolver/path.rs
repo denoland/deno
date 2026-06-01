@@ -151,7 +151,7 @@ impl PathClean<PathBuf> for PathBuf {
 /// handles Windows paths that mix `\` and `/` separators (`Path::components`
 /// treats both as separators on Windows). `..` segments that would escape the
 /// root are dropped, and leading `..` segments on a relative path are kept.
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(windows), allow(dead_code, reason = "only used on windows"))]
 fn clean_via_components(path: &Path) -> PathBuf {
   let mut components: Vec<Component> = Vec::new();
   for component in path.components() {
