@@ -880,6 +880,11 @@ where
         }
       }
 
+      if !self.buffered.is_empty() {
+        self.buffered.extend_from_slice(&scratch.read_buf[..read]);
+        continue;
+      }
+
       match body_status_from_buf(&mut self.protocol, &scratch.read_buf[..read])?
       {
         ConnBodyStatus::Chunk {
@@ -1481,6 +1486,7 @@ where
 
 #[cfg(test)]
 mod tests {
+  use std::collections::VecDeque;
   use std::error::Error as StdError;
   use std::time::Duration;
 
@@ -1489,6 +1495,88 @@ mod tests {
   use super::*;
 
   type TestResult<T> = Result<T, Box<dyn StdError + Send + Sync>>;
+
+  struct FragmentIo {
+    fragments: VecDeque<Vec<u8>>,
+    written: Vec<u8>,
+  }
+
+  impl FragmentIo {
+    fn new(fragments: &[&[u8]]) -> Self {
+      Self {
+        fragments: fragments.iter().map(|fragment| fragment.to_vec()).collect(),
+        written: Vec::new(),
+      }
+    }
+  }
+
+  impl AsyncRead for FragmentIo {
+    fn poll_read(
+      mut self: Pin<&mut Self>,
+      _cx: &mut Context<'_>,
+      buf: &mut TokioReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+      let Some(front) = self.fragments.front_mut() else {
+        return Poll::Ready(Ok(()));
+      };
+      let len = front.len().min(buf.remaining());
+      buf.put_slice(&front[..len]);
+      front.drain(..len);
+      if front.is_empty() {
+        self.fragments.pop_front();
+      }
+      Poll::Ready(Ok(()))
+    }
+  }
+
+  impl AsyncWrite for FragmentIo {
+    fn poll_write(
+      mut self: Pin<&mut Self>,
+      _cx: &mut Context<'_>,
+      buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+      self.written.extend_from_slice(buf);
+      Poll::Ready(Ok(buf.len()))
+    }
+
+    fn poll_flush(
+      self: Pin<&mut Self>,
+      _cx: &mut Context<'_>,
+    ) -> Poll<io::Result<()>> {
+      Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(
+      self: Pin<&mut Self>,
+      _cx: &mut Context<'_>,
+    ) -> Poll<io::Result<()>> {
+      Poll::Ready(Ok(()))
+    }
+  }
+
+  async fn read_shared_body_from_fragments(
+    fragments: &[&[u8]],
+  ) -> TestResult<Vec<u8>> {
+    let io = FragmentIo::new(fragments);
+    let mut conn = SharedConn::new(io);
+    let mut scratch = SharedScratch::default();
+    let body_kind = std::future::poll_fn(|cx| {
+      conn.poll_next_request_with(cx, &mut scratch, |request| request.body)
+    })
+    .await?
+    .unwrap();
+    assert_eq!(body_kind, BodyKind::Chunked);
+
+    let mut body = Vec::new();
+    while let SharedBodyChunk::Chunk(chunk) = std::future::poll_fn(|cx| {
+      conn.poll_read_body_chunk_with(cx, &mut scratch, |chunk| chunk.to_vec())
+    })
+    .await?
+    {
+      body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+  }
 
   async fn echo_once(input: &[u8]) -> TestResult<Vec<u8>> {
     let (client, server) = tokio::io::duplex(64 * 1024);
@@ -1623,6 +1711,28 @@ mod tests {
     .unwrap();
     assert_eq!(body_kind, BodyKind::Chunked);
     assert_eq!(conn.try_take_full_body().as_deref(), Some(&b"hello"[..]));
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn shared_conn_chunked_body_split_inter_chunk_crlf() -> TestResult<()> {
+    let body = read_shared_body_from_fragments(&[
+      b"POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r",
+      b"\n3\r\ndef\r\n0\r\n\r\n",
+    ])
+    .await?;
+    assert_eq!(body, b"abcdef");
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn shared_conn_chunked_body_split_chunk_size_line() -> TestResult<()> {
+    let body = read_shared_body_from_fragments(&[
+      b"POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n1",
+      b"a\r\nabcdefghijklmnopqrstuvwxyz\r\n0\r\n\r\n",
+    ])
+    .await?;
+    assert_eq!(body, b"abcdefghijklmnopqrstuvwxyz");
     Ok(())
   }
 
