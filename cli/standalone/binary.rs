@@ -1011,54 +1011,46 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         if snapshot.as_serialized().packages.is_empty() {
           return Ok(None);
         }
-        let needed = super::native_addons::collect_bundle_required_packages(
-          self.npm_resolver,
-          &self.npm_system_info,
-          referenced_paths,
-        )?;
+        // `collect_bundle_required_packages` only returns `None` for BYONM,
+        // which is handled by the `CliNpmResolver::Byonm` arm below, so a
+        // managed resolver always yields `Some` here.
+        let Some(needed_ids) =
+          super::native_addons::collect_bundle_required_packages(
+            self.npm_resolver,
+            &self.npm_system_info,
+            referenced_paths,
+          )?
+        else {
+          unreachable!(
+            "collect_bundle_required_packages returns None only for BYONM"
+          );
+        };
         let progress =
           progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
-        match needed {
-          Some(needed_ids) => {
-            progress.set_total_size(needed_ids.len() as u64);
-            // Dedup the set of `<deno-cache>/<id>/node_modules/` directories
-            // we add: a single id's node_modules dir contains the canonical
-            // package folder plus sibling symlinks to its direct deps. Going
-            // one level up from the canonical folder picks both up so
-            // node-module resolution at runtime can follow the symlink
-            // chain (e.g. the NAPI-RS platform-specific sibling package).
-            let mut embedded_roots: std::collections::HashSet<PathBuf> =
-              std::collections::HashSet::new();
-            let mut done: u64 = 0;
-            for id in &needed_ids {
-              if let Ok(folder) = managed.resolve_pkg_folder_from_pkg_id(id)
-                && folder.exists()
-              {
-                let root_to_add = pkg_folder_node_modules_root(&folder)
-                  .unwrap_or(folder.as_path());
-                if embedded_roots.insert(root_to_add.to_path_buf()) {
-                  builder.add_dir_recursive(root_to_add).with_context(
-                    || {
-                      format!(
-                        "Embedding npm package at '{}'",
-                        root_to_add.display()
-                      )
-                    },
-                  )?;
-                }
-              }
-              done += 1;
-              progress.set_position(done);
+        progress.set_total_size(needed_ids.len() as u64);
+        // Dedup the set of `<deno-cache>/<id>/node_modules/` directories we
+        // add: a single id's node_modules dir contains the canonical package
+        // folder plus sibling symlinks to its direct deps. Going one level up
+        // from the canonical folder picks both up so node-module resolution at
+        // runtime can follow the symlink chain (e.g. the NAPI-RS
+        // platform-specific sibling package).
+        let mut embedded_roots: std::collections::HashSet<PathBuf> =
+          std::collections::HashSet::new();
+        let mut done: u64 = 0;
+        for id in &needed_ids {
+          if let Ok(folder) = managed.resolve_pkg_folder_from_pkg_id(id)
+            && folder.exists()
+          {
+            let root_to_add =
+              pkg_folder_node_modules_root(&folder).unwrap_or(folder.as_path());
+            if embedded_roots.insert(root_to_add.to_path_buf()) {
+              builder.add_dir_recursive(root_to_add).with_context(|| {
+                format!("Embedding npm package at '{}'", root_to_add.display())
+              })?;
             }
           }
-          None => {
-            // BYONM: precise scoping not yet implemented; fall back to
-            // shipping the full tree.
-            drop(progress);
-            self
-              .fill_npm_vfs(builder, Some(&snapshot), progress_bar)
-              .context("Building npm vfs for native addon support.")?;
-          }
+          done += 1;
+          progress.set_position(done);
         }
         Ok(Some(snapshot))
       }
