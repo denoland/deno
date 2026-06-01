@@ -10493,10 +10493,7 @@ fn lsp_auto_import_local_dir_import_map_alias() {
 
 #[test(timeout = 300)]
 fn lsp_auto_import_import_map_prefer_relative() {
-  let context = TestContextBuilder::new()
-    .use_http_server()
-    .use_temp_cwd()
-    .build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
     "deno.json",
@@ -10538,6 +10535,59 @@ fn lsp_auto_import_import_map_prefer_relative() {
               "end": { "line": 0, "character": 0 },
             },
             "newText": "import { someValue } from \"./other.ts\";\n\n",
+          },
+        ],
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_auto_import_same_dir_import_map_alias() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "$src/": "./src/",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.create_dir_all("src");
+  temp_dir.write("src/b.ts", "export const b = 1;\n");
+  let file = temp_dir.source_file("src/a.ts", "b;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let list = client.get_completion_list(
+    file.uri().as_str(),
+    (0, 1),
+    json!({ "triggerKind": 1 }),
+  );
+  let items = list
+    .items
+    .iter()
+    .filter(|i| i.label == "b")
+    .map(|i| client.write_request("completionItem/resolve", json!(i)))
+    .collect::<Vec<_>>();
+  assert_eq!(
+    json!(items),
+    json!([
+      {
+        "label": "b",
+        "labelDetails": { "description": "$src/b.ts" },
+        "kind": 6,
+        "detail": "Add import from \"$src/b.ts\"\n\nconst b: 1",
+        "sortText": "\u{ffff}16_0",
+        "additionalTextEdits": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 },
+            },
+            "newText": "import { b } from \"$src/b.ts\";\n\n",
           },
         ],
       },
