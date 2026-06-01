@@ -1588,7 +1588,7 @@ static ENV_VARS: &[EnvVar] = &[
   },
   EnvVar {
     name: "DENO_COMPAT",
-    description: "Enable Node.js compatibility mode - extensionless imports, built-in\nNode.js modules, CommonJS detection and more.",
+    description: "Enable Node.js compatibility mode - extensionless imports, built-in\nNode.js modules, CommonJS detection, the unsafe __proto__ accessor\n(--unstable-unsafe-proto) and more.",
     example: None,
   },
   EnvVar {
