@@ -984,6 +984,12 @@ pub struct InternalFlags {
   pub root_node_modules_dir_override: Option<PathBuf>,
   /// Only reads to the lockfile instead of writing to it.
   pub lockfile_skip_write: bool,
+  /// Set by `deno compile --bundle` when the bundled output contains
+  /// references that need to resolve against npm packages at runtime
+  /// (CJS dependencies, native addons). When true, the standalone
+  /// binary writer embeds the full npm tree even though `--bundle` is
+  /// on. Pure-ESM bundles leave this false and ship a tiny binary.
+  pub compile_bundle_embed_node_modules: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
