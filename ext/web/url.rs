@@ -141,6 +141,9 @@ fn parse_simple_special_url(href: &str, buf: &mut [u32]) -> bool {
       }
       host_end = i;
       port = 0;
+      if i + 2 < path_start && bytes[i + 1] == b'0' {
+        return false;
+      }
       for &byte in &bytes[i + 1..path_start] {
         if !byte.is_ascii_digit() {
           return false;

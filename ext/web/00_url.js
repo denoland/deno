@@ -633,6 +633,11 @@ function parseSimpleSpecialUrl(href) {
     if (i === hostStart || i + 1 === pathStart) return false;
     hostEnd = i;
     port = 0;
+    if (
+      i + 2 < pathStart && StringPrototypeCharCodeAt(href, i + 1) === 0x30
+    ) {
+      return false;
+    }
     for (let j = i + 1; j < pathStart; j++) {
       const code = StringPrototypeCharCodeAt(href, j);
       if (!isAsciiDigit(code)) return false;

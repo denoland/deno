@@ -147,6 +147,11 @@ Deno.test(function urlPortParsing() {
   const specialUrl = new URL("http://foo:8000");
   assertEquals(specialUrl.hostname, "foo");
   assertEquals(specialUrl.port, "8000");
+  const leadingZeroPort = new URL("http://foo:00/");
+  assertEquals(leadingZeroPort.href, "http://foo:0/");
+  assertEquals(leadingZeroPort.port, "0");
+  assertEquals(URL.parse("http://foo:01/")?.href, "http://foo:1/");
+  assertEquals(URL.parse("http://foo:080/")?.href, "http://foo/");
   assertThrows(() => new URL("file://foo:8000"), TypeError, "Invalid URL");
   const nonSpecialUrl = new URL("abcd://foo:8000");
   assertEquals(nonSpecialUrl.hostname, "foo");
