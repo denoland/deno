@@ -944,6 +944,17 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     let media_type = MediaType::from_specifier(specifier);
     self.shared.cjs_tracker.is_maybe_cjs(specifier, media_type)
   }
+
+  fn is_maybe_cjs_from_require(
+    &self,
+    specifier: &Url,
+  ) -> Result<bool, PackageJsonLoadError> {
+    let media_type = MediaType::from_specifier(specifier);
+    self
+      .shared
+      .cjs_tracker
+      .is_maybe_cjs_from_require(specifier, media_type)
+  }
 }
 
 struct StandaloneModuleLoaderFactory {
