@@ -1650,12 +1650,23 @@ impl deno_graph::CheckJsResolver for CompilerOptionsResolver {
 pub type CompilerOptionsResolverRc =
   deno_maybe_sync::MaybeArc<CompilerOptionsResolver>;
 
+/// The pre-resolved JSX config for a workspace (`deno.json`) scope, along
+/// with whether that scope specified any `compilerOptions`.
+#[derive(Debug, Default)]
+struct WorkspaceJsxImportSourceConfig {
+  /// Whether the corresponding `deno.json` scope specified any
+  /// `compilerOptions`. When it does, the `deno.json` takes precedence over
+  /// any `tsconfig.json`, matching `CompilerOptionsResolver::for_specifier`.
+  has_compiler_options: bool,
+  config: Option<JsxImportSourceConfigRc>,
+}
+
 /// JSX config stored in `CompilerOptionsResolver`, but fallibly resolved
 /// ahead of time as needed for the graph resolver.
 #[derive(Debug, Default)]
 pub struct JsxImportSourceConfigResolver {
   workspace_configs:
-    FolderScopedWithUnscopedMap<Option<JsxImportSourceConfigRc>>,
+    FolderScopedWithUnscopedMap<WorkspaceJsxImportSourceConfig>,
   ts_configs: Vec<(Option<JsxImportSourceConfigRc>, TsConfigFileFilterRc)>,
 }
 
@@ -1664,9 +1675,17 @@ impl JsxImportSourceConfigResolver {
     compiler_options_resolver: &CompilerOptionsResolver,
   ) -> Result<Self, ToMaybeJsxImportSourceConfigError> {
     Ok(Self {
-      workspace_configs: compiler_options_resolver
-        .workspace_configs
-        .try_map(|d| Ok(d.jsx_import_source_config()?.cloned()))?,
+      workspace_configs: compiler_options_resolver.workspace_configs.try_map(
+        |d| {
+          Ok(WorkspaceJsxImportSourceConfig {
+            has_compiler_options: d
+              .sources
+              .iter()
+              .any(|s| s.compiler_options.is_some()),
+            config: d.jsx_import_source_config()?.cloned(),
+          })
+        },
+      )?,
       ts_configs: compiler_options_resolver
         .ts_configs
         .iter()
@@ -1684,14 +1703,23 @@ impl JsxImportSourceConfigResolver {
     &self,
     specifier: &Url,
   ) -> Option<&JsxImportSourceConfigRc> {
-    if let Ok(path) = url_to_file_path(specifier) {
+    let workspace = self.workspace_configs.get_for_specifier(specifier);
+    // A `deno.json` with `compilerOptions` takes precedence over any
+    // `tsconfig.json`, so only fall back to a matching `tsconfig.json` when
+    // the workspace scope didn't specify any compiler options. This mirrors
+    // `CompilerOptionsResolver::for_specifier` and avoids an empty (or
+    // JSX-less) `tsconfig.json` silently discarding the `deno.json` JSX
+    // configuration.
+    if !workspace.has_compiler_options
+      && let Ok(path) = url_to_file_path(specifier)
+    {
       for (config, filter) in &self.ts_configs {
         if filter.includes_path(&path) {
           return config.as_ref();
         }
       }
     }
-    self.workspace_configs.get_for_specifier(specifier).as_ref()
+    workspace.config.as_ref()
   }
 }
 
