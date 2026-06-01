@@ -23,10 +23,9 @@ pub fn from_v8(item: TokenStream) -> Result<TokenStream, Error> {
     Data::Struct(data) => {
       create_impl(ident, r#struct::get_body(ident_string, span, data)?)
     }
-    Data::Enum(data) => create_impl(
-      ident,
-      r#enum::get_body(ident_string, span, input.attrs, data)?,
-    ),
+    Data::Enum(data) => {
+      create_impl(ident, r#enum::get_body(ident_string, input.attrs, data)?)
+    }
     Data::Union(_) => return Err(Error::new(span, "Unions are not supported")),
   };
 

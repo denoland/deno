@@ -1,7 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use proc_macro2::Ident;
-use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::quote;
 use stringcase::camel_case;
@@ -22,14 +21,16 @@ use crate::conversion::kw as shared_kw;
 
 pub fn get_body(
   ident_string: String,
-  span: Span,
-  _attributes: Vec<Attribute>,
+  attributes: Vec<Attribute>,
   data: DataEnum,
 ) -> Result<TokenStream, Error> {
   // For now, FromV8 only supports externally-tagged enums. Other modes
   // (internally tagged, adjacently tagged, untagged) require extra design
   // around field-tag stripping and try-each ordering, so they are deferred
-  // until a caller needs them.
+  // until a caller needs them. Reject container-level attributes loudly
+  // instead of silently treating them as externally-tagged.
+  reject_unsupported_container_attributes(&attributes)?;
+
   let mut unit_arms = Vec::new();
   let mut variant_arms = Vec::new();
   let mut has_non_unit = false;
@@ -51,7 +52,6 @@ pub fn get_body(
       }
       Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
         has_non_unit = true;
-        let field = fields.unnamed.first().unwrap();
         let converter = if variant_attrs.serde {
           quote! {
             ::deno_core::serde_v8::from_v8(__scope, __inner)
@@ -63,7 +63,6 @@ pub fn get_body(
               .map_err(::deno_error::JsErrorBox::from_err)?
           }
         };
-        let _ = field;
         let key = crate::get_internalized_string(Ident::new(
           &tag_name,
           variant_ident.span(),
@@ -87,8 +86,6 @@ pub fn get_body(
       }
     }
   }
-
-  let _ = span;
 
   let unit_branch = if unit_arms.is_empty() {
     quote! {}
@@ -140,6 +137,26 @@ pub fn get_body(
     #unit_branch
     #object_branch
   })
+}
+
+/// FromV8 only supports externally-tagged enums, so any container-level
+/// `#[v8(...)]` / `#[from_v8(...)]` attribute (e.g. `tag`, `content`,
+/// `untagged`) is unsupported. Reject them loudly instead of silently
+/// ignoring them and falling back to externally-tagged behavior.
+fn reject_unsupported_container_attributes(
+  attributes: &[Attribute],
+) -> Result<(), Error> {
+  for attr in attributes {
+    if attr.path().is_ident("v8") || attr.path().is_ident("from_v8") {
+      return Err(Error::new_spanned(
+        attr,
+        "FromV8 enum derive does not support container-level attributes; \
+         only externally-tagged enums are supported",
+      ));
+    }
+  }
+
+  Ok(())
 }
 
 struct EnumVariantAttribute {
