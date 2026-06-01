@@ -1,0 +1,5 @@
+{
+  "name": "example",
+  "list": [1, 2, 3],
+  "nested": { "deep": true }
+}
