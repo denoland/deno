@@ -1268,26 +1268,6 @@ function fromArrayBuffer(obj, byteOffset, length) {
   return new FastBuffer(obj, byteOffset, length);
 }
 
-function _base64Slice(buf, start, end) {
-  if (start === 0 && end === buf.length && end <= 4096) {
-    return op_base64_encode(buf);
-  }
-  return op_base64_encode_from_buffer(buf, start, end - start);
-}
-const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
-
-function _utf8Slice(buf, start, end) {
-  try {
-    // deno-lint-ignore prefer-primordials
-    return decoder.decode(buf.slice(start, end));
-  } catch (err) {
-    if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, err)) {
-      throw new NodeError("ERR_STRING_TOO_LONG", "String too long");
-    }
-    throw err;
-  }
-}
-
 function _hexSlice(buf, start, end) {
   const len = buf.length;
   if (!start || start < 0) {
