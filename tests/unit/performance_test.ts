@@ -205,6 +205,31 @@ Deno.test(function performanceMeasureUseMostRecentMark() {
   });
 });
 
+Deno.test(function performanceMeasureNullishOptions() {
+  // Per WebIDL union conversion, null/undefined passed where the union includes
+  // a dictionary type are converted to that dictionary's defaults (start = 0),
+  // not stringified into a mark name. See https://github.com/denoland/deno/pull/33655
+  performance.mark("mark1");
+  for (const startOrOptions of [null, undefined]) {
+    const measure = performance.measure(
+      "measure",
+      // @ts-expect-error: null/undefined are valid per spec
+      startOrOptions,
+    );
+    assertEquals(measure.startTime, 0);
+  }
+  // null start with an explicit end mark is also accepted
+  const measure = performance.measure(
+    "measure",
+    // @ts-expect-error: null is valid per spec
+    null,
+    "mark1",
+  );
+  assertEquals(measure.startTime, 0);
+  performance.clearMarks();
+  performance.clearMeasures();
+});
+
 Deno.test(function performanceCustomInspectFunction() {
   assertStringIncludes(Deno.inspect(performance), "Performance");
   assertStringIncludes(
