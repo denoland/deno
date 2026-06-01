@@ -130,6 +130,7 @@ const UV_ASYNC_SIZE: usize = 128;
 #[cfg(windows)]
 const UV_ASYNC_SIZE: usize = 224;
 
+#[cfg(unix)]
 #[repr(C)]
 struct uv_async_t {
   // public members
@@ -149,6 +150,29 @@ struct uv_async_t {
       - size_of::<napi_async_work>()
       - size_of::<bool>()
       - size_of::<usize>())
+    / size_of::<usize>()
+  }],
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct uv_async_t {
+  // public members
+  pub data: *mut c_void,
+  pub r#loop: *mut uv_loop_t,
+  pub r#type: uv_handle_type,
+  pub close_cb: Option<uv_close_cb>,
+  _handle_padding: [MaybeUninit<usize>; 8],
+  // private
+  async_cb: uv_async_cb,
+  work: napi_async_work,
+  refed: bool,
+  _padding: [MaybeUninit<usize>; const {
+    (UV_ASYNC_SIZE
+      - 112
+      - size_of::<uv_async_cb>()
+      - size_of::<napi_async_work>()
+      - size_of::<bool>())
       / size_of::<usize>()
   }],
 }
@@ -378,6 +402,7 @@ type uv_work_cb = Option<unsafe extern "C" fn(req: *mut uv_work_t)>;
 type uv_after_work_cb =
   Option<unsafe extern "C" fn(req: *mut uv_work_t, status: c_int)>;
 
+#[cfg(unix)]
 #[repr(C)]
 struct uv_check_t {
   pub data: *mut c_void,
@@ -401,10 +426,24 @@ struct uv_check_t {
       - size_of::<uv_check_cb>()
       - size_of::<bool>()
       - size_of::<bool>())
-      / size_of::<usize>()
+    / size_of::<usize>()
   }],
 }
 
+#[cfg(windows)]
+#[repr(C)]
+struct uv_check_t {
+  pub data: *mut c_void,
+  pub r#loop: *mut uv_loop_t,
+  pub r#type: uv_handle_type,
+  pub close_cb: Option<uv_close_cb>,
+  active: bool,
+  refed: bool,
+  _handle_padding: [MaybeUninit<usize>; 9],
+  check_cb: uv_check_cb,
+}
+
+#[cfg(unix)]
 #[repr(C)]
 struct uv_idle_t {
   pub data: *mut c_void,
@@ -423,6 +462,19 @@ struct uv_idle_t {
   _padding: [MaybeUninit<usize>; const {
     (UV_IDLE_SIZE - 96 - size_of::<uv_idle_cb>()) / size_of::<usize>()
   }],
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct uv_idle_t {
+  pub data: *mut c_void,
+  pub r#loop: *mut uv_loop_t,
+  pub r#type: uv_handle_type,
+  pub close_cb: Option<uv_close_cb>,
+  active: bool,
+  refed: bool,
+  _handle_padding: [MaybeUninit<usize>; 9],
+  idle_cb: uv_idle_cb,
 }
 
 struct PollBridge {
@@ -465,6 +517,7 @@ struct uv_poll_t {
   }],
 }
 
+#[cfg(unix)]
 #[repr(C)]
 struct uv_work_t {
   pub data: *mut c_void,
@@ -478,6 +531,26 @@ struct uv_work_t {
   _padding: [MaybeUninit<usize>; const {
     (UV_WORK_SIZE
       - 64
+      - size_of::<*mut uv_loop_t>()
+      - size_of::<uv_work_cb>()
+      - size_of::<uv_after_work_cb>())
+      / size_of::<usize>()
+  }],
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct uv_work_t {
+  pub data: *mut c_void,
+  r#type: c_int,
+  _req_padding: [MaybeUninit<usize>; 6],
+  _work_padding: [MaybeUninit<usize>; 6],
+  pub r#loop: *mut uv_loop_t,
+  work_cb: uv_work_cb,
+  after_work_cb: uv_after_work_cb,
+  _padding: [MaybeUninit<usize>; const {
+    (UV_WORK_SIZE
+      - 136
       - size_of::<*mut uv_loop_t>()
       - size_of::<uv_work_cb>()
       - size_of::<uv_after_work_cb>())
