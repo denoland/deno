@@ -2081,6 +2081,33 @@ function setupChannel(
     }
   }
 
+  // Release any handles we're still holding open when the channel goes away.
+  // A handle send that already wrote successfully keeps its local copy open
+  // until NODE_HANDLE_ACK arrives (see dispatch); queued sends haven't been
+  // written yet. Once the channel is torn down that ACK will never come, so
+  // those handles would leak -- and an `closeAfterSend` handle (e.g. a
+  // received net.Socket being forwarded back) is a live resource that keeps
+  // the event loop alive, so the process would hang instead of exiting. This
+  // is what made `test-cluster-send-deadlock` time out: the worker forwards
+  // its sockets back, then disconnects before the ACKs land.
+  function cleanupPendingHandles() {
+    const info = pendingHandleInfo;
+    pendingHandleInfo = null;
+    if (info && info.closeAfterSend) {
+      info.close();
+    }
+
+    const queue = handleQueue;
+    handleQueue = null;
+    if (queue) {
+      for (const item of queue) {
+        if (item.handleInfo && item.handleInfo.closeAfterSend) {
+          item.handleInfo.close();
+        }
+      }
+    }
+  }
+
   // Either queue the send (if a handle is already in flight awaiting its
   // ACK) or write it now. `handleInfo` is the already-derived IPC handle
   // info (see target.send) or null for a plain message.
@@ -2214,6 +2241,9 @@ function setupChannel(
         err instanceof Deno.errors.Interrupted ||
         err instanceof Deno.errors.BadResource
       ) {
+        // Channel torn down from under us; release any handles awaiting an
+        // ACK that will now never arrive so they don't keep us alive.
+        cleanupPendingHandles();
         return;
       }
       nextTick(() => target.emit("error", err));
@@ -2342,6 +2372,7 @@ function setupChannel(
 
     target.connected = false;
     target[kCanDisconnect] = false;
+    cleanupPendingHandles();
     control[kControlDisconnect]();
     nextTick(() => {
       target.channel = null;
