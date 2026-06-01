@@ -1,0 +1,10 @@
+[WILDCARD]Warning deno compile --bundle is experimental and may change.
+[WILDCARD]Embedded Files
+
+main[WILDLINE]
+└── .deno_compile_bundle_[WILDCHARS(8)].mjs ([WILDLINE]
+
+Files: [WILDLINE]
+Metadata: [WILDLINE]
+Remote modules: [WILDLINE]
+[WILDCARD]

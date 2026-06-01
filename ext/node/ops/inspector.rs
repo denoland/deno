@@ -390,6 +390,58 @@ pub fn op_inspector_connect<'s>(
   })
 }
 
+/// Like `op_inspector_connect`, but skips the `--allow-sys=inspector`
+/// permission check. Only intended for the `node:repl` polyfill, which
+/// uses a private inspector session to evaluate the in-flight input with
+/// `Runtime.evaluate({ throwOnSideEffect: true })` for the inline preview.
+/// The session can only inspect the current runtime, which user code can
+/// already do via other JS APIs, so no permission is required.
+#[op2]
+#[cppgc]
+pub fn op_node_repl_inspector_connect<'s>(
+  isolate: &v8::Isolate,
+  scope: &mut v8::PinScope<'s, '_>,
+  state: &mut OpState,
+  callback: v8::Local<'s, v8::Function>,
+) -> JSInspectorSession {
+  let context = scope.get_current_context();
+  let context = v8::Global::new(scope, context);
+  let callback = v8::Global::new(scope, callback);
+
+  let inspector = state.borrow::<Rc<JsRuntimeInspector>>().clone();
+
+  // SAFETY: just grabbing the raw pointer
+  let isolate = unsafe { isolate.as_raw_isolate_ptr() };
+
+  let callback = Box::new(move |message: InspectorMsg| {
+    // SAFETY: This function is called directly by the inspector, so
+    //   1) The isolate is still valid
+    //   2) We are on the same thread as the Isolate
+    let mut isolate = unsafe { v8::Isolate::from_raw_isolate_ptr(isolate) };
+    v8::callback_scope!(unsafe let scope, &mut isolate);
+    let context = v8::Local::new(scope, context.clone());
+    let scope = &mut v8::ContextScope::new(scope, context);
+    v8::tc_scope!(let scope, scope);
+    let recv = v8::undefined(scope);
+    if let Some(message) = v8::String::new(scope, &message.content) {
+      let callback = v8::Local::new(scope, callback.clone());
+      callback.call(scope, recv.into(), &[message.into()]);
+    }
+  });
+
+  let session = JsRuntimeInspector::create_local_session(
+    inspector,
+    callback,
+    InspectorSessionKind::NonBlocking {
+      wait_for_disconnect: false,
+    },
+  );
+
+  JSInspectorSession {
+    session: RefCell::new(Some(session)),
+  }
+}
+
 #[op2(fast, reentrant)]
 pub fn op_inspector_dispatch(
   #[cppgc] inspector: &JSInspectorSession,

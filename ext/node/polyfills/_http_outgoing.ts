@@ -461,6 +461,8 @@ Object.defineProperties(
           }
         }
         return this;
+      } else if (tryDirectEmptyEnd(this, callback)) {
+        return this;
       } else if (!this._header) {
         if (this.socket) {
           this.socket.cork();
@@ -1285,6 +1287,90 @@ function tryDirectEnd(
   const data = msg._header + chunk;
   const finish = onFinish.bind(undefined, msg);
   const result = writeDirectString(socket, data, normalizedEncoding, finish);
+
+  msg._headerSent = true;
+  msg.finished = true;
+
+  if (
+    msg.outputData.length === 0 &&
+    socket._httpMessage === msg
+  ) {
+    msg._finish();
+  }
+
+  if (result === 0) {
+    (globalThis as any).process.nextTick(finish);
+  } else if (result < 0) {
+    socket.destroy(errnoException(result, "write"));
+  }
+
+  return true;
+}
+
+function tryDirectEmptyEnd(
+  msg: any,
+  callback: any,
+) {
+  if (
+    msg.req === undefined ||
+    msg.strictContentLength ||
+    msg._headerSent ||
+    msg.outputData.length !== 0 ||
+    msg[kChunkedLength] !== 0 ||
+    msg._bodyWriter !== null ||
+    !msg._hasBody ||
+    msg._trailer !== "" ||
+    msg._removedContLen ||
+    msg._removedTE ||
+    msg.chunkedEncoding ||
+    msg.statusCode === 204 ||
+    msg.statusCode === 304
+  ) {
+    return false;
+  }
+
+  const headers = msg[kOutHeaders];
+  if (
+    headers !== null &&
+    (headers["transfer-encoding"] !== undefined ||
+      headers.trailer !== undefined)
+  ) {
+    return false;
+  }
+
+  const socket = msg.socket;
+  const writableState = socket?._writableState;
+  if (
+    socket == null ||
+    socket.destroyed ||
+    !socket.writable ||
+    socket.connecting ||
+    socket._httpMessage !== msg ||
+    socket._handle?.isStreamBase !== true ||
+    typeof socket._handle.writeLatin1String !== "function" ||
+    writableState === undefined ||
+    writableState.corked !== 0 ||
+    writableState.length !== 0 ||
+    writableState.needDrain
+  ) {
+    return false;
+  }
+
+  if (msg._header === null) {
+    msg._contentLength = 0;
+    msg._implicitHeader();
+  }
+
+  if (!msg._hasBody || msg.chunkedEncoding || msg._header === null) {
+    return false;
+  }
+
+  if (typeof callback === "function") {
+    msg.once("finish", callback);
+  }
+
+  const finish = onFinish.bind(undefined, msg);
+  const result = writeDirectString(socket, msg._header, "latin1", finish);
 
   msg._headerSent = true;
   msg.finished = true;

@@ -283,6 +283,24 @@ impl CliMainWorker {
     self.worker.js_runtime().op_state()
   }
 
+  /// Returns a thread-safe handle to the V8 isolate. Used by the test runner
+  /// to install a handle that `op_test_isolate_exit` can call
+  /// `terminate_execution` on.
+  pub fn v8_isolate_handle(&mut self) -> v8::IsolateHandle {
+    self.worker.js_runtime().v8_isolate().thread_safe_handle()
+  }
+
+  /// Reset the V8 "terminating" flag. Called after the test runner detects
+  /// that the isolate's termination was caused by user code calling
+  /// `Deno.exit()`; this lets us cleanly tear down the worker.
+  pub fn cancel_terminate_execution(&mut self) {
+    self
+      .worker
+      .js_runtime()
+      .v8_isolate()
+      .cancel_terminate_execution();
+  }
+
   pub fn maybe_setup_hmr_runner(&mut self) -> Option<HmrRunner> {
     let setup_hmr_runner = self.shared.create_hmr_runner.as_ref()?;
 
@@ -544,6 +562,7 @@ impl CliMainWorkerFactory {
         "40_test.js",
         "40_bench.js",
         "40_jupyter.js",
+        "jupyter_kernel.js",
         // TODO(bartlomieju): probably shouldn't include these files here?
         "40_lint_selector.js",
         "40_lint.js"
