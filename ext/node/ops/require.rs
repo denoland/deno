@@ -669,7 +669,7 @@ pub fn op_require_is_maybe_cjs(
     return Ok(false);
   };
   let loader = state.borrow::<NodeRequireLoaderRc>();
-  loader.is_maybe_cjs(&url).map_err(Into::into)
+  loader.is_maybe_cjs_from_require(&url).map_err(Into::into)
 }
 
 #[op2(stack_trace)]

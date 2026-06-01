@@ -408,7 +408,7 @@ impl TestRun {
               }
             }
             test::TestEvent::UncaughtError(origin, error) => {
-              reporter.report_uncaught_error(&origin, &error);
+              reporter.report_uncaught_error(&origin, &error).await;
               summary.failed += 1;
               summary.uncaught_errors.push((origin, error));
             }
@@ -727,7 +727,7 @@ impl LspTestReporter {
     }
   }
 
-  fn report_uncaught_error(&mut self, origin: &str, js_error: &JsError) {
+  async fn report_uncaught_error(&mut self, origin: &str, js_error: &JsError) {
     self.current_test = None;
     let err_string = format!(
       "Uncaught error from {}: {}\nThis error was not caught from a test and caused the test runner to fail on the referenced module.\nIt most likely originated from a dangling promise, event/timeout handler or top-level code.",
@@ -746,10 +746,63 @@ impl LspTestReporter {
       actual_output: None,
       location: None,
     }];
+    let mut reported = false;
     for desc in self.tests.values().filter(|d| d.origin() == origin) {
       self.progress(lsp_custom::TestRunProgressMessage::Failed {
         test: desc.as_test_identifier(&self.tests),
         messages: messages.clone(),
+        duration: None,
+      });
+      reported = true;
+    }
+    if reported {
+      return;
+    }
+    // No individual test was registered for this origin at runtime. This happens
+    // when the module throws while evaluating, before (or instead of) any test
+    // runs — for example `Deno.test("")` throws "The test name can't be empty".
+    // Surface the failure against the module's statically-collected tests (which
+    // were already enqueued on the client) so the run still reports the error
+    // instead of silently completing. See
+    // https://github.com/denoland/deno/issues/17119.
+    let Ok(specifier) = ModuleSpecifier::parse(origin) else {
+      return;
+    };
+    let Ok(uri) = url_to_uri(&specifier) else {
+      return;
+    };
+    {
+      let files = self.files.lock().await;
+      if let Some((test_module, _)) = files.get(&specifier) {
+        for id in test_module
+          .defs
+          .iter()
+          .filter(|(_, d)| d.parent_id.is_none())
+          .map(|(id, _)| id.clone())
+        {
+          self.progress(lsp_custom::TestRunProgressMessage::Failed {
+            test: lsp_custom::TestIdentifier {
+              text_document: lsp::TextDocumentIdentifier { uri: uri.clone() },
+              id: Some(id),
+              step_id: None,
+            },
+            messages: messages.clone(),
+            duration: None,
+          });
+          reported = true;
+        }
+      }
+    }
+    // As a last resort (e.g. the module has no statically-collected tests),
+    // report against the module itself so the error is never dropped.
+    if !reported {
+      self.progress(lsp_custom::TestRunProgressMessage::Failed {
+        test: lsp_custom::TestIdentifier {
+          text_document: lsp::TextDocumentIdentifier { uri },
+          id: None,
+          step_id: None,
+        },
+        messages,
         duration: None,
       });
     }

@@ -4,6 +4,7 @@ use std::convert::Infallible;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::sync::Arc;
 
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
@@ -465,6 +466,17 @@ impl<'s> ToV8<'s> for &'static str {
 }
 
 impl<'s> ToV8<'s> for Box<str> {
+  type Error = Infallible;
+  #[inline]
+  fn to_v8<'i>(
+    self,
+    scope: &mut v8::PinScope<'s, 'i>,
+  ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
+    Ok(v8::String::new(scope, &self).unwrap().into()) // TODO
+  }
+}
+
+impl<'s> ToV8<'s> for Arc<str> {
   type Error = Infallible;
   #[inline]
   fn to_v8<'i>(
