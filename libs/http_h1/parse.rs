@@ -426,31 +426,21 @@ fn parse_content_length(value: &[u8]) -> Result<u64, ParseError> {
   if value.contains(&b',') {
     return Err(ParseError::InvalidContentLength);
   }
-  let mut parsed = None;
-  for item in std::iter::once(value) {
-    let value = trim_ows(item);
-    if value.is_empty() {
+  let value = trim_ows(value);
+  if value.is_empty() {
+    return Err(ParseError::InvalidContentLength);
+  }
+  let mut len = 0u64;
+  for byte in value {
+    if !byte.is_ascii_digit() {
       return Err(ParseError::InvalidContentLength);
     }
-    let mut len = 0u64;
-    for byte in value {
-      if !byte.is_ascii_digit() {
-        return Err(ParseError::InvalidContentLength);
-      }
-      len = len
-        .checked_mul(10)
-        .and_then(|len| len.checked_add((byte - b'0') as u64))
-        .ok_or(ParseError::InvalidContentLength)?;
-    }
-    match parsed {
-      Some(existing) if existing != len => {
-        return Err(ParseError::ConflictingContentLength);
-      }
-      Some(_) => {}
-      None => parsed = Some(len),
-    }
+    len = len
+      .checked_mul(10)
+      .and_then(|len| len.checked_add((byte - b'0') as u64))
+      .ok_or(ParseError::InvalidContentLength)?;
   }
-  parsed.ok_or(ParseError::InvalidContentLength)
+  Ok(len)
 }
 
 fn trim_ows(mut value: &[u8]) -> &[u8] {

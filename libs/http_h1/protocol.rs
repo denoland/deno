@@ -317,7 +317,7 @@ fn parse_chunk_size(line: &[u8]) -> Result<usize, ParseError> {
   if line.iter().any(|byte| matches!(*byte, 0..=0x1f | 0x7f)) {
     return Err(ParseError::Invalid);
   }
-  let size = trim_ows(line.split(|byte| *byte == b';').next().unwrap_or(line));
+  let size = trim_ows(line.split(|byte| *byte == b';').next().unwrap());
   if size.is_empty() {
     return Err(ParseError::Invalid);
   }
