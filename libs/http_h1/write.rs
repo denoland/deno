@@ -80,6 +80,7 @@ pub fn write_default_text_response(
   out: &mut Vec<u8>,
   response: ResponseHeaderFast<'_>,
 ) {
+  assert!(valid_header_value(response.date), "invalid response date");
   out.clear();
   out.extend_from_slice(response_version_bytes(response.version));
   out.extend_from_slice(
@@ -104,6 +105,11 @@ pub fn write_content_type_response(
   out: &mut Vec<u8>,
   response: ResponseContentTypeFast<'_>,
 ) {
+  assert!(
+    valid_header_value(response.content_type),
+    "invalid response content-type"
+  );
+  assert!(valid_header_value(response.date), "invalid response date");
   out.clear();
   out.extend_from_slice(response_version_bytes(response.version));
   out.extend_from_slice(b" 200 OK\r\ncontent-type: ");
@@ -141,8 +147,8 @@ pub fn append_chunk(out: &mut Vec<u8>, chunk: &[u8]) {
 pub fn append_chunked_end(out: &mut Vec<u8>, trailers: &[Header<'_>]) {
   out.extend_from_slice(b"0\r\n");
   for trailer in trailers {
-    debug_assert!(valid_header_name(trailer.name));
-    debug_assert!(valid_header_value(trailer.value));
+    assert!(valid_header_name(trailer.name), "invalid trailer name");
+    assert!(valid_header_value(trailer.value), "invalid trailer value");
     out.extend_from_slice(trailer.name);
     out.extend_from_slice(b": ");
     out.extend_from_slice(trailer.value);
@@ -184,8 +190,8 @@ pub fn append_chunked_end_to(
   let mut cursor = SliceWriter::new(out);
   cursor.push(b"0\r\n")?;
   for trailer in trailers {
-    debug_assert!(valid_header_name(trailer.name));
-    debug_assert!(valid_header_value(trailer.value));
+    assert!(valid_header_name(trailer.name), "invalid trailer name");
+    assert!(valid_header_value(trailer.value), "invalid trailer value");
     cursor.push(trailer.name)?;
     cursor.push(b": ")?;
     cursor.push(trailer.value)?;
@@ -201,7 +207,7 @@ fn write_response_head_inner(
   chunked: bool,
 ) {
   let chunked = chunked && response.version == Version::Http11;
-  debug_assert!(valid_reason(response.reason));
+  assert!(valid_reason(response.reason), "invalid response reason");
   out.clear();
   out.extend_from_slice(response_version_bytes(response.version));
   out.push(b' ');
@@ -215,8 +221,14 @@ fn write_response_head_inner(
   let mut date = None;
   let body_allowed = status_allows_body(response.status);
   for header in response.headers {
-    debug_assert!(valid_header_name(header.name));
-    debug_assert!(valid_header_value(header.value));
+    assert!(
+      valid_header_name(header.name),
+      "invalid response header name"
+    );
+    assert!(
+      valid_header_value(header.value),
+      "invalid response header value"
+    );
     if header.name.eq_ignore_ascii_case(b"date") {
       date = Some(header.value);
       continue;
@@ -274,7 +286,7 @@ fn write_response_head_to_inner(
   chunked: bool,
 ) -> Result<usize, OutputFull> {
   let chunked = chunked && response.version == Version::Http11;
-  debug_assert!(valid_reason(response.reason));
+  assert!(valid_reason(response.reason), "invalid response reason");
   let mut cursor = SliceWriter::new(out);
   cursor.push(response_version_bytes(response.version))?;
   cursor.push(b" ")?;
@@ -288,8 +300,14 @@ fn write_response_head_to_inner(
   let mut date = None;
   let body_allowed = status_allows_body(response.status);
   for header in response.headers {
-    debug_assert!(valid_header_name(header.name));
-    debug_assert!(valid_header_value(header.value));
+    assert!(
+      valid_header_name(header.name),
+      "invalid response header name"
+    );
+    assert!(
+      valid_header_value(header.value),
+      "invalid response header value"
+    );
     if header.name.eq_ignore_ascii_case(b"date") {
       date = Some(header.value);
       continue;
@@ -634,6 +652,59 @@ mod tests {
     append_chunk(&mut out, b"hello");
     append_chunked_end(&mut out, &trailers);
     assert_eq!(out, b"5\r\nhello\r\n0\r\nx-sig: abc\r\n\r\n");
+  }
+
+  #[test]
+  #[should_panic(expected = "invalid response header value")]
+  fn response_head_rejects_invalid_header_value() {
+    let headers = [Header {
+      name: b"x-test",
+      value: b"ok\r\nx-injected: yes",
+    }];
+    let mut out = Vec::new();
+    write_response_head(
+      &mut out,
+      ResponseHeader {
+        version: Version::Http11,
+        status: 200,
+        reason: b"OK",
+        headers: &headers,
+        content_length: Some(0),
+        keep_alive: true,
+      },
+    );
+  }
+
+  #[test]
+  #[should_panic(expected = "invalid response header name")]
+  fn response_head_rejects_invalid_header_name() {
+    let headers = [Header {
+      name: b"x-test\r\nx-injected",
+      value: b"ok",
+    }];
+    let mut out = [0; 128];
+    let _ = write_response_head_to(
+      &mut out,
+      ResponseHeader {
+        version: Version::Http11,
+        status: 200,
+        reason: b"OK",
+        headers: &headers,
+        content_length: Some(0),
+        keep_alive: true,
+      },
+    );
+  }
+
+  #[test]
+  #[should_panic(expected = "invalid trailer value")]
+  fn chunked_end_rejects_invalid_trailer_value() {
+    let trailers = [Header {
+      name: b"x-test",
+      value: b"ok\r\nx-injected: yes",
+    }];
+    let mut out = Vec::new();
+    append_chunked_end(&mut out, &trailers);
   }
 
   #[test]
