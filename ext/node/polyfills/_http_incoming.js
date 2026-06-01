@@ -28,6 +28,7 @@ import { core, primordials } from "ext:core/mod.js";
 const {
   ObjectDefineProperty,
   ObjectSetPrototypeOf,
+  ReflectApply,
   Symbol,
 } = primordials;
 
@@ -508,6 +509,8 @@ IncomingMessage.prototype._dump = function _dump() {
   }
 };
 
+// Keep all stream consumption entry points wrapped so lazy readable
+// initialization cannot be bypassed by future primitive additions.
 for (
   const method of [
     "on",
@@ -529,18 +532,18 @@ for (
 ) {
   const readableMethod = Readable.prototype[method];
   if (readableMethod) {
-    IncomingMessage.prototype[method] = function (...args) {
+    IncomingMessage.prototype[method] = function () {
       maybeInitializeLazyReadable(this);
-      return readableMethod.apply(this, args);
+      return ReflectApply(readableMethod, this, arguments);
     };
   }
 }
 
 const readableAsyncIterator = Readable.prototype[Symbol.asyncIterator];
 if (readableAsyncIterator) {
-  IncomingMessage.prototype[Symbol.asyncIterator] = function (...args) {
+  IncomingMessage.prototype[Symbol.asyncIterator] = function () {
     maybeInitializeLazyReadable(this);
-    return readableAsyncIterator.apply(this, args);
+    return ReflectApply(readableAsyncIterator, this, arguments);
   };
 }
 
