@@ -152,7 +152,7 @@ pub fn op_crypto_import_pkcs8_x448(
   }
   // 6.
   // CurvePrivateKey ::= OCTET STRING
-  if pk_info.private_key.len() != 56 {
+  if pk_info.private_key.len() != 58 {
     return false;
   }
   out.copy_from_slice(&pk_info.private_key[2..]);

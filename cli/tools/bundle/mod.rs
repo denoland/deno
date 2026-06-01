@@ -360,6 +360,75 @@ pub async fn bundle(
   Ok(())
 }
 
+/// Bundle a single entrypoint for `deno compile --bundle` and return the
+/// resulting JavaScript bytes in memory. The Deno-specific `createRequire`
+/// shim is applied to the output so CJS `require()` calls keep working in
+/// the compiled binary.
+///
+/// `external` is the set of import patterns (typically npm package names) to
+/// leave unbundled. For `deno compile --bundle` this is populated with the
+/// names of packages that ship native `.node` addons so their internal
+/// `require('./X.node')` calls keep their original `__dirname` context at
+/// runtime.
+pub async fn bundle_for_compile(
+  flags: Arc<Flags>,
+  entrypoint: String,
+  external: Vec<String>,
+) -> Result<Vec<u8>, AnyError> {
+  let bundle_flags = BundleFlags {
+    entrypoints: vec![entrypoint],
+    output_path: None,
+    output_dir: None,
+    external,
+    format: BundleFormat::Esm,
+    minify: false,
+    keep_names: false,
+    code_splitting: false,
+    inline_imports: true,
+    packages: PackageHandling::Bundle,
+    sourcemap: None,
+    platform: BundlePlatform::Deno,
+    watch: false,
+  };
+
+  let bundler = bundle_init(flags, &bundle_flags).await?;
+  let response = bundler.build().await?;
+
+  handle_esbuild_errors_and_warnings(
+    &response,
+    &bundler.cwd,
+    &bundler.plugin_handler.take_deferred_resolve_errors(),
+  );
+  if !response.errors.is_empty() {
+    deno_core::anyhow::bail!("bundling failed");
+  }
+
+  let output_files = collect_output_files(
+    response.output_files.as_deref(),
+    &bundler.cwd,
+    bundler.input.clone(),
+    None,
+  )?;
+
+  for file in &output_files {
+    let processed = maybe_process_contents(
+      file,
+      should_replace_require_shim(bundle_flags.platform),
+      bundle_flags.minify,
+    )?;
+    if !processed.is_js {
+      continue;
+    }
+    return Ok(
+      processed
+        .into_contents()
+        .unwrap_or_else(|| file.contents.to_vec()),
+    );
+  }
+
+  deno_core::anyhow::bail!("esbuild produced no JavaScript output")
+}
+
 fn metafile_from_response(
   response: &BuildResponse,
 ) -> Result<esbuild_client::Metafile, AnyError> {
@@ -1699,6 +1768,17 @@ impl DenoPluginHandler {
     let mut transform = transform::BundleImportMetaMainTransform::new(
       graph.roots.contains(specifier) || resolved_roots.contains(specifier),
     );
+    // A CJS module imported from ESM reaches us as an ESM facade the module
+    // loader generated (`import { createRequire } ...; export default mod;`).
+    // Parsing that under `MediaType::Cjs` forces script mode (see
+    // deno_ast `refine_parse_mode`), which rejects the facade's import/export
+    // statements with a parse error. Parse as JavaScript so program mode
+    // auto-detects module vs script and handles both the facade and genuine
+    // CJS scripts.
+    let media_type = match media_type {
+      deno_ast::MediaType::Cjs => deno_ast::MediaType::JavaScript,
+      other => other,
+    };
     let parsed_source = deno_ast::parse_program_with_post_process(
       deno_ast::ParseParams {
         specifier: specifier.clone(),
@@ -2028,6 +2108,12 @@ pub struct OutputFileInfo {
 pub struct ProcessedContents {
   contents: Option<Vec<u8>>,
   is_js: bool,
+}
+
+impl ProcessedContents {
+  pub fn into_contents(self) -> Option<Vec<u8>> {
+    self.contents
+  }
 }
 
 fn is_js(path: &Path) -> bool {
