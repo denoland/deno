@@ -221,12 +221,16 @@ pub fn op_node_decode<'a>(
     }
     2 => {
       // ascii
-      let ascii_bytes = mask_ascii_fast(buffer);
-      v8::String::new_from_one_byte(
-        scope,
-        &ascii_bytes,
-        v8::NewStringType::Normal,
-      )
+      if buffer.len() <= 256 && buffer.is_ascii() {
+        v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
+      } else {
+        let ascii_bytes = mask_ascii_fast(buffer);
+        v8::String::new_from_one_byte(
+          scope,
+          &ascii_bytes,
+          v8::NewStringType::Normal,
+        )
+      }
     }
     3 => {
       // utf-16le (ucs2)
