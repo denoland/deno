@@ -9174,6 +9174,51 @@ fn lsp_npm_auto_import_and_quick_fix_byonm() {
       },
     ]),
   );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("existing_import.ts").unwrap()).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { say } from \"cowsay\";\n\nthink({ text: \"foo\" });\n",
+    },
+  }));
+  let list = client.get_completion_list(
+    url_to_uri(&temp_dir.url().join("existing_import.ts").unwrap())
+      .unwrap()
+      .as_str(),
+    (2, 5),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "think")
+    .unwrap();
+  let mut res = client.write_request("completionItem/resolve", item);
+  let obj = res.as_object_mut().unwrap();
+  obj.remove("documentation");
+  assert_eq!(
+    res,
+    json!({
+      "label": "think",
+      "labelDetails": {
+        "description": "cowsay",
+      },
+      "kind": 3,
+      "detail": "Update import from \"cowsay\"\n\nfunction think(options: IOptions): string",
+      "sortText": "￿16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 12 },
+            "end": { "line": 0, "character": 12 },
+          },
+          "newText": ", think",
+        },
+      ],
+    }),
+  );
   client.shutdown();
 }
 
