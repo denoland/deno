@@ -135,6 +135,21 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { read: true } },
+  async function watchFsCloseIsIdempotent() {
+    const testDir = await makeTempDir();
+    const watcher = Deno.watchFs(testDir);
+
+    watcher.close();
+    watcher.close();
+
+    assertEquals(await watcher.next(), { value: undefined, done: true });
+    assertEquals(await watcher.return!(), { value: undefined, done: true });
+    assertEquals(await watcher.next(), { value: undefined, done: true });
+  },
+);
+
+Deno.test(
   { permissions: { read: true, write: true } },
   async function watchFsExplicitResourceManagement() {
     let res;
