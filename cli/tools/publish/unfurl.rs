@@ -502,6 +502,17 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                   .ok()
                 }
               }
+              PackageJsonDepValue::RemoteTarballUrl(_) => {
+                ModuleSpecifier::parse(&format!(
+                  "npm:{}@*{}",
+                  alias,
+                  sub_path
+                    .as_ref()
+                    .map(|s| format!("/{}", s))
+                    .unwrap_or_default()
+                ))
+                .ok()
+              }
               PackageJsonDepValue::Catalog(catalog_name) => {
                 let catalogs = self.workspace_resolver.catalogs();
                 match catalogs

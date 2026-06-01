@@ -11,6 +11,7 @@ use deno_cache_dir::npm::NpmCacheDir;
 use deno_error::JsError;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
+use deno_semver::VersionReq;
 use deno_semver::npm::NpmPackageReqReference;
 pub use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
@@ -431,6 +432,21 @@ impl<
               .map_err(|e| {
                 DenoResolveErrorKind::PackageJsonDepValueUrlParse(e).into_box()
               }),
+              PackageJsonDepValue::RemoteTarballUrl(_) => {
+                let req = deno_semver::package::PackageReq {
+                  name: alias.into(),
+                  version_req: VersionReq::parse_from_npm("*").unwrap(),
+                };
+                Url::parse(&format!(
+                  "npm:{}{}",
+                  req,
+                  sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+                ))
+                .map_err(|e| {
+                  DenoResolveErrorKind::PackageJsonDepValueUrlParse(e)
+                    .into_box()
+                })
+              }
               PackageJsonDepValue::Workspace(version_req) => self
                 .workspace_resolver
                 .resolve_workspace_pkg_json_folder_for_pkg_json_dep(

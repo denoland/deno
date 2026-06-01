@@ -98,6 +98,7 @@ pub struct NpmInstallerFactory<
   >,
   npm_installer:
     async_once_cell::OnceCell<Arc<NpmInstaller<TNpmCacheHttpClient, TSys>>>,
+  npm_install_deps_provider: Deferred<Arc<NpmInstallDepsProvider>>,
   npm_resolution_initializer:
     async_once_cell::OnceCell<Arc<NpmResolutionInitializer<TSys>>>,
   npm_resolution_installer: async_once_cell::OnceCell<
@@ -135,6 +136,7 @@ impl<
       npm_cache: Default::default(),
       npm_deno_graph_resolver: Default::default(),
       npm_installer: Default::default(),
+      npm_install_deps_provider: Default::default(),
       npm_resolution_initializer: Default::default(),
       npm_resolution_installer: Default::default(),
       registry_info_provider: Default::default(),
@@ -360,15 +362,13 @@ impl<
           let registry_info_provider = self.registry_info_provider()?;
           let workspace_npm_link_packages =
             workspace_factory.workspace_npm_link_packages()?;
+          let npm_install_deps_provider =
+            self.npm_install_deps_provider()?.clone();
           Ok(Arc::new(NpmInstaller::new(
             self.install_reporter.clone(),
             self.lifecycle_scripts_executor.clone(),
             npm_cache.clone(),
-            Arc::new(NpmInstallDepsProvider::from_workspace(
-              &workspace_factory.workspace_directory()?.workspace,
-              self.options.production,
-              self.options.skip_types,
-            )),
+            npm_install_deps_provider,
             registry_info_provider.clone(),
             self.resolver_factory.npm_resolution().clone(),
             self.npm_resolution_initializer().await?.clone(),
@@ -394,6 +394,18 @@ impl<
       .await
   }
 
+  fn npm_install_deps_provider(
+    &self,
+  ) -> Result<&Arc<NpmInstallDepsProvider>, anyhow::Error> {
+    self.npm_install_deps_provider.get_or_try_init(|| {
+      Ok(Arc::new(NpmInstallDepsProvider::from_workspace(
+        &self.workspace_factory().workspace_directory()?.workspace,
+        self.options.production,
+        self.options.skip_types,
+      )))
+    })
+  }
+
   pub fn registry_info_provider(
     &self,
   ) -> Result<
@@ -417,6 +429,11 @@ impl<
         self.http_client().clone(),
         self.workspace_factory().npmrc()?.clone(),
         packument_format,
+        self
+          .npm_install_deps_provider()?
+          .remote_tarball_urls()
+          .map(|(name, url)| (name.to_string(), url.to_string()))
+          .collect(),
       )))
     })
   }

@@ -23,6 +23,7 @@ pub struct InstallNpmRemotePkg {
   pub alias: Option<StackString>,
   pub base_dir: PathBuf,
   pub req: PackageReq,
+  pub tarball_url: Option<String>,
 }
 
 #[derive(Debug)]
@@ -106,6 +107,7 @@ impl NpmInstallDepsProvider {
                 alias: None,
                 base_dir: deno_json.dir_path(),
                 req: pkg_req,
+                tarball_url: None,
               });
             }
           }
@@ -168,8 +170,23 @@ impl NpmInstallDepsProvider {
                   alias: Some(alias.clone()),
                   base_dir: pkg_json.dir_path().to_path_buf(),
                   req: pkg_req.clone(),
+                  tarball_url: None,
                 });
               }
+            }
+            PackageJsonDepValue::RemoteTarballUrl(tarball_url) => {
+              if skip_types && alias.starts_with("@types/") {
+                continue;
+              }
+              pkg_pkgs.push(InstallNpmRemotePkg {
+                alias: Some(alias.clone()),
+                base_dir: pkg_json.dir_path().to_path_buf(),
+                req: PackageReq {
+                  name: alias.clone(),
+                  version_req: VersionReq::parse_from_npm("*").unwrap(),
+                },
+                tarball_url: Some(tarball_url.clone()),
+              });
             }
             PackageJsonDepValue::Workspace(workspace_version_req) => {
               let version_req = match workspace_version_req {
@@ -216,6 +233,7 @@ impl NpmInstallDepsProvider {
                     alias: Some(alias.clone()),
                     base_dir: pkg_json.dir_path().to_path_buf(),
                     req: pkg_req,
+                    tarball_url: None,
                   });
                 }
               }
@@ -262,6 +280,12 @@ impl NpmInstallDepsProvider {
 
   pub fn remote_pkgs(&self) -> &[InstallNpmRemotePkg] {
     &self.remote_pkgs
+  }
+
+  pub fn remote_tarball_urls(&self) -> impl Iterator<Item = (&str, &str)> {
+    self.remote_pkgs.iter().filter_map(|pkg| {
+      Some((pkg.req.name.as_str(), pkg.tarball_url.as_deref()?))
+    })
   }
 
   pub fn local_pkgs(&self) -> &[InstallLocalPkg] {

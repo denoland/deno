@@ -235,6 +235,11 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
                 return Ok(Some(key.clone()));
               }
             }
+            PackageJsonDepValue::RemoteTarballUrl(_) => {
+              if key.as_str() == req.name {
+                return Ok(Some(key.clone()));
+              }
+            }
             PackageJsonDepValue::Workspace(_workspace) => {
               if key.as_str() == req.name
                 && req.version_req.tag() == Some("workspace")

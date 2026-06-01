@@ -455,6 +455,13 @@ impl WorkspaceMainModuleResolver {
               sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
             ))?
           }
+          deno_package_json::PackageJsonDepValue::RemoteTarballUrl(_) => {
+            ModuleSpecifier::parse(&format!(
+              "npm:{}@*{}",
+              alias,
+              sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+            ))?
+          }
           deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
             let pkg_folder = self
               .workspace_resolver

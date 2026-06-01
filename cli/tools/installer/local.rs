@@ -79,6 +79,9 @@ pub fn categorize_installed_npm_deps(
         deno_package_json::PackageJsonDepValue::Req(package_req) => {
           normal_deps.insert(package_req.name.to_string());
         }
+        deno_package_json::PackageJsonDepValue::RemoteTarballUrl(_) => {
+          normal_deps.insert(k.to_string());
+        }
         deno_package_json::PackageJsonDepValue::Workspace(_) => {
           // ignore workspace deps
         }
@@ -104,6 +107,9 @@ pub fn categorize_installed_npm_deps(
         }
         deno_package_json::PackageJsonDepValue::Req(package_req) => {
           dev_deps.insert(package_req.name.to_string());
+        }
+        deno_package_json::PackageJsonDepValue::RemoteTarballUrl(_) => {
+          dev_deps.insert(k.to_string());
         }
         deno_package_json::PackageJsonDepValue::Workspace(_) => {
           // ignore workspace deps

@@ -758,6 +758,15 @@ impl Workspace {
                         req: package_req.clone(),
                       }))
                     }
+                    PackageJsonDepValue::RemoteTarballUrl(_) => {
+                      Some(Dep::Req(JsrDepPackageReq {
+                        kind: PackageKind::Npm,
+                        req: PackageReq {
+                          name: k.clone(),
+                          version_req: VersionReq::parse_from_npm("*").unwrap(),
+                        },
+                      }))
+                    }
                     PackageJsonDepValue::Workspace(workspace_req) => {
                       Some(Dep::Req(JsrDepPackageReq {
                         kind: PackageKind::Npm,

@@ -2,15 +2,20 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::io::Read;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_error::JsErrorBox;
 use deno_npm::registry::NpmPackageInfo;
+use deno_npm::registry::NpmPackageVersionInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_npmrc::ResolvedNpmRc;
+use deno_semver::Version;
+use deno_semver::package::PackageName;
 use deno_unsync::sync::AtomicFlag;
+use flate2::read::GzDecoder;
 use futures::FutureExt;
 use futures::future::LocalBoxFuture;
 use parking_lot::Mutex;
@@ -142,6 +147,7 @@ struct RegistryInfoProviderInner<
   http_client: Arc<THttpClient>,
   npmrc: Arc<ResolvedNpmRc>,
   packument_format: NpmPackumentFormat,
+  direct_tarball_urls: HashMap<String, Url>,
   force_reload_flag: AtomicFlag,
   memory_cache: Mutex<MemoryCache>,
   previously_loaded_packages: Mutex<HashSet<String>>,
@@ -237,6 +243,45 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
     let downloader = self.clone();
     let name = name.to_string();
     async move {
+      if let Some(tarball_url) = downloader.direct_tarball_urls.get(&name) {
+        if *downloader.cache.cache_setting() == NpmCacheSetting::Only {
+          return Err(JsErrorBox::new(
+            "NotCached",
+            format!(
+              "npm package not found in cache: \"{name}\", --cached-only is specified."
+            ),
+          ));
+        }
+        let registry_config = downloader.npmrc.tarball_config(tarball_url);
+        let maybe_auth_header_value = registry_config
+          .and_then(|c| maybe_auth_header_value_for_npm_registry(c).ok()?);
+        let response = downloader
+          .http_client
+          .download_with_retries_on_any_tokio_runtime(
+            tarball_url.clone(),
+            maybe_auth_header_value,
+            None,
+            registry_config.map(|c| c.as_ref()),
+          )
+          .await
+          .map_err(JsErrorBox::from_err)?;
+        let response = match response {
+          NpmCacheHttpClientResponse::Bytes(response) => response,
+          NpmCacheHttpClientResponse::NotFound => {
+            return Ok(FutureResult::PackageNotExists);
+          }
+          NpmCacheHttpClientResponse::NotModified => unreachable!(),
+        };
+        let name = name.clone();
+        let tarball_url = tarball_url.clone();
+        let package_info = spawn_blocking(move || {
+          create_package_info_from_tarball(&name, tarball_url, &response.bytes)
+        })
+        .await
+        .map_err(JsErrorBox::from_err)??;
+        return Ok(FutureResult::SavedFsCache(Arc::new(package_info)));
+      }
+
       let maybe_file_cached = if (downloader.cache.cache_setting().should_use_for_npm_package(&name) && !downloader.force_reload_flag.is_raised())
         // if this has been previously reloaded, then try loading from the file system cache
         || downloader.previously_loaded_packages.lock().contains(&name)
@@ -360,12 +405,17 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
     http_client: Arc<THttpClient>,
     npmrc: Arc<ResolvedNpmRc>,
     packument_format: NpmPackumentFormat,
+    direct_tarball_urls: HashMap<String, String>,
   ) -> Self {
     Self(Arc::new(RegistryInfoProviderInner {
       cache,
       http_client,
       npmrc,
       packument_format,
+      direct_tarball_urls: direct_tarball_urls
+        .into_iter()
+        .filter_map(|(name, url)| Some((name, Url::parse(&url).ok()?)))
+        .collect(),
       force_reload_flag: AtomicFlag::lowered(),
       memory_cache: Default::default(),
       previously_loaded_packages: Default::default(),
@@ -383,6 +433,56 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
   ) -> Result<Option<Arc<NpmPackageInfo>>, LoadPackageInfoError> {
     self.0.maybe_package_info(name).await
   }
+}
+
+fn create_package_info_from_tarball(
+  name: &str,
+  tarball_url: Url,
+  bytes: &[u8],
+) -> Result<NpmPackageInfo, JsErrorBox> {
+  let mut archive = tar::Archive::new(GzDecoder::new(bytes));
+  let mut package_json = None;
+  for entry in archive.entries().map_err(JsErrorBox::from_err)? {
+    let mut entry = entry.map_err(JsErrorBox::from_err)?;
+    let path = entry.path().map_err(JsErrorBox::from_err)?;
+    if path.components().skip(1).eq([std::path::Component::Normal(
+      std::ffi::OsStr::new("package.json"),
+    )]) {
+      let mut text = String::new();
+      entry
+        .read_to_string(&mut text)
+        .map_err(JsErrorBox::from_err)?;
+      package_json = Some(text);
+      break;
+    }
+  }
+  let package_json = package_json.ok_or_else(|| {
+    JsErrorBox::generic("Remote npm tarball did not contain package.json.")
+  })?;
+  let mut value: serde_json::Value =
+    serde_json::from_str(&package_json).map_err(JsErrorBox::from_err)?;
+  let version =
+    value
+      .get("version")
+      .and_then(|v| v.as_str())
+      .ok_or_else(|| {
+        JsErrorBox::generic(
+          "Remote npm tarball package.json did not specify a version.",
+        )
+      })?;
+  let version =
+    Version::parse_from_npm(version).map_err(JsErrorBox::from_err)?;
+  value["dist"] = serde_json::json!({
+    "tarball": tarball_url.as_str(),
+  });
+  let version_info: NpmPackageVersionInfo =
+    serde_json::from_value(value).map_err(JsErrorBox::from_err)?;
+  Ok(NpmPackageInfo {
+    name: PackageName::from_str(name),
+    versions: HashMap::from([(version.clone(), version_info)]),
+    dist_tags: HashMap::from([("latest".to_string(), version)]),
+    time: Default::default(),
+  })
 }
 
 #[async_trait(?Send)]

@@ -81,7 +81,9 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
+use deno_semver::VersionReq;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NodeResolver;
@@ -269,6 +271,28 @@ impl EmbeddedModuleLoader {
               url_or_path.into_url().map_err(JsErrorBox::from_err)
             })?,
         ),
+        PackageJsonDepValue::RemoteTarballUrl(_) => {
+          let req = PackageReq {
+            name: alias.clone(),
+            version_req: VersionReq::parse_from_npm("*").unwrap(),
+          };
+          Ok(
+            self
+              .shared
+              .npm_req_resolver
+              .resolve_req_with_sub_path(
+                &req,
+                sub_path.as_deref(),
+                &referrer,
+                resolution_mode,
+                NodeResolutionKind::Execution,
+              )
+              .map_err(JsErrorBox::from_err)
+              .and_then(|url_or_path| {
+                url_or_path.into_url().map_err(JsErrorBox::from_err)
+              })?,
+          )
+        }
         PackageJsonDepValue::Workspace(version_req) => {
           let pkg_folder = self
             .shared

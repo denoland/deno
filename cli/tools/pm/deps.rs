@@ -381,6 +381,29 @@ fn add_deps_from_package_json(
             alias,
           })
         }
+        deno_package_json::PackageJsonDepValue::RemoteTarballUrl(_) => {
+          let req = PackageReq {
+            name: k.clone(),
+            version_req: VersionReq::parse_from_npm("*").unwrap(),
+          };
+          if !filter.should_include(None, &req, DepKind::Npm) {
+            continue;
+          }
+          let id = DepId(deps.len());
+          deps.push(Dep {
+            id,
+            kind: DepKind::Npm,
+            location: DepLocation::PackageJson(
+              package_json.clone(),
+              KeyPath::from_parts([
+                package_dep_kind.into(),
+                KeyPart::String(k.clone()),
+              ]),
+            ),
+            req,
+            alias: None,
+          })
+        }
         deno_package_json::PackageJsonDepValue::Workspace(_)
         | deno_package_json::PackageJsonDepValue::Catalog(_) => continue,
       }

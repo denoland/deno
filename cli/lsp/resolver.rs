@@ -916,6 +916,7 @@ impl<'a> ResolverFactory<'a> {
         npm_client.clone(),
         npmrc.clone(),
         NpmPackumentFormat::Abbreviated,
+        Default::default(),
       ));
       let link_packages: WorkspaceNpmLinkPackagesRc = self
         .config_data

@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "tests": {
+    "run": {
+      "args": "run --quiet --node-modules-dir=auto main.ts",
+      "output": "main.out"
+    }
+  }
+}

@@ -175,6 +175,7 @@ pub fn parse_jsr_dep_value<'a>(
 pub enum PackageJsonDepValue {
   File(String),
   Req(PackageReq),
+  RemoteTarballUrl(String),
   Workspace(PackageJsonDepWorkspaceReq),
   Catalog(String),
 }
@@ -205,7 +206,9 @@ impl PackageJsonDepValue {
       return Err(PackageJsonDepValueParseErrorKind::EmptyName.into_box());
     }
 
-    if let Some((scheme, value)) = value.split_once(':') {
+    if value.starts_with("http://") || value.starts_with("https://") {
+      Ok(Self::RemoteTarballUrl(value.to_string()))
+    } else if let Some((scheme, value)) = value.split_once(':') {
       match scheme {
         "file" => Ok(Self::File(value.to_string())),
         "jsr" => {
@@ -1107,15 +1110,15 @@ mod test {
         ),
         (
           "http-test".to_string(),
-          Err(PackageJsonDepValueParseErrorKind::Unsupported {
-            scheme: "http".to_string()
-          }),
+          Ok(PackageJsonDepValue::RemoteTarballUrl(
+            "http://something".to_string()
+          )),
         ),
         (
           "https-test".to_string(),
-          Err(PackageJsonDepValueParseErrorKind::Unsupported {
-            scheme: "https".to_string()
-          }),
+          Ok(PackageJsonDepValue::RemoteTarballUrl(
+            "https://something".to_string()
+          )),
         ),
       ])
     );

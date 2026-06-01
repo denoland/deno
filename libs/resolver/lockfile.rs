@@ -302,6 +302,12 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           PackageJsonDepValue::Req(req) => {
             Some(JsrDepPackageReq::npm(req.clone()))
           }
+          PackageJsonDepValue::RemoteTarballUrl(_) => {
+            Some(JsrDepPackageReq::npm(PackageReq {
+              name: alias.clone(),
+              version_req: VersionReq::parse_from_npm("*").ok()?,
+            }))
+          }
           PackageJsonDepValue::Workspace(_) => None,
           PackageJsonDepValue::Catalog(catalog_name) => {
             let catalog = catalogs.get(catalog_name.as_str())?;
@@ -411,10 +417,18 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
             deps
               .map(|i| {
                 i.iter()
-                  .filter_map(|(k, v)| PackageJsonDepValue::parse(k, v).ok())
-                  .filter_map(|dep| match dep {
+                  .filter_map(|(k, v)| {
+                    Some((k, PackageJsonDepValue::parse(k, v).ok()?))
+                  })
+                  .filter_map(|(k, dep)| match dep {
                     PackageJsonDepValue::Req(req) => {
                       Some(JsrDepPackageReq::npm(req.clone()))
+                    }
+                    PackageJsonDepValue::RemoteTarballUrl(_) => {
+                      Some(JsrDepPackageReq::npm(PackageReq {
+                        name: k.as_str().into(),
+                        version_req: VersionReq::parse_from_npm("*").ok()?,
+                      }))
                     }
                     // not supported
                     PackageJsonDepValue::File(_)
