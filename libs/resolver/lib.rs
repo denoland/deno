@@ -700,16 +700,17 @@ impl<
 /// `DENO_PATCH_REACT_CVE` environment variable to a non-empty value other than
 /// `0`.
 ///
-/// The variable is read exactly once and cached. Module loading happens before
-/// any user code runs, so the value is effectively snapshotted at startup and
-/// cannot be toggled later via `Deno.env.set`.
-pub fn is_react_cve_patch_enabled() -> bool {
-  static ENABLED: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
-    std::env::var("DENO_PATCH_REACT_CVE")
+/// The variable is read exactly once (via `sys`) and cached. Module loading
+/// happens before any user code runs, so the value is effectively snapshotted
+/// at startup and cannot be toggled later via `Deno.env.set`.
+pub fn is_react_cve_patch_enabled(sys: &impl sys_traits::EnvVar) -> bool {
+  static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+  *ENABLED.get_or_init(|| {
+    sys
+      .env_var("DENO_PATCH_REACT_CVE")
       .map(|v| !v.is_empty() && v != "0")
       .unwrap_or(false)
-  });
-  *ENABLED
+  })
 }
 
 /// Load time source patches that neutralize two known React Server Components
@@ -720,28 +721,10 @@ pub fn is_react_cve_patch_enabled() -> bool {
 /// * CVE-2025-55184 (DoS): a cyclic thenable makes chunk fulfillment loop
 ///   forever.
 ///
-/// The patches are opt-in via the `DENO_PATCH_REACT_CVE` environment variable
-/// (see [`is_react_cve_patch_enabled`]); when disabled this is a single cached
-/// bool check. Both vulnerable snippets reference the `resolved_model`
-/// identifier, so even when enabled a single substring scan lets the
-/// overwhelmingly common case (any other module) bail out before the more
-/// expensive pattern matching runs. The patch is only applied to JavaScript
-/// source by callers; non-JS modules never reach this function.
+/// Callers must gate this behind [`is_react_cve_patch_enabled`] (the patches
+/// are opt-in via the `DENO_PATCH_REACT_CVE` environment variable) and only
+/// apply it to JavaScript source.
 pub fn patch_react_cves<'a>(
-  filename: &str,
-  code: Cow<'a, str>,
-) -> Cow<'a, str> {
-  // Fast path: the feature is off by default, and neither patch can apply
-  // without the `resolved_model` identifier (required within the match window
-  // of both passes below).
-  if !is_react_cve_patch_enabled() || !code.contains("resolved_model") {
-    return code;
-  }
-  patch_react_cves_slow(filename, code)
-}
-
-#[cold]
-fn patch_react_cves_slow<'a>(
   filename: &str,
   code: Cow<'a, str>,
 ) -> Cow<'a, str> {

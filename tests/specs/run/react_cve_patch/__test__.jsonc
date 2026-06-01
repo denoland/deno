@@ -1,0 +1,15 @@
+{
+  "tests": {
+    "disabled": {
+      "args": "run main.js",
+      "output": "disabled.out"
+    },
+    "enabled": {
+      "args": "run main.js",
+      "envs": {
+        "DENO_PATCH_REACT_CVE": "1"
+      },
+      "output": "enabled.out"
+    }
+  }
+}

@@ -674,7 +674,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     // CVEs to JavaScript source. Opt in via `DENO_PATCH_REACT_CVE`. See
     // `deno_resolver::patch_react_cves`.
     let code = if code_source.module_type == ModuleType::JavaScript
-      && deno_resolver::is_react_cve_patch_enabled()
+      && deno_resolver::is_react_cve_patch_enabled(&self.shared.sys)
     {
       patch_react_cves_source(specifier, code)
     } else {

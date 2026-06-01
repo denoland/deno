@@ -1,0 +1,2 @@
+keys: ["a","constructor","b"]
+then: resolved-cycle

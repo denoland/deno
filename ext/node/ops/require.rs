@@ -556,7 +556,7 @@ pub fn op_require_try_self<
 }
 
 #[op2(stack_trace)]
-pub fn op_require_read_file(
+pub fn op_require_read_file<TSys: ExtNodeSys + 'static>(
   state: &mut OpState,
   #[string] file_path_str: &str,
 ) -> Result<FastString, RequireError> {
@@ -564,15 +564,22 @@ pub fn op_require_read_file(
   // todo(dsherret): there's multiple borrows to NodeRequireLoaderRc here
   let file_path = ensure_read_permission(state, file_path)
     .map_err(RequireErrorKind::Permission)?;
-  let loader = state.borrow::<NodeRequireLoaderRc>();
-  let code = loader
-    .load_text_file_lossy(&file_path)
-    .map_err(|e| RequireErrorKind::ReadModule(e).into_box())?;
+  let code = {
+    let loader = state.borrow::<NodeRequireLoaderRc>();
+    loader
+      .load_text_file_lossy(&file_path)
+      .map_err(|e| RequireErrorKind::ReadModule(e).into_box())?
+  };
   // Apply load-time security mitigations for known React Server Components
-  // CVEs to required (CommonJS) source.
-  match deno_resolver::patch_react_cves(file_path_str, code.as_str().into()) {
-    Cow::Borrowed(_) => Ok(code),
-    Cow::Owned(s) => Ok(s.into()),
+  // CVEs to required (CommonJS) source. Opt in via `DENO_PATCH_REACT_CVE`.
+  let sys = state.borrow::<TSys>();
+  if deno_resolver::is_react_cve_patch_enabled(sys) {
+    match deno_resolver::patch_react_cves(file_path_str, code.as_str().into()) {
+      Cow::Borrowed(_) => Ok(code),
+      Cow::Owned(s) => Ok(s.into()),
+    }
+  } else {
+    Ok(code)
   }
 }
 
