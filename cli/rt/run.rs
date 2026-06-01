@@ -1299,14 +1299,10 @@ pub async fn run(
       .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
       .unwrap_or_else(|| "deno-compile".to_string())
   });
+  // `--app-name` is validated at compile time (see `validate_app_name`), so it
+  // is safe to use directly as a single directory component here.
   let origin_data_folder_path =
-    crate::binary::get_data_local_dir().map(|dir| {
-      // Guard against path separators in a user-provided `--app-name`.
-      let app_dir = std::path::Path::new(&app_name)
-        .file_name()
-        .unwrap_or_else(|| std::ffi::OsStr::new(&app_name));
-      dir.join(app_dir)
-    });
+    crate::binary::get_data_local_dir().map(|dir| dir.join(&app_name));
   // Only enable persistent storage when we resolved a data directory. The
   // storage key resolver must stay empty otherwise, because the worker unwraps
   // `origin_data_folder_path` whenever the key resolves to a value.

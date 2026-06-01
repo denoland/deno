@@ -1,0 +1,36 @@
+{
+  "tempDir": true,
+  "tests": {
+    "empty": {
+      "args": ["compile", "-A", "--app-name", "", "--output", "out", "main.ts"],
+      "output": "error.out",
+      "exitCode": 1
+    },
+    "dot_dot": {
+      "args": [
+        "compile",
+        "-A",
+        "--app-name",
+        "..",
+        "--output",
+        "out",
+        "main.ts"
+      ],
+      "output": "error.out",
+      "exitCode": 1
+    },
+    "separator": {
+      "args": [
+        "compile",
+        "-A",
+        "--app-name",
+        "foo/bar",
+        "--output",
+        "out",
+        "main.ts"
+      ],
+      "output": "error.out",
+      "exitCode": 1
+    }
+  }
+}

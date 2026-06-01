@@ -192,6 +192,25 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
     || libsui::utils::is_macho(&data)
 }
 
+/// Validate a user-provided `--app-name`. The name becomes a single directory
+/// component under the platform's app data directory at runtime, so reject
+/// anything empty, `.`/`..`, or containing a path separator to keep storage
+/// from escaping or colliding with that directory. Done here so the user gets
+/// a clear compile-time error instead of a surprising store location.
+fn validate_app_name(app_name: &str) -> Result<(), AnyError> {
+  if app_name.is_empty()
+    || app_name == "."
+    || app_name == ".."
+    || app_name.contains(['/', '\\'])
+  {
+    bail!(
+      "Invalid `--app-name` value {:?}: must not be empty, `.`, `..`, or contain path separators.",
+      app_name,
+    );
+  }
+  Ok(())
+}
+
 pub struct WriteBinOptions<'a> {
   pub writer: File,
   pub display_output_filename: &'a str,
@@ -270,6 +289,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           target,
         );
       }
+    }
+    if let Some(app_name) = &options.compile_flags.app_name {
+      validate_app_name(app_name)?;
     }
     self.write_standalone_binary(options, original_binary).await
   }
