@@ -239,8 +239,6 @@ pub fn op_node_decode<'a>(
 
 #[inline(always)]
 fn mask_ascii_fast(bytes: &[u8]) -> Vec<u8> {
-  // This function requires building with the `--release` flag to achieve optimal performance.
-
   let len = bytes.len();
   let mut ascii_bytes = Vec::<u8>::with_capacity(len);
 
@@ -284,7 +282,7 @@ fn decode_utf16le_from_bytes<'a>(
     let (prefix, u16_slice, suffix) = unsafe { buf.align_to::<u16>() };
 
     if prefix.is_empty() && suffix.is_empty() {
-      // Fast path: Memory is perfectly 2-byte aligned. Absolute zero-copy transfer.
+      // Fast path: Memory is perfectly 2-byte aligned.
       v8::String::new_from_two_byte(scope, u16_slice, v8::NewStringType::Normal)
     } else {
       // Slow path: Unaligned memory (rare in V8, but must be handled).
