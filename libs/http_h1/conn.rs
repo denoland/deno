@@ -51,6 +51,10 @@ pub enum Error {
   ResponseStreamActive,
   #[error("response stream is not active")]
   ResponseStreamInactive,
+  #[error("response body exceeds content-length")]
+  ResponseBodyTooLong,
+  #[error("response body shorter than content-length")]
+  ResponseBodyTooShort,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -255,7 +259,8 @@ pub struct Conn<I> {
 enum ResponseState {
   Idle,
   Chunked,
-  Fixed,
+  Fixed { remaining: u64 },
+  CloseDelimited,
   NoBody,
 }
 
@@ -593,7 +598,7 @@ where
       if response.version == Version::Http11 {
         ResponseState::Chunked
       } else {
-        ResponseState::Fixed
+        ResponseState::CloseDelimited
       }
     } else {
       ResponseState::NoBody
@@ -622,7 +627,9 @@ where
     );
     self.io.write_all(&self.write_buf).await?;
     self.response_state = if status_allows_body(response.status) {
-      ResponseState::Fixed
+      ResponseState::Fixed {
+        remaining: content_length,
+      }
     } else {
       ResponseState::NoBody
     };
@@ -636,7 +643,18 @@ where
     match self.response_state {
       ResponseState::Idle => return Err(Error::ResponseStreamInactive),
       ResponseState::NoBody => return Ok(()),
-      ResponseState::Fixed => {
+      ResponseState::Fixed { remaining } => {
+        let len = chunk.len() as u64;
+        if len > remaining {
+          return Err(Error::ResponseBodyTooLong);
+        }
+        self.io.write_all(chunk).await?;
+        if let ResponseState::Fixed { remaining } = &mut self.response_state {
+          *remaining -= len;
+        }
+        return Ok(());
+      }
+      ResponseState::CloseDelimited => {
         self.io.write_all(chunk).await?;
         return Ok(());
       }
@@ -661,10 +679,15 @@ where
         self.response_state = ResponseState::Idle;
         return Ok(());
       }
-      ResponseState::Fixed => {
+      ResponseState::CloseDelimited => {
         self.response_state = ResponseState::Idle;
         return Ok(());
       }
+      ResponseState::Fixed { remaining: 0 } => {
+        self.response_state = ResponseState::Idle;
+        return Ok(());
+      }
+      ResponseState::Fixed { .. } => return Err(Error::ResponseBodyTooShort),
       ResponseState::Chunked => {}
     }
     self.write_buf.clear();
@@ -1075,7 +1098,7 @@ where
       if writer.response.version == Version::Http11 {
         ResponseState::Chunked
       } else {
-        ResponseState::Fixed
+        ResponseState::CloseDelimited
       }
     } else {
       ResponseState::NoBody
@@ -1133,7 +1156,9 @@ where
       writer.written += written;
     }
     self.response_state = if status_allows_body(writer.response.status) {
-      ResponseState::Fixed
+      ResponseState::Fixed {
+        remaining: writer.content_length,
+      }
     } else {
       ResponseState::NoBody
     };
@@ -1163,9 +1188,44 @@ where
         return Poll::Ready(Err(Error::ResponseStreamInactive));
       }
       ResponseState::NoBody => return Poll::Ready(Ok(())),
-      ResponseState::Fixed => {
-        let mut writer = SharedResponseBodyWriter::new(writer.chunk);
-        return self.poll_write_response_body_with(cx, &mut writer);
+      ResponseState::Fixed { remaining } => {
+        let pending = writer.chunk.len() - writer.body_written;
+        if pending as u64 > remaining {
+          return Poll::Ready(Err(Error::ResponseBodyTooLong));
+        }
+        while writer.body_written < writer.chunk.len() {
+          let written = ready!(
+            Pin::new(&mut self.io)
+              .poll_write(cx, &writer.chunk[writer.body_written..])
+          )?;
+          if written == 0 {
+            return Poll::Ready(Err(Error::Io(io::Error::new(
+              io::ErrorKind::WriteZero,
+              "failed to write response body",
+            ))));
+          }
+          writer.body_written += written;
+          if let ResponseState::Fixed { remaining } = &mut self.response_state {
+            *remaining -= written as u64;
+          }
+        }
+        return Poll::Ready(Ok(()));
+      }
+      ResponseState::CloseDelimited => {
+        while writer.body_written < writer.chunk.len() {
+          let written = ready!(
+            Pin::new(&mut self.io)
+              .poll_write(cx, &writer.chunk[writer.body_written..])
+          )?;
+          if written == 0 {
+            return Poll::Ready(Err(Error::Io(io::Error::new(
+              io::ErrorKind::WriteZero,
+              "failed to write response body",
+            ))));
+          }
+          writer.body_written += written;
+        }
+        return Poll::Ready(Ok(()));
       }
       ResponseState::Chunked => {}
     }
@@ -1268,7 +1328,13 @@ where
       ResponseState::Chunked => {
         return Poll::Ready(Err(Error::ResponseStreamInactive));
       }
-      ResponseState::Fixed => {}
+      ResponseState::Fixed { remaining } => {
+        let pending = writer.body.len() - writer.written;
+        if pending as u64 > remaining {
+          return Poll::Ready(Err(Error::ResponseBodyTooLong));
+        }
+      }
+      ResponseState::CloseDelimited => {}
     }
     while writer.written < writer.body.len() {
       let written = ready!(
@@ -1281,6 +1347,9 @@ where
         ))));
       }
       writer.written += written;
+      if let ResponseState::Fixed { remaining } = &mut self.response_state {
+        *remaining -= written as u64;
+      }
     }
     Poll::Ready(Ok(()))
   }
@@ -1324,9 +1393,16 @@ where
         self.response_state = ResponseState::Idle;
         return Poll::Ready(Ok(()));
       }
-      ResponseState::Fixed => {
+      ResponseState::CloseDelimited => {
         self.response_state = ResponseState::Idle;
         return Poll::Ready(Ok(()));
+      }
+      ResponseState::Fixed { remaining: 0 } => {
+        self.response_state = ResponseState::Idle;
+        return Poll::Ready(Ok(()));
+      }
+      ResponseState::Fixed { .. } => {
+        return Poll::Ready(Err(Error::ResponseBodyTooShort));
       }
       ResponseState::Chunked => {}
     }
@@ -1826,6 +1902,87 @@ mod tests {
       response?,
       b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n3\r\nabc\r\n3\r\ndef\r\n0\r\nx-trailer: ok\r\n\r\n"
     );
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn shared_conn_fixed_streaming_response_enforces_exact_length()
+  -> TestResult<()> {
+    let io = FragmentIo::new(&[]);
+    let mut conn = SharedConn::new(io);
+    let mut scratch = SharedScratch::default();
+    conn
+      .start_fixed_response_with_scratch(
+        &mut scratch,
+        ResponseHead {
+          version: Version::Http11,
+          status: 200,
+          reason: b"OK",
+          headers: &[],
+          keep_alive: true,
+        },
+        3,
+      )
+      .await?;
+    conn.write_response_body_with_scratch(b"abc").await?;
+    conn.finish_response_with_scratch(&mut scratch, &[]).await?;
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn shared_conn_fixed_streaming_response_rejects_overflow()
+  -> TestResult<()> {
+    let io = FragmentIo::new(&[]);
+    let mut conn = SharedConn::new(io);
+    let mut scratch = SharedScratch::default();
+    conn
+      .start_fixed_response_with_scratch(
+        &mut scratch,
+        ResponseHead {
+          version: Version::Http11,
+          status: 200,
+          reason: b"OK",
+          headers: &[],
+          keep_alive: true,
+        },
+        3,
+      )
+      .await?;
+    let err = conn
+      .write_response_body_with_scratch(b"abcd")
+      .await
+      .unwrap_err();
+    assert!(matches!(err, Error::ResponseBodyTooLong));
+    let io = conn.into_inner();
+    assert!(!io.written.ends_with(b"abcd"));
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn shared_conn_fixed_streaming_response_rejects_underflow()
+  -> TestResult<()> {
+    let io = FragmentIo::new(&[]);
+    let mut conn = SharedConn::new(io);
+    let mut scratch = SharedScratch::default();
+    conn
+      .start_fixed_response_with_scratch(
+        &mut scratch,
+        ResponseHead {
+          version: Version::Http11,
+          status: 200,
+          reason: b"OK",
+          headers: &[],
+          keep_alive: true,
+        },
+        5,
+      )
+      .await?;
+    conn.write_response_body_with_scratch(b"abc").await?;
+    let err = conn
+      .finish_response_with_scratch(&mut scratch, &[])
+      .await
+      .unwrap_err();
+    assert!(matches!(err, Error::ResponseBodyTooShort));
     Ok(())
   }
 
