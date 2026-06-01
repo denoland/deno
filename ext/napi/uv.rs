@@ -409,9 +409,16 @@ struct uv_idle_t {
 
 struct PollBridge {
   active: AtomicBool,
+  #[cfg(unix)]
   fd: c_int,
+  #[cfg(unix)]
   cb: uv_poll_cb,
 }
+
+#[cfg(unix)]
+type uv_os_sock_t = c_int;
+#[cfg(windows)]
+type uv_os_sock_t = usize;
 
 #[repr(C)]
 struct uv_poll_t {
@@ -686,7 +693,7 @@ unsafe extern "C" fn uv_idle_stop(_idle: *mut uv_idle_t) -> c_int {
 unsafe extern "C" fn uv_poll_init_socket(
   r#loop: *mut uv_loop_t,
   poll: *mut uv_poll_t,
-  fd: c_int,
+  fd: uv_os_sock_t,
 ) -> c_int {
   unsafe {
     let data = (*poll).data;
@@ -697,9 +704,13 @@ unsafe extern "C" fn uv_poll_init_socket(
     addr_of_mut!((*poll).bridge).write(std::ptr::null_mut());
     let bridge = Arc::new(PollBridge {
       active: AtomicBool::new(false),
+      #[cfg(unix)]
       fd,
+      #[cfg(unix)]
       cb: None,
     });
+    #[cfg(windows)]
+    let _ = fd;
     addr_of_mut!((*poll).bridge).write(Box::into_raw(Box::new(bridge)));
   }
   0
@@ -711,7 +722,7 @@ unsafe extern "C" fn uv_poll_init(
   poll: *mut uv_poll_t,
   fd: c_int,
 ) -> c_int {
-  unsafe { uv_poll_init_socket(r#loop, poll, fd) }
+  unsafe { uv_poll_init_socket(r#loop, poll, fd as uv_os_sock_t) }
 }
 
 #[unsafe(no_mangle)]
@@ -727,16 +738,19 @@ unsafe extern "C" fn uv_poll_start(
     }
 
     (&*bridge_ptr).active.store(false, Ordering::Release);
-    let previous = &*bridge_ptr;
     let bridge = Arc::new(PollBridge {
       active: AtomicBool::new(true),
-      fd: previous.fd,
+      #[cfg(unix)]
+      fd: (&*bridge_ptr).fd,
+      #[cfg(unix)]
       cb,
     });
     *bridge_ptr = bridge;
+    #[cfg(unix)]
     let bridge = Arc::clone(&*bridge_ptr);
     let sender = (&mut *(*poll).r#loop).async_work_sender.clone();
     let poll_ptr = SendPtr(poll as *const uv_poll_t);
+    #[cfg(unix)]
     std::thread::spawn(move || {
       let mut poll_events = 0;
       if events & 1 != 0 {
@@ -768,6 +782,15 @@ unsafe extern "C" fn uv_poll_start(
         break;
       }
     });
+    #[cfg(windows)]
+    {
+      if let Some(cb) = cb {
+        sender.spawn(move |_| {
+          let poll = poll_ptr.take() as *mut uv_poll_t;
+          cb(poll, 0, events);
+        });
+      }
+    }
   }
   0
 }
