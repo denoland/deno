@@ -1262,11 +1262,10 @@ pub fn wasm_streaming_callback<'a>(
   let context_state_rc = JsRealm::state_from_scope(scope);
   let maybe_cb_handle = context_state_rc.js_wasm_streaming_cb.borrow().clone();
   let Some(cb_handle) = maybe_cb_handle else {
-    // The JS handler has not been registered yet (only possible before the
-    // runtime finishes bootstrapping). Abort the streaming compilation rather
-    // than panicking.
-    wasm_streaming.abort(None);
-    return;
+    // The JS handler is registered while the runtime bootstraps, before any
+    // user code can trigger wasm streaming. Reaching this without a handler
+    // means deno_core was misconfigured.
+    panic!("wasm streaming callback invoked before the JS handler was set");
   };
 
   let streaming_rid = {
