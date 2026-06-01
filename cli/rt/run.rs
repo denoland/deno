@@ -1472,8 +1472,14 @@ fn resolve_child_entrypoint(
   {
     return candidate;
   }
-  // Otherwise resolve against the real cwd to load an on-disk module.
-  #[allow(clippy::disallowed_methods, reason = "ok to use current_dir here")]
+  // Otherwise resolve against the real cwd to load an on-disk module. fork()
+  // resolves a relative module path against the process's current working
+  // directory, so reading the real cwd is the intended behavior here even
+  // though the lint discourages ambient cwd access elsewhere.
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "fork() resolves relative module paths against the process cwd"
+  )]
   let cwd = sys.env_current_dir();
   match cwd {
     Ok(cwd) => deno_core::resolve_path(module_path, &cwd)
