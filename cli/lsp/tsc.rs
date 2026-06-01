@@ -4889,11 +4889,10 @@ enum LoadError {
   UrlParse(#[from] deno_core::url::ParseError),
   #[error("{0}")]
   #[class(inherit)]
-  SerdeV8(#[from] serde_v8::Error),
+  JsErrorBox(#[from] deno_error::JsErrorBox),
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, deno_core::ToV8)]
 struct LoadResponse {
   data: DocumentText,
   script_kind: i32,
@@ -4946,7 +4945,7 @@ fn op_load<'s>(
         }
       })
     };
-  let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
+  let serialized = maybe_load_response.to_v8(scope)?;
   state.performance.measure(mark);
   Ok(serialized)
 }
