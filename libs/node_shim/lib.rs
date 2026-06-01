@@ -3554,9 +3554,10 @@ pub fn translate_to_deno_args(
       deno_args.push(format!("--v8-flags={}", parsed_args.v8_args.join(",")));
     }
 
-    // Add conditions and inspector flags for eval
+    // Add conditions, inspector flags, and `--require`/`--import` for eval
     add_conditions(deno_args, env_opts);
     add_inspector_flags(deno_args, env_opts);
+    add_preload_modules(deno_args, env_opts);
 
     // Get the eval code from either the explicit eval_string or the first remaining arg (for -p)
     let raw_eval_code = eval_string_for_print
@@ -3761,6 +3762,26 @@ fn add_common_flags(
 
   // Add inspector flags
   add_inspector_flags(deno_args, env_opts);
+
+  // Add `--require`/`--import` preload modules
+  add_preload_modules(deno_args, env_opts);
+}
+
+/// Emit a `--require`/`--import` Deno flag for each `node --require`/`-r` and
+/// `--import` preload module, so the spawned Deno process preloads them before
+/// the entrypoint just like Node does.
+fn add_preload_modules(
+  deno_args: &mut Vec<String>,
+  env_opts: &EnvironmentOptions,
+) {
+  for module in &env_opts.preload_cjs_modules {
+    deno_args.push("--require".to_string());
+    deno_args.push(module.clone());
+  }
+  for module in &env_opts.preload_esm_modules {
+    deno_args.push("--import".to_string());
+    deno_args.push(module.clone());
+  }
 }
 
 fn add_conditions(deno_args: &mut Vec<String>, env_opts: &EnvironmentOptions) {
@@ -5023,6 +5044,58 @@ mod tests {
       !eval_arg.contains("process.debugPort ="),
       "should not inject debugPort assignment, got: {eval_arg}"
     );
+  }
+
+  #[test]
+  fn test_translate_require_and_import_for_script() {
+    // `node --require ./a.cjs -r ./b.cjs --import ./c.mjs script.js` should
+    // emit `--require`/`--import` flags before the script for `deno run`.
+    let parsed = parse_args(svec![
+      "--require",
+      "./a.cjs",
+      "-r",
+      "./b.cjs",
+      "--import",
+      "./c.mjs",
+      "script.js"
+    ])
+    .unwrap();
+    let result =
+      translate_to_deno_args(parsed, &TranslateOptions::for_shell_command());
+    assert_eq!(
+      result.deno_args,
+      svec![
+        "run",
+        "-A",
+        "--unstable-node-globals",
+        "--unstable-bare-node-builtins",
+        "--unstable-detect-cjs",
+        "--require",
+        "./a.cjs",
+        "--require",
+        "./b.cjs",
+        "--import",
+        "./c.mjs",
+        "script.js"
+      ]
+    );
+  }
+
+  #[test]
+  fn test_translate_require_for_eval() {
+    // `node --require ./a.cjs -e "<code>"` should preload the module for the
+    // `deno eval` translation too.
+    let parsed =
+      parse_args(svec!["--require", "./a.cjs", "-e", "1 + 1"]).unwrap();
+    let result =
+      translate_to_deno_args(parsed, &TranslateOptions::for_shell_command());
+    let require_idx = result
+      .deno_args
+      .iter()
+      .position(|a| a == "--require")
+      .expect("expected a --require flag");
+    assert_eq!(result.deno_args[require_idx + 1], "./a.cjs");
+    assert!(result.deno_args.contains(&"eval".to_string()));
   }
 
   // ==================== Env File Options Tests ====================
