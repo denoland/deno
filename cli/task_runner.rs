@@ -491,7 +491,7 @@ impl ShellCommand for NodeCommand {
 
     let translated = node_shim::translate_to_deno_args(
       parsed,
-      &node_shim::TranslateOptions::for_shell_command(),
+      &node_shim::TranslateOptions::for_task_command(),
     );
     // node_shim returns empty args for the REPL (`node` with no script); defer
     // to the real `node` binary there too, preserving the previous behavior.

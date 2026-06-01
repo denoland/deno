@@ -3151,6 +3151,13 @@ pub struct TranslateOptions {
   pub add_standalone_config: bool,
   /// Wrap eval code for Node.js compatibility (builtin modules as globals)
   pub wrap_eval_code: bool,
+  /// Emit `node --require`/`-r`/`--import` preloads as Deno `--require`/`--import`
+  /// flags. Only enabled for the `deno task`/lifecycle-script shell path: there
+  /// the preload should actually run. `child_process` spawning keeps the prior
+  /// behavior (preloads parsed but not emitted), since Deno's `--require`
+  /// resolution differs from Node's for some specifiers (e.g. self-referential
+  /// packages) and emitting there would regress node_compat coverage.
+  pub emit_preload_modules: bool,
 }
 
 impl TranslateOptions {
@@ -3161,6 +3168,7 @@ impl TranslateOptions {
       add_unstable_flags: true,
       add_standalone_config: true,
       wrap_eval_code: false,
+      emit_preload_modules: false,
     }
   }
 
@@ -3171,6 +3179,7 @@ impl TranslateOptions {
       add_unstable_flags: true,
       add_standalone_config: false,
       wrap_eval_code: true,
+      emit_preload_modules: false,
     }
   }
 
@@ -3183,6 +3192,22 @@ impl TranslateOptions {
       add_unstable_flags: true,
       add_standalone_config: false,
       wrap_eval_code: false,
+      emit_preload_modules: false,
+    }
+  }
+
+  /// Options for the `deno task`/npm-lifecycle-script `node` shim
+  /// (`cli::task_runner::NodeCommand`). Same as [`Self::for_shell_command`] but
+  /// emits `--require`/`--import` preloads, since a task that runs
+  /// `node --require ./x.cjs main.cjs` expects the preload to actually run.
+  /// Kept distinct from `for_shell_command` (used by `child_process` exec-style
+  /// spawning) so emission doesn't change `child_process`'s long-standing
+  /// behavior of dropping preloads it can't resolve like Node (e.g.
+  /// self-referential packages — see node_compat test-preload-self-referential).
+  pub fn for_task_command() -> Self {
+    Self {
+      emit_preload_modules: true,
+      ..Self::for_shell_command()
     }
   }
 }
@@ -3557,7 +3582,9 @@ pub fn translate_to_deno_args(
     // Add conditions, inspector flags, and `--require`/`--import` for eval
     add_conditions(deno_args, env_opts);
     add_inspector_flags(deno_args, env_opts);
-    add_preload_modules(deno_args, env_opts);
+    if options.emit_preload_modules {
+      add_preload_modules(deno_args, env_opts);
+    }
 
     // Get the eval code from either the explicit eval_string or the first remaining arg (for -p)
     let raw_eval_code = eval_string_for_print
@@ -3666,6 +3693,11 @@ pub fn translate_to_deno_args(
 
   add_common_flags(deno_args, &parsed_args, env_opts);
 
+  // Emit `--require`/`--import` preloads for the `deno task` shell path only.
+  if options.emit_preload_modules {
+    add_preload_modules(deno_args, env_opts);
+  }
+
   // Handle --no-warnings -> --quiet
   if !env_opts.warnings {
     deno_args.push("--quiet".to_string());
@@ -3762,9 +3794,6 @@ fn add_common_flags(
 
   // Add inspector flags
   add_inspector_flags(deno_args, env_opts);
-
-  // Add `--require`/`--import` preload modules
-  add_preload_modules(deno_args, env_opts);
 }
 
 /// Emit a `--require`/`--import` Deno flag for each `node --require`/`-r` and
@@ -5048,8 +5077,9 @@ mod tests {
 
   #[test]
   fn test_translate_require_and_import_for_script() {
-    // `node --require ./a.cjs -r ./b.cjs --import ./c.mjs script.js` should
-    // emit `--require`/`--import` flags before the script for `deno run`.
+    // For the `deno task` path (`for_task_command`), `node --require
+    // ./a.cjs -r ./b.cjs --import ./c.mjs script.js` should emit
+    // `--require`/`--import` flags before the script for `deno run`.
     let parsed = parse_args(svec![
       "--require",
       "./a.cjs",
@@ -5061,7 +5091,7 @@ mod tests {
     ])
     .unwrap();
     let result =
-      translate_to_deno_args(parsed, &TranslateOptions::for_shell_command());
+      translate_to_deno_args(parsed, &TranslateOptions::for_task_command());
     assert_eq!(
       result.deno_args,
       svec![
@@ -5084,11 +5114,11 @@ mod tests {
   #[test]
   fn test_translate_require_for_eval() {
     // `node --require ./a.cjs -e "<code>"` should preload the module for the
-    // `deno eval` translation too.
+    // `deno eval` translation too (task path).
     let parsed =
       parse_args(svec!["--require", "./a.cjs", "-e", "1 + 1"]).unwrap();
     let result =
-      translate_to_deno_args(parsed, &TranslateOptions::for_shell_command());
+      translate_to_deno_args(parsed, &TranslateOptions::for_task_command());
     let require_idx = result
       .deno_args
       .iter()
@@ -5096,6 +5126,27 @@ mod tests {
       .expect("expected a --require flag");
     assert_eq!(result.deno_args[require_idx + 1], "./a.cjs");
     assert!(result.deno_args.contains(&"eval".to_string()));
+  }
+
+  #[test]
+  fn test_translate_require_not_emitted_for_child_process_paths() {
+    // `child_process` spawning — both the direct (`for_child_process`) and the
+    // exec/shell-rewrite (`for_shell_command`) paths — must NOT emit
+    // `--require`/`--import`: Deno's preload resolution differs from Node's for
+    // some specifiers (e.g. self-referential packages), and emitting there
+    // regresses node_compat (test-preload-self-referential.js, which spawns
+    // `node -r self_ref` via the exec/shell path). The preload is still parsed,
+    // just not forwarded as a Deno flag. Only `for_task_command` emits.
+    for options in [
+      TranslateOptions::for_child_process(),
+      TranslateOptions::for_shell_command(),
+    ] {
+      let parsed =
+        parse_args(svec!["--require", "self_ref", "script.js"]).unwrap();
+      let result = translate_to_deno_args(parsed, &options);
+      assert!(!result.deno_args.contains(&"--require".to_string()));
+      assert_eq!(result.deno_args.last().unwrap(), "script.js");
+    }
   }
 
   // ==================== Env File Options Tests ====================
