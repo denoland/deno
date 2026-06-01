@@ -395,11 +395,13 @@ pub async fn bundle_for_compile(
   // Without this, module-graph creation skips deep CJS files inside
   // `node_modules` (jiti.cjs is the canonical case) and the parent
   // `.mjs` trips an esbuild parse error when its import target can't
-  // be loaded. This is a surgical override of just the resolver's
-  // `bundle_mode` flag, narrower than swapping the whole subcommand,
-  // which would also flip `node_code_translator_mode` and disable the
-  // `.node` extension fallback that `compile --bundle` still needs
-  // for native addons.
+  // be loaded. This flips the same three resolver knobs `deno bundle`
+  // sets (`bundle_mode`, `node_code_translator_mode` = Disabled,
+  // `allow_json_imports` = Always) without otherwise swapping the
+  // subcommand, so the rest of compilation keeps Compile semantics.
+  // Disabling the code translator means the CJS analyzer's
+  // extensionless `.node` auto-resolution no longer runs, which is why
+  // the resolver grows a `.node` fallback (see `resolution.rs`).
   let mut flags = flags;
   {
     let flags_mut = Arc::make_mut(&mut flags);

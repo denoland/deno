@@ -1,0 +1,5 @@
+{
+  "name": "@denotest/esm-import-deep-cjs",
+  "version": "1.0.0",
+  "main": "lib/entry.mjs"
+}
