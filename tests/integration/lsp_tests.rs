@@ -8688,6 +8688,67 @@ fn lsp_completions_optional() {
 }
 
 #[test(timeout = 300)]
+fn lsp_completions_string_union_with_dot() {
+  // Regression test for https://github.com/denoland/deno/issues/28075
+  // Completing a string union literal that contains a `.` must replace the
+  // entire string contents, not just the text after the last dot.
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "type T = \"foo.bar\" | \"foo.baz\";\nconst x: T = \"foo.b\";\n"
+    }
+  }));
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (1, 19),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|i| i.label == "foo.bar")
+    .expect("expected a \"foo.bar\" completion item");
+  // The text edit must replace the whole string content (`foo.b`), spanning
+  // from just after the opening quote to the cursor, rather than relying on
+  // the editor's word-based replacement which would only replace `b`.
+  assert_eq!(
+    item.text_edit,
+    Some(lsp::CompletionTextEdit::InsertAndReplace(
+      lsp::InsertReplaceEdit {
+        new_text: "foo.bar".to_string(),
+        insert: lsp::Range {
+          start: lsp::Position {
+            line: 1,
+            character: 14,
+          },
+          end: lsp::Position {
+            line: 1,
+            character: 19,
+          },
+        },
+        replace: lsp::Range {
+          start: lsp::Position {
+            line: 1,
+            character: 14,
+          },
+          end: lsp::Position {
+            line: 1,
+            character: 19,
+          },
+        },
+      }
+    ))
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_completions_auto_import() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();

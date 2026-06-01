@@ -4221,18 +4221,25 @@ impl CompletionEntry {
         .description = Some(display_source);
     }
 
-    let text_edit =
-      if let (Some(text_span), Some(new_text)) = (range, &insert_text) {
-        let range = text_span.to_range(line_index);
-        let insert_replace_edit = lsp::InsertReplaceEdit {
-          new_text: new_text.clone(),
-          insert: range,
-          replace: range,
-        };
-        Some(insert_replace_edit.into())
-      } else {
-        None
+    let text_edit = if let Some(text_span) = &range {
+      let range = text_span.to_range(line_index);
+      // TSC may provide a `replacementSpan` without a corresponding
+      // `insertText` (e.g. for string union literal members). In that case
+      // fall back to the entry name as the text to insert, matching the
+      // behavior of VSCode's TypeScript integration. Without this, the editor
+      // is left to apply its own word-based replacement, which breaks on
+      // string values containing characters like `.` (the part before the
+      // last dot is forgotten).
+      let new_text = insert_text.clone().unwrap_or_else(|| self.name.clone());
+      let insert_replace_edit = lsp::InsertReplaceEdit {
+        new_text,
+        insert: range,
+        replace: range,
       };
+      Some(insert_replace_edit.into())
+    } else {
+      None
+    };
 
     let data = TsJsCompletionItemData {
       uri: module.uri.as_ref().clone(),
