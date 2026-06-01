@@ -1072,7 +1072,7 @@ version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
- "unicode-width 0.2.2",
+ "unicode-width 0.1.13",
 ]
 
 [[package]]
@@ -2361,8 +2361,7 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.108.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "abf8dde12e88c720eceb649d7aa38abb202840b5e780ee8b1bb12250f0668266"
+source = "git+https://github.com/denoland/deno_graph.git?rev=65fd900d5dcc5305d0815da27d7e44f7ac34c5b0#65fd900d5dcc5305d0815da27d7e44f7ac34c5b0"
 dependencies = [
  "async-trait",
  "boxed_error",
@@ -2390,6 +2389,8 @@ dependencies = [
  "twox-hash 1.6.3",
  "url",
  "wasm_dep_analyzer",
+ "wit-component",
+ "wit-parser",
 ]
 
 [[package]]

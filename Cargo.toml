@@ -609,3 +609,6 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
+
+[patch.crates-io]
+deno_graph = { git = "https://github.com/denoland/deno_graph.git", rev = "65fd900d5dcc5305d0815da27d7e44f7ac34c5b0" }
