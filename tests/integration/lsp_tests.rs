@@ -10501,6 +10501,34 @@ fn lsp_auto_import_import_map_prefer_relative() {
   client.shutdown();
 }
 
+#[test(timeout = 300)]
+fn lsp_completions_empty_tsx_react_jsx() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    r#"{ "compilerOptions": { "jsx": "react-jsx" } }"#,
+  );
+  let file_uri = url_to_uri(&temp_dir.url().join("file.tsx").unwrap()).unwrap();
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_raw(json!({
+    "textDocument": {
+      "uri": file_uri,
+      "languageId": "typescriptreact",
+      "version": 1,
+      "text": "",
+    }
+  }));
+  client.get_completion_list(
+    file_uri.as_str(),
+    (0, 0),
+    json!({ "triggerKind": 1 }),
+  );
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/25775.
 #[test(timeout = 300)]
 fn lsp_quick_fix_missing_import_exclude_bare_node_builtins() {
