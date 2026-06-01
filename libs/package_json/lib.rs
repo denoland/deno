@@ -219,12 +219,15 @@ fn is_github_shorthand(value: &str) -> bool {
   if owner.is_empty() || repo.is_empty() || repo.contains('/') {
     return false;
   }
-  fn is_valid_segment(segment: &str) -> bool {
-    segment
-      .chars()
-      .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
-  }
-  is_valid_segment(owner) && is_valid_segment(repo)
+  // GitHub user/org names are limited to alphanumerics and hyphens. Requiring
+  // this (rather than allowing `.`) avoids misclassifying bare relative paths
+  // such as `./foo` or `../foo` as a shorthand.
+  let owner_ok = owner.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+  // Repository names additionally allow `.` and `_`.
+  let repo_ok = repo
+    .chars()
+    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+  owner_ok && repo_ok
 }
 
 /// Returns `true` if an `http(s)://` URL refers to a git repository (either it
@@ -1394,6 +1397,8 @@ mod test {
         "tarball".to_string(),
         "https://example.com/foo.tgz".to_string(),
       ),
+      ("rel".to_string(), "./local/pkg".to_string()),
+      ("parent".to_string(), "../local/pkg".to_string()),
     ]));
     let map = get_local_package_json_version_reqs_for_tests(&package_json);
     assert!(matches!(
@@ -1411,6 +1416,15 @@ mod test {
         scheme: "https".to_string()
       },
     );
+    // bare relative paths must not be misclassified as a GitHub shorthand
+    assert!(!matches!(
+      map.get("rel").unwrap().as_ref(),
+      Ok(PackageJsonDepValue::Git(_))
+    ));
+    assert!(!matches!(
+      map.get("parent").unwrap().as_ref(),
+      Ok(PackageJsonDepValue::Git(_))
+    ));
   }
 
   #[test]
