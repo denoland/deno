@@ -635,19 +635,36 @@ impl StandaloneModules {
             .and_then(|t| self.vfs.read_file_offset_with_len(t).ok());
           bytes
         }
-        Err(err) if err.kind() == ErrorKind::NotFound =>
-        {
+        Err(err) if err.kind() == ErrorKind::NotFound => {
           #[allow(
             clippy::disallowed_types,
             reason = "use real file system because not in vfs"
           )]
-          match sys_traits::impls::RealSys.fs_read(&path) {
+          let bytes = match sys_traits::impls::RealSys.fs_read(&path) {
             Ok(bytes) => bytes,
             Err(err) if err.kind() == ErrorKind::NotFound => {
               return Ok(None);
             }
             Err(err) => return Err(JsErrorBox::from_err(err)),
+          };
+          // A file read from disk at runtime (e.g. a plugin discovered by a
+          // compiled program) hasn't been transpiled at compile time, so
+          // transpile TypeScript/JSX here, mirroring `deno run`.
+          let media_type = MediaType::from_specifier(specifier);
+          if matches!(
+            media_type,
+            MediaType::TypeScript
+              | MediaType::Mts
+              | MediaType::Cts
+              | MediaType::Jsx
+              | MediaType::Tsx
+          ) {
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            let transpiled_text =
+              transpile_runtime_module(specifier, media_type, text)?;
+            transpiled = Some(Cow::Owned(transpiled_text.into_bytes()));
           }
+          bytes
         }
         Err(err) => return Err(JsErrorBox::from_err(err)),
       };
@@ -664,6 +681,53 @@ impl StandaloneModules {
       self.modules.read(specifier).map_err(JsErrorBox::from_err)
     }
   }
+}
+
+/// Transpile TypeScript/JSX source to JavaScript for modules that are not
+/// embedded in the binary, namely `data:`/`blob:` URLs and local files read
+/// from disk at runtime. Embedded modules are already transpiled at
+/// `deno compile` time, but a compiled program can still dynamically `import()`
+/// TypeScript that it builds or discovers while running. `deno_ast` is already
+/// linked into the binary via `ext/node`, so transpiling here adds no extra
+/// binary size.
+pub(crate) fn transpile_runtime_module(
+  specifier: &Url,
+  media_type: MediaType,
+  source: String,
+) -> Result<String, JsErrorBox> {
+  match media_type {
+    MediaType::TypeScript
+    | MediaType::Mts
+    | MediaType::Cts
+    | MediaType::Jsx
+    | MediaType::Tsx => {}
+    // JavaScript, JSON, Wasm, etc. are served verbatim.
+    _ => return Ok(source),
+  }
+
+  let parsed = deno_ast::parse_module(deno_ast::ParseParams {
+    specifier: specifier.clone(),
+    text: source.into(),
+    media_type,
+    capture_tokens: false,
+    scope_analysis: false,
+    maybe_syntax: None,
+  })
+  .map_err(JsErrorBox::from_err)?;
+  let transpiled = parsed
+    .transpile(
+      &deno_ast::TranspileOptions {
+        imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
+        ..Default::default()
+      },
+      &deno_ast::TranspileModuleOptions { module_kind: None },
+      &deno_ast::EmitOptions {
+        source_map: deno_ast::SourceMapOption::Inline,
+        ..Default::default()
+      },
+    )
+    .map_err(JsErrorBox::from_err)?;
+  Ok(transpiled.into_source().text)
 }
 
 pub struct DenoCompileModuleData<'a> {
