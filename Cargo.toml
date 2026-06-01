@@ -612,3 +612,9 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
+
+# TODO(#34663): temporary pin to the upstream fix for the pos_to_line_col
+# column-0 regression in markup_fmt 0.27.2 (g-plane/markup_fmt#226).
+# Remove once markup_fmt 0.27.3 is released and bump the version above.
+[patch.crates-io]
+markup_fmt = { git = "https://github.com/bartlomieju/markup_fmt", rev = "cc67281ff94e660db830407e1ab11450c0d1d0cf" }
