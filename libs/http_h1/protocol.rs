@@ -243,6 +243,9 @@ impl Protocol {
         return Ok(BodyStatus::Partial { consumed: cursor });
       };
       let line_end = cursor + line_end;
+      if line_end - cursor > MAX_CHUNK_LINE_BYTES {
+        return Err(ProtocolError::Parse(ParseError::Invalid));
+      }
       let size = parse_chunk_size(&input[cursor..line_end])
         .map_err(ProtocolError::Parse)?;
       cursor = line_end + 2;
@@ -638,6 +641,23 @@ mod tests {
     assert_eq!(
       protocol.body_chunk(b"1;no CRLF").unwrap(),
       BodyStatus::Partial { consumed: 0 },
+    );
+  }
+
+  #[test]
+  fn rejects_complete_oversized_chunk_size_line() {
+    let mut protocol = Protocol {
+      request_body: BodyKind::Chunked,
+      ..Protocol::new()
+    };
+    let mut input = Vec::with_capacity(MAX_CHUNK_LINE_BYTES + 3);
+    input.push(b'1');
+    input.extend(std::iter::repeat_n(b'a', MAX_CHUNK_LINE_BYTES));
+    input.extend_from_slice(b"\r\n");
+
+    assert_eq!(
+      protocol.body_chunk(&input),
+      Err(ProtocolError::Parse(ParseError::Invalid)),
     );
   }
 }
