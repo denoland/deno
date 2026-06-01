@@ -150,7 +150,7 @@ struct uv_async_t {
       - size_of::<napi_async_work>()
       - size_of::<bool>()
       - size_of::<usize>())
-    / size_of::<usize>()
+      / size_of::<usize>()
   }],
 }
 
@@ -427,7 +427,7 @@ struct uv_check_t {
       - size_of::<uv_check_cb>()
       - size_of::<bool>()
       - size_of::<bool>())
-    / size_of::<usize>()
+      / size_of::<usize>()
   }],
 }
 
