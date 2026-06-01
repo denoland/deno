@@ -3,6 +3,7 @@
 // deno-lint-ignore-file no-console
 
 import { EventEmitter, once } from "node:events";
+import { createHook } from "node:async_hooks";
 import http, {
   IncomingMessage,
   type RequestOptions,
@@ -13,6 +14,7 @@ import https from "node:https";
 import zlib from "node:zlib";
 import net, { type AddressInfo, Socket } from "node:net";
 import fs from "node:fs";
+import type { Duplex } from "node:stream";
 import { text } from "node:stream/consumers";
 
 import { assert, assertEquals, assertStringIncludes, fail } from "@std/assert";
@@ -761,6 +763,32 @@ Deno.test("[node/http] ServerResponse direct end sets content-length", async () 
   assert(!rawResponse.includes("Transfer-Encoding: chunked\r\n"));
   assert(rawResponse.endsWith("\r\n\r\nhi"));
 });
+
+Deno.test("[node/http] ServerResponse empty end sets content-length", async () => {
+  const rawResponse = await getRawServerResponse((_req, res) => {
+    res.end();
+  });
+
+  assertStringIncludes(rawResponse, "HTTP/1.1 200 OK\r\n");
+  assertStringIncludes(rawResponse, "Content-Length: 0\r\n");
+  assert(!rawResponse.includes("Transfer-Encoding: chunked\r\n"));
+  assert(rawResponse.endsWith("\r\n\r\n"));
+});
+
+Deno.test(
+  "[node/http] ServerResponse empty end respects pre-generated content-length",
+  async () => {
+    const rawResponse = await getRawServerResponse((_req, res) => {
+      res.writeHead(200, { "Content-Length": "0" });
+      res.end();
+    });
+
+    assertStringIncludes(rawResponse, "HTTP/1.1 200 OK\r\n");
+    assertStringIncludes(rawResponse, "Content-Length: 0\r\n");
+    assert(!rawResponse.includes("Transfer-Encoding: chunked\r\n"));
+    assert(rawResponse.endsWith("\r\n\r\n"));
+  },
+);
 
 Deno.test(
   "[node/http] ServerResponse direct end respects explicit chunked transfer-encoding",
@@ -2266,6 +2294,51 @@ Deno.test("[node/http] rawHeaders are in flattened format", async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
+Deno.test("[node/http] request header values trim trailing OWS", async () => {
+  const parsed = Promise.withResolvers<void>();
+  const server = http.createServer((req, res) => {
+    try {
+      assertEquals(req.headers["x-ows"], "value");
+      const idx = req.rawHeaders.findIndex((header) =>
+        header.toLowerCase() === "x-ows"
+      );
+      assert(idx >= 0);
+      assertEquals(req.rawHeaders[idx + 1], "value");
+      res.end();
+      parsed.resolve();
+    } catch (err) {
+      parsed.reject(err);
+      res.destroy(err as Error);
+    }
+  });
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const client = net.createConnection(
+    (server.address() as AddressInfo).port,
+    "127.0.0.1",
+    () => {
+      client.end(
+        "GET / HTTP/1.1\r\n" +
+          "Host: localhost\r\n" +
+          "X-OWS:\t value \t \r\n" +
+          "Connection: close\r\n\r\n",
+      );
+    },
+  );
+  client.resume();
+  client.on("error", parsed.reject);
+
+  try {
+    await parsed.promise;
+  } finally {
+    client.destroy();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 // TODO(@bartlomieju): re-enable once server-side HTTP also uses llhttp
 // (currently the Deno.serve-based server path still needs RID access)
 Deno.test("[node/http] client http over unix socket works", async () => {
@@ -2531,6 +2604,293 @@ Deno.test({
 
     await promise;
   },
+});
+
+Deno.test("[node/http] keep-alive timer is suspended during active request", async () => {
+  const server = http.createServer(
+    { keepAliveTimeout: 10 },
+    async (req, res) => {
+      if (req.url === "/slow") {
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      }
+      res.end(req.url);
+    },
+  );
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const port = (server.address() as AddressInfo).port;
+  const socket = net.createConnection(port, "127.0.0.1");
+  await once(socket, "connect");
+
+  let received = "";
+  socket.on("data", (chunk) => {
+    received += chunk;
+  });
+
+  async function readBody(body: string) {
+    const deadline = Date.now() + 4000;
+    while (!received.includes(body)) {
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for response body ${body}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    received = "";
+  }
+
+  try {
+    socket.write(
+      "GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n",
+    );
+    await readBody("/first");
+    socket.write(
+      "GET /slow HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    );
+    await readBody("/slow");
+  } finally {
+    socket.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+Deno.test("[node/http] abandoned suspended keep-alive timer emits async_hooks destroy", async () => {
+  const server = http.createServer(
+    { keepAliveTimeout: 10 },
+    (_req, res) => res.end("ok"),
+  );
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const port = (server.address() as AddressInfo).port;
+  const socket = net.createConnection(port, "127.0.0.1");
+  await once(socket, "connect");
+
+  let received = "";
+  socket.on("data", (chunk) => {
+    received += chunk;
+  });
+
+  async function readText(text: string) {
+    while (!received.includes(text)) {
+      await once(socket, "data");
+    }
+    received = "";
+  }
+
+  const timeoutIds = new Set<number>();
+  const destroyedIds = new Set<number>();
+  const hook = createHook({
+    init(asyncId, type, _triggerAsyncId, resource) {
+      const timeout = resource as { _idleTimeout?: number };
+      if (type === "Timeout" && timeout._idleTimeout === 1010) {
+        timeoutIds.add(asyncId);
+      }
+    },
+    destroy(asyncId) {
+      destroyedIds.add(asyncId);
+    },
+  });
+
+  hook.enable();
+  let keepAliveTimerIds: number[] = [];
+  try {
+    socket.write(
+      "GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n",
+    );
+    await readText("ok");
+    keepAliveTimerIds = Array.from(timeoutIds);
+    assert(keepAliveTimerIds.length > 0);
+
+    socket.write(
+      "GET /close HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    );
+    await readText("ok");
+    await once(socket, "close");
+  } finally {
+    socket.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    hook.disable();
+  }
+
+  for (const asyncId of keepAliveTimerIds) {
+    assert(
+      destroyedIds.has(asyncId),
+      `Timeout asyncId ${asyncId} did not emit destroy`,
+    );
+  }
+});
+
+Deno.test("[node/http] user socket timeout still applies after keep-alive reuse", async () => {
+  let timeoutCount = 0;
+  const serverTimeout = Promise.withResolvers<void>();
+  const server = http.createServer(
+    { keepAliveTimeout: 10 },
+    async (req, res) => {
+      if (req.url === "/timeout") {
+        req.socket.setTimeout(50);
+        await serverTimeout.promise;
+      }
+      res.end(req.url);
+    },
+  );
+  server.on("timeout", (socket) => {
+    timeoutCount++;
+    socket.setTimeout(0);
+    serverTimeout.resolve();
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const port = (server.address() as AddressInfo).port;
+  const socket = net.createConnection(port, "127.0.0.1");
+  await once(socket, "connect");
+
+  let received = "";
+  socket.on("data", (chunk) => {
+    received += chunk;
+  });
+
+  async function readBody(body: string) {
+    const deadline = Date.now() + 4000;
+    while (!received.includes(body)) {
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for response body ${body}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    received = "";
+  }
+
+  try {
+    socket.write(
+      "GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n",
+    );
+    await readBody("/first");
+    socket.write(
+      "GET /timeout HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    );
+    await readBody("/timeout");
+    assertEquals(timeoutCount, 1);
+  } finally {
+    socket.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+Deno.test("[node/http] custom server timeout still applies after keep-alive reuse", async () => {
+  let timeoutCount = 0;
+  const serverTimeout = Promise.withResolvers<void>();
+  const server = http.createServer(
+    { keepAliveTimeout: 10 },
+    async (req, res) => {
+      if (req.url === "/timeout") {
+        await serverTimeout.promise;
+      }
+      res.end(req.url);
+    },
+  );
+  server.setTimeout(50);
+  server.on("timeout", (socket) => {
+    timeoutCount++;
+    socket.setTimeout(0);
+    serverTimeout.resolve();
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const port = (server.address() as AddressInfo).port;
+  const socket = net.createConnection(port, "127.0.0.1");
+  await once(socket, "connect");
+
+  let received = "";
+  socket.on("data", (chunk) => {
+    received += chunk;
+  });
+
+  async function readBody(body: string) {
+    const deadline = Date.now() + 4000;
+    while (!received.includes(body)) {
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for response body ${body}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    received = "";
+  }
+
+  try {
+    socket.write(
+      "GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n",
+    );
+    await readBody("/first");
+    socket.write(
+      "GET /timeout HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    );
+    await readBody("/timeout");
+    assertEquals(timeoutCount, 1);
+  } finally {
+    socket.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+Deno.test("[node/http] upgrade detaches reused keep-alive socket timeout", async () => {
+  const upgraded = Promise.withResolvers<void>();
+  let upgradedSocket: Duplex | undefined;
+  const server = http.createServer(
+    { keepAliveTimeout: 10 },
+    (_req, res) => res.end("ok"),
+  );
+  server.on("upgrade", (_req, socket) => {
+    upgradedSocket = socket;
+    upgraded.resolve();
+    socket.write(
+      "HTTP/1.1 101 Switching Protocols\r\n" +
+        "Connection: Upgrade\r\n" +
+        "Upgrade: test\r\n" +
+        "\r\n",
+    );
+    setTimeout(() => socket.write("detached"), 1200);
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const port = (server.address() as AddressInfo).port;
+  const socket = net.createConnection(port, "127.0.0.1");
+  await once(socket, "connect");
+
+  let received = "";
+  socket.on("data", (chunk) => {
+    received += chunk;
+  });
+
+  async function readText(text: string) {
+    const deadline = Date.now() + 4000;
+    while (!received.includes(text)) {
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for ${text}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    received = "";
+  }
+
+  try {
+    socket.write(
+      "GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n",
+    );
+    await readText("ok");
+    socket.write(
+      "GET /upgrade HTTP/1.1\r\n" +
+        "Host: localhost\r\n" +
+        "Connection: Upgrade\r\n" +
+        "Upgrade: test\r\n" +
+        "\r\n",
+    );
+    await upgraded.promise;
+    await readText("101 Switching Protocols");
+    await readText("detached");
+  } finally {
+    upgradedSocket?.destroy();
+    socket.destroy();
+    server.close();
+  }
 });
 
 // https://github.com/denoland/deno/issues/32311

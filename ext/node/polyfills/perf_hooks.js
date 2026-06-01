@@ -160,6 +160,15 @@ function enqueueNodePerformanceEntry(entry) {
   }
 }
 
+function hasNodeObserverForType(entryType) {
+  for (let i = 0; i < nodeObservers.length; i++) {
+    if (nodeObservers[i][_nodeTypes].includes(entryType)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const eventLoopUtilization = () => {
   // TODO(@marvinhagemeister): Return actual non-stubbed values
   return { idle: 0, active: 0, utilization: 0 };
@@ -609,6 +618,7 @@ return {
   createHistogram,
   enqueueNodePerformanceEntry,
   eventLoopUtilization,
+  hasNodeObserverForType,
   monitorEventLoopDelay,
   performance,
   PerformanceEntry,

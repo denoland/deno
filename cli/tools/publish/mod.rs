@@ -67,6 +67,7 @@ mod provenance;
 mod publish_order;
 mod tar;
 mod unfurl;
+mod wasm;
 
 use auth::AuthMethod;
 use auth::get_auth_method;

@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::env;
 use std::ffi::OsString;
@@ -394,40 +395,53 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     for path in exclude_paths {
       vfs.add_exclude_path(path);
     }
+    // Embed the workspace package.json files so the standalone binary's node
+    // resolver can read their "exports" (and other) fields at runtime. Without
+    // this, resolving a workspace member by its package name falls back to
+    // legacy `index.js` resolution instead of honoring the package's exports.
+    for pkg_json in self.cli_options.workspace().package_jsons() {
+      vfs.add_path(&pkg_json.path)?;
+    }
     let progress_bar = ProgressBar::new(ProgressBarStyle::ProgressBars);
-    let npm_snapshot = match &self.npm_resolver {
-      CliNpmResolver::Managed(managed) => {
-        if graph.modules().any(|m| m.npm().is_some()) {
-          let snapshot = managed.resolution().snapshot();
-          let snapshot = if self.cli_options.unstable_npm_lazy_caching() {
-            let reqs = graph
-              .specifiers()
-              .filter_map(|(s, _)| {
-                NpmPackageReqReference::from_specifier(s)
-                  .ok()
-                  .map(|req_ref| req_ref.into_inner().req)
-              })
-              .collect::<Vec<_>>();
-            snapshot.subset(&reqs)
-          } else {
-            snapshot
-          }
-          .as_valid_serialized_for_system(&self.npm_system_info);
-          if !snapshot.as_serialized().packages.is_empty() {
-            self
-              .fill_npm_vfs(&mut vfs, Some(&snapshot), &progress_bar)
-              .context("Building npm vfs.")?;
-            Some(snapshot)
+    // With --bundle the JS graph is self-contained, so the whole npm tree
+    // is intentionally left out of the binary.
+    let npm_snapshot = if compile_flags.bundle {
+      None
+    } else {
+      match &self.npm_resolver {
+        CliNpmResolver::Managed(managed) => {
+          if graph.modules().any(|m| m.npm().is_some()) {
+            let snapshot = managed.resolution().snapshot();
+            let snapshot = if self.cli_options.unstable_npm_lazy_caching() {
+              let reqs = graph
+                .specifiers()
+                .filter_map(|(s, _)| {
+                  NpmPackageReqReference::from_specifier(s)
+                    .ok()
+                    .map(|req_ref| req_ref.into_inner().req)
+                })
+                .collect::<Vec<_>>();
+              snapshot.subset(&reqs)
+            } else {
+              snapshot
+            }
+            .as_valid_serialized_for_system(&self.npm_system_info);
+            if !snapshot.as_serialized().packages.is_empty() {
+              self
+                .fill_npm_vfs(&mut vfs, Some(&snapshot), &progress_bar)
+                .context("Building npm vfs.")?;
+              Some(snapshot)
+            } else {
+              None
+            }
           } else {
             None
           }
-        } else {
+        }
+        CliNpmResolver::Byonm(_) => {
+          self.fill_npm_vfs(&mut vfs, None, &progress_bar)?;
           None
         }
-      }
-      CliNpmResolver::Byonm(_) => {
-        self.fill_npm_vfs(&mut vfs, None, &progress_bar)?;
-        None
       }
     };
     for include_file in include_paths {
@@ -983,9 +997,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
       CliNpmResolver::Byonm(_) => {
         maybe_warn_different_system(&self.npm_system_info);
-        for pkg_json in self.cli_options.workspace().package_jsons() {
-          builder.add_path(&pkg_json.path)?;
-        }
         let _progress =
           progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
         // traverse and add all the node_modules directories in the workspace
@@ -1039,29 +1050,54 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         // that will be used by denort when loading the npm cache. This avoids us exposing
         // the user's private registry information and means we don't have to bother
         // serializing all the different registry config into the binary.
+        //
+        // A registry url may include a sub-path (e.g.
+        // `http://mirrors.example.com/npm/`), in which case the on-disk cache
+        // layout is `<global_cache>/<host>/<sub>/<pkg>/...` rather than
+        // `<global_cache>/<host>/<pkg>/...`. Walk to each known registry's
+        // package root before flattening so packages always end up directly
+        // under `localhost/`.
+        let known_registries_dirnames: Vec<String> =
+          npm_resolver.known_registries_dirnames().to_vec();
+        let mut localhost_entries: IndexMap<String, VfsEntry> = IndexMap::new();
+        let mut registry_top_segments: HashSet<String> = HashSet::new();
+        for registry_dirname in &known_registries_dirnames {
+          if let Some(first) = registry_dirname.split('/').next()
+            && !first.is_empty()
+          {
+            registry_top_segments.insert(first.to_string());
+          }
+          let registry_path = global_cache_root_path.join(registry_dirname);
+          let Some(registry_dir) = vfs.get_dir_mut(&registry_path) else {
+            continue;
+          };
+          for entry in registry_dir.entries.take_inner() {
+            log::debug!("Flattening {} into node_modules", entry.name());
+            if let Some(existing) =
+              localhost_entries.insert(entry.name().to_string(), entry)
+            {
+              panic!(
+                "Unhandled scenario where a duplicate entry was found: {:?}",
+                existing
+              );
+            }
+          }
+        }
+
         let Some(root_dir) = vfs.get_dir_mut(global_cache_root_path) else {
           return vfs.build();
         };
 
         root_dir.name = DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME.to_string();
         let mut new_entries = Vec::with_capacity(root_dir.entries.len());
-        let mut localhost_entries = IndexMap::new();
         for entry in root_dir.entries.take_inner() {
-          match entry {
-            VfsEntry::Dir(mut dir) => {
-              for entry in dir.entries.take_inner() {
-                log::debug!("Flattening {} into node_modules", entry.name());
-                if let Some(existing) =
-                  localhost_entries.insert(entry.name().to_string(), entry)
-                {
-                  panic!(
-                    "Unhandled scenario where a duplicate entry was found: {:?}",
-                    existing
-                  );
-                }
-              }
+          match &entry {
+            VfsEntry::Dir(dir) if registry_top_segments.contains(&dir.name) => {
+              // The packages under this registry host dir have already been
+              // flattened into `localhost_entries`. Drop the (now empty)
+              // intermediate directory tree so it isn't embedded twice.
             }
-            VfsEntry::File(_) | VfsEntry::Symlink(_) => {
+            _ => {
               new_entries.push(entry);
             }
           }

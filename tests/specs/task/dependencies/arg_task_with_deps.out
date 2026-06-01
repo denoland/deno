@@ -1,4 +1,4 @@
 Task b echo 'b'
 b
-Task a echo "a"
+Task a echo 'a'
 a

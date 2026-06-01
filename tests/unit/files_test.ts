@@ -641,6 +641,61 @@ Deno.test(
 );
 
 Deno.test(
+  {
+    permissions: { read: true, write: true, run: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function readableStreamCancelOnFifo() {
+    // Regression test for https://github.com/denoland/deno/issues/21186
+    // — a `read` on a FIFO can block indefinitely waiting for data, and
+    // previously cancelling the wrapping `ReadableStream` would not
+    // unblock the in-flight `op_read`. As a result, the runtime would
+    // hang on exit even after JS had finished. We verify the fix by
+    // running a subprocess that opens a FIFO, starts a read, cancels
+    // it, and is expected to exit promptly. Without the fix the
+    // subprocess would hang until killed.
+    const tempDir = await Deno.makeTempDir();
+    const fifo = `${tempDir}/fifo`;
+    try {
+      const mkfifo = new Deno.Command("mkfifo", { args: [fifo] }).outputSync();
+      if (mkfifo.code !== 0) {
+        throw new Error(
+          `mkfifo failed: ${new TextDecoder().decode(mkfifo.stderr)}`,
+        );
+      }
+      const script = `
+        const fifo = ${JSON.stringify(fifo)};
+        // O_RDWR avoids the POSIX FIFO open-blocks-on-peer semantics.
+        const file = await Deno.open(fifo, { read: true, write: true });
+        const r = file.readable.getReader();
+        const reading = r.read();
+        await new Promise((res) => setTimeout(res, 50));
+        await r.cancel();
+        await reading;
+      `;
+      const out = await new Deno.Command(Deno.execPath(), {
+        args: ["eval", script],
+        stdout: "null",
+        stderr: "piped",
+        signal: AbortSignal.timeout(10_000),
+      }).output();
+      if (out.signal !== null) {
+        throw new Error(
+          "subprocess hung after stream cancellation — read was not cancelled",
+        );
+      }
+      assertEquals(
+        out.code,
+        0,
+        `subprocess failed: ${new TextDecoder().decode(out.stderr)}`,
+      );
+    } finally {
+      await Deno.remove(tempDir, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
   { permissions: { read: true, write: true } },
   async function writableStream() {
     const path = await Deno.makeTempFile();
