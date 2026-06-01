@@ -403,7 +403,6 @@ pub struct FmtOptionsConfig {
   pub single_body_position: Option<SingleBodyPosition>,
   pub next_control_flow_position: Option<NextControlFlowPosition>,
   pub trailing_commas: Option<TrailingCommas>,
-  #[serde(rename = "json.trailingCommas")]
   pub json_trailing_commas: Option<JsonTrailingCommaKind>,
   pub operator_position: Option<OperatorPosition>,
   pub jsx_bracket_position: Option<BracketPosition>,
