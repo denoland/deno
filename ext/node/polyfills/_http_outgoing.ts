@@ -83,6 +83,14 @@ const nop = () => {};
 
 const RE_CONN_CLOSE = /(?:^|\W)close(?:$|\W)/i;
 
+let cachedDefaultEmptyResponseHead: {
+  key: string;
+  date: string;
+  header: string;
+  bytes: Uint8Array;
+} | null = null;
+const defaultEmptyResponseHeadEncoder = new TextEncoder();
+
 function isCookieField(s: string) {
   return s.length === 6 && s.toLowerCase() === "cookie";
 }
@@ -461,15 +469,23 @@ Object.defineProperties(
           }
         }
         return this;
-      } else if (tryDirectEmptyEnd(this, callback)) {
-        return this;
-      } else if (!this._header) {
-        if (this.socket) {
-          this.socket.cork();
+      } else {
+        if (tryDirectCachedEmptyEnd(this, callback)) {
+          return this;
         }
 
-        this._contentLength = 0;
-        this._implicitHeader();
+        if (tryDirectEmptyEnd(this, callback)) {
+          return this;
+        }
+
+        if (!this._header) {
+          if (this.socket) {
+            this.socket.cork();
+          }
+
+          this._contentLength = 0;
+          this._implicitHeader();
+        }
       }
 
       if (typeof callback === "function") {
@@ -1211,6 +1227,119 @@ function connectionCorkNT(conn: any) {
   conn.uncork();
 }
 
+function tryDirectCachedEmptyEnd(msg: any, callback: any) {
+  if (
+    msg.req === undefined ||
+    msg.req.method === "HEAD" ||
+    msg.strictContentLength ||
+    msg._header !== null ||
+    msg[kOutHeaders] !== null ||
+    msg.outputData.length !== 0 ||
+    msg[kChunkedLength] !== 0 ||
+    msg._bodyWriter !== null ||
+    !msg._hasBody ||
+    msg._trailer !== "" ||
+    msg._removedConnection ||
+    msg._removedContLen ||
+    msg._removedTE ||
+    msg._contentLength !== null ||
+    msg.chunkedEncoding ||
+    msg.statusCode !== 200 ||
+    (msg.statusMessage !== undefined && msg.statusMessage !== "OK") ||
+    !msg.sendDate ||
+    !msg.shouldKeepAlive ||
+    msg.maxRequestsOnConnectionReached ||
+    !msg.useChunkedEncodingByDefault ||
+    !msg._defaultKeepAlive
+  ) {
+    return false;
+  }
+
+  const socket = msg.socket;
+  const writableState = socket?._writableState;
+  if (
+    socket == null ||
+    socket.destroyed ||
+    !socket.writable ||
+    socket.connecting ||
+    socket._httpMessage !== msg ||
+    socket._handle?.isStreamBase !== true ||
+    typeof socket._handle.writeBuffer !== "function" ||
+    writableState === undefined ||
+    writableState.corked !== 0 ||
+    writableState.length !== 0 ||
+    writableState.needDrain
+  ) {
+    return false;
+  }
+
+  const cached = getCachedDefaultEmptyResponseHead(msg);
+
+  if (typeof callback === "function") {
+    msg.once("finish", callback);
+  }
+
+  msg.statusMessage = "OK";
+  msg._contentLength = 0;
+  msg._header = cached.header;
+
+  const finish = onFinish.bind(undefined, msg);
+  const result = writeDirectBuffer(socket, cached.bytes, finish);
+
+  msg._headerSent = true;
+  msg.finished = true;
+
+  if (
+    msg.outputData.length === 0 &&
+    socket._httpMessage === msg
+  ) {
+    msg._finish();
+  }
+
+  if (result === 0) {
+    (globalThis as any).process.nextTick(finish);
+  } else if (result < 0) {
+    socket.destroy(errnoException(result, "write"));
+  }
+
+  return true;
+}
+
+function getCachedDefaultEmptyResponseHead(msg: any) {
+  const date = utcDate();
+  const timeoutSeconds = Math.floor(msg._keepAliveTimeout / 1000);
+  const maxRequestsPerSocket = msg._maxRequestsPerSocket;
+  const key = `${timeoutSeconds}:${maxRequestsPerSocket}`;
+
+  if (
+    cachedDefaultEmptyResponseHead !== null &&
+    cachedDefaultEmptyResponseHead.key === key &&
+    cachedDefaultEmptyResponseHead.date === date
+  ) {
+    return cachedDefaultEmptyResponseHead;
+  }
+
+  let header = "HTTP/1.1 200 OK\r\n" +
+    "Date: " + date + "\r\n" +
+    "Connection: keep-alive\r\n";
+  if (msg._keepAliveTimeout) {
+    let max = "";
+    if (~~maxRequestsPerSocket > 0) {
+      max = `, max=${maxRequestsPerSocket}`;
+    }
+    header += `Keep-Alive: timeout=${timeoutSeconds}${max}\r\n`;
+  }
+  header += "Content-Length: 0\r\n\r\n";
+
+  cachedDefaultEmptyResponseHead = {
+    key,
+    date,
+    header,
+    bytes: defaultEmptyResponseHeadEncoder.encode(header),
+  };
+  return cachedDefaultEmptyResponseHead;
+}
+
 function tryDirectEnd(
   msg: any,
   chunk: any,
@@ -1389,6 +1518,40 @@ function tryDirectEmptyEnd(
   }
 
   return true;
+}
+
+function writeDirectBuffer(
+  socket: any,
+  data: Uint8Array,
+  finish: () => void,
+) {
+  const handle = socket._handle;
+  socket._unrefTimer?.();
+
+  const req: {
+    oncomplete(status: number): void;
+    buffer?: Uint8Array;
+  } = {
+    oncomplete(status: number) {
+      if (status < 0) {
+        socket.destroy(errnoException(status, "write"));
+        return;
+      }
+      finish();
+    },
+  };
+
+  const err = handle.writeBuffer(req, data);
+  if (err !== 0) {
+    return err;
+  }
+
+  if (streamBaseState[kLastWriteWasAsync]) {
+    req.buffer = data;
+    return 1;
+  }
+
+  return 0;
 }
 
 function normalizeDirectStringEncoding(encoding: string | null) {

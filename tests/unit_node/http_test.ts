@@ -14,6 +14,7 @@ import https from "node:https";
 import zlib from "node:zlib";
 import net, { type AddressInfo, Socket } from "node:net";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import type { Duplex } from "node:stream";
 import { text } from "node:stream/consumers";
 
@@ -753,6 +754,38 @@ async function getRawServerResponse(
   }
 }
 
+async function getRawKeepAliveServerResponse(
+  handler: http.RequestListener,
+): Promise<string> {
+  const server = http.createServer(handler);
+  const response = Promise.withResolvers<string>();
+  let rawResponse = "";
+  let client: net.Socket | undefined;
+
+  server.listen(0, "127.0.0.1", () => {
+    const { port } = server.address() as AddressInfo;
+    client = net.createConnection(port, "127.0.0.1", () => {
+      client!.write("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+    });
+    client.setEncoding("utf8");
+    client.on("data", (chunk) => {
+      rawResponse += chunk;
+      if (rawResponse.includes("\r\n\r\n")) {
+        response.resolve(rawResponse);
+        client!.destroy();
+      }
+    });
+    client.on("error", response.reject);
+  });
+
+  try {
+    return await response.promise;
+  } finally {
+    client?.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
 Deno.test("[node/http] ServerResponse direct end sets content-length", async () => {
   const rawResponse = await getRawServerResponse((_req, res) => {
     res.end("hi");
@@ -770,6 +803,69 @@ Deno.test("[node/http] ServerResponse empty end sets content-length", async () =
   });
 
   assertStringIncludes(rawResponse, "HTTP/1.1 200 OK\r\n");
+  assertStringIncludes(rawResponse, "Content-Length: 0\r\n");
+  assert(!rawResponse.includes("Transfer-Encoding: chunked\r\n"));
+  assert(rawResponse.endsWith("\r\n\r\n"));
+});
+
+Deno.test("[node/http] ServerResponse empty end keep-alive response", async () => {
+  let finishEmitted = false;
+  const rawResponse = await getRawKeepAliveServerResponse((_req, res) => {
+    res.on("finish", () => {
+      finishEmitted = true;
+    });
+    res.end();
+  });
+
+  assertStringIncludes(rawResponse, "HTTP/1.1 200 OK\r\n");
+  assertStringIncludes(rawResponse, "Connection: keep-alive\r\n");
+  assertStringIncludes(rawResponse, "Content-Length: 0\r\n");
+  assert(!rawResponse.includes("Transfer-Encoding: chunked\r\n"));
+  assert(rawResponse.endsWith("\r\n\r\n"));
+  assertEquals(finishEmitted, true);
+});
+
+Deno.test("[node/http] ServerResponse empty end retains async direct write buffer", async () => {
+  const require = createRequire(import.meta.url);
+  const { internalBinding } = require("internal/test/binding");
+  const { kLastWriteWasAsync, streamBaseState } = internalBinding(
+    "stream_wrap",
+  );
+
+  let retained = false;
+  const rawResponse = await getRawKeepAliveServerResponse((_req, res) => {
+    const handle = (res.socket as any)._handle;
+    const writeBuffer = handle.writeBuffer;
+    let capturedReq: any;
+    let capturedData: Uint8Array | undefined;
+    handle.writeBuffer = function (this: any, req: any, data: Uint8Array) {
+      capturedReq = req;
+      capturedData = data;
+      const err = writeBuffer.call(this, req, data);
+      if (err === 0 && !streamBaseState[kLastWriteWasAsync]) {
+        streamBaseState[kLastWriteWasAsync] = 1;
+        setImmediate(() => req.oncomplete(0));
+      }
+      return err;
+    };
+    res.end();
+    handle.writeBuffer = writeBuffer;
+    retained = capturedReq?.buffer === capturedData;
+  });
+
+  assertEquals(retained, true);
+  assertStringIncludes(rawResponse, "Content-Length: 0\r\n");
+  assert(rawResponse.endsWith("\r\n\r\n"));
+});
+
+Deno.test("[node/http] ServerResponse empty end preserves explicit headers", async () => {
+  const rawResponse = await getRawKeepAliveServerResponse((_req, res) => {
+    res.setHeader("X-Test", "1");
+    res.end();
+  });
+
+  assertStringIncludes(rawResponse, "HTTP/1.1 200 OK\r\n");
+  assertStringIncludes(rawResponse, "X-Test: 1\r\n");
   assertStringIncludes(rawResponse, "Content-Length: 0\r\n");
   assert(!rawResponse.includes("Transfer-Encoding: chunked\r\n"));
   assert(rawResponse.endsWith("\r\n\r\n"));
