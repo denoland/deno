@@ -1083,7 +1083,11 @@ fn read_dir(path: &Path) -> FsResult<Vec<FsDirEntry>> {
   let entries = fs::read_dir(path)?
     .filter_map(|entry| {
       let entry = entry.ok()?;
-      let name = entry.file_name().into_string().ok()?;
+      // Non-UTF-8 filenames are decoded lossily (invalid bytes become U+FFFD)
+      // so that they still surface in directory listings; Node's default
+      // utf8 readdir does the same. Previously these entries were silently
+      // dropped, which made globSync/readdirSync invisibly skip such files.
+      let name = entry.file_name().to_string_lossy().into_owned();
       let metadata = entry.file_type();
       macro_rules! method_or_false {
         ($method:ident) => {

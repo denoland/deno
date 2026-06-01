@@ -1,0 +1,40 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/31766.
+  // A compiled binary that imports a Wasm module from an npm package must still
+  // write its JavaScript code cache to disk on the first run and reuse it on
+  // the next. The Wasm module itself produces no code cache, so it must not
+  // request one.
+  "tempDir": true,
+  "steps": [{
+    "args": "run -A cleanup.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "args": "compile --output using_wasm_code_cache --log-level=debug main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "commandName": "./using_wasm_code_cache",
+    "args": [],
+    "output": "first_run.out"
+  }, {
+    "if": "unix",
+    "commandName": "./using_wasm_code_cache",
+    "args": [],
+    "output": "second_run.out"
+  }, {
+    "if": "windows",
+    "args": "compile --output using_wasm_code_cache.exe --log-level=debug main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "commandName": "./using_wasm_code_cache.exe",
+    "args": [],
+    "output": "first_run.out"
+  }, {
+    "if": "windows",
+    "commandName": "./using_wasm_code_cache.exe",
+    "args": [],
+    "output": "second_run.out"
+  }]
+}

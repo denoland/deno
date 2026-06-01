@@ -3055,7 +3055,7 @@ function importKeyX448(
         throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
-      const privateKeyData = new Uint8Array(32);
+      const privateKeyData = new Uint8Array(56);
       if (!op_crypto_import_pkcs8_x448(keyData, privateKeyData)) {
         throw new DOMException("Invalid key data", "DataError");
       }
@@ -5950,9 +5950,9 @@ function exportKeyX448(format, key, innerKey) {
       }
 
       const pkcs8Der = op_crypto_export_pkcs8_x448(
-        new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
+        new Uint8Array([0x04, 0x3a, ...new SafeArrayIterator(innerKey)]),
       );
-      pkcs8Der[15] = 0x20;
+      pkcs8Der[15] = 0x38;
       return TypedArrayPrototypeGetBuffer(pkcs8Der);
     }
     case "jwk": {
@@ -7436,9 +7436,9 @@ function cryptoKeyExportNodeKeyMaterial(cryptoKey) {
     }
     case "X448": {
       data = op_crypto_export_pkcs8_x448(
-        new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
+        new Uint8Array([0x04, 0x3a, ...new SafeArrayIterator(innerKey)]),
       );
-      data[15] = 0x20;
+      data[15] = 0x38;
       break;
     }
     case "ML-DSA-44":

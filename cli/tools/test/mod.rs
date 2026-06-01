@@ -695,7 +695,7 @@ async fn configure_main_worker(
   permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
-  sender: UnboundedSender<jupyter_protocol::messaging::StreamContent>,
+  sender: UnboundedSender<crate::ops::jupyter::IopubMessage>,
 ) -> Result<(Option<CoverageCollector>, MainWorker), CreateCustomWorkerError> {
   let mut worker = worker_factory
     .create_custom_worker(
@@ -707,7 +707,13 @@ async fn configure_main_worker(
       vec![
         ops::testing::deno_test::init(worker_sender.sender),
         ops::lint::deno_lint_ext_for_test::init(),
-        ops::jupyter::deno_jupyter_for_test::init(sender),
+        ops::jupyter::deno_jupyter_for_test::init(
+          sender,
+          // deno test does not service stdin requests; supplying a sender keeps
+          // the extension uniform with the live kernel build but the rx end is
+          // dropped so any `op_jupyter_input` call will resolve to `None`.
+          tokio::sync::mpsc::unbounded_channel().0,
+        ),
       ],
       Stdio {
         stdin: StdioPipe::inherit(),
@@ -934,9 +940,19 @@ async fn test_specifier_inner(
   // want to wait forever here.
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
-  if let Some(coverage_collector) = &mut coverage_collector {
+  // Stop coverage before waiting for external debugger sessions. Coverage owns
+  // a blocking local inspector session, so waiting first would hang forever.
+  if let Some(mut coverage_collector) = coverage_collector.take() {
     coverage_collector.stop_collecting()?;
   }
+
+  // If a debugger session is still attached (e.g. Chrome DevTools holding
+  // the connection open for an in-progress Performance recording), wait for
+  // it to disconnect before tearing down the worker. Mirrors `deno run`'s
+  // behavior; otherwise the connection is dropped mid-flight, making it
+  // impossible to profile `deno test` runs. See issue #19289.
+  worker.wait_for_inspector_session_disconnect().await?;
+
   Ok(())
 }
 
