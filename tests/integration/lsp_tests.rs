@@ -2052,6 +2052,62 @@ fn lsp_inlay_hints_not_enabled() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/26243 — inlay
+// hints can be truncated to a maximum length via the
+// `inlayHints.maximumLength` setting.
+#[test(timeout = 300)]
+fn lsp_inlay_hints_maximum_length() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+    },
+    "typescript": {
+      "inlayHints": {
+        "functionLikeReturnTypes": {
+          "enabled": true,
+        },
+        "maximumLength": 4,
+      },
+    },
+  }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "function foo() {\n  return \"bar\";\n}\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/inlayHint",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 2, "character": 0 },
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "position": { "line": 0, "character": 14 },
+        "label": [{ "value": ": " }, { "value": "s" }, { "value": "…" }],
+        "kind": 1,
+        "paddingLeft": true,
+        "tooltip": ": string",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_suggestion_actions_disabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();

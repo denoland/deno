@@ -2377,25 +2377,94 @@ impl InlayHint {
     &self,
     module: &DocumentModule,
     snapshot: &StateSnapshot,
+    maximum_length: Option<usize>,
   ) -> lsp::InlayHint {
+    let mut label = if let Some(display_parts) = &self.display_parts {
+      lsp::InlayHintLabel::LabelParts(
+        display_parts
+          .iter()
+          .map(|p| p.to_lsp(module, snapshot))
+          .collect(),
+      )
+    } else {
+      lsp::InlayHintLabel::String(self.text.clone())
+    };
+    // When a maximum length is configured, truncate overly long labels with an
+    // ellipsis and surface the full label as a tooltip. See
+    // https://github.com/denoland/deno/issues/26243.
+    let tooltip = maximum_length
+      .and_then(|maximum_length| {
+        truncate_inlay_hint_label(&mut label, maximum_length)
+      })
+      .map(lsp::InlayHintTooltip::String);
     lsp::InlayHint {
       position: module.line_index.position_utf16(self.position.into()),
-      label: if let Some(display_parts) = &self.display_parts {
-        lsp::InlayHintLabel::LabelParts(
-          display_parts
-            .iter()
-            .map(|p| p.to_lsp(module, snapshot))
-            .collect(),
-        )
-      } else {
-        lsp::InlayHintLabel::String(self.text.clone())
-      },
+      label,
       kind: self.kind.to_lsp(),
       padding_left: self.whitespace_before,
       padding_right: self.whitespace_after,
       text_edits: None,
-      tooltip: None,
+      tooltip,
       data: None,
+    }
+  }
+}
+
+/// Truncates an inlay hint label to at most `maximum_length` characters,
+/// appending an ellipsis. Returns the original (untruncated) label as a string
+/// when truncation occurred so it can be presented as a tooltip, or `None` if
+/// the label already fit within the limit.
+fn truncate_inlay_hint_label(
+  label: &mut lsp::InlayHintLabel,
+  maximum_length: usize,
+) -> Option<String> {
+  const ELLIPSIS: char = '…';
+  // Always leave room for the ellipsis itself.
+  let limit = maximum_length.max(1);
+  match label {
+    lsp::InlayHintLabel::String(text) => {
+      if text.chars().count() <= limit {
+        return None;
+      }
+      let original = std::mem::take(text);
+      let mut truncated: String = original.chars().take(limit - 1).collect();
+      truncated.push(ELLIPSIS);
+      *text = truncated;
+      Some(original)
+    }
+    lsp::InlayHintLabel::LabelParts(parts) => {
+      let total = parts.iter().map(|p| p.value.chars().count()).sum::<usize>();
+      if total <= limit {
+        return None;
+      }
+      let original = parts.iter().map(|p| p.value.as_str()).collect::<String>();
+      let budget = limit - 1;
+      let mut used = 0;
+      let mut truncated_parts = Vec::with_capacity(parts.len() + 1);
+      for part in parts.iter() {
+        if used >= budget {
+          break;
+        }
+        let part_length = part.value.chars().count();
+        if used + part_length <= budget {
+          used += part_length;
+          truncated_parts.push(part.clone());
+        } else {
+          let remaining = budget - used;
+          let mut truncated = part.clone();
+          truncated.value = part.value.chars().take(remaining).collect();
+          truncated_parts.push(truncated);
+          break;
+        }
+      }
+      truncated_parts.push(lsp::InlayHintLabelPart {
+        value: ELLIPSIS.to_string(),
+        tooltip: None,
+        location: None,
+        command: None,
+      });
+      *parts = truncated_parts;
+      Some(original)
     }
   }
 }

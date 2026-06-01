@@ -247,6 +247,11 @@ pub struct InlayHintsSettings {
   pub function_like_return_types: InlayHintsFuncLikeReturnTypesOptions,
   #[serde(default)]
   pub enum_member_values: InlayHintsEnumMemberValuesOptions,
+  /// Maximum number of characters an inlay hint label is allowed to have
+  /// before it is truncated with an ellipsis. When `None` (or non-positive)
+  /// inlay hints are never truncated.
+  #[serde(default)]
+  pub maximum_length: Option<usize>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -1075,6 +1080,18 @@ impl Config {
       || settings.inlay_hints.property_declaration_types.enabled
       || settings.inlay_hints.function_like_return_types.enabled
       || settings.inlay_hints.enum_member_values.enabled
+  }
+
+  /// The maximum length an inlay hint label may have before it is truncated,
+  /// or `None` if inlay hints should never be truncated for this specifier.
+  pub fn inlay_hint_maximum_length_for_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<usize> {
+    self
+      .language_settings_for_specifier(specifier)
+      .and_then(|settings| settings.inlay_hints.maximum_length)
+      .filter(|length| *length > 0)
   }
 
   pub fn root_url(&self) -> Option<&Arc<Url>> {
@@ -2197,6 +2214,7 @@ mod tests {
             enum_member_values: InlayHintsEnumMemberValuesOptions {
               enabled: false
             },
+            maximum_length: None,
           },
           preferences: LanguagePreferences {
             import_module_specifier: ImportModuleSpecifier::Shortest,
@@ -2244,6 +2262,7 @@ mod tests {
             enum_member_values: InlayHintsEnumMemberValuesOptions {
               enabled: false
             },
+            maximum_length: None,
           },
           preferences: LanguagePreferences {
             import_module_specifier: ImportModuleSpecifier::Shortest,

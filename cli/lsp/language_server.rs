@@ -4273,9 +4273,18 @@ impl Inner {
     {
       return Ok(None);
     }
+    let maximum_length = self
+      .config
+      .inlay_hint_maximum_length_for_specifier(&module.specifier);
     let inlay_hints = self
       .ts_server
-      .provide_inlay_hint(&module, params.range, &self.snapshot(), token)
+      .provide_inlay_hint(
+        &module,
+        params.range,
+        &self.snapshot(),
+        maximum_length,
+        token,
+      )
       .await
       .map_err(|err| {
         if token.is_cancelled() {

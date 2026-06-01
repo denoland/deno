@@ -1176,6 +1176,7 @@ impl TsServer {
     module: &DocumentModule,
     range: lsp::Range,
     snapshot: &Arc<StateSnapshot>,
+    maximum_length: Option<usize>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::InlayHint>>, AnyError> {
     match self {
@@ -1204,7 +1205,7 @@ impl TsServer {
                 if token.is_cancelled() {
                   return Err(anyhow!("request cancelled"));
                 }
-                Ok(inlay_hint.to_lsp(module, snapshot))
+                Ok(inlay_hint.to_lsp(module, snapshot, maximum_length))
               })
               .collect()
           })
