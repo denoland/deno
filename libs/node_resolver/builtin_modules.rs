@@ -87,6 +87,7 @@ pub static DENO_SUPPORTED_BUILTIN_NODE_MODULES: &[&str] = &[
   "util",
   "util/types",
   "v8",
+  "vfs",
   "vm",
   "wasi",
   "worker_threads",

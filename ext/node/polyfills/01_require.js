@@ -370,6 +370,7 @@ const lazyNodeModules = {
     core.loadExtScript("ext:deno_node/internal/util/types.ts"),
   "v8": () => core.loadExtScript("ext:deno_node/v8.ts"),
   "vm": () => core.loadExtScript("ext:deno_node/vm.js").default,
+  "vfs": () => core.loadExtScript("ext:deno_node/vfs.ts"),
   "wasi": () => core.loadExtScript("ext:deno_node/wasi.ts").default,
   "punycode": () => core.loadExtScript("ext:deno_node/punycode.ts").default,
   // Previously eager via static imports. Lazified together with the
@@ -483,6 +484,7 @@ function setupBuiltinModules() {
     "sqlite",
     "test",
     "test/reporters",
+    "vfs",
   ]);
   function registerName(name) {
     // `internal/*` modules are only exposed under --expose-internals, so

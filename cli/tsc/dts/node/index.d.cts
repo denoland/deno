@@ -88,6 +88,7 @@
 /// <reference path="./url.d.cts" />
 /// <reference path="./util.d.cts" />
 /// <reference path="./v8.d.cts" />
+/// <reference path="./vfs.d.cts" />
 /// <reference path="./vm.d.cts" />
 /// <reference path="./wasi.d.cts" />
 /// <reference path="./worker_threads.d.cts" />
