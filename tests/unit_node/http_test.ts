@@ -833,12 +833,25 @@ Deno.test("[node/http] ServerResponse empty end retains async direct write buffe
   );
 
   let retained = false;
+  type DirectWriteReq = {
+    oncomplete(status: number): void;
+    buffer?: Uint8Array;
+  };
+  type StreamBaseHandle = {
+    writeBuffer(req: DirectWriteReq, data: Uint8Array): number;
+  };
+
   const rawResponse = await getRawKeepAliveServerResponse((_req, res) => {
-    const handle = (res.socket as any)._handle;
+    const handle = (res.socket as Socket & { _handle: StreamBaseHandle })
+      ._handle;
     const writeBuffer = handle.writeBuffer;
-    let capturedReq: any;
+    let capturedReq: DirectWriteReq | undefined;
     let capturedData: Uint8Array | undefined;
-    handle.writeBuffer = function (this: any, req: any, data: Uint8Array) {
+    handle.writeBuffer = function (
+      this: StreamBaseHandle,
+      req: DirectWriteReq,
+      data: Uint8Array,
+    ) {
       capturedReq = req;
       capturedData = data;
       const err = writeBuffer.call(this, req, data);
