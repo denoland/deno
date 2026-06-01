@@ -29,6 +29,7 @@ use deno_path_util::url_to_file_path;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmResolvers;
 use deno_resolver::cjs::IsCjsResolutionMode;
+use deno_resolver::deno_json::CompilerOptionsModuleResolution;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::JsxImportSourceConfig;
 use deno_resolver::factory::npm_overrides_from_workspace;
@@ -90,6 +91,33 @@ use crate::sys::CliSys;
 use crate::tsc::into_specifier_and_media_type;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
+
+/// Returns `true` if any compiler options entry that applies to `scope` uses
+/// `moduleResolution: "bundler"`. This includes the workspace-config entry
+/// keyed by `scope` and any tsconfig.json files discovered inside the scope.
+fn scope_has_bundler_module_resolution(
+  scope: Option<&Url>,
+  compiler_options_resolver: &CompilerOptionsResolver,
+) -> bool {
+  for (_, data, _) in compiler_options_resolver.entries() {
+    if data.module_resolution() != CompilerOptionsModuleResolution::Bundler {
+      continue;
+    }
+    match (scope, data.workspace_dir_or_source_url()) {
+      // Unscoped resolver: only the entry without a scope/source applies.
+      (None, None) => return true,
+      (None, Some(_)) => continue,
+      (Some(_), None) => continue,
+      (Some(scope_url), Some(entry_url)) => {
+        // Match the scope itself, or any tsconfig/deno.json located inside it.
+        if entry_url.as_str().starts_with(scope_url.as_str()) {
+          return true;
+        }
+      }
+    }
+  }
+  false
+}
 
 #[derive(Debug, Clone)]
 pub struct LspScopedResolver {
@@ -512,6 +540,15 @@ impl LspResolver {
       resolver
         .workspace_resolver
         .set_compiler_options_resolver(value.clone());
+      if let Some(node_resolver) = resolver.node_resolver.as_ref() {
+        // Enable bundle-mode resolution (matching what tsserver does for
+        // `moduleResolution: "bundler"`) so directory imports of npm
+        // packages without explicit `exports` don't error in the LSP.
+        node_resolver.set_bundle_mode(scope_has_bundler_module_resolution(
+          resolver.config_data.as_deref().map(|d| d.scope.as_ref()),
+          value,
+        ));
+      }
     }
   }
 
@@ -1205,7 +1242,9 @@ impl<'a> ResolverFactory<'a> {
               )
               .unwrap(),
             ),
-            bundle_mode: false, // will change if we add support for moduleResolution bundler
+            // Updated after `LspCompilerOptionsResolver` is built — see
+            // `LspResolver::set_compiler_options_resolver`.
+            bundle_mode: false,
             is_browser_platform: false,
           },
         )))

@@ -46,7 +46,7 @@ pub struct CallFunctionOnArgs {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-callFunctionOn>
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CallFunctionOnResponse {
   pub result: RemoteObject,
@@ -105,7 +105,7 @@ pub struct EvaluateArgs {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-evaluate>
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EvaluateResponse {
   pub result: RemoteObject,
@@ -128,7 +128,7 @@ pub struct GetPropertiesArgs {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-getProperties>
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetPropertiesResponse {
   pub result: Vec<PropertyDescriptor>,
@@ -211,7 +211,7 @@ pub struct SetAsyncCallStackDepthArgs {
 // types
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-RemoteObject>
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteObject {
   #[serde(rename = "type")]
@@ -234,7 +234,7 @@ where
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-ExceptionDetails>
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExceptionDetails {
   pub text: String,
@@ -253,14 +253,14 @@ impl ExceptionDetails {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-CallArgument>
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CallArgument {
-  #[serde(skip_serializing_if = "Option::is_none")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
   pub value: Option<Value>,
-  #[serde(skip_serializing_if = "Option::is_none")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
   pub unserializable_value: Option<UnserializableValue>,
-  #[serde(skip_serializing_if = "Option::is_none")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
   pub object_id: Option<RemoteObjectId>,
 }
 
@@ -275,7 +275,7 @@ impl From<&RemoteObject> for CallArgument {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-PropertyDescriptor>
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PropertyDescriptor {
   pub name: String,

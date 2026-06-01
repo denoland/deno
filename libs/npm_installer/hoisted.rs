@@ -345,8 +345,12 @@ impl<
     &self,
     snapshot: &NpmResolutionSnapshot,
   ) -> Result<(), SyncResolutionWithFsError> {
-    if snapshot.is_empty()
-      && self.npm_install_deps_provider.local_pkgs().is_empty()
+    let has_no_packages = snapshot.is_empty()
+      && self.npm_install_deps_provider.local_pkgs().is_empty();
+    let deno_marker_dir = self.root_node_modules_path.join(".deno");
+    if has_no_packages
+      && (!self.clean_on_install
+        || !self.sys.fs_exists_no_err(&deno_marker_dir))
     {
       return Ok(());
     }
@@ -361,7 +365,6 @@ impl<
     sys.fs_create_dir_all(&self.root_node_modules_path)?;
 
     // Use a marker directory for the lock file (reuse .deno for compatibility)
-    let deno_marker_dir = self.root_node_modules_path.join(".deno");
     sys.fs_create_dir_all(&deno_marker_dir)?;
 
     let bin_node_modules_dir_path = self.root_node_modules_path.join(".bin");
@@ -755,6 +758,18 @@ fn cleanup_hoisted_packages(
   let expected_names: HashSet<&str> =
     layout.top_level.keys().map(|k| k.as_str()).collect();
 
+  fn remove_unexpected_package(
+    sys: &impl LocalNpmInstallSys,
+    path: &Path,
+    name: &str,
+    expected_names: &HashSet<&str>,
+  ) {
+    if expected_names.contains(name) {
+      return;
+    }
+    let _ = sys.fs_remove_dir_all(path);
+  }
+
   if let Ok(entries) = sys.fs_read_dir(root_node_modules_path) {
     for entry in entries.flatten() {
       let name = entry.file_name();
@@ -764,12 +779,33 @@ fn cleanup_hoisted_packages(
       {
         continue;
       }
-      // Skip scoped packages for now (they start with @)
       if name_str.starts_with('@') {
+        let scope_path = root_node_modules_path.join(&*name_str);
+        let Ok(scope_entries) = sys.fs_read_dir(&scope_path) else {
+          continue;
+        };
+        for scope_entry in scope_entries.flatten() {
+          let package_name = scope_entry.file_name();
+          let package_name = package_name.to_string_lossy();
+          let full_name = format!("{name_str}/{package_name}");
+          remove_unexpected_package(
+            sys,
+            &scope_entry.path(),
+            &full_name,
+            &expected_names,
+          );
+        }
+        if sys
+          .fs_read_dir(&scope_path)
+          .map(|mut entries| entries.next().is_none())
+          .unwrap_or(false)
+        {
+          let _ = sys.fs_remove_dir(&scope_path);
+        }
         continue;
       }
       let path = root_node_modules_path.join(&*name_str);
-      let _ = sys.fs_remove_dir_all(&path);
+      remove_unexpected_package(sys, &path, &name_str, &expected_names);
     }
   }
 }
