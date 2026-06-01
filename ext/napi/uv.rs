@@ -167,6 +167,7 @@ struct uv_async_t {
   async_cb: uv_async_cb,
   work: napi_async_work,
   refed: bool,
+  _async_padding: [MaybeUninit<usize>; 2],
   _padding: [MaybeUninit<usize>; const {
     (UV_ASYNC_SIZE
       - 112
@@ -548,6 +549,7 @@ struct uv_work_t {
   pub r#loop: *mut uv_loop_t,
   work_cb: uv_work_cb,
   after_work_cb: uv_after_work_cb,
+  _work_req_padding: [MaybeUninit<usize>; 3],
   _padding: [MaybeUninit<usize>; const {
     (UV_WORK_SIZE
       - 136
