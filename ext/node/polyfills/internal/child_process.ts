@@ -2076,9 +2076,93 @@ function setupChannel(
     handleQueue = null;
     if (queue) {
       for (const item of queue) {
-        target.send(item.message, item.handle, item.options, item.callback);
+        enqueueOrDispatch(item.message, item.handleInfo, item.callback);
       }
     }
+  }
+
+  // Either queue the send (if a handle is already in flight awaiting its
+  // ACK) or write it now. `handleInfo` is the already-derived IPC handle
+  // info (see target.send) or null for a plain message.
+  function enqueueOrDispatch(message, handleInfo, callback) {
+    // If a previous handle send is still waiting for its ACK, queue this
+    // one to preserve ordering. Plain messages are queued too so they
+    // don't overtake the pending handle.
+    if (handleQueue !== null) {
+      ArrayPrototypePush(handleQueue, {
+        message,
+        handleInfo,
+        callback,
+      });
+      return handleQueue.length === 1;
+    }
+    return dispatch(message, handleInfo, callback);
+  }
+
+  function dispatch(message, handleInfo, callback) {
+    if (handleInfo) {
+      // Start queueing subsequent sends until the ACK arrives.
+      handleQueue = [];
+    }
+
+    // signals whether the queue is within the limit.
+    // if false, the sender should slow down.
+    // this acts as a backpressure mechanism.
+    const queueOk = [true];
+    control.refCounted();
+    const writePromise = handleInfo
+      ? writeFn(ipc, handleInfo.message, handleInfo.rawFd, queueOk)
+      : writeFn(ipc, message, NO_RAW_FD, queueOk);
+    writePromise
+      .then(() => {
+        control.unrefCounted();
+        if (handleInfo) {
+          // Hold the handle until NODE_HANDLE_ACK arrives; closing now
+          // would drop the OFD refcount to 0 before the receiver has
+          // materialized its dup.
+          pendingHandleInfo = handleInfo;
+        }
+        if (callback) {
+          nextTick(callback, null);
+        }
+      }, (err) => {
+        control.unrefCounted();
+        if (handleInfo) {
+          // Write failed: the receiver won't ACK, so close the handle now
+          // and drain the queue to unblock any follow-up sends.
+          if (handleInfo.closeAfterSend) {
+            handleInfo.close();
+          }
+          const queue = handleQueue;
+          handleQueue = null;
+          if (queue) {
+            for (const item of queue) {
+              enqueueOrDispatch(
+                item.message,
+                item.handleInfo,
+                item.callback,
+              );
+            }
+          }
+        }
+        if (err instanceof Deno.errors.Interrupted) {
+          // Channel closed on us mid-write.
+        } else {
+          // Match Node: errors raised from a failed IPC send carry
+          // `syscall: "write"`. Tests like `test-cluster-concurrent-disconnect`
+          // assert on this when racing send() against worker disconnect.
+          const errAny = err;
+          if (errAny && typeof errAny === "object" && !errAny.syscall) {
+            errAny.syscall = "write";
+          }
+          if (typeof callback === "function") {
+            nextTick(callback, err);
+          } else {
+            nextTick(() => target.emit("error", err));
+          }
+        }
+      });
+    return queueOk[0];
   }
 
   async function readLoop() {
@@ -2205,7 +2289,6 @@ function setupChannel(
       );
     }
 
-    let handleInfo;
     // Match Node: a falsy `handle` (undefined, null) means "no handle".
     // Reject only non-falsy values that aren't a recognized handle type.
     if (handle) {
@@ -2232,85 +2315,22 @@ function setupChannel(
       return false;
     }
 
-    // If a previous handle send is still waiting for its ACK, queue this
-    // one to preserve ordering. Plain messages are queued too so they don't
-    // overtake the pending handle.
-    if (handleQueue !== null) {
-      ArrayPrototypePush(handleQueue, {
-        message,
-        handle,
-        options,
-        callback,
-      });
-      return handleQueue.length === 1;
-    }
-
+    // Derive the handle's IPC info eagerly, while the socket is still
+    // alive, *before* deciding whether this send must be queued. Deferring
+    // derivation until drain time (when a previous handle's ACK arrives)
+    // races against the socket being torn down -- e.g. cluster handing two
+    // connections to a worker that immediately closes them. By then the
+    // socket's `_handle` is null and getIpcHandleInfo would throw
+    // `notImplemented("ChildProcess.send with non-TCP net.Socket handle")`.
+    // fdForIpc() dups the fd, so the captured copy survives the original
+    // socket's destruction.
+    let handleInfo = null;
     if (handle !== undefined) {
       handleInfo = getIpcHandleInfo(handle, options);
       handleInfo.message.msg = message;
-      // Start queueing subsequent sends until the ACK arrives.
-      handleQueue = [];
     }
 
-    // signals whether the queue is within the limit.
-    // if false, the sender should slow down.
-    // this acts as a backpressure mechanism.
-    const queueOk = [true];
-    control.refCounted();
-    const writePromise = handleInfo
-      ? writeFn(ipc, handleInfo.message, handleInfo.rawFd, queueOk)
-      : writeFn(ipc, message, NO_RAW_FD, queueOk);
-    writePromise
-      .then(() => {
-        control.unrefCounted();
-        if (handleInfo) {
-          // Hold the handle until NODE_HANDLE_ACK arrives; closing now
-          // would drop the OFD refcount to 0 before the receiver has
-          // materialized its dup.
-          pendingHandleInfo = handleInfo;
-        }
-        if (callback) {
-          nextTick(callback, null);
-        }
-      }, (err) => {
-        control.unrefCounted();
-        if (handleInfo) {
-          // Write failed: the receiver won't ACK, so close the handle now
-          // and drain the queue to unblock any follow-up sends.
-          if (handleInfo.closeAfterSend) {
-            handleInfo.close();
-          }
-          const queue = handleQueue;
-          handleQueue = null;
-          if (queue) {
-            for (const item of queue) {
-              target.send(
-                item.message,
-                item.handle,
-                item.options,
-                item.callback,
-              );
-            }
-          }
-        }
-        if (err instanceof Deno.errors.Interrupted) {
-          // Channel closed on us mid-write.
-        } else {
-          // Match Node: errors raised from a failed IPC send carry
-          // `syscall: "write"`. Tests like `test-cluster-concurrent-disconnect`
-          // assert on this when racing send() against worker disconnect.
-          const errAny = err;
-          if (errAny && typeof errAny === "object" && !errAny.syscall) {
-            errAny.syscall = "write";
-          }
-          if (typeof callback === "function") {
-            nextTick(callback, err);
-          } else {
-            nextTick(() => target.emit("error", err));
-          }
-        }
-      });
-    return queueOk[0];
+    return enqueueOrDispatch(message, handleInfo, callback);
   };
 
   target.connected = true;
