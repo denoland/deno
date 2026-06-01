@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@oak/oak": "jsr:@oak/oak@^17",
+    "@std/crypto": "jsr:@std/crypto@^1"
+  }
+}

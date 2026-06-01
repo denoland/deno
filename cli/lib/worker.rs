@@ -61,6 +61,8 @@ use crate::util::checksum;
 pub struct CreateModuleLoaderResult {
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_require_loader: Rc<dyn NodeRequireLoader>,
+  pub hook_registry:
+    Option<deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry>,
 }
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -341,6 +343,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       let CreateModuleLoaderResult {
         module_loader,
         node_require_loader,
+        hook_registry,
       } = shared.module_loader_factory.create_for_worker(
         args.parent_permissions.clone(),
         args.permissions.clone(),
@@ -512,6 +515,13 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
 
       worker.bootstrap(&bootstrap_options);
 
+      // Wire the module hook registry into OpState after bootstrap so
+      // `module.registerHooks()` in worker scripts shares state with the
+      // worker's module loader (same pattern as the main worker).
+      if let Some(registry) = hook_registry {
+        worker.js_runtime.op_state().borrow_mut().put(registry);
+      }
+
       // When resource limits are set, install a near-heap-limit callback
       // that terminates the worker's isolate gracefully instead of
       // crashing the entire process with a V8 fatal OOM.
@@ -621,6 +631,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let CreateModuleLoaderResult {
       module_loader,
       node_require_loader,
+      hook_registry,
     } = shared
       .module_loader_factory
       .create_for_main(permissions.clone());
@@ -735,6 +746,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let mut worker =
       MainWorker::bootstrap_from_options(&main_module, services, options);
     worker.setup_memory_trim_handler();
+
+    // Wire module hook registry into OpState so JS ops share it with the loader
+    if let Some(registry) = hook_registry {
+      worker.js_runtime.op_state().borrow_mut().put(registry);
+    }
 
     // Store the main inspector session sender for worker debugging
     let inspector = worker.js_runtime.inspector();

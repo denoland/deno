@@ -971,15 +971,15 @@
       "structured-clone.any.html": {
         "expectedFailures": [
           "Growable SharedArrayBuffer",
-          "Transferring OOB TypedArray throws",
-          "Transferring a non-transferable platform object fails"
+          "Transferring a non-transferable platform object fails",
+          "Transferring OOB TypedArray throws"
         ]
       },
       "structured-clone.any.worker.html": {
         "expectedFailures": [
           "Growable SharedArrayBuffer",
-          "Transferring OOB TypedArray throws",
-          "Transferring a non-transferable platform object fails"
+          "Transferring a non-transferable platform object fails",
+          "Transferring OOB TypedArray throws"
         ]
       },
       "structured-clone-cross-realm-method.html": false

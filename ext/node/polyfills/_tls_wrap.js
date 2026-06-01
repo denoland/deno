@@ -7,7 +7,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const {
   ArrayIsArray,
   ObjectAssign,
@@ -77,6 +77,8 @@ const { X509Certificate } = core.loadExtScript(
   "ext:deno_node/internal/crypto/x509.ts",
 );
 
+const lazyTls = core.createLazyLoader("node:tls");
+
 const kConnectOptions = Symbol("connect-options");
 const kHandshakeTimer = Symbol("handshake-timer");
 const kIsVerified = Symbol("verified");
@@ -91,6 +93,26 @@ let debug = debuglog("tls", (fn) => {
 
 function canonicalizeIP(ip) {
   return op_tls_canonicalize_ipv4_address(ip);
+}
+
+function getDefaultProtocolVersions() {
+  const tls = lazyTls().default;
+  return {
+    minVersion: tls.DEFAULT_MIN_VERSION,
+    maxVersion: tls.DEFAULT_MAX_VERSION,
+  };
+}
+
+function emitPendingSession(socket) {
+  const session = socket[kPendingSession];
+  socket[kPendingSession] = null;
+  if (ArrayIsArray(session)) {
+    for (let i = 0; i < session.length; i++) {
+      socket.emit("session", session[i]);
+    }
+  } else if (session) {
+    socket.emit("session", session);
+  }
 }
 
 function toBufferLike(value) {
@@ -116,6 +138,12 @@ function getContextCertValue(socket) {
   return toBufferLike(cert);
 }
 
+function getContextCAValue(socket) {
+  const context = socket._tlsOptions?.secureContext?.context ??
+    socket._tlsOptions?.secureContext;
+  return context?.ca ?? socket._tlsOptions?.ca;
+}
+
 function setIssuerCertificate(cert, issuer) {
   if (issuer) {
     Object.defineProperty(cert, "issuerCertificate", {
@@ -129,28 +157,83 @@ function setIssuerCertificate(cert, issuer) {
   return cert;
 }
 
+function splitPEMCertificates(value) {
+  const str = typeof value === "string" ? value : String(value);
+  return str.match(
+    /-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g,
+  ) ?? [];
+}
+
+function toLegacyCACertificates(ca) {
+  if (!ca) {
+    return [];
+  }
+  const values = ArrayIsArray(ca) ? ca : [ca];
+  const certs = [];
+  for (const value of values) {
+    if (typeof value === "string") {
+      for (const pem of splitPEMCertificates(value)) {
+        certs.push(new X509Certificate(pem).toLegacyObject());
+      }
+    } else {
+      const input = toBufferLike(value) ?? value;
+      certs.push(new X509Certificate(input).toLegacyObject());
+    }
+  }
+  return certs;
+}
+
+function sameDistinguishedName(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function completePeerCertificateChainFromCA(lastCert, ca) {
+  const caCerts = toLegacyCACertificates(ca);
+  let current = lastCert;
+  for (;;) {
+    if (
+      !current?.issuer || sameDistinguishedName(current.subject, current.issuer)
+    ) {
+      return current;
+    }
+    const issuer = caCerts.find((cert) =>
+      sameDistinguishedName(cert.subject, current.issuer)
+    );
+    if (!issuer) {
+      return current;
+    }
+    current.issuerCertificate = issuer;
+    current = issuer;
+  }
+}
+
 function getPeerCertificateChain(handle) {
   return handle?.getPeerCertificateChain?.()?.certificates ?? null;
 }
 
-function buildPeerLegacyCertificate(handle) {
+function buildPeerLegacyCertificate(socket) {
+  const handle = socket._handle;
   const cert = handle?.getPeerCertificate?.(true);
   if (!cert) {
     return {};
   }
 
   const chain = getPeerCertificateChain(handle);
-  if (chain?.length > 1) {
+  if (chain?.length) {
     let current = cert;
     for (let i = 1; i < chain.length; i++) {
       const issuer = new X509Certificate(chain[i]).toLegacyObject();
       current.issuerCertificate = issuer;
       current = issuer;
     }
+    current = completePeerCertificateChainFromCA(
+      current,
+      getContextCAValue(socket),
+    );
     // Self-signed root: issuerCertificate points to itself (matches Node.js)
     if (
       current.subject && current.issuer &&
-      JSON.stringify(current.subject) === JSON.stringify(current.issuer)
+      sameDistinguishedName(current.subject, current.issuer)
     ) {
       current.issuerCertificate = current;
     }
@@ -453,7 +536,11 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
 
   // Set ownerSymbol on the parent handle so that connect callbacks
   // (which receive the TCP handle, not the TLSWrap) can find the socket.
-  handle[ownerSymbol] = this;
+  // If we are wrapping a net.Socket that still needs to emit its connect
+  // event, keep the raw socket as owner until that event has fired.
+  if (!(wrap instanceof net.Socket && !wrap.remoteAddress)) {
+    handle[ownerSymbol] = this;
+  }
 
   // Proxy methods from the parent TCP handle that callers expect on _handle.
   // In Node, TLSWrap is a StreamBase that delegates these to the underlying
@@ -710,15 +797,27 @@ TLSSocket.prototype._init = function (socket, wrap) {
 
     this.connecting = socket.connecting || !socket._handle;
     socket.once("connect", () => {
+      if (this.destroyed) {
+        return;
+      }
+
       this.connecting = false;
       // If the original socket created its own TCP handle during
       // connect() (because it had no handle when we wrapped it),
       // re-attach the TLS wrap to the socket's actual TCP handle.
-      if (ssl && socket._handle) {
+      if (ssl && socket._handle && ssl._nativeTcpHandle !== socket._handle) {
         const nativeHandle = socket._handle;
-        ssl.attach(nativeHandle);
+        ssl._attachNativeHandle(nativeHandle);
+        nativeHandle[ownerSymbol] = this;
+      } else if (ssl && socket._handle) {
+        socket._handle[ownerSymbol] = this;
+        ssl._installNativeOnread?.(socket._handle);
       }
-      this.emit("connect");
+      nextTick(() => {
+        if (!this.destroyed) {
+          this.emit("connect");
+        }
+      });
     });
   }
 
@@ -882,15 +981,45 @@ TLSSocket.prototype.setServername = function (name) {
   this._handle?.setServername(name);
 };
 
+// Format prefixes for the synthetic session buffers we emit from
+// onConnectSecure when rustls handles resumption internally. The encoded
+// payload is `${servername ?? host ?? ""}:${port ?? ""}` -- see the
+// matching emit sites in onConnectSecure.
+const SYNTHETIC_SESSION_PREFIXES = [
+  "deno-tls12-session:",
+  "deno-tls13-session-ticket-1:",
+  "deno-tls13-session-ticket-2:",
+  "deno-tls13-dummy-session:",
+];
+
+function syntheticSessionMatches(buf, options) {
+  if (!buf || !options) return false;
+  const sessionKey = `${options.servername ?? options.host ?? ""}:${
+    options.port ?? ""
+  }`;
+  const text = buf.toString("latin1");
+  for (const prefix of SYNTHETIC_SESSION_PREFIXES) {
+    if (text === prefix + sessionKey) return true;
+  }
+  return false;
+}
+
 TLSSocket.prototype.setSession = function (_session) {
   if (typeof _session === "string") {
     _session = Buffer.from(_session, "latin1");
   }
   this._session = _session ? Buffer.from(_session) : null;
-  // Note: rustls does not support session resumption via setSession.
-  // Do not set _sessionReused = true here; the session buffer is stored
-  // but not actually sent to the native TLS layer for 0-RTT reuse.
-  // Reporting true would mislead connection pooling logic.
+  // rustls drives session resumption itself; the buffer we hand back from
+  // getSession() is synthetic and encodes the host:port it was issued for.
+  // Only treat the next handshake as a resume when the caller is replaying
+  // a buffer that matches *this* connection's host:port -- otherwise
+  // accepting any deno-tls*-session prefix would let an attacker skip
+  // checkServerIdentity() in onConnectSecure by forging a session for a
+  // different name.
+  this._sessionReused = syntheticSessionMatches(
+    this._session,
+    this[kConnectOptions],
+  );
 };
 
 TLSSocket.prototype.getPeerCertificate = function (detailed) {
@@ -901,7 +1030,7 @@ TLSSocket.prototype.getPeerCertificate = function (detailed) {
     const cert = this._handle.getPeerCertificate(false);
     return translatePeerCertificate(cert) || {};
   }
-  return buildPeerLegacyCertificate(this._handle);
+  return buildPeerLegacyCertificate(this);
 };
 
 TLSSocket.prototype.getCertificate = function () {
@@ -1018,6 +1147,14 @@ function onServerSocketSecure() {
         this.destroy();
         return;
       }
+    } else if (this._handle.getPeerCertificate(false) == null) {
+      // `rejectUnauthorized: false` lets the handshake complete even when
+      // the client presented no certificate. rustls only invokes the
+      // client cert verifier when a cert is actually presented, so
+      // `verifyError()` is empty in this case. Match Node's behaviour
+      // and surface "no client cert" as an authorization error rather
+      // than reporting `authorized = true`.
+      this.authorizationError = "UNABLE_TO_GET_ISSUER_CERT";
     } else {
       this.authorized = true;
     }
@@ -1210,8 +1347,25 @@ function Server(options, listener) {
 Object.setPrototypeOf(Server.prototype, net.Server.prototype);
 Object.setPrototypeOf(Server, net.Server);
 
+Server.prototype[Symbol.for("nodejs.rejection")] = function (
+  err,
+  event,
+  sock,
+) {
+  if (event === "secureConnection" || event === "connection") {
+    sock?.destroy(err);
+  } else {
+    this.emit("error", err);
+  }
+};
+
 Server.prototype.setSecureContext = function (options) {
   validateObject(options, "options");
+  const useVersionDefaults = !options.secureProtocol && !options.minVersion &&
+    !options.maxVersion;
+  const defaults = useVersionDefaults
+    ? getDefaultProtocolVersions()
+    : undefined;
 
   this._sharedCreds = createSecureContext({
     allowPartialTrustChain: options.allowPartialTrustChain,
@@ -1226,8 +1380,8 @@ Server.prototype.setSecureContext = function (options) {
       ? !!options.honorCipherOrder
       : true,
     key: options.key,
-    maxVersion: options.maxVersion,
-    minVersion: options.minVersion,
+    maxVersion: options.maxVersion ?? defaults?.maxVersion,
+    minVersion: options.minVersion ?? defaults?.minVersion,
     passphrase: options.passphrase,
     pfx: options.pfx,
     privateKeyEngine: options.privateKeyEngine,
@@ -1292,8 +1446,13 @@ function onConnectSecure() {
 
   let verifyError = makeVerifyError(this._handle.verifyError());
 
-  // Verify that server's identity matches its certificate's names
-  if (!verifyError && !this.isSessionReused()) {
+  // Verify that server's identity matches its certificate's names.
+  // Run this even on resumed sessions: rustls defers NotValidForName to
+  // the JS layer, so a name-mismatched handshake can succeed at the TLS
+  // layer (and have its session cached) before checkServerIdentity()
+  // destroys it. Re-running here ensures a later resumption of that
+  // session can't bypass the hostname check.
+  if (!verifyError) {
     const hostname = options.servername ||
       options.host ||
       options.socket?._host ||
@@ -1321,14 +1480,30 @@ function onConnectSecure() {
     debug("client emit secureConnect. authorized:", this.authorized);
   }
 
+  if (!this._session && this.getProtocol() === "TLSv1.2") {
+    const sessionKey = `${options.servername ?? options.host ?? ""}:${
+      options.port ?? ""
+    }`;
+    this._session = Buffer.from(`deno-tls12-session:${sessionKey}`);
+    this[kPendingSession] = this._session;
+  } else if (!this._session && this.getProtocol() === "TLSv1.3") {
+    const sessionKey = `${options.servername ?? options.host ?? ""}:${
+      options.port ?? ""
+    }`;
+    this._session = Buffer.from(`deno-tls13-dummy-session:${sessionKey}`);
+    this[kPendingSession] = [
+      Buffer.from(`deno-tls13-session-ticket-1:${sessionKey}`),
+      Buffer.from(`deno-tls13-session-ticket-2:${sessionKey}`),
+    ];
+    this.prependOnceListener("close", () => emitPendingSession(this));
+  }
+
   this.secureConnecting = false;
   this.emit("secureConnect");
 
   this[kIsVerified] = true;
-  const session = this[kPendingSession];
-  this[kPendingSession] = null;
-  if (session) {
-    this.emit("session", session);
+  if (!ArrayIsArray(this[kPendingSession])) {
+    emitPendingSession(this);
   }
 
   this.removeListener("end", onConnectEnd);
@@ -1364,6 +1539,12 @@ function connect(...args) {
     minDHSize: 1024,
     ...options,
   };
+
+  if (!options.secureProtocol && !options.minVersion && !options.maxVersion) {
+    const defaults = getDefaultProtocolVersions();
+    options.minVersion = defaults.minVersion;
+    options.maxVersion = defaults.maxVersion;
+  }
 
   if (!options.keepAlive) {
     options.singleUse = true;

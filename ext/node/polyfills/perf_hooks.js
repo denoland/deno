@@ -4,7 +4,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const {
   performance,
   PerformanceEntry,
@@ -158,6 +158,15 @@ function enqueueNodePerformanceEntry(entry) {
       }
     });
   }
+}
+
+function hasNodeObserverForType(entryType) {
+  for (let i = 0; i < nodeObservers.length; i++) {
+    if (nodeObservers[i][_nodeTypes].includes(entryType)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 const eventLoopUtilization = () => {
@@ -609,6 +618,7 @@ return {
   createHistogram,
   enqueueNodePerformanceEntry,
   eventLoopUtilization,
+  hasNodeObserverForType,
   monitorEventLoopDelay,
   performance,
   PerformanceEntry,

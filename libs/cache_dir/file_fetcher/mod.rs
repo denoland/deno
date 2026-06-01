@@ -1254,10 +1254,37 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     // the bytes were verified when initially downloading the data
     // from the remote server. This is to prevent loading the data into
     // memory.
-    if self.0.http_cache.contains(url) {
-      Ok(Some(CachedOrRedirect::Cached))
+    let cache_key =
+      self.0.http_cache.cache_item_key(url).map_err(|source| {
+        CacheReadError {
+          url: url.clone(),
+          source,
+        }
+      })?;
+    let Some(headers) =
+      self
+        .0
+        .http_cache
+        .read_headers(&cache_key)
+        .map_err(|source| CacheReadError {
+          url: url.clone(),
+          source,
+        })?
+    else {
+      return Ok(None);
+    };
+    if let Some(redirect_to) = headers.get("location") {
+      let redirect =
+        url
+          .join(redirect_to)
+          .map_err(|source| RedirectResolutionError {
+            url: url.clone(),
+            location: redirect_to.clone(),
+            source,
+          })?;
+      Ok(Some(CachedOrRedirect::Redirect(redirect)))
     } else {
-      Ok(None)
+      Ok(Some(CachedOrRedirect::Cached))
     }
   }
 

@@ -22,7 +22,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const bindingTypes = core.loadExtScript(
   "ext:deno_node/internal_binding/types.ts",
 );

@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   op_otel_collect_isolate_metrics,
   op_otel_enable_isolate_metrics,

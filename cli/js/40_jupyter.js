@@ -462,6 +462,9 @@ function enableJupyter() {
         execution_count: executionCount,
         data,
         metadata: {},
+        // nbclient reads `content.get("transient", {}).get("display_id")`,
+        // which crashes if `transient` is serialized as null instead of `{}`.
+        transient: {},
       });
     } catch (err) {
       if (err instanceof Error) {

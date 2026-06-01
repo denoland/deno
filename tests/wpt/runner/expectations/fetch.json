@@ -1403,6 +1403,7 @@
     },
     "idlharness.any.html": {
       "expectedFailures": [
+        "Request interface: existence and properties of interface object",
         "Request interface: attribute destination",
         "Request interface: attribute referrer",
         "Request interface: attribute referrerPolicy",
@@ -1427,6 +1428,7 @@
         "Request interface: new Request('about:blank') must inherit property \"isReloadNavigation\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"isHistoryNavigation\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"duplex\" with the proper type",
+        "Response interface: existence and properties of interface object",
         "Response interface: operation json(any, optional ResponseInit)",
         "Response interface: attribute body",
         "Response interface: attribute bodyUsed",
@@ -1436,6 +1438,7 @@
     },
     "idlharness.any.worker.html": {
       "expectedFailures": [
+        "Request interface: existence and properties of interface object",
         "Request interface: attribute destination",
         "Request interface: attribute referrer",
         "Request interface: attribute referrerPolicy",
@@ -1460,6 +1463,7 @@
         "Request interface: new Request('about:blank') must inherit property \"isReloadNavigation\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"isHistoryNavigation\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"duplex\" with the proper type",
+        "Response interface: existence and properties of interface object",
         "Response interface: operation json(any, optional ResponseInit)",
         "Response interface: attribute body",
         "Response interface: attribute bodyUsed",
@@ -2577,7 +2581,6 @@
     "dangling-markup": {
       "dangling-markup-mitigation-data-url.tentative.sub.html": false,
       "dangling-markup-mitigation.tentative.html": {
-        "flaky": true,
         "expectedFailures": [
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&lt;b\">",
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&#10;b\">",
@@ -2591,12 +2594,13 @@
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&lt;&#10;b\">",
           "\\n      <img id=\"dangling\" src=\"/images/green-1x1.png?img=\\n        &lt;\\n        &#10;b\\n      \">\\n    ",
           "Fetch: /images/gre\\ren-1x1.png?img=<",
-          "Fetch: /images/gre\\nen-1x1.png?img=<",
+          "Fetch: /images/green-1x1.png?<\\r=block",
           "Fetch: /images/green-1x1.png?<\\n=block",
-          "Fetch: /images/green-1x1.png?<\\t=block",
           "Fetch: /images/gre\\ten-1x1.png?img=<",
-          "Fetch: /images/green-1x1.png?<\\r=block"
-        ]
+          "Fetch: /images/green-1x1.png?<\\t=block",
+          "Fetch: /images/gre\\nen-1x1.png?img=<"
+        ],
+        "flaky": true
       },
       "dangling-markup-mitigation.tentative.https.html": false,
       "media.html": false,

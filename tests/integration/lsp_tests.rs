@@ -1936,6 +1936,74 @@ fn lsp_inlay_hints() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/30455 — the
+// inlay hint return-type display must walk `ComputedPropertyName` nodes
+// (e.g. `[Symbol.dispose]`) rather than tripping a TypeScript debug failure.
+#[test(timeout = 300)]
+fn lsp_inlay_hints_computed_property_name() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+    },
+    "typescript": {
+      "inlayHints": {
+        "functionLikeReturnTypes": {
+          "enabled": true,
+        },
+      },
+    },
+  }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"class Mutex {
+  #queue: (() => void)[] = [];
+
+  async acquire() {
+    const pwr = Promise.withResolvers<void>();
+    this.#queue.push(pwr.resolve.bind(pwr));
+    if (this.#queue.length === 1) {
+      this.#queue[0]();
+    }
+    await pwr.promise;
+    return {
+      [Symbol.dispose]: () => {
+        this.#queue.shift();
+        if (this.#queue.length > 0) {
+          this.#queue[0]();
+        }
+      },
+    };
+  }
+}
+"#,
+    },
+  }));
+  // Before the upstream TypeScript fix the LSP server reported an "Internal
+  // error" (JSON-RPC -32603) here because `visitForDisplayParts` did not
+  // handle `ComputedPropertyName`. `write_request` panics on any LSP error
+  // response, so a successful return — null or an array — is enough to
+  // demonstrate the regression has not come back.
+  client.write_request(
+    "textDocument/inlayHint",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 21, "character": 0 },
+      },
+    }),
+  );
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_inlay_hints_not_enabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -2790,6 +2858,33 @@ fn lsp_hover_dependency() {
   client.shutdown();
 }
 
+#[test(timeout = 300)]
+fn lsp_hover_unresolved_dependency_in_dts() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/types.d.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import UI5Element from 'unresolved-bare-specifier';\n",
+    }
+  }));
+
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/types.d.ts",
+      },
+      "position": { "line": 0, "character": 29 }
+    }),
+  );
+  assert_eq!(res, json!(null));
+  client.shutdown();
+}
+
 // This tests for a regression covered by denoland/deno#12753 where the lsp was
 // unable to resolve dependencies when there was an invalid syntax in the module
 #[test(timeout = 300)]
@@ -3041,6 +3136,88 @@ fn lsp_hover_typescript_types() {
       "range": {
         "start": { "line": 0, "character": 19 },
         "end": { "line": 0, "character": 62 }
+      }
+    })
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_hover_typescript_types_via_import_map() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    r#"{
+      "imports": {
+        "foo": "http://127.0.0.1:4545/xTypeScriptTypes.js"
+      }
+    }"#,
+  );
+  temp_dir.write(
+    "file.ts",
+    "import * as a from \"foo\";\n\nconsole.log(a.foo);\n",
+  );
+  let file_uri = url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": file_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("file.ts"),
+    }
+  }));
+  client.cache_specifier(&file_uri);
+  client.read_diagnostics();
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": file_uri,
+      },
+      "position": { "line": 0, "character": 22 }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.js\n\n**Types**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.d.ts\n"
+      },
+      "range": {
+        "start": { "line": 0, "character": 19 },
+        "end": { "line": 0, "character": 24 }
+      }
+    })
+  );
+  // The types from `xTypeScriptTypes.d.ts` declare `foo: 'foo'` (a string
+  // literal type). If the types are picked up via the import map, hover on
+  // `a.foo` should show that literal type — not `string` from the .js source.
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": file_uri,
+      },
+      "position": { "line": 2, "character": 14 }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "```tsx\nconst foo: \"foo\"\n```\n",
+      },
+      "range": {
+        "start": { "line": 2, "character": 14 },
+        "end": { "line": 2, "character": 17 }
       }
     })
   );
@@ -9202,6 +9379,7 @@ fn lsp_completions_node_specifier() {
       "node:string_decoder",
       "node:sys",
       "node:test",
+      "node:test/reporters",
       "node:timers",
       "node:timers/promises",
       "node:tls",
@@ -12215,6 +12393,44 @@ fn lsp_untitled_file_diagnostics() {
         "version": 1,
       },
     ])
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_jupyter_untitled_notebook() {
+  use std::str::FromStr;
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  // Simulate VSCode opening an unsaved Jupyter notebook. The notebook URI uses
+  // the `untitled:` scheme and the cell URIs use the `vscode-notebook-cell:`
+  // scheme with no directory component — neither corresponds to a file on
+  // disk. This used to panic in `get_closest_package_json` because the
+  // converted file path was just a root directory whose `parent()` is `None`.
+  // Regression test for https://github.com/denoland/deno/issues/27433.
+  let notebook_uri = lsp::Uri::from_str("untitled:Untitled-1.ipynb").unwrap();
+  let cell_uri =
+    lsp::Uri::from_str("vscode-notebook-cell:Untitled-1.ipynb#W0sZmlsZQ%3D%3D")
+      .unwrap();
+  let diagnostics = client.notebook_did_open(
+    notebook_uri,
+    1,
+    vec![json!({
+      "uri": cell_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "const x: number = 1;\nconsole.log(x);\n",
+    })],
+  );
+  // The cell should be diagnosable with no panics.
+  let messages = diagnostics.all_messages();
+  assert!(
+    messages.iter().all(|m| m.diagnostics.is_empty()),
+    "{:?}",
+    messages
   );
   client.shutdown();
 }
@@ -19228,6 +19444,22 @@ fn lsp_skip_lib_check_graph_errors() {
       /// <reference path="./nonexistent.d.ts" />
       /// <reference path="nonexistent" />
     "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_css_side_effect_import() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("styles.css", "body { background: red; }\n");
+  let file = temp_dir.source_file(
+    "main.ts",
+    "import \"./styles.css\";\nconsole.log(\"hello\");\n",
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();

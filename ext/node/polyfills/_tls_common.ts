@@ -5,7 +5,7 @@
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const {
   ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED,
   ERR_INVALID_ARG_TYPE,
@@ -22,7 +22,7 @@ const { isArrayBufferView } = core.loadExtScript(
 const { validateString } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-const { op_node_validate_crl, op_node_validate_pfx } = core.ops;
+const { op_node_validate_crl, op_node_load_pfx } = core.ops;
 const { createPrivateKey } = core.loadExtScript(
   "ext:deno_node/internal/crypto/keys.ts",
 );
@@ -365,6 +365,71 @@ function toUint8Array(val: any): Uint8Array {
   return new TextEncoder().encode(String(val));
 }
 
+// Node accepts `cert` as <string>|<Buffer>|<Array<string|Buffer>>. Multiple PEM
+// blocks can be concatenated in a single string, so flatten array forms into
+// one PEM-encoded string for the rustls path. Anything that can't be coerced
+// to a PEM string is skipped.
+function normalizeCertPem(val: any): string | undefined {
+  if (val == null) return undefined;
+  if (globalThis.Array.isArray(val)) {
+    const parts: string[] = [];
+    for (const item of val) {
+      if (item == null) continue;
+      const s = toStringOrUndefined(item);
+      if (s !== undefined && s !== "") parts.push(s);
+    }
+    if (parts.length === 0) return undefined;
+    return parts.join("\n");
+  }
+  return toStringOrUndefined(val);
+}
+
+// Node accepts `key` as <string>|<Buffer>|<Array<string|Buffer|Object>> where
+// the object form is `{ pem, passphrase? }`. rustls_pemfile cannot read
+// encrypted PKCS#1/PKCS#8 blocks, so decrypt any passphrase-protected entries
+// via `createPrivateKey` and re-export as unencrypted PKCS#8 PEM before
+// concatenating.
+function normalizeKeyPem(
+  val: any,
+  defaultPassphrase: any,
+): string | undefined {
+  if (val == null) return undefined;
+  const items = globalThis.Array.isArray(val) ? val : [val];
+  const parts: string[] = [];
+  for (const item of items) {
+    if (item == null) continue;
+    let pem: string | undefined;
+    let passphrase = defaultPassphrase;
+    if (
+      typeof item === "object" && !isArrayBufferView(item) &&
+      !(item instanceof globalThis.ArrayBuffer)
+    ) {
+      pem = toStringOrUndefined((item as any).pem ?? (item as any).key);
+      if ((item as any).passphrase != null) {
+        passphrase = (item as any).passphrase;
+      }
+    } else {
+      pem = toStringOrUndefined(item);
+    }
+    if (pem === undefined || pem === "") continue;
+    if (passphrase != null) {
+      try {
+        const keyObject = createPrivateKey({
+          key: pem,
+          passphrase: String(passphrase),
+        });
+        pem = keyObject.export({ format: "pem", type: "pkcs8" }) as string;
+      } catch {
+        // Fall through with the original PEM; the TLS layer will surface a
+        // proper error if it really is unreadable.
+      }
+    }
+    parts.push(pem);
+  }
+  if (parts.length === 0) return undefined;
+  return parts.join("\n");
+}
+
 const secureContextBrand = new WeakSet<object>();
 
 class SecureContext {
@@ -431,13 +496,51 @@ class SecureContext {
     validateKeyCertOption(options.key, "options.key", true);
     validateKeyCertOption(options.ca, "options.ca", false);
 
-    // Validate PFX / PKCS#12 data.
+    // Load PFX / PKCS#12 data: extract the cert + private key so they can
+    // be used by the underlying TLS implementation. Any additional certs
+    // present in the PFX are merged into `ca`. Caller-supplied `cert`/`key`
+    // (and `ca`) take precedence, matching Node, which loads PFX first and
+    // then layers explicit cert/key on top.
+    //
+    // Node accepts both a single <string>|<Buffer> and an
+    // <Array<string|Buffer|{ buf, passphrase? }>>; an empty array (which
+    // playwright passes when no PFX is configured) must be a no-op rather
+    // than feeding an empty buffer to the parser.
+    let pfxCert: string | undefined;
+    let pfxKey: string | undefined;
+    let pfxCa: string[] | undefined;
     if (options.pfx != null) {
-      const pfxData = toUint8Array(options.pfx);
-      const pfxPassphrase = options.passphrase != null
-        ? String(options.passphrase)
-        : null;
-      op_node_validate_pfx(pfxData, pfxPassphrase);
+      const pfxItems = globalThis.Array.isArray(options.pfx)
+        ? options.pfx
+        : [options.pfx];
+      for (const item of pfxItems) {
+        if (item == null) continue;
+        let buf: any = item;
+        let passphrase: any = options.passphrase;
+        if (
+          typeof item === "object" && !isArrayBufferView(item) &&
+          !(item instanceof globalThis.ArrayBuffer) &&
+          ((item as any).buf !== undefined ||
+            (item as any).passphrase !== undefined)
+        ) {
+          buf = (item as any).buf;
+          if ((item as any).passphrase != null) {
+            passphrase = (item as any).passphrase;
+          }
+        }
+        if (buf == null) continue;
+        const pfxData = toUint8Array(buf);
+        const pfxPassphrase = passphrase != null ? String(passphrase) : null;
+        const loaded = op_node_load_pfx(pfxData, pfxPassphrase);
+        if (pfxCert === undefined) {
+          pfxCert = loaded.cert;
+          pfxKey = loaded.key;
+        }
+        if (loaded.ca?.length) {
+          if (pfxCa === undefined) pfxCa = [];
+          pfxCa.push(...loaded.ca);
+        }
+      }
     }
 
     // Validate CRL data.
@@ -458,12 +561,13 @@ class SecureContext {
 
     const { minVersion, maxVersion } = getProtocolRange(options);
 
-    const useDefaultCA = !options.ca;
+    const effectiveCa = options.ca != null ? options.ca : pfxCa;
+    const useDefaultCA = !effectiveCa;
     this.context = {
-      ca: useDefaultCA ? undefined : normalizeCertValue(options.ca),
+      ca: useDefaultCA ? undefined : normalizeCertValue(effectiveCa),
       useDefaultCA,
-      cert: toStringOrUndefined(options.cert),
-      key: toStringOrUndefined(options.key),
+      cert: normalizeCertPem(options.cert) ?? pfxCert,
+      key: normalizeKeyPem(options.key, options.passphrase) ?? pfxKey,
       minVersion,
       maxVersion,
       ciphers: options.ciphers,

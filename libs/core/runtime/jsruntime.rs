@@ -453,6 +453,9 @@ pub struct JsRuntimeState {
     Option<WaitForInspectorDisconnectCallback>,
   pub(crate) validate_import_attributes_cb: Option<ValidateImportAttributesCb>,
   pub(crate) custom_module_evaluation_cb: Option<CustomModuleEvaluationCb>,
+  pub(crate) vm_dynamic_import_callbacks:
+    RefCell<HashMap<u32, v8::Global<v8::Function>>>,
+  pub(crate) next_vm_dynamic_import_callback_id: Cell<u32>,
   pub(crate) eval_context_get_code_cache_cb:
     RefCell<Option<EvalContextGetCodeCacheCb>>,
   pub(crate) eval_context_code_cache_ready_cb:
@@ -789,6 +792,8 @@ impl JsRuntime {
       op_state: op_state.clone(),
       validate_import_attributes_cb: options.validate_import_attributes_cb,
       custom_module_evaluation_cb: options.custom_module_evaluation_cb,
+      vm_dynamic_import_callbacks: Default::default(),
+      next_vm_dynamic_import_callback_id: Cell::new(1),
       eval_context_get_code_cache_cb: RefCell::new(
         eval_context_get_code_cache_cb,
       ),
@@ -979,6 +984,19 @@ impl JsRuntime {
           &context_state.op_method_decls,
           methods_ctx_offset,
           &mut state_rc.function_templates.borrow_mut(),
+          will_snapshot,
+        );
+      } else if !will_snapshot {
+        // Snapshots built against V8 14.9+ bake the slow version of each op
+        // function (see `op_ctx_template`). Re-attach fast-call overloads to
+        // the snapshotted ops (top-level + cppgc class methods) now that
+        // we're running.
+        bindings::upgrade_snapshotted_ops_with_fast_calls(
+          scope,
+          context,
+          &context_state.op_ctxs,
+          &context_state.op_method_decls,
+          methods_ctx_offset,
         );
       }
 

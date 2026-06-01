@@ -331,6 +331,11 @@ impl TestRun {
               filter,
               shuffle: None,
               trace_leaks: false,
+              // LSP-driven test runs intentionally disable sanitizers — the
+              // LSP UI doesn't surface op/resource leak failures usefully
+              // and they'd generate noise in the test gutter.
+              sanitize_ops: false,
+              sanitize_resources: false,
             },
           ))
         }
@@ -439,6 +444,8 @@ impl TestRun {
             }
             test::TestEvent::ForceEndReport => {}
             test::TestEvent::Sigint => {}
+            test::TestEvent::Exit(_) => {}
+            test::TestEvent::IsolateExit(_, _) => {}
           }
         }
 
@@ -578,6 +585,11 @@ struct LspTestReporter {
   files: TestServerTests,
   tests: IndexMap<usize, LspTestDescription>,
   current_test: Option<usize>,
+  /// Counts of dynamic test registrations per `(parent_static_id, name)` for
+  /// the current run, used to assign a `name_index` that matches the static
+  /// collector's numbering when multiple tests share the same name under the
+  /// same parent. See https://github.com/denoland/deno/issues/20371.
+  dynamic_name_indices: HashMap<(Option<String>, String), u32>,
 }
 
 impl LspTestReporter {
@@ -594,7 +606,20 @@ impl LspTestReporter {
       files,
       tests: Default::default(),
       current_test: Default::default(),
+      dynamic_name_indices: HashMap::new(),
     }
+  }
+
+  fn next_dynamic_name_index(
+    &mut self,
+    parent_static_id: Option<&str>,
+    name: &str,
+  ) -> u32 {
+    let key = (parent_static_id.map(str::to_owned), name.to_string());
+    let entry = self.dynamic_name_indices.entry(key).or_insert(0);
+    let index = *entry;
+    *entry += 1;
+    index
   }
 
   fn progress(&self, message: lsp_custom::TestRunProgressMessage) {
@@ -611,6 +636,7 @@ impl LspTestReporter {
   fn report_plan(&mut self, _plan: &test::TestPlan) {}
 
   async fn report_register(&mut self, desc: &test::TestDescription) {
+    let name_index = self.next_dynamic_name_index(None, &desc.name);
     let mut files = self.files.lock().await;
     let specifier = ModuleSpecifier::parse(&desc.location.file_name).unwrap();
     let (test_module, _) = files
@@ -619,7 +645,7 @@ impl LspTestReporter {
     let Ok(uri) = url_to_uri(&test_module.specifier) else {
       return;
     };
-    let (static_id, is_new) = test_module.register_dynamic(desc);
+    let (static_id, is_new) = test_module.register_dynamic(desc, name_index);
     self.tests.insert(
       desc.id,
       LspTestDescription::TestDescription(desc.clone(), static_id.clone()),
@@ -730,6 +756,14 @@ impl LspTestReporter {
   }
 
   async fn report_step_register(&mut self, desc: &test::TestStepDescription) {
+    let parent_static_id = self
+      .tests
+      .get(&desc.parent_id)
+      .unwrap()
+      .static_id()
+      .to_string();
+    let name_index =
+      self.next_dynamic_name_index(Some(&parent_static_id), &desc.name);
     let mut files = self.files.lock().await;
     let file_name = self
       .current_test
@@ -748,10 +782,8 @@ impl LspTestReporter {
     let Ok(uri) = url_to_uri(&test_module.specifier) else {
       return;
     };
-    let (static_id, is_new) = test_module.register_step_dynamic(
-      desc,
-      self.tests.get(&desc.parent_id).unwrap().static_id(),
-    );
+    let (static_id, is_new) =
+      test_module.register_step_dynamic(desc, &parent_static_id, name_index);
     self.tests.insert(
       desc.id,
       LspTestDescription::TestStepDescription(desc.clone(), static_id.clone()),
@@ -872,6 +904,7 @@ mod tests {
       id: "0b7c6bf3cd617018d33a1bf982a08fe088c5bb54fcd5eb9e802e7c137ec1af94"
         .to_string(),
       name: "test a".to_string(),
+      name_index: 0,
       range: Some(new_range(1, 5, 1, 9)),
       is_dynamic: false,
       parent_id: None,
@@ -881,6 +914,7 @@ mod tests {
       id: "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f"
         .to_string(),
       name: "test b".to_string(),
+      name_index: 0,
       range: Some(new_range(2, 5, 2, 9)),
       is_dynamic: false,
       parent_id: None,

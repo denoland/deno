@@ -14,6 +14,7 @@ use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -68,12 +69,18 @@ use crate::process_state::NpmProcessState;
 struct HoistedLayout<'a> {
   /// Packages that go to `node_modules/<name>/`.
   top_level: HashMap<&'a StackString, &'a NpmResolutionPackage>,
-  /// Packages that must be nested: parent's `node_modules/<dep_name>/`.
+  /// Packages that must be nested: `<parent_path>/node_modules/<dep>/`,
+  /// where `parent_path` is relative to the root `node_modules/` dir and
+  /// may itself include `.../node_modules/<name>` segments for parents
+  /// that are themselves nested.
   nested: Vec<NestedPackage<'a>>,
 }
 
 struct NestedPackage<'a> {
-  parent: &'a NpmResolutionPackage,
+  /// Path of the parent relative to the root `node_modules/` directory.
+  /// For a top-level parent this is just `<name>`; for a nested parent
+  /// it is `<ancestor>/node_modules/.../node_modules/<name>`.
+  parent_path: PathBuf,
   #[allow(dead_code, reason = "used for future nested package resolution")]
   dep_name: &'a StackString,
   dep: &'a NpmResolutionPackage,
@@ -88,6 +95,26 @@ fn compute_hoisted_layout<'a>(
   packages: &'a [NpmResolutionPackage],
   system_info: &NpmSystemInfo,
 ) -> HoistedLayout<'a> {
+  // Versions explicitly required by the root/workspace package.json(s).
+  // These take priority when picking what to hoist, matching npm: a
+  // version listed in package.json wins over a (possibly higher) version
+  // pulled in only transitively.
+  let mut root_version_for_name: HashMap<&StackString, &PackageNv> =
+    HashMap::new();
+  for root_nv in snapshot.package_reqs().values() {
+    root_version_for_name
+      .entry(&root_nv.name)
+      .and_modify(|existing| {
+        // Multiple workspace members directly require the same package
+        // at different versions. Tie-break by higher version so the
+        // result is deterministic; the loser gets nested.
+        if root_nv.cmp(existing) == Ordering::Greater {
+          *existing = root_nv;
+        }
+      })
+      .or_insert(root_nv);
+  }
+
   // Count how many packages depend on each (name, version) pair
   let mut version_dependents: HashMap<&PackageNv, usize> = HashMap::new();
 
@@ -98,12 +125,22 @@ fn compute_hoisted_layout<'a>(
     }
   }
 
-  // For each package name, find the version with the most dependents
+  // For each package name, pick the version to hoist. A version
+  // required directly by the root/workspace always wins; otherwise we
+  // fall back to "most depended on, then highest version".
   let mut best_version_for_name: HashMap<&StackString, &NpmResolutionPackage> =
     HashMap::new();
 
   for package in packages {
-    match best_version_for_name.get(&package.id.nv.name) {
+    let name = &package.id.nv.name;
+    if let Some(root_nv) = root_version_for_name.get(name) {
+      if package.id.nv == **root_nv {
+        best_version_for_name.insert(name, package);
+      }
+      // Any other version of a root-required name will be nested.
+      continue;
+    }
+    match best_version_for_name.get(name) {
       Some(current_best) => {
         let current_count = version_dependents
           .get(&current_best.id.nv)
@@ -115,39 +152,114 @@ fn compute_hoisted_layout<'a>(
           || (new_count == current_count
             && package.id.nv.cmp(&current_best.id.nv) == Ordering::Greater)
         {
-          best_version_for_name.insert(&package.id.nv.name, package);
+          best_version_for_name.insert(name, package);
         }
       }
       None => {
-        best_version_for_name.insert(&package.id.nv.name, package);
+        best_version_for_name.insert(name, package);
       }
     }
   }
 
-  // Determine which deps need to be nested
+  // Walk the dependency tree breadth-first starting from the top-level
+  // (hoisted) packages so that when a transitive package is itself
+  // nested, its own conflicting deps get placed under the actual
+  // nested location rather than under the top-level package that
+  // happens to share the same name.
+  //
+  // For example with root deps `schema-utils@4` + `terser-webpack-plugin`:
+  //   * `schema-utils@4` and `ajv@8` hoist to the top level.
+  //   * `terser-webpack-plugin` transitively pulls `schema-utils@3`,
+  //     which nests at `terser-webpack-plugin/node_modules/schema-utils`.
+  //   * `schema-utils@3` needs `ajv@6`. The previous flat algorithm
+  //     placed it at `node_modules/schema-utils/node_modules/ajv`,
+  //     shadowing the top-level `ajv@8` for the hoisted `schema-utils@4`.
+  //     With the BFS below it lands at
+  //     `node_modules/terser-webpack-plugin/node_modules/schema-utils/node_modules/ajv`.
   let mut nested = Vec::new();
+  // Each queue entry carries the parent's path (relative to the root
+  // `node_modules/`), the parent package, and the chain of ancestor
+  // packages whose `node_modules/<name>` segments lie on `parent_path`
+  // — these are the candidates Node's resolver walks up to.
+  let mut queue: VecDeque<(
+    PathBuf,
+    &NpmResolutionPackage,
+    Vec<&NpmResolutionPackage>,
+  )> = VecDeque::new();
+  // `(parent_path, parent_nv)` we've already expanded — avoids
+  // re-emitting the same edges when multiple paths reach the same
+  // (path, package) pair.
+  let mut visited: HashSet<(PathBuf, &PackageNv)> = HashSet::new();
 
-  for package in packages {
-    for (dep_name, dep_id) in &package.dependencies {
+  for (name, package) in &best_version_for_name {
+    queue.push_back((PathBuf::from(name.as_str()), package, Vec::new()));
+  }
+
+  while let Some((parent_path, parent, parent_ancestors)) = queue.pop_front() {
+    if !visited.insert((parent_path.clone(), &parent.id.nv)) {
+      continue;
+    }
+    for (dep_name, dep_id) in &parent.dependencies {
       let dep = snapshot.package_from_id(dep_id).unwrap();
 
-      if package.optional_dependencies.contains(dep_name)
+      if parent.optional_dependencies.contains(dep_name)
         && !dep.system.matches_system(system_info)
       {
         continue;
       }
 
-      if let Some(hoisted) = best_version_for_name.get(&dep.id.nv.name)
-        && hoisted.id.nv == dep.id.nv
-      {
-        continue; // This version is hoisted, no nesting needed
+      // Self-loop: parent depends on something at its own nv. Nesting
+      // at `parent_path/node_modules/<name>` would just be a copy of
+      // parent under itself.
+      if parent.id.nv == dep.id.nv {
+        continue;
       }
 
+      // Simulate Node's directory walk-up from `parent`'s dir: it
+      // binds the nearest `<ancestor>/node_modules/<dep.name>`, which
+      // exists iff that ancestor has a *non-hoisted* dep with that
+      // name (hoisted versions live at the root, not in the
+      // ancestor's own node_modules). Match by name, not by nv — two
+      // different versions of the same name on one path each shadow
+      // further-up copies.
+      //
+      // If walk-up already finds `dep.id.nv`, no nesting is needed.
+      // This subsumes the simple "hoisted at root" case, breaks
+      // dependency cycles, and avoids redundant deeper nestings.
+      let hoisted_for_name =
+        best_version_for_name.get(&dep.id.nv.name).map(|p| &p.id.nv);
+      let walkup_target = parent_ancestors
+        .iter()
+        .rev()
+        .find_map(|ancestor| {
+          ancestor.dependencies.values().find_map(|aid| {
+            let apkg = snapshot.package_from_id(aid).unwrap();
+            if apkg.id.nv.name == dep.id.nv.name
+              && hoisted_for_name != Some(&apkg.id.nv)
+            {
+              Some(&apkg.id.nv)
+            } else {
+              None
+            }
+          })
+        })
+        .or(hoisted_for_name);
+
+      if walkup_target == Some(&dep.id.nv) {
+        continue;
+      }
+
+      let dep_path = parent_path
+        .join("node_modules")
+        .join(dep.id.nv.name.as_str());
       nested.push(NestedPackage {
-        parent: package,
+        parent_path: parent_path.clone(),
         dep_name,
         dep,
       });
+      let mut dep_ancestors = parent_ancestors.clone();
+      dep_ancestors.push(parent);
+      queue.push_back((dep_path, dep, dep_ancestors));
     }
   }
 
@@ -346,10 +458,7 @@ impl<
 
     // 3. Clone nested packages (version conflicts)
     for nested in &layout.nested {
-      let parent_path = join_package_name(
-        Cow::Borrowed(&self.root_node_modules_path),
-        &nested.parent.id.nv.name,
-      );
+      let parent_path = self.root_node_modules_path.join(&nested.parent_path);
       let nested_node_modules = parent_path.join("node_modules");
       sys.fs_create_dir_all(&nested_node_modules)?;
       let package_path = join_package_name(

@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   op_kill,
   op_node_spawn_child,
@@ -292,6 +292,7 @@ function nodeSpawnChild(command, {
   stdout = "piped",
   stderr = "piped",
   windowsRawArguments = false,
+  windowsHide = false,
   ipc = -1,
   serialization = "json",
   extraStdio = [],
@@ -311,6 +312,7 @@ function nodeSpawnChild(command, {
     stdout,
     stderr,
     windowsRawArguments,
+    windowsHide,
     ipc,
     serialization,
     extraStdio,
@@ -368,6 +370,7 @@ function nodeSpawnSyncChild({
   stderr,
   extraStdio = [],
   windowsRawArguments,
+  windowsHide = false,
   needsNpmProcessState,
   input,
   timeout,
@@ -385,6 +388,7 @@ function nodeSpawnSyncChild({
     stdout,
     stderr,
     windowsRawArguments,
+    windowsHide,
     extraStdio,
     detached: false,
     needsNpmProcessState,
