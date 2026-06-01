@@ -6255,6 +6255,8 @@ fn lsp_jsr_auto_import_completion_import_map_sub_path() {
   let file = source_file(
     temp_dir.path().join("file.ts"),
     r#"
+      // Adds jsr:@std/path@^0.220.1/normalize to the module graph.
+      import "jsr:@std/url@^0.220.1/normalize";
       normalize
     "#,
   );
@@ -6265,7 +6267,7 @@ fn lsp_jsr_auto_import_completion_import_map_sub_path() {
   client.did_open_file(&file);
   let list = client.get_completion_list(
     file.uri().as_str(),
-    (1, 15),
+    (3, 15),
     json!({ "triggerKind": 1 }),
   );
   let item = list
@@ -6291,8 +6293,8 @@ fn lsp_jsr_auto_import_completion_import_map_sub_path() {
       "additionalTextEdits": [
         {
           "range": {
-            "start": { "line": 1, "character": 6 },
-            "end": { "line": 1, "character": 6 },
+            "start": { "line": 2, "character": 6 },
+            "end": { "line": 2, "character": 6 },
           },
           "newText": "import { normalize } from \"@std/path/posix/normalize\";\n",
         },

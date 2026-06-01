@@ -199,10 +199,10 @@ impl JsrCacheResolver {
       .exports()
       .filter_map(|(export, _)| {
         let export = export.strip_prefix("./").unwrap_or(export);
-        if let Some(export_prefix) = maybe_export_prefix {
-          if !export.starts_with(export_prefix) {
-            return None;
-          }
+        if let Some(export_prefix) = maybe_export_prefix
+          && !export.starts_with(export_prefix)
+        {
+          return None;
         }
         let req_ref = if export == "." {
           JsrPackageReqReference::from_str(&format!("jsr:{req}")).ok()?
