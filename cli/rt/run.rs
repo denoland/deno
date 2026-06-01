@@ -74,6 +74,7 @@ use deno_runtime::code_cache::CodeCache;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::create_host_defined_options;
+use deno_runtime::deno_node::ops::ipc::ChildIpcSerialization;
 use deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -1042,7 +1043,21 @@ pub async fn run(
   // use a dummy npm registry url
   let npm_registry_url = Url::parse("https://localhost/").unwrap();
   let root_dir_url = Arc::new(Url::from_directory_path(&root_path).unwrap());
-  let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
+  let entrypoint = root_dir_url.join(&metadata.entrypoint_key).unwrap();
+  // When this process was spawned by node:child_process.fork() from a compiled
+  // binary, the parent asks us to run a specific embedded module instead of the
+  // baked-in entrypoint (see ext/node/polyfills/child_process.ts). Otherwise a
+  // fork() would just re-run the parent's entrypoint (issue #26304).
+  let main_module = match std::env::var(INTERNAL_CHILD_ENTRYPOINT_ENV_VAR) {
+    Ok(module_path) if !module_path.is_empty() => {
+      // Remove the var so it does not leak into any grandchild processes that
+      // inherit this environment.
+      // SAFETY: single-threaded during startup, before the runtime is created.
+      unsafe { std::env::remove_var(INTERNAL_CHILD_ENTRYPOINT_ENV_VAR) };
+      resolve_child_entrypoint(&module_path, &entrypoint, &vfs, &sys)
+    }
+    _ => entrypoint,
+  };
   let npm_global_cache_dir = root_path.join(".deno_compile_node_modules");
   let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
     sys.clone(),
@@ -1351,7 +1366,7 @@ pub async fn run(
     seed: metadata.seed,
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
-    node_ipc_init: None,
+    node_ipc_init: node_ipc_init(),
     serve_port: None,
     serve_host: None,
     otel_config: metadata.otel_config,
@@ -1422,6 +1437,70 @@ pub async fn run(
 
   let exit_code = worker.run().await?;
   Ok(exit_code)
+}
+
+// Internal env var carrying the module a fork()ed child of a compiled binary
+// should run. Kept in sync with ext/node/polyfills/child_process.ts.
+const INTERNAL_CHILD_ENTRYPOINT_ENV_VAR: &str =
+  "DENO_INTERNAL_CHILD_ENTRYPOINT";
+
+/// Resolves the module path passed to `node:child_process.fork()` to the module
+/// that a compiled-binary child should run as its main module.
+///
+/// A relative path is first resolved against the parent entrypoint's directory
+/// so it points at a sibling module embedded in the compile VFS; if no such
+/// module is embedded there, it falls back to a path relative to the real cwd
+/// so an on-disk module can still be loaded (matching how fork() resolves a
+/// relative path outside a compiled binary). Absolute paths are used as-is: the
+/// module loader consults the VFS first and falls back to disk. Falls back to
+/// the entrypoint if resolution fails entirely.
+fn resolve_child_entrypoint(
+  module_path: &str,
+  entrypoint: &Url,
+  vfs: &FileBackedVfs,
+  sys: &DenoRtSys,
+) -> Url {
+  let path = std::path::Path::new(module_path);
+  if path.is_absolute() {
+    return deno_path_util::url_from_file_path(path)
+      .unwrap_or_else(|_| entrypoint.clone());
+  }
+  // Prefer the sibling module embedded next to the entrypoint in the VFS.
+  if let Ok(candidate) = entrypoint.join(module_path)
+    && let Ok(candidate_path) = deno_path_util::url_to_file_path(&candidate)
+    && vfs.stat(&candidate_path).is_ok()
+  {
+    return candidate;
+  }
+  // Otherwise resolve against the real cwd to load an on-disk module.
+  #[allow(clippy::disallowed_methods, reason = "ok to use current_dir here")]
+  let cwd = sys.env_current_dir();
+  match cwd {
+    Ok(cwd) => deno_core::resolve_path(module_path, &cwd)
+      .unwrap_or_else(|_| entrypoint.clone()),
+    Err(_) => entrypoint.clone(),
+  }
+}
+
+/// Sets up the node IPC channel for a process spawned by
+/// `node:child_process.fork()`. The parent passes the channel fd (and
+/// serialization mode) via env vars; mirror the CLI's `node_ipc_init()` here so
+/// that process.send()/process.on("message") work in a compiled binary's child
+/// (see issue #26304). Without this a fork()ed child never wires up IPC.
+fn node_ipc_init() -> Option<(i64, ChildIpcSerialization)> {
+  let node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok()?;
+  let serialization = std::env::var("NODE_CHANNEL_SERIALIZATION_MODE")
+    .ok()
+    .and_then(|s| s.parse::<ChildIpcSerialization>().ok())
+    .unwrap_or(ChildIpcSerialization::Json);
+  // Remove so that grandchild processes don't inherit these env vars.
+  // SAFETY: single-threaded at this point in startup.
+  unsafe {
+    std::env::remove_var("NODE_CHANNEL_FD");
+    std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
+  }
+  let node_channel_fd = node_channel_fd.parse::<i64>().ok()?;
+  Some((node_channel_fd, serialization))
 }
 
 fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
