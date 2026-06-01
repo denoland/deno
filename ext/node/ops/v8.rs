@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ptr::NonNull;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use deno_core::FastString;
@@ -16,9 +18,51 @@ use deno_error::JsErrorBox;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
 
+static EXPOSE_GC_FROM_SET_FLAGS: AtomicBool = AtomicBool::new(false);
+
 #[op2(fast)]
 pub fn op_v8_cached_data_version_tag() -> u32 {
   v8::script_compiler::cached_data_version_tag()
+}
+
+#[op2(fast)]
+pub fn op_v8_set_flags_from_string(#[string] flags: &str) {
+  for flag in flags.split_ascii_whitespace() {
+    match flag {
+      "--expose_gc" | "--expose-gc" => {
+        EXPOSE_GC_FROM_SET_FLAGS.store(true, Ordering::SeqCst);
+      }
+      "--noexpose_gc" | "--no-expose-gc" => {
+        EXPOSE_GC_FROM_SET_FLAGS.store(false, Ordering::SeqCst);
+      }
+      _ => {}
+    }
+  }
+}
+
+fn gc_callback(
+  scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  scope.low_memory_notification();
+}
+
+pub fn install_gc_if_exposed<'s, 'i, T>(
+  scope: &mut v8::PinScope<'s, 'i, T>,
+  context: v8::Local<'s, v8::Context>,
+) {
+  if !EXPOSE_GC_FROM_SET_FLAGS.load(Ordering::SeqCst) {
+    return;
+  }
+
+  let scope = &mut v8::ContextScope::new(scope, context);
+  let global = context.global(scope);
+  let key = v8::String::new_external_onebyte_static(scope, b"gc").unwrap();
+  let template = v8::FunctionTemplate::new(scope, gc_callback);
+  let function = template.get_function(scope).unwrap();
+  function.set_name(key);
+  global.set(scope, key.into(), function.into());
 }
 
 #[op2(fast)]
