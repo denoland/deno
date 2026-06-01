@@ -361,7 +361,7 @@ fn write_response_head_to_inner(
 }
 
 pub fn status_allows_body(status: u16) -> bool {
-  !((100..200).contains(&status) || status == 204 || status == 304)
+  !((100..200).contains(&status) || matches!(status, 204 | 205 | 304))
 }
 
 fn response_version_bytes(version: Version) -> &'static [u8] {
@@ -779,6 +779,23 @@ mod tests {
       },
     );
     assert_eq!(out, b"HTTP/1.0 200 OK\r\n\r\n");
+  }
+
+  #[test]
+  fn reset_content_disallows_body() {
+    let mut out = Vec::new();
+    write_response_head(
+      &mut out,
+      ResponseHeader {
+        version: Version::Http11,
+        status: 205,
+        reason: b"Reset Content",
+        headers: &[],
+        content_length: Some(5),
+        keep_alive: true,
+      },
+    );
+    assert_eq!(out, b"HTTP/1.1 205 Reset Content\r\n\r\n");
   }
 
   #[test]
