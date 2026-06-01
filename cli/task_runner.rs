@@ -453,9 +453,24 @@ impl ShellCommand for NodeCommand {
           .write_line(&format!("error launching 'node': {err}"));
         return Box::pin(std::future::ready(ExecuteResult::from_exit_code(1)));
       }
-      // Re-parse as `node <tempfile> <args>` so node_shim produces the script
-      // run flags (`deno run -A --unstable-...`) rather than `deno eval`.
-      let mut run_args = Vec::with_capacity(1 + eval_argv.len());
+      // Re-parse as `node [--require <m>]... [--import <m>]... <tempfile>
+      // <args>` so node_shim produces the script run flags
+      // (`deno run -A --unstable-...`) rather than `deno eval`, while preserving
+      // any `--require`/`--import` preloads passed alongside `-e`/`-p`.
+      let env = &parsed.options.per_isolate.per_env;
+      let mut run_args = Vec::with_capacity(
+        (env.preload_cjs_modules.len() + env.preload_esm_modules.len()) * 2
+          + 1
+          + eval_argv.len(),
+      );
+      for module in &env.preload_cjs_modules {
+        run_args.push("--require".to_string());
+        run_args.push(module.clone());
+      }
+      for module in &env.preload_esm_modules {
+        run_args.push("--import".to_string());
+        run_args.push(module.clone());
+      }
       run_args.push(temp_path.to_string_lossy().into_owned());
       run_args.extend(eval_argv);
       match node_shim::parse_args(run_args) {
