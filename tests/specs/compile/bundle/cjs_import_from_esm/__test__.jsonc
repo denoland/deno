@@ -1,0 +1,25 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "args": "compile --bundle --no-check --output out main.ts",
+    "output": "compile.out"
+  }, {
+    "if": "unix",
+    "commandName": "./out",
+    "args": [],
+    "output": "run.out"
+  }, {
+    "if": "windows",
+    "args": "compile --bundle --no-check --output out.exe main.ts",
+    "output": "compile.out"
+  }, {
+    "if": "windows",
+    "commandName": "./out.exe",
+    "args": [],
+    "output": "run.out"
+  }]
+}

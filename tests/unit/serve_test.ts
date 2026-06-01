@@ -97,6 +97,44 @@ Deno.test(async function httpServerShutsDownPortBeforeResolving() {
   listener!.close();
 });
 
+// Regression test for the Request properties added in
+// https://github.com/denoland/deno/issues/27763. Server-created requests are
+// built via `fromInnerRequest` (the public `Request` constructor is bypassed),
+// so the new accessors must still report the spec defaults for a Deno.serve()
+// request without adding anything to the inner request's shape.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerRequestStandardProperties() {
+    const { promise, resolve } = Promise.withResolvers<
+      Record<string, unknown>
+    >();
+    await using server = await makeServer((req) => {
+      resolve({
+        cache: req.cache,
+        credentials: req.credentials,
+        integrity: req.integrity,
+        keepalive: req.keepalive,
+        mode: req.mode,
+        referrer: req.referrer,
+        referrerPolicy: req.referrerPolicy,
+      });
+      return new Response("ok");
+    });
+    const resp = await fetch(`http://localhost:${servePort}/`);
+    await resp.text();
+    assertEquals(await promise, {
+      cache: "default",
+      credentials: "same-origin",
+      integrity: "",
+      keepalive: false,
+      mode: "cors",
+      referrer: "about:client",
+      referrerPolicy: "",
+    });
+    await server.shutdown();
+  },
+);
+
 // When shutting down abruptly, we require that all in-progress connections are aborted,
 // no new connections are allowed, and no new transactions are allowed on existing connections.
 Deno.test(
