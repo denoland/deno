@@ -17,7 +17,7 @@ use crate::tools::pm::interactive_picker;
 #[derive(Debug)]
 pub struct PackageInfo {
   pub id: DepId,
-  pub current_version: Option<Version>,
+  pub current_version_req: VersionReq,
   pub new_version: VersionReq,
   pub name: String,
   pub kind: DepKind,
@@ -44,22 +44,23 @@ impl From<PackageInfo> for FormattedPackageInfo {
   fn from(package: PackageInfo) -> Self {
     let new_version_string =
       package.new_version.version_text().trim_start_matches('^');
+    let current_version_string = package
+      .current_version_req
+      .version_text()
+      .trim_start_matches('^');
 
     let new_version_highlighted = match (
-      &package.current_version,
+      Version::parse_standard(current_version_string),
       Version::parse_standard(new_version_string),
     ) {
-      (Some(current_version), Ok(new_version)) => {
-        highlight_new_version(current_version, &new_version)
+      (Ok(current_version), Ok(new_version)) => {
+        highlight_new_version(&current_version, &new_version)
       }
       _ => new_version_string.to_string(),
     };
     FormattedPackageInfo {
       dep_ids: vec![package.id],
-      current_version_string: package
-        .current_version
-        .as_ref()
-        .map(|v| v.to_string()),
+      current_version_string: Some(current_version_string.to_string()),
       new_version_highlighted,
       formatted_name: format!(
         "{}{}",
@@ -75,13 +76,13 @@ impl From<PackageInfo> for FormattedPackageInfo {
 impl State {
   fn new(packages: Vec<PackageInfo>) -> anyhow::Result<Self> {
     let mut deduped_packages: HashMap<
-      (String, Option<Version>, VersionReq),
+      (String, VersionReq, VersionReq),
       FormattedPackageInfo,
     > = HashMap::with_capacity(packages.len());
     for package in packages {
       match deduped_packages.entry((
         package.name.clone(),
-        package.current_version.clone(),
+        package.current_version_req.clone(),
         package.new_version.clone(),
       )) {
         std::collections::hash_map::Entry::Occupied(mut occupied_entry) => {
