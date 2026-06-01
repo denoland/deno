@@ -9389,6 +9389,7 @@ fn lsp_completions_node_specifier() {
       "node:util",
       "node:util/types",
       "node:v8",
+      "node:vfs",
       "node:vm",
       "node:wasi",
       "node:worker_threads",

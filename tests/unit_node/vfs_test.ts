@@ -230,7 +230,7 @@ Deno.test("[node/vfs] custom provider can extend VirtualProvider", () => {
     get readonly() {
       return false;
     }
-    override openSync(path: string, flags: string, _mode?: number) {
+    openSync(path: string, flags: string, _mode?: number) {
       let content = store.get(path);
       if (!content) {
         if (flags === "r") {
@@ -281,10 +281,10 @@ Deno.test("[node/vfs] custom provider can extend VirtualProvider", () => {
         async close() {},
       };
     }
-    override async open(path: string, flags: string, mode?: number) {
+    async open(path: string, flags: string, mode?: number) {
       return this.openSync(path, flags, mode);
     }
-    override statSync(path: string) {
+    statSync(path: string) {
       const content = store.get(path);
       if (!content) {
         const err = new Error("ENOENT");
@@ -299,12 +299,12 @@ Deno.test("[node/vfs] custom provider can extend VirtualProvider", () => {
         isSymbolicLink: () => false,
       };
     }
-    override async stat(path: string) {
+    async stat(path: string) {
       return this.statSync(path);
     }
   }
 
-  const fs = create(new CustomProvider());
+  const fs = create(new CustomProvider() as any);
   fs.writeFileSync("/key", "value");
   assertEquals(fs.readFileSync("/key", "utf8"), "value");
   assertEquals(fs.existsSync("/key"), true);
