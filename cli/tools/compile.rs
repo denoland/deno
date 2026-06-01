@@ -192,7 +192,9 @@ pub async fn compile(
     // Register for cleanup before writing so a partially written file is
     // removed even if bundling fails.
     let guard = CleanupGuard(vec![bundle_path.clone()]);
-    run_bundle_for_compile(&flags, &compile_flags, &bundle_path).await?;
+    let needs_npm_embed =
+      run_bundle_for_compile(&flags, &compile_flags, &bundle_path).await?;
+    flags.internal.compile_bundle_embed_node_modules = needs_npm_embed;
     compile_flags.source_file = bundle_path.to_string_lossy().into_owned();
     flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
     Some(guard)
@@ -209,23 +211,144 @@ pub async fn compile(
   }
 }
 
+/// Bundles the entrypoint and writes the result to `bundle_path`. Returns
+/// `true` when the bundle needs the npm tree embedded in the binary, i.e.
+/// esbuild's CJS-from-ESM wrapper appears in the output and runtime
+/// require()s against npm package paths will happen.
 async fn run_bundle_for_compile(
   flags: &Flags,
   compile_flags: &CompileFlags,
   bundle_path: &Path,
-) -> Result<(), AnyError> {
+) -> Result<bool, AnyError> {
   let bundle_flags = Arc::new(flags.clone());
+
+  // Always leave `.node` files external. esbuild has no loader for them
+  // and would error if it tried to inline a native binary; with this
+  // pattern the require() calls are emitted verbatim and resolved at
+  // runtime against the embedded VFS by the native addon loader.
+  let external = vec!["*.node".to_string()];
+
   let bytes = super::bundle::bundle_for_compile(
     bundle_flags,
     compile_flags.source_file.clone(),
+    external,
   )
   .boxed_local()
   .await?;
 
-  std::fs::write(bundle_path, &bytes).with_context(|| {
+  // The bundle is written next to the working directory, so rewrite paths
+  // relative to that directory.
+  let bundle_dir = bundle_path.parent().unwrap_or_else(|| Path::new("."));
+
+  // esbuild's CJS-from-ESM wrapper hardcodes the absolute on-disk path of
+  // each CJS module it imports. At runtime the embedded VFS is mounted
+  // somewhere else (a temp dir under the user's $TMPDIR), so those paths
+  // miss. Rewrite each such literal to a runtime-relative resolution
+  // against `import.meta.url` so it survives the relocation.
+  let RewriteResult {
+    bytes: rewritten,
+    rewrote_paths,
+  } = rewrite_absolute_bundle_paths(&bytes, bundle_dir)?;
+
+  std::fs::write(bundle_path, &rewritten).with_context(|| {
     format!("Writing bundled entrypoint to '{}'", bundle_path.display())
   })?;
-  Ok(())
+  Ok(rewrote_paths)
+}
+
+struct RewriteResult {
+  bytes: Vec<u8>,
+  rewrote_paths: bool,
+}
+
+fn rewrite_absolute_bundle_paths(
+  bundle_bytes: &[u8],
+  bundle_dir: &Path,
+) -> Result<RewriteResult, AnyError> {
+  let src = std::str::from_utf8(bundle_bytes)
+    .context("Bundle output is not valid UTF-8")?;
+  // Only rewrite paths that actually exist on disk at build time — these are
+  // the ones the bundler emitted referring to files it expects to be
+  // reachable through the VFS at runtime.
+  Ok(rewrite_absolute_bundle_paths_inner(src, bundle_dir, |p| {
+    p.exists()
+  }))
+}
+
+/// Core of [`rewrite_absolute_bundle_paths`], parameterized over the
+/// build-time existence check so it can be unit-tested with synthetic paths.
+fn rewrite_absolute_bundle_paths_inner(
+  src: &str,
+  bundle_dir: &Path,
+  path_exists: impl Fn(&Path) -> bool,
+) -> RewriteResult {
+  // Match string literals that look like an absolute path to a JS/JSON source
+  // file: either POSIX (`/a/b.js`) or a Windows drive-letter path
+  // (`C:\a\b.js` / `C:/a/b.js`). Because the bundle is JS source, a Windows
+  // path's separators arrive JS-escaped as `\\`, which the body matches as
+  // ordinary (non-`"`) characters. Conservative on extension on purpose — we
+  // don't want to rewrite arbitrary user-provided strings.
+  //
+  // Load-bearing assumption: every absolute-path literal we match is an
+  // external `require(...)` argument, i.e. a *value* position where wrapping
+  // it in `__internalResolveBundlePath(...)` stays valid JS. This holds
+  // because esbuild emits *relative* keys (no leading `/`) for the inlined
+  // `__commonJS` module map, so the only absolute literals left in the output
+  // are at external require call sites. If esbuild ever emitted an absolute
+  // `__commonJS` key (e.g. via a different `absWorkingDir`/outbase), this
+  // would rewrite it into `{ __internalResolveBundlePath("...")(...) {...} }`,
+  // a syntax error — the spec tests under `tests/specs/compile/bundle` would
+  // catch that. A genuine user string literal pointing at an existing file on
+  // disk would also be rewritten, but the build-time existence check below
+  // keeps that to paths that really resolve through the VFS.
+  let pattern = lazy_regex::regex!(
+    r#""((?:[A-Za-z]:)?[\\/][^"\n]+\.(?:js|cjs|mjs|json))""#
+  );
+
+  let mut any_rewrite = false;
+  let rewritten = pattern.replace_all(src, |caps: &regex::Captures<'_>| {
+    // Collapse JS-escaped backslashes (`C:\\a\\b.js`) back to real
+    // separators before touching the filesystem.
+    let abs = caps.get(1).unwrap().as_str().replace("\\\\", "\\");
+    let path = Path::new(&abs);
+    if !path_exists(path) {
+      return caps[0].to_string();
+    }
+    // Rewrite to a path relative to the bundle file. This is correct only
+    // because the VFS embeds `node_modules` at the same cwd-relative offset
+    // from the bundle that `diff_paths` computes here (bundle_dir =
+    // initial_cwd at build time, resolved at runtime against
+    // `import.meta.url`). See `fill_npm_vfs` in cli/standalone/binary.rs,
+    // which preserves that cwd-relative layout when populating the VFS.
+    let Some(rel) = pathdiff::diff_paths(path, bundle_dir) else {
+      return caps[0].to_string();
+    };
+    any_rewrite = true;
+    let rel_str: String = rel.to_string_lossy().replace('\\', "/");
+    format!("__internalResolveBundlePath({:?})", rel_str.as_str())
+  });
+
+  if !any_rewrite {
+    return RewriteResult {
+      bytes: src.as_bytes().to_vec(),
+      rewrote_paths: false,
+    };
+  }
+
+  let prefix = r#"// Injected by deno compile --bundle: resolve absolute paths emitted by
+// esbuild's CJS-from-ESM wrapper against the bundle file's runtime
+// location instead of the build-time absolute path.
+import { fileURLToPath as __internalFileURLToPath } from "node:url";
+import * as __internalPath from "node:path";
+const __internalBundleDir = __internalPath.dirname(__internalFileURLToPath(import.meta.url));
+function __internalResolveBundlePath(rel) {
+  return __internalPath.join(__internalBundleDir, rel);
+}
+"#;
+  RewriteResult {
+    bytes: format!("{prefix}{rewritten}").into_bytes(),
+    rewrote_paths: true,
+  }
 }
 
 async fn compile_binary(
@@ -847,5 +970,59 @@ mod test {
     run_test("C:\\my-exe.exe", Some("windows"), "C:\\my-exe.exe");
     run_test("C:\\my-exe.0.1.2", Some("windows"), "C:\\my-exe.0.1.2.exe");
     run_test("my-exe-0.1.2", Some("linux"), "my-exe-0.1.2");
+  }
+
+  #[test]
+  fn test_rewrite_absolute_bundle_paths_native() {
+    // Use the platform-native absolute path layout so this exercises the
+    // real shape esbuild emits on each OS. On Windows the require() string in
+    // the bundle is a drive-letter path with JS-escaped backslashes
+    // (`C:\\proj\\dist\\pkg\\index.js`), which the previous Unix-only regex
+    // never matched — leaving the require pointed at a non-existent
+    // build-time path at runtime.
+    let bundle_dir = if cfg!(windows) {
+      PathBuf::from("C:\\proj\\dist")
+    } else {
+      PathBuf::from("/proj/dist")
+    };
+    let abs = bundle_dir.join("pkg").join("index.js");
+    // Escape backslashes the way they appear inside a JS string literal.
+    let abs_in_js = abs.to_string_lossy().replace('\\', "\\\\");
+    let src = format!("var m = require(\"{abs_in_js}\");\n");
+
+    let result =
+      rewrite_absolute_bundle_paths_inner(&src, &bundle_dir, |_| true);
+
+    assert!(result.rewrote_paths);
+    let out = String::from_utf8(result.bytes).unwrap();
+    assert!(
+      out.contains(r#"__internalResolveBundlePath("pkg/index.js")"#),
+      "unexpected output: {out}"
+    );
+  }
+
+  #[test]
+  fn test_rewrite_absolute_bundle_paths_skips_missing() {
+    let bundle_dir = PathBuf::from("/proj/dist");
+    let src = "var m = require(\"/does/not/exist.js\");\n";
+    let result =
+      rewrite_absolute_bundle_paths_inner(src, &bundle_dir, |_| false);
+    assert!(!result.rewrote_paths);
+    assert_eq!(result.bytes.as_slice(), src.as_bytes());
+  }
+
+  #[test]
+  fn test_rewrite_absolute_bundle_paths_skips_relative_key() {
+    // esbuild emits *relative* keys (no leading `/`) for inlined
+    // `__commonJS` modules. Those are object-literal keys, not require()
+    // arguments — rewriting one into `__internalResolveBundlePath("...")`
+    // would be a syntax error. The leading-separator anchor in the pattern
+    // keeps them untouched even when the path exists on disk (`|_| true`).
+    let bundle_dir = PathBuf::from("/proj/dist");
+    let src = "var b = { \"pkg/index.js\"(exports, module) { module.exports = 1; } };\n";
+    let result =
+      rewrite_absolute_bundle_paths_inner(src, &bundle_dir, |_| true);
+    assert!(!result.rewrote_paths);
+    assert_eq!(result.bytes.as_slice(), src.as_bytes());
   }
 }

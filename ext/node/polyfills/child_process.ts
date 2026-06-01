@@ -529,7 +529,7 @@ function execFile(
     shell: execOptions.shell,
     signal: execOptions.signal,
     uid: execOptions.uid,
-    windowsHide: !!execOptions.windowsHide,
+    windowsHide: execOptions.windowsHide !== false,
     windowsVerbatimArguments: !!execOptions.windowsVerbatimArguments,
   };
 

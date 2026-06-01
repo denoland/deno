@@ -1,0 +1,6 @@
+{
+  "name": "@denotest/wasm-esm",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "main.mjs"
+}
