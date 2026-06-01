@@ -522,22 +522,21 @@ class MultipartParser {
 
           headerText = "";
 
-          if (!latin1Name) {
-            continue; // Skip, unknown name
-          }
-
-          const name = decodeLatin1StringAsUtf8(latin1Name);
-          if (latin1Filename) {
-            const blob = new Blob([content], {
-              type: headers.get("Content-Type") || "application/octet-stream",
-            });
-            formData.append(
-              name,
-              blob,
-              decodeLatin1StringAsUtf8(latin1Filename),
-            );
-          } else {
-            formData.append(name, core.decode(content));
+          // Skip nameless parts, but still advance past the matched delimiter.
+          if (latin1Name) {
+            const name = decodeLatin1StringAsUtf8(latin1Name);
+            if (latin1Filename) {
+              const blob = new Blob([content], {
+                type: headers.get("Content-Type") || "application/octet-stream",
+              });
+              formData.append(
+                name,
+                blob,
+                decodeLatin1StringAsUtf8(latin1Filename),
+              );
+            } else {
+              formData.append(name, core.decode(content));
+            }
           }
 
           if (delimiterType === 2) {

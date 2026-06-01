@@ -265,6 +265,34 @@ Deno.test(
   },
 );
 
+Deno.test(
+  async function bodyMultipartFormDataSkipsNamelessPartAndParsesNextPart() {
+    const boundary = "AaB03x";
+    const payload = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; filename="skip.txt"',
+      "Content-Type: text/plain",
+      "",
+      "skip me",
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="field"',
+      "",
+      "value",
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const body = buildBody(
+      new TextEncoder().encode(payload),
+      new Headers({
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      }),
+    );
+
+    const formData = await body.formData();
+    assertEquals(formData.get("field"), "value");
+  },
+);
+
 Deno.test(async function bodyBadResourceError() {
   const file = await Deno.open("README.md");
   file.close();
