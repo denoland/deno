@@ -3,8 +3,8 @@
   "tests": {
     // Regression test for https://github.com/denoland/deno/issues/24916.
     // A package whose `postinstall` runs `node -e "..."` must succeed even
-    // when there is no `node` binary on `PATH` (the script is run through
-    // `deno eval` instead).
+    // when there is no `node` binary on `PATH` (the inline script is run
+    // through Deno instead).
     "node_eval_postinstall_without_node_binary": {
       "steps": [
         {
