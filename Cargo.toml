@@ -506,9 +506,6 @@ opt-level = 3
 [profile.dev.package.sha2]
 opt-level = 3
 
-[profile.dev.package.deno_node]
-opt-level = 3
-
 [profile.release.package.async-compression]
 opt-level = 3
 [profile.release.package.base64-simd]
