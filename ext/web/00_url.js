@@ -535,6 +535,8 @@ function isSimpleSpecialHostCanonical(host, start, end) {
   }
 
   let labelStart = start;
+  let labelLen = 0;
+  let finalLabelAllDigits = true;
   for (let i = start; i < end; i++) {
     const code = StringPrototypeCharCodeAt(host, i);
     if (
@@ -544,9 +546,16 @@ function isSimpleSpecialHostCanonical(host, start, end) {
       return false;
     }
     if (code === 0x2e) {
+      if (labelLen === 0) return false;
       labelStart = i + 1;
+      labelLen = 0;
+      finalLabelAllDigits = true;
       continue;
     }
+    if (!isAsciiDigit(code)) {
+      finalLabelAllDigits = false;
+    }
+    labelLen++;
     if (
       i === labelStart + 3 &&
       StringPrototypeCharCodeAt(host, labelStart) === 0x78 &&
@@ -557,7 +566,10 @@ function isSimpleSpecialHostCanonical(host, start, end) {
       return false;
     }
   }
-  return true;
+  return labelLen !== 0 && !finalLabelAllDigits &&
+    !(labelLen >= 2 &&
+      StringPrototypeCharCodeAt(host, labelStart) === 0x30 &&
+      StringPrototypeCharCodeAt(host, labelStart + 1) === 0x78);
 }
 
 function isSimpleSpecialPathCode(code) {

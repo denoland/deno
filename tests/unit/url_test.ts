@@ -125,6 +125,18 @@ Deno.test(function urlHostnameParsing() {
     TypeError,
     "Invalid URL",
   );
+  for (
+    const input of [
+      "http://c.0/",
+      "http://foo.123/",
+      "http://a.b.255/",
+      "http://foo.0x1/",
+    ]
+  ) {
+    assertThrows(() => new URL(input), TypeError, "Invalid URL");
+    assertEquals(URL.parse(input), null);
+    assertEquals(URL.canParse(input), false);
+  }
   assertThrows(() => new URL("https://xn--/"), TypeError, "Invalid URL");
 
   // Special query percent-encoding.

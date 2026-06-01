@@ -259,15 +259,22 @@ fn simple_special_host_is_canonical(host: &[u8]) -> bool {
 
   let mut label_len = 0;
   let mut label_start = 0;
+  let mut final_label_all_digits = true;
   for (i, &byte) in host.iter().enumerate() {
     match byte {
-      b'a'..=b'z' | b'0'..=b'9' | b'-' => label_len += 1,
+      b'a'..=b'z' | b'0'..=b'9' | b'-' => {
+        if !byte.is_ascii_digit() {
+          final_label_all_digits = false;
+        }
+        label_len += 1;
+      }
       b'.' => {
         if label_len == 0 {
           return false;
         }
         label_len = 0;
         label_start = i + 1;
+        final_label_all_digits = true;
       }
       _ => return false,
     }
@@ -276,6 +283,8 @@ fn simple_special_host_is_canonical(host: &[u8]) -> bool {
     }
   }
   label_len != 0
+    && !final_label_all_digits
+    && !(label_len >= 2 && &host[label_start..label_start + 2] == b"0x")
 }
 
 #[allow(dead_code, reason = "used in JS")]
