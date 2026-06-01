@@ -1,13 +1,17 @@
 // Two CJS modules using the `Object.defineProperty(exports, "name", { get })`
 // pattern that TypeScript emits when targeting CommonJS, and that npm
-// packages like `@opentelemetry/api` ship in their CJS build. `.cjs`
-// extension so the runtime classifies them as CJS without needing a
-// `package.json` with `"type": "commonjs"`.
+// packages like `@opentelemetry/api` ship in their CJS build. `.cjs` for
+// `cjs_pkg` and `.cts` for `inner` so the runtime classifies them as CJS
+// without needing a `package.json` with `"type": "commonjs"`, while still
+// exercising the TypeScript transpile branch of the host-FS require path.
 Deno.writeTextFileSync(
-  "inner.cjs",
+  "inner.cts",
   `"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.value = 42;
+// TypeScript-only syntax — if the host-FS require path doesn't transpile
+// this, V8 throws "Unexpected token" before the module can run.
+const value: number = 42;
+exports.value = value satisfies number;
 `,
 );
 Deno.writeTextFileSync(
@@ -15,7 +19,7 @@ Deno.writeTextFileSync(
   `"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.value = void 0;
-const inner_1 = require("./inner.cjs");
+const inner_1 = require("./inner.cts");
 Object.defineProperty(exports, "value", {
   enumerable: true,
   get: function () { return inner_1.value; },
@@ -24,7 +28,7 @@ Object.defineProperty(exports, "value", {
 );
 // The entry uses a dynamic import the compile-time graph walker can't
 // statically follow — `Function("p", "return import(p)")` evades AST
-// analysis cleanly. That keeps `cjs_pkg.cjs` and `inner.cjs` out of
+// analysis cleanly. That keeps `cjs_pkg.cjs` and `inner.cts` out of
 // the embedded VFS, forcing the host-FS fallback paths exercised by
 // this regression test.
 Deno.writeTextFileSync(
