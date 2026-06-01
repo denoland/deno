@@ -1222,12 +1222,9 @@ Deno.test("inspector_break_on_first_line_in_test", async () => {
 // `NodeRuntime.notifyWhenWaitingForDisconnect` (as Chrome DevTools does)
 // before exiting; otherwise an in-progress Performance recording is dropped
 // the moment the test finishes.
-Deno.test("inspector_test_waits_for_debugger_disconnect", async () => {
-  if (Deno.build.os === "windows") return;
-
-  const script = `${testdataPath}/inspector_test.js`;
+async function assertTestWaitsForDebuggerDisconnect(args: string[]) {
   const tester = await InspectorTester.create(
-    ["test", "-A", "--inspect-brk=0", script],
+    args,
     {
       notificationFilter: ignoreScriptParsed,
       env: { NO_COLOR: "1" },
@@ -1285,6 +1282,70 @@ Deno.test("inspector_test_waits_for_debugger_disconnect", async () => {
   } finally {
     tester.kill();
     await tester.waitForExit();
+  }
+}
+
+Deno.test("inspector_test_waits_for_debugger_disconnect", async () => {
+  if (Deno.build.os === "windows") return;
+
+  const script = `${testdataPath}/inspector_test.js`;
+  await assertTestWaitsForDebuggerDisconnect([
+    "test",
+    "-A",
+    "--inspect-brk=0",
+    script,
+  ]);
+});
+
+Deno.test("inspector_test_coverage_does_not_block_shutdown", async () => {
+  const coverageDir = await Deno.makeTempDir();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  try {
+    const script = `${testdataPath}/inspector_test.js`;
+
+    // `--coverage` uses a local blocking inspector session internally. It is
+    // mutually exclusive with `--inspect-brk`, but it still exercises the
+    // shutdown ordering that must stop coverage before waiting for inspector
+    // sessions to disconnect.
+    const child = new Deno.Command(Deno.execPath(), {
+      args: ["test", "-A", `--coverage=${coverageDir}`, script],
+      stdout: "piped",
+      stderr: "piped",
+      env: { NO_COLOR: "1" },
+    }).spawn();
+
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // Process may have exited between the timeout firing and kill.
+      }
+    }, 10_000);
+
+    const output = await child.output();
+    const stdout = new TextDecoder().decode(output.stdout);
+    const stderr = new TextDecoder().decode(output.stderr);
+    assert(
+      !timedOut,
+      `deno test --coverage did not exit cleanly.\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+    );
+    assertEquals(output.code, 0, `stdout:\n${stdout}\nstderr:\n${stderr}`);
+    assertStringIncludes(stdout, "basic test ... ok");
+    const coverageFiles = [];
+    for await (const entry of Deno.readDir(coverageDir)) {
+      if (entry.isFile) coverageFiles.push(entry.name);
+    }
+    assert(
+      coverageFiles.length > 0,
+      `Expected coverage output.\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+    );
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+    await Deno.remove(coverageDir, { recursive: true });
   }
 });
 
