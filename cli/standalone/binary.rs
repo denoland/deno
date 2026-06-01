@@ -973,10 +973,19 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     // `as_valid_serialized_for_system` and recursively `read_dir`s every
     // package folder, then the Managed branch below derives the snapshot
     // again. Bounded and compile-only, so not worth deduplicating now.
+    // For BYONM the addon scan walks the workspace `node_modules` trees, so
+    // it needs the workspace root (managed npm ignores it).
+    let workspace_root = self
+      .cli_options
+      .workspace()
+      .root_dir_url()
+      .to_file_path()
+      .ok();
     let needs_for_native_addons = !needs_for_cjs_wrapper
       && !super::native_addons::find_native_addon_packages(
         self.npm_resolver,
         &self.npm_system_info,
+        workspace_root.as_deref(),
       )?
       .is_empty();
     if !needs_for_cjs_wrapper && !needs_for_native_addons {

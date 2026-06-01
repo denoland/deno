@@ -1010,4 +1010,19 @@ mod test {
     assert!(!result.rewrote_paths);
     assert_eq!(result.bytes.as_slice(), src.as_bytes());
   }
+
+  #[test]
+  fn test_rewrite_absolute_bundle_paths_skips_relative_key() {
+    // esbuild emits *relative* keys (no leading `/`) for inlined
+    // `__commonJS` modules. Those are object-literal keys, not require()
+    // arguments — rewriting one into `__internalResolveBundlePath("...")`
+    // would be a syntax error. The leading-separator anchor in the pattern
+    // keeps them untouched even when the path exists on disk (`|_| true`).
+    let bundle_dir = PathBuf::from("/proj/dist");
+    let src = "var b = { \"pkg/index.js\"(exports, module) { module.exports = 1; } };\n";
+    let result =
+      rewrite_absolute_bundle_paths_inner(src, &bundle_dir, |_| true);
+    assert!(!result.rewrote_paths);
+    assert_eq!(result.bytes.as_slice(), src.as_bytes());
+  }
 }
