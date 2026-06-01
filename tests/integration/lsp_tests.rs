@@ -14897,6 +14897,70 @@ fn lsp_testing_api_failure() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/17119.
+// A module containing a test with an empty name throws "The test name can't
+// be empty" during evaluation. Previously this could make the language
+// server panic and the test run never terminate. The run should instead
+// finish, reporting the uncaught error.
+#[test(timeout = 300)]
+fn lsp_testing_api_empty_test_name() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("./deno.json", json!({}).to_string());
+  let file = temp_dir.source_file(
+    "test.ts",
+    "Deno.test(\"valid\", () => {});\nDeno.test(\"\", () => {});\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testModule");
+  let params: TestModuleNotificationParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.text_document.uri.as_str(), file.uri().as_str());
+  // Both the valid test and the empty-named test are statically collected.
+  assert_eq!(params.tests.len(), 2);
+  let res = client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+  assert_eq!(res.enqueued.len(), 1);
+  // Drain progress notifications until the run ends. The run must terminate
+  // (rather than hang or panic) and surface the empty-name error.
+  let mut saw_empty_name_error = false;
+  loop {
+    let notification = client
+      .read_notification_with_method::<Value>("deno/testRunProgress")
+      .unwrap();
+    let message = notification
+      .as_object()
+      .unwrap()
+      .get("message")
+      .unwrap()
+      .as_object()
+      .unwrap();
+    let kind = message.get("type").and_then(|v| v.as_str());
+    if kind == Some("failed") {
+      let text = json!(message.get("messages")).to_string();
+      if text.contains("The test name can't be empty") {
+        saw_empty_name_error = true;
+      }
+    }
+    if kind == Some("end") {
+      break;
+    }
+  }
+  assert!(
+    saw_empty_name_error,
+    "expected an empty test name error to be reported",
+  );
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_testing_api_describe_it_failure() {
   let context = TestContextBuilder::new()
