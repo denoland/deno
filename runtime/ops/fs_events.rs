@@ -29,6 +29,8 @@ use notify::EventKind;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
+use notify::event::AccessKind;
+use notify::event::AccessMode;
 use notify::event::Event as NotifyEvent;
 use notify::event::ModifyKind;
 use tokio::sync::mpsc;
@@ -131,6 +133,16 @@ impl From<NotifyEvent> for FsEvent {
       flag,
     }
   }
+}
+
+fn is_ignored_notify_event(event: &NotifyEvent) -> bool {
+  // notify 8 added inotify OPEN events to the default watch mask. Deno did not
+  // expose these with notify 6, and forwarding them can self-amplify because
+  // our path filtering performs filesystem reads.
+  matches!(
+    event.kind,
+    EventKind::Access(AccessKind::Open(AccessMode::Any))
+  )
 }
 
 struct WatchSender {
@@ -297,9 +309,11 @@ fn ensure_watcher(
   let sender_clone = senders.clone();
   let watcher: RecommendedWatcher = Watcher::new(
     move |res: Result<NotifyEvent, NotifyError>| {
-      let res2 = res
-        .map(FsEvent::from)
-        .map_err(|e| FsEventsError::Notify(JsNotifyError(e)));
+      let res2 = match res {
+        Ok(event) if is_ignored_notify_event(&event) => return,
+        Ok(event) => Ok(FsEvent::from(event)),
+        Err(e) => Err(FsEventsError::Notify(JsNotifyError(e))),
+      };
       for ws in sender_clone.lock().iter() {
         // Ignore result, if send failed it means that watcher was already closed,
         // but not all messages have been flushed.
@@ -491,5 +505,35 @@ async fn op_fs_events_poll(
     Some(Ok(value)) => Ok(Some(value)),
     Some(Err(err)) => Err(FsEventsError::Notify(JsNotifyError(err))),
     None => Ok(None),
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn notify_event(kind: EventKind) -> NotifyEvent {
+    NotifyEvent {
+      kind,
+      paths: vec![PathBuf::from("file.txt")],
+      attrs: Default::default(),
+    }
+  }
+
+  #[test]
+  fn ignores_notify_open_any_events() {
+    let event =
+      notify_event(EventKind::Access(AccessKind::Open(AccessMode::Any)));
+
+    assert!(is_ignored_notify_event(&event));
+  }
+
+  #[test]
+  fn preserves_notify_close_write_as_access() {
+    let event =
+      notify_event(EventKind::Access(AccessKind::Close(AccessMode::Write)));
+
+    assert!(!is_ignored_notify_event(&event));
+    assert_eq!(FsEvent::from(event).kind, "access");
   }
 }

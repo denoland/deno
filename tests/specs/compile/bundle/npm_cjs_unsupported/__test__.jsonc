@@ -1,8 +1,9 @@
 {
-  // CJS npm packages are currently externalized by esbuild as a runtime
-  // require() against node_modules, which --bundle intentionally strips. This
-  // is a known limitation; the test locks in the current failure mode and
-  // should be removed once CJS packages are inlined into the bundle.
+  // CJS npm packages with a default export are inlined into the bundle, but
+  // their default-export interop is not yet correct: the default import
+  // resolves to a non-callable value at runtime. This is a known limitation;
+  // the test locks in the current failure mode and should be removed once CJS
+  // default-export interop works in --bundle.
   "tempDir": true,
   "steps": [{
     "args": "install",

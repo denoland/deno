@@ -43,7 +43,6 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::Lazy;
-use serde::Serialize;
 use tower_lsp::lsp_types as lsp;
 use weak_table::PtrWeakKeyHashMap;
 use weak_table::WeakValueHashMap;
@@ -207,8 +206,8 @@ fn data_url_to_uri(url: &Url) -> Option<Uri> {
   Some(uri)
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, deno_core::ToV8)]
+#[to_v8(untagged)]
 pub enum DocumentText {
   Static(&'static str),
   Arc(Arc<str>),
