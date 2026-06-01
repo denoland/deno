@@ -748,7 +748,7 @@ fn format_embedded_html(
     language: lang_opts.clone(),
   };
   let text = markup_fmt::format_text(text, language, &options, |code, _| {
-    Ok::<_, std::convert::Infallible>(code.into())
+    Ok::<_, deno_core::anyhow::Error>(code.into())
   })?;
   Ok(Some(text.to_string()))
 }
