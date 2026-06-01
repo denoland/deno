@@ -28,7 +28,7 @@
     },
     {
       "args": "run -A --node-modules-dir=auto main.ts",
-      "output": "main.out"
+      "output": "main_node_modules_cached.out"
     },
     {
       "args": "run -A --reload --node-modules-dir=auto main.ts",
