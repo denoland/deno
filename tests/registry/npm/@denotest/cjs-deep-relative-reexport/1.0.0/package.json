@@ -1,0 +1,5 @@
+{
+  "name": "@denotest/cjs-deep-relative-reexport",
+  "version": "1.0.0",
+  "main": "dist/cjs/api/max/index.js"
+}
