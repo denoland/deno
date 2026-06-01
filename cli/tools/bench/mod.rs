@@ -15,7 +15,6 @@ use deno_core::error::JsError;
 use deno_core::futures::StreamExt;
 use deno_core::futures::future;
 use deno_core::futures::stream;
-use deno_core::serde_v8;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::v8;
@@ -88,10 +87,11 @@ pub enum BenchEvent {
   UncaughtError(String, Box<JsError>),
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, deno_core::FromV8)]
 #[serde(rename_all = "camelCase")]
 pub enum BenchResult {
   Ok(BenchStats),
+  #[from_v8(serde)]
   Failed(Box<JsError>),
 }
 
@@ -115,7 +115,7 @@ pub struct BenchDescription {
   pub warmup: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, deno_core::FromV8)]
 #[serde(rename_all = "camelCase")]
 pub struct BenchStats {
   pub n: u64,
@@ -267,8 +267,7 @@ async fn bench_specifier_inner(
       .await?;
     deno_core::scope!(scope, &mut worker.js_runtime);
     let result = v8::Local::new(scope, result);
-    let result = serde_v8::from_v8::<BenchResult>(scope, result)
-      .map_err(JsErrorBox::from_err)
+    let result = <BenchResult as deno_core::FromV8>::from_v8(scope, result)
       .map_err(|e| CoreErrorKind::JsBox(e).into_box())?;
     sender
       .send(BenchEvent::Result(desc.id, result))
