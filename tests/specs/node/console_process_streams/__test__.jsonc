@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "console_process_streams": {
+      "args": "run main.mjs",
+      "output": "main.out"
+    }
+  }
+}

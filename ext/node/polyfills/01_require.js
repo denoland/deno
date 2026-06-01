@@ -53,8 +53,10 @@ const {
   JSONParse,
   ObjectCreate,
   ObjectDefineProperty,
+  ObjectDefineProperties,
   ObjectEntries,
   ObjectGetOwnPropertyDescriptor,
+  ObjectGetOwnPropertyDescriptors,
   ObjectGetPrototypeOf,
   ObjectHasOwn,
   ObjectKeys,
@@ -3303,9 +3305,24 @@ function initialize(args) {
       "ext:deno_node/internal_binding/stream_wrap.ts",
     );
     op_stream_base_register_state(streamBaseState);
-    nativeModuleExports["internal/console/constructor"].bindStreamsLazy(
+    const nodeConsoleConstructor =
+      nativeModuleExports["internal/console/constructor"];
+    nodeConsoleConstructor.bindStreamsLazy(
       nativeModuleExports["console"],
       nativeModuleExports["process"],
+    );
+    const nodeConsole = new nodeConsoleConstructor.Console({
+      stdout: { write() {} },
+      stderr: { write() {} },
+      ignoreErrors: true,
+    });
+    nodeConsoleConstructor.bindStreamsLazy(
+      nodeConsole,
+      nativeModuleExports["process"],
+    );
+    ObjectDefineProperties(
+      globalThis.console,
+      ObjectGetOwnPropertyDescriptors(nodeConsole),
     );
     // Pre-enable any trace event categories requested via the spawning
     // process's --trace-event-categories flag (propagated as an env var by
