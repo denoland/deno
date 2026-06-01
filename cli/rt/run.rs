@@ -97,6 +97,7 @@ use sys_traits::EnvCurrentDir;
 use crate::binary::DenoCompileModuleSource;
 use crate::binary::StandaloneData;
 use crate::binary::StandaloneModules;
+use crate::binary::transpile_runtime_module;
 use crate::code_cache::DenoCompileCodeCache;
 use crate::file_system::DenoRtSys;
 use crate::file_system::FileBackedVfs;
@@ -649,21 +650,41 @@ impl ModuleLoader for EmbeddedModuleLoader {
     options: ModuleLoadOptions,
   ) -> deno_core::ModuleLoadResponse {
     if original_specifier.scheme() == "data" {
-      let data_url_text =
-        match deno_media_type::data_url::RawDataUrl::parse(original_specifier)
-          .and_then(|url| url.decode())
-        {
-          Ok(response) => response,
-          Err(err) => {
-            return deno_core::ModuleLoadResponse::Sync(Err(
-              JsErrorBox::type_error(format!("{:#}", err)),
-            ));
-          }
-        };
+      let raw_data_url = match deno_media_type::data_url::RawDataUrl::parse(
+        original_specifier,
+      ) {
+        Ok(raw) => raw,
+        Err(err) => {
+          return deno_core::ModuleLoadResponse::Sync(Err(
+            JsErrorBox::type_error(format!("{:#}", err)),
+          ));
+        }
+      };
+      let media_type = raw_data_url.media_type();
+      let data_url_text = match raw_data_url.decode() {
+        Ok(text) => text,
+        Err(err) => {
+          return deno_core::ModuleLoadResponse::Sync(Err(
+            JsErrorBox::type_error(format!("{:#}", err)),
+          ));
+        }
+      };
+      // Transpile when the data URL carries TypeScript/JSX, so compiled
+      // programs can dynamically import TypeScript built at runtime.
+      let code = match transpile_runtime_module(
+        original_specifier,
+        media_type,
+        data_url_text,
+      ) {
+        Ok(code) => code,
+        Err(err) => {
+          return deno_core::ModuleLoadResponse::Sync(Err(err));
+        }
+      };
       return deno_core::ModuleLoadResponse::Sync(Ok(
         deno_core::ModuleSource::new(
           deno_core::ModuleType::JavaScript,
-          ModuleSourceCode::String(data_url_text.into()),
+          ModuleSourceCode::String(code.into()),
           original_specifier,
           None,
         ),
@@ -710,6 +731,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
                       "Failed decoding \"{specifier}\": {err}"
                     ))
                   })?;
+              // Transpile when the blob carries TypeScript/JSX, so compiled
+              // programs can dynamically import TypeScript built at runtime.
+              let text =
+                transpile_runtime_module(&specifier, media_type, text)?;
               ModuleSourceCode::String(text.into())
             }
           };

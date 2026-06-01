@@ -3520,6 +3520,7 @@ version = "2.8.1"
 dependencies = [
  "async-trait",
  "bincode",
+ "deno_ast",
  "deno_cache_dir",
  "deno_config",
  "deno_core",
