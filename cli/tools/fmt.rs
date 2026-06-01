@@ -1499,17 +1499,14 @@ fn get_resolved_json_config(
     dprint_plugin_json::configuration::ConfigurationBuilder::new();
 
   builder.deno();
-  builder.trailing_commas(
-    match options
-      .json_trailing_commas
-      .unwrap_or(JsonTrailingCommaKind::Jsonc)
-    {
+  if let Some(json_trailing_commas) = options.json_trailing_commas {
+    builder.trailing_commas(match json_trailing_commas {
       JsonTrailingCommaKind::Always => TrailingCommaKind::Always,
       JsonTrailingCommaKind::Jsonc => TrailingCommaKind::Jsonc,
       JsonTrailingCommaKind::Maintain => TrailingCommaKind::Maintain,
       JsonTrailingCommaKind::Never => TrailingCommaKind::Never,
-    },
-  );
+    });
+  }
 
   if let Some(use_tabs) = options.use_tabs {
     builder.use_tabs(use_tabs);
