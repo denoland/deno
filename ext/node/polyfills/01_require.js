@@ -14,6 +14,7 @@ import {
   op_module_hooks_respond_load,
   op_napi_open,
   op_node_has_child_ipc_pipe,
+  op_node_strip_typescript_types,
   op_require_as_file_path,
   op_require_break_on_next_statement,
   op_require_can_parse_as_esm,
@@ -81,6 +82,7 @@ const {
   StringPrototypeSlice,
   StringPrototypeSplit,
   StringPrototypeStartsWith,
+  SyntaxError,
   TypeError,
 } = primordials;
 
@@ -341,6 +343,8 @@ const lazyNodeModules = {
   "internal/repl": () => internalRepl().default,
   "fs/promises": () =>
     core.loadExtScript("ext:deno_node/fs/promises.ts").fsPromises,
+  "test/reporters": () =>
+    core.loadExtScript("ext:deno_node/test/reporters.ts").default,
   "assert/strict": () => assertStrict().default,
   "internal/event_target": () => internalEventTarget().default,
   "internal/fs/utils": () => internalFsUtils().default,
@@ -478,6 +482,7 @@ function setupBuiltinModules() {
   const schemelessBlockList = new SafeSet([
     "sqlite",
     "test",
+    "test/reporters",
   ]);
   function registerName(name) {
     // `internal/*` modules are only exposed under --expose-internals, so
@@ -2297,6 +2302,7 @@ function makeRequireFunction(mod) {
 // - C:/foo/...
 // - C:\foo\...
 const RE_START_OF_ABS_PATH = /^([/\\]|[a-zA-Z]:[/\\])/;
+const RE_URL_SCHEME = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
 
 function isAbsolute(filenameOrUrl) {
   return RE_START_OF_ABS_PATH.test(filenameOrUrl);
@@ -2344,7 +2350,7 @@ function isBuiltin(moduleName) {
 
   if (StringPrototypeStartsWith(moduleName, "node:")) {
     moduleName = StringPrototypeSlice(moduleName, 5);
-  } else if (moduleName === "test") {
+  } else if (moduleName === "test" || moduleName === "test/reporters") {
     // test is only a builtin if it has the "node:" scheme
     // see https://github.com/nodejs/node/blob/73025c4dec042e344eeea7912ed39f7b7c4a3991/test/parallel/test-module-isBuiltin.js#L14
     return false;
@@ -2378,6 +2384,144 @@ function getBuiltinModule(id) {
 Module.isBuiltin = isBuiltin;
 
 Module.createRequire = createRequire;
+
+function packageNameFromBareSpecifier(specifier) {
+  if (
+    op_require_is_request_relative(specifier) ||
+    isAbsolute(specifier) ||
+    RegExpPrototypeTest(RE_URL_SCHEME, specifier)
+  ) {
+    return null;
+  }
+
+  const parts = StringPrototypeSplit(specifier, "/");
+  if (parts[0] === "") {
+    return null;
+  }
+  if (StringPrototypeStartsWith(parts[0], "@")) {
+    if (parts.length < 2 || parts[1] === "") {
+      return specifier;
+    }
+    return `${parts[0]}/${parts[1]}`;
+  }
+  return parts[0];
+}
+
+function findClosestPackageJSON(filePath) {
+  let currentPath = stat(filePath) === 1 ? filePath : pathDirname(filePath);
+
+  while (true) {
+    const packageJsonPath = pathResolve(currentPath, "package.json");
+    if (op_require_read_package_scope(packageJsonPath)) {
+      return toRealPath(packageJsonPath);
+    }
+
+    const parentPath = pathDirname(currentPath);
+    if (parentPath === currentPath) {
+      return undefined;
+    }
+    currentPath = parentPath;
+  }
+}
+
+function basePathFromFileURLOrPath(base) {
+  if (base instanceof URL) {
+    if (base.protocol !== "file:") {
+      throw new internalErrors.ERR_INVALID_URL_SCHEME("file");
+    }
+    return op_require_as_file_path(base.href);
+  }
+  if (typeof base !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("base", "string", base);
+  }
+  if (StringPrototypeStartsWith(base, "file:")) {
+    return op_require_as_file_path(base);
+  }
+  return base;
+}
+
+function findPackageJSONForBareSpecifier(packageName, base) {
+  if (base === undefined) {
+    return undefined;
+  }
+
+  const basePath = basePathFromFileURLOrPath(base);
+  const baseDir = stat(basePath) === 1 ? basePath : pathDirname(basePath);
+  const parent = new Module("", null);
+  parent.filename = pathResolve(baseDir, "$deno$find_package_json.js");
+  parent.paths = Module._nodeModulePaths(baseDir);
+  const lookupPaths = Module._resolveLookupPaths(packageName, parent);
+
+  if (lookupPaths === null) {
+    return undefined;
+  }
+
+  for (let i = 0; i < lookupPaths.length; i++) {
+    const lookupPath = lookupPaths[i];
+    const candidatePackageJsonPaths = [
+      pathResolve(lookupPath, packageName, "package.json"),
+      pathResolve(lookupPath, "package.json"),
+    ];
+    for (let j = 0; j < candidatePackageJsonPaths.length; j++) {
+      const packageJsonPath = candidatePackageJsonPaths[j];
+      if (op_require_read_package_scope(packageJsonPath)) {
+        return toRealPath(packageJsonPath);
+      }
+    }
+  }
+  return undefined;
+}
+
+function pathFromResolvedFileUrl(resolved) {
+  if (!StringPrototypeStartsWith(resolved, "file:")) {
+    throw new internalErrors.ERR_INVALID_URL_SCHEME("file");
+  }
+  return op_require_as_file_path(resolved);
+}
+
+function resolveSpecifierForPackageJSON(specifier, base) {
+  if (specifier instanceof URL) {
+    return specifier.href;
+  }
+  specifier = String(specifier);
+  if (StringPrototypeStartsWith(specifier, "file:")) {
+    return specifier;
+  }
+  if (RegExpPrototypeTest(RE_URL_SCHEME, specifier)) {
+    return specifier;
+  }
+
+  let parentURL = "data:";
+  if (base !== undefined) {
+    if (base instanceof URL) {
+      parentURL = base.href;
+    } else if (typeof base === "string") {
+      parentURL = base;
+    } else {
+      throw new internalErrors.ERR_INVALID_ARG_TYPE("base", "string", base);
+    }
+  }
+  return op_module_default_resolve(specifier, parentURL);
+}
+
+function findPackageJSON(specifier, base = undefined) {
+  const specifierString = specifier instanceof URL
+    ? specifier.href
+    : String(specifier);
+  const packageName = packageNameFromBareSpecifier(specifierString);
+  if (packageName !== null) {
+    const packageJsonPath = findPackageJSONForBareSpecifier(packageName, base);
+    if (packageJsonPath !== undefined) {
+      return packageJsonPath;
+    }
+  }
+
+  const resolved = resolveSpecifierForPackageJSON(specifier, base);
+  const filePath = pathFromResolvedFileUrl(resolved);
+  return findClosestPackageJSON(filePath);
+}
+
+Module.findPackageJSON = findPackageJSON;
 
 Module._initPaths = function () {
   const paths = op_require_init_paths();
@@ -2974,6 +3118,81 @@ Module.findSourceMap = findSourceMap;
 Module.SourceMap = SourceMap;
 
 /**
+ * @param {string} code
+ * @param {{ mode?: "strip" | "transform", sourceMap?: boolean, sourceUrl?: string }} [options]
+ * @returns {string}
+ */
+export function stripTypeScriptTypes(code, options = undefined) {
+  if (typeof code !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("code", "string", code);
+  }
+  if (
+    options !== undefined &&
+    (typeof options !== "object" || options === null)
+  ) {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("options", "object", options);
+  }
+
+  const mode = options?.mode ?? "strip";
+  if (mode !== "strip" && mode !== "transform") {
+    throw new internalErrors.ERR_INVALID_ARG_VALUE(
+      "options.mode",
+      mode,
+      "must be one of: 'strip', 'transform'",
+    );
+  }
+
+  if (
+    options?.sourceMap !== undefined &&
+    typeof options.sourceMap !== "boolean"
+  ) {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(
+      "options.sourceMap",
+      "boolean",
+      options.sourceMap,
+    );
+  }
+  if (
+    options?.sourceUrl !== undefined &&
+    typeof options.sourceUrl !== "string"
+  ) {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(
+      "options.sourceUrl",
+      "string",
+      options.sourceUrl,
+    );
+  }
+
+  const sourceMap = options?.sourceMap === true;
+  if (mode === "strip" && sourceMap) {
+    throw new internalErrors.ERR_INVALID_ARG_VALUE(
+      "options.sourceMap",
+      sourceMap,
+      "must be one of: false, undefined",
+    );
+  }
+
+  let result;
+  try {
+    result = op_node_strip_typescript_types(code, mode, sourceMap);
+  } catch (err) {
+    if (mode === "strip") {
+      const syntaxError = new SyntaxError(err.message);
+      syntaxError.code = "ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX";
+      throw syntaxError;
+    }
+    throw err;
+  }
+
+  if (!sourceMap && options?.sourceUrl !== undefined) {
+    result += `\n\n//# sourceURL=${options.sourceUrl}`;
+  }
+  return result;
+}
+
+Module.stripTypeScriptTypes = stripTypeScriptTypes;
+
+/**
  * @param {string | URL} _specifier
  * @param {string | URL} _parentUrl
  * @param {{ parentURL: string | URL, data: any, transferList: any[] }} [_options]
@@ -3152,6 +3371,7 @@ internals.closeIdleConnections = closeIdleConnections;
 export {
   builtinModules,
   createRequire,
+  findPackageJSON,
   getBuiltinModule,
   isBuiltin,
   Module,

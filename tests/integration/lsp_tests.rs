@@ -8688,6 +8688,67 @@ fn lsp_completions_optional() {
 }
 
 #[test(timeout = 300)]
+fn lsp_completions_string_union_with_dot() {
+  // Regression test for https://github.com/denoland/deno/issues/28075
+  // Completing a string union literal that contains a `.` must replace the
+  // entire string contents, not just the text after the last dot.
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "type T = \"foo.bar\" | \"foo.baz\";\nconst x: T = \"foo.b\";\n"
+    }
+  }));
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (1, 19),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|i| i.label == "foo.bar")
+    .expect("expected a \"foo.bar\" completion item");
+  // The text edit must replace the whole string content (`foo.b`), spanning
+  // from just after the opening quote to the cursor, rather than relying on
+  // the editor's word-based replacement which would only replace `b`.
+  assert_eq!(
+    item.text_edit,
+    Some(lsp::CompletionTextEdit::InsertAndReplace(
+      lsp::InsertReplaceEdit {
+        new_text: "foo.bar".to_string(),
+        insert: lsp::Range {
+          start: lsp::Position {
+            line: 1,
+            character: 14,
+          },
+          end: lsp::Position {
+            line: 1,
+            character: 19,
+          },
+        },
+        replace: lsp::Range {
+          start: lsp::Position {
+            line: 1,
+            character: 14,
+          },
+          end: lsp::Position {
+            line: 1,
+            character: 19,
+          },
+        },
+      }
+    ))
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_completions_auto_import() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -9174,6 +9235,51 @@ fn lsp_npm_auto_import_and_quick_fix_byonm() {
       },
     ]),
   );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("existing_import.ts").unwrap()).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { say } from \"cowsay\";\n\nthink({ text: \"foo\" });\n",
+    },
+  }));
+  let list = client.get_completion_list(
+    url_to_uri(&temp_dir.url().join("existing_import.ts").unwrap())
+      .unwrap()
+      .as_str(),
+    (2, 5),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "think")
+    .unwrap();
+  let mut res = client.write_request("completionItem/resolve", item);
+  let obj = res.as_object_mut().unwrap();
+  obj.remove("documentation");
+  assert_eq!(
+    res,
+    json!({
+      "label": "think",
+      "labelDetails": {
+        "description": "cowsay",
+      },
+      "kind": 3,
+      "detail": "Update import from \"cowsay\"\n\nfunction think(options: IOptions): string",
+      "sortText": "￿16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 12 },
+            "end": { "line": 0, "character": 12 },
+          },
+          "newText": ", think",
+        },
+      ],
+    }),
+  );
   client.shutdown();
 }
 
@@ -9379,6 +9485,7 @@ fn lsp_completions_node_specifier() {
       "node:string_decoder",
       "node:sys",
       "node:test",
+      "node:test/reporters",
       "node:timers",
       "node:timers/promises",
       "node:tls",
@@ -10435,6 +10542,34 @@ fn lsp_auto_import_import_map_prefer_relative() {
         ],
       },
     ]),
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_completions_empty_tsx_react_jsx() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    r#"{ "compilerOptions": { "jsx": "react-jsx" } }"#,
+  );
+  let file_uri = url_to_uri(&temp_dir.url().join("file.tsx").unwrap()).unwrap();
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_raw(json!({
+    "textDocument": {
+      "uri": file_uri,
+      "languageId": "typescriptreact",
+      "version": 1,
+      "text": "",
+    }
+  }));
+  client.get_completion_list(
+    file_uri.as_str(),
+    (0, 0),
+    json!({ "triggerKind": 1 }),
   );
   client.shutdown();
 }
@@ -17739,6 +17874,80 @@ fn lsp_tsconfig_node_modules_dts_diagnostics() {
       },
     ]),
   );
+  client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/issues/33955 — with
+// `moduleResolution: "bundler"`, importing a subpath of an npm package whose
+// `package.json` doesn't list it under `exports` should not error in the LSP
+// when the subpath is a directory that contains an `index` declaration.
+#[test(timeout = 300)]
+fn lsp_tsconfig_module_resolution_bundler_dir_import() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "manual",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "tsconfig.json",
+    json!({
+      "compilerOptions": {
+        "moduleResolution": "bundler",
+        "lib": ["esnext", "dom"],
+      },
+    })
+    .to_string(),
+  );
+  // The package only declares `main` — no `exports` field, so subpath
+  // resolution falls back to the legacy node algorithm.
+  temp_dir.write(
+    "node_modules/some-pkg/package.json",
+    json!({
+      "name": "some-pkg",
+      "main": "./index.js",
+    })
+    .to_string(),
+  );
+  source_file(
+    temp_dir
+      .path()
+      .canonicalize()
+      .join("node_modules/some-pkg/index.d.ts"),
+    "export const root: number;\n",
+  );
+  // The subpath `some-pkg/text-box` is a directory with no `package.json` —
+  // Node's strict ESM resolution would refuse this with
+  // `ERR_UNSUPPORTED_DIR_IMPORT`, but a bundler-mode resolver should probe
+  // for an `index` file.
+  source_file(
+    temp_dir
+      .path()
+      .canonicalize()
+      .join("node_modules/some-pkg/text-box/index.js"),
+    "export const value = 1;\n",
+  );
+  source_file(
+    temp_dir
+      .path()
+      .canonicalize()
+      .join("node_modules/some-pkg/text-box/index.d.ts"),
+    "export const value: number;\n",
+  );
+  let file = temp_dir.source_file(
+    "main.ts",
+    r#"
+      import { value } from "some-pkg/text-box";
+      console.log(value);
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
   client.shutdown();
 }
 

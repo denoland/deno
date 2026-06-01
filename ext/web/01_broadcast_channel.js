@@ -138,12 +138,10 @@ class BroadcastChannel extends EventTarget {
     // Send to other listeners in this VM.
     dispatch(this, this[_name], new Uint8Array(data));
 
-    // Send to listeners in other VMs.
-    defer(() => {
-      if (!this[_closed]) {
-        op_broadcast_send(rid, this[_name], data);
-      }
-    });
+    // Send to listeners in other VMs. This must happen before returning from
+    // postMessage(), otherwise close() immediately after postMessage() can
+    // cancel the deferred send before other workers observe the message.
+    op_broadcast_send(rid, this[_name], data);
   }
 
   [refBroadcastChannel](ref) {
