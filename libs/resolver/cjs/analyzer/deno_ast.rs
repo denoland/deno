@@ -1,5 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_ast::ProgramRef;
@@ -111,31 +114,49 @@ impl super::ModuleForExportAnalysis for ParsedSource {
     }
   }
 
-  fn analyze_member_export_props(&self, member: &str) -> Option<Vec<String>> {
-    let stmts: Vec<&Stmt> = match self.program_ref() {
-      ProgramRef::Module(m) => m
-        .body
-        .iter()
-        .filter_map(|item| match item {
-          ModuleItem::Stmt(stmt) => Some(stmt),
-          ModuleItem::ModuleDecl(_) => None,
-        })
-        .collect(),
-      ProgramRef::Script(s) => s.body.iter().collect(),
+  fn analyze_member_export_props(&self) -> BTreeMap<String, Vec<String>> {
+    // Single walk of top-level statements: collect
+    //   `exports.MEMBER = IDENT`  →  exports_aliases[MEMBER] = IDENT
+    //   `IDENT.X = …`             →  ident_props[IDENT] += [X]
+    // then compose into `MEMBER → sorted/deduped [X]`. Only members
+    // whose IDENT also has at least one property assignment are kept,
+    // since the caller's narrowing semantics are "advertise exactly the
+    // names statically attached to MEMBER".
+    let mut exports_aliases: Vec<(String, String)> = Vec::new();
+    let mut ident_props: HashMap<String, Vec<String>> = HashMap::new();
+    let mut walk = |stmt: &Stmt| {
+      if let Some((member, ident)) = match_exports_member_to_ident(stmt) {
+        exports_aliases.push((member, ident));
+      } else if let Some((ident, prop)) = match_identifier_property(stmt) {
+        ident_props.entry(ident).or_default().push(prop);
+      }
     };
+    match self.program_ref() {
+      ProgramRef::Module(m) => {
+        for item in &m.body {
+          if let ModuleItem::Stmt(stmt) = item {
+            walk(stmt);
+          }
+        }
+      }
+      ProgramRef::Script(s) => {
+        for stmt in &s.body {
+          walk(stmt);
+        }
+      }
+    }
 
-    // Resolve `exports.MEMBER = <value>` to a top-level identifier.
-    let ident = find_member_value_ident(&stmts, member)?;
-
-    // Collect property names statically assigned to that identifier
-    // at the top level: `IDENT.X = ...`.
-    let mut props: Vec<String> = stmts
-      .iter()
-      .filter_map(|stmt| match_identifier_property_assignment(stmt, &ident))
-      .collect();
-    props.sort();
-    props.dedup();
-    Some(props)
+    let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (member, ident) in exports_aliases {
+      let Some(props) = ident_props.get(&ident) else {
+        continue;
+      };
+      let mut props = props.clone();
+      props.sort();
+      props.dedup();
+      out.insert(member, props);
+    }
+    out
   }
 }
 
@@ -194,34 +215,27 @@ fn match_module_exports_require_member(
   Some((spec, member_name))
 }
 
-/// In `stmts`, find `exports.MEMBER = IDENT` (or
-/// `module.exports.MEMBER = IDENT`) and return IDENT's name.
-fn find_member_value_ident(stmts: &[&Stmt], member: &str) -> Option<String> {
-  stmts.iter().find_map(|stmt| {
-    let assign = match stmt {
-      Stmt::Expr(e) => e.expr.as_assign()?,
-      _ => return None,
-    };
-    if assign.op != AssignOp::Assign {
-      return None;
-    }
-    let target_member = match &assign.left {
-      AssignTarget::Simple(SimpleAssignTarget::Member(m)) => m,
-      _ => return None,
-    };
-    if !is_exports_member(target_member, member) {
-      return None;
-    }
-    let ident = assign.right.as_ident()?;
-    Some(ident.sym.to_string())
-  })
+/// Match `exports.MEMBER = IDENT` (or `module.exports.MEMBER = IDENT`)
+/// and return `(MEMBER, IDENT)`.
+fn match_exports_member_to_ident(stmt: &Stmt) -> Option<(String, String)> {
+  let assign = match stmt {
+    Stmt::Expr(e) => e.expr.as_assign()?,
+    _ => return None,
+  };
+  if assign.op != AssignOp::Assign {
+    return None;
+  }
+  let target_member = match &assign.left {
+    AssignTarget::Simple(SimpleAssignTarget::Member(m)) => m,
+    _ => return None,
+  };
+  let member_name = exports_member_name(target_member)?;
+  let ident = assign.right.as_ident()?;
+  Some((member_name, ident.sym.to_string()))
 }
 
-/// Match `IDENT.X = …` and return `X`.
-fn match_identifier_property_assignment(
-  stmt: &Stmt,
-  ident: &str,
-) -> Option<String> {
+/// Match `IDENT.X = …` and return `(IDENT, X)`.
+fn match_identifier_property(stmt: &Stmt) -> Option<(String, String)> {
   let assign = match stmt {
     Stmt::Expr(e) => e.expr.as_assign()?,
     _ => return None,
@@ -234,38 +248,33 @@ fn match_identifier_property_assignment(
     _ => return None,
   };
   let obj_ident = m.obj.as_ident()?;
-  if &*obj_ident.sym != ident {
-    return None;
-  }
-  match &m.prop {
-    MemberProp::Ident(i) => Some(i.sym.to_string()),
+  let prop = match &m.prop {
+    MemberProp::Ident(i) => i.sym.to_string(),
     MemberProp::Computed(c) => match &*c.expr {
-      Expr::Lit(Lit::Str(s)) => s.value.as_str().map(|s| s.to_string()),
-      _ => None,
+      Expr::Lit(Lit::Str(s)) => s.value.as_str()?.to_string(),
+      _ => return None,
     },
-    MemberProp::PrivateName(_) => None,
-  }
+    MemberProp::PrivateName(_) => return None,
+  };
+  Some((obj_ident.sym.to_string(), prop))
 }
 
-/// True if `m` is `exports.NAME` or `module.exports.NAME` matching
-/// `name`.
-fn is_exports_member(m: &MemberExpr, name: &str) -> bool {
-  let prop_matches = match &m.prop {
-    MemberProp::Ident(i) => &*i.sym == name,
-    MemberProp::Computed(c) => matches!(
-      &*c.expr,
-      Expr::Lit(Lit::Str(s)) if s.value.as_str() == Some(name),
-    ),
-    MemberProp::PrivateName(_) => false,
+/// If `m` is `exports.NAME` or `module.exports.NAME`, return `NAME`.
+fn exports_member_name(m: &MemberExpr) -> Option<String> {
+  let prop = match &m.prop {
+    MemberProp::Ident(i) => i.sym.to_string(),
+    MemberProp::Computed(c) => match &*c.expr {
+      Expr::Lit(Lit::Str(s)) => s.value.as_str()?.to_string(),
+      _ => return None,
+    },
+    MemberProp::PrivateName(_) => return None,
   };
-  if !prop_matches {
-    return false;
-  }
-  match &*m.obj {
+  let obj_is_exports = match &*m.obj {
     Expr::Ident(i) => &*i.sym == "exports",
     Expr::Member(inner) => is_module_exports_member(inner),
     _ => false,
-  }
+  };
+  if obj_is_exports { Some(prop) } else { None }
 }
 
 fn is_module_exports_member(m: &MemberExpr) -> bool {

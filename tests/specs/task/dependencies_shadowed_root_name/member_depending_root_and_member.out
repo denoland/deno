@@ -1,6 +1,6 @@
 [UNORDERED_START]
 Task build echo member
-              [build] member
+       [member#build] member
 Task build echo root
               [build] root
 [UNORDERED_END]

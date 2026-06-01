@@ -138,6 +138,28 @@ pub(super) fn report_exit(
   writeln!(writer).ok();
 }
 
+pub(super) fn report_isolate_exit(
+  writer: &mut dyn std::io::Write,
+  cwd: &Url,
+  origin: &str,
+  exit_code: i32,
+) {
+  let location = to_relative_path_or_remote_url(cwd, origin);
+  let label = if exit_code == 0 {
+    colors::yellow("note")
+  } else {
+    colors::red("error")
+  };
+  writeln!(
+    writer,
+    "\n{} {} called `Deno.exit({})` from outside any test. The isolate was terminated; remaining test files will continue.",
+    label,
+    location,
+    exit_code,
+  )
+  .ok();
+}
+
 pub(super) fn report_summary(
   writer: &mut dyn std::io::Write,
   cwd: &Url,

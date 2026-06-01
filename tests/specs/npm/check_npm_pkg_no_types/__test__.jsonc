@@ -1,0 +1,24 @@
+{
+  "tempDir": true,
+  "tests": {
+    // No nodeModulesDir flag: with package.json dependencies installed in
+    // node_modules, this exercises the byonm resolver path.
+    "byonm": {
+      "steps": [{
+        "args": "install",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "check --quiet main.ts",
+        "output": ""
+      }]
+    },
+    "auto_install": {
+      "args": "check --quiet --node-modules-dir=auto main.ts",
+      "output": ""
+    },
+    "global_folder": {
+      "args": "check --quiet --node-modules-dir=none main.ts",
+      "output": ""
+    }
+  }
+}
