@@ -172,7 +172,7 @@ pub async fn run(
     .create_custom_worker(
       WorkerExecutionMode::Repl,
       main_module.clone(),
-      // `deno repl` doesn't support preloading modules
+      // preloading is handled after session init via import_and_expose_module
       vec![],
       // `deno repl` doesn't support require modules
       vec![],
@@ -184,7 +184,7 @@ pub async fn run(
     .await?;
   worker.setup_repl().await?;
   let worker = worker.into_main_worker();
-  let session = ReplSession::initialize(
+  let mut session = ReplSession::initialize(
     cli_options,
     npm_installer,
     resolver,
@@ -194,6 +194,15 @@ pub async fn run(
     test_event_receiver,
   )
   .await?;
+
+  let raw_preloads = cli_options.raw_preload_specifiers();
+  for (raw, specifier) in
+    raw_preloads.iter().zip(cli_options.preload_modules()?)
+  {
+    if let Err(e) = session.import_and_expose_module(&specifier).await {
+      println!("Error in --import specifier \"{raw}\": {e}");
+    }
+  }
 
   #[cfg(unix)]
   if repl_flags.json {

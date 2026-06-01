@@ -736,6 +736,237 @@ fn eval_file_flag_multiple_files() {
 }
 
 #[test(flaky)]
+fn import_flag_expose_exports() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--allow-read", "--import=./repl/import_export.ts"],
+    Some(vec!["greet('world')"]),
+    None,
+    false,
+  );
+  assert_contains!(out, "Hello, world!");
+  assert!(err.is_empty());
+}
+
+#[test(flaky)]
+fn import_flag_expose_multiple_exports() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--allow-read", "--import=./repl/import_export.ts"],
+    Some(vec!["PI"]),
+    None,
+    false,
+  );
+  assert_contains!(out, "3.14159");
+  assert!(err.is_empty());
+}
+
+#[test(flaky)]
+fn import_flag_includes_default_export() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--allow-read", "--import=./repl/import_default.ts"],
+    Some(vec!["globalThis.default", "named"]),
+    None,
+    false,
+  );
+  assert_contains!(out, "42");
+  assert_contains!(out, "hello");
+  assert!(err.is_empty());
+}
+
+#[test(flaky)]
+fn import_flag_multiple_modules() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec![
+      "repl",
+      "--allow-read",
+      "--import=./repl/import_export.ts",
+      "--import=./repl/import_collision.ts",
+    ],
+    Some(vec!["greet('test')", "collision"]),
+    None,
+    false,
+  );
+  assert_contains!(out, "Hello, test!");
+  assert_contains!(out, "from collision module");
+  assert!(err.is_empty());
+}
+
+#[test(flaky)]
+fn import_flag_later_overwrites_earlier() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec![
+      "repl",
+      "--allow-read",
+      "--import=./repl/import_export.ts",
+      "--import=./repl/import_collision.ts",
+    ],
+    Some(vec!["PI"]),
+    None,
+    false,
+  );
+  // import_collision.ts exports PI = 2.71828, overwriting import_export.ts PI = 3.14159
+  assert_contains!(out, "2.71828");
+  assert!(err.is_empty());
+}
+
+#[test(flaky)]
+fn import_flag_available_in_eval() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec![
+      "repl",
+      "--allow-read",
+      "--import=./repl/import_export.ts",
+      "--eval=console.log(greet('eval'))",
+    ],
+    None,
+    None,
+    false,
+  );
+  assert_contains!(out, "Hello, eval!");
+  assert!(err.is_empty());
+}
+
+#[test(flaky)]
+fn import_flag_available_in_eval_file() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec![
+      "repl",
+      "--allow-read",
+      "--import=./repl/import_export.ts",
+      "--eval-file=./repl/import_eval_file_setup.js",
+    ],
+    None,
+    None,
+    false,
+  );
+  assert_contains!(out, "Hello, eval-file!");
+  assert!(err.is_empty());
+}
+
+#[test(flaky)]
+fn import_flag_nonexistent_module_continues() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--import=./nonexistent.ts"],
+    Some(vec!["1 + 1"]),
+    None,
+    false,
+  );
+  assert_contains!(out, "Error in --import specifier");
+  // REPL should still work after the error
+  assert_contains!(out, "2");
+  assert!(err.is_empty());
+}
+
+#[test(flaky)]
+fn import_flag_side_effects_execute() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec![
+      "repl",
+      "--allow-read",
+      "--import=./repl/import_side_effect.ts",
+    ],
+    Some(vec!["loaded"]),
+    None,
+    false,
+  );
+  assert_contains!(out, "side effect executed");
+  assert_contains!(out, "true");
+  assert!(err.is_empty());
+}
+
+#[test(flaky)]
+fn preload_flag_works_same_as_import() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--allow-read", "--preload=./repl/import_export.ts"],
+    Some(vec!["greet('preload')"]),
+    None,
+    false,
+  );
+  assert_contains!(out, "Hello, preload!");
+  assert!(err.is_empty());
+}
+
+#[test(flaky)]
+fn import_flag_npm_specifier() {
+  let env_vars = util::env_vars_for_npm_tests();
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec![
+      "repl",
+      "--quiet",
+      "--allow-read",
+      "--allow-env",
+      "--import=npm:chalk",
+    ],
+    Some(vec!["typeof Chalk"]),
+    Some(env_vars),
+    true,
+  );
+  assert_contains!(out, "function");
+  assert!(err.is_empty(), "Error: {}", err);
+}
+
+#[test(flaky)]
+fn import_flag_jsr_specifier() {
+  let env_vars = util::env_vars_for_jsr_tests();
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec![
+      "repl",
+      "--quiet",
+      "--allow-read",
+      "--allow-env",
+      "--import=jsr:@denotest/add@1",
+    ],
+    Some(vec!["add(2, 3)"]),
+    Some(env_vars),
+    true,
+  );
+  assert_contains!(out, "5");
+  assert!(err.is_empty(), "Error: {}", err);
+}
+
+#[test(flaky)]
+fn import_flag_resolves_relative_imports() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--allow-read", "--import=./repl/import_with_dep.ts"],
+    Some(vec!["quadruple(3)"]),
+    None,
+    false,
+  );
+  assert_contains!(out, "12");
+  assert!(err.is_empty());
+}
+
+#[test(flaky)]
+fn import_flag_does_not_break_interactive_imports() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--allow-read", "--import=./repl/import_export.ts"],
+    Some(vec![
+      r#"const { collision } = await import("./repl/import_collision.ts")"#,
+      "collision",
+      "greet('still works')",
+    ]),
+    None,
+    false,
+  );
+  assert_contains!(out, "from collision module");
+  assert_contains!(out, "Hello, still works!");
+  assert!(err.is_empty());
+}
+
+#[test(flaky)]
 fn pty_clear_function() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log('h' + 'ello');");
