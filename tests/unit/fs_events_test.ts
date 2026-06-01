@@ -139,13 +139,14 @@ Deno.test(
   async function watchFsCloseIsIdempotent() {
     const testDir = await makeTempDir();
     const watcher = Deno.watchFs(testDir);
+    const iterator = watcher[Symbol.asyncIterator]();
 
     watcher.close();
     watcher.close();
 
-    assertEquals(await watcher.next(), { value: undefined, done: true });
-    assertEquals(await watcher.return!(), { value: undefined, done: true });
-    assertEquals(await watcher.next(), { value: undefined, done: true });
+    assertEquals(await iterator.next(), { value: undefined, done: true });
+    assertEquals(await iterator.return!(), { value: undefined, done: true });
+    assertEquals(await iterator.next(), { value: undefined, done: true });
   },
 );
 
