@@ -3,7 +3,10 @@
 use std::cell::Cell;
 use std::mem::MaybeUninit;
 use std::ptr::addr_of_mut;
+use std::sync::Arc;
 use std::sync::OnceLock;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use deno_core::parking_lot::Mutex;
@@ -235,6 +238,9 @@ unsafe extern "C" fn _napi_uv_close(
           return;
         }
       }
+      uv_handle_type::UV_POLL => {
+        uv_poll_close(handle.cast());
+      }
       _ => {}
     }
     if let Some(close) = close {
@@ -333,6 +339,116 @@ struct uv_timer_t {
       - size_of::<*mut uv_loop_t>()
       - size_of::<uv_handle_type>()
       - size_of::<*mut NapiTimerBridge>())
+      / size_of::<usize>()
+  }],
+}
+
+const UV_CHECK_SIZE: usize = 120;
+const UV_IDLE_SIZE: usize = 120;
+
+#[cfg(target_os = "macos")]
+const UV_POLL_SIZE: usize = 168;
+#[cfg(all(unix, not(target_os = "macos")))]
+const UV_POLL_SIZE: usize = 160;
+#[cfg(windows)]
+const UV_POLL_SIZE: usize = 416;
+
+#[cfg(unix)]
+const UV_WORK_SIZE: usize = 128;
+#[cfg(windows)]
+const UV_WORK_SIZE: usize = 176;
+
+type uv_check_cb = Option<unsafe extern "C" fn(handle: *mut uv_check_t)>;
+type uv_idle_cb = Option<unsafe extern "C" fn(handle: *mut uv_idle_t)>;
+type uv_poll_cb = Option<
+  unsafe extern "C" fn(handle: *mut uv_poll_t, status: c_int, events: c_int),
+>;
+type uv_work_cb = Option<unsafe extern "C" fn(req: *mut uv_work_t)>;
+type uv_after_work_cb =
+  Option<unsafe extern "C" fn(req: *mut uv_work_t, status: c_int)>;
+
+#[repr(C)]
+struct uv_check_t {
+  pub data: *mut c_void,
+  pub r#loop: *mut uv_loop_t,
+  pub r#type: uv_handle_type,
+  pub close_cb: Option<uv_close_cb>,
+  _handle_padding: [MaybeUninit<usize>; const {
+    (96
+      - size_of::<*mut c_void>()
+      - size_of::<*mut uv_loop_t>()
+      - size_of::<uv_handle_type>()
+      - size_of::<Option<uv_close_cb>>())
+      / size_of::<usize>()
+  }],
+  check_cb: uv_check_cb,
+  _padding: [MaybeUninit<usize>; const {
+    (UV_CHECK_SIZE - 96 - size_of::<uv_check_cb>()) / size_of::<usize>()
+  }],
+}
+
+#[repr(C)]
+struct uv_idle_t {
+  pub data: *mut c_void,
+  pub r#loop: *mut uv_loop_t,
+  pub r#type: uv_handle_type,
+  pub close_cb: Option<uv_close_cb>,
+  _handle_padding: [MaybeUninit<usize>; const {
+    (96
+      - size_of::<*mut c_void>()
+      - size_of::<*mut uv_loop_t>()
+      - size_of::<uv_handle_type>()
+      - size_of::<Option<uv_close_cb>>())
+      / size_of::<usize>()
+  }],
+  idle_cb: uv_idle_cb,
+  _padding: [MaybeUninit<usize>; const {
+    (UV_IDLE_SIZE - 96 - size_of::<uv_idle_cb>()) / size_of::<usize>()
+  }],
+}
+
+struct PollBridge {
+  active: AtomicBool,
+  fd: c_int,
+  cb: uv_poll_cb,
+}
+
+#[repr(C)]
+struct uv_poll_t {
+  pub data: *mut c_void,
+  pub r#loop: *mut uv_loop_t,
+  pub r#type: uv_handle_type,
+  pub close_cb: Option<uv_close_cb>,
+  _handle_padding: [MaybeUninit<usize>; const {
+    (96
+      - size_of::<*mut c_void>()
+      - size_of::<*mut uv_loop_t>()
+      - size_of::<uv_handle_type>()
+      - size_of::<Option<uv_close_cb>>())
+      / size_of::<usize>()
+  }],
+  bridge: *mut Arc<PollBridge>,
+  _padding: [MaybeUninit<usize>; const {
+    (UV_POLL_SIZE - 96 - size_of::<*mut Arc<PollBridge>>()) / size_of::<usize>()
+  }],
+}
+
+#[repr(C)]
+struct uv_work_t {
+  pub data: *mut c_void,
+  r#type: c_int,
+  _req_padding: [MaybeUninit<usize>; const {
+    (64 - size_of::<*mut c_void>() - size_of::<c_int>()) / size_of::<usize>()
+  }],
+  pub r#loop: *mut uv_loop_t,
+  work_cb: uv_work_cb,
+  after_work_cb: uv_after_work_cb,
+  _padding: [MaybeUninit<usize>; const {
+    (UV_WORK_SIZE
+      - 64
+      - size_of::<*mut uv_loop_t>()
+      - size_of::<uv_work_cb>()
+      - size_of::<uv_after_work_cb>())
       / size_of::<usize>()
   }],
 }
@@ -496,6 +612,196 @@ unsafe fn timer_close(
   }
 }
 
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_check_init(
+  r#loop: *mut uv_loop_t,
+  check: *mut uv_check_t,
+) -> c_int {
+  unsafe {
+    let data = (*check).data;
+    std::ptr::write_bytes(check.cast::<u8>(), 0, UV_CHECK_SIZE);
+    addr_of_mut!((*check).data).write(data);
+    addr_of_mut!((*check).r#loop).write(r#loop);
+    addr_of_mut!((*check).r#type).write(uv_handle_type::UV_CHECK);
+  }
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_check_start(
+  check: *mut uv_check_t,
+  cb: uv_check_cb,
+) -> c_int {
+  unsafe {
+    (*check).check_cb = cb;
+    if let Some(cb) = cb {
+      let env = &mut *(*check).r#loop;
+      let check = SendPtr(check as *const uv_check_t);
+      env.async_work_sender.spawn(move |_| {
+        let check = check.take() as *mut uv_check_t;
+        cb(check);
+      });
+    }
+  }
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_check_stop(_check: *mut uv_check_t) -> c_int {
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_idle_init(
+  r#loop: *mut uv_loop_t,
+  idle: *mut uv_idle_t,
+) -> c_int {
+  unsafe {
+    let data = (*idle).data;
+    std::ptr::write_bytes(idle.cast::<u8>(), 0, UV_IDLE_SIZE);
+    addr_of_mut!((*idle).data).write(data);
+    addr_of_mut!((*idle).r#loop).write(r#loop);
+    addr_of_mut!((*idle).r#type).write(uv_handle_type::UV_IDLE);
+  }
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_idle_start(
+  idle: *mut uv_idle_t,
+  cb: uv_idle_cb,
+) -> c_int {
+  unsafe {
+    (*idle).idle_cb = cb;
+  }
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_idle_stop(_idle: *mut uv_idle_t) -> c_int {
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_poll_init_socket(
+  r#loop: *mut uv_loop_t,
+  poll: *mut uv_poll_t,
+  fd: c_int,
+) -> c_int {
+  unsafe {
+    let data = (*poll).data;
+    std::ptr::write_bytes(poll.cast::<u8>(), 0, UV_POLL_SIZE);
+    addr_of_mut!((*poll).data).write(data);
+    addr_of_mut!((*poll).r#loop).write(r#loop);
+    addr_of_mut!((*poll).r#type).write(uv_handle_type::UV_POLL);
+    addr_of_mut!((*poll).bridge).write(std::ptr::null_mut());
+    let bridge = Arc::new(PollBridge {
+      active: AtomicBool::new(false),
+      fd,
+      cb: None,
+    });
+    addr_of_mut!((*poll).bridge).write(Box::into_raw(Box::new(bridge)));
+  }
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_poll_init(
+  r#loop: *mut uv_loop_t,
+  poll: *mut uv_poll_t,
+  fd: c_int,
+) -> c_int {
+  unsafe { uv_poll_init_socket(r#loop, poll, fd) }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_poll_start(
+  poll: *mut uv_poll_t,
+  events: c_int,
+  cb: uv_poll_cb,
+) -> c_int {
+  unsafe {
+    let bridge_ptr = (*poll).bridge;
+    if bridge_ptr.is_null() {
+      return -1;
+    }
+
+    (&*bridge_ptr).active.store(false, Ordering::Release);
+    let previous = &*bridge_ptr;
+    let bridge = Arc::new(PollBridge {
+      active: AtomicBool::new(true),
+      fd: previous.fd,
+      cb,
+    });
+    *bridge_ptr = bridge;
+    let bridge = Arc::clone(&*bridge_ptr);
+    let sender = (&mut *(*poll).r#loop).async_work_sender.clone();
+    let poll_ptr = SendPtr(poll as *const uv_poll_t);
+    std::thread::spawn(move || {
+      let mut poll_events = 0;
+      if events & 1 != 0 {
+        poll_events |= libc::POLLIN;
+      }
+      if events & 2 != 0 {
+        poll_events |= libc::POLLOUT;
+      }
+      while bridge.active.load(Ordering::Acquire) {
+        let mut fds = libc::pollfd {
+          fd: bridge.fd,
+          events: poll_events,
+          revents: 0,
+        };
+        let result = libc::poll(&mut fds, 1, 10);
+        if result <= 0 {
+          continue;
+        }
+        if !bridge.active.swap(false, Ordering::AcqRel) {
+          break;
+        }
+        if let Some(cb) = bridge.cb {
+          let poll_ptr = SendPtr(poll_ptr.take());
+          sender.spawn(move |_| {
+            let poll = poll_ptr.take() as *mut uv_poll_t;
+            cb(poll, 0, events);
+          });
+        }
+        break;
+      }
+    });
+  }
+  0
+}
+
+unsafe fn uv_poll_close(poll: *mut uv_poll_t) {
+  unsafe {
+    if poll.is_null() {
+      return;
+    }
+    let bridge_ptr = (*poll).bridge;
+    if bridge_ptr.is_null() {
+      return;
+    }
+    (&*bridge_ptr).active.store(false, Ordering::Release);
+    drop(Box::from_raw(bridge_ptr));
+    (*poll).bridge = std::ptr::null_mut();
+  }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_poll_stop(poll: *mut uv_poll_t) -> c_int {
+  unsafe {
+    if poll.is_null() {
+      return 0;
+    }
+    let bridge_ptr = (*poll).bridge;
+    if bridge_ptr.is_null() {
+      return 0;
+    }
+    (&*bridge_ptr).active.store(false, Ordering::Release);
+  }
+  0
+}
+
 // uv_hrtime returns nanoseconds since an arbitrary monotonic origin. We
 // peg the origin to the first call.
 #[unsafe(no_mangle)]
@@ -596,6 +902,41 @@ unsafe extern "C" fn uv_cpu_info(
 #[unsafe(no_mangle)]
 unsafe extern "C" fn uv_free_cpu_info(_cpu_infos: *mut c_void, _count: c_int) {
   // uv_cpu_info never allocates in our polyfill.
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_os_getpid() -> c_int {
+  std::process::id() as c_int
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_queue_work(
+  r#loop: *mut uv_loop_t,
+  req: *mut uv_work_t,
+  work_cb: uv_work_cb,
+  after_work_cb: uv_after_work_cb,
+) -> c_int {
+  unsafe {
+    (*req).r#loop = r#loop;
+    (*req).work_cb = work_cb;
+    (*req).after_work_cb = after_work_cb;
+    let sender = (&mut *r#loop).async_work_sender.clone();
+    let req_ptr = SendPtr(req as *const uv_work_t);
+    std::thread::spawn(move || {
+      let req = req_ptr.take() as *mut uv_work_t;
+      if let Some(work_cb) = (*req).work_cb {
+        work_cb(req);
+      }
+      let req_ptr = SendPtr(req as *const uv_work_t);
+      sender.spawn(move |_| {
+        let req = req_ptr.take() as *mut uv_work_t;
+        if let Some(after_work_cb) = (*req).after_work_cb {
+          after_work_cb(req, 0);
+        }
+      });
+    });
+  }
+  0
 }
 
 // ---------- uv thread / semaphore polyfills ----------
@@ -817,6 +1158,26 @@ mod tests {
       UV_TIMER_SIZE
     );
     assert_eq!(std::mem::size_of::<uv_timer_t>(), UV_TIMER_SIZE);
+    assert_eq!(
+      std::mem::size_of::<libuv_sys_lite::uv_check_t>(),
+      UV_CHECK_SIZE
+    );
+    assert_eq!(std::mem::size_of::<uv_check_t>(), UV_CHECK_SIZE);
+    assert_eq!(
+      std::mem::size_of::<libuv_sys_lite::uv_idle_t>(),
+      UV_IDLE_SIZE
+    );
+    assert_eq!(std::mem::size_of::<uv_idle_t>(), UV_IDLE_SIZE);
+    assert_eq!(
+      std::mem::size_of::<libuv_sys_lite::uv_poll_t>(),
+      UV_POLL_SIZE
+    );
+    assert_eq!(std::mem::size_of::<uv_poll_t>(), UV_POLL_SIZE);
+    assert_eq!(
+      std::mem::size_of::<libuv_sys_lite::uv_work_t>(),
+      UV_WORK_SIZE
+    );
+    assert_eq!(std::mem::size_of::<uv_work_t>(), UV_WORK_SIZE);
   }
 
   // Drives the uv_sem_* / uv_thread_* polyfills the way a native addon

@@ -67,6 +67,23 @@ Deno.test({
   },
 });
 
+// Exercises native addons that schedule main-thread callbacks with libuv's
+// check/idle handles and queue background work through uv_queue_work. ZeroMQ
+// uses this path when constructing sockets and loading its addon.
+Deno.test({
+  name: "napi uv loop helpers",
+  fn: async () => {
+    let called = false;
+    await new Promise((resolve) => {
+      uv.test_uv_loop_helpers(() => {
+        called = true;
+        resolve();
+      });
+    });
+    assertEquals(called, true);
+  },
+});
+
 // Exercises the uv_thread_* / uv_sem_* polyfills end to end: a worker
 // thread increments a counter and posts a counting semaphore three times
 // while the main thread drains the semaphore and joins the worker. If any
