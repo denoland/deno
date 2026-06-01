@@ -5280,6 +5280,11 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       .resolver
       .get_scoped_resolver(scope.as_deref());
     for specifier in scoped_resolver.configured_auto_import_roots() {
+      if specifier.scheme() != "jsr"
+        && !specifier.as_str().starts_with(jsr_url().as_str())
+      {
+        continue;
+      }
       let referrer = compiler_options_data
         .workspace_dir_or_source_url
         .as_deref()
