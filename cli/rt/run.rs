@@ -97,7 +97,7 @@ use sys_traits::EnvCurrentDir;
 use crate::binary::DenoCompileModuleSource;
 use crate::binary::StandaloneData;
 use crate::binary::StandaloneModules;
-use crate::binary::maybe_transpile_source;
+use crate::binary::transpile_runtime_module;
 use crate::code_cache::DenoCompileCodeCache;
 use crate::file_system::DenoRtSys;
 use crate::file_system::FileBackedVfs;
@@ -650,7 +650,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
       };
       // Transpile when the data URL carries TypeScript/JSX, so compiled
       // programs can dynamically import TypeScript built at runtime.
-      let code = match maybe_transpile_source(
+      let code = match transpile_runtime_module(
         original_specifier,
         media_type,
         data_url_text,
@@ -712,7 +712,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
                   })?;
               // Transpile when the blob carries TypeScript/JSX, so compiled
               // programs can dynamically import TypeScript built at runtime.
-              let text = maybe_transpile_source(&specifier, media_type, text)?;
+              let text =
+                transpile_runtime_module(&specifier, media_type, text)?;
               ModuleSourceCode::String(text.into())
             }
           };

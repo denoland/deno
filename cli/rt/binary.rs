@@ -661,7 +661,7 @@ impl StandaloneModules {
           ) {
             let text = String::from_utf8_lossy(&bytes).into_owned();
             let transpiled_text =
-              maybe_transpile_source(specifier, media_type, text)?;
+              transpile_runtime_module(specifier, media_type, text)?;
             transpiled = Some(Cow::Owned(transpiled_text.into_bytes()));
           }
           bytes
@@ -690,7 +690,7 @@ impl StandaloneModules {
 /// TypeScript that it builds or discovers while running. `deno_ast` is already
 /// linked into the binary via `ext/node`, so transpiling here adds no extra
 /// binary size.
-pub(crate) fn maybe_transpile_source(
+pub(crate) fn transpile_runtime_module(
   specifier: &Url,
   media_type: MediaType,
   source: String,
