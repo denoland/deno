@@ -1,0 +1,16 @@
+{
+  "name": "@denotest/mixed-cjs-esm-subpath",
+  "version": "1.0.0",
+  "main": "./index.cjs",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "require": "./index.cjs",
+      "default": "./index.cjs"
+    },
+    "./esm": {
+      "types": "./esm/index.d.ts",
+      "import": "./esm/index.js"
+    }
+  }
+}

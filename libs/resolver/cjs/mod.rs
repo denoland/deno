@@ -259,28 +259,14 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
         // signal — see `get_lsp_resolution_mode`. Outside npm packages, keep
         // the previous behavior of trusting the package.json so local .d.ts
         // files (e.g. shimmed via `@deno-types`) are not affected.
-        let in_npm = self.in_npm_pkg_checker.in_npm_package(specifier);
-        if in_npm && is_script == Some(true) {
+        if self.in_npm_pkg_checker.in_npm_package(specifier)
+          && is_script == Some(true)
+        {
           known_cache.insert(specifier.clone(), ResolutionMode::Require);
           return Some(ResolutionMode::Require);
         }
         if let Some(value) = known_cache.get(specifier).map(|v| *v) {
-          if in_npm
-            && value == ResolutionMode::Require
-            && is_script == Some(false)
-          {
-            // Previously marked as CJS based on package.json, but we now know
-            // the content has no CJS-only syntax. Re-check using `is_script`
-            // so packages with shared types and `exports.import` are treated
-            // as ESM (issue #28071).
-            let new_value = self
-              .check_dts_based_on_pkg_json(specifier)
-              .unwrap_or(ResolutionMode::Import);
-            known_cache.insert(specifier.clone(), new_value);
-            Some(new_value)
-          } else {
-            Some(value)
-          }
+          Some(value)
         } else {
           let value = self.check_dts_based_on_pkg_json(specifier).ok();
           if let Some(value) = value {
@@ -410,6 +396,15 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
 /// condition anywhere in the (possibly nested) condition map. This is used as
 /// a hint that the package supports ESM at runtime, in which case its `.d.ts`
 /// files should be treated as ESM by the type checker.
+///
+/// This signal is package-global: the `.d.ts` being classified might be reached
+/// through a CJS-only subpath while a different subpath carries the `import`
+/// condition. The precise fix would key off the specific export entry that
+/// resolved to this file, but that information isn't available at this layer,
+/// so a `.d.ts` belonging to a CJS-only subpath of a mixed CJS/ESM package may
+/// still be flipped to ESM. The shared-single-`.d.ts` case (issue #28071,
+/// e.g. `@rollup/plugin-replace`) is the motivating shape; the mixed case is
+/// covered by a spec test that pins the chosen behavior.
 fn exports_has_import_condition(
   exports: &serde_json::Map<String, Value>,
 ) -> bool {
