@@ -10431,6 +10431,82 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   client.shutdown();
 }
 
+#[test(timeout = 300)]
+fn lsp_completions_auto_import_in_empty_import_clause_with_import_map() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "$globals": "npm:@denotest/globals@1",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "foo.ts",
+    r#"import { getFoo } from "$globals";
+
+export function foo() {}
+"#,
+  );
+  let file = temp_dir.source_file(
+    "bar.ts",
+    r#"import { foo } from "./foo.ts";
+import { }
+
+foo();
+"#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.cache_specifier(temp_dir.url().join("foo.ts").unwrap());
+  client.read_diagnostics();
+  client.did_open_file(&file);
+  let list = client.get_completion_list(
+    file.uri().as_str(),
+    (1, 9),
+    json!({ "triggerKind": 1 }),
+  );
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "getFoo")
+    .unwrap();
+  let res = client.write_request("completionItem/resolve", item);
+  assert_eq!(
+    res,
+    json!({
+      "label": "getFoo",
+      "labelDetails": {
+        "description": "$globals",
+      },
+      "kind": 3,
+      "detail": "function getFoo(): string",
+      "sortText": "￿11_0",
+      "filterText": "import { getFoo$1 } from \"$globals\";",
+      "insertText": "import { getFoo$1 } from \"$globals\";",
+      "insertTextFormat": 2,
+      "textEdit": {
+        "newText": "import { getFoo$1 } from \"$globals\";",
+        "insert": {
+          "start": { "line": 1, "character": 0 },
+          "end": { "line": 1, "character": 10 },
+        },
+        "replace": {
+          "start": { "line": 1, "character": 0 },
+          "end": { "line": 1, "character": 10 },
+        },
+      }
+    })
+  );
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/32288
 // and https://github.com/denoland/deno/issues/31590.
 // When an import map has a meaningful alias like "@app/": "./src/",
