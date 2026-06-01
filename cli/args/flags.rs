@@ -218,6 +218,9 @@ pub struct CompileFlags {
   pub exclude: Vec<String>,
   pub eszip: bool,
   pub self_extracting: bool,
+  /// Bundle the entrypoint with esbuild before embedding it, instead of
+  /// shipping the entire node_modules tree. Experimental.
+  pub bundle: bool,
 }
 
 impl CompileFlags {
@@ -981,6 +984,12 @@ pub struct InternalFlags {
   pub root_node_modules_dir_override: Option<PathBuf>,
   /// Only reads to the lockfile instead of writing to it.
   pub lockfile_skip_write: bool,
+  /// Set by `deno compile --bundle` when the bundled output contains
+  /// references that need to resolve against npm packages at runtime
+  /// (CJS dependencies, native addons). When true, the standalone
+  /// binary writer embeds the full npm tree even though `--bundle` is
+  /// on. Pure-ESM bundles leave this false and ship a tiny binary.
+  pub compile_bundle_embed_node_modules: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -3000,6 +3009,14 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .action(ArgAction::SetTrue)
           .help_heading(COMPILE_HEADING),
       )
+      .arg(
+        Arg::new("bundle")
+          .long("bundle")
+          .help(cstr!("<y>Experimental.</> Bundle the entrypoint with esbuild before embedding, instead of shipping the whole node_modules tree.
+  <p(245)>Produces a smaller binary with faster startup, at the cost of dropping dynamic require/import patterns that can't be statically traced.</>"))
+          .action(ArgAction::SetTrue)
+          .help_heading(COMPILE_HEADING),
+      )
       .arg(executable_ext_arg())
       .arg(env_file_arg())
       .arg(
@@ -4521,6 +4538,7 @@ Evaluate a task from string:
           )
           .action(ArgAction::SetTrue),
       )
+      .arg(env_file_arg())
       .arg(node_modules_dir_arg())
       .arg(node_modules_linker_arg())
       .arg(tunnel_arg())
@@ -6862,6 +6880,7 @@ fn compile_parse(
   let no_terminal = matches.get_flag("no-terminal");
   let eszip = matches.get_flag("eszip-internal-do-not-use");
   let self_extracting = matches.get_flag("self-extracting");
+  let bundle = matches.get_flag("bundle");
   let include = matches
     .remove_many::<String>("include")
     .map(|f| f.collect::<Vec<_>>())
@@ -6885,6 +6904,7 @@ fn compile_parse(
     exclude,
     eszip,
     self_extracting,
+    bundle,
   });
 
   Ok(())
@@ -7781,6 +7801,7 @@ fn task_parse(
   node_modules_arg_parse(flags, matches);
   node_modules_linker_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
 
   let mut recursive = matches.get_flag("recursive");
   let filter = if let Some(filter) = matches.remove_one::<String>("filter") {
@@ -13475,6 +13496,7 @@ mod tests {
           exclude: Default::default(),
           eszip: false,
           self_extracting: false,
+          bundle: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -13502,6 +13524,7 @@ mod tests {
           exclude: vec!["exclude.txt".to_string()],
           eszip: false,
           self_extracting: false,
+          bundle: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -14006,6 +14029,51 @@ mod tests {
     assert_eq!(
       r.unwrap_err().kind(),
       clap::error::ErrorKind::UnknownArgument
+    );
+  }
+
+  #[test]
+  fn task_subcommand_env_file() {
+    let r = flags_from_vec(svec!["deno", "task", "--env-file", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: false,
+          filter: None,
+          eval: false,
+          no_prefix: false,
+        }),
+        env_file: Some(vec![".env".to_owned()]),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "task",
+      "--env-file=.env.dev",
+      "--env-file=.env.local",
+      "build"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: false,
+          filter: None,
+          eval: false,
+          no_prefix: false,
+        }),
+        env_file: Some(vec![".env.dev".to_owned(), ".env.local".to_owned()]),
+        ..Flags::default()
+      }
     );
   }
 
@@ -16033,6 +16101,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           exclude: Default::default(),
           eszip: false,
           self_extracting: false,
+          bundle: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         preload: svec!["p1.js", "./p2.js"],

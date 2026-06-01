@@ -541,6 +541,17 @@ pub enum TestEvent {
   /// Indicates that the user has cancelled the test run with Ctrl+C and
   /// the run should be aborted.
   Sigint,
+  /// Indicates that a test called `Deno.exit()` while the exit sanitizer was
+  /// disabled (`sanitizeExit: false`). The test run should be aborted, a
+  /// message printed, and the process should exit with the given code. This
+  /// ensures that buffered output is reliably flushed before exiting, instead
+  /// of letting the test silently terminate the process.
+  Exit(i32),
+  /// Indicates that the test isolate called `Deno.exit()` outside of any test
+  /// function (top-level code, or in the `unload` event). The isolate has
+  /// been terminated; the test runner should report the exit code and
+  /// continue with any remaining specifiers instead of killing the process.
+  IsolateExit(String, i32),
   /// Used by the REPL to force a report to end without closing the worker
   /// or receiver.
   ForceEndReport,
@@ -559,6 +570,8 @@ impl TestEvent {
         | TestEvent::UncaughtError(..)
         | TestEvent::ForceEndReport
         | TestEvent::Completed
+        | TestEvent::Exit(..)
+        | TestEvent::IsolateExit(..)
     )
   }
 }
@@ -705,6 +718,22 @@ async fn configure_main_worker(
     )
     .await?;
   let coverage_collector = worker.maybe_setup_coverage_collector();
+  // Store the isolate handle in OpState so that `op_test_isolate_exit` can
+  // ask V8 to terminate the isolate when user code calls `Deno.exit()`
+  // outside of any test function. Then install the default exit handler -
+  // both must be in place before user code (including preload / side
+  // modules) gets a chance to run.
+  let isolate_handle = worker.v8_isolate_handle();
+  worker
+    .op_state()
+    .borrow_mut()
+    .put(ops::testing::TestIsolateHandle(isolate_handle));
+  worker
+    .execute_script_static(
+      located_script_name!(),
+      "Deno[Deno.internal].installTestIsolateExitHandler();",
+    )
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
   if options.trace_leaks {
     worker
       .execute_script_static(
@@ -735,14 +764,30 @@ async fn configure_main_worker(
   let check_res =
     |res: Result<(), CoreError>| match res.map_err(|err| err.into_kind()) {
       Ok(()) => Ok(()),
-      Err(CoreErrorKind::Js(err)) => TestEventTracker::new(op_state.clone())
-        .uncaught_error(specifier.to_string(), err)
-        .map_err(|e| CoreErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()),
+      Err(CoreErrorKind::Js(err)) => {
+        // If the failure was caused by user code calling `Deno.exit()` at
+        // top level, the isolate-exit event has already been reported.
+        // Swallow the resulting termination error instead of double-reporting
+        // it as an uncaught error.
+        if op_state.borrow().has::<ops::testing::IsolateExitInfo>() {
+          return Ok(());
+        }
+        TestEventTracker::new(op_state.clone())
+          .uncaught_error(specifier.to_string(), err)
+          .map_err(|e| CoreErrorKind::JsBox(JsErrorBox::from_err(e)).into_box())
+      }
       Err(err) => Err(err.into_box()),
     };
 
   check_res(worker.execute_preload_modules().await)?;
+  if op_state.borrow().has::<ops::testing::IsolateExitInfo>() {
+    worker.cancel_terminate_execution();
+    return Ok((coverage_collector, worker.into_main_worker()));
+  }
   check_res(worker.execute_side_module().await)?;
+  if op_state.borrow().has::<ops::testing::IsolateExitInfo>() {
+    worker.cancel_terminate_execution();
+  }
 
   let worker = worker.into_main_worker();
 
@@ -779,7 +824,20 @@ pub async fn test_specifier(
   .await?;
   let event_tracker = TestEventTracker::new(worker.js_runtime.op_state());
 
-  match test_specifier_inner(
+  // If user code already called `Deno.exit()` during top-level evaluation in
+  // `configure_main_worker`, the isolate-exit event has already been sent.
+  // Skip the rest of the lifecycle - the isolate is terminated and there are
+  // no tests to run.
+  if worker
+    .js_runtime
+    .op_state()
+    .borrow()
+    .has::<ops::testing::IsolateExitInfo>()
+  {
+    return Ok(());
+  }
+
+  let result = test_specifier_inner(
     &mut worker,
     coverage_collector,
     specifier.clone(),
@@ -787,9 +845,27 @@ pub async fn test_specifier(
     &event_tracker,
     options,
   )
-  .await
-  {
+  .await;
+
+  // If user code called `Deno.exit()` from inside `dispatch_load_event`,
+  // `run_tests_for_worker`, or `dispatch_unload_event`, the V8 isolate was
+  // forcibly terminated and the call surfaces as a JS error. The
+  // `op_test_isolate_exit` op already queued an `IsolateExit` event with the
+  // requested exit code, so don't double-report the resulting termination as
+  // an uncaught error.
+  let isolate_exited = worker
+    .js_runtime
+    .op_state()
+    .borrow()
+    .has::<ops::testing::IsolateExitInfo>();
+  if isolate_exited {
+    // Clear V8's "terminating" flag so the worker can be cleanly dropped.
+    worker.js_runtime.v8_isolate().cancel_terminate_execution();
+  }
+
+  match result {
     Ok(()) => Ok(()),
+    Err(_) if isolate_exited => Ok(()),
     Err(TestSpecifierError::Core(err)) => match err.into_kind() {
       CoreErrorKind::Js(err) => {
         event_tracker.uncaught_error(specifier.to_string(), err)?;
@@ -858,9 +934,19 @@ async fn test_specifier_inner(
   // want to wait forever here.
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
-  if let Some(coverage_collector) = &mut coverage_collector {
+  // Stop coverage before waiting for external debugger sessions. Coverage owns
+  // a blocking local inspector session, so waiting first would hang forever.
+  if let Some(mut coverage_collector) = coverage_collector.take() {
     coverage_collector.stop_collecting()?;
   }
+
+  // If a debugger session is still attached (e.g. Chrome DevTools holding
+  // the connection open for an in-progress Performance recording), wait for
+  // it to disconnect before tearing down the worker. Mirrors `deno run`'s
+  // behavior; otherwise the connection is dropped mid-flight, making it
+  // impossible to profile `deno test` runs. See issue #19289.
+  worker.wait_for_inspector_session_disconnect().await?;
+
   Ok(())
 }
 
@@ -1570,6 +1656,39 @@ pub async fn report_tests(
           reason = "TODO: why is this not using deno_runtime::exit?"
         )]
         std::process::exit(130);
+      }
+      TestEvent::Exit(exit_code) => {
+        let elapsed = start_time
+          .map(|t| Instant::now().duration_since(t))
+          .unwrap_or_default();
+        reporter.report_exit(
+          exit_code,
+          &tests_started
+            .difference(&tests_with_result)
+            .copied()
+            .collect(),
+          &tests,
+          &test_steps,
+        );
+
+        #[allow(clippy::print_stderr, reason = "force outputting on failure")]
+        if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
+          eprint!("Test reporter failed to flush: {}", err)
+        }
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "a test called Deno.exit() with the exit sanitizer disabled"
+        )]
+        std::process::exit(exit_code);
+      }
+      TestEvent::IsolateExit(origin, exit_code) => {
+        // A non-zero exit code from top-level `Deno.exit()` (or from an
+        // `unload` handler) should fail the test run. A zero exit code is
+        // treated as a clean isolate teardown.
+        if exit_code != 0 {
+          failed = true;
+        }
+        reporter.report_isolate_exit(&origin, exit_code);
       }
     }
   }

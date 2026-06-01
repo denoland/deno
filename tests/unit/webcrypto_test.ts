@@ -2622,3 +2622,283 @@ Deno.test(async function turboShakeDigest() {
   }
   assert(differs);
 });
+
+// ML-KEM (FIPS 203) — post-quantum key encapsulation.
+// https://wicg.github.io/webcrypto-modern-algos/#ml-kem
+
+// deno-lint-ignore no-explicit-any
+const subtleAny = crypto.subtle as any;
+
+const ML_KEM_VARIANTS = [
+  { name: "ML-KEM-512", pubLen: 800, privLen: 1632, ctLen: 768 },
+  { name: "ML-KEM-768", pubLen: 1184, privLen: 2400, ctLen: 1088 },
+  { name: "ML-KEM-1024", pubLen: 1568, privLen: 3168, ctLen: 1568 },
+] as const;
+
+for (const variant of ML_KEM_VARIANTS) {
+  Deno.test(`mlKemGenerateAndRoundTrip:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      [
+        "encapsulateKey",
+        "encapsulateBits",
+        "decapsulateKey",
+        "decapsulateBits",
+      ],
+    ) as CryptoKeyPair;
+    assertEquals(kp.publicKey.algorithm.name, variant.name);
+    assertEquals(kp.privateKey.algorithm.name, variant.name);
+    assertEquals(kp.publicKey.type, "public");
+    assertEquals(kp.privateKey.type, "private");
+
+    // encapsulateBits / decapsulateBits round trip.
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      kp.publicKey,
+    );
+    assertEquals(enc.ciphertext.byteLength, variant.ctLen);
+    assertEquals(enc.sharedKey.byteLength, 32);
+
+    const decBits = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      kp.privateKey,
+      enc.ciphertext,
+    );
+    assertEquals(decBits.byteLength, 32);
+    assertEquals(new Uint8Array(decBits), new Uint8Array(enc.sharedKey));
+  });
+
+  Deno.test(`mlKemEncapsulateKeyDecapsulateKey:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      [
+        "encapsulateKey",
+        "decapsulateKey",
+      ],
+    ) as CryptoKeyPair;
+
+    const { ciphertext, sharedKey: senderKey } = await subtleAny.encapsulateKey(
+      { name: variant.name },
+      kp.publicKey,
+      { name: "HMAC", hash: "SHA-256" },
+      true,
+      ["sign", "verify"],
+    );
+
+    const receiverKey = await subtleAny.decapsulateKey(
+      { name: variant.name },
+      kp.privateKey,
+      ciphertext,
+      { name: "HMAC", hash: "SHA-256" },
+      true,
+      ["sign", "verify"],
+    );
+
+    // Sender signs, receiver verifies — proves both ends derived the same key.
+    const data = new TextEncoder().encode("post-quantum hello");
+    const sig = await crypto.subtle.sign("HMAC", senderKey, data);
+    const ok = await crypto.subtle.verify("HMAC", receiverKey, sig, data);
+    assert(ok, `HMAC verify with decapsulated key for ${variant.name}`);
+  });
+
+  Deno.test(`mlKemImportExportRawPublic:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    const exported = new Uint8Array(
+      await subtleAny.exportKey("raw-public", kp.publicKey),
+    );
+    assertEquals(exported.length, variant.pubLen);
+
+    const reimported = await subtleAny.importKey(
+      "raw-public",
+      exported,
+      { name: variant.name },
+      true,
+      ["encapsulateBits"],
+    );
+    assertEquals(reimported.algorithm.name, variant.name);
+    assertEquals(reimported.type, "public");
+
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      reimported,
+    );
+    const dec = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      kp.privateKey,
+      enc.ciphertext,
+    );
+    assertEquals(new Uint8Array(dec), new Uint8Array(enc.sharedKey));
+  });
+
+  Deno.test(`mlKemImportExportRawPrivate:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    const exported = new Uint8Array(
+      await subtleAny.exportKey("raw-private", kp.privateKey),
+    );
+    assertEquals(exported.length, variant.privLen);
+
+    const reimported = await subtleAny.importKey(
+      "raw-private",
+      exported,
+      { name: variant.name },
+      true,
+      ["decapsulateBits"],
+    );
+    assertEquals(reimported.algorithm.name, variant.name);
+    assertEquals(reimported.type, "private");
+
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      kp.publicKey,
+    );
+    const dec = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      reimported,
+      enc.ciphertext,
+    );
+    assertEquals(new Uint8Array(dec), new Uint8Array(enc.sharedKey));
+  });
+
+  Deno.test(`mlKemImportExportPkcs8Spki:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    const spki = new Uint8Array(
+      await subtleAny.exportKey("spki", kp.publicKey),
+    );
+    const pkcs8 = new Uint8Array(
+      await subtleAny.exportKey("pkcs8", kp.privateKey),
+    );
+
+    const reimportedPub = await subtleAny.importKey(
+      "spki",
+      spki,
+      { name: variant.name },
+      true,
+      ["encapsulateBits"],
+    );
+    const reimportedPriv = await subtleAny.importKey(
+      "pkcs8",
+      pkcs8,
+      { name: variant.name },
+      true,
+      ["decapsulateBits"],
+    );
+
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      reimportedPub,
+    );
+    const dec = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      reimportedPriv,
+      enc.ciphertext,
+    );
+    assertEquals(new Uint8Array(dec), new Uint8Array(enc.sharedKey));
+  });
+
+  Deno.test(`mlKemGetPublicKey:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    // deno-lint-ignore no-explicit-any
+    const derivedPub = (kp.privateKey as any).getPublicKey() as CryptoKey;
+    assertEquals(derivedPub.type, "public");
+    assertEquals(derivedPub.algorithm.name, variant.name);
+
+    const originalPubBytes = new Uint8Array(
+      await subtleAny.exportKey("raw-public", kp.publicKey),
+    );
+    const derivedPubBytes = new Uint8Array(
+      await subtleAny.exportKey("raw-public", derivedPub),
+    );
+    assertEquals(derivedPubBytes, originalPubBytes);
+  });
+
+  Deno.test(`mlKemTamperedCiphertextRejected:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      kp.publicKey,
+    );
+    // Flip a bit somewhere in the middle of the ciphertext. ML-KEM uses
+    // implicit rejection: corrupted ciphertexts decapsulate to a pseudo-random
+    // value rather than throwing, so just check that the result differs.
+    const corrupt = new Uint8Array(enc.ciphertext);
+    corrupt[corrupt.length >> 1] ^= 0x01;
+    const dec = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      kp.privateKey,
+      corrupt,
+    );
+    const expected = new Uint8Array(enc.sharedKey);
+    const got = new Uint8Array(dec);
+    let equal = got.length === expected.length;
+    for (let i = 0; equal && i < got.length; i++) {
+      if (got[i] !== expected[i]) equal = false;
+    }
+    assert(!equal, `Tampered ciphertext should yield different shared key`);
+  });
+
+  Deno.test(`mlKemBadCiphertextLengthRejected:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["decapsulateBits"],
+    ) as CryptoKeyPair;
+    await assertRejects(() =>
+      subtleAny.decapsulateBits(
+        { name: variant.name },
+        kp.privateKey,
+        new Uint8Array(variant.ctLen - 1),
+      ), DOMException);
+  });
+}
+
+Deno.test(async function mlKemAlgorithmMismatchRejected() {
+  const kp = await subtleAny.generateKey(
+    { name: "ML-KEM-512" },
+    true,
+    ["encapsulateBits", "decapsulateBits"],
+  ) as CryptoKeyPair;
+  await assertRejects(() =>
+    subtleAny.encapsulateBits({ name: "ML-KEM-768" }, kp.publicKey)
+  );
+});
+
+Deno.test(async function mlKemRawSeedNotYetSupported() {
+  await assertRejects(
+    () =>
+      subtleAny.importKey(
+        "raw-seed",
+        new Uint8Array(64),
+        { name: "ML-KEM-512" },
+        true,
+        ["decapsulateBits"],
+      ),
+    DOMException,
+  );
+});

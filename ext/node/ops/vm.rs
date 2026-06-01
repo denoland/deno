@@ -15,7 +15,38 @@ use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
 
-use crate::create_host_defined_options;
+use crate::create_vm_dynamic_import_callback_host_defined_options;
+use crate::create_vm_dynamic_import_missing_host_defined_options;
+
+/// Build the host-defined options to attach to a `node:vm`-compiled
+/// script/function/module. `-1` means the script was created with
+/// `importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER`
+/// — return `None` so dynamic `import()` falls through to the host's
+/// regular module loader. `0` means no callback was provided and returns the
+/// marker that makes the dynamic-import host callback reject with
+/// `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`. Wiring up a user-provided
+/// callback uses a positive registry key.
+fn vm_host_defined_options<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback_id: i32,
+) -> Option<v8::Local<'s, v8::Data>> {
+  match callback_id {
+    -1 => None,
+    0 => Some(create_vm_dynamic_import_missing_host_defined_options(scope)),
+    id if id > 0 => Some(
+      create_vm_dynamic_import_callback_host_defined_options(scope, id as u32),
+    ),
+    _ => Some(create_vm_dynamic_import_missing_host_defined_options(scope)),
+  }
+}
+
+#[op2(fast)]
+pub fn op_vm_dynamic_import_callback_register(
+  scope: &mut v8::PinScope<'_, '_>,
+  callback: v8::Local<v8::Function>,
+) -> u32 {
+  deno_core::register_vm_dynamic_import_callback(scope, callback)
+}
 
 pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst =
   v8::String::create_external_onebyte_const(b"node:contextify:context");
@@ -47,6 +78,7 @@ impl ContextifyScript {
     cached_data: Option<JsBuffer>,
     produce_cached_data: bool,
     parsing_context: Option<v8::Local<'s, v8::Object>>,
+    import_module_dynamically_id: i32,
   ) -> Option<CompileResult<'s>> {
     let context = if let Some(parsing_context) = parsing_context {
       let Some(context) =
@@ -67,7 +99,8 @@ impl ContextifyScript {
     };
 
     let scope = &mut v8::ContextScope::new(scope, context);
-    let host_defined_options = create_host_defined_options(scope);
+    let host_defined_options =
+      vm_host_defined_options(scope, import_module_dynamically_id);
     let origin = v8::ScriptOrigin::new(
       scope,
       filename,
@@ -79,7 +112,7 @@ impl ContextifyScript {
       false,
       false,
       false,
-      Some(host_defined_options),
+      host_defined_options,
     );
 
     let mut source = if let Some(cached_data) = cached_data {
@@ -543,6 +576,7 @@ impl ContextifyContext {
 
     scope.set_allow_wasm_code_generation_callback(allow_wasm_code_gen);
     context.set_allow_generation_from_strings(allow_code_gen_strings);
+    crate::ops::v8::install_gc_if_exposed(scope, context);
 
     // For vanilla contexts, the sandbox IS the global proxy
     let sandbox_obj = context.global(scope);
@@ -708,6 +742,8 @@ pub fn create_v8_context<'a>(
     };
     ctx
   };
+
+  crate::ops::v8::install_gc_if_exposed(scope, context);
 
   scope.escape(context)
 }
@@ -1306,6 +1342,7 @@ pub fn op_vm_create_script<'a>(
   #[buffer] cached_data: Option<JsBuffer>,
   produce_cached_data: bool,
   parsing_context: Option<v8::Local<'a, v8::Object>>,
+  import_module_dynamically_id: i32,
 ) -> Option<CompileResult<'a>> {
   ContextifyScript::create(
     scope,
@@ -1316,6 +1353,7 @@ pub fn op_vm_create_script<'a>(
     cached_data,
     produce_cached_data,
     parsing_context,
+    import_module_dynamically_id,
   )
 }
 
@@ -1415,6 +1453,7 @@ pub fn op_vm_compile_function<'s>(
   parsing_context: Option<v8::Local<'s, v8::Object>>,
   context_extensions: Option<v8::Local<'s, v8::Array>>,
   params: Option<v8::Local<'s, v8::Array>>,
+  import_module_dynamically_id: i32,
 ) -> Option<CompileResult<'s>> {
   let context = if let Some(parsing_context) = parsing_context {
     let Some(context) =
@@ -1431,7 +1470,8 @@ pub fn op_vm_compile_function<'s>(
   };
 
   let scope = &mut v8::ContextScope::new(scope, context);
-  let host_defined_options = create_host_defined_options(scope);
+  let host_defined_options =
+    vm_host_defined_options(scope, import_module_dynamically_id);
   let origin = v8::ScriptOrigin::new(
     scope,
     filename,
@@ -1443,7 +1483,7 @@ pub fn op_vm_compile_function<'s>(
     false,
     false,
     false,
-    Some(host_defined_options),
+    host_defined_options,
   );
 
   let mut source = if let Some(cached_data) = cached_data {
@@ -1628,12 +1668,14 @@ pub fn op_vm_module_create_source_text_module<'a>(
   line_offset: i32,
   column_offset: i32,
   context_object: Option<v8::Local<'a, v8::Object>>,
+  import_module_dynamically_id: i32,
 ) -> Option<ContextifyModule> {
   let (context, microtask_queue) =
     resolve_module_context(scope, context_object)?;
 
   let scope = &mut v8::ContextScope::new(scope, context);
-  let host_defined_options = create_host_defined_options(scope);
+  let host_defined_options =
+    vm_host_defined_options(scope, import_module_dynamically_id);
   let filename = v8::String::new(scope, &identifier)?;
   let origin = v8::ScriptOrigin::new(
     scope,
@@ -1646,7 +1688,7 @@ pub fn op_vm_module_create_source_text_module<'a>(
     false,
     false,
     true, // is_module
-    Some(host_defined_options),
+    host_defined_options,
   );
 
   let mut compile_source =

@@ -215,7 +215,10 @@
     "parallel/test-assert-typedarray-deepequal.js": {},
     "parallel/test-assert.js": {},
     "parallel/test-als-defaultvalue-original.js": {},
-    "parallel/test-async-hooks-close-during-destroy.js": {},
+    "parallel/test-async-hooks-close-during-destroy.js": {
+      "windows": false,
+      "reason": "Flaky on Windows CI"
+    },
     "parallel/test-async-hooks-constructor.js": {},
     "parallel/test-async-hooks-destroy-on-gc.js": {},
     "parallel/test-async-hooks-disable-gc-tracking.js": {},
@@ -2923,7 +2926,10 @@
     "parallel/test-process-exception-capture.js": {},
     "parallel/test-process-execve-no-args.js": {},
     "parallel/test-process-execve-worker-threads.js": {},
-    "parallel/test-process-exit-code-validation.js": {},
+    "parallel/test-process-exit-code-validation.js": {
+      "flaky": true,
+      "reason": "Spawns deno 34 times via spawnSync; cumulative startup overhead can exceed the 20s per-test timeout on slow macOS CI runners"
+    },
     "parallel/test-process-exit-from-before-exit.js": {},
     "parallel/test-process-exit-handler.js": {},
     "parallel/test-process-exit-recursive.js": {},
@@ -3863,6 +3869,7 @@
     "parallel/test-vm-low-stack-space.js": {},
     "parallel/test-vm-module-after-evaluate.js": {},
     "parallel/test-vm-module-instantiate.js": {},
+    "parallel/test-vm-module-link.js": {},
     "parallel/test-vm-module-linkmodulerequests.js": {},
     "parallel/test-vm-module-linkmodulerequests-circular.js": {},
     "parallel/test-vm-module-linkmodulerequests-deep.js": {},
@@ -4496,7 +4503,7 @@
       "darwin": false,
       "reason": "Responses were not received within 5000 ms"
     },
-    "internet/test-dns-any.js": {},
+    // "internet/test-dns-any.js": {}, // really flaky in CI
     "internet/test-dns-getDefaultResultOrder.js": {},
     "internet/test-dns-idna2008.js": {},
     "internet/test-dns-lookup.js": {},
@@ -4784,16 +4791,8 @@
       "darwin": false,
       "reason": "error: Uncaught (in promise) AssertionError: Expected values to be strictly deep"
     },
-    "parallel/test-cwd-enoent-preload.js": {
-      "linux": false,
-      "darwin": false,
-      "reason": "Expected values to be strictly equal"
-    },
-    "parallel/test-cwd-enoent.js": {
-      "linux": false,
-      "darwin": false,
-      "reason": "Expected values to be strictly equal"
-    },
+    "parallel/test-cwd-enoent-preload.js": {},
+    "parallel/test-cwd-enoent.js": {},
     "parallel/test-debug-process.js": {
       "windows": false,
       "reason": "Expected values to be strictly equal"

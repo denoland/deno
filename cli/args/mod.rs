@@ -580,6 +580,7 @@ impl CliOptions {
       DenoSubcommand::Add(_) => GraphKind::All,
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
+      DenoSubcommand::Ci(_) => GraphKind::All,
       DenoSubcommand::Install(InstallFlags::Local(
         InstallFlagsLocal::Entrypoints(flags),
         _,
@@ -673,6 +674,13 @@ impl CliOptions {
 
   pub fn eszip(&self) -> bool {
     self.flags.eszip
+  }
+
+  /// Set by `deno compile --bundle` after rewriting the bundle's absolute
+  /// CJS paths; signals the standalone binary writer that the npm tree
+  /// must still ship alongside the bundle.
+  pub fn compile_bundle_embed_node_modules(&self) -> bool {
+    self.flags.internal.compile_bundle_embed_node_modules
   }
 
   pub fn node_conditions(&self) -> &[String] {

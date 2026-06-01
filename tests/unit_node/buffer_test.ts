@@ -802,6 +802,28 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] utf8Slice handles buffer detach during index coercion",
+  fn() {
+    // deno-lint-ignore no-explicit-any
+    const buf: any = Buffer.alloc(1024);
+    const arrayBuffer = buf.buffer;
+    const start = {
+      valueOf() {
+        structuredClone(arrayBuffer, { transfer: [arrayBuffer] });
+        return 0;
+      },
+    };
+
+    assertThrows(
+      () => buf.utf8Slice(start, 10),
+      RangeError,
+      "Index out of range",
+    );
+    assertEquals(arrayBuffer.byteLength, 0);
+  },
+});
+
+Deno.test({
   name: "[node/buffer] hexSlice returns correct string",
   fn() {
     // deno-lint-ignore no-explicit-any
@@ -872,5 +894,19 @@ Deno.test({
     // Single byte (all trailing, dropped)
     const single = Buffer.from([0x41]);
     assertEquals(transcode(single, "utf16le", "utf8").toString(), "");
+  },
+});
+
+// Node's real Buffer has no _isBuffer marker; the npm `buffer` polyfill
+// (feross/buffer) sets it to true and libraries like bson use that to detect
+// a non-Node runtime and fall back to a Uint8Array codepath that breaks
+// mongodb SCRAM auth (denoland/deno#34468).
+Deno.test({
+  name: "[node/buffer] Buffer.prototype does not expose _isBuffer marker",
+  fn() {
+    // deno-lint-ignore no-explicit-any
+    assertEquals((Buffer.prototype as any)._isBuffer, undefined);
+    // deno-lint-ignore no-explicit-any
+    assertEquals((Buffer.alloc(1) as any)._isBuffer, undefined);
   },
 });

@@ -79,6 +79,7 @@ impl CjsCodeAnalyzer {
       return Ok(CjsAnalysis::Cjs(CjsAnalysisExports {
         exports: vec![],
         reexports: vec![],
+        member_reexports: vec![],
       }));
     }
 
@@ -105,6 +106,7 @@ impl CjsCodeAnalyzer {
               CjsAnalysis::Cjs(CjsAnalysisExports {
                 exports,
                 reexports: Vec::new(), // already resolved
+                member_reexports: Vec::new(),
               })
             }
             CjsExportAnalysisEntry::Error(err) => {
@@ -161,16 +163,31 @@ impl node_resolver::analyze::CjsCodeAnalyzer for CjsCodeAnalyzer {
             return Ok(CjsAnalysis::Cjs(CjsAnalysisExports {
               exports: vec![],
               reexports: vec![],
+              member_reexports: vec![],
             }));
           }
         } else {
           return Ok(CjsAnalysis::Cjs(CjsAnalysisExports {
             exports: vec![],
             reexports: vec![],
+            member_reexports: vec![],
           }));
         }
       }
     };
     self.inner_cjs_analysis(specifier, source)
+  }
+
+  async fn analyze_cjs_member_props<'a>(
+    &self,
+    _specifier: &Url,
+    _maybe_source: Option<Cow<'a, str>>,
+    _member: &str,
+  ) -> Result<Option<Vec<String>>, JsErrorBox> {
+    // The compiled runtime does not have access to swc; CJS export
+    // analysis is precomputed at compile time. Member-shape narrowing
+    // is therefore unavailable here, and the wrapper falls back to
+    // advertising only the default and module.exports.
+    Ok(None)
   }
 }

@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "@denotest/hoisted-walkup-x": "1.0.0",
+    "@denotest/hoisted-walkup-needs-x2": "1.0.0",
+    "@denotest/hoisted-walkup-needs-chain2": "1.0.0"
+  }
+}

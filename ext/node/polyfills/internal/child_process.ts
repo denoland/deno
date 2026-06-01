@@ -302,6 +302,7 @@ class ChildProcess extends EventEmitter {
       cwd,
       signal,
       windowsVerbatimArguments = false,
+      windowsHide = true,
       detached,
       envPairs,
       uid,
@@ -379,6 +380,7 @@ class ChildProcess extends EventEmitter {
         stdout: toDenoStdio(stdout),
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
+        windowsHide,
         uid,
         gid,
         detached,
@@ -1235,7 +1237,7 @@ function normalizeSpawnArguments(
     env,
     envPairs,
     file,
-    windowsHide: !!options.windowsHide,
+    windowsHide: options.windowsHide !== false,
     windowsVerbatimArguments: !!windowsVerbatimArguments,
     serialization: options.serialization || "json",
   };
@@ -1647,6 +1649,7 @@ function spawnSync(
     timeout,
     killSignal,
     windowsVerbatimArguments = false,
+    windowsHide = true,
   } = options;
   let command = options.file || "";
   let args = options.args || [];
@@ -1699,6 +1702,7 @@ function spawnSync(
       clearEnv: false,
       extraStdio: extraStdioNormalized,
       windowsRawArguments: windowsVerbatimArguments,
+      windowsHide,
       needsNpmProcessState: options[kNeedsNpmProcessState] ||
         includeNpmProcessState,
       input: input_,

@@ -1,0 +1,9 @@
+{
+  "name": "@denotest/hoisted-cycle-trigger",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@denotest/hoisted-cycle-a": "1.0.0",
+    "@denotest/hoisted-cycle-b": "1.0.0"
+  }
+}

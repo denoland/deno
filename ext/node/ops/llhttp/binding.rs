@@ -244,7 +244,7 @@ impl Inner {
     values: &[Vec<u8>],
   ) -> v8::Local<'a, v8::Array> {
     let len = fields.len() * 2;
-    let arr = v8::Array::new(scope, len as i32);
+    let mut elements: Vec<v8::Local<v8::Value>> = Vec::with_capacity(len);
     for (i, (field, value)) in fields.iter().zip(values.iter()).enumerate() {
       let f =
         v8::String::new_from_one_byte(scope, field, v8::NewStringType::Normal)
@@ -252,10 +252,11 @@ impl Inner {
       let v =
         v8::String::new_from_one_byte(scope, value, v8::NewStringType::Normal)
           .unwrap_or_else(|| v8::String::empty(scope));
-      arr.set_index(scope, (i * 2) as u32, f.into());
-      arr.set_index(scope, (i * 2 + 1) as u32, v.into());
+      debug_assert_eq!(elements.len(), i * 2);
+      elements.push(f.into());
+      elements.push(v.into());
     }
-    arr
+    v8::Array::new_with_elements(scope, &elements)
   }
 }
 
@@ -401,23 +402,13 @@ unsafe extern "C" fn on_header_value_complete(
   let inner = unsafe { &mut *ctx.inner };
   let field = std::mem::take(&mut inner.current_header_field);
   let mut value = std::mem::take(&mut inner.current_header_value);
-  // Strip leading/trailing OWS (spaces and tabs) from header values,
-  // matching Node.js's HTTP parser behavior (RFC 9110 §5.5).
-  let trimmed = {
-    let bytes = value.as_slice();
-    let start = bytes
-      .iter()
-      .position(|&b| b != b' ' && b != b'\t')
-      .unwrap_or(bytes.len());
-    let end = bytes
-      .iter()
-      .rposition(|&b| b != b' ' && b != b'\t')
-      .map_or(start, |p| p + 1);
-    start..end
-  };
-  if trimmed.start > 0 || trimmed.end < value.len() {
-    value = value[trimmed].to_vec();
-  }
+  // Strip trailing OWS (spaces and tabs) in place, matching Node.js's
+  // HTTP parser behavior. llhttp has already skipped leading OWS.
+  let trimmed_len = value
+    .iter()
+    .rposition(|&b| b != b' ' && b != b'\t')
+    .map_or(0, |p| p + 1);
+  value.truncate(trimmed_len);
   inner.header_fields.push(field);
   inner.header_values.push(value);
   inner.in_header_value = false;
