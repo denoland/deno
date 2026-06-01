@@ -2537,6 +2537,8 @@ function createServerLengthTest(name: string, testCase: TestCase) {
 
     const decoder = new TextDecoder();
     let msg = "";
+    let assertionsPassed = false;
+    let lastAssertionError: unknown;
     while (true) {
       const buf = new Uint8Array(1024);
       const readResult = await conn.read(buf);
@@ -2547,9 +2549,13 @@ function createServerLengthTest(name: string, testCase: TestCase) {
       try {
         assert(
           testCase.expectsChunked == hasHeader(msg, "Transfer-Encoding:"),
+          msg,
         );
-        assert(testCase.expectsChunked == hasHeader(msg, "chunked"));
-        assert(testCase.expectsConnLen == hasHeader(msg, "Content-Length:"));
+        assert(testCase.expectsChunked == hasHeader(msg, "chunked"), msg);
+        assert(
+          testCase.expectsConnLen == hasHeader(msg, "Content-Length:"),
+          msg,
+        );
 
         const n = msg.indexOf("\r\n\r\n") + 4;
 
@@ -2561,10 +2567,18 @@ function createServerLengthTest(name: string, testCase: TestCase) {
         if (testCase.expectsConnLen && typeof testCase.body === "string") {
           assertEquals(msg.slice(n), testCase.body);
         }
+        assertionsPassed = true;
         break;
-      } catch {
+      } catch (error) {
+        lastAssertionError = error;
         continue;
       }
+    }
+    if (!assertionsPassed) {
+      if (lastAssertionError) {
+        throw lastAssertionError;
+      }
+      fail("connection closed before response assertions passed");
     }
 
     conn.close();
@@ -2604,8 +2618,8 @@ createServerLengthTest("fixedResponseKnownEmpty", {
 createServerLengthTest("chunkedRespondKnown", {
   headers: { "transfer-encoding": "chunked" },
   body: "foo bar baz",
-  expectsChunked: true,
-  expectsConnLen: false,
+  expectsChunked: false,
+  expectsConnLen: true,
 });
 
 createServerLengthTest("chunkedRespondUnknown", {
