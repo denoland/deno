@@ -358,6 +358,7 @@ imara-diff = "=0.2.0"
 libsui = "0.12.6"
 malva = "=0.15.2"
 markup_fmt = "=0.27.0"
+object = { version = "0.36.3", default-features = false, features = ["read_core", "pe"] }
 open = "5.0.1"
 pathdiff = "0.2.1"
 pretty_yaml = "=0.5.0"
