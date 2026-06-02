@@ -1,6 +1,6 @@
 /**
- * The `node:vfs` module provides an in-memory virtual filesystem with an
- * `fs`-compatible API, mount points, and a provider-based storage layer.
+ * The `node:vfs` module provides an in-memory virtual filesystem with a
+ * `node:fs`-compatible API.
  *
  * ```js
  * import { create } from 'node:vfs';
@@ -13,54 +13,24 @@
  * This module is only available under the `node:` scheme.
  *
  * @experimental
- * @see https://github.com/nodejs/node/pull/61478
+ * @see https://github.com/nodejs/node/pull/63115
  */
 declare module "node:vfs" {
   import type { Buffer } from "node:buffer";
-  import type { Readable } from "node:stream";
+  import type { Stats, BigIntStats, Dirent, ReadStream, WriteStream } from "node:fs";
+  import type { EventEmitter } from "node:events";
 
-  interface VirtualStats {
-    readonly dev: number;
-    readonly mode: number;
-    readonly nlink: number;
-    readonly uid: number;
-    readonly gid: number;
-    readonly rdev: number;
-    readonly blksize: number;
-    readonly ino: number;
-    readonly size: number;
-    readonly blocks: number;
-    readonly atimeMs: number;
-    readonly mtimeMs: number;
-    readonly ctimeMs: number;
-    readonly birthtimeMs: number;
-    readonly atime: Date;
-    readonly mtime: Date;
-    readonly ctime: Date;
-    readonly birthtime: Date;
-    isFile(): boolean;
-    isDirectory(): boolean;
-    isSymbolicLink(): boolean;
-    isBlockDevice(): boolean;
-    isCharacterDevice(): boolean;
-    isFIFO(): boolean;
-    isSocket(): boolean;
-  }
+  type StatOptions = { bigint?: boolean };
+  type EncodingOption = string | { encoding?: string };
+  type ReadResult = { bytesRead: number; buffer: Uint8Array };
+  type WriteResult = { bytesWritten: number; buffer: Uint8Array };
+  type WriteFileOptions = { encoding?: string; mode?: number; flag?: string };
+  type ReadFileOptions = string | { encoding?: string; flag?: string };
+  type MkdirOptions = { recursive?: boolean; mode?: number };
+  type ReaddirOptions = { withFileTypes?: boolean; recursive?: boolean };
+  type RmOptions = { recursive?: boolean; force?: boolean };
 
-  interface VirtualDirent {
-    readonly name: string;
-    readonly parentPath: string;
-    readonly path: string;
-    isFile(): boolean;
-    isDirectory(): boolean;
-    isSymbolicLink(): boolean;
-    isBlockDevice(): boolean;
-    isCharacterDevice(): boolean;
-    isFIFO(): boolean;
-    isSocket(): boolean;
-  }
-
-  interface VirtualFileHandle {
+  class VirtualFileHandle {
     readonly path: string;
     readonly flags: string;
     readonly mode: number;
@@ -71,7 +41,7 @@ declare module "node:vfs" {
       offset: number,
       length: number,
       position: number | null,
-    ): Promise<{ bytesRead: number; buffer: Uint8Array }>;
+    ): Promise<ReadResult>;
     readSync(
       buffer: Uint8Array,
       offset: number,
@@ -83,34 +53,49 @@ declare module "node:vfs" {
       offset: number,
       length: number,
       position: number | null,
-    ): Promise<{ bytesWritten: number; buffer: Uint8Array }>;
+    ): Promise<WriteResult>;
     writeSync(
       buffer: Uint8Array,
       offset: number,
       length: number,
       position: number | null,
     ): number;
-    readFile(
-      options?: string | { encoding?: string },
-    ): Promise<Buffer | string>;
-    readFileSync(
-      options?: string | { encoding?: string },
-    ): Buffer | string;
+    readFile(options?: ReadFileOptions): Promise<Buffer | string>;
+    readFileSync(options?: ReadFileOptions): Buffer | string;
     writeFile(
       data: string | Uint8Array,
-      options?: { encoding?: string; mode?: number },
+      options?: WriteFileOptions,
     ): Promise<void>;
     writeFileSync(
       data: string | Uint8Array,
-      options?: { encoding?: string; mode?: number },
+      options?: WriteFileOptions,
     ): void;
-    stat(options?: unknown): Promise<VirtualStats>;
-    statSync(options?: unknown): VirtualStats;
+    appendFile(
+      data: string | Uint8Array,
+      options?: WriteFileOptions,
+    ): Promise<void>;
+    stat(options?: StatOptions): Promise<Stats | BigIntStats>;
+    statSync(options?: StatOptions): Stats | BigIntStats;
     truncate(len?: number): Promise<void>;
     truncateSync(len?: number): void;
+    chmod(mode: number): Promise<void>;
+    chown(uid: number, gid: number): Promise<void>;
+    utimes(atime: Date | number, mtime: Date | number): Promise<void>;
+    sync(): Promise<void>;
+    datasync(): Promise<void>;
+    readv(
+      buffers: Uint8Array[],
+      position?: number | null,
+    ): Promise<{ bytesRead: number; buffers: Uint8Array[] }>;
+    writev(
+      buffers: Uint8Array[],
+      position?: number | null,
+    ): Promise<{ bytesWritten: number; buffers: Uint8Array[] }>;
     close(): Promise<void>;
     closeSync(): void;
   }
+
+  class MemoryFileHandle extends VirtualFileHandle {}
 
   class VirtualProvider {
     readonly readonly: boolean;
@@ -122,26 +107,17 @@ declare module "node:vfs" {
       mode?: number,
     ): Promise<VirtualFileHandle>;
     openSync(path: string, flags: string, mode?: number): VirtualFileHandle;
-    stat(path: string, options?: unknown): Promise<VirtualStats>;
-    statSync(path: string, options?: unknown): VirtualStats;
-    lstat(path: string, options?: unknown): Promise<VirtualStats>;
-    lstatSync(path: string, options?: unknown): VirtualStats;
+    stat(path: string, options?: StatOptions): Promise<Stats | BigIntStats>;
+    statSync(path: string, options?: StatOptions): Stats | BigIntStats;
+    lstat(path: string, options?: StatOptions): Promise<Stats | BigIntStats>;
+    lstatSync(path: string, options?: StatOptions): Stats | BigIntStats;
     readdir(
       path: string,
-      options?: { withFileTypes?: boolean },
-    ): Promise<string[] | VirtualDirent[]>;
-    readdirSync(
-      path: string,
-      options?: { withFileTypes?: boolean },
-    ): string[] | VirtualDirent[];
-    mkdir(
-      path: string,
-      options?: { recursive?: boolean; mode?: number },
-    ): Promise<string | undefined>;
-    mkdirSync(
-      path: string,
-      options?: { recursive?: boolean; mode?: number },
-    ): string | undefined;
+      options?: ReaddirOptions,
+    ): Promise<string[] | Dirent[]>;
+    readdirSync(path: string, options?: ReaddirOptions): string[] | Dirent[];
+    mkdir(path: string, options?: MkdirOptions): Promise<string | undefined>;
+    mkdirSync(path: string, options?: MkdirOptions): string | undefined;
     rmdir(path: string): Promise<void>;
     rmdirSync(path: string): void;
     unlink(path: string): Promise<void>;
@@ -150,45 +126,51 @@ declare module "node:vfs" {
     renameSync(oldPath: string, newPath: string): void;
     readFile(
       path: string,
-      options?: string | { encoding?: string },
+      options?: ReadFileOptions,
     ): Promise<Buffer | string>;
-    readFileSync(
-      path: string,
-      options?: string | { encoding?: string },
-    ): Buffer | string;
+    readFileSync(path: string, options?: ReadFileOptions): Buffer | string;
     writeFile(
       path: string,
       data: string | Uint8Array,
-      options?: { encoding?: string; mode?: number },
+      options?: WriteFileOptions,
     ): Promise<void>;
     writeFileSync(
       path: string,
       data: string | Uint8Array,
-      options?: { encoding?: string; mode?: number },
+      options?: WriteFileOptions,
     ): void;
     appendFile(
       path: string,
       data: string | Uint8Array,
-      options?: { encoding?: string; mode?: number },
+      options?: WriteFileOptions,
     ): Promise<void>;
     appendFileSync(
       path: string,
       data: string | Uint8Array,
-      options?: { encoding?: string; mode?: number },
+      options?: WriteFileOptions,
     ): void;
     exists(path: string): Promise<boolean>;
     existsSync(path: string): boolean;
     copyFile(src: string, dest: string, mode?: number): Promise<void>;
     copyFileSync(src: string, dest: string, mode?: number): void;
-    internalModuleStat(path: string): number;
     realpath(path: string, options?: unknown): Promise<string>;
     realpathSync(path: string, options?: unknown): string;
     access(path: string, mode?: number): Promise<void>;
     accessSync(path: string, mode?: number): void;
+    link(existingPath: string, newPath: string): Promise<void>;
+    linkSync(existingPath: string, newPath: string): void;
     readlink(path: string, options?: unknown): Promise<string>;
     readlinkSync(path: string, options?: unknown): string;
     symlink(target: string, path: string, type?: string): Promise<void>;
     symlinkSync(target: string, path: string, type?: string): void;
+    watch(path: string, options?: unknown): EventEmitter;
+    watchAsync(path: string, options?: unknown): AsyncIterable<unknown>;
+    watchFile(
+      path: string,
+      options?: unknown,
+      listener?: (curr: Stats, prev: Stats) => void,
+    ): EventEmitter;
+    unwatchFile(path: string, listener?: (...args: unknown[]) => void): void;
   }
 
   class MemoryProvider extends VirtualProvider {
@@ -196,37 +178,47 @@ declare module "node:vfs" {
     setReadOnly(): void;
   }
 
+  class RealFSProvider extends VirtualProvider {
+    constructor(rootPath: string);
+    readonly rootPath: string;
+  }
+
+  class VirtualDir {
+    readonly path: string;
+    readSync(): Dirent | null;
+    read(): Promise<Dirent | null>;
+    read(callback: (err: Error | null, dirent: Dirent | null) => void): void;
+    closeSync(): void;
+    close(): Promise<void>;
+    close(callback: (err: Error | null) => void): void;
+    entries(): AsyncIterableIterator<Dirent>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<Dirent>;
+    [Symbol.asyncDispose](): Promise<void>;
+  }
+
   interface VirtualFileSystemOptions {
-    moduleHooks?: boolean;
-    virtualCwd?: boolean;
-    overlay?: boolean;
+    emitExperimentalWarning?: boolean;
   }
 
   interface VirtualFileSystemPromises {
-    readFile(
-      path: string,
-      options?: string | { encoding?: string },
-    ): Promise<Buffer | string>;
+    readFile(path: string, options?: ReadFileOptions): Promise<Buffer | string>;
     writeFile(
       path: string,
       data: string | Uint8Array,
-      options?: { encoding?: string; mode?: number },
+      options?: WriteFileOptions,
     ): Promise<void>;
     appendFile(
       path: string,
       data: string | Uint8Array,
-      options?: { encoding?: string; mode?: number },
+      options?: WriteFileOptions,
     ): Promise<void>;
-    stat(path: string, options?: unknown): Promise<VirtualStats>;
-    lstat(path: string, options?: unknown): Promise<VirtualStats>;
+    stat(path: string, options?: StatOptions): Promise<Stats | BigIntStats>;
+    lstat(path: string, options?: StatOptions): Promise<Stats | BigIntStats>;
     readdir(
       path: string,
-      options?: { withFileTypes?: boolean },
-    ): Promise<string[] | VirtualDirent[]>;
-    mkdir(
-      path: string,
-      options?: { recursive?: boolean; mode?: number },
-    ): Promise<string | undefined>;
+      options?: ReaddirOptions,
+    ): Promise<string[] | Dirent[]>;
+    mkdir(path: string, options?: MkdirOptions): Promise<string | undefined>;
     rmdir(path: string): Promise<void>;
     unlink(path: string): Promise<void>;
     rename(oldPath: string, newPath: string): Promise<void>;
@@ -235,6 +227,26 @@ declare module "node:vfs" {
     readlink(path: string, options?: unknown): Promise<string>;
     symlink(target: string, path: string, type?: string): Promise<void>;
     access(path: string, mode?: number): Promise<void>;
+    rm(path: string, options?: RmOptions): Promise<void>;
+    truncate(path: string, len?: number): Promise<void>;
+    link(existingPath: string, newPath: string): Promise<void>;
+    mkdtemp(prefix: string): Promise<string>;
+    chmod(path: string, mode: number): Promise<void>;
+    lchmod(path: string, mode: number): Promise<void>;
+    chown(path: string, uid: number, gid: number): Promise<void>;
+    lchown(path: string, uid: number, gid: number): Promise<void>;
+    utimes(
+      path: string,
+      atime: Date | number,
+      mtime: Date | number,
+    ): Promise<void>;
+    lutimes(
+      path: string,
+      atime: Date | number,
+      mtime: Date | number,
+    ): Promise<void>;
+    open(path: string, flags?: string, mode?: number): Promise<number>;
+    watch(path: string, options?: unknown): AsyncIterable<unknown>;
   }
 
   class VirtualFileSystem {
@@ -243,42 +255,24 @@ declare module "node:vfs" {
       options?: VirtualFileSystemOptions,
     );
     readonly provider: VirtualProvider;
-    readonly mountPoint: string | null;
-    readonly mounted: boolean;
     readonly readonly: boolean;
-    readonly overlay: boolean;
-    readonly virtualCwdEnabled: boolean;
-    cwd(): string;
-    chdir(dirPath: string): void;
-    resolvePath(path: string): string;
-    mount(prefix: string): this;
-    unmount(): void;
-    shouldHandle(path: string): boolean;
+
     existsSync(path: string): boolean;
-    statSync(path: string, options?: unknown): VirtualStats;
-    lstatSync(path: string, options?: unknown): VirtualStats;
-    readFileSync(
-      path: string,
-      options?: string | { encoding?: string },
-    ): Buffer | string;
+    statSync(path: string, options?: StatOptions): Stats | BigIntStats;
+    lstatSync(path: string, options?: StatOptions): Stats | BigIntStats;
+    readFileSync(path: string, options?: ReadFileOptions): Buffer | string;
     writeFileSync(
       path: string,
       data: string | Uint8Array,
-      options?: { encoding?: string; mode?: number },
+      options?: WriteFileOptions,
     ): void;
     appendFileSync(
       path: string,
       data: string | Uint8Array,
-      options?: { encoding?: string; mode?: number },
+      options?: WriteFileOptions,
     ): void;
-    readdirSync(
-      path: string,
-      options?: { withFileTypes?: boolean },
-    ): string[] | VirtualDirent[];
-    mkdirSync(
-      path: string,
-      options?: { recursive?: boolean; mode?: number },
-    ): string | undefined;
+    readdirSync(path: string, options?: ReaddirOptions): string[] | Dirent[];
+    mkdirSync(path: string, options?: MkdirOptions): string | undefined;
     rmdirSync(path: string): void;
     unlinkSync(path: string): void;
     renameSync(oldPath: string, newPath: string): void;
@@ -287,7 +281,26 @@ declare module "node:vfs" {
     readlinkSync(path: string, options?: unknown): string;
     symlinkSync(target: string, path: string, type?: string): void;
     accessSync(path: string, mode?: number): void;
-    internalModuleStat(path: string): number;
+    rmSync(path: string, options?: RmOptions): void;
+    truncateSync(path: string, len?: number): void;
+    ftruncateSync(fd: number, len?: number): void;
+    linkSync(existingPath: string, newPath: string): void;
+    chmodSync(path: string, mode: number): void;
+    chownSync(path: string, uid: number, gid: number): void;
+    utimesSync(
+      path: string,
+      atime: Date | number,
+      mtime: Date | number,
+    ): void;
+    lutimesSync(
+      path: string,
+      atime: Date | number,
+      mtime: Date | number,
+    ): void;
+    mkdtempSync(prefix: string): string;
+    opendirSync(path: string, options?: { recursive?: boolean }): VirtualDir;
+    openAsBlob(path: string, options?: { type?: string }): Blob;
+
     openSync(path: string, flags?: string, mode?: number): number;
     closeSync(fd: number): void;
     readSync(
@@ -297,12 +310,19 @@ declare module "node:vfs" {
       length: number,
       position: number | null,
     ): number;
-    fstatSync(fd: number, options?: unknown): VirtualStats;
+    writeSync(
+      fd: number,
+      buffer: Uint8Array,
+      offset: number,
+      length: number,
+      position: number | null,
+    ): number;
+    fstatSync(fd: number, options?: StatOptions): Stats | BigIntStats;
+
     readFile(
       path: string,
       options:
-        | string
-        | { encoding?: string }
+        | ReadFileOptions
         | ((err: Error | null, data: Buffer | string) => void),
       callback?: (err: Error | null, data: Buffer | string) => void,
     ): void;
@@ -310,28 +330,32 @@ declare module "node:vfs" {
       path: string,
       data: string | Uint8Array,
       options:
-        | { encoding?: string; mode?: number }
+        | WriteFileOptions
         | ((err: Error | null) => void),
       callback?: (err: Error | null) => void,
     ): void;
     stat(
       path: string,
-      options: unknown,
-      callback?: (err: Error | null, stats: VirtualStats) => void,
+      options:
+        | StatOptions
+        | ((err: Error | null, stats: Stats | BigIntStats) => void),
+      callback?: (err: Error | null, stats: Stats | BigIntStats) => void,
     ): void;
     lstat(
       path: string,
-      options: unknown,
-      callback?: (err: Error | null, stats: VirtualStats) => void,
+      options:
+        | StatOptions
+        | ((err: Error | null, stats: Stats | BigIntStats) => void),
+      callback?: (err: Error | null, stats: Stats | BigIntStats) => void,
     ): void;
     readdir(
       path: string,
       options:
-        | { withFileTypes?: boolean }
-        | ((err: Error | null, entries: string[] | VirtualDirent[]) => void),
+        | ReaddirOptions
+        | ((err: Error | null, entries: string[] | Dirent[]) => void),
       callback?: (
         err: Error | null,
-        entries: string[] | VirtualDirent[],
+        entries: string[] | Dirent[],
       ) => void,
     ): void;
     realpath(
@@ -368,11 +392,58 @@ declare module "node:vfs" {
         buffer: Uint8Array,
       ) => void,
     ): void;
+    write(
+      fd: number,
+      buffer: Uint8Array,
+      offset: number,
+      length: number,
+      position: number | null,
+      callback: (
+        err: Error | null,
+        bytesWritten: number,
+        buffer: Uint8Array,
+      ) => void,
+    ): void;
     fstat(
       fd: number,
-      options: unknown,
-      callback?: (err: Error | null, stats: VirtualStats) => void,
+      options: StatOptions | ((err: Error | null, stats: Stats | BigIntStats) => void),
+      callback?: (err: Error | null, stats: Stats | BigIntStats) => void,
     ): void;
+    rm(
+      path: string,
+      options: RmOptions | ((err: Error | null) => void),
+      callback?: (err: Error | null) => void,
+    ): void;
+    truncate(
+      path: string,
+      len: number | ((err: Error | null) => void),
+      callback?: (err: Error | null) => void,
+    ): void;
+    ftruncate(
+      fd: number,
+      len: number | ((err: Error | null) => void),
+      callback?: (err: Error | null) => void,
+    ): void;
+    link(
+      existingPath: string,
+      newPath: string,
+      callback: (err: Error | null) => void,
+    ): void;
+    mkdtemp(
+      prefix: string,
+      options:
+        | EncodingOption
+        | ((err: Error | null, dirPath: string) => void),
+      callback?: (err: Error | null, dirPath: string) => void,
+    ): void;
+    opendir(
+      path: string,
+      options:
+        | { recursive?: boolean }
+        | ((err: Error | null, dir: VirtualDir) => void),
+      callback?: (err: Error | null, dir: VirtualDir) => void,
+    ): void;
+
     createReadStream(
       path: string,
       options?: {
@@ -381,8 +452,33 @@ declare module "node:vfs" {
         highWaterMark?: number;
         encoding?: string;
         autoClose?: boolean;
+        fd?: number;
       },
-    ): Readable;
+    ): ReadStream;
+    createWriteStream(
+      path: string,
+      options?: {
+        start?: number;
+        highWaterMark?: number;
+        encoding?: string;
+        autoClose?: boolean;
+        fd?: number;
+        flags?: string;
+      },
+    ): WriteStream;
+
+    watch(
+      path: string,
+      options?: unknown,
+      listener?: (eventType: string, filename: string) => void,
+    ): EventEmitter;
+    watchFile(
+      path: string,
+      options?: unknown,
+      listener?: (curr: Stats, prev: Stats) => void,
+    ): EventEmitter;
+    unwatchFile(path: string, listener?: (...args: unknown[]) => void): void;
+
     readonly promises: VirtualFileSystemPromises;
   }
 
@@ -393,11 +489,12 @@ declare module "node:vfs" {
 
   export {
     create,
+    MemoryFileHandle,
     MemoryProvider,
-    VirtualDirent,
+    RealFSProvider,
+    VirtualDir,
     VirtualFileHandle,
     VirtualFileSystem,
     VirtualProvider,
-    VirtualStats,
   };
 }

@@ -7,10 +7,10 @@ export const {
   VirtualFileSystem,
   VirtualProvider,
   MemoryProvider,
+  RealFSProvider,
   VirtualFileHandle,
   MemoryFileHandle,
-  VirtualStats,
-  VirtualDirent,
+  VirtualDir,
 } = mod;
 
 export default mod.default;
