@@ -61,6 +61,7 @@ const {
   TypedArrayPrototypeSubarray,
   Uint8Array,
   Uint8ArrayPrototype,
+  Uint8ArrayPrototypeToHex,
 } = primordials;
 const {
   op_base64_decode_into,
@@ -1103,7 +1104,9 @@ Buffer.prototype.hexWrite = function hexWrite(string, offset, length) {
 };
 
 Buffer.prototype.hexSlice = function hexSlice(offset, length) {
-  return _hexSlice(this, offset, length);
+  return Uint8ArrayPrototypeToHex(
+    TypedArrayPrototypeSubarray(this, offset, length),
+  );
 };
 
 Buffer.prototype.latin1Slice = function latin1Slice(offset, length) {
@@ -1266,21 +1269,6 @@ function fromArrayBuffer(obj, byteOffset, length) {
   }
 
   return new FastBuffer(obj, byteOffset, length);
-}
-
-function _hexSlice(buf, start, end) {
-  const len = buf.length;
-  if (!start || start < 0) {
-    start = 0;
-  }
-  if (!end || end < 0 || end > len) {
-    end = len;
-  }
-  let out = "";
-  for (let i = start; i < end; ++i) {
-    out += hexSliceLookupTable[buf[i]];
-  }
-  return out;
 }
 
 function adjustOffset(offset, length) {
@@ -2189,18 +2177,6 @@ function blitBuffer(src, dst, offset, byteLength = Infinity) {
   dst.set(src, offset);
   return bytesToWrite;
 }
-
-const hexSliceLookupTable = function () {
-const alphabet = "0123456789abcdef";
-const table = [];
-for (let i = 0; i < 16; ++i) {
-  const i16 = i * 16;
-  for (let j = 0; j < 16; ++j) {
-    table[i16 + j] = alphabet[i] + alphabet[j];
-  }
-}
-return table;
-}();
 
 function readUInt48LE(buf, offset = 0) {
   validateNumber(offset, "offset");
