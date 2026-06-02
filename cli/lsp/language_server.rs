@@ -293,6 +293,7 @@ pub struct Inner {
   /// Configuration information.
   pub config: Config,
   diagnostics_cache: OnceCellMap<Arc<Uri>, Arc<Vec<Diagnostic>>>,
+  no_slow_types_cache: diagnostics::NoSlowTypesDiagnosticsCache,
   diagnostics_server: Option<diagnostics::DiagnosticsServer>,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
@@ -594,6 +595,7 @@ impl Inner {
       compiler_options_resolver: Default::default(),
       config,
       diagnostics_cache: Default::default(),
+      no_slow_types_cache: Default::default(),
       diagnostics_server: None,
       document_modules: Default::default(),
       http_client_provider,
@@ -2913,6 +2915,7 @@ impl Inner {
           &self.snapshot(),
           &self.ts_server,
           &self.ambient_modules_regex_cache,
+          &self.no_slow_types_cache,
           token,
         )
         .await
@@ -3410,6 +3413,7 @@ impl Inner {
   ) {
     self.ambient_modules_regex_cache.clear();
     self.diagnostics_cache.clear();
+    self.no_slow_types_cache.clear();
     self.project_version += 1; // increment before getting the snapshot
     self.ts_server.project_changed(
       &documents,

@@ -7,6 +7,7 @@ use std::thread;
 
 use console_static_text::ansi::strip_ansi_codes;
 use deno_ast::MediaType;
+use deno_ast::diagnostics::Diagnostic as _;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -21,7 +22,9 @@ use deno_error::JsErrorClass;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_graph::fast_check::FastCheckDiagnostic;
 use deno_graph::source::ResolveError;
+use deno_lib::args::CaData;
 use deno_resolver::deno_json::CompilerOptionsKey;
 use deno_resolver::graph::enhanced_resolution_error_message;
 use deno_resolver::workspace::sloppy_imports_resolve;
@@ -50,12 +53,19 @@ use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
 use super::ts_server::TsServer;
+use crate::args::Flags;
+use crate::args::InternalFlags;
+use crate::args::PermissionFlags;
+use crate::args::TypeCheckMode;
+use crate::factory::CliFactory;
+use crate::graph_util::CreatePublishGraphOptions;
 use crate::lsp::documents::OpenDocument;
 use crate::lsp::language_server::OnceCellMap;
 use crate::lsp::lint::LspLinter;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::urls::uri_to_url;
 use crate::sys::CliSys;
+use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::type_checker::ambient_modules_to_regex_string;
 use crate::util::path::to_percent_decoded_str;
 
@@ -80,6 +90,16 @@ impl DiagnosticSource {
     }
   }
 }
+
+/// No-slow-types (fast check) diagnostics are computed for an entire
+/// publishable JSR package at once and can land on any module within it, so
+/// they're cached per package scope and then distributed to the individual
+/// documents they belong to. The inner map is keyed by the specifier of the
+/// module each diagnostic points at.
+pub type NoSlowTypesDiagnosticsCache = OnceCellMap<
+  Arc<ModuleSpecifier>,
+  Arc<HashMap<ModuleSpecifier, Vec<lsp::Diagnostic>>>,
+>;
 
 fn should_send_diagnostic_batch_notifications() -> bool {
   deno_lib::args::has_flag_env_var(
@@ -236,6 +256,11 @@ impl DiagnosticsServer {
             if should_send_batch_notifications {
               client.send_diagnostic_batch_start_notification();
             }
+            // Computed lazily and shared across all documents of a package so
+            // the (potentially expensive) graph build only happens once per
+            // package scope per diagnostics run.
+            let no_slow_types_cache =
+              Arc::new(NoSlowTypesDiagnosticsCache::default());
             let open_docs =
               snapshot.document_modules.documents.open_docs().cloned();
             deno_core::futures::stream::iter(open_docs.map(|document| {
@@ -243,6 +268,7 @@ impl DiagnosticsServer {
               let ts_server = ts_server.clone();
               let ambient_modules_regex_cache =
                 ambient_modules_regex_cache.clone();
+              let no_slow_types_cache = no_slow_types_cache.clone();
               let token = token.clone();
               AbortOnDropHandle::new(tokio::task::spawn(async move {
                 let diagnostics = generate_document_diagnostics(
@@ -250,6 +276,7 @@ impl DiagnosticsServer {
                   &snapshot,
                   &ts_server,
                   &ambient_modules_regex_cache,
+                  &no_slow_types_cache,
                   &token,
                 )
                 .await
@@ -1219,6 +1246,7 @@ async fn generate_document_diagnostics(
     (CompilerOptionsKey, Option<Arc<Uri>>),
     Option<regex::Regex>,
   >,
+  no_slow_types_cache: &NoSlowTypesDiagnosticsCache,
   token: &CancellationToken,
 ) -> Result<Vec<lsp::Diagnostic>, AnyError> {
   if !document.is_diagnosable() {
@@ -1254,6 +1282,7 @@ async fn generate_document_diagnostics(
     snapshot,
     ts_server,
     ambient_modules_regex_cache,
+    no_slow_types_cache,
     token,
   )
   .await
@@ -1267,6 +1296,7 @@ pub async fn generate_module_diagnostics(
     (CompilerOptionsKey, Option<Arc<Uri>>),
     Option<regex::Regex>,
   >,
+  no_slow_types_cache: &NoSlowTypesDiagnosticsCache,
   token: &CancellationToken,
 ) -> Result<Vec<lsp::Diagnostic>, AnyError> {
   let deps_handle = tokio::task::spawn_blocking({
@@ -1382,7 +1412,178 @@ pub async fn generate_module_diagnostics(
     .unwrap_or_default();
   diagnostics.extend(lint_diagnostics);
 
+  diagnostics.extend(
+    generate_no_slow_types_diagnostics(module, snapshot, no_slow_types_cache)
+      .await,
+  );
+
   Ok(diagnostics)
+}
+
+/// Returns the `no-slow-types` (fast check) diagnostics that land on `module`.
+///
+/// These diagnostics are reported by `deno publish` / `deno lint` for
+/// publishable JSR packages and require a fully built fast check module graph
+/// of the whole package. Because a single slow type can produce diagnostics on
+/// any module reachable from a package's exports, the graph is built once per
+/// package scope (cached in `no_slow_types_cache`) and the resulting
+/// diagnostics are distributed to the document they point at.
+async fn generate_no_slow_types_diagnostics(
+  module: &Arc<DocumentModule>,
+  snapshot: &Arc<StateSnapshot>,
+  no_slow_types_cache: &NoSlowTypesDiagnosticsCache,
+) -> Vec<lsp::Diagnostic> {
+  if module.specifier.scheme() != "file"
+    || module.notebook_uri.is_some()
+    || snapshot.resolver.in_node_modules(&module.specifier)
+  {
+    return Vec::new();
+  }
+  let settings = snapshot
+    .config
+    .workspace_settings_for_specifier(&module.specifier);
+  if !settings.lint {
+    return Vec::new();
+  }
+  let Some(config_data) =
+    snapshot.config.tree.data_for_specifier(&module.specifier)
+  else {
+    return Vec::new();
+  };
+  // Only publishable JSR packages have a public API to check for slow types.
+  if config_data.member_dir.jsr_packages_for_publish().is_empty() {
+    return Vec::new();
+  }
+  let scope = config_data.scope.clone();
+  let cell = no_slow_types_cache
+    .entry(scope.clone())
+    .or_default()
+    .clone();
+  let diagnostics_by_specifier = cell
+    .get_or_init(|| {
+      let snapshot = snapshot.clone();
+      async move {
+        Arc::new(
+          tokio::task::spawn_blocking(move || {
+            collect_scope_no_slow_types_diagnostics(&snapshot, &scope)
+          })
+          .await
+          .inspect_err(|err| {
+            lsp_warn!("No-slow-types diagnostics task join error: {err:#}");
+          })
+          .unwrap_or_default(),
+        )
+      }
+    })
+    .await;
+  diagnostics_by_specifier
+    .get(&module.specifier)
+    .cloned()
+    .unwrap_or_default()
+}
+
+/// Builds the fast check graph for the publishable packages within `scope` and
+/// collects the resulting `no-slow-types` diagnostics, grouped by the specifier
+/// of the module each one points at. Runs on a blocking thread since building
+/// the graph involves I/O and uses `!Send` types internally.
+fn collect_scope_no_slow_types_diagnostics(
+  snapshot: &Arc<StateSnapshot>,
+  scope: &ModuleSpecifier,
+) -> HashMap<ModuleSpecifier, Vec<lsp::Diagnostic>> {
+  let result = (|| -> Result<_, AnyError> {
+    let Some(config_data) = snapshot.config.tree.data_for_specifier(scope)
+    else {
+      return Ok(HashMap::new());
+    };
+    let packages = config_data.member_dir.jsr_packages_for_publish();
+    if packages.is_empty() {
+      return Ok(HashMap::new());
+    }
+    let workspace_settings =
+      snapshot.config.workspace_settings_for_specifier(scope);
+    let mut factory = CliFactory::from_flags(Arc::new(Flags {
+      internal: InternalFlags {
+        cache_path: Some(snapshot.cache.deno_dir().root.clone()),
+        lockfile_skip_write: true,
+        ..Default::default()
+      },
+      ca_stores: workspace_settings.certificate_stores.clone(),
+      ca_data: workspace_settings.tls_certificate.clone().map(CaData::File),
+      unsafely_ignore_certificate_errors: workspace_settings
+        .unsafely_ignore_certificate_errors
+        .clone(),
+      type_check_mode: TypeCheckMode::None,
+      permissions: PermissionFlags {
+        // allow remote import permissions in the lsp for now
+        allow_import: Some(vec![]),
+        ..Default::default()
+      },
+      ..Default::default()
+    }));
+    factory.set_initial_cwd(config_data.member_dir.dir_path());
+    factory.set_workspace_dir(config_data.member_dir.clone());
+
+    let runtime = create_basic_runtime();
+    let local_set = tokio::task::LocalSet::new();
+    local_set.block_on(&runtime, async move {
+      let module_graph_creator = factory.module_graph_creator().await?;
+      let graph = module_graph_creator
+        .create_publish_graph(CreatePublishGraphOptions {
+          packages: &packages,
+          build_fast_check_graph: true,
+          validate_graph: false,
+        })
+        .await?;
+      let mut diagnostics_by_specifier: HashMap<
+        ModuleSpecifier,
+        Vec<lsp::Diagnostic>,
+      > = HashMap::new();
+      for package in &packages {
+        let export_urls = package.config_file.resolve_export_value_urls()?;
+        for diagnostic in collect_no_slow_type_diagnostics(&graph, &export_urls)
+        {
+          if let Some(lsp_diagnostic) =
+            no_slow_types_diagnostic_to_lsp(&diagnostic)
+          {
+            diagnostics_by_specifier
+              .entry(diagnostic.specifier().clone())
+              .or_default()
+              .push(lsp_diagnostic);
+          }
+        }
+      }
+      Ok(diagnostics_by_specifier)
+    })
+  })();
+  result.unwrap_or_else(|err: AnyError| {
+    lsp_warn!("Failed to generate no-slow-types diagnostics: {err:#}");
+    HashMap::new()
+  })
+}
+
+fn no_slow_types_diagnostic_to_lsp(
+  diagnostic: &FastCheckDiagnostic,
+) -> Option<lsp::Diagnostic> {
+  let range = diagnostic.range()?;
+  let mut message = diagnostic.message().to_string();
+  if let Some(hint) = diagnostic.hint() {
+    message.push_str("\n\n");
+    message.push_str(&hint);
+  }
+  Some(lsp::Diagnostic {
+    range: analysis::source_range_to_lsp_range(&range.range, &range.text_info),
+    severity: Some(lsp::DiagnosticSeverity::WARNING),
+    code: Some(lsp::NumberOrString::String("no-slow-types".to_string())),
+    code_description: diagnostic
+      .docs_url()
+      .and_then(|url| Uri::from_str(&url).ok())
+      .map(|href| lsp::CodeDescription { href }),
+    source: Some(DiagnosticSource::Lint.as_lsp_source().to_string()),
+    message,
+    related_information: None,
+    tags: None,
+    data: None,
+  })
 }
 
 #[cfg(test)]
