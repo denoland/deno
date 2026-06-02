@@ -464,8 +464,8 @@
   "Worker-timeout-increasing-order.html": true,
   "WorkerGlobalScope-close.html": false,
   "WorkerGlobalScope_requestAnimationFrame.worker.html": false,
-  "WorkerNavigator_userAgentData.http.html": true,
-  "WorkerNavigator_userAgentData.https.html": false,
+  "WorkerNavigator_userAgentData.http.html": false,
+  "WorkerNavigator_userAgentData.https.html": true,
   "WorkerPerformanceNow.html": true,
   "abrupt-completion.html": false,
   "baseurl": {
