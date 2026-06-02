@@ -39,6 +39,7 @@ EXPORTS
   node_api_create_external_string_utf16
   napi_get_value_bigint_uint64
   napi_module_register
+  node_module_register
   napi_is_typedarray
   napi_create_external_buffer
   napi_get_new_target

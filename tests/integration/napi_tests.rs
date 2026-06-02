@@ -34,36 +34,40 @@ fn napi_build() {
   // cc module.c -undefined dynamic_lookup -shared -Wl,-no_fixup_chains -dynamic -o module.dylib
   #[cfg(not(target_os = "windows"))]
   {
-    let out = if cfg!(target_os = "macos") {
-      "module.dylib"
+    let suffix = if cfg!(target_os = "macos") {
+      "dylib"
     } else {
-      "module.so"
+      "so"
     };
 
-    let mut cc = Command::new("cc");
-    cc.current_dir(napi_tests_path());
+    for src in ["module.c", "module_legacy.c"] {
+      let out = format!("{}.{}", src.strip_suffix(".c").unwrap(), suffix);
 
-    #[cfg(not(target_os = "macos"))]
-    let c_module = cc.arg("module.c").arg("-shared").arg("-o").arg(out);
+      let mut cc = Command::new("cc");
+      cc.current_dir(napi_tests_path());
 
-    #[cfg(target_os = "macos")]
-    let c_module = {
-      cc.arg("module.c")
-        .arg("-undefined")
-        .arg("dynamic_lookup")
-        .arg("-shared")
-        .arg("-Wl,-no_fixup_chains")
-        .arg("-dynamic")
-        .arg("-o")
-        .arg(out)
-    };
-    let c_module_output = c_module.output().unwrap();
-    assert!(
-      c_module_output.status.success(),
-      "cc failed:\nstdout: {}\nstderr: {}",
-      String::from_utf8_lossy(&c_module_output.stdout),
-      String::from_utf8_lossy(&c_module_output.stderr)
-    );
+      #[cfg(not(target_os = "macos"))]
+      let c_module = cc.arg(src).arg("-shared").arg("-o").arg(&out);
+
+      #[cfg(target_os = "macos")]
+      let c_module = {
+        cc.arg(src)
+          .arg("-undefined")
+          .arg("dynamic_lookup")
+          .arg("-shared")
+          .arg("-Wl,-no_fixup_chains")
+          .arg("-dynamic")
+          .arg("-o")
+          .arg(&out)
+      };
+      let c_module_output = c_module.output().unwrap();
+      assert!(
+        c_module_output.status.success(),
+        "cc failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&c_module_output.stdout),
+        String::from_utf8_lossy(&c_module_output.stderr)
+      );
+    }
   }
 }
 
